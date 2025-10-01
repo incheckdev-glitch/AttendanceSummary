@@ -253,14 +253,7 @@
       const csv = await res.text();
       const parsed = Papa.parse(csv, { header: true, skipEmptyLines: true });
 
-      CANON = parsed.data.map(r => ({
-        month: r["Month"] || "",
-        date: r["Date"] || "",
-        employee: r["Employee Name"] || "",
-        signIn: r["Sign In Time"] || "",
-        signOut: r["Sign Out Time"] || "",
-        totalHours: parseFloat(r["Total Hours"]) || 0
-      })).filter(r => r.employee && r.date);
+     })).filter(r => r.employee && r.date);
 
       populateEmployeeFilter();
       applyFilters();
