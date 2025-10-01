@@ -10,7 +10,6 @@
   <!-- DataTables -->
   <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css"/>
   <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.dataTables.min.css"/>
-
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <!-- PapaParse -->
@@ -96,152 +95,222 @@
   </div>
 
   <script>
-    const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTw_QmgTO1onutiMdiVyThLtl7omNOqpDH-NNSoMwbGcpU4RfRjKO4pPJXbQrsHn5_ZuK4HEhkJ_SJZ/pub?gid=697198023&single=true&output=csv";
+    const ATTENDANCE_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTw_QmgTO1onutiMdiVyThLtl7omNOqpDH-NNSoMwbGcpU4RfRjKO4pPJXbQrsHn5_ZuK4HEhkJ_SJZ/pub?gid=697198023&single=true&output=csv";
+    const LEAVES_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTw_QmgTO1onutiMdiVyThLtl7omNOqpDH-NNSoMwbGcpU4RfRjKO4pPJXbQrsHn5_ZuK4HEhkJ_SJZ/pub?gid=33718844&single=true&output=csv";
 
-    let CANON = [];
+    let ATTENDANCE = [];
+    let LEAVES = [];
     let DT = null;
     let barChart, pieChart, lineChart;
 
-    // Normalize + map row
-    function mapRow(r) {
-      const row = {};
-      Object.keys(r).forEach(k => {
+    const settings = { late:"08:15", early:"16:30", half:4, over:9 };
+
+    // Parse and normalize headers
+    function normalizeRow(r) {
+      const out = {};
+      Object.keys(r).forEach(k=>{
         if (!k) return;
-        row[k.trim().toLowerCase()] = r[k];
+        out[k.trim().toLowerCase()] = r[k];
       });
+      return out;
+    }
+
+    function mapAttendance(r) {
+      const row = normalizeRow(r);
       return {
         month: row["month"] || "",
         date: row["date"] || "",
         employee: row["employee name"] || row["employee"] || row["name"] || "",
-        signIn: row["sign in time"] || row["signin"] || row["in"] || "",
-        signOut: row["sign out time"] || row["signout"] || row["out"] || "",
-        totalHours: parseFloat(row["total hours"] || row["hours"] || "0") || 0
+        signIn: row["sign in time"] || "",
+        signOut: row["sign out time"] || "",
+        totalHours: parseFloat(row["total hours"] || "0") || 0
       };
     }
 
+    function mapLeave(r) {
+      const row = normalizeRow(r);
+      return {
+        date: row["date"] || "",
+        employee: row["employee"] || row["employee name"] || "",
+        type: row["type"] || row["leave type"] || ""
+      };
+    }
+
+    function toMinutes(hhmm) {
+      if(!hhmm) return null;
+      const [h,m] = hhmm.split(":").map(Number);
+      return h*60+m;
+    }
+
+    function computeStatus(row) {
+      const status=[];
+      const d=new Date(row.date);
+      const dow=d.getDay();
+
+      // Weekend
+      if(dow===0||dow===6) return ["Weekend"];
+
+      // Leave check
+      const leave=LEAVES.find(l=>l.date===row.date && l.employee===row.employee);
+      if(leave) return [leave.type];
+
+      // Absent
+      if(!row.signIn && !row.signOut) return ["Absent"];
+
+      // Needs Correction
+      if((row.signIn && !row.signOut)||(!row.signIn && row.signOut)) return ["Needs Correction"];
+
+      // Time-based
+      const inM=toMinutes(row.signIn);
+      const outM=toMinutes(row.signOut);
+      const total=row.totalHours;
+
+      const [lh,lm]=settings.late.split(":").map(Number);
+      const [eh,em]=settings.early.split(":").map(Number);
+
+      if(inM && inM>(lh*60+lm)) status.push("Late");
+      if(outM && outM<(eh*60+em)) status.push("Early Leave");
+      if(total>0 && total<settings.half) status.push("Half-day");
+      if(total>=settings.over) status.push("Overtime");
+
+      if(!status.length) status.push("On Time");
+      return status;
+    }
+
     function renderTable(data) {
-      const rows = data.map(r => [
-        r.month, r.date, r.employee, r.signIn, r.signOut, r.totalHours.toFixed(2)
-      ]);
-      if (!DT) {
-        DT = $("#attendanceTable").DataTable({
-          data: rows,
-          columns: [
-            { title: "Month" },
-            { title: "Date" },
-            { title: "Employee" },
-            { title: "Sign In" },
-            { title: "Sign Out" },
-            { title: "Total Hours" }
+      const rows=data.map(r=>{
+        const st=computeStatus(r).map(s=>{
+          let cls="bg-secondary";
+          if(s==="Late") cls="bg-danger";
+          else if(s==="Early Leave") cls="bg-warning text-dark";
+          else if(s==="On Time") cls="bg-success";
+          else if(s==="Absent") cls="bg-dark";
+          else if(s==="Needs Correction") cls="bg-danger text-white";
+          else if(s==="Half-day") cls="bg-info text-dark";
+          else if(s==="Overtime") cls="bg-primary";
+          else if(s==="Weekend") cls="bg-light text-dark";
+          else if(s==="SL") cls="bg-info text-dark";
+          else if(s==="UL") cls="bg-secondary text-dark";
+          return `<span class="badge ${cls}">${s}</span>`;
+        }).join(" ");
+        return [r.month,r.date,r.employee,r.signIn,r.signOut,r.totalHours.toFixed(2),st];
+      });
+
+      if(!DT){
+        DT=$("#attendanceTable").DataTable({
+          data:rows,
+          columns:[
+            {title:"Month"},{title:"Date"},{title:"Employee"},
+            {title:"Sign In"},{title:"Sign Out"},{title:"Total Hours"},{title:"Status"}
           ],
-          dom: "Bfrtip",
-          buttons: ["csv", "excel", "pdf", "print"],
-          pageLength: 10
+          dom:"Bfrtip",
+          buttons:["csv","excel","pdf","print"],
+          pageLength:10
         });
       } else {
         DT.clear().rows.add(rows).draw();
       }
 
       // KPIs
-      let sum = 0, late=0, early=0, absent=0;
-      const days = new Set();
-      data.forEach(r => {
-        sum += r.totalHours || 0;
-        if (!r.signIn && !r.signOut) absent++;
-        if (r.date) days.add(r.date);
-        if (r.signIn && r.signIn > "08:15") late++;
-        if (r.signOut && r.signOut < "16:30") early++;
+      let sum=0,late=0,early=0,absent=0;
+      const days=new Set();
+      data.forEach(r=>{
+        const st=computeStatus(r);
+        if(st.includes("Late")) late++;
+        if(st.includes("Early Leave")) early++;
+        if(st.includes("Absent")) absent++;
+        sum+=r.totalHours||0;
+        if(r.date) days.add(r.date);
       });
-      document.getElementById("totalHours").textContent = sum.toFixed(2);
-      document.getElementById("avgHours").textContent = days.size ? (sum/days.size).toFixed(2) : "0";
-      document.getElementById("daysCount").textContent = days.size;
-      document.getElementById("lateCount").textContent = late;
-      document.getElementById("earlyCount").textContent = early;
-      document.getElementById("absentCount").textContent = absent;
+      document.getElementById("totalHours").textContent=sum.toFixed(2);
+      document.getElementById("avgHours").textContent=days.size?(sum/days.size).toFixed(2):"0";
+      document.getElementById("daysCount").textContent=days.size;
+      document.getElementById("lateCount").textContent=late;
+      document.getElementById("earlyCount").textContent=early;
+      document.getElementById("absentCount").textContent=absent;
 
       renderCharts(data);
     }
 
-    function renderCharts(data) {
-      if (barChart) barChart.destroy();
-      if (pieChart) pieChart.destroy();
-      if (lineChart) lineChart.destroy();
+    function renderCharts(data){
+      if(barChart) barChart.destroy();
+      if(pieChart) pieChart.destroy();
+      if(lineChart) lineChart.destroy();
 
-      const byDate = {};
-      const byEmp = {};
-      data.forEach(r => {
-        if (r.date) byDate[r.date] = (byDate[r.date]||0) + (r.totalHours||0);
-        if (r.employee) byEmp[r.employee] = (byEmp[r.employee]||0) + (r.totalHours||0);
+      const byDate={},byEmp={};
+      data.forEach(r=>{
+        if(r.date) byDate[r.date]=(byDate[r.date]||0)+(r.totalHours||0);
+        if(r.employee) byEmp[r.employee]=(byEmp[r.employee]||0)+(r.totalHours||0);
       });
 
-      barChart = new Chart(document.getElementById("barChart"), {
-        type: "bar",
-        data: { labels:Object.keys(byDate), datasets:[{ label:"Hours", data:Object.values(byDate), backgroundColor:"#0d6efd"}]}
+      barChart=new Chart(document.getElementById("barChart"),{
+        type:"bar",data:{labels:Object.keys(byDate),datasets:[{label:"Hours",data:Object.values(byDate),backgroundColor:"#0d6efd"}]}
       });
-      pieChart = new Chart(document.getElementById("pieChart"), {
-        type: "pie",
-        data: { labels:Object.keys(byEmp), datasets:[{ data:Object.values(byEmp), backgroundColor:["#0d6efd","#ffc107","#28a745","#dc3545","#6f42c1"]}]}
+      pieChart=new Chart(document.getElementById("pieChart"),{
+        type:"pie",data:{labels:Object.keys(byEmp),datasets:[{data:Object.values(byEmp),backgroundColor:["#0d6efd","#ffc107","#28a745","#dc3545","#6f42c1"]}]}
       });
-      lineChart = new Chart(document.getElementById("lineChart"), {
-        type: "line",
-        data: { labels:Object.keys(byDate), datasets:[{ label:"Hours", data:Object.values(byDate), borderColor:"#28a745", fill:false}]}
+      lineChart=new Chart(document.getElementById("lineChart"),{
+        type:"line",data:{labels:Object.keys(byDate),datasets:[{label:"Hours",data:Object.values(byDate),borderColor:"#28a745",fill:false}]}
       });
     }
 
-    function applyFilters() {
-      const emp = document.getElementById("employeeFilter").value;
-      const start = document.getElementById("startDate").value;
-      const end = document.getElementById("endDate").value;
-      const q = document.getElementById("quickSearch").value.toLowerCase();
+    function applyFilters(){
+      const emp=document.getElementById("employeeFilter").value;
+      const start=document.getElementById("startDate").value;
+      const end=document.getElementById("endDate").value;
+      const q=document.getElementById("quickSearch").value.toLowerCase();
 
-      const filtered = CANON.filter(r => {
-        if (emp && r.employee !== emp) return false;
-        if (start && r.date < start) return false;
-        if (end && r.date > end) return false;
-        if (q && !(`${r.employee} ${r.date}`).toLowerCase().includes(q)) return false;
+      const filtered=ATTENDANCE.filter(r=>{
+        if(emp && r.employee!==emp) return false;
+        if(start && r.date<start) return false;
+        if(end && r.date>end) return false;
+        if(q && !(`${r.employee} ${r.date}`).toLowerCase().includes(q)) return false;
         return true;
       });
       renderTable(filtered);
     }
 
-    function resetFilters() {
-      document.getElementById("employeeFilter").value = "";
-      document.getElementById("startDate").value = "";
-      document.getElementById("endDate").value = "";
-      document.getElementById("quickSearch").value = "";
-      renderTable(CANON);
+    function resetFilters(){
+      document.getElementById("employeeFilter").value="";
+      document.getElementById("startDate").value="";
+      document.getElementById("endDate").value="";
+      document.getElementById("quickSearch").value="";
+      renderTable(ATTENDANCE);
     }
 
-    async function loadAttendance() {
-      const res = await fetch(CSV_URL);
-      const csv = await res.text();
-      const parsed = Papa.parse(csv, { header: true, skipEmptyLines: true });
-      console.log("HEADERS RAW:", Object.keys(parsed.data[0]));
-      console.log("FIRST ROW RAW:", parsed.data[0]);
-
-      CANON = parsed.data.map(mapRow).filter(r => r.employee && r.date);
-      populateEmployeeFilter();
-      renderTable(CANON);
-    }
-
-    function populateEmployeeFilter() {
-      const sel = document.getElementById("employeeFilter");
-      sel.innerHTML = `<option value="">All</option>`;
-      [...new Set(CANON.map(r => r.employee))].sort().forEach(emp => {
-        const opt = document.createElement("option");
-        opt.value = emp; opt.textContent = emp;
+    function populateEmployeeFilter(){
+      const sel=document.getElementById("employeeFilter");
+      sel.innerHTML=`<option value="">All</option>`;
+      [...new Set(ATTENDANCE.map(r=>r.employee))].sort().forEach(emp=>{
+        const opt=document.createElement("option");
+        opt.value=emp; opt.textContent=emp;
         sel.appendChild(opt);
       });
     }
 
-    async function downloadFullReport() {
-      const el = document.getElementById("reportArea");
-      const canvas = await html2canvas(el, {scale:2, backgroundColor:"#fff"});
-      const img = canvas.toDataURL("image/png");
-      pdfMake.createPdf({ content: [{ image: img, width: 500 }] }).download("Attendance_Report.pdf");
+    async function loadData(){
+      const aRes=await fetch(ATTENDANCE_CSV);
+      const aCsv=await aRes.text();
+      const aParsed=Papa.parse(aCsv,{header:true,skipEmptyLines:true});
+      ATTENDANCE=aParsed.data.map(mapAttendance).filter(r=>r.employee && r.date);
+
+      const lRes=await fetch(LEAVES_CSV);
+      const lCsv=await lRes.text();
+      const lParsed=Papa.parse(lCsv,{header:true,skipEmptyLines:true});
+      LEAVES=lParsed.data.map(mapLeave);
+
+      populateEmployeeFilter();
+      renderTable(ATTENDANCE);
     }
 
-    loadAttendance();
+    async function downloadFullReport(){
+      const el=document.getElementById("reportArea");
+      const canvas=await html2canvas(el,{scale:2,backgroundColor:"#fff"});
+      const img=canvas.toDataURL("image/png");
+      pdfMake.createPdf({content:[{image:img,width:500}]}).download("Attendance_Report.pdf");
+    }
+
+    loadData();
   </script>
 </body>
 </html>
