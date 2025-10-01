@@ -4,162 +4,253 @@
   <meta charset="UTF-8" />
   <title>Attendance Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/luxon@2.0.2/build/global/luxon.min.js"></script>
   <style>
     body {
-      background: #f8fafc;
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f4f5f7;
+      color: #333;
     }
-    .card {
-      @apply bg-white p-6 rounded-2xl shadow-md mb-8;
+    .header {
+      padding: 20px;
+      background: #2c3e50;
+      color: white;
+      text-align: center;
     }
-    .section-title {
-      @apply text-xl font-semibold mb-4 text-gray-700;
+    .container {
+      max-width: 1200px;
+      margin: 20px auto;
+      padding: 0 20px;
+    }
+    .filters {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .filters input, .filters select {
+      padding: 8px 12px;
+      font-size: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    .btn {
+      padding: 10px 16px;
+      background: #3498db;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .btn.reset {
+      background: #95a5a6;
+    }
+    .kpi-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .kpi-card {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+    .kpi-card h3 {
+      margin: 0;
+      font-size: 1.2rem;
+      color: #555;
+    }
+    .kpi-card p {
+      margin: 8px 0 0;
+      font-size: 1.8rem;
+      font-weight: bold;
+      color: #2c3e50;
+    }
+    .chart-section {
+      background: white;
+      border-radius: 8px;
+      padding: 24px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      margin-bottom: 24px;
+    }
+    .table-section {
+      background: white;
+      border-radius: 8px;
+      padding: 24px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      margin-bottom: 24px;
+      overflow-x: auto;
     }
     table {
-      @apply w-full text-sm border-collapse;
+      width: 100%;
+      border-collapse: collapse;
     }
     th, td {
-      @apply border border-gray-200 px-3 py-2 text-left;
+      border: 1px solid #ddd;
+      padding: 8px 12px;
     }
     th {
-      @apply bg-gray-100 font-medium;
+      background: #ecf0f1;
     }
-    tr:nth-child(even) td {
-      @apply bg-gray-50;
+    @media (max-width: 768px) {
+      .filters {
+        grid-template-columns: 1fr;
+      }
+      .kpi-cards {
+        grid-template-columns: 1fr 1fr;
+      }
     }
   </style>
 </head>
-<body class="text-gray-800">
-  <header class="bg-blue-600 text-white p-4 sticky top-0 shadow-lg z-50">
-    <h1 class="text-2xl font-bold text-center">📊 Attendance Dashboard</h1>
-  </header>
+<body>
+  <div class="header">
+    <h1>Attendance Dashboard</h1>
+  </div>
+  <div class="container">
+    <div class="filters">
+      <select id="filterEmployee">
+        <option value="">All Employees</option>
+        <!-- more options loaded dynamically -->
+      </select>
+      <input id="filterStart" placeholder="Start Date" />
+      <input id="filterEnd" placeholder="End Date" />
+      <input id="filterSearch" placeholder="Quick Search..." />
+      <button class="btn" id="btnApply">Apply Filters</button>
+      <button class="btn reset" id="btnReset">Reset</button>
+    </div>
 
-  <main class="max-w-7xl mx-auto px-4 py-6">
+    <div class="kpi-cards">
+      <div class="kpi-card"><h3>Total Hours</h3><p id="kpiTotalHours">0</p></div>
+      <div class="kpi-card"><h3>Avg Hours</h3><p id="kpiAvgHours">0</p></div>
+      <div class="kpi-card"><h3>Days Count</h3><p id="kpiDaysCount">0</p></div>
+      <div class="kpi-card"><h3>Late Count</h3><p id="kpiLateCount">0</p></div>
+      <div class="kpi-card"><h3>Early Leaves</h3><p id="kpiEarlyLeaves">0</p></div>
+      <div class="kpi-card"><h3>Absent</h3><p id="kpiAbsent">0</p></div>
+    </div>
 
-    <!-- Attendance Summary -->
-    <section class="card">
-      <h2 class="section-title">Attendance Summary</h2>
-      <div class="overflow-x-auto">
-        <table id="attendance-summary"></table>
-      </div>
-      <canvas id="summaryChart" class="mt-6"></canvas>
-    </section>
+    <div class="chart-section">
+      <canvas id="trendChart" height="100"></canvas>
+      <canvas id="pieChart" height="100" style="margin-top:32px;"></canvas>
+    </div>
 
-    <!-- Sign In -->
-    <section class="card">
-      <h2 class="section-title">Sign In Records</h2>
-      <input type="text" id="signinFilter" placeholder="Search..." class="border p-2 mb-3 w-full rounded-md" />
-      <div class="overflow-x-auto">
-        <table id="sign-in"></table>
-      </div>
-    </section>
+    <div class="table-section">
+      <h2>Sign In / Sign Out Details</h2>
+      <table id="tableDetails">
+        <thead><tr><!-- headers --></tr></thead>
+        <tbody><!-- rows --></tbody>
+      </table>
+    </div>
 
-    <!-- Sign Out -->
-    <section class="card">
-      <h2 class="section-title">Sign Out Records</h2>
-      <input type="text" id="signoutFilter" placeholder="Search..." class="border p-2 mb-3 w-full rounded-md" />
-      <div class="overflow-x-auto">
-        <table id="sign-out"></table>
-      </div>
-    </section>
-
-    <!-- Leaves -->
-    <section class="card">
-      <h2 class="section-title">Leaves</h2>
-      <div class="overflow-x-auto">
-        <table id="leaves"></table>
-      </div>
-    </section>
-
-    <!-- Holidays -->
-    <section class="card">
-      <h2 class="section-title">Holidays</h2>
-      <div class="overflow-x-auto">
-        <table id="holidays"></table>
-      </div>
-    </section>
-
-    <!-- Balances -->
-    <section class="card">
-      <h2 class="section-title">Leave Balances</h2>
-      <div class="overflow-x-auto">
-        <table id="balances"></table>
-      </div>
-    </section>
-
-  </main>
-
-  <footer class="text-center py-4 text-sm text-gray-500">
-    Powered by Google Sheets · Built with ❤️ and TailwindCSS
-  </footer>
+  </div>
 
   <script>
-    // 🔗 Base published CSV link
+    // Base CSV URL
     const BASE =
       "https://docs.google.com/spreadsheets/d/e/2PACX-1vTw_QmgTO1onutiMdiVyThLtl7omNOqpDH-NNSoMwbGcpU4RfRjKO4pPJXbQrsHn5_ZuK4HEhkJ_SJZ/pub?single=true&output=csv&gid=";
 
-    // 📑 Tabs (gids)
     const tabs = {
       signIn: "460830149",
       signOut: "487366822",
       attendance: "697198023",
-      holidays: "1893373597",
-      leaves: "33718844",
-      balances: "1136411554",
-      settings: "859012208"
+      // you can add more as needed
     };
 
-    // 🛠 Helper: Fetch CSV and convert to array
     async function fetchCSV(gid) {
-      const url = BASE + gid;
-      const res = await fetch(url);
+      const res = await fetch(BASE + gid);
       const text = await res.text();
-      return text.trim().split("\n").map(r => r.split(","));
+      const rows = text.trim().split("\n").map(r => r.split(","));
+      return rows;
     }
 
-    // 🛠 Helper: Render table
-    function renderTable(id, data) {
-      const table = document.getElementById(id);
-      table.innerHTML = "";
-      if (!data || data.length === 0) return;
-
-      let html = "<thead><tr>";
-      data[0].forEach(h => (html += `<th>${h}</th>`));
-      html += "</tr></thead><tbody>";
-
-      data.slice(1).forEach(row => {
-        html += "<tr>";
-        row.forEach(cell => (html += `<td>${cell}</td>`));
-        html += "</tr>";
+    function parseAttendanceRows(rows) {
+      // You will adapt based on your column structure.
+      // For demo, assume rows: [ ["Employee","Date","In","Out","Hours","Late","EarlyLeave","Absent"] , ... ]
+      const header = rows[0];
+      const data = rows.slice(1).map(r => {
+        const obj = {};
+        header.forEach((h,i) => obj[h] = r[i]);
+        return obj;
       });
-
-      html += "</tbody>";
-      table.innerHTML = html;
+      return data;
     }
 
-    // 📊 Attendance Chart
-    function renderSummaryChart(data) {
-      const ctx = document.getElementById("summaryChart").getContext("2d");
-      const labels = data.slice(1).map(r => r[0]); // First col
-      const values = data.slice(1).map(r => parseInt(r[1] || 0)); // Second col
+    function filterData(data, filters) {
+      return data.filter(row => {
+        // filter by employee
+        if (filters.employee && row["Employee"] !== filters.employee) return false;
+        // filter by date range
+        const dt = luxon.DateTime.fromISO(row["Date"]);
+        if (filters.start && dt < filters.start) return false;
+        if (filters.end && dt > filters.end) return false;
+        // quick search
+        if (filters.search) {
+          const v = Object.values(row).join(" ").toLowerCase();
+          if (!v.includes(filters.search.toLowerCase())) return false;
+        }
+        return true;
+      });
+    }
+
+    function computeKPIs(data) {
+      let totalHours = 0, count = 0, days = new Set(), late = 0, early = 0, absent = 0;
+      data.forEach(r => {
+        const h = parseFloat(r["Hours"]) || 0;
+        totalHours += h;
+        count++;
+        days.add(r["Date"]);
+        if (r["Late"] && r["Late"] !== "0") late++;
+        if (r["EarlyLeave"] && r["EarlyLeave"] !== "0") early++;
+        if (r["Absent"] && r["Absent"] === "1") absent++;
+      });
+      const avg = count ? (totalHours / count).toFixed(2) : 0;
+      return {
+        totalHours: totalHours.toFixed(2),
+        avgHours: avg,
+        daysCount: days.size,
+        lateCount: late,
+        earlyLeaves: early,
+        absentCount: absent
+      };
+    }
+
+    function renderKPIs(kpis) {
+      document.getElementById("kpiTotalHours").innerText = kpis.totalHours;
+      document.getElementById("kpiAvgHours").innerText = kpis.avgHours;
+      document.getElementById("kpiDaysCount").innerText = kpis.daysCount;
+      document.getElementById("kpiLateCount").innerText = kpis.lateCount;
+      document.getElementById("kpiEarlyLeaves").innerText = kpis.earlyLeaves;
+      document.getElementById("kpiAbsent").innerText = kpis.absentCount;
+    }
+
+    function renderTrendChart(data) {
+      const ctx = document.getElementById("trendChart").getContext("2d");
+      const grouped = {};
+      data.forEach(r => {
+        const dt = r["Date"];
+        if (!grouped[dt]) grouped[dt] = 0;
+        grouped[dt] += parseFloat(r["Hours"]) || 0;
+      });
+      const labels = Object.keys(grouped).sort();
+      const values = labels.map(d => grouped[d]);
       new Chart(ctx, {
-        type: "bar",
+        type: "line",
         data: {
           labels,
-          datasets: [
-            {
-              label: "Attendance Count",
-              data: values,
-              backgroundColor: "rgba(59, 130, 246, 0.7)",
-              borderRadius: 8
-            }
-          ]
+          datasets: [{
+            label: "Hours",
+            data: values,
+            borderColor: "#3498db",
+            backgroundColor: "rgba(52, 152, 219, 0.2)",
+            tension: 0.3
+          }]
         },
         options: {
-          responsive: true,
-          plugins: {
-            legend: { display: false }
-          },
           scales: {
             y: { beginAtZero: true }
           }
@@ -167,45 +258,94 @@
       });
     }
 
-    // 🛠 Filter Function
-    function addFilter(inputId, tableId) {
-      const input = document.getElementById(inputId);
-      const table = document.getElementById(tableId);
-      input.addEventListener("keyup", () => {
-        const filter = input.value.toLowerCase();
-        const rows = table.getElementsByTagName("tr");
-        for (let i = 1; i < rows.length; i++) {
-          const rowText = rows[i].innerText.toLowerCase();
-          rows[i].style.display = rowText.includes(filter) ? "" : "none";
+    function renderPieChart(data) {
+      const ctx = document.getElementById("pieChart").getContext("2d");
+      let leaveCount = 0, presentCount = 0;
+      data.forEach(r => {
+        if (r["Absent"] === "1") leaveCount++;
+        else presentCount++;
+      });
+      new Chart(ctx, {
+        type: "pie",
+        data: {
+          labels: ["Present", "Absent"],
+          datasets: [{
+            data: [presentCount, leaveCount],
+            backgroundColor: ["#2ecc71", "#e74c3c"]
+          }]
         }
       });
     }
 
-    // 🚀 Load all data
-    async function init() {
-      const attendance = await fetchCSV(tabs.attendance);
-      renderTable("attendance-summary", attendance);
-      renderSummaryChart(attendance);
-
-      const signIn = await fetchCSV(tabs.signIn);
-      renderTable("sign-in", signIn);
-      addFilter("signinFilter", "sign-in");
-
-      const signOut = await fetchCSV(tabs.signOut);
-      renderTable("sign-out", signOut);
-      addFilter("signoutFilter", "sign-out");
-
-      const leaves = await fetchCSV(tabs.leaves);
-      renderTable("leaves", leaves);
-
-      const holidays = await fetchCSV(tabs.holidays);
-      renderTable("holidays", holidays);
-
-      const balances = await fetchCSV(tabs.balances);
-      renderTable("balances", balances);
+    function renderTable(data) {
+      const tbl = document.getElementById("tableDetails");
+      const headerRow = tbl.tHead.rows[0];
+      headerRow.innerHTML = "";
+      const headers = Object.keys(data[0] || {});
+      headers.forEach(h => {
+        const th = document.createElement("th");
+        th.innerText = h;
+        headerRow.appendChild(th);
+      });
+      const body = tbl.tBodies[0] || tbl.createTBody();
+      body.innerHTML = "";
+      data.forEach(r => {
+        const rowEl = document.createElement("tr");
+        headers.forEach(h => {
+          const td = document.createElement("td");
+          td.innerText = r[h] || "";
+          rowEl.appendChild(td);
+        });
+        body.appendChild(rowEl);
+      });
     }
 
-    init();
+    async function initDashboard() {
+      const rows = await fetchCSV(tabs.attendance);
+      const data = parseAttendanceRows(rows);
+
+      // populate employee filter
+      const empSet = new Set(data.map(r => r["Employee"]));
+      const sel = document.getElementById("filterEmployee");
+      empSet.forEach(e => {
+        const opt = document.createElement("option");
+        opt.value = e;
+        opt.innerText = e;
+        sel.appendChild(opt);
+      });
+
+      const apply = () => {
+        const filters = {
+          employee: document.getElementById("filterEmployee").value,
+          start: flatpickr.parseDate(document.getElementById("filterStart").value),
+          end: flatpickr.parseDate(document.getElementById("filterEnd").value),
+          search: document.getElementById("filterSearch").value
+        };
+        const filtered = filterData(data, filters);
+        const kpis = computeKPIs(filtered);
+        renderKPIs(kpis);
+        renderTrendChart(filtered);
+        renderPieChart(filtered);
+        renderTable(filtered);
+      };
+
+      document.getElementById("btnApply").onclick = apply;
+      document.getElementById("btnReset").onclick = () => {
+        document.getElementById("filterEmployee").value = "";
+        document.getElementById("filterStart").value = "";
+        document.getElementById("filterEnd").value = "";
+        document.getElementById("filterSearch").value = "";
+        apply();
+      };
+
+      // init flatpickr
+      flatpickr("#filterStart", { dateFormat: "Y-m-d" });
+      flatpickr("#filterEnd", { dateFormat: "Y-m-d" });
+
+      apply(); // initial render
+    }
+
+    initDashboard();
   </script>
 </body>
 </html>
