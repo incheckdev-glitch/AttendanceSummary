@@ -2,316 +2,807 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Attendance Tracker</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" />
+  <title>Attendance Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- CSS Libraries -->
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+  />
+  <link
+    rel="stylesheet"
+    href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css"
+  />
+  <link
+    rel="stylesheet"
+    href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.dataTables.min.css"
+  />
+  <link
+    href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css"
+    rel="stylesheet"
+  />
+
   <style>
-    /* Based on the style of the example you gave */
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: "Segoe UI", sans-serif;
-      background-color: #f0f2f5;
-      color: #444;
+    .card {
+      transition: all 0.3s ease;
     }
-    .sidebar {
-      position: fixed;
-      left: 0;
+    .card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+    }
+    .filter-bar {
+      position: sticky;
       top: 0;
-      bottom: 0;
-      width: 260px;
-      background: #1f2937;
-      color: white;
-      padding: 20px;
-      overflow-y: auto;
-    }
-    .sidebar h2 {
-      margin-bottom: 24px;
-      font-size: 1.5em;
-    }
-    .sidebar nav a {
-      display: block;
-      color: #cbd5e1;
-      padding: 12px 16px;
-      border-radius: 4px;
-      margin-bottom: 4px;
-      text-decoration: none;
-    }
-    .sidebar nav a:hover, .sidebar nav a.active {
-      background: #374151;
-      color: white;
-    }
-    .main {
-      margin-left: 260px;
-      padding: 24px;
-    }
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 24px;
-    }
-    .header h1 {
-      font-size: 1.8em;
-    }
-    .btn-primary {
-      background: #3b82f6;
-      color: white;
-      padding: 8px 16px;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    .btn-secondary {
-      background: #9ca3af;
-      color: white;
-      padding: 8px 16px;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    .kpi-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 16px;
-      margin-bottom: 32px;
-    }
-    .kpi-card {
+      z-index: 10;
       background: white;
-      padding: 20px;
-      border-radius: 8px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-      text-align: center;
+      padding: 10px;
     }
-    .kpi-card .num {
-      font-size: 2em;
-      margin-top: 8px;
-      color: #111827;
+    .holiday-row {
+      background-color: #ffeeba !important;
     }
-    .charts {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 24px;
-      margin-bottom: 32px;
+    .weekend-row {
+      background-color: #f0f0f0 !important;
     }
-    .chart-card {
-      background: white;
-      padding: 20px;
-      border-radius: 8px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    .nav-section {
+      margin-top: 20px;
     }
-    .table-card {
-      background: white;
-      border-radius: 8px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-      overflow-x: auto;
-      margin-bottom: 32px;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-    th, td {
-      padding: 12px;
-      border-bottom: 1px solid #e5e7eb;
-      text-align: left;
-    }
-    th {
-      background: #f9fafb;
-      font-weight: 600;
+    .nav-section .nav-link.active {
+      font-weight: bold;
+      text-decoration: underline;
     }
     .action-btn {
-      margin-right: 8px;
-      padding: 4px 8px;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    .action-btn.edit {
-      background: #10b981;
-      color: white;
-    }
-    .action-btn.delete {
-      background: #ef4444;
-      color: white;
-    }
-    .action-btn.approve {
-      background: #3b82f6;
-      color: white;
-    }
-    .action-btn.reject {
-      background: #f97316;
-      color: white;
-    }
-    .hidden {
-      display: none;
-    }
-    @media (max-width: 800px) {
-      .charts {
-        grid-template-columns: 1fr;
-      }
+      margin-right: 5px;
     }
   </style>
 </head>
+
 <body>
-  <div class="sidebar">
-    <h2>Attendance</h2>
-    <nav>
-      <a href="#dashboard" class="active" data-tab="dashboard">Dashboard</a>
-      <a href="#signin" data-tab="signin">Sign In</a>
-      <a href="#signout" data-tab="signout">Sign Out</a>
-      <a href="#leaves" data-tab="leaves">Leaves</a>
-      <a href="#balances" data-tab="balances">Balances</a>
-      <a href="#holidays" data-tab="holidays">Holidays</a>
-      <a href="#settings" data-tab="settings">Settings</a>
-    </nav>
+  <div class="container-fluid p-4" id="reportArea">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h2>📊 Attendance Dashboard</h2>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <ul class="nav nav-tabs nav-section" id="mainTabs" role="tablist">
+      <li class="nav-item">
+        <a class="nav-link active" data-tab="dashboard" href="#">Dashboard</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-tab="leaves" href="#">Leaves Manager</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-tab="balances" href="#">Balances Manager</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-tab="holidays" href="#">Holiday Manager</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-tab="settings" href="#">Settings</a>
+      </li>
+    </ul>
+
+    <!-- Content Sections -->
+    <div id="section-dashboard" class="section-pane">
+      <!-- Filters & KPIs like before -->
+      <div class="card shadow filter-bar mb-4">
+        <div class="card-body row g-3 align-items-end">
+          <div class="col-lg-3">
+            <label class="form-label">Employee</label>
+            <select id="employeeFilter" multiple></select>
+          </div>
+
+          <div class="col-lg-3">
+            <label class="form-label">Start Date</label>
+            <input type="date" id="startDate" class="form-control" />
+          </div>
+
+          <div class="col-lg-3">
+            <label class="form-label">End Date</label>
+            <input type="date" id="endDate" class="form-control" />
+          </div>
+
+          <div class="col-lg-3">
+            <label class="form-label">Quick Search</label>
+            <input
+              type="text"
+              id="quickSearch"
+              class="form-control"
+              placeholder="Search..."
+            />
+          </div>
+
+          <div class="col-12 text-end mt-3">
+            <button class="btn btn-primary" onclick="applyFilters()">Apply Filters</button>
+            <button class="btn btn-warning" onclick="resetFilters()">Reset</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="row mb-4 text-center">
+        <div class="col-md-2">
+          <div class="card shadow">
+            <div class="card-body">
+              <h5>Total Hours</h5>
+              <h3 id="totalHours">0</h3>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-2">
+          <div class="card shadow">
+            <div class="card-body">
+              <h5>Avg Hours</h5>
+              <h3 id="avgHours">0</h3>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-2">
+          <div class="card shadow">
+            <div class="card-body">
+              <h5>Days Count</h5>
+              <h3 id="daysCount">0</h3>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-2">
+          <div class="card shadow">
+            <div class="card-body">
+              <h5>Late Count</h5>
+              <h3 id="lateCount">0</h3>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-2">
+          <div class="card shadow">
+            <div class="card-body">
+              <h5>Early Leaves</h5>
+              <h3 id="earlyCount">0</h3>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-2">
+          <div class="card shadow">
+            <div class="card-body">
+              <h5>Absent</h5>
+              <h3 id="absentCount">0</h3>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card shadow mb-4">
+        <div class="card-body">
+          <table
+            id="attendanceTable"
+            class="display nowrap table table-striped"
+            style="width: 100%"
+          ></table>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col-lg-4">
+          <div class="card shadow p-3">
+            <h5>Hours per Day</h5>
+            <canvas id="barChart"></canvas>
+          </div>
+        </div>
+        <div class="col-lg-4">
+          <div class="card shadow p-3">
+            <h5>Hours by Employee</h5>
+            <canvas id="pieChart"></canvas>
+          </div>
+        </div>
+        <div class="col-lg-4">
+          <div class="card shadow p-3">
+            <h5>Trend</h5>
+            <canvas id="lineChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="section-leaves" class="section-pane" style="display:none;">
+      <div class="card shadow mb-4">
+        <div class="card-body">
+          <div class="input-group mb-3">
+            <input type="date" id="leaveDate" class="form-control" />
+            <select id="leaveEmployee" class="form-control"></select>
+            <input type="text" id="leaveType" class="form-control" placeholder="Leave Type" />
+            <button class="btn btn-primary" onclick="addLeave()">Add Leave</button>
+          </div>
+          <table id="leavesTable" class="display nowrap table table-striped" style="width:100%"></table>
+        </div>
+      </div>
+    </div>
+
+    <div id="section-balances" class="section-pane" style="display:none;">
+      <div class="card shadow mb-4">
+        <div class="card-body">
+          <div class="input-group mb-3">
+            <select id="balanceEmployee" class="form-control"></select>
+            <input type="number" id="balanceAnnual" class="form-control" placeholder="Annual" />
+            <input type="number" id="balanceSick" class="form-control" placeholder="Sick" />
+            <input type="number" id="balanceUnpaid" class="form-control" placeholder="Unpaid" />
+            <button class="btn btn-primary" onclick="updateBalance()">Update Balance</button>
+          </div>
+          <table id="balancesTable" class="display nowrap table table-striped" style="width:100%"></table>
+        </div>
+      </div>
+    </div>
+
+    <div id="section-holidays" class="section-pane" style="display:none;">
+      <div class="card shadow mb-4">
+        <div class="card-body">
+          <div class="input-group mb-3">
+            <input type="date" id="holidayDate" class="form-control" />
+            <input type="text" id="holidayName" class="form-control" placeholder="Holiday Name" />
+            <button class="btn btn-primary" onclick="addHoliday()">Add Holiday</button>
+          </div>
+          <ul id="holidayList" class="list-group"></ul>
+        </div>
+      </div>
+    </div>
+
+    <div id="section-settings" class="section-pane" style="display:none;">
+      <div class="card shadow my-4">
+        <div class="card-body row g-3">
+          <h5>⚙️ Settings</h5>
+          <div class="col-md-3">
+            <label class="form-label">Late After (HH:MM)</label>
+            <input type="time" id="lateThreshold" class="form-control" />
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Early Leave Before (HH:MM)</label>
+            <input type="time" id="earlyThreshold" class="form-control" />
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Half-day Max Hours</label>
+            <input type="number" id="halfDayHours" class="form-control" />
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Overtime Min Hours</label>
+            <input type="number" id="overtimeHours" class="form-control" />
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
-  <div class="main">
-    <div class="header">
-      <h1>Dashboard</h1>
-      <div>
-        <button class="btn-primary" id="btnAdd">Add +</button>
-      </div>
-    </div>
-
-    <!-- KPI Cards -->
-    <div class="kpi-grid" id="kpiSection">
-      <div class="kpi-card">
-        <div>Total Employees</div>
-        <div class="num" id="kpiEmployees">0</div>
-      </div>
-      <div class="kpi-card">
-        <div>Present Today</div>
-        <div class="num" id="kpiPresent">0</div>
-      </div>
-      <div class="kpi-card">
-        <div>On Leave</div>
-        <div class="num" id="kpiLeave">0</div>
-      </div>
-      <div class="kpi-card">
-        <div>Absent</div>
-        <div class="num" id="kpiAbsent">0</div>
-      </div>
-    </div>
-
-    <!-- Charts -->
-    <div class="charts">
-      <div class="chart-card">
-        <h3>Attendance Trend</h3>
-        <canvas id="trendChart" height="100"></canvas>
-      </div>
-      <div class="chart-card">
-        <h3>Leaves Distribution</h3>
-        <canvas id="leaveChart" height="100"></canvas>
-      </div>
-    </div>
-
-    <!-- Tables -->
-    <div class="table-card hidden" id="tab-dashboard">
-      <h3>Latest Sign-ins</h3>
-      <table id="tableLatestSignIn">
-        <thead><tr><th>Date</th><th>Employee</th><th>Time</th><th>Actions</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-
-    <div class="table-card hidden" id="tab-signin">
-      <h3>Sign In Records</h3>
-      <table id="tableSignIn">
-        <thead><tr><th>Date</th><th>Employee</th><th>Time</th><th>Actions</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-
-    <div class="table-card hidden" id="tab-signout">
-      <h3>Sign Out Records</h3>
-      <table id="tableSignOut">
-        <thead><tr><th>Date</th><th>Employee</th><th>Time</th><th>Actions</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-
-    <div class="table-card hidden" id="tab-leaves">
-      <h3>Leave Requests</h3>
-      <table id="tableLeaves">
-        <thead><tr><th>Date</th><th>Employee</th><th>Type</th><th>Status</th><th>Actions</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-
-    <div class="table-card hidden" id="tab-balances">
-      <h3>Leave Balances</h3>
-      <table id="tableBalances">
-        <thead><tr><th>Employee</th><th>Annual</th><th>Sick</th><th>Unpaid</th><th>Actions</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-
-    <div class="table-card hidden" id="tab-holidays">
-      <h3>Holidays</h3>
-      <table id="tableHolidays">
-        <thead><tr><th>Date</th><th>Name</th><th>Actions</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-
-    <div class="table-card hidden" id="tab-settings">
-      <h3>Settings</h3>
-      <p>Configure working hours, default leaves, etc.</p>
-      <!-- form fields for settings -->
-    </div>
-  </div>
-
+  <!-- JS Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.print.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
   <script>
-    // Tab navigation logic
-    document.querySelectorAll('.sidebar nav a').forEach(a => {
-      a.addEventListener('click', e => {
+    const API_URL = "https://script.google.com/macros/s/AKfycbxUz8yOrah_apJi9plotgp7-LSugvw7zrCVC1JDHe-7U-x9sjk096gX0XN0mcO6Jnrt8g/exec";
+    const SECRET = "a9fj32klsdfj0932LKJSDF90wef9";
+
+    // The Attendance summary CSV URL
+    const CSV_URL =
+      "https://docs.google.com/spreadsheets/d/e/2PACX-1vTw_QmgTO1onutiMdiVyThLtl7omNOqpDH-NNSoMwbGcpU4RfRjKO4pPJXbQrsHn5_ZuK4HEhkJ_SJZ/pub?gid=697198023&single=true&output=csv";
+
+    // Data holders
+    let CANON = [];
+    let DT = null, leavesDT = null, balancesDT = null;
+    let barChartHandle, pieChartHandle, lineChartHandle;
+
+    // Utility: API call
+    async function apiCall(sheet, action, payload = {}) {
+      const resp = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ secret: SECRET, sheet, action, payload })
+      });
+      return resp.json();
+    }
+
+    // UI: switch tabs
+    document.querySelectorAll("#mainTabs .nav-link").forEach(link => {
+      link.addEventListener("click", e => {
         e.preventDefault();
-        document.querySelectorAll('.sidebar nav a').forEach(x => x.classList.remove('active'));
-        a.classList.add('active');
-        const tab = a.dataset.tab;
-        document.querySelectorAll('.table-card').forEach(div => {
-          div.classList.add('hidden');
-        });
-        document.getElementById('tab-' + tab).classList.remove('hidden');
-        document.querySelector('.main .header h1').innerText = a.innerText;
+        const tab = link.dataset.tab;
+        document.querySelectorAll("#mainTabs .nav-link").forEach(l => l.classList.remove("active"));
+        link.classList.add("active");
+        document.querySelectorAll(".section-pane").forEach(s => (s.style.display = "none"));
+        document.getElementById("section-" + tab).style.display = "";
       });
     });
 
-    // Charts example (dummy)
-    new Chart(document.getElementById('trendChart'), {
-      type: 'line',
-      data: {
-        labels: ['Mon','Tue','Wed','Thu','Fri'],
-        datasets: [{
-          label: 'Hours',
-          data: [8,7.5,9,8,7],
-          borderColor: '#3b82f6',
-          backgroundColor: 'rgba(59, 130, 246, 0.2)',
-          tension: 0.3
-        }]
-      },
-      options: {
-        scales: {
-          y: { beginAtZero: true }
+    // Map CSV row → canonical
+    function normalizeHeaders(row) {
+      const out = {};
+      for (let k in row) {
+        out[k.trim().toLowerCase()] = row[k];
+      }
+      return out;
+    }
+
+    function normalizeDate(d) {
+      if (!d) return "";
+      const s = String(d).trim();
+      if (s.includes("/")) {
+        const [dd, mm, yy] = s.split("/");
+        return `${yy}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+      }
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+      return "";
+    }
+
+    function parsePunchWithDate(dateISO, value) {
+      if (!value) return null;
+      const s = String(value).trim();
+      if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(s)) {
+        const t = s.length === 5 ? s + ":00" : s;
+        const dt = new Date(`${dateISO}T${t}`);
+        return isNaN(dt) ? null : dt;
+      }
+      const dt = new Date(s);
+      return isNaN(dt) ? null : dt;
+    }
+
+    function mapRow(r) {
+      const dateISO = normalizeDate(r["date"] || r["day"] || "");
+      const signInRaw = r["sign in"] || r["signin"] || r["in"];
+      const signOutRaw = r["sign out"] || r["signout"] || r["out"];
+      const signInDT = dateISO ? parsePunchWithDate(dateISO, signInRaw) : null;
+      const signOutDT = dateISO ? parsePunchWithDate(dateISO, signOutRaw) : null;
+      const totalHours = signInDT && signOutDT ? (signOutDT - signInDT) / 36e5 : 0;
+
+      return {
+        month: dateISO ? dateISO.slice(0, 7) : (r["month"] || ""),
+        date: dateISO,
+        employee: r["employee"] || r["employee name"] || "",
+        signIn: signInRaw || "",
+        signOut: signOutRaw || "",
+        signInDT,
+        signOutDT,
+        totalHours
+      };
+    }
+
+    function loadSettings() {
+      const s = JSON.parse(localStorage.getItem("settings") || "{}");
+      document.getElementById("lateThreshold").value = s.late || "08:15";
+      document.getElementById("earlyThreshold").value = s.early || "16:30";
+      document.getElementById("halfDayHours").value = s.half ?? 4;
+      document.getElementById("overtimeHours").value = s.over ?? 9;
+      ["lateThreshold", "earlyThreshold", "halfDayHours", "overtimeHours"].forEach(id => {
+        const el = document.getElementById(id);
+        el.addEventListener("change", saveSettings);
+        el.addEventListener("input", saveSettings);
+      });
+    }
+
+    function saveSettings() {
+      const settings = {
+        late: document.getElementById("lateThreshold").value,
+        early: document.getElementById("earlyThreshold").value,
+        half: parseFloat(document.getElementById("halfDayHours").value),
+        over: parseFloat(document.getElementById("overtimeHours").value)
+      };
+      localStorage.setItem("settings", JSON.stringify(settings));
+      applyFilters();
+    }
+
+    function renderHolidayList() {
+      const list = document.getElementById("holidayList");
+      list.innerHTML = "";
+      const customHolidays = JSON.parse(localStorage.getItem("holidays") || "[]");
+      customHolidays.sort((a, b) => a.date.localeCompare(b.date));
+      customHolidays.forEach((h, i) => {
+        const li = document.createElement("li");
+        li.className = "list-group-item d-flex justify-content-between align-items-center";
+        li.innerHTML = `<span>${h.date}${h.name ? " - " + h.name : ""}</span>
+          <button class="btn btn-sm btn-danger" onclick="removeHoliday(${i})">Remove</button>`;
+        list.appendChild(li);
+      });
+    }
+
+    function addHoliday() {
+      const date = document.getElementById("holidayDate").value;
+      const name = document.getElementById("holidayName").value;
+      apiCall("Holidays", "add", { date, name }).then(res => {
+        if (res.ok) {
+          applyFilters();
+          renderHolidayList();
+        } else {
+          alert(res.error);
+        }
+      });
+    }
+
+    function removeHoliday(idx) {
+      const custom = JSON.parse(localStorage.getItem("holidays") || "[]");
+      const h = custom[idx];
+      if (h) {
+        apiCall("Holidays", "remove", { date: h.date }).then(res => {
+          if (res.ok) {
+            applyFilters();
+            renderHolidayList();
+          } else {
+            alert(res.error);
+          }
+        });
+      }
+    }
+
+    function computeStatus(row) {
+      const s = JSON.parse(localStorage.getItem("settings") || "{}");
+      if (!row.signInDT && !row.signOutDT) return ["Absent"];
+      if ((row.signInDT && !row.signOutDT) || (!row.signInDT && row.signOutDT)) return ["Needs Correction"];
+      const late = (s.late || "08:15").split(":").map(Number);
+      const early = (s.early || "16:30").split(":").map(Number);
+      const half = s.half ?? 4;
+      const over = s.over ?? 9;
+
+      const inMin = row.signInDT ? row.signInDT.getHours() * 60 + row.signInDT.getMinutes() : null;
+      const outMin = row.signOutDT ? row.signOutDT.getHours() * 60 + row.signOutDT.getMinutes() : null;
+
+      const status = [];
+      if (inMin !== null && inMin > (late[0] * 60 + late[1])) status.push("Late");
+      if (outMin !== null && outMin < (early[0] * 60 + early[1])) status.push("Early Leave");
+      if (row.totalHours > 0 && row.totalHours < half) status.push("Half-day");
+      if (row.totalHours >= over) status.push("Overtime");
+      if (!status.length) status.push("On Time");
+      return status;
+    }
+
+    function generateFullRows(data) {
+      const employees = [...new Set(data.map(r => r.employee).filter(Boolean))];
+      const datesSorted = data.map(r => r.date).filter(Boolean).sort();
+      if (!employees.length || !datesSorted.length) return data;
+      const minDate = datesSorted[0], maxDate = datesSorted[datesSorted.length - 1];
+      const allDays = [];
+      let d = new Date(minDate), end = new Date(maxDate);
+      while (d <= end) {
+        allDays.push(d.toISOString().slice(0, 10));
+        d.setDate(d.getDate() + 1);
+      }
+      const index = new Map();
+      data.forEach(r => index.set(`${r.date}|${r.employee}`, r));
+      const full = [];
+      allDays.forEach(day => {
+        employees.forEach(emp => {
+          const key = `${day}|${emp}`;
+          if (index.has(key)) {
+            full.push(index.get(key));
+          } else {
+            const dow = new Date(`${day}T00:00:00`).getDay();
+            const custom = JSON.parse(localStorage.getItem("holidays") || "[]");
+            if (custom.some(h => h.date === day)) {
+              full.push({ date: day, employee: emp, signIn: "", signOut: "", totalHours: 0, status: ["Holiday"] });
+            } else if (dow === 0 || dow === 6) {
+              full.push({ date: day, employee: emp, signIn: "", signOut: "", totalHours: 0, status: ["Weekend"] });
+            } else {
+              full.push({ date: day, employee: emp, signIn: "", signOut: "", totalHours: 0, status: ["Absent"] });
+            }
+          }
+        });
+      });
+      return full;
+    }
+
+    function getCriteria() {
+      return {
+        employees: $("#employeeFilter").val() || [],
+        start: document.getElementById("startDate").value,
+        end: document.getElementById("endDate").value,
+        q: (document.getElementById("quickSearch").value || "").toLowerCase()
+      };
+    }
+
+    function applyFilters() {
+      const c = getCriteria();
+      const filtered = CANON.filter(r => {
+        if (c.employees.length && !c.employees.includes(r.employee)) return false;
+        if (c.start && r.date < c.start) return false;
+        if (c.end && r.date > c.end) return false;
+        if (c.q && !`${r.employee} ${r.date}`.toLowerCase().includes(c.q)) return false;
+        return true;
+      });
+      renderTable(filtered);
+    }
+
+    function resetFilters() {
+      $("#employeeFilter").val(null).trigger("change");
+      document.getElementById("startDate").value = "";
+      document.getElementById("endDate").value = "";
+      document.getElementById("quickSearch").value = "";
+      applyFilters();
+    }
+
+    function renderTable(data) {
+      const rows = data.map(r => {
+        const st = computeStatus(r);
+        const badge = st.map(label => {
+          let cls = "bg-secondary";
+          if (label === "Late") cls = "bg-danger";
+          else if (label === "Early Leave") cls = "bg-warning text-dark";
+          else if (label === "On Time") cls = "bg-success";
+          else if (label === "Absent") cls = "bg-dark";
+          else if (label === "Needs Correction") cls = "bg-danger text-white";
+          else if (label === "Half-day") cls = "bg-info text-dark";
+          else if (label === "Overtime") cls = "bg-primary";
+          else if (label === "Holiday") cls = "bg-secondary";
+          else if (label === "Weekend") cls = "bg-light text-dark";
+          return `<span class="badge ${cls}">${label}</span>`;
+        }).join(" ");
+        return [
+          r.month || "",
+          r.date || "",
+          r.employee || "",
+          r.signIn || "",
+          r.signOut || "",
+          isFinite(r.totalHours) ? r.totalHours.toFixed(2) : "",
+          badge
+        ];
+      });
+
+      if (!DT) {
+        DT = $("#attendanceTable").DataTable({
+          data: rows,
+          columns: [
+            { title: "Month" },
+            { title: "Date" },
+            { title: "Employee" },
+            { title: "Sign In" },
+            { title: "Sign Out" },
+            { title: "Total Hours" },
+            { title: "Status" }
+          ],
+          dom: "Bfrtip",
+          buttons: ["csv", "excel", "pdf", "print"],
+          pageLength: 10,
+          order: [[1, "asc"]],
+          createdRow: function(row, rowData) {
+            if (rowData[6].includes("Holiday")) $(row).addClass("holiday-row");
+            if (rowData[6].includes("Weekend")) $(row).addClass("weekend-row");
+          }
+        });
+      } else {
+        DT.clear().rows.add(rows).draw();
+      }
+
+      let sum = 0;
+      const days = new Set();
+      let late = 0, early = 0, absent = 0;
+      data.forEach(r => {
+        const st = computeStatus(r);
+        if (st.includes("Late")) late++;
+        if (st.includes("Early Leave")) early++;
+        if (st.includes("Absent")) absent++;
+        if (r.totalHours) sum += r.totalHours;
+        if (r.date) days.add(r.date);
+      });
+
+      document.getElementById("totalHours").textContent = sum.toFixed(2);
+      document.getElementById("avgHours").textContent = (days.size ? (sum / days.size) : 0).toFixed(2);
+      document.getElementById("daysCount").textContent = days.size;
+      document.getElementById("lateCount").textContent = late;
+      document.getElementById("earlyCount").textContent = early;
+      document.getElementById("absentCount").textContent = absent;
+
+      renderCharts(data);
+    }
+
+    function renderCharts(data) {
+      if (barChartHandle) barChartHandle.destroy();
+      if (pieChartHandle) pieChartHandle.destroy();
+      if (lineChartHandle) lineChartHandle.destroy();
+
+      const byDate = {};
+      const byEmp = {};
+      data.forEach(r => {
+        if (r.date) {
+          byDate[r.date] = (byDate[r.date] || 0) + (r.totalHours || 0);
+        }
+        if (r.employee) {
+          byEmp[r.employee] = (byEmp[r.employee] || 0) + (r.totalHours || 0);
+        }
+      });
+
+      barChartHandle = new Chart(document.getElementById("barChart"), {
+        type: "bar",
+        data: {
+          labels: Object.keys(byDate),
+          datasets: [{ label: "Hours", data: Object.values(byDate), backgroundColor: "#0d6efd" }]
+        }
+      });
+
+      pieChartHandle = new Chart(document.getElementById("pieChart"), {
+        type: "pie",
+        data: {
+          labels: Object.keys(byEmp),
+          datasets: [{ data: Object.values(byEmp), backgroundColor: ["#0d6efd","#00c9a7","#ff7e5f","#6f42c1","#ffc107","#20c997","#fd7e14"] }]
+        }
+      });
+
+      lineChartHandle = new Chart(document.getElementById("lineChart"), {
+        type: "line",
+        data: {
+          labels: Object.keys(byDate),
+          datasets: [{ label: "Hours", data: Object.values(byDate), borderColor: "#28a745", fill: false }]
+        }
+      });
+    }
+
+    function populateEmployeeFilter() {
+      const sel = document.getElementById("employeeFilter");
+      sel.innerHTML = "";
+      const employees = [...new Set(CANON.map(r => r.employee).filter(Boolean))].sort();
+      employees.forEach(emp => {
+        const opt = document.createElement("option");
+        opt.value = emp;
+        opt.textContent = emp;
+        sel.appendChild(opt);
+      });
+      $("#employeeFilter").select2({ placeholder: "Select employees...", allowClear: true, width: "100%" });
+    }
+
+    async function loadLeaves() {
+      const res = await apiCall("Leaves", "list");
+      if (res.ok) {
+        const data = res.data;
+        const rows = data.slice(1).map(r => ({
+          date: r[0],
+          employee: r[1],
+          type: r[2] || "",
+          status: r[3] || ""
+        }));
+        if (!leavesDT) {
+          leavesDT = $("#leavesTable").DataTable({
+            data: rows.map(r => [r.date, r.employee, r.type, r.status, ""]),
+            columns: [
+              { title: "Date" },
+              { title: "Employee" },
+              { title: "Type" },
+              { title: "Status" },
+              {
+                title: "Actions",
+                render: (data, type, row) => {
+                  const date = row[0], emp = row[1];
+                  return `
+                    <button class="btn btn-sm btn-success action-btn" onclick="approveLeave('${date}','${emp}')">Approve</button>
+                    <button class="btn btn-sm btn-warning action-btn" onclick="rejectLeave('${date}','${emp}')">Reject</button>
+                    <button class="btn btn-sm btn-danger action-btn" onclick="removeLeave('${date}','${emp}')">Remove</button>
+                  `;
+                }
+              }
+            ],
+            dom: "Bfrtip", buttons: ["csv","excel","pdf","print"],
+            pageLength: 10
+          });
+        } else {
+          leavesDT.clear().rows.add(rows.map(r => [r.date, r.employee, r.type, r.status, ""])).draw();
         }
       }
-    });
+    }
 
-    new Chart(document.getElementById('leaveChart'), {
-      type: 'pie',
-      data: {
-        labels: ['Annual','Sick','Unpaid'],
-        datasets: [{
-          data: [12,4,2],
-          backgroundColor: ['#10b981','#f59e0b','#ef4444']
-        }]
+    function addLeave() {
+      const date = document.getElementById("leaveDate").value;
+      const emp = document.getElementById("leaveEmployee").value;
+      const type = document.getElementById("leaveType").value;
+      apiCall("Leaves", "add", { date, employee: emp, type }).then(res => {
+        if (res.ok) loadLeaves();
+        else alert(res.error);
+      });
+    }
+
+    function approveLeave(date, emp) {
+      apiCall("Leaves", "approve", { date, employee: emp }).then(res => {
+        if (res.ok) loadLeaves();
+        else alert(res.error);
+      });
+    }
+
+    function rejectLeave(date, emp) {
+      apiCall("Leaves", "reject", { date, employee: emp }).then(res => {
+        if (res.ok) loadLeaves();
+        else alert(res.error);
+      });
+    }
+
+    function removeLeave(date, emp) {
+      apiCall("Leaves", "remove", { date, employee: emp }).then(res => {
+        if (res.ok) loadLeaves();
+        else alert(res.error);
+      });
+    }
+
+    async function loadBalances() {
+      const res = await apiCall("Balances", "list");
+      if (res.ok) {
+        const data = res.data;
+        const rows = data.slice(1).map(r => ({
+          employee: r[0],
+          annual: r[1],
+          sick: r[2],
+          unpaid: r[3]
+        }));
+        if (!balancesDT) {
+          balancesDT = $("#balancesTable").DataTable({
+            data: rows.map(r => [r.employee, r.annual, r.sick, r.unpaid, ""]),
+            columns: [
+              { title: "Employee" },
+              { title: "Annual" },
+              { title: "Sick" },
+              { title: "Unpaid" },
+              {
+                title: "Actions",
+                render: (data, type, row) => {
+                  const emp = row[0];
+                  return `<button class="btn btn-sm btn-primary action-btn" onclick="editBalance('${emp}')">Edit</button>
+                          <button class="btn btn-sm btn-danger action-btn" onclick="removeBalance('${emp}')">Remove</button>`;
+                }
+              }
+            ],
+            dom: "Bfrtip", buttons: ["csv","excel","pdf","print"],
+            pageLength: 10
+          });
+        } else {
+          balancesDT.clear().rows.add(rows.map(r => [r.employee, r.annual, r.sick, r.unpaid, ""])).draw();
+        }
       }
-    });
+    }
 
-    // You will populate tables via JS fetching from your Apps Script backend
-    // e.g., fetch('/exec', { method:'POST', body: JSON.stringify({secret, sheet:'SignIn', action:'list'}) })
+    function editBalance(emp) {
+      const row = balancesDT
+        .rows()
+        .data()
+        .toArray()
+        .find(r => r[0] === emp);
+      if (row) {
+        document.getElementById("balanceEmployee").value = row[0];
+        document.getElementById("balanceAnnual").value = row[1];
+        document.getElementById("balanceSick").value = row[2];
+        document.getElementById("balanceUnpaid").value = row[3];
+      }
+    }
+
+    function updateBalance() {
+      const emp = document.getElementById("balanceEmployee").value;
+      const annual = parseFloat(document.getElementById("balanceAnnual").value) || 0;
+      const sick = parseFloat(document.getElementById("balanceSick").value) || 0;
+      const unpaid = parseFloat(document.getElementById("balanceUnpaid").value) || 0;
+      apiCall("Balances", "update", { employee: emp, annual, sick, unpaid }).then(res => {
+        if (res.ok) loadBalances();
+        else alert(res.error);
+      });
+    }
+
+    function removeBalance(emp) {
+      apiCall("Balances", "remove", { employee: emp }).then(res => {
+        if (res.ok) loadBalances();
+        else alert(res.error);
+      });
+    }
+
+    async function loadData() {
+      loadSettings();
+      renderHolidayList();
+
+      const resp = await fetch(CSV_URL);
+      const text = await resp.text();
+      const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
+      const baseRows = parsed.data.map(raw => mapRow(normalizeHeaders(raw)))
+        .filter(r => r.employee && r.date);
+      CANON = generateFullRows(baseRows);
+      populateEmployeeFilter();
+      applyFilters();
+
+      await loadLeaves();
+      await loadBalances();
+    }
+
+    loadData();
   </script>
 </body>
 </html>
