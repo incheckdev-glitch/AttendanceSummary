@@ -1,210 +1,317 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Company Attendance Manager</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <meta charset="UTF-8" />
+  <title>Attendance Tracker</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" />
+  <style>
+    /* Based on the style of the example you gave */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Segoe UI", sans-serif;
+      background-color: #f0f2f5;
+      color: #444;
+    }
+    .sidebar {
+      position: fixed;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 260px;
+      background: #1f2937;
+      color: white;
+      padding: 20px;
+      overflow-y: auto;
+    }
+    .sidebar h2 {
+      margin-bottom: 24px;
+      font-size: 1.5em;
+    }
+    .sidebar nav a {
+      display: block;
+      color: #cbd5e1;
+      padding: 12px 16px;
+      border-radius: 4px;
+      margin-bottom: 4px;
+      text-decoration: none;
+    }
+    .sidebar nav a:hover, .sidebar nav a.active {
+      background: #374151;
+      color: white;
+    }
+    .main {
+      margin-left: 260px;
+      padding: 24px;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+    .header h1 {
+      font-size: 1.8em;
+    }
+    .btn-primary {
+      background: #3b82f6;
+      color: white;
+      padding: 8px 16px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .btn-secondary {
+      background: #9ca3af;
+      color: white;
+      padding: 8px 16px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    .kpi-card {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+    .kpi-card .num {
+      font-size: 2em;
+      margin-top: 8px;
+      color: #111827;
+    }
+    .charts {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-bottom: 32px;
+    }
+    .chart-card {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .table-card {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      overflow-x: auto;
+      margin-bottom: 32px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      padding: 12px;
+      border-bottom: 1px solid #e5e7eb;
+      text-align: left;
+    }
+    th {
+      background: #f9fafb;
+      font-weight: 600;
+    }
+    .action-btn {
+      margin-right: 8px;
+      padding: 4px 8px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .action-btn.edit {
+      background: #10b981;
+      color: white;
+    }
+    .action-btn.delete {
+      background: #ef4444;
+      color: white;
+    }
+    .action-btn.approve {
+      background: #3b82f6;
+      color: white;
+    }
+    .action-btn.reject {
+      background: #f97316;
+      color: white;
+    }
+    .hidden {
+      display: none;
+    }
+    @media (max-width: 800px) {
+      .charts {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
 </head>
-<body class="bg-gray-100 text-gray-800">
+<body>
+  <div class="sidebar">
+    <h2>Attendance</h2>
+    <nav>
+      <a href="#dashboard" class="active" data-tab="dashboard">Dashboard</a>
+      <a href="#signin" data-tab="signin">Sign In</a>
+      <a href="#signout" data-tab="signout">Sign Out</a>
+      <a href="#leaves" data-tab="leaves">Leaves</a>
+      <a href="#balances" data-tab="balances">Balances</a>
+      <a href="#holidays" data-tab="holidays">Holidays</a>
+      <a href="#settings" data-tab="settings">Settings</a>
+    </nav>
+  </div>
 
-  <!-- Layout -->
-  <div class="flex h-screen">
-    
-    <!-- Sidebar -->
-    <aside class="w-64 bg-blue-800 text-white flex flex-col">
-      <div class="p-6 text-2xl font-bold border-b border-blue-700">Attendance</div>
-      <nav class="flex-1 p-4 space-y-2">
-        <a href="#dashboard" class="block px-3 py-2 rounded hover:bg-blue-700">📊 Dashboard</a>
-        <a href="#signin" class="block px-3 py-2 rounded hover:bg-blue-700">🟢 Sign In</a>
-        <a href="#signout" class="block px-3 py-2 rounded hover:bg-blue-700">🔴 Sign Out</a>
-        <a href="#leaves" class="block px-3 py-2 rounded hover:bg-blue-700">🌴 Leaves</a>
-        <a href="#balances" class="block px-3 py-2 rounded hover:bg-blue-700">⚖️ Balances</a>
-        <a href="#holidays" class="block px-3 py-2 rounded hover:bg-blue-700">🎉 Holidays</a>
-        <a href="#settings" class="block px-3 py-2 rounded hover:bg-blue-700">⚙️ Settings</a>
-      </nav>
-    </aside>
-
-    <!-- Main -->
-    <main class="flex-1 overflow-y-auto">
-      
-      <!-- Topbar -->
-      <header class="bg-white shadow p-4 flex justify-between items-center sticky top-0">
-        <h1 class="text-xl font-bold">Dashboard</h1>
-        <button class="bg-blue-600 text-white px-4 py-2 rounded">+ Add Record</button>
-      </header>
-
-      <div class="p-6 space-y-8">
-
-        <!-- KPI Cards -->
-        <section id="dashboard" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div class="bg-white rounded-xl shadow p-4 text-center">
-            <div class="text-sm text-gray-500">Total Employees</div>
-            <div class="text-2xl font-bold text-blue-700">120</div>
-          </div>
-          <div class="bg-white rounded-xl shadow p-4 text-center">
-            <div class="text-sm text-gray-500">Present Today</div>
-            <div class="text-2xl font-bold text-green-600">112</div>
-          </div>
-          <div class="bg-white rounded-xl shadow p-4 text-center">
-            <div class="text-sm text-gray-500">On Leave</div>
-            <div class="text-2xl font-bold text-yellow-500">5</div>
-          </div>
-          <div class="bg-white rounded-xl shadow p-4 text-center">
-            <div class="text-sm text-gray-500">Absent</div>
-            <div class="text-2xl font-bold text-red-600">3</div>
-          </div>
-        </section>
-
-        <!-- Charts -->
-        <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div class="bg-white rounded-xl shadow p-6">
-            <h2 class="font-semibold mb-2">Attendance Trend</h2>
-            <canvas id="trendChart" height="100"></canvas>
-          </div>
-          <div class="bg-white rounded-xl shadow p-6">
-            <h2 class="font-semibold mb-2">Leave Distribution</h2>
-            <canvas id="leaveChart" height="100"></canvas>
-          </div>
-        </section>
-
-        <!-- Tables -->
-        <section id="signin" class="bg-white rounded-xl shadow p-6">
-          <h2 class="font-semibold mb-4">Sign In Records</h2>
-          <div class="overflow-x-auto">
-            <table class="w-full border text-sm">
-              <thead>
-                <tr class="bg-gray-100">
-                  <th class="border px-2 py-1">Date</th>
-                  <th class="border px-2 py-1">Employee</th>
-                  <th class="border px-2 py-1">Time</th>
-                  <th class="border px-2 py-1">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td class="border px-2 py-1">2025-10-01</td>
-                  <td class="border px-2 py-1">John Doe</td>
-                  <td class="border px-2 py-1">09:00</td>
-                  <td class="border px-2 py-1 text-center">
-                    <button class="text-blue-600 hover:underline">Edit</button> |
-                    <button class="text-red-600 hover:underline">Delete</button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <section id="leaves" class="bg-white rounded-xl shadow p-6">
-          <h2 class="font-semibold mb-4">Leave Requests</h2>
-          <div class="overflow-x-auto">
-            <table class="w-full border text-sm">
-              <thead>
-                <tr class="bg-gray-100">
-                  <th class="border px-2 py-1">Employee</th>
-                  <th class="border px-2 py-1">Date</th>
-                  <th class="border px-2 py-1">Type</th>
-                  <th class="border px-2 py-1">Status</th>
-                  <th class="border px-2 py-1">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td class="border px-2 py-1">Jane Smith</td>
-                  <td class="border px-2 py-1">2025-10-05</td>
-                  <td class="border px-2 py-1">Annual</td>
-                  <td class="border px-2 py-1">Pending</td>
-                  <td class="border px-2 py-1 text-center">
-                    <button class="bg-green-500 text-white px-2 py-1 rounded">Approve</button>
-                    <button class="bg-red-500 text-white px-2 py-1 rounded">Reject</button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <section id="balances" class="bg-white rounded-xl shadow p-6">
-          <h2 class="font-semibold mb-4">Leave Balances</h2>
-          <div class="overflow-x-auto">
-            <table class="w-full border text-sm">
-              <thead>
-                <tr class="bg-gray-100">
-                  <th class="border px-2 py-1">Employee</th>
-                  <th class="border px-2 py-1">Annual</th>
-                  <th class="border px-2 py-1">Sick</th>
-                  <th class="border px-2 py-1">Unpaid</th>
-                  <th class="border px-2 py-1">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td class="border px-2 py-1">John Doe</td>
-                  <td class="border px-2 py-1">10</td>
-                  <td class="border px-2 py-1">5</td>
-                  <td class="border px-2 py-1">0</td>
-                  <td class="border px-2 py-1 text-center">
-                    <button class="text-blue-600 hover:underline">Edit</button> |
-                    <button class="text-red-600 hover:underline">Delete</button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <section id="holidays" class="bg-white rounded-xl shadow p-6">
-          <h2 class="font-semibold mb-4">Holidays</h2>
-          <div class="overflow-x-auto">
-            <table class="w-full border text-sm">
-              <thead>
-                <tr class="bg-gray-100">
-                  <th class="border px-2 py-1">Date</th>
-                  <th class="border px-2 py-1">Name</th>
-                  <th class="border px-2 py-1">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td class="border px-2 py-1">2025-12-25</td>
-                  <td class="border px-2 py-1">Christmas</td>
-                  <td class="border px-2 py-1 text-center">
-                    <button class="text-blue-600 hover:underline">Edit</button> |
-                    <button class="text-red-600 hover:underline">Delete</button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <section id="settings" class="bg-white rounded-xl shadow p-6">
-          <h2 class="font-semibold mb-4">Settings</h2>
-          <p class="text-gray-600">Manage company-wide rules here (working hours, default balances, etc.)</p>
-        </section>
-
+  <div class="main">
+    <div class="header">
+      <h1>Dashboard</h1>
+      <div>
+        <button class="btn-primary" id="btnAdd">Add +</button>
       </div>
-    </main>
+    </div>
+
+    <!-- KPI Cards -->
+    <div class="kpi-grid" id="kpiSection">
+      <div class="kpi-card">
+        <div>Total Employees</div>
+        <div class="num" id="kpiEmployees">0</div>
+      </div>
+      <div class="kpi-card">
+        <div>Present Today</div>
+        <div class="num" id="kpiPresent">0</div>
+      </div>
+      <div class="kpi-card">
+        <div>On Leave</div>
+        <div class="num" id="kpiLeave">0</div>
+      </div>
+      <div class="kpi-card">
+        <div>Absent</div>
+        <div class="num" id="kpiAbsent">0</div>
+      </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="charts">
+      <div class="chart-card">
+        <h3>Attendance Trend</h3>
+        <canvas id="trendChart" height="100"></canvas>
+      </div>
+      <div class="chart-card">
+        <h3>Leaves Distribution</h3>
+        <canvas id="leaveChart" height="100"></canvas>
+      </div>
+    </div>
+
+    <!-- Tables -->
+    <div class="table-card hidden" id="tab-dashboard">
+      <h3>Latest Sign-ins</h3>
+      <table id="tableLatestSignIn">
+        <thead><tr><th>Date</th><th>Employee</th><th>Time</th><th>Actions</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="table-card hidden" id="tab-signin">
+      <h3>Sign In Records</h3>
+      <table id="tableSignIn">
+        <thead><tr><th>Date</th><th>Employee</th><th>Time</th><th>Actions</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="table-card hidden" id="tab-signout">
+      <h3>Sign Out Records</h3>
+      <table id="tableSignOut">
+        <thead><tr><th>Date</th><th>Employee</th><th>Time</th><th>Actions</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="table-card hidden" id="tab-leaves">
+      <h3>Leave Requests</h3>
+      <table id="tableLeaves">
+        <thead><tr><th>Date</th><th>Employee</th><th>Type</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="table-card hidden" id="tab-balances">
+      <h3>Leave Balances</h3>
+      <table id="tableBalances">
+        <thead><tr><th>Employee</th><th>Annual</th><th>Sick</th><th>Unpaid</th><th>Actions</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="table-card hidden" id="tab-holidays">
+      <h3>Holidays</h3>
+      <table id="tableHolidays">
+        <thead><tr><th>Date</th><th>Name</th><th>Actions</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="table-card hidden" id="tab-settings">
+      <h3>Settings</h3>
+      <p>Configure working hours, default leaves, etc.</p>
+      <!-- form fields for settings -->
+    </div>
   </div>
 
   <script>
-    // Example charts (dummy data for now)
-    new Chart(document.getElementById("trendChart"), {
-      type: "line",
-      data: {
-        labels: ["Mon","Tue","Wed","Thu","Fri"],
-        datasets: [{ label:"Hours", data:[8,7,9,6,8], borderColor:"#2563eb", tension:0.3 }]
-      }
+    // Tab navigation logic
+    document.querySelectorAll('.sidebar nav a').forEach(a => {
+      a.addEventListener('click', e => {
+        e.preventDefault();
+        document.querySelectorAll('.sidebar nav a').forEach(x => x.classList.remove('active'));
+        a.classList.add('active');
+        const tab = a.dataset.tab;
+        document.querySelectorAll('.table-card').forEach(div => {
+          div.classList.add('hidden');
+        });
+        document.getElementById('tab-' + tab).classList.remove('hidden');
+        document.querySelector('.main .header h1').innerText = a.innerText;
+      });
     });
-    new Chart(document.getElementById("leaveChart"), {
-      type: "pie",
-      data: {
-        labels: ["Annual","Sick","Unpaid"],
-        datasets: [{ data:[10,3,2], backgroundColor:["#16a34a","#facc15","#ef4444"] }]
-      }
-    });
-  </script>
 
+    // Charts example (dummy)
+    new Chart(document.getElementById('trendChart'), {
+      type: 'line',
+      data: {
+        labels: ['Mon','Tue','Wed','Thu','Fri'],
+        datasets: [{
+          label: 'Hours',
+          data: [8,7.5,9,8,7],
+          borderColor: '#3b82f6',
+          backgroundColor: 'rgba(59, 130, 246, 0.2)',
+          tension: 0.3
+        }]
+      },
+      options: {
+        scales: {
+          y: { beginAtZero: true }
+        }
+      }
+    });
+
+    new Chart(document.getElementById('leaveChart'), {
+      type: 'pie',
+      data: {
+        labels: ['Annual','Sick','Unpaid'],
+        datasets: [{
+          data: [12,4,2],
+          backgroundColor: ['#10b981','#f59e0b','#ef4444']
+        }]
+      }
+    });
+
+    // You will populate tables via JS fetching from your Apps Script backend
+    // e.g., fetch('/exec', { method:'POST', body: JSON.stringify({secret, sheet:'SignIn', action:'list'}) })
+  </script>
 </body>
 </html>
