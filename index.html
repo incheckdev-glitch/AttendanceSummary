@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Attendance Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      background: #f8fafc;
+    }
+    .card {
+      @apply bg-white p-6 rounded-2xl shadow-md mb-8;
+    }
+    .section-title {
+      @apply text-xl font-semibold mb-4 text-gray-700;
+    }
+    table {
+      @apply w-full text-sm border-collapse;
+    }
+    th, td {
+      @apply border border-gray-200 px-3 py-2 text-left;
+    }
+    th {
+      @apply bg-gray-100 font-medium;
+    }
+    tr:nth-child(even) td {
+      @apply bg-gray-50;
+    }
+  </style>
+</head>
+<body class="text-gray-800">
+  <header class="bg-blue-600 text-white p-4 sticky top-0 shadow-lg z-50">
+    <h1 class="text-2xl font-bold text-center">📊 Attendance Dashboard</h1>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 py-6">
+
+    <!-- Attendance Summary -->
+    <section class="card">
+      <h2 class="section-title">Attendance Summary</h2>
+      <div class="overflow-x-auto">
+        <table id="attendance-summary"></table>
+      </div>
+      <canvas id="summaryChart" class="mt-6"></canvas>
+    </section>
+
+    <!-- Sign In -->
+    <section class="card">
+      <h2 class="section-title">Sign In Records</h2>
+      <input type="text" id="signinFilter" placeholder="Search..." class="border p-2 mb-3 w-full rounded-md" />
+      <div class="overflow-x-auto">
+        <table id="sign-in"></table>
+      </div>
+    </section>
+
+    <!-- Sign Out -->
+    <section class="card">
+      <h2 class="section-title">Sign Out Records</h2>
+      <input type="text" id="signoutFilter" placeholder="Search..." class="border p-2 mb-3 w-full rounded-md" />
+      <div class="overflow-x-auto">
+        <table id="sign-out"></table>
+      </div>
+    </section>
+
+    <!-- Leaves -->
+    <section class="card">
+      <h2 class="section-title">Leaves</h2>
+      <div class="overflow-x-auto">
+        <table id="leaves"></table>
+      </div>
+    </section>
+
+    <!-- Holidays -->
+    <section class="card">
+      <h2 class="section-title">Holidays</h2>
+      <div class="overflow-x-auto">
+        <table id="holidays"></table>
+      </div>
+    </section>
+
+    <!-- Balances -->
+    <section class="card">
+      <h2 class="section-title">Leave Balances</h2>
+      <div class="overflow-x-auto">
+        <table id="balances"></table>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="text-center py-4 text-sm text-gray-500">
+    Powered by Google Sheets · Built with ❤️ and TailwindCSS
+  </footer>
+
+  <script>
+    // 🔗 Base published CSV link
+    const BASE =
+      "https://docs.google.com/spreadsheets/d/e/2PACX-1vTw_QmgTO1onutiMdiVyThLtl7omNOqpDH-NNSoMwbGcpU4RfRjKO4pPJXbQrsHn5_ZuK4HEhkJ_SJZ/pub?single=true&output=csv&gid=";
+
+    // 📑 Tabs (gids)
+    const tabs = {
+      signIn: "460830149",
+      signOut: "487366822",
+      attendance: "697198023",
+      holidays: "1893373597",
+      leaves: "33718844",
+      balances: "1136411554",
+      settings: "859012208"
+    };
+
+    // 🛠 Helper: Fetch CSV and convert to array
+    async function fetchCSV(gid) {
+      const url = BASE + gid;
+      const res = await fetch(url);
+      const text = await res.text();
+      return text.trim().split("\n").map(r => r.split(","));
+    }
+
+    // 🛠 Helper: Render table
+    function renderTable(id, data) {
+      const table = document.getElementById(id);
+      table.innerHTML = "";
+      if (!data || data.length === 0) return;
+
+      let html = "<thead><tr>";
+      data[0].forEach(h => (html += `<th>${h}</th>`));
+      html += "</tr></thead><tbody>";
+
+      data.slice(1).forEach(row => {
+        html += "<tr>";
+        row.forEach(cell => (html += `<td>${cell}</td>`));
+        html += "</tr>";
+      });
+
+      html += "</tbody>";
+      table.innerHTML = html;
+    }
+
+    // 📊 Attendance Chart
+    function renderSummaryChart(data) {
+      const ctx = document.getElementById("summaryChart").getContext("2d");
+      const labels = data.slice(1).map(r => r[0]); // First col
+      const values = data.slice(1).map(r => parseInt(r[1] || 0)); // Second col
+      new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels,
+          datasets: [
+            {
+              label: "Attendance Count",
+              data: values,
+              backgroundColor: "rgba(59, 130, 246, 0.7)",
+              borderRadius: 8
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            y: { beginAtZero: true }
+          }
+        }
+      });
+    }
+
+    // 🛠 Filter Function
+    function addFilter(inputId, tableId) {
+      const input = document.getElementById(inputId);
+      const table = document.getElementById(tableId);
+      input.addEventListener("keyup", () => {
+        const filter = input.value.toLowerCase();
+        const rows = table.getElementsByTagName("tr");
+        for (let i = 1; i < rows.length; i++) {
+          const rowText = rows[i].innerText.toLowerCase();
+          rows[i].style.display = rowText.includes(filter) ? "" : "none";
+        }
+      });
+    }
+
+    // 🚀 Load all data
+    async function init() {
+      const attendance = await fetchCSV(tabs.attendance);
+      renderTable("attendance-summary", attendance);
+      renderSummaryChart(attendance);
+
+      const signIn = await fetchCSV(tabs.signIn);
+      renderTable("sign-in", signIn);
+      addFilter("signinFilter", "sign-in");
+
+      const signOut = await fetchCSV(tabs.signOut);
+      renderTable("sign-out", signOut);
+      addFilter("signoutFilter", "sign-out");
+
+      const leaves = await fetchCSV(tabs.leaves);
+      renderTable("leaves", leaves);
+
+      const holidays = await fetchCSV(tabs.holidays);
+      renderTable("holidays", holidays);
+
+      const balances = await fetchCSV(tabs.balances);
+      renderTable("balances", balances);
+    }
+
+    init();
+  </script>
+</body>
+</html>
