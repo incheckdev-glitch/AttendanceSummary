@@ -4,38 +4,100 @@
   <meta charset="UTF-8">
   <title>Attendance Dashboard</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
-    h2 { margin-top: 30px; }
-    table { border-collapse: collapse; width: 100%; margin-top: 10px; }
-    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-    th { background: #f2f2f2; }
-    .error { color: red; }
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background: #f9f9f9;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    h2 {
+      margin-top: 40px;
+      color: #444;
+    }
+    .section {
+      margin-bottom: 50px;
+      background: #fff;
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-top: 10px;
+      font-size: 14px;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: left;
+    }
+    th {
+      background: #f2f2f2;
+    }
+    tr:nth-child(even) {
+      background: #fdfdfd;
+    }
+    .error {
+      color: red;
+    }
+    .filters {
+      margin-bottom: 10px;
+    }
+    .filters label {
+      margin-right: 10px;
+    }
+    input, select {
+      padding: 5px;
+      font-size: 14px;
+      margin-right: 10px;
+    }
   </style>
 </head>
 <body>
-  <h1>Attendance Dashboard</h1>
+  <h1>📊 Attendance Dashboard</h1>
 
-  <div id="attendanceSection">
+  <!-- Attendance Section -->
+  <div class="section">
     <h2>Attendance</h2>
+    <div class="filters">
+      <label>
+        Month:
+        <select id="monthFilter"></select>
+      </label>
+      <label>
+        Employee:
+        <input type="text" id="employeeFilter" placeholder="Search by name">
+      </label>
+      <button onclick="applyFilters()">Apply</button>
+      <button onclick="resetFilters()">Reset</button>
+    </div>
     <div id="attendance"></div>
   </div>
 
-  <div id="holidaysSection">
+  <!-- Holidays Section -->
+  <div class="section">
     <h2>Holidays</h2>
     <div id="holidays"></div>
   </div>
 
-  <div id="leavesSection">
+  <!-- Leaves Section -->
+  <div class="section">
     <h2>Leaves</h2>
     <div id="leaves"></div>
   </div>
 
-  <div id="balancesSection">
+  <!-- Balances Section -->
+  <div class="section">
     <h2>Balances</h2>
     <div id="balances"></div>
   </div>
 
-  <div id="settingsSection">
+  <!-- Settings Section -->
+  <div class="section">
     <h2>Settings</h2>
     <div id="settings"></div>
   </div>
@@ -43,6 +105,9 @@
   <script>
     const API_BASE = "https://script.google.com/macros/s/AKfycbwyjG0ZS22iohHqM8N78KELf8xWYM2ARBdcGN-vn448eewSbuCSYoyI4MC3adEDcSiVkA/exec";
 
+    let attendanceData = [];
+
+    // Fetch data from API
     async function fetchData(sheet) {
       try {
         const res = await fetch(`${API_BASE}?sheet=${sheet}`);
@@ -56,7 +121,8 @@
       }
     }
 
-    function renderTable(sheet, data) {
+    // Render table
+    function renderTable(data) {
       if (!data || data.length === 0) return "<p>No data available</p>";
       let headers = Object.keys(data[0]);
       let html = "<table><thead><tr>";
@@ -71,29 +137,64 @@
       return html;
     }
 
+    // Load all sheets
     async function loadData() {
       const [attendance, holidays, leaves, balances, settings] = await Promise.all([
-        fetchData("attendance"),  // ✅ FIXED name
+        fetchData("attendance"),
         fetchData("holidays"),
         fetchData("leaves"),
         fetchData("balances"),
         fetchData("settings")
       ]);
 
-      document.getElementById("attendance").innerHTML =
-        attendance.ok ? renderTable("attendance", attendance.data) : `<p class="error">${attendance.error}</p>`;
+      if (attendance.ok) {
+        attendanceData = attendance.data;
+        document.getElementById("attendance").innerHTML = renderTable(attendance.data);
+        populateFilters(attendance.data);
+      } else {
+        document.getElementById("attendance").innerHTML = `<p class="error">${attendance.error}</p>`;
+      }
 
       document.getElementById("holidays").innerHTML =
-        holidays.ok ? renderTable("holidays", holidays.data) : `<p class="error">${holidays.error}</p>`;
+        holidays.ok ? renderTable(holidays.data) : `<p class="error">${holidays.error}</p>`;
 
       document.getElementById("leaves").innerHTML =
-        leaves.ok ? renderTable("leaves", leaves.data) : `<p class="error">${leaves.error}</p>`;
+        leaves.ok ? renderTable(leaves.data) : `<p class="error">${leaves.error}</p>`;
 
       document.getElementById("balances").innerHTML =
-        balances.ok ? renderTable("balances", balances.data) : `<p class="error">${balances.error}</p>`;
+        balances.ok ? renderTable(balances.data) : `<p class="error">${balances.error}</p>`;
 
       document.getElementById("settings").innerHTML =
-        settings.ok ? renderTable("settings", settings.data) : `<p class="error">${settings.error}</p>`;
+        settings.ok ? renderTable(settings.data) : `<p class="error">${settings.error}</p>`;
+    }
+
+    // Populate month filter dropdown
+    function populateFilters(data) {
+      const months = [...new Set(data.map(r => r.month))];
+      const monthSelect = document.getElementById("monthFilter");
+      monthSelect.innerHTML = `<option value="">All</option>`;
+      months.forEach(m => {
+        monthSelect.innerHTML += `<option value="${m}">${m}</option>`;
+      });
+    }
+
+    // Apply filters
+    function applyFilters() {
+      const month = document.getElementById("monthFilter").value;
+      const employee = document.getElementById("employeeFilter").value.toLowerCase();
+
+      let filtered = attendanceData;
+      if (month) filtered = filtered.filter(r => r.month === month);
+      if (employee) filtered = filtered.filter(r => r.employee.toLowerCase().includes(employee));
+
+      document.getElementById("attendance").innerHTML = renderTable(filtered);
+    }
+
+    // Reset filters
+    function resetFilters() {
+      document.getElementById("monthFilter").value = "";
+      document.getElementById("employeeFilter").value = "";
+      document.getElementById("attendance").innerHTML = renderTable(attendanceData);
     }
 
     loadData();
