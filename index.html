@@ -630,30 +630,37 @@
 
     // ************ CANON GENERATION ************
     function mapAttendanceRow(obj){
-      const rawDate = getField(obj, "date","Date","Day");
-      const dateISO = normalizeDate(rawDate);
-      const employee = String(getField(obj, "employee","Employee Name")||"").trim();
+  // Normalize headers with aliases
+  const rawDate = getField(obj, "date","Date","Day");
+  const dateISO = normalizeDate(rawDate);
+  const employee = String(getField(obj, "employee","Employee Name","Name","Staff")||"").trim();
 
-      const siRaw = getField(obj, "sign in","Sign In Time","in");
-      const soRaw = getField(obj, "sign out","Sign Out Time","out");
+  const siRaw = getField(obj, 
+    "sign in","Sign In","Sign In Time","In","in time","signin"
+  );
+  const soRaw = getField(obj, 
+    "sign out","Sign Out","Sign Out Time","Out","out time","signout"
+  );
 
-      const siDT = dateISO ? parsePunchWithDate(dateISO, siRaw) : null;
-      const soDT = dateISO ? parsePunchWithDate(dateISO, soRaw) : null;
+  const siDT = dateISO ? parsePunchWithDate(dateISO, siRaw) : null;
+  const soDT = dateISO ? parsePunchWithDate(dateISO, soRaw) : null;
 
-      let total = Number(getField(obj,"total hours","Total Hours"));
-      if(!Number.isFinite(total) && siDT && soDT) total = (soDT - siDT) / 36e5;
+  let total = Number(getField(obj,"total hours","Total Hours","Hours","hrs"));
+  if(!Number.isFinite(total) && siDT && soDT) total = (soDT - siDT) / 36e5;
 
-      const month = dateISO ? dateISO.slice(0,7) : (String(getField(obj,"month","Month")||"").trim());
+  const month = dateISO ? dateISO.slice(0,7) : (String(getField(obj,"month","Month")||"").trim());
 
-      return {
-        month, date: dateISO,
-        employee,
-        signIn: siRaw || "",
-        signOut: soRaw || "",
-        signInDT: siDT, signOutDT: soDT,
-        totalHours: Number.isFinite(total)? total : 0
-      };
-    }
+  return {
+    month,
+    date: dateISO,
+    employee,
+    signIn: siRaw || "",
+    signOut: soRaw || "",
+    signInDT: siDT,
+    signOutDT: soDT,
+    totalHours: Number.isFinite(total)? total : 0
+  };
+}
 
     function generateFullRows(data){
       const emps = [...new Set(data.map(r=>r.employee).filter(Boolean))];
