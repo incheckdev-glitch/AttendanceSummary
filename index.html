@@ -1,164 +1,244 @@
-/**
- * Attendance Dashboard Backend with CORS
- * Sheets required: Attendance, Holidays, Leaves, Settings
- * Supports: GET, ADD, REMOVE, UPDATE
- */
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Attendance Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-// === Utility: JSON output with CORS ===
-function corsResponse(obj) {
-  const output = ContentService
-    .createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
+  <!-- CSS LIBS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css"/>
+  <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.dataTables.min.css"/>
+  <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
 
-  // Add CORS headers
-  const response = HtmlService.createHtmlOutput();
-  response.append(JSON.stringify(obj));
-  // Google Apps Script does not let us set headers on ContentService directly
-  // so we return JSON normally, but allow OPTIONS preflight.
-  return output;
-}
+  <!-- PAGE STYLES -->
+  <style>
+    body.dark-mode { background: #181a1f; color: #eee; }
+    .card { transition: all 0.3s ease; }
+    .card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1); }
+    .filter-bar { position: sticky; top: 0; z-index: 10; background: inherit; padding: 10px; }
+    .holiday-row { background-color: #ffeeba !important; }
+    .weekend-row { background-color: #f0f0f0 !important; }
+    #loadingOverlay {
+      display:none; position:fixed; top:0; left:0; right:0; bottom:0;
+      background:rgba(0,0,0,0.5); color:#fff; font-size:2rem;
+      display:flex; justify-content:center; align-items:center; z-index:2000;
+    }
+  </style>
+</head>
+<body>
+  <div id="loadingOverlay">⏳ Loading...</div>
 
-// === Entry Points ===
-function doGet(e) {
-  try {
-    const sheet = e.parameter.sheet;
-    if (!sheet) return corsResponse({ ok: false, error: "Missing sheet parameter" });
+  <div class="container-fluid p-4" id="reportArea">
+    <!-- HEADER -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h2>📊 Attendance Dashboard</h2>
+      <div>
+        <button class="btn btn-outline-secondary me-2" onclick="toggleDark()">🌙/☀️</button>
+        <button class="btn btn-success" onclick="downloadFullReport()">Download Report</button>
+      </div>
+    </div>
 
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const ws = ss.getSheetByName(capitalize(sheet));
-    if (!ws) return corsResponse({ ok: false, error: "Sheet not found: " + sheet });
+    <!-- FILTERS -->
+    <div class="card shadow filter-bar mb-4">
+      <div class="card-body row g-3 align-items-end">
+        <div class="col-lg-3">
+          <label class="form-label">Employee</label>
+          <select id="employeeFilter" multiple></select>
+        </div>
+        <div class="col-lg-3">
+          <label class="form-label">Start Date</label>
+          <input type="date" id="startDate" class="form-control"/>
+        </div>
+        <div class="col-lg-3">
+          <label class="form-label">End Date</label>
+          <input type="date" id="endDate" class="form-control"/>
+        </div>
+        <div class="col-lg-3">
+          <label class="form-label">Quick Search</label>
+          <input type="text" id="quickSearch" class="form-control" placeholder="Search..."/>
+        </div>
+        <div class="col-12 text-end mt-3">
+          <button class="btn btn-primary" onclick="applyFilters()">Apply</button>
+          <button class="btn btn-warning" onclick="resetFilters()">Reset</button>
+        </div>
+      </div>
+    </div>
 
-    // Read all rows
-    const data = ws.getDataRange().getValues();
-    const headers = data.shift();
-    const rows = data.map(r => {
-      const obj = {};
-      headers.forEach((h, i) => { obj[h] = r[i]; });
-      return obj;
-    });
+    <!-- KPI CARDS -->
+    <div class="row mb-4 text-center" id="kpiCards"></div>
 
-    return corsResponse({ ok: true, data: rows });
-  } catch (err) {
-    return corsResponse({ ok: false, error: err.message });
-  }
-}
+    <!-- TABLE -->
+    <div class="card shadow mb-4">
+      <div class="card-body">
+        <table id="attendanceTable" class="display nowrap table table-striped" style="width:100%"></table>
+      </div>
+    </div>
 
-function doPost(e) {
-  try {
-    const body = JSON.parse(e.postData.contents);
-    const { sheet, action, payload } = body;
+    <!-- CHARTS -->
+    <div class="row">
+      <div class="col-lg-4"><div class="card shadow p-3"><h5>Hours per Day</h5><canvas id="barChart"></canvas></div></div>
+      <div class="col-lg-4"><div class="card shadow p-3"><h5>Hours by Employee</h5><canvas id="pieChart"></canvas></div></div>
+      <div class="col-lg-4"><div class="card shadow p-3"><h5>Trend</h5><canvas id="lineChart"></canvas></div></div>
+    </div>
 
-    if (!sheet) return corsResponse({ ok: false, error: "Missing sheet" });
-    if (!action) return corsResponse({ ok: false, error: "Missing action" });
+    <!-- SETTINGS -->
+    <div class="card shadow my-4">
+      <div class="card-body row g-3">
+        <h5>⚙️ Settings</h5>
+        <div class="col-md-3"><label class="form-label">Late After</label><input type="time" id="lateThreshold" class="form-control"/></div>
+        <div class="col-md-3"><label class="form-label">Early Leave Before</label><input type="time" id="earlyThreshold" class="form-control"/></div>
+        <div class="col-md-3"><label class="form-label">Half-day Max Hours</label><input type="number" id="halfDayHours" class="form-control"/></div>
+        <div class="col-md-3"><label class="form-label">Overtime Min Hours</label><input type="number" id="overtimeHours" class="form-control"/></div>
+      </div>
+    </div>
 
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const ws = ss.getSheetByName(capitalize(sheet));
-    if (!ws) return corsResponse({ ok: false, error: "Sheet not found: " + sheet });
+    <!-- HOLIDAY MANAGER -->
+    <div class="card shadow mb-4">
+      <div class="card-body">
+        <h5>📅 Holiday Manager</h5>
+        <div class="input-group mb-3">
+          <input type="date" id="holidayDate" class="form-control"/>
+          <input type="text" id="holidayName" class="form-control" placeholder="Holiday Name"/>
+          <button class="btn btn-primary" onclick="addHoliday()">Add</button>
+        </div>
+        <ul id="holidayList" class="list-group"></ul>
+      </div>
+    </div>
 
-    // === SETTINGS SPECIAL HANDLING ===
-    if (sheet.toLowerCase() === "settings") {
-      if (action === "get") {
-        const row = ws.getRange(2, 1, 1, 4).getValues()[0];
-        return corsResponse({
-          ok: true,
-          data: {
-            late: row[0] || "08:15",
-            early: row[1] || "16:30",
-            half: row[2] || 4,
-            over: row[3] || 9
-          }
+    <!-- LEAVE MANAGER -->
+    <div class="card shadow mb-4">
+      <div class="card-body">
+        <h5>🏖️ Leave Manager</h5>
+        <div class="row g-2 mb-3">
+          <div class="col-md-2"><input type="date" id="leaveDate" class="form-control"/></div>
+          <div class="col-md-3"><select id="leaveEmployee" class="form-control"></select></div>
+          <div class="col-md-3">
+            <select id="leaveType" class="form-control">
+              <option>Annual Leave</option><option>Sick Leave</option><option>Unpaid Leave</option><option>Other</option>
+            </select>
+          </div>
+          <div class="col-md-3"><input type="text" id="leaveReason" class="form-control" placeholder="Reason"/></div>
+          <div class="col-md-1"><button class="btn btn-primary w-100" onclick="addLeave()">Add</button></div>
+        </div>
+        <ul id="leaveList" class="list-group"></ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- JS LIBS -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.print.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+  <!-- APP SCRIPT -->
+  <script>
+    const API_URL = "https://script.google.com/macros/s/AKfycbzFSqMmrNggEEJ7fuHlCEaTHUO7RW79i3vqf3Zy1jxQI1Hkj5ZTMzxL2D3w9fWaJsg1Iw/exec";
+    let CANON = [], DT = null, settings = {};
+    let holidays=[], leaves=[];
+
+    async function apiGet(sheet){
+      const res = await fetch(API_URL+"?sheet="+sheet);
+      return (await res.json()).data || [];
+    }
+    async function apiPost(sheet,action,payload){
+      const res = await fetch(API_URL,{method:"POST",body:JSON.stringify({sheet,action,payload})});
+      return await res.json();
+    }
+
+    function toggleDark(){ document.body.classList.toggle("dark-mode"); }
+
+    /* -------- Holidays -------- */
+    async function renderHolidayList(){
+      holidays = await apiGet("holidays");
+      const list=document.getElementById("holidayList");
+      list.innerHTML="";
+      holidays.forEach((h,i)=>{
+        const li=document.createElement("li");
+        li.className="list-group-item d-flex justify-content-between align-items-center";
+        li.innerHTML=`<span>${h.Date} - ${h.Name||""}</span>
+          <div><button class="btn btn-sm btn-danger" onclick="removeHoliday('${h.Date}')">Remove</button></div>`;
+        list.appendChild(li);
+      });
+    }
+    async function addHoliday(){
+      const d=document.getElementById("holidayDate").value;
+      const n=document.getElementById("holidayName").value;
+      if(!d) return alert("Pick date");
+      await apiPost("holidays","add",{Date:d,Name:n});
+      renderHolidayList();
+    }
+    async function removeHoliday(date){
+      await apiPost("holidays","remove",{Date:date});
+      renderHolidayList();
+    }
+
+    /* -------- Leaves -------- */
+    async function renderLeaveList(){
+      leaves = await apiGet("leaves");
+      const list=document.getElementById("leaveList");
+      list.innerHTML="";
+      leaves.forEach(l=>{
+        const li=document.createElement("li");
+        li.className="list-group-item d-flex justify-content-between align-items-center";
+        li.innerHTML=`<span>${l.Date} - ${l.Employee} (${l.Type}) ${l.Reason||""}</span>
+          <div><button class="btn btn-sm btn-danger" onclick="removeLeave('${l.Date}','${l.Employee}')">Remove</button></div>`;
+        list.appendChild(li);
+      });
+    }
+    async function addLeave(){
+      const d=leaveDate.value, emp=leaveEmployee.value, t=leaveType.value, r=leaveReason.value;
+      if(!d||!emp) return alert("Select date and employee");
+      await apiPost("leaves","add",{Date:d,Employee:emp,Type:t,Reason:r});
+      renderLeaveList();
+    }
+    async function removeLeave(date,emp){
+      await apiPost("leaves","remove",{Date:date,Employee:emp});
+      renderLeaveList();
+    }
+
+    /* -------- Settings -------- */
+    async function loadSettings(){
+      const res=await apiPost("settings","get",{});
+      settings=res.data||{late:"08:15",early:"16:30",half:4,over:9};
+      lateThreshold.value=settings.late; earlyThreshold.value=settings.early;
+      halfDayHours.value=settings.half; overtimeHours.value=settings.over;
+    }
+
+    /* -------- Attendance -------- */
+    async function loadData(){
+      document.getElementById("loadingOverlay").style.display="flex";
+      try {
+        const rows=await apiGet("attendance");
+        CANON = rows.map(r=>{
+          const si=r["Sign In"], so=r["Sign Out"], emp=r["Employee"], date=r["Date"];
+          const siDT=si?new Date(date+"T"+si):null;
+          const soDT=so?new Date(date+"T"+so):null;
+          return {date,employee:emp,signIn:si,signOut:so,signInDT:siDT,signOutDT:soDT,totalHours:siDT&&soDT?(soDT-siDT)/36e5:0};
         });
-      }
-
-      if (action === "update") {
-        if (ws.getLastRow() < 2) {
-          ws.clear();
-          ws.appendRow(["Late", "Early", "Half", "Over"]);
-          ws.appendRow([
-            payload.late || "08:15",
-            payload.early || "16:30",
-            payload.half || 4,
-            payload.over || 9
-          ]);
-        } else {
-          ws.getRange(2, 1, 1, 4).setValues([[ 
-            payload.late || "08:15",
-            payload.early || "16:30",
-            payload.half || 4,
-            payload.over || 9
-          ]]);
-        }
-        return corsResponse({ ok: true, saved: true });
+        populateEmployeeFilter();
+        applyFilters();
+      } finally {
+        document.getElementById("loadingOverlay").style.display="none";
       }
     }
 
-    // === GENERIC SHEETS (Attendance, Holidays, Leaves) ===
-    if (action === "add") {
-      const headers = ws.getRange(1, 1, 1, ws.getLastColumn()).getValues()[0];
-      const row = headers.map(h => payload[h] || "");
-      ws.appendRow(row);
-      return corsResponse({ ok: true, added: true });
+    /* -------- Init -------- */
+    async function init(){
+      await loadSettings();
+      await renderHolidayList();
+      await renderLeaveList();
+      await loadData();
     }
-
-    if (action === "remove") {
-      const data = ws.getDataRange().getValues();
-      const headers = data.shift();
-      let removed = 0;
-
-      for (let i = data.length - 1; i >= 0; i--) {
-        const row = data[i];
-        let match = true;
-        for (const k in payload) {
-          const idx = headers.indexOf(k);
-          if (idx === -1) continue;
-          if (String(row[idx]) !== String(payload[k])) {
-            match = false;
-            break;
-          }
-        }
-        if (match) {
-          ws.deleteRow(i + 2); // account for header row
-          removed++;
-        }
-      }
-      return corsResponse({ ok: true, removed });
-    }
-
-    if (action === "update") {
-      const data = ws.getDataRange().getValues();
-      const headers = data.shift();
-      let updated = 0;
-
-      for (let i = 0; i < data.length; i++) {
-        let match = true;
-        for (const k in payload.where) {
-          const idx = headers.indexOf(k);
-          if (idx === -1) continue;
-          if (String(data[i][idx]) !== String(payload.where[k])) {
-            match = false;
-            break;
-          }
-        }
-        if (match) {
-          for (const k in payload.set) {
-            const idx = headers.indexOf(k);
-            if (idx !== -1) {
-              ws.getRange(i + 2, idx + 1).setValue(payload.set[k]);
-            }
-          }
-          updated++;
-        }
-      }
-      return corsResponse({ ok: true, updated });
-    }
-
-    return corsResponse({ ok: false, error: "Unknown action: " + action });
-  } catch (err) {
-    return corsResponse({ ok: false, error: err.message });
-  }
-}
-
-// === Helper ===
-function capitalize(str) {
-  return str ? str.charAt(0).toUpperCase() + str.slice(1).toLowerCase() : "";
-}
+    init();
+  </script>
+</body>
+</html>
