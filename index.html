@@ -630,25 +630,24 @@
 
     // ************ CANON GENERATION ************
     function mapAttendanceRow(obj){
-  // Normalize headers with aliases
-  const rawDate = getField(obj, "date","Date","Day");
+  // Pick fields exactly as in your AttendanceSummary sheet
+  const rawDate = getField(obj, "date");  // 'date'
   const dateISO = normalizeDate(rawDate);
-  const employee = String(getField(obj, "employee","Employee Name","Name","Staff")||"").trim();
 
-  const siRaw = getField(obj, 
-    "sign in","Sign In","Sign In Time","In","in time","signin"
-  );
-  const soRaw = getField(obj, 
-    "sign out","Sign Out","Sign Out Time","Out","out time","signout"
-  );
+  const employee = String(getField(obj, "employee") || "").trim();
+
+  const siRaw = getField(obj, "sign in");   // 'sign in'
+  const soRaw = getField(obj, "sign out");  // 'sign out'
 
   const siDT = dateISO ? parsePunchWithDate(dateISO, siRaw) : null;
   const soDT = dateISO ? parsePunchWithDate(dateISO, soRaw) : null;
 
-  let total = Number(getField(obj,"total hours","Total Hours","Hours","hrs"));
-  if(!Number.isFinite(total) && siDT && soDT) total = (soDT - siDT) / 36e5;
+  let total = Number(getField(obj, "total hours"));
+  if(!Number.isFinite(total) && siDT && soDT){
+    total = (soDT - siDT) / 36e5; // compute hours if not in sheet
+  }
 
-  const month = dateISO ? dateISO.slice(0,7) : (String(getField(obj,"month","Month")||"").trim());
+  const month = dateISO ? dateISO.slice(0,7) : (String(getField(obj, "month") || "").trim());
 
   return {
     month,
@@ -661,6 +660,7 @@
     totalHours: Number.isFinite(total)? total : 0
   };
 }
+
 
     function generateFullRows(data){
       const emps = [...new Set(data.map(r=>r.employee).filter(Boolean))];
