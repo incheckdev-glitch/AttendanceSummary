@@ -1,228 +1,99 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
   <title>Attendance Dashboard</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-
-  <!-- CSS LIBS -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
-  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css"/>
-  <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.dataTables.min.css"/>
-  <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
-
   <style>
-    body.dark-mode { background: #181a1f; color: #eee; }
-    .card { transition: all 0.3s ease; }
-    .card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1); }
-    .filter-bar { position: sticky; top: 0; z-index: 10; background: inherit; padding: 10px; }
-    .holiday-row { background-color: #ffeeba !important; }
-    .weekend-row { background-color: #f0f0f0 !important; }
-    #loadingOverlay {
-      display:none; position:fixed; top:0; left:0; right:0; bottom:0;
-      background:rgba(0,0,0,0.5); color:#fff; font-size:2rem;
-      display:flex; justify-content:center; align-items:center; z-index:2000;
-    }
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    h2 { margin-top: 30px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background: #f2f2f2; }
+    .error { color: red; }
   </style>
 </head>
 <body>
-  <div id="loadingOverlay">⏳ Loading...</div>
+  <h1>Attendance Dashboard</h1>
 
-  <div class="container-fluid p-4" id="reportArea">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-      <h2>📊 Attendance Dashboard</h2>
-      <div>
-        <button class="btn btn-outline-secondary me-2" onclick="toggleDark()">🌙/☀️</button>
-        <button class="btn btn-success" onclick="downloadFullReport()">Download Report</button>
-      </div>
-    </div>
-
-    <!-- FILTERS -->
-    <div class="card shadow filter-bar mb-4">
-      <div class="card-body row g-3 align-items-end">
-        <div class="col-lg-3">
-          <label class="form-label">Employee</label>
-          <select id="employeeFilter" multiple></select>
-        </div>
-        <div class="col-lg-3">
-          <label class="form-label">Start Date</label>
-          <input type="date" id="startDate" class="form-control"/>
-        </div>
-        <div class="col-lg-3">
-          <label class="form-label">End Date</label>
-          <input type="date" id="endDate" class="form-control"/>
-        </div>
-        <div class="col-lg-3">
-          <label class="form-label">Quick Search</label>
-          <input type="text" id="quickSearch" class="form-control" placeholder="Search..."/>
-        </div>
-        <div class="col-12 text-end mt-3">
-          <button class="btn btn-primary" onclick="applyFilters()">Apply Filters</button>
-          <button class="btn btn-warning" onclick="resetFilters()">Reset</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- KPI CARDS -->
-    <div class="row mb-4 text-center" id="kpiCards"></div>
-
-    <!-- TABLE -->
-    <div class="card shadow mb-4">
-      <div class="card-body">
-        <table id="attendanceTable" class="display nowrap table table-striped" style="width:100%"></table>
-      </div>
-    </div>
-
-    <!-- CHARTS -->
-    <div class="row">
-      <div class="col-lg-4"><div class="card shadow p-3"><h5>Hours per Day</h5><canvas id="barChart"></canvas></div></div>
-      <div class="col-lg-4"><div class="card shadow p-3"><h5>Hours by Employee</h5><canvas id="pieChart"></canvas></div></div>
-      <div class="col-lg-4"><div class="card shadow p-3"><h5>Trend</h5><canvas id="lineChart"></canvas></div></div>
-    </div>
+  <div id="attendanceSection">
+    <h2>Attendance</h2>
+    <div id="attendance"></div>
   </div>
 
-  <!-- JS LIBS -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
-  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-  <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-  <script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
-  <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
-  <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.print.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <div id="holidaysSection">
+    <h2>Holidays</h2>
+    <div id="holidays"></div>
+  </div>
+
+  <div id="leavesSection">
+    <h2>Leaves</h2>
+    <div id="leaves"></div>
+  </div>
+
+  <div id="balancesSection">
+    <h2>Balances</h2>
+    <div id="balances"></div>
+  </div>
+
+  <div id="settingsSection">
+    <h2>Settings</h2>
+    <div id="settings"></div>
+  </div>
 
   <script>
-    const API_BASE = "https://script.google.com/macros/s/AKfycby-xfYT9MrWix_P4gvCEmRystI3RG8o_7eQjpXFkNI3yF7W4B3MgFjYIdNzsB5LtNnI0w/exec";
-    let CANON = [], DT = null, customHolidays = [], leaves = [];
+    const API_BASE = "https://script.google.com/macros/s/AKfycbwyjG0ZS22iohHqM8N78KELf8xWYM2ARBdcGN-vn448eewSbuCSYoyI4MC3adEDcSiVkA/exec";
 
-    function toggleDark(){ document.body.classList.toggle("dark-mode"); }
-
-    function normalizeDate(d){
-      if(!d) return "";
-      const s=String(d).trim();
-      if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-      if(s.includes("/")){ const [dd,mm,yy]=s.split("/"); return `${yy}-${mm.padStart(2,"0")}-${dd.padStart(2,"0")}`; }
-      return "";
-    }
-
-    function parsePunchWithDate(dateISO,val){
-      if(!val) return null;
-      const s=String(val).trim();
-      if(/^\d{1,2}:\d{2}(:\d{2})?$/.test(s)){
-        const t=s.length===5?s+":00":s;
-        const dt=new Date(`${dateISO}T${t}`);
-        return isNaN(dt)?null:dt;
-      }
-      const dt=new Date(s);
-      return isNaN(dt)?null:dt;
-    }
-
-    // === Map row from API ===
-    function mapRow(r){
-      const dateISO = normalizeDate(r["Date"]);
-      const siRaw = r["Sign In Time"] || "";
-      const soRaw = r["Sign Out Time"] || "";
-      const siDT = dateISO ? parsePunchWithDate(dateISO, siRaw) : null;
-      const soDT = dateISO ? parsePunchWithDate(dateISO, soRaw) : null;
-      const total = siDT && soDT ? (soDT - siDT)/36e5 : parseFloat(r["Total Hours"] || 0);
-
-      return {
-        month: r["Month"] || (dateISO ? dateISO.slice(0,7) : ""),
-        date: dateISO,
-        employee: r["Employee Name"] || "",
-        signIn: siRaw,
-        signOut: soRaw,
-        signInDT: siDT,
-        signOutDT: soDT,
-        totalHours: total
-      };
-    }
-
-    // === Load data from API ===
-    async function loadData(){
-      document.getElementById("loadingOverlay").style.display="flex";
+    async function fetchData(sheet) {
       try {
-        const [attendanceRes,holidaysRes,leavesRes,settingsRes] = await Promise.all([
-          fetch(API_BASE+"?sheet=attendance").then(r=>r.json()),
-          fetch(API_BASE+"?sheet=holidays").then(r=>r.json()),
-          fetch(API_BASE+"?sheet=leaves").then(r=>r.json()),
-          fetch(API_BASE+"?sheet=settings").then(r=>r.json())
-        ]);
-
-        console.log("Attendance API Response", attendanceRes);
-        console.log("Holidays API Response", holidaysRes);
-        console.log("Leaves API Response", leavesRes);
-        console.log("Settings API Response", settingsRes);
-
-        if(!attendanceRes.ok) throw new Error(attendanceRes.error||"Failed to load attendance");
-
-        const base = attendanceRes.data.map(mapRow).filter(r=>r.employee && r.date);
-        CANON = generateFullRows(base);
-
-        customHolidays = holidaysRes.ok ? holidaysRes.data.map(h=>({date:String(h.Date), name:String(h.Name||"")})) : [];
-        leaves = leavesRes.ok ? leavesRes.data.map(l=>({date:String(l.Date), employee:String(l["Employee Name"]), type:String(l.Type), reason:l.Reason||""})) : [];
-
-        populateEmployeeFilter();
-        applyFilters();
-
-      } catch(e){
-        alert("Error: "+e.message);
-        console.error(e);
-      } finally {
-        document.getElementById("loadingOverlay").style.display="none";
+        const res = await fetch(`${API_BASE}?sheet=${sheet}`);
+        const json = await res.json();
+        console.log(`${sheet} API Response`, json);
+        if (!json.ok) throw new Error(json.error);
+        return json;
+      } catch (err) {
+        console.error(`Error loading ${sheet}:`, err);
+        return { ok: false, error: err.message };
       }
     }
 
-    function generateFullRows(data){
-      const emps=[...new Set(data.map(r=>r.employee).filter(Boolean))];
-      const dates=data.map(r=>r.date).filter(Boolean).sort();
-      if(!emps.length||!dates.length) return data;
-      const min=new Date(dates[0]),max=new Date(dates[dates.length-1]);
-      const all=[];
-      for(let d=new Date(min); d<=max; d.setDate(d.getDate()+1)){
-        const dayISO=d.toISOString().slice(0,10);
-        emps.forEach(emp=>{
-          const match=data.find(r=>r.date===dayISO && r.employee===emp);
-          if(match){ all.push(match); }
-          else { all.push({month:dayISO.slice(0,7),date:dayISO,employee:emp,totalHours:0,status:["Absent"]}); }
-        });
-      }
-      return all;
-    }
-
-    function populateEmployeeFilter(){
-      const sel=document.getElementById("employeeFilter");
-      sel.innerHTML="";
-      [...new Set(CANON.map(r=>r.employee).filter(Boolean))].sort().forEach(emp=>{
-        const o=document.createElement("option"); o.value=emp; o.textContent=emp; sel.appendChild(o);
+    function renderTable(sheet, data) {
+      if (!data || data.length === 0) return "<p>No data available</p>";
+      let headers = Object.keys(data[0]);
+      let html = "<table><thead><tr>";
+      headers.forEach(h => html += `<th>${h}</th>`);
+      html += "</tr></thead><tbody>";
+      data.forEach(row => {
+        html += "<tr>";
+        headers.forEach(h => html += `<td>${row[h] ?? ""}</td>`);
+        html += "</tr>";
       });
-      $("#employeeFilter").select2({placeholder:"Select employees...",allowClear:true,width:"100%"});
+      html += "</tbody></table>";
+      return html;
     }
 
-    function applyFilters(){ renderTable(CANON); }
+    async function loadData() {
+      const [attendance, holidays, leaves, balances, settings] = await Promise.all([
+        fetchData("attendance"),  // ✅ FIXED name
+        fetchData("holidays"),
+        fetchData("leaves"),
+        fetchData("balances"),
+        fetchData("settings")
+      ]);
 
-    function renderTable(data){
-      const rows=data.map(r=>[r.month,r.date,r.employee,r.signIn,r.signOut,r.totalHours.toFixed(2)]);
-      if(!DT){
-        DT=$("#attendanceTable").DataTable({
-          data:rows,
-          columns:[{title:"Month"},{title:"Date"},{title:"Employee"},{title:"Sign In"},{title:"Sign Out"},{title:"Total Hours"}],
-          pageLength:10
-        });
-      } else {
-        DT.clear().rows.add(rows).draw();
-      }
-    }
+      document.getElementById("attendance").innerHTML =
+        attendance.ok ? renderTable("attendance", attendance.data) : `<p class="error">${attendance.error}</p>`;
 
-    async function downloadFullReport(){
-      const el=document.getElementById("reportArea");
-      const canvas=await html2canvas(el,{scale:2});
-      const img=canvas.toDataURL("image/png");
-      const doc={content:[{image:img,width:500}]};
-      pdfMake.createPdf(doc).download("Attendance_Report.pdf");
+      document.getElementById("holidays").innerHTML =
+        holidays.ok ? renderTable("holidays", holidays.data) : `<p class="error">${holidays.error}</p>`;
+
+      document.getElementById("leaves").innerHTML =
+        leaves.ok ? renderTable("leaves", leaves.data) : `<p class="error">${leaves.error}</p>`;
+
+      document.getElementById("balances").innerHTML =
+        balances.ok ? renderTable("balances", balances.data) : `<p class="error">${balances.error}</p>`;
+
+      document.getElementById("settings").innerHTML =
+        settings.ok ? renderTable("settings", settings.data) : `<p class="error">${settings.error}</p>`;
     }
 
     loadData();
