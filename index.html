@@ -3,220 +3,255 @@
 <head>
   <meta charset="UTF-8">
   <title>Attendance Dashboard</title>
-  <!-- DataTables + Bootstrap -->
-  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
-  <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.dataTables.min.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- Bootstrap & DataTables -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css"/>
+  <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.dataTables.min.css"/>
+  <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
+
   <style>
-    body { background: #f8f9fa; padding: 20px; }
-    h1 { margin-bottom: 20px; text-align: center; }
-    .card { margin-bottom: 20px; }
-    .metrics { display: flex; flex-wrap: wrap; gap: 15px; justify-content: center; }
-    .metrics .card { flex: 1 1 180px; text-align: center; padding: 15px; }
-    canvas { background: #fff; border-radius: 8px; padding: 10px; }
+    body.dark-mode { background:#181a1f; color:#eee; }
+    .card { transition:.3s; }
+    .card:hover { transform:translateY(-3px); box-shadow:0 8px 24px rgba(0,0,0,0.15); }
+    .filter-bar { position:sticky; top:0; z-index:10; background:inherit; padding:10px; }
+    .holiday-row { background-color:#ffeeba!important; }
+    .weekend-row { background-color:#f0f0f0!important; }
+    #loadingOverlay {
+      display:none; position:fixed; top:0; left:0; right:0; bottom:0;
+      background:rgba(0,0,0,.5); color:#fff; font-size:2rem;
+      display:flex; justify-content:center; align-items:center; z-index:2000;
+    }
   </style>
 </head>
 <body>
-  <h1>📊 Attendance Dashboard</h1>
+<div id="loadingOverlay">⏳ Loading...</div>
 
-  <!-- Filters -->
-  <div class="row mb-4">
-    <div class="col-md-3">
-      <label>Employee</label>
-      <input type="text" id="employeeFilter" class="form-control" placeholder="Search employee">
-    </div>
-    <div class="col-md-3">
-      <label>Start Date</label>
-      <input type="date" id="startDate" class="form-control">
-    </div>
-    <div class="col-md-3">
-      <label>End Date</label>
-      <input type="date" id="endDate" class="form-control">
-    </div>
-    <div class="col-md-3 d-flex align-items-end">
-      <button class="btn btn-primary me-2" onclick="applyFilters()">Apply Filters</button>
-      <button class="btn btn-warning" onclick="resetFilters()">Reset</button>
+<div class="container-fluid p-4" id="reportArea">
+  <!-- Header -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>📊 Attendance Dashboard</h2>
+    <div>
+      <button class="btn btn-outline-secondary me-2" onclick="toggleDark()">🌙/☀️</button>
+      <button class="btn btn-success" onclick="downloadFullReport()">Download Report</button>
     </div>
   </div>
 
-  <!-- Metrics -->
-  <div class="metrics" id="metrics"></div>
+  <!-- Filters -->
+  <div class="card shadow filter-bar mb-4">
+    <div class="card-body row g-3 align-items-end">
+      <div class="col-lg-3">
+        <label class="form-label">Employee</label>
+        <select id="employeeFilter" multiple></select>
+      </div>
+      <div class="col-lg-3">
+        <label class="form-label">Start Date</label>
+        <input type="date" id="startDate" class="form-control"/>
+      </div>
+      <div class="col-lg-3">
+        <label class="form-label">End Date</label>
+        <input type="date" id="endDate" class="form-control"/>
+      </div>
+      <div class="col-lg-3">
+        <label class="form-label">Quick Search</label>
+        <input type="text" id="quickSearch" class="form-control" placeholder="Search..."/>
+      </div>
+      <div class="col-12 text-end mt-3">
+        <button class="btn btn-primary" onclick="applyFilters()">Apply Filters</button>
+        <button class="btn btn-warning" onclick="resetFilters()">Reset</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- KPI Cards -->
+  <div class="row mb-4 text-center" id="kpiCards"></div>
 
   <!-- Attendance Table -->
-  <div class="card">
+  <div class="card shadow mb-4">
     <div class="card-body">
-      <table id="attendanceTable" class="display nowrap" style="width:100%">
-        <thead>
-          <tr>
-            <th>Month</th>
-            <th>Date</th>
-            <th>Employee</th>
-            <th>Sign In</th>
-            <th>Sign Out</th>
-            <th>Total Hours</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
+      <table id="attendanceTable" class="display nowrap table table-striped" style="width:100%"></table>
     </div>
   </div>
 
   <!-- Charts -->
   <div class="row">
-    <div class="col-md-4">
-      <canvas id="hoursPerDay"></canvas>
-    </div>
-    <div class="col-md-4">
-      <canvas id="hoursByEmployee"></canvas>
-    </div>
-    <div class="col-md-4">
-      <canvas id="trendChart"></canvas>
+    <div class="col-lg-4"><div class="card shadow p-3"><h5>Hours per Day</h5><canvas id="barChart"></canvas></div></div>
+    <div class="col-lg-4"><div class="card shadow p-3"><h5>Hours by Employee</h5><canvas id="pieChart"></canvas></div></div>
+    <div class="col-lg-4"><div class="card shadow p-3"><h5>Trend</h5><canvas id="lineChart"></canvas></div></div>
+  </div>
+
+  <!-- Settings -->
+  <div class="card shadow my-4">
+    <div class="card-body row g-3">
+      <h5>⚙️ Settings</h5>
+      <div class="col-md-3"><label class="form-label">Late After</label><input type="time" id="lateThreshold" class="form-control"/></div>
+      <div class="col-md-3"><label class="form-label">Early Leave Before</label><input type="time" id="earlyThreshold" class="form-control"/></div>
+      <div class="col-md-3"><label class="form-label">Half-day Max Hours</label><input type="number" id="halfDayHours" class="form-control"/></div>
+      <div class="col-md-3"><label class="form-label">Overtime Min Hours</label><input type="number" id="overtimeHours" class="form-control"/></div>
     </div>
   </div>
 
-  <!-- JS Libraries -->
-  <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
-  <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-  <script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
-  <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
-  <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.print.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Holiday Manager -->
+  <div class="card shadow mb-4">
+    <div class="card-body">
+      <h5>📅 Holiday Manager</h5>
+      <div class="input-group mb-3">
+        <input type="date" id="holidayDate" class="form-control"/>
+        <input type="text" id="holidayName" class="form-control" placeholder="Holiday Name (optional)"/>
+        <button class="btn btn-primary" onclick="addHoliday()">Add</button>
+      </div>
+      <ul id="holidayList" class="list-group"></ul>
+    </div>
+  </div>
 
-  <script>
-    const API_BASE = "https://script.google.com/macros/s/AKfycbwyjG0ZS22iohHqM8N78KELf8xWYM2ARBdcGN-vn448eewSbuCSYoyI4MC3adEDcSiVkA/exec";
-    let rawAttendance = [];
+  <!-- Leave Manager -->
+  <div class="card shadow mb-4">
+    <div class="card-body">
+      <h5>🏖 Leave Manager</h5>
+      <div class="row g-2 mb-3">
+        <div class="col-md-2"><input type="date" id="leaveDate" class="form-control"/></div>
+        <div class="col-md-3"><select id="leaveEmployee" class="form-control"></select></div>
+        <div class="col-md-3">
+          <select id="leaveType" class="form-control">
+            <option value="Annual Leave">Annual Leave</option>
+            <option value="Sick Leave">Sick Leave</option>
+            <option value="Unpaid Leave">Unpaid Leave</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <div class="col-md-3"><input type="text" id="leaveReason" class="form-control" placeholder="Reason (optional)"/></div>
+        <div class="col-md-1"><button class="btn btn-primary w-100" onclick="addLeave()">Add</button></div>
+      </div>
+      <ul id="leaveList" class="list-group"></ul>
+    </div>
+  </div>
+</div>
 
-    // Normalize sheet headers
-    function normalizeKeys(obj) {
-      const map = {
-        "month": "Month",
-        "date": "Date",
-        "employee": "Employee",
-        "sign in": "Sign In",
-        "sign out": "Sign Out",
-        "total hours": "Total Hours",
-        "status": "Status"
-      };
-      let normalized = {};
-      for (let key in obj) {
-        let clean = key.toLowerCase().trim();
-        normalized[map[clean] || key] = obj[key];
-      }
-      return normalized;
-    }
+<!-- JS Libs -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.print.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
-    async function loadData() {
-      try {
-        const res = await fetch(`${API_BASE}?sheet=attendance`);
-        const json = await res.json();
-        if (!json.ok) throw new Error(json.error);
+<script>
+const API_BASE = "https://script.google.com/macros/s/AKfycbwyjG0ZS22iohHqM8N78KELf8xWYM2ARBdcGN-vn448eewSbuCSYoyI4MC3adEDcSiVkA/exec";
 
-        rawAttendance = json.data.map(normalizeKeys);
-        populateTable(rawAttendance);
-        updateMetrics(rawAttendance);
-        updateCharts(rawAttendance);
-      } catch (err) {
-        console.error("Load error:", err);
-      }
-    }
+let CANON=[], DT=null;
+let barChartHandle, pieChartHandle, lineChartHandle;
+let holidays=[], leaves=[], settings={};
 
-    // DataTable
-    function populateTable(data) {
-      if ($.fn.dataTable.isDataTable("#attendanceTable")) {
-        $("#attendanceTable").DataTable().clear().rows.add(data).draw();
-        return;
-      }
-      $("#attendanceTable").DataTable({
-        data,
-        columns: [
-          { data: "Month" },
-          { data: "Date" },
-          { data: "Employee" },
-          { data: "Sign In" },
-          { data: "Sign Out" },
-          { data: "Total Hours" },
-          { data: "Status",
-            render: d => `<span class="badge bg-${d==="Absent"?"danger":"success"}">${d||""}</span>` }
-        ],
-        dom: "Bfrtip",
-        buttons: ["csv", "pdf", "print"],
-        responsive: true
-      });
-    }
+// Toggle dark
+function toggleDark(){ document.body.classList.toggle("dark-mode"); }
 
-    // Metrics
-    function updateMetrics(data) {
-      const totalHours = data.reduce((s,r)=>s+(parseFloat(r["Total Hours"])||0),0);
-      const avgHours = (totalHours / data.length).toFixed(2);
-      const absent = data.filter(r=>r.Status==="Absent").length;
+// Normalize headers
+function normalize(r){ const o={}; for(let k in r)o[k.trim().toLowerCase()]=r[k]; return o; }
 
-      document.getElementById("metrics").innerHTML = `
-        <div class="card"><h5>Total Hours</h5><p>${totalHours.toFixed(2)}</p></div>
-        <div class="card"><h5>Avg Hours</h5><p>${avgHours}</p></div>
-        <div class="card"><h5>Records</h5><p>${data.length}</p></div>
-        <div class="card"><h5>Absent</h5><p>${absent}</p></div>
-      `;
-    }
+// Fetch wrapper
+async function api(sheet){ const res=await fetch(`${API_BASE}?sheet=${sheet}`); return await res.json(); }
 
-    // Charts
-    function updateCharts(data) {
-      const ctx1 = document.getElementById("hoursPerDay").getContext("2d");
-      const ctx2 = document.getElementById("hoursByEmployee").getContext("2d");
-      const ctx3 = document.getElementById("trendChart").getContext("2d");
+// Load data
+async function loadData(){
+  document.getElementById("loadingOverlay").style.display="flex";
+  try{
+    const att=await api("attendance");
+    const hol=await api("holidays");
+    const lea=await api("leaves");
+    const set=await api("settings");
 
-      const perDay = {};
-      const perEmployee = {};
-      data.forEach(r=>{
-        perDay[r.Date] = (perDay[r.Date]||0) + (parseFloat(r["Total Hours"])||0);
-        perEmployee[r.Employee] = (perEmployee[r.Employee]||0) + (parseFloat(r["Total Hours"])||0);
-      });
+    if(att.ok){ CANON=att.data.map(normalize); renderTable(CANON); populateEmployeeFilter(); }
+    if(hol.ok){ holidays=hol.data; renderHolidayList(); }
+    if(lea.ok){ leaves=lea.data; renderLeaveList(); }
+    if(set.ok && set.data.length){ settings=set.data[0]; applySettings(); }
+  }catch(e){ console.error("Error:",e);}
+  document.getElementById("loadingOverlay").style.display="none";
+}
 
-      new Chart(ctx1, {
-        type: "bar",
-        data: { labels: Object.keys(perDay),
-                datasets:[{ label:"Hours", data:Object.values(perDay) }] }
-      });
+// Employee dropdown
+function populateEmployeeFilter(){
+  const sel=document.getElementById("employeeFilter");
+  const leaveSel=document.getElementById("leaveEmployee");
+  sel.innerHTML=""; leaveSel.innerHTML="";
+  [...new Set(CANON.map(r=>r.employee))].sort().forEach(emp=>{
+    if(!emp) return;
+    const o=document.createElement("option"); o.value=emp; o.textContent=emp; sel.appendChild(o);
+    const l=document.createElement("option"); l.value=emp; l.textContent=emp; leaveSel.appendChild(l);
+  });
+  $("#employeeFilter").select2({placeholder:"Select employees...",allowClear:true,width:"100%"});
+}
 
-      new Chart(ctx2, {
-        type: "bar",
-        data: { labels: Object.keys(perEmployee),
-                datasets:[{ label:"Hours", data:Object.values(perEmployee) }] }
-      });
+// Render Attendance Table + KPI
+function renderTable(data){
+  const rows=data.map(r=>[r.month,r.date,r.employee,r["sign in"],r["sign out"],r["total hours"],r.status||""]);
+  if(!DT){
+    DT=$("#attendanceTable").DataTable({
+      data:rows,
+      columns:[{title:"Month"},{title:"Date"},{title:"Employee"},{title:"Sign In"},{title:"Sign Out"},{title:"Total Hours"},{title:"Status"}],
+      dom:"Bfrtip", buttons:["csv","excel","pdf","print"], pageLength:10, order:[[1,"asc"]]
+    });
+  }else{
+    DT.clear().rows.add(rows).draw();
+  }
+  updateKPI(data); renderCharts(data);
+}
 
-      new Chart(ctx3, {
-        type: "line",
-        data: { labels: Object.keys(perDay),
-                datasets:[{ label:"Trend", data:Object.values(perDay) }] }
-      });
-    }
+// KPI cards
+function updateKPI(data){
+  let total=0,abs=0;
+  data.forEach(r=>{ total+=parseFloat(r["total hours"])||0; if((r.status||"").toLowerCase()==="absent")abs++; });
+  const kpi=[{label:"Total Hours",val:total.toFixed(2)},{label:"Avg Hours",val:(total/(data.length||1)).toFixed(2)},{label:"Records",val:data.length},{label:"Absent",val:abs}];
+  document.getElementById("kpiCards").innerHTML=kpi.map(k=>`<div class="col-md-3"><div class="card"><div class="card-body"><h5>${k.label}</h5><h3>${k.val}</h3></div></div></div>`).join("");
+}
 
-    // Filters
-    function applyFilters() {
-      const emp = document.getElementById("employeeFilter").value.toLowerCase();
-      const start = document.getElementById("startDate").value;
-      const end = document.getElementById("endDate").value;
+// Charts
+function renderCharts(data){
+  if(barChartHandle) barChartHandle.destroy();
+  if(pieChartHandle) pieChartHandle.destroy();
+  if(lineChartHandle) lineChartHandle.destroy();
 
-      let filtered = rawAttendance;
-      if (emp) filtered = filtered.filter(r => r.Employee?.toLowerCase().includes(emp));
-      if (start) filtered = filtered.filter(r => r.Date >= start);
-      if (end) filtered = filtered.filter(r => r.Date <= end);
+  const byDate={},byEmp={};
+  data.forEach(r=>{
+    byDate[r.date]=(byDate[r.date]||0)+(parseFloat(r["total hours"])||0);
+    byEmp[r.employee]=(byEmp[r.employee]||0)+(parseFloat(r["total hours"])||0);
+  });
 
-      populateTable(filtered);
-      updateMetrics(filtered);
-      updateCharts(filtered);
-    }
+  barChartHandle=new Chart(barChart,{type:"bar",data:{labels:Object.keys(byDate),datasets:[{label:"Hours",data:Object.values(byDate)}]}});
+  pieChartHandle=new Chart(pieChart,{type:"pie",data:{labels:Object.keys(byEmp),datasets:[{data:Object.values(byEmp)}]}});
+  lineChartHandle=new Chart(lineChart,{type:"line",data:{labels:Object.keys(byDate),datasets:[{label:"Trend",data:Object.values(byDate)}]}});
+}
 
-    function resetFilters() {
-      document.getElementById("employeeFilter").value="";
-      document.getElementById("startDate").value="";
-      document.getElementById("endDate").value="";
-      populateTable(rawAttendance);
-      updateMetrics(rawAttendance);
-      updateCharts(rawAttendance);
-    }
+// Apply settings
+function applySettings(){
+  lateThreshold.value=settings.late||"08:15";
+  earlyThreshold.value=settings.early||"16:30";
+  halfDayHours.value=settings.half||4;
+  overtimeHours.value=settings.over||9;
+}
 
-    loadData();
-  </script>
+// Holidays
+function renderHolidayList(){ const list=document.getElementById("holidayList"); list.innerHTML=""; holidays.forEach(h=>{const li=document.createElement("li");li.className="list-group-item";li.textContent=`${h.date} - ${h.name||""}`;list.appendChild(li);}); }
+function addHoliday(){ alert("TODO: Hook POST /holidays/add"); }
+
+// Leaves
+function renderLeaveList(){ const list=document.getElementById("leaveList"); list.innerHTML=""; leaves.forEach(l=>{const li=document.createElement("li");li.className="list-group-item";li.textContent=`${l.date} - ${l.employee} (${l.type})`;list.appendChild(li);}); }
+function addLeave(){ alert("TODO: Hook POST /leaves/add"); }
+
+// Download report
+async function downloadFullReport(){
+  const el=document.getElementById("reportArea");
+  const canvas=await html2canvas(el,{scale:2});
+  const img=canvas.toDataURL("image/png");
+  const doc={content:[{image:img,width:500}]};
+  pdfMake.createPdf(doc).download("Attendance_Report.pdf");
+}
+
+loadData();
+</script>
 </body>
 </html>
