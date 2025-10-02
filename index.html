@@ -5,27 +5,20 @@
   <title>Attendance Dashboard</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- ======================= CSS LIBS ======================= -->
+  <!-- CSS LIBS -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
   <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css"/>
   <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.dataTables.min.css"/>
   <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
 
-  <!-- ======================= PAGE STYLES ======================= -->
   <style>
     :root {
-      --bg: #fff;
-      --fg: #222;
-      --muted: #666;
-      --card: #ffffff;
-      --card-border: #e9ecef;
+      --bg: #fff; --fg: #222; --muted: #666;
+      --card: #ffffff; --card-border: #e9ecef;
     }
     body.dark-mode {
-      --bg: #181a1f;
-      --fg: #eee;
-      --muted: #aaa;
-      --card: #1f232b;
-      --card-border: #2a2f38;
+      --bg: #181a1f; --fg: #eee; --muted: #aaa;
+      --card: #1f232b; --card-border: #2a2f38;
     }
     body { background: var(--bg); color: var(--fg); }
     .card { background: var(--card); border-color: var(--card-border); transition: all 0.3s ease; }
@@ -39,10 +32,6 @@
       display:flex; justify-content:center; align-items:center; z-index:2000;
     }
     .badge-status { font-weight:600; }
-    .select2-container--default .select2-selection--multiple {
-      background: var(--card); color: var(--fg); border-color: var(--card-border);
-    }
-    .select2-container--default .select2-results>.select2-results__options { color: #000; }
   </style>
 </head>
 
@@ -50,14 +39,13 @@
   <!-- Loading overlay -->
   <div id="loadingOverlay">⏳ Loading...</div>
 
-  <!-- ======================= MAIN WRAPPER ======================= -->
   <div class="container-fluid p-4" id="reportArea">
     <!-- HEADER -->
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h2>📊 Attendance Dashboard</h2>
       <div class="d-flex gap-2 align-items-center">
         <span class="text-muted small" id="apiStatus">API: —</span>
-        <button class="btn btn-outline-secondary" onclick="toggleDark()" aria-label="Toggle dark mode">🌙/☀️</button>
+        <button class="btn btn-outline-secondary" onclick="toggleDark()">🌙/☀️</button>
         <button class="btn btn-success" onclick="downloadFullReport()">Download Report</button>
       </div>
     </div>
@@ -67,19 +55,19 @@
       <div class="card-body row g-3 align-items-end">
         <div class="col-lg-3">
           <label class="form-label">Employee</label>
-          <select id="employeeFilter" multiple aria-label="Employee filter"></select>
+          <select id="employeeFilter" multiple></select>
         </div>
         <div class="col-lg-3">
           <label class="form-label">Start Date</label>
-          <input type="date" id="startDate" class="form-control" aria-label="Start date"/>
+          <input type="date" id="startDate" class="form-control"/>
         </div>
         <div class="col-lg-3">
           <label class="form-label">End Date</label>
-          <input type="date" id="endDate" class="form-control" aria-label="End date"/>
+          <input type="date" id="endDate" class="form-control"/>
         </div>
         <div class="col-lg-3">
           <label class="form-label">Quick Search</label>
-          <input type="text" id="quickSearch" class="form-control" placeholder="Search..." aria-label="Quick search"/>
+          <input type="text" id="quickSearch" class="form-control" placeholder="Search..."/>
         </div>
         <div class="col-12 text-end mt-3">
           <button class="btn btn-primary" onclick="applyFilters()">Apply Filters</button>
@@ -91,7 +79,7 @@
     <!-- KPI CARDS -->
     <div class="row mb-4 text-center" id="kpiCards"></div>
 
-    <!-- TABLE -->
+    <!-- ATTENDANCE TABLE -->
     <div class="card shadow mb-4">
       <div class="card-body">
         <table id="attendanceTable" class="display nowrap table table-striped" style="width:100%"></table>
@@ -104,68 +92,9 @@
       <div class="col-lg-4"><div class="card shadow p-3"><h5>Hours by Employee</h5><canvas id="pieChart"></canvas></div></div>
       <div class="col-lg-4"><div class="card shadow p-3"><h5>Trend</h5><canvas id="lineChart"></canvas></div></div>
     </div>
-
-    <!-- SETTINGS -->
-    <div class="card shadow my-4">
-      <div class="card-body row g-3">
-        <div class="d-flex justify-content-between align-items-center">
-          <h5>⚙️ Settings</h5>
-          <button class="btn btn-outline-primary btn-sm" onclick="saveSettings()">Save Settings to Sheet</button>
-        </div>
-        <div class="col-md-3"><label class="form-label">Late After (HH:MM)</label><input type="time" id="lateThreshold" class="form-control"/></div>
-        <div class="col-md-3"><label class="form-label">Early Leave Before (HH:MM)</label><input type="time" id="earlyThreshold" class="form-control"/></div>
-        <div class="col-md-3"><label class="form-label">Half-day Max Hours</label><input type="number" step="0.1" id="halfDayHours" class="form-control"/></div>
-        <div class="col-md-3"><label class="form-label">Overtime Min Hours</label><input type="number" step="0.1" id="overtimeHours" class="form-control"/></div>
-        <small class="text-muted mt-2">These values are read from and saved to the <strong>Settings</strong> sheet.</small>
-      </div>
-    </div>
-
-    <!-- HOLIDAY MANAGER -->
-    <div class="card shadow mb-4">
-      <div class="card-body">
-        <div class="d-flex justify-content-between align-items-center">
-          <h5>📅 Holiday Manager</h5>
-          <small class="text-muted">Backed by <strong>Holidays</strong> sheet (Add/Remove updates the sheet)</small>
-        </div>
-        <div class="input-group mb-3">
-          <input type="date" id="holidayDate" class="form-control"/>
-          <input type="text" id="holidayName" class="form-control" placeholder="Holiday Name (optional)"/>
-          <button class="btn btn-primary" onclick="addHoliday()">Add</button>
-        </div>
-        <ul id="holidayList" class="list-group"></ul>
-      </div>
-    </div>
-
-    <!-- LEAVE MANAGER -->
-    <div class="card shadow mb-4">
-      <div class="card-body">
-        <div class="d-flex justify-content-between align-items-center">
-          <h5>🏖️ Leave Manager</h5>
-          <small class="text-muted">Backed by <strong>Leaves</strong> sheet (Add/Remove updates the sheet)</small>
-        </div>
-        <div class="row g-2 mb-3">
-          <div class="col-md-2"><input type="date" id="leaveDate" class="form-control"/></div>
-          <div class="col-md-3"><select id="leaveEmployee" class="form-control"></select></div>
-          <div class="col-md-3">
-            <select id="leaveType" class="form-control">
-              <option value="Annual Leave">Annual Leave</option>
-              <option value="Sick Leave">Sick Leave</option>
-              <option value="Unpaid Leave">Unpaid Leave</option>
-              <option value="Other">Other</option>
-              <option value="AL">AL</option>
-              <option value="SL">SL</option>
-              <option value="UL">UL</option>
-            </select>
-          </div>
-          <div class="col-md-3"><input type="text" id="leaveReason" class="form-control" placeholder="Reason (optional)"/></div>
-          <div class="col-md-1"><button class="btn btn-primary w-100" onclick="addLeave()">Add</button></div>
-        </div>
-        <ul id="leaveList" class="list-group"></ul>
-      </div>
-    </div>
   </div>
 
-  <!-- ======================= JS LIBS ======================= -->
+  <!-- JS LIBS -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
   <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
@@ -177,577 +106,88 @@
   <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
-  <!-- ======================= APP SCRIPT ======================= -->
   <script>
-    // ************ CONFIG ************
+    // === CONFIG ===
     const API_BASE = "https://script.google.com/macros/s/AKfycbwyjG0ZS22iohHqM8N78KELf8xWYM2ARBdcGN-vn448eewSbuCSYoyI4MC3adEDcSiVkA/exec";
 
-    // ************ STATE ************
-    let RAW_ATTENDANCE = [];
-    let CANON = [];     // canonical attendance rows (with Absent/Holiday/Weekend/Leave rows filled)
-    let HOLIDAYS = [];  // [{date:'YYYY-MM-DD', name:'...'}]
-    let LEAVES = [];    // [{date:'YYYY-MM-DD', employee:'...', type:'...', reason:'...'}]
-    let SETTINGS = { late:"08:15", early:"16:30", half:4, over:9 };
-    let DT = null;
-    let barChartHandle, pieChartHandle, lineChartHandle;
+    // === STATE ===
+    let RAW_ATTENDANCE = [], CANON = [], SETTINGS = { late:"08:15", early:"16:30", half:4, over:9 };
+    let DT=null, barChartHandle, pieChartHandle, lineChartHandle;
 
-    // ************ UTIL ************
-    function toggleDark(){ document.body.classList.toggle("dark-mode"); }
-    function pad(n){ return String(n).padStart(2,"0"); }
-    function toLocalISODate(d){ return d instanceof Date ? `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}` : ""; }
-    function normalizeDate(str){
-      if(!str) return "";
-      const s = String(str).trim();
-      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;      // already ISO date
-      if (s.includes("/")) { // dd/mm/yy or dd/mm/yyyy
-        const [dd,mm,yy] = s.split("/");
-        const yyyy = yy.length===2 ? (yy > 70 ? "19"+yy : "20"+yy) : yy;
-        return `${yyyy}-${mm.padStart(2,"0")}-${dd.padStart(2,"0")}`;
-      }
-      return s;
-    }
-    function parsePunchWithDate(dateISO, hhmm){
-      if(!dateISO || !hhmm) return null;
-      const s = String(hhmm).trim();
-      if(!s || s === "-") return null;
-      if (/^\d{1,2}:\d{2}$/.test(s)) {
-        const t = s.length===4 ? "0"+s : s;
-        const dt = new Date(`${dateISO}T${t}:00`);
-        return isNaN(dt) ? null : dt;
-      }
-      const dt = new Date(s);
-      return isNaN(dt) ? null : dt;
-    }
-    function getField(obj, ...names){
-      // case-insensitive field getter
+    // === Header map for normalization ===
+    const HEADER_MAP = {
+      month:["month"], date:["date","day"], employee:["employee","employee name","name"],
+      signIn:["sign in","signin","in"], signOut:["sign out","signout","out"],
+      totalHours:["total hours","hours"], status:["status"]
+    };
+    function getField(obj, field){
       const keys = Object.keys(obj);
-      const lower = keys.reduce((acc,k)=>{acc[k.toLowerCase()] = k; return acc;}, {});
-      for (const n of names){
-        const m = lower[String(n).toLowerCase()];
-        if (m !== undefined) return obj[m];
+      const lower = keys.reduce((acc,k)=>{acc[k.toLowerCase()]=k; return acc;}, {});
+      const aliases = HEADER_MAP[field]||[];
+      for(const alias of aliases){
+        const match = lower[alias.toLowerCase()];
+        if(match!==undefined) return obj[match];
       }
       return undefined;
     }
-    function mapLeaveType(t){
-      const s = String(t||"").trim().toUpperCase();
-      if (s==="AL") return "Annual Leave";
-      if (s==="SL") return "Sick Leave";
-      if (s==="UL") return "Unpaid Leave";
-      return t || "Other";
+
+    function toggleDark(){ document.body.classList.toggle("dark-mode"); }
+    function pad(n){ return String(n).padStart(2,"0"); }
+    function normalizeDate(str){ if(!str) return ""; const s=String(str).trim(); if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s; if(s.includes("/")){ const [dd,mm,yy]=s.split("/"); const yyyy=yy.length===2?(yy>70?"19"+yy:"20"+yy):yy; return `${yyyy}-${mm.padStart(2,"0")}-${dd.padStart(2,"0")}`;} return s; }
+    function parsePunchWithDate(dateISO,hhmm){ if(!dateISO||!hhmm) return null; const s=String(hhmm).trim(); if(!s||s=="-") return null; if(/^\d{1,2}:\d{2}$/.test(s)){ const t=s.length===4?"0"+s:s; const dt=new Date(`${dateISO}T${t}:00`); return isNaN(dt)?null:dt;} const dt=new Date(s); return isNaN(dt)?null:dt; }
+
+    async function apiGet(sheet){ const url=`${API_BASE}?sheet=${encodeURIComponent(sheet)}`; const res=await fetch(url); const json=await res.json(); if(!json.ok) throw new Error(json.error||"API error"); return json.data||[]; }
+
+    function mapAttendanceRow(obj){ 
+      const dateISO=normalizeDate(getField(obj,"date")); 
+      const employee=String(getField(obj,"employee")||"").trim(); 
+      const siRaw=getField(obj,"signIn"); 
+      const soRaw=getField(obj,"signOut"); 
+      const siDT=dateISO?parsePunchWithDate(dateISO,siRaw):null; 
+      const soDT=dateISO?parsePunchWithDate(dateISO,soRaw):null; 
+      let total=Number(getField(obj,"totalHours")); 
+      if(!Number.isFinite(total)&&siDT&&soDT) total=(soDT-siDT)/36e5; 
+      const month=dateISO?dateISO.slice(0,7):(String(getField(obj,"month")||"").trim()); 
+      return {month,date:dateISO,employee,signIn:siRaw||"",signOut:soRaw||"",signInDT:siDT,signOutDT:soDT,totalHours:Number.isFinite(total)?total:0}; 
     }
 
-    // ************ API ************
-    async function apiGet(sheet){
-      const url = `${API_BASE}?sheet=${encodeURIComponent(sheet)}`;
-      const res = await fetch(url);
-      const json = await res.json();
-      if(!json.ok) throw new Error(json.error || "API error");
-      return json.data || [];
-    }
-    async function apiPost(sheet, action, payload){
-      const res = await fetch(API_BASE, {
-        method: "POST",
-        headers: { "Content-Type":"application/json" },
-        body: JSON.stringify({ sheet, action, payload })
-      });
-      const json = await res.json();
-      if(!json.ok) throw new Error(json.error || "API error");
-      return json;
+    function computeStatus(r){
+      if(!r.signInDT && !r.signOutDT) return "Absent";
+      if(r.signInDT && !r.signOutDT) return "Needs Correction";
+      const [lh,lm]=SETTINGS.late.split(":").map(Number);
+      const [eh,em]=SETTINGS.early.split(":").map(Number);
+      const inMin=r.signInDT?r.signInDT.getHours()*60+r.signInDT.getMinutes():null;
+      const outMin=r.signOutDT?r.signOutDT.getHours()*60+r.signOutDT.getMinutes():null;
+      const tags=[];
+      if(inMin && inMin>(lh*60+lm)) tags.push("Late");
+      if(outMin && outMin<(eh*60+em)) tags.push("Early Leave");
+      if(r.totalHours && r.totalHours<SETTINGS.half) tags.push("Half-day");
+      if(r.totalHours && r.totalHours>=SETTINGS.over) tags.push("Overtime");
+      return tags.length?tags.join(", "):"On Time";
     }
 
-    // ************ SETTINGS ************
-    async function loadSettings(){
-      try{
-        const resp = await apiPost("settings","get",{});
-        SETTINGS = {
-          late: String(resp.data.late || "08:15"),
-          early: String(resp.data.early || "16:30"),
-          half: Number(resp.data.half ?? 4),
-          over: Number(resp.data.over ?? 9)
-        };
-        // fill UI
-        document.getElementById("lateThreshold").value = SETTINGS.late;
-        document.getElementById("earlyThreshold").value = SETTINGS.early;
-        document.getElementById("halfDayHours").value = SETTINGS.half;
-        document.getElementById("overtimeHours").value = SETTINGS.over;
-      } catch(e){
-        console.warn("Settings load failed:", e.message);
-      }
-    }
-    async function saveSettings(){
-      const late = document.getElementById("lateThreshold").value || "08:15";
-      const early = document.getElementById("earlyThreshold").value || "16:30";
-      const half  = parseFloat(document.getElementById("halfDayHours").value) || 4;
-      const over  = parseFloat(document.getElementById("overtimeHours").value) || 9;
-      try{
-        await apiPost("settings","update",{ late, early, half, over });
-        SETTINGS = { late, early, half, over };
-        alert("Settings saved ✅");
-        applyFilters(); // recompute statuses
-      } catch(e){
-        alert("Failed to save settings: " + e.message);
-      }
-    }
-
-    // ************ HOLIDAYS ************
-    function renderHolidayList(){
-      const list = document.getElementById("holidayList");
-      list.innerHTML = "";
-      const sorted = [...HOLIDAYS].sort((a,b)=>a.date.localeCompare(b.date));
-      sorted.forEach((h, idx)=>{
-        const li = document.createElement("li");
-        li.className = "list-group-item d-flex justify-content-between align-items-center";
-        li.innerHTML = `
-          <span>${h.date}${h.name ? " - "+h.name : ""}</span>
-          <div class="d-flex gap-2">
-            <button class="btn btn-sm btn-warning" onclick="editHoliday('${h.date}')">Edit</button>
-            <button class="btn btn-sm btn-danger" onclick="removeHoliday('${h.date}')">Remove</button>
-          </div>
-        `;
-        list.appendChild(li);
-      });
-    }
-    async function addHoliday(){
-      const d = document.getElementById("holidayDate").value;
-      const n = document.getElementById("holidayName").value;
-      if(!d) return alert("Please choose a date");
-      try{
-        await apiPost("holidays","add",{ Date: d, "Holiday Name": n || "" });
-        await refreshHolidays();
-        alert("Holiday added ✅");
-        applyFilters();
-      } catch(e){
-        alert("Failed to add holiday: " + e.message);
-      }
-    }
-    async function editHoliday(date){
-      const h = HOLIDAYS.find(x=>x.date===date);
-      const newName = prompt("Edit holiday name:", (h && h.name) || "");
-      if(newName===null) return;
-      try{
-        // no update endpoint → remove then add
-        await apiPost("holidays","remove",{ Date: date });
-        await apiPost("holidays","add",{ Date: date, "Holiday Name": newName });
-        await refreshHolidays();
-        applyFilters();
-      } catch(e){
-        alert("Failed to edit holiday: " + e.message);
-      }
-    }
-    async function removeHoliday(date){
-      if(!confirm("Remove this holiday?")) return;
-      try{
-        await apiPost("holidays","remove",{ Date: date });
-        await refreshHolidays();
-        alert("Holiday removed ✅");
-        applyFilters();
-      } catch(e){
-        alert("Failed to remove holiday: " + e.message);
-      }
-    }
-    async function refreshHolidays(){
-      const rows = await apiGet("holidays");
-      HOLIDAYS = rows.map(r=>{
-        const date = normalizeDate(getField(r,"date","Date"));
-        const name = getField(r,"Holiday Name","name","holiday");
-        return { date, name: name || "" };
-      }).filter(x=>x.date);
-      renderHolidayList();
-    }
-
-    // ************ LEAVES ************
-    function renderLeaveList(){
-      const list = document.getElementById("leaveList");
-      list.innerHTML = "";
-      const sorted = [...LEAVES].sort((a,b)=> (a.date+a.employee).localeCompare(b.date+b.employee));
-      sorted.forEach((l)=>{
-        const li = document.createElement("li");
-        li.className = "list-group-item d-flex justify-content-between align-items-center";
-        li.innerHTML = `
-          <span>${l.date} - ${l.employee} (${l.type})${l.reason ? " - "+l.reason : ""}</span>
-          <div><button class="btn btn-sm btn-danger" onclick="removeLeave('${l.date}','${encodeURIComponent(l.employee)}')">Remove</button></div>
-        `;
-        list.appendChild(li);
-      });
-    }
-    async function addLeave(){
-      const d  = document.getElementById("leaveDate").value;
-      const emp= document.getElementById("leaveEmployee").value;
-      const t  = document.getElementById("leaveType").value;
-      const r  = document.getElementById("leaveReason").value;
-      if(!d || !emp) return alert("Please select date and employee");
-      try{
-        await apiPost("leaves","add",{ Date: d, "Employee Name": emp, Type: t, Reason: r || "" });
-        await refreshLeaves();
-        alert("Leave added ✅");
-        applyFilters();
-      } catch(e){
-        alert("Failed to add leave: " + e.message);
-      }
-    }
-    async function removeLeave(date, empEnc){
-      const emp = decodeURIComponent(empEnc);
-      if(!confirm(`Remove leave for ${emp} on ${date}?`)) return;
-      try{
-        await apiPost("leaves","remove",{ Date: date, "Employee Name": emp });
-        await refreshLeaves();
-        alert("Leave removed ✅");
-        applyFilters();
-      } catch(e){
-        alert("Failed to remove leave: " + e.message);
-      }
-    }
-    async function refreshLeaves(){
-      const rows = await apiGet("leaves");
-      LEAVES = rows.map(r=>{
-        const date = normalizeDate(getField(r,"date","Date"));
-        const employee = String(getField(r,"employee","Employee Name")||"").trim();
-        const type = mapLeaveType(getField(r,"type","Type"));
-        const reason = getField(r,"reason","Reason") || "";
-        return { date, employee, type, reason };
-      }).filter(x=>x.date && x.employee);
-      renderLeaveList();
-    }
-
-    // ************ ATTENDANCE ************
-    function computeStatus(row){
-      // Row can already carry a fixed status (Holiday/Weekend/Leave/Absent)
-      if (row.status && Array.isArray(row.status) && row.status.length) return row.status;
-
-      const lateParts  = String(SETTINGS.late || "08:15").split(":").map(Number);
-      const earlyParts = String(SETTINGS.early|| "16:30").split(":").map(Number);
-      const half  = Number(SETTINGS.half ?? 4);
-      const over  = Number(SETTINGS.over ?? 9);
-
-      if(!row.signInDT && !row.signOutDT) return ["Absent"];
-      if((row.signInDT && !row.signOutDT) || (!row.signInDT && row.signOutDT)) return ["Needs Correction"];
-
-      const inMin  = row.signInDT ? row.signInDT.getHours()*60 + row.signInDT.getMinutes() : null;
-      const outMin = row.signOutDT ? row.signOutDT.getHours()*60 + row.signOutDT.getMinutes() : null;
-
-      const tags = [];
-      if (inMin!==null && inMin > (lateParts[0]*60 + lateParts[1])) tags.push("Late");
-      if (outMin!==null && outMin < (earlyParts[0]*60 + earlyParts[1])) tags.push("Early Leave");
-      if (row.totalHours > 0 && row.totalHours < half) tags.push("Half-day");
-      if (row.totalHours >= over) tags.push("Overtime");
-      if (!tags.length) tags.push("On Time");
-      return tags;
+    function badgeForStatus(status){
+      let c="bg-secondary";
+      if(status.includes("Late")) c="bg-danger";
+      if(status.includes("Early Leave")) c="bg-warning text-dark";
+      if(status.includes("On Time")) c="bg-success";
+      if(status.includes("Absent")) c="bg-dark";
+      if(status.includes("Overtime")) c="bg-primary";
+      if(status.includes("Half-day")) c="bg-info text-dark";
+      return `<span class="badge badge-status ${c}">${status}</span>`;
     }
 
     function renderTable(data){
-      const rows = data.map(r=>{
-        const st = computeStatus(r);
-        const badge = st.map(label=>{
-          let c="bg-secondary";
-          if(label==="Late") c="bg-danger";
-          else if(label==="Early Leave") c="bg-warning text-dark";
-          else if(label==="On Time") c="bg-success";
-          else if(label==="Absent") c="bg-dark";
-          else if(label==="Needs Correction") c="bg-danger text-white";
-          else if(label==="Half-day") c="bg-info text-dark";
-          else if(label==="Overtime") c="bg-primary";
-          else if(label==="Holiday") c="bg-secondary";
-          else if(label==="Weekend") c="bg-light text-dark";
-          else if(label==="Annual Leave") c="bg-success";
-          else if(label==="Sick Leave") c="bg-info text-dark";
-          else if(label==="Unpaid Leave") c="bg-danger";
-          else if(label==="Other") c="bg-secondary";
-          return `<span class="badge badge-status ${c}">${label}</span>`;
-        }).join(" ");
-        return [
-          r.month || "",
-          r.date || "",
-          r.employee || "",
-          r.signIn || "",
-          r.signOut || "",
-          Number.isFinite(r.totalHours) ? r.totalHours.toFixed(2) : "",
-          badge
-        ];
-      });
-
-      if(!DT){
-        DT = $("#attendanceTable").DataTable({
-          data: rows,
-          columns: [
-            {title:"Month"},
-            {title:"Date"},
-            {title:"Employee"},
-            {title:"Sign In"},
-            {title:"Sign Out"},
-            {title:"Total Hours"},
-            {title:"Status"}
-          ],
-          dom:"Bfrtip",
-          buttons:[
-            {extend:"csv", exportOptions:{modifier:{search:"applied", order:"applied"}}},
-            "excel","pdf","print","colvis"
-          ],
-          pageLength:10,
-          order:[[1,"asc"]],
-          createdRow: (row, rowData)=>{
-            if (rowData[6].includes("Holiday")) $(row).addClass("holiday-row");
-            if (rowData[6].includes("Weekend")) $(row).addClass("weekend-row");
-          }
-        });
-      } else {
-        DT.clear().rows.add(rows).draw();
-      }
-
-      // KPIs
-      let sum=0; const workingDays=new Set();
-      let late=0, early=0, abs=0, annual=0, sick=0, unpaid=0, other=0;
-      data.forEach(r=>{
-        const st = computeStatus(r);
-        if(st.includes("Late")) late++;
-        if(st.includes("Early Leave")) early++;
-        if(st.includes("Absent")) abs++;
-        if(st.includes("Annual Leave")) annual++;
-        if(st.includes("Sick Leave")) sick++;
-        if(st.includes("Unpaid Leave")) unpaid++;
-        if(st.includes("Other")) other++;
-        if(r.totalHours) sum += r.totalHours;
-        if(r.date){
-          const d = new Date(r.date);
-          const dow = d.getDay();
-          const isHoliday = HOLIDAYS.some(h=>h.date===r.date);
-          const isLeave = LEAVES.some(l=>l.date===r.date && l.employee===r.employee);
-          if(dow!==0 && dow!==6 && !isHoliday && !isLeave){
-            workingDays.add(r.date);
-          }
-        }
-      });
-      const kpi = [
-        {id:"totalHours",label:"Total Hours",val:sum.toFixed(2)},
-        {id:"avgHours",label:"Avg Hours",val:(workingDays.size?(sum/workingDays.size):0).toFixed(2)},
-        {id:"daysCount",label:"Working Days Count",val:workingDays.size},
-        {id:"lateCount",label:"Late Count",val:late},
-        {id:"earlyCount",label:"Early Leaves",val:early},
-        {id:"absentCount",label:"Absent",val:abs},
-        {id:"annualLeave",label:"Annual Leave",val:annual},
-        {id:"sickLeave",label:"Sick Leave",val:sick},
-        {id:"unpaidLeave",label:"Unpaid Leave",val:unpaid},
-        {id:"otherLeave",label:"Other Leave",val:other}
-      ];
-      document.getElementById("kpiCards").innerHTML = kpi.map(k=>`
-        <div class="col-6 col-sm-4 col-md-3 col-lg-2 mb-3">
-          <div class="card shadow h-100" title="${k.label}">
-            <div class="card-body">
-              <div class="text-muted small">${k.label}</div>
-              <div class="fs-4 fw-bold" id="${k.id}">${k.val}</div>
-            </div>
-          </div>
-        </div>
-      `).join("");
-
-      // Charts
-      renderCharts(data);
-    }
-
-    function renderCharts(data){
-      if(barChartHandle)barChartHandle.destroy();
-      if(pieChartHandle)pieChartHandle.destroy();
-      if(lineChartHandle)lineChartHandle.destroy();
-
-      const byDate={}, byEmp={};
-      data.forEach(r=>{
-        if(r.date){
-          const d = new Date(r.date);
-          const dow = d.getDay();
-          const isHoliday = HOLIDAYS.some(h=>h.date===r.date);
-          const isLeave = LEAVES.some(l=>l.date===r.date && l.employee===r.employee);
-          if(dow!==0 && dow!==6 && !isHoliday && !isLeave){
-            byDate[r.date] = (byDate[r.date]||0) + (r.totalHours||0);
-          }
-        }
-        if(r.employee){
-          byEmp[r.employee] = (byEmp[r.employee]||0) + (r.totalHours||0);
-        }
-      });
-
-      barChartHandle = new Chart(barChart.getContext("2d"),{
-        type:"bar",
-        data:{ labels:Object.keys(byDate), datasets:[{label:"Hours", data:Object.values(byDate)}] },
-        options:{ scales:{ x:{ ticks:{ autoSkip:true }}}}
-      });
-      pieChartHandle = new Chart(pieChart.getContext("2d"),{
-        type:"pie",
-        data:{ labels:Object.keys(byEmp), datasets:[{ data:Object.values(byEmp)}] }
-      });
-      lineChartHandle = new Chart(lineChart.getContext("2d"),{
-        type:"line",
-        data:{ labels:Object.keys(byDate), datasets:[{ label:"Hours", data:Object.values(byDate) }]}
-      });
-    }
-
-    // ************ FILTERS ************
-    function getCriteria(){
-      return {
-        employees: $("#employeeFilter").val()||[],
-        start: startDate.value,
-        end: endDate.value,
-        q: (quickSearch.value||"").toLowerCase()
-      };
-    }
-    function applyFilters(){
-      const c = getCriteria();
-      const filtered = CANON.filter(r=>{
-        if (c.employees.length && !c.employees.includes(r.employee)) return false;
-        if (c.start && r.date < c.start) return false;
-        if (c.end && r.date > c.end) return false;
-        if (c.q && !`${r.employee} ${r.date}`.toLowerCase().includes(c.q)) return false;
-        return true;
-      });
-      renderTable(filtered);
-    }
-    function resetFilters(){
-      $("#employeeFilter").val(null).trigger("change");
-      startDate.value=""; endDate.value=""; quickSearch.value="";
-      applyFilters();
-    }
-
-    // ************ EMPLOYEES ************
-    function populateEmployeeFilter(){
-      const sel = document.getElementById("employeeFilter");
-      const leaveSel = document.getElementById("leaveEmployee");
-      sel.innerHTML = ""; leaveSel.innerHTML = "";
-      [...new Set(CANON.map(r=>r.employee).filter(Boolean))].sort().forEach(emp=>{
-        const o = document.createElement("option");
-        o.value = emp; o.textContent = emp; sel.appendChild(o);
-        const l = document.createElement("option");
-        l.value = emp; l.textContent = emp; leaveSel.appendChild(l);
-      });
-      $("#employeeFilter").select2({ placeholder:"Select employees...", allowClear:true, width:"100%" });
-    }
-
-    // ************ REPORT PDF ************
-    async function downloadFullReport(){
-      const el = document.getElementById("reportArea");
-      const canvas = await html2canvas(el,{ scale:2, backgroundColor:document.body.classList.contains("dark-mode")?"#181a1f":"#fff" });
-      const img = canvas.toDataURL("image/png");
-      const doc = { content:[{ image: img, width: 500 }] };
-      pdfMake.createPdf(doc).download("Attendance_Report.pdf");
-    }
-
-    // ************ CANON GENERATION ************
-    function mapAttendanceRow(obj){
-      const rawDate = getField(obj, "date","Date","Day");
-      const dateISO = normalizeDate(rawDate);
-      const employee = String(getField(obj, "employee","Employee Name")||"").trim();
-
-      const siRaw = getField(obj, "sign in","Sign In Time","in");
-      const soRaw = getField(obj, "sign out","Sign Out Time","out");
-
-      const siDT = dateISO ? parsePunchWithDate(dateISO, siRaw) : null;
-      const soDT = dateISO ? parsePunchWithDate(dateISO, soRaw) : null;
-
-      let total = Number(getField(obj,"total hours","Total Hours"));
-      if(!Number.isFinite(total) && siDT && soDT) total = (soDT - siDT) / 36e5;
-
-      const month = dateISO ? dateISO.slice(0,7) : (String(getField(obj,"month","Month")||"").trim());
-
-      return {
-        month, date: dateISO,
-        employee,
-        signIn: siRaw || "",
-        signOut: soRaw || "",
-        signInDT: siDT, signOutDT: soDT,
-        totalHours: Number.isFinite(total)? total : 0
-      };
-    }
-
-    function generateFullRows(data){
-      const emps = [...new Set(data.map(r=>r.employee).filter(Boolean))];
-      const dates = data.map(r=>r.date).filter(Boolean).sort();
-      if(!emps.length || !dates.length) return data;
-
-      const min = new Date(dates[0]);
-      const max = new Date(dates[dates.length-1]);
-      const all = [];
-
-      for(let d=new Date(min); d<=max; d.setDate(d.getDate()+1)){
-        const dayISO = toLocalISODate(d);
-        const dow = d.getDay();
-
-        emps.forEach(emp=>{
-          const match = data.find(r=>r.date===dayISO && r.employee===emp);
-          if (match) { all.push(match); return; }
-
-          // if not in raw data → build artificial row according to rules
-          if (HOLIDAYS.some(h=>h.date===dayISO)) {
-            all.push({ month: dayISO.slice(0,7), date: dayISO, employee: emp, totalHours:0, status:["Holiday"] });
-          } else {
-            const leave = LEAVES.find(l=>l.date===dayISO && l.employee===emp);
-            if (leave) {
-              all.push({ month: dayISO.slice(0,7), date: dayISO, employee: emp, totalHours:0, status:[mapLeaveType(leave.type)] });
-            } else if (dow===0 || dow===6) {
-              all.push({ month: dayISO.slice(0,7), date: dayISO, employee: emp, totalHours:0, status:["Weekend"] });
-            } else {
-              all.push({ month: dayISO.slice(0,7), date: dayISO, employee: emp, totalHours:0, status:["Absent"] });
-            }
-          }
-        });
-      }
-      return all;
-    }
-
-    // ************ LOAD ************
-    async function loadData(){
-      document.getElementById("loadingOverlay").style.display = "flex";
-      document.getElementById("apiStatus").textContent = "API: loading…";
-
-      try{
-        // Load settings first (for status calc)
-        await loadSettings();
-
-        // Parallel load core sheets
-        const [attendanceRows, holidaysRows, leavesRows] = await Promise.all([
-          apiGet("attendance"),
-          apiGet("holidays"),
-          apiGet("leaves")
-        ]);
-
-        // Holidays
-        HOLIDAYS = (holidaysRows||[]).map(r=>{
-          return {
-            date: normalizeDate(getField(r,"date","Date")),
-            name: getField(r,"Holiday Name","name","holiday") || ""
-          };
-        }).filter(h=>h.date);
-
-        // Leaves
-        LEAVES = (leavesRows||[]).map(r=>{
-          return {
-            date: normalizeDate(getField(r,"date","Date")),
-            employee: String(getField(r,"employee","Employee Name")||"").trim(),
-            type: mapLeaveType(getField(r,"type","Type")),
-            reason: getField(r,"reason","Reason") || ""
-          };
-        }).filter(l=>l.date && l.employee);
-
-        renderHolidayList();
-        renderLeaveList();
-
-        // Attendance base rows
-        RAW_ATTENDANCE = (attendanceRows||[]).map(mapAttendanceRow).filter(r=>r.employee && r.date);
-
-        // Expand to full canonical rows
-        CANON = generateFullRows(RAW_ATTENDANCE);
-
-        // UI bind
-        populateEmployeeFilter();
-        applyFilters();
-
-        document.getElementById("apiStatus").textContent = "API: connected ✅";
-      } catch(e){
-        console.error(e);
-        alert("Error: " + e.message);
-        document.getElementById("apiStatus").textContent = "API: error ❌";
-      } finally {
-        document.getElementById("loadingOverlay").style.display = "none";
+      const rows=data.map(r=>[r.month,r.date,r.employee,r.signIn,r.signOut,r.totalHours.toFixed(2)||"",badgeForStatus(computeStatus(r))]); 
+      if(!DT){ 
+        DT=$("#attendanceTable").DataTable({data:rows,columns:[{title:"Month"},{title:"Date"},{title:"Employee"},{title:"Sign In"},{title:"Sign Out"},{title:"Total Hours"},{title:"Status"}],dom:"Bfrtip",buttons:["csv","excel","pdf","print","colvis"],pageLength:10}); 
+      } else { 
+        DT.clear().rows.add(rows).draw(); 
       }
     }
 
-    // ************ INIT ************
+    async function loadData(){ document.getElementById("loadingOverlay").style.display="flex"; try{ const attendanceRows=await apiGet("attendance"); RAW_ATTENDANCE=(attendanceRows||[]).map(mapAttendanceRow).filter(r=>r.employee&&r.date); CANON=RAW_ATTENDANCE; renderTable(CANON); document.getElementById("apiStatus").textContent="API: connected ✅"; } catch(e){ console.error(e); document.getElementById("apiStatus").textContent="API: error ❌"; } finally{ document.getElementById("loadingOverlay").style.display="none"; } }
+
     loadData();
   </script>
 </body>
