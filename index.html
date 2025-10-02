@@ -2,193 +2,471 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Attendance Dashboard</title>
+  <title>Attendance & Leave Dashboard</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- CSS LIBS -->
+  <!-- CSS Libraries -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
   <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css"/>
   <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.dataTables.min.css"/>
   <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
 
   <style>
-    :root {
-      --bg: #fff; --fg: #222; --muted: #666;
-      --card: #ffffff; --card-border: #e9ecef;
+    body {
+      background: #f8f9fa;
+      color: #333;
     }
-    body.dark-mode {
-      --bg: #181a1f; --fg: #eee; --muted: #aaa;
-      --card: #1f232b; --card-border: #2a2f38;
+    h2 {
+      margin-bottom: 1rem;
     }
-    body { background: var(--bg); color: var(--fg); }
-    .card { background: var(--card); border-color: var(--card-border); transition: all 0.3s ease; }
-    .card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,0.15); }
-    .filter-bar { position: sticky; top: 0; z-index: 10; background: inherit; padding: 10px; }
-    .holiday-row { background-color: #ffeeba !important; }
-    .weekend-row { background-color: #f0f0f0 !important; }
+    .filter-row .form-control, .filter-row .select2-container {
+      min-width: 150px;
+    }
+    .metrics {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .metrics .card {
+      flex: 1 1 150px;
+      text-align: center;
+    }
+    .badge-status {
+      font-weight: 600;
+    }
+    .holiday-row {
+      background-color: #ffeeba !important;
+    }
+    .weekend-row {
+      background-color: #e9ecef !important;
+    }
+    .leave-row {
+      background-color: #d1ecf1 !important;
+    }
     #loadingOverlay {
-      display:none; position:fixed; top:0; left:0; right:0; bottom:0;
-      background:rgba(0,0,0,0.5); color:#fff; font-size:2rem;
-      display:flex; justify-content:center; align-items:center; z-index:2000;
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      color: white;
+      font-size: 2rem;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
     }
-    .badge-status { font-weight:600; }
   </style>
 </head>
 
 <body>
-  <!-- Loading overlay -->
-  <div id="loadingOverlay">⏳ Loading...</div>
+  <div id="loadingOverlay">Loading…</div>
 
-  <div class="container-fluid p-4" id="reportArea">
-    <!-- HEADER -->
-    <div class="d-flex justify-content-between align-items-center mb-3">
-      <h2>📊 Attendance Dashboard</h2>
-      <div class="d-flex gap-2 align-items-center">
-        <span class="text-muted small" id="apiStatus">API: —</span>
-        <button class="btn btn-outline-secondary" onclick="toggleDark()">🌙/☀️</button>
-        <button class="btn btn-success" onclick="downloadFullReport()">Download Report</button>
+  <div class="container my-4">
+    <h2>Attendance & Leave Dashboard</h2>
+
+    <!-- Filters -->
+    <div class="row filter-row mb-4">
+      <div class="col-md-3">
+        <label>Employee</label>
+        <select id="employeeFilter" multiple class="form-select"></select>
+      </div>
+      <div class="col-md-2">
+        <label>Start Date</label>
+        <input type="date" id="startDate" class="form-control" />
+      </div>
+      <div class="col-md-2">
+        <label>End Date</label>
+        <input type="date" id="endDate" class="form-control" />
+      </div>
+      <div class="col-md-3">
+        <label>Quick Search</label>
+        <input type="text" id="quickSearch" class="form-control" placeholder="Search..." />
+      </div>
+      <div class="col-md-2 d-flex align-items-end">
+        <button class="btn btn-primary me-2" onclick="applyFilters()">Apply</button>
+        <button class="btn btn-secondary" onclick="resetFilters()">Reset</button>
       </div>
     </div>
 
-    <!-- FILTERS -->
-    <div class="card shadow filter-bar mb-4">
-      <div class="card-body row g-3 align-items-end">
-        <div class="col-lg-3">
-          <label class="form-label">Employee</label>
-          <select id="employeeFilter" multiple></select>
-        </div>
-        <div class="col-lg-3">
-          <label class="form-label">Start Date</label>
-          <input type="date" id="startDate" class="form-control"/>
-        </div>
-        <div class="col-lg-3">
-          <label class="form-label">End Date</label>
-          <input type="date" id="endDate" class="form-control"/>
-        </div>
-        <div class="col-lg-3">
-          <label class="form-label">Quick Search</label>
-          <input type="text" id="quickSearch" class="form-control" placeholder="Search..."/>
-        </div>
-        <div class="col-12 text-end mt-3">
-          <button class="btn btn-primary" onclick="applyFilters()">Apply Filters</button>
-          <button class="btn btn-warning" onclick="resetFilters()">Reset</button>
-        </div>
-      </div>
+    <!-- Metrics -->
+    <div class="metrics" id="metrics">
+      <!-- will be inserted -->
     </div>
 
-    <!-- KPI CARDS -->
-    <div class="row mb-4 text-center" id="kpiCards"></div>
-
-    <!-- ATTENDANCE TABLE -->
-    <div class="card shadow mb-4">
-      <div class="card-body">
-        <table id="attendanceTable" class="display nowrap table table-striped" style="width:100%"></table>
-      </div>
+    <!-- Attendance Table -->
+    <div class="mb-4">
+      <table id="attendanceTable" class="display nowrap table table-striped" style="width:100%"></table>
     </div>
 
-    <!-- CHARTS -->
-    <div class="row">
-      <div class="col-lg-4"><div class="card shadow p-3"><h5>Hours per Day</h5><canvas id="barChart"></canvas></div></div>
-      <div class="col-lg-4"><div class="card shadow p-3"><h5>Hours by Employee</h5><canvas id="pieChart"></canvas></div></div>
-      <div class="col-lg-4"><div class="card shadow p-3"><h5>Trend</h5><canvas id="lineChart"></canvas></div></div>
+    <!-- Holidays Section -->
+    <h5>Holidays</h5>
+    <div class="input-group mb-3">
+      <input type="date" id="holidayDate" class="form-control">
+      <input type="text" id="holidayName" class="form-control" placeholder="Holiday Name">
+      <button class="btn btn-success" onclick="addHoliday()">Add Holiday</button>
+    </div>
+    <ul id="holidayList" class="list-group mb-4"></ul>
+
+    <!-- Leaves Section -->
+    <h5>Leaves</h5>
+    <div class="row mb-3 g-2">
+      <div class="col-md-2"><input type="date" id="leaveDate" class="form-control" /></div>
+      <div class="col-md-3">
+        <select id="leaveEmployee" class="form-select"></select>
+      </div>
+      <div class="col-md-3">
+        <select id="leaveType" class="form-select">
+          <option value="Annual Leave">Annual Leave</option>
+          <option value="Sick Leave">Sick Leave</option>
+          <option value="Unpaid Leave">Unpaid Leave</option>
+        </select>
+      </div>
+      <div class="col-md-3"><input type="text" id="leaveReason" class="form-control" placeholder="Reason"></div>
+      <div class="col-md-1"><button class="btn btn-success w-100" onclick="addLeave()">Add</button></div>
+    </div>
+    <ul id="leaveList" class="list-group mb-4"></ul>
+
+    <!-- Settings -->
+    <h5>Settings</h5>
+    <div class="row mb-5 g-3">
+      <div class="col-md-3">
+        <label>Late After</label>
+        <input type="time" id="lateThreshold" class="form-control">
+      </div>
+      <div class="col-md-3">
+        <label>Early Leave Before</label>
+        <input type="time" id="earlyThreshold" class="form-control">
+      </div>
+      <div class="col-md-3">
+        <label>Half-day Max Hrs</label>
+        <input type="number" step="0.1" id="halfDayHours" class="form-control">
+      </div>
+      <div class="col-md-3">
+        <label>Overtime Min Hrs</label>
+        <input type="number" step="0.1" id="overtimeHours" class="form-control">
+      </div>
     </div>
   </div>
 
-  <!-- JS LIBS -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- JS Libraries -->
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
   <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
   <script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
   <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
   <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.print.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
   <script>
-    // === CONFIG ===
-    const API_BASE = "https://script.google.com/macros/s/AKfycbwyjG0ZS22iohHqM8N78KELf8xWYM2ARBdcGN-vn448eewSbuCSYoyI4MC3adEDcSiVkA/exec";
+    const API_BASE = "YOUR_APPS_SCRIPT_URL_HERE";
 
-    // === STATE ===
-    let RAW_ATTENDANCE = [], CANON = [], SETTINGS = { late:"08:15", early:"16:30", half:4, over:9 };
-    let DT=null, barChartHandle, pieChartHandle, lineChartHandle;
+    let RAW = [], CANON = [], HOLIDAYS = [], LEAVES = [], SETTINGS = { late:"08:15", early:"16:30", half:4, over:9 };
+    let DT = null, barChart, pieChart, lineChart;
 
-    // === Header map for normalization ===
     const HEADER_MAP = {
-      month:["month"], date:["date","day"], employee:["employee","employee name","name"],
-      signIn:["sign in","signin","in"], signOut:["sign out","signout","out"],
-      totalHours:["total hours","hours"], status:["status"]
+      date:["date","day"], employee:["employee","name"], signIn:["sign in","in"], signOut:["sign out","out"], totalHours:["total hours","hours","hrs"]
     };
-    function getField(obj, field){
+    function getField(obj, field) {
       const keys = Object.keys(obj);
-      const lower = keys.reduce((acc,k)=>{acc[k.toLowerCase()]=k; return acc;}, {});
-      const aliases = HEADER_MAP[field]||[];
-      for(const alias of aliases){
-        const match = lower[alias.toLowerCase()];
-        if(match!==undefined) return obj[match];
+      const lower = keys.reduce((acc,k)=>{acc[k.toLowerCase()] = k; return acc;}, {});
+      const aliases = HEADER_MAP[field] || [];
+      for (const alias of aliases) {
+        const m = lower[alias.toLowerCase()];
+        if (m !== undefined) return obj[m];
       }
       return undefined;
     }
 
-    function toggleDark(){ document.body.classList.toggle("dark-mode"); }
-    function pad(n){ return String(n).padStart(2,"0"); }
-    function normalizeDate(str){ if(!str) return ""; const s=String(str).trim(); if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s; if(s.includes("/")){ const [dd,mm,yy]=s.split("/"); const yyyy=yy.length===2?(yy>70?"19"+yy:"20"+yy):yy; return `${yyyy}-${mm.padStart(2,"0")}-${dd.padStart(2,"0")}`;} return s; }
-    function parsePunchWithDate(dateISO,hhmm){ if(!dateISO||!hhmm) return null; const s=String(hhmm).trim(); if(!s||s=="-") return null; if(/^\d{1,2}:\d{2}$/.test(s)){ const t=s.length===4?"0"+s:s; const dt=new Date(`${dateISO}T${t}:00`); return isNaN(dt)?null:dt;} const dt=new Date(s); return isNaN(dt)?null:dt; }
-
-    async function apiGet(sheet){ const url=`${API_BASE}?sheet=${encodeURIComponent(sheet)}`; const res=await fetch(url); const json=await res.json(); if(!json.ok) throw new Error(json.error||"API error"); return json.data||[]; }
-
-    function mapAttendanceRow(obj){ 
-      const dateISO=normalizeDate(getField(obj,"date")); 
-      const employee=String(getField(obj,"employee")||"").trim(); 
-      const siRaw=getField(obj,"signIn"); 
-      const soRaw=getField(obj,"signOut"); 
-      const siDT=dateISO?parsePunchWithDate(dateISO,siRaw):null; 
-      const soDT=dateISO?parsePunchWithDate(dateISO,soRaw):null; 
-      let total=Number(getField(obj,"totalHours")); 
-      if(!Number.isFinite(total)&&siDT&&soDT) total=(soDT-siDT)/36e5; 
-      const month=dateISO?dateISO.slice(0,7):(String(getField(obj,"month")||"").trim()); 
-      return {month,date:dateISO,employee,signIn:siRaw||"",signOut:soRaw||"",signInDT:siDT,signOutDT:soDT,totalHours:Number.isFinite(total)?total:0}; 
+    function normalizeDate(s) {
+      if (!s) return "";
+      s = String(s).trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+      if (s.includes("/")) {
+        const parts = s.split("/");
+        if (parts.length === 3) {
+          let [a,b,c] = parts;
+          // try dd/mm/yyyy
+          if (c.length === 4) {
+            return `${c}-${b.padStart(2,"0")}-${a.padStart(2,"0")}`;
+          }
+        }
+      }
+      return s;
     }
 
-    function computeStatus(r){
-      if(!r.signInDT && !r.signOutDT) return "Absent";
-      if(r.signInDT && !r.signOutDT) return "Needs Correction";
-      const [lh,lm]=SETTINGS.late.split(":").map(Number);
-      const [eh,em]=SETTINGS.early.split(":").map(Number);
-      const inMin=r.signInDT?r.signInDT.getHours()*60+r.signInDT.getMinutes():null;
-      const outMin=r.signOutDT?r.signOutDT.getHours()*60+r.signOutDT.getMinutes():null;
-      const tags=[];
-      if(inMin && inMin>(lh*60+lm)) tags.push("Late");
-      if(outMin && outMin<(eh*60+em)) tags.push("Early Leave");
-      if(r.totalHours && r.totalHours<SETTINGS.half) tags.push("Half-day");
-      if(r.totalHours && r.totalHours>=SETTINGS.over) tags.push("Overtime");
-      return tags.length?tags.join(", "):"On Time";
+    function parseTime(dateISO, hhmm) {
+      if (!dateISO || !hhmm) return null;
+      const s = String(hhmm).trim();
+      if (/^\d{1,2}:\d{2}$/.test(s)) {
+        const t = s.length === 4 ? "0"+s : s;
+        const dt = new Date(`${dateISO}T${t}:00`);
+        return isNaN(dt) ? null : dt;
+      }
+      return null;
     }
 
-    function badgeForStatus(status){
-      let c="bg-secondary";
-      if(status.includes("Late")) c="bg-danger";
-      if(status.includes("Early Leave")) c="bg-warning text-dark";
-      if(status.includes("On Time")) c="bg-success";
-      if(status.includes("Absent")) c="bg-dark";
-      if(status.includes("Overtime")) c="bg-primary";
-      if(status.includes("Half-day")) c="bg-info text-dark";
+    async function apiGet(sheet) {
+      const res = await fetch(`${API_BASE}?sheet=${sheet}`);
+      const j = await res.json();
+      if (!j.ok) throw new Error(j.error);
+      return j.data || [];
+    }
+    async function apiPost(sheet, action, payload) {
+      const res = await fetch(API_BASE, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sheet, action, payload })
+      });
+      const j = await res.json();
+      if (!j.ok) throw new Error(j.error);
+      return j;
+    }
+
+    function mapRow(obj) {
+      const d = normalizeDate(getField(obj, "date"));
+      const emp = String(getField(obj, "employee")||"").trim();
+      const si = getField(obj, "signIn");
+      const so = getField(obj, "signOut");
+      const siDT = parseTime(d, si);
+      const soDT = parseTime(d, so);
+      let tot = Number(getField(obj, "totalHours"));
+      if (!Number.isFinite(tot) && siDT && soDT) tot = (soDT - siDT)/36e5;
+      return { date: d, month: d ? d.slice(0,7) : "", employee: emp, signIn: si || "", signOut: so || "", signInDT: siDT, signOutDT: soDT, totalHours: Number.isFinite(tot)?tot:0 };
+    }
+
+    function computeStatus(r) {
+      // Holiday
+      if (HOLIDAYS.some(h => h.date === r.date)) return "Holiday";
+      // Leave
+      if (LEAVES.some(l => l.date === r.date && l.employee === r.employee)) return getField(LEAVES.find(l => l.date === r.date && l.employee === r.employee), "type") || "Leave";
+      // Weekend
+      const d = new Date(r.date);
+      if (d.getDay() === 0 || d.getDay() === 6) return "Weekend";
+
+      if (!r.signInDT && !r.signOutDT) return "Absent";
+      if (r.signInDT && !r.signOutDT) return "Needs Correction";
+
+      const [lh,lm] = SETTINGS.late.split(":").map(n=>Number(n));
+      const [eh,em] = SETTINGS.early.split(":").map(n=>Number(n));
+      const inMin = r.signInDT.getHours()*60 + r.signInDT.getMinutes();
+      const outMin = r.signOutDT.getHours()*60 + r.signOutDT.getMinutes();
+
+      let tags = [];
+      if (inMin > lh*60 + lm) tags.push("Late");
+      if (outMin < eh*60 + em) tags.push("Early Leave");
+      if (r.totalHours < SETTINGS.half) tags.push("Half-day");
+      if (r.totalHours >= SETTINGS.over) tags.push("Overtime");
+
+      return tags.length ? tags.join(", ") : "On Time";
+    }
+
+    function badge(status) {
+      let c = "bg-secondary";
+      if (status.includes("Late")) c = "bg-danger";
+      else if (status.includes("Early Leave")) c = "bg-warning text-dark";
+      else if (status === "On Time") c = "bg-success";
+      else if (status === "Absent") c = "bg-dark";
+      else if (status.includes("Overtime")) c = "bg-primary";
+      else if (status === "Holiday") c = "bg-info text-dark";
+      else if (status === "Weekend") c = "bg-light text-dark";
+      else if (status === "Leave") c = "bg-info text-dark";
       return `<span class="badge badge-status ${c}">${status}</span>`;
     }
 
-    function renderTable(data){
-      const rows=data.map(r=>[r.month,r.date,r.employee,r.signIn,r.signOut,r.totalHours.toFixed(2)||"",badgeForStatus(computeStatus(r))]); 
-      if(!DT){ 
-        DT=$("#attendanceTable").DataTable({data:rows,columns:[{title:"Month"},{title:"Date"},{title:"Employee"},{title:"Sign In"},{title:"Sign Out"},{title:"Total Hours"},{title:"Status"}],dom:"Bfrtip",buttons:["csv","excel","pdf","print","colvis"],pageLength:10}); 
-      } else { 
-        DT.clear().rows.add(rows).draw(); 
+    function generateFullRows(data) {
+      const emps = [...new Set(data.map(r=>r.employee))];
+      const dates = data.map(r=>r.date).filter(d=>d);
+      if (!emps.length || !dates.length) return data;
+
+      const min = new Date(dates[0]);
+      const max = new Date(dates[dates.length-1]);
+      let full = [];
+      for (let d = new Date(min); d <= max; d.setDate(d.getDate()+1)) {
+        const dd = toLocalISODate(d);
+        emps.forEach(emp => {
+          const rec = data.find(r => r.date === dd && r.employee === emp);
+          if (rec) {
+            full.push(rec);
+          } else {
+            full.push({ date: dd, month: dd.slice(0,7), employee: emp, signIn:"", signOut:"", signInDT:null, signOutDT:null, totalHours:0 });
+          }
+        });
+      }
+      return full;
+    }
+
+    function toLocalISODate(d) {
+      return d instanceof Date ? `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}` : "";
+    }
+
+    function renderTable(data) {
+      const rows = data.map(r => {
+        const st = computeStatus(r);
+        return [
+          r.month,
+          r.date,
+          r.employee,
+          r.signIn,
+          r.signOut,
+          r.totalHours.toFixed(2),
+          badge(st)
+        ];
+      });
+      if (!DT) {
+        DT = $("#attendanceTable").DataTable({
+          data: rows,
+          columns: [
+            { title: "Month" },
+            { title: "Date" },
+            { title: "Employee" },
+            { title: "Sign In" },
+            { title: "Sign Out" },
+            { title: "Total Hours" },
+            { title: "Status" }
+          ],
+          dom: "Bfrtip",
+          buttons: ["csv","excel","pdf","print","colvis"],
+          pageLength: 10,
+          createdRow: (row, rowData) => {
+            const st = rowData[6];
+            if (st.includes("Holiday")) $(row).addClass("holiday-row");
+            else if (st.includes("Weekend")) $(row).addClass("weekend-row");
+            else if (st.includes("Leave")) $(row).addClass("leave-row");
+          }
+        });
+      } else {
+        DT.clear().rows.add(rows).draw();
+      }
+      updateMetrics(data);
+    }
+
+    function updateMetrics(data) {
+      let total = 0, count = 0;
+      let late=0, early=0, absent=0, overtime=0, holiday=0, weekend=0, leaveCnt=0;
+      data.forEach(r => {
+        total += r.totalHours;
+        count++;
+        const st = computeStatus(r);
+        if (st.includes("Late")) late++;
+        if (st.includes("Early Leave")) early++;
+        if (st === "Absent") absent++;
+        if (st.includes("Overtime")) overtime++;
+        if (st === "Holiday") holiday++;
+        if (st === "Weekend") weekend++;
+        if (st.includes("Leave")) leaveCnt++;
+      });
+      const avg = count ? (total / count).toFixed(2) : "0.00";
+
+      const html = `
+        <div class="card"><div class="card-body"><div>Total Hours</div><h4>${total.toFixed(2)}</h4></div></div>
+        <div class="card"><div class="card-body"><div>Avg Hours</div><h4>${avg}</h4></div></div>
+        <div class="card"><div class="card-body"><div>Late</div><h4>${late}</h4></div></div>
+        <div class="card"><div class="card-body"><div>Early Leave</div><h4>${early}</h4></div></div>
+        <div class="card"><div class="card-body"><div>Absent</div><h4>${absent}</h4></div></div>
+        <div class="card"><div class="card-body"><div>Overtime</div><h4>${overtime}</h4></div></div>
+        <div class="card"><div class="card-body"><div>Holiday</div><h4>${holiday}</h4></div></div>
+        <div class="card"><div class="card-body"><div>Weekends</div><h4>${weekend}</h4></div></div>
+        <div class="card"><div class="card-body"><div>Leaves</div><h4>${leaveCnt}</h4></div></div>
+      `;
+      document.getElementById("metrics").innerHTML = html;
+    }
+
+    async function loadData() {
+      document.getElementById("loadingOverlay").style.display = "flex";
+      try {
+        const [attRows, holRows, leaveRows] = await Promise.all([
+          apiGet("attendance"),
+          apiGet("holidays"),
+          apiGet("leaves")
+        ]);
+        RAW = attRows.map(mapRow).filter(r => r.employee && r.date);
+        HOLIDAYS = holRows.map(r => ({ date: normalizeDate(r.Date), name: r.Name }));
+        LEAVES = leaveRows.map(r => ({ date: normalizeDate(r.Date), employee: r.Employee, type: r.Type }));
+        const full = generateFullRows(RAW);
+        CANON = full;
+        renderTable(CANON);
+        document.getElementById("apiStatus").textContent = "API: connected ✅";
+      } catch (e) {
+        console.error(e);
+        document.getElementById("apiStatus").textContent = "API: error ❌";
+      } finally {
+        document.getElementById("loadingOverlay").style.display = "none";
       }
     }
 
-    async function loadData(){ document.getElementById("loadingOverlay").style.display="flex"; try{ const attendanceRows=await apiGet("attendance"); RAW_ATTENDANCE=(attendanceRows||[]).map(mapAttendanceRow).filter(r=>r.employee&&r.date); CANON=RAW_ATTENDANCE; renderTable(CANON); document.getElementById("apiStatus").textContent="API: connected ✅"; } catch(e){ console.error(e); document.getElementById("apiStatus").textContent="API: error ❌"; } finally{ document.getElementById("loadingOverlay").style.display="none"; } }
-
     loadData();
+
+    function applyFilters() {
+      const empSel = $("#employeeFilter").val() || [];
+      const sd = document.getElementById("startDate").value;
+      const ed = document.getElementById("endDate").value;
+      const q = document.getElementById("quickSearch").value.toLowerCase();
+      const filtered = CANON.filter(r => {
+        if (empSel.length && !empSel.includes(r.employee)) return false;
+        if (sd && r.date < sd) return false;
+        if (ed && r.date > ed) return false;
+        if (q) {
+          const s = `${r.employee} ${r.date}`.toLowerCase();
+          if (!s.includes(q)) return false;
+        }
+        return true;
+      });
+      renderTable(filtered);
+    }
+    function resetFilters() {
+      $("#employeeFilter").val(null).trigger("change");
+      document.getElementById("startDate").value = "";
+      document.getElementById("endDate").value = "";
+      document.getElementById("quickSearch").value = "";
+      renderTable(CANON);
+    }
+
+    function downloadFullReport() {
+      html2canvas(document.getElementById("reportArea"), { scale: 2 }).then(canvas => {
+        const img = canvas.toDataURL("image/png");
+        const doc = { content: [ { image: img, width: 500 } ] };
+        pdfMake.createPdf(doc).download("Attendance_Report.pdf");
+      });
+    }
+
+    // Add holiday
+    async function addHoliday() {
+      const d = document.getElementById("holidayDate").value;
+      const n = document.getElementById("holidayName").value;
+      if (!d) return alert("Select date");
+      await apiPost("holidays", "add", { Date: d, Name: n || "" });
+      loadData();
+    }
+    // Add leave
+    async function addLeave() {
+      const d = document.getElementById("leaveDate").value;
+      const emp = document.getElementById("leaveEmployee").value;
+      const t = document.getElementById("leaveType").value;
+      const r = document.getElementById("leaveReason").value;
+      if (!d || !emp) return alert("Pick date & employee");
+      await apiPost("leaves", "add", { Date: d, Employee: emp, Type: t });
+      loadData();
+    }
+
+    // Initialize select2 on employee filter (fill after load)
+    $(document).ready(() => {
+      $("#employeeFilter").select2({ placeholder: "All Employees", width: "100%" });
+      // after loadData, set options
+      loadData().then(() => {
+        const sel = document.getElementById("employeeFilter");
+        const employees = [...new Set(CANON.map(r => r.employee))];
+        sel.innerHTML = "";
+        employees.sort().forEach(emp => {
+          const opt = document.createElement("option");
+          opt.value = emp; opt.text = emp;
+          sel.appendChild(opt);
+        });
+        $("#employeeFilter").trigger("change");
+      });
+    });
   </script>
 </body>
 </html>
