@@ -151,64 +151,68 @@
 
     function toggleDark(){ document.body.classList.toggle("dark-mode"); }
 
-    // Utility helpers
-    function normalizeHeaders(r){ const o={}; for(let k in r) o[k.trim().toLowerCase()]=r[k]; return o;}
-    function normalizeDate(d){ if(!d)return""; const s=String(d).trim(); if(s.includes("/")){const[dd,mm,yy]=s.split("/");return`${yy}-${mm.padStart(2,"0")}-${dd.padStart(2,"0")}`} if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s; return ""; }
-    function parsePunchWithDate(dateISO,val){ if(!val) return null; const s=String(val).trim(); if(!s||s=="-") return null; if(/^\d{1,2}:\d{2}(:\d{2})?$/.test(s)){ const t=s.length===5?s+":00":s; const dt=new Date(`${dateISO}T${t}`); return isNaN(dt)?null:dt;} const dt=new Date(s); return isNaN(dt)?null:dt; }
+    // === Load Settings from API ===
+    async function loadSettings(){
+      const res=await fetch(API_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sheet:"settings",action:"get"})});
+      const json=await res.json();
+      if(json.ok){
+        lateThreshold.value=json.data.late;
+        earlyThreshold.value=json.data.early;
+        halfDayHours.value=json.data.half;
+        overtimeHours.value=json.data.over;
+        localStorage.setItem("settings",JSON.stringify(json.data));
+      }
+    }
+    async function saveSettings(){
+      const payload={late:lateThreshold.value,early:earlyThreshold.value,half:halfDayHours.value,over:overtimeHours.value};
+      await fetch(API_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sheet:"settings",action:"update",payload})});
+      localStorage.setItem("settings",JSON.stringify(payload));
+      alert("Settings saved!");
+    }
 
-    // === HOLIDAYS ===
+    // === Holidays ===
     async function renderHolidayList(){
       const res=await fetch(`${API_URL}?sheet=holidays`);
       const json=await res.json();
       if(!json.ok) return;
       customHolidays=json.data.map(h=>({date:h.Date,name:h.Name}));
-      const list=document.getElementById("holidayList");
-      list.innerHTML="";
+      const list=document.getElementById("holidayList"); list.innerHTML="";
       customHolidays.forEach(h=>{
         const li=document.createElement("li");
         li.className="list-group-item d-flex justify-content-between align-items-center";
         li.innerHTML=`<span>${h.date}${h.name?" - "+h.name:""}</span>
-        <div><button class="btn btn-sm btn-danger" onclick="removeHoliday('${h.date}')">Remove</button></div>`;
+          <div><button class="btn btn-sm btn-danger" onclick="removeHoliday('${h.date}')">Remove</button></div>`;
         list.appendChild(li);
       });
     }
     async function addHoliday(){
-      const d=document.getElementById("holidayDate").value;
-      const n=document.getElementById("holidayName").value;
+      const d=holidayDate.value, n=holidayName.value;
       if(!d) return alert("Pick a date");
       await fetch(API_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sheet:"holidays",action:"add",payload:{Date:d,Name:n}})});
       renderHolidayList(); applyFilters();
     }
     async function removeHoliday(date){
-      try {
-        const res=await fetch(API_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sheet:"holidays",action:"remove",payload:{Date:date}})});
-        const json=await res.json();
-        if(!json.ok) throw new Error(json.error||"API error");
-        renderHolidayList(); applyFilters();
-      } catch(err){ alert("Failed to remove holiday: "+err.message); }
+      await fetch(API_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sheet:"holidays",action:"remove",payload:{Date:date}})});
+      renderHolidayList(); applyFilters();
     }
 
-    // === LEAVES ===
+    // === Leaves ===
     async function renderLeaveList(){
       const res=await fetch(`${API_URL}?sheet=leaves`);
       const json=await res.json();
       if(!json.ok) return;
       leaves=json.data.map(l=>({date:l.Date,employee:l.Employee,type:l.Type,reason:l.Reason}));
-      const list=document.getElementById("leaveList");
-      list.innerHTML="";
+      const list=document.getElementById("leaveList"); list.innerHTML="";
       leaves.forEach(l=>{
         const li=document.createElement("li");
         li.className="list-group-item d-flex justify-content-between align-items-center";
         li.innerHTML=`<span>${l.date} - ${l.employee} (${l.type})${l.reason?" - "+l.reason:""}</span>
-        <div><button class="btn btn-sm btn-danger" onclick="removeLeave('${l.date}','${l.employee}')">Remove</button></div>`;
+          <div><button class="btn btn-sm btn-danger" onclick="removeLeave('${l.date}','${l.employee}')">Remove</button></div>`;
         list.appendChild(li);
       });
     }
     async function addLeave(){
-      const d=document.getElementById("leaveDate").value;
-      const emp=document.getElementById("leaveEmployee").value;
-      const t=document.getElementById("leaveType").value;
-      const r=document.getElementById("leaveReason").value;
+      const d=leaveDate.value, emp=leaveEmployee.value, t=leaveType.value, r=leaveReason.value;
       if(!d||!emp) return alert("Date and employee required");
       await fetch(API_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sheet:"leaves",action:"add",payload:{Date:d,Employee:emp,Type:t,Reason:r}})});
       renderLeaveList(); applyFilters();
@@ -218,58 +222,32 @@
       renderLeaveList(); applyFilters();
     }
 
-    // === SETTINGS ===
-    async function loadSettings(){
-      const res=await fetch(API_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sheet:"settings",action:"get"})});
-      const json=await res.json();
-      if(json.ok){
-        document.getElementById("lateThreshold").value=json.data.late;
-        document.getElementById("earlyThreshold").value=json.data.early;
-        document.getElementById("halfDayHours").value=json.data.half;
-        document.getElementById("overtimeHours").value=json.data.over;
-        localStorage.setItem("settings",JSON.stringify(json.data));
-      }
-    }
-    async function saveSettings(){
-      const payload={late:lateThreshold.value,early:earlyThreshold.value,half:halfDayHours.value,over:overtimeHours.value};
-      const res=await fetch(API_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sheet:"settings",action:"update",payload})});
-      const json=await res.json();
-      if(!json.ok) alert(json.error); else alert("Settings saved");
-      localStorage.setItem("settings",JSON.stringify(payload));
-    }
-
-    // === ATTENDANCE ===
+    // === Attendance ===
     async function loadData(){
       document.getElementById("loadingOverlay").style.display="flex";
       try{
         const res=await fetch(`${API_URL}?sheet=attendance`);
         const json=await res.json();
         if(!json.ok) throw new Error(json.error||"API Error");
-        const base=json.data.map(r=>mapRow(normalizeHeaders(r))).filter(r=>r.employee&&r.date);
+        const base=json.data.map(r=>mapRow(r)).filter(r=>r.employee&&r.date);
         CANON=generateFullRows(base);
-        populateEmployeeFilter();
-        applyFilters();
+        populateEmployeeFilter(); applyFilters();
       }catch(e){ alert("Error: "+e.message);}
       finally{ document.getElementById("loadingOverlay").style.display="none";}
     }
 
     function mapRow(r){
-      const dateISO=normalizeDate(r["date"]||r["day"]||"");
-      const siRaw=r["sign in"]||r["in"];
-      const soRaw=r["sign out"]||r["out"];
-      const siDT=dateISO?parsePunchWithDate(dateISO,siRaw):null;
-      const soDT=dateISO?parsePunchWithDate(dateISO,soRaw):null;
+      const dateISO=r.Date, siRaw=r["Sign In"], soRaw=r["Sign Out"];
+      const siDT=dateISO?new Date(`${dateISO}T${siRaw}`):null;
+      const soDT=dateISO?new Date(`${dateISO}T${soRaw}`):null;
       const total=siDT&&soDT?(soDT-siDT)/36e5:0;
-      return{month:dateISO?dateISO.slice(0,7):(r["month"]||""),date:dateISO,employee:r["employee"]||r["employee name"]||"",signIn:siRaw||"",signOut:soRaw||"",signInDT:siDT,signOutDT:soDT,totalHours:total};
+      return{month:dateISO.slice(0,7),date:dateISO,employee:r.Employee,signIn:siRaw,signOut:soRaw,signInDT:siDT,signOutDT:soDT,totalHours:total};
     }
 
-    // TODO: keep your existing computeStatus, renderTable, renderCharts, generateFullRows, filters, etc.
+    // TODO: keep your original computeStatus, renderTable, renderCharts, filters, etc.
 
-    // === INIT ===
-    loadSettings();
-    renderHolidayList();
-    renderLeaveList();
-    loadData();
+    // === Init ===
+    loadSettings(); renderHolidayList(); renderLeaveList(); loadData();
   </script>
 </body>
 </html>
