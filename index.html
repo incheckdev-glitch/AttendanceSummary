@@ -10,7 +10,6 @@
   <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css"/>
   <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.dataTables.min.css"/>
   <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
-  <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet"/>
 
   <!-- ======================= PAGE STYLES ======================= -->
   <style>
@@ -35,10 +34,9 @@
     .holiday-row { background-color: #ffeeba !important; }
     .weekend-row { background-color: #f0f0f0 !important; }
     #loadingOverlay {
-      display:none;
-      position:fixed; top:0; left:0; right:0; bottom:0;
+      display:none; position:fixed; top:0; left:0; right:0; bottom:0;
       background:rgba(0,0,0,0.5); color:#fff; font-size:2rem;
-      justify-content:center; align-items:center; z-index:2000;
+      display:flex; justify-content:center; align-items:center; z-index:2000;
     }
     .badge-status { font-weight:600; }
     .select2-container--default .select2-selection--multiple {
@@ -106,9 +104,6 @@
       <div class="col-lg-4"><div class="card shadow p-3"><h5>Hours by Employee</h5><canvas id="pieChart"></canvas></div></div>
       <div class="col-lg-4"><div class="card shadow p-3"><h5>Trend</h5><canvas id="lineChart"></canvas></div></div>
     </div>
-
-    <!-- SETTINGS -->
-    <!-- ... (unchanged, keeping your settings, holidays, leaves manager code) ... -->
   </div>
 
   <!-- ======================= JS LIBS ======================= -->
@@ -125,75 +120,138 @@
 
   <!-- ======================= APP SCRIPT ======================= -->
   <script>
-    // ... all your existing JS ...
+    const API_BASE = "https://script.google.com/macros/s/AKfycbwyjG0ZS22iohHqM8N78KELf8xWYM2ARBdcGN-vn448eewSbuCSYoyI4MC3adEDcSiVkA/exec";
 
-    // ✅ Chart.js FIX
-    function renderCharts(data){
-      if(barChartHandle)barChartHandle.destroy();
-      if(pieChartHandle)pieChartHandle.destroy();
-      if(lineChartHandle)lineChartHandle.destroy();
+    let RAW_ATTENDANCE = [];
+    let CANON = [];
+    let HOLIDAYS = [];
+    let LEAVES = [];
+    let SETTINGS = { late:"08:15", early:"16:30", half:4, over:9 };
+    let DT = null;
+    let barChartHandle, pieChartHandle, lineChartHandle;
 
-      const byDate={}, byEmp={};
-      data.forEach(r=>{
-        if(r.date){
-          const d = new Date(r.date);
-          const dow = d.getDay();
-          const isHoliday = HOLIDAYS.some(h=>h.date===r.date);
-          const isLeave = LEAVES.some(l=>l.date===r.date && l.employee===r.employee);
-          if(dow!==0 && dow!==6 && !isHoliday && !isLeave){
-            byDate[r.date] = (byDate[r.date]||0) + (r.totalHours||0);
-          }
-        }
-        if(r.employee){
-          byEmp[r.employee] = (byEmp[r.employee]||0) + (r.totalHours||0);
-        }
-      });
-
-      barChartHandle = new Chart(document.getElementById("barChart").getContext("2d"),{
-        type:"bar",
-        data:{ labels:Object.keys(byDate), datasets:[{label:"Hours", data:Object.values(byDate)}] },
-        options:{ scales:{ x:{ ticks:{ autoSkip:true }}}}
-      });
-      pieChartHandle = new Chart(document.getElementById("pieChart").getContext("2d"),{
-        type:"pie",
-        data:{ labels:Object.keys(byEmp), datasets:[{ data:Object.values(byEmp)}] }
-      });
-      lineChartHandle = new Chart(document.getElementById("lineChart").getContext("2d"),{
-        type:"line",
-        data:{ labels:Object.keys(byDate), datasets:[{ label:"Hours", data:Object.values(byDate) }]}
-      });
+    function toggleDark(){ document.body.classList.toggle("dark-mode"); }
+    function pad(n){ return String(n).padStart(2,"0"); }
+    function toLocalISODate(d){ return d instanceof Date ? `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}` : ""; }
+    function normalizeDate(str){
+      if(!str) return "";
+      const s = String(str).trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+      if (s.includes("/")) { 
+        const [dd,mm,yy] = s.split("/");
+        const yyyy = yy.length===2 ? (yy > 70 ? "19"+yy : "20"+yy) : yy;
+        return `${yyyy}-${mm.padStart(2,"0")}-${dd.padStart(2,"0")}`;
+      }
+      return s;
+    }
+    function parsePunchWithDate(dateISO, hhmm){
+      if(!dateISO || !hhmm) return null;
+      const s = String(hhmm).trim();
+      if(!s || s === "-") return null;
+      if (/^\d{1,2}:\d{2}$/.test(s)) {
+        const t = s.length===4 ? "0"+s : s;
+        const dt = new Date(`${dateISO}T${t}:00`);
+        return isNaN(dt) ? null : dt;
+      }
+      const dt = new Date(s);
+      return isNaN(dt) ? null : dt;
+    }
+    function getField(obj, ...names){
+      const keys = Object.keys(obj);
+      const lower = keys.reduce((acc,k)=>{acc[k.toLowerCase()] = k; return acc;}, {});
+      for (const n of names){
+        const m = lower[String(n).toLowerCase()];
+        if (m !== undefined) return obj[m];
+      }
+      return undefined;
     }
 
-    // ✅ Select2 FIX
-    function populateEmployeeFilter(){
-      const sel = document.getElementById("employeeFilter");
-      const leaveSel = document.getElementById("leaveEmployee");
-      sel.innerHTML = ""; leaveSel.innerHTML = "";
-      [...new Set(CANON.map(r=>r.employee).filter(Boolean))].sort().forEach(emp=>{
-        const o = document.createElement("option");
-        o.value = emp; o.textContent = emp; sel.appendChild(o);
-        const l = document.createElement("option");
-        l.value = emp; l.textContent = emp; leaveSel.appendChild(l);
-      });
-      $("#employeeFilter").select2({
-        theme:"bootstrap-5",
-        placeholder:"Select employees...",
-        allowClear:true,
-        width:"100%"
-      });
+    // ✅ FIXED MAP FUNCTION
+    function mapAttendanceRow(obj){
+      const rawDate = getField(obj, "date");
+      const dateISO = normalizeDate(rawDate);
+      const employee = String(getField(obj, "employee") || "").trim();
+      const siRaw = getField(obj, "sign in");
+      const soRaw = getField(obj, "sign out");
+      const siDT = dateISO ? parsePunchWithDate(dateISO, siRaw) : null;
+      const soDT = dateISO ? parsePunchWithDate(dateISO, soRaw) : null;
+
+      let total = Number(getField(obj, "total hours"));
+      if (!Number.isFinite(total) && siDT && soDT) {
+        total = (soDT - siDT) / 36e5;
+      }
+
+      const month = String(getField(obj, "month") || "").trim();
+
+      return {
+        month,
+        date: dateISO,
+        employee,
+        signIn: siRaw || "",
+        signOut: soRaw || "",
+        signInDT: siDT,
+        signOutDT: soDT,
+        totalHours: Number.isFinite(total) ? total : 0
+      };
     }
 
-    // ✅ PDF FIX
-    async function downloadFullReport(){
-      const el = document.getElementById("reportArea");
-      const canvas = await html2canvas(el,{ 
-        scale:2, 
-        backgroundColor:document.body.classList.contains("dark-mode")?"#181a1f":"#fff" 
-      });
-      const img = canvas.toDataURL("image/png");
-      const doc = { content:[{ image: img, width: 520 }] };
-      pdfMake.createPdf(doc).download("Attendance_Report.pdf");
+    async function apiGet(sheet){
+      const url = `${API_BASE}?sheet=${encodeURIComponent(sheet)}`;
+      const res = await fetch(url);
+      const json = await res.json();
+      if(!json.ok) throw new Error(json.error || "API error");
+      return json.data || [];
     }
+
+    async function loadData(){
+      document.getElementById("loadingOverlay").style.display = "flex";
+      try{
+        const [attendanceRows] = await Promise.all([
+          apiGet("attendance")
+        ]);
+        RAW_ATTENDANCE = (attendanceRows||[]).map(mapAttendanceRow).filter(r=>r.employee && r.date);
+        CANON = RAW_ATTENDANCE;
+        applyFilters();
+        document.getElementById("apiStatus").textContent = "API: connected ✅";
+      } catch(e){
+        alert("Error: " + e.message);
+        document.getElementById("apiStatus").textContent = "API: error ❌";
+      } finally {
+        document.getElementById("loadingOverlay").style.display = "none";
+      }
+    }
+
+    function renderTable(data){
+      const rows = data.map(r=>[
+        r.month || "",
+        r.date || "",
+        r.employee || "",
+        r.signIn || "",
+        r.signOut || "",
+        Number.isFinite(r.totalHours) ? r.totalHours.toFixed(2) : "",
+      ]);
+      if(!DT){
+        DT = $("#attendanceTable").DataTable({
+          data: rows,
+          columns: [
+            {title:"Month"},
+            {title:"Date"},
+            {title:"Employee"},
+            {title:"Sign In"},
+            {title:"Sign Out"},
+            {title:"Total Hours"}
+          ]
+        });
+      } else {
+        DT.clear().rows.add(rows).draw();
+      }
+    }
+
+    function applyFilters(){
+      renderTable(CANON);
+    }
+
+    loadData();
   </script>
 </body>
 </html>
