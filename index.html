@@ -34,7 +34,7 @@
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h2>📊 Attendance Dashboard</h2>
       <div>
-        <button class="btn btn-outline-secondary me-2" onclick="toggleDark()" aria-label="Toggle dark mode">🌙/☀️</button>
+        <button class="btn btn-outline-secondary me-2" onclick="toggleDark()">🌙/☀️</button>
         <button class="btn btn-success" onclick="downloadFullReport()">Download Report</button>
       </div>
     </div>
@@ -44,15 +44,15 @@
       <div class="card-body row g-3 align-items-end">
         <div class="col-lg-3">
           <label class="form-label">Employee</label>
-          <select id="employeeFilter" multiple aria-label="Employee filter"></select>
+          <select id="employeeFilter" multiple></select>
         </div>
         <div class="col-lg-3">
           <label class="form-label">Start Date</label>
-          <input type="date" id="startDate" class="form-control" />
+          <input type="date" id="startDate" class="form-control"/>
         </div>
         <div class="col-lg-3">
           <label class="form-label">End Date</label>
-          <input type="date" id="endDate" class="form-control" />
+          <input type="date" id="endDate" class="form-control"/>
         </div>
         <div class="col-lg-3">
           <label class="form-label">Quick Search</label>
@@ -134,7 +134,6 @@
 
   <!-- JS LIBS -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
   <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
   <script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
@@ -146,12 +145,13 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
   <script>
-    const API_URL = "https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec";
+    const API_URL = "https://script.google.com/macros/s/AKfycbzFSqMmrNggEEJ7fuHlCEaTHUO7RW79i3vqf3Zy1jxQI1Hkj5ZTMzxL2D3w9fWaJsg1Iw/exec";
     let CANON = [], DT = null;
     let customHolidays = [], leaves = [];
 
     function toggleDark(){ document.body.classList.toggle("dark-mode"); }
 
+    // Utility helpers
     function normalizeHeaders(r){ const o={}; for(let k in r) o[k.trim().toLowerCase()]=r[k]; return o;}
     function normalizeDate(d){ if(!d)return""; const s=String(d).trim(); if(s.includes("/")){const[dd,mm,yy]=s.split("/");return`${yy}-${mm.padStart(2,"0")}-${dd.padStart(2,"0")}`} if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s; return ""; }
     function parsePunchWithDate(dateISO,val){ if(!val) return null; const s=String(val).trim(); if(!s||s=="-") return null; if(/^\d{1,2}:\d{2}(:\d{2})?$/.test(s)){ const t=s.length===5?s+":00":s; const dt=new Date(`${dateISO}T${t}`); return isNaN(dt)?null:dt;} const dt=new Date(s); return isNaN(dt)?null:dt; }
@@ -180,8 +180,12 @@
       renderHolidayList(); applyFilters();
     }
     async function removeHoliday(date){
-      await fetch(API_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sheet:"holidays",action:"remove",payload:{Date:date}})});
-      renderHolidayList(); applyFilters();
+      try {
+        const res=await fetch(API_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sheet:"holidays",action:"remove",payload:{Date:date}})});
+        const json=await res.json();
+        if(!json.ok) throw new Error(json.error||"API error");
+        renderHolidayList(); applyFilters();
+      } catch(err){ alert("Failed to remove holiday: "+err.message); }
     }
 
     // === LEAVES ===
@@ -259,7 +263,7 @@
       return{month:dateISO?dateISO.slice(0,7):(r["month"]||""),date:dateISO,employee:r["employee"]||r["employee name"]||"",signIn:siRaw||"",signOut:soRaw||"",signInDT:siDT,signOutDT:soDT,totalHours:total};
     }
 
-    // (Keep your existing functions: computeStatus, renderTable, renderCharts, generateFullRows, filters, etc.)
+    // TODO: keep your existing computeStatus, renderTable, renderCharts, generateFullRows, filters, etc.
 
     // === INIT ===
     loadSettings();
