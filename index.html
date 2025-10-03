@@ -105,7 +105,7 @@
       <ul id="leaveList" class="list-group"></ul>
     </div></div>
 
-    <!-- Holiday Manager (moved to bottom) -->
+    <!-- Holiday Manager -->
     <div class="card"><div class="card-body">
       <h5><i class="fas fa-calendar-day"></i> Holiday Manager</h5>
       <div class="row g-3 mb-3">
@@ -115,7 +115,6 @@
       </div>
       <ul id="holidayList" class="list-group"></ul>
     </div></div>
-
   </div>
 
   <!-- JS LIBS -->
@@ -127,18 +126,18 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <script>
-  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzpTXfKm6S0b-syTyAQCs5VvvBzV0Za2zkNafTquI6PK2_oNXPjY-x38vwQ09Dt-Vur0A/exec";
-
+   const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzpTXfKm6S0b-syTyAQCs5VvvBzV0Za2zkNafTquI6PK2_oNXPjY-x38vwQ09Dt-Vur0A/exec";
 
     let attendanceData = [];
     let holidaysData = [];
     let leavesData = [];
 
-    // Helper to fetch JSON safely
+    // Wrapper for fetch JSON
     async function fetchJSON(url, options={}) {
       const res = await fetch(url, options);
       const text = await res.text();
-      return JSON.parse(text);
+      try { return JSON.parse(text); }
+      catch(e) { console.error("Invalid JSON", text); return {}; }
     }
 
     // Toast helper
@@ -199,7 +198,8 @@
               data:"Status",
               render:function(data){
                 if(!data) return "";
-                let cls="", text=data;
+                let cls="";
+                let text=data;
                 switch(data.toLowerCase()){
                   case "present": cls="badge bg-success"; break;
                   case "late": cls="badge bg-warning text-dark"; break;
