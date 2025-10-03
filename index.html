@@ -12,7 +12,11 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
   
   <style>
-    :root { --primary-color:#4e73df; --success-color:#1cc88a; --danger-color:#e74a3b; --dark-bg:#1a1d23; --dark-card:#242831; --dark-text:#e4e6eb; }
+    :root {
+      --primary-color:#4e73df; --success-color:#1cc88a;
+      --danger-color:#e74a3b; --dark-bg:#1a1d23;
+      --dark-card:#242831; --dark-text:#e4e6eb;
+    }
     body { background:linear-gradient(135deg,#667eea,#764ba2); min-height:100vh; }
     body.dark-mode { background:var(--dark-bg); color:var(--dark-text); }
     .main-container { background:rgba(255,255,255,0.95); border-radius:20px; padding:30px; margin:20px auto; max-width:1400px; }
@@ -69,7 +73,7 @@
     </div></div>
 
     <!-- Leave Manager -->
-    <div class="card"><div class="card-body">
+    <div class="card mb-4"><div class="card-body">
       <h5><i class="fas fa-umbrella-beach"></i> Leave Manager</h5>
       <div class="row g-3 mb-3">
         <div class="col-md-3"><input type="date" id="leaveDate" class="form-control"/></div>
@@ -86,6 +90,28 @@
       </div>
       <ul id="leaveList" class="list-group"></ul>
     </div></div>
+
+    <!-- Balances -->
+    <div class="card mb-4"><div class="card-body">
+      <h5><i class="fas fa-balance-scale"></i> Balances</h5>
+      <table id="balancesTable" class="table table-striped">
+        <thead><tr><th>Employee</th><th>AL</th><th>SL</th><th>UL</th><th>Other</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div></div>
+
+    <!-- Settings -->
+    <div class="card"><div class="card-body">
+      <h5><i class="fas fa-cogs"></i> Settings</h5>
+      <div class="row g-3 mb-3">
+        <div class="col-md-3"><label>Late After</label><input type="time" id="setLate" class="form-control"/></div>
+        <div class="col-md-3"><label>Early Leave Before</label><input type="time" id="setEarly" class="form-control"/></div>
+        <div class="col-md-3"><label>Half-day Max Hours</label><input type="number" id="setHalf" class="form-control"/></div>
+        <div class="col-md-3"><label>Overtime Min Hours</label><input type="number" id="setOvertime" class="form-control"/></div>
+      </div>
+      <button class="btn btn-primary" onclick="saveSettings()"><i class="fas fa-save"></i> Save Settings</button>
+    </div></div>
+
   </div>
 
   <!-- JS LIBS -->
@@ -97,7 +123,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <script>
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxfoEkn2yLSz8o9XGuTJCvPbqeSBDQLBmHreNTjuZ4DUNb-L0ALf8C1KcYNaDjULHhZQQ/exec"; // <-- replace with your Apps Script Web App URL
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzpTXfKm6S0b-syTyAQCs5VvvBzV0Za2zkNafTquI6PK2_oNXPjY-x38vwQ09Dt-Vur0A/exec"; // replace with your Apps Script Web App URL
 
     // Toast helper
     function showToast(msg, type="info") {
@@ -116,7 +142,7 @@
       document.getElementById("themeIcon").classList.toggle("fa-moon");
     }
 
-    // Sync server
+    // Sync
     function syncWithServer() {
       document.getElementById("loadingOverlay").style.display="flex";
       fetch(SCRIPT_URL + "?action=updateSummary")
@@ -140,12 +166,12 @@
             $('#attendanceTable').DataTable({
               data:data,
               columns:[
-                {title:"Month", data:"Month"},
-                {title:"Date", data:"Date"},
                 {title:"Name", data:"Name"},
+                {title:"Date", data:"Date"},
                 {title:"SignIn", data:"SignIn"},
                 {title:"SignOut", data:"SignOut"},
-                {title:"Hours", data:"Hours"}
+                {title:"Hours", data:"Hours"},
+                {title:"Status", data:"Status"}
               ],
               dom:'Bfrtip', buttons:['copy','csv','excel','print']
             });
@@ -181,11 +207,11 @@
     function addHoliday(){
       const date=document.getElementById("holidayDate").value;
       const name=document.getElementById("holidayName").value;
-      fetch(SCRIPT_URL,{method:"POST",body:JSON.stringify({action:"addHoliday",date,name})})
+      fetch(SCRIPT_URL,{method:"POST",body:JSON.stringify({action:"addHoliday",date,name}),headers:{"Content-Type":"application/json"}})
         .then(r=>r.json()).then(()=>{showToast("Holiday added","success");loadHolidays();});
     }
     function removeHoliday(date){
-      fetch(SCRIPT_URL,{method:"POST",body:JSON.stringify({action:"removeHoliday",date})})
+      fetch(SCRIPT_URL,{method:"POST",body:JSON.stringify({action:"removeHoliday",date}),headers:{"Content-Type":"application/json"}})
         .then(r=>r.json()).then(()=>{showToast("Holiday removed","success");loadHolidays();});
     }
 
@@ -209,16 +235,46 @@
       const employee=document.getElementById("leaveEmployee").value;
       const type=document.getElementById("leaveType").value;
       const reason=document.getElementById("leaveReason").value;
-      fetch(SCRIPT_URL,{method:"POST",body:JSON.stringify({action:"addLeave",date,employee,type,reason})})
+      fetch(SCRIPT_URL,{method:"POST",body:JSON.stringify({action:"addLeave",date,employee,type,reason}),headers:{"Content-Type":"application/json"}})
         .then(r=>r.json()).then(()=>{showToast("Leave added","success");loadLeaves();});
     }
     function removeLeave(date,employee){
-      fetch(SCRIPT_URL,{method:"POST",body:JSON.stringify({action:"removeLeave",date,employee})})
+      fetch(SCRIPT_URL,{method:"POST",body:JSON.stringify({action:"removeLeave",date,employee}),headers:{"Content-Type":"application/json"}})
         .then(r=>r.json()).then(()=>{showToast("Leave removed","success");loadLeaves();});
     }
 
+    // Balances
+    function loadBalances(){
+      fetch(SCRIPT_URL+"?action=getBalances").then(r=>r.json()).then(data=>{
+        const tbody=document.querySelector("#balancesTable tbody"); tbody.innerHTML="";
+        data.forEach(r=>{
+          const tr=document.createElement("tr");
+          tr.innerHTML=`<td>${r.Employee}</td><td>${r.AL}</td><td>${r.SL}</td><td>${r.UL}</td><td>${r.Other}</td>`;
+          tbody.appendChild(tr);
+        });
+      });
+    }
+
+    // Settings
+    function loadSettings(){
+      fetch(SCRIPT_URL+"?action=getSettings").then(r=>r.json()).then(s=>{
+        document.getElementById("setLate").value=s.lateAfter||"";
+        document.getElementById("setEarly").value=s.earlyLeaveBefore||"";
+        document.getElementById("setHalf").value=s.halfDayMaxHours||"";
+        document.getElementById("setOvertime").value=s.overtimeMinHours||"";
+      });
+    }
+    function saveSettings(){
+      const late=document.getElementById("setLate").value;
+      const early=document.getElementById("setEarly").value;
+      const half=document.getElementById("setHalf").value;
+      const overtime=document.getElementById("setOvertime").value;
+      fetch(SCRIPT_URL,{method:"POST",body:JSON.stringify({action:"updateSettings",lateAfter:late,earlyLeaveBefore:early,halfDayMaxHours:half,overtimeMinHours:overtime}),headers:{"Content-Type":"application/json"}})
+        .then(r=>r.json()).then(()=>{showToast("Settings updated","success");loadSettings();});
+    }
+
     // Init
-    function loadAll(){ loadAttendance(); loadHolidays(); loadLeaves(); }
+    function loadAll(){ loadAttendance(); loadHolidays(); loadLeaves(); loadBalances(); loadSettings(); }
     loadAll();
   </script>
 </body>
