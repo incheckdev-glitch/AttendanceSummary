@@ -173,8 +173,10 @@
     }
 
     function downloadFullReport() {
-      $('#attendanceTable').DataTable().button('.buttons-csv').trigger();
-    }
+     if (!$.fn.DataTable.isDataTable('#attendanceTable')) {
+        showToast("Please wait for the data to finish loading.", "warning");
+        return;
+      }
 
     // Attendance
     function loadAttendance() {
