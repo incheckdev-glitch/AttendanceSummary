@@ -2,243 +2,478 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Attendance Dashboard</title>
+  <title>Attendance Dashboard Pro</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-
+  
   <!-- CSS LIBS -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
   <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css"/>
   <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.dataTables.min.css"/>
   <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
-
-  <!-- PAGE STYLES -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+  
+  <!-- CUSTOM STYLES -->
   <style>
-    body.dark-mode { background: #181a1f; color: #eee; }
-    .card { transition: all 0.3s ease; }
-    .card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1); }
-    .filter-bar { position: sticky; top: 0; z-index: 10; background: inherit; padding: 10px; }
-    .holiday-row { background-color: #ffeeba !important; }
-    .weekend-row { background-color: #f0f0f0 !important; }
+    :root {
+      --primary-color: #4e73df;
+      --success-color: #1cc88a;
+      --danger-color: #e74a3b;
+      --warning-color: #f6c23e;
+      --info-color: #36b9cc;
+      --dark-bg: #1a1d23;
+      --dark-card: #242831;
+      --dark-text: #e4e6eb;
+    }
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      transition: all 0.3s ease;
+    }
+    
+    body.dark-mode {
+      background: var(--dark-bg);
+      color: var(--dark-text);
+    }
+    
+    .main-container {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      padding: 30px;
+      margin: 20px auto;
+      max-width: 1400px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    }
+    
+    body.dark-mode .main-container {
+      background: rgba(36, 40, 49, 0.95);
+    }
+    
+    .header-section {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 30px;
+      padding-bottom: 20px;
+      border-bottom: 3px solid var(--primary-color);
+    }
+    
+    .header-title {
+      font-size: 2.5rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    
+    body.dark-mode .header-title {
+      background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    
+    .btn-custom {
+      padding: 10px 20px;
+      border-radius: 50px;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      border: none;
+      cursor: pointer;
+    }
+    
+    .btn-custom:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+    }
+    
+    .card {
+      border: none;
+      border-radius: 15px;
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+      transition: all 0.3s ease;
+      margin-bottom: 20px;
+    }
+    
+    body.dark-mode .card {
+      background: var(--dark-card);
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+    }
+    
+    .card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    }
+    
+    .kpi-card {
+      text-align: center;
+      padding: 20px;
+      border-radius: 15px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      margin-bottom: 20px;
+    }
+    
+    .kpi-card h5 {
+      font-size: 0.9rem;
+      margin-bottom: 10px;
+      opacity: 0.9;
+    }
+    
+    .kpi-card h3 {
+      font-size: 2rem;
+      font-weight: 700;
+      margin: 0;
+    }
+    
+    .kpi-card i {
+      font-size: 2rem;
+      margin-bottom: 10px;
+      opacity: 0.8;
+    }
+    
+    .filter-bar {
+      position: sticky;
+      top: 10px;
+      z-index: 100;
+      background: white;
+      padding: 20px;
+      border-radius: 15px;
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+    }
+    
+    body.dark-mode .filter-bar {
+      background: var(--dark-card);
+    }
+    
+    .holiday-row {
+      background-color: #fff3cd !important;
+    }
+    
+    .weekend-row {
+      background-color: #e7f3ff !important;
+    }
+    
+    .absent-row {
+      background-color: #f8d7da !important;
+    }
+    
+    body.dark-mode .holiday-row {
+      background-color: #5a4a2a !important;
+    }
+    
+    body.dark-mode .weekend-row {
+      background-color: #1a3a4a !important;
+    }
+    
+    body.dark-mode .absent-row {
+      background-color: #4a1a1a !important;
+    }
+    
     #loadingOverlay {
-      display:none; position:fixed; top:0; left:0; right:0; bottom:0;
-      background:rgba(0,0,0,0.5); color:#fff; font-size:2rem;
-      display:flex; justify-content:center; align-items:center; z-index:2000;
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.8);
+      z-index: 9999;
+      justify-content: center;
+      align-items: center;
+    }
+    
+    .spinner {
+      border: 5px solid #f3f3f3;
+      border-top: 5px solid var(--primary-color);
+      border-radius: 50%;
+      width: 60px;
+      height: 60px;
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    .badge {
+      padding: 5px 10px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      margin: 2px;
+      display: inline-block;
+    }
+    
+    .status-badge-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+    
+    /* Responsive */
+    @media (max-width: 768px) {
+      .header-title {
+        font-size: 1.5rem;
+      }
+      
+      .main-container {
+        padding: 15px;
+      }
+      
+      .kpi-card h3 {
+        font-size: 1.5rem;
+      }
+    }
+    
+    /* DataTables Dark Mode */
+    body.dark-mode .dataTables_wrapper .dataTables_filter input,
+    body.dark-mode .dataTables_wrapper .dataTables_length select {
+      background: var(--dark-card);
+      color: var(--dark-text);
+      border: 1px solid #444;
+    }
+    
+    body.dark-mode table.dataTable {
+      color: var(--dark-text);
+    }
+    
+    body.dark-mode table.dataTable thead th {
+      background: var(--dark-card);
+      color: var(--dark-text);
+    }
+    
+    /* Select2 Dark Mode */
+    body.dark-mode .select2-container--default .select2-selection--multiple {
+      background-color: var(--dark-card);
+      border-color: #444;
+    }
+    
+    body.dark-mode .select2-container--default .select2-selection--multiple .select2-selection__choice {
+      background-color: var(--primary-color);
+      border-color: var(--primary-color);
+      color: white;
+    }
+    
+    /* Chart Container */
+    .chart-container {
+      position: relative;
+      height: 300px;
+      padding: 20px;
+    }
+    
+    /* Animation */
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    
+    .fade-in {
+      animation: fadeIn 0.5s ease-in-out;
+    }
+    
+    /* Toast Notifications */
+    .toast-container {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 10000;
+    }
+    
+    .toast {
+      min-width: 250px;
+      margin-bottom: 10px;
+      border-radius: 10px;
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
     }
   </style>
 </head>
 <body>
-  <div id="loadingOverlay">⏳ Loading...</div>
-
-  <div class="container-fluid p-4" id="reportArea">
-    <!-- HEADER -->
-    <div class="d-flex justify-content-between align-items-center mb-3">
-      <h2>📊 Attendance Dashboard</h2>
+  <!-- Loading Overlay -->
+  <div id="loadingOverlay">
+    <div class="text-center">
+      <div class="spinner"></div>
+      <p class="text-white mt-3 fs-4">Loading Dashboard...</p>
+    </div>
+  </div>
+  
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+  
+  <!-- Main Container -->
+  <div class="main-container" id="reportArea">
+    <!-- Header -->
+    <div class="header-section">
       <div>
-        <button class="btn btn-outline-secondary me-2" onclick="toggleDark()">🌙/☀️</button>
-        <button class="btn btn-success" onclick="downloadFullReport()">Download Report</button>
+        <h1 class="header-title">
+          <i class="fas fa-chart-line"></i> Attendance Dashboard Pro
+        </h1>
+        <p class="text-muted mb-0">Real-time attendance tracking and analytics</p>
+      </div>
+      <div>
+        <button class="btn btn-outline-primary btn-custom me-2" onclick="toggleDark()" title="Toggle Dark Mode">
+          <i class="fas fa-moon" id="themeIcon"></i>
+        </button>
+        <button class="btn btn-success btn-custom me-2" onclick="syncWithServer()" title="Sync with Server">
+          <i class="fas fa-sync-alt"></i> Sync
+        </button>
+        <button class="btn btn-primary btn-custom" onclick="downloadFullReport()" title="Download Report">
+          <i class="fas fa-download"></i> Download
+        </button>
       </div>
     </div>
-
-    <!-- FILTERS -->
-    <div class="card shadow filter-bar mb-4">
-      <div class="card-body row g-3 align-items-end">
-        <div class="col-lg-3">
-          <label class="form-label">Employee</label>
-          <select id="employeeFilter" multiple></select>
-        </div>
-        <div class="col-lg-3">
-          <label class="form-label">Start Date</label>
-          <input type="date" id="startDate" class="form-control"/>
-        </div>
-        <div class="col-lg-3">
-          <label class="form-label">End Date</label>
-          <input type="date" id="endDate" class="form-control"/>
-        </div>
-        <div class="col-lg-3">
-          <label class="form-label">Quick Search</label>
-          <input type="text" id="quickSearch" class="form-control" placeholder="Search..."/>
-        </div>
-        <div class="col-12 text-end mt-3">
-          <button class="btn btn-primary" onclick="applyFilters()">Apply</button>
-          <button class="btn btn-warning" onclick="resetFilters()">Reset</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- KPI CARDS -->
-    <div class="row mb-4 text-center" id="kpiCards"></div>
-
-    <!-- TABLE -->
-    <div class="card shadow mb-4">
+    
+    <!-- Filters -->
+    <div class="card filter-bar fade-in">
       <div class="card-body">
-        <table id="attendanceTable" class="display nowrap table table-striped" style="width:100%"></table>
+        <h5 class="mb-3"><i class="fas fa-filter"></i> Filters</h5>
+        <div class="row g-3">
+          <div class="col-lg-3 col-md-6">
+            <label class="form-label"><i class="fas fa-user"></i> Employee</label>
+            <select id="employeeFilter" multiple class="form-control"></select>
+          </div>
+          <div class="col-lg-3 col-md-6">
+            <label class="form-label"><i class="fas fa-calendar-alt"></i> Start Date</label>
+            <input type="date" id="startDate" class="form-control"/>
+          </div>
+          <div class="col-lg-3 col-md-6">
+            <label class="form-label"><i class="fas fa-calendar-alt"></i> End Date</label>
+            <input type="date" id="endDate" class="form-control"/>
+          </div>
+          <div class="col-lg-3 col-md-6">
+            <label class="form-label"><i class="fas fa-search"></i> Quick Search</label>
+            <input type="text" id="quickSearch" class="form-control" placeholder="Search..."/>
+          </div>
+        </div>
+        <div class="text-end mt-3">
+          <button class="btn btn-primary btn-custom" onclick="applyFilters()">
+            <i class="fas fa-check"></i> Apply
+          </button>
+          <button class="btn btn-warning btn-custom" onclick="resetFilters()">
+            <i class="fas fa-redo"></i> Reset
+          </button>
+        </div>
       </div>
     </div>
-
-    <!-- CHARTS -->
-    <div class="row">
-      <div class="col-lg-4"><div class="card shadow p-3"><h5>Hours per Day</h5><canvas id="barChart"></canvas></div></div>
-      <div class="col-lg-4"><div class="card shadow p-3"><h5>Hours by Employee</h5><canvas id="pieChart"></canvas></div></div>
-      <div class="col-lg-4"><div class="card shadow p-3"><h5>Trend</h5><canvas id="lineChart"></canvas></div></div>
-    </div>
-
-    <!-- SETTINGS -->
-    <div class="card shadow my-4">
-      <div class="card-body row g-3">
-        <h5>⚙️ Settings</h5>
-        <div class="col-md-3"><label class="form-label">Late After</label><input type="time" id="lateThreshold" class="form-control"/></div>
-        <div class="col-md-3"><label class="form-label">Early Leave Before</label><input type="time" id="earlyThreshold" class="form-control"/></div>
-        <div class="col-md-3"><label class="form-label">Half-day Max Hours</label><input type="number" id="halfDayHours" class="form-control"/></div>
-        <div class="col-md-3"><label class="form-label">Overtime Min Hours</label><input type="number" id="overtimeHours" class="form-control"/></div>
-      </div>
-    </div>
-
-    <!-- HOLIDAY MANAGER -->
-    <div class="card shadow mb-4">
+    
+    <!-- KPI Cards -->
+    <div class="row" id="kpiCards"></div>
+    
+    <!-- Attendance Table -->
+    <div class="card fade-in">
       <div class="card-body">
-        <h5>📅 Holiday Manager</h5>
-        <div class="input-group mb-3">
-          <input type="date" id="holidayDate" class="form-control"/>
-          <input type="text" id="holidayName" class="form-control" placeholder="Holiday Name"/>
-          <button class="btn btn-primary" onclick="addHoliday()">Add</button>
+        <h5 class="mb-3"><i class="fas fa-table"></i> Attendance Records</h5>
+        <div class="table-responsive">
+          <table id="attendanceTable" class="display nowrap table table-striped" style="width:100%"></table>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Charts -->
+    <div class="row mt-4">
+      <div class="col-lg-4 col-md-6">
+        <div class="card fade-in">
+          <div class="card-body">
+            <h5><i class="fas fa-chart-bar"></i> Hours per Day</h5>
+            <div class="chart-container">
+              <canvas id="barChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-4 col-md-6">
+        <div class="card fade-in">
+          <div class="card-body">
+            <h5><i class="fas fa-chart-pie"></i> Hours by Employee</h5>
+            <div class="chart-container">
+              <canvas id="pieChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-4 col-md-12">
+        <div class="card fade-in">
+          <div class="card-body">
+            <h5><i class="fas fa-chart-line"></i> Trend Analysis</h5>
+            <div class="chart-container">
+              <canvas id="lineChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Settings -->
+    <div class="card mt-4 fade-in">
+      <div class="card-body">
+        <h5 class="mb-3"><i class="fas fa-cog"></i> Settings</h5>
+        <div class="row g-3">
+          <div class="col-md-3">
+            <label class="form-label">Late After (HH:MM)</label>
+            <input type="time" id="lateThreshold" class="form-control" value="08:15"/>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Early Leave Before (HH:MM)</label>
+            <input type="time" id="earlyThreshold" class="form-control" value="16:30"/>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Half-day Max Hours</label>
+            <input type="number" id="halfDayHours" class="form-control" value="4" step="0.5"/>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Overtime Min Hours</label>
+            <input type="number" id="overtimeHours" class="form-control" value="9" step="0.5"/>
+          </div>
+        </div>
+        <div class="text-end mt-3">
+          <button class="btn btn-success btn-custom" onclick="saveSettings()">
+            <i class="fas fa-save"></i> Save Settings
+          </button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Holiday Manager -->
+    <div class="card mt-4 fade-in">
+      <div class="card-body">
+        <h5 class="mb-3"><i class="fas fa-calendar-day"></i> Holiday Manager</h5>
+        <div class="row g-3 mb-3">
+          <div class="col-md-5">
+            <input type="date" id="holidayDate" class="form-control" placeholder="Date"/>
+          </div>
+          <div class="col-md-5">
+            <input type="text" id="holidayName" class="form-control" placeholder="Holiday Name (optional)"/>
+          </div>
+          <div class="col-md-2">
+            <button class="btn btn-primary btn-custom w-100" onclick="addHoliday()">
+              <i class="fas fa-plus"></i> Add
+            </button>
+          </div>
         </div>
         <ul id="holidayList" class="list-group"></ul>
       </div>
     </div>
-
-    <!-- LEAVE MANAGER -->
-    <div class="card shadow mb-4">
+    
+    <!-- Leave Manager -->
+    <div class="card mt-4 fade-in">
       <div class="card-body">
-        <h5>🏖️ Leave Manager</h5>
-        <div class="row g-2 mb-3">
-          <div class="col-md-2"><input type="date" id="leaveDate" class="form-control"/></div>
-          <div class="col-md-3"><select id="leaveEmployee" class="form-control"></select></div>
-          <div class="col-md-3">
-            <select id="leaveType" class="form-control">
-              <option>Annual Leave</option><option>Sick Leave</option><option>Unpaid Leave</option><option>Other</option>
-            </select>
+        <h5 class="mb-3"><i class="fas fa-umbrella-beach"></i> Leave Manager</h5>
+        <div class="row g-3 mb-3">
+          <div class="col-md-2">
+            <input type="date" id="leaveDate" class="form-control"/>
           </div>
-          <div class="col-md-3"><input type="text" id="leaveReason" class="form-control" placeholder="Reason"/></div>
-          <div class="col-md-1"><button class="btn btn-primary w-100" onclick="addLeave()">Add</button></div>
-        </div>
-        <ul id="leaveList" class="list-group"></ul>
-      </div>
-    </div>
-  </div>
-
-  <!-- JS LIBS -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
-  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-  <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-  <script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
-  <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
-  <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.print.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-
-  <!-- APP SCRIPT -->
-  <script>
-    const API_URL = "https://script.google.com/macros/s/AKfycbzFSqMmrNggEEJ7fuHlCEaTHUO7RW79i3vqf3Zy1jxQI1Hkj5ZTMzxL2D3w9fWaJsg1Iw/exec";
-    let CANON = [], DT = null, settings = {};
-    let holidays=[], leaves=[];
-
-    async function apiGet(sheet){
-      const res = await fetch(API_URL+"?sheet="+sheet);
-      return (await res.json()).data || [];
-    }
-    async function apiPost(sheet,action,payload){
-      const res = await fetch(API_URL,{method:"POST",body:JSON.stringify({sheet,action,payload})});
-      return await res.json();
-    }
-
-    function toggleDark(){ document.body.classList.toggle("dark-mode"); }
-
-    /* -------- Holidays -------- */
-    async function renderHolidayList(){
-      holidays = await apiGet("holidays");
-      const list=document.getElementById("holidayList");
-      list.innerHTML="";
-      holidays.forEach((h,i)=>{
-        const li=document.createElement("li");
-        li.className="list-group-item d-flex justify-content-between align-items-center";
-        li.innerHTML=`<span>${h.Date} - ${h.Name||""}</span>
-          <div><button class="btn btn-sm btn-danger" onclick="removeHoliday('${h.Date}')">Remove</button></div>`;
-        list.appendChild(li);
-      });
-    }
-    async function addHoliday(){
-      const d=document.getElementById("holidayDate").value;
-      const n=document.getElementById("holidayName").value;
-      if(!d) return alert("Pick date");
-      await apiPost("holidays","add",{Date:d,Name:n});
-      renderHolidayList();
-    }
-    async function removeHoliday(date){
-      await apiPost("holidays","remove",{Date:date});
-      renderHolidayList();
-    }
-
-    /* -------- Leaves -------- */
-    async function renderLeaveList(){
-      leaves = await apiGet("leaves");
-      const list=document.getElementById("leaveList");
-      list.innerHTML="";
-      leaves.forEach(l=>{
-        const li=document.createElement("li");
-        li.className="list-group-item d-flex justify-content-between align-items-center";
-        li.innerHTML=`<span>${l.Date} - ${l.Employee} (${l.Type}) ${l.Reason||""}</span>
-          <div><button class="btn btn-sm btn-danger" onclick="removeLeave('${l.Date}','${l.Employee}')">Remove</button></div>`;
-        list.appendChild(li);
-      });
-    }
-    async function addLeave(){
-      const d=leaveDate.value, emp=leaveEmployee.value, t=leaveType.value, r=leaveReason.value;
-      if(!d||!emp) return alert("Select date and employee");
-      await apiPost("leaves","add",{Date:d,Employee:emp,Type:t,Reason:r});
-      renderLeaveList();
-    }
-    async function removeLeave(date,emp){
-      await apiPost("leaves","remove",{Date:date,Employee:emp});
-      renderLeaveList();
-    }
-
-    /* -------- Settings -------- */
-    async function loadSettings(){
-      const res=await apiPost("settings","get",{});
-      settings=res.data||{late:"08:15",early:"16:30",half:4,over:9};
-      lateThreshold.value=settings.late; earlyThreshold.value=settings.early;
-      halfDayHours.value=settings.half; overtimeHours.value=settings.over;
-    }
-
-    /* -------- Attendance -------- */
-    async function loadData(){
-      document.getElementById("loadingOverlay").style.display="flex";
-      try {
-        const rows=await apiGet("attendance");
-        CANON = rows.map(r=>{
-          const si=r["Sign In"], so=r["Sign Out"], emp=r["Employee"], date=r["Date"];
-          const siDT=si?new Date(date+"T"+si):null;
-          const soDT=so?new Date(date+"T"+so):null;
-          return {date,employee:emp,signIn:si,signOut:so,signInDT:siDT,signOutDT:soDT,totalHours:siDT&&soDT?(soDT-siDT)/36e5:0};
-        });
-        populateEmployeeFilter();
-        applyFilters();
-      } finally {
-        document.getElementById("loadingOverlay").style.display="none";
-      }
-    }
-
-    /* -------- Init -------- */
-    async function init(){
-      await loadSettings();
-      await renderHolidayList();
-      await renderLeaveList();
-      await loadData();
-    }
-    init();
-  </script>
-</body>
-</html>
