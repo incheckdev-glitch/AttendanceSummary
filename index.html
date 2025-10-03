@@ -4,13 +4,13 @@
   <meta charset="UTF-8" />
   <title>Attendance Dashboard Pro</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  
+
   <!-- CSS LIBS -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
   <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css"/>
   <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.dataTables.min.css"/>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
-  
+
   <style>
     :root { --primary-color:#4e73df; --success-color:#1cc88a; --danger-color:#e74a3b; --dark-bg:#1a1d23; --dark-card:#242831; --dark-text:#e4e6eb; }
     body { background:linear-gradient(135deg,#667eea,#764ba2); min-height:100vh; }
@@ -24,6 +24,7 @@
     .spinner { border:5px solid #f3f3f3; border-top:5px solid var(--primary-color); border-radius:50%; width:60px; height:60px; animation:spin 1s linear infinite; }
     @keyframes spin { 0%{transform:rotate(0deg);} 100%{transform:rotate(360deg);} }
     .toast-container { position:fixed; top:20px; right:20px; z-index:10000; }
+    .badge { font-size:0.85em; }
   </style>
 </head>
 <body>
@@ -97,7 +98,7 @@
     </div></div>
 
     <!-- Leave Manager -->
-    <div class="card"><div class="card-body">
+    <div class="card mb-4"><div class="card-body">
       <h5><i class="fas fa-umbrella-beach"></i> Leave Manager</h5>
       <div class="row g-3 mb-3">
         <div class="col-md-3"><input type="date" id="leaveDate" class="form-control"/></div>
@@ -115,6 +116,34 @@
       </div>
       <ul id="leaveList" class="list-group"></ul>
     </div></div>
+
+    <!-- Balances Manager -->
+    <div class="card mb-4">
+      <div class="card-body">
+        <h5><i class="fas fa-balance-scale"></i> Balances Manager</h5>
+        <div class="row g-3 mb-3">
+          <div class="col-md-3"><input type="text" id="balanceEmployee" class="form-control" placeholder="Employee"/></div>
+          <div class="col-md-2"><input type="number" id="balanceAL" class="form-control" placeholder="AL"/></div>
+          <div class="col-md-2"><input type="number" id="balanceSL" class="form-control" placeholder="SL"/></div>
+          <div class="col-md-2"><input type="number" id="balanceUL" class="form-control" placeholder="UL"/></div>
+          <div class="col-md-2"><input type="number" id="balanceOther" class="form-control" placeholder="Other"/></div>
+          <div class="col-md-1"><button class="btn btn-primary w-100" onclick="updateBalance()"><i class="fas fa-save"></i></button></div>
+        </div>
+        <table class="table table-bordered" id="balancesTable">
+          <thead><tr><th>Employee</th><th>AL</th><th>SL</th><th>UL</th><th>Other</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Settings Manager -->
+    <div class="card mb-4">
+      <div class="card-body">
+        <h5><i class="fas fa-cogs"></i> Settings</h5>
+        <div class="row g-3 mb-3" id="settingsForm"></div>
+        <button class="btn btn-success" onclick="saveSettings()"><i class="fas fa-save"></i> Save Settings</button>
+      </div>
+    </div>
   </div>
 
   <!-- JS LIBS -->
@@ -132,7 +161,7 @@
     let holidaysData = [];
     let leavesData = [];
 
-    // Toast helper
+    // ✅ Toast helper
     function showToast(msg, type="info") {
       const id = "toast" + Date.now();
       const toast = `<div id="${id}" class="toast align-items-center text-bg-${type} p-2 fade show">
@@ -142,14 +171,14 @@
       setTimeout(()=>document.getElementById(id)?.remove(), 4000);
     }
 
-    // Dark mode
+    // ✅ Dark mode
     function toggleDark() {
       document.body.classList.toggle("dark-mode");
       document.getElementById("themeIcon").classList.toggle("fa-sun");
       document.getElementById("themeIcon").classList.toggle("fa-moon");
     }
 
-    // Sync server
+    // ✅ Sync server
     function syncWithServer() {
       document.getElementById("loadingOverlay").style.display="flex";
       fetch(SCRIPT_URL + "?action=updateSummary")
@@ -162,7 +191,7 @@
       $('#attendanceTable').DataTable().button('.buttons-csv').trigger();
     }
 
-    // Attendance
+    // ✅ Attendance
     function loadAttendance() {
       return fetch(SCRIPT_URL + "?action=getAttendance")
         .then(r=>r.json())
@@ -191,8 +220,7 @@
               data:"Status",
               render:function(data){
                 if(!data) return "";
-                let cls="";
-                let text=data;
+                let cls="badge bg-secondary", text=data;
                 switch(data.toLowerCase()){
                   case "present": cls="badge bg-success"; break;
                   case "late": cls="badge bg-warning text-dark"; break;
@@ -203,7 +231,6 @@
                   case "sl": cls="badge bg-info text-dark"; text="Sick Leave"; break;
                   case "ul": cls="badge bg-danger"; text="Unpaid Leave"; break;
                   case "other": cls="badge bg-secondary"; text="Other Leave"; break;
-                  default: cls="badge bg-secondary"; break;
                 }
                 return `<span class="${cls}">${text}</span>`;
               }
@@ -214,7 +241,7 @@
       }
     }
 
-    // Charts
+    // ✅ Charts
     function renderCharts(data){
       const dates=data.map(r=>r.Date);
       const hours=data.map(r=>parseFloat(r.Hours||0));
@@ -224,14 +251,14 @@
       new Chart(document.getElementById("lineChart"),{type:'line',data:{labels:dates,datasets:[{label:"Trend",data:hours,borderColor:"#1cc88a",fill:false}] }});
     }
 
-    // Employee filter
+    // ✅ Employee filter
     function populateEmployeeFilter(data){
       const sel=document.getElementById("filterEmployee");
       const unique=[...new Set(data.map(r=>r.Name).filter(Boolean))];
       sel.innerHTML="<option value=''>All</option>"+unique.map(n=>`<option value="${n}">${n}</option>`).join("");
     }
 
-    // Filters
+    // ✅ Filters
     function applyFilters(){
       const emp=document.getElementById("filterEmployee").value;
       const from=document.getElementById("filterFrom").value ? new Date(document.getElementById("filterFrom").value) : null;
@@ -249,7 +276,7 @@
       updateCards(filtered, emp, from, to);
     }
 
-    // Summary Cards
+    // ✅ Summary Cards
     function updateCards(filtered, emp, from, to){
       let totalHours = filtered.reduce((sum,r)=>sum+(parseFloat(r.Hours)||0),0);
       let holCount = holidaysData.filter(h=>{
@@ -265,7 +292,6 @@
       let annual = leaveFiltered.filter(l=>l.Type==="Annual").length;
       let sick = leaveFiltered.filter(l=>l.Type==="Sick").length;
       let unpaid = leaveFiltered.filter(l=>l.Type==="Unpaid").length;
-      let absent = filtered.filter(r=>r.Status==="Absent").length;
 
       document.getElementById("cardHours").textContent=totalHours.toFixed(2);
       document.getElementById("cardHolidays").textContent=holCount;
@@ -275,7 +301,7 @@
       document.getElementById("cardUnpaid").textContent=unpaid;
     }
 
-    // Holidays
+    // ✅ Holidays
     function loadHolidays(){
       return fetch(SCRIPT_URL+"?action=getHolidays").then(r=>r.json()).then(d=>{holidaysData=d; renderHolidays(d);});
     }
@@ -303,7 +329,7 @@
         .then(r=>r.json()).then(()=>{showToast("Holiday removed","success");loadHolidays();});
     }
 
-    // Leaves
+    // ✅ Leaves
     function loadLeaves(){
       return fetch(SCRIPT_URL+"?action=getLeaves").then(r=>r.json()).then(d=>{leavesData=d; renderLeaves(d);});
     }
@@ -333,8 +359,74 @@
         .then(r=>r.json()).then(()=>{showToast("Leave removed","success");loadLeaves();});
     }
 
-    // Init
-    function loadAll(){ Promise.all([loadAttendance(),loadHolidays(),loadLeaves()]).then(()=>applyFilters()); }
+    // ✅ Balances
+    function loadBalances() {
+      return fetch(SCRIPT_URL + "?action=getBalances")
+        .then(r=>r.json())
+        .then(data=>{
+          const tbody=document.querySelector("#balancesTable tbody");
+          tbody.innerHTML="";
+          data.forEach(b=>{
+            let alClass=b.AL<5?"text-danger":"text-success";
+            tbody.innerHTML += `<tr><td>${b.Employee}</td><td class="${alClass}">${b.AL}</td><td>${b.SL}</td><td>${b.UL}</td><td>${b.Other}</td></tr>`;
+          });
+        }).catch(()=>showToast("Failed to load balances","danger"));
+    }
+
+    function updateBalance(){
+      const emp=document.getElementById("balanceEmployee").value;
+      const AL=+document.getElementById("balanceAL").value||0;
+      const SL=+document.getElementById("balanceSL").value||0;
+      const UL=+document.getElementById("balanceUL").value||0;
+      const Other=+document.getElementById("balanceOther").value||0;
+      if(!emp) return showToast("Employee required","danger");
+
+      fetch(SCRIPT_URL,{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({action:"updateBalances",employee:emp,AL,SL,UL,Other})
+      }).then(r=>r.json()).then(()=>{
+        showToast("Balances updated","success");
+        loadBalances();
+      });
+    }
+
+    // ✅ Settings
+    function loadSettings(){
+      return fetch(SCRIPT_URL + "?action=getSettings")
+        .then(r=>r.json())
+        .then(settings=>{
+          const form=document.getElementById("settingsForm");
+          form.innerHTML="";
+          Object.keys(settings).forEach(key=>{
+            form.innerHTML += `
+              <div class="col-md-3">
+                <label>${key}</label>
+                <input class="form-control setting-field" data-key="${key}" value="${settings[key]}"/>
+              </div>`;
+          });
+        }).catch(()=>showToast("Failed to load settings","danger"));
+    }
+
+    function saveSettings(){
+      const fields=document.querySelectorAll(".setting-field");
+      let newSettings={};
+      fields.forEach(f=>newSettings[f.dataset.key]=f.value);
+      fetch(SCRIPT_URL,{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({action:"updateSettings",settings:newSettings})
+      }).then(r=>r.json()).then(()=>{
+        showToast("Settings updated","success");
+        loadSettings();
+      });
+    }
+
+    // ✅ Init
+    function loadAll(){ 
+      Promise.all([loadAttendance(),loadHolidays(),loadLeaves(),loadBalances(),loadSettings()])
+        .then(()=>applyFilters()); 
+    }
     loadAll();
   </script>
 </body>
