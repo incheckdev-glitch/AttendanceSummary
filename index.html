@@ -129,7 +129,10 @@
 
   <script>
    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzpTXfKm6S0b-syTyAQCs5VvvBzV0Za2zkNafTquI6PK2_oNXPjY-x38vwQ09Dt-Vur0A/exec";
-
+   // Optional fallback to work around CORS errors when the Apps Script endpoint
+   // does not expose the required headers. Set to "" to disable proxying.
+   const CORS_PROXY = "https://corsproxy.io/?";
+    
     let attendanceData = [];
     let holidaysData = [];
     let leavesData = [];
@@ -139,11 +142,54 @@
     let lineChartInstance;
     
     // Wrapper for fetch JSON
-    async function fetchJSON(url, options={}) {
-      const res = await fetch(url, options);
-      const text = await res.text();
-      try { return JSON.parse(text); }
-      catch(e) { console.error("Invalid JSON", text); return {}; }
+    async function fetchJSON(url, options={}, attempt=0) {
+      const target = attempt === 0 || !CORS_PROXY ? url : `${CORS_PROXY}${url}`;
+      try {
+        const res = await fetch(target, options);
+        if (!res.ok) {
+          const body = await res.text().catch(() => "");
+          throw new Error(`Request failed (${res.status} ${res.statusText}) ${body}`.trim());
+        }
+        const text = await res.text();
+        try { return JSON.parse(text); }
+        catch(e) {
+          console.error("Invalid JSON", text);
+          throw new Error("Invalid JSON response");
+        }
+      } catch (err) {
+        if (attempt === 0 && CORS_PROXY) {
+          console.warn("Falling back to CORS proxy", err);
+          return fetchJSON(url, options, attempt + 1);
+        }
+        console.error("fetchJSON error", err);
+        throw err;
+      }
+    }
+
+    const STATUS_BADGES = {
+      "on time": { cls: "badge bg-success", label: "On Time" },
+      "on time + overtime": { cls: "badge bg-success", label: "On Time + OT" },
+      "late": { cls: "badge bg-warning text-dark", label: "Late" },
+      "left early": { cls: "badge bg-info text-dark", label: "Left Early" },
+      "late & left early": { cls: "badge bg-warning text-dark", label: "Late & Left Early" },
+      "half day": { cls: "badge bg-secondary", label: "Half Day" },
+      "no sign-out": { cls: "badge bg-dark", label: "No Sign-Out" },
+      "no sign-in": { cls: "badge bg-dark", label: "No Sign-In" },
+      "holiday": { cls: "badge bg-primary", label: "Holiday" },
+      "weekend": { cls: "badge bg-secondary", label: "Weekend" },
+      "absent": { cls: "badge bg-danger", label: "Absent" },
+      "leave (sick)": { cls: "badge bg-info text-dark", label: "Leave (Sick)" },
+      "leave (annual)": { cls: "badge bg-primary", label: "Leave (Annual)" },
+      "leave (unpaid)": { cls: "badge bg-danger", label: "Leave (Unpaid)" },
+      "leave (other)": { cls: "badge bg-secondary", label: "Leave (Other)" }
+    };
+
+    function renderStatusBadge(rawStatus="") {
+      const normalized = rawStatus.trim().toLowerCase();
+      const entry = STATUS_BADGES[normalized];
+      if (entry) return `<span class="${entry.cls}">${entry.label}</span>`;
+      if (!rawStatus) return "";
+      return `<span class="badge bg-secondary">${rawStatus}</span>`;
     }
 
     // Toast helper
@@ -168,7 +214,7 @@
       document.getElementById("loadingOverlay").style.display="flex";
       fetchJSON(SCRIPT_URL + "?action=updateSummary")
         .then(()=>{ showToast("Attendance synced!","success"); loadAll(); })
-        .catch(()=>showToast("Sync failed","danger"))
+           .catch(err=>{ console.error(err); showToast("Sync failed","danger"); })
         .finally(()=>document.getElementById("loadingOverlay").style.display="none");
     }
 
@@ -177,17 +223,36 @@
         showToast("Please wait for the data to finish loading.", "warning");
         return;
       }
-      }
+        $('#attendanceTable').DataTable().button('.buttons-excel').trigger();
+    }
 
     // Attendance
     function loadAttendance() {
       return fetchJSON(SCRIPT_URL + "?action=getAttendance")
-        .then(data=>{
+         .then(raw=>{
+          const rows = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.data) ? raw.data : []);
+          const data = rows.map(normalizeAttendanceRecord);
           attendanceData = data;
           populateEmployeeFilter(data);
           renderAttendanceTable(data);
           renderCharts(data);
-        }).catch(()=>showToast("Failed to load attendance","danger"));
+            }).catch(err=>{
+          showToast("Failed to load attendance","danger");
+          console.error(err);
+        });
+    }
+
+    function normalizeAttendanceRecord(row={}){
+      const firstIn = row.FirstIn ?? row["First In"] ?? row.SignIn ?? "";
+      const lastOut = row.LastOut ?? row["Last Out"] ?? row.SignOut ?? "";
+      return {
+        Name: row.Name ?? row.Employee ?? "",
+        Date: row.Date ?? row.Day ?? "",
+        FirstIn: firstIn,
+        LastOut: lastOut,
+        Hours: row.Hours ?? row.TotalHours ?? row["Total Hours"] ?? "",
+        Status: row.Status ?? row.Attendance ?? ""
+      };
     }
 
     function renderAttendanceTable(data){
@@ -199,31 +264,10 @@
           columns:[
             {title:"Name", data:"Name"},
             {title:"Date", data:"Date"},
-            {title:"SignIn", data:"SignIn"},
-            {title:"SignOut", data:"SignOut"},
+           {title:"First In", data:"FirstIn"},
+            {title:"Last Out", data:"LastOut"},
             {title:"Hours", data:"Hours"},
-            {
-              title:"Status",
-              data:"Status",
-              render:function(data){
-                if(!data) return "";
-                let cls="";
-                let text=data;
-                switch(data.toLowerCase()){
-                  case "present": cls="badge bg-success"; break;
-                  case "late": cls="badge bg-warning text-dark"; break;
-                  case "early leave": cls="badge bg-info"; break;
-                  case "absent": cls="badge bg-danger"; break;
-                  case "holiday": cls="badge bg-primary"; break;
-                  case "al": cls="badge bg-primary"; text="Annual Leave"; break;
-                  case "sl": cls="badge bg-info text-dark"; text="Sick Leave"; break;
-                  case "ul": cls="badge bg-danger"; text="Unpaid Leave"; break;
-                  case "other": cls="badge bg-secondary"; text="Other Leave"; break;
-                  default: cls="badge bg-secondary"; break;
-                }
-                return `<span class="${cls}">${text}</span>`;
-              }
-            }
+            { title:"Status", data:"Status", render:renderStatusBadge }
           ],
           dom:'Bfrtip', buttons:['copy','csv','excel','print']
         });
@@ -302,7 +346,14 @@
 
     // Holidays
     function loadHolidays(){
-      return fetchJSON(SCRIPT_URL+"?action=getHolidays").then(d=>{holidaysData=d; renderHolidays(d);});
+          return fetchJSON(SCRIPT_URL+"?action=getHolidays").then(raw=>{
+        const data = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.data) ? raw.data : []);
+        holidaysData=data;
+        renderHolidays(data);
+      }).catch(err=>{
+        console.error(err);
+        showToast("Failed to load holidays","danger");
+      });
     }
     function renderHolidays(data){
       const list=document.getElementById("holidayList"); list.innerHTML="";
@@ -321,16 +372,25 @@
       const name=document.getElementById("holidayName").value;
       if(!date||!name) return showToast("Date & Name required","danger");
       fetchJSON(SCRIPT_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"addHoliday",date,name})})
-        .then(()=>{showToast("Holiday added","success");loadHolidays();});
+        .then(()=>{showToast("Holiday added","success");loadHolidays();})
+        .catch(err=>{console.error(err);showToast("Failed to add holiday","danger");});
     }
     function removeHoliday(date){
       fetchJSON(SCRIPT_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"removeHoliday",date})})
-        .then(()=>{showToast("Holiday removed","success");loadHolidays();});
+        .then(()=>{showToast("Holiday removed","success");loadHolidays();})
+        .catch(err=>{console.error(err);showToast("Failed to remove holiday","danger");});
     }
 
     // Leaves
     function loadLeaves(){
-      return fetchJSON(SCRIPT_URL+"?action=getLeaves").then(d=>{leavesData=d; renderLeaves(d);});
+          return fetchJSON(SCRIPT_URL+"?action=getLeaves").then(raw=>{
+        const data = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.data) ? raw.data : []);
+        leavesData=data;
+        renderLeaves(data);
+      }).catch(err=>{
+        console.error(err);
+        showToast("Failed to load leaves","danger");
+      });
     }
     function renderLeaves(data){
       const list=document.getElementById("leaveList"); list.innerHTML="";
@@ -351,11 +411,13 @@
       const reason=document.getElementById("leaveReason").value;
       if(!date||!employee) return showToast("Date & Employee required","danger");
       fetchJSON(SCRIPT_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"addLeave",date,employee,type,reason})})
-        .then(()=>{showToast("Leave added","success");loadLeaves();});
+        .then(()=>{showToast("Leave added","success");loadLeaves();})
+        .catch(err=>{console.error(err);showToast("Failed to add leave","danger");});
     }
     function removeLeave(date,employee){
       fetchJSON(SCRIPT_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"removeLeave",date,employee})})
-        .then(()=>{showToast("Leave removed","success");loadLeaves();});
+         .then(()=>{showToast("Leave removed","success");loadLeaves();})
+        .catch(err=>{console.error(err);showToast("Failed to remove leave","danger");});
     }
 
     // Init
