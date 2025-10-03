@@ -85,22 +85,6 @@
       <div class="col-lg-4"><canvas id="lineChart"></canvas></div>
     </div>
 
-    <!-- Balances -->
-    <div class="card mb-4">
-      <div class="card-body">
-        <h5><i class="fas fa-balance-scale"></i> Employee Balances</h5>
-        <table class="table table-striped" id="balancesTable"></table>
-      </div>
-    </div>
-
-    <!-- Settings -->
-    <div class="card mb-4">
-      <div class="card-body">
-        <h5><i class="fas fa-cog"></i> Attendance Settings</h5>
-        <table class="table table-striped" id="settingsTable"></table>
-      </div>
-    </div>
-
     <!-- Leave Manager -->
     <div class="card mb-4"><div class="card-body">
       <h5><i class="fas fa-umbrella-beach"></i> Leave Manager</h5>
@@ -121,8 +105,8 @@
       <ul id="leaveList" class="list-group"></ul>
     </div></div>
 
-    <!-- Holiday Manager (bottom) -->
-    <div class="card mb-4"><div class="card-body">
+    <!-- Holiday Manager (moved to bottom) -->
+    <div class="card"><div class="card-body">
       <h5><i class="fas fa-calendar-day"></i> Holiday Manager</h5>
       <div class="row g-3 mb-3">
         <div class="col-md-5"><input type="date" id="holidayDate" class="form-control"/></div>
@@ -131,6 +115,7 @@
       </div>
       <ul id="holidayList" class="list-group"></ul>
     </div></div>
+
   </div>
 
   <!-- JS LIBS -->
@@ -142,47 +127,219 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <script>
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzpTXfKm6S0b-syTyAQCs5VvvBzV0Za2zkNafTquI6PK2_oNXPjY-x38vwQ09Dt-Vur0A/exec"; // replace with your Apps Script deployed web app URL
+   const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzpTXfKm6S0b-syTyAQCs5VvvBzV0Za2zkNafTquI6PK2_oNXPjY-x38vwQ09Dt-Vur0A/exec";
 
-    let attendanceData=[], holidaysData=[], leavesData=[], balancesData=[], settingsData=[];
+    let attendanceData = [];
+    let holidaysData = [];
+    let leavesData = [];
 
-    function showToast(msg, type="info") {
-      const id="toast"+Date.now();
-      const toast=`<div id="${id}" class="toast align-items-center text-bg-${type} p-2 fade show"><div class="d-flex"><div class="toast-body">${msg}</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div></div>`;
-      document.getElementById("toastContainer").insertAdjacentHTML("beforeend",toast);
-      setTimeout(()=>document.getElementById(id)?.remove(),4000);
+    // Helper to fetch JSON safely
+    async function fetchJSON(url, options={}) {
+      const res = await fetch(url, options);
+      const text = await res.text();
+      return JSON.parse(text);
     }
 
-    function toggleDark(){ document.body.classList.toggle("dark-mode"); document.getElementById("themeIcon").classList.toggle("fa-sun"); document.getElementById("themeIcon").classList.toggle("fa-moon"); }
+    // Toast helper
+    function showToast(msg, type="info") {
+      const id = "toast" + Date.now();
+      const toast = `<div id="${id}" class="toast align-items-center text-bg-${type} p-2 fade show">
+        <div class="d-flex"><div class="toast-body">${msg}</div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div></div>`;
+      document.getElementById("toastContainer").insertAdjacentHTML("beforeend", toast);
+      setTimeout(()=>document.getElementById(id)?.remove(), 4000);
+    }
 
-    function syncWithServer(){ document.getElementById("loadingOverlay").style.display="flex"; fetch(SCRIPT_URL+"?action=updateSummary").then(r=>r.json()).then(()=>{showToast("Attendance synced!","success");loadAll();}).catch(()=>showToast("Sync failed","danger")).finally(()=>document.getElementById("loadingOverlay").style.display="none"); }
-    function downloadFullReport(){ $('#attendanceTable').DataTable().button('.buttons-csv').trigger(); }
+    // Dark mode
+    function toggleDark() {
+      document.body.classList.toggle("dark-mode");
+      document.getElementById("themeIcon").classList.toggle("fa-sun");
+      document.getElementById("themeIcon").classList.toggle("fa-moon");
+    }
 
-    function loadAttendance(){ return fetch(SCRIPT_URL+"?action=getAttendance").then(r=>r.json()).then(data=>{attendanceData=data;populateEmployeeFilter(data);renderAttendanceTable(data);renderCharts(data);}); }
-    function renderAttendanceTable(data){ if($.fn.DataTable.isDataTable('#attendanceTable')){$('#attendanceTable').DataTable().clear().rows.add(data).draw();} else {$('#attendanceTable').DataTable({data:data,columns:[{title:"Name",data:"Name"},{title:"Date",data:"Date"},{title:"SignIn",data:"SignIn"},{title:"SignOut",data:"SignOut"},{title:"Hours",data:"Hours"},{title:"Status",data:"Status",render:function(d){if(!d)return"";let cls="",text=d;switch(d.toLowerCase()){case"present":cls="badge bg-success";break;case"late":cls="badge bg-warning text-dark";break;case"early leave":cls="badge bg-info";break;case"absent":cls="badge bg-danger";break;case"holiday":cls="badge bg-primary";break;case"al":cls="badge bg-primary";text="Annual Leave";break;case"sl":cls="badge bg-info text-dark";text="Sick Leave";break;case"ul":cls="badge bg-danger";text="Unpaid Leave";break;case"other":cls="badge bg-secondary";text="Other Leave";break;default:cls="badge bg-secondary";break;}return `<span class="${cls}">${text}</span>`;}}],dom:'Bfrtip',buttons:['copy','csv','excel','print']});} }
+    // Sync server
+    function syncWithServer() {
+      document.getElementById("loadingOverlay").style.display="flex";
+      fetchJSON(SCRIPT_URL + "?action=updateSummary")
+        .then(()=>{ showToast("Attendance synced!","success"); loadAll(); })
+        .catch(()=>showToast("Sync failed","danger"))
+        .finally(()=>document.getElementById("loadingOverlay").style.display="none");
+    }
 
-    function renderCharts(data){ const dates=data.map(r=>r.Date),hours=data.map(r=>parseFloat(r.Hours||0));const byEmp={};data.forEach(r=>{byEmp[r.Name]=(byEmp[r.Name]||0)+parseFloat(r.Hours||0);});new Chart(document.getElementById("barChart"),{type:'bar',data:{labels:dates,datasets:[{label:"Hours",data:hours,backgroundColor:"#4e73df"}]}});new Chart(document.getElementById("pieChart"),{type:'pie',data:{labels:Object.keys(byEmp),datasets:[{data:Object.values(byEmp),backgroundColor:["#4e73df","#1cc88a","#e74a3b","#f6c23e","#36b9cc"]}]}});new Chart(document.getElementById("lineChart"),{type:'line',data:{labels:dates,datasets:[{label:"Trend",data:hours,borderColor:"#1cc88a",fill:false}]}}); }
+    function downloadFullReport() {
+      $('#attendanceTable').DataTable().button('.buttons-csv').trigger();
+    }
 
-    function populateEmployeeFilter(data){ const sel=document.getElementById("filterEmployee"),unique=[...new Set(data.map(r=>r.Name).filter(Boolean))];sel.innerHTML="<option value=''>All</option>"+unique.map(n=>`<option value="${n}">${n}</option>`).join(""); }
+    // Attendance
+    function loadAttendance() {
+      return fetchJSON(SCRIPT_URL + "?action=getAttendance")
+        .then(data=>{
+          attendanceData = data;
+          populateEmployeeFilter(data);
+          renderAttendanceTable(data);
+          renderCharts(data);
+        }).catch(()=>showToast("Failed to load attendance","danger"));
+    }
 
-    function applyFilters(){ const emp=document.getElementById("filterEmployee").value,from=document.getElementById("filterFrom").value?new Date(document.getElementById("filterFrom").value):null,to=document.getElementById("filterTo").value?new Date(document.getElementById("filterTo").value):null;let filtered=attendanceData.filter(r=>{let ok=true;if(emp&&r.Name!==emp)ok=false;if(from&&new Date(r.Date)<from)ok=false;if(to&&new Date(r.Date)>to)ok=false;return ok;});renderAttendanceTable(filtered);updateCards(filtered,emp,from,to); }
+    function renderAttendanceTable(data){
+      if ($.fn.DataTable.isDataTable('#attendanceTable')) {
+        $('#attendanceTable').DataTable().clear().rows.add(data).draw();
+      } else {
+        $('#attendanceTable').DataTable({
+          data:data,
+          columns:[
+            {title:"Name", data:"Name"},
+            {title:"Date", data:"Date"},
+            {title:"SignIn", data:"SignIn"},
+            {title:"SignOut", data:"SignOut"},
+            {title:"Hours", data:"Hours"},
+            {
+              title:"Status",
+              data:"Status",
+              render:function(data){
+                if(!data) return "";
+                let cls="", text=data;
+                switch(data.toLowerCase()){
+                  case "present": cls="badge bg-success"; break;
+                  case "late": cls="badge bg-warning text-dark"; break;
+                  case "early leave": cls="badge bg-info"; break;
+                  case "absent": cls="badge bg-danger"; break;
+                  case "holiday": cls="badge bg-primary"; break;
+                  case "al": cls="badge bg-primary"; text="Annual Leave"; break;
+                  case "sl": cls="badge bg-info text-dark"; text="Sick Leave"; break;
+                  case "ul": cls="badge bg-danger"; text="Unpaid Leave"; break;
+                  case "other": cls="badge bg-secondary"; text="Other Leave"; break;
+                  default: cls="badge bg-secondary"; break;
+                }
+                return `<span class="${cls}">${text}</span>`;
+              }
+            }
+          ],
+          dom:'Bfrtip', buttons:['copy','csv','excel','print']
+        });
+      }
+    }
 
-    function updateCards(filtered,emp,from,to){ let totalHours=filtered.reduce((s,r)=>s+(parseFloat(r.Hours)||0),0);let holCount=holidaysData.filter(h=>{let d=new Date(h.Date);return(!from||d>=from)&&(!to||d<=to);}).length;let leaveFiltered=leavesData.filter(l=>{if(emp&&l.Employee!==emp)return false;let d=new Date(l.Date);return(!from||d>=from)&&(!to||d<=to);});let totalLeaves=leaveFiltered.length,annual=leaveFiltered.filter(l=>l.Type==="Annual").length,sick=leaveFiltered.filter(l=>l.Type==="Sick").length,unpaid=leaveFiltered.filter(l=>l.Type==="Unpaid").length;document.getElementById("cardHours").textContent=totalHours.toFixed(2);document.getElementById("cardHolidays").textContent=holCount;document.getElementById("cardLeaves").textContent=totalLeaves;document.getElementById("cardAnnual").textContent=annual;document.getElementById("cardSick").textContent=sick;document.getElementById("cardUnpaid").textContent=unpaid; }
+    // Charts
+    function renderCharts(data){
+      const dates=data.map(r=>r.Date);
+      const hours=data.map(r=>parseFloat(r.Hours||0));
+      const byEmp={}; data.forEach(r=>{byEmp[r.Name]=(byEmp[r.Name]||0)+parseFloat(r.Hours||0);});
+      new Chart(document.getElementById("barChart"),{type:'bar',data:{labels:dates,datasets:[{label:"Hours",data:hours,backgroundColor:"#4e73df"}]}});
+      new Chart(document.getElementById("pieChart"),{type:'pie',data:{labels:Object.keys(byEmp),datasets:[{data:Object.values(byEmp),backgroundColor:["#4e73df","#1cc88a","#e74a3b","#f6c23e","#36b9cc"]}] }});
+      new Chart(document.getElementById("lineChart"),{type:'line',data:{labels:dates,datasets:[{label:"Trend",data:hours,borderColor:"#1cc88a",fill:false}] }});
+    }
 
-    function loadHolidays(){ return fetch(SCRIPT_URL+"?action=getHolidays").then(r=>r.json()).then(d=>{holidaysData=d;renderHolidays(d);}); }
-    function renderHolidays(data){ const list=document.getElementById("holidayList");list.innerHTML="";data.forEach(row=>{const li=document.createElement("li");li.className="list-group-item d-flex justify-content-between align-items-center";li.textContent=row.Date+" - "+row.Name;const btn=document.createElement("button");btn.className="btn btn-sm btn-danger";btn.innerHTML="<i class='fas fa-trash'></i>";btn.onclick=()=>removeHoliday(row.Date);li.appendChild(btn);list.appendChild(li);}); }
-    function addHoliday(){ const date=document.getElementById("holidayDate").value,name=document.getElementById("holidayName").value;if(!date||!name)return showToast("Date & Name required","danger");fetch(SCRIPT_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"addHoliday",date,name})}).then(r=>r.json()).then(()=>{showToast("Holiday added","success");loadHolidays();}); }
-    function removeHoliday(date){ fetch(SCRIPT_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"removeHoliday",date})}).then(r=>r.json()).then(()=>{showToast("Holiday removed","success");loadHolidays();}); }
+    // Employee filter
+    function populateEmployeeFilter(data){
+      const sel=document.getElementById("filterEmployee");
+      const unique=[...new Set(data.map(r=>r.Name).filter(Boolean))];
+      sel.innerHTML="<option value=''>All</option>"+unique.map(n=>`<option value="${n}">${n}</option>`).join("");
+    }
 
-    function loadLeaves(){ return fetch(SCRIPT_URL+"?action=getLeaves").then(r=>r.json()).then(d=>{leavesData=d;renderLeaves(d);}); }
-    function renderLeaves(data){ const list=document.getElementById("leaveList");list.innerHTML="";data.forEach(row=>{const li=document.createElement("li");li.className="list-group-item d-flex justify-content-between align-items-center";li.textContent=row.Date+" - "+row.Employee+" ("+row.Type+") "+row.Reason;const btn=document.createElement("button");btn.className="btn btn-sm btn-danger";btn.innerHTML="<i class='fas fa-trash'></i>";btn.onclick=()=>removeLeave(row.Date,row.Employee);li.appendChild(btn);list.appendChild(li);}); }
-    function addLeave(){ const date=document.getElementById("leaveDate").value,employee=document.getElementById("leaveEmployee").value,type=document.getElementById("leaveType").value,reason=document.getElementById("leaveReason").value;if(!date||!employee)return showToast("Date & Employee required","danger");fetch(SCRIPT_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"addLeave",date,employee,type,reason})}).then(r=>r.json()).then(()=>{showToast("Leave added","success");loadLeaves();}); }
-    function removeLeave(date,employee){ fetch(SCRIPT_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"removeLeave",date,employee})}).then(r=>r.json()).then(()=>{showToast("Leave removed","success");loadLeaves();}); }
+    // Filters
+    function applyFilters(){
+      const emp=document.getElementById("filterEmployee").value;
+      const from=document.getElementById("filterFrom").value ? new Date(document.getElementById("filterFrom").value) : null;
+      const to=document.getElementById("filterTo").value ? new Date(document.getElementById("filterTo").value) : null;
 
-    function loadBalances(){ return fetch(SCRIPT_URL+"?action=getBalances").then(r=>r.json()).then(d=>{balancesData=d;$('#balancesTable').DataTable({destroy:true,data:d,columns:[{title:"Employee",data:"Employee"},{title:"AL",data:"AL"},{title:"SL",data:"SL"},{title:"UL",data:"UL"},{title:"Other",data:"Other"}]});}); }
-    function loadSettings(){ return fetch(SCRIPT_URL+"?action=getSettings").then(r=>r.json()).then(d=>{settingsData=d;$('#settingsTable').DataTable({destroy:true,data:d,columns:[{title:"Late After",data:"Late After (HH:MM)"},{title:"Early Leave Before",data:"Early Leave Before (HH:MM)"},{title:"Half-day Max Hours",data:"Half-day Max Hours"},{title:"Overtime Min Hours",data:"Overtime Min Hours"}]});}); }
+      let filtered = attendanceData.filter(r=>{
+        let ok=true;
+        if(emp && r.Name!==emp) ok=false;
+        if(from && new Date(r.Date)<from) ok=false;
+        if(to && new Date(r.Date)>to) ok=false;
+        return ok;
+      });
 
-    function loadAll(){ Promise.all([loadAttendance(),loadHolidays(),loadLeaves(),loadBalances(),loadSettings()]).then(()=>applyFilters()); }
+      renderAttendanceTable(filtered);
+      updateCards(filtered, emp, from, to);
+    }
+
+    // Summary Cards
+    function updateCards(filtered, emp, from, to){
+      let totalHours = filtered.reduce((sum,r)=>sum+(parseFloat(r.Hours)||0),0);
+      let holCount = holidaysData.filter(h=>{
+        let d=new Date(h.Date);
+        return (!from||d>=from)&&(!to||d<=to);
+      }).length;
+      let leaveFiltered = leavesData.filter(l=>{
+        if(emp && l.Employee!==emp) return false;
+        let d=new Date(l.Date);
+        return (!from||d>=from)&&(!to||d<=to);
+      });
+      let totalLeaves = leaveFiltered.length;
+      let annual = leaveFiltered.filter(l=>l.Type==="Annual").length;
+      let sick = leaveFiltered.filter(l=>l.Type==="Sick").length;
+      let unpaid = leaveFiltered.filter(l=>l.Type==="Unpaid").length;
+
+      document.getElementById("cardHours").textContent=totalHours.toFixed(2);
+      document.getElementById("cardHolidays").textContent=holCount;
+      document.getElementById("cardLeaves").textContent=totalLeaves;
+      document.getElementById("cardAnnual").textContent=annual;
+      document.getElementById("cardSick").textContent=sick;
+      document.getElementById("cardUnpaid").textContent=unpaid;
+    }
+
+    // Holidays
+    function loadHolidays(){
+      return fetchJSON(SCRIPT_URL+"?action=getHolidays").then(d=>{holidaysData=d; renderHolidays(d);});
+    }
+    function renderHolidays(data){
+      const list=document.getElementById("holidayList"); list.innerHTML="";
+      data.forEach(row=>{
+        const li=document.createElement("li");
+        li.className="list-group-item d-flex justify-content-between align-items-center";
+        li.textContent=row.Date+" - "+row.Name;
+        const btn=document.createElement("button");
+        btn.className="btn btn-sm btn-danger"; btn.innerHTML="<i class='fas fa-trash'></i>";
+        btn.onclick=()=>removeHoliday(row.Date);
+        li.appendChild(btn); list.appendChild(li);
+      });
+    }
+    function addHoliday(){
+      const date=document.getElementById("holidayDate").value;
+      const name=document.getElementById("holidayName").value;
+      if(!date||!name) return showToast("Date & Name required","danger");
+      fetchJSON(SCRIPT_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"addHoliday",date,name})})
+        .then(()=>{showToast("Holiday added","success");loadHolidays();});
+    }
+    function removeHoliday(date){
+      fetchJSON(SCRIPT_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"removeHoliday",date})})
+        .then(()=>{showToast("Holiday removed","success");loadHolidays();});
+    }
+
+    // Leaves
+    function loadLeaves(){
+      return fetchJSON(SCRIPT_URL+"?action=getLeaves").then(d=>{leavesData=d; renderLeaves(d);});
+    }
+    function renderLeaves(data){
+      const list=document.getElementById("leaveList"); list.innerHTML="";
+      data.forEach(row=>{
+        const li=document.createElement("li");
+        li.className="list-group-item d-flex justify-content-between align-items-center";
+        li.textContent=row.Date+" - "+row.Employee+" ("+row.Type+") "+row.Reason;
+        const btn=document.createElement("button");
+        btn.className="btn btn-sm btn-danger"; btn.innerHTML="<i class='fas fa-trash'></i>";
+        btn.onclick=()=>removeLeave(row.Date,row.Employee);
+        li.appendChild(btn); list.appendChild(li);
+      });
+    }
+    function addLeave(){
+      const date=document.getElementById("leaveDate").value;
+      const employee=document.getElementById("leaveEmployee").value;
+      const type=document.getElementById("leaveType").value;
+      const reason=document.getElementById("leaveReason").value;
+      if(!date||!employee) return showToast("Date & Employee required","danger");
+      fetchJSON(SCRIPT_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"addLeave",date,employee,type,reason})})
+        .then(()=>{showToast("Leave added","success");loadLeaves();});
+    }
+    function removeLeave(date,employee){
+      fetchJSON(SCRIPT_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"removeLeave",date,employee})})
+        .then(()=>{showToast("Leave removed","success");loadLeaves();});
+    }
+
+    // Init
+    function loadAll(){ Promise.all([loadAttendance(),loadHolidays(),loadLeaves()]).then(()=>applyFilters()); }
     loadAll();
   </script>
 </body>
