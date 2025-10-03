@@ -9,471 +9,217 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
   <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css"/>
   <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.dataTables.min.css"/>
-  <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
   
-  <!-- CUSTOM STYLES -->
   <style>
-    :root {
-      --primary-color: #4e73df;
-      --success-color: #1cc88a;
-      --danger-color: #e74a3b;
-      --warning-color: #f6c23e;
-      --info-color: #36b9cc;
-      --dark-bg: #1a1d23;
-      --dark-card: #242831;
-      --dark-text: #e4e6eb;
-    }
-    
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-    
-    body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      min-height: 100vh;
-      transition: all 0.3s ease;
-    }
-    
-    body.dark-mode {
-      background: var(--dark-bg);
-      color: var(--dark-text);
-    }
-    
-    .main-container {
-      background: rgba(255, 255, 255, 0.95);
-      backdrop-filter: blur(10px);
-      border-radius: 20px;
-      padding: 30px;
-      margin: 20px auto;
-      max-width: 1400px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-    }
-    
-    body.dark-mode .main-container {
-      background: rgba(36, 40, 49, 0.95);
-    }
-    
-    .header-section {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 30px;
-      padding-bottom: 20px;
-      border-bottom: 3px solid var(--primary-color);
-    }
-    
-    .header-title {
-      font-size: 2.5rem;
-      font-weight: 700;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-    
-    body.dark-mode .header-title {
-      background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-    
-    .btn-custom {
-      padding: 10px 20px;
-      border-radius: 50px;
-      font-weight: 600;
-      transition: all 0.3s ease;
-      border: none;
-      cursor: pointer;
-    }
-    
-    .btn-custom:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
-    }
-    
-    .card {
-      border: none;
-      border-radius: 15px;
-      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-      transition: all 0.3s ease;
-      margin-bottom: 20px;
-    }
-    
-    body.dark-mode .card {
-      background: var(--dark-card);
-      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
-    }
-    
-    .card:hover {
-      transform: translateY(-5px);
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-    }
-    
-    .kpi-card {
-      text-align: center;
-      padding: 20px;
-      border-radius: 15px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      margin-bottom: 20px;
-    }
-    
-    .kpi-card h5 {
-      font-size: 0.9rem;
-      margin-bottom: 10px;
-      opacity: 0.9;
-    }
-    
-    .kpi-card h3 {
-      font-size: 2rem;
-      font-weight: 700;
-      margin: 0;
-    }
-    
-    .kpi-card i {
-      font-size: 2rem;
-      margin-bottom: 10px;
-      opacity: 0.8;
-    }
-    
-    .filter-bar {
-      position: sticky;
-      top: 10px;
-      z-index: 100;
-      background: white;
-      padding: 20px;
-      border-radius: 15px;
-      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-    }
-    
-    body.dark-mode .filter-bar {
-      background: var(--dark-card);
-    }
-    
-    .holiday-row {
-      background-color: #fff3cd !important;
-    }
-    
-    .weekend-row {
-      background-color: #e7f3ff !important;
-    }
-    
-    .absent-row {
-      background-color: #f8d7da !important;
-    }
-    
-    body.dark-mode .holiday-row {
-      background-color: #5a4a2a !important;
-    }
-    
-    body.dark-mode .weekend-row {
-      background-color: #1a3a4a !important;
-    }
-    
-    body.dark-mode .absent-row {
-      background-color: #4a1a1a !important;
-    }
-    
-    #loadingOverlay {
-      display: none;
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.8);
-      z-index: 9999;
-      justify-content: center;
-      align-items: center;
-    }
-    
-    .spinner {
-      border: 5px solid #f3f3f3;
-      border-top: 5px solid var(--primary-color);
-      border-radius: 50%;
-      width: 60px;
-      height: 60px;
-      animation: spin 1s linear infinite;
-    }
-    
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-    
-    .badge {
-      padding: 5px 10px;
-      border-radius: 20px;
-      font-size: 0.75rem;
-      font-weight: 600;
-      margin: 2px;
-      display: inline-block;
-    }
-    
-    .status-badge-container {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 5px;
-    }
-    
-    /* Responsive */
-    @media (max-width: 768px) {
-      .header-title {
-        font-size: 1.5rem;
-      }
-      
-      .main-container {
-        padding: 15px;
-      }
-      
-      .kpi-card h3 {
-        font-size: 1.5rem;
-      }
-    }
-    
-    /* DataTables Dark Mode */
-    body.dark-mode .dataTables_wrapper .dataTables_filter input,
-    body.dark-mode .dataTables_wrapper .dataTables_length select {
-      background: var(--dark-card);
-      color: var(--dark-text);
-      border: 1px solid #444;
-    }
-    
-    body.dark-mode table.dataTable {
-      color: var(--dark-text);
-    }
-    
-    body.dark-mode table.dataTable thead th {
-      background: var(--dark-card);
-      color: var(--dark-text);
-    }
-    
-    /* Select2 Dark Mode */
-    body.dark-mode .select2-container--default .select2-selection--multiple {
-      background-color: var(--dark-card);
-      border-color: #444;
-    }
-    
-    body.dark-mode .select2-container--default .select2-selection--multiple .select2-selection__choice {
-      background-color: var(--primary-color);
-      border-color: var(--primary-color);
-      color: white;
-    }
-    
-    /* Chart Container */
-    .chart-container {
-      position: relative;
-      height: 300px;
-      padding: 20px;
-    }
-    
-    /* Animation */
-    @keyframes fadeIn {
-      from {
-        opacity: 0;
-        transform: translateY(20px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-    
-    .fade-in {
-      animation: fadeIn 0.5s ease-in-out;
-    }
-    
-    /* Toast Notifications */
-    .toast-container {
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      z-index: 10000;
-    }
-    
-    .toast {
-      min-width: 250px;
-      margin-bottom: 10px;
-      border-radius: 10px;
-      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-    }
+    :root { --primary-color:#4e73df; --success-color:#1cc88a; --danger-color:#e74a3b; --dark-bg:#1a1d23; --dark-card:#242831; --dark-text:#e4e6eb; }
+    body { background:linear-gradient(135deg,#667eea,#764ba2); min-height:100vh; }
+    body.dark-mode { background:var(--dark-bg); color:var(--dark-text); }
+    .main-container { background:rgba(255,255,255,0.95); border-radius:20px; padding:30px; margin:20px auto; max-width:1400px; }
+    body.dark-mode .main-container { background:rgba(36,40,49,0.95); }
+    .header-section { display:flex; justify-content:space-between; align-items:center; border-bottom:3px solid var(--primary-color); margin-bottom:20px; }
+    .header-title { font-size:2rem; font-weight:700; background:linear-gradient(135deg,#667eea,#764ba2); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+    body.dark-mode .header-title { background:linear-gradient(135deg,#4facfe,#00f2fe); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+    #loadingOverlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.8); z-index:9999; justify-content:center; align-items:center; }
+    .spinner { border:5px solid #f3f3f3; border-top:5px solid var(--primary-color); border-radius:50%; width:60px; height:60px; animation:spin 1s linear infinite; }
+    @keyframes spin { 0%{transform:rotate(0deg);} 100%{transform:rotate(360deg);} }
+    .toast-container { position:fixed; top:20px; right:20px; z-index:10000; }
   </style>
 </head>
 <body>
   <!-- Loading Overlay -->
-  <div id="loadingOverlay">
-    <div class="text-center">
-      <div class="spinner"></div>
-      <p class="text-white mt-3 fs-4">Loading Dashboard...</p>
-    </div>
-  </div>
-  
+  <div id="loadingOverlay"><div class="spinner"></div></div>
+
   <!-- Toast Container -->
   <div class="toast-container" id="toastContainer"></div>
-  
+
   <!-- Main Container -->
-  <div class="main-container" id="reportArea">
-    <!-- Header -->
+  <div class="main-container">
     <div class="header-section">
+      <h1 class="header-title"><i class="fas fa-chart-line"></i> Attendance Dashboard Pro</h1>
       <div>
-        <h1 class="header-title">
-          <i class="fas fa-chart-line"></i> Attendance Dashboard Pro
-        </h1>
-        <p class="text-muted mb-0">Real-time attendance tracking and analytics</p>
-      </div>
-      <div>
-        <button class="btn btn-outline-primary btn-custom me-2" onclick="toggleDark()" title="Toggle Dark Mode">
-          <i class="fas fa-moon" id="themeIcon"></i>
-        </button>
-        <button class="btn btn-success btn-custom me-2" onclick="syncWithServer()" title="Sync with Server">
-          <i class="fas fa-sync-alt"></i> Sync
-        </button>
-        <button class="btn btn-primary btn-custom" onclick="downloadFullReport()" title="Download Report">
-          <i class="fas fa-download"></i> Download
-        </button>
+        <button class="btn btn-outline-primary me-2" onclick="toggleDark()"><i class="fas fa-moon" id="themeIcon"></i></button>
+        <button class="btn btn-success me-2" onclick="syncWithServer()"><i class="fas fa-sync-alt"></i> Sync</button>
+        <button class="btn btn-primary" onclick="downloadFullReport()"><i class="fas fa-download"></i> Download</button>
       </div>
     </div>
-    
-    <!-- Filters -->
-    <div class="card filter-bar fade-in">
-      <div class="card-body">
-        <h5 class="mb-3"><i class="fas fa-filter"></i> Filters</h5>
-        <div class="row g-3">
-          <div class="col-lg-3 col-md-6">
-            <label class="form-label"><i class="fas fa-user"></i> Employee</label>
-            <select id="employeeFilter" multiple class="form-control"></select>
-          </div>
-          <div class="col-lg-3 col-md-6">
-            <label class="form-label"><i class="fas fa-calendar-alt"></i> Start Date</label>
-            <input type="date" id="startDate" class="form-control"/>
-          </div>
-          <div class="col-lg-3 col-md-6">
-            <label class="form-label"><i class="fas fa-calendar-alt"></i> End Date</label>
-            <input type="date" id="endDate" class="form-control"/>
-          </div>
-          <div class="col-lg-3 col-md-6">
-            <label class="form-label"><i class="fas fa-search"></i> Quick Search</label>
-            <input type="text" id="quickSearch" class="form-control" placeholder="Search..."/>
-          </div>
-        </div>
-        <div class="text-end mt-3">
-          <button class="btn btn-primary btn-custom" onclick="applyFilters()">
-            <i class="fas fa-check"></i> Apply
-          </button>
-          <button class="btn btn-warning btn-custom" onclick="resetFilters()">
-            <i class="fas fa-redo"></i> Reset
-          </button>
-        </div>
-      </div>
-    </div>
-    
-    <!-- KPI Cards -->
-    <div class="row" id="kpiCards"></div>
-    
+
     <!-- Attendance Table -->
-    <div class="card fade-in">
-      <div class="card-body">
-        <h5 class="mb-3"><i class="fas fa-table"></i> Attendance Records</h5>
-        <div class="table-responsive">
-          <table id="attendanceTable" class="display nowrap table table-striped" style="width:100%"></table>
-        </div>
-      </div>
-    </div>
-    
+    <div class="card mb-4"><div class="card-body">
+      <h5><i class="fas fa-table"></i> Attendance Records</h5>
+      <table id="attendanceTable" class="display nowrap" style="width:100%"></table>
+    </div></div>
+
     <!-- Charts -->
-    <div class="row mt-4">
-      <div class="col-lg-4 col-md-6">
-        <div class="card fade-in">
-          <div class="card-body">
-            <h5><i class="fas fa-chart-bar"></i> Hours per Day</h5>
-            <div class="chart-container">
-              <canvas id="barChart"></canvas>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="col-lg-4 col-md-6">
-        <div class="card fade-in">
-          <div class="card-body">
-            <h5><i class="fas fa-chart-pie"></i> Hours by Employee</h5>
-            <div class="chart-container">
-              <canvas id="pieChart"></canvas>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="col-lg-4 col-md-12">
-        <div class="card fade-in">
-          <div class="card-body">
-            <h5><i class="fas fa-chart-line"></i> Trend Analysis</h5>
-            <div class="chart-container">
-              <canvas id="lineChart"></canvas>
-            </div>
-          </div>
-        </div>
-      </div>
+    <div class="row mb-4">
+      <div class="col-lg-4"><canvas id="barChart"></canvas></div>
+      <div class="col-lg-4"><canvas id="pieChart"></canvas></div>
+      <div class="col-lg-4"><canvas id="lineChart"></canvas></div>
     </div>
-    
-    <!-- Settings -->
-    <div class="card mt-4 fade-in">
-      <div class="card-body">
-        <h5 class="mb-3"><i class="fas fa-cog"></i> Settings</h5>
-        <div class="row g-3">
-          <div class="col-md-3">
-            <label class="form-label">Late After (HH:MM)</label>
-            <input type="time" id="lateThreshold" class="form-control" value="08:15"/>
-          </div>
-          <div class="col-md-3">
-            <label class="form-label">Early Leave Before (HH:MM)</label>
-            <input type="time" id="earlyThreshold" class="form-control" value="16:30"/>
-          </div>
-          <div class="col-md-3">
-            <label class="form-label">Half-day Max Hours</label>
-            <input type="number" id="halfDayHours" class="form-control" value="4" step="0.5"/>
-          </div>
-          <div class="col-md-3">
-            <label class="form-label">Overtime Min Hours</label>
-            <input type="number" id="overtimeHours" class="form-control" value="9" step="0.5"/>
-          </div>
-        </div>
-        <div class="text-end mt-3">
-          <button class="btn btn-success btn-custom" onclick="saveSettings()">
-            <i class="fas fa-save"></i> Save Settings
-          </button>
-        </div>
-      </div>
-    </div>
-    
+
     <!-- Holiday Manager -->
-    <div class="card mt-4 fade-in">
-      <div class="card-body">
-        <h5 class="mb-3"><i class="fas fa-calendar-day"></i> Holiday Manager</h5>
-        <div class="row g-3 mb-3">
-          <div class="col-md-5">
-            <input type="date" id="holidayDate" class="form-control" placeholder="Date"/>
-          </div>
-          <div class="col-md-5">
-            <input type="text" id="holidayName" class="form-control" placeholder="Holiday Name (optional)"/>
-          </div>
-          <div class="col-md-2">
-            <button class="btn btn-primary btn-custom w-100" onclick="addHoliday()">
-              <i class="fas fa-plus"></i> Add
-            </button>
-          </div>
-        </div>
-        <ul id="holidayList" class="list-group"></ul>
+    <div class="card mb-4"><div class="card-body">
+      <h5><i class="fas fa-calendar-day"></i> Holiday Manager</h5>
+      <div class="row g-3 mb-3">
+        <div class="col-md-5"><input type="date" id="holidayDate" class="form-control"/></div>
+        <div class="col-md-5"><input type="text" id="holidayName" class="form-control" placeholder="Holiday Name"/></div>
+        <div class="col-md-2"><button class="btn btn-primary w-100" onclick="addHoliday()"><i class="fas fa-plus"></i> Add</button></div>
       </div>
-    </div>
-    
+      <ul id="holidayList" class="list-group"></ul>
+    </div></div>
+
     <!-- Leave Manager -->
-    <div class="card mt-4 fade-in">
-      <div class="card-body">
-        <h5 class="mb-3"><i class="fas fa-umbrella-beach"></i> Leave Manager</h5>
-        <div class="row g-3 mb-3">
-          <div class="col-md-2">
-            <input type="date" id="leaveDate" class="form-control"/>
-          </div>
+    <div class="card"><div class="card-body">
+      <h5><i class="fas fa-umbrella-beach"></i> Leave Manager</h5>
+      <div class="row g-3 mb-3">
+        <div class="col-md-3"><input type="date" id="leaveDate" class="form-control"/></div>
+        <div class="col-md-3"><input type="text" id="leaveEmployee" class="form-control" placeholder="Employee"/></div>
+        <div class="col-md-3">
+          <select id="leaveType" class="form-control">
+            <option value="Annual">Annual</option>
+            <option value="Sick">Sick</option>
+            <option value="Unpaid">Unpaid</option>
+          </select>
+        </div>
+        <div class="col-md-2"><input type="text" id="leaveReason" class="form-control" placeholder="Reason"/></div>
+        <div class="col-md-1"><button class="btn btn-primary w-100" onclick="addLeave()"><i class="fas fa-plus"></i></button></div>
+      </div>
+      <ul id="leaveList" class="list-group"></ul>
+    </div></div>
+  </div>
+
+  <!-- JS LIBS -->
+  <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.print.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <script>
+    const SCRIPT_URL = "YOUR_SCRIPT_URL_HERE"; // <-- replace with your Apps Script Web App URL
+
+    // Toast helper
+    function showToast(msg, type="info") {
+      const id = "toast" + Date.now();
+      const toast = `<div id="${id}" class="toast align-items-center text-bg-${type} p-2 fade show">
+        <div class="d-flex"><div class="toast-body">${msg}</div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div></div>`;
+      document.getElementById("toastContainer").insertAdjacentHTML("beforeend", toast);
+      setTimeout(()=>document.getElementById(id)?.remove(), 4000);
+    }
+
+    // Dark mode
+    function toggleDark() {
+      document.body.classList.toggle("dark-mode");
+      document.getElementById("themeIcon").classList.toggle("fa-sun");
+      document.getElementById("themeIcon").classList.toggle("fa-moon");
+    }
+
+    // Sync server
+    function syncWithServer() {
+      document.getElementById("loadingOverlay").style.display="flex";
+      fetch(SCRIPT_URL + "?action=updateSummary")
+        .then(r=>r.json()).then(()=>{ showToast("Attendance synced!","success"); loadAll(); })
+        .catch(()=>showToast("Sync failed","danger"))
+        .finally(()=>document.getElementById("loadingOverlay").style.display="none");
+    }
+
+    function downloadFullReport() {
+      $('#attendanceTable').DataTable().button('.buttons-csv').trigger();
+    }
+
+    // Attendance
+    function loadAttendance() {
+      fetch(SCRIPT_URL + "?action=getAttendance")
+        .then(r=>r.json())
+        .then(data=>{
+          if ($.fn.DataTable.isDataTable('#attendanceTable')) {
+            $('#attendanceTable').DataTable().clear().rows.add(data).draw();
+          } else {
+            $('#attendanceTable').DataTable({
+              data:data,
+              columns:[
+                {title:"Month", data:"Month"},
+                {title:"Date", data:"Date"},
+                {title:"Name", data:"Name"},
+                {title:"SignIn", data:"SignIn"},
+                {title:"SignOut", data:"SignOut"},
+                {title:"Hours", data:"Hours"}
+              ],
+              dom:'Bfrtip', buttons:['copy','csv','excel','print']
+            });
+          }
+          renderCharts(data);
+        }).catch(()=>showToast("Failed to load attendance","danger"));
+    }
+
+    function renderCharts(data){
+      const dates=data.map(r=>r.Date);
+      const hours=data.map(r=>parseFloat(r.Hours||0));
+      const byEmp={}; data.forEach(r=>{byEmp[r.Name]=(byEmp[r.Name]||0)+parseFloat(r.Hours||0);});
+      new Chart(document.getElementById("barChart"),{type:'bar',data:{labels:dates,datasets:[{label:"Hours",data:hours,backgroundColor:"#4e73df"}]}});
+      new Chart(document.getElementById("pieChart"),{type:'pie',data:{labels:Object.keys(byEmp),datasets:[{data:Object.values(byEmp),backgroundColor:["#4e73df","#1cc88a","#e74a3b","#f6c23e","#36b9cc"]}] }});
+      new Chart(document.getElementById("lineChart"),{type:'line',data:{labels:dates,datasets:[{label:"Trend",data:hours,borderColor:"#1cc88a",fill:false}] }});
+    }
+
+    // Holidays
+    function loadHolidays(){
+      fetch(SCRIPT_URL+"?action=getHolidays").then(r=>r.json()).then(data=>{
+        const list=document.getElementById("holidayList"); list.innerHTML="";
+        data.forEach(row=>{
+          const li=document.createElement("li");
+          li.className="list-group-item d-flex justify-content-between align-items-center";
+          li.textContent=row.Date+" - "+row.Name;
+          const btn=document.createElement("button");
+          btn.className="btn btn-sm btn-danger"; btn.innerHTML="<i class='fas fa-trash'></i>";
+          btn.onclick=()=>removeHoliday(row.Date);
+          li.appendChild(btn); list.appendChild(li);
+        });
+      });
+    }
+    function addHoliday(){
+      const date=document.getElementById("holidayDate").value;
+      const name=document.getElementById("holidayName").value;
+      fetch(SCRIPT_URL,{method:"POST",body:JSON.stringify({action:"addHoliday",date,name})})
+        .then(r=>r.json()).then(()=>{showToast("Holiday added","success");loadHolidays();});
+    }
+    function removeHoliday(date){
+      fetch(SCRIPT_URL,{method:"POST",body:JSON.stringify({action:"removeHoliday",date})})
+        .then(r=>r.json()).then(()=>{showToast("Holiday removed","success");loadHolidays();});
+    }
+
+    // Leaves
+    function loadLeaves(){
+      fetch(SCRIPT_URL+"?action=getLeaves").then(r=>r.json()).then(data=>{
+        const list=document.getElementById("leaveList"); list.innerHTML="";
+        data.forEach(row=>{
+          const li=document.createElement("li");
+          li.className="list-group-item d-flex justify-content-between align-items-center";
+          li.textContent=row.Date+" - "+row.Employee+" ("+row.Type+") "+row.Reason;
+          const btn=document.createElement("button");
+          btn.className="btn btn-sm btn-danger"; btn.innerHTML="<i class='fas fa-trash'></i>";
+          btn.onclick=()=>removeLeave(row.Date,row.Employee);
+          li.appendChild(btn); list.appendChild(li);
+        });
+      });
+    }
+    function addLeave(){
+      const date=document.getElementById("leaveDate").value;
+      const employee=document.getElementById("leaveEmployee").value;
+      const type=document.getElementById("leaveType").value;
+      const reason=document.getElementById("leaveReason").value;
+      fetch(SCRIPT_URL,{method:"POST",body:JSON.stringify({action:"addLeave",date,employee,type,reason})})
+        .then(r=>r.json()).then(()=>{showToast("Leave added","success");loadLeaves();});
+    }
+    function removeLeave(date,employee){
+      fetch(SCRIPT_URL,{method:"POST",body:JSON.stringify({action:"removeLeave",date,employee})})
+        .then(r=>r.json()).then(()=>{showToast("Leave removed","success");loadLeaves();});
+    }
+
+    // Init
+    function loadAll(){ loadAttendance(); loadHolidays(); loadLeaves(); }
+    loadAll();
+  </script>
+</body>
+</html>
