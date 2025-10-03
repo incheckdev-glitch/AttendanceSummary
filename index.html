@@ -133,6 +133,10 @@
     let holidaysData = [];
     let leavesData = [];
 
+      let barChartInstance;
+    let pieChartInstance;
+    let lineChartInstance;
+    
     // Wrapper for fetch JSON
     async function fetchJSON(url, options={}) {
       const res = await fetch(url, options);
@@ -227,9 +231,18 @@
       const dates=data.map(r=>r.Date);
       const hours=data.map(r=>parseFloat(r.Hours||0));
       const byEmp={}; data.forEach(r=>{byEmp[r.Name]=(byEmp[r.Name]||0)+parseFloat(r.Hours||0);});
-      new Chart(document.getElementById("barChart"),{type:'bar',data:{labels:dates,datasets:[{label:"Hours",data:hours,backgroundColor:"#4e73df"}]}});
-      new Chart(document.getElementById("pieChart"),{type:'pie',data:{labels:Object.keys(byEmp),datasets:[{data:Object.values(byEmp),backgroundColor:["#4e73df","#1cc88a","#e74a3b","#f6c23e","#36b9cc"]}] }});
-      new Chart(document.getElementById("lineChart"),{type:'line',data:{labels:dates,datasets:[{label:"Trend",data:hours,borderColor:"#1cc88a",fill:false}] }});
+      
+          const barCanvas=document.getElementById("barChart");
+      const pieCanvas=document.getElementById("pieChart");
+      const lineCanvas=document.getElementById("lineChart");
+
+      Chart.getChart(barCanvas)?.destroy();
+      Chart.getChart(pieCanvas)?.destroy();
+      Chart.getChart(lineCanvas)?.destroy();
+
+      barChartInstance = new Chart(barCanvas,{type:'bar',data:{labels:dates,datasets:[{label:"Hours",data:hours,backgroundColor:"#4e73df"}]}});
+      pieChartInstance = new Chart(pieCanvas,{type:'pie',data:{labels:Object.keys(byEmp),datasets:[{data:Object.values(byEmp),backgroundColor:["#4e73df","#1cc88a","#e74a3b","#f6c23e","#36b9cc"]}] }});
+      lineChartInstance = new Chart(lineCanvas,{type:'line',data:{labels:dates,datasets:[{label:"Trend",data:hours,borderColor:"#1cc88a",fill:false}] }});
     }
 
     // Employee filter
@@ -254,6 +267,7 @@
       });
 
       renderAttendanceTable(filtered);
+       renderCharts(filtered);
       updateCards(filtered, emp, from, to);
     }
 
