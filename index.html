@@ -1,543 +1,336 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>Attendance Dashboard Pro</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  
-  <!-- CSS LIBS -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
-  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css"/>
-  <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.dataTables.min.css"/>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
-  
-  <style>
-    :root { --primary-color:#4e73df; --success-color:#1cc88a; --danger-color:#e74a3b; --dark-bg:#1a1d23; --dark-card:#242831; --dark-text:#e4e6eb; }
-    body { background:linear-gradient(135deg,#667eea,#764ba2); min-height:100vh; }
-    body.dark-mode { background:var(--dark-bg); color:var(--dark-text); }
-    .main-container { background:rgba(255,255,255,0.95); border-radius:20px; padding:30px; margin:20px auto; max-width:1400px; }
-    body.dark-mode .main-container { background:rgba(36,40,49,0.95); }
-    .header-section { display:flex; justify-content:space-between; align-items:center; border-bottom:3px solid var(--primary-color); margin-bottom:20px; }
-    .header-title { font-size:2rem; font-weight:700; background:linear-gradient(135deg,#667eea,#764ba2); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
-    body.dark-mode .header-title { background:linear-gradient(135deg,#4facfe,#00f2fe); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
-    #loadingOverlay { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.8); z-index:9999; justify-content:center; align-items:center; }
-    .spinner { border:5px solid #f3f3f3; border-top:5px solid var(--primary-color); border-radius:50%; width:60px; height:60px; animation:spin 1s linear infinite; }
-    @keyframes spin { 0%{transform:rotate(0deg);} 100%{transform:rotate(360deg);} }
-    .toast-container { position:fixed; top:20px; right:20px; z-index:10000; }
-  </style>
-</head>
-<body>
-  <!-- Loading Overlay -->
-  <div id="loadingOverlay"><div class="spinner"></div></div>
-
-  <!-- Toast Container -->
-  <div class="toast-container" id="toastContainer"></div>
-
-  <!-- Main Container -->
-  <div class="main-container">
-    <div class="header-section">
-      <h1 class="header-title"><i class="fas fa-chart-line"></i> Attendance Dashboard Pro</h1>
-      <div>
-        <button class="btn btn-outline-primary me-2" onclick="toggleDark()" title="Toggle theme">
-          <i class="fas fa-moon" id="themeIcon"></i>
-        </button>
-        <button class="btn btn-success me-2" onclick="syncWithServer()"><i class="fas fa-sync-alt"></i> Sync</button>
-        <button class="btn btn-primary" onclick="downloadFullReport()"><i class="fas fa-download"></i> Download</button>
-      </div>
-    </div>
-
-    <!-- Filters + KPI Cards -->
-    <div class="row mb-4">
-      <div class="col-md-3">
-        <label>Employee</label>
-        <select id="filterEmployee" class="form-control"></select>
-      </div>
-      <div class="col-md-3">
-        <label>From Date</label>
-        <input type="date" id="filterFrom" class="form-control"/>
-      </div>
-      <div class="col-md-3">
-        <label>To Date</label>
-        <input type="date" id="filterTo" class="form-control"/>
-      </div>
-      <div class="col-md-3 d-flex align-items-end">
-        <button class="btn btn-primary w-100" onclick="applyFilters()"><i class="fas fa-filter"></i> Apply</button>
-      </div>
-    </div>
-
-    <div class="row mb-4" id="summaryCards">
-      <div class="col-md-2"><div class="card text-center"><div class="card-body"><h6>Total Hours</h6><h4 id="cardHours">0</h4></div></div></div>
-      <div class="col-md-2"><div class="card text-center"><div class="card-body"><h6>Holidays</h6><h4 id="cardHolidays">0</h4></div></div></div>
-      <div class="col-md-2"><div class="card text-center"><div class="card-body"><h6>Leaves</h6><h4 id="cardLeaves">0</h4></div></div></div>
-      <div class="col-md-2"><div class="card text-center"><div class="card-body"><h6>Annual</h6><h4 id="cardAnnual">0</h4></div></div></div>
-      <div class="col-md-2"><div class="card text-center"><div class="card-body"><h6>Sick</h6><h4 id="cardSick">0</h4></div></div></div>
-      <div class="col-md-2"><div class="card text-center"><div class="card-body"><h6>Unpaid</h6><h4 id="cardUnpaid">0</h4></div></div></div>
-    </div>
-
-    <!-- Attendance Table -->
-    <div class="card mb-4"><div class="card-body">
-      <h5><i class="fas fa-table"></i> Attendance Records</h5>
-      <table id="attendanceTable" class="display nowrap" style="width:100%"></table>
-    </div></div>
-
-    <!-- Charts -->
-    <div class="row mb-4">
-      <div class="col-lg-4"><canvas id="barChart"></canvas></div>
-      <div class="col-lg-4"><canvas id="pieChart"></canvas></div>
-      <div class="col-lg-4"><canvas id="lineChart"></canvas></div>
-    </div>
-
-    <!-- Leave Manager -->
-    <div class="card mb-4"><div class="card-body">
-      <h5><i class="fas fa-umbrella-beach"></i> Leave Manager</h5>
-      <div class="row g-3 mb-3">
-        <div class="col-md-3"><input type="date" id="leaveDate" class="form-control"/></div>
-        <div class="col-md-3"><input type="text" id="leaveEmployee" class="form-control" placeholder="Employee"/></div>
-        <div class="col-md-3">
-          <select id="leaveType" class="form-control">
-            <option value="Annual">Annual</option>
-            <option value="Sick">Sick</option>
-            <option value="Unpaid">Unpaid</option>
-            <option value="Other">Other</option>
-          </select>
-        </div>
-        <div class="col-md-2"><input type="text" id="leaveReason" class="form-control" placeholder="Reason"/></div>
-        <div class="col-md-1"><button class="btn btn-primary w-100" onclick="addLeave()"><i class="fas fa-plus"></i></button></div>
-      </div>
-      <ul id="leaveList" class="list-group"></ul>
-    </div></div>
-
-    <!-- Holiday Manager -->
-    <div class="card"><div class="card-body">
-      <h5><i class="fas fa-calendar-day"></i> Holiday Manager</h5>
-      <div class="row g-3 mb-3">
-        <div class="col-md-5"><input type="date" id="holidayDate" class="form-control"/></div>
-        <div class="col-md-5"><input type="text" id="holidayName" class="form-control" placeholder="Holiday Name"/></div>
-        <div class="col-md-2"><button class="btn btn-primary w-100" onclick="addHoliday()"><i class="fas fa-plus"></i> Add</button></div>
-      </div>
-      <ul id="holidayList" class="list-group"></ul>
-    </div></div>
-  </div>
-
-  <!-- JS LIBS -->
-  <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
-  <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-  <script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-  <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
-  <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.print.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-
-  <script>
-    /* =======================
-       CONFIG
-       ======================= */
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz3fd0QoDm2xsrRsAK0i16LxCTh9yuiiHZnQTxxf7OV1m31fo3I9K0xJ3iVnktG01ldCg/exec"; // e.g., https://script.google.com/macros/s/AKfycb.../exec
-    const TOKEN = "a57bf7a600a9015e26e807f593bbc1dce71a2a746f1baa0e979eaee3b52e025c";     // must match API_TOKEN script property
-
-    // UI <-> API leave type mapping
-    const UI_TO_API_LEAVE = { Annual: "AL", Sick: "SL", Unpaid: "UL", Other: "Other" };
-    const API_TO_UI_LEAVE = { AL: "Annual", SL: "Sick", UL: "Unpaid", Other: "Other" };
-
-    /* =======================
-       STATE
-       ======================= */
-    let attendanceData = [];
-    let holidaysData = [];
-    let leavesData = [];
-    let barChartInstance, pieChartInstance, lineChartInstance;
-
-    /* =======================
-       UTILITIES
-       ======================= */
-    function showToast(msg, type="info") {
-      const id = "toast" + Date.now();
-      const toast = `<div id="${id}" class="toast align-items-center text-bg-${type} p-2 fade show">
-        <div class="d-flex"><div class="toast-body">${msg}</div>
-        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div></div>`;
-      document.getElementById("toastContainer").insertAdjacentHTML("beforeend", toast);
-      setTimeout(()=>document.getElementById(id)?.remove(), 4000);
-    }
-
-    function toggleDark() {
-      const isDark = document.body.classList.toggle("dark-mode");
-      const icon = document.getElementById("themeIcon");
-      icon.classList.toggle("fa-sun", isDark);
-      icon.classList.toggle("fa-moon", !isDark);
-      try { localStorage.setItem("adp_theme", isDark ? "dark" : "light"); } catch(e){}
-    }
-    (function initTheme(){
-      try {
-        const saved = localStorage.getItem("adp_theme");
-        if (saved === "dark") {
-          document.body.classList.add("dark-mode");
-          document.getElementById("themeIcon")?.classList.add("fa-sun");
-          document.getElementById("themeIcon")?.classList.remove("fa-moon");
-        }
-      } catch(e){}
-    })();
-
-    function toYmd(val) {
-      const s = String(val || "");
-      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-      const d = new Date(val);
-      if (isNaN(d)) return "";
-      const y = d.getFullYear();
-      const m = String(d.getMonth()+1).padStart(2,"0");
-      const dd = String(d.getDate()).padStart(2,"0");
-      return `${y}-${m}-${dd}`;
-    }
-    function parseYmdLocal(s) {
-      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || ""));
-      if (!m) return null;
-      return new Date(+m[1], +m[2]-1, +m[3]);
-    }
-    function dateInRange(d, from, to) {
-      if (from && d < from) return false;
-      if (to && d > to) return false;
-      return true;
-    }
-
-    // Build querystring and auto-attach token
-    function qs(obj) {
-      const p = { ...obj };
-      if (TOKEN) p.token = TOKEN;
-      return Object.entries(p)
-        .filter(([,v]) => v !== undefined && v !== null && v !== "")
-        .map(([k,v]) => encodeURIComponent(k) + "=" + encodeURIComponent(v))
-        .join("&");
-    }
-
-    // JSONP helper (avoids CORS entirely)
-    function fetchJSONP(url, timeout=15000) {
-      return new Promise((resolve, reject) => {
-        const cb = '__jsonp_cb_' + Math.random().toString(36).slice(2);
-        const sep = url.includes('?') ? '&' : '?';
-        const script = document.createElement('script');
-        let done = false;
-
-        const cleanup = () => { if (script.parentNode) script.parentNode.removeChild(script); delete window[cb]; };
-        window[cb] = (payload) => { if (done) return; done = true; cleanup(); resolve(payload); };
-        script.onerror = () => { if (done) return; done = true; cleanup(); reject(new Error('JSONP network error')); };
-        script.src = `${url}${sep}callback=${cb}`;
-        document.head.appendChild(script);
-        setTimeout(() => { if (done) return; done = true; cleanup(); reject(new Error('JSONP timeout')); }, timeout);
-      });
-    }
-
-    // Unwrap { ok:true, data:[...] }
-    function unwrapData(raw) {
-      if (raw && raw.ok && Array.isArray(raw.data)) return raw.data;
-      if (Array.isArray(raw)) return raw;
-      return [];
-    }
-
-    /* =======================
-       STATUS BADGES
-       ======================= */
-    const STATUS_BADGES = {
-      "on time":                { cls: "badge bg-success",            label: "On Time" },
-      "on time + overtime":     { cls: "badge bg-success",            label: "On Time + OT" },
-      "late":                   { cls: "badge bg-warning text-dark",  label: "Late" },
-      "left early":             { cls: "badge bg-info text-dark",     label: "Left Early" },
-      "late & left early":      { cls: "badge bg-warning text-dark",  label: "Late & Left Early" },
-      "half day":               { cls: "badge bg-secondary",          label: "Half Day" },
-      "no sign-out":            { cls: "badge bg-dark",               label: "No Sign-Out" },
-      "no sign-in":             { cls: "badge bg-dark",               label: "No Sign-In" },
-      "holiday":                { cls: "badge bg-primary",            label: "Holiday" },
-      "weekend":                { cls: "badge bg-secondary",          label: "Weekend" },
-      "absent":                 { cls: "badge bg-danger",             label: "Absent" },
-      "leave (sick)":           { cls: "badge bg-info text-dark",     label: "Leave (Sick)" },
-      "leave (annual)":         { cls: "badge bg-primary",            label: "Leave (Annual)" },
-      "leave (unpaid)":         { cls: "badge bg-danger",             label: "Leave (Unpaid)" },
-      "leave (other)":          { cls: "badge bg-secondary",          label: "Leave (Other)" }
-    };
-    function renderStatusBadge(rawStatus="") {
-      const normalized = String(rawStatus).trim().toLowerCase();
-      const entry = STATUS_BADGES[normalized];
-      if (entry) return `<span class="${entry.cls}">${entry.label}</span>`;
-      if (!rawStatus) return "";
-      return `<span class="badge bg-secondary">${rawStatus}</span>`;
-    }
-
-    /* =======================
-       SYNC / REPORT
-       ======================= */
-    function syncWithServer() {
-      document.getElementById("loadingOverlay").style.display="flex";
-      const url = `${SCRIPT_URL}?${qs({ action: "updateSummary" })}`;
-      fetchJSONP(url)
-        .then(res => { if (!res.ok) throw new Error(res.error || 'Sync failed'); showToast("Attendance synced!","success"); loadAll(); })
-        .catch(err => { console.error(err); showToast("Sync failed","danger"); })
-        .finally(()=>document.getElementById("loadingOverlay").style.display="none");
-    }
-    function downloadFullReport() {
-      if (!$.fn.DataTable.isDataTable('#attendanceTable')) {
-        showToast("Please wait for the data to finish loading.", "warning");
-        return;
-      }
-      $('#attendanceTable').DataTable().button('.buttons-excel').trigger();
-    }
-
-    /* =======================
-       LOADERS
-       ======================= */
-    function loadAttendance() {
-      const url = `${SCRIPT_URL}?${qs({ action:"getAttendance" })}`;
-      return fetchJSONP(url)
-        .then(raw => {
-          const rows = unwrapData(raw);
-          const data = rows.map(normalizeAttendanceRecord);
-          attendanceData = data;
-          populateEmployeeFilter(data);
-          renderAttendanceTable(data);
-          renderCharts(data);
-        })
-        .catch(err => { showToast("Failed to load attendance","danger"); console.error(err); });
-    }
-    function loadHolidays(){
-      const url = `${SCRIPT_URL}?${qs({ action:"getHolidays" })}`;
-      return fetchJSONP(url)
-        .then(raw => { holidaysData = unwrapData(raw).map(h => ({ Date: toYmd(h.Date), Name: h.Name })); renderHolidays(holidaysData); })
-        .catch(err => { console.error(err); showToast("Failed to load holidays","danger"); });
-    }
-    function loadLeaves(){
-      const url = `${SCRIPT_URL}?${qs({ action:"getLeaves" })}`;
-      return fetchJSONP(url)
-        .then(raw => {
-          leavesData = unwrapData(raw).map(l => ({
-            Date: toYmd(l.Date),
-            Employee: l.Employee || l.Name || "",
-            Type: l.Type, // AL/SL/UL/Other from API
-            Reason: l.Reason || ""
-          }));
-          renderLeaves(leavesData);
-        })
-        .catch(err => { console.error(err); showToast("Failed to load leaves","danger"); });
-    }
-
-    /* =======================
-       NORMALIZERS
-       ======================= */
-    function normalizeAttendanceRecord(row={}){
-      const firstIn = row.FirstIn ?? row["First In"] ?? row.SignIn ?? "";
-      const lastOut = row.LastOut ?? row["Last Out"] ?? row.SignOut ?? "";
-      const hours = Number(row.Hours ?? row.TotalHours ?? row["Total Hours"] ?? 0) || 0;
-      return {
-        Name: row.Name ?? row.Employee ?? "",
-        Date: toYmd(row.Date ?? row.Day ?? ""),
-        FirstIn: firstIn,
-        LastOut: lastOut,
-        Hours: hours,
-        Status: row.Status ?? row.Attendance ?? ""
+<html>
+  <head>
+    <base target="_top">
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>Attendance Dashboard</title>
+    <?!= include('Styles'); ?>
+    <style>
+      /* Minor overrides */
+      .muted { opacity: .65; }
+      .badge { padding: .15rem .5rem; border-radius: 999px; font-size: .75rem; }
+      .status-Present { background: #e6f4ea; }
+      .status-Absent { background: #fdeaea; }
+      .status-Late { background: #fff4e5; }
+      .status-Remote { background: #e8f1fb; }
+      .status-On\ Leave { background: #f1e8fb; }
+      .editable { background: #fff; border: 1px solid #e5e7eb; border-radius: .375rem; padding: .25rem .5rem; }
+      .toolbar { position: sticky; top: 0; background: #fff; z-index: 5; padding: .75rem 1rem; border-bottom: 1px solid #eee; display: flex; gap: .5rem; flex-wrap: wrap; }
+    </style>
+    <script>
+      const CONFIG = {
+        statusOptions: <?= JSON.stringify(config.statusOptions) ?>,
+        sheetName: <?= JSON.stringify(config.sheetName) ?>
       };
-    }
 
-    /* =======================
-       TABLE
-       ======================= */
-    function renderAttendanceTable(data){
-      if ($.fn.DataTable.isDataTable('#attendanceTable')) {
-        $('#attendanceTable').DataTable().clear().rows.add(data).draw();
-      } else {
-        $('#attendanceTable').DataTable({
-          data:data,
-          columns:[
-            {title:"Name", data:"Name"},
-            {title:"Date", data:"Date"},
-            {title:"First In", data:"FirstIn"},
-            {title:"Last Out", data:"LastOut"},
-            {title:"Hours", data:"Hours"},
-            {title:"Status", data:"Status", render:renderStatusBadge }
-          ],
-          responsive:true,
-          scrollX:true,
-          order:[[1,'asc'],[0,'asc']],
-          dom:'Bfrtip',
-          buttons:['copy','csv','excel','print']
+      let RAW = [];    // all rows from server
+      let VIEW = [];   // filtered/sorted
+      let SORT = { key: 'date', dir: 'desc' };
+
+      document.addEventListener('DOMContentLoaded', () => {
+        bindToolbar();
+        fetchData();
+      });
+
+      function bindToolbar() {
+        document.getElementById('refreshBtn').addEventListener('click', fetchData);
+        document.getElementById('clearBtn').addEventListener('click', () => {
+          document.getElementById('nameFilter').value = '';
+          document.getElementById('statusFilter').value = '';
+          document.getElementById('fromDate').value = '';
+          document.getElementById('toDate').value = '';
+          render();
+        });
+        document.getElementById('exportBtn').addEventListener('click', exportCSV);
+        ['nameFilter','statusFilter','fromDate','toDate'].forEach(id => {
+          document.getElementById(id).addEventListener('input', debounce(render, 200));
+          document.getElementById(id).addEventListener('change', debounce(render, 200));
         });
       }
-    }
 
-    /* =======================
-       CHARTS
-       ======================= */
-    function renderCharts(data){
-      const byDate = {};
-      const byEmp = {};
-      data.forEach(r => {
-        const d = r.Date;
-        const h = Number(r.Hours) || 0;
-        byDate[d] = (byDate[d] || 0) + h;
-        byEmp[r.Name] = (byEmp[r.Name] || 0) + h;
-      });
+      function fetchData() {
+        setLoading(true);
+        const filters = collectFilters();
+        google.script.run
+          .withSuccessHandler(payload => {
+            RAW = payload.rows || [];
+            setKpis(payload.stats);
+            render();
+            setLoading(false);
+            toast('Data refreshed');
+          })
+          .withFailureHandler(err => {
+            setLoading(false);
+            alert('Error loading data: ' + (err && err.message ? err.message : err));
+          })
+          .getAttendance(filters); // server applies filters too (reduces payload if large)
+      }
 
-      const dates = Object.keys(byDate).sort();
-      const hours = dates.map(d => +byDate[d].toFixed(2));
-      const trend = [];
-      let sum = 0; for (const h of hours) { sum += h; trend.push(+sum.toFixed(2)); }
+      function collectFilters() {
+        return {
+          name: document.getElementById('nameFilter').value || '',
+          status: document.getElementById('statusFilter').value || '',
+          from: document.getElementById('fromDate').value || '',
+          to: document.getElementById('toDate').value || ''
+        };
+      }
 
-      const empLabels = Object.keys(byEmp);
-      const empValues = empLabels.map(k => +byEmp[k].toFixed(2));
+      function setKpis(stats) {
+        document.getElementById('kpi-rows').textContent = stats.totalRows ?? 0;
+        document.getElementById('kpi-hours').textContent = (stats.totalHours ?? 0).toFixed(2);
+        document.getElementById('kpi-people').textContent = stats.people ?? 0;
+        const range = stats.dateFrom && stats.dateTo ? `${stats.dateFrom} → ${stats.dateTo}` : '—';
+        document.getElementById('kpi-range').textContent = range;
+      }
 
-      const barCanvas=document.getElementById("barChart");
-      const pieCanvas=document.getElementById("pieChart");
-      const lineCanvas=document.getElementById("lineChart");
+      function render() {
+        // Client-side filters (in addition to server)
+        const f = collectFilters();
+        const nameQ = (f.name || '').toLowerCase();
+        const statusQ = (f.status || '').toLowerCase();
+        const from = f.from ? new Date(f.from + 'T00:00:00') : null;
+        const to = f.to ? new Date(f.to + 'T23:59:59') : null;
 
-      Chart.getChart(barCanvas)?.destroy();
-      Chart.getChart(pieCanvas)?.destroy();
-      Chart.getChart(lineCanvas)?.destroy();
+        VIEW = RAW.filter(r => {
+          if (nameQ && !r.name.toLowerCase().includes(nameQ)) return false;
+          if (statusQ && r.status.toLowerCase() !== statusQ) return false;
+          if (from || to) {
+            const d = new Date(r.date);
+            if (from && d < from) return false;
+            if (to && d > to) return false;
+          }
+          return true;
+        });
 
-      new Chart(barCanvas,{
-        type:'bar',
-        data:{ labels:dates, datasets:[{ label:"Hours by Date", data:hours, backgroundColor:"#4e73df" }] },
-        options:{ plugins:{ legend:{ display:false } }, scales:{ x:{ ticks:{ maxRotation:45, minRotation:45 }}}}
-      });
+        // Sort
+        VIEW.sort((a, b) => {
+          const dir = SORT.dir === 'asc' ? 1 : -1;
+          if (SORT.key === 'name') return dir * a.name.localeCompare(b.name);
+          if (SORT.key === 'hours') return dir * ((a.hours||0) - (b.hours||0));
+          // date default
+          return dir * (a.date < b.date ? -1 : a.date > b.date ? 1 : a.name.localeCompare(b.name));
+        });
 
-      new Chart(pieCanvas,{
-        type:'pie',
-        data:{
-          labels:empLabels,
-          datasets:[{ data:empValues, backgroundColor:["#4e73df","#1cc88a","#e74a3b","#f6c23e","#36b9cc","#858796","#5a5c69","#2e59d9"] }]
-        }
-      });
+        renderTable(VIEW);
+        setFooterCount(VIEW.length);
+      }
 
-      new Chart(lineCanvas,{
-        type:'line',
-        data:{ labels:dates, datasets:[{ label:"Cumulative Hours", data:trend, borderColor:"#1cc88a", fill:false, tension:0.2 }] }
-      });
-    }
+      function renderTable(rows) {
+        const tbody = document.querySelector('#dataBody');
+        tbody.innerHTML = '';
+        const frag = document.createDocumentFragment();
 
-    /* =======================
-       FILTERS + CARDS
-       ======================= */
-    function populateEmployeeFilter(data){
-      const sel=document.getElementById("filterEmployee");
-      const unique=[...new Set(data.map(r=>r.Name).filter(Boolean))].sort();
-      sel.innerHTML="<option value=''>All</option>"+unique.map(n=>`<option value="${n}">${n}</option>`).join("");
-    }
+        rows.forEach(r => {
+          const tr = document.createElement('tr');
 
-    function applyFilters(){
-      const emp=document.getElementById("filterEmployee").value;
-      const fromInput=document.getElementById("filterFrom").value;
-      const toInput=document.getElementById("filterTo").value;
-      const from = fromInput ? parseYmdLocal(fromInput) : null;
-      const to   = toInput ? parseYmdLocal(toInput) : null;
+          tr.appendChild(tdText(r.name));
+          tr.appendChild(tdText(r.date));
 
-      const filtered = attendanceData.filter(r=>{
-        let ok = true;
-        if (emp && r.Name !== emp) ok = false;
-        const d = parseYmdLocal(r.Date) || new Date(r.Date);
-        if (from && d < from) ok = false;
-        if (to   && d > to)   ok = false;
-        return ok;
-      });
+          const firstInTd = document.createElement('td');
+          firstInTd.appendChild(makeTimeInput(r.rowNumber, 'First In', r.firstIn));
+          tr.appendChild(firstInTd);
 
-      renderAttendanceTable(filtered);
-      renderCharts(filtered);
-      updateCards(filtered, emp, from, to);
-    }
+          const lastOutTd = document.createElement('td');
+          lastOutTd.appendChild(makeTimeInput(r.rowNumber, 'Last Out', r.lastOut));
+          tr.appendChild(lastOutTd);
 
-    function updateCards(filtered, emp, from, to){
-      const totalHours = filtered.reduce((sum,r)=>sum+(Number(r.Hours)||0),0);
+          const hoursTd = document.createElement('td');
+          hoursTd.appendChild(makeNumberInput(r.rowNumber, 'Hours', r.hours));
+          tr.appendChild(hoursTd);
 
-      const holCount = holidaysData.filter(h=>{
-        const d = parseYmdLocal(h.Date) || new Date(h.Date);
-        return dateInRange(d, from, to);
-      }).length;
+          const statusTd = document.createElement('td');
+          statusTd.appendChild(makeStatusSelect(r.rowNumber, r.status));
+          tr.appendChild(statusTd);
 
-      const leaveFiltered = leavesData.filter(l=>{
-        if(emp && l.Employee !== emp) return false;
-        const d = parseYmdLocal(l.Date) || new Date(l.Date);
-        return dateInRange(d, from, to);
-      });
+          frag.appendChild(tr);
+        });
 
-      const toUI = t => API_TO_UI_LEAVE[t] || t;
-      const totalLeaves = leaveFiltered.length;
-      const annual = leaveFiltered.filter(l=>toUI(l.Type)==="Annual").length;
-      const sick   = leaveFiltered.filter(l=>toUI(l.Type)==="Sick").length;
-      const unpaid = leaveFiltered.filter(l=>toUI(l.Type)==="Unpaid").length;
+        tbody.appendChild(frag);
+      }
 
-      document.getElementById("cardHours").textContent = totalHours.toFixed(2);
-      document.getElementById("cardHolidays").textContent = holCount;
-      document.getElementById("cardLeaves").textContent = totalLeaves;
-      document.getElementById("cardAnnual").textContent = annual;
-      document.getElementById("cardSick").textContent = sick;
-      document.getElementById("cardUnpaid").textContent = unpaid;
-    }
+      function tdText(text) {
+        const td = document.createElement('td');
+        td.textContent = text ?? '';
+        return td;
+      }
 
-    /* =======================
-       HOLIDAYS
-       ======================= */
-    function renderHolidays(data){
-      const list=document.getElementById("holidayList"); list.innerHTML="";
-      data.forEach(row=>{
-        const li=document.createElement("li");
-        li.className="list-group-item d-flex justify-content-between align-items-center";
-        li.textContent=`${row.Date} - ${row.Name}`;
-        const btn=document.createElement("button");
-        btn.className="btn btn-sm btn-danger"; btn.innerHTML="<i class='fas fa-trash'></i>";
-        btn.onclick=()=>removeHoliday(row.Date);
-        li.appendChild(btn); list.appendChild(li);
-      });
-    }
-    function addHoliday(){
-      const date=document.getElementById("holidayDate").value;
-      const name=document.getElementById("holidayName").value;
-      if(!date||!name) return showToast("Date & Name required","danger");
-      const url = `${SCRIPT_URL}?${qs({ action:"addHoliday", date, name })}`;
-      fetchJSONP(url)
-        .then(res => { if(!res.ok) throw new Error(res.error||'Failed'); showToast("Holiday added","success"); loadHolidays(); })
-        .catch(err => { console.error(err); showToast("Failed to add holiday","danger"); });
-    }
-    function removeHoliday(date){
-      const url = `${SCRIPT_URL}?${qs({ action:"removeHoliday", date })}`;
-      fetchJSONP(url)
-        .then(res => { if(!res.ok) throw new Error(res.error||'Failed'); showToast("Holiday removed","success"); loadHolidays(); })
-        .catch(err => { console.error(err); showToast("Failed to remove holiday","danger"); });
-    }
+      function makeTimeInput(rowNumber, field, initial) {
+        const wrap = document.createElement('div');
+        const input = document.createElement('input');
+        input.type = 'time';
+        input.className = 'editable';
+        input.value = initial || '';
+        input.addEventListener('change', () => commit(rowNumber, { [field]: input.value }));
+        wrap.appendChild(input);
+        return wrap;
+        // Note: time is stored in sheet as a Date merged with row's Date.
+      }
 
-    /* =======================
-       LEAVES
-       ======================= */
-    function renderLeaves(data){
-      const list=document.getElementById("leaveList"); list.innerHTML="";
-      data.forEach(row=>{
-        const uiType = API_TO_UI_LEAVE[row.Type] || row.Type;
-        const li=document.createElement("li");
-        li.className="list-group-item d-flex justify-content-between align-items-center";
-        li.textContent=`${row.Date} - ${row.Employee} (${uiType}) ${row.Reason||""}`;
-        const btn=document.createElement("button");
-        btn.className="btn btn-sm btn-danger"; btn.innerHTML="<i class='fas fa-trash'></i>";
-        btn.onclick=()=>removeLeave(row.Date,row.Employee);
-        li.appendChild(btn); list.appendChild(li);
-      });
-    }
-    function addLeave(){
-      const date=document.getElementById("leaveDate").value;
-      const employee=document.getElementById("leaveEmployee").value;
-      const uiType=document.getElementById("leaveType").value;
-      const type=UI_TO_API_LEAVE[uiType] || uiType; // AL/SL/UL/Other
-      const reason=document.getElementById("leaveReason").value;
-      if(!date||!employee) return showToast("Date & Employee required","danger");
-      const url = `${SCRIPT_URL}?${qs({ action:"addLeave", date, employee, type, reason })}`;
-      fetchJSONP(url)
-        .then(res => { if(!res.ok) throw new Error(res.error||'Failed'); showToast("Leave added","success"); loadLeaves(); })
-        .catch(err => { console.error(err); showToast("Failed to add leave","danger"); });
-    }
-    function removeLeave(date,employee){
-      const url = `${SCRIPT_URL}?${qs({ action:"removeLeave", date, employee })}`;
-      fetchJSONP(url)
-        .then(res => { if(!res.ok) throw new Error(res.error||'Failed'); showToast("Leave removed","success"); loadLeaves(); })
-        .catch(err => { console.error(err); showToast("Failed to remove leave","danger"); });
-    }
+      function makeNumberInput(rowNumber, field, initial) {
+        const wrap = document.createElement('div');
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.step = '0.01';
+        input.className = 'editable';
+        input.value = (initial ?? '').toString();
+        input.addEventListener('change', () => commit(rowNumber, { [field]: input.value }));
+        wrap.appendChild(input);
+        return wrap;
+      }
 
-    /* =======================
-       INIT
-       ======================= */
-    function loadAll(){ Promise.all([loadAttendance(),loadHolidays(),loadLeaves()]).then(()=>applyFilters()); }
-    loadAll();
-  </script>
-</body>
+      function makeStatusSelect(rowNumber, initial) {
+        const select = document.createElement('select');
+        select.className = 'editable';
+        // options
+        const opts = CONFIG.statusOptions && CONFIG.statusOptions.length ? CONFIG.statusOptions : ['Present','Absent','Late','On Leave','Remote'];
+        opts.forEach(o => {
+          const op = document.createElement('option');
+          op.value = o;
+          op.textContent = o;
+          if ((initial || '').toLowerCase() === o.toLowerCase()) op.selected = true;
+          select.appendChild(op);
+        });
+        select.addEventListener('change', () => commit(rowNumber, { 'Status': select.value }));
+        return select;
+      }
+
+      function commit(rowNumber, updates) {
+        setLoading(true);
+        google.script.run
+          .withSuccessHandler(res => {
+            setLoading(false);
+            if (!res || !res.ok) {
+              alert('Update failed: ' + (res && res.error ? res.error : 'Unknown error'));
+              return;
+            }
+            toast('Saved');
+            // Update local model to keep UI in sync
+            const idx = RAW.findIndex(x => x.rowNumber === rowNumber);
+            if (idx >= 0) {
+              Object.keys(updates).forEach(k => {
+                const key = k.toLowerCase();
+                if (key === 'first in') RAW[idx].firstIn = updates[k];
+                else if (key === 'last out') RAW[idx].lastOut = updates[k];
+                else if (key === 'hours') RAW[idx].hours = parseFloat(updates[k]) || 0;
+                else if (key === 'status') RAW[idx].status = updates[k];
+              });
+            }
+            render();
+          })
+          .withFailureHandler(err => {
+            setLoading(false);
+            alert('Update error: ' + (err && err.message ? err.message : err));
+          })
+          .updateAttendance(rowNumber, updates);
+      }
+
+      function setFooterCount(n) {
+        document.getElementById('rowCount').textContent = n + ' row' + (n === 1 ? '' : 's');
+      }
+
+      function exportCSV() {
+        const headers = ['Name','Date','First In','Last Out','Hours','Status'];
+        const lines = [headers.join(',')];
+        VIEW.forEach(r => {
+          const row = [
+            csvEscape(r.name),
+            csvEscape(r.date),
+            csvEscape(r.firstIn || ''),
+            csvEscape(r.lastOut || ''),
+            r.hours ?? '',
+            csvEscape(r.status || '')
+          ].join(',');
+          lines.push(row);
+        });
+        const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'attendance_export.csv';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+
+      function csvEscape(v) {
+        const s = (v ?? '').toString();
+        if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+        return s;
+      }
+
+      function debounce(fn, ms) {
+        let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn.apply(this, args), ms); };
+      }
+
+      function setLoading(on) {
+        document.getElementById('spinner').style.display = on ? 'inline-block' : 'none';
+      }
+
+      function toast(msg) {
+        const el = document.getElementById('toast');
+        el.textContent = msg;
+        el.classList.add('show');
+        setTimeout(() => el.classList.remove('show'), 1500);
+      }
+    </script>
+  </head>
+  <body>
+    <header class="container">
+      <h1>Attendance Dashboard <span class="muted">— <?= config.sheetName ?></span></h1>
+      <p class="muted">Filter, review and update directly from this page.</p>
+    </header>
+
+    <div class="toolbar">
+      <div class="controls">
+        <input id="nameFilter" type="search" placeholder="Search name…">
+        <select id="statusFilter">
+          <option value="">All statuses</option>
+          <? for (var i=0; i<config.statusOptions.length; i++) { ?>
+            <option value="<?= config.statusOptions[i] ?>"><?= config.statusOptions[i] ?></option>
+          <? } ?>
+        </select>
+        <input id="fromDate" type="date">
+        <span>to</span>
+        <input id="toDate" type="date">
+      </div>
+      <div class="actions">
+        <button id="refreshBtn">Refresh</button>
+        <button id="clearBtn">Clear</button>
+        <button id="exportBtn">Export CSV</button>
+        <span id="spinner" class="spinner" aria-label="Loading" title="Loading"></span>
+      </div>
+    </div>
+
+    <section class="container kpis">
+      <div class="kpi"><div class="kpi-title">Rows</div><div class="kpi-value" id="kpi-rows">0</div></div>
+      <div class="kpi"><div class="kpi-title">Total Hours</div><div class="kpi-value" id="kpi-hours">0</div></div>
+      <div class="kpi"><div class="kpi-title">People</div><div class="kpi-value" id="kpi-people">0</div></div>
+      <div class="kpi"><div class="kpi-title">Range</div><div class="kpi-value" id="kpi-range">—</div></div>
+    </section>
+
+    <main class="container">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th><button class="thbtn" onclick="SORT={key:'name',dir:SORT.dir==='asc'?'desc':'asc'};render()">Name</button></th>
+              <th><button class="thbtn" onclick="SORT={key:'date',dir:SORT.dir==='asc'?'desc':'asc'};render()">Date</button></th>
+              <th>First In</th>
+              <th>Last Out</th>
+              <th><button class="thbtn" onclick="SORT={key:'hours',dir:SORT.dir==='asc'?'desc':'asc'};render()">Hours</button></th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="dataBody"></tbody>
+          <tfoot>
+            <tr><td colspan="6"><span id="rowCount">0 rows</span></td></tr>
+          </tfoot>
+        </table>
+      </div>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </body>
 </html>
