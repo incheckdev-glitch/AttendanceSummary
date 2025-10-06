@@ -133,11 +133,8 @@
     /* =======================
        CONFIG
        ======================= */
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzhioxuidkEd-nWb6UkeM6s3x7coq2cYsip5aIWRAVhlViqlwcnr6mA_42cQqD09bSY4Q/exec";
-    // Set TOKEN if backend requires it (recommended). Leave "" to disable.
-    const TOKEN = ""; // e.g., "YOUR_LONG_RANDOM_SECRET"
-    // Optional CORS proxy (used only if direct fetch fails)
-    const CORS_PROXY = "https://corsproxy.io/?";
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz3fd0QoDm2xsrRsAK0i16LxCTh9yuiiHZnQTxxf7OV1m31fo3I9K0xJ3iVnktG01ldCg/exec"; // e.g., https://script.google.com/macros/s/AKfycb.../exec
+    const TOKEN = "a57bf7a600a9015e26e807f593bbc1dce71a2a746f1baa0e979eaee3b52e025c";     // must match API_TOKEN script property
 
     // UI <-> API leave type mapping
     const UI_TO_API_LEAVE = { Annual: "AL", Sick: "SL", Unpaid: "UL", Other: "Other" };
@@ -149,10 +146,7 @@
     let attendanceData = [];
     let holidaysData = [];
     let leavesData = [];
-
-    let barChartInstance;
-    let pieChartInstance;
-    let lineChartInstance;
+    let barChartInstance, pieChartInstance, lineChartInstance;
 
     /* =======================
        UTILITIES
@@ -173,7 +167,6 @@
       icon.classList.toggle("fa-moon", !isDark);
       try { localStorage.setItem("adp_theme", isDark ? "dark" : "light"); } catch(e){}
     }
-
     (function initTheme(){
       try {
         const saved = localStorage.getItem("adp_theme");
@@ -185,30 +178,6 @@
       } catch(e){}
     })();
 
-    // Querystring builder (auto-adds token if present)
-    function qs(obj) {
-      const p = { ...obj };
-      if (TOKEN) p.token = TOKEN;
-      return Object.entries(p)
-        .filter(([,v]) => v !== undefined && v !== null && v !== "")
-        .map(([k,v]) => encodeURIComponent(k) + "=" + encodeURIComponent(v))
-        .join("&");
-    }
-
-    // Unwrap { ok:true, data:[...] } or return [] safely
-    function unwrapData(raw) {
-      if (Array.isArray(raw)) return raw;
-      if (raw && Array.isArray(raw.data)) return raw.data;
-      return [];
-    }
-
-    // Robust local Y-M-D -> Date at local midnight (no timezone shift)
-    function parseYmdLocal(s) {
-      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || ""));
-      if (!m) return null;
-      return new Date(+m[1], +m[2] - 1, +m[3]);
-    }
-    // Normalize to YYYY-MM-DD if possible
     function toYmd(val) {
       const s = String(val || "");
       if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
@@ -219,35 +188,49 @@
       const dd = String(d.getDate()).padStart(2,"0");
       return `${y}-${m}-${dd}`;
     }
+    function parseYmdLocal(s) {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || ""));
+      if (!m) return null;
+      return new Date(+m[1], +m[2]-1, +m[3]);
+    }
     function dateInRange(d, from, to) {
       if (from && d < from) return false;
       if (to && d > to) return false;
       return true;
     }
 
-    // Wrapper for fetch JSON with optional CORS proxy fallback
-    async function fetchJSON(url, options={}, attempt=0) {
-      const target = attempt === 0 || !CORS_PROXY ? url : `${CORS_PROXY}${url}`;
-      try {
-        const res = await fetch(target, options);
-        if (!res.ok) {
-          const body = await res.text().catch(() => "");
-          throw new Error(`Request failed (${res.status} ${res.statusText}) ${body}`.trim());
-        }
-        const text = await res.text();
-        try { return JSON.parse(text); }
-        catch(e) {
-          console.error("Invalid JSON", text);
-          throw new Error("Invalid JSON response");
-        }
-      } catch (err) {
-        if (attempt === 0 && CORS_PROXY) {
-          console.warn("Falling back to CORS proxy", err);
-          return fetchJSON(url, options, attempt + 1);
-        }
-        console.error("fetchJSON error", err);
-        throw err;
-      }
+    // Build querystring and auto-attach token
+    function qs(obj) {
+      const p = { ...obj };
+      if (TOKEN) p.token = TOKEN;
+      return Object.entries(p)
+        .filter(([,v]) => v !== undefined && v !== null && v !== "")
+        .map(([k,v]) => encodeURIComponent(k) + "=" + encodeURIComponent(v))
+        .join("&");
+    }
+
+    // JSONP helper (avoids CORS entirely)
+    function fetchJSONP(url, timeout=15000) {
+      return new Promise((resolve, reject) => {
+        const cb = '__jsonp_cb_' + Math.random().toString(36).slice(2);
+        const sep = url.includes('?') ? '&' : '?';
+        const script = document.createElement('script');
+        let done = false;
+
+        const cleanup = () => { if (script.parentNode) script.parentNode.removeChild(script); delete window[cb]; };
+        window[cb] = (payload) => { if (done) return; done = true; cleanup(); resolve(payload); };
+        script.onerror = () => { if (done) return; done = true; cleanup(); reject(new Error('JSONP network error')); };
+        script.src = `${url}${sep}callback=${cb}`;
+        document.head.appendChild(script);
+        setTimeout(() => { if (done) return; done = true; cleanup(); reject(new Error('JSONP timeout')); }, timeout);
+      });
+    }
+
+    // Unwrap { ok:true, data:[...] }
+    function unwrapData(raw) {
+      if (raw && raw.ok && Array.isArray(raw.data)) return raw.data;
+      if (Array.isArray(raw)) return raw;
+      return [];
     }
 
     /* =======================
@@ -284,12 +267,11 @@
     function syncWithServer() {
       document.getElementById("loadingOverlay").style.display="flex";
       const url = `${SCRIPT_URL}?${qs({ action: "updateSummary" })}`;
-      fetchJSON(url)
-        .then(()=>{ showToast("Attendance synced!","success"); loadAll(); })
-        .catch(err=>{ console.error(err); showToast("Sync failed","danger"); })
+      fetchJSONP(url)
+        .then(res => { if (!res.ok) throw new Error(res.error || 'Sync failed'); showToast("Attendance synced!","success"); loadAll(); })
+        .catch(err => { console.error(err); showToast("Sync failed","danger"); })
         .finally(()=>document.getElementById("loadingOverlay").style.display="none");
     }
-
     function downloadFullReport() {
       if (!$.fn.DataTable.isDataTable('#attendanceTable')) {
         showToast("Please wait for the data to finish loading.", "warning");
@@ -303,7 +285,7 @@
        ======================= */
     function loadAttendance() {
       const url = `${SCRIPT_URL}?${qs({ action:"getAttendance" })}`;
-      return fetchJSON(url)
+      return fetchJSONP(url)
         .then(raw => {
           const rows = unwrapData(raw);
           const data = rows.map(normalizeAttendanceRecord);
@@ -311,36 +293,28 @@
           populateEmployeeFilter(data);
           renderAttendanceTable(data);
           renderCharts(data);
-        }).catch(err => {
-          showToast("Failed to load attendance","danger");
-          console.error(err);
-        });
+        })
+        .catch(err => { showToast("Failed to load attendance","danger"); console.error(err); });
     }
-
     function loadHolidays(){
       const url = `${SCRIPT_URL}?${qs({ action:"getHolidays" })}`;
-      return fetchJSON(url).then(raw => {
-        holidaysData = unwrapData(raw).map(h => ({ Date: toYmd(h.Date), Name: h.Name }));
-        renderHolidays(holidaysData);
-      }).catch(err => {
-        console.error(err); showToast("Failed to load holidays","danger");
-      });
+      return fetchJSONP(url)
+        .then(raw => { holidaysData = unwrapData(raw).map(h => ({ Date: toYmd(h.Date), Name: h.Name })); renderHolidays(holidaysData); })
+        .catch(err => { console.error(err); showToast("Failed to load holidays","danger"); });
     }
-
     function loadLeaves(){
       const url = `${SCRIPT_URL}?${qs({ action:"getLeaves" })}`;
-      return fetchJSON(url).then(raw => {
-        // Ensure Type is what server returns (AL/SL/UL/Other) and keep Date normalized
-        leavesData = unwrapData(raw).map(l => ({
-          Date: toYmd(l.Date),
-          Employee: l.Employee || l.Name || "",
-          Type: l.Type, // server gives AL/SL/UL/Other in the upgraded backend
-          Reason: l.Reason || ""
-        }));
-        renderLeaves(leavesData);
-      }).catch(err => {
-        console.error(err); showToast("Failed to load leaves","danger");
-      });
+      return fetchJSONP(url)
+        .then(raw => {
+          leavesData = unwrapData(raw).map(l => ({
+            Date: toYmd(l.Date),
+            Employee: l.Employee || l.Name || "",
+            Type: l.Type, // AL/SL/UL/Other from API
+            Reason: l.Reason || ""
+          }));
+          renderLeaves(leavesData);
+        })
+        .catch(err => { console.error(err); showToast("Failed to load leaves","danger"); });
     }
 
     /* =======================
@@ -390,7 +364,6 @@
        CHARTS
        ======================= */
     function renderCharts(data){
-      // Aggregate hours by date
       const byDate = {};
       const byEmp = {};
       data.forEach(r => {
@@ -402,10 +375,8 @@
 
       const dates = Object.keys(byDate).sort();
       const hours = dates.map(d => +byDate[d].toFixed(2));
-      // Cumulative trend for line chart
       const trend = [];
-      let sum = 0;
-      for (const h of hours) { sum += h; trend.push(+sum.toFixed(2)); }
+      let sum = 0; for (const h of hours) { sum += h; trend.push(+sum.toFixed(2)); }
 
       const empLabels = Object.keys(byEmp);
       const empValues = empLabels.map(k => +byEmp[k].toFixed(2));
@@ -418,13 +389,13 @@
       Chart.getChart(pieCanvas)?.destroy();
       Chart.getChart(lineCanvas)?.destroy();
 
-      barChartInstance = new Chart(barCanvas,{
+      new Chart(barCanvas,{
         type:'bar',
         data:{ labels:dates, datasets:[{ label:"Hours by Date", data:hours, backgroundColor:"#4e73df" }] },
         options:{ plugins:{ legend:{ display:false } }, scales:{ x:{ ticks:{ maxRotation:45, minRotation:45 }}}}
       });
 
-      pieChartInstance = new Chart(pieCanvas,{
+      new Chart(pieCanvas,{
         type:'pie',
         data:{
           labels:empLabels,
@@ -432,7 +403,7 @@
         }
       });
 
-      lineChartInstance = new Chart(lineCanvas,{
+      new Chart(lineCanvas,{
         type:'line',
         data:{ labels:dates, datasets:[{ label:"Cumulative Hours", data:trend, borderColor:"#1cc88a", fill:false, tension:0.2 }] }
       });
@@ -482,7 +453,7 @@
         return dateInRange(d, from, to);
       });
 
-      const toUI = t => API_TO_UI_LEAVE[t] || t; // AL->Annual, or passthrough
+      const toUI = t => API_TO_UI_LEAVE[t] || t;
       const totalLeaves = leaveFiltered.length;
       const annual = leaveFiltered.filter(l=>toUI(l.Type)==="Annual").length;
       const sick   = leaveFiltered.filter(l=>toUI(l.Type)==="Sick").length;
@@ -511,24 +482,20 @@
         li.appendChild(btn); list.appendChild(li);
       });
     }
-
     function addHoliday(){
       const date=document.getElementById("holidayDate").value;
       const name=document.getElementById("holidayName").value;
       if(!date||!name) return showToast("Date & Name required","danger");
-      const payload = { action:"addHoliday", date, name };
-      if (TOKEN) payload.token = TOKEN;
-      fetchJSON(SCRIPT_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)})
-        .then(()=>{showToast("Holiday added","success");loadHolidays();})
-        .catch(err=>{console.error(err);showToast("Failed to add holiday","danger");});
+      const url = `${SCRIPT_URL}?${qs({ action:"addHoliday", date, name })}`;
+      fetchJSONP(url)
+        .then(res => { if(!res.ok) throw new Error(res.error||'Failed'); showToast("Holiday added","success"); loadHolidays(); })
+        .catch(err => { console.error(err); showToast("Failed to add holiday","danger"); });
     }
-
     function removeHoliday(date){
-      const payload = { action:"removeHoliday", date };
-      if (TOKEN) payload.token = TOKEN;
-      fetchJSON(SCRIPT_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)})
-        .then(()=>{showToast("Holiday removed","success");loadHolidays();})
-        .catch(err=>{console.error(err);showToast("Failed to remove holiday","danger");});
+      const url = `${SCRIPT_URL}?${qs({ action:"removeHoliday", date })}`;
+      fetchJSONP(url)
+        .then(res => { if(!res.ok) throw new Error(res.error||'Failed'); showToast("Holiday removed","success"); loadHolidays(); })
+        .catch(err => { console.error(err); showToast("Failed to remove holiday","danger"); });
     }
 
     /* =======================
@@ -547,29 +514,23 @@
         li.appendChild(btn); list.appendChild(li);
       });
     }
-
     function addLeave(){
       const date=document.getElementById("leaveDate").value;
       const employee=document.getElementById("leaveEmployee").value;
       const uiType=document.getElementById("leaveType").value;
-      const type=UI_TO_API_LEAVE[uiType] || uiType; // Convert to AL/SL/UL for API
+      const type=UI_TO_API_LEAVE[uiType] || uiType; // AL/SL/UL/Other
       const reason=document.getElementById("leaveReason").value;
       if(!date||!employee) return showToast("Date & Employee required","danger");
-
-      const payload = { action:"addLeave", date, employee, type, reason };
-      if (TOKEN) payload.token = TOKEN;
-
-      fetchJSON(SCRIPT_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)})
-        .then(()=>{showToast("Leave added","success");loadLeaves();})
-        .catch(err=>{console.error(err);showToast("Failed to add leave","danger");});
+      const url = `${SCRIPT_URL}?${qs({ action:"addLeave", date, employee, type, reason })}`;
+      fetchJSONP(url)
+        .then(res => { if(!res.ok) throw new Error(res.error||'Failed'); showToast("Leave added","success"); loadLeaves(); })
+        .catch(err => { console.error(err); showToast("Failed to add leave","danger"); });
     }
-
     function removeLeave(date,employee){
-      const payload = { action:"removeLeave", date, employee };
-      if (TOKEN) payload.token = TOKEN;
-      fetchJSON(SCRIPT_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)})
-        .then(()=>{showToast("Leave removed","success");loadLeaves();})
-        .catch(err=>{console.error(err);showToast("Failed to remove leave","danger");});
+      const url = `${SCRIPT_URL}?${qs({ action:"removeLeave", date, employee })}`;
+      fetchJSONP(url)
+        .then(res => { if(!res.ok) throw new Error(res.error||'Failed'); showToast("Leave removed","success"); loadLeaves(); })
+        .catch(err => { console.error(err); showToast("Failed to remove leave","danger"); });
     }
 
     /* =======================
