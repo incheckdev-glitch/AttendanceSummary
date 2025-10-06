@@ -38,7 +38,9 @@
     <div class="header-section">
       <h1 class="header-title"><i class="fas fa-chart-line"></i> Attendance Dashboard Pro</h1>
       <div>
-        <button class="btn btn-outline-primary me-2" onclick="toggleDark()"><i class="fas fa-moon" id="themeIcon"></i></button>
+        <button class="btn btn-outline-primary me-2" onclick="toggleDark()" title="Toggle theme">
+          <i class="fas fa-moon" id="themeIcon"></i>
+        </button>
         <button class="btn btn-success me-2" onclick="syncWithServer()"><i class="fas fa-sync-alt"></i> Sync</button>
         <button class="btn btn-primary" onclick="downloadFullReport()"><i class="fas fa-download"></i> Download</button>
       </div>
@@ -121,27 +123,109 @@
   <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
   <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
   <script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
   <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.print.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
   <script>
-   const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzhioxuidkEd-nWb6UkeM6s3x7coq2cYsip5aIWRAVhlViqlwcnr6mA_42cQqD09bSY4Q/exec";
-   // Optional fallback to work around CORS errors when the Apps Script endpoint
-   // does not expose the required headers. Set to "" to disable proxying.
-   const CORS_PROXY = "https://corsproxy.io/?";
-    
+    /* =======================
+       CONFIG
+       ======================= */
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzhioxuidkEd-nWb6UkeM6s3x7coq2cYsip5aIWRAVhlViqlwcnr6mA_42cQqD09bSY4Q/exec";
+    // Set TOKEN if backend requires it (recommended). Leave "" to disable.
+    const TOKEN = ""; // e.g., "YOUR_LONG_RANDOM_SECRET"
+    // Optional CORS proxy (used only if direct fetch fails)
+    const CORS_PROXY = "https://corsproxy.io/?";
+
+    // UI <-> API leave type mapping
+    const UI_TO_API_LEAVE = { Annual: "AL", Sick: "SL", Unpaid: "UL", Other: "Other" };
+    const API_TO_UI_LEAVE = { AL: "Annual", SL: "Sick", UL: "Unpaid", Other: "Other" };
+
+    /* =======================
+       STATE
+       ======================= */
     let attendanceData = [];
     let holidaysData = [];
     let leavesData = [];
 
-      let barChartInstance;
+    let barChartInstance;
     let pieChartInstance;
     let lineChartInstance;
-    
-    // Wrapper for fetch JSON
+
+    /* =======================
+       UTILITIES
+       ======================= */
+    function showToast(msg, type="info") {
+      const id = "toast" + Date.now();
+      const toast = `<div id="${id}" class="toast align-items-center text-bg-${type} p-2 fade show">
+        <div class="d-flex"><div class="toast-body">${msg}</div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div></div>`;
+      document.getElementById("toastContainer").insertAdjacentHTML("beforeend", toast);
+      setTimeout(()=>document.getElementById(id)?.remove(), 4000);
+    }
+
+    function toggleDark() {
+      const isDark = document.body.classList.toggle("dark-mode");
+      const icon = document.getElementById("themeIcon");
+      icon.classList.toggle("fa-sun", isDark);
+      icon.classList.toggle("fa-moon", !isDark);
+      try { localStorage.setItem("adp_theme", isDark ? "dark" : "light"); } catch(e){}
+    }
+
+    (function initTheme(){
+      try {
+        const saved = localStorage.getItem("adp_theme");
+        if (saved === "dark") {
+          document.body.classList.add("dark-mode");
+          document.getElementById("themeIcon")?.classList.add("fa-sun");
+          document.getElementById("themeIcon")?.classList.remove("fa-moon");
+        }
+      } catch(e){}
+    })();
+
+    // Querystring builder (auto-adds token if present)
+    function qs(obj) {
+      const p = { ...obj };
+      if (TOKEN) p.token = TOKEN;
+      return Object.entries(p)
+        .filter(([,v]) => v !== undefined && v !== null && v !== "")
+        .map(([k,v]) => encodeURIComponent(k) + "=" + encodeURIComponent(v))
+        .join("&");
+    }
+
+    // Unwrap { ok:true, data:[...] } or return [] safely
+    function unwrapData(raw) {
+      if (Array.isArray(raw)) return raw;
+      if (raw && Array.isArray(raw.data)) return raw.data;
+      return [];
+    }
+
+    // Robust local Y-M-D -> Date at local midnight (no timezone shift)
+    function parseYmdLocal(s) {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || ""));
+      if (!m) return null;
+      return new Date(+m[1], +m[2] - 1, +m[3]);
+    }
+    // Normalize to YYYY-MM-DD if possible
+    function toYmd(val) {
+      const s = String(val || "");
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+      const d = new Date(val);
+      if (isNaN(d)) return "";
+      const y = d.getFullYear();
+      const m = String(d.getMonth()+1).padStart(2,"0");
+      const dd = String(d.getDate()).padStart(2,"0");
+      return `${y}-${m}-${dd}`;
+    }
+    function dateInRange(d, from, to) {
+      if (from && d < from) return false;
+      if (to && d > to) return false;
+      return true;
+    }
+
+    // Wrapper for fetch JSON with optional CORS proxy fallback
     async function fetchJSON(url, options={}, attempt=0) {
       const target = attempt === 0 || !CORS_PROXY ? url : `${CORS_PROXY}${url}`;
       try {
@@ -166,95 +250,119 @@
       }
     }
 
+    /* =======================
+       STATUS BADGES
+       ======================= */
     const STATUS_BADGES = {
-      "on time": { cls: "badge bg-success", label: "On Time" },
-      "on time + overtime": { cls: "badge bg-success", label: "On Time + OT" },
-      "late": { cls: "badge bg-warning text-dark", label: "Late" },
-      "left early": { cls: "badge bg-info text-dark", label: "Left Early" },
-      "late & left early": { cls: "badge bg-warning text-dark", label: "Late & Left Early" },
-      "half day": { cls: "badge bg-secondary", label: "Half Day" },
-      "no sign-out": { cls: "badge bg-dark", label: "No Sign-Out" },
-      "no sign-in": { cls: "badge bg-dark", label: "No Sign-In" },
-      "holiday": { cls: "badge bg-primary", label: "Holiday" },
-      "weekend": { cls: "badge bg-secondary", label: "Weekend" },
-      "absent": { cls: "badge bg-danger", label: "Absent" },
-      "leave (sick)": { cls: "badge bg-info text-dark", label: "Leave (Sick)" },
-      "leave (annual)": { cls: "badge bg-primary", label: "Leave (Annual)" },
-      "leave (unpaid)": { cls: "badge bg-danger", label: "Leave (Unpaid)" },
-      "leave (other)": { cls: "badge bg-secondary", label: "Leave (Other)" }
+      "on time":                { cls: "badge bg-success",            label: "On Time" },
+      "on time + overtime":     { cls: "badge bg-success",            label: "On Time + OT" },
+      "late":                   { cls: "badge bg-warning text-dark",  label: "Late" },
+      "left early":             { cls: "badge bg-info text-dark",     label: "Left Early" },
+      "late & left early":      { cls: "badge bg-warning text-dark",  label: "Late & Left Early" },
+      "half day":               { cls: "badge bg-secondary",          label: "Half Day" },
+      "no sign-out":            { cls: "badge bg-dark",               label: "No Sign-Out" },
+      "no sign-in":             { cls: "badge bg-dark",               label: "No Sign-In" },
+      "holiday":                { cls: "badge bg-primary",            label: "Holiday" },
+      "weekend":                { cls: "badge bg-secondary",          label: "Weekend" },
+      "absent":                 { cls: "badge bg-danger",             label: "Absent" },
+      "leave (sick)":           { cls: "badge bg-info text-dark",     label: "Leave (Sick)" },
+      "leave (annual)":         { cls: "badge bg-primary",            label: "Leave (Annual)" },
+      "leave (unpaid)":         { cls: "badge bg-danger",             label: "Leave (Unpaid)" },
+      "leave (other)":          { cls: "badge bg-secondary",          label: "Leave (Other)" }
     };
-
     function renderStatusBadge(rawStatus="") {
-      const normalized = rawStatus.trim().toLowerCase();
+      const normalized = String(rawStatus).trim().toLowerCase();
       const entry = STATUS_BADGES[normalized];
       if (entry) return `<span class="${entry.cls}">${entry.label}</span>`;
       if (!rawStatus) return "";
       return `<span class="badge bg-secondary">${rawStatus}</span>`;
     }
 
-    // Toast helper
-    function showToast(msg, type="info") {
-      const id = "toast" + Date.now();
-      const toast = `<div id="${id}" class="toast align-items-center text-bg-${type} p-2 fade show">
-        <div class="d-flex"><div class="toast-body">${msg}</div>
-        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div></div>`;
-      document.getElementById("toastContainer").insertAdjacentHTML("beforeend", toast);
-      setTimeout(()=>document.getElementById(id)?.remove(), 4000);
-    }
-
-    // Dark mode
-    function toggleDark() {
-      document.body.classList.toggle("dark-mode");
-      document.getElementById("themeIcon").classList.toggle("fa-sun");
-      document.getElementById("themeIcon").classList.toggle("fa-moon");
-    }
-
-    // Sync server
+    /* =======================
+       SYNC / REPORT
+       ======================= */
     function syncWithServer() {
       document.getElementById("loadingOverlay").style.display="flex";
-      fetchJSON(SCRIPT_URL + "?action=updateSummary")
+      const url = `${SCRIPT_URL}?${qs({ action: "updateSummary" })}`;
+      fetchJSON(url)
         .then(()=>{ showToast("Attendance synced!","success"); loadAll(); })
-           .catch(err=>{ console.error(err); showToast("Sync failed","danger"); })
+        .catch(err=>{ console.error(err); showToast("Sync failed","danger"); })
         .finally(()=>document.getElementById("loadingOverlay").style.display="none");
     }
 
     function downloadFullReport() {
-     if (!$.fn.DataTable.isDataTable('#attendanceTable')) {
+      if (!$.fn.DataTable.isDataTable('#attendanceTable')) {
         showToast("Please wait for the data to finish loading.", "warning");
         return;
       }
-        $('#attendanceTable').DataTable().button('.buttons-excel').trigger();
+      $('#attendanceTable').DataTable().button('.buttons-excel').trigger();
     }
 
-    // Attendance
+    /* =======================
+       LOADERS
+       ======================= */
     function loadAttendance() {
-      return fetchJSON(SCRIPT_URL + "?action=getAttendance")
-         .then(raw=>{
-          const rows = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.data) ? raw.data : []);
+      const url = `${SCRIPT_URL}?${qs({ action:"getAttendance" })}`;
+      return fetchJSON(url)
+        .then(raw => {
+          const rows = unwrapData(raw);
           const data = rows.map(normalizeAttendanceRecord);
           attendanceData = data;
           populateEmployeeFilter(data);
           renderAttendanceTable(data);
           renderCharts(data);
-            }).catch(err=>{
+        }).catch(err => {
           showToast("Failed to load attendance","danger");
           console.error(err);
         });
     }
 
+    function loadHolidays(){
+      const url = `${SCRIPT_URL}?${qs({ action:"getHolidays" })}`;
+      return fetchJSON(url).then(raw => {
+        holidaysData = unwrapData(raw).map(h => ({ Date: toYmd(h.Date), Name: h.Name }));
+        renderHolidays(holidaysData);
+      }).catch(err => {
+        console.error(err); showToast("Failed to load holidays","danger");
+      });
+    }
+
+    function loadLeaves(){
+      const url = `${SCRIPT_URL}?${qs({ action:"getLeaves" })}`;
+      return fetchJSON(url).then(raw => {
+        // Ensure Type is what server returns (AL/SL/UL/Other) and keep Date normalized
+        leavesData = unwrapData(raw).map(l => ({
+          Date: toYmd(l.Date),
+          Employee: l.Employee || l.Name || "",
+          Type: l.Type, // server gives AL/SL/UL/Other in the upgraded backend
+          Reason: l.Reason || ""
+        }));
+        renderLeaves(leavesData);
+      }).catch(err => {
+        console.error(err); showToast("Failed to load leaves","danger");
+      });
+    }
+
+    /* =======================
+       NORMALIZERS
+       ======================= */
     function normalizeAttendanceRecord(row={}){
       const firstIn = row.FirstIn ?? row["First In"] ?? row.SignIn ?? "";
       const lastOut = row.LastOut ?? row["Last Out"] ?? row.SignOut ?? "";
+      const hours = Number(row.Hours ?? row.TotalHours ?? row["Total Hours"] ?? 0) || 0;
       return {
         Name: row.Name ?? row.Employee ?? "",
-        Date: row.Date ?? row.Day ?? "",
+        Date: toYmd(row.Date ?? row.Day ?? ""),
         FirstIn: firstIn,
         LastOut: lastOut,
-        Hours: row.Hours ?? row.TotalHours ?? row["Total Hours"] ?? "",
+        Hours: hours,
         Status: row.Status ?? row.Attendance ?? ""
       };
     }
 
+    /* =======================
+       TABLE
+       ======================= */
     function renderAttendanceTable(data){
       if ($.fn.DataTable.isDataTable('#attendanceTable')) {
         $('#attendanceTable').DataTable().clear().rows.add(data).draw();
@@ -264,23 +372,45 @@
           columns:[
             {title:"Name", data:"Name"},
             {title:"Date", data:"Date"},
-           {title:"First In", data:"FirstIn"},
+            {title:"First In", data:"FirstIn"},
             {title:"Last Out", data:"LastOut"},
             {title:"Hours", data:"Hours"},
-            { title:"Status", data:"Status", render:renderStatusBadge }
+            {title:"Status", data:"Status", render:renderStatusBadge }
           ],
-          dom:'Bfrtip', buttons:['copy','csv','excel','print']
+          responsive:true,
+          scrollX:true,
+          order:[[1,'asc'],[0,'asc']],
+          dom:'Bfrtip',
+          buttons:['copy','csv','excel','print']
         });
       }
     }
 
-    // Charts
+    /* =======================
+       CHARTS
+       ======================= */
     function renderCharts(data){
-      const dates=data.map(r=>r.Date);
-      const hours=data.map(r=>parseFloat(r.Hours||0));
-      const byEmp={}; data.forEach(r=>{byEmp[r.Name]=(byEmp[r.Name]||0)+parseFloat(r.Hours||0);});
-      
-          const barCanvas=document.getElementById("barChart");
+      // Aggregate hours by date
+      const byDate = {};
+      const byEmp = {};
+      data.forEach(r => {
+        const d = r.Date;
+        const h = Number(r.Hours) || 0;
+        byDate[d] = (byDate[d] || 0) + h;
+        byEmp[r.Name] = (byEmp[r.Name] || 0) + h;
+      });
+
+      const dates = Object.keys(byDate).sort();
+      const hours = dates.map(d => +byDate[d].toFixed(2));
+      // Cumulative trend for line chart
+      const trend = [];
+      let sum = 0;
+      for (const h of hours) { sum += h; trend.push(+sum.toFixed(2)); }
+
+      const empLabels = Object.keys(byEmp);
+      const empValues = empLabels.map(k => +byEmp[k].toFixed(2));
+
+      const barCanvas=document.getElementById("barChart");
       const pieCanvas=document.getElementById("pieChart");
       const lineCanvas=document.getElementById("lineChart");
 
@@ -288,139 +418,163 @@
       Chart.getChart(pieCanvas)?.destroy();
       Chart.getChart(lineCanvas)?.destroy();
 
-      barChartInstance = new Chart(barCanvas,{type:'bar',data:{labels:dates,datasets:[{label:"Hours",data:hours,backgroundColor:"#4e73df"}]}});
-      pieChartInstance = new Chart(pieCanvas,{type:'pie',data:{labels:Object.keys(byEmp),datasets:[{data:Object.values(byEmp),backgroundColor:["#4e73df","#1cc88a","#e74a3b","#f6c23e","#36b9cc"]}] }});
-      lineChartInstance = new Chart(lineCanvas,{type:'line',data:{labels:dates,datasets:[{label:"Trend",data:hours,borderColor:"#1cc88a",fill:false}] }});
+      barChartInstance = new Chart(barCanvas,{
+        type:'bar',
+        data:{ labels:dates, datasets:[{ label:"Hours by Date", data:hours, backgroundColor:"#4e73df" }] },
+        options:{ plugins:{ legend:{ display:false } }, scales:{ x:{ ticks:{ maxRotation:45, minRotation:45 }}}}
+      });
+
+      pieChartInstance = new Chart(pieCanvas,{
+        type:'pie',
+        data:{
+          labels:empLabels,
+          datasets:[{ data:empValues, backgroundColor:["#4e73df","#1cc88a","#e74a3b","#f6c23e","#36b9cc","#858796","#5a5c69","#2e59d9"] }]
+        }
+      });
+
+      lineChartInstance = new Chart(lineCanvas,{
+        type:'line',
+        data:{ labels:dates, datasets:[{ label:"Cumulative Hours", data:trend, borderColor:"#1cc88a", fill:false, tension:0.2 }] }
+      });
     }
 
-    // Employee filter
+    /* =======================
+       FILTERS + CARDS
+       ======================= */
     function populateEmployeeFilter(data){
       const sel=document.getElementById("filterEmployee");
-      const unique=[...new Set(data.map(r=>r.Name).filter(Boolean))];
+      const unique=[...new Set(data.map(r=>r.Name).filter(Boolean))].sort();
       sel.innerHTML="<option value=''>All</option>"+unique.map(n=>`<option value="${n}">${n}</option>`).join("");
     }
 
-    // Filters
     function applyFilters(){
       const emp=document.getElementById("filterEmployee").value;
-      const from=document.getElementById("filterFrom").value ? new Date(document.getElementById("filterFrom").value) : null;
-      const to=document.getElementById("filterTo").value ? new Date(document.getElementById("filterTo").value) : null;
+      const fromInput=document.getElementById("filterFrom").value;
+      const toInput=document.getElementById("filterTo").value;
+      const from = fromInput ? parseYmdLocal(fromInput) : null;
+      const to   = toInput ? parseYmdLocal(toInput) : null;
 
-      let filtered = attendanceData.filter(r=>{
-        let ok=true;
-        if(emp && r.Name!==emp) ok=false;
-        if(from && new Date(r.Date)<from) ok=false;
-        if(to && new Date(r.Date)>to) ok=false;
+      const filtered = attendanceData.filter(r=>{
+        let ok = true;
+        if (emp && r.Name !== emp) ok = false;
+        const d = parseYmdLocal(r.Date) || new Date(r.Date);
+        if (from && d < from) ok = false;
+        if (to   && d > to)   ok = false;
         return ok;
       });
 
       renderAttendanceTable(filtered);
-       renderCharts(filtered);
+      renderCharts(filtered);
       updateCards(filtered, emp, from, to);
     }
 
-    // Summary Cards
     function updateCards(filtered, emp, from, to){
-      let totalHours = filtered.reduce((sum,r)=>sum+(parseFloat(r.Hours)||0),0);
-      let holCount = holidaysData.filter(h=>{
-        let d=new Date(h.Date);
-        return (!from||d>=from)&&(!to||d<=to);
+      const totalHours = filtered.reduce((sum,r)=>sum+(Number(r.Hours)||0),0);
+
+      const holCount = holidaysData.filter(h=>{
+        const d = parseYmdLocal(h.Date) || new Date(h.Date);
+        return dateInRange(d, from, to);
       }).length;
-      let leaveFiltered = leavesData.filter(l=>{
-        if(emp && l.Employee!==emp) return false;
-        let d=new Date(l.Date);
-        return (!from||d>=from)&&(!to||d<=to);
-      });
-      let totalLeaves = leaveFiltered.length;
-      let annual = leaveFiltered.filter(l=>l.Type==="Annual").length;
-      let sick = leaveFiltered.filter(l=>l.Type==="Sick").length;
-      let unpaid = leaveFiltered.filter(l=>l.Type==="Unpaid").length;
 
-      document.getElementById("cardHours").textContent=totalHours.toFixed(2);
-      document.getElementById("cardHolidays").textContent=holCount;
-      document.getElementById("cardLeaves").textContent=totalLeaves;
-      document.getElementById("cardAnnual").textContent=annual;
-      document.getElementById("cardSick").textContent=sick;
-      document.getElementById("cardUnpaid").textContent=unpaid;
+      const leaveFiltered = leavesData.filter(l=>{
+        if(emp && l.Employee !== emp) return false;
+        const d = parseYmdLocal(l.Date) || new Date(l.Date);
+        return dateInRange(d, from, to);
+      });
+
+      const toUI = t => API_TO_UI_LEAVE[t] || t; // AL->Annual, or passthrough
+      const totalLeaves = leaveFiltered.length;
+      const annual = leaveFiltered.filter(l=>toUI(l.Type)==="Annual").length;
+      const sick   = leaveFiltered.filter(l=>toUI(l.Type)==="Sick").length;
+      const unpaid = leaveFiltered.filter(l=>toUI(l.Type)==="Unpaid").length;
+
+      document.getElementById("cardHours").textContent = totalHours.toFixed(2);
+      document.getElementById("cardHolidays").textContent = holCount;
+      document.getElementById("cardLeaves").textContent = totalLeaves;
+      document.getElementById("cardAnnual").textContent = annual;
+      document.getElementById("cardSick").textContent = sick;
+      document.getElementById("cardUnpaid").textContent = unpaid;
     }
 
-    // Holidays
-    function loadHolidays(){
-          return fetchJSON(SCRIPT_URL+"?action=getHolidays").then(raw=>{
-        const data = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.data) ? raw.data : []);
-        holidaysData=data;
-        renderHolidays(data);
-      }).catch(err=>{
-        console.error(err);
-        showToast("Failed to load holidays","danger");
-      });
-    }
+    /* =======================
+       HOLIDAYS
+       ======================= */
     function renderHolidays(data){
       const list=document.getElementById("holidayList"); list.innerHTML="";
       data.forEach(row=>{
         const li=document.createElement("li");
         li.className="list-group-item d-flex justify-content-between align-items-center";
-        li.textContent=row.Date+" - "+row.Name;
+        li.textContent=`${row.Date} - ${row.Name}`;
         const btn=document.createElement("button");
         btn.className="btn btn-sm btn-danger"; btn.innerHTML="<i class='fas fa-trash'></i>";
         btn.onclick=()=>removeHoliday(row.Date);
         li.appendChild(btn); list.appendChild(li);
       });
     }
+
     function addHoliday(){
       const date=document.getElementById("holidayDate").value;
       const name=document.getElementById("holidayName").value;
       if(!date||!name) return showToast("Date & Name required","danger");
-      fetchJSON(SCRIPT_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"addHoliday",date,name})})
+      const payload = { action:"addHoliday", date, name };
+      if (TOKEN) payload.token = TOKEN;
+      fetchJSON(SCRIPT_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)})
         .then(()=>{showToast("Holiday added","success");loadHolidays();})
         .catch(err=>{console.error(err);showToast("Failed to add holiday","danger");});
     }
+
     function removeHoliday(date){
-      fetchJSON(SCRIPT_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"removeHoliday",date})})
+      const payload = { action:"removeHoliday", date };
+      if (TOKEN) payload.token = TOKEN;
+      fetchJSON(SCRIPT_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)})
         .then(()=>{showToast("Holiday removed","success");loadHolidays();})
         .catch(err=>{console.error(err);showToast("Failed to remove holiday","danger");});
     }
 
-    // Leaves
-    function loadLeaves(){
-          return fetchJSON(SCRIPT_URL+"?action=getLeaves").then(raw=>{
-        const data = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.data) ? raw.data : []);
-        leavesData=data;
-        renderLeaves(data);
-      }).catch(err=>{
-        console.error(err);
-        showToast("Failed to load leaves","danger");
-      });
-    }
+    /* =======================
+       LEAVES
+       ======================= */
     function renderLeaves(data){
       const list=document.getElementById("leaveList"); list.innerHTML="";
       data.forEach(row=>{
+        const uiType = API_TO_UI_LEAVE[row.Type] || row.Type;
         const li=document.createElement("li");
         li.className="list-group-item d-flex justify-content-between align-items-center";
-        li.textContent=row.Date+" - "+row.Employee+" ("+row.Type+") "+row.Reason;
+        li.textContent=`${row.Date} - ${row.Employee} (${uiType}) ${row.Reason||""}`;
         const btn=document.createElement("button");
         btn.className="btn btn-sm btn-danger"; btn.innerHTML="<i class='fas fa-trash'></i>";
         btn.onclick=()=>removeLeave(row.Date,row.Employee);
         li.appendChild(btn); list.appendChild(li);
       });
     }
+
     function addLeave(){
       const date=document.getElementById("leaveDate").value;
       const employee=document.getElementById("leaveEmployee").value;
-      const type=document.getElementById("leaveType").value;
+      const uiType=document.getElementById("leaveType").value;
+      const type=UI_TO_API_LEAVE[uiType] || uiType; // Convert to AL/SL/UL for API
       const reason=document.getElementById("leaveReason").value;
       if(!date||!employee) return showToast("Date & Employee required","danger");
-      fetchJSON(SCRIPT_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"addLeave",date,employee,type,reason})})
+
+      const payload = { action:"addLeave", date, employee, type, reason };
+      if (TOKEN) payload.token = TOKEN;
+
+      fetchJSON(SCRIPT_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)})
         .then(()=>{showToast("Leave added","success");loadLeaves();})
         .catch(err=>{console.error(err);showToast("Failed to add leave","danger");});
     }
+
     function removeLeave(date,employee){
-      fetchJSON(SCRIPT_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"removeLeave",date,employee})})
-         .then(()=>{showToast("Leave removed","success");loadLeaves();})
+      const payload = { action:"removeLeave", date, employee };
+      if (TOKEN) payload.token = TOKEN;
+      fetchJSON(SCRIPT_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)})
+        .then(()=>{showToast("Leave removed","success");loadLeaves();})
         .catch(err=>{console.error(err);showToast("Failed to remove leave","danger");});
     }
 
-    // Init
+    /* =======================
+       INIT
+       ======================= */
     function loadAll(){ Promise.all([loadAttendance(),loadHolidays(),loadLeaves()]).then(()=>applyFilters()); }
     loadAll();
   </script>
