@@ -1,336 +1,149 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <base target="_top">
-    <meta charset="utf-8"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1"/>
-    <title>Attendance Dashboard</title>
-    <?!= include('Styles'); ?>
-    <style>
-      /* Minor overrides */
-      .muted { opacity: .65; }
-      .badge { padding: .15rem .5rem; border-radius: 999px; font-size: .75rem; }
-      .status-Present { background: #e6f4ea; }
-      .status-Absent { background: #fdeaea; }
-      .status-Late { background: #fff4e5; }
-      .status-Remote { background: #e8f1fb; }
-      .status-On\ Leave { background: #f1e8fb; }
-      .editable { background: #fff; border: 1px solid #e5e7eb; border-radius: .375rem; padding: .25rem .5rem; }
-      .toolbar { position: sticky; top: 0; background: #fff; z-index: 5; padding: .75rem 1rem; border-bottom: 1px solid #eee; display: flex; gap: .5rem; flex-wrap: wrap; }
-    </style>
-    <script>
-      const CONFIG = {
-        statusOptions: <?= JSON.stringify(config.statusOptions) ?>,
-        sheetName: <?= JSON.stringify(config.sheetName) ?>
-      };
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Attendance Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+  <style>
+    body { background-color: #f4f6f9; font-family: 'Segoe UI', sans-serif; }
+    .sidebar { background: #212529; color: #fff; min-height: 100vh; }
+    .sidebar a { color: #adb5bd; text-decoration: none; display: block; padding: 12px 20px; }
+    .sidebar a:hover { background: #343a40; color: #fff; }
+    .card { border: none; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+    .chart-container { height: 300px; }
+    .page-header { border-bottom: 2px solid #007bff; margin-bottom: 20px; }
+  </style>
+</head>
+<body>
 
-      let RAW = [];    // all rows from server
-      let VIEW = [];   // filtered/sorted
-      let SORT = { key: 'date', dir: 'desc' };
-
-      document.addEventListener('DOMContentLoaded', () => {
-        bindToolbar();
-        fetchData();
-      });
-
-      function bindToolbar() {
-        document.getElementById('refreshBtn').addEventListener('click', fetchData);
-        document.getElementById('clearBtn').addEventListener('click', () => {
-          document.getElementById('nameFilter').value = '';
-          document.getElementById('statusFilter').value = '';
-          document.getElementById('fromDate').value = '';
-          document.getElementById('toDate').value = '';
-          render();
-        });
-        document.getElementById('exportBtn').addEventListener('click', exportCSV);
-        ['nameFilter','statusFilter','fromDate','toDate'].forEach(id => {
-          document.getElementById(id).addEventListener('input', debounce(render, 200));
-          document.getElementById(id).addEventListener('change', debounce(render, 200));
-        });
-      }
-
-      function fetchData() {
-        setLoading(true);
-        const filters = collectFilters();
-        google.script.run
-          .withSuccessHandler(payload => {
-            RAW = payload.rows || [];
-            setKpis(payload.stats);
-            render();
-            setLoading(false);
-            toast('Data refreshed');
-          })
-          .withFailureHandler(err => {
-            setLoading(false);
-            alert('Error loading data: ' + (err && err.message ? err.message : err));
-          })
-          .getAttendance(filters); // server applies filters too (reduces payload if large)
-      }
-
-      function collectFilters() {
-        return {
-          name: document.getElementById('nameFilter').value || '',
-          status: document.getElementById('statusFilter').value || '',
-          from: document.getElementById('fromDate').value || '',
-          to: document.getElementById('toDate').value || ''
-        };
-      }
-
-      function setKpis(stats) {
-        document.getElementById('kpi-rows').textContent = stats.totalRows ?? 0;
-        document.getElementById('kpi-hours').textContent = (stats.totalHours ?? 0).toFixed(2);
-        document.getElementById('kpi-people').textContent = stats.people ?? 0;
-        const range = stats.dateFrom && stats.dateTo ? `${stats.dateFrom} → ${stats.dateTo}` : '—';
-        document.getElementById('kpi-range').textContent = range;
-      }
-
-      function render() {
-        // Client-side filters (in addition to server)
-        const f = collectFilters();
-        const nameQ = (f.name || '').toLowerCase();
-        const statusQ = (f.status || '').toLowerCase();
-        const from = f.from ? new Date(f.from + 'T00:00:00') : null;
-        const to = f.to ? new Date(f.to + 'T23:59:59') : null;
-
-        VIEW = RAW.filter(r => {
-          if (nameQ && !r.name.toLowerCase().includes(nameQ)) return false;
-          if (statusQ && r.status.toLowerCase() !== statusQ) return false;
-          if (from || to) {
-            const d = new Date(r.date);
-            if (from && d < from) return false;
-            if (to && d > to) return false;
-          }
-          return true;
-        });
-
-        // Sort
-        VIEW.sort((a, b) => {
-          const dir = SORT.dir === 'asc' ? 1 : -1;
-          if (SORT.key === 'name') return dir * a.name.localeCompare(b.name);
-          if (SORT.key === 'hours') return dir * ((a.hours||0) - (b.hours||0));
-          // date default
-          return dir * (a.date < b.date ? -1 : a.date > b.date ? 1 : a.name.localeCompare(b.name));
-        });
-
-        renderTable(VIEW);
-        setFooterCount(VIEW.length);
-      }
-
-      function renderTable(rows) {
-        const tbody = document.querySelector('#dataBody');
-        tbody.innerHTML = '';
-        const frag = document.createDocumentFragment();
-
-        rows.forEach(r => {
-          const tr = document.createElement('tr');
-
-          tr.appendChild(tdText(r.name));
-          tr.appendChild(tdText(r.date));
-
-          const firstInTd = document.createElement('td');
-          firstInTd.appendChild(makeTimeInput(r.rowNumber, 'First In', r.firstIn));
-          tr.appendChild(firstInTd);
-
-          const lastOutTd = document.createElement('td');
-          lastOutTd.appendChild(makeTimeInput(r.rowNumber, 'Last Out', r.lastOut));
-          tr.appendChild(lastOutTd);
-
-          const hoursTd = document.createElement('td');
-          hoursTd.appendChild(makeNumberInput(r.rowNumber, 'Hours', r.hours));
-          tr.appendChild(hoursTd);
-
-          const statusTd = document.createElement('td');
-          statusTd.appendChild(makeStatusSelect(r.rowNumber, r.status));
-          tr.appendChild(statusTd);
-
-          frag.appendChild(tr);
-        });
-
-        tbody.appendChild(frag);
-      }
-
-      function tdText(text) {
-        const td = document.createElement('td');
-        td.textContent = text ?? '';
-        return td;
-      }
-
-      function makeTimeInput(rowNumber, field, initial) {
-        const wrap = document.createElement('div');
-        const input = document.createElement('input');
-        input.type = 'time';
-        input.className = 'editable';
-        input.value = initial || '';
-        input.addEventListener('change', () => commit(rowNumber, { [field]: input.value }));
-        wrap.appendChild(input);
-        return wrap;
-        // Note: time is stored in sheet as a Date merged with row's Date.
-      }
-
-      function makeNumberInput(rowNumber, field, initial) {
-        const wrap = document.createElement('div');
-        const input = document.createElement('input');
-        input.type = 'number';
-        input.step = '0.01';
-        input.className = 'editable';
-        input.value = (initial ?? '').toString();
-        input.addEventListener('change', () => commit(rowNumber, { [field]: input.value }));
-        wrap.appendChild(input);
-        return wrap;
-      }
-
-      function makeStatusSelect(rowNumber, initial) {
-        const select = document.createElement('select');
-        select.className = 'editable';
-        // options
-        const opts = CONFIG.statusOptions && CONFIG.statusOptions.length ? CONFIG.statusOptions : ['Present','Absent','Late','On Leave','Remote'];
-        opts.forEach(o => {
-          const op = document.createElement('option');
-          op.value = o;
-          op.textContent = o;
-          if ((initial || '').toLowerCase() === o.toLowerCase()) op.selected = true;
-          select.appendChild(op);
-        });
-        select.addEventListener('change', () => commit(rowNumber, { 'Status': select.value }));
-        return select;
-      }
-
-      function commit(rowNumber, updates) {
-        setLoading(true);
-        google.script.run
-          .withSuccessHandler(res => {
-            setLoading(false);
-            if (!res || !res.ok) {
-              alert('Update failed: ' + (res && res.error ? res.error : 'Unknown error'));
-              return;
-            }
-            toast('Saved');
-            // Update local model to keep UI in sync
-            const idx = RAW.findIndex(x => x.rowNumber === rowNumber);
-            if (idx >= 0) {
-              Object.keys(updates).forEach(k => {
-                const key = k.toLowerCase();
-                if (key === 'first in') RAW[idx].firstIn = updates[k];
-                else if (key === 'last out') RAW[idx].lastOut = updates[k];
-                else if (key === 'hours') RAW[idx].hours = parseFloat(updates[k]) || 0;
-                else if (key === 'status') RAW[idx].status = updates[k];
-              });
-            }
-            render();
-          })
-          .withFailureHandler(err => {
-            setLoading(false);
-            alert('Update error: ' + (err && err.message ? err.message : err));
-          })
-          .updateAttendance(rowNumber, updates);
-      }
-
-      function setFooterCount(n) {
-        document.getElementById('rowCount').textContent = n + ' row' + (n === 1 ? '' : 's');
-      }
-
-      function exportCSV() {
-        const headers = ['Name','Date','First In','Last Out','Hours','Status'];
-        const lines = [headers.join(',')];
-        VIEW.forEach(r => {
-          const row = [
-            csvEscape(r.name),
-            csvEscape(r.date),
-            csvEscape(r.firstIn || ''),
-            csvEscape(r.lastOut || ''),
-            r.hours ?? '',
-            csvEscape(r.status || '')
-          ].join(',');
-          lines.push(row);
-        });
-        const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'attendance_export.csv';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }
-
-      function csvEscape(v) {
-        const s = (v ?? '').toString();
-        if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
-        return s;
-      }
-
-      function debounce(fn, ms) {
-        let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn.apply(this, args), ms); };
-      }
-
-      function setLoading(on) {
-        document.getElementById('spinner').style.display = on ? 'inline-block' : 'none';
-      }
-
-      function toast(msg) {
-        const el = document.getElementById('toast');
-        el.textContent = msg;
-        el.classList.add('show');
-        setTimeout(() => el.classList.remove('show'), 1500);
-      }
-    </script>
-  </head>
-  <body>
-    <header class="container">
-      <h1>Attendance Dashboard <span class="muted">— <?= config.sheetName ?></span></h1>
-      <p class="muted">Filter, review and update directly from this page.</p>
-    </header>
-
-    <div class="toolbar">
-      <div class="controls">
-        <input id="nameFilter" type="search" placeholder="Search name…">
-        <select id="statusFilter">
-          <option value="">All statuses</option>
-          <? for (var i=0; i<config.statusOptions.length; i++) { ?>
-            <option value="<?= config.statusOptions[i] ?>"><?= config.statusOptions[i] ?></option>
-          <? } ?>
-        </select>
-        <input id="fromDate" type="date">
-        <span>to</span>
-        <input id="toDate" type="date">
-      </div>
-      <div class="actions">
-        <button id="refreshBtn">Refresh</button>
-        <button id="clearBtn">Clear</button>
-        <button id="exportBtn">Export CSV</button>
-        <span id="spinner" class="spinner" aria-label="Loading" title="Loading"></span>
-      </div>
+<div class="container-fluid">
+  <div class="row">
+    <!-- Sidebar -->
+    <div class="col-md-2 sidebar p-0">
+      <h4 class="p-3 border-bottom border-secondary text-center">Attendance</h4>
+      <a href="#"><i class="fa fa-chart-line me-2"></i> Overview</a>
+      <a href="#"><i class="fa fa-user-check me-2"></i> Employees</a>
+      <a href="#"><i class="fa fa-clock me-2"></i> Check-ins</a>
+      <a href="#"><i class="fa fa-gear me-2"></i> Settings</a>
     </div>
 
-    <section class="container kpis">
-      <div class="kpi"><div class="kpi-title">Rows</div><div class="kpi-value" id="kpi-rows">0</div></div>
-      <div class="kpi"><div class="kpi-title">Total Hours</div><div class="kpi-value" id="kpi-hours">0</div></div>
-      <div class="kpi"><div class="kpi-title">People</div><div class="kpi-value" id="kpi-people">0</div></div>
-      <div class="kpi"><div class="kpi-title">Range</div><div class="kpi-value" id="kpi-range">—</div></div>
-    </section>
+    <!-- Main Content -->
+    <div class="col-md-10 p-4">
+      <div class="page-header d-flex justify-content-between align-items-center">
+        <h2>Attendance Dashboard</h2>
+        <span class="text-muted">📅 October 2025</span>
+      </div>
 
-    <main class="container">
-      <div class="table-wrap">
-        <table>
-          <thead>
+      <!-- Top Cards -->
+      <div class="row mb-4">
+        <div class="col-md-3">
+          <div class="card text-center p-3">
+            <h6>Present Today</h6>
+            <h2 class="text-success">42</h2>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card text-center p-3">
+            <h6>Absent Today</h6>
+            <h2 class="text-danger">8</h2>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card text-center p-3">
+            <h6>Late Arrivals</h6>
+            <h2 class="text-warning">5</h2>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="card text-center p-3">
+            <h6>Total Employees</h6>
+            <h2 class="text-primary">55</h2>
+          </div>
+        </div>
+      </div>
+
+      <!-- Charts -->
+      <div class="card p-4 mb-4">
+        <h5 class="mb-3">Attendance Trend</h5>
+        <div class="chart-container">
+          <canvas id="attendanceChart"></canvas>
+        </div>
+      </div>
+
+      <div class="card p-4 mb-4">
+        <h5 class="mb-3">Department Breakdown</h5>
+        <div class="chart-container">
+          <canvas id="departmentChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Table -->
+      <div class="card p-4">
+        <h5 class="mb-3">Recent Check-ins</h5>
+        <table class="table table-hover align-middle">
+          <thead class="table-light">
             <tr>
-              <th><button class="thbtn" onclick="SORT={key:'name',dir:SORT.dir==='asc'?'desc':'asc'};render()">Name</button></th>
-              <th><button class="thbtn" onclick="SORT={key:'date',dir:SORT.dir==='asc'?'desc':'asc'};render()">Date</button></th>
-              <th>First In</th>
-              <th>Last Out</th>
-              <th><button class="thbtn" onclick="SORT={key:'hours',dir:SORT.dir==='asc'?'desc':'asc'};render()">Hours</button></th>
-              <th>Status</th>
+              <th>#</th><th>Name</th><th>Department</th><th>Time In</th><th>Status</th>
             </tr>
           </thead>
-          <tbody id="dataBody"></tbody>
-          <tfoot>
-            <tr><td colspan="6"><span id="rowCount">0 rows</span></td></tr>
-          </tfoot>
+          <tbody>
+            <tr><td>1</td><td>Ahmed Ali</td><td>HR</td><td>08:55 AM</td><td><span class="badge bg-success">Present</span></td></tr>
+            <tr><td>2</td><td>Sarah Khan</td><td>IT</td><td>09:12 AM</td><td><span class="badge bg-warning text-dark">Late</span></td></tr>
+            <tr><td>3</td><td>Omar Nasser</td><td>Finance</td><td>09:05 AM</td><td><span class="badge bg-success">Present</span></td></tr>
+            <tr><td>4</td><td>Lina Yousuf</td><td>Sales</td><td>—</td><td><span class="badge bg-danger">Absent</span></td></tr>
+          </tbody>
         </table>
       </div>
-    </main>
 
-    <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  </body>
+    </div>
+  </div>
+</div>
+
+<!-- JS -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+  // Line Chart - Attendance Trend
+  const ctx1 = document.getElementById('attendanceChart');
+  new Chart(ctx1, {
+    type: 'line',
+    data: {
+      labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
+      datasets: [{
+        label: 'Present',
+        data: [40, 42, 43, 44, 42],
+        borderColor: '#28a745',
+        tension: 0.3,
+        fill: false
+      }, {
+        label: 'Absent',
+        data: [10, 8, 7, 6, 8],
+        borderColor: '#dc3545',
+        tension: 0.3,
+        fill: false
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'bottom' } }
+    }
+  });
+
+  // Pie Chart - Department Breakdown
+  const ctx2 = document.getElementById('departmentChart');
+  new Chart(ctx2, {
+    type: 'doughnut',
+    data: {
+      labels: ['HR', 'IT', 'Finance', 'Sales', 'Admin'],
+      datasets: [{
+        data: [10, 15, 8, 12, 10],
+        backgroundColor: ['#0d6efd', '#198754', '#ffc107', '#dc3545', '#6f42c1']
+      }]
+    },
+    options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+  });
+</script>
+
+</body>
 </html>
