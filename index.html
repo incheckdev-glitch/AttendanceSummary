@@ -1,501 +1,215 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>InCheck 360 — Company Chat</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>InCheck 360 — Company Chat Pro</title>
 <style>
-  :root {
-    --primary: #0a84ff;
-    --primary-600: #0a63cc;
-    --bg: #0f1115;
-    --panel: #171a21;
-    --panel-2: #1d212a;
-    --border: #2a2f3a;
-    --text: #e6eaf2;
-    --muted: #a8b0bf;
-    --sent: #0a84ff;        /* your message bubble */
-    --recv: #2e3440;        /* receiver bubble */
-    --success: #22c55e;     /* read ticks color */
-  }
-  /* Light theme */
-  body.light {
-    --bg: #f4f6fb;
-    --panel: #ffffff;
-    --panel-2: #f8f9fc;
-    --border: #e6e9f2;
-    --text: #0f172a;
-    --muted: #475569;
-    --recv: #eef2f7;
-  }
-
-  /* Layout */
-  html, body { height: 100%; }
-  body {
-    margin: 0;
-    font-family: ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
-    background: var(--bg);
-    color: var(--text);
-  }
-  .app {
-    display: grid;
-    grid-template-columns: 320px 1fr;
-    grid-template-rows: 64px 1fr 72px;
-    grid-template-areas:
-      "sidebar header"
-      "sidebar messages"
-      "sidebar composer";
-    height: 100vh;
-    width: 100vw;
-  }
-
-  /* Header */
-  .header {
-    grid-area: header;
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 0 16px;
-    border-bottom: 1px solid var(--border);
-    background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0)) , var(--panel);
-  }
-  .title { font-weight: 600; }
-  .right-actions { display: flex; gap: 8px; align-items: center; }
-  .btn, select, input[type="text"] {
-    background: var(--panel-2);
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 8px 10px;
-    border-radius: 10px;
-    outline: none;
-  }
-  .btn { cursor: pointer; }
-  .btn.primary { background: var(--primary); border-color: var(--primary-600); }
-  .btn.ghost { background: transparent; border-color: var(--border); }
-
-  /* Sidebar */
-  .sidebar {
-    grid-area: sidebar;
-    border-right: 1px solid var(--border);
-    background: var(--panel);
-    display: flex; flex-direction: column;
-  }
-  .me {
-    padding: 12px; border-bottom: 1px solid var(--border);
-    display: flex; gap: 10px; align-items: center;
-  }
-  .avatar {
-    width: 36px; height: 36px; border-radius: 50%;
-    display: grid; place-items: center; font-weight: 700;
-    color: white; background: var(--primary);
-    flex-shrink: 0;
-  }
-  .me-controls { display: flex; gap: 8px; margin-top: 8px; }
-  .search {
-    padding: 10px 12px; border-bottom: 1px solid var(--border);
-  }
-  .people {
-    overflow: auto; padding: 8px;
-  }
-  .person {
-    display: flex; align-items: center; gap: 10px;
-    padding: 10px; border-radius: 12px; cursor: pointer;
-  }
-  .person:hover { background: var(--panel-2); }
-  .person.active { background: rgba(10,132,255,.12); border: 1px solid rgba(10,132,255,.3); }
-  .name { font-weight: 600; }
-  .status-dot {
-    width: 8px; height: 8px; border-radius: 50%;
-    background: #9ca3af; margin-left: auto;
-  }
-  .online { background: #22c55e; }
-
-  /* Messages */
-  .messages {
-    grid-area: messages;
-    display: flex; flex-direction: column; gap: 10px;
-    padding: 16px;
-    background: radial-gradient(1200px 800px at 0% 0%, rgba(10,132,255,.06), transparent 40%),
-                radial-gradient(1200px 800px at 100% 0%, rgba(34,197,94,.05), transparent 40%);
-    overflow-y: auto;
-  }
-  .bubble-row {
-    display: flex; align-items: flex-end; gap: 8px;
-    animation: rise .22s ease-out;
-  }
-  .bubble {
-    max-width: min(680px, 75%);
-    padding: 10px 12px;
-    border-radius: 16px;
-    font-size: 15px; line-height: 1.4;
-    white-space: pre-wrap; word-wrap: break-word;
-    position: relative;
-  }
-  .mine { justify-content: flex-end; }
-  .mine .bubble { background: var(--sent); color: #fff; border-bottom-right-radius: 6px; }
-  .theirs .bubble { background: var(--recv); color: var(--text); border-bottom-left-radius: 6px; }
-  .meta {
-    font-size: 12px; opacity: .8; margin-top: 4px; display: flex; gap: 8px; align-items: center;
-  }
-  .ticks { font-size: 14px; }
-  .ticks.read { color: var(--success); }
-  .seen-indicator {
-    text-align: right; color: var(--muted); font-size: 12px; margin-top: -6px; margin-right: 8px;
-  }
-
-  /* Composer */
-  .composer {
-    grid-area: composer;
-    display: flex; gap: 10px; align-items: center;
-    padding: 12px 16px; border-top: 1px solid var(--border); background: var(--panel);
-  }
-  .composer input[type="text"] { flex: 1; }
-
-  /* Utilities */
-  .hidden { display: none; }
-  @keyframes rise { from { transform: translateY(6px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-
-  /* Mobile */
-  @media (max-width: 900px) {
-    .app {
-      grid-template-columns: 1fr;
-      grid-template-areas:
-        "header"
-        "messages"
-        "composer";
-    }
-    .sidebar { display: none; }
-    .header .show-sidebar { display: inline-flex; }
-  }
-  .header .show-sidebar { display: none; }
+:root {
+  --primary:#0a84ff;--primary-dark:#005bb5;
+  --bg:#0f1115;--panel:#171a21;--text:#f1f5f9;--muted:#94a3b8;
+  --sent:#0a84ff;--recv:#2e3440;--success:#22c55e;
+}
+body.light {--bg:#f4f6fb;--panel:#fff;--text:#111;--muted:#475569;--recv:#eef2f7;}
+*{box-sizing:border-box;}
+body{margin:0;font-family:Segoe UI,system-ui;background:var(--bg);color:var(--text);}
+.app{display:grid;grid-template-columns:300px 1fr;grid-template-rows:64px 1fr 70px;
+grid-template-areas:"sidebar header" "sidebar chat" "sidebar composer";
+height:100vh;width:100vw;}
+.sidebar{grid-area:sidebar;background:var(--panel);border-right:1px solid #222;
+display:flex;flex-direction:column;}
+.header{grid-area:header;display:flex;align-items:center;justify-content:space-between;
+padding:10px 16px;background:var(--panel);border-bottom:1px solid #222;}
+.chat{grid-area:chat;overflow-y:auto;display:flex;flex-direction:column;
+padding:16px;scroll-behavior:smooth;}
+.composer{grid-area:composer;display:flex;align-items:center;gap:10px;padding:10px 16px;
+background:var(--panel);border-top:1px solid #222;}
+input,select,button{font-family:inherit;}
+select,input[type=text]{background:#222;border:none;border-radius:6px;color:var(--text);
+padding:8px 10px;}
+button{cursor:pointer;border:none;background:var(--primary);color:#fff;
+padding:8px 12px;border-radius:6px;}
+button:hover{background:var(--primary-dark);}
+.person{display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;
+cursor:pointer;margin:4px;}
+.person:hover{background:#222;}
+.person.active{background:rgba(10,132,255,0.2);}
+.status-dot{width:8px;height:8px;border-radius:50%;margin-left:auto;}
+.online{background:#22c55e;}
+.message{margin:6px 0;display:flex;}
+.mine{justify-content:flex-end;}
+.mine .bubble{background:var(--sent);color:#fff;border-radius:12px 12px 2px 12px;}
+.theirs .bubble{background:var(--recv);color:var(--text);border-radius:12px 12px 12px 2px;}
+.bubble{max-width:70%;padding:10px;word-wrap:break-word;}
+.meta{font-size:12px;color:var(--muted);text-align:right;margin-top:2px;}
+.search-bar{padding:10px;border-bottom:1px solid #222;}
+.search-bar input{width:100%;}
+.file-upload{position:relative;overflow:hidden;display:inline-block;}
+.file-upload input[type=file]{position:absolute;opacity:0;left:0;top:0;width:100%;height:100%;cursor:pointer;}
+@media(max-width:900px){.app{grid-template-columns:1fr;grid-template-areas:"header" "chat" "composer";}
+.sidebar{display:none;}}
 </style>
 </head>
 <body>
-<div class="app" id="app">
-  <!-- SIDEBAR -->
-  <aside class="sidebar" id="sidebar">
-    <div class="me">
-      <div class="avatar" id="meAvatar">ME</div>
-      <div style="flex:1">
-        <div style="font-weight:700">You</div>
-        <div class="me-controls">
-          <select id="meSelect" title="Select yourself"></select>
-          <button class="btn ghost" id="themeBtn" title="Toggle theme">🌓</button>
-        </div>
-      </div>
+<div class="app">
+  <div class="sidebar" id="sidebar">
+    <div style="padding:10px;border-bottom:1px solid #222;">
+      <strong>You:</strong>
+      <select id="meSelect" style="width:100%;margin-top:4px;"></select>
     </div>
-    <div class="search">
-      <input id="searchInput" type="text" class="w100" placeholder="Search people…" style="width:100%" />
+    <div style="padding:10px;border-bottom:1px solid #222;">
+      <button id="themeBtn">🌓 Theme</button>
+      <button id="roomsBtn">💬 Rooms</button>
     </div>
-    <div class="people" id="peopleList"></div>
-  </aside>
+    <div class="search-bar">
+      <input id="searchUsers" type="text" placeholder="Search users...">
+    </div>
+    <div id="peopleList" style="overflow:auto;flex:1;"></div>
+  </div>
 
-  <!-- HEADER -->
-  <header class="header">
-    <div class="left">
-      <button class="btn ghost show-sidebar" id="openSidebar" title="People">☰</button>
-      <span class="title" id="chatTitle">Select a person…</span>
+  <div class="header">
+    <div><button id="toggleSidebar" style="display:none;">☰</button>
+      <strong id="chatTitle">Select a chat</strong></div>
+    <div>
+      <input id="searchMessages" type="text" placeholder="Search messages..." style="width:180px;">
     </div>
-    <div class="right-actions">
-      <label style="display:flex;align-items:center;gap:6px;">
-        <input type="checkbox" id="notifToggle" />
-        Notifications
-      </label>
-      <button class="btn" id="clearChatBtn" title="Clear view (does not delete on server)">Clear</button>
+  </div>
+
+  <div class="chat" id="chatBox">
+    <p style="color:var(--muted);text-align:center;">Select someone to start chatting</p>
+  </div>
+
+  <div class="composer">
+    <div class="file-upload">
+      <button>📎</button>
+      <input type="file" id="fileInput">
     </div>
-  </header>
-
-  <!-- MESSAGES -->
-  <main class="messages" id="messages">
-    <div style="color:var(--muted);text-align:center;margin-top:24px;">Pick someone from the left to start chatting.</div>
-  </main>
-
-  <!-- COMPOSER -->
-  <footer class="composer">
-    <input id="msgInput" type="text" placeholder="Type a message…  (Enter to send, Shift+Enter for newline)" />
-    <button class="btn primary" id="sendBtn">Send</button>
-  </footer>
+    <input type="text" id="messageInput" placeholder="Type a message...">
+    <button id="sendBtn">Send</button>
+  </div>
 </div>
 
 <script>
-  /**************** CONFIG ****************/
-  const API_URL = "https://script.google.com/macros/s/AKfycbzKpLMouySKF0CvWay77649xDXWLzKcrbJcrc88SKXBIBKhHBoONTkmZT1-jxvm7h04Qw/exec";
-  const POLL_MS = 3000; // smart polling interval
+const API_URL="https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec"; // replace with your own
+let me="",peer="",room="",users=[],rooms=[],lastMsgId=null;
 
-  /*************** STATE ******************/
-  const el = (id) => document.getElementById(id);
-  const meSelect = el("meSelect");
-  const peopleList = el("peopleList");
-  const chatTitle = el("chatTitle");
-  const msgInput = el("msgInput");
-  const messagesView = el("messages");
-  const sendBtn = el("sendBtn");
-  const notifToggle = el("notifToggle");
-  const themeBtn = el("themeBtn");
-  const meAvatar = el("meAvatar");
-  const clearChatBtn = el("clearChatBtn");
-  const openSidebar = el("openSidebar");
-  const sidebar = el("sidebar");
-  const searchInput = el("searchInput");
+// ---- DOM shortcuts
+const $=id=>document.getElementById(id);
+const meSelect=$("meSelect"),peopleList=$("peopleList"),chatBox=$("chatBox");
+const messageInput=$("messageInput"),sendBtn=$("sendBtn"),fileInput=$("fileInput");
+const chatTitle=$("chatTitle"),themeBtn=$("themeBtn"),searchUsers=$("searchUsers");
+const searchMessages=$("searchMessages");
 
-  let users = [];
-  let me = localStorage.getItem("chat_me") || "";
-  let peer = localStorage.getItem("chat_peer") || "";
-  let lastMsgId = null; // for new-message detection in active chat
-  let pollTimer = null;
-  let theme = localStorage.getItem("chat_theme") || "dark";
+// ---- Theme toggle
+if(localStorage.theme==="light")document.body.classList.add("light");
+themeBtn.onclick=()=>{document.body.classList.toggle("light");
+localStorage.theme=document.body.classList.contains("light")?"light":"dark";};
 
-  if (theme === "light") document.body.classList.add("light");
+// ---- API helpers
+const get=async q=>(await fetch(`${API_URL}?${q}`)).json();
+const post=async b=>(await fetch(API_URL,{method:"POST",body:JSON.stringify(b)})).json();
 
-  // -------- Utilities
-  function initials(name){ return (name||"U").split(" ").map(s=>s[0]).join("").slice(0,2).toUpperCase(); }
-  function playBeep(){ new Audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg").play().catch(()=>{}); }
-  function flashTitle(txt="🔔 New message!"){ const old=document.title; document.title=txt; setTimeout(()=>document.title=old,2000); }
-  function setMeAvatar(){ const u = users.find(u=>String(u.user_id)===String(me)); meAvatar.textContent = u?initials(u.name):"ME"; }
+// ---- Load users and rooms
+async function loadUsers(){
+ const res=await get("action=getUsers");users=res;
+ meSelect.innerHTML='<option value="">Select you</option>'+users.map(u=>`<option value="${u.user_id}">${u.name} (${u.status})</option>`).join("");
+ if(me)meSelect.value=me;renderUsers();
+}
+async function loadRooms(){rooms=await get("action=getRooms");}
 
-  // -------- Notifications
-  notifToggle.addEventListener("change", () => {
-    if (notifToggle.checked && Notification.permission !== "granted") {
-      Notification.requestPermission();
-    }
-  });
-  function notify(senderName, text){
-    if (!notifToggle.checked) return;
-    if (Notification.permission !== "granted") return;
-    new Notification(`New message from ${senderName}`, { body: text });
-  }
+// ---- Render user list
+function renderUsers(filter=""){
+ const f=filter.toLowerCase();
+ peopleList.innerHTML="";
+ users.filter(u=>u.name.toLowerCase().includes(f)&&u.user_id!=me).forEach(u=>{
+  const div=document.createElement("div");
+  div.className="person";div.dataset.id=u.user_id;
+  div.innerHTML=`<div>${u.name}</div><span class="status-dot ${u.status==='online'?'online':''}"></span>`;
+  div.onclick=()=>openChat(u.user_id);
+  peopleList.appendChild(div);
+ });
+}
 
-  // -------- Theme
-  themeBtn.addEventListener("click", () => {
-    document.body.classList.toggle("light");
-    localStorage.setItem("chat_theme", document.body.classList.contains("light") ? "light" : "dark");
-  });
+// ---- Open chat
+async function openChat(id){
+ peer=id;room="";
+ chatTitle.textContent=(users.find(u=>u.user_id==id)||{}).name||"Chat";
+ await loadMessages(false);
+}
 
-  // -------- Sidebar (mobile)
-  openSidebar?.addEventListener("click", ()=> sidebar.style.display = (sidebar.style.display==="none"||!sidebar.style.display) ? "flex" : "none");
+// ---- Open room
+async function openRoom(id){
+ room=id;peer="";
+ chatTitle.textContent=(rooms.find(r=>r.room_id==id)||{}).room_name||"Room";
+ await loadMessages(false);
+}
 
-  // -------- Fetch helpers
-  async function apiGet(path){ const r = await fetch(`${API_URL}?${path}`); return r.json(); }
-  async function apiPost(body){ const r = await fetch(API_URL,{method:"POST",body:JSON.stringify(body)}); return r.json(); }
+// ---- Load messages
+async function loadMessages(notify=true){
+ if(!me)return;
+ const params=room?`action=getMessages&room_id=${room}`:`action=getMessages&user1=${me}&user2=${peer}`;
+ const res=await get(params);
+ chatBox.innerHTML="";
+ res.forEach(m=>{
+  const mine=m.sender_id==me;
+  const div=document.createElement("div");
+  div.className="message "+(mine?"mine":"theirs");
+  div.innerHTML=`<div class="bubble">${m.message}${m.file_link?`<br><a href="${m.file_link}" target="_blank">📎 File</a>`:""}</div>
+  <div class="meta">${new Date(m.timestamp).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})} ${mine?(m.read_status=="read"?"✓✓":"✓"):""}</div>`;
+  chatBox.appendChild(div);
+ });
+ chatBox.scrollTop=chatBox.scrollHeight;
+ if(res.length){
+  const last=res[res.length-1];
+  if(last.msg_id!=lastMsgId && last.sender_id!=me && notify){playBeep();}
+  lastMsgId=last.msg_id;
+ }
+}
 
-  /*************** LOAD USERS ***************/
-  async function loadUsers(){
-    users = await apiGet("action=getUsers");
-    // Fill "me" select
-    meSelect.innerHTML = "<option value=''>Select you…</option>" + users.map(u=>`<option value="${u.user_id}">${u.name} (${u.status})</option>`).join("");
-    if (me) meSelect.value = me;
-    meSelect.addEventListener("change", ()=>{
-      me = meSelect.value;
-      localStorage.setItem("chat_me", me);
-      renderPeopleList();
-      setMeAvatar();
-      // Reset lastMsgId when switching me
-      lastMsgId = null;
-    });
+// ---- Send message
+async function sendMessage(){
+ const text=messageInput.value.trim();
+ if(!text&&!fileInput.files.length)return;
+ const payload={action:"sendMessage",sender_id:me,message:text};
+ if(peer)payload.receiver_id=peer; if(room)payload.room_id=room;
+ if(fileInput.files.length){
+   const file=fileInput.files[0];
+   const base64=await toBase64(file);
+   const up=await post({action:"uploadFile",file_name:file.name,mimeType:file.type,file_base64:base64.split(",")[1]});
+   if(up.success)payload.file_link=up.file_url;
+   fileInput.value="";
+ }
+ const res=await post(payload);
+ if(res.success){messageInput.value="";loadMessages(false);}
+}
 
-    setMeAvatar();
-    renderPeopleList();
-    // Restore peer if exists
-    if (peer) openChatWith(peer);
-  }
+// ---- Helpers
+function playBeep(){new Audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg").play().catch(()=>{});}
+function toBase64(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(file);});}
 
-  function renderPeopleList(filter=""){
-    const list = users.filter(u => String(u.user_id)!==String(me))
-                      .filter(u => !filter || u.name.toLowerCase().includes(filter.toLowerCase()));
-    peopleList.innerHTML = "";
-    list.forEach(u=>{
-      const row = document.createElement("div");
-      row.className = "person" + (String(u.user_id)===String(peer) ? " active" : "");
-      row.dataset.id = u.user_id;
-      row.innerHTML = `
-        <div class="avatar" style="background:${hashColor(u.user_id)}">${initials(u.name)}</div>
-        <div>
-          <div class="name">${u.name}</div>
-          <div style="font-size:12px;color:var(--muted)">${u.email}</div>
-        </div>
-        <span class="status-dot ${u.status==='online' ? 'online':''}"></span>
-      `;
-      row.addEventListener("click", ()=> openChatWith(u.user_id));
-      peopleList.appendChild(row);
-    });
-  }
+// ---- Heartbeat (presence)
+setInterval(()=>{if(me)post({action:"heartbeat",user_id:me});},60000);
 
-  // quick deterministic color by id
-  function hashColor(id){
-    const hues=[210,260,310,10,30,50,140,160,180];
-    const h = hues[(parseInt(id,10)||0)%hues.length];
-    return `hsl(${h} 80% 45%)`;
-  }
+// ---- Poll messages
+setInterval(()=>loadMessages(true),3000);
 
-  searchInput.addEventListener("input", (e)=> renderPeopleList(e.target.value));
+// ---- Search
+searchUsers.oninput=()=>renderUsers(searchUsers.value);
+searchMessages.onkeypress=async e=>{
+ if(e.key==="Enter"){const q=searchMessages.value.trim();if(!q)return;
+ const res=await get(`action=searchMessages&query=${encodeURIComponent(q)}`);
+ chatBox.innerHTML=res.map(m=>`<div><b>${m.message}</b><div class="meta">${m.timestamp}</div></div>`).join("");
+ }
+};
 
-  /*************** OPEN CHAT ***************/
-  async function openChatWith(userId){
-    if (!me){ alert("Select yourself (left panel) first."); return; }
-    peer = String(userId);
-    localStorage.setItem("chat_peer", peer);
-    document.querySelectorAll(".person").forEach(p=>p.classList.toggle("active", p.dataset.id===peer));
-    const u = users.find(x=>String(x.user_id)===peer);
-    chatTitle.textContent = u ? `${u.name} ${u.status==='online' ? '• online' : '• offline'}` : "Chat";
+// ---- Events
+sendBtn.onclick=sendMessage;
+messageInput.onkeypress=e=>{if(e.key==="Enter")sendMessage();};
+meSelect.onchange=()=>{me=meSelect.value;localStorage.setItem("chat_me",me);renderUsers();};
+$("roomsBtn").onclick=async()=>{await loadRooms();chatBox.innerHTML=rooms.map(r=>`<div class='person' onclick='openRoom("${r.room_id}")'>${r.room_name}</div>`).join("");};
 
-    messagesView.innerHTML = `<div style="color:var(--muted);text-align:center;margin-top:24px;">Loading…</div>`;
-    lastMsgId = null; // reset detection
-    await loadAndRenderMessages(false);
-    startPolling();
-  }
-
-  function startPolling(){
-    if (pollTimer) clearInterval(pollTimer);
-    pollTimer = setInterval(()=> loadAndRenderMessages(true), POLL_MS);
-  }
-
-  clearChatBtn.addEventListener("click", ()=> { messagesView.innerHTML=""; lastMsgId=null; });
-
-  /*************** FETCH / RENDER MESSAGES ***************/
-  async function getMessages(){
-    if (!me || !peer) return [];
-    return apiGet(`action=getMessages&user1=${encodeURIComponent(me)}&user2=${encodeURIComponent(peer)}`);
-  }
-
-  async function loadAndRenderMessages(notifyNew){
-    const data = await getMessages();
-    renderMessages(data);
-
-    // Detect new message from peer
-    if (data.length){
-      const newest = data[data.length-1].msg_id;
-      const lastSender = data[data.length-1].sender_id;
-      const isNew = newest !== lastMsgId;
-      lastMsgId = newest;
-
-      if (isNew && String(lastSender)!==String(me) && notifyNew){
-        playBeep();
-        flashTitle();
-        const senderName = (users.find(u=>String(u.user_id)===String(lastSender))||{}).name || "Someone";
-        notify(senderName, data[data.length-1].message);
-      }
-    }
-
-    // Mark as read any peer->me messages that are not 'read'
-    markVisibleAsRead(data).catch(()=>{});
-  }
-
-  function renderMessages(list){
-    messagesView.innerHTML = "";
-    if (!list || !list.length){
-      messagesView.innerHTML = `<div style="color:var(--muted);text-align:center;margin-top:24px;">No messages yet — say hi 👋</div>`;
-      return;
-    }
-    let lastMineRead = false;
-
-    list.forEach(m=>{
-      const mine = String(m.sender_id)===String(me);
-      const row = document.createElement("div");
-      row.className = "bubble-row " + (mine ? "mine" : "theirs");
-
-      const bubble = document.createElement("div");
-      bubble.className = "bubble";
-      // ticks: ✓ (sent) or ✓✓ (read)
-      const isRead = m.read_status === "read";
-      const ticks = mine
-        ? `<span class="ticks ${isRead ? 'read':''}">${isRead ? "✓✓" : "✓"}</span>`
-        : "";
-
-      bubble.innerHTML = `
-        <div>${escapeHtml(m.message)}</div>
-        <div class="meta">
-          <span>${formatTime(m.timestamp)}</span>
-          ${ticks}
-        </div>
-      `;
-      row.appendChild(bubble);
-      messagesView.appendChild(row);
-
-      if (mine && isRead) lastMineRead = true;
-    });
-
-    // "Seen" indicator if the latest mine message is read
-    const last = list[list.length-1];
-    if (String(last.sender_id)===String(me) && last.read_status==="read"){
-      const seen = document.createElement("div");
-      seen.className = "seen-indicator";
-      seen.textContent = "Seen ✓✓";
-      messagesView.appendChild(seen);
-    }
-
-    // Scroll to bottom smoothly
-    messagesView.scrollTop = messagesView.scrollHeight;
-  }
-
-  function formatTime(ts){
-    const d = new Date(ts);
-    if (isNaN(d)) return ts;
-    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  }
-
-  function escapeHtml(s){
-    return String(s).replace(/[&<>"']/g, (c)=>({ "&":"&nbsp;&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
-  }
-
-  /*************** MARK READ ***************/
-  let markReadInFlight = false;
-  async function markVisibleAsRead(messages){
-    if (markReadInFlight) return;
-    if (!messages || !messages.length) return;
-    // If there are messages from peer->me that are not read, mark them
-    const hasUnreadFromPeer = messages.some(m => String(m.sender_id)===String(peer) && String(m.receiver_id)===String(me) && m.read_status!=="read");
-    if (!hasUnreadFromPeer) return;
-
-    markReadInFlight = true;
-    try {
-      await apiPost({ action: "markRead", reader_id: me, sender_id: peer });
-      // After marking, refresh quickly to get updated ticks
-      setTimeout(()=> loadAndRenderMessages(false), 250);
-    } finally {
-      markReadInFlight = false;
-    }
-  }
-
-  /*************** SEND ***************/
-  async function sendMessage(){
-    if (!me || !peer){ alert("Select yourself and a person to chat with."); return; }
-    const text = msgInput.value;
-    if (!text.trim()) return;
-
-    const res = await apiPost({ action:"sendMessage", sender_id: me, receiver_id: peer, message: text });
-    if (res && res.success){
-      msgInput.value = "";
-      await loadAndRenderMessages(false);
-    } else {
-      alert("Failed to send: " + (res && res.error ? res.error : "Unknown error"));
-    }
-  }
-
-  sendBtn.addEventListener("click", sendMessage);
-  msgInput.addEventListener("keydown", (e)=>{
-    if (e.key==="Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-  });
-
-  /*************** INIT ***************/
-  (async function init(){
-    await loadUsers();
-    // restore UI selects
-    if (me){ meSelect.value = me; }
-    setMeAvatar();
-    // Start idle polling even if no peer selected (to update users list)
-    setInterval(async ()=>{
-      const oldUsers = users;
-      try {
-        users = await apiGet("action=getUsers");
-        // Update presence dots without re-rendering everything:
-        users.forEach(u=>{
-          const row = [...document.querySelectorAll(".person")].find(p=>p.dataset.id===String(u.user_id));
-          if (row) {
-            const dot = row.querySelector(".status-dot");
-            if (dot) dot.classList.toggle("online", u.status==="online");
-          }
-        });
-      } catch {}
-    }, 15000);
-  })();
+// ---- Init
+(async()=>{me=localStorage.getItem("chat_me")||"";await loadUsers();})();
 </script>
 </body>
 </html>
