@@ -1,645 +1,261 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Attendance Dashboard</title>
-
-  <!-- Bootstrap / Icons -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
-
-  <!-- DataTables (jQuery version: stable & widely supported) -->
-  <link href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css" rel="stylesheet">
-
-  <!-- Small visual polish -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>InCheck 360 Company Chat</title>
   <style>
-    :root {
-      --bg: #f5f7fb;
-      --card: #ffffff;
-      --text: #212529;
-      --muted: #6c757d;
-      --border: #e9ecef;
-    }
-    [data-theme="dark"] {
-      --bg: #0f1217;
-      --card: #171b22;
-      --text: #e9edf3;
-      --muted: #9aa4b2;
-      --border: #2a3140;
-    }
-    html, body { height: 100%; }
+    /* ===== General Styles ===== */
     body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f5f6fa;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
     }
-    .app-shell { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; }
-    .sidebar {
-      background: #111418;
-      color: #cfd6e4;
-      border-right: 1px solid #1d2431;
+
+    .chat-container {
+      width: 450px;
+      background: #fff;
+      border-radius: 15px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
     }
-    .sidebar .brand { padding: 1rem 1.25rem; border-bottom: 1px solid #1d2431; }
-    .sidebar a {
-      display: flex; align-items: center; gap: .75rem;
-      color: #a7b0c2; padding: .75rem 1.25rem; text-decoration: none;
+
+    .chat-header {
+      background: #0078D7;
+      color: white;
+      padding: 15px 20px;
+      text-align: center;
+      font-size: 1.2em;
+      font-weight: bold;
     }
-    .sidebar a:hover, .sidebar a.active { color: #fff; background: #1a1f28; }
-    .content { padding: 1.5rem; }
-    .page-header { display:flex; gap:1rem; align-items:center; justify-content:space-between; margin-bottom: 1rem; }
-    .kpi { border: 1px solid var(--border); background: var(--card); border-radius: 12px; padding: 1rem; }
-    .kpi h6 { font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-size: .8rem; margin: 0 0 .25rem; }
-    .kpi .big { font-weight: 700; font-size: 1.75rem; }
-    .cardx { border: 1px solid var(--border); background: var(--card); border-radius: 12px; padding: 1rem; }
-    .chart-wrap { position: relative; height: 320px; }
-    .legend-dot { width: .6rem; height: .6rem; border-radius: 50%; display:inline-block; margin-right: .5rem; }
-    .toolbar { display:flex; gap:.75rem; align-items:end; flex-wrap: wrap; }
-    .footer-note { color: var(--muted); font-size: .85rem; }
-    /* DataTables tweak for dark mode */
-    [data-theme="dark"] table.dataTable tbody tr { background-color: var(--card) !important; color: var(--text); }
-    [data-theme="dark"] .dataTables_wrapper .dataTables_paginate .paginate_button { color: var(--text) !important; }
-    [data-theme="dark"] .dataTables_wrapper .dataTables_filter input,
-    [data-theme="dark"] .dataTables_wrapper .dataTables_length select { background: #0f1217; color: var(--text); border: 1px solid var(--border); }
-    .spinner-wrap { display:none; align-items:center; gap:.75rem; }
-    .error-wrap { display:none; }
-    .badge-soft { background: transparent; border: 1px solid currentColor; }
+
+    .user-select {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 20px;
+      background-color: #f9f9f9;
+      border-bottom: 1px solid #eee;
+    }
+
+    .user-select select {
+      width: 48%;
+      padding: 8px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+      outline: none;
+    }
+
+    .chat-box {
+      flex-grow: 1;
+      padding: 15px;
+      overflow-y: auto;
+      background: #fdfdfd;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .message {
+      padding: 10px 14px;
+      margin: 8px 0;
+      border-radius: 12px;
+      max-width: 75%;
+      word-wrap: break-word;
+    }
+
+    .sent {
+      background-color: #0078D7;
+      color: white;
+      align-self: flex-end;
+    }
+
+    .received {
+      background-color: #e4e6eb;
+      color: #333;
+      align-self: flex-start;
+    }
+
+    .timestamp {
+      font-size: 0.75em;
+      text-align: right;
+      margin-top: 2px;
+      color: #888;
+    }
+
+    .message-input {
+      display: flex;
+      border-top: 1px solid #ddd;
+      padding: 10px;
+      background-color: #f9f9f9;
+    }
+
+    .message-input input {
+      flex: 1;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 20px;
+      outline: none;
+    }
+
+    .message-input button {
+      padding: 10px 15px;
+      margin-left: 10px;
+      border: none;
+      background: #0078D7;
+      color: white;
+      border-radius: 50%;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+
+    .message-input button:hover {
+      background: #005bb5;
+    }
+
+    /* Scrollbar styling */
+    .chat-box::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .chat-box::-webkit-scrollbar-thumb {
+      background-color: rgba(0, 0, 0, 0.2);
+      border-radius: 3px;
+    }
   </style>
 </head>
 
 <body>
-  <div class="app-shell" id="app">
-    <!-- Sidebar -->
-    <aside class="sidebar">
-      <div class="brand d-flex align-items-center justify-content-between">
-        <div class="d-flex align-items-center gap-2">
-          <i class="fa-solid fa-calendar-check"></i>
-          <strong>Attendance</strong>
-        </div>
-        <button id="themeToggle" class="btn btn-sm btn-outline-light" title="Toggle dark mode"><i class="fa-solid fa-moon"></i></button>
-      </div>
-      <nav class="mt-2">
-        <a class="active" href="#"><i class="fa-solid fa-chart-line"></i><span>Overview</span></a>
-        <a href="#table"><i class="fa-solid fa-list-check"></i><span>Check-ins</span></a>
-        <a href="#about"><i class="fa-solid fa-circle-info"></i><span>About</span></a>
-      </nav>
-    </aside>
+  <div class="chat-container">
+    <div class="chat-header">💬 InCheck 360 Chat</div>
 
-    <!-- Main Content -->
-    <main class="content">
-      <header class="page-header">
-        <div>
-          <h2 class="mb-0">Attendance Dashboard</h2>
-          <div class="text-muted" id="datasetMeta">Loading data…</div>
-        </div>
-        <div class="spinner-wrap" id="spinner">
-          <div class="spinner-border" role="status" aria-hidden="true"></div>
-          <span>Fetching CSV…</span>
-        </div>
-      </header>
+    <div class="user-select">
+      <select id="senderSelect">
+        <option value="">Select Sender</option>
+      </select>
+      <select id="receiverSelect">
+        <option value="">Select Receiver</option>
+      </select>
+    </div>
 
-      <!-- Alerts -->
-      <div class="alert alert-danger error-wrap" id="errorBox" role="alert"></div>
+    <div id="chatBox" class="chat-box">
+      <p style="text-align:center;color:#999;">Select users to start chatting...</p>
+    </div>
 
-      <!-- KPIs -->
-      <section class="mb-3">
-        <div class="row g-3">
-          <div class="col-12 col-md-6 col-xl-2">
-            <div class="kpi h-100">
-              <h6>Present (Latest Day)</h6>
-              <div class="big text-success" id="kpiPresent">—</div>
-            </div>
-          </div>
-          <div class="col-12 col-md-6 col-xl-2">
-            <div class="kpi h-100">
-              <h6>Absent (Latest Day)</h6>
-              <div class="big text-danger" id="kpiAbsent">—</div>
-            </div>
-          </div>
-          <div class="col-12 col-md-6 col-xl-2">
-            <div class="kpi h-100">
-              <h6>Late (Latest Day)</h6>
-              <div class="big text-warning" id="kpiLate">—</div>
-            </div>
-          </div>
-          <div class="col-12 col-md-6 col-xl-3">
-            <div class="kpi h-100">
-              <h6>Total Employees</h6>
-              <div class="big text-primary" id="kpiEmployees">—</div>
-            </div>
-          </div>
-          <div class="col-12 col-md-6 col-xl-3">
-            <div class="kpi h-100">
-              <h6>Total Hours (Latest Day)</h6>
-              <div class="big" id="kpiHours">—</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Charts -->
-      <section class="row g-3 mb-3">
-        <div class="col-12 col-xl-7">
-          <div class="cardx">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-              <h5 class="mb-0">Daily Trend</h5>
-              <div class="footer-note">Counts by date</div>
-            </div>
-            <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
-          </div>
-        </div>
-        <div class="col-12 col-xl-5">
-          <div class="cardx">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-              <h5 class="mb-0">Latest-Day Breakdown</h5>
-              <div class="footer-note" id="latestDayLabel">—</div>
-            </div>
-            <div class="chart-wrap"><canvas id="pieChart"></canvas></div>
-          </div>
-        </div>
-        <div class="col-12">
-          <div class="cardx">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-              <h5 class="mb-0">Total Hours by Day</h5>
-              <div class="footer-note">Sum of Hours</div>
-            </div>
-            <div class="chart-wrap"><canvas id="hoursChart"></canvas></div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Table & Filters -->
-      <section id="table" class="cardx mb-3">
-        <div class="d-flex justify-content-between flex-wrap gap-3 mb-2">
-          <h5 class="mb-0">All Records</h5>
-          <div class="toolbar">
-            <div>
-              <label class="form-label mb-1">Status</label>
-              <select id="statusFilter" class="form-select form-select-sm">
-                <option value="">All</option>
-                <option>Present</option>
-                <option>Late</option>
-                <option>Absent</option>
-                <option>Leave</option>
-                <option>Holiday</option>
-                <option>Unknown</option>
-              </select>
-            </div>
-            <div>
-              <label class="form-label mb-1">From</label>
-              <input type="date" id="fromDate" class="form-control form-control-sm" />
-            </div>
-            <div>
-              <label class="form-label mb-1">To</label>
-              <input type="date" id="toDate" class="form-control form-control-sm" />
-            </div>
-            <div>
-              <label class="form-label mb-1">&nbsp;</label><br>
-              <button id="clearFilters" class="btn btn-sm btn-outline-secondary">Clear</button>
-            </div>
-            <div>
-              <label class="form-label mb-1">&nbsp;</label><br>
-              <button id="refreshBtn" class="btn btn-sm btn-primary"><i class="fa-solid fa-rotate"></i> Refresh</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="table-responsive">
-          <table id="attendanceTable" class="display compact" style="width:100%">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Name</th>
-                <th>Date</th>
-                <th>First In</th>
-                <th>Last Out</th>
-                <th>Hours</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody><!-- filled by JS --></tbody>
-          </table>
-        </div>
-      </section>
-
-      <!-- About -->
-      <section id="about" class="cardx">
-        <h5>About this dashboard</h5>
-        <ul class="mb-0">
-          <li>Reads CSV with headers: <code>Name, Date, First In, Last Out, Hours, Status</code></li>
-          <li>Understands dates like <code>YYYY-MM-DD</code>, <code>DD/MM/YYYY</code>, <code>MM/DD/YYYY</code></li>
-          <li>“Hours” can be <code>8.5</code> or <code>08:30</code>. If empty, it’s computed from <em>First In → Last Out</em>.</li>
-          <li>Works on GitHub Pages (no server needed).</li>
-        </ul>
-      </section>
-    </main>
+    <div class="message-input">
+      <input type="text" id="messageInput" placeholder="Type your message..." />
+      <button id="sendBtn">➤</button>
+    </div>
   </div>
 
-  <!-- JS libs (order matters for jQuery DataTables) -->
-  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-  <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
-
-  <!-- Charting / CSV parsing / Dates -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/dayjs@1.11.11/dayjs.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/dayjs@1.11.11/plugin/customParseFormat.js"></script>
-  <script>dayjs.extend(window.dayjs_plugin_customParseFormat);</script>
-
   <script>
-    // ============================
-    // 🔧 CONFIG
-    // ============================
-    const CSV_URL =
-      "https://docs.google.com/spreadsheets/d/e/2PACX-1vTw_QmgTO1onutiMdiVyThLtl7omNOqpDH-NNSoMwbGcpU4RfRjKO4pPJXbQrsHn5_ZuK4HEhkJ_SJZ/pub?output=csv";
-    const DATE_FORMATS = ["YYYY-MM-DD","DD/MM/YYYY","MM/DD/YYYY","YYYY/M/D","D/M/YYYY","M/D/YYYY"];
+    // === CONFIGURATION ===
+    const API_URL = "https://script.google.com/macros/s/AKfycbzKpLMouySKF0CvWay77649xDXWLzKcrbJcrc88SKXBIBKhHBoONTkmZT1-jxvm7h04Qw/exec";
 
-    // ============================
-    // 🧠 Utilities
-    // ============================
-    const $spinner = document.getElementById('spinner');
-    const $errorBox = document.getElementById('errorBox');
-    const $datasetMeta = document.getElementById('datasetMeta');
-    const toTitle = s => (s || "").toString().trim();
-    const norm = s => (s || "").toString().trim().toLowerCase();
+    const senderSelect = document.getElementById("senderSelect");
+    const receiverSelect = document.getElementById("receiverSelect");
+    const chatBox = document.getElementById("chatBox");
+    const messageInput = document.getElementById("messageInput");
+    const sendBtn = document.getElementById("sendBtn");
 
-    function parseDate(d) {
-      if (!d) return null;
-      for (const f of DATE_FORMATS) {
-        const dt = dayjs(d, f, true);
-        if (dt.isValid()) return dt;
-      }
-      // try ISO or auto
-      const iso = dayjs(d);
-      return iso.isValid() ? iso : null;
-    }
-
-    function parseTimeToMinutes(t) {
-      if (!t) return null;
-      const s = toTitle(t);
-      // 24h: HH:mm
-      let m = s.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
-      if (m) {
-        const hh = parseInt(m[1],10), mm = parseInt(m[2],10);
-        if (hh>=0 && hh<24 && mm>=0 && mm<60) return hh*60+mm;
-      }
-      // 12h: hh:mm AM/PM
-      m = s.match(/^(\d{1,2}):(\d{2})\s*([AP]M)$/i);
-      if (m) {
-        let hh = parseInt(m[1],10), mm = parseInt(m[2],10);
-        const ap = m[3].toUpperCase();
-        if (ap==="PM" && hh!==12) hh += 12;
-        if (ap==="AM" && hh===12) hh = 0;
-        return hh*60+mm;
-      }
-      return null;
-    }
-
-    function parseHoursToMinutes(h) {
-      if (!h && h !== 0) return null;
-      const s = toTitle(h);
-      if (/^\d+:\d{2}$/.test(s)) {
-        const [hh, mm] = s.split(':').map(n => parseInt(n,10));
-        return hh*60 + mm;
-      }
-      const f = parseFloat(s.replace(',', '.'));
-      if (!isNaN(f)) return Math.round(f * 60);
-      return null;
-    }
-
-    function fmtMinutes(mins) {
-      if (mins == null) return "—";
-      const sign = mins < 0 ? "-" : "";
-      const a = Math.abs(mins);
-      const hh = Math.floor(a/60);
-      const mm = a%60;
-      return `${sign}${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
-    }
-
-    function classifyStatus(raw, minutes) {
-      const s = norm(raw);
-      if (s.includes("absent")) return "Absent";
-      if (s.includes("late")) return "Late";
-      if (s.includes("leave")) return "Leave";
-      if (s.includes("holiday")) return "Holiday";
-      if (s.includes("present")) return "Present";
-      // fallback: infer by hours
-      if (minutes != null && minutes > 0) return "Present";
-      if (minutes === 0) return "Absent";
-      return "Unknown";
-    }
-
-    function ensureHeaders(row) {
-      // Accept headers in any case / spacing
-      const map = {};
-      for (const k of Object.keys(row)) map[norm(k)] = k;
-      const pick = want => map[want] ?? map[` ${want}`] ?? Object.keys(map).find(mk => mk.replace(/\s+/g,'')===want.replace(/\s+/g,''));
-      return {
-        Name: row[pick("name")],
-        Date: row[pick("date")],
-        FirstIn: row[pick("first in")] ?? row[pick("firstin")],
-        LastOut: row[pick("last out")] ?? row[pick("lastout")],
-        Hours: row[pick("hours")],
-        Status: row[pick("status")],
-      };
-    }
-
-    // ============================
-    // 📥 Load & transform
-    // ============================
-    async function loadCSV() {
-      $spinner.style.display = "flex";
-      $errorBox.style.display = "none";
-      return new Promise((resolve, reject) => {
-        Papa.parse(CSV_URL, {
-          download: true,
-          header: true,
-          skipEmptyLines: true,
-          complete: (res) => resolve(res.data),
-          error: (err) => reject(err)
-        });
-      }).finally(() => { $spinner.style.display = "none"; });
-    }
-
-    function transform(rows) {
-      const out = [];
-      for (const r of rows) {
-        const h = ensureHeaders(r);
-        const date = parseDate(h.Date);
-        const firstInMin = parseTimeToMinutes(h.FirstIn);
-        const lastOutMin = parseTimeToMinutes(h.LastOut);
-        let mins = parseHoursToMinutes(h.Hours);
-        if (mins == null && firstInMin != null && lastOutMin != null) {
-          mins = Math.max(0, lastOutMin - firstInMin);
-        }
-        const status = classifyStatus(h.Status, mins);
-        out.push({
-          name: toTitle(h.Name),
-          date, // dayjs
-          dateStr: date ? date.format("YYYY-MM-DD") : "",
-          firstIn: toTitle(h.FirstIn) || "—",
-          lastOut: toTitle(h.LastOut) || "—",
-          minutes: mins,
-          hoursFmt: fmtMinutes(mins),
-          status
-        });
-      }
-      return out.filter(r => r.name || r.date);
-    }
-
-    function groupByDate(records) {
-      const map = new Map();
-      for (const rec of records) {
-        if (!rec.dateStr) continue;
-        if (!map.has(rec.dateStr)) map.set(rec.dateStr, []);
-        map.get(rec.dateStr).push(rec);
-      }
-      // sorted by date asc
-      return new Map([...map.entries()].sort((a,b)=>a[0].localeCompare(b[0])));
-    }
-
-    function computeStats(records) {
-      const byDate = groupByDate(records);
-      const dates = [...byDate.keys()];
-      const latest = dates[dates.length-1] || null;
-
-      const uniqueEmployees = new Set(records.map(r => r.name).filter(Boolean)).size;
-
-      const trend = {
-        labels: dates,
-        present: [],
-        absent: [],
-        late: [],
-        hours: []
-      };
-
-      for (const d of dates) {
-        const arr = byDate.get(d);
-        let p=0,a=0,l=0, totMins=0;
-        for (const r of arr) {
-          if (r.status==="Present") p++;
-          else if (r.status==="Absent") a++;
-          else if (r.status==="Late") { l++; p++; } // Late also counts as Present for utilization
-          else if (r.status==="Leave" || r.status==="Holiday" || r.status==="Unknown") {/* no-op */}
-          if (r.minutes != null) totMins += r.minutes;
-        }
-        trend.present.push(p);
-        trend.absent.push(a);
-        trend.late.push(l);
-        trend.hours.push(Math.round(totMins/60*100)/100); // hours total (rounded 2dp)
-      }
-
-      let latestStats = { present:0, absent:0, late:0, leave:0, holiday:0, unknown:0, totalHoursMin:0 };
-      if (latest) {
-        for (const r of byDate.get(latest)) {
-          if (r.status==="Present") latestStats.present++;
-          else if (r.status==="Absent") latestStats.absent++;
-          else if (r.status==="Late") latestStats.late++;
-          else if (r.status==="Leave") latestStats.leave++;
-          else if (r.status==="Holiday") latestStats.holiday++;
-          else latestStats.unknown++;
-          if (r.minutes != null) latestStats.totalHoursMin += r.minutes;
-        }
-      }
-
-      return { byDate, dates, latest, uniqueEmployees, trend, latestStats };
-    }
-
-    // ============================
-    // 📊 Render
-    // ============================
-    let trendChart, pieChart, hoursChart, dataTable;
-
-    function renderMeta(records, stats) {
-      const count = records.length;
-      const days = new Set(records.map(r=>r.dateStr).filter(Boolean)).size;
-      const range = stats.dates.length
-        ? `${stats.dates[0]} → ${stats.dates[stats.dates.length-1]}`
-        : "—";
-      $datasetMeta.textContent = `Rows: ${count} • Employees: ${stats.uniqueEmployees} • Days: ${days} • Range: ${range}`;
-      document.getElementById('latestDayLabel').textContent = stats.latest ? stats.latest : "—";
-    }
-
-    function renderKPIs(stats) {
-      document.getElementById('kpiPresent').textContent = stats.latestStats.present;
-      document.getElementById('kpiAbsent').textContent  = stats.latestStats.absent;
-      document.getElementById('kpiLate').textContent    = stats.latestStats.late;
-      document.getElementById('kpiEmployees').textContent = stats.uniqueEmployees;
-      document.getElementById('kpiHours').textContent   = fmtMinutes(stats.latestStats.totalHoursMin);
-    }
-
-    function renderCharts(stats) {
-      const ctx1 = document.getElementById('trendChart');
-      const ctx2 = document.getElementById('pieChart');
-      const ctx3 = document.getElementById('hoursChart');
-
-      trendChart && trendChart.destroy();
-      pieChart && pieChart.destroy();
-      hoursChart && hoursChart.destroy();
-
-      trendChart = new Chart(ctx1, {
-        type: 'line',
-        data: {
-          labels: stats.trend.labels,
-          datasets: [
-            { label: 'Present', data: stats.trend.present, borderColor: '#2ecc71', backgroundColor: 'rgba(46,204,113,.15)', fill: true, tension: .3 },
-            { label: 'Late', data: stats.trend.late, borderColor: '#f1c40f', backgroundColor: 'rgba(241,196,15,.15)', fill: true, tension: .3 },
-            { label: 'Absent', data: stats.trend.absent, borderColor: '#e74c3c', backgroundColor: 'rgba(231,76,60,.10)', fill: true, tension: .3 }
-          ]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { position: 'bottom' } },
-          scales: { x: { grid: { display:false } } }
-        }
-      });
-
-      const ls = stats.latestStats;
-      pieChart = new Chart(ctx2, {
-        type: 'doughnut',
-        data: {
-          labels: ['Present','Late','Absent','Leave','Holiday','Unknown'],
-          datasets: [{
-            data: [ls.present, ls.late, ls.absent, ls.leave, ls.holiday, ls.unknown],
-            backgroundColor: ['#2ecc71','#f1c40f','#e74c3c','#3498db','#9b59b6','#95a5a6']
-          }]
-        },
-        options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom' } } }
-      });
-
-      hoursChart = new Chart(ctx3, {
-        type: 'bar',
-        data: {
-          labels: stats.trend.labels,
-          datasets: [{ label: 'Total Hours', data: stats.trend.hours }]
-        },
-        options: {
-          responsive:true, maintainAspectRatio:false,
-          plugins:{ legend:{ display:false } },
-          scales:{ y:{ beginAtZero:true } }
-        }
-      });
-    }
-
-    function renderTable(records) {
-      // Destroy if exists
-      if (dataTable) {
-        dataTable.clear().destroy();
-        $('#attendanceTable tbody').empty();
-      }
-
-      // Fill tbody for progressive enhancement
-      const tbody = document.querySelector('#attendanceTable tbody');
-      let i=0;
-      for (const r of records) {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${++i}</td>
-          <td>${r.name || '—'}</td>
-          <td>${r.dateStr || '—'}</td>
-          <td>${r.firstIn}</td>
-          <td>${r.lastOut}</td>
-          <td>${r.hoursFmt}</td>
-          <td>
-            <span class="badge ${
-              r.status==='Present' ? 'bg-success' :
-              r.status==='Late' ? 'bg-warning text-dark' :
-              r.status==='Absent' ? 'bg-danger' :
-              'bg-secondary'
-            }">${r.status}</span>
-          </td>
-        `;
-        tbody.appendChild(tr);
-      }
-
-      dataTable = $('#attendanceTable').DataTable({
-        pageLength: 10,
-        order: [[2, 'desc']], // date desc
-        dom: 'lfrtip'
-      });
-    }
-
-    // ============================
-    // 🔎 Filters (status + date range)
-    // ============================
-    function applyFilters() {
-      const status = document.getElementById('statusFilter').value;
-      const from  = document.getElementById('fromDate').value;
-      const to    = document.getElementById('toDate').value;
-
-      $.fn.dataTable.ext.search = [];
-      $.fn.dataTable.ext.search.push(function(settings, data) {
-        // Columns: 0:#, 1:Name, 2:Date, 3:FirstIn, 4:LastOut, 5:Hours, 6:Status
-        const dateStr = data[2];
-        const rowStatus = (data[6] || "").replace(/<[^>]*>/g,"").trim(); // strip badge HTML
-
-        // Status filter
-        if (status && rowStatus !== status) return false;
-
-        // Date range filter
-        if (from && dateStr < from) return false;
-        if (to && dateStr > to) return false;
-
-        return true;
-      });
-
-      dataTable.draw();
-    }
-
-    // ============================
-    // 🌗 Theme
-    // ============================
-    (function initTheme() {
-      const saved = localStorage.getItem('theme');
-      if (saved === 'dark') document.documentElement.setAttribute('data-theme','dark');
-      document.getElementById('themeToggle').addEventListener('click', () => {
-        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-        document.documentElement.setAttribute('data-theme', isDark ? '' : 'dark');
-        localStorage.setItem('theme', isDark ? 'light' : 'dark');
-      });
-    })();
-
-    // ============================
-    // 🚀 Boot
-    // ============================
-    let CACHE_RECORDS = [];
-
-    async function boot() {
+    // === INITIALIZATION ===
+    async function loadUsers() {
       try {
-        const raw = await loadCSV();
-        const records = transform(raw);
-        CACHE_RECORDS = records;
+        const res = await fetch(`${API_URL}?action=getUsers`);
+        const users = await res.json();
 
-        const stats = computeStats(records);
-        renderMeta(records, stats);
-        renderKPIs(stats);
-        renderCharts(stats);
-        renderTable(records);
-
-        // filters
-        document.getElementById('statusFilter').addEventListener('change', applyFilters);
-        document.getElementById('fromDate').addEventListener('change', applyFilters);
-        document.getElementById('toDate').addEventListener('change', applyFilters);
-        document.getElementById('clearFilters').addEventListener('click', () => {
-          document.getElementById('statusFilter').value = '';
-          document.getElementById('fromDate').value = '';
-          document.getElementById('toDate').value = '';
-          applyFilters();
+        users.forEach(user => {
+          const opt1 = new Option(`${user.name} (${user.status})`, user.user_id);
+          const opt2 = new Option(`${user.name} (${user.status})`, user.user_id);
+          senderSelect.add(opt1);
+          receiverSelect.add(opt2);
         });
-        document.getElementById('refreshBtn').addEventListener('click', () => {
-          // Re-fetch fresh data
-          boot();
-        });
-
       } catch (err) {
-        console.error(err);
-        $errorBox.textContent = `Failed to load CSV. Check the link and CORS. (${err?.message || err})`;
-        $errorBox.style.display = "block";
+        console.error("Error loading users:", err);
+        alert("Could not load users. Check console for details.");
       }
     }
 
-    boot();
+    async function loadMessages() {
+      const user1 = senderSelect.value;
+      const user2 = receiverSelect.value;
+      if (!user1 || !user2) return;
+
+      try {
+        const res = await fetch(`${API_URL}?action=getMessages&user1=${user1}&user2=${user2}`);
+        const messages = await res.json();
+
+        chatBox.innerHTML = "";
+        if (messages.length === 0) {
+          chatBox.innerHTML = "<p style='color:#999;text-align:center;'>No messages yet...</p>";
+        } else {
+          messages.forEach(msg => {
+            const msgDiv = document.createElement("div");
+            msgDiv.classList.add("message");
+            msgDiv.classList.add(msg.sender_id === user1 ? "sent" : "received");
+
+            msgDiv.innerHTML = `
+              <div>${msg.message}</div>
+              <div class="timestamp">${new Date(msg.timestamp).toLocaleTimeString()}</div>
+            `;
+            chatBox.appendChild(msgDiv);
+          });
+          chatBox.scrollTop = chatBox.scrollHeight;
+        }
+      } catch (err) {
+        console.error("Error loading messages:", err);
+      }
+    }
+
+    async function sendMessage() {
+      const user1 = senderSelect.value;
+      const user2 = receiverSelect.value;
+      const message = messageInput.value.trim();
+      if (!user1 || !user2 || !message) return alert("Please select users and enter a message.");
+
+      try {
+        const payload = {
+          action: "sendMessage",
+          sender_id: user1,
+          receiver_id: user2,
+          message: message
+        };
+
+        const res = await fetch(API_URL, {
+          method: "POST",
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        if (data.success) {
+          messageInput.value = "";
+          loadMessages();
+        } else {
+          alert("Error sending message: " + data.error);
+        }
+      } catch (err) {
+        console.error("Send error:", err);
+      }
+    }
+
+    // === EVENT LISTENERS ===
+    sendBtn.addEventListener("click", sendMessage);
+    messageInput.addEventListener("keypress", e => {
+      if (e.key === "Enter") sendMessage();
+    });
+
+    receiverSelect.addEventListener("change", loadMessages);
+
+    // === AUTO REFRESH EVERY 5 SECONDS ===
+    setInterval(loadMessages, 5000);
+
+    // === INIT ===
+    loadUsers();
   </script>
 </body>
 </html>
