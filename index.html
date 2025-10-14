@@ -3,258 +3,298 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>InCheck 360 Company Chat</title>
+  <title>InCheck 360 Chat</title>
   <style>
-    /* ===== General Styles ===== */
+    :root {
+      --primary: #0078d7;
+      --primary-dark: #005bb5;
+      --bg-light: #f5f6fa;
+      --bg-dark: #1e1f24;
+      --text-light: #ffffff;
+      --text-dark: #222;
+      --sent-bg: var(--primary);
+      --received-bg: #3a3b3f;
+      --radius: 18px;
+    }
+
     body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background-color: #f5f6fa;
+      background: linear-gradient(135deg, var(--primary-dark), var(--primary));
       margin: 0;
       padding: 0;
       display: flex;
       justify-content: center;
       align-items: center;
       height: 100vh;
+      color: var(--text-light);
     }
 
     .chat-container {
-      width: 450px;
-      background: #fff;
-      border-radius: 15px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-      overflow: hidden;
+      width: 420px;
+      height: 600px;
+      background: var(--bg-dark);
+      border-radius: 20px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
       display: flex;
       flex-direction: column;
+      overflow: hidden;
+      transition: all 0.3s;
     }
 
     .chat-header {
-      background: #0078D7;
-      color: white;
-      padding: 15px 20px;
+      background: rgba(0, 0, 0, 0.2);
       text-align: center;
+      padding: 15px 10px;
       font-size: 1.2em;
       font-weight: bold;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
     }
 
     .user-select {
       display: flex;
       justify-content: space-between;
-      padding: 10px 20px;
-      background-color: #f9f9f9;
-      border-bottom: 1px solid #eee;
+      padding: 8px 15px;
+      background: rgba(255,255,255,0.05);
     }
 
     .user-select select {
       width: 48%;
-      padding: 8px;
-      border-radius: 5px;
-      border: 1px solid #ccc;
+      padding: 6px;
+      border-radius: 6px;
+      border: none;
       outline: none;
+      background: rgba(255,255,255,0.1);
+      color: #fff;
     }
 
     .chat-box {
       flex-grow: 1;
       padding: 15px;
       overflow-y: auto;
-      background: #fdfdfd;
+      background: var(--bg-dark);
       display: flex;
       flex-direction: column;
+      scroll-behavior: smooth;
     }
 
     .message {
+      display: flex;
+      align-items: flex-end;
+      margin: 10px 0;
+      opacity: 0;
+      animation: fadeIn 0.3s ease forwards;
+    }
+
+    .message .bubble {
       padding: 10px 14px;
-      margin: 8px 0;
-      border-radius: 12px;
+      border-radius: var(--radius);
       max-width: 75%;
+      font-size: 0.95em;
+      line-height: 1.4;
       word-wrap: break-word;
     }
 
     .sent {
-      background-color: #0078D7;
-      color: white;
-      align-self: flex-end;
+      justify-content: flex-end;
+    }
+
+    .sent .bubble {
+      background: var(--sent-bg);
+      color: #fff;
+      border-bottom-right-radius: 4px;
     }
 
     .received {
-      background-color: #e4e6eb;
-      color: #333;
-      align-self: flex-start;
+      justify-content: flex-start;
+    }
+
+    .received .bubble {
+      background: var(--received-bg);
+      color: #fff;
+      border-bottom-left-radius: 4px;
+    }
+
+    .avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--primary);
+      color: #fff;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 0.8em;
+      margin: 0 8px;
+      flex-shrink: 0;
     }
 
     .timestamp {
-      font-size: 0.75em;
-      text-align: right;
+      font-size: 0.7em;
+      color: #aaa;
       margin-top: 2px;
-      color: #888;
+      text-align: right;
     }
 
     .message-input {
       display: flex;
-      border-top: 1px solid #ddd;
+      align-items: center;
+      border-top: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.05);
       padding: 10px;
-      background-color: #f9f9f9;
     }
 
     .message-input input {
       flex: 1;
       padding: 10px;
-      border: 1px solid #ccc;
+      border: none;
       border-radius: 20px;
+      background: rgba(255,255,255,0.1);
+      color: #fff;
       outline: none;
     }
 
     .message-input button {
-      padding: 10px 15px;
       margin-left: 10px;
       border: none;
-      background: #0078D7;
-      color: white;
+      background: var(--primary);
+      color: #fff;
+      padding: 10px 12px;
       border-radius: 50%;
       cursor: pointer;
       transition: 0.3s;
     }
 
     .message-input button:hover {
-      background: #005bb5;
+      background: var(--primary-dark);
     }
 
-    /* Scrollbar styling */
-    .chat-box::-webkit-scrollbar {
-      width: 6px;
+    @keyframes fadeIn {
+      from { transform: translateY(10px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
     }
 
-    .chat-box::-webkit-scrollbar-thumb {
-      background-color: rgba(0, 0, 0, 0.2);
-      border-radius: 3px;
+    @media (max-width: 500px) {
+      .chat-container { width: 100%; height: 100%; border-radius: 0; }
     }
   </style>
 </head>
-
 <body>
   <div class="chat-container">
-    <div class="chat-header">💬 InCheck 360 Chat</div>
-
+    <div class="chat-header">💬 InCheck 360 Chat (Pro)</div>
     <div class="user-select">
-      <select id="senderSelect">
-        <option value="">Select Sender</option>
-      </select>
-      <select id="receiverSelect">
-        <option value="">Select Receiver</option>
-      </select>
+      <select id="senderSelect"><option value="">You</option></select>
+      <select id="receiverSelect"><option value="">Chat With</option></select>
     </div>
 
     <div id="chatBox" class="chat-box">
-      <p style="text-align:center;color:#999;">Select users to start chatting...</p>
+      <p style="color:#888; text-align:center; margin-top:20px;">Select users to start chatting...</p>
     </div>
 
     <div class="message-input">
-      <input type="text" id="messageInput" placeholder="Type your message..." />
+      <input id="messageInput" type="text" placeholder="Type a message..." />
       <button id="sendBtn">➤</button>
     </div>
   </div>
 
   <script>
-    // === CONFIGURATION ===
     const API_URL = "https://script.google.com/macros/s/AKfycbzKpLMouySKF0CvWay77649xDXWLzKcrbJcrc88SKXBIBKhHBoONTkmZT1-jxvm7h04Qw/exec";
-
     const senderSelect = document.getElementById("senderSelect");
     const receiverSelect = document.getElementById("receiverSelect");
     const chatBox = document.getElementById("chatBox");
     const messageInput = document.getElementById("messageInput");
     const sendBtn = document.getElementById("sendBtn");
 
-    // === INITIALIZATION ===
-    async function loadUsers() {
-      try {
-        const res = await fetch(`${API_URL}?action=getUsers`);
-        const users = await res.json();
+    // Store last selected users
+    const savedSender = localStorage.getItem("chat_sender");
+    const savedReceiver = localStorage.getItem("chat_receiver");
 
-        users.forEach(user => {
-          const opt1 = new Option(`${user.name} (${user.status})`, user.user_id);
-          const opt2 = new Option(`${user.name} (${user.status})`, user.user_id);
-          senderSelect.add(opt1);
-          receiverSelect.add(opt2);
-        });
-      } catch (err) {
-        console.error("Error loading users:", err);
-        alert("Could not load users. Check console for details.");
-      }
+    // Load user list
+    async function loadUsers() {
+      const res = await fetch(`${API_URL}?action=getUsers`);
+      const users = await res.json();
+
+      users.forEach(u => {
+        const opt1 = new Option(u.name, u.user_id);
+        const opt2 = new Option(u.name, u.user_id);
+        senderSelect.add(opt1);
+        receiverSelect.add(opt2);
+      });
+
+      if (savedSender) senderSelect.value = savedSender;
+      if (savedReceiver) receiverSelect.value = savedReceiver;
+      if (savedSender && savedReceiver) loadMessages();
+    }
+
+    // Generate avatar initials
+    function getAvatarInitials(name) {
+      return name.split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase();
     }
 
     async function loadMessages() {
-      const user1 = senderSelect.value;
-      const user2 = receiverSelect.value;
-      if (!user1 || !user2) return;
+      const s = senderSelect.value, r = receiverSelect.value;
+      if (!s || !r) return;
+      localStorage.setItem("chat_sender", s);
+      localStorage.setItem("chat_receiver", r);
 
-      try {
-        const res = await fetch(`${API_URL}?action=getMessages&user1=${user1}&user2=${user2}`);
-        const messages = await res.json();
+      const res = await fetch(`${API_URL}?action=getMessages&user1=${s}&user2=${r}`);
+      const messages = await res.json();
 
-        chatBox.innerHTML = "";
-        if (messages.length === 0) {
-          chatBox.innerHTML = "<p style='color:#999;text-align:center;'>No messages yet...</p>";
-        } else {
-          messages.forEach(msg => {
-            const msgDiv = document.createElement("div");
-            msgDiv.classList.add("message");
-            msgDiv.classList.add(msg.sender_id === user1 ? "sent" : "received");
-
-            msgDiv.innerHTML = `
-              <div>${msg.message}</div>
-              <div class="timestamp">${new Date(msg.timestamp).toLocaleTimeString()}</div>
-            `;
-            chatBox.appendChild(msgDiv);
-          });
-          chatBox.scrollTop = chatBox.scrollHeight;
-        }
-      } catch (err) {
-        console.error("Error loading messages:", err);
+      chatBox.innerHTML = "";
+      if (messages.length === 0) {
+        chatBox.innerHTML = "<p style='text-align:center;color:#777;'>No messages yet...</p>";
+        return;
       }
+
+      messages.forEach(m => {
+        const msgDiv = document.createElement("div");
+        msgDiv.classList.add("message", m.sender_id == s ? "sent" : "received");
+
+        const avatar = document.createElement("div");
+        avatar.classList.add("avatar");
+        avatar.textContent = getAvatarInitials(m.sender_id == s ? "You" : "User");
+
+        const bubble = document.createElement("div");
+        bubble.classList.add("bubble");
+        bubble.innerHTML = `
+          ${m.message}
+          <div class="timestamp">${new Date(m.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+        `;
+
+        if (m.sender_id == s) {
+          msgDiv.appendChild(bubble);
+          msgDiv.appendChild(avatar);
+        } else {
+          msgDiv.appendChild(avatar);
+          msgDiv.appendChild(bubble);
+        }
+
+        chatBox.appendChild(msgDiv);
+      });
+      chatBox.scrollTop = chatBox.scrollHeight;
     }
 
     async function sendMessage() {
-      const user1 = senderSelect.value;
-      const user2 = receiverSelect.value;
-      const message = messageInput.value.trim();
-      if (!user1 || !user2 || !message) return alert("Please select users and enter a message.");
+      const s = senderSelect.value, r = receiverSelect.value;
+      const text = messageInput.value.trim();
+      if (!s || !r) return alert("Select both users first.");
+      if (!text) return;
 
-      try {
-        const payload = {
-          action: "sendMessage",
-          sender_id: user1,
-          receiver_id: user2,
-          message: message
-        };
-
-        const res = await fetch(API_URL, {
-          method: "POST",
-          body: JSON.stringify(payload)
-        });
-        const data = await res.json();
-
-        if (data.success) {
-          messageInput.value = "";
-          loadMessages();
-        } else {
-          alert("Error sending message: " + data.error);
-        }
-      } catch (err) {
-        console.error("Send error:", err);
+      const payload = { action: "sendMessage", sender_id: s, receiver_id: r, message: text };
+      const res = await fetch(API_URL, { method: "POST", body: JSON.stringify(payload) });
+      const data = await res.json();
+      if (data.success) {
+        messageInput.value = "";
+        loadMessages();
+      } else {
+        alert("Error sending message: " + data.error);
       }
     }
 
-    // === EVENT LISTENERS ===
     sendBtn.addEventListener("click", sendMessage);
-    messageInput.addEventListener("keypress", e => {
-      if (e.key === "Enter") sendMessage();
-    });
-
+    messageInput.addEventListener("keypress", e => { if (e.key === "Enter") sendMessage(); });
     receiverSelect.addEventListener("change", loadMessages);
-
-    // === AUTO REFRESH EVERY 5 SECONDS ===
     setInterval(loadMessages, 5000);
 
-    // === INIT ===
     loadUsers();
   </script>
 </body>
