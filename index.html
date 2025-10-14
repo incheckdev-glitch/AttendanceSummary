@@ -1,156 +1,501 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>InCheck 360 Chat</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>InCheck 360 — Company Chat</title>
 <style>
-:root{
-  --primary:#0078d7;--primary-dark:#005bb5;
-  --bg-dark:#1e1f24;--text-light:#fff;
-  --sent-bg:var(--primary);--received-bg:#3a3b3f;--radius:18px;
-}
-body{
-  font-family:'Segoe UI',Tahoma,Verdana,sans-serif;
-  background:linear-gradient(135deg,var(--primary-dark),var(--primary));
-  margin:0;display:flex;justify-content:center;align-items:center;height:100vh;color:var(--text-light);
-}
-.chat-container{
-  width:420px;height:600px;background:var(--bg-dark);border-radius:20px;
-  box-shadow:0 4px 20px rgba(0,0,0,.25);display:flex;flex-direction:column;overflow:hidden;
-}
-.chat-header{
-  background:rgba(0,0,0,.2);text-align:center;padding:15px 10px;font-size:1.2em;font-weight:bold;
-}
-.user-select{
-  display:flex;justify-content:space-between;padding:8px 15px;background:rgba(255,255,255,.05);
-}
-.user-select select{
-  width:48%;padding:6px;border-radius:6px;border:none;outline:none;
-  background:rgba(255,255,255,.1);color:#fff;
-}
-.chat-box{
-  flex-grow:1;padding:15px;overflow-y:auto;background:var(--bg-dark);
-  display:flex;flex-direction:column;scroll-behavior:smooth;
-}
-.message{display:flex;align-items:flex-end;margin:10px 0;opacity:0;animation:fadeIn .3s ease forwards;}
-.message .bubble{
-  padding:10px 14px;border-radius:var(--radius);max-width:75%;
-  font-size:.95em;line-height:1.4;word-wrap:break-word;
-}
-.sent{justify-content:flex-end;}
-.sent .bubble{background:var(--sent-bg);color:#fff;border-bottom-right-radius:4px;}
-.received{justify-content:flex-start;}
-.received .bubble{background:var(--received-bg);color:#fff;border-bottom-left-radius:4px;}
-.timestamp{font-size:.7em;color:#aaa;margin-top:2px;text-align:right;}
-.message-input{
-  display:flex;align-items:center;border-top:1px solid rgba(255,255,255,.1);
-  background:rgba(255,255,255,.05);padding:10px;
-}
-.message-input input{
-  flex:1;padding:10px;border:none;border-radius:20px;background:rgba(255,255,255,.1);
-  color:#fff;outline:none;
-}
-.message-input button{
-  margin-left:10px;border:none;background:var(--primary);color:#fff;
-  padding:10px 12px;border-radius:50%;cursor:pointer;transition:.3s;
-}
-.message-input button:hover{background:var(--primary-dark);}
-@keyframes fadeIn{from{transform:translateY(10px);opacity:0;}to{transform:translateY(0);opacity:1;}}
-@media(max-width:500px){.chat-container{width:100%;height:100%;border-radius:0;}}
+  :root {
+    --primary: #0a84ff;
+    --primary-600: #0a63cc;
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-2: #1d212a;
+    --border: #2a2f3a;
+    --text: #e6eaf2;
+    --muted: #a8b0bf;
+    --sent: #0a84ff;        /* your message bubble */
+    --recv: #2e3440;        /* receiver bubble */
+    --success: #22c55e;     /* read ticks color */
+  }
+  /* Light theme */
+  body.light {
+    --bg: #f4f6fb;
+    --panel: #ffffff;
+    --panel-2: #f8f9fc;
+    --border: #e6e9f2;
+    --text: #0f172a;
+    --muted: #475569;
+    --recv: #eef2f7;
+  }
+
+  /* Layout */
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font-family: ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    background: var(--bg);
+    color: var(--text);
+  }
+  .app {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    grid-template-rows: 64px 1fr 72px;
+    grid-template-areas:
+      "sidebar header"
+      "sidebar messages"
+      "sidebar composer";
+    height: 100vh;
+    width: 100vw;
+  }
+
+  /* Header */
+  .header {
+    grid-area: header;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0)) , var(--panel);
+  }
+  .title { font-weight: 600; }
+  .right-actions { display: flex; gap: 8px; align-items: center; }
+  .btn, select, input[type="text"] {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 10px;
+    border-radius: 10px;
+    outline: none;
+  }
+  .btn { cursor: pointer; }
+  .btn.primary { background: var(--primary); border-color: var(--primary-600); }
+  .btn.ghost { background: transparent; border-color: var(--border); }
+
+  /* Sidebar */
+  .sidebar {
+    grid-area: sidebar;
+    border-right: 1px solid var(--border);
+    background: var(--panel);
+    display: flex; flex-direction: column;
+  }
+  .me {
+    padding: 12px; border-bottom: 1px solid var(--border);
+    display: flex; gap: 10px; align-items: center;
+  }
+  .avatar {
+    width: 36px; height: 36px; border-radius: 50%;
+    display: grid; place-items: center; font-weight: 700;
+    color: white; background: var(--primary);
+    flex-shrink: 0;
+  }
+  .me-controls { display: flex; gap: 8px; margin-top: 8px; }
+  .search {
+    padding: 10px 12px; border-bottom: 1px solid var(--border);
+  }
+  .people {
+    overflow: auto; padding: 8px;
+  }
+  .person {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px; border-radius: 12px; cursor: pointer;
+  }
+  .person:hover { background: var(--panel-2); }
+  .person.active { background: rgba(10,132,255,.12); border: 1px solid rgba(10,132,255,.3); }
+  .name { font-weight: 600; }
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #9ca3af; margin-left: auto;
+  }
+  .online { background: #22c55e; }
+
+  /* Messages */
+  .messages {
+    grid-area: messages;
+    display: flex; flex-direction: column; gap: 10px;
+    padding: 16px;
+    background: radial-gradient(1200px 800px at 0% 0%, rgba(10,132,255,.06), transparent 40%),
+                radial-gradient(1200px 800px at 100% 0%, rgba(34,197,94,.05), transparent 40%);
+    overflow-y: auto;
+  }
+  .bubble-row {
+    display: flex; align-items: flex-end; gap: 8px;
+    animation: rise .22s ease-out;
+  }
+  .bubble {
+    max-width: min(680px, 75%);
+    padding: 10px 12px;
+    border-radius: 16px;
+    font-size: 15px; line-height: 1.4;
+    white-space: pre-wrap; word-wrap: break-word;
+    position: relative;
+  }
+  .mine { justify-content: flex-end; }
+  .mine .bubble { background: var(--sent); color: #fff; border-bottom-right-radius: 6px; }
+  .theirs .bubble { background: var(--recv); color: var(--text); border-bottom-left-radius: 6px; }
+  .meta {
+    font-size: 12px; opacity: .8; margin-top: 4px; display: flex; gap: 8px; align-items: center;
+  }
+  .ticks { font-size: 14px; }
+  .ticks.read { color: var(--success); }
+  .seen-indicator {
+    text-align: right; color: var(--muted); font-size: 12px; margin-top: -6px; margin-right: 8px;
+  }
+
+  /* Composer */
+  .composer {
+    grid-area: composer;
+    display: flex; gap: 10px; align-items: center;
+    padding: 12px 16px; border-top: 1px solid var(--border); background: var(--panel);
+  }
+  .composer input[type="text"] { flex: 1; }
+
+  /* Utilities */
+  .hidden { display: none; }
+  @keyframes rise { from { transform: translateY(6px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+  /* Mobile */
+  @media (max-width: 900px) {
+    .app {
+      grid-template-columns: 1fr;
+      grid-template-areas:
+        "header"
+        "messages"
+        "composer";
+    }
+    .sidebar { display: none; }
+    .header .show-sidebar { display: inline-flex; }
+  }
+  .header .show-sidebar { display: none; }
 </style>
 </head>
 <body>
-<div class="chat-container">
-  <div class="chat-header">💬 InCheck 360 Chat (Pro + Smart Polling)</div>
-  <div class="user-select">
-    <select id="senderSelect"><option value="">You</option></select>
-    <select id="receiverSelect"><option value="">Chat With</option></select>
-  </div>
-  <div id="chatBox" class="chat-box">
-    <p style="color:#888;text-align:center;margin-top:20px;">Select users to start chatting...</p>
-  </div>
-  <div class="message-input">
-    <input id="messageInput" type="text" placeholder="Type a message...">
-    <button id="sendBtn">➤</button>
-  </div>
+<div class="app" id="app">
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="me">
+      <div class="avatar" id="meAvatar">ME</div>
+      <div style="flex:1">
+        <div style="font-weight:700">You</div>
+        <div class="me-controls">
+          <select id="meSelect" title="Select yourself"></select>
+          <button class="btn ghost" id="themeBtn" title="Toggle theme">🌓</button>
+        </div>
+      </div>
+    </div>
+    <div class="search">
+      <input id="searchInput" type="text" class="w100" placeholder="Search people…" style="width:100%" />
+    </div>
+    <div class="people" id="peopleList"></div>
+  </aside>
+
+  <!-- HEADER -->
+  <header class="header">
+    <div class="left">
+      <button class="btn ghost show-sidebar" id="openSidebar" title="People">☰</button>
+      <span class="title" id="chatTitle">Select a person…</span>
+    </div>
+    <div class="right-actions">
+      <label style="display:flex;align-items:center;gap:6px;">
+        <input type="checkbox" id="notifToggle" />
+        Notifications
+      </label>
+      <button class="btn" id="clearChatBtn" title="Clear view (does not delete on server)">Clear</button>
+    </div>
+  </header>
+
+  <!-- MESSAGES -->
+  <main class="messages" id="messages">
+    <div style="color:var(--muted);text-align:center;margin-top:24px;">Pick someone from the left to start chatting.</div>
+  </main>
+
+  <!-- COMPOSER -->
+  <footer class="composer">
+    <input id="msgInput" type="text" placeholder="Type a message…  (Enter to send, Shift+Enter for newline)" />
+    <button class="btn primary" id="sendBtn">Send</button>
+  </footer>
 </div>
 
 <script>
-const API_URL="https://script.google.com/macros/s/AKfycbzKpLMouySKF0CvWay77649xDXWLzKcrbJcrc88SKXBIBKhHBoONTkmZT1-jxvm7h04Qw/exec";
-const senderSelect=document.getElementById("senderSelect");
-const receiverSelect=document.getElementById("receiverSelect");
-const chatBox=document.getElementById("chatBox");
-const messageInput=document.getElementById("messageInput");
-const sendBtn=document.getElementById("sendBtn");
+  /**************** CONFIG ****************/
+  const API_URL = "https://script.google.com/macros/s/AKfycbzKpLMouySKF0CvWay77649xDXWLzKcrbJcrc88SKXBIBKhHBoONTkmZT1-jxvm7h04Qw/exec";
+  const POLL_MS = 3000; // smart polling interval
 
-let lastMessageId=0;
+  /*************** STATE ******************/
+  const el = (id) => document.getElementById(id);
+  const meSelect = el("meSelect");
+  const peopleList = el("peopleList");
+  const chatTitle = el("chatTitle");
+  const msgInput = el("msgInput");
+  const messagesView = el("messages");
+  const sendBtn = el("sendBtn");
+  const notifToggle = el("notifToggle");
+  const themeBtn = el("themeBtn");
+  const meAvatar = el("meAvatar");
+  const clearChatBtn = el("clearChatBtn");
+  const openSidebar = el("openSidebar");
+  const sidebar = el("sidebar");
+  const searchInput = el("searchInput");
 
-async function loadUsers(){
-  try{
-    const res=await fetch(`${API_URL}?action=getUsers`);
-    const users=await res.json();
-    users.forEach(u=>{
-      const opt1=new Option(u.name,u.user_id);
-      const opt2=new Option(u.name,u.user_id);
-      senderSelect.add(opt1);receiverSelect.add(opt2);
-    });
-  }catch(e){console.error(e);}
-}
+  let users = [];
+  let me = localStorage.getItem("chat_me") || "";
+  let peer = localStorage.getItem("chat_peer") || "";
+  let lastMsgId = null; // for new-message detection in active chat
+  let pollTimer = null;
+  let theme = localStorage.getItem("chat_theme") || "dark";
 
-async function loadMessages(showNotify=true){
-  const s=senderSelect.value,r=receiverSelect.value;
-  if(!s||!r)return;
-  try{
-    const res=await fetch(`${API_URL}?action=getMessages&user1=${s}&user2=${r}`);
-    const msgs=await res.json();
-    if(msgs.length===0){chatBox.innerHTML="<p style='color:#777;text-align:center;'>No messages yet...</p>";return;}
-    const newest=msgs[msgs.length-1].msg_id;
-    const isNew=newest!==lastMessageId;
-    const lastSender=msgs[msgs.length-1].sender_id;
-    lastMessageId=newest;
+  if (theme === "light") document.body.classList.add("light");
 
-    chatBox.innerHTML="";
-    msgs.forEach(m=>{
-      const div=document.createElement("div");
-      div.classList.add("message",m.sender_id==s?"sent":"received");
-      div.innerHTML=`<div class="bubble">${m.message}<div class="timestamp">${new Date(m.timestamp).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div></div>`;
-      chatBox.appendChild(div);
-    });
-    chatBox.scrollTop=chatBox.scrollHeight;
+  // -------- Utilities
+  function initials(name){ return (name||"U").split(" ").map(s=>s[0]).join("").slice(0,2).toUpperCase(); }
+  function playBeep(){ new Audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg").play().catch(()=>{}); }
+  function flashTitle(txt="🔔 New message!"){ const old=document.title; document.title=txt; setTimeout(()=>document.title=old,2000); }
+  function setMeAvatar(){ const u = users.find(u=>String(u.user_id)===String(me)); meAvatar.textContent = u?initials(u.name):"ME"; }
 
-    if(isNew&&lastSender!=s&&showNotify){
-      playSound();
-      flashTitle();
+  // -------- Notifications
+  notifToggle.addEventListener("change", () => {
+    if (notifToggle.checked && Notification.permission !== "granted") {
+      Notification.requestPermission();
     }
-  }catch(e){console.error("loadMessages error",e);}
-}
+  });
+  function notify(senderName, text){
+    if (!notifToggle.checked) return;
+    if (Notification.permission !== "granted") return;
+    new Notification(`New message from ${senderName}`, { body: text });
+  }
 
-function playSound(){
-  const audio=new Audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg");
-  audio.play().catch(()=>{});
-}
-function flashTitle(){
-  const old=document.title;
-  document.title="🔔 New message!";
-  setTimeout(()=>{document.title=old;},2000);
-}
+  // -------- Theme
+  themeBtn.addEventListener("click", () => {
+    document.body.classList.toggle("light");
+    localStorage.setItem("chat_theme", document.body.classList.contains("light") ? "light" : "dark");
+  });
 
-async function sendMessage(){
-  const s=senderSelect.value,r=receiverSelect.value,msg=messageInput.value.trim();
-  if(!s||!r)return alert("Select both users first.");
-  if(!msg)return;
-  const payload={action:"sendMessage",sender_id:s,receiver_id:r,message:msg};
-  const res=await fetch(API_URL,{method:"POST",body:JSON.stringify(payload)});
-  const data=await res.json();
-  if(data.success){messageInput.value="";loadMessages(false);}else alert("Send error:"+data.error);
-}
+  // -------- Sidebar (mobile)
+  openSidebar?.addEventListener("click", ()=> sidebar.style.display = (sidebar.style.display==="none"||!sidebar.style.display) ? "flex" : "none");
 
-sendBtn.addEventListener("click",sendMessage);
-messageInput.addEventListener("keypress",e=>{if(e.key==="Enter")sendMessage();});
-receiverSelect.addEventListener("change",()=>loadMessages(false));
-setInterval(()=>loadMessages(true),3000);
-loadUsers();
+  // -------- Fetch helpers
+  async function apiGet(path){ const r = await fetch(`${API_URL}?${path}`); return r.json(); }
+  async function apiPost(body){ const r = await fetch(API_URL,{method:"POST",body:JSON.stringify(body)}); return r.json(); }
+
+  /*************** LOAD USERS ***************/
+  async function loadUsers(){
+    users = await apiGet("action=getUsers");
+    // Fill "me" select
+    meSelect.innerHTML = "<option value=''>Select you…</option>" + users.map(u=>`<option value="${u.user_id}">${u.name} (${u.status})</option>`).join("");
+    if (me) meSelect.value = me;
+    meSelect.addEventListener("change", ()=>{
+      me = meSelect.value;
+      localStorage.setItem("chat_me", me);
+      renderPeopleList();
+      setMeAvatar();
+      // Reset lastMsgId when switching me
+      lastMsgId = null;
+    });
+
+    setMeAvatar();
+    renderPeopleList();
+    // Restore peer if exists
+    if (peer) openChatWith(peer);
+  }
+
+  function renderPeopleList(filter=""){
+    const list = users.filter(u => String(u.user_id)!==String(me))
+                      .filter(u => !filter || u.name.toLowerCase().includes(filter.toLowerCase()));
+    peopleList.innerHTML = "";
+    list.forEach(u=>{
+      const row = document.createElement("div");
+      row.className = "person" + (String(u.user_id)===String(peer) ? " active" : "");
+      row.dataset.id = u.user_id;
+      row.innerHTML = `
+        <div class="avatar" style="background:${hashColor(u.user_id)}">${initials(u.name)}</div>
+        <div>
+          <div class="name">${u.name}</div>
+          <div style="font-size:12px;color:var(--muted)">${u.email}</div>
+        </div>
+        <span class="status-dot ${u.status==='online' ? 'online':''}"></span>
+      `;
+      row.addEventListener("click", ()=> openChatWith(u.user_id));
+      peopleList.appendChild(row);
+    });
+  }
+
+  // quick deterministic color by id
+  function hashColor(id){
+    const hues=[210,260,310,10,30,50,140,160,180];
+    const h = hues[(parseInt(id,10)||0)%hues.length];
+    return `hsl(${h} 80% 45%)`;
+  }
+
+  searchInput.addEventListener("input", (e)=> renderPeopleList(e.target.value));
+
+  /*************** OPEN CHAT ***************/
+  async function openChatWith(userId){
+    if (!me){ alert("Select yourself (left panel) first."); return; }
+    peer = String(userId);
+    localStorage.setItem("chat_peer", peer);
+    document.querySelectorAll(".person").forEach(p=>p.classList.toggle("active", p.dataset.id===peer));
+    const u = users.find(x=>String(x.user_id)===peer);
+    chatTitle.textContent = u ? `${u.name} ${u.status==='online' ? '• online' : '• offline'}` : "Chat";
+
+    messagesView.innerHTML = `<div style="color:var(--muted);text-align:center;margin-top:24px;">Loading…</div>`;
+    lastMsgId = null; // reset detection
+    await loadAndRenderMessages(false);
+    startPolling();
+  }
+
+  function startPolling(){
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(()=> loadAndRenderMessages(true), POLL_MS);
+  }
+
+  clearChatBtn.addEventListener("click", ()=> { messagesView.innerHTML=""; lastMsgId=null; });
+
+  /*************** FETCH / RENDER MESSAGES ***************/
+  async function getMessages(){
+    if (!me || !peer) return [];
+    return apiGet(`action=getMessages&user1=${encodeURIComponent(me)}&user2=${encodeURIComponent(peer)}`);
+  }
+
+  async function loadAndRenderMessages(notifyNew){
+    const data = await getMessages();
+    renderMessages(data);
+
+    // Detect new message from peer
+    if (data.length){
+      const newest = data[data.length-1].msg_id;
+      const lastSender = data[data.length-1].sender_id;
+      const isNew = newest !== lastMsgId;
+      lastMsgId = newest;
+
+      if (isNew && String(lastSender)!==String(me) && notifyNew){
+        playBeep();
+        flashTitle();
+        const senderName = (users.find(u=>String(u.user_id)===String(lastSender))||{}).name || "Someone";
+        notify(senderName, data[data.length-1].message);
+      }
+    }
+
+    // Mark as read any peer->me messages that are not 'read'
+    markVisibleAsRead(data).catch(()=>{});
+  }
+
+  function renderMessages(list){
+    messagesView.innerHTML = "";
+    if (!list || !list.length){
+      messagesView.innerHTML = `<div style="color:var(--muted);text-align:center;margin-top:24px;">No messages yet — say hi 👋</div>`;
+      return;
+    }
+    let lastMineRead = false;
+
+    list.forEach(m=>{
+      const mine = String(m.sender_id)===String(me);
+      const row = document.createElement("div");
+      row.className = "bubble-row " + (mine ? "mine" : "theirs");
+
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      // ticks: ✓ (sent) or ✓✓ (read)
+      const isRead = m.read_status === "read";
+      const ticks = mine
+        ? `<span class="ticks ${isRead ? 'read':''}">${isRead ? "✓✓" : "✓"}</span>`
+        : "";
+
+      bubble.innerHTML = `
+        <div>${escapeHtml(m.message)}</div>
+        <div class="meta">
+          <span>${formatTime(m.timestamp)}</span>
+          ${ticks}
+        </div>
+      `;
+      row.appendChild(bubble);
+      messagesView.appendChild(row);
+
+      if (mine && isRead) lastMineRead = true;
+    });
+
+    // "Seen" indicator if the latest mine message is read
+    const last = list[list.length-1];
+    if (String(last.sender_id)===String(me) && last.read_status==="read"){
+      const seen = document.createElement("div");
+      seen.className = "seen-indicator";
+      seen.textContent = "Seen ✓✓";
+      messagesView.appendChild(seen);
+    }
+
+    // Scroll to bottom smoothly
+    messagesView.scrollTop = messagesView.scrollHeight;
+  }
+
+  function formatTime(ts){
+    const d = new Date(ts);
+    if (isNaN(d)) return ts;
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, (c)=>({ "&":"&nbsp;&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+  }
+
+  /*************** MARK READ ***************/
+  let markReadInFlight = false;
+  async function markVisibleAsRead(messages){
+    if (markReadInFlight) return;
+    if (!messages || !messages.length) return;
+    // If there are messages from peer->me that are not read, mark them
+    const hasUnreadFromPeer = messages.some(m => String(m.sender_id)===String(peer) && String(m.receiver_id)===String(me) && m.read_status!=="read");
+    if (!hasUnreadFromPeer) return;
+
+    markReadInFlight = true;
+    try {
+      await apiPost({ action: "markRead", reader_id: me, sender_id: peer });
+      // After marking, refresh quickly to get updated ticks
+      setTimeout(()=> loadAndRenderMessages(false), 250);
+    } finally {
+      markReadInFlight = false;
+    }
+  }
+
+  /*************** SEND ***************/
+  async function sendMessage(){
+    if (!me || !peer){ alert("Select yourself and a person to chat with."); return; }
+    const text = msgInput.value;
+    if (!text.trim()) return;
+
+    const res = await apiPost({ action:"sendMessage", sender_id: me, receiver_id: peer, message: text });
+    if (res && res.success){
+      msgInput.value = "";
+      await loadAndRenderMessages(false);
+    } else {
+      alert("Failed to send: " + (res && res.error ? res.error : "Unknown error"));
+    }
+  }
+
+  sendBtn.addEventListener("click", sendMessage);
+  msgInput.addEventListener("keydown", (e)=>{
+    if (e.key==="Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  });
+
+  /*************** INIT ***************/
+  (async function init(){
+    await loadUsers();
+    // restore UI selects
+    if (me){ meSelect.value = me; }
+    setMeAvatar();
+    // Start idle polling even if no peer selected (to update users list)
+    setInterval(async ()=>{
+      const oldUsers = users;
+      try {
+        users = await apiGet("action=getUsers");
+        // Update presence dots without re-rendering everything:
+        users.forEach(u=>{
+          const row = [...document.querySelectorAll(".person")].find(p=>p.dataset.id===String(u.user_id));
+          if (row) {
+            const dot = row.querySelector(".status-dot");
+            if (dot) dot.classList.toggle("online", u.status==="online");
+          }
+        });
+      } catch {}
+    }, 15000);
+  })();
 </script>
 </body>
 </html>
