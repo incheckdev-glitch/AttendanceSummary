@@ -1,215 +1,412 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>InCheck 360 — Company Chat Pro</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>InCheck Chat v4 – Corporate Edition</title>
 <style>
 :root {
-  --primary:#0a84ff;--primary-dark:#005bb5;
-  --bg:#0f1115;--panel:#171a21;--text:#f1f5f9;--muted:#94a3b8;
-  --sent:#0a84ff;--recv:#2e3440;--success:#22c55e;
+  --brand: #0078d7;
+  --brand-dark: #005bb5;
+  --bg: #f7f9fb;
+  --panel: #ffffff;
+  --border: #e4e7ec;
+  --text: #1e293b;
+  --muted: #64748b;
+  --sent: var(--brand);
+  --recv: #edf2f7;
+  --success: #22c55e;
+  --radius: 14px;
+  --shadow: 0 2px 6px rgba(0,0,0,0.08);
 }
-body.light {--bg:#f4f6fb;--panel:#fff;--text:#111;--muted:#475569;--recv:#eef2f7;}
 *{box-sizing:border-box;}
-body{margin:0;font-family:Segoe UI,system-ui;background:var(--bg);color:var(--text);}
-.app{display:grid;grid-template-columns:300px 1fr;grid-template-rows:64px 1fr 70px;
-grid-template-areas:"sidebar header" "sidebar chat" "sidebar composer";
-height:100vh;width:100vw;}
-.sidebar{grid-area:sidebar;background:var(--panel);border-right:1px solid #222;
-display:flex;flex-direction:column;}
-.header{grid-area:header;display:flex;align-items:center;justify-content:space-between;
-padding:10px 16px;background:var(--panel);border-bottom:1px solid #222;}
-.chat{grid-area:chat;overflow-y:auto;display:flex;flex-direction:column;
-padding:16px;scroll-behavior:smooth;}
-.composer{grid-area:composer;display:flex;align-items:center;gap:10px;padding:10px 16px;
-background:var(--panel);border-top:1px solid #222;}
-input,select,button{font-family:inherit;}
-select,input[type=text]{background:#222;border:none;border-radius:6px;color:var(--text);
-padding:8px 10px;}
-button{cursor:pointer;border:none;background:var(--primary);color:#fff;
-padding:8px 12px;border-radius:6px;}
-button:hover{background:var(--primary-dark);}
-.person{display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;
-cursor:pointer;margin:4px;}
-.person:hover{background:#222;}
-.person.active{background:rgba(10,132,255,0.2);}
-.status-dot{width:8px;height:8px;border-radius:50%;margin-left:auto;}
+body{
+  margin:0;
+  font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  height:100vh;
+  display:flex;
+  flex-direction:column;
+}
+.app{
+  flex:1;
+  display:grid;
+  grid-template-columns:280px 1fr;
+  grid-template-rows:64px 1fr 72px;
+  grid-template-areas:
+    "sidebar header"
+    "sidebar chat"
+    "sidebar composer";
+  height:100vh;
+}
+.sidebar{
+  grid-area:sidebar;
+  background:var(--panel);
+  border-right:1px solid var(--border);
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+.sidebar-header{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:12px 16px;
+  border-bottom:1px solid var(--border);
+  background:#f9fafb;
+  box-shadow:var(--shadow);
+}
+.sidebar-header img{
+  width:40px;height:40px;border-radius:8px;flex-shrink:0;
+}
+.sidebar-header h1{
+  font-size:1.1em;
+  margin:0;
+  color:var(--brand-dark);
+}
+.section{
+  padding:8px 16px;
+  border-bottom:1px solid var(--border);
+}
+.section input{
+  width:100%;
+  padding:8px 10px;
+  border:1px solid var(--border);
+  border-radius:8px;
+  font-size:0.9em;
+}
+.people,.rooms{
+  flex:1;
+  overflow:auto;
+  padding:8px 0;
+}
+.person,.room{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:10px 16px;
+  cursor:pointer;
+  transition:background 0.2s;
+}
+.person:hover,.room:hover{background:#f2f4f7;}
+.person.active,.room.active{background:rgba(0,120,215,0.15);}
+.status-dot{
+  width:8px;height:8px;border-radius:50%;margin-left:auto;
+}
 .online{background:#22c55e;}
-.message{margin:6px 0;display:flex;}
+.offline{background:#9ca3af;}
+.header{
+  grid-area:header;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 16px;
+  background:var(--panel);
+  border-bottom:1px solid var(--border);
+  box-shadow:var(--shadow);
+}
+.chat{
+  grid-area:chat;
+  background:#f9fafc;
+  overflow-y:auto;
+  padding:16px;
+  display:flex;
+  flex-direction:column;
+  scroll-behavior:smooth;
+}
+.message{
+  margin:6px 0;
+  display:flex;
+  align-items:flex-end;
+  gap:8px;
+  animation:fadeIn .2s ease-in;
+}
+.bubble{
+  padding:10px 14px;
+  border-radius:var(--radius);
+  max-width:70%;
+  line-height:1.4;
+  word-wrap:break-word;
+  box-shadow:var(--shadow);
+}
 .mine{justify-content:flex-end;}
-.mine .bubble{background:var(--sent);color:#fff;border-radius:12px 12px 2px 12px;}
-.theirs .bubble{background:var(--recv);color:var(--text);border-radius:12px 12px 12px 2px;}
-.bubble{max-width:70%;padding:10px;word-wrap:break-word;}
-.meta{font-size:12px;color:var(--muted);text-align:right;margin-top:2px;}
-.search-bar{padding:10px;border-bottom:1px solid #222;}
-.search-bar input{width:100%;}
-.file-upload{position:relative;overflow:hidden;display:inline-block;}
-.file-upload input[type=file]{position:absolute;opacity:0;left:0;top:0;width:100%;height:100%;cursor:pointer;}
-@media(max-width:900px){.app{grid-template-columns:1fr;grid-template-areas:"header" "chat" "composer";}
-.sidebar{display:none;}}
+.mine .bubble{background:var(--sent);color:#fff;border-bottom-right-radius:4px;}
+.theirs .bubble{background:var(--recv);color:var(--text);border-bottom-left-radius:4px;}
+.meta{
+  font-size:0.75em;color:var(--muted);margin-top:4px;text-align:right;
+}
+.composer{
+  grid-area:composer;
+  background:var(--panel);
+  border-top:1px solid var(--border);
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:10px 16px;
+}
+.composer input[type=text]{
+  flex:1;
+  padding:10px;
+  border:1px solid var(--border);
+  border-radius:20px;
+  font-size:0.95em;
+}
+.composer button{
+  background:var(--brand);
+  color:#fff;
+  border:none;
+  border-radius:50%;
+  width:44px;height:44px;
+  font-size:1.1em;
+  cursor:pointer;
+  transition:background 0.2s;
+}
+.composer button:hover{background:var(--brand-dark);}
+.file-upload{position:relative;overflow:hidden;}
+.file-upload input{position:absolute;opacity:0;width:100%;height:100%;cursor:pointer;}
+.toast{
+  position:fixed;
+  bottom:20px;right:20px;
+  background:var(--brand);
+  color:#fff;
+  padding:10px 16px;
+  border-radius:8px;
+  box-shadow:var(--shadow);
+  opacity:0;transform:translateY(20px);
+  transition:all .3s ease;
+  z-index:999;
+}
+.toast.show{opacity:1;transform:translateY(0);}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}
+@media(max-width:900px){
+  .app{grid-template-columns:1fr;grid-template-areas:
+    "header" "chat" "composer";}
+  .sidebar{position:absolute;z-index:100;background:#fff;
+    width:260px;height:100%;left:-260px;transition:left .3s;}
+  .sidebar.open{left:0;}
+}
 </style>
 </head>
 <body>
 <div class="app">
-  <div class="sidebar" id="sidebar">
-    <div style="padding:10px;border-bottom:1px solid #222;">
-      <strong>You:</strong>
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <!-- embedded logo -->
+      <img src="data:image/png;base64,REPLACE_WITH_YOUR_BASE64_LOGO" alt="InCheck logo"/>
+      <h1>InCheck Chat</h1>
+    </div>
+    <div class="section">
+      <label for="meSelect" style="font-size:.85em;">You:</label>
       <select id="meSelect" style="width:100%;margin-top:4px;"></select>
     </div>
-    <div style="padding:10px;border-bottom:1px solid #222;">
-      <button id="themeBtn">🌓 Theme</button>
-      <button id="roomsBtn">💬 Rooms</button>
+    <div class="section">
+      <input id="userSearch" type="text" placeholder="Search users…">
     </div>
-    <div class="search-bar">
-      <input id="searchUsers" type="text" placeholder="Search users...">
+    <div class="people" id="peopleList"></div>
+    <div class="section" style="border-top:1px solid var(--border);">
+      <strong style="font-size:.9em;">Rooms</strong>
     </div>
-    <div id="peopleList" style="overflow:auto;flex:1;"></div>
-  </div>
+    <div class="rooms" id="roomsList"></div>
+  </aside>
 
-  <div class="header">
-    <div><button id="toggleSidebar" style="display:none;">☰</button>
-      <strong id="chatTitle">Select a chat</strong></div>
-    <div>
-      <input id="searchMessages" type="text" placeholder="Search messages..." style="width:180px;">
+  <!-- Header -->
+  <header class="header">
+    <button id="toggleSidebar" style="background:none;border:none;font-size:1.3em;color:var(--brand);cursor:pointer;">☰</button>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <strong id="chatTitle">Select chat</strong>
     </div>
-  </div>
+    <input id="msgSearch" type="text" placeholder="Search messages…" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;">
+  </header>
 
-  <div class="chat" id="chatBox">
-    <p style="color:var(--muted);text-align:center;">Select someone to start chatting</p>
-  </div>
+  <!-- Chat Area -->
+  <main class="chat" id="chatBox">
+    <p style="text-align:center;color:var(--muted);margin-top:20px;">Select a person or room to start chatting.</p>
+  </main>
 
+  <!-- Composer -->
   <div class="composer">
     <div class="file-upload">
-      <button>📎</button>
-      <input type="file" id="fileInput">
+      <button title="Attach file">📎</button>
+      <input type="file" id="fileInput"/>
     </div>
-    <input type="text" id="messageInput" placeholder="Type a message...">
-    <button id="sendBtn">Send</button>
+    <input type="text" id="messageInput" placeholder="Type a message…"/>
+    <button id="sendBtn" title="Send">➤</button>
   </div>
 </div>
 
+<div class="toast" id="toast"></div>
 <script>
-const API_URL="https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec"; // replace with your own
-let me="",peer="",room="",users=[],rooms=[],lastMsgId=null;
+// ===== CONFIG =====
+const API_URL = "https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec"; // replace with your Apps Script web app URL
 
-// ---- DOM shortcuts
-const $=id=>document.getElementById(id);
-const meSelect=$("meSelect"),peopleList=$("peopleList"),chatBox=$("chatBox");
-const messageInput=$("messageInput"),sendBtn=$("sendBtn"),fileInput=$("fileInput");
-const chatTitle=$("chatTitle"),themeBtn=$("themeBtn"),searchUsers=$("searchUsers");
-const searchMessages=$("searchMessages");
+// ===== DOM Shortcuts =====
+const $ = id => document.getElementById(id);
+const sidebar = $("sidebar");
+const chatBox = $("chatBox");
+const meSelect = $("meSelect");
+const peopleList = $("peopleList");
+const roomsList = $("roomsList");
+const userSearch = $("userSearch");
+const msgSearch = $("msgSearch");
+const messageInput = $("messageInput");
+const sendBtn = $("sendBtn");
+const fileInput = $("fileInput");
+const toast = $("toast");
+const toggleSidebar = $("toggleSidebar");
+const chatTitle = $("chatTitle");
 
-// ---- Theme toggle
-if(localStorage.theme==="light")document.body.classList.add("light");
-themeBtn.onclick=()=>{document.body.classList.toggle("light");
-localStorage.theme=document.body.classList.contains("light")?"light":"dark";};
+let me = "", peer = "", room = "", lastMsgId = 0, users = [], rooms = [];
 
-// ---- API helpers
-const get=async q=>(await fetch(`${API_URL}?${q}`)).json();
-const post=async b=>(await fetch(API_URL,{method:"POST",body:JSON.stringify(b)})).json();
+// ===== UTILITIES =====
+const get = async q => (await fetch(`${API_URL}?${q}`)).json();
+const post = async b => (await fetch(API_URL,{method:"POST",body:JSON.stringify(b)})).json();
+const showToast = msg => { toast.textContent=msg; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),2500); };
+const playBeep = ()=>new Audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg").play().catch(()=>{});
 
-// ---- Load users and rooms
+// ===== LOAD USERS & ROOMS =====
 async function loadUsers(){
- const res=await get("action=getUsers");users=res;
- meSelect.innerHTML='<option value="">Select you</option>'+users.map(u=>`<option value="${u.user_id}">${u.name} (${u.status})</option>`).join("");
- if(me)meSelect.value=me;renderUsers();
+ try{
+  const res = await get("action=getUsers");
+  users = res;
+  meSelect.innerHTML = '<option value="">Select you</option>' +
+    users.map(u=>`<option value="${u.user_id}">${u.name} (${u.status})</option>`).join("");
+  if(me) meSelect.value = me;
+  renderUsers();
+ }catch(e){console.error(e);}
 }
-async function loadRooms(){rooms=await get("action=getRooms");}
+async function loadRooms(){
+ try{
+  const res = await get("action=getRooms");
+  rooms = res;
+  renderRooms();
+ }catch(e){console.error(e);}
+}
 
-// ---- Render user list
+// ===== RENDER UI =====
 function renderUsers(filter=""){
- const f=filter.toLowerCase();
+ const f = filter.toLowerCase();
  peopleList.innerHTML="";
  users.filter(u=>u.name.toLowerCase().includes(f)&&u.user_id!=me).forEach(u=>{
   const div=document.createElement("div");
-  div.className="person";div.dataset.id=u.user_id;
-  div.innerHTML=`<div>${u.name}</div><span class="status-dot ${u.status==='online'?'online':''}"></span>`;
+  div.className="person";
+  div.innerHTML=`<div>${u.name}</div><span class="status-dot ${u.status==='online'?'online':'offline'}"></span>`;
   div.onclick=()=>openChat(u.user_id);
   peopleList.appendChild(div);
  });
 }
-
-// ---- Open chat
-async function openChat(id){
- peer=id;room="";
- chatTitle.textContent=(users.find(u=>u.user_id==id)||{}).name||"Chat";
- await loadMessages(false);
-}
-
-// ---- Open room
-async function openRoom(id){
- room=id;peer="";
- chatTitle.textContent=(rooms.find(r=>r.room_id==id)||{}).room_name||"Room";
- await loadMessages(false);
-}
-
-// ---- Load messages
-async function loadMessages(notify=true){
- if(!me)return;
- const params=room?`action=getMessages&room_id=${room}`:`action=getMessages&user1=${me}&user2=${peer}`;
- const res=await get(params);
- chatBox.innerHTML="";
- res.forEach(m=>{
-  const mine=m.sender_id==me;
+function renderRooms(){
+ roomsList.innerHTML="";
+ rooms.forEach(r=>{
   const div=document.createElement("div");
-  div.className="message "+(mine?"mine":"theirs");
-  div.innerHTML=`<div class="bubble">${m.message}${m.file_link?`<br><a href="${m.file_link}" target="_blank">📎 File</a>`:""}</div>
-  <div class="meta">${new Date(m.timestamp).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})} ${mine?(m.read_status=="read"?"✓✓":"✓"):""}</div>`;
-  chatBox.appendChild(div);
+  div.className="room";
+  div.innerHTML=`<div>${r.room_name}</div>`;
+  div.onclick=()=>openRoom(r.room_id);
+  roomsList.appendChild(div);
  });
- chatBox.scrollTop=chatBox.scrollHeight;
- if(res.length){
-  const last=res[res.length-1];
-  if(last.msg_id!=lastMsgId && last.sender_id!=me && notify){playBeep();}
-  lastMsgId=last.msg_id;
- }
 }
 
-// ---- Send message
+// ===== CHAT LOGIC =====
+async function openChat(id){
+ peer=id;room="";chatTitle.textContent=(users.find(u=>u.user_id==id)||{}).name||"Chat";
+ await loadMessages(false);
+ closeSidebar();
+}
+async function openRoom(id){
+ room=id;peer="";chatTitle.textContent=(rooms.find(r=>r.room_id==id)||{}).room_name||"Room";
+ await loadMessages(false);
+ closeSidebar();
+}
+async function loadMessages(notify=true){
+ if(!me) return;
+ let q = room ? `action=getMessages&room_id=${room}` : `action=getMessages&user1=${me}&user2=${peer}`;
+ try{
+  const res = await get(q);
+  if(!Array.isArray(res)) return;
+  chatBox.innerHTML="";
+  res.forEach(m=>{
+   const mine = m.sender_id==me;
+   const div=document.createElement("div");
+   div.className="message "+(mine?"mine":"theirs");
+   const filePart = m.file_link ? `<br><a href="${m.file_link}" target="_blank" style="font-size:.85em;color:var(--brand);">📎 File</a>` : "";
+   div.innerHTML=`<div class="bubble">${m.message||""}${filePart}</div>
+    <div class="meta">${new Date(m.timestamp).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}
+    ${mine?(m.read_status=="read"?"✓✓":"✓"):""}</div>`;
+   chatBox.appendChild(div);
+  });
+  chatBox.scrollTop=chatBox.scrollHeight;
+  if(res.length){
+    const last = res[res.length-1];
+    if(last.msg_id != lastMsgId && last.sender_id != me && notify){ playBeep(); showToast("New message!"); }
+    lastMsgId = last.msg_id;
+  }
+ }catch(e){console.error("loadMessages",e);}
+}
+
+// ===== SEND MESSAGE =====
 async function sendMessage(){
- const text=messageInput.value.trim();
- if(!text&&!fileInput.files.length)return;
- const payload={action:"sendMessage",sender_id:me,message:text};
- if(peer)payload.receiver_id=peer; if(room)payload.room_id=room;
+ const msg = messageInput.value.trim();
+ if(!msg && !fileInput.files.length) return;
+ const payload = {action:"sendMessage", sender_id:me, message:msg};
+ if(peer) payload.receiver_id=peer;
+ if(room) payload.room_id=room;
  if(fileInput.files.length){
-   const file=fileInput.files[0];
-   const base64=await toBase64(file);
-   const up=await post({action:"uploadFile",file_name:file.name,mimeType:file.type,file_base64:base64.split(",")[1]});
-   if(up.success)payload.file_link=up.file_url;
+   const f = fileInput.files[0];
+   const base64 = await toBase64(f);
+   const up = await post({action:"uploadFile", file_name:f.name, mimeType:f.type, file_base64:base64.split(",")[1]});
+   if(up.success) payload.file_link = up.file_url;
    fileInput.value="";
  }
- const res=await post(payload);
- if(res.success){messageInput.value="";loadMessages(false);}
+ const res = await post(payload);
+ if(res.success){
+   messageInput.value="";
+   loadMessages(false);
+ }else showToast("Send failed");
 }
 
-// ---- Helpers
-function playBeep(){new Audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg").play().catch(()=>{});}
-function toBase64(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(file);});}
+// ===== HELPERS =====
+const toBase64 = file => new Promise((res,rej)=>{
+  const reader=new FileReader();
+  reader.onload=()=>res(reader.result);
+  reader.onerror=rej;
+  reader.readAsDataURL(file);
+});
+function closeSidebar(){ sidebar.classList.remove("open"); }
+toggleSidebar.onclick=()=>sidebar.classList.toggle("open");
 
-// ---- Heartbeat (presence)
-setInterval(()=>{if(me)post({action:"heartbeat",user_id:me});},60000);
+// ===== PRESENCE HEARTBEAT =====
+setInterval(()=>{ if(me) post({action:"heartbeat",user_id:me}); },60000);
 
-// ---- Poll messages
+// ===== SMART POLLING =====
 setInterval(()=>loadMessages(true),3000);
 
-// ---- Search
-searchUsers.oninput=()=>renderUsers(searchUsers.value);
-searchMessages.onkeypress=async e=>{
- if(e.key==="Enter"){const q=searchMessages.value.trim();if(!q)return;
- const res=await get(`action=searchMessages&query=${encodeURIComponent(q)}`);
- chatBox.innerHTML=res.map(m=>`<div><b>${m.message}</b><div class="meta">${m.timestamp}</div></div>`).join("");
+// ===== SEARCH =====
+userSearch.oninput=()=>renderUsers(userSearch.value);
+msgSearch.onkeypress=async e=>{
+ if(e.key==="Enter"){
+   const q=msgSearch.value.trim(); if(!q)return;
+   const res=await get(`action=searchMessages&query=${encodeURIComponent(q)}`);
+   chatBox.innerHTML = res.map(m=>`
+     <div style="margin:6px 0;"><b>${highlight(m.message,q)}</b>
+     <div class="meta">${m.timestamp}</div></div>`).join("")||"<p style='text-align:center;color:var(--muted);'>No results.</p>";
  }
 };
+function highlight(text,q){
+ const regex=new RegExp(`(${q})`,"gi");
+ return text.replace(regex,"<mark style='background:yellow;'>$1</mark>");
+}
 
-// ---- Events
+// ===== EVENTS =====
 sendBtn.onclick=sendMessage;
-messageInput.onkeypress=e=>{if(e.key==="Enter")sendMessage();};
-meSelect.onchange=()=>{me=meSelect.value;localStorage.setItem("chat_me",me);renderUsers();};
-$("roomsBtn").onclick=async()=>{await loadRooms();chatBox.innerHTML=rooms.map(r=>`<div class='person' onclick='openRoom("${r.room_id}")'>${r.room_name}</div>`).join("");};
+messageInput.onkeypress=e=>{ if(e.key==="Enter") sendMessage(); };
+meSelect.onchange=()=>{ me=meSelect.value; localStorage.setItem("chat_me",me); renderUsers(); };
+fileInput.onchange=()=>showToast("File attached");
 
-// ---- Init
-(async()=>{me=localStorage.getItem("chat_me")||"";await loadUsers();})();
+// ===== INIT =====
+(async()=>{
+ me = localStorage.getItem("chat_me")||"";
+ await loadUsers();
+ await loadRooms();
+})();
 </script>
 </body>
 </html>
