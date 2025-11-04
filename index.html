@@ -1262,26 +1262,30 @@ const CALENDAR_API_URL =
     }
   }
 
-  async function saveEventToSheet(ev) {
-    showSpinner(true);
-    try {
-      const res = await fetch(CALENDAR_API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'save', event: ev })
-      });
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'Save failed');
-      showToast('Event saved');
-      return data.event;
-    } catch (err) {
-      console.error(err);
-      showToast('Error saving event: ' + err.message);
-      throw err;
-    } finally {
-      showSpinner(false);
+ async function saveEventToSheet(event) {
+  try {
+    const res = await fetch(CALENDAR_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "save", event }),
+    });
+
+    const data = await res.json();
+
+    if (!data.ok) {
+      console.error("Save failed:", data.error);
+      alert("❌ Error saving event: " + (data.error || "Unknown error"));
+      return;
     }
+
+    console.log("✅ Event saved:", data.event);
+    alert("✅ Event saved successfully!");
+    return data.event;
+  } catch (err) {
+    console.error("Fetch error:", err);
+    alert("❌ Network or parsing error: " + err.message);
   }
+}
 
   async function deleteEventFromSheet(id) {
     showSpinner(true);
