@@ -353,7 +353,7 @@
       padding:6px 10px;
       border-radius:999px;
       background:rgba(9,14,30,.95);
-      border:1px solid var(--border);
+      border:1px solid(var(--border));
       cursor:pointer;
       font-size:12px;
     }
@@ -444,7 +444,6 @@
     .fc-event.event-type-release { background-color:var(--ok); border-color:var(--ok); }
     .fc-event.event-type-other { background-color:var(--purple); border-color:var(--purple); }
 
-    /* Reduced motion */
     @media (prefers-reduced-motion: reduce){
       * { transition:none !important; animation:none !important }
     }
@@ -483,11 +482,9 @@
     </div>
   </header>
 
-  <!-- Loading status for screen readers -->
   <div id="loadingStatus" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 
   <div class="wrap">
-    <!-- Sidebar -->
     <aside class="sidebar" id="sidebar" aria-label="Filters">
       <h3>Filters</h3>
       <div class="filter-group" role="group" aria-label="Field filters">
@@ -528,7 +525,6 @@
       </div>
     </aside>
 
-    <!-- Main content -->
     <main class="content">
       <div class="view-tabs" role="tablist">
         <button id="issuesTab" class="view-tab active" data-view="issues"
@@ -541,7 +537,6 @@
         </button>
       </div>
 
-      <!-- Issues View -->
       <section id="issuesView" class="view active" role="tabpanel" aria-labelledby="issuesTab">
         <div class="grid cols-4" id="kpis" aria-live="polite"></div>
 
@@ -597,7 +592,6 @@
         </div>
       </section>
 
-      <!-- Calendar View -->
       <section id="calendarView" class="view" role="tabpanel" aria-labelledby="calendarTab">
         <div class="card" aria-label="Calendar">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -699,21 +693,18 @@
     </div>
   </div>
 
-  <!-- Spinner + Toast -->
   <div class="spinner" id="spinner" aria-hidden="true"><div class="ring"></div></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-
 <script>
 document.addEventListener("DOMContentLoaded", () => {
   const SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTRwAjNAQxiPP8uR15t_vx03JkjgEBjgUwp2bpx8rsHx-JJxVDBZyf5ap77rAKrYHfgkVMwLJVm6pGn/pub?output=csv";
 
-  // 👇 Your Google Apps Script Web App URL for calendar events
+  // Your Google Apps Script Web App URL for calendar events
   const CALENDAR_API_URL = "https://script.google.com/macros/s/AKfycbw-onnPdsERgP2edvVEDp-S3vKwqeePGEbFgK1-0_1OOtlkeM-_xXZeV_QN6XReEreSyw/exec";
 
   function q(sel, root = document) { return root.querySelector(sel); }
   function qAll(sel){ return Array.from(document.querySelectorAll(sel)); }
 
-  // Elements
   const els = {
     table: q('#issuesTable'),
     tableBody: q('#issuesTable tbody'),
@@ -747,13 +738,10 @@ document.addEventListener("DOMContentLoaded", () => {
     startDateFilter: q('#startDateFilter'),
     endDateFilter: q('#endDateFilter'),
     loadingStatus: q('#loadingStatus'),
-    // Views
     viewTabs: qAll('.view-tab'),
     issuesView: q('#issuesView'),
     calendarView: q('#calendarView'),
-    // Calendar
     addEventBtn: q('#addEventBtn'),
-    // Event modal
     eventModal: q('#eventModal'),
     eventModalTitle: q('#eventModalTitle'),
     eventModalClose: q('#eventModalClose'),
@@ -768,7 +756,6 @@ document.addEventListener("DOMContentLoaded", () => {
     eventDelete: q('#eventDelete')
   };
 
-  // State
   let rows = [], filtered = [], charts = {};
   let sortKey = null, sortAsc = true;
   let currentPage = 1;
@@ -778,20 +765,18 @@ document.addEventListener("DOMContentLoaded", () => {
   let lastFocusedBeforeIssueModal = null;
   let lastFocusedBeforeEventModal = null;
 
-  // Calendar state
   let eventsData = [];
   let calendar = null;
   let calendarInitialized = false;
   let editingEventId = null;
 
   const debounce = (fn, ms=250) => { let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; };
-
   const mediaQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
 
   const showSpinner = (v=true)=> {
     els.spinner.style.display = v ? 'flex' : 'none';
     if (els.loadingStatus) {
-      els.loadingStatus.textContent = v ? 'Loading issues…' : '';
+      els.loadingStatus.textContent = v ? 'Loading…' : '';
     }
   };
   const showToast = (msg, ms=3500) => {
@@ -800,7 +785,6 @@ document.addEventListener("DOMContentLoaded", () => {
     setTimeout(()=>els.toast.style.display='none', ms);
   };
 
-  // Normalizers & helpers
   function normalizeStatus(rawStatus) {
     const s = (rawStatus || '').trim().toLowerCase();
     if (!s) return 'Not Started Yet';
@@ -854,14 +838,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const statusBadge = s => pill(s,`status-${(s||'').replace(/\s/g,'\\ ')}`);
   const priorityBadge = p => pill(p,`priority-${p||''}`);
 
-  // Theme
   function applySystemThemeFromOS(){
     if (!mediaQuery) return;
     if (mediaQuery.matches) {
-      // OS dark
       document.documentElement.removeAttribute('data-theme');
     } else {
-      // OS light
       document.documentElement.setAttribute('data-theme','light');
     }
   }
@@ -895,7 +876,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Filter persistence
   function saveFilters(){
     const state = {
       search: els.search.value || '',
@@ -907,9 +887,7 @@ document.addEventListener("DOMContentLoaded", () => {
     };
     try {
       localStorage.setItem('incheckFilters', JSON.stringify(state));
-    } catch(e){
-      // ignore
-    }
+    } catch(e){}
   }
 
   function loadFilters(){
@@ -937,7 +915,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // KPI rendering
   function renderKpis(){
     const total = filtered.length; const counts = {};
     filtered.forEach(r=>{ counts[r.status]=(counts[r.status]||0)+1; });
@@ -983,7 +960,6 @@ document.addEventListener("DOMContentLoaded", () => {
     els.statusFilter.innerHTML = ['All',...uniqueSorted(rows.map(r=>r.status))].map(v=>`<option>${v}</option>`).join('');
   }
 
-  // Sorting
   function sortData(list){
     if(!sortKey) return list;
     const sorted=[...list].sort((a,b)=>{
@@ -1000,7 +976,6 @@ document.addEventListener("DOMContentLoaded", () => {
     return sortAsc ? sorted : sorted.reverse();
   }
 
-  // Pagination
   function paginate(list){
     const start=(currentPage-1)*rowsPerPage;
     return list.slice(start, start+rowsPerPage);
@@ -1020,7 +995,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Table render
   function renderTable(){
     const list = sortData(filtered);
     const total = list.length;
@@ -1055,7 +1029,6 @@ document.addEventListener("DOMContentLoaded", () => {
       </tr>
     `).join('');
 
-    // Row keyboard opening
     els.tableBody.querySelectorAll('tr[data-id]').forEach(tr=>{
       tr.addEventListener('keydown', e=>{
         if(e.key==='Enter' || e.key===' '){
@@ -1082,7 +1055,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Charts
   function groupCount(list,key){
     return list.reduce((acc, r) => {
       const k=r[key]||'Unspecified';
@@ -1151,7 +1123,6 @@ document.addEventListener("DOMContentLoaded", () => {
     make('byType', 'bar', groupCount(filtered,'type'));
   }
 
-  // Filter logic
   function applyFilters(){
     const qstr = (els.search.value||'').toLowerCase().trim();
     const m = els.moduleFilter.value, p = els.priorityFilter.value, s = els.statusFilter.value;
@@ -1182,7 +1153,6 @@ document.addEventListener("DOMContentLoaded", () => {
     drawCharts();
   }
 
-  // Data load for issues
   async function loadSheet(){
     try {
       showSpinner(true);
@@ -1214,7 +1184,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Modal focus helper
   function trapFocus(container, e){
     const focusables = container.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
     if(!focusables.length) return;
@@ -1223,7 +1192,6 @@ document.addEventListener("DOMContentLoaded", () => {
     else if(!e.shiftKey && document.activeElement === last){ first.focus(); e.preventDefault(); }
   }
 
-  // Issue modal
   function openIssueModal(id){
     const r = rows.find(x=>x.id===id);
     if(!r) return;
@@ -1252,7 +1220,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Calendar events local-only helper (for fallback)
   function loadEventsFromStorage(){
     try {
       return JSON.parse(localStorage.getItem('incheckEvents') || '[]');
@@ -1266,46 +1233,68 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch(e) {}
   }
 
-  // 🔁 Fetch events from Google Sheet via Apps Script
   async function fetchEventsFromSheet() {
     try {
-      const res = await fetch(CALENDAR_API_URL);
+      showSpinner(true);
+      const res = await fetch(CALENDAR_API_URL, { cache: 'no-store' });
       if (!res.ok) throw new Error('Failed to load events');
       const data = await res.json();
       eventsData = data.events || [];
-      saveEventsToStorage(); // mirror to cache
+      saveEventsToStorage();
+      showToast('Calendar synced');
     } catch (e) {
       console.error(e);
-      // Fallback to local cache
       eventsData = loadEventsFromStorage();
       if (eventsData.length) {
         showToast('Using cached calendar events (API error).');
       } else {
         showToast('Unable to load calendar events.');
       }
+    } finally {
+      showSpinner(false);
+      renderEventsOnCalendar();
     }
-    renderEventsOnCalendar();
   }
 
   async function saveEventToSheet(ev) {
-    const res = await fetch(CALENDAR_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'save', event: ev })
-    });
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.error || 'Save failed');
-    return data.event;
+    showSpinner(true);
+    try {
+      const res = await fetch(CALENDAR_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'save', event: ev })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Save failed');
+      showToast('Event saved');
+      return data.event;
+    } catch (err) {
+      console.error(err);
+      showToast('Error saving event: ' + err.message);
+      throw err;
+    } finally {
+      showSpinner(false);
+    }
   }
 
   async function deleteEventFromSheet(id) {
-    const res = await fetch(CALENDAR_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'delete', event: { id } })
-    });
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.error || 'Delete failed');
+    showSpinner(true);
+    try {
+      const res = await fetch(CALENDAR_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete', event: { id } })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Delete failed');
+      showToast('Event deleted');
+    } catch (err) {
+      console.error(err);
+      showToast('Error deleting event: ' + err.message);
+      throw err;
+    } finally {
+      showSpinner(false);
+    }
   }
 
   function renderEventsOnCalendar(){
@@ -1325,7 +1314,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Calendar init
   function initCalendar(){
     const calendarEl = document.getElementById('calendar');
     if(!calendarEl || typeof FullCalendar === 'undefined') {
@@ -1375,7 +1363,6 @@ document.addEventListener("DOMContentLoaded", () => {
     initCalendar();
   }
 
-  // Event modal helpers
   function toLocalInputValue(date){
     const d = (date instanceof Date) ? date : new Date(date);
     if (isNaN(d)) return '';
@@ -1442,7 +1429,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     try {
       const saved = await saveEventToSheet(eventObj);
-      // Update local eventsData
       const idx = eventsData.findIndex(ev => ev.id === saved.id);
       if (idx === -1) {
         eventsData.push(saved);
@@ -1455,7 +1441,6 @@ document.addEventListener("DOMContentLoaded", () => {
       closeEventModal();
     } catch (err) {
       console.error(err);
-      showToast('Error saving event: ' + err.message);
     }
   }
 
@@ -1475,12 +1460,10 @@ document.addEventListener("DOMContentLoaded", () => {
       showToast('Event deleted');
     } catch (err) {
       console.error(err);
-      showToast('Error deleting event: ' + err.message);
     }
     closeEventModal();
   }
 
-  // Export CSV for current filtered data
   function exportFilteredCsv(){
     if (!filtered.length){
       showToast('Nothing to export (no rows).');
@@ -1511,23 +1494,19 @@ document.addEventListener("DOMContentLoaded", () => {
     showToast('Exported CSV of current filtered issues');
   }
 
-  // Create ticket → Google Form
   els.createTicket.addEventListener('click', () => {
     window.open("https://forms.gle/PPnEP1AQneoBT79s5", "_blank", "noopener,noreferrer");
   });
 
-  // Table click (do not open modal when clicking links)
   q('#issuesTable').addEventListener('click', (ev)=>{
-    if (ev.target.closest('a')) return; // let links behave normally
+    if (ev.target.closest('a')) return;
     const tr = ev.target.closest('tr[data-id]');
     if(tr){ openIssueModal(tr.getAttribute('data-id')); }
   });
 
-  // Issue modal events
   els.closeModalBtn.addEventListener('click', closeIssueModal);
   els.modal.addEventListener('click', (e)=>{ if(e.target===els.modal) closeIssueModal(); });
 
-  // Event modal events
   els.eventModalClose.addEventListener('click', closeEventModal);
   els.eventCancel.addEventListener('click', () => closeEventModal());
   els.eventForm.addEventListener('submit', handleEventFormSubmit);
@@ -1536,7 +1515,6 @@ document.addEventListener("DOMContentLoaded", () => {
     if (e.target === els.eventModal) closeEventModal();
   });
 
-  // Global key handling for modals
   document.addEventListener('keydown', (e)=>{
     const issueOpen = els.modal.style.display === 'flex';
     const eventOpen = els.eventModal.style.display === 'flex';
@@ -1550,7 +1528,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Copy issue ID / link
   els.copyId.addEventListener('click', async ()=>{
     if(!selectedIssue) return;
     try{
@@ -1575,7 +1552,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Sorting
   qAll('#issuesTable thead th.sortable').forEach(th=>{
     th.addEventListener('click', ()=>{
       const key = th.getAttribute('data-key');
@@ -1593,7 +1569,6 @@ document.addEventListener("DOMContentLoaded", () => {
     th.setAttribute('aria-label', `Sort by ${th.textContent}`);
   });
 
-  // Pagination
   const updateAndRender = ()=>{ renderTable(); };
   els.pageSize.addEventListener('change', ()=>{
     rowsPerPage = +els.pageSize.value;
@@ -1612,14 +1587,12 @@ document.addEventListener("DOMContentLoaded", () => {
     updateAndRender();
   });
 
-  // Sidebar drawer
   els.drawerBtn.addEventListener('click', ()=>{
     const open = !els.sidebar.classList.contains('open');
     els.sidebar.classList.toggle('open');
     els.drawerBtn.setAttribute('aria-expanded', String(open));
   });
 
-  // Filters & search
   const onFilterChange = ()=>{
     saveFilters();
     applyFilters();
@@ -1642,11 +1615,9 @@ document.addEventListener("DOMContentLoaded", () => {
     applyFilters();
   }, 250));
 
-  // Theme select
   els.themeSelect.addEventListener('change', ()=> applyTheme(els.themeSelect.value));
   initTheme();
 
-  // View tabs
   els.viewTabs.forEach(btn => {
     btn.addEventListener('click', () => {
       const view = btn.dataset.view;
@@ -1666,7 +1637,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // Add event button (calendar)
   if (els.addEventBtn) {
     els.addEventBtn.addEventListener('click', () => {
       const now = new Date();
@@ -1677,22 +1647,22 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Initial events load from Sheet (with local fallback)
   eventsData = [];
   fetchEventsFromSheet();
 
-  // Initial load for issues
   if(typeof Chart === 'undefined') { showToast('Chart.js failed to load'); }
   if(typeof Papa === 'undefined') { showToast('PapaParse failed to load'); }
   loadSheet();
 
-  // Helpers
   function escapeHtml(s){
     return String(s).replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;' }[m]));
   }
   function escapeAttr(s){
     return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;');
   }
+
+  // Optional: auto-refresh events every 5 minutes
+  setInterval(fetchEventsFromSheet, 5 * 60 * 1000);
 });
 </script>
 </body>
