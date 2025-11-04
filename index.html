@@ -1,352 +1,1017 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>InCheck 360 Chat — PIN Login</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='14' font-size='14'%3E%F0%9F%92%AC%3C/text%3E%3C/svg%3E">
-<style>
-:root{--brand:#0078d7;--brand-dark:#005bb5;--bg:#f4f6fb;--panel:#ffffff;--border:#e2e8f0;--text:#1e293b;--muted:#64748b;--sent:var(--brand);--recv:#edf2f7;--radius:16px;--shadow:0 2px 8px rgba(0,0,0,.05)}
-body.dark{--bg:#0f172a;--panel:#1e293b;--border:#334155;--text:#f1f5f9;--muted:#94a3b8;--recv:#2d3748}
-*{box-sizing:border-box}
-body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column}
-.app{flex:1;display:grid;grid-template-columns:300px 1fr;grid-template-rows:64px 1fr 80px;grid-template-areas:"sidebar header" "sidebar chat" "sidebar composer";height:100vh}
-/* Sidebar */
-.sidebar{grid-area:sidebar;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column}
-.sidebar-header{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border);background:#f9fafb;box-shadow:var(--shadow)}
-.sidebar-header h1{font-size:1.05em;margin:0;color:var(--brand-dark)}
-.section{padding:10px 16px;border-bottom:1px solid var(--border)}
-.section input{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:10px;font-size:.92em;background:var(--panel);color:var(--text)}
-.people,.rooms{flex:1;overflow:auto;padding:8px 0}
-.person,.room{display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;border-radius:10px;transition:background .2s}
-.person:hover,.room:hover{background:rgba(0,0,0,.05)}.person.active,.room.active{background:rgba(0,120,215,.15)}
-.avatar{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:#c7d2fe;color:#1e293b;font-weight:600;font-size:.8em}
-.status-dot{width:8px;height:8px;border-radius:50%;margin-left:auto}.online{background:#22c55e}.offline{background:#9ca3af}
-/* Header */
-.header{grid-area:header;display:flex;align-items:center;justify-content:space-between;padding:0 16px;background:var(--panel);border-bottom:1px solid var(--border);box-shadow:var(--shadow)}
-.header-left{display:flex;align-items:center;gap:12px}
-#presenceDot{width:10px;height:10px;border-radius:50%}
-.toggle-btn{background:none;border:none;font-size:1.4em;color:var(--brand);cursor:pointer}
-/* Chat */
-.chat{grid-area:chat;background:var(--bg);overflow-y:auto;padding:16px;display:flex;flex-direction:column}
-.day-sep{align-self:center;background:var(--panel);border:1px solid var(--border);padding:4px 10px;border-radius:999px;font-size:.75em;color:var(--muted);margin:8px 0}
-.message{margin:8px 0;display:flex;align-items:flex-end;gap:8px}
-.bubble{padding:10px 14px;border-radius:var(--radius);max-width:72%;line-height:1.4;word-wrap:break-word;box-shadow:var(--shadow)}
-.mine{justify-content:flex-end}.mine .bubble{background:var(--sent);color:#fff;border-bottom-right-radius:4px}
-.theirs .bubble{background:var(--recv);color:var(--text);border-bottom-left-radius:4px}
-.meta{font-size:.75em;color:var(--muted);margin-top:4px;text-align:right}
-.preview{margin-top:6px;display:block;max-width:260px;border-radius:10px;border:1px solid var(--border)}
-.typing{display:none;align-self:flex-start;background:transparent;color:var(--muted);font-size:.85em;margin:6px 10px}.typing.show{display:block}
-/* Composer */
-.composer{grid-area:composer;background:var(--panel);border-top:1px solid var(--border);display:flex;align-items:center;gap:10px;padding:10px 16px}
-.composer input[type=text]{flex:1;padding:12px;border:1px solid var(--border);border-radius:20px;font-size:.98em;background:var(--bg);color:var(--text)}
-.icon-btn{background:var(--panel);border:1px solid var(--border);border-radius:10px;width:40px;height:40px;display:grid;place-items:center;cursor:pointer}
-.send-btn{background:var(--brand);color:#fff;border:none;border-radius:12px;padding:10px 16px;font-weight:600;cursor:pointer}.send-btn:hover{background:var(--brand-dark)}
-.file-upload{position:relative;overflow:hidden}.file-upload input{position:absolute;opacity:0;width:100%;height:100%;cursor:pointer}
-/* Toast */
-.toast{position:fixed;bottom:20px;right:20px;background:var(--brand);color:#fff;padding:10px 16px;border-radius:8px;box-shadow:var(--shadow);opacity:0;transform:translateY(20px);transition:all .3s ease;z-index:999}.toast.show{opacity:1;transform:translateY(0)}
-/* Modal */
-.modal{position:fixed;inset:0;background:rgba(2,6,23,.6);display:none;align-items:center;justify-content:center;z-index:1000}
-.card{background:var(--panel);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);padding:20px;max-width:380px;width:92%}
-.card h2{margin:0 0 8px 0}
-.card small{color:var(--muted)}
-.card input{width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;margin:6px 0}
-.card button{width:100%;padding:10px;border:none;border-radius:10px;background:var(--brand);color:#fff;font-weight:600;cursor:pointer;margin-top:8px}
-/* Mobile */
-@media(max-width:900px){.app{grid-template-columns:1fr;grid-template-areas:"header" "chat" "composer"}.sidebar{position:absolute;z-index:100;background:var(--panel);width:280px;height:100%;left:-280px;transition:left .3s}.sidebar.open{left:0}}
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>InCheck Issues Dashboard</title>
+
+  <!-- Libs -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+
+  <style>
+    :root {
+      /* Status colors */
+      --status-resolved:#10b981;
+      --status-underdev:#3b82f6;
+      --status-rejected:#ef4444;
+      --status-onhold:#f59e0b;
+      --status-notstarted:#6b7280;
+      --status-sent:#8b5cf6;
+      --status-onstage:#0ea5e9;
+
+      /* Priority colors */
+      --priority-high:#ef4444;
+      --priority-medium:#f59e0b;
+      --priority-low:#10b981;
+
+      /* Theme colors */
+      --bg:#0b1020; --card:#0f1630; --muted:#9aa6d1; --text:#e8edff;
+      --accent:#4f8cff; --danger:#ef4444; --ok:#10b981; --warn:#f59e0b;
+      --info:#3b82f6; --purple:#8b5cf6; --neutral:#6b7280; --border:#1e2643;
+      --shadow:0 8px 24px rgba(0,0,0,.35);
+      --focus: 0 0 0 3px rgba(79,140,255,.35);
+    }
+    :root[data-theme="light"] {
+      --bg:#f4f6ff; --card:#ffffff; --muted:#5a678c; --text:#0d1326;
+      --accent:#2563eb; --danger:#dc2626; --ok:#059669; --warn:#d97706;
+      --info:#1d4ed8; --purple:#7c3aed; --neutral:#374151; --border:#e7eaf6;
+      --shadow:0 10px 24px rgba(16,24,40,.08);
+      --focus: 0 0 0 3px rgba(37,99,235,.25);
+    }
+
+    * { box-sizing:border-box }
+    html,body { height:100% }
+    body {
+      margin:0; font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;
+      background:var(--bg); color:var(--text); transition:background .3s,color .3s;
+    }
+    :focus-visible { outline: none; box-shadow: var(--focus); border-radius: 8px; }
+
+    .sr-only {
+      position:absolute;
+      width:1px;
+      height:1px;
+      padding:0;
+      margin:-1px;
+      overflow:hidden;
+      clip:rect(0,0,0,0);
+      white-space:nowrap;
+      border:0;
+    }
+
+    /* Topbar */
+    header {
+      position:sticky; top:0; z-index:20; background:var(--card);
+      border-bottom:1px solid var(--border);
+      display:flex; align-items:center; gap:12px; padding:10px 16px;
+      box-shadow:var(--shadow);
+    }
+    .brand { display:flex; align-items:center; gap:10px; font-weight:700; }
+    .brand .logo {
+      width:28px; height:28px; border-radius:8px; display:grid; place-items:center;
+      background:linear-gradient(135deg,var(--accent),#9b8cff);
+      color:#fff; font-weight:800; box-shadow:0 6px 18px rgba(79,140,255,.35);
+    }
+    .toolbar { margin-left:auto; display:flex; gap:10px; align-items:center; flex-wrap:wrap }
+    .btn, .select, .input {
+      padding:8px 12px; border-radius:10px; border:1px solid var(--border);
+      background:transparent; color:inherit; font:inherit;
+    }
+    .btn { cursor:pointer; font-weight:600; background:var(--card) }
+    .btn.primary { background:var(--accent); border-color:transparent; color:#fff }
+    .btn.ghost { border-color:transparent; background:transparent }
+    .btn.sm { padding:6px 10px; border-radius:8px; font-size:13px }
+    .btn:hover { opacity:.92; transform:translateY(-1px) }
+    .icon { font-size:18px; line-height:1 }
+
+    /* Layout */
+    .wrap { display:grid; grid-template-columns:280px 1fr; gap:18px; padding:18px; max-width:1400px; margin:0 auto }
+    @media(max-width:980px){ .wrap { grid-template-columns:1fr } }
+
+    /* Sidebar */
+    .sidebar {
+      background:var(--card); border:1px solid var(--border); border-radius:14px; padding:16px;
+      position:sticky; top:76px; height:fit-content; max-height:calc(100vh - 96px); overflow:auto;
+    }
+    .sidebar h3 { margin:0 0 10px 0; font-size:14px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em }
+    .filter-group { display:grid; gap:10px; margin-bottom:16px }
+    .filter-row { display:grid; gap:8px }
+    .muted { color:var(--muted); font-size:12px }
+    .divider { height:1px; background:var(--border); margin:8px 0 14px }
+
+    /* Content */
+    .content { display:grid; gap:18px }
+    .grid { display:grid; gap:16px }
+    .grid.cols-4 { grid-template-columns:repeat(4,1fr) }
+    @media(max-width:980px){ .grid.cols-4{ grid-template-columns:repeat(2,1fr) } }
+    @media(max-width:600px){ .grid.cols-4{ grid-template-columns:1fr } }
+
+    /* Cards */
+    .card {
+      background:var(--card); border:1px solid var(--border); border-radius:14px; padding:16px;
+      box-shadow:var(--shadow); transition:transform .2s, box-shadow .2s;
+    }
+    .card:hover { transform:translateY(-2px) }
+
+    /* KPIs */
+    .kpi { cursor:pointer; text-align:center; }
+    .kpi .label { font-size:12px; color:var(--muted); text-transform:uppercase }
+    .kpi .value { font-size:26px; font-weight:800; margin-top:6px }
+    .kpi .sub { font-size:12px; color:var(--muted); margin-top:4px }
+    .kpi:hover { box-shadow:0 8px 26px rgba(79,140,255,.15) }
+
+    /* Charts */
+    .charts { display:grid; grid-template-columns:repeat(2,1fr); gap:16px }
+    @media(max-width:980px){ .charts{ grid-template-columns:1fr } }
+
+    /* Table */
+    table { width:100%; border-collapse:separate; border-spacing:0; font-size:14px }
+    thead th {
+      position:sticky; top:0; background:var(--card); text-align:left; padding:12px 10px;
+      border-bottom:1px solid var(--border); user-select:none; cursor:pointer;
+    }
+    tbody td { padding:11px 10px; border-bottom:1px solid var(--border) }
+    tr:hover { background:rgba(255,255,255,.03) }
+    .table-wrap { max-height:460px; overflow:auto; border-radius:10px; border:1px solid var(--border) }
+    th.sortable::after { content:" ⇅"; color:var(--muted); font-size:12px }
+    th.sorted-asc::after { content:" ↑" }
+    th.sorted-desc::after { content:" ↓" }
+
+    .pill { padding:2px 8px; border-radius:12px; font-size:12px; font-weight:700; display:inline-block }
+    .status-Resolved { background: var(--status-resolved); color:#fff }
+    .status-Under\ Development { background: var(--status-underdev); color:#fff }
+    .status-Rejected { background: var(--status-rejected); color:#fff }
+    .status-On\ Hold { background: var(--status-onhold); color:#fff }
+    .status-Not\ Started\ Yet { background: var(--status-notstarted); color:#fff }
+    .status-Sent { background: var(--status-sent); color:#fff }
+    .status-On\ Stage { background: var(--status-onstage); color:#fff }
+
+    .priority-High { background: var(--priority-high); color:#fff }
+    .priority-Medium { background: var(--priority-medium); color:#fff }
+    .priority-Low { background: var(--priority-low); color:#fff }
+
+    /* Modal */
+    .modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.55); align-items:center; justify-content:center; z-index:100 }
+    .modal-content { background:var(--card); color:var(--text); border:1px solid var(--border);
+      padding:18px; border-radius:14px; max-width:760px; width:92%; max-height:90%; overflow:auto; box-shadow:var(--shadow) }
+    .modal .header { display:flex; align-items:center; gap:10px; justify-content:space-between; margin-bottom:8px }
+    .modal .actions { display:flex; gap:8px; flex-wrap: wrap; }
+    .modal-close { cursor:pointer; border:none; background:transparent; color:var(--muted); font-size:20px }
+
+    /* Pagination */
+    .table-actions { display:flex; gap:10px; align-items:center; justify-content:space-between; margin-top:10px; flex-wrap:wrap }
+    .pagination { display:flex; gap:6px; align-items:center }
+    .chip { padding:6px 10px; border-radius:8px; background:var(--card); border:1px solid var(--border); cursor:pointer }
+    .chip[disabled] { opacity:.5; cursor:not-allowed }
+    .chip.active { background:var(--accent); color:#fff; border-color:transparent }
+    .select.sm, .input.sm { padding:6px 8px; border-radius:8px; font-size:13px }
+
+    /* Drawer */
+    .drawer-toggle { display:none }
+    @media(max-width:980px){
+      .drawer-toggle { display:inline-flex }
+      .sidebar { position:fixed; inset:76px 0 0 auto; width:88%; max-width:360px; transform:translateX(110%); transition:transform .25s }
+      .sidebar.open { transform:translateX(0) }
+    }
+
+    /* Spinner & Toast */
+    .spinner { display:none; position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:120; align-items:center; justify-content:center }
+    .spinner .ring { width:54px; height:54px; border:5px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 1s linear infinite; background:transparent }
+    @keyframes spin { to { transform:rotate(360deg) } }
+
+    .toast {
+      position:fixed; right:16px; bottom:16px; background:var(--card); border:1px solid var(--danger);
+      color:#fff; padding:10px 12px; border-radius:10px; z-index:130; box-shadow:var(--shadow); display:none
+    }
+
+    /* Reduced motion */
+    @media (prefers-reduced-motion: reduce){
+      * { transition:none !important; animation:none !important }
+    }
+  </style>
 </head>
 <body>
-
-<!-- PIN Login -->
-<div id="loginModal" class="modal">
-  <div class="card">
-    <h2>Sign in</h2>
-    <small>Use your User ID and PIN</small>
-    <input id="pinUser" placeholder="User ID (e.g., U001)" />
-    <input id="pinCode" placeholder="PIN" type="password" />
-    <button id="pinBtn">Sign in</button>
-  </div>
-</div>
-
-<div class="app" id="app" style="display:none">
-  <!-- Sidebar -->
-  <aside class="sidebar" id="sidebar">
-    <div class="sidebar-header">
-      <h1>InCheck 360</h1>
+  <header>
+    <div class="brand" aria-label="InCheck brand">
+      <div class="logo" aria-hidden="true">IC</div>
+      <div>InCheck Issues</div>
     </div>
-    <div class="section"><input id="userSearch" type="text" placeholder="Search users…"></div>
-    <div class="people" id="peopleList"></div>
-    <div class="section" style="border-top:1px solid var(--border);"><strong style="font-size:.9em;">Rooms</strong></div>
-    <div class="rooms" id="roomsList"></div>
-  </aside>
 
-  <!-- Header -->
-  <header class="header">
-    <div class="header-left">
-      <button id="toggleSidebar" class="toggle-btn">☰</button>
-      <div style="display:flex;align-items:center;gap:10px">
-        <strong id="chatTitle">Select chat</strong>
-        <span id="presenceDot" title="presence"></span>
-        <span id="lastSeen" style="font-size:.8em;color:var(--muted)"></span>
-      </div>
-    </div>
-    <div style="display:flex;gap:10px;align-items:center;">
-      <input id="msgSearch" type="text" placeholder="Search messages…" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px">
-      <button id="toggleTheme" class="toggle-btn" title="Toggle Dark Mode">🌙</button>
-      <button id="notifyBtn" class="toggle-btn" title="Enable notifications">🔔</button>
-      <button id="logoutBtn" class="toggle-btn" title="Logout">⎋</button>
+    <button id="drawerBtn" class="btn drawer-toggle" aria-expanded="false" aria-controls="sidebar">
+      <span class="icon" aria-hidden="true">🧰</span> Filters
+    </button>
+
+    <div class="toolbar">
+      <input id="searchInput" class="input" type="search" placeholder="Search ID, title, description, log…" aria-label="Search issues" />
+      <select id="themeSelect" class="select" aria-label="Theme">
+        <option value="system">System</option>
+        <option value="dark">Dark</option>
+        <option value="light">Light</option>
+      </select>
+      <button id="refreshNow" class="btn" aria-label="Refresh from source"><span class="icon" aria-hidden="true">🔄</span> Refresh</button>
+      <button id="exportCsv" class="btn" aria-label="Export filtered issues as CSV"><span class="icon" aria-hidden="true">📥</span> Export CSV</button>
+      <button id="createTicketBtn" class="btn primary" aria-label="Create new ticket"><span class="icon" aria-hidden="true">➕</span> Create Ticket</button>
     </div>
   </header>
 
-  <!-- Chat Area -->
-  <main class="chat" id="chatBox" aria-live="polite">
-    <p style="text-align:center;color:var(--muted);margin-top:20px;">Select a person or room to start chatting.</p>
-  </main>
+  <!-- Loading status for screen readers -->
+  <div id="loadingStatus" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 
-  <!-- Typing indicator -->
-  <div id="typing" class="typing">Someone is typing…</div>
+  <div class="wrap">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar" aria-label="Filters">
+      <h3>Filters</h3>
+      <div class="filter-group" role="group" aria-label="Field filters">
+        <div class="filter-row">
+          <label class="muted" for="moduleFilter">Module</label>
+          <select id="moduleFilter" class="select" aria-label="Filter by module"></select>
+        </div>
+        <div class="filter-row">
+          <label class="muted" for="priorityFilter">Priority</label>
+          <select id="priorityFilter" class="select" aria-label="Filter by priority"></select>
+        </div>
+        <div class="filter-row">
+          <label class="muted" for="statusFilter">Status</label>
+          <select id="statusFilter" class="select" aria-label="Filter by status"></select>
+        </div>
+      </div>
 
-  <!-- Composer -->
-  <div class="composer" ondragover="event.preventDefault();" ondrop="handleDrop(event)">
-    <button class="icon-btn" id="attachBtn" title="Attach file">📎</button>
-    <input type="file" id="fileInput" style="display:none"/>
-    <input type="text" id="messageInput" placeholder="Type a message…" autocomplete="off" />
-    <button id="sendBtn" class="send-btn" title="Send">Send ➤</button>
+      <div class="divider" role="separator" aria-hidden="true"></div>
+
+      <div class="filter-group" role="group" aria-label="Date range">
+        <div class="filter-row">
+          <label class="muted" for="startDateFilter">Start Date</label>
+          <input type="date" id="startDateFilter" class="input" aria-label="Start date">
+        </div>
+        <div class="filter-row">
+          <label class="muted" for="endDateFilter">End Date</label>
+          <input type="date" id="endDateFilter" class="input" aria-label="End date">
+        </div>
+      </div>
+
+      <div class="divider" role="separator" aria-hidden="true"></div>
+
+      <div class="filter-group">
+        <button id="resetBtn" class="btn ghost" aria-label="Reset all filters">Reset</button>
+        <span class="muted">Tip: click any KPI to filter by that status (Total Issues resets all).</span>
+      </div>
+    </aside>
+
+    <!-- Main content -->
+    <main class="content">
+      <div class="grid cols-4" id="kpis" aria-live="polite"></div>
+
+      <div class="charts" aria-label="Charts">
+        <div class="card"><canvas id="byModule" height="140" aria-label="Issues by module" role="img"></canvas></div>
+        <div class="card"><canvas id="byPriority" height="140" aria-label="Issues by priority" role="img"></canvas></div>
+        <div class="card"><canvas id="byStatus" height="140" aria-label="Issues by status" role="img"></canvas></div>
+        <div class="card"><canvas id="byType" height="140" aria-label="Issues by type" role="img"></canvas></div>
+      </div>
+
+      <div class="card" aria-label="Issues table">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <strong>Issues</strong>
+          <span id="rowCount" class="muted" aria-live="polite"></span>
+        </div>
+
+        <div class="table-wrap" role="region" aria-label="Scrollable issues table">
+          <table id="issuesTable">
+            <thead><tr>
+              <th data-key="id" class="sortable" scope="col" aria-sort="none">ID</th>
+              <th data-key="module" class="sortable" scope="col" aria-sort="none">Module</th>
+              <th data-key="title" class="sortable" scope="col" aria-sort="none">Title</th>
+              <th data-key="priority" class="sortable" scope="col" aria-sort="none">Priority</th>
+              <th data-key="status" class="sortable" scope="col" aria-sort="none">Status</th>
+              <th data-key="date" class="sortable" scope="col" aria-sort="none">Date</th>
+              <th data-key="log" class="sortable" scope="col" aria-sort="none">Log</th>
+              <th scope="col">Link</th>
+            </tr></thead>
+            <tbody>
+              <tr><td colspan="8" style="text-align:center;color:var(--muted)">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="table-actions">
+          <div class="pagination" role="group" aria-label="Table pagination">
+            <button id="firstPage" class="chip" aria-label="First page">« First</button>
+            <button id="prevPage" class="chip" aria-label="Previous page">‹ Prev</button>
+            <span id="pageInfo" class="muted" aria-live="polite"></span>
+            <button id="nextPage" class="chip" aria-label="Next page">Next ›</button>
+            <button id="lastPage" class="chip" aria-label="Last page">Last »</button>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <label for="pageSize" class="muted">Rows per page</label>
+            <select id="pageSize" class="select sm" aria-label="Rows per page">
+              <option>10</option><option selected>20</option><option>50</option><option>100</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </main>
   </div>
-</div>
 
-<div class="toast" id="toast"></div>
+  <!-- Modal -->
+  <div id="issueModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" aria-describedby="modalBody">
+    <div class="modal-content">
+      <div class="header">
+        <h2 id="modalTitle" style="margin:0;font-size:20px">Issue</h2>
+        <div class="actions">
+          <button id="copyId" class="btn sm" aria-label="Copy issue ID"><span class="icon" aria-hidden="true">🆔</span> Copy ID</button>
+          <button id="copyLink" class="btn sm" aria-label="Copy issue link"><span class="icon" aria-hidden="true">🔗</span> Copy Link</button>
+          <button class="modal-close" id="modalClose" aria-label="Close">✕</button>
+        </div>
+      </div>
+      <div id="modalBody"></div>
+    </div>
+  </div>
+
+  <!-- Spinner + Toast -->
+  <div class="spinner" id="spinner" aria-hidden="true"><div class="ring"></div></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
-/********************* CONFIG *********************/
-const API_URL = "https://script.google.com/macros/s/AKfycbzKpLMouySKF0CvWay77649xDXWLzKcrbJcrc88SKXBIBKhHBoONTkmZT1-jxvm7h04Qw/exec";
-const TOKEN   = "YOUR_SECRET_TOKEN";             // set "" if your backend has REQUIRE_TOKEN=false
+document.addEventListener("DOMContentLoaded", () => {
+  const SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTRwAjNAQxiPP8uR15t_vx03JkjgEBjgUwp2bpx8rsHx-JJxVDBZyf5ap77rAKrYHfgkVMwLJVm6pGn/pub?output=csv";
 
-/********************* DOM *********************/
-const $ = id => document.getElementById(id);
-const loginModal=$("loginModal"), appRoot=$("app");
-const pinUser=$("pinUser"), pinCode=$("pinCode"), pinBtn=$("pinBtn");
+  function q(sel, root = document) { return root.querySelector(sel); }
+  function qAll(sel){ return Array.from(document.querySelectorAll(sel)); }
 
-const sidebar=$("sidebar"), chatBox=$("chatBox"), peopleList=$("peopleList"), roomsList=$("roomsList");
-const userSearch=$("userSearch"), msgSearch=$("msgSearch"), messageInput=$("messageInput"), sendBtn=$("sendBtn"), fileInput=$("fileInput"), toast=$("toast");
-const toggleSidebar=$("toggleSidebar"), chatTitle=$("chatTitle"), presenceDot=$("presenceDot"), lastSeen=$("lastSeen"), typingEl=$("typing");
-const attachBtn=$("attachBtn"), toggleTheme=$("toggleTheme"), notifyBtn=$("notifyBtn"), logoutBtn=$("logoutBtn");
+  // Elements
+  const els = {
+    table: q('#issuesTable'),
+    tableBody: q('#issuesTable tbody'),
+    rowCount: q('#rowCount'),
+    moduleFilter: q('#moduleFilter'),
+    priorityFilter: q('#priorityFilter'),
+    statusFilter: q('#statusFilter'),
+    reset: q('#resetBtn'),
+    refresh: q('#refreshNow'),
+    exportCsv: q('#exportCsv'),
+    kpis: q('#kpis'),
+    modal: q('#issueModal'),
+    modalBody: q('#modalBody'),
+    modalTitle: q('#modalTitle'),
+    copyId: q('#copyId'),
+    copyLink: q('#copyLink'),
+    closeModal: q('#modalClose'),
+    drawerBtn: q('#drawerBtn'),
+    sidebar: q('#sidebar'),
+    spinner: q('#spinner'),
+    toast: q('#toast'),
+    search: q('#searchInput'),
+    themeSelect: q('#themeSelect'),
+    firstPage: q('#firstPage'),
+    prevPage: q('#prevPage'),
+    nextPage: q('#nextPage'),
+    lastPage: q('#lastPage'),
+    pageInfo: q('#pageInfo'),
+    pageSize: q('#pageSize'),
+    createTicket: q('#createTicketBtn'),
+    startDateFilter: q('#startDateFilter'),
+    endDateFilter: q('#endDateFilter'),
+    loadingStatus: q('#loadingStatus')
+  };
 
-/********************* STATE *********************/
-let me="", peer="", room="", lastMsgId=0, users=[], rooms=[], soundEnabled=false, typingTimer=null;
+  // State
+  let rows = [], filtered = [], charts = {};
+  let sortKey = null, sortAsc = true;
+  let currentPage = 1;
+  let rowsPerPage = +(localStorage.getItem('pageSize') || els.pageSize.value);
+  els.pageSize.value = String(rowsPerPage);
+  let selectedIssue = null;
+  let lastFocusedBeforeModal = null;
 
-/********************* NET UTILS *********************/
-async function get(q){
-  const session = localStorage.getItem("session")||"";
-  const tokenQS = TOKEN?`&token=${encodeURIComponent(TOKEN)}`:"";
-  const url = `${API_URL}?${q}&session=${encodeURIComponent(session)}${tokenQS}`;
-  const r = await fetch(url); return r.json();
-}
-async function post(b){
-  const session = localStorage.getItem("session")||"";
-  const body = { ...b, session }; if (TOKEN) body.token = TOKEN;
-  const r = await fetch(API_URL,{ method:"POST", body: JSON.stringify(body) });
-  return r.json();
-}
+  const debounce = (fn, ms=250) => { let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; };
 
-/********************* HELPERS *********************/
-function showToast(msg){toast.textContent=msg;toast.classList.add("show");setTimeout(()=>toast.classList.remove("show"),2200)}
-function beep(){ if(!soundEnabled) return; const a=new Audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg"); a.volume=.6; a.play().catch(()=>{}); }
-document.body.addEventListener("click",()=>{soundEnabled=true;},{once:true});
-function escapeHtml(s){return (s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]))}
-function isImage(url){return /\.(png|jpe?g|gif|webp|bmp|svg)(\?|#|$)/i.test(url||"")}
-function initials(name){return (name||"").split(/\s+/).map(x=>x[0]||"").join("").slice(0,2).toUpperCase()||"?"}
-function formatDay(d){return d.toLocaleDateString(undefined,{weekday:"short",year:"numeric",month:"short",day:"numeric"})}
+  const mediaQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
 
-/********************* AUTH (PIN) *********************/
-async function tryRestore(){
-  const session = localStorage.getItem("session");
-  if(!session){ loginModal.style.display="flex"; return; }
-  const r = await get("action=authMe");
-  if(r.signedIn){ me = r.me.user_id; showApp(); }
-  else { localStorage.removeItem("session"); loginModal.style.display="flex"; }
-}
-async function pinLogin(){
-  const user_id = pinUser.value.trim();
-  const pin = pinCode.value.trim();
-  if(!user_id || !pin){ showToast("Enter user & PIN"); return; }
-  const r = await post({ action:"authLoginPin", user_id, pin });
-  if(r.success){
-    localStorage.setItem("session", r.session);
-    me = r.me.user_id;
-    showApp();
-  }else{
-    showToast(r.error || "PIN failed");
+  const showSpinner = (v=true)=> {
+    els.spinner.style.display = v ? 'flex' : 'none';
+    if (els.loadingStatus) {
+      els.loadingStatus.textContent = v ? 'Loading issues…' : '';
+    }
+  };
+  const showToast = (msg, ms=3500) => {
+    els.toast.textContent = msg;
+    els.toast.style.display = 'block';
+    setTimeout(()=>els.toast.style.display='none', ms);
+  };
+
+  // Normalizers
+  function normalizeStatus(rawStatus) {
+    const s = (rawStatus || '').trim().toLowerCase();
+    if (!s) return 'Not Started Yet';
+    if (s.startsWith('resolved')) return 'Resolved';
+    if (s.startsWith('under')) return 'Under Development';
+    if (s.startsWith('rejected')) return 'Rejected';
+    if (s.startsWith('on hold')) return 'On Hold';
+    if (s.startsWith('not started')) return 'Not Started Yet';
+    if (s.startsWith('sent')) return 'Sent';
+    if (s.startsWith('on stage')) return 'On Stage';
+    return rawStatus || 'Not Started Yet';
   }
-}
-if(pinBtn) pinBtn.addEventListener("click", pinLogin);
-if(pinCode) pinCode.addEventListener("keypress", (e)=>{ if(e.key==="Enter") pinLogin(); });
-if(pinUser) pinUser.addEventListener("keypress", (e)=>{ if(e.key==="Enter") pinLogin(); });
+  function normalizePriority(rawPriority) {
+    const s = (rawPriority || '').trim().toLowerCase();
+    if (!s) return '';
+    if (s.startsWith('h')) return 'High';
+    if (s.startsWith('m')) return 'Medium';
+    if (s.startsWith('l')) return 'Low';
+    return rawPriority;
+  }
 
-if(logoutBtn) logoutBtn.addEventListener("click", async ()=>{
-  const session=localStorage.getItem("session");
-  if(session) await post({action:"authLogout"});
-  localStorage.removeItem("session");
-  location.reload();
-});
+  // Row normalization
+  function normalizeRow(raw){
+    const lower={};
+    for(const k in raw){
+      if(!k) continue;
+      lower[k.toLowerCase().replace(/\s+/g,' ').trim()] = String(raw[k] ?? '').trim();
+    }
+    const pick=(...keys)=>{ for(const key of keys){ if(lower[key]) return lower[key]; } return ''; };
+    return {
+      id: pick('ticket id','id'),
+      module: (pick('impacted module','module','issue location')||'Unspecified'),
+      title: pick('title'),
+      desc: pick('description'),
+      file: pick('file upload','link','url'),
+      priority: normalizePriority(pick('priority')),
+      status: normalizeStatus(pick('status') || 'Not Started Yet'),
+      type: pick('category','type'),
+      date: pick('timestamp','date','created at'),
+      log: pick('log','logs','comment','notes')
+    };
+  }
 
-async function showApp(){
-  loginModal.style.display="none";
-  appRoot.style.display="grid";
-  await loadUsers();
-  await loadRooms();
-  startLoops();
-}
+  function parseCsv(t){
+    return Papa.parse(t,{header:true,skipEmptyLines:true})
+      .data
+      .map(normalizeRow)
+      .filter(r => r.id && r.id.trim() !== "");
+  }
 
-/********************* LOADERS *********************/
-async function loadUsers(){ const res=await get("action=getUsers"); users=res||[]; renderUsers(); }
-async function loadRooms(){ const res=await get("action=getRooms"); rooms=res||[]; renderRooms(); }
+  function pill(text,cls){ return `<span class="pill ${cls}">${text||'-'}</span>`; }
+  const statusBadge = s => pill(s,`status-${(s||'').replace(/\s/g,'\\ ')}`);
+  const priorityBadge = p => pill(p,`priority-${p||''}`);
 
-/********************* RENDER *********************/
-function renderUsers(filter=""){
-  const f=(filter||"").toLowerCase();
-  peopleList.innerHTML = (users||[]).filter(u=>u.name.toLowerCase().includes(f)&&u.user_id!=me).map(u=>
-    `<div class="person" data-id="${u.user_id}">
-      <div class="avatar">${initials(u.name)}</div>
-      <div>${escapeHtml(u.name)}</div>
-      <span class="status-dot ${u.status==='online'?'online':'offline'}"></span>
-    </div>`
-  ).join("");
-  peopleList.querySelectorAll('.person').forEach(el=>{
-    el.addEventListener('click',()=>openChat(el.getAttribute('data-id')));
-  });
-}
-function renderRooms(){
-  roomsList.innerHTML = (rooms||[]).map(r=>`<div class="room" data-id="${r.room_id}">
-    <div class="avatar">#</div><div>${escapeHtml(r.room_name)}</div>
-  </div>`).join("");
-  roomsList.querySelectorAll('.room').forEach(el=>{
-    el.addEventListener('click',()=>openRoom(el.getAttribute('data-id')));
-  });
-}
-function renderPresence(user){
-  if(!user){presenceDot.style.background="transparent"; lastSeen.textContent=""; return;}
-  const on=user.status==="online"; presenceDot.style.background= on?"#22c55e":"#9ca3af";
-  lastSeen.textContent = on?"online":"last active: "+(user.last_active||"");
-}
-function insertDaySeparators(msgs){
-  if(!msgs.length) return "";
-  let html="", lastDay="";
-  msgs.forEach(m=>{
-    const dayStr = formatDay(new Date(m.timestamp));
-    if(dayStr!==lastDay){ html+=`<div class="day-sep">${dayStr}</div>`; lastDay=dayStr; }
-    html+=messageHtml(m);
-  });
-  return html;
-}
-function messageHtml(m){
-  const mine = m.sender_id==me;
-  const safe = escapeHtml(m.message||"");
-  const time = new Date(m.timestamp).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
-  const fileLink = m.file_link?`<br><a href="${m.file_link}" target="_blank" rel="noopener noreferrer" style="color:var(--brand);font-size:.85em;">📎 File</a>${isImage(m.file_link)?`<img class='preview' src='${m.file_link}' alt='attachment'/>`:''}`:'';
-  const ticks = mine ? (m.read_status=="read"?" ✓✓":" ✓") : "";
-  return `<div class="message ${mine?'mine':'theirs'}"><div class="bubble">${safe}${fileLink}</div><div class="meta">${time}${ticks}</div></div>`;
-}
+  // Theme
+  function applySystemThemeFromOS(){
+    if (!mediaQuery) return;
+    if (mediaQuery.matches) {
+      // OS dark
+      document.documentElement.removeAttribute('data-theme');
+    } else {
+      // OS light
+      document.documentElement.setAttribute('data-theme','light');
+    }
+  }
 
-/********************* OPEN CHAT/ROOM *********************/
-async function openChat(id){
-  peer=id; room="";
-  const u=users.find(x=>x.user_id==id);
-  chatTitle.textContent=u?u.name:"Chat";
-  renderPresence(u);
-  await loadMessages(false);
-  closeSidebar();
-}
-async function openRoom(id){
-  room=id; peer="";
-  const r=rooms.find(x=>x.room_id==id);
-  chatTitle.textContent=r?r.room_name:"Room";
-  renderPresence(null);
-  await loadMessages(false);
-  closeSidebar();
-}
+  function applyTheme(mode) {
+    localStorage.setItem('theme', mode);
+    if (mode === 'system') {
+      applySystemThemeFromOS();
+      return;
+    }
+    if (mode === 'dark') {
+      document.documentElement.removeAttribute('data-theme');
+    } else if (mode === 'light') {
+      document.documentElement.setAttribute('data-theme','light');
+    }
+  }
 
-/********************* MESSAGES *********************/
-async function loadMessages(notify=true){
-  if(!me) return;
-  const q = room?`action=getMessages&room_id=${room}`:`action=getMessages&user1=${me}&user2=${peer}`;
-  const res=await get(q); if(!Array.isArray(res)) return;
-  chatBox.innerHTML = insertDaySeparators(res); chatBox.scrollTop = chatBox.scrollHeight;
-  if(res.length){
-    const last=res[res.length-1];
-    if(last.msg_id!=lastMsgId && last.sender_id!=me && notify){
-      beep(); showToast("New message!");
-      if(Notification.permission==="granted"){
-        new Notification("💬 New message",{ body:last.message||"Attachment", icon:"https://cdn-icons-png.flaticon.com/512/1827/1827504.png" });
+  function initTheme() {
+    const saved = localStorage.getItem('theme') || 'system';
+    els.themeSelect.value = saved;
+    if (saved === 'system') {
+      applySystemThemeFromOS();
+    } else {
+      applyTheme(saved);
+    }
+    if (mediaQuery) {
+      mediaQuery.addEventListener('change', () => {
+        const current = localStorage.getItem('theme') || 'system';
+        if (current === 'system') applySystemThemeFromOS();
+      });
+    }
+  }
+
+  // Filter persistence
+  function saveFilters(){
+    const state = {
+      search: els.search.value || '',
+      module: els.moduleFilter.value || 'All',
+      priority: els.priorityFilter.value || 'All',
+      status: els.statusFilter.value || 'All',
+      start: els.startDateFilter.value || '',
+      end: els.endDateFilter.value || ''
+    };
+    try {
+      localStorage.setItem('incheckFilters', JSON.stringify(state));
+    } catch(e){
+      // ignore storage errors
+    }
+  }
+
+  function loadFilters(){
+    try {
+      const raw = localStorage.getItem('incheckFilters');
+      if (!raw) return;
+      const s = JSON.parse(raw);
+      els.search.value = s.search || '';
+
+      const setIfOptionExists = (select, value) => {
+        if (!value) return;
+        const options = Array.from(select.options);
+        if (options.some(o => o.value === value)) {
+          select.value = value;
+        }
+      };
+
+      setIfOptionExists(els.moduleFilter, s.module);
+      setIfOptionExists(els.priorityFilter, s.priority);
+      setIfOptionExists(els.statusFilter, s.status);
+      els.startDateFilter.value = s.start || '';
+      els.endDateFilter.value = s.end || '';
+    } catch(e){
+      console.error('Failed to restore filters', e);
+    }
+  }
+
+  // KPI rendering with percentage
+  function renderKpis(){
+    const total=filtered.length; const counts={};
+    filtered.forEach(r=>{ counts[r.status]=(counts[r.status]||0)+1; });
+    els.kpis.innerHTML='';
+    const add=(label,val)=>{
+      const pct = total ? Math.round((val*100)/total) : 0;
+      const d=document.createElement('div');
+      d.className='card kpi';
+      d.setAttribute('role','button');
+      d.setAttribute('tabindex','0');
+      d.setAttribute('aria-label',`${label}: ${val} (${pct} percent)`);
+      d.innerHTML=`<div class="label">${label}</div><div class="value">${val}</div><div class="sub">${pct}%</div>`;
+      d.onclick=()=>{
+        if(label === 'Total Issues'){
+          // reset all filters
+          els.search.value = '';
+          els.startDateFilter.value = '';
+          els.endDateFilter.value = '';
+          els.moduleFilter.value = 'All';
+          els.priorityFilter.value = 'All';
+          els.statusFilter.value = 'All';
+        } else {
+          els.statusFilter.value = label;
+        }
+        saveFilters();
+        applyFilters();
+      };
+      d.addEventListener('keydown', e=>{
+        if(e.key==='Enter' || e.key===' '){
+          e.preventDefault();
+          d.click();
+        }
+      });
+      els.kpis.appendChild(d);
+    };
+    add('Total Issues', total);
+    Object.entries(counts).forEach(([s,v])=> add(s, v));
+  }
+
+  function uniqueSorted(arr){ return [...new Set(arr.filter(Boolean).map(v=>v.trim()))].sort((a,b)=>a.localeCompare(b)); }
+  function renderFilters(){
+    els.moduleFilter.innerHTML = ['All',...uniqueSorted(rows.map(r=>r.module))].map(v=>`<option>${v}</option>`).join('');
+    els.priorityFilter.innerHTML = ['All',...uniqueSorted(rows.map(r=>r.priority))].map(v=>`<option>${v}</option>`).join('');
+    els.statusFilter.innerHTML = ['All',...uniqueSorted(rows.map(r=>r.status))].map(v=>`<option>${v}</option>`).join('');
+  }
+
+  // Sorting
+  function sortData(list){
+    if(!sortKey) return list;
+    const sorted=[...list].sort((a,b)=>{
+      const va=a[sortKey]||"", vb=b[sortKey]||"";
+      if(sortKey==='date'){
+        const da=new Date(va), db=new Date(vb);
+        if(isNaN(da)&&isNaN(db)) return 0;
+        if(isNaN(da)) return 1;
+        if(isNaN(db)) return -1;
+        return da - db;
+      }
+      return String(va).localeCompare(String(vb), undefined, {numeric:true, sensitivity:'base'});
+    });
+    return sortAsc ? sorted : sorted.reverse();
+  }
+
+  // Pagination helpers
+  function paginate(list){
+    const start=(currentPage-1)*rowsPerPage;
+    return list.slice(start, start+rowsPerPage);
+  }
+  function updatePaginationControls(total){
+    const totalPages = Math.max(1, Math.ceil(total/rowsPerPage));
+    if (currentPage > totalPages) currentPage = totalPages;
+    els.pageInfo.textContent = `Page ${Math.min(currentPage,totalPages)} / ${totalPages}`;
+    const atFirst = currentPage<=1;
+    const atLast = currentPage>=totalPages;
+    els.firstPage.disabled = atFirst;
+    els.prevPage.disabled = atFirst;
+    els.nextPage.disabled = atLast;
+    els.lastPage.disabled = atLast;
+    [els.firstPage, els.prevPage, els.nextPage, els.lastPage].forEach(btn=>{
+      if(btn.disabled) btn.setAttribute('disabled','true'); else btn.removeAttribute('disabled');
+    });
+  }
+
+  // Table render
+  function renderTable(){
+    const list = sortData(filtered);
+    const total = list.length;
+    updatePaginationControls(total);
+    els.rowCount.textContent = `${total} row${total===1?'':'s'}`;
+
+    if (!total){
+      els.tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--muted)">
+        No issues found. Try clearing filters or search.
+      </td></tr>`;
+      updateSortedHeaders();
+      return;
+    }
+
+    const pageData = paginate(list);
+    if (!pageData.length){
+      els.tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--muted)">No issues on this page.</td></tr>`;
+      updateSortedHeaders();
+      return;
+    }
+
+    els.tableBody.innerHTML = pageData.map(r=>`
+      <tr role="button" tabindex="0" aria-label="Open issue ${r.id||'without ID'}" data-id="${r.id}">
+        <td>${r.id||'-'}</td>
+        <td>${r.module||'-'}</td>
+        <td>${r.title||'-'}</td>
+        <td>${priorityBadge(r.priority||'-')}</td>
+        <td>${statusBadge(r.status||'-')}</td>
+        <td>${r.date||'-'}</td>
+        <td>${r.log||'-'}</td>
+        <td>${r.file?`<a href="${escapeAttr(r.file)}" target="_blank" rel="noopener noreferrer" aria-label="Open attachment link">🔗</a>`:'-'}</td>
+      </tr>
+    `).join('');
+
+    // Row keyboard opening
+    els.tableBody.querySelectorAll('tr[data-id]').forEach(tr=>{
+      tr.addEventListener('keydown', e=>{
+        if(e.key==='Enter' || e.key===' '){
+          e.preventDefault();
+          openModal(tr.getAttribute('data-id'));
+        }
+      });
+    });
+
+    updateSortedHeaders();
+  }
+
+  function updateSortedHeaders(){
+    qAll('#issuesTable thead th').forEach(th => {
+      th.classList.remove('sorted-asc','sorted-desc');
+      th.setAttribute('aria-sort','none');
+    });
+    if(sortKey){
+      const th = q(`#issuesTable thead th[data-key="${sortKey}"]`);
+      if(th){
+        th.classList.add(sortAsc?'sorted-asc':'sorted-desc');
+        th.setAttribute('aria-sort', sortAsc ? 'ascending' : 'descending');
       }
     }
-    lastMsgId=last.msg_id;
   }
-}
-async function sendMessage(){
-  const msg = (messageInput.value||"").trim();
-  const f=fileInput.files[0];
-  if(!msg && !f) return;
-  const payload={action:"sendMessage", message:msg}; // sender derived from session
-  if(peer) payload.receiver_id=peer;
-  if(room) payload.room_id=room;
-  if(f){
-    const base64=await toBase64(f);
-    const up=await post({action:"uploadFile", file_name:f.name, mimeType:f.type, file_base64:base64.split(",")[1]});
-    if(up.success) payload.file_link=up.file_url;
-    fileInput.value="";
-  }
-  const res=await post(payload);
-  if(res.success){ messageInput.value=""; loadMessages(false);} else showToast(res.error||"Send failed");
-}
 
-/********************* SEARCH *********************/
-if(msgSearch){
-  msgSearch.addEventListener('keypress', async e=>{
-    if(e.key!=="Enter") return;
-    const q=msgSearch.value.trim(); if(!q) return;
-    const res=await get(`action=searchMessages&query=${encodeURIComponent(q)}`);
-    if(!Array.isArray(res)||!res.length){
-      chatBox.innerHTML = `<p style='text-align:center;color:var(--muted);'>No results.</p>`; return;
+  // Charts
+  function groupCount(list,key){
+    return list.reduce((acc, r) => {
+      const k=r[key]||'Unspecified';
+      acc[k]=(acc[k]||0)+1;
+      return acc;
+    },{});
+  }
+  function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+  function drawCharts(){
+    const priorityColors = {
+      High: cssVar('--priority-high'),
+      Medium: cssVar('--priority-medium'),
+      Low: cssVar('--priority-low')
+    };
+
+    const statusColors = {
+      "Resolved": cssVar('--status-resolved'),
+      "Under Development": cssVar('--status-underdev'),
+      "Rejected": cssVar('--status-rejected'),
+      "On Hold": cssVar('--status-onhold'),
+      "Not Started Yet": cssVar('--status-notstarted'),
+      "Sent": cssVar('--status-sent'),
+      "On Stage": cssVar('--status-onstage')
+    };
+
+    const make = (id, type, data, colorMap={}) => {
+      if(charts[id]) charts[id].destroy();
+      const labels = Object.keys(data);
+      const values = Object.values(data);
+      charts[id] = new Chart(q('#'+id), {
+        type,
+        data: {
+          labels,
+          datasets: [{
+            data: values,
+            backgroundColor: labels.map(k => colorMap[k] || cssVar('--accent'))
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: type !== 'bar' },
+            tooltip: {
+              callbacks: {
+                label: ctx => {
+                  const total = values.reduce((a,b)=>a+b,0) || 1;
+                  const pct = Math.round((ctx.raw*100)/total);
+                  return `${ctx.raw} (${pct}%)`;
+                }
+              }
+            }
+          },
+          scales: type === 'bar' ? {
+            x: { grid: { color: 'rgba(128,128,128,.1)' } },
+            y: { beginAtZero: true, grid: { color: 'rgba(128,128,128,.12)' } }
+          } : {}
+        }
+      });
+    };
+
+    make('byModule', 'bar', groupCount(filtered,'module'));
+    make('byPriority', 'doughnut', groupCount(filtered,'priority'), priorityColors);
+    make('byStatus', 'bar', groupCount(filtered,'status'), statusColors);
+    make('byType', 'bar', groupCount(filtered,'type'));
+  }
+
+  // Filter logic
+  function applyFilters(){
+    const qstr = (els.search.value||'').toLowerCase().trim();
+    const m = els.moduleFilter.value, p = els.priorityFilter.value, s = els.statusFilter.value;
+    const start = els.startDateFilter.value, end = els.endDateFilter.value;
+    const startDate = start ? new Date(start) : null;
+    const endDate = end ? (()=>{ const d=new Date(end); d.setDate(d.getDate()+1); return d; })() : null;
+
+    filtered = rows.filter(r=>{
+      const hay = [r.id,r.module,r.title,r.desc,r.log].filter(Boolean).join(' ').toLowerCase();
+      let keepDate = true;
+      if(r.date){
+        const d = new Date(r.date);
+        if(!isNaN(d)){
+          if(startDate && d < startDate) keepDate = false;
+          if(endDate && d >= endDate) keepDate = false;
+        }
+      } else if(startDate || endDate){ keepDate = false; }
+      return (!qstr || hay.includes(qstr))
+        && (!m || m==='All' || r.module===m)
+        && (!p || p==='All' || r.priority===p)
+        && (!s || s==='All' || r.status===s)
+        && keepDate;
+    });
+
+    currentPage = 1;
+    renderKpis();
+    renderTable();
+    drawCharts();
+  }
+
+  // Data load
+  async function loadSheet(){
+    try {
+      showSpinner(true);
+      const res = await fetch(SHEET_URL, { cache:'no-store' });
+      if(!res.ok) throw new Error(`Failed to fetch (${res.status})`);
+      const text = await res.text();
+      rows = parseCsv(text);
+      filtered = [...rows];
+      renderFilters();
+      loadFilters();
+      applyFilters();
+    } catch(e) {
+      showToast('Error loading data: '+e.message);
+      els.tableBody.innerHTML = `
+        <tr>
+          <td colspan="8" style="color:#ffb4b4;text-align:center">
+            Error loading data.
+            <button type="button" id="retryLoad" class="btn sm" style="margin-left:8px">Retry</button>
+          </td>
+        </tr>`;
+      const retryBtn = q('#retryLoad');
+      if (retryBtn) {
+        retryBtn.addEventListener('click', () => {
+          loadSheet();
+        });
+      }
+    } finally {
+      showSpinner(false);
     }
-    chatBox.innerHTML = res.map(m=> messageHtml(m)).join(""); chatBox.scrollTop=0;
+  }
+
+  // Modal helpers
+  function trapFocus(container, e){
+    const focusables = container.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    if(!focusables.length) return;
+    const first = focusables[0], last = focusables[focusables.length-1];
+    if(e.shiftKey && document.activeElement === first){ last.focus(); e.preventDefault(); }
+    else if(!e.shiftKey && document.activeElement === last){ first.focus(); e.preventDefault(); }
+  }
+
+  function openModal(id){
+    const r = rows.find(x=>x.id===id);
+    if(!r) return;
+    selectedIssue = r;
+    lastFocusedBeforeModal = document.activeElement;
+
+    els.modalTitle.textContent = r.title || r.id || 'Issue';
+    els.modalBody.innerHTML = `
+      <p><b>ID:</b> ${escapeHtml(r.id || '-')}</p>
+      <p><b>Module:</b> ${escapeHtml(r.module || '-')}</p>
+      <p><b>Priority:</b> ${escapeHtml(r.priority || '-')}</p>
+      <p><b>Status:</b> ${escapeHtml(r.status || '-')}</p>
+      <p><b>Date:</b> ${escapeHtml(r.date || '-')}</p>
+      <p><b>Description:</b><br>${escapeHtml(r.desc || '-')}</p>
+      <p><b>Log:</b><br>${escapeHtml(r.log || '-')}</p>
+      ${r.file ? `<p><b>Attachment:</b> <a href="${escapeAttr(r.file)}" target="_blank" rel="noopener noreferrer">Open link</a></p>` : ''}
+    `;
+    els.modal.style.display='flex';
+    els.copyId.focus();
+  }
+  function closeModal(){
+    els.modal.style.display='none';
+    selectedIssue=null;
+    if(lastFocusedBeforeModal && typeof lastFocusedBeforeModal.focus==='function'){
+      lastFocusedBeforeModal.focus();
+    }
+  }
+
+  // Export CSV for current filtered data
+  function exportFilteredCsv(){
+    if (!filtered.length){
+      showToast('Nothing to export (no rows).');
+      return;
+    }
+    const headers = ['ID','Module','Title','Priority','Status','Date','Log','Link','Description'];
+    const lines = [headers.join(',')];
+    filtered.forEach(r=>{
+      const row = [
+        r.id, r.module, r.title, r.priority, r.status,
+        r.date, r.log, r.file, r.desc
+      ].map(v=>{
+        const s = String(v ?? '').replace(/"/g,'""');
+        return `"${s}"`;
+      });
+      lines.push(row.join(','));
+    });
+    const csvBlob = new Blob([lines.join('\r\n')], {type:'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(csvBlob);
+    const a = document.createElement('a');
+    const ts = new Date().toISOString().slice(0,10);
+    a.href = url;
+    a.download = `incheck_issues_${ts}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Exported CSV of current filtered issues');
+  }
+
+  // Create ticket → Google Form
+  els.createTicket.addEventListener('click', () => {
+    window.open("https://forms.gle/PPnEP1AQneoBT79s5", "_blank", "noopener,noreferrer");
   });
-}
 
-/********************* FILE: drag & drop *********************/
-function handleDrop(e){ e.preventDefault(); if(!e.dataTransfer.files.length) return; fileInput.files = e.dataTransfer.files; showToast(`${e.dataTransfer.files[0].name} attached`); }
-if(attachBtn) attachBtn.addEventListener('click', ()=> fileInput && fileInput.click());
-window.handleDrop = handleDrop; // keep for HTML ondrop
+  // Table click (do not open modal when clicking links)
+  q('#issuesTable').addEventListener('click', (ev)=>{
+    if (ev.target.closest('a')) return; // let links behave normally
+    const tr = ev.target.closest('tr[data-id]');
+    if(tr){ openModal(tr.getAttribute('data-id')); }
+  });
+  els.closeModal.addEventListener('click', closeModal);
+  els.modal.addEventListener('click', (e)=>{ if(e.target===els.modal) closeModal(); });
+  document.addEventListener('keydown', (e)=>{
+    if(els.modal.style.display==='flex'){
+      if(e.key==='Escape') closeModal();
+      if(e.key==='Tab') trapFocus(els.modal, e);
+    }
+  });
 
-/********************* EVENTS *********************/
-if(sendBtn) sendBtn.addEventListener('click', sendMessage);
-if(messageInput) messageInput.addEventListener('keypress', e=>{ if(e.key==="Enter") sendMessage(); });
-if(userSearch) userSearch.addEventListener('input', ()=>renderUsers(userSearch.value));
-function closeSidebar(){ if(sidebar) sidebar.classList.remove("open"); }
-if(toggleSidebar) toggleSidebar.addEventListener('click', ()=> sidebar && sidebar.classList.toggle("open"));
-if(toggleTheme) toggleTheme.addEventListener('click', ()=>{
-  document.body.classList.toggle('dark');
-  localStorage.setItem('theme', document.body.classList.contains('dark')? 'dark':'light');
-});
-if(localStorage.getItem('theme')==='dark') document.body.classList.add('dark');
-if(notifyBtn) notifyBtn.addEventListener('click', ()=>{
-  if(Notification.permission!=="granted"&&Notification.permission!=="denied"){
-    Notification.requestPermission().then(p=>showToast(p==="granted"?"Notifications on":"Notifications blocked"));
-  } else {
-    showToast("Notifications already handled");
+  els.copyId.addEventListener('click', async ()=>{
+    if(!selectedIssue) return;
+    try{
+      await navigator.clipboard.writeText(selectedIssue.id || '');
+      showToast('Issue ID copied');
+    }catch{
+      showToast('Unable to copy (clipboard blocked)');
+    }
+  });
+  els.copyLink.addEventListener('click', async ()=>{
+    if(!selectedIssue) return;
+    const link = selectedIssue.file || '';
+    if(!link){
+      showToast('No link on this issue');
+      return;
+    }
+    try{
+      await navigator.clipboard.writeText(link);
+      showToast('Link copied');
+    }catch{
+      showToast('Unable to copy (clipboard blocked)');
+    }
+  });
+
+  // Sorting
+  qAll('#issuesTable thead th.sortable').forEach(th=>{
+    th.addEventListener('click', ()=>{
+      const key = th.getAttribute('data-key');
+      if(sortKey===key){ sortAsc = !sortAsc; } else { sortKey=key; sortAsc=true; }
+      renderTable();
+    });
+    th.addEventListener('keydown', e=>{
+      if(e.key==='Enter' || e.key===' '){
+        e.preventDefault();
+        th.click();
+      }
+    });
+    th.setAttribute('tabindex','0');
+    th.setAttribute('role','button');
+    th.setAttribute('aria-label', `Sort by ${th.textContent}`);
+  });
+
+  // Pagination
+  const updateAndRender = ()=>{ renderTable(); };
+  els.pageSize.addEventListener('change', ()=>{
+    rowsPerPage = +els.pageSize.value;
+    localStorage.setItem('pageSize', rowsPerPage);
+    currentPage = 1;
+    updateAndRender();
+  });
+  els.firstPage.addEventListener('click', ()=>{ currentPage=1; updateAndRender(); });
+  els.prevPage.addEventListener('click', ()=>{ if(currentPage>1){ currentPage--; updateAndRender(); } });
+  els.nextPage.addEventListener('click', ()=>{
+    const totalPages = Math.max(1, Math.ceil(filtered.length/rowsPerPage));
+    if(currentPage<totalPages){ currentPage++; updateAndRender(); }
+  });
+  els.lastPage.addEventListener('click', ()=>{
+    currentPage = Math.max(1, Math.ceil(filtered.length/rowsPerPage));
+    updateAndRender();
+  });
+
+  // Sidebar drawer
+  els.drawerBtn.addEventListener('click', ()=>{
+    const open = !els.sidebar.classList.contains('open');
+    els.sidebar.classList.toggle('open');
+    els.drawerBtn.setAttribute('aria-expanded', String(open));
+  });
+
+  // Filters & search
+  const onFilterChange = ()=>{
+    saveFilters();
+    applyFilters();
+  };
+  [els.moduleFilter, els.priorityFilter, els.statusFilter].forEach(el=> el.addEventListener('change', onFilterChange));
+  els.startDateFilter.addEventListener('change', onFilterChange);
+  els.endDateFilter.addEventListener('change', onFilterChange);
+  els.reset.addEventListener('click', ()=>{
+    els.search.value='';
+    els.startDateFilter.value='';
+    els.endDateFilter.value='';
+    localStorage.removeItem('incheckFilters');
+    renderFilters();
+    applyFilters();
+  });
+  els.refresh.addEventListener('click', loadSheet);
+  els.exportCsv.addEventListener('click', exportFilteredCsv);
+  els.search.addEventListener('input', debounce(()=>{
+    saveFilters();
+    applyFilters();
+  }, 250));
+
+  // Theme select
+  els.themeSelect.addEventListener('change', ()=> applyTheme(els.themeSelect.value));
+  initTheme();
+
+  // Initial load
+  if(typeof Chart === 'undefined') { showToast('Chart.js failed to load'); }
+  if(typeof Papa === 'undefined') { showToast('PapaParse failed to load'); }
+  loadSheet();
+
+  // Helpers
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;' }[m]));
+  }
+  function escapeAttr(s){
+    return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;');
   }
 });
-
-/********************* LOOPS *********************/
-function startLoops(){
-  setInterval(()=>{ if(me) post({action:"heartbeat"}); }, 60000);
-  setInterval(()=>loadMessages(true), 3000);
-}
-
-/********************* INIT *********************/
-const toBase64 = file => new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(file); });
-(async()=>{ await tryRestore(); })();
 </script>
 </body>
 </html>
