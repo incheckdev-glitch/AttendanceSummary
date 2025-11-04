@@ -3,12 +3,16 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>InCheck Issues Dashboard</title>
+  <title>InCheck Issues & Operations Dashboard</title>
 
-  <!-- Libs -->
+  <!-- Fonts & Libs -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+
+  <!-- FullCalendar -->
+  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/main.min.css" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
 
   <style>
     :root {
@@ -27,27 +31,51 @@
       --priority-low:#10b981;
 
       /* Theme colors */
-      --bg:#0b1020; --card:#0f1630; --muted:#9aa6d1; --text:#e8edff;
-      --accent:#4f8cff; --danger:#ef4444; --ok:#10b981; --warn:#f59e0b;
-      --info:#3b82f6; --purple:#8b5cf6; --neutral:#6b7280; --border:#1e2643;
-      --shadow:0 8px 24px rgba(0,0,0,.35);
-      --focus: 0 0 0 3px rgba(79,140,255,.35);
+      --bg:#050816;
+      --card:rgba(11,22,45,0.96);
+      --muted:#9aa6d1;
+      --text:#e8edff;
+      --accent:#4f8cff;
+      --danger:#ef4444;
+      --ok:#10b981;
+      --warn:#f59e0b;
+      --info:#3b82f6;
+      --purple:#8b5cf6;
+      --neutral:#6b7280;
+      --border:#1b2645;
+      --shadow:0 18px 40px rgba(0,0,0,.55);
+      --focus:0 0 0 3px rgba(79,140,255,.5);
     }
     :root[data-theme="light"] {
-      --bg:#f4f6ff; --card:#ffffff; --muted:#5a678c; --text:#0d1326;
-      --accent:#2563eb; --danger:#dc2626; --ok:#059669; --warn:#d97706;
-      --info:#1d4ed8; --purple:#7c3aed; --neutral:#374151; --border:#e7eaf6;
-      --shadow:0 10px 24px rgba(16,24,40,.08);
-      --focus: 0 0 0 3px rgba(37,99,235,.25);
+      --bg:#f4f6ff;
+      --card:#ffffff;
+      --muted:#5a678c;
+      --text:#0d1326;
+      --accent:#2563eb;
+      --danger:#dc2626;
+      --ok:#059669;
+      --warn:#d97706;
+      --info:#1d4ed8;
+      --purple:#7c3aed;
+      --neutral:#374151;
+      --border:#e0e4f3;
+      --shadow:0 16px 32px rgba(15,23,42,.12);
+      --focus:0 0 0 3px rgba(37,99,235,.35);
     }
 
     * { box-sizing:border-box }
     html,body { height:100% }
     body {
-      margin:0; font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;
-      background:var(--bg); color:var(--text); transition:background .3s,color .3s;
+      margin:0;
+      font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;
+      background:
+        radial-gradient(circle at 0% 0%, rgba(79,140,255,.22), transparent 55%),
+        radial-gradient(circle at 100% 100%, rgba(139,92,246,.22), transparent 55%),
+        var(--bg);
+      color:var(--text);
+      transition:background .3s,color .3s;
     }
-    :focus-visible { outline: none; box-shadow: var(--focus); border-radius: 8px; }
+    :focus-visible { outline:none; box-shadow:var(--focus); border-radius:8px; }
 
     .sr-only {
       position:absolute;
@@ -63,83 +91,215 @@
 
     /* Topbar */
     header {
-      position:sticky; top:0; z-index:20; background:var(--card);
+      position:sticky; top:0; z-index:20;
+      background:linear-gradient(90deg, rgba(11,22,45,.98), rgba(24,35,70,.96));
+      backdrop-filter:blur(18px);
       border-bottom:1px solid var(--border);
       display:flex; align-items:center; gap:12px; padding:10px 16px;
       box-shadow:var(--shadow);
     }
     .brand { display:flex; align-items:center; gap:10px; font-weight:700; }
     .brand .logo {
-      width:28px; height:28px; border-radius:8px; display:grid; place-items:center;
-      background:linear-gradient(135deg,var(--accent),#9b8cff);
-      color:#fff; font-weight:800; box-shadow:0 6px 18px rgba(79,140,255,.35);
+      width:30px; height:30px; border-radius:10px;
+      display:grid; place-items:center;
+      background:conic-gradient(from 160deg, var(--accent), #9b8cff, #22c55e, var(--accent));
+      color:#fff; font-weight:800;
+      box-shadow:0 10px 30px rgba(79,140,255,.55);
     }
+    .brand-text { display:flex; flex-direction:column; }
+    .brand-text span:first-child { font-size:14px; text-transform:uppercase; letter-spacing:.16em; color:var(--muted); }
+    .brand-text span:last-child { font-size:16px; }
+
     .toolbar { margin-left:auto; display:flex; gap:10px; align-items:center; flex-wrap:wrap }
     .btn, .select, .input {
-      padding:8px 12px; border-radius:10px; border:1px solid var(--border);
-      background:transparent; color:inherit; font:inherit;
+      padding:8px 12px;
+      border-radius:999px;
+      border:1px solid var(--border);
+      background:rgba(8,16,32,.92);
+      color:inherit;
+      font:inherit;
     }
-    .btn { cursor:pointer; font-weight:600; background:var(--card) }
-    .btn.primary { background:var(--accent); border-color:transparent; color:#fff }
-    .btn.ghost { border-color:transparent; background:transparent }
-    .btn.sm { padding:6px 10px; border-radius:8px; font-size:13px }
-    .btn:hover { opacity:.92; transform:translateY(-1px) }
+    .btn {
+      cursor:pointer;
+      font-weight:600;
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      box-shadow:0 8px 20px rgba(15,23,42,.25);
+    }
+    .btn.primary {
+      background:linear-gradient(135deg,var(--accent),#7c3aed);
+      border-color:transparent;
+      color:#fff;
+    }
+    .btn.ghost {
+      border-color:transparent;
+      background:transparent;
+      box-shadow:none;
+    }
+    .btn.sm { padding:6px 10px; border-radius:999px; font-size:13px }
+    .btn:hover { opacity:.95; transform:translateY(-1px); }
+    .btn:active { transform:translateY(0); opacity:.9; }
+    .input, .select {
+      background:rgba(5,10,24,.85);
+      box-shadow: inset 0 0 0 1px rgba(15,23,42,.35);
+    }
+    .input::placeholder { color:var(--muted); }
     .icon { font-size:18px; line-height:1 }
 
     /* Layout */
-    .wrap { display:grid; grid-template-columns:280px 1fr; gap:18px; padding:18px; max-width:1400px; margin:0 auto }
+    .wrap {
+      display:grid; grid-template-columns:280px minmax(0,1fr);
+      gap:18px; padding:18px;
+      max-width:1440px; margin:0 auto;
+    }
     @media(max-width:980px){ .wrap { grid-template-columns:1fr } }
 
     /* Sidebar */
     .sidebar {
-      background:var(--card); border:1px solid var(--border); border-radius:14px; padding:16px;
-      position:sticky; top:76px; height:fit-content; max-height:calc(100vh - 96px); overflow:auto;
+      background:linear-gradient(145deg, rgba(11,23,45,.96), rgba(13,28,60,.98));
+      border:1px solid rgba(148,163,184,.25);
+      border-radius:18px;
+      padding:16px;
+      position:sticky; top:82px;
+      height:fit-content;
+      max-height:calc(100vh - 102px);
+      overflow:auto;
+      box-shadow:var(--shadow);
     }
-    .sidebar h3 { margin:0 0 10px 0; font-size:14px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em }
+    :root[data-theme="light"] .sidebar {
+      background:var(--card);
+      border-color:var(--border);
+    }
+    .sidebar h3 {
+      margin:0 0 10px 0;
+      font-size:13px; color:var(--muted);
+      text-transform:uppercase; letter-spacing:.12em;
+    }
     .filter-group { display:grid; gap:10px; margin-bottom:16px }
-    .filter-row { display:grid; gap:8px }
+    .filter-row { display:grid; gap:6px }
     .muted { color:var(--muted); font-size:12px }
-    .divider { height:1px; background:var(--border); margin:8px 0 14px }
+    .divider { height:1px; background:var(--border); margin:8px 0 14px; opacity:.7 }
 
     /* Content */
-    .content { display:grid; gap:18px }
+    .content { display:flex; flex-direction:column; gap:16px }
+
+    .view-tabs {
+      display:inline-flex;
+      align-self:flex-start;
+      background:rgba(10,18,40,.98);
+      border-radius:999px;
+      border:1px solid var(--border);
+      box-shadow:0 16px 40px rgba(15,23,42,.45);
+      padding:4px;
+    }
+    .view-tab {
+      border:none;
+      background:transparent;
+      color:var(--muted);
+      padding:6px 14px;
+      border-radius:999px;
+      font-size:13px;
+      cursor:pointer;
+      display:flex; align-items:center; gap:6px;
+    }
+    .view-tab .icon { font-size:16px; }
+    .view-tab.active {
+      background:linear-gradient(135deg,var(--accent),#7c3aed);
+      color:#fff;
+      box-shadow:0 10px 26px rgba(79,140,255,.6);
+    }
+
+    .view { display:none; }
+    .view.active { display:block; }
+    .view > * + * { margin-top:16px; }
+
     .grid { display:grid; gap:16px }
-    .grid.cols-4 { grid-template-columns:repeat(4,1fr) }
-    @media(max-width:980px){ .grid.cols-4{ grid-template-columns:repeat(2,1fr) } }
+    .grid.cols-4 { grid-template-columns:repeat(4, minmax(0,1fr)) }
+    @media(max-width:980px){ .grid.cols-4{ grid-template-columns:repeat(2, minmax(0,1fr)) } }
     @media(max-width:600px){ .grid.cols-4{ grid-template-columns:1fr } }
 
     /* Cards */
     .card {
-      background:var(--card); border:1px solid var(--border); border-radius:14px; padding:16px;
-      box-shadow:var(--shadow); transition:transform .2s, box-shadow .2s;
+      background:radial-gradient(circle at 0 0, rgba(79,140,255,.16), transparent 55%), var(--card);
+      border:1px solid rgba(148,163,184,.35);
+      border-radius:18px;
+      padding:16px;
+      box-shadow:var(--shadow);
+      transition:transform .2s, box-shadow .2s, border-color .2s, background .2s;
     }
-    .card:hover { transform:translateY(-2px) }
+    :root[data-theme="light"] .card {
+      background:var(--card);
+      border-color:var(--border);
+    }
+    .card:hover {
+      transform:translateY(-2px);
+      box-shadow:0 20px 50px rgba(15,23,42,.4);
+      border-color:rgba(99,102,241,.9);
+    }
 
     /* KPIs */
-    .kpi { cursor:pointer; text-align:center; }
-    .kpi .label { font-size:12px; color:var(--muted); text-transform:uppercase }
+    .kpi {
+      cursor:pointer;
+      text-align:left;
+      position:relative;
+      overflow:hidden;
+    }
+    .kpi::before {
+      content:"";
+      position:absolute;
+      inset:auto -40% 0;
+      height:60%;
+      background:radial-gradient(circle at 20% 0, rgba(79,140,255,.45), transparent 55%);
+      opacity:0;
+      transition:opacity .25s, transform .25s;
+      transform:translateY(16px);
+    }
+    .kpi:hover::before {
+      opacity:1;
+      transform:translateY(0);
+    }
+    .kpi .label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.12em }
     .kpi .value { font-size:26px; font-weight:800; margin-top:6px }
     .kpi .sub { font-size:12px; color:var(--muted); margin-top:4px }
-    .kpi:hover { box-shadow:0 8px 26px rgba(79,140,255,.15) }
 
     /* Charts */
-    .charts { display:grid; grid-template-columns:repeat(2,1fr); gap:16px }
+    .charts { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:16px }
     @media(max-width:980px){ .charts{ grid-template-columns:1fr } }
 
     /* Table */
     table { width:100%; border-collapse:separate; border-spacing:0; font-size:14px }
     thead th {
-      position:sticky; top:0; background:var(--card); text-align:left; padding:12px 10px;
-      border-bottom:1px solid var(--border); user-select:none; cursor:pointer;
+      position:sticky; top:0; z-index:5;
+      background:rgba(9,15,32,.98);
+      text-align:left; padding:10px 9px;
+      border-bottom:1px solid var(--border);
+      user-select:none; cursor:pointer;
+      font-size:12px; color:var(--muted);
     }
-    tbody td { padding:11px 10px; border-bottom:1px solid var(--border) }
+    :root[data-theme="light"] thead th { background:var(--card); }
+    tbody td { padding:10px 9px; border-bottom:1px solid rgba(148,163,184,.22); }
     tr:hover { background:rgba(255,255,255,.03) }
-    .table-wrap { max-height:460px; overflow:auto; border-radius:10px; border:1px solid var(--border) }
-    th.sortable::after { content:" ⇅"; color:var(--muted); font-size:12px }
-    th.sorted-asc::after { content:" ↑" }
-    th.sorted-desc::after { content:" ↓" }
+    .table-wrap {
+      max-height:460px;
+      overflow:auto;
+      border-radius:14px;
+      border:1px solid rgba(148,163,184,.35);
+      background:radial-gradient(circle at 0 0, rgba(79,140,255,.08), transparent 55%);
+    }
+    th.sortable::after { content:""; margin-left:6px; border:4px solid transparent; border-top-color:var(--muted); display:inline-block; transform:translateY(1px); }
+    th.sorted-asc::after { border-bottom-color:var(--accent); border-top-color:transparent; transform:translateY(-1px); }
+    th.sorted-desc::after { border-top-color:var(--accent); border-bottom-color:transparent; transform:translateY(1px); }
 
-    .pill { padding:2px 8px; border-radius:12px; font-size:12px; font-weight:700; display:inline-block }
+    .pill {
+      padding:3px 9px;
+      border-radius:999px;
+      font-size:11px;
+      font-weight:700;
+      display:inline-block;
+      letter-spacing:.04em;
+      text-transform:uppercase;
+    }
     .status-Resolved { background: var(--status-resolved); color:#fff }
     .status-Under\ Development { background: var(--status-underdev); color:#fff }
     .status-Rejected { background: var(--status-rejected); color:#fff }
@@ -153,38 +313,136 @@
     .priority-Low { background: var(--priority-low); color:#fff }
 
     /* Modal */
-    .modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.55); align-items:center; justify-content:center; z-index:100 }
-    .modal-content { background:var(--card); color:var(--text); border:1px solid var(--border);
-      padding:18px; border-radius:14px; max-width:760px; width:92%; max-height:90%; overflow:auto; box-shadow:var(--shadow) }
-    .modal .header { display:flex; align-items:center; gap:10px; justify-content:space-between; margin-bottom:8px }
-    .modal .actions { display:flex; gap:8px; flex-wrap: wrap; }
-    .modal-close { cursor:pointer; border:none; background:transparent; color:var(--muted); font-size:20px }
+    .modal {
+      display:none;
+      position:fixed; inset:0;
+      background:rgba(0,0,0,.58);
+      align-items:center; justify-content:center;
+      z-index:100;
+    }
+    .modal-content {
+      background:var(--card); color:var(--text);
+      border:1px solid rgba(148,163,184,.35);
+      padding:18px; border-radius:18px;
+      max-width:760px; width:92%;
+      max-height:90%; overflow:auto;
+      box-shadow:var(--shadow);
+    }
+    .modal .header {
+      display:flex; align-items:center;
+      gap:10px; justify-content:space-between;
+      margin-bottom:8px;
+    }
+    .modal .actions { display:flex; gap:8px; flex-wrap:wrap; }
+    .modal-close {
+      cursor:pointer;
+      border:none;
+      background:transparent;
+      color:var(--muted);
+      font-size:20px;
+    }
 
     /* Pagination */
-    .table-actions { display:flex; gap:10px; align-items:center; justify-content:space-between; margin-top:10px; flex-wrap:wrap }
+    .table-actions {
+      display:flex; gap:10px;
+      align-items:center; justify-content:space-between;
+      margin-top:10px; flex-wrap:wrap;
+    }
     .pagination { display:flex; gap:6px; align-items:center }
-    .chip { padding:6px 10px; border-radius:8px; background:var(--card); border:1px solid var(--border); cursor:pointer }
-    .chip[disabled] { opacity:.5; cursor:not-allowed }
+    .chip {
+      padding:6px 10px;
+      border-radius:999px;
+      background:rgba(9,14,30,.95);
+      border:1px solid var(--border);
+      cursor:pointer;
+      font-size:12px;
+    }
+    .chip[disabled] { opacity:.45; cursor:not-allowed }
     .chip.active { background:var(--accent); color:#fff; border-color:transparent }
-    .select.sm, .input.sm { padding:6px 8px; border-radius:8px; font-size:13px }
+    .select.sm, .input.sm { padding:6px 8px; border-radius:999px; font-size:13px }
 
     /* Drawer */
     .drawer-toggle { display:none }
     @media(max-width:980px){
       .drawer-toggle { display:inline-flex }
-      .sidebar { position:fixed; inset:76px 0 0 auto; width:88%; max-width:360px; transform:translateX(110%); transition:transform .25s }
+      .sidebar {
+        position:fixed; inset:82px 0 0 auto;
+        width:88%; max-width:360px;
+        transform:translateX(110%);
+        transition:transform .25s;
+      }
       .sidebar.open { transform:translateX(0) }
     }
 
     /* Spinner & Toast */
-    .spinner { display:none; position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:120; align-items:center; justify-content:center }
-    .spinner .ring { width:54px; height:54px; border:5px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 1s linear infinite; background:transparent }
+    .spinner {
+      display:none;
+      position:fixed; inset:0;
+      background:rgba(5,10,25,.65);
+      z-index:120;
+      align-items:center; justify-content:center;
+    }
+    .spinner .ring {
+      width:56px; height:56px;
+      border:5px solid var(--border);
+      border-top-color:var(--accent);
+      border-radius:50%;
+      animation:spin 1s linear infinite;
+      background:transparent;
+      box-shadow:0 0 0 1px rgba(15,23,42,.4);
+    }
     @keyframes spin { to { transform:rotate(360deg) } }
 
     .toast {
-      position:fixed; right:16px; bottom:16px; background:var(--card); border:1px solid var(--danger);
-      color:#fff; padding:10px 12px; border-radius:10px; z-index:130; box-shadow:var(--shadow); display:none
+      position:fixed; right:16px; bottom:16px;
+      background:var(--card);
+      border:1px solid var(--accent);
+      color:#fff;
+      padding:10px 12px;
+      border-radius:12px;
+      z-index:130;
+      box-shadow:var(--shadow);
+      display:none;
+      font-size:13px;
     }
+
+    /* Calendar styling */
+    #calendar { margin-top:8px; min-height:520px; }
+    .fc { font-size:13px; }
+    .fc .fc-toolbar-title { font-size:16px; }
+    .fc-theme-standard .fc-scrollgrid,
+    .fc-theme-standard td,
+    .fc-theme-standard th {
+      border-color:var(--border);
+    }
+    .fc .fc-col-header-cell-cushion,
+    .fc .fc-daygrid-day-number {
+      color:var(--muted);
+    }
+    .fc .fc-daygrid-day.fc-day-today {
+      background:rgba(79,140,255,.09);
+    }
+    .fc .fc-button {
+      background:rgba(9,14,30,.98);
+      border-color:var(--border);
+      color:var(--text);
+      border-radius:999px;
+      padding:4px 10px;
+      font-size:12px;
+    }
+    .fc .fc-button-primary:not(:disabled).fc-button-active,
+    .fc .fc-button-primary:not(:disabled):active,
+    .fc .fc-button-primary:not(:disabled):focus,
+    .fc .fc-button-primary:not(:disabled):hover {
+      background:var(--accent);
+      border-color:var(--accent);
+    }
+    .fc .fc-toolbar.fc-header-toolbar { margin-bottom:12px; }
+
+    .fc-event.event-type-deployment { background-color:var(--info); border-color:var(--info); }
+    .fc-event.event-type-maintenance { background-color:var(--warn); border-color:var(--warn); }
+    .fc-event.event-type-release { background-color:var(--ok); border-color:var(--ok); }
+    .fc-event.event-type-other { background-color:var(--purple); border-color:var(--purple); }
 
     /* Reduced motion */
     @media (prefers-reduced-motion: reduce){
@@ -196,7 +454,10 @@
   <header>
     <div class="brand" aria-label="InCheck brand">
       <div class="logo" aria-hidden="true">IC</div>
-      <div>InCheck Issues</div>
+      <div class="brand-text">
+        <span>INCHECK</span>
+        <span>Issues & Ops</span>
+      </div>
     </div>
 
     <button id="drawerBtn" class="btn drawer-toggle" aria-expanded="false" aria-controls="sidebar">
@@ -210,9 +471,15 @@
         <option value="dark">Dark</option>
         <option value="light">Light</option>
       </select>
-      <button id="refreshNow" class="btn" aria-label="Refresh from source"><span class="icon" aria-hidden="true">🔄</span> Refresh</button>
-      <button id="exportCsv" class="btn" aria-label="Export filtered issues as CSV"><span class="icon" aria-hidden="true">📥</span> Export CSV</button>
-      <button id="createTicketBtn" class="btn primary" aria-label="Create new ticket"><span class="icon" aria-hidden="true">➕</span> Create Ticket</button>
+      <button id="refreshNow" class="btn" aria-label="Refresh from source">
+        <span class="icon" aria-hidden="true">🔄</span> Refresh
+      </button>
+      <button id="exportCsv" class="btn" aria-label="Export filtered issues as CSV">
+        <span class="icon" aria-hidden="true">📥</span> Export CSV
+      </button>
+      <button id="createTicketBtn" class="btn primary" aria-label="Create new ticket">
+        <span class="icon" aria-hidden="true">➕</span> Create Ticket
+      </button>
     </div>
   </header>
 
@@ -255,76 +522,180 @@
 
       <div class="filter-group">
         <button id="resetBtn" class="btn ghost" aria-label="Reset all filters">Reset</button>
-        <span class="muted">Tip: click any KPI to filter by that status (Total Issues resets all).</span>
+        <span class="muted">
+          Tip: click any KPI to filter by that status. “Total Issues” resets everything.
+        </span>
       </div>
     </aside>
 
     <!-- Main content -->
     <main class="content">
-      <div class="grid cols-4" id="kpis" aria-live="polite"></div>
-
-      <div class="charts" aria-label="Charts">
-        <div class="card"><canvas id="byModule" height="140" aria-label="Issues by module" role="img"></canvas></div>
-        <div class="card"><canvas id="byPriority" height="140" aria-label="Issues by priority" role="img"></canvas></div>
-        <div class="card"><canvas id="byStatus" height="140" aria-label="Issues by status" role="img"></canvas></div>
-        <div class="card"><canvas id="byType" height="140" aria-label="Issues by type" role="img"></canvas></div>
+      <div class="view-tabs" role="tablist">
+        <button id="issuesTab" class="view-tab active" data-view="issues"
+                role="tab" aria-selected="true" aria-controls="issuesView">
+          <span class="icon" aria-hidden="true">📋</span> Issues
+        </button>
+        <button id="calendarTab" class="view-tab" data-view="calendar"
+                role="tab" aria-selected="false" aria-controls="calendarView">
+          <span class="icon" aria-hidden="true">📅</span> Calendar
+        </button>
       </div>
 
-      <div class="card" aria-label="Issues table">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <strong>Issues</strong>
-          <span id="rowCount" class="muted" aria-live="polite"></span>
+      <!-- Issues View -->
+      <section id="issuesView" class="view active" role="tabpanel" aria-labelledby="issuesTab">
+        <div class="grid cols-4" id="kpis" aria-live="polite"></div>
+
+        <div class="charts" aria-label="Charts">
+          <div class="card"><canvas id="byModule" height="140" aria-label="Issues by module" role="img"></canvas></div>
+          <div class="card"><canvas id="byPriority" height="140" aria-label="Issues by priority" role="img"></canvas></div>
+          <div class="card"><canvas id="byStatus" height="140" aria-label="Issues by status" role="img"></canvas></div>
+          <div class="card"><canvas id="byType" height="140" aria-label="Issues by type" role="img"></canvas></div>
         </div>
 
-        <div class="table-wrap" role="region" aria-label="Scrollable issues table">
-          <table id="issuesTable">
-            <thead><tr>
-              <th data-key="id" class="sortable" scope="col" aria-sort="none">ID</th>
-              <th data-key="module" class="sortable" scope="col" aria-sort="none">Module</th>
-              <th data-key="title" class="sortable" scope="col" aria-sort="none">Title</th>
-              <th data-key="priority" class="sortable" scope="col" aria-sort="none">Priority</th>
-              <th data-key="status" class="sortable" scope="col" aria-sort="none">Status</th>
-              <th data-key="date" class="sortable" scope="col" aria-sort="none">Date</th>
-              <th data-key="log" class="sortable" scope="col" aria-sort="none">Log</th>
-              <th scope="col">Link</th>
-            </tr></thead>
-            <tbody>
-              <tr><td colspan="8" style="text-align:center;color:var(--muted)">Loading…</td></tr>
-            </tbody>
-          </table>
-        </div>
+        <div class="card" aria-label="Issues table">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <div>
+              <strong>Issues</strong>
+              <div class="muted">Live feed from InCheck issues sheet.</div>
+            </div>
+            <span id="rowCount" class="muted" aria-live="polite"></span>
+          </div>
 
-        <div class="table-actions">
-          <div class="pagination" role="group" aria-label="Table pagination">
-            <button id="firstPage" class="chip" aria-label="First page">« First</button>
-            <button id="prevPage" class="chip" aria-label="Previous page">‹ Prev</button>
-            <span id="pageInfo" class="muted" aria-live="polite"></span>
-            <button id="nextPage" class="chip" aria-label="Next page">Next ›</button>
-            <button id="lastPage" class="chip" aria-label="Last page">Last »</button>
+          <div class="table-wrap" role="region" aria-label="Scrollable issues table">
+            <table id="issuesTable">
+              <thead><tr>
+                <th data-key="id" class="sortable" scope="col" aria-sort="none">ID</th>
+                <th data-key="module" class="sortable" scope="col" aria-sort="none">Module</th>
+                <th data-key="title" class="sortable" scope="col" aria-sort="none">Title</th>
+                <th data-key="priority" class="sortable" scope="col" aria-sort="none">Priority</th>
+                <th data-key="status" class="sortable" scope="col" aria-sort="none">Status</th>
+                <th data-key="date" class="sortable" scope="col" aria-sort="none">Date</th>
+                <th data-key="log" class="sortable" scope="col" aria-sort="none">Log</th>
+                <th scope="col">Link</th>
+              </tr></thead>
+              <tbody>
+                <tr><td colspan="8" style="text-align:center;color:var(--muted)">Loading…</td></tr>
+              </tbody>
+            </table>
           </div>
-          <div style="display:flex;gap:8px;align-items:center">
-            <label for="pageSize" class="muted">Rows per page</label>
-            <select id="pageSize" class="select sm" aria-label="Rows per page">
-              <option>10</option><option selected>20</option><option>50</option><option>100</option>
-            </select>
+
+          <div class="table-actions">
+            <div class="pagination" role="group" aria-label="Table pagination">
+              <button id="firstPage" class="chip" aria-label="First page">« First</button>
+              <button id="prevPage" class="chip" aria-label="Previous page">‹ Prev</button>
+              <span id="pageInfo" class="muted" aria-live="polite"></span>
+              <button id="nextPage" class="chip" aria-label="Next page">Next ›</button>
+              <button id="lastPage" class="chip" aria-label="Last page">Last »</button>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <label for="pageSize" class="muted">Rows per page</label>
+              <select id="pageSize" class="select sm" aria-label="Rows per page">
+                <option>10</option><option selected>20</option><option>50</option><option>100</option>
+              </select>
+            </div>
           </div>
         </div>
-      </div>
+      </section>
+
+      <!-- Calendar View -->
+      <section id="calendarView" class="view" role="tabpanel" aria-labelledby="calendarTab">
+        <div class="card" aria-label="Calendar">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <div>
+              <strong>Deployments & Maintenance Calendar</strong>
+              <div class="muted">
+                Plan deployments, maintenance windows, releases, and other operational events.
+              </div>
+            </div>
+            <button id="addEventBtn" class="btn primary sm" type="button">
+              <span class="icon" aria-hidden="true">➕</span> Add Event
+            </button>
+          </div>
+          <div id="calendar" aria-label="Deployment & maintenance calendar"></div>
+        </div>
+      </section>
     </main>
   </div>
 
-  <!-- Modal -->
-  <div id="issueModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" aria-describedby="modalBody">
+  <!-- Issue Modal -->
+  <div id="issueModal" class="modal" role="dialog" aria-modal="true"
+       aria-labelledby="modalTitle" aria-describedby="modalBody">
     <div class="modal-content">
       <div class="header">
         <h2 id="modalTitle" style="margin:0;font-size:20px">Issue</h2>
         <div class="actions">
-          <button id="copyId" class="btn sm" aria-label="Copy issue ID"><span class="icon" aria-hidden="true">🆔</span> Copy ID</button>
-          <button id="copyLink" class="btn sm" aria-label="Copy issue link"><span class="icon" aria-hidden="true">🔗</span> Copy Link</button>
+          <button id="copyId" class="btn sm" aria-label="Copy issue ID">
+            <span class="icon" aria-hidden="true">🆔</span> Copy ID
+          </button>
+          <button id="copyLink" class="btn sm" aria-label="Copy issue link">
+            <span class="icon" aria-hidden="true">🔗</span> Copy Link
+          </button>
           <button class="modal-close" id="modalClose" aria-label="Close">✕</button>
         </div>
       </div>
       <div id="modalBody"></div>
+    </div>
+  </div>
+
+  <!-- Event Modal -->
+  <div id="eventModal" class="modal" role="dialog" aria-modal="true"
+       aria-labelledby="eventModalTitle" aria-describedby="eventModalBody">
+    <div class="modal-content">
+      <div class="header">
+        <h2 id="eventModalTitle" style="margin:0;font-size:20px">Event</h2>
+        <div class="actions">
+          <button class="modal-close" id="eventModalClose" aria-label="Close event dialog">✕</button>
+        </div>
+      </div>
+
+      <form id="eventForm">
+        <div id="eventModalBody">
+          <div class="filter-group">
+            <div class="filter-row">
+              <label class="muted" for="eventTitle">Title</label>
+              <input id="eventTitle" class="input" type="text" required
+                     placeholder="e.g. Prod deployment v2.3" />
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="eventType">Type</label>
+              <select id="eventType" class="select">
+                <option value="Deployment">Deployment</option>
+                <option value="Maintenance">Maintenance</option>
+                <option value="Release">Release</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="eventStart">Start</label>
+              <input id="eventStart" class="input" type="datetime-local" required />
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="eventEnd">End (optional)</label>
+              <input id="eventEnd" class="input" type="datetime-local" />
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="eventDescription">Notes</label>
+              <textarea id="eventDescription" class="input" rows="3"
+                        placeholder="Details, impact, owner…"
+                        style="border-radius:12px; resize:vertical;"></textarea>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button id="eventSave" type="submit" class="btn primary sm">
+              💾 Save Event
+            </button>
+            <button id="eventCancel" type="button" class="btn ghost sm">
+              Cancel
+            </button>
+          </div>
+          <button id="eventDelete" type="button" class="btn sm"
+                  style="background:transparent;border-color:var(--danger);color:var(--danger);display:none">
+            🗑 Delete
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 
@@ -356,7 +727,7 @@ document.addEventListener("DOMContentLoaded", () => {
     modalTitle: q('#modalTitle'),
     copyId: q('#copyId'),
     copyLink: q('#copyLink'),
-    closeModal: q('#modalClose'),
+    closeModalBtn: q('#modalClose'),
     drawerBtn: q('#drawerBtn'),
     sidebar: q('#sidebar'),
     spinner: q('#spinner'),
@@ -372,7 +743,26 @@ document.addEventListener("DOMContentLoaded", () => {
     createTicket: q('#createTicketBtn'),
     startDateFilter: q('#startDateFilter'),
     endDateFilter: q('#endDateFilter'),
-    loadingStatus: q('#loadingStatus')
+    loadingStatus: q('#loadingStatus'),
+    // Views
+    viewTabs: qAll('.view-tab'),
+    issuesView: q('#issuesView'),
+    calendarView: q('#calendarView'),
+    // Calendar
+    addEventBtn: q('#addEventBtn'),
+    // Event modal
+    eventModal: q('#eventModal'),
+    eventModalTitle: q('#eventModalTitle'),
+    eventModalClose: q('#eventModalClose'),
+    eventForm: q('#eventForm'),
+    eventTitle: q('#eventTitle'),
+    eventType: q('#eventType'),
+    eventStart: q('#eventStart'),
+    eventEnd: q('#eventEnd'),
+    eventDescription: q('#eventDescription'),
+    eventSave: q('#eventSave'),
+    eventCancel: q('#eventCancel'),
+    eventDelete: q('#eventDelete')
   };
 
   // State
@@ -382,7 +772,14 @@ document.addEventListener("DOMContentLoaded", () => {
   let rowsPerPage = +(localStorage.getItem('pageSize') || els.pageSize.value);
   els.pageSize.value = String(rowsPerPage);
   let selectedIssue = null;
-  let lastFocusedBeforeModal = null;
+  let lastFocusedBeforeIssueModal = null;
+  let lastFocusedBeforeEventModal = null;
+
+  // Calendar state
+  let eventsData = [];
+  let calendar = null;
+  let calendarInitialized = false;
+  let editingEventId = null;
 
   const debounce = (fn, ms=250) => { let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; };
 
@@ -400,7 +797,7 @@ document.addEventListener("DOMContentLoaded", () => {
     setTimeout(()=>els.toast.style.display='none', ms);
   };
 
-  // Normalizers
+  // Normalizers & helpers
   function normalizeStatus(rawStatus) {
     const s = (rawStatus || '').trim().toLowerCase();
     if (!s) return 'Not Started Yet';
@@ -422,7 +819,6 @@ document.addEventListener("DOMContentLoaded", () => {
     return rawPriority;
   }
 
-  // Row normalization
   function normalizeRow(raw){
     const lower={};
     for(const k in raw){
@@ -509,7 +905,7 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
       localStorage.setItem('incheckFilters', JSON.stringify(state));
     } catch(e){
-      // ignore storage errors
+      // ignore
     }
   }
 
@@ -538,9 +934,9 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // KPI rendering with percentage
+  // KPI rendering
   function renderKpis(){
-    const total=filtered.length; const counts={};
+    const total = filtered.length; const counts = {};
     filtered.forEach(r=>{ counts[r.status]=(counts[r.status]||0)+1; });
     els.kpis.innerHTML='';
     const add=(label,val)=>{
@@ -553,7 +949,6 @@ document.addEventListener("DOMContentLoaded", () => {
       d.innerHTML=`<div class="label">${label}</div><div class="value">${val}</div><div class="sub">${pct}%</div>`;
       d.onclick=()=>{
         if(label === 'Total Issues'){
-          // reset all filters
           els.search.value = '';
           els.startDateFilter.value = '';
           els.endDateFilter.value = '';
@@ -602,7 +997,7 @@ document.addEventListener("DOMContentLoaded", () => {
     return sortAsc ? sorted : sorted.reverse();
   }
 
-  // Pagination helpers
+  // Pagination
   function paginate(list){
     const start=(currentPage-1)*rowsPerPage;
     return list.slice(start, start+rowsPerPage);
@@ -662,7 +1057,7 @@ document.addEventListener("DOMContentLoaded", () => {
       tr.addEventListener('keydown', e=>{
         if(e.key==='Enter' || e.key===' '){
           e.preventDefault();
-          openModal(tr.getAttribute('data-id'));
+          openIssueModal(tr.getAttribute('data-id'));
         }
       });
     });
@@ -816,7 +1211,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Modal helpers
+  // Modal focus helper
   function trapFocus(container, e){
     const focusables = container.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
     if(!focusables.length) return;
@@ -825,11 +1220,12 @@ document.addEventListener("DOMContentLoaded", () => {
     else if(!e.shiftKey && document.activeElement === last){ first.focus(); e.preventDefault(); }
   }
 
-  function openModal(id){
+  // Issue modal
+  function openIssueModal(id){
     const r = rows.find(x=>x.id===id);
     if(!r) return;
     selectedIssue = r;
-    lastFocusedBeforeModal = document.activeElement;
+    lastFocusedBeforeIssueModal = document.activeElement;
 
     els.modalTitle.textContent = r.title || r.id || 'Issue';
     els.modalBody.innerHTML = `
@@ -845,12 +1241,180 @@ document.addEventListener("DOMContentLoaded", () => {
     els.modal.style.display='flex';
     els.copyId.focus();
   }
-  function closeModal(){
+  function closeIssueModal(){
     els.modal.style.display='none';
     selectedIssue=null;
-    if(lastFocusedBeforeModal && typeof lastFocusedBeforeModal.focus==='function'){
-      lastFocusedBeforeModal.focus();
+    if(lastFocusedBeforeIssueModal && typeof lastFocusedBeforeIssueModal.focus==='function'){
+      lastFocusedBeforeIssueModal.focus();
     }
+  }
+
+  // Calendar events storage
+  function loadEventsFromStorage(){
+    try {
+      return JSON.parse(localStorage.getItem('incheckEvents') || '[]');
+    } catch(e) {
+      return [];
+    }
+  }
+  function saveEventsToStorage(){
+    try {
+      localStorage.setItem('incheckEvents', JSON.stringify(eventsData));
+    } catch(e) {
+      // ignore
+    }
+  }
+  function renderEventsOnCalendar(){
+    if (!calendar) return;
+    calendar.removeAllEvents();
+    eventsData.forEach(ev => {
+      const type = (ev.type || 'Other');
+      const cls = 'event-type-' + type.toLowerCase().replace(/\s+/g,'-');
+      calendar.addEvent({
+        id: ev.id,
+        title: ev.title,
+        start: ev.start,
+        end: ev.end || null,
+        extendedProps: { type: type, description: ev.description },
+        classNames: [cls]
+      });
+    });
+  }
+
+  // Calendar init
+  function initCalendar(){
+    const calendarEl = document.getElementById('calendar');
+    if(!calendarEl || typeof FullCalendar === 'undefined') {
+      showToast('Calendar library failed to load');
+      return;
+    }
+    calendar = new FullCalendar.Calendar(calendarEl, {
+      initialView: 'dayGridMonth',
+      selectable: true,
+      editable: false,
+      height: 'auto',
+      headerToolbar: {
+        left: 'title',
+        center: '',
+        right: 'dayGridMonth,timeGridWeek,listWeek today prev,next'
+      },
+      select: info => {
+        openEventModal({ start: info.start, end: info.end });
+      },
+      eventClick: info => {
+        const ev = eventsData.find(e => e.id === info.event.id);
+        if(ev) {
+          openEventModal(ev);
+        } else {
+          openEventModal({
+            id: info.event.id,
+            title: info.event.title,
+            type: info.event.extendedProps.type || 'Other',
+            start: info.event.start,
+            end: info.event.end,
+            description: info.event.extendedProps.description || ''
+          });
+        }
+      },
+      eventDidMount: info => {
+        if(info.event.extendedProps && info.event.extendedProps.description) {
+          info.el.setAttribute('title', info.event.extendedProps.description);
+        }
+      }
+    });
+    renderEventsOnCalendar();
+    calendar.render();
+  }
+  function ensureCalendar(){
+    if (calendarInitialized) return;
+    calendarInitialized = true;
+    initCalendar();
+  }
+
+  // Event modal helpers
+  function toLocalInputValue(date){
+    const d = (date instanceof Date) ? date : new Date(date);
+    if (isNaN(d)) return '';
+    const pad=n=>String(n).padStart(2,'0');
+    const year=d.getFullYear();
+    const month=pad(d.getMonth()+1);
+    const day=pad(d.getDate());
+    const hrs=pad(d.getHours());
+    const mins=pad(d.getMinutes());
+    return `${year}-${month}-${day}T${hrs}:${mins}`;
+  }
+
+  function openEventModal(data){
+    lastFocusedBeforeEventModal = document.activeElement;
+
+    const isEdit = !!(data && data.id);
+    editingEventId = isEdit ? data.id : null;
+    els.eventModalTitle.textContent = isEdit ? 'Edit Event' : 'Add Event';
+    els.eventDelete.style.display = isEdit ? 'inline-flex' : 'none';
+
+    els.eventTitle.value = data && data.title ? data.title : '';
+    els.eventType.value = data && data.type ? data.type : 'Deployment';
+    els.eventStart.value = data && data.start ? toLocalInputValue(data.start) : '';
+    els.eventEnd.value = data && data.end ? toLocalInputValue(data.end) : '';
+    els.eventDescription.value = data && data.description ? data.description : '';
+
+    els.eventModal.style.display = 'flex';
+    els.eventTitle.focus();
+  }
+
+  function closeEventModal(){
+    els.eventModal.style.display = 'none';
+    editingEventId = null;
+    if(lastFocusedBeforeEventModal && typeof lastFocusedBeforeEventModal.focus === 'function'){
+      lastFocusedBeforeEventModal.focus();
+    }
+  }
+
+  function handleEventFormSubmit(e){
+    e.preventDefault();
+    const title = els.eventTitle.value.trim();
+    const type = els.eventType.value || 'Deployment';
+    const start = els.eventStart.value;
+    const end = els.eventEnd.value || null;
+    const description = els.eventDescription.value.trim();
+
+    if(!title){
+      showToast('Title is required for events');
+      return;
+    }
+    if(!start){
+      showToast('Start date/time is required');
+      return;
+    }
+
+    if(editingEventId){
+      const idx = eventsData.findIndex(ev => ev.id === editingEventId);
+      if(idx !== -1){
+        eventsData[idx] = { id: editingEventId, title, type, start, end, description };
+      }
+    } else {
+      const id = 'evt_' + Date.now() + '_' + Math.random().toString(16).slice(2);
+      eventsData.push({ id, title, type, start, end, description });
+    }
+    saveEventsToStorage();
+    renderEventsOnCalendar();
+    showToast('Event saved');
+    closeEventModal();
+  }
+
+  function handleDeleteEvent(){
+    if(!editingEventId){
+      closeEventModal();
+      return;
+    }
+    const idx = eventsData.findIndex(ev => ev.id === editingEventId);
+    if(idx !== -1){
+      eventsData.splice(idx,1);
+      saveEventsToStorage();
+      renderEventsOnCalendar();
+      showToast('Event deleted');
+    }
+    closeEventModal();
   }
 
   // Export CSV for current filtered data
@@ -893,17 +1457,37 @@ document.addEventListener("DOMContentLoaded", () => {
   q('#issuesTable').addEventListener('click', (ev)=>{
     if (ev.target.closest('a')) return; // let links behave normally
     const tr = ev.target.closest('tr[data-id]');
-    if(tr){ openModal(tr.getAttribute('data-id')); }
+    if(tr){ openIssueModal(tr.getAttribute('data-id')); }
   });
-  els.closeModal.addEventListener('click', closeModal);
-  els.modal.addEventListener('click', (e)=>{ if(e.target===els.modal) closeModal(); });
+
+  // Issue modal events
+  els.closeModalBtn.addEventListener('click', closeIssueModal);
+  els.modal.addEventListener('click', (e)=>{ if(e.target===els.modal) closeIssueModal(); });
+
+  // Event modal events
+  els.eventModalClose.addEventListener('click', closeEventModal);
+  els.eventCancel.addEventListener('click', () => closeEventModal());
+  els.eventForm.addEventListener('submit', handleEventFormSubmit);
+  els.eventDelete.addEventListener('click', handleDeleteEvent);
+  els.eventModal.addEventListener('click', e => {
+    if (e.target === els.eventModal) closeEventModal();
+  });
+
+  // Global key handling for modals
   document.addEventListener('keydown', (e)=>{
-    if(els.modal.style.display==='flex'){
-      if(e.key==='Escape') closeModal();
-      if(e.key==='Tab') trapFocus(els.modal, e);
+    const issueOpen = els.modal.style.display === 'flex';
+    const eventOpen = els.eventModal.style.display === 'flex';
+    if(e.key==='Escape'){
+      if(eventOpen){ closeEventModal(); return; }
+      if(issueOpen){ closeIssueModal(); return; }
+    }
+    if(e.key==='Tab'){
+      if(eventOpen){ trapFocus(els.eventModal, e); }
+      else if(issueOpen){ trapFocus(els.modal, e); }
     }
   });
 
+  // Copy issue ID / link
   els.copyId.addEventListener('click', async ()=>{
     if(!selectedIssue) return;
     try{
@@ -998,6 +1582,40 @@ document.addEventListener("DOMContentLoaded", () => {
   // Theme select
   els.themeSelect.addEventListener('change', ()=> applyTheme(els.themeSelect.value));
   initTheme();
+
+  // View tabs
+  els.viewTabs.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const view = btn.dataset.view;
+      els.viewTabs.forEach(b => {
+        const active = b === btn;
+        b.classList.toggle('active', active);
+        b.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
+      if(view === 'issues'){
+        els.issuesView.classList.add('active');
+        els.calendarView.classList.remove('active');
+      } else {
+        els.issuesView.classList.remove('active');
+        els.calendarView.classList.add('active');
+        ensureCalendar();
+      }
+    });
+  });
+
+  // Add event button (calendar)
+  if (els.addEventBtn) {
+    els.addEventBtn.addEventListener('click', () => {
+      const now = new Date();
+      openEventModal({
+        start: now,
+        end: new Date(now.getTime() + 60*60*1000) // +1h default
+      });
+    });
+  }
+
+  // Initial events load
+  eventsData = loadEventsFromStorage();
 
   // Initial load
   if(typeof Chart === 'undefined') { showToast('Chart.js failed to load'); }
