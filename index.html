@@ -707,6 +707,9 @@
 document.addEventListener("DOMContentLoaded", () => {
   const SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTRwAjNAQxiPP8uR15t_vx03JkjgEBjgUwp2bpx8rsHx-JJxVDBZyf5ap77rAKrYHfgkVMwLJVm6pGn/pub?output=csv";
 
+  // 👇 Your Google Apps Script Web App URL for calendar events
+  const CALENDAR_API_URL = "https://script.google.com/macros/s/AKfycbzFfKy1GrenxyM7rqFiERG8AqwXNLLZ6Lj47l4XntYHHfD50EuXzcXca0zeFreRZGnJQw/exec";
+
   function q(sel, root = document) { return root.querySelector(sel); }
   function qAll(sel){ return Array.from(document.querySelectorAll(sel)); }
 
@@ -1179,7 +1182,7 @@ document.addEventListener("DOMContentLoaded", () => {
     drawCharts();
   }
 
-  // Data load
+  // Data load for issues
   async function loadSheet(){
     try {
       showSpinner(true);
@@ -1249,7 +1252,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Calendar events storage
+  // Calendar events local-only helper (for fallback)
   function loadEventsFromStorage(){
     try {
       return JSON.parse(localStorage.getItem('incheckEvents') || '[]');
@@ -1260,10 +1263,51 @@ document.addEventListener("DOMContentLoaded", () => {
   function saveEventsToStorage(){
     try {
       localStorage.setItem('incheckEvents', JSON.stringify(eventsData));
-    } catch(e) {
-      // ignore
-    }
+    } catch(e) {}
   }
+
+  // 🔁 Fetch events from Google Sheet via Apps Script
+  async function fetchEventsFromSheet() {
+    try {
+      const res = await fetch(CALENDAR_API_URL);
+      if (!res.ok) throw new Error('Failed to load events');
+      const data = await res.json();
+      eventsData = data.events || [];
+      saveEventsToStorage(); // mirror to cache
+    } catch (e) {
+      console.error(e);
+      // Fallback to local cache
+      eventsData = loadEventsFromStorage();
+      if (eventsData.length) {
+        showToast('Using cached calendar events (API error).');
+      } else {
+        showToast('Unable to load calendar events.');
+      }
+    }
+    renderEventsOnCalendar();
+  }
+
+  async function saveEventToSheet(ev) {
+    const res = await fetch(CALENDAR_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'save', event: ev })
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Save failed');
+    return data.event;
+  }
+
+  async function deleteEventFromSheet(id) {
+    const res = await fetch(CALENDAR_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'delete', event: { id } })
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Delete failed');
+  }
+
   function renderEventsOnCalendar(){
     if (!calendar) return;
     calendar.removeAllEvents();
@@ -1370,7 +1414,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  function handleEventFormSubmit(e){
+  async function handleEventFormSubmit(e){
     e.preventDefault();
     const title = els.eventTitle.value.trim();
     const type = els.eventType.value || 'Deployment';
@@ -1387,32 +1431,51 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    if(editingEventId){
-      const idx = eventsData.findIndex(ev => ev.id === editingEventId);
-      if(idx !== -1){
-        eventsData[idx] = { id: editingEventId, title, type, start, end, description };
+    let eventObj = {
+      id: editingEventId || '',
+      title,
+      type,
+      start,
+      end,
+      description
+    };
+
+    try {
+      const saved = await saveEventToSheet(eventObj);
+      // Update local eventsData
+      const idx = eventsData.findIndex(ev => ev.id === saved.id);
+      if (idx === -1) {
+        eventsData.push(saved);
+      } else {
+        eventsData[idx] = saved;
       }
-    } else {
-      const id = 'evt_' + Date.now() + '_' + Math.random().toString(16).slice(2);
-      eventsData.push({ id, title, type, start, end, description });
+      saveEventsToStorage();
+      renderEventsOnCalendar();
+      showToast('Event saved');
+      closeEventModal();
+    } catch (err) {
+      console.error(err);
+      showToast('Error saving event: ' + err.message);
     }
-    saveEventsToStorage();
-    renderEventsOnCalendar();
-    showToast('Event saved');
-    closeEventModal();
   }
 
-  function handleDeleteEvent(){
+  async function handleDeleteEvent(){
     if(!editingEventId){
       closeEventModal();
       return;
     }
-    const idx = eventsData.findIndex(ev => ev.id === editingEventId);
-    if(idx !== -1){
-      eventsData.splice(idx,1);
-      saveEventsToStorage();
-      renderEventsOnCalendar();
+    try {
+      await deleteEventFromSheet(editingEventId);
+      const idx = eventsData.findIndex(ev => ev.id === editingEventId);
+      if(idx !== -1){
+        eventsData.splice(idx,1);
+        saveEventsToStorage();
+        renderEventsOnCalendar();
+      }
       showToast('Event deleted');
+    } catch (err) {
+      console.error(err);
+      showToast('Error deleting event: ' + err.message);
     }
     closeEventModal();
   }
@@ -1609,15 +1672,16 @@ document.addEventListener("DOMContentLoaded", () => {
       const now = new Date();
       openEventModal({
         start: now,
-        end: new Date(now.getTime() + 60*60*1000) // +1h default
+        end: new Date(now.getTime() + 60*60*1000)
       });
     });
   }
 
-  // Initial events load
-  eventsData = loadEventsFromStorage();
+  // Initial events load from Sheet (with local fallback)
+  eventsData = [];
+  fetchEventsFromSheet();
 
-  // Initial load
+  // Initial load for issues
   if(typeof Chart === 'undefined') { showToast('Chart.js failed to load'); }
   if(typeof Papa === 'undefined') { showToast('PapaParse failed to load'); }
   loadSheet();
