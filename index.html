@@ -1,1688 +1,358 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>InCheck Issues & Operations Dashboard</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Unified Operations & Attendance Dashboard</title>
 
-  <!-- Fonts & Libs -->
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<!-- External Libraries -->
+<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/main.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/main.min.js"></script>
 
-  <!-- FullCalendar -->
-  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/main.min.css" rel="stylesheet" />
-  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
+<style>
+/* ======= RESET & THEME ======= */
+:root {
+  --bg: #0f172a;
+  --fg: #f1f5f9;
+  --accent: #3b82f6;
+  --card: #1e293b;
+  --border: #334155;
+}
+body.light {
+  --bg: #f8fafc;
+  --fg: #0f172a;
+  --accent: #2563eb;
+  --card: #ffffff;
+  --border: #cbd5e1;
+}
+body {
+  font-family: 'Inter', sans-serif;
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  transition: background 0.3s, color 0.3s;
+}
+h1,h2,h3 { margin: 0; font-weight: 600; }
 
-  <style>
-    :root {
-      /* Status colors */
-      --status-resolved:#10b981;
-      --status-underdev:#3b82f6;
-      --status-rejected:#ef4444;
-      --status-onhold:#f59e0b;
-      --status-notstarted:#6b7280;
-      --status-sent:#8b5cf6;
-      --status-onstage:#0ea5e9;
+/* ======= LAYOUT GRID ======= */
+.dashboard {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  grid-template-rows: auto 1fr;
+  height: 100vh;
+  overflow: hidden;
+}
+header {
+  grid-column: 1 / -1;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  padding: 0.8rem 1.2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+main {
+  display: flex;
+  height: 100%;
+}
+section#calendar-area {
+  flex: 1;
+  padding: 1rem;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+}
+aside#attendance-panel {
+  width: 380px;
+  background: var(--card);
+  padding: 1rem;
+  overflow-y: auto;
+}
 
-      /* Priority colors */
-      --priority-high:#ef4444;
-      --priority-medium:#f59e0b;
-      --priority-low:#10b981;
+/* ======= COMPONENT STYLES ======= */
+button, input, select {
+  background: var(--card);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  padding: 0.4rem 0.6rem;
+}
+button:hover { background: var(--accent); color: #fff; cursor: pointer; }
 
-      /* Theme colors */
-      --bg:#050816;
-      --card:rgba(11,22,45,0.96);
-      --muted:#9aa6d1;
-      --text:#e8edff;
-      --accent:#4f8cff;
-      --danger:#ef4444;
-      --ok:#10b981;
-      --warn:#f59e0b;
-      --info:#3b82f6;
-      --purple:#8b5cf6;
-      --neutral:#6b7280;
-      --border:#1b2645;
-      --shadow:0 18px 40px rgba(0,0,0,.55);
-      --focus:0 0 0 3px rgba(79,140,255,.5);
-    }
-    :root[data-theme="light"] {
-      --bg:#f4f6ff;
-      --card:#ffffff;
-      --muted:#5a678c;
-      --text:#0d1326;
-      --accent:#2563eb;
-      --danger:#dc2626;
-      --ok:#059669;
-      --warn:#d97706;
-      --info:#1d4ed8;
-      --purple:#7c3aed;
-      --neutral:#374151;
-      --border:#e0e4f3;
-      --shadow:0 16px 32px rgba(15,23,42,.12);
-      --focus:0 0 0 3px rgba(37,99,235,.35);
-    }
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 0 10px rgba(0,0,0,0.1);
+}
 
-    * { box-sizing:border-box }
-    html,body { height:100% }
-    body {
-      margin:0;
-      font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;
-      background:
-        radial-gradient(circle at 0% 0%, rgba(79,140,255,.22), transparent 55%),
-        radial-gradient(circle at 100% 100%, rgba(139,92,246,.22), transparent 55%),
-        var(--bg);
-      color:var(--text);
-      transition:background .3s,color .3s;
-    }
-    :focus-visible { outline:none; box-shadow:var(--focus); border-radius:8px; }
+/* ======= CALENDAR ======= */
+#calendar {
+  background: var(--card);
+  border-radius: 1rem;
+  padding: 0.6rem;
+}
 
-    .sr-only {
-      position:absolute;
-      width:1px;
-      height:1px;
-      padding:0;
-      margin:-1px;
-      overflow:hidden;
-      clip:rect(0,0,0,0);
-      white-space:nowrap;
-      border:0;
-    }
+/* ======= ATTENDANCE PANEL ======= */
+#attendance-panel h2 { margin-bottom: 0.5rem; }
+.attendance-summary {
+  display: flex;
+  justify-content: space-around;
+  margin-bottom: 1rem;
+}
+.attendance-summary div {
+  text-align: center;
+}
+canvas {
+  width: 100% !important;
+  height: 250px !important;
+}
 
-    /* Topbar */
-    header {
-      position:sticky; top:0; z-index:20;
-      background:linear-gradient(90deg, rgba(11,22,45,.98), rgba(24,35,70,.96));
-      backdrop-filter:blur(18px);
-      border-bottom:1px solid var(--border);
-      display:flex; align-items:center; gap:12px; padding:10px 16px;
-      box-shadow:var(--shadow);
-    }
-    .brand { display:flex; align-items:center; gap:10px; font-weight:700; }
-    .brand .logo {
-      width:30px; height:30px; border-radius:10px;
-      display:grid; place-items:center;
-      background:conic-gradient(from 160deg, var(--accent), #9b8cff, #22c55e, var(--accent));
-      color:#fff; font-weight:800;
-      box-shadow:0 10px 30px rgba(79,140,255,.55);
-    }
-    .brand-text { display:flex; flex-direction:column; }
-    .brand-text span:first-child { font-size:14px; text-transform:uppercase; letter-spacing:.16em; color:var(--muted); }
-    .brand-text span:last-child { font-size:16px; }
-
-    .toolbar { margin-left:auto; display:flex; gap:10px; align-items:center; flex-wrap:wrap }
-    .btn, .select, .input {
-      padding:8px 12px;
-      border-radius:999px;
-      border:1px solid var(--border);
-      background:rgba(8,16,32,.92);
-      color:inherit;
-      font:inherit;
-    }
-    .btn {
-      cursor:pointer;
-      font-weight:600;
-      display:inline-flex;
-      align-items:center;
-      gap:6px;
-      box-shadow:0 8px 20px rgba(15,23,42,.25);
-    }
-    .btn.primary {
-      background:linear-gradient(135deg,var(--accent),#7c3aed);
-      border-color:transparent;
-      color:#fff;
-    }
-    .btn.ghost {
-      border-color:transparent;
-      background:transparent;
-      box-shadow:none;
-    }
-    .btn.sm { padding:6px 10px; border-radius:999px; font-size:13px }
-    .btn:hover { opacity:.95; transform:translateY(-1px); }
-    .btn:active { transform:translateY(0); opacity:.9; }
-    .input, .select {
-      background:rgba(5,10,24,.85);
-      box-shadow: inset 0 0 0 1px rgba(15,23,42,.35);
-    }
-    .input::placeholder { color:var(--muted); }
-    .icon { font-size:18px; line-height:1 }
-
-    /* Layout */
-    .wrap {
-      display:grid; grid-template-columns:280px minmax(0,1fr);
-      gap:18px; padding:18px;
-      max-width:1440px; margin:0 auto;
-    }
-    @media(max-width:980px){ .wrap { grid-template-columns:1fr } }
-
-    /* Sidebar */
-    .sidebar {
-      background:linear-gradient(145deg, rgba(11,23,45,.96), rgba(13,28,60,.98));
-      border:1px solid rgba(148,163,184,.25);
-      border-radius:18px;
-      padding:16px;
-      position:sticky; top:82px;
-      height:fit-content;
-      max-height:calc(100vh - 102px);
-      overflow:auto;
-      box-shadow:var(--shadow);
-    }
-    :root[data-theme="light"] .sidebar {
-      background:var(--card);
-      border-color:var(--border);
-    }
-    .sidebar h3 {
-      margin:0 0 10px 0;
-      font-size:13px; color:var(--muted);
-      text-transform:uppercase; letter-spacing:.12em;
-    }
-    .filter-group { display:grid; gap:10px; margin-bottom:16px }
-    .filter-row { display:grid; gap:6px }
-    .muted { color:var(--muted); font-size:12px }
-    .divider { height:1px; background:var(--border); margin:8px 0 14px; opacity:.7 }
-
-    /* Content */
-    .content { display:flex; flex-direction:column; gap:16px }
-
-    .view-tabs {
-      display:inline-flex;
-      align-self:flex-start;
-      background:rgba(10,18,40,.98);
-      border-radius:999px;
-      border:1px solid var(--border);
-      box-shadow:0 16px 40px rgba(15,23,42,.45);
-      padding:4px;
-    }
-    .view-tab {
-      border:none;
-      background:transparent;
-      color:var(--muted);
-      padding:6px 14px;
-      border-radius:999px;
-      font-size:13px;
-      cursor:pointer;
-      display:flex; align-items:center; gap:6px;
-    }
-    .view-tab .icon { font-size:16px; }
-    .view-tab.active {
-      background:linear-gradient(135deg,var(--accent),#7c3aed);
-      color:#fff;
-      box-shadow:0 10px 26px rgba(79,140,255,.6);
-    }
-
-    .view { display:none; }
-    .view.active { display:block; }
-    .view > * + * { margin-top:16px; }
-
-    .grid { display:grid; gap:16px }
-    .grid.cols-4 { grid-template-columns:repeat(4, minmax(0,1fr)) }
-    @media(max-width:980px){ .grid.cols-4{ grid-template-columns:repeat(2, minmax(0,1fr)) } }
-    @media(max-width:600px){ .grid.cols-4{ grid-template-columns:1fr } }
-
-    /* Cards */
-    .card {
-      background:radial-gradient(circle at 0 0, rgba(79,140,255,.16), transparent 55%), var(--card);
-      border:1px solid rgba(148,163,184,.35);
-      border-radius:18px;
-      padding:16px;
-      box-shadow:var(--shadow);
-      transition:transform .2s, box-shadow .2s, border-color .2s, background .2s;
-    }
-    :root[data-theme="light"] .card {
-      background:var(--card);
-      border-color:var(--border);
-    }
-    .card:hover {
-      transform:translateY(-2px);
-      box-shadow:0 20px 50px rgba(15,23,42,.4);
-      border-color:rgba(99,102,241,.9);
-    }
-
-    /* KPIs */
-    .kpi {
-      cursor:pointer;
-      text-align:left;
-      position:relative;
-      overflow:hidden;
-    }
-    .kpi::before {
-      content:"";
-      position:absolute;
-      inset:auto -40% 0;
-      height:60%;
-      background:radial-gradient(circle at 20% 0, rgba(79,140,255,.45), transparent 55%);
-      opacity:0;
-      transition:opacity .25s, transform .25s;
-      transform:translateY(16px);
-    }
-    .kpi:hover::before {
-      opacity:1;
-      transform:translateY(0);
-    }
-    .kpi .label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.12em }
-    .kpi .value { font-size:26px; font-weight:800; margin-top:6px }
-    .kpi .sub { font-size:12px; color:var(--muted); margin-top:4px }
-
-    /* Charts */
-    .charts { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:16px }
-    @media(max-width:980px){ .charts{ grid-template-columns:1fr } }
-
-    /* Table */
-    table { width:100%; border-collapse:separate; border-spacing:0; font-size:14px }
-    thead th {
-      position:sticky; top:0; z-index:5;
-      background:rgba(9,15,32,.98);
-      text-align:left; padding:10px 9px;
-      border-bottom:1px solid var(--border);
-      user-select:none; cursor:pointer;
-      font-size:12px; color:var(--muted);
-    }
-    :root[data-theme="light"] thead th { background:var(--card); }
-    tbody td { padding:10px 9px; border-bottom:1px solid rgba(148,163,184,.22); }
-    tr:hover { background:rgba(255,255,255,.03) }
-    .table-wrap {
-      max-height:460px;
-      overflow:auto;
-      border-radius:14px;
-      border:1px solid rgba(148,163,184,.35);
-      background:radial-gradient(circle at 0 0, rgba(79,140,255,.08), transparent 55%);
-    }
-    th.sortable::after { content:""; margin-left:6px; border:4px solid transparent; border-top-color:var(--muted); display:inline-block; transform:translateY(1px); }
-    th.sorted-asc::after { border-bottom-color:var(--accent); border-top-color:transparent; transform:translateY(-1px); }
-    th.sorted-desc::after { border-top-color:var(--accent); border-bottom-color:transparent; transform:translateY(1px); }
-
-    .pill {
-      padding:3px 9px;
-      border-radius:999px;
-      font-size:11px;
-      font-weight:700;
-      display:inline-block;
-      letter-spacing:.04em;
-      text-transform:uppercase;
-    }
-    .status-Resolved { background: var(--status-resolved); color:#fff }
-    .status-Under\ Development { background: var(--status-underdev); color:#fff }
-    .status-Rejected { background: var(--status-rejected); color:#fff }
-    .status-On\ Hold { background: var(--status-onhold); color:#fff }
-    .status-Not\ Started\ Yet { background: var(--status-notstarted); color:#fff }
-    .status-Sent { background: var(--status-sent); color:#fff }
-    .status-On\ Stage { background: var(--status-onstage); color:#fff }
-
-    .priority-High { background: var(--priority-high); color:#fff }
-    .priority-Medium { background: var(--priority-medium); color:#fff }
-    .priority-Low { background: var(--priority-low); color:#fff }
-
-    /* Modal */
-    .modal {
-      display:none;
-      position:fixed; inset:0;
-      background:rgba(0,0,0,.58);
-      align-items:center; justify-content:center;
-      z-index:100;
-    }
-    .modal-content {
-      background:var(--card); color:var(--text);
-      border:1px solid rgba(148,163,184,.35);
-      padding:18px; border-radius:18px;
-      max-width:760px; width:92%;
-      max-height:90%; overflow:auto;
-      box-shadow:var(--shadow);
-    }
-    .modal .header {
-      display:flex; align-items:center;
-      gap:10px; justify-content:space-between;
-      margin-bottom:8px;
-    }
-    .modal .actions { display:flex; gap:8px; flex-wrap:wrap; }
-    .modal-close {
-      cursor:pointer;
-      border:none;
-      background:transparent;
-      color:var(--muted);
-      font-size:20px;
-    }
-
-    /* Pagination */
-    .table-actions {
-      display:flex; gap:10px;
-      align-items:center; justify-content:space-between;
-      margin-top:10px; flex-wrap:wrap;
-    }
-    .pagination { display:flex; gap:6px; align-items:center }
-    .chip {
-      padding:6px 10px;
-      border-radius:999px;
-      background:rgba(9,14,30,.95);
-      border:1px solid(var(--border));
-      cursor:pointer;
-      font-size:12px;
-    }
-    .chip[disabled] { opacity:.45; cursor:not-allowed }
-    .chip.active { background:var(--accent); color:#fff; border-color:transparent }
-    .select.sm, .input.sm { padding:6px 8px; border-radius:999px; font-size:13px }
-
-    /* Drawer */
-    .drawer-toggle { display:none }
-    @media(max-width:980px){
-      .drawer-toggle { display:inline-flex }
-      .sidebar {
-        position:fixed; inset:82px 0 0 auto;
-        width:88%; max-width:360px;
-        transform:translateX(110%);
-        transition:transform .25s;
-      }
-      .sidebar.open { transform:translateX(0) }
-    }
-
-    /* Spinner & Toast */
-    .spinner {
-      display:none;
-      position:fixed; inset:0;
-      background:rgba(5,10,25,.65);
-      z-index:120;
-      align-items:center; justify-content:center;
-    }
-    .spinner .ring {
-      width:56px; height:56px;
-      border:5px solid var(--border);
-      border-top-color:var(--accent);
-      border-radius:50%;
-      animation:spin 1s linear infinite;
-      background:transparent;
-      box-shadow:0 0 0 1px rgba(15,23,42,.4);
-    }
-    @keyframes spin { to { transform:rotate(360deg) } }
-
-    .toast {
-      position:fixed; right:16px; bottom:16px;
-      background:var(--card);
-      border:1px solid var(--accent);
-      color:#fff;
-      padding:10px 12px;
-      border-radius:12px;
-      z-index:130;
-      box-shadow:var(--shadow);
-      display:none;
-      font-size:13px;
-    }
-
-    /* Calendar styling */
-    #calendar { margin-top:8px; min-height:520px; }
-    .fc { font-size:13px; }
-    .fc .fc-toolbar-title { font-size:16px; }
-    .fc-theme-standard .fc-scrollgrid,
-    .fc-theme-standard td,
-    .fc-theme-standard th {
-      border-color:var(--border);
-    }
-    .fc .fc-col-header-cell-cushion,
-    .fc .fc-daygrid-day-number {
-      color:var(--muted);
-    }
-    .fc .fc-daygrid-day.fc-day-today {
-      background:rgba(79,140,255,.09);
-    }
-    .fc .fc-button {
-      background:rgba(9,14,30,.98);
-      border-color:var(--border);
-      color:var(--text);
-      border-radius:999px;
-      padding:4px 10px;
-      font-size:12px;
-    }
-    .fc .fc-button-primary:not(:disabled).fc-button-active,
-    .fc .fc-button-primary:not(:disabled):active,
-    .fc .fc-button-primary:not(:disabled):focus,
-    .fc .fc-button-primary:not(:disabled):hover {
-      background:var(--accent);
-      border-color:var(--accent);
-    }
-    .fc .fc-toolbar.fc-header-toolbar { margin-bottom:12px; }
-
-    .fc-event.event-type-deployment { background-color:var(--info); border-color:var(--info); }
-    .fc-event.event-type-maintenance { background-color:var(--warn); border-color:var(--warn); }
-    .fc-event.event-type-release { background-color:var(--ok); border-color:var(--ok); }
-    .fc-event.event-type-other { background-color:var(--purple); border-color:var(--purple); }
-
-    @media (prefers-reduced-motion: reduce){
-      * { transition:none !important; animation:none !important }
-    }
-  </style>
+/* ======= TOGGLE ======= */
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+</style>
 </head>
-<body>
+<body class="dark">
+<div class="dashboard">
   <header>
-    <div class="brand" aria-label="InCheck brand">
-      <div class="logo" aria-hidden="true">IC</div>
-      <div class="brand-text">
-        <span>INCHECK</span>
-        <span>Issues & Ops</span>
-      </div>
-    </div>
-
-    <button id="drawerBtn" class="btn drawer-toggle" aria-expanded="false" aria-controls="sidebar">
-      <span class="icon" aria-hidden="true">🧰</span> Filters
-    </button>
-
-    <div class="toolbar">
-      <input id="searchInput" class="input" type="search" placeholder="Search ID, title, description, log…" aria-label="Search issues" />
-      <select id="themeSelect" class="select" aria-label="Theme">
-        <option value="system">System</option>
-        <option value="dark">Dark</option>
-        <option value="light">Light</option>
-      </select>
-      <button id="refreshNow" class="btn" aria-label="Refresh from source">
-        <span class="icon" aria-hidden="true">🔄</span> Refresh
-      </button>
-      <button id="exportCsv" class="btn" aria-label="Export filtered issues as CSV">
-        <span class="icon" aria-hidden="true">📥</span> Export CSV
-      </button>
-      <button id="createTicketBtn" class="btn primary" aria-label="Create new ticket">
-        <span class="icon" aria-hidden="true">➕</span> Create Ticket
-      </button>
+    <h1>InCheck + Attendance Dashboard</h1>
+    <div class="theme-toggle">
+      <label for="themeSwitch">🌙 / ☀️</label>
+      <input type="checkbox" id="themeSwitch" />
     </div>
   </header>
 
-  <div id="loadingStatus" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+  <main>
+    <section id="calendar-area">
+      <div id="calendar"></div>
+    </section>
 
-  <div class="wrap">
-    <aside class="sidebar" id="sidebar" aria-label="Filters">
-      <h3>Filters</h3>
-      <div class="filter-group" role="group" aria-label="Field filters">
-        <div class="filter-row">
-          <label class="muted" for="moduleFilter">Module</label>
-          <select id="moduleFilter" class="select" aria-label="Filter by module"></select>
-        </div>
-        <div class="filter-row">
-          <label class="muted" for="priorityFilter">Priority</label>
-          <select id="priorityFilter" class="select" aria-label="Filter by priority"></select>
-        </div>
-        <div class="filter-row">
-          <label class="muted" for="statusFilter">Status</label>
-          <select id="statusFilter" class="select" aria-label="Filter by status"></select>
-        </div>
+    <aside id="attendance-panel">
+      <h2>Attendance Intelligence</h2>
+      <div class="attendance-summary">
+        <div><h3 id="presentCount">0</h3><p>Present</p></div>
+        <div><h3 id="absentCount">0</h3><p>Absent</p></div>
+        <div><h3 id="lateCount">0</h3><p>Late</p></div>
       </div>
-
-      <div class="divider" role="separator" aria-hidden="true"></div>
-
-      <div class="filter-group" role="group" aria-label="Date range">
-        <div class="filter-row">
-          <label class="muted" for="startDateFilter">Start Date</label>
-          <input type="date" id="startDateFilter" class="input" aria-label="Start date">
-        </div>
-        <div class="filter-row">
-          <label class="muted" for="endDateFilter">End Date</label>
-          <input type="date" id="endDateFilter" class="input" aria-label="End date">
-        </div>
-      </div>
-
-      <div class="divider" role="separator" aria-hidden="true"></div>
-
-      <div class="filter-group">
-        <button id="resetBtn" class="btn ghost" aria-label="Reset all filters">Reset</button>
-        <span class="muted">
-          Tip: click any KPI to filter by that status. “Total Issues” resets everything.
-        </span>
+      <canvas id="attendanceChart"></canvas>
+      <div class="card">
+        <h3>Performance Notes</h3>
+        <ul id="performanceList"></ul>
       </div>
     </aside>
-
-    <main class="content">
-      <div class="view-tabs" role="tablist">
-        <button id="issuesTab" class="view-tab active" data-view="issues"
-                role="tab" aria-selected="true" aria-controls="issuesView">
-          <span class="icon" aria-hidden="true">📋</span> Issues
-        </button>
-        <button id="calendarTab" class="view-tab" data-view="calendar"
-                role="tab" aria-selected="false" aria-controls="calendarView">
-          <span class="icon" aria-hidden="true">📅</span> Calendar
-        </button>
-      </div>
-
-      <section id="issuesView" class="view active" role="tabpanel" aria-labelledby="issuesTab">
-        <div class="grid cols-4" id="kpis" aria-live="polite"></div>
-
-        <div class="charts" aria-label="Charts">
-          <div class="card"><canvas id="byModule" height="140" aria-label="Issues by module" role="img"></canvas></div>
-          <div class="card"><canvas id="byPriority" height="140" aria-label="Issues by priority" role="img"></canvas></div>
-          <div class="card"><canvas id="byStatus" height="140" aria-label="Issues by status" role="img"></canvas></div>
-          <div class="card"><canvas id="byType" height="140" aria-label="Issues by type" role="img"></canvas></div>
-        </div>
-
-        <div class="card" aria-label="Issues table">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-            <div>
-              <strong>Issues</strong>
-              <div class="muted">Live feed from InCheck issues sheet.</div>
-            </div>
-            <span id="rowCount" class="muted" aria-live="polite"></span>
-          </div>
-
-          <div class="table-wrap" role="region" aria-label="Scrollable issues table">
-            <table id="issuesTable">
-              <thead><tr>
-                <th data-key="id" class="sortable" scope="col" aria-sort="none">ID</th>
-                <th data-key="module" class="sortable" scope="col" aria-sort="none">Module</th>
-                <th data-key="title" class="sortable" scope="col" aria-sort="none">Title</th>
-                <th data-key="priority" class="sortable" scope="col" aria-sort="none">Priority</th>
-                <th data-key="status" class="sortable" scope="col" aria-sort="none">Status</th>
-                <th data-key="date" class="sortable" scope="col" aria-sort="none">Date</th>
-                <th data-key="log" class="sortable" scope="col" aria-sort="none">Log</th>
-                <th scope="col">Link</th>
-              </tr></thead>
-              <tbody>
-                <tr><td colspan="8" style="text-align:center;color:var(--muted)">Loading…</td></tr>
-              </tbody>
-            </table>
-          </div>
-
-          <div class="table-actions">
-            <div class="pagination" role="group" aria-label="Table pagination">
-              <button id="firstPage" class="chip" aria-label="First page">« First</button>
-              <button id="prevPage" class="chip" aria-label="Previous page">‹ Prev</button>
-              <span id="pageInfo" class="muted" aria-live="polite"></span>
-              <button id="nextPage" class="chip" aria-label="Next page">Next ›</button>
-              <button id="lastPage" class="chip" aria-label="Last page">Last »</button>
-            </div>
-            <div style="display:flex;gap:8px;align-items:center">
-              <label for="pageSize" class="muted">Rows per page</label>
-              <select id="pageSize" class="select sm" aria-label="Rows per page">
-                <option>10</option><option selected>20</option><option>50</option><option>100</option>
-              </select>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="calendarView" class="view" role="tabpanel" aria-labelledby="calendarTab">
-        <div class="card" aria-label="Calendar">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-            <div>
-              <strong>Deployments & Maintenance Calendar</strong>
-              <div class="muted">
-                Plan deployments, maintenance windows, releases, and other operational events.
-              </div>
-            </div>
-            <button id="addEventBtn" class="btn primary sm" type="button">
-              <span class="icon" aria-hidden="true">➕</span> Add Event
-            </button>
-          </div>
-          <div id="calendar" aria-label="Deployment & maintenance calendar"></div>
-        </div>
-      </section>
-    </main>
-  </div>
-
-  <!-- Issue Modal -->
-  <div id="issueModal" class="modal" role="dialog" aria-modal="true"
-       aria-labelledby="modalTitle" aria-describedby="modalBody">
-    <div class="modal-content">
-      <div class="header">
-        <h2 id="modalTitle" style="margin:0;font-size:20px">Issue</h2>
-        <div class="actions">
-          <button id="copyId" class="btn sm" aria-label="Copy issue ID">
-            <span class="icon" aria-hidden="true">🆔</span> Copy ID
-          </button>
-          <button id="copyLink" class="btn sm" aria-label="Copy issue link">
-            <span class="icon" aria-hidden="true">🔗</span> Copy Link
-          </button>
-          <button class="modal-close" id="modalClose" aria-label="Close">✕</button>
-        </div>
-      </div>
-      <div id="modalBody"></div>
-    </div>
-  </div>
-
-  <!-- Event Modal -->
-  <div id="eventModal" class="modal" role="dialog" aria-modal="true"
-       aria-labelledby="eventModalTitle" aria-describedby="eventModalBody">
-    <div class="modal-content">
-      <div class="header">
-        <h2 id="eventModalTitle" style="margin:0;font-size:20px">Event</h2>
-        <div class="actions">
-          <button class="modal-close" id="eventModalClose" aria-label="Close event dialog">✕</button>
-        </div>
-      </div>
-
-      <form id="eventForm">
-        <div id="eventModalBody">
-          <div class="filter-group">
-            <div class="filter-row">
-              <label class="muted" for="eventTitle">Title</label>
-              <input id="eventTitle" class="input" type="text" required
-                     placeholder="e.g. Prod deployment v2.3" />
-            </div>
-            <div class="filter-row">
-              <label class="muted" for="eventType">Type</label>
-              <select id="eventType" class="select">
-                <option value="Deployment">Deployment</option>
-                <option value="Maintenance">Maintenance</option>
-                <option value="Release">Release</option>
-                <option value="Other">Other</option>
-              </select>
-            </div>
-            <div class="filter-row">
-              <label class="muted" for="eventStart">Start</label>
-              <input id="eventStart" class="input" type="datetime-local" required />
-            </div>
-            <div class="filter-row">
-              <label class="muted" for="eventEnd">End (optional)</label>
-              <input id="eventEnd" class="input" type="datetime-local" />
-            </div>
-            <div class="filter-row">
-              <label class="muted" for="eventDescription">Notes</label>
-              <textarea id="eventDescription" class="input" rows="3"
-                        placeholder="Details, impact, owner…"
-                        style="border-radius:12px; resize:vertical;"></textarea>
-            </div>
-          </div>
-        </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button id="eventSave" type="submit" class="btn primary sm">
-              💾 Save Event
-            </button>
-            <button id="eventCancel" type="button" class="btn ghost sm">
-              Cancel
-            </button>
-          </div>
-          <button id="eventDelete" type="button" class="btn sm"
-                  style="background:transparent;border-color:var(--danger);color:var(--danger);display:none">
-            🗑 Delete
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <div class="spinner" id="spinner" aria-hidden="true"><div class="ring"></div></div>
-  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </main>
+</div>
 <script>
-document.addEventListener("DOMContentLoaded", () => {
-  const SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTRwAjNAQxiPP8uR15t_vx03JkjgEBjgUwp2bpx8rsHx-JJxVDBZyf5ap77rAKrYHfgkVMwLJVm6pGn/pub?output=csv";
+// =================== THEME TOGGLE ===================
+const themeSwitch = document.getElementById("themeSwitch");
+themeSwitch.addEventListener("change", () => {
+  document.body.classList.toggle("light", themeSwitch.checked);
+});
 
-  // Your Google Apps Script Web App URL for calendar events
-const CALENDAR_API_URL =
-  "https://corsproxy.io/?" +
-  encodeURIComponent("https://script.google.com/macros/s/AKfycbwRcF-CbJY3dNfU9QQWixGL82a5BqCxVII4sGJSKunJ_fhDLLezL90kUXoqMrHuYytV/exec");
+// =================== INCHECK DASHBOARD LOGIC ===================
 
+// Example Google Sheet URL for events/tasks
+const SHEET_URL_ISSUES = "https://docs.google.com/spreadsheets/d/your_incheck_sheet_id_here/gviz/tq?tqx=out:json";
 
+// We'll maintain a global array for events
+let eventsData = [];
 
-
-  function q(sel, root = document) { return root.querySelector(sel); }
-  function qAll(sel){ return Array.from(document.querySelectorAll(sel)); }
-
-  const els = {
-    table: q('#issuesTable'),
-    tableBody: q('#issuesTable tbody'),
-    rowCount: q('#rowCount'),
-    moduleFilter: q('#moduleFilter'),
-    priorityFilter: q('#priorityFilter'),
-    statusFilter: q('#statusFilter'),
-    reset: q('#resetBtn'),
-    refresh: q('#refreshNow'),
-    exportCsv: q('#exportCsv'),
-    kpis: q('#kpis'),
-    modal: q('#issueModal'),
-    modalBody: q('#modalBody'),
-    modalTitle: q('#modalTitle'),
-    copyId: q('#copyId'),
-    copyLink: q('#copyLink'),
-    closeModalBtn: q('#modalClose'),
-    drawerBtn: q('#drawerBtn'),
-    sidebar: q('#sidebar'),
-    spinner: q('#spinner'),
-    toast: q('#toast'),
-    search: q('#searchInput'),
-    themeSelect: q('#themeSelect'),
-    firstPage: q('#firstPage'),
-    prevPage: q('#prevPage'),
-    nextPage: q('#nextPage'),
-    lastPage: q('#lastPage'),
-    pageInfo: q('#pageInfo'),
-    pageSize: q('#pageSize'),
-    createTicket: q('#createTicketBtn'),
-    startDateFilter: q('#startDateFilter'),
-    endDateFilter: q('#endDateFilter'),
-    loadingStatus: q('#loadingStatus'),
-    viewTabs: qAll('.view-tab'),
-    issuesView: q('#issuesView'),
-    calendarView: q('#calendarView'),
-    addEventBtn: q('#addEventBtn'),
-    eventModal: q('#eventModal'),
-    eventModalTitle: q('#eventModalTitle'),
-    eventModalClose: q('#eventModalClose'),
-    eventForm: q('#eventForm'),
-    eventTitle: q('#eventTitle'),
-    eventType: q('#eventType'),
-    eventStart: q('#eventStart'),
-    eventEnd: q('#eventEnd'),
-    eventDescription: q('#eventDescription'),
-    eventSave: q('#eventSave'),
-    eventCancel: q('#eventCancel'),
-    eventDelete: q('#eventDelete')
-  };
-
-  let rows = [], filtered = [], charts = {};
-  let sortKey = null, sortAsc = true;
-  let currentPage = 1;
-  let rowsPerPage = +(localStorage.getItem('pageSize') || els.pageSize.value);
-  els.pageSize.value = String(rowsPerPage);
-  let selectedIssue = null;
-  let lastFocusedBeforeIssueModal = null;
-  let lastFocusedBeforeEventModal = null;
-
-  let eventsData = [];
-  let calendar = null;
-  let calendarInitialized = false;
-  let editingEventId = null;
-
-  const debounce = (fn, ms=250) => { let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; };
-  const mediaQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
-
-  const showSpinner = (v=true)=> {
-    els.spinner.style.display = v ? 'flex' : 'none';
-    if (els.loadingStatus) {
-      els.loadingStatus.textContent = v ? 'Loading…' : '';
-    }
-  };
-  const showToast = (msg, ms=3500) => {
-    els.toast.textContent = msg;
-    els.toast.style.display = 'block';
-    setTimeout(()=>els.toast.style.display='none', ms);
-  };
-
-  function normalizeStatus(rawStatus) {
-    const s = (rawStatus || '').trim().toLowerCase();
-    if (!s) return 'Not Started Yet';
-    if (s.startsWith('resolved')) return 'Resolved';
-    if (s.startsWith('under')) return 'Under Development';
-    if (s.startsWith('rejected')) return 'Rejected';
-    if (s.startsWith('on hold')) return 'On Hold';
-    if (s.startsWith('not started')) return 'Not Started Yet';
-    if (s.startsWith('sent')) return 'Sent';
-    if (s.startsWith('on stage')) return 'On Stage';
-    return rawStatus || 'Not Started Yet';
-  }
-  function normalizePriority(rawPriority) {
-    const s = (rawPriority || '').trim().toLowerCase();
-    if (!s) return '';
-    if (s.startsWith('h')) return 'High';
-    if (s.startsWith('m')) return 'Medium';
-    if (s.startsWith('l')) return 'Low';
-    return rawPriority;
-  }
-
-  function normalizeRow(raw){
-    const lower={};
-    for(const k in raw){
-      if(!k) continue;
-      lower[k.toLowerCase().replace(/\s+/g,' ').trim()] = String(raw[k] ?? '').trim();
-    }
-    const pick=(...keys)=>{ for(const key of keys){ if(lower[key]) return lower[key]; } return ''; };
-    return {
-      id: pick('ticket id','id'),
-      module: (pick('impacted module','module','issue location')||'Unspecified'),
-      title: pick('title'),
-      desc: pick('description'),
-      file: pick('file upload','link','url'),
-      priority: normalizePriority(pick('priority')),
-      status: normalizeStatus(pick('status') || 'Not Started Yet'),
-      type: pick('category','type'),
-      date: pick('timestamp','date','created at'),
-      log: pick('log','logs','comment','notes')
-    };
-  }
-
-  function parseCsv(t){
-    return Papa.parse(t,{header:true,skipEmptyLines:true})
-      .data
-      .map(normalizeRow)
-      .filter(r => r.id && r.id.trim() !== "");
-  }
-
-  function pill(text,cls){ return `<span class="pill ${cls}">${text||'-'}</span>`; }
-  const statusBadge = s => pill(s,`status-${(s||'').replace(/\s/g,'\\ ')}`);
-  const priorityBadge = p => pill(p,`priority-${p||''}`);
-
-  function applySystemThemeFromOS(){
-    if (!mediaQuery) return;
-    if (mediaQuery.matches) {
-      document.documentElement.removeAttribute('data-theme');
-    } else {
-      document.documentElement.setAttribute('data-theme','light');
-    }
-  }
-
-  function applyTheme(mode) {
-    localStorage.setItem('theme', mode);
-    if (mode === 'system') {
-      applySystemThemeFromOS();
-      return;
-    }
-    if (mode === 'dark') {
-      document.documentElement.removeAttribute('data-theme');
-    } else if (mode === 'light') {
-      document.documentElement.setAttribute('data-theme','light');
-    }
-  }
-
-  function initTheme() {
-    const saved = localStorage.getItem('theme') || 'system';
-    els.themeSelect.value = saved;
-    if (saved === 'system') {
-      applySystemThemeFromOS();
-    } else {
-      applyTheme(saved);
-    }
-    if (mediaQuery) {
-      mediaQuery.addEventListener('change', () => {
-        const current = localStorage.getItem('theme') || 'system';
-        if (current === 'system') applySystemThemeFromOS();
-      });
-    }
-  }
-
-  function saveFilters(){
-    const state = {
-      search: els.search.value || '',
-      module: els.moduleFilter.value || 'All',
-      priority: els.priorityFilter.value || 'All',
-      status: els.statusFilter.value || 'All',
-      start: els.startDateFilter.value || '',
-      end: els.endDateFilter.value || ''
-    };
-    try {
-      localStorage.setItem('incheckFilters', JSON.stringify(state));
-    } catch(e){}
-  }
-
-  function loadFilters(){
-    try {
-      const raw = localStorage.getItem('incheckFilters');
-      if (!raw) return;
-      const s = JSON.parse(raw);
-      els.search.value = s.search || '';
-
-      const setIfOptionExists = (select, value) => {
-        if (!value) return;
-        const options = Array.from(select.options);
-        if (options.some(o => o.value === value)) {
-          select.value = value;
-        }
-      };
-
-      setIfOptionExists(els.moduleFilter, s.module);
-      setIfOptionExists(els.priorityFilter, s.priority);
-      setIfOptionExists(els.statusFilter, s.status);
-      els.startDateFilter.value = s.start || '';
-      els.endDateFilter.value = s.end || '';
-    } catch(e){
-      console.error('Failed to restore filters', e);
-    }
-  }
-
-  function renderKpis(){
-    const total = filtered.length; const counts = {};
-    filtered.forEach(r=>{ counts[r.status]=(counts[r.status]||0)+1; });
-    els.kpis.innerHTML='';
-    const add=(label,val)=>{
-      const pct = total ? Math.round((val*100)/total) : 0;
-      const d=document.createElement('div');
-      d.className='card kpi';
-      d.setAttribute('role','button');
-      d.setAttribute('tabindex','0');
-      d.setAttribute('aria-label',`${label}: ${val} (${pct} percent)`);
-      d.innerHTML=`<div class="label">${label}</div><div class="value">${val}</div><div class="sub">${pct}%</div>`;
-      d.onclick=()=>{
-        if(label === 'Total Issues'){
-          els.search.value = '';
-          els.startDateFilter.value = '';
-          els.endDateFilter.value = '';
-          els.moduleFilter.value = 'All';
-          els.priorityFilter.value = 'All';
-          els.statusFilter.value = 'All';
-        } else {
-          els.statusFilter.value = label;
-        }
-        saveFilters();
-        applyFilters();
-      };
-      d.addEventListener('keydown', e=>{
-        if(e.key==='Enter' || e.key===' '){
-          e.preventDefault();
-          d.click();
-        }
-      });
-      els.kpis.appendChild(d);
-    };
-    add('Total Issues', total);
-    Object.entries(counts).forEach(([s,v])=> add(s, v));
-  }
-
-  function uniqueSorted(arr){ return [...new Set(arr.filter(Boolean).map(v=>v.trim()))].sort((a,b)=>a.localeCompare(b)); }
-  function renderFilters(){
-    els.moduleFilter.innerHTML = ['All',...uniqueSorted(rows.map(r=>r.module))].map(v=>`<option>${v}</option>`).join('');
-    els.priorityFilter.innerHTML = ['All',...uniqueSorted(rows.map(r=>r.priority))].map(v=>`<option>${v}</option>`).join('');
-    els.statusFilter.innerHTML = ['All',...uniqueSorted(rows.map(r=>r.status))].map(v=>`<option>${v}</option>`).join('');
-  }
-
-  function sortData(list){
-    if(!sortKey) return list;
-    const sorted=[...list].sort((a,b)=>{
-      const va=a[sortKey]||"", vb=b[sortKey]||"";
-      if(sortKey==='date'){
-        const da=new Date(va), db=new Date(vb);
-        if(isNaN(da)&&isNaN(db)) return 0;
-        if(isNaN(da)) return 1;
-        if(isNaN(db)) return -1;
-        return da - db;
-      }
-      return String(va).localeCompare(String(vb), undefined, {numeric:true, sensitivity:'base'});
-    });
-    return sortAsc ? sorted : sorted.reverse();
-  }
-
-  function paginate(list){
-    const start=(currentPage-1)*rowsPerPage;
-    return list.slice(start, start+rowsPerPage);
-  }
-  function updatePaginationControls(total){
-    const totalPages = Math.max(1, Math.ceil(total/rowsPerPage));
-    if (currentPage > totalPages) currentPage = totalPages;
-    els.pageInfo.textContent = `Page ${Math.min(currentPage,totalPages)} / ${totalPages}`;
-    const atFirst = currentPage<=1;
-    const atLast = currentPage>=totalPages;
-    els.firstPage.disabled = atFirst;
-    els.prevPage.disabled = atFirst;
-    els.nextPage.disabled = atLast;
-    els.lastPage.disabled = atLast;
-    [els.firstPage, els.prevPage, els.nextPage, els.lastPage].forEach(btn=>{
-      if(btn.disabled) btn.setAttribute('disabled','true'); else btn.removeAttribute('disabled');
-    });
-  }
-
-  function renderTable(){
-    const list = sortData(filtered);
-    const total = list.length;
-    updatePaginationControls(total);
-    els.rowCount.textContent = `${total} row${total===1?'':'s'}`;
-
-    if (!total){
-      els.tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--muted)">
-        No issues found. Try clearing filters or search.
-      </td></tr>`;
-      updateSortedHeaders();
-      return;
-    }
-
-    const pageData = paginate(list);
-    if (!pageData.length){
-      els.tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--muted)">No issues on this page.</td></tr>`;
-      updateSortedHeaders();
-      return;
-    }
-
-    els.tableBody.innerHTML = pageData.map(r=>`
-      <tr role="button" tabindex="0" aria-label="Open issue ${r.id||'without ID'}" data-id="${r.id}">
-        <td>${r.id||'-'}</td>
-        <td>${r.module||'-'}</td>
-        <td>${r.title||'-'}</td>
-        <td>${priorityBadge(r.priority||'-')}</td>
-        <td>${statusBadge(r.status||'-')}</td>
-        <td>${r.date||'-'}</td>
-        <td>${r.log||'-'}</td>
-        <td>${r.file?`<a href="${escapeAttr(r.file)}" target="_blank" rel="noopener noreferrer" aria-label="Open attachment link">🔗</a>`:'-'}</td>
-      </tr>
-    `).join('');
-
-    els.tableBody.querySelectorAll('tr[data-id]').forEach(tr=>{
-      tr.addEventListener('keydown', e=>{
-        if(e.key==='Enter' || e.key===' '){
-          e.preventDefault();
-          openIssueModal(tr.getAttribute('data-id'));
-        }
-      });
-    });
-
-    updateSortedHeaders();
-  }
-
-  function updateSortedHeaders(){
-    qAll('#issuesTable thead th').forEach(th => {
-      th.classList.remove('sorted-asc','sorted-desc');
-      th.setAttribute('aria-sort','none');
-    });
-    if(sortKey){
-      const th = q(`#issuesTable thead th[data-key="${sortKey}"]`);
-      if(th){
-        th.classList.add(sortAsc?'sorted-asc':'sorted-desc');
-        th.setAttribute('aria-sort', sortAsc ? 'ascending' : 'descending');
-      }
-    }
-  }
-
-  function groupCount(list,key){
-    return list.reduce((acc, r) => {
-      const k=r[key]||'Unspecified';
-      acc[k]=(acc[k]||0)+1;
-      return acc;
-    },{});
-  }
-  function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
-
-  function drawCharts(){
-    const priorityColors = {
-      High: cssVar('--priority-high'),
-      Medium: cssVar('--priority-medium'),
-      Low: cssVar('--priority-low')
-    };
-
-    const statusColors = {
-      "Resolved": cssVar('--status-resolved'),
-      "Under Development": cssVar('--status-underdev'),
-      "Rejected": cssVar('--status-rejected'),
-      "On Hold": cssVar('--status-onhold'),
-      "Not Started Yet": cssVar('--status-notstarted'),
-      "Sent": cssVar('--status-sent'),
-      "On Stage": cssVar('--status-onstage')
-    };
-
-    const make = (id, type, data, colorMap={}) => {
-      if(charts[id]) charts[id].destroy();
-      const labels = Object.keys(data);
-      const values = Object.values(data);
-      charts[id] = new Chart(q('#'+id), {
-        type,
-        data: {
-          labels,
-          datasets: [{
-            data: values,
-            backgroundColor: labels.map(k => colorMap[k] || cssVar('--accent'))
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { display: type !== 'bar' },
-            tooltip: {
-              callbacks: {
-                label: ctx => {
-                  const total = values.reduce((a,b)=>a+b,0) || 1;
-                  const pct = Math.round((ctx.raw*100)/total);
-                  return `${ctx.raw} (${pct}%)`;
-                }
-              }
-            }
-          },
-          scales: type === 'bar' ? {
-            x: { grid: { color: 'rgba(128,128,128,.1)' } },
-            y: { beginAtZero: true, grid: { color: 'rgba(128,128,128,.12)' } }
-          } : {}
-        }
-      });
-    };
-
-    make('byModule', 'bar', groupCount(filtered,'module'));
-    make('byPriority', 'doughnut', groupCount(filtered,'priority'), priorityColors);
-    make('byStatus', 'bar', groupCount(filtered,'status'), statusColors);
-    make('byType', 'bar', groupCount(filtered,'type'));
-  }
-
-  function applyFilters(){
-    const qstr = (els.search.value||'').toLowerCase().trim();
-    const m = els.moduleFilter.value, p = els.priorityFilter.value, s = els.statusFilter.value;
-    const start = els.startDateFilter.value, end = els.endDateFilter.value;
-    const startDate = start ? new Date(start) : null;
-    const endDate = end ? (()=>{ const d=new Date(end); d.setDate(d.getDate()+1); return d; })() : null;
-
-    filtered = rows.filter(r=>{
-      const hay = [r.id,r.module,r.title,r.desc,r.log].filter(Boolean).join(' ').toLowerCase();
-      let keepDate = true;
-      if(r.date){
-        const d = new Date(r.date);
-        if(!isNaN(d)){
-          if(startDate && d < startDate) keepDate = false;
-          if(endDate && d >= endDate) keepDate = false;
-        }
-      } else if(startDate || endDate){ keepDate = false; }
-      return (!qstr || hay.includes(qstr))
-        && (!m || m==='All' || r.module===m)
-        && (!p || p==='All' || r.priority===p)
-        && (!s || s==='All' || r.status===s)
-        && keepDate;
-    });
-
-    currentPage = 1;
-    renderKpis();
-    renderTable();
-    drawCharts();
-  }
-
-  async function loadSheet(){
-    try {
-      showSpinner(true);
-      const res = await fetch(SHEET_URL, { cache:'no-store' });
-      if(!res.ok) throw new Error(`Failed to fetch (${res.status})`);
-      const text = await res.text();
-      rows = parseCsv(text);
-      filtered = [...rows];
-      renderFilters();
-      loadFilters();
-      applyFilters();
-    } catch(e) {
-      showToast('Error loading data: '+e.message);
-      els.tableBody.innerHTML = `
-        <tr>
-          <td colspan="8" style="color:#ffb4b4;text-align:center">
-            Error loading data.
-            <button type="button" id="retryLoad" class="btn sm" style="margin-left:8px">Retry</button>
-          </td>
-        </tr>`;
-      const retryBtn = q('#retryLoad');
-      if (retryBtn) {
-        retryBtn.addEventListener('click', () => {
-          loadSheet();
-        });
-      }
-    } finally {
-      showSpinner(false);
-    }
-  }
-
-  function trapFocus(container, e){
-    const focusables = container.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
-    if(!focusables.length) return;
-    const first = focusables[0], last = focusables[focusables.length-1];
-    if(e.shiftKey && document.activeElement === first){ last.focus(); e.preventDefault(); }
-    else if(!e.shiftKey && document.activeElement === last){ first.focus(); e.preventDefault(); }
-  }
-
-  function openIssueModal(id){
-    const r = rows.find(x=>x.id===id);
-    if(!r) return;
-    selectedIssue = r;
-    lastFocusedBeforeIssueModal = document.activeElement;
-
-    els.modalTitle.textContent = r.title || r.id || 'Issue';
-    els.modalBody.innerHTML = `
-      <p><b>ID:</b> ${escapeHtml(r.id || '-')}</p>
-      <p><b>Module:</b> ${escapeHtml(r.module || '-')}</p>
-      <p><b>Priority:</b> ${escapeHtml(r.priority || '-')}</p>
-      <p><b>Status:</b> ${escapeHtml(r.status || '-')}</p>
-      <p><b>Date:</b> ${escapeHtml(r.date || '-')}</p>
-      <p><b>Description:</b><br>${escapeHtml(r.desc || '-')}</p>
-      <p><b>Log:</b><br>${escapeHtml(r.log || '-')}</p>
-      ${r.file ? `<p><b>Attachment:</b> <a href="${escapeAttr(r.file)}" target="_blank" rel="noopener noreferrer">Open link</a></p>` : ''}
-    `;
-    els.modal.style.display='flex';
-    els.copyId.focus();
-  }
-  function closeIssueModal(){
-    els.modal.style.display='none';
-    selectedIssue=null;
-    if(lastFocusedBeforeIssueModal && typeof lastFocusedBeforeIssueModal.focus==='function'){
-      lastFocusedBeforeIssueModal.focus();
-    }
-  }
-
-  function loadEventsFromStorage(){
-    try {
-      return JSON.parse(localStorage.getItem('incheckEvents') || '[]');
-    } catch(e) {
-      return [];
-    }
-  }
-  function saveEventsToStorage(){
-    try {
-      localStorage.setItem('incheckEvents', JSON.stringify(eventsData));
-    } catch(e) {}
-  }
-
-  async function fetchEventsFromSheet() {
-    try {
-      showSpinner(true);
-      const res = await fetch(CALENDAR_API_URL, { cache: 'no-store' });
-      if (!res.ok) throw new Error('Failed to load events');
-      const data = await res.json();
-      eventsData = data.events || [];
-      saveEventsToStorage();
-      showToast('Calendar synced');
-    } catch (e) {
-      console.error(e);
-      eventsData = loadEventsFromStorage();
-      if (eventsData.length) {
-        showToast('Using cached calendar events (API error).');
-      } else {
-        showToast('Unable to load calendar events.');
-      }
-    } finally {
-      showSpinner(false);
-      renderEventsOnCalendar();
-    }
-  }
-
-async function saveEventToSheet(event) {
+// Fetch events from Google Sheets (InCheck tasks)
+async function fetchInCheckEvents() {
   try {
-    const res = await fetch(CALENDAR_API_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "save", event }),
-    });
+    const res = await fetch(SHEET_URL_ISSUES);
+    const text = await res.text();
+    const json = JSON.parse(text.substr(47).slice(0, -2));
+    const rows = json.table.rows;
 
-    // Try to parse response safely
-    let data;
-    try {
-      data = await res.json();
-    } catch (jsonErr) {
-      console.error("Invalid JSON returned:", jsonErr);
-      const text = await res.text();
-      alert("❌ Script returned invalid JSON:\n" + text);
-      return;
-    }
+    eventsData = rows.map(r => ({
+      title: r.c[0]?.v || "Untitled",
+      start: r.c[1]?.v ? new Date(r.c[1].v).toISOString().split("T")[0] : null,
+      end: r.c[2]?.v ? new Date(r.c[2].v).toISOString().split("T")[0] : null,
+      priority: r.c[3]?.v || "Medium",
+      status: r.c[4]?.v || "Open",
+      description: r.c[5]?.v || "",
+    }));
 
-    // Handle success and error
-    if (data.ok) {
-      console.log("✅ Event saved:", data.event);
-      alert("✅ Event saved successfully!");
-      return data.event;
-    } else {
-      console.error("❌ Backend error:", data);
-      alert("❌ Backend error: " + JSON.stringify(data, null, 2));
-      return null;
-    }
-  } catch (err) {
-    console.error("❌ Network error:", err);
-    alert("❌ Network error: " + err.message);
+    initCalendar(eventsData);
+  } catch (e) {
+    console.error("Error loading InCheck data:", e);
+    initCalendar([]); // fallback empty
   }
 }
 
-  async function deleteEventFromSheet(id) {
-    showSpinner(true);
-    try {
-      const res = await fetch(CALENDAR_API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'delete', event: { id } })
-      });
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'Delete failed');
-      showToast('Event deleted');
-    } catch (err) {
-      console.error(err);
-      showToast('Error deleting event: ' + err.message);
-      throw err;
-    } finally {
-      showSpinner(false);
-    }
-  }
-
-  function renderEventsOnCalendar(){
-    if (!calendar) return;
-    calendar.removeAllEvents();
-    eventsData.forEach(ev => {
-      const type = (ev.type || 'Other');
-      const cls = 'event-type-' + type.toLowerCase().replace(/\s+/g,'-');
-      calendar.addEvent({
-        id: ev.id,
-        title: ev.title,
-        start: ev.start,
-        end: ev.end || null,
-        extendedProps: { type: type, description: ev.description },
-        classNames: [cls]
-      });
-    });
-  }
-
-  function initCalendar(){
-    const calendarEl = document.getElementById('calendar');
-    if(!calendarEl || typeof FullCalendar === 'undefined') {
-      showToast('Calendar library failed to load');
-      return;
-    }
-    calendar = new FullCalendar.Calendar(calendarEl, {
-      initialView: 'dayGridMonth',
-      selectable: true,
-      editable: false,
-      height: 'auto',
-      headerToolbar: {
-        left: 'title',
-        center: '',
-        right: 'dayGridMonth,timeGridWeek,listWeek today prev,next'
-      },
-      select: info => {
-        openEventModal({ start: info.start, end: info.end });
-      },
-      eventClick: info => {
-        const ev = eventsData.find(e => e.id === info.event.id);
-        if(ev) {
-          openEventModal(ev);
-        } else {
-          openEventModal({
-            id: info.event.id,
-            title: info.event.title,
-            type: info.event.extendedProps.type || 'Other',
-            start: info.event.start,
-            end: info.event.end,
-            description: info.event.extendedProps.description || ''
-          });
-        }
-      },
-      eventDidMount: info => {
-        if(info.event.extendedProps && info.event.extendedProps.description) {
-          info.el.setAttribute('title', info.event.extendedProps.description);
-        }
-      }
-    });
-    renderEventsOnCalendar();
-    calendar.render();
-  }
-  function ensureCalendar(){
-    if (calendarInitialized) return;
-    calendarInitialized = true;
-    initCalendar();
-  }
-
-  function toLocalInputValue(date){
-    const d = (date instanceof Date) ? date : new Date(date);
-    if (isNaN(d)) return '';
-    const pad=n=>String(n).padStart(2,'0');
-    const year=d.getFullYear();
-    const month=pad(d.getMonth()+1);
-    const day=pad(d.getDate());
-    const hrs=pad(d.getHours());
-    const mins=pad(d.getMinutes());
-    return `${year}-${month}-${day}T${hrs}:${mins}`;
-  }
-
-  function openEventModal(data){
-    lastFocusedBeforeEventModal = document.activeElement;
-
-    const isEdit = !!(data && data.id);
-    editingEventId = isEdit ? data.id : null;
-    els.eventModalTitle.textContent = isEdit ? 'Edit Event' : 'Add Event';
-    els.eventDelete.style.display = isEdit ? 'inline-flex' : 'none';
-
-    els.eventTitle.value = data && data.title ? data.title : '';
-    els.eventType.value = data && data.type ? data.type : 'Deployment';
-    els.eventStart.value = data && data.start ? toLocalInputValue(data.start) : '';
-    els.eventEnd.value = data && data.end ? toLocalInputValue(data.end) : '';
-    els.eventDescription.value = data && data.description ? data.description : '';
-
-    els.eventModal.style.display = 'flex';
-    els.eventTitle.focus();
-  }
-
-  function closeEventModal(){
-    els.eventModal.style.display = 'none';
-    editingEventId = null;
-    if(lastFocusedBeforeEventModal && typeof lastFocusedBeforeEventModal.focus === 'function'){
-      lastFocusedBeforeEventModal.focus();
-    }
-  }
-
-  async function handleEventFormSubmit(e){
-    e.preventDefault();
-    const title = els.eventTitle.value.trim();
-    const type = els.eventType.value || 'Deployment';
-    const start = els.eventStart.value;
-    const end = els.eventEnd.value || null;
-    const description = els.eventDescription.value.trim();
-
-    if(!title){
-      showToast('Title is required for events');
-      return;
-    }
-    if(!start){
-      showToast('Start date/time is required');
-      return;
-    }
-
-    let eventObj = {
-      id: editingEventId || '',
-      title,
-      type,
-      start,
-      end,
-      description
-    };
-
-    try {
-      const saved = await saveEventToSheet(eventObj);
-      const idx = eventsData.findIndex(ev => ev.id === saved.id);
-      if (idx === -1) {
-        eventsData.push(saved);
-      } else {
-        eventsData[idx] = saved;
-      }
-      saveEventsToStorage();
-      renderEventsOnCalendar();
-      showToast('Event saved');
-      closeEventModal();
-    } catch (err) {
-      console.error(err);
-    }
-  }
-
-  async function handleDeleteEvent(){
-    if(!editingEventId){
-      closeEventModal();
-      return;
-    }
-    try {
-      await deleteEventFromSheet(editingEventId);
-      const idx = eventsData.findIndex(ev => ev.id === editingEventId);
-      if(idx !== -1){
-        eventsData.splice(idx,1);
-        saveEventsToStorage();
-        renderEventsOnCalendar();
-      }
-      showToast('Event deleted');
-    } catch (err) {
-      console.error(err);
-    }
-    closeEventModal();
-  }
-
-  function exportFilteredCsv(){
-    if (!filtered.length){
-      showToast('Nothing to export (no rows).');
-      return;
-    }
-    const headers = ['ID','Module','Title','Priority','Status','Date','Log','Link','Description'];
-    const lines = [headers.join(',')];
-    filtered.forEach(r=>{
-      const row = [
-        r.id, r.module, r.title, r.priority, r.status,
-        r.date, r.log, r.file, r.desc
-      ].map(v=>{
-        const s = String(v ?? '').replace(/"/g,'""');
-        return `"${s}"`;
-      });
-      lines.push(row.join(','));
-    });
-    const csvBlob = new Blob([lines.join('\r\n')], {type:'text/csv;charset=utf-8;'});
-    const url = URL.createObjectURL(csvBlob);
-    const a = document.createElement('a');
-    const ts = new Date().toISOString().slice(0,10);
-    a.href = url;
-    a.download = `incheck_issues_${ts}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    showToast('Exported CSV of current filtered issues');
-  }
-
-  els.createTicket.addEventListener('click', () => {
-    window.open("https://forms.gle/PPnEP1AQneoBT79s5", "_blank", "noopener,noreferrer");
-  });
-
-  q('#issuesTable').addEventListener('click', (ev)=>{
-    if (ev.target.closest('a')) return;
-    const tr = ev.target.closest('tr[data-id]');
-    if(tr){ openIssueModal(tr.getAttribute('data-id')); }
-  });
-
-  els.closeModalBtn.addEventListener('click', closeIssueModal);
-  els.modal.addEventListener('click', (e)=>{ if(e.target===els.modal) closeIssueModal(); });
-
-  els.eventModalClose.addEventListener('click', closeEventModal);
-  els.eventCancel.addEventListener('click', () => closeEventModal());
-  els.eventForm.addEventListener('submit', handleEventFormSubmit);
-  els.eventDelete.addEventListener('click', handleDeleteEvent);
-  els.eventModal.addEventListener('click', e => {
-    if (e.target === els.eventModal) closeEventModal();
-  });
-
-  document.addEventListener('keydown', (e)=>{
-    const issueOpen = els.modal.style.display === 'flex';
-    const eventOpen = els.eventModal.style.display === 'flex';
-    if(e.key==='Escape'){
-      if(eventOpen){ closeEventModal(); return; }
-      if(issueOpen){ closeIssueModal(); return; }
-    }
-    if(e.key==='Tab'){
-      if(eventOpen){ trapFocus(els.eventModal, e); }
-      else if(issueOpen){ trapFocus(els.modal, e); }
+// =================== FULLCALENDAR INITIALIZATION ===================
+function initCalendar(events) {
+  const calendarEl = document.getElementById('calendar');
+  const calendar = new FullCalendar.Calendar(calendarEl, {
+    initialView: 'dayGridMonth',
+    height: 'auto',
+    aspectRatio: 1.4,
+    headerToolbar: {
+      left: 'prev,next today',
+      center: 'title',
+      right: 'dayGridMonth,timeGridWeek,listWeek'
+    },
+    events: events.map(e => ({
+      title: e.title,
+      start: e.start,
+      end: e.end,
+      extendedProps: { priority: e.priority, status: e.status, description: e.description }
+    })),
+    eventDidMount: function(info) {
+      const priorityColor = {
+        "High": "#ef4444",
+        "Medium": "#f59e0b",
+        "Low": "#10b981"
+      }[info.event.extendedProps.priority] || "#3b82f6";
+      info.el.style.backgroundColor = priorityColor;
+      info.el.style.borderColor = priorityColor;
+    },
+    eventClick: function(info) {
+      const e = info.event.extendedProps;
+      alert(
+        `📋 ${info.event.title}\n\nStatus: ${e.status}\nPriority: ${e.priority}\n\nDescription:\n${e.description}`
+      );
     }
   });
+  calendar.render();
+}
 
-  els.copyId.addEventListener('click', async ()=>{
-    if(!selectedIssue) return;
-    try{
-      await navigator.clipboard.writeText(selectedIssue.id || '');
-      showToast('Issue ID copied');
-    }catch{
-      showToast('Unable to copy (clipboard blocked)');
-    }
-  });
-  els.copyLink.addEventListener('click', async ()=>{
-    if(!selectedIssue) return;
-    const link = selectedIssue.file || '';
-    if(!link){
-      showToast('No link on this issue');
-      return;
-    }
-    try{
-      await navigator.clipboard.writeText(link);
-      showToast('Link copied');
-    }catch{
-      showToast('Unable to copy (clipboard blocked)');
-    }
-  });
-
-  qAll('#issuesTable thead th.sortable').forEach(th=>{
-    th.addEventListener('click', ()=>{
-      const key = th.getAttribute('data-key');
-      if(sortKey===key){ sortAsc = !sortAsc; } else { sortKey=key; sortAsc=true; }
-      renderTable();
-    });
-    th.addEventListener('keydown', e=>{
-      if(e.key==='Enter' || e.key===' '){
-        e.preventDefault();
-        th.click();
-      }
-    });
-    th.setAttribute('tabindex','0');
-    th.setAttribute('role','button');
-    th.setAttribute('aria-label', `Sort by ${th.textContent}`);
-  });
-
-  const updateAndRender = ()=>{ renderTable(); };
-  els.pageSize.addEventListener('change', ()=>{
-    rowsPerPage = +els.pageSize.value;
-    localStorage.setItem('pageSize', rowsPerPage);
-    currentPage = 1;
-    updateAndRender();
-  });
-  els.firstPage.addEventListener('click', ()=>{ currentPage=1; updateAndRender(); });
-  els.prevPage.addEventListener('click', ()=>{ if(currentPage>1){ currentPage--; updateAndRender(); } });
-  els.nextPage.addEventListener('click', ()=>{
-    const totalPages = Math.max(1, Math.ceil(filtered.length/rowsPerPage));
-    if(currentPage<totalPages){ currentPage++; updateAndRender(); }
-  });
-  els.lastPage.addEventListener('click', ()=>{
-    currentPage = Math.max(1, Math.ceil(filtered.length/rowsPerPage));
-    updateAndRender();
-  });
-
-  els.drawerBtn.addEventListener('click', ()=>{
-    const open = !els.sidebar.classList.contains('open');
-    els.sidebar.classList.toggle('open');
-    els.drawerBtn.setAttribute('aria-expanded', String(open));
-  });
-
-  const onFilterChange = ()=>{
-    saveFilters();
-    applyFilters();
-  };
-  [els.moduleFilter, els.priorityFilter, els.statusFilter].forEach(el=> el.addEventListener('change', onFilterChange));
-  els.startDateFilter.addEventListener('change', onFilterChange);
-  els.endDateFilter.addEventListener('change', onFilterChange);
-  els.reset.addEventListener('click', ()=>{
-    els.search.value='';
-    els.startDateFilter.value='';
-    els.endDateFilter.value='';
-    localStorage.removeItem('incheckFilters');
-    renderFilters();
-    applyFilters();
-  });
-  els.refresh.addEventListener('click', loadSheet);
-  els.exportCsv.addEventListener('click', exportFilteredCsv);
-  els.search.addEventListener('input', debounce(()=>{
-    saveFilters();
-    applyFilters();
-  }, 250));
-
-  els.themeSelect.addEventListener('change', ()=> applyTheme(els.themeSelect.value));
-  initTheme();
-
-  els.viewTabs.forEach(btn => {
-    btn.addEventListener('click', () => {
-      const view = btn.dataset.view;
-      els.viewTabs.forEach(b => {
-        const active = b === btn;
-        b.classList.toggle('active', active);
-        b.setAttribute('aria-selected', active ? 'true' : 'false');
-      });
-      if(view === 'issues'){
-        els.issuesView.classList.add('active');
-        els.calendarView.classList.remove('active');
-      } else {
-        els.issuesView.classList.remove('active');
-        els.calendarView.classList.add('active');
-        ensureCalendar();
-      }
-    });
-  });
-
-  if (els.addEventBtn) {
-    els.addEventBtn.addEventListener('click', () => {
-      const now = new Date();
-      openEventModal({
-        start: now,
-        end: new Date(now.getTime() + 60*60*1000)
-      });
-    });
-  }
-
-  eventsData = [];
-  fetchEventsFromSheet();
-
-  if(typeof Chart === 'undefined') { showToast('Chart.js failed to load'); }
-  if(typeof Papa === 'undefined') { showToast('PapaParse failed to load'); }
-  loadSheet();
-
-  function escapeHtml(s){
-    return String(s).replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;' }[m]));
-  }
-  function escapeAttr(s){
-    return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;');
-  }
-
-  // Optional: auto-refresh events every 5 minutes
-  setInterval(fetchEventsFromSheet, 5 * 60 * 1000);
-});
+// Start calendar loading
+fetchInCheckEvents();
 </script>
+<script>
+// =================== ATTENDANCE INTELLIGENCE ===================
+
+// Separate Google Sheet for attendance data
+const SHEET_URL_ATTENDANCE = "https://docs.google.com/spreadsheets/d/your_attendance_sheet_id_here/gviz/tq?tqx=out:json";
+
+async function fetchAttendanceData() {
+  try {
+    const res = await fetch(SHEET_URL_ATTENDANCE);
+    const text = await res.text();
+    const json = JSON.parse(text.substr(47).slice(0, -2));
+    const rows = json.table.rows;
+
+    const attendance = rows.map(r => ({
+      name: r.c[0]?.v || "Unknown",
+      date: r.c[1]?.v || "",
+      status: r.c[2]?.v || "Absent",
+      note: r.c[3]?.v || ""
+    }));
+
+    updateAttendanceDashboard(attendance);
+  } catch (e) {
+    console.error("Error loading Attendance data:", e);
+  }
+}
+
+function updateAttendanceDashboard(data) {
+  const present = data.filter(d => d.status.toLowerCase() === "present").length;
+  const absent = data.filter(d => d.status.toLowerCase() === "absent").length;
+  const late = data.filter(d => d.status.toLowerCase() === "late").length;
+
+  document.getElementById("presentCount").textContent = present;
+  document.getElementById("absentCount").textContent = absent;
+  document.getElementById("lateCount").textContent = late;
+
+  const ctx = document.getElementById("attendanceChart").getContext("2d");
+  if (window.attendanceChart) window.attendanceChart.destroy(); // reset chart
+
+  window.attendanceChart = new Chart(ctx, {
+    type: "pie",
+    data: {
+      labels: ["Present", "Absent", "Late"],
+      datasets: [{
+        data: [present, absent, late],
+        backgroundColor: ["#10b981", "#ef4444", "#f59e0b"],
+        borderWidth: 1,
+      }]
+    },
+    options: {
+      plugins: {
+        legend: {
+          labels: { color: getComputedStyle(document.body).getPropertyValue('--fg') }
+        }
+      }
+    }
+  });
+
+  // Performance notes section
+  const perfList = document.getElementById("performanceList");
+  perfList.innerHTML = "";
+  const notes = data
+    .filter(d => d.note)
+    .slice(0, 5);
+  if (notes.length === 0) {
+    perfList.innerHTML = "<li>No performance notes available</li>";
+  } else {
+    notes.forEach(n => {
+      const li = document.createElement("li");
+      li.textContent = `${n.name}: ${n.note}`;
+      perfList.appendChild(li);
+    });
+  }
+}
+
+// Start Attendance system
+fetchAttendanceData();
+</script>
+<script>
+// =================== AUTO REFRESH SYSTEM ===================
+
+// Refresh both dashboards every 5 minutes (300,000 ms)
+setInterval(() => {
+  console.log("⏳ Auto-refreshing dashboard data...");
+  fetchInCheckEvents();
+  fetchAttendanceData();
+}, 300000); // 5 minutes
+
+// Optional: manual refresh button
+const header = document.querySelector("header");
+const refreshBtn = document.createElement("button");
+refreshBtn.textContent = "🔄 Refresh Now";
+refreshBtn.style.marginLeft = "1rem";
+refreshBtn.onclick = () => {
+  fetchInCheckEvents();
+  fetchAttendanceData();
+};
+header.appendChild(refreshBtn);
+
+// =================== RESPONSIVE DESIGN TWEAKS ===================
+window.addEventListener("resize", adjustLayout);
+function adjustLayout() {
+  const isMobile = window.innerWidth < 900;
+  const main = document.querySelector("main");
+  const attendancePanel = document.getElementById("attendance-panel");
+  if (isMobile) {
+    main.style.flexDirection = "column";
+    attendancePanel.style.width = "100%";
+    attendancePanel.style.borderTop = "1px solid var(--border)";
+  } else {
+    main.style.flexDirection = "row";
+    attendancePanel.style.width = "380px";
+    attendancePanel.style.borderTop = "none";
+  }
+}
+adjustLayout();
+
+// =================== THEME SYNC ON REFRESH ===================
+function syncChartTheme() {
+  if (window.attendanceChart) {
+    const labelsColor = getComputedStyle(document.body).getPropertyValue('--fg');
+    window.attendanceChart.options.plugins.legend.labels.color = labelsColor;
+    window.attendanceChart.update();
+  }
+}
+themeSwitch.addEventListener("change", syncChartTheme);
+</script>
+
 </body>
 </html>
