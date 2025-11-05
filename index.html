@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>InCheck Ops & Attendance HQ</title>
+  <title>InCheck Ops, Issues & Attendance</title>
 
   <!-- Fonts & Libs -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -607,7 +607,7 @@
       <div class="logo" aria-hidden="true">IC</div>
       <div class="brand-text">
         <span>INCHECK</span>
-        <span>Ops & Attendance HQ</span>
+        <span>Ops, Issues & Attendance</span>
       </div>
     </div>
 
@@ -764,13 +764,15 @@
         </div>
       </section>
 
-      <!-- Attendance View (same UI/UX as before, but its own main tab) -->
+      <!-- Attendance View (button next to Calendar, loads from your Sheet) -->
       <section id="attendanceView" class="view" role="tabpanel" aria-labelledby="attendanceTab">
         <div class="card attendance-card" aria-label="Attendance Intelligence Panel">
           <div class="attn-header">
             <div>
               <div class="attn-header-title">Attendance Intelligence</div>
-              <div class="attn-header-sub">Side-by-side with your ops: presence, risk, and utilisation in one place.</div>
+              <div class="attn-header-sub">
+                Live presence, absence, and utilisation from your attendance sheet.
+              </div>
             </div>
             <div class="attn-quick">
               <button id="attnTodayBtn" class="btn ghost sm" type="button">Today</button>
@@ -957,10 +959,14 @@
 document.addEventListener("DOMContentLoaded", () => {
   const SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTRwAjNAQxiPP8uR15t_vx03JkjgEBjgUwp2bpx8rsHx-JJxVDBZyf5ap77rAKrYHfgkVMwLJVm6pGn/pub?output=csv";
 
-  // Google Apps Script Web App URL for calendar events
+  // Your Apps Script for calendar events (unchanged)
   const CALENDAR_API_URL =
     "https://corsproxy.io/?" +
     encodeURIComponent("https://script.google.com/macros/s/AKfycbwRcF-CbJY3dNfU9QQWixGL82a5BqCxVII4sGJSKunJ_fhDLLezL90kUXoqMrHuYytV/exec");
+
+  // 🔹 TODO: paste your real Attendance Google Sheet CSV URL here
+  // e.g. the same URL you use in your current attendance dashboard
+  const ATTENDANCE_SHEET_URL = "PASTE_YOUR_ATTENDANCE_SHEET_CSV_URL_HERE";
 
   function q(sel, root = document) { return root.querySelector(sel); }
   function qAll(sel){ return Array.from(document.querySelectorAll(sel)); }
@@ -1883,6 +1889,9 @@ document.addEventListener("DOMContentLoaded", () => {
   els.refresh.addEventListener('click', ()=>{
     loadSheet();
     fetchEventsFromSheet();
+    if (ATTENDANCE_SHEET_URL && ATTENDANCE_SHEET_URL !== "PASTE_YOUR_ATTENDANCE_SHEET_CSV_URL_HERE") {
+      loadAttendance();
+    }
   });
   els.exportCsv.addEventListener('click', exportFilteredCsv);
   els.search.addEventListener('input', debounce(()=>{
@@ -1923,12 +1932,11 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  eventsData = [];
-  fetchEventsFromSheet();
-
   if(typeof Chart === 'undefined') { showToast('Chart.js failed to load'); }
   if(typeof Papa === 'undefined') { showToast('PapaParse failed to load'); }
+
   loadSheet();
+  fetchEventsFromSheet();
 
   function escapeHtml(s){
     return String(s).replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;' }[m]));
@@ -1940,7 +1948,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Optional: auto-refresh events every 5 minutes
   setInterval(fetchEventsFromSheet, 5 * 60 * 1000);
 
-  /* ==================== Attendance Intelligence module ==================== */
+  /* ==================== Attendance Intelligence module (from your sheet) ==================== */
 
   const attnEls = {
     teamFilter: q('#attnTeamFilter'),
@@ -1960,64 +1968,51 @@ document.addEventListener("DOMContentLoaded", () => {
     avgHours: q('#attnAvgHours')
   };
 
-  // Demo attendance dataset – replace with live data if needed
-  const attendanceData = [
-    { date: '2025-11-01', name: 'Alex Martin',   team: 'Product',   status: 'Present', checkIn: '09:05', checkOut: '18:02', hours: 8.3 },
-    { date: '2025-11-01', name: 'Sara Khan',     team: 'Support',   status: 'Late',    checkIn: '09:42', checkOut: '17:55', hours: 7.6 },
-    { date: '2025-11-01', name: 'John Lee',      team: 'Engineering',status: 'WFH',    checkIn: '08:58', checkOut: '17:45', hours: 8.1 },
-    { date: '2025-11-01', name: 'Maria Rossi',   team: 'Sales',     status: 'Absent',  checkIn: '',      checkOut: '',      hours: 0   },
-    { date: '2025-11-02', name: 'Alex Martin',   team: 'Product',   status: 'Present', checkIn: '09:01', checkOut: '18:12', hours: 8.4 },
-    { date: '2025-11-02', name: 'Sara Khan',     team: 'Support',   status: 'Present', checkIn: '09:15', checkOut: '18:05', hours: 8.0 },
-    { date: '2025-11-02', name: 'John Lee',      team: 'Engineering',status:'Late',    checkIn: '09:35', checkOut: '18:21', hours: 8.2 },
-    { date: '2025-11-02', name: 'Maria Rossi',   team: 'Sales',     status: 'WFH',     checkIn: '09:00', checkOut: '17:50', hours: 8.0 },
-    { date: '2025-11-03', name: 'Alex Martin',   team: 'Product',   status: 'Present', checkIn: '08:58', checkOut: '17:59', hours: 8.2 },
-    { date: '2025-11-03', name: 'Sara Khan',     team: 'Support',   status: 'Present', checkIn: '09:09', checkOut: '18:01', hours: 8.1 },
-    { date: '2025-11-03', name: 'John Lee',      team: 'Engineering',status:'Present', checkIn: '09:00', checkOut: '18:10', hours: 8.2 },
-    { date: '2025-11-03', name: 'Maria Rossi',   team: 'Sales',     status: 'Late',    checkIn: '09:37', checkOut: '18:05', hours: 7.9 },
-    { date: '2025-11-04', name: 'Alex Martin',   team: 'Product',   status: 'WFH',     checkIn: '09:12', checkOut: '18:00', hours: 8.0 },
-    { date: '2025-11-04', name: 'Sara Khan',     team: 'Support',   status: 'Present', checkIn: '09:03', checkOut: '18:02', hours: 8.1 },
-    { date: '2025-11-04', name: 'John Lee',      team: 'Engineering',status:'Present', checkIn: '08:55', checkOut: '17:55', hours: 8.0 },
-    { date: '2025-11-04', name: 'Maria Rossi',   team: 'Sales',     status: 'Absent',  checkIn: '',      checkOut: '',      hours: 0   },
-    { date: '2025-11-05', name: 'Alex Martin',   team: 'Product',   status: 'Present', checkIn: '09:07', checkOut: '18:03', hours: 8.1 },
-    { date: '2025-11-05', name: 'Sara Khan',     team: 'Support',   status: 'Late',    checkIn: '09:40', checkOut: '18:06', hours: 7.8 },
-    { date: '2025-11-05', name: 'John Lee',      team: 'Engineering',status:'Present', checkIn: '09:01', checkOut: '18:09', hours: 8.1 },
-    { date: '2025-11-05', name: 'Maria Rossi',   team: 'Sales',     status: 'Present', checkIn: '09:02', checkOut: '18:04', hours: 8.0 }
-  ];
-
-  let attnFiltered = [...attendanceData];
+  let attendanceData = [];
+  let attnFiltered = [];
   let attnChart = null;
 
-  function initAttendanceFilters(){
-    const teams = [...new Set(attendanceData.map(r=>r.team))].sort((a,b)=>a.localeCompare(b));
-    attnEls.teamFilter.innerHTML =
-      `<option value="all">All teams</option>` +
-      teams.map(t=>`<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
-
-    const today = new Date();
-    const start = new Date(today.getFullYear(), today.getMonth(), 1);
-    const end = today;
-    attnEls.from.value = start.toISOString().slice(0,10);
-    attnEls.to.value = end.toISOString().slice(0,10);
+  function normalizeAttendanceRow(raw){
+    const lower={};
+    for(const k in raw){
+      if(!k) continue;
+      lower[k.toLowerCase().trim()] = String(raw[k] ?? '').trim();
+    }
+    const pick=(...keys)=>{ for(const key of keys){ if(lower[key]) return lower[key]; } return ''; };
+    const hoursStr = pick('hours','total hours','worked hours');
+    const hours = hoursStr ? parseFloat(hoursStr.replace(',','.')) || 0 : 0;
+    return {
+      date: pick('date','day'),
+      name: pick('name','employee','employee name'),
+      team: pick('team','department'),
+      status: pick('status'),
+      checkIn: pick('in','check in','check-in','checkin'),
+      checkOut: pick('out','check out','check-out','checkout'),
+      hours
+    };
   }
 
-  function applyAttendanceFilters(){
-    const teamVal = attnEls.teamFilter.value;
-    const fromVal = attnEls.from.value;
-    const toVal = attnEls.to.value;
-    const from = fromVal ? new Date(fromVal) : null;
-    const to = toVal ? new Date(toVal) : null;
-    if (to) { to.setDate(to.getDate() + 1); }
-
-    attnFiltered = attendanceData.filter(r=>{
-      const d = new Date(r.date);
-      if(isNaN(d)) return false;
-      if(teamVal !== 'all' && r.team !== teamVal) return false;
-      if(from && d < from) return false;
-      if(to && d >= to) return false;
-      return true;
+  function loadAttendance(){
+    if(!ATTENDANCE_SHEET_URL || ATTENDANCE_SHEET_URL === "PASTE_YOUR_ATTENDANCE_SHEET_CSV_URL_HERE"){
+      console.warn('Attendance sheet URL is not set.');
+      return;
+    }
+    Papa.parse(ATTENDANCE_SHEET_URL, {
+      download:true,
+      header:true,
+      skipEmptyLines:true,
+      complete: results => {
+        attendanceData = results.data
+          .map(normalizeAttendanceRow)
+          .filter(r => r.date && r.name);
+        attnFiltered = [...attendanceData];
+        initAttendance();
+      },
+      error: err => {
+        console.error('Error loading attendance sheet', err);
+        showToast('Error loading attendance: ' + err.message);
+      }
     });
-
-    renderAttendance();
   }
 
   function renderAttendanceKpis(){
@@ -2071,22 +2066,22 @@ document.addEventListener("DOMContentLoaded", () => {
     const rows = [...attnFiltered].sort((a,b)=>{
       if(a.date === b.date) return a.name.localeCompare(b.name);
       return a.date.localeCompare(b.date);
-    }).reverse(); // latest first
+    }).reverse();
 
     const statusPill = s => {
-      const key = s.toLowerCase();
+      const key = (s || '').toLowerCase();
       const cls = key==='present' ? 'present'
                 : key==='absent' ? 'absent'
                 : key==='late'   ? 'late'
                 : 'wfh';
-      return `<span class="attn-status-pill ${cls}">${escapeHtml(s)}</span>`;
+      return `<span class="attn-status-pill ${cls}">${escapeHtml(s || '-')}</span>`;
     };
 
     attnEls.tableBody.innerHTML = rows.map(r=>`
       <tr>
         <td style="padding:6px 8px;">${escapeHtml(r.date)}</td>
         <td style="padding:6px 8px;">${escapeHtml(r.name)}</td>
-        <td style="padding:6px 8px;">${escapeHtml(r.team)}</td>
+        <td style="padding:6px 8px;">${escapeHtml(r.team || '')}</td>
         <td style="padding:6px 8px;">${statusPill(r.status)}</td>
         <td style="padding:6px 8px;">${r.checkIn || '—'}</td>
         <td style="padding:6px 8px;">${r.checkOut || '—'}</td>
@@ -2126,11 +2121,40 @@ document.addEventListener("DOMContentLoaded", () => {
     }).join('') || `<div class="muted" style="font-size:11px;">No data to display for the selected range.</div>`;
   }
 
-  function renderAttendance(){
+  function applyAttendanceFilters(){
+    const teamVal = attnEls.teamFilter.value;
+    const fromVal = attnEls.from.value;
+    const toVal = attnEls.to.value;
+    const from = fromVal ? new Date(fromVal) : null;
+    const to = toVal ? new Date(toVal) : null;
+    if (to) { to.setDate(to.getDate() + 1); }
+
+    attnFiltered = attendanceData.filter(r=>{
+      const d = new Date(r.date);
+      if(isNaN(d)) return false;
+      if(teamVal !== 'all' && r.team !== teamVal) return false;
+      if(from && d < from) return false;
+      if(to && d >= to) return false;
+      return true;
+    });
+
     renderAttendanceKpis();
     renderAttendanceChart();
     renderAttendanceTable();
     renderAttendanceHeatmap();
+  }
+
+  function initAttendanceFilters(){
+    const teams = [...new Set(attendanceData.map(r=>r.team).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+    attnEls.teamFilter.innerHTML =
+      `<option value="all">All teams</option>` +
+      teams.map(t=>`<option value="${escapeAttr(t)}">${escapeHtml(t)}</option>`).join('');
+
+    const today = new Date();
+    const start = new Date(today.getFullYear(), today.getMonth(), 1);
+    const end = today;
+    attnEls.from.value = start.toISOString().slice(0,10);
+    attnEls.to.value = end.toISOString().slice(0,10);
   }
 
   function initAttendanceTabs(){
@@ -2178,7 +2202,10 @@ document.addEventListener("DOMContentLoaded", () => {
     applyAttendanceFilters();
   }
 
-  initAttendance();
+  // 🔹 finally load attendance from your sheet (if URL set)
+  if (ATTENDANCE_SHEET_URL && ATTENDANCE_SHEET_URL !== "PASTE_YOUR_ATTENDANCE_SHEET_CSV_URL_HERE" && typeof Papa !== 'undefined') {
+    loadAttendance();
+  }
 });
 </script>
 </body>
