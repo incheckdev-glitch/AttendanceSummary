@@ -434,19 +434,7 @@
     .fc-event.event-type-release { background-color:var(--ok); border-color:var(--ok); }
     .fc-event.event-type-other { background-color:var(--purple); border-color:var(--purple); }
 
-    /* Calendar + Attendance split layout */
-    .cal-attn-wrap {
-      display:grid;
-      grid-template-columns: minmax(0,1.4fr) minmax(360px, 1fr);
-      gap:16px;
-      align-items:start;
-    }
-    @media(max-width:1180px){
-      .cal-attn-wrap {
-        grid-template-columns:1fr;
-      }
-    }
-    .calendar-card { display:flex; flex-direction:column; }
+    /* Attendance panel */
     .attendance-card { display:flex; flex-direction:column; min-height:520px; }
 
     .attn-header {
@@ -697,7 +685,11 @@
         </button>
         <button id="calendarTab" class="view-tab" data-view="calendar"
                 role="tab" aria-selected="false" aria-controls="calendarView">
-          <span class="icon" aria-hidden="true">📅</span> Calendar & Attendance
+          <span class="icon" aria-hidden="true">📅</span> Calendar
+        </button>
+        <button id="attendanceTab" class="view-tab" data-view="attendance"
+                role="tab" aria-selected="false" aria-controls="attendanceView">
+          <span class="icon" aria-hidden="true">👥</span> Attendance
         </button>
       </div>
 
@@ -756,121 +748,120 @@
           </div>
         </div>
       </section>
-      <!-- Calendar + Attendance View -->
+      <!-- Calendar View -->
       <section id="calendarView" class="view" role="tabpanel" aria-labelledby="calendarTab">
-        <div class="cal-attn-wrap">
-          <!-- Calendar card (left) -->
-          <div class="card calendar-card" aria-label="Calendar">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-              <div>
-                <strong>Deployments & Maintenance Calendar</strong>
-                <div class="muted">Plan deployments, maintenance windows, releases, and other operational events.</div>
-              </div>
-              <button id="addEventBtn" class="btn primary sm" type="button">
-                <span class="icon" aria-hidden="true">➕</span> Add Event
-              </button>
+        <div class="card" aria-label="Calendar">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <div>
+              <strong>Deployments & Maintenance Calendar</strong>
+              <div class="muted">Plan deployments, maintenance windows, releases, and other operational events.</div>
             </div>
-            <div id="calendar" aria-label="Deployment & maintenance calendar"></div>
+            <button id="addEventBtn" class="btn primary sm" type="button">
+              <span class="icon" aria-hidden="true">➕</span> Add Event
+            </button>
+          </div>
+          <div id="calendar" aria-label="Deployment & maintenance calendar"></div>
+        </div>
+      </section>
+
+      <!-- Attendance View (same UI/UX as before, but its own main tab) -->
+      <section id="attendanceView" class="view" role="tabpanel" aria-labelledby="attendanceTab">
+        <div class="card attendance-card" aria-label="Attendance Intelligence Panel">
+          <div class="attn-header">
+            <div>
+              <div class="attn-header-title">Attendance Intelligence</div>
+              <div class="attn-header-sub">Side-by-side with your ops: presence, risk, and utilisation in one place.</div>
+            </div>
+            <div class="attn-quick">
+              <button id="attnTodayBtn" class="btn ghost sm" type="button">Today</button>
+              <button id="attnThisMonthBtn" class="btn ghost sm" type="button">This month</button>
+            </div>
           </div>
 
-          <!-- Attendance Intelligence (right) -->
-          <div class="card attendance-card" aria-label="Attendance Intelligence Panel">
-            <div class="attn-header">
-              <div>
-                <div class="attn-header-title">Attendance Intelligence</div>
-                <div class="attn-header-sub">Side-by-side with your runbook — status, utilisation, and risk in one place.</div>
+          <div class="attn-filters" aria-label="Attendance filters">
+            <select id="attnTeamFilter" class="select sm" aria-label="Filter by team">
+              <option value="all">All teams</option>
+            </select>
+            <input id="attnFrom" type="date" class="input sm" aria-label="From date">
+            <input id="attnTo" type="date" class="input sm" aria-label="To date">
+          </div>
+
+          <div class="attn-tabs" role="tablist">
+            <button class="attn-tab active" data-panel="attnSummaryPanel" role="tab" aria-selected="true">
+              <span class="icon" aria-hidden="true">📊</span> Summary
+            </button>
+            <button class="attn-tab" data-panel="attnTeamPanel" role="tab" aria-selected="false">
+              <span class="icon" aria-hidden="true">👥</span> Team view
+            </button>
+            <button class="attn-tab" data-panel="attnHeatmapPanel" role="tab" aria-selected="false">
+              <span class="icon" aria-hidden="true">🔥</span> Heatmap
+            </button>
+          </div>
+
+          <div class="attn-body">
+            <!-- Summary panel -->
+            <div id="attnSummaryPanel" class="attn-panel active" role="tabpanel">
+              <div class="attn-kpi-grid">
+                <div class="attn-kpi">
+                  <div class="attn-kpi-label">People</div>
+                  <div class="attn-kpi-value" id="attnTotalEmployees">--</div>
+                  <div class="attn-kpi-sub">Unique employees in range</div>
+                </div>
+                <div class="attn-kpi">
+                  <div class="attn-kpi-label">Presence</div>
+                  <div class="attn-kpi-value" id="attnPresenceRate">--</div>
+                  <div class="attn-kpi-sub">Present / all records</div>
+                </div>
+                <div class="attn-kpi">
+                  <div class="attn-kpi-label">Absences</div>
+                  <div class="attn-kpi-value" id="attnAbsences">--</div>
+                  <div class="attn-kpi-sub">Days marked as absent</div>
+                </div>
+                <div class="attn-kpi">
+                  <div class="attn-kpi-label">Avg hours</div>
+                  <div class="attn-kpi-value" id="attnAvgHours">--</div>
+                  <div class="attn-kpi-sub">Average worked hours</div>
+                </div>
               </div>
-              <div class="attn-quick">
-                <button id="attnTodayBtn" class="btn ghost sm" type="button">Today</button>
-                <button id="attnThisMonthBtn" class="btn ghost sm" type="button">This month</button>
+
+              <div style="margin-top:6px;">
+                <canvas id="attnStatusChart" height="140" aria-label="Attendance status distribution" role="img"></canvas>
+              </div>
+
+              <div class="attn-legend">
+                <span><span class="attn-legend-dot dot-present"></span>Present</span>
+                <span><span class="attn-legend-dot dot-absent"></span>Absent</span>
+                <span><span class="attn-legend-dot dot-late"></span>Late</span>
+                <span><span class="attn-legend-dot dot-wfh"></span>WFH</span>
               </div>
             </div>
 
-            <div class="attn-filters" aria-label="Attendance filters">
-              <select id="attnTeamFilter" class="select sm" aria-label="Filter by team">
-                <option value="all">All teams</option>
-              </select>
-              <input id="attnFrom" type="date" class="input sm" aria-label="From date">
-              <input id="attnTo" type="date" class="input sm" aria-label="To date">
+            <!-- Team table panel -->
+            <div id="attnTeamPanel" class="attn-panel" role="tabpanel">
+              <div class="table-wrap small-table" role="region" aria-label="Attendance table">
+                <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                  <thead>
+                    <tr>
+                      <th style="text-align:left;padding:8px 8px;">Date</th>
+                      <th style="text-align:left;padding:8px 8px;">Name</th>
+                      <th style="text-align:left;padding:8px 8px;">Team</th>
+                      <th style="text-align:left;padding:8px 8px;">Status</th>
+                      <th style="text-align:left;padding:8px 8px;">In</th>
+                      <th style="text-align:left;padding:8px 8px;">Out</th>
+                      <th style="text-align:left;padding:8px 8px;">Hours</th>
+                    </tr>
+                  </thead>
+                  <tbody id="attnTableBody"></tbody>
+                </table>
+              </div>
             </div>
 
-            <div class="attn-tabs" role="tablist">
-              <button class="attn-tab active" data-panel="attnSummaryPanel" role="tab" aria-selected="true">
-                <span class="icon" aria-hidden="true">📊</span> Summary
-              </button>
-              <button class="attn-tab" data-panel="attnTeamPanel" role="tab" aria-selected="false">
-                <span class="icon" aria-hidden="true">👥</span> Team view
-              </button>
-              <button class="attn-tab" data-panel="attnHeatmapPanel" role="tab" aria-selected="false">
-                <span class="icon" aria-hidden="true">🔥</span> Heatmap
-              </button>
-            </div>
-
-            <div class="attn-body">
-              <!-- Summary panel -->
-              <div id="attnSummaryPanel" class="attn-panel active" role="tabpanel">
-                <div class="attn-kpi-grid">
-                  <div class="attn-kpi">
-                    <div class="attn-kpi-label">People</div>
-                    <div class="attn-kpi-value" id="attnTotalEmployees">--</div>
-                    <div class="attn-kpi-sub">Unique employees in range</div>
-                  </div>
-                  <div class="attn-kpi">
-                    <div class="attn-kpi-label">Presence</div>
-                    <div class="attn-kpi-value" id="attnPresenceRate">--</div>
-                    <div class="attn-kpi-sub">Present / all records</div>
-                  </div>
-                  <div class="attn-kpi">
-                    <div class="attn-kpi-label">Absences</div>
-                    <div class="attn-kpi-value" id="attnAbsences">--</div>
-                    <div class="attn-kpi-sub">Days marked as absent</div>
-                  </div>
-                  <div class="attn-kpi">
-                    <div class="attn-kpi-label">Avg hours</div>
-                    <div class="attn-kpi-value" id="attnAvgHours">--</div>
-                    <div class="attn-kpi-sub">Average worked hours</div>
-                  </div>
-                </div>
-
-                <div style="margin-top:6px;">
-                  <canvas id="attnStatusChart" height="140" aria-label="Attendance status distribution" role="img"></canvas>
-                </div>
-
-                <div class="attn-legend">
-                  <span><span class="attn-legend-dot dot-present"></span>Present</span>
-                  <span><span class="attn-legend-dot dot-absent"></span>Absent</span>
-                  <span><span class="attn-legend-dot dot-late"></span>Late</span>
-                  <span><span class="attn-legend-dot dot-wfh"></span>WFH</span>
-                </div>
+            <!-- Heatmap panel -->
+            <div id="attnHeatmapPanel" class="attn-panel" role="tabpanel">
+              <div class="muted" style="font-size:11px;margin-bottom:4px;">
+                Each square is a day in the filtered range. More intense color = more risk (late/absent).
               </div>
-
-              <!-- Team table panel -->
-              <div id="attnTeamPanel" class="attn-panel" role="tabpanel">
-                <div class="table-wrap small-table" role="region" aria-label="Attendance table">
-                  <table style="width:100%;border-collapse:collapse;font-size:12px;">
-                    <thead>
-                      <tr>
-                        <th style="text-align:left;padding:8px 8px;">Date</th>
-                        <th style="text-align:left;padding:8px 8px;">Name</th>
-                        <th style="text-align:left;padding:8px 8px;">Team</th>
-                        <th style="text-align:left;padding:8px 8px;">Status</th>
-                        <th style="text-align:left;padding:8px 8px;">In</th>
-                        <th style="text-align:left;padding:8px 8px;">Out</th>
-                        <th style="text-align:left;padding:8px 8px;">Hours</th>
-                      </tr>
-                    </thead>
-                    <tbody id="attnTableBody"></tbody>
-                  </table>
-                </div>
-              </div>
-
-              <!-- Heatmap panel -->
-              <div id="attnHeatmapPanel" class="attn-panel" role="tabpanel">
-                <div class="muted" style="font-size:11px;margin-bottom:4px;">
-                  Each square is a day in the filtered range. More intense color = more risk (late/absent).
-                </div>
-                <div id="attnHeatmap" class="attn-heatmap" aria-label="Attendance heatmap"></div>
-              </div>
+              <div id="attnHeatmap" class="attn-heatmap" aria-label="Attendance heatmap"></div>
             </div>
           </div>
         </div>
@@ -966,7 +957,7 @@
 document.addEventListener("DOMContentLoaded", () => {
   const SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTRwAjNAQxiPP8uR15t_vx03JkjgEBjgUwp2bpx8rsHx-JJxVDBZyf5ap77rAKrYHfgkVMwLJVm6pGn/pub?output=csv";
 
-  // Your Google Apps Script Web App URL for calendar events
+  // Google Apps Script Web App URL for calendar events
   const CALENDAR_API_URL =
     "https://corsproxy.io/?" +
     encodeURIComponent("https://script.google.com/macros/s/AKfycbwRcF-CbJY3dNfU9QQWixGL82a5BqCxVII4sGJSKunJ_fhDLLezL90kUXoqMrHuYytV/exec");
@@ -1010,6 +1001,7 @@ document.addEventListener("DOMContentLoaded", () => {
     viewTabs: qAll('.view-tab'),
     issuesView: q('#issuesView'),
     calendarView: q('#calendarView'),
+    attendanceView: q('#attendanceView'),
     addEventBtn: q('#addEventBtn'),
     eventModal: q('#eventModal'),
     eventModalTitle: q('#eventModalTitle'),
@@ -1901,6 +1893,7 @@ document.addEventListener("DOMContentLoaded", () => {
   els.themeSelect.addEventListener('change', ()=> applyTheme(els.themeSelect.value));
   initTheme();
 
+  // Main view tabs: Issues / Calendar / Attendance
   els.viewTabs.forEach(btn => {
     btn.addEventListener('click', () => {
       const view = btn.dataset.view;
@@ -1909,12 +1902,12 @@ document.addEventListener("DOMContentLoaded", () => {
         b.classList.toggle('active', active);
         b.setAttribute('aria-selected', active ? 'true' : 'false');
       });
-      if(view === 'issues'){
-        els.issuesView.classList.add('active');
-        els.calendarView.classList.remove('active');
-      } else {
-        els.issuesView.classList.remove('active');
-        els.calendarView.classList.add('active');
+
+      els.issuesView.classList.toggle('active', view === 'issues');
+      els.calendarView.classList.toggle('active', view === 'calendar');
+      els.attendanceView.classList.toggle('active', view === 'attendance');
+
+      if (view === 'calendar') {
         ensureCalendar();
       }
     });
@@ -1967,7 +1960,7 @@ document.addEventListener("DOMContentLoaded", () => {
     avgHours: q('#attnAvgHours')
   };
 
-  // Demo attendance dataset – replace with live data if you wire a sheet/API
+  // Demo attendance dataset – replace with live data if needed
   const attendanceData = [
     { date: '2025-11-01', name: 'Alex Martin',   team: 'Product',   status: 'Present', checkIn: '09:05', checkOut: '18:02', hours: 8.3 },
     { date: '2025-11-01', name: 'Sara Khan',     team: 'Support',   status: 'Late',    checkIn: '09:42', checkOut: '17:55', hours: 7.6 },
