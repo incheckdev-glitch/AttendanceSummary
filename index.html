@@ -416,6 +416,15 @@
     .fc-event.event-type-release{background-color:var(--ok);border-color:var(--ok)}
     .fc-event.event-type-other{background-color:var(--purple);border-color:var(--purple)}
 
+    /* Calendar env & risk signals */
+    .fc-event.event-env-prod .fc-event-main{border-left:3px solid var(--ok);}
+    .fc-event.event-env-staging .fc-event-main{border-left:3px solid var(--info);}
+    .fc-event.event-env-dev .fc-event-main{border-left:3px solid var(--neutral);}
+    .fc-event.event-env-other .fc-event-main{border-left:3px solid var(--purple);}
+    .fc-event.event-collision .fc-event-main{box-shadow:0 0 0 1px var(--danger) inset;}
+    .fc-event.event-freeze .fc-event-main{box-shadow:0 0 0 1px var(--warn) inset;}
+    .fc-event.event-hot .fc-event-main{box-shadow:0 0 0 2px var(--danger) inset;}
+
     .event-risk-badge{
       margin-left:6px;padding:0 6px;border-radius:6px;font-size:10px;
       border:1px solid rgba(255,255,255,.2);
@@ -733,7 +742,7 @@
         <div class="card">
           <strong>Upcoming risky events (next 7 days)</strong>
           <div class="muted" style="font-size:12px;margin-top:4px;">
-            Combines calendar events with open, high-risk issues in related modules.
+            Combines calendar events with open, high-risk issues in related modules and change collision signals.
           </div>
           <ul id="aiEventsList" class="muted" style="font-size:13px;margin-top:6px;padding-left:18px;"></ul>
         </div>
@@ -742,7 +751,9 @@
           <strong>AI Commands (pro)</strong>
           <div class="muted" style="font-size:12px;margin-top:4px;">
             Filters: <code>module:</code> <code>status:</code> <code>priority:</code> <code>id:</code> <code>type:</code> <code>missing:</code><br/>
-            Advanced: <code>risk&gt;=9</code> <code>last:7d</code> <code>cluster:login</code> <code>sort:risk|date|priority</code><br/>
+            Risk: <code>risk&gt;=9</code> <code>severity&gt;=3</code> <code>impact&gt;=3</code> <code>urgency&gt;=3</code><br/>
+            Time: <code>last:7d</code> <code>age&gt;14d</code> · Events: <code>event:next7d</code> <code>event:today</code><br/>
+            Sort: <code>sort:risk|date|priority</code><br/>
             Examples: <code>payments risk&gt;8 last:7d sort:risk</code> · <code>missing:priority module:billing</code> · <code>status:open cluster:timeout</code>
           </div>
           <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
@@ -779,7 +790,7 @@
     </div>
   </div>
 
-  <!-- Event Modal -->
+  <!-- Event Modal (extended: env / owner / modules / impact) -->
   <div id="eventModal" class="modal" role="dialog" aria-modal="true"
        aria-labelledby="eventModalTitle" aria-describedby="eventModalBody">
     <div class="modal-content">
@@ -805,6 +816,43 @@
                 <option value="Maintenance">Maintenance</option>
                 <option value="Release">Release</option>
                 <option value="Other">Other</option>
+              </select>
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="eventEnv">Environment</label>
+              <select id="eventEnv" class="select">
+                <option value="Prod">Prod</option>
+                <option value="Staging">Staging</option>
+                <option value="Dev">Dev</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="eventStatus">Change status</label>
+              <select id="eventStatus" class="select">
+                <option value="Planned">Planned</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Completed">Completed</option>
+                <option value="Cancelled">Cancelled</option>
+              </select>
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="eventOwner">Owner</label>
+              <input id="eventOwner" class="input" type="text"
+                     placeholder="On-call / squad / owner" />
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="eventModules">Modules</label>
+              <input id="eventModules" class="input" type="text"
+                     placeholder="Comma-separated e.g. Payments, Auth" />
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="eventImpactType">Impact</label>
+              <select id="eventImpactType" class="select">
+                <option value="No downtime expected">No downtime expected</option>
+                <option value="Customer visible">Customer visible</option>
+                <option value="Internal only">Internal only</option>
+                <option value="High risk change">High risk change</option>
               </select>
             </div>
             <div class="filter-row">
@@ -862,13 +910,13 @@
  * Single-file architecture:
  *  - CONFIG / LS_KEYS
  *  - DataStore (issues + text analytics)
- *  - Risk engine
- *  - DSL query parser
- *  - Calendar risk helpers
+ *  - Risk engine (technical + biz + ops + severity/impact/urgency)
+ *  - DSL query parser & matcher
+ *  - Calendar risk (events + collisions + freezes + hot issues)
  */
 
 const CONFIG = {
-  DATA_VERSION: '1',
+  DATA_VERSION: '2',
 
   SHEET_URL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vTRwAjNAQxiPP8uR15t_vx03JkjgEBjgUwp2bpx8rsHx-JJxVDBZyf5ap77rAKrYHfgkVMwLJVm6pGn/pub?output=csv",
   CALENDAR_API_URL:
@@ -881,13 +929,16 @@ const CONFIG = {
   RISK: {
     priorityWeight: { High: 3, Medium: 2, Low: 1, "": 1 },
     techBoosts: [
-      ['timeout',3],['time out',3],['latency',2],['slow',2],['performance',2],['crash',3],['error',2],['exception',2],['down',3]
+      ['timeout',3],['time out',3],['latency',2],['slow',2],['performance',2],
+      ['crash',3],['error',2],['exception',2],['down',3]
     ],
     bizBoosts: [
-      ['payment',3],['payments',3],['billing',2],['invoice',1],['checkout',2],['refund',2],['revenue',3],['vip',2]
+      ['payment',3],['payments',3],['billing',2],['invoice',1],
+      ['checkout',2],['refund',2],['revenue',3],['vip',2]
     ],
     opsBoosts: [
-      ['prod ',2],['production',2],['deploy',2],['deployment',2],['rollback',2],['incident',3],['p0',3],['p1',2],['sla',2]
+      ['prod ',2],['production',2],['deploy',2],['deployment',2],
+      ['rollback',2],['incident',3],['p0',3],['p1',2],['sla',2]
     ],
     statusBoosts: { 'on stage':2, 'under':1 },
     misalignedDelta: 1,
@@ -903,6 +954,15 @@ const CONFIG = {
     'Reliability / Errors': ['error','errors','exception','500','503','fail','failed','crash','down','unavailable'],
     'UI / UX': ['button','screen','page','layout','css','ui','ux','alignment','typo'],
     'Data / Sync': ['sync','synchron','cache','cached','replica','replication','consistency','out of date']
+  },
+
+  CHANGE: {
+    overlapLookbackMinutes: 60,
+    hotIssueRecentDays: 7,
+    freezeWindows: [
+      { dow:[5], startHour:16, endHour:23 }, // Friday evening
+      { dow:[6], startHour:0, endHour:23 }   // Saturday
+    ]
   }
 };
 
@@ -944,7 +1004,8 @@ const U = {
   },
   daysAgo:(n)=> new Date(Date.now()-n*86400000),
   isBetween:(d,a,b)=>{
-    const x = new Date(d); if(isNaN(x)) return false;
+    const x = (d instanceof Date)? d : new Date(d);
+    if(isNaN(x)) return false;
     const min = a ? (a instanceof Date ? a : new Date(a)) : null;
     const max = b ? (b instanceof Date ? b : new Date(b)) : null;
     if(min && x < min) return false;
@@ -966,6 +1027,12 @@ const Filters = {
     try{ localStorage.setItem(LS_KEYS.filters, JSON.stringify(this.state)); }catch{}
   }
 };
+
+function UndefaultCount(arr){
+  const m=new Map();
+  arr.forEach(t=> m.set(t,(m.get(t)||0)+1));
+  return m;
+}
 
 /** DataStore */
 const DataStore = {
@@ -1051,7 +1118,6 @@ const DataStore = {
 
     const idf = new Map();
     this.df.forEach((df,term)=> idf.set(term, Math.log((this.N+1)/(df+1))+1));
-
     this.computed.forEach(meta=> meta.idf = idf);
 
     // risk & suggestions
@@ -1094,46 +1160,81 @@ const IssuesCache = {
   }
 };
 
-function UndefaultCount(arr){
-  const m=new Map();
-  arr.forEach(t=> m.set(t,(m.get(t)||0)+1));
-  return m;
-}
+function prioMap(p){ return {High:3,Medium:2,Low:1}[p]||0; }
+function prioGap(suggested,current){ return prioMap(suggested)-prioMap(current); }
 
-/** Risk engine */
+/** Risk engine (with severity / impact / urgency) */
 const Risk = {
   scoreFromBoosts(text,rules){
     let s=0; for(const [kw,val] of rules){ if (text.includes(kw)) s+=val; } return s;
   },
   computeRisk(issue){
     const txt = [issue.title,issue.desc,issue.log].filter(Boolean).join(' ').toLowerCase()+' ';
-    const base = CONFIG.RISK.priorityWeight[issue.priority||""] || 1;
-    const tech = base + this.scoreFromBoosts(txt, CONFIG.RISK.techBoosts);
+    const basePriority = CONFIG.RISK.priorityWeight[issue.priority||""] || 1;
+
+    const tech = basePriority + this.scoreFromBoosts(txt, CONFIG.RISK.techBoosts);
     const biz  = this.scoreFromBoosts(txt, CONFIG.RISK.bizBoosts);
     const ops  = this.scoreFromBoosts(txt, CONFIG.RISK.opsBoosts);
+
     let total = tech+biz+ops;
 
     const st=(issue.status||'').toLowerCase();
-    for(const k in CONFIG.RISK.statusBoosts){ if(st.startsWith(k)) total+=CONFIG.RISK.statusBoosts[k]; }
+    for(const k in CONFIG.RISK.statusBoosts){
+      if(st.startsWith(k)) total+=CONFIG.RISK.statusBoosts[k];
+    }
 
-    // Time-aware risk: recent & stale high-risk issues
     let timeRisk = 0;
-    try{
-      if(issue.date){
-        const d = new Date(issue.date);
-        if(!isNaN(d)){
-          const ageDays = (Date.now() - d.getTime()) / 86400000;
-          const isOpen = !(st.startsWith('resolved')||st.startsWith('rejected'));
-          if(isOpen && total >= CONFIG.RISK.highRisk){
-            if(ageDays <= 14) timeRisk += 2;      // fresh risky
-            if(ageDays >= 30) timeRisk += 3;      // stale high-risk
-          }
+    let ageDays = null;
+    let isOpen = !(st.startsWith('resolved')||st.startsWith('rejected'));
+
+    if(issue.date){
+      const d = new Date(issue.date);
+      if(!isNaN(d)){
+        ageDays = (Date.now() - d.getTime()) / 86400000;
+        if(isOpen && total >= CONFIG.RISK.highRisk){
+          if(ageDays <= 14) timeRisk += 2;      // fresh risky
+          if(ageDays >= 30) timeRisk += 3;      // stale high-risk
         }
       }
-    }catch{}
-
+    }
     total += timeRisk;
-    return { technical:tech,business:biz,operational:ops,time:timeRisk,total };
+
+    // severity: how bad is the scenario
+    let severity = basePriority;
+    if(/p0|sev0|outage|down|data loss|breach|security/i.test(txt)) severity += 3;
+    if(/p1|sev1|incident|sla/i.test(txt)) severity += 2;
+    if(/p2|degraded/i.test(txt)) severity += 1;
+
+    // impact: how much money / users
+    let impact = 1;
+    if(/payment|billing|checkout|revenue|invoice|subscription|signup|onboarding/i.test(txt)) impact += 2;
+    if(/login|auth|authentication|token|session/i.test(txt)) impact += 1.5;
+    if(/admin|internal|report/i.test(txt)) impact += 0.5;
+
+    // urgency: time sensitivity
+    let urgency = 1;
+    if(/today|now|immediately|urgent|sla/i.test(txt)) urgency += 1.5;
+    if(ageDays!=null){
+      if(ageDays <= 1) urgency += 1;
+      if(ageDays >= 14 && isOpen) urgency += 0.5;
+    }
+
+    const sevScore = Math.round(severity);
+    const impScore = Math.round(impact*1.5);
+    const urgScore = Math.round(urgency*1.5);
+
+    total += sevScore + impScore + urgScore;
+
+    return {
+      technical:tech,
+      business:biz,
+      operational:ops,
+      time:timeRisk,
+      total,
+      severity:sevScore,
+      impact:impScore,
+      urgency:urgScore
+    };
   },
   suggestCategories(issue){
     const text = [issue.title,issue.desc,issue.log].filter(Boolean).join(' ').toLowerCase();
@@ -1178,7 +1279,17 @@ const DSL = {
   parse(text){
     const lower=(text||'').toLowerCase();
     let w=' '+lower+' ';
-    const out={ module:null,status:null,priority:null,id:null,type:null,missing:null,riskOp:null,riskVal:null,lastDays:null,cluster:null,sort:null,words:[] };
+    const out={
+      module:null,status:null,priority:null,id:null,type:null,missing:null,
+      riskOp:null,riskVal:null,
+      severityOp:null,severityVal:null,
+      impactOp:null,impactVal:null,
+      urgencyOp:null,urgencyVal:null,
+      ageOp:null,ageVal:null,
+      lastDays:null,cluster:null,sort:null,
+      eventScope:null,
+      words:[]
+    };
     const eat=(re,key,fn=v=>v)=>{
       const m=w.match(re); if(m){ out[key]=fn(m[1].trim()); w=w.replace(m[0],' '); }
     };
@@ -1188,11 +1299,25 @@ const DSL = {
     eat(/\bid:([^\s]+)/,'id');
     eat(/\btype:([^\s]+)/,'type');
     eat(/\bmissing:([^\s]+)/,'missing');
+
     const rv=lower.match(/\brisk([><=]{1,2})(\d+)/);
     if(rv){ out.riskOp=rv[1]; out.riskVal=+rv[2]; w=w.replace(rv[0],' '); }
+
+    const sv=lower.match(/\bseverity([><=]{1,2})(\d+)/);
+    if(sv){ out.severityOp=sv[1]; out.severityVal=+sv[2]; w=w.replace(sv[0],' '); }
+    const iv=lower.match(/\bimpact([><=]{1,2})(\d+)/);
+    if(iv){ out.impactOp=iv[1]; out.impactVal=+iv[2]; w=w.replace(iv[0],' '); }
+    const uv=lower.match(/\burgency([><=]{1,2})(\d+)/);
+    if(uv){ out.urgencyOp=uv[1]; out.urgencyVal=+uv[2]; w=w.replace(uv[0],' '); }
+
     eat(/\blast:(\d+)d/,'lastDays',n=>+n);
+    const av=lower.match(/\bage([><=]{1,2})(\d+)d/);
+    if(av){ out.ageOp=av[1]; out.ageVal=+av[2]; w=w.replace(av[0],' '); }
+
     eat(/\bcluster:([^\s]+)/,'cluster');
     eat(/\bsort:(risk|date|priority)/,'sort');
+    eat(/\bevent:(\S+)/,'eventScope');
+
     out.words = w.split(/\s+/).filter(Boolean).filter(t=>t.length>2 && !STOPWORDS.has(t));
     return out;
   },
@@ -1205,9 +1330,13 @@ const DSL = {
     }
     if (q.status){
       const st=(issue.status||'').toLowerCase();
-      if(q.status==='open'){ if(st.startsWith('resolved')||st.startsWith('rejected')) return false; }
-      else if(q.status==='closed'){ if(!st.startsWith('resolved')&&!st.startsWith('rejected')) return false; }
-      else if(!st.includes(q.status)) return false;
+      if(q.status==='open'){
+        const closed = st.startsWith('resolved')||st.startsWith('rejected');
+        if(closed) return false;
+      }else if(q.status==='closed'){
+        const closed = st.startsWith('resolved')||st.startsWith('rejected');
+        if(!closed) return false;
+      }else if(!st.includes(q.status)) return false;
     }
     if (q.id && !((issue.id||'').toLowerCase().includes(q.id))) return false;
     if (q.type && !((issue.type||'').toLowerCase().includes(q.type))) return false;
@@ -1221,12 +1350,26 @@ const DSL = {
       const after=U.daysAgo(q.lastDays);
       if(!U.isBetween(issue.date,after,null)) return false;
     }
+    if (q.ageOp && q.ageVal!=null){
+      if(!issue.date) return false;
+      const d=new Date(issue.date); if(isNaN(d)) return false;
+      const ageDays=(Date.now()-d.getTime())/86400000;
+      const op=q.ageOp, b=q.ageVal;
+      let pass=false;
+      if(op==='>') pass=ageDays>b;
+      else if(op==='>=') pass=ageDays>=b;
+      else if(op==='<') pass=ageDays<b;
+      else if(op==='<=') pass=ageDays<=b;
+      else if(op==='='||op==='==') pass=Math.round(ageDays)===b;
+      if(!pass) return false;
+    }
     if (q.cluster){
       const t=q.cluster.toLowerCase();
       if(!meta.tokens || !Array.from(meta.tokens).some(x=>x.includes(t))) return false;
     }
+    const risk = meta.risk || {};
     if (q.riskOp){
-      const rv=meta.risk?.total||0;
+      const rv=risk.total||0;
       const op=q.riskOp, b=q.riskVal;
       let pass=false;
       if(op==='>') pass=rv>b;
@@ -1236,6 +1379,19 @@ const DSL = {
       else if(op==='='||op==='==') pass=rv===b;
       if(!pass) return false;
     }
+    const cmpNum = (val,op,b)=>{
+      const v=val||0;
+      if(op==='>') return v>b;
+      if(op==='>=') return v>=b;
+      if(op==='<') return v<b;
+      if(op==='<=') return v<=b;
+      if(op==='='||op==='==') return v===b;
+      return true;
+    };
+    if(q.severityOp && !cmpNum(risk.severity,q.severityOp,q.severityVal)) return false;
+    if(q.impactOp && !cmpNum(risk.impact,q.impactOp,q.impactVal)) return false;
+    if(q.urgencyOp && !cmpNum(risk.urgency,q.urgencyOp,q.urgencyVal)) return false;
+
     if (q.words && q.words.length){
       const txt=[issue.title,issue.desc,issue.log].filter(Boolean).join(' ').toLowerCase();
       for(const w of q.words){ if(!txt.includes(w)) return false; }
@@ -1253,9 +1409,128 @@ const CalendarLink = {
     return 'risk-low';
   }
 };
-</script>
-<script>
-/** Elements cache */
+
+/** Events + risk (issues + events) */
+function computeEventsRisk(issues,events){
+  const now=new Date(), limit=U.dateAddDays(now,7);
+  const openIssues=issues.filter(i=>{
+    const st=(i.status||'').toLowerCase();
+    return !(st.startsWith('resolved')||st.startsWith('rejected'));
+  });
+  const modules=Array.from(new Set(openIssues.map(i=>i.module).filter(Boolean)));
+  const res=[];
+  events.forEach(ev=>{
+    if(!ev.start) return;
+    const d=new Date(ev.start); if(isNaN(d)||d<now||d>limit) return;
+    const title=(ev.title||'').toLowerCase();
+    const impacted=modules.filter(m=>title.includes((m||'').toLowerCase()));
+    let rel=[];
+    if(impacted.length) rel=openIssues.filter(i=>impacted.includes(i.module));
+    else if((ev.type||'').toLowerCase()!=='other'){
+      const recentOpen=openIssues.filter(i=>U.isBetween(i.date,U.daysAgo(7),null));
+      rel=recentOpen.filter(i=>(DataStore.computed.get(i.id)?.risk?.total||0)>=CONFIG.RISK.highRisk);
+    }
+    if(!rel.length) return;
+    const risk=rel.reduce((s,i)=>s+(DataStore.computed.get(i.id)?.risk?.total||0),0);
+    res.push({event:ev,modules:impacted,issues:rel,risk,date:d});
+  });
+  res.sort((a,b)=>b.risk-a.risk);
+  return res.slice(0,5);
+}
+
+/** Change collisions, freeze windows, hot issues flags */
+function computeChangeCollisions(issues,events){
+  const flagsById = new Map();
+  const byId = id=>{
+    let f = flagsById.get(id);
+    if(!f){ f={collision:false,freeze:false,hotIssues:false}; flagsById.set(id,f); }
+    return f;
+  };
+  if(!events || !events.length) return {collisions:[],flagsById};
+
+  const openIssues = issues.filter(i=>{
+    const st=(i.status||'').toLowerCase();
+    return !(st.startsWith('resolved')||st.startsWith('rejected'));
+  });
+
+  const highRiskIssues = openIssues.filter(i=>{
+    const meta = DataStore.computed.get(i.id) || {};
+    const risk = meta.risk?.total || 0;
+    if(risk < CONFIG.RISK.highRisk) return false;
+    if(!i.date) return true;
+    const d=new Date(i.date); if(isNaN(d)) return true;
+    return U.isBetween(d, U.daysAgo(CONFIG.CHANGE.hotIssueRecentDays), null);
+  });
+
+  const normalized = events.map(ev=>{
+    const start = ev.start ? new Date(ev.start) : null;
+    const end   = ev.end ? new Date(ev.end) : null;
+    return {...ev,_start:start,_end:end};
+  }).filter(ev=>ev._start && !isNaN(ev._start));
+  normalized.sort((a,b)=>a._start-b._start);
+
+  const collisions=[];
+  const defaultDurMs = CONFIG.CHANGE.overlapLookbackMinutes*60000;
+  for(let i=0;i<normalized.length;i++){
+    const a=normalized[i];
+    const aEnd = a._end || new Date(a._start.getTime()+defaultDurMs);
+    for(let j=i+1;j<normalized.length;j++){
+      const b=normalized[j];
+      if(a.env && b.env && a.env !== b.env) continue;
+      if(b._start >= aEnd) break;
+      const bEnd = b._end || new Date(b._start.getTime()+defaultDurMs);
+      if(b._start < aEnd && a._start < bEnd){
+        collisions.push([a.id,b.id]);
+        byId(a.id).collision = true;
+        byId(b.id).collision = true;
+      }
+    }
+  }
+
+  if(CONFIG.CHANGE.freezeWindows && CONFIG.CHANGE.freezeWindows.length){
+    events.forEach(ev=>{
+      if(!ev.start) return;
+      const d=new Date(ev.start); if(isNaN(d)) return;
+      const dow=d.getDay(); // 0=Sun
+      const hour=d.getHours();
+      const inFreeze = CONFIG.CHANGE.freezeWindows.some(win =>
+        win.dow.includes(dow) && hour>=win.startHour && hour<win.endHour
+      );
+      if(inFreeze) byId(ev.id).freeze = true;
+    });
+  }
+
+  events.forEach(ev=>{
+    const flags = byId(ev.id);
+    const modulesArr = Array.isArray(ev.modules)
+      ? ev.modules
+      : (typeof ev.modules==='string'
+         ? ev.modules.split(',').map(s=>s.trim()).filter(Boolean)
+         : []);
+    let rel=[];
+    if(modulesArr.length){
+      rel = highRiskIssues.filter(i=>modulesArr.includes(i.module));
+    }else{
+      const title=(ev.title||'').toLowerCase();
+      rel = highRiskIssues.filter(i=>(i.module||'') && title.includes((i.module||'').toLowerCase()));
+    }
+    if(rel.length) flags.hotIssues = true;
+  });
+
+  return {collisions,flagsById};
+}
+
+function toLocalInputValue(date){
+  const d=(date instanceof Date)?date:new Date(date);
+  if(isNaN(d)) return '';
+  return `${d.getFullYear()}-${U.pad(d.getMonth()+1)}-${U.pad(d.getDate())}T${U.pad(d.getHours())}:${U.pad(d.getMinutes())}`;
+}
+function toLocalDateValue(date){
+  const d=(date instanceof Date)?date:new Date(date);
+  if(isNaN(d)) return '';
+  return `${d.getFullYear()}-${U.pad(d.getMonth()+1)}-${U.pad(d.getDate())}`;
+}
+/* ---------- Elements cache ---------- */
 const E = {};
 function cacheEls(){
   [
@@ -1275,7 +1550,8 @@ function cacheEls(){
     'aiOpsCockpit','syncIssuesText','syncIssuesDot','syncEventsText','syncEventsDot',
     'aiAnalyzing','eventFilterDeployment','eventFilterMaintenance','eventFilterRelease',
     'eventFilterOther','loadingStatus','issuesSummaryText','activeFiltersChips',
-    'calendarTz','onlineStatusChip','accentColor','shortcutsHelp','aiQueryExport','eventAllDay'
+    'calendarTz','onlineStatusChip','accentColor','shortcutsHelp','aiQueryExport','eventAllDay',
+    'eventEnv','eventOwner','eventStatus','eventModules','eventImpactType'
   ].forEach(id=> E[id]=document.getElementById(id));
 }
 
@@ -1330,7 +1606,6 @@ UI.Issues = {
 
     return DataStore.rows.filter(r=>{
       const hay=[r.id,r.module,r.title,r.desc,r.log].filter(Boolean).join(' ').toLowerCase();
-
       if(terms.length && !terms.every(t=>hay.includes(t))) return false;
 
       let keepDate=true;
@@ -1571,107 +1846,6 @@ UI.Issues.renderSummary = function(list){
     (last ? ` · ${last}` : '');
 };
 
-/** Modals */
-UI.Modals = {
-  selectedIssue:null,lastFocus:null,lastEventFocus:null,
-  openIssue(id){
-    const r=DataStore.byId.get(id); if(!r||!E.issueModal) return;
-    this.selectedIssue=r; this.lastFocus=document.activeElement;
-    const meta=DataStore.computed.get(r.id)||{};
-    const risk=meta.risk||{technical:0,business:0,operational:0,time:0,total:0,reasons:[]};
-    const reasons=risk.reasons?.length?('Reasons: '+risk.reasons.join(', ')):'—';
-    E.modalTitle.textContent=r.title||r.id||'Issue';
-    E.modalBody.innerHTML=`
-      <p><b>ID:</b> ${U.escapeHtml(r.id||'-')}</p>
-      <p><b>Module:</b> ${U.escapeHtml(r.module||'-')}</p>
-      <p><b>Priority:</b> ${U.escapeHtml(r.priority||'-')}</p>
-      <p><b>Status:</b> ${U.escapeHtml(r.status||'-')}</p>
-      <p><b>Date:</b> ${U.escapeHtml(r.date||'-')}</p>
-      <p><b>Risk:</b> ${risk.total} (Tech ${risk.technical}, Biz ${risk.business}, Ops ${risk.operational}${risk.time?`, Time ${risk.time}`:''})<br><span class="muted">${U.escapeHtml(reasons)}</span></p>
-      <p><b>Description:</b><br>${U.escapeHtml(r.desc||'-')}</p>
-      <p><b>Log:</b><br>${U.escapeHtml(r.log||'-')}</p>
-      ${r.file?`<p><b>Attachment:</b> <a href="${U.escapeAttr(r.file)}" target="_blank" rel="noopener noreferrer">Open link</a></p>`:''}
-      <div style="margin-top:10px" class="muted">
-        Suggested: priority <b>${U.escapeHtml((meta.suggestions?.priority)||'-')}</b>;
-        categories: ${(meta.suggestions?.categories||[]).slice(0,3).map(c=>U.escapeHtml(c.label)).join(', ')||'—'}.
-      </div>
-    `;
-    E.issueModal.style.display='flex';
-    E.copyId?.focus();
-  },
-  closeIssue(){
-    if(!E.issueModal) return;
-    E.issueModal.style.display='none';
-    this.selectedIssue=null;
-    if(this.lastFocus?.focus) this.lastFocus.focus();
-  },
-  openEvent(ev){
-    this.lastEventFocus=document.activeElement;
-    const isEdit=!!(ev && ev.id);
-    if(E.eventForm) E.eventForm.dataset.id = isEdit ? ev.id : '';
-    if(E.eventModalTitle) E.eventModalTitle.textContent=isEdit?'Edit Event':'Add Event';
-    if(E.eventDelete) E.eventDelete.style.display=isEdit?'inline-flex':'none';
-
-    const allDay = !!ev.allDay;
-    if(E.eventAllDay) E.eventAllDay.checked = allDay;
-
-    if(E.eventTitle) E.eventTitle.value=ev.title||'';
-    if(E.eventType) E.eventType.value=ev.type||'Deployment';
-    if(E.eventIssueId) E.eventIssueId.value=ev.issueId||'';
-
-    if(E.eventStart){
-      E.eventStart.type = allDay ? 'date' : 'datetime-local';
-      E.eventStart.value = ev.start
-        ? (allDay ? toLocalDateValue(ev.start) : toLocalInputValue(ev.start))
-        : '';
-    }
-    if(E.eventEnd){
-      E.eventEnd.type = allDay ? 'date' : 'datetime-local';
-      E.eventEnd.value = ev.end
-        ? (allDay ? toLocalDateValue(ev.end) : toLocalInputValue(ev.end))
-        : '';
-    }
-    if(E.eventDescription) E.eventDescription.value=ev.description||'';
-
-    if(E.eventIssueLinkedInfo){
-      const issueId = ev.issueId || '';
-      if(issueId){
-        const issue = DataStore.byId.get(issueId);
-        if(issue){
-          const meta = DataStore.computed.get(issue.id) || {};
-          const riskTotal = meta.risk?.total || 0;
-          const badgeClass = CalendarLink.riskBadgeClass(riskTotal);
-          E.eventIssueLinkedInfo.style.display='block';
-          E.eventIssueLinkedInfo.innerHTML = `
-            Linked issue: <strong>${U.escapeHtml(issue.id)}</strong> – ${U.escapeHtml(issue.title||'')}
-            <br><span class="muted">Status: ${U.escapeHtml(issue.status||'-')} · Priority: ${U.escapeHtml(issue.priority||'-')}</span>
-            ${riskTotal ? `<span class="event-risk-badge ${badgeClass}">RISK ${riskTotal}</span>` : ''}
-            <div style="margin-top:4px;">
-              <button type="button" class="btn sm" id="eventOpenIssueBtn">Open issue</button>
-            </div>
-          `;
-          const btn = document.getElementById('eventOpenIssueBtn');
-          if(btn) btn.addEventListener('click',()=> UI.Modals.openIssue(issue.id));
-        }else{
-          E.eventIssueLinkedInfo.style.display='block';
-          E.eventIssueLinkedInfo.textContent=`Linked issue ID: ${issueId} (not found in current dataset)`;
-        }
-      }else{
-        E.eventIssueLinkedInfo.style.display='none';
-        E.eventIssueLinkedInfo.textContent='';
-      }
-    }
-
-    if(E.eventModal){ E.eventModal.style.display='flex'; E.eventTitle?.focus(); }
-  },
-  closeEvent(){
-    if(!E.eventModal) return;
-    E.eventModal.style.display='none';
-    if(E.eventForm) E.eventForm.dataset.id='';
-    if(this.lastEventFocus?.focus) this.lastEventFocus.focus();
-  }
-};
-
 /** Analytics (AI tab) */
 const Analytics = {
   _debounce:null,
@@ -1819,10 +1993,12 @@ const Analytics = {
       .sort((a,b)=>b.score-a.score).slice(0,5).filter(x=>x.score>2);
     E.aiRisksList.innerHTML = topRisks.length? topRisks.map(({r,score})=>{
       const badgeClass = CalendarLink.riskBadgeClass(score);
+      const meta = DataStore.computed.get(r.id)?.risk || {};
       return `
         <li style="margin-bottom:4px;">
           <strong>[${U.escapeHtml(r.priority||'-')}] ${U.escapeHtml(r.id||'')}</strong>
           <span class="event-risk-badge ${badgeClass}">RISK ${score}</span>
+          <span class="muted"> · sev ${meta.severity ?? 0} · imp ${meta.impact ?? 0} · urg ${meta.urgency ?? 0}</span>
           <br><span class="muted">Status ${U.escapeHtml(r.status||'-')}</span>
           <br>${U.escapeHtml(r.title||'')}
         </li>`;
@@ -1873,10 +2049,11 @@ const Analytics = {
     const evs=computeEventsRisk(DataStore.rows, DataStore.events);
     E.aiEventsList.innerHTML = evs.length? evs.map(r=>{
       const badge=CalendarLink.riskBadgeClass(r.risk);
+      const ev=r.event;
       return `<li style="margin-bottom:6px;">
-        <strong>${U.escapeHtml(r.event.title||'(no title)')}</strong>
+        <strong>${U.escapeHtml(ev.title||'(no title)')}</strong>
         <span class="event-risk-badge ${badge}">RISK ${r.risk}</span>
-        <div class="muted">${U.fmtTS(r.date)} · Modules: ${r.modules.length?r.modules.map(U.escapeHtml).join(', '):'n/a'} · Related issues: ${r.issues.length}</div>
+        <div class="muted">${U.fmtTS(r.date)} · Env: ${U.escapeHtml(ev.env||'Prod')} · Modules: ${r.modules.length?r.modules.map(U.escapeHtml).join(', '):'n/a'} · Related issues: ${r.issues.length}</div>
       </li>`;
     }).join(''):'<li>No notable risk in next 7 days.</li>';
 
@@ -1895,9 +2072,6 @@ Reasons: ${(meta.risk?.reasons||[]).join(', ')}`;
     UI.setAnalyzing(false);
   }
 };
-
-function prioMap(p){ return {High:3,Medium:2,Low:1}[p]||0; }
-function prioGap(suggested,current){ return prioMap(suggested)-prioMap(current); }
 
 function buildClustersWeighted(list){
   const max=Math.min(list.length,400);
@@ -1935,91 +2109,540 @@ function buildClustersWeighted(list){
   return clusters.slice(0,6);
 }
 
-function computeEventsRisk(issues,events){
-  const now=new Date(), limit=U.dateAddDays(now,7);
-  const openIssues=issues.filter(i=>{
-    const st=(i.status||'').toLowerCase();
-    return !(st.startsWith('resolved')||st.startsWith('rejected'));
-  });
-  const modules=Array.from(new Set(openIssues.map(i=>i.module).filter(Boolean)));
-  const res=[];
-  events.forEach(ev=>{
-    if(!ev.start) return;
-    const d=new Date(ev.start); if(isNaN(d)||d<now||d>limit) return;
-    const title=(ev.title||'').toLowerCase();
-    const impacted=modules.filter(m=>title.includes((m||'').toLowerCase()));
-    let rel=[];
-    if(impacted.length) rel=openIssues.filter(i=>impacted.includes(i.module));
-    else if((ev.type||'').toLowerCase()!=='other'){
-      const recentOpen=openIssues.filter(i=>U.isBetween(i.date,U.daysAgo(7),null));
-      rel=recentOpen.filter(i=>(DataStore.computed.get(i.id)?.risk?.total||0)>=8);
+/** Modals */
+UI.Modals = {
+  selectedIssue:null,lastFocus:null,lastEventFocus:null,
+  openIssue(id){
+    const r=DataStore.byId.get(id); if(!r||!E.issueModal) return;
+    this.selectedIssue=r; this.lastFocus=document.activeElement;
+    const meta=DataStore.computed.get(r.id)||{};
+    const risk=meta.risk||{technical:0,business:0,operational:0,time:0,total:0,severity:0,impact:0,urgency:0,reasons:[]};
+    const reasons=risk.reasons?.length?('Reasons: '+risk.reasons.join(', ')):'—';
+    E.modalTitle.textContent=r.title||r.id||'Issue';
+    E.modalBody.innerHTML=`
+      <p><b>ID:</b> ${U.escapeHtml(r.id||'-')}</p>
+      <p><b>Module:</b> ${U.escapeHtml(r.module||'-')}</p>
+      <p><b>Priority:</b> ${U.escapeHtml(r.priority||'-')}</p>
+      <p><b>Status:</b> ${U.escapeHtml(r.status||'-')}</p>
+      <p><b>Date:</b> ${U.escapeHtml(r.date||'-')}</p>
+      <p><b>Risk:</b> ${risk.total}
+         <br><span class="muted">Tech ${risk.technical}, Biz ${risk.business}, Ops ${risk.operational}, Time ${risk.time}</span>
+         <br><span class="muted">Severity ${risk.severity}, Impact ${risk.impact}, Urgency ${risk.urgency}</span>
+         <br><span class="muted">${U.escapeHtml(reasons)}</span>
+      </p>
+      <p><b>Description:</b><br>${U.escapeHtml(r.desc||'-')}</p>
+      <p><b>Log:</b><br>${U.escapeHtml(r.log||'-')}</p>
+      ${r.file?`<p><b>Attachment:</b> <a href="${U.escapeAttr(r.file)}" target="_blank" rel="noopener noreferrer">Open link</a></p>`:''}
+      <div style="margin-top:10px" class="muted">
+        Suggested: priority <b>${U.escapeHtml((meta.suggestions?.priority)||'-')}</b>;
+        categories: ${(meta.suggestions?.categories||[]).slice(0,3).map(c=>U.escapeHtml(c.label)).join(', ')||'—'}.
+      </div>
+    `;
+    E.issueModal.style.display='flex';
+    E.copyId?.focus();
+  },
+  closeIssue(){
+    if(!E.issueModal) return;
+    E.issueModal.style.display='none';
+    this.selectedIssue=null;
+    if(this.lastFocus?.focus) this.lastFocus.focus();
+  },
+  openEvent(ev){
+    this.lastEventFocus=document.activeElement;
+    const isEdit=!!(ev && ev.id);
+    if(E.eventForm) E.eventForm.dataset.id = isEdit ? ev.id : '';
+    if(E.eventModalTitle) E.eventModalTitle.textContent=isEdit?'Edit Event':'Add Event';
+    if(E.eventDelete) E.eventDelete.style.display=isEdit?'inline-flex':'none';
+
+    const allDay = !!ev.allDay;
+    if(E.eventAllDay) E.eventAllDay.checked = allDay;
+
+    if(E.eventTitle) E.eventTitle.value=ev.title||'';
+    if(E.eventType) E.eventType.value=ev.type||'Deployment';
+    if(E.eventEnv) E.eventEnv.value=ev.env||'Prod';
+    if(E.eventStatus) E.eventStatus.value=ev.status||'Planned';
+    if(E.eventOwner) E.eventOwner.value=ev.owner||'';
+    if(E.eventModules){
+      const val = Array.isArray(ev.modules) ? ev.modules.join(', ') : (ev.modules||'');
+      E.eventModules.value = val;
     }
-    if(!rel.length) return;
-    const risk=rel.reduce((s,i)=>s+(DataStore.computed.get(i.id)?.risk?.total||0),0);
-    res.push({event:ev,modules:impacted,issues:rel,risk,date:d});
+    if(E.eventImpactType) E.eventImpactType.value=ev.impactType||'No downtime expected';
+    if(E.eventIssueId) E.eventIssueId.value=ev.issueId||'';
+
+    if(E.eventStart){
+      E.eventStart.type = allDay ? 'date' : 'datetime-local';
+      E.eventStart.value = ev.start
+        ? (allDay ? toLocalDateValue(ev.start) : toLocalInputValue(ev.start))
+        : '';
+    }
+    if(E.eventEnd){
+      E.eventEnd.type = allDay ? 'date' : 'datetime-local';
+      E.eventEnd.value = ev.end
+        ? (allDay ? toLocalDateValue(ev.end) : toLocalInputValue(ev.end))
+        : '';
+    }
+    if(E.eventDescription) E.eventDescription.value=ev.description||'';
+
+    if(E.eventIssueLinkedInfo){
+      const issueId = ev.issueId || '';
+      if(issueId){
+        const issue = DataStore.byId.get(issueId);
+        if(issue){
+          const meta = DataStore.computed.get(issue.id) || {};
+          const riskTotal = meta.risk?.total || 0;
+          const badgeClass = CalendarLink.riskBadgeClass(riskTotal);
+          E.eventIssueLinkedInfo.style.display='block';
+          E.eventIssueLinkedInfo.innerHTML = `
+            Linked issue: <strong>${U.escapeHtml(issue.id)}</strong> – ${U.escapeHtml(issue.title||'')}
+            <br><span class="muted">Status: ${U.escapeHtml(issue.status||'-')} · Priority: ${U.escapeHtml(issue.priority||'-')}</span>
+            ${riskTotal ? `<span class="event-risk-badge ${badgeClass}">RISK ${riskTotal}</span>` : ''}
+            <div style="margin-top:4px;">
+              <button type="button" class="btn sm" id="eventOpenIssueBtn">Open issue</button>
+            </div>
+          `;
+          const btn = document.getElementById('eventOpenIssueBtn');
+          if(btn) btn.addEventListener('click',()=> UI.Modals.openIssue(issue.id));
+        }else{
+          E.eventIssueLinkedInfo.style.display='block';
+          E.eventIssueLinkedInfo.textContent=`Linked issue ID: ${issueId} (not found in current dataset)`;
+        }
+      }else{
+        E.eventIssueLinkedInfo.style.display='none';
+        E.eventIssueLinkedInfo.textContent='';
+      }
+    }
+
+    if(E.eventModal){ E.eventModal.style.display='flex'; E.eventTitle?.focus(); }
+  },
+  closeEvent(){
+    if(!E.eventModal) return;
+    E.eventModal.style.display='none';
+    if(E.eventForm) E.eventForm.dataset.id='';
+    if(this.lastEventFocus?.focus) this.lastEventFocus.focus();
+  }
+};
+
+function debounce(fn,ms=250){ let t; return(...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }; }
+
+function trapFocus(container,e){
+  const focusables = container.querySelectorAll('button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])');
+  if(!focusables.length) return;
+  const first=focusables[0], last=focusables[focusables.length-1];
+  if(e.shiftKey && document.activeElement===first){
+    last.focus(); e.preventDefault();
+  }else if(!e.shiftKey && document.activeElement===last){
+    first.focus(); e.preventDefault();
+  }
+}
+
+function setActiveView(view){
+  const names=['issues','calendar','insights'];
+  names.forEach(name=>{
+    const tab = name==='issues'?E.issuesTab : name==='calendar'?E.calendarTab : E.insightsTab;
+    const panel = name==='issues'?E.issuesView : name==='calendar'?E.calendarView : E.insightsView;
+    const active = (name===view);
+    if(tab){
+      tab.classList.toggle('active',active);
+      tab.setAttribute('aria-selected',active?'true':'false');
+    }
+    if(panel) panel.classList.toggle('active',active);
   });
-  res.sort((a,b)=>b.risk-a.risk);
-  return res.slice(0,5);
+  try{ localStorage.setItem(LS_KEYS.view,view); }catch{}
+  if(view==='calendar'){ ensureCalendar(); renderCalendarEvents(); }
+  if(view==='insights') Analytics.refresh(UI.Issues.applyFilters());
+}
+/* ---------- Calendar wiring ---------- */
+let calendar=null, calendarReady=false;
+
+function wireCalendar(){
+  if(E.addEventBtn) E.addEventBtn.addEventListener('click',()=>{
+    const now=new Date();
+    UI.Modals.openEvent({start:now,end:new Date(now.getTime()+60*60*1000),allDay:false,env:'Prod',status:'Planned'});
+  });
+
+  [E.eventFilterDeployment,E.eventFilterMaintenance,E.eventFilterRelease,E.eventFilterOther]
+    .forEach(input=>{ if(input) input.addEventListener('change',renderCalendarEvents); });
+
+  if(E.calendarTz){
+    try{
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'local time';
+      E.calendarTz.textContent = `Times shown in: ${tz}`;
+    }catch{
+      E.calendarTz.textContent = '';
+    }
+  }
 }
 
-function toLocalInputValue(date){
-  const d=(date instanceof Date)?date:new Date(date);
-  if(isNaN(d)) return '';
-  return `${d.getFullYear()}-${U.pad(d.getMonth()+1)}-${U.pad(d.getDate())}T${U.pad(d.getHours())}:${U.pad(d.getMinutes())}`;
-}
-function toLocalDateValue(date){
-  const d=(date instanceof Date)?date:new Date(date);
-  if(isNaN(d)) return '';
-  return `${d.getFullYear()}-${U.pad(d.getMonth()+1)}-${U.pad(d.getDate())}`;
-}
+function ensureCalendar(){
+  if(calendarReady) return;
+  const el=document.getElementById('calendar');
+  if(!el || typeof FullCalendar==='undefined'){ UI.toast('Calendar library failed to load'); return; }
+  calendar=new FullCalendar.Calendar(el,{
+    initialView:'dayGridMonth', selectable:true, editable:true, height:'auto',
+    headerToolbar:{left:'title',center:'',right:'dayGridMonth,timeGridWeek,listWeek today prev,next'},
+    select:info=>UI.Modals.openEvent({start:info.start,end:info.end,allDay:info.allDay,env:'Prod',status:'Planned'}),
+    eventClick:info=>{
+      const ev=DataStore.events.find(e=>e.id===info.event.id) || {
+        id:info.event.id,
+        title:info.event.title,
+        type:info.event.extendedProps.type||'Other',
+        start:info.event.start,
+        end:info.event.end,
+        description:info.event.extendedProps.description||'',
+        issueId:info.event.extendedProps.issueId||'',
+        allDay:info.event.allDay,
+        env:info.event.extendedProps.env || 'Prod',
+        status:info.event.extendedProps.status || 'Planned',
+        owner:info.event.extendedProps.owner || '',
+        modules:info.event.extendedProps.modules || [],
+        impactType:info.event.extendedProps.impactType || 'No downtime expected'
+      };
+      UI.Modals.openEvent(ev);
+    },
+    eventDrop: async info=>{
+      const ev = DataStore.events.find(e=>e.id===info.event.id);
+      if(!ev){ info.revert(); return; }
+      const updated = {
+        ...ev,
+        start:info.event.start,
+        end:info.event.end,
+        allDay:info.event.allDay
+      };
+      const saved = await saveEventToSheet(updated);
+      if(!saved){ info.revert(); return; }
+      const idx=DataStore.events.findIndex(e=>e.id===saved.id);
+      if(idx>-1) DataStore.events[idx]=saved;
+      saveEventsCache();
+      Analytics.refresh(UI.Issues.applyFilters());
+    },
+    eventDidMount(info){
+      const ext = info.event.extendedProps || {};
+      const riskSum=ext.risk||0;
+      if(riskSum){
+        const span=document.createElement('span');
+        span.className='event-risk-badge '+CalendarLink.riskBadgeClass(riskSum);
+        span.textContent=`RISK ${riskSum}`;
+        const titleEl=info.el.querySelector('.fc-event-title');
+        if(titleEl) titleEl.appendChild(span);
+      }
 
-/* ---------- App init ---------- */
-let AI_LAST_RESULTS = [];
+      const env    = ext.env    || 'Prod';
+      const status = ext.status || 'Planned';
 
-document.addEventListener('DOMContentLoaded', initApp);
+      let tooltip = ext.description || '';
+      if(ext.issueId){
+        const issue = DataStore.byId.get(ext.issueId);
+        if(issue){
+          const meta = DataStore.computed.get(issue.id) || {};
+          const r = meta.risk?.total || 0;
+          tooltip = `${issue.id} – ${issue.title||''}\nStatus: ${issue.status||'-'} · Priority: ${issue.priority||'-'} · Risk: ${r}` + (tooltip?`\n\n${tooltip}`:'');
+        }else{
+          tooltip = `Linked issue: ${ext.issueId}` + (tooltip?`\n\n${tooltip}`:'');
+        }
+      }
 
-function initApp(){
-  cacheEls();
-  if(E.pageSize) E.pageSize.value=String(GridState.pageSize);
-  Filters.load();
+      tooltip += `\nEnvironment: ${env} · Change status: ${status}`;
+      if(ext.collision || ext.freeze || ext.hotIssues){
+        tooltip += `\n⚠️ Change risk signals:`;
+        if(ext.collision) tooltip += ` overlaps with other change(s)`;
+        if(ext.freeze)    tooltip += ` · in freeze window`;
+        if(ext.hotIssues) tooltip += ` · high-risk open issues`;
+      }
 
-  wireCore();
-  wireSorting();
-  wirePaging();
-  wireFilters();
-  wireTheme();
-  wireConnectivity();
-  wireModals();
-  wireAI();
-  wireCalendar();
-
-  UI.setSync('issues',false,null);
-  UI.setSync('events',false,null);
-
-  // restore view (issues / calendar / insights)
-  let savedView='issues';
-  try{ savedView=localStorage.getItem(LS_KEYS.view)||'issues'; }catch{}
-  setActiveView(savedView);
-
-  loadIssues();
-  loadEvents();
-
-  if(typeof Chart==='undefined') UI.toast('Chart.js failed to load');
-  if(typeof Papa==='undefined') UI.toast('PapaParse failed to load');
-
-  // keyboard shortcuts
-  document.addEventListener('keydown',e=>{
-    if(e.key==='/'){ e.preventDefault(); E.searchInput?.focus(); }
-    if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='k'){ e.preventDefault(); E.aiQueryInput?.focus(); }
-    if(!e.ctrlKey && !e.metaKey){
-      if(e.key==='1') E.issuesTab?.click();
-      if(e.key==='2') E.calendarTab?.click();
-      if(e.key==='3') E.insightsTab?.click();
+      if(tooltip.trim()) info.el.setAttribute('title', tooltip);
     }
   });
+  calendarReady=true;
+  renderCalendarEvents();
+  calendar.render();
 }
 
-/* ---------- wiring ---------- */
+function renderCalendarEvents(){
+  if(!calendar) return;
+  const activeTypes=new Set();
+  if(E.eventFilterDeployment && E.eventFilterDeployment.checked) activeTypes.add('Deployment');
+  if(E.eventFilterMaintenance && E.eventFilterMaintenance.checked) activeTypes.add('Maintenance');
+  if(E.eventFilterRelease && E.eventFilterRelease.checked) activeTypes.add('Release');
+  if(E.eventFilterOther && E.eventFilterOther.checked) activeTypes.add('Other');
+
+  const links = computeEventsRisk(DataStore.rows, DataStore.events);
+  const riskMap = new Map(links.map(r=>[r.event.id,r.risk]));
+  const {flagsById} = computeChangeCollisions(DataStore.rows, DataStore.events);
+
+  calendar.removeAllEvents();
+  DataStore.events.forEach(ev=>{
+    const type = ev.type || 'Other';
+    if(activeTypes.size && !activeTypes.has(type)) return;
+    const risk = riskMap.get(ev.id) || 0;
+
+    const env   = ev.env || 'Prod';
+    const status= ev.status || 'Planned';
+    const owner = ev.owner || '';
+    const modules = Array.isArray(ev.modules)
+      ? ev.modules
+      : (typeof ev.modules==='string'
+         ? ev.modules.split(',').map(s=>s.trim()).filter(Boolean)
+         : []);
+    const impactType = ev.impactType || '';
+
+    const flags = flagsById.get(ev.id) || {};
+    const classNames = [
+      'event-type-'+type.toLowerCase().replace(/\s+/g,'-'),
+      'event-env-'+env.toLowerCase()
+    ];
+    if(flags.collision) classNames.push('event-collision');
+    if(flags.freeze) classNames.push('event-freeze');
+    if(flags.hotIssues) classNames.push('event-hot');
+
+    calendar.addEvent({
+      id:ev.id,
+      title:ev.title,
+      start:ev.start,
+      end:ev.end||null,
+      allDay:!!ev.allDay,
+      extendedProps:{
+        type,
+        description:ev.description,
+        issueId:ev.issueId||'',
+        risk,
+        env,
+        status,
+        owner,
+        modules,
+        impactType,
+        collision: !!flags.collision,
+        freeze: !!flags.freeze,
+        hotIssues: !!flags.hotIssues
+      },
+      classNames
+    });
+  });
+}
+
+/* ---------- Networking & data loading ---------- */
+async function safeFetchText(url, opts = {}){
+  const res = await fetch(url,{cache:'no-store',...opts});
+  if(!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status} ${res.statusText}`);
+  return await res.text();
+}
+
+function loadEventsCache(){
+  try{
+    const raw = localStorage.getItem(LS_KEYS.events);
+    if(!raw) return [];
+    const data = JSON.parse(raw);
+    return Array.isArray(data) ? data : [];
+  }catch{return [];}
+}
+function saveEventsCache(){
+  try{ localStorage.setItem(LS_KEYS.events, JSON.stringify(DataStore.events||[])); }catch{}
+}
+
+async function loadIssues(force=false){
+  if(!force && !DataStore.rows.length){
+    const cached = IssuesCache.load();
+    if(cached && cached.length){
+      DataStore.hydrateFromRows(cached);
+      UI.Issues.renderFilters();
+      setIfOptionExists(E.moduleFilter, Filters.state.module);
+      setIfOptionExists(E.priorityFilter, Filters.state.priority);
+      setIfOptionExists(E.statusFilter, Filters.state.status);
+      UI.skeleton(false);
+      UI.refreshAll();
+    }
+  }
+
+  try{
+    UI.spinner(true); UI.skeleton(true);
+    const text = await safeFetchText(CONFIG.SHEET_URL);
+    DataStore.hydrate(text);
+    IssuesCache.save(DataStore.rows);
+    UI.Issues.renderFilters();
+    setIfOptionExists(E.moduleFilter, Filters.state.module);
+    setIfOptionExists(E.priorityFilter, Filters.state.priority);
+    setIfOptionExists(E.statusFilter, Filters.state.status);
+    UI.refreshAll();
+    UI.setSync('issues',true,new Date());
+  }catch(e){
+    if(!DataStore.rows.length && E.issuesTbody){
+      E.issuesTbody.innerHTML = `
+        <tr>
+          <td colspan="8" style="color:#ffb4b4;text-align:center">
+            Error loading data and no cached data found.
+            <button type="button" id="retryLoad" class="btn sm" style="margin-left:8px">Retry</button>
+          </td>
+        </tr>`;
+      const retryBtn=document.getElementById('retryLoad');
+      if(retryBtn) retryBtn.addEventListener('click',()=>loadIssues(true));
+    }
+    UI.toast('Error loading issues: '+e.message);
+    UI.setSync('issues',!!DataStore.rows.length,null);
+  }finally{
+    UI.spinner(false);
+    UI.skeleton(false);
+  }
+}
+
+async function loadEvents(force=false){
+  const cached = loadEventsCache();
+  if(cached && cached.length && !force){
+    DataStore.events = cached;
+    ensureCalendar();
+    renderCalendarEvents();
+    Analytics.refresh(UI.Issues.applyFilters());
+    UI.setSync('events',true,new Date());
+  }
+
+  if(!CONFIG.CALENDAR_API_URL) return;
+
+  try{
+    UI.spinner(true);
+    const res = await fetch(CONFIG.CALENDAR_API_URL,{cache:'no-store'});
+    if(!res.ok) throw new Error(`Events API failed: ${res.status}`);
+    const data = await res.json().catch(()=>({}));
+    const events = Array.isArray(data.events)? data.events : [];
+
+    const normalized = events.map(ev=>{
+      const modulesArr = Array.isArray(ev.modules)
+        ? ev.modules
+        : (typeof ev.modules==='string'
+           ? ev.modules.split(',').map(s=>s.trim()).filter(Boolean)
+           : []);
+      return {
+        id: ev.id || ('ev_'+Date.now()+'_'+Math.random().toString(36).slice(2)),
+        title: ev.title || '',
+        type: ev.type || 'Other',
+        start: ev.start || ev.startDate || '',
+        end: ev.end || ev.endDate || '',
+        allDay: !!ev.allDay,
+        description: ev.description || '',
+        issueId: ev.issueId || '',
+        env: ev.env || ev.environment || 'Prod',
+        status: ev.status || 'Planned',
+        owner: ev.owner || '',
+        modules: modulesArr,
+        impactType: ev.impactType || 'No downtime expected'
+      };
+    });
+
+    DataStore.events = normalized;
+    saveEventsCache();
+    ensureCalendar();
+    renderCalendarEvents();
+    Analytics.refresh(UI.Issues.applyFilters());
+    UI.setSync('events',true,new Date());
+  }catch(e){
+    DataStore.events = cached || [];
+    ensureCalendar();
+    renderCalendarEvents();
+    UI.setSync('events',!!DataStore.events.length,null);
+    UI.toast(DataStore.events.length?'Using cached events (API error)':'Unable to load calendar events');
+  }finally{
+    UI.spinner(false);
+  }
+}
+
+/* ---------- Save/Delete to Apps Script ---------- */
+async function saveEventToSheet(event){
+  UI.spinner(true);
+  try{
+    const evId = event.id || ('ev_'+Date.now()+'_'+Math.random().toString(36).slice(2));
+    const payload = {...event,id:evId};
+    const res=await fetch(CONFIG.CALENDAR_API_URL,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'save',event:payload})
+    });
+    let data;
+    try{
+      data=await res.json();
+    }catch(jsonErr){
+      console.error('Invalid JSON from calendar backend', jsonErr);
+      const text=await res.text();
+      console.error('Raw response:', text);
+      UI.toast('Calendar: invalid JSON from backend, using local event');
+      return payload;
+    }
+    if(data.ok){
+      UI.toast('Event saved');
+      return data.event || payload;
+    }else{
+      UI.toast('Error saving event: '+(data.error||'Unknown error'));
+      return null;
+    }
+  }catch(e){
+    UI.toast('Network error saving event: '+e.message);
+    return null;
+  }finally{
+    UI.spinner(false);
+  }
+}
+
+async function deleteEventFromSheet(id){
+  UI.spinner(true);
+  try{
+    const res=await fetch(CONFIG.CALENDAR_API_URL,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'delete',event:{id}})
+    });
+    const data=await res.json();
+    if(!data.ok) throw new Error(data.error||'Delete failed');
+    UI.toast('Event deleted');
+    return true;
+  }catch(e){
+    UI.toast('Error deleting event: '+e.message);
+    return false;
+  }finally{
+    UI.spinner(false);
+  }
+}
+
+/* ---------- CSV export ---------- */
+function csvEscape(v){
+  const s = String(v==null?'':v);
+  if(/[",\n]/.test(s)) return '"'+s.replace(/"/g,'""')+'"';
+  return s;
+}
+
+function exportIssuesToCsv(rows,suffix){
+  if(!rows.length) return UI.toast('Nothing to export (no rows).');
+  const headers=[
+    'ID','Module','Title','Description','Priority','Status','Type','Date','Log','Link',
+    'RiskTotal','RiskSeverity','RiskImpact','RiskUrgency'
+  ];
+  const lines=[headers.join(',')];
+  rows.forEach(r=>{
+    const meta=DataStore.computed.get(r.id)||{};
+    const risk=meta.risk||{};
+    const arr=[
+      r.id,r.module,r.title,r.desc,r.priority,r.status,r.type,r.date,r.log,r.file,
+      risk.total??'',risk.severity??'',risk.impact??'',risk.urgency??''
+    ].map(csvEscape);
+    lines.push(arr.join(','));
+  });
+  const blob=new Blob([lines.join('\r\n')],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  const ts=new Date().toISOString().slice(0,10);
+  a.href=url; a.download=`incheck_issues_${suffix||'filtered'}_${ts}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  UI.toast('Exported CSV');
+}
+
+function exportFilteredCsv(){
+  const rows=UI.Issues.applyFilters();
+  exportIssuesToCsv(rows,'filtered');
+}
+
+/* ---------- Misc wiring ---------- */
+function setIfOptionExists(select,value){
+  if(!select || !value) return;
+  const options=Array.from(select.options||[]);
+  if(options.some(o=>o.value===value)) select.value=value;
+}
+
 function wireCore(){
   [E.issuesTab,E.calendarTab,E.insightsTab].forEach(btn=>{
     if(!btn) return;
@@ -2049,8 +2672,8 @@ function wireCore(){
   UI.refreshAll=()=>{
     const list=UI.Issues.applyFilters();
     UI.Issues.renderSummary(list);
-    UI.Issues.renderKPIs(list);
     UI.Issues.renderFilterChips();
+    UI.Issues.renderKPIs(list);
     UI.Issues.renderTable(list);
     UI.Issues.renderCharts(list);
     if(E.insightsView.classList.contains('active')) Analytics.refresh(list);
@@ -2144,7 +2767,6 @@ function wireTheme(){
     else document.documentElement.setAttribute('data-theme','light');
   });
 
-  // Accent color picker
   if(E.accentColor){
     const rootStyle = getComputedStyle(document.documentElement);
     const defaultAccent = rootStyle.getPropertyValue('--accent').trim() || '#4f8cff';
@@ -2208,6 +2830,16 @@ function wireModals(){
     e.preventDefault();
     const id=E.eventForm.dataset.id||'';
     const allDay = !!(E.eventAllDay && E.eventAllDay.checked);
+
+    const envVal    = E.eventEnv?.value || 'Prod';
+    const statusVal = E.eventStatus?.value || 'Planned';
+    const ownerVal  = E.eventOwner?.value.trim() || '';
+    const modulesArr = (E.eventModules?.value || '')
+      .split(',')
+      .map(s=>s.trim())
+      .filter(Boolean);
+    const impactTypeVal = E.eventImpactType?.value || 'No downtime expected';
+
     const ev={
       id,
       title:E.eventTitle.value.trim(),
@@ -2216,11 +2848,19 @@ function wireModals(){
       start:E.eventStart.value,
       end:E.eventEnd.value||null,
       description:E.eventDescription.value.trim(),
-      allDay
+      allDay,
+      env: envVal,
+      status: statusVal,
+      owner: ownerVal,
+      modules: modulesArr,
+      impactType: impactTypeVal
     };
     if(!ev.title) return UI.toast('Title & start required');
     if(!ev.start) return UI.toast('Start date/time is required');
-    const saved=await saveEventToSheet(ev); if(!saved) return;
+
+    const saved=await saveEventToSheet(ev);
+    if(!saved){ UI.toast('Could not save event'); return; }
+
     const idx=DataStore.events.findIndex(x=>x.id===saved.id);
     if(idx===-1) DataStore.events.push(saved); else DataStore.events[idx]=saved;
     saveEventsCache();
@@ -2232,20 +2872,21 @@ function wireModals(){
   if(E.eventDelete) E.eventDelete.addEventListener('click',async()=>{
     const id=E.eventForm?.dataset?.id;
     if(!id){ UI.Modals.closeEvent(); return; }
-    try{ await deleteEventFromSheet(id); }catch{}
+    const ok = await deleteEventFromSheet(id);
     const idx=DataStore.events.findIndex(x=>x.id===id);
     if(idx>-1) DataStore.events.splice(idx,1);
     saveEventsCache();
     renderCalendarEvents();
     Analytics.refresh(UI.Issues.applyFilters());
     UI.Modals.closeEvent();
+    if(!ok) UI.toast('Event removed locally; backend delete failed.');
   });
 
   if(E.eventAllDay){
     E.eventAllDay.addEventListener('change',()=>{
       const isAllDay = E.eventAllDay.checked;
       const startVal = E.eventStart.value;
-      const endVal = E.eventEnd.value;
+      const endVal   = E.eventEnd.value;
       if(isAllDay){
         if(E.eventStart){
           E.eventStart.type='date';
@@ -2269,7 +2910,9 @@ function wireModals(){
   }
 }
 
-/* ---------- AI / DSL ---------- */
+/* ---------- AI wiring ---------- */
+let AI_LAST_RESULTS = [];
+
 function wireAI(){
   if(E.aiQueryRun) E.aiQueryRun.addEventListener('click',runQuery);
   if(E.aiQueryInput) E.aiQueryInput.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); runQuery(); }});
@@ -2329,8 +2972,13 @@ function runQuery(){
   if(p.type) explain.push(`type includes "${p.type}"`);
   if(p.missing) explain.push(`missing ${p.missing}`);
   if(p.riskOp) explain.push(`risk ${p.riskOp} ${p.riskVal}`);
+  if(p.severityOp) explain.push(`severity ${p.severityOp} ${p.severityVal}`);
+  if(p.impactOp) explain.push(`impact ${p.impactOp} ${p.impactVal}`);
+  if(p.urgencyOp) explain.push(`urgency ${p.urgencyOp} ${p.urgencyVal}`);
+  if(p.ageOp) explain.push(`age ${p.ageOp} ${p.ageVal}d`);
   if(p.lastDays) explain.push(`last ${p.lastDays}d`);
   if(p.cluster) explain.push(`cluster matches "${p.cluster}"`);
+  if(p.eventScope) explain.push(`event:${p.eventScope}`);
   if(p.words?.length) explain.push(`contains ${p.words.join(' ')}`);
 
   const shown=list.slice(0,20);
@@ -2340,9 +2988,10 @@ function runQuery(){
     <ul style="padding-left:18px;margin:0;">
       ${shown.map(i=>{
         const rs=DataStore.computed.get(i.id)?.risk?.total||0;
+        const rMeta = DataStore.computed.get(i.id)?.risk || {};
         return `<li style="margin-bottom:4px;">
           <button type="button" class="btn sm" style="padding:3px 6px;margin-right:4px;" data-open="${U.escapeAttr(i.id)}">${U.escapeHtml(i.id)}</button>
-          [${U.escapeHtml(i.priority||'-')} · ${U.escapeHtml(i.status||'-')} · risk ${rs}] ${U.escapeHtml(i.title||'(no title)')}
+          [${U.escapeHtml(i.priority||'-')} · ${U.escapeHtml(i.status||'-')} · risk ${rs} · sev ${rMeta.severity ?? 0}] ${U.escapeHtml(i.title||'(no title)')}
         </li>`;
       }).join('')}
     </ul>`;
@@ -2357,329 +3006,49 @@ function guessOption(select,value){
 }
 function capitalizeFirst(s){return s? s[0].toUpperCase()+s.slice(1):s;}
 
-/* ---------- Calendar ---------- */
-let calendar=null, calendarReady=false;
-function wireCalendar(){
-  if(E.addEventBtn) E.addEventBtn.addEventListener('click',()=>{
-    const now=new Date();
-    UI.Modals.openEvent({start:now,end:new Date(now.getTime()+60*60*1000),allDay:false});
-  });
+/* ---------- App init ---------- */
+function initApp(){
+  cacheEls();
+  if(E.pageSize) E.pageSize.value=String(GridState.pageSize);
+  Filters.load();
 
-  [E.eventFilterDeployment,E.eventFilterMaintenance,E.eventFilterRelease,E.eventFilterOther]
-    .forEach(input=>{ if(input) input.addEventListener('change',renderCalendarEvents); });
+  wireCore();
+  wireSorting();
+  wirePaging();
+  wireFilters();
+  wireTheme();
+  wireConnectivity();
+  wireModals();
+  wireAI();
+  wireCalendar();
 
-  if(E.calendarTz){
-    try{
-      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'local time';
-      E.calendarTz.textContent = `Times shown in: ${tz}`;
-    }catch{
-      E.calendarTz.textContent = '';
-    }
-  }
-}
+  UI.setSync('issues',false,null);
+  UI.setSync('events',false,null);
 
-function ensureCalendar(){
-  if(calendarReady) return;
-  const el=document.getElementById('calendar');
-  if(!el || typeof FullCalendar==='undefined'){ UI.toast('Calendar library failed to load'); return; }
-  calendar=new FullCalendar.Calendar(el,{
-    initialView:'dayGridMonth', selectable:true, editable:true, height:'auto',
-    headerToolbar:{left:'title',center:'',right:'dayGridMonth,timeGridWeek,listWeek today prev,next'},
-    select:info=>UI.Modals.openEvent({start:info.start,end:info.end,allDay:info.allDay}),
-    eventClick:info=>{
-      const ev=DataStore.events.find(e=>e.id===info.event.id) || {
-        id:info.event.id,
-        title:info.event.title,
-        type:info.event.extendedProps.type||'Other',
-        start:info.event.start,
-        end:info.event.end,
-        description:info.event.extendedProps.description||'',
-        issueId:info.event.extendedProps.issueId||'',
-        allDay:info.event.allDay
-      };
-      UI.Modals.openEvent(ev);
-    },
-    eventDrop: async info=>{
-      const ev = DataStore.events.find(e=>e.id===info.event.id);
-      if(!ev){ info.revert(); return; }
-      const updated = {
-        ...ev,
-        start:info.event.start,
-        end:info.event.end,
-        allDay:info.event.allDay
-      };
-      const saved = await saveEventToSheet(updated);
-      if(!saved){ info.revert(); return; }
-      const idx=DataStore.events.findIndex(e=>e.id===saved.id);
-      if(idx>-1) DataStore.events[idx]=saved;
-      saveEventsCache();
-      Analytics.refresh(UI.Issues.applyFilters());
-    },
-    eventDidMount(info){
-      const riskSum=info.event.extendedProps.risk||0;
-      if(riskSum){
-        const span=document.createElement('span');
-        span.className='event-risk-badge '+CalendarLink.riskBadgeClass(riskSum);
-        span.textContent=`RISK ${riskSum}`;
-        const titleEl=info.el.querySelector('.fc-event-title');
-        if(titleEl) titleEl.appendChild(span);
-      }
-      const ext = info.event.extendedProps || {};
-      let tooltip = ext.description || '';
-      if(ext.issueId){
-        const issue = DataStore.byId.get(ext.issueId);
-        if(issue){
-          const r = DataStore.computed.get(issue.id)?.risk?.total || 0;
-          tooltip = `${issue.id} – ${issue.title||''}\nStatus: ${issue.status||'-'} · Priority: ${issue.priority||'-'} · Risk: ${r}` + (tooltip?`\n\n${tooltip}`:'');
-        }else{
-          tooltip = `Linked issue: ${ext.issueId}` + (tooltip?`\n\n${tooltip}`:'');
-        }
-      }
-      if(tooltip) info.el.setAttribute('title', tooltip);
+  let savedView='issues';
+  try{ savedView=localStorage.getItem(LS_KEYS.view)||'issues'; }catch{}
+  setActiveView(savedView);
+
+  loadIssues();
+  loadEvents();
+
+  if(typeof Chart==='undefined') UI.toast('Chart.js failed to load');
+  if(typeof Papa==='undefined') UI.toast('PapaParse failed to load');
+
+  document.addEventListener('keydown',e=>{
+    if(e.key==='/'){ e.preventDefault(); E.searchInput?.focus(); }
+    if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='k'){ e.preventDefault(); E.aiQueryInput?.focus(); }
+    if(!e.ctrlKey && !e.metaKey){
+      if(e.key==='1') E.issuesTab?.click();
+      if(e.key==='2') E.calendarTab?.click();
+      if(e.key==='3') E.insightsTab?.click();
     }
   });
-  calendarReady=true;
-  renderCalendarEvents();
-  calendar.render();
 }
 
-function renderCalendarEvents(){
-  if(!calendar) return;
-  const activeTypes=new Set();
-  if(E.eventFilterDeployment && E.eventFilterDeployment.checked) activeTypes.add('Deployment');
-  if(E.eventFilterMaintenance && E.eventFilterMaintenance.checked) activeTypes.add('Maintenance');
-  if(E.eventFilterRelease && E.eventFilterRelease.checked) activeTypes.add('Release');
-  if(E.eventFilterOther && E.eventFilterOther.checked) activeTypes.add('Other');
+document.addEventListener('DOMContentLoaded', initApp);
 
-  const links=computeEventsRisk(DataStore.rows, DataStore.events);
-  const riskMap=new Map(links.map(r=>[r.event.id,r.risk]));
-
-  calendar.removeAllEvents();
-  DataStore.events.forEach(ev=>{
-    const type=ev.type||'Other';
-    if(activeTypes.size && !activeTypes.has(type)) return;
-    const risk = riskMap.get(ev.id) || 0;
-    calendar.addEvent({
-      id:ev.id,
-      title:ev.title,
-      start:ev.start,
-      end:ev.end||null,
-      allDay:!!ev.allDay,
-      extendedProps:{
-        type,
-        description:ev.description,
-        issueId:ev.issueId||'',
-        risk
-      },
-      classNames:['event-type-'+type.toLowerCase().replace(/\s+/g,'-')]
-    });
-  });
-}
-
-/* ---------- Networking ---------- */
-async function safeFetchText(url, opts = {}){
-  const res = await fetch(url,{cache:'no-store',...opts});
-  if(!res.ok) throw new Error(`Failed to fetch (${res.status})`);
-  return res.text();
-}
-async function safeFetchJson(url, opts = {}){
-  const res = await fetch(url,{cache:'no-store',...opts});
-  if(!res.ok) throw new Error(`Failed to fetch (${res.status})`);
-  return res.json();
-}
-
-async function loadIssues(force=false){
-  // Use cached issues first if we have nothing yet and we're not forcing
-  if(!force && !DataStore.rows.length){
-    const cached = IssuesCache.load();
-    if(cached && cached.length){
-      DataStore.hydrateFromRows(cached);
-      UI.Issues.renderFilters();
-      // restore filters into selects (only if option exists)
-      setIfOptionExists(E.moduleFilter, Filters.state.module);
-      setIfOptionExists(E.priorityFilter, Filters.state.priority);
-      setIfOptionExists(E.statusFilter, Filters.state.status);
-      UI.skeleton(false);
-      UI.refreshAll();
-    }
-  }
-
-  try{
-    UI.spinner(true); UI.skeleton(true);
-    const text = await safeFetchText(CONFIG.SHEET_URL);
-    DataStore.hydrate(text);
-    IssuesCache.save(DataStore.rows);
-    UI.Issues.renderFilters();
-    setIfOptionExists(E.moduleFilter, Filters.state.module);
-    setIfOptionExists(E.priorityFilter, Filters.state.priority);
-    setIfOptionExists(E.statusFilter, Filters.state.status);
-    UI.refreshAll();
-    UI.setSync('issues',true,new Date());
-  }catch(e){
-    if(!DataStore.rows.length && E.issuesTbody){
-      E.issuesTbody.innerHTML = `
-        <tr>
-          <td colspan="8" style="color:#ffb4b4;text-align:center">
-            Error loading data and no cached data found.
-            <button type="button" id="retryLoad" class="btn sm" style="margin-left:8px">Retry</button>
-          </td>
-        </tr>`;
-      const retryBtn=document.getElementById('retryLoad');
-      if(retryBtn) retryBtn.addEventListener('click',()=>loadIssues(true));
-    }
-    UI.toast('Error loading issues: '+e.message);
-    UI.setSync('issues',!!DataStore.rows.length,null);
-  }finally{
-    UI.spinner(false);
-    UI.skeleton(false);
-  }
-}
-
-async function loadEvents(force=false){
-  try{
-    UI.spinner(true);
-    const data=await safeFetchJson(CONFIG.CALENDAR_API_URL);
-    DataStore.events=data.events||loadEventsCache();
-    saveEventsCache();
-    renderCalendarEvents();
-    UI.setSync('events',true,new Date());
-  }catch(e){
-    DataStore.events=loadEventsCache();
-    renderCalendarEvents();
-    UI.setSync('events',!!DataStore.events.length,null);
-    UI.toast(DataStore.events.length?'Using cached events (API error)':'Unable to load calendar events');
-  }finally{
-    UI.spinner(false);
-    if(E.insightsView.classList.contains('active')) Analytics.refresh(UI.Issues.applyFilters());
-  }
-}
-
-/* ---------- Events cache ---------- */
-function loadEventsCache(){
-  try{return JSON.parse(localStorage.getItem(LS_KEYS.events)||'[]');}catch{return[];}
-}
-function saveEventsCache(){
-  try{localStorage.setItem(LS_KEYS.events,JSON.stringify(DataStore.events));}catch{}
-}
-
-/* ---------- Save/Delete to Apps Script ---------- */
-async function saveEventToSheet(event){
-  UI.spinner(true);
-  try{
-    const res=await fetch(CONFIG.CALENDAR_API_URL,{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({action:'save',event})
-    });
-    let data;
-    try{
-      data=await res.json();
-    }catch(jsonErr){
-      console.error('Invalid JSON from calendar backend', jsonErr);
-      const text=await res.text();
-      console.error('Raw response:', text);
-      UI.toast('Calendar: invalid JSON from backend');
-      return null;
-    }
-    if(data.ok){
-      UI.toast('Event saved');
-      return data.event;
-    }else{
-      UI.toast('Error saving event: '+(data.error||'Unknown error'));
-      return null;
-    }
-  }catch(e){
-    UI.toast('Network error saving event: '+e.message);
-    return null;
-  }finally{
-    UI.spinner(false);
-  }
-}
-
-async function deleteEventFromSheet(id){
-  UI.spinner(true);
-  try{
-    const res=await fetch(CONFIG.CALENDAR_API_URL,{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({action:'delete',event:{id}})
-    });
-    const data=await res.json();
-    if(!data.ok) throw new Error(data.error||'Delete failed');
-    UI.toast('Event deleted');
-  }catch(e){
-    UI.toast('Error deleting event: '+e.message);
-    throw e;
-  }finally{
-    UI.spinner(false);
-  }
-}
-
-/* ---------- Export CSV ---------- */
-function exportIssuesToCsv(rows,suffix){
-  if(!rows.length) return UI.toast('Nothing to export (no rows).');
-  const headers=['ID','Module','Title','Priority','Status','Date','Log','Link','Description'];
-  const lines=[headers.join(',')];
-  rows.forEach(r=>{
-    const arr=[r.id,r.module,r.title,r.priority,r.status,r.date,r.log,r.file,r.desc].map(v=>{
-      const s=String(v??'').replace(/"/g,'""');
-      return `"${s}"`;
-    });
-    lines.push(arr.join(','));
-  });
-  const blob=new Blob([lines.join('\r\n')],{type:'text/csv;charset=utf-8;'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-  const ts=new Date().toISOString().slice(0,10);
-  a.href=url; a.download=`incheck_issues_${suffix||'filtered'}_${ts}.csv`;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  UI.toast('Exported CSV');
-}
-
-function exportFilteredCsv(){
-  const rows=UI.Issues.applyFilters();
-  exportIssuesToCsv(rows,'filtered');
-}
-
-/* ---------- Misc utils ---------- */
-function debounce(fn,ms=250){ let t; return(...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }; }
-
-function setIfOptionExists(select,value){
-  if(!select || !value) return;
-  const options=Array.from(select.options||[]);
-  if(options.some(o=>o.value===value)) select.value=value;
-}
-
-function trapFocus(container,e){
-  const focusables = container.querySelectorAll('button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])');
-  if(!focusables.length) return;
-  const first=focusables[0], last=focusables[focusables.length-1];
-  if(e.shiftKey && document.activeElement===first){
-    last.focus(); e.preventDefault();
-  }else if(!e.shiftKey && document.activeElement===last){
-    first.focus(); e.preventDefault();
-  }
-}
-
-function setActiveView(view){
-  const names=['issues','calendar','insights'];
-  names.forEach(name=>{
-    const tab = name==='issues'?E.issuesTab : name==='calendar'?E.calendarTab : E.insightsTab;
-    const panel = name==='issues'?E.issuesView : name==='calendar'?E.calendarView : E.insightsView;
-    const active = (name===view);
-    if(tab){
-      tab.classList.toggle('active',active);
-      tab.setAttribute('aria-selected',active?'true':'false');
-    }
-    if(panel) panel.classList.toggle('active',active);
-  });
-  if(view==='calendar') ensureCalendar();
-  if(view==='insights') Analytics.refresh(UI.Issues.applyFilters());
-  try{ localStorage.setItem(LS_KEYS.view,view); }catch{}
-}
-
-/* ---------- Auto-refresh events ---------- */
+/* Auto-refresh events every 5 minutes */
 setInterval(()=>loadEvents(true),5*60*1000);
 </script>
 </body>
