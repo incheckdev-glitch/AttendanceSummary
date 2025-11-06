@@ -55,7 +55,7 @@
       --bg:#f4f6ff;
       --card:#ffffff;
       --muted:#5a678c;
-      --text:#0b1022;
+      --text:#0d1326;
       --accent:#2563eb;
       --danger:#dc2626;
       --ok:#059669;
@@ -129,13 +129,6 @@
     .input::placeholder{color:var(--muted)}
     .icon{font-size:18px;line-height:1}
 
-    #accentColor{
-      padding:4px;
-      width:40px;
-      min-width:40px;
-      border-radius:999px;
-    }
-
     .statusline{display:flex;gap:10px;align-items:center;margin-left:8px}
     .dot{width:10px;height:10px;border-radius:50%;display:inline-block}
     .ok{background:var(--ok)} .warn{background:var(--warn)} .err{background:var(--danger)}
@@ -143,8 +136,6 @@
       padding:4px 8px;border-radius:999px;background:var(--chip);
       border:1px solid var(--border);font-size:12px;color:var(--muted)
     }
-    .chip.online{border-color:var(--ok);color:var(--ok)}
-    .chip.offline{border-color:var(--warn);color:var(--warn)}
 
     /* Layout */
     .wrap{
@@ -213,16 +204,6 @@
       border-color:rgba(99,102,241,.9);
     }
 
-    .summary-bar{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:12px;
-      font-size:13px;
-      flex-wrap:wrap;
-    }
-    .shortcut-chip{font-size:11px;color:var(--muted)}
-
     /* KPIs */
     .kpi{cursor:pointer;text-align:left;position:relative;overflow:hidden}
     .kpi::before{
@@ -289,43 +270,6 @@
     .priority-High{background:var(--priority-high);color:#fff}
     .priority-Medium{background:var(--priority-medium);color:#fff}
     .priority-Low{background:var(--priority-low);color:#fff}
-
-    .filter-chips{
-      display:flex;
-      flex-wrap:wrap;
-      gap:6px;
-      margin-bottom:6px;
-    }
-    .filter-chip{
-      padding:4px 8px;
-      border-radius:999px;
-      border:1px solid var(--border);
-      background:var(--chip);
-      font-size:11px;
-      display:inline-flex;
-      align-items:center;
-      gap:6px;
-      cursor:pointer;
-      color:var(--muted);
-    }
-    .filter-chip:hover{
-      border-color:var(--accent);
-      color:var(--text);
-    }
-
-    .risk-bar-wrap{
-      width:100%;
-      height:6px;
-      border-radius:999px;
-      background:rgba(148,163,184,.25);
-      overflow:hidden;
-      margin-top:4px;
-    }
-    .risk-bar{
-      height:100%;
-      transform-origin:left center;
-      background:linear-gradient(90deg,var(--accent),var(--danger));
-    }
 
     /* Modal */
     .modal{
@@ -411,10 +355,10 @@
       background:var(--accent);border-color:var(--accent);
     }
     .fc .fc-toolbar.fc-header-toolbar{margin-bottom:12px}
-    .fc-event.event-type-deployment{background-color:var(--info);border-color:var(--info)}
-    .fc-event.event-type-maintenance{background-color:var(--warn);border-color:var(--warn)}
-    .fc-event.event-type-release{background-color:var(--ok);border-color:var(--ok)}
-    .fc-event.event-type-other{background-color:var(--purple);border-color:var(--purple)}
+    .fc-event.event-type-deployment{background-color:var(--info);border-color:var(--info')}
+    .fc-event.event-type-maintenance{background-color:var(--warn);border-color:var(--warn')}
+    .fc-event.event-type-release{background-color:var(--ok);border-color:var(--ok')}
+    .fc-event.event-type-other{background-color:var(--purple);border-color:var(--purple')}
 
     .event-risk-badge{
       margin-left:6px;padding:0 6px;border-radius:6px;font-size:10px;
@@ -430,6 +374,108 @@
       #issuesTable th:nth-child(7),
       #issuesTable td:nth-child(7){display:none}
     }
+
+    /* Mobile issue cards */
+    #issuesCards{
+      display:none;
+      flex-direction:column;
+      gap:10px;
+      margin-top:8px;
+    }
+    .issue-card{
+      border-radius:14px;
+      border:1px solid var(--border);
+      background:radial-gradient(circle at 0 0, rgba(79,140,255,.16), transparent 55%), var(--card);
+      padding:12px;
+      box-shadow:var(--shadow);
+      cursor:pointer;
+      display:flex;
+      flex-direction:column;
+      gap:4px;
+    }
+    .issue-card-header{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:8px;
+      flex-wrap:wrap;
+      font-size:13px;
+    }
+    .issue-card-title{
+      font-size:14px;
+      font-weight:600;
+    }
+    .issue-card-meta{
+      display:flex;
+      flex-wrap:wrap;
+      gap:6px;
+      font-size:11px;
+      color:var(--muted);
+    }
+    .issue-card-log{
+      font-size:12px;
+      color:var(--muted);
+      margin-top:4px;
+    }
+
+    @media (max-width:768px){
+      #issuesTableWrap{display:none;}
+      #issuesCards{display:flex;}
+    }
+
+    /* Mobile bottom tab bar */
+    .bottom-tabs{
+      position:fixed;
+      left:0;
+      right:0;
+      bottom:0;
+      z-index:40;
+      display:none;
+      background:linear-gradient(180deg, rgba(11,22,45,.98), rgba(5,10,24,.98));
+      border-top:1px solid var(--border);
+      padding:6px 12px;
+      gap:8px;
+      justify-content:space-between;
+    }
+    .bottom-tab{
+      flex:1;
+      border:none;
+      border-radius:999px;
+      padding:6px 10px;
+      font-size:12px;
+      background:transparent;
+      color:var(--muted);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:4px;
+      cursor:pointer;
+    }
+    .bottom-tab.active{
+      background:linear-gradient(135deg,var(--accent),#7c3aed);
+      color:#fff;
+      box-shadow:0 10px 26px rgba(79,140,255,.6);
+    }
+    @media (max-width:768px){
+      .bottom-tabs{display:flex;}
+      body{padding-bottom:64px;}
+    }
+
+    /* Environment / blast chips on events */
+    .env-chip,
+    .blast-chip{
+      margin-left:4px;
+      padding:0 6px;
+      border-radius:999px;
+      font-size:10px;
+      border:1px solid rgba(255,255,255,.18);
+    }
+    .env-prod{background:rgba(239,68,68,.2);}
+    .env-staging{background:rgba(59,130,246,.18);}
+    .env-dev{background:rgba(16,185,129,.18);}
+    .blast-low{background:rgba(16,185,129,.18);}
+    .blast-medium{background:rgba(245,158,11,.22);}
+    .blast-high{background:rgba(239,68,68,.28);}
 
     @media (prefers-reduced-motion: reduce){
       *{transition:none!important;animation:none!important}
@@ -454,15 +500,11 @@
       <input id="searchInput" class="input" type="search"
              placeholder="Search ID, title, description, log…  ( / to focus )"
              aria-label="Search issues" />
-
       <select id="themeSelect" class="select" aria-label="Theme">
         <option value="system">System</option>
         <option value="dark">Dark</option>
         <option value="light">Light</option>
       </select>
-
-      <input id="accentColor" class="input" type="color" aria-label="Accent color" />
-
       <button id="refreshNow" class="btn" aria-label="Refresh from source">
         <span class="icon" aria-hidden="true">🔄</span> Refresh
       </button>
@@ -472,13 +514,6 @@
       <button id="createTicketBtn" class="btn primary" aria-label="Create new ticket">
         <span class="icon" aria-hidden="true">➕</span> Create Ticket
       </button>
-
-      <button id="shortcutsHelp" class="btn ghost sm" type="button" title="Keyboard shortcuts">
-        <span class="icon" aria-hidden="true">⌨️</span>
-      </button>
-
-      <span class="chip online" id="onlineStatusChip" aria-live="polite">Online</span>
-
       <div class="statusline">
         <span class="chip" id="syncIssuesText">Issues: never</span><span class="dot err" id="syncIssuesDot"></span>
         <span class="chip" id="syncEventsText">Events: never</span><span class="dot err" id="syncEventsDot"></span>
@@ -547,11 +582,6 @@
 
       <!-- Issues view -->
       <section id="issuesView" class="view active" role="tabpanel" aria-labelledby="issuesTab">
-        <div class="card summary-bar" id="issuesSummaryCard">
-          <span id="issuesSummaryText" aria-live="polite">Loading summary…</span>
-          <span class="shortcut-chip">Shortcuts: 1/2/3 tabs · / search · Ctrl+K AI</span>
-        </div>
-
         <div class="grid cols-4" id="kpis" aria-live="polite"></div>
 
         <div class="charts" aria-label="Charts">
@@ -559,6 +589,8 @@
           <div class="card"><canvas id="byPriority" height="140" aria-label="Issues by priority" role="img"></canvas></div>
           <div class="card"><canvas id="byStatus" height="140" aria-label="Issues by status" role="img"></canvas></div>
           <div class="card"><canvas id="byType" height="140" aria-label="Issues by type" role="img"></canvas></div>
+          <div class="card"><canvas id="errorVsPriority" height="140" aria-label="Error rate vs priority" role="img"></canvas></div>
+          <div class="card"><canvas id="riskVsRevenue" height="140" aria-label="Risk vs revenue impact" role="img"></canvas></div>
         </div>
 
         <div class="card" aria-label="Issues table">
@@ -570,9 +602,8 @@
             <span id="rowCount" class="muted" aria-live="polite"></span>
           </div>
 
-          <div id="activeFiltersChips" class="filter-chips" aria-live="polite"></div>
-
-          <div class="table-wrap" role="region" aria-label="Scrollable issues table">
+          <!-- Desktop / tablet table -->
+          <div class="table-wrap" id="issuesTableWrap" role="region" aria-label="Scrollable issues table">
             <table id="issuesTable">
               <thead><tr>
                 <th data-key="id" class="sortable" scope="col" aria-sort="none">ID</th>
@@ -597,6 +628,9 @@
               <tbody id="issuesTbody" style="display:none"></tbody>
             </table>
           </div>
+
+          <!-- Mobile cards -->
+          <div id="issuesCards" class="issues-cards" aria-label="Issues list (cards)" aria-live="polite"></div>
 
           <div class="table-actions">
             <div class="pagination" role="group" aria-label="Table pagination">
@@ -625,7 +659,6 @@
               <div class="muted">
                 Plan deployments, maintenance windows, releases, and other operational events.
               </div>
-              <div id="calendarTz" class="muted" style="font-size:11px;margin-top:4px;"></div>
               <div id="eventTypeFilters" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
                 <label class="muted" style="display:flex;align-items:center;gap:4px;font-size:12px">
                   <input type="checkbox" id="eventFilterDeployment" checked /> Deployment
@@ -739,6 +772,17 @@
         </div>
 
         <div class="card">
+          <strong>Nightly digest</strong>
+          <div class="muted" style="font-size:12px;margin-top:4px;">
+            One-click markdown summary for Slack / email. Uses current dataset & upcoming events.
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
+            <button id="copyDigestBtn" class="btn sm" type="button">Copy daily summary</button>
+          </div>
+          <div id="digestPreview" class="muted" style="font-size:13px;margin-top:8px;"></div>
+        </div>
+
+        <div class="card">
           <strong>AI Commands (pro)</strong>
           <div class="muted" style="font-size:12px;margin-top:4px;">
             Filters: <code>module:</code> <code>status:</code> <code>priority:</code> <code>id:</code> <code>type:</code> <code>missing:</code><br/>
@@ -750,8 +794,7 @@
                    placeholder="Ask or query…  ( Ctrl + K )"
                    style="flex:1;min-width:260px;">
             <button id="aiQueryRun" class="btn sm" type="button">Run</button>
-            <button id="aiQueryApplyFilters" class="btn ghost sm" type="button" title="Apply to Issues tab">Apply to Issues</button>
-            <button id="aiQueryExport" class="btn ghost sm" type="button" title="Export query results as CSV">Export CSV</button>
+            <button id="aiQueryApplyFilters" class="btn ghost sm" type="button" title="Apply to Issues">Apply to Issues</button>
           </div>
           <div id="aiQueryResults" class="muted" style="font-size:13px;margin-top:8px;"></div>
         </div>
@@ -808,6 +851,24 @@
               </select>
             </div>
             <div class="filter-row">
+              <label class="muted" for="eventEnvironment">Environment</label>
+              <select id="eventEnvironment" class="select">
+                <option value="">Unspecified</option>
+                <option value="Prod">Prod</option>
+                <option value="Staging">Staging</option>
+                <option value="Dev">Dev</option>
+              </select>
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="eventBlast">Blast radius</label>
+              <select id="eventBlast" class="select">
+                <option value="">Unknown</option>
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
+              </select>
+            </div>
+            <div class="filter-row">
               <label class="muted" for="eventIssueId">Issue ID (optional)</label>
               <input id="eventIssueId" class="input" type="text"
                      placeholder="e.g. INC-123 or ticket ID" />
@@ -815,12 +876,6 @@
             <div class="filter-row">
               <label class="muted" for="eventStart">Start</label>
               <input id="eventStart" class="input" type="datetime-local" required />
-            </div>
-            <div class="filter-row">
-              <label class="muted" style="display:flex;align-items:center;gap:6px;">
-                <input type="checkbox" id="eventAllDay" />
-                All-day event
-              </label>
             </div>
             <div class="filter-row">
               <label class="muted" for="eventEnd">End (optional)</label>
@@ -856,20 +911,34 @@
 
   <div class="spinner" id="spinner" aria-hidden="true"><div class="ring"></div></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <!-- Mobile bottom nav -->
+  <nav class="bottom-tabs" aria-label="Main navigation">
+    <button class="bottom-tab" data-view="issues" type="button">
+      <span class="icon" aria-hidden="true">📋</span>
+      <span>Issues</span>
+    </button>
+    <button class="bottom-tab" data-view="calendar" type="button">
+      <span class="icon" aria-hidden="true">📅</span>
+      <span>Calendar</span>
+    </button>
+    <button class="bottom-tab" data-view="insights" type="button">
+      <span class="icon" aria-hidden="true">🤖</span>
+      <span>AI</span>
+    </button>
+  </nav>
 <script>
 /**
  * InCheck Pro Dashboard — Issues · Ops · AI Copilot
  * Single-file architecture:
  *  - CONFIG / LS_KEYS
  *  - DataStore (issues + text analytics)
- *  - Risk engine
+ *  - Risk engine (metrics-aware)
  *  - DSL query parser
- *  - Calendar risk helpers
+ *  - Calendar risk helpers (env + blast)
  */
 
 const CONFIG = {
-  DATA_VERSION: '1',
-
   SHEET_URL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vTRwAjNAQxiPP8uR15t_vx03JkjgEBjgUwp2bpx8rsHx-JJxVDBZyf5ap77rAKrYHfgkVMwLJVm6pGn/pub?output=csv",
   CALENDAR_API_URL:
     "https://corsproxy.io/?" +
@@ -893,7 +962,33 @@ const CONFIG = {
     misalignedDelta: 1,
     highRisk: 9,
     critRisk: 13,
-    staleDays: 10
+    staleDays: 10,
+
+    // Metric-based contributions
+    metrics: {
+      // +1.5 risk per 10% error rate
+      errorRatePer10pct: 1.5,
+      // buckets based on impacted users
+      impactedUserBuckets: [
+        [1000, 4],
+        [200, 2],
+        [50, 1]
+      ],
+      // +0.8 risk per 1k of revenue impact
+      revenuePerThousand: 0.8
+    },
+
+    // Calendar env / blast tuning
+    eventEnvBoost: {
+      'prod': 5,
+      'staging': 2,
+      'dev': 0
+    },
+    eventBlastMultiplier: {
+      'low': 1,
+      'medium': 1.2,
+      'high': 1.5
+    }
   },
 
   LABEL_KEYWORDS: {
@@ -912,10 +1007,8 @@ const LS_KEYS = {
   events: 'incheckEvents',
   issues: 'incheckIssues',
   issuesLastUpdated: 'incheckIssuesLastUpdated',
-  dataVersion: 'incheckDataVersion',
   pageSize: 'pageSize',
-  view: 'incheckView',
-  accentColor: 'incheckAccent'
+  view: 'incheckView'
 };
 
 const STOPWORDS = new Set([
@@ -1002,11 +1095,19 @@ const DataStore = {
   },
   normalizeRow(raw){
     const lower={};
-    for(const k in raw){ if(!k) continue; lower[k.toLowerCase().replace(/\s+/g,' ').trim()]=String(raw[k]??'').trim(); }
-    const pick=(...keys)=>{ for(const key of keys){ if(lower[key]) return lower[key]; } return ''; };
+    for(const k in raw){
+      if(!k) continue;
+      lower[k.toLowerCase().replace(/\s+/g,' ').trim()] = String(raw[k] ?? '').trim();
+    }
+    const pick=(...keys)=>{
+      for(const key of keys){
+        if(lower[key] != null && lower[key] !== '') return lower[key];
+      }
+      return '';
+    };
     return {
       id: pick('ticket id','id'),
-      module: (pick('impacted module','module','issue location')||'Unspecified'),
+      module: (pick('impacted module','module','issue location') || 'Unspecified'),
       title: pick('title'),
       desc: pick('description'),
       file: pick('file upload','link','url'),
@@ -1014,7 +1115,13 @@ const DataStore = {
       status: DataStore.normalizeStatus(pick('status') || 'Not Started Yet'),
       type: pick('category','type'),
       date: pick('timestamp','date','created at'),
-      log: pick('log','logs','comment','notes')
+      log: pick('log','logs','comment','notes'),
+
+      // Optional metrics / history columns
+      errorRate: pick('error rate','error_rate','errorrate','errors %'),
+      impactedUsers: pick('impacted users','users impacted','affected users','impacted_users'),
+      revenueImpact: pick('revenue impact','revenue loss','impact usd','impact $','impact'),
+      history: pick('change log','changelog','history')
     };
   },
   tokenize(issue){
@@ -1070,8 +1177,6 @@ const DataStore = {
 const IssuesCache = {
   load(){
     try{
-      const storedVersion = localStorage.getItem(LS_KEYS.dataVersion);
-      if(storedVersion && storedVersion !== CONFIG.DATA_VERSION) return null;
       const raw = localStorage.getItem(LS_KEYS.issues);
       if(!raw) return null;
       const data = JSON.parse(raw);
@@ -1082,7 +1187,6 @@ const IssuesCache = {
     try{
       localStorage.setItem(LS_KEYS.issues, JSON.stringify(rows||[]));
       localStorage.setItem(LS_KEYS.issuesLastUpdated, new Date().toISOString());
-      localStorage.setItem(LS_KEYS.dataVersion, CONFIG.DATA_VERSION);
     }catch{}
   },
   lastLabel(){
@@ -1107,33 +1211,43 @@ const Risk = {
   },
   computeRisk(issue){
     const txt = [issue.title,issue.desc,issue.log].filter(Boolean).join(' ').toLowerCase()+' ';
-    const base = CONFIG.RISK.priorityWeight[issue.priority||""] || 1;
+    const base = CONFIG.RISK.priorityWeight[issue.priority || ""] || 1;
     const tech = base + this.scoreFromBoosts(txt, CONFIG.RISK.techBoosts);
     const biz  = this.scoreFromBoosts(txt, CONFIG.RISK.bizBoosts);
     const ops  = this.scoreFromBoosts(txt, CONFIG.RISK.opsBoosts);
-    let total = tech+biz+ops;
 
+    let total = tech + biz + ops;
+
+    // Status influence
     const st=(issue.status||'').toLowerCase();
-    for(const k in CONFIG.RISK.statusBoosts){ if(st.startsWith(k)) total+=CONFIG.RISK.statusBoosts[k]; }
+    for(const k in CONFIG.RISK.statusBoosts){
+      if(st.startsWith(k)) total += CONFIG.RISK.statusBoosts[k];
+    }
 
-    // Time-aware risk: recent & stale high-risk issues
-    let timeRisk = 0;
-    try{
-      if(issue.date){
-        const d = new Date(issue.date);
-        if(!isNaN(d)){
-          const ageDays = (Date.now() - d.getTime()) / 86400000;
-          const isOpen = !(st.startsWith('resolved')||st.startsWith('rejected'));
-          if(isOpen && total >= CONFIG.RISK.highRisk){
-            if(ageDays <= 14) timeRisk += 2;      // fresh risky
-            if(ageDays >= 30) timeRisk += 3;      // stale high-risk
-          }
-        }
+    // Metric-based boosts (error rate / users / revenue)
+    const m = CONFIG.RISK.metrics || {};
+
+    const errorRateNum = parseFloat(String(issue.errorRate || '').replace('%',''));
+    if(!isNaN(errorRateNum) && errorRateNum > 0 && m.errorRatePer10pct){
+      total += (errorRateNum / 10) * m.errorRatePer10pct;
+    }
+
+    const impactedNum = parseFloat(issue.impactedUsers || '');
+    if(!isNaN(impactedNum) && impactedNum > 0 && Array.isArray(m.impactedUserBuckets)){
+      for(const [threshold,bonus] of m.impactedUserBuckets){
+        if(impactedNum >= threshold){ total += bonus; break; }
       }
-    }catch{}
+    }
 
-    total += timeRisk;
-    return { technical:tech,business:biz,operational:ops,time:timeRisk,total };
+    const revenueNum = parseFloat(String(issue.revenueImpact || '').replace(/[^0-9.]/g,''));
+    if(!isNaN(revenueNum) && revenueNum > 0 && m.revenuePerThousand){
+      total += (revenueNum / 1000) * m.revenuePerThousand;
+    }
+
+    // keep it readable
+    total = Math.round(total * 10) / 10;
+
+    return { technical:tech,business:biz,operational:ops,total };
   },
   suggestCategories(issue){
     const text = [issue.title,issue.desc,issue.log].filter(Boolean).join(' ').toLowerCase();
@@ -1159,16 +1273,6 @@ const Risk = {
     [...CONFIG.RISK.techBoosts,...CONFIG.RISK.bizBoosts,...CONFIG.RISK.opsBoosts].forEach(([kw])=>push(kw));
     if ((issue.status||'').toLowerCase().startsWith('on stage')) picks.push('on stage');
     if ((issue.status||'').toLowerCase().startsWith('under')) picks.push('under development');
-
-    if(issue.date){
-      const d = new Date(issue.date);
-      if(!isNaN(d)){
-        const ageDays = (Date.now() - d.getTime()) / 86400000;
-        if(ageDays <= 14) picks.push('recent');
-        else if(ageDays >= 30) picks.push('stale');
-      }
-    }
-
     return Array.from(new Set(picks)).slice(0,6);
   }
 };
@@ -1259,7 +1363,7 @@ const CalendarLink = {
 const E = {};
 function cacheEls(){
   [
-    'issuesTable','issuesTbody','tbodySkeleton','rowCount',
+    'issuesTable','issuesTbody','tbodySkeleton','rowCount','issuesCards',
     'moduleFilter','priorityFilter','statusFilter','resetBtn',
     'refreshNow','exportCsv','kpis','issueModal','modalBody','modalTitle',
     'copyId','copyLink','modalClose','drawerBtn','sidebar','spinner','toast',
@@ -1267,15 +1371,15 @@ function cacheEls(){
     'pageInfo','pageSize','createTicketBtn','startDateFilter','endDateFilter',
     'issuesTab','calendarTab','insightsTab','issuesView','calendarView','insightsView',
     'addEventBtn','eventModal','eventModalTitle','eventModalClose','eventForm',
-    'eventTitle','eventType','eventIssueId','eventStart','eventEnd','eventDescription',
+    'eventTitle','eventType','eventEnvironment','eventBlast','eventIssueId',
+    'eventStart','eventEnd','eventDescription',
     'eventSave','eventCancel','eventDelete','eventIssueLinkedInfo',
     'aiPatternsList','aiLabelsList','aiRisksList','aiClusters','aiScopeText','aiSignalsText',
     'aiTrendsList','aiModulesTableBody','aiTriageList','aiEventsList','aiQueryInput',
     'aiQueryRun','aiQueryResults','aiQueryApplyFilters','aiIncidentsList','aiEmergingStable',
     'aiOpsCockpit','syncIssuesText','syncIssuesDot','syncEventsText','syncEventsDot',
     'aiAnalyzing','eventFilterDeployment','eventFilterMaintenance','eventFilterRelease',
-    'eventFilterOther','loadingStatus','issuesSummaryText','activeFiltersChips',
-    'calendarTz','onlineStatusChip','accentColor','shortcutsHelp','aiQueryExport','eventAllDay'
+    'eventFilterOther','loadingStatus','copyDigestBtn','digestPreview'
   ].forEach(id=> E[id]=document.getElementById(id));
 }
 
@@ -1324,15 +1428,10 @@ UI.Issues = {
   applyFilters(){
     const s=Filters.state;
     const qstr=(s.search||'').toLowerCase().trim();
-    const terms = qstr ? qstr.split(/\s+/).filter(Boolean) : [];
     const start = s.start ? new Date(s.start) : null;
     const end   = s.end ? U.dateAddDays(s.end,1) : null;
-
     return DataStore.rows.filter(r=>{
       const hay=[r.id,r.module,r.title,r.desc,r.log].filter(Boolean).join(' ').toLowerCase();
-
-      if(terms.length && !terms.every(t=>hay.includes(t))) return false;
-
       let keepDate=true;
       if(r.date){
         const d=new Date(r.date);
@@ -1341,8 +1440,8 @@ UI.Issues = {
           if(end && d>=end) keepDate=false;
         }
       }else if(start||end){ keepDate=false; }
-
-      return (!s.module || s.module==='All' || r.module===s.module)
+      return (!qstr || hay.includes(qstr))
+        && (!s.module || s.module==='All' || r.module===s.module)
         && (!s.priority || s.priority==='All' || r.priority===s.priority)
         && (!s.status || s.status==='All' || r.status===s.status)
         && keepDate;
@@ -1395,13 +1494,9 @@ UI.Issues = {
     const start=(GridState.page-1)*size;
     const pageData=rows.slice(start,start+size);
 
-    const firstRow = total ? start+1 : 0;
-    const lastRow = total ? Math.min(total,start+pageData.length) : 0;
-
     if(E.rowCount){
-      E.rowCount.textContent = total
-        ? `Showing ${firstRow}-${lastRow} of ${total}`
-        : 'No rows';
+      const last = IssuesCache.lastLabel();
+      E.rowCount.textContent=`${total} row${total===1?'':'s'}${last ? ' • '+last : ''}`;
     }
     if(E.pageInfo) E.pageInfo.textContent=`Page ${GridState.page} / ${pages}`;
     ['firstPage','prevPage','nextPage','lastPage'].forEach(id=>{
@@ -1414,46 +1509,18 @@ UI.Issues = {
     const badgeStatus=s=>`<span class="pill status-${(s||'').replace(/\s/g,'\\ ')}">${U.escapeHtml(s||'-')}</span>`;
     const badgePrio=p=>`<span class="pill priority-${p||''}">${U.escapeHtml(p||'-')}</span>`;
 
-    if(pageData.length){
-      E.issuesTbody.innerHTML = pageData.map(r=>`
-        <tr role="button" tabindex="0" aria-label="Open issue ${U.escapeHtml(r.id||'')}" data-id="${U.escapeAttr(r.id)}">
-          <td>${U.escapeHtml(r.id||'-')}</td>
-          <td>${U.escapeHtml(r.module||'-')}</td>
-          <td>${U.escapeHtml(r.title||'-')}</td>
-          <td>${badgePrio(r.priority||'-')}</td>
-          <td>${badgeStatus(r.status||'-')}</td>
-          <td>${U.escapeHtml(r.date||'-')}</td>
-          <td>${U.escapeHtml(r.log||'-')}</td>
-          <td>${r.file?`<a href="${U.escapeAttr(r.file)}" target="_blank" rel="noopener noreferrer" aria-label="Open attachment link">🔗</a>`:'-'}</td>
-        </tr>
-      `).join('');
-    }else{
-      const parts=[];
-      if(Filters.state.search) parts.push(`search "${Filters.state.search}"`);
-      if(Filters.state.module && Filters.state.module!=='All') parts.push(`module = ${Filters.state.module}`);
-      if(Filters.state.priority && Filters.state.priority!=='All') parts.push(`priority = ${Filters.state.priority}`);
-      if(Filters.state.status && Filters.state.status!=='All') parts.push(`status = ${Filters.state.status}`);
-      if(Filters.state.start) parts.push(`from ${Filters.state.start}`);
-      if(Filters.state.end) parts.push(`to ${Filters.state.end}`);
-      const desc = parts.length ? parts.join(', ') : 'no filters';
-      E.issuesTbody.innerHTML = `
-        <tr>
-          <td colspan="8" style="text-align:center;color:var(--muted)">
-            No issues found for ${U.escapeHtml(desc)}.
-            <button type="button" class="btn sm" id="clearFiltersBtn" style="margin-left:8px">Clear filters</button>
-          </td>
-        </tr>`;
-      const clearBtn=document.getElementById('clearFiltersBtn');
-      if(clearBtn) clearBtn.addEventListener('click',()=>{
-        Filters.state={search:'',module:'All',priority:'All',status:'All',start:'',end:''};
-        Filters.save();
-        if(E.searchInput) E.searchInput.value='';
-        if(E.startDateFilter) E.startDateFilter.value='';
-        if(E.endDateFilter) E.endDateFilter.value='';
-        UI.Issues.renderFilters();
-        UI.refreshAll();
-      });
-    }
+    E.issuesTbody.innerHTML = pageData.length? pageData.map(r=>`
+      <tr role="button" tabindex="0" aria-label="Open issue ${U.escapeHtml(r.id||'')}" data-id="${U.escapeAttr(r.id)}">
+        <td>${U.escapeHtml(r.id||'-')}</td>
+        <td>${U.escapeHtml(r.module||'-')}</td>
+        <td>${U.escapeHtml(r.title||'-')}</td>
+        <td>${badgePrio(r.priority||'-')}</td>
+        <td>${badgeStatus(r.status||'-')}</td>
+        <td>${U.escapeHtml(r.date||'-')}</td>
+        <td>${U.escapeHtml(r.log||'-')}</td>
+        <td>${r.file?`<a href="${U.escapeAttr(r.file)}" target="_blank" rel="noopener noreferrer" aria-label="Open attachment link">🔗</a>`:'-'}</td>
+      </tr>
+    `).join('') : `<tr><td colspan="8" style="text-align:center;color:var(--muted)">No issues found. Try clearing filters or search.</td></tr>`;
 
     E.issuesTbody.querySelectorAll('tr[data-id]').forEach(tr=>{
       tr.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); UI.Modals.openIssue(tr.getAttribute('data-id')); }});
@@ -1465,6 +1532,63 @@ UI.Issues = {
       const th=U.q(`#issuesTable thead th[data-key="${GridState.sortKey}"]`);
       if(th){ th.classList.add(GridState.sortAsc?'sorted-asc':'sorted-desc'); th.setAttribute('aria-sort',GridState.sortAsc?'ascending':'descending'); }
     }
+  },
+  renderCards(list){
+    const container = E.issuesCards;
+    if(!container) return;
+
+    const {page,pageSize} = GridState;
+    const total = list.length;
+    const pages = Math.max(1, Math.ceil(total / pageSize));
+    const currentPage = Math.min(page, pages);
+    const start = (currentPage - 1) * pageSize;
+    const pageData = list.slice(start, start + pageSize);
+
+    if(!pageData.length){
+      container.innerHTML = `<div class="muted" style="font-size:13px;">No issues found. Try clearing filters or search.</div>`;
+      return;
+    }
+
+    container.innerHTML = pageData.map(r=>{
+      const meta = DataStore.computed.get(r.id) || {};
+      const risk = meta.risk?.total ?? 0;
+      const prioBadge = r.priority ? `<span class="pill priority-${r.priority}">${U.escapeHtml(r.priority)}</span>` : '';
+      const statusClass = (r.status||'').replace(/\s/g,'\\ ');
+      const statusBadge = r.status ? `<span class="pill status-${statusClass}">${U.escapeHtml(r.status)}</span>` : '';
+      const metrics = [];
+      if(r.errorRate) metrics.push(`Error: ${U.escapeHtml(r.errorRate)}`);
+      if(r.impactedUsers) metrics.push(`Users: ${U.escapeHtml(r.impactedUsers)}`);
+      if(r.revenueImpact) metrics.push(`Rev: ${U.escapeHtml(r.revenueImpact)}`);
+      const metricsText = metrics.join(' · ');
+      const logSnippet = (r.log || r.desc || '').split(/\s+/).slice(0,24).join(' ');
+      return `
+        <article class="issue-card" data-id="${U.escapeAttr(r.id)}" aria-label="Open issue ${U.escapeAttr(r.id)}">
+          <div class="issue-card-header">
+            <div><strong>${U.escapeHtml(r.id)}</strong></div>
+            <div style="display:flex;gap:4px;flex-wrap:wrap;">${prioBadge}${statusBadge}</div>
+          </div>
+          <div class="issue-card-title">${U.escapeHtml(r.title || '(no title)')}</div>
+          <div class="issue-card-meta">
+            ${r.module ? `<span>${U.escapeHtml(r.module)}</span>` : ''}
+            ${r.date ? `<span>· ${U.escapeHtml(r.date)}</span>` : ''}
+            <span>· Risk ${risk}</span>
+          </div>
+          ${metricsText ? `<div class="issue-card-meta">${metricsText}</div>` : ''}
+          ${logSnippet ? `<div class="issue-card-log">${U.escapeHtml(logSnippet)}…</div>` : ''}
+        </article>
+      `;
+    }).join('');
+
+    container.querySelectorAll('.issue-card').forEach(card=>{
+      card.addEventListener('click',()=> UI.Modals.openIssue(card.getAttribute('data-id')));
+      card.addEventListener('keydown',e=>{
+        if(e.key==='Enter' || e.key===' '){
+          e.preventDefault();
+          UI.Modals.openIssue(card.getAttribute('data-id'));
+        }
+      });
+      card.tabIndex = 0;
+    });
   },
   renderCharts(list){
     if(typeof Chart==='undefined') return;
@@ -1480,12 +1604,14 @@ UI.Issues = {
     };
     const priorityColors={ High:cssVar('--priority-high'),Medium:cssVar('--priority-medium'),Low:cssVar('--priority-low') };
     const group=(arr,k)=>arr.reduce((m,r)=>{const key=r[k]||'Unspecified';m[key]=(m[key]||0)+1;return m;},{});
+    const ensureStore=()=>{ UI._charts = UI._charts || {}; return UI._charts; };
+
     const make=(id,type,data,colors={})=>{
       const el=U.q('#'+id); if(!el) return;
-      UI._charts=UI._charts||{};
-      if(UI._charts[id]) UI._charts[id].destroy();
+      const store=ensureStore();
+      if(store[id]) store[id].destroy();
       const labels=Object.keys(data), values=Object.values(data);
-      UI._charts[id]=new Chart(el,{
+      store[id]=new Chart(el,{
         type,
         data:{labels,datasets:[{data:values,backgroundColor:labels.map(l=>colors[l]||cssVar('--accent'))}]},
         options:{
@@ -1498,77 +1624,72 @@ UI.Issues = {
         }
       });
     };
+
+    const makeScatter=(id,label,dataPoints,xLabel,yLabel)=>{
+      const el=U.q('#'+id); if(!el) return;
+      const store=ensureStore();
+      if(store[id]) store[id].destroy();
+      store[id]=new Chart(el,{
+        type:'scatter',
+        data:{datasets:[{label,data:dataPoints}]},
+        options:{
+          responsive:true,
+          maintainAspectRatio:false,
+          plugins:{
+            legend:{display:false},
+            tooltip:{
+              callbacks:{
+                label:ctx=>{
+                  const d=ctx.raw;
+                  return `${d.label || ''} (${xLabel}: ${d.x}, ${yLabel}: ${d.y})`;
+                }
+              }
+            }
+          },
+          scales:{
+            x:{title:{display:true,text:xLabel},grid:{color:'rgba(128,128,128,.1)'}},
+            y:{title:{display:true,text:yLabel},grid:{color:'rgba(128,128,128,.12)'},beginAtZero:true}
+          }
+        }
+      });
+    };
+
     make('byModule','bar',group(list,'module'));
     make('byPriority','doughnut',group(list,'priority'),priorityColors);
     make('byStatus','bar',group(list,'status'),statusColors);
     make('byType','bar',group(list,'type'));
+
+    // New: metric visualizations
+    const prioNumeric=p=>{
+      return p==='High'?3 : p==='Medium'?2 : p==='Low'?1 : 0;
+    };
+
+    const errorPoints = list
+      .map(r=>{
+        const err=parseFloat(String(r.errorRate||'').replace('%',''));
+        const pr=prioNumeric(r.priority);
+        if(isNaN(err) || pr===0) return null;
+        return {x:pr,y:err,label:r.id};
+      })
+      .filter(Boolean);
+
+    if(errorPoints.length){
+      makeScatter('errorVsPriority','Error rate vs priority',errorPoints,'Priority (L=1 / M=2 / H=3)','Error rate %');
+    }
+
+    const riskPoints = list
+      .map(r=>{
+        const rev=parseFloat(String(r.revenueImpact||'').replace(/[^0-9.]/g,''));
+        const risk=DataStore.computed.get(r.id)?.risk?.total;
+        if(isNaN(rev) || risk==null) return null;
+        return {x:rev,y:risk,label:r.id};
+      })
+      .filter(Boolean);
+
+    if(riskPoints.length){
+      makeScatter('riskVsRevenue','Risk vs revenue',riskPoints,'Revenue impact','Risk score');
+    }
   }
-};
-
-UI.Issues.renderFilterChips = function(){
-  if(!E.activeFiltersChips) return;
-  const chips=[];
-  const addChip=(label,value,key)=>{
-    if(!value) return;
-    chips.push(`<button type="button" class="filter-chip" data-filter-key="${key}">
-      <span>${label}: ${U.escapeHtml(value)}</span>
-      <span aria-hidden="true">✕</span>
-    </button>`);
-  };
-  const s=Filters.state;
-  if(s.search) addChip('Search',s.search,'search');
-  if(s.module && s.module!=='All') addChip('Module',s.module,'module');
-  if(s.priority && s.priority!=='All') addChip('Priority',s.priority,'priority');
-  if(s.status && s.status!=='All') addChip('Status',s.status,'status');
-  if(s.start) addChip('From',s.start,'start');
-  if(s.end) addChip('To',s.end,'end');
-
-  if(chips.length){
-    E.activeFiltersChips.innerHTML = chips.join('');
-  }else{
-    E.activeFiltersChips.innerHTML = '<span class="muted" style="font-size:11px;">No filters applied.</span>';
-  }
-
-  E.activeFiltersChips.querySelectorAll('[data-filter-key]').forEach(btn=>{
-    btn.addEventListener('click',()=>{
-      const key=btn.getAttribute('data-filter-key');
-      if(!key) return;
-      if(key==='search') Filters.state.search='';
-      if(key==='module') Filters.state.module='All';
-      if(key==='priority') Filters.state.priority='All';
-      if(key==='status') Filters.state.status='All';
-      if(key==='start') Filters.state.start='';
-      if(key==='end') Filters.state.end='';
-
-      Filters.save();
-      if(E.searchInput && key==='search') E.searchInput.value='';
-      if(E.moduleFilter && key==='module') E.moduleFilter.value='All';
-      if(E.priorityFilter && key==='priority') E.priorityFilter.value='All';
-      if(E.statusFilter && key==='status') E.statusFilter.value='All';
-      if(E.startDateFilter && key==='start') E.startDateFilter.value='';
-      if(E.endDateFilter && key==='end') E.endDateFilter.value='';
-
-      UI.refreshAll();
-    });
-  });
-};
-
-UI.Issues.renderSummary = function(list){
-  if(!E.issuesSummaryText) return;
-  const total = list.length;
-  let open = 0;
-  let highRisk = 0;
-  list.forEach(r=>{
-    const st=(r.status||'').toLowerCase();
-    const isClosed = st.startsWith('resolved') || st.startsWith('rejected');
-    if(!isClosed) open++;
-    const risk = DataStore.computed.get(r.id)?.risk?.total || 0;
-    if(risk >= CONFIG.RISK.highRisk) highRisk++;
-  });
-  const last = IssuesCache.lastLabel();
-  E.issuesSummaryText.textContent =
-    `${total} issue${total===1?'':'s'} · ${open} open · ${highRisk} high-risk` +
-    (last ? ` · ${last}` : '');
 };
 
 /** Modals */
@@ -1578,8 +1699,44 @@ UI.Modals = {
     const r=DataStore.byId.get(id); if(!r||!E.issueModal) return;
     this.selectedIssue=r; this.lastFocus=document.activeElement;
     const meta=DataStore.computed.get(r.id)||{};
-    const risk=meta.risk||{technical:0,business:0,operational:0,time:0,total:0,reasons:[]};
+    const risk=meta.risk||{technical:0,business:0,operational:0,total:0,reasons:[]};
     const reasons=risk.reasons?.length?('Reasons: '+risk.reasons.join(', ')):'—';
+
+    const metricsParts=[];
+    if(r.errorRate) metricsParts.push(`Error rate: ${r.errorRate}`);
+    if(r.impactedUsers) metricsParts.push(`Impacted users: ${r.impactedUsers}`);
+    if(r.revenueImpact) metricsParts.push(`Revenue impact: ${r.revenueImpact}`);
+    const metricsHtml = metricsParts.length
+      ? `<p><b>Metrics:</b><br>${metricsParts.map(m=>U.escapeHtml(m)).join('<br>')}</p>`
+      : '';
+
+    // Change log / history (prefer explicit column, fallback to multiline log)
+    let historyHtml = '';
+    const historyText = r.history || '';
+    if(historyText){
+      const lines = historyText.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+      if(lines.length > 1){
+        historyHtml = `<div style="margin-top:8px;">
+          <b>Change log / history:</b>
+          <ul class="muted" style="font-size:13px;margin-top:4px;padding-left:18px;">
+            ${lines.map(l=>`<li>${U.escapeHtml(l)}</li>`).join('')}
+          </ul>
+        </div>`;
+      }else{
+        historyHtml = `<p><b>Change log / history:</b><br>${U.escapeHtml(historyText)}</p>`;
+      }
+    }else{
+      const lines = (r.log || '').split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+      if(lines.length > 1){
+        historyHtml = `<div style="margin-top:8px;">
+          <b>Change log / history (from log):</b>
+          <ul class="muted" style="font-size:13px;margin-top:4px;padding-left:18px;">
+            ${lines.map(l=>`<li>${U.escapeHtml(l)}</li>`).join('')}
+          </ul>
+        </div>`;
+      }
+    }
+
     E.modalTitle.textContent=r.title||r.id||'Issue';
     E.modalBody.innerHTML=`
       <p><b>ID:</b> ${U.escapeHtml(r.id||'-')}</p>
@@ -1587,10 +1744,12 @@ UI.Modals = {
       <p><b>Priority:</b> ${U.escapeHtml(r.priority||'-')}</p>
       <p><b>Status:</b> ${U.escapeHtml(r.status||'-')}</p>
       <p><b>Date:</b> ${U.escapeHtml(r.date||'-')}</p>
-      <p><b>Risk:</b> ${risk.total} (Tech ${risk.technical}, Biz ${risk.business}, Ops ${risk.operational}${risk.time?`, Time ${risk.time}`:''})<br><span class="muted">${U.escapeHtml(reasons)}</span></p>
+      <p><b>Risk:</b> ${risk.total} (Tech ${risk.technical}, Biz ${risk.business}, Ops ${risk.operational})<br><span class="muted">${U.escapeHtml(reasons)}</span></p>
+      ${metricsHtml}
       <p><b>Description:</b><br>${U.escapeHtml(r.desc||'-')}</p>
       <p><b>Log:</b><br>${U.escapeHtml(r.log||'-')}</p>
       ${r.file?`<p><b>Attachment:</b> <a href="${U.escapeAttr(r.file)}" target="_blank" rel="noopener noreferrer">Open link</a></p>`:''}
+      ${historyHtml}
       <div style="margin-top:10px" class="muted">
         Suggested: priority <b>${U.escapeHtml((meta.suggestions?.priority)||'-')}</b>;
         categories: ${(meta.suggestions?.categories||[]).slice(0,3).map(c=>U.escapeHtml(c.label)).join(', ')||'—'}.
@@ -1612,50 +1771,19 @@ UI.Modals = {
     if(E.eventModalTitle) E.eventModalTitle.textContent=isEdit?'Edit Event':'Add Event';
     if(E.eventDelete) E.eventDelete.style.display=isEdit?'inline-flex':'none';
 
-    const allDay = !!ev.allDay;
-    if(E.eventAllDay) E.eventAllDay.checked = allDay;
-
     if(E.eventTitle) E.eventTitle.value=ev.title||'';
     if(E.eventType) E.eventType.value=ev.type||'Deployment';
+    if(E.eventEnvironment) E.eventEnvironment.value=ev.environment||'';
+    if(E.eventBlast) E.eventBlast.value=ev.blastRadius||'';
     if(E.eventIssueId) E.eventIssueId.value=ev.issueId||'';
-
-    if(E.eventStart){
-      E.eventStart.type = allDay ? 'date' : 'datetime-local';
-      E.eventStart.value = ev.start
-        ? (allDay ? toLocalDateValue(ev.start) : toLocalInputValue(ev.start))
-        : '';
-    }
-    if(E.eventEnd){
-      E.eventEnd.type = allDay ? 'date' : 'datetime-local';
-      E.eventEnd.value = ev.end
-        ? (allDay ? toLocalDateValue(ev.end) : toLocalInputValue(ev.end))
-        : '';
-    }
+    if(E.eventStart) E.eventStart.value=ev.start?toLocalInputValue(ev.start):'';
+    if(E.eventEnd) E.eventEnd.value=ev.end?toLocalInputValue(ev.end):'';
     if(E.eventDescription) E.eventDescription.value=ev.description||'';
 
     if(E.eventIssueLinkedInfo){
-      const issueId = ev.issueId || '';
-      if(issueId){
-        const issue = DataStore.byId.get(issueId);
-        if(issue){
-          const meta = DataStore.computed.get(issue.id) || {};
-          const riskTotal = meta.risk?.total || 0;
-          const badgeClass = CalendarLink.riskBadgeClass(riskTotal);
-          E.eventIssueLinkedInfo.style.display='block';
-          E.eventIssueLinkedInfo.innerHTML = `
-            Linked issue: <strong>${U.escapeHtml(issue.id)}</strong> – ${U.escapeHtml(issue.title||'')}
-            <br><span class="muted">Status: ${U.escapeHtml(issue.status||'-')} · Priority: ${U.escapeHtml(issue.priority||'-')}</span>
-            ${riskTotal ? `<span class="event-risk-badge ${badgeClass}">RISK ${riskTotal}</span>` : ''}
-            <div style="margin-top:4px;">
-              <button type="button" class="btn sm" id="eventOpenIssueBtn">Open issue</button>
-            </div>
-          `;
-          const btn = document.getElementById('eventOpenIssueBtn');
-          if(btn) btn.addEventListener('click',()=> UI.Modals.openIssue(issue.id));
-        }else{
-          E.eventIssueLinkedInfo.style.display='block';
-          E.eventIssueLinkedInfo.textContent=`Linked issue ID: ${issueId} (not found in current dataset)`;
-        }
+      if(ev.issueId){
+        E.eventIssueLinkedInfo.style.display='block';
+        E.eventIssueLinkedInfo.textContent=`Linked issue ID: ${ev.issueId}`;
       }else{
         E.eventIssueLinkedInfo.style.display='none';
         E.eventIssueLinkedInfo.textContent='';
@@ -1675,6 +1803,8 @@ UI.Modals = {
 /** Analytics (AI tab) */
 const Analytics = {
   _debounce:null,
+  _lastDigest:'',
+
   refresh(list){
     clearTimeout(this._debounce);
     UI.setAnalyzing(true);
@@ -1689,8 +1819,12 @@ const Analytics = {
       const t=DataStore.computed.get(r.id)?.tokens||new Set();
       t.forEach(w=>termCounts.set(w,(termCounts.get(w)||0)+1));
     });
-    const topTerms=Array.from(termCounts.entries()).filter(([,c])=>c>=2).sort((a,b)=>b[1]-a[1]).slice(0,10);
-    E.aiPatternsList.innerHTML = topTerms.length? topTerms.map(([t,c])=>`<li><strong>${U.escapeHtml(t)}</strong> – ${c}</li>`).join('') : '<li>No strong repeated terms recently.</li>';
+    E.aiPatternsList.innerHTML = termCounts.size? Array.from(termCounts.entries())
+      .filter(([,c])=>c>=2)
+      .sort((a,b)=>b[1]-a[1])
+      .slice(0,10)
+      .map(([t,c])=>`<li><strong>${U.escapeHtml(t)}</strong> – ${c}</li>`)
+      .join('') : '<li>No strong repeated terms recently.</li>';
 
     // Suggested categories frequency
     const catCount=new Map();
@@ -1706,7 +1840,7 @@ const Analytics = {
     const signals=['timeout','payments','billing','login','auth','error','crash'].filter(t=>termCounts.has(t));
     E.aiSignalsText.textContent=signals.length?`Recent mentions: ${signals.join(', ')}.`:'No strong recurring signals.';
 
-    // Trends
+    // Trends (old vs new)
     const oldStart=U.daysAgo(CONFIG.TREND_DAYS_WINDOW), mid=U.daysAgo(CONFIG.TREND_DAYS_RECENT);
     const oldCounts=new Map(), newCounts=new Map();
     const inHalf=r=>{
@@ -1746,6 +1880,7 @@ const Analytics = {
 
     // Emerging vs stable
     const emerg=trend.slice(0,5).map(t=>t.t);
+    const topTerms=Array.from(termCounts.entries()).sort((a,b)=>b[1]-a[1]).slice(0,10);
     const stable=topTerms.filter(([t])=>!emerg.includes(t)).slice(0,5).map(([t])=>t);
     E.aiEmergingStable.innerHTML=`
       <li><strong>Emerging:</strong> ${emerg.length?emerg.join(', '):'—'}</li>
@@ -1795,38 +1930,17 @@ const Analytics = {
         return {module:m.module,open:m.open,high:m.high,risk:m.risk,topTerm:tt};
       }).sort((a,b)=>b.risk-a.risk||b.open-a.open).slice(0,8);
     })();
-
-    const maxModuleRisk = modules.reduce((max,m)=>Math.max(max,m.risk),0) || 1;
-
-    E.aiModulesTableBody.innerHTML = modules.length? modules.map(m=>{
-      const ratio = m.risk / maxModuleRisk;
-      return `
-        <tr>
-          <td>${U.escapeHtml(m.module)}</td>
-          <td>${m.open}</td>
-          <td>${m.high}</td>
-          <td>
-            ${m.risk}
-            <div class="risk-bar-wrap"><div class="risk-bar" style="transform:scaleX(${ratio.toFixed(2)});"></div></div>
-          </td>
-          <td>${U.escapeHtml(m.topTerm||'-')}</td>
-        </tr>
-      `;
-    }).join(''):'<tr><td colspan="5" style="text-align:center;color:var(--muted)">No modules.</td></tr>';
+    E.aiModulesTableBody.innerHTML = modules.length? modules.map(m=>`
+      <tr><td>${U.escapeHtml(m.module)}</td><td>${m.open}</td><td>${m.high}</td><td>${m.risk}</td><td>${U.escapeHtml(m.topTerm||'-')}</td></tr>
+    `).join(''):'<tr><td colspan="5" style="text-align:center;color:var(--muted)">No modules.</td></tr>';
 
     // Top risks
     const topRisks=recent.map(r=>({r,score:DataStore.computed.get(r.id)?.risk?.total||0}))
       .sort((a,b)=>b.score-a.score).slice(0,5).filter(x=>x.score>2);
-    E.aiRisksList.innerHTML = topRisks.length? topRisks.map(({r,score})=>{
-      const badgeClass = CalendarLink.riskBadgeClass(score);
-      return `
-        <li style="margin-bottom:4px;">
-          <strong>[${U.escapeHtml(r.priority||'-')}] ${U.escapeHtml(r.id||'')}</strong>
-          <span class="event-risk-badge ${badgeClass}">RISK ${score}</span>
-          <br><span class="muted">Status ${U.escapeHtml(r.status||'-')}</span>
-          <br>${U.escapeHtml(r.title||'')}
-        </li>`;
-    }).join(''):'<li>No high-risk recent issues.</li>';
+    E.aiRisksList.innerHTML = topRisks.length? topRisks.map(({r,score})=>`
+      <li style="margin-bottom:4px;"><strong>[${U.escapeHtml(r.priority||'-')}] ${U.escapeHtml(r.id||'')}</strong> – ${U.escapeHtml(r.title||'')}
+      <br><span class="muted">Risk ${score}, status ${U.escapeHtml(r.status||'-')}</span></li>
+    `).join(''):'<li>No high-risk recent issues.</li>';
 
     // Clusters
     const clusters=buildClustersWeighted(list);
@@ -1873,10 +1987,19 @@ const Analytics = {
     const evs=computeEventsRisk(DataStore.rows, DataStore.events);
     E.aiEventsList.innerHTML = evs.length? evs.map(r=>{
       const badge=CalendarLink.riskBadgeClass(r.risk);
+      const env = r.event.environment || '';
+      const blast = r.event.blastRadius || '';
+      const metaParts = [
+        U.fmtTS(r.date),
+        r.modules.length ? 'Modules: '+r.modules.map(U.escapeHtml).join(', ') : 'Modules: n/a',
+        'Related issues: '+r.issues.length,
+        env ? 'Env: '+U.escapeHtml(env) : '',
+        blast ? 'Blast: '+U.escapeHtml(blast) : ''
+      ].filter(Boolean);
       return `<li style="margin-bottom:6px;">
         <strong>${U.escapeHtml(r.event.title||'(no title)')}</strong>
         <span class="event-risk-badge ${badge}">RISK ${r.risk}</span>
-        <div class="muted">${U.fmtTS(r.date)} · Modules: ${r.modules.length?r.modules.map(U.escapeHtml).join(', '):'n/a'} · Related issues: ${r.issues.length}</div>
+        <div class="muted">${metaParts.join(' · ')}</div>
       </li>`;
     }).join(''):'<li>No notable risk in next 7 days.</li>';
 
@@ -1892,7 +2015,88 @@ Reasons: ${(meta.risk?.reasons||[]).join(', ')}`;
       navigator.clipboard.writeText(text).then(()=>UI.toast('Suggestion copied')).catch(()=>UI.toast('Clipboard blocked'));
     }));
 
+    // Nightly digest preview
+    const digest = this.buildDigest(list);
+    if(E.digestPreview){
+      E.digestPreview.textContent = digest.split('\n').slice(0,6).join('\n');
+    }
+
     UI.setAnalyzing(false);
+  },
+  buildDigest(list){
+    const now = new Date();
+    const todayStart = startOfDay(now);
+    const tomorrowStart = U.dateAddDays(todayStart,1);
+    const afterTomorrowStart = U.dateAddDays(todayStart,2);
+    const todayLabel = todayStart.toISOString().slice(0,10);
+    const tomorrowLabel = tomorrowStart.toISOString().slice(0,10);
+
+    const open = list.filter(r=>{
+      const st=(r.status||'').toLowerCase();
+      return !(st.startsWith('resolved')||st.startsWith('rejected'));
+    });
+
+    const ranked = open
+      .map(r=>({r,score:DataStore.computed.get(r.id)?.risk?.total||0}))
+      .sort((a,b)=>b.score-a.score)
+      .slice(0,5)
+      .filter(x=>x.score>0);
+
+    const incidentWords=['incident','outage','p0','p1','major','sla'];
+    const isToday=r=>{
+      const d=new Date(r.date);
+      if(isNaN(d)) return false;
+      return d>=todayStart && d<tomorrowStart;
+    };
+    const incidentsToday = list.filter(r=>{
+      if(!isToday(r)) return false;
+      const txt=[r.title,r.desc,r.log].filter(Boolean).join(' ').toLowerCase();
+      return incidentWords.some(w=>txt.includes(w));
+    });
+
+    const deploymentsTomorrow = (DataStore.events || []).filter(ev=>{
+      if((ev.type||'').toLowerCase()!=='deployment') return false;
+      if(!ev.start) return false;
+      const d=new Date(ev.start);
+      if(isNaN(d)) return false;
+      return d>=tomorrowStart && d<afterTomorrowStart;
+    });
+
+    let md = `## Top 5 high-risk issues\n`;
+    if(ranked.length){
+      ranked.forEach(({r,score},idx)=>{
+        md += `${idx+1}. [${r.priority||'-'}] ${r.id} — ${r.title||''} (risk ${score})\n`;
+      });
+    }else{
+      md += `- No high-risk issues found.\n`;
+    }
+
+    md += `\n## Deployments tomorrow (${tomorrowLabel})\n`;
+    if(deploymentsTomorrow.length){
+      deploymentsTomorrow.forEach(ev=>{
+        const env = ev.environment || '';
+        const blast = ev.blastRadius || '';
+        const parts=[];
+        if(env) parts.push(env);
+        if(blast) parts.push(`blast: ${blast}`);
+        const meta = parts.length ? ` (${parts.join(' · ')})` : '';
+        md += `- ${ev.title || '(no title)'}${meta}\n`;
+      });
+    }else{
+      md += `- No deployments scheduled for tomorrow.\n`;
+    }
+
+    md += `\n## New incidents today (${todayLabel})\n`;
+    if(incidentsToday.length){
+      incidentsToday.forEach(r=>{
+        md += `- ${r.id} — ${r.title || ''}\n`;
+      });
+    }else{
+      md += `- No incident-like issues detected today.\n`;
+    }
+
+    this._lastDigest = md;
+    return md;
   }
 };
 
@@ -1955,7 +2159,14 @@ function computeEventsRisk(issues,events){
       rel=recentOpen.filter(i=>(DataStore.computed.get(i.id)?.risk?.total||0)>=8);
     }
     if(!rel.length) return;
-    const risk=rel.reduce((s,i)=>s+(DataStore.computed.get(i.id)?.risk?.total||0),0);
+    let risk=rel.reduce((s,i)=>s+(DataStore.computed.get(i.id)?.risk?.total||0),0);
+
+    const envKey=(ev.environment||'').toLowerCase();
+    const blastKey=(ev.blastRadius||'').toLowerCase();
+    const envBoost=CONFIG.RISK.eventEnvBoost?.[envKey] || 0;
+    const blastMult=CONFIG.RISK.eventBlastMultiplier?.[blastKey] || 1;
+    risk = (risk + envBoost) * blastMult;
+
     res.push({event:ev,modules:impacted,issues:rel,risk,date:d});
   });
   res.sort((a,b)=>b.risk-a.risk);
@@ -1967,15 +2178,14 @@ function toLocalInputValue(date){
   if(isNaN(d)) return '';
   return `${d.getFullYear()}-${U.pad(d.getMonth()+1)}-${U.pad(d.getDate())}T${U.pad(d.getHours())}:${U.pad(d.getMinutes())}`;
 }
-function toLocalDateValue(date){
-  const d=(date instanceof Date)?date:new Date(date);
-  if(isNaN(d)) return '';
-  return `${d.getFullYear()}-${U.pad(d.getMonth()+1)}-${U.pad(d.getDate())}`;
+
+function startOfDay(d){
+  const dt = (d instanceof Date) ? new Date(d) : new Date(d);
+  dt.setHours(0,0,0,0);
+  return dt;
 }
 
 /* ---------- App init ---------- */
-let AI_LAST_RESULTS = [];
-
 document.addEventListener('DOMContentLoaded', initApp);
 
 function initApp(){
@@ -1988,7 +2198,6 @@ function initApp(){
   wirePaging();
   wireFilters();
   wireTheme();
-  wireConnectivity();
   wireModals();
   wireAI();
   wireCalendar();
@@ -2026,6 +2235,11 @@ function wireCore(){
     btn.addEventListener('click',()=> setActiveView(btn.dataset.view));
   });
 
+  // mobile bottom tabs
+  U.qAll('.bottom-tab').forEach(btn=>{
+    btn.addEventListener('click',()=> setActiveView(btn.dataset.view));
+  });
+
   if(E.drawerBtn) E.drawerBtn.addEventListener('click',()=>{
     const open=!E.sidebar.classList.contains('open');
     E.sidebar.classList.toggle('open');
@@ -2040,18 +2254,11 @@ function wireCore(){
   if(E.exportCsv) E.exportCsv.addEventListener('click',exportFilteredCsv);
   if(E.createTicketBtn) E.createTicketBtn.addEventListener('click',()=>window.open("https://forms.gle/PPnEP1AQneoBT79s5","_blank","noopener,noreferrer"));
 
-  if(E.shortcutsHelp){
-    E.shortcutsHelp.addEventListener('click',()=>{
-      UI.toast('Shortcuts: 1/2/3 switch tabs · / focus search · Ctrl+K AI query');
-    });
-  }
-
   UI.refreshAll=()=>{
     const list=UI.Issues.applyFilters();
-    UI.Issues.renderSummary(list);
     UI.Issues.renderKPIs(list);
-    UI.Issues.renderFilterChips();
     UI.Issues.renderTable(list);
+    UI.Issues.renderCards(list);
     UI.Issues.renderCharts(list);
     if(E.insightsView.classList.contains('active')) Analytics.refresh(list);
   };
@@ -2129,49 +2336,13 @@ function wireTheme(){
   const saved=localStorage.getItem(LS_KEYS.theme)||'system';
   if(E.themeSelect) E.themeSelect.value=saved;
   if(saved==='system') applySystem();
-  else if(saved==='dark') document.documentElement.removeAttribute('data-theme');
-  else document.documentElement.setAttribute('data-theme','light');
-
-  media?.addEventListener('change',()=>{
-    if((localStorage.getItem(LS_KEYS.theme)||'system')==='system') applySystem();
-  });
-
+  else document.documentElement.setAttribute('data-theme',saved==='dark'?'':'light');
+  media?.addEventListener('change',()=>{ if((localStorage.getItem(LS_KEYS.theme)||'system')==='system') applySystem(); });
   if(E.themeSelect) E.themeSelect.addEventListener('change',()=>{
-    const v=E.themeSelect.value;
-    localStorage.setItem(LS_KEYS.theme,v);
+    const v=E.themeSelect.value; localStorage.setItem(LS_KEYS.theme,v);
     if(v==='system') applySystem();
-    else if(v==='dark') document.documentElement.removeAttribute('data-theme');
-    else document.documentElement.setAttribute('data-theme','light');
+    else document.documentElement.setAttribute('data-theme',v==='dark'?'':'light');
   });
-
-  // Accent color picker
-  if(E.accentColor){
-    const rootStyle = getComputedStyle(document.documentElement);
-    const defaultAccent = rootStyle.getPropertyValue('--accent').trim() || '#4f8cff';
-    const savedAccent = localStorage.getItem(LS_KEYS.accentColor) || defaultAccent;
-    E.accentColor.value = savedAccent;
-    document.documentElement.style.setProperty('--accent', savedAccent);
-
-    E.accentColor.addEventListener('input',()=>{
-      const val = E.accentColor.value || defaultAccent;
-      document.documentElement.style.setProperty('--accent', val);
-      try{ localStorage.setItem(LS_KEYS.accentColor, val); }catch{}
-      UI.Issues.renderCharts(UI.Issues.applyFilters());
-    });
-  }
-}
-
-function wireConnectivity(){
-  if(!E.onlineStatusChip) return;
-  const update=()=>{
-    const online = navigator.onLine !== false;
-    E.onlineStatusChip.textContent = online ? 'Online' : 'Offline · using cache';
-    E.onlineStatusChip.classList.toggle('online',online);
-    E.onlineStatusChip.classList.toggle('offline',!online);
-  };
-  window.addEventListener('online',update);
-  window.addEventListener('offline',update);
-  update();
 }
 
 function wireModals(){
@@ -2207,16 +2378,16 @@ function wireModals(){
   if(E.eventForm) E.eventForm.addEventListener('submit',async e=>{
     e.preventDefault();
     const id=E.eventForm.dataset.id||'';
-    const allDay = !!(E.eventAllDay && E.eventAllDay.checked);
     const ev={
       id,
       title:E.eventTitle.value.trim(),
       type:E.eventType.value||'Deployment',
+      environment:E.eventEnvironment.value || '',
+      blastRadius:E.eventBlast.value || '',
       issueId:E.eventIssueId.value.trim()||'',
       start:E.eventStart.value,
       end:E.eventEnd.value||null,
-      description:E.eventDescription.value.trim(),
-      allDay
+      description:E.eventDescription.value.trim()
     };
     if(!ev.title) return UI.toast('Title & start required');
     if(!ev.start) return UI.toast('Start date/time is required');
@@ -2240,33 +2411,6 @@ function wireModals(){
     Analytics.refresh(UI.Issues.applyFilters());
     UI.Modals.closeEvent();
   });
-
-  if(E.eventAllDay){
-    E.eventAllDay.addEventListener('change',()=>{
-      const isAllDay = E.eventAllDay.checked;
-      const startVal = E.eventStart.value;
-      const endVal = E.eventEnd.value;
-      if(isAllDay){
-        if(E.eventStart){
-          E.eventStart.type='date';
-          if(startVal.includes('T')) E.eventStart.value=startVal.split('T')[0];
-        }
-        if(E.eventEnd){
-          E.eventEnd.type='date';
-          if(endVal.includes('T')) E.eventEnd.value=endVal.split('T')[0];
-        }
-      }else{
-        if(E.eventStart){
-          E.eventStart.type='datetime-local';
-          if(startVal && !startVal.includes('T')) E.eventStart.value=startVal+'T09:00';
-        }
-        if(E.eventEnd){
-          E.eventEnd.type='datetime-local';
-          if(endVal && !endVal.includes('T')) E.eventEnd.value=endVal+'T10:00';
-        }
-      }
-    });
-  }
 }
 
 /* ---------- AI / DSL ---------- */
@@ -2295,28 +2439,23 @@ function wireAI(){
     UI.refreshAll();
   });
 
-  if(E.aiQueryExport){
-    E.aiQueryExport.addEventListener('click',()=>{
-      if(!AI_LAST_RESULTS.length){
-        UI.toast('Run a query first to export results.');
-        return;
-      }
-      exportIssuesToCsv(AI_LAST_RESULTS,'ai');
-    });
-  }
+  if(E.copyDigestBtn) E.copyDigestBtn.addEventListener('click',async()=>{
+    const list = UI.Issues.applyFilters();
+    const md = Analytics.buildDigest(list);
+    try{
+      await navigator.clipboard.writeText(md);
+      UI.toast('Nightly digest copied to clipboard');
+    }catch(e){
+      UI.toast('Clipboard blocked by browser');
+    }
+  });
 }
 
 function runQuery(){
   const q=E.aiQueryInput.value.trim();
-  if(!q){
-    E.aiQueryResults.textContent='Type a query with keywords and filters like module:, status:, risk>=9';
-    AI_LAST_RESULTS = [];
-    return;
-  }
+  if(!q){ E.aiQueryResults.textContent='Type a query with keywords and filters like module:, status:, risk>=9'; return; }
   const p=DSL.parse(q);
   const list=DataStore.rows.filter(r=>DSL.matches(r,DataStore.computed.get(r.id)||{},p));
-  AI_LAST_RESULTS = list.slice();
-
   let sort=p.sort||'risk';
   if(sort==='risk') list.sort((a,b)=>(DataStore.computed.get(b.id)?.risk?.total||0)-(DataStore.computed.get(a.id)?.risk?.total||0));
   if(sort==='date') list.sort((a,b)=>new Date(b.date)-new Date(a.date));
@@ -2362,20 +2501,11 @@ let calendar=null, calendarReady=false;
 function wireCalendar(){
   if(E.addEventBtn) E.addEventBtn.addEventListener('click',()=>{
     const now=new Date();
-    UI.Modals.openEvent({start:now,end:new Date(now.getTime()+60*60*1000),allDay:false});
+    UI.Modals.openEvent({start:now,end:new Date(now.getTime()+60*60*1000)});
   });
 
   [E.eventFilterDeployment,E.eventFilterMaintenance,E.eventFilterRelease,E.eventFilterOther]
     .forEach(input=>{ if(input) input.addEventListener('change',renderCalendarEvents); });
-
-  if(E.calendarTz){
-    try{
-      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'local time';
-      E.calendarTz.textContent = `Times shown in: ${tz}`;
-    }catch{
-      E.calendarTz.textContent = '';
-    }
-  }
 }
 
 function ensureCalendar(){
@@ -2383,59 +2513,53 @@ function ensureCalendar(){
   const el=document.getElementById('calendar');
   if(!el || typeof FullCalendar==='undefined'){ UI.toast('Calendar library failed to load'); return; }
   calendar=new FullCalendar.Calendar(el,{
-    initialView:'dayGridMonth', selectable:true, editable:true, height:'auto',
+    initialView:'dayGridMonth', selectable:true, editable:false, height:'auto',
     headerToolbar:{left:'title',center:'',right:'dayGridMonth,timeGridWeek,listWeek today prev,next'},
-    select:info=>UI.Modals.openEvent({start:info.start,end:info.end,allDay:info.allDay}),
+    select:info=>UI.Modals.openEvent({start:info.start,end:info.end}),
     eventClick:info=>{
       const ev=DataStore.events.find(e=>e.id===info.event.id) || {
         id:info.event.id,
         title:info.event.title,
         type:info.event.extendedProps.type||'Other',
+        environment:info.event.extendedProps.environment||'',
+        blastRadius:info.event.extendedProps.blastRadius||'',
         start:info.event.start,
         end:info.event.end,
         description:info.event.extendedProps.description||'',
-        issueId:info.event.extendedProps.issueId||'',
-        allDay:info.event.allDay
+        issueId:info.event.extendedProps.issueId||''
       };
       UI.Modals.openEvent(ev);
     },
-    eventDrop: async info=>{
-      const ev = DataStore.events.find(e=>e.id===info.event.id);
-      if(!ev){ info.revert(); return; }
-      const updated = {
-        ...ev,
-        start:info.event.start,
-        end:info.event.end,
-        allDay:info.event.allDay
-      };
-      const saved = await saveEventToSheet(updated);
-      if(!saved){ info.revert(); return; }
-      const idx=DataStore.events.findIndex(e=>e.id===saved.id);
-      if(idx>-1) DataStore.events[idx]=saved;
-      saveEventsCache();
-      Analytics.refresh(UI.Issues.applyFilters());
-    },
     eventDidMount(info){
       const riskSum=info.event.extendedProps.risk||0;
-      if(riskSum){
-        const span=document.createElement('span');
-        span.className='event-risk-badge '+CalendarLink.riskBadgeClass(riskSum);
-        span.textContent=`RISK ${riskSum}`;
-        const titleEl=info.el.querySelector('.fc-event-title');
-        if(titleEl) titleEl.appendChild(span);
-      }
-      const ext = info.event.extendedProps || {};
-      let tooltip = ext.description || '';
-      if(ext.issueId){
-        const issue = DataStore.byId.get(ext.issueId);
-        if(issue){
-          const r = DataStore.computed.get(issue.id)?.risk?.total || 0;
-          tooltip = `${issue.id} – ${issue.title||''}\nStatus: ${issue.status||'-'} · Priority: ${issue.priority||'-'} · Risk: ${r}` + (tooltip?`\n\n${tooltip}`:'');
-        }else{
-          tooltip = `Linked issue: ${ext.issueId}` + (tooltip?`\n\n${tooltip}`:'');
+      const titleEl=info.el.querySelector('.fc-event-title');
+
+      if(titleEl){
+        if(riskSum){
+          const span=document.createElement('span');
+          span.className='event-risk-badge '+CalendarLink.riskBadgeClass(riskSum);
+          span.textContent=`RISK ${riskSum}`;
+          titleEl.appendChild(span);
+        }
+        const env=(info.event.extendedProps.environment||'').toLowerCase();
+        const blast=(info.event.extendedProps.blastRadius||'').toLowerCase();
+        if(env){
+          const envSpan=document.createElement('span');
+          envSpan.className='env-chip env-'+env;
+          envSpan.textContent=info.event.extendedProps.environment;
+          titleEl.appendChild(envSpan);
+        }
+        if(blast){
+          const bSpan=document.createElement('span');
+          bSpan.className='blast-chip blast-'+blast;
+          bSpan.textContent=info.event.extendedProps.blastRadius;
+          titleEl.appendChild(bSpan);
         }
       }
-      if(tooltip) info.el.setAttribute('title', tooltip);
+
+      if(info.event.extendedProps && info.event.extendedProps.description){
+        info.el.setAttribute('title', info.event.extendedProps.description);
+      }
     }
   });
   calendarReady=true;
@@ -2451,43 +2575,34 @@ function renderCalendarEvents(){
   if(E.eventFilterRelease && E.eventFilterRelease.checked) activeTypes.add('Release');
   if(E.eventFilterOther && E.eventFilterOther.checked) activeTypes.add('Other');
 
-  const links=computeEventsRisk(DataStore.rows, DataStore.events);
-  const riskMap=new Map(links.map(r=>[r.event.id,r.risk]));
-
   calendar.removeAllEvents();
   DataStore.events.forEach(ev=>{
     const type=ev.type||'Other';
     if(activeTypes.size && !activeTypes.has(type)) return;
-    const risk = riskMap.get(ev.id) || 0;
     calendar.addEvent({
       id:ev.id,
       title:ev.title,
       start:ev.start,
       end:ev.end||null,
-      allDay:!!ev.allDay,
       extendedProps:{
         type,
         description:ev.description,
         issueId:ev.issueId||'',
-        risk
+        environment:ev.environment||'',
+        blastRadius:ev.blastRadius||'',
+        risk:0
       },
       classNames:['event-type-'+type.toLowerCase().replace(/\s+/g,'-')]
     });
   });
+  const links=computeEventsRisk(DataStore.rows, DataStore.events);
+  links.forEach(r=>{
+    const e=calendar.getEventById(r.event.id);
+    if(e){ e.setExtendedProp('risk',r.risk); }
+  });
 }
 
 /* ---------- Networking ---------- */
-async function safeFetchText(url, opts = {}){
-  const res = await fetch(url,{cache:'no-store',...opts});
-  if(!res.ok) throw new Error(`Failed to fetch (${res.status})`);
-  return res.text();
-}
-async function safeFetchJson(url, opts = {}){
-  const res = await fetch(url,{cache:'no-store',...opts});
-  if(!res.ok) throw new Error(`Failed to fetch (${res.status})`);
-  return res.json();
-}
-
 async function loadIssues(force=false){
   // Use cached issues first if we have nothing yet and we're not forcing
   if(!force && !DataStore.rows.length){
@@ -2506,7 +2621,9 @@ async function loadIssues(force=false){
 
   try{
     UI.spinner(true); UI.skeleton(true);
-    const text = await safeFetchText(CONFIG.SHEET_URL);
+    const res=await fetch(CONFIG.SHEET_URL,{cache:'no-store'});
+    if(!res.ok) throw new Error(`Failed to fetch (${res.status})`);
+    const text=await res.text();
     DataStore.hydrate(text);
     IssuesCache.save(DataStore.rows);
     UI.Issues.renderFilters();
@@ -2538,7 +2655,9 @@ async function loadIssues(force=false){
 async function loadEvents(force=false){
   try{
     UI.spinner(true);
-    const data=await safeFetchJson(CONFIG.CALENDAR_API_URL);
+    const res=await fetch(CONFIG.CALENDAR_API_URL,{cache:'no-store'});
+    if(!res.ok) throw new Error('Failed to load events');
+    const data=await res.json();
     DataStore.events=data.events||loadEventsCache();
     saveEventsCache();
     renderCalendarEvents();
@@ -2616,12 +2735,13 @@ async function deleteEventFromSheet(id){
 }
 
 /* ---------- Export CSV ---------- */
-function exportIssuesToCsv(rows,suffix){
+function exportFilteredCsv(){
+  const rows=UI.Issues.applyFilters();
   if(!rows.length) return UI.toast('Nothing to export (no rows).');
-  const headers=['ID','Module','Title','Priority','Status','Date','Log','Link','Description'];
+  const headers=['ID','Module','Title','Priority','Status','Date','ErrorRate','ImpactedUsers','RevenueImpact','Log','Link','Description'];
   const lines=[headers.join(',')];
   rows.forEach(r=>{
-    const arr=[r.id,r.module,r.title,r.priority,r.status,r.date,r.log,r.file,r.desc].map(v=>{
+    const arr=[r.id,r.module,r.title,r.priority,r.status,r.date,r.errorRate,r.impactedUsers,r.revenueImpact,r.log,r.file,r.desc].map(v=>{
       const s=String(v??'').replace(/"/g,'""');
       return `"${s}"`;
     });
@@ -2631,15 +2751,10 @@ function exportIssuesToCsv(rows,suffix){
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   const ts=new Date().toISOString().slice(0,10);
-  a.href=url; a.download=`incheck_issues_${suffix||'filtered'}_${ts}.csv`;
+  a.href=url; a.download=`incheck_issues_${ts}.csv`;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  UI.toast('Exported CSV');
-}
-
-function exportFilteredCsv(){
-  const rows=UI.Issues.applyFilters();
-  exportIssuesToCsv(rows,'filtered');
+  UI.toast('Exported CSV of current filtered issues');
 }
 
 /* ---------- Misc utils ---------- */
@@ -2674,6 +2789,13 @@ function setActiveView(view){
     }
     if(panel) panel.classList.toggle('active',active);
   });
+
+  // Sync bottom mobile tabs
+  U.qAll('.bottom-tab').forEach(btn=>{
+    const active = btn.dataset.view === view;
+    btn.classList.toggle('active',active);
+  });
+
   if(view==='calendar') ensureCalendar();
   if(view==='insights') Analytics.refresh(UI.Issues.applyFilters());
   try{ localStorage.setItem(LS_KEYS.view,view); }catch{}
