@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>InCheck Ops, Issues & Attendance</title>
+  <title>InCheck Issues & Operations Dashboard</title>
 
   <!-- Fonts & Libs -->
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 
@@ -30,7 +30,7 @@
       --priority-medium:#f59e0b;
       --priority-low:#10b981;
 
-      /* Theme colors (dark default) */
+      /* Theme colors */
       --bg:#050816;
       --card:rgba(11,22,45,0.96);
       --muted:#9aa6d1;
@@ -45,11 +45,6 @@
       --border:#1b2645;
       --shadow:0 18px 40px rgba(0,0,0,.55);
       --focus:0 0 0 3px rgba(79,140,255,.5);
-
-      /* Attendance / heatmap */
-      --heat-low:#c7d2fe;
-      --heat-mid:#60a5fa;
-      --heat-high:#2563eb;
     }
     :root[data-theme="light"] {
       --bg:#f4f6ff;
@@ -66,9 +61,6 @@
       --border:#e0e4f3;
       --shadow:0 16px 32px rgba(15,23,42,.12);
       --focus:0 0 0 3px rgba(37,99,235,.35);
-      --heat-low:#dbeafe;
-      --heat-mid:#93c5fd;
-      --heat-high:#3b82f6;
     }
 
     * { box-sizing:border-box }
@@ -86,8 +78,15 @@
     :focus-visible { outline:none; box-shadow:var(--focus); border-radius:8px; }
 
     .sr-only {
-      position:absolute; width:1px; height:1px; padding:0; margin:-1px;
-      overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
+      position:absolute;
+      width:1px;
+      height:1px;
+      padding:0;
+      margin:-1px;
+      overflow:hidden;
+      clip:rect(0,0,0,0);
+      white-space:nowrap;
+      border:0;
     }
 
     /* Topbar */
@@ -101,14 +100,14 @@
     }
     .brand { display:flex; align-items:center; gap:10px; font-weight:700; }
     .brand .logo {
-      width:32px; height:32px; border-radius:12px;
+      width:30px; height:30px; border-radius:10px;
       display:grid; place-items:center;
       background:conic-gradient(from 160deg, var(--accent), #9b8cff, #22c55e, var(--accent));
-      color:#fff; font-weight:800; font-size:14px;
+      color:#fff; font-weight:800;
       box-shadow:0 10px 30px rgba(79,140,255,.55);
     }
     .brand-text { display:flex; flex-direction:column; }
-    .brand-text span:first-child { font-size:12px; text-transform:uppercase; letter-spacing:.16em; color:var(--muted); }
+    .brand-text span:first-child { font-size:14px; text-transform:uppercase; letter-spacing:.16em; color:var(--muted); }
     .brand-text span:last-child { font-size:16px; }
 
     .toolbar { margin-left:auto; display:flex; gap:10px; align-items:center; flex-wrap:wrap }
@@ -127,7 +126,6 @@
       align-items:center;
       gap:6px;
       box-shadow:0 8px 20px rgba(15,23,42,.25);
-      border-radius:999px;
     }
     .btn.primary {
       background:linear-gradient(135deg,var(--accent),#7c3aed);
@@ -139,13 +137,12 @@
       background:transparent;
       box-shadow:none;
     }
-    .btn.sm { padding:6px 10px; font-size:13px }
-    .btn:hover { opacity:.97; transform:translateY(-1px); }
+    .btn.sm { padding:6px 10px; border-radius:999px; font-size:13px }
+    .btn:hover { opacity:.95; transform:translateY(-1px); }
     .btn:active { transform:translateY(0); opacity:.9; }
     .input, .select {
       background:rgba(5,10,24,.85);
       box-shadow: inset 0 0 0 1px rgba(15,23,42,.35);
-      border-radius:999px;
     }
     .input::placeholder { color:var(--muted); }
     .icon { font-size:18px; line-height:1 }
@@ -206,6 +203,7 @@
       cursor:pointer;
       display:flex; align-items:center; gap:6px;
     }
+    .view-tab .icon { font-size:16px; }
     .view-tab.active {
       background:linear-gradient(135deg,var(--accent),#7c3aed);
       color:#fff;
@@ -247,6 +245,20 @@
       position:relative;
       overflow:hidden;
     }
+    .kpi::before {
+      content:"";
+      position:absolute;
+      inset:auto -40% 0;
+      height:60%;
+      background:radial-gradient(circle at 20% 0, rgba(79,140,255,.45), transparent 55%);
+      opacity:0;
+      transition:opacity .25s, transform .25s;
+      transform:translateY(16px);
+    }
+    .kpi:hover::before {
+      opacity:1;
+      transform:translateY(0);
+    }
     .kpi .label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.12em }
     .kpi .value { font-size:26px; font-weight:800; margin-top:6px }
     .kpi .sub { font-size:12px; color:var(--muted); margin-top:4px }
@@ -275,11 +287,27 @@
       border:1px solid rgba(148,163,184,.35);
       background:radial-gradient(circle at 0 0, rgba(79,140,255,.08), transparent 55%);
     }
-    .table-wrap.small-table { max-height:320px; }
-
     th.sortable::after { content:""; margin-left:6px; border:4px solid transparent; border-top-color:var(--muted); display:inline-block; transform:translateY(1px); }
     th.sorted-asc::after { border-bottom-color:var(--accent); border-top-color:transparent; transform:translateY(-1px); }
     th.sorted-desc::after { border-top-color:var(--accent); border-bottom-color:transparent; transform:translateY(1px); }
+
+    /* Skeleton loading row */
+    .skeleton-row td {
+      position:relative;
+      color:transparent;
+    }
+    .skeleton-row td::before {
+      content:"";
+      position:absolute;
+      inset:6px 9px;
+      border-radius:8px;
+      background:linear-gradient(90deg,
+        rgba(148,163,184,.15),
+        rgba(148,163,184,.3),
+        rgba(148,163,184,.15));
+      background-size:200% 100%;
+      animation:skeleton 1.2s infinite linear;
+    }
 
     .pill {
       padding:3px 9px;
@@ -397,7 +425,7 @@
     }
 
     /* Calendar styling */
-    #calendar { min-height:520px; }
+    #calendar { margin-top:8px; min-height:520px; }
     .fc { font-size:13px; }
     .fc .fc-toolbar-title { font-size:16px; }
     .fc-theme-standard .fc-scrollgrid,
@@ -434,167 +462,18 @@
     .fc-event.event-type-release { background-color:var(--ok); border-color:var(--ok); }
     .fc-event.event-type-other { background-color:var(--purple); border-color:var(--purple); }
 
-    /* Attendance panel */
-    .attendance-card { display:flex; flex-direction:column; min-height:520px; }
-
-    .attn-header {
-      display:flex;
-      justify-content:space-between;
-      align-items:flex-start;
-      gap:12px;
-      margin-bottom:10px;
-    }
-    .attn-header-title { font-size:14px; font-weight:600; }
-    .attn-header-sub { font-size:12px; color:var(--muted); }
-
-    .attn-quick {
-      display:flex; gap:6px; flex-wrap:wrap;
+    /* Hide log column on small screens for better mobile UX */
+    @media(max-width:768px){
+      #issuesTable th:nth-child(7),
+      #issuesTable td:nth-child(7) {
+        display:none;
+      }
     }
 
-    .attn-filters {
-      display:flex; gap:8px; flex-wrap:wrap;
-      margin-bottom:10px;
+    @keyframes skeleton {
+      0% { background-position:200% 0; }
+      100% { background-position:-200% 0; }
     }
-
-    .attn-tabs {
-      display:inline-flex;
-      padding:4px;
-      border-radius:999px;
-      background:rgba(15,23,42,.9);
-      border:1px solid rgba(148,163,184,.35);
-      margin-bottom:10px;
-    }
-    :root[data-theme="light"] .attn-tabs {
-      background:#f3f4ff;
-      border-color:var(--border);
-    }
-    .attn-tab {
-      border:none;
-      background:transparent;
-      color:var(--muted);
-      padding:4px 10px;
-      border-radius:999px;
-      font-size:11px;
-      cursor:pointer;
-      display:flex; align-items:center; gap:6px;
-    }
-    .attn-tab.active {
-      background:var(--accent);
-      color:#fff;
-      box-shadow:0 6px 16px rgba(79,140,255,.5);
-    }
-
-    .attn-body { margin-top:4px; }
-
-    .attn-panel { display:none; }
-    .attn-panel.active { display:block; }
-
-    .attn-kpi-grid {
-      display:grid;
-      grid-template-columns:repeat(2, minmax(0,1fr));
-      gap:10px;
-      margin-bottom:10px;
-    }
-    @media(max-width:600px){
-      .attn-kpi-grid { grid-template-columns:1fr; }
-    }
-    .attn-kpi {
-      padding:10px 12px;
-      border-radius:14px;
-      border:1px solid rgba(148,163,184,.35);
-      background:rgba(15,23,42,.92);
-    }
-    :root[data-theme="light"] .attn-kpi {
-      background:#f9fafb;
-      border-color:var(--border);
-    }
-    .attn-kpi-label {
-      font-size:11px;
-      text-transform:uppercase;
-      letter-spacing:.08em;
-      color:var(--muted);
-    }
-    .attn-kpi-value {
-      font-size:20px;
-      font-weight:700;
-      margin-top:4px;
-    }
-    .attn-kpi-sub {
-      font-size:11px;
-      color:var(--muted);
-      margin-top:2px;
-    }
-
-    .attn-legend {
-      display:flex;
-      flex-wrap:wrap;
-      gap:8px;
-      font-size:11px;
-      color:var(--muted);
-      margin-top:8px;
-    }
-    .attn-legend-dot {
-      width:10px; height:10px;
-      border-radius:999px;
-      display:inline-block;
-      margin-right:4px;
-    }
-    .dot-present { background:var(--ok); }
-    .dot-absent { background:var(--danger); }
-    .dot-late { background:var(--warn); }
-    .dot-wfh { background:var(--purple); }
-
-    .attn-heatmap {
-      display:grid;
-      grid-template-columns:repeat(auto-fill, minmax(32px, 1fr));
-      gap:6px;
-      margin-top:6px;
-    }
-    .attn-heat-cell {
-      height:32px;
-      border-radius:8px;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      font-size:11px;
-      font-weight:600;
-      cursor:default;
-      transition:transform .1s, box-shadow .1s, background .15s;
-    }
-    .attn-heat-cell:hover {
-      transform:translateY(-1px);
-      box-shadow:0 10px 20px rgba(15,23,42,.4);
-    }
-    .attn-heat-cell[data-level="none"] {
-      background:rgba(148,163,184,.18);
-      color:var(--muted);
-    }
-    .attn-heat-cell[data-level="low"] {
-      background:var(--heat-low);
-      color:#0f172a;
-    }
-    .attn-heat-cell[data-level="mid"] {
-      background:var(--heat-mid);
-      color:#0b1120;
-    }
-    .attn-heat-cell[data-level="high"] {
-      background:var(--heat-high);
-      color:#eff6ff;
-    }
-
-    .attn-status-pill {
-      display:inline-flex;
-      align-items:center;
-      gap:6px;
-      padding:3px 8px;
-      border-radius:999px;
-      font-size:11px;
-      font-weight:600;
-    }
-    .attn-status-pill.present { background:rgba(16,185,129,.12); color:var(--ok); border:1px solid rgba(16,185,129,.4); }
-    .attn-status-pill.absent { background:rgba(239,68,68,.12); color:var(--danger); border:1px solid rgba(239,68,68,.4); }
-    .attn-status-pill.late { background:rgba(245,158,11,.12); color:var(--warn); border:1px solid rgba(245,158,11,.4); }
-    .attn-status-pill.wfh { background:rgba(139,92,246,.12); color:var(--purple); border:1px solid rgba(139,92,246,.4); }
 
     @media (prefers-reduced-motion: reduce){
       * { transition:none !important; animation:none !important }
@@ -607,7 +486,7 @@
       <div class="logo" aria-hidden="true">IC</div>
       <div class="brand-text">
         <span>INCHECK</span>
-        <span>Ops, Issues & Attendance</span>
+        <span>Issues & Ops</span>
       </div>
     </div>
 
@@ -687,13 +566,8 @@
                 role="tab" aria-selected="false" aria-controls="calendarView">
           <span class="icon" aria-hidden="true">📅</span> Calendar
         </button>
-        <button id="attendanceTab" class="view-tab" data-view="attendance"
-                role="tab" aria-selected="false" aria-controls="attendanceView">
-          <span class="icon" aria-hidden="true">👥</span> Attendance
-        </button>
       </div>
 
-      <!-- Issues View -->
       <section id="issuesView" class="view active" role="tabpanel" aria-labelledby="issuesTab">
         <div class="grid cols-4" id="kpis" aria-live="polite"></div>
 
@@ -726,7 +600,7 @@
                 <th scope="col">Link</th>
               </tr></thead>
               <tbody>
-                <tr><td colspan="8" style="text-align:center;color:var(--muted)">Loading…</td></tr>
+                <tr class="skeleton-row"><td colspan="8">Loading…</td></tr>
               </tbody>
             </table>
           </div>
@@ -748,124 +622,35 @@
           </div>
         </div>
       </section>
-      <!-- Calendar View -->
+
       <section id="calendarView" class="view" role="tabpanel" aria-labelledby="calendarTab">
         <div class="card" aria-label="Calendar">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
             <div>
               <strong>Deployments & Maintenance Calendar</strong>
-              <div class="muted">Plan deployments, maintenance windows, releases, and other operational events.</div>
+              <div class="muted">
+                Plan deployments, maintenance windows, releases, and other operational events.
+              </div>
+              <div id="eventTypeFilters" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+                <label class="muted" style="display:flex;align-items:center;gap:4px;font-size:12px">
+                  <input type="checkbox" id="filterDeployment" checked /> Deployment
+                </label>
+                <label class="muted" style="display:flex;align-items:center;gap:4px;font-size:12px">
+                  <input type="checkbox" id="filterMaintenance" checked /> Maintenance
+                </label>
+                <label class="muted" style="display:flex;align-items:center;gap:4px;font-size:12px">
+                  <input type="checkbox" id="filterRelease" checked /> Release
+                </label>
+                <label class="muted" style="display:flex;align-items:center;gap:4px;font-size:12px">
+                  <input type="checkbox" id="filterOther" checked /> Other
+                </label>
+              </div>
             </div>
             <button id="addEventBtn" class="btn primary sm" type="button">
               <span class="icon" aria-hidden="true">➕</span> Add Event
             </button>
           </div>
           <div id="calendar" aria-label="Deployment & maintenance calendar"></div>
-        </div>
-      </section>
-
-      <!-- Attendance View (button next to Calendar, loads from your Sheet) -->
-      <section id="attendanceView" class="view" role="tabpanel" aria-labelledby="attendanceTab">
-        <div class="card attendance-card" aria-label="Attendance Intelligence Panel">
-          <div class="attn-header">
-            <div>
-              <div class="attn-header-title">Attendance Intelligence</div>
-              <div class="attn-header-sub">
-                Live presence, absence, and utilisation from your attendance sheet.
-              </div>
-            </div>
-            <div class="attn-quick">
-              <button id="attnTodayBtn" class="btn ghost sm" type="button">Today</button>
-              <button id="attnThisMonthBtn" class="btn ghost sm" type="button">This month</button>
-            </div>
-          </div>
-
-          <div class="attn-filters" aria-label="Attendance filters">
-            <select id="attnTeamFilter" class="select sm" aria-label="Filter by team">
-              <option value="all">All teams</option>
-            </select>
-            <input id="attnFrom" type="date" class="input sm" aria-label="From date">
-            <input id="attnTo" type="date" class="input sm" aria-label="To date">
-          </div>
-
-          <div class="attn-tabs" role="tablist">
-            <button class="attn-tab active" data-panel="attnSummaryPanel" role="tab" aria-selected="true">
-              <span class="icon" aria-hidden="true">📊</span> Summary
-            </button>
-            <button class="attn-tab" data-panel="attnTeamPanel" role="tab" aria-selected="false">
-              <span class="icon" aria-hidden="true">👥</span> Team view
-            </button>
-            <button class="attn-tab" data-panel="attnHeatmapPanel" role="tab" aria-selected="false">
-              <span class="icon" aria-hidden="true">🔥</span> Heatmap
-            </button>
-          </div>
-
-          <div class="attn-body">
-            <!-- Summary panel -->
-            <div id="attnSummaryPanel" class="attn-panel active" role="tabpanel">
-              <div class="attn-kpi-grid">
-                <div class="attn-kpi">
-                  <div class="attn-kpi-label">People</div>
-                  <div class="attn-kpi-value" id="attnTotalEmployees">--</div>
-                  <div class="attn-kpi-sub">Unique employees in range</div>
-                </div>
-                <div class="attn-kpi">
-                  <div class="attn-kpi-label">Presence</div>
-                  <div class="attn-kpi-value" id="attnPresenceRate">--</div>
-                  <div class="attn-kpi-sub">Present / all records</div>
-                </div>
-                <div class="attn-kpi">
-                  <div class="attn-kpi-label">Absences</div>
-                  <div class="attn-kpi-value" id="attnAbsences">--</div>
-                  <div class="attn-kpi-sub">Days marked as absent</div>
-                </div>
-                <div class="attn-kpi">
-                  <div class="attn-kpi-label">Avg hours</div>
-                  <div class="attn-kpi-value" id="attnAvgHours">--</div>
-                  <div class="attn-kpi-sub">Average worked hours</div>
-                </div>
-              </div>
-
-              <div style="margin-top:6px;">
-                <canvas id="attnStatusChart" height="140" aria-label="Attendance status distribution" role="img"></canvas>
-              </div>
-
-              <div class="attn-legend">
-                <span><span class="attn-legend-dot dot-present"></span>Present</span>
-                <span><span class="attn-legend-dot dot-absent"></span>Absent</span>
-                <span><span class="attn-legend-dot dot-late"></span>Late</span>
-                <span><span class="attn-legend-dot dot-wfh"></span>WFH</span>
-              </div>
-            </div>
-
-            <!-- Team table panel -->
-            <div id="attnTeamPanel" class="attn-panel" role="tabpanel">
-              <div class="table-wrap small-table" role="region" aria-label="Attendance table">
-                <table style="width:100%;border-collapse:collapse;font-size:12px;">
-                  <thead>
-                    <tr>
-                      <th style="text-align:left;padding:8px 8px;">Date</th>
-                      <th style="text-align:left;padding:8px 8px;">Name</th>
-                      <th style="text-align:left;padding:8px 8px;">Team</th>
-                      <th style="text-align:left;padding:8px 8px;">Status</th>
-                      <th style="text-align:left;padding:8px 8px;">In</th>
-                      <th style="text-align:left;padding:8px 8px;">Out</th>
-                      <th style="text-align:left;padding:8px 8px;">Hours</th>
-                    </tr>
-                  </thead>
-                  <tbody id="attnTableBody"></tbody>
-                </table>
-              </div>
-            </div>
-
-            <!-- Heatmap panel -->
-            <div id="attnHeatmapPanel" class="attn-panel" role="tabpanel">
-              <div class="muted" style="font-size:11px;margin-bottom:4px;">
-                Each square is a day in the filtered range. More intense color = more risk (late/absent).
-              </div>
-              <div id="attnHeatmap" class="attn-heatmap" aria-label="Attendance heatmap"></div>
-            </div>
-          </div>
         </div>
       </section>
     </main>
@@ -920,6 +705,11 @@
               </select>
             </div>
             <div class="filter-row">
+              <label class="muted" for="eventIssueId">Issue ID (optional)</label>
+              <input id="eventIssueId" class="input" type="text"
+                     placeholder="e.g. INC-123 or ticket ID" />
+            </div>
+            <div class="filter-row">
               <label class="muted" for="eventStart">Start</label>
               <input id="eventStart" class="input" type="datetime-local" required />
             </div>
@@ -934,6 +724,7 @@
                         style="border-radius:12px; resize:vertical;"></textarea>
             </div>
           </div>
+          <div id="eventIssueLinkedInfo" class="muted" style="margin-top:4px;display:none;font-size:12px;"></div>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">
           <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -959,14 +750,21 @@
 document.addEventListener("DOMContentLoaded", () => {
   const SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTRwAjNAQxiPP8uR15t_vx03JkjgEBjgUwp2bpx8rsHx-JJxVDBZyf5ap77rAKrYHfgkVMwLJVm6pGn/pub?output=csv";
 
-  // Your Apps Script for calendar events (unchanged)
+  // Google Apps Script Web App URL for calendar events (wrapped via CORS proxy)
   const CALENDAR_API_URL =
     "https://corsproxy.io/?" +
     encodeURIComponent("https://script.google.com/macros/s/AKfycbwRcF-CbJY3dNfU9QQWixGL82a5BqCxVII4sGJSKunJ_fhDLLezL90kUXoqMrHuYytV/exec");
 
-  // 🔹 TODO: paste your real Attendance Google Sheet CSV URL here
-  // e.g. the same URL you use in your current attendance dashboard
-  const ATTENDANCE_SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTw_QmgTO1onutiMdiVyThLtl7omNOqpDH-NNSoMwbGcpU4RfRjKO4pPJXbQrsHn5_ZuK4HEhkJ_SJZ/pub?gid=390845393&single=true&output=csv";
+  // Centralized localStorage keys
+  const LS_KEYS = {
+    filters: 'incheckFilters',
+    theme: 'theme',
+    events: 'incheckEvents',
+    issues: 'incheckIssues',
+    issuesLastUpdated: 'incheckIssuesLastUpdated',
+    pageSize: 'pageSize',
+    view: 'incheckView'
+  };
 
   function q(sel, root = document) { return root.querySelector(sel); }
   function qAll(sel){ return Array.from(document.querySelectorAll(sel)); }
@@ -1007,7 +805,6 @@ document.addEventListener("DOMContentLoaded", () => {
     viewTabs: qAll('.view-tab'),
     issuesView: q('#issuesView'),
     calendarView: q('#calendarView'),
-    attendanceView: q('#attendanceView'),
     addEventBtn: q('#addEventBtn'),
     eventModal: q('#eventModal'),
     eventModalTitle: q('#eventModalTitle'),
@@ -1015,18 +812,24 @@ document.addEventListener("DOMContentLoaded", () => {
     eventForm: q('#eventForm'),
     eventTitle: q('#eventTitle'),
     eventType: q('#eventType'),
+    eventIssueId: q('#eventIssueId'),
     eventStart: q('#eventStart'),
     eventEnd: q('#eventEnd'),
     eventDescription: q('#eventDescription'),
     eventSave: q('#eventSave'),
     eventCancel: q('#eventCancel'),
-    eventDelete: q('#eventDelete')
+    eventDelete: q('#eventDelete'),
+    eventIssueLinkedInfo: q('#eventIssueLinkedInfo'),
+    eventFilterDeployment: q('#filterDeployment'),
+    eventFilterMaintenance: q('#filterMaintenance'),
+    eventFilterRelease: q('#filterRelease'),
+    eventFilterOther: q('#filterOther')
   };
 
   let rows = [], filtered = [], charts = {};
   let sortKey = null, sortAsc = true;
   let currentPage = 1;
-  let rowsPerPage = +(localStorage.getItem('pageSize') || els.pageSize.value);
+  let rowsPerPage = +(localStorage.getItem(LS_KEYS.pageSize) || els.pageSize.value);
   els.pageSize.value = String(rowsPerPage);
   let selectedIssue = null;
   let lastFocusedBeforeIssueModal = null;
@@ -1115,7 +918,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function applyTheme(mode) {
-    localStorage.setItem('theme', mode);
+    localStorage.setItem(LS_KEYS.theme, mode);
     if (mode === 'system') {
       applySystemThemeFromOS();
       return;
@@ -1128,7 +931,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function initTheme() {
-    const saved = localStorage.getItem('theme') || 'system';
+    const saved = localStorage.getItem(LS_KEYS.theme) || 'system';
     els.themeSelect.value = saved;
     if (saved === 'system') {
       applySystemThemeFromOS();
@@ -1137,7 +940,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     if (mediaQuery) {
       mediaQuery.addEventListener('change', () => {
-        const current = localStorage.getItem('theme') || 'system';
+        const current = localStorage.getItem(LS_KEYS.theme) || 'system';
         if (current === 'system') applySystemThemeFromOS();
       });
     }
@@ -1153,13 +956,13 @@ document.addEventListener("DOMContentLoaded", () => {
       end: els.endDateFilter.value || ''
     };
     try {
-      localStorage.setItem('incheckFilters', JSON.stringify(state));
+      localStorage.setItem(LS_KEYS.filters, JSON.stringify(state));
     } catch(e){}
   }
 
   function loadFilters(){
     try {
-      const raw = localStorage.getItem('incheckFilters');
+      const raw = localStorage.getItem(LS_KEYS.filters);
       if (!raw) return;
       const s = JSON.parse(raw);
       els.search.value = s.search || '';
@@ -1262,11 +1065,39 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  function loadIssuesFromStorage(){
+    try{
+      const raw = localStorage.getItem(LS_KEYS.issues);
+      if (!raw) return [];
+      return JSON.parse(raw);
+    } catch(e){
+      console.error('Failed to load cached issues', e);
+      return [];
+    }
+  }
+  function saveIssuesToStorage(list){
+    try{
+      localStorage.setItem(LS_KEYS.issues, JSON.stringify(list));
+      localStorage.setItem(LS_KEYS.issuesLastUpdated, new Date().toISOString());
+    } catch(e){
+      console.error('Failed to save cached issues', e);
+    }
+  }
+  function getIssuesLastUpdatedLabel(){
+    const iso = localStorage.getItem(LS_KEYS.issuesLastUpdated);
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d)) return '';
+    return `Last updated: ${d.toLocaleString()}`;
+  }
+
   function renderTable(){
     const list = sortData(filtered);
     const total = list.length;
     updatePaginationControls(total);
-    els.rowCount.textContent = `${total} row${total===1?'':'s'}`;
+    const lastUpdated = getIssuesLastUpdatedLabel();
+    els.rowCount.textContent =
+      `${total} row${total===1?'':'s'}${lastUpdated ? ' • ' + lastUpdated : ''}`;
 
     if (!total){
       els.tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--muted)">
@@ -1421,30 +1252,46 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function loadSheet(){
+    // Use cached issues first if available
+    const cached = loadIssuesFromStorage();
+    if (cached.length && !rows.length) {
+      rows = cached;
+      filtered = [...rows];
+      renderFilters();
+      loadFilters();
+      applyFilters();
+    }
+
     try {
       showSpinner(true);
       const res = await fetch(SHEET_URL, { cache:'no-store' });
       if(!res.ok) throw new Error(`Failed to fetch (${res.status})`);
       const text = await res.text();
-      rows = parseCsv(text);
+      const parsed = parseCsv(text);
+      if (!parsed.length) throw new Error('No data rows in sheet');
+      rows = parsed;
       filtered = [...rows];
+      saveIssuesToStorage(rows);
       renderFilters();
       loadFilters();
       applyFilters();
     } catch(e) {
+      console.error(e);
       showToast('Error loading data: '+e.message);
-      els.tableBody.innerHTML = `
-        <tr>
-          <td colspan="8" style="color:#ffb4b4;text-align:center">
-            Error loading data.
-            <button type="button" id="retryLoad" class="btn sm" style="margin-left:8px">Retry</button>
-          </td>
-        </tr>`;
-      const retryBtn = q('#retryLoad');
-      if (retryBtn) {
-        retryBtn.addEventListener('click', () => {
-          loadSheet();
-        });
+      if (!rows.length) {
+        els.tableBody.innerHTML = `
+          <tr>
+            <td colspan="8" style="color:#ffb4b4;text-align:center">
+              Error loading data and no cached data found.
+              <button type="button" id="retryLoad" class="btn sm" style="margin-left:8px">Retry</button>
+            </td>
+          </tr>`;
+        const retryBtn = q('#retryLoad');
+        if (retryBtn) {
+          retryBtn.addEventListener('click', () => {
+            loadSheet();
+          });
+        }
       }
     } finally {
       showSpinner(false);
@@ -1474,7 +1321,8 @@ document.addEventListener("DOMContentLoaded", () => {
       <p><b>Date:</b> ${escapeHtml(r.date || '-')}</p>
       <p><b>Description:</b><br>${escapeHtml(r.desc || '-')}</p>
       <p><b>Log:</b><br>${escapeHtml(r.log || '-')}</p>
-      ${r.file ? `<p><b>Attachment:</b> <a href="${escapeAttr(r.file)}" target="_blank" rel="noopener noreferrer">Open link</a></p>` : ''}`;
+      ${r.file ? `<p><b>Attachment:</b> <a href="${escapeAttr(r.file)}" target="_blank" rel="noopener noreferrer">Open link</a></p>` : ''}
+    `;
     els.modal.style.display='flex';
     els.copyId.focus();
   }
@@ -1488,14 +1336,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function loadEventsFromStorage(){
     try {
-      return JSON.parse(localStorage.getItem('incheckEvents') || '[]');
+      return JSON.parse(localStorage.getItem(LS_KEYS.events) || '[]');
     } catch(e) {
       return [];
     }
   }
   function saveEventsToStorage(){
     try {
-      localStorage.setItem('incheckEvents', JSON.stringify(eventsData));
+      localStorage.setItem(LS_KEYS.events, JSON.stringify(eventsData));
     } catch(e) {}
   }
 
@@ -1523,6 +1371,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function saveEventToSheet(event) {
+    showSpinner(true);
     try {
       const res = await fetch(CALENDAR_API_URL, {
         method: "POST",
@@ -1536,21 +1385,26 @@ document.addEventListener("DOMContentLoaded", () => {
       } catch (jsonErr) {
         console.error("Invalid JSON returned:", jsonErr);
         const text = await res.text();
-        alert("❌ Script returned invalid JSON:\n" + text);
-        return;
+        console.error("Raw response:", text);
+        showToast("Calendar: invalid JSON from backend");
+        return null;
       }
 
       if (data.ok) {
-        alert("✅ Event saved successfully!");
+        console.log("Event saved:", data.event);
+        showToast("Event saved");
         return data.event;
       } else {
-        console.error("❌ Backend error:", data);
-        alert("❌ Backend error: " + JSON.stringify(data, null, 2));
+        console.error("Backend error:", data);
+        showToast("Error saving event: " + (data.error || "Unknown error"));
         return null;
       }
     } catch (err) {
-      console.error("❌ Network error:", err);
-      alert("❌ Network error: " + err.message);
+      console.error("Network error:", err);
+      showToast("Network error saving event: " + err.message);
+      return null;
+    } finally {
+      showSpinner(false);
     }
   }
 
@@ -1576,16 +1430,33 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function renderEventsOnCalendar(){
     if (!calendar) return;
+
+    const activeTypes = new Set();
+    if (!els.eventFilterDeployment || !els.eventFilterMaintenance ||
+        !els.eventFilterRelease || !els.eventFilterOther) {
+      // No filters found, show all
+    } else {
+      if (els.eventFilterDeployment.checked) activeTypes.add('Deployment');
+      if (els.eventFilterMaintenance.checked) activeTypes.add('Maintenance');
+      if (els.eventFilterRelease.checked) activeTypes.add('Release');
+      if (els.eventFilterOther.checked) activeTypes.add('Other');
+    }
+
     calendar.removeAllEvents();
     eventsData.forEach(ev => {
-      const type = (ev.type || 'Other');
+      const type = ev.type || 'Other';
+      if (activeTypes.size && !activeTypes.has(type)) return;
       const cls = 'event-type-' + type.toLowerCase().replace(/\s+/g,'-');
       calendar.addEvent({
         id: ev.id,
         title: ev.title,
         start: ev.start,
         end: ev.end || null,
-        extendedProps: { type: type, description: ev.description },
+        extendedProps: {
+          type,
+          description: ev.description,
+          issueId: ev.issueId || ''
+        },
         classNames: [cls]
       });
     });
@@ -1621,7 +1492,8 @@ document.addEventListener("DOMContentLoaded", () => {
             type: info.event.extendedProps.type || 'Other',
             start: info.event.start,
             end: info.event.end,
-            description: info.event.extendedProps.description || ''
+            description: info.event.extendedProps.description || '',
+            issueId: info.event.extendedProps.issueId || ''
           });
         }
       },
@@ -1662,9 +1534,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
     els.eventTitle.value = data && data.title ? data.title : '';
     els.eventType.value = data && data.type ? data.type : 'Deployment';
+    els.eventIssueId.value = data && data.issueId ? data.issueId : '';
     els.eventStart.value = data && data.start ? toLocalInputValue(data.start) : '';
     els.eventEnd.value = data && data.end ? toLocalInputValue(data.end) : '';
     els.eventDescription.value = data && data.description ? data.description : '';
+
+    if (data && data.issueId) {
+      els.eventIssueLinkedInfo.style.display = 'block';
+      els.eventIssueLinkedInfo.textContent = `Linked issue ID: ${data.issueId}`;
+    } else {
+      els.eventIssueLinkedInfo.style.display = 'none';
+      els.eventIssueLinkedInfo.textContent = '';
+    }
 
     els.eventModal.style.display = 'flex';
     els.eventTitle.focus();
@@ -1682,6 +1563,7 @@ document.addEventListener("DOMContentLoaded", () => {
     e.preventDefault();
     const title = els.eventTitle.value.trim();
     const type = els.eventType.value || 'Deployment';
+    const issueId = els.eventIssueId.value.trim();
     const start = els.eventStart.value;
     const end = els.eventEnd.value || null;
     const description = els.eventDescription.value.trim();
@@ -1699,6 +1581,7 @@ document.addEventListener("DOMContentLoaded", () => {
       id: editingEventId || '',
       title,
       type,
+      issueId,
       start,
       end,
       description
@@ -1706,7 +1589,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     try {
       const saved = await saveEventToSheet(eventObj);
-      if(!saved) return;
+      if (!saved) return;
       const idx = eventsData.findIndex(ev => ev.id === saved.id);
       if (idx === -1) {
         eventsData.push(saved);
@@ -1715,7 +1598,6 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       saveEventsToStorage();
       renderEventsOnCalendar();
-      showToast('Event saved');
       closeEventModal();
     } catch (err) {
       console.error(err);
@@ -1735,7 +1617,6 @@ document.addEventListener("DOMContentLoaded", () => {
         saveEventsToStorage();
         renderEventsOnCalendar();
       }
-      showToast('Event deleted');
     } catch (err) {
       console.error(err);
     }
@@ -1850,7 +1731,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const updateAndRender = ()=>{ renderTable(); };
   els.pageSize.addEventListener('change', ()=>{
     rowsPerPage = +els.pageSize.value;
-    localStorage.setItem('pageSize', rowsPerPage);
+    localStorage.setItem(LS_KEYS.pageSize, rowsPerPage);
     currentPage = 1;
     updateAndRender();
   });
@@ -1882,17 +1763,11 @@ document.addEventListener("DOMContentLoaded", () => {
     els.search.value='';
     els.startDateFilter.value='';
     els.endDateFilter.value='';
-    localStorage.removeItem('incheckFilters');
+    localStorage.removeItem(LS_KEYS.filters);
     renderFilters();
     applyFilters();
   });
-  els.refresh.addEventListener('click', ()=>{
-    loadSheet();
-    fetchEventsFromSheet();
-    if (ATTENDANCE_SHEET_URL && ATTENDANCE_SHEET_URL !== "PASTE_YOUR_ATTENDANCE_SHEET_CSV_URL_HERE") {
-      loadAttendance();
-    }
-  });
+  els.refresh.addEventListener('click', loadSheet);
   els.exportCsv.addEventListener('click', exportFilteredCsv);
   els.search.addEventListener('input', debounce(()=>{
     saveFilters();
@@ -1902,25 +1777,27 @@ document.addEventListener("DOMContentLoaded", () => {
   els.themeSelect.addEventListener('change', ()=> applyTheme(els.themeSelect.value));
   initTheme();
 
-  // Main view tabs: Issues / Calendar / Attendance
+  function setActiveView(view) {
+    const isIssues = view === 'issues';
+    els.issuesView.classList.toggle('active', isIssues);
+    els.calendarView.classList.toggle('active', !isIssues);
+    els.viewTabs.forEach(b => {
+      const active = b.dataset.view === view;
+      b.classList.toggle('active', active);
+      b.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    localStorage.setItem(LS_KEYS.view, view);
+    if (view === 'calendar') ensureCalendar();
+  }
+
   els.viewTabs.forEach(btn => {
     btn.addEventListener('click', () => {
-      const view = btn.dataset.view;
-      els.viewTabs.forEach(b => {
-        const active = b === btn;
-        b.classList.toggle('active', active);
-        b.setAttribute('aria-selected', active ? 'true' : 'false');
-      });
-
-      els.issuesView.classList.toggle('active', view === 'issues');
-      els.calendarView.classList.toggle('active', view === 'calendar');
-      els.attendanceView.classList.toggle('active', view === 'attendance');
-
-      if (view === 'calendar') {
-        ensureCalendar();
-      }
+      setActiveView(btn.dataset.view);
     });
   });
+
+  const savedView = localStorage.getItem(LS_KEYS.view) || 'issues';
+  setActiveView(savedView);
 
   if (els.addEventBtn) {
     els.addEventBtn.addEventListener('click', () => {
@@ -1932,11 +1809,18 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // Event type filter toggles
+  [els.eventFilterDeployment, els.eventFilterMaintenance, els.eventFilterRelease, els.eventFilterOther]
+    .forEach(input => {
+      if (input) input.addEventListener('change', () => renderEventsOnCalendar());
+    });
+
+  eventsData = [];
+  fetchEventsFromSheet();
+
   if(typeof Chart === 'undefined') { showToast('Chart.js failed to load'); }
   if(typeof Papa === 'undefined') { showToast('PapaParse failed to load'); }
-
   loadSheet();
-  fetchEventsFromSheet();
 
   function escapeHtml(s){
     return String(s).replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;' }[m]));
@@ -1945,267 +1829,8 @@ document.addEventListener("DOMContentLoaded", () => {
     return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;');
   }
 
-  // Optional: auto-refresh events every 5 minutes
+  // Auto-refresh events every 5 minutes
   setInterval(fetchEventsFromSheet, 5 * 60 * 1000);
-
-  /* ==================== Attendance Intelligence module (from your sheet) ==================== */
-
-  const attnEls = {
-    teamFilter: q('#attnTeamFilter'),
-    from: q('#attnFrom'),
-    to: q('#attnTo'),
-    todayBtn: q('#attnTodayBtn'),
-    thisMonthBtn: q('#attnThisMonthBtn'),
-    tabs: qAll('.attn-tab'),
-    panels: qAll('.attn-panel'),
-    summaryPanel: q('#attnSummaryPanel'),
-    tableBody: q('#attnTableBody'),
-    statusChartCanvas: q('#attnStatusChart'),
-    heatmap: q('#attnHeatmap'),
-    totalEmployees: q('#attnTotalEmployees'),
-    presenceRate: q('#attnPresenceRate'),
-    absences: q('#attnAbsences'),
-    avgHours: q('#attnAvgHours')
-  };
-
-  let attendanceData = [];
-  let attnFiltered = [];
-  let attnChart = null;
-
-  function normalizeAttendanceRow(raw){
-    const lower={};
-    for(const k in raw){
-      if(!k) continue;
-      lower[k.toLowerCase().trim()] = String(raw[k] ?? '').trim();
-    }
-    const pick=(...keys)=>{ for(const key of keys){ if(lower[key]) return lower[key]; } return ''; };
-    const hoursStr = pick('hours','total hours','worked hours');
-    const hours = hoursStr ? parseFloat(hoursStr.replace(',','.')) || 0 : 0;
-    return {
-      date: pick('date','day'),
-      name: pick('name','employee','employee name'),
-      team: pick('team','department'),
-      status: pick('status'),
-      checkIn: pick('in','check in','check-in','checkin'),
-      checkOut: pick('out','check out','check-out','checkout'),
-      hours
-    };
-  }
-
-  function loadAttendance(){
-    if(!ATTENDANCE_SHEET_URL || ATTENDANCE_SHEET_URL === "PASTE_YOUR_ATTENDANCE_SHEET_CSV_URL_HERE"){
-      console.warn('Attendance sheet URL is not set.');
-      return;
-    }
-    Papa.parse(ATTENDANCE_SHEET_URL, {
-      download:true,
-      header:true,
-      skipEmptyLines:true,
-      complete: results => {
-        attendanceData = results.data
-          .map(normalizeAttendanceRow)
-          .filter(r => r.date && r.name);
-        attnFiltered = [...attendanceData];
-        initAttendance();
-      },
-      error: err => {
-        console.error('Error loading attendance sheet', err);
-        showToast('Error loading attendance: ' + err.message);
-      }
-    });
-  }
-
-  function renderAttendanceKpis(){
-    const people = new Set(attnFiltered.map(r=>r.name));
-    const presentCount = attnFiltered.filter(r=>r.status === 'Present' || r.status === 'WFH').length;
-    const absCount = attnFiltered.filter(r=>r.status === 'Absent').length;
-    const totalRecords = attnFiltered.length;
-    const presenceRate = totalRecords ? Math.round((presentCount / totalRecords) * 100) : 0;
-    const avgHours = totalRecords
-      ? attnFiltered.reduce((sum,r)=>sum + (r.hours || 0), 0) / totalRecords
-      : 0;
-
-    attnEls.totalEmployees.textContent = people.size || 0;
-    attnEls.presenceRate.textContent = totalRecords ? `${presenceRate}%` : '--';
-    attnEls.absences.textContent = absCount;
-    attnEls.avgHours.textContent = totalRecords ? avgHours.toFixed(1) : '--';
-  }
-
-  function renderAttendanceChart(){
-    const counts = { Present:0, Absent:0, Late:0, WFH:0 };
-    attnFiltered.forEach(r=>{
-      if(counts.hasOwnProperty(r.status)){
-        counts[r.status]++;
-      }
-    });
-    const labels = ['Present','Absent','Late','WFH'];
-    const values = labels.map(l=>counts[l]);
-    if(attnChart) attnChart.destroy();
-    attnChart = new Chart(attnEls.statusChartCanvas, {
-      type: 'doughnut',
-      data: {
-        labels,
-        datasets: [{
-          data: values,
-          backgroundColor: [
-            cssVar('--ok'),
-            cssVar('--danger'),
-            cssVar('--warn'),
-            cssVar('--purple')
-          ]
-        }]
-      },
-      options: {
-        plugins:{ legend:{ display:false } },
-        cutout: '60%'
-      }
-    });
-  }
-
-  function renderAttendanceTable(){
-    const rows = [...attnFiltered].sort((a,b)=>{
-      if(a.date === b.date) return a.name.localeCompare(b.name);
-      return a.date.localeCompare(b.date);
-    }).reverse();
-
-    const statusPill = s => {
-      const key = (s || '').toLowerCase();
-      const cls = key==='present' ? 'present'
-                : key==='absent' ? 'absent'
-                : key==='late'   ? 'late'
-                : 'wfh';
-      return `<span class="attn-status-pill ${cls}">${escapeHtml(s || '-')}</span>`;
-    };
-
-    attnEls.tableBody.innerHTML = rows.map(r=>`
-      <tr>
-        <td style="padding:6px 8px;">${escapeHtml(r.date)}</td>
-        <td style="padding:6px 8px;">${escapeHtml(r.name)}</td>
-        <td style="padding:6px 8px;">${escapeHtml(r.team || '')}</td>
-        <td style="padding:6px 8px;">${statusPill(r.status)}</td>
-        <td style="padding:6px 8px;">${r.checkIn || '—'}</td>
-        <td style="padding:6px 8px;">${r.checkOut || '—'}</td>
-        <td style="padding:6px 8px;">${r.hours ? r.hours.toFixed(1) : '—'}</td>
-      </tr>
-    `).join('') || `<tr><td colspan="7" style="padding:6px 8px;color:var(--muted);text-align:center;">No attendance records in range.</td></tr>`;
-  }
-
-  function renderAttendanceHeatmap(){
-    if(!attnEls.heatmap) return;
-    const perDay = {};
-    attnFiltered.forEach(r=>{
-      const d = r.date;
-      if(!perDay[d]) perDay[d] = 0;
-      if(r.status === 'Absent') perDay[d] += 3;
-      else if(r.status === 'Late') perDay[d] += 2;
-      else if(r.status === 'Present' || r.status === 'WFH') perDay[d] += 1;
-    });
-    const entries = Object.entries(perDay).sort((a,b)=>a[0].localeCompare(b[0]));
-    const values = entries.map(([_,v])=>v);
-    const maxVal = values.length ? Math.max(...values) : 0;
-
-    const levelFor = val => {
-      if(!val || !maxVal) return 'none';
-      const ratio = val / maxVal;
-      if(ratio > 0.66) return 'high';
-      if(ratio > 0.33) return 'mid';
-      return 'low';
-    };
-
-    attnEls.heatmap.innerHTML = entries.map(([date,val])=>{
-      const lvl = levelFor(val);
-      const day = date.slice(-2);
-      return `<div class="attn-heat-cell" data-level="${lvl}" title="${escapeAttr(date)} – score ${val}">
-        ${escapeHtml(day)}
-      </div>`;
-    }).join('') || `<div class="muted" style="font-size:11px;">No data to display for the selected range.</div>`;
-  }
-
-  function applyAttendanceFilters(){
-    const teamVal = attnEls.teamFilter.value;
-    const fromVal = attnEls.from.value;
-    const toVal = attnEls.to.value;
-    const from = fromVal ? new Date(fromVal) : null;
-    const to = toVal ? new Date(toVal) : null;
-    if (to) { to.setDate(to.getDate() + 1); }
-
-    attnFiltered = attendanceData.filter(r=>{
-      const d = new Date(r.date);
-      if(isNaN(d)) return false;
-      if(teamVal !== 'all' && r.team !== teamVal) return false;
-      if(from && d < from) return false;
-      if(to && d >= to) return false;
-      return true;
-    });
-
-    renderAttendanceKpis();
-    renderAttendanceChart();
-    renderAttendanceTable();
-    renderAttendanceHeatmap();
-  }
-
-  function initAttendanceFilters(){
-    const teams = [...new Set(attendanceData.map(r=>r.team).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
-    attnEls.teamFilter.innerHTML =
-      `<option value="all">All teams</option>` +
-      teams.map(t=>`<option value="${escapeAttr(t)}">${escapeHtml(t)}</option>`).join('');
-
-    const today = new Date();
-    const start = new Date(today.getFullYear(), today.getMonth(), 1);
-    const end = today;
-    attnEls.from.value = start.toISOString().slice(0,10);
-    attnEls.to.value = end.toISOString().slice(0,10);
-  }
-
-  function initAttendanceTabs(){
-    attnEls.tabs.forEach(btn=>{
-      btn.addEventListener('click', ()=>{
-        const panelId = btn.getAttribute('data-panel');
-        attnEls.tabs.forEach(b=>b.classList.remove('active'));
-        btn.classList.add('active');
-        attnEls.panels.forEach(p=>{
-          p.classList.toggle('active', p.id === panelId);
-        });
-      });
-    });
-  }
-
-  function initAttendanceQuickRanges(){
-    const today = new Date();
-    if(attnEls.todayBtn){
-      attnEls.todayBtn.addEventListener('click', ()=>{
-        const iso = today.toISOString().slice(0,10);
-        attnEls.from.value = iso;
-        attnEls.to.value = iso;
-        applyAttendanceFilters();
-      });
-    }
-    if(attnEls.thisMonthBtn){
-      attnEls.thisMonthBtn.addEventListener('click', ()=>{
-        const start = new Date(today.getFullYear(), today.getMonth(), 1);
-        const end = new Date(today.getFullYear(), today.getMonth()+1, 0);
-        attnEls.from.value = start.toISOString().slice(0,10);
-        attnEls.to.value = end.toISOString().slice(0,10);
-        applyAttendanceFilters();
-      });
-    }
-  }
-
-  function initAttendance(){
-    if(!attnEls.teamFilter) return;
-    initAttendanceFilters();
-    initAttendanceTabs();
-    initAttendanceQuickRanges();
-    attnEls.teamFilter.addEventListener('change', applyAttendanceFilters);
-    attnEls.from.addEventListener('change', applyAttendanceFilters);
-    attnEls.to.addEventListener('change', applyAttendanceFilters);
-    applyAttendanceFilters();
-  }
-
-  // 🔹 finally load attendance from your sheet (if URL set)
-  if (ATTENDANCE_SHEET_URL && ATTENDANCE_SHEET_URL !== "PASTE_YOUR_ATTENDANCE_SHEET_CSV_URL_HERE" && typeof Papa !== 'undefined') {
-    loadAttendance();
-  }
 });
 </script>
 </body>
