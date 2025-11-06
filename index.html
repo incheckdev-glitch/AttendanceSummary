@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>InCheck Issues & Operations Dashboard</title>
+  <title>InCheck — Issues · Ops · AI Copilot</title>
 
   <!-- Fonts & Libs -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
@@ -30,7 +30,7 @@
       --priority-medium:#f59e0b;
       --priority-low:#10b981;
 
-      /* Theme colors */
+      /* Theme */
       --bg:#050816;
       --card:rgba(11,22,45,0.96);
       --muted:#9aa6d1;
@@ -45,6 +45,11 @@
       --border:#1b2645;
       --shadow:0 18px 40px rgba(0,0,0,.55);
       --focus:0 0 0 3px rgba(79,140,255,.5);
+
+      /* New */
+      --chip:#0c142b;
+      --skeleton:#0f1a38;
+      --shimmer:linear-gradient(90deg, transparent, rgba(255,255,255,.08), transparent);
     }
     :root[data-theme="light"] {
       --bg:#f4f6ff;
@@ -61,6 +66,9 @@
       --border:#e0e4f3;
       --shadow:0 16px 32px rgba(15,23,42,.12);
       --focus:0 0 0 3px rgba(37,99,235,.35);
+      --chip:#eef2ff;
+      --skeleton:#eef2ff;
+      --shimmer:linear-gradient(90deg, transparent, rgba(0,0,0,.06), transparent);
     }
 
     * { box-sizing:border-box }
@@ -76,20 +84,9 @@
       transition:background .3s,color .3s;
     }
     :focus-visible { outline:none; box-shadow:var(--focus); border-radius:8px; }
+    .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
 
-    .sr-only {
-      position:absolute;
-      width:1px;
-      height:1px;
-      padding:0;
-      margin:-1px;
-      overflow:hidden;
-      clip:rect(0,0,0,0);
-      white-space:nowrap;
-      border:0;
-    }
-
-    /* Topbar */
+    /* Header */
     header {
       position:sticky; top:0; z-index:20;
       background:linear-gradient(90deg, rgba(11,22,45,.98), rgba(24,35,70,.96));
@@ -98,359 +95,147 @@
       display:flex; align-items:center; gap:12px; padding:10px 16px;
       box-shadow:var(--shadow);
     }
-    .brand { display:flex; align-items:center; gap:10px; font-weight:700; }
-    .brand .logo {
-      width:30px; height:30px; border-radius:10px;
-      display:grid; place-items:center;
-      background:conic-gradient(from 160deg, var(--accent), #9b8cff, #22c55e, var(--accent));
-      color:#fff; font-weight:800;
-      box-shadow:0 10px 30px rgba(79,140,255,.55);
-    }
-    .brand-text { display:flex; flex-direction:column; }
-    .brand-text span:first-child { font-size:14px; text-transform:uppercase; letter-spacing:.16em; color:var(--muted); }
-    .brand-text span:last-child { font-size:16px; }
+    .brand{display:flex;align-items:center;gap:10px;font-weight:700}
+    .brand .logo{width:30px;height:30px;border-radius:10px;display:grid;place-items:center;background:conic-gradient(from 160deg, var(--accent), #9b8cff, #22c55e, var(--accent));color:#fff; font-weight:800; box-shadow:0 10px 30px rgba(79,140,255,.55);}
+    .brand-text{display:flex;flex-direction:column}
+    .brand-text span:first-child{font-size:14px;text-transform:uppercase;letter-spacing:.16em;color:var(--muted)}
+    .brand-text span:last-child{font-size:16px}
 
     .toolbar { margin-left:auto; display:flex; gap:10px; align-items:center; flex-wrap:wrap }
     .btn, .select, .input {
-      padding:8px 12px;
-      border-radius:999px;
-      border:1px solid var(--border);
-      background:rgba(8,16,32,.92);
-      color:inherit;
-      font:inherit;
+      padding:8px 12px; border-radius:999px; border:1px solid var(--border);
+      background:rgba(8,16,32,.92); color:inherit; font:inherit;
     }
-    .btn {
-      cursor:pointer;
-      font-weight:600;
-      display:inline-flex;
-      align-items:center;
-      gap:6px;
-      box-shadow:0 8px 20px rgba(15,23,42,.25);
-    }
-    .btn.primary {
-      background:linear-gradient(135deg,var(--accent),#7c3aed);
-      border-color:transparent;
-      color:#fff;
-    }
-    .btn.ghost {
-      border-color:transparent;
-      background:transparent;
-      box-shadow:none;
-    }
-    .btn.sm { padding:6px 10px; border-radius:999px; font-size:13px }
-    .btn:hover { opacity:.95; transform:translateY(-1px); }
-    .btn:active { transform:translateY(0); opacity:.9; }
-    .input, .select {
-      background:rgba(5,10,24,.85);
-      box-shadow: inset 0 0 0 1px rgba(15,23,42,.35);
-    }
-    .input::placeholder { color:var(--muted); }
-    .icon { font-size:18px; line-height:1 }
+    .btn{cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:6px;box-shadow:0 8px 20px rgba(15,23,42,.25)}
+    .btn.primary{background:linear-gradient(135deg,var(--accent),#7c3aed);border-color:transparent;color:#fff}
+    .btn.ghost{border-color:transparent;background:transparent;box-shadow:none}
+    .btn.sm{padding:6px 10px;border-radius:999px;font-size:13px}
+    .btn:hover{opacity:.95;transform:translateY(-1px)} .btn:active{transform:translateY(0);opacity:.9}
+    .input,.select{background:rgba(5,10,24,.85);box-shadow: inset 0 0 0 1px rgba(15,23,42,.35)}
+    .input::placeholder{color:var(--muted)}
+    .icon{font-size:18px;line-height:1}
+
+    /* Status chips */
+    .statusline{display:flex;gap:10px;align-items:center;margin-left:8px}
+    .dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+    .ok{background:var(--ok)} .warn{background:var(--warn)} .err{background:var(--danger)}
+    .chip{padding:4px 8px;border-radius:999px;background:var(--chip);border:1px solid var(--border);font-size:12px;color:var(--muted)}
 
     /* Layout */
-    .wrap {
-      display:grid; grid-template-columns:280px minmax(0,1fr);
-      gap:18px; padding:18px;
-      max-width:1440px; margin:0 auto;
-    }
-    @media(max-width:980px){ .wrap { grid-template-columns:1fr } }
+    .wrap{display:grid;grid-template-columns:300px minmax(0,1fr);gap:18px;padding:18px;max-width:1440px;margin:0 auto}
+    @media(max-width:980px){.wrap{grid-template-columns:1fr}}
 
     /* Sidebar */
-    .sidebar {
-      background:linear-gradient(145deg, rgba(11,23,45,.96), rgba(13,28,60,.98));
-      border:1px solid rgba(148,163,184,.25);
-      border-radius:18px;
-      padding:16px;
-      position:sticky; top:82px;
-      height:fit-content;
-      max-height:calc(100vh - 102px);
-      overflow:auto;
-      box-shadow:var(--shadow);
-    }
-    :root[data-theme="light"] .sidebar {
-      background:var(--card);
-      border-color:var(--border);
-    }
-    .sidebar h3 {
-      margin:0 0 10px 0;
-      font-size:13px; color:var(--muted);
-      text-transform:uppercase; letter-spacing:.12em;
-    }
-    .filter-group { display:grid; gap:10px; margin-bottom:16px }
-    .filter-row { display:grid; gap:6px }
-    .muted { color:var(--muted); font-size:12px }
-    .divider { height:1px; background:var(--border); margin:8px 0 14px; opacity:.7 }
+    .sidebar{background:linear-gradient(145deg, rgba(11,23,45,.96), rgba(13,28,60,.98));border:1px solid rgba(148,163,184,.25);border-radius:18px;padding:16px;position:sticky;top:82px;height:fit-content;max-height:calc(100vh - 102px);overflow:auto;box-shadow:var(--shadow)}
+    :root[data-theme="light"] .sidebar{background:var(--card);border-color:var(--border)}
+    .sidebar h3{margin:0 0 10px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em}
+    .filter-group{display:grid;gap:10px;margin-bottom:16px}.filter-row{display:grid;gap:6px}
+    .muted{color:var(--muted);font-size:12px}.divider{height:1px;background:var(--border);margin:8px 0 14px;opacity:.7}
 
-    /* Content */
-    .content { display:flex; flex-direction:column; gap:16px }
-
-    .view-tabs {
-      display:inline-flex;
-      align-self:flex-start;
-      background:rgba(10,18,40,.98);
-      border-radius:999px;
-      border:1px solid var(--border);
-      box-shadow:0 16px 40px rgba(15,23,42,.45);
-      padding:4px;
-    }
-    .view-tab {
-      border:none;
-      background:transparent;
-      color:var(--muted);
-      padding:6px 14px;
-      border-radius:999px;
-      font-size:13px;
-      cursor:pointer;
-      display:flex; align-items:center; gap:6px;
-    }
-    .view-tab .icon { font-size:16px; }
-    .view-tab.active {
-      background:linear-gradient(135deg,var(--accent),#7c3aed);
-      color:#fff;
-      box-shadow:0 10px 26px rgba(79,140,255,.6);
-    }
-
-    .view { display:none; }
-    .view.active { display:block; }
-    .view > * + * { margin-top:16px; }
-
-    .grid { display:grid; gap:16px }
-    .grid.cols-4 { grid-template-columns:repeat(4, minmax(0,1fr)) }
-    @media(max-width:980px){ .grid.cols-4{ grid-template-columns:repeat(2, minmax(0,1fr)) } }
-    @media(max-width:600px){ .grid.cols-4{ grid-template-columns:1fr } }
+    /* Content & tabs */
+    .content{display:flex;flex-direction:column;gap:16px}
+    .view-tabs{display:inline-flex;align-self:flex-start;background:rgba(10,18,40,.98);border-radius:999px;border:1px solid var(--border);box-shadow:0 16px 40px rgba(15,23,42,.45);padding:4px}
+    .view-tab{border:none;background:transparent;color:var(--muted);padding:6px 14px;border-radius:999px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px}
+    .view-tab.active{background:linear-gradient(135deg,var(--accent),#7c3aed);color:#fff;box-shadow:0 10px 26px rgba(79,140,255,.6)}
+    .view{display:none}.view.active{display:block}.view>*+*{margin-top:16px}
+    .grid{display:grid;gap:16px}.grid.cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}
+    @media(max-width:980px){.grid.cols-4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media(max-width:640px){.grid.cols-4{grid-template-columns:1fr}}
 
     /* Cards */
-    .card {
-      background:radial-gradient(circle at 0 0, rgba(79,140,255,.16), transparent 55%), var(--card);
-      border:1px solid rgba(148,163,184,.35);
-      border-radius:18px;
-      padding:16px;
-      box-shadow:var(--shadow);
-      transition:transform .2s, box-shadow .2s, border-color .2s, background .2s;
-    }
-    :root[data-theme="light"] .card {
-      background:var(--card);
-      border-color:var(--border);
-    }
-    .card:hover {
-      transform:translateY(-2px);
-      box-shadow:0 20px 50px rgba(15,23,42,.4);
-      border-color:rgba(99,102,241,.9);
-    }
+    .card{background:radial-gradient(circle at 0 0, rgba(79,140,255,.16), transparent 55%),var(--card);border:1px solid rgba(148,163,184,.35);border-radius:18px;padding:16px;box-shadow:var(--shadow);transition:transform .2s, box-shadow .2s, border-color .2s, background .2s}
+    :root[data-theme="light"] .card{background:var(--card);border-color:var(--border)}
+    .card:hover{transform:translateY(-2px);box-shadow:0 20px 50px rgba(15,23,42,.4);border-color:rgba(99,102,241,.9)}
 
     /* KPIs */
-    .kpi {
-      cursor:pointer;
-      text-align:left;
-      position:relative;
-      overflow:hidden;
-    }
-    .kpi::before {
-      content:"";
-      position:absolute;
-      inset:auto -40% 0;
-      height:60%;
-      background:radial-gradient(circle at 20% 0, rgba(79,140,255,.45), transparent 55%);
-      opacity:0;
-      transition:opacity .25s, transform .25s;
-      transform:translateY(16px);
-    }
-    .kpi:hover::before {
-      opacity:1;
-      transform:translateY(0);
-    }
-    .kpi .label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.12em }
-    .kpi .value { font-size:26px; font-weight:800; margin-top:6px }
-    .kpi .sub { font-size:12px; color:var(--muted); margin-top:4px }
+    .kpi{cursor:pointer;text-align:left;position:relative;overflow:hidden}
+    .kpi::before{content:"";position:absolute;inset:auto -40% 0;height:60%;background:radial-gradient(circle at 20% 0, rgba(79,140,255,.45), transparent 55%);opacity:0;transition:.25s;transform:translateY(16px)}
+    .kpi:hover::before{opacity:1;transform:translateY(0)}
+    .kpi .label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em}
+    .kpi .value{font-size:26px;font-weight:800;margin-top:6px}
+    .kpi .sub{font-size:12px;color:var(--muted);margin-top:4px}
 
     /* Charts */
-    .charts { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:16px }
-    @media(max-width:980px){ .charts{ grid-template-columns:1fr } }
+    .charts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+    @media(max-width:980px){.charts{grid-template-columns:1fr}}
 
-    /* Table */
-    table { width:100%; border-collapse:separate; border-spacing:0; font-size:14px }
-    thead th {
-      position:sticky; top:0; z-index:5;
-      background:rgba(9,15,32,.98);
-      text-align:left; padding:10px 9px;
-      border-bottom:1px solid var(--border);
-      user-select:none; cursor:pointer;
-      font-size:12px; color:var(--muted);
-    }
-    :root[data-theme="light"] thead th { background:var(--card); }
-    tbody td { padding:10px 9px; border-bottom:1px solid rgba(148,163,184,.22); }
-    tr:hover { background:rgba(255,255,255,.03) }
-    .table-wrap {
-      max-height:460px;
-      overflow:auto;
-      border-radius:14px;
-      border:1px solid rgba(148,163,184,.35);
-      background:radial-gradient(circle at 0 0, rgba(79,140,255,.08), transparent 55%);
-    }
-    th.sortable::after { content:""; margin-left:6px; border:4px solid transparent; border-top-color:var(--muted); display:inline-block; transform:translateY(1px); }
-    th.sorted-asc::after { border-bottom-color:var(--accent); border-top-color:transparent; transform:translateY(-1px); }
-    th.sorted-desc::after { border-top-color:var(--accent); border-bottom-color:transparent; transform:translateY(1px); }
-
-    .pill {
-      padding:3px 9px;
-      border-radius:999px;
-      font-size:11px;
-      font-weight:700;
-      display:inline-block;
-      letter-spacing:.04em;
-      text-transform:uppercase;
-    }
-    .status-Resolved { background: var(--status-resolved); color:#fff }
-    .status-Under\ Development { background: var(--status-underdev); color:#fff }
-    .status-Rejected { background: var(--status-rejected); color:#fff }
-    .status-On\ Hold { background: var(--status-onhold); color:#fff }
-    .status-Not\ Started\ Yet { background: var(--status-notstarted); color:#fff }
-    .status-Sent { background: var(--status-sent); color:#fff }
-    .status-On\ Stage { background: var(--status-onstage); color:#fff }
-
-    .priority-High { background: var(--priority-high); color:#fff }
-    .priority-Medium { background: var(--priority-medium); color:#fff }
-    .priority-Low { background: var(--priority-low); color:#fff }
+    /* Table & skeletons */
+    table{width:100%;border-collapse:separate;border-spacing:0;font-size:14px}
+    thead th{position:sticky;top:0;z-index:5;background:rgba(9,15,32,.98);text-align:left;padding:10px 9px;border-bottom:1px solid var(--border);user-select:none;cursor:pointer;font-size:12px;color:var(--muted)}
+    :root[data-theme="light"] thead th{background:var(--card)}
+    tbody td{padding:10px 9px;border-bottom:1px solid rgba(148,163,184,.22)}
+    tr:hover{background:rgba(255,255,255,.03)}
+    .table-wrap{max-height:460px;overflow:auto;border-radius:14px;border:1px solid rgba(148,163,184,.35);background:radial-gradient(circle at 0 0, rgba(79,140,255,.08), transparent 55%)}
+    th.sortable::after{content:"";margin-left:6px;border:4px solid transparent;border-top-color:var(--muted);display:inline-block;transform:translateY(1px)}
+    th.sorted-asc::after{border-bottom-color:var(--accent);border-top-color:transparent;transform:translateY(-1px)}
+    th.sorted-desc::after{border-top-color:var(--accent);border-bottom-color:transparent;transform:translateY(1px)}
+    .pill{padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;display:inline-block;letter-spacing:.04em;text-transform:uppercase}
+    .status-Resolved{background:var(--status-resolved);color:#fff}
+    .status-Under\ Development{background:var(--status-underdev);color:#fff}
+    .status-Rejected{background:var(--status-rejected);color:#fff}
+    .status-On\ Hold{background:var(--status-onhold);color:#fff}
+    .status-Not\ Started\ Yet{background:var(--status-notstarted);color:#fff}
+    .status-Sent{background:var(--status-sent);color:#fff}
+    .status-On\ Stage{background:var(--status-onstage);color:#fff}
+    .priority-High{background:var(--priority-high);color:#fff}
+    .priority-Medium{background:var(--priority-medium);color:#fff}
+    .priority-Low{background:var(--priority-low);color:#fff}
 
     /* Modal */
-    .modal {
-      display:none;
-      position:fixed; inset:0;
-      background:rgba(0,0,0,.58);
-      align-items:center; justify-content:center;
-      z-index:100;
-    }
-    .modal-content {
-      background:var(--card); color:var(--text);
-      border:1px solid rgba(148,163,184,.35);
-      padding:18px; border-radius:18px;
-      max-width:760px; width:92%;
-      max-height:90%; overflow:auto;
-      box-shadow:var(--shadow);
-    }
-    .modal .header {
-      display:flex; align-items:center;
-      gap:10px; justify-content:space-between;
-      margin-bottom:8px;
-    }
-    .modal .actions { display:flex; gap:8px; flex-wrap:wrap; }
-    .modal-close {
-      cursor:pointer;
-      border:none;
-      background:transparent;
-      color:var(--muted);
-      font-size:20px;
-    }
+    .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.58);align-items:center;justify-content:center;z-index:100}
+    .modal-content{background:var(--card);color:var(--text);border:1px solid rgba(148,163,184,.35);padding:18px;border-radius:18px;max-width:760px;width:92%;max-height:90%;overflow:auto;box-shadow:var(--shadow)}
+    .modal .header{display:flex;align-items:center;gap:10px;justify-content:space-between;margin-bottom:8px}
+    .modal .actions{display:flex;gap:8px;flex-wrap:wrap}
+    .modal-close{cursor:pointer;border:none;background:transparent;color:var(--muted);font-size:20px}
 
     /* Pagination */
-    .table-actions {
-      display:flex; gap:10px;
-      align-items:center; justify-content:space-between;
-      margin-top:10px; flex-wrap:wrap;
-    }
-    .pagination { display:flex; gap:6px; align-items:center }
-    .chip {
-      padding:6px 10px;
-      border-radius:999px;
-      background:rgba(9,14,30,.95);
-      border:1px solid(var(--border));
-      cursor:pointer;
-      font-size:12px;
-    }
-    .chip[disabled] { opacity:.45; cursor:not-allowed }
-    .chip.active { background:var(--accent); color:#fff; border-color:transparent }
-    .select.sm, .input.sm { padding:6px 8px; border-radius:999px; font-size:13px }
+    .table-actions{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-top:10px;flex-wrap:wrap}
+    .pagination{display:flex;gap:6px;align-items:center}
+    .chip-btn{padding:6px 10px;border-radius:999px;background:rgba(9,14,30,.95);border:1px solid(var(--border));cursor:pointer;font-size:12px}
+    .chip-btn[disabled]{opacity:.45;cursor:not-allowed}
+    .chip-btn.active{background:var(--accent);color:#fff;border-color:transparent}
+    .select.sm,.input.sm{padding:6px 8px;border-radius:999px;font-size:13px}
 
     /* Drawer */
-    .drawer-toggle { display:none }
+    .drawer-toggle{display:none}
     @media(max-width:980px){
-      .drawer-toggle { display:inline-flex }
-      .sidebar {
-        position:fixed; inset:82px 0 0 auto;
-        width:88%; max-width:360px;
-        transform:translateX(110%);
-        transition:transform .25s;
-      }
-      .sidebar.open { transform:translateX(0) }
+      .drawer-toggle{display:inline-flex}
+      .sidebar{position:fixed;inset:82px 0 0 auto;width:88%;max-width:360px;transform:translateX(110%);transition:transform .25s}
+      .sidebar.open{transform:translateX(0)}
     }
 
     /* Spinner & Toast */
-    .spinner {
-      display:none;
-      position:fixed; inset:0;
-      background:rgba(5,10,25,.65);
-      z-index:120;
-      align-items:center; justify-content:center;
-    }
-    .spinner .ring {
-      width:56px; height:56px;
-      border:5px solid var(--border);
-      border-top-color:var(--accent);
-      border-radius:50%;
-      animation:spin 1s linear infinite;
-      background:transparent;
-      box-shadow:0 0 0 1px rgba(15,23,42,.4);
-    }
-    @keyframes spin { to { transform:rotate(360deg) } }
+    .spinner{display:none;position:fixed;inset:0;background:rgba(5,10,25,.65);z-index:120;align-items:center;justify-content:center}
+    .spinner .ring{width:56px;height:56px;border:5px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite; background:transparent;box-shadow:0 0 0 1px rgba(15,23,42,.4)}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .toast{position:fixed;right:16px;bottom:16px;background:var(--card);border:1px solid var(--accent);color:#fff;padding:10px 12px;border-radius:12px;z-index:130;box-shadow:var(--shadow);display:none;font-size:13px}
 
-    .toast {
-      position:fixed; right:16px; bottom:16px;
-      background:var(--card);
-      border:1px solid var(--accent);
-      color:#fff;
-      padding:10px 12px;
-      border-radius:12px;
-      z-index:130;
-      box-shadow:var(--shadow);
-      display:none;
-      font-size:13px;
-    }
+    /* Calendar */
+    #calendar{margin-top:8px;min-height:520px}
+    .fc{font-size:13px}.fc .fc-toolbar-title{font-size:16px}
+    .fc-theme-standard .fc-scrollgrid,.fc-theme-standard td,.fc-theme-standard th{border-color:var(--border)}
+    .fc .fc-col-header-cell-cushion,.fc .fc-daygrid-day-number{color:var(--muted)}
+    .fc .fc-daygrid-day.fc-day-today{background:rgba(79,140,255,.09)}
+    .fc .fc-button{background:rgba(9,14,30,.98);border-color:var(--border);color:var(--text);border-radius:999px;padding:4px 10px;font-size:12px}
+    .fc .fc-button-primary:not(:disabled).fc-button-active,.fc .fc-button-primary:not(:disabled):active,.fc .fc-button-primary:not(:disabled):focus,.fc .fc-button-primary:not(:disabled):hover{background:var(--accent);border-color:var(--accent)}
+    .fc .fc-toolbar.fc-header-toolbar{margin-bottom:12px}
+    .fc-event.event-type-deployment{background-color:var(--info);border-color:var(--info)}
+    .fc-event.event-type-maintenance{background-color:var(--warn);border-color:var(--warn)}
+    .fc-event.event-type-release{background-color:var(--ok);border-color:var(--ok)}
+    .fc-event.event-type-other{background-color:var(--purple);border-color:var(--purple)}
+    .event-risk-badge{margin-left:6px;padding:0 6px;border-radius:6px;font-size:10px;border:1px solid rgba(255,255,255,.2)}
+    .risk-low{background:rgba(16,185,129,.18)} .risk-med{background:rgba(245,158,11,.2)} .risk-high{background:rgba(239,68,68,.22)} .risk-crit{background:rgba(239,68,68,.38)}
 
-    /* Calendar styling */
-    #calendar { margin-top:8px; min-height:520px; }
-    .fc { font-size:13px; }
-    .fc .fc-toolbar-title { font-size:16px; }
-    .fc-theme-standard .fc-scrollgrid,
-    .fc-theme-standard td,
-    .fc-theme-standard th {
-      border-color:var(--border);
-    }
-    .fc .fc-col-header-cell-cushion,
-    .fc .fc-daygrid-day-number {
-      color:var(--muted);
-    }
-    .fc .fc-daygrid-day.fc-day-today {
-      background:rgba(79,140,255,.09);
-    }
-    .fc .fc-button {
-      background:rgba(9,14,30,.98);
-      border-color:var(--border);
-      color:var(--text);
-      border-radius:999px;
-      padding:4px 10px;
-      font-size:12px;
-    }
-    .fc .fc-button-primary:not(:disabled).fc-button-active,
-    .fc .fc-button-primary:not(:disabled):active,
-    .fc .fc-button-primary:not(:disabled):focus,
-    .fc .fc-button-primary:not(:disabled):hover {
-      background:var(--accent);
-      border-color:var(--accent);
-    }
-    .fc .fc-toolbar.fc-header-toolbar { margin-bottom:12px; }
+    /* Shimmer / skeleton */
+    .skeleton{position:relative;overflow:hidden;background:var(--skeleton)}
+    .skeleton::after{content:"";position:absolute;inset:0;animation:shimmer 1.2s infinite;background:var(--shimmer)}
+    @keyframes shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
 
-    .fc-event.event-type-deployment { background-color:var(--info); border-color:var(--info); }
-    .fc-event.event-type-maintenance { background-color:var(--warn); border-color:var(--warn); }
-    .fc-event.event-type-release { background-color:var(--ok); border-color:var(--ok); }
-    .fc-event.event-type-other { background-color:var(--purple); border-color:var(--purple); }
-
-    /* Hide log column on narrow screens (optional) */
-    @media(max-width:768px){
-      td:nth-child(7), th:nth-child(7){ display:none; }
-    }
+    /* Hide low-importance col on mobile */
+    @media(max-width:768px){ td:nth-child(7), th:nth-child(7){display:none} }
 
     @media (prefers-reduced-motion: reduce){
-      * { transition:none !important; animation:none !important }
+      *{transition:none!important;animation:none!important}
     }
   </style>
 </head>
@@ -460,7 +245,7 @@
       <div class="logo" aria-hidden="true">IC</div>
       <div class="brand-text">
         <span>INCHECK</span>
-        <span>Issues & Ops</span>
+        <span>Issues · Ops · Copilot</span>
       </div>
     </div>
 
@@ -469,21 +254,17 @@
     </button>
 
     <div class="toolbar">
-      <input id="searchInput" class="input" type="search" placeholder="Search ID, title, description, log…" aria-label="Search issues" />
+      <input id="searchInput" class="input" type="search" placeholder="Search ID, title, description, log…  ( / to focus )" aria-label="Search issues" />
       <select id="themeSelect" class="select" aria-label="Theme">
-        <option value="system">System</option>
-        <option value="dark">Dark</option>
-        <option value="light">Light</option>
+        <option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option>
       </select>
-      <button id="refreshNow" class="btn" aria-label="Refresh from source">
-        <span class="icon" aria-hidden="true">🔄</span> Refresh
-      </button>
-      <button id="exportCsv" class="btn" aria-label="Export filtered issues as CSV">
-        <span class="icon" aria-hidden="true">📥</span> Export CSV
-      </button>
-      <button id="createTicketBtn" class="btn primary" aria-label="Create new ticket">
-        <span class="icon" aria-hidden="true">➕</span> Create Ticket
-      </button>
+      <button id="refreshNow" class="btn" aria-label="Refresh from source"><span class="icon" aria-hidden="true">🔄</span> Refresh</button>
+      <button id="exportCsv" class="btn" aria-label="Export filtered issues as CSV"><span class="icon" aria-hidden="true">📥</span> Export</button>
+      <button id="createTicketBtn" class="btn primary" aria-label="Create new ticket"><span class="icon" aria-hidden="true">➕</span> Create Ticket</button>
+      <div class="statusline">
+        <span class="chip" id="syncIssuesText">Issues: never</span><span class="dot err" id="syncIssuesDot"></span>
+        <span class="chip" id="syncEventsText">Events: never</span><span class="dot err" id="syncEventsDot"></span>
+      </div>
     </div>
   </header>
 
@@ -507,7 +288,7 @@
         </div>
       </div>
 
-      <div class="divider" role="separator" aria-hidden="true"></div>
+      <div class="divider" role="separator"></div>
 
       <div class="filter-group" role="group" aria-label="Date range">
         <div class="filter-row">
@@ -520,33 +301,22 @@
         </div>
       </div>
 
-      <div class="divider" role="separator" aria-hidden="true"></div>
+      <div class="divider" role="separator"></div>
 
       <div class="filter-group">
         <button id="resetBtn" class="btn ghost" aria-label="Reset all filters">Reset</button>
-        <span class="muted">
-          Tip: click any KPI to filter by that status. “Total Issues” resets everything.
-        </span>
+        <span class="muted">Tip: click any KPI to filter by that status. “Total Issues” resets everything.</span>
       </div>
     </aside>
 
     <main class="content">
       <div class="view-tabs" role="tablist">
-        <button id="issuesTab" class="view-tab active" data-view="issues"
-                role="tab" aria-selected="true" aria-controls="issuesView">
-          <span class="icon" aria-hidden="true">📋</span> Issues
-        </button>
-        <button id="calendarTab" class="view-tab" data-view="calendar"
-                role="tab" aria-selected="false" aria-controls="calendarView">
-          <span class="icon" aria-hidden="true">📅</span> Calendar
-        </button>
-        <button id="insightsTab" class="view-tab" data-view="insights"
-                role="tab" aria-selected="false" aria-controls="insightsView">
-          <span class="icon" aria-hidden="true">🤖</span> AI Insights
-        </button>
+        <button id="issuesTab" class="view-tab active" data-view="issues" role="tab" aria-selected="true" aria-controls="issuesView"><span class="icon">📋</span> Issues</button>
+        <button id="calendarTab" class="view-tab" data-view="calendar" role="tab" aria-selected="false" aria-controls="calendarView"><span class="icon">📅</span> Calendar</button>
+        <button id="insightsTab" class="view-tab" data-view="insights" role="tab" aria-selected="false" aria-controls="insightsView"><span class="icon">🤖</span> AI Insights</button>
       </div>
 
-      <!-- Issues view -->
+      <!-- Issues -->
       <section id="issuesView" class="view active" role="tabpanel" aria-labelledby="issuesTab">
         <div class="grid cols-4" id="kpis" aria-live="polite"></div>
 
@@ -559,10 +329,7 @@
 
         <div class="card" aria-label="Issues table">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-            <div>
-              <strong>Issues</strong>
-              <div class="muted">Live feed from InCheck issues sheet.</div>
-            </div>
+            <div><strong>Issues</strong><div class="muted">Live feed from InCheck issues sheet.</div></div>
             <span id="rowCount" class="muted" aria-live="polite"></span>
           </div>
 
@@ -578,59 +345,56 @@
                 <th data-key="log" class="sortable" scope="col" aria-sort="none">Log</th>
                 <th scope="col">Link</th>
               </tr></thead>
-              <tbody>
-                <tr><td colspan="8" style="text-align:center;color:var(--muted)">Loading…</td></tr>
+              <tbody id="tbodySkeleton">
+                <tr><td colspan="8"><div class="skeleton" style="height:16px;border-radius:6px"></div></td></tr>
+                <tr><td colspan="8"><div class="skeleton" style="height:16px;border-radius:6px"></div></td></tr>
+                <tr><td colspan="8"><div class="skeleton" style="height:16px;border-radius:6px"></div></td></tr>
+                <tr><td colspan="8"><div class="skeleton" style="height:16px;border-radius:6px"></div></td></tr>
+                <tr><td colspan="8"><div class="skeleton" style="height:16px;border-radius:6px"></div></td></tr>
+                <tr><td colspan="8"><div class="skeleton" style="height:16px;border-radius:6px"></div></td></tr>
+                <tr><td colspan="8"><div class="skeleton" style="height:16px;border-radius:6px"></div></td></tr>
+                <tr><td colspan="8"><div class="skeleton" style="height:16px;border-radius:6px"></div></td></tr>
               </tbody>
+              <tbody id="issuesTbody" style="display:none"></tbody>
             </table>
           </div>
 
           <div class="table-actions">
             <div class="pagination" role="group" aria-label="Table pagination">
-              <button id="firstPage" class="chip" aria-label="First page">« First</button>
-              <button id="prevPage" class="chip" aria-label="Previous page">‹ Prev</button>
+              <button id="firstPage" class="chip-btn" aria-label="First page">« First</button>
+              <button id="prevPage" class="chip-btn" aria-label="Previous page">‹ Prev</button>
               <span id="pageInfo" class="muted" aria-live="polite"></span>
-              <button id="nextPage" class="chip" aria-label="Next page">Next ›</button>
-              <button id="lastPage" class="chip" aria-label="Last page">Last »</button>
+              <button id="nextPage" class="chip-btn" aria-label="Next page">Next ›</button>
+              <button id="lastPage" class="chip-btn" aria-label="Last page">Last »</button>
             </div>
             <div style="display:flex;gap:8px;align-items:center">
-              <label for="pageSize" class="muted">Rows per page</label>
-              <select id="pageSize" class="select sm" aria-label="Rows per page">
-                <option>10</option><option selected>20</option><option>50</option><option>100</option>
-              </select>
+              <label for="pageSize" class="muted">Rows</label>
+              <select id="pageSize" class="select sm" aria-label="Rows per page"><option>10</option><option selected>20</option><option>50</option><option>100</option></select>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- Calendar view -->
+      <!-- Calendar -->
       <section id="calendarView" class="view" role="tabpanel" aria-labelledby="calendarTab">
         <div class="card" aria-label="Calendar">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-            <div>
-              <strong>Deployments & Maintenance Calendar</strong>
-              <div class="muted">
-                Plan deployments, maintenance windows, releases, and other operational events.
-              </div>
-            </div>
-            <button id="addEventBtn" class="btn primary sm" type="button">
-              <span class="icon" aria-hidden="true">➕</span> Add Event
-            </button>
+            <div><strong>Deployments & Maintenance Calendar</strong><div class="muted">Plan deployments, maintenance windows, releases, and other operational events.</div></div>
+            <button id="addEventBtn" class="btn primary sm" type="button"><span class="icon">➕</span> Add Event</button>
           </div>
           <div id="calendar" aria-label="Deployment & maintenance calendar"></div>
         </div>
       </section>
 
-      <!-- AI Insights / Copilot view -->
+      <!-- AI Insights -->
       <section id="insightsView" class="view" role="tabpanel" aria-labelledby="insightsTab">
-        <div class="card" aria-label="AI Insights summary">
+        <div class="card">
           <strong>AI Insights / Copilot</strong>
-          <div class="muted" style="margin-top:4px;">
-            Analyses issues text (title, description, log) to surface patterns, suggested categories, clusters, trends,
-            triage suggestions, and deployment risk. Runs fully in the browser (heuristics, no external AI calls).
-          </div>
+          <div class="muted" style="margin-top:4px;">Heuristic, explainable analytics on issues text (no external AI). Risk breakdown, clustering, trends, triage & calendar risk.</div>
+          <div id="aiAnalyzing" class="skeleton" style="height:6px;border-radius:6px;margin-top:10px;display:none"></div>
         </div>
 
-        <div class="grid cols-4" aria-label="AI summary cards">
+        <div class="grid cols-4">
           <div class="card">
             <strong>Top terms (recent)</strong>
             <ul id="aiPatternsList" class="muted" style="font-size:13px;margin-top:6px;padding-left:18px;"></ul>
@@ -649,9 +413,23 @@
           </div>
         </div>
 
-        <div class="card">
-          <strong>Trends & bursts (last 14 days)</strong>
-          <ul id="aiTrendsList" class="muted" style="font-size:13px;margin-top:6px;padding-left:18px;"></ul>
+        <div class="grid cols-4">
+          <div class="card">
+            <strong>Trends & bursts (last 14 days)</strong>
+            <ul id="aiTrendsList" class="muted" style="font-size:13px;margin-top:6px;padding-left:18px;"></ul>
+          </div>
+          <div class="card">
+            <strong>Incident-like issues</strong>
+            <ul id="aiIncidentsList" class="muted" style="font-size:13px;margin-top:6px;padding-left:18px;"></ul>
+          </div>
+          <div class="card">
+            <strong>Emerging vs Stable themes</strong>
+            <ul id="aiEmergingStable" class="muted" style="font-size:13px;margin-top:6px;padding-left:18px;"></ul>
+          </div>
+          <div class="card">
+            <strong>Ops Cockpit</strong>
+            <ul id="aiOpsCockpit" class="muted" style="font-size:13px;margin-top:6px;padding-left:18px;"></ul>
+          </div>
         </div>
 
         <div class="card">
@@ -659,13 +437,7 @@
           <div class="table-wrap" role="region" aria-label="AI per-module insights" style="max-height:320px;">
             <table id="aiModulesTable">
               <thead>
-                <tr>
-                  <th scope="col">Module</th>
-                  <th scope="col">Open</th>
-                  <th scope="col">High P</th>
-                  <th scope="col">Risk sum</th>
-                  <th scope="col">Top term</th>
-                </tr>
+                <tr><th>Module</th><th>Open</th><th>High P</th><th>Risk sum</th><th>Top term</th></tr>
               </thead>
               <tbody id="aiModulesTableBody">
                 <tr><td colspan="5" style="text-align:center;color:var(--muted)">Waiting for data…</td></tr>
@@ -686,32 +458,27 @@
 
         <div class="card">
           <strong>Triage queue (issues needing attention)</strong>
-          <div class="muted" style="font-size:12px;margin-top:4px;">
-            Focus on issues missing module / priority / type, ordered by risk. Suggestions are heuristic.
-          </div>
+          <div class="muted" style="font-size:12px;margin-top:4px;">Missing fields, misaligned priority, ordered by risk. Suggestions are heuristic.</div>
           <ul id="aiTriageList" class="muted" style="font-size:13px;margin-top:6px;padding-left:18px;"></ul>
         </div>
 
         <div class="card">
           <strong>Upcoming risky events (next 7 days)</strong>
-          <div class="muted" style="font-size:12px;margin-top:4px;">
-            Combines calendar events with open, high-risk issues in related modules (by title matching).
-          </div>
+          <div class="muted" style="font-size:12px;margin-top:4px;">Combines calendar events with open, high-risk issues in related modules.</div>
           <ul id="aiEventsList" class="muted" style="font-size:13px;margin-top:6px;padding-left:18px;"></ul>
         </div>
 
         <div class="card">
-          <strong>AI Commands (experimental)</strong>
+          <strong>AI Commands (pro)</strong>
           <div class="muted" style="font-size:12px;margin-top:4px;">
-            Example queries: <br>
-            <code>payments high prod timeout</code> •
-            <code>module:billing priority:high</code> •
-            <code>status:open login error</code>
+            Filters: <code>module:</code> <code>status:</code> <code>priority:</code> <code>id:</code> <code>type:</code> <code>missing:</code><br/>
+            Advanced: <code>risk&gt;=9</code> <code>last:7d</code> <code>cluster:login</code> <code>sort:risk|date|priority</code><br/>
+            Examples: <code>payments risk&gt;8 last:7d sort:risk</code> • <code>missing:priority module:billing</code> • <code>status:open cluster:timeout</code>
           </div>
           <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
-            <input id="aiQueryInput" class="input" type="text" placeholder="Ask about issues (filters & keywords)…"
-                   style="flex:1;min-width:220px;">
+            <input id="aiQueryInput" class="input" type="text" placeholder="Ask or query…  ( Ctrl + K )" style="flex:1;min-width:260px;">
             <button id="aiQueryRun" class="btn sm" type="button">Run</button>
+            <button id="aiQueryApplyFilters" class="btn ghost sm" type="button" title="Apply to Issues tab">Apply to Issues</button>
           </div>
           <div id="aiQueryResults" class="muted" style="font-size:13px;margin-top:8px;"></div>
         </div>
@@ -720,18 +487,13 @@
   </div>
 
   <!-- Issue Modal -->
-  <div id="issueModal" class="modal" role="dialog" aria-modal="true"
-       aria-labelledby="modalTitle" aria-describedby="modalBody">
+  <div id="issueModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" aria-describedby="modalBody">
     <div class="modal-content">
       <div class="header">
         <h2 id="modalTitle" style="margin:0;font-size:20px">Issue</h2>
         <div class="actions">
-          <button id="copyId" class="btn sm" aria-label="Copy issue ID">
-            <span class="icon" aria-hidden="true">🆔</span> Copy ID
-          </button>
-          <button id="copyLink" class="btn sm" aria-label="Copy issue link">
-            <span class="icon" aria-hidden="true">🔗</span> Copy Link
-          </button>
+          <button id="copyId" class="btn sm" aria-label="Copy issue ID">🆔 Copy ID</button>
+          <button id="copyLink" class="btn sm" aria-label="Copy issue link">🔗 Copy Link</button>
           <button class="modal-close" id="modalClose" aria-label="Close">✕</button>
         </div>
       </div>
@@ -740,8 +502,7 @@
   </div>
 
   <!-- Event Modal -->
-  <div id="eventModal" class="modal" role="dialog" aria-modal="true"
-       aria-labelledby="eventModalTitle" aria-describedby="eventModalBody">
+  <div id="eventModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="eventModalTitle" aria-describedby="eventModalBody">
     <div class="modal-content">
       <div class="header">
         <h2 id="eventModalTitle" style="margin:0;font-size:20px">Event</h2>
@@ -753,49 +514,23 @@
       <form id="eventForm">
         <div id="eventModalBody">
           <div class="filter-group">
-            <div class="filter-row">
-              <label class="muted" for="eventTitle">Title</label>
-              <input id="eventTitle" class="input" type="text" required
-                     placeholder="e.g. Prod deployment v2.3" />
+            <div class="filter-row"><label class="muted" for="eventTitle">Title</label><input id="eventTitle" class="input" type="text" required placeholder="e.g. Prod deployment v2.3" /></div>
+            <div class="filter-row"><label class="muted" for="eventType">Type</label>
+              <select id="eventType" class="select"><option>Deployment</option><option>Maintenance</option><option>Release</option><option>Other</option></select>
             </div>
-            <div class="filter-row">
-              <label class="muted" for="eventType">Type</label>
-              <select id="eventType" class="select">
-                <option value="Deployment">Deployment</option>
-                <option value="Maintenance">Maintenance</option>
-                <option value="Release">Release</option>
-                <option value="Other">Other</option>
-              </select>
-            </div>
-            <div class="filter-row">
-              <label class="muted" for="eventStart">Start</label>
-              <input id="eventStart" class="input" type="datetime-local" required />
-            </div>
-            <div class="filter-row">
-              <label class="muted" for="eventEnd">End (optional)</label>
-              <input id="eventEnd" class="input" type="datetime-local" />
-            </div>
-            <div class="filter-row">
-              <label class="muted" for="eventDescription">Notes</label>
-              <textarea id="eventDescription" class="input" rows="3"
-                        placeholder="Details, impact, owner…"
-                        style="border-radius:12px; resize:vertical;"></textarea>
+            <div class="filter-row"><label class="muted" for="eventStart">Start</label><input id="eventStart" class="input" type="datetime-local" required /></div>
+            <div class="filter-row"><label class="muted" for="eventEnd">End (optional)</label><input id="eventEnd" class="input" type="datetime-local" /></div>
+            <div class="filter-row"><label class="muted" for="eventDescription">Notes</label>
+              <textarea id="eventDescription" class="input" rows="3" placeholder="Details, impact, owner…" style="border-radius:12px; resize:vertical;"></textarea>
             </div>
           </div>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">
           <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button id="eventSave" type="submit" class="btn primary sm">
-              💾 Save Event
-            </button>
-            <button id="eventCancel" type="button" class="btn ghost sm">
-              Cancel
-            </button>
+            <button id="eventSave" type="submit" class="btn primary sm">💾 Save Event</button>
+            <button id="eventCancel" type="button" class="btn ghost sm">Cancel</button>
           </div>
-          <button id="eventDelete" type="button" class="btn sm"
-                  style="background:transparent;border-color:var(--danger);color:var(--danger);display:none">
-            🗑 Delete
-          </button>
+          <button id="eventDelete" type="button" class="btn sm" style="background:transparent;border-color:var(--danger);color:var(--danger);display:none">🗑 Delete</button>
         </div>
       </form>
     </div>
@@ -804,797 +539,131 @@
   <div class="spinner" id="spinner" aria-hidden="true"><div class="ring"></div></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script>
-document.addEventListener("DOMContentLoaded", () => {
-  const SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTRwAjNAQxiPP8uR15t_vx03JkjgEBjgUwp2bpx8rsHx-JJxVDBZyf5ap77rAKrYHfgkVMwLJVm6pGn/pub?output=csv";
+/**
+ * PRO Dashboard — single-file architecture using simple namespaces.
+ * - CONFIG: tweak all behaviour here
+ * - DataStore, Filters, UI, Risk, Analytics, DSL, CalendarLink
+ */
 
-  // Google Apps Script Web App for calendar events (wrapped via CORS proxy)
-  const CALENDAR_API_URL =
+const CONFIG = {
+  SHEET_URL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vTRwAjNAQxiPP8uR15t_vx03JkjgEBjgUwp2bpx8rsHx-JJxVDBZyf5ap77rAKrYHfgkVMwLJVm6pGn/pub?output=csv",
+  CALENDAR_API_URL:
     "https://corsproxy.io/?" +
-    encodeURIComponent("https://script.google.com/macros/s/AKfycbwRcF-CbJY3dNfU9QQWixGL82a5BqCxVII4sGJSKunJ_fhDLLezL90kUXoqMrHuYytV/exec");
+    encodeURIComponent("https://script.google.com/macros/s/AKfycbwRcF-CbJY3dNfU9QQWixGL82a5BqCxVII4sGJSKunJ_fhDLLezL90kUXoqMrHuYytV/exec"),
 
-  function q(sel, root = document) { return root.querySelector(sel); }
-  function qAll(sel){ return Array.from(document.querySelectorAll(sel)); }
+  TREND_DAYS_RECENT: 7,
+  TREND_DAYS_WINDOW: 14,
 
-  const els = {
-    table: q('#issuesTable'),
-    tableBody: q('#issuesTable tbody'),
-    rowCount: q('#rowCount'),
-    moduleFilter: q('#moduleFilter'),
-    priorityFilter: q('#priorityFilter'),
-    statusFilter: q('#statusFilter'),
-    reset: q('#resetBtn'),
-    refresh: q('#refreshNow'),
-    exportCsv: q('#exportCsv'),
-    kpis: q('#kpis'),
-    modal: q('#issueModal'),
-    modalBody: q('#modalBody'),
-    modalTitle: q('#modalTitle'),
-    copyId: q('#copyId'),
-    copyLink: q('#copyLink'),
-    closeModalBtn: q('#modalClose'),
-    drawerBtn: q('#drawerBtn'),
-    sidebar: q('#sidebar'),
-    spinner: q('#spinner'),
-    toast: q('#toast'),
-    search: q('#searchInput'),
-    themeSelect: q('#themeSelect'),
-    firstPage: q('#firstPage'),
-    prevPage: q('#prevPage'),
-    nextPage: q('#nextPage'),
-    lastPage: q('#lastPage'),
-    pageInfo: q('#pageInfo'),
-    pageSize: q('#pageSize'),
-    createTicket: q('#createTicketBtn'),
-    startDateFilter: q('#startDateFilter'),
-    endDateFilter: q('#endDateFilter'),
-    loadingStatus: q('#loadingStatus'),
-    viewTabs: qAll('.view-tab'),
-    issuesView: q('#issuesView'),
-    calendarView: q('#calendarView'),
-    insightsView: q('#insightsView'),
-    addEventBtn: q('#addEventBtn'),
-    eventModal: q('#eventModal'),
-    eventModalTitle: q('#eventModalTitle'),
-    eventModalClose: q('#eventModalClose'),
-    eventForm: q('#eventForm'),
-    eventTitle: q('#eventTitle'),
-    eventType: q('#eventType'),
-    eventStart: q('#eventStart'),
-    eventEnd: q('#eventEnd'),
-    eventDescription: q('#eventDescription'),
-    eventSave: q('#eventSave'),
-    eventCancel: q('#eventCancel'),
-    eventDelete: q('#eventDelete'),
-    aiPatternsList: q('#aiPatternsList'),
-    aiLabelsList: q('#aiLabelsList'),
-    aiRisksList: q('#aiRisksList'),
-    aiClusters: q('#aiClusters'),
-    aiScopeText: q('#aiScopeText'),
-    aiSignalsText: q('#aiSignalsText'),
-    aiTrendsList: q('#aiTrendsList'),
-    aiModulesTableBody: q('#aiModulesTableBody'),
-    aiTriageList: q('#aiTriageList'),
-    aiEventsList: q('#aiEventsList'),
-    aiQueryInput: q('#aiQueryInput'),
-    aiQueryRun: q('#aiQueryRun'),
-    aiQueryResults: q('#aiQueryResults')
-  };
+  RISK: {
+    priorityWeight: { High: 3, Medium: 2, Low: 1, "": 1 },
+    techBoosts: [
+      ['timeout',3],['time out',3],['latency',2],['slow',2],['performance',2],['crash',3],['error',2],['exception',2],['down',3]
+    ],
+    bizBoosts: [
+      ['payment',3],['payments',3],['billing',2],['invoice',1],['checkout',2],['refund',2],['revenue',3],['vip',2]
+    ],
+    opsBoosts: [
+      ['prod ',2],['production',2],['deploy',2],['deployment',2],['rollback',2],['incident',3],['p0',3],['p1',2],['sla',2]
+    ],
+    statusBoosts: { 'on stage':2, 'under':1 },
+    misalignedDelta: 1,
+    highRisk: 9,
+    critRisk: 13,
+    staleDays: 10
+  },
 
-  let rows = [], filtered = [], charts = {};
-  let sortKey = null, sortAsc = true;
-  let currentPage = 1;
-  let rowsPerPage = +(localStorage.getItem('pageSize') || (els.pageSize ? els.pageSize.value : 20));
-  if (els.pageSize) els.pageSize.value = String(rowsPerPage);
-  let selectedIssue = null;
-  let lastFocusedBeforeIssueModal = null;
-  let lastFocusedBeforeEventModal = null;
-
-  let eventsData = [];
-  let calendar = null;
-  let calendarInitialized = false;
-  let editingEventId = null;
-
-  // ----- AI / Copilot helpers -----
-  const STOPWORDS = new Set([
-    'the','a','an','and','or','but','for','with','this','that','from','into','onto',
-    'when','what','where','how','why','can','could','should','would','will','just',
-    'have','has','had','been','are','is','was','were','to','in','on','of','at','by',
-    'as','it','its','be','we','you','they','our','your','their','not','no','if','else',
-    'then','than','about','after','before','more','less','also','only','very','get',
-    'got','see','seen','use','used','using','user','issue','bug','ticket','inc'
-  ]);
-
-  const LABEL_KEYWORDS = {
+  LABEL_KEYWORDS: {
     'Authentication / Login': ['login','signin','sign in','password','auth','token','session','otp'],
     'Payments / Billing': ['payment','payments','billing','invoice','card','credit','charge','checkout','refund'],
     'Performance / Latency': ['slow','slowness','latency','performance','perf','timeout','time out','lag'],
     'Reliability / Errors': ['error','errors','exception','500','503','fail','failed','crash','down','unavailable'],
     'UI / UX': ['button','screen','page','layout','css','ui','ux','alignment','typo'],
     'Data / Sync': ['sync','synchron','cache','cached','replica','replication','consistency','out of date']
-  };
-
-  function issueText(issue) {
-    return [issue.title, issue.desc, issue.log]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase();
   }
+};
 
-  function tokenizeIssue(issue) {
-    const text = issueText(issue);
-    return text
-      .replace(/[^a-z0-9]+/g, ' ')
-      .split(/\s+/)
-      .filter(w => w && w.length > 2 && !STOPWORDS.has(w));
-  }
+const STOPWORDS = new Set([
+  'the','a','an','and','or','but','for','with','this','that','from','into','onto','when','what','where','how','why',
+  'can','could','should','would','will','just','have','has','had','been','are','is','was','were',
+  'to','in','on','of','at','by','as','it','its','be','we','you','they','our','your','their',
+  'not','no','if','else','then','than','about','after','before','more','less','also','only','very',
+  'get','got','see','seen','use','used','using','user','issue','bug','ticket','inc'
+]);
 
-  function getRecentIssues(base, days = 7) {
-    const now = Date.now();
-    const cutoff = now - days * 24 * 60 * 60 * 1000;
-    const recent = base.filter(r => {
-      if (!r.date) return false;
-      const d = new Date(r.date);
-      if (isNaN(d)) return false;
-      return d.getTime() >= cutoff;
-    });
-    if (recent.length) return recent;
-    return base.slice(-50);
-  }
-
-  function computeRiskScore(issue) {
-    const priorityWeight = { High: 3, Medium: 2, Low: 1 };
-    let score = priorityWeight[issue.priority] || 1;
-    const text = issueText(issue);
-
-    const boosts = [
-      { kw: 'prod ', val: 2 },
-      { kw: 'production', val: 2 },
-      { kw: 'timeout', val: 3 },
-      { kw: 'time out', val: 3 },
-      { kw: 'error', val: 2 },
-      { kw: 'errors', val: 2 },
-      { kw: 'exception', val: 2 },
-      { kw: 'fail', val: 2 },
-      { kw: 'failed', val: 2 },
-      { kw: 'crash', val: 3 },
-      { kw: 'down', val: 3 },
-      { kw: 'payment', val: 3 },
-      { kw: 'payments', val: 3 },
-      { kw: 'billing', val: 2 },
-      { kw: 'checkout', val: 2 },
-      { kw: 'refund', val: 2 },
-      { kw: 'login', val: 2 },
-      { kw: 'auth', val: 2 },
-      { kw: 'vip', val: 2 },
-      { kw: 'all users', val: 3 },
-      { kw: 'cannot', val: 2 },
-      { kw: 'blocked', val: 2 }
-    ];
-
-    boosts.forEach(b => {
-      if (text.includes(b.kw)) score += b.val;
-    });
-
-    const st = (issue.status || '').toLowerCase();
-    if (st.startsWith('on stage')) score += 2;
-    if (st.startsWith('under')) score += 1;
-
-    return score;
-  }
-
-  function suggestCategories(issue) {
-    const text = issueText(issue);
-    const res = [];
-    Object.entries(LABEL_KEYWORDS).forEach(([label, keywords]) => {
-      let hits = 0;
-      keywords.forEach(k => { if (text.includes(k)) hits++; });
-      if (hits > 0) res.push({ label, score: hits });
-    });
-    res.sort((a,b) => b.score - a.score);
-    return res;
-  }
-
-  function suggestPriority(issue) {
-    if (issue.priority) return issue.priority;
-    const score = computeRiskScore(issue);
-    if (score >= 10) return 'High';
-    if (score >= 6) return 'Medium';
-    return 'Low';
-  }
-
-  function needsTriage(issue) {
-    const missingPriority = !issue.priority;
-    const missingModule = !issue.module || issue.module === 'Unspecified';
-    const missingType = !issue.type;
-    return missingPriority || missingModule || missingType;
-  }
-
-  function computeTriageQueue(base, maxItems = 15) {
-    const items = [];
-    base.forEach(issue => {
-      if (!needsTriage(issue)) return;
-      const cats = suggestCategories(issue);
-      const prio = suggestPriority(issue);
-      items.push({ issue, suggestedCategories: cats, suggestedPriority: prio });
-    });
-    items.sort((a,b) => computeRiskScore(b.issue) - computeRiskScore(a.issue));
-    return items.slice(0, maxItems);
-  }
-
-  function computeTermTrends(base) {
-    const windowDays = 14;
-    const recent = getRecentIssues(base, windowDays);
-    if (!recent.length) return [];
-    const now = Date.now();
-    const midCutoff = now - 7 * 24 * 60 * 60 * 1000;
-
-    const oldCounts = new Map();
-    const newCounts = new Map();
-
-    recent.forEach(issue => {
-      if (!issue.date) return;
-      const d = new Date(issue.date);
-      if (isNaN(d)) return;
-      const isNew = d.getTime() >= midCutoff;
-      const target = isNew ? newCounts : oldCounts;
-      const toks = tokenizeIssue(issue);
-      const uniq = new Set(toks);
-      uniq.forEach(t => {
-        target.set(t, (target.get(t) || 0) + 1);
-      });
-    });
-
-    const terms = new Set([...oldCounts.keys(), ...newCounts.keys()]);
-    const results = [];
-    terms.forEach(term => {
-      const oldC = oldCounts.get(term) || 0;
-      const newC = newCounts.get(term) || 0;
-      const total = oldC + newC;
-      if (total < 2) return;
-      const delta = newC - oldC;
-      const ratio = oldC === 0 ? (newC >= 2 ? Infinity : 0) : newC / oldC;
-      if ((newC >= 2 && ratio >= 2) || delta >= 2) {
-        results.push({ term, old: oldC, recent: newC, delta, ratio });
-      }
-    });
-
-    results.sort((a,b) => {
-      if (a.ratio === Infinity && b.ratio !== Infinity) return -1;
-      if (b.ratio === Infinity && a.ratio !== Infinity) return 1;
-      if (b.delta !== a.delta) return b.delta - a.delta;
-      return b.recent - a.recent;
-    });
-
-    return results.slice(0, 8);
-  }
-
-  function computeModuleInsights(base) {
-    const map = new Map();
-    base.forEach(issue => {
-      const moduleName = issue.module || 'Unspecified';
-      let entry = map.get(moduleName);
-      if (!entry) {
-        entry = {
-          module: moduleName,
-          total: 0,
-          open: 0,
-          high: 0,
-          riskSum: 0,
-          tokens: new Map()
-        };
-        map.set(moduleName, entry);
-      }
-      entry.total++;
-      const st = (issue.status || '').toLowerCase();
-      const isResolved = st.startsWith('resolved');
-      if (!isResolved) {
-        entry.open++;
-        if (issue.priority === 'High') entry.high++;
-      }
-      const rs = computeRiskScore(issue);
-      entry.riskSum += rs;
-
-      const toks = tokenizeIssue(issue);
-      const uniq = new Set(toks);
-      uniq.forEach(t => {
-        entry.tokens.set(t, (entry.tokens.get(t) || 0) + 1);
-      });
-    });
-
-    return Array.from(map.values()).map(entry => {
-      let topTerm = '';
-      if (entry.tokens.size) {
-        topTerm = Array.from(entry.tokens.entries())
-          .sort((a,b) => b[1] - a[1])[0][0];
-      }
-      return {
-        module: entry.module,
-        total: entry.total,
-        open: entry.open,
-        high: entry.high,
-        risk: entry.riskSum,
-        topTerm
-      };
-    }).sort((a,b) => {
-      if (b.risk !== a.risk) return b.risk - a.risk;
-      return b.open - a.open;
-    }).slice(0, 8);
-  }
-
-  function buildSimilarClusters(base) {
-    const clusters = [];
-    const maxDocs = 400; // safety limit
-    const docs = base.slice(-maxDocs).map(issue => {
-      const toks = tokenizeIssue(issue);
-      const set = new Set(toks);
-      return { issue, tokens: set };
-    });
-
-    const visited = new Set();
-
-    function jaccard(a, b) {
-      if (!a.size || !b.size) return 0;
-      let inter = 0;
-      a.forEach(v => { if (b.has(v)) inter++; });
-      const union = a.size + b.size - inter;
-      return union === 0 ? 0 : inter / union;
-    }
-
-    for (let i = 0; i < docs.length; i++) {
-      if (visited.has(i)) continue;
-      const baseDoc = docs[i];
-      const cluster = [baseDoc];
-      visited.add(i);
-
-      for (let j = i + 1; j < docs.length; j++) {
-        if (visited.has(j)) continue;
-        const other = docs[j];
-        const sim = jaccard(baseDoc.tokens, other.tokens);
-        if (sim >= 0.35) {
-          visited.add(j);
-          cluster.push(other);
-        }
-      }
-
-      if (cluster.length >= 2) {
-        const tokenFreq = new Map();
-        cluster.forEach(d => {
-          d.tokens.forEach(t => {
-            tokenFreq.set(t, (tokenFreq.get(t) || 0) + 1);
-          });
-        });
-        const signatureTokens = Array.from(tokenFreq.entries())
-          .sort((a,b) => b[1] - a[1])
-          .slice(0,3)
-          .map(([t]) => t);
-        const signature = signatureTokens.join(' ');
-        clusters.push({
-          signature,
-          issues: cluster.map(c => c.issue)
-        });
-      }
-    }
-
-    clusters.sort((a,b) => b.issues.length - a.issues.length);
-    return clusters.slice(0, 6);
-  }
-
-  function parseAiQuery(text) {
-    const lower = text.toLowerCase();
-    let working = ' ' + lower + ' ';
-    const result = {
-      module: null,
-      status: null,
-      priority: null,
-      id: null,
-      freeWords: []
-    };
-
-    const patterns = [
-      { key: 'module',  re: /\bmodule:([^\s]+)/ },
-      { key: 'status',  re: /\bstatus:([^\s]+)/ },
-      { key: 'priority',re: /\bpriority:([^\s]+)/ },
-      { key: 'id',      re: /\bid:([^\s]+)/ }
-    ];
-
-    patterns.forEach(p => {
-      const m = working.match(p.re);
-      if (m) {
-        result[p.key] = m[1].trim();
-        working = working.replace(m[0], ' ');
-      }
-    });
-
-    const words = working.split(/\s+/).filter(Boolean);
-    result.freeWords = words.filter(w => !STOPWORDS.has(w) && w.length > 2);
-    return result;
-  }
-
-  function filterIssueByAiQuery(issue, query) {
-    const moduleVal = query.module;
-    const priorityVal = query.priority;
-    const statusVal = query.status;
-    const idVal = query.id;
-    const freeWords = query.freeWords || [];
-
-    if (moduleVal) {
-      const mod = (issue.module || '').toLowerCase();
-      if (!mod.includes(moduleVal)) return false;
-    }
-
-    if (priorityVal) {
-      const p = priorityVal[0].toUpperCase();
-      if (['H','M','L'].includes(p)) {
-        if ((issue.priority || '').charAt(0) !== p) return false;
-      } else {
-        if (!(issue.priority || '').toLowerCase().includes(priorityVal.toLowerCase())) return false;
-      }
-    }
-
-    if (statusVal) {
-      const st = (issue.status || '').toLowerCase();
-      if (statusVal === 'open') {
-        if (st.startsWith('resolved') || st.startsWith('rejected')) return false;
-      } else if (statusVal === 'closed') {
-        if (!st.startsWith('resolved') && !st.startsWith('rejected')) return false;
-      } else {
-        if (!st.includes(statusVal)) return false;
-      }
-    }
-
-    if (idVal) {
-      const idTxt = (issue.id || '').toLowerCase();
-      if (!idTxt.includes(idVal)) return false;
-    }
-
-    if (freeWords.length) {
-      const text = issueText(issue);
-      for (const w of freeWords) {
-        if (!text.includes(w)) return false;
-      }
-    }
-
+const U = {
+  q:(s,r=document)=>r.querySelector(s),
+  qAll:(s,r=document)=>Array.from(r.querySelectorAll(s)),
+  now:()=>Date.now(),
+  fmtTS:(d)=>{
+    const x=(d instanceof Date)?d:new Date(d);
+    if(isNaN(x)) return '—';
+    return x.toISOString().replace('T',' ').slice(0,16);
+  },
+  escapeHtml:(s)=> String(s).replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])),
+  escapeAttr:(s)=> String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;'),
+  pad:(n)=>String(n).padStart(2,'0'),
+  dateAddDays:(d,days)=>{
+    const base=(d instanceof Date)? d : new Date(d);
+    return new Date(base.getTime()+days*86400000);
+  },
+  daysAgo:(n)=> new Date(Date.now()-n*86400000),
+  isBetween:(d,a,b)=>{
+    const x = new Date(d); if (isNaN(x)) return false;
+    const min = a ? (a instanceof Date ? a : new Date(a)) : null;
+    const max = b ? (b instanceof Date ? b : new Date(b)) : null;
+    if (min && x < min) return false;
+    if (max && x >= max) return false;
     return true;
   }
+};
 
-  function runAiQuery() {
-    if (!els.aiQueryResults) return;
-    const input = (els.aiQueryInput && els.aiQueryInput.value || '').trim();
-    if (!input) {
-      els.aiQueryResults.textContent = 'Type a query using keywords and optional filters like module:, status:, priority:.';
-      return;
-    }
-
-    const base = rows || [];
-    if (!base.length) {
-      els.aiQueryResults.textContent = 'No issues loaded yet.';
-      return;
-    }
-
-    const query = parseAiQuery(input);
-    const matches = base.filter(issue => filterIssueByAiQuery(issue, query));
-    matches.sort((a,b) => computeRiskScore(b) - computeRiskScore(a));
-
-    if (!matches.length) {
-      els.aiQueryResults.textContent = 'No issues matched this query.';
-      return;
-    }
-
-    const limited = matches.slice(0, 20);
-    els.aiQueryResults.innerHTML = `
-      <div style="margin-bottom:6px;">
-        Found <strong>${matches.length}</strong> issue${matches.length>1?'s':''} (showing top ${limited.length} by risk).
-      </div>
-      <ul style="padding-left:18px;margin:0;">
-        ${limited.map(i => `
-          <li style="margin-bottom:4px;">
-            <button type="button" class="btn sm" style="padding:3px 6px;margin-right:4px;"
-                    data-open-issue="${escapeAttr(i.id || '')}">
-              ${escapeHtml(i.id || '')}
-            </button>
-            [${escapeHtml(i.priority || '-')} · ${escapeHtml(i.status || '-')}]
-            ${escapeHtml(i.title || '(no title)')}
-          </li>
-        `).join('')}
-      </ul>
-    `;
-
-    els.aiQueryResults.querySelectorAll('button[data-open-issue]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = btn.getAttribute('data-open-issue');
-        if (id) openIssueModal(id);
-      });
-    });
+/** Filters persisted */
+const Filters = {
+  state: { search:'', module:'All', priority:'All', status:'All', start:'', end:'' },
+  load(){
+    try{ const raw=localStorage.getItem('incheckFilters'); if(raw) this.state=JSON.parse(raw);}catch{}
+  },
+  save(){
+    try{ localStorage.setItem('incheckFilters', JSON.stringify(this.state)); }catch{}
   }
+};
 
-  function computeEventsRisk(base, events) {
-    if (!events || !events.length) return [];
-    const now = new Date();
-    const limit = new Date(now.getTime() + 7*24*60*60*1000);
+/** DataStore */
+const DataStore = {
+  rows: [],
+  computed: new Map(), // id -> { tokens:Set, tf:Map, idf:Map, risk, suggestions }
+  byId: new Map(),
+  byModule: new Map(),
+  byStatus: new Map(),
+  byPriority: new Map(),
+  df: new Map(),
+  N: 0,
+  events: [],
+  etag: null,
 
-    const openIssues = base.filter(i => {
-      const st = (i.status || '').toLowerCase();
-      return !st.startsWith('resolved') && !st.startsWith('rejected');
-    });
-
-    const moduleNames = Array.from(new Set(openIssues.map(i => i.module).filter(Boolean)));
-
-    const results = [];
-    events.forEach(ev => {
-      if (!ev.start) return;
-      const d = new Date(ev.start);
-      if (isNaN(d) || d < now || d > limit) return;
-
-      const title = (ev.title || '').toLowerCase();
-      const impactedModules = moduleNames.filter(m => m && title.includes(m.toLowerCase()));
-
-      let issues = [];
-      if (impactedModules.length) {
-        issues = openIssues.filter(i => impactedModules.includes(i.module));
-      } else if ((ev.type || '').toLowerCase() === 'deployment' || (ev.type || '').toLowerCase() === 'release') {
-        const recentOpen = getRecentIssues(openIssues, 7);
-        issues = recentOpen.filter(i => computeRiskScore(i) >= 8);
-      }
-
-      if (!issues.length) return;
-      const totalRisk = issues.reduce((sum, iss) => sum + computeRiskScore(iss), 0);
-
-      results.push({ event: ev, modules: impactedModules, issues, risk: totalRisk, date: d });
-    });
-
-    results.sort((a,b) => b.risk - a.risk);
-    return results.slice(0, 5);
-  }
-
-  function renderAiInsights() {
-    if (!els.aiPatternsList || !els.aiLabelsList || !els.aiRisksList || !els.aiClusters) return;
-
-    const base = (filtered && filtered.length ? filtered : rows || []);
-    const total = base.length;
-
-    if (!total) {
-      els.aiPatternsList.innerHTML = '<li>No issues loaded yet.</li>';
-      els.aiLabelsList.innerHTML = '<li>No data.</li>';
-      els.aiRisksList.innerHTML = '<li>No data.</li>';
-      els.aiClusters.innerHTML = '<div class="muted">No data.</div>';
-      if (els.aiScopeText) els.aiScopeText.textContent = 'Waiting for issues to load.';
-      if (els.aiSignalsText) els.aiSignalsText.textContent = 'No signals yet.';
-      if (els.aiTrendsList) els.aiTrendsList.innerHTML = '<li>No data.</li>';
-      if (els.aiModulesTableBody) els.aiModulesTableBody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted)">No data.</td></tr>';
-      if (els.aiTriageList) els.aiTriageList.innerHTML = '<li>No issues requiring triage found.</li>';
-      if (els.aiEventsList) els.aiEventsList.innerHTML = '<li>No upcoming events with notable risk (or no events loaded).</li>';
-      return;
-    }
-
-    const recent = getRecentIssues(base, 7);
-    const recentCount = recent.length;
-
-    // Top terms (recent)
-    const termCounts = new Map();
-    recent.forEach(issue => {
-      tokenizeIssue(issue).forEach(t => {
-        termCounts.set(t, (termCounts.get(t) || 0) + 1);
-      });
-    });
-
-    const topTerms = Array.from(termCounts.entries())
-      .filter(([,count]) => count >= 2)
-      .sort((a,b) => b[1] - a[1])
-      .slice(0, 10);
-
-    els.aiPatternsList.innerHTML = topTerms.length
-      ? topTerms.map(([t,c]) => `<li><strong>${t}</strong> – ${c} mention${c>1?'s':''}</li>`).join('')
-      : '<li>No strong repeated terms in recent issues.</li>';
-
-    // Suggested categories
-    const labelStats = [];
-    Object.entries(LABEL_KEYWORDS).forEach(([label, keywords]) => {
-      let matches = 0;
-      base.forEach(issue => {
-        const text = issueText(issue);
-        if (keywords.some(k => text.includes(k))) matches++;
-      });
-      if (matches > 0) labelStats.push({ label, matches });
-    });
-    labelStats.sort((a,b) => b.matches - a.matches);
-
-    els.aiLabelsList.innerHTML = labelStats.length
-      ? labelStats.slice(0, 8).map(ls =>
-          `<li><strong>${ls.label}</strong> – ${ls.matches} issue${ls.matches>1?'s':''}</li>`
-        ).join('')
-      : '<li>No clear category suggestions yet.</li>';
-
-    if (els.aiScopeText) {
-      els.aiScopeText.textContent =
-        `Analyzing ${total} issues (${recentCount} recent, ~last 7 days) using current filters.`;
-    }
-
-    if (els.aiSignalsText) {
-      const signals = [];
-      const hasTimeout = termCounts.has('timeout');
-      const hasPayment = termCounts.has('payment') || termCounts.has('payments') || termCounts.has('billing') || termCounts.has('checkout');
-      const hasAuth = termCounts.has('login') || termCounts.has('auth') || termCounts.has('password') || termCounts.has('otp');
-      const hasErrors = termCounts.has('error') || termCounts.has('errors') || termCounts.has('exception') || termCounts.has('crash');
-
-      if (hasTimeout) signals.push('timeouts / latency');
-      if (hasPayment) signals.push('payments / billing');
-      if (hasAuth) signals.push('auth / login flows');
-      if (hasErrors) signals.push('errors / exceptions');
-
-      els.aiSignalsText.textContent = signals.length
-        ? 'Recent issues frequently mention: ' + signals.join(', ') + '.'
-        : 'No strong recurring signals detected in recent issues.';
-    }
-
-    // Trends & bursts (last 14 days)
-    if (els.aiTrendsList) {
-      const trends = computeTermTrends(base);
-      els.aiTrendsList.innerHTML = trends.length
-        ? trends.map(t => `
-            <li>
-              <strong>${t.term}</strong> – ${t.recent} recent vs ${t.old} earlier
-              <span class="muted">(Δ ${t.delta >= 0 ? '+'+t.delta : t.delta})</span>
-            </li>
-          `).join('')
-        : '<li>No strong term increases detected between last and previous week.</li>';
-    }
-
-    // Module insights
-    if (els.aiModulesTableBody) {
-      const mods = computeModuleInsights(base);
-      els.aiModulesTableBody.innerHTML = mods.length
-        ? mods.map(m => `
-            <tr>
-              <td>${escapeHtml(m.module)}</td>
-              <td>${m.open}</td>
-              <td>${m.high}</td>
-              <td>${m.risk}</td>
-              <td>${escapeHtml(m.topTerm || '-')}</td>
-            </tr>
-          `).join('')
-        : '<tr><td colspan="5" style="text-align:center;color:var(--muted)">No modules to show.</td></tr>';
-    }
-
-    // Top risks this week
-    const recentWithScores = recent.map(issue => ({
-      issue,
-      score: computeRiskScore(issue)
-    })).sort((a,b) => b.score - a.score);
-
-    const topRisks = recentWithScores.slice(0, 5).filter(r => r.score > 2);
-
-    els.aiRisksList.innerHTML = topRisks.length
-      ? topRisks.map(({issue, score}) => `
-          <li style="margin-bottom:4px;">
-            <strong>[${issue.priority || '-'}] ${issue.id || '(no ID)'}</strong> – ${escapeHtml(issue.title || '(no title)')}
-            <br><span class="muted">Risk score: ${score}, status: ${escapeHtml(issue.status || '-')}</span>
-          </li>
-        `).join('')
-      : '<li>No high-risk recent issues detected by the heuristic.</li>';
-
-    // Similar issue clusters
-    const clusters = buildSimilarClusters(base);
-    if (!clusters.length) {
-      els.aiClusters.innerHTML = '<div class="muted">No similar issue groups with at least 2 tickets.</div>';
-    } else {
-      els.aiClusters.innerHTML = clusters.map(c => `
-        <div class="card" style="padding:10px;">
-          <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">
-            Pattern: <strong>${escapeHtml(c.signature || '(no pattern)')}</strong>
-            • ${c.issues.length} issue${c.issues.length>1?'s':''}
-          </div>
-          <ul style="margin:0;padding-left:18px;font-size:13px;">
-            ${c.issues.slice(0,5).map(i => `
-              <li>
-                <button type="button" class="btn sm" style="padding:3px 6px;margin-right:4px;"
-                        data-open-issue="${escapeAttr(i.id || '')}">
-                  ${escapeHtml(i.id || '')}
-                </button>
-                ${escapeHtml(i.title || '(no title)')}
-              </li>
-            `).join('')}
-            ${c.issues.length > 5 ? `<li class="muted">+ ${c.issues.length - 5} more…</li>` : ''}
-          </ul>
-        </div>
-      `).join('');
-
-      els.aiClusters.querySelectorAll('button[data-open-issue]').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const id = btn.getAttribute('data-open-issue');
-          if (id) openIssueModal(id);
-        });
-      });
-    }
-
-    // Triage queue
-    if (els.aiTriageList) {
-      const tri = computeTriageQueue(base);
-      els.aiTriageList.innerHTML = tri.length
-        ? tri.map(item => {
-            const i = item.issue;
-            const missing = [];
-            if (!i.priority) missing.push('priority');
-            if (!i.module || i.module === 'Unspecified') missing.push('module');
-            if (!i.type) missing.push('type');
-            const cats = item.suggestedCategories.slice(0,2).map(c => c.label).join(', ') || 'n/a';
-
-            return `
-              <li style="margin-bottom:6px;">
-                <strong>${escapeHtml(i.id || '(no ID)')}</strong> – ${escapeHtml(i.title || '(no title)')}<br>
-                <span class="muted">
-                  Missing: ${missing.join(', ') || '—'} ·
-                  Suggested priority: ${item.suggestedPriority} ·
-                  Suggested categories: ${escapeHtml(cats)}
-                </span>
-              </li>
-            `;
-          }).join('')
-        : '<li>No issues requiring triage found.</li>';
-    }
-
-    // Upcoming risky events (calendar + issues)
-    if (els.aiEventsList) {
-      const evResults = computeEventsRisk(rows || [], eventsData || []);
-      els.aiEventsList.innerHTML = evResults.length
-        ? evResults.map(r => `
-            <li style="margin-bottom:6px;">
-              <strong>${escapeHtml(r.event.title || '(no title)')}</strong>
-              <span class="muted">
-                • ${r.date.toISOString().slice(0,16).replace('T',' ')} • risk score sum: ${r.risk}
-              </span><br>
-              <span class="muted">
-                Modules: ${r.modules.length ? r.modules.map(m => escapeHtml(m)).join(', ') : 'not inferred'}
-                • Related issues: ${r.issues.length}
-              </span>
-            </li>
-          `).join('')
-        : '<li>No upcoming events with notable risk in the next 7 days.</li>';
-    }
-  }
-  const debounce = (fn, ms=250) => { let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; };
-  const mediaQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
-
-  const showSpinner = (v=true)=> {
-    if (!els.spinner) return;
-    els.spinner.style.display = v ? 'flex' : 'none';
-    if (els.loadingStatus) {
-      els.loadingStatus.textContent = v ? 'Loading…' : '';
-    }
-  };
-  const showToast = (msg, ms=3500) => {
-    if (!els.toast) return;
-    els.toast.textContent = msg;
-    els.toast.style.display = 'block';
-    setTimeout(()=>{ if (els.toast) els.toast.style.display='none'; }, ms);
-  };
-
-  function normalizeStatus(rawStatus) {
-    const s = (rawStatus || '').trim().toLowerCase();
-    if (!s) return 'Not Started Yet';
-    if (s.startsWith('resolved')) return 'Resolved';
-    if (s.startsWith('under')) return 'Under Development';
-    if (s.startsWith('rejected')) return 'Rejected';
-    if (s.startsWith('on hold')) return 'On Hold';
-    if (s.startsWith('not started')) return 'Not Started Yet';
-    if (s.startsWith('sent')) return 'Sent';
-    if (s.startsWith('on stage')) return 'On Stage';
-    return rawStatus || 'Not Started Yet';
-  }
-  function normalizePriority(rawPriority) {
-    const s = (rawPriority || '').trim().toLowerCase();
-    if (!s) return '';
-    if (s.startsWith('h')) return 'High';
-    if (s.startsWith('m')) return 'Medium';
-    if (s.startsWith('l')) return 'Low';
-    return rawPriority;
-  }
-
-  function normalizeRow(raw){
+  normalizeStatus(s){
+    const i=(s||'').trim().toLowerCase();
+    if(!i) return 'Not Started Yet';
+    if(i.startsWith('resolved')) return 'Resolved';
+    if(i.startsWith('under')) return 'Under Development';
+    if(i.startsWith('rejected')) return 'Rejected';
+    if(i.startsWith('on hold')) return 'On Hold';
+    if(i.startsWith('not started')) return 'Not Started Yet';
+    if(i.startsWith('sent')) return 'Sent';
+    if(i.startsWith('on stage')) return 'On Stage';
+    return s||'Not Started Yet';
+  },
+  normalizePriority(p){
+    const i=(p||'').trim().toLowerCase();
+    if(!i) return '';
+    if(i.startsWith('h')) return 'High';
+    if(i.startsWith('m')) return 'Medium';
+    if(i.startsWith('l')) return 'Low';
+    return p;
+  },
+  normalizeRow(raw){
     const lower={};
-    for(const k in raw){
-      if(!k) continue;
-      lower[k.toLowerCase().replace(/\s+/g,' ').trim()] = String(raw[k] ?? '').trim();
-    }
+    for(const k in raw){ if(!k) continue; lower[k.toLowerCase().replace(/\s+/g,' ').trim()]=String(raw[k]??'').trim(); }
     const pick=(...keys)=>{ for(const key of keys){ if(lower[key]) return lower[key]; } return ''; };
     return {
       id: pick('ticket id','id'),
@@ -1602,264 +671,343 @@ document.addEventListener("DOMContentLoaded", () => {
       title: pick('title'),
       desc: pick('description'),
       file: pick('file upload','link','url'),
-      priority: normalizePriority(pick('priority')),
-      status: normalizeStatus(pick('status') || 'Not Started Yet'),
+      priority: DataStore.normalizePriority(pick('priority')),
+      status: DataStore.normalizeStatus(pick('status') || 'Not Started Yet'),
       type: pick('category','type'),
       date: pick('timestamp','date','created at'),
       log: pick('log','logs','comment','notes')
     };
+  },
+  tokenize(issue){
+    const text = [issue.title,issue.desc,issue.log].filter(Boolean).join(' ').toLowerCase();
+    return text.replace(/[^a-z0-9]+/g,' ')
+      .split(/\s+/)
+      .filter(w=>w && w.length>2 && !STOPWORDS.has(w));
+  },
+  hydrate(csvText){
+    const parsed = Papa.parse(csvText,{header:true,skipEmptyLines:true}).data
+      .map(DataStore.normalizeRow)
+      .filter(r=>r.id && r.id.trim()!=="");
+    this.rows = parsed;
+    this.byId.clear(); this.byModule.clear(); this.byStatus.clear(); this.byPriority.clear();
+    this.computed.clear(); this.df.clear(); this.N = parsed.length;
+
+    parsed.forEach(r=>{
+      this.byId.set(r.id,r);
+      if(!this.byModule.has(r.module)) this.byModule.set(r.module,[]);
+      this.byModule.get(r.module).push(r);
+      if(!this.byStatus.has(r.status)) this.byStatus.set(r.status,[]);
+      this.byStatus.get(r.status).push(r);
+      if(!this.byPriority.has(r.priority)) this.byPriority.set(r.priority,[]);
+      this.byPriority.get(r.priority).push(r);
+
+      const toks = DataStore.tokenize(r);
+      const uniq = new Set(toks);
+      uniq.forEach(t=> this.df.set(t,(this.df.get(t)||0)+1));
+      this.computed.set(r.id,{ tokens:new Set(toks), tf:UndefaultCount(toks) });
+    });
+
+    const idf = new Map();
+    this.df.forEach((df,term)=> idf.set(term, Math.log((this.N+1)/(df+1))+1));
+
+    this.computed.forEach(meta=> meta.idf = idf);
+
+    // risk & suggestions
+    this.rows.forEach(r=>{
+      const risk = Risk.computeRisk(r);
+      const categories = Risk.suggestCategories(r);
+      const sPrio = Risk.suggestPriority(r, risk.total);
+      const reasons = Risk.explainRisk(r);
+      const meta = this.computed.get(r.id);
+      meta.risk = {...risk,reasons};
+      meta.suggestions = { priority:sPrio, categories };
+    });
   }
+};
 
-  function parseCsv(t){
-    if (typeof Papa === 'undefined') return [];
-    return Papa.parse(t,{header:true,skipEmptyLines:true})
-      .data
-      .map(normalizeRow)
-      .filter(r => r.id && r.id.trim() !== "");
+function UndefaultCount(arr){
+  const m=new Map();
+  arr.forEach(t=> m.set(t,(m.get(t)||0)+1));
+  return m;
+}
+
+/** Risk engine */
+const Risk = {
+  scoreFromBoosts(text,rules){
+    let s=0; for(const [kw,val] of rules){ if (text.includes(kw)) s+=val; } return s;
+  },
+  computeRisk(issue){
+    const txt = [issue.title,issue.desc,issue.log].filter(Boolean).join(' ').toLowerCase()+' ';
+    const base = CONFIG.RISK.priorityWeight[issue.priority||""] || 1;
+    const tech = base + this.scoreFromBoosts(txt, CONFIG.RISK.techBoosts);
+    const biz  = this.scoreFromBoosts(txt, CONFIG.RISK.bizBoosts);
+    const ops  = this.scoreFromBoosts(txt, CONFIG.RISK.opsBoosts);
+    let total = tech+biz+ops;
+    const st=(issue.status||'').toLowerCase();
+    for(const k in CONFIG.RISK.statusBoosts){ if(st.startsWith(k)) total+=CONFIG.RISK.statusBoosts[k]; }
+    return { technical:tech,business:biz,operational:ops,total };
+  },
+  suggestCategories(issue){
+    const text = [issue.title,issue.desc,issue.log].filter(Boolean).join(' ').toLowerCase();
+    const res=[];
+    Object.entries(CONFIG.LABEL_KEYWORDS).forEach(([label,kws])=>{
+      let hits=0; kws.forEach(k=>{ if(text.includes(k)) hits++; });
+      if(hits) res.push({label,score:hits});
+    });
+    res.sort((a,b)=>b.score-a.score);
+    return res;
+  },
+  suggestPriority(issue,totalRisk){
+    if (issue.priority) return issue.priority;
+    const s = totalRisk!=null? totalRisk : this.computeRisk(issue).total;
+    if (s>=CONFIG.RISK.highRisk) return 'High';
+    if (s>=6) return 'Medium';
+    return 'Low';
+  },
+  explainRisk(issue){
+    const txt = [issue.title,issue.desc,issue.log].filter(Boolean).join(' ').toLowerCase()+' ';
+    const picks=[];
+    const push=(kw)=>{ if(txt.includes(kw)) picks.push(kw); };
+    [...CONFIG.RISK.techBoosts,...CONFIG.RISK.bizBoosts,...CONFIG.RISK.opsBoosts].forEach(([kw])=>push(kw));
+    if ((issue.status||'').toLowerCase().startsWith('on stage')) picks.push('on stage');
+    if ((issue.status||'').toLowerCase().startsWith('under')) picks.push('under development');
+    return Array.from(new Set(picks)).slice(0,6);
   }
+};
 
-  function pill(text,cls){ return `<span class="pill ${cls}">${text||'-'}</span>`; }
-  const statusBadge = s => pill(s,`status-${(s||'').replace(/\s/g,'\\ ')}`);
-  const priorityBadge = p => pill(p,`priority-${p||''}`);
-
-  function applySystemThemeFromOS(){
-    if (!mediaQuery) return;
-    if (mediaQuery.matches) {
-      document.documentElement.removeAttribute('data-theme');
-    } else {
-      document.documentElement.setAttribute('data-theme','light');
-    }
-  }
-
-  function applyTheme(mode) {
-    localStorage.setItem('theme', mode);
-    if (mode === 'system') {
-      applySystemThemeFromOS();
-      return;
-    }
-    if (mode === 'dark') {
-      document.documentElement.removeAttribute('data-theme');
-    } else if (mode === 'light') {
-      document.documentElement.setAttribute('data-theme','light');
-    }
-  }
-
-  function initTheme() {
-    const saved = localStorage.getItem('theme') || 'system';
-    if (els.themeSelect) els.themeSelect.value = saved;
-    if (saved === 'system') {
-      applySystemThemeFromOS();
-    } else {
-      applyTheme(saved);
-    }
-    if (mediaQuery) {
-      mediaQuery.addEventListener('change', () => {
-        const current = localStorage.getItem('theme') || 'system';
-        if (current === 'system') applySystemThemeFromOS();
-      });
-    }
-  }
-
-  function saveFilters(){
-    const state = {
-      search: els.search ? (els.search.value || '') : '',
-      module: els.moduleFilter ? (els.moduleFilter.value || 'All') : 'All',
-      priority: els.priorityFilter ? (els.priorityFilter.value || 'All') : 'All',
-      status: els.statusFilter ? (els.statusFilter.value || 'All') : 'All',
-      start: els.startDateFilter ? (els.startDateFilter.value || '') : '',
-      end: els.endDateFilter ? (els.endDateFilter.value || '') : ''
+/** Command DSL parser */
+const DSL = {
+  parse(text){
+    const lower=(text||'').toLowerCase();
+    let w=' '+lower+' ';
+    const out={ module:null,status:null,priority:null,id:null,type:null,missing:null,riskOp:null,riskVal:null,lastDays:null,cluster:null,sort:null,words:[] };
+    const eat=(re,key,fn=v=>v)=>{
+      const m=w.match(re); if(m){ out[key]=fn(m[1].trim()); w=w.replace(m[0],' '); }
     };
-    try {
-      localStorage.setItem('incheckFilters', JSON.stringify(state));
-    } catch(e){}
-  }
-
-  function loadFilters(){
-    try {
-      const raw = localStorage.getItem('incheckFilters');
-      if (!raw) return;
-      const s = JSON.parse(raw);
-      if (els.search) els.search.value = s.search || '';
-
-      const setIfOptionExists = (select, value) => {
-        if (!select || !value) return;
-        const options = Array.from(select.options);
-        if (options.some(o => o.value === value)) {
-          select.value = value;
-        }
-      };
-
-      setIfOptionExists(els.moduleFilter, s.module);
-      setIfOptionExists(els.priorityFilter, s.priority);
-      setIfOptionExists(els.statusFilter, s.status);
-      if (els.startDateFilter) els.startDateFilter.value = s.start || '';
-      if (els.endDateFilter) els.endDateFilter.value = s.end || '';
-    } catch(e){
-      console.error('Failed to restore filters', e);
+    eat(/\bmodule:([^\s]+)/,'module');
+    eat(/\bstatus:([^\s]+)/,'status');
+    eat(/\bpriority:([^\s]+)/,'priority');
+    eat(/\bid:([^\s]+)/,'id');
+    eat(/\btype:([^\s]+)/,'type');
+    eat(/\bmissing:([^\s]+)/,'missing');
+    const rv=lower.match(/\brisk([><=]{1,2})(\d+)/);
+    if(rv){ out.riskOp=rv[1]; out.riskVal=+rv[2]; w=w.replace(rv[0],' '); }
+    eat(/\blast:(\d+)d/,'lastDays',n=>+n);
+    eat(/\bcluster:([^\s]+)/,'cluster');
+    eat(/\bsort:(risk|date|priority)/,'sort');
+    out.words = w.split(/\s+/).filter(Boolean).filter(t=>t.length>2 && !STOPWORDS.has(t));
+    return out;
+  },
+  matches(issue,meta,q){
+    if (q.module && !(issue.module||'').toLowerCase().includes(q.module)) return false;
+    if (q.priority){
+      const p=q.priority[0].toUpperCase();
+      if(['H','M','L'].includes(p)){ if((issue.priority||'')[0]!==p) return false; }
+      else if(!(issue.priority||'').toLowerCase().includes(q.priority)) return false;
     }
+    if (q.status){
+      const st=(issue.status||'').toLowerCase();
+      if(q.status==='open'){ if(st.startsWith('resolved')||st.startsWith('rejected')) return false; }
+      else if(q.status==='closed'){ if(!st.startsWith('resolved')&&!st.startsWith('rejected')) return false; }
+      else if(!st.includes(q.status)) return false;
+    }
+    if (q.id && !((issue.id||'').toLowerCase().includes(q.id))) return false;
+    if (q.type && !((issue.type||'').toLowerCase().includes(q.type))) return false;
+    if (q.missing){
+      const m=q.missing;
+      if(m==='priority' && issue.priority) return false;
+      if(m==='module' && issue.module && issue.module!=='Unspecified') return false;
+      if(m==='type' && issue.type) return false;
+    }
+    if (q.lastDays){
+      const after=U.daysAgo(q.lastDays);
+      if(!U.isBetween(issue.date,after,null)) return false;
+    }
+    if (q.cluster){
+      const t=q.cluster.toLowerCase();
+      if(!meta.tokens || !Array.from(meta.tokens).some(x=>x.includes(t))) return false;
+    }
+    if (q.riskOp){
+      const rv=meta.risk?.total||0;
+      const op=q.riskOp, b=q.riskVal;
+      let pass=false;
+      if(op==='>') pass=rv>b;
+      else if(op==='>=') pass=rv>=b;
+      else if(op==='<') pass=rv<b;
+      else if(op==='<=') pass=rv<=b;
+      else if(op==='='||op==='==') pass=rv===b;
+      if(!pass) return false;
+    }
+    if (q.words && q.words.length){
+      const txt=[issue.title,issue.desc,issue.log].filter(Boolean).join(' ').toLowerCase();
+      for(const w of q.words){ if(!txt.includes(w)) return false; }
+    }
+    return true;
   }
+};
 
-  function renderKpis(){
-    if (!els.kpis) return;
-    const total = filtered.length; const counts = {};
-    filtered.forEach(r=>{ counts[r.status]=(counts[r.status]||0)+1; });
-    els.kpis.innerHTML='';
+/** Calendar helpers */
+const CalendarLink = {
+  riskBadgeClass(score){
+    if(score>=CONFIG.RISK.critRisk) return 'risk-crit';
+    if(score>=CONFIG.RISK.highRisk) return 'risk-high';
+    if(score>=6) return 'risk-med';
+    return 'risk-low';
+  }
+};
+</script>
+<script>
+/** Elements cache */
+const E = {};
+function cacheEls(){
+  [
+    'issuesTable','issuesTbody','tbodySkeleton','rowCount','moduleFilter','priorityFilter','statusFilter','resetBtn',
+    'refreshNow','exportCsv','kpis','issueModal','modalBody','modalTitle','copyId','copyLink','modalClose',
+    'drawerBtn','sidebar','spinner','toast','searchInput','themeSelect','firstPage','prevPage','nextPage','lastPage',
+    'pageInfo','pageSize','createTicketBtn','startDateFilter','endDateFilter','issuesTab','calendarTab','insightsTab',
+    'issuesView','calendarView','insightsView','addEventBtn','eventModal','eventModalTitle','eventModalClose','eventForm',
+    'eventTitle','eventType','eventStart','eventEnd','eventDescription','eventSave','eventCancel','eventDelete',
+    'aiPatternsList','aiLabelsList','aiRisksList','aiClusters','aiScopeText','aiSignalsText','aiTrendsList',
+    'aiModulesTableBody','aiTriageList','aiEventsList','aiQueryInput','aiQueryRun','aiQueryResults','aiQueryApplyFilters',
+    'aiIncidentsList','aiEmergingStable','aiOpsCockpit','syncIssuesText','syncIssuesDot','syncEventsText','syncEventsDot',
+    'aiAnalyzing'
+  ].forEach(id=> E[id]=document.getElementById(id));
+}
+
+/** UI helpers */
+const UI = {
+  toast(msg,ms=3500){ if(!E.toast) return; E.toast.textContent=msg; E.toast.style.display='block'; setTimeout(()=>E.toast.style.display='none',ms); },
+  spinner(v=true){ if(E.spinner) E.spinner.style.display=v?'flex':'none'; },
+  setSync(which,ok,when){
+    const txt = which==='issues'?E.syncIssuesText:E.syncEventsText;
+    const dot = which==='issues'?E.syncIssuesDot:E.syncEventsDot;
+    if(!txt||!dot) return;
+    txt.textContent = `${which==='issues'?'Issues':'Events'}: ${when?U.fmtTS(when):'never'}`;
+    dot.className = 'dot '+(ok?'ok':'err');
+  },
+  skeleton(show){
+    if(!E.issuesTbody||!E.tbodySkeleton) return;
+    E.tbodySkeleton.style.display = show?'':'none';
+    E.issuesTbody.style.display = show?'none':'';
+  },
+  setAnalyzing(v){ if(E.aiAnalyzing) E.aiAnalyzing.style.display=v?'block':'none'; }
+};
+
+const GridState = { sortKey:null, sortAsc:true, page:1, pageSize:+(localStorage.getItem('pageSize')||20) };
+
+UI.Issues = {
+  renderFilters(){
+    const uniq=a=>[...new Set(a.filter(Boolean).map(v=>v.trim()))].sort((a,b)=>a.localeCompare(b));
+    if(E.moduleFilter) E.moduleFilter.innerHTML = ['All',...uniq(DataStore.rows.map(r=>r.module))].map(v=>`<option>${v}</option>`).join('');
+    if(E.priorityFilter) E.priorityFilter.innerHTML = ['All',...uniq(DataStore.rows.map(r=>r.priority))].map(v=>`<option>${v}</option>`).join('');
+    if(E.statusFilter) E.statusFilter.innerHTML = ['All',...uniq(DataStore.rows.map(r=>r.status))].map(v=>`<option>${v}</option>`).join('');
+  },
+  applyFilters(){
+    const s=Filters.state;
+    const qstr=(s.search||'').toLowerCase().trim();
+    const start = s.start ? new Date(s.start) : null;
+    const end   = s.end ? U.dateAddDays(s.end,1) : null;
+    return DataStore.rows.filter(r=>{
+      const hay=[r.id,r.module,r.title,r.desc,r.log].filter(Boolean).join(' ').toLowerCase();
+      let keepDate=true;
+      if(r.date){
+        const d=new Date(r.date);
+        if(!isNaN(d)){
+          if(start && d<start) keepDate=false;
+          if(end && d>=end) keepDate=false;
+        }
+      }else if(start||end){ keepDate=false; }
+      return (!qstr || hay.includes(qstr))
+        && (!s.module || s.module==='All' || r.module===s.module)
+        && (!s.priority || s.priority==='All' || r.priority===s.priority)
+        && (!s.status || s.status==='All' || r.status===s.status)
+        && keepDate;
+    });
+  },
+  renderKPIs(list){
+    if(!E.kpis) return;
+    const total=list.length, counts={};
+    list.forEach(r=> counts[r.status]=(counts[r.status]||0)+1 );
+    E.kpis.innerHTML='';
     const add=(label,val)=>{
-      const pct = total ? Math.round((val*100)/total) : 0;
+      const pct= total?Math.round((val*100)/total):0;
       const d=document.createElement('div');
-      d.className='card kpi';
-      d.setAttribute('role','button');
-      d.setAttribute('tabindex','0');
-      d.setAttribute('aria-label',`${label}: ${val} (${pct} percent)`);
+      d.className='card kpi'; d.tabIndex=0; d.setAttribute('role','button');
       d.innerHTML=`<div class="label">${label}</div><div class="value">${val}</div><div class="sub">${pct}%</div>`;
       d.onclick=()=>{
-        if(label === 'Total Issues'){
-          if (els.search) els.search.value = '';
-          if (els.startDateFilter) els.startDateFilter.value = '';
-          if (els.endDateFilter) els.endDateFilter.value = '';
-          if (els.moduleFilter) els.moduleFilter.value = 'All';
-          if (els.priorityFilter) els.priorityFilter.value = 'All';
-          if (els.statusFilter) els.statusFilter.value = 'All';
-        } else {
-          if (els.statusFilter) els.statusFilter.value = label;
+        if(label==='Total Issues'){
+          Filters.state={search:'',module:'All',priority:'All',status:'All',start:'',end:''};
+        }else{
+          Filters.state.status=label;
         }
-        saveFilters();
-        applyFilters();
+        Filters.save(); UI.refreshAll();
       };
-      d.addEventListener('keydown', e=>{
-        if(e.key==='Enter' || e.key===' '){
-          e.preventDefault();
-          d.click();
-        }
-      });
-      els.kpis.appendChild(d);
+      d.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); d.click(); } });
+      E.kpis.appendChild(d);
     };
-    add('Total Issues', total);
-    Object.entries(counts).forEach(([s,v])=> add(s, v));
-  }
-
-  function uniqueSorted(arr){ return [...new Set(arr.filter(Boolean).map(v=>v.trim()))].sort((a,b)=>a.localeCompare(b)); }
-  function renderFilters(){
-    if (els.moduleFilter) els.moduleFilter.innerHTML = ['All',...uniqueSorted(rows.map(r=>r.module))].map(v=>`<option>${v}</option>`).join('');
-    if (els.priorityFilter) els.priorityFilter.innerHTML = ['All',...uniqueSorted(rows.map(r=>r.priority))].map(v=>`<option>${v}</option>`).join('');
-    if (els.statusFilter) els.statusFilter.innerHTML = ['All',...uniqueSorted(rows.map(r=>r.status))].map(v=>`<option>${v}</option>`).join('');
-  }
-
-  function sortData(list){
-    if(!sortKey) return list;
-    const sorted=[...list].sort((a,b)=>{
+    add('Total Issues',total);
+    Object.entries(counts).forEach(([s,v])=>add(s,v));
+  },
+  renderTable(list){
+    if(!E.issuesTbody) return;
+    const {sortKey,sortAsc}=GridState;
+    const sorted = sortKey ? [...list].sort((a,b)=>{
       const va=a[sortKey]||"", vb=b[sortKey]||"";
       if(sortKey==='date'){
         const da=new Date(va), db=new Date(vb);
         if(isNaN(da)&&isNaN(db)) return 0;
         if(isNaN(da)) return 1;
         if(isNaN(db)) return -1;
-        return da - db;
+        return da-db;
       }
-      return String(va).localeCompare(String(vb), undefined, {numeric:true, sensitivity:'base'});
+      return String(va).localeCompare(String(vb),undefined,{numeric:true,sensitivity:'base'});
+    }) : list;
+    const rows = sortAsc?sorted:sorted.reverse();
+
+    const total=rows.length, size=GridState.pageSize, page=GridState.page;
+    const pages=Math.max(1,Math.ceil(total/size));
+    if(GridState.page>pages) GridState.page=pages;
+    const start=(GridState.page-1)*size;
+    const pageData=rows.slice(start,start+size);
+
+    if(E.rowCount) E.rowCount.textContent=`${total} row${total===1?'':'s'}`;
+    if(E.pageInfo) E.pageInfo.textContent=`Page ${GridState.page} / ${pages}`;
+    ['firstPage','prevPage','nextPage','lastPage'].forEach(id=>{
+      const btn=E[id]; if(!btn) return;
+      const atFirst=GridState.page<=1, atLast=GridState.page>=pages;
+      if(id==='firstPage'||id==='prevPage') btn.disabled=atFirst; else btn.disabled=atLast;
     });
-    return sortAsc ? sorted : sorted.reverse();
-  }
 
-  function paginate(list){
-    const start=(currentPage-1)*rowsPerPage;
-    return list.slice(start, start+rowsPerPage);
-  }
-  function updatePaginationControls(total){
-    if (!els.pageInfo || !els.firstPage) return;
-    const totalPages = Math.max(1, Math.ceil(total/rowsPerPage));
-    if (currentPage > totalPages) currentPage = totalPages;
-    els.pageInfo.textContent = `Page ${Math.min(currentPage,totalPages)} / ${totalPages}`;
-    const atFirst = currentPage<=1;
-    const atLast = currentPage>=totalPages;
-    els.firstPage.disabled = atFirst;
-    els.prevPage.disabled = atFirst;
-    els.nextPage.disabled = atLast;
-    els.lastPage.disabled = atLast;
-    [els.firstPage, els.prevPage, els.nextPage, els.lastPage].forEach(btn=>{
-      if(!btn) return;
-      if(btn.disabled) btn.setAttribute('disabled','true'); else btn.removeAttribute('disabled');
-    });
-  }
+    const badgeStatus=s=>`<span class="pill status-${(s||'').replace(/\s/g,'\\ ')}">${s||'-'}</span>`;
+    const badgePrio=p=>`<span class="pill priority-${p||''}">${p||'-'}</span>`;
 
-  function renderTable(){
-    if (!els.tableBody) return;
-    const list = sortData(filtered);
-    const total = list.length;
-    updatePaginationControls(total);
-    if (els.rowCount) els.rowCount.textContent = `${total} row${total===1?'':'s'}`;
-
-    if (!total){
-      els.tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--muted)">
-        No issues found. Try clearing filters or search.
-      </td></tr>`;
-      updateSortedHeaders();
-      return;
-    }
-
-    const pageData = paginate(list);
-    if (!pageData.length){
-      els.tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--muted)">No issues on this page.</td></tr>`;
-      updateSortedHeaders();
-      return;
-    }
-
-    els.tableBody.innerHTML = pageData.map(r=>`
-      <tr role="button" tabindex="0" aria-label="Open issue ${r.id||'without ID'}" data-id="${r.id}">
-        <td>${r.id||'-'}</td>
-        <td>${r.module||'-'}</td>
-        <td>${r.title||'-'}</td>
-        <td>${priorityBadge(r.priority||'-')}</td>
-        <td>${statusBadge(r.status||'-')}</td>
-        <td>${r.date||'-'}</td>
-        <td>${r.log||'-'}</td>
-        <td>${r.file?`<a href="${escapeAttr(r.file)}" target="_blank" rel="noopener noreferrer" aria-label="Open attachment link">🔗</a>`:'-'}</td>
+    E.issuesTbody.innerHTML = pageData.length? pageData.map(r=>`
+      <tr role="button" tabindex="0" aria-label="Open issue ${U.escapeHtml(r.id||'')}" data-id="${U.escapeAttr(r.id)}">
+        <td>${U.escapeHtml(r.id||'-')}</td>
+        <td>${U.escapeHtml(r.module||'-')}</td>
+        <td>${U.escapeHtml(r.title||'-')}</td>
+        <td>${badgePrio(r.priority||'-')}</td>
+        <td>${badgeStatus(r.status||'-')}</td>
+        <td>${U.escapeHtml(r.date||'-')}</td>
+        <td>${U.escapeHtml(r.log||'-')}</td>
+        <td>${r.file?`<a href="${U.escapeAttr(r.file)}" target="_blank" rel="noopener noreferrer">🔗</a>`:'-'}</td>
       </tr>
-    `).join('');
+    `).join('') : `<tr><td colspan="8" style="text-align:center;color:var(--muted)">No issues found. Try clearing filters or search.</td></tr>`;
 
-    els.tableBody.querySelectorAll('tr[data-id]').forEach(tr=>{
-      tr.addEventListener('keydown', e=>{
-        if(e.key==='Enter' || e.key===' '){
-          e.preventDefault();
-          openIssueModal(tr.getAttribute('data-id'));
-        }
-      });
+    E.issuesTbody.querySelectorAll('tr[data-id]').forEach(tr=>{
+      tr.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); UI.Modals.openIssue(tr.getAttribute('data-id')); }});
+      tr.addEventListener('click',e=>{ if(!e.target.closest('a')) UI.Modals.openIssue(tr.getAttribute('data-id')); });
     });
 
-    updateSortedHeaders();
-  }
-
-  function updateSortedHeaders(){
-    qAll('#issuesTable thead th').forEach(th => {
-      th.classList.remove('sorted-asc','sorted-desc');
-      th.setAttribute('aria-sort','none');
-    });
-    if(sortKey){
-      const th = q(`#issuesTable thead th[data-key="${sortKey}"]`);
-      if(th){
-        th.classList.add(sortAsc?'sorted-asc':'sorted-desc');
-        th.setAttribute('aria-sort', sortAsc ? 'ascending' : 'descending');
-      }
+    U.qAll('#issuesTable thead th').forEach(th=>{ th.classList.remove('sorted-asc','sorted-desc'); th.setAttribute('aria-sort','none'); });
+    if(GridState.sortKey){
+      const th=U.q(`#issuesTable thead th[data-key="${GridState.sortKey}"]`);
+      if(th){ th.classList.add(GridState.sortAsc?'sorted-asc':'sorted-desc'); th.setAttribute('aria-sort',GridState.sortAsc?'ascending':'descending'); }
     }
-  }
-
-  function groupCount(list,key){
-    return list.reduce((acc, r) => {
-      const k=r[key]||'Unspecified';
-      acc[k]=(acc[k]||0)+1;
-      return acc;
-    },{});
-  }
-  function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
-
-  function drawCharts(){
-    if (typeof Chart === 'undefined') return;
-    const priorityColors = {
-      High: cssVar('--priority-high'),
-      Medium: cssVar('--priority-medium'),
-      Low: cssVar('--priority-low')
-    };
-
+  },
+  renderCharts(list){
+    if(typeof Chart==='undefined') return;
+    const cssVar=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
     const statusColors = {
       "Resolved": cssVar('--status-resolved'),
       "Under Development": cssVar('--status-underdev'),
@@ -1869,651 +1017,798 @@ document.addEventListener("DOMContentLoaded", () => {
       "Sent": cssVar('--status-sent'),
       "On Stage": cssVar('--status-onstage')
     };
-
-    const make = (id, type, data, colorMap={}) => {
-      const canvas = q('#'+id);
-      if (!canvas) return;
-      if(charts[id]) charts[id].destroy();
-      const labels = Object.keys(data);
-      const values = Object.values(data);
-      charts[id] = new Chart(canvas, {
+    const priorityColors={ High:cssVar('--priority-high'),Medium:cssVar('--priority-medium'),Low:cssVar('--priority-low') };
+    const group=(arr,k)=>arr.reduce((m,r)=>{const key=r[k]||'Unspecified';m[key]=(m[key]||0)+1;return m;},{});
+    const make=(id,type,data,colors={})=>{
+      const el=U.q('#'+id); if(!el) return;
+      UI._charts=UI._charts||{};
+      if(UI._charts[id]) UI._charts[id].destroy();
+      const labels=Object.keys(data), values=Object.values(data);
+      UI._charts[id]=new Chart(el,{
         type,
-        data: {
-          labels,
-          datasets: [{
-            data: values,
-            backgroundColor: labels.map(k => colorMap[k] || cssVar('--accent'))
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { display: type !== 'bar' },
-            tooltip: {
-              callbacks: {
-                label: ctx => {
-                  const total = values.reduce((a,b)=>a+b,0) || 1;
-                  const pct = Math.round((ctx.raw*100)/total);
-                  return `${ctx.raw} (${pct}%)`;
-                }
-              }
-            }
-          },
-          scales: type === 'bar' ? {
-            x: { grid: { color: 'rgba(128,128,128,.1)' } },
-            y: { beginAtZero: true, grid: { color: 'rgba(128,128,128,.12)' } }
-          } : {}
+        data:{labels,datasets:[{data:values,backgroundColor:labels.map(l=>colors[l]||cssVar('--accent'))}]},
+        options:{
+          responsive:true,maintainAspectRatio:false,
+          plugins:{legend:{display:type!=='bar'},tooltip:{callbacks:{label:ctx=>{
+            const total=values.reduce((a,b)=>a+b,0)||1;
+            return `${ctx.raw} (${Math.round((ctx.raw*100)/total)}%)`;
+          }}}},
+          scales:type==='bar'?{x:{grid:{color:'rgba(128,128,128,.1)'}},y:{beginAtZero:true,grid:{color:'rgba(128,128,128,.12)'}}}:{}
         }
       });
     };
-
-    make('byModule', 'bar', groupCount(filtered,'module'));
-    make('byPriority', 'doughnut', groupCount(filtered,'priority'), priorityColors);
-    make('byStatus', 'bar', groupCount(filtered,'status'), statusColors);
-    make('byType', 'bar', groupCount(filtered,'type'));
+    make('byModule','bar',group(list,'module'));
+    make('byPriority','doughnut',group(list,'priority'),priorityColors);
+    make('byStatus','bar',group(list,'status'),statusColors);
+    make('byType','bar',group(list,'type'));
   }
+};
 
-  function applyFilters(){
-    const qstr = els.search ? (els.search.value||'').toLowerCase().trim() : '';
-    const m = els.moduleFilter ? els.moduleFilter.value : 'All';
-    const p = els.priorityFilter ? els.priorityFilter.value : 'All';
-    const s = els.statusFilter ? els.statusFilter.value : 'All';
-    const start = els.startDateFilter ? els.startDateFilter.value : '';
-    const end = els.endDateFilter ? els.endDateFilter.value : '';
-    const startDate = start ? new Date(start) : null;
-    const endDate = end ? (()=>{ const d=new Date(end); d.setDate(d.getDate()+1); return d; })() : null;
-
-    filtered = rows.filter(r=>{
-      const hay = [r.id,r.module,r.title,r.desc,r.log].filter(Boolean).join(' ').toLowerCase();
-      let keepDate = true;
-      if(r.date){
-        const d = new Date(r.date);
-        if(!isNaN(d)){
-          if(startDate && d < startDate) keepDate = false;
-          if(endDate && d >= endDate) keepDate = false;
-        }
-      } else if(startDate || endDate){ keepDate = false; }
-      return (!qstr || hay.includes(qstr))
-        && (!m || m==='All' || r.module===m)
-        && (!p || p==='All' || r.priority===p)
-        && (!s || s==='All' || r.status===s)
-        && keepDate;
-    });
-
-    currentPage = 1;
-    renderKpis();
-    renderTable();
-    drawCharts();
-    renderAiInsights();
-  }
-
-  async function loadSheet(){
-    try {
-      showSpinner(true);
-      const res = await fetch(SHEET_URL, { cache:'no-store' });
-      if(!res.ok) throw new Error(`Failed to fetch (${res.status})`);
-      const text = await res.text();
-      rows = parseCsv(text);
-      filtered = [...rows];
-      renderFilters();
-      loadFilters();
-      applyFilters();
-    } catch(e) {
-      showToast('Error loading data: '+e.message);
-      if (els.tableBody) {
-        els.tableBody.innerHTML = `
-          <tr>
-            <td colspan="8" style="color:#ffb4b4;text-align:center">
-              Error loading data.
-              <button type="button" id="retryLoad" class="btn sm" style="margin-left:8px">Retry</button>
-            </td>
-          </tr>`;
-        const retryBtn = q('#retryLoad');
-        if (retryBtn) {
-          retryBtn.addEventListener('click', () => {
-            loadSheet();
-          });
-        }
-      }
-    } finally {
-      showSpinner(false);
-    }
-  }
-
-  function trapFocus(container, e){
-    const focusables = container.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
-    if(!focusables.length) return;
-    const first = focusables[0], last = focusables[focusables.length-1];
-    if(e.shiftKey && document.activeElement === first){ last.focus(); e.preventDefault(); }
-    else if(!e.shiftKey && document.activeElement === last){ first.focus(); e.preventDefault(); }
-  }
-
-  function openIssueModal(id){
-    const r = rows.find(x=>x.id===id);
-    if(!r || !els.modal) return;
-    selectedIssue = r;
-    lastFocusedBeforeIssueModal = document.activeElement;
-
-    els.modalTitle.textContent = r.title || r.id || 'Issue';
-    els.modalBody.innerHTML = `
-      <p><b>ID:</b> ${escapeHtml(r.id || '-')}</p>
-      <p><b>Module:</b> ${escapeHtml(r.module || '-')}</p>
-      <p><b>Priority:</b> ${escapeHtml(r.priority || '-')}</p>
-      <p><b>Status:</b> ${escapeHtml(r.status || '-')}</p>
-      <p><b>Date:</b> ${escapeHtml(r.date || '-')}</p>
-      <p><b>Description:</b><br>${escapeHtml(r.desc || '-')}</p>
-      <p><b>Log:</b><br>${escapeHtml(r.log || '-')}</p>
-      ${r.file ? `<p><b>Attachment:</b> <a href="${escapeAttr(r.file)}" target="_blank" rel="noopener noreferrer">Open link</a></p>` : ''}
+/** Modals */
+UI.Modals = {
+  selectedIssue:null,lastFocus:null,lastEventFocus:null,
+  openIssue(id){
+    const r=DataStore.byId.get(id); if(!r||!E.issueModal) return;
+    this.selectedIssue=r; this.lastFocus=document.activeElement;
+    const meta=DataStore.computed.get(r.id)||{};
+    const risk=meta.risk||{technical:0,business:0,operational:0,total:0,reasons:[]};
+    const reasons=risk.reasons?.length?('Reasons: '+risk.reasons.join(', ')):'—';
+    E.modalTitle.textContent=r.title||r.id||'Issue';
+    E.modalBody.innerHTML=`
+      <p><b>ID:</b> ${U.escapeHtml(r.id||'-')}</p>
+      <p><b>Module:</b> ${U.escapeHtml(r.module||'-')} &nbsp;&nbsp; <b>Priority:</b> ${U.escapeHtml(r.priority||'-')} &nbsp;&nbsp; <b>Status:</b> ${U.escapeHtml(r.status||'-')}</p>
+      <p><b>Date:</b> ${U.escapeHtml(r.date||'-')}</p>
+      <p><b>Risk:</b> ${risk.total} (Tech ${risk.technical}, Biz ${risk.business}, Ops ${risk.operational})<br><span class="muted">${U.escapeHtml(reasons)}</span></p>
+      <p><b>Description:</b><br>${U.escapeHtml(r.desc||'-')}</p>
+      <p><b>Log:</b><br>${U.escapeHtml(r.log||'-')}</p>
+      ${r.file?`<p><b>Attachment:</b> <a href="${U.escapeAttr(r.file)}" target="_blank" rel="noopener noreferrer">Open link</a></p>`:''}
+      <div style="margin-top:10px" class="muted">
+        Suggested: priority <b>${U.escapeHtml((meta.suggestions?.priority)||'-')}</b>;
+        categories: ${(meta.suggestions?.categories||[]).slice(0,3).map(c=>U.escapeHtml(c.label)).join(', ')||'—'}.
+      </div>
     `;
-    els.modal.style.display='flex';
-    if (els.copyId) els.copyId.focus();
+    E.issueModal.style.display='flex';
+    E.copyId?.focus();
+  },
+  closeIssue(){
+    if(!E.issueModal) return;
+    E.issueModal.style.display='none';
+    this.selectedIssue=null;
+    if(this.lastFocus?.focus) this.lastFocus.focus();
+  },
+  openEvent(ev){
+    this.lastEventFocus=document.activeElement;
+    const isEdit=!!(ev && ev.id);
+    if (E.eventForm) E.eventForm.dataset.id = isEdit ? ev.id : '';
+    if(E.eventModalTitle) E.eventModalTitle.textContent=isEdit?'Edit Event':'Add Event';
+    if(E.eventDelete) E.eventDelete.style.display=isEdit?'inline-flex':'none';
+    if(E.eventTitle) E.eventTitle.value=ev.title||'';
+    if(E.eventType) E.eventType.value=ev.type||'Deployment';
+    if(E.eventStart) E.eventStart.value=ev.start?toLocalInputValue(ev.start):'';
+    if(E.eventEnd) E.eventEnd.value=ev.end?toLocalInputValue(ev.end):'';
+    if(E.eventDescription) E.eventDescription.value=ev.description||'';
+    if(E.eventModal){ E.eventModal.style.display='flex'; E.eventTitle?.focus(); }
+  },
+  closeEvent(){
+    if(!E.eventModal) return;
+    E.eventModal.style.display='none';
+    if(E.eventForm) E.eventForm.dataset.id='';
+    if(this.lastEventFocus?.focus) this.lastEventFocus.focus();
   }
-  function closeIssueModal(){
-    if (!els.modal) return;
-    els.modal.style.display='none';
-    selectedIssue=null;
-    if(lastFocusedBeforeIssueModal && typeof lastFocusedBeforeIssueModal.focus==='function'){
-      lastFocusedBeforeIssueModal.focus();
-    }
-  }
+};
 
-  function loadEventsFromStorage(){
-    try {
-      return JSON.parse(localStorage.getItem('incheckEvents') || '[]');
-    } catch(e) {
-      return [];
-    }
-  }
-  function saveEventsToStorage(){
-    try {
-      localStorage.setItem('incheckEvents', JSON.stringify(eventsData));
-    } catch(e) {}
-  }
-
-  async function fetchEventsFromSheet() {
-    try {
-      showSpinner(true);
-      const res = await fetch(CALENDAR_API_URL, { cache: 'no-store' });
-      if (!res.ok) throw new Error('Failed to load events');
-      const data = await res.json();
-      eventsData = data.events || [];
-      saveEventsToStorage();
-      showToast('Calendar synced');
-    } catch (e) {
-      console.error(e);
-      eventsData = loadEventsFromStorage();
-      if (eventsData.length) {
-        showToast('Using cached calendar events (API error).');
-      } else {
-        showToast('Unable to load calendar events.');
-      }
-    } finally {
-      showSpinner(false);
-      renderEventsOnCalendar();
-      renderAiInsights();
-    }
-  }
-
-  async function saveEventToSheet(event) {
-    try {
-      const res = await fetch(CALENDAR_API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "save", event }),
-      });
-
-      let data;
-      try {
-        data = await res.json();
-      } catch (jsonErr) {
-        console.error("Invalid JSON returned:", jsonErr);
-        const text = await res.text();
-        console.error(text);
-        showToast("Script returned invalid JSON");
-        return;
-      }
-
-      if (data.ok) {
-        showToast("Event saved");
-        return data.event;
-      } else {
-        console.error("Backend error:", data);
-        showToast("Backend error saving event");
-        return null;
-      }
-    } catch (err) {
-      console.error("Network error:", err);
-      showToast("Network error saving event");
-    }
-  }
-
-  async function deleteEventFromSheet(id) {
-    showSpinner(true);
-    try {
-      const res = await fetch(CALENDAR_API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'delete', event: { id } })
-      });
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'Delete failed');
-      showToast('Event deleted');
-    } catch (err) {
-      console.error(err);
-      showToast('Error deleting event: ' + err.message);
-      throw err;
-    } finally {
-      showSpinner(false);
-    }
-  }
-
-  function renderEventsOnCalendar(){
-    if (!calendar) return;
-    calendar.removeAllEvents();
-    eventsData.forEach(ev => {
-      const type = (ev.type || 'Other');
-      const cls = 'event-type-' + type.toLowerCase().replace(/\s+/g,'-');
-      calendar.addEvent({
-        id: ev.id,
-        title: ev.title,
-        start: ev.start,
-        end: ev.end || null,
-        extendedProps: { type: type, description: ev.description },
-        classNames: [cls]
-      });
+/** Analytics (AI tab) */
+const Analytics = {
+  _debounce:null,
+  refresh(list){
+    clearTimeout(this._debounce);
+    UI.setAnalyzing(true);
+    this._debounce=setTimeout(()=>this._render(list),80);
+  },
+  _render(list){
+    // Top terms recent
+    const recentCut=CONFIG.TREND_DAYS_RECENT;
+    const recent=list.filter(r=>U.isBetween(r.date,U.daysAgo(recentCut),null));
+    const termCounts=new Map();
+    recent.forEach(r=>{
+      const t=DataStore.computed.get(r.id)?.tokens||new Set();
+      t.forEach(w=>termCounts.set(w,(termCounts.get(w)||0)+1));
     });
-  }
+    const topTerms=Array.from(termCounts.entries()).filter(([,c])=>c>=2).sort((a,b)=>b[1]-a[1]).slice(0,10);
+    E.aiPatternsList.innerHTML = topTerms.length? topTerms.map(([t,c])=>`<li><strong>${U.escapeHtml(t)}</strong> – ${c}</li>`).join('') : '<li>No strong repeated terms recently.</li>';
 
-  function initCalendar(){
-    const calendarEl = document.getElementById('calendar');
-    if(!calendarEl || typeof FullCalendar === 'undefined') {
-      showToast('Calendar library failed to load');
-      return;
-    }
-    calendar = new FullCalendar.Calendar(calendarEl, {
-      initialView: 'dayGridMonth',
-      selectable: true,
-      editable: false,
-      height: 'auto',
-      headerToolbar: {
-        left: 'title',
-        center: '',
-        right: 'dayGridMonth,timeGridWeek,listWeek today prev,next'
-      },
-      select: info => {
-        openEventModal({ start: info.start, end: info.end });
-      },
-      eventClick: info => {
-        const ev = eventsData.find(e => e.id === info.event.id);
-        if(ev) {
-          openEventModal(ev);
-        } else {
-          openEventModal({
-            id: info.event.id,
-            title: info.event.title,
-            type: info.event.extendedProps.type || 'Other',
-            start: info.event.start,
-            end: info.event.end,
-            description: info.event.extendedProps.description || ''
-          });
-        }
-      },
-      eventDidMount: info => {
-        if(info.event.extendedProps && info.event.extendedProps.description) {
-          info.el.setAttribute('title', info.event.extendedProps.description);
-        }
-      }
+    // Suggested categories frequency
+    const catCount=new Map();
+    list.forEach(r=>{
+      const cats=DataStore.computed.get(r.id)?.suggestions?.categories||[];
+      cats.forEach(c=>catCount.set(c.label,(catCount.get(c.label)||0)+1));
     });
-    renderEventsOnCalendar();
-    calendar.render();
-  }
-  function ensureCalendar(){
-    if (calendarInitialized) return;
-    calendarInitialized = true;
-    initCalendar();
-  }
+    const topCats=Array.from(catCount.entries()).sort((a,b)=>b[1]-a[1]).slice(0,8);
+    E.aiLabelsList.innerHTML = topCats.length? topCats.map(([l,n])=>`<li><strong>${U.escapeHtml(l)}</strong> – ${n}</li>`).join('') : '<li>No clear category suggestions yet.</li>';
 
-  function toLocalInputValue(date){
-    const d = (date instanceof Date) ? date : new Date(date);
-    if (isNaN(d)) return '';
-    const pad=n=>String(n).padStart(2,'0');
-    const year=d.getFullYear();
-    const month=pad(d.getMonth()+1);
-    const day=pad(d.getDate());
-    const hrs=pad(d.getHours());
-    const mins=pad(d.getMinutes());
-    return `${year}-${month}-${day}T${hrs}:${mins}`;
-  }
+    // Scope & signals
+    E.aiScopeText.textContent=`Analyzing ${list.length} issues (${recent.length} recent, ~last ${recentCut} days).`;
+    const signals=['timeout','payments','billing','login','auth','error','crash'].filter(t=>termCounts.has(t));
+    E.aiSignalsText.textContent=signals.length?`Recent mentions: ${signals.join(', ')}.`:'No strong recurring signals.';
 
-  function openEventModal(data){
-    if (!els.eventModal) return;
-    lastFocusedBeforeEventModal = document.activeElement;
-
-    const isEdit = !!(data && data.id);
-    editingEventId = isEdit ? data.id : null;
-    if (els.eventModalTitle) els.eventModalTitle.textContent = isEdit ? 'Edit Event' : 'Add Event';
-    if (els.eventDelete) els.eventDelete.style.display = isEdit ? 'inline-flex' : 'none';
-
-    if (els.eventTitle) els.eventTitle.value = data && data.title ? data.title : '';
-    if (els.eventType) els.eventType.value = data && data.type ? data.type : 'Deployment';
-    if (els.eventStart) els.eventStart.value = data && data.start ? toLocalInputValue(data.start) : '';
-    if (els.eventEnd) els.eventEnd.value = data && data.end ? toLocalInputValue(data.end) : '';
-    if (els.eventDescription) els.eventDescription.value = data && data.description ? data.description : '';
-
-    els.eventModal.style.display = 'flex';
-    if (els.eventTitle) els.eventTitle.focus();
-  }
-
-  function closeEventModal(){
-    if (!els.eventModal) return;
-    els.eventModal.style.display = 'none';
-    editingEventId = null;
-    if(lastFocusedBeforeEventModal && typeof lastFocusedBeforeEventModal.focus === 'function'){
-      lastFocusedBeforeEventModal.focus();
-    }
-  }
-
-  async function handleEventFormSubmit(e){
-    e.preventDefault();
-    const title = els.eventTitle ? els.eventTitle.value.trim() : '';
-    const type = els.eventType ? (els.eventType.value || 'Deployment') : 'Deployment';
-    const start = els.eventStart ? els.eventStart.value : '';
-    const end = els.eventEnd ? (els.eventEnd.value || null) : null;
-    const description = els.eventDescription ? els.eventDescription.value.trim() : '';
-
-    if(!title){
-      showToast('Title is required for events');
-      return;
-    }
-    if(!start){
-      showToast('Start date/time is required');
-      return;
-    }
-
-    let eventObj = {
-      id: editingEventId || '',
-      title,
-      type,
-      start,
-      end,
-      description
+    // Trends
+    const oldStart=U.daysAgo(CONFIG.TREND_DAYS_WINDOW), mid=U.daysAgo(CONFIG.TREND_DAYS_RECENT);
+    const oldCounts=new Map(), newCounts=new Map();
+    const inHalf=r=>{
+      const d=new Date(r.date); if(isNaN(d)) return null;
+      if(d<mid && d>=oldStart) return 'old';
+      if(d>=mid) return 'new';
+      return null;
     };
+    list.forEach(r=>{
+      const half=inHalf(r); if(!half) return;
+      const toks=DataStore.computed.get(r.id)?.tokens||new Set();
+      const tgt=half==='old'?oldCounts:newCounts;
+      new Set(toks).forEach(t=>tgt.set(t,(tgt.get(t)||0)+1));
+    });
+    const trendTerms=new Set([...oldCounts.keys(),...newCounts.keys()]);
+    const trend=[];
+    trendTerms.forEach(t=>{
+      const a=oldCounts.get(t)||0, b=newCounts.get(t)||0;
+      const d=b-a;
+      const ratio=a===0?(b>=2?Infinity:0):b/a;
+      if((b>=2 && ratio>=2) || d>=2) trend.push({t,old:a,new:b,delta:d,ratio});
+    });
+    trend.sort((x,y)=> (y.ratio===Infinity)-(x.ratio===Infinity) || y.delta-x.delta || y.new-x.new);
+    E.aiTrendsList.innerHTML = trend.length? trend.slice(0,8).map(o=>
+      `<li><strong>${U.escapeHtml(o.t)}</strong> – ${o.new} vs ${o.old} <span class="muted">(Δ ${o.delta>=0?`+${o.delta}`:o.delta})</span></li>`
+    ).join('') : '<li>No strong increases.</li>';
 
-    try {
-      const saved = await saveEventToSheet(eventObj);
-      if (!saved) return;
-      const idx = eventsData.findIndex(ev => ev.id === saved.id);
-      if (idx === -1) {
-        eventsData.push(saved);
-      } else {
-        eventsData[idx] = saved;
-      }
-      saveEventsToStorage();
-      renderEventsOnCalendar();
-      renderAiInsights();
-      closeEventModal();
-    } catch (err) {
-      console.error(err);
-    }
-  }
+    // Incidents
+    const incidentWords=['incident','outage','p0','p1','major','sla'];
+    const incidents=list.filter(r=>{
+      const txt=[r.title,r.desc,r.log].filter(Boolean).join(' ').toLowerCase();
+      return incidentWords.some(w=>txt.includes(w));
+    }).slice(0,10);
+    E.aiIncidentsList.innerHTML = incidents.length? incidents.map(r=>`
+      <li><button class="btn sm" data-open="${U.escapeAttr(r.id)}">${U.escapeHtml(r.id)}</button> ${U.escapeHtml(r.title||'')}</li>
+    `).join(''):'<li>No incident-like issues detected.</li>';
 
-  async function handleDeleteEvent(){
-    if(!editingEventId){
-      closeEventModal();
-      return;
-    }
-    try {
-      await deleteEventFromSheet(editingEventId);
-      const idx = eventsData.findIndex(ev => ev.id === editingEventId);
-      if(idx !== -1){
-        eventsData.splice(idx,1);
-        saveEventsToStorage();
-        renderEventsOnCalendar();
-        renderAiInsights();
-      }
-    } catch (err) {
-      console.error(err);
-    }
-    closeEventModal();
-  }
+    // Emerging vs stable
+    const emerg=trend.slice(0,5).map(t=>t.t);
+    const stable=topTerms.filter(([t])=>!emerg.includes(t)).slice(0,5).map(([t])=>t);
+    E.aiEmergingStable.innerHTML=`
+      <li><strong>Emerging:</strong> ${emerg.length?emerg.join(', '):'—'}</li>
+      <li><strong>Stable:</strong> ${stable.length?stable.join(', '):'—'}</li>
+    `;
 
-  function exportFilteredCsv(){
-    if (!filtered.length){
-      showToast('Nothing to export (no rows).');
-      return;
-    }
-    const headers = ['ID','Module','Title','Priority','Status','Date','Log','Link','Description'];
-    const lines = [headers.join(',')];
-    filtered.forEach(r=>{
-      const row = [
-        r.id, r.module, r.title, r.priority, r.status,
-        r.date, r.log, r.file, r.desc
-      ].map(v=>{
-        const s = String(v ?? '').replace(/"/g,'""');
-        return `"${s}"`;
+    // Ops cockpit
+    const misaligned=list.filter(r=>{
+      const meta=DataStore.computed.get(r.id);
+      if(!meta) return false;
+      const gap=prioGap(meta.suggestions?.priority, r.priority);
+      return gap>=CONFIG.RISK.misalignedDelta;
+    });
+    const missingPriority=list.filter(r=>!r.priority);
+    const missingModule=list.filter(r=>!r.module || r.module==='Unspecified');
+    const staleHigh=list.filter(r=>{
+      const meta=DataStore.computed.get(r.id); if(!meta) return false;
+      const risk=meta.risk?.total||0;
+      const old=U.daysAgo(CONFIG.RISK.staleDays);
+      const st=(r.status||'').toLowerCase();
+      return risk>=CONFIG.RISK.highRisk && U.isBetween(r.date,null,old) && !(st.startsWith('resolved')||st.startsWith('rejected'));
+    });
+    E.aiOpsCockpit.innerHTML=`
+      <li>Untagged issues (missing category/type): ${list.filter(r=>!r.type).length}</li>
+      <li>Missing priority: ${missingPriority.length}</li>
+      <li>Missing module: ${missingModule.length}</li>
+      <li>Misaligned priority: ${misaligned.length}</li>
+      <li>Stale high-risk (&gt;=${CONFIG.RISK.highRisk}) &gt; ${CONFIG.RISK.staleDays}d: ${staleHigh.length}</li>
+    `;
+
+    // Module insights
+    const modules=(()=>{
+      const map=new Map();
+      list.forEach(r=>{
+        let m=map.get(r.module);
+        if(!m){ m={module:r.module,total:0,open:0,high:0,risk:0,tokens:new Map()}; map.set(r.module,m); }
+        m.total++;
+        const st=(r.status||'').toLowerCase();
+        if(!st.startsWith('resolved')&&!st.startsWith('rejected')){
+          m.open++; if(r.priority==='High') m.high++;
+        }
+        const rs=DataStore.computed.get(r.id)?.risk?.total||0; m.risk+=rs;
+        (DataStore.computed.get(r.id)?.tokens||new Set()).forEach(t=>m.tokens.set(t,(m.tokens.get(t)||0)+1));
       });
-      lines.push(row.join(','));
-    });
-    const csvBlob = new Blob([lines.join('\r\n')], {type:'text/csv;charset=utf-8;'});
-    const url = URL.createObjectURL(csvBlob);
-    const a = document.createElement('a');
-    const ts = new Date().toISOString().slice(0,10);
-    a.href = url;
-    a.download = `incheck_issues_${ts}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    showToast('Exported CSV of current filtered issues');
-  }
+      return Array.from(map.values()).map(m=>{
+        const tt=m.tokens.size?Array.from(m.tokens.entries()).sort((a,b)=>b[1]-a[1])[0][0]:'';
+        return {module:m.module,open:m.open,high:m.high,risk:m.risk,topTerm:tt};
+      }).sort((a,b)=>b.risk-a.risk||b.open-a.open).slice(0,8);
+    })();
+    E.aiModulesTableBody.innerHTML = modules.length? modules.map(m=>`
+      <tr><td>${U.escapeHtml(m.module)}</td><td>${m.open}</td><td>${m.high}</td><td>${m.risk}</td><td>${U.escapeHtml(m.topTerm||'-')}</td></tr>
+    `).join(''):'<tr><td colspan="5" style="text-align:center;color:var(--muted)">No modules.</td></tr>';
 
-  if (els.createTicket) {
-    els.createTicket.addEventListener('click', () => {
-      window.open("https://forms.gle/PPnEP1AQneoBT79s5", "_blank", "noopener,noreferrer");
-    });
-  }
+    // Top risks
+    const topRisks=recent.map(r=>({r,score:DataStore.computed.get(r.id)?.risk?.total||0}))
+      .sort((a,b)=>b.score-a.score).slice(0,5).filter(x=>x.score>2);
+    E.aiRisksList.innerHTML = topRisks.length? topRisks.map(({r,score})=>`
+      <li style="margin-bottom:4px;"><strong>[${U.escapeHtml(r.priority||'-')}] ${U.escapeHtml(r.id||'')}</strong> – ${U.escapeHtml(r.title||'')}
+      <br><span class="muted">Risk ${score}, status ${U.escapeHtml(r.status||'-')}</span></li>
+    `).join(''):'<li>No high-risk recent issues.</li>';
 
-  if (els.table) {
-    els.table.addEventListener('click', (ev)=>{
-      if (ev.target.closest('a')) return;
-      const tr = ev.target.closest('tr[data-id]');
-      if(tr){ openIssueModal(tr.getAttribute('data-id')); }
-    });
-  }
+    // Clusters
+    const clusters=buildClustersWeighted(list);
+    E.aiClusters.innerHTML = clusters.length? clusters.map(c=>`
+      <div class="card" style="padding:10px;">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">
+          Pattern: <strong>${U.escapeHtml(c.signature||'(no pattern)')}</strong> • ${c.issues.length} issues
+        </div>
+        <ul style="margin:0;padding-left:18px;font-size:13px;">
+          ${c.issues.slice(0,5).map(i=>`
+            <li><button class="btn sm" style="padding:3px 6px;margin-right:4px;" data-open="${U.escapeAttr(i.id)}">${U.escapeHtml(i.id)}</button> ${U.escapeHtml(i.title||'')}</li>
+          `).join('')}
+          ${c.issues.length>5?`<li class="muted">+ ${c.issues.length-5} more…</li>`:''}
+        </ul>
+      </div>
+    `).join(''):'<div class="muted">No similar issue groups ≥2.</div>';
 
-  if (els.closeModalBtn && els.modal) {
-    els.closeModalBtn.addEventListener('click', closeIssueModal);
-    els.modal.addEventListener('click', (e)=>{ if(e.target===els.modal) closeIssueModal(); });
-  }
+    // Triage queue
+    const tri=list.filter(r=>{
+      const meta=DataStore.computed.get(r.id)||{};
+      const missing=(!r.priority)||(!r.module||r.module==='Unspecified')||(!r.type);
+      const gap=prioGap(meta.suggestions?.priority, r.priority);
+      return missing || gap>=CONFIG.RISK.misalignedDelta;
+    }).sort((a,b)=> (DataStore.computed.get(b.id)?.risk?.total||0)-(DataStore.computed.get(a.id)?.risk?.total||0)).slice(0,15);
+    E.aiTriageList.innerHTML = tri.length? tri.map(i=>{
+      const meta=DataStore.computed.get(i.id)||{};
+      const miss=[];
+      if(!i.priority) miss.push('priority');
+      if(!i.module||i.module==='Unspecified') miss.push('module');
+      if(!i.type) miss.push('type');
+      const cats=(meta.suggestions?.categories||[]).slice(0,2).map(c=>c.label).join(', ')||'n/a';
+      const note=`Suggested priority: ${meta.suggestions?.priority||'-'}; categories: ${cats}`;
+      return `<li style="margin-bottom:6px;">
+        <strong>${U.escapeHtml(i.id)}</strong> — ${U.escapeHtml(i.title||'')}
+        <div class="muted">Missing: ${miss.join(', ')||'—'} · ${U.escapeHtml(note)}</div>
+        <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn sm" data-open="${U.escapeAttr(i.id)}">Open</button>
+          <button class="btn ghost sm" data-copy="${U.escapeAttr(i.id)}">Copy suggestion</button>
+        </div>
+      </li>`;
+    }).join(''):'<li>No issues requiring triage.</li>';
 
-  if (els.eventModal) {
-    if (els.eventModalClose) els.eventModalClose.addEventListener('click', closeEventModal);
-    if (els.eventCancel) els.eventCancel.addEventListener('click', () => closeEventModal());
-    if (els.eventForm) els.eventForm.addEventListener('submit', handleEventFormSubmit);
-    if (els.eventDelete) els.eventDelete.addEventListener('click', handleDeleteEvent);
-    els.eventModal.addEventListener('click', e => {
-      if (e.target === els.eventModal) closeEventModal();
-    });
-  }
+    // Upcoming risky events
+    const evs=computeEventsRisk(DataStore.rows, DataStore.events);
+    E.aiEventsList.innerHTML = evs.length? evs.map(r=>{
+      const badge=CalendarLink.riskBadgeClass(r.risk);
+      return `<li style="margin-bottom:6px;">
+        <strong>${U.escapeHtml(r.event.title||'(no title)')}</strong>
+        <span class="event-risk-badge ${badge}">RISK ${r.risk}</span>
+        <div class="muted">${U.fmtTS(r.date)} · Modules: ${r.modules.length?r.modules.map(U.escapeHtml).join(', '):'n/a'} · Related issues: ${r.issues.length}</div>
+      </li>`;
+    }).join(''):'<li>No notable risk in next 7 days.</li>';
 
-  document.addEventListener('keydown', (e)=>{
-    const issueOpen = els.modal && els.modal.style.display === 'flex';
-    const eventOpen = els.eventModal && els.eventModal.style.display === 'flex';
-    if(e.key==='Escape'){
-      if(eventOpen){ closeEventModal(); return; }
-      if(issueOpen){ closeIssueModal(); return; }
-    }
-    if(e.key==='Tab'){
-      if(eventOpen){ trapFocus(els.eventModal, e); }
-      else if(issueOpen){ trapFocus(els.modal, e); }
-    }
+    // Wire AI buttons
+    U.qAll('[data-open]').forEach(b=> b.addEventListener('click',()=>UI.Modals.openIssue(b.getAttribute('data-open'))));
+    U.qAll('[data-copy]').forEach(b=> b.addEventListener('click',()=>{
+      const id=b.getAttribute('data-copy'); const r=DataStore.byId.get(id); const meta=DataStore.computed.get(id)||{};
+      const text=`Issue ${r.id}\nTitle: ${r.title}\nSuggested Priority: ${meta.suggestions?.priority}\nSuggested Categories: ${(meta.suggestions?.categories||[]).map(c=>c.label).join(', ')}\nReasons: ${(meta.risk?.reasons||[]).join(', ')}`;
+      navigator.clipboard.writeText(text).then(()=>UI.toast('Suggestion copied')).catch(()=>UI.toast('Clipboard blocked'));
+    }));
+
+    UI.setAnalyzing(false);
+  }
+};
+
+function prioMap(p){ return {High:3,Medium:2,Low:1}[p]||0; }
+function prioGap(suggested,current){ return prioMap(suggested)-prioMap(current); }
+
+function buildClustersWeighted(list){
+  const max=Math.min(list.length,400);
+  const docs=list.slice(-max).map(r=>{
+    const meta=DataStore.computed.get(r.id)||{};
+    return {issue:r,tokens:meta.tokens||new Set(),idf:meta.idf||new Map()};
   });
-
-  if (els.copyId) {
-    els.copyId.addEventListener('click', async ()=>{
-      if(!selectedIssue) return;
-      try{
-        await navigator.clipboard.writeText(selectedIssue.id || '');
-        showToast('Issue ID copied');
-      }catch{
-        showToast('Unable to copy (clipboard blocked)');
-      }
+  const visited=new Set(), clusters=[];
+  const wj=(A,IA,B,IB)=>{
+    let inter=0,sumA=0,sumB=0;
+    const all=new Set([...A,...B]);
+    all.forEach(t=>{
+      const wa=A.has(t)?(IA.get(t)||1):0;
+      const wb=B.has(t)?(IB.get(t)||1):0;
+      inter+=Math.min(wa,wb); sumA+=wa; sumB+=wb;
     });
-  }
-  if (els.copyLink) {
-    els.copyLink.addEventListener('click', async ()=>{
-      if(!selectedIssue) return;
-      const link = selectedIssue.file || '';
-      if(!link){
-        showToast('No link on this issue');
-        return;
-      }
-      try{
-        await navigator.clipboard.writeText(link);
-        showToast('Link copied');
-      }catch{
-        showToast('Unable to copy (clipboard blocked)');
-      }
-    });
-  }
-
-  qAll('#issuesTable thead th.sortable').forEach(th=>{
-    th.addEventListener('click', ()=>{
-      const key = th.getAttribute('data-key');
-      if(sortKey===key){ sortAsc = !sortAsc; } else { sortKey=key; sortAsc=true; }
-      renderTable();
-      renderAiInsights();
-    });
-    th.addEventListener('keydown', e=>{
-      if(e.key==='Enter' || e.key===' '){
-        e.preventDefault();
-        th.click();
-      }
-    });
-    th.setAttribute('tabindex','0');
-    th.setAttribute('role','button');
-    th.setAttribute('aria-label', `Sort by ${th.textContent}`);
-  });
-
-  const updateAndRender = ()=>{ renderTable(); renderAiInsights(); };
-  if (els.pageSize) {
-    els.pageSize.addEventListener('change', ()=>{
-      rowsPerPage = +els.pageSize.value;
-      localStorage.setItem('pageSize', rowsPerPage);
-      currentPage = 1;
-      updateAndRender();
-    });
-  }
-  if (els.firstPage) els.firstPage.addEventListener('click', ()=>{ currentPage=1; updateAndRender(); });
-  if (els.prevPage) els.prevPage.addEventListener('click', ()=>{ if(currentPage>1){ currentPage--; updateAndRender(); } });
-  if (els.nextPage) els.nextPage.addEventListener('click', ()=>{
-    const totalPages = Math.max(1, Math.ceil(filtered.length/rowsPerPage));
-    if(currentPage<totalPages){ currentPage++; updateAndRender(); }
-  });
-  if (els.lastPage) els.lastPage.addEventListener('click', ()=>{
-    currentPage = Math.max(1, Math.ceil(filtered.length/rowsPerPage));
-    updateAndRender();
-  });
-
-  if (els.drawerBtn && els.sidebar) {
-    els.drawerBtn.addEventListener('click', ()=>{
-      const open = !els.sidebar.classList.contains('open');
-      els.sidebar.classList.toggle('open');
-      els.drawerBtn.setAttribute('aria-expanded', String(open));
-    });
-  }
-
-  const onFilterChange = ()=>{
-    saveFilters();
-    applyFilters();
+    const union=sumA+sumB-inter; return union?inter/union:0;
   };
-  [els.moduleFilter, els.priorityFilter, els.statusFilter].forEach(el=> el && el.addEventListener('change', onFilterChange));
-  if (els.startDateFilter) els.startDateFilter.addEventListener('change', onFilterChange);
-  if (els.endDateFilter) els.endDateFilter.addEventListener('change', onFilterChange);
-  if (els.reset) {
-    els.reset.addEventListener('click', ()=>{
-      if (els.search) els.search.value='';
-      if (els.startDateFilter) els.startDateFilter.value='';
-      if (els.endDateFilter) els.endDateFilter.value='';
-      localStorage.removeItem('incheckFilters');
-      renderFilters();
-      applyFilters();
-    });
+  for(let i=0;i<docs.length;i++){
+    if(visited.has(i)) continue;
+    const base=docs[i]; const c=[base]; visited.add(i);
+    for(let j=i+1;j<docs.length;j++){
+      if(visited.has(j)) continue;
+      const other=docs[j];
+      if(wj(base.tokens,base.idf,other.tokens,other.idf)>=0.28){ visited.add(j); c.push(other); }
+    }
+    if(c.length>=2){
+      const freq=new Map();
+      c.forEach(d=> d.tokens.forEach(t=>freq.set(t,(freq.get(t)||0)+1)));
+      const sig=Array.from(freq.entries()).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([t])=>t).join(' ');
+      clusters.push({signature:sig,issues:c.map(x=>x.issue)});
+    }
   }
-  if (els.refresh) els.refresh.addEventListener('click', loadSheet);
-  if (els.exportCsv) els.exportCsv.addEventListener('click', exportFilteredCsv);
-  if (els.search) {
-    els.search.addEventListener('input', debounce(()=>{
-      saveFilters();
-      applyFilters();
-    }, 250));
-  }
+  clusters.sort((a,b)=>b.issues.length-a.issues.length);
+  return clusters.slice(0,6);
+}
 
-  if (els.themeSelect) els.themeSelect.addEventListener('change', ()=> applyTheme(els.themeSelect.value));
-  initTheme();
+function computeEventsRisk(issues,events){
+  const now=new Date(), limit=U.dateAddDays(now,7);
+  const openIssues=issues.filter(i=>{
+    const st=(i.status||'').toLowerCase();
+    return !(st.startsWith('resolved')||st.startsWith('rejected'));
+  });
+  const modules=Array.from(new Set(openIssues.map(i=>i.module).filter(Boolean)));
+  const res=[];
+  events.forEach(ev=>{
+    if(!ev.start) return;
+    const d=new Date(ev.start); if(isNaN(d)||d<now||d>limit) return;
+    const title=(ev.title||'').toLowerCase();
+    const impacted=modules.filter(m=>title.includes((m||'').toLowerCase()));
+    let rel=[];
+    if(impacted.length) rel=openIssues.filter(i=>impacted.includes(i.module));
+    else if((ev.type||'').toLowerCase()!=='other'){
+      const recentOpen=openIssues.filter(i=>U.isBetween(i.date,U.daysAgo(7),null));
+      rel=recentOpen.filter(i=>(DataStore.computed.get(i.id)?.risk?.total||0)>=8);
+    }
+    if(!rel.length) return;
+    const risk=rel.reduce((s,i)=>s+(DataStore.computed.get(i.id)?.risk?.total||0),0);
+    res.push({event:ev,modules:impacted,issues:rel,risk,date:d});
+  });
+  res.sort((a,b)=>b.risk-a.risk);
+  return res.slice(0,5);
+}
 
-  // AI query listeners
-  if (els.aiQueryRun) els.aiQueryRun.addEventListener('click', runAiQuery);
-  if (els.aiQueryInput) {
-    els.aiQueryInput.addEventListener('keydown', e => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        runAiQuery();
-      }
-    });
-  }
+function toLocalInputValue(date){
+  const d=(date instanceof Date)?date:new Date(date);
+  if(isNaN(d)) return '';
+  return `${d.getFullYear()}-${U.pad(d.getMonth()+1)}-${U.pad(d.getDate())}T${U.pad(d.getHours())}:${U.pad(d.getMinutes())}`;
+}
 
-  // view switching
-  els.viewTabs.forEach(btn => {
-    btn.addEventListener('click', () => {
-      const view = btn.dataset.view;
+/* ---------- App init ---------- */
+document.addEventListener('DOMContentLoaded', initApp);
 
-      els.viewTabs.forEach(b => {
-        const active = b === btn;
-        b.classList.toggle('active', active);
-        b.setAttribute('aria-selected', active ? 'true' : 'false');
+function initApp(){
+  cacheEls();
+  if(E.pageSize) E.pageSize.value=String(GridState.pageSize);
+  Filters.load();
+
+  wireCore();
+  wireSorting();
+  wirePaging();
+  wireFilters();
+  wireTheme();
+  wireModals();
+  wireAI();
+  wireCalendar();
+
+  UI.setSync('issues',false,null);
+  UI.setSync('events',false,null);
+
+  loadIssues();
+  loadEvents();
+
+  // keyboard shortcuts
+  document.addEventListener('keydown',e=>{
+    if(e.key==='/'){ e.preventDefault(); E.searchInput?.focus(); }
+    if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='k'){ e.preventDefault(); E.aiQueryInput?.focus(); }
+    if(!e.ctrlKey && !e.metaKey){
+      if(e.key==='1') E.issuesTab?.click();
+      if(e.key==='2') E.calendarTab?.click();
+      if(e.key==='3') E.insightsTab?.click();
+    }
+  });
+}
+
+/* ---------- wiring ---------- */
+function wireCore(){
+  [E.issuesTab,E.calendarTab,E.insightsTab].forEach(btn=>{
+    if(!btn) return;
+    btn.addEventListener('click',()=>{
+      const view=btn.dataset.view;
+      [E.issuesTab,E.calendarTab,E.insightsTab].forEach(b=>{
+        if(!b) return;
+        const active=b===btn; b.classList.toggle('active',active); b.setAttribute('aria-selected',active?'true':'false');
       });
-
-      if (els.issuesView) els.issuesView.classList.toggle('active', view === 'issues');
-      if (els.calendarView) els.calendarView.classList.toggle('active', view === 'calendar');
-      if (els.insightsView) els.insightsView.classList.toggle('active', view === 'insights');
-
-      if (view === 'calendar') {
-        ensureCalendar();
-      } else if (view === 'insights') {
-        renderAiInsights();
-      }
+      E.issuesView.classList.toggle('active',view==='issues');
+      E.calendarView.classList.toggle('active',view==='calendar');
+      E.insightsView.classList.toggle('active',view==='insights');
+      if(view==='calendar') ensureCalendar();
+      if(view==='insights') Analytics.refresh(UI.Issues.applyFilters());
     });
   });
 
-  if (els.addEventBtn) {
-    els.addEventBtn.addEventListener('click', () => {
-      const now = new Date();
-      openEventModal({
-        start: now,
-        end: new Date(now.getTime() + 60*60*1000)
-      });
+  if(E.drawerBtn) E.drawerBtn.addEventListener('click',()=>{
+    const open=!E.sidebar.classList.contains('open');
+    E.sidebar.classList.toggle('open');
+    E.drawerBtn.setAttribute('aria-expanded',String(open));
+  });
+
+  if(E.searchInput) E.searchInput.addEventListener('input',debounce(()=>{
+    Filters.state.search=E.searchInput.value||''; Filters.save(); UI.refreshAll();
+  },250));
+
+  if(E.refreshNow) E.refreshNow.addEventListener('click',()=>{ loadIssues(true); loadEvents(true); });
+  if(E.exportCsv) E.exportCsv.addEventListener('click',exportFilteredCsv);
+  if(E.createTicketBtn) E.createTicketBtn.addEventListener('click',()=>window.open("https://forms.gle/PPnEP1AQneoBT79s5","_blank","noopener,noreferrer"));
+
+  UI.refreshAll=()=>{
+    const list=UI.Issues.applyFilters();
+    UI.Issues.renderKPIs(list);
+    UI.Issues.renderTable(list);
+    UI.Issues.renderCharts(list);
+    if(E.insightsView.classList.contains('active')) Analytics.refresh(list);
+  };
+}
+
+function wireSorting(){
+  U.qAll('#issuesTable thead th.sortable').forEach(th=>{
+    th.addEventListener('click',()=>{
+      const key=th.getAttribute('data-key');
+      if(GridState.sortKey===key) GridState.sortAsc=!GridState.sortAsc;
+      else{ GridState.sortKey=key; GridState.sortAsc=true; }
+      UI.refreshAll();
     });
+    th.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); th.click(); }});
+    th.tabIndex=0; th.setAttribute('role','button'); th.setAttribute('aria-label',`Sort by ${th.textContent}`);
+  });
+}
+
+function wirePaging(){
+  if(E.pageSize) E.pageSize.addEventListener('change',()=>{
+    GridState.pageSize=+E.pageSize.value; localStorage.setItem('pageSize',GridState.pageSize);
+    GridState.page=1; UI.refreshAll();
+  });
+  if(E.firstPage) E.firstPage.addEventListener('click',()=>{ GridState.page=1; UI.refreshAll(); });
+  if(E.prevPage) E.prevPage.addEventListener('click',()=>{ if(GridState.page>1){ GridState.page--; UI.refreshAll(); }});
+  if(E.nextPage) E.nextPage.addEventListener('click',()=>{
+    const list=UI.Issues.applyFilters();
+    const pages=Math.max(1,Math.ceil(list.length/GridState.pageSize));
+    if(GridState.page<pages){ GridState.page++; UI.refreshAll(); }
+  });
+  if(E.lastPage) E.lastPage.addEventListener('click',()=>{
+    const list=UI.Issues.applyFilters();
+    GridState.page=Math.max(1,Math.ceil(list.length/GridState.pageSize));
+    UI.refreshAll();
+  });
+}
+
+function wireFilters(){
+  if(E.moduleFilter){
+    E.moduleFilter.addEventListener('change',()=>{ Filters.state.module=E.moduleFilter.value; Filters.save(); UI.refreshAll(); });
   }
-
-  eventsData = [];
-  fetchEventsFromSheet();
-
-  if(typeof Chart === 'undefined') { showToast('Chart.js failed to load'); }
-  if(typeof Papa === 'undefined') { showToast('PapaParse failed to load'); }
-  loadSheet();
-
-  function escapeHtml(s){
-    return String(s).replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;' }[m]));
+  if(E.priorityFilter){
+    E.priorityFilter.addEventListener('change',()=>{ Filters.state.priority=E.priorityFilter.value; Filters.save(); UI.refreshAll(); });
   }
-  function escapeAttr(s){
-    return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+  if(E.statusFilter){
+    E.statusFilter.addEventListener('change',()=>{ Filters.state.status=E.statusFilter.value; Filters.save(); UI.refreshAll(); });
   }
+  if(E.startDateFilter){
+    E.startDateFilter.value=Filters.state.start||'';
+    E.startDateFilter.addEventListener('change',()=>{ Filters.state.start=E.startDateFilter.value; Filters.save(); UI.refreshAll(); });
+  }
+  if(E.endDateFilter){
+    E.endDateFilter.value=Filters.state.end||'';
+    E.endDateFilter.addEventListener('change',()=>{ Filters.state.end=E.endDateFilter.value; Filters.save(); UI.refreshAll(); });
+  }
+  if(E.searchInput) E.searchInput.value=Filters.state.search||'';
+  if(E.resetBtn) E.resetBtn.addEventListener('click',()=>{
+    Filters.state={search:'',module:'All',priority:'All',status:'All',start:'',end:''};
+    Filters.save();
+    if(E.searchInput) E.searchInput.value='';
+    if(E.startDateFilter) E.startDateFilter.value='';
+    if(E.endDateFilter) E.endDateFilter.value='';
+    UI.refreshAll();
+  });
+}
 
-  // Auto-refresh events every 5 minutes
-  setInterval(fetchEventsFromSheet, 5 * 60 * 1000);
-});
+function wireTheme(){
+  const media=window.matchMedia?window.matchMedia('(prefers-color-scheme: dark)'):null;
+  const applySystem=()=>{
+    if(media?.matches) document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme','light');
+  };
+  const saved=localStorage.getItem('theme')||'system';
+  if(E.themeSelect) E.themeSelect.value=saved;
+  if(saved==='system') applySystem();
+  else document.documentElement.setAttribute('data-theme',saved==='dark'?'':'light');
+  media?.addEventListener('change',()=>{ if((localStorage.getItem('theme')||'system')==='system') applySystem(); });
+  if(E.themeSelect) E.themeSelect.addEventListener('change',()=>{
+    const v=E.themeSelect.value; localStorage.setItem('theme',v);
+    if(v==='system') applySystem();
+    else document.documentElement.setAttribute('data-theme',v==='dark'?'':'light');
+  });
+}
+
+function wireModals(){
+  if(E.modalClose) E.modalClose.addEventListener('click',()=>UI.Modals.closeIssue());
+  if(E.issueModal) E.issueModal.addEventListener('click',e=>{ if(e.target===E.issueModal) UI.Modals.closeIssue(); });
+
+  if(E.eventModalClose) E.eventModalClose.addEventListener('click',()=>UI.Modals.closeEvent());
+  if(E.eventCancel) E.eventCancel.addEventListener('click',()=>UI.Modals.closeEvent());
+  if(E.eventModal) E.eventModal.addEventListener('click',e=>{ if(e.target===E.eventModal) UI.Modals.closeEvent(); });
+
+  document.addEventListener('keydown',e=>{
+    const issueOpen=E.issueModal && E.issueModal.style.display==='flex';
+    const eventOpen=E.eventModal && E.eventModal.style.display==='flex';
+    if(e.key==='Escape'){ if(eventOpen) UI.Modals.closeEvent(); else if(issueOpen) UI.Modals.closeIssue(); }
+  });
+
+  if(E.copyId) E.copyId.addEventListener('click',async()=>{
+    if(!UI.Modals.selectedIssue) return;
+    try{ await navigator.clipboard.writeText(UI.Modals.selectedIssue.id||''); UI.toast('Issue ID copied'); }catch{ UI.toast('Clipboard blocked'); }
+  });
+  if(E.copyLink) E.copyLink.addEventListener('click',async()=>{
+    const link=UI.Modals.selectedIssue?.file||''; if(!link) return UI.toast('No link on this issue');
+    try{ await navigator.clipboard.writeText(link); UI.toast('Link copied'); }catch{ UI.toast('Clipboard blocked'); }
+  });
+
+  if(E.eventForm) E.eventForm.addEventListener('submit',async e=>{
+    e.preventDefault();
+    const id=E.eventForm.dataset.id||'';
+    const ev={
+      id,
+      title:E.eventTitle.value.trim(),
+      type:E.eventType.value||'Deployment',
+      start:E.eventStart.value,
+      end:E.eventEnd.value||null,
+      description:E.eventDescription.value.trim()
+    };
+    if(!ev.title||!ev.start) return UI.toast('Title & start required');
+    const saved=await saveEventToSheet(ev); if(!saved) return;
+    const idx=DataStore.events.findIndex(x=>x.id===saved.id);
+    if(idx===-1) DataStore.events.push(saved); else DataStore.events[idx]=saved;
+    saveEventsCache();
+    renderCalendarEvents();
+    Analytics.refresh(UI.Issues.applyFilters());
+    UI.Modals.closeEvent();
+  });
+
+  if(E.eventDelete) E.eventDelete.addEventListener('click',async()=>{
+    const id=E.eventForm?.dataset?.id;
+    if(!id){ UI.Modals.closeEvent(); return; }
+    try{ await deleteEventFromSheet(id); }catch{}
+    const idx=DataStore.events.findIndex(x=>x.id===id);
+    if(idx>-1) DataStore.events.splice(idx,1);
+    saveEventsCache();
+    renderCalendarEvents();
+    Analytics.refresh(UI.Issues.applyFilters());
+    UI.Modals.closeEvent();
+  });
+}
+
+/* ---------- AI / DSL ---------- */
+function wireAI(){
+  if(E.aiQueryRun) E.aiQueryRun.addEventListener('click',runQuery);
+  if(E.aiQueryInput) E.aiQueryInput.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); runQuery(); }});
+  if(E.aiQueryApplyFilters) E.aiQueryApplyFilters.addEventListener('click',()=>{
+    const q=E.aiQueryInput.value||'';
+    const p=DSL.parse(q);
+    if(p.module) Filters.state.module=guessOption(E.moduleFilter,p.module)||'All';
+    if(p.priority){
+      const val=p.priority[0].toUpperCase()==='H'?'High':p.priority[0].toUpperCase()==='M'?'Medium':p.priority[0].toUpperCase()==='L'?'Low':'All';
+      Filters.state.priority=guessOption(E.priorityFilter,val)||'All';
+    }
+    if(p.status){
+      const v=(p.status==='open'||p.status==='closed')?'All':capitalizeFirst(p.status);
+      Filters.state.status=guessOption(E.statusFilter,v)||'All';
+    }
+    if(p.lastDays){
+      const from=U.daysAgo(p.lastDays);
+      Filters.state.start = U.fmtTS(from).slice(0,10);
+      Filters.state.end='';
+    }
+    Filters.save();
+    E.issuesTab?.click();
+    UI.refreshAll();
+  });
+}
+
+function runQuery(){
+  const q=E.aiQueryInput.value.trim();
+  if(!q){ E.aiQueryResults.textContent='Type a query with keywords and filters like module:, status:, risk>=9'; return; }
+  const p=DSL.parse(q);
+  const list=DataStore.rows.filter(r=>DSL.matches(r,DataStore.computed.get(r.id)||{},p));
+  let sort=p.sort||'risk';
+  if(sort==='risk') list.sort((a,b)=>(DataStore.computed.get(b.id)?.risk?.total||0)-(DataStore.computed.get(a.id)?.risk?.total||0));
+  if(sort==='date') list.sort((a,b)=>new Date(b.date)-new Date(a.date));
+  if(sort==='priority') list.sort((a,b)=>prioMap(b.priority)-prioMap(a.priority));
+
+  const explain=[];
+  if(p.module) explain.push(`module includes "${p.module}"`);
+  if(p.status) explain.push(`status ${p.status}`);
+  if(p.priority) explain.push(`priority ${p.priority}`);
+  if(p.type) explain.push(`type includes "${p.type}"`);
+  if(p.missing) explain.push(`missing ${p.missing}`);
+  if(p.riskOp) explain.push(`risk ${p.riskOp} ${p.riskVal}`);
+  if(p.lastDays) explain.push(`last ${p.lastDays}d`);
+  if(p.cluster) explain.push(`cluster matches "${p.cluster}"`);
+  if(p.words?.length) explain.push(`contains ${p.words.join(' ')}`);
+
+  const shown=list.slice(0,20);
+  E.aiQueryResults.innerHTML=`
+    <div style="margin-bottom:6px;">Found <strong>${list.length}</strong> issues (showing top ${shown.length} by ${U.escapeHtml(sort)}).<br/>
+    <span class="muted">Filters: ${U.escapeHtml(explain.join('; ')||'—')}</span></div>
+    <ul style="padding-left:18px;margin:0;">
+      ${shown.map(i=>{
+        const rs=DataStore.computed.get(i.id)?.risk?.total||0;
+        return `<li style="margin-bottom:4px;">
+          <button type="button" class="btn sm" style="padding:3px 6px;margin-right:4px;" data-open="${U.escapeAttr(i.id)}">${U.escapeHtml(i.id)}</button>
+          [${U.escapeHtml(i.priority||'-')} · ${U.escapeHtml(i.status||'-')} · risk ${rs}] ${U.escapeHtml(i.title||'(no title)')}
+        </li>`;
+      }).join('')}
+    </ul>`;
+  U.qAll('#aiQueryResults [data-open]').forEach(b=>b.addEventListener('click',()=>UI.Modals.openIssue(b.getAttribute('data-open'))));
+}
+
+function guessOption(select,value){
+  if(!select||!value) return null;
+  const v=value.toLowerCase();
+  const opt=Array.from(select.options).find(o=>o.value.toLowerCase().includes(v));
+  return opt?.value||null;
+}
+function capitalizeFirst(s){return s? s[0].toUpperCase()+s.slice(1):s;}
+
+/* ---------- Calendar ---------- */
+let calendar=null, calendarReady=false;
+function wireCalendar(){
+  if(E.addEventBtn) E.addEventBtn.addEventListener('click',()=>{
+    const now=new Date();
+    UI.Modals.openEvent({start:now,end:new Date(now.getTime()+60*60*1000)});
+  });
+}
+
+function ensureCalendar(){
+  if(calendarReady) return;
+  const el=document.getElementById('calendar');
+  if(!el || typeof FullCalendar==='undefined'){ UI.toast('Calendar library failed to load'); return; }
+  calendar=new FullCalendar.Calendar(el,{
+    initialView:'dayGridMonth', selectable:true, editable:false, height:'auto',
+    headerToolbar:{left:'title',center:'',right:'dayGridMonth,timeGridWeek,listWeek today prev,next'},
+    select:info=>UI.Modals.openEvent({start:info.start,end:info.end}),
+    eventClick:info=>{
+      const ev=DataStore.events.find(e=>e.id===info.event.id) || {
+        id:info.event.id,title:info.event.title,type:info.event.extendedProps.type||'Other',
+        start:info.event.start,end:info.event.end,description:info.event.extendedProps.description||''
+      };
+      UI.Modals.openEvent(ev);
+    },
+    eventDidMount(info){
+      const riskSum=info.event.extendedProps.risk||0;
+      if(riskSum){
+        const span=document.createElement('span');
+        span.className='event-risk-badge '+CalendarLink.riskBadgeClass(riskSum);
+        span.textContent=`RISK ${riskSum}`;
+        const titleEl=info.el.querySelector('.fc-event-title');
+        if(titleEl) titleEl.appendChild(span);
+      }
+    }
+  });
+  calendarReady=true;
+  renderCalendarEvents();
+  calendar.render();
+}
+
+function renderCalendarEvents(){
+  if(!calendar) return;
+  calendar.removeAllEvents();
+  DataStore.events.forEach(ev=>{
+    calendar.addEvent({
+      id:ev.id,title:ev.title,start:ev.start,end:ev.end||null,
+      extendedProps:{type:ev.type||'Other',description:ev.description,risk:0},
+      classNames:['event-type-'+(ev.type||'Other').toLowerCase().replace(/\s+/g,'-')]
+    });
+  });
+  const links=computeEventsRisk(DataStore.rows, DataStore.events);
+  links.forEach(r=>{
+    const e=calendar.getEventById(r.event.id);
+    if(e){ e.setExtendedProp('risk',r.risk); }
+  });
+}
+
+/* ---------- Networking ---------- */
+async function loadIssues(force=false){
+  try{
+    UI.spinner(true); UI.skeleton(true);
+    const res=await fetch(CONFIG.SHEET_URL,{cache:'no-store'});
+    const text=await res.text();
+    DataStore.hydrate(text);
+    UI.Issues.renderFilters();
+
+    // restore filters into selects
+    if(Filters.state.module && E.moduleFilter) E.moduleFilter.value=Filters.state.module;
+    if(Filters.state.priority && E.priorityFilter) E.priorityFilter.value=Filters.state.priority;
+    if(Filters.state.status && E.statusFilter) E.statusFilter.value=Filters.state.status;
+
+    UI.skeleton(false);
+    UI.refreshAll();
+    UI.setSync('issues',true,new Date());
+  }catch(e){
+    UI.toast('Error loading issues: '+e.message);
+    UI.setSync('issues',false,null);
+  }finally{
+    UI.spinner(false);
+  }
+}
+
+async function loadEvents(force=false){
+  try{
+    UI.spinner(true);
+    const res=await fetch(CONFIG.CALENDAR_API_URL,{cache:'no-store'});
+    const data=await res.json();
+    DataStore.events=data.events||loadEventsCache();
+    saveEventsCache();
+    renderCalendarEvents();
+    UI.setSync('events',true,new Date());
+  }catch(e){
+    DataStore.events=loadEventsCache();
+    renderCalendarEvents();
+    UI.setSync('events',!!DataStore.events.length,null);
+    UI.toast(DataStore.events.length?'Using cached events (API error)':'Unable to load calendar events');
+  }finally{
+    UI.spinner(false);
+    if(E.insightsView.classList.contains('active')) Analytics.refresh(UI.Issues.applyFilters());
+  }
+}
+
+/* ---------- Events cache ---------- */
+function loadEventsCache(){ try{return JSON.parse(localStorage.getItem('incheckEvents')||'[]');}catch{return[];} }
+function saveEventsCache(){ try{localStorage.setItem('incheckEvents',JSON.stringify(DataStore.events));}catch{} }
+
+/* ---------- Save/Delete to Apps Script ---------- */
+async function saveEventToSheet(event){
+  try{
+    const res=await fetch(CONFIG.CALENDAR_API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'save',event})});
+    const data=await res.json();
+    if(data.ok){ UI.toast('Event saved'); return data.event; }
+    UI.toast('Backend error saving event'); return null;
+  }catch(e){
+    UI.toast('Network error saving event'); return null;
+  }
+}
+async function deleteEventFromSheet(id){
+  try{
+    const res=await fetch(CONFIG.CALENDAR_API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'delete',event:{id}})});
+    const data=await res.json();
+    if(!data.ok) throw new Error(data.error||'Delete failed');
+    UI.toast('Event deleted');
+  }catch(e){
+    UI.toast('Error deleting event: '+e.message);
+    throw e;
+  }
+}
+
+/* ---------- Export CSV ---------- */
+function exportFilteredCsv(){
+  const rows=UI.Issues.applyFilters();
+  if(!rows.length) return UI.toast('Nothing to export (no rows).');
+  const headers=['ID','Module','Title','Priority','Status','Date','Log','Link','Description'];
+  const lines=[headers.join(',')];
+  rows.forEach(r=>{
+    const arr=[r.id,r.module,r.title,r.priority,r.status,r.date,r.log,r.file,r.desc].map(v=>{
+      const s=String(v??'').replace(/"/g,'""');
+      return `"${s}"`;
+    });
+    lines.push(arr.join(','));
+  });
+  const blob=new Blob([lines.join('\r\n')],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  const ts=new Date().toISOString().slice(0,10);
+  a.href=url; a.download=`incheck_issues_${ts}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  UI.toast('Exported CSV of current filtered issues');
+}
+
+/* ---------- Misc utils ---------- */
+function debounce(fn,ms=250){ let t; return(...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }; }
+
+/* ---------- Auto-refresh events ---------- */
+setInterval(()=>loadEvents(true),5*60*1000);
 </script>
 </body>
 </html>
