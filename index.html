@@ -291,24 +291,6 @@
     th.sorted-asc::after { border-bottom-color:var(--accent); border-top-color:transparent; transform:translateY(-1px); }
     th.sorted-desc::after { border-top-color:var(--accent); border-bottom-color:transparent; transform:translateY(1px); }
 
-    /* Skeleton loading row */
-    .skeleton-row td {
-      position:relative;
-      color:transparent;
-    }
-    .skeleton-row td::before {
-      content:"";
-      position:absolute;
-      inset:6px 9px;
-      border-radius:8px;
-      background:linear-gradient(90deg,
-        rgba(148,163,184,.15),
-        rgba(148,163,184,.3),
-        rgba(148,163,184,.15));
-      background-size:200% 100%;
-      animation:skeleton 1.2s infinite linear;
-    }
-
     .pill {
       padding:3px 9px;
       border-radius:999px;
@@ -462,17 +444,9 @@
     .fc-event.event-type-release { background-color:var(--ok); border-color:var(--ok); }
     .fc-event.event-type-other { background-color:var(--purple); border-color:var(--purple); }
 
-    /* Hide log column on small screens for better mobile UX */
+    /* Small tweak: hide "Log" column on very small screens if you want */
     @media(max-width:768px){
-      #issuesTable th:nth-child(7),
-      #issuesTable td:nth-child(7) {
-        display:none;
-      }
-    }
-
-    @keyframes skeleton {
-      0% { background-position:200% 0; }
-      100% { background-position:-200% 0; }
+      td:nth-child(7), th:nth-child(7){ display:none; }
     }
 
     @media (prefers-reduced-motion: reduce){
@@ -566,6 +540,10 @@
                 role="tab" aria-selected="false" aria-controls="calendarView">
           <span class="icon" aria-hidden="true">📅</span> Calendar
         </button>
+        <button id="insightsTab" class="view-tab" data-view="insights"
+                role="tab" aria-selected="false" aria-controls="insightsView">
+          <span class="icon" aria-hidden="true">🤖</span> AI Insights
+        </button>
       </div>
 
       <section id="issuesView" class="view active" role="tabpanel" aria-labelledby="issuesTab">
@@ -600,7 +578,7 @@
                 <th scope="col">Link</th>
               </tr></thead>
               <tbody>
-                <tr class="skeleton-row"><td colspan="8">Loading…</td></tr>
+                <tr><td colspan="8" style="text-align:center;color:var(--muted)">Loading…</td></tr>
               </tbody>
             </table>
           </div>
@@ -625,25 +603,11 @@
 
       <section id="calendarView" class="view" role="tabpanel" aria-labelledby="calendarTab">
         <div class="card" aria-label="Calendar">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
             <div>
               <strong>Deployments & Maintenance Calendar</strong>
               <div class="muted">
                 Plan deployments, maintenance windows, releases, and other operational events.
-              </div>
-              <div id="eventTypeFilters" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-                <label class="muted" style="display:flex;align-items:center;gap:4px;font-size:12px">
-                  <input type="checkbox" id="filterDeployment" checked /> Deployment
-                </label>
-                <label class="muted" style="display:flex;align-items:center;gap:4px;font-size:12px">
-                  <input type="checkbox" id="filterMaintenance" checked /> Maintenance
-                </label>
-                <label class="muted" style="display:flex;align-items:center;gap:4px;font-size:12px">
-                  <input type="checkbox" id="filterRelease" checked /> Release
-                </label>
-                <label class="muted" style="display:flex;align-items:center;gap:4px;font-size:12px">
-                  <input type="checkbox" id="filterOther" checked /> Other
-                </label>
               </div>
             </div>
             <button id="addEventBtn" class="btn primary sm" type="button">
@@ -651,6 +615,46 @@
             </button>
           </div>
           <div id="calendar" aria-label="Deployment & maintenance calendar"></div>
+        </div>
+      </section>
+
+      <!-- 🤖 AI Insights / Copilot view -->
+      <section id="insightsView" class="view" role="tabpanel" aria-labelledby="insightsTab">
+        <div class="card" aria-label="AI Insights summary">
+          <strong>AI Insights / Copilot</strong>
+          <div class="muted" style="margin-top:4px;">
+            Analyses issues text (title, description, log) to surface patterns, suggested categories, clusters, and high-risk items.
+            This is heuristic and runs fully in the browser – no external AI calls.
+          </div>
+        </div>
+
+        <div class="grid cols-4" aria-label="AI summary cards">
+          <div class="card">
+            <strong>Top terms (recent)</strong>
+            <ul id="aiPatternsList" class="muted" style="font-size:13px;margin-top:6px;padding-left:18px;"></ul>
+          </div>
+          <div class="card">
+            <strong>Suggested categories</strong>
+            <ul id="aiLabelsList" class="muted" style="font-size:13px;margin-top:6px;padding-left:18px;"></ul>
+          </div>
+          <div class="card">
+            <strong>Dataset used</strong>
+            <div id="aiScopeText" class="muted" style="font-size:13px;margin-top:6px;"></div>
+          </div>
+          <div class="card">
+            <strong>Signals</strong>
+            <div id="aiSignalsText" class="muted" style="font-size:13px;margin-top:6px;"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <strong>Top risks this week</strong>
+          <ul id="aiRisksList" class="muted" style="font-size:13px;margin-top:6px;padding-left:18px;"></ul>
+        </div>
+
+        <div class="card">
+          <strong>Similar issue clusters</strong>
+          <div id="aiClusters" style="margin-top:6px;display:grid;gap:10px;"></div>
         </div>
       </section>
     </main>
@@ -705,11 +709,6 @@
               </select>
             </div>
             <div class="filter-row">
-              <label class="muted" for="eventIssueId">Issue ID (optional)</label>
-              <input id="eventIssueId" class="input" type="text"
-                     placeholder="e.g. INC-123 or ticket ID" />
-            </div>
-            <div class="filter-row">
               <label class="muted" for="eventStart">Start</label>
               <input id="eventStart" class="input" type="datetime-local" required />
             </div>
@@ -724,7 +723,6 @@
                         style="border-radius:12px; resize:vertical;"></textarea>
             </div>
           </div>
-          <div id="eventIssueLinkedInfo" class="muted" style="margin-top:4px;display:none;font-size:12px;"></div>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">
           <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -750,21 +748,10 @@
 document.addEventListener("DOMContentLoaded", () => {
   const SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTRwAjNAQxiPP8uR15t_vx03JkjgEBjgUwp2bpx8rsHx-JJxVDBZyf5ap77rAKrYHfgkVMwLJVm6pGn/pub?output=csv";
 
-  // Google Apps Script Web App URL for calendar events (wrapped via CORS proxy)
+  // Your Google Apps Script Web App URL for calendar events
   const CALENDAR_API_URL =
     "https://corsproxy.io/?" +
     encodeURIComponent("https://script.google.com/macros/s/AKfycbwRcF-CbJY3dNfU9QQWixGL82a5BqCxVII4sGJSKunJ_fhDLLezL90kUXoqMrHuYytV/exec");
-
-  // Centralized localStorage keys
-  const LS_KEYS = {
-    filters: 'incheckFilters',
-    theme: 'theme',
-    events: 'incheckEvents',
-    issues: 'incheckIssues',
-    issuesLastUpdated: 'incheckIssuesLastUpdated',
-    pageSize: 'pageSize',
-    view: 'incheckView'
-  };
 
   function q(sel, root = document) { return root.querySelector(sel); }
   function qAll(sel){ return Array.from(document.querySelectorAll(sel)); }
@@ -805,6 +792,7 @@ document.addEventListener("DOMContentLoaded", () => {
     viewTabs: qAll('.view-tab'),
     issuesView: q('#issuesView'),
     calendarView: q('#calendarView'),
+    insightsView: q('#insightsView'),
     addEventBtn: q('#addEventBtn'),
     eventModal: q('#eventModal'),
     eventModalTitle: q('#eventModalTitle'),
@@ -812,24 +800,24 @@ document.addEventListener("DOMContentLoaded", () => {
     eventForm: q('#eventForm'),
     eventTitle: q('#eventTitle'),
     eventType: q('#eventType'),
-    eventIssueId: q('#eventIssueId'),
     eventStart: q('#eventStart'),
     eventEnd: q('#eventEnd'),
     eventDescription: q('#eventDescription'),
     eventSave: q('#eventSave'),
     eventCancel: q('#eventCancel'),
     eventDelete: q('#eventDelete'),
-    eventIssueLinkedInfo: q('#eventIssueLinkedInfo'),
-    eventFilterDeployment: q('#filterDeployment'),
-    eventFilterMaintenance: q('#filterMaintenance'),
-    eventFilterRelease: q('#filterRelease'),
-    eventFilterOther: q('#filterOther')
+    aiPatternsList: q('#aiPatternsList'),
+    aiLabelsList: q('#aiLabelsList'),
+    aiRisksList: q('#aiRisksList'),
+    aiClusters: q('#aiClusters'),
+    aiScopeText: q('#aiScopeText'),
+    aiSignalsText: q('#aiSignalsText')
   };
 
   let rows = [], filtered = [], charts = {};
   let sortKey = null, sortAsc = true;
   let currentPage = 1;
-  let rowsPerPage = +(localStorage.getItem(LS_KEYS.pageSize) || els.pageSize.value);
+  let rowsPerPage = +(localStorage.getItem('pageSize') || els.pageSize.value);
   els.pageSize.value = String(rowsPerPage);
   let selectedIssue = null;
   let lastFocusedBeforeIssueModal = null;
@@ -840,6 +828,241 @@ document.addEventListener("DOMContentLoaded", () => {
   let calendarInitialized = false;
   let editingEventId = null;
 
+  // ----- AI Insights helpers -----
+  const STOPWORDS = new Set([
+    'the','a','an','and','or','but','for','with','this','that','from','into','onto',
+    'when','what','where','how','why','can','could','should','would','will','just',
+    'have','has','had','been','are','is','was','were','to','in','on','of','at','by',
+    'as','it','its','be','we','you','they','our','your','their','not','no','if','else',
+    'then','than','about','after','before','more','less','also','only','very','get',
+    'got','see','seen','use','used','using','user','issue','bug','ticket','inc'
+  ]);
+
+  const LABEL_KEYWORDS = {
+    'Authentication / Login': ['login','signin','password','auth','token','session'],
+    'Payments / Billing': ['payment','payments','billing','invoice','card','credit','charge','checkout'],
+    'Performance / Latency': ['slow','slowness','latency','performance','perf','timeout','lag'],
+    'Reliability / Errors': ['error','errors','exception','500','503','fail','failed','crash'],
+    'UI / UX': ['button','screen','page','layout','css','ui','ux'],
+    'Data / Sync': ['sync','synchron','cache','cached','replica','replication','consistency']
+  };
+
+  function issueText(issue) {
+    return [issue.title, issue.desc, issue.log]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+  }
+
+  function tokenizeIssue(issue) {
+    const text = issueText(issue);
+    return text
+      .replace(/[^a-z0-9]+/g, ' ')
+      .split(/\s+/)
+      .filter(w => w && w.length > 2 && !STOPWORDS.has(w));
+  }
+
+  function getRecentIssues(base, days = 7) {
+    const now = Date.now();
+    const cutoff = now - days * 24 * 60 * 60 * 1000;
+    const recent = base.filter(r => {
+      if (!r.date) return false;
+      const d = new Date(r.date);
+      if (isNaN(d)) return false;
+      return d.getTime() >= cutoff;
+    });
+    if (recent.length) return recent;
+    return base.slice(-50);
+  }
+
+  function computeRiskScore(issue) {
+    const priorityWeight = { High: 3, Medium: 2, Low: 1 };
+    let score = priorityWeight[issue.priority] || 1;
+    const text = issueText(issue);
+
+    const boosts = [
+      { kw: 'prod ', val: 2 },
+      { kw: 'production', val: 2 },
+      { kw: 'timeout', val: 3 },
+      { kw: 'time out', val: 3 },
+      { kw: 'error', val: 2 },
+      { kw: 'errors', val: 2 },
+      { kw: 'exception', val: 2 },
+      { kw: 'fail', val: 2 },
+      { kw: 'failed', val: 2 },
+      { kw: 'payment', val: 3 },
+      { kw: 'payments', val: 3 },
+      { kw: 'billing', val: 2 },
+      { kw: 'checkout', val: 2 },
+      { kw: 'login', val: 2 },
+      { kw: 'auth', val: 2 }
+    ];
+
+    boosts.forEach(b => {
+      if (text.includes(b.kw)) score += b.val;
+    });
+
+    if (issue.status && issue.status.toLowerCase().startsWith('on stage')) score += 2;
+    if (issue.status && issue.status.toLowerCase().startsWith('under')) score += 1;
+
+    return score;
+  }
+
+  function buildSimilarClusters(base) {
+    const clusters = new Map();
+
+    base.forEach(issue => {
+      const tokens = tokenizeIssue(issue);
+      if (!tokens.length) return;
+
+      const freq = {};
+      tokens.forEach(t => { freq[t] = (freq[t] || 0) + 1; });
+      const ranked = Object.entries(freq)
+        .sort((a,b) => b[1] - a[1])
+        .map(([t]) => t);
+
+      const signature = ranked.slice(0, 3).join(' ');
+      if (!signature) return;
+
+      if (!clusters.has(signature)) clusters.set(signature, []);
+      clusters.get(signature).push(issue);
+    });
+
+    return Array.from(clusters.entries())
+      .map(([signature, issues]) => ({ signature, issues }))
+      .filter(c => c.issues.length >= 2)
+      .sort((a,b) => b.issues.length - a.issues.length)
+      .slice(0, 6);
+  }
+
+  function renderAiInsights() {
+    if (!els.aiPatternsList || !els.aiLabelsList || !els.aiRisksList || !els.aiClusters) return;
+
+    const base = (filtered && filtered.length ? filtered : rows || []);
+    const total = base.length;
+
+    if (!total) {
+      els.aiPatternsList.innerHTML = '<li>No issues loaded yet.</li>';
+      els.aiLabelsList.innerHTML = '<li>No data.</li>';
+      els.aiRisksList.innerHTML = '<li>No data.</li>';
+      els.aiClusters.innerHTML = '<div class="muted">No data.</div>';
+      if (els.aiScopeText) els.aiScopeText.textContent = 'Waiting for issues to load.';
+      if (els.aiSignalsText) els.aiSignalsText.textContent = 'No signals yet.';
+      return;
+    }
+
+    const recent = getRecentIssues(base, 7);
+    const recentCount = recent.length;
+
+    // Top terms (recent)
+    const termCounts = new Map();
+    recent.forEach(issue => {
+      tokenizeIssue(issue).forEach(t => {
+        termCounts.set(t, (termCounts.get(t) || 0) + 1);
+      });
+    });
+
+    const topTerms = Array.from(termCounts.entries())
+      .filter(([,count]) => count >= 2)
+      .sort((a,b) => b[1] - a[1])
+      .slice(0, 10);
+
+    els.aiPatternsList.innerHTML = topTerms.length
+      ? topTerms.map(([t,c]) => `<li><strong>${t}</strong> – ${c} mention${c>1?'s':''}</li>`).join('')
+      : '<li>No strong repeated terms in recent issues.</li>';
+
+    // Suggested categories
+    const labelStats = [];
+    Object.entries(LABEL_KEYWORDS).forEach(([label, keywords]) => {
+      let matches = 0;
+      base.forEach(issue => {
+        const text = issueText(issue);
+        if (keywords.some(k => text.includes(k))) matches++;
+      });
+      if (matches > 0) labelStats.push({ label, matches });
+    });
+    labelStats.sort((a,b) => b.matches - a.matches);
+
+    els.aiLabelsList.innerHTML = labelStats.length
+      ? labelStats.slice(0, 6).map(ls =>
+          `<li><strong>${ls.label}</strong> – ${ls.matches} issue${ls.matches>1?'s':''}</li>`
+        ).join('')
+      : '<li>No clear category suggestions yet.</li>';
+
+    // Scope
+    if (els.aiScopeText) {
+      els.aiScopeText.textContent =
+        `Analyzing ${total} issues (${recentCount} recent, ~last 7 days) based on current filters.`;
+    }
+
+    // Signals text
+    if (els.aiSignalsText) {
+      const signals = [];
+      const hasTimeout = termCounts.has('timeout');
+      const hasPayment = termCounts.has('payment') || termCounts.has('payments') || termCounts.has('billing');
+      const hasAuth = termCounts.has('login') || termCounts.has('auth') || termCounts.has('password');
+      const hasErrors = termCounts.has('error') || termCounts.has('errors') || termCounts.has('exception');
+
+      if (hasTimeout) signals.push('timeouts / latency');
+      if (hasPayment) signals.push('payments / billing');
+      if (hasAuth) signals.push('auth / login flows');
+      if (hasErrors) signals.push('generic errors / exceptions');
+
+      els.aiSignalsText.textContent = signals.length
+        ? 'Recent issues frequently mention: ' + signals.join(', ') + '.'
+        : 'No strong recurring signals detected in recent issues.';
+    }
+
+    // Top risks this week
+    const recentWithScores = recent.map(issue => ({
+      issue,
+      score: computeRiskScore(issue)
+    })).sort((a,b) => b.score - a.score);
+
+    const topRisks = recentWithScores.slice(0, 3).filter(r => r.score > 2);
+
+    els.aiRisksList.innerHTML = topRisks.length
+      ? topRisks.map(({issue, score}) => `
+          <li>
+            <strong>[${issue.priority || '-'}] ${issue.id || '(no ID)'}</strong> – ${escapeHtml(issue.title || '(no title)')}
+            <br><span class="muted">Risk score: ${score}, status: ${escapeHtml(issue.status || '-')}</span>
+          </li>
+        `).join('')
+      : '<li>No high-risk recent issues detected by the heuristic.</li>';
+
+    // Similar issue clusters
+    const clusters = buildSimilarClusters(base);
+    if (!clusters.length) {
+      els.aiClusters.innerHTML = '<div class="muted">No similar issue groups with at least 2 tickets.</div>';
+    } else {
+      els.aiClusters.innerHTML = clusters.map(c => `
+        <div class="card" style="padding:10px;">
+          <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">
+            Pattern: <strong>${escapeHtml(c.signature)}</strong> • ${c.issues.length} issue${c.issues.length>1?'s':''}
+          </div>
+          <ul style="margin:0;padding-left:18px;font-size:13px;">
+            ${c.issues.slice(0,5).map(i => `
+              <li>
+                <button type="button" class="btn sm" style="padding:3px 6px;margin-right:4px;"
+                        data-open-issue="${escapeAttr(i.id || '')}">
+                  ${escapeHtml(i.id || '')}
+                </button>
+                ${escapeHtml(i.title || '(no title)')}
+              </li>
+            `).join('')}
+            ${c.issues.length > 5 ? `<li class="muted">+ ${c.issues.length - 5} more…</li>` : ''}
+          </ul>
+        </div>
+      `).join('');
+
+      els.aiClusters.querySelectorAll('button[data-open-issue]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-open-issue');
+          if (id) openIssueModal(id);
+        });
+      });
+    }
+  }
   const debounce = (fn, ms=250) => { let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; };
   const mediaQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
 
@@ -918,7 +1141,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function applyTheme(mode) {
-    localStorage.setItem(LS_KEYS.theme, mode);
+    localStorage.setItem('theme', mode);
     if (mode === 'system') {
       applySystemThemeFromOS();
       return;
@@ -931,7 +1154,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function initTheme() {
-    const saved = localStorage.getItem(LS_KEYS.theme) || 'system';
+    const saved = localStorage.getItem('theme') || 'system';
     els.themeSelect.value = saved;
     if (saved === 'system') {
       applySystemThemeFromOS();
@@ -940,7 +1163,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     if (mediaQuery) {
       mediaQuery.addEventListener('change', () => {
-        const current = localStorage.getItem(LS_KEYS.theme) || 'system';
+        const current = localStorage.getItem('theme') || 'system';
         if (current === 'system') applySystemThemeFromOS();
       });
     }
@@ -956,13 +1179,13 @@ document.addEventListener("DOMContentLoaded", () => {
       end: els.endDateFilter.value || ''
     };
     try {
-      localStorage.setItem(LS_KEYS.filters, JSON.stringify(state));
+      localStorage.setItem('incheckFilters', JSON.stringify(state));
     } catch(e){}
   }
 
   function loadFilters(){
     try {
-      const raw = localStorage.getItem(LS_KEYS.filters);
+      const raw = localStorage.getItem('incheckFilters');
       if (!raw) return;
       const s = JSON.parse(raw);
       els.search.value = s.search || '';
@@ -1065,39 +1288,11 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  function loadIssuesFromStorage(){
-    try{
-      const raw = localStorage.getItem(LS_KEYS.issues);
-      if (!raw) return [];
-      return JSON.parse(raw);
-    } catch(e){
-      console.error('Failed to load cached issues', e);
-      return [];
-    }
-  }
-  function saveIssuesToStorage(list){
-    try{
-      localStorage.setItem(LS_KEYS.issues, JSON.stringify(list));
-      localStorage.setItem(LS_KEYS.issuesLastUpdated, new Date().toISOString());
-    } catch(e){
-      console.error('Failed to save cached issues', e);
-    }
-  }
-  function getIssuesLastUpdatedLabel(){
-    const iso = localStorage.getItem(LS_KEYS.issuesLastUpdated);
-    if (!iso) return '';
-    const d = new Date(iso);
-    if (isNaN(d)) return '';
-    return `Last updated: ${d.toLocaleString()}`;
-  }
-
   function renderTable(){
     const list = sortData(filtered);
     const total = list.length;
     updatePaginationControls(total);
-    const lastUpdated = getIssuesLastUpdatedLabel();
-    els.rowCount.textContent =
-      `${total} row${total===1?'':'s'}${lastUpdated ? ' • ' + lastUpdated : ''}`;
+    els.rowCount.textContent = `${total} row${total===1?'':'s'}`;
 
     if (!total){
       els.tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--muted)">
@@ -1249,49 +1444,34 @@ document.addEventListener("DOMContentLoaded", () => {
     renderKpis();
     renderTable();
     drawCharts();
+    renderAiInsights(); // update AI insights with current filtered dataset
   }
 
   async function loadSheet(){
-    // Use cached issues first if available
-    const cached = loadIssuesFromStorage();
-    if (cached.length && !rows.length) {
-      rows = cached;
-      filtered = [...rows];
-      renderFilters();
-      loadFilters();
-      applyFilters();
-    }
-
     try {
       showSpinner(true);
       const res = await fetch(SHEET_URL, { cache:'no-store' });
       if(!res.ok) throw new Error(`Failed to fetch (${res.status})`);
       const text = await res.text();
-      const parsed = parseCsv(text);
-      if (!parsed.length) throw new Error('No data rows in sheet');
-      rows = parsed;
+      rows = parseCsv(text);
       filtered = [...rows];
-      saveIssuesToStorage(rows);
       renderFilters();
       loadFilters();
       applyFilters();
     } catch(e) {
-      console.error(e);
       showToast('Error loading data: '+e.message);
-      if (!rows.length) {
-        els.tableBody.innerHTML = `
-          <tr>
-            <td colspan="8" style="color:#ffb4b4;text-align:center">
-              Error loading data and no cached data found.
-              <button type="button" id="retryLoad" class="btn sm" style="margin-left:8px">Retry</button>
-            </td>
-          </tr>`;
-        const retryBtn = q('#retryLoad');
-        if (retryBtn) {
-          retryBtn.addEventListener('click', () => {
-            loadSheet();
-          });
-        }
+      els.tableBody.innerHTML = `
+        <tr>
+          <td colspan="8" style="color:#ffb4b4;text-align:center">
+            Error loading data.
+            <button type="button" id="retryLoad" class="btn sm" style="margin-left:8px">Retry</button>
+          </td>
+        </tr>`;
+      const retryBtn = q('#retryLoad');
+      if (retryBtn) {
+        retryBtn.addEventListener('click', () => {
+          loadSheet();
+        });
       }
     } finally {
       showSpinner(false);
@@ -1336,14 +1516,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function loadEventsFromStorage(){
     try {
-      return JSON.parse(localStorage.getItem(LS_KEYS.events) || '[]');
+      return JSON.parse(localStorage.getItem('incheckEvents') || '[]');
     } catch(e) {
       return [];
     }
   }
   function saveEventsToStorage(){
     try {
-      localStorage.setItem(LS_KEYS.events, JSON.stringify(eventsData));
+      localStorage.setItem('incheckEvents', JSON.stringify(eventsData));
     } catch(e) {}
   }
 
@@ -1371,7 +1551,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function saveEventToSheet(event) {
-    showSpinner(true);
     try {
       const res = await fetch(CALENDAR_API_URL, {
         method: "POST",
@@ -1385,9 +1564,9 @@ document.addEventListener("DOMContentLoaded", () => {
       } catch (jsonErr) {
         console.error("Invalid JSON returned:", jsonErr);
         const text = await res.text();
-        console.error("Raw response:", text);
-        showToast("Calendar: invalid JSON from backend");
-        return null;
+        showToast("Script returned invalid JSON");
+        console.error(text);
+        return;
       }
 
       if (data.ok) {
@@ -1396,15 +1575,12 @@ document.addEventListener("DOMContentLoaded", () => {
         return data.event;
       } else {
         console.error("Backend error:", data);
-        showToast("Error saving event: " + (data.error || "Unknown error"));
+        showToast("Backend error saving event");
         return null;
       }
     } catch (err) {
       console.error("Network error:", err);
-      showToast("Network error saving event: " + err.message);
-      return null;
-    } finally {
-      showSpinner(false);
+      showToast("Network error saving event");
     }
   }
 
@@ -1430,33 +1606,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function renderEventsOnCalendar(){
     if (!calendar) return;
-
-    const activeTypes = new Set();
-    if (!els.eventFilterDeployment || !els.eventFilterMaintenance ||
-        !els.eventFilterRelease || !els.eventFilterOther) {
-      // No filters found, show all
-    } else {
-      if (els.eventFilterDeployment.checked) activeTypes.add('Deployment');
-      if (els.eventFilterMaintenance.checked) activeTypes.add('Maintenance');
-      if (els.eventFilterRelease.checked) activeTypes.add('Release');
-      if (els.eventFilterOther.checked) activeTypes.add('Other');
-    }
-
     calendar.removeAllEvents();
     eventsData.forEach(ev => {
-      const type = ev.type || 'Other';
-      if (activeTypes.size && !activeTypes.has(type)) return;
+      const type = (ev.type || 'Other');
       const cls = 'event-type-' + type.toLowerCase().replace(/\s+/g,'-');
       calendar.addEvent({
         id: ev.id,
         title: ev.title,
         start: ev.start,
         end: ev.end || null,
-        extendedProps: {
-          type,
-          description: ev.description,
-          issueId: ev.issueId || ''
-        },
+        extendedProps: { type: type, description: ev.description },
         classNames: [cls]
       });
     });
@@ -1492,8 +1651,7 @@ document.addEventListener("DOMContentLoaded", () => {
             type: info.event.extendedProps.type || 'Other',
             start: info.event.start,
             end: info.event.end,
-            description: info.event.extendedProps.description || '',
-            issueId: info.event.extendedProps.issueId || ''
+            description: info.event.extendedProps.description || ''
           });
         }
       },
@@ -1534,18 +1692,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     els.eventTitle.value = data && data.title ? data.title : '';
     els.eventType.value = data && data.type ? data.type : 'Deployment';
-    els.eventIssueId.value = data && data.issueId ? data.issueId : '';
     els.eventStart.value = data && data.start ? toLocalInputValue(data.start) : '';
     els.eventEnd.value = data && data.end ? toLocalInputValue(data.end) : '';
     els.eventDescription.value = data && data.description ? data.description : '';
-
-    if (data && data.issueId) {
-      els.eventIssueLinkedInfo.style.display = 'block';
-      els.eventIssueLinkedInfo.textContent = `Linked issue ID: ${data.issueId}`;
-    } else {
-      els.eventIssueLinkedInfo.style.display = 'none';
-      els.eventIssueLinkedInfo.textContent = '';
-    }
 
     els.eventModal.style.display = 'flex';
     els.eventTitle.focus();
@@ -1563,7 +1712,6 @@ document.addEventListener("DOMContentLoaded", () => {
     e.preventDefault();
     const title = els.eventTitle.value.trim();
     const type = els.eventType.value || 'Deployment';
-    const issueId = els.eventIssueId.value.trim();
     const start = els.eventStart.value;
     const end = els.eventEnd.value || null;
     const description = els.eventDescription.value.trim();
@@ -1581,7 +1729,6 @@ document.addEventListener("DOMContentLoaded", () => {
       id: editingEventId || '',
       title,
       type,
-      issueId,
       start,
       end,
       description
@@ -1716,6 +1863,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const key = th.getAttribute('data-key');
       if(sortKey===key){ sortAsc = !sortAsc; } else { sortKey=key; sortAsc=true; }
       renderTable();
+      renderAiInsights();
     });
     th.addEventListener('keydown', e=>{
       if(e.key==='Enter' || e.key===' '){
@@ -1728,10 +1876,10 @@ document.addEventListener("DOMContentLoaded", () => {
     th.setAttribute('aria-label', `Sort by ${th.textContent}`);
   });
 
-  const updateAndRender = ()=>{ renderTable(); };
+  const updateAndRender = ()=>{ renderTable(); renderAiInsights(); };
   els.pageSize.addEventListener('change', ()=>{
     rowsPerPage = +els.pageSize.value;
-    localStorage.setItem(LS_KEYS.pageSize, rowsPerPage);
+    localStorage.setItem('pageSize', rowsPerPage);
     currentPage = 1;
     updateAndRender();
   });
@@ -1763,7 +1911,7 @@ document.addEventListener("DOMContentLoaded", () => {
     els.search.value='';
     els.startDateFilter.value='';
     els.endDateFilter.value='';
-    localStorage.removeItem(LS_KEYS.filters);
+    localStorage.removeItem('incheckFilters');
     renderFilters();
     applyFilters();
   });
@@ -1777,27 +1925,28 @@ document.addEventListener("DOMContentLoaded", () => {
   els.themeSelect.addEventListener('change', ()=> applyTheme(els.themeSelect.value));
   initTheme();
 
-  function setActiveView(view) {
-    const isIssues = view === 'issues';
-    els.issuesView.classList.toggle('active', isIssues);
-    els.calendarView.classList.toggle('active', !isIssues);
-    els.viewTabs.forEach(b => {
-      const active = b.dataset.view === view;
-      b.classList.toggle('active', active);
-      b.setAttribute('aria-selected', active ? 'true' : 'false');
-    });
-    localStorage.setItem(LS_KEYS.view, view);
-    if (view === 'calendar') ensureCalendar();
-  }
-
+  // view switching for Issues / Calendar / AI Insights
   els.viewTabs.forEach(btn => {
     btn.addEventListener('click', () => {
-      setActiveView(btn.dataset.view);
+      const view = btn.dataset.view;
+
+      els.viewTabs.forEach(b => {
+        const active = b === btn;
+        b.classList.toggle('active', active);
+        b.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
+
+      if (els.issuesView) els.issuesView.classList.toggle('active', view === 'issues');
+      if (els.calendarView) els.calendarView.classList.toggle('active', view === 'calendar');
+      if (els.insightsView) els.insightsView.classList.toggle('active', view === 'insights');
+
+      if (view === 'calendar') {
+        ensureCalendar();
+      } else if (view === 'insights') {
+        renderAiInsights();
+      }
     });
   });
-
-  const savedView = localStorage.getItem(LS_KEYS.view) || 'issues';
-  setActiveView(savedView);
 
   if (els.addEventBtn) {
     els.addEventBtn.addEventListener('click', () => {
@@ -1808,12 +1957,6 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     });
   }
-
-  // Event type filter toggles
-  [els.eventFilterDeployment, els.eventFilterMaintenance, els.eventFilterRelease, els.eventFilterOther]
-    .forEach(input => {
-      if (input) input.addEventListener('change', () => renderEventsOnCalendar());
-    });
 
   eventsData = [];
   fetchEventsFromSheet();
@@ -1829,7 +1972,7 @@ document.addEventListener("DOMContentLoaded", () => {
     return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;');
   }
 
-  // Auto-refresh events every 5 minutes
+  // Optional: auto-refresh events every 5 minutes
   setInterval(fetchEventsFromSheet, 5 * 60 * 1000);
 });
 </script>
