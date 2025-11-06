@@ -46,7 +46,7 @@
       --shadow:0 18px 40px rgba(0,0,0,.55);
       --focus:0 0 0 3px rgba(79,140,255,.5);
 
-      /* New */
+      /* Extra */
       --chip:#0c142b;
       --skeleton:#0f1a38;
       --shimmer:linear-gradient(90deg, transparent, rgba(255,255,255,.08), transparent);
@@ -84,7 +84,11 @@
       transition:background .3s,color .3s;
     }
     :focus-visible { outline:none; box-shadow:var(--focus); border-radius:8px; }
-    .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
+
+    .sr-only{
+      position:absolute;width:1px;height:1px;padding:0;margin:-1px;
+      overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;
+    }
 
     /* Header */
     header {
@@ -96,60 +100,117 @@
       box-shadow:var(--shadow);
     }
     .brand{display:flex;align-items:center;gap:10px;font-weight:700}
-    .brand .logo{width:30px;height:30px;border-radius:10px;display:grid;place-items:center;background:conic-gradient(from 160deg, var(--accent), #9b8cff, #22c55e, var(--accent));color:#fff; font-weight:800; box-shadow:0 10px 30px rgba(79,140,255,.55);}
+    .brand .logo{
+      width:30px;height:30px;border-radius:10px;
+      display:grid;place-items:center;
+      background:conic-gradient(from 160deg, var(--accent), #9b8cff, #22c55e, var(--accent));
+      color:#fff;font-weight:800;
+      box-shadow:0 10px 30px rgba(79,140,255,.55);
+    }
     .brand-text{display:flex;flex-direction:column}
     .brand-text span:first-child{font-size:14px;text-transform:uppercase;letter-spacing:.16em;color:var(--muted)}
     .brand-text span:last-child{font-size:16px}
 
-    .toolbar { margin-left:auto; display:flex; gap:10px; align-items:center; flex-wrap:wrap }
-    .btn, .select, .input {
-      padding:8px 12px; border-radius:999px; border:1px solid var(--border);
-      background:rgba(8,16,32,.92); color:inherit; font:inherit;
+    .toolbar{margin-left:auto;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .btn,.select,.input{
+      padding:8px 12px;border-radius:999px;border:1px solid var(--border);
+      background:rgba(8,16,32,.92);color:inherit;font:inherit;
     }
-    .btn{cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:6px;box-shadow:0 8px 20px rgba(15,23,42,.25)}
+    .btn{
+      cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:6px;
+      box-shadow:0 8px 20px rgba(15,23,42,.25);
+    }
     .btn.primary{background:linear-gradient(135deg,var(--accent),#7c3aed);border-color:transparent;color:#fff}
     .btn.ghost{border-color:transparent;background:transparent;box-shadow:none}
     .btn.sm{padding:6px 10px;border-radius:999px;font-size:13px}
-    .btn:hover{opacity:.95;transform:translateY(-1px)} .btn:active{transform:translateY(0);opacity:.9}
-    .input,.select{background:rgba(5,10,24,.85);box-shadow: inset 0 0 0 1px rgba(15,23,42,.35)}
+    .btn:hover{opacity:.95;transform:translateY(-1px)}
+    .btn:active{transform:translateY(0);opacity:.9}
+    .input,.select{background:rgba(5,10,24,.85);box-shadow:inset 0 0 0 1px rgba(15,23,42,.35)}
     .input::placeholder{color:var(--muted)}
     .icon{font-size:18px;line-height:1}
 
-    /* Status chips */
     .statusline{display:flex;gap:10px;align-items:center;margin-left:8px}
     .dot{width:10px;height:10px;border-radius:50%;display:inline-block}
     .ok{background:var(--ok)} .warn{background:var(--warn)} .err{background:var(--danger)}
-    .chip{padding:4px 8px;border-radius:999px;background:var(--chip);border:1px solid var(--border);font-size:12px;color:var(--muted)}
+    .chip{
+      padding:4px 8px;border-radius:999px;background:var(--chip);
+      border:1px solid var(--border);font-size:12px;color:var(--muted)
+    }
 
     /* Layout */
-    .wrap{display:grid;grid-template-columns:300px minmax(0,1fr);gap:18px;padding:18px;max-width:1440px;margin:0 auto}
+    .wrap{
+      display:grid;grid-template-columns:300px minmax(0,1fr);
+      gap:18px;padding:18px;max-width:1440px;margin:0 auto;
+    }
     @media(max-width:980px){.wrap{grid-template-columns:1fr}}
 
     /* Sidebar */
-    .sidebar{background:linear-gradient(145deg, rgba(11,23,45,.96), rgba(13,28,60,.98));border:1px solid rgba(148,163,184,.25);border-radius:18px;padding:16px;position:sticky;top:82px;height:fit-content;max-height:calc(100vh - 102px);overflow:auto;box-shadow:var(--shadow)}
+    .sidebar{
+      background:linear-gradient(145deg, rgba(11,23,45,.96), rgba(13,28,60,.98));
+      border:1px solid rgba(148,163,184,.25);
+      border-radius:18px;padding:16px;
+      position:sticky;top:82px;height:fit-content;
+      max-height:calc(100vh - 102px);overflow:auto;box-shadow:var(--shadow);
+    }
     :root[data-theme="light"] .sidebar{background:var(--card);border-color:var(--border)}
-    .sidebar h3{margin:0 0 10px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em}
-    .filter-group{display:grid;gap:10px;margin-bottom:16px}.filter-row{display:grid;gap:6px}
-    .muted{color:var(--muted);font-size:12px}.divider{height:1px;background:var(--border);margin:8px 0 14px;opacity:.7}
+    .sidebar h3{
+      margin:0 0 10px;font-size:13px;color:var(--muted);
+      text-transform:uppercase;letter-spacing:.12em;
+    }
+    .filter-group{display:grid;gap:10px;margin-bottom:16px}
+    .filter-row{display:grid;gap:6px}
+    .muted{color:var(--muted);font-size:12px}
+    .divider{height:1px;background:var(--border);margin:8px 0 14px;opacity:.7}
 
     /* Content & tabs */
     .content{display:flex;flex-direction:column;gap:16px}
-    .view-tabs{display:inline-flex;align-self:flex-start;background:rgba(10,18,40,.98);border-radius:999px;border:1px solid var(--border);box-shadow:0 16px 40px rgba(15,23,42,.45);padding:4px}
-    .view-tab{border:none;background:transparent;color:var(--muted);padding:6px 14px;border-radius:999px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px}
-    .view-tab.active{background:linear-gradient(135deg,var(--accent),#7c3aed);color:#fff;box-shadow:0 10px 26px rgba(79,140,255,.6)}
-    .view{display:none}.view.active{display:block}.view>*+*{margin-top:16px}
-    .grid{display:grid;gap:16px}.grid.cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}
+    .view-tabs{
+      display:inline-flex;align-self:flex-start;
+      background:rgba(10,18,40,.98);border-radius:999px;
+      border:1px solid var(--border);box-shadow:0 16px 40px rgba(15,23,42,.45);padding:4px;
+    }
+    .view-tab{
+      border:none;background:transparent;color:var(--muted);
+      padding:6px 14px;border-radius:999px;font-size:13px;cursor:pointer;
+      display:flex;align-items:center;gap:6px;
+    }
+    .view-tab .icon{font-size:16px}
+    .view-tab.active{
+      background:linear-gradient(135deg,var(--accent),#7c3aed);
+      color:#fff;box-shadow:0 10px 26px rgba(79,140,255,.6);
+    }
+
+    .view{display:none}
+    .view.active{display:block}
+    .view>*+*{margin-top:16px}
+
+    .grid{display:grid;gap:16px}
+    .grid.cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}
     @media(max-width:980px){.grid.cols-4{grid-template-columns:repeat(2,minmax(0,1fr))}}
     @media(max-width:640px){.grid.cols-4{grid-template-columns:1fr}}
 
     /* Cards */
-    .card{background:radial-gradient(circle at 0 0, rgba(79,140,255,.16), transparent 55%),var(--card);border:1px solid rgba(148,163,184,.35);border-radius:18px;padding:16px;box-shadow:var(--shadow);transition:transform .2s, box-shadow .2s, border-color .2s, background .2s}
+    .card{
+      background:radial-gradient(circle at 0 0, rgba(79,140,255,.16), transparent 55%),var(--card);
+      border:1px solid rgba(148,163,184,.35);
+      border-radius:18px;padding:16px;
+      box-shadow:var(--shadow);
+      transition:transform .2s, box-shadow .2s, border-color .2s, background .2s;
+    }
     :root[data-theme="light"] .card{background:var(--card);border-color:var(--border)}
-    .card:hover{transform:translateY(-2px);box-shadow:0 20px 50px rgba(15,23,42,.4);border-color:rgba(99,102,241,.9)}
+    .card:hover{
+      transform:translateY(-2px);
+      box-shadow:0 20px 50px rgba(15,23,42,.4);
+      border-color:rgba(99,102,241,.9);
+    }
 
     /* KPIs */
     .kpi{cursor:pointer;text-align:left;position:relative;overflow:hidden}
-    .kpi::before{content:"";position:absolute;inset:auto -40% 0;height:60%;background:radial-gradient(circle at 20% 0, rgba(79,140,255,.45), transparent 55%);opacity:0;transition:.25s;transform:translateY(16px)}
+    .kpi::before{
+      content:"";position:absolute;inset:auto -40% 0;height:60%;
+      background:radial-gradient(circle at 20% 0, rgba(79,140,255,.45), transparent 55%);
+      opacity:0;transition:.25s;transform:translateY(16px);
+    }
     .kpi:hover::before{opacity:1;transform:translateY(0)}
     .kpi .label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em}
     .kpi .value{font-size:26px;font-weight:800;margin-top:6px}
@@ -159,17 +220,45 @@
     .charts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
     @media(max-width:980px){.charts{grid-template-columns:1fr}}
 
-    /* Table & skeletons */
+    /* Table & skeleton */
     table{width:100%;border-collapse:separate;border-spacing:0;font-size:14px}
-    thead th{position:sticky;top:0;z-index:5;background:rgba(9,15,32,.98);text-align:left;padding:10px 9px;border-bottom:1px solid var(--border);user-select:none;cursor:pointer;font-size:12px;color:var(--muted)}
+    thead th{
+      position:sticky;top:0;z-index:5;
+      background:rgba(9,15,32,.98);
+      text-align:left;padding:10px 9px;
+      border-bottom:1px solid var(--border);
+      user-select:none;cursor:pointer;
+      font-size:12px;color:var(--muted);
+    }
     :root[data-theme="light"] thead th{background:var(--card)}
     tbody td{padding:10px 9px;border-bottom:1px solid rgba(148,163,184,.22)}
     tr:hover{background:rgba(255,255,255,.03)}
-    .table-wrap{max-height:460px;overflow:auto;border-radius:14px;border:1px solid rgba(148,163,184,.35);background:radial-gradient(circle at 0 0, rgba(79,140,255,.08), transparent 55%)}
-    th.sortable::after{content:"";margin-left:6px;border:4px solid transparent;border-top-color:var(--muted);display:inline-block;transform:translateY(1px)}
+    .table-wrap{
+      max-height:460px;overflow:auto;border-radius:14px;
+      border:1px solid rgba(148,163,184,.35);
+      background:radial-gradient(circle at 0 0, rgba(79,140,255,.08), transparent 55%);
+    }
+    th.sortable::after{
+      content:"";margin-left:6px;border:4px solid transparent;
+      border-top-color:var(--muted);display:inline-block;transform:translateY(1px);
+    }
     th.sorted-asc::after{border-bottom-color:var(--accent);border-top-color:transparent;transform:translateY(-1px)}
     th.sorted-desc::after{border-top-color:var(--accent);border-bottom-color:transparent;transform:translateY(1px)}
-    .pill{padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;display:inline-block;letter-spacing:.04em;text-transform:uppercase}
+
+    .skeleton{position:relative;overflow:hidden;background:var(--skeleton)}
+    .skeleton::after{
+      content:"";position:absolute;inset:0;
+      animation:shimmer 1.2s infinite;
+      background:var(--shimmer);
+    }
+    @keyframes shimmer{
+      0%{transform:translateX(-100%)}100%{transform:translateX(100%)}
+    }
+
+    .pill{
+      padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;
+      display:inline-block;letter-spacing:.04em;text-transform:uppercase;
+    }
     .status-Resolved{background:var(--status-resolved);color:#fff}
     .status-Under\ Development{background:var(--status-underdev);color:#fff}
     .status-Rejected{background:var(--status-rejected);color:#fff}
@@ -177,21 +266,39 @@
     .status-Not\ Started\ Yet{background:var(--status-notstarted);color:#fff}
     .status-Sent{background:var(--status-sent);color:#fff}
     .status-On\ Stage{background:var(--status-onstage);color:#fff}
+
     .priority-High{background:var(--priority-high);color:#fff}
     .priority-Medium{background:var(--priority-medium);color:#fff}
     .priority-Low{background:var(--priority-low);color:#fff}
 
     /* Modal */
-    .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.58);align-items:center;justify-content:center;z-index:100}
-    .modal-content{background:var(--card);color:var(--text);border:1px solid rgba(148,163,184,.35);padding:18px;border-radius:18px;max-width:760px;width:92%;max-height:90%;overflow:auto;box-shadow:var(--shadow)}
-    .modal .header{display:flex;align-items:center;gap:10px;justify-content:space-between;margin-bottom:8px}
+    .modal{
+      display:none;position:fixed;inset:0;
+      background:rgba(0,0,0,.58);align-items:center;justify-content:center;z-index:100;
+    }
+    .modal-content{
+      background:var(--card);color:var(--text);
+      border:1px solid rgba(148,163,184,.35);
+      padding:18px;border-radius:18px;
+      max-width:760px;width:92%;max-height:90%;overflow:auto;
+      box-shadow:var(--shadow);
+    }
+    .modal .header{
+      display:flex;align-items:center;gap:10px;justify-content:space-between;margin-bottom:8px;
+    }
     .modal .actions{display:flex;gap:8px;flex-wrap:wrap}
     .modal-close{cursor:pointer;border:none;background:transparent;color:var(--muted);font-size:20px}
 
     /* Pagination */
-    .table-actions{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-top:10px;flex-wrap:wrap}
+    .table-actions{
+      display:flex;gap:10px;align-items:center;justify-content:space-between;
+      margin-top:10px;flex-wrap:wrap;
+    }
     .pagination{display:flex;gap:6px;align-items:center}
-    .chip-btn{padding:6px 10px;border-radius:999px;background:rgba(9,14,30,.95);border:1px solid(var(--border));cursor:pointer;font-size:12px}
+    .chip-btn{
+      padding:6px 10px;border-radius:999px;background:rgba(9,14,30,.95);
+      border:1px solid(var(--border));cursor:pointer;font-size:12px;
+    }
     .chip-btn[disabled]{opacity:.45;cursor:not-allowed}
     .chip-btn.active{background:var(--accent);color:#fff;border-color:transparent}
     .select.sm,.input.sm{padding:6px 8px;border-radius:999px;font-size:13px}
@@ -200,39 +307,73 @@
     .drawer-toggle{display:none}
     @media(max-width:980px){
       .drawer-toggle{display:inline-flex}
-      .sidebar{position:fixed;inset:82px 0 0 auto;width:88%;max-width:360px;transform:translateX(110%);transition:transform .25s}
+      .sidebar{
+        position:fixed;inset:82px 0 0 auto;width:88%;max-width:360px;
+        transform:translateX(110%);transition:transform .25s;
+      }
       .sidebar.open{transform:translateX(0)}
     }
 
     /* Spinner & Toast */
-    .spinner{display:none;position:fixed;inset:0;background:rgba(5,10,25,.65);z-index:120;align-items:center;justify-content:center}
-    .spinner .ring{width:56px;height:56px;border:5px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite; background:transparent;box-shadow:0 0 0 1px rgba(15,23,42,.4)}
+    .spinner{
+      display:none;position:fixed;inset:0;
+      background:rgba(5,10,25,.65);z-index:120;
+      align-items:center;justify-content:center;
+    }
+    .spinner .ring{
+      width:56px;height:56px;border:5px solid var(--border);
+      border-top-color:var(--accent);border-radius:50%;
+      animation:spin 1s linear infinite;background:transparent;
+      box-shadow:0 0 0 1px rgba(15,23,42,.4);
+    }
     @keyframes spin{to{transform:rotate(360deg)}}
-    .toast{position:fixed;right:16px;bottom:16px;background:var(--card);border:1px solid var(--accent);color:#fff;padding:10px 12px;border-radius:12px;z-index:130;box-shadow:var(--shadow);display:none;font-size:13px}
+    .toast{
+      position:fixed;right:16px;bottom:16px;
+      background:var(--card);border:1px solid var(--accent);color:#fff;
+      padding:10px 12px;border-radius:12px;z-index:130;
+      box-shadow:var(--shadow);display:none;font-size:13px;
+    }
 
     /* Calendar */
     #calendar{margin-top:8px;min-height:520px}
-    .fc{font-size:13px}.fc .fc-toolbar-title{font-size:16px}
-    .fc-theme-standard .fc-scrollgrid,.fc-theme-standard td,.fc-theme-standard th{border-color:var(--border)}
-    .fc .fc-col-header-cell-cushion,.fc .fc-daygrid-day-number{color:var(--muted)}
+    .fc{font-size:13px}
+    .fc .fc-toolbar-title{font-size:16px}
+    .fc-theme-standard .fc-scrollgrid,
+    .fc-theme-standard td,
+    .fc-theme-standard th{border-color:var(--border)}
+    .fc .fc-col-header-cell-cushion,
+    .fc .fc-daygrid-day-number{color:var(--muted)}
     .fc .fc-daygrid-day.fc-day-today{background:rgba(79,140,255,.09)}
-    .fc .fc-button{background:rgba(9,14,30,.98);border-color:var(--border);color:var(--text);border-radius:999px;padding:4px 10px;font-size:12px}
-    .fc .fc-button-primary:not(:disabled).fc-button-active,.fc .fc-button-primary:not(:disabled):active,.fc .fc-button-primary:not(:disabled):focus,.fc .fc-button-primary:not(:disabled):hover{background:var(--accent);border-color:var(--accent)}
+    .fc .fc-button{
+      background:rgba(9,14,30,.98);border-color:var(--border);
+      color:var(--text);border-radius:999px;padding:4px 10px;font-size:12px;
+    }
+    .fc .fc-button-primary:not(:disabled).fc-button-active,
+    .fc .fc-button-primary:not(:disabled):active,
+    .fc .fc-button-primary:not(:disabled):focus,
+    .fc .fc-button-primary:not(:disabled):hover{
+      background:var(--accent);border-color:var(--accent);
+    }
     .fc .fc-toolbar.fc-header-toolbar{margin-bottom:12px}
     .fc-event.event-type-deployment{background-color:var(--info);border-color:var(--info)}
     .fc-event.event-type-maintenance{background-color:var(--warn);border-color:var(--warn)}
     .fc-event.event-type-release{background-color:var(--ok);border-color:var(--ok)}
     .fc-event.event-type-other{background-color:var(--purple);border-color:var(--purple)}
-    .event-risk-badge{margin-left:6px;padding:0 6px;border-radius:6px;font-size:10px;border:1px solid rgba(255,255,255,.2)}
-    .risk-low{background:rgba(16,185,129,.18)} .risk-med{background:rgba(245,158,11,.2)} .risk-high{background:rgba(239,68,68,.22)} .risk-crit{background:rgba(239,68,68,.38)}
 
-    /* Shimmer / skeleton */
-    .skeleton{position:relative;overflow:hidden;background:var(--skeleton)}
-    .skeleton::after{content:"";position:absolute;inset:0;animation:shimmer 1.2s infinite;background:var(--shimmer)}
-    @keyframes shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+    .event-risk-badge{
+      margin-left:6px;padding:0 6px;border-radius:6px;font-size:10px;
+      border:1px solid rgba(255,255,255,.2);
+    }
+    .risk-low{background:rgba(16,185,129,.18)}
+    .risk-med{background:rgba(245,158,11,.2)}
+    .risk-high{background:rgba(239,68,68,.22)}
+    .risk-crit{background:rgba(239,68,68,.38)}
 
-    /* Hide low-importance col on mobile */
-    @media(max-width:768px){ td:nth-child(7), th:nth-child(7){display:none} }
+    /* Hide log col on small screens */
+    @media(max-width:768px){
+      #issuesTable th:nth-child(7),
+      #issuesTable td:nth-child(7){display:none}
+    }
 
     @media (prefers-reduced-motion: reduce){
       *{transition:none!important;animation:none!important}
@@ -254,13 +395,23 @@
     </button>
 
     <div class="toolbar">
-      <input id="searchInput" class="input" type="search" placeholder="Search ID, title, description, log…  ( / to focus )" aria-label="Search issues" />
+      <input id="searchInput" class="input" type="search"
+             placeholder="Search ID, title, description, log…  ( / to focus )"
+             aria-label="Search issues" />
       <select id="themeSelect" class="select" aria-label="Theme">
-        <option value="system">System</option><option value="dark">Dark</option><option value="light">Light</option>
+        <option value="system">System</option>
+        <option value="dark">Dark</option>
+        <option value="light">Light</option>
       </select>
-      <button id="refreshNow" class="btn" aria-label="Refresh from source"><span class="icon" aria-hidden="true">🔄</span> Refresh</button>
-      <button id="exportCsv" class="btn" aria-label="Export filtered issues as CSV"><span class="icon" aria-hidden="true">📥</span> Export</button>
-      <button id="createTicketBtn" class="btn primary" aria-label="Create new ticket"><span class="icon" aria-hidden="true">➕</span> Create Ticket</button>
+      <button id="refreshNow" class="btn" aria-label="Refresh from source">
+        <span class="icon" aria-hidden="true">🔄</span> Refresh
+      </button>
+      <button id="exportCsv" class="btn" aria-label="Export filtered issues as CSV">
+        <span class="icon" aria-hidden="true">📥</span> Export
+      </button>
+      <button id="createTicketBtn" class="btn primary" aria-label="Create new ticket">
+        <span class="icon" aria-hidden="true">➕</span> Create Ticket
+      </button>
       <div class="statusline">
         <span class="chip" id="syncIssuesText">Issues: never</span><span class="dot err" id="syncIssuesDot"></span>
         <span class="chip" id="syncEventsText">Events: never</span><span class="dot err" id="syncEventsDot"></span>
@@ -305,18 +456,29 @@
 
       <div class="filter-group">
         <button id="resetBtn" class="btn ghost" aria-label="Reset all filters">Reset</button>
-        <span class="muted">Tip: click any KPI to filter by that status. “Total Issues” resets everything.</span>
+        <span class="muted">
+          Tip: click any KPI to filter by that status. “Total Issues” resets everything.
+        </span>
       </div>
     </aside>
 
     <main class="content">
       <div class="view-tabs" role="tablist">
-        <button id="issuesTab" class="view-tab active" data-view="issues" role="tab" aria-selected="true" aria-controls="issuesView"><span class="icon">📋</span> Issues</button>
-        <button id="calendarTab" class="view-tab" data-view="calendar" role="tab" aria-selected="false" aria-controls="calendarView"><span class="icon">📅</span> Calendar</button>
-        <button id="insightsTab" class="view-tab" data-view="insights" role="tab" aria-selected="false" aria-controls="insightsView"><span class="icon">🤖</span> AI Insights</button>
+        <button id="issuesTab" class="view-tab active" data-view="issues"
+                role="tab" aria-selected="true" aria-controls="issuesView">
+          <span class="icon" aria-hidden="true">📋</span> Issues
+        </button>
+        <button id="calendarTab" class="view-tab" data-view="calendar"
+                role="tab" aria-selected="false" aria-controls="calendarView">
+          <span class="icon" aria-hidden="true">📅</span> Calendar
+        </button>
+        <button id="insightsTab" class="view-tab" data-view="insights"
+                role="tab" aria-selected="false" aria-controls="insightsView">
+          <span class="icon" aria-hidden="true">🤖</span> AI Insights
+        </button>
       </div>
 
-      <!-- Issues -->
+      <!-- Issues view -->
       <section id="issuesView" class="view active" role="tabpanel" aria-labelledby="issuesTab">
         <div class="grid cols-4" id="kpis" aria-live="polite"></div>
 
@@ -329,7 +491,10 @@
 
         <div class="card" aria-label="Issues table">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-            <div><strong>Issues</strong><div class="muted">Live feed from InCheck issues sheet.</div></div>
+            <div>
+              <strong>Issues</strong>
+              <div class="muted">Live feed from InCheck issues sheet.</div>
+            </div>
             <span id="rowCount" class="muted" aria-live="polite"></span>
           </div>
 
@@ -369,28 +534,54 @@
             </div>
             <div style="display:flex;gap:8px;align-items:center">
               <label for="pageSize" class="muted">Rows</label>
-              <select id="pageSize" class="select sm" aria-label="Rows per page"><option>10</option><option selected>20</option><option>50</option><option>100</option></select>
+              <select id="pageSize" class="select sm" aria-label="Rows per page">
+                <option>10</option><option selected>20</option><option>50</option><option>100</option>
+              </select>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- Calendar -->
+      <!-- Calendar view -->
       <section id="calendarView" class="view" role="tabpanel" aria-labelledby="calendarTab">
         <div class="card" aria-label="Calendar">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-            <div><strong>Deployments & Maintenance Calendar</strong><div class="muted">Plan deployments, maintenance windows, releases, and other operational events.</div></div>
-            <button id="addEventBtn" class="btn primary sm" type="button"><span class="icon">➕</span> Add Event</button>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+            <div>
+              <strong>Deployments & Maintenance Calendar</strong>
+              <div class="muted">
+                Plan deployments, maintenance windows, releases, and other operational events.
+              </div>
+              <div id="eventTypeFilters" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+                <label class="muted" style="display:flex;align-items:center;gap:4px;font-size:12px">
+                  <input type="checkbox" id="eventFilterDeployment" checked /> Deployment
+                </label>
+                <label class="muted" style="display:flex;align-items:center;gap:4px;font-size:12px">
+                  <input type="checkbox" id="eventFilterMaintenance" checked /> Maintenance
+                </label>
+                <label class="muted" style="display:flex;align-items:center;gap:4px;font-size:12px">
+                  <input type="checkbox" id="eventFilterRelease" checked /> Release
+                </label>
+                <label class="muted" style="display:flex;align-items:center;gap:4px;font-size:12px">
+                  <input type="checkbox" id="eventFilterOther" checked /> Other
+                </label>
+              </div>
+            </div>
+            <button id="addEventBtn" class="btn primary sm" type="button">
+              <span class="icon" aria-hidden="true">➕</span> Add Event
+            </button>
           </div>
           <div id="calendar" aria-label="Deployment & maintenance calendar"></div>
         </div>
       </section>
 
-      <!-- AI Insights -->
+      <!-- AI Insights view -->
       <section id="insightsView" class="view" role="tabpanel" aria-labelledby="insightsTab">
         <div class="card">
           <strong>AI Insights / Copilot</strong>
-          <div class="muted" style="margin-top:4px;">Heuristic, explainable analytics on issues text (no external AI). Risk breakdown, clustering, trends, triage & calendar risk.</div>
+          <div class="muted" style="margin-top:4px;">
+            Heuristic, explainable analytics on issues text (no external AI). Risk breakdown, clustering,
+            trends, triage & calendar risk.
+          </div>
           <div id="aiAnalyzing" class="skeleton" style="height:6px;border-radius:6px;margin-top:10px;display:none"></div>
         </div>
 
@@ -458,13 +649,17 @@
 
         <div class="card">
           <strong>Triage queue (issues needing attention)</strong>
-          <div class="muted" style="font-size:12px;margin-top:4px;">Missing fields, misaligned priority, ordered by risk. Suggestions are heuristic.</div>
+          <div class="muted" style="font-size:12px;margin-top:4px;">
+            Missing fields, misaligned priority, ordered by risk. Suggestions are heuristic.
+          </div>
           <ul id="aiTriageList" class="muted" style="font-size:13px;margin-top:6px;padding-left:18px;"></ul>
         </div>
 
         <div class="card">
           <strong>Upcoming risky events (next 7 days)</strong>
-          <div class="muted" style="font-size:12px;margin-top:4px;">Combines calendar events with open, high-risk issues in related modules.</div>
+          <div class="muted" style="font-size:12px;margin-top:4px;">
+            Combines calendar events with open, high-risk issues in related modules.
+          </div>
           <ul id="aiEventsList" class="muted" style="font-size:13px;margin-top:6px;padding-left:18px;"></ul>
         </div>
 
@@ -473,10 +668,12 @@
           <div class="muted" style="font-size:12px;margin-top:4px;">
             Filters: <code>module:</code> <code>status:</code> <code>priority:</code> <code>id:</code> <code>type:</code> <code>missing:</code><br/>
             Advanced: <code>risk&gt;=9</code> <code>last:7d</code> <code>cluster:login</code> <code>sort:risk|date|priority</code><br/>
-            Examples: <code>payments risk&gt;8 last:7d sort:risk</code> • <code>missing:priority module:billing</code> • <code>status:open cluster:timeout</code>
+            Examples: <code>payments risk&gt;8 last:7d sort:risk</code> · <code>missing:priority module:billing</code> · <code>status:open cluster:timeout</code>
           </div>
           <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
-            <input id="aiQueryInput" class="input" type="text" placeholder="Ask or query…  ( Ctrl + K )" style="flex:1;min-width:260px;">
+            <input id="aiQueryInput" class="input" type="text"
+                   placeholder="Ask or query…  ( Ctrl + K )"
+                   style="flex:1;min-width:260px;">
             <button id="aiQueryRun" class="btn sm" type="button">Run</button>
             <button id="aiQueryApplyFilters" class="btn ghost sm" type="button" title="Apply to Issues tab">Apply to Issues</button>
           </div>
@@ -487,13 +684,18 @@
   </div>
 
   <!-- Issue Modal -->
-  <div id="issueModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" aria-describedby="modalBody">
+  <div id="issueModal" class="modal" role="dialog" aria-modal="true"
+       aria-labelledby="modalTitle" aria-describedby="modalBody">
     <div class="modal-content">
       <div class="header">
         <h2 id="modalTitle" style="margin:0;font-size:20px">Issue</h2>
         <div class="actions">
-          <button id="copyId" class="btn sm" aria-label="Copy issue ID">🆔 Copy ID</button>
-          <button id="copyLink" class="btn sm" aria-label="Copy issue link">🔗 Copy Link</button>
+          <button id="copyId" class="btn sm" aria-label="Copy issue ID">
+            <span class="icon" aria-hidden="true">🆔</span> Copy ID
+          </button>
+          <button id="copyLink" class="btn sm" aria-label="Copy issue link">
+            <span class="icon" aria-hidden="true">🔗</span> Copy Link
+          </button>
           <button class="modal-close" id="modalClose" aria-label="Close">✕</button>
         </div>
       </div>
@@ -502,7 +704,8 @@
   </div>
 
   <!-- Event Modal -->
-  <div id="eventModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="eventModalTitle" aria-describedby="eventModalBody">
+  <div id="eventModal" class="modal" role="dialog" aria-modal="true"
+       aria-labelledby="eventModalTitle" aria-describedby="eventModalBody">
     <div class="modal-content">
       <div class="header">
         <h2 id="eventModalTitle" style="margin:0;font-size:20px">Event</h2>
@@ -514,23 +717,56 @@
       <form id="eventForm">
         <div id="eventModalBody">
           <div class="filter-group">
-            <div class="filter-row"><label class="muted" for="eventTitle">Title</label><input id="eventTitle" class="input" type="text" required placeholder="e.g. Prod deployment v2.3" /></div>
-            <div class="filter-row"><label class="muted" for="eventType">Type</label>
-              <select id="eventType" class="select"><option>Deployment</option><option>Maintenance</option><option>Release</option><option>Other</option></select>
+            <div class="filter-row">
+              <label class="muted" for="eventTitle">Title</label>
+              <input id="eventTitle" class="input" type="text" required
+                     placeholder="e.g. Prod deployment v2.3" />
             </div>
-            <div class="filter-row"><label class="muted" for="eventStart">Start</label><input id="eventStart" class="input" type="datetime-local" required /></div>
-            <div class="filter-row"><label class="muted" for="eventEnd">End (optional)</label><input id="eventEnd" class="input" type="datetime-local" /></div>
-            <div class="filter-row"><label class="muted" for="eventDescription">Notes</label>
-              <textarea id="eventDescription" class="input" rows="3" placeholder="Details, impact, owner…" style="border-radius:12px; resize:vertical;"></textarea>
+            <div class="filter-row">
+              <label class="muted" for="eventType">Type</label>
+              <select id="eventType" class="select">
+                <option value="Deployment">Deployment</option>
+                <option value="Maintenance">Maintenance</option>
+                <option value="Release">Release</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="eventIssueId">Issue ID (optional)</label>
+              <input id="eventIssueId" class="input" type="text"
+                     placeholder="e.g. INC-123 or ticket ID" />
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="eventStart">Start</label>
+              <input id="eventStart" class="input" type="datetime-local" required />
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="eventEnd">End (optional)</label>
+              <input id="eventEnd" class="input" type="datetime-local" />
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="eventDescription">Notes</label>
+              <textarea id="eventDescription" class="input" rows="3"
+                        placeholder="Details, impact, owner…"
+                        style="border-radius:12px; resize:vertical;"></textarea>
             </div>
           </div>
+          <div id="eventIssueLinkedInfo" class="muted"
+               style="margin-top:4px;display:none;font-size:12px;"></div>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">
           <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button id="eventSave" type="submit" class="btn primary sm">💾 Save Event</button>
-            <button id="eventCancel" type="button" class="btn ghost sm">Cancel</button>
+            <button id="eventSave" type="submit" class="btn primary sm">
+              💾 Save Event
+            </button>
+            <button id="eventCancel" type="button" class="btn ghost sm">
+              Cancel
+            </button>
           </div>
-          <button id="eventDelete" type="button" class="btn sm" style="background:transparent;border-color:var(--danger);color:var(--danger);display:none">🗑 Delete</button>
+          <button id="eventDelete" type="button" class="btn sm"
+                  style="background:transparent;border-color:var(--danger);color:var(--danger);display:none">
+            🗑 Delete
+          </button>
         </div>
       </form>
     </div>
@@ -540,9 +776,13 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script>
 /**
- * PRO Dashboard — single-file architecture using simple namespaces.
- * - CONFIG: tweak all behaviour here
- * - DataStore, Filters, UI, Risk, Analytics, DSL, CalendarLink
+ * InCheck Pro Dashboard — Issues · Ops · AI Copilot
+ * Single-file architecture:
+ *  - CONFIG / LS_KEYS
+ *  - DataStore (issues + text analytics)
+ *  - Risk engine
+ *  - DSL query parser
+ *  - Calendar risk helpers
  */
 
 const CONFIG = {
@@ -582,6 +822,16 @@ const CONFIG = {
   }
 };
 
+const LS_KEYS = {
+  filters: 'incheckFilters',
+  theme: 'theme',
+  events: 'incheckEvents',
+  issues: 'incheckIssues',
+  issuesLastUpdated: 'incheckIssuesLastUpdated',
+  pageSize: 'pageSize',
+  view: 'incheckView'
+};
+
 const STOPWORDS = new Set([
   'the','a','an','and','or','but','for','with','this','that','from','into','onto','when','what','where','how','why',
   'can','could','should','would','will','just','have','has','had','been','are','is','was','were',
@@ -608,11 +858,11 @@ const U = {
   },
   daysAgo:(n)=> new Date(Date.now()-n*86400000),
   isBetween:(d,a,b)=>{
-    const x = new Date(d); if (isNaN(x)) return false;
+    const x = new Date(d); if(isNaN(x)) return false;
     const min = a ? (a instanceof Date ? a : new Date(a)) : null;
     const max = b ? (b instanceof Date ? b : new Date(b)) : null;
-    if (min && x < min) return false;
-    if (max && x >= max) return false;
+    if(min && x < min) return false;
+    if(max && x >= max) return false;
     return true;
   }
 };
@@ -621,10 +871,13 @@ const U = {
 const Filters = {
   state: { search:'', module:'All', priority:'All', status:'All', start:'', end:'' },
   load(){
-    try{ const raw=localStorage.getItem('incheckFilters'); if(raw) this.state=JSON.parse(raw);}catch{}
+    try{
+      const raw=localStorage.getItem(LS_KEYS.filters);
+      if(raw) this.state=JSON.parse(raw);
+    }catch{}
   },
   save(){
-    try{ localStorage.setItem('incheckFilters', JSON.stringify(this.state)); }catch{}
+    try{ localStorage.setItem(LS_KEYS.filters, JSON.stringify(this.state)); }catch{}
   }
 };
 
@@ -688,11 +941,14 @@ const DataStore = {
     const parsed = Papa.parse(csvText,{header:true,skipEmptyLines:true}).data
       .map(DataStore.normalizeRow)
       .filter(r=>r.id && r.id.trim()!=="");
-    this.rows = parsed;
+    this.hydrateFromRows(parsed);
+  },
+  hydrateFromRows(parsed){
+    this.rows = parsed || [];
     this.byId.clear(); this.byModule.clear(); this.byStatus.clear(); this.byPriority.clear();
-    this.computed.clear(); this.df.clear(); this.N = parsed.length;
+    this.computed.clear(); this.df.clear(); this.N = this.rows.length;
 
-    parsed.forEach(r=>{
+    this.rows.forEach(r=>{
       this.byId.set(r.id,r);
       if(!this.byModule.has(r.module)) this.byModule.set(r.module,[]);
       this.byModule.get(r.module).push(r);
@@ -722,6 +978,30 @@ const DataStore = {
       meta.risk = {...risk,reasons};
       meta.suggestions = { priority:sPrio, categories };
     });
+  }
+};
+
+const IssuesCache = {
+  load(){
+    try{
+      const raw = localStorage.getItem(LS_KEYS.issues);
+      if(!raw) return null;
+      const data = JSON.parse(raw);
+      return Array.isArray(data)? data : null;
+    }catch{return null;}
+  },
+  save(rows){
+    try{
+      localStorage.setItem(LS_KEYS.issues, JSON.stringify(rows||[]));
+      localStorage.setItem(LS_KEYS.issuesLastUpdated, new Date().toISOString());
+    }catch{}
+  },
+  lastLabel(){
+    const iso = localStorage.getItem(LS_KEYS.issuesLastUpdated);
+    if(!iso) return '';
+    const d = new Date(iso);
+    if(isNaN(d)) return '';
+    return `Last updated: ${d.toLocaleString()}`;
   }
 };
 
@@ -861,23 +1141,37 @@ const CalendarLink = {
 const E = {};
 function cacheEls(){
   [
-    'issuesTable','issuesTbody','tbodySkeleton','rowCount','moduleFilter','priorityFilter','statusFilter','resetBtn',
-    'refreshNow','exportCsv','kpis','issueModal','modalBody','modalTitle','copyId','copyLink','modalClose',
-    'drawerBtn','sidebar','spinner','toast','searchInput','themeSelect','firstPage','prevPage','nextPage','lastPage',
-    'pageInfo','pageSize','createTicketBtn','startDateFilter','endDateFilter','issuesTab','calendarTab','insightsTab',
-    'issuesView','calendarView','insightsView','addEventBtn','eventModal','eventModalTitle','eventModalClose','eventForm',
-    'eventTitle','eventType','eventStart','eventEnd','eventDescription','eventSave','eventCancel','eventDelete',
-    'aiPatternsList','aiLabelsList','aiRisksList','aiClusters','aiScopeText','aiSignalsText','aiTrendsList',
-    'aiModulesTableBody','aiTriageList','aiEventsList','aiQueryInput','aiQueryRun','aiQueryResults','aiQueryApplyFilters',
-    'aiIncidentsList','aiEmergingStable','aiOpsCockpit','syncIssuesText','syncIssuesDot','syncEventsText','syncEventsDot',
-    'aiAnalyzing'
+    'issuesTable','issuesTbody','tbodySkeleton','rowCount',
+    'moduleFilter','priorityFilter','statusFilter','resetBtn',
+    'refreshNow','exportCsv','kpis','issueModal','modalBody','modalTitle',
+    'copyId','copyLink','modalClose','drawerBtn','sidebar','spinner','toast',
+    'searchInput','themeSelect','firstPage','prevPage','nextPage','lastPage',
+    'pageInfo','pageSize','createTicketBtn','startDateFilter','endDateFilter',
+    'issuesTab','calendarTab','insightsTab','issuesView','calendarView','insightsView',
+    'addEventBtn','eventModal','eventModalTitle','eventModalClose','eventForm',
+    'eventTitle','eventType','eventIssueId','eventStart','eventEnd','eventDescription',
+    'eventSave','eventCancel','eventDelete','eventIssueLinkedInfo',
+    'aiPatternsList','aiLabelsList','aiRisksList','aiClusters','aiScopeText','aiSignalsText',
+    'aiTrendsList','aiModulesTableBody','aiTriageList','aiEventsList','aiQueryInput',
+    'aiQueryRun','aiQueryResults','aiQueryApplyFilters','aiIncidentsList','aiEmergingStable',
+    'aiOpsCockpit','syncIssuesText','syncIssuesDot','syncEventsText','syncEventsDot',
+    'aiAnalyzing','eventFilterDeployment','eventFilterMaintenance','eventFilterRelease',
+    'eventFilterOther','loadingStatus'
   ].forEach(id=> E[id]=document.getElementById(id));
 }
 
 /** UI helpers */
 const UI = {
-  toast(msg,ms=3500){ if(!E.toast) return; E.toast.textContent=msg; E.toast.style.display='block'; setTimeout(()=>E.toast.style.display='none',ms); },
-  spinner(v=true){ if(E.spinner) E.spinner.style.display=v?'flex':'none'; },
+  toast(msg,ms=3500){
+    if(!E.toast) return;
+    E.toast.textContent=msg;
+    E.toast.style.display='block';
+    setTimeout(()=>{ if(E.toast) E.toast.style.display='none'; },ms);
+  },
+  spinner(v=true){
+    if(E.spinner) E.spinner.style.display=v?'flex':'none';
+    if(E.loadingStatus) E.loadingStatus.textContent = v ? 'Loading…' : '';
+  },
   setSync(which,ok,when){
     const txt = which==='issues'?E.syncIssuesText:E.syncEventsText;
     const dot = which==='issues'?E.syncIssuesDot:E.syncEventsDot;
@@ -885,16 +1179,22 @@ const UI = {
     txt.textContent = `${which==='issues'?'Issues':'Events'}: ${when?U.fmtTS(when):'never'}`;
     dot.className = 'dot '+(ok?'ok':'err');
   },
+  setAnalyzing(v){ if(E.aiAnalyzing) E.aiAnalyzing.style.display=v?'block':'none'; },
   skeleton(show){
     if(!E.issuesTbody||!E.tbodySkeleton) return;
     E.tbodySkeleton.style.display = show?'':'none';
     E.issuesTbody.style.display = show?'none':'';
-  },
-  setAnalyzing(v){ if(E.aiAnalyzing) E.aiAnalyzing.style.display=v?'block':'none'; }
+  }
 };
 
-const GridState = { sortKey:null, sortAsc:true, page:1, pageSize:+(localStorage.getItem('pageSize')||20) };
+const GridState = {
+  sortKey:null,
+  sortAsc:true,
+  page:1,
+  pageSize:+(localStorage.getItem(LS_KEYS.pageSize)||20)
+};
 
+/** Issues UI */
 UI.Issues = {
   renderFilters(){
     const uniq=a=>[...new Set(a.filter(Boolean).map(v=>v.trim()))].sort((a,b)=>a.localeCompare(b));
@@ -933,6 +1233,7 @@ UI.Issues = {
       const pct= total?Math.round((val*100)/total):0;
       const d=document.createElement('div');
       d.className='card kpi'; d.tabIndex=0; d.setAttribute('role','button');
+      d.setAttribute('aria-label',`${label}: ${val} (${pct} percent)`);
       d.innerHTML=`<div class="label">${label}</div><div class="value">${val}</div><div class="sub">${pct}%</div>`;
       d.onclick=()=>{
         if(label==='Total Issues'){
@@ -942,7 +1243,7 @@ UI.Issues = {
         }
         Filters.save(); UI.refreshAll();
       };
-      d.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); d.click(); } });
+      d.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); d.click(); }});
       E.kpis.appendChild(d);
     };
     add('Total Issues',total);
@@ -970,16 +1271,20 @@ UI.Issues = {
     const start=(GridState.page-1)*size;
     const pageData=rows.slice(start,start+size);
 
-    if(E.rowCount) E.rowCount.textContent=`${total} row${total===1?'':'s'}`;
+    if(E.rowCount){
+      const last = IssuesCache.lastLabel();
+      E.rowCount.textContent=`${total} row${total===1?'':'s'}${last ? ' • '+last : ''}`;
+    }
     if(E.pageInfo) E.pageInfo.textContent=`Page ${GridState.page} / ${pages}`;
     ['firstPage','prevPage','nextPage','lastPage'].forEach(id=>{
       const btn=E[id]; if(!btn) return;
       const atFirst=GridState.page<=1, atLast=GridState.page>=pages;
       if(id==='firstPage'||id==='prevPage') btn.disabled=atFirst; else btn.disabled=atLast;
+      if(btn.disabled) btn.setAttribute('disabled','true'); else btn.removeAttribute('disabled');
     });
 
-    const badgeStatus=s=>`<span class="pill status-${(s||'').replace(/\s/g,'\\ ')}">${s||'-'}</span>`;
-    const badgePrio=p=>`<span class="pill priority-${p||''}">${p||'-'}</span>`;
+    const badgeStatus=s=>`<span class="pill status-${(s||'').replace(/\s/g,'\\ ')}">${U.escapeHtml(s||'-')}</span>`;
+    const badgePrio=p=>`<span class="pill priority-${p||''}">${U.escapeHtml(p||'-')}</span>`;
 
     E.issuesTbody.innerHTML = pageData.length? pageData.map(r=>`
       <tr role="button" tabindex="0" aria-label="Open issue ${U.escapeHtml(r.id||'')}" data-id="${U.escapeAttr(r.id)}">
@@ -990,7 +1295,7 @@ UI.Issues = {
         <td>${badgeStatus(r.status||'-')}</td>
         <td>${U.escapeHtml(r.date||'-')}</td>
         <td>${U.escapeHtml(r.log||'-')}</td>
-        <td>${r.file?`<a href="${U.escapeAttr(r.file)}" target="_blank" rel="noopener noreferrer">🔗</a>`:'-'}</td>
+        <td>${r.file?`<a href="${U.escapeAttr(r.file)}" target="_blank" rel="noopener noreferrer" aria-label="Open attachment link">🔗</a>`:'-'}</td>
       </tr>
     `).join('') : `<tr><td colspan="8" style="text-align:center;color:var(--muted)">No issues found. Try clearing filters or search.</td></tr>`;
 
@@ -1056,7 +1361,9 @@ UI.Modals = {
     E.modalTitle.textContent=r.title||r.id||'Issue';
     E.modalBody.innerHTML=`
       <p><b>ID:</b> ${U.escapeHtml(r.id||'-')}</p>
-      <p><b>Module:</b> ${U.escapeHtml(r.module||'-')} &nbsp;&nbsp; <b>Priority:</b> ${U.escapeHtml(r.priority||'-')} &nbsp;&nbsp; <b>Status:</b> ${U.escapeHtml(r.status||'-')}</p>
+      <p><b>Module:</b> ${U.escapeHtml(r.module||'-')}</p>
+      <p><b>Priority:</b> ${U.escapeHtml(r.priority||'-')}</p>
+      <p><b>Status:</b> ${U.escapeHtml(r.status||'-')}</p>
       <p><b>Date:</b> ${U.escapeHtml(r.date||'-')}</p>
       <p><b>Risk:</b> ${risk.total} (Tech ${risk.technical}, Biz ${risk.business}, Ops ${risk.operational})<br><span class="muted">${U.escapeHtml(reasons)}</span></p>
       <p><b>Description:</b><br>${U.escapeHtml(r.desc||'-')}</p>
@@ -1079,14 +1386,27 @@ UI.Modals = {
   openEvent(ev){
     this.lastEventFocus=document.activeElement;
     const isEdit=!!(ev && ev.id);
-    if (E.eventForm) E.eventForm.dataset.id = isEdit ? ev.id : '';
+    if(E.eventForm) E.eventForm.dataset.id = isEdit ? ev.id : '';
     if(E.eventModalTitle) E.eventModalTitle.textContent=isEdit?'Edit Event':'Add Event';
     if(E.eventDelete) E.eventDelete.style.display=isEdit?'inline-flex':'none';
+
     if(E.eventTitle) E.eventTitle.value=ev.title||'';
     if(E.eventType) E.eventType.value=ev.type||'Deployment';
+    if(E.eventIssueId) E.eventIssueId.value=ev.issueId||'';
     if(E.eventStart) E.eventStart.value=ev.start?toLocalInputValue(ev.start):'';
     if(E.eventEnd) E.eventEnd.value=ev.end?toLocalInputValue(ev.end):'';
     if(E.eventDescription) E.eventDescription.value=ev.description||'';
+
+    if(E.eventIssueLinkedInfo){
+      if(ev.issueId){
+        E.eventIssueLinkedInfo.style.display='block';
+        E.eventIssueLinkedInfo.textContent=`Linked issue ID: ${ev.issueId}`;
+      }else{
+        E.eventIssueLinkedInfo.style.display='none';
+        E.eventIssueLinkedInfo.textContent='';
+      }
+    }
+
     if(E.eventModal){ E.eventModal.style.display='flex'; E.eventTitle?.focus(); }
   },
   closeEvent(){
@@ -1288,7 +1608,11 @@ const Analytics = {
     U.qAll('[data-open]').forEach(b=> b.addEventListener('click',()=>UI.Modals.openIssue(b.getAttribute('data-open'))));
     U.qAll('[data-copy]').forEach(b=> b.addEventListener('click',()=>{
       const id=b.getAttribute('data-copy'); const r=DataStore.byId.get(id); const meta=DataStore.computed.get(id)||{};
-      const text=`Issue ${r.id}\nTitle: ${r.title}\nSuggested Priority: ${meta.suggestions?.priority}\nSuggested Categories: ${(meta.suggestions?.categories||[]).map(c=>c.label).join(', ')}\nReasons: ${(meta.risk?.reasons||[]).join(', ')}`;
+      const text=`Issue ${r.id}
+Title: ${r.title}
+Suggested Priority: ${meta.suggestions?.priority}
+Suggested Categories: ${(meta.suggestions?.categories||[]).map(c=>c.label).join(', ')}
+Reasons: ${(meta.risk?.reasons||[]).join(', ')}`;
       navigator.clipboard.writeText(text).then(()=>UI.toast('Suggestion copied')).catch(()=>UI.toast('Clipboard blocked'));
     }));
 
@@ -1388,8 +1712,16 @@ function initApp(){
   UI.setSync('issues',false,null);
   UI.setSync('events',false,null);
 
+  // restore view (issues / calendar / insights)
+  let savedView='issues';
+  try{ savedView=localStorage.getItem(LS_KEYS.view)||'issues'; }catch{}
+  setActiveView(savedView);
+
   loadIssues();
   loadEvents();
+
+  if(typeof Chart==='undefined') UI.toast('Chart.js failed to load');
+  if(typeof Papa==='undefined') UI.toast('PapaParse failed to load');
 
   // keyboard shortcuts
   document.addEventListener('keydown',e=>{
@@ -1407,18 +1739,7 @@ function initApp(){
 function wireCore(){
   [E.issuesTab,E.calendarTab,E.insightsTab].forEach(btn=>{
     if(!btn) return;
-    btn.addEventListener('click',()=>{
-      const view=btn.dataset.view;
-      [E.issuesTab,E.calendarTab,E.insightsTab].forEach(b=>{
-        if(!b) return;
-        const active=b===btn; b.classList.toggle('active',active); b.setAttribute('aria-selected',active?'true':'false');
-      });
-      E.issuesView.classList.toggle('active',view==='issues');
-      E.calendarView.classList.toggle('active',view==='calendar');
-      E.insightsView.classList.toggle('active',view==='insights');
-      if(view==='calendar') ensureCalendar();
-      if(view==='insights') Analytics.refresh(UI.Issues.applyFilters());
-    });
+    btn.addEventListener('click',()=> setActiveView(btn.dataset.view));
   });
 
   if(E.drawerBtn) E.drawerBtn.addEventListener('click',()=>{
@@ -1459,7 +1780,7 @@ function wireSorting(){
 
 function wirePaging(){
   if(E.pageSize) E.pageSize.addEventListener('change',()=>{
-    GridState.pageSize=+E.pageSize.value; localStorage.setItem('pageSize',GridState.pageSize);
+    GridState.pageSize=+E.pageSize.value; localStorage.setItem(LS_KEYS.pageSize,GridState.pageSize);
     GridState.page=1; UI.refreshAll();
   });
   if(E.firstPage) E.firstPage.addEventListener('click',()=>{ GridState.page=1; UI.refreshAll(); });
@@ -1495,12 +1816,14 @@ function wireFilters(){
     E.endDateFilter.addEventListener('change',()=>{ Filters.state.end=E.endDateFilter.value; Filters.save(); UI.refreshAll(); });
   }
   if(E.searchInput) E.searchInput.value=Filters.state.search||'';
+
   if(E.resetBtn) E.resetBtn.addEventListener('click',()=>{
     Filters.state={search:'',module:'All',priority:'All',status:'All',start:'',end:''};
     Filters.save();
     if(E.searchInput) E.searchInput.value='';
     if(E.startDateFilter) E.startDateFilter.value='';
     if(E.endDateFilter) E.endDateFilter.value='';
+    UI.Issues.renderFilters();
     UI.refreshAll();
   });
 }
@@ -1511,13 +1834,13 @@ function wireTheme(){
     if(media?.matches) document.documentElement.removeAttribute('data-theme');
     else document.documentElement.setAttribute('data-theme','light');
   };
-  const saved=localStorage.getItem('theme')||'system';
+  const saved=localStorage.getItem(LS_KEYS.theme)||'system';
   if(E.themeSelect) E.themeSelect.value=saved;
   if(saved==='system') applySystem();
   else document.documentElement.setAttribute('data-theme',saved==='dark'?'':'light');
-  media?.addEventListener('change',()=>{ if((localStorage.getItem('theme')||'system')==='system') applySystem(); });
+  media?.addEventListener('change',()=>{ if((localStorage.getItem(LS_KEYS.theme)||'system')==='system') applySystem(); });
   if(E.themeSelect) E.themeSelect.addEventListener('change',()=>{
-    const v=E.themeSelect.value; localStorage.setItem('theme',v);
+    const v=E.themeSelect.value; localStorage.setItem(LS_KEYS.theme,v);
     if(v==='system') applySystem();
     else document.documentElement.setAttribute('data-theme',v==='dark'?'':'light');
   });
@@ -1534,7 +1857,14 @@ function wireModals(){
   document.addEventListener('keydown',e=>{
     const issueOpen=E.issueModal && E.issueModal.style.display==='flex';
     const eventOpen=E.eventModal && E.eventModal.style.display==='flex';
-    if(e.key==='Escape'){ if(eventOpen) UI.Modals.closeEvent(); else if(issueOpen) UI.Modals.closeIssue(); }
+    if(e.key==='Escape'){
+      if(eventOpen) UI.Modals.closeEvent();
+      else if(issueOpen) UI.Modals.closeIssue();
+    }
+    if(e.key==='Tab'){
+      if(eventOpen && E.eventModal) trapFocus(E.eventModal,e);
+      else if(issueOpen && E.issueModal) trapFocus(E.issueModal,e);
+    }
   });
 
   if(E.copyId) E.copyId.addEventListener('click',async()=>{
@@ -1553,11 +1883,13 @@ function wireModals(){
       id,
       title:E.eventTitle.value.trim(),
       type:E.eventType.value||'Deployment',
+      issueId:E.eventIssueId.value.trim()||'',
       start:E.eventStart.value,
       end:E.eventEnd.value||null,
       description:E.eventDescription.value.trim()
     };
-    if(!ev.title||!ev.start) return UI.toast('Title & start required');
+    if(!ev.title) return UI.toast('Title & start required');
+    if(!ev.start) return UI.toast('Start date/time is required');
     const saved=await saveEventToSheet(ev); if(!saved) return;
     const idx=DataStore.events.findIndex(x=>x.id===saved.id);
     if(idx===-1) DataStore.events.push(saved); else DataStore.events[idx]=saved;
@@ -1659,6 +1991,9 @@ function wireCalendar(){
     const now=new Date();
     UI.Modals.openEvent({start:now,end:new Date(now.getTime()+60*60*1000)});
   });
+
+  [E.eventFilterDeployment,E.eventFilterMaintenance,E.eventFilterRelease,E.eventFilterOther]
+    .forEach(input=>{ if(input) input.addEventListener('change',renderCalendarEvents); });
 }
 
 function ensureCalendar(){
@@ -1671,8 +2006,13 @@ function ensureCalendar(){
     select:info=>UI.Modals.openEvent({start:info.start,end:info.end}),
     eventClick:info=>{
       const ev=DataStore.events.find(e=>e.id===info.event.id) || {
-        id:info.event.id,title:info.event.title,type:info.event.extendedProps.type||'Other',
-        start:info.event.start,end:info.event.end,description:info.event.extendedProps.description||''
+        id:info.event.id,
+        title:info.event.title,
+        type:info.event.extendedProps.type||'Other',
+        start:info.event.start,
+        end:info.event.end,
+        description:info.event.extendedProps.description||'',
+        issueId:info.event.extendedProps.issueId||''
       };
       UI.Modals.openEvent(ev);
     },
@@ -1685,6 +2025,9 @@ function ensureCalendar(){
         const titleEl=info.el.querySelector('.fc-event-title');
         if(titleEl) titleEl.appendChild(span);
       }
+      if(info.event.extendedProps && info.event.extendedProps.description){
+        info.el.setAttribute('title', info.event.extendedProps.description);
+      }
     }
   });
   calendarReady=true;
@@ -1694,12 +2037,28 @@ function ensureCalendar(){
 
 function renderCalendarEvents(){
   if(!calendar) return;
+  const activeTypes=new Set();
+  if(E.eventFilterDeployment && E.eventFilterDeployment.checked) activeTypes.add('Deployment');
+  if(E.eventFilterMaintenance && E.eventFilterMaintenance.checked) activeTypes.add('Maintenance');
+  if(E.eventFilterRelease && E.eventFilterRelease.checked) activeTypes.add('Release');
+  if(E.eventFilterOther && E.eventFilterOther.checked) activeTypes.add('Other');
+
   calendar.removeAllEvents();
   DataStore.events.forEach(ev=>{
+    const type=ev.type||'Other';
+    if(activeTypes.size && !activeTypes.has(type)) return;
     calendar.addEvent({
-      id:ev.id,title:ev.title,start:ev.start,end:ev.end||null,
-      extendedProps:{type:ev.type||'Other',description:ev.description,risk:0},
-      classNames:['event-type-'+(ev.type||'Other').toLowerCase().replace(/\s+/g,'-')]
+      id:ev.id,
+      title:ev.title,
+      start:ev.start,
+      end:ev.end||null,
+      extendedProps:{
+        type,
+        description:ev.description,
+        issueId:ev.issueId||'',
+        risk:0
+      },
+      classNames:['event-type-'+type.toLowerCase().replace(/\s+/g,'-')]
     });
   });
   const links=computeEventsRisk(DataStore.rows, DataStore.events);
@@ -1711,26 +2070,51 @@ function renderCalendarEvents(){
 
 /* ---------- Networking ---------- */
 async function loadIssues(force=false){
+  // Use cached issues first if we have nothing yet and we're not forcing
+  if(!force && !DataStore.rows.length){
+    const cached = IssuesCache.load();
+    if(cached && cached.length){
+      DataStore.hydrateFromRows(cached);
+      UI.Issues.renderFilters();
+      // restore filters into selects (only if option exists)
+      setIfOptionExists(E.moduleFilter, Filters.state.module);
+      setIfOptionExists(E.priorityFilter, Filters.state.priority);
+      setIfOptionExists(E.statusFilter, Filters.state.status);
+      UI.skeleton(false);
+      UI.refreshAll();
+    }
+  }
+
   try{
     UI.spinner(true); UI.skeleton(true);
     const res=await fetch(CONFIG.SHEET_URL,{cache:'no-store'});
+    if(!res.ok) throw new Error(`Failed to fetch (${res.status})`);
     const text=await res.text();
     DataStore.hydrate(text);
+    IssuesCache.save(DataStore.rows);
     UI.Issues.renderFilters();
-
-    // restore filters into selects
-    if(Filters.state.module && E.moduleFilter) E.moduleFilter.value=Filters.state.module;
-    if(Filters.state.priority && E.priorityFilter) E.priorityFilter.value=Filters.state.priority;
-    if(Filters.state.status && E.statusFilter) E.statusFilter.value=Filters.state.status;
-
-    UI.skeleton(false);
+    setIfOptionExists(E.moduleFilter, Filters.state.module);
+    setIfOptionExists(E.priorityFilter, Filters.state.priority);
+    setIfOptionExists(E.statusFilter, Filters.state.status);
     UI.refreshAll();
     UI.setSync('issues',true,new Date());
   }catch(e){
+    if(!DataStore.rows.length && E.issuesTbody){
+      E.issuesTbody.innerHTML = `
+        <tr>
+          <td colspan="8" style="color:#ffb4b4;text-align:center">
+            Error loading data and no cached data found.
+            <button type="button" id="retryLoad" class="btn sm" style="margin-left:8px">Retry</button>
+          </td>
+        </tr>`;
+      const retryBtn=document.getElementById('retryLoad');
+      if(retryBtn) retryBtn.addEventListener('click',()=>loadIssues(true));
+    }
     UI.toast('Error loading issues: '+e.message);
-    UI.setSync('issues',false,null);
+    UI.setSync('issues',!!DataStore.rows.length,null);
   }finally{
     UI.spinner(false);
+    UI.skeleton(false);
   }
 }
 
@@ -1738,6 +2122,7 @@ async function loadEvents(force=false){
   try{
     UI.spinner(true);
     const res=await fetch(CONFIG.CALENDAR_API_URL,{cache:'no-store'});
+    if(!res.ok) throw new Error('Failed to load events');
     const data=await res.json();
     DataStore.events=data.events||loadEventsCache();
     saveEventsCache();
@@ -1755,29 +2140,63 @@ async function loadEvents(force=false){
 }
 
 /* ---------- Events cache ---------- */
-function loadEventsCache(){ try{return JSON.parse(localStorage.getItem('incheckEvents')||'[]');}catch{return[];} }
-function saveEventsCache(){ try{localStorage.setItem('incheckEvents',JSON.stringify(DataStore.events));}catch{} }
+function loadEventsCache(){
+  try{return JSON.parse(localStorage.getItem(LS_KEYS.events)||'[]');}catch{return[];}
+}
+function saveEventsCache(){
+  try{localStorage.setItem(LS_KEYS.events,JSON.stringify(DataStore.events));}catch{}
+}
 
 /* ---------- Save/Delete to Apps Script ---------- */
 async function saveEventToSheet(event){
+  UI.spinner(true);
   try{
-    const res=await fetch(CONFIG.CALENDAR_API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'save',event})});
-    const data=await res.json();
-    if(data.ok){ UI.toast('Event saved'); return data.event; }
-    UI.toast('Backend error saving event'); return null;
+    const res=await fetch(CONFIG.CALENDAR_API_URL,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'save',event})
+    });
+    let data;
+    try{
+      data=await res.json();
+    }catch(jsonErr){
+      console.error('Invalid JSON from calendar backend', jsonErr);
+      const text=await res.text();
+      console.error('Raw response:', text);
+      UI.toast('Calendar: invalid JSON from backend');
+      return null;
+    }
+    if(data.ok){
+      UI.toast('Event saved');
+      return data.event;
+    }else{
+      UI.toast('Error saving event: '+(data.error||'Unknown error'));
+      return null;
+    }
   }catch(e){
-    UI.toast('Network error saving event'); return null;
+    UI.toast('Network error saving event: '+e.message);
+    return null;
+  }finally{
+    UI.spinner(false);
   }
 }
+
 async function deleteEventFromSheet(id){
+  UI.spinner(true);
   try{
-    const res=await fetch(CONFIG.CALENDAR_API_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'delete',event:{id}})});
+    const res=await fetch(CONFIG.CALENDAR_API_URL,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'delete',event:{id}})
+    });
     const data=await res.json();
     if(!data.ok) throw new Error(data.error||'Delete failed');
     UI.toast('Event deleted');
   }catch(e){
     UI.toast('Error deleting event: '+e.message);
     throw e;
+  }finally{
+    UI.spinner(false);
   }
 }
 
@@ -1806,6 +2225,40 @@ function exportFilteredCsv(){
 
 /* ---------- Misc utils ---------- */
 function debounce(fn,ms=250){ let t; return(...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }; }
+
+function setIfOptionExists(select,value){
+  if(!select || !value) return;
+  const options=Array.from(select.options||[]);
+  if(options.some(o=>o.value===value)) select.value=value;
+}
+
+function trapFocus(container,e){
+  const focusables = container.querySelectorAll('button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])');
+  if(!focusables.length) return;
+  const first=focusables[0], last=focusables[focusables.length-1];
+  if(e.shiftKey && document.activeElement===first){
+    last.focus(); e.preventDefault();
+  }else if(!e.shiftKey && document.activeElement===last){
+    first.focus(); e.preventDefault();
+  }
+}
+
+function setActiveView(view){
+  const names=['issues','calendar','insights'];
+  names.forEach(name=>{
+    const tab = name==='issues'?E.issuesTab : name==='calendar'?E.calendarTab : E.insightsTab;
+    const panel = name==='issues'?E.issuesView : name==='calendar'?E.calendarView : E.insightsView;
+    const active = (name===view);
+    if(tab){
+      tab.classList.toggle('active',active);
+      tab.setAttribute('aria-selected',active?'true':'false');
+    }
+    if(panel) panel.classList.toggle('active',active);
+  });
+  if(view==='calendar') ensureCalendar();
+  if(view==='insights') Analytics.refresh(UI.Issues.applyFilters());
+  try{ localStorage.setItem(LS_KEYS.view,view); }catch{}
+}
 
 /* ---------- Auto-refresh events ---------- */
 setInterval(()=>loadEvents(true),5*60*1000);
