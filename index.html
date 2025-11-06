@@ -444,7 +444,7 @@
     .fc-event.event-type-release { background-color:var(--ok); border-color:var(--ok); }
     .fc-event.event-type-other { background-color:var(--purple); border-color:var(--purple); }
 
-    /* Small tweak: hide "Log" column on very small screens if you want */
+    /* Hide log column on narrow screens (optional) */
     @media(max-width:768px){
       td:nth-child(7), th:nth-child(7){ display:none; }
     }
@@ -546,6 +546,7 @@
         </button>
       </div>
 
+      <!-- Issues view -->
       <section id="issuesView" class="view active" role="tabpanel" aria-labelledby="issuesTab">
         <div class="grid cols-4" id="kpis" aria-live="polite"></div>
 
@@ -601,6 +602,7 @@
         </div>
       </section>
 
+      <!-- Calendar view -->
       <section id="calendarView" class="view" role="tabpanel" aria-labelledby="calendarTab">
         <div class="card" aria-label="Calendar">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -618,13 +620,13 @@
         </div>
       </section>
 
-      <!-- 🤖 AI Insights / Copilot view -->
+      <!-- AI Insights / Copilot view -->
       <section id="insightsView" class="view" role="tabpanel" aria-labelledby="insightsTab">
         <div class="card" aria-label="AI Insights summary">
           <strong>AI Insights / Copilot</strong>
           <div class="muted" style="margin-top:4px;">
-            Analyses issues text (title, description, log) to surface patterns, suggested categories, clusters, and high-risk items.
-            This is heuristic and runs fully in the browser – no external AI calls.
+            Analyses issues text (title, description, log) to surface patterns, suggested categories, clusters, trends,
+            triage suggestions, and deployment risk. Runs fully in the browser (heuristics, no external AI calls).
           </div>
         </div>
 
@@ -648,6 +650,31 @@
         </div>
 
         <div class="card">
+          <strong>Trends & bursts (last 14 days)</strong>
+          <ul id="aiTrendsList" class="muted" style="font-size:13px;margin-top:6px;padding-left:18px;"></ul>
+        </div>
+
+        <div class="card">
+          <strong>Per-module risk insights</strong>
+          <div class="table-wrap" role="region" aria-label="AI per-module insights" style="max-height:320px;">
+            <table id="aiModulesTable">
+              <thead>
+                <tr>
+                  <th scope="col">Module</th>
+                  <th scope="col">Open</th>
+                  <th scope="col">High P</th>
+                  <th scope="col">Risk sum</th>
+                  <th scope="col">Top term</th>
+                </tr>
+              </thead>
+              <tbody id="aiModulesTableBody">
+                <tr><td colspan="5" style="text-align:center;color:var(--muted)">Waiting for data…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
           <strong>Top risks this week</strong>
           <ul id="aiRisksList" class="muted" style="font-size:13px;margin-top:6px;padding-left:18px;"></ul>
         </div>
@@ -655,6 +682,38 @@
         <div class="card">
           <strong>Similar issue clusters</strong>
           <div id="aiClusters" style="margin-top:6px;display:grid;gap:10px;"></div>
+        </div>
+
+        <div class="card">
+          <strong>Triage queue (issues needing attention)</strong>
+          <div class="muted" style="font-size:12px;margin-top:4px;">
+            Focus on issues missing module / priority / type, ordered by risk. Suggestions are heuristic.
+          </div>
+          <ul id="aiTriageList" class="muted" style="font-size:13px;margin-top:6px;padding-left:18px;"></ul>
+        </div>
+
+        <div class="card">
+          <strong>Upcoming risky events (next 7 days)</strong>
+          <div class="muted" style="font-size:12px;margin-top:4px;">
+            Combines calendar events with open, high-risk issues in related modules (by title matching).
+          </div>
+          <ul id="aiEventsList" class="muted" style="font-size:13px;margin-top:6px;padding-left:18px;"></ul>
+        </div>
+
+        <div class="card">
+          <strong>AI Commands (experimental)</strong>
+          <div class="muted" style="font-size:12px;margin-top:4px;">
+            Example queries: <br>
+            <code>payments high prod timeout</code> •
+            <code>module:billing priority:high</code> •
+            <code>status:open login error</code>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
+            <input id="aiQueryInput" class="input" type="text" placeholder="Ask about issues (filters & keywords)…"
+                   style="flex:1;min-width:220px;">
+            <button id="aiQueryRun" class="btn sm" type="button">Run</button>
+          </div>
+          <div id="aiQueryResults" class="muted" style="font-size:13px;margin-top:8px;"></div>
         </div>
       </section>
     </main>
@@ -748,7 +807,7 @@
 document.addEventListener("DOMContentLoaded", () => {
   const SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTRwAjNAQxiPP8uR15t_vx03JkjgEBjgUwp2bpx8rsHx-JJxVDBZyf5ap77rAKrYHfgkVMwLJVm6pGn/pub?output=csv";
 
-  // Your Google Apps Script Web App URL for calendar events
+  // Google Apps Script Web App for calendar events (wrapped via CORS proxy)
   const CALENDAR_API_URL =
     "https://corsproxy.io/?" +
     encodeURIComponent("https://script.google.com/macros/s/AKfycbwRcF-CbJY3dNfU9QQWixGL82a5BqCxVII4sGJSKunJ_fhDLLezL90kUXoqMrHuYytV/exec");
@@ -811,14 +870,21 @@ document.addEventListener("DOMContentLoaded", () => {
     aiRisksList: q('#aiRisksList'),
     aiClusters: q('#aiClusters'),
     aiScopeText: q('#aiScopeText'),
-    aiSignalsText: q('#aiSignalsText')
+    aiSignalsText: q('#aiSignalsText'),
+    aiTrendsList: q('#aiTrendsList'),
+    aiModulesTableBody: q('#aiModulesTableBody'),
+    aiTriageList: q('#aiTriageList'),
+    aiEventsList: q('#aiEventsList'),
+    aiQueryInput: q('#aiQueryInput'),
+    aiQueryRun: q('#aiQueryRun'),
+    aiQueryResults: q('#aiQueryResults')
   };
 
   let rows = [], filtered = [], charts = {};
   let sortKey = null, sortAsc = true;
   let currentPage = 1;
-  let rowsPerPage = +(localStorage.getItem('pageSize') || els.pageSize.value);
-  els.pageSize.value = String(rowsPerPage);
+  let rowsPerPage = +(localStorage.getItem('pageSize') || (els.pageSize ? els.pageSize.value : 20));
+  if (els.pageSize) els.pageSize.value = String(rowsPerPage);
   let selectedIssue = null;
   let lastFocusedBeforeIssueModal = null;
   let lastFocusedBeforeEventModal = null;
@@ -828,7 +894,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let calendarInitialized = false;
   let editingEventId = null;
 
-  // ----- AI Insights helpers -----
+  // ----- AI / Copilot helpers -----
   const STOPWORDS = new Set([
     'the','a','an','and','or','but','for','with','this','that','from','into','onto',
     'when','what','where','how','why','can','could','should','would','will','just',
@@ -839,12 +905,12 @@ document.addEventListener("DOMContentLoaded", () => {
   ]);
 
   const LABEL_KEYWORDS = {
-    'Authentication / Login': ['login','signin','password','auth','token','session'],
-    'Payments / Billing': ['payment','payments','billing','invoice','card','credit','charge','checkout'],
-    'Performance / Latency': ['slow','slowness','latency','performance','perf','timeout','lag'],
-    'Reliability / Errors': ['error','errors','exception','500','503','fail','failed','crash'],
-    'UI / UX': ['button','screen','page','layout','css','ui','ux'],
-    'Data / Sync': ['sync','synchron','cache','cached','replica','replication','consistency']
+    'Authentication / Login': ['login','signin','sign in','password','auth','token','session','otp'],
+    'Payments / Billing': ['payment','payments','billing','invoice','card','credit','charge','checkout','refund'],
+    'Performance / Latency': ['slow','slowness','latency','performance','perf','timeout','time out','lag'],
+    'Reliability / Errors': ['error','errors','exception','500','503','fail','failed','crash','down','unavailable'],
+    'UI / UX': ['button','screen','page','layout','css','ui','ux','alignment','typo'],
+    'Data / Sync': ['sync','synchron','cache','cached','replica','replication','consistency','out of date']
   };
 
   function issueText(issue) {
@@ -890,49 +956,394 @@ document.addEventListener("DOMContentLoaded", () => {
       { kw: 'exception', val: 2 },
       { kw: 'fail', val: 2 },
       { kw: 'failed', val: 2 },
+      { kw: 'crash', val: 3 },
+      { kw: 'down', val: 3 },
       { kw: 'payment', val: 3 },
       { kw: 'payments', val: 3 },
       { kw: 'billing', val: 2 },
       { kw: 'checkout', val: 2 },
+      { kw: 'refund', val: 2 },
       { kw: 'login', val: 2 },
-      { kw: 'auth', val: 2 }
+      { kw: 'auth', val: 2 },
+      { kw: 'vip', val: 2 },
+      { kw: 'all users', val: 3 },
+      { kw: 'cannot', val: 2 },
+      { kw: 'blocked', val: 2 }
     ];
 
     boosts.forEach(b => {
       if (text.includes(b.kw)) score += b.val;
     });
 
-    if (issue.status && issue.status.toLowerCase().startsWith('on stage')) score += 2;
-    if (issue.status && issue.status.toLowerCase().startsWith('under')) score += 1;
+    const st = (issue.status || '').toLowerCase();
+    if (st.startsWith('on stage')) score += 2;
+    if (st.startsWith('under')) score += 1;
 
     return score;
   }
 
-  function buildSimilarClusters(base) {
-    const clusters = new Map();
+  function suggestCategories(issue) {
+    const text = issueText(issue);
+    const res = [];
+    Object.entries(LABEL_KEYWORDS).forEach(([label, keywords]) => {
+      let hits = 0;
+      keywords.forEach(k => { if (text.includes(k)) hits++; });
+      if (hits > 0) res.push({ label, score: hits });
+    });
+    res.sort((a,b) => b.score - a.score);
+    return res;
+  }
 
+  function suggestPriority(issue) {
+    if (issue.priority) return issue.priority;
+    const score = computeRiskScore(issue);
+    if (score >= 10) return 'High';
+    if (score >= 6) return 'Medium';
+    return 'Low';
+  }
+
+  function needsTriage(issue) {
+    const missingPriority = !issue.priority;
+    const missingModule = !issue.module || issue.module === 'Unspecified';
+    const missingType = !issue.type;
+    return missingPriority || missingModule || missingType;
+  }
+
+  function computeTriageQueue(base, maxItems = 15) {
+    const items = [];
     base.forEach(issue => {
-      const tokens = tokenizeIssue(issue);
-      if (!tokens.length) return;
+      if (!needsTriage(issue)) return;
+      const cats = suggestCategories(issue);
+      const prio = suggestPriority(issue);
+      items.push({ issue, suggestedCategories: cats, suggestedPriority: prio });
+    });
+    items.sort((a,b) => computeRiskScore(b.issue) - computeRiskScore(a.issue));
+    return items.slice(0, maxItems);
+  }
 
-      const freq = {};
-      tokens.forEach(t => { freq[t] = (freq[t] || 0) + 1; });
-      const ranked = Object.entries(freq)
-        .sort((a,b) => b[1] - a[1])
-        .map(([t]) => t);
+  function computeTermTrends(base) {
+    const windowDays = 14;
+    const recent = getRecentIssues(base, windowDays);
+    if (!recent.length) return [];
+    const now = Date.now();
+    const midCutoff = now - 7 * 24 * 60 * 60 * 1000;
 
-      const signature = ranked.slice(0, 3).join(' ');
-      if (!signature) return;
+    const oldCounts = new Map();
+    const newCounts = new Map();
 
-      if (!clusters.has(signature)) clusters.set(signature, []);
-      clusters.get(signature).push(issue);
+    recent.forEach(issue => {
+      if (!issue.date) return;
+      const d = new Date(issue.date);
+      if (isNaN(d)) return;
+      const isNew = d.getTime() >= midCutoff;
+      const target = isNew ? newCounts : oldCounts;
+      const toks = tokenizeIssue(issue);
+      const uniq = new Set(toks);
+      uniq.forEach(t => {
+        target.set(t, (target.get(t) || 0) + 1);
+      });
     });
 
-    return Array.from(clusters.entries())
-      .map(([signature, issues]) => ({ signature, issues }))
-      .filter(c => c.issues.length >= 2)
-      .sort((a,b) => b.issues.length - a.issues.length)
-      .slice(0, 6);
+    const terms = new Set([...oldCounts.keys(), ...newCounts.keys()]);
+    const results = [];
+    terms.forEach(term => {
+      const oldC = oldCounts.get(term) || 0;
+      const newC = newCounts.get(term) || 0;
+      const total = oldC + newC;
+      if (total < 2) return;
+      const delta = newC - oldC;
+      const ratio = oldC === 0 ? (newC >= 2 ? Infinity : 0) : newC / oldC;
+      if ((newC >= 2 && ratio >= 2) || delta >= 2) {
+        results.push({ term, old: oldC, recent: newC, delta, ratio });
+      }
+    });
+
+    results.sort((a,b) => {
+      if (a.ratio === Infinity && b.ratio !== Infinity) return -1;
+      if (b.ratio === Infinity && a.ratio !== Infinity) return 1;
+      if (b.delta !== a.delta) return b.delta - a.delta;
+      return b.recent - a.recent;
+    });
+
+    return results.slice(0, 8);
+  }
+
+  function computeModuleInsights(base) {
+    const map = new Map();
+    base.forEach(issue => {
+      const moduleName = issue.module || 'Unspecified';
+      let entry = map.get(moduleName);
+      if (!entry) {
+        entry = {
+          module: moduleName,
+          total: 0,
+          open: 0,
+          high: 0,
+          riskSum: 0,
+          tokens: new Map()
+        };
+        map.set(moduleName, entry);
+      }
+      entry.total++;
+      const st = (issue.status || '').toLowerCase();
+      const isResolved = st.startsWith('resolved');
+      if (!isResolved) {
+        entry.open++;
+        if (issue.priority === 'High') entry.high++;
+      }
+      const rs = computeRiskScore(issue);
+      entry.riskSum += rs;
+
+      const toks = tokenizeIssue(issue);
+      const uniq = new Set(toks);
+      uniq.forEach(t => {
+        entry.tokens.set(t, (entry.tokens.get(t) || 0) + 1);
+      });
+    });
+
+    return Array.from(map.values()).map(entry => {
+      let topTerm = '';
+      if (entry.tokens.size) {
+        topTerm = Array.from(entry.tokens.entries())
+          .sort((a,b) => b[1] - a[1])[0][0];
+      }
+      return {
+        module: entry.module,
+        total: entry.total,
+        open: entry.open,
+        high: entry.high,
+        risk: entry.riskSum,
+        topTerm
+      };
+    }).sort((a,b) => {
+      if (b.risk !== a.risk) return b.risk - a.risk;
+      return b.open - a.open;
+    }).slice(0, 8);
+  }
+
+  function buildSimilarClusters(base) {
+    const clusters = [];
+    const maxDocs = 400; // safety limit
+    const docs = base.slice(-maxDocs).map(issue => {
+      const toks = tokenizeIssue(issue);
+      const set = new Set(toks);
+      return { issue, tokens: set };
+    });
+
+    const visited = new Set();
+
+    function jaccard(a, b) {
+      if (!a.size || !b.size) return 0;
+      let inter = 0;
+      a.forEach(v => { if (b.has(v)) inter++; });
+      const union = a.size + b.size - inter;
+      return union === 0 ? 0 : inter / union;
+    }
+
+    for (let i = 0; i < docs.length; i++) {
+      if (visited.has(i)) continue;
+      const baseDoc = docs[i];
+      const cluster = [baseDoc];
+      visited.add(i);
+
+      for (let j = i + 1; j < docs.length; j++) {
+        if (visited.has(j)) continue;
+        const other = docs[j];
+        const sim = jaccard(baseDoc.tokens, other.tokens);
+        if (sim >= 0.35) {
+          visited.add(j);
+          cluster.push(other);
+        }
+      }
+
+      if (cluster.length >= 2) {
+        const tokenFreq = new Map();
+        cluster.forEach(d => {
+          d.tokens.forEach(t => {
+            tokenFreq.set(t, (tokenFreq.get(t) || 0) + 1);
+          });
+        });
+        const signatureTokens = Array.from(tokenFreq.entries())
+          .sort((a,b) => b[1] - a[1])
+          .slice(0,3)
+          .map(([t]) => t);
+        const signature = signatureTokens.join(' ');
+        clusters.push({
+          signature,
+          issues: cluster.map(c => c.issue)
+        });
+      }
+    }
+
+    clusters.sort((a,b) => b.issues.length - a.issues.length);
+    return clusters.slice(0, 6);
+  }
+
+  function parseAiQuery(text) {
+    const lower = text.toLowerCase();
+    let working = ' ' + lower + ' ';
+    const result = {
+      module: null,
+      status: null,
+      priority: null,
+      id: null,
+      freeWords: []
+    };
+
+    const patterns = [
+      { key: 'module',  re: /\bmodule:([^\s]+)/ },
+      { key: 'status',  re: /\bstatus:([^\s]+)/ },
+      { key: 'priority',re: /\bpriority:([^\s]+)/ },
+      { key: 'id',      re: /\bid:([^\s]+)/ }
+    ];
+
+    patterns.forEach(p => {
+      const m = working.match(p.re);
+      if (m) {
+        result[p.key] = m[1].trim();
+        working = working.replace(m[0], ' ');
+      }
+    });
+
+    const words = working.split(/\s+/).filter(Boolean);
+    result.freeWords = words.filter(w => !STOPWORDS.has(w) && w.length > 2);
+    return result;
+  }
+
+  function filterIssueByAiQuery(issue, query) {
+    const moduleVal = query.module;
+    const priorityVal = query.priority;
+    const statusVal = query.status;
+    const idVal = query.id;
+    const freeWords = query.freeWords || [];
+
+    if (moduleVal) {
+      const mod = (issue.module || '').toLowerCase();
+      if (!mod.includes(moduleVal)) return false;
+    }
+
+    if (priorityVal) {
+      const p = priorityVal[0].toUpperCase();
+      if (['H','M','L'].includes(p)) {
+        if ((issue.priority || '').charAt(0) !== p) return false;
+      } else {
+        if (!(issue.priority || '').toLowerCase().includes(priorityVal.toLowerCase())) return false;
+      }
+    }
+
+    if (statusVal) {
+      const st = (issue.status || '').toLowerCase();
+      if (statusVal === 'open') {
+        if (st.startsWith('resolved') || st.startsWith('rejected')) return false;
+      } else if (statusVal === 'closed') {
+        if (!st.startsWith('resolved') && !st.startsWith('rejected')) return false;
+      } else {
+        if (!st.includes(statusVal)) return false;
+      }
+    }
+
+    if (idVal) {
+      const idTxt = (issue.id || '').toLowerCase();
+      if (!idTxt.includes(idVal)) return false;
+    }
+
+    if (freeWords.length) {
+      const text = issueText(issue);
+      for (const w of freeWords) {
+        if (!text.includes(w)) return false;
+      }
+    }
+
+    return true;
+  }
+
+  function runAiQuery() {
+    if (!els.aiQueryResults) return;
+    const input = (els.aiQueryInput && els.aiQueryInput.value || '').trim();
+    if (!input) {
+      els.aiQueryResults.textContent = 'Type a query using keywords and optional filters like module:, status:, priority:.';
+      return;
+    }
+
+    const base = rows || [];
+    if (!base.length) {
+      els.aiQueryResults.textContent = 'No issues loaded yet.';
+      return;
+    }
+
+    const query = parseAiQuery(input);
+    const matches = base.filter(issue => filterIssueByAiQuery(issue, query));
+    matches.sort((a,b) => computeRiskScore(b) - computeRiskScore(a));
+
+    if (!matches.length) {
+      els.aiQueryResults.textContent = 'No issues matched this query.';
+      return;
+    }
+
+    const limited = matches.slice(0, 20);
+    els.aiQueryResults.innerHTML = `
+      <div style="margin-bottom:6px;">
+        Found <strong>${matches.length}</strong> issue${matches.length>1?'s':''} (showing top ${limited.length} by risk).
+      </div>
+      <ul style="padding-left:18px;margin:0;">
+        ${limited.map(i => `
+          <li style="margin-bottom:4px;">
+            <button type="button" class="btn sm" style="padding:3px 6px;margin-right:4px;"
+                    data-open-issue="${escapeAttr(i.id || '')}">
+              ${escapeHtml(i.id || '')}
+            </button>
+            [${escapeHtml(i.priority || '-')} · ${escapeHtml(i.status || '-')}]
+            ${escapeHtml(i.title || '(no title)')}
+          </li>
+        `).join('')}
+      </ul>
+    `;
+
+    els.aiQueryResults.querySelectorAll('button[data-open-issue]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-open-issue');
+        if (id) openIssueModal(id);
+      });
+    });
+  }
+
+  function computeEventsRisk(base, events) {
+    if (!events || !events.length) return [];
+    const now = new Date();
+    const limit = new Date(now.getTime() + 7*24*60*60*1000);
+
+    const openIssues = base.filter(i => {
+      const st = (i.status || '').toLowerCase();
+      return !st.startsWith('resolved') && !st.startsWith('rejected');
+    });
+
+    const moduleNames = Array.from(new Set(openIssues.map(i => i.module).filter(Boolean)));
+
+    const results = [];
+    events.forEach(ev => {
+      if (!ev.start) return;
+      const d = new Date(ev.start);
+      if (isNaN(d) || d < now || d > limit) return;
+
+      const title = (ev.title || '').toLowerCase();
+      const impactedModules = moduleNames.filter(m => m && title.includes(m.toLowerCase()));
+
+      let issues = [];
+      if (impactedModules.length) {
+        issues = openIssues.filter(i => impactedModules.includes(i.module));
+      } else if ((ev.type || '').toLowerCase() === 'deployment' || (ev.type || '').toLowerCase() === 'release') {
+        const recentOpen = getRecentIssues(openIssues, 7);
+        issues = recentOpen.filter(i => computeRiskScore(i) >= 8);
+      }
+
+      if (!issues.length) return;
+      const totalRisk = issues.reduce((sum, iss) => sum + computeRiskScore(iss), 0);
+
+      results.push({ event: ev, modules: impactedModules, issues, risk: totalRisk, date: d });
+    });
+
+    results.sort((a,b) => b.risk - a.risk);
+    return results.slice(0, 5);
   }
 
   function renderAiInsights() {
@@ -948,6 +1359,10 @@ document.addEventListener("DOMContentLoaded", () => {
       els.aiClusters.innerHTML = '<div class="muted">No data.</div>';
       if (els.aiScopeText) els.aiScopeText.textContent = 'Waiting for issues to load.';
       if (els.aiSignalsText) els.aiSignalsText.textContent = 'No signals yet.';
+      if (els.aiTrendsList) els.aiTrendsList.innerHTML = '<li>No data.</li>';
+      if (els.aiModulesTableBody) els.aiModulesTableBody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted)">No data.</td></tr>';
+      if (els.aiTriageList) els.aiTriageList.innerHTML = '<li>No issues requiring triage found.</li>';
+      if (els.aiEventsList) els.aiEventsList.innerHTML = '<li>No upcoming events with notable risk (or no events loaded).</li>';
       return;
     }
 
@@ -984,33 +1399,60 @@ document.addEventListener("DOMContentLoaded", () => {
     labelStats.sort((a,b) => b.matches - a.matches);
 
     els.aiLabelsList.innerHTML = labelStats.length
-      ? labelStats.slice(0, 6).map(ls =>
+      ? labelStats.slice(0, 8).map(ls =>
           `<li><strong>${ls.label}</strong> – ${ls.matches} issue${ls.matches>1?'s':''}</li>`
         ).join('')
       : '<li>No clear category suggestions yet.</li>';
 
-    // Scope
     if (els.aiScopeText) {
       els.aiScopeText.textContent =
-        `Analyzing ${total} issues (${recentCount} recent, ~last 7 days) based on current filters.`;
+        `Analyzing ${total} issues (${recentCount} recent, ~last 7 days) using current filters.`;
     }
 
-    // Signals text
     if (els.aiSignalsText) {
       const signals = [];
       const hasTimeout = termCounts.has('timeout');
-      const hasPayment = termCounts.has('payment') || termCounts.has('payments') || termCounts.has('billing');
-      const hasAuth = termCounts.has('login') || termCounts.has('auth') || termCounts.has('password');
-      const hasErrors = termCounts.has('error') || termCounts.has('errors') || termCounts.has('exception');
+      const hasPayment = termCounts.has('payment') || termCounts.has('payments') || termCounts.has('billing') || termCounts.has('checkout');
+      const hasAuth = termCounts.has('login') || termCounts.has('auth') || termCounts.has('password') || termCounts.has('otp');
+      const hasErrors = termCounts.has('error') || termCounts.has('errors') || termCounts.has('exception') || termCounts.has('crash');
 
       if (hasTimeout) signals.push('timeouts / latency');
       if (hasPayment) signals.push('payments / billing');
       if (hasAuth) signals.push('auth / login flows');
-      if (hasErrors) signals.push('generic errors / exceptions');
+      if (hasErrors) signals.push('errors / exceptions');
 
       els.aiSignalsText.textContent = signals.length
         ? 'Recent issues frequently mention: ' + signals.join(', ') + '.'
         : 'No strong recurring signals detected in recent issues.';
+    }
+
+    // Trends & bursts (last 14 days)
+    if (els.aiTrendsList) {
+      const trends = computeTermTrends(base);
+      els.aiTrendsList.innerHTML = trends.length
+        ? trends.map(t => `
+            <li>
+              <strong>${t.term}</strong> – ${t.recent} recent vs ${t.old} earlier
+              <span class="muted">(Δ ${t.delta >= 0 ? '+'+t.delta : t.delta})</span>
+            </li>
+          `).join('')
+        : '<li>No strong term increases detected between last and previous week.</li>';
+    }
+
+    // Module insights
+    if (els.aiModulesTableBody) {
+      const mods = computeModuleInsights(base);
+      els.aiModulesTableBody.innerHTML = mods.length
+        ? mods.map(m => `
+            <tr>
+              <td>${escapeHtml(m.module)}</td>
+              <td>${m.open}</td>
+              <td>${m.high}</td>
+              <td>${m.risk}</td>
+              <td>${escapeHtml(m.topTerm || '-')}</td>
+            </tr>
+          `).join('')
+        : '<tr><td colspan="5" style="text-align:center;color:var(--muted)">No modules to show.</td></tr>';
     }
 
     // Top risks this week
@@ -1019,11 +1461,11 @@ document.addEventListener("DOMContentLoaded", () => {
       score: computeRiskScore(issue)
     })).sort((a,b) => b.score - a.score);
 
-    const topRisks = recentWithScores.slice(0, 3).filter(r => r.score > 2);
+    const topRisks = recentWithScores.slice(0, 5).filter(r => r.score > 2);
 
     els.aiRisksList.innerHTML = topRisks.length
       ? topRisks.map(({issue, score}) => `
-          <li>
+          <li style="margin-bottom:4px;">
             <strong>[${issue.priority || '-'}] ${issue.id || '(no ID)'}</strong> – ${escapeHtml(issue.title || '(no title)')}
             <br><span class="muted">Risk score: ${score}, status: ${escapeHtml(issue.status || '-')}</span>
           </li>
@@ -1038,7 +1480,8 @@ document.addEventListener("DOMContentLoaded", () => {
       els.aiClusters.innerHTML = clusters.map(c => `
         <div class="card" style="padding:10px;">
           <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">
-            Pattern: <strong>${escapeHtml(c.signature)}</strong> • ${c.issues.length} issue${c.issues.length>1?'s':''}
+            Pattern: <strong>${escapeHtml(c.signature || '(no pattern)')}</strong>
+            • ${c.issues.length} issue${c.issues.length>1?'s':''}
           </div>
           <ul style="margin:0;padding-left:18px;font-size:13px;">
             ${c.issues.slice(0,5).map(i => `
@@ -1062,20 +1505,67 @@ document.addEventListener("DOMContentLoaded", () => {
         });
       });
     }
+
+    // Triage queue
+    if (els.aiTriageList) {
+      const tri = computeTriageQueue(base);
+      els.aiTriageList.innerHTML = tri.length
+        ? tri.map(item => {
+            const i = item.issue;
+            const missing = [];
+            if (!i.priority) missing.push('priority');
+            if (!i.module || i.module === 'Unspecified') missing.push('module');
+            if (!i.type) missing.push('type');
+            const cats = item.suggestedCategories.slice(0,2).map(c => c.label).join(', ') || 'n/a';
+
+            return `
+              <li style="margin-bottom:6px;">
+                <strong>${escapeHtml(i.id || '(no ID)')}</strong> – ${escapeHtml(i.title || '(no title)')}<br>
+                <span class="muted">
+                  Missing: ${missing.join(', ') || '—'} ·
+                  Suggested priority: ${item.suggestedPriority} ·
+                  Suggested categories: ${escapeHtml(cats)}
+                </span>
+              </li>
+            `;
+          }).join('')
+        : '<li>No issues requiring triage found.</li>';
+    }
+
+    // Upcoming risky events (calendar + issues)
+    if (els.aiEventsList) {
+      const evResults = computeEventsRisk(rows || [], eventsData || []);
+      els.aiEventsList.innerHTML = evResults.length
+        ? evResults.map(r => `
+            <li style="margin-bottom:6px;">
+              <strong>${escapeHtml(r.event.title || '(no title)')}</strong>
+              <span class="muted">
+                • ${r.date.toISOString().slice(0,16).replace('T',' ')} • risk score sum: ${r.risk}
+              </span><br>
+              <span class="muted">
+                Modules: ${r.modules.length ? r.modules.map(m => escapeHtml(m)).join(', ') : 'not inferred'}
+                • Related issues: ${r.issues.length}
+              </span>
+            </li>
+          `).join('')
+        : '<li>No upcoming events with notable risk in the next 7 days.</li>';
+    }
   }
   const debounce = (fn, ms=250) => { let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; };
   const mediaQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
 
   const showSpinner = (v=true)=> {
+    if (!els.spinner) return;
     els.spinner.style.display = v ? 'flex' : 'none';
     if (els.loadingStatus) {
       els.loadingStatus.textContent = v ? 'Loading…' : '';
     }
   };
   const showToast = (msg, ms=3500) => {
+    if (!els.toast) return;
     els.toast.textContent = msg;
     els.toast.style.display = 'block';
-    setTimeout(()=>els.toast.style.display='none', ms);
+    setTimeout(()=>{ if (els.toast) els.toast.style.display='none'; }, ms);
   };
 
   function normalizeStatus(rawStatus) {
@@ -1121,6 +1611,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function parseCsv(t){
+    if (typeof Papa === 'undefined') return [];
     return Papa.parse(t,{header:true,skipEmptyLines:true})
       .data
       .map(normalizeRow)
@@ -1155,7 +1646,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function initTheme() {
     const saved = localStorage.getItem('theme') || 'system';
-    els.themeSelect.value = saved;
+    if (els.themeSelect) els.themeSelect.value = saved;
     if (saved === 'system') {
       applySystemThemeFromOS();
     } else {
@@ -1171,12 +1662,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function saveFilters(){
     const state = {
-      search: els.search.value || '',
-      module: els.moduleFilter.value || 'All',
-      priority: els.priorityFilter.value || 'All',
-      status: els.statusFilter.value || 'All',
-      start: els.startDateFilter.value || '',
-      end: els.endDateFilter.value || ''
+      search: els.search ? (els.search.value || '') : '',
+      module: els.moduleFilter ? (els.moduleFilter.value || 'All') : 'All',
+      priority: els.priorityFilter ? (els.priorityFilter.value || 'All') : 'All',
+      status: els.statusFilter ? (els.statusFilter.value || 'All') : 'All',
+      start: els.startDateFilter ? (els.startDateFilter.value || '') : '',
+      end: els.endDateFilter ? (els.endDateFilter.value || '') : ''
     };
     try {
       localStorage.setItem('incheckFilters', JSON.stringify(state));
@@ -1188,10 +1679,10 @@ document.addEventListener("DOMContentLoaded", () => {
       const raw = localStorage.getItem('incheckFilters');
       if (!raw) return;
       const s = JSON.parse(raw);
-      els.search.value = s.search || '';
+      if (els.search) els.search.value = s.search || '';
 
       const setIfOptionExists = (select, value) => {
-        if (!value) return;
+        if (!select || !value) return;
         const options = Array.from(select.options);
         if (options.some(o => o.value === value)) {
           select.value = value;
@@ -1201,14 +1692,15 @@ document.addEventListener("DOMContentLoaded", () => {
       setIfOptionExists(els.moduleFilter, s.module);
       setIfOptionExists(els.priorityFilter, s.priority);
       setIfOptionExists(els.statusFilter, s.status);
-      els.startDateFilter.value = s.start || '';
-      els.endDateFilter.value = s.end || '';
+      if (els.startDateFilter) els.startDateFilter.value = s.start || '';
+      if (els.endDateFilter) els.endDateFilter.value = s.end || '';
     } catch(e){
       console.error('Failed to restore filters', e);
     }
   }
 
   function renderKpis(){
+    if (!els.kpis) return;
     const total = filtered.length; const counts = {};
     filtered.forEach(r=>{ counts[r.status]=(counts[r.status]||0)+1; });
     els.kpis.innerHTML='';
@@ -1222,14 +1714,14 @@ document.addEventListener("DOMContentLoaded", () => {
       d.innerHTML=`<div class="label">${label}</div><div class="value">${val}</div><div class="sub">${pct}%</div>`;
       d.onclick=()=>{
         if(label === 'Total Issues'){
-          els.search.value = '';
-          els.startDateFilter.value = '';
-          els.endDateFilter.value = '';
-          els.moduleFilter.value = 'All';
-          els.priorityFilter.value = 'All';
-          els.statusFilter.value = 'All';
+          if (els.search) els.search.value = '';
+          if (els.startDateFilter) els.startDateFilter.value = '';
+          if (els.endDateFilter) els.endDateFilter.value = '';
+          if (els.moduleFilter) els.moduleFilter.value = 'All';
+          if (els.priorityFilter) els.priorityFilter.value = 'All';
+          if (els.statusFilter) els.statusFilter.value = 'All';
         } else {
-          els.statusFilter.value = label;
+          if (els.statusFilter) els.statusFilter.value = label;
         }
         saveFilters();
         applyFilters();
@@ -1248,9 +1740,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function uniqueSorted(arr){ return [...new Set(arr.filter(Boolean).map(v=>v.trim()))].sort((a,b)=>a.localeCompare(b)); }
   function renderFilters(){
-    els.moduleFilter.innerHTML = ['All',...uniqueSorted(rows.map(r=>r.module))].map(v=>`<option>${v}</option>`).join('');
-    els.priorityFilter.innerHTML = ['All',...uniqueSorted(rows.map(r=>r.priority))].map(v=>`<option>${v}</option>`).join('');
-    els.statusFilter.innerHTML = ['All',...uniqueSorted(rows.map(r=>r.status))].map(v=>`<option>${v}</option>`).join('');
+    if (els.moduleFilter) els.moduleFilter.innerHTML = ['All',...uniqueSorted(rows.map(r=>r.module))].map(v=>`<option>${v}</option>`).join('');
+    if (els.priorityFilter) els.priorityFilter.innerHTML = ['All',...uniqueSorted(rows.map(r=>r.priority))].map(v=>`<option>${v}</option>`).join('');
+    if (els.statusFilter) els.statusFilter.innerHTML = ['All',...uniqueSorted(rows.map(r=>r.status))].map(v=>`<option>${v}</option>`).join('');
   }
 
   function sortData(list){
@@ -1274,6 +1766,7 @@ document.addEventListener("DOMContentLoaded", () => {
     return list.slice(start, start+rowsPerPage);
   }
   function updatePaginationControls(total){
+    if (!els.pageInfo || !els.firstPage) return;
     const totalPages = Math.max(1, Math.ceil(total/rowsPerPage));
     if (currentPage > totalPages) currentPage = totalPages;
     els.pageInfo.textContent = `Page ${Math.min(currentPage,totalPages)} / ${totalPages}`;
@@ -1284,15 +1777,17 @@ document.addEventListener("DOMContentLoaded", () => {
     els.nextPage.disabled = atLast;
     els.lastPage.disabled = atLast;
     [els.firstPage, els.prevPage, els.nextPage, els.lastPage].forEach(btn=>{
+      if(!btn) return;
       if(btn.disabled) btn.setAttribute('disabled','true'); else btn.removeAttribute('disabled');
     });
   }
 
   function renderTable(){
+    if (!els.tableBody) return;
     const list = sortData(filtered);
     const total = list.length;
     updatePaginationControls(total);
-    els.rowCount.textContent = `${total} row${total===1?'':'s'}`;
+    if (els.rowCount) els.rowCount.textContent = `${total} row${total===1?'':'s'}`;
 
     if (!total){
       els.tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--muted)">
@@ -1358,6 +1853,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 
   function drawCharts(){
+    if (typeof Chart === 'undefined') return;
     const priorityColors = {
       High: cssVar('--priority-high'),
       Medium: cssVar('--priority-medium'),
@@ -1375,10 +1871,12 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     const make = (id, type, data, colorMap={}) => {
+      const canvas = q('#'+id);
+      if (!canvas) return;
       if(charts[id]) charts[id].destroy();
       const labels = Object.keys(data);
       const values = Object.values(data);
-      charts[id] = new Chart(q('#'+id), {
+      charts[id] = new Chart(canvas, {
         type,
         data: {
           labels,
@@ -1417,9 +1915,12 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function applyFilters(){
-    const qstr = (els.search.value||'').toLowerCase().trim();
-    const m = els.moduleFilter.value, p = els.priorityFilter.value, s = els.statusFilter.value;
-    const start = els.startDateFilter.value, end = els.endDateFilter.value;
+    const qstr = els.search ? (els.search.value||'').toLowerCase().trim() : '';
+    const m = els.moduleFilter ? els.moduleFilter.value : 'All';
+    const p = els.priorityFilter ? els.priorityFilter.value : 'All';
+    const s = els.statusFilter ? els.statusFilter.value : 'All';
+    const start = els.startDateFilter ? els.startDateFilter.value : '';
+    const end = els.endDateFilter ? els.endDateFilter.value : '';
     const startDate = start ? new Date(start) : null;
     const endDate = end ? (()=>{ const d=new Date(end); d.setDate(d.getDate()+1); return d; })() : null;
 
@@ -1444,7 +1945,7 @@ document.addEventListener("DOMContentLoaded", () => {
     renderKpis();
     renderTable();
     drawCharts();
-    renderAiInsights(); // update AI insights with current filtered dataset
+    renderAiInsights();
   }
 
   async function loadSheet(){
@@ -1460,18 +1961,20 @@ document.addEventListener("DOMContentLoaded", () => {
       applyFilters();
     } catch(e) {
       showToast('Error loading data: '+e.message);
-      els.tableBody.innerHTML = `
-        <tr>
-          <td colspan="8" style="color:#ffb4b4;text-align:center">
-            Error loading data.
-            <button type="button" id="retryLoad" class="btn sm" style="margin-left:8px">Retry</button>
-          </td>
-        </tr>`;
-      const retryBtn = q('#retryLoad');
-      if (retryBtn) {
-        retryBtn.addEventListener('click', () => {
-          loadSheet();
-        });
+      if (els.tableBody) {
+        els.tableBody.innerHTML = `
+          <tr>
+            <td colspan="8" style="color:#ffb4b4;text-align:center">
+              Error loading data.
+              <button type="button" id="retryLoad" class="btn sm" style="margin-left:8px">Retry</button>
+            </td>
+          </tr>`;
+        const retryBtn = q('#retryLoad');
+        if (retryBtn) {
+          retryBtn.addEventListener('click', () => {
+            loadSheet();
+          });
+        }
       }
     } finally {
       showSpinner(false);
@@ -1488,7 +1991,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function openIssueModal(id){
     const r = rows.find(x=>x.id===id);
-    if(!r) return;
+    if(!r || !els.modal) return;
     selectedIssue = r;
     lastFocusedBeforeIssueModal = document.activeElement;
 
@@ -1504,9 +2007,10 @@ document.addEventListener("DOMContentLoaded", () => {
       ${r.file ? `<p><b>Attachment:</b> <a href="${escapeAttr(r.file)}" target="_blank" rel="noopener noreferrer">Open link</a></p>` : ''}
     `;
     els.modal.style.display='flex';
-    els.copyId.focus();
+    if (els.copyId) els.copyId.focus();
   }
   function closeIssueModal(){
+    if (!els.modal) return;
     els.modal.style.display='none';
     selectedIssue=null;
     if(lastFocusedBeforeIssueModal && typeof lastFocusedBeforeIssueModal.focus==='function'){
@@ -1547,6 +2051,7 @@ document.addEventListener("DOMContentLoaded", () => {
     } finally {
       showSpinner(false);
       renderEventsOnCalendar();
+      renderAiInsights();
     }
   }
 
@@ -1564,13 +2069,12 @@ document.addEventListener("DOMContentLoaded", () => {
       } catch (jsonErr) {
         console.error("Invalid JSON returned:", jsonErr);
         const text = await res.text();
-        showToast("Script returned invalid JSON");
         console.error(text);
+        showToast("Script returned invalid JSON");
         return;
       }
 
       if (data.ok) {
-        console.log("Event saved:", data.event);
         showToast("Event saved");
         return data.event;
       } else {
@@ -1683,24 +2187,26 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function openEventModal(data){
+    if (!els.eventModal) return;
     lastFocusedBeforeEventModal = document.activeElement;
 
     const isEdit = !!(data && data.id);
     editingEventId = isEdit ? data.id : null;
-    els.eventModalTitle.textContent = isEdit ? 'Edit Event' : 'Add Event';
-    els.eventDelete.style.display = isEdit ? 'inline-flex' : 'none';
+    if (els.eventModalTitle) els.eventModalTitle.textContent = isEdit ? 'Edit Event' : 'Add Event';
+    if (els.eventDelete) els.eventDelete.style.display = isEdit ? 'inline-flex' : 'none';
 
-    els.eventTitle.value = data && data.title ? data.title : '';
-    els.eventType.value = data && data.type ? data.type : 'Deployment';
-    els.eventStart.value = data && data.start ? toLocalInputValue(data.start) : '';
-    els.eventEnd.value = data && data.end ? toLocalInputValue(data.end) : '';
-    els.eventDescription.value = data && data.description ? data.description : '';
+    if (els.eventTitle) els.eventTitle.value = data && data.title ? data.title : '';
+    if (els.eventType) els.eventType.value = data && data.type ? data.type : 'Deployment';
+    if (els.eventStart) els.eventStart.value = data && data.start ? toLocalInputValue(data.start) : '';
+    if (els.eventEnd) els.eventEnd.value = data && data.end ? toLocalInputValue(data.end) : '';
+    if (els.eventDescription) els.eventDescription.value = data && data.description ? data.description : '';
 
     els.eventModal.style.display = 'flex';
-    els.eventTitle.focus();
+    if (els.eventTitle) els.eventTitle.focus();
   }
 
   function closeEventModal(){
+    if (!els.eventModal) return;
     els.eventModal.style.display = 'none';
     editingEventId = null;
     if(lastFocusedBeforeEventModal && typeof lastFocusedBeforeEventModal.focus === 'function'){
@@ -1710,11 +2216,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   async function handleEventFormSubmit(e){
     e.preventDefault();
-    const title = els.eventTitle.value.trim();
-    const type = els.eventType.value || 'Deployment';
-    const start = els.eventStart.value;
-    const end = els.eventEnd.value || null;
-    const description = els.eventDescription.value.trim();
+    const title = els.eventTitle ? els.eventTitle.value.trim() : '';
+    const type = els.eventType ? (els.eventType.value || 'Deployment') : 'Deployment';
+    const start = els.eventStart ? els.eventStart.value : '';
+    const end = els.eventEnd ? (els.eventEnd.value || null) : null;
+    const description = els.eventDescription ? els.eventDescription.value.trim() : '';
 
     if(!title){
       showToast('Title is required for events');
@@ -1745,6 +2251,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       saveEventsToStorage();
       renderEventsOnCalendar();
+      renderAiInsights();
       closeEventModal();
     } catch (err) {
       console.error(err);
@@ -1763,6 +2270,7 @@ document.addEventListener("DOMContentLoaded", () => {
         eventsData.splice(idx,1);
         saveEventsToStorage();
         renderEventsOnCalendar();
+        renderAiInsights();
       }
     } catch (err) {
       console.error(err);
@@ -1800,30 +2308,38 @@ document.addEventListener("DOMContentLoaded", () => {
     showToast('Exported CSV of current filtered issues');
   }
 
-  els.createTicket.addEventListener('click', () => {
-    window.open("https://forms.gle/PPnEP1AQneoBT79s5", "_blank", "noopener,noreferrer");
-  });
+  if (els.createTicket) {
+    els.createTicket.addEventListener('click', () => {
+      window.open("https://forms.gle/PPnEP1AQneoBT79s5", "_blank", "noopener,noreferrer");
+    });
+  }
 
-  q('#issuesTable').addEventListener('click', (ev)=>{
-    if (ev.target.closest('a')) return;
-    const tr = ev.target.closest('tr[data-id]');
-    if(tr){ openIssueModal(tr.getAttribute('data-id')); }
-  });
+  if (els.table) {
+    els.table.addEventListener('click', (ev)=>{
+      if (ev.target.closest('a')) return;
+      const tr = ev.target.closest('tr[data-id]');
+      if(tr){ openIssueModal(tr.getAttribute('data-id')); }
+    });
+  }
 
-  els.closeModalBtn.addEventListener('click', closeIssueModal);
-  els.modal.addEventListener('click', (e)=>{ if(e.target===els.modal) closeIssueModal(); });
+  if (els.closeModalBtn && els.modal) {
+    els.closeModalBtn.addEventListener('click', closeIssueModal);
+    els.modal.addEventListener('click', (e)=>{ if(e.target===els.modal) closeIssueModal(); });
+  }
 
-  els.eventModalClose.addEventListener('click', closeEventModal);
-  els.eventCancel.addEventListener('click', () => closeEventModal());
-  els.eventForm.addEventListener('submit', handleEventFormSubmit);
-  els.eventDelete.addEventListener('click', handleDeleteEvent);
-  els.eventModal.addEventListener('click', e => {
-    if (e.target === els.eventModal) closeEventModal();
-  });
+  if (els.eventModal) {
+    if (els.eventModalClose) els.eventModalClose.addEventListener('click', closeEventModal);
+    if (els.eventCancel) els.eventCancel.addEventListener('click', () => closeEventModal());
+    if (els.eventForm) els.eventForm.addEventListener('submit', handleEventFormSubmit);
+    if (els.eventDelete) els.eventDelete.addEventListener('click', handleDeleteEvent);
+    els.eventModal.addEventListener('click', e => {
+      if (e.target === els.eventModal) closeEventModal();
+    });
+  }
 
   document.addEventListener('keydown', (e)=>{
-    const issueOpen = els.modal.style.display === 'flex';
-    const eventOpen = els.eventModal.style.display === 'flex';
+    const issueOpen = els.modal && els.modal.style.display === 'flex';
+    const eventOpen = els.eventModal && els.eventModal.style.display === 'flex';
     if(e.key==='Escape'){
       if(eventOpen){ closeEventModal(); return; }
       if(issueOpen){ closeIssueModal(); return; }
@@ -1834,29 +2350,33 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  els.copyId.addEventListener('click', async ()=>{
-    if(!selectedIssue) return;
-    try{
-      await navigator.clipboard.writeText(selectedIssue.id || '');
-      showToast('Issue ID copied');
-    }catch{
-      showToast('Unable to copy (clipboard blocked)');
-    }
-  });
-  els.copyLink.addEventListener('click', async ()=>{
-    if(!selectedIssue) return;
-    const link = selectedIssue.file || '';
-    if(!link){
-      showToast('No link on this issue');
-      return;
-    }
-    try{
-      await navigator.clipboard.writeText(link);
-      showToast('Link copied');
-    }catch{
-      showToast('Unable to copy (clipboard blocked)');
-    }
-  });
+  if (els.copyId) {
+    els.copyId.addEventListener('click', async ()=>{
+      if(!selectedIssue) return;
+      try{
+        await navigator.clipboard.writeText(selectedIssue.id || '');
+        showToast('Issue ID copied');
+      }catch{
+        showToast('Unable to copy (clipboard blocked)');
+      }
+    });
+  }
+  if (els.copyLink) {
+    els.copyLink.addEventListener('click', async ()=>{
+      if(!selectedIssue) return;
+      const link = selectedIssue.file || '';
+      if(!link){
+        showToast('No link on this issue');
+        return;
+      }
+      try{
+        await navigator.clipboard.writeText(link);
+        showToast('Link copied');
+      }catch{
+        showToast('Unable to copy (clipboard blocked)');
+      }
+    });
+  }
 
   qAll('#issuesTable thead th.sortable').forEach(th=>{
     th.addEventListener('click', ()=>{
@@ -1877,55 +2397,74 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   const updateAndRender = ()=>{ renderTable(); renderAiInsights(); };
-  els.pageSize.addEventListener('change', ()=>{
-    rowsPerPage = +els.pageSize.value;
-    localStorage.setItem('pageSize', rowsPerPage);
-    currentPage = 1;
-    updateAndRender();
-  });
-  els.firstPage.addEventListener('click', ()=>{ currentPage=1; updateAndRender(); });
-  els.prevPage.addEventListener('click', ()=>{ if(currentPage>1){ currentPage--; updateAndRender(); } });
-  els.nextPage.addEventListener('click', ()=>{
+  if (els.pageSize) {
+    els.pageSize.addEventListener('change', ()=>{
+      rowsPerPage = +els.pageSize.value;
+      localStorage.setItem('pageSize', rowsPerPage);
+      currentPage = 1;
+      updateAndRender();
+    });
+  }
+  if (els.firstPage) els.firstPage.addEventListener('click', ()=>{ currentPage=1; updateAndRender(); });
+  if (els.prevPage) els.prevPage.addEventListener('click', ()=>{ if(currentPage>1){ currentPage--; updateAndRender(); } });
+  if (els.nextPage) els.nextPage.addEventListener('click', ()=>{
     const totalPages = Math.max(1, Math.ceil(filtered.length/rowsPerPage));
     if(currentPage<totalPages){ currentPage++; updateAndRender(); }
   });
-  els.lastPage.addEventListener('click', ()=>{
+  if (els.lastPage) els.lastPage.addEventListener('click', ()=>{
     currentPage = Math.max(1, Math.ceil(filtered.length/rowsPerPage));
     updateAndRender();
   });
 
-  els.drawerBtn.addEventListener('click', ()=>{
-    const open = !els.sidebar.classList.contains('open');
-    els.sidebar.classList.toggle('open');
-    els.drawerBtn.setAttribute('aria-expanded', String(open));
-  });
+  if (els.drawerBtn && els.sidebar) {
+    els.drawerBtn.addEventListener('click', ()=>{
+      const open = !els.sidebar.classList.contains('open');
+      els.sidebar.classList.toggle('open');
+      els.drawerBtn.setAttribute('aria-expanded', String(open));
+    });
+  }
 
   const onFilterChange = ()=>{
     saveFilters();
     applyFilters();
   };
-  [els.moduleFilter, els.priorityFilter, els.statusFilter].forEach(el=> el.addEventListener('change', onFilterChange));
-  els.startDateFilter.addEventListener('change', onFilterChange);
-  els.endDateFilter.addEventListener('change', onFilterChange);
-  els.reset.addEventListener('click', ()=>{
-    els.search.value='';
-    els.startDateFilter.value='';
-    els.endDateFilter.value='';
-    localStorage.removeItem('incheckFilters');
-    renderFilters();
-    applyFilters();
-  });
-  els.refresh.addEventListener('click', loadSheet);
-  els.exportCsv.addEventListener('click', exportFilteredCsv);
-  els.search.addEventListener('input', debounce(()=>{
-    saveFilters();
-    applyFilters();
-  }, 250));
+  [els.moduleFilter, els.priorityFilter, els.statusFilter].forEach(el=> el && el.addEventListener('change', onFilterChange));
+  if (els.startDateFilter) els.startDateFilter.addEventListener('change', onFilterChange);
+  if (els.endDateFilter) els.endDateFilter.addEventListener('change', onFilterChange);
+  if (els.reset) {
+    els.reset.addEventListener('click', ()=>{
+      if (els.search) els.search.value='';
+      if (els.startDateFilter) els.startDateFilter.value='';
+      if (els.endDateFilter) els.endDateFilter.value='';
+      localStorage.removeItem('incheckFilters');
+      renderFilters();
+      applyFilters();
+    });
+  }
+  if (els.refresh) els.refresh.addEventListener('click', loadSheet);
+  if (els.exportCsv) els.exportCsv.addEventListener('click', exportFilteredCsv);
+  if (els.search) {
+    els.search.addEventListener('input', debounce(()=>{
+      saveFilters();
+      applyFilters();
+    }, 250));
+  }
 
-  els.themeSelect.addEventListener('change', ()=> applyTheme(els.themeSelect.value));
+  if (els.themeSelect) els.themeSelect.addEventListener('change', ()=> applyTheme(els.themeSelect.value));
   initTheme();
 
-  // view switching for Issues / Calendar / AI Insights
+  // AI query listeners
+  if (els.aiQueryRun) els.aiQueryRun.addEventListener('click', runAiQuery);
+  if (els.aiQueryInput) {
+    els.aiQueryInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        runAiQuery();
+      }
+    });
+  }
+
+  // view switching
   els.viewTabs.forEach(btn => {
     btn.addEventListener('click', () => {
       const view = btn.dataset.view;
@@ -1972,7 +2511,7 @@ document.addEventListener("DOMContentLoaded", () => {
     return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;');
   }
 
-  // Optional: auto-refresh events every 5 minutes
+  // Auto-refresh events every 5 minutes
   setInterval(fetchEventsFromSheet, 5 * 60 * 1000);
 });
 </script>
