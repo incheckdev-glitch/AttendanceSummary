@@ -2546,37 +2546,76 @@ async function loadEvents(force=false){
 async function saveEventToSheet(event){
   UI.spinner(true);
   try{
-    const evId = event.id || ('ev_'+Date.now()+'_'+Math.random().toString(36).slice(2));
-    const payload = {...event,id:evId};
-    const res=await fetch(CONFIG.CALENDAR_API_URL,{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({action:'save',event:payload})
+    // 1) Make sure we always have a clean ID
+    const evId = event.id && String(event.id).trim()
+      ? String(event.id).trim()
+      : 'ev_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+
+    // 2) Normalize modules into an array of strings
+    const modulesArr = Array.isArray(event.modules)
+      ? event.modules
+      : (typeof event.modules === 'string'
+          ? event.modules.split(',').map(s => s.trim()).filter(Boolean)
+          : []);
+
+    // 3) Build a canonical payload with ALL fields your Apps Script expects
+    const payload = {
+      id: evId,
+
+      title: event.title || '',
+      type: event.type || 'Deployment',
+
+      // These are the ones that were missing in the sheet
+      env:       event.env       || event.environment || 'Prod',
+      status:    event.status    || 'Planned',
+      owner:     event.owner     || '',
+      modules:   modulesArr,
+      impactType:event.impactType|| event.impact || 'No downtime expected',
+      issueId:   event.issueId   || '',
+
+      start: event.start || '',
+      end:   event.end   || '',
+      description: event.description || '',
+
+      allDay: !!event.allDay
+      // notificationStatus is controlled on the Apps Script side
+    };
+
+    // 4) LOG what we’re actually sending so you can check in DevTools
+    console.log('[InCheck] sending event payload to Apps Script:', payload);
+
+    const res = await fetch(CONFIG.CALENDAR_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'save', event: payload })
     });
+
     let data;
     try{
-      data=await res.json();
+      data = await res.json();
     }catch(jsonErr){
       console.error('Invalid JSON from calendar backend', jsonErr);
-      const text=await res.text();
+      const text = await res.text();
       console.error('Raw response:', text);
       UI.toast('Calendar: invalid JSON from backend, using local event');
       return payload;
     }
+
     if(data.ok){
       UI.toast('Event saved');
       return data.event || payload;
     }else{
-      UI.toast('Error saving event: '+(data.error||'Unknown error'));
+      UI.toast('Error saving event: ' + (data.error || 'Unknown error'));
       return null;
     }
   }catch(e){
-    UI.toast('Network error saving event: '+e.message);
+    UI.toast('Network error saving event: ' + e.message);
     return null;
   }finally{
     UI.spinner(false);
   }
 }
+
 
 async function deleteEventFromSheet(id){
   UI.spinner(true);
