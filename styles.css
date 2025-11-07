@@ -417,6 +417,69 @@ th.sorted-desc::after{border-top-color:var(--accent);border-bottom-color:transpa
 .risk-high{background:rgba(239,68,68,.22)}
 .risk-crit{background:rgba(239,68,68,.38)}
 
+/* =========================
+   AI INSIGHTS – MODULE TABLE
+   ========================== */
+
+#aiModulesTableBody td {
+  font-size: 12px;
+  padding: 6px 4px;
+  vertical-align: middle;
+}
+
+/* Allow content to wrap so the table doesn't force a huge width */
+#aiModulesTableBody tr td {
+  word-wrap: break-word;
+}
+
+/* Module column */
+#aiModulesTableBody td:nth-child(1) {
+  max-width: 130px;
+  white-space: normal !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Open / High P columns */
+#aiModulesTableBody td:nth-child(2),
+#aiModulesTableBody td:nth-child(3) {
+  width: 3rem;
+  text-align: center;
+}
+
+/* Risk sum (+ bar) */
+#aiModulesTableBody td:nth-child(4) {
+  width: 5.5rem;
+}
+
+/* Top term column */
+#aiModulesTableBody td:nth-child(5) {
+  max-width: 110px;
+  white-space: normal !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Slightly slimmer bar inside module card */
+#aiModulesTableBody .risk-bar-wrap {
+  margin-top: 2px;
+  height: 4px;
+}
+
+/* Zebra rows to improve readability */
+#aiModulesTableBody tr:nth-child(even) {
+  background: rgba(15,23,42,.22);
+}
+:root[data-theme="light"] #aiModulesTableBody tr:nth-child(even) {
+  background: rgba(148,163,184,.08);
+}
+
+/* Make tables inside cards layout nicely and avoid horizontal scroll */
+.card table {
+  width: 100%;
+  table-layout: fixed;
+}
+
 /* Hide log col on small screens */
 @media(max-width:768px){
   #issuesTable th:nth-child(7),
@@ -425,110 +488,4 @@ th.sorted-desc::after{border-top-color:var(--accent);border-bottom-color:transpa
 
 @media (prefers-reduced-motion: reduce){
   *{transition:none!important;animation:none!important}
-}
-
-/* =========================
-   AI INSIGHTS – LISTS + MODULES
-   ========================== */
-
-/* Common list styling for AI sections */
-#aiPatternsList,
-#aiLabelsList,
-#aiRisksList,
-#aiTrendsList,
-#aiTriageList,
-#aiEventsList,
-#aiIncidentsList,
-#aiEmergingStable,
-#aiOpsCockpit {
-  list-style: none;
-  margin: 0;
-  padding-left: 0;
-  font-size: 13px;
-}
-
-#aiPatternsList li,
-#aiLabelsList li,
-#aiRisksList li,
-#aiTrendsList li,
-#aiTriageList li,
-#aiEventsList li,
-#aiIncidentsList li,
-#aiEmergingStable li,
-#aiOpsCockpit li {
-  padding: 4px 0;
-  border-bottom: 1px dashed rgba(148,163,184,.35);
-}
-
-#aiPatternsList li:last-child,
-#aiLabelsList li:last-child,
-#aiRisksList li:last-child,
-#aiTrendsList li:last-child,
-#aiTriageList li:last-child,
-#aiEventsList li:last-child,
-#aiIncidentsList li:last-child,
-#aiEmergingStable li:last-child,
-#aiOpsCockpit li:last-child {
-  border-bottom: none;
-}
-
-/* Make AI section badges / small buttons stay compact */
-#aiTriageList .btn.sm,
-#aiIncidentsList .btn.sm,
-#aiEventsList .btn.sm {
-  font-size: 11px;
-  padding: 3px 8px;
-}
-
-/* =========================
-   MODULE INSIGHTS TABLE
-   ========================== */
-
-/* General cell sizing & typography */
-#aiModulesTableBody td {
-  font-size: 12px;
-  padding: 6px 6px;
-  vertical-align: middle;
-  white-space: nowrap;
-}
-
-/* Module name column: truncate long names so they don't break layout */
-#aiModulesTableBody td:nth-child(1) {
-  max-width: 160px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* "Open" and "High" columns: small & compact */
-#aiModulesTableBody td:nth-child(2),
-#aiModulesTableBody td:nth-child(3) {
-  width: 40px;
-  text-align: center;
-}
-
-/* Risk score + bar column: give stable width so bar fits nicely */
-#aiModulesTableBody td:nth-child(4) {
-  width: 160px;
-}
-
-/* Top term column: allow wrap but keep it subtle */
-#aiModulesTableBody td:nth-child(5) {
-  max-width: 120px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Adjust risk bar to fit inside the narrower cell */
-#aiModulesTableBody .risk-bar-wrap {
-  margin-top: 2px;
-  height: 5px;
-}
-
-/* Zebra striping for module insights rows */
-#aiModulesTableBody tr:nth-child(even) {
-  background: rgba(15,23,42,.22);
-}
-:root[data-theme="light"] #aiModulesTableBody tr:nth-child(even) {
-  background: rgba(148,163,184,.08);
 }
