@@ -1642,7 +1642,7 @@ async function loadEvents(force=false){
 async function saveEventToSheet(event){
   UI.spinner(true);
   try{
-    // 1) Make sure we always have a clean ID
+    // 1) Ensure we always have a clean ID
     const evId = event.id && String(event.id).trim()
       ? String(event.id).trim()
       : 'ev_' + Date.now() + '_' + Math.random().toString(36).slice(2);
@@ -1658,8 +1658,8 @@ async function saveEventToSheet(event){
     const payload = {
       id: evId,
 
-      title: event.title || '',
-      type: event.type || 'Deployment',
+      title:      event.title      || '',
+      type:       event.type       || 'Deployment',
 
       env:        event.env        || event.environment || 'Prod',
       status:     event.status     || 'Planned',
@@ -1668,8 +1668,8 @@ async function saveEventToSheet(event){
       impactType: event.impactType || event.impact || 'No downtime expected',
       issueId:    event.issueId    || '',
 
-      start:       event.start || '',
-      end:         event.end   || '',
+      start:       event.start       || '',
+      end:         event.end         || '',
       description: event.description || '',
 
       allDay: !!event.allDay
@@ -1891,14 +1891,6 @@ function wireTheme(){
     if((localStorage.getItem(LS_KEYS.theme)||'system')==='system') applySystem();
   });
 
-  if(E.themeSelect) E.themeSelect.addEventListener('change',()=>{
-    const v=E.themeSelect.value;
-    localStorage.setItem(LS_KEYS.theme,v);
-    if(v==='system') applySystem();
-    else if(v==='dark') document.documentElement.removeAttribute('data-theme');
-    else document.documentElement.setAttribute('data-theme','light');
-  });
-
   if(E.accentColor){
     const rootStyle = getComputedStyle(document.documentElement);
     const defaultAccent = rootStyle.getPropertyValue('--accent').trim() || '#4f8cff';
@@ -1958,40 +1950,52 @@ function wireModals(){
     try{ await navigator.clipboard.writeText(link); UI.toast('Link copied'); }catch{ UI.toast('Clipboard blocked'); }
   });
 
-  if(E.eventForm) E.eventForm.addEventListener('submit',async e=>{
+  if (E.eventForm) E.eventForm.addEventListener('submit', async e => {
     e.preventDefault();
-    const id=E.eventForm.dataset.id||'';
+
+    const id = E.eventForm.dataset.id || '';
     const allDay = !!(E.eventAllDay && E.eventAllDay.checked);
 
-    const envVal    = E.eventEnv?.value || 'Prod';
-    const statusVal = E.eventStatus?.value || 'Planned';
-    const ownerVal  = E.eventOwner?.value.trim() || '';
-    const modulesArr = (E.eventModules?.value || '')
+    const envVal       = E.eventEnv?.value || 'Prod';
+    const statusVal    = E.eventStatus?.value || 'Planned';
+    const ownerVal     = (E.eventOwner?.value || '').trim();
+    const modulesArr   = (E.eventModules?.value || '')
       .split(',')
-      .map(s=>s.trim())
+      .map(s => s.trim())
       .filter(Boolean);
     const impactTypeVal = E.eventImpactType?.value || 'No downtime expected';
 
-    const ev={
+    const ev = {
       id,
-      title:E.eventTitle.value.trim(),
-      type:E.eventType.value||'Deployment',
-      issueId:E.eventIssueId.value.trim()||'',
-      start:E.eventStart.value,
-      end:E.eventEnd.value||null,
-      description:E.eventDescription.value.trim(),
+      title:       (E.eventTitle?.value || '').trim(),
+      type:        E.eventType?.value || 'Deployment',
+      issueId:     (E.eventIssueId?.value || '').trim() || '',
+      start:       E.eventStart?.value || '',
+      end:         E.eventEnd?.value || null,
+      description: (E.eventDescription?.value || '').trim(),
       allDay,
-      env: envVal,
-      status: statusVal,
-      owner: ownerVal,
-      modules: modulesArr,
+
+      env:        envVal,
+      status:     statusVal,
+      owner:      ownerVal,
+      modules:    modulesArr,
       impactType: impactTypeVal
     };
-    if(!ev.title) return UI.toast('Title & start required');
-    if(!ev.start) return UI.toast('Start date/time is required');
 
-    const saved=await saveEventToSheet(ev);
-    if(!saved){ UI.toast('Could not save event'); return; }
+    if (!ev.title) {
+      UI.toast('Title & start required');
+      return;
+    }
+    if (!ev.start) {
+      UI.toast('Start date/time is required');
+      return;
+    }
+
+    const saved = await saveEventToSheet(ev);
+    if (!saved) {
+      UI.toast('Could not save event');
+      return;
+    }
 
     const idx=DataStore.events.findIndex(x=>x.id===saved.id);
     if(idx===-1) DataStore.events.push(saved); else DataStore.events[idx]=saved;
