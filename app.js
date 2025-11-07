@@ -405,7 +405,6 @@ const DataStore = {
     });
   }
 };
-
 const IssuesCache = {
   load() {
     try {
@@ -764,6 +763,7 @@ function computeEventsRisk(issues, events) {
     const impacted = modules.filter(m => title.includes((m || '').toLowerCase()));
     let rel = [];
     if (impacted.length) rel = openIssues.filter(i => impacted.includes(i.module));
+
     else if ((ev.type || '').toLowerCase() !== 'other') {
       const recentOpen = openIssues.filter(i => U.isBetween(i.date, U.daysAgo(7), null));
       rel = recentOpen.filter(
@@ -987,7 +987,6 @@ function cacheEls() {
     'eventImpactType'
   ].forEach(id => (E[id] = document.getElementById(id)));
 }
-
 /** UI helpers */
 const UI = {
   toast(msg, ms = 3500) {
@@ -1424,6 +1423,7 @@ const Analytics = {
     // Top terms recent
     const recentCut = CONFIG.TREND_DAYS_RECENT;
     const recent = list.filter(r => U.isBetween(r.date, U.daysAgo(recentCut), null));
+
     const termCounts = new Map();
     recent.forEach(r => {
       const t = DataStore.computed.get(r.id)?.tokens || new Set();
@@ -1862,6 +1862,56 @@ function buildClustersWeighted(list) {
   clusters.sort((a, b) => b.issues.length - a.issues.length);
   return clusters.slice(0, 6);
 }
+function buildClustersWeighted(list) {
+  const max = Math.min(list.length, 400);
+  const docs = list.slice(-max).map(r => {
+    const meta = DataStore.computed.get(r.id) || {};
+    return { issue: r, tokens: meta.tokens || new Set(), idf: meta.idf || new Map() };
+  });
+  const visited = new Set(),
+    clusters = [];
+  const wj = (A, IA, B, IB) => {
+    let inter = 0,
+      sumA = 0,
+      sumB = 0;
+    const all = new Set([...A, ...B]);
+    all.forEach(t => {
+      const wa = A.has(t) ? IA.get(t) || 1 : 0;
+      const wb = B.has(t) ? IB.get(t) || 1 : 0;
+      inter += Math.min(wa, wb);
+      sumA += wa;
+      sumB += wb;
+    });
+    const union = sumA + sumB - inter;
+    return union ? inter / union : 0;
+  };
+  for (let i = 0; i < docs.length; i++) {
+    if (visited.has(i)) continue;
+    const base = docs[i];
+    const c = [base];
+    visited.add(i);
+    for (let j = i + 1; j < docs.length; j++) {
+      if (visited.has(j)) continue;
+      const other = docs[j];
+      if (wj(base.tokens, base.idf, other.tokens, other.idf) >= 0.28) {
+        visited.add(j);
+        c.push(other);
+      }
+    }
+    if (c.length >= 2) {
+      const freq = new Map();
+      c.forEach(d => d.tokens.forEach(t => freq.set(t, (freq.get(t) || 0) + 1)));
+      const sig = Array.from(freq.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([t]) => t)
+        .join(' ');
+      clusters.push({ signature: sig, issues: c.map(x => x.issue) });
+    }
+  }
+  clusters.sort((a, b) => b.issues.length - a.issues.length);
+  return clusters.slice(0, 6);
+}
 
 /** Modals */
 UI.Modals = {
@@ -2153,7 +2203,7 @@ function ensureCalendar() {
           owner: info.event.extendedProps.owner || '',
           modules: info.event.extendedProps.modules || [],
           impactType: info.event.extendedProps.impactType || 'No downtime expected',
-          notificationStatus: info.event.extendedProps.notificationStatus || '' // ✅ NEW
+          notificationStatus: info.event.extendedProps.notificationStatus || ''
         };
       UI.Modals.openEvent(ev);
     },
@@ -2285,7 +2335,7 @@ function renderCalendarEvents() {
         owner,
         modules,
         impactType,
-        notificationStatus: ev.notificationStatus || '', // ✅ NEW
+        notificationStatus: ev.notificationStatus || '',
         collision: !!flags.collision,
         freeze: !!flags.freeze,
         hotIssues: !!flags.hotIssues
@@ -2407,7 +2457,7 @@ async function loadEvents(force = false) {
         owner: ev.owner || '',
         modules: modulesArr,
         impactType: ev.impactType || ev.impact || 'No downtime expected',
-        notificationStatus: ev.notificationStatus || '' // ✅ NEW: keep sheet column
+        notificationStatus: ev.notificationStatus || ''
       };
     });
 
@@ -2436,13 +2486,11 @@ async function loadEvents(force = false) {
 async function saveEventToSheet(event) {
   UI.spinner(true);
   try {
-    // Ensure we always have a clean ID
     const evId =
       event.id && String(event.id).trim()
         ? String(event.id).trim()
         : 'ev_' + Date.now() + '_' + Math.random().toString(36).slice(2);
 
-    // Normalize modules into an array of strings
     const modulesArr = Array.isArray(event.modules)
       ? event.modules
       : typeof event.modules === 'string'
@@ -2452,7 +2500,6 @@ async function saveEventToSheet(event) {
           .filter(Boolean)
       : [];
 
-    // Canonical payload with ALL fields Apps Script expects
     const payload = {
       id: evId,
       title: event.title || '',
@@ -2469,7 +2516,7 @@ async function saveEventToSheet(event) {
       end: event.end || '',
       description: event.description || '',
 
-      notificationStatus: event.notificationStatus || '', // ✅ NEW: pass through to sheet
+      notificationStatus: event.notificationStatus || '',
       allDay: !!event.allDay
     };
 
@@ -2494,7 +2541,6 @@ async function saveEventToSheet(event) {
 
     if (data.ok) {
       UI.toast('Event saved');
-      // Make sure we keep notificationStatus from server if set
       const savedEvent = data.event || payload;
       if (!savedEvent.notificationStatus && payload.notificationStatus) {
         savedEvent.notificationStatus = payload.notificationStatus;
@@ -2581,8 +2627,8 @@ function exportIssuesToCsv(rows, suffix) {
   });
   const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
   const ts = new Date().toISOString().slice(0, 10);
+  const a = document.createElement('a');
   a.href = url;
   a.download = `incheck_issues_${suffix || 'filtered'}_${ts}.csv`;
   document.body.appendChild(a);
@@ -2887,7 +2933,6 @@ function wireModals() {
       }
     });
 
-  // EVENT FORM SUBMIT
   if (E.eventForm)
     E.eventForm.addEventListener('submit', async e => {
       e.preventDefault();
@@ -2918,7 +2963,7 @@ function wireModals() {
         owner: ownerVal,
         modules: modulesArr,
         impactType: impactTypeVal,
-        notificationStatus: '' // ✅ keep blank; Apps Script may set "Sent"
+        notificationStatus: ''
       };
       if (!ev.title) return UI.toast('Title is required');
       if (!ev.start) return UI.toast('Start date/time is required');
@@ -3177,3 +3222,4 @@ document.addEventListener('DOMContentLoaded', initApp);
 
 /* Auto-refresh events every 5 minutes */
 setInterval(() => loadEvents(true), 5 * 60 * 1000);
+
