@@ -68,68 +68,22 @@ const CONFIG = {
 
   LABEL_KEYWORDS: {
     'Authentication / Login': [
-      'login',
-      'signin',
-      'sign in',
-      'password',
-      'auth',
-      'token',
-      'session',
-      'otp'
+      'login','signin','sign in','password','auth','token','session','otp'
     ],
     'Payments / Billing': [
-      'payment',
-      'payments',
-      'billing',
-      'invoice',
-      'card',
-      'credit',
-      'charge',
-      'checkout',
-      'refund'
+      'payment','payments','billing','invoice','card','credit','charge','checkout','refund'
     ],
     'Performance / Latency': [
-      'slow',
-      'slowness',
-      'latency',
-      'performance',
-      'perf',
-      'timeout',
-      'time out',
-      'lag'
+      'slow','slowness','latency','performance','perf','timeout','time out','lag'
     ],
     'Reliability / Errors': [
-      'error',
-      'errors',
-      'exception',
-      '500',
-      '503',
-      'fail',
-      'failed',
-      'crash',
-      'down',
-      'unavailable'
+      'error','errors','exception','500','503','fail','failed','crash','down','unavailable'
     ],
     'UI / UX': [
-      'button',
-      'screen',
-      'page',
-      'layout',
-      'css',
-      'ui',
-      'ux',
-      'alignment',
-      'typo'
+      'button','screen','page','layout','css','ui','ux','alignment','typo'
     ],
     'Data / Sync': [
-      'sync',
-      'synchron',
-      'cache',
-      'cached',
-      'replica',
-      'replication',
-      'consistency',
-      'out of date'
+      'sync','synchron','cache','cached','replica','replication','consistency','out of date'
     ]
   },
 
@@ -157,80 +111,11 @@ const LS_KEYS = {
 };
 
 const STOPWORDS = new Set([
-  'the',
-  'a',
-  'an',
-  'and',
-  'or',
-  'but',
-  'for',
-  'with',
-  'this',
-  'that',
-  'from',
-  'into',
-  'onto',
-  'when',
-  'what',
-  'where',
-  'how',
-  'why',
-  'can',
-  'could',
-  'should',
-  'would',
-  'will',
-  'just',
-  'have',
-  'has',
-  'had',
-  'been',
-  'are',
-  'is',
-  'was',
-  'were',
-  'to',
-  'in',
-  'on',
-  'of',
-  'at',
-  'by',
-  'as',
-  'it',
-  'its',
-  'be',
-  'we',
-  'you',
-  'they',
-  'our',
-  'your',
-  'their',
-  'not',
-  'no',
-  'if',
-  'else',
-  'then',
-  'than',
-  'about',
-  'after',
-  'before',
-  'more',
-  'less',
-  'also',
-  'only',
-  'very',
-  'get',
-  'got',
-  'see',
-  'seen',
-  'use',
-  'used',
-  'using',
-  'user',
-  'issue',
-  'bug',
-  'ticket',
-  'inc'
+  'the','a','an','and','or','but','for','with','this','that','from','into','onto','when','what','where','how','why',
+  'can','could','should','would','will','just','have','has','had','been','are','is','was','were','to','in','on','of',
+  'at','by','as','it','its','be','we','you','they','our','your','their','not','no','if','else','then','than','about',
+  'after','before','more','less','also','only','very','get','got','see','seen','use','used','using','user','issue',
+  'bug','ticket','inc'
 ]);
 
 const U = {
@@ -244,16 +129,9 @@ const U = {
   },
   escapeHtml: s =>
     String(s).replace(/[&<>"']/g, m => ({
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#39;'
+      '&': '&amp;','<': '&lt;','>': '&gt;','"': '&quot;',"'": '&#39;'
     }[m])),
-  escapeAttr: s =>
-    String(s)
-      .replace(/&/g, '&amp;')
-      .replace(/"/g, '&quot;'),
+  escapeAttr: s => String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;'),
   pad: n => String(n).padStart(2, '0'),
   dateAddDays: (d, days) => {
     const base = d instanceof Date ? d : new Date(d);
@@ -274,24 +152,11 @@ const U = {
 /** Filters persisted */
 const Filters = {
   state: { search: '', module: 'All', priority: 'All', status: 'All', start: '', end: '' },
-  load() {
-    try {
-      const raw = localStorage.getItem(LS_KEYS.filters);
-      if (raw) this.state = JSON.parse(raw);
-    } catch {}
-  },
-  save() {
-    try {
-      localStorage.setItem(LS_KEYS.filters, JSON.stringify(this.state));
-    } catch {}
-  }
+  load() { try { const raw = localStorage.getItem(LS_KEYS.filters); if (raw) this.state = JSON.parse(raw); } catch {} },
+  save() { try { localStorage.setItem(LS_KEYS.filters, JSON.stringify(this.state)); } catch {} }
 };
 
-function UndefaultCount(arr) {
-  const m = new Map();
-  arr.forEach(t => m.set(t, (m.get(t) || 0) + 1));
-  return m;
-}
+function UndefaultCount(arr) { const m = new Map(); arr.forEach(t => m.set(t, (m.get(t) || 0) + 1)); return m; }
 
 /** DataStore */
 const DataStore = {
@@ -332,12 +197,7 @@ const DataStore = {
       if (!k) continue;
       lower[k.toLowerCase().replace(/\s+/g, ' ').trim()] = String(raw[k] ?? '').trim();
     }
-    const pick = (...keys) => {
-      for (const key of keys) {
-        if (lower[key]) return lower[key];
-      }
-      return '';
-    };
+    const pick = (...keys) => { for (const key of keys) { if (lower[key]) return lower[key]; } return ''; };
     return {
       id: pick('ticket id', 'id'),
       module: pick('impacted module', 'module', 'issue location') || 'Unspecified',
@@ -366,12 +226,8 @@ const DataStore = {
   },
   hydrateFromRows(parsed) {
     this.rows = parsed || [];
-    this.byId.clear();
-    this.byModule.clear();
-    this.byStatus.clear();
-    this.byPriority.clear();
-    this.computed.clear();
-    this.df.clear();
+    this.byId.clear(); this.byModule.clear(); this.byStatus.clear(); this.byPriority.clear();
+    this.computed.clear(); this.df.clear();
     this.N = this.rows.length;
 
     this.rows.forEach(r => {
@@ -405,6 +261,7 @@ const DataStore = {
     });
   }
 };
+
 const IssuesCache = {
   load() {
     try {
@@ -414,9 +271,7 @@ const IssuesCache = {
       if (!raw) return null;
       const data = JSON.parse(raw);
       return Array.isArray(data) ? data : null;
-    } catch {
-      return null;
-    }
+    } catch { return null; }
   },
   save(rows) {
     try {
@@ -434,22 +289,12 @@ const IssuesCache = {
   }
 };
 
-function prioMap(p) {
-  return { High: 3, Medium: 2, Low: 1 }[p] || 0;
-}
-function prioGap(suggested, current) {
-  return prioMap(suggested) - prioMap(current);
-}
+function prioMap(p) { return { High: 3, Medium: 2, Low: 1 }[p] || 0; }
+function prioGap(suggested, current) { return prioMap(suggested) - prioMap(current); }
 
 /** Risk engine (with severity / impact / urgency) */
 const Risk = {
-  scoreFromBoosts(text, rules) {
-    let s = 0;
-    for (const [kw, val] of rules) {
-      if (text.includes(kw)) s += val;
-    }
-    return s;
-  },
+  scoreFromBoosts(text, rules) { let s = 0; for (const [kw, val] of rules) { if (text.includes(kw)) s += val; } return s; },
   computeRisk(issue) {
     const txt = [issue.title, issue.desc, issue.log].filter(Boolean).join(' ').toLowerCase() + ' ';
     const basePriority = CONFIG.RISK.priorityWeight[issue.priority || ""] || 1;
@@ -461,9 +306,7 @@ const Risk = {
     let total = tech + biz + ops;
 
     const st = (issue.status || '').toLowerCase();
-    for (const k in CONFIG.RISK.statusBoosts) {
-      if (st.startsWith(k)) total += CONFIG.RISK.statusBoosts[k];
-    }
+    for (const k in CONFIG.RISK.statusBoosts) { if (st.startsWith(k)) total += CONFIG.RISK.statusBoosts[k]; }
 
     let timeRisk = 0;
     let ageDays = null;
@@ -489,8 +332,7 @@ const Risk = {
 
     // impact: how much money / users
     let impact = 1;
-    if (/payment|billing|checkout|revenue|invoice|subscription|signup|onboarding/i.test(txt))
-      impact += 2;
+    if (/payment|billing|checkout|revenue|invoice|subscription|signup|onboarding/i.test(txt)) impact += 2;
     if (/login|auth|authentication|token|session/i.test(txt)) impact += 1.5;
     if (/admin|internal|report/i.test(txt)) impact += 0.5;
 
@@ -509,24 +351,15 @@ const Risk = {
     total += sevScore + impScore + urgScore;
 
     return {
-      technical: tech,
-      business: biz,
-      operational: ops,
-      time: timeRisk,
-      total,
-      severity: sevScore,
-      impact: impScore,
-      urgency: urgScore
+      technical: tech, business: biz, operational: ops, time: timeRisk,
+      total, severity: sevScore, impact: impScore, urgency: urgScore
     };
   },
   suggestCategories(issue) {
     const text = [issue.title, issue.desc, issue.log].filter(Boolean).join(' ').toLowerCase();
     const res = [];
     Object.entries(CONFIG.LABEL_KEYWORDS).forEach(([label, kws]) => {
-      let hits = 0;
-      kws.forEach(k => {
-        if (text.includes(k)) hits++;
-      });
+      let hits = 0; kws.forEach(k => { if (text.includes(k)) hits++; });
       if (hits) res.push({ label, score: hits });
     });
     res.sort((a, b) => b.score - a.score);
@@ -541,13 +374,8 @@ const Risk = {
   },
   explainRisk(issue) {
     const txt = [issue.title, issue.desc, issue.log].filter(Boolean).join(' ').toLowerCase() + ' ';
-    const picks = [];
-    const push = kw => {
-      if (txt.includes(kw)) picks.push(kw);
-    };
-    [...CONFIG.RISK.techBoosts, ...CONFIG.RISK.bizBoosts, ...CONFIG.RISK.opsBoosts].forEach(
-      ([kw]) => push(kw)
-    );
+    const picks = []; const push = kw => { if (txt.includes(kw)) picks.push(kw); };
+    [...CONFIG.RISK.techBoosts, ...CONFIG.RISK.bizBoosts, ...CONFIG.RISK.opsBoosts].forEach(([kw]) => push(kw));
     if ((issue.status || '').toLowerCase().startsWith('on stage')) picks.push('on stage');
     if ((issue.status || '').toLowerCase().startsWith('under')) picks.push('under development');
 
@@ -559,7 +387,6 @@ const Risk = {
         else if (ageDays >= 30) picks.push('stale');
       }
     }
-
     return Array.from(new Set(picks)).slice(0, 6);
   }
 };
@@ -570,35 +397,13 @@ const DSL = {
     const lower = (text || '').toLowerCase();
     let w = ' ' + lower + ' ';
     const out = {
-      module: null,
-      status: null,
-      priority: null,
-      id: null,
-      type: null,
-      missing: null,
-      riskOp: null,
-      riskVal: null,
-      severityOp: null,
-      severityVal: null,
-      impactOp: null,
-      impactVal: null,
-      urgencyOp: null,
-      urgencyVal: null,
-      ageOp: null,
-      ageVal: null,
-      lastDays: null,
-      cluster: null,
-      sort: null,
-      eventScope: null,
-      words: []
+      module: null, status: null, priority: null, id: null, type: null, missing: null,
+      riskOp: null, riskVal: null, severityOp: null, severityVal: null,
+      impactOp: null, impactVal: null, urgencyOp: null, urgencyVal: null,
+      ageOp: null, ageVal: null, lastDays: null, cluster: null, sort: null,
+      eventScope: null, words: []
     };
-    const eat = (re, key, fn = v => v) => {
-      const m = w.match(re);
-      if (m) {
-        out[key] = fn(m[1].trim());
-        w = w.replace(m[0], ' ');
-      }
-    };
+    const eat = (re, key, fn = v => v) => { const m = w.match(re); if (m) { out[key] = fn(m[1].trim()); w = w.replace(m[0], ' '); } };
     eat(/\bmodule:([^\s]+)/, 'module');
     eat(/\bstatus:([^\s]+)/, 'status');
     eat(/\bpriority:([^\s]+)/, 'priority');
@@ -607,56 +412,32 @@ const DSL = {
     eat(/\bmissing:([^\s]+)/, 'missing');
 
     const rv = lower.match(/\brisk([><=]{1,2})(\d+)/);
-    if (rv) {
-      out.riskOp = rv[1];
-      out.riskVal = +rv[2];
-      w = w.replace(rv[0], ' ');
-    }
+    if (rv) { out.riskOp = rv[1]; out.riskVal = +rv[2]; w = w.replace(rv[0], ' '); }
 
     const sv = lower.match(/\bseverity([><=]{1,2})(\d+)/);
-    if (sv) {
-      out.severityOp = sv[1];
-      out.severityVal = +sv[2];
-      w = w.replace(sv[0], ' ');
-    }
+    if (sv) { out.severityOp = sv[1]; out.severityVal = +sv[2]; w = w.replace(sv[0], ' '); }
     const iv = lower.match(/\bimpact([><=]{1,2})(\d+)/);
-    if (iv) {
-      out.impactOp = iv[1];
-      out.impactVal = +iv[2];
-      w = w.replace(iv[0], ' ');
-    }
+    if (iv) { out.impactOp = iv[1]; out.impactVal = +iv[2]; w = w.replace(iv[0], ' '); }
     const uv = lower.match(/\burgency([><=]{1,2})(\d+)/);
-    if (uv) {
-      out.urgencyOp = uv[1];
-      out.urgencyVal = +uv[2];
-      w = w.replace(uv[0], ' ');
-    }
+    if (uv) { out.urgencyOp = uv[1]; out.urgencyVal = +uv[2]; w = w.replace(uv[0], ' '); }
 
     eat(/\blast:(\d+)d/, 'lastDays', n => +n);
     const av = lower.match(/\bage([><=]{1,2})(\d+)d/);
-    if (av) {
-      out.ageOp = av[1];
-      out.ageVal = +av[2];
-      w = w.replace(av[0], ' ');
-    }
+    if (av) { out.ageOp = av[1]; out.ageVal = +av[2]; w = w.replace(av[0], ' '); }
 
     eat(/\bcluster:([^\s]+)/, 'cluster');
     eat(/\bsort:(risk|date|priority)/, 'sort');
     eat(/\bevent:(\S+)/, 'eventScope');
 
-    out.words = w
-      .split(/\s+/)
-      .filter(Boolean)
-      .filter(t => t.length > 2 && !STOPWORDS.has(t));
+    out.words = w.split(/\s+/).filter(Boolean).filter(t => t.length > 2 && !STOPWORDS.has(t));
     return out;
   },
   matches(issue, meta, q) {
     if (q.module && !(issue.module || '').toLowerCase().includes(q.module)) return false;
     if (q.priority) {
       const p = q.priority[0].toUpperCase();
-      if (['H', 'M', 'L'].includes(p)) {
-        if ((issue.priority || '')[0] !== p) return false;
-      } else if (!(issue.priority || '').toLowerCase().includes(q.priority)) return false;
+      if (['H','M','L'].includes(p)) { if ((issue.priority || '')[0] !== p) return false; }
+      else if (!(issue.priority || '').toLowerCase().includes(q.priority)) return false;
     }
     if (q.status) {
       const st = (issue.status || '').toLowerCase();
@@ -685,8 +466,7 @@ const DSL = {
       const d = new Date(issue.date);
       if (isNaN(d)) return false;
       const ageDays = (Date.now() - d.getTime()) / 86400000;
-      const op = q.ageOp,
-        b = q.ageVal;
+      const op = q.ageOp, b = q.ageVal;
       let pass = false;
       if (op === '>') pass = ageDays > b;
       else if (op === '>=') pass = ageDays >= b;
@@ -702,8 +482,7 @@ const DSL = {
     const risk = meta.risk || {};
     if (q.riskOp) {
       const rv = risk.total || 0;
-      const op = q.riskOp,
-        b = q.riskVal;
+      const op = q.riskOp, b = q.riskVal;
       let pass = false;
       if (op === '>') pass = rv > b;
       else if (op === '>=') pass = rv >= b;
@@ -727,9 +506,7 @@ const DSL = {
 
     if (q.words && q.words.length) {
       const txt = [issue.title, issue.desc, issue.log].filter(Boolean).join(' ').toLowerCase();
-      for (const w of q.words) {
-        if (!txt.includes(w)) return false;
-      }
+      for (const w of q.words) { if (!txt.includes(w)) return false; }
     }
     return true;
   }
@@ -747,8 +524,7 @@ const CalendarLink = {
 
 /** Events + risk (issues + events) */
 function computeEventsRisk(issues, events) {
-  const now = new Date(),
-    limit = U.dateAddDays(now, 7);
+  const now = new Date(), limit = U.dateAddDays(now, 7);
   const openIssues = issues.filter(i => {
     const st = (i.status || '').toLowerCase();
     return !(st.startsWith('resolved') || st.startsWith('rejected'));
@@ -763,7 +539,6 @@ function computeEventsRisk(issues, events) {
     const impacted = modules.filter(m => title.includes((m || '').toLowerCase()));
     let rel = [];
     if (impacted.length) rel = openIssues.filter(i => impacted.includes(i.module));
-
     else if ((ev.type || '').toLowerCase() !== 'other') {
       const recentOpen = openIssues.filter(i => U.isBetween(i.date, U.daysAgo(7), null));
       rel = recentOpen.filter(
@@ -786,10 +561,7 @@ function computeChangeCollisions(issues, events) {
   const flagsById = new Map();
   const byId = id => {
     let f = flagsById.get(id);
-    if (!f) {
-      f = { collision: false, freeze: false, hotIssues: false };
-      flagsById.set(id, f);
-    }
+    if (!f) { f = { collision: false, freeze: false, hotIssues: false }; flagsById.set(id, f); }
     return f;
   };
   if (!events || !events.length) return { collisions: [], flagsById };
@@ -855,10 +627,7 @@ function computeChangeCollisions(issues, events) {
     const modulesArr = Array.isArray(ev.modules)
       ? ev.modules
       : typeof ev.modules === 'string'
-      ? ev.modules
-          .split(',')
-          .map(s => s.trim())
-          .filter(Boolean)
+      ? ev.modules.split(',').map(s => s.trim()).filter(Boolean)
       : [];
     let rel = [];
     if (modulesArr.length) {
@@ -878,9 +647,7 @@ function computeChangeCollisions(issues, events) {
 function toLocalInputValue(date) {
   const d = date instanceof Date ? date : new Date(date);
   if (isNaN(d)) return '';
-  return `${d.getFullYear()}-${U.pad(d.getMonth() + 1)}-${U.pad(d.getDate())}T${U.pad(
-    d.getHours()
-  )}:${U.pad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${U.pad(d.getMonth() + 1)}-${U.pad(d.getDate())}T${U.pad(d.getHours())}:${U.pad(d.getMinutes())}`;
 }
 function toLocalDateValue(date) {
   const d = date instanceof Date ? date : new Date(date);
@@ -892,160 +659,44 @@ function toLocalDateValue(date) {
 const E = {};
 function cacheEls() {
   [
-    'issuesTable',
-    'issuesTbody',
-    'tbodySkeleton',
-    'rowCount',
-    'moduleFilter',
-    'priorityFilter',
-    'statusFilter',
-    'resetBtn',
-    'refreshNow',
-    'exportCsv',
-    'kpis',
-    'issueModal',
-    'modalBody',
-    'modalTitle',
-    'copyId',
-    'copyLink',
-    'modalClose',
-    'drawerBtn',
-    'sidebar',
-    'spinner',
-    'toast',
-    'searchInput',
-    'themeSelect',
-    'firstPage',
-    'prevPage',
-    'nextPage',
-    'lastPage',
-    'pageInfo',
-    'pageSize',
-    'createTicketBtn',
-    'startDateFilter',
-    'endDateFilter',
-    'issuesTab',
-    'calendarTab',
-    'insightsTab',
-    'issuesView',
-    'calendarView',
-    'insightsView',
-    'addEventBtn',
-    'eventModal',
-    'eventModalTitle',
-    'eventModalClose',
-    'eventForm',
-    'eventTitle',
-    'eventType',
-    'eventIssueId',
-    'eventStart',
-    'eventEnd',
-    'eventDescription',
-    'eventSave',
-    'eventCancel',
-    'eventDelete',
-    'eventIssueLinkedInfo',
-    'aiPatternsList',
-    'aiLabelsList',
-    'aiRisksList',
-    'aiClusters',
-    'aiScopeText',
-    'aiSignalsText',
-    'aiTrendsList',
-    'aiModulesTableBody',
-    'aiTriageList',
-    'aiEventsList',
-    'aiQueryInput',
-    'aiQueryRun',
-    'aiQueryResults',
-    'aiQueryApplyFilters',
-    'aiIncidentsList',
-    'aiEmergingStable',
-    'aiOpsCockpit',
-    'syncIssuesText',
-    'syncIssuesDot',
-    'syncEventsText',
-    'syncEventsDot',
-    'aiAnalyzing',
-    'eventFilterDeployment',
-    'eventFilterMaintenance',
-    'eventFilterRelease',
-    'eventFilterOther',
-    'loadingStatus',
-    'issuesSummaryText',
-    'activeFiltersChips',
-    'calendarTz',
-    'onlineStatusChip',
-    'accentColor',
-    'shortcutsHelp',
-    'aiQueryExport',
-    'eventAllDay',
-    'eventEnv',
-    'eventOwner',
-    'eventStatus',
-    'eventModules',
-    'eventImpactType'
+    'issuesTable','issuesTbody','tbodySkeleton','rowCount','moduleFilter','priorityFilter','statusFilter','resetBtn','refreshNow','exportCsv','kpis',
+    'issueModal','modalBody','modalTitle','copyId','copyLink','modalClose','drawerBtn','sidebar','spinner','toast','searchInput','themeSelect',
+    'firstPage','prevPage','nextPage','lastPage','pageInfo','pageSize','createTicketBtn','startDateFilter','endDateFilter','issuesTab','calendarTab',
+    'insightsTab','issuesView','calendarView','insightsView','addEventBtn','eventModal','eventModalTitle','eventModalClose','eventForm','eventTitle',
+    'eventType','eventIssueId','eventStart','eventEnd','eventDescription','eventSave','eventCancel','eventDelete','eventIssueLinkedInfo','aiPatternsList',
+    'aiLabelsList','aiRisksList','aiClusters','aiScopeText','aiSignalsText','aiTrendsList','aiModulesTableBody','aiTriageList','aiEventsList',
+    'aiQueryInput','aiQueryRun','aiQueryResults','aiQueryApplyFilters','aiIncidentsList','aiEmergingStable','aiOpsCockpit',
+    // NEW: CX Guard IDs
+    'cxGuardStatus','cxGuardCurrentBugs','cxGuardUpcomingReleases','cxGuardSeasonality',
+    'syncIssuesText','syncIssuesDot','syncEventsText','syncEventsDot','aiAnalyzing','eventFilterDeployment','eventFilterMaintenance',
+    'eventFilterRelease','eventFilterOther','loadingStatus','issuesSummaryText','activeFiltersChips','calendarTz','onlineStatusChip',
+    'accentColor','shortcutsHelp','aiQueryExport','eventAllDay','eventEnv','eventOwner','eventStatus','eventModules','eventImpactType'
   ].forEach(id => (E[id] = document.getElementById(id)));
 }
 /** UI helpers */
 const UI = {
-  toast(msg, ms = 3500) {
-    if (!E.toast) return;
-    E.toast.textContent = msg;
-    E.toast.style.display = 'block';
-    setTimeout(() => {
-      if (E.toast) E.toast.style.display = 'none';
-    }, ms);
-  },
-  spinner(v = true) {
-    if (E.spinner) E.spinner.style.display = v ? 'flex' : 'none';
-    if (E.loadingStatus) E.loadingStatus.textContent = v ? 'Loading…' : '';
-  },
+  toast(msg, ms = 3500) { if (!E.toast) return; E.toast.textContent = msg; E.toast.style.display = 'block'; setTimeout(() => { if (E.toast) E.toast.style.display = 'none'; }, ms); },
+  spinner(v = true) { if (E.spinner) E.spinner.style.display = v ? 'flex' : 'none'; if (E.loadingStatus) E.loadingStatus.textContent = v ? 'Loading…' : ''; },
   setSync(which, ok, when) {
     const txt = which === 'issues' ? E.syncIssuesText : E.syncEventsText;
     const dot = which === 'issues' ? E.syncIssuesDot : E.syncEventsDot;
     if (!txt || !dot) return;
-    txt.textContent = `${which === 'issues' ? 'Issues' : 'Events'}: ${
-      when ? U.fmtTS(when) : 'never'
-    }`;
+    txt.textContent = `${which === 'issues' ? 'Issues' : 'Events'}: ${ when ? U.fmtTS(when) : 'never' }`;
     dot.className = 'dot ' + (ok ? 'ok' : 'err');
   },
-  setAnalyzing(v) {
-    if (E.aiAnalyzing) E.aiAnalyzing.style.display = v ? 'block' : 'none';
-  },
-  skeleton(show) {
-    if (!E.issuesTbody || !E.tbodySkeleton) return;
-    E.tbodySkeleton.style.display = show ? '' : 'none';
-    E.issuesTbody.style.display = show ? 'none' : '';
-  }
+  setAnalyzing(v) { if (E.aiAnalyzing) E.aiAnalyzing.style.display = v ? 'block' : 'none'; },
+  skeleton(show) { if (!E.issuesTbody || !E.tbodySkeleton) return; E.tbodySkeleton.style.display = show ? '' : 'none'; E.issuesTbody.style.display = show ? 'none' : ''; }
 };
 
-const GridState = {
-  sortKey: null,
-  sortAsc: true,
-  page: 1,
-  pageSize: +(localStorage.getItem(LS_KEYS.pageSize) || 20)
-};
+const GridState = { sortKey: null, sortAsc: true, page: 1, pageSize: +(localStorage.getItem(LS_KEYS.pageSize) || 20) };
 
 /** Issues UI */
 UI.Issues = {
   renderFilters() {
-    const uniq = a =>
-      [...new Set(a.filter(Boolean).map(v => v.trim()))].sort((a, b) =>
-        a.localeCompare(b)
-      );
-    if (E.moduleFilter)
-      E.moduleFilter.innerHTML = ['All', ...uniq(DataStore.rows.map(r => r.module))]
-        .map(v => `<option>${v}</option>`)
-        .join('');
-    if (E.priorityFilter)
-      E.priorityFilter.innerHTML = ['All', ...uniq(DataStore.rows.map(r => r.priority))]
-        .map(v => `<option>${v}</option>`)
-        .join('');
-    if (E.statusFilter)
-      E.statusFilter.innerHTML = ['All', ...uniq(DataStore.rows.map(r => r.status))]
-        .map(v => `<option>${v}</option>`)
-        .join('');
+    const uniq = a => [...new Set(a.filter(Boolean).map(v => v.trim()))].sort((a,b)=>a.localeCompare(b));
+    if (E.moduleFilter) E.moduleFilter.innerHTML = ['All', ...uniq(DataStore.rows.map(r => r.module))].map(v => `<option>${v}</option>`).join('');
+    if (E.priorityFilter) E.priorityFilter.innerHTML = ['All', ...uniq(DataStore.rows.map(r => r.priority))].map(v => `<option>${v}</option>`).join('');
+    if (E.statusFilter) E.statusFilter.innerHTML = ['All', ...uniq(DataStore.rows.map(r => r.status))].map(v => `<option>${v}</option>`).join('');
   },
   applyFilters() {
     const s = Filters.state;
@@ -1055,10 +706,7 @@ UI.Issues = {
     const end = s.end ? U.dateAddDays(s.end, 1) : null;
 
     return DataStore.rows.filter(r => {
-      const hay = [r.id, r.module, r.title, r.desc, r.log]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
+      const hay = [r.id, r.module, r.title, r.desc, r.log].filter(Boolean).join(' ').toLowerCase();
       if (terms.length && !terms.every(t => hay.includes(t))) return false;
 
       let keepDate = true;
@@ -1068,9 +716,7 @@ UI.Issues = {
           if (start && d < start) keepDate = false;
           if (end && d >= end) keepDate = false;
         }
-      } else if (start || end) {
-        keepDate = false;
-      }
+      } else if (start || end) { keepDate = false; }
 
       return (
         (!s.module || s.module === 'All' || r.module === s.module) &&
@@ -1082,8 +728,7 @@ UI.Issues = {
   },
   renderKPIs(list) {
     if (!E.kpis) return;
-    const total = list.length,
-      counts = {};
+    const total = list.length, counts = {};
     list.forEach(r => (counts[r.status] = (counts[r.status] || 0) + 1));
     E.kpis.innerHTML = '';
     const add = (label, val) => {
@@ -1096,27 +741,11 @@ UI.Issues = {
       d.innerHTML = `<div class="label">${label}</div><div class="value">${val}</div><div class="sub">${pct}%</div>`;
       d.onclick = () => {
         if (label === 'Total Issues') {
-          Filters.state = {
-            search: '',
-            module: 'All',
-            priority: 'All',
-            status: 'All',
-            start: '',
-            end: ''
-          };
-        } else {
-          Filters.state.status = label;
-          Filters.state.search = '';
-        }
-        Filters.save();
-        UI.refreshAll();
+          Filters.state = { search: '', module: 'All', priority: 'All', status: 'All', start: '', end: '' };
+        } else { Filters.state.status = label; Filters.state.search = ''; }
+        Filters.save(); UI.refreshAll();
       };
-      d.addEventListener('keydown', e => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          d.click();
-        }
-      });
+      d.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); d.click(); } });
       E.kpis.appendChild(d);
     };
     add('Total Issues', total);
@@ -1127,27 +756,20 @@ UI.Issues = {
     const { sortKey, sortAsc } = GridState;
     const sorted = sortKey
       ? [...list].sort((a, b) => {
-          const va = a[sortKey] || '',
-            vb = b[sortKey] || '';
+          const va = a[sortKey] || '', vb = b[sortKey] || '';
           if (sortKey === 'date') {
-            const da = new Date(va),
-              db = new Date(vb);
+            const da = new Date(va), db = new Date(vb);
             if (isNaN(da) && isNaN(db)) return 0;
             if (isNaN(da)) return 1;
             if (isNaN(db)) return -1;
             return da - db;
           }
-          return String(va).localeCompare(String(vb), undefined, {
-            numeric: true,
-            sensitivity: 'base'
-          });
+          return String(va).localeCompare(String(vb), undefined, { numeric: true, sensitivity: 'base' });
         })
       : list;
     const rows = sortAsc ? sorted : sorted.reverse();
 
-    const total = rows.length,
-      size = GridState.pageSize,
-      page = GridState.page;
+    const total = rows.length, size = GridState.pageSize, page = GridState.page;
     const pages = Math.max(1, Math.ceil(total / size));
     if (GridState.page > pages) GridState.page = pages;
     const start = (GridState.page - 1) * size;
@@ -1157,36 +779,22 @@ UI.Issues = {
     const lastRow = total ? Math.min(total, start + pageData.length) : 0;
 
     if (E.rowCount) {
-      E.rowCount.textContent = total
-        ? `Showing ${firstRow}-${lastRow} of ${total}`
-        : 'No rows';
+      E.rowCount.textContent = total ? `Showing ${firstRow}-${lastRow} of ${total}` : 'No rows';
     }
     if (E.pageInfo) E.pageInfo.textContent = `Page ${GridState.page} / ${pages}`;
-    ['firstPage', 'prevPage', 'nextPage', 'lastPage'].forEach(id => {
-      const btn = E[id];
-      if (!btn) return;
-      const atFirst = GridState.page <= 1,
-        atLast = GridState.page >= pages;
-      if (id === 'firstPage' || id === 'prevPage') btn.disabled = atFirst;
-      else btn.disabled = atLast;
-      if (btn.disabled) btn.setAttribute('disabled', 'true');
-      else btn.removeAttribute('disabled');
+    ['firstPage','prevPage','nextPage','lastPage'].forEach(id => {
+      const btn = E[id]; if (!btn) return;
+      const atFirst = GridState.page <= 1, atLast = GridState.page >= pages;
+      if (id === 'firstPage' || id === 'prevPage') btn.disabled = atFirst; else btn.disabled = atLast;
+      if (btn.disabled) btn.setAttribute('disabled', 'true'); else btn.removeAttribute('disabled');
     });
 
-    const badgeStatus = s =>
-      `<span class="pill status-${(s || '').replace(/\s/g, '\\ ')}">${U.escapeHtml(
-        s || '-'
-      )}</span>`;
-    const badgePrio = p =>
-      `<span class="pill priority-${p || ''}">${U.escapeHtml(p || '-')}</span>`;
+    const badgeStatus = s => `<span class="pill status-${(s || '').replace(/\s/g, '\\ ')}">${U.escapeHtml(s || '-')}</span>`;
+    const badgePrio = p => `<span class="pill priority-${p || ''}">${U.escapeHtml(p || '-')}</span>`;
 
     if (pageData.length) {
-      E.issuesTbody.innerHTML = pageData
-        .map(
-          r => `
-        <tr role="button" tabindex="0" aria-label="Open issue ${U.escapeHtml(
-          r.id || ''
-        )}" data-id="${U.escapeAttr(r.id)}">
+      E.issuesTbody.innerHTML = pageData.map(r => `
+        <tr role="button" tabindex="0" aria-label="Open issue ${U.escapeHtml(r.id || '')}" data-id="${U.escapeAttr(r.id)}">
           <td>${U.escapeHtml(r.id || '-')}</td>
           <td>${U.escapeHtml(r.module || '-')}</td>
           <td>${U.escapeHtml(r.title || '-')}</td>
@@ -1194,26 +802,15 @@ UI.Issues = {
           <td>${badgeStatus(r.status || '-')}</td>
           <td>${U.escapeHtml(r.date || '-')}</td>
           <td>${U.escapeHtml(r.log || '-')}</td>
-          <td>${
-            r.file
-              ? `<a href="${U.escapeAttr(
-                  r.file
-                )}" target="_blank" rel="noopener noreferrer" aria-label="Open attachment link">🔗</a>`
-              : '-'
-          }</td>
+          <td>${ r.file ? `<a href="${U.escapeAttr(r.file)}" target="_blank" rel="noopener noreferrer" aria-label="Open attachment link">🔗</a>` : '-' }</td>
         </tr>
-      `
-        )
-        .join('');
+      `).join('');
     } else {
       const parts = [];
       if (Filters.state.search) parts.push(`search "${Filters.state.search}"`);
-      if (Filters.state.module && Filters.state.module !== 'All')
-        parts.push(`module = ${Filters.state.module}`);
-      if (Filters.state.priority && Filters.state.priority !== 'All')
-        parts.push(`priority = ${Filters.state.priority}`);
-      if (Filters.state.status && Filters.state.status !== 'All')
-        parts.push(`status = ${Filters.state.status}`);
+      if (Filters.state.module && Filters.state.module !== 'All') parts.push(`module = ${Filters.state.module}`);
+      if (Filters.state.priority && Filters.state.priority !== 'All') parts.push(`priority = ${Filters.state.priority}`);
+      if (Filters.state.status && Filters.state.status !== 'All') parts.push(`status = ${Filters.state.status}`);
       if (Filters.state.start) parts.push(`from ${Filters.state.start}`);
       if (Filters.state.end) parts.push(`to ${Filters.state.end}`);
       const desc = parts.length ? parts.join(', ') : 'no filters';
@@ -1225,115 +822,43 @@ UI.Issues = {
           </td>
         </tr>`;
       const clearBtn = document.getElementById('clearFiltersBtn');
-      if (clearBtn)
-        clearBtn.addEventListener('click', () => {
-          Filters.state = {
-            search: '',
-            module: 'All',
-            priority: 'All',
-            status: 'All',
-            start: '',
-            end: ''
-          };
-          Filters.save();
-          if (E.searchInput) E.searchInput.value = '';
-          if (E.startDateFilter) E.startDateFilter.value = '';
-          if (E.endDateFilter) E.endDateFilter.value = '';
-          UI.Issues.renderFilters();
-          UI.refreshAll();
-        });
+      if (clearBtn) clearBtn.addEventListener('click', () => {
+        Filters.state = { search: '', module: 'All', priority: 'All', status: 'All', start: '', end: '' };
+        Filters.save(); if (E.searchInput) E.searchInput.value = ''; if (E.startDateFilter) E.startDateFilter.value = ''; if (E.endDateFilter) E.endDateFilter.value = '';
+        UI.Issues.renderFilters(); UI.refreshAll();
+      });
     }
 
     E.issuesTbody.querySelectorAll('tr[data-id]').forEach(tr => {
-      tr.addEventListener('keydown', e => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          UI.Modals.openIssue(tr.getAttribute('data-id'));
-        }
-      });
-      tr.addEventListener('click', e => {
-        if (!e.target.closest('a')) UI.Modals.openIssue(tr.getAttribute('data-id'));
-      });
+      tr.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); UI.Modals.openIssue(tr.getAttribute('data-id')); } });
+      tr.addEventListener('click', e => { if (!e.target.closest('a')) UI.Modals.openIssue(tr.getAttribute('data-id')); });
     });
 
-    U.qAll('#issuesTable thead th').forEach(th => {
-      th.classList.remove('sorted-asc', 'sorted-desc');
-      th.setAttribute('aria-sort', 'none');
-    });
+    U.qAll('#issuesTable thead th').forEach(th => { th.classList.remove('sorted-asc','sorted-desc'); th.setAttribute('aria-sort','none'); });
     if (GridState.sortKey) {
       const th = U.q(`#issuesTable thead th[data-key="${GridState.sortKey}"]`);
-      if (th) {
-        th.classList.add(GridState.sortAsc ? 'sorted-asc' : 'sorted-desc');
-        th.setAttribute('aria-sort', GridState.sortAsc ? 'ascending' : 'descending');
-      }
+      if (th) { th.classList.add(GridState.sortAsc ? 'sorted-asc' : 'sorted-desc'); th.setAttribute('aria-sort', GridState.sortAsc ? 'ascending' : 'descending'); }
     }
   },
   renderCharts(list) {
     if (typeof Chart === 'undefined') return;
-    const cssVar = n =>
-      getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+    const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
     const statusColors = {
-      Resolved: cssVar('--status-resolved'),
-      'Under Development': cssVar('--status-underdev'),
-      Rejected: cssVar('--status-rejected'),
-      'On Hold': cssVar('--status-onhold'),
-      'Not Started Yet': cssVar('--status-notstarted'),
-      Sent: cssVar('--status-sent'),
-      'On Stage': cssVar('--status-onstage')
+      Resolved: cssVar('--status-resolved'),'Under Development': cssVar('--status-underdev'),Rejected: cssVar('--status-rejected'),
+      'On Hold': cssVar('--status-onhold'),'Not Started Yet': cssVar('--status-notstarted'),Sent: cssVar('--status-sent'),'On Stage': cssVar('--status-onstage')
     };
-    const priorityColors = {
-      High: cssVar('--priority-high'),
-      Medium: cssVar('--priority-medium'),
-      Low: cssVar('--priority-low')
-    };
-    const group = (arr, k) =>
-      arr.reduce((m, r) => {
-        const key = r[k] || 'Unspecified';
-        m[key] = (m[key] || 0) + 1;
-        return m;
-      }, {});
+    const priorityColors = { High: cssVar('--priority-high'), Medium: cssVar('--priority-medium'), Low: cssVar('--priority-low') };
+    const group = (arr, k) => arr.reduce((m, r) => { const key = r[k] || 'Unspecified'; m[key] = (m[key] || 0) + 1; return m; }, {});
     const make = (id, type, data, colors = {}) => {
-      const el = U.q('#' + id);
-      if (!el) return;
-      UI._charts = UI._charts || {};
-      if (UI._charts[id]) UI._charts[id].destroy();
-      const labels = Object.keys(data),
-        values = Object.values(data);
+      const el = U.q('#' + id); if (!el) return; UI._charts = UI._charts || {}; if (UI._charts[id]) UI._charts[id].destroy();
+      const labels = Object.keys(data), values = Object.values(data);
       UI._charts[id] = new Chart(el, {
         type,
-        data: {
-          labels,
-          datasets: [
-            {
-              data: values,
-              backgroundColor: labels.map(l => colors[l] || cssVar('--accent'))
-            }
-          ]
-        },
+        data: { labels, datasets: [{ data: values, backgroundColor: labels.map(l => colors[l] || cssVar('--accent')) }] },
         options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { display: type !== 'bar' },
-            tooltip: {
-              callbacks: {
-                label: ctx => {
-                  const total = values.reduce((a, b) => a + b, 0) || 1;
-                  return `${ctx.raw} (${Math.round((ctx.raw * 100) / total)}%)`;
-                }
-              }
-            }
-          },
-          scales:
-            type === 'bar'
-              ? {
-                  x: { grid: { color: 'rgba(128,128,128,.1)' } },
-                  y: {
-                    beginAtZero: true,
-                    grid: { color: 'rgba(128,128,128,.12)' }
-                  }
-                }
-              : {}
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: type !== 'bar' }, tooltip: { callbacks: { label: ctx => { const total = values.reduce((a,b)=>a+b,0) || 1; return `${ctx.raw} (${Math.round((ctx.raw*100)/total)}%)`; } } } },
+          scales: type === 'bar' ? { x: { grid: { color: 'rgba(128,128,128,.1)' } }, y: { beginAtZero: true, grid: { color: 'rgba(128,128,128,.12)' } } } : {}
         }
       });
     };
@@ -1396,8 +921,7 @@ UI.Issues.renderFilterChips = function () {
 UI.Issues.renderSummary = function (list) {
   if (!E.issuesSummaryText) return;
   const total = list.length;
-  let open = 0;
-  let highRisk = 0;
+  let open = 0; let highRisk = 0;
   list.forEach(r => {
     const st = (r.status || '').toLowerCase();
     const isClosed = st.startsWith('resolved') || st.startsWith('rejected');
@@ -1407,8 +931,7 @@ UI.Issues.renderSummary = function (list) {
   });
   const last = IssuesCache.lastLabel();
   E.issuesSummaryText.textContent =
-    `${total} issue${total === 1 ? '' : 's'} · ${open} open · ${highRisk} high-risk` +
-    (last ? ` · ${last}` : '');
+    `${total} issue${total === 1 ? '' : 's'} · ${open} open · ${highRisk} high-risk` + (last ? ` · ${last}` : '');
 };
 
 /** Analytics (AI tab) */
@@ -1434,12 +957,7 @@ const Analytics = {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 10);
     E.aiPatternsList.innerHTML = topTerms.length
-      ? topTerms
-          .map(
-            ([t, c]) =>
-              `<li><strong>${U.escapeHtml(t)}</strong> – ${c}</li>`
-          )
-          .join('')
+      ? topTerms.map(([t, c]) => `<li><strong>${U.escapeHtml(t)}</strong> – ${c}</li>`).join('')
       : '<li>No strong repeated terms recently.</li>';
 
     // Suggested categories frequency
@@ -1448,32 +966,19 @@ const Analytics = {
       const cats = DataStore.computed.get(r.id)?.suggestions?.categories || [];
       cats.forEach(c => catCount.set(c.label, (catCount.get(c.label) || 0) + 1));
     });
-    const topCats = Array.from(catCount.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 8);
+    const topCats = Array.from(catCount.entries()).sort((a,b)=>b[1]-a[1]).slice(0, 8);
     E.aiLabelsList.innerHTML = topCats.length
-      ? topCats
-          .map(
-            ([l, n]) =>
-              `<li><strong>${U.escapeHtml(l)}</strong> – ${n}</li>`
-          )
-          .join('')
+      ? topCats.map(([l, n]) => `<li><strong>${U.escapeHtml(l)}</strong> – ${n}</li>`).join('')
       : '<li>No clear category suggestions yet.</li>';
 
     // Scope & signals
     E.aiScopeText.textContent = `Analyzing ${list.length} issues (${recent.length} recent, ~last ${recentCut} days).`;
-    const signals = ['timeout', 'payments', 'billing', 'login', 'auth', 'error', 'crash'].filter(
-      t => termCounts.has(t)
-    );
-    E.aiSignalsText.textContent = signals.length
-      ? `Recent mentions: ${signals.join(', ')}.`
-      : 'No strong recurring signals.';
+    const signals = ['timeout','payments','billing','login','auth','error','crash'].filter(t => termCounts.has(t));
+    E.aiSignalsText.textContent = signals.length ? `Recent mentions: ${signals.join(', ')}.` : 'No strong recurring signals.';
 
     // Trends
-    const oldStart = U.daysAgo(CONFIG.TREND_DAYS_WINDOW),
-      mid = U.daysAgo(CONFIG.TREND_DAYS_RECENT);
-    const oldCounts = new Map(),
-      newCounts = new Map();
+    const oldStart = U.daysAgo(CONFIG.TREND_DAYS_WINDOW), mid = U.daysAgo(CONFIG.TREND_DAYS_RECENT);
+    const oldCounts = new Map(), newCounts = new Map();
     const inHalf = r => {
       const d = new Date(r.date);
       if (isNaN(d)) return null;
@@ -1482,8 +987,7 @@ const Analytics = {
       return null;
     };
     list.forEach(r => {
-      const half = inHalf(r);
-      if (!half) return;
+      const half = inHalf(r); if (!half) return;
       const toks = DataStore.computed.get(r.id)?.tokens || new Set();
       const tgt = half === 'old' ? oldCounts : newCounts;
       new Set(toks).forEach(t => tgt.set(t, (tgt.get(t) || 0) + 1));
@@ -1491,32 +995,17 @@ const Analytics = {
     const trendTerms = new Set([...oldCounts.keys(), ...newCounts.keys()]);
     const trend = [];
     trendTerms.forEach(t => {
-      const a = oldCounts.get(t) || 0,
-        b = newCounts.get(t) || 0;
-      const d = b - a;
-      const ratio = a === 0 ? (b >= 2 ? Infinity : 0) : b / a;
+      const a = oldCounts.get(t) || 0, b = newCounts.get(t) || 0;
+      const d = b - a; const ratio = a === 0 ? (b >= 2 ? Infinity : 0) : b / a;
       if ((b >= 2 && ratio >= 2) || d >= 2) trend.push({ t, old: a, new: b, delta: d, ratio });
     });
-    trend.sort(
-      (x, y) =>
-        (y.ratio === Infinity) - (x.ratio === Infinity) ||
-        y.delta - x.delta ||
-        y.new - x.new
-    );
+    trend.sort((x,y) => (y.ratio === Infinity) - (x.ratio === Infinity) || y.delta - x.delta || y.new - x.new);
     E.aiTrendsList.innerHTML = trend.length
-      ? trend
-          .slice(0, 8)
-          .map(
-            o =>
-              `<li><strong>${U.escapeHtml(o.t)}</strong> – ${o.new} vs ${o.old} <span class="muted">(Δ ${
-                o.delta >= 0 ? `+${o.delta}` : o.delta
-              })</span></li>`
-          )
-          .join('')
+      ? trend.slice(0, 8).map(o => `<li><strong>${U.escapeHtml(o.t)}</strong> – ${o.new} vs ${o.old} <span class="muted">(Δ ${ o.delta >= 0 ? `+${o.delta}` : o.delta })</span></li>`).join('')
       : '<li>No strong increases.</li>';
 
     // Incidents
-    const incidentWords = ['incident', 'outage', 'p0', 'p1', 'major', 'sla'];
+    const incidentWords = ['incident','outage','p0','p1','major','sla'];
     const incidents = list
       .filter(r => {
         const txt = [r.title, r.desc, r.log].filter(Boolean).join(' ').toLowerCase();
@@ -1524,63 +1013,38 @@ const Analytics = {
       })
       .slice(0, 10);
     E.aiIncidentsList.innerHTML = incidents.length
-      ? incidents
-          .map(
-            r => `
-      <li><button class="btn sm" data-open="${U.escapeAttr(
-        r.id
-      )}">${U.escapeHtml(r.id)}</button> ${U.escapeHtml(r.title || '')}</li>
-    `
-          )
-          .join('')
+      ? incidents.map(r => `<li><button class="btn sm" data-open="${U.escapeAttr(r.id)}">${U.escapeHtml(r.id)}</button> ${U.escapeHtml(r.title || '')}</li>`).join('')
       : '<li>No incident-like issues detected.</li>';
 
     // Emerging vs stable
     const emerg = trend.slice(0, 5).map(t => t.t);
-    const stable = topTerms
-      .filter(([t]) => !emerg.includes(t))
-      .slice(0, 5)
-      .map(([t]) => t);
+    const stable = topTerms.filter(([t]) => !emerg.includes(t)).slice(0, 5).map(([t]) => t);
     E.aiEmergingStable.innerHTML = `
-      <li><strong>Emerging:</strong> ${
-        emerg.length ? emerg.map(x => U.escapeHtml(x)).join(', ') : '—'
-      }</li>
-      <li><strong>Stable:</strong> ${
-        stable.length ? stable.map(x => U.escapeHtml(x)).join(', ') : '—'
-      }</li>
+      <li><strong>Emerging:</strong> ${ emerg.length ? emerg.map(x => U.escapeHtml(x)).join(', ') : '—' }</li>
+      <li><strong>Stable:</strong> ${ stable.length ? stable.map(x => U.escapeHtml(x)).join(', ') : '—' }</li>
     `;
 
     // Ops cockpit
     const misaligned = list.filter(r => {
-      const meta = DataStore.computed.get(r.id);
-      if (!meta) return false;
+      const meta = DataStore.computed.get(r.id) || {};
       const gap = prioGap(meta.suggestions?.priority, r.priority);
       return gap >= CONFIG.RISK.misalignedDelta;
     });
     const missingPriority = list.filter(r => !r.priority);
     const missingModule = list.filter(r => !r.module || r.module === 'Unspecified');
     const staleHigh = list.filter(r => {
-      const meta = DataStore.computed.get(r.id);
-      if (!meta) return false;
+      const meta = DataStore.computed.get(r.id); if (!meta) return false;
       const risk = meta.risk?.total || 0;
       const old = U.daysAgo(CONFIG.RISK.staleDays);
       const st = (r.status || '').toLowerCase();
-      return (
-        risk >= CONFIG.RISK.highRisk &&
-        U.isBetween(r.date, null, old) &&
-        !(st.startsWith('resolved') || st.startsWith('rejected'))
-      );
+      return risk >= CONFIG.RISK.highRisk && U.isBetween(r.date, null, old) && !(st.startsWith('resolved') || st.startsWith('rejected'));
     });
     E.aiOpsCockpit.innerHTML = `
-      <li>Untagged issues (missing category/type): ${
-        list.filter(r => !r.type).length
-      }</li>
+      <li>Untagged issues (missing category/type): ${ list.filter(r => !r.type).length }</li>
       <li>Missing priority: ${missingPriority.length}</li>
       <li>Missing module: ${missingModule.length}</li>
       <li>Misaligned priority: ${misaligned.length}</li>
-      <li>Stale high-risk (&gt;=${CONFIG.RISK.highRisk}) &gt; ${
-      CONFIG.RISK.staleDays
-    }d: ${staleHigh.length}</li>
+      <li>Stale high-risk (&gt;=${CONFIG.RISK.highRisk}) &gt; ${CONFIG.RISK.staleDays}d: ${staleHigh.length}</li>
     `;
 
     // Module insights
@@ -1588,207 +1052,123 @@ const Analytics = {
       const map = new Map();
       list.forEach(r => {
         let m = map.get(r.module);
-        if (!m) {
-          m = {
-            module: r.module,
-            total: 0,
-            open: 0,
-            high: 0,
-            risk: 0,
-            tokens: new Map()
-          };
-          map.set(r.module, m);
-        }
+        if (!m) { m = { module: r.module, total: 0, open: 0, high: 0, risk: 0, tokens: new Map() }; map.set(r.module, m); }
         m.total++;
         const st = (r.status || '').toLowerCase();
-        if (!st.startsWith('resolved') && !st.startsWith('rejected')) {
-          m.open++;
-          if (r.priority === 'High') m.high++;
-        }
+        if (!st.startsWith('resolved') && !st.startsWith('rejected')) { m.open++; if (r.priority === 'High') m.high++; }
         const rs = DataStore.computed.get(r.id)?.risk?.total || 0;
         m.risk += rs;
-        (DataStore.computed.get(r.id)?.tokens || new Set()).forEach(t =>
-          m.tokens.set(t, (m.tokens.get(t) || 0) + 1)
-        );
+        (DataStore.computed.get(r.id)?.tokens || new Set()).forEach(t => m.tokens.set(t, (m.tokens.get(t) || 0) + 1));
       });
-      return Array.from(map.values())
-        .map(m => {
-          const tt = m.tokens.size
-            ? Array.from(m.tokens.entries()).sort((a, b) => b[1] - a[1])[0][0]
-            : '';
-          return {
-            module: m.module,
-            open: m.open,
-            high: m.high,
-            risk: m.risk,
-            topTerm: tt
-          };
-        })
-        .sort((a, b) => b.risk - a.risk || b.open - a.open)
-        .slice(0, 8);
+      return Array.from(map.values()).map(m => {
+          const tt = m.tokens.size ? Array.from(m.tokens.entries()).sort((a,b)=>b[1]-a[1])[0][0] : '';
+          return { module: m.module, open: m.open, high: m.high, risk: m.risk, topTerm: tt };
+        }).sort((a,b)=> b.risk - a.risk || b.open - a.open).slice(0, 8);
     })();
 
     const maxModuleRisk = modules.reduce((max, m) => Math.max(max, m.risk), 0) || 1;
 
     E.aiModulesTableBody.innerHTML = modules.length
-      ? modules
-          .map(m => {
-            const ratio = m.risk / maxModuleRisk;
-            return `
+      ? modules.map(m => {
+          const ratio = m.risk / maxModuleRisk;
+          return `
         <tr>
           <td>${U.escapeHtml(m.module)}</td>
           <td>${m.open}</td>
           <td>${m.high}</td>
           <td>
             ${m.risk}
-            <div class="risk-bar-wrap"><div class="risk-bar" style="transform:scaleX(${ratio.toFixed(
-              2
-            )});"></div></div>
+            <div class="risk-bar-wrap"><div class="risk-bar" style="transform:scaleX(${ratio.toFixed(2)});"></div></div>
           </td>
           <td>${U.escapeHtml(m.topTerm || '-')}</td>
-        </tr>
-      `;
-          })
-          .join('')
+        </tr>`;
+        }).join('')
       : '<tr><td colspan="5" style="text-align:center;color:var(--muted)">No modules.</td></tr>';
 
     // Top risks
-    const topRisks = recent
-      .map(r => ({ r, score: DataStore.computed.get(r.id)?.risk?.total || 0 }))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 5)
-      .filter(x => x.score > 2);
+    const topRisks = recent.map(r => ({ r, score: DataStore.computed.get(r.id)?.risk?.total || 0 }))
+      .sort((a,b)=>b.score-a.score).slice(0, 5).filter(x => x.score > 2);
     E.aiRisksList.innerHTML = topRisks.length
-      ? topRisks
-          .map(({ r, score }) => {
-            const badgeClass = CalendarLink.riskBadgeClass(score);
-            const meta = DataStore.computed.get(r.id)?.risk || {};
-            return `
+      ? topRisks.map(({ r, score }) => {
+          const badgeClass = CalendarLink.riskBadgeClass(score);
+          const meta = DataStore.computed.get(r.id)?.risk || {};
+          return `
         <li style="margin-bottom:4px;">
-          <strong>[${U.escapeHtml(r.priority || '-')} ] ${U.escapeHtml(
-          r.id || ''
-        )}</strong>
+          <strong>[${U.escapeHtml(r.priority || '-')} ] ${U.escapeHtml(r.id || '')}</strong>
           <span class="event-risk-badge ${badgeClass}">RISK ${score}</span>
-          <span class="muted"> · sev ${meta.severity ?? 0} · imp ${
-          meta.impact ?? 0
-        } · urg ${meta.urgency ?? 0}</span>
+          <span class="muted"> · sev ${meta.severity ?? 0} · imp ${meta.impact ?? 0} · urg ${meta.urgency ?? 0}</span>
           <br><span class="muted">Status ${U.escapeHtml(r.status || '-')}</span>
           <br>${U.escapeHtml(r.title || '')}
         </li>`;
-          })
-          .join('')
+        }).join('')
       : '<li>No high-risk recent issues.</li>';
 
     // Clusters
     const clusters = buildClustersWeighted(list);
     E.aiClusters.innerHTML = clusters.length
-      ? clusters
-          .map(
-            c => `
+      ? clusters.map(c => `
       <div class="card" style="padding:10px;">
         <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">
-          Pattern: <strong>${U.escapeHtml(c.signature || '(no pattern)')}</strong> • ${
-              c.issues.length
-            } issues
+          Pattern: <strong>${U.escapeHtml(c.signature || '(no pattern)')}</strong> • ${c.issues.length} issues
         </div>
         <ul style="margin:0;padding-left:18px;font-size:13px;">
-          ${c.issues
-            .slice(0, 5)
-            .map(
-              i => `
-            <li><button class="btn sm" style="padding:3px 6px;margin-right:4px;" data-open="${U.escapeAttr(
-              i.id
-            )}">${U.escapeHtml(i.id)}</button> ${U.escapeHtml(i.title || '')}</li>
-          `
-            )
-            .join('')}
-          ${
-            c.issues.length > 5
-              ? `<li class="muted">+ ${c.issues.length - 5} more…</li>`
-              : ''
-          }
+          ${c.issues.slice(0, 5).map(i => `
+            <li><button class="btn sm" style="padding:3px 6px;margin-right:4px;" data-open="${U.escapeAttr(i.id)}">${U.escapeHtml(i.id)}</button> ${U.escapeHtml(i.title || '')}</li>
+          `).join('')}
+          ${ c.issues.length > 5 ? `<li class="muted">+ ${c.issues.length - 5} more…</li>` : '' }
         </ul>
       </div>
-    `
-          )
-          .join('')
+    `).join('')
       : '<div class="muted">No similar issue groups ≥2.</div>';
 
     // Triage queue
     const tri = list
       .filter(r => {
         const meta = DataStore.computed.get(r.id) || {};
-        const missing =
-          !r.priority || !r.module || r.module === 'Unspecified' || !r.type;
+        const missing = !r.priority || !r.module || r.module === 'Unspecified' || !r.type;
         const gap = prioGap(meta.suggestions?.priority, r.priority);
         return missing || gap >= CONFIG.RISK.misalignedDelta;
       })
-      .sort(
-        (a, b) =>
-          (DataStore.computed.get(b.id)?.risk?.total || 0) -
-          (DataStore.computed.get(a.id)?.risk?.total || 0)
-      )
+      .sort((a,b) => (DataStore.computed.get(b.id)?.risk?.total || 0) - (DataStore.computed.get(a.id)?.risk?.total || 0))
       .slice(0, 15);
     E.aiTriageList.innerHTML = tri.length
-      ? tri
-          .map(i => {
-            const meta = DataStore.computed.get(i.id) || {};
-            const miss = [];
-            if (!i.priority) miss.push('priority');
-            if (!i.module || i.module === 'Unspecified') miss.push('module');
-            if (!i.type) miss.push('type');
-            const cats =
-              (meta.suggestions?.categories || [])
-                .slice(0, 2)
-                .map(c => c.label)
-                .join(', ') || 'n/a';
-            const note = `Suggested priority: ${
-              meta.suggestions?.priority || '-'
-            }; categories: ${cats}`;
-            return `<li style="margin-bottom:6px;">
+      ? tri.map(i => {
+          const meta = DataStore.computed.get(i.id) || {};
+          const miss = [];
+          if (!i.priority) miss.push('priority');
+          if (!i.module || i.module === 'Unspecified') miss.push('module');
+          if (!i.type) miss.push('type');
+          const cats = (meta.suggestions?.categories || []).slice(0, 2).map(c => c.label).join(', ') || 'n/a';
+          const note = `Suggested priority: ${meta.suggestions?.priority || '-'}; categories: ${cats}`;
+          return `<li style="margin-bottom:6px;">
         <strong>${U.escapeHtml(i.id)}</strong> — ${U.escapeHtml(i.title || '')}
-        <div class="muted">Missing: ${
-          miss.join(', ') || '—'
-        } · ${U.escapeHtml(note)}</div>
+        <div class="muted">Missing: ${ miss.join(', ') || '—' } · ${U.escapeHtml(note)}</div>
         <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
           <button class="btn sm" data-open="${U.escapeAttr(i.id)}">Open</button>
-          <button class="btn ghost sm" data-copy="${U.escapeAttr(
-            i.id
-          )}">Copy suggestion</button>
+          <button class="btn ghost sm" data-copy="${U.escapeAttr(i.id)}">Copy suggestion</button>
         </div>
       </li>`;
-          })
-          .join('')
+        }).join('')
       : '<li>No issues requiring triage.</li>';
 
     // Upcoming risky events
     const evs = computeEventsRisk(DataStore.rows, DataStore.events);
     E.aiEventsList.innerHTML = evs.length
-      ? evs
-          .map(r => {
-            const badge = CalendarLink.riskBadgeClass(r.risk);
-            const ev = r.event;
-            return `<li style="margin-bottom:6px;">
+      ? evs.map(r => {
+          const badge = CalendarLink.riskBadgeClass(r.risk);
+          const ev = r.event;
+          return `<li style="margin-bottom:6px;">
         <strong>${U.escapeHtml(ev.title || '(no title)')}</strong>
         <span class="event-risk-badge ${badge}">RISK ${r.risk}</span>
-        <div class="muted">${U.fmtTS(r.date)} · Env: ${U.escapeHtml(
-          ev.env || 'Prod'
-        )} · Modules: ${
-              r.modules.length
-                ? r.modules.map(U.escapeHtml).join(', ')
-                : 'n/a'
+        <div class="muted">${U.fmtTS(r.date)} · Env: ${U.escapeHtml(ev.env || 'Prod')} · Modules: ${
+              r.modules && r.modules.length ? r.modules.map(U.escapeHtml).join(', ') : 'n/a'
             } · Related issues: ${r.issues.length}</div>
       </li>`;
-          })
-          .join('')
+        }).join('')
       : '<li>No notable risk in next 7 days.</li>';
 
     // Wire AI buttons
-    U.qAll('[data-open]').forEach(b =>
-      b.addEventListener('click', () =>
-        UI.Modals.openIssue(b.getAttribute('data-open'))
-      )
-    );
+    U.qAll('[data-open]').forEach(b => b.addEventListener('click', () => UI.Modals.openIssue(b.getAttribute('data-open'))));
     U.qAll('[data-copy]').forEach(b =>
       b.addEventListener('click', () => {
         const id = b.getAttribute('data-copy');
@@ -1797,90 +1177,159 @@ const Analytics = {
         const text = `Issue ${r.id}
 Title: ${r.title}
 Suggested Priority: ${meta.suggestions?.priority}
-Suggested Categories: ${(meta.suggestions?.categories || [])
-          .map(c => c.label)
-          .join(', ')}
+Suggested Categories: ${(meta.suggestions?.categories || []).map(c => c.label).join(', ')}
 Reasons: ${(meta.risk?.reasons || []).join(', ')}`;
-        navigator.clipboard
-          .writeText(text)
-          .then(() => UI.toast('Suggestion copied'))
-          .catch(() => UI.toast('Clipboard blocked'));
+        navigator.clipboard.writeText(text).then(() => UI.toast('Suggestion copied')).catch(() => UI.toast('Clipboard blocked'));
       })
     );
+
+    // NEW: update the CX Stability & Release Guard card
+    updateCxGuardCard(list);
 
     UI.setAnalyzing(false);
   }
 };
 
-function buildClustersWeighted(list) {
-  const max = Math.min(list.length, 400);
-  const docs = list.slice(-max).map(r => {
-    const meta = DataStore.computed.get(r.id) || {};
-    return { issue: r, tokens: meta.tokens || new Set(), idf: meta.idf || new Map() };
-  });
-  const visited = new Set(),
-    clusters = [];
-  const wj = (A, IA, B, IB) => {
-    let inter = 0,
-      sumA = 0,
-      sumB = 0;
-    const all = new Set([...A, ...B]);
-    all.forEach(t => {
-      const wa = A.has(t) ? IA.get(t) || 1 : 0;
-      const wb = B.has(t) ? IB.get(t) || 1 : 0;
-      inter += Math.min(wa, wb);
-      sumA += wa;
-      sumB += wb;
-    });
-    const union = sumA + sumB - inter;
-    return union ? inter / union : 0;
+// ---- NEW: CX Guard updater ----
+function updateCxGuardCard(list) {
+  if (!E.cxGuardStatus && !E.cxGuardCurrentBugs && !E.cxGuardUpcomingReleases && !E.cxGuardSeasonality) return;
+
+  const issues = (list && list.length ? list : DataStore.rows) || [];
+  const eventsArr = DataStore.events || [];
+
+  if (!issues.length) {
+    if (E.cxGuardStatus) E.cxGuardStatus.textContent = 'Waiting for issues data…';
+    if (E.cxGuardCurrentBugs) E.cxGuardCurrentBugs.textContent = '—';
+    if (E.cxGuardUpcomingReleases) E.cxGuardUpcomingReleases.textContent = '—';
+    if (E.cxGuardSeasonality) E.cxGuardSeasonality.textContent = '—';
+    return;
+  }
+
+  const now = new Date();
+  const recentWindowDays = 14;
+
+  const isClosed = r => {
+    const st = (r.status || '').toLowerCase();
+    return st.startsWith('resolved') || st.startsWith('rejected');
   };
-  for (let i = 0; i < docs.length; i++) {
-    if (visited.has(i)) continue;
-    const base = docs[i];
-    const c = [base];
-    visited.add(i);
-    for (let j = i + 1; j < docs.length; j++) {
-      if (visited.has(j)) continue;
-      const other = docs[j];
-      if (wj(base.tokens, base.idf, other.tokens, other.idf) >= 0.28) {
-        visited.add(j);
-        c.push(other);
-      }
+
+  const recent = issues.filter(r => U.isBetween(r.date, U.daysAgo(recentWindowDays), null));
+  const openRecent = recent.filter(r => !isClosed(r));
+
+  const highRiskOpen = openRecent.filter(r => (DataStore.computed.get(r.id)?.risk?.total || 0) >= CONFIG.RISK.highRisk);
+  const critOpen = openRecent.filter(r => (DataStore.computed.get(r.id)?.risk?.total || 0) >= CONFIG.RISK.critRisk);
+  const modulesHighRisk = new Set(highRiskOpen.map(r => r.module).filter(Boolean));
+
+  const upcomingEvents = [];
+  const limit = U.dateAddDays(now, 14);
+  const openIssues = issues.filter(r => !isClosed(r));
+  const modules = Array.from(new Set(openIssues.map(i => i.module).filter(Boolean)));
+
+  eventsArr.forEach(ev => {
+    if (!ev.start) return;
+    const d = new Date(ev.start);
+    if (isNaN(d) || d < now || d > limit) return;
+
+    const title = (ev.title || '').toLowerCase();
+    const impacted = modules.filter(m => title.includes((m || '').toLowerCase()));
+    let rel = [];
+
+    if (impacted.length) {
+      rel = openIssues.filter(i => impacted.includes(i.module));
+    } else if ((ev.type || '').toLowerCase() !== 'other') {
+      const recentOpen = openIssues.filter(i => U.isBetween(i.date, U.daysAgo(7), null));
+      rel = recentOpen.filter(i => (DataStore.computed.get(i.id)?.risk?.total || 0) >= CONFIG.RISK.highRisk);
     }
-    if (c.length >= 2) {
-      const freq = new Map();
-      c.forEach(d => d.tokens.forEach(t => freq.set(t, (freq.get(t) || 0) + 1)));
-      const sig = Array.from(freq.entries())
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 3)
-        .map(([t]) => t)
-        .join(' ');
-      clusters.push({ signature: sig, issues: c.map(x => x.issue) });
+
+    if (!rel.length) return;
+
+    const risk = rel.reduce((sum, i) => sum + ((DataStore.computed.get(i.id)?.risk?.total) || 0), 0);
+    upcomingEvents.push({ event: ev, risk, issues: rel, date: d });
+  });
+
+  upcomingEvents.sort((a, b) => b.risk - a.risk);
+  const riskyReleaseCount = upcomingEvents.length;
+  const topReleaseRisk = riskyReleaseCount ? upcomingEvents[0].risk : 0;
+
+  // CX load trend: last 7 days vs previous 7 days
+  const last7 = U.daysAgo(7);
+  const last14 = U.daysAgo(14);
+  let prev7Count = 0;
+  let recent7Count = 0;
+
+  issues.forEach(r => {
+    const d = new Date(r.date);
+    if (isNaN(d)) return;
+    if (d >= last7) recent7Count++;
+    else if (d >= last14 && d < last7) prev7Count++;
+  });
+
+  const loadRatio = prev7Count ? (recent7Count / prev7Count) : (recent7Count ? Infinity : 0);
+
+  // 1) Current CX risk (bugs)
+  if (E.cxGuardCurrentBugs) {
+    if (!openRecent.length) {
+      E.cxGuardCurrentBugs.textContent = 'No recent open bugs';
+    } else if (!highRiskOpen.length) {
+      E.cxGuardCurrentBugs.textContent = openRecent.length + ' open recent bug(s) · none high-risk';
+    } else {
+      let txt = highRiskOpen.length + ' high-risk open bug(s)';
+      if (modulesHighRisk.size) txt += ' · ' + modulesHighRisk.size + ' module(s)';
+      if (critOpen.length) txt += ' · ' + critOpen.length + ' critical';
+      E.cxGuardCurrentBugs.textContent = txt;
     }
   }
-  clusters.sort((a, b) => b.issues.length - a.issues.length);
-  return clusters.slice(0, 6);
+
+  // 2) Upcoming releases (next 14 days)
+  if (E.cxGuardUpcomingReleases) {
+    if (!eventsArr.length) {
+      E.cxGuardUpcomingReleases.textContent = 'No upcoming releases in calendar';
+    } else if (!riskyReleaseCount) {
+      E.cxGuardUpcomingReleases.textContent = 'No risky releases in next 14 days';
+    } else {
+      E.cxGuardUpcomingReleases.textContent = riskyReleaseCount + ' release(s) flagged · top window risk ' + topReleaseRisk;
+    }
+  }
+
+  // 3) Seasonality / load
+  if (E.cxGuardSeasonality) {
+    if (!recent7Count && !prev7Count) {
+      E.cxGuardSeasonality.textContent = 'Not enough volume to assess load';
+    } else if (loadRatio === Infinity || loadRatio >= 1.6) {
+      E.cxGuardSeasonality.textContent = 'Spike vs last week (CX load up)';
+    } else if (loadRatio <= 0.7) {
+      E.cxGuardSeasonality.textContent = 'Quieter than last week';
+    } else {
+      E.cxGuardSeasonality.textContent = 'Load similar to last week';
+    }
+  }
+
+  // Status pill
+  if (E.cxGuardStatus) {
+    const anyCriticalRelease = topReleaseRisk >= CONFIG.RISK.critRisk;
+    let statusText;
+    if (critOpen.length || anyCriticalRelease) statusText = '🚨 High-risk release window';
+    else if (highRiskOpen.length || riskyReleaseCount) statusText = '⚠️ Watchlist – fix before releases';
+    else statusText = '✅ Stable · safe for releases';
+    E.cxGuardStatus.textContent = statusText;
+  }
 }
+
 function buildClustersWeighted(list) {
   const max = Math.min(list.length, 400);
   const docs = list.slice(-max).map(r => {
     const meta = DataStore.computed.get(r.id) || {};
     return { issue: r, tokens: meta.tokens || new Set(), idf: meta.idf || new Map() };
   });
-  const visited = new Set(),
-    clusters = [];
+  const visited = new Set(), clusters = [];
   const wj = (A, IA, B, IB) => {
-    let inter = 0,
-      sumA = 0,
-      sumB = 0;
+    let inter = 0, sumA = 0, sumB = 0;
     const all = new Set([...A, ...B]);
     all.forEach(t => {
       const wa = A.has(t) ? IA.get(t) || 1 : 0;
       const wb = B.has(t) ? IB.get(t) || 1 : 0;
       inter += Math.min(wa, wb);
-      sumA += wa;
-      sumB += wb;
+      sumA += wa; sumB += wb;
     });
     const union = sumA + sumB - inter;
     return union ? inter / union : 0;
@@ -1888,24 +1337,18 @@ function buildClustersWeighted(list) {
   for (let i = 0; i < docs.length; i++) {
     if (visited.has(i)) continue;
     const base = docs[i];
-    const c = [base];
-    visited.add(i);
+    const c = [base]; visited.add(i);
     for (let j = i + 1; j < docs.length; j++) {
       if (visited.has(j)) continue;
       const other = docs[j];
       if (wj(base.tokens, base.idf, other.tokens, other.idf) >= 0.28) {
-        visited.add(j);
-        c.push(other);
+        visited.add(j); c.push(other);
       }
     }
     if (c.length >= 2) {
       const freq = new Map();
       c.forEach(d => d.tokens.forEach(t => freq.set(t, (freq.get(t) || 0) + 1)));
-      const sig = Array.from(freq.entries())
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 3)
-        .map(([t]) => t)
-        .join(' ');
+      const sig = Array.from(freq.entries()).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([t])=>t).join(' ');
       clusters.push({ signature: sig, issues: c.map(x => x.issue) });
     }
   }
@@ -1925,19 +1368,10 @@ UI.Modals = {
     this.lastFocus = document.activeElement;
     const meta = DataStore.computed.get(r.id) || {};
     const risk = meta.risk || {
-      technical: 0,
-      business: 0,
-      operational: 0,
-      time: 0,
-      total: 0,
-      severity: 0,
-      impact: 0,
-      urgency: 0,
-      reasons: []
+      technical: 0, business: 0, operational: 0, time: 0, total: 0,
+      severity: 0, impact: 0, urgency: 0, reasons: []
     };
-    const reasons = risk.reasons?.length
-      ? 'Reasons: ' + risk.reasons.join(', ')
-      : '—';
+    const reasons = risk.reasons?.length ? 'Reasons: ' + risk.reasons.join(', ') : '—';
     E.modalTitle.textContent = r.title || r.id || 'Issue';
     E.modalBody.innerHTML = `
       <p><b>ID:</b> ${U.escapeHtml(r.id || '-')}</p>
@@ -1952,34 +1386,16 @@ UI.Modals = {
          </p>
       <p><b>Description:</b><br>${U.escapeHtml(r.desc || '-')}</p>
       <p><b>Log:</b><br>${U.escapeHtml(r.log || '-')}</p>
-      ${
-        r.file
-          ? `<p><b>Attachment:</b> <a href="${U.escapeAttr(
-              r.file
-            )}" target="_blank" rel="noopener noreferrer">Open link</a></p>`
-          : ''
-      }
+      ${ r.file ? `<p><b>Attachment:</b> <a href="${U.escapeAttr(r.file)}" target="_blank" rel="noopener noreferrer">Open link</a></p>` : '' }
       <div style="margin-top:10px" class="muted">
-        Suggested: priority <b>${U.escapeHtml(
-          meta.suggestions?.priority || '-'
-        )}</b>;
-        categories: ${
-          (meta.suggestions?.categories || [])
-            .slice(0, 3)
-            .map(c => U.escapeHtml(c.label))
-            .join(', ') || '—'
-        }.
+        Suggested: priority <b>${U.escapeHtml(meta.suggestions?.priority || '-')}</b>;
+        categories: ${ (meta.suggestions?.categories || []).slice(0, 3).map(c => U.escapeHtml(c.label)).join(', ') || '—' }.
       </div>
     `;
     E.issueModal.style.display = 'flex';
     E.copyId?.focus();
   },
-  closeIssue() {
-    if (!E.issueModal) return;
-    E.issueModal.style.display = 'none';
-    this.selectedIssue = null;
-    if (this.lastFocus?.focus) this.lastFocus.focus();
-  },
+  closeIssue() { if (!E.issueModal) return; E.issueModal.style.display = 'none'; this.selectedIssue = null; if (this.lastFocus?.focus) this.lastFocus.focus(); },
   openEvent(ev) {
     this.lastEventFocus = document.activeElement;
     const isEdit = !!(ev && ev.id);
@@ -1996,30 +1412,19 @@ UI.Modals = {
     if (E.eventStatus) E.eventStatus.value = ev.status || 'Planned';
     if (E.eventOwner) E.eventOwner.value = ev.owner || '';
     if (E.eventModules) {
-      const val = Array.isArray(ev.modules)
-        ? ev.modules.join(', ')
-        : ev.modules || '';
+      const val = Array.isArray(ev.modules) ? ev.modules.join(', ') : ev.modules || '';
       E.eventModules.value = val;
     }
-    if (E.eventImpactType)
-      E.eventImpactType.value = ev.impactType || 'No downtime expected';
+    if (E.eventImpactType) E.eventImpactType.value = ev.impactType || 'No downtime expected';
     if (E.eventIssueId) E.eventIssueId.value = ev.issueId || '';
 
     if (E.eventStart) {
       E.eventStart.type = allDay ? 'date' : 'datetime-local';
-      E.eventStart.value = ev.start
-        ? allDay
-          ? toLocalDateValue(ev.start)
-          : toLocalInputValue(ev.start)
-        : '';
+      E.eventStart.value = ev.start ? (allDay ? toLocalDateValue(ev.start) : toLocalInputValue(ev.start)) : '';
     }
     if (E.eventEnd) {
       E.eventEnd.type = allDay ? 'date' : 'datetime-local';
-      E.eventEnd.value = ev.end
-        ? allDay
-          ? toLocalDateValue(ev.end)
-          : toLocalInputValue(ev.end)
-        : '';
+      E.eventEnd.value = ev.end ? (allDay ? toLocalDateValue(ev.end) : toLocalInputValue(ev.end)) : '';
     }
     if (E.eventDescription) E.eventDescription.value = ev.description || '';
 
@@ -2033,17 +1438,9 @@ UI.Modals = {
           const badgeClass = CalendarLink.riskBadgeClass(riskTotal);
           E.eventIssueLinkedInfo.style.display = 'block';
           E.eventIssueLinkedInfo.innerHTML = `
-            Linked issue: <strong>${U.escapeHtml(issue.id)}</strong> – ${U.escapeHtml(
-            issue.title || ''
-          )}
-            <br><span class="muted">Status: ${U.escapeHtml(
-              issue.status || '-'
-            )} · Priority: ${U.escapeHtml(issue.priority || '-')}</span>
-            ${
-              riskTotal
-                ? `<span class="event-risk-badge ${badgeClass}">RISK ${riskTotal}</span>`
-                : ''
-            }
+            Linked issue: <strong>${U.escapeHtml(issue.id)}</strong> – ${U.escapeHtml(issue.title || '')}
+            <br><span class="muted">Status: ${U.escapeHtml(issue.status || '-')} · Priority: ${U.escapeHtml(issue.priority || '-')}</span>
+            ${ riskTotal ? `<span class="event-risk-badge ${badgeClass}">RISK ${riskTotal}</span>` : '' }
             <div style="margin-top:4px;">
               <button type="button" class="btn sm" id="eventOpenIssueBtn">Open issue</button>
             </div>
@@ -2060,10 +1457,7 @@ UI.Modals = {
       }
     }
 
-    if (E.eventModal) {
-      E.eventModal.style.display = 'flex';
-      E.eventTitle?.focus();
-    }
+    if (E.eventModal) { E.eventModal.style.display = 'flex'; E.eventTitle?.focus(); }
   },
   closeEvent() {
     if (!E.eventModal) return;
@@ -2073,65 +1467,31 @@ UI.Modals = {
   }
 };
 
-function debounce(fn, ms = 250) {
-  let t;
-  return (...a) => {
-    clearTimeout(t);
-    t = setTimeout(() => fn(...a), ms);
-  };
-}
-
+function debounce(fn, ms = 250) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 function trapFocus(container, e) {
-  const focusables = container.querySelectorAll(
-    'button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])'
-  );
+  const focusables = container.querySelectorAll('button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])');
   if (!focusables.length) return;
-  const first = focusables[0],
-    last = focusables[focusables.length - 1];
-  if (e.shiftKey && document.activeElement === first) {
-    last.focus();
-    e.preventDefault();
-  } else if (!e.shiftKey && document.activeElement === last) {
-    first.focus();
-    e.preventDefault();
-  }
+  const first = focusables[0], last = focusables[focusables.length - 1];
+  if (e.shiftKey && document.activeElement === first) { last.focus(); e.preventDefault(); }
+  else if (!e.shiftKey && document.activeElement === last) { first.focus(); e.preventDefault(); }
 }
 
 function setActiveView(view) {
-  const names = ['issues', 'calendar', 'insights'];
+  const names = ['issues','calendar','insights'];
   names.forEach(name => {
-    const tab =
-      name === 'issues'
-        ? E.issuesTab
-        : name === 'calendar'
-        ? E.calendarTab
-        : E.insightsTab;
-    const panel =
-      name === 'issues'
-        ? E.issuesView
-        : name === 'calendar'
-        ? E.calendarView
-        : E.insightsView;
+    const tab = name === 'issues' ? E.issuesTab : name === 'calendar' ? E.calendarTab : E.insightsTab;
+    const panel = name === 'issues' ? E.issuesView : name === 'calendar' ? E.calendarView : E.insightsView;
     const active = name === view;
-    if (tab) {
-      tab.classList.toggle('active', active);
-      tab.setAttribute('aria-selected', active ? 'true' : 'false');
-    }
+    if (tab) { tab.classList.toggle('active', active); tab.setAttribute('aria-selected', active ? 'true' : 'false'); }
     if (panel) panel.classList.toggle('active', active);
   });
-  try {
-    localStorage.setItem(LS_KEYS.view, view);
-  } catch {}
-  if (view === 'calendar') {
-    ensureCalendar();
-    renderCalendarEvents();
-  }
+  try { localStorage.setItem(LS_KEYS.view, view); } catch {}
+  if (view === 'calendar') { ensureCalendar(); renderCalendarEvents(); }
   if (view === 'insights') Analytics.refresh(UI.Issues.applyFilters());
 }
 
 /* ---------- Calendar wiring ---------- */
-let calendar = null,
-  calendarReady = false;
+let calendar = null, calendarReady = false;
 
 function wireCalendar() {
   if (E.addEventBtn)
@@ -2147,83 +1507,45 @@ function wireCalendar() {
     });
 
   [E.eventFilterDeployment, E.eventFilterMaintenance, E.eventFilterRelease, E.eventFilterOther].forEach(
-    input => {
-      if (input) input.addEventListener('change', renderCalendarEvents);
-    }
+    input => { if (input) input.addEventListener('change', renderCalendarEvents); }
   );
 
   if (E.calendarTz) {
     try {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'local time';
       E.calendarTz.textContent = `Times shown in: ${tz}`;
-    } catch {
-      E.calendarTz.textContent = '';
-    }
+    } catch { E.calendarTz.textContent = ''; }
   }
 }
 
 function ensureCalendar() {
   if (calendarReady) return;
   const el = document.getElementById('calendar');
-  if (!el || typeof FullCalendar === 'undefined') {
-    UI.toast('Calendar library failed to load');
-    return;
-  }
+  if (!el || typeof FullCalendar === 'undefined') { UI.toast('Calendar library failed to load'); return; }
   calendar = new FullCalendar.Calendar(el, {
     initialView: 'dayGridMonth',
     selectable: true,
     editable: true,
     height: 'auto',
-    headerToolbar: {
-      left: 'title',
-      center: '',
-      right: 'dayGridMonth,timeGridWeek,listWeek today prev,next'
-    },
-    select: info =>
-      UI.Modals.openEvent({
-        start: info.start,
-        end: info.end,
-        allDay: info.allDay,
-        env: 'Prod',
-        status: 'Planned'
-      }),
+    headerToolbar: { left: 'title', center: '', right: 'dayGridMonth,timeGridWeek,listWeek today prev,next' },
+    select: info => UI.Modals.openEvent({ start: info.start, end: info.end, allDay: info.allDay, env: 'Prod', status: 'Planned' }),
     eventClick: info => {
-      const ev =
-        DataStore.events.find(e => e.id === info.event.id) || {
-          id: info.event.id,
-          title: info.event.title,
-          type: info.event.extendedProps.type || 'Other',
-          start: info.event.start,
-          end: info.event.end,
-          description: info.event.extendedProps.description || '',
-          issueId: info.event.extendedProps.issueId || '',
-          allDay: info.event.allDay,
-          env: info.event.extendedProps.env || 'Prod',
-          status: info.event.extendedProps.status || 'Planned',
-          owner: info.event.extendedProps.owner || '',
-          modules: info.event.extendedProps.modules || [],
-          impactType: info.event.extendedProps.impactType || 'No downtime expected',
-          notificationStatus: info.event.extendedProps.notificationStatus || ''
+      const ev = DataStore.events.find(e => e.id === info.event.id) || {
+          id: info.event.id, title: info.event.title, type: info.event.extendedProps.type || 'Other',
+          start: info.event.start, end: info.event.end, description: info.event.extendedProps.description || '',
+          issueId: info.event.extendedProps.issueId || '', allDay: info.event.allDay,
+          env: info.event.extendedProps.env || 'Prod', status: info.event.extendedProps.status || 'Planned',
+          owner: info.event.extendedProps.owner || '', modules: info.event.extendedProps.modules || [],
+          impactType: info.event.extendedProps.impactType || 'No downtime expected', notificationStatus: info.event.extendedProps.notificationStatus || ''
         };
       UI.Modals.openEvent(ev);
     },
     eventDrop: async info => {
       const ev = DataStore.events.find(e => e.id === info.event.id);
-      if (!ev) {
-        info.revert();
-        return;
-      }
-      const updated = {
-        ...ev,
-        start: info.event.start,
-        end: info.event.end,
-        allDay: info.event.allDay
-      };
+      if (!ev) { info.revert(); return; }
+      const updated = { ...ev, start: info.event.start, end: info.event.end, allDay: info.event.allDay };
       const saved = await saveEventToSheet(updated);
-      if (!saved) {
-        info.revert();
-        return;
-      }
+      if (!saved) { info.revert(); return; }
       const idx = DataStore.events.findIndex(e => e.id === saved.id);
       if (idx > -1) DataStore.events[idx] = saved;
       saveEventsCache();
@@ -2249,14 +1571,9 @@ function ensureCalendar() {
         if (issue) {
           const meta = DataStore.computed.get(issue.id) || {};
           const r = meta.risk?.total || 0;
-          tooltip =
-            `${issue.id} – ${issue.title || ''}\nStatus: ${
-              issue.status || '-'
-            } · Priority: ${issue.priority || '-'} · Risk: ${r}` +
-            (tooltip ? `\n\n${tooltip}` : '');
+          tooltip = `${issue.id} – ${issue.title || ''}\nStatus: ${issue.status || '-'} · Priority: ${issue.priority || '-'} · Risk: ${r}` + (tooltip ? `\n\n${tooltip}` : '');
         } else {
-          tooltip =
-            `Linked issue: ${ext.issueId}` + (tooltip ? `\n\n${tooltip}` : '');
+          tooltip = `Linked issue: ${ext.issueId}` + (tooltip ? `\n\n${tooltip}` : '');
         }
       }
 
@@ -2279,12 +1596,9 @@ function ensureCalendar() {
 function renderCalendarEvents() {
   if (!calendar) return;
   const activeTypes = new Set();
-  if (E.eventFilterDeployment && E.eventFilterDeployment.checked)
-    activeTypes.add('Deployment');
-  if (E.eventFilterMaintenance && E.eventFilterMaintenance.checked)
-    activeTypes.add('Maintenance');
-  if (E.eventFilterRelease && E.eventFilterRelease.checked)
-    activeTypes.add('Release');
+  if (E.eventFilterDeployment && E.eventFilterDeployment.checked) activeTypes.add('Deployment');
+  if (E.eventFilterMaintenance && E.eventFilterMaintenance.checked) activeTypes.add('Maintenance');
+  if (E.eventFilterRelease && E.eventFilterRelease.checked) activeTypes.add('Release');
   if (E.eventFilterOther && E.eventFilterOther.checked) activeTypes.add('Other');
 
   const links = computeEventsRisk(DataStore.rows, DataStore.events);
@@ -2303,10 +1617,7 @@ function renderCalendarEvents() {
     const modules = Array.isArray(ev.modules)
       ? ev.modules
       : typeof ev.modules === 'string'
-      ? ev.modules
-          .split(',')
-          .map(s => s.trim())
-          .filter(Boolean)
+      ? ev.modules.split(',').map(s => s.trim()).filter(Boolean)
       : [];
     const impactType = ev.impactType || '';
 
@@ -2348,26 +1659,12 @@ function renderCalendarEvents() {
 /* ---------- Networking & data loading ---------- */
 async function safeFetchText(url, opts = {}) {
   const res = await fetch(url, { cache: 'no-store', ...opts });
-  if (!res.ok)
-    throw new Error(`Failed to fetch ${url}: ${res.status} ${res.statusText}`);
+  if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status} ${res.statusText}`);
   return await res.text();
 }
 
-function loadEventsCache() {
-  try {
-    const raw = localStorage.getItem(LS_KEYS.events);
-    if (!raw) return [];
-    const data = JSON.parse(raw);
-    return Array.isArray(data) ? data : [];
-  } catch {
-    return [];
-  }
-}
-function saveEventsCache() {
-  try {
-    localStorage.setItem(LS_KEYS.events, JSON.stringify(DataStore.events || []));
-  } catch {}
-}
+function loadEventsCache() { try { const raw = localStorage.getItem(LS_KEYS.events); if (!raw) return []; const data = JSON.parse(raw); return Array.isArray(data) ? data : []; } catch { return []; } }
+function saveEventsCache() { try { localStorage.setItem(LS_KEYS.events, JSON.stringify(DataStore.events || [])); } catch {} }
 
 async function loadIssues(force = false) {
   if (!force && !DataStore.rows.length) {
@@ -2438,10 +1735,7 @@ async function loadEvents(force = false) {
       const modulesArr = Array.isArray(ev.modules)
         ? ev.modules
         : typeof ev.modules === 'string'
-        ? ev.modules
-            .split(',')
-            .map(s => s.trim())
-            .filter(Boolean)
+        ? ev.modules.split(',').map(s => s.trim()).filter(Boolean)
         : [];
       return {
         id: ev.id || 'ev_' + Date.now() + '_' + Math.random().toString(36).slice(2),
@@ -2472,11 +1766,7 @@ async function loadEvents(force = false) {
     ensureCalendar();
     renderCalendarEvents();
     UI.setSync('events', !!DataStore.events.length, null);
-    UI.toast(
-      DataStore.events.length
-        ? 'Using cached events (API error)'
-        : 'Unable to load calendar events'
-    );
+    UI.toast(DataStore.events.length ? 'Using cached events (API error)' : 'Unable to load calendar events');
   } finally {
     UI.spinner(false);
   }
@@ -2486,18 +1776,12 @@ async function loadEvents(force = false) {
 async function saveEventToSheet(event) {
   UI.spinner(true);
   try {
-    const evId =
-      event.id && String(event.id).trim()
-        ? String(event.id).trim()
-        : 'ev_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+    const evId = event.id && String(event.id).trim() ? String(event.id).trim() : 'ev_' + Date.now() + '_' + Math.random().toString(36).slice(2);
 
     const modulesArr = Array.isArray(event.modules)
       ? event.modules
       : typeof event.modules === 'string'
-      ? event.modules
-          .split(',')
-          .map(s => s.trim())
-          .filter(Boolean)
+      ? event.modules.split(',').map(s => s.trim()).filter(Boolean)
       : [];
 
     const payload = {
@@ -2529,9 +1813,8 @@ async function saveEventToSheet(event) {
     });
 
     let data;
-    try {
-      data = await res.json();
-    } catch (jsonErr) {
+    try { data = await res.json(); }
+    catch (jsonErr) {
       console.error('Invalid JSON from calendar backend', jsonErr);
       const text = await res.text();
       console.error('Raw response:', text);
@@ -2542,9 +1825,7 @@ async function saveEventToSheet(event) {
     if (data.ok) {
       UI.toast('Event saved');
       const savedEvent = data.event || payload;
-      if (!savedEvent.notificationStatus && payload.notificationStatus) {
-        savedEvent.notificationStatus = payload.notificationStatus;
-      }
+      if (!savedEvent.notificationStatus && payload.notificationStatus) savedEvent.notificationStatus = payload.notificationStatus;
       return savedEvent;
     } else {
       UI.toast('Error saving event: ' + (data.error || 'Unknown error'));
@@ -2579,49 +1860,20 @@ async function deleteEventFromSheet(id) {
 }
 
 /* ---------- CSV export ---------- */
-function csvEscape(v) {
-  const s = String(v == null ? '' : v);
-  if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
-  return s;
-}
+function csvEscape(v) { const s = String(v == null ? '' : v); if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"'; return s; }
 
 function exportIssuesToCsv(rows, suffix) {
   if (!rows.length) return UI.toast('Nothing to export (no rows).');
   const headers = [
-    'ID',
-    'Module',
-    'Title',
-    'Description',
-    'Priority',
-    'Status',
-    'Type',
-    'Date',
-    'Log',
-    'Link',
-    'RiskTotal',
-    'RiskSeverity',
-    'RiskImpact',
-    'RiskUrgency'
+    'ID','Module','Title','Description','Priority','Status','Type','Date','Log','Link','RiskTotal','RiskSeverity','RiskImpact','RiskUrgency'
   ];
   const lines = [headers.join(',')];
   rows.forEach(r => {
     const meta = DataStore.computed.get(r.id) || {};
     const risk = meta.risk || {};
     const arr = [
-      r.id,
-      r.module,
-      r.title,
-      r.desc,
-      r.priority,
-      r.status,
-      r.type,
-      r.date,
-      r.log,
-      r.file,
-      risk.total ?? '',
-      risk.severity ?? '',
-      risk.impact ?? '',
-      risk.urgency ?? ''
+      r.id,r.module,r.title,r.desc,r.priority,r.status,r.type,r.date,r.log,r.file,
+      risk.total ?? '', risk.severity ?? '', risk.impact ?? '', risk.urgency ?? ''
     ].map(csvEscape);
     lines.push(arr.join(','));
   });
@@ -2629,11 +1881,8 @@ function exportIssuesToCsv(rows, suffix) {
   const url = URL.createObjectURL(blob);
   const ts = new Date().toISOString().slice(0, 10);
   const a = document.createElement('a');
-  a.href = url;
-  a.download = `incheck_issues_${suffix || 'filtered'}_${ts}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
+  a.href = url; a.download = `incheck_issues_${suffix || 'filtered'}_${ts}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
   UI.toast('Exported CSV');
 }
@@ -2651,48 +1900,28 @@ function setIfOptionExists(select, value) {
 }
 
 function wireCore() {
-  [E.issuesTab, E.calendarTab, E.insightsTab].forEach(btn => {
-    if (!btn) return;
-    btn.addEventListener('click', () => setActiveView(btn.dataset.view));
+  [E.issuesTab, E.calendarTab, E.insightsTab].forEach(btn => { if (!btn) return; btn.addEventListener('click', () => setActiveView(btn.dataset.view)); });
+
+  if (E.drawerBtn) E.drawerBtn.addEventListener('click', () => {
+    const open = !E.sidebar.classList.contains('open');
+    E.sidebar.classList.toggle('open');
+    E.drawerBtn.setAttribute('aria-expanded', String(open));
   });
 
-  if (E.drawerBtn)
-    E.drawerBtn.addEventListener('click', () => {
-      const open = !E.sidebar.classList.contains('open');
-      E.sidebar.classList.toggle('open');
-      E.drawerBtn.setAttribute('aria-expanded', String(open));
-    });
-
   if (E.searchInput)
-    E.searchInput.addEventListener(
-      'input',
-      debounce(() => {
-        Filters.state.search = E.searchInput.value || '';
-        Filters.save();
-        UI.refreshAll();
-      }, 250)
-    );
+    E.searchInput.addEventListener('input', debounce(() => {
+      Filters.state.search = E.searchInput.value || '';
+      Filters.save();
+      UI.refreshAll();
+    }, 250));
 
-  if (E.refreshNow)
-    E.refreshNow.addEventListener('click', () => {
-      loadIssues(true);
-      loadEvents(true);
-    });
+  if (E.refreshNow) E.refreshNow.addEventListener('click', () => { loadIssues(true); loadEvents(true); });
   if (E.exportCsv) E.exportCsv.addEventListener('click', exportFilteredCsv);
-  if (E.createTicketBtn)
-    E.createTicketBtn.addEventListener('click', () =>
-      window.open(
-        'https://forms.gle/PPnEP1AQneoBT79s5',
-        '_blank',
-        'noopener,noreferrer'
-      )
-    );
+  if (E.createTicketBtn) E.createTicketBtn.addEventListener('click', () =>
+    window.open('https://forms.gle/PPnEP1AQneoBT79s5','_blank','noopener,noreferrer')
+  );
 
-  if (E.shortcutsHelp) {
-    E.shortcutsHelp.addEventListener('click', () => {
-      UI.toast('Shortcuts: 1/2/3 switch tabs · / focus search · Ctrl+K AI query');
-    });
-  }
+  if (E.shortcutsHelp) E.shortcutsHelp.addEventListener('click', () => { UI.toast('Shortcuts: 1/2/3 switch tabs · / focus search · Ctrl+K AI query'); });
 
   UI.refreshAll = () => {
     const list = UI.Issues.applyFilters();
@@ -2710,162 +1939,80 @@ function wireSorting() {
     th.addEventListener('click', () => {
       const key = th.getAttribute('data-key');
       if (GridState.sortKey === key) GridState.sortAsc = !GridState.sortAsc;
-      else {
-        GridState.sortKey = key;
-        GridState.sortAsc = true;
-      }
+      else { GridState.sortKey = key; GridState.sortAsc = true; }
       UI.refreshAll();
     });
-    th.addEventListener('keydown', e => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        th.click();
-      }
-    });
-    th.tabIndex = 0;
-    th.setAttribute('role', 'button');
-    th.setAttribute('aria-label', `Sort by ${th.textContent}`);
+    th.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); th.click(); } });
+    th.tabIndex = 0; th.setAttribute('role', 'button'); th.setAttribute('aria-label', `Sort by ${th.textContent}`);
   });
 }
 
 function wirePaging() {
-  if (E.pageSize)
-    E.pageSize.addEventListener('change', () => {
-      GridState.pageSize = +E.pageSize.value;
-      localStorage.setItem(LS_KEYS.pageSize, GridState.pageSize);
-      GridState.page = 1;
-      UI.refreshAll();
-    });
-  if (E.firstPage)
-    E.firstPage.addEventListener('click', () => {
-      GridState.page = 1;
-      UI.refreshAll();
-    });
-  if (E.prevPage)
-    E.prevPage.addEventListener('click', () => {
-      if (GridState.page > 1) {
-        GridState.page--;
-        UI.refreshAll();
-      }
-    });
-  if (E.nextPage)
-    E.nextPage.addEventListener('click', () => {
-      const list = UI.Issues.applyFilters();
-      const pages = Math.max(1, Math.ceil(list.length / GridState.pageSize));
-      if (GridState.page < pages) {
-        GridState.page++;
-        UI.refreshAll();
-      }
-    });
-  if (E.lastPage)
-    E.lastPage.addEventListener('click', () => {
-      const list = UI.Issues.applyFilters();
-      GridState.page = Math.max(1, Math.ceil(list.length / GridState.pageSize));
-      UI.refreshAll();
-    });
+  if (E.pageSize) E.pageSize.addEventListener('change', () => {
+    GridState.pageSize = +E.pageSize.value;
+    localStorage.setItem(LS_KEYS.pageSize, GridState.pageSize);
+    GridState.page = 1;
+    UI.refreshAll();
+  });
+  if (E.firstPage) E.firstPage.addEventListener('click', () => { GridState.page = 1; UI.refreshAll(); });
+  if (E.prevPage) E.prevPage.addEventListener('click', () => { if (GridState.page > 1) { GridState.page--; UI.refreshAll(); } });
+  if (E.nextPage) E.nextPage.addEventListener('click', () => {
+    const list = UI.Issues.applyFilters();
+    const pages = Math.max(1, Math.ceil(list.length / GridState.pageSize));
+    if (GridState.page < pages) { GridState.page++; UI.refreshAll(); }
+  });
+  if (E.lastPage) E.lastPage.addEventListener('click', () => {
+    const list = UI.Issues.applyFilters();
+    GridState.page = Math.max(1, Math.ceil(list.length / GridState.pageSize));
+    UI.refreshAll();
+  });
 }
 
 function wireFilters() {
-  if (E.moduleFilter) {
-    E.moduleFilter.addEventListener('change', () => {
-      Filters.state.module = E.moduleFilter.value;
-      Filters.save();
-      UI.refreshAll();
-    });
-  }
-  if (E.priorityFilter) {
-    E.priorityFilter.addEventListener('change', () => {
-      Filters.state.priority = E.priorityFilter.value;
-      Filters.save();
-      UI.refreshAll();
-    });
-  }
-  if (E.statusFilter) {
-    E.statusFilter.addEventListener('change', () => {
-      Filters.state.status = E.statusFilter.value;
-      Filters.save();
-      UI.refreshAll();
-    });
-  }
-  if (E.startDateFilter) {
-    E.startDateFilter.value = Filters.state.start || '';
-    E.startDateFilter.addEventListener('change', () => {
-      Filters.state.start = E.startDateFilter.value;
-      Filters.save();
-      UI.refreshAll();
-    });
-  }
-  if (E.endDateFilter) {
-    E.endDateFilter.value = Filters.state.end || '';
-    E.endDateFilter.addEventListener('change', () => {
-      Filters.state.end = E.endDateFilter.value;
-      Filters.save();
-      UI.refreshAll();
-    });
-  }
+  if (E.moduleFilter) E.moduleFilter.addEventListener('change', () => { Filters.state.module = E.moduleFilter.value; Filters.save(); UI.refreshAll(); });
+  if (E.priorityFilter) E.priorityFilter.addEventListener('change', () => { Filters.state.priority = E.priorityFilter.value; Filters.save(); UI.refreshAll(); });
+  if (E.statusFilter) E.statusFilter.addEventListener('change', () => { Filters.state.status = E.statusFilter.value; Filters.save(); UI.refreshAll(); });
+  if (E.startDateFilter) { E.startDateFilter.value = Filters.state.start || ''; E.startDateFilter.addEventListener('change', () => { Filters.state.start = E.startDateFilter.value; Filters.save(); UI.refreshAll(); }); }
+  if (E.endDateFilter) { E.endDateFilter.value = Filters.state.end || ''; E.endDateFilter.addEventListener('change', () => { Filters.state.end = E.endDateFilter.value; Filters.save(); UI.refreshAll(); }); }
   if (E.searchInput) E.searchInput.value = Filters.state.search || '';
 
-  if (E.resetBtn)
-    E.resetBtn.addEventListener('click', () => {
-      Filters.state = {
-        search: '',
-        module: 'All',
-        priority: 'All',
-        status: 'All',
-        start: '',
-        end: ''
-      };
-      Filters.save();
-      if (E.searchInput) E.searchInput.value = '';
-      if (E.startDateFilter) E.startDateFilter.value = '';
-      if (E.endDateFilter) E.endDateFilter.value = '';
-      UI.Issues.renderFilters();
-      UI.refreshAll();
-    });
+  if (E.resetBtn) E.resetBtn.addEventListener('click', () => {
+    Filters.state = { search: '', module: 'All', priority: 'All', status: 'All', start: '', end: '' };
+    Filters.save();
+    if (E.searchInput) E.searchInput.value = ''; if (E.startDateFilter) E.startDateFilter.value = ''; if (E.endDateFilter) E.endDateFilter.value = '';
+    UI.Issues.renderFilters(); UI.refreshAll();
+  });
 }
 
 function wireTheme() {
-  const media = window.matchMedia
-    ? window.matchMedia('(prefers-color-scheme: dark)')
-    : null;
-  const applySystem = () => {
-    if (media?.matches) document.documentElement.removeAttribute('data-theme');
-    else document.documentElement.setAttribute('data-theme', 'light');
-  };
+  const media = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  const applySystem = () => { if (media?.matches) document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', 'light'); };
   const saved = localStorage.getItem(LS_KEYS.theme) || 'system';
   if (E.themeSelect) E.themeSelect.value = saved;
   if (saved === 'system') applySystem();
   else if (saved === 'dark') document.documentElement.removeAttribute('data-theme');
   else document.documentElement.setAttribute('data-theme', 'light');
 
-  media?.addEventListener('change', () => {
-    if ((localStorage.getItem(LS_KEYS.theme) || 'system') === 'system')
-      applySystem();
-  });
+  media?.addEventListener('change', () => { if ((localStorage.getItem(LS_KEYS.theme) || 'system') === 'system') applySystem(); });
 
-  if (E.themeSelect)
-    E.themeSelect.addEventListener('change', () => {
-      const v = E.themeSelect.value;
-      localStorage.setItem(LS_KEYS.theme, v);
-      if (v === 'system') applySystem();
-      else if (v === 'dark') document.documentElement.removeAttribute('data-theme');
-      else document.documentElement.setAttribute('data-theme', 'light');
-    });
+  if (E.themeSelect) E.themeSelect.addEventListener('change', () => {
+    const v = E.themeSelect.value; localStorage.setItem(LS_KEYS.theme, v);
+    if (v === 'system') applySystem();
+    else if (v === 'dark') document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', 'light');
+  });
 
   if (E.accentColor) {
     const rootStyle = getComputedStyle(document.documentElement);
     const defaultAccent = rootStyle.getPropertyValue('--accent').trim() || '#4f8cff';
-    const savedAccent =
-      localStorage.getItem(LS_KEYS.accentColorStorage) || defaultAccent;
+    const savedAccent = localStorage.getItem(LS_KEYS.accentColorStorage) || defaultAccent;
     E.accentColor.value = savedAccent;
     document.documentElement.style.setProperty('--accent', savedAccent);
 
     E.accentColor.addEventListener('input', () => {
       const val = E.accentColor.value || defaultAccent;
       document.documentElement.style.setProperty('--accent', val);
-      try {
-        localStorage.setItem(LS_KEYS.accentColorStorage, val);
-      } catch {}
+      try { localStorage.setItem(LS_KEYS.accentColorStorage, val); } catch {}
       UI.Issues.renderCharts(UI.Issues.applyFilters());
     });
   }
@@ -2886,119 +2033,85 @@ function wireConnectivity() {
 
 function wireModals() {
   if (E.modalClose) E.modalClose.addEventListener('click', () => UI.Modals.closeIssue());
-  if (E.issueModal)
-    E.issueModal.addEventListener('click', e => {
-      if (e.target === E.issueModal) UI.Modals.closeIssue();
-    });
+  if (E.issueModal) E.issueModal.addEventListener('click', e => { if (e.target === E.issueModal) UI.Modals.closeIssue(); });
 
   if (E.eventModalClose) E.eventModalClose.addEventListener('click', () => UI.Modals.closeEvent());
   if (E.eventCancel) E.eventCancel.addEventListener('click', () => UI.Modals.closeEvent());
-  if (E.eventModal)
-    E.eventModal.addEventListener('click', e => {
-      if (e.target === E.eventModal) UI.Modals.closeEvent();
-    });
+  if (E.eventModal) E.eventModal.addEventListener('click', e => { if (e.target === E.eventModal) UI.Modals.closeEvent(); });
 
   document.addEventListener('keydown', e => {
     const issueOpen = E.issueModal && E.issueModal.style.display === 'flex';
     const eventOpen = E.eventModal && E.eventModal.style.display === 'flex';
-    if (e.key === 'Escape') {
-      if (eventOpen) UI.Modals.closeEvent();
-      else if (issueOpen) UI.Modals.closeIssue();
-    }
-    if (e.key === 'Tab') {
-      if (eventOpen && E.eventModal) trapFocus(E.eventModal, e);
-      else if (issueOpen && E.issueModal) trapFocus(E.issueModal, e);
-    }
+    if (e.key === 'Escape') { if (eventOpen) UI.Modals.closeEvent(); else if (issueOpen) UI.Modals.closeIssue(); }
+    if (e.key === 'Tab') { if (eventOpen && E.eventModal) trapFocus(E.eventModal, e); else if (issueOpen && E.issueModal) trapFocus(E.issueModal, e); }
   });
 
-  if (E.copyId)
-    E.copyId.addEventListener('click', async () => {
-      if (!UI.Modals.selectedIssue) return;
-      try {
-        await navigator.clipboard.writeText(UI.Modals.selectedIssue.id || '');
-        UI.toast('Issue ID copied');
-      } catch {
-        UI.toast('Clipboard blocked');
-      }
-    });
-  if (E.copyLink)
-    E.copyLink.addEventListener('click', async () => {
-      const link = UI.Modals.selectedIssue?.file || '';
-      if (!link) return UI.toast('No link on this issue');
-      try {
-        await navigator.clipboard.writeText(link);
-        UI.toast('Link copied');
-      } catch {
-        UI.toast('Clipboard blocked');
-      }
-    });
+  if (E.copyId) E.copyId.addEventListener('click', async () => {
+    if (!UI.Modals.selectedIssue) return;
+    try { await navigator.clipboard.writeText(UI.Modals.selectedIssue.id || ''); UI.toast('Issue ID copied'); }
+    catch { UI.toast('Clipboard blocked'); }
+  });
+  if (E.copyLink) E.copyLink.addEventListener('click', async () => {
+    const link = UI.Modals.selectedIssue?.file || '';
+    if (!link) return UI.toast('No link on this issue');
+    try { await navigator.clipboard.writeText(link); UI.toast('Link copied'); }
+    catch { UI.toast('Clipboard blocked'); }
+  });
 
-  if (E.eventForm)
-    E.eventForm.addEventListener('submit', async e => {
-      e.preventDefault();
-      const id = E.eventForm.dataset.id || '';
-      const allDay = !!(E.eventAllDay && E.eventAllDay.checked);
+  if (E.eventForm) E.eventForm.addEventListener('submit', async e => {
+    e.preventDefault();
+    const id = E.eventForm.dataset.id || '';
+    const allDay = !!(E.eventAllDay && E.eventAllDay.checked);
 
-      const envVal = E.eventEnv?.value || 'Prod';
-      const statusVal = E.eventStatus?.value || 'Planned';
-      const ownerVal = E.eventOwner?.value.trim() || '';
-      const modulesArr = (E.eventModules?.value || '')
-        .split(',')
-        .map(s => s.trim())
-        .filter(Boolean);
-      const impactTypeVal =
-        E.eventImpactType?.value || 'No downtime expected';
+    const envVal = E.eventEnv?.value || 'Prod';
+    const statusVal = E.eventStatus?.value || 'Planned';
+    const ownerVal = E.eventOwner?.value.trim() || '';
+    const modulesArr = (E.eventModules?.value || '').split(',').map(s => s.trim()).filter(Boolean);
+    const impactTypeVal = E.eventImpactType?.value || 'No downtime expected';
 
-      const ev = {
-        id,
-        title: E.eventTitle.value.trim(),
-        type: E.eventType.value || 'Deployment',
-        issueId: E.eventIssueId.value.trim() || '',
-        start: E.eventStart.value,
-        end: E.eventEnd.value || '',
-        description: E.eventDescription.value.trim(),
-        allDay,
-        env: envVal,
-        status: statusVal,
-        owner: ownerVal,
-        modules: modulesArr,
-        impactType: impactTypeVal,
-        notificationStatus: ''
-      };
-      if (!ev.title) return UI.toast('Title is required');
-      if (!ev.start) return UI.toast('Start date/time is required');
+    const ev = {
+      id,
+      title: E.eventTitle.value.trim(),
+      type: E.eventType.value || 'Deployment',
+      issueId: E.eventIssueId.value.trim() || '',
+      start: E.eventStart.value,
+      end: E.eventEnd.value || '',
+      description: E.eventDescription.value.trim(),
+      allDay,
+      env: envVal,
+      status: statusVal,
+      owner: ownerVal,
+      modules: modulesArr,
+      impactType: impactTypeVal,
+      notificationStatus: ''
+    };
+    if (!ev.title) return UI.toast('Title is required');
+    if (!ev.start) return UI.toast('Start date/time is required');
 
-      const saved = await saveEventToSheet(ev);
-      if (!saved) {
-        UI.toast('Could not save event');
-        return;
-      }
+    const saved = await saveEventToSheet(ev);
+    if (!saved) { UI.toast('Could not save event'); return; }
 
-      const idx = DataStore.events.findIndex(x => x.id === saved.id);
-      if (idx === -1) DataStore.events.push(saved);
-      else DataStore.events[idx] = saved;
-      saveEventsCache();
-      renderCalendarEvents();
-      Analytics.refresh(UI.Issues.applyFilters());
-      UI.Modals.closeEvent();
-    });
+    const idx = DataStore.events.findIndex(x => x.id === saved.id);
+    if (idx === -1) DataStore.events.push(saved);
+    else DataStore.events[idx] = saved;
+    saveEventsCache();
+    renderCalendarEvents();
+    Analytics.refresh(UI.Issues.applyFilters());
+    UI.Modals.closeEvent();
+  });
 
-  if (E.eventDelete)
-    E.eventDelete.addEventListener('click', async () => {
-      const id = E.eventForm?.dataset?.id;
-      if (!id) {
-        UI.Modals.closeEvent();
-        return;
-      }
-      const ok = await deleteEventFromSheet(id);
-      const idx = DataStore.events.findIndex(x => x.id === id);
-      if (idx > -1) DataStore.events.splice(idx, 1);
-      saveEventsCache();
-      renderCalendarEvents();
-      Analytics.refresh(UI.Issues.applyFilters());
-      UI.Modals.closeEvent();
-      if (!ok) UI.toast('Event removed locally; backend delete failed.');
-    });
+  if (E.eventDelete) E.eventDelete.addEventListener('click', async () => {
+    const id = E.eventForm?.dataset?.id;
+    if (!id) { UI.Modals.closeEvent(); return; }
+    const ok = await deleteEventFromSheet(id);
+    const idx = DataStore.events.findIndex(x => x.id === id);
+    if (idx > -1) DataStore.events.splice(idx, 1);
+    saveEventsCache();
+    renderCalendarEvents();
+    Analytics.refresh(UI.Issues.applyFilters());
+    UI.Modals.closeEvent();
+    if (!ok) UI.toast('Event removed locally; backend delete failed.');
+  });
 
   if (E.eventAllDay) {
     E.eventAllDay.addEventListener('change', () => {
@@ -3006,24 +2119,11 @@ function wireModals() {
       const startVal = E.eventStart.value;
       const endVal = E.eventEnd.value;
       if (isAllDay) {
-        if (E.eventStart) {
-          E.eventStart.type = 'date';
-          if (startVal.includes('T')) E.eventStart.value = startVal.split('T')[0];
-        }
-        if (E.eventEnd) {
-          E.eventEnd.type = 'date';
-          if (endVal.includes('T')) E.eventEnd.value = endVal.split('T')[0];
-        }
+        if (E.eventStart) { E.eventStart.type = 'date'; if (startVal.includes('T')) E.eventStart.value = startVal.split('T')[0]; }
+        if (E.eventEnd) { E.eventEnd.type = 'date'; if (endVal.includes('T')) E.eventEnd.value = endVal.split('T')[0]; }
       } else {
-        if (E.eventStart) {
-          E.eventStart.type = 'datetime-local';
-          if (startVal && !startVal.includes('T'))
-            E.eventStart.value = startVal + 'T09:00';
-        }
-        if (E.eventEnd) {
-          E.eventEnd.type = 'datetime-local';
-          if (endVal && !endVal.includes('T')) E.eventEnd.value = endVal + 'T10:00';
-        }
+        if (E.eventStart) { E.eventStart.type = 'datetime-local'; if (startVal && !startVal.includes('T')) E.eventStart.value = startVal + 'T09:00'; }
+        if (E.eventEnd) { E.eventEnd.type = 'datetime-local'; if (endVal && !endVal.includes('T')) E.eventEnd.value = endVal + 'T10:00'; }
       }
     });
   }
@@ -3034,52 +2134,32 @@ let AI_LAST_RESULTS = [];
 
 function wireAI() {
   if (E.aiQueryRun) E.aiQueryRun.addEventListener('click', runQuery);
-  if (E.aiQueryInput)
-    E.aiQueryInput.addEventListener('keydown', e => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        runQuery();
-      }
-    });
-  if (E.aiQueryApplyFilters)
-    E.aiQueryApplyFilters.addEventListener('click', () => {
-      const q = E.aiQueryInput.value || '';
-      const p = DSL.parse(q);
-      if (p.module) Filters.state.module = guessOption(E.moduleFilter, p.module) || 'All';
-      if (p.priority) {
-        const val =
-          p.priority[0].toUpperCase() === 'H'
-            ? 'High'
-            : p.priority[0].toUpperCase() === 'M'
-            ? 'Medium'
-            : p.priority[0].toUpperCase() === 'L'
-            ? 'Low'
-            : 'All';
-        Filters.state.priority = guessOption(E.priorityFilter, val) || 'All';
-      }
-      if (p.status) {
-        const v =
-          p.status === 'open' || p.status === 'closed'
-            ? 'All'
-            : capitalizeFirst(p.status);
-        Filters.state.status = guessOption(E.statusFilter, v) || 'All';
-      }
-      if (p.lastDays) {
-        const from = U.daysAgo(p.lastDays);
-        Filters.state.start = U.fmtTS(from).slice(0, 10);
-        Filters.state.end = '';
-      }
-      Filters.save();
-      E.issuesTab?.click();
-      UI.refreshAll();
-    });
+  if (E.aiQueryInput) E.aiQueryInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); runQuery(); } });
+  if (E.aiQueryApplyFilters) E.aiQueryApplyFilters.addEventListener('click', () => {
+    const q = E.aiQueryInput.value || '';
+    const p = DSL.parse(q);
+    if (p.module) Filters.state.module = guessOption(E.moduleFilter, p.module) || 'All';
+    if (p.priority) {
+      const val = p.priority[0].toUpperCase() === 'H' ? 'High' : p.priority[0].toUpperCase() === 'M' ? 'Medium' : p.priority[0].toUpperCase() === 'L' ? 'Low' : 'All';
+      Filters.state.priority = guessOption(E.priorityFilter, val) || 'All';
+    }
+    if (p.status) {
+      const v = p.status === 'open' || p.status === 'closed' ? 'All' : capitalizeFirst(p.status);
+      Filters.state.status = guessOption(E.statusFilter, v) || 'All';
+    }
+    if (p.lastDays) {
+      const from = U.daysAgo(p.lastDays);
+      Filters.state.start = U.fmtTS(from).slice(0, 10);
+      Filters.state.end = '';
+    }
+    Filters.save();
+    E.issuesTab?.click();
+    UI.refreshAll();
+  });
 
   if (E.aiQueryExport) {
     E.aiQueryExport.addEventListener('click', () => {
-      if (!AI_LAST_RESULTS.length) {
-        UI.toast('Run a query first to export results.');
-        return;
-      }
+      if (!AI_LAST_RESULTS.length) { UI.toast('Run a query first to export results.'); return; }
       exportIssuesToCsv(AI_LAST_RESULTS, 'ai');
     });
   }
@@ -3088,26 +2168,18 @@ function wireAI() {
 function runQuery() {
   const q = E.aiQueryInput.value.trim();
   if (!q) {
-    E.aiQueryResults.textContent =
-      'Type a query with keywords and filters like module:, status:, risk>=9';
+    E.aiQueryResults.textContent = 'Type a query with keywords and filters like module:, status:, risk>=9';
     AI_LAST_RESULTS = [];
     return;
   }
   const p = DSL.parse(q);
-  const list = DataStore.rows.filter(r =>
-    DSL.matches(r, DataStore.computed.get(r.id) || {}, p)
-  );
+  const list = DataStore.rows.filter(r => DSL.matches(r, (DataStore.computed.get(r.id) || {}), p));
   AI_LAST_RESULTS = list.slice();
 
   let sort = p.sort || 'risk';
-  if (sort === 'risk')
-    list.sort(
-      (a, b) =>
-        (DataStore.computed.get(b.id)?.risk?.total || 0) -
-        (DataStore.computed.get(a.id)?.risk?.total || 0)
-    );
-  if (sort === 'date') list.sort((a, b) => new Date(b.date) - new Date(a.date));
-  if (sort === 'priority') list.sort((a, b) => prioMap(b.priority) - prioMap(a.priority));
+  if (sort === 'risk') list.sort((a,b) => (DataStore.computed.get(b.id)?.risk?.total || 0) - (DataStore.computed.get(a.id)?.risk?.total || 0));
+  if (sort === 'date') list.sort((a,b) => new Date(b.date) - new Date(a.date));
+  if (sort === 'priority') list.sort((a,b) => prioMap(b.priority) - prioMap(a.priority));
 
   const explain = [];
   if (p.module) explain.push(`module includes "${p.module}"`);
@@ -3127,48 +2199,28 @@ function runQuery() {
 
   const shown = list.slice(0, 20);
   E.aiQueryResults.innerHTML = `
-    <div style="margin-bottom:6px;">Found <strong>${list.length}</strong> issues (showing top ${
-    shown.length
-  } by ${U.escapeHtml(sort)}).<br/>
-    <span class="muted">Filters: ${U.escapeHtml(
-      explain.join('; ') || '—'
-    )}</span></div>
+    <div style="margin-bottom:6px;">Found <strong>${list.length}</strong> issues (showing top ${ shown.length } by ${U.escapeHtml(sort)}).<br/>
+    <span class="muted">Filters: ${U.escapeHtml(explain.join('; ') || '—')}</span></div>
     <ul style="padding-left:18px;margin:0;">
-      ${shown
-        .map(i => {
+      ${shown.map(i => {
           const rs = DataStore.computed.get(i.id)?.risk?.total || 0;
           const rMeta = DataStore.computed.get(i.id)?.risk || {};
           return `<li style="margin-bottom:4px;">
-          <button type="button" class="btn sm" style="padding:3px 6px;margin-right:4px;" data-open="${U.escapeAttr(
-            i.id
-          )}">${U.escapeHtml(i.id)}</button>
-          [${U.escapeHtml(i.priority || '-')} · ${U.escapeHtml(
-            i.status || '-'
-          )} · risk ${rs} · sev ${rMeta.severity ?? 0}] ${U.escapeHtml(
-            i.title || '(no title)'
-          )}
+          <button type="button" class="btn sm" style="padding:3px 6px;margin-right:4px;" data-open="${U.escapeAttr(i.id)}">${U.escapeHtml(i.id)}</button>
+          [${U.escapeHtml(i.priority || '-')} · ${U.escapeHtml(i.status || '-')} · risk ${rs} · sev ${rMeta.severity ?? 0}] ${U.escapeHtml(i.title || '(no title)')}
         </li>`;
-        })
-        .join('')}
+        }).join('')}
     </ul>`;
-  U.qAll('#aiQueryResults [data-open]').forEach(b =>
-    b.addEventListener('click', () =>
-      UI.Modals.openIssue(b.getAttribute('data-open'))
-    )
-  );
+  U.qAll('#aiQueryResults [data-open]').forEach(b => b.addEventListener('click', () => UI.Modals.openIssue(b.getAttribute('data-open'))));
 }
 
 function guessOption(select, value) {
   if (!select || !value) return null;
   const v = value.toLowerCase();
-  const opt = Array.from(select.options).find(o =>
-    o.value.toLowerCase().includes(v)
-  );
+  const opt = Array.from(select.options).find(o => o.value.toLowerCase().includes(v));
   return opt?.value || null;
 }
-function capitalizeFirst(s) {
-  return s ? s[0].toUpperCase() + s.slice(1) : s;
-}
+function capitalizeFirst(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
 
 /* ---------- App init ---------- */
 function initApp() {
@@ -3190,9 +2242,7 @@ function initApp() {
   UI.setSync('events', false, null);
 
   let savedView = 'issues';
-  try {
-    savedView = localStorage.getItem(LS_KEYS.view) || 'issues';
-  } catch {}
+  try { savedView = localStorage.getItem(LS_KEYS.view) || 'issues'; } catch {}
   setActiveView(savedView);
 
   loadIssues();
@@ -3202,19 +2252,9 @@ function initApp() {
   if (typeof Papa === 'undefined') UI.toast('PapaParse failed to load');
 
   document.addEventListener('keydown', e => {
-    if (e.key === '/') {
-      e.preventDefault();
-      E.searchInput?.focus();
-    }
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-      e.preventDefault();
-      E.aiQueryInput?.focus();
-    }
-    if (!e.ctrlKey && !e.metaKey) {
-      if (e.key === '1') E.issuesTab?.click();
-      if (e.key === '2') E.calendarTab?.click();
-      if (e.key === '3') E.insightsTab?.click();
-    }
+    if (e.key === '/') { e.preventDefault(); E.searchInput?.focus(); }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); E.aiQueryInput?.focus(); }
+    if (!e.ctrlKey && !e.metaKey) { if (e.key === '1') E.issuesTab?.click(); if (e.key === '2') E.calendarTab?.click(); if (e.key === '3') E.insightsTab?.click(); }
   });
 }
 
@@ -3222,4 +2262,3 @@ document.addEventListener('DOMContentLoaded', initApp);
 
 /* Auto-refresh events every 5 minutes */
 setInterval(() => loadEvents(true), 5 * 60 * 1000);
-
