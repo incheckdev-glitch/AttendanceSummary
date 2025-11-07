@@ -357,7 +357,7 @@ th.sorted-desc::after{border-top-color:var(--accent);border-bottom-color:transpa
 .spinner{
   display:none;position:fixed;inset:0;
   background:rgba(5,10,25,.65);z-index:120;
-  alignitems:center;justify-content:center;
+  align-items:center;justify-content:center;
 }
 .spinner .ring{
   width:56px;height:56px;border:5px solid var(--border);
@@ -417,83 +417,6 @@ th.sorted-desc::after{border-top-color:var(--accent);border-bottom-color:transpa
 .risk-high{background:rgba(239,68,68,.22)}
 .risk-crit{background:rgba(239,68,68,.38)}
 
-/* =========================
-   AI INSIGHTS – MODULE TABLE
-   ========================== */
-
-/* Make card that contains the module table behave like “Top risks this week”
-   – no inner scroll, card can grow full height */
-.card:has(#aiModulesTableBody) {
-  /* let the card stretch naturally */
-  max-height:none;
-}
-
-/* Kill inner scroll wrappers (even if they have inline max-height/overflow) */
-.card:has(#aiModulesTableBody) div {
-  max-height:none !important;
-  overflow:visible !important;
-}
-
-/* Fine-tune module table layout */
-#aiModulesTableBody td {
-  font-size:12px;
-  padding:6px 4px;
-  vertical-align:middle;
-}
-
-/* Allow wrapping so the table can use full width without squishing */
-#aiModulesTableBody tr td {
-  word-wrap:break-word;
-}
-
-/* Module column */
-#aiModulesTableBody td:nth-child(1) {
-  max-width:150px;
-  white-space:normal !important;
-  overflow:hidden;
-  text-overflow:ellipsis;
-}
-
-/* Open / High P columns */
-#aiModulesTableBody td:nth-child(2),
-#aiModulesTableBody td:nth-child(3) {
-  width:3rem;
-  text-align:center;
-}
-
-/* Risk sum (+ bar) */
-#aiModulesTableBody td:nth-child(4) {
-  width:6rem;
-}
-
-/* Top term column */
-#aiModulesTableBody td:nth-child(5) {
-  max-width:140px;
-  white-space:normal !important;
-  overflow:hidden;
-  text-overflow:ellipsis;
-}
-
-/* Slightly slimmer bar inside module card */
-#aiModulesTableBody .risk-bar-wrap {
-  margin-top:2px;
-  height:4px;
-}
-
-/* Zebra rows for readability */
-#aiModulesTableBody tr:nth-child(even) {
-  background:rgba(15,23,42,.22);
-}
-:root[data-theme="light"] #aiModulesTableBody tr:nth-child(even) {
-  background:rgba(148,163,184,.08);
-}
-
-/* Let tables inside cards take full width with normal layout */
-.card table {
-  width:100%;
-  border-collapse:collapse;
-}
-
 /* Hide log col on small screens */
 @media(max-width:768px){
   #issuesTable th:nth-child(7),
@@ -502,4 +425,72 @@ th.sorted-desc::after{border-top-color:var(--accent);border-bottom-color:transpa
 
 @media (prefers-reduced-motion: reduce){
   *{transition:none!important;animation:none!important}
+}
+
+/* =========================================================
+   AI – Per-module risk insights card
+   (full-width, no inner scroll, “pro” table styling)
+   ========================================================= */
+
+.card:has(#aiModulesTableBody){
+  /* span full grid width like "Top risks this week" */
+  grid-column:1 / -1;
+  max-height:none;
+}
+
+/* If there's any wrapper div adding scroll, kill it */
+.card:has(#aiModulesTableBody) > div{
+  max-height:none;
+  overflow:visible;
+}
+
+/* Table styling just for this card */
+.card:has(#aiModulesTableBody) table{
+  width:100%;
+  border-collapse:collapse;
+  border-spacing:0;
+}
+
+.card:has(#aiModulesTableBody) thead th{
+  position:static;
+  background:transparent;
+  border-bottom:1px solid rgba(148,163,184,.45);
+  padding:6px 10px;
+  font-size:11px;
+  cursor:default;
+}
+
+.card:has(#aiModulesTableBody) tbody td{
+  padding:8px 10px;
+  border-bottom:1px solid rgba(15,23,42,.55);
+  font-size:13px;
+}
+
+/* zebra + hover */
+.card:has(#aiModulesTableBody) tbody tr:nth-child(odd){
+  background:rgba(15,23,42,.7);
+}
+.card:has(#aiModulesTableBody) tbody tr:nth-child(even){
+  background:rgba(15,23,42,.45);
+}
+.card:has(#aiModulesTableBody) tbody tr:hover{
+  background:rgba(37,99,235,.25);
+}
+
+/* numeric columns right-aligned */
+.card:has(#aiModulesTableBody) td:nth-child(2),
+.card:has(#aiModulesTableBody) td:nth-child(3),
+.card:has(#aiModulesTableBody) td:nth-child(4){
+  text-align:right;
+  font-variant-numeric:tabular-nums;
+}
+
+/* smaller inline risk bar inside the cell */
+.card:has(#aiModulesTableBody) .risk-bar-wrap{
+  margin-top:2px;
+  height:4px;
+}
+.card:has(#aiModulesTableBody) .risk-bar{
+  height:4px;
+  border-radius:999px;
 }
