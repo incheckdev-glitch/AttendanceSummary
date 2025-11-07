@@ -14,7 +14,7 @@
   <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/main.min.css" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
 
-  <!-- Your app styles (moved from the old <style> block) -->
+  <!-- App styles -->
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -235,10 +235,42 @@
         <div class="card">
           <strong>AI Insights / Copilot</strong>
           <div class="muted" style="margin-top:4px;">
-            Heuristic, explainable analytics on issues text (no external AI). Risk breakdown, clustering,
-            trends, triage & calendar risk.
+            Heuristic, explainable analytics on issues text (no external AI). CX stability & release guard,
+            risk breakdown, clustering, trends, triage & calendar risk.
           </div>
           <div id="aiAnalyzing" class="skeleton" style="height:6px;border-radius:6px;margin-top:10px;display:none"></div>
+        </div>
+
+        <!-- NEW: CX Stability & Release Guard -->
+        <div class="card cx-card">
+          <div class="cx-header">
+            <div>
+              <strong>CX Stability & Release Guard</strong>
+              <div class="muted" style="margin-top:4px;">
+                Focused on <strong>bugs only</strong> and weighted for F&amp;B workload in the Middle East.
+                Helps you pick safe release windows and avoid user-experience disasters.
+              </div>
+            </div>
+            <div class="cx-score-wrap">
+              <div id="cxScoreBadge" class="cx-score-badge">--</div>
+              <div id="cxScoreLabel" class="muted cx-score-label">Waiting for data…</div>
+            </div>
+          </div>
+
+          <div class="cx-body">
+            <div class="cx-column">
+              <h4 class="cx-subtitle">Current CX risk (bugs)</h4>
+              <ul id="cxCurrentList" class="muted cx-list"></ul>
+            </div>
+            <div class="cx-column">
+              <h4 class="cx-subtitle">Upcoming releases (next 14 days)</h4>
+              <ul id="cxReleasesList" class="muted cx-list"></ul>
+            </div>
+            <div class="cx-column">
+              <h4 class="cx-subtitle">F&amp;B seasonality & load flags</h4>
+              <ul id="cxSeasonalityList" class="muted cx-list"></ul>
+            </div>
+          </div>
         </div>
 
         <div class="grid cols-4">
@@ -282,7 +314,7 @@
         <div class="grid cols-4">
           <div class="card">
             <strong>Per-module risk insights</strong>
-            <div class="table-wrap" role="region" aria-label="AI per-module insights" style="max-height:320px;">
+            <div class="table-wrap" role="region" aria-label="AI per-module insights">
               <table id="aiModulesTable">
                 <thead>
                   <tr><th>Module</th><th>Open</th><th>High P</th><th>Risk sum</th><th>Top term</th></tr>
@@ -418,7 +450,7 @@
             <div class="filter-row">
               <label class="muted" for="eventModules">Modules</label>
               <input id="eventModules" class="input" type="text"
-                     placeholder="Comma-separated e.g. Payments, Auth" />
+                     placeholder="Comma-separated e.g. Mobile App, Reporting" />
             </div>
             <div class="filter-row">
               <label class="muted" for="eventImpactType">Impact</label>
@@ -432,7 +464,7 @@
             <div class="filter-row">
               <label class="muted" for="eventIssueId">Issue ID (optional)</label>
               <input id="eventIssueId" class="input" type="text"
-                     placeholder="e.g. INC-123 or ticket ID" />
+                     placeholder="e.g. TICKET#0123 or INC-123" />
             </div>
             <div class="filter-row">
               <label class="muted" for="eventStart">Start</label>
@@ -479,7 +511,7 @@
   <div class="spinner" id="spinner" aria-hidden="true"><div class="ring"></div></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-  <!-- Your app logic (all the JS you had in the <script> tag goes into app.js) -->
+  <!-- App logic -->
   <script src="app.js"></script>
 </body>
 </html>
