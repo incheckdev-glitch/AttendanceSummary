@@ -1,4 +1,4 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -2483,7 +2483,6 @@ async function loadIssues(force=false){
   }
 }
 
-/* ✅ FIXED: loadEvents now also accepts "impact" from backend for impactType */
 async function loadEvents(force=false){
   const cached = loadEventsCache();
   if(cached && cached.length && !force){
@@ -2509,8 +2508,6 @@ async function loadEvents(force=false){
         : (typeof ev.modules==='string'
            ? ev.modules.split(',').map(s=>s.trim()).filter(Boolean)
            : []);
-      const envValue = ev.env || ev.environment || 'Prod';
-      const impactValue = ev.impactType || ev.impact || 'No downtime expected';
       return {
         id: ev.id || ('ev_'+Date.now()+'_'+Math.random().toString(36).slice(2)),
         title: ev.title || '',
@@ -2520,11 +2517,11 @@ async function loadEvents(force=false){
         allDay: !!ev.allDay,
         description: ev.description || '',
         issueId: ev.issueId || '',
-        env: envValue,
+        env: ev.env || ev.environment || 'Prod',
         status: ev.status || 'Planned',
         owner: ev.owner || '',
         modules: modulesArr,
-        impactType: impactValue
+        impactType: ev.impactType || 'No downtime expected'
       };
     });
 
@@ -2545,66 +2542,46 @@ async function loadEvents(force=false){
   }
 }
 
-/* ✅ FIXED: richer payload & more robust JSON handling */
+/* ---------- Save/Delete to Apps Script ---------- */
 async function saveEventToSheet(event){
   UI.spinner(true);
   try{
-    // 1) Always have an ID
+    // 1) Make sure we always have a clean ID
     const evId = event.id && String(event.id).trim()
       ? String(event.id).trim()
       : 'ev_' + Date.now() + '_' + Math.random().toString(36).slice(2);
 
-    // 2) Normalize modules into array + string
+    // 2) Normalize modules into an array of strings
     const modulesArr = Array.isArray(event.modules)
       ? event.modules
       : (typeof event.modules === 'string'
           ? event.modules.split(',').map(s => s.trim()).filter(Boolean)
           : []);
 
-    // 3) Normalize dates to strings (handle Date objects from FullCalendar)
-    const startIso = event.start
-      ? (event.start instanceof Date ? event.start.toISOString() : String(event.start))
-      : '';
-    const endIso = event.end
-      ? (event.end instanceof Date ? event.end.toISOString() : String(event.end))
-      : '';
-
-    // 4) Make env / impact robust & provide aliases
-    const envValue = event.env || event.environment || 'Prod';
-    const impactValue = event.impactType || event.impact || 'No downtime expected';
-
-    // 5) Canonical payload we send to Apps Script
+    // 3) Build a canonical payload with ALL fields your Apps Script expects
     const payload = {
-      // core
       id: evId,
+
       title: event.title || '',
       type: event.type || 'Deployment',
 
-      // env / status / owner
-      env: envValue,
-      environment: envValue,   // alias for scripts expecting "environment"
-      status: event.status || 'Planned',
-      owner: event.owner || '',
+      // These are the ones that were missing in the sheet
+      env:       event.env       || event.environment || 'Prod',
+      status:    event.status    || 'Planned',
+      owner:     event.owner     || '',
+      modules:   modulesArr,
+      impactType:event.impactType|| event.impact || 'No downtime expected',
+      issueId:   event.issueId   || '',
 
-      // modules
-      modules: modulesArr,                // array for FE
-      modulesText: modulesArr.join(', '), // string for sheet
+      start: event.start || '',
+      end:   event.end   || '',
+      description: event.description || '',
 
-      // impact & linked issue
-      impactType: impactValue,
-      impact: impactValue,                // alias
-      issueId: event.issueId || '',
-
-      // timing
-      start: startIso,
-      end: endIso,
-      allDay: !!event.allDay,
-
-      // notes
-      description: event.description || ''
-      // notificationStatus, etc. can be managed in Apps Script if desired
+      allDay: !!event.allDay
+      // notificationStatus is controlled on the Apps Script side
     };
 
+    // 4) LOG what we’re actually sending so you can check in DevTools
     console.log('[InCheck] sending event payload to Apps Script:', payload);
 
     const res = await fetch(CONFIG.CALENDAR_API_URL, {
@@ -2613,47 +2590,24 @@ async function saveEventToSheet(event){
       body: JSON.stringify({ action: 'save', event: payload })
     });
 
-    // 6) Be defensive: read text then parse
-    const rawText = await res.text();
     let data;
     try{
-      data = JSON.parse(rawText);
+      data = await res.json();
     }catch(jsonErr){
       console.error('Invalid JSON from calendar backend', jsonErr);
-      console.error('Raw response:', rawText);
-      UI.toast('Calendar: invalid JSON from backend, event kept locally only.');
+      const text = await res.text();
+      console.error('Raw response:', text);
+      UI.toast('Calendar: invalid JSON from backend, using local event');
       return payload;
     }
 
-    if(!data.ok){
+    if(data.ok){
+      UI.toast('Event saved');
+      return data.event || payload;
+    }else{
       UI.toast('Error saving event: ' + (data.error || 'Unknown error'));
       return null;
     }
-
-    // 7) Normalize the event we get back (or fall back to payload)
-    const saved = data.event || payload;
-    const normalized = {
-      id: saved.id || evId,
-      title: saved.title || payload.title,
-      type: saved.type || payload.type,
-      start: saved.start || payload.start,
-      end: saved.end || payload.end,
-      allDay: !!(saved.allDay ?? payload.allDay),
-      description: saved.description ?? payload.description,
-      issueId: saved.issueId ?? payload.issueId,
-      env: saved.env || saved.environment || payload.env,
-      status: saved.status || payload.status,
-      owner: saved.owner ?? payload.owner,
-      modules: Array.isArray(saved.modules)
-        ? saved.modules
-        : (typeof saved.modules === 'string'
-            ? saved.modules.split(',').map(s => s.trim()).filter(Boolean)
-            : modulesArr),
-      impactType: saved.impactType || saved.impact || payload.impactType
-    };
-
-    UI.toast('Event saved');
-    return normalized;
   }catch(e){
     UI.toast('Network error saving event: ' + e.message);
     return null;
@@ -2661,6 +2615,7 @@ async function saveEventToSheet(event){
     UI.spinner(false);
   }
 }
+
 
 async function deleteEventFromSheet(id){
   UI.spinner(true);
@@ -2681,6 +2636,319 @@ async function deleteEventFromSheet(id){
     UI.spinner(false);
   }
 }
+
+/* ---------- CSV export ---------- */
+function csvEscape(v){
+  const s = String(v==null?'':v);
+  if(/[",\n]/.test(s)) return '"'+s.replace(/"/g,'""')+'"';
+  return s;
+}
+
+function exportIssuesToCsv(rows,suffix){
+  if(!rows.length) return UI.toast('Nothing to export (no rows).');
+  const headers=[
+    'ID','Module','Title','Description','Priority','Status','Type','Date','Log','Link',
+    'RiskTotal','RiskSeverity','RiskImpact','RiskUrgency'
+  ];
+  const lines=[headers.join(',')];
+  rows.forEach(r=>{
+    const meta=DataStore.computed.get(r.id)||{};
+    const risk=meta.risk||{};
+    const arr=[
+      r.id,r.module,r.title,r.desc,r.priority,r.status,r.type,r.date,r.log,r.file,
+      risk.total??'',risk.severity??'',risk.impact??'',risk.urgency??''
+    ].map(csvEscape);
+    lines.push(arr.join(','));
+  });
+  const blob=new Blob([lines.join('\r\n')],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  const ts=new Date().toISOString().slice(0,10);
+  a.href=url; a.download=`incheck_issues_${suffix||'filtered'}_${ts}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  UI.toast('Exported CSV');
+}
+
+function exportFilteredCsv(){
+  const rows=UI.Issues.applyFilters();
+  exportIssuesToCsv(rows,'filtered');
+}
+
+/* ---------- Misc wiring ---------- */
+function setIfOptionExists(select,value){
+  if(!select || !value) return;
+  const options=Array.from(select.options||[]);
+  if(options.some(o=>o.value===value)) select.value=value;
+}
+
+function wireCore(){
+  [E.issuesTab,E.calendarTab,E.insightsTab].forEach(btn=>{
+    if(!btn) return;
+    btn.addEventListener('click',()=> setActiveView(btn.dataset.view));
+  });
+
+  if(E.drawerBtn) E.drawerBtn.addEventListener('click',()=>{
+    const open=!E.sidebar.classList.contains('open');
+    E.sidebar.classList.toggle('open');
+    E.drawerBtn.setAttribute('aria-expanded',String(open));
+  });
+
+  if(E.searchInput) E.searchInput.addEventListener('input',debounce(()=>{
+    Filters.state.search=E.searchInput.value||''; Filters.save(); UI.refreshAll();
+  },250));
+
+  if(E.refreshNow) E.refreshNow.addEventListener('click',()=>{ loadIssues(true); loadEvents(true); });
+  if(E.exportCsv) E.exportCsv.addEventListener('click',exportFilteredCsv);
+  if(E.createTicketBtn) E.createTicketBtn.addEventListener('click',()=>window.open("https://forms.gle/PPnEP1AQneoBT79s5","_blank","noopener,noreferrer"));
+
+  if(E.shortcutsHelp){
+    E.shortcutsHelp.addEventListener('click',()=>{
+      UI.toast('Shortcuts: 1/2/3 switch tabs · / focus search · Ctrl+K AI query');
+    });
+  }
+
+  UI.refreshAll=()=>{
+    const list=UI.Issues.applyFilters();
+    UI.Issues.renderSummary(list);
+    UI.Issues.renderFilterChips();
+    UI.Issues.renderKPIs(list);
+    UI.Issues.renderTable(list);
+    UI.Issues.renderCharts(list);
+    if(E.insightsView.classList.contains('active')) Analytics.refresh(list);
+  };
+}
+
+function wireSorting(){
+  U.qAll('#issuesTable thead th.sortable').forEach(th=>{
+    th.addEventListener('click',()=>{
+      const key=th.getAttribute('data-key');
+      if(GridState.sortKey===key) GridState.sortAsc=!GridState.sortAsc;
+      else{ GridState.sortKey=key; GridState.sortAsc=true; }
+      UI.refreshAll();
+    });
+    th.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); th.click(); }});
+    th.tabIndex=0; th.setAttribute('role','button'); th.setAttribute('aria-label',`Sort by ${th.textContent}`);
+  });
+}
+
+function wirePaging(){
+  if(E.pageSize) E.pageSize.addEventListener('change',()=>{
+    GridState.pageSize=+E.pageSize.value; localStorage.setItem(LS_KEYS.pageSize,GridState.pageSize);
+    GridState.page=1; UI.refreshAll();
+  });
+  if(E.firstPage) E.firstPage.addEventListener('click',()=>{ GridState.page=1; UI.refreshAll(); });
+  if(E.prevPage) E.prevPage.addEventListener('click',()=>{ if(GridState.page>1){ GridState.page--; UI.refreshAll(); }});
+  if(E.nextPage) E.nextPage.addEventListener('click',()=>{
+    const list=UI.Issues.applyFilters();
+    const pages=Math.max(1,Math.ceil(list.length/GridState.pageSize));
+    if(GridState.page<pages){ GridState.page++; UI.refreshAll(); }
+  });
+  if(E.lastPage) E.lastPage.addEventListener('click',()=>{
+    const list=UI.Issues.applyFilters();
+    GridState.page=Math.max(1,Math.ceil(list.length/GridState.pageSize));
+    UI.refreshAll();
+  });
+}
+
+function wireFilters(){
+  if(E.moduleFilter){
+    E.moduleFilter.addEventListener('change',()=>{ Filters.state.module=E.moduleFilter.value; Filters.save(); UI.refreshAll(); });
+  }
+  if(E.priorityFilter){
+    E.priorityFilter.addEventListener('change',()=>{ Filters.state.priority=E.priorityFilter.value; Filters.save(); UI.refreshAll(); });
+  }
+  if(E.statusFilter){
+    E.statusFilter.addEventListener('change',()=>{ Filters.state.status=E.statusFilter.value; Filters.save(); UI.refreshAll(); });
+  }
+  if(E.startDateFilter){
+    E.startDateFilter.value=Filters.state.start||'';
+    E.startDateFilter.addEventListener('change',()=>{ Filters.state.start=E.startDateFilter.value; Filters.save(); UI.refreshAll(); });
+  }
+  if(E.endDateFilter){
+    E.endDateFilter.value=Filters.state.end||'';
+    E.endDateFilter.addEventListener('change',()=>{ Filters.state.end=E.endDateFilter.value; Filters.save(); UI.refreshAll(); });
+  }
+  if(E.searchInput) E.searchInput.value=Filters.state.search||'';
+
+  if(E.resetBtn) E.resetBtn.addEventListener('click',()=>{
+    Filters.state={search:'',module:'All',priority:'All',status:'All',start:'',end:''};
+    Filters.save();
+    if(E.searchInput) E.searchInput.value='';
+    if(E.startDateFilter) E.startDateFilter.value='';
+    if(E.endDateFilter) E.endDateFilter.value='';
+    UI.Issues.renderFilters();
+    UI.refreshAll();
+  });
+}
+
+function wireTheme(){
+  const media=window.matchMedia?window.matchMedia('(prefers-color-scheme: dark)'):null;
+  const applySystem=()=>{
+    if(media?.matches) document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme','light');
+  };
+  const saved=localStorage.getItem(LS_KEYS.theme)||'system';
+  if(E.themeSelect) E.themeSelect.value=saved;
+  if(saved==='system') applySystem();
+  else if(saved==='dark') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme','light');
+
+  media?.addEventListener('change',()=>{
+    if((localStorage.getItem(LS_KEYS.theme)||'system')==='system') applySystem();
+  });
+
+  if(E.themeSelect) E.themeSelect.addEventListener('change',()=>{
+    const v=E.themeSelect.value;
+    localStorage.setItem(LS_KEYS.theme,v);
+    if(v==='system') applySystem();
+    else if(v==='dark') document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme','light');
+  });
+
+  if(E.accentColor){
+    const rootStyle = getComputedStyle(document.documentElement);
+    const defaultAccent = rootStyle.getPropertyValue('--accent').trim() || '#4f8cff';
+    const savedAccent = localStorage.getItem(LS_KEYS.accentColor) || defaultAccent;
+    E.accentColor.value = savedAccent;
+    document.documentElement.style.setProperty('--accent', savedAccent);
+
+    E.accentColor.addEventListener('input',()=>{
+      const val = E.accentColor.value || defaultAccent;
+      document.documentElement.style.setProperty('--accent', val);
+      try{ localStorage.setItem(LS_KEYS.accentColor, val); }catch{}
+      UI.Issues.renderCharts(UI.Issues.applyFilters());
+    });
+  }
+}
+
+function wireConnectivity(){
+  if(!E.onlineStatusChip) return;
+  const update=()=>{
+    const online = navigator.onLine !== false;
+    E.onlineStatusChip.textContent = online ? 'Online' : 'Offline · using cache';
+    E.onlineStatusChip.classList.toggle('online',online);
+    E.onlineStatusChip.classList.toggle('offline',!online);
+  };
+  window.addEventListener('online',update);
+  window.addEventListener('offline',update);
+  update();
+}
+
+function wireModals(){
+  if(E.modalClose) E.modalClose.addEventListener('click',()=>UI.Modals.closeIssue());
+  if(E.issueModal) E.issueModal.addEventListener('click',e=>{ if(e.target===E.issueModal) UI.Modals.closeIssue(); });
+
+  if(E.eventModalClose) E.eventModalClose.addEventListener('click',()=>UI.Modals.closeEvent());
+  if(E.eventCancel) E.eventCancel.addEventListener('click',()=>UI.Modals.closeEvent());
+  if(E.eventModal) E.eventModal.addEventListener('click',e=>{ if(e.target===E.eventModal) UI.Modals.closeEvent(); });
+
+  document.addEventListener('keydown',e=>{
+    const issueOpen=E.issueModal && E.issueModal.style.display==='flex';
+    const eventOpen=E.eventModal && E.eventModal.style.display==='flex';
+    if(e.key==='Escape'){
+      if(eventOpen) UI.Modals.closeEvent();
+      else if(issueOpen) UI.Modals.closeIssue();
+    }
+    if(e.key==='Tab'){
+      if(eventOpen && E.eventModal) trapFocus(E.eventModal,e);
+      else if(issueOpen && E.issueModal) trapFocus(E.issueModal,e);
+    }
+  });
+
+  if(E.copyId) E.copyId.addEventListener('click',async()=>{
+    if(!UI.Modals.selectedIssue) return;
+    try{ await navigator.clipboard.writeText(UI.Modals.selectedIssue.id||''); UI.toast('Issue ID copied'); }catch{ UI.toast('Clipboard blocked'); }
+  });
+  if(E.copyLink) E.copyLink.addEventListener('click',async()=>{
+    const link=UI.Modals.selectedIssue?.file||''; if(!link) return UI.toast('No link on this issue');
+    try{ await navigator.clipboard.writeText(link); UI.toast('Link copied'); }catch{ UI.toast('Clipboard blocked'); }
+  });
+
+  if(E.eventForm) E.eventForm.addEventListener('submit',async e=>{
+    e.preventDefault();
+    const id=E.eventForm.dataset.id||'';
+    const allDay = !!(E.eventAllDay && E.eventAllDay.checked);
+
+    const envVal    = E.eventEnv?.value || 'Prod';
+    const statusVal = E.eventStatus?.value || 'Planned';
+    const ownerVal  = E.eventOwner?.value.trim() || '';
+    const modulesArr = (E.eventModules?.value || '')
+      .split(',')
+      .map(s=>s.trim())
+      .filter(Boolean);
+    const impactTypeVal = E.eventImpactType?.value || 'No downtime expected';
+
+    const ev={
+      id,
+      title:E.eventTitle.value.trim(),
+      type:E.eventType.value||'Deployment',
+      issueId:E.eventIssueId.value.trim()||'',
+      start:E.eventStart.value,
+      end:E.eventEnd.value||null,
+      description:E.eventDescription.value.trim(),
+      allDay,
+      env: envVal,
+      status: statusVal,
+      owner: ownerVal,
+      modules: modulesArr,
+      impactType: impactTypeVal
+    };
+    if(!ev.title) return UI.toast('Title & start required');
+    if(!ev.start) return UI.toast('Start date/time is required');
+
+    const saved=await saveEventToSheet(ev);
+    if(!saved){ UI.toast('Could not save event'); return; }
+
+    const idx=DataStore.events.findIndex(x=>x.id===saved.id);
+    if(idx===-1) DataStore.events.push(saved); else DataStore.events[idx]=saved;
+    saveEventsCache();
+    renderCalendarEvents();
+    Analytics.refresh(UI.Issues.applyFilters());
+    UI.Modals.closeEvent();
+  });
+
+  if(E.eventDelete) E.eventDelete.addEventListener('click',async()=>{
+    const id=E.eventForm?.dataset?.id;
+    if(!id){ UI.Modals.closeEvent(); return; }
+    const ok = await deleteEventFromSheet(id);
+    const idx=DataStore.events.findIndex(x=>x.id===id);
+    if(idx>-1) DataStore.events.splice(idx,1);
+    saveEventsCache();
+    renderCalendarEvents();
+    Analytics.refresh(UI.Issues.applyFilters());
+    UI.Modals.closeEvent();
+    if(!ok) UI.toast('Event removed locally; backend delete failed.');
+  });
+
+  if(E.eventAllDay){
+    E.eventAllDay.addEventListener('change',()=>{
+      const isAllDay = E.eventAllDay.checked;
+      const startVal = E.eventStart.value;
+      const endVal   = E.eventEnd.value;
+      if(isAllDay){
+        if(E.eventStart){
+          E.eventStart.type='date';
+          if(startVal.includes('T')) E.eventStart.value=startVal.split('T')[0];
+        }
+        if(E.eventEnd){
+          E.eventEnd.type='date';
+          if(endVal.includes('T')) E.eventEnd.value=endVal.split('T')[0];
+        }
+      }else{
+        if(E.eventStart){
+          E.eventStart.type='datetime-local';
+          if(startVal && !startVal.includes('T')) E.eventStart.value=startVal+'T09:00';
+        }
+        if(E.eventEnd){
+          E.eventEnd.type='datetime-local';
+          if(endVal && !endVal.includes('T')) E.eventEnd.value=endVal+'T10:00';
+        }
+      }
+    });
+  }
+}
+
 /* ---------- AI wiring ---------- */
 let AI_LAST_RESULTS = [];
 
