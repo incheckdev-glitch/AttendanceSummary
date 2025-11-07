@@ -623,6 +623,7 @@ function toLocalDateValue(date){
   if(isNaN(d)) return '';
   return `${d.getFullYear()}-${U.pad(d.getMonth()+1)}-${U.pad(d.getDate())}`;
 }
+
 /* ---------- Elements cache ---------- */
 const E = {};
 function cacheEls(){
@@ -647,6 +648,7 @@ function cacheEls(){
     'eventEnv','eventOwner','eventStatus','eventModules','eventImpactType'
   ].forEach(id=> E[id]=document.getElementById(id));
 }
+
 /** UI helpers */
 const UI = {
   toast(msg,ms=3500){
@@ -1344,6 +1346,7 @@ function setActiveView(view){
   if(view==='calendar'){ ensureCalendar(); renderCalendarEvents(); }
   if(view==='insights') Analytics.refresh(UI.Issues.applyFilters());
 }
+
 /* ---------- Calendar wiring ---------- */
 let calendar=null, calendarReady=false;
 
@@ -1651,30 +1654,28 @@ async function saveEventToSheet(event){
           ? event.modules.split(',').map(s => s.trim()).filter(Boolean)
           : []);
 
-    // 3) Build a canonical payload with ALL fields your Apps Script expects
+    // 3) Build a canonical payload with ALL fields Apps Script expects
     const payload = {
       id: evId,
 
       title: event.title || '',
       type: event.type || 'Deployment',
 
-      // These are the ones that were missing in the sheet
-      env:       event.env       || event.environment || 'Prod',
-      status:    event.status    || 'Planned',
-      owner:     event.owner     || '',
-      modules:   modulesArr,
-      impactType:event.impactType|| event.impact || 'No downtime expected',
-      issueId:   event.issueId   || '',
+      env:        event.env        || event.environment || 'Prod',
+      status:     event.status     || 'Planned',
+      owner:      event.owner      || '',
+      modules:    modulesArr,
+      impactType: event.impactType || event.impact || 'No downtime expected',
+      issueId:    event.issueId    || '',
 
-      start: event.start || '',
-      end:   event.end   || '',
+      start:       event.start || '',
+      end:         event.end   || '',
       description: event.description || '',
 
       allDay: !!event.allDay
-      // notificationStatus is controlled on the Apps Script side
+      // notificationStatus handled server-side
     };
 
-    // 4) LOG what we’re actually sending so you can check in DevTools
     console.log('[InCheck] sending event payload to Apps Script:', payload);
 
     const res = await fetch(CONFIG.CALENDAR_API_URL, {
@@ -1708,7 +1709,6 @@ async function saveEventToSheet(event){
     UI.spinner(false);
   }
 }
-
 
 async function deleteEventFromSheet(id){
   UI.spinner(true);
