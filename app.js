@@ -2,7 +2,7 @@
  * InCheck Pro Dashboard — Issues · Ops · AI Copilot
  * Single-file architecture:
  *  - CONFIG / LS_KEYS
- *  - DataStore (issues + text analytics + events)
+ *  - DataStore (issues + text analytics)
  *  - Risk engine (technical + biz + ops + severity/impact/urgency)
  *  - DSL query parser & matcher
  *  - Calendar risk (events + collisions + freezes + hot issues)
@@ -152,7 +152,8 @@ const LS_KEYS = {
   dataVersion: 'incheckDataVersion',
   pageSize: 'pageSize',
   view: 'incheckView',
-  accentColor: 'incheckAccent'
+  accentColor: 'incheckAccent',
+  accentColorStorage: 'incheckAccentColor'
 };
 
 const STOPWORDS = new Set([
@@ -1898,7 +1899,7 @@ UI.Modals = {
          <br><span class="muted">Tech ${risk.technical}, Biz ${risk.business}, Ops ${risk.operational}, Time ${risk.time}</span>
          <br><span class="muted">Severity ${risk.severity}, Impact ${risk.impact}, Urgency ${risk.urgency}</span>
          <br><span class="muted">${U.escapeHtml(reasons)}</span>
-      </p>
+         </p>
       <p><b>Description:</b><br>${U.escapeHtml(r.desc || '-')}</p>
       <p><b>Log:</b><br>${U.escapeHtml(r.log || '-')}</p>
       ${
@@ -2151,7 +2152,8 @@ function ensureCalendar() {
           status: info.event.extendedProps.status || 'Planned',
           owner: info.event.extendedProps.owner || '',
           modules: info.event.extendedProps.modules || [],
-          impactType: info.event.extendedProps.impactType || 'No downtime expected'
+          impactType: info.event.extendedProps.impactType || 'No downtime expected',
+          notificationStatus: info.event.extendedProps.notificationStatus || '' // ✅ NEW
         };
       UI.Modals.openEvent(ev);
     },
@@ -2283,6 +2285,7 @@ function renderCalendarEvents() {
         owner,
         modules,
         impactType,
+        notificationStatus: ev.notificationStatus || '', // ✅ NEW
         collision: !!flags.collision,
         freeze: !!flags.freeze,
         hotIssues: !!flags.hotIssues
@@ -2403,7 +2406,8 @@ async function loadEvents(force = false) {
         status: ev.status || 'Planned',
         owner: ev.owner || '',
         modules: modulesArr,
-        impactType: ev.impactType || ev.impact || 'No downtime expected'
+        impactType: ev.impactType || ev.impact || 'No downtime expected',
+        notificationStatus: ev.notificationStatus || '' // ✅ NEW: keep sheet column
       };
     });
 
@@ -2432,13 +2436,13 @@ async function loadEvents(force = false) {
 async function saveEventToSheet(event) {
   UI.spinner(true);
   try {
-    // 1) Ensure we always have a clean ID
+    // Ensure we always have a clean ID
     const evId =
       event.id && String(event.id).trim()
         ? String(event.id).trim()
         : 'ev_' + Date.now() + '_' + Math.random().toString(36).slice(2);
 
-    // 2) Normalize modules into an array of strings
+    // Normalize modules into an array of strings
     const modulesArr = Array.isArray(event.modules)
       ? event.modules
       : typeof event.modules === 'string'
@@ -2448,10 +2452,9 @@ async function saveEventToSheet(event) {
           .filter(Boolean)
       : [];
 
-    // 3) Canonical payload with ALL fields Apps Script expects
+    // Canonical payload with ALL fields Apps Script expects
     const payload = {
       id: evId,
-
       title: event.title || '',
       type: event.type || 'Deployment',
 
@@ -2466,8 +2469,8 @@ async function saveEventToSheet(event) {
       end: event.end || '',
       description: event.description || '',
 
+      notificationStatus: event.notificationStatus || '', // ✅ NEW: pass through to sheet
       allDay: !!event.allDay
-      // notificationStatus is handled server-side if you want
     };
 
     console.log('[InCheck] sending event payload to Apps Script:', payload);
@@ -2491,7 +2494,12 @@ async function saveEventToSheet(event) {
 
     if (data.ok) {
       UI.toast('Event saved');
-      return data.event || payload;
+      // Make sure we keep notificationStatus from server if set
+      const savedEvent = data.event || payload;
+      if (!savedEvent.notificationStatus && payload.notificationStatus) {
+        savedEvent.notificationStatus = payload.notificationStatus;
+      }
+      return savedEvent;
     } else {
       UI.toast('Error saving event: ' + (data.error || 'Unknown error'));
       return null;
@@ -2801,7 +2809,8 @@ function wireTheme() {
   if (E.accentColor) {
     const rootStyle = getComputedStyle(document.documentElement);
     const defaultAccent = rootStyle.getPropertyValue('--accent').trim() || '#4f8cff';
-    const savedAccent = localStorage.getItem(LS_KEYS.accentColor) || defaultAccent;
+    const savedAccent =
+      localStorage.getItem(LS_KEYS.accentColorStorage) || defaultAccent;
     E.accentColor.value = savedAccent;
     document.documentElement.style.setProperty('--accent', savedAccent);
 
@@ -2809,7 +2818,7 @@ function wireTheme() {
       const val = E.accentColor.value || defaultAccent;
       document.documentElement.style.setProperty('--accent', val);
       try {
-        localStorage.setItem(LS_KEYS.accentColor, val);
+        localStorage.setItem(LS_KEYS.accentColorStorage, val);
       } catch {}
       UI.Issues.renderCharts(UI.Issues.applyFilters());
     });
@@ -2878,7 +2887,7 @@ function wireModals() {
       }
     });
 
-  // EVENT FORM SUBMIT (IMPORTANT FOR SHEET FIELDS)
+  // EVENT FORM SUBMIT
   if (E.eventForm)
     E.eventForm.addEventListener('submit', async e => {
       e.preventDefault();
@@ -2908,7 +2917,8 @@ function wireModals() {
         status: statusVal,
         owner: ownerVal,
         modules: modulesArr,
-        impactType: impactTypeVal
+        impactType: impactTypeVal,
+        notificationStatus: '' // ✅ keep blank; Apps Script may set "Sent"
       };
       if (!ev.title) return UI.toast('Title is required');
       if (!ev.start) return UI.toast('Start date/time is required');
