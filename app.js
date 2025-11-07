@@ -2,7 +2,7 @@
  * InCheck Pro Dashboard — Issues · Ops · AI Copilot
  * Single-file architecture:
  *  - CONFIG / LS_KEYS
- *  - DataStore (issues + text analytics)
+ *  - DataStore (issues + text analytics + events)
  *  - Risk engine (technical + biz + ops + severity/impact/urgency)
  *  - DSL query parser & matcher
  *  - Calendar risk (events + collisions + freezes + hot issues)
