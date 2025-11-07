@@ -353,7 +353,7 @@
     .pagination{display:flex;gap:6px;align-items:center}
     .chip-btn{
       padding:6px 10px;border-radius:999px;background:rgba(9,14,30,.95);
-      border:1px solid(var(--border));cursor:pointer;font-size:12px;
+      border:1px solid var(--border);cursor:pointer;font-size:12px;
     }
     .chip-btn[disabled]{opacity:.45;cursor:not-allowed}
     .chip-btn.active{background:var(--accent);color:#fff;border-color:transparent}
@@ -761,7 +761,7 @@
                    placeholder="Ask or query…  ( Ctrl + K )"
                    style="flex:1;min-width:260px;">
             <button id="aiQueryRun" class="btn sm" type="button">Run</button>
-            <button id="aiQueryApplyFilters" class="btn ghost sm" type="button" title="Apply to Issues tab">Apply to Issues</button>
+            <button id="aiQueryApplyFilters" class="btn ghost sm" type="button" title="Apply to Issues">Apply to Issues</button>
             <button id="aiQueryExport" class="btn ghost sm" type="button" title="Export query results as CSV">Export CSV</button>
           </div>
           <div id="aiQueryResults" class="muted" style="font-size:13px;margin-top:8px;"></div>
@@ -1554,7 +1554,6 @@ function cacheEls(){
     'eventEnv','eventOwner','eventStatus','eventModules','eventImpactType'
   ].forEach(id=> E[id]=document.getElementById(id));
 }
-
 /** UI helpers */
 const UI = {
   toast(msg,ms=3500){
@@ -1639,6 +1638,7 @@ UI.Issues = {
           Filters.state={search:'',module:'All',priority:'All',status:'All',start:'',end:''};
         }else{
           Filters.state.status=label;
+          Filters.state.search='';
         }
         Filters.save(); UI.refreshAll();
       };
