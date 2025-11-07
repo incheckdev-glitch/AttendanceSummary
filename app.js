@@ -1583,7 +1583,7 @@ const Analytics = {
     }d: ${staleHigh.length}</li>
     `;
 
-        // Module insights
+    // Module insights
     const modules = (() => {
       const map = new Map();
       list.forEach(r => {
@@ -1599,31 +1599,18 @@ const Analytics = {
           };
           map.set(r.module, m);
         }
-
         m.total++;
-
         const st = (r.status || '').toLowerCase();
         if (!st.startsWith('resolved') && !st.startsWith('rejected')) {
           m.open++;
           if (r.priority === 'High') m.high++;
         }
-
-        // keep risk from full engine (including logs etc)
         const rs = DataStore.computed.get(r.id)?.risk?.total || 0;
         m.risk += rs;
-
-        // ✅ Top-term tokens: ONLY title + description (NO logs)
-        const txt = [r.title, r.desc].filter(Boolean).join(' ').toLowerCase();
-        const toks = txt
-          .replace(/[^a-z0-9]+/g, ' ')
-          .split(/\s+/)
-          .filter(w => w && w.length > 2 && !STOPWORDS.has(w));
-
-        toks.forEach(t => {
-          m.tokens.set(t, (m.tokens.get(t) || 0) + 1);
-        });
+        (DataStore.computed.get(r.id)?.tokens || new Set()).forEach(t =>
+          m.tokens.set(t, (m.tokens.get(t) || 0) + 1)
+        );
       });
-
       return Array.from(map.values())
         .map(m => {
           const tt = m.tokens.size
@@ -1637,10 +1624,6 @@ const Analytics = {
             topTerm: tt
           };
         })
-        .sort((a, b) => b.risk - a.risk || b.open - a.open)
-        .slice(0, 8);
-    })();
-
         .sort((a, b) => b.risk - a.risk || b.open - a.open)
         .slice(0, 8);
     })();
