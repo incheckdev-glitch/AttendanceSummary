@@ -357,7 +357,7 @@ th.sorted-desc::after{border-top-color:var(--accent);border-bottom-color:transpa
 .spinner{
   display:none;position:fixed;inset:0;
   background:rgba(5,10,25,.65);z-index:120;
-  align-items:center;justify-content:center;
+  alignitems:center;justify-content:center;
 }
 .spinner .ring{
   width:56px;height:56px;border:5px solid var(--border);
@@ -421,63 +421,77 @@ th.sorted-desc::after{border-top-color:var(--accent);border-bottom-color:transpa
    AI INSIGHTS – MODULE TABLE
    ========================== */
 
-#aiModulesTableBody td {
-  font-size: 12px;
-  padding: 6px 4px;
-  vertical-align: middle;
+/* Make card that contains the module table behave like “Top risks this week”
+   – no inner scroll, card can grow full height */
+.card:has(#aiModulesTableBody) {
+  /* let the card stretch naturally */
+  max-height:none;
 }
 
-/* Allow content to wrap so the table doesn't force a huge width */
+/* Kill inner scroll wrappers (even if they have inline max-height/overflow) */
+.card:has(#aiModulesTableBody) div {
+  max-height:none !important;
+  overflow:visible !important;
+}
+
+/* Fine-tune module table layout */
+#aiModulesTableBody td {
+  font-size:12px;
+  padding:6px 4px;
+  vertical-align:middle;
+}
+
+/* Allow wrapping so the table can use full width without squishing */
 #aiModulesTableBody tr td {
-  word-wrap: break-word;
+  word-wrap:break-word;
 }
 
 /* Module column */
 #aiModulesTableBody td:nth-child(1) {
-  max-width: 130px;
-  white-space: normal !important;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  max-width:150px;
+  white-space:normal !important;
+  overflow:hidden;
+  text-overflow:ellipsis;
 }
 
 /* Open / High P columns */
 #aiModulesTableBody td:nth-child(2),
 #aiModulesTableBody td:nth-child(3) {
-  width: 3rem;
-  text-align: center;
+  width:3rem;
+  text-align:center;
 }
 
 /* Risk sum (+ bar) */
 #aiModulesTableBody td:nth-child(4) {
-  width: 5.5rem;
+  width:6rem;
 }
 
 /* Top term column */
 #aiModulesTableBody td:nth-child(5) {
-  max-width: 110px;
-  white-space: normal !important;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  max-width:140px;
+  white-space:normal !important;
+  overflow:hidden;
+  text-overflow:ellipsis;
 }
 
 /* Slightly slimmer bar inside module card */
 #aiModulesTableBody .risk-bar-wrap {
-  margin-top: 2px;
-  height: 4px;
+  margin-top:2px;
+  height:4px;
 }
 
-/* Zebra rows to improve readability */
+/* Zebra rows for readability */
 #aiModulesTableBody tr:nth-child(even) {
-  background: rgba(15,23,42,.22);
+  background:rgba(15,23,42,.22);
 }
 :root[data-theme="light"] #aiModulesTableBody tr:nth-child(even) {
-  background: rgba(148,163,184,.08);
+  background:rgba(148,163,184,.08);
 }
 
-/* Make tables inside cards layout nicely and avoid horizontal scroll */
+/* Let tables inside cards take full width with normal layout */
 .card table {
-  width: 100%;
-  table-layout: fixed;
+  width:100%;
+  border-collapse:collapse;
 }
 
 /* Hide log col on small screens */
