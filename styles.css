@@ -499,7 +499,7 @@ th.sorted-desc::after{border-top-color:var(--accent);border-bottom-color:transpa
    ========================================================= */
 
 #fnbReleasePlannerCard{
-  /* make sure it looks like a regular card but can stretch if needed */
+  /* behaves as a standard card */
 }
 
 .fnb-controls{
@@ -509,6 +509,12 @@ th.sorted-desc::after{border-top-color:var(--accent);border-bottom-color:transpa
   margin-top:10px;
   margin-bottom:10px;
 }
+
+/* NEW: scope row spans all columns */
+.fnb-controls .fnb-scope-row{
+  grid-column:1 / -1;
+}
+
 @media(max-width:980px){
   .fnb-controls{
     grid-template-columns:repeat(2,minmax(0,1fr));
@@ -537,10 +543,16 @@ th.sorted-desc::after{border-top-color:var(--accent);border-bottom-color:transpa
   font-size:13px;
   display:flex;
   flex-direction:column;
-  gap:2px;
+  gap:4px;
 }
 :root[data-theme="light"] .fnb-slot-row{
   background:#f9fbff;
+}
+
+/* NEW: highlight the top recommendation */
+.fnb-slot-row.highlight{
+  border-color:var(--ok);
+  box-shadow:0 0 0 1px rgba(16,185,129,.4);
 }
 
 .fnb-slot-main{
@@ -584,6 +596,36 @@ th.sorted-desc::after{border-top-color:var(--accent);border-bottom-color:transpa
 .fnb-slot-badge.risk{
   border-color:var(--danger);
   color:var(--danger);
+}
+
+/* NEW: header & risk bar styling */
+.fnb-slot-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.fnb-slot-risk-bar{
+  flex:1;
+  height:4px;
+  border-radius:999px;
+  background:rgba(148,163,184,.25);
+  overflow:hidden;
+}
+
+.fnb-slot-risk-bar-inner{
+  height:100%;
+  transform-origin:left center;
+  background:linear-gradient(90deg,var(--ok),var(--warn),var(--danger));
+}
+
+.fnb-slot-reasons{
+  margin-top:4px;
+  font-size:11px;
+  color:var(--muted);
+  line-height:1.4;
 }
 
 /* small helper for clickable hint rows if any */
