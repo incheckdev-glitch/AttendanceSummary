@@ -429,21 +429,28 @@ th.sorted-desc::after{border-top-color:var(--accent);border-bottom-color:transpa
 
 /* =========================================================
    AI – Per-module risk insights card
+   (full-width, no inner scroll, “pro” table styling)
    ========================================================= */
 
 .card:has(#aiModulesTableBody){
+  /* span full grid width like "Top risks this week" */
   grid-column:1 / -1;
   max-height:none;
 }
+
+/* If there's any wrapper div adding scroll, kill it */
 .card:has(#aiModulesTableBody) > div{
   max-height:none;
   overflow:visible;
 }
+
+/* Table styling just for this card */
 .card:has(#aiModulesTableBody) table{
   width:100%;
   border-collapse:collapse;
   border-spacing:0;
 }
+
 .card:has(#aiModulesTableBody) thead th{
   position:static;
   background:transparent;
@@ -452,11 +459,14 @@ th.sorted-desc::after{border-top-color:var(--accent);border-bottom-color:transpa
   font-size:11px;
   cursor:default;
 }
+
 .card:has(#aiModulesTableBody) tbody td{
   padding:8px 10px;
   border-bottom:1px solid rgba(15,23,42,.55);
   font-size:13px;
 }
+
+/* zebra + hover */
 .card:has(#aiModulesTableBody) tbody tr:nth-child(odd){
   background:rgba(15,23,42,.7);
 }
@@ -466,12 +476,16 @@ th.sorted-desc::after{border-top-color:var(--accent);border-bottom-color:transpa
 .card:has(#aiModulesTableBody) tbody tr:hover{
   background:rgba(37,99,235,.25);
 }
+
+/* numeric columns right-aligned */
 .card:has(#aiModulesTableBody) td:nth-child(2),
 .card:has(#aiModulesTableBody) td:nth-child(3),
 .card:has(#aiModulesTableBody) td:nth-child(4){
   text-align:right;
   font-variant-numeric:tabular-nums;
 }
+
+/* smaller inline risk bar inside the cell */
 .card:has(#aiModulesTableBody) .risk-bar-wrap{
   margin-top:2px;
   height:4px;
@@ -482,37 +496,78 @@ th.sorted-desc::after{border-top-color:var(--accent);border-bottom-color:transpa
 }
 
 /* =========================================================
-   F&B Release Planner styling
+   F&B Release Window Planner
    ========================================================= */
 
-.planner-slot{
+/* Container for suggested windows */
+#releasePlannerResults{
+  display:grid;
+  gap:8px;
+  margin-top:6px;
+}
+
+/* Each suggested window row */
+.planner-window{
   padding:8px 10px;
   border-radius:12px;
   border:1px solid var(--border);
-  background:rgba(15,23,42,.7);
-  margin-bottom:6px;
-}
-:root[data-theme="light"] .planner-slot{
-  background:#f9fafb;
-}
-.planner-slot-header{
+  background:rgba(15,23,42,.78);
   display:flex;
-  justify-content:space-between;
-  align-items:center;
-  gap:8px;
-  font-size:13px;
+  flex-direction:column;
+  gap:3px;
 }
-.planner-chip{
+
+/* Good / medium / bad windows based on risk */
+.planner-window-good{
+  border-color:var(--ok);
+  box-shadow:0 0 0 1px rgba(16,185,129,.45);
+}
+.planner-window-medium{
+  border-color:var(--warn);
+}
+.planner-window-bad{
+  border-color:var(--danger);
+  background:rgba(127,29,29,.25);
+}
+
+/* Header line inside window */
+.planner-window-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+}
+
+/* Badge with window score */
+.planner-score-badge{
   padding:2px 8px;
   border-radius:999px;
   font-size:11px;
-  border:1px solid var(--border);
+  border:1px solid rgba(148,163,184,.7);
 }
-.planner-chip.good{border-color:var(--ok);color:var(--ok);}
-.planner-chip.ok{border-color:var(--warn);color:var(--warn);}
-.planner-chip.risky{border-color:var(--danger);color:var(--danger);}
-.planner-slot-details{
-  margin-top:4px;
+
+/* Tags for rush / holiday / historical risk */
+.planner-tags{
+  display:flex;
+  flex-wrap:wrap;
+  gap:4px;
+  margin-top:2px;
   font-size:11px;
-  color:var(--muted);
+}
+
+.planner-tag{
+  padding:2px 6px;
+  border-radius:999px;
+  background:rgba(15,23,42,.9);
+  border:1px solid rgba(148,163,184,.45);
+}
+
+.planner-tag-rush{border-color:var(--warn);color:var(--warn);}
+.planner-tag-holiday{border-color:var(--purple);color:var(--purple);}
+.planner-tag-history{border-color:var(--danger);color:var(--danger);}
+.planner-tag-safe{border-color:var(--ok);color:var(--ok);}
+
+/* Small explanation text */
+#releasePlannerExplain{
+  line-height:1.4;
 }
