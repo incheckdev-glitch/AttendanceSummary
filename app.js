@@ -142,26 +142,57 @@ const CONFIG = {
     ]
   },
 
-  /**
-   * F&B / Middle East release-planning heuristics
-   * Used by ReleasePlanner
-   */
+  // F&B specific heuristics for Middle East restaurants
   FNB: {
-    // Weekend patterns (0 = Sun)
-    WEEKEND: {
-      gulf: [5, 6],       // Fri, Sat
-      levant: [5],        // Fri
-      northafrica: [5]    // Fri
-    },
-    // Typical busy windows (local time)
-    BUSY_WINDOWS: [
-      { start: 12, end: 15, weight: 3, label: 'lunch rush' },
-      { start: 19, end: 23, weight: 4, label: 'dinner rush' }
+    REGION: 'MIDDLE_EAST_FNB',
+
+    // How far back in ticket history we learn peak / risky hours
+    HISTORY_LOOKBACK_DAYS: 120,
+
+    // Typical F&B rush hours in ME (lunch + dinner)
+    RUSH_WINDOWS: [
+      { startHour: 11, endHour: 15 }, // lunch
+      { startHour: 19, endHour: 24 } // dinner / late night
     ],
-    OFFPEAK_WINDOWS: [
-      { start: 6, end: 10, weight: -1, label: 'pre-service' },
-      { start: 15, end: 18, weight: -0.5, label: 'between lunch & dinner' }
-    ]
+
+    // Quiet windows that are usually safer for releases
+    QUIET_WINDOWS: [
+      { startHour: 2, endHour: 6 }, // overnight
+      { startHour: 9, endHour: 11 } // mid-morning gap
+    ],
+
+    // Friday + Saturday for most of Middle East
+    WEEKEND_DAYS: [5, 6],
+
+    // Public / religious holidays (month-day, every year)
+    // ⚠️ You can extend this list with your local holidays.
+    HOLIDAY_MMDD: [
+      '01-01', // New Year
+      '05-01', // Labour Day
+      '12-31'  // New Year’s Eve
+      // Example: '04-10', '04-11' for Eid / local holidays
+    ],
+
+    // Seasonal high-risk periods (e.g. Ramadan, Eid, major events)
+    // These are generic ranges; adjust to your markets each year.
+    SEASON_RANGES: [
+      { from: '03-10', to: '04-30', label: 'Ramadan / Eid season' },
+      { from: '08-15', to: '09-15', label: 'Back-to-school / autumn' }
+    ],
+
+    // How much each factor pushes the "bomb risk"
+    SCORE_WEIGHTS: {
+      rush: 24,
+      quiet: -10,
+      weekend: 6,
+      holiday: 18,
+      history: 3,
+      collision: 8,
+      prodEnv: 6
+    },
+
+    DEFAULT_HORIZON_DAYS: 14,
+    DEFAULT_RESULTS: 6
   }
 };
 
@@ -897,6 +928,280 @@ function computeChangeCollisions(issues, events) {
   return { collisions, flagsById };
 }
 
+/** F&B release planner using ticket history + ME rush / holidays */
+const FnbReleasePlanner = {
+  history: null,
+
+  buildHistory() {
+    const cutoff = U.daysAgo(CONFIG.FNB.HISTORY_LOOKBACK_DAYS);
+    const byHourDow = new Map();
+    const byModuleHour = new Map();
+
+    DataStore.rows.forEach(r => {
+      if (!r.date) return;
+      const d = new Date(r.date);
+      if (isNaN(d) || d < cutoff) return;
+
+      const meta = DataStore.computed.get(r.id) || {};
+      const risk = meta.risk?.total || 0;
+      const txt = [r.title, r.desc, r.log].filter(Boolean).join(' ').toLowerCase();
+      const isIncident = /incident|outage|down|p0\b|p1\b|major|sla/.test(txt);
+
+      let weight = 1;
+      if (risk >= CONFIG.RISK.highRisk) weight += 1.5;
+      if (isIncident) weight += 1.5;
+
+      const hour = d.getHours();
+      const dow = d.getDay();
+      const key = `${dow}-${hour}`;
+      byHourDow.set(key, (byHourDow.get(key) || 0) + weight);
+
+      if (r.module) {
+        const mk = `${r.module}__${hour}`;
+        byModuleHour.set(mk, (byModuleHour.get(mk) || 0) + weight);
+      }
+    });
+
+    this.history = { byHourDow, byModuleHour };
+  },
+
+  ensureHistory() {
+    if (!this.history) this.buildHistory();
+  },
+
+  historyRisk(date, module) {
+    this.ensureHistory();
+    if (!date) return 0;
+    const d = date instanceof Date ? date : new Date(date);
+    if (isNaN(d)) return 0;
+    const hour = d.getHours();
+    const dow = d.getDay();
+    const key = `${dow}-${hour}`;
+    let score = this.history.byHourDow.get(key) || 0;
+    if (module) {
+      const mk = `${module}__${hour}`;
+      score += this.history.byModuleHour.get(mk) || 0;
+    }
+    return score;
+  },
+
+  isRush(date) {
+    const d = date instanceof Date ? date : new Date(date);
+    if (isNaN(d)) return false;
+    const h = d.getHours();
+    return CONFIG.FNB.RUSH_WINDOWS.some(win => h >= win.startHour && h < win.endHour);
+  },
+
+  isQuiet(date) {
+    const d = date instanceof Date ? date : new Date(date);
+    if (isNaN(d)) return false;
+    const h = d.getHours();
+    return CONFIG.FNB.QUIET_WINDOWS.some(win => h >= win.startHour && h < win.endHour);
+  },
+
+  isWeekend(date) {
+    const d = date instanceof Date ? date : new Date(date);
+    if (isNaN(d)) return false;
+    const dow = d.getDay();
+    return CONFIG.FNB.WEEKEND_DAYS.includes(dow);
+  },
+
+  isHolidayOrSeason(date) {
+    const d = date instanceof Date ? date : new Date(date);
+    if (isNaN(d)) return false;
+    const mmdd = `${U.pad(d.getMonth() + 1)}-${U.pad(d.getDate())}`;
+    if ((CONFIG.FNB.HOLIDAY_MMDD || []).includes(mmdd)) return true;
+    const ranges = CONFIG.FNB.SEASON_RANGES || [];
+    for (const r of ranges) {
+      if (!r.from || !r.to) continue;
+      if (mmdd >= r.from && mmdd <= r.to) return true;
+    }
+    return false;
+  },
+
+  scoreInstant(date, module, env) {
+    const d = date instanceof Date ? date : new Date(date);
+    if (isNaN(d)) return { score: 0, flags: {}, historyScore: 0 };
+
+    const w = CONFIG.FNB.SCORE_WEIGHTS;
+    const flags = {
+      rush: this.isRush(d),
+      quiet: this.isQuiet(d),
+      weekend: this.isWeekend(d),
+      holiday: this.isHolidayOrSeason(d)
+    };
+    const historyScore = this.historyRisk(d, module);
+    let s = 0;
+
+    if (flags.rush) s += w.rush;
+    if (flags.quiet) s += w.quiet;
+    if (flags.weekend) s += w.weekend;
+    if (flags.holiday) s += w.holiday;
+
+    s += historyScore * w.history;
+
+    if ((env || 'Prod') === 'Prod') s += w.prodEnv;
+
+    // Penalize if other change events collide around that time in same env
+    if (DataStore.events && DataStore.events.length) {
+      const winMs = CONFIG.CHANGE.overlapLookbackMinutes * 60000;
+      const startWin = d.getTime() - winMs;
+      const endWin = d.getTime() + winMs;
+      const collision = DataStore.events.some(ev => {
+        if (!ev.start) return false;
+        if (env && ev.env && ev.env !== env) return false;
+        const es = new Date(ev.start);
+        if (isNaN(es)) return false;
+        const t = es.getTime();
+        return t >= startWin && t <= endWin;
+      });
+      if (collision) s += w.collision;
+      flags.collision = collision;
+    }
+
+    return { score: s, flags, historyScore };
+  },
+
+  suggestWindows({ days, module, env, count }) {
+    if (!DataStore.rows.length) return [];
+    this.ensureHistory();
+
+    const horizonDays = days || CONFIG.FNB.DEFAULT_HORIZON_DAYS;
+    const maxResults = count || CONFIG.FNB.DEFAULT_RESULTS;
+    const start = new Date();
+    const candidates = [];
+
+    // Candidate start hours per day (local time)
+    const candidateHours = [2, 4, 6, 9, 15, 17, 23];
+
+    for (let i = 0; i < horizonDays; i++) {
+      const baseDay = U.dateAddDays(start, i);
+      for (const h of candidateHours) {
+        const startDt = new Date(
+          baseDay.getFullYear(),
+          baseDay.getMonth(),
+          baseDay.getDate(),
+          h,
+          0,
+          0,
+          0
+        );
+        const endDt = new Date(
+          baseDay.getFullYear(),
+          baseDay.getMonth(),
+          baseDay.getDate(),
+          Math.min(h + 2, 23),
+          59,
+          0,
+          0
+        );
+        const mid = new Date((startDt.getTime() + endDt.getTime()) / 2);
+        const scored = this.scoreInstant(mid, module, env);
+        candidates.push({
+          start: startDt,
+          end: endDt,
+          score: scored.score,
+          flags: {
+            ...scored.flags,
+            historyHigh: scored.historyScore >= 2
+          },
+          historyScore: scored.historyScore
+        });
+      }
+    }
+
+    if (!candidates.length) return [];
+
+    // Lowest score = safest
+    candidates.sort((a, b) => a.score - b.score);
+
+    // Keep best window per day to avoid 10 suggestions on same date
+    const byDay = new Map();
+    candidates.forEach(c => {
+      const key = `${c.start.getFullYear()}-${c.start.getMonth()}-${c.start.getDate()}`;
+      if (!byDay.has(key)) byDay.set(key, c);
+    });
+
+    const bestPerDay = Array.from(byDay.values()).sort((a, b) => a.score - b.score);
+    return bestPerDay.slice(0, maxResults);
+  }
+};
+
+function renderReleasePlannerResults(results, ctx) {
+  if (!E.releasePlannerResults || !E.releasePlannerExplain) return;
+  if (!results || !results.length) {
+    E.releasePlannerExplain.textContent =
+      'Not enough recent ticket history to learn safe release windows yet. The planner uses your ticket timestamps plus Middle East F&B rush hours, weekends and holidays.';
+    E.releasePlannerResults.innerHTML = '';
+    return;
+  }
+
+  const minScore = Math.min(...results.map(r => r.score));
+  const maxScore = Math.max(...results.map(r => r.score));
+  const range = maxScore - minScore || 1;
+
+  const env = ctx?.env || 'Prod';
+  const module = (ctx?.module || '').trim();
+
+  E.releasePlannerExplain.textContent =
+    `Based on the last ${CONFIG.FNB.HISTORY_LOOKBACK_DAYS} days of tickets, ` +
+    `Middle East F&B rush hours (lunch & dinner), Friday–Saturday weekends, ` +
+    `holidays / seasons in CONFIG.FNB, and your change calendar.`;
+
+  const html = results
+    .map(r => {
+      const riskNorm = (r.score - minScore) / range;
+      const safeScore = Math.round(100 * (1 - riskNorm)); // 0–100 (higher = safer)
+      let riskLabel = 'MEDIUM';
+      if (safeScore >= 67) riskLabel = 'LOW';
+      else if (safeScore <= 40) riskLabel = 'HIGH';
+
+      let cls = 'planner-window-medium';
+      if (safeScore >= 67) cls = 'planner-window-good';
+      else if (safeScore <= 40) cls = 'planner-window-bad';
+
+      const dateStr = r.start.toLocaleDateString(undefined, {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric'
+      });
+      const timeStr = `${U.pad(r.start.getHours())}:${U.pad(
+        r.start.getMinutes()
+      )}–${U.pad(r.end.getHours())}:${U.pad(r.end.getMinutes())}`;
+
+      const tags = [];
+      if (r.flags.rush) tags.push('<span class="planner-tag planner-tag-rush">Rush time</span>');
+      if (r.flags.weekend)
+        tags.push('<span class="planner-tag planner-tag-history">Weekend (Fri–Sat)</span>');
+      if (r.flags.holiday)
+        tags.push('<span class="planner-tag planner-tag-holiday">Holiday / event</span>');
+      if (r.flags.historyHigh)
+        tags.push(
+          '<span class="planner-tag planner-tag-history">High historical bug volume</span>'
+        );
+      if (!tags.length)
+        tags.push('<span class="planner-tag planner-tag-safe">Historically quiet window</span>');
+
+      const targetModule = module ? `module ${U.escapeHtml(module)}` : 'all modules';
+      const envLabel = U.escapeHtml(env);
+
+      return `
+      <div class="planner-window ${cls}">
+        <div class="planner-window-header">
+          <div><strong>${dateStr}</strong> · ${timeStr}</div>
+          <div class="planner-score-badge">Safe score: ${safeScore}/100</div>
+        </div>
+        <div class="planner-tags">${tags.join(' ')}</div>
+        <div class="muted" style="font-size:11px;margin-top:2px;">
+          Expected blast risk in <b>${envLabel}</b> for ${targetModule}: <b>${riskLabel}</b>.
+        </div>
+      </div>`;
+    })
+    .join('');
+
+  E.releasePlannerResults.innerHTML = html;
+}
+
 function toLocalInputValue(date) {
   const d = date instanceof Date ? date : new Date(date);
   if (isNaN(d)) return '';
@@ -909,209 +1214,6 @@ function toLocalDateValue(date) {
   if (isNaN(d)) return '';
   return `${d.getFullYear()}-${U.pad(d.getMonth() + 1)}-${U.pad(d.getDate())}`;
 }
-
-/* =========================================================
-   Release Planner – F&B / Middle East
-   ========================================================= */
-
-const ReleasePlanner = {
-  envWeight: {
-    Prod: 2.5,
-    Staging: 1.2,
-    Dev: 0.6
-  },
-  releaseTypeWeight: {
-    minor: 1,
-    feature: 2,
-    major: 3
-  },
-  regionKey(region) {
-    if (!region) return 'gulf';
-    const r = region.toLowerCase();
-    if (r.includes('lev')) return 'levant';
-    if (r.includes('af')) return 'northafrica';
-    return 'gulf';
-  },
-  computeRushScore(region, date) {
-    const d = date instanceof Date ? date : new Date(date);
-    const hour = d.getHours();
-    const dow = d.getDay(); // 0=Sun
-    const key = this.regionKey(region);
-    const weekend = new Set(CONFIG.FNB.WEEKEND[key] || [5, 6]);
-
-    let score = 0;
-
-    CONFIG.FNB.BUSY_WINDOWS.forEach(win => {
-      if (hour >= win.start && hour < win.end) score += win.weight;
-    });
-
-    CONFIG.FNB.OFFPEAK_WINDOWS.forEach(win => {
-      if (hour >= win.start && hour < win.end) score += win.weight;
-    });
-
-    if (weekend.has(dow)) {
-      score += 1.5;
-      if (hour >= 19 && hour < 23) score += 1.5;
-    }
-
-    if (key === 'gulf' && (hour >= 23 || hour < 2)) score += 1.5;
-
-    if (hour < 5) score += 0.8;
-
-    return Math.max(0, Math.min(6, score));
-  },
-  rushLabel(score) {
-    if (score <= 1) return 'off-peak';
-    if (score <= 3) return 'moderate service';
-    return 'rush / busy service';
-  },
-  computeBugPressure(modules, horizonDays) {
-    const now = new Date();
-    const lookback = U.dateAddDays(now, -90);
-    const modSet = new Set((modules || []).map(m => m.toLowerCase()));
-    let sum = 0;
-
-    DataStore.rows.forEach(r => {
-      if (!r.date) return;
-      const d = new Date(r.date);
-      if (isNaN(d) || d < lookback) return;
-
-      const mod = (r.module || '').toLowerCase();
-      const title = (r.title || '').toLowerCase();
-      const desc = (r.desc || '').toLowerCase();
-      let related = false;
-
-      if (!modSet.size) related = true;
-      else if (modSet.has(mod)) related = true;
-      else {
-        related = Array.from(modSet).some(m => title.includes(m) || desc.includes(m));
-      }
-      if (!related) return;
-
-      const meta = DataStore.computed.get(r.id) || {};
-      const risk = meta.risk?.total || 0;
-      if (!risk) return;
-
-      const ageDays = (now.getTime() - d.getTime()) / 86400000;
-      let w = 1;
-      if (ageDays <= 7) w = 1.4;
-      else if (ageDays <= 30) w = 1.1;
-      else w = 0.7;
-
-      sum += risk * w;
-    });
-
-    const normalized = sum / 40; // tuning constant
-    const bugRisk = Math.max(0, Math.min(6, normalized));
-    return { raw: sum, risk: bugRisk };
-  },
-  bugLabel(risk) {
-    if (risk <= 1.5) return 'light recent bug history';
-    if (risk <= 3.5) return 'moderate bug pressure';
-    return 'heavy bug pressure';
-  },
-  computeEventsPenalty(date, env, modules) {
-    const dt = date instanceof Date ? date : new Date(date);
-    const center = dt.getTime();
-    const windowMs = 2 * 60 * 60 * 1000;
-    const mods = new Set((modules || []).map(m => m.toLowerCase()));
-
-    let penalty = 0;
-    let count = 0;
-
-    DataStore.events.forEach(ev => {
-      if (!ev.start) return;
-      const evEnv = (ev.env || 'Prod');
-      if (env && evEnv !== env) return;
-
-      const s = new Date(ev.start);
-      if (isNaN(s)) return;
-      if (Math.abs(s.getTime() - center) > windowMs) return;
-
-      count++;
-      const evMods = Array.isArray(ev.modules)
-        ? ev.modules
-        : typeof ev.modules === 'string'
-        ? ev.modules.split(',').map(x => x.trim())
-        : [];
-      const overlap =
-        mods.size &&
-        evMods.some(m => mods.has((m || '').toLowerCase()));
-
-      penalty += overlap ? 3 : 1.5;
-    });
-
-    return { penalty, count };
-  },
-  computeSlotScore(date, ctx) {
-    const { region, env, modules, releaseType, bugRisk } = ctx;
-    const rushRisk = this.computeRushScore(region, date);
-    const envRisk = this.envWeight[env] ?? 1;
-    const typeRisk = this.releaseTypeWeight[releaseType] ?? 2;
-    const { penalty: eventsRisk, count: eventCount } = this.computeEventsPenalty(
-      date,
-      env,
-      modules
-    );
-
-    const totalRisk = rushRisk + bugRisk + envRisk + typeRisk + eventsRisk;
-    const safetyScore = Math.max(0, 20 - totalRisk);
-
-    return {
-      totalRisk,
-      safetyScore,
-      rushRisk,
-      bugRisk,
-      envRisk,
-      typeRisk,
-      eventsRisk,
-      eventCount
-    };
-  },
-  riskBucket(totalRisk) {
-    if (totalRisk <= 7) return { label: 'Low', className: 'planner-score-low' };
-    if (totalRisk <= 12) return { label: 'Medium', className: 'planner-score-med' };
-    return { label: 'High', className: 'planner-score-high' };
-  },
-  suggestSlots({ region, env, modules, horizonDays, releaseType }) {
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const bug = this.computeBugPressure(modules, horizonDays || 7);
-
-    const slots = [];
-    const hoursProd = [6, 10, 15, 23]; // Prod: pre-service + between services + late
-    const hoursNonProd = [10, 15, 18]; // Staging/Dev can tolerate slightly busier times
-    const hours = env === 'Prod' ? hoursProd : hoursNonProd;
-
-    const horizon = Math.max(1, horizonDays || 7);
-
-    for (let dayOffset = 0; dayOffset < horizon; dayOffset++) {
-      const base = U.dateAddDays(startOfToday, dayOffset);
-      hours.forEach(h => {
-        const dt = new Date(base.getTime());
-        dt.setHours(h, 0, 0, 0);
-        if (dt <= now) return;
-
-        const score = this.computeSlotScore(dt, {
-          region,
-          env,
-          modules,
-          releaseType,
-          bugRisk: bug.risk
-        });
-
-        slots.push({
-          ...score,
-          start: dt,
-          end: new Date(dt.getTime() + 60 * 60 * 1000)
-        });
-      });
-    }
-
-    slots.sort((a, b) => a.totalRisk - b.totalRisk);
-    return { bug, slots: slots.slice(0, 3) };
-  }
-};
 
 /* ---------- Elements cache ---------- */
 const E = {};
@@ -1210,14 +1312,13 @@ function cacheEls() {
     'eventStatus',
     'eventModules',
     'eventImpactType',
-    // Release Planner IDs
-    'plannerRegion',
-    'plannerEnv',
-    'plannerModules',
-    'plannerHorizon',
-    'plannerReleaseType',
-    'plannerRun',
-    'plannerResults'
+    // F&B release planner
+    'releasePlannerResults',
+    'releasePlannerExplain',
+    'releasePlannerRun',
+    'releasePlannerHorizon',
+    'releasePlannerEnv',
+    'releasePlannerModule'
   ].forEach(id => (E[id] = document.getElementById(id)));
 }
 
@@ -2309,7 +2410,14 @@ function setActiveView(view) {
     ensureCalendar();
     renderCalendarEvents();
   }
-  if (view === 'insights') Analytics.refresh(UI.Issues.applyFilters());
+  if (view === 'insights') {
+    Analytics.refresh(UI.Issues.applyFilters());
+    // Auto-run F&B planner once when opening AI tab
+    if (E.releasePlannerRun && !E.releasePlannerRun.dataset.autoRunDone) {
+      E.releasePlannerRun.dataset.autoRunDone = '1';
+      E.releasePlannerRun.click();
+    }
+  }
 }
 
 /* ---------- Calendar wiring ---------- */
@@ -2386,7 +2494,7 @@ function ensureCalendar() {
           owner: info.event.extendedProps.owner || '',
           modules: info.event.extendedProps.modules || [],
           impactType: info.event.extendedProps.impactType || 'No downtime expected',
-          notificationStatus: info.event.extendedProps.notificationStatus || ''
+          notificationStatus: info.event.extendedProps.notificationStatus || '' // ✅ NEW
         };
       UI.Modals.openEvent(ev);
     },
@@ -2518,7 +2626,7 @@ function renderCalendarEvents() {
         owner,
         modules,
         impactType,
-        notificationStatus: ev.notificationStatus || '',
+        notificationStatus: ev.notificationStatus || '', // ✅ NEW
         collision: !!flags.collision,
         freeze: !!flags.freeze,
         hotIssues: !!flags.hotIssues
@@ -2640,7 +2748,7 @@ async function loadEvents(force = false) {
         owner: ev.owner || '',
         modules: modulesArr,
         impactType: ev.impactType || ev.impact || 'No downtime expected',
-        notificationStatus: ev.notificationStatus || ''
+        notificationStatus: ev.notificationStatus || '' // ✅ NEW: keep sheet column
       };
     });
 
@@ -2702,7 +2810,7 @@ async function saveEventToSheet(event) {
       end: event.end || '',
       description: event.description || '',
 
-      notificationStatus: event.notificationStatus || '',
+      notificationStatus: event.notificationStatus || '', // ✅ NEW: pass through to sheet
       allDay: !!event.allDay
     };
 
@@ -2828,206 +2936,6 @@ function exportIssuesToCsv(rows, suffix) {
 function exportFilteredCsv() {
   const rows = UI.Issues.applyFilters();
   exportIssuesToCsv(rows, 'filtered');
-}
-
-/* ---------- Release Planner wiring & rendering ---------- */
-
-function renderPlannerResults(result, context) {
-  if (!E.plannerResults) return;
-  const { slots, bug } = result;
-  const { env, modules, releaseType, horizonDays, region } = context;
-
-  if (!slots.length) {
-    E.plannerResults.innerHTML =
-      '<span>No suitable windows found in the selected horizon. Try widening the horizon or targeting fewer modules.</span>';
-    return;
-  }
-
-  const regionLabel =
-    region === 'gulf'
-      ? 'Gulf (KSA / UAE / Qatar)'
-      : region === 'levant'
-      ? 'Levant'
-      : 'North Africa';
-
-  const modulesLabel = modules && modules.length ? modules.join(', ') : 'All modules';
-  const intro = `
-    Top ${slots.length} suggested windows for a <strong>${U.escapeHtml(
-      releaseType
-    )}</strong> release on <strong>${U.escapeHtml(
-    env
-  )}</strong> touching <strong>${U.escapeHtml(
-    modulesLabel
-  )}</strong><br/>
-    Horizon: next ${horizonDays} day(s), region: ${U.escapeHtml(regionLabel)}.<br/>
-    <span class="muted">Lower risk is better. We combine F&amp;B rush hours, bug history and calendar collisions.</span>
-  `;
-
-  const htmlSlots = slots
-    .map((slot, idx) => {
-      const d = slot.start;
-      const dateStr = d.toLocaleDateString(undefined, {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric'
-      });
-      const timeStr = d.toLocaleTimeString(undefined, {
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-
-      const bucket = ReleasePlanner.riskBucket(slot.totalRisk);
-      const rushLabel = ReleasePlanner.rushLabel(slot.rushRisk);
-      const bugLabel = ReleasePlanner.bugLabel(slot.bugRisk);
-      const eventsLabel = slot.eventCount
-        ? `${slot.eventCount} overlapping change event(s)`
-        : 'no overlapping change events';
-
-      const reasons = [
-        rushLabel,
-        bugLabel,
-        `env weight ${slot.envRisk.toFixed(1)}`,
-        `type weight ${slot.typeRisk.toFixed(1)}`,
-        eventsLabel
-      ];
-
-      const safetyIndex = (slot.safetyScore / 20) * 100;
-      const bombRisk =
-        bucket.label === 'Low'
-          ? 'unlikely to bomb; plenty of buffer for rollback.'
-          : bucket.label === 'Medium'
-          ? 'medium blast radius; monitor closely and ensure on-call is ready.'
-          : 'high blast risk during busy service; only use with strict change control.';
-
-      const startIso = d.toISOString();
-      const endIso = slot.end.toISOString();
-
-      return `
-      <div class="planner-slot" data-index="${idx}">
-        <div class="planner-slot-header">
-          <span>#${idx + 1} · ${U.escapeHtml(dateStr)} · ${U.escapeHtml(timeStr)}</span>
-          <span class="planner-slot-score ${bucket.className}">
-            Risk ${slot.totalRisk.toFixed(1)} / 20 · ${bucket.label}
-          </span>
-        </div>
-        <div class="planner-slot-meta">
-          Rush: ${U.escapeHtml(rushLabel)} · Bugs: ${U.escapeHtml(
-        bugLabel
-      )} · Calendar: ${U.escapeHtml(
-        eventsLabel
-      )}<br/>Safety index: ${safetyIndex.toFixed(0)}%
-        </div>
-        <div class="planner-slot-meta">
-          Expected effect on F&amp;B clients: ${U.escapeHtml(bombRisk)}
-        </div>
-        <div class="planner-slot-meta">
-          <button type="button"
-                  class="btn sm"
-                  data-add-release="${U.escapeAttr(startIso)}"
-                  data-add-release-end="${U.escapeAttr(endIso)}">
-            ➕ Add this window as Release event
-          </button>
-        </div>
-      </div>
-    `;
-    })
-    .join('');
-
-  E.plannerResults.innerHTML = `<div style="margin-bottom:6px;">${intro}</div>${htmlSlots}`;
-
-  E.plannerResults.querySelectorAll('[data-add-release]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const startIso = btn.getAttribute('data-add-release');
-      const endIso = btn.getAttribute('data-add-release-end');
-      if (!startIso || !endIso) return;
-
-      const startLocal = toLocalInputValue(new Date(startIso));
-      const endLocal = toLocalInputValue(new Date(endIso));
-
-      const modulesLabelLocal =
-        modules && modules.length ? modules.join(', ') : 'General';
-
-      const newEvent = {
-        id: '',
-        title: `Release – ${modulesLabelLocal} (${releaseType})`,
-        type: 'Release',
-        env: env,
-        status: 'Planned',
-        owner: '',
-        modules: modules,
-        impactType:
-          env === 'Prod'
-            ? 'High risk change'
-            : 'Internal only',
-        issueId: '',
-        start: startLocal,
-        end: endLocal,
-        description:
-          `Auto-scheduled by Release Planner. Region profile: ${regionLabel}. Modules: ${modulesLabelLocal}.` +
-          `\nHeuristic risk index computed from F&B rush hours, bug history and existing calendar events.`,
-        allDay: false,
-        notificationStatus: ''
-      };
-
-      const saved = await saveEventToSheet(newEvent);
-      if (!saved) {
-        UI.toast('Could not save release event');
-        return;
-      }
-      const idx = DataStore.events.findIndex(x => x.id === saved.id);
-      if (idx === -1) DataStore.events.push(saved);
-      else DataStore.events[idx] = saved;
-      saveEventsCache();
-      renderCalendarEvents();
-      Analytics.refresh(UI.Issues.applyFilters());
-    });
-  });
-}
-
-function wirePlanner() {
-  if (!E.plannerRun) return;
-
-  E.plannerRun.addEventListener('click', () => {
-    if (!DataStore.rows.length) {
-      UI.toast('Issues are still loading. Try again in a few seconds.');
-      return;
-    }
-
-    const regionValue = (E.plannerRegion?.value || 'gulf').toLowerCase();
-    const region = ReleasePlanner.regionKey(regionValue);
-
-    const env = E.plannerEnv?.value || 'Prod';
-    const modulesStr = (E.plannerModules?.value || '').trim();
-    const modules = modulesStr
-      ? modulesStr
-          .split(',')
-          .map(s => s.trim())
-          .filter(Boolean)
-      : [];
-    const horizonDays =
-      parseInt(E.plannerHorizon?.value || '7', 10) || 7;
-    const releaseTypeValue = (E.plannerReleaseType?.value || 'feature').toLowerCase();
-    const releaseType =
-      releaseTypeValue === 'major' || releaseTypeValue === 'minor'
-        ? releaseTypeValue
-        : 'feature';
-
-    const result = ReleasePlanner.suggestSlots({
-      region,
-      env,
-      modules,
-      horizonDays,
-      releaseType
-    });
-
-    renderPlannerResults(result, {
-      region,
-      env,
-      modules,
-      releaseType,
-      horizonDays
-    });
-  });
 }
 
 /* ---------- Misc wiring ---------- */
@@ -3351,7 +3259,7 @@ function wireModals() {
         owner: ownerVal,
         modules: modulesArr,
         impactType: impactTypeVal,
-        notificationStatus: ''
+        notificationStatus: '' // ✅ keep blank; Apps Script may set "Sent"
       };
       if (!ev.title) return UI.toast('Title is required');
       if (!ev.start) return UI.toast('Start date/time is required');
@@ -3415,6 +3323,26 @@ function wireModals() {
       }
     });
   }
+}
+
+/* ---------- F&B release planner wiring ---------- */
+function wireReleasePlanner() {
+  if (!E.releasePlannerRun) return;
+  const run = () => {
+    const days =
+      parseInt(E.releasePlannerHorizon?.value || CONFIG.FNB.DEFAULT_HORIZON_DAYS, 10) ||
+      CONFIG.FNB.DEFAULT_HORIZON_DAYS;
+    const env = (E.releasePlannerEnv?.value || 'Prod').trim() || 'Prod';
+    const module = (E.releasePlannerModule?.value || '').trim();
+    const results = FnbReleasePlanner.suggestWindows({
+      days,
+      module,
+      env,
+      count: CONFIG.FNB.DEFAULT_RESULTS
+    });
+    renderReleasePlannerResults(results, { days, module, env });
+  };
+  E.releasePlannerRun.addEventListener('click', run);
 }
 
 /* ---------- AI wiring ---------- */
@@ -3571,8 +3499,8 @@ function initApp() {
   wireTheme();
   wireConnectivity();
   wireModals();
+  wireReleasePlanner();
   wireAI();
-  wirePlanner();   // <— Release Planner wiring
   wireCalendar();
 
   UI.setSync('issues', false, null);
