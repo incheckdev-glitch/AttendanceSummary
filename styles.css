@@ -429,28 +429,21 @@ th.sorted-desc::after{border-top-color:var(--accent);border-bottom-color:transpa
 
 /* =========================================================
    AI – Per-module risk insights card
-   (full-width, no inner scroll, “pro” table styling)
    ========================================================= */
 
 .card:has(#aiModulesTableBody){
-  /* span full grid width like "Top risks this week" */
   grid-column:1 / -1;
   max-height:none;
 }
-
-/* If there's any wrapper div adding scroll, kill it */
 .card:has(#aiModulesTableBody) > div{
   max-height:none;
   overflow:visible;
 }
-
-/* Table styling just for this card */
 .card:has(#aiModulesTableBody) table{
   width:100%;
   border-collapse:collapse;
   border-spacing:0;
 }
-
 .card:has(#aiModulesTableBody) thead th{
   position:static;
   background:transparent;
@@ -459,14 +452,11 @@ th.sorted-desc::after{border-top-color:var(--accent);border-bottom-color:transpa
   font-size:11px;
   cursor:default;
 }
-
 .card:has(#aiModulesTableBody) tbody td{
   padding:8px 10px;
   border-bottom:1px solid rgba(15,23,42,.55);
   font-size:13px;
 }
-
-/* zebra + hover */
 .card:has(#aiModulesTableBody) tbody tr:nth-child(odd){
   background:rgba(15,23,42,.7);
 }
@@ -476,16 +466,12 @@ th.sorted-desc::after{border-top-color:var(--accent);border-bottom-color:transpa
 .card:has(#aiModulesTableBody) tbody tr:hover{
   background:rgba(37,99,235,.25);
 }
-
-/* numeric columns right-aligned */
 .card:has(#aiModulesTableBody) td:nth-child(2),
 .card:has(#aiModulesTableBody) td:nth-child(3),
 .card:has(#aiModulesTableBody) td:nth-child(4){
   text-align:right;
   font-variant-numeric:tabular-nums;
 }
-
-/* smaller inline risk bar inside the cell */
 .card:has(#aiModulesTableBody) .risk-bar-wrap{
   margin-top:2px;
   height:4px;
@@ -496,55 +482,37 @@ th.sorted-desc::after{border-top-color:var(--accent);border-bottom-color:transpa
 }
 
 /* =========================================================
-   Release Planner – F&B Middle East
+   F&B Release Planner styling
    ========================================================= */
 
-#releasePlannerCard .planner-grid{
-  display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:12px;
-}
-@media(max-width:980px){
-  #releasePlannerCard .planner-grid{
-    grid-template-columns:repeat(2,minmax(0,1fr));
-  }
-}
-@media(max-width:640px){
-  #releasePlannerCard .planner-grid{
-    grid-template-columns:1fr;
-  }
-}
-
-/* Suggested slot styling – used by JS when rendering planner results */
 .planner-slot{
+  padding:8px 10px;
   border-radius:12px;
   border:1px solid var(--border);
-  padding:8px 10px;
-  margin-top:6px;
-  background:rgba(15,23,42,.9);
+  background:rgba(15,23,42,.7);
+  margin-bottom:6px;
 }
 :root[data-theme="light"] .planner-slot{
-  background:var(--card);
+  background:#f9fafb;
 }
 .planner-slot-header{
   display:flex;
   justify-content:space-between;
   align-items:center;
+  gap:8px;
   font-size:13px;
-  font-weight:600;
 }
-.planner-slot-meta{
+.planner-chip{
+  padding:2px 8px;
+  border-radius:999px;
+  font-size:11px;
+  border:1px solid var(--border);
+}
+.planner-chip.good{border-color:var(--ok);color:var(--ok);}
+.planner-chip.ok{border-color:var(--warn);color:var(--warn);}
+.planner-chip.risky{border-color:var(--danger);color:var(--danger);}
+.planner-slot-details{
+  margin-top:4px;
   font-size:11px;
   color:var(--muted);
-  margin-top:2px;
 }
-.planner-slot-score{
-  font-size:11px;
-  font-weight:600;
-  padding:2px 6px;
-  border-radius:999px;
-  border:1px solid rgba(148,163,184,.4);
-}
-.planner-score-low{background:rgba(16,185,129,.18);}
-.planner-score-med{background:rgba(245,158,11,.2);}
-.planner-score-high{background:rgba(239,68,68,.22);}
