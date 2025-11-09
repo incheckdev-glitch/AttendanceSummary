@@ -1230,7 +1230,6 @@ const ReleasePlanner = {
     return { bug, bomb, slots: slots.slice(0, maxSlots) };
   }
 };
-
 /* ---------- Elements cache ---------- */
 const E = {};
 function cacheEls() {
@@ -3770,15 +3769,14 @@ function wireModals() {
         .catch(() => UI.toast('Clipboard blocked'));
     });
   }
-  if (E.copyLink) {
+   if (E.copyLink) {
     E.copyLink.addEventListener('click', () => {
       const r = UI.Modals.selectedIssue;
-      if (!r) return;
-      const base = window.location.href.split('#')[0];
-      const link = `${base}?issue=${encodeURIComponent(r.id || '')}`;
+      if (!r || !r.id) return;
+      const url = `${location.origin}${location.pathname}?issue=${encodeURIComponent(r.id)}`;
       navigator.clipboard
-        .writeText(link)
-        .then(() => UI.toast('Shareable link copied'))
+        .writeText(url)
+        .then(() => UI.toast('Deep link copied'))
         .catch(() => UI.toast('Clipboard blocked'));
     });
   }
@@ -3809,81 +3807,72 @@ function wireModals() {
 
   if (E.eventAllDay) {
     E.eventAllDay.addEventListener('change', () => {
-      const allDay = E.eventAllDay.checked;
+      const allDay = !!E.eventAllDay.checked;
       if (E.eventStart) {
-        const current = E.eventStart.value;
+        const v = E.eventStart.value;
         E.eventStart.type = allDay ? 'date' : 'datetime-local';
-        if (!current && allDay) {
-          E.eventStart.value = toLocalDateValue(new Date());
+        if (v && allDay && v.length >= 10) {
+          E.eventStart.value = v.slice(0, 10);
+        } else if (v && !allDay && v.length === 10) {
+          E.eventStart.value = v + 'T00:00';
         }
       }
       if (E.eventEnd) {
-        const current = E.eventEnd.value;
+        const v = E.eventEnd.value;
         E.eventEnd.type = allDay ? 'date' : 'datetime-local';
-        if (!current && allDay) {
-          E.eventEnd.value = toLocalDateValue(new Date());
+        if (v && allDay && v.length >= 10) {
+          E.eventEnd.value = v.slice(0, 10);
+        } else if (v && !allDay && v.length === 10) {
+          E.eventEnd.value = v + 'T01:00';
         }
       }
     });
   }
 
-  if (E.eventForm) {
-    E.eventForm.addEventListener('submit', async e => {
+  if (E.eventForm && E.eventSave) {
+    E.eventForm.addEventListener('submit', e => {
       e.preventDefault();
-      const idAttr = E.eventForm.dataset.id || '';
-      const isEdit = !!idAttr;
+      E.eventSave.click();
+    });
 
+    E.eventSave.addEventListener('click', async () => {
+      const id = E.eventForm.dataset.id || '';
       const allDay = !!(E.eventAllDay && E.eventAllDay.checked);
-      const title = (E.eventTitle?.value || '').trim();
-      if (!title) {
-        UI.toast('Title is required');
-        return;
-      }
 
-      const type = E.eventType?.value || 'Deployment';
-      const env = E.eventEnv?.value || 'Prod';
-      const status = E.eventStatus?.value || 'Planned';
-      const owner = (E.eventOwner?.value || '').trim();
+      const start = E.eventStart?.value || '';
+      const end = E.eventEnd?.value || '';
 
-      const modulesStr = (E.eventModules?.value || '').trim();
-      const modulesArr = modulesStr
+      const modulesStr = E.eventModules?.value || '';
+      const modules = modulesStr
         ? modulesStr
             .split(',')
             .map(s => s.trim())
             .filter(Boolean)
         : [];
 
-      const impactType = E.eventImpactType?.value || 'No downtime expected';
-      const issueId = (E.eventIssueId?.value || '').trim();
-
-      const startRaw = E.eventStart?.value || '';
-      const endRaw = E.eventEnd?.value || '';
-
-      const description = (E.eventDescription?.value || '').trim();
-
-      const eventObj = {
-        id: isEdit ? idAttr : '',
-        title,
-        type,
-        env,
-        status,
-        owner,
-        modules: modulesArr,
-        impactType,
-        issueId,
-        start: startRaw,
-        end: endRaw,
-        description,
+      const ev = {
+        id,
+        title: E.eventTitle?.value || '',
+        type: E.eventType?.value || 'Deployment',
+        env: E.eventEnv?.value || 'Prod',
+        status: E.eventStatus?.value || 'Planned',
+        owner: E.eventOwner?.value || '',
+        modules,
+        impactType: E.eventImpactType?.value || 'No downtime expected',
+        issueId: E.eventIssueId?.value || '',
+        start,
+        end,
+        description: E.eventDescription?.value || '',
         allDay,
-        notificationStatus: ''
+        notificationStatus: (DataStore.events.find(e => e.id === id)?.notificationStatus) || ''
       };
 
-      const saved = await saveEventToSheet(eventObj);
+      const saved = await saveEventToSheet(ev);
       if (!saved) return;
 
-      const idx = DataStore.events.findIndex(ev => ev.id === saved.id);
-      if (idx === -1) DataStore.events.push(saved);
-      else DataStore.events[idx] = saved;
+      const idx = DataStore.events.findIndex(e => e.id === saved.id);
+      if (idx >= 0) DataStore.events[idx] = saved;
+      else DataStore.events.push(saved);
 
       saveEventsCache();
       renderCalendarEvents();
@@ -3894,124 +3883,101 @@ function wireModals() {
   }
 
   if (E.eventDelete) {
-    E.eventDelete.addEventListener('click', async e => {
-      e.preventDefault();
+    E.eventDelete.addEventListener('click', async () => {
       if (!E.eventForm) return;
-      const idAttr = E.eventForm.dataset.id || '';
-      if (!idAttr) {
-        UI.toast('Nothing to delete');
+      const id = E.eventForm.dataset.id;
+      if (!id) {
+        UI.Modals.closeEvent();
         return;
       }
       if (!confirm('Delete this event?')) return;
-      const ok = await deleteEventFromSheet(idAttr);
+      const ok = await deleteEventFromSheet(id);
       if (!ok) return;
-      const idx = DataStore.events.findIndex(ev => ev.id === idAttr);
-      if (idx !== -1) DataStore.events.splice(idx, 1);
+      const idx = DataStore.events.findIndex(e => e.id === id);
+      if (idx >= 0) DataStore.events.splice(idx, 1);
       saveEventsCache();
       renderCalendarEvents();
       refreshPlannerReleasePlans();
       UI.Modals.closeEvent();
-      Analytics.refresh(UI.Issues.applyFilters());
     });
   }
 }
 
-/* ---------- AI DSL query wiring ---------- */
+/* ---------- AI query wiring ---------- */
 
-let LAST_DSL_RESULT_IDS = [];
+let LAST_AI_QUERY_RESULTS = [];
+let LAST_AI_QUERY_DSL = null;
 
-function runDslQuery() {
-  if (!E.aiQueryInput || !E.aiQueryResults) return;
-  const raw = (E.aiQueryInput.value || '').trim();
-  if (!raw) {
-    UI.toast('Type a query, e.g. "status:open risk>=9 payments last:7d"');
-    return;
-  }
+function renderAiQueryResults(rows, q, rawText) {
+  if (!E.aiQueryResults) return;
+  LAST_AI_QUERY_RESULTS = rows;
+  LAST_AI_QUERY_DSL = q;
 
-  if (!DataStore.rows.length) {
-    UI.toast('Issues are still loading, try again in a few seconds.');
-    return;
-  }
-
-  const q = DSL.parse(raw);
-  const matches = DataStore.rows.filter(r =>
-    DSL.matches(r, DataStore.computed.get(r.id) || {}, q)
-  );
-
-  LAST_DSL_RESULT_IDS = matches.map(r => r.id);
-
-  if (!matches.length) {
+  if (!rawText.trim()) {
     E.aiQueryResults.innerHTML =
-      '<div class="muted">No issues match this query.</div>';
+      '<div class="muted">Type a query like <code>status:open risk>=9 payments timeout</code> and hit Run.</div>';
     return;
   }
 
-  const max = 50;
-  const subset = matches.slice(0, max);
+  if (!rows.length) {
+    E.aiQueryResults.innerHTML = `<div>No issues match query: <code>${U.escapeHtml(
+      rawText
+    )}</code>.</div>`;
+    return;
+  }
 
-  const chips = [];
-  if (q.module) chips.push(`module:${q.module}`);
-  if (q.priority) chips.push(`priority:${q.priority}`);
-  if (q.status) chips.push(`status:${q.status}`);
-  if (q.lastDays) chips.push(`last:${q.lastDays}d`);
-  if (q.riskOp && q.riskVal != null) chips.push(`risk${q.riskOp}${q.riskVal}`);
-  if (q.severityOp && q.severityVal != null)
-    chips.push(`severity${q.severityOp}${q.severityVal}`);
-  if (q.impactOp && q.impactVal != null)
-    chips.push(`impact${q.impactOp}${q.impactVal}`);
-  if (q.urgencyOp && q.urgencyVal != null)
-    chips.push(`urgency${q.urgencyOp}${q.urgencyVal}`);
-  if (q.cluster) chips.push(`cluster:${q.cluster}`);
+  const parts = [];
 
-  const summary = `
+  const head = `
     <div style="margin-bottom:6px;">
-      ${matches.length} issue${matches.length === 1 ? '' : 's'} match this query.
-      ${
-        matches.length > max
-          ? `Showing first ${max}.`
-          : ''
-      }
-      ${
-        chips.length
-          ? `<br><span class="muted">Parsed filters: ${chips
-              .map(c => U.escapeHtml(c))
-              .join(' · ')}</span>`
-          : ''
-      }
-    </div>
-  `;
+      <strong>${rows.length}</strong> issue${rows.length === 1 ? '' : 's'} match
+      <code>${U.escapeHtml(rawText)}</code>
+    </div>`;
+  parts.push(head);
 
-  const rowsHtml = subset
+  const sample = rows.slice(0, 30);
+
+  const items = sample
     .map(r => {
       const meta = DataStore.computed.get(r.id) || {};
       const risk = meta.risk?.total || 0;
-      const badge = CalendarLink.riskBadgeClass(risk);
+      const badgeClass = CalendarLink.riskBadgeClass(risk);
+      const reasons = (meta.risk?.reasons || []).join(', ');
       return `
-        <li class="ai-query-row">
-          <button type="button" class="btn sm" data-open="${U.escapeAttr(
-            r.id
-          )}">${U.escapeHtml(r.id)}</button>
-          <span class="muted">[${U.escapeHtml(r.priority || '-')} · ${U.escapeHtml(
+        <li class="ai-query-item">
+          <div class="ai-query-main">
+            <button class="btn sm" data-open="${U.escapeAttr(
+              r.id
+            )}">${U.escapeHtml(r.id)}</button>
+            <span class="muted">[${U.escapeHtml(r.priority || '-')}]</span>
+            <span class="ai-query-title">${U.escapeHtml(r.title || '')}</span>
+          </div>
+          <div class="ai-query-meta">
+            Module: ${U.escapeHtml(r.module || '-')} · Status: ${U.escapeHtml(
         r.status || '-'
-      )}]</span>
-          <span> ${U.escapeHtml(r.title || '')}</span>
+      )} · Date: ${U.escapeHtml(r.date || '-')}
+            <span class="event-risk-badge ${badgeClass}">RISK ${risk}</span>
+          </div>
           ${
-            risk
-              ? `<span class="event-risk-badge ${badge}">RISK ${risk}</span>`
+            reasons
+              ? `<div class="ai-query-meta muted">Signals: ${U.escapeHtml(reasons)}</div>`
               : ''
           }
         </li>`;
     })
     .join('');
 
-  E.aiQueryResults.innerHTML = `
-    ${summary}
-    <ul class="ai-query-list">
-      ${rowsHtml}
-    </ul>
-  `;
+  const more =
+    rows.length > sample.length
+      ? `<div class="muted" style="margin-top:4px;">+ ${
+          rows.length - sample.length
+        } more not shown.</div>`
+      : '';
 
-  // Wire open buttons
+  parts.push(`<ul class="ai-query-list">${items}</ul>${more}`);
+
+  E.aiQueryResults.innerHTML = parts.join('');
+
   E.aiQueryResults.querySelectorAll('[data-open]').forEach(btn => {
     btn.addEventListener('click', () => {
       const id = btn.getAttribute('data-open');
@@ -4020,159 +3986,208 @@ function runDslQuery() {
   });
 }
 
-function wireAIQuery() {
+function runAiQuery() {
   if (!E.aiQueryInput) return;
+  const raw = E.aiQueryInput.value || '';
+  const text = raw.trim();
+  if (!text) {
+    renderAiQueryResults([], DSL.parse(''), '');
+    return;
+  }
+  const q = DSL.parse(text);
 
+  const rows = DataStore.rows.filter(r => {
+    const meta = DataStore.computed.get(r.id) || {};
+    return DSL.matches(r, meta, q);
+  });
+
+  // Sorting
+  const sorted = (() => {
+    if (!q.sort) return rows;
+    if (q.sort === 'risk') {
+      return [...rows].sort(
+        (a, b) =>
+          (DataStore.computed.get(b.id)?.risk?.total || 0) -
+          (DataStore.computed.get(a.id)?.risk?.total || 0)
+      );
+    }
+    if (q.sort === 'date') {
+      return [...rows].sort((a, b) => {
+        const da = new Date(a.date);
+        const db = new Date(b.date);
+        const na = isNaN(da);
+        const nb = isNaN(db);
+        if (na && nb) return 0;
+        if (na) return 1;
+        if (nb) return -1;
+        return db - da;
+      });
+    }
+    if (q.sort === 'priority') {
+      const w = v => prioMap(v) * -1; // higher first
+      return [...rows].sort(
+        (a, b) => w(a.priority || '') - w(b.priority || '')
+      );
+    }
+    return rows;
+  })();
+
+  renderAiQueryResults(sorted, q, raw);
+}
+
+function applyAiQueryToFilters() {
+  if (!LAST_AI_QUERY_DSL) return;
+  const q = LAST_AI_QUERY_DSL;
+
+  // Map module to exact option if possible
+  if (q.module && E.moduleFilter) {
+    const target = q.module.toLowerCase();
+    const opts = Array.from(E.moduleFilter.options || []);
+    const match =
+      opts.find(o => o.value.toLowerCase() === target) ||
+      opts.find(o => o.value.toLowerCase().includes(target));
+    Filters.state.module = match ? match.value : 'All';
+    E.moduleFilter.value = Filters.state.module;
+  }
+
+  if (q.priority && E.priorityFilter) {
+    const p = q.priority[0]?.toUpperCase();
+    const val =
+      p === 'H' ? 'High' : p === 'M' ? 'Medium' : p === 'L' ? 'Low' : 'All';
+    Filters.state.priority = val;
+    E.priorityFilter.value = val;
+  }
+
+  if (q.status && E.statusFilter) {
+    const s = q.status.toLowerCase();
+    // Only map simple closed/open to All, otherwise try to match text
+    if (s === 'open' || s === 'closed') {
+      Filters.state.status = 'All';
+      E.statusFilter.value = 'All';
+    } else {
+      const opts = Array.from(E.statusFilter.options || []);
+      const match =
+        opts.find(o => o.value.toLowerCase() === s) ||
+        opts.find(o => o.value.toLowerCase().includes(s));
+      const val = match ? match.value : 'All';
+      Filters.state.status = val;
+      E.statusFilter.value = val;
+    }
+  }
+
+  if (q.lastDays && E.startDateFilter) {
+    const from = U.daysAgo(q.lastDays);
+    const d = toLocalDateValue(from);
+    Filters.state.start = d;
+    E.startDateFilter.value = d;
+  }
+
+  Filters.save();
+  UI.refreshAll();
+  setActiveView('issues');
+  UI.toast('Applied AI query to filters');
+}
+
+function exportAiQueryResults() {
+  if (!LAST_AI_QUERY_RESULTS || !LAST_AI_QUERY_RESULTS.length) {
+    UI.toast('Nothing to export from AI query.');
+    return;
+  }
+  exportIssuesToCsv(LAST_AI_QUERY_RESULTS, 'aiquery');
+}
+
+function wireAI() {
   if (E.aiQueryRun) {
-    E.aiQueryRun.addEventListener('click', () => {
-      runDslQuery();
+    E.aiQueryRun.addEventListener('click', () => runAiQuery());
+  }
+
+  if (E.aiQueryInput) {
+    E.aiQueryInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey && !e.altKey) {
+        // plain Enter runs query
+        e.preventDefault();
+        runAiQuery();
+      } else if (
+        (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) ||
+        (e.key === 'k' && (e.metaKey || e.ctrlKey))
+      ) {
+        // Ctrl+Enter or Cmd/Ctrl+K also runs query
+        e.preventDefault();
+        runAiQuery();
+      }
     });
   }
 
-  E.aiQueryInput.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      runDslQuery();
-    }
-  });
-
   if (E.aiQueryApplyFilters) {
-    E.aiQueryApplyFilters.addEventListener('click', () => {
-      if (!E.aiQueryInput) return;
-      const raw = (E.aiQueryInput.value || '').trim();
-      if (!raw) {
-        UI.toast('Nothing to apply – query is empty.');
-        return;
-      }
-      const q = DSL.parse(raw);
-
-      // Map DSL → basic filters where possible
-      if (q.module) Filters.state.module = 'All'; // default
-      if (q.module) {
-        // if exact module exists, select it
-        const moduleVal = Array.from(DataStore.byModule.keys()).find(m =>
-          (m || '').toLowerCase().includes(q.module)
-        );
-        if (moduleVal) Filters.state.module = moduleVal;
-      }
-
-      if (q.priority) {
-        const p = q.priority[0]?.toUpperCase();
-        if (p === 'H') Filters.state.priority = 'High';
-        else if (p === 'M') Filters.state.priority = 'Medium';
-        else if (p === 'L') Filters.state.priority = 'Low';
-      }
-
-      if (q.status && q.status !== 'open' && q.status !== 'closed') {
-        const statusVal = Array.from(DataStore.byStatus.keys()).find(s =>
-          (s || '').toLowerCase().includes(q.status)
-        );
-        if (statusVal) Filters.state.status = statusVal;
-      }
-
-      if (q.lastDays) {
-        const from = U.daysAgo(q.lastDays);
-        Filters.state.start = toLocalDateValue(from);
-      }
-
-      Filters.save();
-
-      if (E.moduleFilter) setIfOptionExists(E.moduleFilter, Filters.state.module);
-      if (E.priorityFilter) setIfOptionExists(E.priorityFilter, Filters.state.priority);
-      if (E.statusFilter) setIfOptionExists(E.statusFilter, Filters.state.status);
-      if (E.startDateFilter) E.startDateFilter.value = Filters.state.start || '';
-
-      setActiveView('issues');
-      UI.refreshAll();
-      UI.toast('Applied query filters to Issues grid');
-    });
+    E.aiQueryApplyFilters.addEventListener('click', () => applyAiQueryToFilters());
   }
 
   if (E.aiQueryExport) {
-    E.aiQueryExport.addEventListener('click', () => {
-      if (!LAST_DSL_RESULT_IDS.length) {
-        UI.toast('Run a query first before exporting.');
-        return;
-      }
-      const rows = LAST_DSL_RESULT_IDS.map(id => DataStore.byId.get(id)).filter(Boolean);
-      if (!rows.length) {
-        UI.toast('No matching rows to export.');
-        return;
-      }
-      exportIssuesToCsv(rows, 'ai_query');
-    });
+    E.aiQueryExport.addEventListener('click', () => exportAiQueryResults());
   }
+
+  // Initial hint
+  renderAiQueryResults([], DSL.parse(''), '');
 }
 
 /* ---------- Keyboard shortcuts ---------- */
 
 function wireKeyboardShortcuts() {
-  const isTypingTarget = el => {
-    if (!el) return false;
-    const tag = el.tagName;
-    return (
+  document.addEventListener('keydown', e => {
+    const tag = (e.target && e.target.tagName) || '';
+    const editable =
       tag === 'INPUT' ||
       tag === 'TEXTAREA' ||
-      tag === 'SELECT' ||
-      el.isContentEditable
-    );
-  };
-
-  document.addEventListener('keydown', e => {
-    const active = document.activeElement;
-    const typing = isTypingTarget(active);
-
-    // Escape closes modals
-    if (e.key === 'Escape') {
-      if (E.issueModal && E.issueModal.style.display === 'flex') {
-        UI.Modals.closeIssue();
-        return;
-      }
-      if (E.eventModal && E.eventModal.style.display === 'flex') {
-        UI.Modals.closeEvent();
-        return;
-      }
+      (e.target && e.target.isContentEditable);
+    if (editable && !e.metaKey && !e.ctrlKey) {
+      // Let normal typing work
+      if (e.key !== '/' && e.key !== 'Escape') return;
     }
 
-    // Do not steal shortcuts when typing, except Esc above
-    if (typing) return;
-
-    // Tab switching
-    if (e.key === '1') {
-      setActiveView('issues');
-    } else if (e.key === '2') {
-      setActiveView('calendar');
-    } else if (e.key === '3') {
-      setActiveView('insights');
-    }
-
-    // Focus search
+    // '/' focuses search
     if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey) {
-      e.preventDefault();
-      if (E.searchInput) E.searchInput.focus();
+      if (E.searchInput) {
+        e.preventDefault();
+        E.searchInput.focus();
+        E.searchInput.select();
+      }
+      return;
     }
 
-    // AI query focus: Ctrl+K / Cmd+K
-    if ((e.key === 'k' || e.key === 'K') && (e.ctrlKey || e.metaKey)) {
+    // Tabs 1/2/3
+    if (!e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (e.key === '1') {
+        setActiveView('issues');
+        return;
+      }
+      if (e.key === '2') {
+        setActiveView('calendar');
+        return;
+      }
+      if (e.key === '3') {
+        setActiveView('insights');
+        return;
+      }
+    }
+
+    // Ctrl/Cmd+K => AI query box
+    if ((e.key === 'k' || e.key === 'K') && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       setActiveView('insights');
       if (E.aiQueryInput) {
         E.aiQueryInput.focus();
         E.aiQueryInput.select();
       }
+      return;
     }
   });
 }
 
-/* ---------- Bootstrap ---------- */
+/* ---------- Bootstrapping ---------- */
 
 document.addEventListener('DOMContentLoaded', () => {
   cacheEls();
   Filters.load();
-
-  if (E.pageSize) {
-    E.pageSize.value = String(GridState.pageSize || 20);
-  }
 
   wireCore();
   wireSorting();
@@ -4183,12 +4198,31 @@ document.addEventListener('DOMContentLoaded', () => {
   wireModals();
   wireCalendar();
   wirePlanner();
-  wireAIQuery();
+  wireAI();
   wireKeyboardShortcuts();
 
-  const savedView = localStorage.getItem(LS_KEYS.view) || 'issues';
-  setActiveView(savedView);
+  if (E.pageSize) E.pageSize.value = String(GridState.pageSize || 20);
+
+  const view = localStorage.getItem(LS_KEYS.view) || 'issues';
+  setActiveView(view);
 
   loadIssues(false);
   loadEvents(false);
+
+  // Deep link: ?issue=123 or #issue-123
+  try {
+    const params = new URLSearchParams(location.search);
+    let deepId = params.get('issue') || '';
+    if (!deepId && location.hash && location.hash.startsWith('#issue-')) {
+      deepId = decodeURIComponent(location.hash.slice('#issue-'.length));
+    }
+    if (deepId) {
+      setTimeout(() => {
+        if (DataStore.byId.has(deepId)) UI.Modals.openIssue(deepId);
+      }, 800);
+    }
+  } catch {
+    // ignore
+  }
 });
+
