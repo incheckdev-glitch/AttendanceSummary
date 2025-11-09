@@ -22,8 +22,8 @@
     <div class="brand" aria-label="InCheck brand">
       <div class="logo" aria-hidden="true">IC</div>
       <div class="brand-text">
-        <span>INCHECK 360</span>
-        <span>Issues · Ops · F&amp;B · Copilot</span>
+        <span>INCHECK</span>
+        <span>Issues · Ops · Copilot</span>
       </div>
     </div>
 
@@ -70,6 +70,7 @@
   <div id="loadingStatus" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 
   <div class="wrap">
+    <!-- Sidebar / Filters -->
     <aside class="sidebar" id="sidebar" aria-label="Filters">
       <h3>Filters</h3>
       <div class="filter-group" role="group" aria-label="Field filters">
@@ -110,7 +111,9 @@
       </div>
     </aside>
 
+    <!-- Main content -->
     <main class="content">
+      <!-- View tabs -->
       <div class="view-tabs" role="tablist">
         <button id="issuesTab" class="view-tab active" data-view="issues"
                 role="tab" aria-selected="true" aria-controls="issuesView">
@@ -155,16 +158,18 @@
 
           <div class="table-wrap" role="region" aria-label="Scrollable issues table">
             <table id="issuesTable">
-              <thead><tr>
-                <th data-key="id" class="sortable" scope="col" aria-sort="none">ID</th>
-                <th data-key="module" class="sortable" scope="col" aria-sort="none">Module</th>
-                <th data-key="title" class="sortable" scope="col" aria-sort="none">Title</th>
-                <th data-key="priority" class="sortable" scope="col" aria-sort="none">Priority</th>
-                <th data-key="status" class="sortable" scope="col" aria-sort="none">Status</th>
-                <th data-key="date" class="sortable" scope="col" aria-sort="none">Date</th>
-                <th data-key="log" class="sortable" scope="col" aria-sort="none">Log</th>
-                <th scope="col">Link</th>
-              </tr></thead>
+              <thead>
+                <tr>
+                  <th data-key="id" class="sortable" scope="col" aria-sort="none">ID</th>
+                  <th data-key="module" class="sortable" scope="col" aria-sort="none">Module</th>
+                  <th data-key="title" class="sortable" scope="col" aria-sort="none">Title</th>
+                  <th data-key="priority" class="sortable" scope="col" aria-sort="none">Priority</th>
+                  <th data-key="status" class="sortable" scope="col" aria-sort="none">Status</th>
+                  <th data-key="date" class="sortable" scope="col" aria-sort="none">Date</th>
+                  <th data-key="log" class="sortable" scope="col" aria-sort="none">Log</th>
+                  <th scope="col">Link</th>
+                </tr>
+              </thead>
               <tbody id="tbodySkeleton">
                 <tr><td colspan="8"><div class="skeleton" style="height:16px;border-radius:6px"></div></td></tr>
                 <tr><td colspan="8"><div class="skeleton" style="height:16px;border-radius:6px"></div></td></tr>
@@ -235,8 +240,8 @@
         <div class="card">
           <strong>AI Insights / Copilot</strong>
           <div class="muted" style="margin-top:4px;">
-            Heuristic, explainable analytics on issues text (no external AI). Risk breakdown, clustering,
-            trends, triage &amp; calendar risk, tuned for F&amp;B ops in MENA.
+            Heuristic, explainable analytics on issues text (no external AI).
+            Risk breakdown, clustering, trends, triage, calendar risk &amp; F&amp;B release planning for MENA.
           </div>
           <div id="aiAnalyzing" class="skeleton" style="height:6px;border-radius:6px;margin-top:10px;display:none"></div>
         </div>
@@ -321,51 +326,45 @@
           <ul id="aiEventsList" class="muted" style="font-size:13px;margin-top:6px;padding-left:18px;"></ul>
         </div>
 
-        <!-- NEW: F&B Release Window Planner (MENA) -->
-        <div class="card">
-          <strong>F&amp;B Release Window Planner (MENA)</strong>
-          <div class="muted" style="font-size:12px;margin-top:4px;">
-            Suggests safer deployment windows for restaurant-heavy traffic in the Middle East.
-            Uses F&amp;B rush hours, MENA weekends &amp; holidays, historical bug timing, and your change calendar.
+        <!-- F&B Release Planner (MENA) -->
+        <div class="card" id="fnbReleasePlannerCard" aria-label="F&B release planner for MENA">
+          <strong>F&amp;B Release Planner (MENA)</strong>
+          <div class="muted" style="margin-top:4px;">
+            Suggest safer release windows using F&amp;B tickets, release history, Middle East rush hours,
+            and holidays / events.
           </div>
 
-          <div class="planner-controls" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px;">
-            <label class="muted" style="font-size:12px;display:flex;flex-direction:column;gap:4px;min-width:140px;">
-              Horizon
-              <select id="fnbPlannerDays" class="select sm">
-                <option value="3">Next 3 days</option>
-                <option value="7" selected>Next 7 days</option>
-                <option value="14">Next 14 days</option>
+          <div class="fnb-controls">
+            <div class="filter-row">
+              <label class="muted" for="fnbModuleSelect">Module / product</label>
+              <select id="fnbModuleSelect" class="select">
+                <option>All F&amp;B</option>
               </select>
-            </label>
-            <label class="muted" style="font-size:12px;display:flex;flex-direction:column;gap:4px;min-width:160px;">
-              Release type
-              <select id="fnbPlannerSize" class="select sm">
-                <option value="patch">Small patch</option>
-                <option value="normal" selected>Normal release</option>
-                <option value="major">Major / risky release</option>
-              </select>
-            </label>
-            <label class="muted" style="font-size:12px;display:flex;flex-direction:column;gap:4px;min-width:130px;">
-              Environment
-              <select id="fnbPlannerEnv" class="select sm">
-                <option value="Prod" selected>Prod</option>
-                <option value="Staging">Staging</option>
-                <option value="Dev">Dev</option>
-              </select>
-            </label>
-            <div style="display:flex;align-items:flex-end;">
-              <button id="fnbPlannerRun" class="btn sm" type="button" style="white-space:nowrap;">
-                Suggest windows
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="fnbDateInput">Start date</label>
+              <input id="fnbDateInput" class="input" type="date">
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="fnbDurationInput">Release duration (minutes)</label>
+              <input id="fnbDurationInput" class="input" type="number" min="5" max="240" value="30">
+            </div>
+            <div class="filter-row">
+              <button type="button" class="btn sm" id="fnbSuggestBtn">
+                Suggest release windows
               </button>
             </div>
           </div>
 
-          <div id="fnbPlannerResults" class="planner-results muted" style="font-size:13px;margin-top:8px;">
-            Configure horizon and click “Suggest windows”. Planner will use your tickets + calendar + MENA F&amp;B patterns.
-          </div>
+          <ul id="fnbSlotsList" class="fnb-slots-list">
+            <li class="fnb-slot-row">
+              <span class="muted">
+                Planner will use F&amp;B related tickets, releases and calendar signals in the Middle East
+                to recommend safer release windows for your clients.
+              </span>
+            </li>
+          </ul>
         </div>
-        <!-- END F&B Planner -->
 
         <div class="card">
           <strong>AI Commands (pro)</strong>
@@ -476,9 +475,9 @@
               </select>
             </div>
             <div class="filter-row">
-              <label class="muted" for="eventIssueId">Issue ID (optional)</label>
+              <label class="muted" for="eventIssueId">Linked ticket IDs (optional)</label>
               <input id="eventIssueId" class="input" type="text"
-                     placeholder="e.g. INC-123 or ticket ID" />
+                     placeholder="e.g. INC-123, INC-456" />
             </div>
             <div class="filter-row">
               <label class="muted" for="eventStart">Start</label>
