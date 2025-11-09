@@ -6,6 +6,7 @@
  *  - Risk engine (technical + biz + ops + severity/impact/urgency)
  *  - DSL query parser & matcher
  *  - Calendar risk (events + collisions + freezes + hot issues)
+ *  - F&B Release Planner (MENA)
  */
 
 const CONFIG = {
@@ -142,57 +143,54 @@ const CONFIG = {
     ]
   },
 
-  // F&B specific heuristics for Middle East restaurants
+  /**
+   * F&B specific heuristics for MENA (Middle East)
+   * - Rush windows = typical high traffic restaurant periods
+   * - Quiet windows = safer deployment windows
+   * - Weekend days = Friday + Saturday (typical GCC pattern)
+   * - Fixed F&B-sensitive dates = generic across the region (you can extend)
+   */
   FNB: {
-    REGION: 'MIDDLE_EAST_FNB',
-
-    // How far back in ticket history we learn peak / risky hours
-    HISTORY_LOOKBACK_DAYS: 120,
-
-    // Typical F&B rush hours in ME (lunch + dinner)
-    RUSH_WINDOWS: [
-      { startHour: 11, endHour: 15 }, // lunch
-      { startHour: 19, endHour: 24 } // dinner / late night
+    lookbackDays: 60,
+    weekendDays: [5, 6], // Fri, Sat
+    // Typical F&B rush windows (local time)
+    rushWindows: [
+      { startHour: 12, endHour: 15, weight: 3, label: 'Lunch rush' },
+      { startHour: 19, endHour: 23, weight: 4, label: 'Dinner / evening rush' }
     ],
-
-    // Quiet windows that are usually safer for releases
-    QUIET_WINDOWS: [
-      { startHour: 2, endHour: 6 }, // overnight
-      { startHour: 9, endHour: 11 } // mid-morning gap
+    // Quieter windows we prefer for releases
+    quietWindows: [
+      { startHour: 3, endHour: 6, weight: -3, label: 'Pre-opening quiet' },
+      { startHour: 9, endHour: 11, weight: -1, label: 'Late morning' },
+      { startHour: 15, endHour: 17, weight: -1, label: 'Mid-afternoon' }
     ],
-
-    // Friday + Saturday for most of Middle East
-    WEEKEND_DAYS: [5, 6],
-
-    // Public / religious holidays (month-day, every year)
-    // ⚠️ You can extend this list with your local holidays.
-    HOLIDAY_MMDD: [
-      '01-01', // New Year
-      '05-01', // Labour Day
-      '12-31'  // New Year’s Eve
-      // Example: '04-10', '04-11' for Eid / local holidays
+    weekendWeight: 2,
+    holidayWeight: 3,
+    // Candidate local times we’ll test per day
+    preferredSlotsLocal: [
+      { hour: 3, minute: 0 },
+      { hour: 9, minute: 30 },
+      { hour: 15, minute: 0 },
+      { hour: 17, minute: 0 }
     ],
-
-    // Seasonal high-risk periods (e.g. Ramadan, Eid, major events)
-    // These are generic ranges; adjust to your markets each year.
-    SEASON_RANGES: [
-      { from: '03-10', to: '04-30', label: 'Ramadan / Eid season' },
-      { from: '08-15', to: '09-15', label: 'Back-to-school / autumn' }
+    // Fixed dates that are usually busy for F&B in MENA (approx, generic)
+    fixedHolidays: [
+      { month: 1, day: 1, name: 'New Year' },
+      { month: 2, day: 14, name: 'Valentine’s Day' },
+      { month: 3, day: 21, name: 'Mother’s Day (Arab world)' },
+      { month: 12, day: 31, name: 'New Year’s Eve' }
     ],
-
-    // How much each factor pushes the "bomb risk"
-    SCORE_WEIGHTS: {
-      rush: 24,
-      quiet: -10,
-      weekend: 6,
-      holiday: 18,
-      history: 3,
-      collision: 8,
-      prodEnv: 6
-    },
-
-    DEFAULT_HORIZON_DAYS: 14,
-    DEFAULT_RESULTS: 6
+    // If these appear in tickets/events text near a date, treat it as a special period
+    keywordHolidayHints: [
+      'ramadan',
+      'eid',
+      'iftar',
+      'suhoor',
+      'national day',
+      'new year',
+      'valentine',
+      'mother\'s day'
+    ]
   }
 };
 
@@ -285,6 +283,40 @@ const STOPWORDS = new Set([
   'ticket',
   'inc'
 ]);
+
+/** F&B domain keywords (modules + text) */
+const FNB_KEYWORDS = [
+  'restaurant',
+  'branch',
+  'store',
+  'table',
+  'dine in',
+  'dining',
+  'delivery',
+  'rider',
+  'order',
+  'orders',
+  'menu',
+  'kitchen',
+  'kds',
+  'pos',
+  'cashier',
+  'bill',
+  'cheque',
+  'check',
+  'f&b',
+  'food',
+  'beverage',
+  'queue',
+  'drive thru',
+  'drive-thru',
+  'pickup',
+  'aggregator',
+  'talabat',
+  'hungerstation',
+  'jahez',
+  'careem'
+];
 
 const U = {
   q: (s, r = document) => r.querySelector(s),
@@ -928,280 +960,6 @@ function computeChangeCollisions(issues, events) {
   return { collisions, flagsById };
 }
 
-/** F&B release planner using ticket history + ME rush / holidays */
-const FnbReleasePlanner = {
-  history: null,
-
-  buildHistory() {
-    const cutoff = U.daysAgo(CONFIG.FNB.HISTORY_LOOKBACK_DAYS);
-    const byHourDow = new Map();
-    const byModuleHour = new Map();
-
-    DataStore.rows.forEach(r => {
-      if (!r.date) return;
-      const d = new Date(r.date);
-      if (isNaN(d) || d < cutoff) return;
-
-      const meta = DataStore.computed.get(r.id) || {};
-      const risk = meta.risk?.total || 0;
-      const txt = [r.title, r.desc, r.log].filter(Boolean).join(' ').toLowerCase();
-      const isIncident = /incident|outage|down|p0\b|p1\b|major|sla/.test(txt);
-
-      let weight = 1;
-      if (risk >= CONFIG.RISK.highRisk) weight += 1.5;
-      if (isIncident) weight += 1.5;
-
-      const hour = d.getHours();
-      const dow = d.getDay();
-      const key = `${dow}-${hour}`;
-      byHourDow.set(key, (byHourDow.get(key) || 0) + weight);
-
-      if (r.module) {
-        const mk = `${r.module}__${hour}`;
-        byModuleHour.set(mk, (byModuleHour.get(mk) || 0) + weight);
-      }
-    });
-
-    this.history = { byHourDow, byModuleHour };
-  },
-
-  ensureHistory() {
-    if (!this.history) this.buildHistory();
-  },
-
-  historyRisk(date, module) {
-    this.ensureHistory();
-    if (!date) return 0;
-    const d = date instanceof Date ? date : new Date(date);
-    if (isNaN(d)) return 0;
-    const hour = d.getHours();
-    const dow = d.getDay();
-    const key = `${dow}-${hour}`;
-    let score = this.history.byHourDow.get(key) || 0;
-    if (module) {
-      const mk = `${module}__${hour}`;
-      score += this.history.byModuleHour.get(mk) || 0;
-    }
-    return score;
-  },
-
-  isRush(date) {
-    const d = date instanceof Date ? date : new Date(date);
-    if (isNaN(d)) return false;
-    const h = d.getHours();
-    return CONFIG.FNB.RUSH_WINDOWS.some(win => h >= win.startHour && h < win.endHour);
-  },
-
-  isQuiet(date) {
-    const d = date instanceof Date ? date : new Date(date);
-    if (isNaN(d)) return false;
-    const h = d.getHours();
-    return CONFIG.FNB.QUIET_WINDOWS.some(win => h >= win.startHour && h < win.endHour);
-  },
-
-  isWeekend(date) {
-    const d = date instanceof Date ? date : new Date(date);
-    if (isNaN(d)) return false;
-    const dow = d.getDay();
-    return CONFIG.FNB.WEEKEND_DAYS.includes(dow);
-  },
-
-  isHolidayOrSeason(date) {
-    const d = date instanceof Date ? date : new Date(date);
-    if (isNaN(d)) return false;
-    const mmdd = `${U.pad(d.getMonth() + 1)}-${U.pad(d.getDate())}`;
-    if ((CONFIG.FNB.HOLIDAY_MMDD || []).includes(mmdd)) return true;
-    const ranges = CONFIG.FNB.SEASON_RANGES || [];
-    for (const r of ranges) {
-      if (!r.from || !r.to) continue;
-      if (mmdd >= r.from && mmdd <= r.to) return true;
-    }
-    return false;
-  },
-
-  scoreInstant(date, module, env) {
-    const d = date instanceof Date ? date : new Date(date);
-    if (isNaN(d)) return { score: 0, flags: {}, historyScore: 0 };
-
-    const w = CONFIG.FNB.SCORE_WEIGHTS;
-    const flags = {
-      rush: this.isRush(d),
-      quiet: this.isQuiet(d),
-      weekend: this.isWeekend(d),
-      holiday: this.isHolidayOrSeason(d)
-    };
-    const historyScore = this.historyRisk(d, module);
-    let s = 0;
-
-    if (flags.rush) s += w.rush;
-    if (flags.quiet) s += w.quiet;
-    if (flags.weekend) s += w.weekend;
-    if (flags.holiday) s += w.holiday;
-
-    s += historyScore * w.history;
-
-    if ((env || 'Prod') === 'Prod') s += w.prodEnv;
-
-    // Penalize if other change events collide around that time in same env
-    if (DataStore.events && DataStore.events.length) {
-      const winMs = CONFIG.CHANGE.overlapLookbackMinutes * 60000;
-      const startWin = d.getTime() - winMs;
-      const endWin = d.getTime() + winMs;
-      const collision = DataStore.events.some(ev => {
-        if (!ev.start) return false;
-        if (env && ev.env && ev.env !== env) return false;
-        const es = new Date(ev.start);
-        if (isNaN(es)) return false;
-        const t = es.getTime();
-        return t >= startWin && t <= endWin;
-      });
-      if (collision) s += w.collision;
-      flags.collision = collision;
-    }
-
-    return { score: s, flags, historyScore };
-  },
-
-  suggestWindows({ days, module, env, count }) {
-    if (!DataStore.rows.length) return [];
-    this.ensureHistory();
-
-    const horizonDays = days || CONFIG.FNB.DEFAULT_HORIZON_DAYS;
-    const maxResults = count || CONFIG.FNB.DEFAULT_RESULTS;
-    const start = new Date();
-    const candidates = [];
-
-    // Candidate start hours per day (local time)
-    const candidateHours = [2, 4, 6, 9, 15, 17, 23];
-
-    for (let i = 0; i < horizonDays; i++) {
-      const baseDay = U.dateAddDays(start, i);
-      for (const h of candidateHours) {
-        const startDt = new Date(
-          baseDay.getFullYear(),
-          baseDay.getMonth(),
-          baseDay.getDate(),
-          h,
-          0,
-          0,
-          0
-        );
-        const endDt = new Date(
-          baseDay.getFullYear(),
-          baseDay.getMonth(),
-          baseDay.getDate(),
-          Math.min(h + 2, 23),
-          59,
-          0,
-          0
-        );
-        const mid = new Date((startDt.getTime() + endDt.getTime()) / 2);
-        const scored = this.scoreInstant(mid, module, env);
-        candidates.push({
-          start: startDt,
-          end: endDt,
-          score: scored.score,
-          flags: {
-            ...scored.flags,
-            historyHigh: scored.historyScore >= 2
-          },
-          historyScore: scored.historyScore
-        });
-      }
-    }
-
-    if (!candidates.length) return [];
-
-    // Lowest score = safest
-    candidates.sort((a, b) => a.score - b.score);
-
-    // Keep best window per day to avoid 10 suggestions on same date
-    const byDay = new Map();
-    candidates.forEach(c => {
-      const key = `${c.start.getFullYear()}-${c.start.getMonth()}-${c.start.getDate()}`;
-      if (!byDay.has(key)) byDay.set(key, c);
-    });
-
-    const bestPerDay = Array.from(byDay.values()).sort((a, b) => a.score - b.score);
-    return bestPerDay.slice(0, maxResults);
-  }
-};
-
-function renderReleasePlannerResults(results, ctx) {
-  if (!E.releasePlannerResults || !E.releasePlannerExplain) return;
-  if (!results || !results.length) {
-    E.releasePlannerExplain.textContent =
-      'Not enough recent ticket history to learn safe release windows yet. The planner uses your ticket timestamps plus Middle East F&B rush hours, weekends and holidays.';
-    E.releasePlannerResults.innerHTML = '';
-    return;
-  }
-
-  const minScore = Math.min(...results.map(r => r.score));
-  const maxScore = Math.max(...results.map(r => r.score));
-  const range = maxScore - minScore || 1;
-
-  const env = ctx?.env || 'Prod';
-  const module = (ctx?.module || '').trim();
-
-  E.releasePlannerExplain.textContent =
-    `Based on the last ${CONFIG.FNB.HISTORY_LOOKBACK_DAYS} days of tickets, ` +
-    `Middle East F&B rush hours (lunch & dinner), Friday–Saturday weekends, ` +
-    `holidays / seasons in CONFIG.FNB, and your change calendar.`;
-
-  const html = results
-    .map(r => {
-      const riskNorm = (r.score - minScore) / range;
-      const safeScore = Math.round(100 * (1 - riskNorm)); // 0–100 (higher = safer)
-      let riskLabel = 'MEDIUM';
-      if (safeScore >= 67) riskLabel = 'LOW';
-      else if (safeScore <= 40) riskLabel = 'HIGH';
-
-      let cls = 'planner-window-medium';
-      if (safeScore >= 67) cls = 'planner-window-good';
-      else if (safeScore <= 40) cls = 'planner-window-bad';
-
-      const dateStr = r.start.toLocaleDateString(undefined, {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric'
-      });
-      const timeStr = `${U.pad(r.start.getHours())}:${U.pad(
-        r.start.getMinutes()
-      )}–${U.pad(r.end.getHours())}:${U.pad(r.end.getMinutes())}`;
-
-      const tags = [];
-      if (r.flags.rush) tags.push('<span class="planner-tag planner-tag-rush">Rush time</span>');
-      if (r.flags.weekend)
-        tags.push('<span class="planner-tag planner-tag-history">Weekend (Fri–Sat)</span>');
-      if (r.flags.holiday)
-        tags.push('<span class="planner-tag planner-tag-holiday">Holiday / event</span>');
-      if (r.flags.historyHigh)
-        tags.push(
-          '<span class="planner-tag planner-tag-history">High historical bug volume</span>'
-        );
-      if (!tags.length)
-        tags.push('<span class="planner-tag planner-tag-safe">Historically quiet window</span>');
-
-      const targetModule = module ? `module ${U.escapeHtml(module)}` : 'all modules';
-      const envLabel = U.escapeHtml(env);
-
-      return `
-      <div class="planner-window ${cls}">
-        <div class="planner-window-header">
-          <div><strong>${dateStr}</strong> · ${timeStr}</div>
-          <div class="planner-score-badge">Safe score: ${safeScore}/100</div>
-        </div>
-        <div class="planner-tags">${tags.join(' ')}</div>
-        <div class="muted" style="font-size:11px;margin-top:2px;">
-          Expected blast risk in <b>${envLabel}</b> for ${targetModule}: <b>${riskLabel}</b>.
-        </div>
-      </div>`;
-    })
-    .join('');
-
-  E.releasePlannerResults.innerHTML = html;
-}
-
 function toLocalInputValue(date) {
   const d = date instanceof Date ? date : new Date(date);
   if (isNaN(d)) return '';
@@ -1312,13 +1070,12 @@ function cacheEls() {
     'eventStatus',
     'eventModules',
     'eventImpactType',
-    // F&B release planner
-    'releasePlannerResults',
-    'releasePlannerExplain',
-    'releasePlannerRun',
-    'releasePlannerHorizon',
-    'releasePlannerEnv',
-    'releasePlannerModule'
+    // F&B planner
+    'fnbModuleSelect',
+    'fnbDateInput',
+    'fnbDurationInput',
+    'fnbSuggestBtn',
+    'fnbSlotsList'
   ].forEach(id => (E[id] = document.getElementById(id)));
 }
 
@@ -1428,9 +1185,17 @@ UI.Issues = {
       d.tabIndex = 0;
       d.setAttribute('role', 'button');
       d.setAttribute('aria-label', `${label}: ${val} (${pct} percent)`);
-      d.innerHTML = `<div class="label">${label}</div><div class="value">${val}</div><div class="sub">${pct}%</div>`;
+
+      const isTotal = label === 'Total Issues';
+
+      d.innerHTML = `
+        <div class="label">${label}</div>
+        <div class="value">${val}</div>
+        <div class="sub">${pct}%</div>
+      `;
+
       d.onclick = () => {
-        if (label === 'Total Issues') {
+        if (isTotal) {
           Filters.state = {
             search: '',
             module: 'All',
@@ -1755,6 +1520,27 @@ const Analytics = {
     this._debounce = setTimeout(() => this._render(list), 80);
   },
   _render(list) {
+    if (!list || !list.length) {
+      if (E.aiPatternsList)
+        E.aiPatternsList.innerHTML = '<li>No data yet.</li>';
+      if (E.aiLabelsList)
+        E.aiLabelsList.innerHTML = '<li>No data yet.</li>';
+      if (E.aiTrendsList)
+        E.aiTrendsList.innerHTML = '<li>No data yet.</li>';
+      if (E.aiRisksList)
+        E.aiRisksList.innerHTML = '<li>No data yet.</li>';
+      if (E.aiModulesTableBody)
+        E.aiModulesTableBody.innerHTML =
+          '<tr><td colspan="5" style="text-align:center;color:var(--muted)">No modules.</td></tr>';
+      if (E.aiOpsCockpit)
+        E.aiOpsCockpit.innerHTML =
+          '<li>No ops signals yet.</li>';
+      // still let planner run (it will show a hint)
+      FNBPlanner.refresh(DataStore.rows || []);
+      UI.setAnalyzing(false);
+      return;
+    }
+
     // Top terms recent
     const recentCut = CONFIG.TREND_DAYS_RECENT;
     const recent = list.filter(r => U.isBetween(r.date, U.daysAgo(recentCut), null));
@@ -1763,119 +1549,178 @@ const Analytics = {
       const t = DataStore.computed.get(r.id)?.tokens || new Set();
       t.forEach(w => termCounts.set(w, (termCounts.get(w) || 0) + 1));
     });
-    const topTerms = Array.from(termCounts.entries())
-      .filter(([, c]) => c >= 2)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 10);
-    E.aiPatternsList.innerHTML = topTerms.length
-      ? topTerms
-          .map(
-            ([t, c]) =>
-              `<li><strong>${U.escapeHtml(t)}</strong> – ${c}</li>`
-          )
-          .join('')
-      : '<li>No strong repeated terms recently.</li>';
+    if (E.aiPatternsList) {
+      const topTerms = Array.from(termCounts.entries())
+        .filter(([, c]) => c >= 2)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10);
+      E.aiPatternsList.innerHTML = topTerms.length
+        ? topTerms
+            .map(
+              ([t, c]) =>
+                `<li><strong>${U.escapeHtml(t)}</strong> – ${c}</li>`
+            )
+            .join('')
+        : '<li>No strong repeated terms recently.</li>';
+    }
 
     // Suggested categories frequency
-    const catCount = new Map();
-    list.forEach(r => {
-      const cats = DataStore.computed.get(r.id)?.suggestions?.categories || [];
-      cats.forEach(c => catCount.set(c.label, (catCount.get(c.label) || 0) + 1));
-    });
-    const topCats = Array.from(catCount.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 8);
-    E.aiLabelsList.innerHTML = topCats.length
-      ? topCats
-          .map(
-            ([l, n]) =>
-              `<li><strong>${U.escapeHtml(l)}</strong> – ${n}</li>`
-          )
-          .join('')
-      : '<li>No clear category suggestions yet.</li>';
+    if (E.aiLabelsList) {
+      const catCount = new Map();
+      list.forEach(r => {
+        const cats = DataStore.computed.get(r.id)?.suggestions?.categories || [];
+        cats.forEach(c => catCount.set(c.label, (catCount.get(c.label) || 0) + 1));
+      });
+      const topCats = Array.from(catCount.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 8);
+      E.aiLabelsList.innerHTML = topCats.length
+        ? topCats
+            .map(
+              ([l, n]) =>
+                `<li><strong>${U.escapeHtml(l)}</strong> – ${n}</li>`
+            )
+            .join('')
+        : '<li>No clear category suggestions yet.</li>';
+    }
 
     // Scope & signals
-    E.aiScopeText.textContent = `Analyzing ${list.length} issues (${recent.length} recent, ~last ${recentCut} days).`;
-    const signals = ['timeout', 'payments', 'billing', 'login', 'auth', 'error', 'crash'].filter(
-      t => termCounts.has(t)
-    );
-    E.aiSignalsText.textContent = signals.length
-      ? `Recent mentions: ${signals.join(', ')}.`
-      : 'No strong recurring signals.';
+    if (E.aiScopeText)
+      E.aiScopeText.textContent = `Analyzing ${list.length} issues (${recent.length} recent, ~last ${recentCut} days).`;
+    if (E.aiSignalsText) {
+      const signals = ['timeout', 'payments', 'billing', 'login', 'auth', 'error', 'crash'].filter(
+        t => termCounts.has(t)
+      );
+      E.aiSignalsText.textContent = signals.length
+        ? `Recent mentions: ${signals.join(', ')}.`
+        : 'No strong recurring signals.';
+    }
 
     // Trends
-    const oldStart = U.daysAgo(CONFIG.TREND_DAYS_WINDOW),
-      mid = U.daysAgo(CONFIG.TREND_DAYS_RECENT);
-    const oldCounts = new Map(),
-      newCounts = new Map();
-    const inHalf = r => {
-      const d = new Date(r.date);
-      if (isNaN(d)) return null;
-      if (d < mid && d >= oldStart) return 'old';
-      if (d >= mid) return 'new';
-      return null;
-    };
-    list.forEach(r => {
-      const half = inHalf(r);
-      if (!half) return;
-      const toks = DataStore.computed.get(r.id)?.tokens || new Set();
-      const tgt = half === 'old' ? oldCounts : newCounts;
-      new Set(toks).forEach(t => tgt.set(t, (tgt.get(t) || 0) + 1));
-    });
-    const trendTerms = new Set([...oldCounts.keys(), ...newCounts.keys()]);
-    const trend = [];
-    trendTerms.forEach(t => {
-      const a = oldCounts.get(t) || 0,
-        b = newCounts.get(t) || 0;
-      const d = b - a;
-      const ratio = a === 0 ? (b >= 2 ? Infinity : 0) : b / a;
-      if ((b >= 2 && ratio >= 2) || d >= 2) trend.push({ t, old: a, new: b, delta: d, ratio });
-    });
-    trend.sort(
-      (x, y) =>
-        (y.ratio === Infinity) - (x.ratio === Infinity) ||
-        y.delta - x.delta ||
-        y.new - x.new
-    );
-    E.aiTrendsList.innerHTML = trend.length
-      ? trend
-          .slice(0, 8)
-          .map(
-            o =>
-              `<li><strong>${U.escapeHtml(o.t)}</strong> – ${o.new} vs ${o.old} <span class="muted">(Δ ${
-                o.delta >= 0 ? `+${o.delta}` : o.delta
-              })</span></li>`
-          )
-          .join('')
-      : '<li>No strong increases.</li>';
+    if (E.aiTrendsList) {
+      const oldStart = U.daysAgo(CONFIG.TREND_DAYS_WINDOW),
+        mid = U.daysAgo(CONFIG.TREND_DAYS_RECENT);
+      const oldCounts = new Map(),
+        newCounts = new Map();
+      const inHalf = r => {
+        const d = new Date(r.date);
+        if (isNaN(d)) return null;
+        if (d < mid && d >= oldStart) return 'old';
+        if (d >= mid) return 'new';
+        return null;
+      };
+      list.forEach(r => {
+        const half = inHalf(r);
+        if (!half) return;
+        const toks = DataStore.computed.get(r.id)?.tokens || new Set();
+        const tgt = half === 'old' ? oldCounts : newCounts;
+        new Set(toks).forEach(t => tgt.set(t, (tgt.get(t) || 0) + 1));
+      });
+      const trendTerms = new Set([...oldCounts.keys(), ...newCounts.keys()]);
+      const trend = [];
+      trendTerms.forEach(t => {
+        const a = oldCounts.get(t) || 0,
+          b = newCounts.get(t) || 0;
+        const d = b - a;
+        const ratio = a === 0 ? (b >= 2 ? Infinity : 0) : b / a;
+        if ((b >= 2 && ratio >= 2) || d >= 2) trend.push({ t, old: a, new: b, delta: d, ratio });
+      });
+      trend.sort(
+        (x, y) =>
+          (y.ratio === Infinity) - (x.ratio === Infinity) ||
+          y.delta - x.delta ||
+          y.new - x.new
+      );
+      E.aiTrendsList.innerHTML = trend.length
+        ? trend
+            .slice(0, 8)
+            .map(
+              o =>
+                `<li><strong>${U.escapeHtml(o.t)}</strong> – ${o.new} vs ${o.old} <span class="muted">(Δ ${
+                  o.delta >= 0 ? `+${o.delta}` : o.delta
+                })</span></li>`
+            )
+            .join('')
+        : '<li>No strong increases.</li>';
+    }
 
     // Incidents
-    const incidentWords = ['incident', 'outage', 'p0', 'p1', 'major', 'sla'];
-    const incidents = list
-      .filter(r => {
-        const txt = [r.title, r.desc, r.log].filter(Boolean).join(' ').toLowerCase();
-        return incidentWords.some(w => txt.includes(w));
-      })
-      .slice(0, 10);
-    E.aiIncidentsList.innerHTML = incidents.length
-      ? incidents
-          .map(
-            r => `
+    if (E.aiIncidentsList) {
+      const incidentWords = ['incident', 'outage', 'p0', 'p1', 'major', 'sla'];
+      const incidents = list
+        .filter(r => {
+          const txt = [r.title, r.desc, r.log].filter(Boolean).join(' ').toLowerCase();
+          return incidentWords.some(w => txt.includes(w));
+        })
+        .slice(0, 10);
+      E.aiIncidentsList.innerHTML = incidents.length
+        ? incidents
+            .map(
+              r => `
       <li><button class="btn sm" data-open="${U.escapeAttr(
         r.id
       )}">${U.escapeHtml(r.id)}</button> ${U.escapeHtml(r.title || '')}</li>
     `
-          )
-          .join('')
-      : '<li>No incident-like issues detected.</li>';
+            )
+            .join('')
+        : '<li>No incident-like issues detected.</li>';
+    }
 
     // Emerging vs stable
-    const emerg = trend.slice(0, 5).map(t => t.t);
-    const stable = topTerms
-      .filter(([t]) => !emerg.includes(t))
-      .slice(0, 5)
-      .map(([t]) => t);
-    E.aiEmergingStable.innerHTML = `
+    if (E.aiEmergingStable) {
+      const oldStart = U.daysAgo(CONFIG.TREND_DAYS_WINDOW),
+        mid = U.daysAgo(CONFIG.TREND_DAYS_RECENT);
+      const oldCounts = new Map(),
+        newCounts = new Map();
+      const inHalf = r => {
+        const d = new Date(r.date);
+        if (isNaN(d)) return null;
+        if (d < mid && d >= oldStart) return 'old';
+        if (d >= mid) return 'new';
+        return null;
+      };
+      list.forEach(r => {
+        const half = inHalf(r);
+        if (!half) return;
+        const toks = DataStore.computed.get(r.id)?.tokens || new Set();
+        const tgt = half === 'old' ? oldCounts : newCounts;
+        new Set(toks).forEach(t => tgt.set(t, (tgt.get(t) || 0) + 1));
+      });
+
+      const recentCut = CONFIG.TREND_DAYS_RECENT;
+      const recent = list.filter(r => U.isBetween(r.date, U.daysAgo(recentCut), null));
+      const termCounts = new Map();
+      recent.forEach(r => {
+        const t = DataStore.computed.get(r.id)?.tokens || new Set();
+        t.forEach(w => termCounts.set(w, (termCounts.get(w) || 0) + 1));
+      });
+      const topTerms = Array.from(termCounts.entries())
+        .filter(([, c]) => c >= 2)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10);
+
+      const trendTerms = new Set([...oldCounts.keys(), ...newCounts.keys()]);
+      const trend = [];
+      trendTerms.forEach(t => {
+        const a = oldCounts.get(t) || 0,
+          b = newCounts.get(t) || 0;
+        const d = b - a;
+        const ratio = a === 0 ? (b >= 2 ? Infinity : 0) : b / a;
+        if ((b >= 2 && ratio >= 2) || d >= 2) trend.push({ t, old: a, new: b, delta: d, ratio });
+      });
+      trend.sort(
+        (x, y) =>
+          (y.ratio === Infinity) - (x.ratio === Infinity) ||
+          y.delta - x.delta ||
+          y.new - x.new
+      );
+
+      const emerg = trend.slice(0, 5).map(t => t.t);
+      const stable = topTerms
+        .filter(([t]) => !emerg.includes(t))
+        .slice(0, 5)
+        .map(([t]) => t);
+      E.aiEmergingStable.innerHTML = `
       <li><strong>Emerging:</strong> ${
         emerg.length ? emerg.map(x => U.escapeHtml(x)).join(', ') : '—'
       }</li>
@@ -1883,29 +1728,31 @@ const Analytics = {
         stable.length ? stable.map(x => U.escapeHtml(x)).join(', ') : '—'
       }</li>
     `;
+    }
 
     // Ops cockpit
-    const misaligned = list.filter(r => {
-      const meta = DataStore.computed.get(r.id);
-      if (!meta) return false;
-      const gap = prioGap(meta.suggestions?.priority, r.priority);
-      return gap >= CONFIG.RISK.misalignedDelta;
-    });
-    const missingPriority = list.filter(r => !r.priority);
-    const missingModule = list.filter(r => !r.module || r.module === 'Unspecified');
-    const staleHigh = list.filter(r => {
-      const meta = DataStore.computed.get(r.id);
-      if (!meta) return false;
-      const risk = meta.risk?.total || 0;
-      const old = U.daysAgo(CONFIG.RISK.staleDays);
-      const st = (r.status || '').toLowerCase();
-      return (
-        risk >= CONFIG.RISK.highRisk &&
-        U.isBetween(r.date, null, old) &&
-        !(st.startsWith('resolved') || st.startsWith('rejected'))
-      );
-    });
-    E.aiOpsCockpit.innerHTML = `
+    if (E.aiOpsCockpit) {
+      const misaligned = list.filter(r => {
+        const meta = DataStore.computed.get(r.id);
+        if (!meta) return false;
+        const gap = prioGap(meta.suggestions?.priority, r.priority);
+        return gap >= CONFIG.RISK.misalignedDelta;
+      });
+      const missingPriority = list.filter(r => !r.priority);
+      const missingModule = list.filter(r => !r.module || r.module === 'Unspecified');
+      const staleHigh = list.filter(r => {
+        const meta = DataStore.computed.get(r.id);
+        if (!meta) return false;
+        const risk = meta.risk?.total || 0;
+        const old = U.daysAgo(CONFIG.RISK.staleDays);
+        const st = (r.status || '').toLowerCase();
+        return (
+          risk >= CONFIG.RISK.highRisk &&
+          U.isBetween(r.date, null, old) &&
+          !(st.startsWith('resolved') || st.startsWith('rejected'))
+        );
+      });
+      E.aiOpsCockpit.innerHTML = `
       <li>Untagged issues (missing category/type): ${
         list.filter(r => !r.type).length
       }</li>
@@ -1916,59 +1763,61 @@ const Analytics = {
       CONFIG.RISK.staleDays
     }d: ${staleHigh.length}</li>
     `;
+    }
 
     // Module insights
-    const modules = (() => {
-      const map = new Map();
-      list.forEach(r => {
-        let m = map.get(r.module);
-        if (!m) {
-          m = {
-            module: r.module,
-            total: 0,
-            open: 0,
-            high: 0,
-            risk: 0,
-            tokens: new Map()
-          };
-          map.set(r.module, m);
-        }
-        m.total++;
-        const st = (r.status || '').toLowerCase();
-        if (!st.startsWith('resolved') && !st.startsWith('rejected')) {
-          m.open++;
-          if (r.priority === 'High') m.high++;
-        }
-        const rs = DataStore.computed.get(r.id)?.risk?.total || 0;
-        m.risk += rs;
-        (DataStore.computed.get(r.id)?.tokens || new Set()).forEach(t =>
-          m.tokens.set(t, (m.tokens.get(t) || 0) + 1)
-        );
-      });
-      return Array.from(map.values())
-        .map(m => {
-          const tt = m.tokens.size
-            ? Array.from(m.tokens.entries()).sort((a, b) => b[1] - a[1])[0][0]
-            : '';
-          return {
-            module: m.module,
-            open: m.open,
-            high: m.high,
-            risk: m.risk,
-            topTerm: tt
-          };
-        })
-        .sort((a, b) => b.risk - a.risk || b.open - a.open)
-        .slice(0, 8);
-    })();
-
-    const maxModuleRisk = modules.reduce((max, m) => Math.max(max, m.risk), 0) || 1;
-
-    E.aiModulesTableBody.innerHTML = modules.length
-      ? modules
+    if (E.aiModulesTableBody) {
+      const modules = (() => {
+        const map = new Map();
+        list.forEach(r => {
+          let m = map.get(r.module);
+          if (!m) {
+            m = {
+              module: r.module,
+              total: 0,
+              open: 0,
+              high: 0,
+              risk: 0,
+              tokens: new Map()
+            };
+            map.set(r.module, m);
+          }
+          m.total++;
+          const st = (r.status || '').toLowerCase();
+          if (!st.startsWith('resolved') && !st.startsWith('rejected')) {
+            m.open++;
+            if (r.priority === 'High') m.high++;
+          }
+          const rs = DataStore.computed.get(r.id)?.risk?.total || 0;
+          m.risk += rs;
+          (DataStore.computed.get(r.id)?.tokens || new Set()).forEach(t =>
+            m.tokens.set(t, (m.tokens.get(t) || 0) + 1)
+          );
+        });
+        return Array.from(map.values())
           .map(m => {
-            const ratio = m.risk / maxModuleRisk;
-            return `
+            const tt = m.tokens.size
+              ? Array.from(m.tokens.entries()).sort((a, b) => b[1] - a[1])[0][0]
+              : '';
+            return {
+              module: m.module,
+              open: m.open,
+              high: m.high,
+              risk: m.risk,
+              topTerm: tt
+            };
+          })
+          .sort((a, b) => b.risk - a.risk || b.open - a.open)
+          .slice(0, 8);
+      })();
+
+      const maxModuleRisk = modules.reduce((max, m) => Math.max(max, m.risk), 0) || 1;
+
+      E.aiModulesTableBody.innerHTML = modules.length
+        ? modules
+            .map(m => {
+              const ratio = m.risk / maxModuleRisk;
+              return `
         <tr>
           <td>${U.escapeHtml(m.module)}</td>
           <td>${m.open}</td>
@@ -1982,22 +1831,26 @@ const Analytics = {
           <td>${U.escapeHtml(m.topTerm || '-')}</td>
         </tr>
       `;
-          })
-          .join('')
-      : '<tr><td colspan="5" style="text-align:center;color:var(--muted)">No modules.</td></tr>';
+            })
+            .join('')
+        : '<tr><td colspan="5" style="text-align:center;color:var(--muted)">No modules.</td></tr>';
+    }
 
     // Top risks
-    const topRisks = recent
-      .map(r => ({ r, score: DataStore.computed.get(r.id)?.risk?.total || 0 }))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 5)
-      .filter(x => x.score > 2);
-    E.aiRisksList.innerHTML = topRisks.length
-      ? topRisks
-          .map(({ r, score }) => {
-            const badgeClass = CalendarLink.riskBadgeClass(score);
-            const meta = DataStore.computed.get(r.id)?.risk || {};
-            return `
+    if (E.aiRisksList) {
+      const recentCut = CONFIG.TREND_DAYS_RECENT;
+      const recent = list.filter(r => U.isBetween(r.date, U.daysAgo(recentCut), null));
+      const topRisks = recent
+        .map(r => ({ r, score: DataStore.computed.get(r.id)?.risk?.total || 0 }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 5)
+        .filter(x => x.score > 2);
+      E.aiRisksList.innerHTML = topRisks.length
+        ? topRisks
+            .map(({ r, score }) => {
+              const badgeClass = CalendarLink.riskBadgeClass(score);
+              const meta = DataStore.computed.get(r.id)?.risk || {};
+              return `
         <li style="margin-bottom:4px;">
           <strong>[${U.escapeHtml(r.priority || '-')} ] ${U.escapeHtml(
           r.id || ''
@@ -2009,16 +1862,18 @@ const Analytics = {
           <br><span class="muted">Status ${U.escapeHtml(r.status || '-')}</span>
           <br>${U.escapeHtml(r.title || '')}
         </li>`;
-          })
-          .join('')
-      : '<li>No high-risk recent issues.</li>';
+            })
+            .join('')
+        : '<li>No high-risk recent issues.</li>';
+    }
 
     // Clusters
-    const clusters = buildClustersWeighted(list);
-    E.aiClusters.innerHTML = clusters.length
-      ? clusters
-          .map(
-            c => `
+    if (E.aiClusters) {
+      const clusters = buildClustersWeighted(list);
+      E.aiClusters.innerHTML = clusters.length
+        ? clusters
+            .map(
+              c => `
       <div class="card" style="padding:10px;">
         <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">
           Pattern: <strong>${U.escapeHtml(c.signature || '(no pattern)')}</strong> • ${
@@ -2044,42 +1899,44 @@ const Analytics = {
         </ul>
       </div>
     `
-          )
-          .join('')
-      : '<div class="muted">No similar issue groups ≥2.</div>';
+            )
+            .join('')
+        : '<div class="muted">No similar issue groups ≥2.</div>';
+    }
 
     // Triage queue
-    const tri = list
-      .filter(r => {
-        const meta = DataStore.computed.get(r.id) || {};
-        const missing =
-          !r.priority || !r.module || r.module === 'Unspecified' || !r.type;
-        const gap = prioGap(meta.suggestions?.priority, r.priority);
-        return missing || gap >= CONFIG.RISK.misalignedDelta;
-      })
-      .sort(
-        (a, b) =>
-          (DataStore.computed.get(b.id)?.risk?.total || 0) -
-          (DataStore.computed.get(a.id)?.risk?.total || 0)
-      )
-      .slice(0, 15);
-    E.aiTriageList.innerHTML = tri.length
-      ? tri
-          .map(i => {
-            const meta = DataStore.computed.get(i.id) || {};
-            const miss = [];
-            if (!i.priority) miss.push('priority');
-            if (!i.module || i.module === 'Unspecified') miss.push('module');
-            if (!i.type) miss.push('type');
-            const cats =
-              (meta.suggestions?.categories || [])
-                .slice(0, 2)
-                .map(c => c.label)
-                .join(', ') || 'n/a';
-            const note = `Suggested priority: ${
-              meta.suggestions?.priority || '-'
-            }; categories: ${cats}`;
-            return `<li style="margin-bottom:6px;">
+    if (E.aiTriageList) {
+      const tri = list
+        .filter(r => {
+          const meta = DataStore.computed.get(r.id) || {};
+          const missing =
+            !r.priority || !r.module || r.module === 'Unspecified' || !r.type;
+          const gap = prioGap(meta.suggestions?.priority, r.priority);
+          return missing || gap >= CONFIG.RISK.misalignedDelta;
+        })
+        .sort(
+          (a, b) =>
+            (DataStore.computed.get(b.id)?.risk?.total || 0) -
+            (DataStore.computed.get(a.id)?.risk?.total || 0)
+        )
+        .slice(0, 15);
+      E.aiTriageList.innerHTML = tri.length
+        ? tri
+            .map(i => {
+              const meta = DataStore.computed.get(i.id) || {};
+              const miss = [];
+              if (!i.priority) miss.push('priority');
+              if (!i.module || i.module === 'Unspecified') miss.push('module');
+              if (!i.type) miss.push('type');
+              const cats =
+                (meta.suggestions?.categories || [])
+                  .slice(0, 2)
+                  .map(c => c.label)
+                  .join(', ') || 'n/a';
+              const note = `Suggested priority: ${
+                meta.suggestions?.priority || '-'
+              }; categories: ${cats}`;
+              return `<li style="margin-bottom:6px;">
         <strong>${U.escapeHtml(i.id)}</strong> — ${U.escapeHtml(i.title || '')}
         <div class="muted">Missing: ${
           miss.join(', ') || '—'
@@ -2091,31 +1948,34 @@ const Analytics = {
           )}">Copy suggestion</button>
         </div>
       </li>`;
-          })
-          .join('')
-      : '<li>No issues requiring triage.</li>';
+            })
+            .join('')
+        : '<li>No issues requiring triage.</li>';
+    }
 
     // Upcoming risky events
-    const evs = computeEventsRisk(DataStore.rows, DataStore.events);
-    E.aiEventsList.innerHTML = evs.length
-      ? evs
-          .map(r => {
-            const badge = CalendarLink.riskBadgeClass(r.risk);
-            const ev = r.event;
-            return `<li style="margin-bottom:6px;">
+    if (E.aiEventsList) {
+      const evs = computeEventsRisk(DataStore.rows, DataStore.events);
+      E.aiEventsList.innerHTML = evs.length
+        ? evs
+            .map(r => {
+              const badge = CalendarLink.riskBadgeClass(r.risk);
+              const ev = r.event;
+              return `<li style="margin-bottom:6px;">
         <strong>${U.escapeHtml(ev.title || '(no title)')}</strong>
         <span class="event-risk-badge ${badge}">RISK ${r.risk}</span>
         <div class="muted">${U.fmtTS(r.date)} · Env: ${U.escapeHtml(
           ev.env || 'Prod'
         )} · Modules: ${
-              r.modules.length
-                ? r.modules.map(U.escapeHtml).join(', ')
-                : 'n/a'
-            } · Related issues: ${r.issues.length}</div>
+                r.modules.length
+                  ? r.modules.map(U.escapeHtml).join(', ')
+                  : 'n/a'
+              } · Related issues: ${r.issues.length}</div>
       </li>`;
-          })
-          .join('')
-      : '<li>No notable risk in next 7 days.</li>';
+            })
+            .join('')
+        : '<li>No notable risk in next 7 days.</li>';
+    }
 
     // Wire AI buttons
     U.qAll('[data-open]').forEach(b =>
@@ -2141,6 +2001,9 @@ Reasons: ${(meta.risk?.reasons || []).join(', ')}`;
           .catch(() => UI.toast('Clipboard blocked'));
       })
     );
+
+    // F&B Release Planner refresh (uses all issues, not only filtered list)
+    FNBPlanner.refresh(DataStore.rows || list || []);
 
     UI.setAnalyzing(false);
   }
@@ -2196,6 +2059,479 @@ function buildClustersWeighted(list) {
   clusters.sort((a, b) => b.issues.length - a.issues.length);
   return clusters.slice(0, 6);
 }
+
+/** F&B heuristic helpers */
+function isFnbIssue(issue) {
+  const module = (issue.module || '').toLowerCase();
+  const text = [issue.title, issue.desc, issue.log].filter(Boolean).join(' ').toLowerCase();
+  return (
+    FNB_KEYWORDS.some(k => module.includes(k)) ||
+    FNB_KEYWORDS.some(k => text.includes(k))
+  );
+}
+
+function fnbDowName(dow) {
+  return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dow] || '';
+}
+
+/** F&B Release Planner (MENA) */
+const FNBPlanner = {
+  _initialized: false,
+  _model: null,
+  _hasSuggestedOnce: false,
+
+  init() {
+    if (this._initialized) return;
+    this._initialized = true;
+    if (E.fnbSuggestBtn) {
+      E.fnbSuggestBtn.addEventListener('click', () => this.suggestSlots());
+    }
+  },
+
+  refresh(allIssues) {
+    if (!E.fnbSlotsList) return; // UI not present yet
+    const rows = Array.isArray(allIssues) && allIssues.length ? allIssues : DataStore.rows || [];
+    if (!rows.length) {
+      E.fnbSlotsList.innerHTML =
+        '<li class="fnb-slot-row"><span class="muted">No tickets yet — planner will learn from incidents and release history as data arrives.</span></li>';
+      this._model = null;
+      return;
+    }
+
+    const now = new Date();
+    const lookbackFrom = U.daysAgo(CONFIG.FNB.lookbackDays);
+
+    const fnbIssues = rows.filter(r => {
+      if (!r.date) return false;
+      const d = new Date(r.date);
+      if (isNaN(d)) return false;
+      if (!U.isBetween(d, lookbackFrom, now)) return false;
+      return isFnbIssue(r);
+    });
+
+    // If absolutely no F&B-sounding issues, still build a model but mark it as sparse
+    const effectiveIssues = fnbIssues.length ? fnbIssues : rows;
+
+    const heat = this._buildHeat(effectiveIssues);
+    const moduleStats = this._buildModuleStats(effectiveIssues);
+    const holidayHints = this._buildHolidayHints(rows, DataStore.events || []);
+
+    this._model = {
+      rows,
+      fnbIssues,
+      effectiveIssues,
+      heat,
+      moduleStats,
+      holidayHints,
+      builtAt: now
+    };
+
+    this._populateModuleSelect(moduleStats);
+
+    // Auto suggest once on first visit to AI tab
+    if (!this._hasSuggestedOnce) {
+      this._hasSuggestedOnce = true;
+      this.suggestSlots(true);
+    }
+  },
+
+  _buildHeat(issues) {
+    const buckets = new Map(); // key "dow-hour" -> { total, high, sumRisk }
+    let maxHigh = 0;
+    let maxAvgRisk = 0;
+
+    issues.forEach(r => {
+      if (!r.date) return;
+      const d = new Date(r.date);
+      if (isNaN(d)) return;
+      const dow = d.getDay();
+      const hour = d.getHours();
+      const key = `${dow}-${hour}`;
+      const meta = DataStore.computed.get(r.id) || {};
+      const risk = meta.risk?.total || 0;
+      const high = risk >= CONFIG.RISK.highRisk ? 1 : 0;
+      let bucket = buckets.get(key);
+      if (!bucket) {
+        bucket = { total: 0, high: 0, sumRisk: 0 };
+        buckets.set(key, bucket);
+      }
+      bucket.total += 1;
+      bucket.high += high;
+      bucket.sumRisk += risk;
+    });
+
+    buckets.forEach(b => {
+      const avg = b.total ? b.sumRisk / b.total : 0;
+      if (b.high > maxHigh) maxHigh = b.high;
+      if (avg > maxAvgRisk) maxAvgRisk = avg;
+    });
+
+    return {
+      buckets,
+      maxHigh: maxHigh || 1,
+      maxAvgRisk: maxAvgRisk || 1
+    };
+  },
+
+  _buildModuleStats(issues) {
+    const map = new Map();
+    const now = new Date();
+    const recentCut = U.daysAgo(30);
+
+    issues.forEach(r => {
+      const mod = r.module || 'Unspecified';
+      let m = map.get(mod);
+      if (!m) {
+        m = { module: mod, total: 0, recentHigh: 0, lastIncident: null, sumRisk: 0 };
+        map.set(mod, m);
+      }
+      m.total++;
+      const meta = DataStore.computed.get(r.id) || {};
+      const risk = meta.risk?.total || 0;
+      const d = r.date ? new Date(r.date) : null;
+      if (!isNaN(d)) {
+        if (!m.lastIncident || d > m.lastIncident) m.lastIncident = d;
+        if (risk >= CONFIG.RISK.highRisk && U.isBetween(d, recentCut, now)) m.recentHigh++;
+      }
+      m.sumRisk += risk;
+    });
+
+    map.forEach(m => {
+      m.avgRisk = m.total ? m.sumRisk / m.total : 0;
+      m.lastIncidentDaysAgo = m.lastIncident
+        ? Math.round((now.getTime() - m.lastIncident.getTime()) / 86400000)
+        : null;
+    });
+
+    return map;
+  },
+
+  _buildHolidayHints(issues, events) {
+    // We’ll just track dates that mention holiday-ish words
+    const kws = CONFIG.FNB.keywordHolidayHints;
+    const mark = new Map(); // key "YYYY-MM-DD" -> {score,names[]}
+    const touch = (dateStr, reason) => {
+      if (!dateStr) return;
+      let d;
+      try {
+        d = new Date(dateStr);
+      } catch {
+        return;
+      }
+      if (isNaN(d)) return;
+      const key = `${d.getFullYear()}-${U.pad(d.getMonth() + 1)}-${U.pad(d.getDate())}`;
+      let v = mark.get(key);
+      if (!v) {
+        v = { score: 0, reasons: [] };
+        mark.set(key, v);
+      }
+      v.score += 1;
+      if (reason && !v.reasons.includes(reason)) v.reasons.push(reason);
+    };
+
+    issues.forEach(r => {
+      const txt = [r.title, r.desc, r.log].filter(Boolean).join(' ').toLowerCase();
+      if (!kws.some(k => txt.includes(k))) return;
+      if (r.date) touch(r.date, 'Ticket mentions seasonal/holiday context');
+    });
+
+    (events || []).forEach(ev => {
+      const txt = [ev.title, ev.description].filter(Boolean).join(' ').toLowerCase();
+      if (!kws.some(k => txt.includes(k))) return;
+      if (ev.start) touch(ev.start, 'Calendar event mentions seasonal/holiday context');
+    });
+
+    // Add fixed F&B-heavy holidays
+    CONFIG.FNB.fixedHolidays.forEach(h => {
+      const nowYear = new Date().getFullYear();
+      const d = new Date(nowYear, h.month - 1, h.day);
+      const key = `${d.getFullYear()}-${U.pad(d.getMonth() + 1)}-${U.pad(d.getDate())}`;
+      let v = mark.get(key);
+      if (!v) {
+        v = { score: 0, reasons: [] };
+        mark.set(key, v);
+      }
+      v.score += 2; // stronger weight
+      if (!v.reasons.includes(h.name)) v.reasons.push(h.name);
+    });
+
+    return mark;
+  },
+
+  _populateModuleSelect(moduleStats) {
+    if (!E.fnbModuleSelect) return;
+    const prev = E.fnbModuleSelect.value || 'All F&B';
+    const modules = Array.from(moduleStats.keys())
+      .filter(m => m && m !== 'Unspecified')
+      .sort((a, b) => a.localeCompare(b));
+    const opts = ['All F&B', ...modules];
+    E.fnbModuleSelect.innerHTML = opts
+      .map(m => `<option value="${U.escapeAttr(m)}">${U.escapeHtml(m)}</option>`)
+      .join('');
+    if (opts.includes(prev)) E.fnbModuleSelect.value = prev;
+  },
+
+  _slotScore(start, end, moduleName) {
+    const d = start;
+    const dow = d.getDay();
+    const hour = d.getHours() + d.getMinutes() / 60;
+    const isWeekend = CONFIG.FNB.weekendDays.includes(dow);
+
+    let score = 0;
+    const reasons = [];
+
+    // Traffic pattern: rush vs quiet
+    CONFIG.FNB.rushWindows.forEach(w => {
+      if (hour >= w.startHour && hour < w.endHour) {
+        score += w.weight;
+        reasons.push(`${w.label} (high traffic)`);
+      }
+    });
+    CONFIG.FNB.quietWindows.forEach(w => {
+      if (hour >= w.startHour && hour < w.endHour) {
+        score += w.weight;
+        reasons.push(`${w.label} (quieter window)`);
+      }
+    });
+
+    if (isWeekend) {
+      score += CONFIG.FNB.weekendWeight;
+      reasons.push('Weekend (Fri/Sat) — usually busier for F&B');
+    }
+
+    // Historical incident heat by day-of-week + hour
+    if (this._model && this._model.heat) {
+      const key = `${dow}-${d.getHours()}`;
+      const bucket = this._model.heat.buckets.get(key);
+      if (bucket && bucket.total) {
+        const highRatio = bucket.high / this._model.heat.maxHigh;
+        const avgRatio = (bucket.sumRisk / bucket.total) / this._model.heat.maxAvgRisk;
+        const histScore = (highRatio + avgRatio) * 2; // 0..4 approx
+        score += histScore;
+        reasons.push(
+          `Historical incidents at this hour: ${bucket.high} high-risk / ${bucket.total} total`
+        );
+      } else {
+        reasons.push('No F&B ticket history at this exact hour (neutral)');
+      }
+    }
+
+    // Module seasoning
+    if (this._model && this._model.moduleStats) {
+      const mod =
+        moduleName && moduleName !== 'All F&B'
+          ? this._model.moduleStats.get(moduleName)
+          : null;
+      if (mod) {
+        if (mod.recentHigh >= 3) {
+          score += 3;
+          reasons.push(
+            `${mod.recentHigh} recent high-risk incidents on ${mod.module} (last 30d)`
+          );
+        } else if (mod.recentHigh >= 1) {
+          score += 2;
+          reasons.push(
+            `${mod.recentHigh} high-risk incident on ${mod.module} (last 30d)`
+          );
+        }
+        if (mod.lastIncidentDaysAgo != null && mod.lastIncidentDaysAgo <= 7) {
+          score += 1.5;
+          reasons.push(`Last incident on this module ~${mod.lastIncidentDaysAgo} day(s) ago`);
+        } else if (mod.lastIncidentDaysAgo != null && mod.lastIncidentDaysAgo > 30) {
+          score -= 1;
+          reasons.push('Module appears stable (no recent incidents)');
+        }
+      }
+    }
+
+    // Holiday / seasonal hints
+    let holidayLabel = 'Normal day';
+    if (this._model && this._model.holidayHints) {
+      const key = `${d.getFullYear()}-${U.pad(d.getMonth() + 1)}-${U.pad(d.getDate())}`;
+      const hints = this._model.holidayHints.get(key);
+      if (hints && hints.score) {
+        score += CONFIG.FNB.holidayWeight;
+        holidayLabel = `F&B-sensitive day: ${hints.reasons.join(', ')}`;
+        reasons.push(holidayLabel);
+      }
+    }
+
+    // Check for change collisions with existing events
+    let hasCollision = false;
+    let hasSameModuleChange = false;
+    if (DataStore.events && DataStore.events.length) {
+      const slotStart = d;
+      const slotEnd = end;
+      const modLower = (moduleName || '').toLowerCase();
+      DataStore.events.forEach(ev => {
+        if (!ev.start) return;
+        const es = new Date(ev.start);
+        if (isNaN(es)) return;
+        const ee = ev.end ? new Date(ev.end) : new Date(es.getTime() + 60 * 60000);
+        if (ee <= slotStart || es >= slotEnd) return;
+        hasCollision = true;
+        score += 2;
+        const modulesArr = Array.isArray(ev.modules)
+          ? ev.modules
+          : typeof ev.modules === 'string'
+          ? ev.modules.split(',').map(s => s.trim())
+          : [];
+        if (
+          modulesArr.some(m => (m || '').toLowerCase() === modLower) ||
+          (!modulesArr.length && (ev.title || '').toLowerCase().includes(modLower))
+        ) {
+          hasSameModuleChange = true;
+          score += 1;
+        }
+      });
+    }
+    if (hasCollision) {
+      reasons.push('Overlaps with existing deployment / maintenance event');
+      if (hasSameModuleChange) {
+        reasons.push('Overlaps event on the same module');
+      }
+    }
+
+    return {
+      score,
+      reasons,
+      dow,
+      holidayLabel
+    };
+  },
+
+  _formatSlot(start, end) {
+    const d = start;
+    const dow = fnbDowName(d.getDay());
+    const datePart = `${dow} ${d.getFullYear()}-${U.pad(d.getMonth() + 1)}-${U.pad(
+      d.getDate()
+    )}`;
+    const t = (x) => `${U.pad(x.getHours())}:${U.pad(x.getMinutes())}`;
+    return `${datePart} · ${t(start)} – ${t(end)}`;
+  },
+
+  suggestSlots(isAuto = false) {
+    if (!this._model) {
+      if (!isAuto) {
+        UI.toast('Planner is still loading data — try again after issues are loaded.');
+      }
+      return;
+    }
+    if (!E.fnbSlotsList) return;
+
+    const minutes =
+      (E.fnbDurationInput && Number(E.fnbDurationInput.value)) || 30;
+    const durMs = Math.max(5, Math.min(minutes, 240)) * 60000;
+
+    const moduleName =
+      (E.fnbModuleSelect && E.fnbModuleSelect.value) || 'All F&B';
+
+    let baseDate;
+    if (E.fnbDateInput && E.fnbDateInput.value) {
+      baseDate = new Date(E.fnbDateInput.value + 'T00:00');
+    } else {
+      baseDate = U.dateAddDays(new Date(), 1);
+    }
+    if (isNaN(baseDate)) baseDate = U.dateAddDays(new Date(), 1);
+
+    const candidates = [];
+    const daysToScan = 7;
+
+    for (let i = 0; i < daysToScan; i++) {
+      const day = U.dateAddDays(baseDate, i);
+      CONFIG.FNB.preferredSlotsLocal.forEach(slot => {
+        const start = new Date(
+          day.getFullYear(),
+          day.getMonth(),
+          day.getDate(),
+          slot.hour,
+          slot.minute || 0,
+          0,
+          0
+        );
+        const end = new Date(start.getTime() + durMs);
+        const { score, reasons, dow, holidayLabel } = this._slotScore(
+          start,
+          end,
+          moduleName
+        );
+        candidates.push({
+          start,
+          end,
+          score,
+          reasons,
+          dow,
+          holidayLabel
+        });
+      });
+    }
+
+    if (!candidates.length) {
+      E.fnbSlotsList.innerHTML =
+        '<li class="fnb-slot-row"><span class="muted">No candidate windows generated.</span></li>';
+      return;
+    }
+
+    candidates.sort((a, b) => a.score - b.score);
+
+    const bestScore = candidates[0].score;
+    const worstScore = candidates[candidates.length - 1].score || 1;
+    const span = Math.max(1, worstScore - bestScore);
+
+    const top = candidates.slice(0, 7);
+
+    E.fnbSlotsList.innerHTML = top
+      .map((c, idx) => {
+        const normalized = (c.score - bestScore) / span; // 0..1
+        let band = 'Low';
+        if (normalized >= 0.66) band = 'High';
+        else if (normalized >= 0.33) band = 'Medium';
+
+        const highlightClass = idx === 0 ? 'highlight' : '';
+        const bandLabel =
+          band === 'Low'
+            ? 'Recommended (quieter & safer)'
+            : band === 'Medium'
+            ? 'Acceptable with some risk'
+            : 'Avoid if possible (busy/stacked)';
+
+        return `
+      <li class="fnb-slot-row ${highlightClass}">
+        <div class="fnb-slot-header">
+          <div><strong>${U.escapeHtml(this._formatSlot(c.start, c.end))}</strong></div>
+          <span class="fnb-slot-badge">
+            <span>${
+              band === 'Low' ? '🟢' : band === 'Medium' ? '🟠' : '🔴'
+            }</span> ${U.escapeHtml(band)} risk
+          </span>
+          <span class="fnb-slot-badge">
+            <span>🍽</span> ${U.escapeHtml(c.holidayLabel || 'Normal day')}
+          </span>
+        </div>
+        <div class="fnb-slot-risk" style="margin-top:4px;">
+          ${U.escapeHtml(bandLabel)}
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
+          <div class="fnb-slot-risk-bar">
+            <div class="fnb-slot-risk-bar-inner" style="transform:scaleX(${(
+              0.15 + normalized * 0.85
+            ).toFixed(2)});"></div>
+          </div>
+          <span class="muted" style="font-size:11px;">Score ${c.score.toFixed(1)}</span>
+        </div>
+        <div class="fnb-slot-reasons" style="margin-top:4px;">
+          ${c.reasons.map(r => `• ${U.escapeHtml(r)}`).join('<br>')}
+        </div>
+      </li>
+    `;
+      })
+      .join('');
+
+    if (!isAuto) {
+      UI.toast('F&B release windows recalculated');
+    }
+  }
+};
 
 /** Modals */
 UI.Modals = {
@@ -2410,14 +2746,7 @@ function setActiveView(view) {
     ensureCalendar();
     renderCalendarEvents();
   }
-  if (view === 'insights') {
-    Analytics.refresh(UI.Issues.applyFilters());
-    // Auto-run F&B planner once when opening AI tab
-    if (E.releasePlannerRun && !E.releasePlannerRun.dataset.autoRunDone) {
-      E.releasePlannerRun.dataset.autoRunDone = '1';
-      E.releasePlannerRun.click();
-    }
-  }
+  if (view === 'insights') Analytics.refresh(UI.Issues.applyFilters());
 }
 
 /* ---------- Calendar wiring ---------- */
@@ -2494,7 +2823,7 @@ function ensureCalendar() {
           owner: info.event.extendedProps.owner || '',
           modules: info.event.extendedProps.modules || [],
           impactType: info.event.extendedProps.impactType || 'No downtime expected',
-          notificationStatus: info.event.extendedProps.notificationStatus || '' // ✅ NEW
+          notificationStatus: info.event.extendedProps.notificationStatus || ''
         };
       UI.Modals.openEvent(ev);
     },
@@ -2626,7 +2955,7 @@ function renderCalendarEvents() {
         owner,
         modules,
         impactType,
-        notificationStatus: ev.notificationStatus || '', // ✅ NEW
+        notificationStatus: ev.notificationStatus || '',
         collision: !!flags.collision,
         freeze: !!flags.freeze,
         hotIssues: !!flags.hotIssues
@@ -2748,7 +3077,7 @@ async function loadEvents(force = false) {
         owner: ev.owner || '',
         modules: modulesArr,
         impactType: ev.impactType || ev.impact || 'No downtime expected',
-        notificationStatus: ev.notificationStatus || '' // ✅ NEW: keep sheet column
+        notificationStatus: ev.notificationStatus || ''
       };
     });
 
@@ -2810,11 +3139,9 @@ async function saveEventToSheet(event) {
       end: event.end || '',
       description: event.description || '',
 
-      notificationStatus: event.notificationStatus || '', // ✅ NEW: pass through to sheet
+      notificationStatus: event.notificationStatus || '',
       allDay: !!event.allDay
     };
-
-    console.log('[InCheck] sending event payload to Apps Script:', payload);
 
     const res = await fetch(CONFIG.CALENDAR_API_URL, {
       method: 'POST',
@@ -2835,7 +3162,6 @@ async function saveEventToSheet(event) {
 
     if (data.ok) {
       UI.toast('Event saved');
-      // Make sure we keep notificationStatus from server if set
       const savedEvent = data.event || payload;
       if (!savedEvent.notificationStatus && payload.notificationStatus) {
         savedEvent.notificationStatus = payload.notificationStatus;
@@ -2996,7 +3322,8 @@ function wireCore() {
     UI.Issues.renderKPIs(list);
     UI.Issues.renderTable(list);
     UI.Issues.renderCharts(list);
-    if (E.insightsView.classList.contains('active')) Analytics.refresh(list);
+    if (E.insightsView && E.insightsView.classList.contains('active'))
+      Analytics.refresh(list);
   };
 }
 
@@ -3259,7 +3586,7 @@ function wireModals() {
         owner: ownerVal,
         modules: modulesArr,
         impactType: impactTypeVal,
-        notificationStatus: '' // ✅ keep blank; Apps Script may set "Sent"
+        notificationStatus: ''
       };
       if (!ev.title) return UI.toast('Title is required');
       if (!ev.start) return UI.toast('Start date/time is required');
@@ -3323,26 +3650,6 @@ function wireModals() {
       }
     });
   }
-}
-
-/* ---------- F&B release planner wiring ---------- */
-function wireReleasePlanner() {
-  if (!E.releasePlannerRun) return;
-  const run = () => {
-    const days =
-      parseInt(E.releasePlannerHorizon?.value || CONFIG.FNB.DEFAULT_HORIZON_DAYS, 10) ||
-      CONFIG.FNB.DEFAULT_HORIZON_DAYS;
-    const env = (E.releasePlannerEnv?.value || 'Prod').trim() || 'Prod';
-    const module = (E.releasePlannerModule?.value || '').trim();
-    const results = FnbReleasePlanner.suggestWindows({
-      days,
-      module,
-      env,
-      count: CONFIG.FNB.DEFAULT_RESULTS
-    });
-    renderReleasePlannerResults(results, { days, module, env });
-  };
-  E.releasePlannerRun.addEventListener('click', run);
 }
 
 /* ---------- AI wiring ---------- */
@@ -3499,9 +3806,9 @@ function initApp() {
   wireTheme();
   wireConnectivity();
   wireModals();
-  wireReleasePlanner();
   wireAI();
   wireCalendar();
+  FNBPlanner.init();
 
   UI.setSync('issues', false, null);
   UI.setSync('events', false, null);
