@@ -429,17 +429,16 @@ th.sorted-desc::after{border-top-color:var(--accent);border-bottom-color:transpa
 
 /* =========================================================
    AI – Per-module risk insights card
-   (full-width, no inner scroll, “pro” table styling)
+   (full-width, “pro” table styling)
    ========================================================= */
 
 .card:has(#aiModulesTableBody){
-  /* span full grid width like "Top risks this week" */
   grid-column:1 / -1;
   max-height:none;
 }
 
-/* If there's any wrapper div adding scroll, kill it */
-.card:has(#aiModulesTableBody) > div{
+/* Only relax scroll on the inner table-wrap, not all children */
+.card:has(#aiModulesTableBody) .table-wrap{
   max-height:none;
   overflow:visible;
 }
@@ -485,7 +484,7 @@ th.sorted-desc::after{border-top-color:var(--accent);border-bottom-color:transpa
   font-variant-numeric:tabular-nums;
 }
 
-/* smaller inline risk bar inside the cell */
+/* smaller inline risk bar */
 .card:has(#aiModulesTableBody) .risk-bar-wrap{
   margin-top:2px;
   height:4px;
@@ -496,26 +495,32 @@ th.sorted-desc::after{border-top-color:var(--accent);border-bottom-color:transpa
 }
 
 /* =========================================================
-   F&B Release Planner (MENA) – UI
+   F&B Release Planner (MENA) – layout & badges
    ========================================================= */
 
-.fnb-planner-controls{
-  display:flex;
-  flex-wrap:wrap;
-  gap:8px;
-  margin-top:8px;
-  align-items:flex-end;
+#fnbReleasePlannerCard{
+  /* make sure it looks like a regular card but can stretch if needed */
 }
-.fnb-planner-controls .input,
-.fnb-planner-controls .select{
-  min-width:120px;
+
+.fnb-controls{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:10px;
+  margin-top:10px;
+  margin-bottom:10px;
 }
-.fnb-planner-hint{
-  font-size:11px;
-  color:var(--muted);
-  margin-top:4px;
+@media(max-width:980px){
+  .fnb-controls{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
 }
-.fnb-slot-list{
+@media(max-width:640px){
+  .fnb-controls{
+    grid-template-columns:1fr;
+  }
+}
+
+.fnb-slots-list{
   list-style:none;
   padding-left:0;
   margin:8px 0 0;
@@ -523,60 +528,65 @@ th.sorted-desc::after{border-top-color:var(--accent);border-bottom-color:transpa
   flex-direction:column;
   gap:6px;
 }
+
 .fnb-slot-row{
+  padding:8px 10px;
+  border-radius:10px;
+  border:1px solid rgba(148,163,184,.35);
+  background:rgba(15,23,42,.85);
+  font-size:13px;
   display:flex;
   flex-direction:column;
-  gap:4px;
-  padding:6px 8px;
-  border-radius:10px;
-  background:rgba(15,23,42,.6);
+  gap:2px;
 }
 :root[data-theme="light"] .fnb-slot-row{
-  background:rgba(226,232,255,.9);
+  background:#f9fbff;
 }
-.fnb-slot-row.highlight{
-  border:1px solid var(--accent);
+
+.fnb-slot-main{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
 }
-.fnb-slot-header{
+
+.fnb-slot-time{
+  font-weight:600;
+}
+
+.fnb-slot-meta{
+  font-size:11px;
+  color:var(--muted);
+}
+
+.fnb-slot-badges{
   display:flex;
   flex-wrap:wrap;
-  gap:6px;
-  align-items:center;
-  font-size:12px;
-}
-.fnb-slot-badge{
-  font-size:11px;
-  padding:2px 8px;
-  border-radius:999px;
-  border:1px solid var(--border);
-  background:var(--chip);
-  display:inline-flex;
-  align-items:center;
   gap:4px;
 }
-.fnb-slot-risk{
-  font-size:12px;
-  color:var(--muted);
-}
-.fnb-slot-risk-bar{
-  flex:1;
-  height:4px;
+
+.fnb-slot-badge{
+  font-size:10px;
+  padding:2px 6px;
   border-radius:999px;
-  background:rgba(148,163,184,.4);
-  overflow:hidden;
+  border:1px solid rgba(148,163,184,.45);
+  background:rgba(15,23,42,.85);
 }
-.fnb-slot-risk-bar-inner{
-  height:100%;
-  background:linear-gradient(90deg,var(--ok),var(--warn),var(--danger));
-  transform-origin:left center;
+.fnb-slot-badge.good{
+  border-color:var(--ok);
+  color:var(--ok);
 }
-.fnb-slot-reasons{
-  font-size:11px;
-  color:var(--muted);
+.fnb-slot-badge.warn{
+  border-color:var(--warn);
+  color:var(--warn);
 }
-@media(max-width:640px){
-  .fnb-planner-controls{
-    flex-direction:column;
-    align-items:stretch;
-  }
+.fnb-slot-badge.risk{
+  border-color:var(--danger);
+  color:var(--danger);
+}
+
+/* small helper for clickable hint rows if any */
+.fnb-slot-row button{
+  margin-top:4px;
 }
