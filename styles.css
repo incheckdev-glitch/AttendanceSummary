@@ -128,7 +128,6 @@ header {
 }
 .chip.online{border-color:var(--ok);color:var(--ok)}
 .chip.offline{border-color:var(--warn);color:var(--warn)}
-.shortcut-chip{font-size:11px;color:var(--muted)}
 
 /* Layout */
 .wrap{
@@ -205,6 +204,7 @@ header {
   font-size:13px;
   flex-wrap:wrap;
 }
+.shortcut-chip{font-size:11px;color:var(--muted)}
 
 /* KPIs */
 .kpi{cursor:pointer;text-align:left;position:relative;overflow:hidden}
@@ -257,7 +257,6 @@ th.sorted-desc::after{border-top-color:var(--accent);border-bottom-color:transpa
   0%{transform:translateX(-100%)}100%{transform:translateX(100%)}
 }
 
-/* Status & priority pills */
 .pill{
   padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;
   display:inline-block;letter-spacing:.04em;text-transform:uppercase;
@@ -274,7 +273,6 @@ th.sorted-desc::after{border-top-color:var(--accent);border-bottom-color:transpa
 .priority-Medium{background:var(--priority-medium);color:#fff}
 .priority-Low{background:var(--priority-low);color:#fff}
 
-/* Filter chips summary */
 .filter-chips{
   display:flex;
   flex-wrap:wrap;
@@ -298,7 +296,6 @@ th.sorted-desc::after{border-top-color:var(--accent);border-bottom-color:transpa
   color:var(--text);
 }
 
-/* Risk bar generic */
 .risk-bar-wrap{
   width:100%;
   height:6px;
@@ -432,16 +429,17 @@ th.sorted-desc::after{border-top-color:var(--accent);border-bottom-color:transpa
 
 /* =========================================================
    AI – Per-module risk insights card
-   (full-width, “pro” table styling)
+   (full-width, no inner scroll, “pro” table styling)
    ========================================================= */
 
 .card:has(#aiModulesTableBody){
+  /* span full grid width like "Top risks this week" */
   grid-column:1 / -1;
   max-height:none;
 }
 
-/* Only relax scroll on the inner table-wrap, not all children */
-.card:has(#aiModulesTableBody) .table-wrap{
+/* If there's any wrapper div adding scroll, kill it */
+.card:has(#aiModulesTableBody) > div{
   max-height:none;
   overflow:visible;
 }
@@ -487,7 +485,7 @@ th.sorted-desc::after{border-top-color:var(--accent);border-bottom-color:transpa
   font-variant-numeric:tabular-nums;
 }
 
-/* smaller inline risk bar */
+/* smaller inline risk bar inside the cell */
 .card:has(#aiModulesTableBody) .risk-bar-wrap{
   margin-top:2px;
   height:4px;
@@ -498,127 +496,55 @@ th.sorted-desc::after{border-top-color:var(--accent);border-bottom-color:transpa
 }
 
 /* =========================================================
-   F&B Release Planner (MENA) – layout & badges
+   Release Planner – F&B Middle East
    ========================================================= */
 
-#fnbReleasePlannerCard{
-  /* same card styling as others */
-}
-
-.fnb-controls{
+#releasePlannerCard .planner-grid{
   display:grid;
-  grid-template-columns:repeat(4,minmax(0,1fr));
-  gap:10px;
-  margin-top:10px;
-  margin-bottom:10px;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:12px;
 }
 @media(max-width:980px){
-  .fnb-controls{
+  #releasePlannerCard .planner-grid{
     grid-template-columns:repeat(2,minmax(0,1fr));
   }
 }
 @media(max-width:640px){
-  .fnb-controls{
+  #releasePlannerCard .planner-grid{
     grid-template-columns:1fr;
   }
 }
 
-.fnb-slots-list{
-  list-style:none;
-  padding-left:0;
-  margin:8px 0 0;
-  display:flex;
-  flex-direction:column;
-  gap:6px;
-}
-
-.fnb-slot-row{
+/* Suggested slot styling – used by JS when rendering planner results */
+.planner-slot{
+  border-radius:12px;
+  border:1px solid var(--border);
   padding:8px 10px;
-  border-radius:10px;
-  border:1px solid rgba(148,163,184,.35);
-  background:rgba(15,23,42,.85);
-  font-size:13px;
-  display:flex;
-  flex-direction:column;
-  gap:4px;
+  margin-top:6px;
+  background:rgba(15,23,42,.9);
 }
-:root[data-theme="light"] .fnb-slot-row{
-  background:#f9fbff;
+:root[data-theme="light"] .planner-slot{
+  background:var(--card);
 }
-
-/* highlight best slot */
-.fnb-slot-row.highlight{
-  border-color:var(--accent);
-  box-shadow:0 0 0 1px rgba(79,140,255,.55);
-}
-
-.fnb-slot-main{
+.planner-slot-header{
   display:flex;
   justify-content:space-between;
   align-items:center;
-  gap:8px;
-  flex-wrap:wrap;
-}
-
-.fnb-slot-time{
+  font-size:13px;
   font-weight:600;
 }
-
-.fnb-slot-meta{
+.planner-slot-meta{
   font-size:11px;
   color:var(--muted);
+  margin-top:2px;
 }
-
-.fnb-slot-badges{
-  display:flex;
-  flex-wrap:wrap;
-  gap:4px;
-}
-
-.fnb-slot-badge{
-  font-size:10px;
+.planner-slot-score{
+  font-size:11px;
+  font-weight:600;
   padding:2px 6px;
   border-radius:999px;
-  border:1px solid rgba(148,163,184,.45);
-  background:rgba(15,23,42,.85);
+  border:1px solid rgba(148,163,184,.4);
 }
-.fnb-slot-badge.good{
-  border-color:var(--ok);
-  color:var(--ok);
-}
-.fnb-slot-badge.warn{
-  border-color:var(--warn);
-  color:var(--warn);
-}
-.fnb-slot-badge.risk{
-  border-color:var(--danger);
-  color:var(--danger);
-}
-
-/* Header row used in JS */
-.fnb-slot-header{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:8px;
-  flex-wrap:wrap;
-}
-
-/* Inline risk bar for F&B */
-.fnb-slot-risk-bar{
-  flex:1;
-  height:4px;
-  border-radius:999px;
-  background:rgba(148,163,184,.3);
-  overflow:hidden;
-}
-.fnb-slot-risk-bar-inner{
-  height:100%;
-  transform-origin:left center;
-  background:linear-gradient(90deg,var(--ok),var(--warn),var(--danger));
-}
-
-/* small helper for clickable hint rows if any */
-.fnb-slot-row button{
-  margin-top:4px;
-}
+.planner-score-low{background:rgba(16,185,129,.18);}
+.planner-score-med{background:rgba(245,158,11,.2);}
+.planner-score-high{background:rgba(239,68,68,.22);}
