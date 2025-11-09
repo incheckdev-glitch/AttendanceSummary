@@ -14,7 +14,7 @@
   <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/main.min.css" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
 
-  <!-- Your app styles (moved from the old <style> block) -->
+  <!-- Your app styles -->
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -228,74 +228,6 @@
           </div>
           <div id="calendar" aria-label="Deployment & maintenance calendar"></div>
         </div>
-
-        <!-- Release Planner (F&B / Middle East) -->
-        <div class="card" id="releasePlannerCard" aria-label="Release planner for F&B clients">
-          <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:flex-start;">
-            <div>
-              <strong>Release Planner — F&amp;B Middle East</strong>
-              <div class="muted" style="margin-top:4px;font-size:12px;">
-                Suggests safer deployment windows based on rush hours, open high-risk issues and similar past bugs.
-                Lower score = safer window.
-              </div>
-            </div>
-          </div>
-
-          <div class="planner-grid" style="margin-top:10px;">
-            <div class="filter-row">
-              <label class="muted" for="plannerEnv">Environment</label>
-              <select id="plannerEnv" class="select">
-                <option value="Prod">Prod</option>
-                <option value="Staging">Staging</option>
-                <option value="Dev">Dev</option>
-                <option value="Other">Other</option>
-              </select>
-            </div>
-            <div class="filter-row">
-              <label class="muted" for="plannerModules">Modules</label>
-              <input id="plannerModules" class="input" type="text"
-                     placeholder="e.g. POS, Payments, Kitchen" />
-            </div>
-            <div class="filter-row">
-              <label class="muted" for="plannerDescription">Release description (optional)</label>
-              <textarea id="plannerDescription" class="input" rows="2"
-                        style="border-radius:12px;resize:vertical;"
-                        placeholder="Short description to match against past bugs (e.g. &quot;new payments flow, QR ordering changes&quot;)"></textarea>
-            </div>
-            <div class="filter-row">
-              <label class="muted" for="plannerHorizon">Look ahead</label>
-              <select id="plannerHorizon" class="select">
-                <option value="1">Next 24 hours</option>
-                <option value="3" selected>Next 3 days</option>
-                <option value="5">Next 5 days</option>
-                <option value="7">Next 7 days</option>
-              </select>
-            </div>
-            <div class="filter-row">
-              <label class="muted" for="plannerSlotsPerDay">Suggestions per day</label>
-              <select id="plannerSlotsPerDay" class="select">
-                <option value="2">2</option>
-                <option value="4" selected>4</option>
-                <option value="6">6</option>
-              </select>
-            </div>
-          </div>
-
-          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px;">
-            <button id="plannerRun" class="btn sm" type="button">
-              <span class="icon" aria-hidden="true">✨</span> Suggest windows
-            </button>
-            <button id="plannerAddEvent" class="btn ghost sm" type="button" disabled
-                    title="Convert top suggestion to calendar event">
-              ➕ Add top suggestion to calendar…
-            </button>
-            <span class="muted" style="font-size:11px;">
-              Scored for F&amp;B rush hours in MENA · lower is safer
-            </span>
-          </div>
-
-          <div id="plannerResults" class="muted" style="margin-top:8px;font-size:13px;"></div>
-        </div>
       </section>
 
       <!-- AI Insights view -->
@@ -387,6 +319,68 @@
             Combines calendar events with open, high-risk issues in related modules and change collision signals.
           </div>
           <ul id="aiEventsList" class="muted" style="font-size:13px;margin-top:6px;padding-left:18px;"></ul>
+        </div>
+
+        <!-- NEW: F&B release planner card -->
+        <div class="card">
+          <strong>F&amp;B Release Window Planner (Middle East)</strong>
+          <div class="muted" style="font-size:12px;margin-top:4px;">
+            Uses only your issue history to learn rush times and module fragility, then suggests safer deployment
+            windows for F&amp;B clients, taking into account Middle East weekends and holiday/event patterns.
+          </div>
+
+          <form id="releasePlannerForm"
+                style="margin-top:8px;display:flex;flex-direction:column;gap:8px;">
+            <div style="display:flex;flex-wrap:wrap;gap:8px;">
+              <div style="flex:1;min-width:160px;">
+                <label class="muted" for="plannerModulesInput">Modules (comma-separated)</label>
+                <input id="plannerModulesInput" class="input" type="text"
+                       placeholder="e.g. POS, Ordering, Payments" />
+              </div>
+              <div>
+                <label class="muted" for="plannerEnvSelect">Environment</label>
+                <select id="plannerEnvSelect" class="select">
+                  <option value="Prod">Prod</option>
+                  <option value="Staging">Staging</option>
+                  <option value="Dev">Dev</option>
+                </select>
+              </div>
+              <div>
+                <label class="muted" for="plannerTypeSelect">Release type</label>
+                <select id="plannerTypeSelect" class="select">
+                  <option value="Minor">Minor</option>
+                  <option value="Hotfix">Hotfix</option>
+                  <option value="Major">Major</option>
+                </select>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;">
+              <div>
+                <label class="muted" for="plannerHorizonInput">Horizon (days)</label>
+                <input id="plannerHorizonInput" class="input" type="number"
+                       min="1" max="14" value="7" style="width:96px;" />
+              </div>
+              <div>
+                <label class="muted" for="plannerAppetiteSelect">Risk appetite</label>
+                <select id="plannerAppetiteSelect" class="select">
+                  <option value="conservative">Conservative</option>
+                  <option value="balanced" selected>Balanced</option>
+                  <option value="aggressive">Aggressive</option>
+                </select>
+              </div>
+
+              <button id="plannerRun" class="btn sm" type="button" style="margin-left:auto;">
+                Suggest windows
+              </button>
+            </div>
+          </form>
+
+          <div id="releasePlannerExplain"
+               class="muted" style="font-size:12px;margin-top:6px;"></div>
+
+          <div id="releasePlannerResults"
+               style="margin-top:8px;font-size:13px;"></div>
         </div>
 
         <div class="card">
@@ -547,7 +541,7 @@
   <div class="spinner" id="spinner" aria-hidden="true"><div class="ring"></div></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-  <!-- Your app logic (all the JS you had in the <script> tag goes into app.js) -->
+  <!-- App logic -->
   <script src="app.js"></script>
 </body>
 </html>
