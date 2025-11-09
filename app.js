@@ -1088,69 +1088,106 @@ const ReleasePlanner = {
     if (risk <= 3) return 'some historical blast patterns in similar changes';
     return 'strong historical bomb-bug pattern, treat as high risk';
   },
-  computeEventsPenalty(date, env, modules, region) {
-    const dt = date instanceof Date ? date : new Date(date);
-    const center = dt.getTime();
-    const windowMs = 2 * 60 * 60 * 1000; // +/- 2h for normal changes
-    const mods = new Set((modules || []).map(m => (m || '').toLowerCase()));
+ computeEventsPenalty(date, env, modules, region) {
+  const dt = date instanceof Date ? date : new Date(date);
+  const center = dt.getTime();
+  const windowMs = 2 * 60 * 60 * 1000; // +/- 2h for normal changes
+  const mods = new Set((modules || []).map(m => (m || '').toLowerCase()));
 
-    let penalty = 0;
-    let count = 0;
-    let holidayCount = 0;
+  let penalty = 0;
+  let count = 0;
+  let holidayCount = 0;
 
-    DataStore.events.forEach(ev => {
-      if (!ev.start) return;
+  DataStore.events.forEach(ev => {
+    if (!ev.start) return;
 
-      const start = new Date(ev.start);
-      if (isNaN(start)) return;
+    const start = new Date(ev.start);
+    if (isNaN(start)) return;
 
-      const title = (ev.title || '').toLowerCase();
-      const impact = (ev.impactType || '').toLowerCase();
-      const type = (ev.type || '').toLowerCase();
+    const title = (ev.title || '').toLowerCase();
+    const impact = (ev.impactType || '').toLowerCase();
+    const type = (ev.type || '').toLowerCase();
 
-      const isHoliday =
-        type === 'holiday' ||
-        /holiday|eid|ramadan|ramadhan|ramzan|iftar|suhoor|ashura|national day|founding day/i.test(title) ||
-        /holiday|public holiday/i.test(impact);
+    const isHoliday =
+      type === 'holiday' ||
+      /holiday|eid|ramadan|ramadhan|ramzan|iftar|suhoor|ashura|national day|founding day/i.test(
+        title
+      ) ||
+      /holiday|public holiday/i.test(impact);
 
-      const evEnv = (ev.env || 'Prod');
+    const evEnv = ev.env || 'Prod';
 
-      // For holidays, ignore env filter (they affect all envs operationally)
-      if (!isHoliday && env && evEnv && evEnv !== env) return;
+    // For holidays, ignore env filter (they affect all envs operationally)
+    if (!isHoliday && env && evEnv && evEnv !== env) return;
 
-      const diffMs = Math.abs(start.getTime() - center);
-      const maxWindowMs = isHoliday ? 24 * 60 * 60 * 1000 : windowMs;
-      if (diffMs > maxWindowMs) return;
+    const diffMs = Math.abs(start.getTime() - center);
+    const maxWindowMs = isHoliday ? 24 * 60 * 60 * 1000 : windowMs;
+    if (diffMs > maxWindowMs) return;
 
-      // Collision with other changes near this time
-      const evMods = Array.isArray(ev.modules)
-        ? ev.modules
-        : typeof ev.modules === 'string'
-        ? ev.modules.split(',').map(x => x.trim())
-        : [];
-      const overlap =
-        mods.size &&
-        evMods.some(m => mods.has((m || '').toLowerCase()));
+    // Collision with other changes near this time
+    const evMods = Array.isArray(ev.modules)
+      ? ev.modules
+      : typeof ev.modules === 'string'
+      ? ev.modules
+          .split(',')
+          .map(x => x.trim())
+          .filter(Boolean)
+      : [];
+    const overlap =
+      mods.size &&
+      evMods.some(m => mods.has((m || '').toLowerCase()));
 
-      let contribution = 0;
-      if (isHoliday) {
-        holidayCount++;
-        // Strong penalty for public / religious holidays around MENA service hours
-        contribution = 4.5;
-        if (overlap) contribution += 1.5;
+    let contribution = 0;
+
+    // Base contribution: holidays & change events
+    if (isHoliday) {
+      holidayCount++;
+      // Strong penalty for public / religious holidays around MENA service hours
+      contribution = 4.5;
+      if (overlap) contribution += 1.5;
+    } else {
+      count++;
+      if (type === 'deployment' || type === 'maintenance' || type === 'release') {
+        contribution = overlap ? 3 : 1.5;
       } else {
-        count++;
-        if (type === 'deployment' || type === 'maintenance' || type === 'release') {
-          contribution = overlap ? 3 : 1.5;
-        } else {
-          contribution = overlap ? 2 : 1;
-        }
+        contribution = overlap ? 2 : 1;
       }
+    }
 
-      penalty += contribution;
-    });
+    // 🔥 Extra penalty if this calendar event has linked high-risk tickets
+    // (your assignment in Release Planner feeds back into risk)
+    const linkedTickets = (ev.issueId || '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean)
+      .map(id => DataStore.byId.get(id))
+      .filter(Boolean);
 
-    return { penalty, count, holidayCount };
+    if (linkedTickets.length) {
+      let highRiskCount = 0;
+      let highRiskTotal = 0;
+
+      linkedTickets.forEach(t => {
+        const r = (DataStore.computed.get(t.id)?.risk?.total) || 0;
+        if (r >= CONFIG.RISK.highRisk) {
+          highRiskCount++;
+          highRiskTotal += r;
+        }
+      });
+
+      if (highRiskCount) {
+        const avg = highRiskTotal / highRiskCount;
+        // Base bump + scaled component from average risk + small per-ticket bump
+        contribution += 1 + Math.min(3, avg / 10) + highRiskCount * 0.3;
+      }
+    }
+
+    penalty += contribution;
+  });
+
+  return { penalty, count, holidayCount };
+}
+
   },
   computeSlotScore(date, ctx) {
     const { region, env, modules, releaseType, bugRisk, bombBugRisk } = ctx;
