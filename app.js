@@ -1,599 +1,41 @@
-
+// app.js
 /**
  * InCheck Pro Dashboard — Issues · Ops · AI Copilot
- * Single-file architecture:
- *  - CONFIG / LS_KEYS
- *  - DataStore (issues + text analytics)
- *  - Risk engine (technical + biz + ops + severity/impact/urgency)
- *  - DSL query parser & matcher
- *  - Calendar risk (events + collisions + freezes + hot issues)
- *  - Release planner (F&B / Middle East)
+ * Split-architecture:
+ *  - config.js       (CONFIG / LS_KEYS / enums / STOPWORDS)
+ *  - utils.js        (helpers)
+ *  - risk.js         (risk engine + badges)
+ *  - datastore.js    (issues data + text analytics core)
+ *  - app.js          (UI, calendar, planner, networking, DSL, wiring)
  */
 
-const CONFIG = {
-  DATA_VERSION: '2',
+import {
+  CONFIG,
+  LS_KEYS,
+  STOPWORDS,
+  STATUSES,
+  PRIORITIES,
+  EVENT_TYPES,
+  ENVS
+} from './config.js';
+import {
+  U,
+  normalizeModules,
+  safeDate,
+  prioMap,
+  prioGap,
+  debounce,
+  trapFocus,
+  toLocalInputValue,
+  toLocalDateValue
+} from './utils.js';
+import { Risk, CalendarLink } from './risk.js';
+import { Filters, DataStore, IssuesCache } from './datastore.js';
 
-  // Issues CSV (read-only)
-  SHEET_URL:
-    "https://docs.google.com/spreadsheets/d/e/2PACX-1vTRwAjNAQxiPP8uR15t_vx03JkjgEBjgUwp2bpx8rsHx-JJxVDBZyf5ap77rAKrYHfgkVMwLJVm6pGn/pub?output=csv",
+/* =========================================================
+   Command DSL parser (AI query)
+   ========================================================= */
 
-  // Calendar Apps Script web app URL (wrapped via corsproxy to handle CORS)
-  CALENDAR_API_URL:
-    "https://corsproxy.io/?" +
-    encodeURIComponent(
-      "https://script.google.com/macros/s/AKfycbyzvLTrplAeh9YFmF7a59eFS4jitj5GftBRrDLd_K9cUiIv3vjizxYN6juNEfeRfEAD8w/exec"
-    ),
-
-  TREND_DAYS_RECENT: 7,
-  TREND_DAYS_WINDOW: 14,
-
-  RISK: {
-    priorityWeight: { High: 3, Medium: 2, Low: 1, "": 1 },
-    techBoosts: [
-      ['timeout', 3],
-      ['time out', 3],
-      ['latency', 2],
-      ['slow', 2],
-      ['performance', 2],
-      ['crash', 3],
-      ['error', 2],
-      ['exception', 2],
-      ['down', 3]
-    ],
-    bizBoosts: [
-      ['payment', 3],
-      ['payments', 3],
-      ['billing', 2],
-      ['invoice', 1],
-      ['checkout', 2],
-      ['refund', 2],
-      ['revenue', 3],
-      ['vip', 2]
-    ],
-    opsBoosts: [
-      ['prod ', 2],
-      ['production', 2],
-      ['deploy', 2],
-      ['deployment', 2],
-      ['rollback', 2],
-      ['incident', 3],
-      ['p0', 3],
-      ['p1', 2],
-      ['sla', 2]
-    ],
-    statusBoosts: { 'on stage': 2, under: 1 },
-    misalignedDelta: 1,
-    highRisk: 9,
-    critRisk: 13,
-    staleDays: 10
-  },
-
-  LABEL_KEYWORDS: {
-    'Authentication / Login': [
-      'login',
-      'signin',
-      'sign in',
-      'password',
-      'auth',
-      'token',
-      'session',
-      'otp'
-    ],
-    'Payments / Billing': [
-      'payment',
-      'payments',
-      'billing',
-      'invoice',
-      'card',
-      'credit',
-      'charge',
-      'checkout',
-      'refund'
-    ],
-    'Performance / Latency': [
-      'slow',
-      'slowness',
-      'latency',
-      'performance',
-      'perf',
-      'timeout',
-      'time out',
-      'lag'
-    ],
-    'Reliability / Errors': [
-      'error',
-      'errors',
-      'exception',
-      '500',
-      '503',
-      'fail',
-      'failed',
-      'crash',
-      'down',
-      'unavailable'
-    ],
-    'UI / UX': [
-      'button',
-      'screen',
-      'page',
-      'layout',
-      'css',
-      'ui',
-      'ux',
-      'alignment',
-      'typo'
-    ],
-    'Data / Sync': [
-      'sync',
-      'synchron',
-      'cache',
-      'cached',
-      'replica',
-      'replication',
-      'consistency',
-      'out of date'
-    ]
-  },
-
-  CHANGE: {
-    overlapLookbackMinutes: 60,
-    hotIssueRecentDays: 7,
-    freezeWindows: [
-      { dow: [5], startHour: 16, endHour: 23 }, // Friday evening
-      { dow: [6], startHour: 0, endHour: 23 } // Saturday
-    ]
-  },
-
-  /**
-   * F&B / Middle East release-planning heuristics
-   * Used by ReleasePlanner
-   */
-  FNB: {
-    // Weekend patterns (0 = Sun)
-    WEEKEND: {
-      gulf: [5, 6], // Fri, Sat
-      levant: [5], // Fri
-      northafrica: [5] // Fri
-    },
-    // Typical busy windows (local time)
-    BUSY_WINDOWS: [
-      { start: 12, end: 15, weight: 3, label: 'lunch rush' },
-      { start: 19, end: 23, weight: 4, label: 'dinner rush' }
-    ],
-    OFFPEAK_WINDOWS: [
-      { start: 6, end: 10, weight: -1, label: 'pre-service' },
-      { start: 15, end: 18, weight: -0.5, label: 'between lunch & dinner' }
-    ]
-    // Note: public / religious holidays are taken from the calendar feed
-    // (events whose type or description indicate a holiday / Eid / Ramadan, etc.).
-  }
-};
-
-const LS_KEYS = {
-  filters: 'incheckFilters',
-  theme: 'theme',
-  events: 'incheckEvents',
-  issues: 'incheckIssues',
-  issuesLastUpdated: 'incheckIssuesLastUpdated',
-  dataVersion: 'incheckDataVersion',
-  pageSize: 'pageSize',
-  view: 'incheckView',
-  accentColor: 'incheckAccent',
-  accentColorStorage: 'incheckAccentColor'
-};
-
-const STOPWORDS = new Set([
-  'the',
-  'a',
-  'an',
-  'and',
-  'or',
-  'but',
-  'for',
-  'with',
-  'this',
-  'that',
-  'from',
-  'into',
-  'onto',
-  'when',
-  'what',
-  'where',
-  'how',
-  'why',
-  'can',
-  'could',
-  'should',
-  'would',
-  'will',
-  'just',
-  'have',
-  'has',
-  'had',
-  'been',
-  'are',
-  'is',
-  'was',
-  'were',
-  'to',
-  'in',
-  'on',
-  'of',
-  'at',
-  'by',
-  'as',
-  'it',
-  'its',
-  'be',
-  'we',
-  'you',
-  'they',
-  'our',
-  'your',
-  'their',
-  'not',
-  'no',
-  'if',
-  'else',
-  'then',
-  'than',
-  'about',
-  'after',
-  'before',
-  'more',
-  'less',
-  'also',
-  'only',
-  'very',
-  'get',
-  'got',
-  'see',
-  'seen',
-  'use',
-  'used',
-  'using',
-  'user',
-  'issue',
-  'bug',
-  'ticket',
-  'inc'
-]);
-
-const U = {
-  q: (s, r = document) => r.querySelector(s),
-  qAll: (s, r = document) => Array.from(r.querySelectorAll(s)),
-  now: () => Date.now(),
-  fmtTS: d => {
-    const x = d instanceof Date ? d : new Date(d);
-    if (isNaN(x)) return '—';
-    return x.toISOString().replace('T', ' ').slice(0, 16);
-  },
-  escapeHtml: s =>
-    String(s).replace(/[&<>"']/g, m => (
-      {
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#39;'
-      }[m]
-    )),
-  escapeAttr: s =>
-    String(s)
-      .replace(/&/g, '&amp;')
-      .replace(/"/g, '&quot;'),
-  pad: n => String(n).padStart(2, '0'),
-  dateAddDays: (d, days) => {
-    const base = d instanceof Date ? d : new Date(d);
-    return new Date(base.getTime() + days * 86400000);
-  },
-  daysAgo: n => new Date(Date.now() - n * 86400000),
-  isBetween: (d, a, b) => {
-    const x = d instanceof Date ? d : new Date(d);
-    if (isNaN(x)) return false;
-    const min = a ? (a instanceof Date ? a : new Date(a)) : null;
-    const max = b ? (b instanceof Date ? b : new Date(b)) : null;
-    if (min && x < min) return false;
-    if (max && x >= max) return false;
-    return true;
-  }
-};
-
-/** Filters persisted */
-const Filters = {
-  state: { search: '', module: 'All', priority: 'All', status: 'All', start: '', end: '' },
-  load() {
-    try {
-      const raw = localStorage.getItem(LS_KEYS.filters);
-      if (raw) this.state = JSON.parse(raw);
-    } catch {}
-  },
-  save() {
-    try {
-      localStorage.setItem(LS_KEYS.filters, JSON.stringify(this.state));
-    } catch {}
-  }
-};
-
-function UndefaultCount(arr) {
-  const m = new Map();
-  arr.forEach(t => m.set(t, (m.get(t) || 0) + 1));
-  return m;
-}
-
-/** DataStore */
-const DataStore = {
-  rows: [],
-  computed: new Map(), // id -> { tokens:Set, tf:Map, idf:Map, risk, suggestions }
-  byId: new Map(),
-  byModule: new Map(),
-  byStatus: new Map(),
-  byPriority: new Map(),
-  df: new Map(),
-  N: 0,
-  events: [],
-  etag: null,
-
-  normalizeStatus(s) {
-    const i = (s || '').trim().toLowerCase();
-    if (!i) return 'Not Started Yet';
-    if (i.startsWith('resolved')) return 'Resolved';
-    if (i.startsWith('under')) return 'Under Development';
-    if (i.startsWith('rejected')) return 'Rejected';
-    if (i.startsWith('on hold')) return 'On Hold';
-    if (i.startsWith('not started')) return 'Not Started Yet';
-    if (i.startsWith('sent')) return 'Sent';
-    if (i.startsWith('on stage')) return 'On Stage';
-    return s || 'Not Started Yet';
-  },
-  normalizePriority(p) {
-    const i = (p || '').trim().toLowerCase();
-    if (!i) return '';
-    if (i.startsWith('h')) return 'High';
-    if (i.startsWith('m')) return 'Medium';
-    if (i.startsWith('l')) return 'Low';
-    return p;
-  },
-  normalizeRow(raw) {
-    const lower = {};
-    for (const k in raw) {
-      if (!k) continue;
-      lower[k.toLowerCase().replace(/\s+/g, ' ').trim()] = String(raw[k] ?? '').trim();
-    }
-    const pick = (...keys) => {
-      for (const key of keys) {
-        if (lower[key]) return lower[key];
-      }
-      return '';
-    };
-    return {
-      id: pick('ticket id', 'id'),
-      module: pick('impacted module', 'module', 'issue location') || 'Unspecified',
-      title: pick('title'),
-      desc: pick('description'),
-      file: pick('file upload', 'link', 'url'),
-      priority: DataStore.normalizePriority(pick('priority')),
-      status: DataStore.normalizeStatus(pick('status') || 'Not Started Yet'),
-      type: pick('category', 'type'),
-      date: pick('timestamp', 'date', 'created at'),
-      log: pick('log', 'logs', 'comment', 'notes')
-    };
-  },
-  tokenize(issue) {
-    const text = [issue.title, issue.desc, issue.log].filter(Boolean).join(' ').toLowerCase();
-    return text
-      .replace(/[^a-z0-9]+/g, ' ')
-      .split(/\s+/)
-      .filter(w => w && w.length > 2 && !STOPWORDS.has(w));
-  },
-  hydrate(csvText) {
-    const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true }).data
-      .map(DataStore.normalizeRow)
-      .filter(r => r.id && r.id.trim() !== '');
-    this.hydrateFromRows(parsed);
-  },
-  hydrateFromRows(parsed) {
-    this.rows = parsed || [];
-    this.byId.clear();
-    this.byModule.clear();
-    this.byStatus.clear();
-    this.byPriority.clear();
-    this.computed.clear();
-    this.df.clear();
-    this.N = this.rows.length;
-
-    this.rows.forEach(r => {
-      this.byId.set(r.id, r);
-      if (!this.byModule.has(r.module)) this.byModule.set(r.module, []);
-      this.byModule.get(r.module).push(r);
-      if (!this.byStatus.has(r.status)) this.byStatus.set(r.status, []);
-      this.byStatus.get(r.status).push(r);
-      if (!this.byPriority.has(r.priority)) this.byPriority.set(r.priority, []);
-      this.byPriority.get(r.priority).push(r);
-
-      const toks = DataStore.tokenize(r);
-      const uniq = new Set(toks);
-      uniq.forEach(t => this.df.set(t, (this.df.get(t) || 0) + 1));
-      this.computed.set(r.id, { tokens: new Set(toks), tf: UndefaultCount(toks) });
-    });
-
-    const idf = new Map();
-    this.df.forEach((df, term) => idf.set(term, Math.log((this.N + 1) / (df + 1)) + 1));
-    this.computed.forEach(meta => (meta.idf = idf));
-
-    // risk & suggestions
-    this.rows.forEach(r => {
-      const risk = Risk.computeRisk(r);
-      const categories = Risk.suggestCategories(r);
-      const sPrio = Risk.suggestPriority(r, risk.total);
-      const reasons = Risk.explainRisk(r);
-      const meta = this.computed.get(r.id);
-      meta.risk = { ...risk, reasons };
-      meta.suggestions = { priority: sPrio, categories };
-    });
-  }
-};
-
-const IssuesCache = {
-  load() {
-    try {
-      const storedVersion = localStorage.getItem(LS_KEYS.dataVersion);
-      if (storedVersion && storedVersion !== CONFIG.DATA_VERSION) return null;
-      const raw = localStorage.getItem(LS_KEYS.issues);
-      if (!raw) return null;
-      const data = JSON.parse(raw);
-      return Array.isArray(data) ? data : null;
-    } catch {
-      return null;
-    }
-  },
-  save(rows) {
-    try {
-      localStorage.setItem(LS_KEYS.issues, JSON.stringify(rows || []));
-      localStorage.setItem(LS_KEYS.issuesLastUpdated, new Date().toISOString());
-      localStorage.setItem(LS_KEYS.dataVersion, CONFIG.DATA_VERSION);
-    } catch {}
-  },
-  lastLabel() {
-    const iso = localStorage.getItem(LS_KEYS.issuesLastUpdated);
-    if (!iso) return '';
-    const d = new Date(iso);
-    if (isNaN(d)) return '';
-    return `Last updated: ${d.toLocaleString()}`;
-  }
-};
-
-function prioMap(p) {
-  return { High: 3, Medium: 2, Low: 1 }[p] || 0;
-}
-function prioGap(suggested, current) {
-  return prioMap(suggested) - prioMap(current);
-}
-
-/** Risk engine (with severity / impact / urgency) */
-const Risk = {
-  scoreFromBoosts(text, rules) {
-    let s = 0;
-    for (const [kw, val] of rules) {
-      if (text.includes(kw)) s += val;
-    }
-    return s;
-  },
-  computeRisk(issue) {
-    const txt = [issue.title, issue.desc, issue.log].filter(Boolean).join(' ').toLowerCase() + ' ';
-    const basePriority = CONFIG.RISK.priorityWeight[issue.priority || ''] || 1;
-
-    const tech = basePriority + this.scoreFromBoosts(txt, CONFIG.RISK.techBoosts);
-    const biz = this.scoreFromBoosts(txt, CONFIG.RISK.bizBoosts);
-    const ops = this.scoreFromBoosts(txt, CONFIG.RISK.opsBoosts);
-
-    let total = tech + biz + ops;
-
-    const st = (issue.status || '').toLowerCase();
-    for (const k in CONFIG.RISK.statusBoosts) {
-      if (st.startsWith(k)) total += CONFIG.RISK.statusBoosts[k];
-    }
-
-    let timeRisk = 0;
-    let ageDays = null;
-    let isOpen = !(st.startsWith('resolved') || st.startsWith('rejected'));
-
-    if (issue.date) {
-      const d = new Date(issue.date);
-      if (!isNaN(d)) {
-        ageDays = (Date.now() - d.getTime()) / 86400000;
-        if (isOpen && total >= CONFIG.RISK.highRisk) {
-          if (ageDays <= 14) timeRisk += 2; // fresh risky
-          if (ageDays >= 30) timeRisk += 3; // stale high-risk
-        }
-      }
-    }
-    total += timeRisk;
-
-    // severity: how bad is the scenario
-    let severity = basePriority;
-    if (/p0|sev0|outage|down|data loss|breach|security/i.test(txt)) severity += 3;
-    if (/p1|sev1|incident|sla/i.test(txt)) severity += 2;
-    if (/p2|degraded/i.test(txt)) severity += 1;
-
-    // impact: how much money / users
-    let impact = 1;
-    if (/payment|billing|checkout|revenue|invoice|subscription|signup|onboarding/i.test(txt))
-      impact += 2;
-    if (/login|auth|authentication|token|session/i.test(txt)) impact += 1.5;
-    if (/admin|internal|report/i.test(txt)) impact += 0.5;
-
-    // urgency: time sensitivity
-    let urgency = 1;
-    if (/today|now|immediately|urgent|sla/i.test(txt)) urgency += 1.5;
-    if (ageDays != null) {
-      if (ageDays <= 1) urgency += 1;
-      if (ageDays >= 14 && isOpen) urgency += 0.5;
-    }
-
-    const sevScore = Math.round(severity);
-    const impScore = Math.round(impact * 1.5);
-    const urgScore = Math.round(urgency * 1.5);
-
-    total += sevScore + impScore + urgScore;
-
-    return {
-      technical: tech,
-      business: biz,
-      operational: ops,
-      time: timeRisk,
-      total,
-      severity: sevScore,
-      impact: impScore,
-      urgency: urgScore
-    };
-  },
-  suggestCategories(issue) {
-    const text = [issue.title, issue.desc, issue.log].filter(Boolean).join(' ').toLowerCase();
-    const res = [];
-    Object.entries(CONFIG.LABEL_KEYWORDS).forEach(([label, kws]) => {
-      let hits = 0;
-      kws.forEach(k => {
-        if (text.includes(k)) hits++;
-      });
-      if (hits) res.push({ label, score: hits });
-    });
-    res.sort((a, b) => b.score - a.score);
-    return res;
-  },
-  suggestPriority(issue, totalRisk) {
-    if (issue.priority) return issue.priority;
-    const s = totalRisk != null ? totalRisk : this.computeRisk(issue).total;
-    if (s >= CONFIG.RISK.highRisk) return 'High';
-    if (s >= 6) return 'Medium';
-    return 'Low';
-  },
-  explainRisk(issue) {
-    const txt = [issue.title, issue.desc, issue.log].filter(Boolean).join(' ').toLowerCase() + ' ';
-    const picks = [];
-    const push = kw => {
-      if (txt.includes(kw)) picks.push(kw);
-    };
-    [...CONFIG.RISK.techBoosts, ...CONFIG.RISK.bizBoosts, ...CONFIG.RISK.opsBoosts].forEach(
-      ([kw]) => push(kw)
-    );
-    if ((issue.status || '').toLowerCase().startsWith('on stage')) picks.push('on stage');
-    if ((issue.status || '').toLowerCase().startsWith('under')) picks.push('under development');
-
-    if (issue.date) {
-      const d = new Date(issue.date);
-      if (!isNaN(d)) {
-        const ageDays = (Date.now() - d.getTime()) / 86400000;
-        if (ageDays <= 14) picks.push('recent');
-        else if (ageDays >= 30) picks.push('stale');
-      }
-    }
-
-    return Array.from(new Set(picks)).slice(0, 6);
-  }
-};
-
-/** Command DSL parser */
 const DSL = {
   parse(text) {
     const lower = (text || '').toLowerCase();
@@ -714,8 +156,8 @@ const DSL = {
       const d = new Date(issue.date);
       if (isNaN(d)) return false;
       const ageDays = (Date.now() - d.getTime()) / 86400000;
-      const op = q.ageOp,
-        b = q.ageVal;
+      const op = q.ageOp;
+      const b = q.ageVal;
       let pass = false;
       if (op === '>') pass = ageDays > b;
       else if (op === '>=') pass = ageDays >= b;
@@ -731,8 +173,8 @@ const DSL = {
     const risk = meta.risk || {};
     if (q.riskOp) {
       const rv = risk.total || 0;
-      const op = q.riskOp,
-        b = q.riskVal;
+      const op = q.riskOp;
+      const b = q.riskVal;
       let pass = false;
       if (op === '>') pass = rv > b;
       else if (op === '>=') pass = rv >= b;
@@ -755,7 +197,8 @@ const DSL = {
     if (q.urgencyOp && !cmpNum(risk.urgency, q.urgencyOp, q.urgencyVal)) return false;
 
     if (q.words && q.words.length) {
-      const txt = [issue.title, issue.desc, issue.log].filter(Boolean).join(' ').toLowerCase();
+      const txt =
+        [issue.title, issue.desc, issue.log].filter(Boolean).join(' ').toLowerCase();
       for (const w of q.words) {
         if (!txt.includes(w)) return false;
       }
@@ -764,20 +207,13 @@ const DSL = {
   }
 };
 
-/** Calendar helpers */
-const CalendarLink = {
-  riskBadgeClass(score) {
-    if (score >= CONFIG.RISK.critRisk) return 'risk-crit';
-    if (score >= CONFIG.RISK.highRisk) return 'risk-high';
-    if (score >= 6) return 'risk-med';
-    return 'risk-low';
-  }
-};
+/* =========================================================
+   Events + risk (issues + events)
+   ========================================================= */
 
-/** Events + risk (issues + events) */
 function computeEventsRisk(issues, events) {
-  const now = new Date(),
-    limit = U.dateAddDays(now, 7);
+  const now = new Date();
+  const limit = U.dateAddDays(now, 7);
   const openIssues = issues.filter(i => {
     const st = (i.status || '').toLowerCase();
     return !(st.startsWith('resolved') || st.startsWith('rejected'));
@@ -786,13 +222,14 @@ function computeEventsRisk(issues, events) {
   const res = [];
   events.forEach(ev => {
     if (!ev.start) return;
-    const d = new Date(ev.start);
-    if (isNaN(d) || d < now || d > limit) return;
+    const d = safeDate(ev.start);
+    if (!d || d < now || d > limit) return;
     const title = (ev.title || '').toLowerCase();
     const impacted = modules.filter(m => title.includes((m || '').toLowerCase()));
     let rel = [];
-    if (impacted.length) rel = openIssues.filter(i => impacted.includes(i.module));
-    else if ((ev.type || '').toLowerCase() !== 'other') {
+    if (impacted.length) {
+      rel = openIssues.filter(i => impacted.includes(i.module));
+    } else if ((ev.type || '').toLowerCase() !== 'other') {
       const recentOpen = openIssues.filter(i => U.isBetween(i.date, U.daysAgo(7), null));
       rel = recentOpen.filter(
         i => (DataStore.computed.get(i.id)?.risk?.total || 0) >= CONFIG.RISK.highRisk
@@ -832,18 +269,18 @@ function computeChangeCollisions(issues, events) {
     const risk = meta.risk?.total || 0;
     if (risk < CONFIG.RISK.highRisk) return false;
     if (!i.date) return true;
-    const d = new Date(i.date);
-    if (isNaN(d)) return true;
+    const d = safeDate(i.date);
+    if (!d) return true;
     return U.isBetween(d, U.daysAgo(CONFIG.CHANGE.hotIssueRecentDays), null);
   });
 
   const normalized = events
     .map(ev => {
-      const start = ev.start ? new Date(ev.start) : null;
-      const end = ev.end ? new Date(ev.end) : null;
+      const start = safeDate(ev.start);
+      const end = safeDate(ev.end);
       return { ...ev, _start: start, _end: end };
     })
-    .filter(ev => ev._start && !isNaN(ev._start));
+    .filter(ev => ev._start);
   normalized.sort((a, b) => a._start - b._start);
 
   const collisions = [];
@@ -866,10 +303,9 @@ function computeChangeCollisions(issues, events) {
 
   if (CONFIG.CHANGE.freezeWindows && CONFIG.CHANGE.freezeWindows.length) {
     events.forEach(ev => {
-      if (!ev.start) return;
-      const d = new Date(ev.start);
-      if (isNaN(d)) return;
-      const dow = d.getDay(); // 0=Sun
+      const d = safeDate(ev.start);
+      if (!d) return;
+      const dow = d.getDay();
       const hour = d.getHours();
       const inFreeze = CONFIG.CHANGE.freezeWindows.some(
         win => win.dow.includes(dow) && hour >= win.startHour && hour < win.endHour
@@ -880,14 +316,7 @@ function computeChangeCollisions(issues, events) {
 
   events.forEach(ev => {
     const flags = byId(ev.id);
-    const modulesArr = Array.isArray(ev.modules)
-      ? ev.modules
-      : typeof ev.modules === 'string'
-      ? ev.modules
-          .split(',')
-          .map(s => s.trim())
-          .filter(Boolean)
-      : [];
+    const modulesArr = normalizeModules(ev.modules);
     let rel = [];
     if (modulesArr.length) {
       rel = highRiskIssues.filter(i => modulesArr.includes(i.module));
@@ -903,29 +332,16 @@ function computeChangeCollisions(issues, events) {
   return { collisions, flagsById };
 }
 
-function toLocalInputValue(date) {
-  const d = date instanceof Date ? date : new Date(date);
-  if (isNaN(d)) return '';
-  return `${d.getFullYear()}-${U.pad(d.getMonth() + 1)}-${U.pad(
-    d.getDate()
-  )}T${U.pad(d.getHours())}:${U.pad(d.getMinutes())}`;
-}
-function toLocalDateValue(date) {
-  const d = date instanceof Date ? date : new Date(date);
-  if (isNaN(d)) return '';
-  return `${d.getFullYear()}-${U.pad(d.getMonth() + 1)}-${U.pad(d.getDate())}`;
-}
-
 /* =========================================================
-   Release Planner – F&B / Middle East
+   Release Planner – F&B / Middle East (logic only)
    ========================================================= */
 
 const ReleasePlanner = {
   envWeight: {
-    Prod: 2.5,
-    Staging: 1.2,
-    Dev: 0.6,
-    Other: 1
+    [ENVS.PROD]: 2.5,
+    [ENVS.STAGING]: 1.2,
+    [ENVS.DEV]: 0.6,
+    [ENVS.OTHER]: 1
   },
   releaseTypeWeight: {
     minor: 1,
@@ -940,7 +356,8 @@ const ReleasePlanner = {
     return 'gulf';
   },
   computeRushScore(region, date) {
-    const d = date instanceof Date ? date : new Date(date);
+    const d = safeDate(date);
+    if (!d) return 0;
     const hour = d.getHours();
     const dow = d.getDay(); // 0=Sun
     const key = this.regionKey(region);
@@ -974,12 +391,6 @@ const ReleasePlanner = {
     if (score <= 3) return 'moderate service';
     return 'rush / busy service';
   },
-  /**
-   * Build context from selected tickets:
-   * - merged modules
-   * - combined text (title/desc/log + other fields)
-   * - aggregated risk (max/avg/total)
-   */
   buildTicketContext(ticketIds, fallbackModules, fallbackDescription) {
     const ids = Array.isArray(ticketIds) ? ticketIds : [];
     const issues = ids.map(id => DataStore.byId.get(id)).filter(Boolean);
@@ -1032,8 +443,8 @@ const ReleasePlanner = {
 
     DataStore.rows.forEach(r => {
       if (!r.date) return;
-      const d = new Date(r.date);
-      if (isNaN(d) || d < lookback) return;
+      const d = safeDate(r.date);
+      if (!d || d < lookback) return;
 
       const mod = (r.module || '').toLowerCase();
       const title = (r.title || '').toLowerCase();
@@ -1063,7 +474,6 @@ const ReleasePlanner = {
     const normalized = sum / 40; // tuning constant
     let bugRisk = Math.max(0, Math.min(6, normalized));
 
-    // Boost bug pressure slightly when selected tickets are very risky
     const tc = ticketContext || {};
     const maxTicketRisk = tc.maxRisk || 0;
     if (maxTicketRisk) {
@@ -1079,7 +489,6 @@ const ReleasePlanner = {
     return 'heavy bug pressure';
   },
   computeBombBugRisk(modules, description, ticketContext) {
-    // "Bomb bug" = old, high-risk incidents that are textually close to this release
     const now = new Date();
     const lookback = U.dateAddDays(now, -365); // last year
     const modSet = new Set((modules || []).map(m => (m || '').toLowerCase()));
@@ -1098,11 +507,11 @@ const ReleasePlanner = {
 
     DataStore.rows.forEach(r => {
       if (!r.date) return;
-      const d = new Date(r.date);
-      if (isNaN(d) || d < lookback) return;
+      const d = safeDate(r.date);
+      if (!d || d < lookback) return;
 
       const ageDays = (now.getTime() - d.getTime()) / 86400000;
-      if (ageDays <= 30) return; // we want "old" tickets
+      if (ageDays <= 30) return; // want "old" tickets
 
       const st = (r.status || '').toLowerCase();
       const isClosed = st.startsWith('resolved') || st.startsWith('rejected');
@@ -1126,7 +535,6 @@ const ReleasePlanner = {
       }
       if (!related) return;
 
-      // Soft decay: more recent old bugs weigh a bit more
       const ageFactor = Math.max(0.4, 1.3 - ageDays / 365);
       const score = risk * ageFactor;
       raw += score;
@@ -1142,7 +550,6 @@ const ReleasePlanner = {
     const normalized = raw / 60; // tuning constant
     let bombRisk = Math.max(0, Math.min(6, normalized));
 
-    // Also let current ticket risk slightly boost bomb-bug signal
     const tc = ticketContext || {};
     if (tc.avgRisk) {
       const boost = 1 + Math.min(tc.avgRisk / 20, 1) * 0.3; // up to +30%
@@ -1158,9 +565,11 @@ const ReleasePlanner = {
     return 'strong historical bomb-bug pattern, treat as high risk';
   },
   computeEventsPenalty(date, env, modules, region) {
-    const dt = date instanceof Date ? date : new Date(date);
+    const dt = safeDate(date);
+    if (!dt) return { penalty: 0, count: 0, holidayCount: 0 };
+
     const center = dt.getTime();
-    const windowMs = 2 * 60 * 60 * 1000; // +/- 2h for normal changes
+    const windowMs = 2 * 60 * 60 * 1000; // +/- 2h
     const mods = new Set((modules || []).map(m => (m || '').toLowerCase()));
 
     let penalty = 0;
@@ -1168,10 +577,8 @@ const ReleasePlanner = {
     let holidayCount = 0;
 
     DataStore.events.forEach(ev => {
-      if (!ev.start) return;
-
-      const start = new Date(ev.start);
-      if (isNaN(start)) return;
+      const start = safeDate(ev.start);
+      if (!start) return;
 
       const title = (ev.title || '').toLowerCase();
       const impact = (ev.impactType || '').toLowerCase();
@@ -1184,21 +591,15 @@ const ReleasePlanner = {
         ) ||
         /holiday|public holiday/i.test(impact);
 
-      const evEnv = ev.env || 'Prod';
+      const evEnv = ev.env || ENVS.PROD;
 
-      // For holidays, ignore env filter (they affect all envs operationally)
       if (!isHoliday && env && evEnv && evEnv !== env) return;
 
       const diffMs = Math.abs(start.getTime() - center);
       const maxWindowMs = isHoliday ? 24 * 60 * 60 * 1000 : windowMs;
       if (diffMs > maxWindowMs) return;
 
-      // Collision with other changes near this time
-      const evMods = Array.isArray(ev.modules)
-        ? ev.modules
-        : typeof ev.modules === 'string'
-        ? ev.modules.split(',').map(x => x.trim())
-        : [];
+      const evMods = normalizeModules(ev.modules);
       const overlap =
         mods.size &&
         evMods.some(m => mods.has((m || '').toLowerCase()));
@@ -1206,7 +607,6 @@ const ReleasePlanner = {
       let contribution = 0;
       if (isHoliday) {
         holidayCount++;
-        // Strong penalty for public / religious holidays around MENA service hours
         contribution = 4.5;
         if (overlap) contribution += 1.5;
       } else {
@@ -1226,50 +626,46 @@ const ReleasePlanner = {
   computeSlotScore(date, ctx) {
     const { region, env, modules, releaseType, bugRisk, bombBugRisk, ticketRisk } = ctx;
 
-    // Raw component scores
-    const rushRisk = this.computeRushScore(region, date);               // 0–6
-    const envRaw   = this.envWeight[env] ?? 1;                          // ~0.6–2.5
-    const typeRaw  = this.releaseTypeWeight[releaseType] ?? 2;          // 1–3
+    const rushRisk = this.computeRushScore(region, date); // 0–6
+    const envRaw = this.envWeight[env] ?? 1;
+    const typeRaw = this.releaseTypeWeight[releaseType] ?? 2;
 
     const { penalty: eventsRisk, count: eventCount, holidayCount } =
-      this.computeEventsPenalty(date, env, modules, region);            // 0+
+      this.computeEventsPenalty(date, env, modules, region);
 
-    const bugRaw     = bugRisk || 0;                                    // 0–6
-    const bombRaw    = bombBugRisk || 0;                                // 0–6
-    const ticketsRaw = ticketRisk || 0;                                 // 0–6
+    const bugRaw = bugRisk || 0;
+    const bombRaw = bombBugRisk || 0;
+    const ticketsRaw = ticketRisk || 0;
 
-    // ---- Normalize each factor to 0–1 ----
     const clamp01 = v => Math.max(0, Math.min(1, v));
 
-    const nRush    = clamp01(rushRisk / 6);
-    const nBug     = clamp01(bugRaw / 6);
-    const nBomb    = clamp01(bombRaw / 6);
+    const nRush = clamp01(rushRisk / 6);
+    const nBug = clamp01(bugRaw / 6);
+    const nBomb = clamp01(bombRaw / 6);
     const nTickets = clamp01(ticketsRaw / 6);
-    const nEnv     = clamp01(envRaw / 2.5);  // Prod ≈ 1
-    const nType    = clamp01(typeRaw / 3);
-    const nEvents  = clamp01(eventsRisk / 6); // 0–6+ → 0–1
+    const nEnv = clamp01(envRaw / 2.5);
+    const nType = clamp01(typeRaw / 3);
+    const nEvents = clamp01(eventsRisk / 6);
 
-    // ---- Weighted combination into a 0–10 score ----
-    const wRush    = 0.15;
-    const wBug     = 0.20;
-    const wBomb    = 0.15;
-    const wEvents  = 0.20;
+    const wRush = 0.15;
+    const wBug = 0.20;
+    const wBomb = 0.15;
+    const wEvents = 0.20;
     const wTickets = 0.15;
-    const wEnv     = 0.075;
-    const wType    = 0.075;
+    const wEnv = 0.075;
+    const wType = 0.075;
 
     const combined =
-      wRush    * nRush    +
-      wBug     * nBug     +
-      wBomb    * nBomb    +
-      wEvents  * nEvents  +
+      wRush * nRush +
+      wBug * nBug +
+      wBomb * nBomb +
+      wEvents * nEvents +
       wTickets * nTickets +
-      wEnv     * nEnv     +
-      wType    * nType;
+      wEnv * nEnv +
+      wType * nType;
 
-    // Final risk: 0–10
-    const totalRisk   = Math.max(0, Math.min(10, combined * 10));
-    const safetyScore = 10 - totalRisk; // 0–10 (10 = safest)
+    const totalRisk = Math.max(0, Math.min(10, combined * 10));
+    const safetyScore = 10 - totalRisk;
 
     return {
       totalRisk,
@@ -1286,7 +682,6 @@ const ReleasePlanner = {
     };
   },
   riskBucket(totalRisk) {
-    // totalRisk is now 0–10
     if (totalRisk < 3.5) {
       return { label: 'Low', className: 'planner-score-low' };
     }
@@ -1308,7 +703,6 @@ const ReleasePlanner = {
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    // Build a richer context from selected tickets (scope + text + risk)
     const ticketContext = this.buildTicketContext(
       tickets || [],
       modules || [],
@@ -1330,16 +724,15 @@ const ReleasePlanner = {
       ticketContext
     );
 
-    // Ticket risk component: normalize avg risk onto a 0–6 scale
     let ticketRiskComponent = 0;
     if (ticketContext.avgRisk) {
       ticketRiskComponent = Math.min(ticketContext.avgRisk / 4, 6);
     }
 
     const slots = [];
-    const hoursProd = [6, 10, 15, 23]; // Prod: pre-service + between services + late
-    const hoursNonProd = [10, 15, 18]; // Staging/Dev can tolerate slightly busier times
-    const hours = env === 'Prod' ? hoursProd : hoursNonProd;
+    const hoursProd = [6, 10, 15, 23];
+    const hoursNonProd = [10, 15, 18];
+    const hours = env === ENVS.PROD ? hoursProd : hoursNonProd;
 
     for (let dayOffset = 0; dayOffset < horizon; dayOffset++) {
       const base = U.dateAddDays(startOfToday, dayOffset);
@@ -1375,7 +768,10 @@ const ReleasePlanner = {
   }
 };
 
-/* ---------- Elements cache ---------- */
+/* =========================================================
+   Elements cache + UI scaffolding
+   ========================================================= */
+
 const E = {};
 function cacheEls() {
   [
@@ -1489,7 +885,6 @@ function cacheEls() {
   ].forEach(id => (E[id] = document.getElementById(id)));
 }
 
-/** UI helpers */
 const UI = {
   toast(msg, ms = 3500) {
     if (!E.toast) return;
@@ -1522,6 +917,10 @@ const UI = {
   }
 };
 
+/* =========================================================
+   Grid state (sorting / paging)
+   ========================================================= */
+
 const GridState = {
   sortKey: null,
   sortAsc: true,
@@ -1529,7 +928,14 @@ const GridState = {
   pageSize: +(localStorage.getItem(LS_KEYS.pageSize) || 20)
 };
 
-/** Issues UI */
+const FilteredState = {
+  list: []
+};
+
+/* =========================================================
+   Issues UI
+   ========================================================= */
+
 UI.Issues = {
   renderFilters() {
     const uniq = a =>
@@ -1557,10 +963,8 @@ UI.Issues = {
     const end = s.end ? U.dateAddDays(s.end, 1) : null;
 
     return DataStore.rows.filter(r => {
-      const hay = [r.id, r.module, r.title, r.desc, r.log]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
+      const hay =
+        [r.id, r.module, r.title, r.desc, r.log].filter(Boolean).join(' ').toLowerCase();
       if (terms.length && !terms.every(t => hay.includes(t))) return false;
 
       let keepDate = true;
@@ -1584,10 +988,11 @@ UI.Issues = {
   },
   renderKPIs(list) {
     if (!E.kpis) return;
-    const total = list.length,
-      counts = {};
+    const total = list.length;
+    const counts = {};
     list.forEach(r => (counts[r.status] = (counts[r.status] || 0) + 1));
     E.kpis.innerHTML = '';
+
     const add = (label, val) => {
       const pct = total ? Math.round((val * 100) / total) : 0;
       const d = document.createElement('div');
@@ -1621,6 +1026,7 @@ UI.Issues = {
       });
       E.kpis.appendChild(d);
     };
+
     add('Total Issues', total);
     Object.entries(counts).forEach(([s, v]) => add(s, v));
   },
@@ -1629,11 +1035,11 @@ UI.Issues = {
     const { sortKey, sortAsc } = GridState;
     const sorted = sortKey
       ? [...list].sort((a, b) => {
-          const va = a[sortKey] || '',
-            vb = b[sortKey] || '';
+          const va = a[sortKey] || '';
+          const vb = b[sortKey] || '';
           if (sortKey === 'date') {
-            const da = new Date(va),
-              db = new Date(vb);
+            const da = new Date(va);
+            const db = new Date(vb);
             if (isNaN(da) && isNaN(db)) return 0;
             if (isNaN(da)) return 1;
             if (isNaN(db)) return -1;
@@ -1647,9 +1053,9 @@ UI.Issues = {
       : list;
     const rows = sortAsc ? sorted : sorted.reverse();
 
-    const total = rows.length,
-      size = GridState.pageSize,
-      page = GridState.page;
+    const total = rows.length;
+    const size = GridState.pageSize;
+    const page = GridState.page;
     const pages = Math.max(1, Math.ceil(total / size));
     if (GridState.page > pages) GridState.page = pages;
     const start = (GridState.page - 1) * size;
@@ -1667,8 +1073,8 @@ UI.Issues = {
     ['firstPage', 'prevPage', 'nextPage', 'lastPage'].forEach(id => {
       const btn = E[id];
       if (!btn) return;
-      const atFirst = GridState.page <= 1,
-        atLast = GridState.page >= pages;
+      const atFirst = GridState.page <= 1;
+      const atLast = GridState.page >= pages;
       if (id === 'firstPage' || id === 'prevPage') btn.disabled = atFirst;
       else btn.disabled = atLast;
       if (btn.disabled) btn.setAttribute('disabled', 'true');
@@ -1681,6 +1087,13 @@ UI.Issues = {
       )}</span>`;
     const badgePrio = p =>
       `<span class="pill priority-${p || ''}">${U.escapeHtml(p || '-')}</span>`;
+    const riskPill = id => {
+      const meta = DataStore.computed.get(id) || {};
+      const riskScore = meta.risk?.total || 0;
+      if (!riskScore) return '';
+      const cls = CalendarLink.riskBadgeClass(riskScore);
+      return `<span class="event-risk-badge ${cls}">R${riskScore}</span>`;
+    };
 
     if (pageData.length) {
       E.issuesTbody.innerHTML = pageData
@@ -1692,7 +1105,10 @@ UI.Issues = {
           <td>${U.escapeHtml(r.id || '-')}</td>
           <td>${U.escapeHtml(r.module || '-')}</td>
           <td>${U.escapeHtml(r.title || '-')}</td>
-          <td>${badgePrio(r.priority || '-')}</td>
+          <td>
+            ${badgePrio(r.priority || '-')}
+            ${riskPill(r.id)}
+          </td>
           <td>${badgeStatus(r.status || '-')}</td>
           <td>${U.escapeHtml(r.date || '-')}</td>
           <td>${U.escapeHtml(r.log || '-')}</td>
@@ -1775,18 +1191,18 @@ UI.Issues = {
     const cssVar = n =>
       getComputedStyle(document.documentElement).getPropertyValue(n).trim();
     const statusColors = {
-      Resolved: cssVar('--status-resolved'),
-      'Under Development': cssVar('--status-underdev'),
-      Rejected: cssVar('--status-rejected'),
-      'On Hold': cssVar('--status-onhold'),
-      'Not Started Yet': cssVar('--status-notstarted'),
-      Sent: cssVar('--status-sent'),
-      'On Stage': cssVar('--status-onstage')
+      [STATUSES.RESOLVED]: cssVar('--status-resolved'),
+      [STATUSES.UNDER_DEV]: cssVar('--status-underdev'),
+      [STATUSES.REJECTED]: cssVar('--status-rejected'),
+      [STATUSES.ON_HOLD]: cssVar('--status-onhold'),
+      [STATUSES.NOT_STARTED]: cssVar('--status-notstarted'),
+      [STATUSES.SENT]: cssVar('--status-sent'),
+      [STATUSES.ON_STAGE]: cssVar('--status-onstage')
     };
     const priorityColors = {
-      High: cssVar('--priority-high'),
-      Medium: cssVar('--priority-medium'),
-      Low: cssVar('--priority-low')
+      [PRIORITIES.HIGH]: cssVar('--priority-high'),
+      [PRIORITIES.MEDIUM]: cssVar('--priority-medium'),
+      [PRIORITIES.LOW]: cssVar('--priority-low')
     };
     const group = (arr, k) =>
       arr.reduce((m, r) => {
@@ -1799,8 +1215,8 @@ UI.Issues = {
       if (!el) return;
       UI._charts = UI._charts || {};
       if (UI._charts[id]) UI._charts[id].destroy();
-      const labels = Object.keys(data),
-        values = Object.values(data);
+      const labels = Object.keys(data);
+      const values = Object.values(data);
       UI._charts[id] = new Chart(el, {
         type,
         data: {
@@ -1913,7 +1329,10 @@ UI.Issues.renderSummary = function (list) {
     (last ? ` · ${last}` : '');
 };
 
-/** Analytics (AI tab) */
+/* =========================================================
+   Analytics (AI tab)
+   ========================================================= */
+
 const Analytics = {
   _debounce: null,
   refresh(list) {
@@ -1979,13 +1398,13 @@ const Analytics = {
     }
 
     // Trends
-    const oldStart = U.daysAgo(CONFIG.TREND_DAYS_WINDOW),
-      mid = U.daysAgo(CONFIG.TREND_DAYS_RECENT);
-    const oldCounts = new Map(),
-      newCounts = new Map();
+    const oldStart = U.daysAgo(CONFIG.TREND_DAYS_WINDOW);
+    const mid = U.daysAgo(CONFIG.TREND_DAYS_RECENT);
+    const oldCounts = new Map();
+    const newCounts = new Map();
     const inHalf = r => {
-      const d = new Date(r.date);
-      if (isNaN(d)) return null;
+      const d = safeDate(r.date);
+      if (!d) return null;
       if (d < mid && d >= oldStart) return 'old';
       if (d >= mid) return 'new';
       return null;
@@ -2000,8 +1419,8 @@ const Analytics = {
     const trendTerms = new Set([...oldCounts.keys(), ...newCounts.keys()]);
     const trend = [];
     trendTerms.forEach(t => {
-      const a = oldCounts.get(t) || 0,
-        b = newCounts.get(t) || 0;
+      const a = oldCounts.get(t) || 0;
+      const b = newCounts.get(t) || 0;
       const d = b - a;
       const ratio = a === 0 ? (b >= 2 ? Infinity : 0) : b / a;
       if ((b >= 2 && ratio >= 2) || d >= 2) trend.push({ t, old: a, new: b, delta: d, ratio });
@@ -2122,7 +1541,7 @@ const Analytics = {
         const st = (r.status || '').toLowerCase();
         if (!st.startsWith('resolved') && !st.startsWith('rejected')) {
           m.open++;
-          if (r.priority === 'High') m.high++;
+          if (r.priority === PRIORITIES.HIGH) m.high++;
         }
         const rs = DataStore.computed.get(r.id)?.risk?.total || 0;
         m.risk += rs;
@@ -2300,7 +1719,7 @@ const Analytics = {
         <strong>${U.escapeHtml(ev.title || '(no title)')}</strong>
         <span class="event-risk-badge ${badge}">RISK ${r.risk}</span>
         <div class="muted">${U.fmtTS(r.date)} · Env: ${U.escapeHtml(
-          ev.env || 'Prod'
+          ev.env || ENVS.PROD
         )} · Modules: ${
                 r.modules.length
                   ? r.modules.map(U.escapeHtml).join(', ')
@@ -2312,12 +1731,7 @@ const Analytics = {
         : '<li>No notable risk in next 7 days.</li>';
     }
 
-    // Wire AI buttons
-    U.qAll('[data-open]').forEach(b =>
-      b.addEventListener('click', () =>
-        UI.Modals.openIssue(b.getAttribute('data-open'))
-      )
-    );
+    // Wire copy-suggestion
     U.qAll('[data-copy]').forEach(b =>
       b.addEventListener('click', () => {
         const id = b.getAttribute('data-copy');
@@ -2347,12 +1761,12 @@ function buildClustersWeighted(list) {
     const meta = DataStore.computed.get(r.id) || {};
     return { issue: r, tokens: meta.tokens || new Set(), idf: meta.idf || new Map() };
   });
-  const visited = new Set(),
-    clusters = [];
+  const visited = new Set();
+  const clusters = [];
   const wj = (A, IA, B, IB) => {
-    let inter = 0,
-      sumA = 0,
-      sumB = 0;
+    let inter = 0;
+    let sumA = 0;
+    let sumB = 0;
     const all = new Set([...A, ...B]);
     all.forEach(t => {
       const wa = A.has(t) ? IA.get(t) || 1 : 0;
@@ -2392,7 +1806,10 @@ function buildClustersWeighted(list) {
   return clusters.slice(0, 6);
 }
 
-/** Modals */
+/* =========================================================
+   Modals
+   ========================================================= */
+
 UI.Modals = {
   selectedIssue: null,
   lastFocus: null,
@@ -2418,7 +1835,6 @@ UI.Modals = {
       ? 'Reasons: ' + risk.reasons.join(', ')
       : '—';
 
-    // Linked releases (events whose issueId list contains this ticket)
     const linkedReleases = DataStore.events.filter(ev => {
       const ids = (ev.issueId || '')
         .split(',')
@@ -2435,7 +1851,7 @@ UI.Modals = {
           const when = ev.start ? U.fmtTS(ev.start) : '(no date)';
           return `<li>${U.escapeHtml(ev.title || '(release)')} – ${U.escapeHtml(
             when
-          )} · ${U.escapeHtml(ev.env || 'Prod')}</li>`;
+          )} · ${U.escapeHtml(ev.env || ENVS.PROD)}</li>`;
         })
         .join('');
       linkedSection = `
@@ -2500,14 +1916,12 @@ UI.Modals = {
     if (E.eventAllDay) E.eventAllDay.checked = allDay;
 
     if (E.eventTitle) E.eventTitle.value = ev.title || '';
-    if (E.eventType) E.eventType.value = ev.type || 'Deployment';
-    if (E.eventEnv) E.eventEnv.value = ev.env || 'Prod';
+    if (E.eventType) E.eventType.value = ev.type || EVENT_TYPES.DEPLOYMENT;
+    if (E.eventEnv) E.eventEnv.value = ev.env || ENVS.PROD;
     if (E.eventStatus) E.eventStatus.value = ev.status || 'Planned';
     if (E.eventOwner) E.eventOwner.value = ev.owner || '';
     if (E.eventModules) {
-      const val = Array.isArray(ev.modules)
-        ? ev.modules.join(', ')
-        : ev.modules || '';
+      const val = normalizeModules(ev.modules).join(', ');
       E.eventModules.value = val;
     }
     if (E.eventImpactType)
@@ -2630,65 +2044,12 @@ UI.Modals = {
   }
 };
 
-function debounce(fn, ms = 250) {
-  let t;
-  return (...a) => {
-    clearTimeout(t);
-    t = setTimeout(() => fn(...a), ms);
-  };
-}
+/* =========================================================
+   Calendar wiring
+   ========================================================= */
 
-function trapFocus(container, e) {
-  const focusables = container.querySelectorAll(
-    'button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])'
-  );
-  if (!focusables.length) return;
-  const first = focusables[0],
-    last = focusables[focusables.length - 1];
-  if (e.shiftKey && document.activeElement === first) {
-    last.focus();
-    e.preventDefault();
-  } else if (!e.shiftKey && document.activeElement === last) {
-    first.focus();
-    e.preventDefault();
-  }
-}
-
-function setActiveView(view) {
-  const names = ['issues', 'calendar', 'insights'];
-  names.forEach(name => {
-    const tab =
-      name === 'issues'
-        ? E.issuesTab
-        : name === 'calendar'
-        ? E.calendarTab
-        : E.insightsTab;
-    const panel =
-      name === 'issues'
-        ? E.issuesView
-        : name === 'calendar'
-        ? E.calendarView
-        : E.insightsView;
-    const active = name === view;
-    if (tab) {
-      tab.classList.toggle('active', active);
-      tab.setAttribute('aria-selected', active ? 'true' : 'false');
-    }
-    if (panel) panel.classList.toggle('active', active);
-  });
-  try {
-    localStorage.setItem(LS_KEYS.view, view);
-  } catch {}
-  if (view === 'calendar') {
-    ensureCalendar();
-    renderCalendarEvents();
-  }
-  if (view === 'insights') Analytics.refresh(UI.Issues.applyFilters());
-}
-
-/* ---------- Calendar wiring ---------- */
-let calendar = null,
-  calendarReady = false;
+let calendar = null;
+let calendarReady = false;
 
 function wireCalendar() {
   if (E.addEventBtn)
@@ -2698,7 +2059,7 @@ function wireCalendar() {
         start: now,
         end: new Date(now.getTime() + 60 * 60 * 1000),
         allDay: false,
-        env: 'Prod',
+        env: ENVS.PROD,
         status: 'Planned'
       });
     });
@@ -2741,7 +2102,7 @@ function ensureCalendar() {
         start: info.start,
         end: info.end,
         allDay: info.allDay,
-        env: 'Prod',
+        env: ENVS.PROD,
         status: 'Planned'
       }),
     eventClick: info => {
@@ -2749,13 +2110,13 @@ function ensureCalendar() {
         DataStore.events.find(e => e.id === info.event.id) || {
           id: info.event.id,
           title: info.event.title,
-          type: info.event.extendedProps.type || 'Other',
+          type: info.event.extendedProps.type || EVENT_TYPES.OTHER,
           start: info.event.start,
           end: info.event.end,
           description: info.event.extendedProps.description || '',
           issueId: info.event.extendedProps.issueId || '',
           allDay: info.event.allDay,
-          env: info.event.extendedProps.env || 'Prod',
+          env: info.event.extendedProps.env || ENVS.PROD,
           status: info.event.extendedProps.status || 'Planned',
           owner: info.event.extendedProps.owner || '',
           modules: info.event.extendedProps.modules || [],
@@ -2799,7 +2160,7 @@ function ensureCalendar() {
         if (titleEl) titleEl.appendChild(span);
       }
 
-      const env = ext.env || 'Prod';
+      const env = ext.env || ENVS.PROD;
       const status = ext.status || 'Planned';
 
       let tooltip = ext.description || '';
@@ -2850,12 +2211,12 @@ function renderCalendarEvents() {
   if (!calendar) return;
   const activeTypes = new Set();
   if (E.eventFilterDeployment && E.eventFilterDeployment.checked)
-    activeTypes.add('Deployment');
+    activeTypes.add(EVENT_TYPES.DEPLOYMENT);
   if (E.eventFilterMaintenance && E.eventFilterMaintenance.checked)
-    activeTypes.add('Maintenance');
+    activeTypes.add(EVENT_TYPES.MAINTENANCE);
   if (E.eventFilterRelease && E.eventFilterRelease.checked)
-    activeTypes.add('Release');
-  if (E.eventFilterOther && E.eventFilterOther.checked) activeTypes.add('Other');
+    activeTypes.add(EVENT_TYPES.RELEASE);
+  if (E.eventFilterOther && E.eventFilterOther.checked) activeTypes.add(EVENT_TYPES.OTHER);
 
   const links = computeEventsRisk(DataStore.rows, DataStore.events);
   const riskMap = new Map(links.map(r => [r.event.id, r.risk]));
@@ -2863,21 +2224,14 @@ function renderCalendarEvents() {
 
   calendar.removeAllEvents();
   DataStore.events.forEach(ev => {
-    const type = ev.type || 'Other';
+    const type = ev.type || EVENT_TYPES.OTHER;
     if (activeTypes.size && !activeTypes.has(type)) return;
     const risk = riskMap.get(ev.id) || 0;
 
-    const env = ev.env || 'Prod';
+    const env = ev.env || ENVS.PROD;
     const status = ev.status || 'Planned';
     const owner = ev.owner || '';
-    const modules = Array.isArray(ev.modules)
-      ? ev.modules
-      : typeof ev.modules === 'string'
-      ? ev.modules
-          .split(',')
-          .map(s => s.trim())
-          .filter(Boolean)
-      : [];
+    const modules = normalizeModules(ev.modules);
     const impactType = ev.impactType || '';
 
     const flags = flagsById.get(ev.id) || {};
@@ -2915,7 +2269,10 @@ function renderCalendarEvents() {
   });
 }
 
-/* ---------- Networking & data loading ---------- */
+/* =========================================================
+   Networking & data loading
+   ========================================================= */
+
 async function safeFetchText(url, opts = {}) {
   const res = await fetch(url, { cache: 'no-store', ...opts });
   if (!res.ok)
@@ -3006,24 +2363,17 @@ async function loadEvents(force = false) {
     const events = Array.isArray(data.events) ? data.events : [];
 
     const normalized = events.map(ev => {
-      const modulesArr = Array.isArray(ev.modules)
-        ? ev.modules
-        : typeof ev.modules === 'string'
-        ? ev.modules
-            .split(',')
-            .map(s => s.trim())
-            .filter(Boolean)
-        : [];
+      const modulesArr = normalizeModules(ev.modules);
       return {
         id: ev.id || 'ev_' + Date.now() + '_' + Math.random().toString(36).slice(2),
         title: ev.title || '',
-        type: ev.type || 'Other',
+        type: ev.type || EVENT_TYPES.OTHER,
         start: ev.start || ev.startDate || '',
         end: ev.end || ev.endDate || '',
         allDay: !!ev.allDay,
         description: ev.description || '',
         issueId: ev.issueId || '',
-        env: ev.env || ev.environment || 'Prod',
+        env: ev.env || ev.environment || ENVS.PROD,
         status: ev.status || 'Planned',
         owner: ev.owner || '',
         modules: modulesArr,
@@ -3056,32 +2406,23 @@ async function loadEvents(force = false) {
 }
 
 /* ---------- Save/Delete to Apps Script ---------- */
+
 async function saveEventToSheet(event) {
   UI.spinner(true);
   try {
-    // Ensure we always have a clean ID
     const evId =
       event.id && String(event.id).trim()
         ? String(event.id).trim()
         : 'ev_' + Date.now() + '_' + Math.random().toString(36).slice(2);
 
-    // Normalize modules into an array of strings
-    const modulesArr = Array.isArray(event.modules)
-      ? event.modules
-      : typeof event.modules === 'string'
-      ? event.modules
-          .split(',')
-          .map(s => s.trim())
-          .filter(Boolean)
-      : [];
+    const modulesArr = normalizeModules(event.modules);
 
-    // Canonical payload with ALL fields Apps Script expects
     const payload = {
       id: evId,
       title: event.title || '',
-      type: event.type || 'Deployment',
+      type: event.type || EVENT_TYPES.DEPLOYMENT,
 
-      env: event.env || event.environment || 'Prod',
+      env: event.env || event.environment || ENVS.PROD,
       status: event.status || 'Planned',
       owner: event.owner || '',
       modules: modulesArr,
@@ -3095,8 +2436,6 @@ async function saveEventToSheet(event) {
       notificationStatus: event.notificationStatus || '',
       allDay: !!event.allDay
     };
-
-    console.log('[InCheck] sending event payload to Apps Script:', payload);
 
     const res = await fetch(CONFIG.CALENDAR_API_URL, {
       method: 'POST',
@@ -3117,7 +2456,6 @@ async function saveEventToSheet(event) {
 
     if (data.ok) {
       UI.toast('Event saved');
-      // Make sure we keep notificationStatus from server if set
       const savedEvent = data.event || payload;
       if (!savedEvent.notificationStatus && payload.notificationStatus) {
         savedEvent.notificationStatus = payload.notificationStatus;
@@ -3155,7 +2493,10 @@ async function deleteEventFromSheet(id) {
   }
 }
 
-/* ---------- CSV export ---------- */
+/* =========================================================
+   CSV export
+   ========================================================= */
+
 function csvEscape(v) {
   const s = String(v == null ? '' : v);
   if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
@@ -3220,7 +2561,9 @@ function exportFilteredCsv() {
   exportIssuesToCsv(rows, 'filtered');
 }
 
-/* ---------- Release Planner wiring & rendering ---------- */
+/* =========================================================
+   Release Planner – UI glue
+   ========================================================= */
 
 let LAST_PLANNER_CONTEXT = null;
 let LAST_PLANNER_RESULT = null;
@@ -3371,7 +2714,6 @@ function renderPlannerResults(result, context) {
 
   if (E.plannerAddEvent) E.plannerAddEvent.disabled = !slots.length;
 
-  // Wire per-slot "Add" buttons – include selected tickets as linked issue IDs
   E.plannerResults.querySelectorAll('[data-add-release]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const startIso = btn.getAttribute('data-add-release');
@@ -3395,13 +2737,13 @@ function renderPlannerResults(result, context) {
       const newEvent = {
         id: '',
         title: `Release – ${modulesLabelLocal} (${releaseType})`,
-        type: 'Release',
+        type: EVENT_TYPES.RELEASE,
         env: env,
         status: 'Planned',
         owner: '',
         modules: modules,
         impactType:
-          env === 'Prod'
+          env === ENVS.PROD
             ? 'High risk change'
             : 'Internal only',
         issueId: ticketIds.join(', '),
@@ -3461,7 +2803,7 @@ function refreshPlannerTickets(currentList) {
 
 function refreshPlannerReleasePlans(context) {
   if (!E.plannerReleasePlan) return;
-  const env = context?.env || (E.plannerEnv?.value || '');
+  const env = context?.env || (E.plannerEnv?.value || ENVS.PROD);
   const horizonDays =
     context?.horizonDays ||
     parseInt(E.plannerHorizon?.value || '7', 10) ||
@@ -3472,15 +2814,15 @@ function refreshPlannerReleasePlans(context) {
 
   const releaseEvents = (DataStore.events || []).filter(ev => {
     const type = (ev.type || '').toLowerCase();
-    if (type !== 'release') return false;
+    if (type !== EVENT_TYPES.RELEASE.toLowerCase()) return false;
     if (!ev.start) return false;
-    const d = new Date(ev.start);
-    if (isNaN(d)) return false;
+    const d = safeDate(ev.start);
+    if (!d) return false;
     if (d < now) return false;
     if (d > horizonEnd) return false;
 
-    const evEnv = ev.env || 'Prod';
-    if (env && env !== 'Other' && evEnv && evEnv !== env) return false;
+    const evEnv = ev.env || ENVS.PROD;
+    if (env && env !== ENVS.OTHER && evEnv && evEnv !== env) return false;
 
     return true;
   });
@@ -3495,17 +2837,16 @@ function refreshPlannerReleasePlans(context) {
 
   const options = releaseEvents
     .map(ev => {
-      const d = ev.start ? new Date(ev.start) : null;
+      const d = safeDate(ev.start);
       const when =
-        d && !isNaN(d)
-          ? d.toLocaleString(undefined, {
-              month: 'short',
-              day: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit'
-            })
-          : '(no date)';
-      const label = `[${when}] ${ev.title || 'Release'} (${ev.env || 'Prod'})`;
+        d &&
+        d.toLocaleString(undefined, {
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+      const label = `[${when || '(no date)'}] ${ev.title || 'Release'} (${ev.env || ENVS.PROD})`;
       return `<option value="${U.escapeAttr(ev.id)}">${U.escapeHtml(label)}</option>`;
     })
     .join('');
@@ -3526,7 +2867,7 @@ function wirePlanner() {
     const regionValue = (E.plannerRegion?.value || 'gulf').toLowerCase();
     const region = ReleasePlanner.regionKey(regionValue);
 
-    const env = E.plannerEnv?.value || 'Prod';
+    const env = E.plannerEnv?.value || ENVS.PROD;
     const modulesStr = (E.plannerModules?.value || '').trim();
     const modules = modulesStr
       ? modulesStr
@@ -3604,13 +2945,13 @@ function wirePlanner() {
       const newEvent = {
         id: '',
         title: `Release – ${modulesLabelLocal} (${context.releaseType})`,
-        type: 'Release',
+        type: EVENT_TYPES.RELEASE,
         env: context.env,
         status: 'Planned',
         owner: '',
         modules: context.modules,
         impactType:
-          context.env === 'Prod'
+          context.env === ENVS.PROD
             ? 'High risk change'
             : 'Internal only',
         issueId: ticketIds.join(', '),
@@ -3704,7 +3045,10 @@ function wirePlanner() {
   }
 }
 
-/* ---------- Misc wiring ---------- */
+/* =========================================================
+   Misc wiring
+   ========================================================= */
+
 function setIfOptionExists(select, value) {
   if (!select || !value) return;
   const options = Array.from(select.options || []);
@@ -3757,6 +3101,8 @@ function wireCore() {
 
   UI.refreshAll = () => {
     const list = UI.Issues.applyFilters();
+    FilteredState.list = list;
+
     UI.Issues.renderSummary(list);
     UI.Issues.renderFilterChips();
     UI.Issues.renderKPIs(list);
@@ -3769,184 +3115,163 @@ function wireCore() {
   };
 }
 
+/* =========================================================
+   Sorting, paging, filters, modals, theme, AI query, init
+   ========================================================= */
+
 function wireSorting() {
+  // Column sorting
   U.qAll('#issuesTable thead th.sortable').forEach(th => {
-    th.addEventListener('click', () => {
-      const key = th.getAttribute('data-key');
-      if (GridState.sortKey === key) GridState.sortAsc = !GridState.sortAsc;
-      else {
+    const key = th.getAttribute('data-key');
+    if (!key) return;
+
+    const sortFn = () => {
+      if (GridState.sortKey === key) {
+        GridState.sortAsc = !GridState.sortAsc;
+      } else {
         GridState.sortKey = key;
         GridState.sortAsc = true;
       }
+      GridState.page = 1;
       UI.refreshAll();
-    });
+    };
+
+    th.addEventListener('click', sortFn);
     th.addEventListener('keydown', e => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
-        th.click();
+        sortFn();
       }
     });
-    th.tabIndex = 0;
-    th.setAttribute('role', 'button');
-    th.setAttribute('aria-label', `Sort by ${th.textContent}`);
   });
+
+  // Page size
+  if (E.pageSize) {
+    E.pageSize.value = String(GridState.pageSize || 20);
+    E.pageSize.addEventListener('change', () => {
+      const v = parseInt(E.pageSize.value, 10);
+      GridState.pageSize = Number.isFinite(v) && v > 0 ? v : 20;
+      try {
+        localStorage.setItem(LS_KEYS.pageSize, String(GridState.pageSize));
+      } catch {}
+      GridState.page = 1;
+      UI.refreshAll();
+    });
+  }
+
+  // Paging buttons
+  const goToPage = p => {
+    if (!Number.isFinite(p) || p < 1) p = 1;
+    GridState.page = p;
+    UI.refreshAll();
+  };
+
+  if (E.firstPage) {
+    E.firstPage.addEventListener('click', () => goToPage(1));
+  }
+  if (E.prevPage) {
+    E.prevPage.addEventListener('click', () =>
+      goToPage(Math.max(1, GridState.page - 1))
+    );
+  }
+  if (E.nextPage) {
+    E.nextPage.addEventListener('click', () =>
+      goToPage(GridState.page + 1)
+    );
+  }
+  if (E.lastPage) {
+    E.lastPage.addEventListener('click', () => {
+      const total = FilteredState.list.length || 0;
+      const pages = Math.max(1, Math.ceil(total / GridState.pageSize));
+      goToPage(pages);
+    });
+  }
 }
 
-function wirePaging() {
-  if (E.pageSize)
-    E.pageSize.addEventListener('change', () => {
-      GridState.pageSize = +E.pageSize.value;
-      localStorage.setItem(LS_KEYS.pageSize, GridState.pageSize);
-      GridState.page = 1;
-      UI.refreshAll();
-    });
-  if (E.firstPage)
-    E.firstPage.addEventListener('click', () => {
-      GridState.page = 1;
-      UI.refreshAll();
-    });
-  if (E.prevPage)
-    E.prevPage.addEventListener('click', () => {
-      if (GridState.page > 1) {
-        GridState.page--;
-        UI.refreshAll();
-      }
-    });
-  if (E.nextPage)
-    E.nextPage.addEventListener('click', () => {
-      const list = UI.Issues.applyFilters();
-      const pages = Math.max(1, Math.ceil(list.length / GridState.pageSize));
-      if (GridState.page < pages) {
-        GridState.page++;
-        UI.refreshAll();
-      }
-    });
-  if (E.lastPage)
-    E.lastPage.addEventListener('click', () => {
-      const list = UI.Issues.applyFilters();
-      GridState.page = Math.max(1, Math.ceil(list.length / GridState.pageSize));
-      UI.refreshAll();
-    });
-}
+/* ---------------- Filters wiring ---------------- */
 
 function wireFilters() {
   if (E.moduleFilter) {
     E.moduleFilter.addEventListener('change', () => {
-      Filters.state.module = E.moduleFilter.value;
+      Filters.state.module = E.moduleFilter.value || 'All';
       Filters.save();
       UI.refreshAll();
     });
   }
   if (E.priorityFilter) {
     E.priorityFilter.addEventListener('change', () => {
-      Filters.state.priority = E.priorityFilter.value;
+      Filters.state.priority = E.priorityFilter.value || 'All';
       Filters.save();
       UI.refreshAll();
     });
   }
   if (E.statusFilter) {
     E.statusFilter.addEventListener('change', () => {
-      Filters.state.status = E.statusFilter.value;
+      Filters.state.status = E.statusFilter.value || 'All';
       Filters.save();
       UI.refreshAll();
     });
   }
+
   if (E.startDateFilter) {
-    E.startDateFilter.value = Filters.state.start || '';
     E.startDateFilter.addEventListener('change', () => {
-      Filters.state.start = E.startDateFilter.value;
+      Filters.state.start = E.startDateFilter.value || '';
       Filters.save();
       UI.refreshAll();
     });
   }
   if (E.endDateFilter) {
-    E.endDateFilter.value = Filters.state.end || '';
     E.endDateFilter.addEventListener('change', () => {
-      Filters.state.end = E.endDateFilter.value;
+      Filters.state.end = E.endDateFilter.value || '';
       Filters.save();
       UI.refreshAll();
     });
   }
-  if (E.searchInput) E.searchInput.value = Filters.state.search || '';
-
-  if (E.resetBtn)
-    E.resetBtn.addEventListener('click', () => {
-      Filters.state = {
-        search: '',
-        module: 'All',
-        priority: 'All',
-        status: 'All',
-        start: '',
-        end: ''
-      };
-      Filters.save();
-      if (E.searchInput) E.searchInput.value = '';
-      if (E.startDateFilter) E.startDateFilter.value = '';
-      if (E.endDateFilter) E.endDateFilter.value = '';
-      UI.Issues.renderFilters();
-      UI.refreshAll();
-    });
 }
 
-function wireTheme() {
-  const media = window.matchMedia
-    ? window.matchMedia('(prefers-color-scheme: dark)')
-    : null;
-  const applySystem = () => {
-    if (media?.matches) document.documentElement.removeAttribute('data-theme');
-    else document.documentElement.setAttribute('data-theme', 'light');
-  };
-  const saved = localStorage.getItem(LS_KEYS.theme) || 'system';
-  if (E.themeSelect) E.themeSelect.value = saved;
-  if (saved === 'system') applySystem();
-  else if (saved === 'dark') document.documentElement.removeAttribute('data-theme');
-  else document.documentElement.setAttribute('data-theme', 'light');
+/* ---------------- View switching ---------------- */
 
-  media?.addEventListener('change', () => {
-    if ((localStorage.getItem(LS_KEYS.theme) || 'system') === 'system')
-      applySystem();
+function setActiveView(view) {
+  const views = {
+    issues: E.issuesView,
+    calendar: E.calendarView,
+    insights: E.insightsView
+  };
+  const tabs = {
+    issues: E.issuesTab,
+    calendar: E.calendarTab,
+    insights: E.insightsTab
+  };
+
+  Object.entries(views).forEach(([key, el]) => {
+    if (!el) return;
+    if (key === view) {
+      el.classList.add('active');
+      el.removeAttribute('hidden');
+    } else {
+      el.classList.remove('active');
+      el.setAttribute('hidden', 'true');
+    }
   });
 
-  if (E.themeSelect)
-    E.themeSelect.addEventListener('change', () => {
-      const v = E.themeSelect.value;
-      localStorage.setItem(LS_KEYS.theme, v);
-      if (v === 'system') applySystem();
-      else if (v === 'dark') document.documentElement.removeAttribute('data-theme');
-      else document.documentElement.setAttribute('data-theme', 'light');
-    });
+  Object.entries(tabs).forEach(([key, el]) => {
+    if (!el) return;
+    const selected = key === view;
+    el.classList.toggle('active', selected);
+    el.setAttribute('aria-selected', String(selected));
+  });
 
-  if (E.accentColor) {
-    const rootStyle = getComputedStyle(document.documentElement);
-    const defaultAccent = rootStyle.getPropertyValue('--accent').trim() || '#4f8cff';
-    const savedAccent =
-      localStorage.getItem(LS_KEYS.accentColorStorage) || defaultAccent;
-    E.accentColor.value = savedAccent;
-    document.documentElement.style.setProperty('--accent', savedAccent);
-
-    E.accentColor.addEventListener('input', () => {
-      const val = E.accentColor.value || defaultAccent;
-      document.documentElement.style.setProperty('--accent', val);
-      try {
-        localStorage.setItem(LS_KEYS.accentColorStorage, val);
-      } catch {}
-      UI.Issues.renderCharts(UI.Issues.applyFilters());
-    });
+  if (view === 'calendar') {
+    ensureCalendar();
+  } else if (view === 'insights') {
+    const list = FilteredState.list.length
+      ? FilteredState.list
+      : UI.Issues.applyFilters();
+    Analytics.refresh(list);
   }
 }
 
-function wireConnectivity() {
-  if (!E.onlineStatusChip) return;
-  const update = () => {
-    const online = navigator.onLine !== false;
-    E.onlineStatusChip.textContent = online ? 'Online' : 'Offline · using cache';
-    E.onlineStatusChip.classList.toggle('online', online);
-    E.onlineStatusChip.classList.toggle('offline', !online);
-  };
-  window.addEventListener('online', update);
-  window.addEventListener('offline', update);
-  update();
-}
+/* ---------------- Modals wiring ---------------- */
 
 function wireModals() {
   // Issue modal
@@ -3955,40 +3280,29 @@ function wireModals() {
   }
   if (E.issueModal) {
     E.issueModal.addEventListener('click', e => {
-      // click outside panel closes
       if (e.target === E.issueModal) UI.Modals.closeIssue();
     });
-    E.issueModal.addEventListener('keydown', e => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        UI.Modals.closeIssue();
-            } else if (e.key === 'Tab') {
-        trapFocus(E.issueModal, e);
-      }
-    });
   }
-
   if (E.copyId) {
     E.copyId.addEventListener('click', () => {
-      const r = UI.Modals.selectedIssue;
-      if (!r) return;
-      const txt = r.id || '';
-      if (!txt) return;
+      const issue = UI.Modals.selectedIssue;
+      if (!issue) return;
       navigator.clipboard
-        .writeText(txt)
+        .writeText(issue.id || '')
         .then(() => UI.toast('Issue ID copied'))
         .catch(() => UI.toast('Clipboard blocked'));
     });
   }
-
   if (E.copyLink) {
     E.copyLink.addEventListener('click', () => {
-      const r = UI.Modals.selectedIssue;
-      if (!r) return;
-      const base = window.location.href.split('#')[0];
-      const link = `${base}#issue-${encodeURIComponent(r.id)}`;
+      const issue = UI.Modals.selectedIssue;
+      if (!issue) return;
+      const url =
+        window.location.origin +
+        window.location.pathname +
+        `#issue-${encodeURIComponent(issue.id)}`;
       navigator.clipboard
-        .writeText(link)
+        .writeText(url)
         .then(() => UI.toast('Issue link copied'))
         .catch(() => UI.toast('Clipboard blocked'));
     });
@@ -3999,77 +3313,81 @@ function wireModals() {
     E.eventModalClose.addEventListener('click', () => UI.Modals.closeEvent());
   }
   if (E.eventCancel) {
-    E.eventCancel.addEventListener('click', () => UI.Modals.closeEvent());
+    E.eventCancel.addEventListener('click', e => {
+      e.preventDefault();
+      UI.Modals.closeEvent();
+    });
   }
   if (E.eventModal) {
     E.eventModal.addEventListener('click', e => {
       if (e.target === E.eventModal) UI.Modals.closeEvent();
     });
-    E.eventModal.addEventListener('keydown', e => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        UI.Modals.closeEvent();
-      } else if (e.key === 'Tab') {
-        trapFocus(E.eventModal, e);
-      }
-    });
   }
 
-  if (E.eventAllDay) {
+  if (E.eventAllDay && E.eventStart && E.eventEnd) {
     E.eventAllDay.addEventListener('change', () => {
-      const allDay = E.eventAllDay.checked;
-      if (E.eventStart) {
-        const val = E.eventStart.value;
-        const d = val ? new Date(val) : null;
-        E.eventStart.type = allDay ? 'date' : 'datetime-local';
-        if (d && !isNaN(d)) {
-          E.eventStart.value = allDay ? toLocalDateValue(d) : toLocalInputValue(d);
-        }
-      }
-      if (E.eventEnd) {
-        const val = E.eventEnd.value;
-        const d = val ? new Date(val) : null;
-        E.eventEnd.type = allDay ? 'date' : 'datetime-local';
-        if (d && !isNaN(d)) {
-          E.eventEnd.value = allDay ? toLocalDateValue(d) : toLocalInputValue(d);
-        }
-      }
+      const allDay = !!E.eventAllDay.checked;
+      const currentStart = E.eventStart.value;
+      const currentEnd = E.eventEnd.value;
+
+      E.eventStart.type = allDay ? 'date' : 'datetime-local';
+      E.eventEnd.type = allDay ? 'date' : 'datetime-local';
+
+      // keep values if possible
+      E.eventStart.value = currentStart || '';
+      E.eventEnd.value = currentEnd || '';
     });
   }
 
-  if (E.eventForm) {
-    E.eventForm.addEventListener('submit', async e => {
+  if (E.eventForm && E.eventSave) {
+    E.eventForm.addEventListener('submit', e => {
       e.preventDefault();
-      const id = E.eventForm.dataset.id || '';
+      E.eventSave.click();
+    });
+  }
+
+  if (E.eventSave) {
+    E.eventSave.addEventListener('click', async () => {
+      const id = (E.eventForm?.dataset.id || '').trim();
+      const existing = id
+        ? DataStore.events.find(ev => ev.id === id) || {}
+        : {};
+
       const allDay = !!(E.eventAllDay && E.eventAllDay.checked);
+      const modulesArr = normalizeModules(E.eventModules?.value || '');
 
-      const title = (E.eventTitle?.value || '').trim();
-      if (!title) {
-        UI.toast('Title is required');
-        return;
-      }
-
-      const ev = {
+      const event = {
         id,
-        title,
-        type: E.eventType?.value || 'Deployment',
-        env: E.eventEnv?.value || 'Prod',
+        title: (E.eventTitle?.value || '').trim(),
+        type: E.eventType?.value || EVENT_TYPES.DEPLOYMENT,
+        env: E.eventEnv?.value || ENVS.PROD,
         status: E.eventStatus?.value || 'Planned',
         owner: (E.eventOwner?.value || '').trim(),
-        modules: E.eventModules?.value || '',
+        modules: modulesArr,
         impactType: E.eventImpactType?.value || 'No downtime expected',
         issueId: (E.eventIssueId?.value || '').trim(),
         start: E.eventStart?.value || '',
         end: E.eventEnd?.value || '',
         description: (E.eventDescription?.value || '').trim(),
-        allDay,
-        notificationStatus: ''
+        notificationStatus: existing.notificationStatus || '',
+        allDay
       };
 
-      const saved = await saveEventToSheet(ev);
+      if (!event.title) {
+        UI.toast('Title is required');
+        (E.eventTitle || E.eventForm).focus();
+        return;
+      }
+      if (!event.start) {
+        UI.toast('Start time/date is required');
+        (E.eventStart || E.eventForm).focus();
+        return;
+      }
+
+      const saved = await saveEventToSheet(event);
       if (!saved) return;
 
-      const idx = DataStore.events.findIndex(x => x.id === saved.id);
+      const idx = DataStore.events.findIndex(ev => ev.id === saved.id);
       if (idx === -1) DataStore.events.push(saved);
       else DataStore.events[idx] = saved;
 
@@ -4081,25 +3399,20 @@ function wireModals() {
     });
   }
 
-  if (E.eventSave) {
-    E.eventSave.addEventListener('click', () => {
-      if (E.eventForm?.requestSubmit) E.eventForm.requestSubmit();
-    });
-  }
-
   if (E.eventDelete) {
     E.eventDelete.addEventListener('click', async () => {
-      if (!E.eventForm) return;
-      const id = E.eventForm.dataset.id;
+      const id = (E.eventForm?.dataset.id || '').trim();
       if (!id) {
-        UI.Modals.closeEvent();
+        UI.toast('No event to delete');
         return;
       }
-      if (!window.confirm('Delete this event from the calendar?')) return;
+      if (!confirm('Delete this event?')) return;
       const ok = await deleteEventFromSheet(id);
       if (!ok) return;
+
       const idx = DataStore.events.findIndex(ev => ev.id === id);
-      if (idx > -1) DataStore.events.splice(idx, 1);
+      if (idx !== -1) DataStore.events.splice(idx, 1);
+
       saveEventsCache();
       renderCalendarEvents();
       refreshPlannerReleasePlans();
@@ -4107,178 +3420,246 @@ function wireModals() {
       UI.Modals.closeEvent();
     });
   }
-}
 
-/* ---------- AI query / DSL wiring ---------- */
-
-let LAST_AI_QUERY = null;
-
-function applyDSLToFilters(q) {
-  if (!q) return;
-  const next = {
-    search: '',
-    module: 'All',
-    priority: 'All',
-    status: 'All',
-    start: '',
-    end: ''
-  };
-
-  if (q.words && q.words.length) {
-    next.search = q.words.join(' ');
+  // Trap focus in modals (if helper available)
+  if (typeof trapFocus === 'function') {
+    if (E.issueModal) trapFocus(E.issueModal);
+    if (E.eventModal) trapFocus(E.eventModal);
   }
 
+  // Escape closes modals
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      if (E.eventModal && E.eventModal.style.display === 'flex') {
+        UI.Modals.closeEvent();
+      } else if (E.issueModal && E.issueModal.style.display === 'flex') {
+        UI.Modals.closeIssue();
+      }
+    }
+  });
+}
+
+/* ---------------- Theme + accent wiring ---------------- */
+
+function wireTheme() {
+  const THEME_KEY = LS_KEYS.theme || 'incheck_theme';
+  const ACCENT_KEY = LS_KEYS.accent || 'incheck_accent';
+
+  const applyTheme = theme => {
+    let mode = theme;
+    if (!mode || mode === 'auto') {
+      try {
+        const prefersDark = window.matchMedia &&
+          window.matchMedia('(prefers-color-scheme: dark)').matches;
+        mode = prefersDark ? 'dark' : 'light';
+      } catch {
+        mode = 'light';
+      }
+    }
+    document.documentElement.setAttribute('data-theme', mode);
+  };
+
+  const savedTheme = (() => {
+    try {
+      return localStorage.getItem(THEME_KEY);
+    } catch {
+      return null;
+    }
+  })();
+
+  if (E.themeSelect) {
+    E.themeSelect.value = savedTheme || 'auto';
+    E.themeSelect.addEventListener('change', () => {
+      const val = E.themeSelect.value || 'auto';
+      try {
+        localStorage.setItem(THEME_KEY, val);
+      } catch {}
+      applyTheme(val);
+    });
+  }
+  applyTheme(savedTheme || 'auto');
+
+  const savedAccent = (() => {
+    try {
+      return localStorage.getItem(ACCENT_KEY);
+    } catch {
+      return null;
+    }
+  })();
+
+  if (savedAccent) {
+    document.documentElement.style.setProperty('--accent', savedAccent);
+    if (E.accentColor) E.accentColor.value = savedAccent;
+  }
+
+  if (E.accentColor) {
+    E.accentColor.addEventListener('input', () => {
+      const val = E.accentColor.value;
+      document.documentElement.style.setProperty('--accent', val);
+      try {
+        localStorage.setItem(ACCENT_KEY, val);
+      } catch {}
+    });
+  }
+}
+
+/* ---------------- AI query wiring (DSL) ---------------- */
+
+const AI_STATE = {
+  lastQuery: null,
+  lastResults: []
+};
+
+function renderAiQueryResults(q, results) {
+  if (!E.aiQueryResults) return;
+
+  if (!results.length) {
+    E.aiQueryResults.innerHTML =
+      '<div class="muted">No issues matched this AI query.</div>';
+    return;
+  }
+
+  const summaryParts = [];
+  if (q.module) summaryParts.push(`module:${q.module}`);
+  if (q.status) summaryParts.push(`status:${q.status}`);
+  if (q.priority) summaryParts.push(`priority:${q.priority}`);
+  if (q.lastDays) summaryParts.push(`last:${q.lastDays}d`);
+  if (q.riskOp) summaryParts.push(`risk${q.riskOp}${q.riskVal}`);
+  if (q.severityOp) summaryParts.push(`sev${q.severityOp}${q.severityVal}`);
+  if (q.impactOp) summaryParts.push(`imp${q.impactOp}${q.impactVal}`);
+  if (q.urgencyOp) summaryParts.push(`urg${q.urgencyOp}${q.urgencyVal}`);
+  if (q.ageOp) summaryParts.push(`age${q.ageOp}${q.ageVal}d`);
+
+  const desc = summaryParts.length
+    ? summaryParts.join(' · ')
+    : 'text search only';
+
+  const maxShow = 30;
+  const top = results.slice(0, maxShow);
+
+  const items = top
+    .map(r => {
+      const meta = DataStore.computed.get(r.id) || {};
+      const risk = meta.risk?.total || 0;
+      const badgeClass = risk
+        ? CalendarLink.riskBadgeClass(risk)
+        : '';
+      return `
+        <li>
+          <button class="btn sm" data-open="${U.escapeAttr(r.id)}">
+            ${U.escapeHtml(r.id)}
+          </button>
+          ${U.escapeHtml(r.title || '')}
+          ${
+            risk
+              ? `<span class="event-risk-badge ${badgeClass}">R${risk}</span>`
+              : ''
+          }
+          <span class="muted">[${U.escapeHtml(r.priority || '-')} · ${U.escapeHtml(
+        r.status || '-'
+      )}]</span>
+        </li>`;
+    })
+    .join('');
+
+  E.aiQueryResults.innerHTML = `
+    <div class="muted" style="margin-bottom:4px;">
+      ${results.length} issue${results.length === 1 ? '' : 's'} matched.
+      <br/>Filters: ${U.escapeHtml(desc)}.
+      ${results.length > maxShow ? `<br/>Showing first ${maxShow}.` : ''}
+    </div>
+    <ul class="ai-query-results">${items}</ul>
+  `;
+
+  // wire open buttons
+  E.aiQueryResults
+    .querySelectorAll('[data-open]')
+    .forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-open');
+        UI.Modals.openIssue(id);
+      });
+    });
+}
+
+function applyDslToFilters(q) {
+  // Start from clean filters; map what we can.
+  Filters.state.search = (q.words || []).join(' ');
+  Filters.state.module = 'All';
+  Filters.state.priority = 'All';
+  Filters.state.status = 'All';
+  Filters.state.start = '';
+  Filters.state.end = '';
+
   if (q.module) {
-    const modules = Array.from(DataStore.byModule.keys());
-    const target = q.module.toLowerCase();
-    const exact = modules.find(m => (m || '').toLowerCase() === target);
-    if (exact) next.module = exact;
+    const match = DataStore.rows.find(r =>
+      (r.module || '').toLowerCase().includes(q.module)
+    );
+    if (match && match.module) Filters.state.module = match.module;
   }
 
   if (q.priority) {
-    const p = q.priority[0]?.toUpperCase();
-    if (p === 'H') next.priority = 'High';
-    else if (p === 'M') next.priority = 'Medium';
-    else if (p === 'L') next.priority = 'Low';
+    const p = q.priority[0].toUpperCase();
+    if (p === 'H') Filters.state.priority = PRIORITIES.HIGH;
+    else if (p === 'M') Filters.state.priority = PRIORITIES.MEDIUM;
+    else if (p === 'L') Filters.state.priority = PRIORITIES.LOW;
   }
 
-  if (q.status && q.status !== 'open' && q.status !== 'closed') {
-    const statuses = Array.from(DataStore.byStatus.keys());
-    const target = q.status.toLowerCase();
-    const match = statuses.find(s => (s || '').toLowerCase().includes(target));
-    if (match) next.status = match;
+  if (q.status) {
+    const match = DataStore.rows.find(r =>
+      (r.status || '').toLowerCase().includes(q.status)
+    );
+    if (match && match.status) Filters.state.status = match.status;
   }
 
-  if (q.lastDays && Number.isFinite(q.lastDays)) {
-    const start = U.daysAgo(q.lastDays);
-    next.start = toLocalDateValue(start);
-    next.end = '';
+  if (q.lastDays) {
+    const from = U.daysAgo(q.lastDays);
+    Filters.state.start = from.toISOString().slice(0, 10);
   }
 
-  Filters.state = next;
   Filters.save();
+
+  if (E.searchInput) E.searchInput.value = Filters.state.search;
+  if (E.moduleFilter) setIfOptionExists(E.moduleFilter, Filters.state.module || 'All');
+  if (E.priorityFilter)
+    setIfOptionExists(E.priorityFilter, Filters.state.priority || 'All');
+  if (E.statusFilter)
+    setIfOptionExists(E.statusFilter, Filters.state.status || 'All');
+  if (E.startDateFilter) E.startDateFilter.value = Filters.state.start || '';
+  if (E.endDateFilter) E.endDateFilter.value = Filters.state.end || '';
+
   UI.refreshAll();
 }
 
 function wireAIQuery() {
-  if (!E.aiQueryInput || !E.aiQueryRun || !E.aiQueryResults) return;
-
-  const renderHelp = () => {
-    E.aiQueryResults.innerHTML = `
-      <div class="muted" style="font-size:12px;">
-        Examples:
-        <ul style="margin:4px 0 0 16px;padding:0;">
-          <li><code>status:open priority:h risk&gt;=10 last:7d</code></li>
-          <li><code>module:payments severity&gt;=3 impact&gt;=3</code></li>
-          <li><code>missing:priority last:30d</code></li>
-          <li><code>cluster:timeout sort:risk</code></li>
-        </ul>
-      </div>`;
-  };
+  if (!E.aiQueryInput) return;
 
   const runQuery = () => {
-    const raw = (E.aiQueryInput.value || '').trim();
-    if (!raw) {
-      LAST_AI_QUERY = null;
-      renderHelp();
-      return;
-    }
-    if (!DataStore.rows.length) {
-      UI.toast('Issues are still loading; try again in a moment.');
+    const text = (E.aiQueryInput.value || '').trim();
+    if (!text) {
+      if (E.aiQueryResults) {
+        E.aiQueryResults.innerHTML =
+          '<div class="muted">Type a natural language query, e.g. "open high-priority payment bugs last 7d risk>=10".</div>';
+      }
+      AI_STATE.lastQuery = null;
+      AI_STATE.lastResults = [];
       return;
     }
 
-    const q = DSL.parse(raw);
-    let rows = DataStore.rows.filter(r =>
+    const q = DSL.parse(text);
+    const results = DataStore.rows.filter(r =>
       DSL.matches(r, DataStore.computed.get(r.id) || {}, q)
     );
 
-    if (q.sort === 'risk') {
-      rows = rows
-        .map(r => ({
-          r,
-          risk: DataStore.computed.get(r.id)?.risk?.total || 0
-        }))
-        .sort((a, b) => b.risk - a.risk)
-        .map(x => x.r);
-    } else if (q.sort === 'date') {
-      rows = rows.slice().sort((a, b) => {
-        const da = new Date(a.date);
-        const db = new Date(b.date);
-        if (isNaN(da) && isNaN(db)) return 0;
-        if (isNaN(da)) return 1;
-        if (isNaN(db)) return -1;
-        return db - da; // newest first
-      });
-    } else if (q.sort === 'priority') {
-      rows = rows.slice().sort((a, b) => prioMap(b.priority) - prioMap(a.priority));
-    }
-
-    LAST_AI_QUERY = { text: raw, q, rows };
-
-    if (!rows.length) {
-      E.aiQueryResults.innerHTML = `<div>No issues matched this query.</div>`;
-      return;
-    }
-
-    const maxShow = 50;
-    const slice = rows.slice(0, maxShow);
-
-    const summary = `
-      <div style="margin-bottom:4px;">
-        Found <strong>${slice.length}</strong> of ${rows.length} matching issue${
-      rows.length === 1 ? '' : 's'
-    } for query <code>${U.escapeHtml(raw)}</code>.
-      </div>`;
-
-    const items = slice
-      .map(r => {
-        const meta = DataStore.computed.get(r.id) || {};
-        const risk = meta.risk || {};
-        const riskScore = risk.total || 0;
-        const badgeClass = CalendarLink.riskBadgeClass(riskScore);
-        return `
-        <li style="margin-bottom:6px;">
-          <button class="btn sm" data-open="${U.escapeAttr(r.id)}">${U.escapeHtml(
-          r.id
-        )}</button>
-          <strong>${U.escapeHtml(r.title || '')}</strong>
-          <div class="muted">
-            Module: ${U.escapeHtml(r.module || '-')},
-            Priority: ${U.escapeHtml(r.priority || '-')},
-            Status: ${U.escapeHtml(r.status || '-')}
-          </div>
-          <div class="muted">
-            <span class="event-risk-badge ${badgeClass}">RISK ${riskScore}</span>
-            · sev ${risk.severity ?? 0} · imp ${risk.impact ?? 0} · urg ${risk.urgency ?? 0}
-          </div>
-        </li>`;
-      })
-      .join('');
-
-    const overflow =
-      rows.length > maxShow
-        ? `<div class="muted" style="font-size:11px;">+ ${
-            rows.length - maxShow
-          } more not shown. Use "Export" to download all.</div>`
-        : '';
-
-    E.aiQueryResults.innerHTML = `
-      ${summary}
-      <ul style="margin:4px 0 0 16px;padding:0;font-size:13px;">
-        ${items}
-      </ul>
-      ${overflow}
-    `;
-
-    E.aiQueryResults.querySelectorAll('[data-open]').forEach(btn => {
-      btn.addEventListener('click', () =>
-        UI.Modals.openIssue(btn.getAttribute('data-open'))
-      );
-    });
+    AI_STATE.lastQuery = q;
+    AI_STATE.lastResults = results;
+    renderAiQueryResults(q, results);
   };
 
-  E.aiQueryRun.addEventListener('click', runQuery);
+  if (E.aiQueryRun) {
+    E.aiQueryRun.addEventListener('click', runQuery);
+  }
+
   E.aiQueryInput.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -4288,100 +3669,111 @@ function wireAIQuery() {
 
   if (E.aiQueryApplyFilters) {
     E.aiQueryApplyFilters.addEventListener('click', () => {
-      if (!LAST_AI_QUERY || !LAST_AI_QUERY.q) {
-        UI.toast('Run a query first.');
-        return;
+      if (!AI_STATE.lastQuery) {
+        runQuery();
       }
-      applyDSLToFilters(LAST_AI_QUERY.q);
-      setActiveView('issues');
-      UI.toast('Applied AI query filters to issues table');
+      if (!AI_STATE.lastQuery) return;
+      applyDslToFilters(AI_STATE.lastQuery);
+      UI.toast('Approximate filters applied from AI query');
     });
   }
 
   if (E.aiQueryExport) {
     E.aiQueryExport.addEventListener('click', () => {
-      if (!LAST_AI_QUERY || !LAST_AI_QUERY.rows?.length) {
-        UI.toast('Nothing to export yet.');
+      if (!AI_STATE.lastResults || !AI_STATE.lastResults.length) {
+        UI.toast('Run an AI query first');
         return;
       }
-      exportIssuesToCsv(LAST_AI_QUERY.rows, 'aiquery');
+      exportIssuesToCsv(AI_STATE.lastResults, 'ai_query');
     });
   }
-
-  // Initial help
-  renderHelp();
 }
 
-/* ---------- Keyboard shortcuts ---------- */
+/* ---------------- Online status chip ---------------- */
+
+function wireOnlineStatus() {
+  const update = () => {
+    if (!E.onlineStatusChip) return;
+    const online = navigator.onLine;
+    E.onlineStatusChip.textContent = online ? 'Online' : 'Offline';
+    E.onlineStatusChip.className =
+      'chip online-status ' + (online ? 'ok' : 'err');
+  };
+  update();
+  window.addEventListener('online', update);
+  window.addEventListener('offline', update);
+}
+
+/* ---------------- Global keyboard shortcuts ---------------- */
 
 function wireKeyboardShortcuts() {
   document.addEventListener('keydown', e => {
     const tag = (e.target && e.target.tagName) || '';
-    const isInputLike =
-      tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable;
+    const isTyping =
+      tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable;
 
-    // Ctrl/Cmd + K → AI query box (Insights tab)
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+    // "/" -> focus search
+    if (!isTyping && e.key === '/') {
+      if (E.searchInput) {
+        e.preventDefault();
+        E.searchInput.focus();
+        E.searchInput.select?.();
+      }
+      return;
+    }
+
+    // 1 / 2 / 3 -> switch tabs
+    if (!isTyping && (e.key === '1' || e.key === '2' || e.key === '3')) {
+      if (e.key === '1') setActiveView('issues');
+      if (e.key === '2') setActiveView('calendar');
+      if (e.key === '3') setActiveView('insights');
+      return;
+    }
+
+    // Ctrl/Cmd + K -> AI query
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
       e.preventDefault();
       setActiveView('insights');
       if (E.aiQueryInput) {
         E.aiQueryInput.focus();
-        if (E.aiQueryInput.select) E.aiQueryInput.select();
+        E.aiQueryInput.select?.();
       }
-      return;
-    }
-
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
-
-    // "/" → focus search (when not already in an input)
-    if (e.key === '/' && !isInputLike) {
-      e.preventDefault();
-      setActiveView('issues');
-      if (E.searchInput) {
-        E.searchInput.focus();
-        if (E.searchInput.select) E.searchInput.select();
-      }
-      return;
-    }
-
-    if (isInputLike) return;
-
-    // 1/2/3 → switch tabs
-    if (e.key === '1') {
-      setActiveView('issues');
-    } else if (e.key === '2') {
-      setActiveView('calendar');
-    } else if (e.key === '3') {
-      setActiveView('insights');
     }
   });
 }
 
-/* ---------- Bootstrapping ---------- */
+/* ---------------- App init ---------------- */
 
-document.addEventListener('DOMContentLoaded', () => {
+function initFromFilters() {
+  if (E.searchInput) E.searchInput.value = Filters.state.search || '';
+  if (E.moduleFilter)
+    setIfOptionExists(E.moduleFilter, Filters.state.module || 'All');
+  if (E.priorityFilter)
+    setIfOptionExists(E.priorityFilter, Filters.state.priority || 'All');
+  if (E.statusFilter)
+    setIfOptionExists(E.statusFilter, Filters.state.status || 'All');
+  if (E.startDateFilter) E.startDateFilter.value = Filters.state.start || '';
+  if (E.endDateFilter) E.endDateFilter.value = Filters.state.end || '';
+}
+
+function initApp() {
   cacheEls();
-  Filters.load();
-
-  if (E.pageSize) {
-    E.pageSize.value = String(GridState.pageSize);
-  }
-
   wireCore();
   wireSorting();
-  wirePaging();
   wireFilters();
-  wireTheme();
-  wireConnectivity();
-  wireModals();
   wireCalendar();
   wirePlanner();
+  wireModals();
+  wireTheme();
   wireAIQuery();
+  wireOnlineStatus();
   wireKeyboardShortcuts();
 
-  const view = localStorage.getItem(LS_KEYS.view) || 'issues';
-  setActiveView(view === 'calendar' || view === 'insights' ? view : 'issues');
+  initFromFilters();
+  setActiveView('issues');
 
   loadIssues(false);
   loadEvents(false);
-});
+}
+
+document.addEventListener('DOMContentLoaded', initApp);
