@@ -1,4 +1,3 @@
-
 :root {
   /* Status colors */
   --status-resolved:#16a34a;
@@ -403,13 +402,15 @@ th.sorted-desc::after{
   letter-spacing:.03em;
   text-transform:uppercase;
 }
+
+/* updated to dash-format class names (matches JS badgeStatus) */
 .status-Resolved{background:var(--status-resolved);color:#fff}
-.status-Under\ Development{background:var(--status-underdev);color:#fff}
+.status-Under-Development{background:var(--status-underdev);color:#fff}
 .status-Rejected{background:var(--status-rejected);color:#fff}
-.status-On\ Hold{background:var(--status-onhold);color:#fff}
-.status-Not\ Started\ Yet{background:var(--status-notstarted);color:#fff}
+.status-On-Hold{background:var(--status-onhold);color:#fff}
+.status-Not-Started-Yet{background:var(--status-notstarted);color:#fff}
 .status-Sent{background:var(--status-sent);color:#fff}
-.status-On\ Stage{background:var(--status-onstage);color:#fff}
+.status-On-Stage{background:var(--status-onstage);color:#fff}
 
 .priority-High{background:var(--priority-high);color:#fff}
 .priority-Medium{background:var(--priority-medium);color:#fff}
