@@ -5,14 +5,17 @@
   <title>InCheck Pro Dashboard</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- Favicon: put favicon.ico next to this index.html -->
-  <link rel="icon" type="image/x-icon" href="favicon.ico" />
+  <!-- Favicon (optional; add favicon.ico in the same folder to avoid 404) -->
+  <link rel="icon" href="favicon.ico" />
 
   <!-- Main stylesheet -->
   <link rel="stylesheet" href="styles.css" />
 
   <!-- FullCalendar (global build) -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.css">
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.css"
+  />
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
 
   <!-- Chart.js (global UMD build) -->
@@ -21,7 +24,15 @@
 <body>
   <!-- Top bar -->
   <header class="topbar">
-    <button id="drawerBtn" class="drawer-btn" aria-label="Toggle sidebar" aria-expanded="false">☰</button>
+    <button
+      id="drawerBtn"
+      class="drawer-btn"
+      aria-label="Toggle sidebar"
+      aria-expanded="false"
+      type="button"
+    >
+      ☰
+    </button>
     <h1 class="app-title">InCheck Pro · Issues · Ops · AI Copilot</h1>
 
     <div class="topbar-right">
@@ -41,13 +52,21 @@
         <input id="accentColor" type="color" value="#4f46e5" />
       </label>
 
-      <button id="shortcutsHelp" class="btn ghost sm" type="button">?</button>
+      <button
+        id="shortcutsHelp"
+        class="btn ghost sm"
+        type="button"
+        title="Keyboard shortcuts"
+      >
+        ?
+      </button>
     </div>
   </header>
 
   <div class="layout">
     <!-- Sidebar -->
     <aside id="sidebar" class="sidebar">
+      <!-- Data sync -->
       <div class="sidebar-section">
         <div class="sidebar-title">Data sync</div>
         <div class="sync-row">
@@ -61,10 +80,13 @@
         <div id="loadingStatus" class="muted" style="margin-top:4px;"></div>
         <div class="sidebar-actions">
           <button id="refreshNow" class="btn sm" type="button">Refresh now</button>
-          <button id="exportCsv" class="btn ghost sm" type="button">Export CSV</button>
+          <button id="exportCsv" class="btn ghost sm" type="button">
+            Export CSV
+          </button>
         </div>
       </div>
 
+      <!-- Quick actions -->
       <div class="sidebar-section">
         <div class="sidebar-title">Quick actions</div>
         <button id="createTicketBtn" class="btn full" type="button">
@@ -72,12 +94,17 @@
         </button>
       </div>
 
+      <!-- Filters -->
       <div class="sidebar-section">
         <div class="sidebar-title">Filters</div>
 
         <label>
           Search
-          <input id="searchInput" type="search" placeholder="Search issues ( / )" />
+          <input
+            id="searchInput"
+            type="search"
+            placeholder="Search issues ( / )"
+          />
         </label>
 
         <label>
@@ -105,6 +132,11 @@
           <input id="endDateFilter" type="date" />
         </label>
 
+        <!-- Optional reset button (not required by JS but harmless) -->
+        <button id="resetBtn" class="btn ghost sm" type="button" style="margin-top:6px;">
+          Reset filters
+        </button>
+
         <div class="active-filters-wrap">
           <div id="activeFiltersChips"></div>
         </div>
@@ -113,15 +145,33 @@
 
     <!-- Main content -->
     <main class="main">
-      <!-- Tab headers -->
+      <!-- Tabs -->
       <nav class="tabs" aria-label="Main views">
-        <button id="issuesTab" class="tab active" data-view="issues" aria-selected="true" type="button">
+        <button
+          id="issuesTab"
+          class="tab active"
+          data-view="issues"
+          aria-selected="true"
+          type="button"
+        >
           Issues
         </button>
-        <button id="calendarTab" class="tab" data-view="calendar" aria-selected="false" type="button">
+        <button
+          id="calendarTab"
+          class="tab"
+          data-view="calendar"
+          aria-selected="false"
+          type="button"
+        >
           Calendar
         </button>
-        <button id="insightsTab" class="tab" data-view="insights" aria-selected="false" type="button">
+        <button
+          id="insightsTab"
+          class="tab"
+          data-view="insights"
+          aria-selected="false"
+          type="button"
+        >
           Insights &amp; AI
         </button>
       </nav>
@@ -163,12 +213,54 @@
           <table id="issuesTable" class="grid" aria-label="Issues table">
             <thead>
               <tr>
-                <th class="sortable" data-key="id" tabindex="0" aria-sort="none">ID</th>
-                <th class="sortable" data-key="module" tabindex="0" aria-sort="none">Module</th>
-                <th class="sortable" data-key="title" tabindex="0" aria-sort="none">Title</th>
-                <th class="sortable" data-key="priority" tabindex="0" aria-sort="none">Priority/Risk</th>
-                <th class="sortable" data-key="status" tabindex="0" aria-sort="none">Status</th>
-                <th class="sortable" data-key="date" tabindex="0" aria-sort="none">Date</th>
+                <th
+                  class="sortable"
+                  data-key="id"
+                  tabindex="0"
+                  aria-sort="none"
+                >
+                  ID
+                </th>
+                <th
+                  class="sortable"
+                  data-key="module"
+                  tabindex="0"
+                  aria-sort="none"
+                >
+                  Module
+                </th>
+                <th
+                  class="sortable"
+                  data-key="title"
+                  tabindex="0"
+                  aria-sort="none"
+                >
+                  Title
+                </th>
+                <th
+                  class="sortable"
+                  data-key="priority"
+                  tabindex="0"
+                  aria-sort="none"
+                >
+                  Priority / Risk
+                </th>
+                <th
+                  class="sortable"
+                  data-key="status"
+                  tabindex="0"
+                  aria-sort="none"
+                >
+                  Status
+                </th>
+                <th
+                  class="sortable"
+                  data-key="date"
+                  tabindex="0"
+                  aria-sort="none"
+                >
+                  Date
+                </th>
                 <th>Log</th>
                 <th>Link</th>
               </tr>
@@ -220,10 +312,22 @@
           </div>
 
           <div class="calendar-filters">
-            <label><input id="eventFilterDeployment" type="checkbox" checked /> Deployment</label>
-            <label><input id="eventFilterMaintenance" type="checkbox" checked /> Maintenance</label>
-            <label><input id="eventFilterRelease" type="checkbox" checked /> Release</label>
-            <label><input id="eventFilterOther" type="checkbox" checked /> Other</label>
+            <label>
+              <input id="eventFilterDeployment" type="checkbox" checked />
+              Deployment
+            </label>
+            <label>
+              <input id="eventFilterMaintenance" type="checkbox" checked />
+              Maintenance
+            </label>
+            <label>
+              <input id="eventFilterRelease" type="checkbox" checked />
+              Release
+            </label>
+            <label>
+              <input id="eventFilterOther" type="checkbox" checked />
+              Other
+            </label>
           </div>
         </div>
 
@@ -232,10 +336,15 @@
 
       <!-- View: Insights & AI -->
       <section id="insightsView" class="view" hidden>
-        <div id="aiAnalyzing" class="muted" style="margin-bottom:6px;display:none;">
+        <div
+          id="aiAnalyzing"
+          class="muted"
+          style="margin-bottom:6px;display:none;"
+        >
           Analyzing…
         </div>
 
+        <!-- Quick insights -->
         <div class="insights-grid">
           <div class="card">
             <div class="card-title">Scope &amp; signals</div>
@@ -298,7 +407,7 @@
           </div>
         </div>
 
-        <!-- Clusters & Triage & Events -->
+        <!-- Clusters / Triage / Events -->
         <div class="insights-grid" style="margin-top:16px;">
           <div class="card">
             <div class="card-title">Similar issue clusters</div>
@@ -318,19 +427,26 @@
 
         <!-- AI query / DSL -->
         <div class="card" style="margin-top:16px;">
-          <div class="card-title">
-            AI query (DSL)
-          </div>
+          <div class="card-title">AI query (DSL)</div>
           <p class="muted" style="font-size:12px;margin-bottom:6px;">
-            Examples: <code>open high priority payments last:7d risk&gt;=10</code>,
+            Examples:
+            <code>open high priority payments last:7d risk&gt;=10</code>,
             <code>module:auth status:open age&gt;14d</code>,
             <code>missing:priority</code>
           </p>
           <div class="ai-query-row">
-            <textarea id="aiQueryInput" rows="2" placeholder="Type a natural language query, then press Enter or click Run (Ctrl+K to focus)…"></textarea>
+            <textarea
+              id="aiQueryInput"
+              rows="2"
+              placeholder="Type a natural language query, then press Enter or click Run (Ctrl+K to focus)…"
+            ></textarea>
             <div class="ai-query-actions">
               <button id="aiQueryRun" class="btn" type="button">Run</button>
-              <button id="aiQueryApplyFilters" class="btn ghost sm" type="button">
+              <button
+                id="aiQueryApplyFilters"
+                class="btn ghost sm"
+                type="button"
+              >
                 Apply to main filters
               </button>
               <button id="aiQueryExport" class="btn ghost sm" type="button">
@@ -346,6 +462,7 @@
           <div class="card-title">Release Planner – F&amp;B / Middle East</div>
 
           <div class="planner-grid">
+            <!-- Column 1: parameters -->
             <div class="planner-col">
               <div class="planner-section-title">Scope &amp; parameters</div>
 
@@ -370,12 +487,22 @@
 
               <label>
                 Modules (comma separated)
-                <input id="plannerModules" type="text" placeholder="e.g. payments, orders, auth" />
+                <input
+                  id="plannerModules"
+                  type="text"
+                  placeholder="e.g. payments, orders, auth"
+                />
               </label>
 
               <label>
                 Horizon (days)
-                <input id="plannerHorizon" type="number" min="1" max="30" value="7" />
+                <input
+                  id="plannerHorizon"
+                  type="number"
+                  min="1"
+                  max="30"
+                  value="7"
+                />
               </label>
 
               <label>
@@ -389,38 +516,65 @@
 
               <label>
                 Slots per day
-                <input id="plannerSlotsPerDay" type="number" min="1" max="10" value="4" />
+                <input
+                  id="plannerSlotsPerDay"
+                  type="number"
+                  min="1"
+                  max="10"
+                  value="4"
+                />
               </label>
 
               <label>
                 Description / release notes (optional)
-                <textarea id="plannerDescription" rows="3" placeholder="Short description of the change…"></textarea>
+                <textarea
+                  id="plannerDescription"
+                  rows="3"
+                  placeholder="Short description of the change…"
+                ></textarea>
               </label>
 
-              <button id="plannerRun" class="btn" type="button">Suggest windows</button>
+              <button id="plannerRun" class="btn" type="button">
+                Suggest windows
+              </button>
             </div>
 
+            <!-- Column 2: tickets + mapping -->
             <div class="planner-col">
               <div class="planner-section-title">Tickets in scope</div>
               <p class="muted" style="font-size:12px;">
-                Uses current issue filters as a pool (top ~250). Hold Ctrl / Cmd to select
-                multiple tickets.
+                Uses current issue filters as a pool (top ~250). Hold Ctrl / Cmd to
+                select multiple tickets.
               </p>
               <select id="plannerTickets" multiple size="8"></select>
 
-              <div class="planner-section-title" style="margin-top:12px;">
+              <div
+                class="planner-section-title"
+                style="margin-top:12px;"
+              >
                 Existing Release events (assign tickets)
               </div>
               <select id="plannerReleasePlan"></select>
-              <button id="plannerAssignBtn" class="btn ghost sm" type="button" style="margin-top:6px;">
+              <button
+                id="plannerAssignBtn"
+                class="btn ghost sm"
+                type="button"
+                style="margin-top:6px;"
+              >
                 Assign selected tickets to Release
               </button>
             </div>
 
+            <!-- Column 3: suggested windows -->
             <div class="planner-col">
               <div class="planner-section-title">Suggested windows</div>
               <div id="plannerResults" class="planner-results"></div>
-              <button id="plannerAddEvent" class="btn sm" type="button" style="margin-top:8px;">
+              <button
+                id="plannerAddEvent"
+                class="btn sm"
+                type="button"
+                style="margin-top:8px;"
+              >
                 Add top suggestion as Release event
               </button>
             </div>
@@ -439,14 +593,32 @@
   </div>
 
   <!-- Toast -->
-  <div id="toast" class="toast" role="status" aria-live="polite" style="display:none;"></div>
+  <div
+    id="toast"
+    class="toast"
+    role="status"
+    aria-live="polite"
+    style="display:none;"
+  ></div>
 
   <!-- Issue modal -->
   <div id="issueModal" class="modal" style="display:none;">
-    <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div
+      class="modal-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modalTitle"
+    >
       <header class="modal-header">
         <h2 id="modalTitle"></h2>
-        <button id="modalClose" class="btn icon" type="button" aria-label="Close">✕</button>
+        <button
+          id="modalClose"
+          class="btn icon"
+          type="button"
+          aria-label="Close"
+        >
+          ✕
+        </button>
       </header>
       <div id="modalBody" class="modal-body"></div>
       <footer class="modal-footer">
@@ -458,10 +630,22 @@
 
   <!-- Event modal -->
   <div id="eventModal" class="modal" style="display:none;">
-    <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="eventModalTitle">
+    <div
+      class="modal-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="eventModalTitle"
+    >
       <header class="modal-header">
         <h2 id="eventModalTitle">Add Event</h2>
-        <button id="eventModalClose" class="btn icon" type="button" aria-label="Close">✕</button>
+        <button
+          id="eventModalClose"
+          class="btn icon"
+          type="button"
+          aria-label="Close"
+        >
+          ✕
+        </button>
       </header>
       <form id="eventForm" class="modal-body">
         <label>
@@ -506,20 +690,36 @@
 
         <label>
           Modules (comma separated)
-          <input id="eventModules" type="text" placeholder="e.g. payments, orders" />
+          <input
+            id="eventModules"
+            type="text"
+            placeholder="e.g. payments, orders"
+          />
         </label>
 
         <label>
           Impact type
-          <input id="eventImpactType" type="text" placeholder="e.g. No downtime expected" />
+          <input
+            id="eventImpactType"
+            type="text"
+            placeholder="e.g. No downtime expected"
+          />
         </label>
 
         <label>
           Linked ticket ID(s)
-          <input id="eventIssueId" type="text" placeholder="e.g. INC-123, BUG-9" />
+          <input
+            id="eventIssueId"
+            type="text"
+            placeholder="e.g. INC-123, BUG-9"
+          />
         </label>
 
-        <div id="eventIssueLinkedInfo" class="muted" style="font-size:12px;display:none;"></div>
+        <div
+          id="eventIssueLinkedInfo"
+          class="muted"
+          style="font-size:12px;display:none;"
+        ></div>
 
         <div class="event-datetime-row">
           <label>
@@ -546,7 +746,12 @@
         <footer class="modal-footer">
           <button id="eventSave" class="btn" type="button">Save</button>
           <button id="eventCancel" class="btn ghost" type="button">Cancel</button>
-          <button id="eventDelete" class="btn danger ghost" type="button" style="margin-left:auto;display:none;">
+          <button
+            id="eventDelete"
+            class="btn danger ghost"
+            type="button"
+            style="margin-left:auto;display:none;"
+          >
             Delete
           </button>
         </footer>
@@ -554,7 +759,7 @@
     </div>
   </div>
 
-  <!-- Main app entry (ES module) -->
+  <!-- Main app entry (imports config.js, utils.js, risk.js, datastore.js) -->
   <script type="module" src="app.js"></script>
 </body>
 </html>
