@@ -60,7 +60,7 @@ const CONFIG = {
       ['p1', 2],
       ['sla', 2]
     ],
-    statusBoosts: { 'on stage': 2, 'under': 1 },
+    statusBoosts: { 'on stage': 2, under: 1 },
     misalignedDelta: 1,
     highRisk: 9,
     critRisk: 13,
@@ -150,9 +150,9 @@ const CONFIG = {
   FNB: {
     // Weekend patterns (0 = Sun)
     WEEKEND: {
-      gulf: [5, 6],       // Fri, Sat
-      levant: [5],        // Fri
-      northafrica: [5]    // Fri
+      gulf: [5, 6], // Fri, Sat
+      levant: [5], // Fri
+      northafrica: [5] // Fri
     },
     // Typical busy windows (local time)
     BUSY_WINDOWS: [
@@ -268,13 +268,15 @@ const U = {
     return x.toISOString().replace('T', ' ').slice(0, 16);
   },
   escapeHtml: s =>
-    String(s).replace(/[&<>"']/g, m => ({
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#39;'
-    }[m])),
+    String(s).replace(/[&<>"']/g, m =>
+      ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      })[m]
+    ),
   escapeAttr: s =>
     String(s)
       .replace(/&/g, '&amp;')
@@ -971,12 +973,30 @@ const ReleasePlanner = {
     if (score <= 3) return 'moderate service';
     return 'rush / busy service';
   },
-  computeBugPressure(modules, horizonDays) {
+
+  /**
+   * BUG PRESSURE:
+   * - looks at the last ~90 days of issues
+   * - uses:
+   *   - modules you typed
+   *   - modules of the selected tickets
+   *   - log/title/description text
+   *   - risk score of the selected tickets themselves
+   */
+  computeBugPressure(modules, horizonDays, tickets) {
     const now = new Date();
     const lookback = U.dateAddDays(now, -90);
+
+    // Start from modules passed by user *and* modules of selected tickets
     const modSet = new Set((modules || []).map(m => (m || '').toLowerCase()));
+    (tickets || []).forEach(t => {
+      const m = (t.module || '').toLowerCase();
+      if (m) modSet.add(m);
+    });
+
     let sum = 0;
 
+    // Historical bug pressure from issues in the last ~90 days
     DataStore.rows.forEach(r => {
       if (!r.date) return;
       const d = new Date(r.date);
@@ -985,12 +1005,19 @@ const ReleasePlanner = {
       const mod = (r.module || '').toLowerCase();
       const title = (r.title || '').toLowerCase();
       const desc = (r.desc || '').toLowerCase();
+      const log = (r.log || '').toLowerCase();
+
       let related = false;
 
-      if (!modSet.size) related = true;
-      else if (modSet.has(mod)) related = true;
-      else {
-        related = Array.from(modSet).some(m => title.includes(m) || desc.includes(m));
+      if (!modSet.size) {
+        related = true;
+      } else if (modSet.has(mod)) {
+        related = true;
+      } else {
+        // also check log text
+        related = Array.from(modSet).some(
+          m => title.includes(m) || desc.includes(m) || log.includes(m)
+        );
       }
       if (!related) return;
 
@@ -1007,6 +1034,21 @@ const ReleasePlanner = {
       sum += risk * w;
     });
 
+    // Add current selected tickets as extra bug pressure
+    if (tickets && tickets.length) {
+      tickets.forEach(t => {
+        const meta = DataStore.computed.get(t.id) || {};
+        const risk = meta.risk?.total || 0;
+        if (!risk) return;
+
+        const st = (t.status || '').toLowerCase();
+        const isOpen = !(st.startsWith('resolved') || st.startsWith('rejected'));
+
+        const boost = risk * (isOpen ? 1.2 : 1.0);
+        sum += boost;
+      });
+    }
+
     const normalized = sum / 40; // tuning constant
     const bugRisk = Math.max(0, Math.min(6, normalized));
     return { raw: sum, risk: bugRisk };
@@ -1016,15 +1058,37 @@ const ReleasePlanner = {
     if (risk <= 3.5) return 'moderate bug pressure';
     return 'heavy bug pressure';
   },
-  computeBombBugRisk(modules, description) {
-    // "Bomb bug" = old, high-risk incidents that are textually close to this release
+
+  /**
+   * BOMB BUG RISK:
+   * - “bomb bugs” = old, high-risk incidents
+   * - textually close to:
+   *   - release description you typed
+   *   - AND all selected tickets (title/description/log/type)
+   * - modules from planner input + ticket modules
+   */
+  computeBombBugRisk(modules, description, tickets) {
     const now = new Date();
     const lookback = U.dateAddDays(now, -365); // last year
-    const modSet = new Set((modules || []).map(m => (m || '').toLowerCase()));
 
-    const text = (description || '')
+    // Modules from planner input *and* selected tickets
+    const modSet = new Set((modules || []).map(m => (m || '').toLowerCase()));
+    (tickets || []).forEach(t => {
+      const m = (t.module || '').toLowerCase();
+      if (m) modSet.add(m);
+    });
+
+    // Context text = release description + all selected tickets’ text
+    const textParts = [description || ''];
+    (tickets || []).forEach(t => {
+      textParts.push(t.title || '', t.desc || '', t.log || '', t.type || '');
+    });
+
+    const text = textParts
+      .join(' ')
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, ' ');
+
     const tokens = new Set(
       text
         .split(/\s+/)
@@ -1057,9 +1121,12 @@ const ReleasePlanner = {
       const body = `${title} ${desc} ${log}`;
 
       let related = false;
-      if (!modSet.size) related = true;
-      else if (modSet.has(mod)) related = true;
-      else {
+      if (!modSet.size) {
+        related = true;
+      } else if (modSet.has(mod)) {
+        related = true;
+      } else {
+        // Match on context tokens from description + ticket texts
         related = Array.from(tokens).some(t => body.includes(t));
       }
       if (!related) return;
@@ -1110,10 +1177,12 @@ const ReleasePlanner = {
 
       const isHoliday =
         type === 'holiday' ||
-        /holiday|eid|ramadan|ramadhan|ramzan|iftar|suhoor|ashura|national day|founding day/i.test(title) ||
+        /holiday|eid|ramadan|ramadhan|ramzan|iftar|suhoor|ashura|national day|founding day/i.test(
+          title
+        ) ||
         /holiday|public holiday/i.test(impact);
 
-      const evEnv = (ev.env || 'Prod');
+      const evEnv = ev.env || 'Prod';
 
       // For holidays, ignore env filter (they affect all envs operationally)
       if (!isHoliday && env && evEnv && evEnv !== env) return;
@@ -1185,11 +1254,21 @@ const ReleasePlanner = {
     if (totalRisk <= 12) return { label: 'Medium', className: 'planner-score-med' };
     return { label: 'High', className: 'planner-score-high' };
   },
-  suggestSlots({ region, env, modules, horizonDays, releaseType, description, slotsPerDay }) {
+  suggestSlots({
+    region,
+    env,
+    modules,
+    horizonDays,
+    releaseType,
+    description,
+    slotsPerDay,
+    tickets
+  }) {
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const bug = this.computeBugPressure(modules, horizonDays || 7);
-    const bomb = this.computeBombBugRisk(modules, description || '');
+
+    const bug = this.computeBugPressure(modules, horizonDays || 7, tickets || []);
+    const bomb = this.computeBombBugRisk(modules, description || '', tickets || []);
 
     const slots = [];
     const hoursProd = [6, 10, 15, 23]; // Prod: pre-service + between services + late
@@ -2397,7 +2476,6 @@ UI.Modals = {
             })
             .join('');
 
-          const remaining = uniqueIds.length - issues.length;
           const extra = uniqueIds.length - issues.length;
           const extraHtml =
             extra > 0
@@ -3056,7 +3134,15 @@ let LAST_PLANNER_RESULT = null;
 function renderPlannerResults(result, context) {
   if (!E.plannerResults) return;
   const { slots, bug, bomb } = result;
-  const { env, modules, releaseType, horizonDays, region, description } = context;
+  const {
+    env,
+    modules,
+    releaseType,
+    horizonDays,
+    region,
+    description,
+    tickets = []
+  } = context;
 
   if (!slots.length) {
     E.plannerResults.innerHTML =
@@ -3076,6 +3162,12 @@ function renderPlannerResults(result, context) {
   const bugLabel = ReleasePlanner.bugLabel(bug.risk);
   const bombLabel = ReleasePlanner.bombLabel(bomb.risk);
 
+  const ticketIds = tickets.map(t => t.id).filter(Boolean);
+  const ticketLabel =
+    ticketIds.length > 0
+      ? `Tickets in scope: ${ticketIds.join(', ')}`
+      : 'No specific tickets pinned (using modules + recent history).';
+
   const intro = `
     <div style="margin-bottom:6px;">
       Top ${slots.length} suggested windows for a <strong>${U.escapeHtml(
@@ -3090,7 +3182,8 @@ function renderPlannerResults(result, context) {
         bugLabel
       )}. Historical &ldquo;bomb bug&rdquo; pattern: ${U.escapeHtml(
     bombLabel
-  )}.</span>
+  )}.</span><br/>
+      <span class="muted">${U.escapeHtml(ticketLabel)}</span>
     </div>
   `;
 
@@ -3106,7 +3199,9 @@ function renderPlannerResults(result, context) {
       .join('');
     bombExamplesHtml = `
       <div class="muted" style="font-size:11px;margin-bottom:4px;">
-        Related historical incidents:
+        If you deploy this release on <b>${U.escapeHtml(
+          env
+        )}</b>, watch out for patterns similar to these historical blast bugs:
         <ul style="margin:4px 0 0 18px;padding:0;">
           ${items}
         </ul>
@@ -3150,6 +3245,7 @@ function renderPlannerResults(result, context) {
 
       const startIso = d.toISOString();
       const endIso = slot.end.toISOString();
+      const linkedTicketIds = ticketIds;
 
       return `
       <div class="planner-slot" data-index="${idx}">
@@ -3171,6 +3267,15 @@ function renderPlannerResults(result, context) {
         <div class="planner-slot-meta">
           Expected effect on F&amp;B clients: ${U.escapeHtml(blastComment)}
         </div>
+        ${
+          linkedTicketIds.length
+            ? `<div class="planner-slot-meta muted" style="font-size:11px;">
+                 This window is evaluated against tickets: ${U.escapeHtml(
+                   linkedTicketIds.join(', ')
+                 )}
+               </div>`
+            : ''
+        }
         <div class="planner-slot-meta">
           <button type="button"
                   class="btn sm"
@@ -3202,6 +3307,8 @@ function renderPlannerResults(result, context) {
         modules && modules.length ? modules.join(', ') : 'General';
 
       const releaseDescription = (E.plannerDescription?.value || '').trim();
+      const linkedTicketIds = ticketIds;
+      const issueIdStr = linkedTicketIds.join(', ');
 
       const newEvent = {
         id: '',
@@ -3215,13 +3322,14 @@ function renderPlannerResults(result, context) {
           env === 'Prod'
             ? 'High risk change'
             : 'Internal only',
-        issueId: '',
+        issueId: issueIdStr,
         start: startLocal,
         end: endLocal,
         description:
           `Auto-scheduled by Release Planner. Region profile: ${regionLabel}. Modules: ${modulesLabelLocal}.` +
           (releaseDescription ? `\nRelease notes: ${releaseDescription}` : '') +
-          `\nHeuristic risk index computed from F&B rush hours, bug history, holidays and existing calendar events.`,
+          (issueIdStr ? `\nLinked tickets: ${issueIdStr}` : '') +
+          `\nHeuristic risk index computed from F&B rush hours, ticket risk, bug history, holidays and existing calendar events.`,
         allDay: false,
         notificationStatus: ''
       };
@@ -3353,6 +3461,13 @@ function wirePlanner() {
       parseInt(E.plannerSlotsPerDay?.value || '4', 10) || 4;
     const description = (E.plannerDescription?.value || '').trim();
 
+    // Collect selected tickets and pass them into ReleasePlanner
+    const ticketOptions = Array.from(E.plannerTickets?.selectedOptions || []);
+    const ticketIds = ticketOptions.map(o => o.value).filter(Boolean);
+    const tickets = ticketIds
+      .map(id => DataStore.byId.get(id))
+      .filter(Boolean);
+
     const context = {
       region,
       env,
@@ -3360,7 +3475,8 @@ function wirePlanner() {
       releaseType,
       horizonDays,
       slotsPerDay,
-      description
+      description,
+      tickets
     };
 
     const result = ReleasePlanner.suggestSlots(context);
@@ -3398,6 +3514,9 @@ function wirePlanner() {
           : 'General';
       const releaseDescription = (E.plannerDescription?.value || '').trim();
 
+      const ticketIds = (context.tickets || []).map(t => t.id).filter(Boolean);
+      const issueIdStr = ticketIds.join(', ');
+
       const newEvent = {
         id: '',
         title: `Release – ${modulesLabelLocal} (${context.releaseType})`,
@@ -3410,13 +3529,14 @@ function wirePlanner() {
           context.env === 'Prod'
             ? 'High risk change'
             : 'Internal only',
-        issueId: '',
+        issueId: issueIdStr,
         start: startLocal,
         end: endLocal,
         description:
           `Auto-scheduled by Release Planner (top suggestion). Region profile: ${regionLabel}. Modules: ${modulesLabelLocal}.` +
           (releaseDescription ? `\nRelease notes: ${releaseDescription}` : '') +
-          `\nHeuristic risk index computed from F&B rush hours, bug history, holidays and existing calendar events.`,
+          (issueIdStr ? `\nLinked tickets: ${issueIdStr}` : '') +
+          `\nHeuristic risk index computed from F&B rush hours, ticket risk, bug history, holidays and existing calendar events.`,
         allDay: false,
         notificationStatus: ''
       };
@@ -3769,7 +3889,7 @@ function wireModals() {
         .catch(() => UI.toast('Clipboard blocked'));
     });
   }
-   if (E.copyLink) {
+  if (E.copyLink) {
     E.copyLink.addEventListener('click', () => {
       const r = UI.Modals.selectedIssue;
       if (!r || !r.id) return;
