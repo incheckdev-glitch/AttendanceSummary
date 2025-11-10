@@ -5,7 +5,10 @@
   <title>InCheck Pro Dashboard</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- Main stylesheet (your updated CSS) -->
+  <!-- Favicon: put favicon.ico next to this index.html -->
+  <link rel="icon" type="image/x-icon" href="favicon.ico" />
+
+  <!-- Main stylesheet -->
   <link rel="stylesheet" href="styles.css" />
 
   <!-- FullCalendar (global build) -->
@@ -230,7 +233,8 @@
       <!-- View: Insights & AI -->
       <section id="insightsView" class="view" hidden>
         <div id="aiAnalyzing" class="muted" style="margin-bottom:6px;display:none;">
-          Analyzing…</div>
+          Analyzing…
+        </div>
 
         <div class="insights-grid">
           <div class="card">
@@ -550,7 +554,7 @@
     </div>
   </div>
 
-  <!-- Main app entry: this imports config.js, utils.js, risk.js, datastore.js -->
+  <!-- Main app entry (ES module) -->
   <script type="module" src="app.js"></script>
 </body>
 </html>
