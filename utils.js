@@ -1,268 +1,291 @@
 // utils.js
+// Shared helper utilities for InCheck Pro
 
 /* =========================================================
-   DOM helpers, dates, formatting, encoding
+   Core helpers (U)
    ========================================================= */
 
-const pad2 = n => String(n).padStart(2, '0');
+const _UBase = {
+  q(sel, root = document) {
+    return root.querySelector(sel);
+  },
 
-function isLocalDateTimeString(s) {
-  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s);
-}
-function isLocalDateString(s) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(s);
-}
+  qAll(sel, root = document) {
+    return Array.from(root.querySelectorAll(sel));
+  },
 
-function parseLocalDateTime(s) {
-  // "YYYY-MM-DDTHH:MM" (no timezone) -> Date in local time
-  const [d, t] = s.split('T');
-  const [yy, mm, dd] = d.split('-').map(Number);
-  const [hh, mi] = t.split(':').map(Number);
-  return new Date(yy, mm - 1, dd, hh, mi, 0, 0);
-}
+  escapeHtml(value) {
+    const s = String(value == null ? '' : value);
+    return s
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  },
 
-function parseLocalDate(s) {
-  // "YYYY-MM-DD" (no timezone) -> Date in local time 00:00
-  const [yy, mm, dd] = s.split('-').map(Number);
-  return new Date(yy, mm - 1, dd, 0, 0, 0, 0);
-}
+  escapeAttr(value) {
+    // For attributes and URLs
+    const s = String(value == null ? '' : value);
+    return s
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  },
 
-/** Safely turn many date-like inputs into a Date (or null if invalid). */
-export function safeDate(v) {
-  if (!v) return null;
-  if (v instanceof Date) {
-    const d = new Date(v.getTime());
-    return isNaN(d) ? null : d;
+  daysAgo(n) {
+    const d = new Date();
+    d.setDate(d.getDate() - Number(n || 0));
+    d.setHours(0, 0, 0, 0);
+    return d;
+  },
+
+  dateAddDays(date, delta) {
+    const d = safeDate(date);
+    if (!d) return null;
+    const copy = new Date(d.getTime());
+    copy.setDate(copy.getDate() + Number(delta || 0));
+    return copy;
+  },
+
+  /**
+   * Check if a date is in [from, to).
+   * dateVal can be Date or string.
+   * from/to can be Date or null.
+   */
+  isBetween(dateVal, from, to) {
+    if (!dateVal) return false;
+    const d = dateVal instanceof Date ? dateVal : safeDate(dateVal);
+    if (!d) return false;
+    if (from && d < from) return false;
+    if (to && d >= to) return false;
+    return true;
+  },
+
+  /**
+   * Pretty timestamp: "Jan 3, 14:20"
+   */
+  fmtTS(val) {
+    if (!val) return '';
+    const d = val instanceof Date ? val : safeDate(val);
+    if (!d) return '';
+    try {
+      return d.toLocaleString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch {
+      return d.toISOString();
+    }
   }
-  const s = String(v).trim();
-  try {
-    if (isLocalDateTimeString(s)) return parseLocalDateTime(s);
-    if (isLocalDateString(s)) return parseLocalDate(s);
-    const d = new Date(s);
-    return isNaN(d) ? null : d;
-  } catch {
-    return null;
-  }
-}
+};
 
-/** Add days to a date (doesn't mutate input). */
-function dateAddDays(date, days) {
-  const d0 = date instanceof Date ? date : safeDate(date) || new Date();
-  const d = new Date(d0.getTime());
-  d.setDate(d.getDate() + (days || 0));
+// Safety net: if some code calls a missing U.foo(), it becomes a no-op
+export const U = new Proxy(_UBase, {
+  get(target, prop, receiver) {
+    if (prop in target) return Reflect.get(target, prop, receiver);
+    // Unknown helpers become a harmless no-op function
+    return function noop() {};
+  }
+});
+
+/* =========================================================
+   Dates
+   ========================================================= */
+
+/**
+ * safeDate: returns a Date or null instead of "Invalid Date".
+ */
+export function safeDate(value) {
+  if (!value) return null;
+  if (value instanceof Date) {
+    return isNaN(value.getTime()) ? null : new Date(value.getTime());
+  }
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return null;
   return d;
 }
 
-/** Returns a Date for N days ago from now. */
-function daysAgo(n) {
-  return dateAddDays(new Date(), -Math.max(0, Number(n) || 0));
+/**
+ * For <input type="datetime-local">
+ * Returns "YYYY-MM-DDTHH:MM" in local time, or "" if invalid.
+ */
+export function toLocalInputValue(value) {
+  const d = safeDate(value);
+  if (!d) return '';
+  const pad = n => String(n).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  const mm = pad(d.getMonth() + 1);
+  const dd = pad(d.getDate());
+  const hh = pad(d.getHours());
+  const mi = pad(d.getMinutes());
+  return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
 }
 
-/** Check if date is between [after, before). Nulls mean open-ended. */
-function isBetween(d, after, before) {
-  const x = safeDate(d);
-  if (!x) return false;
-  const a = after ? safeDate(after) : null;
-  const b = before ? safeDate(before) : null;
-  if (a && x < a) return false;
-  if (b && x >= b) return false;
-  return true;
+/**
+ * For <input type="date">
+ * Returns "YYYY-MM-DD" in local time, or "" if invalid.
+ */
+export function toLocalDateValue(value) {
+  const d = safeDate(value);
+  if (!d) return '';
+  const pad = n => String(n).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  const mm = pad(d.getMonth() + 1);
+  const dd = pad(d.getDate());
+  return `${yyyy}-${mm}-${dd}`;
 }
 
-/** Format timestamp for small status labels. */
-function fmtTS(d) {
-  const x = safeDate(d);
-  if (!x) return '';
-  try {
-    return x.toLocaleString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  } catch {
-    // Fallback "YYYY-MM-DD HH:MM"
-    return (
-      `${x.getFullYear()}-${pad2(x.getMonth() + 1)}-${pad2(x.getDate())} ` +
-      `${pad2(x.getHours())}:${pad2(x.getMinutes())}`
-    );
-  }
+/* =========================================================
+   Priority helpers
+   ========================================================= */
+
+// Normalized numeric priority scale
+export const prioMap = {
+  // Common labels
+  high: 3,
+  medium: 2,
+  low: 1,
+  // Sometimes people use P0 / P1 / P2
+  p0: 4,
+  p1: 3,
+  p2: 2,
+  p3: 1
+};
+
+/**
+ * Gap between two textual priorities like "High" vs "Low".
+ * Returns an absolute numeric difference (0 if unknown).
+ */
+export function prioGap(suggested, actual) {
+  if (!suggested || !actual) return 0;
+  const norm = v => String(v || '').trim().toLowerCase();
+  const sVal = prioMap[norm(suggested)];
+  const aVal = prioMap[norm(actual)];
+  if (!sVal || !aVal) return 0;
+  return Math.abs(sVal - aVal);
 }
 
-/** Convert a date into an <input type="datetime-local"> value (local time). */
-export function toLocalInputValue(d) {
-  const x = safeDate(d);
-  if (!x) return '';
-  return (
-    `${x.getFullYear()}-${pad2(x.getMonth() + 1)}-${pad2(x.getDate())}` +
-    `T${pad2(x.getHours())}:${pad2(x.getMinutes())}`
-  );
-}
+/* =========================================================
+   debounce
+   ========================================================= */
 
-/** Convert a date into an <input type="date"> value (YYYY-MM-DD). */
-export function toLocalDateValue(d) {
-  const x = safeDate(d);
-  if (!x) return '';
-  return `${x.getFullYear()}-${pad2(x.getMonth() + 1)}-${pad2(x.getDate())}`;
-}
-
-/** Simple debounce helper. */
 export function debounce(fn, wait = 200) {
   let t = null;
   return function debounced(...args) {
-    clearTimeout(t);
-    t = setTimeout(() => fn.apply(this, args), wait);
+    const ctx = this;
+    if (t) clearTimeout(t);
+    t = setTimeout(() => {
+      t = null;
+      fn.apply(ctx, args);
+    }, wait);
   };
 }
 
-/** Trap focus inside a container (fixed to use the event arg). */
+/* =========================================================
+   Focus trapping for modals
+   ========================================================= */
+
+/**
+ * trapFocus(container)
+ * Keeps keyboard focus inside a modal/dialog while it is open.
+ * Fixes the "reading 'shiftKey'" error by using the event argument correctly.
+ */
 export function trapFocus(container) {
   if (!container) return;
 
-  const selectors =
-    'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
+  const focusableSelector = [
+    'a[href]',
+    'button:not([disabled])',
+    'textarea:not([disabled])',
+    'input:not([disabled]):not([type="hidden"])',
+    'select:not([disabled])',
+    '[tabindex]:not([tabindex="-1"])'
+  ].join(',');
 
-  const getFocusable = () =>
-    Array.from(container.querySelectorAll(selectors)).filter(el => {
-      if (el.disabled) return false;
-      if (el.getAttribute('aria-hidden') === 'true') return false;
-      return true;
-    });
-
-  const handleKeydown = (e) => {
+  container.addEventListener('keydown', e => {
     if (e.key !== 'Tab') return;
 
-    const focusable = getFocusable();
+    const focusable = Array.from(container.querySelectorAll(focusableSelector))
+      .filter(el => !el.hasAttribute('disabled') && !el.getAttribute('aria-hidden'));
+
     if (!focusable.length) return;
 
     const first = focusable[0];
     const last = focusable[focusable.length - 1];
-    const active = document.activeElement;
+    const isShift = !!e.shiftKey;
 
-    if (e.shiftKey) {
-      // backwards
-      if (active === first || !container.contains(active)) {
-        e.preventDefault();
-        last.focus();
-      }
-    } else {
-      // forwards
-      if (active === last) {
-        e.preventDefault();
-        first.focus();
-      }
+    if (isShift && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!isShift && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
     }
-  };
-
-  container.addEventListener('keydown', handleKeydown);
-}
-
-/** Escape HTML entities for safe innerHTML text nodes. */
-function escapeHtml(s) {
-  return String(s == null ? '' : s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-/** Escape for attributes (safe for href, data-*, etc.). */
-function escapeAttr(s) {
-  return escapeHtml(s).replace(/`/g, '&#96;');
-}
-
-/** Shortcuts for DOM querying. */
-function q(sel, root = document) {
-  return root.querySelector(sel);
-}
-function qAll(sel, root = document) {
-  return Array.from(root.querySelectorAll(sel));
+  });
 }
 
 /* =========================================================
-   Priorities & comparison helpers
-   ========================================================= */
-
-export const prioMap = {
-  // canonical
-  High: 3,
-  Medium: 2,
-  Low: 1,
-  // shorthands / synonyms
-  H: 3, M: 2, L: 1,
-  P0: 3, P1: 3, // treat P0/P1 as High for gap purposes
-  P2: 2, P3: 1,
-  Critical: 3,
-  Major: 2,
-  Minor: 1
-};
-
-function prioScore(x) {
-  if (!x) return null;
-  const k = String(x).trim();
-  // Try exact
-  if (prioMap.hasOwnProperty(k)) return prioMap[k];
-  // Try case-insensitive canonical
-  const cap = k[0].toUpperCase() + k.slice(1).toLowerCase();
-  if (prioMap.hasOwnProperty(cap)) return prioMap[cap];
-  // Try first letter H/M/L
-  const first = k[0]?.toUpperCase();
-  if (first === 'H') return 3;
-  if (first === 'M') return 2;
-  if (first === 'L') return 1;
-  return null;
-}
-
-/** Absolute priority gap (0..2). Missing values return 0. */
-export function prioGap(a, b) {
-  const pa = prioScore(a);
-  const pb = prioScore(b);
-  if (pa == null || pb == null) return 0;
-  return Math.abs(pa - pb);
-}
-
-/* =========================================================
-   Modules normalization
+   Modules normalizer
    ========================================================= */
 
 /**
- * Normalize "modules" input to a clean, unique array.
- * Accepts a string with separators (",", ";", "/", "|") or an array.
+ * normalizeModules(input)
+ * Accepts string like "POS, Payments" or an array, and returns
+ * a cleaned array of unique module names.
  */
-export function normalizeModules(mods) {
-  if (!mods) return [];
+export function normalizeModules(input) {
+  if (!input) return [];
   let arr = [];
-  if (Array.isArray(mods)) {
-    arr = mods;
-  } else if (typeof mods === 'string') {
-    arr = mods
-      .split(/[,\|/;]+/g)   // split on common separators
-      .map(s => s.replace(/\s+/g, ' ').trim());
+
+  if (Array.isArray(input)) {
+    arr = input;
+  } else if (typeof input === 'string') {
+    // split on comma, semicolon, slash
+    arr = input.split(/[,;/]/);
   } else {
-    arr = [String(mods)];
+    arr = [String(input)];
   }
-  const uniq = Array.from(
-    new Set(
-      arr
-        .map(s => s.trim())
-        .filter(Boolean)
-    )
-  );
-  return uniq;
+
+  const seen = new Set();
+  const out = [];
+  arr.forEach(v => {
+    const trimmed = String(v || '').trim();
+    if (!trimmed) return;
+    if (/^unspecified$/i.test(trimmed)) return;
+    if (!seen.has(trimmed.toLowerCase())) {
+      seen.add(trimmed.toLowerCase());
+      out.push(trimmed);
+    }
+  });
+
+  return out;
 }
 
 /* =========================================================
-   Public util bundle (legacy-style access used in app.js)
+   UndefaultCount (used by datastore.js)
    ========================================================= */
 
-export const U = {
-  q,
-  qAll,
-  escapeHtml,
-  escapeAttr,
-  daysAgo,
-  dateAddDays,
-  isBetween,
-  fmtTS
-};
+/**
+ * Count items in an array that are not null/undefined/empty/"Unspecified".
+ */
+export function UndefaultCount(arr) {
+  if (!Array.isArray(arr)) return 0;
+  let count = 0;
+  for (const v of arr) {
+    if (
+      v !== null &&
+      v !== undefined &&
+      v !== '' &&
+      String(v).trim() !== '' &&
+      String(v).trim().toLowerCase() !== 'unspecified'
+    ) {
+      count++;
+    }
+  }
+  return count;
+}
