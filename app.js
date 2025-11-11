@@ -4089,7 +4089,7 @@ function renderPlannerResults(result, context) {
     modulesLabel
   )}</strong><br/>
       Horizon: next ${horizonDays} day(s), region profile: ${U.escapeHtml(
-    regionLab
+  
         regionLabel
       )}<br/>
       Bug history: ${U.escapeHtml(bugLabel)}; Bomb-bug history: ${U.escapeHtml(
