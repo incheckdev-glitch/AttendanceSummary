@@ -3504,40 +3504,6 @@ function setActiveView(view) {
     renderCalendarEvents();
   }
   if (view === 'insights') Analytics.refresh(UI.Issues.applyFilters());
-
-}
-function refreshPlannerTicketsFromFilters() {
-  if (!E.plannerTickets) return;
-
-  const el = E.plannerTickets;
-  const filtered = UI.Issues.applyFilters();
-
-  // Clear old options
-  el.innerHTML = '';
-
-  // No tickets under current filters
-  if (!filtered.length) {
-    el.disabled = true;
-    const opt = document.createElement('option');
-    opt.disabled = true;
-    opt.textContent = 'No tickets in current filters';
-    el.appendChild(opt);
-    return;
-  }
-
-  el.disabled = false;
-
-  // Limit so it doesn't get crazy long
-  const max = Math.min(filtered.length, 100);
-
-  filtered.slice(0, max).forEach(r => {
-    const meta = DataStore.computed.get(r.id) || {};
-    const risk = meta.risk?.total ?? '';
-    const opt = document.createElement('option');
-    opt.value = r.id;
-    opt.textContent = `${r.id} — ${r.module || ''} · ${r.priority || ''} · R${risk}`;
-    el.appendChild(opt);
-  });
 }
 
 /* ---------- Calendar wiring ---------- */
@@ -4078,6 +4044,7 @@ function exportFilteredCsv() {
 
 let LAST_PLANNER_CONTEXT = null;
 let LAST_PLANNER_RESULT = null;
+let LAST_AI_QUERY_RESULT = null;
 
 function renderPlannerResults(result, context) {
   if (!E.plannerResults) return;
@@ -4122,199 +4089,353 @@ function renderPlannerResults(result, context) {
     modulesLabel
   )}</strong><br/>
       Horizon: next ${horizonDays} day(s), region profile: ${U.escapeHtml(
-    regionLabel
-  )}.<br/>
-      <span class="muted">${U.escapeHtml(ticketsLine)}</span><br/>
-      <span class="muted">Recent bug pressure: ${U.escapeHtml(
-        bugLabel
-      )}. Historical “bomb bug” pattern: ${U.escapeHtml(bombLabel)}.</span>
-    </div>`;
+    regionLab
+        regionLabel
+      )}<br/>
+      Bug history: ${U.escapeHtml(bugLabel)}; Bomb-bug history: ${U.escapeHtml(
+        bombLabel
+      )}.<br/>
+      ${U.escapeHtml(ticketsLine)}
+    </div>
+  `;
 
-  let bombExamplesHtml = '';
-  if (bomb.examples && bomb.examples.length) {
-    const items = bomb.examples
-      .map(ex => {
-        const days = Math.round(ex.ageDays);
-        return `<li><strong>${U.escapeHtml(ex.id)}</strong> — ${U.escapeHtml(
-          ex.title || ''
-        )} <span class="muted">(risk ${ex.risk}, ~${days}d old)</span></li>`;
-      })
-      .join('');
-    bombExamplesHtml = `
-      <div class="muted" style="font-size:11px;margin-bottom:4px;">
-        Related historical incidents:
-        <ul style="margin:4px 0 0 18px;padding:0;">
-          ${items}
-        </ul>
-      </div>`;
-  }
+  const buildPlan = slot => {
+    const when = U.fmtTS(slot.start);
+    const bucket = ReleasePlanner.riskBucket(slot.totalRisk);
+    const rushText = ReleasePlanner.rushLabel(slot.rushRisk);
 
-  const htmlSlots = slots
+    const mods = modules && modules.length ? modules.join(', ') : 'all relevant modules';
+
+    return [
+      `Proposed release window: ${when} (${regionLabel}, ${env})`,
+      `Scope: ${releaseType} change touching ${mods}.`,
+      `Overall risk: ${bucket.label} (${slot.totalRisk.toFixed(
+        1
+      )}/10) · safety ${slot.safetyScore.toFixed(1)}/10.`,
+      `Service load: ${rushText} (rush index ${slot.rushRisk.toFixed(1)}/6).`,
+      `Recent bug pressure: ${bugLabel} (${bug.risk.toFixed(1)}/6).`,
+      `Historical bomb-bug risk: ${bombLabel} (${bomb.risk.toFixed(1)}/6).`,
+      `Change calendar risk: ${slot.eventsRisk.toFixed(1)}/6 (nearby events: ${
+        slot.eventCount || 0
+      }${slot.holidayCount ? `, holidays: ${slot.holidayCount}` : ''}).`,
+      ticketsLine
+    ].join('\n');
+  };
+
+  const slotRows = slots
     .map((slot, idx) => {
-      const d = slot.start;
-      const dateStr = d.toLocaleDateString(undefined, {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric'
-      });
-      const timeStr = d.toLocaleTimeString(undefined, {
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-
-          const bucket = ReleasePlanner.riskBucket(slot.totalRisk);
-      const rushLabel = ReleasePlanner.rushLabel(slot.rushRisk);
-      const riskPct = Math.max(0, Math.min(1, slot.totalRisk / 10));
-      const safePct = Math.max(0, Math.min(1, slot.safetyScore / 10));
-
-      const eventBits = [];
-      if (slot.eventCount) eventBits.push(`${slot.eventCount} nearby change(s)`);
-      if (slot.holidayCount) eventBits.push(`${slot.holidayCount} holiday window(s)`);
-      const eventLine = eventBits.length
-        ? eventBits.join(' · ')
-        : 'No conflicting changes in calendar window';
+      const bucket = ReleasePlanner.riskBucket(slot.totalRisk);
+      const rushText = ReleasePlanner.rushLabel(slot.rushRisk);
+      const dateLabel = U.fmtTS(slot.start);
+      const details = [
+        `safety ${slot.safetyScore.toFixed(1)}/10`,
+        `rush ${slot.rushRisk.toFixed(1)}/6 (${rushText})`,
+        `bug ${slot.bugRisk.toFixed(1)}/6`,
+        `bomb ${slot.bombRisk.toFixed(1)}/6`,
+        `calendar ${slot.eventsRisk.toFixed(1)}/6`,
+        `nearby events: ${slot.eventCount || 0}${
+          slot.holidayCount ? ` (holidays: ${slot.holidayCount})` : ''
+        }`
+      ].join(' · ');
 
       return `
-        <div class="planner-slot-card" data-slot-index="${idx}">
+        <div class="planner-slot ${bucket.className}">
           <div class="planner-slot-header">
-            <span class="planner-slot-title">
-              ${U.escapeHtml(dateStr)} · ${U.escapeHtml(timeStr)}
-            </span>
-            <span class="planner-slot-score ${bucket.className}">
-              ${bucket.label} risk · safe ${slot.safetyScore.toFixed(1)}/10
-            </span>
-          </div>
-          <div class="planner-slot-meta muted">
-            <div>${U.escapeHtml(rushLabel)} · bug pressure ${U.escapeHtml(
-              ReleasePlanner.bugLabel(slot.bugRisk)
-            )}</div>
-            <div>bomb-bug ${U.escapeHtml(
-              ReleasePlanner.bombLabel(slot.bombRisk)
-            )} · ${U.escapeHtml(eventLine)}</div>
-          </div>
-          <div class="planner-slot-bars">
-            <div class="planner-slot-bar-track">
-              <div
-                class="planner-slot-bar-fill risk"
-                style="transform:scaleX(${riskPct.toFixed(2)});"
-              ></div>
+            <div class="planner-slot-title">
+              <strong>${U.escapeHtml(dateLabel)}</strong>
+              <span class="planner-slot-badge">Risk ${bucket.label} (${slot.totalRisk.toFixed(
+        1
+      )}/10)</span>
             </div>
-            <div class="planner-slot-bar-track">
-              <div
-                class="planner-slot-bar-fill safe"
-                style="transform:scaleX(${safePct.toFixed(2)});"
-              ></div>
+            <div class="planner-slot-cta">
+              <button type="button" class="btn sm" data-planner-slot="${idx}">
+                Use this slot
+              </button>
             </div>
           </div>
-        </div>`;
+          <div class="planner-slot-meta">
+            ${U.escapeHtml(details)}
+          </div>
+        </div>
+      `;
     })
     .join('');
 
-  E.plannerResults.innerHTML =
-    intro + bombExamplesHtml + `<div class="planner-slots">${htmlSlots}</div>`;
+  E.plannerResults.innerHTML = intro + slotRows;
 
-  LAST_PLANNER_CONTEXT = context;
-  LAST_PLANNER_RESULT = result;
+  // Default to first slot in the plan text
+  const firstSlot = slots[0];
+  if (E.plannerReleasePlan) {
+    E.plannerReleasePlan.value = buildPlan(firstSlot);
+    E.plannerReleasePlan.dataset.slotIndex = '0';
+  }
 
-  if (E.plannerAddEvent) E.plannerAddEvent.disabled = false;
+  if (E.plannerAddEvent) {
+    E.plannerAddEvent.disabled = false;
+  }
 
-  const cards = E.plannerResults.querySelectorAll('.planner-slot-card');
-  cards.forEach(card => {
-    const idx = Number(card.getAttribute('data-slot-index')) || 0;
-    if (idx === 0) card.classList.add('selected');
-    card.addEventListener('click', () => {
-      cards.forEach(c => c.classList.remove('selected'));
-      card.classList.add('selected');
+  // Wire “Use this slot” buttons
+  E.plannerResults
+    .querySelectorAll('[data-planner-slot]')
+    .forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = +btn.getAttribute('data-planner-slot');
+        if (Number.isNaN(idx) || !slots[idx]) return;
+        if (E.plannerReleasePlan) {
+          E.plannerReleasePlan.value = buildPlan(slots[idx]);
+          E.plannerReleasePlan.dataset.slotIndex = String(idx);
+        }
+      });
+    });
+}
+
+function refreshPlannerReleasePlans() {
+  if (!LAST_PLANNER_CONTEXT || !LAST_PLANNER_RESULT) return;
+  // Recompute slots against latest events/issues (calendar risk may have changed)
+  const ctx = LAST_PLANNER_CONTEXT;
+  const res = ReleasePlanner.suggestSlots({
+    region: ctx.region,
+    env: ctx.env,
+    modules: ctx.modules,
+    horizonDays: ctx.horizonDays,
+    releaseType: ctx.releaseType,
+    description: ctx.description,
+    slotsPerDay: ctx.slotsPerDay,
+    tickets: ctx.tickets
+  });
+  LAST_PLANNER_RESULT = res;
+  renderPlannerResults(res, ctx);
+}
+
+/* ---------- AI query / DSL wiring ---------- */
+
+function runAiQuery() {
+  if (!E.aiQueryInput || !E.aiQueryResults) return;
+  const text = (E.aiQueryInput.value || '').trim();
+  if (!text) {
+    E.aiQueryResults.innerHTML =
+      '<div class="muted">Enter a query (e.g. <code>module:checklist risk>=7 last:14d bug</code>).</div>';
+    LAST_AI_QUERY_RESULT = null;
+    return;
+  }
+
+  const parsed = DSL.parse(text);
+  const matches = [];
+  DataStore.rows.forEach(r => {
+    const meta = DataStore.computed.get(r.id) || {};
+    if (DSL.matches(r, meta, parsed)) {
+      matches.push({ issue: r, meta });
+    }
+  });
+
+  LAST_AI_QUERY_RESULT = { text, parsed, rows: matches.map(x => x.issue) };
+
+  if (!matches.length) {
+    E.aiQueryResults.innerHTML =
+      '<div class="muted">No issues matched this query.</div>';
+    return;
+  }
+
+  const top = matches
+    .slice()
+    .sort(
+      (a, b) =>
+        (b.meta.risk?.total || 0) - (a.meta.risk?.total || 0) ||
+        (b.issue.date || '').localeCompare(a.issue.date || '')
+    )
+    .slice(0, 40);
+
+  const rowsHtml = top
+    .map(({ issue, meta }) => {
+      const r = meta.risk || {};
+      const badgeClass = CalendarLink.riskBadgeClass(r.total || 0);
+      return `
+        <tr>
+          <td>
+            <button type="button" class="btn sm" data-open="${U.escapeAttr(
+              issue.id
+            )}">${U.escapeHtml(issue.id)}</button>
+          </td>
+          <td>${U.escapeHtml(issue.module || '-')}</td>
+          <td>${U.escapeHtml(issue.title || '')}</td>
+          <td>${U.escapeHtml(issue.priority || '-')}</td>
+          <td>${U.escapeHtml(issue.status || '-')}</td>
+          <td>${U.escapeHtml(issue.date || '-')}</td>
+          <td>
+            <span class="event-risk-badge ${badgeClass}">R${r.total ?? 0}</span>
+            <span class="muted">S${r.severity ?? 0}/I${r.impact ?? 0}/U${r.urgency ?? 0}</span>
+          </td>
+        </tr>
+      `;
+    })
+    .join('');
+
+  E.aiQueryResults.innerHTML = `
+    <div class="muted" style="margin-bottom:4px;">
+      ${matches.length} issue${matches.length === 1 ? '' : 's'} matched.
+      Showing top ${top.length}.
+    </div>
+    <div class="table-wrap">
+      <table class="tbl sm">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Module</th>
+            <th>Title</th>
+            <th>Priority</th>
+            <th>Status</th>
+            <th>Date</th>
+            <th>Risk</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  // Wire open buttons
+  E.aiQueryResults.querySelectorAll('[data-open]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-open');
+      if (id) UI.Modals.openIssue(id);
     });
   });
 }
 
-function refreshPlannerReleasePlans() {
-  if (!E.plannerReleasePlan) return;
-  const now = new Date();
-  const limit = U.dateAddDays(now, 14);
+function wireAiQuery() {
+  if (E.aiQueryRun) {
+    E.aiQueryRun.addEventListener('click', runAiQuery);
+  }
+  if (E.aiQueryInput) {
+    E.aiQueryInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        runAiQuery();
+      }
+    });
+  }
+  if (E.aiQueryApplyFilters) {
+    E.aiQueryApplyFilters.addEventListener('click', () => {
+      if (!LAST_AI_QUERY_RESULT || !LAST_AI_QUERY_RESULT.parsed) {
+        UI.toast('Run a query first.');
+        return;
+      }
+      const q = LAST_AI_QUERY_RESULT.parsed;
 
-  const upcoming = (DataStore.events || [])
-    .filter(ev => {
-      const type = (ev.type || '').toLowerCase();
-      const env = (ev.env || 'Prod').toLowerCase();
-      if (!['deployment', 'release'].includes(type)) return false;
-      if (env !== 'prod') return false;
-      if (!ev.start) return false;
-      const d = new Date(ev.start);
-      if (isNaN(d)) return false;
-      return d >= now && d <= limit;
-    })
-    .sort((a, b) => new Date(a.start) - new Date(b.start));
+      if (q.words && q.words.length) {
+        Filters.state.search = q.words.join(' ');
+        if (E.searchInput) E.searchInput.value = Filters.state.search;
+      }
+      if (q.module) {
+        Filters.state.module = 'All';
+        const modName = DataStore.rows.find(r =>
+          (r.module || '').toLowerCase().includes(q.module)
+        )?.module;
+        if (modName) Filters.state.module = modName;
+      }
+      if (q.priority) {
+        const p = q.priority[0].toUpperCase();
+        const map = { U: 'Urgent', H: 'High', M: 'Medium', L: 'Low' };
+        Filters.state.priority = map[p] || 'All';
+      }
+      if (q.status) {
+        if (q.status === 'open' || q.status === 'closed') {
+          // leave status as All; "open/closed" is derived state
+          Filters.state.status = 'All';
+        } else {
+          const stName = DataStore.rows.find(r =>
+            (r.status || '').toLowerCase().includes(q.status)
+          )?.status;
+          Filters.state.status = stName || 'All';
+        }
+      }
 
-  if (!upcoming.length) {
-    E.plannerReleasePlan.innerHTML =
-      '<span class="muted">No upcoming Prod deployments/releases in the next 14 days.</span>';
+      Filters.save();
+      GridState.page = 1;
+      UI.refreshAll();
+      UI.toast('Applied query as grid filters.');
+    });
+  }
+  if (E.aiQueryExport) {
+    E.aiQueryExport.addEventListener('click', () => {
+      if (!LAST_AI_QUERY_RESULT || !LAST_AI_QUERY_RESULT.rows?.length) {
+        UI.toast('Nothing to export – run a query first.');
+        return;
+      }
+      exportIssuesToCsv(LAST_AI_QUERY_RESULT.rows, 'aiquery');
+    });
+  }
+}
+
+/* ---------- Core refresh helpers ---------- */
+
+UI.refreshAll = function () {
+  const list = UI.Issues.applyFilters();
+  UI.Issues.renderSummary(list);
+  UI.Issues.renderKPIs(list);
+  UI.Issues.renderTable(list);
+  UI.Issues.renderCharts(list);
+  UI.Issues.renderFilterChips();
+
+  if (E.insightsView && E.insightsView.classList.contains('active')) {
+    Analytics.refresh(list);
+  }
+};
+
+/* ---------- Misc helpers ---------- */
+
+function setIfOptionExists(selectEl, value) {
+  if (!selectEl || !value) return;
+  const opts = Array.from(selectEl.options || []).map(o => o.value);
+  if (opts.includes(value)) selectEl.value = value;
+}
+
+function updateOnlineStatus() {
+  if (!E.onlineStatusChip) return;
+  const online = navigator.onLine;
+  E.onlineStatusChip.textContent = online ? 'Online' : 'Offline';
+  E.onlineStatusChip.classList.toggle('offline', !online);
+}
+
+/* ---------- Release Planner wiring ---------- */
+
+function runPlanner() {
+  if (!DataStore.rows.length) {
+    UI.toast('Issues not loaded yet.');
     return;
   }
+  const region = E.plannerRegion ? E.plannerRegion.value || 'gulf' : 'gulf';
+  const env = E.plannerEnv ? E.plannerEnv.value || 'Prod' : 'Prod';
+  const modules =
+    E.plannerModules && E.plannerModules.value
+      ? E.plannerModules.value
+          .split(',')
+          .map(s => s.trim())
+          .filter(Boolean)
+      : [];
+  const horizonDays = E.plannerHorizon
+    ? Math.max(1, parseInt(E.plannerHorizon.value, 10) || 7)
+    : 7;
+  const releaseType = E.plannerReleaseType
+    ? E.plannerReleaseType.value || 'feature'
+    : 'feature';
+  const description = E.plannerDescription
+    ? E.plannerDescription.value || ''
+    : '';
+  const slotsPerDay = E.plannerSlotsPerDay
+    ? Math.max(1, parseInt(E.plannerSlotsPerDay.value, 10) || 3)
+    : 3;
+  const tickets =
+    E.plannerTickets && E.plannerTickets.value
+      ? E.plannerTickets.value
+          .split(',')
+          .map(s => s.trim())
+          .filter(Boolean)
+      : [];
 
-  const items = upcoming
-    .map(ev => {
-      const d = new Date(ev.start);
-      const when = d.toLocaleString(undefined, {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-      const modules = Array.isArray(ev.modules)
-        ? ev.modules.join(', ')
-        : ev.modules || '';
-      return `<li>
-        <strong>${U.escapeHtml(when)}</strong> – ${U.escapeHtml(ev.title || '(release)')}
-        <span class="muted">
-          (${U.escapeHtml(ev.env || 'Prod')}${
-        modules ? ' · ' + U.escapeHtml(modules) : ''
-      })
-        </span>
-      </li>`;
-    })
-    .join('');
-
-  E.plannerReleasePlan.innerHTML = `
-    <div style="margin-bottom:4px;">Upcoming Prod deployments/releases (next 14 days): ${
-      upcoming.length
-    }</div>
-    <ul style="margin:4px 0 0 18px;padding:0;font-size:12px;">
-      ${items}
-    </ul>`;
-}
-
-function getPlannerTicketsArray() {
-  if (!E.plannerTickets) return [];
-  return (E.plannerTickets.value || '')
-    .split(/[,\s]+/)
-    .map(s => s.trim())
-    .filter(Boolean);
-}
-
-function getPlannerModulesArray() {
-  if (!E.plannerModules) return [];
-  return (E.plannerModules.value || '')
-    .split(/[,\s]+/)
-    .map(s => s.trim())
-    .filter(Boolean);
-}
-
-function collectPlannerContextFromUI() {
-  const region = (E.plannerRegion && E.plannerRegion.value) || 'gulf';
-  const env = (E.plannerEnv && E.plannerEnv.value) || 'Prod';
-  const modules = getPlannerModulesArray();
-  const horizonDays = parseInt(E.plannerHorizon && E.plannerHorizon.value, 10) || 7;
-  const releaseType =
-    (E.plannerReleaseType && E.plannerReleaseType.value) || 'feature';
-  const description = (E.plannerDescription && E.plannerDescription.value) || '';
-  const slotsPerDay =
-    parseInt(E.plannerSlotsPerDay && E.plannerSlotsPerDay.value, 10) || 3;
-  const tickets = getPlannerTicketsArray();
-
-  return {
+  const ctx = {
     region,
     env,
     modules,
@@ -4324,303 +4445,95 @@ function collectPlannerContextFromUI() {
     slotsPerDay,
     tickets
   };
-}
 
-function runPlanner() {
-  if (!DataStore.rows.length) {
-    UI.toast('Issues not loaded yet – cannot compute release windows.');
-    return;
-  }
-  if (!E.plannerResults) return;
-
-  const ctx = collectPlannerContextFromUI();
-  const result = ReleasePlanner.suggestSlots(ctx);
-  renderPlannerResults(result, ctx);
-}
-
-function plannerAddSelectedSlotToCalendar() {
-  if (!LAST_PLANNER_RESULT || !LAST_PLANNER_RESULT.slots.length) {
-    UI.toast('Run the planner first.');
-    return;
-  }
-  const slots = LAST_PLANNER_RESULT.slots;
-  let idx = 0;
-  if (E.plannerResults) {
-    const card =
-      E.plannerResults.querySelector('.planner-slot-card.selected') ||
-      E.plannerResults.querySelector('.planner-slot-card');
-    if (card) idx = Number(card.getAttribute('data-slot-index')) || 0;
-  }
-  if (idx < 0 || idx >= slots.length) idx = 0;
-  const slot = slots[idx];
-  const ctx = LAST_PLANNER_CONTEXT || collectPlannerContextFromUI();
-
-  const modules = ctx.modules || [];
-  const tickets = getPlannerTicketsArray();
-  const titleBase = ctx.releaseType ? `${ctx.releaseType} release` : 'Release';
-  const env = ctx.env || 'Prod';
-  const modulesLabel = modules.length ? ` – ${modules.join(', ')}` : '';
-  const title = `${titleBase} (${env})${modulesLabel}`;
-  const description = ctx.description || '';
-
-  const event = {
-    title,
-    type: 'Release',
+  const res = ReleasePlanner.suggestSlots({
+    region,
     env,
-    status: 'Planned',
-    owner: '',
     modules,
-    impactType: 'No downtime expected',
-    issueId: tickets.join(', '),
-    start: slot.start,
-    end: slot.end,
+    horizonDays,
+    releaseType,
     description,
-    allDay: false
-  };
-
-  UI.Modals.openEvent(event);
-  setActiveView('calendar');
-}
-
-function plannerAssignTicketsFromSelection() {
-  if (!E.plannerTickets) return;
-  const selected = UI.Modals.selectedIssue;
-  if (!selected || !selected.id) {
-    UI.toast('Open an issue first, then click “Send to planner”.');
-    return;
-  }
-  const current = getPlannerTicketsArray();
-  if (!current.includes(selected.id)) current.push(selected.id);
-  E.plannerTickets.value = current.join(', ');
-  UI.toast(`Added ${selected.id} to planner tickets.`);
-}
-
-/* ---------- DSL query wiring (AI Copilot search) ---------- */
-
-let LAST_DSL_QUERY = '';
-let LAST_DSL_RESULTS = [];
-
-function runDslQueryFromInput() {
-  if (!E.aiQueryInput || !E.aiQueryResults) return;
-  const raw = (E.aiQueryInput.value || '').trim();
-  LAST_DSL_QUERY = raw;
-  if (!raw) {
-    E.aiQueryResults.innerHTML =
-      '<li class="muted">Type a query, e.g. <code>module:report risk>=7 last:7d</code>.</li>';
-    LAST_DSL_RESULTS = [];
-    return;
-  }
-
-  const q = DSL.parse(raw);
-  const matches = [];
-  DataStore.rows.forEach(r => {
-    const meta = DataStore.computed.get(r.id) || {};
-    if (DSL.matches(r, meta, q)) matches.push(r);
+    slotsPerDay,
+    tickets
   });
-  LAST_DSL_RESULTS = matches;
 
-  if (!matches.length) {
-    E.aiQueryResults.innerHTML = '<li>No issues match this query.</li>';
-    return;
-  }
-
-  const items = matches
-    .slice(0, 150)
-    .map(r => {
-      const meta = DataStore.computed.get(r.id) || {};
-      const risk = meta.risk?.total || 0;
-      const badge = risk ? CalendarLink.riskBadgeClass(risk) : '';
-      return `<li>
-        <button type="button" class="btn sm" data-open="${U.escapeAttr(
-          r.id
-        )}">${U.escapeHtml(r.id)}</button>
-        ${U.escapeHtml(r.title || '')}
-        <span class="muted">
-          · ${U.escapeHtml(r.module || '')}
-          · ${U.escapeHtml(r.priority || '-')}
-          · ${U.escapeHtml(r.status || '-')}
-        </span>
-        ${
-          risk
-            ? `<span class="event-risk-badge ${badge}">R${risk}</span>`
-            : ''
-        }
-      </li>`;
-    })
-    .join('');
-
-  E.aiQueryResults.innerHTML =
-    `<li class="muted">${matches.length} result${
-      matches.length === 1 ? '' : 's'
-    } (showing up to 150)</li>` + items;
-
-  E.aiQueryResults
-    .querySelectorAll('[data-open]')
-    .forEach(btn =>
-      btn.addEventListener('click', () =>
-        UI.Modals.openIssue(btn.getAttribute('data-open'))
-      )
-    );
+  LAST_PLANNER_CONTEXT = ctx;
+  LAST_PLANNER_RESULT = res;
+  renderPlannerResults(res, ctx);
 }
 
-function applyDslFiltersFromLastQuery() {
-  if (!LAST_DSL_QUERY) {
-    UI.toast('Run a DSL query first.');
-    return;
+function wirePlanner() {
+  if (E.plannerRun) {
+    E.plannerRun.addEventListener('click', runPlanner);
   }
-  const q = DSL.parse(LAST_DSL_QUERY);
-
-  if (q.module) {
-    Filters.state.module = 'All';
-    if (E.moduleFilter) {
-      const opt = Array.from(E.moduleFilter.options).find(o =>
-        (o.value || o.textContent || '').toLowerCase().includes(q.module)
-      );
-      if (opt) Filters.state.module = opt.value;
-    }
-  }
-
-  if (q.priority) {
-    const p = q.priority[0].toUpperCase();
-    const map = { U: 'Urgent', H: 'High', M: 'Medium', L: 'Low' };
-    Filters.state.priority = map[p] || 'All';
-  }
-
-  if (q.status) {
-    if (q.status === 'open' || q.status === 'closed') {
-      Filters.state.status = 'All';
-    } else {
-      Filters.state.status = '';
-      if (E.statusFilter) {
-        const opt = Array.from(E.statusFilter.options).find(o =>
-          (o.value || o.textContent || '').toLowerCase().includes(q.status)
-        );
-        if (opt) Filters.state.status = opt.value;
+  if (E.plannerAddEvent) {
+    E.plannerAddEvent.disabled = true;
+    E.plannerAddEvent.addEventListener('click', () => {
+      if (!LAST_PLANNER_RESULT || !LAST_PLANNER_RESULT.slots?.length) {
+        UI.toast('No suggested slot – run the planner first.');
+        return;
       }
-    }
+      const idx =
+        (E.plannerReleasePlan &&
+          parseInt(E.plannerReleasePlan.dataset.slotIndex || '0', 10)) ||
+        0;
+      const slot =
+        LAST_PLANNER_RESULT.slots[idx] || LAST_PLANNER_RESULT.slots[0];
+      const env = E.plannerEnv ? E.plannerEnv.value || 'Prod' : 'Prod';
+      const releaseType = E.plannerReleaseType
+        ? E.plannerReleaseType.value || 'feature'
+        : 'feature';
+      const modules =
+        E.plannerModules && E.plannerModules.value
+          ? E.plannerModules.value
+              .split(',')
+              .map(s => s.trim())
+              .filter(Boolean)
+          : [];
+
+      const issueIdStr = E.plannerTickets ? E.plannerTickets.value || '' : '';
+      const title = `${releaseType} release (${env})`;
+      const description = E.plannerReleasePlan
+        ? E.plannerReleasePlan.value || ''
+        : '';
+
+      UI.Modals.openEvent({
+        id: '',
+        title,
+        type: 'Deployment',
+        env,
+        status: 'Planned',
+        owner: '',
+        modules,
+        impactType: 'No downtime expected',
+        issueId: issueIdStr,
+        start: slot.start,
+        end: slot.end,
+        allDay: false,
+        description
+      });
+    });
   }
-
-  if (q.lastDays) {
-    const start = U.daysAgo(q.lastDays);
-    const iso = start.toISOString().slice(0, 10);
-    Filters.state.start = iso;
-    Filters.state.end = '';
-  }
-
-  Filters.save();
-
-  if (E.moduleFilter) setIfOptionExists(E.moduleFilter, Filters.state.module || 'All');
-  if (E.priorityFilter)
-    setIfOptionExists(E.priorityFilter, Filters.state.priority || 'All');
-  if (E.statusFilter)
-    setIfOptionExists(E.statusFilter, Filters.state.status || 'All');
-  if (E.startDateFilter) E.startDateFilter.value = Filters.state.start || '';
-  if (E.endDateFilter) E.endDateFilter.value = Filters.state.end || '';
-
-  GridState.page = 1;
-  UI.refreshAll();
-  setActiveView('issues');
-}
-
-function exportDslResultsCsv() {
-  if (!LAST_DSL_RESULTS || !LAST_DSL_RESULTS.length) {
-    UI.toast('No DSL results to export.');
-    return;
-  }
-  exportIssuesToCsv(LAST_DSL_RESULTS, 'dsl');
-}
-
-/* ---------- Helpers, theme, layout, init ---------- */
-
-function setIfOptionExists(selectEl, value) {
-  if (!selectEl) return;
-  const opts = Array.from(selectEl.options);
-  const match = opts.find(o => o.value === value || o.textContent === value);
-  if (match) selectEl.value = match.value;
-}
-
-UI.refreshAll = function () {
-  const list = UI.Issues.applyFilters();
-  UI.Issues.renderSummary(list);
-  UI.Issues.renderKPIs(list);
-  UI.Issues.renderTable(list);
-  UI.Issues.renderCharts(list);
-  UI.Issues.renderFilterChips();
-  Analytics.refresh(list);
-};
-
-function applyTheme(theme) {
-  const root = document.documentElement;
-  const t = theme || 'system';
-  if (t === 'system') {
-    root.removeAttribute('data-theme');
-  } else {
-    root.setAttribute('data-theme', t);
-  }
-  try {
-    localStorage.setItem(LS_KEYS.theme, t);
-  } catch {}
-}
-
-function initTheme() {
-  let stored = null;
-  try {
-    stored = localStorage.getItem(LS_KEYS.theme);
-  } catch {}
-  const theme = stored || 'system';
-  applyTheme(theme);
-  if (E.themeSelect) E.themeSelect.value = theme;
-  if (E.themeSelect) {
-    E.themeSelect.addEventListener('change', () =>
-      applyTheme(E.themeSelect.value || 'system')
-    );
-  }
-}
-
-function initAccent() {
-  let stored = null;
-  try {
-    stored =
-      localStorage.getItem(LS_KEYS.accentColorStorage) ||
-      localStorage.getItem(LS_KEYS.accentColor);
-  } catch {}
-  if (stored) {
-    document.documentElement.style.setProperty('--accent', stored);
-    if (E.accentColor) E.accentColor.value = stored;
-  }
-  if (E.accentColor) {
-    E.accentColor.addEventListener('input', e => {
-      const v = e.target.value;
-      if (!v) return;
-      document.documentElement.style.setProperty('--accent', v);
+  if (E.plannerAssignBtn) {
+    E.plannerAssignBtn.addEventListener('click', async () => {
+      if (!E.plannerReleasePlan || !E.plannerReleasePlan.value.trim()) {
+        UI.toast('Nothing to copy – run the planner first.');
+        return;
+      }
       try {
-        localStorage.setItem(LS_KEYS.accentColorStorage, v);
-        localStorage.setItem(LS_KEYS.accentColor, v);
-      } catch {}
+        await navigator.clipboard.writeText(E.plannerReleasePlan.value);
+        UI.toast('Release plan copied to clipboard.');
+      } catch {
+        UI.toast('Unable to copy – select the text manually.');
+      }
     });
   }
 }
 
-function updateOnlineStatus() {
-  if (!E.onlineStatusChip) return;
-  const online = navigator.onLine !== false;
-  E.onlineStatusChip.textContent = online ? 'Online' : 'Offline';
-  E.onlineStatusChip.classList.toggle('offline', !online);
-}
+/* ---------- Core UI wiring ---------- */
 
-function initApp() {
-  cacheEls();
-  Filters.load();
-  wireCalendar();
-
-  // Theme + accent
-  initTheme();
-  initAccent();
-  updateOnlineStatus();
-  window.addEventListener('online', updateOnlineStatus);
-  window.addEventListener('offline', updateOnlineStatus);
-
-  // Restore filters into UI
+function wireCore() {
+  // Filters
   if (E.searchInput) {
     E.searchInput.value = Filters.state.search || '';
     const onSearch = debounce(() => {
@@ -4632,36 +4545,21 @@ function initApp() {
     E.searchInput.addEventListener('input', onSearch);
   }
 
-  if (E.moduleFilter) {
-    UI.Issues.renderFilters();
-    setIfOptionExists(E.moduleFilter, Filters.state.module || 'All');
-    E.moduleFilter.addEventListener('change', () => {
-      Filters.state.module = E.moduleFilter.value || 'All';
+  ['module', 'priority', 'status'].forEach(key => {
+    const el =
+      key === 'module'
+        ? E.moduleFilter
+        : key === 'priority'
+        ? E.priorityFilter
+        : E.statusFilter;
+    if (!el) return;
+    el.addEventListener('change', () => {
+      Filters.state[key] = el.value || 'All';
       Filters.save();
       GridState.page = 1;
       UI.refreshAll();
     });
-  }
-
-  if (E.priorityFilter) {
-    setIfOptionExists(E.priorityFilter, Filters.state.priority || 'All');
-    E.priorityFilter.addEventListener('change', () => {
-      Filters.state.priority = E.priorityFilter.value || 'All';
-      Filters.save();
-      GridState.page = 1;
-      UI.refreshAll();
-    });
-  }
-
-  if (E.statusFilter) {
-    setIfOptionExists(E.statusFilter, Filters.state.status || 'All');
-    E.statusFilter.addEventListener('change', () => {
-      Filters.state.status = E.statusFilter.value || 'All';
-      Filters.save();
-      GridState.page = 1;
-      UI.refreshAll();
-    });
-  }
+  });
 
   if (E.startDateFilter) {
     E.startDateFilter.value = Filters.state.start || '';
@@ -4672,7 +4570,6 @@ function initApp() {
       UI.refreshAll();
     });
   }
-
   if (E.endDateFilter) {
     E.endDateFilter.value = Filters.state.end || '';
     E.endDateFilter.addEventListener('change', () => {
@@ -4683,60 +4580,6 @@ function initApp() {
     });
   }
 
-  // Paging
-  if (E.pageSize) {
-    E.pageSize.value = String(GridState.pageSize);
-    E.pageSize.addEventListener('change', () => {
-      const v = parseInt(E.pageSize.value, 10) || 20;
-      GridState.pageSize = v;
-      try {
-        localStorage.setItem(LS_KEYS.pageSize, String(v));
-      } catch {}
-      GridState.page = 1;
-      UI.refreshAll();
-    });
-  }
-
-  if (E.firstPage)
-    E.firstPage.addEventListener('click', () => {
-      GridState.page = 1;
-      UI.refreshAll();
-    });
-  if (E.prevPage)
-    E.prevPage.addEventListener('click', () => {
-      GridState.page = Math.max(1, GridState.page - 1);
-      UI.refreshAll();
-    });
-  if (E.nextPage)
-    E.nextPage.addEventListener('click', () => {
-      GridState.page += 1;
-      UI.refreshAll();
-    });
-  if (E.lastPage)
-    E.lastPage.addEventListener('click', () => {
-      const total = UI.Issues.applyFilters().length;
-      const pages = Math.max(1, Math.ceil(total / GridState.pageSize));
-      GridState.page = pages;
-      UI.refreshAll();
-    });
-
-  // Table sorting
-  U.qAll('#issuesTable thead th[data-key]').forEach(th => {
-    th.addEventListener('click', () => {
-      const key = th.getAttribute('data-key');
-      if (!key) return;
-      if (GridState.sortKey === key) {
-        GridState.sortAsc = !GridState.sortAsc;
-      } else {
-        GridState.sortKey = key;
-        GridState.sortAsc = true;
-      }
-      GridState.page = 1;
-      UI.refreshAll();
-    });
-  });
-
-  // Reset, refresh, export
   if (E.resetBtn) {
     E.resetBtn.addEventListener('click', () => {
       Filters.state = {
@@ -4770,141 +4613,241 @@ function initApp() {
     E.exportCsv.addEventListener('click', exportFilteredCsv);
   }
 
-  // Tabs
-  if (E.issuesTab)
-    E.issuesTab.addEventListener('click', () => setActiveView('issues'));
-  if (E.calendarTab)
-    E.calendarTab.addEventListener('click', () => setActiveView('calendar'));
-  if (E.insightsTab)
-    E.insightsTab.addEventListener('click', () => setActiveView('insights'));
+  // Sorting
+  U.qAll('#issuesTable thead th[data-key]').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.getAttribute('data-key');
+      if (!key) return;
+      if (GridState.sortKey === key) {
+        GridState.sortAsc = !GridState.sortAsc;
+      } else {
+        GridState.sortKey = key;
+        GridState.sortAsc = true;
+      }
+      GridState.page = 1;
+      UI.refreshAll();
+    });
+  });
 
-  const savedView = (() => {
-    try {
-      return localStorage.getItem(LS_KEYS.view) || 'issues';
-    } catch {
-      return 'issues';
-    }
-  })();
-  setActiveView(savedView);
+  // Pagination
+  function setPage(newPage) {
+    GridState.page = Math.max(1, newPage || 1);
+    UI.refreshAll();
+  }
+  if (E.firstPage) E.firstPage.addEventListener('click', () => setPage(1));
+  if (E.prevPage)
+    E.prevPage.addEventListener('click', () => setPage(GridState.page - 1));
+  if (E.nextPage)
+    E.nextPage.addEventListener('click', () => setPage(GridState.page + 1));
+  if (E.lastPage) {
+    E.lastPage.addEventListener('click', () => {
+      const total = UI.Issues.applyFilters().length;
+      const pages = Math.max(1, Math.ceil(total / GridState.pageSize));
+      setPage(pages);
+    });
+  }
 
-  // Drawer / sidebar
+  if (E.pageSize) {
+    E.pageSize.value = String(GridState.pageSize);
+    E.pageSize.addEventListener('change', () => {
+      const n = parseInt(E.pageSize.value, 10) || 20;
+      GridState.pageSize = Math.max(5, n);
+      try {
+        localStorage.setItem(LS_KEYS.pageSize, String(GridState.pageSize));
+      } catch {}
+      GridState.page = 1;
+      UI.refreshAll();
+    });
+  }
+
+  // Sidebar drawer
   if (E.drawerBtn && E.sidebar) {
     E.drawerBtn.addEventListener('click', () => {
       E.sidebar.classList.toggle('open');
     });
   }
 
-  // Issue modal
-  if (E.modalClose) E.modalClose.addEventListener('click', () => UI.Modals.closeIssue());
-  if (E.issueModal) {
-    E.issueModal.addEventListener('click', e => {
-      if (e.target === E.issueModal) UI.Modals.closeIssue();
-    });
-    E.issueModal.addEventListener('keydown', e => {
-      if (e.key === 'Escape') UI.Modals.closeIssue();
-      else if (e.key === 'Tab') trapFocus(E.issueModal, e);
+  // Theme & accent
+  function applyTheme(theme) {
+    const root = document.documentElement;
+    if (theme === 'dark') {
+      root.setAttribute('data-theme', 'dark');
+    } else if (theme === 'light') {
+      root.setAttribute('data-theme', 'light');
+    } else {
+      root.removeAttribute('data-theme');
+    }
+  }
+  const savedTheme = (() => {
+    try {
+      return localStorage.getItem(LS_KEYS.theme);
+    } catch {
+      return null;
+    }
+  })();
+  if (savedTheme) applyTheme(savedTheme);
+  if (E.themeSelect) {
+    if (savedTheme) E.themeSelect.value = savedTheme;
+    E.themeSelect.addEventListener('change', () => {
+      const theme = E.themeSelect.value || 'auto';
+      applyTheme(theme);
+      try {
+        localStorage.setItem(LS_KEYS.theme, theme);
+      } catch {}
     });
   }
+
+  if (E.accentColor) {
+    let savedAccent = null;
+    try {
+      savedAccent =
+        localStorage.getItem(LS_KEYS.accentColor) ||
+        localStorage.getItem(LS_KEYS.accentColorStorage);
+    } catch {}
+    if (savedAccent) {
+      E.accentColor.value = savedAccent;
+      document.documentElement.style.setProperty('--accent', savedAccent);
+    }
+    E.accentColor.addEventListener('input', () => {
+      const val = E.accentColor.value;
+      document.documentElement.style.setProperty('--accent', val);
+      try {
+        localStorage.setItem(LS_KEYS.accentColor, val);
+        localStorage.setItem(LS_KEYS.accentColorStorage, val);
+      } catch {}
+    });
+  }
+
+  // Tab navigation
+  if (E.issuesTab) {
+    E.issuesTab.addEventListener('click', () => setActiveView('issues'));
+  }
+  if (E.calendarTab) {
+    E.calendarTab.addEventListener('click', () => setActiveView('calendar'));
+  }
+  if (E.insightsTab) {
+    E.insightsTab.addEventListener('click', () => setActiveView('insights'));
+  }
+
+  // Issue modal buttons
   if (E.copyId) {
-    E.copyId.addEventListener('click', () => {
-      const issue = UI.Modals.selectedIssue;
-      if (!issue || !issue.id) return;
-      if (navigator.clipboard) {
-        navigator.clipboard
-          .writeText(issue.id)
-          .then(() => UI.toast('Issue ID copied'))
-          .catch(() => UI.toast('Copy failed'));
-      } else {
-        UI.toast('Clipboard not available');
+    E.copyId.addEventListener('click', async () => {
+      const r = UI.Modals.selectedIssue;
+      if (!r || !r.id) return;
+      try {
+        await navigator.clipboard.writeText(r.id);
+        UI.toast('Ticket ID copied.');
+      } catch {
+        UI.toast('Unable to copy ID.');
       }
     });
   }
   if (E.copyLink) {
-    E.copyLink.addEventListener('click', () => {
-      const issue = UI.Modals.selectedIssue;
-      if (!issue || !issue.id) return;
-      const base = location.origin + location.pathname;
-      const url = `${base}#issue-${encodeURIComponent(issue.id)}`;
-      if (navigator.clipboard) {
-        navigator.clipboard
-          .writeText(url)
-          .then(() => UI.toast('Deep-link copied'))
-          .catch(() => UI.toast('Copy failed'));
-      } else {
-        UI.toast('Clipboard not available');
+    E.copyLink.addEventListener('click', async () => {
+      const r = UI.Modals.selectedIssue;
+      if (!r || !r.file) {
+        UI.toast('No attachment link for this ticket.');
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(r.file);
+        UI.toast('Attachment link copied.');
+      } catch {
+        UI.toast('Unable to copy link.');
       }
     });
   }
+  if (E.modalClose) {
+    E.modalClose.addEventListener('click', () => UI.Modals.closeIssue());
+  }
+  if (E.issueModal) {
+    E.issueModal.addEventListener('click', e => {
+      if (e.target === E.issueModal) UI.Modals.closeIssue();
+    });
+  }
 
-  // Event modal
-  if (E.eventModalClose)
+  // Event modal buttons
+  if (E.eventModalClose) {
     E.eventModalClose.addEventListener('click', () => UI.Modals.closeEvent());
-  if (E.eventCancel)
-    E.eventCancel.addEventListener('click', e => {
-      e.preventDefault();
-      UI.Modals.closeEvent();
-    });
-  if (E.eventModal) {
-    E.eventModal.addEventListener('click', e => {
-      if (e.target === E.eventModal) UI.Modals.closeEvent();
-    });
-    E.eventModal.addEventListener('keydown', e => {
-      if (e.key === 'Escape') UI.Modals.closeEvent();
-      else if (e.key === 'Tab') trapFocus(E.eventModal, e);
-    });
   }
-  if (E.eventAllDay && E.eventStart && E.eventEnd) {
+  if (E.eventCancel) {
+    E.eventCancel.addEventListener('click', () => UI.Modals.closeEvent());
+  }
+  if (E.eventAllDay) {
     E.eventAllDay.addEventListener('change', () => {
-      const allDay = !!E.eventAllDay.checked;
-      const s = E.eventStart.value;
-      const e = E.eventEnd.value;
-      E.eventStart.type = allDay ? 'date' : 'datetime-local';
-      E.eventEnd.type = allDay ? 'date' : 'datetime-local';
-      if (allDay) {
-        if (s && s.length >= 10) E.eventStart.value = s.slice(0, 10);
-        if (e && e.length >= 10) E.eventEnd.value = e.slice(0, 10);
-      } else {
-        if (s && s.length === 10) E.eventStart.value = s + 'T09:00';
-        if (e && e.length === 10) E.eventEnd.value = e + 'T10:00';
+      const allDay = E.eventAllDay.checked;
+      const currentStart = E.eventStart?.value || '';
+      const currentEnd = E.eventEnd?.value || '';
+
+      if (E.eventStart) {
+        E.eventStart.type = allDay ? 'date' : 'datetime-local';
+        if (currentStart) {
+          const d = new Date(currentStart);
+          E.eventStart.value = allDay ? toLocalDateValue(d) : toLocalInputValue(d);
+        }
+      }
+      if (E.eventEnd) {
+        E.eventEnd.type = allDay ? 'date' : 'datetime-local';
+        if (currentEnd) {
+          const d = new Date(currentEnd);
+          E.eventEnd.value = allDay ? toLocalDateValue(d) : toLocalInputValue(d);
+        }
       }
     });
   }
-  if (E.eventForm) {
-    E.eventForm.addEventListener('submit', async e => {
+
+  if (E.eventSave) {
+    E.eventSave.addEventListener('click', async e => {
       e.preventDefault();
+      if (!E.eventForm) return;
+
       const id = E.eventForm.dataset.id || '';
-      const allDay = !!(E.eventAllDay && E.eventAllDay.checked);
-      const startVal = E.eventStart ? E.eventStart.value : '';
-      const endVal = E.eventEnd ? E.eventEnd.value : '';
+      const allDay = E.eventAllDay && E.eventAllDay.checked;
+      const modules =
+        E.eventModules && E.eventModules.value
+          ? E.eventModules.value
+              .split(',')
+              .map(s => s.trim())
+              .filter(Boolean)
+          : [];
 
-      const toIso = val => {
-        if (!val) return '';
-        return val;
-      };
-
-      const event = {
+      const ev = {
         id,
-        title: (E.eventTitle && E.eventTitle.value) || '',
-        type: (E.eventType && E.eventType.value) || 'Deployment',
-        env: (E.eventEnv && E.eventEnv.value) || 'Prod',
-        status: (E.eventStatus && E.eventStatus.value) || 'Planned',
-        owner: (E.eventOwner && E.eventOwner.value) || '',
-        modules: (E.eventModules && E.eventModules.value) || '',
-        impactType:
-          (E.eventImpactType && E.eventImpactType.value) ||
-          'No downtime expected',
-        issueId: (E.eventIssueId && E.eventIssueId.value) || '',
-        start: toIso(startVal),
-        end: toIso(endVal),
-        description: (E.eventDescription && E.eventDescription.value) || '',
-        allDay
+        title: E.eventTitle?.value || '',
+        type: E.eventType?.value || 'Deployment',
+        env: E.eventEnv?.value || 'Prod',
+        status: E.eventStatus?.value || 'Planned',
+        owner: E.eventOwner?.value || '',
+        modules,
+        impactType: E.eventImpactType?.value || 'No downtime expected',
+        issueId: E.eventIssueId?.value || '',
+        start: E.eventStart?.value || '',
+        end: E.eventEnd?.value || '',
+        description: E.eventDescription?.value || '',
+        allDay,
+        notificationStatus: ''
       };
 
-      const saved = await saveEventToSheet(event);
+      // Convert date strings back to ISO if needed
+      if (ev.start) {
+        const d = new Date(ev.start);
+        if (!isNaN(d)) ev.start = d.toISOString();
+      }
+      if (ev.end) {
+        const d = new Date(ev.end);
+        if (!isNaN(d)) ev.end = d.toISOString();
+      }
+
+      const saved = CONFIG.CALENDAR_API_URL
+        ? await saveEventToSheet(ev)
+        : { ...ev, id: ev.id || 'ev_' + Date.now() };
+
       if (!saved) return;
-      const idx = DataStore.events.findIndex(ev => ev.id === saved.id);
-      if (idx === -1) DataStore.events.push(saved);
-      else DataStore.events[idx] = saved;
+
+      const idxExisting = DataStore.events.findIndex(x => x.id === saved.id);
+      if (idxExisting > -1) DataStore.events[idxExisting] = saved;
+      else DataStore.events.push(saved);
+
       saveEventsCache();
       ensureCalendar();
       renderCalendarEvents();
@@ -4913,19 +4856,21 @@ function initApp() {
       UI.Modals.closeEvent();
     });
   }
+
   if (E.eventDelete) {
-    E.eventDelete.addEventListener('click', async e => {
-      e.preventDefault();
-      if (!E.eventForm) return;
-      const id = E.eventForm.dataset.id;
-      if (!id) {
-        UI.toast('No event to delete.');
+    E.eventDelete.addEventListener('click', async () => {
+      if (!E.eventForm || !E.eventForm.dataset.id) {
+        UI.Modals.closeEvent();
         return;
       }
-      const ok = await deleteEventFromSheet(id);
+      const id = E.eventForm.dataset.id;
+      let ok = true;
+      if (CONFIG.CALENDAR_API_URL) {
+        ok = await deleteEventFromSheet(id);
+      }
       if (!ok) return;
-      const idx = DataStore.events.findIndex(ev => ev.id === id);
-      if (idx !== -1) DataStore.events.splice(idx, 1);
+      const idx = DataStore.events.findIndex(e => e.id === id);
+      if (idx > -1) DataStore.events.splice(idx, 1);
       saveEventsCache();
       ensureCalendar();
       renderCalendarEvents();
@@ -4934,82 +4879,68 @@ function initApp() {
     });
   }
 
-  // AI query wiring
-  if (E.aiQueryRun) {
-    E.aiQueryRun.addEventListener('click', runDslQueryFromInput);
-  }
-  if (E.aiQueryInput) {
-    E.aiQueryInput.addEventListener('keydown', e => {
-      if (e.key === 'Enter' && !e.shiftKey && !e.altKey) {
-        e.preventDefault();
-        runDslQueryFromInput();
-      }
-    });
-  }
-  if (E.aiQueryApplyFilters) {
-    E.aiQueryApplyFilters.addEventListener('click', applyDslFiltersFromLastQuery);
-  }
-  if (E.aiQueryExport) {
-    E.aiQueryExport.addEventListener('click', exportDslResultsCsv);
-  }
-  if (E.aiQueryResults && !E.aiQueryResults.innerHTML.trim()) {
-    E.aiQueryResults.innerHTML =
-      '<li class="muted">Use the Copilot query box to slice issues, e.g. <code>module:report risk>=7 last:7d</code>.</li>';
-  }
-
-  // Release planner wiring
-  if (E.plannerRun) {
-    E.plannerRun.addEventListener('click', runPlanner);
-  }
-  [E.plannerModules, E.plannerHorizon, E.plannerSlotsPerDay, E.plannerDescription].forEach(
-    el => {
-      if (!el) return;
-      el.addEventListener('keydown', e => {
-        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-          e.preventDefault();
-          runPlanner();
-        }
-      });
-    }
-  );
-  if (E.plannerAddEvent) {
-    E.plannerAddEvent.addEventListener('click', plannerAddSelectedSlotToCalendar);
-    E.plannerAddEvent.disabled = true;
-  }
-  if (E.plannerAssignBtn) {
-    E.plannerAssignBtn.addEventListener('click', plannerAssignTicketsFromSelection);
-  }
-
-  // Shortcuts help
-  function toggleShortcutsHelp() {
-    if (!E.shortcutsHelp) return;
-    const visible = E.shortcutsHelp.style.display === 'block';
-    E.shortcutsHelp.style.display = visible ? 'none' : 'block';
-  }
-
+  // Keyboard & focus management
   document.addEventListener('keydown', e => {
-    const tag = (document.activeElement && document.activeElement.tagName) || '';
-    const isTyping =
-      tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement.isContentEditable;
-
-    if (e.key === '/' && !e.altKey && !e.ctrlKey && !e.metaKey) {
-      if (isTyping) return;
-      e.preventDefault();
-      if (E.searchInput) E.searchInput.focus();
-    } else if (e.key === '?' && e.shiftKey && !e.altKey && !e.ctrlKey) {
-      e.preventDefault();
-      toggleShortcutsHelp();
-    } else if (e.key === 'Escape') {
-      if (E.shortcutsHelp && E.shortcutsHelp.style.display === 'block') {
-        E.shortcutsHelp.style.display = 'none';
+    if (e.key === 'Escape') {
+      if (E.issueModal && E.issueModal.style.display === 'flex') {
+        UI.Modals.closeIssue();
+      } else if (E.eventModal && E.eventModal.style.display === 'flex') {
+        UI.Modals.closeEvent();
+      }
+    }
+    if (e.key === 'Tab') {
+      if (E.issueModal && E.issueModal.style.display === 'flex' && E.issueModal.contains(e.target)) {
+        trapFocus(E.issueModal, e);
+      }
+      if (E.eventModal && E.eventModal.style.display === 'flex' && E.eventModal.contains(e.target)) {
+        trapFocus(E.eventModal, e);
+      }
+    }
+    if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (E.shortcutsHelp) {
+        E.shortcutsHelp.classList.toggle('visible');
+      } else {
+        UI.toast('Shortcuts: ? = this help, / = focus search, Esc = close modals.');
+      }
+    }
+    if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (E.searchInput) {
+        e.preventDefault();
+        E.searchInput.focus();
+        E.searchInput.select();
       }
     }
   });
 
-  // Initial data load
-  UI.skeleton(true);
-  loadIssues(false);
-  loadEvents(false);
+  // Create ticket button – placeholder hook
+  if (E.createTicketBtn) {
+    E.createTicketBtn.addEventListener('click', () => {
+      UI.toast('Configure this button to open your ticketing system.');
+    });
+  }
+
+  updateOnlineStatus();
+  window.addEventListener('online', updateOnlineStatus);
+  window.addEventListener('offline', updateOnlineStatus);
 }
 
-document.addEventListener('DOMContentLoaded', initApp);
+/* ---------- Bootstrap ---------- */
+
+document.addEventListener('DOMContentLoaded', () => {
+  cacheEls();
+  wireCore();
+  wireCalendar();
+  wirePlanner();
+  wireAiQuery();
+
+  // Restore previously active view
+  let view = 'issues';
+  try {
+    view = localStorage.getItem(LS_KEYS.view) || 'issues';
+  } catch {}
+  setActiveView(view);
+
+  // Initial load
+  loadIssues(false);
+  loadEvents(false);
+});
