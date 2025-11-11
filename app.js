@@ -591,6 +591,7 @@ const Risk = {
     return Array.from(new Set(picks)).slice(0, 6);
   }
 };
+
 /** Command DSL parser */
 const DSL = {
   parse(text) {
@@ -1372,6 +1373,7 @@ const ReleasePlanner = {
     return { bug, bomb, slots: slots.slice(0, maxSlots), ticketContext };
   }
 };
+
 /* ---------- Elements cache ---------- */
 const E = {};
 function cacheEls() {
@@ -1909,6 +1911,7 @@ UI.Issues.renderSummary = function (list) {
     `${total} issue${total === 1 ? '' : 's'} · ${open} open · ${highRisk} high-risk` +
     (last ? ` · ${last}` : '');
 };
+
 /** Analytics (AI tab) */
 const Analytics = {
   _debounce: null,
@@ -2217,8 +2220,8 @@ const Analytics = {
             .map(
               i => `
             <li><button class="btn sm" style="padding:3px 6px;margin-right:4px;" data-open="${U.escapeAttr(
-              i.id
-            )}">${U.escapeHtml(i.id)}</button> ${U.escapeHtml(i.title || '')}</li>
+                i.id
+              )}">${U.escapeHtml(i.id)}</button> ${U.escapeHtml(i.title || '')}</li>
           `
             )
             .join('')}
@@ -2443,7 +2446,7 @@ UI.Modals = {
     }
 
     E.modalTitle.textContent = r.title || r.id || 'Issue';
-    E.modalBody.innerHTML = ``
+    E.modalBody.innerHTML = ''
       + `<p><b>ID:</b> ${U.escapeHtml(r.id || '-')}</p>`
       + `<p><b>Module:</b> ${U.escapeHtml(r.module || '-')}</p>`
       + `<p><b>Priority:</b> ${U.escapeHtml(r.priority || '-')}</p>`
@@ -2681,6 +2684,7 @@ function setActiveView(view) {
   }
   if (view === 'insights') Analytics.refresh(UI.Issues.applyFilters());
 }
+
 /* ---------- Calendar wiring ---------- */
 let calendar = null,
   calendarReady = false;
@@ -3049,375 +3053,6 @@ async function loadEvents(force = false) {
     UI.spinner(false);
   }
 }
-/* ---------- Calendar wiring ---------- */
-let calendar = null,
-  calendarReady = false;
-
-function wireCalendar() {
-  if (E.addEventBtn)
-    E.addEventBtn.addEventListener('click', () => {
-      const now = new Date();
-      UI.Modals.openEvent({
-        start: now,
-        end: new Date(now.getTime() + 60 * 60 * 1000),
-        allDay: false,
-        env: 'Prod',
-        status: 'Planned'
-      });
-    });
-
-  [E.eventFilterDeployment, E.eventFilterMaintenance, E.eventFilterRelease, E.eventFilterOther].forEach(
-    input => {
-      if (input) input.addEventListener('change', renderCalendarEvents);
-    }
-  );
-
-  if (E.calendarTz) {
-    try {
-      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'local time';
-      E.calendarTz.textContent = `Times shown in: ${tz}`;
-    } catch {
-      E.calendarTz.textContent = '';
-    }
-  }
-}
-
-function ensureCalendar() {
-  if (calendarReady) return;
-  const el = document.getElementById('calendar');
-  if (!el || typeof FullCalendar === 'undefined') {
-    UI.toast('Calendar library failed to load');
-    return;
-  }
-  calendar = new FullCalendar.Calendar(el, {
-    initialView: 'dayGridMonth',
-    selectable: true,
-    editable: true,
-    height: 'auto',
-    headerToolbar: {
-      left: 'title',
-      center: '',
-      right: 'dayGridMonth,timeGridWeek,listWeek today prev,next'
-    },
-    select: info =>
-      UI.Modals.openEvent({
-        start: info.start,
-        end: info.end,
-        allDay: info.allDay,
-        env: 'Prod',
-        status: 'Planned'
-      }),
-    eventClick: info => {
-      const ev =
-        DataStore.events.find(e => e.id === info.event.id) || {
-          id: info.event.id,
-          title: info.event.title,
-          type: info.event.extendedProps.type || 'Other',
-          start: info.event.start,
-          end: info.event.end,
-          description: info.event.extendedProps.description || '',
-          issueId: info.event.extendedProps.issueId || '',
-          allDay: info.event.allDay,
-          env: info.event.extendedProps.env || 'Prod',
-          status: info.event.extendedProps.status || 'Planned',
-          owner: info.event.extendedProps.owner || '',
-          modules: info.event.extendedProps.modules || [],
-          impactType: info.event.extendedProps.impactType || 'No downtime expected',
-          notificationStatus: info.event.extendedProps.notificationStatus || ''
-        };
-      UI.Modals.openEvent(ev);
-    },
-    eventDrop: async info => {
-      const ev = DataStore.events.find(e => e.id === info.event.id);
-      if (!ev) {
-        info.revert();
-        return;
-      }
-      const updated = {
-        ...ev,
-        start: info.event.start,
-        end: info.event.end,
-        allDay: info.event.allDay
-      };
-      const saved = await saveEventToSheet(updated);
-      if (!saved) {
-        info.revert();
-        return;
-      }
-      const idx = DataStore.events.findIndex(e => e.id === saved.id);
-      if (idx > -1) DataStore.events[idx] = saved;
-      saveEventsCache();
-      renderCalendarEvents();
-      refreshPlannerReleasePlans();
-      Analytics.refresh(UI.Issues.applyFilters());
-    },
-    eventDidMount(info) {
-      const ext = info.event.extendedProps || {};
-      const riskSum = ext.risk || 0;
-      if (riskSum) {
-        const span = document.createElement('span');
-        span.className = 'event-risk-badge ' + CalendarLink.riskBadgeClass(riskSum);
-        span.textContent = `RISK ${riskSum}`;
-        const titleEl = info.el.querySelector('.fc-event-title');
-        if (titleEl) titleEl.appendChild(span);
-      }
-
-      const env = ext.env || 'Prod';
-      const status = ext.status || 'Planned';
-
-      let tooltip = ext.description || '';
-      if (ext.issueId) {
-        const idStr = ext.issueId;
-        const ids = idStr
-          .split(',')
-          .map(s => s.trim())
-          .filter(Boolean);
-        const issues = ids
-          .map(id => DataStore.byId.get(id))
-          .filter(Boolean);
-        if (issues.length) {
-          const first = issues[0];
-          const meta = DataStore.computed.get(first.id) || {};
-          const r = meta.risk?.total || 0;
-          tooltip =
-            `${first.id} – ${first.title || ''}\nStatus: ${
-              first.status || '-'
-            } · Priority: ${first.priority || '-'} · Risk: ${r}` +
-            (issues.length > 1
-              ? `\n+ ${issues.length - 1} more linked ticket(s)`
-              : '') +
-            (tooltip ? `\n\n${tooltip}` : '');
-        } else {
-          tooltip =
-            `Linked ticket(s): ${idStr}` + (tooltip ? `\n\n${tooltip}` : '');
-        }
-      }
-
-      tooltip += `\nEnvironment: ${env} · Change status: ${status}`;
-      if (ext.collision || ext.freeze || ext.hotIssues) {
-        tooltip += `\n⚠️ Change risk signals:`;
-        if (ext.collision) tooltip += ` overlaps with other change(s)`;
-        if (ext.freeze) tooltip += ` · in freeze window`;
-        if (ext.hotIssues) tooltip += ` · high-risk open issues`;
-      }
-
-      if (tooltip.trim()) info.el.setAttribute('title', tooltip);
-    }
-  });
-  calendarReady = true;
-  renderCalendarEvents();
-  calendar.render();
-}
-
-function renderCalendarEvents() {
-  if (!calendar) return;
-  const activeTypes = new Set();
-  if (E.eventFilterDeployment && E.eventFilterDeployment.checked)
-    activeTypes.add('Deployment');
-  if (E.eventFilterMaintenance && E.eventFilterMaintenance.checked)
-    activeTypes.add('Maintenance');
-  if (E.eventFilterRelease && E.eventFilterRelease.checked)
-    activeTypes.add('Release');
-  if (E.eventFilterOther && E.eventFilterOther.checked) activeTypes.add('Other');
-
-  const links = computeEventsRisk(DataStore.rows, DataStore.events);
-  const riskMap = new Map(links.map(r => [r.event.id, r.risk]));
-  const { flagsById } = computeChangeCollisions(DataStore.rows, DataStore.events);
-
-  calendar.removeAllEvents();
-  DataStore.events.forEach(ev => {
-    const type = ev.type || 'Other';
-    if (activeTypes.size && !activeTypes.has(type)) return;
-    const risk = riskMap.get(ev.id) || 0;
-
-    const env = ev.env || 'Prod';
-    const status = ev.status || 'Planned';
-    const owner = ev.owner || '';
-    const modules = Array.isArray(ev.modules)
-      ? ev.modules
-      : typeof ev.modules === 'string'
-      ? ev.modules
-          .split(',')
-          .map(s => s.trim())
-          .filter(Boolean)
-      : [];
-    const impactType = ev.impactType || '';
-
-    const flags = flagsById.get(ev.id) || {};
-    const classNames = [
-      'event-type-' + type.toLowerCase().replace(/\s+/g, '-'),
-      'event-env-' + env.toLowerCase()
-    ];
-    if (flags.collision) classNames.push('event-collision');
-    if (flags.freeze) classNames.push('event-freeze');
-    if (flags.hotIssues) classNames.push('event-hot');
-
-    calendar.addEvent({
-      id: ev.id,
-      title: ev.title,
-      start: ev.start,
-      end: ev.end || null,
-      allDay: !!ev.allDay,
-      extendedProps: {
-        type,
-        description: ev.description,
-        issueId: ev.issueId || '',
-        risk,
-        env,
-        status,
-        owner,
-        modules,
-        impactType,
-        notificationStatus: ev.notificationStatus || '',
-        collision: !!flags.collision,
-        freeze: !!flags.freeze,
-        hotIssues: !!flags.hotIssues
-      },
-      classNames
-    });
-  });
-}
-
-/* ---------- Networking & data loading ---------- */
-async function safeFetchText(url, opts = {}) {
-  const res = await fetch(url, { cache: 'no-store', ...opts });
-  if (!res.ok)
-    throw new Error(`Failed to fetch ${url}: ${res.status} ${res.statusText}`);
-  return await res.text();
-}
-
-function loadEventsCache() {
-  try {
-    const raw = localStorage.getItem(LS_KEYS.events);
-    if (!raw) return [];
-    const data = JSON.parse(raw);
-    return Array.isArray(data) ? data : [];
-  } catch {
-    return [];
-  }
-}
-function saveEventsCache() {
-  try {
-    localStorage.setItem(LS_KEYS.events, JSON.stringify(DataStore.events || []));
-  } catch {}
-}
-
-async function loadIssues(force = false) {
-  if (!force && !DataStore.rows.length) {
-    const cached = IssuesCache.load();
-    if (cached && cached.length) {
-      DataStore.hydrateFromRows(cached);
-      UI.Issues.renderFilters();
-      setIfOptionExists(E.moduleFilter, Filters.state.module);
-      setIfOptionExists(E.priorityFilter, Filters.state.priority);
-      setIfOptionExists(E.statusFilter, Filters.state.status);
-      UI.skeleton(false);
-      UI.refreshAll();
-    }
-  }
-
-  try {
-    UI.spinner(true);
-    UI.skeleton(true);
-    const text = await safeFetchText(CONFIG.SHEET_URL);
-    DataStore.hydrate(text);
-    IssuesCache.save(DataStore.rows);
-    UI.Issues.renderFilters();
-    setIfOptionExists(E.moduleFilter, Filters.state.module);
-    setIfOptionExists(E.priorityFilter, Filters.state.priority);
-    setIfOptionExists(E.statusFilter, Filters.state.status);
-    UI.refreshAll();
-    UI.setSync('issues', true, new Date());
-  } catch (e) {
-    if (!DataStore.rows.length && E.issuesTbody) {
-      E.issuesTbody.innerHTML = `
-        <tr>
-          <td colspan="8" style="color:#ffb4b4;text-align:center">
-            Error loading data and no cached data found.
-            <button type="button" id="retryLoad" class="btn sm" style="margin-left:8px">Retry</button>
-          </td>
-        </tr>`;
-      const retryBtn = document.getElementById('retryLoad');
-      if (retryBtn) retryBtn.addEventListener('click', () => loadIssues(true));
-    }
-    UI.toast('Error loading issues: ' + e.message);
-    UI.setSync('issues', !!DataStore.rows.length, null);
-  } finally {
-    UI.spinner(false);
-    UI.skeleton(false);
-  }
-}
-
-async function loadEvents(force = false) {
-  const cached = loadEventsCache();
-  if (cached && cached.length && !force) {
-    DataStore.events = cached;
-    ensureCalendar();
-    renderCalendarEvents();
-    refreshPlannerReleasePlans();
-    Analytics.refresh(UI.Issues.applyFilters());
-    UI.setSync('events', true, new Date());
-  }
-
-  if (!CONFIG.CALENDAR_API_URL) return;
-
-  try {
-    UI.spinner(true);
-    const res = await fetch(CONFIG.CALENDAR_API_URL, { cache: 'no-store' });
-    if (!res.ok) throw new Error(`Events API failed: ${res.status}`);
-    const data = await res.json().catch(() => ({}));
-    const events = Array.isArray(data.events) ? data.events : [];
-
-    const normalized = events.map(ev => {
-      const modulesArr = Array.isArray(ev.modules)
-        ? ev.modules
-        : typeof ev.modules === 'string'
-        ? ev.modules
-            .split(',')
-            .map(s => s.trim())
-            .filter(Boolean)
-        : [];
-      return {
-        id: ev.id || 'ev_' + Date.now() + '_' + Math.random().toString(36).slice(2),
-        title: ev.title || '',
-        type: ev.type || 'Other',
-        start: ev.start || ev.startDate || '',
-        end: ev.end || ev.endDate || '',
-        allDay: !!ev.allDay,
-        description: ev.description || '',
-        issueId: ev.issueId || '',
-        env: ev.env || ev.environment || 'Prod',
-        status: ev.status || 'Planned',
-        owner: ev.owner || '',
-        modules: modulesArr,
-        impactType: ev.impactType || ev.impact || 'No downtime expected',
-        notificationStatus: ev.notificationStatus || ''
-      };
-    });
-
-    DataStore.events = normalized;
-    saveEventsCache();
-    ensureCalendar();
-    renderCalendarEvents();
-    refreshPlannerReleasePlans();
-    Analytics.refresh(UI.Issues.applyFilters());
-    UI.setSync('events', true, new Date());
-  } catch (e) {
-    DataStore.events = cached || [];
-    ensureCalendar();
-    renderCalendarEvents();
-    refreshPlannerReleasePlans();
-    UI.setSync('events', !!DataStore.events.length, null);
-    UI.toast(
-      DataStore.events.length
-        ? 'Using cached events (API error)'
-        : 'Unable to load calendar events'
-    );
-  } finally {
-    UI.spinner(false);
-  }
-}
-// chunk 7/7
 
 /* ---------- Save/Delete to Apps Script ---------- */
 async function saveEventToSheet(event) {
@@ -4267,11 +3902,12 @@ function wireTheme() {
   else document.documentElement.setAttribute('data-theme', 'light');
 
   media?.addEventListener('change', () => {
-    if ((localStorage.getItem(LS_KEYS.theme) || 'system') === 'system')
+    if ((localStorage.getItem(LS_KEYS.theme) || 'system') === 'system') {
       applySystem();
+    }
   });
 
-  if (E.themeSelect)
+  if (E.themeSelect) {
     E.themeSelect.addEventListener('change', () => {
       const v = E.themeSelect.value;
       localStorage.setItem(LS_KEYS.theme, v);
@@ -4279,6 +3915,7 @@ function wireTheme() {
       else if (v === 'dark') document.documentElement.removeAttribute('data-theme');
       else document.documentElement.setAttribute('data-theme', 'light');
     });
+  }
 
   if (E.accentColor) {
     const rootStyle = getComputedStyle(document.documentElement);
@@ -4294,23 +3931,236 @@ function wireTheme() {
       try {
         localStorage.setItem(LS_KEYS.accentColorStorage, val);
       } catch {}
-      UI.Issues.renderCharts(UI.Issues.applyFilters());
     });
   }
 }
 
-function wireConnectivity() {
+/* ---------- Online / offline chip ---------- */
+
+function wireOnlineStatus() {
   if (!E.onlineStatusChip) return;
+
   const update = () => {
-    const online = navigator.onLine !== false;
-    E.onlineStatusChip.textContent = online ? 'Online' : 'Offline · using cache';
+    const online = navigator.onLine;
+    E.onlineStatusChip.textContent = online ? 'Online' : 'Offline';
     E.onlineStatusChip.classList.toggle('online', online);
     E.onlineStatusChip.classList.toggle('offline', !online);
+    E.onlineStatusChip.setAttribute('aria-label', online ? 'Online' : 'Offline');
   };
+
   window.addEventListener('online', update);
   window.addEventListener('offline', update);
   update();
 }
+
+/* ---------- AI Query (DSL) ---------- */
+
+function runAiQuery(opts = {}) {
+  const { applyFilters = false, exportCsv = false } = opts;
+  if (!DataStore.rows.length) {
+    UI.toast('Issues are still loading, try again in a moment.');
+    return;
+  }
+  if (!E.aiQueryInput) {
+    UI.toast('AI query input not available.');
+    return;
+  }
+
+  const raw = (E.aiQueryInput.value || '').trim();
+  if (!raw) {
+    UI.toast('Type a query first (e.g. "open risk>10 payments last:7d sort:risk").');
+    if (E.aiQueryResults) {
+      E.aiQueryResults.innerHTML =
+        '<span class="muted">No query yet. Try things like: <code>open risk>10 payments</code> or <code>module:Login last:3d</code>.</span>';
+    }
+    return;
+  }
+
+  const parsed = DSL.parse(raw);
+  let rows = DataStore.rows.filter(r =>
+    DSL.matches(r, DataStore.computed.get(r.id) || {}, parsed)
+  );
+
+  // Sorting
+  const scoreRisk = r => (DataStore.computed.get(r.id)?.risk?.total || 0);
+  if (parsed.sort === 'date') {
+    rows.sort((a, b) => {
+      const da = new Date(a.date), db = new Date(b.date);
+      if (isNaN(da) && isNaN(db)) return 0;
+      if (isNaN(da)) return 1;
+      if (isNaN(db)) return -1;
+      return db - da; // newest first
+    });
+  } else if (parsed.sort === 'priority') {
+    const m = { High: 3, Medium: 2, Low: 1 };
+    rows.sort((a, b) => (m[b.priority] || 0) - (m[a.priority] || 0));
+  } else {
+    // default / risk
+    rows.sort((a, b) => scoreRisk(b) - scoreRisk(a));
+  }
+
+  if (!rows.length) {
+    if (E.aiQueryResults) {
+      E.aiQueryResults.innerHTML =
+        '<span>No issues matched that query. Try relaxing filters (remove risk/age constraints).</span>';
+    }
+    if (applyFilters) {
+      UI.toast('No results – filters not applied.');
+    }
+    return;
+  }
+
+  // Export-only path
+  if (exportCsv) {
+    exportIssuesToCsv(rows, 'aiquery');
+    return;
+  }
+
+  // Optionally map DSL fields back into filters for grid
+  if (applyFilters) {
+    const s = Filters.state;
+
+    // Search from non-structural words
+    s.search = parsed.words ? parsed.words.join(' ') : '';
+
+    // Module: try to map fuzzy → actual module name
+    if (parsed.module) {
+      const needle = parsed.module.toLowerCase();
+      const modules = Array.from(DataStore.byModule.keys());
+      const exact =
+        modules.find(m => m.toLowerCase() === needle) ||
+        modules.find(m => m.toLowerCase().includes(needle));
+      s.module = exact || 'All';
+    }
+
+    // Priority
+    if (parsed.priority) {
+      const p = parsed.priority[0].toUpperCase();
+      if (p === 'H') s.priority = 'High';
+      else if (p === 'M') s.priority = 'Medium';
+      else if (p === 'L') s.priority = 'Low';
+    }
+
+    // Status: for "open"/"closed" we leave grid as-is (DSL handles that),
+    // but if they specify a literal status, try to map to existing.
+    if (parsed.status && !['open', 'closed'].includes(parsed.status)) {
+      const needle = parsed.status.toLowerCase();
+      const statuses = Array.from(DataStore.byStatus.keys());
+      const exact =
+        statuses.find(x => (x || '').toLowerCase() === needle) ||
+        statuses.find(x => (x || '').toLowerCase().includes(needle));
+      s.status = exact || 'All';
+    }
+
+    // Time – last:N d → set start date
+    if (parsed.lastDays) {
+      const from = U.daysAgo(parsed.lastDays);
+      s.start = toLocalDateValue(from);
+      s.end = '';
+    }
+
+    Filters.save();
+    setActiveView('issues');
+    UI.refreshAll();
+    UI.toast('Filters updated from AI query.');
+  }
+
+  // Render results into AI panel
+  if (E.aiQueryResults) {
+    const max = 50;
+    const shown = rows.slice(0, max);
+
+    const summary = `
+      <div class="muted" style="margin-bottom:6px;">
+        Found <strong>${rows.length}</strong> matching issues
+        ${rows.length > max ? ` (showing first ${max})` : ''}.
+        ${applyFilters ? 'Grid filters were updated to roughly match this query.' : ''}
+      </div>
+    `;
+
+    const items = shown
+      .map(r => {
+        const meta = DataStore.computed.get(r.id) || {};
+        const risk = meta.risk?.total || 0;
+        const sev = meta.risk?.severity ?? 0;
+        const imp = meta.risk?.impact ?? 0;
+        const urg = meta.risk?.urgency ?? 0;
+        const reasons = (meta.risk?.reasons || []).slice(0, 4).join(', ');
+        const badgeClass = CalendarLink.riskBadgeClass(risk);
+        return `
+          <li class="ai-query-item">
+            <div class="ai-query-header">
+              <button class="btn sm" data-open="${U.escapeAttr(r.id)}">${U.escapeHtml(
+          r.id
+        )}</button>
+              <span class="muted">· module ${U.escapeHtml(r.module || '-')}</span>
+              <span class="pill priority-${r.priority || ''}">${U.escapeHtml(
+          r.priority || '-'
+        )}</span>
+              <span class="pill status-${(r.status || '').replace(/\s/g, '\\ ')}">${U.escapeHtml(
+          r.status || '-'
+        )}</span>
+              <span class="event-risk-badge ${badgeClass}">RISK ${risk}</span>
+            </div>
+            <div class="ai-query-title">${U.escapeHtml(r.title || '')}</div>
+            <div class="muted" style="font-size:11px;">
+              Sev ${sev} · Imp ${imp} · Urg ${urg}
+              ${reasons ? `· Signals: ${U.escapeHtml(reasons)}` : ''}
+            </div>
+          </li>
+        `;
+      })
+      .join('');
+
+    E.aiQueryResults.innerHTML =
+      summary +
+      `<ul class="ai-query-results-list">${items}</ul>` +
+      (rows.length > max
+        ? `<div class="muted" style="margin-top:4px;">Tip: use the "Export" button to download all matches.</div>`
+        : '');
+
+    // Wire open buttons
+    E.aiQueryResults.querySelectorAll('[data-open]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-open');
+        UI.Modals.openIssue(id);
+      });
+    });
+  }
+
+  // Keep insights panel in sync with result set when visible
+  if (E.insightsView && E.insightsView.classList.contains('active')) {
+    Analytics.refresh(rows);
+  }
+}
+
+function wireAiQuery() {
+  if (!E.aiQueryInput) return;
+
+  if (E.aiQueryRun) {
+    E.aiQueryRun.addEventListener('click', () => runAiQuery({ applyFilters: false }));
+  }
+  if (E.aiQueryApplyFilters) {
+    E.aiQueryApplyFilters.addEventListener('click', () =>
+      runAiQuery({ applyFilters: true })
+    );
+  }
+  if (E.aiQueryExport) {
+    E.aiQueryExport.addEventListener('click', () =>
+      runAiQuery({ applyFilters: false, exportCsv: true })
+    );
+  }
+
+  // Ctrl/Cmd+Enter inside the query box = run
+  E.aiQueryInput.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      runAiQuery({ applyFilters: false });
+    }
+  });
+}
+
+/* ---------- Modals wiring ---------- */
 
 function wireModals() {
   // Issue modal
@@ -4319,7 +4169,6 @@ function wireModals() {
   }
   if (E.issueModal) {
     E.issueModal.addEventListener('click', e => {
-      // click outside panel closes
       if (e.target === E.issueModal) UI.Modals.closeIssue();
     });
     E.issueModal.addEventListener('keydown', e => {
@@ -4334,12 +4183,10 @@ function wireModals() {
 
   if (E.copyId) {
     E.copyId.addEventListener('click', () => {
-      const r = UI.Modals.selectedIssue;
-      if (!r) return;
-      const txt = r.id || '';
-      if (!txt) return;
+      const issue = UI.Modals.selectedIssue;
+      if (!issue || !issue.id) return;
       navigator.clipboard
-        .writeText(txt)
+        .writeText(issue.id)
         .then(() => UI.toast('Issue ID copied'))
         .catch(() => UI.toast('Clipboard blocked'));
     });
@@ -4347,13 +4194,13 @@ function wireModals() {
 
   if (E.copyLink) {
     E.copyLink.addEventListener('click', () => {
-      const r = UI.Modals.selectedIssue;
-      if (!r) return;
+      const issue = UI.Modals.selectedIssue;
+      if (!issue || !issue.id) return;
       const base = window.location.href.split('#')[0];
-      const link = `${base}#issue-${encodeURIComponent(r.id)}`;
+      const link = `${base}#issue-${encodeURIComponent(issue.id)}`;
       navigator.clipboard
         .writeText(link)
-        .then(() => UI.toast('Issue link copied'))
+        .then(() => UI.toast('Link copied'))
         .catch(() => UI.toast('Clipboard blocked'));
     });
   }
@@ -4363,7 +4210,10 @@ function wireModals() {
     E.eventModalClose.addEventListener('click', () => UI.Modals.closeEvent());
   }
   if (E.eventCancel) {
-    E.eventCancel.addEventListener('click', () => UI.Modals.closeEvent());
+    E.eventCancel.addEventListener('click', e => {
+      e.preventDefault();
+      UI.Modals.closeEvent();
+    });
   }
   if (E.eventModal) {
     E.eventModal.addEventListener('click', e => {
@@ -4379,61 +4229,63 @@ function wireModals() {
     });
   }
 
-  if (E.eventAllDay) {
-    E.eventAllDay.addEventListener('change', () => {
-      const allDay = E.eventAllDay.checked;
-      if (E.eventStart) {
-        const val = E.eventStart.value;
-        const d = val ? new Date(val) : null;
-        E.eventStart.type = allDay ? 'date' : 'datetime-local';
-        if (d && !isNaN(d)) {
-          E.eventStart.value = allDay ? toLocalDateValue(d) : toLocalInputValue(d);
-        }
-      }
-      if (E.eventEnd) {
-        const val = E.eventEnd.value;
-        const d = val ? new Date(val) : null;
-        E.eventEnd.type = allDay ? 'date' : 'datetime-local';
-        if (d && !isNaN(d)) {
-          E.eventEnd.value = allDay ? toLocalDateValue(d) : toLocalInputValue(d);
-        }
-      }
+  if (E.eventSave && E.eventForm) {
+    E.eventSave.addEventListener('click', e => {
+      e.preventDefault();
+      if (E.eventForm.requestSubmit) E.eventForm.requestSubmit();
+      else E.eventForm.submit();
     });
   }
 
   if (E.eventForm) {
     E.eventForm.addEventListener('submit', async e => {
       e.preventDefault();
+
       const id = E.eventForm.dataset.id || '';
       const allDay = !!(E.eventAllDay && E.eventAllDay.checked);
-
       const title = (E.eventTitle?.value || '').trim();
       if (!title) {
-        UI.toast('Title is required');
+        UI.toast('Title is required.');
         return;
       }
 
-      const ev = {
+      const startVal = E.eventStart?.value || '';
+      const endVal = E.eventEnd?.value || '';
+
+      const start = startVal ? new Date(startVal) : '';
+      const end = endVal ? new Date(endVal) : '';
+
+      const modulesRaw = E.eventModules?.value || '';
+      const modules = modulesRaw
+        ? modulesRaw
+            .split(',')
+            .map(s => s.trim())
+            .filter(Boolean)
+        : [];
+
+      const existing = id ? DataStore.events.find(ev => ev.id === id) : null;
+
+      const payload = {
         id,
         title,
         type: E.eventType?.value || 'Deployment',
         env: E.eventEnv?.value || 'Prod',
         status: E.eventStatus?.value || 'Planned',
-        owner: (E.eventOwner?.value || '').trim(),
-        modules: E.eventModules?.value || '',
+        owner: E.eventOwner?.value || '',
+        modules,
         impactType: E.eventImpactType?.value || 'No downtime expected',
-        issueId: (E.eventIssueId?.value || '').trim(),
-        start: E.eventStart?.value || '',
-        end: E.eventEnd?.value || '',
-        description: (E.eventDescription?.value || '').trim(),
+        issueId: E.eventIssueId?.value || '',
+        start: start || '',
+        end: end || '',
         allDay,
-        notificationStatus: ''
+        description: E.eventDescription?.value || '',
+        notificationStatus: existing?.notificationStatus || ''
       };
 
-      const saved = await saveEventToSheet(ev);
+      const saved = await saveEventToSheet(payload);
       if (!saved) return;
 
-      const idx = DataStore.events.findIndex(x => x.id === saved.id);
+      const idx = DataStore.events.findIndex(ev => ev.id === saved.id);
       if (idx === -1) DataStore.events.push(saved);
       else DataStore.events[idx] = saved;
 
@@ -4445,288 +4297,82 @@ function wireModals() {
     });
   }
 
-  if (E.eventSave) {
-    E.eventSave.addEventListener('click', () => {
-      if (E.eventForm?.requestSubmit) E.eventForm.requestSubmit();
-    });
-  }
-
-  if (E.eventDelete) {
+  if (E.eventDelete && E.eventForm) {
     E.eventDelete.addEventListener('click', async () => {
-      if (!E.eventForm) return;
-      const id = E.eventForm.dataset.id;
+      const id = E.eventForm.dataset.id || '';
       if (!id) {
-        UI.Modals.closeEvent();
+        UI.toast('No event selected to delete.');
         return;
       }
-      if (!window.confirm('Delete this event from the calendar?')) return;
+      if (!window.confirm('Delete this event?')) return;
       const ok = await deleteEventFromSheet(id);
       if (!ok) return;
-      const idx = DataStore.events.findIndex(ev => ev.id === id);
-      if (idx > -1) DataStore.events.splice(idx, 1);
+
+      DataStore.events = DataStore.events.filter(ev => ev.id !== id);
       saveEventsCache();
       renderCalendarEvents();
       refreshPlannerReleasePlans();
-      Analytics.refresh(UI.Issues.applyFilters());
       UI.Modals.closeEvent();
     });
   }
 }
 
-/* ---------- AI query / DSL wiring ---------- */
-
-let LAST_AI_QUERY = null;
-
-function applyDSLToFilters(q) {
-  if (!q) return;
-  const next = {
-    search: '',
-    module: 'All',
-    priority: 'All',
-    status: 'All',
-    start: '',
-    end: ''
-  };
-
-  if (q.words && q.words.length) {
-    next.search = q.words.join(' ');
-  }
-
-  if (q.module) {
-    const modules = Array.from(DataStore.byModule.keys());
-    const target = q.module.toLowerCase();
-    const exact = modules.find(m => (m || '').toLowerCase() === target);
-    if (exact) next.module = exact;
-  }
-
-  if (q.priority) {
-    const p = q.priority[0]?.toUpperCase();
-    if (p === 'H') next.priority = 'High';
-    else if (p === 'M') next.priority = 'Medium';
-    else if (p === 'L') next.priority = 'Low';
-  }
-
-  if (q.status && q.status !== 'open' && q.status !== 'closed') {
-    const statuses = Array.from(DataStore.byStatus.keys());
-    const target = q.status.toLowerCase();
-    const match = statuses.find(s => (s || '').toLowerCase().includes(target));
-    if (match) next.status = match;
-  }
-
-  if (q.lastDays && Number.isFinite(q.lastDays)) {
-    const start = U.daysAgo(q.lastDays);
-    next.start = toLocalDateValue(start);
-    next.end = '';
-  }
-
-  Filters.state = next;
-  Filters.save();
-  UI.refreshAll();
-}
-
-function wireAIQuery() {
-  if (!E.aiQueryInput || !E.aiQueryRun || !E.aiQueryResults) return;
-
-  const renderHelp = () => {
-    E.aiQueryResults.innerHTML = `
-      <div class="muted" style="font-size:12px;">
-        Examples:
-        <ul style="margin:4px 0 0 16px;padding:0;">
-          <li><code>status:open priority:h risk&gt;=10 last:7d</code></li>
-          <li><code>module:payments severity&gt;=3 impact&gt;=3</code></li>
-          <li><code>missing:priority last:30d</code></li>
-          <li><code>cluster:timeout sort:risk</code></li>
-        </ul>
-      </div>`;
-  };
-
-  const runQuery = () => {
-    const raw = (E.aiQueryInput.value || '').trim();
-    if (!raw) {
-      LAST_AI_QUERY = null;
-      renderHelp();
-      return;
-    }
-    if (!DataStore.rows.length) {
-      UI.toast('Issues are still loading; try again in a moment.');
-      return;
-    }
-
-    const q = DSL.parse(raw);
-    let rows = DataStore.rows.filter(r =>
-      DSL.matches(r, DataStore.computed.get(r.id) || {}, q)
-    );
-
-    if (q.sort === 'risk') {
-      rows = rows
-        .map(r => ({
-          r,
-          risk: DataStore.computed.get(r.id)?.risk?.total || 0
-        }))
-        .sort((a, b) => b.risk - a.risk)
-        .map(x => x.r);
-    } else if (q.sort === 'date') {
-      rows = rows.slice().sort((a, b) => {
-        const da = new Date(a.date);
-        const db = new Date(b.date);
-        if (isNaN(da) && isNaN(db)) return 0;
-        if (isNaN(da)) return 1;
-        if (isNaN(db)) return -1;
-        return db - da; // newest first
-      });
-    } else if (q.sort === 'priority') {
-      rows = rows.slice().sort((a, b) => prioMap(b.priority) - prioMap(a.priority));
-    }
-
-    LAST_AI_QUERY = { text: raw, q, rows };
-
-    if (!rows.length) {
-      E.aiQueryResults.innerHTML = `<div>No issues matched this query.</div>`;
-      return;
-    }
-
-    const maxShow = 50;
-    const slice = rows.slice(0, maxShow);
-
-    const summary = `
-      <div style="margin-bottom:4px;">
-        Found <strong>${slice.length}</strong> of ${rows.length} matching issue${
-      rows.length === 1 ? '' : 's'
-    } for query <code>${U.escapeHtml(raw)}</code>.
-      </div>`;
-
-    const items = slice
-      .map(r => {
-        const meta = DataStore.computed.get(r.id) || {};
-        const risk = meta.risk || {};
-        const riskScore = risk.total || 0;
-        const badgeClass = CalendarLink.riskBadgeClass(riskScore);
-        return `
-        <li style="margin-bottom:6px;">
-          <button class="btn sm" data-open="${U.escapeAttr(r.id)}">${U.escapeHtml(
-          r.id
-        )}</button>
-          <strong>${U.escapeHtml(r.title || '')}</strong>
-          <div class="muted">
-            Module: ${U.escapeHtml(r.module || '-')},
-            Priority: ${U.escapeHtml(r.priority || '-')},
-            Status: ${U.escapeHtml(r.status || '-')}
-          </div>
-          <div class="muted">
-            <span class="event-risk-badge ${badgeClass}">RISK ${riskScore}</span>
-            · sev ${risk.severity ?? 0} · imp ${risk.impact ?? 0} · urg ${risk.urgency ?? 0}
-          </div>
-        </li>`;
-      })
-      .join('');
-
-    const overflow =
-      rows.length > maxShow
-        ? `<div class="muted" style="font-size:11px;">+ ${
-            rows.length - maxShow
-          } more not shown. Use "Export" to download all.</div>`
-        : '';
-
-    E.aiQueryResults.innerHTML = `
-      ${summary}
-      <ul style="margin:4px 0 0 16px;padding:0;font-size:13px;">
-        ${items}
-      </ul>
-      ${overflow}
-    `;
-
-    E.aiQueryResults.querySelectorAll('[data-open]').forEach(btn => {
-      btn.addEventListener('click', () =>
-        UI.Modals.openIssue(btn.getAttribute('data-open'))
-      );
-    });
-  };
-
-  E.aiQueryRun.addEventListener('click', runQuery);
-  E.aiQueryInput.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      runQuery();
-    }
-  });
-
-  if (E.aiQueryApplyFilters) {
-    E.aiQueryApplyFilters.addEventListener('click', () => {
-      if (!LAST_AI_QUERY || !LAST_AI_QUERY.q) {
-        UI.toast('Run a query first.');
-        return;
-      }
-      applyDSLToFilters(LAST_AI_QUERY.q);
-      setActiveView('issues');
-      UI.toast('Applied AI query filters to issues table');
-    });
-  }
-
-  if (E.aiQueryExport) {
-    E.aiQueryExport.addEventListener('click', () => {
-      if (!LAST_AI_QUERY || !LAST_AI_QUERY.rows?.length) {
-        UI.toast('Nothing to export yet.');
-        return;
-      }
-      exportIssuesToCsv(LAST_AI_QUERY.rows, 'aiquery');
-    });
-  }
-
-  // Initial help
-  renderHelp();
-}
-
 /* ---------- Keyboard shortcuts ---------- */
 
-function wireKeyboardShortcuts() {
+function wireShortcuts() {
   document.addEventListener('keydown', e => {
     const tag = (e.target && e.target.tagName) || '';
-    const isInputLike =
+    const isInput =
       tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable;
 
-    // Ctrl/Cmd + K → AI query box (Insights tab)
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-      e.preventDefault();
-      setActiveView('insights');
-      if (E.aiQueryInput) {
-        E.aiQueryInput.focus();
-        if (E.aiQueryInput.select) E.aiQueryInput.select();
-      }
-      return;
-    }
-
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
-
-    // "/" → focus search (when not already in an input)
-    if (e.key === '/' && !isInputLike) {
-      e.preventDefault();
-      setActiveView('issues');
+    // Global "/" → search (but not when already typing)
+    if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey && !isInput) {
       if (E.searchInput) {
+        e.preventDefault();
         E.searchInput.focus();
-        if (E.searchInput.select) E.searchInput.select();
+        E.searchInput.select();
       }
       return;
     }
 
-    if (isInputLike) return;
+    // 1 / 2 / 3 → switch views
+    if (!isInput && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (e.key === '1') {
+        e.preventDefault();
+        setActiveView('issues');
+        return;
+      }
+      if (e.key === '2') {
+        e.preventDefault();
+        setActiveView('calendar');
+        return;
+      }
+      if (e.key === '3') {
+        e.preventDefault();
+        setActiveView('insights');
+        return;
+      }
+    }
 
-    // 1/2/3 → switch tabs
-    if (e.key === '1') {
-      setActiveView('issues');
-    } else if (e.key === '2') {
-      setActiveView('calendar');
-    } else if (e.key === '3') {
-      setActiveView('insights');
+    // Ctrl/Cmd+K → focus AI query
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      if (E.aiQueryInput) {
+        e.preventDefault();
+        setActiveView('insights');
+        E.aiQueryInput.focus();
+        E.aiQueryInput.select();
+      }
     }
   });
 }
 
-/* ---------- Bootstrapping ---------- */
+/* ---------- Init ---------- */
 
 document.addEventListener('DOMContentLoaded', () => {
   cacheEls();
   Filters.load();
 
+  // Page size
   if (E.pageSize) {
     E.pageSize.value = String(GridState.pageSize);
   }
@@ -4736,16 +4382,22 @@ document.addEventListener('DOMContentLoaded', () => {
   wirePaging();
   wireFilters();
   wireTheme();
-  wireConnectivity();
-  wireModals();
   wireCalendar();
   wirePlanner();
-  wireAIQuery();
-  wireKeyboardShortcuts();
+  wireModals();
+  wireAiQuery();
+  wireShortcuts();
+  wireOnlineStatus();
 
-  const view = localStorage.getItem(LS_KEYS.view) || 'issues';
-  setActiveView(view === 'calendar' || view === 'insights' ? view : 'issues');
+  // Restore view
+  const savedView = localStorage.getItem(LS_KEYS.view) || 'issues';
+  setActiveView(savedView);
 
+  // Initial sync state
+  UI.setSync('issues', false, null);
+  UI.setSync('events', false, null);
+
+  // Load data
   loadIssues(false);
   loadEvents(false);
 });
