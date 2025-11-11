@@ -3504,6 +3504,40 @@ function setActiveView(view) {
     renderCalendarEvents();
   }
   if (view === 'insights') Analytics.refresh(UI.Issues.applyFilters());
+
+}
+function refreshPlannerTicketsFromFilters() {
+  if (!E.plannerTickets) return;
+
+  const el = E.plannerTickets;
+  const filtered = UI.Issues.applyFilters();
+
+  // Clear old options
+  el.innerHTML = '';
+
+  // No tickets under current filters
+  if (!filtered.length) {
+    el.disabled = true;
+    const opt = document.createElement('option');
+    opt.disabled = true;
+    opt.textContent = 'No tickets in current filters';
+    el.appendChild(opt);
+    return;
+  }
+
+  el.disabled = false;
+
+  // Limit so it doesn't get crazy long
+  const max = Math.min(filtered.length, 100);
+
+  filtered.slice(0, max).forEach(r => {
+    const meta = DataStore.computed.get(r.id) || {};
+    const risk = meta.risk?.total ?? '';
+    const opt = document.createElement('option');
+    opt.value = r.id;
+    opt.textContent = `${r.id} — ${r.module || ''} · ${r.priority || ''} · R${risk}`;
+    el.appendChild(opt);
+  });
 }
 
 /* ---------- Calendar wiring ---------- */
