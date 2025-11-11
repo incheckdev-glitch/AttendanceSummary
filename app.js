@@ -3,14 +3,14 @@
  * Single-file architecture:
  *  - CONFIG / LS_KEYS
  *  - DataStore (issues + text analytics)
- *  - Risk engine (technical + biz + ops + severity/impact/urgency)
+ *  - Domain risk engine (technical + biz + ops + severity/impact/urgency)
  *  - DSL query parser & matcher
  *  - Calendar risk (events + collisions + freezes + hot issues)
  *  - Release planner (F&B / Middle East)
  */
 
 const CONFIG = {
-  DATA_VERSION: '2',
+  DATA_VERSION: '3',
 
   // Issues CSV (read-only)
   SHEET_URL:
@@ -27,7 +27,8 @@ const CONFIG = {
   TREND_DAYS_WINDOW: 14,
 
   RISK: {
-    priorityWeight: { High: 3, Medium: 2, Low: 1, "": 1 },
+    // legacy weights still used in some places (e.g. trends)
+    priorityWeight: { Urgent: 4, High: 3, Medium: 2, Low: 1, '': 2 },
     techBoosts: [
       ['timeout', 3],
       ['time out', 3],
@@ -61,6 +62,123 @@ const CONFIG = {
       ['sla', 2]
     ],
     statusBoosts: { 'on stage': 2, under: 1 },
+
+    // domain risk model pieces
+    statusFactor: {
+      closed: 0.3,      // Resolved / Rejected
+      staging: 0.8,     // On Stage / Tested on Staging
+      active: 1.0       // Under Dev / On Hold / Not Started Yet / New Futures / others
+    },
+    moduleFactor: {
+      'mobile app': 1.3,
+      reporting: 1.2,
+      checklist: 1.1,
+      journal: 1.0,
+      employee: 0.9,
+      roles: 0.9,
+      locations: 0.9,
+      unspecified: 1.0
+    },
+    typeBonus: {
+      bug: 1,
+      'new futures': -0.5
+    },
+    keywordBuckets: {
+      dataIntegrity: {
+        score: 3,
+        patterns: [
+          'historical data',
+          'history data',
+          'historical log',
+          'journal entries not showing',
+          'deleted',
+          'being deleted',
+          'disappear',
+          'not showing in report',
+          'not showing on report',
+          'missing in report',
+          'wrong %',
+          'wrong percentage',
+          'wrong completion',
+          'timezone',
+          'time zone',
+          'arabic',
+          'encoding',
+          'â€œ??????â€',
+          '???',
+          'garbled text'
+        ]
+      },
+      checklistBlocked: {
+        score: 3,
+        patterns: [
+          'checklists not appearing on app',
+          'checklist not appearing on app',
+          'checklists not appearing',
+          'checklist not appearing',
+          'checklist didn’t submit completely',
+          'checklists didn’t submit completely',
+          'did not submit completely',
+          'cannot submit',
+          'can’t submit',
+          'error when submitting',
+          'internal server error',
+          '500 internal',
+          'not found',
+          '404',
+          'instances not appearing',
+          'instances not visible',
+          'cannot execute checklist'
+        ]
+      },
+      exportFailure: {
+        score: 2,
+        patterns: [
+          'export',
+          'export issues',
+          'export report',
+          'pdf',
+          'csv',
+          'excel',
+          'xlsx',
+          'json',
+          'unexpected token',
+          'white page',
+          'blank page',
+          'download failed'
+        ]
+      },
+      performanceScaling: {
+        score: 2,
+        patterns: [
+          'long loading time',
+          'long loading',
+          'takes long time',
+          'failed fetch',
+          'failed to fetch',
+          'data pagination',
+          'pagination',
+          'many instances',
+          'large amount of data',
+          'large data',
+          'slow loading'
+        ]
+      },
+      releaseRegression: {
+        score: 1,
+        patterns: [
+          'after new release',
+          'after the new release',
+          'before release was working',
+          'before release it was working',
+          'staging vs live',
+          'staging vs production',
+          'on stage',
+          'tested on staging'
+        ]
+      }
+    },
+
     misalignedDelta: 1,
     highRisk: 9,
     critRisk: 13,
@@ -258,6 +376,104 @@ const STOPWORDS = new Set([
   'inc'
 ]);
 
+// Domain keyword dictionary for patterns (AI tab)
+const DOMAIN_TERMS = {
+  'export / CSV / PDF': [
+    'export',
+    'pdf',
+    'csv',
+    'excel',
+    'xlsx',
+    'json',
+    'unexpected token',
+    'white page',
+    'blank page'
+  ],
+  'filters / navigation': [
+    'filter',
+    'filtered',
+    'client filter',
+    'group mode',
+    'redirection',
+    'redirect',
+    'list view',
+    'grid view',
+    'list/grid',
+    'navigation',
+    'switch view'
+  ],
+  'on-demand & schedule': [
+    'on demand',
+    'on-demand',
+    'schedule',
+    'scheduled',
+    'display time',
+    'due time',
+    'instances',
+    'checklist schedule',
+    'active/inactive'
+  ],
+  'sublist & sections': [
+    'sublist',
+    'sub-list',
+    'section',
+    'sections',
+    'sub section'
+  ],
+  'tags & N/A / OOO': [
+    'tags',
+    'tagging',
+    'n/a',
+    'N/A',
+    'ooo',
+    'out of office'
+  ],
+  'historical log & data': [
+    'historical data',
+    'historical log',
+    'history',
+    'journal entries',
+    'logbook',
+    'log book',
+    'log',
+    'entries not showing',
+    'data being deleted',
+    'deleted'
+  ],
+  'geofencing & location': [
+    'geofencing',
+    'geofacing',
+    'geofence',
+    'location access',
+    'location permission',
+    'gps'
+  ],
+  'roles & access': [
+    'role',
+    'roles',
+    'client access',
+    'role based',
+    'role-based',
+    'permissions',
+    'permission'
+  ],
+  'shared devices & QR': [
+    'shared device',
+    'shared devices',
+    'qr code',
+    'qr',
+    'device admin'
+  ],
+  'encoding / language': [
+    'arabic',
+    'encoding',
+    'charset',
+    'language',
+    '???',
+    'â€œ??????â€'
+  ]
+};
+
 const U = {
   q: (s, r = document) => r.querySelector(s),
   qAll: (s, r = document) => Array.from(r.querySelectorAll(s)),
@@ -300,7 +516,14 @@ const U = {
 
 /** Filters persisted */
 const Filters = {
-  state: { search: '', module: 'All', priority: 'All', status: 'All', start: '', end: '' },
+  state: {
+    search: '',
+    module: 'All',
+    priority: 'All',
+    status: 'All',
+    start: '',
+    end: ''
+  },
   load() {
     try {
       const raw = localStorage.getItem(LS_KEYS.filters);
@@ -323,7 +546,7 @@ function UndefaultCount(arr) {
 /** DataStore */
 const DataStore = {
   rows: [],
-  computed: new Map(), // id -> { tokens:Set, tf:Map, idf:Map, risk, suggestions }
+  computed: new Map(), // id -> { tokens:Set, tf:Map, idf:Map, risk, suggestions, domainCategory }
   byId: new Map(),
   byModule: new Map(),
   byStatus: new Map(),
@@ -337,21 +560,44 @@ const DataStore = {
     const i = (s || '').trim().toLowerCase();
     if (!i) return 'Not Started Yet';
     if (i.startsWith('resolved')) return 'Resolved';
-    if (i.startsWith('under')) return 'Under Development';
     if (i.startsWith('rejected')) return 'Rejected';
     if (i.startsWith('on hold')) return 'On Hold';
     if (i.startsWith('not started')) return 'Not Started Yet';
-    if (i.startsWith('sent')) return 'Sent';
+    if (i.startsWith('new futures')) return 'New Futures';
+    if (i.startsWith('under')) return 'Under Development';
+    if (i.startsWith('tested on staging')) return 'Tested on Staging';
     if (i.startsWith('on stage')) return 'On Stage';
+    if (i.startsWith('sent')) return 'Sent';
     return s || 'Not Started Yet';
   },
   normalizePriority(p) {
     const i = (p || '').trim().toLowerCase();
     if (!i) return '';
-    if (i.startsWith('h')) return 'High';
+    if (i.startsWith('u') || i.includes('urgent') || i.includes('p0')) return 'Urgent';
+    if (i.startsWith('h') || i.includes('p1')) return 'High';
     if (i.startsWith('m')) return 'Medium';
     if (i.startsWith('l')) return 'Low';
     return p;
+  },
+  normalizeModule(m) {
+    const i = (m || '').trim().toLowerCase();
+    if (!i) return 'Unspecified';
+    if (i.startsWith('mobile')) return 'Mobile App';
+    if (i.startsWith('report')) return 'Reporting';
+    if (i.startsWith('check')) return 'Checklist';
+    if (i.startsWith('journal')) return 'Journal';
+    if (i.startsWith('employee')) return 'Employee';
+    if (i.startsWith('role')) return 'Roles';
+    if (i.startsWith('location')) return 'Locations';
+    return m;
+  },
+  normalizeType(t) {
+    const i = (t || '').trim().toLowerCase();
+    if (!i) return '';
+    if (i.startsWith('bug')) return 'Bug';
+    if (i.startsWith('enh')) return 'Enhancement';
+    if (i.startsWith('new futures')) return 'New Futures';
+    return t;
   },
   normalizeRow(raw) {
     const lower = {};
@@ -365,29 +611,41 @@ const DataStore = {
       }
       return '';
     };
+    const module = this.normalizeModule(
+      pick('impacted module', 'module', 'issue location')
+    );
+    const type = this.normalizeType(pick('category', 'type'));
+    const priority = this.normalizePriority(pick('priority'));
+
     return {
       id: pick('ticket id', 'id'),
-      module: pick('impacted module', 'module', 'issue location') || 'Unspecified',
+      module: module || 'Unspecified',
       title: pick('title'),
       desc: pick('description'),
       file: pick('file upload', 'link', 'url'),
-      priority: DataStore.normalizePriority(pick('priority')),
-      status: DataStore.normalizeStatus(pick('status') || 'Not Started Yet'),
-      type: pick('category', 'type'),
+      priority,
+      status: this.normalizeStatus(pick('status') || 'Not Started Yet'),
+      type,
       date: pick('timestamp', 'date', 'created at'),
       log: pick('log', 'logs', 'comment', 'notes')
     };
   },
   tokenize(issue) {
-    const text = [issue.title, issue.desc, issue.log].filter(Boolean).join(' ').toLowerCase();
+    const text = [issue.title, issue.desc, issue.log]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
     return text
       .replace(/[^a-z0-9]+/g, ' ')
       .split(/\s+/)
       .filter(w => w && w.length > 2 && !STOPWORDS.has(w));
   },
   hydrate(csvText) {
-    const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true }).data
-      .map(DataStore.normalizeRow)
+    const parsed = Papa.parse(csvText, {
+      header: true,
+      skipEmptyLines: true
+    }).data
+      .map(DataStore.normalizeRow.bind(DataStore))
       .filter(r => r.id && r.id.trim() !== '');
     this.hydrateFromRows(parsed);
   },
@@ -420,16 +678,21 @@ const DataStore = {
     this.df.forEach((df, term) => idf.set(term, Math.log((this.N + 1) / (df + 1)) + 1));
     this.computed.forEach(meta => (meta.idf = idf));
 
-    // risk & suggestions
+    // risk & suggestions + domain categories
     this.rows.forEach(r => {
       const risk = Risk.computeRisk(r);
-      const categories = Risk.suggestCategories(r);
+      const domainCategory = Risk.assignDomainCategory(r);
+      const categories = domainCategory ? [{ label: domainCategory, score: 1 }] : [];
       const sPrio = Risk.suggestPriority(r, risk.total);
       const reasons = Risk.explainRisk(r);
       const meta = this.computed.get(r.id);
       meta.risk = { ...risk, reasons };
       meta.suggestions = { priority: sPrio, categories };
+      meta.domainCategory = domainCategory;
     });
+
+    // invalidate regression index
+    RegressionIndex = null;
   }
 };
 
@@ -463,140 +726,304 @@ const IssuesCache = {
 };
 
 function prioMap(p) {
-  return { High: 3, Medium: 2, Low: 1 }[p] || 0;
+  return { Urgent: 4, High: 3, Medium: 2, Low: 1 }[p] || 0;
 }
 function prioGap(suggested, current) {
   return prioMap(suggested) - prioMap(current);
 }
 
-/** Risk engine (with severity / impact / urgency) */
+/** Risk engine (domain-specific; risk.total is 1..10) */
 const Risk = {
-  scoreFromBoosts(text, rules) {
-    let s = 0;
-    for (const [kw, val] of rules) {
-      if (text.includes(kw)) s += val;
+  priorityBase(priority) {
+    if (!priority) return 2;
+    return CONFIG.RISK.priorityWeight[priority] || 2;
+  },
+  statusFactor(status) {
+    const s = (status || '').toLowerCase();
+    if (!s) return CONFIG.RISK.statusFactor.active;
+    if (s.startsWith('resolved') || s.startsWith('rejected')) {
+      return CONFIG.RISK.statusFactor.closed;
     }
-    return s;
+    if (s.startsWith('on stage') || s.startsWith('tested on staging')) {
+      return CONFIG.RISK.statusFactor.staging;
+    }
+    return CONFIG.RISK.statusFactor.active;
+  },
+  moduleFactor(module) {
+    const m = (module || 'Unspecified').toLowerCase();
+    if (m.includes('mobile')) return CONFIG.RISK.moduleFactor['mobile app'];
+    if (m.includes('report')) return CONFIG.RISK.moduleFactor.reporting;
+    if (m.includes('check')) return CONFIG.RISK.moduleFactor.checklist;
+    if (m.includes('journal')) return CONFIG.RISK.moduleFactor.journal;
+    if (m.includes('employee')) return CONFIG.RISK.moduleFactor.employee;
+    if (m.includes('role')) return CONFIG.RISK.moduleFactor.roles;
+    if (m.includes('location')) return CONFIG.RISK.moduleFactor.locations;
+    return CONFIG.RISK.moduleFactor.unspecified;
+  },
+  typeBonus(type) {
+    const t = (type || '').toLowerCase();
+    if (t.startsWith('bug')) return CONFIG.RISK.typeBonus.bug;
+    if (t.startsWith('new futures')) return CONFIG.RISK.typeBonus['new futures'];
+    return 0;
+  },
+  keywordBonus(text) {
+    const lower = (text || '').toLowerCase();
+    let bonus = 0;
+    const matchedReasons = [];
+    Object.entries(CONFIG.RISK.keywordBuckets).forEach(([key, bucket]) => {
+      const hit = bucket.patterns.some(p => lower.includes(p.toLowerCase()));
+      if (hit) {
+        bonus += bucket.score;
+        matchedReasons.push(key);
+      }
+    });
+    return { bonus, matchedReasons };
   },
   computeRisk(issue) {
-    const txt = [issue.title, issue.desc, issue.log].filter(Boolean).join(' ').toLowerCase() + ' ';
-    const basePriority = CONFIG.RISK.priorityWeight[issue.priority || ''] || 1;
+    const txt = [issue.title, issue.desc, issue.log].filter(Boolean).join(' ');
+    const lower = txt.toLowerCase();
 
-    const tech = basePriority + this.scoreFromBoosts(txt, CONFIG.RISK.techBoosts);
-    const biz = this.scoreFromBoosts(txt, CONFIG.RISK.bizBoosts);
-    const ops = this.scoreFromBoosts(txt, CONFIG.RISK.opsBoosts);
+    const priorityBase = this.priorityBase(issue.priority);
+    const statusFactor = this.statusFactor(issue.status);
+    const moduleFactor = this.moduleFactor(issue.module);
+    const typeBonus = this.typeBonus(issue.type);
+    const { bonus: keywordBonus, matchedReasons } = this.keywordBonus(txt);
 
-    let total = tech + biz + ops;
+    let raw =
+      (priorityBase * 2 + typeBonus + keywordBonus) * statusFactor * moduleFactor;
 
-    const st = (issue.status || '').toLowerCase();
-    for (const k in CONFIG.RISK.statusBoosts) {
-      if (st.startsWith(k)) total += CONFIG.RISK.statusBoosts[k];
-    }
+    // clamp to 1..10
+    let riskScore = Math.round(raw);
+    if (riskScore < 1) riskScore = 1;
+    if (riskScore > 10) riskScore = 10;
 
-    let timeRisk = 0;
-    let ageDays = null;
-    let isOpen = !(st.startsWith('resolved') || st.startsWith('rejected'));
+    // simple sub-dimensions for UI
+    let severity = priorityBase;
+    if (matchedReasons.includes('dataIntegrity')) severity += 2;
+    if (matchedReasons.includes('checklistBlocked')) severity += 2;
+    if (matchedReasons.includes('exportFailure')) severity += 1;
 
-    if (issue.date) {
-      const d = new Date(issue.date);
-      if (!isNaN(d)) {
-        ageDays = (Date.now() - d.getTime()) / 86400000;
-        if (isOpen && total >= CONFIG.RISK.highRisk) {
-          if (ageDays <= 14) timeRisk += 2; // fresh risky
-          if (ageDays >= 30) timeRisk += 3; // stale high-risk
-        }
-      }
-    }
-    total += timeRisk;
-
-    // severity: how bad is the scenario
-    let severity = basePriority;
-    if (/p0|sev0|outage|down|data loss|breach|security/i.test(txt)) severity += 3;
-    if (/p1|sev1|incident|sla/i.test(txt)) severity += 2;
-    if (/p2|degraded/i.test(txt)) severity += 1;
-
-    // impact: how much money / users
     let impact = 1;
-    if (/payment|billing|checkout|revenue|invoice|subscription|signup|onboarding/i.test(txt))
-      impact += 2;
-    if (/login|auth|authentication|token|session/i.test(txt)) impact += 1.5;
-    if (/admin|internal|report/i.test(txt)) impact += 0.5;
+    if (/report|export|journal|historical/i.test(lower)) impact += 2;
+    if (/mobile app|checklist/i.test(lower)) impact += 1;
+    if (/roles|employee|location|geofencing|geofacing/i.test(lower)) impact += 1;
 
-    // urgency: time sensitivity
     let urgency = 1;
-    if (/today|now|immediately|urgent|sla/i.test(txt)) urgency += 1.5;
-    if (ageDays != null) {
-      if (ageDays <= 1) urgency += 1;
-      if (ageDays >= 14 && isOpen) urgency += 0.5;
+    if (/urgent|asap|today|now|immediately|sla/i.test(lower)) urgency += 1.5;
+    if (issue.priority === 'Urgent') urgency += 1;
+    if (issue.status && /on stage|tested on staging/i.test(issue.status)) {
+      urgency += 0.5;
     }
 
-    const sevScore = Math.round(severity);
-    const impScore = Math.round(impact * 1.5);
-    const urgScore = Math.round(urgency * 1.5);
+    // normalize severity/impact/urgency to small ints
+    const sevScore = Math.max(1, Math.min(5, Math.round(severity)));
+    const impScore = Math.max(1, Math.min(5, Math.round(impact)));
+    const urgScore = Math.max(1, Math.min(5, Math.round(urgency)));
 
-    total += sevScore + impScore + urgScore;
-
+    // legacy components kept for compatibility
     return {
-      technical: tech,
-      business: biz,
-      operational: ops,
-      time: timeRisk,
-      total,
+      technical: priorityBase,
+      business: 0,
+      operational: 0,
+      time: 0,
+      total: riskScore,
       severity: sevScore,
       impact: impScore,
-      urgency: urgScore
+      urgency: urgScore,
+      matchedReasons
     };
   },
+  assignDomainCategory(issue) {
+    const mod = (issue.module || '').toLowerCase();
+    const text = [issue.title, issue.desc, issue.log]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+
+    const has = (...terms) => terms.some(t => text.includes(t.toLowerCase()));
+
+    // 1) Reporting – Filters & Navigation
+    if (
+      mod.includes('report') &&
+      has(
+        'filter',
+        'filtered',
+        'client filter',
+        'group mode',
+        'redirection',
+        'redirect',
+        'list view',
+        'grid view',
+        'list/grid',
+        'pagination',
+        'page size',
+        'view mode'
+      )
+    ) {
+      return 'Reporting – Filters & Navigation';
+    }
+
+    // 2) Reporting – Exports & Data Format
+    if (
+      mod.includes('report') &&
+      has(
+        'export',
+        'pdf',
+        'csv',
+        'excel',
+        'xlsx',
+        'unexpected token',
+        'json',
+        'white page',
+        'blank page',
+        'encoding',
+        'arabic'
+      )
+    ) {
+      return 'Reporting – Exports & Data Format';
+    }
+
+    // 3) Checklist – Schedule & Instances
+    if (
+      mod.includes('checklist') ||
+      ((mod.includes('report') || mod.includes('mobile')) &&
+        has(
+          'schedule',
+          'scheduled',
+          'on demand',
+          'on-demand',
+          'display time',
+          'due time',
+          'instances',
+          'instance'
+        ))
+    ) {
+      return 'Checklist – Schedule & Instances';
+    }
+
+    // 4) Sublist, Tags & Completion Logic
+    if (
+      has(
+        'sublist',
+        'sub-list',
+        'section',
+        'sections',
+        'tags',
+        'tagging',
+        'n/a',
+        'ooo',
+        'out of office',
+        'partially done',
+        'partial done',
+        'completion %',
+        'completion%',
+        'list completion',
+        'score',
+        'distribution'
+      )
+    ) {
+      return 'Sublist, Tags & Completion Logic';
+    }
+
+    // 5) Mobile App UX & Workflow
+    if (mod.includes('mobile') && !mod.includes('report')) {
+      return 'Mobile App UX & Workflow';
+    }
+
+    // 6) Access & Permissions
+    if (
+      mod.includes('employee') ||
+      mod.includes('roles') ||
+      mod.includes('role') ||
+      mod.includes('location') ||
+      has(
+        'client access',
+        'role based',
+        'role-based',
+        'permissions',
+        'permission',
+        'geofencing',
+        'geofacing',
+        'device admin',
+        'shared device',
+        'transfer employees'
+      )
+    ) {
+      return 'Access & Permissions';
+    }
+
+    // 7) Journal & Logging
+    if (
+      mod.includes('journal') ||
+      has('journal entries', 'logbook', 'log book', 'log', 'history', 'historical log')
+    ) {
+      return 'Journal & Logging';
+    }
+
+    return null;
+  },
   suggestCategories(issue) {
-    const text = [issue.title, issue.desc, issue.log].filter(Boolean).join(' ').toLowerCase();
-    const res = [];
-    Object.entries(CONFIG.LABEL_KEYWORDS).forEach(([label, kws]) => {
-      let hits = 0;
-      kws.forEach(k => {
-        if (text.includes(k)) hits++;
-      });
-      if (hits) res.push({ label, score: hits });
-    });
-    res.sort((a, b) => b.score - a.score);
-    return res;
+    const cat = this.assignDomainCategory(issue);
+    return cat ? [{ label: cat, score: 1 }] : [];
   },
   suggestPriority(issue, totalRisk) {
     if (issue.priority) return issue.priority;
     const s = totalRisk != null ? totalRisk : this.computeRisk(issue).total;
-    if (s >= CONFIG.RISK.highRisk) return 'High';
-    if (s >= 6) return 'Medium';
+    if (s >= 9) return 'Urgent';
+    if (s >= 7) return 'High';
+    if (s >= 4) return 'Medium';
     return 'Low';
   },
   explainRisk(issue) {
-    const txt = [issue.title, issue.desc, issue.log].filter(Boolean).join(' ').toLowerCase() + ' ';
-    const picks = [];
-    const push = kw => {
-      if (txt.includes(kw)) picks.push(kw);
-    };
-    [...CONFIG.RISK.techBoosts, ...CONFIG.RISK.bizBoosts, ...CONFIG.RISK.opsBoosts].forEach(
-      ([kw]) => push(kw)
-    );
-    if ((issue.status || '').toLowerCase().startsWith('on stage')) picks.push('on stage');
-    if ((issue.status || '').toLowerCase().startsWith('under')) picks.push('under development');
+    const txt = [issue.title, issue.desc, issue.log]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    const reasons = [];
 
-    if (issue.date) {
-      const d = new Date(issue.date);
-      if (!isNaN(d)) {
-        const ageDays = (Date.now() - d.getTime()) / 86400000;
-        if (ageDays <= 14) picks.push('recent');
-        else if (ageDays >= 30) picks.push('stale');
-      }
+    const addIf = (cond, label) => {
+      if (cond) reasons.push(label);
+    };
+
+    addIf(issue.priority === 'Urgent', 'priority urgent');
+    addIf(issue.priority === 'High', 'priority high');
+
+    const k = CONFIG.RISK.keywordBuckets;
+    if (k.dataIntegrity.patterns.some(p => txt.includes(p.toLowerCase()))) {
+      reasons.push('data integrity / audit risk');
+    }
+    if (k.checklistBlocked.patterns.some(p => txt.includes(p.toLowerCase()))) {
+      reasons.push('checklist submission blocked');
+    }
+    if (k.exportFailure.patterns.some(p => txt.includes(p.toLowerCase()))) {
+      reasons.push('exports / reporting failing');
+    }
+    if (k.performanceScaling.patterns.some(p => txt.includes(p.toLowerCase()))) {
+      reasons.push('performance / scaling');
+    }
+    if (k.releaseRegression.patterns.some(p => txt.includes(p.toLowerCase()))) {
+      reasons.push('release / staging regression hint');
     }
 
-    return Array.from(new Set(picks)).slice(0, 6);
+    const s = (issue.status || '').toLowerCase();
+    addIf(s.startsWith('on stage') || s.startsWith('tested on staging'), 'staging only');
+    addIf(
+      s.startsWith('on hold') || s.startsWith('on stage'),
+      'stuck in intermediate status'
+    );
+
+    const cat = this.assignDomainCategory(issue);
+    if (cat) reasons.push(cat);
+
+    return Array.from(new Set(reasons)).slice(0, 6);
   }
 };
 
 /** Command DSL parser */
 const DSL = {
   parse(text) {
-    const lower = (text || '').toLowerCase();
-    let w = ' ' + lower + ' ';
+    const lowerFull = (text || '').toLowerCase();
+    let w = ' ' + lowerFull + ' ';
     const out = {
       module: null,
       status: null,
@@ -604,6 +1031,8 @@ const DSL = {
       id: null,
       type: null,
       missing: null,
+      category: null,
+      regression: false,
       riskOp: null,
       riskVal: null,
       severityOp: null,
@@ -633,27 +1062,29 @@ const DSL = {
     eat(/\bid:([^\s]+)/, 'id');
     eat(/\btype:([^\s]+)/, 'type');
     eat(/\bmissing:([^\s]+)/, 'missing');
+    eat(/\bcategory:([^\s]+)/, 'category');
+    eat(/\bregression:(yes|true|1)/, 'regression', () => true);
 
-    const rv = lower.match(/\brisk([><=]{1,2})(\d+)/);
+    const rv = lowerFull.match(/\brisk([><=]{1,2})(\d+)/);
     if (rv) {
       out.riskOp = rv[1];
       out.riskVal = +rv[2];
       w = w.replace(rv[0], ' ');
     }
 
-    const sv = lower.match(/\bseverity([><=]{1,2})(\d+)/);
+    const sv = lowerFull.match(/\bseverity([><=]{1,2})(\d+)/);
     if (sv) {
       out.severityOp = sv[1];
       out.severityVal = +sv[2];
       w = w.replace(sv[0], ' ');
     }
-    const iv = lower.match(/\bimpact([><=]{1,2})(\d+)/);
+    const iv = lowerFull.match(/\bimpact([><=]{1,2})(\d+)/);
     if (iv) {
       out.impactOp = iv[1];
       out.impactVal = +iv[2];
       w = w.replace(iv[0], ' ');
     }
-    const uv = lower.match(/\burgency([><=]{1,2})(\d+)/);
+    const uv = lowerFull.match(/\burgency([><=]{1,2})(\d+)/);
     if (uv) {
       out.urgencyOp = uv[1];
       out.urgencyVal = +uv[2];
@@ -661,7 +1092,7 @@ const DSL = {
     }
 
     eat(/\blast:(\d+)d/, 'lastDays', n => +n);
-    const av = lower.match(/\bage([><=]{1,2})(\d+)d/);
+    const av = lowerFull.match(/\bage([><=]{1,2})(\d+)d/);
     if (av) {
       out.ageOp = av[1];
       out.ageVal = +av[2];
@@ -676,16 +1107,26 @@ const DSL = {
       .split(/\s+/)
       .filter(Boolean)
       .filter(t => t.length > 2 && !STOPWORDS.has(t));
+
+    // bare "bug" / "enhancement" shorthand
+    if (!out.type) {
+      if (/\bbug\b/.test(lowerFull)) out.type = 'bug';
+      else if (/\benh(ancement)?\b/.test(lowerFull)) out.type = 'enhancement';
+    }
+
     return out;
   },
   matches(issue, meta, q) {
     if (q.module && !(issue.module || '').toLowerCase().includes(q.module)) return false;
+
     if (q.priority) {
       const p = q.priority[0].toUpperCase();
-      if (['H', 'M', 'L'].includes(p)) {
-        if ((issue.priority || '')[0] !== p) return false;
+      if (['U', 'H', 'M', 'L'].includes(p)) {
+        const ip = (issue.priority || '')[0] || '';
+        if (ip !== p) return false;
       } else if (!(issue.priority || '').toLowerCase().includes(q.priority)) return false;
     }
+
     if (q.status) {
       const st = (issue.status || '').toLowerCase();
       if (q.status === 'open') {
@@ -696,25 +1137,34 @@ const DSL = {
         if (!closed) return false;
       } else if (!st.includes(q.status)) return false;
     }
+
     if (q.id && !(issue.id || '').toLowerCase().includes(q.id)) return false;
-    if (q.type && !(issue.type || '').toLowerCase().includes(q.type)) return false;
+
+    if (q.type) {
+      const desired = q.type.toLowerCase();
+      const it = (issue.type || '').toLowerCase();
+      if (!it.includes(desired)) return false;
+    }
+
     if (q.missing) {
       const m = q.missing;
       if (m === 'priority' && issue.priority) return false;
       if (m === 'module' && issue.module && issue.module !== 'Unspecified') return false;
       if (m === 'type' && issue.type) return false;
     }
+
     if (q.lastDays) {
       const after = U.daysAgo(q.lastDays);
       if (!U.isBetween(issue.date, after, null)) return false;
     }
+
     if (q.ageOp && q.ageVal != null) {
       if (!issue.date) return false;
       const d = new Date(issue.date);
       if (isNaN(d)) return false;
       const ageDays = (Date.now() - d.getTime()) / 86400000;
-      const op = q.ageOp,
-        b = q.ageVal;
+      const op = q.ageOp;
+      const b = q.ageVal;
       let pass = false;
       if (op === '>') pass = ageDays > b;
       else if (op === '>=') pass = ageDays >= b;
@@ -723,15 +1173,18 @@ const DSL = {
       else if (op === '=' || op === '==') pass = Math.round(ageDays) === b;
       if (!pass) return false;
     }
+
     if (q.cluster) {
       const t = q.cluster.toLowerCase();
       if (!meta.tokens || !Array.from(meta.tokens).some(x => x.includes(t))) return false;
     }
+
     const risk = meta.risk || {};
+
     if (q.riskOp) {
       const rv = risk.total || 0;
-      const op = q.riskOp,
-        b = q.riskVal;
+      const op = q.riskOp;
+      const b = q.riskVal;
       let pass = false;
       if (op === '>') pass = rv > b;
       else if (op === '>=') pass = rv >= b;
@@ -740,6 +1193,7 @@ const DSL = {
       else if (op === '=' || op === '==') pass = rv === b;
       if (!pass) return false;
     }
+
     const cmpNum = (val, op, b) => {
       const v = val || 0;
       if (op === '>') return v > b;
@@ -753,8 +1207,35 @@ const DSL = {
     if (q.impactOp && !cmpNum(risk.impact, q.impactOp, q.impactVal)) return false;
     if (q.urgencyOp && !cmpNum(risk.urgency, q.urgencyOp, q.urgencyVal)) return false;
 
+    if (q.category) {
+      const desiredKey = q.category.toLowerCase();
+      const cat = (meta.domainCategory || '').toLowerCase();
+      const map = {
+        exports: 'exports & data format',
+        filters: 'filters & navigation',
+        schedule: 'schedule & instances',
+        sublist: 'sublist, tags & completion logic',
+        access: 'access & permissions',
+        journal: 'journal & logging'
+      };
+
+      const target =
+        desiredKey in map
+          ? map[desiredKey]
+          : desiredKey.replace(/[-_]/g, ' ');
+
+      if (!cat || !cat.includes(target)) return false;
+    }
+
+    if (q.regression) {
+      if (!isRegressionIssue(issue.id)) return false;
+    }
+
     if (q.words && q.words.length) {
-      const txt = [issue.title, issue.desc, issue.log].filter(Boolean).join(' ').toLowerCase();
+      const txt = [issue.title, issue.desc, issue.log]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
       for (const w of q.words) {
         if (!txt.includes(w)) return false;
       }
@@ -775,35 +1256,73 @@ const CalendarLink = {
 
 /** Events + risk (issues + events) */
 function computeEventsRisk(issues, events) {
-  const now = new Date(),
-    limit = U.dateAddDays(now, 7);
+  const now = new Date();
+  const limit = U.dateAddDays(now, 7);
+
   const openIssues = issues.filter(i => {
     const st = (i.status || '').toLowerCase();
     return !(st.startsWith('resolved') || st.startsWith('rejected'));
   });
+
   const modules = Array.from(new Set(openIssues.map(i => i.module).filter(Boolean)));
+
   const res = [];
   events.forEach(ev => {
     if (!ev.start) return;
     const d = new Date(ev.start);
     if (isNaN(d) || d < now || d > limit) return;
+
     const title = (ev.title || '').toLowerCase();
+    const desc = (ev.description || '').toLowerCase();
+    const text = title + ' ' + desc;
+
     const impacted = modules.filter(m => title.includes((m || '').toLowerCase()));
     let rel = [];
-    if (impacted.length) rel = openIssues.filter(i => impacted.includes(i.module));
-    else if ((ev.type || '').toLowerCase() !== 'other') {
-      const recentOpen = openIssues.filter(i => U.isBetween(i.date, U.daysAgo(7), null));
+
+    if (impacted.length) {
+      rel = openIssues.filter(i => impacted.includes(i.module));
+    } else if ((ev.type || '').toLowerCase() !== 'other') {
+      const recentOpen = openIssues.filter(i => U.isBetween(i.date, U.daysAgo(14), null));
       rel = recentOpen.filter(
-        i => (DataStore.computed.get(i.id)?.risk?.total || 0) >= CONFIG.RISK.highRisk
+        i => (DataStore.computed.get(i.id)?.risk?.total || 0) >= CONFIG.RISK.highRisk - 1
       );
     }
+
     if (!rel.length) return;
-    const risk = rel.reduce(
-      (s, i) => s + (DataStore.computed.get(i.id)?.risk?.total || 0),
-      0
-    );
+
+    let risk = 0;
+    let hasDataLoss = false;
+    let hasStagingOnly = false;
+
+    rel.forEach(i => {
+      const meta = DataStore.computed.get(i.id) || {};
+      const r = meta.risk?.total || 0;
+      risk += r;
+
+      const t = [i.title, i.desc, i.log]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      if (
+        /historical data|historical log|deleted|data being deleted|journal entries not showing|wrong %/i.test(
+          t
+        )
+      ) {
+        hasDataLoss = true;
+      }
+      const st = (i.status || '').toLowerCase();
+      if (st.startsWith('on stage') || st.startsWith('tested on staging')) {
+        hasStagingOnly = true;
+      }
+    });
+
+    // extra bump for data-loss + staging regression pushing to Prod
+    if (hasDataLoss) risk += 10;
+    if (hasStagingOnly && (ev.env || 'Prod').toLowerCase() === 'prod') risk += 5;
+
     res.push({ event: ev, modules: impacted, issues: rel, risk, date: d });
   });
+
   res.sort((a, b) => b.risk - a.risk);
   return res.slice(0, 5);
 }
@@ -973,12 +1492,6 @@ const ReleasePlanner = {
     if (score <= 3) return 'moderate service';
     return 'rush / busy service';
   },
-  /**
-   * Build context from selected tickets:
-   * - merged modules
-   * - combined text (title/desc/log + other fields)
-   * - aggregated risk (max/avg/total)
-   */
   buildTicketContext(ticketIds, fallbackModules, fallbackDescription) {
     const ids = Array.isArray(ticketIds) ? ticketIds : [];
     const issues = ids.map(id => DataStore.byId.get(id)).filter(Boolean);
@@ -1059,14 +1572,13 @@ const ReleasePlanner = {
       sum += risk * w;
     });
 
-    const normalized = sum / 40; // tuning constant
+    const normalized = sum / 25; // tuning for 1..10 risk
     let bugRisk = Math.max(0, Math.min(6, normalized));
 
-    // Boost bug pressure slightly when selected tickets are very risky
     const tc = ticketContext || {};
     const maxTicketRisk = tc.maxRisk || 0;
     if (maxTicketRisk) {
-      const boost = 1 + Math.min(maxTicketRisk / 20, 1) * 0.25; // up to +25%
+      const boost = 1 + Math.min(maxTicketRisk / 10, 1) * 0.25;
       bugRisk = Math.max(0, Math.min(6, bugRisk * boost));
     }
 
@@ -1078,9 +1590,8 @@ const ReleasePlanner = {
     return 'heavy bug pressure';
   },
   computeBombBugRisk(modules, description, ticketContext) {
-    // "Bomb bug" = old, high-risk incidents that are textually close to this release
     const now = new Date();
-    const lookback = U.dateAddDays(now, -365); // last year
+    const lookback = U.dateAddDays(now, -365);
     const modSet = new Set((modules || []).map(m => (m || '').toLowerCase()));
 
     const text = (description || '')
@@ -1101,7 +1612,7 @@ const ReleasePlanner = {
       if (isNaN(d) || d < lookback) return;
 
       const ageDays = (now.getTime() - d.getTime()) / 86400000;
-      if (ageDays <= 30) return; // we want "old" tickets
+      if (ageDays <= 30) return;
 
       const st = (r.status || '').toLowerCase();
       const isClosed = st.startsWith('resolved') || st.startsWith('rejected');
@@ -1125,7 +1636,6 @@ const ReleasePlanner = {
       }
       if (!related) return;
 
-      // Soft decay: more recent old bugs weigh a bit more
       const ageFactor = Math.max(0.4, 1.3 - ageDays / 365);
       const score = risk * ageFactor;
       raw += score;
@@ -1138,13 +1648,12 @@ const ReleasePlanner = {
       });
     });
 
-    const normalized = raw / 60; // tuning constant
+    const normalized = raw / 30;
     let bombRisk = Math.max(0, Math.min(6, normalized));
 
-    // Also let current ticket risk slightly boost bomb-bug signal
     const tc = ticketContext || {};
     if (tc.avgRisk) {
-      const boost = 1 + Math.min(tc.avgRisk / 20, 1) * 0.3; // up to +30%
+      const boost = 1 + Math.min(tc.avgRisk / 10, 1) * 0.3;
       bombRisk = Math.max(0, Math.min(6, bombRisk * boost));
     }
 
@@ -1159,7 +1668,7 @@ const ReleasePlanner = {
   computeEventsPenalty(date, env, modules, region) {
     const dt = date instanceof Date ? date : new Date(date);
     const center = dt.getTime();
-    const windowMs = 2 * 60 * 60 * 1000; // +/- 2h for normal changes
+    const windowMs = 2 * 60 * 60 * 1000;
     const mods = new Set((modules || []).map(m => (m || '').toLowerCase()));
 
     let penalty = 0;
@@ -1185,14 +1694,12 @@ const ReleasePlanner = {
 
       const evEnv = ev.env || 'Prod';
 
-      // For holidays, ignore env filter (they affect all envs operationally)
       if (!isHoliday && env && evEnv && evEnv !== env) return;
 
       const diffMs = Math.abs(start.getTime() - center);
       const maxWindowMs = isHoliday ? 24 * 60 * 60 * 1000 : windowMs;
       if (diffMs > maxWindowMs) return;
 
-      // Collision with other changes near this time
       const evMods = Array.isArray(ev.modules)
         ? ev.modules
         : typeof ev.modules === 'string'
@@ -1205,7 +1712,6 @@ const ReleasePlanner = {
       let contribution = 0;
       if (isHoliday) {
         holidayCount++;
-        // Strong penalty for public / religious holidays around MENA service hours
         contribution = 4.5;
         if (overlap) contribution += 1.5;
       } else {
@@ -1225,50 +1731,46 @@ const ReleasePlanner = {
   computeSlotScore(date, ctx) {
     const { region, env, modules, releaseType, bugRisk, bombBugRisk, ticketRisk } = ctx;
 
-    // Raw component scores
-    const rushRisk = this.computeRushScore(region, date);               // 0–6
-    const envRaw   = this.envWeight[env] ?? 1;                          // ~0.6–2.5
-    const typeRaw  = this.releaseTypeWeight[releaseType] ?? 2;          // 1–3
+    const rushRisk = this.computeRushScore(region, date);
+    const envRaw = this.envWeight[env] ?? 1;
+    const typeRaw = this.releaseTypeWeight[releaseType] ?? 2;
 
     const { penalty: eventsRisk, count: eventCount, holidayCount } =
-      this.computeEventsPenalty(date, env, modules, region);            // 0+
+      this.computeEventsPenalty(date, env, modules, region);
 
-    const bugRaw     = bugRisk || 0;                                    // 0–6
-    const bombRaw    = bombBugRisk || 0;                                // 0–6
-    const ticketsRaw = ticketRisk || 0;                                 // 0–6
+    const bugRaw = bugRisk || 0;
+    const bombRaw = bombBugRisk || 0;
+    const ticketsRaw = ticketRisk || 0;
 
-    // ---- Normalize each factor to 0–1 ----
     const clamp01 = v => Math.max(0, Math.min(1, v));
 
-    const nRush    = clamp01(rushRisk / 6);
-    const nBug     = clamp01(bugRaw / 6);
-    const nBomb    = clamp01(bombRaw / 6);
+    const nRush = clamp01(rushRisk / 6);
+    const nBug = clamp01(bugRaw / 6);
+    const nBomb = clamp01(bombRaw / 6);
     const nTickets = clamp01(ticketsRaw / 6);
-    const nEnv     = clamp01(envRaw / 2.5);  // Prod ≈ 1
-    const nType    = clamp01(typeRaw / 3);
-    const nEvents  = clamp01(eventsRisk / 6); // 0–6+ → 0–1
+    const nEnv = clamp01(envRaw / 2.5);
+    const nType = clamp01(typeRaw / 3);
+    const nEvents = clamp01(eventsRisk / 6);
 
-    // ---- Weighted combination into a 0–10 score ----
-    const wRush    = 0.15;
-    const wBug     = 0.20;
-    const wBomb    = 0.15;
-    const wEvents  = 0.20;
+    const wRush = 0.15;
+    const wBug = 0.2;
+    const wBomb = 0.15;
+    const wEvents = 0.2;
     const wTickets = 0.15;
-    const wEnv     = 0.075;
-    const wType    = 0.075;
+    const wEnv = 0.075;
+    const wType = 0.075;
 
     const combined =
-      wRush    * nRush    +
-      wBug     * nBug     +
-      wBomb    * nBomb    +
-      wEvents  * nEvents  +
+      wRush * nRush +
+      wBug * nBug +
+      wBomb * nBomb +
+      wEvents * nEvents +
       wTickets * nTickets +
-      wEnv     * nEnv     +
-      wType    * nType;
+      wEnv * nEnv +
+      wType * nType;
 
-    // Final risk: 0–10
-    const totalRisk   = Math.max(0, Math.min(10, combined * 10));
-    const safetyScore = 10 - totalRisk; // 0–10 (10 = safest)
+    const totalRisk = Math.max(0, Math.min(10, combined * 10));
+    const safetyScore = 10 - totalRisk;
 
     return {
       totalRisk,
@@ -1285,11 +1787,10 @@ const ReleasePlanner = {
     };
   },
   riskBucket(totalRisk) {
-    // totalRisk is now 0–10
     if (totalRisk < 3.5) {
       return { label: 'Low', className: 'planner-score-low' };
     }
-    if (totalRisk < 7.0) {
+    if (totalRisk < 7) {
       return { label: 'Medium', className: 'planner-score-med' };
     }
     return { label: 'High', className: 'planner-score-high' };
@@ -1307,7 +1808,6 @@ const ReleasePlanner = {
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    // Build a richer context from selected tickets (scope + text + risk)
     const ticketContext = this.buildTicketContext(
       tickets || [],
       modules || [],
@@ -1329,15 +1829,14 @@ const ReleasePlanner = {
       ticketContext
     );
 
-    // Ticket risk component: normalize avg risk onto a 0–6 scale
     let ticketRiskComponent = 0;
     if (ticketContext.avgRisk) {
-      ticketRiskComponent = Math.min(ticketContext.avgRisk / 4, 6);
+      ticketRiskComponent = Math.min(ticketContext.avgRisk / 2, 6);
     }
 
     const slots = [];
-    const hoursProd = [6, 10, 15, 23]; // Prod: pre-service + between services + late
-    const hoursNonProd = [10, 15, 18]; // Staging/Dev can tolerate slightly busier times
+    const hoursProd = [6, 10, 15, 23];
+    const hoursNonProd = [10, 15, 18];
     const hours = env === 'Prod' ? hoursProd : hoursNonProd;
 
     for (let dayOffset = 0; dayOffset < horizon; dayOffset++) {
@@ -1366,7 +1865,6 @@ const ReleasePlanner = {
     }
 
     slots.sort((a, b) => a.totalRisk - b.totalRisk);
-
     const perDay = Math.max(1, slotsPerDay || 3);
     const maxSlots = Math.min(slots.length, horizon * perDay);
 
@@ -1500,7 +1998,8 @@ const UI = {
   },
   spinner(v = true) {
     if (E.spinner) E.spinner.style.display = v ? 'flex' : 'none';
-    if (E.loadingStatus) E.loadingStatus.textContent = v ? 'Loading…' : '';
+    if (E.loadingStatus)
+      E.loadingStatus.textContent = v ? 'Loading…' : '';
   },
   setSync(which, ok, when) {
     const txt = which === 'issues' ? E.syncIssuesText : E.syncEventsText;
@@ -1536,17 +2035,20 @@ UI.Issues = {
         a.localeCompare(b)
       );
     if (E.moduleFilter)
-      E.moduleFilter.innerHTML = ['All', ...uniq(DataStore.rows.map(r => r.module))]
-        .map(v => `<option>${v}</option>`)
-        .join('');
+      E.moduleFilter.innerHTML =
+        ['All', ...uniq(DataStore.rows.map(r => r.module))]
+          .map(v => `<option>${v}</option>`)
+          .join('');
     if (E.priorityFilter)
-      E.priorityFilter.innerHTML = ['All', ...uniq(DataStore.rows.map(r => r.priority))]
-        .map(v => `<option>${v}</option>`)
-        .join('');
+      E.priorityFilter.innerHTML =
+        ['All', ...uniq(DataStore.rows.map(r => r.priority))]
+          .map(v => `<option>${v}</option>`)
+          .join('');
     if (E.statusFilter)
-      E.statusFilter.innerHTML = ['All', ...uniq(DataStore.rows.map(r => r.status))]
-        .map(v => `<option>${v}</option>`)
-        .join('');
+      E.statusFilter.innerHTML =
+        ['All', ...uniq(DataStore.rows.map(r => r.status))]
+          .map(v => `<option>${v}</option>`)
+          .join('');
   },
   applyFilters() {
     const s = Filters.state;
@@ -1583,10 +2085,11 @@ UI.Issues = {
   },
   renderKPIs(list) {
     if (!E.kpis) return;
-    const total = list.length,
-      counts = {};
+    const total = list.length;
+    const counts = {};
     list.forEach(r => (counts[r.status] = (counts[r.status] || 0) + 1));
     E.kpis.innerHTML = '';
+
     const add = (label, val) => {
       const pct = total ? Math.round((val * 100) / total) : 0;
       const d = document.createElement('div');
@@ -1594,7 +2097,10 @@ UI.Issues = {
       d.tabIndex = 0;
       d.setAttribute('role', 'button');
       d.setAttribute('aria-label', `${label}: ${val} (${pct} percent)`);
-      d.innerHTML = `<div class="label">${label}</div><div class="value">${val}</div><div class="sub">${pct}%</div>`;
+      d.innerHTML = `
+        <div class="label">${label}</div>
+        <div class="value">${val}</div>
+        <div class="sub">${pct}%</div>`;
       d.onclick = () => {
         if (label === 'Total Issues') {
           Filters.state = {
@@ -1620,6 +2126,7 @@ UI.Issues = {
       });
       E.kpis.appendChild(d);
     };
+
     add('Total Issues', total);
     Object.entries(counts).forEach(([s, v]) => add(s, v));
   },
@@ -1628,11 +2135,11 @@ UI.Issues = {
     const { sortKey, sortAsc } = GridState;
     const sorted = sortKey
       ? [...list].sort((a, b) => {
-          const va = a[sortKey] || '',
-            vb = b[sortKey] || '';
+          const va = a[sortKey] || '';
+          const vb = b[sortKey] || '';
           if (sortKey === 'date') {
-            const da = new Date(va),
-              db = new Date(vb);
+            const da = new Date(va);
+            const db = new Date(vb);
             if (isNaN(da) && isNaN(db)) return 0;
             if (isNaN(da)) return 1;
             if (isNaN(db)) return -1;
@@ -1646,11 +2153,12 @@ UI.Issues = {
       : list;
     const rows = sortAsc ? sorted : sorted.reverse();
 
-    const total = rows.length,
-      size = GridState.pageSize,
-      page = GridState.page;
+    const total = rows.length;
+    const size = GridState.pageSize;
+    const page = GridState.page;
     const pages = Math.max(1, Math.ceil(total / size));
     if (GridState.page > pages) GridState.page = pages;
+
     const start = (GridState.page - 1) * size;
     const pageData = rows.slice(start, start + size);
 
@@ -1666,8 +2174,8 @@ UI.Issues = {
     ['firstPage', 'prevPage', 'nextPage', 'lastPage'].forEach(id => {
       const btn = E[id];
       if (!btn) return;
-      const atFirst = GridState.page <= 1,
-        atLast = GridState.page >= pages;
+      const atFirst = GridState.page <= 1;
+      const atLast = GridState.page >= pages;
       if (id === 'firstPage' || id === 'prevPage') btn.disabled = atFirst;
       else btn.disabled = atLast;
       if (btn.disabled) btn.setAttribute('disabled', 'true');
@@ -1702,8 +2210,7 @@ UI.Issues = {
                 )}" target="_blank" rel="noopener noreferrer" aria-label="Open attachment link">🔗</a>`
               : '-'
           }</td>
-        </tr>
-      `
+        </tr>`
         )
         .join('');
     } else {
@@ -1780,9 +2287,11 @@ UI.Issues = {
       'On Hold': cssVar('--status-onhold'),
       'Not Started Yet': cssVar('--status-notstarted'),
       Sent: cssVar('--status-sent'),
-      'On Stage': cssVar('--status-onstage')
+      'On Stage': cssVar('--status-onstage'),
+      'Tested on Staging': cssVar('--status-onstage')
     };
     const priorityColors = {
+      Urgent: cssVar('--priority-urgent'),
       High: cssVar('--priority-high'),
       Medium: cssVar('--priority-medium'),
       Low: cssVar('--priority-low')
@@ -1798,8 +2307,8 @@ UI.Issues = {
       if (!el) return;
       UI._charts = UI._charts || {};
       if (UI._charts[id]) UI._charts[id].destroy();
-      const labels = Object.keys(data),
-        values = Object.values(data);
+      const labels = Object.keys(data);
+      const values = Object.values(data);
       UI._charts[id] = new Chart(el, {
         type,
         data: {
@@ -1850,10 +2359,12 @@ UI.Issues.renderFilterChips = function () {
   const chips = [];
   const addChip = (label, value, key) => {
     if (!value) return;
-    chips.push(`<button type="button" class="filter-chip" data-filter-key="${key}">
-      <span>${label}: ${U.escapeHtml(value)}</span>
-      <span aria-hidden="true">✕</span>
-    </button>`);
+    chips.push(
+      `<button type="button" class="filter-chip" data-filter-key="${key}">
+        <span>${label}: ${U.escapeHtml(value)}</span>
+        <span aria-hidden="true">✕</span>
+      </button>`
+    );
   };
   const s = Filters.state;
   if (s.search) addChip('Search', s.search, 'search');
@@ -1912,6 +2423,112 @@ UI.Issues.renderSummary = function (list) {
     (last ? ` · ${last}` : '');
 };
 
+/** Clusters + regression index */
+let RegressionIndex = null;
+
+function buildClustersWeighted(list) {
+  const max = Math.min(list.length, 400);
+  const docs = list.slice(-max).map(r => {
+    const meta = DataStore.computed.get(r.id) || {};
+    return {
+      issue: r,
+      tokens: meta.tokens || new Set(),
+      idf: meta.idf || new Map()
+    };
+  });
+
+  const visited = new Set();
+  const clusters = [];
+
+  const wj = (A, IA, B, IB) => {
+    let inter = 0;
+    let sumA = 0;
+    let sumB = 0;
+    const all = new Set([...A, ...B]);
+    all.forEach(t => {
+      const wa = A.has(t) ? IA.get(t) || 1 : 0;
+      const wb = B.has(t) ? IB.get(t) || 1 : 0;
+      inter += Math.min(wa, wb);
+      sumA += wa;
+      sumB += wb;
+    });
+    const union = sumA + sumB - inter;
+    return union ? inter / union : 0;
+  };
+
+  for (let i = 0; i < docs.length; i++) {
+    if (visited.has(i)) continue;
+    const base = docs[i];
+    const c = [base];
+    visited.add(i);
+    for (let j = i + 1; j < docs.length; j++) {
+      if (visited.has(j)) continue;
+      const other = docs[j];
+      if (wj(base.tokens, base.idf, other.tokens, other.idf) >= 0.65) {
+        visited.add(j);
+        c.push(other);
+      }
+    }
+    if (c.length >= 2) {
+      const freq = new Map();
+      c.forEach(d => d.tokens.forEach(t => freq.set(t, (freq.get(t) || 0) + 1)));
+      const sig = Array.from(freq.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([t]) => t)
+        .join(' ');
+      clusters.push({ signature: sig, issues: c.map(x => x.issue) });
+    }
+  }
+
+  clusters.sort((a, b) => b.issues.length - a.issues.length);
+  return clusters.slice(0, 12);
+}
+
+function buildRegressionIndex() {
+  const clusters = buildClustersWeighted(DataStore.rows);
+  const set = new Set();
+
+  clusters.forEach(c => {
+    let hasOldClosed = false;
+    let hasNewOpen = false;
+    let latestOpenDate = null;
+    let earliestClosedDate = null;
+
+    c.issues.forEach(issue => {
+      const st = (issue.status || '').toLowerCase();
+      const isClosed = st.startsWith('resolved') || st.startsWith('rejected');
+      const d = issue.date ? new Date(issue.date) : null;
+      if (isClosed) {
+        hasOldClosed = true;
+        if (d && (!earliestClosedDate || d < earliestClosedDate)) {
+          earliestClosedDate = d;
+        }
+      } else {
+        hasNewOpen = true;
+        if (d && (!latestOpenDate || d > latestOpenDate)) {
+          latestOpenDate = d;
+        }
+      }
+    });
+
+    if (hasOldClosed && hasNewOpen) {
+      c.issues.forEach(issue => {
+        const st = (issue.status || '').toLowerCase();
+        const isClosed = st.startsWith('resolved') || st.startsWith('rejected');
+        if (!isClosed) set.add(issue.id);
+      });
+    }
+  });
+
+  RegressionIndex = set;
+}
+
+function isRegressionIssue(id) {
+  if (!RegressionIndex) buildRegressionIndex();
+  return RegressionIndex.has(id);
+}
+
 /** Analytics (AI tab) */
 const Analytics = {
   _debounce: null,
@@ -1921,67 +2538,134 @@ const Analytics = {
     this._debounce = setTimeout(() => this._render(list), 80);
   },
   _render(list) {
-    // Top terms recent
+    // recent slice for "right now" signals
     const recentCut = CONFIG.TREND_DAYS_RECENT;
     const recent = list.filter(r => U.isBetween(r.date, U.daysAgo(recentCut), null));
-    const termCounts = new Map();
+
+    // -------- Top domain patterns (aiPatternsList) --------
+    const termStats = new Map(); // label -> { count, modules:Set }
+    const addTermStat = (label, mod) => {
+      if (!termStats.has(label)) {
+        termStats.set(label, { count: 0, modules: new Map() });
+      }
+      const s = termStats.get(label);
+      s.count++;
+      const m = mod || 'Unspecified';
+      s.modules.set(m, (s.modules.get(m) || 0) + 1);
+    };
+
     recent.forEach(r => {
-      const t = DataStore.computed.get(r.id)?.tokens || new Set();
-      t.forEach(w => termCounts.set(w, (termCounts.get(w) || 0) + 1));
+      const text = [r.title, r.desc, r.log]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      const mod = r.module || 'Unspecified';
+      Object.entries(DOMAIN_TERMS).forEach(([label, variants]) => {
+        if (variants.some(v => text.includes(v.toLowerCase()))) {
+          addTermStat(label, mod);
+        }
+      });
     });
-    const topTerms = Array.from(termCounts.entries())
-      .filter(([, c]) => c >= 2)
-      .sort((a, b) => b[1] - a[1])
+
+    const topPatterns = Array.from(termStats.entries())
+      .sort((a, b) => b[1].count - a[1].count)
       .slice(0, 10);
+
     if (E.aiPatternsList) {
-      E.aiPatternsList.innerHTML = topTerms.length
-        ? topTerms
-            .map(
-              ([t, c]) =>
-                `<li><strong>${U.escapeHtml(t)}</strong> – ${c}</li>`
-            )
+      E.aiPatternsList.innerHTML = topPatterns.length
+        ? topPatterns
+            .map(([label, stat]) => {
+              const total = stat.count;
+              const modulesSorted = Array.from(stat.modules.entries()).sort(
+                (a, b) => b[1] - a[1]
+              );
+              const topModules = modulesSorted
+                .slice(0, 2)
+                .map(([m]) => m)
+                .join(', ');
+              return `<li><strong>${U.escapeHtml(label)}</strong> – ${total} issue${
+                total === 1 ? '' : 's'
+              }${topModules ? ` · mostly ${U.escapeHtml(topModules)}` : ''}</li>`;
+            })
             .join('')
-        : '<li>No strong repeated terms recently.</li>';
+        : '<li>No strong domain patterns recently.</li>';
     }
 
-    // Suggested categories frequency
-    const catCount = new Map();
+    // -------- Suggested categories (aiLabelsList) --------
+    const catMap = new Map();
     list.forEach(r => {
-      const cats = DataStore.computed.get(r.id)?.suggestions?.categories || [];
-      cats.forEach(c => catCount.set(c.label, (catCount.get(c.label) || 0) + 1));
+      const meta = DataStore.computed.get(r.id) || {};
+      const cat = meta.domainCategory;
+      if (!cat) return;
+      if (!catMap.has(cat)) {
+        catMap.set(cat, {
+          name: cat,
+          total: 0,
+          open: 0,
+          modules: new Map(),
+          examples: []
+        });
+      }
+      const s = catMap.get(cat);
+      s.total++;
+      const st = (r.status || '').toLowerCase();
+      const isClosed = st.startsWith('resolved') || st.startsWith('rejected');
+      if (!isClosed) s.open++;
+      const mod = r.module || 'Unspecified';
+      s.modules.set(mod, (s.modules.get(mod) || 0) + 1);
+      if (s.examples.length < 3) s.examples.push(r);
     });
-    const topCats = Array.from(catCount.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 8);
+
+    const catsSorted = Array.from(catMap.values()).sort(
+      (a, b) => b.open - a.open || b.total - a.total
+    );
+
     if (E.aiLabelsList) {
-      E.aiLabelsList.innerHTML = topCats.length
-        ? topCats
-            .map(
-              ([l, n]) =>
-                `<li><strong>${U.escapeHtml(l)}</strong> – ${n}</li>`
-            )
+      E.aiLabelsList.innerHTML = catsSorted.length
+        ? catsSorted
+            .map(cat => {
+              const mods = Array.from(cat.modules.entries())
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 2)
+                .map(([m]) => m)
+                .join(', ');
+              const exStr = cat.examples
+                .map(r => U.escapeHtml(r.id))
+                .join(', ');
+              return `<li>
+                <strong>${U.escapeHtml(cat.name)}</strong> – ${cat.open}/${
+                cat.total
+              } open · modules: ${U.escapeHtml(mods || '—')}
+                <span class="muted"> · e.g. ${exStr || '—'}</span>
+              </li>`;
+            })
             .join('')
-        : '<li>No clear category suggestions yet.</li>';
+        : '<li>No category assignments yet.</li>';
     }
 
     // Scope & signals
     if (E.aiScopeText) {
       E.aiScopeText.textContent = `Analyzing ${list.length} issues (${recent.length} recent, ~last ${recentCut} days).`;
     }
-    const signals = ['timeout', 'payments', 'billing', 'login', 'auth', 'error', 'crash'].filter(
-      t => termCounts.has(t)
+    const signals = ['export', 'filter', 'schedule', 'sublist', 'tags', 'geofencing'].filter(
+      t => {
+        const label = Object.keys(DOMAIN_TERMS).find(key =>
+          DOMAIN_TERMS[key].some(v => v.toLowerCase().includes(t))
+        );
+        return label && termStats.has(label);
+      }
     );
     if (E.aiSignalsText) {
       E.aiSignalsText.textContent = signals.length
-        ? `Recent mentions: ${signals.join(', ')}.`
-        : 'No strong recurring signals.';
+        ? `Recent domain signals: ${signals.join(', ')}.`
+        : 'No strong recurring domain signals.';
     }
 
-    // Trends
-    const oldStart = U.daysAgo(CONFIG.TREND_DAYS_WINDOW),
-      mid = U.daysAgo(CONFIG.TREND_DAYS_RECENT);
-    const oldCounts = new Map(),
-      newCounts = new Map();
+    // Trends (token-based, kept simple)
+    const oldStart = U.daysAgo(CONFIG.TREND_DAYS_WINDOW);
+    const mid = U.daysAgo(CONFIG.TREND_DAYS_RECENT);
+    const oldCounts = new Map();
+    const newCounts = new Map();
     const inHalf = r => {
       const d = new Date(r.date);
       if (isNaN(d)) return null;
@@ -1999,8 +2683,8 @@ const Analytics = {
     const trendTerms = new Set([...oldCounts.keys(), ...newCounts.keys()]);
     const trend = [];
     trendTerms.forEach(t => {
-      const a = oldCounts.get(t) || 0,
-        b = newCounts.get(t) || 0;
+      const a = oldCounts.get(t) || 0;
+      const b = newCounts.get(t) || 0;
       const d = b - a;
       const ratio = a === 0 ? (b >= 2 ? Infinity : 0) : b / a;
       if ((b >= 2 && ratio >= 2) || d >= 2) trend.push({ t, old: a, new: b, delta: d, ratio });
@@ -2027,81 +2711,228 @@ const Analytics = {
         : '<li>No strong increases.</li>';
     }
 
-    // Incidents
-    const incidentWords = ['incident', 'outage', 'p0', 'p1', 'major', 'sla'];
-    const incidents = list
-      .filter(r => {
-        const txt = [r.title, r.desc, r.log].filter(Boolean).join(' ').toLowerCase();
-        return incidentWords.some(w => txt.includes(w));
-      })
+    // Incident-like issues (4.1)
+    const isIncidentLike = (issue, meta) => {
+      if ((issue.type || '').toLowerCase() !== 'bug') return false;
+      if (!['Urgent', 'High'].includes(issue.priority)) return false;
+      const st = (issue.status || '').toLowerCase();
+      if (st.startsWith('resolved') || st.startsWith('rejected')) return false;
+
+      const txt = [issue.title, issue.desc, issue.log]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      const patterns = [
+        'not appearing',
+        'not showing',
+        'historical data being deleted',
+        'historical data deleted',
+        'internal server error',
+        'not found',
+        'failed fetch',
+        'failed to fetch',
+        'long loading time',
+        'spinner',
+        'geofencing not working',
+        'geofacing not working',
+        'timezone',
+        'time zone',
+        'duplicate instances',
+        'triplicate instances',
+        'submission error',
+        'error when exporting',
+        'error exporting'
+      ];
+      if (!patterns.some(p => txt.includes(p))) return false;
+
+      return (meta.risk?.total || 0) >= 7;
+    };
+
+    const incidentCandidates = list
+      .map(r => ({ r, meta: DataStore.computed.get(r.id) || {} }))
+      .filter(({ r, meta }) => isIncidentLike(r, meta))
+      .sort((a, b) => (b.meta.risk?.total || 0) - (a.meta.risk?.total || 0))
       .slice(0, 10);
+
     if (E.aiIncidentsList) {
-      E.aiIncidentsList.innerHTML = incidents.length
-        ? incidents
-            .map(
-              r => `
-      <li><button class="btn sm" data-open="${U.escapeAttr(
-        r.id
-      )}">${U.escapeHtml(r.id)}</button> ${U.escapeHtml(r.title || '')}</li>
-    `
-            )
+      E.aiIncidentsList.innerHTML = incidentCandidates.length
+        ? incidentCandidates
+            .map(({ r, meta }) => {
+              const risk = meta.risk?.total || 0;
+              const badgeClass = CalendarLink.riskBadgeClass(risk);
+              return `<li style="margin-bottom:4px;">
+                <strong>[Risk ${risk}] ${U.escapeHtml(
+                  r.module || 'Unspecified'
+                )} – ${U.escapeHtml(r.title || '')}</strong>
+                <span class="event-risk-badge ${badgeClass}">R${risk}</span>
+                <br><span class="muted">${U.escapeHtml(
+                  r.id
+                )} · ${U.escapeHtml(r.status || '-')} · ${U.escapeHtml(
+                r.priority || '-'
+              )}</span>
+              </li>`;
+            })
             .join('')
         : '<li>No incident-like issues detected.</li>';
     }
 
-    // Emerging vs stable
-    const emerg = trend.slice(0, 5).map(t => t.t);
-    const stable = topTerms
-      .filter(([t]) => !emerg.includes(t))
-      .slice(0, 5)
-      .map(([t]) => t);
+    // Emerging vs Stable themes (category-based, 6.2)
+    const newCut = U.daysAgo(14);
+    const oldCutStart = U.daysAgo(28);
+    const catOld = new Map();
+    const catNew = new Map();
+
+    list.forEach(r => {
+      const meta = DataStore.computed.get(r.id) || {};
+      const cat = meta.domainCategory;
+      if (!cat || !r.date) return;
+      const d = new Date(r.date);
+      if (isNaN(d)) return;
+
+      if (d >= newCut) {
+        catNew.set(cat, (catNew.get(cat) || 0) + 1);
+      } else if (d >= oldCutStart && d < newCut) {
+        catOld.set(cat, (catOld.get(cat) || 0) + 1);
+      }
+    });
+
+    const categoriesAll = new Set([...catOld.keys(), ...catNew.keys()]);
+    const emerging = [];
+    const stable = [];
+    const cooling = [];
+
+    categoriesAll.forEach(cat => {
+      const oldCount = catOld.get(cat) || 0;
+      const newCount = catNew.get(cat) || 0;
+      if (!newCount && !oldCount) return;
+
+      if (newCount >= 2 && (oldCount === 0 || newCount >= 2 * oldCount)) {
+        emerging.push({ cat, oldCount, newCount });
+      } else if (oldCount >= 3 && newCount <= oldCount / 2) {
+        cooling.push({ cat, oldCount, newCount });
+      } else if (newCount > 0 && oldCount > 0) {
+        stable.push({ cat, oldCount, newCount });
+      }
+    });
+
+    const fmtList = arr =>
+      arr
+        .map(
+          x =>
+            `${U.escapeHtml(x.cat)} (${x.newCount || 0} vs ${x.oldCount || 0})`
+        )
+        .join(', ');
+
     if (E.aiEmergingStable) {
       E.aiEmergingStable.innerHTML = `
-      <li><strong>Emerging:</strong> ${
-        emerg.length ? emerg.map(x => U.escapeHtml(x)).join(', ') : '—'
-      }</li>
-      <li><strong>Stable:</strong> ${
-        stable.length ? stable.map(x => U.escapeHtml(x)).join(', ') : '—'
-      }</li>
-    `;
+        <li><strong>Emerging:</strong> ${
+          emerging.length ? fmtList(emerging) : '—'
+        }</li>
+        <li><strong>Stable:</strong> ${
+          stable.length ? fmtList(stable) : '—'
+        }</li>
+        <li><strong>Cooling:</strong> ${
+          cooling.length ? fmtList(cooling) : '—'
+        }</li>`;
     }
 
-    // Ops cockpit
-    const misaligned = list.filter(r => {
-      const meta = DataStore.computed.get(r.id);
-      if (!meta) return false;
-      const gap = prioGap(meta.suggestions?.priority, r.priority);
-      return gap >= CONFIG.RISK.misalignedDelta;
-    });
-    const missingPriority = list.filter(r => !r.priority);
-    const missingModule = list.filter(r => !r.module || r.module === 'Unspecified');
-    const staleHigh = list.filter(r => {
-      const meta = DataStore.computed.get(r.id);
-      if (!meta) return false;
+    // Ops cockpit (6.1)
+    const bullets = [];
+
+    // Reporting exports/filters
+    const reportingHigh = list.filter(r => {
+      const meta = DataStore.computed.get(r.id) || {};
+      const cat = meta.domainCategory || '';
       const risk = meta.risk?.total || 0;
-      const old = U.daysAgo(CONFIG.RISK.staleDays);
       const st = (r.status || '').toLowerCase();
+      const open = !(st.startsWith('resolved') || st.startsWith('rejected'));
       return (
-        risk >= CONFIG.RISK.highRisk &&
-        U.isBetween(r.date, null, old) &&
-        !(st.startsWith('resolved') || st.startsWith('rejected'))
+        open &&
+        risk >= 7 &&
+        (cat.includes('reporting – filters') || cat.includes('exports & data format'))
       );
     });
-    if (E.aiOpsCockpit) {
-      E.aiOpsCockpit.innerHTML = `
-      <li>Untagged issues (missing category/type): ${
-        list.filter(r => !r.type).length
-      }</li>
-      <li>Missing priority: ${missingPriority.length}</li>
-      <li>Missing module: ${missingModule.length}</li>
-      <li>Misaligned priority: ${misaligned.length}</li>
-      <li>Stale high-risk (&gt;=${CONFIG.RISK.highRisk}) &gt; ${
-      CONFIG.RISK.staleDays
-    }d: ${staleHigh.length}</li>
-    `;
+    if (reportingHigh.length >= 3) {
+      bullets.push(
+        `Reporting is highest-risk – ${reportingHigh.length} open high-risk bugs around filters, navigation and export/data format.`
+      );
     }
 
-    // Module insights
+    // Data integrity
+    const dataLossIssues = list.filter(r => {
+      const txt = [r.title, r.desc, r.log]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return (
+        txt.includes('historical data') ||
+        txt.includes('historical log') ||
+        txt.includes('journal entries') ||
+        txt.includes('completion %') ||
+        txt.includes('wrong %') ||
+        txt.includes('being deleted')
+      );
+    });
+    if (dataLossIssues.length >= 3) {
+      bullets.push(
+        `Data integrity: ${dataLossIssues.length} issues mention historical data, journal entries or wrong completion %, review audit readiness.`
+      );
+    }
+
+    // Mobile App + geofencing/app reports
+    const mobileGeo = list.filter(r => {
+      const meta = DataStore.computed.get(r.id) || {};
+      const txt = [r.title, r.desc, r.log]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return (
+        (r.module || '').toLowerCase().includes('mobile') &&
+        (txt.includes('app report') ||
+          txt.includes('geofencing') ||
+          txt.includes('geofacing') ||
+          txt.includes('location permission'))
+      );
+    });
+    if (mobileGeo.length >= 2) {
+      bullets.push(
+        `Mobile App: app report & geofencing – multiple issues around mobile reports and location permissions.`
+      );
+    }
+
+    // Staging vs live drift
+    const stagingDrift = list.filter(r => {
+      const txt = [r.title, r.desc, r.log]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return (
+        txt.includes('staging vs live') ||
+        txt.includes('staging vs production') ||
+        txt.includes('on stage') ||
+        txt.includes('tested on staging') ||
+        txt.includes('before release was working') ||
+        txt.includes('after new release')
+      );
+    });
+    if (stagingDrift.length >= 2) {
+      bullets.push(
+        `Staging vs Live drift – ${stagingDrift.length} bugs explicitly mention staging/live differences or post-release regression.`
+      );
+    }
+
+    if (!bullets.length) {
+      bullets.push('No major ops alerts detected from current metrics.');
+    }
+
+    if (E.aiOpsCockpit) {
+      E.aiOpsCockpit.innerHTML = bullets
+        .map(b => `<li>${U.escapeHtml(b)}</li>`)
+        .join('');
+    }
+
+    // Module insights table
     const modules = (() => {
       const map = new Map();
       list.forEach(r => {
@@ -2119,9 +2950,10 @@ const Analytics = {
         }
         m.total++;
         const st = (r.status || '').toLowerCase();
-        if (!st.startsWith('resolved') && !st.startsWith('rejected')) {
+        const open = !st.startsWith('resolved') && !st.startsWith('rejected');
+        if (open) {
           m.open++;
-          if (r.priority === 'High') m.high++;
+          if (['Urgent', 'High'].includes(r.priority)) m.high++;
         }
         const rs = DataStore.computed.get(r.id)?.risk?.total || 0;
         m.risk += rs;
@@ -2165,19 +2997,18 @@ const Analytics = {
             )});"></div></div>
           </td>
           <td>${U.escapeHtml(m.topTerm || '-')}</td>
-        </tr>
-      `;
+        </tr>`;
             })
             .join('')
         : '<tr><td colspan="5" style="text-align:center;color:var(--muted)">No modules.</td></tr>';
     }
 
-    // Top risks
+    // Top risks (recent)
     const topRisks = recent
       .map(r => ({ r, score: DataStore.computed.get(r.id)?.risk?.total || 0 }))
       .sort((a, b) => b.score - a.score)
       .slice(0, 5)
-      .filter(x => x.score > 2);
+      .filter(x => x.score >= 6);
     if (E.aiRisksList) {
       E.aiRisksList.innerHTML = topRisks.length
         ? topRisks
@@ -2201,28 +3032,37 @@ const Analytics = {
         : '<li>No high-risk recent issues.</li>';
     }
 
-    // Clusters
+    // Clusters (5 + regression badge)
     const clusters = buildClustersWeighted(list);
     if (E.aiClusters) {
       E.aiClusters.innerHTML = clusters.length
         ? clusters
-            .map(
-              c => `
+            .map(c => {
+              const regression =
+                c.issues.filter(i => isRegressionIssue(i.id)).length > 0;
+              return `
       <div class="card" style="padding:10px;">
         <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">
-          Pattern: <strong>${U.escapeHtml(c.signature || '(no pattern)')}</strong> • ${
-              c.issues.length
-            } issues
+          Pattern: <strong>${U.escapeHtml(
+            c.signature || '(no pattern)'
+          )}</strong> • ${c.issues.length} issues
+          ${
+            regression
+              ? '<span class="pill regression-pill">Regression</span>'
+              : ''
+          }
         </div>
         <ul style="margin:0;padding-left:18px;font-size:13px;">
           ${c.issues
             .slice(0, 5)
             .map(
               i => `
-            <li><button class="btn sm" style="padding:3px 6px;margin-right:4px;" data-open="${U.escapeAttr(
+            <li>
+              <button class="btn sm" style="padding:3px 6px;margin-right:4px;" data-open="${U.escapeAttr(
                 i.id
-              )}">${U.escapeHtml(i.id)}</button> ${U.escapeHtml(i.title || '')}</li>
-          `
+              )}">${U.escapeHtml(i.id)}</button>
+              ${U.escapeHtml(i.title || '')}
+            </li>`
             )
             .join('')}
           ${
@@ -2231,55 +3071,110 @@ const Analytics = {
               : ''
           }
         </ul>
-      </div>
-    `
-            )
+        ${
+          regression
+            ? '<div class="muted" style="font-size:11px;margin-top:4px;">Signal: recurring pattern with older resolved and newer open tickets.</div>'
+            : ''
+        }
+      </div>`;
+            })
             .join('')
         : '<div class="muted">No similar issue groups ≥2.</div>';
     }
 
-    // Triage queue
+    // Triage queue (4.2)
     const tri = list
       .filter(r => {
         const meta = DataStore.computed.get(r.id) || {};
-        const missing =
-          !r.priority || !r.module || r.module === 'Unspecified' || !r.type;
-        const gap = prioGap(meta.suggestions?.priority, r.priority);
-        return missing || gap >= CONFIG.RISK.misalignedDelta;
+        const risk = meta.risk?.total || 0;
+        const st = (r.status || '').toLowerCase();
+        const isClosed = st.startsWith('resolved') || st.startsWith('rejected');
+        if (isClosed) return false;
+        if (risk < 7) return false;
+
+        const text = [r.title, r.desc, r.log]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+
+        const severeKeyword =
+          text.includes('data being deleted') ||
+          text.includes('historical data') ||
+          text.includes('checklists not appearing') ||
+          text.includes('checklist not appearing') ||
+          text.includes('internal server error') ||
+          text.includes('not appearing on app') ||
+          text.includes('not showing on app');
+
+        const stStuck =
+          (st.startsWith('on hold') || st.startsWith('on stage') || st.startsWith(
+            'tested on staging'
+          )) && r.date;
+
+        let stuckTooLong = false;
+        if (stStuck) {
+          const d = new Date(r.date);
+          if (!isNaN(d)) {
+            const ageDays = (Date.now() - d.getTime()) / 86400000;
+            if (ageDays >= 7) stuckTooLong = true;
+          }
+        }
+
+        const inRegression = isRegressionIssue(r.id);
+
+        const priorityProblem =
+          (!r.priority || r.priority === 'Low') && severeKeyword;
+
+        return priorityProblem || stuckTooLong || inRegression;
       })
       .sort(
         (a, b) =>
           (DataStore.computed.get(b.id)?.risk?.total || 0) -
           (DataStore.computed.get(a.id)?.risk?.total || 0)
       )
-      .slice(0, 15);
+      .slice(0, 20);
+
     if (E.aiTriageList) {
       E.aiTriageList.innerHTML = tri.length
         ? tri
             .map(i => {
               const meta = DataStore.computed.get(i.id) || {};
-              const miss = [];
-              if (!i.priority) miss.push('priority');
-              if (!i.module || i.module === 'Unspecified') miss.push('module');
-              if (!i.type) miss.push('type');
-              const cats =
-                (meta.suggestions?.categories || [])
-                  .slice(0, 2)
-                  .map(c => c.label)
-                  .join(', ') || 'n/a';
-              const note = `Suggested priority: ${
-                meta.suggestions?.priority || '-'
-              }; categories: ${cats}`;
+              const risk = meta.risk?.total || 0;
+              const cat = meta.domainCategory || '—';
+              const reasons = [];
+
+              if (!i.priority || i.priority === 'Low') {
+                reasons.push('priority too low vs content');
+              }
+              const st = (i.status || '').toLowerCase();
+              if (
+                (st.startsWith('on hold') ||
+                  st.startsWith('on stage') ||
+                  st.startsWith('tested on staging')) &&
+                i.date
+              ) {
+                const d = new Date(i.date);
+                if (!isNaN(d)) {
+                  const ageDays = (Date.now() - d.getTime()) / 86400000;
+                  if (ageDays >= 7) reasons.push(`stuck in ${i.status} for ~${Math.round(
+                    ageDays
+                  )}d`);
+                }
+              }
+              if (isRegressionIssue(i.id)) reasons.push('regression cluster');
+
               return `<li style="margin-bottom:6px;">
-        <strong>${U.escapeHtml(i.id)}</strong> — ${U.escapeHtml(i.title || '')}
-        <div class="muted">Missing: ${
-          miss.join(', ') || '—'
-        } · ${U.escapeHtml(note)}</div>
+        <strong>${U.escapeHtml(i.id)}</strong> – ${U.escapeHtml(i.title || '')}
+        <div class="muted">Risk ${risk} · ${U.escapeHtml(
+                i.module || ''
+              )} · ${U.escapeHtml(i.priority || '-')} · ${U.escapeHtml(
+                cat
+              )}</div>
+        <div class="muted">Reason: ${U.escapeHtml(
+          reasons.join(' + ') || 'high risk / important'
+        )}</div>
         <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
           <button class="btn sm" data-open="${U.escapeAttr(i.id)}">Open</button>
-          <button class="btn ghost sm" data-copy="${U.escapeAttr(
-            i.id
-          )}">Copy suggestion</button>
         </div>
       </li>`;
             })
@@ -2317,79 +3212,10 @@ const Analytics = {
         UI.Modals.openIssue(b.getAttribute('data-open'))
       )
     );
-    U.qAll('[data-copy]').forEach(b =>
-      b.addEventListener('click', () => {
-        const id = b.getAttribute('data-copy');
-        const r = DataStore.byId.get(id);
-        const meta = DataStore.computed.get(id) || {};
-        const text = `Issue ${r.id}
-Title: ${r.title}
-Suggested Priority: ${meta.suggestions?.priority}
-Suggested Categories: ${(meta.suggestions?.categories || [])
-          .map(c => c.label)
-          .join(', ')}
-Reasons: ${(meta.risk?.reasons || []).join(', ')}`;
-        navigator.clipboard
-          .writeText(text)
-          .then(() => UI.toast('Suggestion copied'))
-          .catch(() => UI.toast('Clipboard blocked'));
-      })
-    );
 
     UI.setAnalyzing(false);
   }
 };
-
-function buildClustersWeighted(list) {
-  const max = Math.min(list.length, 400);
-  const docs = list.slice(-max).map(r => {
-    const meta = DataStore.computed.get(r.id) || {};
-    return { issue: r, tokens: meta.tokens || new Set(), idf: meta.idf || new Map() };
-  });
-  const visited = new Set(),
-    clusters = [];
-  const wj = (A, IA, B, IB) => {
-    let inter = 0,
-      sumA = 0,
-      sumB = 0;
-    const all = new Set([...A, ...B]);
-    all.forEach(t => {
-      const wa = A.has(t) ? IA.get(t) || 1 : 0;
-      const wb = B.has(t) ? IB.get(t) || 1 : 0;
-      inter += Math.min(wa, wb);
-      sumA += wa;
-      sumB += wb;
-    });
-    const union = sumA + sumB - inter;
-    return union ? inter / union : 0;
-  };
-  for (let i = 0; i < docs.length; i++) {
-    if (visited.has(i)) continue;
-    const base = docs[i];
-    const c = [base];
-    visited.add(i);
-    for (let j = i + 1; j < docs.length; j++) {
-      if (visited.has(j)) continue;
-      const other = docs[j];
-      if (wj(base.tokens, base.idf, other.tokens, other.idf) >= 0.28) {
-        visited.add(j);
-        c.push(other);
-      }
-    }
-    if (c.length >= 2) {
-      const freq = new Map();
-      c.forEach(d => d.tokens.forEach(t => freq.set(t, (freq.get(t) || 0) + 1)));
-      const sig = Array.from(freq.entries())
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 3)
-        .map(([t]) => t)
-        .join(' ');
-      clusters.push({ signature: sig, issues: c.map(x => x.issue) });
-    }
-  }
-  clusters.sort((a, b) => b.issues.length - a.issues.length);
-  return clusters.slice(0, 6);
-}
 
 /** Modals */
 UI.Modals = {
@@ -2417,7 +3243,6 @@ UI.Modals = {
       ? 'Reasons: ' + risk.reasons.join(', ')
       : '—';
 
-    // Linked releases (events whose issueId list contains this ticket)
     const linkedReleases = DataStore.events.filter(ev => {
       const ids = (ev.issueId || '')
         .split(',')
@@ -2446,41 +3271,39 @@ UI.Modals = {
     }
 
     E.modalTitle.textContent = r.title || r.id || 'Issue';
-    E.modalBody.innerHTML = ''
-      + `<p><b>ID:</b> ${U.escapeHtml(r.id || '-')}</p>`
-      + `<p><b>Module:</b> ${U.escapeHtml(r.module || '-')}</p>`
-      + `<p><b>Priority:</b> ${U.escapeHtml(r.priority || '-')}</p>`
-      + `<p><b>Status:</b> ${U.escapeHtml(r.status || '-')}</p>`
-      + `<p><b>Date:</b> ${U.escapeHtml(r.date || '-')}</p>`
-      + `<p><b>Risk:</b> ${risk.total}`
-      + `<br><span class="muted">Tech ${risk.technical}, Biz ${risk.business}, Ops ${risk.operational}, Time ${risk.time}</span>`
-      + `<br><span class="muted">Severity ${risk.severity}, Impact ${risk.impact}, Urgency ${risk.urgency}</span>`
-      + `<br><span class="muted">${U.escapeHtml(reasons)}</span>`
-      + `</p>`
-      + `<p><b>Description:</b><br>${U.escapeHtml(r.desc || '-')}</p>`
-      + `<p><b>Log:</b><br>${U.escapeHtml(r.log || '-')}</p>`
-      + `${
-        r.file
-          ? `<p><b>Attachment:</b> <a href="${U.escapeAttr(
-              r.file
-            )}" target="_blank" rel="noopener noreferrer">Open link</a></p>`
-          : ''
-      }`
-      + `<div style="margin-top:10px" class="muted">`
-      + `Suggested: priority <b>${U.escapeHtml(
+    E.modalBody.innerHTML =
+      `<p><b>ID:</b> ${U.escapeHtml(r.id || '-')}</p>` +
+      `<p><b>Module:</b> ${U.escapeHtml(r.module || '-')}</p>` +
+      `<p><b>Priority:</b> ${U.escapeHtml(r.priority || '-')}</p>` +
+      `<p><b>Status:</b> ${U.escapeHtml(r.status || '-')}</p>` +
+      `<p><b>Type:</b> ${U.escapeHtml(r.type || '-')}</p>` +
+      `<p><b>Date:</b> ${U.escapeHtml(r.date || '-')}</p>` +
+      `<p><b>Risk:</b> ${risk.total}` +
+      `<br><span class="muted">Severity ${risk.severity}, Impact ${risk.impact}, Urgency ${risk.urgency}</span>` +
+      `<br><span class="muted">${U.escapeHtml(reasons)}</span>` +
+      `</p>` +
+      `<p><b>Description:</b><br>${U.escapeHtml(r.desc || '-')}</p>` +
+      `<p><b>Log:</b><br>${U.escapeHtml(r.log || '-')}</p>` +
+      (r.file
+        ? `<p><b>Attachment:</b> <a href="${U.escapeAttr(
+            r.file
+          )}" target="_blank" rel="noopener noreferrer">Open link</a></p>`
+        : '') +
+      `<div style="margin-top:10px" class="muted">
+        Suggested: priority <b>${U.escapeHtml(
           meta.suggestions?.priority || '-'
-        )}</b>; `
-      + `categories: ${
+        )}</b>;
+        categories: ${
           (meta.suggestions?.categories || [])
             .slice(0, 3)
             .map(c => U.escapeHtml(c.label))
             .join(', ') || '—'
-        }.`
-      + `</div>`
-      + linkedSection;
+        }.
+      </div>` +
+      linkedSection;
 
     E.issueModal.style.display = 'flex';
-    E.copyId?.focus();
+    if (E.copyId) E.copyId.focus();
   },
   closeIssue() {
     if (!E.issueModal) return;
@@ -2492,7 +3315,8 @@ UI.Modals = {
     this.lastEventFocus = document.activeElement;
     const isEdit = !!(ev && ev.id);
     if (E.eventForm) E.eventForm.dataset.id = isEdit ? ev.id : '';
-    if (E.eventModalTitle) E.eventModalTitle.textContent = isEdit ? 'Edit Event' : 'Add Event';
+    if (E.eventModalTitle)
+      E.eventModalTitle.textContent = isEdit ? 'Edit Event' : 'Add Event';
     if (E.eventDelete) E.eventDelete.style.display = isEdit ? 'inline-flex' : 'none';
 
     const allDay = !!ev.allDay;
@@ -2551,9 +3375,7 @@ UI.Modals = {
             .map(issue => {
               const meta = DataStore.computed.get(issue.id) || {};
               const r = meta.risk?.total || 0;
-              const badgeClass = r
-                ? CalendarLink.riskBadgeClass(r)
-                : '';
+              const badgeClass = r ? CalendarLink.riskBadgeClass(r) : '';
               return `
                 <li>
                   <button type="button" class="btn sm" data-open-issue="${U.escapeAttr(
@@ -2594,8 +3416,7 @@ UI.Modals = {
                     more
                   )}</div>`
                 : ''
-            }
-          `;
+            }`;
         } else {
           E.eventIssueLinkedInfo.innerHTML = `Linked ticket ID(s): ${U.escapeHtml(
             issueIdStr
@@ -2618,7 +3439,7 @@ UI.Modals = {
 
     if (E.eventModal) {
       E.eventModal.style.display = 'flex';
-      E.eventTitle?.focus();
+      if (E.eventTitle) E.eventTitle.focus();
     }
   },
   closeEvent() {
@@ -2642,8 +3463,8 @@ function trapFocus(container, e) {
     'button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])'
   );
   if (!focusables.length) return;
-  const first = focusables[0],
-    last = focusables[focusables.length - 1];
+  const first = focusables[0];
+  const last = focusables[focusables.length - 1];
   if (e.shiftKey && document.activeElement === first) {
     last.focus();
     e.preventDefault();
@@ -2686,8 +3507,8 @@ function setActiveView(view) {
 }
 
 /* ---------- Calendar wiring ---------- */
-let calendar = null,
-  calendarReady = false;
+let calendar = null;
+let calendarReady = false;
 
 function wireCalendar() {
   if (E.addEventBtn)
@@ -2710,7 +3531,8 @@ function wireCalendar() {
 
   if (E.calendarTz) {
     try {
-      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'local time';
+      const tz =
+        Intl.DateTimeFormat().resolvedOptions().timeZone || 'local time';
       E.calendarTz.textContent = `Times shown in: ${tz}`;
     } catch {
       E.calendarTz.textContent = '';
@@ -2854,7 +3676,8 @@ function renderCalendarEvents() {
     activeTypes.add('Maintenance');
   if (E.eventFilterRelease && E.eventFilterRelease.checked)
     activeTypes.add('Release');
-  if (E.eventFilterOther && E.eventFilterOther.checked) activeTypes.add('Other');
+  if (E.eventFilterOther && E.eventFilterOther.checked)
+    activeTypes.add('Other');
 
   const links = computeEventsRisk(DataStore.rows, DataStore.events);
   const riskMap = new Map(links.map(r => [r.event.id, r.risk]));
@@ -3014,7 +3837,9 @@ async function loadEvents(force = false) {
             .filter(Boolean)
         : [];
       return {
-        id: ev.id || 'ev_' + Date.now() + '_' + Math.random().toString(36).slice(2),
+        id:
+          ev.id ||
+          'ev_' + Date.now() + '_' + Math.random().toString(36).slice(2),
         title: ev.title || '',
         type: ev.type || 'Other',
         start: ev.start || ev.startDate || '',
@@ -3058,13 +3883,11 @@ async function loadEvents(force = false) {
 async function saveEventToSheet(event) {
   UI.spinner(true);
   try {
-    // Ensure we always have a clean ID
     const evId =
       event.id && String(event.id).trim()
         ? String(event.id).trim()
         : 'ev_' + Date.now() + '_' + Math.random().toString(36).slice(2);
 
-    // Normalize modules into an array of strings
     const modulesArr = Array.isArray(event.modules)
       ? event.modules
       : typeof event.modules === 'string'
@@ -3074,7 +3897,6 @@ async function saveEventToSheet(event) {
           .filter(Boolean)
       : [];
 
-    // Canonical payload with ALL fields Apps Script expects
     const payload = {
       id: evId,
       title: event.title || '',
@@ -3095,8 +3917,6 @@ async function saveEventToSheet(event) {
       allDay: !!event.allDay
     };
 
-    console.log('[InCheck] sending event payload to Apps Script:', payload);
-
     const res = await fetch(CONFIG.CALENDAR_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -3116,7 +3936,6 @@ async function saveEventToSheet(event) {
 
     if (data.ok) {
       UI.toast('Event saved');
-      // Make sure we keep notificationStatus from server if set
       const savedEvent = data.event || payload;
       if (!savedEvent.notificationStatus && payload.notificationStatus) {
         savedEvent.notificationStatus = payload.notificationStatus;
@@ -3201,7 +4020,9 @@ function exportIssuesToCsv(rows, suffix) {
     ].map(csvEscape);
     lines.push(arr.join(','));
   });
-  const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  const blob = new Blob([lines.join('\r\n')], {
+    type: 'text/csv;charset=utf-8;'
+  });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   const ts = new Date().toISOString().slice(0, 10);
@@ -3227,7 +4048,7 @@ let LAST_PLANNER_RESULT = null;
 function renderPlannerResults(result, context) {
   if (!E.plannerResults) return;
   const { slots, bug, bomb, ticketContext } = result;
-  const { env, modules, releaseType, horizonDays, region, description, tickets } = context;
+  const { env, modules, releaseType, horizonDays, region } = context;
 
   if (!slots.length) {
     E.plannerResults.innerHTML =
@@ -3266,15 +4087,14 @@ function renderPlannerResults(result, context) {
   )}</strong> touching <strong>${U.escapeHtml(
     modulesLabel
   )}</strong><br/>
-      Horizon: next ${horizonDays} day(s), region profile: ${U.escapeHtml(regionLabel)}.<br/>
+      Horizon: next ${horizonDays} day(s), region profile: ${U.escapeHtml(
+    regionLabel
+  )}.<br/>
       <span class="muted">${U.escapeHtml(ticketsLine)}</span><br/>
       <span class="muted">Recent bug pressure: ${U.escapeHtml(
         bugLabel
-      )}. Historical &ldquo;bomb bug&rdquo; pattern: ${U.escapeHtml(
-    bombLabel
-  )}.</span>
-    </div>
-  `;
+      )}. Historical “bomb bug” pattern: ${U.escapeHtml(bombLabel)}.</span>
+    </div>`;
 
   let bombExamplesHtml = '';
   if (bomb.examples && bomb.examples.length) {
@@ -3308,497 +4128,541 @@ function renderPlannerResults(result, context) {
         minute: '2-digit'
       });
 
-      const bucket = ReleasePlanner.riskBucket(slot.totalRisk);
+          const bucket = ReleasePlanner.riskBucket(slot.totalRisk);
       const rushLabel = ReleasePlanner.rushLabel(slot.rushRisk);
-      const bugLabelPerSlot = ReleasePlanner.bugLabel(slot.bugRisk);
-      const bombLabelPerSlot = ReleasePlanner.bombLabel(slot.bombRisk);
-      const eventsLabelRaw = slot.eventCount
-        ? `${slot.eventCount} overlapping change event(s)`
-        : 'no overlapping change events';
-      const holidayLabel = slot.holidayCount
-        ? `${slot.holidayCount} holiday(s) in window`
-        : 'no holidays in window';
-      const eventsLabel = slot.holidayCount
-        ? `${holidayLabel} · ${eventsLabelRaw}`
-        : eventsLabelRaw;
+      const riskPct = Math.max(0, Math.min(1, slot.totalRisk / 10));
+      const safePct = Math.max(0, Math.min(1, slot.safetyScore / 10));
 
-      const safetyIndex = (slot.safetyScore / 10) * 100;
-      const blastComment =
-        bucket.label === 'Low'
-          ? 'Low blast radius; safe default with rollback buffer.'
-          : bucket.label === 'Medium'
-          ? 'Medium blast radius; keep tight monitoring and rollback plan.'
-          : 'High blast risk; only use with strict approvals and on-call coverage.';
-
-      const startIso = d.toISOString();
-      const endIso = slot.end.toISOString();
+      const eventBits = [];
+      if (slot.eventCount) eventBits.push(`${slot.eventCount} nearby change(s)`);
+      if (slot.holidayCount) eventBits.push(`${slot.holidayCount} holiday window(s)`);
+      const eventLine = eventBits.length
+        ? eventBits.join(' · ')
+        : 'No conflicting changes in calendar window';
 
       return `
-      <div class="planner-slot" data-index="${idx}">
-        <div class="planner-slot-header">
-          <span>#${idx + 1} · ${U.escapeHtml(dateStr)} · ${U.escapeHtml(timeStr)}</span>
-          <span class="planner-slot-score ${bucket.className}">
-            Risk ${slot.totalRisk.toFixed(1)} / 10 · ${bucket.label}
-          </span>
-        </div>
-        <div class="planner-slot-meta">
-          Rush: ${U.escapeHtml(rushLabel)} · Bugs: ${U.escapeHtml(
-        bugLabelPerSlot
-      )} · Bomb-bug: ${U.escapeHtml(
-        bombLabelPerSlot
-      )}<br/>Calendar: ${U.escapeHtml(
-        eventsLabel
-      )}<br/>Safety index: ${safetyIndex.toFixed(0)}%
-        </div>
-        <div class="planner-slot-meta">
-          Expected effect on F&amp;B clients: ${U.escapeHtml(blastComment)}
-        </div>
-        <div class="planner-slot-meta">
-          <button type="button"
-                  class="btn sm"
-                  data-add-release="${U.escapeAttr(startIso)}"
-                  data-add-release-end="${U.escapeAttr(endIso)}">
-            ➕ Add this window as Release event
-          </button>
-        </div>
-      </div>
-    `;
+        <div class="planner-slot-card" data-slot-index="${idx}">
+          <div class="planner-slot-header">
+            <span class="planner-slot-title">
+              ${U.escapeHtml(dateStr)} · ${U.escapeHtml(timeStr)}
+            </span>
+            <span class="planner-slot-score ${bucket.className}">
+              ${bucket.label} risk · safe ${slot.safetyScore.toFixed(1)}/10
+            </span>
+          </div>
+          <div class="planner-slot-meta muted">
+            <div>${U.escapeHtml(rushLabel)} · bug pressure ${U.escapeHtml(
+              ReleasePlanner.bugLabel(slot.bugRisk)
+            )}</div>
+            <div>bomb-bug ${U.escapeHtml(
+              ReleasePlanner.bombLabel(slot.bombRisk)
+            )} · ${U.escapeHtml(eventLine)}</div>
+          </div>
+          <div class="planner-slot-bars">
+            <div class="planner-slot-bar-track">
+              <div
+                class="planner-slot-bar-fill risk"
+                style="transform:scaleX(${riskPct.toFixed(2)});"
+              ></div>
+            </div>
+            <div class="planner-slot-bar-track">
+              <div
+                class="planner-slot-bar-fill safe"
+                style="transform:scaleX(${safePct.toFixed(2)});"
+              ></div>
+            </div>
+          </div>
+        </div>`;
     })
     .join('');
 
-  E.plannerResults.innerHTML = `${intro}${bombExamplesHtml}${htmlSlots}`;
+  E.plannerResults.innerHTML =
+    intro + bombExamplesHtml + `<div class="planner-slots">${htmlSlots}</div>`;
 
-  if (E.plannerAddEvent) E.plannerAddEvent.disabled = !slots.length;
+  LAST_PLANNER_CONTEXT = context;
+  LAST_PLANNER_RESULT = result;
 
-  // Wire per-slot "Add" buttons – include selected tickets as linked issue IDs
-  E.plannerResults.querySelectorAll('[data-add-release]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const startIso = btn.getAttribute('data-add-release');
-      const endIso = btn.getAttribute('data-add-release-end');
-      if (!startIso || !endIso) return;
+  if (E.plannerAddEvent) E.plannerAddEvent.disabled = false;
 
-      const startLocal = toLocalInputValue(new Date(startIso));
-      const endLocal = toLocalInputValue(new Date(endIso));
-
-      const modulesLabelLocal =
-        modules && modules.length ? modules.join(', ') : 'General';
-
-      const releaseDescription = (E.plannerDescription?.value || '').trim();
-
-      const ticketIds =
-        (LAST_PLANNER_CONTEXT &&
-          Array.isArray(LAST_PLANNER_CONTEXT.tickets) &&
-          LAST_PLANNER_CONTEXT.tickets) ||
-        [];
-
-      const newEvent = {
-        id: '',
-        title: `Release – ${modulesLabelLocal} (${releaseType})`,
-        type: 'Release',
-        env: env,
-        status: 'Planned',
-        owner: '',
-        modules: modules,
-        impactType:
-          env === 'Prod'
-            ? 'High risk change'
-            : 'Internal only',
-        issueId: ticketIds.join(', '),
-        start: startLocal,
-        end: endLocal,
-        description:
-          `Auto-scheduled by Release Planner. Region profile: ${regionLabel}. Modules: ${modulesLabelLocal}.` +
-          (releaseDescription ? `\nRelease notes: ${releaseDescription}` : '') +
-          `\nHeuristic risk index computed from F&B rush hours, bug history, holidays and existing calendar events.` +
-          `\nTickets in scope at scheduling time: ${
-            ticketIds.length ? ticketIds.join(', ') : 'none explicitly selected.'
-          }`,
-        allDay: false,
-        notificationStatus: ''
-      };
-
-      const saved = await saveEventToSheet(newEvent);
-      if (!saved) {
-        UI.toast('Could not save release event');
-        return;
-      }
-      const idx = DataStore.events.findIndex(x => x.id === saved.id);
-      if (idx === -1) DataStore.events.push(saved);
-      else DataStore.events[idx] = saved;
-      saveEventsCache();
-      renderCalendarEvents();
-      refreshPlannerReleasePlans(context);
-      Analytics.refresh(UI.Issues.applyFilters());
+  const cards = E.plannerResults.querySelectorAll('.planner-slot-card');
+  cards.forEach(card => {
+    const idx = Number(card.getAttribute('data-slot-index')) || 0;
+    if (idx === 0) card.classList.add('selected');
+    card.addEventListener('click', () => {
+      cards.forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
     });
   });
 }
 
-function refreshPlannerTickets(currentList) {
-  if (!E.plannerTickets) return;
-  const list = currentList || UI.Issues.applyFilters();
-
-  if (!list.length) {
-    E.plannerTickets.innerHTML =
-      '<option disabled>No tickets match the current filters</option>';
-    return;
-  }
-
-  const max = 250;
-  const subset = list.slice(0, max);
-
-  E.plannerTickets.innerHTML = subset
-    .map(r => {
-      const meta = DataStore.computed.get(r.id) || {};
-      const risk = meta.risk?.total || 0;
-      const label = `[${r.priority || '-'} | R${risk}] ${r.id} — ${
-        r.title || ''
-      }`.slice(0, 140);
-      return `<option value="${U.escapeAttr(r.id)}">${U.escapeHtml(label)}</option>`;
-    })
-    .join('');
-}
-
-function refreshPlannerReleasePlans(context) {
+function refreshPlannerReleasePlans() {
   if (!E.plannerReleasePlan) return;
-  const env = context?.env || (E.plannerEnv?.value || '');
-  const horizonDays =
-    context?.horizonDays ||
-    parseInt(E.plannerHorizon?.value || '7', 10) ||
-    7;
-
   const now = new Date();
-  const horizonEnd = U.dateAddDays(now, horizonDays);
+  const limit = U.dateAddDays(now, 14);
 
-  const releaseEvents = (DataStore.events || []).filter(ev => {
-    const type = (ev.type || '').toLowerCase();
-    if (type !== 'release') return false;
-    if (!ev.start) return false;
-    const d = new Date(ev.start);
-    if (isNaN(d)) return false;
-    if (d < now) return false;
-    if (d > horizonEnd) return false;
+  const upcoming = (DataStore.events || [])
+    .filter(ev => {
+      const type = (ev.type || '').toLowerCase();
+      const env = (ev.env || 'Prod').toLowerCase();
+      if (!['deployment', 'release'].includes(type)) return false;
+      if (env !== 'prod') return false;
+      if (!ev.start) return false;
+      const d = new Date(ev.start);
+      if (isNaN(d)) return false;
+      return d >= now && d <= limit;
+    })
+    .sort((a, b) => new Date(a.start) - new Date(b.start));
 
-    const evEnv = ev.env || 'Prod';
-    if (env && env !== 'Other' && evEnv && evEnv !== env) return false;
-
-    return true;
-  });
-
-  releaseEvents.sort((a, b) => new Date(a.start) - new Date(b.start));
-
-  if (!releaseEvents.length) {
+  if (!upcoming.length) {
     E.plannerReleasePlan.innerHTML =
-      '<option value="">No Release events in horizon</option>';
+      '<span class="muted">No upcoming Prod deployments/releases in the next 14 days.</span>';
     return;
   }
 
-  const options = releaseEvents
+  const items = upcoming
     .map(ev => {
-      const d = ev.start ? new Date(ev.start) : null;
-      const when =
-        d && !isNaN(d)
-          ? d.toLocaleString(undefined, {
-              month: 'short',
-              day: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit'
-            })
-          : '(no date)';
-      const label = `[${when}] ${ev.title || 'Release'} (${ev.env || 'Prod'})`;
-      return `<option value="${U.escapeAttr(ev.id)}">${U.escapeHtml(label)}</option>`;
+      const d = new Date(ev.start);
+      const when = d.toLocaleString(undefined, {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      const modules = Array.isArray(ev.modules)
+        ? ev.modules.join(', ')
+        : ev.modules || '';
+      return `<li>
+        <strong>${U.escapeHtml(when)}</strong> – ${U.escapeHtml(ev.title || '(release)')}
+        <span class="muted">
+          (${U.escapeHtml(ev.env || 'Prod')}${
+        modules ? ' · ' + U.escapeHtml(modules) : ''
+      })
+        </span>
+      </li>`;
     })
     .join('');
 
-  E.plannerReleasePlan.innerHTML =
-    '<option value="">Select a Release event…</option>' + options;
+  E.plannerReleasePlan.innerHTML = `
+    <div style="margin-bottom:4px;">Upcoming Prod deployments/releases (next 14 days): ${
+      upcoming.length
+    }</div>
+    <ul style="margin:4px 0 0 18px;padding:0;font-size:12px;">
+      ${items}
+    </ul>`;
 }
 
-function wirePlanner() {
-  if (!E.plannerRun) return;
-
-  E.plannerRun.addEventListener('click', () => {
-    if (!DataStore.rows.length) {
-      UI.toast('Issues are still loading. Try again in a few seconds.');
-      return;
-    }
-
-    const regionValue = (E.plannerRegion?.value || 'gulf').toLowerCase();
-    const region = ReleasePlanner.regionKey(regionValue);
-
-    const env = E.plannerEnv?.value || 'Prod';
-    const modulesStr = (E.plannerModules?.value || '').trim();
-    const modules = modulesStr
-      ? modulesStr
-          .split(',')
-          .map(s => s.trim())
-          .filter(Boolean)
-      : [];
-    const horizonDays =
-      parseInt(E.plannerHorizon?.value || '7', 10) || 7;
-    const releaseTypeValue =
-      (E.plannerReleaseType?.value || 'feature').toLowerCase();
-    const releaseType =
-      releaseTypeValue === 'major' || releaseTypeValue === 'minor'
-        ? releaseTypeValue
-        : 'feature';
-    const slotsPerDay =
-      parseInt(E.plannerSlotsPerDay?.value || '4', 10) || 4;
-    const description = (E.plannerDescription?.value || '').trim();
-
-    const selectedTicketIds = Array.from(E.plannerTickets?.selectedOptions || [])
-      .map(o => o.value)
-      .filter(Boolean);
-
-    const context = {
-      region,
-      env,
-      modules,
-      releaseType,
-      horizonDays,
-      slotsPerDay,
-      description,
-      tickets: selectedTicketIds
-    };
-
-    const result = ReleasePlanner.suggestSlots(context);
-
-    LAST_PLANNER_CONTEXT = context;
-    LAST_PLANNER_RESULT = result;
-    renderPlannerResults(result, context);
-    refreshPlannerReleasePlans(context);
-  });
-
-  if (E.plannerAddEvent) {
-    E.plannerAddEvent.addEventListener('click', async () => {
-      if (
-        !LAST_PLANNER_CONTEXT ||
-        !LAST_PLANNER_RESULT ||
-        !LAST_PLANNER_RESULT.slots.length
-      ) {
-        UI.toast('Run the planner first to get suggestions.');
-        return;
-      }
-      const context = LAST_PLANNER_CONTEXT;
-      const slot = LAST_PLANNER_RESULT.slots[0];
-
-      const startIso = slot.start.toISOString();
-      const endIso = slot.end.toISOString();
-      const startLocal = toLocalInputValue(new Date(startIso));
-      const endLocal = toLocalInputValue(new Date(endIso));
-
-      const regionLabel =
-        context.region === 'gulf'
-          ? 'Gulf (KSA / UAE / Qatar)'
-          : context.region === 'levant'
-          ? 'Levant'
-          : 'North Africa';
-
-      const modulesLabelLocal =
-        context.modules && context.modules.length
-          ? context.modules.join(', ')
-          : 'General';
-      const releaseDescription = (E.plannerDescription?.value || '').trim();
-      const ticketIds = Array.isArray(context.tickets) ? context.tickets : [];
-
-      const newEvent = {
-        id: '',
-        title: `Release – ${modulesLabelLocal} (${context.releaseType})`,
-        type: 'Release',
-        env: context.env,
-        status: 'Planned',
-        owner: '',
-        modules: context.modules,
-        impactType:
-          context.env === 'Prod'
-            ? 'High risk change'
-            : 'Internal only',
-        issueId: ticketIds.join(', '),
-        start: startLocal,
-        end: endLocal,
-        description:
-          `Auto-scheduled by Release Planner (top suggestion). Region profile: ${regionLabel}. Modules: ${modulesLabelLocal}.` +
-          (releaseDescription ? `\nRelease notes: ${releaseDescription}` : '') +
-          `\nHeuristic risk index computed from F&B rush hours, bug history, holidays and existing calendar events.` +
-          `\nTickets in scope at scheduling time: ${
-            ticketIds.length ? ticketIds.join(', ') : 'none explicitly selected.'
-          }`,
-        allDay: false,
-        notificationStatus: ''
-      };
-
-      const saved = await saveEventToSheet(newEvent);
-      if (!saved) {
-        UI.toast('Could not save release event');
-        return;
-      }
-      const idx = DataStore.events.findIndex(x => x.id === saved.id);
-      if (idx === -1) DataStore.events.push(saved);
-      else DataStore.events[idx] = saved;
-      saveEventsCache();
-      renderCalendarEvents();
-      refreshPlannerReleasePlans(context);
-      Analytics.refresh(UI.Issues.applyFilters());
-    });
-  }
-
-  if (E.plannerEnv) {
-    E.plannerEnv.addEventListener('change', () => {
-      refreshPlannerReleasePlans();
-    });
-  }
-  if (E.plannerHorizon) {
-    E.plannerHorizon.addEventListener('change', () => {
-      refreshPlannerReleasePlans();
-    });
-  }
-
-  if (E.plannerAssignBtn) {
-    E.plannerAssignBtn.addEventListener('click', async () => {
-      const planId = E.plannerReleasePlan?.value || '';
-      if (!planId) {
-        UI.toast('Select a Release event first.');
-        return;
-      }
-      const options = Array.from(E.plannerTickets?.selectedOptions || []);
-      const ticketIds = options.map(o => o.value).filter(Boolean);
-      if (!ticketIds.length) {
-        UI.toast('Select at least one ticket to assign.');
-        return;
-      }
-
-      const idx = DataStore.events.findIndex(ev => ev.id === planId);
-      if (idx === -1) {
-        UI.toast('Selected Release event not found. Try refreshing events.');
-        return;
-      }
-
-      const ev = DataStore.events[idx];
-      const existing = (ev.issueId || '')
-        .split(',')
-        .map(s => s.trim())
-        .filter(Boolean);
-      const merged = Array.from(new Set([...existing, ...ticketIds]));
-
-      const updatedEvent = {
-        ...ev,
-        issueId: merged.join(', ')
-      };
-
-      const saved = await saveEventToSheet(updatedEvent);
-      if (!saved) {
-        UI.toast('Could not assign tickets to Release event.');
-        return;
-      }
-
-      DataStore.events[idx] = saved;
-      saveEventsCache();
-      renderCalendarEvents();
-      refreshPlannerReleasePlans();
-      Analytics.refresh(UI.Issues.applyFilters());
-
-      UI.toast(
-        `Assigned ${ticketIds.length} ticket${ticketIds.length > 1 ? 's' : ''} to the Release plan.`
-      );
-    });
-  }
+function getPlannerTicketsArray() {
+  if (!E.plannerTickets) return [];
+  return (E.plannerTickets.value || '')
+    .split(/[,\s]+/)
+    .map(s => s.trim())
+    .filter(Boolean);
 }
 
-/* ---------- Misc wiring ---------- */
-function setIfOptionExists(select, value) {
-  if (!select || !value) return;
-  const options = Array.from(select.options || []);
-  if (options.some(o => o.value === value)) select.value = value;
+function getPlannerModulesArray() {
+  if (!E.plannerModules) return [];
+  return (E.plannerModules.value || '')
+    .split(/[,\s]+/)
+    .map(s => s.trim())
+    .filter(Boolean);
 }
 
-function wireCore() {
-  [E.issuesTab, E.calendarTab, E.insightsTab].forEach(btn => {
-    if (!btn) return;
-    btn.addEventListener('click', () => setActiveView(btn.dataset.view));
-  });
+function collectPlannerContextFromUI() {
+  const region = (E.plannerRegion && E.plannerRegion.value) || 'gulf';
+  const env = (E.plannerEnv && E.plannerEnv.value) || 'Prod';
+  const modules = getPlannerModulesArray();
+  const horizonDays = parseInt(E.plannerHorizon && E.plannerHorizon.value, 10) || 7;
+  const releaseType =
+    (E.plannerReleaseType && E.plannerReleaseType.value) || 'feature';
+  const description = (E.plannerDescription && E.plannerDescription.value) || '';
+  const slotsPerDay =
+    parseInt(E.plannerSlotsPerDay && E.plannerSlotsPerDay.value, 10) || 3;
+  const tickets = getPlannerTicketsArray();
 
-  if (E.drawerBtn)
-    E.drawerBtn.addEventListener('click', () => {
-      const open = !E.sidebar.classList.contains('open');
-      E.sidebar.classList.toggle('open');
-      E.drawerBtn.setAttribute('aria-expanded', String(open));
-    });
-
-  if (E.searchInput)
-    E.searchInput.addEventListener(
-      'input',
-      debounce(() => {
-        Filters.state.search = E.searchInput.value || '';
-        Filters.save();
-        UI.refreshAll();
-      }, 250)
-    );
-
-  if (E.refreshNow)
-    E.refreshNow.addEventListener('click', () => {
-      loadIssues(true);
-      loadEvents(true);
-    });
-  if (E.exportCsv) E.exportCsv.addEventListener('click', exportFilteredCsv);
-  if (E.createTicketBtn)
-    E.createTicketBtn.addEventListener('click', () =>
-      window.open(
-        'https://forms.gle/PPnEP1AQneoBT79s5',
-        '_blank',
-        'noopener,noreferrer'
-      )
-    );
-
-  if (E.shortcutsHelp) {
-    E.shortcutsHelp.addEventListener('click', () => {
-      UI.toast('Shortcuts: 1/2/3 switch tabs · / focus search · Ctrl+K AI query');
-    });
-  }
-
-  UI.refreshAll = () => {
-    const list = UI.Issues.applyFilters();
-    UI.Issues.renderSummary(list);
-    UI.Issues.renderFilterChips();
-    UI.Issues.renderKPIs(list);
-    UI.Issues.renderTable(list);
-    UI.Issues.renderCharts(list);
-    refreshPlannerTickets(list);
-    if (E.insightsView && E.insightsView.classList.contains('active')) {
-      Analytics.refresh(list);
-    }
+  return {
+    region,
+    env,
+    modules,
+    horizonDays,
+    releaseType,
+    description,
+    slotsPerDay,
+    tickets
   };
 }
 
-function wireSorting() {
-  U.qAll('#issuesTable thead th.sortable').forEach(th => {
-    th.addEventListener('click', () => {
-      const key = th.getAttribute('data-key');
-      if (GridState.sortKey === key) GridState.sortAsc = !GridState.sortAsc;
-      else {
-        GridState.sortKey = key;
-        GridState.sortAsc = true;
-      }
-      UI.refreshAll();
-    });
-    th.addEventListener('keydown', e => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        th.click();
-      }
-    });
-    th.tabIndex = 0;
-    th.setAttribute('role', 'button');
-    th.setAttribute('aria-label', `Sort by ${th.textContent}`);
-  });
+function runPlanner() {
+  if (!DataStore.rows.length) {
+    UI.toast('Issues not loaded yet – cannot compute release windows.');
+    return;
+  }
+  if (!E.plannerResults) return;
+
+  const ctx = collectPlannerContextFromUI();
+  const result = ReleasePlanner.suggestSlots(ctx);
+  renderPlannerResults(result, ctx);
 }
 
-function wirePaging() {
-  if (E.pageSize)
-    E.pageSize.addEventListener('change', () => {
-      GridState.pageSize = +E.pageSize.value;
-      localStorage.setItem(LS_KEYS.pageSize, GridState.pageSize);
+function plannerAddSelectedSlotToCalendar() {
+  if (!LAST_PLANNER_RESULT || !LAST_PLANNER_RESULT.slots.length) {
+    UI.toast('Run the planner first.');
+    return;
+  }
+  const slots = LAST_PLANNER_RESULT.slots;
+  let idx = 0;
+  if (E.plannerResults) {
+    const card =
+      E.plannerResults.querySelector('.planner-slot-card.selected') ||
+      E.plannerResults.querySelector('.planner-slot-card');
+    if (card) idx = Number(card.getAttribute('data-slot-index')) || 0;
+  }
+  if (idx < 0 || idx >= slots.length) idx = 0;
+  const slot = slots[idx];
+  const ctx = LAST_PLANNER_CONTEXT || collectPlannerContextFromUI();
+
+  const modules = ctx.modules || [];
+  const tickets = getPlannerTicketsArray();
+  const titleBase = ctx.releaseType ? `${ctx.releaseType} release` : 'Release';
+  const env = ctx.env || 'Prod';
+  const modulesLabel = modules.length ? ` – ${modules.join(', ')}` : '';
+  const title = `${titleBase} (${env})${modulesLabel}`;
+  const description = ctx.description || '';
+
+  const event = {
+    title,
+    type: 'Release',
+    env,
+    status: 'Planned',
+    owner: '',
+    modules,
+    impactType: 'No downtime expected',
+    issueId: tickets.join(', '),
+    start: slot.start,
+    end: slot.end,
+    description,
+    allDay: false
+  };
+
+  UI.Modals.openEvent(event);
+  setActiveView('calendar');
+}
+
+function plannerAssignTicketsFromSelection() {
+  if (!E.plannerTickets) return;
+  const selected = UI.Modals.selectedIssue;
+  if (!selected || !selected.id) {
+    UI.toast('Open an issue first, then click “Send to planner”.');
+    return;
+  }
+  const current = getPlannerTicketsArray();
+  if (!current.includes(selected.id)) current.push(selected.id);
+  E.plannerTickets.value = current.join(', ');
+  UI.toast(`Added ${selected.id} to planner tickets.`);
+}
+
+/* ---------- DSL query wiring (AI Copilot search) ---------- */
+
+let LAST_DSL_QUERY = '';
+let LAST_DSL_RESULTS = [];
+
+function runDslQueryFromInput() {
+  if (!E.aiQueryInput || !E.aiQueryResults) return;
+  const raw = (E.aiQueryInput.value || '').trim();
+  LAST_DSL_QUERY = raw;
+  if (!raw) {
+    E.aiQueryResults.innerHTML =
+      '<li class="muted">Type a query, e.g. <code>module:report risk>=7 last:7d</code>.</li>';
+    LAST_DSL_RESULTS = [];
+    return;
+  }
+
+  const q = DSL.parse(raw);
+  const matches = [];
+  DataStore.rows.forEach(r => {
+    const meta = DataStore.computed.get(r.id) || {};
+    if (DSL.matches(r, meta, q)) matches.push(r);
+  });
+  LAST_DSL_RESULTS = matches;
+
+  if (!matches.length) {
+    E.aiQueryResults.innerHTML = '<li>No issues match this query.</li>';
+    return;
+  }
+
+  const items = matches
+    .slice(0, 150)
+    .map(r => {
+      const meta = DataStore.computed.get(r.id) || {};
+      const risk = meta.risk?.total || 0;
+      const badge = risk ? CalendarLink.riskBadgeClass(risk) : '';
+      return `<li>
+        <button type="button" class="btn sm" data-open="${U.escapeAttr(
+          r.id
+        )}">${U.escapeHtml(r.id)}</button>
+        ${U.escapeHtml(r.title || '')}
+        <span class="muted">
+          · ${U.escapeHtml(r.module || '')}
+          · ${U.escapeHtml(r.priority || '-')}
+          · ${U.escapeHtml(r.status || '-')}
+        </span>
+        ${
+          risk
+            ? `<span class="event-risk-badge ${badge}">R${risk}</span>`
+            : ''
+        }
+      </li>`;
+    })
+    .join('');
+
+  E.aiQueryResults.innerHTML =
+    `<li class="muted">${matches.length} result${
+      matches.length === 1 ? '' : 's'
+    } (showing up to 150)</li>` + items;
+
+  E.aiQueryResults
+    .querySelectorAll('[data-open]')
+    .forEach(btn =>
+      btn.addEventListener('click', () =>
+        UI.Modals.openIssue(btn.getAttribute('data-open'))
+      )
+    );
+}
+
+function applyDslFiltersFromLastQuery() {
+  if (!LAST_DSL_QUERY) {
+    UI.toast('Run a DSL query first.');
+    return;
+  }
+  const q = DSL.parse(LAST_DSL_QUERY);
+
+  if (q.module) {
+    Filters.state.module = 'All';
+    if (E.moduleFilter) {
+      const opt = Array.from(E.moduleFilter.options).find(o =>
+        (o.value || o.textContent || '').toLowerCase().includes(q.module)
+      );
+      if (opt) Filters.state.module = opt.value;
+    }
+  }
+
+  if (q.priority) {
+    const p = q.priority[0].toUpperCase();
+    const map = { U: 'Urgent', H: 'High', M: 'Medium', L: 'Low' };
+    Filters.state.priority = map[p] || 'All';
+  }
+
+  if (q.status) {
+    if (q.status === 'open' || q.status === 'closed') {
+      Filters.state.status = 'All';
+    } else {
+      Filters.state.status = '';
+      if (E.statusFilter) {
+        const opt = Array.from(E.statusFilter.options).find(o =>
+          (o.value || o.textContent || '').toLowerCase().includes(q.status)
+        );
+        if (opt) Filters.state.status = opt.value;
+      }
+    }
+  }
+
+  if (q.lastDays) {
+    const start = U.daysAgo(q.lastDays);
+    const iso = start.toISOString().slice(0, 10);
+    Filters.state.start = iso;
+    Filters.state.end = '';
+  }
+
+  Filters.save();
+
+  if (E.moduleFilter) setIfOptionExists(E.moduleFilter, Filters.state.module || 'All');
+  if (E.priorityFilter)
+    setIfOptionExists(E.priorityFilter, Filters.state.priority || 'All');
+  if (E.statusFilter)
+    setIfOptionExists(E.statusFilter, Filters.state.status || 'All');
+  if (E.startDateFilter) E.startDateFilter.value = Filters.state.start || '';
+  if (E.endDateFilter) E.endDateFilter.value = Filters.state.end || '';
+
+  GridState.page = 1;
+  UI.refreshAll();
+  setActiveView('issues');
+}
+
+function exportDslResultsCsv() {
+  if (!LAST_DSL_RESULTS || !LAST_DSL_RESULTS.length) {
+    UI.toast('No DSL results to export.');
+    return;
+  }
+  exportIssuesToCsv(LAST_DSL_RESULTS, 'dsl');
+}
+
+/* ---------- Helpers, theme, layout, init ---------- */
+
+function setIfOptionExists(selectEl, value) {
+  if (!selectEl) return;
+  const opts = Array.from(selectEl.options);
+  const match = opts.find(o => o.value === value || o.textContent === value);
+  if (match) selectEl.value = match.value;
+}
+
+UI.refreshAll = function () {
+  const list = UI.Issues.applyFilters();
+  UI.Issues.renderSummary(list);
+  UI.Issues.renderKPIs(list);
+  UI.Issues.renderTable(list);
+  UI.Issues.renderCharts(list);
+  UI.Issues.renderFilterChips();
+  Analytics.refresh(list);
+};
+
+function applyTheme(theme) {
+  const root = document.documentElement;
+  const t = theme || 'system';
+  if (t === 'system') {
+    root.removeAttribute('data-theme');
+  } else {
+    root.setAttribute('data-theme', t);
+  }
+  try {
+    localStorage.setItem(LS_KEYS.theme, t);
+  } catch {}
+}
+
+function initTheme() {
+  let stored = null;
+  try {
+    stored = localStorage.getItem(LS_KEYS.theme);
+  } catch {}
+  const theme = stored || 'system';
+  applyTheme(theme);
+  if (E.themeSelect) E.themeSelect.value = theme;
+  if (E.themeSelect) {
+    E.themeSelect.addEventListener('change', () =>
+      applyTheme(E.themeSelect.value || 'system')
+    );
+  }
+}
+
+function initAccent() {
+  let stored = null;
+  try {
+    stored =
+      localStorage.getItem(LS_KEYS.accentColorStorage) ||
+      localStorage.getItem(LS_KEYS.accentColor);
+  } catch {}
+  if (stored) {
+    document.documentElement.style.setProperty('--accent', stored);
+    if (E.accentColor) E.accentColor.value = stored;
+  }
+  if (E.accentColor) {
+    E.accentColor.addEventListener('input', e => {
+      const v = e.target.value;
+      if (!v) return;
+      document.documentElement.style.setProperty('--accent', v);
+      try {
+        localStorage.setItem(LS_KEYS.accentColorStorage, v);
+        localStorage.setItem(LS_KEYS.accentColor, v);
+      } catch {}
+    });
+  }
+}
+
+function updateOnlineStatus() {
+  if (!E.onlineStatusChip) return;
+  const online = navigator.onLine !== false;
+  E.onlineStatusChip.textContent = online ? 'Online' : 'Offline';
+  E.onlineStatusChip.classList.toggle('offline', !online);
+}
+
+function initApp() {
+  cacheEls();
+  Filters.load();
+  wireCalendar();
+
+  // Theme + accent
+  initTheme();
+  initAccent();
+  updateOnlineStatus();
+  window.addEventListener('online', updateOnlineStatus);
+  window.addEventListener('offline', updateOnlineStatus);
+
+  // Restore filters into UI
+  if (E.searchInput) {
+    E.searchInput.value = Filters.state.search || '';
+    const onSearch = debounce(() => {
+      Filters.state.search = E.searchInput.value || '';
+      Filters.save();
+      GridState.page = 1;
+      UI.refreshAll();
+    }, 200);
+    E.searchInput.addEventListener('input', onSearch);
+  }
+
+  if (E.moduleFilter) {
+    UI.Issues.renderFilters();
+    setIfOptionExists(E.moduleFilter, Filters.state.module || 'All');
+    E.moduleFilter.addEventListener('change', () => {
+      Filters.state.module = E.moduleFilter.value || 'All';
+      Filters.save();
       GridState.page = 1;
       UI.refreshAll();
     });
+  }
+
+  if (E.priorityFilter) {
+    setIfOptionExists(E.priorityFilter, Filters.state.priority || 'All');
+    E.priorityFilter.addEventListener('change', () => {
+      Filters.state.priority = E.priorityFilter.value || 'All';
+      Filters.save();
+      GridState.page = 1;
+      UI.refreshAll();
+    });
+  }
+
+  if (E.statusFilter) {
+    setIfOptionExists(E.statusFilter, Filters.state.status || 'All');
+    E.statusFilter.addEventListener('change', () => {
+      Filters.state.status = E.statusFilter.value || 'All';
+      Filters.save();
+      GridState.page = 1;
+      UI.refreshAll();
+    });
+  }
+
+  if (E.startDateFilter) {
+    E.startDateFilter.value = Filters.state.start || '';
+    E.startDateFilter.addEventListener('change', () => {
+      Filters.state.start = E.startDateFilter.value || '';
+      Filters.save();
+      GridState.page = 1;
+      UI.refreshAll();
+    });
+  }
+
+  if (E.endDateFilter) {
+    E.endDateFilter.value = Filters.state.end || '';
+    E.endDateFilter.addEventListener('change', () => {
+      Filters.state.end = E.endDateFilter.value || '';
+      Filters.save();
+      GridState.page = 1;
+      UI.refreshAll();
+    });
+  }
+
+  // Paging
+  if (E.pageSize) {
+    E.pageSize.value = String(GridState.pageSize);
+    E.pageSize.addEventListener('change', () => {
+      const v = parseInt(E.pageSize.value, 10) || 20;
+      GridState.pageSize = v;
+      try {
+        localStorage.setItem(LS_KEYS.pageSize, String(v));
+      } catch {}
+      GridState.page = 1;
+      UI.refreshAll();
+    });
+  }
+
   if (E.firstPage)
     E.firstPage.addEventListener('click', () => {
       GridState.page = 1;
@@ -3806,69 +4670,40 @@ function wirePaging() {
     });
   if (E.prevPage)
     E.prevPage.addEventListener('click', () => {
-      if (GridState.page > 1) {
-        GridState.page--;
-        UI.refreshAll();
-      }
+      GridState.page = Math.max(1, GridState.page - 1);
+      UI.refreshAll();
     });
   if (E.nextPage)
     E.nextPage.addEventListener('click', () => {
-      const list = UI.Issues.applyFilters();
-      const pages = Math.max(1, Math.ceil(list.length / GridState.pageSize));
-      if (GridState.page < pages) {
-        GridState.page++;
-        UI.refreshAll();
-      }
+      GridState.page += 1;
+      UI.refreshAll();
     });
   if (E.lastPage)
     E.lastPage.addEventListener('click', () => {
-      const list = UI.Issues.applyFilters();
-      GridState.page = Math.max(1, Math.ceil(list.length / GridState.pageSize));
+      const total = UI.Issues.applyFilters().length;
+      const pages = Math.max(1, Math.ceil(total / GridState.pageSize));
+      GridState.page = pages;
       UI.refreshAll();
     });
-}
 
-function wireFilters() {
-  if (E.moduleFilter) {
-    E.moduleFilter.addEventListener('change', () => {
-      Filters.state.module = E.moduleFilter.value;
-      Filters.save();
+  // Table sorting
+  U.qAll('#issuesTable thead th[data-key]').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.getAttribute('data-key');
+      if (!key) return;
+      if (GridState.sortKey === key) {
+        GridState.sortAsc = !GridState.sortAsc;
+      } else {
+        GridState.sortKey = key;
+        GridState.sortAsc = true;
+      }
+      GridState.page = 1;
       UI.refreshAll();
     });
-  }
-  if (E.priorityFilter) {
-    E.priorityFilter.addEventListener('change', () => {
-      Filters.state.priority = E.priorityFilter.value;
-      Filters.save();
-      UI.refreshAll();
-    });
-  }
-  if (E.statusFilter) {
-    E.statusFilter.addEventListener('change', () => {
-      Filters.state.status = E.statusFilter.value;
-      Filters.save();
-      UI.refreshAll();
-    });
-  }
-  if (E.startDateFilter) {
-    E.startDateFilter.value = Filters.state.start || '';
-    E.startDateFilter.addEventListener('change', () => {
-      Filters.state.start = E.startDateFilter.value;
-      Filters.save();
-      UI.refreshAll();
-    });
-  }
-  if (E.endDateFilter) {
-    E.endDateFilter.value = Filters.state.end || '';
-    E.endDateFilter.addEventListener('change', () => {
-      Filters.state.end = E.endDateFilter.value;
-      Filters.save();
-      UI.refreshAll();
-    });
-  }
-  if (E.searchInput) E.searchInput.value = Filters.state.search || '';
+  });
 
-  if (E.resetBtn)
+  // Reset, refresh, export
+  if (E.resetBtn) {
     E.resetBtn.addEventListener('click', () => {
       Filters.state = {
         search: '',
@@ -3880,525 +4715,267 @@ function wireFilters() {
       };
       Filters.save();
       if (E.searchInput) E.searchInput.value = '';
+      if (E.moduleFilter) E.moduleFilter.value = 'All';
+      if (E.priorityFilter) E.priorityFilter.value = 'All';
+      if (E.statusFilter) E.statusFilter.value = 'All';
       if (E.startDateFilter) E.startDateFilter.value = '';
       if (E.endDateFilter) E.endDateFilter.value = '';
-      UI.Issues.renderFilters();
+      GridState.page = 1;
       UI.refreshAll();
     });
-}
+  }
 
-function wireTheme() {
-  const media = window.matchMedia
-    ? window.matchMedia('(prefers-color-scheme: dark)')
-    : null;
-  const applySystem = () => {
-    if (media?.matches) document.documentElement.removeAttribute('data-theme');
-    else document.documentElement.setAttribute('data-theme', 'light');
-  };
-  const saved = localStorage.getItem(LS_KEYS.theme) || 'system';
-  if (E.themeSelect) E.themeSelect.value = saved;
-  if (saved === 'system') applySystem();
-  else if (saved === 'dark') document.documentElement.removeAttribute('data-theme');
-  else document.documentElement.setAttribute('data-theme', 'light');
-
-  media?.addEventListener('change', () => {
-    if ((localStorage.getItem(LS_KEYS.theme) || 'system') === 'system') {
-      applySystem();
-    }
-  });
-
-  if (E.themeSelect) {
-    E.themeSelect.addEventListener('change', () => {
-      const v = E.themeSelect.value;
-      localStorage.setItem(LS_KEYS.theme, v);
-      if (v === 'system') applySystem();
-      else if (v === 'dark') document.documentElement.removeAttribute('data-theme');
-      else document.documentElement.setAttribute('data-theme', 'light');
+  if (E.refreshNow) {
+    E.refreshNow.addEventListener('click', () => {
+      loadIssues(true);
+      loadEvents(true);
     });
   }
 
-  if (E.accentColor) {
-    const rootStyle = getComputedStyle(document.documentElement);
-    const defaultAccent = rootStyle.getPropertyValue('--accent').trim() || '#4f8cff';
-    const savedAccent =
-      localStorage.getItem(LS_KEYS.accentColorStorage) || defaultAccent;
-    E.accentColor.value = savedAccent;
-    document.documentElement.style.setProperty('--accent', savedAccent);
-
-    E.accentColor.addEventListener('input', () => {
-      const val = E.accentColor.value || defaultAccent;
-      document.documentElement.style.setProperty('--accent', val);
-      try {
-        localStorage.setItem(LS_KEYS.accentColorStorage, val);
-      } catch {}
-    });
-  }
-}
-
-/* ---------- Online / offline chip ---------- */
-
-function wireOnlineStatus() {
-  if (!E.onlineStatusChip) return;
-
-  const update = () => {
-    const online = navigator.onLine;
-    E.onlineStatusChip.textContent = online ? 'Online' : 'Offline';
-    E.onlineStatusChip.classList.toggle('online', online);
-    E.onlineStatusChip.classList.toggle('offline', !online);
-    E.onlineStatusChip.setAttribute('aria-label', online ? 'Online' : 'Offline');
-  };
-
-  window.addEventListener('online', update);
-  window.addEventListener('offline', update);
-  update();
-}
-
-/* ---------- AI Query (DSL) ---------- */
-
-function runAiQuery(opts = {}) {
-  const { applyFilters = false, exportCsv = false } = opts;
-  if (!DataStore.rows.length) {
-    UI.toast('Issues are still loading, try again in a moment.');
-    return;
-  }
-  if (!E.aiQueryInput) {
-    UI.toast('AI query input not available.');
-    return;
+  if (E.exportCsv) {
+    E.exportCsv.addEventListener('click', exportFilteredCsv);
   }
 
-  const raw = (E.aiQueryInput.value || '').trim();
-  if (!raw) {
-    UI.toast('Type a query first (e.g. "open risk>10 payments last:7d sort:risk").');
-    if (E.aiQueryResults) {
-      E.aiQueryResults.innerHTML =
-        '<span class="muted">No query yet. Try things like: <code>open risk>10 payments</code> or <code>module:Login last:3d</code>.</span>';
+  // Tabs
+  if (E.issuesTab)
+    E.issuesTab.addEventListener('click', () => setActiveView('issues'));
+  if (E.calendarTab)
+    E.calendarTab.addEventListener('click', () => setActiveView('calendar'));
+  if (E.insightsTab)
+    E.insightsTab.addEventListener('click', () => setActiveView('insights'));
+
+  const savedView = (() => {
+    try {
+      return localStorage.getItem(LS_KEYS.view) || 'issues';
+    } catch {
+      return 'issues';
     }
-    return;
-  }
+  })();
+  setActiveView(savedView);
 
-  const parsed = DSL.parse(raw);
-  let rows = DataStore.rows.filter(r =>
-    DSL.matches(r, DataStore.computed.get(r.id) || {}, parsed)
-  );
-
-  // Sorting
-  const scoreRisk = r => (DataStore.computed.get(r.id)?.risk?.total || 0);
-  if (parsed.sort === 'date') {
-    rows.sort((a, b) => {
-      const da = new Date(a.date), db = new Date(b.date);
-      if (isNaN(da) && isNaN(db)) return 0;
-      if (isNaN(da)) return 1;
-      if (isNaN(db)) return -1;
-      return db - da; // newest first
-    });
-  } else if (parsed.sort === 'priority') {
-    const m = { High: 3, Medium: 2, Low: 1 };
-    rows.sort((a, b) => (m[b.priority] || 0) - (m[a.priority] || 0));
-  } else {
-    // default / risk
-    rows.sort((a, b) => scoreRisk(b) - scoreRisk(a));
-  }
-
-  if (!rows.length) {
-    if (E.aiQueryResults) {
-      E.aiQueryResults.innerHTML =
-        '<span>No issues matched that query. Try relaxing filters (remove risk/age constraints).</span>';
-    }
-    if (applyFilters) {
-      UI.toast('No results – filters not applied.');
-    }
-    return;
-  }
-
-  // Export-only path
-  if (exportCsv) {
-    exportIssuesToCsv(rows, 'aiquery');
-    return;
-  }
-
-  // Optionally map DSL fields back into filters for grid
-  if (applyFilters) {
-    const s = Filters.state;
-
-    // Search from non-structural words
-    s.search = parsed.words ? parsed.words.join(' ') : '';
-
-    // Module: try to map fuzzy → actual module name
-    if (parsed.module) {
-      const needle = parsed.module.toLowerCase();
-      const modules = Array.from(DataStore.byModule.keys());
-      const exact =
-        modules.find(m => m.toLowerCase() === needle) ||
-        modules.find(m => m.toLowerCase().includes(needle));
-      s.module = exact || 'All';
-    }
-
-    // Priority
-    if (parsed.priority) {
-      const p = parsed.priority[0].toUpperCase();
-      if (p === 'H') s.priority = 'High';
-      else if (p === 'M') s.priority = 'Medium';
-      else if (p === 'L') s.priority = 'Low';
-    }
-
-    // Status: for "open"/"closed" we leave grid as-is (DSL handles that),
-    // but if they specify a literal status, try to map to existing.
-    if (parsed.status && !['open', 'closed'].includes(parsed.status)) {
-      const needle = parsed.status.toLowerCase();
-      const statuses = Array.from(DataStore.byStatus.keys());
-      const exact =
-        statuses.find(x => (x || '').toLowerCase() === needle) ||
-        statuses.find(x => (x || '').toLowerCase().includes(needle));
-      s.status = exact || 'All';
-    }
-
-    // Time – last:N d → set start date
-    if (parsed.lastDays) {
-      const from = U.daysAgo(parsed.lastDays);
-      s.start = toLocalDateValue(from);
-      s.end = '';
-    }
-
-    Filters.save();
-    setActiveView('issues');
-    UI.refreshAll();
-    UI.toast('Filters updated from AI query.');
-  }
-
-  // Render results into AI panel
-  if (E.aiQueryResults) {
-    const max = 50;
-    const shown = rows.slice(0, max);
-
-    const summary = `
-      <div class="muted" style="margin-bottom:6px;">
-        Found <strong>${rows.length}</strong> matching issues
-        ${rows.length > max ? ` (showing first ${max})` : ''}.
-        ${applyFilters ? 'Grid filters were updated to roughly match this query.' : ''}
-      </div>
-    `;
-
-    const items = shown
-      .map(r => {
-        const meta = DataStore.computed.get(r.id) || {};
-        const risk = meta.risk?.total || 0;
-        const sev = meta.risk?.severity ?? 0;
-        const imp = meta.risk?.impact ?? 0;
-        const urg = meta.risk?.urgency ?? 0;
-        const reasons = (meta.risk?.reasons || []).slice(0, 4).join(', ');
-        const badgeClass = CalendarLink.riskBadgeClass(risk);
-        return `
-          <li class="ai-query-item">
-            <div class="ai-query-header">
-              <button class="btn sm" data-open="${U.escapeAttr(r.id)}">${U.escapeHtml(
-          r.id
-        )}</button>
-              <span class="muted">· module ${U.escapeHtml(r.module || '-')}</span>
-              <span class="pill priority-${r.priority || ''}">${U.escapeHtml(
-          r.priority || '-'
-        )}</span>
-              <span class="pill status-${(r.status || '').replace(/\s/g, '\\ ')}">${U.escapeHtml(
-          r.status || '-'
-        )}</span>
-              <span class="event-risk-badge ${badgeClass}">RISK ${risk}</span>
-            </div>
-            <div class="ai-query-title">${U.escapeHtml(r.title || '')}</div>
-            <div class="muted" style="font-size:11px;">
-              Sev ${sev} · Imp ${imp} · Urg ${urg}
-              ${reasons ? `· Signals: ${U.escapeHtml(reasons)}` : ''}
-            </div>
-          </li>
-        `;
-      })
-      .join('');
-
-    E.aiQueryResults.innerHTML =
-      summary +
-      `<ul class="ai-query-results-list">${items}</ul>` +
-      (rows.length > max
-        ? `<div class="muted" style="margin-top:4px;">Tip: use the "Export" button to download all matches.</div>`
-        : '');
-
-    // Wire open buttons
-    E.aiQueryResults.querySelectorAll('[data-open]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = btn.getAttribute('data-open');
-        UI.Modals.openIssue(id);
-      });
+  // Drawer / sidebar
+  if (E.drawerBtn && E.sidebar) {
+    E.drawerBtn.addEventListener('click', () => {
+      E.sidebar.classList.toggle('open');
     });
   }
 
-  // Keep insights panel in sync with result set when visible
-  if (E.insightsView && E.insightsView.classList.contains('active')) {
-    Analytics.refresh(rows);
-  }
-}
-
-function wireAiQuery() {
-  if (!E.aiQueryInput) return;
-
-  if (E.aiQueryRun) {
-    E.aiQueryRun.addEventListener('click', () => runAiQuery({ applyFilters: false }));
-  }
-  if (E.aiQueryApplyFilters) {
-    E.aiQueryApplyFilters.addEventListener('click', () =>
-      runAiQuery({ applyFilters: true })
-    );
-  }
-  if (E.aiQueryExport) {
-    E.aiQueryExport.addEventListener('click', () =>
-      runAiQuery({ applyFilters: false, exportCsv: true })
-    );
-  }
-
-  // Ctrl/Cmd+Enter inside the query box = run
-  E.aiQueryInput.addEventListener('keydown', e => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-      e.preventDefault();
-      runAiQuery({ applyFilters: false });
-    }
-  });
-}
-
-/* ---------- Modals wiring ---------- */
-
-function wireModals() {
   // Issue modal
-  if (E.modalClose) {
-    E.modalClose.addEventListener('click', () => UI.Modals.closeIssue());
-  }
+  if (E.modalClose) E.modalClose.addEventListener('click', () => UI.Modals.closeIssue());
   if (E.issueModal) {
     E.issueModal.addEventListener('click', e => {
       if (e.target === E.issueModal) UI.Modals.closeIssue();
     });
     E.issueModal.addEventListener('keydown', e => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        UI.Modals.closeIssue();
-      } else if (e.key === 'Tab') {
-        trapFocus(E.issueModal, e);
-      }
+      if (e.key === 'Escape') UI.Modals.closeIssue();
+      else if (e.key === 'Tab') trapFocus(E.issueModal, e);
     });
   }
-
   if (E.copyId) {
     E.copyId.addEventListener('click', () => {
       const issue = UI.Modals.selectedIssue;
       if (!issue || !issue.id) return;
-      navigator.clipboard
-        .writeText(issue.id)
-        .then(() => UI.toast('Issue ID copied'))
-        .catch(() => UI.toast('Clipboard blocked'));
+      if (navigator.clipboard) {
+        navigator.clipboard
+          .writeText(issue.id)
+          .then(() => UI.toast('Issue ID copied'))
+          .catch(() => UI.toast('Copy failed'));
+      } else {
+        UI.toast('Clipboard not available');
+      }
     });
   }
-
   if (E.copyLink) {
     E.copyLink.addEventListener('click', () => {
       const issue = UI.Modals.selectedIssue;
       if (!issue || !issue.id) return;
-      const base = window.location.href.split('#')[0];
-      const link = `${base}#issue-${encodeURIComponent(issue.id)}`;
-      navigator.clipboard
-        .writeText(link)
-        .then(() => UI.toast('Link copied'))
-        .catch(() => UI.toast('Clipboard blocked'));
+      const base = location.origin + location.pathname;
+      const url = `${base}#issue-${encodeURIComponent(issue.id)}`;
+      if (navigator.clipboard) {
+        navigator.clipboard
+          .writeText(url)
+          .then(() => UI.toast('Deep-link copied'))
+          .catch(() => UI.toast('Copy failed'));
+      } else {
+        UI.toast('Clipboard not available');
+      }
     });
   }
 
   // Event modal
-  if (E.eventModalClose) {
+  if (E.eventModalClose)
     E.eventModalClose.addEventListener('click', () => UI.Modals.closeEvent());
-  }
-  if (E.eventCancel) {
+  if (E.eventCancel)
     E.eventCancel.addEventListener('click', e => {
       e.preventDefault();
       UI.Modals.closeEvent();
     });
-  }
   if (E.eventModal) {
     E.eventModal.addEventListener('click', e => {
       if (e.target === E.eventModal) UI.Modals.closeEvent();
     });
     E.eventModal.addEventListener('keydown', e => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        UI.Modals.closeEvent();
-      } else if (e.key === 'Tab') {
-        trapFocus(E.eventModal, e);
+      if (e.key === 'Escape') UI.Modals.closeEvent();
+      else if (e.key === 'Tab') trapFocus(E.eventModal, e);
+    });
+  }
+  if (E.eventAllDay && E.eventStart && E.eventEnd) {
+    E.eventAllDay.addEventListener('change', () => {
+      const allDay = !!E.eventAllDay.checked;
+      const s = E.eventStart.value;
+      const e = E.eventEnd.value;
+      E.eventStart.type = allDay ? 'date' : 'datetime-local';
+      E.eventEnd.type = allDay ? 'date' : 'datetime-local';
+      if (allDay) {
+        if (s && s.length >= 10) E.eventStart.value = s.slice(0, 10);
+        if (e && e.length >= 10) E.eventEnd.value = e.slice(0, 10);
+      } else {
+        if (s && s.length === 10) E.eventStart.value = s + 'T09:00';
+        if (e && e.length === 10) E.eventEnd.value = e + 'T10:00';
       }
     });
   }
-
-  if (E.eventSave && E.eventForm) {
-    E.eventSave.addEventListener('click', e => {
-      e.preventDefault();
-      if (E.eventForm.requestSubmit) E.eventForm.requestSubmit();
-      else E.eventForm.submit();
-    });
-  }
-
   if (E.eventForm) {
     E.eventForm.addEventListener('submit', async e => {
       e.preventDefault();
-
       const id = E.eventForm.dataset.id || '';
       const allDay = !!(E.eventAllDay && E.eventAllDay.checked);
-      const title = (E.eventTitle?.value || '').trim();
-      if (!title) {
-        UI.toast('Title is required.');
-        return;
-      }
+      const startVal = E.eventStart ? E.eventStart.value : '';
+      const endVal = E.eventEnd ? E.eventEnd.value : '';
 
-      const startVal = E.eventStart?.value || '';
-      const endVal = E.eventEnd?.value || '';
-
-      const start = startVal ? new Date(startVal) : '';
-      const end = endVal ? new Date(endVal) : '';
-
-      const modulesRaw = E.eventModules?.value || '';
-      const modules = modulesRaw
-        ? modulesRaw
-            .split(',')
-            .map(s => s.trim())
-            .filter(Boolean)
-        : [];
-
-      const existing = id ? DataStore.events.find(ev => ev.id === id) : null;
-
-      const payload = {
-        id,
-        title,
-        type: E.eventType?.value || 'Deployment',
-        env: E.eventEnv?.value || 'Prod',
-        status: E.eventStatus?.value || 'Planned',
-        owner: E.eventOwner?.value || '',
-        modules,
-        impactType: E.eventImpactType?.value || 'No downtime expected',
-        issueId: E.eventIssueId?.value || '',
-        start: start || '',
-        end: end || '',
-        allDay,
-        description: E.eventDescription?.value || '',
-        notificationStatus: existing?.notificationStatus || ''
+      const toIso = val => {
+        if (!val) return '';
+        return val;
       };
 
-      const saved = await saveEventToSheet(payload);
-      if (!saved) return;
+      const event = {
+        id,
+        title: (E.eventTitle && E.eventTitle.value) || '',
+        type: (E.eventType && E.eventType.value) || 'Deployment',
+        env: (E.eventEnv && E.eventEnv.value) || 'Prod',
+        status: (E.eventStatus && E.eventStatus.value) || 'Planned',
+        owner: (E.eventOwner && E.eventOwner.value) || '',
+        modules: (E.eventModules && E.eventModules.value) || '',
+        impactType:
+          (E.eventImpactType && E.eventImpactType.value) ||
+          'No downtime expected',
+        issueId: (E.eventIssueId && E.eventIssueId.value) || '',
+        start: toIso(startVal),
+        end: toIso(endVal),
+        description: (E.eventDescription && E.eventDescription.value) || '',
+        allDay
+      };
 
+      const saved = await saveEventToSheet(event);
+      if (!saved) return;
       const idx = DataStore.events.findIndex(ev => ev.id === saved.id);
       if (idx === -1) DataStore.events.push(saved);
       else DataStore.events[idx] = saved;
-
       saveEventsCache();
+      ensureCalendar();
       renderCalendarEvents();
       refreshPlannerReleasePlans();
       Analytics.refresh(UI.Issues.applyFilters());
       UI.Modals.closeEvent();
     });
   }
-
-  if (E.eventDelete && E.eventForm) {
-    E.eventDelete.addEventListener('click', async () => {
-      const id = E.eventForm.dataset.id || '';
+  if (E.eventDelete) {
+    E.eventDelete.addEventListener('click', async e => {
+      e.preventDefault();
+      if (!E.eventForm) return;
+      const id = E.eventForm.dataset.id;
       if (!id) {
-        UI.toast('No event selected to delete.');
+        UI.toast('No event to delete.');
         return;
       }
-      if (!window.confirm('Delete this event?')) return;
       const ok = await deleteEventFromSheet(id);
       if (!ok) return;
-
-      DataStore.events = DataStore.events.filter(ev => ev.id !== id);
+      const idx = DataStore.events.findIndex(ev => ev.id === id);
+      if (idx !== -1) DataStore.events.splice(idx, 1);
       saveEventsCache();
+      ensureCalendar();
       renderCalendarEvents();
       refreshPlannerReleasePlans();
       UI.Modals.closeEvent();
     });
   }
-}
 
-/* ---------- Keyboard shortcuts ---------- */
+  // AI query wiring
+  if (E.aiQueryRun) {
+    E.aiQueryRun.addEventListener('click', runDslQueryFromInput);
+  }
+  if (E.aiQueryInput) {
+    E.aiQueryInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        runDslQueryFromInput();
+      }
+    });
+  }
+  if (E.aiQueryApplyFilters) {
+    E.aiQueryApplyFilters.addEventListener('click', applyDslFiltersFromLastQuery);
+  }
+  if (E.aiQueryExport) {
+    E.aiQueryExport.addEventListener('click', exportDslResultsCsv);
+  }
+  if (E.aiQueryResults && !E.aiQueryResults.innerHTML.trim()) {
+    E.aiQueryResults.innerHTML =
+      '<li class="muted">Use the Copilot query box to slice issues, e.g. <code>module:report risk>=7 last:7d</code>.</li>';
+  }
 
-function wireShortcuts() {
+  // Release planner wiring
+  if (E.plannerRun) {
+    E.plannerRun.addEventListener('click', runPlanner);
+  }
+  [E.plannerModules, E.plannerHorizon, E.plannerSlotsPerDay, E.plannerDescription].forEach(
+    el => {
+      if (!el) return;
+      el.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          runPlanner();
+        }
+      });
+    }
+  );
+  if (E.plannerAddEvent) {
+    E.plannerAddEvent.addEventListener('click', plannerAddSelectedSlotToCalendar);
+    E.plannerAddEvent.disabled = true;
+  }
+  if (E.plannerAssignBtn) {
+    E.plannerAssignBtn.addEventListener('click', plannerAssignTicketsFromSelection);
+  }
+
+  // Shortcuts help
+  function toggleShortcutsHelp() {
+    if (!E.shortcutsHelp) return;
+    const visible = E.shortcutsHelp.style.display === 'block';
+    E.shortcutsHelp.style.display = visible ? 'none' : 'block';
+  }
+
   document.addEventListener('keydown', e => {
-    const tag = (e.target && e.target.tagName) || '';
-    const isInput =
-      tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable;
+    const tag = (document.activeElement && document.activeElement.tagName) || '';
+    const isTyping =
+      tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement.isContentEditable;
 
-    // Global "/" → search (but not when already typing)
-    if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey && !isInput) {
-      if (E.searchInput) {
-        e.preventDefault();
-        E.searchInput.focus();
-        E.searchInput.select();
-      }
-      return;
-    }
-
-    // 1 / 2 / 3 → switch views
-    if (!isInput && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      if (e.key === '1') {
-        e.preventDefault();
-        setActiveView('issues');
-        return;
-      }
-      if (e.key === '2') {
-        e.preventDefault();
-        setActiveView('calendar');
-        return;
-      }
-      if (e.key === '3') {
-        e.preventDefault();
-        setActiveView('insights');
-        return;
-      }
-    }
-
-    // Ctrl/Cmd+K → focus AI query
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-      if (E.aiQueryInput) {
-        e.preventDefault();
-        setActiveView('insights');
-        E.aiQueryInput.focus();
-        E.aiQueryInput.select();
+    if (e.key === '/' && !e.altKey && !e.ctrlKey && !e.metaKey) {
+      if (isTyping) return;
+      e.preventDefault();
+      if (E.searchInput) E.searchInput.focus();
+    } else if (e.key === '?' && e.shiftKey && !e.altKey && !e.ctrlKey) {
+      e.preventDefault();
+      toggleShortcutsHelp();
+    } else if (e.key === 'Escape') {
+      if (E.shortcutsHelp && E.shortcutsHelp.style.display === 'block') {
+        E.shortcutsHelp.style.display = 'none';
       }
     }
   });
-}
 
-/* ---------- Init ---------- */
-
-document.addEventListener('DOMContentLoaded', () => {
-  cacheEls();
-  Filters.load();
-
-  // Page size
-  if (E.pageSize) {
-    E.pageSize.value = String(GridState.pageSize);
-  }
-
-  wireCore();
-  wireSorting();
-  wirePaging();
-  wireFilters();
-  wireTheme();
-  wireCalendar();
-  wirePlanner();
-  wireModals();
-  wireAiQuery();
-  wireShortcuts();
-  wireOnlineStatus();
-
-  // Restore view
-  const savedView = localStorage.getItem(LS_KEYS.view) || 'issues';
-  setActiveView(savedView);
-
-  // Initial sync state
-  UI.setSync('issues', false, null);
-  UI.setSync('events', false, null);
-
-  // Load data
+  // Initial data load
+  UI.skeleton(true);
   loadIssues(false);
   loadEvents(false);
-});
+}
 
+document.addEventListener('DOMContentLoaded', initApp);
