@@ -34,6 +34,7 @@
   --skeleton:#0b1120;
   --shimmer:linear-gradient(90deg, transparent, rgba(148,163,184,.18), transparent);
 }
+
 :root[data-theme="light"] {
   --bg:#f3f4f6;
   --card:#ffffff;
@@ -59,7 +60,7 @@
 html,body{height:100%}
 body{
   margin:0;
-  font-family:system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
   background:var(--bg);
   color:var(--text);
   transition:background .2s ease,color .2s ease;
@@ -71,6 +72,14 @@ body{
   outline:none;
   box-shadow:var(--focus);
   border-radius:6px;
+}
+
+/* Make sure native controls always have visible text */
+button,
+input,
+select,
+textarea{
+  color:var(--text);
 }
 
 .sr-only{
@@ -123,15 +132,10 @@ header{
   padding:7px 11px;
   border-radius:999px;
   border:1px solid var(--border);
-  background:#020617;
-  color:inherit;
+  background:var(--card);
+  color:var(--text);
   font:inherit;
   transition:border-color .15s ease,background .15s ease,box-shadow .15s ease,transform .08s ease,color .15s ease;
-}
-:root[data-theme="light"] .btn,
-:root[data-theme="light"] .select,
-:root[data-theme="light"] .input{
-  background:#ffffff;
 }
 
 .btn{
@@ -149,6 +153,7 @@ header{
   border-color:transparent;
   background:transparent;
   box-shadow:none;
+  color:var(--muted);
 }
 .btn.sm{
   padding:5px 9px;
@@ -174,7 +179,6 @@ header{
 }
 
 .input,.select{
-  background:#020617;
   box-shadow:none;
 }
 .input::placeholder{color:var(--muted)}
@@ -184,10 +188,7 @@ header{
   border-color:var(--accent);
   outline:none;
 }
-:root[data-theme="light"] .input,
-:root[data-theme="light"] .select{
-  background:#ffffff;
-}
+
 .icon{font-size:18px;line-height:1}
 
 #accentColor{
@@ -242,7 +243,7 @@ header{
   margin:10px 0 14px;opacity:.85;
 }
 
-/* Scrollbars (sidebar, table, modals) */
+/* Scrollbars */
 .sidebar::-webkit-scrollbar,
 .table-wrap::-webkit-scrollbar,
 .modal-content::-webkit-scrollbar{
@@ -290,6 +291,7 @@ header{
 .view.active{display:block}
 .view>*+*{margin-top:14px}
 
+/* Simple grid */
 .grid{display:grid;gap:14px}
 .grid.cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}
 @media(max-width:980px){.grid.cols-4{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -425,7 +427,6 @@ th.sorted-desc::after{
   text-transform:uppercase;
 }
 
-/* updated to dash-format class names (matches JS badgeStatus) */
 .status-Resolved{background:var(--status-resolved);color:#fff}
 .status-Under-Development{background:var(--status-underdev);color:#fff}
 .status-Rejected{background:var(--status-rejected);color:#fff}
@@ -504,7 +505,7 @@ th.sorted-desc::after{
 .pagination{display:flex;gap:6px;align-items:center}
 .chip-btn{
   padding:5px 9px;border-radius:999px;background:var(--card);
-  border:1px solid var(--border);cursor:pointer;font-size:12px;
+  border:1px solid var(--border);cursor:pointer;font-size:12px;color:var(--text);
 }
 .chip-btn[disabled]{opacity:.45;cursor:not-allowed}
 .chip-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
@@ -549,7 +550,7 @@ th.sorted-desc::after{
 .fc{
   font-size:13px;
   color:var(--text);
-  font-family:system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
 }
 .fc .fc-toolbar{
   margin-bottom:10px;
@@ -744,7 +745,7 @@ th.sorted-desc::after{
   #issuesTable td:nth-child(7){display:none}
 }
 
-/* Extra compact mode: hide module + priority on very small screens */
+/* Extra compact: hide module + priority on very small screens */
 @media(max-width:480px){
   #issuesTable th:nth-child(2),
   #issuesTable td:nth-child(2),
@@ -759,7 +760,7 @@ th.sorted-desc::after{
 }
 
 /* =========================================================
-   AI – Per-module risk insights card
+   AI – Per-module risk insights card (still safe if unused)
    ========================================================= */
 
 .card:has(#aiModulesTableBody){
@@ -788,15 +789,21 @@ th.sorted-desc::after{
   border-bottom:1px solid rgba(15,23,42,.9);
   font-size:13px;
 }
+
+/* Use theme variables instead of hard-coded black */
 .card:has(#aiModulesTableBody) tbody tr:nth-child(odd){
-  background:#020617;
+  background:var(--bg);
 }
 .card:has(#aiModulesTableBody) tbody tr:nth-child(even){
-  background:#030712;
+  background:var(--card);
 }
 .card:has(#aiModulesTableBody) tbody tr:hover{
-  background:#111827;
+  background:rgba(15,23,42,.9);
 }
+:root[data-theme="light"] .card:has(#aiModulesTableBody) tbody tr:hover{
+  background:#e5e7eb;
+}
+
 .card:has(#aiModulesTableBody) td:nth-child(2),
 .card:has(#aiModulesTableBody) td:nth-child(3),
 .card:has(#aiModulesTableBody) td:nth-child(4){
