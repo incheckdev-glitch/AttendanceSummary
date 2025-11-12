@@ -145,23 +145,12 @@
 
       <!-- ISSUES VIEW -->
       <section id="issuesView" class="view active">
-        <!-- Summary + filters chips + quick actions -->
+        <!-- Summary + filter chips (NO duplicate actions here) -->
         <section class="card">
           <div class="summary-bar">
             <div>
               <div id="issuesSummaryText">Loading issues…</div>
               <div id="activeFiltersChips" class="filter-chips"></div>
-            </div>
-            <div style="display:flex;gap:6px;flex-wrap:wrap;">
-              <button id="refreshNowTop" class="btn ghost sm" type="button" onclick="document.getElementById('refreshNow').click()">
-                ↻ Refresh
-              </button>
-              <button id="exportCsvTop" class="btn ghost sm" type="button" onclick="document.getElementById('exportCsv').click()">
-                ⇩ Export
-              </button>
-              <button id="createTicketBtnTop" class="btn primary sm" type="button" onclick="document.getElementById('createTicketBtn').click()">
-                + New ticket
-              </button>
             </div>
           </div>
         </section>
