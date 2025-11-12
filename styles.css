@@ -531,4 +531,625 @@ kbd {
 
 /* used for KPI/charts and forms */
 .grid.cols-4 {
-  grid-
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+@media (max-width: 900px) {
+  .summary-bar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+/* planner small grid override (slightly narrower fields) */
+.planner-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+}
+
+/* KPI cards */
+
+.kpi {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.95);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.9);
+}
+
+:root[data-theme="light"] .kpi {
+  background: #f9fafb;
+  box-shadow: 0 10px 22px rgba(148, 163, 184, 0.45);
+}
+
+.kpi .label {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.kpi .value {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.kpi .sub {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* Filter chips row */
+
+.filter-chip {
+  border-radius: var(--radius-pill);
+  border: 1px dashed rgba(148, 163, 184, 0.7);
+  background: rgba(15, 23, 42, 0.9);
+  color: var(--fg);
+  font-size: 11px;
+  padding: 3px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+:root[data-theme="light"] .filter-chip {
+  background: #f3f4f6;
+  border-color: #d4d4d8;
+  color: #111827;
+}
+
+/* =========================================
+   Issues table
+   ========================================= */
+
+.table-wrap {
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  overflow: hidden;
+  background: radial-gradient(circle at top left, #020617 0, var(--card) 40%);
+}
+
+:root[data-theme="light"] .table-wrap {
+  background: #ffffff;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+thead {
+  background: var(--table-header);
+}
+
+th,
+td {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+th {
+  text-align: left;
+  font-weight: 500;
+  font-size: 11px;
+  color: var(--muted);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+tbody tr:nth-child(even) td {
+  background: rgba(15, 23, 42, 0.4);
+}
+
+tbody tr:hover td {
+  background: rgba(15, 23, 42, 0.9);
+}
+
+:root[data-theme="light"] tbody tr:nth-child(even) td {
+  background: #f9fafb;
+}
+
+:root[data-theme="light"] tbody tr:hover td {
+  background: #e5f0ff;
+}
+
+tbody tr {
+  cursor: pointer;
+}
+
+/* Sorting indicators */
+
+th.sortable {
+  cursor: pointer;
+}
+
+th.sortable::after {
+  content: " ";
+  margin-left: 4px;
+  border: 4px solid transparent;
+  border-top-color: rgba(148, 163, 184, 0.7);
+  display: inline-block;
+  transform: translateY(2px);
+}
+
+th.sorted-asc::after {
+  border-bottom-color: var(--accent);
+  border-top-color: transparent;
+}
+
+th.sorted-desc::after {
+  border-top-color: var(--accent);
+}
+
+/* Table footer (paging) */
+
+.table-actions {
+  margin-top: 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.pagination {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+}
+
+/* skeleton rows */
+
+.skeleton {
+  border-radius: 8px;
+  background: linear-gradient(
+    90deg,
+    rgba(30, 64, 175, 0.3),
+    rgba(15, 23, 42, 0.2),
+    rgba(30, 64, 175, 0.3)
+  );
+  background-size: 200% 100%;
+  animation: skeleton 1.2s infinite ease-in-out;
+}
+
+@keyframes skeleton {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Pill badges (status & priority) */
+
+.pill {
+  border-radius: var(--radius-pill);
+  padding: 2px 8px;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: var(--pill-bg);
+}
+
+.status-Resolved {
+  background: rgba(34, 197, 94, 0.08);
+  color: #4ade80;
+}
+.status-Under\ Development {
+  background: rgba(56, 189, 248, 0.08);
+  color: #7dd3fc;
+}
+.status-Rejected {
+  background: rgba(248, 113, 113, 0.08);
+  color: #fca5a5;
+}
+.status-On\ Hold {
+  background: rgba(250, 204, 21, 0.08);
+  color: #fde047;
+}
+.status-Not\ Started\ Yet {
+  background: rgba(148, 163, 184, 0.08);
+  color: #e5e7eb;
+}
+.status-Sent {
+  background: rgba(168, 85, 247, 0.08);
+  color: #e9d5ff;
+}
+.status-On\ Stage {
+  background: rgba(251, 146, 60, 0.08);
+  color: #fed7aa;
+}
+
+/* priority */
+
+.priority-High {
+  background: rgba(248, 113, 113, 0.16);
+  color: #fecaca;
+}
+.priority-Medium {
+  background: rgba(250, 204, 21, 0.16);
+  color: #fef08a;
+}
+.priority-Low {
+  background: rgba(34, 197, 94, 0.16);
+  color: #bbf7d0;
+}
+
+/* =========================================
+   Calendar & events
+   ========================================= */
+
+#calendar {
+  margin-top: 6px;
+  min-height: 520px;
+  background: var(--card);
+  border-radius: 16px;
+  padding: 6px;
+}
+
+/* Light calendar clean background */
+:root[data-theme="light"] #calendar {
+  background: #ffffff;
+}
+
+:root[data-theme="light"] .fc {
+  background: #ffffff;
+}
+
+:root[data-theme="light"] .fc-theme-standard .fc-scrollgrid,
+:root[data-theme="light"] .fc-theme-standard td,
+:root[data-theme="light"] .fc-theme-standard th {
+  border-color: #e5e7eb;
+}
+
+/* FullCalendar general tweaks */
+
+.fc {
+  font-size: 12px;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.fc .fc-toolbar-title {
+  font-size: 18px;
+}
+
+.fc-theme-standard .fc-scrollgrid {
+  border: none;
+}
+
+.fc-theme-standard td,
+.fc-theme-standard th {
+  border-color: rgba(148, 163, 184, 0.25);
+}
+
+.fc-day-today {
+  background: rgba(56, 189, 248, 0.12) !important;
+}
+
+/* calendar buttons */
+
+.fc .fc-button {
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  background: rgba(15, 23, 42, 0.9);
+  color: var(--fg);
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
+.fc .fc-button-primary:not(:disabled).fc-button-active,
+.fc .fc-button-primary:not(:disabled):active {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+:root[data-theme="light"] .fc .fc-button {
+  background: #ffffff;
+  color: #111827;
+  border-color: #d1d5db;
+}
+
+:root[data-theme="light"]
+  .fc
+  .fc-button-primary:not(:disabled).fc-button-active,
+:root[data-theme="light"]
+  .fc
+  .fc-button-primary:not(:disabled):active {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #2563eb;
+}
+
+/* Event pills on calendar */
+
+.fc-event {
+  border-radius: 999px;
+  padding: 1px 6px;
+  border: none;
+}
+
+/* event type colors */
+
+.event-type-deployment .fc-event-main {
+  background: rgba(37, 99, 235, 0.1);
+  color: #bfdbfe;
+}
+
+.event-type-maintenance .fc-event-main {
+  background: rgba(234, 179, 8, 0.12);
+  color: #facc15;
+}
+
+.event-type-release .fc-event-main {
+  background: rgba(34, 197, 94, 0.12);
+  color: #86efac;
+}
+
+.event-type-other .fc-event-main {
+  background: rgba(148, 163, 184, 0.12);
+  color: #e5e7eb;
+}
+
+/* change risk flags */
+
+.event-collision .fc-event-main {
+  box-shadow: 0 0 0 1px #f97316;
+}
+.event-freeze .fc-event-main {
+  box-shadow: 0 0 0 1px #22c55e;
+}
+.event-hot .fc-event-main {
+  box-shadow: 0 0 0 1px #ef4444;
+}
+
+/* event risk badge */
+
+.event-risk-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 1px 6px;
+  font-size: 10px;
+  margin-left: 6px;
+}
+
+.risk-crit {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fecaca;
+}
+.risk-high {
+  background: rgba(249, 115, 22, 0.15);
+  color: #fed7aa;
+}
+.risk-med {
+  background: rgba(234, 179, 8, 0.15);
+  color: #fef3c7;
+}
+.risk-low {
+  background: rgba(22, 163, 74, 0.15);
+  color: #bbf7d0;
+}
+
+/* =========================================
+   Release planner & slots
+   ========================================= */
+
+#releasePlannerCard label {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 3px;
+}
+
+.planner-slot {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(15, 23, 42, 0.9);
+}
+
+:root[data-theme="light"] .planner-slot {
+  background: #f9fafb;
+}
+
+.planner-slot-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.planner-slot-score {
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+.planner-score-low {
+  background: rgba(34, 197, 94, 0.18);
+  color: #bbf7d0;
+}
+
+.planner-score-med {
+  background: rgba(234, 179, 8, 0.18);
+  color: #fef3c7;
+}
+
+.planner-score-high {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fecaca;
+}
+
+.planner-slot-meta {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* =========================================
+   Modals
+   ========================================= */
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.8);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal-content {
+  background: radial-gradient(circle at top left, #020617 0, var(--card) 40%);
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  padding: 14px 16px 16px;
+  max-width: 1040px;
+  width: min(96vw, 1040px);
+  max-height: 90vh;
+  overflow: auto;
+  box-shadow: 0 26px 60px rgba(15, 23, 42, 0.95);
+}
+
+:root[data-theme="light"] .modal-content {
+  background: #ffffff;
+}
+
+.modal .header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.modal .header h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.modal-close {
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 18px;
+  width: 26px;
+  height: 26px;
+  cursor: pointer;
+}
+
+/* Event form grid inside modal: 4 columns on wide, wraps nicely */
+
+#eventForm .grid.cols-4 {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  margin-top: 4px;
+}
+
+/* Full-width description textarea */
+
+#eventDescription {
+  width: 100%;
+}
+
+/* =========================================
+   Spinner & toast
+   ========================================= */
+
+.spinner {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 120;
+}
+
+.spinner .ring {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  border: 4px solid rgba(148, 163, 184, 0.3);
+  border-top-color: var(--accent);
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  background: rgba(15, 23, 42, 0.98);
+  color: var(--fg);
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.9);
+  display: none;
+  z-index: 130;
+}
+
+:root[data-theme="light"] .toast {
+  background: #111827;
+  color: #f9fafb;
+}
+
+/* =========================================
+   Online status chip
+   ========================================= */
+
+#onlineStatusChip.online {
+  background: rgba(34, 197, 94, 0.16);
+  color: #bbf7d0;
+}
+#onlineStatusChip.offline {
+  background: rgba(239, 68, 68, 0.16);
+  color: #fecaca;
+}
+
+/* =========================================
+   Risk bar (module insights in JS, safe to keep)
+   ========================================= */
+
+.risk-bar-wrap {
+  position: relative;
+  height: 3px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(30, 64, 175, 0.25);
+  margin-top: 3px;
+}
+
+.risk-bar {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+  background: linear-gradient(90deg, #22c55e, #facc15, #ef4444);
+}
+
+/* =========================================
+   Utility
+   ========================================= */
+
+a {
+  color: var(--accent);
+}
+a:hover {
+  text-decoration: underline;
+}
