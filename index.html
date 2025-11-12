@@ -12,7 +12,6 @@
     href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/main.min.css"
     rel="stylesheet"
   />
-
 </head>
 <body>
   <header>
@@ -288,181 +287,179 @@
         </div>
       </section>
 
-      <!-- CALENDAR + RELEASE PLANNER VIEW -->
+      <!-- CALENDAR + RELEASE PLANNER VIEW (stacked: calendar on top, planner below) -->
       <section
         id="calendarView"
         class="view"
         role="tabpanel"
         aria-labelledby="calendarTab"
       >
-        <div class="charts">
-          <!-- Calendar card -->
-          <div class="card">
-            <div class="summary-bar">
-              <div>Calendar</div>
-              <div id="calendarTz" class="muted"></div>
+        <!-- Calendar card -->
+        <div class="card">
+          <div class="summary-bar">
+            <div>Calendar</div>
+            <div id="calendarTz" class="muted"></div>
+          </div>
+
+          <div class="filter-chips" style="margin:8px 0 10px;">
+            <label class="chip">
+              <input
+                type="checkbox"
+                id="eventFilterDeployment"
+                checked
+              />
+              <span>Deployments</span>
+            </label>
+            <label class="chip">
+              <input
+                type="checkbox"
+                id="eventFilterMaintenance"
+                checked
+              />
+              <span>Maintenance</span>
+            </label>
+            <label class="chip">
+              <input
+                type="checkbox"
+                id="eventFilterRelease"
+                checked
+              />
+              <span>Release</span>
+            </label>
+            <label class="chip">
+              <input
+                type="checkbox"
+                id="eventFilterOther"
+                checked
+              />
+              <span>Other</span>
+            </label>
+          </div>
+
+          <div id="calendar"></div>
+
+          <div class="summary-bar" style="margin-top:10px;">
+            <button id="addEventBtn" type="button" class="btn sm">
+              ➕ Add event
+            </button>
+          </div>
+        </div>
+
+        <!-- Release Planner card BELOW the calendar -->
+        <div class="card" id="releasePlannerCard" style="margin-top:12px;">
+          <div class="summary-bar">
+            <div>Release Planner – F&amp;B / Middle East</div>
+          </div>
+
+          <div class="planner-grid" style="margin-top:10px;">
+            <div>
+              <label for="plannerRegion">Region profile</label>
+              <select id="plannerRegion" class="select">
+                <option value="gulf">Gulf (KSA / UAE / Qatar)</option>
+                <option value="levant">Levant</option>
+                <option value="northafrica">North Africa</option>
+              </select>
             </div>
 
-            <div class="filter-chips" style="margin:8px 0 10px;">
-              <label class="chip">
-                <input
-                  type="checkbox"
-                  id="eventFilterDeployment"
-                  checked
-                />
-                <span>Deployments</span>
-              </label>
-              <label class="chip">
-                <input
-                  type="checkbox"
-                  id="eventFilterMaintenance"
-                  checked
-                />
-                <span>Maintenance</span>
-              </label>
-              <label class="chip">
-                <input
-                  type="checkbox"
-                  id="eventFilterRelease"
-                  checked
-                />
-                <span>Release</span>
-              </label>
-              <label class="chip">
-                <input
-                  type="checkbox"
-                  id="eventFilterOther"
-                  checked
-                />
-                <span>Other</span>
-              </label>
+            <div>
+              <label for="plannerEnv">Environment</label>
+              <select id="plannerEnv" class="select">
+                <option value="Prod">Prod</option>
+                <option value="Staging">Staging</option>
+                <option value="Dev">Dev</option>
+                <option value="Other">Other</option>
+              </select>
             </div>
 
-            <div id="calendar"></div>
+            <div>
+              <label for="plannerModules">Modules</label>
+              <input
+                id="plannerModules"
+                class="input"
+                type="text"
+                placeholder="e.g. Ordering, Payments"
+              />
+            </div>
 
-            <div class="summary-bar" style="margin-top:10px;">
-              <button id="addEventBtn" type="button" class="btn sm">
-                ➕ Add event
+            <div>
+              <label for="plannerHorizon">Horizon (days)</label>
+              <input
+                id="plannerHorizon"
+                class="input"
+                type="number"
+                min="1"
+                max="30"
+                value="7"
+              />
+            </div>
+
+            <div>
+              <label for="plannerReleaseType">Release type</label>
+              <select id="plannerReleaseType" class="select">
+                <option value="feature">Feature</option>
+                <option value="minor">Minor patch</option>
+                <option value="major">Major</option>
+              </select>
+            </div>
+
+            <div>
+              <label for="plannerSlotsPerDay">Slots per day</label>
+              <input
+                id="plannerSlotsPerDay"
+                class="input"
+                type="number"
+                min="1"
+                max="8"
+                value="4"
+              />
+            </div>
+
+            <div style="grid-column:1 / -1;">
+              <label for="plannerDescription">Release description</label>
+              <textarea
+                id="plannerDescription"
+                class="input"
+                placeholder="High-level description of what’s changing…"
+              ></textarea>
+            </div>
+
+            <div style="grid-column:1 / -1;">
+              <label for="plannerTickets">Tickets in scope</label>
+              <select
+                id="plannerTickets"
+                class="select"
+                multiple
+                size="5"
+              >
+                <!-- options are filled by script.js -->
+              </select>
+              <p class="muted" style="margin-top:4px;">
+                The list above follows the current filters and highlights high-risk tickets first.
+              </p>
+            </div>
+
+            <div style="grid-column:1 / -1;display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
+              <button id="plannerRun" type="button" class="btn sm primary">
+                Compute best windows
+              </button>
+              <button id="plannerAddEvent" type="button" class="btn sm" disabled>
+                Create top suggestion as Release event
+              </button>
+              <div style="flex:1;"></div>
+              <select id="plannerReleasePlan" class="select sm" style="min-width:200px;">
+                <option value="">Release plans in horizon…</option>
+              </select>
+              <button id="plannerAssignBtn" type="button" class="btn sm">
+                Assign selected tickets
               </button>
             </div>
           </div>
 
-          <!-- Release Planner card INSIDE Calendar tab -->
-          <div class="card" id="releasePlannerCard">
-            <div class="summary-bar">
-              <div>Release Planner – F&amp;B / Middle East</div>
-            </div>
-
-            <div class="planner-grid" style="margin-top:10px;">
-              <div>
-                <label for="plannerRegion">Region profile</label>
-                <select id="plannerRegion" class="select">
-                  <option value="gulf">Gulf (KSA / UAE / Qatar)</option>
-                  <option value="levant">Levant</option>
-                  <option value="northafrica">North Africa</option>
-                </select>
-              </div>
-
-              <div>
-                <label for="plannerEnv">Environment</label>
-                <select id="plannerEnv" class="select">
-                  <option value="Prod">Prod</option>
-                  <option value="Staging">Staging</option>
-                  <option value="Dev">Dev</option>
-                  <option value="Other">Other</option>
-                </select>
-              </div>
-
-              <div>
-                <label for="plannerModules">Modules</label>
-                <input
-                  id="plannerModules"
-                  class="input"
-                  type="text"
-                  placeholder="e.g. Ordering, Payments"
-                />
-              </div>
-
-              <div>
-                <label for="plannerHorizon">Horizon (days)</label>
-                <input
-                  id="plannerHorizon"
-                  class="input"
-                  type="number"
-                  min="1"
-                  max="30"
-                  value="7"
-                />
-              </div>
-
-              <div>
-                <label for="plannerReleaseType">Release type</label>
-                <select id="plannerReleaseType" class="select">
-                  <option value="feature">Feature</option>
-                  <option value="minor">Minor patch</option>
-                  <option value="major">Major</option>
-                </select>
-              </div>
-
-              <div>
-                <label for="plannerSlotsPerDay">Slots per day</label>
-                <input
-                  id="plannerSlotsPerDay"
-                  class="input"
-                  type="number"
-                  min="1"
-                  max="8"
-                  value="4"
-                />
-              </div>
-
-              <div style="grid-column:1 / -1;">
-                <label for="plannerDescription">Release description</label>
-                <textarea
-                  id="plannerDescription"
-                  class="input"
-                  placeholder="High-level description of what’s changing…"
-                ></textarea>
-              </div>
-
-              <div style="grid-column:1 / -1;">
-                <label for="plannerTickets">Tickets in scope</label>
-                <select
-                  id="plannerTickets"
-                  class="select"
-                  multiple
-                  size="5"
-                >
-                  <!-- options are filled by script.js -->
-                </select>
-                <p class="muted" style="margin-top:4px;">
-                  The list above follows the current filters and highlights high-risk tickets first.
-                </p>
-              </div>
-
-              <div style="grid-column:1 / -1;display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
-                <button id="plannerRun" type="button" class="btn sm primary">
-                  Compute best windows
-                </button>
-                <button id="plannerAddEvent" type="button" class="btn sm" disabled>
-                  Create top suggestion as Release event
-                </button>
-                <div style="flex:1;"></div>
-                <select id="plannerReleasePlan" class="select sm" style="min-width:200px;">
-                  <option value="">Release plans in horizon…</option>
-                </select>
-                <button id="plannerAssignBtn" type="button" class="btn sm">
-                  Assign selected tickets
-                </button>
-              </div>
-            </div>
-
-            <div
-              id="plannerResults"
-              style="margin-top:10px;font-size:13px;"
-            >
-              <span class="muted">Run the planner to see suggested windows.</span>
-            </div>
+          <div
+            id="plannerResults"
+            style="margin-top:10px;font-size:13px;"
+          >
+            <span class="muted">Run the planner to see suggested windows.</span>
           </div>
         </div>
       </section>
