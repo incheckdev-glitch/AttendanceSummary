@@ -60,7 +60,7 @@
 html,body{height:100%}
 body{
   margin:0;
-  font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-family:system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   background:var(--bg);
   color:var(--text);
   transition:background .2s ease,color .2s ease;
@@ -72,14 +72,6 @@ body{
   outline:none;
   box-shadow:var(--focus);
   border-radius:6px;
-}
-
-/* Make sure native controls always have visible text */
-button,
-input,
-select,
-textarea{
-  color:var(--text);
 }
 
 .sr-only{
@@ -132,10 +124,15 @@ header{
   padding:7px 11px;
   border-radius:999px;
   border:1px solid var(--border);
-  background:var(--card);
-  color:var(--text);
+  background:#020617;
+  color:inherit;
   font:inherit;
   transition:border-color .15s ease,background .15s ease,box-shadow .15s ease,transform .08s ease,color .15s ease;
+}
+:root[data-theme="light"] .btn,
+:root[data-theme="light"] .select,
+:root[data-theme="light"] .input{
+  background:#ffffff;
 }
 
 .btn{
@@ -153,7 +150,6 @@ header{
   border-color:transparent;
   background:transparent;
   box-shadow:none;
-  color:var(--muted);
 }
 .btn.sm{
   padding:5px 9px;
@@ -179,6 +175,7 @@ header{
 }
 
 .input,.select{
+  background:#020617;
   box-shadow:none;
 }
 .input::placeholder{color:var(--muted)}
@@ -188,7 +185,10 @@ header{
   border-color:var(--accent);
   outline:none;
 }
-
+:root[data-theme="light"] .input,
+:root[data-theme="light"] .select{
+  background:#ffffff;
+}
 .icon{font-size:18px;line-height:1}
 
 #accentColor{
@@ -243,7 +243,7 @@ header{
   margin:10px 0 14px;opacity:.85;
 }
 
-/* Scrollbars */
+/* Scrollbars (sidebar, table, modals) */
 .sidebar::-webkit-scrollbar,
 .table-wrap::-webkit-scrollbar,
 .modal-content::-webkit-scrollbar{
@@ -291,7 +291,6 @@ header{
 .view.active{display:block}
 .view>*+*{margin-top:14px}
 
-/* Simple grid */
 .grid{display:grid;gap:14px}
 .grid.cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}
 @media(max-width:980px){.grid.cols-4{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -339,8 +338,22 @@ header{
 .kpi .sub{font-size:12px;color:var(--muted);margin-top:2px}
 
 /* Charts */
-.charts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.charts{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:14px;
+}
 @media(max-width:980px){.charts{grid-template-columns:1fr}}
+
+/* Chart bodies so each chart is its own clear card */
+.chart-body{
+  margin-top:10px;
+  height:260px;
+}
+.chart-body canvas{
+  width:100%!important;
+  height:100%!important;
+}
 
 /* Table & skeleton */
 table{
@@ -427,6 +440,7 @@ th.sorted-desc::after{
   text-transform:uppercase;
 }
 
+/* updated to dash-format class names (matches JS badgeStatus) */
 .status-Resolved{background:var(--status-resolved);color:#fff}
 .status-Under-Development{background:var(--status-underdev);color:#fff}
 .status-Rejected{background:var(--status-rejected);color:#fff}
@@ -496,6 +510,55 @@ th.sorted-desc::after{
 .modal .actions{display:flex;gap:8px;flex-wrap:wrap}
 .modal-close{cursor:pointer;border:none;background:transparent;color:var(--muted);font-size:20px}
 
+/* Modern grid layout for Add Event form */
+#eventForm{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+.form-row{
+  display:grid;
+  gap:10px;
+}
+.form-row-1{grid-template-columns:1fr;}
+.form-row-2{grid-template-columns:repeat(2,minmax(0,1fr));}
+.form-row-3{grid-template-columns:repeat(3,minmax(0,1fr));}
+.form-row-4{grid-template-columns:repeat(4,minmax(0,1fr));}
+
+@media(max-width:1024px){
+  .form-row-4{grid-template-columns:repeat(2,minmax(0,1fr));}
+}
+@media(max-width:768px){
+  .form-row-3,.form-row-4{grid-template-columns:1fr;}
+}
+
+.modal-field label{
+  font-size:11px;
+  text-transform:uppercase;
+  letter-spacing:.12em;
+  color:var(--muted);
+  display:block;
+  margin-bottom:3px;
+}
+.modal-field input,
+.modal-field select,
+.modal-field textarea{
+  width:100%;
+}
+.modal-footer{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:8px;
+  margin-top:12px;
+}
+.modal-footer-right{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  margin-left:auto;
+}
+
 /* Pagination */
 .table-actions{
   display:flex;gap:10px;align-items:center;justify-content:space-between;
@@ -505,7 +568,7 @@ th.sorted-desc::after{
 .pagination{display:flex;gap:6px;align-items:center}
 .chip-btn{
   padding:5px 9px;border-radius:999px;background:var(--card);
-  border:1px solid var(--border);cursor:pointer;font-size:12px;color:var(--text);
+  border:1px solid var(--border);cursor:pointer;font-size:12px;
 }
 .chip-btn[disabled]{opacity:.45;cursor:not-allowed}
 .chip-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
@@ -541,198 +604,46 @@ th.sorted-desc::after{
   box-shadow:var(--shadow);display:none;font-size:12px;
 }
 
-/* Calendar – modern look */
-#calendar{
-  margin-top:6px;
-  min-height:500px;
-  padding:8px;
-}
-.fc{
-  font-size:13px;
-  color:var(--text);
-  font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-}
-.fc .fc-toolbar{
-  margin-bottom:10px;
-  align-items:center;
-}
-.fc .fc-toolbar-title{
-  font-size:16px;
-  font-weight:600;
-}
-
-/* Grid & header */
-.fc-theme-standard .fc-scrollgrid{
-  border-radius:12px;
-  border-color:var(--border);
-  overflow:hidden;
-}
+/* Calendar */
+#calendar{margin-top:6px;min-height:500px}
+.fc{font-size:13px;background:transparent;border-radius:10px;}
+.fc .fc-toolbar-title{font-size:15px;font-weight:600}
+.fc-theme-standard .fc-scrollgrid,
 .fc-theme-standard td,
-.fc-theme-standard th{
-  border-color:var(--border);
-}
-.fc .fc-col-header-cell{
-  background:rgba(15,23,42,.96);
-  border-color:var(--border);
-  font-size:11px;
-  text-transform:uppercase;
-  letter-spacing:.04em;
-  color:var(--muted);
-}
-:root[data-theme="light"] .fc .fc-col-header-cell{
-  background:#f9fafb;
-}
-
-/* Day numbers */
+.fc-theme-standard th{border-color:var(--border)}
 .fc .fc-col-header-cell-cushion,
-.fc .fc-daygrid-day-number{
-  color:var(--muted);
-}
-.fc .fc-daygrid-day-number{
-  font-size:11px;
-  font-weight:500;
-}
-
-/* Today highlight */
+.fc .fc-daygrid-day-number{color:var(--muted);font-size:11px}
 .fc .fc-daygrid-day.fc-day-today{
-  background:rgba(37,99,235,.08);
+  background:rgba(37,99,235,.07);
 }
-.fc .fc-daygrid-day.fc-day-today .fc-daygrid-day-number{
-  color:var(--accent);
-  font-weight:700;
-}
-
-/* Hover on day cell */
-.fc .fc-daygrid-day:hover{
-  background:rgba(148,163,184,.12);
-}
-:root[data-theme="light"] .fc .fc-daygrid-day:hover{
-  background:#eef2ff;
-}
-
-/* Toolbar buttons */
 .fc .fc-button{
-  background:var(--card);
-  border-color:var(--border);
-  color:var(--text);
-  border-radius:999px;
-  padding:4px 10px;
-  font-size:12px;
-  box-shadow:none;
-}
-.fc .fc-button:hover{
-  background:rgba(148,163,184,.15);
-}
-:root[data-theme="light"] .fc .fc-button:hover{
-  background:#e5e7eb;
+  background:var(--card);border-color:var(--border);
+  color:var(--text);border-radius:999px;padding:3px 9px;font-size:12px;
 }
 .fc .fc-button-primary:not(:disabled).fc-button-active,
 .fc .fc-button-primary:not(:disabled):active,
 .fc .fc-button-primary:not(:disabled):focus,
 .fc .fc-button-primary:not(:disabled):hover{
-  background:var(--accent);
-  border-color:var(--accent);
-  color:#fff;
+  background:var(--accent);border-color:var(--accent);
 }
-
-/* Events as pills */
-.fc .fc-event{
-  border:none;
-  border-radius:999px;
-  padding:0 8px;
-  margin:1px 0;
-  font-size:11px;
-  font-weight:500;
-  line-height:1.3;
-  background:rgba(37,99,235,.16);
-  color:#e5e7eb;
-}
-:root[data-theme="light"] .fc .fc-event{
-  background:rgba(37,99,235,.12);
-  color:#111827;
-}
-.fc .fc-daygrid-event-dot{
-  display:none;
-}
-.fc .fc-event-title{
-  white-space:nowrap;
-  text-overflow:ellipsis;
-  overflow:hidden;
-}
-.fc .fc-event:hover{
-  filter:brightness(1.03);
-  box-shadow:0 0 0 1px rgba(15,23,42,.25);
-}
-
-/* Event type colors */
-.fc-event.event-type-deployment{
-  background:rgba(37,99,235,.18);
-  color:#e5e7eb;
-}
-:root[data-theme="light"] .fc-event.event-type-deployment{
-  background:rgba(37,99,235,.14);
-  color:#102a6b;
-}
-.fc-event.event-type-maintenance{
-  background:rgba(234,179,8,.22);
-  color:#fefce8;
-}
-:root[data-theme="light"] .fc-event.event-type-maintenance{
-  background:rgba(245,158,11,.18);
-  color:#7b3419;
-}
-.fc-event.event-type-release{
-  background:rgba(22,163,74,.22);
-  color:#dcfce7;
-}
-:root[data-theme="light"] .fc-event.event-type-release{
-  background:rgba(22,163,74,.18);
-  color:#064e3b;
-}
-.fc-event.event-type-other{
-  background:rgba(107,114,128,.26);
-  color:#e5e7eb;
-}
-:root[data-theme="light"] .fc-event.event-type-other{
-  background:rgba(107,114,128,.18);
-  color:#111827;
-}
+.fc .fc-toolbar.fc-header-toolbar{margin-bottom:10px}
+.fc-event.event-type-deployment{background-color:var(--info);border-color:var(--info)}
+.fc-event.event-type-maintenance{background-color:var(--warn);border-color:var(--warn)}
+.fc-event.event-type-release{background-color:var(--ok);border-color:var(--ok)}
+.fc-event.event-type-other{background-color:var(--purple);border-color:var(--purple)}
 
 /* Calendar env & risk signals */
-.fc-event.event-env-prod{
-  box-shadow:inset 2px 0 0 0 var(--danger);
-}
-.fc-event.event-env-staging{
-  box-shadow:inset 2px 0 0 0 var(--warn);
-}
-.fc-event.event-env-dev{
-  box-shadow:inset 2px 0 0 0 var(--info);
-}
-.fc-event.event-env-other{
-  box-shadow:inset 2px 0 0 0 var(--purple);
-}
-.fc-event.event-collision{
-  outline:1px dashed rgba(234,179,8,.9);
-}
-.fc-event.event-freeze{
-  outline:1px solid rgba(248,113,113,.95);
-}
-.fc-event.event-hot{
-  box-shadow:
-    inset 2px 0 0 0 #b91c1c,
-    0 0 0 1px rgba(248,113,113,.6);
-}
+.fc-event.event-env-prod .fc-event-main{border-left:3px solid var(--ok);}
+.fc-event.event-env-staging .fc-event-main{border-left:3px solid var(--info);}
+.fc-event.event-env-dev .fc-event-main{border-left:3px solid var(--neutral);}
+.fc-event.event-env-other .fc-event-main{border-left:3px solid var(--purple);}
+.fc-event.event-collision .fc-event-main{box-shadow:0 0 0 1px var(--danger) inset;}
+.fc-event.event-freeze .fc-event-main{box-shadow:0 0 0 1px var(--warn) inset;}
+.fc-event.event-hot .fc-event-main{box-shadow:0 0 0 2px var(--danger) inset;}
 
-/* Calendar risk badge */
 .event-risk-badge{
-  margin-left:6px;
-  padding:0 6px;
-  border-radius:999px;
-  font-size:10px;
-  font-weight:600;
+  margin-left:6px;padding:0 6px;border-radius:5px;font-size:10px;
   border:1px solid rgba(15,23,42,.4);
-  display:inline-flex;
-  align-items:center;
 }
 .risk-low{background:rgba(34,197,94,.18)}
 .risk-med{background:rgba(234,179,8,.22)}
@@ -745,7 +656,7 @@ th.sorted-desc::after{
   #issuesTable td:nth-child(7){display:none}
 }
 
-/* Extra compact: hide module + priority on very small screens */
+/* Extra compact mode: hide module + priority on very small screens */
 @media(max-width:480px){
   #issuesTable th:nth-child(2),
   #issuesTable td:nth-child(2),
@@ -760,7 +671,7 @@ th.sorted-desc::after{
 }
 
 /* =========================================================
-   AI – Per-module risk insights card (still safe if unused)
+   AI – Per-module risk insights card
    ========================================================= */
 
 .card:has(#aiModulesTableBody){
@@ -789,21 +700,22 @@ th.sorted-desc::after{
   border-bottom:1px solid rgba(15,23,42,.9);
   font-size:13px;
 }
-
-/* Use theme variables instead of hard-coded black */
 .card:has(#aiModulesTableBody) tbody tr:nth-child(odd){
-  background:var(--bg);
+  background:#020617;
 }
 .card:has(#aiModulesTableBody) tbody tr:nth-child(even){
-  background:var(--card);
+  background:#030712;
+}
+:root[data-theme="light"] .card:has(#aiModulesTableBody) tbody tr:nth-child(odd),
+:root[data-theme="light"] .card:has(#aiModulesTableBody) tbody tr:nth-child(even){
+  background:#f9fafb;
 }
 .card:has(#aiModulesTableBody) tbody tr:hover{
-  background:rgba(15,23,42,.9);
+  background:#111827;
 }
 :root[data-theme="light"] .card:has(#aiModulesTableBody) tbody tr:hover{
   background:#e5e7eb;
 }
-
 .card:has(#aiModulesTableBody) td:nth-child(2),
 .card:has(#aiModulesTableBody) td:nth-child(3),
 .card:has(#aiModulesTableBody) td:nth-child(4){
