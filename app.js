@@ -1,16 +1,15 @@
 /**
- * InCheck Pro Dashboard — Issues · Ops · AI Copilot
+ * InCheck Pro Dashboard — Issues · Ops · Release Planner
  * Single-file architecture:
  *  - CONFIG / LS_KEYS
  *  - DataStore (issues + text analytics)
- *  - Domain risk engine (technical + biz + ops + severity/impact/urgency)
- *  - DSL query parser & matcher
+ *  - Risk engine (technical + biz + ops + severity/impact/urgency)
  *  - Calendar risk (events + collisions + freezes + hot issues)
  *  - Release planner (F&B / Middle East)
  */
 
 const CONFIG = {
-  DATA_VERSION: '3',
+  DATA_VERSION: '2',
 
   // Issues CSV (read-only)
   SHEET_URL:
@@ -27,8 +26,7 @@ const CONFIG = {
   TREND_DAYS_WINDOW: 14,
 
   RISK: {
-    // legacy weights still used in some places (e.g. trends)
-    priorityWeight: { Urgent: 4, High: 3, Medium: 2, Low: 1, '': 2 },
+    priorityWeight: { High: 3, Medium: 2, Low: 1, "": 1 },
     techBoosts: [
       ['timeout', 3],
       ['time out', 3],
@@ -62,123 +60,6 @@ const CONFIG = {
       ['sla', 2]
     ],
     statusBoosts: { 'on stage': 2, under: 1 },
-
-    // domain risk model pieces
-    statusFactor: {
-      closed: 0.3,      // Resolved / Rejected
-      staging: 0.8,     // On Stage / Tested on Staging
-      active: 1.0       // Under Dev / On Hold / Not Started Yet / New Futures / others
-    },
-    moduleFactor: {
-      'mobile app': 1.3,
-      reporting: 1.2,
-      checklist: 1.1,
-      journal: 1.0,
-      employee: 0.9,
-      roles: 0.9,
-      locations: 0.9,
-      unspecified: 1.0
-    },
-    typeBonus: {
-      bug: 1,
-      'new futures': -0.5
-    },
-    keywordBuckets: {
-      dataIntegrity: {
-        score: 3,
-        patterns: [
-          'historical data',
-          'history data',
-          'historical log',
-          'journal entries not showing',
-          'deleted',
-          'being deleted',
-          'disappear',
-          'not showing in report',
-          'not showing on report',
-          'missing in report',
-          'wrong %',
-          'wrong percentage',
-          'wrong completion',
-          'timezone',
-          'time zone',
-          'arabic',
-          'encoding',
-          'â€œ??????â€',
-          '???',
-          'garbled text'
-        ]
-      },
-      checklistBlocked: {
-        score: 3,
-        patterns: [
-          'checklists not appearing on app',
-          'checklist not appearing on app',
-          'checklists not appearing',
-          'checklist not appearing',
-          'checklist didn’t submit completely',
-          'checklists didn’t submit completely',
-          'did not submit completely',
-          'cannot submit',
-          'can’t submit',
-          'error when submitting',
-          'internal server error',
-          '500 internal',
-          'not found',
-          '404',
-          'instances not appearing',
-          'instances not visible',
-          'cannot execute checklist'
-        ]
-      },
-      exportFailure: {
-        score: 2,
-        patterns: [
-          'export',
-          'export issues',
-          'export report',
-          'pdf',
-          'csv',
-          'excel',
-          'xlsx',
-          'json',
-          'unexpected token',
-          'white page',
-          'blank page',
-          'download failed'
-        ]
-      },
-      performanceScaling: {
-        score: 2,
-        patterns: [
-          'long loading time',
-          'long loading',
-          'takes long time',
-          'failed fetch',
-          'failed to fetch',
-          'data pagination',
-          'pagination',
-          'many instances',
-          'large amount of data',
-          'large data',
-          'slow loading'
-        ]
-      },
-      releaseRegression: {
-        score: 1,
-        patterns: [
-          'after new release',
-          'after the new release',
-          'before release was working',
-          'before release it was working',
-          'staging vs live',
-          'staging vs production',
-          'on stage',
-          'tested on staging'
-        ]
-      }
-    },
-
     misalignedDelta: 1,
     highRisk: 9,
     critRisk: 13,
@@ -376,104 +257,6 @@ const STOPWORDS = new Set([
   'inc'
 ]);
 
-// Domain keyword dictionary for patterns (AI tab)
-const DOMAIN_TERMS = {
-  'export / CSV / PDF': [
-    'export',
-    'pdf',
-    'csv',
-    'excel',
-    'xlsx',
-    'json',
-    'unexpected token',
-    'white page',
-    'blank page'
-  ],
-  'filters / navigation': [
-    'filter',
-    'filtered',
-    'client filter',
-    'group mode',
-    'redirection',
-    'redirect',
-    'list view',
-    'grid view',
-    'list/grid',
-    'navigation',
-    'switch view'
-  ],
-  'on-demand & schedule': [
-    'on demand',
-    'on-demand',
-    'schedule',
-    'scheduled',
-    'display time',
-    'due time',
-    'instances',
-    'checklist schedule',
-    'active/inactive'
-  ],
-  'sublist & sections': [
-    'sublist',
-    'sub-list',
-    'section',
-    'sections',
-    'sub section'
-  ],
-  'tags & N/A / OOO': [
-    'tags',
-    'tagging',
-    'n/a',
-    'N/A',
-    'ooo',
-    'out of office'
-  ],
-  'historical log & data': [
-    'historical data',
-    'historical log',
-    'history',
-    'journal entries',
-    'logbook',
-    'log book',
-    'log',
-    'entries not showing',
-    'data being deleted',
-    'deleted'
-  ],
-  'geofencing & location': [
-    'geofencing',
-    'geofacing',
-    'geofence',
-    'location access',
-    'location permission',
-    'gps'
-  ],
-  'roles & access': [
-    'role',
-    'roles',
-    'client access',
-    'role based',
-    'role-based',
-    'permissions',
-    'permission'
-  ],
-  'shared devices & QR': [
-    'shared device',
-    'shared devices',
-    'qr code',
-    'qr',
-    'device admin'
-  ],
-  'encoding / language': [
-    'arabic',
-    'encoding',
-    'charset',
-    'language',
-    '???',
-    'â€œ??????â€'
-  ]
-};
-
 const U = {
   q: (s, r = document) => r.querySelector(s),
   qAll: (s, r = document) => Array.from(r.querySelectorAll(s)),
@@ -516,14 +299,7 @@ const U = {
 
 /** Filters persisted */
 const Filters = {
-  state: {
-    search: '',
-    module: 'All',
-    priority: 'All',
-    status: 'All',
-    start: '',
-    end: ''
-  },
+  state: { search: '', module: 'All', priority: 'All', status: 'All', start: '', end: '' },
   load() {
     try {
       const raw = localStorage.getItem(LS_KEYS.filters);
@@ -546,7 +322,7 @@ function UndefaultCount(arr) {
 /** DataStore */
 const DataStore = {
   rows: [],
-  computed: new Map(), // id -> { tokens:Set, tf:Map, idf:Map, risk, suggestions, domainCategory }
+  computed: new Map(), // id -> { tokens:Set, tf:Map, idf:Map, risk, suggestions }
   byId: new Map(),
   byModule: new Map(),
   byStatus: new Map(),
@@ -560,44 +336,21 @@ const DataStore = {
     const i = (s || '').trim().toLowerCase();
     if (!i) return 'Not Started Yet';
     if (i.startsWith('resolved')) return 'Resolved';
+    if (i.startsWith('under')) return 'Under Development';
     if (i.startsWith('rejected')) return 'Rejected';
     if (i.startsWith('on hold')) return 'On Hold';
     if (i.startsWith('not started')) return 'Not Started Yet';
-    if (i.startsWith('new futures')) return 'New Futures';
-    if (i.startsWith('under')) return 'Under Development';
-    if (i.startsWith('tested on staging')) return 'Tested on Staging';
-    if (i.startsWith('on stage')) return 'On Stage';
     if (i.startsWith('sent')) return 'Sent';
+    if (i.startsWith('on stage')) return 'On Stage';
     return s || 'Not Started Yet';
   },
   normalizePriority(p) {
     const i = (p || '').trim().toLowerCase();
     if (!i) return '';
-    if (i.startsWith('u') || i.includes('urgent') || i.includes('p0')) return 'Urgent';
-    if (i.startsWith('h') || i.includes('p1')) return 'High';
+    if (i.startsWith('h')) return 'High';
     if (i.startsWith('m')) return 'Medium';
     if (i.startsWith('l')) return 'Low';
     return p;
-  },
-  normalizeModule(m) {
-    const i = (m || '').trim().toLowerCase();
-    if (!i) return 'Unspecified';
-    if (i.startsWith('mobile')) return 'Mobile App';
-    if (i.startsWith('report')) return 'Reporting';
-    if (i.startsWith('check')) return 'Checklist';
-    if (i.startsWith('journal')) return 'Journal';
-    if (i.startsWith('employee')) return 'Employee';
-    if (i.startsWith('role')) return 'Roles';
-    if (i.startsWith('location')) return 'Locations';
-    return m;
-  },
-  normalizeType(t) {
-    const i = (t || '').trim().toLowerCase();
-    if (!i) return '';
-    if (i.startsWith('bug')) return 'Bug';
-    if (i.startsWith('enh')) return 'Enhancement';
-    if (i.startsWith('new futures')) return 'New Futures';
-    return t;
   },
   normalizeRow(raw) {
     const lower = {};
@@ -611,41 +364,29 @@ const DataStore = {
       }
       return '';
     };
-    const module = this.normalizeModule(
-      pick('impacted module', 'module', 'issue location')
-    );
-    const type = this.normalizeType(pick('category', 'type'));
-    const priority = this.normalizePriority(pick('priority'));
-
     return {
       id: pick('ticket id', 'id'),
-      module: module || 'Unspecified',
+      module: pick('impacted module', 'module', 'issue location') || 'Unspecified',
       title: pick('title'),
       desc: pick('description'),
       file: pick('file upload', 'link', 'url'),
-      priority,
-      status: this.normalizeStatus(pick('status') || 'Not Started Yet'),
-      type,
+      priority: DataStore.normalizePriority(pick('priority')),
+      status: DataStore.normalizeStatus(pick('status') || 'Not Started Yet'),
+      type: pick('category', 'type'),
       date: pick('timestamp', 'date', 'created at'),
       log: pick('log', 'logs', 'comment', 'notes')
     };
   },
   tokenize(issue) {
-    const text = [issue.title, issue.desc, issue.log]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase();
+    const text = [issue.title, issue.desc, issue.log].filter(Boolean).join(' ').toLowerCase();
     return text
       .replace(/[^a-z0-9]+/g, ' ')
       .split(/\s+/)
       .filter(w => w && w.length > 2 && !STOPWORDS.has(w));
   },
   hydrate(csvText) {
-    const parsed = Papa.parse(csvText, {
-      header: true,
-      skipEmptyLines: true
-    }).data
-      .map(DataStore.normalizeRow.bind(DataStore))
+    const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true }).data
+      .map(DataStore.normalizeRow)
       .filter(r => r.id && r.id.trim() !== '');
     this.hydrateFromRows(parsed);
   },
@@ -678,21 +419,16 @@ const DataStore = {
     this.df.forEach((df, term) => idf.set(term, Math.log((this.N + 1) / (df + 1)) + 1));
     this.computed.forEach(meta => (meta.idf = idf));
 
-    // risk & suggestions + domain categories
+    // risk & suggestions
     this.rows.forEach(r => {
       const risk = Risk.computeRisk(r);
-      const domainCategory = Risk.assignDomainCategory(r);
-      const categories = domainCategory ? [{ label: domainCategory, score: 1 }] : [];
+      const categories = Risk.suggestCategories(r);
       const sPrio = Risk.suggestPriority(r, risk.total);
       const reasons = Risk.explainRisk(r);
       const meta = this.computed.get(r.id);
       meta.risk = { ...risk, reasons };
       meta.suggestions = { priority: sPrio, categories };
-      meta.domainCategory = domainCategory;
     });
-
-    // invalidate regression index
-    RegressionIndex = null;
   }
 };
 
@@ -726,521 +462,132 @@ const IssuesCache = {
 };
 
 function prioMap(p) {
-  return { Urgent: 4, High: 3, Medium: 2, Low: 1 }[p] || 0;
+  return { High: 3, Medium: 2, Low: 1 }[p] || 0;
 }
 function prioGap(suggested, current) {
   return prioMap(suggested) - prioMap(current);
 }
 
-/** Risk engine (domain-specific; risk.total is 1..10) */
+/** Risk engine (with severity / impact / urgency) */
 const Risk = {
-  priorityBase(priority) {
-    if (!priority) return 2;
-    return CONFIG.RISK.priorityWeight[priority] || 2;
-  },
-  statusFactor(status) {
-    const s = (status || '').toLowerCase();
-    if (!s) return CONFIG.RISK.statusFactor.active;
-    if (s.startsWith('resolved') || s.startsWith('rejected')) {
-      return CONFIG.RISK.statusFactor.closed;
+  scoreFromBoosts(text, rules) {
+    let s = 0;
+    for (const [kw, val] of rules) {
+      if (text.includes(kw)) s += val;
     }
-    if (s.startsWith('on stage') || s.startsWith('tested on staging')) {
-      return CONFIG.RISK.statusFactor.staging;
-    }
-    return CONFIG.RISK.statusFactor.active;
-  },
-  moduleFactor(module) {
-    const m = (module || 'Unspecified').toLowerCase();
-    if (m.includes('mobile')) return CONFIG.RISK.moduleFactor['mobile app'];
-    if (m.includes('report')) return CONFIG.RISK.moduleFactor.reporting;
-    if (m.includes('check')) return CONFIG.RISK.moduleFactor.checklist;
-    if (m.includes('journal')) return CONFIG.RISK.moduleFactor.journal;
-    if (m.includes('employee')) return CONFIG.RISK.moduleFactor.employee;
-    if (m.includes('role')) return CONFIG.RISK.moduleFactor.roles;
-    if (m.includes('location')) return CONFIG.RISK.moduleFactor.locations;
-    return CONFIG.RISK.moduleFactor.unspecified;
-  },
-  typeBonus(type) {
-    const t = (type || '').toLowerCase();
-    if (t.startsWith('bug')) return CONFIG.RISK.typeBonus.bug;
-    if (t.startsWith('new futures')) return CONFIG.RISK.typeBonus['new futures'];
-    return 0;
-  },
-  keywordBonus(text) {
-    const lower = (text || '').toLowerCase();
-    let bonus = 0;
-    const matchedReasons = [];
-    Object.entries(CONFIG.RISK.keywordBuckets).forEach(([key, bucket]) => {
-      const hit = bucket.patterns.some(p => lower.includes(p.toLowerCase()));
-      if (hit) {
-        bonus += bucket.score;
-        matchedReasons.push(key);
-      }
-    });
-    return { bonus, matchedReasons };
+    return s;
   },
   computeRisk(issue) {
-    const txt = [issue.title, issue.desc, issue.log].filter(Boolean).join(' ');
-    const lower = txt.toLowerCase();
+    const txt = [issue.title, issue.desc, issue.log].filter(Boolean).join(' ').toLowerCase() + ' ';
+    const basePriority = CONFIG.RISK.priorityWeight[issue.priority || ''] || 1;
 
-    const priorityBase = this.priorityBase(issue.priority);
-    const statusFactor = this.statusFactor(issue.status);
-    const moduleFactor = this.moduleFactor(issue.module);
-    const typeBonus = this.typeBonus(issue.type);
-    const { bonus: keywordBonus, matchedReasons } = this.keywordBonus(txt);
+    const tech = basePriority + this.scoreFromBoosts(txt, CONFIG.RISK.techBoosts);
+    const biz = this.scoreFromBoosts(txt, CONFIG.RISK.bizBoosts);
+    const ops = this.scoreFromBoosts(txt, CONFIG.RISK.opsBoosts);
 
-    let raw =
-      (priorityBase * 2 + typeBonus + keywordBonus) * statusFactor * moduleFactor;
+    let total = tech + biz + ops;
 
-    // clamp to 1..10
-    let riskScore = Math.round(raw);
-    if (riskScore < 1) riskScore = 1;
-    if (riskScore > 10) riskScore = 10;
-
-    // simple sub-dimensions for UI
-    let severity = priorityBase;
-    if (matchedReasons.includes('dataIntegrity')) severity += 2;
-    if (matchedReasons.includes('checklistBlocked')) severity += 2;
-    if (matchedReasons.includes('exportFailure')) severity += 1;
-
-    let impact = 1;
-    if (/report|export|journal|historical/i.test(lower)) impact += 2;
-    if (/mobile app|checklist/i.test(lower)) impact += 1;
-    if (/roles|employee|location|geofencing|geofacing/i.test(lower)) impact += 1;
-
-    let urgency = 1;
-    if (/urgent|asap|today|now|immediately|sla/i.test(lower)) urgency += 1.5;
-    if (issue.priority === 'Urgent') urgency += 1;
-    if (issue.status && /on stage|tested on staging/i.test(issue.status)) {
-      urgency += 0.5;
+    const st = (issue.status || '').toLowerCase();
+    for (const k in CONFIG.RISK.statusBoosts) {
+      if (st.startsWith(k)) total += CONFIG.RISK.statusBoosts[k];
     }
 
-    // normalize severity/impact/urgency to small ints
-    const sevScore = Math.max(1, Math.min(5, Math.round(severity)));
-    const impScore = Math.max(1, Math.min(5, Math.round(impact)));
-    const urgScore = Math.max(1, Math.min(5, Math.round(urgency)));
+    let timeRisk = 0;
+    let ageDays = null;
+    let isOpen = !(st.startsWith('resolved') || st.startsWith('rejected'));
 
-    // legacy components kept for compatibility
+    if (issue.date) {
+      const d = new Date(issue.date);
+      if (!isNaN(d)) {
+        ageDays = (Date.now() - d.getTime()) / 86400000;
+        if (isOpen && total >= CONFIG.RISK.highRisk) {
+          if (ageDays <= 14) timeRisk += 2; // fresh risky
+          if (ageDays >= 30) timeRisk += 3; // stale high-risk
+        }
+      }
+    }
+    total += timeRisk;
+
+    // severity: how bad is the scenario
+    let severity = basePriority;
+    if (/p0|sev0|outage|down|data loss|breach|security/i.test(txt)) severity += 3;
+    if (/p1|sev1|incident|sla/i.test(txt)) severity += 2;
+    if (/p2|degraded/i.test(txt)) severity += 1;
+
+    // impact: how much money / users
+    let impact = 1;
+    if (/payment|billing|checkout|revenue|invoice|subscription|signup|onboarding/i.test(txt))
+      impact += 2;
+    if (/login|auth|authentication|token|session/i.test(txt)) impact += 1.5;
+    if (/admin|internal|report/i.test(txt)) impact += 0.5;
+
+    // urgency: time sensitivity
+    let urgency = 1;
+    if (/today|now|immediately|urgent|sla/i.test(txt)) urgency += 1.5;
+    if (ageDays != null) {
+      if (ageDays <= 1) urgency += 1;
+      if (ageDays >= 14 && isOpen) urgency += 0.5;
+    }
+
+    const sevScore = Math.round(severity);
+    const impScore = Math.round(impact * 1.5);
+    const urgScore = Math.round(urgency * 1.5);
+
+    total += sevScore + impScore + urgScore;
+
     return {
-      technical: priorityBase,
-      business: 0,
-      operational: 0,
-      time: 0,
-      total: riskScore,
+      technical: tech,
+      business: biz,
+      operational: ops,
+      time: timeRisk,
+      total,
       severity: sevScore,
       impact: impScore,
-      urgency: urgScore,
-      matchedReasons
+      urgency: urgScore
     };
   },
-  assignDomainCategory(issue) {
-    const mod = (issue.module || '').toLowerCase();
-    const text = [issue.title, issue.desc, issue.log]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase();
-
-    const has = (...terms) => terms.some(t => text.includes(t.toLowerCase()));
-
-    // 1) Reporting – Filters & Navigation
-    if (
-      mod.includes('report') &&
-      has(
-        'filter',
-        'filtered',
-        'client filter',
-        'group mode',
-        'redirection',
-        'redirect',
-        'list view',
-        'grid view',
-        'list/grid',
-        'pagination',
-        'page size',
-        'view mode'
-      )
-    ) {
-      return 'Reporting – Filters & Navigation';
-    }
-
-    // 2) Reporting – Exports & Data Format
-    if (
-      mod.includes('report') &&
-      has(
-        'export',
-        'pdf',
-        'csv',
-        'excel',
-        'xlsx',
-        'unexpected token',
-        'json',
-        'white page',
-        'blank page',
-        'encoding',
-        'arabic'
-      )
-    ) {
-      return 'Reporting – Exports & Data Format';
-    }
-
-    // 3) Checklist – Schedule & Instances
-    if (
-      mod.includes('checklist') ||
-      ((mod.includes('report') || mod.includes('mobile')) &&
-        has(
-          'schedule',
-          'scheduled',
-          'on demand',
-          'on-demand',
-          'display time',
-          'due time',
-          'instances',
-          'instance'
-        ))
-    ) {
-      return 'Checklist – Schedule & Instances';
-    }
-
-    // 4) Sublist, Tags & Completion Logic
-    if (
-      has(
-        'sublist',
-        'sub-list',
-        'section',
-        'sections',
-        'tags',
-        'tagging',
-        'n/a',
-        'ooo',
-        'out of office',
-        'partially done',
-        'partial done',
-        'completion %',
-        'completion%',
-        'list completion',
-        'score',
-        'distribution'
-      )
-    ) {
-      return 'Sublist, Tags & Completion Logic';
-    }
-
-    // 5) Mobile App UX & Workflow
-    if (mod.includes('mobile') && !mod.includes('report')) {
-      return 'Mobile App UX & Workflow';
-    }
-
-    // 6) Access & Permissions
-    if (
-      mod.includes('employee') ||
-      mod.includes('roles') ||
-      mod.includes('role') ||
-      mod.includes('location') ||
-      has(
-        'client access',
-        'role based',
-        'role-based',
-        'permissions',
-        'permission',
-        'geofencing',
-        'geofacing',
-        'device admin',
-        'shared device',
-        'transfer employees'
-      )
-    ) {
-      return 'Access & Permissions';
-    }
-
-    // 7) Journal & Logging
-    if (
-      mod.includes('journal') ||
-      has('journal entries', 'logbook', 'log book', 'log', 'history', 'historical log')
-    ) {
-      return 'Journal & Logging';
-    }
-
-    return null;
-  },
   suggestCategories(issue) {
-    const cat = this.assignDomainCategory(issue);
-    return cat ? [{ label: cat, score: 1 }] : [];
+    const text = [issue.title, issue.desc, issue.log].filter(Boolean).join(' ').toLowerCase();
+    const res = [];
+    Object.entries(CONFIG.LABEL_KEYWORDS).forEach(([label, kws]) => {
+      let hits = 0;
+      kws.forEach(k => {
+        if (text.includes(k)) hits++;
+      });
+      if (hits) res.push({ label, score: hits });
+    });
+    res.sort((a, b) => b.score - a.score);
+    return res;
   },
   suggestPriority(issue, totalRisk) {
     if (issue.priority) return issue.priority;
     const s = totalRisk != null ? totalRisk : this.computeRisk(issue).total;
-    if (s >= 9) return 'Urgent';
-    if (s >= 7) return 'High';
-    if (s >= 4) return 'Medium';
+    if (s >= CONFIG.RISK.highRisk) return 'High';
+    if (s >= 6) return 'Medium';
     return 'Low';
   },
   explainRisk(issue) {
-    const txt = [issue.title, issue.desc, issue.log]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase();
-    const reasons = [];
-
-    const addIf = (cond, label) => {
-      if (cond) reasons.push(label);
+    const txt = [issue.title, issue.desc, issue.log].filter(Boolean).join(' ').toLowerCase() + ' ';
+    const picks = [];
+    const push = kw => {
+      if (txt.includes(kw)) picks.push(kw);
     };
-
-    addIf(issue.priority === 'Urgent', 'priority urgent');
-    addIf(issue.priority === 'High', 'priority high');
-
-    const k = CONFIG.RISK.keywordBuckets;
-    if (k.dataIntegrity.patterns.some(p => txt.includes(p.toLowerCase()))) {
-      reasons.push('data integrity / audit risk');
-    }
-    if (k.checklistBlocked.patterns.some(p => txt.includes(p.toLowerCase()))) {
-      reasons.push('checklist submission blocked');
-    }
-    if (k.exportFailure.patterns.some(p => txt.includes(p.toLowerCase()))) {
-      reasons.push('exports / reporting failing');
-    }
-    if (k.performanceScaling.patterns.some(p => txt.includes(p.toLowerCase()))) {
-      reasons.push('performance / scaling');
-    }
-    if (k.releaseRegression.patterns.some(p => txt.includes(p.toLowerCase()))) {
-      reasons.push('release / staging regression hint');
-    }
-
-    const s = (issue.status || '').toLowerCase();
-    addIf(s.startsWith('on stage') || s.startsWith('tested on staging'), 'staging only');
-    addIf(
-      s.startsWith('on hold') || s.startsWith('on stage'),
-      'stuck in intermediate status'
+    [...CONFIG.RISK.techBoosts, ...CONFIG.RISK.bizBoosts, ...CONFIG.RISK.opsBoosts].forEach(
+      ([kw]) => push(kw)
     );
+    if ((issue.status || '').toLowerCase().startsWith('on stage')) picks.push('on stage');
+    if ((issue.status || '').toLowerCase().startsWith('under')) picks.push('under development');
 
-    const cat = this.assignDomainCategory(issue);
-    if (cat) reasons.push(cat);
-
-    return Array.from(new Set(reasons)).slice(0, 6);
-  }
-};
-
-/** Command DSL parser */
-const DSL = {
-  parse(text) {
-    const lowerFull = (text || '').toLowerCase();
-    let w = ' ' + lowerFull + ' ';
-    const out = {
-      module: null,
-      status: null,
-      priority: null,
-      id: null,
-      type: null,
-      missing: null,
-      category: null,
-      regression: false,
-      riskOp: null,
-      riskVal: null,
-      severityOp: null,
-      severityVal: null,
-      impactOp: null,
-      impactVal: null,
-      urgencyOp: null,
-      urgencyVal: null,
-      ageOp: null,
-      ageVal: null,
-      lastDays: null,
-      cluster: null,
-      sort: null,
-      eventScope: null,
-      words: []
-    };
-    const eat = (re, key, fn = v => v) => {
-      const m = w.match(re);
-      if (m) {
-        out[key] = fn(m[1].trim());
-        w = w.replace(m[0], ' ');
-      }
-    };
-    eat(/\bmodule:([^\s]+)/, 'module');
-    eat(/\bstatus:([^\s]+)/, 'status');
-    eat(/\bpriority:([^\s]+)/, 'priority');
-    eat(/\bid:([^\s]+)/, 'id');
-    eat(/\btype:([^\s]+)/, 'type');
-    eat(/\bmissing:([^\s]+)/, 'missing');
-    eat(/\bcategory:([^\s]+)/, 'category');
-    eat(/\bregression:(yes|true|1)/, 'regression', () => true);
-
-    const rv = lowerFull.match(/\brisk([><=]{1,2})(\d+)/);
-    if (rv) {
-      out.riskOp = rv[1];
-      out.riskVal = +rv[2];
-      w = w.replace(rv[0], ' ');
-    }
-
-    const sv = lowerFull.match(/\bseverity([><=]{1,2})(\d+)/);
-    if (sv) {
-      out.severityOp = sv[1];
-      out.severityVal = +sv[2];
-      w = w.replace(sv[0], ' ');
-    }
-    const iv = lowerFull.match(/\bimpact([><=]{1,2})(\d+)/);
-    if (iv) {
-      out.impactOp = iv[1];
-      out.impactVal = +iv[2];
-      w = w.replace(iv[0], ' ');
-    }
-    const uv = lowerFull.match(/\burgency([><=]{1,2})(\d+)/);
-    if (uv) {
-      out.urgencyOp = uv[1];
-      out.urgencyVal = +uv[2];
-      w = w.replace(uv[0], ' ');
-    }
-
-    eat(/\blast:(\d+)d/, 'lastDays', n => +n);
-    const av = lowerFull.match(/\bage([><=]{1,2})(\d+)d/);
-    if (av) {
-      out.ageOp = av[1];
-      out.ageVal = +av[2];
-      w = w.replace(av[0], ' ');
-    }
-
-    eat(/\bcluster:([^\s]+)/, 'cluster');
-    eat(/\bsort:(risk|date|priority)/, 'sort');
-    eat(/\bevent:(\S+)/, 'eventScope');
-
-    out.words = w
-      .split(/\s+/)
-      .filter(Boolean)
-      .filter(t => t.length > 2 && !STOPWORDS.has(t));
-
-    // bare "bug" / "enhancement" shorthand
-    if (!out.type) {
-      if (/\bbug\b/.test(lowerFull)) out.type = 'bug';
-      else if (/\benh(ancement)?\b/.test(lowerFull)) out.type = 'enhancement';
-    }
-
-    return out;
-  },
-  matches(issue, meta, q) {
-    if (q.module && !(issue.module || '').toLowerCase().includes(q.module)) return false;
-
-    if (q.priority) {
-      const p = q.priority[0].toUpperCase();
-      if (['U', 'H', 'M', 'L'].includes(p)) {
-        const ip = (issue.priority || '')[0] || '';
-        if (ip !== p) return false;
-      } else if (!(issue.priority || '').toLowerCase().includes(q.priority)) return false;
-    }
-
-    if (q.status) {
-      const st = (issue.status || '').toLowerCase();
-      if (q.status === 'open') {
-        const closed = st.startsWith('resolved') || st.startsWith('rejected');
-        if (closed) return false;
-      } else if (q.status === 'closed') {
-        const closed = st.startsWith('resolved') || st.startsWith('rejected');
-        if (!closed) return false;
-      } else if (!st.includes(q.status)) return false;
-    }
-
-    if (q.id && !(issue.id || '').toLowerCase().includes(q.id)) return false;
-
-    if (q.type) {
-      const desired = q.type.toLowerCase();
-      const it = (issue.type || '').toLowerCase();
-      if (!it.includes(desired)) return false;
-    }
-
-    if (q.missing) {
-      const m = q.missing;
-      if (m === 'priority' && issue.priority) return false;
-      if (m === 'module' && issue.module && issue.module !== 'Unspecified') return false;
-      if (m === 'type' && issue.type) return false;
-    }
-
-    if (q.lastDays) {
-      const after = U.daysAgo(q.lastDays);
-      if (!U.isBetween(issue.date, after, null)) return false;
-    }
-
-    if (q.ageOp && q.ageVal != null) {
-      if (!issue.date) return false;
+    if (issue.date) {
       const d = new Date(issue.date);
-      if (isNaN(d)) return false;
-      const ageDays = (Date.now() - d.getTime()) / 86400000;
-      const op = q.ageOp;
-      const b = q.ageVal;
-      let pass = false;
-      if (op === '>') pass = ageDays > b;
-      else if (op === '>=') pass = ageDays >= b;
-      else if (op === '<') pass = ageDays < b;
-      else if (op === '<=') pass = ageDays <= b;
-      else if (op === '=' || op === '==') pass = Math.round(ageDays) === b;
-      if (!pass) return false;
-    }
-
-    if (q.cluster) {
-      const t = q.cluster.toLowerCase();
-      if (!meta.tokens || !Array.from(meta.tokens).some(x => x.includes(t))) return false;
-    }
-
-    const risk = meta.risk || {};
-
-    if (q.riskOp) {
-      const rv = risk.total || 0;
-      const op = q.riskOp;
-      const b = q.riskVal;
-      let pass = false;
-      if (op === '>') pass = rv > b;
-      else if (op === '>=') pass = rv >= b;
-      else if (op === '<') pass = rv < b;
-      else if (op === '<=') pass = rv <= b;
-      else if (op === '=' || op === '==') pass = rv === b;
-      if (!pass) return false;
-    }
-
-    const cmpNum = (val, op, b) => {
-      const v = val || 0;
-      if (op === '>') return v > b;
-      if (op === '>=') return v >= b;
-      if (op === '<') return v < b;
-      if (op === '<=') return v <= b;
-      if (op === '=' || op === '==') return v === b;
-      return true;
-    };
-    if (q.severityOp && !cmpNum(risk.severity, q.severityOp, q.severityVal)) return false;
-    if (q.impactOp && !cmpNum(risk.impact, q.impactOp, q.impactVal)) return false;
-    if (q.urgencyOp && !cmpNum(risk.urgency, q.urgencyOp, q.urgencyVal)) return false;
-
-    if (q.category) {
-      const desiredKey = q.category.toLowerCase();
-      const cat = (meta.domainCategory || '').toLowerCase();
-      const map = {
-        exports: 'exports & data format',
-        filters: 'filters & navigation',
-        schedule: 'schedule & instances',
-        sublist: 'sublist, tags & completion logic',
-        access: 'access & permissions',
-        journal: 'journal & logging'
-      };
-
-      const target =
-        desiredKey in map
-          ? map[desiredKey]
-          : desiredKey.replace(/[-_]/g, ' ');
-
-      if (!cat || !cat.includes(target)) return false;
-    }
-
-    if (q.regression) {
-      if (!isRegressionIssue(issue.id)) return false;
-    }
-
-    if (q.words && q.words.length) {
-      const txt = [issue.title, issue.desc, issue.log]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      for (const w of q.words) {
-        if (!txt.includes(w)) return false;
+      if (!isNaN(d)) {
+        const ageDays = (Date.now() - d.getTime()) / 86400000;
+        if (ageDays <= 14) picks.push('recent');
+        else if (ageDays >= 30) picks.push('stale');
       }
     }
-    return true;
+
+    return Array.from(new Set(picks)).slice(0, 6);
   }
 };
 
@@ -1256,73 +603,35 @@ const CalendarLink = {
 
 /** Events + risk (issues + events) */
 function computeEventsRisk(issues, events) {
-  const now = new Date();
-  const limit = U.dateAddDays(now, 7);
-
+  const now = new Date(),
+    limit = U.dateAddDays(now, 7);
   const openIssues = issues.filter(i => {
     const st = (i.status || '').toLowerCase();
     return !(st.startsWith('resolved') || st.startsWith('rejected'));
   });
-
   const modules = Array.from(new Set(openIssues.map(i => i.module).filter(Boolean)));
-
   const res = [];
   events.forEach(ev => {
     if (!ev.start) return;
     const d = new Date(ev.start);
     if (isNaN(d) || d < now || d > limit) return;
-
     const title = (ev.title || '').toLowerCase();
-    const desc = (ev.description || '').toLowerCase();
-    const text = title + ' ' + desc;
-
     const impacted = modules.filter(m => title.includes((m || '').toLowerCase()));
     let rel = [];
-
-    if (impacted.length) {
-      rel = openIssues.filter(i => impacted.includes(i.module));
-    } else if ((ev.type || '').toLowerCase() !== 'other') {
-      const recentOpen = openIssues.filter(i => U.isBetween(i.date, U.daysAgo(14), null));
+    if (impacted.length) rel = openIssues.filter(i => impacted.includes(i.module));
+    else if ((ev.type || '').toLowerCase() !== 'other') {
+      const recentOpen = openIssues.filter(i => U.isBetween(i.date, U.daysAgo(7), null));
       rel = recentOpen.filter(
-        i => (DataStore.computed.get(i.id)?.risk?.total || 0) >= CONFIG.RISK.highRisk - 1
+        i => (DataStore.computed.get(i.id)?.risk?.total || 0) >= CONFIG.RISK.highRisk
       );
     }
-
     if (!rel.length) return;
-
-    let risk = 0;
-    let hasDataLoss = false;
-    let hasStagingOnly = false;
-
-    rel.forEach(i => {
-      const meta = DataStore.computed.get(i.id) || {};
-      const r = meta.risk?.total || 0;
-      risk += r;
-
-      const t = [i.title, i.desc, i.log]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      if (
-        /historical data|historical log|deleted|data being deleted|journal entries not showing|wrong %/i.test(
-          t
-        )
-      ) {
-        hasDataLoss = true;
-      }
-      const st = (i.status || '').toLowerCase();
-      if (st.startsWith('on stage') || st.startsWith('tested on staging')) {
-        hasStagingOnly = true;
-      }
-    });
-
-    // extra bump for data-loss + staging regression pushing to Prod
-    if (hasDataLoss) risk += 10;
-    if (hasStagingOnly && (ev.env || 'Prod').toLowerCase() === 'prod') risk += 5;
-
+    const risk = rel.reduce(
+      (s, i) => s + (DataStore.computed.get(i.id)?.risk?.total || 0),
+      0
+    );
     res.push({ event: ev, modules: impacted, issues: rel, risk, date: d });
   });
-
   res.sort((a, b) => b.risk - a.risk);
   return res.slice(0, 5);
 }
@@ -1492,6 +801,12 @@ const ReleasePlanner = {
     if (score <= 3) return 'moderate service';
     return 'rush / busy service';
   },
+  /**
+   * Build context from selected tickets:
+   * - merged modules
+   * - combined text (title/desc/log + other fields)
+   * - aggregated risk (max/avg/total)
+   */
   buildTicketContext(ticketIds, fallbackModules, fallbackDescription) {
     const ids = Array.isArray(ticketIds) ? ticketIds : [];
     const issues = ids.map(id => DataStore.byId.get(id)).filter(Boolean);
@@ -1572,13 +887,14 @@ const ReleasePlanner = {
       sum += risk * w;
     });
 
-    const normalized = sum / 25; // tuning for 1..10 risk
+    const normalized = sum / 40; // tuning constant
     let bugRisk = Math.max(0, Math.min(6, normalized));
 
+    // Boost bug pressure slightly when selected tickets are very risky
     const tc = ticketContext || {};
     const maxTicketRisk = tc.maxRisk || 0;
     if (maxTicketRisk) {
-      const boost = 1 + Math.min(maxTicketRisk / 10, 1) * 0.25;
+      const boost = 1 + Math.min(maxTicketRisk / 20, 1) * 0.25; // up to +25%
       bugRisk = Math.max(0, Math.min(6, bugRisk * boost));
     }
 
@@ -1590,8 +906,9 @@ const ReleasePlanner = {
     return 'heavy bug pressure';
   },
   computeBombBugRisk(modules, description, ticketContext) {
+    // "Bomb bug" = old, high-risk incidents that are textually close to this release
     const now = new Date();
-    const lookback = U.dateAddDays(now, -365);
+    const lookback = U.dateAddDays(now, -365); // last year
     const modSet = new Set((modules || []).map(m => (m || '').toLowerCase()));
 
     const text = (description || '')
@@ -1612,7 +929,7 @@ const ReleasePlanner = {
       if (isNaN(d) || d < lookback) return;
 
       const ageDays = (now.getTime() - d.getTime()) / 86400000;
-      if (ageDays <= 30) return;
+      if (ageDays <= 30) return; // we want "old" tickets
 
       const st = (r.status || '').toLowerCase();
       const isClosed = st.startsWith('resolved') || st.startsWith('rejected');
@@ -1636,6 +953,7 @@ const ReleasePlanner = {
       }
       if (!related) return;
 
+      // Soft decay: more recent old bugs weigh a bit more
       const ageFactor = Math.max(0.4, 1.3 - ageDays / 365);
       const score = risk * ageFactor;
       raw += score;
@@ -1648,12 +966,13 @@ const ReleasePlanner = {
       });
     });
 
-    const normalized = raw / 30;
+    const normalized = raw / 60; // tuning constant
     let bombRisk = Math.max(0, Math.min(6, normalized));
 
+    // Also let current ticket risk slightly boost bomb-bug signal
     const tc = ticketContext || {};
     if (tc.avgRisk) {
-      const boost = 1 + Math.min(tc.avgRisk / 10, 1) * 0.3;
+      const boost = 1 + Math.min(tc.avgRisk / 20, 1) * 0.3; // up to +30%
       bombRisk = Math.max(0, Math.min(6, bombRisk * boost));
     }
 
@@ -1668,7 +987,7 @@ const ReleasePlanner = {
   computeEventsPenalty(date, env, modules, region) {
     const dt = date instanceof Date ? date : new Date(date);
     const center = dt.getTime();
-    const windowMs = 2 * 60 * 60 * 1000;
+    const windowMs = 2 * 60 * 60 * 1000; // +/- 2h for normal changes
     const mods = new Set((modules || []).map(m => (m || '').toLowerCase()));
 
     let penalty = 0;
@@ -1694,12 +1013,14 @@ const ReleasePlanner = {
 
       const evEnv = ev.env || 'Prod';
 
+      // For holidays, ignore env filter (they affect all envs operationally)
       if (!isHoliday && env && evEnv && evEnv !== env) return;
 
       const diffMs = Math.abs(start.getTime() - center);
       const maxWindowMs = isHoliday ? 24 * 60 * 60 * 1000 : windowMs;
       if (diffMs > maxWindowMs) return;
 
+      // Collision with other changes near this time
       const evMods = Array.isArray(ev.modules)
         ? ev.modules
         : typeof ev.modules === 'string'
@@ -1712,6 +1033,7 @@ const ReleasePlanner = {
       let contribution = 0;
       if (isHoliday) {
         holidayCount++;
+        // Strong penalty for public / religious holidays around MENA service hours
         contribution = 4.5;
         if (overlap) contribution += 1.5;
       } else {
@@ -1731,46 +1053,50 @@ const ReleasePlanner = {
   computeSlotScore(date, ctx) {
     const { region, env, modules, releaseType, bugRisk, bombBugRisk, ticketRisk } = ctx;
 
-    const rushRisk = this.computeRushScore(region, date);
-    const envRaw = this.envWeight[env] ?? 1;
-    const typeRaw = this.releaseTypeWeight[releaseType] ?? 2;
+    // Raw component scores
+    const rushRisk = this.computeRushScore(region, date);               // 0–6
+    const envRaw   = this.envWeight[env] ?? 1;                          // ~0.6–2.5
+    const typeRaw  = this.releaseTypeWeight[releaseType] ?? 2;          // 1–3
 
     const { penalty: eventsRisk, count: eventCount, holidayCount } =
-      this.computeEventsPenalty(date, env, modules, region);
+      this.computeEventsPenalty(date, env, modules, region);            // 0+
 
-    const bugRaw = bugRisk || 0;
-    const bombRaw = bombBugRisk || 0;
-    const ticketsRaw = ticketRisk || 0;
+    const bugRaw     = bugRisk || 0;                                    // 0–6
+    const bombRaw    = bombBugRisk || 0;                                // 0–6
+    const ticketsRaw = ticketRisk || 0;                                 // 0–6
 
+    // ---- Normalize each factor to 0–1 ----
     const clamp01 = v => Math.max(0, Math.min(1, v));
 
-    const nRush = clamp01(rushRisk / 6);
-    const nBug = clamp01(bugRaw / 6);
-    const nBomb = clamp01(bombRaw / 6);
+    const nRush    = clamp01(rushRisk / 6);
+    const nBug     = clamp01(bugRaw / 6);
+    const nBomb    = clamp01(bombRaw / 6);
     const nTickets = clamp01(ticketsRaw / 6);
-    const nEnv = clamp01(envRaw / 2.5);
-    const nType = clamp01(typeRaw / 3);
-    const nEvents = clamp01(eventsRisk / 6);
+    const nEnv     = clamp01(envRaw / 2.5);  // Prod ≈ 1
+    const nType    = clamp01(typeRaw / 3);
+    const nEvents  = clamp01(eventsRisk / 6); // 0–6+ → 0–1
 
-    const wRush = 0.15;
-    const wBug = 0.2;
-    const wBomb = 0.15;
-    const wEvents = 0.2;
+    // ---- Weighted combination into a 0–10 score ----
+    const wRush    = 0.15;
+    const wBug     = 0.20;
+    const wBomb    = 0.15;
+    const wEvents  = 0.20;
     const wTickets = 0.15;
-    const wEnv = 0.075;
-    const wType = 0.075;
+    const wEnv     = 0.075;
+    const wType    = 0.075;
 
     const combined =
-      wRush * nRush +
-      wBug * nBug +
-      wBomb * nBomb +
-      wEvents * nEvents +
+      wRush    * nRush    +
+      wBug     * nBug     +
+      wBomb    * nBomb    +
+      wEvents  * nEvents  +
       wTickets * nTickets +
-      wEnv * nEnv +
-      wType * nType;
+      wEnv     * nEnv     +
+      wType    * nType;
 
-    const totalRisk = Math.max(0, Math.min(10, combined * 10));
-    const safetyScore = 10 - totalRisk;
+    // Final risk: 0–10
+    const totalRisk   = Math.max(0, Math.min(10, combined * 10));
+    const safetyScore = 10 - totalRisk; // 0–10 (10 = safest)
 
     return {
       totalRisk,
@@ -1787,10 +1113,11 @@ const ReleasePlanner = {
     };
   },
   riskBucket(totalRisk) {
+    // totalRisk is now 0–10
     if (totalRisk < 3.5) {
       return { label: 'Low', className: 'planner-score-low' };
     }
-    if (totalRisk < 7) {
+    if (totalRisk < 7.0) {
       return { label: 'Medium', className: 'planner-score-med' };
     }
     return { label: 'High', className: 'planner-score-high' };
@@ -1808,6 +1135,7 @@ const ReleasePlanner = {
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
+    // Build a richer context from selected tickets (scope + text + risk)
     const ticketContext = this.buildTicketContext(
       tickets || [],
       modules || [],
@@ -1829,14 +1157,15 @@ const ReleasePlanner = {
       ticketContext
     );
 
+    // Ticket risk component: normalize avg risk onto a 0–6 scale
     let ticketRiskComponent = 0;
     if (ticketContext.avgRisk) {
-      ticketRiskComponent = Math.min(ticketContext.avgRisk / 2, 6);
+      ticketRiskComponent = Math.min(ticketContext.avgRisk / 4, 6);
     }
 
     const slots = [];
-    const hoursProd = [6, 10, 15, 23];
-    const hoursNonProd = [10, 15, 18];
+    const hoursProd = [6, 10, 15, 23]; // Prod: pre-service + between services + late
+    const hoursNonProd = [10, 15, 18]; // Staging/Dev can tolerate slightly busier times
     const hours = env === 'Prod' ? hoursProd : hoursNonProd;
 
     for (let dayOffset = 0; dayOffset < horizon; dayOffset++) {
@@ -1865,6 +1194,7 @@ const ReleasePlanner = {
     }
 
     slots.sort((a, b) => a.totalRisk - b.totalRisk);
+
     const perDay = Math.max(1, slotsPerDay || 3);
     const maxSlots = Math.min(slots.length, horizon * perDay);
 
@@ -1910,10 +1240,8 @@ function cacheEls() {
     'endDateFilter',
     'issuesTab',
     'calendarTab',
-    'insightsTab',
     'issuesView',
     'calendarView',
-    'insightsView',
     'addEventBtn',
     'eventModal',
     'eventModalTitle',
@@ -1929,28 +1257,10 @@ function cacheEls() {
     'eventCancel',
     'eventDelete',
     'eventIssueLinkedInfo',
-    'aiPatternsList',
-    'aiLabelsList',
-    'aiRisksList',
-    'aiClusters',
-    'aiScopeText',
-    'aiSignalsText',
-    'aiTrendsList',
-    'aiModulesTableBody',
-    'aiTriageList',
-    'aiEventsList',
-    'aiQueryInput',
-    'aiQueryRun',
-    'aiQueryResults',
-    'aiQueryApplyFilters',
-    'aiIncidentsList',
-    'aiEmergingStable',
-    'aiOpsCockpit',
     'syncIssuesText',
     'syncIssuesDot',
     'syncEventsText',
     'syncEventsDot',
-    'aiAnalyzing',
     'eventFilterDeployment',
     'eventFilterMaintenance',
     'eventFilterRelease',
@@ -1962,7 +1272,6 @@ function cacheEls() {
     'onlineStatusChip',
     'accentColor',
     'shortcutsHelp',
-    'aiQueryExport',
     'eventAllDay',
     'eventEnv',
     'eventOwner',
@@ -1982,9 +1291,7 @@ function cacheEls() {
     'plannerReleasePlan',
     'plannerTickets',
     'plannerAssignBtn',
-    'plannerAddEvent',
-    // NEW: button to pull tickets from current filters
-    'plannerTicketsFromFilters'
+    'plannerAddEvent'
   ].forEach(id => (E[id] = document.getElementById(id)));
 }
 
@@ -2000,8 +1307,7 @@ const UI = {
   },
   spinner(v = true) {
     if (E.spinner) E.spinner.style.display = v ? 'flex' : 'none';
-    if (E.loadingStatus)
-      E.loadingStatus.textContent = v ? 'Loading…' : '';
+    if (E.loadingStatus) E.loadingStatus.textContent = v ? 'Loading…' : '';
   },
   setSync(which, ok, when) {
     const txt = which === 'issues' ? E.syncIssuesText : E.syncEventsText;
@@ -2013,6 +1319,7 @@ const UI = {
     dot.className = 'dot ' + (ok ? 'ok' : 'err');
   },
   setAnalyzing(v) {
+    // kept for compatibility; no-op without AI panel
     if (E.aiAnalyzing) E.aiAnalyzing.style.display = v ? 'block' : 'none';
   },
   skeleton(show) {
@@ -2037,21 +1344,17 @@ UI.Issues = {
         a.localeCompare(b)
       );
     if (E.moduleFilter)
-      E.moduleFilter.innerHTML =
-        ['All', ...uniq(DataStore.rows.map(r => r.module))]
-
-          .map(v => `<option>${v}</option>`)
-          .join('');
+      E.moduleFilter.innerHTML = ['All', ...uniq(DataStore.rows.map(r => r.module))]
+        .map(v => `<option>${v}</option>`)
+        .join('');
     if (E.priorityFilter)
-      E.priorityFilter.innerHTML =
-        ['All', ...uniq(DataStore.rows.map(r => r.priority))]
-          .map(v => `<option>${v}</option>`)
-          .join('');
+      E.priorityFilter.innerHTML = ['All', ...uniq(DataStore.rows.map(r => r.priority))]
+        .map(v => `<option>${v}</option>`)
+        .join('');
     if (E.statusFilter)
-      E.statusFilter.innerHTML =
-        ['All', ...uniq(DataStore.rows.map(r => r.status))]
-          .map(v => `<option>${v}</option>`)
-          .join('');
+      E.statusFilter.innerHTML = ['All', ...uniq(DataStore.rows.map(r => r.status))]
+        .map(v => `<option>${v}</option>`)
+        .join('');
   },
   applyFilters() {
     const s = Filters.state;
@@ -2088,11 +1391,10 @@ UI.Issues = {
   },
   renderKPIs(list) {
     if (!E.kpis) return;
-    const total = list.length;
-    const counts = {};
+    const total = list.length,
+      counts = {};
     list.forEach(r => (counts[r.status] = (counts[r.status] || 0) + 1));
     E.kpis.innerHTML = '';
-
     const add = (label, val) => {
       const pct = total ? Math.round((val * 100) / total) : 0;
       const d = document.createElement('div');
@@ -2100,10 +1402,7 @@ UI.Issues = {
       d.tabIndex = 0;
       d.setAttribute('role', 'button');
       d.setAttribute('aria-label', `${label}: ${val} (${pct} percent)`);
-      d.innerHTML = `
-        <div class="label">${label}</div>
-        <div class="value">${val}</div>
-        <div class="sub">${pct}%</div>`;
+      d.innerHTML = `<div class="label">${label}</div><div class="value">${val}</div><div class="sub">${pct}%</div>`;
       d.onclick = () => {
         if (label === 'Total Issues') {
           Filters.state = {
@@ -2129,7 +1428,6 @@ UI.Issues = {
       });
       E.kpis.appendChild(d);
     };
-
     add('Total Issues', total);
     Object.entries(counts).forEach(([s, v]) => add(s, v));
   },
@@ -2138,11 +1436,11 @@ UI.Issues = {
     const { sortKey, sortAsc } = GridState;
     const sorted = sortKey
       ? [...list].sort((a, b) => {
-          const va = a[sortKey] || '';
-          const vb = b[sortKey] || '';
+          const va = a[sortKey] || '',
+            vb = b[sortKey] || '';
           if (sortKey === 'date') {
-            const da = new Date(va);
-            const db = new Date(vb);
+            const da = new Date(va),
+              db = new Date(vb);
             if (isNaN(da) && isNaN(db)) return 0;
             if (isNaN(da)) return 1;
             if (isNaN(db)) return -1;
@@ -2156,12 +1454,11 @@ UI.Issues = {
       : list;
     const rows = sortAsc ? sorted : sorted.reverse();
 
-    const total = rows.length;
-    const size = GridState.pageSize;
-    const page = GridState.page;
+    const total = rows.length,
+      size = GridState.pageSize,
+      page = GridState.page;
     const pages = Math.max(1, Math.ceil(total / size));
     if (GridState.page > pages) GridState.page = pages;
-
     const start = (GridState.page - 1) * size;
     const pageData = rows.slice(start, start + size);
 
@@ -2177,8 +1474,8 @@ UI.Issues = {
     ['firstPage', 'prevPage', 'nextPage', 'lastPage'].forEach(id => {
       const btn = E[id];
       if (!btn) return;
-      const atFirst = GridState.page <= 1;
-      const atLast = GridState.page >= pages;
+      const atFirst = GridState.page <= 1,
+        atLast = GridState.page >= pages;
       if (id === 'firstPage' || id === 'prevPage') btn.disabled = atFirst;
       else btn.disabled = atLast;
       if (btn.disabled) btn.setAttribute('disabled', 'true');
@@ -2213,7 +1510,8 @@ UI.Issues = {
                 )}" target="_blank" rel="noopener noreferrer" aria-label="Open attachment link">🔗</a>`
               : '-'
           }</td>
-        </tr>`
+        </tr>
+      `
         )
         .join('');
     } else {
@@ -2290,11 +1588,9 @@ UI.Issues = {
       'On Hold': cssVar('--status-onhold'),
       'Not Started Yet': cssVar('--status-notstarted'),
       Sent: cssVar('--status-sent'),
-      'On Stage': cssVar('--status-onstage'),
-      'Tested on Staging': cssVar('--status-onstage')
+      'On Stage': cssVar('--status-onstage')
     };
     const priorityColors = {
-      Urgent: cssVar('--priority-urgent'),
       High: cssVar('--priority-high'),
       Medium: cssVar('--priority-medium'),
       Low: cssVar('--priority-low')
@@ -2310,8 +1606,8 @@ UI.Issues = {
       if (!el) return;
       UI._charts = UI._charts || {};
       if (UI._charts[id]) UI._charts[id].destroy();
-      const labels = Object.keys(data);
-      const values = Object.values(data);
+      const labels = Object.keys(data),
+        values = Object.values(data);
       UI._charts[id] = new Chart(el, {
         type,
         data: {
@@ -2362,12 +1658,10 @@ UI.Issues.renderFilterChips = function () {
   const chips = [];
   const addChip = (label, value, key) => {
     if (!value) return;
-    chips.push(
-      `<button type="button" class="filter-chip" data-filter-key="${key}">
-        <span>${label}: ${U.escapeHtml(value)}</span>
-        <span aria-hidden="true">✕</span>
-      </button>`
-    );
+    chips.push(`<button type="button" class="filter-chip" data-filter-key="${key}">
+      <span>${label}: ${U.escapeHtml(value)}</span>
+      <span aria-hidden="true">✕</span>
+    </button>`);
   };
   const s = Filters.state;
   if (s.search) addChip('Search', s.search, 'search');
@@ -2426,801 +1720,8 @@ UI.Issues.renderSummary = function (list) {
     (last ? ` · ${last}` : '');
 };
 
-/** Clusters + regression index */
-let RegressionIndex = null;
+/* ---------- Modals ---------- */
 
-function buildClustersWeighted(list) {
-  const max = Math.min(list.length, 400);
-  const docs = list.slice(-max).map(r => {
-    const meta = DataStore.computed.get(r.id) || {};
-    return {
-      issue: r,
-      tokens: meta.tokens || new Set(),
-      idf: meta.idf || new Map()
-    };
-  });
-
-  const visited = new Set();
-  const clusters = [];
-
-  const wj = (A, IA, B, IB) => {
-    let inter = 0;
-    let sumA = 0;
-    let sumB = 0;
-    const all = new Set([...A, ...B]);
-    all.forEach(t => {
-      const wa = A.has(t) ? IA.get(t) || 1 : 0;
-      const wb = B.has(t) ? IB.get(t) || 1 : 0;
-      inter += Math.min(wa, wb);
-      sumA += wa;
-      sumB += wb;
-    });
-    const union = sumA + sumB - inter;
-    return union ? inter / union : 0;
-  };
-
-  for (let i = 0; i < docs.length; i++) {
-    if (visited.has(i)) continue;
-    const base = docs[i];
-    const c = [base];
-    visited.add(i);
-    for (let j = i + 1; j < docs.length; j++) {
-      if (visited.has(j)) continue;
-      const other = docs[j];
-      if (wj(base.tokens, base.idf, other.tokens, other.idf) >= 0.65) {
-        visited.add(j);
-        c.push(other);
-      }
-    }
-    if (c.length >= 2) {
-      const freq = new Map();
-      c.forEach(d => d.tokens.forEach(t => freq.set(t, (freq.get(t) || 0) + 1)));
-      const sig = Array.from(freq.entries())
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 3)
-        .map(([t]) => t)
-        .join(' ');
-      clusters.push({ signature: sig, issues: c.map(x => x.issue) });
-    }
-  }
-
-  clusters.sort((a, b) => b.issues.length - a.issues.length);
-  return clusters.slice(0, 12);
-}
-
-function buildRegressionIndex() {
-  const clusters = buildClustersWeighted(DataStore.rows);
-  const set = new Set();
-
-  clusters.forEach(c => {
-    let hasOldClosed = false;
-    let hasNewOpen = false;
-    let latestOpenDate = null;
-    let earliestClosedDate = null;
-
-    c.issues.forEach(issue => {
-      const st = (issue.status || '').toLowerCase();
-      const isClosed = st.startsWith('resolved') || st.startsWith('rejected');
-      const d = issue.date ? new Date(issue.date) : null;
-      if (isClosed) {
-        hasOldClosed = true;
-        if (d && (!earliestClosedDate || d < earliestClosedDate)) {
-          earliestClosedDate = d;
-        }
-      } else {
-        hasNewOpen = true;
-        if (d && (!latestOpenDate || d > latestOpenDate)) {
-          latestOpenDate = d;
-        }
-      }
-    });
-
-    if (hasOldClosed && hasNewOpen) {
-      c.issues.forEach(issue => {
-        const st = (issue.status || '').toLowerCase();
-        const isClosed = st.startsWith('resolved') || st.startsWith('rejected');
-        if (!isClosed) set.add(issue.id);
-      });
-    }
-  });
-
-  RegressionIndex = set;
-}
-
-function isRegressionIssue(id) {
-  if (!RegressionIndex) buildRegressionIndex();
-  return RegressionIndex.has(id);
-}
-
-/** Analytics (AI tab) */
-const Analytics = {
-  _debounce: null,
-  refresh(list) {
-    clearTimeout(this._debounce);
-    UI.setAnalyzing(true);
-    this._debounce = setTimeout(() => this._render(list), 80);
-  },
-  _render(list) {
-    // recent slice for "right now" signals
-    const recentCut = CONFIG.TREND_DAYS_RECENT;
-    const recent = list.filter(r => U.isBetween(r.date, U.daysAgo(recentCut), null));
-
-    // -------- Top domain patterns (aiPatternsList) --------
-    const termStats = new Map(); // label -> { count, modules:Set }
-    const addTermStat = (label, mod) => {
-      if (!termStats.has(label)) {
-        termStats.set(label, { count: 0, modules: new Map() });
-      }
-      const s = termStats.get(label);
-      s.count++;
-      const m = mod || 'Unspecified';
-      s.modules.set(m, (s.modules.get(m) || 0) + 1);
-    };
-
-    recent.forEach(r => {
-      const text = [r.title, r.desc, r.log]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      const mod = r.module || 'Unspecified';
-      Object.entries(DOMAIN_TERMS).forEach(([label, variants]) => {
-        if (variants.some(v => text.includes(v.toLowerCase()))) {
-          addTermStat(label, mod);
-        }
-      });
-    });
-
-    const topPatterns = Array.from(termStats.entries())
-      .sort((a, b) => b[1].count - a[1].count)
-      .slice(0, 10);
-
-    if (E.aiPatternsList) {
-      E.aiPatternsList.innerHTML = topPatterns.length
-        ? topPatterns
-            .map(([label, stat]) => {
-              const total = stat.count;
-              const modulesSorted = Array.from(stat.modules.entries()).sort(
-                (a, b) => b[1] - a[1]
-              );
-              const topModules = modulesSorted
-                .slice(0, 2)
-                .map(([m]) => m)
-                .join(', ');
-              return `<li><strong>${U.escapeHtml(label)}</strong> – ${total} issue${
-                total === 1 ? '' : 's'
-              }${topModules ? ` · mostly ${U.escapeHtml(topModules)}` : ''}</li>`;
-            })
-            .join('')
-        : '<li>No strong domain patterns recently.</li>';
-    }
-
-    // -------- Suggested categories (aiLabelsList) --------
-    const catMap = new Map();
-    list.forEach(r => {
-      const meta = DataStore.computed.get(r.id) || {};
-      const cat = meta.domainCategory;
-      if (!cat) return;
-      if (!catMap.has(cat)) {
-        catMap.set(cat, {
-          name: cat,
-          total: 0,
-          open: 0,
-          modules: new Map(),
-          examples: []
-        });
-      }
-      const s = catMap.get(cat);
-      s.total++;
-      const st = (r.status || '').toLowerCase();
-      const isClosed = st.startsWith('resolved') || st.startsWith('rejected');
-      if (!isClosed) s.open++;
-      const mod = r.module || 'Unspecified';
-      s.modules.set(mod, (s.modules.get(mod) || 0) + 1);
-      if (s.examples.length < 3) s.examples.push(r);
-    });
-
-    const catsSorted = Array.from(catMap.values()).sort(
-      (a, b) => b.open - a.open || b.total - a.total
-    );
-
-    if (E.aiLabelsList) {
-      E.aiLabelsList.innerHTML = catsSorted.length
-        ? catsSorted
-            .map(cat => {
-              const mods = Array.from(cat.modules.entries())
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 2)
-                .map(([m]) => m)
-                .join(', ');
-              const exStr = cat.examples
-                .map(r => U.escapeHtml(r.id))
-                .join(', ');
-              return `<li>
-                <strong>${U.escapeHtml(cat.name)}</strong> – ${cat.open}/${
-                cat.total
-              } open · modules: ${U.escapeHtml(mods || '—')}
-                <span class="muted"> · e.g. ${exStr || '—'}</span>
-              </li>`;
-            })
-            .join('')
-        : '<li>No category assignments yet.</li>';
-    }
-
-    // Scope & signals
-    if (E.aiScopeText) {
-      E.aiScopeText.textContent = `Analyzing ${list.length} issues (${recent.length} recent, ~last ${recentCut} days).`;
-    }
-    const signals = ['export', 'filter', 'schedule', 'sublist', 'tags', 'geofencing'].filter(
-      t => {
-        const label = Object.keys(DOMAIN_TERMS).find(key =>
-          DOMAIN_TERMS[key].some(v => v.toLowerCase().includes(t))
-        );
-        return label && termStats.has(label);
-      }
-    );
-    if (E.aiSignalsText) {
-      E.aiSignalsText.textContent = signals.length
-        ? `Recent domain signals: ${signals.join(', ')}.`
-        : 'No strong recurring domain signals.';
-    }
-
-    // Trends (token-based, kept simple)
-    const oldStart = U.daysAgo(CONFIG.TREND_DAYS_WINDOW);
-    const mid = U.daysAgo(CONFIG.TREND_DAYS_RECENT);
-    const oldCounts = new Map();
-    const newCounts = new Map();
-    const inHalf = r => {
-      const d = new Date(r.date);
-      if (isNaN(d)) return null;
-      if (d < mid && d >= oldStart) return 'old';
-      if (d >= mid) return 'new';
-      return null;
-    };
-    list.forEach(r => {
-      const half = inHalf(r);
-      if (!half) return;
-      const toks = DataStore.computed.get(r.id)?.tokens || new Set();
-      const tgt = half === 'old' ? oldCounts : newCounts;
-      new Set(toks).forEach(t => tgt.set(t, (tgt.get(t) || 0) + 1));
-    });
-    const trendTerms = new Set([...oldCounts.keys(), ...newCounts.keys()]);
-    const trend = [];
-    trendTerms.forEach(t => {
-      const a = oldCounts.get(t) || 0;
-      const b = newCounts.get(t) || 0;
-      const d = b - a;
-      const ratio = a === 0 ? (b >= 2 ? Infinity : 0) : b / a;
-      if ((b >= 2 && ratio >= 2) || d >= 2) trend.push({ t, old: a, new: b, delta: d, ratio });
-    });
-    trend.sort(
-      (x, y) =>
-        (y.ratio === Infinity) - (x.ratio === Infinity) ||
-        y.delta - x.delta ||
-        y.new - x.new
-    );
-    if (E.aiTrendsList) {
-      E.aiTrendsList.innerHTML = trend.length
-        ? trend
-            .slice(0, 8)
-            .map(
-              o =>
-                `<li><strong>${U.escapeHtml(o.t)}</strong> – ${o.new} vs ${
-                  o.old
-                } <span class="muted">(Δ ${
-                  o.delta >= 0 ? `+${o.delta}` : o.delta
-                })</span></li>`
-            )
-            .join('')
-        : '<li>No strong increases.</li>';
-    }
-
-    // Incident-like issues (4.1)
-    const isIncidentLike = (issue, meta) => {
-      if ((issue.type || '').toLowerCase() !== 'bug') return false;
-      if (!['Urgent', 'High'].includes(issue.priority)) return false;
-      const st = (issue.status || '').toLowerCase();
-      if (st.startsWith('resolved') || st.startsWith('rejected')) return false;
-
-      const txt = [issue.title, issue.desc, issue.log]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-
-      const patterns = [
-        'not appearing',
-        'not showing',
-        'historical data being deleted',
-        'historical data deleted',
-        'internal server error',
-        'not found',
-        'failed fetch',
-        'failed to fetch',
-        'long loading time',
-        'spinner',
-        'geofencing not working',
-        'geofacing not working',
-        'timezone',
-        'time zone',
-        'duplicate instances',
-        'triplicate instances',
-        'submission error',
-        'error when exporting',
-        'error exporting'
-      ];
-      if (!patterns.some(p => txt.includes(p))) return false;
-
-      return (meta.risk?.total || 0) >= 7;
-    };
-
-    const incidentCandidates = list
-      .map(r => ({ r, meta: DataStore.computed.get(r.id) || {} }))
-      .filter(({ r, meta }) => isIncidentLike(r, meta))
-      .sort((a, b) => (b.meta.risk?.total || 0) - (a.meta.risk?.total || 0))
-      .slice(0, 10);
-
-    if (E.aiIncidentsList) {
-      E.aiIncidentsList.innerHTML = incidentCandidates.length
-        ? incidentCandidates
-            .map(({ r, meta }) => {
-              const risk = meta.risk?.total || 0;
-              const badgeClass = CalendarLink.riskBadgeClass(risk);
-              return `<li style="margin-bottom:4px;">
-                <strong>[Risk ${risk}] ${U.escapeHtml(
-                  r.module || 'Unspecified'
-                )} – ${U.escapeHtml(r.title || '')}</strong>
-                <span class="event-risk-badge ${badgeClass}">R${risk}</span>
-                <br><span class="muted">${U.escapeHtml(
-                  r.id
-                )} · ${U.escapeHtml(r.status || '-')} · ${U.escapeHtml(
-                r.priority || '-'
-              )}</span>
-              </li>`;
-            })
-            .join('')
-        : '<li>No incident-like issues detected.</li>';
-    }
-
-    // Emerging vs Stable themes (category-based, 6.2)
-    const newCut = U.daysAgo(14);
-    const oldCutStart = U.daysAgo(28);
-    const catOld = new Map();
-    const catNew = new Map();
-
-    list.forEach(r => {
-      const meta = DataStore.computed.get(r.id) || {};
-      const cat = meta.domainCategory;
-      if (!cat || !r.date) return;
-      const d = new Date(r.date);
-      if (isNaN(d)) return;
-
-      if (d >= newCut) {
-        catNew.set(cat, (catNew.get(cat) || 0) + 1);
-      } else if (d >= oldCutStart && d < newCut) {
-        catOld.set(cat, (catOld.get(cat) || 0) + 1);
-      }
-    });
-
-    const categoriesAll = new Set([...catOld.keys(), ...catNew.keys()]);
-    const emerging = [];
-    const stable = [];
-    const cooling = [];
-
-    categoriesAll.forEach(cat => {
-      const oldCount = catOld.get(cat) || 0;
-      const newCount = catNew.get(cat) || 0;
-      if (!newCount && !oldCount) return;
-
-      if (newCount >= 2 && (oldCount === 0 || newCount >= 2 * oldCount)) {
-        emerging.push({ cat, oldCount, newCount });
-      } else if (oldCount >= 3 && newCount <= oldCount / 2) {
-        cooling.push({ cat, oldCount, newCount });
-      } else if (newCount > 0 && oldCount > 0) {
-        stable.push({ cat, oldCount, newCount });
-      }
-    });
-
-    const fmtList = arr =>
-      arr
-        .map(
-          x =>
-            `${U.escapeHtml(x.cat)} (${x.newCount || 0} vs ${x.oldCount || 0})`
-        )
-        .join(', ');
-
-    if (E.aiEmergingStable) {
-      E.aiEmergingStable.innerHTML = `
-        <li><strong>Emerging:</strong> ${
-          emerging.length ? fmtList(emerging) : '—'
-        }</li>
-        <li><strong>Stable:</strong> ${
-          stable.length ? fmtList(stable) : '—'
-        }</li>
-        <li><strong>Cooling:</strong> ${
-          cooling.length ? fmtList(cooling) : '—'
-        }</li>`;
-    }
-
-    // Ops cockpit (6.1)
-    const bullets = [];
-
-    // Reporting exports/filters
-    const reportingHigh = list.filter(r => {
-      const meta = DataStore.computed.get(r.id) || {};
-      const cat = meta.domainCategory || '';
-      const risk = meta.risk?.total || 0;
-      const st = (r.status || '').toLowerCase();
-      const open = !(st.startsWith('resolved') || st.startsWith('rejected'));
-      return (
-        open &&
-        risk >= 7 &&
-        (cat.includes('reporting – filters') || cat.includes('exports & data format'))
-      );
-    });
-    if (reportingHigh.length >= 3) {
-      bullets.push(
-        `Reporting is highest-risk – ${reportingHigh.length} open high-risk bugs around filters, navigation and export/data format.`
-      );
-    }
-
-    // Data integrity
-    const dataLossIssues = list.filter(r => {
-      const txt = [r.title, r.desc, r.log]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      return (
-        txt.includes('historical data') ||
-        txt.includes('historical log') ||
-        txt.includes('journal entries') ||
-        txt.includes('completion %') ||
-        txt.includes('wrong %') ||
-        txt.includes('being deleted')
-      );
-    });
-    if (dataLossIssues.length >= 3) {
-      bullets.push(
-        `Data integrity: ${dataLossIssues.length} issues mention historical data, journal entries or wrong completion %, review audit readiness.`
-      );
-    }
-
-    // Mobile App + geofencing/app reports
-    const mobileGeo = list.filter(r => {
-      const meta = DataStore.computed.get(r.id) || {};
-      const txt = [r.title, r.desc, r.log]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      return (
-        (r.module || '').toLowerCase().includes('mobile') &&
-        (txt.includes('app report') ||
-          txt.includes('geofencing') ||
-          txt.includes('geofacing') ||
-          txt.includes('location permission'))
-      );
-    });
-    if (mobileGeo.length >= 2) {
-      bullets.push(
-        `Mobile App: app report & geofencing – multiple issues around mobile reports and location permissions.`
-      );
-    }
-
-    // Staging vs live drift
-    const stagingDrift = list.filter(r => {
-      const txt = [r.title, r.desc, r.log]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      return (
-        txt.includes('staging vs live') ||
-        txt.includes('staging vs production') ||
-        txt.includes('on stage') ||
-        txt.includes('tested on staging') ||
-        txt.includes('before release was working') ||
-        txt.includes('after new release')
-      );
-    });
-    if (stagingDrift.length >= 2) {
-      bullets.push(
-        `Staging vs Live drift – ${stagingDrift.length} bugs explicitly mention staging/live differences or post-release regression.`
-      );
-    }
-
-    if (!bullets.length) {
-      bullets.push('No major ops alerts detected from current metrics.');
-    }
-
-    if (E.aiOpsCockpit) {
-      E.aiOpsCockpit.innerHTML = bullets
-        .map(b => `<li>${U.escapeHtml(b)}</li>`)
-        .join('');
-    }
-
-    // Module insights table
-    const modules = (() => {
-      const map = new Map();
-      list.forEach(r => {
-        let m = map.get(r.module);
-        if (!m) {
-          m = {
-            module: r.module,
-            total: 0,
-            open: 0,
-            high: 0,
-            risk: 0,
-            tokens: new Map()
-          };
-          map.set(r.module, m);
-        }
-        m.total++;
-        const st = (r.status || '').toLowerCase();
-        const open = !st.startsWith('resolved') && !st.startsWith('rejected');
-        if (open) {
-          m.open++;
-          if (['Urgent', 'High'].includes(r.priority)) m.high++;
-        }
-        const rs = DataStore.computed.get(r.id)?.risk?.total || 0;
-        m.risk += rs;
-        (DataStore.computed.get(r.id)?.tokens || new Set()).forEach(t =>
-          m.tokens.set(t, (m.tokens.get(t) || 0) + 1)
-        );
-      });
-      return Array.from(map.values())
-        .map(m => {
-          const tt = m.tokens.size
-            ? Array.from(m.tokens.entries()).sort((a, b) => b[1] - a[1])[0][0]
-            : '';
-          return {
-            module: m.module,
-            open: m.open,
-            high: m.high,
-            risk: m.risk,
-            topTerm: tt
-          };
-        })
-        .sort((a, b) => b.risk - a.risk || b.open - a.open)
-        .slice(0, 8);
-    })();
-
-    const maxModuleRisk = modules.reduce((max, m) => Math.max(max, m.risk), 0) || 1;
-
-    if (E.aiModulesTableBody) {
-      E.aiModulesTableBody.innerHTML = modules.length
-        ? modules
-            .map(m => {
-              const ratio = m.risk / maxModuleRisk;
-              return `
-        <tr>
-          <td>${U.escapeHtml(m.module)}</td>
-          <td>${m.open}</td>
-          <td>${m.high}</td>
-          <td>
-            ${m.risk}
-            <div class="risk-bar-wrap"><div class="risk-bar" style="transform:scaleX(${ratio.toFixed(
-              2
-            )});"></div></div>
-          </td>
-          <td>${U.escapeHtml(m.topTerm || '-')}</td>
-        </tr>`;
-            })
-            .join('')
-        : '<tr><td colspan="5" style="text-align:center;color:var(--muted)">No modules.</td></tr>';
-    }
-
-    // Top risks (recent)
-    const topRisks = recent
-      .map(r => ({ r, score: DataStore.computed.get(r.id)?.risk?.total || 0 }))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 5)
-      .filter(x => x.score >= 6);
-    if (E.aiRisksList) {
-      E.aiRisksList.innerHTML = topRisks.length
-        ? topRisks
-            .map(({ r, score }) => {
-              const badgeClass = CalendarLink.riskBadgeClass(score);
-              const meta = DataStore.computed.get(r.id)?.risk || {};
-              return `
-        <li style="margin-bottom:4px;">
-          <strong>[${U.escapeHtml(r.priority || '-')} ] ${U.escapeHtml(
-          r.id || ''
-        )}</strong>
-          <span class="event-risk-badge ${badgeClass}">RISK ${score}</span>
-          <span class="muted"> · sev ${meta.severity ?? 0} · imp ${
-          meta.impact ?? 0
-        } · urg ${meta.urgency ?? 0}</span>
-          <br><span class="muted">Status ${U.escapeHtml(r.status || '-')}</span>
-          <br>${U.escapeHtml(r.title || '')}
-        </li>`;
-            })
-            .join('')
-        : '<li>No high-risk recent issues.</li>';
-    }
-
-    // Clusters (5 + regression badge)
-    const clusters = buildClustersWeighted(list);
-    if (E.aiClusters) {
-      E.aiClusters.innerHTML = clusters.length
-        ? clusters
-            .map(c => {
-              const regression =
-                c.issues.filter(i => isRegressionIssue(i.id)).length > 0;
-              return `
-      <div class="card" style="padding:10px;">
-        <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">
-          Pattern: <strong>${U.escapeHtml(
-            c.signature || '(no pattern)'
-          )}</strong> • ${c.issues.length} issues
-          ${
-            regression
-              ? '<span class="pill regression-pill">Regression</span>'
-              : ''
-          }
-        </div>
-        <ul style="margin:0;padding-left:18px;font-size:13px;">
-          ${c.issues
-            .slice(0, 5)
-            .map(
-              i => `
-            <li>
-              <button class="btn sm" style="padding:3px 6px;margin-right:4px;" data-open="${U.escapeAttr(
-                i.id
-              )}">${U.escapeHtml(i.id)}</button>
-              ${U.escapeHtml(i.title || '')}
-            </li>`
-            )
-            .join('')}
-          ${
-            c.issues.length > 5
-              ? `<li class="muted">+ ${c.issues.length - 5} more…</li>`
-              : ''
-          }
-        </ul>
-        ${
-          regression
-            ? '<div class="muted" style="font-size:11px;margin-top:4px;">Signal: recurring pattern with older resolved and newer open tickets.</div>'
-            : ''
-        }
-      </div>`;
-            })
-            .join('')
-        : '<div class="muted">No similar issue groups ≥2.</div>';
-    }
-
-    // Triage queue (4.2)
-    const tri = list
-      .filter(r => {
-        const meta = DataStore.computed.get(r.id) || {};
-        const risk = meta.risk?.total || 0;
-        const st = (r.status || '').toLowerCase();
-        const isClosed = st.startsWith('resolved') || st.startsWith('rejected');
-        if (isClosed) return false;
-        if (risk < 7) return false;
-
-        const text = [r.title, r.desc, r.log]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase();
-
-        const severeKeyword =
-          text.includes('data being deleted') ||
-          text.includes('historical data') ||
-          text.includes('checklists not appearing') ||
-          text.includes('checklist not appearing') ||
-          text.includes('internal server error') ||
-          text.includes('not appearing on app') ||
-          text.includes('not showing on app');
-
-        const stStuck =
-          (st.startsWith('on hold') || st.startsWith('on stage') || st.startsWith(
-            'tested on staging'
-          )) && r.date;
-
-        let stuckTooLong = false;
-        if (stStuck) {
-          const d = new Date(r.date);
-          if (!isNaN(d)) {
-            const ageDays = (Date.now() - d.getTime()) / 86400000;
-            if (ageDays >= 7) stuckTooLong = true;
-          }
-        }
-
-        const inRegression = isRegressionIssue(r.id);
-
-        const priorityProblem =
-          (!r.priority || r.priority === 'Low') && severeKeyword;
-
-        return priorityProblem || stuckTooLong || inRegression;
-      })
-      .sort(
-        (a, b) =>
-          (DataStore.computed.get(b.id)?.risk?.total || 0) -
-          (DataStore.computed.get(a.id)?.risk?.total || 0)
-      )
-      .slice(0, 20);
-
-    if (E.aiTriageList) {
-      E.aiTriageList.innerHTML = tri.length
-        ? tri
-            .map(i => {
-              const meta = DataStore.computed.get(i.id) || {};
-              const risk = meta.risk?.total || 0;
-              const cat = meta.domainCategory || '—';
-              const reasons = [];
-
-              if (!i.priority || i.priority === 'Low') {
-                reasons.push('priority too low vs content');
-              }
-              const st = (i.status || '').toLowerCase();
-              if (
-                (st.startsWith('on hold') ||
-                  st.startsWith('on stage') ||
-                  st.startsWith('tested on staging')) &&
-                i.date
-              ) {
-                const d = new Date(i.date);
-                if (!isNaN(d)) {
-                  const ageDays = (Date.now() - d.getTime()) / 86400000;
-                  if (ageDays >= 7) reasons.push(`stuck in ${i.status} for ~${Math.round(
-                    ageDays
-                  )}d`);
-                }
-              }
-              if (isRegressionIssue(i.id)) reasons.push('regression cluster');
-
-              return `<li style="margin-bottom:6px;">
-        <strong>${U.escapeHtml(i.id)}</strong> – ${U.escapeHtml(i.title || '')}
-        <div class="muted">Risk ${risk} · ${U.escapeHtml(
-                i.module || ''
-              )} · ${U.escapeHtml(i.priority || '-')} · ${U.escapeHtml(
-                cat
-              )}</div>
-        <div class="muted">Reason: ${U.escapeHtml(
-          reasons.join(' + ') || 'high risk / important'
-        )}</div>
-        <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
-          <button class="btn sm" data-open="${U.escapeAttr(i.id)}">Open</button>
-        </div>
-      </li>`;
-            })
-            .join('')
-        : '<li>No issues requiring triage.</li>';
-    }
-
-    // Upcoming risky events
-    const evs = computeEventsRisk(DataStore.rows, DataStore.events);
-    if (E.aiEventsList) {
-      E.aiEventsList.innerHTML = evs.length
-        ? evs
-            .map(r => {
-              const badge = CalendarLink.riskBadgeClass(r.risk);
-              const ev = r.event;
-              return `<li style="margin-bottom:6px;">
-        <strong>${U.escapeHtml(ev.title || '(no title)')}</strong>
-        <span class="event-risk-badge ${badge}">RISK ${r.risk}</span>
-        <div class="muted">${U.fmtTS(r.date)} · Env: ${U.escapeHtml(
-          ev.env || 'Prod'
-        )} · Modules: ${
-                r.modules.length
-                  ? r.modules.map(U.escapeHtml).join(', ')
-                  : 'n/a'
-              } · Related issues: ${r.issues.length}</div>
-      </li>`;
-            })
-            .join('')
-        : '<li>No notable risk in next 7 days.</li>';
-    }
-
-    // Wire AI buttons
-    U.qAll('[data-open]').forEach(b =>
-      b.addEventListener('click', () =>
-        UI.Modals.openIssue(b.getAttribute('data-open'))
-      )
-    );
-
-    UI.setAnalyzing(false);
-  }
-};
-
-/** Modals */
 UI.Modals = {
   selectedIssue: null,
   lastFocus: null,
@@ -3246,6 +1747,7 @@ UI.Modals = {
       ? 'Reasons: ' + risk.reasons.join(', ')
       : '—';
 
+    // Linked releases (events whose issueId list contains this ticket)
     const linkedReleases = DataStore.events.filter(ev => {
       const ids = (ev.issueId || '')
         .split(',')
@@ -3274,25 +1776,27 @@ UI.Modals = {
     }
 
     E.modalTitle.textContent = r.title || r.id || 'Issue';
-    E.modalBody.innerHTML =
-      `<p><b>ID:</b> ${U.escapeHtml(r.id || '-')}</p>` +
-      `<p><b>Module:</b> ${U.escapeHtml(r.module || '-')}</p>` +
-      `<p><b>Priority:</b> ${U.escapeHtml(r.priority || '-')}</p>` +
-      `<p><b>Status:</b> ${U.escapeHtml(r.status || '-')}</p>` +
-      `<p><b>Type:</b> ${U.escapeHtml(r.type || '-')}</p>` +
-      `<p><b>Date:</b> ${U.escapeHtml(r.date || '-')}</p>` +
-      `<p><b>Risk:</b> ${risk.total}` +
-      `<br><span class="muted">Severity ${risk.severity}, Impact ${risk.impact}, Urgency ${risk.urgency}</span>` +
-      `<br><span class="muted">${U.escapeHtml(reasons)}</span>` +
-      `</p>` +
-      `<p><b>Description:</b><br>${U.escapeHtml(r.desc || '-')}</p>` +
-      `<p><b>Log:</b><br>${U.escapeHtml(r.log || '-')}</p>` +
-      (r.file
-        ? `<p><b>Attachment:</b> <a href="${U.escapeAttr(
-            r.file
-          )}" target="_blank" rel="noopener noreferrer">Open link</a></p>`
-        : '') +
-      `<div style="margin-top:10px" class="muted">
+    E.modalBody.innerHTML = `
+      <p><b>ID:</b> ${U.escapeHtml(r.id || '-')}</p>
+      <p><b>Module:</b> ${U.escapeHtml(r.module || '-')}</p>
+      <p><b>Priority:</b> ${U.escapeHtml(r.priority || '-')}</p>
+      <p><b>Status:</b> ${U.escapeHtml(r.status || '-')}</p>
+      <p><b>Date:</b> ${U.escapeHtml(r.date || '-')}</p>
+      <p><b>Risk:</b> ${risk.total}
+         <br><span class="muted">Tech ${risk.technical}, Biz ${risk.business}, Ops ${risk.operational}, Time ${risk.time}</span>
+         <br><span class="muted">Severity ${risk.severity}, Impact ${risk.impact}, Urgency ${risk.urgency}</span>
+         <br><span class="muted">${U.escapeHtml(reasons)}</span>
+         </p>
+      <p><b>Description:</b><br>${U.escapeHtml(r.desc || '-')}</p>
+      <p><b>Log:</b><br>${U.escapeHtml(r.log || '-')}</p>
+      ${
+        r.file
+          ? `<p><b>Attachment:</b> <a href="${U.escapeAttr(
+              r.file
+            )}" target="_blank" rel="noopener noreferrer">Open link</a></p>`
+          : ''
+      }
+      <div style="margin-top:10px" class="muted">
         Suggested: priority <b>${U.escapeHtml(
           meta.suggestions?.priority || '-'
         )}</b>;
@@ -3302,11 +1806,11 @@ UI.Modals = {
             .map(c => U.escapeHtml(c.label))
             .join(', ') || '—'
         }.
-      </div>` +
-      linkedSection;
-
+      </div>
+      ${linkedSection}
+    `;
     E.issueModal.style.display = 'flex';
-    if (E.copyId) E.copyId.focus();
+    E.copyId?.focus();
   },
   closeIssue() {
     if (!E.issueModal) return;
@@ -3318,8 +1822,7 @@ UI.Modals = {
     this.lastEventFocus = document.activeElement;
     const isEdit = !!(ev && ev.id);
     if (E.eventForm) E.eventForm.dataset.id = isEdit ? ev.id : '';
-    if (E.eventModalTitle)
-      E.eventModalTitle.textContent = isEdit ? 'Edit Event' : 'Add Event';
+    if (E.eventModalTitle) E.eventModalTitle.textContent = isEdit ? 'Edit Event' : 'Add Event';
     if (E.eventDelete) E.eventDelete.style.display = isEdit ? 'inline-flex' : 'none';
 
     const allDay = !!ev.allDay;
@@ -3378,7 +1881,9 @@ UI.Modals = {
             .map(issue => {
               const meta = DataStore.computed.get(issue.id) || {};
               const r = meta.risk?.total || 0;
-              const badgeClass = r ? CalendarLink.riskBadgeClass(r) : '';
+              const badgeClass = r
+                ? CalendarLink.riskBadgeClass(r)
+                : '';
               return `
                 <li>
                   <button type="button" class="btn sm" data-open-issue="${U.escapeAttr(
@@ -3419,7 +1924,8 @@ UI.Modals = {
                     more
                   )}</div>`
                 : ''
-            }`;
+            }
+          `;
         } else {
           E.eventIssueLinkedInfo.innerHTML = `Linked ticket ID(s): ${U.escapeHtml(
             issueIdStr
@@ -3442,7 +1948,7 @@ UI.Modals = {
 
     if (E.eventModal) {
       E.eventModal.style.display = 'flex';
-      if (E.eventTitle) E.eventTitle.focus();
+      E.eventTitle?.focus();
     }
   },
   closeEvent() {
@@ -3466,8 +1972,8 @@ function trapFocus(container, e) {
     'button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])'
   );
   if (!focusables.length) return;
-  const first = focusables[0];
-  const last = focusables[focusables.length - 1];
+  const first = focusables[0],
+    last = focusables[focusables.length - 1];
   if (e.shiftKey && document.activeElement === first) {
     last.focus();
     e.preventDefault();
@@ -3478,20 +1984,10 @@ function trapFocus(container, e) {
 }
 
 function setActiveView(view) {
-  const names = ['issues', 'calendar', 'insights'];
+  const names = ['issues', 'calendar'];
   names.forEach(name => {
-    const tab =
-      name === 'issues'
-        ? E.issuesTab
-        : name === 'calendar'
-        ? E.calendarTab
-        : E.insightsTab;
-    const panel =
-      name === 'issues'
-        ? E.issuesView
-        : name === 'calendar'
-        ? E.calendarView
-        : E.insightsView;
+    const tab = name === 'issues' ? E.issuesTab : E.calendarTab;
+    const panel = name === 'issues' ? E.issuesView : E.calendarView;
     const active = name === view;
     if (tab) {
       tab.classList.toggle('active', active);
@@ -3506,12 +2002,11 @@ function setActiveView(view) {
     ensureCalendar();
     renderCalendarEvents();
   }
-  if (view === 'insights') Analytics.refresh(UI.Issues.applyFilters());
 }
 
 /* ---------- Calendar wiring ---------- */
-let calendar = null;
-let calendarReady = false;
+let calendar = null,
+  calendarReady = false;
 
 function wireCalendar() {
   if (E.addEventBtn)
@@ -3534,8 +2029,7 @@ function wireCalendar() {
 
   if (E.calendarTz) {
     try {
-      const tz =
-        Intl.DateTimeFormat().resolvedOptions().timeZone || 'local time';
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'local time';
       E.calendarTz.textContent = `Times shown in: ${tz}`;
     } catch {
       E.calendarTz.textContent = '';
@@ -3610,7 +2104,6 @@ function ensureCalendar() {
       saveEventsCache();
       renderCalendarEvents();
       refreshPlannerReleasePlans();
-      Analytics.refresh(UI.Issues.applyFilters());
     },
     eventDidMount(info) {
       const ext = info.event.extendedProps || {};
@@ -3679,8 +2172,7 @@ function renderCalendarEvents() {
     activeTypes.add('Maintenance');
   if (E.eventFilterRelease && E.eventFilterRelease.checked)
     activeTypes.add('Release');
-  if (E.eventFilterOther && E.eventFilterOther.checked)
-    activeTypes.add('Other');
+  if (E.eventFilterOther && E.eventFilterOther.checked) activeTypes.add('Other');
 
   const links = computeEventsRisk(DataStore.rows, DataStore.events);
   const riskMap = new Map(links.map(r => [r.event.id, r.risk]));
@@ -3817,7 +2309,6 @@ async function loadEvents(force = false) {
     ensureCalendar();
     renderCalendarEvents();
     refreshPlannerReleasePlans();
-    Analytics.refresh(UI.Issues.applyFilters());
     UI.setSync('events', true, new Date());
   }
 
@@ -3840,9 +2331,7 @@ async function loadEvents(force = false) {
             .filter(Boolean)
         : [];
       return {
-        id:
-          ev.id ||
-          'ev_' + Date.now() + '_' + Math.random().toString(36).slice(2),
+        id: ev.id || 'ev_' + Date.now() + '_' + Math.random().toString(36).slice(2),
         title: ev.title || '',
         type: ev.type || 'Other',
         start: ev.start || ev.startDate || '',
@@ -3864,7 +2353,6 @@ async function loadEvents(force = false) {
     ensureCalendar();
     renderCalendarEvents();
     refreshPlannerReleasePlans();
-    Analytics.refresh(UI.Issues.applyFilters());
     UI.setSync('events', true, new Date());
   } catch (e) {
     DataStore.events = cached || [];
@@ -3886,11 +2374,13 @@ async function loadEvents(force = false) {
 async function saveEventToSheet(event) {
   UI.spinner(true);
   try {
+    // Ensure we always have a clean ID
     const evId =
       event.id && String(event.id).trim()
         ? String(event.id).trim()
         : 'ev_' + Date.now() + '_' + Math.random().toString(36).slice(2);
 
+    // Normalize modules into an array of strings
     const modulesArr = Array.isArray(event.modules)
       ? event.modules
       : typeof event.modules === 'string'
@@ -3900,6 +2390,7 @@ async function saveEventToSheet(event) {
           .filter(Boolean)
       : [];
 
+    // Canonical payload with ALL fields Apps Script expects
     const payload = {
       id: evId,
       title: event.title || '',
@@ -3920,6 +2411,8 @@ async function saveEventToSheet(event) {
       allDay: !!event.allDay
     };
 
+    console.log('[InCheck] sending event payload to Apps Script:', payload);
+
     const res = await fetch(CONFIG.CALENDAR_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -3939,6 +2432,7 @@ async function saveEventToSheet(event) {
 
     if (data.ok) {
       UI.toast('Event saved');
+      // Make sure we keep notificationStatus from server if set
       const savedEvent = data.event || payload;
       if (!savedEvent.notificationStatus && payload.notificationStatus) {
         savedEvent.notificationStatus = payload.notificationStatus;
@@ -4023,9 +2517,7 @@ function exportIssuesToCsv(rows, suffix) {
     ].map(csvEscape);
     lines.push(arr.join(','));
   });
-  const blob = new Blob([lines.join('\r\n')], {
-    type: 'text/csv;charset=utf-8;'
-  });
+  const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   const ts = new Date().toISOString().slice(0, 10);
@@ -4047,12 +2539,11 @@ function exportFilteredCsv() {
 
 let LAST_PLANNER_CONTEXT = null;
 let LAST_PLANNER_RESULT = null;
-let LAST_AI_QUERY_RESULT = null;
 
 function renderPlannerResults(result, context) {
   if (!E.plannerResults) return;
   const { slots, bug, bomb, ticketContext } = result;
-  const { env, modules, releaseType, horizonDays, region } = context;
+  const { env, modules, releaseType, horizonDays, region, description, tickets } = context;
 
   if (!slots.length) {
     E.plannerResults.innerHTML =
@@ -4091,534 +2582,603 @@ function renderPlannerResults(result, context) {
   )}</strong> touching <strong>${U.escapeHtml(
     modulesLabel
   )}</strong><br/>
-      Horizon: next ${horizonDays} day(s), region profile: ${U.escapeHtml(
-        regionLabel
-      )}<br/>
-      Bug history: ${U.escapeHtml(bugLabel)}; Bomb-bug history: ${U.escapeHtml(
-        bombLabel
-      )}.<br/>
-      ${U.escapeHtml(ticketsLine)}
+      Horizon: next ${horizonDays} day(s), region profile: ${U.escapeHtml(regionLabel)}.<br/>
+      <span class="muted">${U.escapeHtml(ticketsLine)}</span><br/>
+      <span class="muted">Recent bug pressure: ${U.escapeHtml(
+        bugLabel
+      )}. Historical &ldquo;bomb bug&rdquo; pattern: ${U.escapeHtml(
+    bombLabel
+  )}.</span>
     </div>
   `;
 
-   const buildPlan = slot => {
-    const when = U.fmtTS(slot.start);
-    const bucket = ReleasePlanner.riskBucket(slot.totalRisk);
-    const rushText = ReleasePlanner.rushLabel(slot.rushRisk);
+  let bombExamplesHtml = '';
+  if (bomb.examples && bomb.examples.length) {
+    const items = bomb.examples
+      .map(ex => {
+        const days = Math.round(ex.ageDays);
+        return `<li><strong>${U.escapeHtml(ex.id)}</strong> — ${U.escapeHtml(
+          ex.title || ''
+        )} <span class="muted">(risk ${ex.risk}, ~${days}d old)</span></li>`;
+      })
+      .join('');
+    bombExamplesHtml = `
+      <div class="muted" style="font-size:11px;margin-bottom:4px;">
+        Related historical incidents:
+        <ul style="margin:4px 0 0 18px;padding:0;">
+          ${items}
+        </ul>
+      </div>`;
+  }
 
-    const mods = modules && modules.length ? modules.join(', ') : 'all relevant modules';
-
-    return [
-      `Proposed release window: ${when} (${regionLabel}, ${env})`,
-      `Scope: ${releaseType} change touching ${mods}.`,
-      `Overall risk: ${bucket.label} (${slot.totalRisk.toFixed(
-        1
-      )}/10) · safety score ${slot.safetyScore.toFixed(
-        1
-      )}/10 · service load: ${rushText}.`,
-      `Signals: bug pressure ${bug.risk.toFixed(
-        1
-      )}/6, bomb-bug pattern ${bomb.risk.toFixed(
-        1
-      )}/6, nearby events/holidays ${slot.eventsRisk.toFixed(
-        1
-      )}/6 (events=${slot.eventCount}, holidays=${slot.holidayCount}).`,
-      ticketsCount
-        ? `Tickets in scope: ${ticketsCount} issue(s), max risk ${maxTicketRisk.toFixed(
-            1
-          )}, avg risk ${avgTicketRisk.toFixed(1)}.`
-        : 'Tickets in scope: none explicitly linked – risk based purely on history.',
-      'Run smoke tests immediately after deploy; watch reporting, checklist submissions and key mobile flows for at least 30–60 minutes.',
-      'If anything looks off, pause roll-out, consider quick rollback / feature flag and review the highest-risk tickets first.'
-    ].join('\n');
-  };
-
-  const cards = slots
+  const htmlSlots = slots
     .map((slot, idx) => {
+      const d = slot.start;
+      const dateStr = d.toLocaleDateString(undefined, {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric'
+      });
+      const timeStr = d.toLocaleTimeString(undefined, {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+
       const bucket = ReleasePlanner.riskBucket(slot.totalRisk);
-      const when = U.fmtTS(slot.start);
-      const rushText = ReleasePlanner.rushLabel(slot.rushRisk);
+      const rushLabel = ReleasePlanner.rushLabel(slot.rushRisk);
+      const bugLabelPerSlot = ReleasePlanner.bugLabel(slot.bugRisk);
+      const bombLabelPerSlot = ReleasePlanner.bombLabel(slot.bombRisk);
+      const eventsLabelRaw = slot.eventCount
+        ? `${slot.eventCount} overlapping change event(s)`
+        : 'no overlapping change events';
+      const holidayLabel = slot.holidayCount
+        ? `${slot.holidayCount} holiday(s) in window`
+        : 'no holidays in window';
+      const eventsLabel = slot.holidayCount
+        ? `${holidayLabel} · ${eventsLabelRaw}`
+        : eventsLabelRaw;
+
+      const safetyIndex = (slot.safetyScore / 10) * 100;
+      const blastComment =
+        bucket.label === 'Low'
+          ? 'Low blast radius; safe default with rollback buffer.'
+          : bucket.label === 'Medium'
+          ? 'Medium blast radius; keep tight monitoring and rollback plan.'
+          : 'High blast risk; only use with strict approvals and on-call coverage.';
+
+      const startIso = d.toISOString();
+      const endIso = slot.end.toISOString();
 
       return `
-        <div class="card planner-slot" data-slot-index="${idx}">
-          <div class="planner-slot-header">
-            <span class="planner-slot-when">${U.escapeHtml(when)}</span>
-            <span class="planner-slot-badge ${bucket.className}">${bucket.label} risk</span>
-          </div>
-          <div class="planner-slot-body">
-            <div class="planner-slot-line">
-              <span class="label">Service:</span>
-              <span>${U.escapeHtml(rushText)}</span>
-            </div>
-            <div class="planner-slot-line">
-              <span class="label">Risk:</span>
-              <span>${slot.totalRisk.toFixed(1)}/10 · safety ${slot.safetyScore.toFixed(
-                1
-              )}/10</span>
-            </div>
-            <div class="planner-slot-line">
-              <span class="label">Signals:</span>
-              <span>
-                bug ${bug.risk.toFixed(1)}/6 · bomb-bug ${bomb.risk.toFixed(
-                  1
-                )}/6 · events ${slot.eventsRisk.toFixed(1)}/6
-              </span>
-            </div>
-            <div class="planner-slot-line">
-              <span class="label">Calendar:</span>
-              <span>${slot.eventCount} change(s), ${slot.holidayCount} holiday(s) nearby</span>
-            </div>
-          </div>
-          <div class="planner-slot-footer">
-            <button type="button" class="btn sm planner-slot-choose" data-slot-index="${idx}">
-              Use this slot
-            </button>
-          </div>
-        </div>`;
+      <div class="planner-slot" data-index="${idx}">
+        <div class="planner-slot-header">
+          <span>#${idx + 1} · ${U.escapeHtml(dateStr)} · ${U.escapeHtml(timeStr)}</span>
+          <span class="planner-slot-score ${bucket.className}">
+            Risk ${slot.totalRisk.toFixed(1)} / 10 · ${bucket.label}
+          </span>
+        </div>
+        <div class="planner-slot-meta">
+          Rush: ${U.escapeHtml(rushLabel)} · Bugs: ${U.escapeHtml(
+        bugLabelPerSlot
+      )} · Bomb-bug: ${U.escapeHtml(
+        bombLabelPerSlot
+      )}<br/>Calendar: ${U.escapeHtml(
+        eventsLabel
+      )}<br/>Safety index: ${safetyIndex.toFixed(0)}%
+        </div>
+        <div class="planner-slot-meta">
+          Expected effect on F&amp;B clients: ${U.escapeHtml(blastComment)}
+        </div>
+        <div class="planner-slot-meta">
+          <button type="button"
+                  class="btn sm"
+                  data-add-release="${U.escapeAttr(startIso)}"
+                  data-add-release-end="${U.escapeAttr(endIso)}">
+            ➕ Add this window as Release event
+          </button>
+        </div>
+      </div>
+    `;
     })
     .join('');
 
-  E.plannerResults.innerHTML = intro + `<div class="planner-slots-wrap">${cards}</div>`;
+  E.plannerResults.innerHTML = `${intro}${bombExamplesHtml}${htmlSlots}`;
 
-  const bestSlot = slots[0];
-  if (E.plannerReleasePlan && bestSlot) {
-    E.plannerReleasePlan.value = buildPlan(bestSlot);
-  }
+  if (E.plannerAddEvent) E.plannerAddEvent.disabled = !slots.length;
 
-  LAST_PLANNER_CONTEXT = context;
-  LAST_PLANNER_RESULT = result;
+  // Wire per-slot "Add" buttons – include selected tickets as linked issue IDs
+  E.plannerResults.querySelectorAll('[data-add-release]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const startIso = btn.getAttribute('data-add-release');
+      const endIso = btn.getAttribute('data-add-release-end');
+      if (!startIso || !endIso) return;
 
-  if (E.plannerAddEvent) {
-    E.plannerAddEvent.disabled = !slots.length;
-  }
+      const startLocal = toLocalInputValue(new Date(startIso));
+      const endLocal = toLocalInputValue(new Date(endIso));
 
-  U.qAll('.planner-slot-choose', E.plannerResults).forEach(btn => {
-    btn.addEventListener('click', () => {
-      const idx = parseInt(btn.getAttribute('data-slot-index'), 10) || 0;
-      const chosen = slots[idx] || bestSlot;
-      if (!chosen) return;
-      if (E.plannerReleasePlan) {
-        E.plannerReleasePlan.value = buildPlan(chosen);
+      const modulesLabelLocal =
+        modules && modules.length ? modules.join(', ') : 'General';
+
+      const releaseDescription = (E.plannerDescription?.value || '').trim();
+
+      const ticketIds =
+        (LAST_PLANNER_CONTEXT &&
+          Array.isArray(LAST_PLANNER_CONTEXT.tickets) &&
+          LAST_PLANNER_CONTEXT.tickets) ||
+        [];
+
+      const newEvent = {
+        id: '',
+        title: `Release – ${modulesLabelLocal} (${releaseType})`,
+        type: 'Release',
+        env: env,
+        status: 'Planned',
+        owner: '',
+        modules: modules,
+        impactType:
+          env === 'Prod'
+            ? 'High risk change'
+            : 'Internal only',
+        issueId: ticketIds.join(', '),
+        start: startLocal,
+        end: endLocal,
+        description:
+          `Auto-scheduled by Release Planner. Region profile: ${regionLabel}. Modules: ${modulesLabelLocal}.` +
+          (releaseDescription ? `\nRelease notes: ${releaseDescription}` : '') +
+          `\nHeuristic risk index computed from F&B rush hours, bug history, holidays and existing calendar events.` +
+          `\nTickets in scope at scheduling time: ${
+            ticketIds.length ? ticketIds.join(', ') : 'none explicitly selected.'
+          }`,
+        allDay: false,
+        notificationStatus: ''
+      };
+
+      const saved = await saveEventToSheet(newEvent);
+      if (!saved) {
+        UI.toast('Could not save release event');
+        return;
       }
-      UI.toast('Updated release plan for selected slot.');
+      const idx = DataStore.events.findIndex(x => x.id === saved.id);
+      if (idx === -1) DataStore.events.push(saved);
+      else DataStore.events[idx] = saved;
+      saveEventsCache();
+      renderCalendarEvents();
+      refreshPlannerReleasePlans(context);
     });
   });
 }
 
-function refreshPlannerReleasePlans() {
-  if (!LAST_PLANNER_CONTEXT) return;
-  try {
-    const res = ReleasePlanner.suggestSlots(LAST_PLANNER_CONTEXT);
-    LAST_PLANNER_RESULT = res;
-    renderPlannerResults(res, LAST_PLANNER_CONTEXT);
-  } catch (e) {
-    console.error('Planner refresh failed', e);
-  }
-}
+function refreshPlannerTickets(currentList) {
+  if (!E.plannerTickets) return;
+  const list = currentList || UI.Issues.applyFilters();
 
-function parseCsvList(value) {
-  return (value || '')
-    .split(',')
-    .map(s => s.trim())
-    .filter(Boolean);
-}
-
-function runPlanner() {
-  if (!E.plannerRegion || !E.plannerEnv) return;
-
-  const region = E.plannerRegion.value || 'gulf';
-  const env = E.plannerEnv.value || 'Prod';
-  const modules = parseCsvList(E.plannerModules && E.plannerModules.value);
-  const horizonDays =
-    parseInt(E.plannerHorizon && E.plannerHorizon.value, 10) || 7;
-  const releaseType =
-    (E.plannerReleaseType && E.plannerReleaseType.value) || 'feature';
-  const description =
-    (E.plannerDescription && E.plannerDescription.value) || '';
-  const slotsPerDay =
-    parseInt(E.plannerSlotsPerDay && E.plannerSlotsPerDay.value, 10) || 3;
-  const tickets = parseCsvList(E.plannerTickets && E.plannerTickets.value);
-
-  const ctx = {
-    region,
-    env,
-    modules,
-    horizonDays,
-    releaseType,
-    description,
-    slotsPerDay,
-    tickets
-  };
-
-  const result = ReleasePlanner.suggestSlots(ctx);
-  renderPlannerResults(result, ctx);
-}
-
-/* ---------- AI Query (DSL) wiring ---------- */
-
-function findOptionValue(select, needle) {
-  if (!select || !needle) return null;
-  const n = needle.toLowerCase();
-  const opts = Array.from(select.options || []);
-  let match = opts.find(o => (o.value || '').toLowerCase() === n);
-  if (match) return match.value;
-  match = opts.find(o => (o.value || '').toLowerCase().includes(n));
-  return match ? match.value : null;
-}
-
-function applyFiltersFromDsl(q) {
-  const s = Filters.state;
-
-  s.search = '';
-  s.module = 'All';
-  s.priority = 'All';
-  s.status = 'All';
-  s.start = '';
-  s.end = '';
-
-  const searchTerms = [];
-
-  if (q.words && q.words.length) {
-    searchTerms.push(...q.words);
-  }
-
-  if (q.module) {
-    const modVal = findOptionValue(E.moduleFilter, q.module);
-    if (modVal) {
-      s.module = modVal;
-      if (E.moduleFilter) E.moduleFilter.value = modVal;
-    } else {
-      searchTerms.push(q.module);
-    }
-  }
-
-  if (q.priority) {
-    const priVal = findOptionValue(E.priorityFilter, q.priority);
-    if (priVal) {
-      s.priority = priVal;
-      if (E.priorityFilter) E.priorityFilter.value = priVal;
-    }
-  }
-
-  if (q.status) {
-    if (q.status === 'open') {
-      // keep "All" but we could in future add explicit open/closed filter
-    } else if (q.status === 'closed') {
-      const statVal = findOptionValue(E.statusFilter, 'resolved');
-      if (statVal) {
-        s.status = statVal;
-        if (E.statusFilter) E.statusFilter.value = statVal;
-      }
-    } else {
-      const statVal = findOptionValue(E.statusFilter, q.status);
-      if (statVal) {
-        s.status = statVal;
-        if (E.statusFilter) E.statusFilter.value = statVal;
-      }
-    }
-  }
-
-  if (q.lastDays) {
-    const from = U.daysAgo(q.lastDays);
-    const d = toLocalDateValue(from);
-    s.start = d;
-    if (E.startDateFilter) E.startDateFilter.value = d;
-  }
-
-  if (searchTerms.length) {
-    s.search = searchTerms.join(' ');
-    if (E.searchInput) E.searchInput.value = s.search;
-  }
-
-  Filters.save();
-  GridState.page = 1;
-  UI.refreshAll();
-}
-
-function runAIQuery() {
-  if (!E.aiQueryInput || !E.aiQueryResults) return;
-  const text = (E.aiQueryInput.value || '').trim();
-  if (!text) {
-    E.aiQueryResults.innerHTML =
-      '<div class="muted">Type a query using the DSL, e.g. <code>module:mobile risk>=7 last:7d</code>.</div>';
-    LAST_AI_QUERY_RESULT = null;
+  if (!list.length) {
+    E.plannerTickets.innerHTML =
+      '<option disabled>No tickets match the current filters</option>';
     return;
   }
 
-  const q = DSL.parse(text);
-  const matches = DataStore.rows.filter(r =>
-    DSL.matches(r, DataStore.computed.get(r.id) || {}, q)
-  );
+  const max = 250;
+  const subset = list.slice(0, max);
 
-  LAST_AI_QUERY_RESULT = matches;
-
-  if (!matches.length) {
-    E.aiQueryResults.innerHTML =
-      '<div class="muted">No issues matched this query.</div>';
-    return;
-  }
-
-  const top = matches.slice(0, 50);
-  const items = top
+  E.plannerTickets.innerHTML = subset
     .map(r => {
       const meta = DataStore.computed.get(r.id) || {};
       const risk = meta.risk?.total || 0;
-      const badgeClass = risk ? CalendarLink.riskBadgeClass(risk) : '';
-      const dateLabel = r.date || '';
-      return `
-        <li>
-          <button type="button" class="btn sm" data-open="${U.escapeAttr(
-            r.id
-          )}">${U.escapeHtml(r.id)}</button>
-          <span class="muted">${U.escapeHtml(r.module || 'Unspecified')}</span>
-          – ${U.escapeHtml(r.title || '')}
-          ${
-            risk
-              ? `<span class="event-risk-badge ${badgeClass}">R${risk}</span>`
-              : ''
-          }
-          <div class="muted">${U.escapeHtml(dateLabel)} · ${U.escapeHtml(
-        r.status || '-'
-      )} · ${U.escapeHtml(r.priority || '-')}</div>
-        </li>`;
+      const label = `[${r.priority || '-'} | R${risk}] ${r.id} — ${
+        r.title || ''
+      }`.slice(0, 140);
+      return `<option value="${U.escapeAttr(r.id)}">${U.escapeHtml(label)}</option>`;
+    })
+    .join('');
+}
+
+function refreshPlannerReleasePlans(context) {
+  if (!E.plannerReleasePlan) return;
+  const env = context?.env || (E.plannerEnv?.value || '');
+  const horizonDays =
+    context?.horizonDays ||
+    parseInt(E.plannerHorizon?.value || '7', 10) ||
+    7;
+
+  const now = new Date();
+  const horizonEnd = U.dateAddDays(now, horizonDays);
+
+  const releaseEvents = (DataStore.events || []).filter(ev => {
+    const type = (ev.type || '').toLowerCase();
+    if (type !== 'release') return false;
+    if (!ev.start) return false;
+    const d = new Date(ev.start);
+    if (isNaN(d)) return false;
+    if (d < now) return false;
+    if (d > horizonEnd) return false;
+
+    const evEnv = ev.env || 'Prod';
+    if (env && env !== 'Other' && evEnv && evEnv !== env) return false;
+
+    return true;
+  });
+
+  releaseEvents.sort((a, b) => new Date(a.start) - new Date(b.start));
+
+  if (!releaseEvents.length) {
+    E.plannerReleasePlan.innerHTML =
+      '<option value="">No Release events in horizon</option>';
+    return;
+  }
+
+  const options = releaseEvents
+    .map(ev => {
+      const d = ev.start ? new Date(ev.start) : null;
+      const when =
+        d && !isNaN(d)
+          ? d.toLocaleString(undefined, {
+              month: 'short',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            })
+          : '(no date)';
+      const label = `[${when}] ${ev.title || 'Release'} (${ev.env || 'Prod'})`;
+      return `<option value="${U.escapeAttr(ev.id)}">${U.escapeHtml(label)}</option>`;
     })
     .join('');
 
-  E.aiQueryResults.innerHTML = `
-    <div class="muted" style="margin-bottom:4px;">
-      ${matches.length} issue(s) matched · showing first ${top.length}.
-    </div>
-    <ul class="ai-query-list">
-      ${items}
-    </ul>
-  `;
-
-  U.qAll('[data-open]', E.aiQueryResults).forEach(btn => {
-    btn.addEventListener('click', () =>
-      UI.Modals.openIssue(btn.getAttribute('data-open'))
-    );
-  });
+  E.plannerReleasePlan.innerHTML =
+    '<option value="">Select a Release event…</option>' + options;
 }
-
-function wireAIQueryUI() {
-  if (E.aiQueryRun) {
-    E.aiQueryRun.addEventListener('click', () => runAIQuery());
-  }
-  if (E.aiQueryInput) {
-    E.aiQueryInput.addEventListener('keydown', e => {
-      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        runAIQuery();
-      }
-    });
-  }
-  if (E.aiQueryApplyFilters) {
-    E.aiQueryApplyFilters.addEventListener('click', () => {
-      const text = (E.aiQueryInput && E.aiQueryInput.value) || '';
-      if (!text.trim()) return;
-      const q = DSL.parse(text);
-      applyFiltersFromDsl(q);
-    });
-  }
-  if (E.aiQueryExport) {
-    E.aiQueryExport.addEventListener('click', () => {
-      if (!LAST_AI_QUERY_RESULT) runAIQuery();
-      if (!LAST_AI_QUERY_RESULT || !LAST_AI_QUERY_RESULT.length) {
-        UI.toast('Nothing to export – run a query first.');
-        return;
-      }
-      exportIssuesToCsv(LAST_AI_QUERY_RESULT, 'aiquery');
-    });
-  }
-}
-
-/* ---------- Global refresh helper ---------- */
-
-UI.refreshAll = function () {
-  const list = UI.Issues.applyFilters();
-  UI.Issues.renderKPIs(list);
-  UI.Issues.renderTable(list);
-  UI.Issues.renderCharts(list);
-  UI.Issues.renderSummary(list);
-  UI.Issues.renderFilterChips(list);
-
-  if (E.insightsView && E.insightsView.classList.contains('active')) {
-    Analytics.refresh(list);
-  }
-};
-
-/* ---------- Misc helpers ---------- */
-
-function setIfOptionExists(select, value) {
-  if (!select || !value) return;
-  const opts = Array.from(select.options || []);
-  const match = opts.find(o => o.value === value);
-  if (match) select.value = value;
-}
-
-/* ---------- Planner wiring ---------- */
 
 function wirePlanner() {
-  if (E.plannerRun) {
-    E.plannerRun.addEventListener('click', () => runPlanner());
-  }
+  if (!E.plannerRun) return;
 
-  if (E.plannerTicketsFromFilters) {
-    E.plannerTicketsFromFilters.addEventListener('click', () => {
-      const list = UI.Issues.applyFilters();
-      const ids = list.map(r => r.id).filter(Boolean);
-      if (!ids.length) {
-        UI.toast('No issues in current filter set.');
-        return;
-      }
-      if (E.plannerTickets) {
-        E.plannerTickets.value = ids.join(', ');
-      }
-      UI.toast(`Loaded ${ids.length} ticket id(s) from current filters.`);
-    });
-  }
+  E.plannerRun.addEventListener('click', () => {
+    if (!DataStore.rows.length) {
+      UI.toast('Issues are still loading. Try again in a few seconds.');
+      return;
+    }
 
-  if (E.plannerAssignBtn && E.plannerReleasePlan) {
-    E.plannerAssignBtn.addEventListener('click', async () => {
-      const text = E.plannerReleasePlan.value || '';
-      if (!text) return;
-      try {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          await navigator.clipboard.writeText(text);
-          UI.toast('Release plan copied to clipboard.');
-        } else {
-          UI.toast('Select and copy the plan text manually.');
-        }
-      } catch {
-        UI.toast('Select and copy the plan text manually.');
-      }
-    });
-  }
+    const regionValue = (E.plannerRegion?.value || 'gulf').toLowerCase();
+    const region = ReleasePlanner.regionKey(regionValue);
 
-  if (E.plannerAddEvent) {
-    E.plannerAddEvent.addEventListener('click', () => {
-      if (!LAST_PLANNER_CONTEXT || !LAST_PLANNER_RESULT) {
-        UI.toast('Run the planner first to choose a slot.');
-        return;
-      }
-      const slots = LAST_PLANNER_RESULT.slots || [];
-      if (!slots.length) {
-        UI.toast('No planner slots available.');
-        return;
-      }
-      const bestSlot = slots[0];
-      const ctx = LAST_PLANNER_CONTEXT;
-      const modules = ctx.modules || [];
-      const titleMods =
-        modules && modules.length ? ` – ${modules.join(', ')}` : '';
-      const desc =
-        (E.plannerReleasePlan && E.plannerReleasePlan.value) ||
-        `Planned ${ctx.releaseType} release on ${U.fmtTS(bestSlot.start)}.`;
+    const env = E.plannerEnv?.value || 'Prod';
+    const modulesStr = (E.plannerModules?.value || '').trim();
+    const modules = modulesStr
+      ? modulesStr
+          .split(',')
+          .map(s => s.trim())
+          .filter(Boolean)
+      : [];
+    const horizonDays =
+      parseInt(E.plannerHorizon?.value || '7', 10) || 7;
+    const releaseTypeValue =
+      (E.plannerReleaseType?.value || 'feature').toLowerCase();
+    const releaseType =
+      releaseTypeValue === 'major' || releaseTypeValue === 'minor'
+        ? releaseTypeValue
+        : 'feature';
+    const slotsPerDay =
+      parseInt(E.plannerSlotsPerDay?.value || '4', 10) || 4;
+    const description = (E.plannerDescription?.value || '').trim();
 
-      UI.Modals.openEvent({
-        title: `Release – ${ctx.env}${titleMods}`,
-        type: 'Release',
-        env: ctx.env || 'Prod',
-        status: 'Planned',
-        owner: '',
-        modules,
-        impactType: 'No downtime expected',
-        issueId: (ctx.tickets || []).join(', '),
-        start: bestSlot.start,
-        end: bestSlot.end,
-        allDay: false,
-        description: desc
-      });
-    });
-  }
-}
+    const selectedTicketIds = Array.from(E.plannerTickets?.selectedOptions || [])
+      .map(o => o.value)
+      .filter(Boolean);
 
-/* ---------- Event form wiring ---------- */
-
-function wireEventForm() {
-  if (!E.eventForm) return;
-
-  E.eventForm.addEventListener('submit', async e => {
-    e.preventDefault();
-    const id = E.eventForm.dataset.id || '';
-    const allDay = !!(E.eventAllDay && E.eventAllDay.checked);
-
-    const startVal = E.eventStart && E.eventStart.value;
-    const endVal = E.eventEnd && E.eventEnd.value;
-
-    const normalizeDt = val => {
-      if (!val) return '';
-      // if all-day and "YYYY-MM-DD", just send that through
-      if (allDay && /^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
-      return val;
+    const context = {
+      region,
+      env,
+      modules,
+      releaseType,
+      horizonDays,
+      slotsPerDay,
+      description,
+      tickets: selectedTicketIds
     };
 
-    const payload = {
-      id,
-      title: (E.eventTitle && E.eventTitle.value) || '',
-      type: (E.eventType && E.eventType.value) || 'Deployment',
-      env: (E.eventEnv && E.eventEnv.value) || 'Prod',
-      status: (E.eventStatus && E.eventStatus.value) || 'Planned',
-      owner: (E.eventOwner && E.eventOwner.value) || '',
-      modules: (E.eventModules && E.eventModules.value) || '',
-      impactType:
-        (E.eventImpactType && E.eventImpactType.value) || 'No downtime expected',
-      issueId: (E.eventIssueId && E.eventIssueId.value) || '',
-      start: normalizeDt(startVal),
-      end: normalizeDt(endVal),
-      description: (E.eventDescription && E.eventDescription.value) || '',
-      allDay
-    };
+    const result = ReleasePlanner.suggestSlots(context);
 
-    const saved = await saveEventToSheet(payload);
-    if (!saved) return;
-
-    const idx = DataStore.events.findIndex(ev => ev.id === saved.id);
-    if (idx >= 0) DataStore.events[idx] = saved;
-    else DataStore.events.push(saved);
-
-    saveEventsCache();
-    ensureCalendar();
-    renderCalendarEvents();
-    refreshPlannerReleasePlans();
-    Analytics.refresh(UI.Issues.applyFilters());
-    UI.Modals.closeEvent();
+    LAST_PLANNER_CONTEXT = context;
+    LAST_PLANNER_RESULT = result;
+    renderPlannerResults(result, context);
+    refreshPlannerReleasePlans(context);
   });
 
-  if (E.eventDelete) {
-    E.eventDelete.addEventListener('click', async e => {
-      e.preventDefault();
-      if (!E.eventForm) return;
-      const id = E.eventForm.dataset.id;
-      if (!id) {
-        UI.Modals.closeEvent();
+  if (E.plannerAddEvent) {
+    E.plannerAddEvent.addEventListener('click', async () => {
+      if (
+        !LAST_PLANNER_CONTEXT ||
+        !LAST_PLANNER_RESULT ||
+        !LAST_PLANNER_RESULT.slots.length
+      ) {
+        UI.toast('Run the planner first to get suggestions.');
         return;
       }
-      const ok = await deleteEventFromSheet(id);
-      if (!ok) return;
-      const idx = DataStore.events.findIndex(ev => ev.id === id);
-      if (idx >= 0) DataStore.events.splice(idx, 1);
+      const context = LAST_PLANNER_CONTEXT;
+      const slot = LAST_PLANNER_RESULT.slots[0];
+
+      const startIso = slot.start.toISOString();
+      const endIso = slot.end.toISOString();
+      const startLocal = toLocalInputValue(new Date(startIso));
+      const endLocal = toLocalInputValue(new Date(endIso));
+
+      const regionLabel =
+        context.region === 'gulf'
+          ? 'Gulf (KSA / UAE / Qatar)'
+          : context.region === 'levant'
+          ? 'Levant'
+          : 'North Africa';
+
+      const modulesLabelLocal =
+        context.modules && context.modules.length
+          ? context.modules.join(', ')
+          : 'General';
+      const releaseDescription = (E.plannerDescription?.value || '').trim();
+      const ticketIds = Array.isArray(context.tickets) ? context.tickets : [];
+
+      const newEvent = {
+        id: '',
+        title: `Release – ${modulesLabelLocal} (${context.releaseType})`,
+        type: 'Release',
+        env: context.env,
+        status: 'Planned',
+        owner: '',
+        modules: context.modules,
+        impactType:
+          context.env === 'Prod'
+            ? 'High risk change'
+            : 'Internal only',
+        issueId: ticketIds.join(', '),
+        start: startLocal,
+        end: endLocal,
+        description:
+          `Auto-scheduled by Release Planner (top suggestion). Region profile: ${regionLabel}. Modules: ${modulesLabelLocal}.` +
+          (releaseDescription ? `\nRelease notes: ${releaseDescription}` : '') +
+          `\nHeuristic risk index computed from F&B rush hours, bug history, holidays and existing calendar events.` +
+          `\nTickets in scope at scheduling time: ${
+            ticketIds.length ? ticketIds.join(', ') : 'none explicitly selected.'
+          }`,
+        allDay: false,
+        notificationStatus: ''
+      };
+
+      const saved = await saveEventToSheet(newEvent);
+      if (!saved) {
+        UI.toast('Could not save release event');
+        return;
+      }
+      const idx = DataStore.events.findIndex(x => x.id === saved.id);
+      if (idx === -1) DataStore.events.push(saved);
+      else DataStore.events[idx] = saved;
       saveEventsCache();
-      ensureCalendar();
+      renderCalendarEvents();
+      refreshPlannerReleasePlans(context);
+    });
+  }
+
+  if (E.plannerEnv) {
+    E.plannerEnv.addEventListener('change', () => {
+      refreshPlannerReleasePlans();
+    });
+  }
+  if (E.plannerHorizon) {
+    E.plannerHorizon.addEventListener('change', () => {
+      refreshPlannerReleasePlans();
+    });
+  }
+
+  if (E.plannerAssignBtn) {
+    E.plannerAssignBtn.addEventListener('click', async () => {
+      const planId = E.plannerReleasePlan?.value || '';
+      if (!planId) {
+        UI.toast('Select a Release event first.');
+        return;
+      }
+      const options = Array.from(E.plannerTickets?.selectedOptions || []);
+      const ticketIds = options.map(o => o.value).filter(Boolean);
+      if (!ticketIds.length) {
+        UI.toast('Select at least one ticket to assign.');
+        return;
+      }
+
+      const idx = DataStore.events.findIndex(ev => ev.id === planId);
+      if (idx === -1) {
+        UI.toast('Selected Release event not found. Try refreshing events.');
+        return;
+      }
+
+      const ev = DataStore.events[idx];
+      const existing = (ev.issueId || '')
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+      const merged = Array.from(new Set([...existing, ...ticketIds]));
+
+      const updatedEvent = {
+        ...ev,
+        issueId: merged.join(', ')
+      };
+
+      const saved = await saveEventToSheet(updatedEvent);
+      if (!saved) {
+        UI.toast('Could not assign tickets to Release event.');
+        return;
+      }
+
+      DataStore.events[idx] = saved;
+      saveEventsCache();
       renderCalendarEvents();
       refreshPlannerReleasePlans();
-      UI.Modals.closeEvent();
+
+      UI.toast(
+        `Assigned ${ticketIds.length} ticket${ticketIds.length > 1 ? 's' : ''} to the Release plan.`
+      );
     });
   }
 }
 
-/* ---------- Global UI wiring ---------- */
+/* ---------- Misc wiring ---------- */
+function setIfOptionExists(select, value) {
+  if (!select || !value) return;
+  const options = Array.from(select.options || []);
+  if (options.some(o => o.value === value)) select.value = value;
+}
 
-function wireGlobalUI() {
-  // Sidebar/drawer
-  if (E.drawerBtn && E.sidebar) {
+function wireCore() {
+  [E.issuesTab, E.calendarTab].forEach(btn => {
+    if (!btn) return;
+    btn.addEventListener('click', () => setActiveView(btn.dataset.view));
+  });
+
+  if (E.drawerBtn)
     E.drawerBtn.addEventListener('click', () => {
+      const open = !E.sidebar.classList.contains('open');
       E.sidebar.classList.toggle('open');
+      E.drawerBtn.setAttribute('aria-expanded', String(open));
+    });
+
+  if (E.searchInput)
+    E.searchInput.addEventListener(
+      'input',
+      debounce(() => {
+        Filters.state.search = E.searchInput.value || '';
+        Filters.save();
+        UI.refreshAll();
+      }, 250)
+    );
+
+  if (E.refreshNow)
+    E.refreshNow.addEventListener('click', () => {
+      loadIssues(true);
+      loadEvents(true);
+    });
+  if (E.exportCsv) E.exportCsv.addEventListener('click', exportFilteredCsv);
+  if (E.createTicketBtn)
+    E.createTicketBtn.addEventListener('click', () =>
+      window.open(
+        'https://forms.gle/PPnEP1AQneoBT79s5',
+        '_blank',
+        'noopener,noreferrer'
+      )
+    );
+
+  if (E.shortcutsHelp) {
+    E.shortcutsHelp.addEventListener('click', () => {
+      UI.toast('Shortcuts: 1/2 switch tabs · / focus search');
     });
   }
 
-  // Reset filters
-  if (E.resetBtn) {
+  UI.refreshAll = () => {
+    const list = UI.Issues.applyFilters();
+    UI.Issues.renderSummary(list);
+    UI.Issues.renderFilterChips();
+    UI.Issues.renderKPIs(list);
+    UI.Issues.renderTable(list);
+    UI.Issues.renderCharts(list);
+    refreshPlannerTickets(list);
+  };
+}
+
+function wireSorting() {
+  U.qAll('#issuesTable thead th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.getAttribute('data-key');
+      if (GridState.sortKey === key) GridState.sortAsc = !GridState.sortAsc;
+      else {
+        GridState.sortKey = key;
+        GridState.sortAsc = true;
+      }
+      UI.refreshAll();
+    });
+    th.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        th.click();
+      }
+    });
+    th.tabIndex = 0;
+    th.setAttribute('role', 'button');
+    th.setAttribute('aria-label', `Sort by ${th.textContent}`);
+  });
+}
+
+function wirePaging() {
+  if (E.pageSize)
+    E.pageSize.addEventListener('change', () => {
+      GridState.pageSize = +E.pageSize.value;
+      localStorage.setItem(LS_KEYS.pageSize, GridState.pageSize);
+      GridState.page = 1;
+      UI.refreshAll();
+    });
+  if (E.firstPage)
+    E.firstPage.addEventListener('click', () => {
+      GridState.page = 1;
+      UI.refreshAll();
+    });
+  if (E.prevPage)
+    E.prevPage.addEventListener('click', () => {
+      if (GridState.page > 1) {
+        GridState.page--;
+        UI.refreshAll();
+      }
+    });
+  if (E.nextPage)
+    E.nextPage.addEventListener('click', () => {
+      const list = UI.Issues.applyFilters();
+      const pages = Math.max(1, Math.ceil(list.length / GridState.pageSize));
+      if (GridState.page < pages) {
+        GridState.page++;
+        UI.refreshAll();
+      }
+    });
+  if (E.lastPage)
+    E.lastPage.addEventListener('click', () => {
+      const list = UI.Issues.applyFilters();
+      GridState.page = Math.max(1, Math.ceil(list.length / GridState.pageSize));
+      UI.refreshAll();
+    });
+}
+
+function wireFilters() {
+  if (E.moduleFilter) {
+    E.moduleFilter.addEventListener('change', () => {
+      Filters.state.module = E.moduleFilter.value;
+      Filters.save();
+      UI.refreshAll();
+    });
+  }
+  if (E.priorityFilter) {
+    E.priorityFilter.addEventListener('change', () => {
+      Filters.state.priority = E.priorityFilter.value;
+      Filters.save();
+      UI.refreshAll();
+    });
+  }
+  if (E.statusFilter) {
+    E.statusFilter.addEventListener('change', () => {
+      Filters.state.status = E.statusFilter.value;
+      Filters.save();
+      UI.refreshAll();
+    });
+  }
+  if (E.startDateFilter) {
+    E.startDateFilter.value = Filters.state.start || '';
+    E.startDateFilter.addEventListener('change', () => {
+      Filters.state.start = E.startDateFilter.value;
+      Filters.save();
+      UI.refreshAll();
+    });
+  }
+  if (E.endDateFilter) {
+    E.endDateFilter.value = Filters.state.end || '';
+    E.endDateFilter.addEventListener('change', () => {
+      Filters.state.end = E.endDateFilter.value;
+      Filters.save();
+      UI.refreshAll();
+    });
+  }
+  if (E.searchInput) E.searchInput.value = Filters.state.search || '';
+
+  if (E.resetBtn)
     E.resetBtn.addEventListener('click', () => {
       Filters.state = {
         search: '',
@@ -4629,210 +3189,117 @@ function wireGlobalUI() {
         end: ''
       };
       Filters.save();
-      GridState.page = 1;
-
       if (E.searchInput) E.searchInput.value = '';
-      if (E.moduleFilter) E.moduleFilter.value = 'All';
-      if (E.priorityFilter) E.priorityFilter.value = 'All';
-      if (E.statusFilter) E.statusFilter.value = 'All';
       if (E.startDateFilter) E.startDateFilter.value = '';
       if (E.endDateFilter) E.endDateFilter.value = '';
+      UI.Issues.renderFilters();
       UI.refreshAll();
     });
-  }
+}
 
-  // Search
-  if (E.searchInput) {
-    E.searchInput.value = Filters.state.search || '';
-    E.searchInput.addEventListener(
-      'input',
-      debounce(() => {
-        Filters.state.search = E.searchInput.value || '';
-        Filters.save();
-        GridState.page = 1;
-        UI.refreshAll();
-      }, 200)
-    );
-  }
-
-  const bindSelectFilter = (el, key) => {
-    if (!el) return;
-    if (Filters.state[key] && Filters.state[key] !== 'All') {
-      setIfOptionExists(el, Filters.state[key]);
-    }
-    el.addEventListener('change', () => {
-      Filters.state[key] = el.value;
-      Filters.save();
-      GridState.page = 1;
-      UI.refreshAll();
-    });
+function wireTheme() {
+  const media = window.matchMedia
+    ? window.matchMedia('(prefers-color-scheme: dark)')
+    : null;
+  const applySystem = () => {
+    if (media?.matches) document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', 'light');
   };
+  const saved = localStorage.getItem(LS_KEYS.theme) || 'system';
+  if (E.themeSelect) E.themeSelect.value = saved;
+  if (saved === 'system') applySystem();
+  else if (saved === 'dark') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', 'light');
 
-  bindSelectFilter(E.moduleFilter, 'module');
-  bindSelectFilter(E.priorityFilter, 'priority');
-  bindSelectFilter(E.statusFilter, 'status');
-
-  if (E.startDateFilter) {
-    if (Filters.state.start) E.startDateFilter.value = Filters.state.start;
-    E.startDateFilter.addEventListener('change', () => {
-      Filters.state.start = E.startDateFilter.value || '';
-      Filters.save();
-      GridState.page = 1;
-      UI.refreshAll();
-    });
-  }
-
-  if (E.endDateFilter) {
-    if (Filters.state.end) E.endDateFilter.value = Filters.state.end;
-    E.endDateFilter.addEventListener('change', () => {
-      Filters.state.end = E.endDateFilter.value || '';
-      Filters.save();
-      GridState.page = 1;
-      UI.refreshAll();
-    });
-  }
-
-  // Pagination
-  if (E.firstPage)
-    E.firstPage.addEventListener('click', () => {
-      GridState.page = 1;
-      UI.Issues.renderTable(UI.Issues.applyFilters());
-    });
-  if (E.prevPage)
-    E.prevPage.addEventListener('click', () => {
-      if (GridState.page > 1) GridState.page--;
-      UI.Issues.renderTable(UI.Issues.applyFilters());
-    });
-  if (E.nextPage)
-    E.nextPage.addEventListener('click', () => {
-      GridState.page++;
-      UI.Issues.renderTable(UI.Issues.applyFilters());
-    });
-  if (E.lastPage)
-    E.lastPage.addEventListener('click', () => {
-      const total = UI.Issues.applyFilters().length;
-      const pages = Math.max(1, Math.ceil(total / GridState.pageSize));
-      GridState.page = pages;
-      UI.Issues.renderTable(UI.Issues.applyFilters());
-    });
-
-  if (E.pageSize) {
-    E.pageSize.value = String(GridState.pageSize);
-    E.pageSize.addEventListener('change', () => {
-      const val = parseInt(E.pageSize.value, 10) || 20;
-      GridState.pageSize = val;
-      try {
-        localStorage.setItem(LS_KEYS.pageSize, String(val));
-      } catch {}
-      GridState.page = 1;
-      UI.Issues.renderTable(UI.Issues.applyFilters());
-    });
-  }
-
-  // Export + refresh
-  if (E.exportCsv) {
-    E.exportCsv.addEventListener('click', exportFilteredCsv);
-  }
-
-  if (E.refreshNow) {
-    E.refreshNow.addEventListener('click', () => {
-      loadIssues(true);
-      loadEvents(true);
-    });
-  }
-
-  // Tabs
-  if (E.issuesTab)
-    E.issuesTab.addEventListener('click', () => setActiveView('issues'));
-  if (E.calendarTab)
-    E.calendarTab.addEventListener('click', () => setActiveView('calendar'));
-  if (E.insightsTab)
-    E.insightsTab.addEventListener('click', () => setActiveView('insights'));
-
-  // Sorting
-  U.qAll('#issuesTable thead th[data-key]').forEach(th => {
-    th.addEventListener('click', () => {
-      const key = th.getAttribute('data-key');
-      if (!key) return;
-      if (GridState.sortKey === key) {
-        GridState.sortAsc = !GridState.sortAsc;
-      } else {
-        GridState.sortKey = key;
-        GridState.sortAsc = true;
-      }
-      UI.Issues.renderTable(UI.Issues.applyFilters());
-    });
+  media?.addEventListener('change', () => {
+    if ((localStorage.getItem(LS_KEYS.theme) || 'system') === 'system')
+      applySystem();
   });
 
-  // Theme
-  const applyTheme = theme => {
-    if (!theme) return;
-    document.documentElement.setAttribute('data-theme', theme);
-    try {
-      localStorage.setItem(LS_KEYS.theme, theme);
-    } catch {}
-  };
-
-  const savedTheme = (() => {
-    try {
-      return localStorage.getItem(LS_KEYS.theme) || 'system';
-    } catch {
-      return 'system';
-    }
-  })();
-
-  if (E.themeSelect) {
-    E.themeSelect.value = savedTheme;
+  if (E.themeSelect)
     E.themeSelect.addEventListener('change', () => {
-      applyTheme(E.themeSelect.value);
+      const v = E.themeSelect.value;
+      localStorage.setItem(LS_KEYS.theme, v);
+      if (v === 'system') applySystem();
+      else if (v === 'dark') document.documentElement.removeAttribute('data-theme');
+      else document.documentElement.setAttribute('data-theme', 'light');
     });
-  }
-  applyTheme(savedTheme);
-
-  // Accent color
-  const applyAccentColor = color => {
-    if (!color) return;
-    document.documentElement.style.setProperty('--accent', color);
-    try {
-      localStorage.setItem(LS_KEYS.accentColor, color);
-      localStorage.setItem(LS_KEYS.accentColorStorage, color);
-    } catch {}
-  };
-
-  const savedAccent = (() => {
-    try {
-      return localStorage.getItem(LS_KEYS.accentColor) || '';
-    } catch {
-      return '';
-    }
-  })();
-
-  if (savedAccent) applyAccentColor(savedAccent);
-  if (E.accentColor && savedAccent) {
-    E.accentColor.value = savedAccent;
-  }
 
   if (E.accentColor) {
-    E.accentColor.addEventListener('change', () => {
-      applyAccentColor(E.accentColor.value);
+    const rootStyle = getComputedStyle(document.documentElement);
+    const defaultAccent = rootStyle.getPropertyValue('--accent').trim() || '#4f8cff';
+    const savedAccent =
+      localStorage.getItem(LS_KEYS.accentColorStorage) || defaultAccent;
+    E.accentColor.value = savedAccent;
+    document.documentElement.style.setProperty('--accent', savedAccent);
+
+    E.accentColor.addEventListener('input', () => {
+      const val = E.accentColor.value || defaultAccent;
+      document.documentElement.style.setProperty('--accent', val);
+      try {
+        localStorage.setItem(LS_KEYS.accentColorStorage, val);
+      } catch {}
+      UI.Issues.renderCharts(UI.Issues.applyFilters());
     });
   }
+}
 
+function wireConnectivity() {
+  if (!E.onlineStatusChip) return;
+  const update = () => {
+    const online = navigator.onLine !== false;
+    E.onlineStatusChip.textContent = online ? 'Online' : 'Offline · using cache';
+    E.onlineStatusChip.classList.toggle('online', online);
+    E.onlineStatusChip.classList.toggle('offline', !online);
+  };
+  window.addEventListener('online', update);
+  window.addEventListener('offline', update);
+  update();
+}
+
+function wireModals() {
   // Issue modal
   if (E.modalClose) {
     E.modalClose.addEventListener('click', () => UI.Modals.closeIssue());
   }
   if (E.issueModal) {
     E.issueModal.addEventListener('click', e => {
+      // click outside panel closes
       if (e.target === E.issueModal) UI.Modals.closeIssue();
     });
     E.issueModal.addEventListener('keydown', e => {
       if (e.key === 'Escape') {
-        e.stopPropagation();
+        e.preventDefault();
         UI.Modals.closeIssue();
       } else if (e.key === 'Tab') {
         trapFocus(E.issueModal, e);
       }
+    });
+  }
+
+  if (E.copyId) {
+    E.copyId.addEventListener('click', () => {
+      const r = UI.Modals.selectedIssue;
+      if (!r) return;
+      const txt = r.id || '';
+      if (!txt) return;
+      navigator.clipboard
+        .writeText(txt)
+        .then(() => UI.toast('Issue ID copied'))
+        .catch(() => UI.toast('Clipboard blocked'));
+    });
+  }
+
+  if (E.copyLink) {
+    E.copyLink.addEventListener('click', () => {
+      const r = UI.Modals.selectedIssue;
+      if (!r) return;
+      const base = window.location.href.split('#')[0];
+      const link = `${base}#issue-${encodeURIComponent(r.id)}`;
+      navigator.clipboard
+        .writeText(link)
+        .then(() => UI.toast('Issue link copied'))
+        .catch(() => UI.toast('Clipboard blocked'));
     });
   }
 
@@ -4841,10 +3308,7 @@ function wireGlobalUI() {
     E.eventModalClose.addEventListener('click', () => UI.Modals.closeEvent());
   }
   if (E.eventCancel) {
-    E.eventCancel.addEventListener('click', e => {
-      e.preventDefault();
-      UI.Modals.closeEvent();
-    });
+    E.eventCancel.addEventListener('click', () => UI.Modals.closeEvent());
   }
   if (E.eventModal) {
     E.eventModal.addEventListener('click', e => {
@@ -4852,7 +3316,7 @@ function wireGlobalUI() {
     });
     E.eventModal.addEventListener('keydown', e => {
       if (e.key === 'Escape') {
-        e.stopPropagation();
+        e.preventDefault();
         UI.Modals.closeEvent();
       } else if (e.key === 'Tab') {
         trapFocus(E.eventModal, e);
@@ -4860,112 +3324,154 @@ function wireGlobalUI() {
     });
   }
 
-  // Copy buttons
-  if (E.copyId) {
-    E.copyId.addEventListener('click', async () => {
-      const issue = UI.Modals.selectedIssue;
-      if (!issue) return;
-      try {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          await navigator.clipboard.writeText(issue.id || '');
-          UI.toast('Copied ID to clipboard');
-        } else {
-          UI.toast(issue.id || '');
+  if (E.eventAllDay) {
+    E.eventAllDay.addEventListener('change', () => {
+      const allDay = E.eventAllDay.checked;
+      if (E.eventStart) {
+        const val = E.eventStart.value;
+        const d = val ? new Date(val) : null;
+        E.eventStart.type = allDay ? 'date' : 'datetime-local';
+        if (d && !isNaN(d)) {
+          E.eventStart.value = allDay ? toLocalDateValue(d) : toLocalInputValue(d);
         }
-      } catch {
-        UI.toast(issue.id || '');
+      }
+      if (E.eventEnd) {
+        const val = E.eventEnd.value;
+        const d = val ? new Date(val) : null;
+        E.eventEnd.type = allDay ? 'date' : 'datetime-local';
+        if (d && !isNaN(d)) {
+          E.eventEnd.value = allDay ? toLocalDateValue(d) : toLocalInputValue(d);
+        }
       }
     });
   }
 
-  if (E.copyLink) {
-    E.copyLink.addEventListener('click', async () => {
-      const issue = UI.Modals.selectedIssue;
-      if (!issue) return;
-      const url =
-        window.location.href.split('#')[0] + '#issue=' + encodeURIComponent(issue.id);
-      try {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          await navigator.clipboard.writeText(url);
-          UI.toast('Deep link copied to clipboard');
-        } else {
-          UI.toast(url);
-        }
-      } catch {
-        UI.toast(url);
+  if (E.eventForm) {
+    E.eventForm.addEventListener('submit', async e => {
+      e.preventDefault();
+      const id = E.eventForm.dataset.id || '';
+      const allDay = !!(E.eventAllDay && E.eventAllDay.checked);
+
+      const title = (E.eventTitle?.value || '').trim();
+      if (!title) {
+        UI.toast('Title is required');
+        return;
       }
+
+      const ev = {
+        id,
+        title,
+        type: E.eventType?.value || 'Deployment',
+        env: E.eventEnv?.value || 'Prod',
+        status: E.eventStatus?.value || 'Planned',
+        owner: (E.eventOwner?.value || '').trim(),
+        modules: E.eventModules?.value || '',
+        impactType: E.eventImpactType?.value || 'No downtime expected',
+        issueId: (E.eventIssueId?.value || '').trim(),
+        start: E.eventStart?.value || '',
+        end: E.eventEnd?.value || '',
+        description: (E.eventDescription?.value || '').trim(),
+        allDay,
+        notificationStatus: ''
+      };
+
+      const saved = await saveEventToSheet(ev);
+      if (!saved) return;
+
+      const idx = DataStore.events.findIndex(x => x.id === saved.id);
+      if (idx === -1) DataStore.events.push(saved);
+      else DataStore.events[idx] = saved;
+
+      saveEventsCache();
+      renderCalendarEvents();
+      refreshPlannerReleasePlans();
+      UI.Modals.closeEvent();
     });
   }
 
-  if (E.createTicketBtn) {
-    E.createTicketBtn.addEventListener('click', () => {
-      UI.toast('Use your ticketing system to create new issues; this dashboard is read-only.');
+  if (E.eventSave) {
+    E.eventSave.addEventListener('click', () => {
+      if (E.eventForm?.requestSubmit) E.eventForm.requestSubmit();
     });
   }
 
-  // Shortcuts help
-  if (E.shortcutsHelp) {
-    E.shortcutsHelp.addEventListener('click', () => {
-      UI.toast('Shortcuts: / focus search · 1/2/3 switch tabs · r reload data.');
+  if (E.eventDelete) {
+    E.eventDelete.addEventListener('click', async () => {
+      if (!E.eventForm) return;
+      const id = E.eventForm.dataset.id;
+      if (!id) {
+        UI.Modals.closeEvent();
+        return;
+      }
+      if (!window.confirm('Delete this event from the calendar?')) return;
+      const ok = await deleteEventFromSheet(id);
+      if (!ok) return;
+      const idx = DataStore.events.findIndex(ev => ev.id === id);
+      if (idx > -1) DataStore.events.splice(idx, 1);
+      saveEventsCache();
+      renderCalendarEvents();
+      refreshPlannerReleasePlans();
+      UI.Modals.closeEvent();
     });
   }
+}
 
-  // Online/offline chip
-  const updateOnlineStatus = () => {
-    if (!E.onlineStatusChip) return;
-    const online = navigator.onLine;
-    E.onlineStatusChip.textContent = online ? 'Online' : 'Offline';
-    E.onlineStatusChip.classList.toggle('offline', !online);
-  };
-  window.addEventListener('online', updateOnlineStatus);
-  window.addEventListener('offline', updateOnlineStatus);
-  updateOnlineStatus();
+/* ---------- Keyboard shortcuts ---------- */
 
-  // Global keyboard shortcuts
+function wireKeyboardShortcuts() {
   document.addEventListener('keydown', e => {
     const tag = (e.target && e.target.tagName) || '';
-    if (/input|textarea|select/i.test(tag)) return;
+    const isInputLike =
+      tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable;
 
-    if (e.key === '/') {
-      if (E.searchInput) {
-        e.preventDefault();
-        E.searchInput.focus();
-      }
-    } else if (e.key === '1' || e.key.toLowerCase() === 'i') {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+    // "/" → focus search (when not already in an input)
+    if (e.key === '/' && !isInputLike) {
+      e.preventDefault();
       setActiveView('issues');
-    } else if (e.key === '2' || e.key.toLowerCase() === 'c') {
+      if (E.searchInput) {
+        E.searchInput.focus();
+        if (E.searchInput.select) E.searchInput.select();
+      }
+      return;
+    }
+
+    if (isInputLike) return;
+
+    // 1/2 → switch tabs
+    if (e.key === '1') {
+      setActiveView('issues');
+    } else if (e.key === '2') {
       setActiveView('calendar');
-    } else if (e.key === '3' || e.key.toLowerCase() === 'a') {
-      setActiveView('insights');
-    } else if (e.key.toLowerCase() === 'r') {
-      loadIssues(true);
-      loadEvents(true);
     }
   });
 }
 
-/* ---------- Boot ---------- */
+/* ---------- Bootstrapping ---------- */
 
 document.addEventListener('DOMContentLoaded', () => {
   cacheEls();
   Filters.load();
 
-  wireGlobalUI();
+  if (E.pageSize) {
+    E.pageSize.value = String(GridState.pageSize);
+  }
+
+  wireCore();
+  wireSorting();
+  wirePaging();
+  wireFilters();
+  wireTheme();
+  wireConnectivity();
+  wireModals();
   wireCalendar();
   wirePlanner();
-  wireAIQueryUI();
-  wireEventForm();
+  wireKeyboardShortcuts();
 
-  const savedView = (() => {
-    try {
-      return localStorage.getItem(LS_KEYS.view) || 'issues';
-    } catch {
-      return 'issues';
-    }
-  })();
-  setActiveView(savedView);
+  const view = localStorage.getItem(LS_KEYS.view) || 'issues';
+  setActiveView(view === 'calendar' ? 'calendar' : 'issues');
 
-  UI.skeleton(true);
   loadIssues(false);
   loadEvents(false);
 });
