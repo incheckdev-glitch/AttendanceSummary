@@ -6,7 +6,7 @@
   <title>InCheck Pro — Issues · Ops</title>
 
   <!-- Favicon (inline to avoid 404s) -->
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect rx='14' width='64' height='64' fill='%232563eb'/%3E%3Cpath d='M20 20h24v24H20z' fill='%23fff'/ %3E%3C/svg%3E" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect rx='14' width='64' height='64' fill='%232563eb'/%3E%3Cpath d='M20 20h24v24H20z' fill='%23fff'/%3E%3C/svg%3E" />
 
   <!-- App styles -->
   <link rel="stylesheet" href="styles.css" />
@@ -15,20 +15,20 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/main.min.css">
   <script defer src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
 
-  <!-- Chart.js (needed by UI.Issues.renderCharts) -->
+  <!-- Chart.js -->
   <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
   <!-- PapaParse (CSV loader for issues) -->
   <script defer src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 
-  <!-- Small layout helpers for the modal (kept here so you don’t have to touch styles.css) -->
+  <!-- Small modal layout helpers -->
   <style>
     .grid-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
     .grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
     @media (max-width: 980px){.grid-3{grid-template-columns:repeat(2,minmax(0,1fr))}}
     @media (max-width: 640px){.grid-3,.grid-2{grid-template-columns:1fr}}
     .field>label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin:0 0 4px}
-    .field .input,.field .select, .field textarea{width:100%}
+    .field .input,.field .select,.field textarea{width:100%}
   </style>
 </head>
 
@@ -47,7 +47,7 @@
     <input id="searchInput" class="input" style="min-width:260px; margin-left:12px"
            type="search" placeholder="Search issues (press /)" aria-label="Search issues" />
 
-    <!-- Toolbar (no date pickers here to avoid duplication) -->
+    <!-- Toolbar -->
     <div class="toolbar">
       <select id="themeSelect" class="select" aria-label="Theme">
         <option value="system">System</option>
@@ -129,14 +129,14 @@
           <span class="icon">📄</span> Issues
         </button>
         <button id="calendarTab" class="view-tab" data-view="calendar" role="tab" aria-selected="false">
-          <span class="icon">📅</span> Calendar & Releases
+          <span class="icon">📅</span> Calendar &amp; Releases
         </button>
       </div>
 
       <!-- Issues view -->
       <section id="issuesView" class="view active" role="tabpanel" aria-labelledby="issuesTab">
 
-        <!-- Summary / toolbar row -->
+        <!-- Summary / loader row -->
         <div class="card summary-bar">
           <div id="issuesSummaryText">Loading…</div>
           <div class="shortcut-chip" id="loadingStatus"></div>
@@ -145,10 +145,10 @@
         <!-- Filter chips -->
         <div id="activeFiltersChips" class="filter-chips"></div>
 
-        <!-- KPI cards (rendered by script.js) -->
+        <!-- KPI cards -->
         <div id="kpis" class="grid cols-4"></div>
 
-        <!-- Charts: 2 × 2, each in its own card -->
+        <!-- Charts: 2×2, each its own card -->
         <div class="charts">
           <div class="card">
             <div class="label" style="margin-bottom:6px;">Issues by module</div>
@@ -189,11 +189,10 @@
             <tbody id="issuesTbody"></tbody>
           </table>
 
-          <!-- Skeleton placeholder -->
           <div id="tbodySkeleton" class="skeleton" style="height:180px; margin: 12px;"></div>
         </div>
 
-        <!-- Table actions / pagination -->
+        <!-- Pagination / table actions -->
         <div class="table-actions">
           <div id="rowCount" class="muted">—</div>
           <div class="pagination">
@@ -233,7 +232,7 @@
           <div id="calendar" aria-label="Calendar"></div>
         </div>
 
-        <!-- Release Planner – directly under the calendar -->
+        <!-- Release Planner under the calendar -->
         <div id="releasePlannerCard" class="card">
           <div class="summary-bar">
             <strong>Release Planner — F&amp;B Middle East</strong>
@@ -329,7 +328,6 @@
         <button id="eventModalClose" class="modal-close" aria-label="Close">✕</button>
       </div>
 
-      <!-- Better field distribution -->
       <form id="eventForm" class="grid-3">
         <div class="field" style="grid-column:1/-1">
           <label for="eventTitle">Title</label>
@@ -426,7 +424,7 @@
   <div id="spinner" class="spinner"><div class="ring" aria-hidden="true"></div></div>
   <div id="toast" class="toast"></div>
 
-  <!-- App code (must be last so all DOM is present and libs are loaded) -->
+  <!-- App code -->
   <script defer src="script.js"></script>
 </body>
 </html>
