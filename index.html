@@ -2,288 +2,318 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>InCheck Pro – Issues · Calendar · Release Planner</title>
+    <title>InCheck Pro – Issues · Ops · Release planner</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <!-- Styles -->
+    <!-- App styles -->
     <link rel="stylesheet" href="styles.css" />
 
     <!-- FullCalendar CSS -->
     <link
       rel="stylesheet"
-      href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/main.min.css"
+      href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.css"
     />
 
-    <!-- Favicon (optional, avoids 404) -->
-    <link rel="icon" href="data:;base64,iVBORw0KGgo=" />
-
-    <!-- Libraries -->
+    <!-- Libraries used by script.js -->
     <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
   </head>
   <body>
-    <!-- Header -->
-    <header>
-      <div class="brand">
-        <button
-          id="drawerBtn"
-          type="button"
-          class="btn ghost sm drawer-toggle"
-          aria-label="Toggle sidebar"
-          aria-expanded="false"
-        >
-          ☰
-        </button>
-        <div class="logo">IC</div>
-        <div class="brand-text">
-          <span>InCheck Pro</span>
-          <span>Issues · Releases · Calendar</span>
+    <!-- Global loading + toast -->
+    <div id="spinner" class="spinner-overlay" aria-hidden="true">
+      <div class="spinner"></div>
+    </div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <!-- Top navbar -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <div class="logo-circle">IC</div>
+        <div class="topbar-titles">
+          <div class="app-title">InCheck Pro</div>
+          <div class="app-subtitle">Issues · Ops · Release planner</div>
         </div>
       </div>
 
-      <div class="toolbar">
-        <div class="statusline">
-          <span class="chip">
-            <span class="dot" id="syncIssuesDot"></span>
-            <span id="syncIssuesText">Issues: never</span>
-          </span>
-          <span class="chip">
-            <span class="dot" id="syncEventsDot"></span>
-            <span id="syncEventsText">Events: never</span>
-          </span>
-          <span class="chip" id="onlineStatusChip">Online</span>
+      <div class="topbar-center">
+        <div class="search-wrap">
+          <input
+            id="searchInput"
+            type="search"
+            placeholder="Search issues (press /)"
+            aria-label="Search issues"
+          />
         </div>
+      </div>
+
+      <div class="topbar-right">
+        <div id="onlineStatusChip" class="status-chip">Online</div>
+
+        <label class="theme-select-wrap">
+          <span class="theme-label">Theme</span>
+          <select id="themeSelect" aria-label="Theme">
+            <option value="system">System</option>
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+          </select>
+        </label>
+
+        <input
+          type="color"
+          id="accentColor"
+          title="Accent colour"
+          aria-label="Accent colour"
+        />
+
+        <button id="shortcutsHelp" class="btn ghost sm" type="button">
+          ? Shortcuts
+        </button>
       </div>
     </header>
 
-    <main class="wrap">
-      <!-- Sidebar -->
-      <aside class="sidebar" id="sidebar">
-        <section>
-          <h3>Filters</h3>
-          <div class="filter-group">
-            <label>
-              <span class="muted">Search</span>
-              <input
-                id="searchInput"
-                class="input sm"
-                type="text"
-                placeholder="Search text or ID ( / )"
-                autocomplete="off"
-              />
-            </label>
+    <!-- Main shell -->
+    <div class="app-shell">
+      <!-- Filters sidebar -->
+      <aside id="sidebar" class="sidebar">
+        <button
+          id="drawerBtn"
+          class="sidebar-toggle"
+          type="button"
+          aria-label="Toggle filters"
+        >
+          ☰
+        </button>
 
-            <label>
-              <span class="muted">Module</span>
-              <select id="moduleFilter" class="select sm"></select>
-            </label>
+        <div class="sidebar-inner">
+          <h2 class="sidebar-title">Filters</h2>
 
-            <label>
-              <span class="muted">Priority</span>
-              <select id="priorityFilter" class="select sm"></select>
-            </label>
+          <label class="field">
+            <span>Module</span>
+            <select id="moduleFilter"></select>
+          </label>
 
-            <label>
-              <span class="muted">Status</span>
-              <select id="statusFilter" class="select sm"></select>
-            </label>
+          <label class="field">
+            <span>Priority</span>
+            <select id="priorityFilter"></select>
+          </label>
 
-            <div class="filter-row">
-              <label>
-                <span class="muted">From</span>
-                <input
-                  id="startDateFilter"
-                  type="date"
-                  class="input sm"
-                />
-              </label>
-              <label>
-                <span class="muted">To</span>
-                <input
-                  id="endDateFilter"
-                  type="date"
-                  class="input sm"
-                />
-              </label>
-            </div>
+          <label class="field">
+            <span>Status</span>
+            <select id="statusFilter"></select>
+          </label>
 
-            <button
-              id="resetBtn"
-              type="button"
-              class="btn sm"
-              style="margin-top:4px;"
-            >
-              Reset filters
-            </button>
-          </div>
-        </section>
+          <label class="field">
+            <span>From date</span>
+            <input
+              id="startDateFilter"
+              type="date"
+              placeholder="dd-----yyyy"
+            />
+          </label>
 
-        <div class="divider"></div>
+          <label class="field">
+            <span>To date</span>
+            <input id="endDateFilter" type="date" placeholder="dd-----yyyy" />
+          </label>
 
-        <section>
-          <h3>Theme</h3>
-          <div class="filter-group">
-            <label>
-              <span class="muted">Mode</span>
-              <select id="themeSelect" class="select sm">
-                <option value="system">System</option>
-                <option value="dark">Dark</option>
-                <option value="light">Light</option>
-              </select>
-            </label>
-
-            <label>
-              <span class="muted">Accent color</span>
-              <input
-                id="accentColor"
-                type="color"
-                class="input sm"
-              />
-            </label>
-          </div>
-        </section>
-
-        <div class="divider"></div>
-
-        <section>
-          <h3>Shortcuts</h3>
-          <button
-            id="shortcutsHelp"
-            type="button"
-            class="btn sm"
-          >
-            Keyboard shortcuts
+          <button id="resetBtn" class="btn ghost full" type="button">
+            Reset filters
           </button>
-          <p class="muted" style="margin-top:4px;font-size:11px;">
-            1/2: switch tabs · /: search · Ctrl+K: AI query box
-          </p>
-        </section>
+
+          <div class="sidebar-help">
+            <div>Keyboard:</div>
+            <div>1 = Issues, 2 = Calendar</div>
+            <div>/ = Search</div>
+            <div>Ctrl/Cmd + K = AI query (if enabled)</div>
+          </div>
+
+          <div class="sidebar-dataset">
+            <div class="dataset-row">
+              <span class="dot ok"></span>
+              <span id="syncIssuesText">Issues: —</span>
+            </div>
+            <div class="dataset-row">
+              <span class="dot ok"></span>
+              <span id="syncEventsText">Events: —</span>
+            </div>
+          </div>
+        </div>
       </aside>
 
       <!-- Main content -->
-      <section class="content">
-        <!-- Top nav + summary + actions -->
-        <div class="card">
-          <div class="summary-bar">
-            <div style="display:flex;flex-direction:column;gap:4px;">
-              <div class="view-tabs" role="tablist" aria-label="Main view">
-                <button
-                  id="issuesTab"
-                  type="button"
-                  data-view="issues"
-                  class="view-tab active"
-                  role="tab"
-                  aria-selected="true"
-                >
-                  <span class="icon">📋</span>
-                  <span>Issues</span>
-                </button>
-                <button
-                  id="calendarTab"
-                  type="button"
-                  data-view="calendar"
-                  class="view-tab"
-                  role="tab"
-                  aria-selected="false"
-                >
-                  <span class="icon">📆</span>
-                  <span>Calendar &amp; Releases</span>
-                </button>
-              </div>
-
-              <div id="issuesSummaryText" class="muted">
-                Loading issues…
-              </div>
-              <div id="activeFiltersChips" class="filter-chips"></div>
-            </div>
-
-            <div
-              style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;"
+      <main class="main">
+        <!-- View tabs + actions -->
+        <div class="tabs-row">
+          <div class="tabs" role="tablist">
+            <button
+              id="issuesTab"
+              class="tab active"
+              data-view="issues"
+              role="tab"
+              aria-selected="true"
             >
-              <div id="loadingStatus" class="muted"></div>
-              <div
-                style="display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;"
-              >
-                <button
-                  id="createTicketBtn"
-                  type="button"
-                  class="btn sm primary"
-                >
-                  + New ticket
-                </button>
-                <button
-                  id="refreshNow"
-                  type="button"
-                  class="btn sm"
-                >
-                  ↻ Refresh data
-                </button>
-                <button
-                  id="exportCsv"
-                  type="button"
-                  class="btn sm"
-                >
-                  ⇩ Export CSV
-                </button>
-              </div>
-            </div>
+              Issues
+            </button>
+            <button
+              id="calendarTab"
+              class="tab"
+              data-view="calendar"
+              role="tab"
+              aria-selected="false"
+            >
+              Calendar &amp; releases
+            </button>
           </div>
+
+          <div class="tabs-actions">
+            <button
+              id="createTicketBtn"
+              class="btn primary sm"
+              type="button"
+            >
+              + New ticket
+            </button>
+            <button id="refreshNow" class="btn ghost sm" type="button">
+              ↻ Refresh data
+            </button>
+            <button id="exportCsv" class="btn ghost sm" type="button">
+              ⇩ Export CSV
+            </button>
+          </div>
+        </div>
+
+        <div class="loading-row">
+          <span id="loadingStatus" class="loading-status"></span>
         </div>
 
         <!-- Issues view -->
         <section
           id="issuesView"
           class="view active"
-          aria-label="Issues view"
+          aria-labelledby="issuesTab"
         >
-          <!-- KPI cards -->
-          <div class="card">
-            <div id="kpis" class="grid cols-4"></div>
-          </div>
-
-          <!-- Charts (4 separate cards: 2 x 2) -->
-          <div class="charts">
-            <div class="card">
-              <div class="summary-bar">
-                <div class="muted" style="font-size:11px;">Module distribution</div>
+          <!-- Overview + filters summary -->
+          <section class="card">
+            <header class="card-header">
+              <div>
+                <h2 class="card-title">Issues overview</h2>
+                <p
+                  id="issuesSummaryText"
+                  class="card-subtitle"
+                >
+                  <!-- Filled by script -->
+                </p>
               </div>
-              <div style="height:190px;">
+            </header>
+            <div
+              id="activeFiltersChips"
+              class="filters-chip-row"
+            ></div>
+          </section>
+
+          <!-- KPI boxes -->
+          <section id="kpis" class="kpi-grid">
+            <!-- Filled by script.js -->
+          </section>
+
+          <!-- 4 charts: 2×2 layout -->
+          <section class="charts-grid">
+            <article class="card chart-card">
+              <header class="card-header">
+                <h3 class="card-title">Issues by module</h3>
+              </header>
+              <div class="chart-body">
                 <canvas id="byModule"></canvas>
               </div>
-            </div>
+            </article>
 
-            <div class="card">
-              <div class="summary-bar">
-                <div class="muted" style="font-size:11px;">Priority mix</div>
-              </div>
-              <div style="height:190px;">
+            <article class="card chart-card">
+              <header class="card-header">
+                <h3 class="card-title">Issues by priority</h3>
+              </header>
+              <div class="chart-body">
                 <canvas id="byPriority"></canvas>
               </div>
-            </div>
+            </article>
 
-            <div class="card">
-              <div class="summary-bar">
-                <div class="muted" style="font-size:11px;">Status breakdown</div>
-              </div>
-              <div style="height:190px;">
+            <article class="card chart-card">
+              <header class="card-header">
+                <h3 class="card-title">Issues by status</h3>
+              </header>
+              <div class="chart-body">
                 <canvas id="byStatus"></canvas>
               </div>
-            </div>
+            </article>
 
-            <div class="card">
-              <div class="summary-bar">
-                <div class="muted" style="font-size:11px;">Type / category</div>
-              </div>
-              <div style="height:190px;">
+            <article class="card chart-card">
+              <header class="card-header">
+                <h3 class="card-title">Issues by type</h3>
+              </header>
+              <div class="chart-body">
                 <canvas id="byType"></canvas>
               </div>
-            </div>
-          </div>
+            </article>
+          </section>
 
           <!-- Issues table -->
-          <div class="card">
-            <div class="table-wrap">
+          <section class="card table-card">
+            <header class="card-header table-header">
+              <div>
+                <h3 class="card-title">Issues</h3>
+                <p class="card-subtitle">
+                  Live feed from InCheck issues sheet.
+                </p>
+              </div>
+
+              <div class="table-header-right">
+                <span id="rowCount" class="table-count">Showing 0</span>
+
+                <label class="field inline">
+                  <span>Page size</span>
+                  <select id="pageSize">
+                    <option value="10">10</option>
+                    <option value="20">20</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                  </select>
+                </label>
+
+                <div class="pager">
+                  <button
+                    id="firstPage"
+                    class="btn ghost xs"
+                    type="button"
+                  >
+                    «
+                  </button>
+                  <button
+                    id="prevPage"
+                    class="btn ghost xs"
+                    type="button"
+                  >
+                    ‹
+                  </button>
+                  <span id="pageInfo" class="pager-info">Page 1 / 1</span>
+                  <button
+                    id="nextPage"
+                    class="btn ghost xs"
+                    type="button"
+                  >
+                    ›
+                  </button>
+                  <button
+                    id="lastPage"
+                    class="btn ghost xs"
+                    type="button"
+                  >
+                    »
+                  </button>
+                </div>
+              </div>
+            </header>
+
+            <div class="table-wrapper">
               <table id="issuesTable">
                 <thead>
                   <tr>
@@ -297,580 +327,425 @@
                     <th>Link</th>
                   </tr>
                 </thead>
-
-                <!-- Skeleton tbody (shown while loading) -->
-                <tbody id="tbodySkeleton">
+                <tbody id="issuesTbody"></tbody>
+                <tbody id="tbodySkeleton" class="skeleton-body">
                   <tr>
-                    <td colspan="8">
-                      <div class="skeleton" style="height:18px;"></div>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td colspan="8">
-                      <div class="skeleton" style="height:18px;"></div>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td colspan="8">
-                      <div class="skeleton" style="height:18px;"></div>
-                    </td>
+                    <td colspan="8">Loading issues…</td>
                   </tr>
                 </tbody>
-
-                <!-- Actual data tbody -->
-                <tbody id="issuesTbody"></tbody>
               </table>
             </div>
-
-            <div class="table-actions">
-              <div>
-                <span id="rowCount" class="muted">No rows</span>
-              </div>
-              <div
-                style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;"
-              >
-                <label class="muted" style="font-size:11px;">
-                  Rows per page
-                  <select
-                    id="pageSize"
-                    class="select sm"
-                    style="width:auto;display:inline-block;margin-left:4px;"
-                  >
-                    <option value="10">10</option>
-                    <option value="20">20</option>
-                    <option value="50">50</option>
-                    <option value="100">100</option>
-                  </select>
-                </label>
-
-                <div class="pagination">
-                  <button
-                    id="firstPage"
-                    type="button"
-                    class="chip-btn"
-                  >
-                    ⏮
-                  </button>
-                  <button
-                    id="prevPage"
-                    type="button"
-                    class="chip-btn"
-                  >
-                    ◀
-                  </button>
-                  <span id="pageInfo" class="muted">Page 1 / 1</span>
-                  <button
-                    id="nextPage"
-                    type="button"
-                    class="chip-btn"
-                  >
-                    ▶
-                  </button>
-                  <button
-                    id="lastPage"
-                    type="button"
-                    class="chip-btn"
-                  >
-                    ⏭
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
+          </section>
         </section>
 
-        <!-- Calendar view -->
+        <!-- Calendar + release planner view -->
         <section
           id="calendarView"
           class="view"
-          aria-label="Calendar view"
+          aria-labelledby="calendarTab"
         >
-          <!-- Calendar card with filters on top -->
-          <div class="card">
-            <div class="summary-bar">
+          <!-- Calendar card -->
+          <section class="card">
+            <header class="card-header calendar-header">
               <div>
-                <div style="font-size:13px;font-weight:500;">
-                  Change calendar
-                </div>
-                <div id="calendarTz" class="muted"></div>
+                <h2 class="card-title">Change calendar</h2>
+                <p id="calendarTz" class="card-subtitle">
+                  Times shown in: —
+                </p>
               </div>
-              <div
-                style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;"
-              >
-                <span class="shortcut-chip">
-                  Click &amp; drag to add an event
-                </span>
+
+              <div class="calendar-header-right">
+                <div class="calendar-event-filters">
+                  <span class="muted">Event types:</span>
+                  <label>
+                    <input
+                      type="checkbox"
+                      id="eventFilterDeployment"
+                      checked
+                    />
+                    Deployment
+                  </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      id="eventFilterMaintenance"
+                      checked
+                    />
+                    Maintenance
+                  </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      id="eventFilterRelease"
+                      checked
+                    />
+                    Release
+                  </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      id="eventFilterOther"
+                      checked
+                    />
+                    Other
+                  </label>
+                </div>
+
                 <button
                   id="addEventBtn"
+                  class="btn primary sm"
                   type="button"
-                  class="btn sm primary"
                 >
                   + Add event
                 </button>
               </div>
-            </div>
+            </header>
 
-            <!-- Calendar filters at the TOP of the calendar -->
-            <div
-              style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px;flex-wrap:wrap;"
-            >
-              <div class="muted" style="font-size:11px;">
-                Filter by event type:
-              </div>
-              <div
-                style="display:flex;gap:12px;flex-wrap:wrap;font-size:11px;"
-              >
-                <label class="muted" style="display:flex;align-items:center;gap:4px;">
-                  <input
-                    type="checkbox"
-                    id="eventFilterDeployment"
-                    checked
-                  />
-                  Deployment
-                </label>
-                <label class="muted" style="display:flex;align-items:center;gap:4px;">
-                  <input
-                    type="checkbox"
-                    id="eventFilterMaintenance"
-                    checked
-                  />
-                  Maintenance
-                </label>
-                <label class="muted" style="display:flex;align-items:center;gap:4px;">
-                  <input
-                    type="checkbox"
-                    id="eventFilterRelease"
-                    checked
-                  />
-                  Release
-                </label>
-                <label class="muted" style="display:flex;align-items:center;gap:4px;">
-                  <input
-                    type="checkbox"
-                    id="eventFilterOther"
-                    checked
-                  />
-                  Other
-                </label>
-              </div>
-            </div>
+            <div id="calendar" class="calendar"></div>
+          </section>
 
-            <div id="calendar"></div>
-          </div>
-
-          <!-- Release planner BELOW calendar -->
-          <div class="card">
-            <div class="summary-bar">
+          <!-- Release planner card (beneath calendar) -->
+          <section class="card">
+            <header class="card-header">
               <div>
-                <div style="font-size:13px;font-weight:500;">
+                <h2 class="card-title">
                   Release planner – F&amp;B / Middle East
-                </div>
-                <div class="muted" style="font-size:11px;">
-                  Suggest safer windows for production changes based on rush
-                  hours, bug history and events.
-                </div>
+                </h2>
+                <p class="card-subtitle">
+                  Suggest safer release windows based on rush hours, bug
+                  history &amp; change calendar.
+                </p>
               </div>
               <button
                 id="plannerRun"
+                class="btn primary sm"
                 type="button"
-                class="btn sm"
               >
                 Run planner
               </button>
-            </div>
+            </header>
 
-            <div class="planner-grid" style="margin-bottom:6px;">
-              <div>
-                <label>
-                  <span class="muted">Region</span>
-                  <select id="plannerRegion" class="select sm">
-                    <option value="gulf">Gulf (KSA / UAE / Qatar)</option>
-                    <option value="levant">Levant</option>
-                    <option value="northafrica">North Africa</option>
-                  </select>
-                </label>
-              </div>
-              <div>
-                <label>
-                  <span class="muted">Environment</span>
-                  <select id="plannerEnv" class="select sm">
-                    <option value="Prod">Prod</option>
-                    <option value="Staging">Staging</option>
-                    <option value="Dev">Dev</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </label>
-              </div>
-              <div>
-                <label>
-                  <span class="muted">Modules (optional)</span>
+            <div class="planner-grid">
+              <div class="planner-col">
+                <div class="planner-row">
+                  <label class="field">
+                    <span>Region</span>
+                    <select id="plannerRegion">
+                      <option value="gulf">Gulf (KSA / UAE / Qatar)</option>
+                      <option value="levant">Levant</option>
+                      <option value="northafrica">North Africa</option>
+                    </select>
+                  </label>
+
+                  <label class="field">
+                    <span>Environment</span>
+                    <select id="plannerEnv">
+                      <option value="Prod">Prod</option>
+                      <option value="Staging">Staging</option>
+                      <option value="Dev">Dev</option>
+                    </select>
+                  </label>
+
+                  <label class="field">
+                    <span>Horizon (days)</span>
+                    <input
+                      id="plannerHorizon"
+                      type="number"
+                      min="1"
+                      max="30"
+                      value="7"
+                    />
+                  </label>
+
+                  <label class="field">
+                    <span>Release type</span>
+                    <select id="plannerReleaseType">
+                      <option value="feature">Feature</option>
+                      <option value="minor">Minor</option>
+                      <option value="major">Major</option>
+                    </select>
+                  </label>
+                </div>
+
+                <label class="field">
+                  <span>Modules (optional)</span>
                   <input
                     id="plannerModules"
-                    class="input sm"
                     type="text"
                     placeholder="e.g. Payments, Orders"
                   />
                 </label>
-              </div>
-              <div>
-                <label>
-                  <span class="muted">Horizon (days)</span>
-                  <input
-                    id="plannerHorizon"
-                    class="input sm"
-                    type="number"
-                    min="1"
-                    max="30"
-                    value="7"
-                  />
+
+                <label class="field">
+                  <span>Release notes / description</span>
+                  <textarea
+                    id="plannerDescription"
+                    rows="3"
+                    placeholder="Short description of this release, expected impact, comms notes…"
+                  ></textarea>
                 </label>
               </div>
-              <div>
-                <label>
-                  <span class="muted">Release type</span>
-                  <select id="plannerReleaseType" class="select sm">
-                    <option value="feature">Feature</option>
-                    <option value="minor">Minor</option>
-                    <option value="major">Major</option>
-                  </select>
+
+              <div class="planner-col">
+                <label class="field">
+                  <span>Tickets in scope (multi-select)</span>
+                  <select
+                    id="plannerTickets"
+                    multiple
+                    size="8"
+                  ></select>
                 </label>
+
+                <div class="planner-footer">
+                  <label class="field inline">
+                    <span>Slots per day</span>
+                    <input
+                      id="plannerSlotsPerDay"
+                      type="number"
+                      min="1"
+                      max="8"
+                      value="4"
+                    />
+                  </label>
+
+                  <button
+                    id="plannerAddEvent"
+                    class="btn primary sm"
+                    type="button"
+                  >
+                    Add top suggestion as Release event
+                  </button>
+                </div>
               </div>
-            </div>
-
-            <div style="margin-bottom:6px;">
-              <label>
-                <span class="muted" style="font-size:11px;"
-                  >Release notes / description</span
-                >
-                <textarea
-                  id="plannerDescription"
-                  class="input"
-                  rows="2"
-                  placeholder="Short description of this release (e.g. features, risky changes, flags)…"
-                ></textarea>
-              </label>
-            </div>
-
-            <div style="margin-bottom:6px;">
-              <label>
-                <span class="muted" style="font-size:11px;"
-                  >Tickets in scope (multi-select)</span
-                >
-                <select
-                  id="plannerTickets"
-                  class="select"
-                  multiple
-                  size="4"
-                ></select>
-              </label>
-            </div>
-
-            <div
-              style="margin-bottom:6px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;"
-            >
-              <label class="muted" style="font-size:11px;display:flex;align-items:center;gap:4px;">
-                Slots per day
-                <input
-                  id="plannerSlotsPerDay"
-                  class="input sm"
-                  type="number"
-                  min="1"
-                  max="8"
-                  value="4"
-                  style="width:64px;"
-                />
-              </label>
-
-              <button
-                id="plannerAddEvent"
-                type="button"
-                class="btn sm"
-              >
-                Add top suggestion as Release event
-              </button>
-
-              <div style="flex:1;"></div>
-
-              <label class="muted" style="font-size:11px;">
-                Release plan
-                <select
-                  id="plannerReleasePlan"
-                  class="select sm"
-                  style="min-width:180px;margin-left:4px;"
-                ></select>
-              </label>
-
-              <button
-                id="plannerAssignBtn"
-                type="button"
-                class="btn sm"
-              >
-                Assign tickets to plan
-              </button>
             </div>
 
             <div
               id="plannerResults"
-              style="margin-top:4px;font-size:12px;"
+              class="planner-results"
             ></div>
-          </div>
+
+            <div class="planner-assign-row">
+              <label class="field inline">
+                <span>Release plan</span>
+                <select id="plannerReleasePlan">
+                  <option value="">No Release events in horizon</option>
+                </select>
+              </label>
+
+              <button
+                id="plannerAssignBtn"
+                class="btn ghost sm"
+                type="button"
+              >
+                Assign tickets to plan
+              </button>
+            </div>
+          </section>
         </section>
-      </section>
-    </main>
+
+        <!-- (Optional) Insights view stub to keep script.js happy -->
+        <section id="insightsView" class="view" aria-hidden="true">
+          <!-- Intentionally left minimal; AI tab removed from UI -->
+        </section>
+      </main>
+    </div>
 
     <!-- Issue modal -->
-    <div
-      class="modal"
-      id="issueModal"
-      aria-hidden="true"
-    >
-      <div
-        class="modal-content"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="modalTitle"
-      >
-        <div class="header">
+    <div id="issueModal" class="modal" aria-hidden="true">
+      <div class="modal-backdrop"></div>
+      <div class="modal-panel" role="dialog" aria-modal="true">
+        <header class="modal-header">
           <h2 id="modalTitle">Issue</h2>
           <button
             id="modalClose"
-            type="button"
             class="modal-close"
+            type="button"
             aria-label="Close"
           >
             ✕
           </button>
-        </div>
-        <div id="modalBody"></div>
-        <div
-          style="margin-top:8px;display:flex;justify-content:space-between;gap:8px;align-items:center;"
-        >
-          <div style="display:flex;gap:6px;">
-            <button
-              id="copyId"
-              type="button"
-              class="btn sm"
-            >
-              Copy ID
-            </button>
-            <button
-              id="copyLink"
-              type="button"
-              class="btn sm"
-            >
-              Copy link
-            </button>
-          </div>
-          <span class="muted" style="font-size:11px;">Esc to close</span>
-        </div>
+        </header>
+        <div id="modalBody" class="modal-body"></div>
+        <footer class="modal-footer">
+          <button id="copyId" class="btn ghost sm" type="button">
+            Copy ID
+          </button>
+          <button id="copyLink" class="btn ghost sm" type="button">
+            Copy link
+          </button>
+        </footer>
       </div>
     </div>
 
     <!-- Event modal -->
-    <div
-      class="modal"
-      id="eventModal"
-      aria-hidden="true"
-    >
-      <div
-        class="modal-content"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="eventModalTitle"
-      >
-        <div class="header">
-          <h2 id="eventModalTitle">Add event</h2>
+    <div id="eventModal" class="modal" aria-hidden="true">
+      <div class="modal-backdrop"></div>
+      <div class="modal-panel modal-panel-wide" role="dialog" aria-modal="true">
+        <header class="modal-header">
+          <h2 id="eventModalTitle">Add Event</h2>
           <button
             id="eventModalClose"
-            type="button"
             class="modal-close"
+            type="button"
             aria-label="Close"
           >
             ✕
           </button>
-        </div>
+        </header>
 
-        <form id="eventForm">
-          <div class="filter-group">
-            <label>
-              <span class="muted">Title</span>
+        <form id="eventForm" class="event-form">
+          <!-- Title -->
+          <div class="event-form-row">
+            <label class="field full">
+              <span>Title</span>
               <input
                 id="eventTitle"
-                class="input"
                 type="text"
-                required
+                placeholder="Release / maintenance name"
+              />
+            </label>
+          </div>
+
+          <!-- Type / Env / Status / Owner -->
+          <div class="event-form-row">
+            <label class="field">
+              <span>Type</span>
+              <select id="eventType">
+                <option value="Deployment">Deployment</option>
+                <option value="Maintenance">Maintenance</option>
+                <option value="Release">Release</option>
+                <option value="Other">Other</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Environment</span>
+              <select id="eventEnv">
+                <option value="Prod">Prod</option>
+                <option value="Staging">Staging</option>
+                <option value="Dev">Dev</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Change status</span>
+              <select id="eventStatus">
+                <option value="Planned">Planned</option>
+                <option value="In progress">In progress</option>
+                <option value="Completed">Completed</option>
+                <option value="Cancelled">Cancelled</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Owner</span>
+              <input
+                id="eventOwner"
+                type="text"
+                placeholder="Release owner"
+              />
+            </label>
+          </div>
+
+          <!-- Modules / Impact / Linked tickets -->
+          <div class="event-form-row">
+            <label class="field">
+              <span>Modules (comma-separated)</span>
+              <input
+                id="eventModules"
+                type="text"
+                placeholder="e.g. POS, Payments"
               />
             </label>
 
-            <div
-              class="grid"
-              style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-top:4px;"
-            >
-              <label>
-                <span class="muted">Type</span>
-                <select id="eventType" class="select sm">
-                  <option value="Deployment">Deployment</option>
-                  <option value="Maintenance">Maintenance</option>
-                  <option value="Release">Release</option>
-                  <option value="Other">Other</option>
-                </select>
-              </label>
+            <label class="field">
+              <span>Impact</span>
+              <select id="eventImpactType">
+                <option value="No downtime expected">
+                  No downtime expected
+                </option>
+                <option value="Short downtime expected">
+                  Short downtime expected
+                </option>
+                <option value="Customer visible risk">
+                  Customer visible risk
+                </option>
+              </select>
+            </label>
 
-              <label>
-                <span class="muted">Environment</span>
-                <select id="eventEnv" class="select sm">
-                  <option value="Prod">Prod</option>
-                  <option value="Staging">Staging</option>
-                  <option value="Dev">Dev</option>
-                  <option value="Other">Other</option>
-                </select>
-              </label>
-
-              <label>
-                <span class="muted">Change status</span>
-                <select id="eventStatus" class="select sm">
-                  <option value="Planned">Planned</option>
-                  <option value="In progress">In progress</option>
-                  <option value="Completed">Completed</option>
-                  <option value="Canceled">Canceled</option>
-                </select>
-              </label>
-
-              <label>
-                <span class="muted">Owner</span>
-                <input
-                  id="eventOwner"
-                  class="input sm"
-                  type="text"
-                  placeholder="Release owner"
-                />
-              </label>
-            </div>
-
-            <div
-              class="grid"
-              style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-top:4px;"
-            >
-              <label>
-                <span class="muted">Modules (comma-separated)</span>
-                <input
-                  id="eventModules"
-                  class="input sm"
-                  type="text"
-                  placeholder="e.g. POS, Payments"
-                />
-              </label>
-
-              <label>
-                <span class="muted">Impact</span>
-                <select id="eventImpactType" class="select sm">
-                  <option value="No downtime expected">
-                    No downtime expected
-                  </option>
-                  <option value="Minor risk">
-                    Minor risk / partial impact
-                  </option>
-                  <option value="High risk change">
-                    High risk / customer impact
-                  </option>
-                </select>
-              </label>
-            </div>
-
-            <div
-              class="grid"
-              style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-top:4px;"
-            >
-              <label>
-                <span class="muted">Start</span>
-                <input
-                  id="eventStart"
-                  type="datetime-local"
-                  class="input sm"
-                />
-              </label>
-              <label>
-                <span class="muted">End</span>
-                <input
-                  id="eventEnd"
-                  type="datetime-local"
-                  class="input sm"
-                />
-              </label>
-              <label
-                style="display:flex;align-items:center;gap:6px;margin-top:18px;"
-              >
-                <input
-                  id="eventAllDay"
-                  type="checkbox"
-                />
-                <span class="muted" style="font-size:11px;">All day</span>
-              </label>
-            </div>
-
-            <label style="margin-top:4px;">
-              <span class="muted">Linked ticket IDs (comma-separated)</span>
+            <label class="field">
+              <span>Linked ticket ID(s) (comma-separated)</span>
               <input
                 id="eventIssueId"
-                class="input sm"
                 type="text"
                 placeholder="e.g. INC-123, INC-456"
               />
             </label>
-            <div
-              id="eventIssueLinkedInfo"
-              class="muted"
-              style="font-size:11px;margin-top:2px;display:none;"
-            ></div>
+          </div>
 
-            <label style="margin-top:4px;">
-              <span class="muted">Description / notes</span>
+          <!-- Start / End / All day -->
+          <div class="event-form-row">
+            <label class="field">
+              <span>Start</span>
+              <input id="eventStart" type="datetime-local" />
+            </label>
+
+            <label class="field">
+              <span>End</span>
+              <input id="eventEnd" type="datetime-local" />
+            </label>
+
+            <label class="field checkbox-field">
+              <span>All day</span>
+              <input
+                id="eventAllDay"
+                type="checkbox"
+              />
+            </label>
+          </div>
+
+          <div
+            id="eventIssueLinkedInfo"
+            class="event-linked-info"
+          ></div>
+
+          <div class="event-form-row">
+            <label class="field full">
+              <span>Description / notes</span>
               <textarea
                 id="eventDescription"
-                class="input"
                 rows="3"
+                placeholder="Release / maintenance details, expected impact, comms notes…"
               ></textarea>
             </label>
           </div>
         </form>
 
-        <div
-          style="margin-top:8px;display:flex;justify-content:space-between;gap:8px;align-items:center;"
-        >
-          <div style="display:flex;gap:6px;">
-            <button
-              id="eventSave"
-              type="button"
-              class="btn sm primary"
-            >
-              Save
-            </button>
-            <button
-              id="eventCancel"
-              type="button"
-              class="btn sm"
-            >
-              Cancel
-            </button>
-          </div>
+        <footer class="modal-footer">
+          <button
+            id="eventSave"
+            class="btn primary"
+            type="button"
+          >
+            Save
+          </button>
+          <button
+            id="eventCancel"
+            class="btn ghost"
+            type="button"
+          >
+            Cancel
+          </button>
           <button
             id="eventDelete"
+            class="btn danger"
             type="button"
-            class="btn sm"
           >
             Delete
           </button>
-        </div>
+        </footer>
       </div>
     </div>
-
-    <!-- Spinner -->
-    <div class="spinner" id="spinner">
-      <div class="ring"></div>
-    </div>
-
-    <!-- Toast -->
-    <div class="toast" id="toast"></div>
 
     <!-- Main app script -->
     <script src="script.js"></script>
