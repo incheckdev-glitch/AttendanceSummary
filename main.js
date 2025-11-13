@@ -19,7 +19,7 @@ if (navToggle && nav) {
   });
 }
 
-// ========== SMOOTH SCROLL ==========
+// ========== SMOOTH SCROLL (links + buttons with data-scroll) ==========
 document.addEventListener("click", (event) => {
   const link = event.target.closest("a[href^='#'], button[data-scroll]");
   if (!link) return;
@@ -67,7 +67,6 @@ faqItems.forEach((item) => {
       item.setAttribute("data-open", "true");
       icon.textContent = "–";
       button.setAttribute("aria-expanded", "true");
-      // Optional: smooth height
       answer.style.maxHeight = answer.scrollHeight + "px";
     }
   });
@@ -92,6 +91,105 @@ if ("IntersectionObserver" in window && animatedEls.length > 0) {
   );
 
   animatedEls.forEach((el) => observer.observe(el));
+}
+
+// ========== SCROLLSPY (highlight active section in nav) ==========
+const sections = document.querySelectorAll("main section[id]");
+const navLinks = document.querySelectorAll(".nav-list a[href^='#']");
+
+function updateActiveNav() {
+  let currentSectionId = null;
+  const offset = 120; // offset from top to account for sticky header
+
+  sections.forEach((section) => {
+    const rect = section.getBoundingClientRect();
+    if (rect.top - offset <= 0 && rect.bottom - offset > 0) {
+      currentSectionId = section.id;
+    }
+  });
+
+  if (!currentSectionId) return;
+
+  navLinks.forEach((link) => {
+    const href = link.getAttribute("href");
+    if (!href) return;
+    const id = href.replace("#", "");
+    if (id === currentSectionId) {
+      link.classList.add("active");
+    } else {
+      link.classList.remove("active");
+    }
+  });
+}
+
+// Simple throttle to avoid running on every scroll pixel
+function throttle(fn, wait) {
+  let lastTime = 0;
+  return (...args) => {
+    const now = Date.now();
+    if (now - lastTime >= wait) {
+      lastTime = now;
+      fn(...args);
+    }
+  };
+}
+
+if (sections.length && navLinks.length) {
+  window.addEventListener("scroll", throttle(updateActiveNav, 100));
+  // Initial call so the correct item is active on load
+  updateActiveNav();
+}
+
+// ========== ANIMATED COUNTERS ==========
+const counterEls = document.querySelectorAll("[data-counter]");
+
+function animateCounter(el, duration = 1300) {
+  const target = Number(el.getAttribute("data-counter"));
+  if (!target || isNaN(target)) return;
+
+  const start = 0;
+  const startTime = performance.now();
+
+  function tick(now) {
+    const elapsed = now - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3); // easeOutCubic
+    const value = Math.floor(start + (target - start) * eased);
+    el.textContent = value.toString();
+
+    if (progress < 1) {
+      requestAnimationFrame(tick);
+    } else {
+      el.textContent = target.toString();
+    }
+  }
+
+  requestAnimationFrame(tick);
+}
+
+if ("IntersectionObserver" in window && counterEls.length > 0) {
+  const countersObserver = new IntersectionObserver(
+    (entries, obs) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          const el = entry.target;
+          animateCounter(el);
+          obs.unobserve(el);
+        }
+      });
+    },
+    {
+      threshold: 0.6,
+    }
+  );
+
+  counterEls.forEach((el) => countersObserver.observe(el));
+} else {
+  // Fallback: just set to target immediately
+  counterEls.forEach((el) => {
+    const target = el.getAttribute("data-counter");
+    if (target) el.textContent = target;
+  });
 }
 
 // ========== CONTACT FORM (FRONT-END VALIDATION ONLY) ==========
@@ -141,7 +239,7 @@ if (form) {
       showError("email", "");
     }
 
-    // Optional message length check
+    // Optional: message length check
     if (message && message.length < 10) {
       showError(
         "message",
@@ -159,7 +257,7 @@ if (form) {
       return;
     }
 
-    // Here you would POST to your backend or CRM
+    // Here you would POST to your backend/CRM
     form.reset();
     if (successMessage) {
       successMessage.hidden = false;
