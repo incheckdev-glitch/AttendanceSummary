@@ -19,15 +19,19 @@ if (navToggle && nav) {
   });
 }
 
-// ========== SMOOTH SCROLL (for browsers that don't support native) ==========
+// ========== SMOOTH SCROLL ==========
 document.addEventListener("click", (event) => {
-  const link = event.target.closest('a[href^="#"]');
+  const link = event.target.closest("a[href^='#'], button[data-scroll]");
   if (!link) return;
 
-  const href = link.getAttribute("href");
-  if (href === "#") return;
+  const targetSelector =
+    link.tagName.toLowerCase() === "button"
+      ? link.getAttribute("data-scroll")
+      : link.getAttribute("href");
 
-  const targetEl = document.querySelector(href);
+  if (!targetSelector || targetSelector === "#") return;
+
+  const targetEl = document.querySelector(targetSelector);
   if (!targetEl) return;
 
   event.preventDefault();
@@ -40,8 +44,9 @@ const faqItems = document.querySelectorAll(".faq-item");
 faqItems.forEach((item) => {
   const button = item.querySelector(".faq-question");
   const answer = item.querySelector(".faq-answer");
+  const icon = item.querySelector(".faq-icon");
 
-  if (!button || !answer) return;
+  if (!button || !answer || !icon) return;
 
   button.addEventListener("click", () => {
     const isOpen = item.getAttribute("data-open") === "true";
@@ -49,15 +54,21 @@ faqItems.forEach((item) => {
     // Close all items
     faqItems.forEach((i) => {
       i.setAttribute("data-open", "false");
-      const icon = i.querySelector(".faq-icon");
-      if (icon) icon.textContent = "+";
+      const ic = i.querySelector(".faq-icon");
+      const q = i.querySelector(".faq-question");
+      const ans = i.querySelector(".faq-answer");
+      if (ic) ic.textContent = "+";
+      if (q) q.setAttribute("aria-expanded", "false");
+      if (ans) ans.style.maxHeight = "";
     });
 
     // Open current if it was closed
     if (!isOpen) {
       item.setAttribute("data-open", "true");
-      const icon = item.querySelector(".faq-icon");
-      if (icon) icon.textContent = "+";
+      icon.textContent = "–";
+      button.setAttribute("aria-expanded", "true");
+      // Optional: smooth height
+      answer.style.maxHeight = answer.scrollHeight + "px";
     }
   });
 });
@@ -76,7 +87,7 @@ if ("IntersectionObserver" in window && animatedEls.length > 0) {
       });
     },
     {
-      threshold: 0.15,
+      threshold: 0.18,
     }
   );
 
@@ -113,7 +124,7 @@ if (form) {
 
     // Name
     if (!name) {
-      showError("name", "Please enter your name.");
+      showError("name", "Please enter your full name.");
       hasError = true;
     } else {
       showError("name", "");
@@ -121,7 +132,7 @@ if (form) {
 
     // Email
     if (!email) {
-      showError("email", "Please enter your email address.");
+      showError("email", "Please enter your work email.");
       hasError = true;
     } else if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
       showError("email", "Please enter a valid email address.");
@@ -130,9 +141,12 @@ if (form) {
       showError("email", "");
     }
 
-    // Optional: basic length check for message
+    // Optional message length check
     if (message && message.length < 10) {
-      showError("message", "Please share a bit more detail (at least 10 characters).");
+      showError(
+        "message",
+        "Please share a bit more detail (at least 10 characters)."
+      );
       hasError = true;
     } else {
       showError("message", "");
@@ -145,8 +159,7 @@ if (form) {
       return;
     }
 
-    // Here you would normally POST the data to your backend or a service (HubSpot, etc.)
-    // This demo just shows a success message.
+    // Here you would POST to your backend or CRM
     form.reset();
     if (successMessage) {
       successMessage.hidden = false;
