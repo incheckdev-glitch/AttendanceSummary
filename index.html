@@ -1,992 +1,1845 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>InCheck — Issues · Ops · AI Copilot</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="stylesheet" href="styles.css" />
+<head>
+  <meta charset="UTF-8" />
+  <title>InCheck 360 | Operations, Compliance & Safety Platform</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta
+    name="description"
+    content="InCheck 360 is an operations and compliance platform for F&B and retail brands. Standardize workflows, monitor safety, and gain real-time visibility across locations."
+  />
+  <style>
+    :root {
+      --bg: #050816;
+      --bg-alt: #0b1020;
+      --bg-soft: #090f1f;
+      --accent: #27c499;
+      --accent-soft: rgba(39, 196, 153, 0.12);
+      --accent-strong: #1ca47f;
+      --text-main: #f5f7fb;
+      --text-muted: #a7b0c9;
+      --text-soft: #7e88a5;
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --danger: #ff6b6b;
+      --radius-lg: 18px;
+      --radius-pill: 999px;
+      --shadow-soft: 0 18px 45px rgba(0, 0, 0, 0.4);
+      --max-width: 1120px;
+      --nav-height: 76px;
+      --transition-fast: 0.18s ease-out;
+    }
 
-    <!-- FullCalendar CSS -->
-    <link
-      rel="stylesheet"
-      href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.css"
-    />
-  </head>
-  <body>
-    <!-- Global spinner overlay -->
-    <div id="spinner" class="spinner-overlay" aria-hidden="true">
-      <div class="spinner"></div>
-    </div>
+    /* Global reset */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
-    <!-- Toast notification -->
-    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    html {
+      scroll-behavior: smooth;
+    }
 
-    <div class="app-shell">
-      <!-- Top header / nav -->
-      <header class="topbar">
-        <button
-          id="drawerBtn"
-          class="icon-button drawer-toggle"
-          aria-label="Toggle filters sidebar"
-        >
-          ☰
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
+      background: radial-gradient(circle at top, #131a3f 0%, #050816 55%, #020310 100%);
+      color: var(--text-main);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    img {
+      max-width: 100%;
+      display: block;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    button {
+      font-family: inherit;
+    }
+
+    .page-shell {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .inner {
+      width: 100%;
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding-inline: 1.25rem;
+    }
+
+    /* Header & Navigation */
+    .site-header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(16px);
+      background: linear-gradient(
+        to bottom,
+        rgba(5, 8, 22, 0.96),
+        rgba(5, 8, 22, 0.92),
+        rgba(5, 8, 22, 0.7)
+      );
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    }
+
+    .nav {
+      height: var(--nav-height);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1.5rem;
+    }
+
+    .nav-left {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .logo-mark {
+      width: 34px;
+      height: 34px;
+      border-radius: 12px;
+      background: radial-gradient(circle at 20% 0, #4be2b3 0, #27c499 35%, #15775a 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 10px 25px rgba(39, 196, 153, 0.5);
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .logo-text-main {
+      font-weight: 650;
+      letter-spacing: 0.02em;
+      font-size: 1.05rem;
+    }
+
+    .logo-text-sub {
+      font-size: 0.72rem;
+      color: var(--text-soft);
+      margin-top: -0.1rem;
+    }
+
+    .nav-center {
+      display: flex;
+      align-items: center;
+      gap: 1.4rem;
+      font-size: 0.9rem;
+      color: var(--text-soft);
+    }
+
+    .nav-link {
+      position: relative;
+      padding-block: 0.2rem;
+      cursor: pointer;
+    }
+
+    .nav-link span {
+      position: relative;
+      z-index: 1;
+    }
+
+    .nav-link::after {
+      content: "";
+      position: absolute;
+      inset-inline: 0;
+      height: 2px;
+      border-radius: 999px;
+      bottom: -0.3rem;
+      background: linear-gradient(90deg, #27c499, #5be4ff);
+      transform-origin: center;
+      transform: scaleX(0);
+      opacity: 0;
+      transition: transform var(--transition-fast), opacity var(--transition-fast);
+    }
+
+    .nav-link:hover {
+      color: var(--text-main);
+    }
+
+    .nav-link:hover::after {
+      transform: scaleX(1);
+      opacity: 1;
+    }
+
+    .nav-right {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .nav-cta-secondary {
+      font-size: 0.85rem;
+      padding: 0.5rem 0.85rem;
+      border-radius: var(--radius-pill);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-soft);
+      background: rgba(11, 16, 40, 0.8);
+      cursor: pointer;
+      transition: background var(--transition-fast), border-color var(--transition-fast),
+        color var(--transition-fast), transform var(--transition-fast);
+    }
+
+    .nav-cta-secondary:hover {
+      border-color: rgba(255, 255, 255, 0.15);
+      color: var(--text-main);
+      background: rgba(20, 30, 72, 0.9);
+      transform: translateY(-1px);
+    }
+
+    .nav-cta-primary {
+      font-size: 0.9rem;
+      font-weight: 600;
+      padding: 0.6rem 1.2rem;
+      border-radius: var(--radius-pill);
+      border: none;
+      cursor: pointer;
+      background: linear-gradient(135deg, #27c499, #30d7ff);
+      color: #02040a;
+      box-shadow: 0 10px 30px rgba(39, 196, 153, 0.45);
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      transition: transform var(--transition-fast), box-shadow var(--transition-fast),
+        filter var(--transition-fast);
+    }
+
+    .nav-cta-primary:hover {
+      transform: translateY(-1.5px);
+      box-shadow: 0 16px 40px rgba(39, 196, 153, 0.55);
+      filter: brightness(1.04);
+    }
+
+    .nav-cta-primary span {
+      font-size: 1rem;
+    }
+
+    .nav-toggle {
+      display: none;
+      width: 36px;
+      height: 36px;
+      border-radius: 12px;
+      border: 1px solid var(--border-subtle);
+      background: radial-gradient(circle at 10% 0, rgba(39, 196, 153, 0.45), transparent),
+        rgba(5, 8, 22, 0.9);
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    .nav-toggle-bar {
+      width: 18px;
+      height: 2px;
+      border-radius: 999px;
+      background: var(--text-main);
+      position: relative;
+    }
+
+    .nav-toggle-bar::before,
+    .nav-toggle-bar::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      width: 18px;
+      height: 2px;
+      border-radius: 999px;
+      background: var(--text-main);
+      transition: transform 0.18s ease-out, top 0.18s ease-out, bottom 0.18s ease-out,
+        opacity 0.18s ease-out;
+    }
+
+    .nav-toggle-bar::before {
+      top: -5px;
+    }
+
+    .nav-toggle-bar::after {
+      bottom: -5px;
+    }
+
+    .nav-toggle.is-open .nav-toggle-bar {
+      background: transparent;
+    }
+
+    .nav-toggle.is-open .nav-toggle-bar::before {
+      top: 0;
+      transform: rotate(45deg);
+    }
+
+    .nav-toggle.is-open .nav-toggle-bar::after {
+      bottom: 0;
+      transform: rotate(-45deg);
+    }
+
+    @media (max-width: 880px) {
+      .nav-center {
+        position: absolute;
+        inset-inline: 1.25rem;
+        top: var(--nav-height);
+        border-radius: 18px;
+        background: rgba(5, 8, 22, 0.98);
+        box-shadow: 0 18px 45px rgba(0, 0, 0, 0.55);
+        padding: 0.85rem 1rem 0.9rem;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.4rem;
+        transform-origin: top;
+        transform: scaleY(0.8);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.18s ease-out, transform 0.18s ease-out;
+      }
+
+      .nav-center.is-open {
+        transform: scaleY(1);
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .nav-right {
+        display: none;
+      }
+
+      .nav-toggle {
+        display: inline-flex;
+      }
+    }
+
+    /* Hero */
+    .hero {
+      padding-top: 2.6rem;
+      padding-bottom: 3.6rem;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(0, 1.1fr);
+      gap: 2.75rem;
+      align-items: center;
+    }
+
+    @media (max-width: 880px) {
+      .hero {
+        padding-top: 2.2rem;
+        padding-bottom: 2.6rem;
+      }
+
+      .hero-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+
+    .hero-label-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.6rem;
+      margin-bottom: 1.1rem;
+    }
+
+    .pill {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 0.3rem 0.85rem;
+      border-radius: var(--radius-pill);
+      border: 1px solid rgba(39, 196, 153, 0.6);
+      background: radial-gradient(circle at 0 0, rgba(39, 196, 153, 0.35), transparent 55%),
+        rgba(12, 21, 48, 0.92);
+      color: #d9fff3;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .pill-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 99px;
+      background: #27c499;
+    }
+
+    .pill-sub {
+      font-size: 0.76rem;
+      color: var(--text-soft);
+    }
+
+    .hero-title {
+      font-size: clamp(2.35rem, 4vw, 3rem);
+      line-height: 1.1;
+      letter-spacing: 0.01em;
+      margin-bottom: 0.8rem;
+    }
+
+    .hero-title span.highlight {
+      background: linear-gradient(135deg, #27c499, #30d7ff);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    .hero-subtitle {
+      font-size: 0.98rem;
+      max-width: 32rem;
+      color: var(--text-muted);
+      margin-bottom: 1.4rem;
+    }
+
+    .hero-metrics-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1.2rem;
+      margin-bottom: 1.7rem;
+    }
+
+    .hero-metric {
+      padding: 0.6rem 0.9rem;
+      border-radius: var(--radius-pill);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      background: rgba(7, 13, 33, 0.9);
+      font-size: 0.78rem;
+      color: var(--text-soft);
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+    }
+
+    .hero-metric strong {
+      color: #e9f3ff;
+    }
+
+    .hero-metric-tag {
+      padding: 0.1rem 0.45rem;
+      border-radius: var(--radius-pill);
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      background: rgba(39, 196, 153, 0.15);
+      color: #b3f5dc;
+    }
+
+    .hero-cta-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.9rem;
+      margin-bottom: 1.3rem;
+    }
+
+    .hero-cta-primary {
+      padding: 0.85rem 1.4rem;
+      border-radius: 999px;
+      border: none;
+      cursor: pointer;
+      background: linear-gradient(135deg, #27c499, #30d7ff);
+      color: #020409;
+      font-size: 0.97rem;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      box-shadow: 0 16px 40px rgba(39, 196, 153, 0.55);
+      transition: transform 0.16s ease-out, box-shadow 0.16s ease-out, filter 0.16s ease-out;
+    }
+
+    .hero-cta-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 22px 55px rgba(39, 196, 153, 0.65);
+      filter: brightness(1.04);
+    }
+
+    .hero-cta-secondary {
+      border-radius: 999px;
+      padding: 0.78rem 1.2rem;
+      border: 1px solid var(--border-subtle);
+      background: rgba(9, 15, 37, 0.95);
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      cursor: pointer;
+      transition: border-color var(--transition-fast), background var(--transition-fast),
+        color var(--transition-fast), transform var(--transition-fast);
+    }
+
+    .hero-cta-secondary:hover {
+      border-color: rgba(255, 255, 255, 0.18);
+      background: rgba(19, 25, 54, 0.96);
+      color: var(--text-main);
+      transform: translateY(-1px);
+    }
+
+    .hero-footnote {
+      font-size: 0.8rem;
+      color: var(--text-soft);
+    }
+
+    .hero-footnote strong {
+      color: var(--accent);
+    }
+
+    .hero-visual {
+      position: relative;
+    }
+
+    .hero-card {
+      border-radius: 24px;
+      padding: 1.5rem 1.35rem;
+      background: radial-gradient(circle at 10% 0, rgba(91, 228, 255, 0.2), transparent 55%),
+        radial-gradient(circle at 100% 100%, rgba(39, 196, 153, 0.2), transparent 55%),
+        rgba(7, 11, 30, 0.98);
+      box-shadow: var(--shadow-soft);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero-card-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.35rem 0.8rem;
+      border-radius: 999px;
+      background: rgba(4, 23, 52, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      font-size: 0.72rem;
+      color: var(--text-soft);
+      margin-bottom: 0.85rem;
+    }
+
+    .hero-card-badge-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 99px;
+      background: #27c499;
+      box-shadow: 0 0 0 4px rgba(39, 196, 153, 0.35);
+    }
+
+    .hero-card-main {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.1fr);
+      gap: 1.2rem;
+      align-items: flex-start;
+    }
+
+    @media (max-width: 880px) {
+      .hero-card-main {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .hero-card {
+        margin-top: 0.5rem;
+      }
+    }
+
+    .hero-card-list-title {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      color: var(--text-soft);
+      margin-bottom: 0.5rem;
+    }
+
+    .hero-card-title {
+      font-size: 1.05rem;
+      font-weight: 600;
+      margin-bottom: 0.4rem;
+    }
+
+    .hero-card-text {
+      font-size: 0.83rem;
+      color: var(--text-soft);
+      margin-bottom: 0.7rem;
+    }
+
+    .hero-card-list {
+      list-style: none;
+      display: grid;
+      gap: 0.35rem;
+      margin-bottom: 0.1rem;
+    }
+
+    .hero-card-list li {
+      font-size: 0.8rem;
+      display: flex;
+      gap: 0.4rem;
+      color: var(--text-muted);
+    }
+
+    .hero-card-list li::before {
+      content: "●";
+      font-size: 0.55rem;
+      color: #27c499;
+      margin-top: 0.18rem;
+    }
+
+    .hero-card-metric {
+      padding: 0.7rem 0.9rem;
+      border-radius: 16px;
+      background: rgba(6, 17, 42, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      font-size: 0.83rem;
+      color: var(--text-soft);
+      margin-bottom: 0.65rem;
+    }
+
+    .hero-card-metric strong {
+      font-size: 1rem;
+      color: #e5f3ff;
+    }
+
+    .hero-tag-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin-top: 0.3rem;
+    }
+
+    .hero-tag {
+      font-size: 0.7rem;
+      padding: 0.12rem 0.55rem;
+      border-radius: 999px;
+      background: rgba(9, 24, 49, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      color: var(--text-soft);
+    }
+
+    .hero-glow-orb {
+      position: absolute;
+      width: 200px;
+      height: 200px;
+      border-radius: 999px;
+      background: radial-gradient(circle, rgba(39, 196, 153, 0.18), transparent 60%);
+      right: -45px;
+      top: -60px;
+      z-index: -1;
+      filter: blur(1px);
+    }
+
+    /* Generic sections */
+    section {
+      padding-block: 2.4rem;
+    }
+
+    .section-header {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      margin-bottom: 1.6rem;
+      max-width: 34rem;
+    }
+
+    .section-kicker {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      color: var(--text-soft);
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .section-kicker::before,
+    .section-kicker::after {
+      content: "";
+      width: 22px;
+      height: 1px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #27c499, rgba(39, 196, 153, 0));
+    }
+
+    .section-kicker::after {
+      background: linear-gradient(90deg, rgba(39, 196, 153, 0), #5be4ff);
+    }
+
+    .section-title {
+      font-size: 1.6rem;
+      font-weight: 600;
+    }
+
+    .section-subtitle {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+    }
+
+    .section-alt {
+      background: radial-gradient(circle at 0 0, rgba(39, 196, 153, 0.2), transparent 55%),
+        radial-gradient(circle at 100% 100%, rgba(78, 117, 255, 0.18), transparent 55%),
+        var(--bg-alt);
+      border-top: 1px solid rgba(255, 255, 255, 0.04);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    }
+
+    /* Services / Solutions */
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1.2rem;
+    }
+
+    @media (max-width: 960px) {
+      .cards-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 640px) {
+      .cards-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+
+    .card {
+      border-radius: var(--radius-lg);
+      padding: 1.25rem 1.15rem;
+      background: rgba(9, 15, 37, 0.96);
+      border: 1px solid var(--border-subtle);
+      box-shadow: 0 16px 35px rgba(0, 0, 0, 0.4);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card::before {
+      content: "";
+      position: absolute;
+      inset: -40%;
+      background: radial-gradient(
+        circle at 0 0,
+        rgba(39, 196, 153, 0.2),
+        transparent 55%
+      );
+      opacity: 0;
+      transition: opacity var(--transition-fast);
+      pointer-events: none;
+    }
+
+    .card:hover::before {
+      opacity: 1;
+    }
+
+    .card-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 14px;
+      background: rgba(39, 196, 153, 0.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.05rem;
+      margin-bottom: 0.6rem;
+    }
+
+    .card-title {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 0.35rem;
+    }
+
+    .card-text {
+      font-size: 0.86rem;
+      color: var(--text-muted);
+      margin-bottom: 0.7rem;
+    }
+
+    .card-meta {
+      font-size: 0.78rem;
+      color: var(--text-soft);
+    }
+
+    /* Roadmap / Future focus */
+    .priority-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.1fr);
+      gap: 1.6rem;
+      align-items: start;
+    }
+
+    @media (max-width: 880px) {
+      .priority-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+
+    .priority-panel {
+      border-radius: 20px;
+      padding: 1.35rem 1.2rem;
+      background: rgba(8, 13, 34, 0.98);
+      border: 1px solid var(--border-subtle);
+      box-shadow: var(--shadow-soft);
+    }
+
+    .priority-tag {
+      font-size: 0.76rem;
+      padding: 0.18rem 0.55rem;
+      border-radius: 999px;
+      background: rgba(39, 196, 153, 0.16);
+      color: #c2f7e6;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .priority-tag span.dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: #27c499;
+    }
+
+    .priority-title {
+      font-size: 1.05rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .priority-text {
+      font-size: 0.86rem;
+      color: var(--text-muted);
+      margin-bottom: 0.75rem;
+    }
+
+    .priority-list {
+      list-style: none;
+      display: grid;
+      gap: 0.4rem;
+    }
+
+    .priority-list li {
+      font-size: 0.84rem;
+      color: var(--text-muted);
+      display: flex;
+      gap: 0.4rem;
+    }
+
+    .priority-list li::before {
+      content: "▹";
+      color: var(--accent);
+      margin-top: 0.08rem;
+      font-size: 0.85rem;
+    }
+
+    /* Customers / Testimonial */
+    .customers-section-inner {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+      gap: 1.8rem;
+      align-items: center;
+    }
+
+    @media (max-width: 880px) {
+      .customers-section-inner {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+
+    .stat-pill {
+      font-size: 0.8rem;
+      padding: 0.4rem 0.85rem;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: var(--text-soft);
+      background: rgba(9, 14, 36, 0.96);
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin-bottom: 0.8rem;
+    }
+
+    .stat-pill strong {
+      color: var(--accent);
+    }
+
+    .stat-highlight {
+      font-size: 1.5rem;
+      font-weight: 650;
+      margin-bottom: 0.3rem;
+    }
+
+    .stat-caption {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      margin-bottom: 0.6rem;
+    }
+
+    .quote-card {
+      margin-top: 0.9rem;
+      padding: 0.9rem 0.95rem;
+      border-radius: 16px;
+      background: rgba(9, 14, 37, 0.96);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      font-size: 0.83rem;
+      color: var(--text-soft);
+    }
+
+    .quote-card::before {
+      content: "“";
+      font-size: 1.5rem;
+      color: rgba(255, 255, 255, 0.25);
+      margin-right: 0.3rem;
+    }
+
+    .quote-meta {
+      margin-top: 0.4rem;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+
+    .device-mock {
+      border-radius: 22px;
+      padding: 0.95rem;
+      background: radial-gradient(circle at 0 0, rgba(91, 228, 255, 0.25), transparent 55%),
+        rgba(6, 11, 28, 0.98);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: var(--shadow-soft);
+    }
+
+    .device-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.65rem;
+      font-size: 0.72rem;
+      color: var(--text-soft);
+    }
+
+    .device-dot-row {
+      display: flex;
+      gap: 0.25rem;
+    }
+
+    .device-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.18);
+    }
+
+    .device-dot:nth-child(1) {
+      background: #ff6b6b;
+    }
+
+    .device-dot:nth-child(2) {
+      background: #ffd166;
+    }
+
+    .device-dot:nth-child(3) {
+      background: #27c499;
+    }
+
+    .device-body {
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(4, 9, 24, 0.98);
+    }
+
+    .device-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+      gap: 0.85rem;
+      padding: 0.85rem 0.8rem;
+    }
+
+    @media (max-width: 640px) {
+      .device-row {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+
+    .device-col-title {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.13em;
+      color: var(--text-soft);
+      margin-bottom: 0.3rem;
+    }
+
+    .device-list {
+      list-style: none;
+      display: grid;
+      gap: 0.25rem;
+      font-size: 0.78rem;
+      color: var(--text-soft);
+    }
+
+    .device-list li {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+
+    .device-pill {
+      font-size: 0.72rem;
+      padding: 0.22rem 0.55rem;
+      border-radius: 999px;
+      background: rgba(6, 15, 40, 0.98);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .device-stat {
+      font-size: 0.85rem;
+      color: #e4f2ff;
+      font-weight: 600;
+    }
+
+    .device-footer {
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      padding: 0.6rem 0.8rem;
+      display: flex;
+      justify-content: space-between;
+      gap: 0.6rem;
+      align-items: center;
+      font-size: 0.74rem;
+      color: var(--text-soft);
+    }
+
+    .device-footer span strong {
+      color: var(--accent);
+    }
+
+    /* Features */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 1rem;
+    }
+
+    @media (max-width: 960px) {
+      .features-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 640px) {
+      .features-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+
+    .feature-card {
+      border-radius: 18px;
+      padding: 1rem 0.95rem;
+      background: rgba(9, 15, 37, 0.98);
+      border: 1px solid var(--border-subtle);
+      font-size: 0.86rem;
+    }
+
+    .feature-label {
+      font-size: 0.78rem;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      background: rgba(39, 196, 153, 0.16);
+      color: #c2f7e6;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      margin-bottom: 0.45rem;
+    }
+
+    .feature-title {
+      font-size: 0.96rem;
+      font-weight: 600;
+      margin-bottom: 0.3rem;
+    }
+
+    .feature-text {
+      font-size: 0.84rem;
+      color: var(--text-muted);
+    }
+
+    /* Modules */
+    .modules-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.2fr);
+      gap: 1.3rem;
+      margin-bottom: 1.4rem;
+    }
+
+    @media (max-width: 880px) {
+      .modules-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+
+    .module-card {
+      border-radius: 18px;
+      padding: 1.1rem 1rem;
+      background: rgba(8, 14, 34, 0.98);
+      border: 1px solid var(--border-subtle);
+      font-size: 0.86rem;
+    }
+
+    .module-badge {
+      font-size: 0.74rem;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      background: rgba(9, 24, 49, 0.96);
+      color: var(--text-soft);
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      margin-bottom: 0.4rem;
+    }
+
+    .module-title {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 0.3rem;
+    }
+
+    .module-text {
+      font-size: 0.86rem;
+      color: var(--text-muted);
+      margin-bottom: 0.6rem;
+    }
+
+    .module-meta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      font-size: 0.78rem;
+      color: var(--text-soft);
+    }
+
+    .module-chip {
+      padding: 0.22rem 0.55rem;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      background: rgba(6, 15, 40, 0.98);
+    }
+
+    .module-tag {
+      font-size: 0.78rem;
+      padding: 0.22rem 0.6rem;
+      border-radius: 999px;
+      background: rgba(92, 106, 150, 0.4);
+      color: #dde5ff;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+
+    .module-tag-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: var(--accent);
+    }
+
+    /* FAQ */
+    .faq-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(0, 1.1fr);
+      gap: 1.6rem;
+      align-items: flex-start;
+    }
+
+    @media (max-width: 880px) {
+      .faq-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+
+    .faq-intro {
+      font-size: 0.88rem;
+      color: var(--text-muted);
+      margin-top: 0.2rem;
+      max-width: 22rem;
+    }
+
+    .faq-list {
+      border-radius: 18px;
+      background: rgba(8, 14, 34, 0.98);
+      border: 1px solid var(--border-subtle);
+      box-shadow: var(--shadow-soft);
+      overflow: hidden;
+    }
+
+    .faq-item + .faq-item {
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .faq-button {
+      width: 100%;
+      padding: 0.8rem 1rem;
+      display: flex;
+      justify-content: space-between;
+      gap: 0.8rem;
+      align-items: center;
+      text-align: left;
+      background: none;
+      border: none;
+      color: var(--text-main);
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+
+    .faq-button span {
+      flex: 1;
+    }
+
+    .faq-toggle-icon {
+      width: 24px;
+      height: 24px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+      color: var(--text-soft);
+    }
+
+    .faq-answer {
+      padding: 0 1rem 0.85rem;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      display: none;
+    }
+
+    .faq-item.is-open .faq-answer {
+      display: block;
+    }
+
+    .faq-item.is-open .faq-toggle-icon {
+      background: rgba(39, 196, 153, 0.16);
+      border-color: rgba(39, 196, 153, 0.5);
+      color: #c8f9e7;
+    }
+
+    /* Resources / Blog */
+    .resources-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(0, 1.1fr);
+      gap: 1.6rem;
+      align-items: stretch;
+    }
+
+    @media (max-width: 880px) {
+      .resources-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+
+    .resource-card {
+      border-radius: 18px;
+      padding: 1.1rem 1rem;
+      background: rgba(9, 15, 37, 0.98);
+      border: 1px solid var(--border-subtle);
+      font-size: 0.86rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
+    }
+
+    .resource-meta {
+      font-size: 0.78rem;
+      color: var(--text-soft);
+    }
+
+    .resource-title {
+      font-size: 0.98rem;
+      font-weight: 600;
+    }
+
+    .resource-text {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      flex: 1;
+    }
+
+    .resource-link {
+      margin-top: 0.4rem;
+      font-size: 0.86rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      color: var(--accent);
+    }
+
+    .resource-link:hover {
+      text-decoration: underline;
+    }
+
+    /* CTA strip */
+    .cta-strip {
+      margin-top: 2rem;
+      padding: 1.4rem 1.2rem;
+      border-radius: 18px;
+      background: linear-gradient(135deg, rgba(39, 196, 153, 0.2), rgba(91, 228, 255, 0.18));
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.85rem;
+      justify-content: space-between;
+    }
+
+    .cta-strip-text {
+      font-size: 0.95rem;
+    }
+
+    .cta-strip-text strong {
+      font-weight: 600;
+    }
+
+    .cta-strip-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+    }
+
+    .cta-strip-btn-main {
+      padding: 0.6rem 1.1rem;
+      border-radius: 999px;
+      border: none;
+      cursor: pointer;
+      background: #020409;
+      color: #f6f8ff;
+      font-size: 0.9rem;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    .cta-strip-btn-outline {
+      padding: 0.55rem 1rem;
+      border-radius: 999px;
+      border: 1px solid rgba(2, 4, 9, 0.35);
+      background: rgba(255, 255, 255, 0.12);
+      color: #020409;
+      font-size: 0.86rem;
+      cursor: pointer;
+    }
+
+    /* Contact */
+    .contact-section {
+      background: radial-gradient(circle at 0 0, rgba(39, 196, 153, 0.2), transparent 55%),
+        radial-gradient(circle at 100% 100%, rgba(91, 228, 255, 0.15), transparent 55%),
+        var(--bg-soft);
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .contact-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(0, 1.1fr);
+      gap: 1.8rem;
+      align-items: flex-start;
+    }
+
+    @media (max-width: 880px) {
+      .contact-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+
+    .contact-card {
+      border-radius: 20px;
+      padding: 1.3rem 1.2rem;
+      background: rgba(9, 14, 36, 0.98);
+      border: 1px solid var(--border-subtle);
+      box-shadow: var(--shadow-soft);
+    }
+
+    .contact-form-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 0.8rem;
+      margin-top: 0.8rem;
+    }
+
+    @media (max-width: 640px) {
+      .contact-form-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.18rem;
+      font-size: 0.82rem;
+    }
+
+    .field label {
+      color: var(--text-soft);
+    }
+
+    .field input,
+    .field select,
+    .field textarea {
+      border-radius: 11px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(5, 9, 24, 0.96);
+      padding: 0.55rem 0.6rem;
+      font-size: 0.84rem;
+      color: var(--text-main);
+      outline: none;
+      transition: border-color 0.16s ease-out, box-shadow 0.16s ease-out,
+        background 0.16s ease-out;
+      resize: vertical;
+      min-height: 40px;
+    }
+
+    .field input::placeholder,
+    .field textarea::placeholder {
+      color: rgba(167, 176, 201, 0.65);
+    }
+
+    .field input:focus,
+    .field select:focus,
+    .field textarea:focus {
+      border-color: rgba(39, 196, 153, 0.75);
+      box-shadow: 0 0 0 1px rgba(39, 196, 153, 0.4);
+      background: rgba(5, 10, 26, 1);
+    }
+
+    .field-helper {
+      font-size: 0.75rem;
+      color: var(--text-soft);
+    }
+
+    .contact-submit-row {
+      margin-top: 0.8rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      align-items: center;
+      font-size: 0.8rem;
+      color: var(--text-soft);
+    }
+
+    .contact-submit {
+      padding: 0.7rem 1.3rem;
+      border-radius: 999px;
+      border: none;
+      cursor: pointer;
+      background: linear-gradient(135deg, #27c499, #30d7ff);
+      color: #020409;
+      font-size: 0.9rem;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      box-shadow: 0 14px 35px rgba(39, 196, 153, 0.55);
+    }
+
+    .contact-badge {
+      font-size: 0.75rem;
+      padding: 0.22rem 0.55rem;
+      border-radius: 999px;
+      background: rgba(9, 24, 49, 0.96);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: var(--text-soft);
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+
+    .contact-info-card {
+      border-radius: 18px;
+      padding: 1.1rem 1rem;
+      background: rgba(7, 13, 31, 0.98);
+      border: 1px solid var(--border-subtle);
+      font-size: 0.84rem;
+    }
+
+    .contact-info-section + .contact-info-section {
+      margin-top: 0.8rem;
+    }
+
+    .contact-info-label {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.13em;
+      color: var(--text-soft);
+      margin-bottom: 0.25rem;
+    }
+
+    .contact-info-line {
+      display: flex;
+      flex-direction: column;
+      gap: 0.1rem;
+      margin-bottom: 0.35rem;
+    }
+
+    .contact-info-line strong {
+      font-weight: 600;
+    }
+
+    .contact-info-link {
+      color: var(--accent);
+      word-break: break-all;
+    }
+
+    /* Footer */
+    .site-footer {
+      padding: 1.4rem 0 1.8rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      background: #030512;
+      margin-top: auto;
+    }
+
+    .footer-inner {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.78rem;
+      color: var(--text-soft);
+    }
+
+    .footer-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+    }
+
+    .footer-links a {
+      color: var(--text-soft);
+    }
+
+    .footer-links a:hover {
+      color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+<div class="page-shell">
+  <!-- Header / Nav -->
+  <header class="site-header">
+    <div class="inner">
+      <div class="nav">
+        <div class="nav-left">
+          <div class="logo-mark">iC</div>
+          <div>
+            <div class="logo-text-main">InCheck 360</div>
+            <div class="logo-text-sub">Store-level execution platform</div>
+          </div>
+        </div>
+
+        <nav class="nav-center" id="primary-nav">
+          <button class="nav-link" data-nav-target="#solutions"><span>Solutions</span></button>
+          <button class="nav-link" data-nav-target="#features"><span>Features</span></button>
+          <button class="nav-link" data-nav-target="#modules"><span>Modules</span></button>
+          <button class="nav-link" data-nav-target="#customers"><span>Customers</span></button>
+          <button class="nav-link" data-nav-target="#resources"><span>Resources</span></button>
+          <button class="nav-link" data-nav-target="#faqs"><span>FAQs</span></button>
+          <button class="nav-link" data-nav-target="#contact"><span>Contact</span></button>
+        </nav>
+
+        <div class="nav-right">
+          <a href="https://app.incheck360.com" class="nav-cta-secondary">Login</a>
+          <button class="nav-cta-primary" data-nav-target="#contact">
+            <span>Book a live demo</span> →
+          </button>
+        </div>
+
+        <button class="nav-toggle" id="nav-toggle" aria-label="Toggle navigation">
+          <div class="nav-toggle-bar"></div>
         </button>
-
-        <div class="brand">
-          <div class="brand-logo">IC</div>
-          <div class="brand-text">
-            <div class="brand-title">INCHECK</div>
-            <div class="brand-subtitle">Issues · Ops · Copilot</div>
-          </div>
-        </div>
-
-        <div class="topbar-controls">
-          <div class="topbar-group">
-            <label class="compact-label" for="themeSelect">System</label>
-            <select id="themeSelect" class="select sm">
-              <option value="system">System</option>
-              <option value="dark">Dark</option>
-              <option value="light">Light</option>
-            </select>
-          </div>
-
-          <div class="topbar-group">
-            <label class="compact-label" for="accentColor">Accent</label>
-            <input id="accentColor" type="color" class="accent-picker" />
-          </div>
-
-          <button id="refreshNow" class="btn ghost sm" type="button">
-            Refresh
-          </button>
-          <button id="exportCsv" class="btn ghost sm" type="button">
-            Export
-          </button>
-          <button id="createTicketBtn" class="btn primary sm" type="button">
-            ➕ Create Ticket
-          </button>
-
-          <div class="topbar-status">
-            <span
-              id="onlineStatusChip"
-              class="chip chip-online"
-              aria-label="Keyboard shortcuts available"
-            >
-              ⌨️ Online
-            </span>
-            <button
-              id="shortcutsHelp"
-              type="button"
-              class="chip chip-ghost"
-              aria-label="Show keyboard shortcuts"
-            >
-              Shortcuts
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <!-- Sync status row -->
-      <div class="sync-row">
-        <div class="sync-item">
-          <span id="syncIssuesDot" class="dot"></span>
-          <span id="syncIssuesText">Issues: never</span>
-        </div>
-        <div class="sync-item">
-          <span id="syncEventsDot" class="dot"></span>
-          <span id="syncEventsText">Events: never</span>
-        </div>
-        <div id="loadingStatus" class="sync-loading muted"></div>
       </div>
+    </div>
+  </header>
 
-      <!-- Main layout: sidebar + main -->
-      <div class="layout">
-        <!-- Filters sidebar -->
-        <aside id="sidebar" class="sidebar">
-          <h3>Filters</h3>
+  <main>
+    <!-- Hero -->
+    <section class="hero">
+      <div class="inner">
+        <div class="hero-grid">
+          <div>
+            <div class="hero-label-row">
+              <span class="pill">
+                <span class="pill-dot"></span>
+                Built for F&amp;B &amp; retail ops
+              </span>
+              <span class="pill-sub">Checklists · SOPs · Compliance · Visibility</span>
+            </div>
 
-          <div class="filter-section">
-            <label for="searchInput">Search</label>
-            <input
-              id="searchInput"
-              type="search"
-              class="input"
-              placeholder="Search ID, title, log…"
-            />
+            <h1 class="hero-title">
+              Optimize operations.<br />
+              Simplify compliance.<br />
+              <span class="highlight">Elevate safety.</span>
+            </h1>
+
+            <p class="hero-subtitle">
+              InCheck 360 gives every store the same digital playbook for daily tasks, food safety,
+              and loss prevention—while leadership gets real-time visibility across every location.
+            </p>
+
+            <div class="hero-metrics-row">
+              <div class="hero-metric">
+                <span class="hero-metric-tag">Results</span>
+                <span><strong>72% fewer checklist issues</strong> reported in the first month.</span>
+              </div>
+              <div class="hero-metric">
+                <span class="hero-metric-tag">Scale</span>
+                <span>Designed for growing brands—from 5 to 500+ locations.</span>
+              </div>
+            </div>
+
+            <div class="hero-cta-row">
+              <button class="hero-cta-primary" data-nav-target="#contact">
+                <span>Book a live demo</span> →
+              </button>
+              <button class="hero-cta-secondary" data-nav-target="#solutions">
+                Preview workflows
+              </button>
+            </div>
+
+            <p class="hero-footnote">
+              <strong>Operations, compliance, and safety teams</strong> use InCheck 360 to replace
+              paper checklists, centralize SOPs, and close issues before they become incidents.
+            </p>
           </div>
 
-          <div class="filter-section">
-            <label for="moduleFilter">Module</label>
-            <select id="moduleFilter" class="select"></select>
+          <div class="hero-visual">
+            <div class="hero-card">
+              <div class="hero-card-badge">
+                <span class="hero-card-badge-dot"></span>
+                Live compliance snapshot · Multi-location brand
+              </div>
+              <div class="hero-card-main">
+                <div>
+                  <div class="hero-card-list-title">Today’s execution</div>
+                  <div class="hero-card-title">Shift-ready stores at a glance</div>
+                  <p class="hero-card-text">
+                    Track completion of opening, service, and closing routines in real time—across
+                    every site and brand.
+                  </p>
+                  <ul class="hero-card-list">
+                    <li>98% of critical tasks completed on time</li>
+                    <li>3 stores flagged for food-safety follow-up</li>
+                    <li>1 escalation awaiting regional approval</li>
+                  </ul>
+                  <div class="hero-tag-row">
+                    <span class="hero-tag">Checklists</span>
+                    <span class="hero-tag">Escalations</span>
+                    <span class="hero-tag">Store-level execution</span>
+                  </div>
+                </div>
+                <div>
+                  <div class="hero-card-metric">
+                    <div><strong>+34%</strong> increase in task completion quality</div>
+                    <div class="hero-tag-row" style="margin-top:0.4rem;">
+                      <span class="hero-tag">Loss prevention</span>
+                      <span class="hero-tag">Food safety</span>
+                    </div>
+                  </div>
+                  <div class="hero-card-list-title">Compliance focus</div>
+                  <ul class="hero-card-list">
+                    <li>Automated alerts for missed temperature checks</li>
+                    <li>Dispute handling centralized per location</li>
+                    <li>Audit trails ready for inspectors</li>
+                  </ul>
+                </div>
+              </div>
+              <div class="hero-glow-orb"></div>
+            </div>
           </div>
+        </div>
+      </div>
+    </section>
 
-          <div class="filter-section">
-            <label for="priorityFilter">Priority</label>
-            <select id="priorityFilter" class="select"></select>
-          </div>
-
-          <div class="filter-section">
-            <label for="statusFilter">Status</label>
-            <select id="statusFilter" class="select"></select>
-          </div>
-
-          <div class="filter-section">
-            <label for="startDateFilter">Start Date</label>
-            <input id="startDateFilter" class="input" type="date" />
-          </div>
-
-          <div class="filter-section">
-            <label for="endDateFilter">End Date</label>
-            <input id="endDateFilter" class="input" type="date" />
-          </div>
-
-          <div class="filter-actions">
-            <button id="resetBtn" class="btn ghost" type="button">
-              Reset
-            </button>
-          </div>
-
-          <p class="muted small">
-            Tip: click any KPI to filter by that status. “Total Issues” resets
-            everything.
+    <!-- Solutions / Services -->
+    <section id="solutions" class="section-alt">
+      <div class="inner">
+        <header class="section-header">
+          <div class="section-kicker">Our solutions</div>
+          <h2 class="section-title">Standardized operations across every location</h2>
+          <p class="section-subtitle">
+            InCheck 360 replaces scattered spreadsheets and paper binders with one central
+            platform. Frontline teams know exactly what to do and when; leaders see how every
+            store is performing.
           </p>
-        </aside>
-
-        <!-- Main content -->
-        <main class="main">
-          <!-- KPIs + summary -->
-          <section class="kpi-strip">
-            <div id="kpis" class="kpi-grid"></div>
-
-            <div class="summary-panel">
-              <div id="issuesSummaryText" class="muted">
-                Loading summary…
-              </div>
-              <div id="activeFiltersChips" class="filter-chips"></div>
-              <div class="muted very-small">
-                Shortcuts: 1/2 tabs · / search · Ctrl+K AI
-              </div>
-            </div>
-          </section>
-
-          <!-- Tabs header: ONLY Issues + Calendar (Option A) -->
-          <nav class="tabs" role="tablist" aria-label="Main views">
-            <button
-              id="issuesTab"
-              class="tab active"
-              type="button"
-              role="tab"
-              aria-selected="true"
-              aria-controls="issuesView"
-            >
-              Issues
-            </button>
-            <button
-              id="calendarTab"
-              class="tab"
-              type="button"
-              role="tab"
-              aria-selected="false"
-              aria-controls="calendarView"
-            >
-              Calendar
-            </button>
-
-            <!-- AI tab removed from UI (Option A) 
-            <button
-              id="insightsTab"
-              class="tab"
-              type="button"
-              role="tab"
-              aria-selected="false"
-              aria-controls="insightsView"
-              style="display:none"
-            >
-              AI Insights
-            </button>
-            -->
-          </nav>
-
-          <!-- ===== Issues View ===== -->
-          <section
-            id="issuesView"
-            class="view active"
-            role="tabpanel"
-            aria-labelledby="issuesTab"
-          >
-            <header class="view-header">
-              <h2>Issues</h2>
-              <p class="muted">
-                Live feed from InCheck issues sheet.
-              </p>
-            </header>
-
-            <div class="issues-layout">
-              <div class="issues-table-wrap">
-                <table
-                  id="issuesTable"
-                  class="table"
-                  aria-label="Issues table"
-                >
-                  <thead>
-                    <tr>
-                      <th data-key="id" scope="col">ID</th>
-                      <th data-key="module" scope="col">Module</th>
-                      <th data-key="title" scope="col">Title</th>
-                      <th data-key="priority" scope="col">Priority</th>
-                      <th data-key="status" scope="col">Status</th>
-                      <th data-key="date" scope="col">Date</th>
-                      <th data-key="log" scope="col">Log</th>
-                      <th scope="col">Link</th>
-                    </tr>
-                  </thead>
-
-                  <!-- Skeleton placeholder while loading -->
-                  <tbody id="tbodySkeleton">
-                    <tr>
-                      <td colspan="8" class="muted">
-                        Loading issues…
-                      </td>
-                    </tr>
-                  </tbody>
-
-                  <!-- Real rows populated by JS -->
-                  <tbody id="issuesTbody"></tbody>
-                </table>
-              </div>
-
-              <footer class="table-footer">
-                <div id="rowCount" class="muted">No rows</div>
-
-                <div class="pager">
-                  <button
-                    id="firstPage"
-                    class="btn ghost sm"
-                    type="button"
-                  >
-                    « First
-                  </button>
-                  <button
-                    id="prevPage"
-                    class="btn ghost sm"
-                    type="button"
-                  >
-                    ‹ Prev
-                  </button>
-                  <span id="pageInfo" class="muted small"
-                    >Page 1 / 1</span
-                  >
-                  <button
-                    id="nextPage"
-                    class="btn ghost sm"
-                    type="button"
-                  >
-                    Next ›
-                  </button>
-                  <button
-                    id="lastPage"
-                    class="btn ghost sm"
-                    type="button"
-                  >
-                    Last »
-                  </button>
-                </div>
-
-                <div class="page-size">
-                  <label for="pageSize">Rows</label>
-                  <select id="pageSize" class="select sm">
-                    <option value="10">10</option>
-                    <option value="20" selected>20</option>
-                    <option value="50">50</option>
-                    <option value="100">100</option>
-                  </select>
-                </div>
-              </footer>
-            </div>
-          </section>
-
-          <!-- ===== Calendar / Release Planner View ===== -->
-          <section
-            id="calendarView"
-            class="view"
-            role="tabpanel"
-            aria-labelledby="calendarTab"
-          >
-            <header class="view-header">
-              <h2>Deployments &amp; Maintenance Calendar</h2>
-              <p class="muted">
-                Plan deployments, maintenance windows, releases, and other
-                operational events.
-              </p>
-            </header>
-
-            <section class="calendar-toolbar">
-              <div class="calendar-filters">
-                <label>
-                  <input
-                    id="eventFilterDeployment"
-                    type="checkbox"
-                    checked
-                  />
-                  Deployment
-                </label>
-                <label>
-                  <input
-                    id="eventFilterMaintenance"
-                    type="checkbox"
-                    checked
-                  />
-                  Maintenance
-                </label>
-                <label>
-                  <input
-                    id="eventFilterRelease"
-                    type="checkbox"
-                    checked
-                  />
-                  Release
-                </label>
-                <label>
-                  <input
-                    id="eventFilterOther"
-                    type="checkbox"
-                    checked
-                  />
-                  Other
-                </label>
-              </div>
-
-              <div class="calendar-actions">
-                <button
-                  id="addEventBtn"
-                  class="btn primary sm"
-                  type="button"
-                >
-                  ➕ Add Event
-                </button>
-                <div id="calendarTz" class="muted very-small"></div>
-              </div>
-            </section>
-
-            <div id="calendar" class="calendar"></div>
-
-            <!-- Release Planner -->
-            <section class="planner-section">
-              <h3>Release Planner — F&amp;B Middle East</h3>
-              <p class="muted">
-                Suggests safer deployment windows based on rush hours, open
-                high-risk issues and similar past bugs. Lower score = safer
-                window.
-              </p>
-
-              <div class="planner-grid">
-                <!-- Environment -->
-                <div class="planner-block">
-                  <h4>Environment</h4>
-                  <div class="chip-group" id="plannerEnv">
-                    <button
-                      type="button"
-                      class="chip chip-toggle active"
-                      data-value="Prod"
-                    >
-                      Prod
-                    </button>
-                    <button
-                      type="button"
-                      class="chip chip-toggle"
-                      data-value="Staging"
-                    >
-                      Staging
-                    </button>
-                    <button
-                      type="button"
-                      class="chip chip-toggle"
-                      data-value="Dev"
-                    >
-                      Dev
-                    </button>
-                    <button
-                      type="button"
-                      class="chip chip-toggle"
-                      data-value="Other"
-                    >
-                      Other
-                    </button>
-                  </div>
-                </div>
-
-                <!-- Region -->
-                <div class="planner-block">
-                  <h4>Region profile</h4>
-                  <div class="chip-group" id="plannerRegion">
-                    <button
-                      type="button"
-                      class="chip chip-toggle active"
-                      data-value="Gulf"
-                    >
-                      Gulf (KSA / UAE / Qatar)
-                    </button>
-                    <button
-                      type="button"
-                      class="chip chip-toggle"
-                      data-value="Levant"
-                    >
-                      Levant
-                    </button>
-                    <button
-                      type="button"
-                      class="chip chip-toggle"
-                      data-value="NorthAfrica"
-                    >
-                      North Africa
-                    </button>
-                  </div>
-                </div>
-
-                <!-- Release type -->
-                <div class="planner-block">
-                  <h4>Release type</h4>
-                  <div class="chip-group" id="plannerReleaseType">
-                    <button
-                      type="button"
-                      class="chip chip-toggle active"
-                      data-value="minor"
-                    >
-                      Minor patch
-                    </button>
-                    <button
-                      type="button"
-                      class="chip chip-toggle"
-                      data-value="feature"
-                    >
-                      Feature
-                    </button>
-                    <button
-                      type="button"
-                      class="chip chip-toggle"
-                      data-value="major"
-                    >
-                      Major release
-                    </button>
-                  </div>
-                </div>
-
-                <!-- Modules -->
-                <div class="planner-block">
-                  <h4>Modules</h4>
-                  <textarea
-                    id="plannerModules"
-                    class="input"
-                    rows="2"
-                    placeholder="e.g. POS checkout, reporting, inventory…"
-                  ></textarea>
-                </div>
-
-                <!-- Description -->
-                <div class="planner-block">
-                  <h4>Release description (optional)</h4>
-                  <textarea
-                    id="plannerDescription"
-                    class="input"
-                    rows="2"
-                    placeholder="Short description of what’s changing…"
-                  ></textarea>
-                </div>
-
-                <!-- Look ahead -->
-                <div class="planner-block">
-                  <h4>Look ahead</h4>
-                  <div class="chip-group" id="plannerHorizon">
-                    <button
-                      type="button"
-                      class="chip chip-toggle active"
-                      data-value="1"
-                    >
-                      Next 24 hours
-                    </button>
-                    <button
-                      type="button"
-                      class="chip chip-toggle"
-                      data-value="3"
-                    >
-                      Next 3 days
-                    </button>
-                    <button
-                      type="button"
-                      class="chip chip-toggle"
-                      data-value="5"
-                    >
-                      Next 5 days
-                    </button>
-                    <button
-                      type="button"
-                      class="chip chip-toggle"
-                      data-value="7"
-                    >
-                      Next 7 days
-                    </button>
-                  </div>
-                </div>
-
-                <!-- Suggestions per day -->
-                <div class="planner-block">
-                  <h4>Suggestions per day</h4>
-                  <div class="chip-group" id="plannerSlotsPerDay">
-                    <button
-                      type="button"
-                      class="chip chip-toggle active"
-                      data-value="2"
-                    >
-                      2
-                    </button>
-                    <button
-                      type="button"
-                      class="chip chip-toggle"
-                      data-value="4"
-                    >
-                      4
-                    </button>
-                    <button
-                      type="button"
-                      class="chip chip-toggle"
-                      data-value="6"
-                    >
-                      6
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div class="planner-actions">
-                <button
-                  id="plannerRun"
-                  class="btn primary"
-                  type="button"
-                >
-                  ✨ Suggest windows
-                </button>
-                <button
-                  id="plannerAddEvent"
-                  class="btn ghost"
-                  type="button"
-                >
-                  ➕ Add top suggestion to calendar…
-                </button>
-                <div class="muted very-small">
-                  Scored for F&amp;B rush hours in MENA · lower is safer
-                </div>
-              </div>
-
-              <div
-                id="plannerResults"
-                class="planner-results"
-                aria-live="polite"
-              ></div>
-
-              <!-- Release plan linking -->
-              <section class="planner-linking">
-                <h4>Link tickets to a release plan</h4>
-                <div class="planner-linking-grid">
-                  <div class="card">
-                    <h5>Release plan (Release events)</h5>
-                    <div
-                      id="plannerReleasePlan"
-                      class="planner-list"
-                    ></div>
-                  </div>
-                  <div class="card">
-                    <h5>Tickets (from current filters)</h5>
-                    <p class="muted very-small">
-                      Uses the same filters as the Issues tab (module,
-                      status, dates, etc.).
-                    </p>
-                    <div
-                      id="plannerTickets"
-                      class="planner-list"
-                    ></div>
-                    <button
-                      id="plannerAssignBtn"
-                      class="btn sm"
-                      type="button"
-                    >
-                      Assign selected tickets
-                    </button>
-                  </div>
-                </div>
-              </section>
-            </section>
-          </section>
-
-          <!-- ===== AI Insights View (kept, but hidden; no tab) ===== -->
-          <section
-            id="insightsView"
-            class="view"
-            aria-hidden="true"
-            style="display: none"
-          >
-            <header class="view-header">
-              <h2>AI Insights / Copilot</h2>
-              <p class="muted">
-                Heuristic, explainable analytics on issues text (no external
-                AI). Risk breakdown, clustering, trends, triage &amp; calendar
-                risk.
-              </p>
-            </header>
-
-            <div id="aiAnalyzing" class="muted very-small" style="display:none;">
-              Analyzing issues…
-            </div>
-
-            <div class="ai-grid">
-              <section class="card">
-                <h3>Top terms (recent)</h3>
-                <ul id="aiPatternsList" class="list"></ul>
-              </section>
-
-              <section class="card">
-                <h3>Suggested categories</h3>
-                <ul id="aiLabelsList" class="list"></ul>
-              </section>
-
-              <section class="card">
-                <h3>Dataset used</h3>
-                <p id="aiScopeText" class="muted"></p>
-                <h4>Signals</h4>
-                <p id="aiSignalsText" class="muted"></p>
-              </section>
-
-              <section class="card">
-                <h3>Trends &amp; bursts (last 14 days)</h3>
-                <ul id="aiTrendsList" class="list"></ul>
-              </section>
-
-              <section class="card">
-                <h3>Incident-like issues</h3>
-                <ul id="aiIncidentsList" class="list"></ul>
-              </section>
-
-              <section class="card">
-                <h3>Emerging vs Stable themes</h3>
-                <ul id="aiEmergingStable" class="list"></ul>
-              </section>
-
-              <section class="card">
-                <h3>Ops Cockpit</h3>
-                <ul id="aiOpsCockpit" class="list"></ul>
-              </section>
-
-              <section class="card wide">
-                <h3>Per-module risk insights</h3>
-                <div class="table-scroll">
-                  <table class="table compact">
-                    <thead>
-                      <tr>
-                        <th>Module</th>
-                        <th>Open</th>
-                        <th>High P</th>
-                        <th>Risk sum</th>
-                        <th>Top term</th>
-                      </tr>
-                    </thead>
-                    <tbody id="aiModulesTableBody">
-                      <tr>
-                        <td colspan="5" class="muted">
-                          Waiting for data…
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-
-              <section class="card">
-                <h3>Top risks this week</h3>
-                <ul id="aiRisksList" class="list"></ul>
-              </section>
-
-              <section class="card">
-                <h3>Similar issue clusters</h3>
-                <div id="aiClusters" class="cluster-list"></div>
-              </section>
-
-              <section class="card wide">
-                <h3>Triage queue (issues needing attention)</h3>
-                <p class="muted very-small">
-                  Missing fields, misaligned priority, ordered by risk.
-                  Suggestions are heuristic.
-                </p>
-                <ul id="aiTriageList" class="list"></ul>
-              </section>
-
-              <section class="card">
-                <h3>Upcoming risky events (next 7 days)</h3>
-                <ul id="aiEventsList" class="list"></ul>
-              </section>
-
-              <section class="card wide">
-                <h3>AI Commands (pro)</h3>
-                <p class="muted very-small">
-                  Filters: <code>module:</code> <code>status:</code>
-                  <code>priority:</code> <code>id:</code> <code>type:</code>
-                  <code>missing:</code><br />
-                  Risk: <code>risk&gt;=9</code> <code>severity&gt;=3</code>
-                  <code>impact&gt;=3</code> <code>urgency&gt;=3</code><br />
-                  Time: <code>last:7d</code> <code>age&gt;14d</code> ·
-                  Events: <code>event:next7d</code>
-                  <code>event:today</code><br />
-                  Sort: <code>sort:risk|date|priority</code><br />
-                  Examples:
-                  <code>payments risk&gt;8 last:7d sort:risk</code> ·
-                  <code>missing:priority module:billing</code> ·
-                  <code>status:open cluster:timeout</code>
-                </p>
-
-                <div class="ai-query">
-                  <input
-                    id="aiQueryInput"
-                    class="input"
-                    type="text"
-                    placeholder="e.g. payments risk&gt;8 last:7d sort:risk"
-                  />
-                  <div class="ai-query-buttons">
-                    <button
-                      id="aiQueryRun"
-                      class="btn sm"
-                      type="button"
-                    >
-                      Run
-                    </button>
-                    <button
-                      id="aiQueryApplyFilters"
-                      class="btn ghost sm"
-                      type="button"
-                    >
-                      Apply to Issues
-                    </button>
-                    <button
-                      id="aiQueryExport"
-                      class="btn ghost sm"
-                      type="button"
-                    >
-                      Export CSV
-                    </button>
-                  </div>
-                </div>
-
-                <div
-                  id="aiQueryResults"
-                  class="ai-query-results"
-                ></div>
-              </section>
-            </div>
-          </section>
-        </main>
-      </div>
-    </div>
-
-    <!-- Issue modal -->
-    <div
-      id="issueModal"
-      class="modal"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="modalTitle"
-      style="display: none"
-    >
-      <div class="modal-content">
-        <header class="modal-header">
-          <h2 id="modalTitle">Issue</h2>
-          <button
-            id="modalClose"
-            class="icon-button"
-            type="button"
-            aria-label="Close issue details"
-          >
-            ✕
-          </button>
-        </header>
-        <div id="modalBody" class="modal-body"></div>
-        <footer class="modal-footer">
-          <button
-            id="copyId"
-            class="btn sm"
-            type="button"
-          >
-            Copy ID
-          </button>
-          <button
-            id="copyLink"
-            class="btn ghost sm"
-            type="button"
-          >
-            Copy Link
-          </button>
-        </footer>
-      </div>
-    </div>
-
-    <!-- Event modal -->
-    <div
-      id="eventModal"
-      class="modal"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="eventModalTitle"
-      style="display: none"
-    >
-      <div class="modal-content modal-event">
-        <header class="modal-header">
-          <h2 id="eventModalTitle">Event</h2>
-          <button
-            id="eventModalClose"
-            class="icon-button"
-            type="button"
-            aria-label="Close event editor"
-          >
-            ✕
-          </button>
         </header>
 
-        <form id="eventForm" class="modal-body">
-          <div class="form-grid">
-            <div class="form-block">
-              <label for="eventTitle">Title</label>
-              <input id="eventTitle" class="input" type="text" />
-            </div>
+        <div class="cards-grid">
+          <article class="card">
+            <div class="card-icon">📋</div>
+            <h3 class="card-title">Operations task management</h3>
+            <p class="card-text">
+              Build, assign, and track recurring tasks like opening/closing routines, temperature
+              logs, and cleaning schedules—by shift, role, or location.
+            </p>
+            <p class="card-meta">
+              Ensure nothing slips through the cracks and every shift hands over cleanly.
+            </p>
+          </article>
 
-            <div class="form-block">
-              <label for="eventType">Type</label>
-              <select id="eventType" class="select">
-                <option>Deployment</option>
-                <option>Maintenance</option>
-                <option>Release</option>
-                <option>Other</option>
-              </select>
-            </div>
+          <article class="card">
+            <div class="card-icon">📚</div>
+            <h3 class="card-title">Deployment &amp; reference materials</h3>
+            <p class="card-text">
+              Publish SOPs, brand standards, and updated playbooks centrally so teams always see
+              the most current guidance—without hunting through email or messaging apps.
+            </p>
+            <p class="card-meta">
+              Target content by role, store type, or region for maximum relevance.
+            </p>
+          </article>
 
-            <div class="form-block">
-              <label for="eventEnv">Environment</label>
-              <select id="eventEnv" class="select">
-                <option>Prod</option>
-                <option>Staging</option>
-                <option>Dev</option>
-                <option>Other</option>
-              </select>
-            </div>
+          <article class="card">
+            <div class="card-icon">⚙️</div>
+            <h3 class="card-title">Workflow automation</h3>
+            <p class="card-text">
+              Trigger reminders, escalations, and approvals based on checklist results, missed
+              tasks, or incident reports—automatically.
+            </p>
+            <p class="card-meta">
+              Replace manual chasing with rules that run reliably every day.
+            </p>
+          </article>
 
-            <div class="form-block">
-              <label for="eventStatus">Change status</label>
-              <select id="eventStatus" class="select">
-                <option>Planned</option>
-                <option>In Progress</option>
-                <option>Completed</option>
-                <option>Cancelled</option>
-              </select>
-            </div>
+          <article class="card">
+            <div class="card-icon">📊</div>
+            <h3 class="card-title">Operational visibility</h3>
+            <p class="card-text">
+              Real-time dashboards show task completion, compliance trends, and location-level
+              risk—so you can intervene early, not after a failed inspection.
+            </p>
+            <p class="card-meta">
+              Filter by region, brand, or timeframe to see performance at a glance.
+            </p>
+          </article>
 
-            <div class="form-block">
-              <label for="eventOwner">Owner</label>
-              <input id="eventOwner" class="input" type="text" />
-            </div>
+          <article class="card">
+            <div class="card-icon">🚀</div>
+            <h3 class="card-title">Project &amp; rollout tracking</h3>
+            <p class="card-text">
+              Coordinate new menu launches, equipment installations, or layout changes with
+              structured rollouts and status tracking at each site.
+            </p>
+            <p class="card-meta">
+              Everyone sees where a project stands—from HQ to store managers.
+            </p>
+          </article>
 
-            <div class="form-block">
-              <label for="eventModules">Modules</label>
-              <input
-                id="eventModules"
-                class="input"
-                type="text"
-                placeholder="Comma-separated modules"
-              />
-            </div>
+          <article class="card">
+            <div class="card-icon">📨</div>
+            <h3 class="card-title">Escalations &amp; communications</h3>
+            <p class="card-text">
+              Route issues to the right people, automatically notify managers, and log responses
+              so follow-ups are tracked—not lost in inboxes.
+            </p>
+            <p class="card-meta">
+              Keep leadership informed without adding more admin work.
+            </p>
+          </article>
+        </div>
+      </div>
+    </section>
 
-            <div class="form-block">
-              <label for="eventImpactType">Impact</label>
-              <select id="eventImpactType" class="select">
-                <option>No downtime expected</option>
-                <option>Customer visible</option>
-                <option>Internal only</option>
-                <option>High risk change</option>
-              </select>
-            </div>
+    <!-- Future focus / compliance -->
+    <section>
+      <div class="inner">
+        <div class="priority-grid">
+          <div class="priority-panel">
+            <span class="priority-tag">
+              <span class="dot"></span>
+              For compliance &amp; risk teams
+            </span>
+            <h3 class="priority-title">Continuous compliance monitoring</h3>
+            <p class="priority-text">
+              Connect store-level activity to your compliance program. See where food-safety
+              checks, cash-handling policies, and loss-prevention steps are being followed—and
+              where they are not.
+            </p>
+            <ul class="priority-list">
+              <li>Surface non-compliant behavior and repeat issues by store or region.</li>
+              <li>
+                Monitor inventory shrink, cash discrepancies, and safety-critical checklists in
+                one place.
+              </li>
+              <li>Detect patterns early so you can act before they become incidents.</li>
+            </ul>
+          </div>
 
-            <div class="form-block">
-              <label for="eventIssueId">Issue ID (optional)</label>
-              <input
-                id="eventIssueId"
-                class="input"
-                type="text"
-                placeholder="Single or comma-separated IDs"
-              />
-              <div
-                id="eventIssueLinkedInfo"
-                class="muted very-small"
-              ></div>
-            </div>
+          <div class="priority-panel">
+            <span class="priority-tag">
+              <span class="dot"></span>
+              Audit-ready reporting
+            </span>
+            <h3 class="priority-title">Audit trails &amp; documented proof</h3>
+            <p class="priority-text">
+              Generate organized, exportable records of critical checks and incident handling.
+              When regulators or internal auditors ask for proof, it’s already there.
+            </p>
+            <ul class="priority-list">
+              <li>On-demand reports by location, date range, checklist, or incident type.</li>
+              <li>Attach photos, notes, and corrective actions to individual tasks.</li>
+              <li>Demonstrate due diligence with clean, consistent evidence.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
 
-            <div class="form-block">
-              <label for="eventStart">Start</label>
-              <input
-                id="eventStart"
-                class="input"
-                type="datetime-local"
-              />
-              <label class="checkbox-inline">
-                <input id="eventAllDay" type="checkbox" />
-                All-day event
-              </label>
-            </div>
+    <!-- Customers / Stats -->
+    <section id="customers">
+      <div class="inner">
+        <header class="section-header">
+          <div class="section-kicker">Customer impact</div>
+          <h2 class="section-title">Brands rely on InCheck 360 for store-level execution</h2>
+          <p class="section-subtitle">
+            InCheck 360 helps operations and compliance teams align daily routines with brand
+            standards, while giving leaders the visibility they need to coach, support, and scale.
+          </p>
+        </header>
 
-            <div class="form-block">
-              <label for="eventEnd">End (optional)</label>
-              <input
-                id="eventEnd"
-                class="input"
-                type="datetime-local"
-              />
+        <div class="customers-section-inner">
+          <div>
+            <div class="stat-pill">
+              <strong>Performance</strong>
+              · Operations, safety &amp; loss prevention in one platform
             </div>
-
-            <div class="form-block form-block-wide">
-              <label for="eventDescription">Notes</label>
-              <textarea
-                id="eventDescription"
-                class="input"
-                rows="3"
-              ></textarea>
+            <div class="stat-highlight">“Every store knows exactly what to do and when.”</div>
+            <p class="stat-caption">
+              When checklists, SOPs, and compliance workflows live together, teams don’t have to
+              guess. They simply follow the playbook.
+            </p>
+            <div class="quote-card">
+              InCheck 360 helped us bring structure to daily routines and food-safety checks across
+              all locations. We now see issues days earlier than before and can support stores
+              before problems escalate.
+              <div class="quote-meta">
+                — Operations &amp; Compliance Leader, Multi-site F&amp;B brand
+              </div>
             </div>
           </div>
-        </form>
 
-        <footer class="modal-footer">
-          <button
-            id="eventSave"
-            class="btn primary"
-            type="button"
-          >
-            Save Event
-          </button>
-          <button
-            id="eventCancel"
-            class="btn ghost"
-            type="button"
-          >
-            Cancel
-          </button>
-          <button
-            id="eventDelete"
-            class="btn danger ghost"
-            type="button"
-          >
-            Delete
-          </button>
-        </footer>
-      </div>
-    </div>
-
-    <!-- Libraries -->
-    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
-
-    <!-- Main app script (make sure name/casing matches your file) -->
-    <script src="App.js"></script>
-  </body>
-</html>
+          <div>
+            <div class="device-mock">
+              <div class="device-top">
+                <div class="device-dot-row">
+                  <span class="device-dot"></span>
+                  <span class="device-dot"></span>
+                  <span class="device-dot"></span>
+                </div>
+                <span>Ops dashboard · Today</span>
+              </div>
+              <div class="device-body">
+                <div class="device-row">
+                  <div>
+                    <div class="device-col-title">Checklists</div>
+                    <ul class="device-list">
+                      <li>
+                        <span>Opening routines</span>
+                        <span class="device-stat">97% complete</span>
+                      </li>
+                      <li>
+                        <span>Food-safety checks</span>
+                        <span class="device-stat">96% on time</span>
+                      </li>
+                      <li>
