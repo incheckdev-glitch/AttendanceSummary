@@ -9,7 +9,7 @@
     content="InCheck 360 is a powerful SaaS platform for F&B and retail operators, helping you standardize workflows, monitor safety, and drive operational excellence across locations."
   />
 
-  <!-- Open Graph / Social -->
+  <!-- Open Graph -->
   <meta property="og:title" content="InCheck 360 – Operations, Compliance & Safety Platform" />
   <meta
     property="og:description"
@@ -17,13 +17,12 @@
   />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://incheck360.com/" />
-  <!-- Replace with your real image -->
   <meta property="og:image" content="assets/og-image.jpg" />
 
-  <!-- Favicon (update paths as needed) -->
+  <!-- Favicon (update path) -->
   <link rel="icon" href="assets/favicon.ico" />
 
-  <!-- Font -->
+  <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
@@ -35,11 +34,11 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <!-- ================= HEADER / NAV ================= -->
+  <!-- ================= HEADER ================= -->
   <header class="site-header" id="top">
     <div class="container header-inner">
-      <a href="#top" class="logo">
-        <!-- You can replace with an <img> logo -->
+      <a href="#top" class="logo" aria-label="InCheck 360">
+        <!-- Replace with your SVG/logo image if you want -->
         <span class="logo-mark">IC</span>
         <span class="logo-text">InCheck 360</span>
       </a>
@@ -60,18 +59,23 @@
           <li><a href="#roadmap">Compliance</a></li>
           <li><a href="#features">Features</a></li>
           <li><a href="#modules">Modules</a></li>
+          <li><a href="#customers">Customers</a></li>
           <li><a href="#faq">FAQs</a></li>
           <li><a href="#blog">Blog</a></li>
-          <li><a href="#contact">Contact</a></li>
         </ul>
-        <a href="#contact" class="btn btn-primary btn-nav">Book a Demo</a>
+        <div class="nav-cta">
+          <a href="https://app.incheck360.com/" class="btn btn-ghost nav-login">Login</a>
+          <a href="#contact" class="btn btn-primary btn-nav">Book a Demo</a>
+        </div>
       </nav>
     </div>
   </header>
 
-  <!-- ================= HERO ================= -->
+  <!-- ================= MAIN ================= -->
   <main>
-    <section class="hero" id="hero">
+    <!-- HERO -->
+    <section class="hero" id="hero" data-animate>
+      <div class="hero-bg-accent"></div>
       <div class="container hero-inner">
         <div class="hero-content">
           <p class="eyebrow">Operations • Compliance • Safety</p>
@@ -81,203 +85,232 @@
             Elevate Safety.
           </h1>
           <p class="hero-subtitle">
-            A unified operations platform built for F&amp;B and retail brands. Standardize workflows,
-            monitor safety in real time, and keep every location on the same playbook.
+            InCheck 360 is a modern operations platform for F&amp;B and retail brands. Standardize
+            workflows, monitor safety in real time, and keep every location on the same playbook.
           </p>
 
           <div class="hero-actions">
-            <a href="#contact" class="btn btn-primary">Book a Demo</a>
-            <a href="#features" class="btn btn-outline">Explore Features</a>
+            <a href="#contact" class="btn btn-primary hero-main-cta">Book a Demo</a>
+            <button type="button" class="btn btn-outline hero-secondary-cta" data-scroll="#features">
+              View product capabilities
+            </button>
           </div>
 
-          <div class="hero-metrics">
-            <div class="metric">
-              <span class="metric-value">72%</span>
-              <span class="metric-label">fewer checklist violations*</span>
+          <div class="hero-meta">
+            <div class="hero-metrics">
+              <div class="metric-card">
+                <span class="metric-label">Checklist violations reduced</span>
+                <span class="metric-value">up to 72%</span>
+              </div>
+              <div class="metric-card">
+                <span class="metric-label">Time to impact</span>
+                <span class="metric-value">&lt; 30 days</span>
+              </div>
+              <div class="metric-card">
+                <span class="metric-label">Built for</span>
+                <span class="metric-value">5–500+ locations</span>
+              </div>
             </div>
-            <div class="metric">
-              <span class="metric-value">30</span>
-              <span class="metric-label">days to impact</span>
-            </div>
-            <div class="metric">
-              <span class="metric-value">5–500</span>
-              <span class="metric-label">locations, one platform</span>
-            </div>
+            <p class="metric-footnote">
+              Based on improvements after deploying standardized digital checklists and monitoring.
+            </p>
           </div>
-          <p class="metric-footnote">
-            *Based on improvements seen after deploying standardized digital checklists and real-time monitoring.
-          </p>
         </div>
 
         <div class="hero-media">
-          <!-- Replace with real dashboard screenshot -->
-          <div class="hero-card">
-            <div class="hero-card-header">
-              <span class="hero-card-title">Today’s Operations Pulse</span>
-              <span class="hero-card-pill">Live</span>
+          <!-- Replace image src with your real app screenshot -->
+          <div class="hero-panel card">
+            <div class="hero-panel-header">
+              <div>
+                <p class="hero-panel-eyebrow">Today’s operations pulse</p>
+                <p class="hero-panel-title">Multi-location overview</p>
+              </div>
+              <span class="hero-pill hero-pill-live">Live</span>
             </div>
-            <div class="hero-card-body">
+
+            <div class="hero-panel-body">
               <div class="hero-stat-row">
-                <span>Completed checklists</span>
-                <span>134 / 145</span>
-              </div>
-              <div class="hero-progress">
-                <div class="hero-progress-bar" style="width: 92%"></div>
+                <div>
+                  <p class="hero-stat-label">Checklists completed</p>
+                  <p class="hero-stat-value">134 / 145</p>
+                </div>
+                <div class="hero-progress">
+                  <div class="hero-progress-bar" style="width: 92%"></div>
+                </div>
               </div>
 
-              <div class="hero-stat-row">
-                <span>Critical violations</span>
-                <span class="hero-stat-badge hero-stat-badge--critical">3</span>
+              <div class="hero-stat-row hero-stat-row-split">
+                <div>
+                  <p class="hero-stat-label">Critical violations</p>
+                  <p class="hero-stat-value hero-stat-value-critical">3</p>
+                </div>
+                <div>
+                  <p class="hero-stat-label">Locations at risk</p>
+                  <p class="hero-stat-value hero-stat-value-warning">2</p>
+                </div>
               </div>
 
-              <ul class="hero-list">
+              <ul class="hero-store-list">
                 <li>
                   <span class="dot dot--green"></span>
                   Dubai Mall – All opening checks completed
                 </li>
                 <li>
-                  <span class="dot dot--orange"></span>
+                  <span class="dot dot--amber"></span>
                   Enschede – Temperature log missing for 10:00 shift
                 </li>
                 <li>
                   <span class="dot dot--red"></span>
-                  Al Barsha – Cold storage above threshold, escalation triggered
+                  Al Barsha – Cold storage above threshold · escalation triggered
                 </li>
               </ul>
             </div>
 
-            <div class="hero-card-footer">
-              <span class="hero-card-footer-text">Give your teams clarity, every shift.</span>
+            <div class="hero-panel-footer">
+              <p>Give supervisors live visibility, every shift.</p>
             </div>
+          </div>
+
+          <div class="hero-badge card">
+            <p class="badge-label">Customer highlight</p>
+            <p class="badge-value">“We reduced checklist violations by 72% in 30 days.”</p>
+            <p class="badge-meta">Operations Director · Multi-unit F&amp;B brand</p>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- ================= SERVICES ================= -->
-    <section class="section" id="services">
+    <!-- SERVICES -->
+    <section class="section" id="services" data-animate>
       <div class="container">
         <header class="section-header">
           <p class="eyebrow">Our Services</p>
-          <h2>Examining Essential Services</h2>
+          <h2>Examining essential services</h2>
           <p class="section-subtitle">
-            InCheck 360 centralizes operational workflows so multi-unit F&amp;B and retail brands can
-            standardize performance, streamline daily tasks, and gain real-time visibility across every
-            store.
+            InCheck 360 centralizes operational workflows, enabling F&amp;B and retail brands to
+            standardize performance, streamline daily tasks, and gain actionable visibility across
+            locations.
           </p>
         </header>
 
         <div class="card-grid card-grid--3">
           <article class="card service-card">
-            <h3>Operations Task Management</h3>
+            <h3>Operations task management</h3>
             <p>
-              Turn opening, closing, and food safety routines into guided digital checklists with clear
-              ownership, timestamps, and follow-ups for every shift.
+              Digitize opening, closing, and food safety routines with guided checklists, clear
+              ownership, and timestamps across every shift and store.
             </p>
           </article>
 
           <article class="card service-card">
-            <h3>Deployment &amp; Reference Materials</h3>
+            <h3>Deployment &amp; reference materials</h3>
             <p>
-              Distribute SOPs, brand standards, and playbooks by role, shift, or region. Teams always see
-              the latest version—no more outdated PDFs or binders.
+              Distribute SOPs, brand standards, and playbooks by role or location so teams always
+              work from the latest version—no outdated binders.
             </p>
           </article>
 
           <article class="card service-card">
-            <h3>Workflow Automation</h3>
+            <h3>Workflow automation</h3>
             <p>
-              Trigger reminders, escalations, and corrective actions automatically based on task status,
-              overdue items, or incomplete checklists.
+              Trigger reminders, escalations, and follow-ups based on task status, missed checks,
+              or non-compliance events in real time.
             </p>
           </article>
 
           <article class="card service-card">
-            <h3>Operational Visibility</h3>
+            <h3>Operational visibility</h3>
             <p>
-              Dashboards surface completion rates, compliance scores, and repeat issues so supervisors know
-              exactly where to focus.
+              Track completion rates, violations, and recurring issues through real-time dashboards
+              that surface where attention is needed.
             </p>
           </article>
 
           <article class="card service-card">
-            <h3>Project &amp; Rollout Tracking</h3>
+            <h3>Project &amp; rollout tracking</h3>
             <p>
-              Coordinate LTOs, equipment installations, and new initiatives with rollout timelines and
-              store-level tracking.
+              Coordinate LTOs, campaigns, and equipment rollouts with clear milestones and
+              store-level execution tracking.
             </p>
           </article>
 
           <article class="card service-card">
-            <h3>Escalations &amp; Communications</h3>
+            <h3>Escalations &amp; communications</h3>
             <p>
-              Route incidents and critical issues to the right manager instantly, with full context and
-              audit trails.
+              Route incidents and critical issues to the right managers instantly, with full
+              history, comments, and resolution tracking.
             </p>
           </article>
         </div>
       </div>
     </section>
 
-    <!-- ================= ROADMAP / COMPLIANCE ================= -->
-    <section class="section section-alt" id="roadmap">
+    <!-- ROADMAP / COMPLIANCE -->
+    <section class="section section-alt" id="roadmap" data-animate>
       <div class="container roadmap-grid">
         <div>
-          <p class="eyebrow">Appreciation Feature</p>
-          <h2>Our Priority Options for the Future</h2>
-          <p class="section-subtitle">
-            We’re focused on helping operations, safety, and loss prevention teams simplify compliance and
-            stay ahead of risk while maintaining visibility across every location.
-          </p>
+          <header class="section-header section-header-left">
+            <p class="eyebrow">Appreciation feature</p>
+            <h2>Our priority options for the future</h2>
+            <p class="section-subtitle">
+              We are dedicated to supporting foodservice and retail teams, together with their
+              compliance departments, in streamlining operations, enhancing loss prevention, and
+              maintaining full visibility across locations.
+            </p>
+          </header>
+
           <ul class="icon-list">
             <li>
-              <h3>Compliance Monitoring</h3>
+              <h3>Compliance monitoring</h3>
               <p>
-                Monitor adherence to safety and loss-prevention standards in real time. Detect shrinkage,
-                cash discrepancies, and procedural violations early.
+                Monitor adherence to loss prevention and food safety standards with real-time
+                alerts. Detect shrinkage, cash discrepancies, procedural gaps, and suspicious
+                patterns early.
               </p>
             </li>
             <li>
-              <h3>Audit-Ready Reporting</h3>
+              <h3>Audit-ready reporting</h3>
               <p>
-                Keep a single source of truth for checks, incidents, and resolutions. Generate organized
-                audit trails by location, period, or issue type.
+                Maintain organized, exportable records of safety checks, incidents, and resolutions.
+                Generate audit trails by location, time period, or issue type with a few clicks.
               </p>
             </li>
           </ul>
-          <a href="#contact" class="btn btn-primary">Talk to our team</a>
+          <a href="#contact" class="btn btn-primary">Speak with a specialist</a>
         </div>
 
-        <div class="roadmap-highlight">
-          <h3>Built for Compliance Teams</h3>
+        <aside class="roadmap-highlight card">
+          <h3>Built for compliance &amp; loss prevention teams</h3>
           <ul>
-            <li>Role-based access and approval flows</li>
+            <li>Role-based access and approvals</li>
             <li>Evidence capture (photos, notes, attachments)</li>
-            <li>Standardized investigation and follow-up steps</li>
-            <li>Dashboards for compliance and loss prevention leaders</li>
+            <li>Standardized investigations and root cause tracking</li>
+            <li>Dashboards for compliance and LP leadership</li>
           </ul>
-        </div>
+        </aside>
       </div>
     </section>
 
-    <!-- ================= SOCIAL PROOF ================= -->
-    <section class="section" id="customers">
+    <!-- CUSTOMERS / SOCIAL PROOF -->
+    <section class="section" id="customers" data-animate>
       <div class="container customers-grid">
         <div>
-          <p class="eyebrow">Customer Results</p>
-          <h2>Store-level execution your teams can rely on</h2>
-          <p class="section-subtitle">
-            Brands using InCheck 360 give every store a clear, consistent checklist so teams know exactly
-            what to do, when to do it, and how to prove it’s done.
-          </p>
-
-          <div class="quote-card card">
-            <p class="quote">
-              “Within the first month, we dramatically reduced critical checklist gaps and finally had a
-              clear view of what was happening in each store.”
+          <header class="section-header section-header-left">
+            <p class="eyebrow">Customer results</p>
+            <h2>Store-level execution your teams can trust</h2>
+            <p class="section-subtitle">
+              Brands using InCheck 360 give every store a clear, consistent checklist so teams know
+              what to do, when to do it, and how to prove it’s done.
             </p>
-            <p class="quote-author">Operations Director, Multi-unit F&amp;B Brand</p>
-          </div>
+          </header>
+
+          <article class="quote-card card">
+            <p class="quote">
+              “Within the first month, we dramatically reduced critical checklist gaps and finally
+              had a clear, real-time view of what was happening in each store.”
+            </p>
+            <p class="quote-author">Operations Director · Multi-unit F&amp;B brand</p>
+          </article>
         </div>
 
         <div class="customers-stats">
@@ -290,58 +323,67 @@
             <span class="stat-value">30 days</span>
           </div>
           <div class="stat-block">
-            <span class="stat-label">Time saved per manager each week</span>
-            <span class="stat-value">4–6 hrs</span>
+            <span class="stat-label">Manager time saved weekly</span>
+            <span class="stat-value">4–6 hours</span>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- ================= FEATURES ================= -->
-    <section class="section section-alt" id="features">
+    <!-- FEATURES -->
+    <section class="section section-alt" id="features" data-animate>
       <div class="container">
         <header class="section-header">
-          <p class="eyebrow">Powerful Platform</p>
+          <p class="eyebrow">Platform capabilities</p>
           <h2>Features that drive operational excellence</h2>
           <p class="section-subtitle">
-            From task execution to real-time reporting, InCheck 360 keeps frontline teams coordinated and
-            leadership fully informed.
+            From task execution to real-time reporting, InCheck 360 keeps frontline teams aligned
+            and leadership fully informed.
           </p>
         </header>
 
         <div class="card-grid card-grid--4">
           <article class="card feature-card">
-            <h3>Safe &amp; Standardized</h3>
-            <p>Deliver the right procedures at the right time for each role, shift, and location.</p>
+            <h3>Safe &amp; standardized</h3>
+            <p>
+              Deliver the right procedures at the right time for every role, shift, and location.
+            </p>
           </article>
 
           <article class="card feature-card">
-            <h3>Real-Time Insights</h3>
-            <p>Monitor completion rates, violations, and trends from one centralized dashboard.</p>
+            <h3>Real-time insights</h3>
+            <p>
+              Monitor performance, compliance, and risk in one integrated view, across all
+              locations.
+            </p>
           </article>
 
           <article class="card feature-card">
-            <h3>Automated Workflows</h3>
-            <p>Automate follow-ups, alerts, and approvals based on real-time task status.</p>
+            <h3>Automated workflows</h3>
+            <p>
+              Route issues, approvals, and follow-ups automatically based on rules you configure.
+            </p>
           </article>
 
           <article class="card feature-card">
-            <h3>Simple &amp; Scalable</h3>
-            <p>Deploy to five or five hundred locations with the same configuration and control.</p>
+            <h3>Simple &amp; scalable</h3>
+            <p>
+              Deploy to five or five hundred locations with a configuration that grows with you.
+            </p>
           </article>
         </div>
       </div>
     </section>
 
-    <!-- ================= MODULES ================= -->
-    <section class="section" id="modules">
+    <!-- MODULES -->
+    <section class="section" id="modules" data-animate>
       <div class="container">
         <header class="section-header">
-          <p class="eyebrow">Our Modules</p>
-          <h2>Modular tools built for modern operations</h2>
+          <p class="eyebrow">Our modules</p>
+          <h2>Modular tools for modern operations</h2>
           <p class="section-subtitle">
-            InCheck 360 is built around modules that help standardize daily operations, improve compliance,
-            and provide complete visibility across all stores.
+            InCheck 360 is built around modules that help standardize daily operations, improve
+            compliance, and give you complete visibility across every store.
           </p>
         </header>
 
@@ -349,105 +391,106 @@
           <article class="card module-card">
             <h3>Checklist</h3>
             <p>
-              Build dynamic, role-based checklists for opening, closing, safety, and brand standards so
-              every store follows the same playbook.
+              Build dynamic, role-based checklists for opening, closing, safety, and brand
+              standards so every store follows the same playbook.
             </p>
-            <a href="/checklist" class="link">Read more &rarr;</a>
+            <a href="/checklist-module-review" class="link">Read more &rarr;</a>
           </article>
 
           <article class="card module-card">
-            <h3>Reference Materials</h3>
+            <h3>Reference materials</h3>
             <p>
-              Centralize SOPs, training guides, and operational docs in one searchable library accessible
-              from any device.
+              Centralize SOPs, training guides, and operational documents in a searchable library
+              accessible from any device.
             </p>
-            <a href="/reference-materials" class="link">Read more &rarr;</a>
+            <a href="/reference-materials-module-review" class="link">Read more &rarr;</a>
           </article>
 
           <article class="card module-card module-card--coming-soon">
             <h3>Compliance</h3>
             <p>
-              Gain full visibility into violations, repeat offenders, and risk hotspots, with dispute and
-              investigation workflows.
+              Gain full visibility into violations, repeat offenders, and risk hotspots, with
+              dispute management and investigation workflows.
             </p>
             <span class="pill">Coming soon</span>
           </article>
         </div>
 
         <div class="coming-soon card">
-          <h3>Elevating control with upcoming modules</h3>
+          <h3>Elevating control with upcoming capabilities</h3>
           <ul class="coming-soon-list">
             <li>Smart sensor integrations for temperature and environment monitoring</li>
-            <li>Digital labelling for traceability and food safety</li>
-            <li>AI-driven analytics for behavior, layout, and workflow insights</li>
+            <li>Digital labeling for traceability and food safety</li>
+            <li>AI-driven analytics on behavior, layout, and workflows</li>
             <li>AIoT infrastructure combining IoT data and machine learning</li>
           </ul>
         </div>
       </div>
     </section>
 
-    <!-- ================= FAQ ================= -->
-    <section class="section section-alt" id="faq">
+    <!-- FAQ -->
+    <section class="section section-alt" id="faq" data-animate>
       <div class="container">
         <header class="section-header">
           <p class="eyebrow">FAQs</p>
           <h2>Frequently asked questions</h2>
           <p class="section-subtitle">
-            We’re here to help operations teams streamline checklists, track performance, and improve
-            compliance. Here are some of the most common questions.
+            We’re here to help operations teams streamline checklists, track performance, and
+            improve compliance.
           </p>
         </header>
 
-        <div class="faq-list" data-accordion>
-          <article class="faq-item">
+        <div class="faq-list">
+          <article class="faq-item" data-open="false">
             <button class="faq-question" aria-expanded="false">
               <span>What is InCheck 360 and how does it help my business?</span>
               <span class="faq-icon">+</span>
             </button>
             <div class="faq-answer">
               <p>
-                InCheck 360 is an operations management platform for F&amp;B, QSR, and retail teams. It
-                digitizes daily tasks, centralizes SOPs, and gives leadership real-time visibility across
-                all locations so you can spot and fix issues quickly.
+                InCheck 360 is an operations management platform for F&amp;B, QSR, and retail
+                teams. It digitizes daily task checklists, centralizes SOPs, and gives leadership
+                real-time visibility across locations.
               </p>
             </div>
           </article>
 
-          <article class="faq-item">
+          <article class="faq-item" data-open="false">
             <button class="faq-question" aria-expanded="false">
               <span>How do we get started and onboard locations?</span>
               <span class="faq-icon">+</span>
             </button>
             <div class="faq-answer">
               <p>
-                Start by booking a demo. We’ll map your existing processes into checklists and workflows,
-                then roll out pilots before scaling to all locations with training and support.
+                Start with a short demo to map your current processes. Then we configure checklists
+                and workflows, pilot them with a few locations, and roll out with training and
+                support.
               </p>
             </div>
           </article>
 
-          <article class="faq-item">
+          <article class="faq-item" data-open="false">
             <button class="faq-question" aria-expanded="false">
               <span>Can we customize tasks and rules per store or region?</span>
               <span class="faq-icon">+</span>
             </button>
             <div class="faq-answer">
               <p>
-                Yes. You can configure templates, escalation paths, and reference materials by location,
-                shift type, brand, or role—while still maintaining central standards.
+                Yes. Templates, escalation paths, and reference materials can be tailored by
+                location, brand, shift, or role—while still protecting your core standards.
               </p>
             </div>
           </article>
 
-          <article class="faq-item">
+          <article class="faq-item" data-open="false">
             <button class="faq-question" aria-expanded="false">
               <span>Is our operational data secure?</span>
               <span class="faq-icon">+</span>
             </button>
             <div class="faq-answer">
               <p>
-                InCheck 360 uses secure cloud infrastructure with encryption, role-based permissions, and
-                detailed audit logs so you have control over who sees what.
+                InCheck 360 uses secure cloud infrastructure with encryption, role-based
+                permissions, and detailed audit logs so your data remains protected and traceable.
               </p>
             </div>
           </article>
@@ -455,72 +498,81 @@
       </div>
     </section>
 
-    <!-- ================= BLOG ================= -->
-    <section class="section" id="blog">
+    <!-- BLOG -->
+    <section class="section" id="blog" data-animate>
       <div class="container">
         <header class="section-header">
           <p class="eyebrow">Blog</p>
-          <h2>Latest news &amp; articles</h2>
+          <h2>Our latest news &amp; articles</h2>
         </header>
 
         <div class="card-grid card-grid--3 blog-grid">
-          <!-- Example blog article card – you can generate these from a CMS -->
           <article class="card blog-card">
             <p class="blog-date">June 20, 2025</p>
             <h3 class="blog-title">
-              <a href="/blog/from-gut-feeling-to-data-driven">
-                From Gut Feeling to Data-Driven: The New Era of Restaurant Operations
+              <a href="/from-gut-feeling-to-data-driven-the-new-era-of-restaurant-operations">
+                From gut feeling to data-driven: the new era of restaurant operations
               </a>
             </h3>
             <p class="blog-excerpt">
-              How operations leaders are moving from paper checklists and intuition to real-time data that
-              drives every decision.
+              How operations leaders are moving from paper checklists and intuition to real-time
+              data that drives every decision.
             </p>
-            <a href="/blog/from-gut-feeling-to-data-driven" class="link">Read article &rarr;</a>
-          </article>
-
-          <!-- Placeholder cards -->
-          <article class="card blog-card">
-            <p class="blog-date">Coming Soon</p>
-            <h3 class="blog-title">
-              <a href="/blog/standardizing-operations-across-markets">
-                Standardizing Operations Across Markets Without Losing Local Flexibility
-              </a>
-            </h3>
-            <p class="blog-excerpt">
-              Practical steps for multi-country brands to maintain consistent standards while adapting to
-              local realities.
-            </p>
-            <a href="/blog/standardizing-operations-across-markets" class="link">Read article &rarr;</a>
+            <a
+              href="/from-gut-feeling-to-data-driven-the-new-era-of-restaurant-operations"
+              class="link"
+            >
+              Read article &rarr;
+            </a>
           </article>
 
           <article class="card blog-card">
-            <p class="blog-date">Coming Soon</p>
+            <p class="blog-date">Coming soon</p>
             <h3 class="blog-title">
-              <a href="/blog/closing-the-compliance-gap">
-                Closing the Compliance Gap with Real-Time Visibility
+              <a href="/standardizing-operations-across-markets">
+                Standardizing operations across markets without losing local flexibility
               </a>
             </h3>
             <p class="blog-excerpt">
-              Why real-time dashboards and alerts are becoming essential for compliance and loss prevention
-              teams.
+              Practical steps for multi-country brands to maintain consistent standards while
+              adapting to local realities.
             </p>
-            <a href="/blog/closing-the-compliance-gap" class="link">Read article &rarr;</a>
+            <a href="/standardizing-operations-across-markets" class="link">
+              Read article &rarr;
+            </a>
+          </article>
+
+          <article class="card blog-card">
+            <p class="blog-date">Coming soon</p>
+            <h3 class="blog-title">
+              <a href="/closing-the-compliance-gap-with-real-time-visibility">
+                Closing the compliance gap with real-time visibility
+              </a>
+            </h3>
+            <p class="blog-excerpt">
+              Why modern compliance teams rely on live dashboards and alerts, not spreadsheets and
+              email chains.
+            </p>
+            <a href="/closing-the-compliance-gap-with-real-time-visibility" class="link">
+              Read article &rarr;
+            </a>
           </article>
         </div>
       </div>
     </section>
 
-    <!-- ================= CONTACT ================= -->
-    <section class="section section-alt" id="contact">
+    <!-- CONTACT -->
+    <section class="section section-alt" id="contact" data-animate>
       <div class="container contact-grid">
         <div>
-          <p class="eyebrow">Contact</p>
-          <h2>Book a demo or talk to our team</h2>
-          <p class="section-subtitle">
-            Share a few details and we’ll connect you with an InCheck 360 specialist to walk through your
-            current operations and explore how we can support your teams.
-          </p>
+          <header class="section-header section-header-left">
+            <p class="eyebrow">Contact</p>
+            <h2>Book a demo or talk to our team</h2>
+            <p class="section-subtitle">
+              Share a few details and an InCheck 360 specialist will walk you through how we can
+              support your operations, safety, and loss prevention goals.
+            </p>
+          </header>
 
           <div class="contact-details">
             <div>
@@ -585,18 +637,21 @@
               By submitting, you agree to be contacted about InCheck 360 products and services.
             </p>
           </div>
+
           <p class="form-success" id="form-success-message" hidden>
-            Thank you! Your request has been submitted. Our team will reach out shortly.
+            Thank you. Your request has been submitted. Our team will be in touch shortly.
           </p>
         </form>
       </div>
     </section>
   </main>
 
-  <!-- ================= FOOTER ================= -->
+  <!-- FOOTER -->
   <footer class="site-footer">
     <div class="container footer-inner">
-      <p>InCheck 360 Holding B.V &copy; <span id="year"></span>. All rights reserved.</p>
+      <p>
+        InCheck 360 Holding B.V &copy; <span id="year"></span>. All rights reserved.
+      </p>
       <nav class="footer-nav">
         <a href="#top">Back to top</a>
       </nav>
