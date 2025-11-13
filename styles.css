@@ -304,6 +304,15 @@ a:hover {
   width: 100%;
 }
 
+/* Active state for scrollspy */
+.nav-list a.active {
+  color: var(--color-heading);
+}
+
+.nav-list a.active::after {
+  width: 100%;
+}
+
 .nav-cta {
   display: flex;
   align-items: center;
@@ -405,6 +414,10 @@ a:hover {
   display: block;
   font-weight: 600;
   font-size: 1.05rem;
+}
+
+.metric-value span[data-counter] {
+  font-weight: 700;
 }
 
 .metric-footnote {
@@ -785,14 +798,16 @@ a:hover {
 }
 
 .faq-answer {
-  padding: 0 1.3rem 1rem;
+  padding: 0 1.3rem;
   font-size: 0.9rem;
   color: var(--color-text-muted);
-  display: none;
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 200ms ease-out, padding-bottom 200ms ease-out;
 }
 
 .faq-item[data-open="true"] .faq-answer {
-  display: block;
+  padding-bottom: 1rem;
 }
 
 .faq-item[data-open="true"] .faq-icon {
