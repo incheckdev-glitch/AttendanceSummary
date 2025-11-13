@@ -1,9 +1,10 @@
 /**
- * InCheck Pro Dashboard — Issues · Ops · Release Planner
+ * InCheck Pro Dashboard — Issues · Ops · AI Copilot
  * Single-file architecture:
  *  - CONFIG / LS_KEYS
  *  - DataStore (issues + text analytics)
  *  - Risk engine (technical + biz + ops + severity/impact/urgency)
+ *  - DSL query parser & matcher
  *  - Calendar risk (events + collisions + freezes + hot issues)
  *  - Release planner (F&B / Middle East)
  */
@@ -588,6 +589,177 @@ const Risk = {
     }
 
     return Array.from(new Set(picks)).slice(0, 6);
+  }
+};
+
+/** Command DSL parser */
+const DSL = {
+  parse(text) {
+    const lower = (text || '').toLowerCase();
+    let w = ' ' + lower + ' ';
+    const out = {
+      module: null,
+      status: null,
+      priority: null,
+      id: null,
+      type: null,
+      missing: null,
+      riskOp: null,
+      riskVal: null,
+      severityOp: null,
+      severityVal: null,
+      impactOp: null,
+      impactVal: null,
+      urgencyOp: null,
+      urgencyVal: null,
+      ageOp: null,
+      ageVal: null,
+      lastDays: null,
+      cluster: null,
+      sort: null,
+      eventScope: null,
+      words: []
+    };
+    const eat = (re, key, fn = v => v) => {
+      const m = w.match(re);
+      if (m) {
+        out[key] = fn(m[1].trim());
+        w = w.replace(m[0], ' ');
+      }
+    };
+    eat(/\bmodule:([^\s]+)/, 'module');
+    eat(/\bstatus:([^\s]+)/, 'status');
+    eat(/\bpriority:([^\s]+)/, 'priority');
+    eat(/\bid:([^\s]+)/, 'id');
+    eat(/\btype:([^\s]+)/, 'type');
+    eat(/\bmissing:([^\s]+)/, 'missing');
+
+    const rv = lower.match(/\brisk([><=]{1,2})(\d+)/);
+    if (rv) {
+      out.riskOp = rv[1];
+      out.riskVal = +rv[2];
+      w = w.replace(rv[0], ' ');
+    }
+
+    const sv = lower.match(/\bseverity([><=]{1,2})(\d+)/);
+    if (sv) {
+      out.severityOp = sv[1];
+      out.severityVal = +sv[2];
+      w = w.replace(sv[0], ' ');
+    }
+    const iv = lower.match(/\bimpact([><=]{1,2})(\d+)/);
+    if (iv) {
+      out.impactOp = iv[1];
+      out.impactVal = +iv[2];
+      w = w.replace(iv[0], ' ');
+    }
+    const uv = lower.match(/\burgency([><=]{1,2})(\d+)/);
+    if (uv) {
+      out.urgencyOp = uv[1];
+      out.urgencyVal = +uv[2];
+      w = w.replace(uv[0], ' ');
+    }
+
+    eat(/\blast:(\d+)d/, 'lastDays', n => +n);
+    const av = lower.match(/\bage([><=]{1,2})(\d+)d/);
+    if (av) {
+      out.ageOp = av[1];
+      out.ageVal = +av[2];
+      w = w.replace(av[0], ' ');
+    }
+
+    eat(/\bcluster:([^\s]+)/, 'cluster');
+    eat(/\bsort:(risk|date|priority)/, 'sort');
+    eat(/\bevent:(\S+)/, 'eventScope');
+
+    out.words = w
+      .split(/\s+/)
+      .filter(Boolean)
+      .filter(t => t.length > 2 && !STOPWORDS.has(t));
+    return out;
+  },
+  matches(issue, meta, q) {
+    if (q.module && !(issue.module || '').toLowerCase().includes(q.module)) return false;
+    if (q.priority) {
+      const p = q.priority[0].toUpperCase();
+      if (['H', 'M', 'L'].includes(p)) {
+        if ((issue.priority || '')[0] !== p) return false;
+      } else if (!(issue.priority || '').toLowerCase().includes(q.priority)) return false;
+    }
+    if (q.status) {
+      const st = (issue.status || '').toLowerCase();
+      if (q.status === 'open') {
+        const closed = st.startsWith('resolved') || st.startsWith('rejected');
+        if (closed) return false;
+      } else if (q.status === 'closed') {
+        const closed = st.startsWith('resolved') || st.startsWith('rejected');
+        if (!closed) return false;
+      } else if (!st.includes(q.status)) return false;
+    }
+    if (q.id && !(issue.id || '').toLowerCase().includes(q.id)) return false;
+    if (q.type && !(issue.type || '').toLowerCase().includes(q.type)) return false;
+    if (q.missing) {
+      const m = q.missing;
+      if (m === 'priority' && issue.priority) return false;
+      if (m === 'module' && issue.module && issue.module !== 'Unspecified') return false;
+      if (m === 'type' && issue.type) return false;
+    }
+    if (q.lastDays) {
+      const after = U.daysAgo(q.lastDays);
+      if (!U.isBetween(issue.date, after, null)) return false;
+    }
+    if (q.ageOp && q.ageVal != null) {
+      if (!issue.date) return false;
+      const d = new Date(issue.date);
+      if (isNaN(d)) return false;
+      const ageDays = (Date.now() - d.getTime()) / 86400000;
+      const op = q.ageOp,
+        b = q.ageVal;
+      let pass = false;
+      if (op === '>') pass = ageDays > b;
+      else if (op === '>=') pass = ageDays >= b;
+      else if (op === '<') pass = ageDays < b;
+      else if (op === '<=') pass = ageDays <= b;
+      else if (op === '=' || op === '==') pass = Math.round(ageDays) === b;
+      if (!pass) return false;
+    }
+    if (q.cluster) {
+      const t = q.cluster.toLowerCase();
+      if (!meta.tokens || !Array.from(meta.tokens).some(x => x.includes(t))) return false;
+    }
+    const risk = meta.risk || {};
+    if (q.riskOp) {
+      const rv = risk.total || 0;
+      const op = q.riskOp,
+        b = q.riskVal;
+      let pass = false;
+      if (op === '>') pass = rv > b;
+      else if (op === '>=') pass = rv >= b;
+      else if (op === '<') pass = rv < b;
+      else if (op === '<=') pass = rv <= b;
+      else if (op === '=' || op === '==') pass = rv === b;
+      if (!pass) return false;
+    }
+    const cmpNum = (val, op, b) => {
+      const v = val || 0;
+      if (op === '>') return v > b;
+      if (op === '>=') return v >= b;
+      if (op === '<') return v < b;
+      if (op === '<=') return v <= b;
+      if (op === '=' || op === '==') return v === b;
+      return true;
+    };
+    if (q.severityOp && !cmpNum(risk.severity, q.severityOp, q.severityVal)) return false;
+    if (q.impactOp && !cmpNum(risk.impact, q.impactOp, q.impactVal)) return false;
+    if (q.urgencyOp && !cmpNum(risk.urgency, q.urgencyOp, q.urgencyVal)) return false;
+
+    if (q.words && q.words.length) {
+      const txt = [issue.title, issue.desc, issue.log].filter(Boolean).join(' ').toLowerCase();
+      for (const w of q.words) {
+        if (!txt.includes(w)) return false;
+      }
+    }
+    return true;
   }
 };
 
@@ -1240,8 +1412,10 @@ function cacheEls() {
     'endDateFilter',
     'issuesTab',
     'calendarTab',
+    'insightsTab',
     'issuesView',
     'calendarView',
+    'insightsView',
     'addEventBtn',
     'eventModal',
     'eventModalTitle',
@@ -1257,10 +1431,28 @@ function cacheEls() {
     'eventCancel',
     'eventDelete',
     'eventIssueLinkedInfo',
+    'aiPatternsList',
+    'aiLabelsList',
+    'aiRisksList',
+    'aiClusters',
+    'aiScopeText',
+    'aiSignalsText',
+    'aiTrendsList',
+    'aiModulesTableBody',
+    'aiTriageList',
+    'aiEventsList',
+    'aiQueryInput',
+    'aiQueryRun',
+    'aiQueryResults',
+    'aiQueryApplyFilters',
+    'aiIncidentsList',
+    'aiEmergingStable',
+    'aiOpsCockpit',
     'syncIssuesText',
     'syncIssuesDot',
     'syncEventsText',
     'syncEventsDot',
+    'aiAnalyzing',
     'eventFilterDeployment',
     'eventFilterMaintenance',
     'eventFilterRelease',
@@ -1272,6 +1464,7 @@ function cacheEls() {
     'onlineStatusChip',
     'accentColor',
     'shortcutsHelp',
+    'aiQueryExport',
     'eventAllDay',
     'eventEnv',
     'eventOwner',
@@ -1319,7 +1512,6 @@ const UI = {
     dot.className = 'dot ' + (ok ? 'ok' : 'err');
   },
   setAnalyzing(v) {
-    // kept for compatibility; no-op without AI panel
     if (E.aiAnalyzing) E.aiAnalyzing.style.display = v ? 'block' : 'none';
   },
   skeleton(show) {
@@ -1720,8 +1912,486 @@ UI.Issues.renderSummary = function (list) {
     (last ? ` · ${last}` : '');
 };
 
-/* ---------- Modals ---------- */
+/** Analytics (AI tab) */
+const Analytics = {
+  _debounce: null,
+  refresh(list) {
+    clearTimeout(this._debounce);
+    UI.setAnalyzing(true);
+    this._debounce = setTimeout(() => this._render(list), 80);
+  },
+  _render(list) {
+    // Top terms recent
+    const recentCut = CONFIG.TREND_DAYS_RECENT;
+    const recent = list.filter(r => U.isBetween(r.date, U.daysAgo(recentCut), null));
+    const termCounts = new Map();
+    recent.forEach(r => {
+      const t = DataStore.computed.get(r.id)?.tokens || new Set();
+      t.forEach(w => termCounts.set(w, (termCounts.get(w) || 0) + 1));
+    });
+    const topTerms = Array.from(termCounts.entries())
+      .filter(([, c]) => c >= 2)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10);
+    if (E.aiPatternsList) {
+      E.aiPatternsList.innerHTML = topTerms.length
+        ? topTerms
+            .map(
+              ([t, c]) =>
+                `<li><strong>${U.escapeHtml(t)}</strong> – ${c}</li>`
+            )
+            .join('')
+        : '<li>No strong repeated terms recently.</li>';
+    }
 
+    // Suggested categories frequency
+    const catCount = new Map();
+    list.forEach(r => {
+      const cats = DataStore.computed.get(r.id)?.suggestions?.categories || [];
+      cats.forEach(c => catCount.set(c.label, (catCount.get(c.label) || 0) + 1));
+    });
+    const topCats = Array.from(catCount.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8);
+    if (E.aiLabelsList) {
+      E.aiLabelsList.innerHTML = topCats.length
+        ? topCats
+            .map(
+              ([l, n]) =>
+                `<li><strong>${U.escapeHtml(l)}</strong> – ${n}</li>`
+            )
+            .join('')
+        : '<li>No clear category suggestions yet.</li>';
+    }
+
+    // Scope & signals
+    if (E.aiScopeText) {
+      E.aiScopeText.textContent = `Analyzing ${list.length} issues (${recent.length} recent, ~last ${recentCut} days).`;
+    }
+    const signals = ['timeout', 'payments', 'billing', 'login', 'auth', 'error', 'crash'].filter(
+      t => termCounts.has(t)
+    );
+    if (E.aiSignalsText) {
+      E.aiSignalsText.textContent = signals.length
+        ? `Recent mentions: ${signals.join(', ')}.`
+        : 'No strong recurring signals.';
+    }
+
+    // Trends
+    const oldStart = U.daysAgo(CONFIG.TREND_DAYS_WINDOW),
+      mid = U.daysAgo(CONFIG.TREND_DAYS_RECENT);
+    const oldCounts = new Map(),
+      newCounts = new Map();
+    const inHalf = r => {
+      const d = new Date(r.date);
+      if (isNaN(d)) return null;
+      if (d < mid && d >= oldStart) return 'old';
+      if (d >= mid) return 'new';
+      return null;
+    };
+    list.forEach(r => {
+      const half = inHalf(r);
+      if (!half) return;
+      const toks = DataStore.computed.get(r.id)?.tokens || new Set();
+      const tgt = half === 'old' ? oldCounts : newCounts;
+      new Set(toks).forEach(t => tgt.set(t, (tgt.get(t) || 0) + 1));
+    });
+    const trendTerms = new Set([...oldCounts.keys(), ...newCounts.keys()]);
+    const trend = [];
+    trendTerms.forEach(t => {
+      const a = oldCounts.get(t) || 0,
+        b = newCounts.get(t) || 0;
+      const d = b - a;
+      const ratio = a === 0 ? (b >= 2 ? Infinity : 0) : b / a;
+      if ((b >= 2 && ratio >= 2) || d >= 2) trend.push({ t, old: a, new: b, delta: d, ratio });
+    });
+    trend.sort(
+      (x, y) =>
+        (y.ratio === Infinity) - (x.ratio === Infinity) ||
+        y.delta - x.delta ||
+        y.new - x.new
+    );
+    if (E.aiTrendsList) {
+      E.aiTrendsList.innerHTML = trend.length
+        ? trend
+            .slice(0, 8)
+            .map(
+              o =>
+                `<li><strong>${U.escapeHtml(o.t)}</strong> – ${o.new} vs ${
+                  o.old
+                } <span class="muted">(Δ ${
+                  o.delta >= 0 ? `+${o.delta}` : o.delta
+                })</span></li>`
+            )
+            .join('')
+        : '<li>No strong increases.</li>';
+    }
+
+    // Incidents
+    const incidentWords = ['incident', 'outage', 'p0', 'p1', 'major', 'sla'];
+    const incidents = list
+      .filter(r => {
+        const txt = [r.title, r.desc, r.log].filter(Boolean).join(' ').toLowerCase();
+        return incidentWords.some(w => txt.includes(w));
+      })
+      .slice(0, 10);
+    if (E.aiIncidentsList) {
+      E.aiIncidentsList.innerHTML = incidents.length
+        ? incidents
+            .map(
+              r => `
+      <li><button class="btn sm" data-open="${U.escapeAttr(
+        r.id
+      )}">${U.escapeHtml(r.id)}</button> ${U.escapeHtml(r.title || '')}</li>
+    `
+            )
+            .join('')
+        : '<li>No incident-like issues detected.</li>';
+    }
+
+    // Emerging vs stable
+    const emerg = trend.slice(0, 5).map(t => t.t);
+    const stable = topTerms
+      .filter(([t]) => !emerg.includes(t))
+      .slice(0, 5)
+      .map(([t]) => t);
+    if (E.aiEmergingStable) {
+      E.aiEmergingStable.innerHTML = `
+      <li><strong>Emerging:</strong> ${
+        emerg.length ? emerg.map(x => U.escapeHtml(x)).join(', ') : '—'
+      }</li>
+      <li><strong>Stable:</strong> ${
+        stable.length ? stable.map(x => U.escapeHtml(x)).join(', ') : '—'
+      }</li>
+    `;
+    }
+
+    // Ops cockpit
+    const misaligned = list.filter(r => {
+      const meta = DataStore.computed.get(r.id);
+      if (!meta) return false;
+      const gap = prioGap(meta.suggestions?.priority, r.priority);
+      return gap >= CONFIG.RISK.misalignedDelta;
+    });
+    const missingPriority = list.filter(r => !r.priority);
+    const missingModule = list.filter(r => !r.module || r.module === 'Unspecified');
+    const staleHigh = list.filter(r => {
+      const meta = DataStore.computed.get(r.id);
+      if (!meta) return false;
+      const risk = meta.risk?.total || 0;
+      const old = U.daysAgo(CONFIG.RISK.staleDays);
+      const st = (r.status || '').toLowerCase();
+      return (
+        risk >= CONFIG.RISK.highRisk &&
+        U.isBetween(r.date, null, old) &&
+        !(st.startsWith('resolved') || st.startsWith('rejected'))
+      );
+    });
+    if (E.aiOpsCockpit) {
+      E.aiOpsCockpit.innerHTML = `
+      <li>Untagged issues (missing category/type): ${
+        list.filter(r => !r.type).length
+      }</li>
+      <li>Missing priority: ${missingPriority.length}</li>
+      <li>Missing module: ${missingModule.length}</li>
+      <li>Misaligned priority: ${misaligned.length}</li>
+      <li>Stale high-risk (&gt;=${CONFIG.RISK.highRisk}) &gt; ${
+      CONFIG.RISK.staleDays
+    }d: ${staleHigh.length}</li>
+    `;
+    }
+
+    // Module insights
+    const modules = (() => {
+      const map = new Map();
+      list.forEach(r => {
+        let m = map.get(r.module);
+        if (!m) {
+          m = {
+            module: r.module,
+            total: 0,
+            open: 0,
+            high: 0,
+            risk: 0,
+            tokens: new Map()
+          };
+          map.set(r.module, m);
+        }
+        m.total++;
+        const st = (r.status || '').toLowerCase();
+        if (!st.startsWith('resolved') && !st.startsWith('rejected')) {
+          m.open++;
+          if (r.priority === 'High') m.high++;
+        }
+        const rs = DataStore.computed.get(r.id)?.risk?.total || 0;
+        m.risk += rs;
+        (DataStore.computed.get(r.id)?.tokens || new Set()).forEach(t =>
+          m.tokens.set(t, (m.tokens.get(t) || 0) + 1)
+        );
+      });
+      return Array.from(map.values())
+        .map(m => {
+          const tt = m.tokens.size
+            ? Array.from(m.tokens.entries()).sort((a, b) => b[1] - a[1])[0][0]
+            : '';
+          return {
+            module: m.module,
+            open: m.open,
+            high: m.high,
+            risk: m.risk,
+            topTerm: tt
+          };
+        })
+        .sort((a, b) => b.risk - a.risk || b.open - a.open)
+        .slice(0, 8);
+    })();
+
+    const maxModuleRisk = modules.reduce((max, m) => Math.max(max, m.risk), 0) || 1;
+
+    if (E.aiModulesTableBody) {
+      E.aiModulesTableBody.innerHTML = modules.length
+        ? modules
+            .map(m => {
+              const ratio = m.risk / maxModuleRisk;
+              return `
+        <tr>
+          <td>${U.escapeHtml(m.module)}</td>
+          <td>${m.open}</td>
+          <td>${m.high}</td>
+          <td>
+            ${m.risk}
+            <div class="risk-bar-wrap"><div class="risk-bar" style="transform:scaleX(${ratio.toFixed(
+              2
+            )});"></div></div>
+          </td>
+          <td>${U.escapeHtml(m.topTerm || '-')}</td>
+        </tr>
+      `;
+            })
+            .join('')
+        : '<tr><td colspan="5" style="text-align:center;color:var(--muted)">No modules.</td></tr>';
+    }
+
+    // Top risks
+    const topRisks = recent
+      .map(r => ({ r, score: DataStore.computed.get(r.id)?.risk?.total || 0 }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5)
+      .filter(x => x.score > 2);
+    if (E.aiRisksList) {
+      E.aiRisksList.innerHTML = topRisks.length
+        ? topRisks
+            .map(({ r, score }) => {
+              const badgeClass = CalendarLink.riskBadgeClass(score);
+              const meta = DataStore.computed.get(r.id)?.risk || {};
+              return `
+        <li style="margin-bottom:4px;">
+          <strong>[${U.escapeHtml(r.priority || '-')} ] ${U.escapeHtml(
+          r.id || ''
+        )}</strong>
+          <span class="event-risk-badge ${badgeClass}">RISK ${score}</span>
+          <span class="muted"> · sev ${meta.severity ?? 0} · imp ${
+          meta.impact ?? 0
+        } · urg ${meta.urgency ?? 0}</span>
+          <br><span class="muted">Status ${U.escapeHtml(r.status || '-')}</span>
+          <br>${U.escapeHtml(r.title || '')}
+        </li>`;
+            })
+            .join('')
+        : '<li>No high-risk recent issues.</li>';
+    }
+
+    // Clusters
+    const clusters = buildClustersWeighted(list);
+    if (E.aiClusters) {
+      E.aiClusters.innerHTML = clusters.length
+        ? clusters
+            .map(
+              c => `
+      <div class="card" style="padding:10px;">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">
+          Pattern: <strong>${U.escapeHtml(c.signature || '(no pattern)')}</strong> • ${
+              c.issues.length
+            } issues
+        </div>
+        <ul style="margin:0;padding-left:18px;font-size:13px;">
+          ${c.issues
+            .slice(0, 5)
+            .map(
+              i => `
+            <li><button class="btn sm" style="padding:3px 6px;margin-right:4px;" data-open="${U.escapeAttr(
+              i.id
+            )}">${U.escapeHtml(i.id)}</button> ${U.escapeHtml(i.title || '')}</li>
+          `
+            )
+            .join('')}
+          ${
+            c.issues.length > 5
+              ? `<li class="muted">+ ${c.issues.length - 5} more…</li>`
+              : ''
+          }
+        </ul>
+      </div>
+    `
+            )
+            .join('')
+        : '<div class="muted">No similar issue groups ≥2.</div>';
+    }
+
+    // Triage queue
+    const tri = list
+      .filter(r => {
+        const meta = DataStore.computed.get(r.id) || {};
+        const missing =
+          !r.priority || !r.module || r.module === 'Unspecified' || !r.type;
+        const gap = prioGap(meta.suggestions?.priority, r.priority);
+        return missing || gap >= CONFIG.RISK.misalignedDelta;
+      })
+      .sort(
+        (a, b) =>
+          (DataStore.computed.get(b.id)?.risk?.total || 0) -
+          (DataStore.computed.get(a.id)?.risk?.total || 0)
+      )
+      .slice(0, 15);
+    if (E.aiTriageList) {
+      E.aiTriageList.innerHTML = tri.length
+        ? tri
+            .map(i => {
+              const meta = DataStore.computed.get(i.id) || {};
+              const miss = [];
+              if (!i.priority) miss.push('priority');
+              if (!i.module || i.module === 'Unspecified') miss.push('module');
+              if (!i.type) miss.push('type');
+              const cats =
+                (meta.suggestions?.categories || [])
+                  .slice(0, 2)
+                  .map(c => c.label)
+                  .join(', ') || 'n/a';
+              const note = `Suggested priority: ${
+                meta.suggestions?.priority || '-'
+              }; categories: ${cats}`;
+              return `<li style="margin-bottom:6px;">
+        <strong>${U.escapeHtml(i.id)}</strong> — ${U.escapeHtml(i.title || '')}
+        <div class="muted">Missing: ${
+          miss.join(', ') || '—'
+        } · ${U.escapeHtml(note)}</div>
+        <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn sm" data-open="${U.escapeAttr(i.id)}">Open</button>
+          <button class="btn ghost sm" data-copy="${U.escapeAttr(
+            i.id
+          )}">Copy suggestion</button>
+        </div>
+      </li>`;
+            })
+            .join('')
+        : '<li>No issues requiring triage.</li>';
+    }
+
+    // Upcoming risky events
+    const evs = computeEventsRisk(DataStore.rows, DataStore.events);
+    if (E.aiEventsList) {
+      E.aiEventsList.innerHTML = evs.length
+        ? evs
+            .map(r => {
+              const badge = CalendarLink.riskBadgeClass(r.risk);
+              const ev = r.event;
+              return `<li style="margin-bottom:6px;">
+        <strong>${U.escapeHtml(ev.title || '(no title)')}</strong>
+        <span class="event-risk-badge ${badge}">RISK ${r.risk}</span>
+        <div class="muted">${U.fmtTS(r.date)} · Env: ${U.escapeHtml(
+          ev.env || 'Prod'
+        )} · Modules: ${
+                r.modules.length
+                  ? r.modules.map(U.escapeHtml).join(', ')
+                  : 'n/a'
+              } · Related issues: ${r.issues.length}</div>
+      </li>`;
+            })
+            .join('')
+        : '<li>No notable risk in next 7 days.</li>';
+    }
+
+    // Wire AI buttons
+    U.qAll('[data-open]').forEach(b =>
+      b.addEventListener('click', () =>
+        UI.Modals.openIssue(b.getAttribute('data-open'))
+      )
+    );
+    U.qAll('[data-copy]').forEach(b =>
+      b.addEventListener('click', () => {
+        const id = b.getAttribute('data-copy');
+        const r = DataStore.byId.get(id);
+        const meta = DataStore.computed.get(id) || {};
+        const text = `Issue ${r.id}
+Title: ${r.title}
+Suggested Priority: ${meta.suggestions?.priority}
+Suggested Categories: ${(meta.suggestions?.categories || [])
+          .map(c => c.label)
+          .join(', ')}
+Reasons: ${(meta.risk?.reasons || []).join(', ')}`;
+        navigator.clipboard
+          .writeText(text)
+          .then(() => UI.toast('Suggestion copied'))
+          .catch(() => UI.toast('Clipboard blocked'));
+      })
+    );
+
+    UI.setAnalyzing(false);
+  }
+};
+
+function buildClustersWeighted(list) {
+  const max = Math.min(list.length, 400);
+  const docs = list.slice(-max).map(r => {
+    const meta = DataStore.computed.get(r.id) || {};
+    return { issue: r, tokens: meta.tokens || new Set(), idf: meta.idf || new Map() };
+  });
+  const visited = new Set(),
+    clusters = [];
+  const wj = (A, IA, B, IB) => {
+    let inter = 0,
+      sumA = 0,
+      sumB = 0;
+    const all = new Set([...A, ...B]);
+    all.forEach(t => {
+      const wa = A.has(t) ? IA.get(t) || 1 : 0;
+      const wb = B.has(t) ? IB.get(t) || 1 : 0;
+      inter += Math.min(wa, wb);
+      sumA += wa;
+      sumB += wb;
+    });
+    const union = sumA + sumB - inter;
+    return union ? inter / union : 0;
+  };
+  for (let i = 0; i < docs.length; i++) {
+    if (visited.has(i)) continue;
+    const base = docs[i];
+    const c = [base];
+    visited.add(i);
+    for (let j = i + 1; j < docs.length; j++) {
+      if (visited.has(j)) continue;
+      const other = docs[j];
+      if (wj(base.tokens, base.idf, other.tokens, other.idf) >= 0.28) {
+        visited.add(j);
+        c.push(other);
+      }
+    }
+    if (c.length >= 2) {
+      const freq = new Map();
+      c.forEach(d => d.tokens.forEach(t => freq.set(t, (freq.get(t) || 0) + 1)));
+      const sig = Array.from(freq.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([t]) => t)
+        .join(' ');
+      clusters.push({ signature: sig, issues: c.map(x => x.issue) });
+    }
+  }
+  clusters.sort((a, b) => b.issues.length - a.issues.length);
+  return clusters.slice(0, 6);
+}
+
+/** Modals */
 UI.Modals = {
   selectedIssue: null,
   lastFocus: null,
@@ -1983,11 +2653,24 @@ function trapFocus(container, e) {
   }
 }
 
+/**
+ * Only two views now: 'issues' and 'calendar'.
+ * Any unknown view (including legacy 'insights') falls back to 'issues'.
+ */
 function setActiveView(view) {
+  if (view !== 'issues' && view !== 'calendar') {
+    view = 'issues';
+  }
   const names = ['issues', 'calendar'];
   names.forEach(name => {
-    const tab = name === 'issues' ? E.issuesTab : E.calendarTab;
-    const panel = name === 'issues' ? E.issuesView : E.calendarView;
+    const tab =
+      name === 'issues'
+        ? E.issuesTab
+        : E.calendarTab;
+    const panel =
+      name === 'issues'
+        ? E.issuesView
+        : E.calendarView;
     const active = name === view;
     if (tab) {
       tab.classList.toggle('active', active);
@@ -2104,6 +2787,7 @@ function ensureCalendar() {
       saveEventsCache();
       renderCalendarEvents();
       refreshPlannerReleasePlans();
+      Analytics.refresh(UI.Issues.applyFilters());
     },
     eventDidMount(info) {
       const ext = info.event.extendedProps || {};
@@ -2309,6 +2993,7 @@ async function loadEvents(force = false) {
     ensureCalendar();
     renderCalendarEvents();
     refreshPlannerReleasePlans();
+    Analytics.refresh(UI.Issues.applyFilters());
     UI.setSync('events', true, new Date());
   }
 
@@ -2339,7 +3024,7 @@ async function loadEvents(force = false) {
         allDay: !!ev.allDay,
         description: ev.description || '',
         issueId: ev.issueId || '',
-        env: ev.env || ev.environment || 'Prod',
+                env: ev.env || ev.environment || 'Prod',
         status: ev.status || 'Planned',
         owner: ev.owner || '',
         modules: modulesArr,
@@ -2353,832 +3038,554 @@ async function loadEvents(force = false) {
     ensureCalendar();
     renderCalendarEvents();
     refreshPlannerReleasePlans();
+    Analytics.refresh(UI.Issues.applyFilters());
     UI.setSync('events', true, new Date());
   } catch (e) {
-    DataStore.events = cached || [];
-    ensureCalendar();
-    renderCalendarEvents();
-    refreshPlannerReleasePlans();
+    UI.toast('Error loading events: ' + e.message);
     UI.setSync('events', !!DataStore.events.length, null);
-    UI.toast(
-      DataStore.events.length
-        ? 'Using cached events (API error)'
-        : 'Unable to load calendar events'
-    );
   } finally {
     UI.spinner(false);
   }
 }
 
-/* ---------- Save/Delete to Apps Script ---------- */
-async function saveEventToSheet(event) {
-  UI.spinner(true);
+/* ---------- Event save / delete (Apps Script) ---------- */
+
+async function saveEventToSheet(ev) {
+  // If there is no backend, keep everything local but still "succeed"
+  if (!CONFIG.CALENDAR_API_URL) {
+    if (!ev.id) {
+      ev = {
+        ...ev,
+        id: 'ev_' + Date.now() + '_' + Math.random().toString(36).slice(2)
+      };
+    }
+    return ev;
+  }
+
   try {
-    // Ensure we always have a clean ID
-    const evId =
-      event.id && String(event.id).trim()
-        ? String(event.id).trim()
-        : 'ev_' + Date.now() + '_' + Math.random().toString(36).slice(2);
-
-    // Normalize modules into an array of strings
-    const modulesArr = Array.isArray(event.modules)
-      ? event.modules
-      : typeof event.modules === 'string'
-      ? event.modules
-          .split(',')
-          .map(s => s.trim())
-          .filter(Boolean)
-      : [];
-
-    // Canonical payload with ALL fields Apps Script expects
-    const payload = {
-      id: evId,
-      title: event.title || '',
-      type: event.type || 'Deployment',
-
-      env: event.env || event.environment || 'Prod',
-      status: event.status || 'Planned',
-      owner: event.owner || '',
-      modules: modulesArr,
-      impactType: event.impactType || event.impact || 'No downtime expected',
-      issueId: event.issueId || '',
-
-      start: event.start || '',
-      end: event.end || '',
-      description: event.description || '',
-
-      notificationStatus: event.notificationStatus || '',
-      allDay: !!event.allDay
-    };
-
-    console.log('[InCheck] sending event payload to Apps Script:', payload);
-
     const res = await fetch(CONFIG.CALENDAR_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'save', event: payload })
+      body: JSON.stringify({
+        action: 'upsert',
+        event: ev
+      })
     });
-
-    let data;
-    try {
-      data = await res.json();
-    } catch (jsonErr) {
-      console.error('Invalid JSON from calendar backend', jsonErr);
-      const text = await res.text();
-      console.error('Raw response:', text);
-      UI.toast('Calendar: invalid JSON from backend, using local event');
-      return payload;
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json().catch(() => ({}));
+    const saved = data.event || ev;
+    if (!saved.id) {
+      saved.id = ev.id || 'ev_' + Date.now() + '_' + Math.random().toString(36).slice(2);
     }
-
-    if (data.ok) {
-      UI.toast('Event saved');
-      // Make sure we keep notificationStatus from server if set
-      const savedEvent = data.event || payload;
-      if (!savedEvent.notificationStatus && payload.notificationStatus) {
-        savedEvent.notificationStatus = payload.notificationStatus;
-      }
-      return savedEvent;
-    } else {
-      UI.toast('Error saving event: ' + (data.error || 'Unknown error'));
-      return null;
-    }
+    return saved;
   } catch (e) {
-    UI.toast('Network error saving event: ' + e.message);
-    return null;
-  } finally {
-    UI.spinner(false);
+    console.error('saveEventToSheet error', e);
+    UI.toast('Error syncing event, keeping local copy only.');
+    if (!ev.id) {
+      ev = {
+        ...ev,
+        id: 'ev_' + Date.now() + '_' + Math.random().toString(36).slice(2)
+      };
+    }
+    return ev;
   }
 }
 
 async function deleteEventFromSheet(id) {
-  UI.spinner(true);
+  if (!CONFIG.CALENDAR_API_URL) return true;
   try {
     const res = await fetch(CONFIG.CALENDAR_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'delete', event: { id } })
+      body: JSON.stringify({
+        action: 'delete',
+        id
+      })
     });
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.error || 'Delete failed');
-    UI.toast('Event deleted');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     return true;
   } catch (e) {
-    UI.toast('Error deleting event: ' + e.message);
+    console.error('deleteEventFromSheet error', e);
+    UI.toast('Error deleting event from backend, removed locally only.');
     return false;
-  } finally {
-    UI.spinner(false);
   }
 }
 
-/* ---------- CSV export ---------- */
-function csvEscape(v) {
-  const s = String(v == null ? '' : v);
-  if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
-  return s;
+/* ---------- Helpers ---------- */
+
+function setIfOptionExists(selectEl, value) {
+  if (!selectEl || value == null || value === '') return;
+  const options = Array.from(selectEl.options || []);
+  if (options.some(o => o.value === value)) {
+    selectEl.value = value;
+  }
 }
 
-function exportIssuesToCsv(rows, suffix) {
-  if (!rows.length) return UI.toast('Nothing to export (no rows).');
-  const headers = [
-    'ID',
-    'Module',
-    'Title',
-    'Description',
-    'Priority',
-    'Status',
-    'Type',
-    'Date',
-    'Log',
-    'Link',
-    'RiskTotal',
-    'RiskSeverity',
-    'RiskImpact',
-    'RiskUrgency'
-  ];
-  const lines = [headers.join(',')];
-  rows.forEach(r => {
-    const meta = DataStore.computed.get(r.id) || {};
-    const risk = meta.risk || {};
-    const arr = [
-      r.id,
-      r.module,
-      r.title,
-      r.desc,
-      r.priority,
-      r.status,
-      r.type,
-      r.date,
-      r.log,
-      r.file,
-      risk.total ?? '',
-      risk.severity ?? '',
-      risk.impact ?? '',
-      risk.urgency ?? ''
-    ].map(csvEscape);
-    lines.push(arr.join(','));
+function parseModulesString(str) {
+  return (str || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
+/* ---------- UI global refresh ---------- */
+
+UI.refreshAll = function () {
+  const list = UI.Issues.applyFilters();
+  UI.Issues.renderKPIs(list);
+  UI.Issues.renderTable(list);
+  UI.Issues.renderCharts(list);
+  UI.Issues.renderSummary(list);
+  UI.Issues.renderFilterChips();
+  Analytics.refresh(list);
+};
+
+/* ---------- Release Planner wiring ---------- */
+
+let plannerLastResult = null;
+
+function collectPlannerTickets() {
+  if (!E.plannerTickets) return [];
+  const raw = E.plannerTickets.value || '';
+  return raw
+    .split(/[\s,]+/)
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
+function collectPlannerState() {
+  const region = E.plannerRegion ? E.plannerRegion.value || 'Gulf' : 'Gulf';
+  const env = E.plannerEnv ? E.plannerEnv.value || 'Prod' : 'Prod';
+  const modules = parseModulesString(E.plannerModules ? E.plannerModules.value : '');
+  const horizonDays = E.plannerHorizon ? parseInt(E.plannerHorizon.value, 10) || 7 : 7;
+  const releaseType = E.plannerReleaseType ? E.plannerReleaseType.value || 'feature' : 'feature';
+  const description = E.plannerDescription ? E.plannerDescription.value || '' : '';
+  const slotsPerDay = E.plannerSlotsPerDay ? parseInt(E.plannerSlotsPerDay.value, 10) || 3 : 3;
+  const tickets = collectPlannerTickets();
+
+  return {
+    region,
+    env,
+    modules,
+    horizonDays,
+    releaseType,
+    description,
+    slotsPerDay,
+    tickets
+  };
+}
+
+function renderPlannerResults(result) {
+  plannerLastResult = result;
+  if (!E.plannerResults) return;
+
+  const { bug, bomb, slots, ticketContext } = result;
+  if (!slots.length) {
+    E.plannerResults.innerHTML =
+      '<div class="muted">No suitable slots found within the selected horizon.</div>';
+    return;
+  }
+
+  const best = slots[0];
+  const bucket = ReleasePlanner.riskBucket(best.totalRisk);
+
+  const fmt = d => U.fmtTS(d);
+  const ticketIds = (ticketContext.ticketIds || []).join(', ') || 'none';
+
+  const bugLabel = ReleasePlanner.bugLabel(bug.risk);
+  const bombLabel = ReleasePlanner.bombLabel(bomb.risk);
+
+  E.plannerResults.innerHTML = `
+    <div class="planner-summary">
+      <div><strong>Tickets:</strong> ${U.escapeHtml(ticketIds)}</div>
+      <div><strong>Scope modules:</strong> ${
+        (ticketContext.modules || []).length
+          ? ticketContext.modules.map(U.escapeHtml).join(', ')
+          : 'n/a'
+      }</div>
+      <div><strong>Bug pressure:</strong> ${bug.risk.toFixed(1)} · ${U.escapeHtml(
+    bugLabel
+  )}</div>
+      <div><strong>Bomb-bug signal:</strong> ${bomb.risk.toFixed(1)} · ${U.escapeHtml(
+    bombLabel
+  )}</div>
+    </div>
+    <div class="planner-slots">
+      ${slots
+        .map((s, idx) => {
+          const b = ReleasePlanner.riskBucket(s.totalRisk);
+          return `
+        <div class="planner-slot ${b.className}">
+          <div class="planner-slot-header">
+            <strong>${fmt(s.start)} → ${fmt(s.end)}</strong>
+          </div>
+          <div class="planner-slot-body">
+            <div>Overall risk: <b>${s.totalRisk.toFixed(1)} / 10</b> (${b.label})</div>
+            <div class="muted">Service rush: ${s.rushRisk.toFixed(
+              1
+            )} · Bugs: ${s.bugRisk.toFixed(1)} · Bomb-bug: ${s.bombRisk.toFixed(
+            1
+          )}</div>
+            <div class="muted">Events: ${s.eventCount} (holidays: ${
+            s.holidayCount
+          }) · Env weight: ${s.envRisk.toFixed(1)} · Release type: ${s.typeRisk.toFixed(
+            1
+          )}</div>
+          </div>
+          <div class="planner-slot-actions">
+            <button type="button" class="btn sm" data-slot-idx="${idx}">Use this slot</button>
+          </div>
+        </div>`;
+        })
+        .join('')}
+    </div>
+  `;
+
+  // Wire "Use this slot" buttons
+  E.plannerResults.querySelectorAll('[data-slot-idx]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.getAttribute('data-slot-idx'), 10);
+      const slot = plannerLastResult && plannerLastResult.slots[idx];
+      if (!slot) return;
+
+      const state = collectPlannerState();
+      const ids = collectPlannerTickets();
+
+      UI.Modals.openEvent({
+        title:
+          (state.description || 'Release') +
+          (state.env ? ` · ${state.env}` : ''),
+        type: 'Release',
+        start: slot.start,
+        end: slot.end,
+        allDay: false,
+        env: state.env || 'Prod',
+        status: 'Planned',
+        owner: '',
+        modules: plannerLastResult.ticketContext.modules || state.modules || [],
+        impactType: 'No downtime expected',
+        issueId: ids.join(', ')
+      });
+    });
   });
-  const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+}
+
+function runReleasePlanner() {
+  const state = collectPlannerState();
+  const res = ReleasePlanner.suggestSlots(state);
+  renderPlannerResults(res);
+}
+
+function refreshPlannerReleasePlans() {
+  if (!E.plannerReleasePlan) return;
+  const items = computeEventsRisk(DataStore.rows, DataStore.events);
+  if (!items.length) {
+    E.plannerReleasePlan.innerHTML =
+      '<div class="muted">No high-risk releases in the next 7 days.</div>';
+    return;
+  }
+  E.plannerReleasePlan.innerHTML = items
+    .map(({ event, risk, modules, issues, date }) => {
+      const badge = CalendarLink.riskBadgeClass(risk);
+      return `
+      <div class="planner-release-row">
+        <div>
+          <strong>${U.escapeHtml(event.title || '(release)')}</strong>
+          <span class="event-risk-badge ${badge}">RISK ${risk}</span>
+        </div>
+        <div class="muted">${U.fmtTS(date)} · Env: ${U.escapeHtml(
+        event.env || 'Prod'
+      )}</div>
+        <div class="muted">Modules: ${
+          modules.length ? modules.map(U.escapeHtml).join(', ') : 'n/a'
+        } · Linked issues: ${issues.length}</div>
+      </div>`;
+    })
+    .join('');
+}
+
+/* ---------- Export helpers ---------- */
+
+function exportRowsToCsv(rows, filenamePrefix) {
+  if (!rows || !rows.length) {
+    UI.toast('Nothing to export.');
+    return;
+  }
+  let csv;
+  try {
+    csv = Papa.unparse(rows);
+  } catch (e) {
+    console.error('CSV export error', e);
+    UI.toast('Error building CSV.');
+    return;
+  }
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  const ts = new Date().toISOString().slice(0, 10);
   a.href = url;
-  a.download = `incheck_issues_${suffix || 'filtered'}_${ts}.csv`;
+  a.download =
+    (filenamePrefix || 'issues') +
+    '_' +
+    new Date().toISOString().slice(0, 10) +
+    '.csv';
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  UI.toast('Exported CSV');
 }
 
-function exportFilteredCsv() {
-  const rows = UI.Issues.applyFilters();
-  exportIssuesToCsv(rows, 'filtered');
+/* ---------- AI query (DSL) ---------- */
+
+let lastAiQueryResults = [];
+
+function runAiQuery() {
+  if (!E.aiQueryInput || !DataStore.rows.length) return;
+  const raw = E.aiQueryInput.value || '';
+  const parsed = DSL.parse(raw);
+  const matches = DataStore.rows.filter(r =>
+    DSL.matches(r, DataStore.computed.get(r.id) || {}, parsed)
+  );
+  renderAiQueryResults(matches, parsed);
 }
 
-/* ---------- Release Planner wiring & rendering ---------- */
-
-let LAST_PLANNER_CONTEXT = null;
-let LAST_PLANNER_RESULT = null;
-
-function renderPlannerResults(result, context) {
-  if (!E.plannerResults) return;
-  const { slots, bug, bomb, ticketContext } = result;
-  const { env, modules, releaseType, horizonDays, region, description, tickets } = context;
-
-  if (!slots.length) {
-    E.plannerResults.innerHTML =
-      '<span>No suitable windows found in the selected horizon. Try widening the horizon or targeting fewer modules.</span>';
-    if (E.plannerAddEvent) E.plannerAddEvent.disabled = true;
+function renderAiQueryResults(results, parsed) {
+  lastAiQueryResults = results || [];
+  if (!E.aiQueryResults) return;
+  if (!results.length) {
+    E.aiQueryResults.innerHTML =
+      '<div class="muted">No tickets matched this query.</div>';
     return;
   }
-
-  const regionLabel =
-    region === 'gulf'
-      ? 'Gulf (KSA / UAE / Qatar)'
-      : region === 'levant'
-      ? 'Levant'
-      : 'North Africa';
-
-  const modulesLabel = modules && modules.length ? modules.join(', ') : 'All modules';
-  const bugLabel = ReleasePlanner.bugLabel(bug.risk);
-  const bombLabel = ReleasePlanner.bombLabel(bomb.risk);
-
-  const ticketIssues = (ticketContext && ticketContext.issues) || [];
-  const ticketsCount = ticketIssues.length;
-  const maxTicketRisk = ticketContext?.maxRisk || 0;
-  const avgTicketRisk = ticketContext?.avgRisk || 0;
-  const ticketsLine = ticketsCount
-    ? `Tickets in scope: ${ticketsCount} issue(s), max risk ${maxTicketRisk.toFixed(
-        1
-      )}, avg risk ${avgTicketRisk.toFixed(1)}.`
-    : 'No specific tickets selected – using module + description only.';
-
-  const intro = `
-    <div style="margin-bottom:6px;">
-      Top ${slots.length} suggested windows for a <strong>${U.escapeHtml(
-        releaseType
-      )}</strong> release on <strong>${U.escapeHtml(
-    env
-  )}</strong> touching <strong>${U.escapeHtml(
-    modulesLabel
-  )}</strong><br/>
-      Horizon: next ${horizonDays} day(s), region profile: ${U.escapeHtml(regionLabel)}.<br/>
-      <span class="muted">${U.escapeHtml(ticketsLine)}</span><br/>
-      <span class="muted">Recent bug pressure: ${U.escapeHtml(
-        bugLabel
-      )}. Historical &ldquo;bomb bug&rdquo; pattern: ${U.escapeHtml(
-    bombLabel
-  )}.</span>
+  const max = Math.min(results.length, 50);
+  const rows = results.slice(0, max);
+  E.aiQueryResults.innerHTML = `
+    <div class="muted" style="margin-bottom:4px;">
+      ${rows.length} shown of ${results.length} matched.
     </div>
+    <table class="ai-query-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Module</th>
+          <th>Title</th>
+          <th>Priority</th>
+          <th>Status</th>
+          <th>Risk</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows
+          .map(r => {
+            const risk = DataStore.computed.get(r.id)?.risk?.total || 0;
+            const badge = CalendarLink.riskBadgeClass(risk);
+            return `
+          <tr data-id="${U.escapeAttr(r.id)}">
+            <td>${U.escapeHtml(r.id)}</td>
+            <td>${U.escapeHtml(r.module || '-')}</td>
+            <td>${U.escapeHtml(r.title || '')}</td>
+            <td>${U.escapeHtml(r.priority || '-')}</td>
+            <td>${U.escapeHtml(r.status || '-')}</td>
+            <td><span class="event-risk-badge ${badge}">${risk}</span></td>
+          </tr>`;
+          })
+          .join('')}
+      </tbody>
+    </table>
   `;
-
-  let bombExamplesHtml = '';
-  if (bomb.examples && bomb.examples.length) {
-    const items = bomb.examples
-      .map(ex => {
-        const days = Math.round(ex.ageDays);
-        return `<li><strong>${U.escapeHtml(ex.id)}</strong> — ${U.escapeHtml(
-          ex.title || ''
-        )} <span class="muted">(risk ${ex.risk}, ~${days}d old)</span></li>`;
-      })
-      .join('');
-    bombExamplesHtml = `
-      <div class="muted" style="font-size:11px;margin-bottom:4px;">
-        Related historical incidents:
-        <ul style="margin:4px 0 0 18px;padding:0;">
-          ${items}
-        </ul>
-      </div>`;
-  }
-
-  const htmlSlots = slots
-    .map((slot, idx) => {
-      const d = slot.start;
-      const dateStr = d.toLocaleDateString(undefined, {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric'
-      });
-      const timeStr = d.toLocaleTimeString(undefined, {
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-
-      const bucket = ReleasePlanner.riskBucket(slot.totalRisk);
-      const rushLabel = ReleasePlanner.rushLabel(slot.rushRisk);
-      const bugLabelPerSlot = ReleasePlanner.bugLabel(slot.bugRisk);
-      const bombLabelPerSlot = ReleasePlanner.bombLabel(slot.bombRisk);
-      const eventsLabelRaw = slot.eventCount
-        ? `${slot.eventCount} overlapping change event(s)`
-        : 'no overlapping change events';
-      const holidayLabel = slot.holidayCount
-        ? `${slot.holidayCount} holiday(s) in window`
-        : 'no holidays in window';
-      const eventsLabel = slot.holidayCount
-        ? `${holidayLabel} · ${eventsLabelRaw}`
-        : eventsLabelRaw;
-
-      const safetyIndex = (slot.safetyScore / 10) * 100;
-      const blastComment =
-        bucket.label === 'Low'
-          ? 'Low blast radius; safe default with rollback buffer.'
-          : bucket.label === 'Medium'
-          ? 'Medium blast radius; keep tight monitoring and rollback plan.'
-          : 'High blast risk; only use with strict approvals and on-call coverage.';
-
-      const startIso = d.toISOString();
-      const endIso = slot.end.toISOString();
-
-      return `
-      <div class="planner-slot" data-index="${idx}">
-        <div class="planner-slot-header">
-          <span>#${idx + 1} · ${U.escapeHtml(dateStr)} · ${U.escapeHtml(timeStr)}</span>
-          <span class="planner-slot-score ${bucket.className}">
-            Risk ${slot.totalRisk.toFixed(1)} / 10 · ${bucket.label}
-          </span>
-        </div>
-        <div class="planner-slot-meta">
-          Rush: ${U.escapeHtml(rushLabel)} · Bugs: ${U.escapeHtml(
-        bugLabelPerSlot
-      )} · Bomb-bug: ${U.escapeHtml(
-        bombLabelPerSlot
-      )}<br/>Calendar: ${U.escapeHtml(
-        eventsLabel
-      )}<br/>Safety index: ${safetyIndex.toFixed(0)}%
-        </div>
-        <div class="planner-slot-meta">
-          Expected effect on F&amp;B clients: ${U.escapeHtml(blastComment)}
-        </div>
-        <div class="planner-slot-meta">
-          <button type="button"
-                  class="btn sm"
-                  data-add-release="${U.escapeAttr(startIso)}"
-                  data-add-release-end="${U.escapeAttr(endIso)}">
-            ➕ Add this window as Release event
-          </button>
-        </div>
-      </div>
-    `;
-    })
-    .join('');
-
-  E.plannerResults.innerHTML = `${intro}${bombExamplesHtml}${htmlSlots}`;
-
-  if (E.plannerAddEvent) E.plannerAddEvent.disabled = !slots.length;
-
-  // Wire per-slot "Add" buttons – include selected tickets as linked issue IDs
-  E.plannerResults.querySelectorAll('[data-add-release]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const startIso = btn.getAttribute('data-add-release');
-      const endIso = btn.getAttribute('data-add-release-end');
-      if (!startIso || !endIso) return;
-
-      const startLocal = toLocalInputValue(new Date(startIso));
-      const endLocal = toLocalInputValue(new Date(endIso));
-
-      const modulesLabelLocal =
-        modules && modules.length ? modules.join(', ') : 'General';
-
-      const releaseDescription = (E.plannerDescription?.value || '').trim();
-
-      const ticketIds =
-        (LAST_PLANNER_CONTEXT &&
-          Array.isArray(LAST_PLANNER_CONTEXT.tickets) &&
-          LAST_PLANNER_CONTEXT.tickets) ||
-        [];
-
-      const newEvent = {
-        id: '',
-        title: `Release – ${modulesLabelLocal} (${releaseType})`,
-        type: 'Release',
-        env: env,
-        status: 'Planned',
-        owner: '',
-        modules: modules,
-        impactType:
-          env === 'Prod'
-            ? 'High risk change'
-            : 'Internal only',
-        issueId: ticketIds.join(', '),
-        start: startLocal,
-        end: endLocal,
-        description:
-          `Auto-scheduled by Release Planner. Region profile: ${regionLabel}. Modules: ${modulesLabelLocal}.` +
-          (releaseDescription ? `\nRelease notes: ${releaseDescription}` : '') +
-          `\nHeuristic risk index computed from F&B rush hours, bug history, holidays and existing calendar events.` +
-          `\nTickets in scope at scheduling time: ${
-            ticketIds.length ? ticketIds.join(', ') : 'none explicitly selected.'
-          }`,
-        allDay: false,
-        notificationStatus: ''
-      };
-
-      const saved = await saveEventToSheet(newEvent);
-      if (!saved) {
-        UI.toast('Could not save release event');
-        return;
-      }
-      const idx = DataStore.events.findIndex(x => x.id === saved.id);
-      if (idx === -1) DataStore.events.push(saved);
-      else DataStore.events[idx] = saved;
-      saveEventsCache();
-      renderCalendarEvents();
-      refreshPlannerReleasePlans(context);
+  E.aiQueryResults.querySelectorAll('tbody tr[data-id]').forEach(tr => {
+    tr.addEventListener('click', () => {
+      const id = tr.getAttribute('data-id');
+      UI.Modals.openIssue(id);
     });
   });
 }
 
-function refreshPlannerTickets(currentList) {
-  if (!E.plannerTickets) return;
-  const list = currentList || UI.Issues.applyFilters();
+function applyDslFilters(parsed) {
+  if (!parsed) return;
+  const s = Filters.state;
 
-  if (!list.length) {
-    E.plannerTickets.innerHTML =
-      '<option disabled>No tickets match the current filters</option>';
-    return;
+  // reset base
+  s.search = '';
+  s.module = 'All';
+  s.priority = 'All';
+  s.status = 'All';
+  s.start = '';
+  s.end = '';
+
+  if (parsed.words && parsed.words.length) {
+    s.search = parsed.words.join(' ');
   }
 
-  const max = 250;
-  const subset = list.slice(0, max);
+  if (parsed.module) {
+    const key = parsed.module.toLowerCase();
+    const modules = Array.from(DataStore.byModule.keys());
+    const match = modules.find(m => (m || '').toLowerCase().includes(key));
+    if (match) s.module = match;
+  }
 
-  E.plannerTickets.innerHTML = subset
-    .map(r => {
-      const meta = DataStore.computed.get(r.id) || {};
-      const risk = meta.risk?.total || 0;
-      const label = `[${r.priority || '-'} | R${risk}] ${r.id} — ${
-        r.title || ''
-      }`.slice(0, 140);
-      return `<option value="${U.escapeAttr(r.id)}">${U.escapeHtml(label)}</option>`;
-    })
-    .join('');
+  if (parsed.priority) {
+    const p = parsed.priority[0].toUpperCase();
+    if (p === 'H') s.priority = 'High';
+    else if (p === 'M') s.priority = 'Medium';
+    else if (p === 'L') s.priority = 'Low';
+  }
+
+  if (parsed.status) {
+    const statuses = Array.from(DataStore.byStatus.keys());
+    const key = parsed.status.toLowerCase();
+    const match = statuses.find(st => (st || '').toLowerCase().includes(key));
+    if (match) s.status = match;
+    else if (key === 'open') s.status = 'All'; // handled by DSL.matches
+  }
+
+  if (parsed.lastDays) {
+    const from = U.daysAgo(parsed.lastDays);
+    s.start = toLocalDateValue(from);
+  }
+
+  Filters.save();
+
+  if (E.searchInput) E.searchInput.value = s.search || '';
+  setIfOptionExists(E.moduleFilter, s.module);
+  setIfOptionExists(E.priorityFilter, s.priority);
+  setIfOptionExists(E.statusFilter, s.status);
+  if (E.startDateFilter) E.startDateFilter.value = s.start || '';
+  if (E.endDateFilter) E.endDateFilter.value = s.end || '';
 }
 
-function refreshPlannerReleasePlans(context) {
-  if (!E.plannerReleasePlan) return;
-  const env = context?.env || (E.plannerEnv?.value || '');
-  const horizonDays =
-    context?.horizonDays ||
-    parseInt(E.plannerHorizon?.value || '7', 10) ||
-    7;
+/* ---------- Theme & accent ---------- */
 
-  const now = new Date();
-  const horizonEnd = U.dateAddDays(now, horizonDays);
-
-  const releaseEvents = (DataStore.events || []).filter(ev => {
-    const type = (ev.type || '').toLowerCase();
-    if (type !== 'release') return false;
-    if (!ev.start) return false;
-    const d = new Date(ev.start);
-    if (isNaN(d)) return false;
-    if (d < now) return false;
-    if (d > horizonEnd) return false;
-
-    const evEnv = ev.env || 'Prod';
-    if (env && env !== 'Other' && evEnv && evEnv !== env) return false;
-
-    return true;
-  });
-
-  releaseEvents.sort((a, b) => new Date(a.start) - new Date(b.start));
-
-  if (!releaseEvents.length) {
-    E.plannerReleasePlan.innerHTML =
-      '<option value="">No Release events in horizon</option>';
-    return;
+function applyTheme(theme) {
+  const root = document.documentElement;
+  if (theme === 'system') {
+    root.removeAttribute('data-theme');
+  } else {
+    root.setAttribute('data-theme', theme);
   }
-
-  const options = releaseEvents
-    .map(ev => {
-      const d = ev.start ? new Date(ev.start) : null;
-      const when =
-        d && !isNaN(d)
-          ? d.toLocaleString(undefined, {
-              month: 'short',
-              day: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit'
-            })
-          : '(no date)';
-      const label = `[${when}] ${ev.title || 'Release'} (${ev.env || 'Prod'})`;
-      return `<option value="${U.escapeAttr(ev.id)}">${U.escapeHtml(label)}</option>`;
-    })
-    .join('');
-
-  E.plannerReleasePlan.innerHTML =
-    '<option value="">Select a Release event…</option>' + options;
+  try {
+    localStorage.setItem(LS_KEYS.theme, theme);
+  } catch {}
 }
 
-function wirePlanner() {
-  if (!E.plannerRun) return;
-
-  E.plannerRun.addEventListener('click', () => {
-    if (!DataStore.rows.length) {
-      UI.toast('Issues are still loading. Try again in a few seconds.');
-      return;
-    }
-
-    const regionValue = (E.plannerRegion?.value || 'gulf').toLowerCase();
-    const region = ReleasePlanner.regionKey(regionValue);
-
-    const env = E.plannerEnv?.value || 'Prod';
-    const modulesStr = (E.plannerModules?.value || '').trim();
-    const modules = modulesStr
-      ? modulesStr
-          .split(',')
-          .map(s => s.trim())
-          .filter(Boolean)
-      : [];
-    const horizonDays =
-      parseInt(E.plannerHorizon?.value || '7', 10) || 7;
-    const releaseTypeValue =
-      (E.plannerReleaseType?.value || 'feature').toLowerCase();
-    const releaseType =
-      releaseTypeValue === 'major' || releaseTypeValue === 'minor'
-        ? releaseTypeValue
-        : 'feature';
-    const slotsPerDay =
-      parseInt(E.plannerSlotsPerDay?.value || '4', 10) || 4;
-    const description = (E.plannerDescription?.value || '').trim();
-
-    const selectedTicketIds = Array.from(E.plannerTickets?.selectedOptions || [])
-      .map(o => o.value)
-      .filter(Boolean);
-
-    const context = {
-      region,
-      env,
-      modules,
-      releaseType,
-      horizonDays,
-      slotsPerDay,
-      description,
-      tickets: selectedTicketIds
-    };
-
-    const result = ReleasePlanner.suggestSlots(context);
-
-    LAST_PLANNER_CONTEXT = context;
-    LAST_PLANNER_RESULT = result;
-    renderPlannerResults(result, context);
-    refreshPlannerReleasePlans(context);
-  });
-
-  if (E.plannerAddEvent) {
-    E.plannerAddEvent.addEventListener('click', async () => {
-      if (
-        !LAST_PLANNER_CONTEXT ||
-        !LAST_PLANNER_RESULT ||
-        !LAST_PLANNER_RESULT.slots.length
-      ) {
-        UI.toast('Run the planner first to get suggestions.');
-        return;
-      }
-      const context = LAST_PLANNER_CONTEXT;
-      const slot = LAST_PLANNER_RESULT.slots[0];
-
-      const startIso = slot.start.toISOString();
-      const endIso = slot.end.toISOString();
-      const startLocal = toLocalInputValue(new Date(startIso));
-      const endLocal = toLocalInputValue(new Date(endIso));
-
-      const regionLabel =
-        context.region === 'gulf'
-          ? 'Gulf (KSA / UAE / Qatar)'
-          : context.region === 'levant'
-          ? 'Levant'
-          : 'North Africa';
-
-      const modulesLabelLocal =
-        context.modules && context.modules.length
-          ? context.modules.join(', ')
-          : 'General';
-      const releaseDescription = (E.plannerDescription?.value || '').trim();
-      const ticketIds = Array.isArray(context.tickets) ? context.tickets : [];
-
-      const newEvent = {
-        id: '',
-        title: `Release – ${modulesLabelLocal} (${context.releaseType})`,
-        type: 'Release',
-        env: context.env,
-        status: 'Planned',
-        owner: '',
-        modules: context.modules,
-        impactType:
-          context.env === 'Prod'
-            ? 'High risk change'
-            : 'Internal only',
-        issueId: ticketIds.join(', '),
-        start: startLocal,
-        end: endLocal,
-        description:
-          `Auto-scheduled by Release Planner (top suggestion). Region profile: ${regionLabel}. Modules: ${modulesLabelLocal}.` +
-          (releaseDescription ? `\nRelease notes: ${releaseDescription}` : '') +
-          `\nHeuristic risk index computed from F&B rush hours, bug history, holidays and existing calendar events.` +
-          `\nTickets in scope at scheduling time: ${
-            ticketIds.length ? ticketIds.join(', ') : 'none explicitly selected.'
-          }`,
-        allDay: false,
-        notificationStatus: ''
-      };
-
-      const saved = await saveEventToSheet(newEvent);
-      if (!saved) {
-        UI.toast('Could not save release event');
-        return;
-      }
-      const idx = DataStore.events.findIndex(x => x.id === saved.id);
-      if (idx === -1) DataStore.events.push(saved);
-      else DataStore.events[idx] = saved;
-      saveEventsCache();
-      renderCalendarEvents();
-      refreshPlannerReleasePlans(context);
+function initTheme() {
+  let saved = 'system';
+  try {
+    saved = localStorage.getItem(LS_KEYS.theme) || 'system';
+  } catch {}
+  applyTheme(saved);
+  if (E.themeSelect) {
+    E.themeSelect.value = saved;
+    E.themeSelect.addEventListener('change', () => {
+      applyTheme(E.themeSelect.value || 'system');
     });
   }
-
-  if (E.plannerEnv) {
-    E.plannerEnv.addEventListener('change', () => {
-      refreshPlannerReleasePlans();
+  // Keep in sync with system when using system theme
+  try {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    mq.addEventListener('change', () => {
+      const cur = localStorage.getItem(LS_KEYS.theme) || 'system';
+      if (cur === 'system') applyTheme('system');
     });
-  }
-  if (E.plannerHorizon) {
-    E.plannerHorizon.addEventListener('change', () => {
-      refreshPlannerReleasePlans();
-    });
-  }
+  } catch {}
+}
 
-  if (E.plannerAssignBtn) {
-    E.plannerAssignBtn.addEventListener('click', async () => {
-      const planId = E.plannerReleasePlan?.value || '';
-      if (!planId) {
-        UI.toast('Select a Release event first.');
-        return;
-      }
-      const options = Array.from(E.plannerTickets?.selectedOptions || []);
-      const ticketIds = options.map(o => o.value).filter(Boolean);
-      if (!ticketIds.length) {
-        UI.toast('Select at least one ticket to assign.');
-        return;
-      }
+function applyAccentColor(color) {
+  if (!color) return;
+  document.documentElement.style.setProperty('--accent', color);
+  try {
+    localStorage.setItem(LS_KEYS.accentColorStorage, color);
+  } catch {}
+}
 
-      const idx = DataStore.events.findIndex(ev => ev.id === planId);
-      if (idx === -1) {
-        UI.toast('Selected Release event not found. Try refreshing events.');
-        return;
-      }
-
-      const ev = DataStore.events[idx];
-      const existing = (ev.issueId || '')
-        .split(',')
-        .map(s => s.trim())
-        .filter(Boolean);
-      const merged = Array.from(new Set([...existing, ...ticketIds]));
-
-      const updatedEvent = {
-        ...ev,
-        issueId: merged.join(', ')
-      };
-
-      const saved = await saveEventToSheet(updatedEvent);
-      if (!saved) {
-        UI.toast('Could not assign tickets to Release event.');
-        return;
-      }
-
-      DataStore.events[idx] = saved;
-      saveEventsCache();
-      renderCalendarEvents();
-      refreshPlannerReleasePlans();
-
-      UI.toast(
-        `Assigned ${ticketIds.length} ticket${ticketIds.length > 1 ? 's' : ''} to the Release plan.`
-      );
+function initAccentColor() {
+  let saved = null;
+  try {
+    saved = localStorage.getItem(LS_KEYS.accentColorStorage);
+  } catch {}
+  if (saved) applyAccentColor(saved);
+  if (E.accentColor) {
+    if (saved) E.accentColor.value = saved;
+    E.accentColor.addEventListener('input', () => {
+      applyAccentColor(E.accentColor.value);
     });
   }
 }
 
-/* ---------- Misc wiring ---------- */
-function setIfOptionExists(select, value) {
-  if (!select || !value) return;
-  const options = Array.from(select.options || []);
-  if (options.some(o => o.value === value)) select.value = value;
+/* ---------- Online / offline chip ---------- */
+
+function updateOnlineStatusChip() {
+  if (!E.onlineStatusChip) return;
+  const online = navigator.onLine !== false;
+  E.onlineStatusChip.textContent = online ? 'Online' : 'Offline';
+  E.onlineStatusChip.classList.toggle('online', online);
+  E.onlineStatusChip.classList.toggle('offline', !online);
 }
 
-function wireCore() {
-  [E.issuesTab, E.calendarTab].forEach(btn => {
-    if (!btn) return;
-    btn.addEventListener('click', () => setActiveView(btn.dataset.view));
-  });
-
-  if (E.drawerBtn)
-    E.drawerBtn.addEventListener('click', () => {
-      const open = !E.sidebar.classList.contains('open');
-      E.sidebar.classList.toggle('open');
-      E.drawerBtn.setAttribute('aria-expanded', String(open));
-    });
-
-  if (E.searchInput)
-    E.searchInput.addEventListener(
-      'input',
-      debounce(() => {
-        Filters.state.search = E.searchInput.value || '';
-        Filters.save();
-        UI.refreshAll();
-      }, 250)
-    );
-
-  if (E.refreshNow)
-    E.refreshNow.addEventListener('click', () => {
-      loadIssues(true);
-      loadEvents(true);
-    });
-  if (E.exportCsv) E.exportCsv.addEventListener('click', exportFilteredCsv);
-  if (E.createTicketBtn)
-    E.createTicketBtn.addEventListener('click', () =>
-      window.open(
-        'https://forms.gle/PPnEP1AQneoBT79s5',
-        '_blank',
-        'noopener,noreferrer'
-      )
-    );
-
-  if (E.shortcutsHelp) {
-    E.shortcutsHelp.addEventListener('click', () => {
-      UI.toast('Shortcuts: 1/2 switch tabs · / focus search');
-    });
-  }
-
-  UI.refreshAll = () => {
-    const list = UI.Issues.applyFilters();
-    UI.Issues.renderSummary(list);
-    UI.Issues.renderFilterChips();
-    UI.Issues.renderKPIs(list);
-    UI.Issues.renderTable(list);
-    UI.Issues.renderCharts(list);
-    refreshPlannerTickets(list);
-  };
+function initOnlineStatus() {
+  updateOnlineStatusChip();
+  window.addEventListener('online', updateOnlineStatusChip);
+  window.addEventListener('offline', updateOnlineStatusChip);
 }
 
-function wireSorting() {
-  U.qAll('#issuesTable thead th.sortable').forEach(th => {
-    th.addEventListener('click', () => {
-      const key = th.getAttribute('data-key');
-      if (GridState.sortKey === key) GridState.sortAsc = !GridState.sortAsc;
-      else {
-        GridState.sortKey = key;
-        GridState.sortAsc = true;
-      }
-      UI.refreshAll();
-    });
-    th.addEventListener('keydown', e => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        th.click();
-      }
-    });
-    th.tabIndex = 0;
-    th.setAttribute('role', 'button');
-    th.setAttribute('aria-label', `Sort by ${th.textContent}`);
-  });
-}
-
-function wirePaging() {
-  if (E.pageSize)
-    E.pageSize.addEventListener('change', () => {
-      GridState.pageSize = +E.pageSize.value;
-      localStorage.setItem(LS_KEYS.pageSize, GridState.pageSize);
-      GridState.page = 1;
-      UI.refreshAll();
-    });
-  if (E.firstPage)
-    E.firstPage.addEventListener('click', () => {
-      GridState.page = 1;
-      UI.refreshAll();
-    });
-  if (E.prevPage)
-    E.prevPage.addEventListener('click', () => {
-      if (GridState.page > 1) {
-        GridState.page--;
-        UI.refreshAll();
-      }
-    });
-  if (E.nextPage)
-    E.nextPage.addEventListener('click', () => {
-      const list = UI.Issues.applyFilters();
-      const pages = Math.max(1, Math.ceil(list.length / GridState.pageSize));
-      if (GridState.page < pages) {
-        GridState.page++;
-        UI.refreshAll();
-      }
-    });
-  if (E.lastPage)
-    E.lastPage.addEventListener('click', () => {
-      const list = UI.Issues.applyFilters();
-      GridState.page = Math.max(1, Math.ceil(list.length / GridState.pageSize));
-      UI.refreshAll();
-    });
-}
+/* ---------- Filters / grid wiring ---------- */
 
 function wireFilters() {
+  if (E.searchInput) {
+    E.searchInput.value = Filters.state.search || '';
+    const onSearch = debounce(() => {
+      Filters.state.search = E.searchInput.value || '';
+      Filters.save();
+      GridState.page = 1;
+      UI.refreshAll();
+    }, 200);
+    E.searchInput.addEventListener('input', onSearch);
+  }
+
   if (E.moduleFilter) {
     E.moduleFilter.addEventListener('change', () => {
-      Filters.state.module = E.moduleFilter.value;
+      Filters.state.module = E.moduleFilter.value || 'All';
       Filters.save();
+      GridState.page = 1;
       UI.refreshAll();
     });
   }
   if (E.priorityFilter) {
     E.priorityFilter.addEventListener('change', () => {
-      Filters.state.priority = E.priorityFilter.value;
+      Filters.state.priority = E.priorityFilter.value || 'All';
       Filters.save();
+      GridState.page = 1;
       UI.refreshAll();
     });
   }
   if (E.statusFilter) {
     E.statusFilter.addEventListener('change', () => {
-      Filters.state.status = E.statusFilter.value;
+      Filters.state.status = E.statusFilter.value || 'All';
       Filters.save();
+      GridState.page = 1;
       UI.refreshAll();
     });
   }
+
   if (E.startDateFilter) {
     E.startDateFilter.value = Filters.state.start || '';
     E.startDateFilter.addEventListener('change', () => {
-      Filters.state.start = E.startDateFilter.value;
+      Filters.state.start = E.startDateFilter.value || '';
       Filters.save();
+      GridState.page = 1;
       UI.refreshAll();
     });
   }
   if (E.endDateFilter) {
     E.endDateFilter.value = Filters.state.end || '';
     E.endDateFilter.addEventListener('change', () => {
-      Filters.state.end = E.endDateFilter.value;
+      Filters.state.end = E.endDateFilter.value || '';
       Filters.save();
+      GridState.page = 1;
       UI.refreshAll();
     });
   }
-  if (E.searchInput) E.searchInput.value = Filters.state.search || '';
 
-  if (E.resetBtn)
+  if (E.resetBtn) {
     E.resetBtn.addEventListener('click', () => {
       Filters.state = {
         search: '',
@@ -3190,101 +3597,134 @@ function wireFilters() {
       };
       Filters.save();
       if (E.searchInput) E.searchInput.value = '';
+      if (E.moduleFilter) E.moduleFilter.value = 'All';
+      if (E.priorityFilter) E.priorityFilter.value = 'All';
+      if (E.statusFilter) E.statusFilter.value = 'All';
       if (E.startDateFilter) E.startDateFilter.value = '';
       if (E.endDateFilter) E.endDateFilter.value = '';
-      UI.Issues.renderFilters();
+      GridState.page = 1;
       UI.refreshAll();
     });
+  }
+
+  if (E.refreshNow) {
+    E.refreshNow.addEventListener('click', () => {
+      loadIssues(true);
+      loadEvents(true);
+    });
+  }
+
+  if (E.exportCsv) {
+    E.exportCsv.addEventListener('click', () => {
+      exportRowsToCsv(DataStore.rows, 'issues');
+    });
+  }
+
+  if (E.pageSize) {
+    E.pageSize.value = String(GridState.pageSize);
+    E.pageSize.addEventListener('change', () => {
+      const val = parseInt(E.pageSize.value, 10) || 20;
+      GridState.pageSize = val;
+      try {
+        localStorage.setItem(LS_KEYS.pageSize, String(val));
+      } catch {}
+      GridState.page = 1;
+      UI.refreshAll();
+    });
+  }
+
+  if (E.firstPage) {
+    E.firstPage.addEventListener('click', () => {
+      GridState.page = 1;
+      UI.refreshAll();
+    });
+  }
+  if (E.prevPage) {
+    E.prevPage.addEventListener('click', () => {
+      GridState.page = Math.max(1, GridState.page - 1);
+      UI.refreshAll();
+    });
+  }
+  if (E.nextPage) {
+    E.nextPage.addEventListener('click', () => {
+      const list = UI.Issues.applyFilters();
+      const pages = Math.max(
+        1,
+        Math.ceil(list.length / (GridState.pageSize || 20))
+      );
+      GridState.page = Math.min(pages, GridState.page + 1);
+      UI.refreshAll();
+    });
+  }
+  if (E.lastPage) {
+    E.lastPage.addEventListener('click', () => {
+      const list = UI.Issues.applyFilters();
+      const pages = Math.max(
+        1,
+        Math.ceil(list.length / (GridState.pageSize || 20))
+      );
+      GridState.page = pages;
+      UI.refreshAll();
+    });
+  }
+
+  // Sortable headers
+  U.qAll('#issuesTable thead th[data-key]').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.getAttribute('data-key');
+      if (!key) return;
+      if (GridState.sortKey === key) {
+        GridState.sortAsc = !GridState.sortAsc;
+      } else {
+        GridState.sortKey = key;
+        GridState.sortAsc = true;
+      }
+      GridState.page = 1;
+      UI.refreshAll();
+    });
+  });
 }
 
-function wireTheme() {
-  const media = window.matchMedia
-    ? window.matchMedia('(prefers-color-scheme: dark)')
-    : null;
-  const applySystem = () => {
-    if (media?.matches) document.documentElement.removeAttribute('data-theme');
-    else document.documentElement.setAttribute('data-theme', 'light');
-  };
-  const saved = localStorage.getItem(LS_KEYS.theme) || 'system';
-  if (E.themeSelect) E.themeSelect.value = saved;
-  if (saved === 'system') applySystem();
-  else if (saved === 'dark') document.documentElement.removeAttribute('data-theme');
-  else document.documentElement.setAttribute('data-theme', 'light');
+/* ---------- Layout & modals ---------- */
 
-  media?.addEventListener('change', () => {
-    if ((localStorage.getItem(LS_KEYS.theme) || 'system') === 'system')
-      applySystem();
+function wireLayout() {
+  if (E.drawerBtn && E.sidebar) {
+    E.drawerBtn.addEventListener('click', () => {
+      E.sidebar.classList.toggle('open');
+    });
+  }
+}
+
+function wireIssueModal() {
+  if (!E.issueModal) return;
+
+  if (E.modalClose) {
+    E.modalClose.addEventListener('click', () => {
+      UI.Modals.closeIssue();
+    });
+  }
+
+  E.issueModal.addEventListener('click', e => {
+    if (e.target === E.issueModal) {
+      UI.Modals.closeIssue();
+    }
   });
 
-  if (E.themeSelect)
-    E.themeSelect.addEventListener('change', () => {
-      const v = E.themeSelect.value;
-      localStorage.setItem(LS_KEYS.theme, v);
-      if (v === 'system') applySystem();
-      else if (v === 'dark') document.documentElement.removeAttribute('data-theme');
-      else document.documentElement.setAttribute('data-theme', 'light');
-    });
-
-  if (E.accentColor) {
-    const rootStyle = getComputedStyle(document.documentElement);
-    const defaultAccent = rootStyle.getPropertyValue('--accent').trim() || '#4f8cff';
-    const savedAccent =
-      localStorage.getItem(LS_KEYS.accentColorStorage) || defaultAccent;
-    E.accentColor.value = savedAccent;
-    document.documentElement.style.setProperty('--accent', savedAccent);
-
-    E.accentColor.addEventListener('input', () => {
-      const val = E.accentColor.value || defaultAccent;
-      document.documentElement.style.setProperty('--accent', val);
-      try {
-        localStorage.setItem(LS_KEYS.accentColorStorage, val);
-      } catch {}
-      UI.Issues.renderCharts(UI.Issues.applyFilters());
-    });
-  }
-}
-
-function wireConnectivity() {
-  if (!E.onlineStatusChip) return;
-  const update = () => {
-    const online = navigator.onLine !== false;
-    E.onlineStatusChip.textContent = online ? 'Online' : 'Offline · using cache';
-    E.onlineStatusChip.classList.toggle('online', online);
-    E.onlineStatusChip.classList.toggle('offline', !online);
-  };
-  window.addEventListener('online', update);
-  window.addEventListener('offline', update);
-  update();
-}
-
-function wireModals() {
-  // Issue modal
-  if (E.modalClose) {
-    E.modalClose.addEventListener('click', () => UI.Modals.closeIssue());
-  }
-  if (E.issueModal) {
-    E.issueModal.addEventListener('click', e => {
-      // click outside panel closes
-      if (e.target === E.issueModal) UI.Modals.closeIssue();
-    });
-    E.issueModal.addEventListener('keydown', e => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        UI.Modals.closeIssue();
-      } else if (e.key === 'Tab') {
-        trapFocus(E.issueModal, e);
-      }
-    });
-  }
+  E.issueModal.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      UI.Modals.closeIssue();
+    } else if (e.key === 'Tab') {
+      trapFocus(E.issueModal, e);
+    }
+  });
 
   if (E.copyId) {
     E.copyId.addEventListener('click', () => {
       const r = UI.Modals.selectedIssue;
       if (!r) return;
-      const txt = r.id || '';
-      if (!txt) return;
       navigator.clipboard
-        .writeText(txt)
+        .writeText(r.id || '')
         .then(() => UI.toast('Issue ID copied'))
         .catch(() => UI.toast('Clipboard blocked'));
     });
@@ -3294,54 +3734,83 @@ function wireModals() {
     E.copyLink.addEventListener('click', () => {
       const r = UI.Modals.selectedIssue;
       if (!r) return;
-      const base = window.location.href.split('#')[0];
-      const link = `${base}#issue-${encodeURIComponent(r.id)}`;
+      const url = r.file || '';
+      if (!url) {
+        UI.toast('No attachment link on this issue.');
+        return;
+      }
       navigator.clipboard
-        .writeText(link)
-        .then(() => UI.toast('Issue link copied'))
+        .writeText(url)
+        .then(() => UI.toast('Attachment link copied'))
         .catch(() => UI.toast('Clipboard blocked'));
     });
   }
+}
 
-  // Event modal
+function readEventForm() {
+  const allDay = !!(E.eventAllDay && E.eventAllDay.checked);
+
+  const startVal = E.eventStart ? E.eventStart.value : '';
+  const endVal = E.eventEnd ? E.eventEnd.value : '';
+
+  let start = startVal || '';
+  let end = endVal || '';
+
+  if (allDay) {
+    // date-only values, keep as-is; backend can interpret dates in local TZ
+  }
+
+  const modules = parseModulesString(E.eventModules ? E.eventModules.value : '');
+
+  return {
+    title: E.eventTitle ? E.eventTitle.value || '' : '',
+    type: E.eventType ? E.eventType.value || 'Deployment' : 'Deployment',
+    start,
+    end,
+    allDay,
+    description: E.eventDescription ? E.eventDescription.value || '' : '',
+    issueId: E.eventIssueId ? E.eventIssueId.value || '' : '',
+    env: E.eventEnv ? E.eventEnv.value || 'Prod' : 'Prod',
+    status: E.eventStatus ? E.eventStatus.value || 'Planned' : 'Planned',
+    owner: E.eventOwner ? E.eventOwner.value || '' : '',
+    modules,
+    impactType: E.eventImpactType
+      ? E.eventImpactType.value || 'No downtime expected'
+      : 'No downtime expected',
+    notificationStatus: ''
+  };
+}
+
+function wireEventModal() {
+  if (!E.eventModal) return;
+
   if (E.eventModalClose) {
     E.eventModalClose.addEventListener('click', () => UI.Modals.closeEvent());
   }
   if (E.eventCancel) {
     E.eventCancel.addEventListener('click', () => UI.Modals.closeEvent());
   }
-  if (E.eventModal) {
-    E.eventModal.addEventListener('click', e => {
-      if (e.target === E.eventModal) UI.Modals.closeEvent();
-    });
-    E.eventModal.addEventListener('keydown', e => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        UI.Modals.closeEvent();
-      } else if (e.key === 'Tab') {
-        trapFocus(E.eventModal, e);
-      }
-    });
-  }
+
+  E.eventModal.addEventListener('click', e => {
+    if (e.target === E.eventModal) UI.Modals.closeEvent();
+  });
+  E.eventModal.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      UI.Modals.closeEvent();
+    } else if (e.key === 'Tab') {
+      trapFocus(E.eventModal, e);
+    }
+  });
 
   if (E.eventAllDay) {
     E.eventAllDay.addEventListener('change', () => {
-      const allDay = E.eventAllDay.checked;
+      const allDay = !!E.eventAllDay.checked;
       if (E.eventStart) {
-        const val = E.eventStart.value;
-        const d = val ? new Date(val) : null;
         E.eventStart.type = allDay ? 'date' : 'datetime-local';
-        if (d && !isNaN(d)) {
-          E.eventStart.value = allDay ? toLocalDateValue(d) : toLocalInputValue(d);
-        }
       }
       if (E.eventEnd) {
-        const val = E.eventEnd.value;
-        const d = val ? new Date(val) : null;
         E.eventEnd.type = allDay ? 'date' : 'datetime-local';
-        if (d && !isNaN(d)) {
-          E.eventEnd.value = allDay ? toLocalDateValue(d) : toLocalInputValue(d);
-        }
       }
     });
   }
@@ -3349,129 +3818,223 @@ function wireModals() {
   if (E.eventForm) {
     E.eventForm.addEventListener('submit', async e => {
       e.preventDefault();
-      const id = E.eventForm.dataset.id || '';
-      const allDay = !!(E.eventAllDay && E.eventAllDay.checked);
-
-      const title = (E.eventTitle?.value || '').trim();
-      if (!title) {
-        UI.toast('Title is required');
-        return;
-      }
-
-      const ev = {
-        id,
-        title,
-        type: E.eventType?.value || 'Deployment',
-        env: E.eventEnv?.value || 'Prod',
-        status: E.eventStatus?.value || 'Planned',
-        owner: (E.eventOwner?.value || '').trim(),
-        modules: E.eventModules?.value || '',
-        impactType: E.eventImpactType?.value || 'No downtime expected',
-        issueId: (E.eventIssueId?.value || '').trim(),
-        start: E.eventStart?.value || '',
-        end: E.eventEnd?.value || '',
-        description: (E.eventDescription?.value || '').trim(),
-        allDay,
-        notificationStatus: ''
-      };
-
-      const saved = await saveEventToSheet(ev);
+      const base = readEventForm();
+      const currentId = E.eventForm.dataset.id || '';
+      const eventToSave = currentId ? { ...base, id: currentId } : base;
+      const saved = await saveEventToSheet(eventToSave);
       if (!saved) return;
 
-      const idx = DataStore.events.findIndex(x => x.id === saved.id);
-      if (idx === -1) DataStore.events.push(saved);
-      else DataStore.events[idx] = saved;
+      const idx = DataStore.events.findIndex(ev => ev.id === saved.id);
+      if (idx >= 0) DataStore.events[idx] = saved;
+      else DataStore.events.push(saved);
 
       saveEventsCache();
       renderCalendarEvents();
       refreshPlannerReleasePlans();
+      Analytics.refresh(UI.Issues.applyFilters());
+      UI.toast(currentId ? 'Event updated' : 'Event created');
       UI.Modals.closeEvent();
-    });
-  }
-
-  if (E.eventSave) {
-    E.eventSave.addEventListener('click', () => {
-      if (E.eventForm?.requestSubmit) E.eventForm.requestSubmit();
     });
   }
 
   if (E.eventDelete) {
     E.eventDelete.addEventListener('click', async () => {
       if (!E.eventForm) return;
-      const id = E.eventForm.dataset.id;
+      const id = E.eventForm.dataset.id || '';
       if (!id) {
         UI.Modals.closeEvent();
         return;
       }
-      if (!window.confirm('Delete this event from the calendar?')) return;
       const ok = await deleteEventFromSheet(id);
-      if (!ok) return;
-      const idx = DataStore.events.findIndex(ev => ev.id === id);
-      if (idx > -1) DataStore.events.splice(idx, 1);
-      saveEventsCache();
-      renderCalendarEvents();
-      refreshPlannerReleasePlans();
+      if (ok) {
+        const idx = DataStore.events.findIndex(ev => ev.id === id);
+        if (idx >= 0) DataStore.events.splice(idx, 1);
+        saveEventsCache();
+        renderCalendarEvents();
+        refreshPlannerReleasePlans();
+        Analytics.refresh(UI.Issues.applyFilters());
+        UI.toast('Event deleted');
+      }
       UI.Modals.closeEvent();
     });
   }
 }
 
-/* ---------- Keyboard shortcuts ---------- */
+/* ---------- AI query wiring ---------- */
 
-function wireKeyboardShortcuts() {
-  document.addEventListener('keydown', e => {
-    const tag = (e.target && e.target.tagName) || '';
-    const isInputLike =
-      tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable;
-
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
-
-    // "/" → focus search (when not already in an input)
-    if (e.key === '/' && !isInputLike) {
-      e.preventDefault();
-      setActiveView('issues');
-      if (E.searchInput) {
-        E.searchInput.focus();
-        if (E.searchInput.select) E.searchInput.select();
+function wireAiQuery() {
+  if (E.aiQueryRun) {
+    E.aiQueryRun.addEventListener('click', () => {
+      runAiQuery();
+    });
+  }
+  if (E.aiQueryInput) {
+    E.aiQueryInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        runAiQuery();
       }
-      return;
-    }
+    });
+  }
+  if (E.aiQueryApplyFilters) {
+    E.aiQueryApplyFilters.addEventListener('click', () => {
+      const raw = E.aiQueryInput ? E.aiQueryInput.value || '' : '';
+      const parsed = DSL.parse(raw);
+      applyDslFilters(parsed);
+      GridState.page = 1;
+      UI.refreshAll();
+    });
+  }
+  if (E.aiQueryExport) {
+    E.aiQueryExport.addEventListener('click', () => {
+      if (!lastAiQueryResults.length) {
+        UI.toast('Run a query first.');
+        return;
+      }
+      exportRowsToCsv(lastAiQueryResults, 'ai_query');
+    });
+  }
+}
 
-    if (isInputLike) return;
+/* ---------- Shortcuts ---------- */
 
-    // 1/2 → switch tabs
-    if (e.key === '1') {
+function wireShortcuts() {
+  if (E.shortcutsHelp) {
+    E.shortcutsHelp.addEventListener('click', () => {
+      alert(
+        [
+          'Keyboard shortcuts:',
+          '',
+          '/ — focus search',
+          'i — switch to Issues view',
+          'c — switch to Calendar view',
+          '? — show this help'
+        ].join('\n')
+      );
+    });
+  }
+
+  window.addEventListener('keydown', e => {
+    if (e.target && ['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+
+    if (e.key === '/') {
+      if (E.searchInput) {
+        e.preventDefault();
+        E.searchInput.focus();
+      }
+    } else if (e.key.toLowerCase() === 'i') {
       setActiveView('issues');
-    } else if (e.key === '2') {
+    } else if (e.key.toLowerCase() === 'c') {
       setActiveView('calendar');
+    } else if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (E.shortcutsHelp) {
+        e.preventDefault();
+        E.shortcutsHelp.click();
+      }
     }
   });
 }
 
-/* ---------- Bootstrapping ---------- */
+/* ---------- Release planner wiring helper ---------- */
+
+function wireReleasePlanner() {
+  if (E.plannerRun) {
+    E.plannerRun.addEventListener('click', () => {
+      runReleasePlanner();
+    });
+  }
+  if (E.plannerAddEvent) {
+    E.plannerAddEvent.addEventListener('click', () => {
+      if (!plannerLastResult || !plannerLastResult.slots.length) {
+        runReleasePlanner();
+      }
+      if (!plannerLastResult || !plannerLastResult.slots.length) {
+        UI.toast('No suggested slots yet.');
+        return;
+      }
+      const best = plannerLastResult.slots[0];
+      const state = collectPlannerState();
+      const ids = collectPlannerTickets();
+      UI.Modals.openEvent({
+        title:
+          (state.description || 'Release') +
+          (state.env ? ` · ${state.env}` : ''),
+        type: 'Release',
+        start: best.start,
+        end: best.end,
+        allDay: false,
+        env: state.env || 'Prod',
+        status: 'Planned',
+        owner: '',
+        modules:
+          plannerLastResult.ticketContext.modules || state.modules || [],
+        impactType: 'No downtime expected',
+        issueId: ids.join(', ')
+      });
+    });
+  }
+  if (E.plannerAssignBtn) {
+    E.plannerAssignBtn.addEventListener('click', () => {
+      const ids = collectPlannerTickets();
+      if (!ids.length) {
+        UI.toast('Add ticket IDs in the Tickets field first.');
+        return;
+      }
+      navigator.clipboard
+        .writeText(ids.join(', '))
+        .then(() => UI.toast('Ticket IDs copied'))
+        .catch(() => UI.toast('Clipboard blocked'));
+    });
+  }
+}
+
+/* ---------- Tabs / views wiring ---------- */
+
+function wireTabs() {
+  if (E.issuesTab) {
+    E.issuesTab.addEventListener('click', () => setActiveView('issues'));
+  }
+  if (E.calendarTab) {
+    E.calendarTab.addEventListener('click', () => setActiveView('calendar'));
+  }
+  // If an old "insights" tab remains in DOM, route it to issues view
+  if (E.insightsTab) {
+    E.insightsTab.addEventListener('click', () => setActiveView('issues'));
+  }
+}
+
+/* ---------- Bootstrap ---------- */
 
 document.addEventListener('DOMContentLoaded', () => {
   cacheEls();
   Filters.load();
 
-  if (E.pageSize) {
-    E.pageSize.value = String(GridState.pageSize);
-  }
+  // initial theme + accent + online status
+  initTheme();
+  initAccentColor();
+  initOnlineStatus();
 
-  wireCore();
-  wireSorting();
-  wirePaging();
+  wireLayout();
   wireFilters();
-  wireTheme();
-  wireConnectivity();
-  wireModals();
+  wireTabs();
   wireCalendar();
-  wirePlanner();
-  wireKeyboardShortcuts();
+  wireIssueModal();
+  wireEventModal();
+  wireAiQuery();
+  wireReleasePlanner();
+  wireShortcuts();
 
-  const view = localStorage.getItem(LS_KEYS.view) || 'issues';
-  setActiveView(view === 'calendar' ? 'calendar' : 'issues');
+  const storedView = (() => {
+    try {
+      return localStorage.getItem(LS_KEYS.view) || 'issues';
+    } catch {
+      return 'issues';
+    }
+  })();
+  setActiveView(storedView);
 
+  // Kick off data load
   loadIssues(false);
   loadEvents(false);
 });
+
