@@ -2,1844 +2,608 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>InCheck 360 | Operations, Compliance & Safety Platform</title>
+  <title>InCheck 360 – Optimize Operations, Compliance & Safety</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta
     name="description"
-    content="InCheck 360 is an operations and compliance platform for F&B and retail brands. Standardize workflows, monitor safety, and gain real-time visibility across locations."
+    content="InCheck 360 is a powerful SaaS platform for F&B and retail operators, helping you standardize workflows, monitor safety, and drive operational excellence across locations."
   />
-  <style>
-    :root {
-      --bg: #050816;
-      --bg-alt: #0b1020;
-      --bg-soft: #090f1f;
-      --accent: #27c499;
-      --accent-soft: rgba(39, 196, 153, 0.12);
-      --accent-strong: #1ca47f;
-      --text-main: #f5f7fb;
-      --text-muted: #a7b0c9;
-      --text-soft: #7e88a5;
-      --border-subtle: rgba(255, 255, 255, 0.08);
-      --danger: #ff6b6b;
-      --radius-lg: 18px;
-      --radius-pill: 999px;
-      --shadow-soft: 0 18px 45px rgba(0, 0, 0, 0.4);
-      --max-width: 1120px;
-      --nav-height: 76px;
-      --transition-fast: 0.18s ease-out;
-    }
 
-    /* Global reset */
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
-    html {
-      scroll-behavior: smooth;
-    }
-
-    body {
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
-      background: radial-gradient(circle at top, #131a3f 0%, #050816 55%, #020310 100%);
-      color: var(--text-main);
-      line-height: 1.6;
-      -webkit-font-smoothing: antialiased;
-    }
-
-    img {
-      max-width: 100%;
-      display: block;
-    }
-
-    a {
-      color: inherit;
-      text-decoration: none;
-    }
-
-    button {
-      font-family: inherit;
-    }
-
-    .page-shell {
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
-
-    .inner {
-      width: 100%;
-      max-width: var(--max-width);
-      margin: 0 auto;
-      padding-inline: 1.25rem;
-    }
-
-    /* Header & Navigation */
-    .site-header {
-      position: sticky;
-      top: 0;
-      z-index: 100;
-      backdrop-filter: blur(16px);
-      background: linear-gradient(
-        to bottom,
-        rgba(5, 8, 22, 0.96),
-        rgba(5, 8, 22, 0.92),
-        rgba(5, 8, 22, 0.7)
-      );
-      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-    }
-
-    .nav {
-      height: var(--nav-height);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 1.5rem;
-    }
-
-    .nav-left {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-    }
-
-    .logo-mark {
-      width: 34px;
-      height: 34px;
-      border-radius: 12px;
-      background: radial-gradient(circle at 20% 0, #4be2b3 0, #27c499 35%, #15775a 100%);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 10px 25px rgba(39, 196, 153, 0.5);
-      font-size: 18px;
-      font-weight: 700;
-    }
-
-    .logo-text-main {
-      font-weight: 650;
-      letter-spacing: 0.02em;
-      font-size: 1.05rem;
-    }
-
-    .logo-text-sub {
-      font-size: 0.72rem;
-      color: var(--text-soft);
-      margin-top: -0.1rem;
-    }
-
-    .nav-center {
-      display: flex;
-      align-items: center;
-      gap: 1.4rem;
-      font-size: 0.9rem;
-      color: var(--text-soft);
-    }
-
-    .nav-link {
-      position: relative;
-      padding-block: 0.2rem;
-      cursor: pointer;
-    }
-
-    .nav-link span {
-      position: relative;
-      z-index: 1;
-    }
-
-    .nav-link::after {
-      content: "";
-      position: absolute;
-      inset-inline: 0;
-      height: 2px;
-      border-radius: 999px;
-      bottom: -0.3rem;
-      background: linear-gradient(90deg, #27c499, #5be4ff);
-      transform-origin: center;
-      transform: scaleX(0);
-      opacity: 0;
-      transition: transform var(--transition-fast), opacity var(--transition-fast);
-    }
-
-    .nav-link:hover {
-      color: var(--text-main);
-    }
-
-    .nav-link:hover::after {
-      transform: scaleX(1);
-      opacity: 1;
-    }
-
-    .nav-right {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-    }
-
-    .nav-cta-secondary {
-      font-size: 0.85rem;
-      padding: 0.5rem 0.85rem;
-      border-radius: var(--radius-pill);
-      border: 1px solid var(--border-subtle);
-      color: var(--text-soft);
-      background: rgba(11, 16, 40, 0.8);
-      cursor: pointer;
-      transition: background var(--transition-fast), border-color var(--transition-fast),
-        color var(--transition-fast), transform var(--transition-fast);
-    }
-
-    .nav-cta-secondary:hover {
-      border-color: rgba(255, 255, 255, 0.15);
-      color: var(--text-main);
-      background: rgba(20, 30, 72, 0.9);
-      transform: translateY(-1px);
-    }
-
-    .nav-cta-primary {
-      font-size: 0.9rem;
-      font-weight: 600;
-      padding: 0.6rem 1.2rem;
-      border-radius: var(--radius-pill);
-      border: none;
-      cursor: pointer;
-      background: linear-gradient(135deg, #27c499, #30d7ff);
-      color: #02040a;
-      box-shadow: 0 10px 30px rgba(39, 196, 153, 0.45);
-      display: inline-flex;
-      align-items: center;
-      gap: 0.3rem;
-      transition: transform var(--transition-fast), box-shadow var(--transition-fast),
-        filter var(--transition-fast);
-    }
-
-    .nav-cta-primary:hover {
-      transform: translateY(-1.5px);
-      box-shadow: 0 16px 40px rgba(39, 196, 153, 0.55);
-      filter: brightness(1.04);
-    }
-
-    .nav-cta-primary span {
-      font-size: 1rem;
-    }
-
-    .nav-toggle {
-      display: none;
-      width: 36px;
-      height: 36px;
-      border-radius: 12px;
-      border: 1px solid var(--border-subtle);
-      background: radial-gradient(circle at 10% 0, rgba(39, 196, 153, 0.45), transparent),
-        rgba(5, 8, 22, 0.9);
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-    }
-
-    .nav-toggle-bar {
-      width: 18px;
-      height: 2px;
-      border-radius: 999px;
-      background: var(--text-main);
-      position: relative;
-    }
-
-    .nav-toggle-bar::before,
-    .nav-toggle-bar::after {
-      content: "";
-      position: absolute;
-      left: 0;
-      width: 18px;
-      height: 2px;
-      border-radius: 999px;
-      background: var(--text-main);
-      transition: transform 0.18s ease-out, top 0.18s ease-out, bottom 0.18s ease-out,
-        opacity 0.18s ease-out;
-    }
-
-    .nav-toggle-bar::before {
-      top: -5px;
-    }
-
-    .nav-toggle-bar::after {
-      bottom: -5px;
-    }
-
-    .nav-toggle.is-open .nav-toggle-bar {
-      background: transparent;
-    }
-
-    .nav-toggle.is-open .nav-toggle-bar::before {
-      top: 0;
-      transform: rotate(45deg);
-    }
-
-    .nav-toggle.is-open .nav-toggle-bar::after {
-      bottom: 0;
-      transform: rotate(-45deg);
-    }
-
-    @media (max-width: 880px) {
-      .nav-center {
-        position: absolute;
-        inset-inline: 1.25rem;
-        top: var(--nav-height);
-        border-radius: 18px;
-        background: rgba(5, 8, 22, 0.98);
-        box-shadow: 0 18px 45px rgba(0, 0, 0, 0.55);
-        padding: 0.85rem 1rem 0.9rem;
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 0.4rem;
-        transform-origin: top;
-        transform: scaleY(0.8);
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity 0.18s ease-out, transform 0.18s ease-out;
-      }
-
-      .nav-center.is-open {
-        transform: scaleY(1);
-        opacity: 1;
-        pointer-events: auto;
-      }
-
-      .nav-right {
-        display: none;
-      }
-
-      .nav-toggle {
-        display: inline-flex;
-      }
-    }
-
-    /* Hero */
-    .hero {
-      padding-top: 2.6rem;
-      padding-bottom: 3.6rem;
-    }
-
-    .hero-grid {
-      display: grid;
-      grid-template-columns: minmax(0, 1.25fr) minmax(0, 1.1fr);
-      gap: 2.75rem;
-      align-items: center;
-    }
-
-    @media (max-width: 880px) {
-      .hero {
-        padding-top: 2.2rem;
-        padding-bottom: 2.6rem;
-      }
-
-      .hero-grid {
-        grid-template-columns: minmax(0, 1fr);
-      }
-    }
-
-    .hero-label-row {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 0.6rem;
-      margin-bottom: 1.1rem;
-    }
-
-    .pill {
-      font-size: 0.75rem;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      padding: 0.3rem 0.85rem;
-      border-radius: var(--radius-pill);
-      border: 1px solid rgba(39, 196, 153, 0.6);
-      background: radial-gradient(circle at 0 0, rgba(39, 196, 153, 0.35), transparent 55%),
-        rgba(12, 21, 48, 0.92);
-      color: #d9fff3;
-      display: inline-flex;
-      align-items: center;
-      gap: 0.4rem;
-    }
-
-    .pill-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 99px;
-      background: #27c499;
-    }
-
-    .pill-sub {
-      font-size: 0.76rem;
-      color: var(--text-soft);
-    }
-
-    .hero-title {
-      font-size: clamp(2.35rem, 4vw, 3rem);
-      line-height: 1.1;
-      letter-spacing: 0.01em;
-      margin-bottom: 0.8rem;
-    }
-
-    .hero-title span.highlight {
-      background: linear-gradient(135deg, #27c499, #30d7ff);
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
-    }
-
-    .hero-subtitle {
-      font-size: 0.98rem;
-      max-width: 32rem;
-      color: var(--text-muted);
-      margin-bottom: 1.4rem;
-    }
-
-    .hero-metrics-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 1.2rem;
-      margin-bottom: 1.7rem;
-    }
-
-    .hero-metric {
-      padding: 0.6rem 0.9rem;
-      border-radius: var(--radius-pill);
-      border: 1px solid rgba(255, 255, 255, 0.06);
-      background: rgba(7, 13, 33, 0.9);
-      font-size: 0.78rem;
-      color: var(--text-soft);
-      display: inline-flex;
-      align-items: center;
-      gap: 0.45rem;
-    }
-
-    .hero-metric strong {
-      color: #e9f3ff;
-    }
-
-    .hero-metric-tag {
-      padding: 0.1rem 0.45rem;
-      border-radius: var(--radius-pill);
-      font-size: 0.7rem;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      background: rgba(39, 196, 153, 0.15);
-      color: #b3f5dc;
-    }
-
-    .hero-cta-row {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 0.9rem;
-      margin-bottom: 1.3rem;
-    }
-
-    .hero-cta-primary {
-      padding: 0.85rem 1.4rem;
-      border-radius: 999px;
-      border: none;
-      cursor: pointer;
-      background: linear-gradient(135deg, #27c499, #30d7ff);
-      color: #020409;
-      font-size: 0.97rem;
-      font-weight: 600;
-      display: inline-flex;
-      align-items: center;
-      gap: 0.4rem;
-      box-shadow: 0 16px 40px rgba(39, 196, 153, 0.55);
-      transition: transform 0.16s ease-out, box-shadow 0.16s ease-out, filter 0.16s ease-out;
-    }
-
-    .hero-cta-primary:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 22px 55px rgba(39, 196, 153, 0.65);
-      filter: brightness(1.04);
-    }
-
-    .hero-cta-secondary {
-      border-radius: 999px;
-      padding: 0.78rem 1.2rem;
-      border: 1px solid var(--border-subtle);
-      background: rgba(9, 15, 37, 0.95);
-      color: var(--text-muted);
-      font-size: 0.9rem;
-      display: inline-flex;
-      align-items: center;
-      gap: 0.45rem;
-      cursor: pointer;
-      transition: border-color var(--transition-fast), background var(--transition-fast),
-        color var(--transition-fast), transform var(--transition-fast);
-    }
-
-    .hero-cta-secondary:hover {
-      border-color: rgba(255, 255, 255, 0.18);
-      background: rgba(19, 25, 54, 0.96);
-      color: var(--text-main);
-      transform: translateY(-1px);
-    }
-
-    .hero-footnote {
-      font-size: 0.8rem;
-      color: var(--text-soft);
-    }
-
-    .hero-footnote strong {
-      color: var(--accent);
-    }
-
-    .hero-visual {
-      position: relative;
-    }
-
-    .hero-card {
-      border-radius: 24px;
-      padding: 1.5rem 1.35rem;
-      background: radial-gradient(circle at 10% 0, rgba(91, 228, 255, 0.2), transparent 55%),
-        radial-gradient(circle at 100% 100%, rgba(39, 196, 153, 0.2), transparent 55%),
-        rgba(7, 11, 30, 0.98);
-      box-shadow: var(--shadow-soft);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      position: relative;
-      overflow: hidden;
-    }
-
-    .hero-card-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.4rem;
-      padding: 0.35rem 0.8rem;
-      border-radius: 999px;
-      background: rgba(4, 23, 52, 0.9);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      font-size: 0.72rem;
-      color: var(--text-soft);
-      margin-bottom: 0.85rem;
-    }
-
-    .hero-card-badge-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 99px;
-      background: #27c499;
-      box-shadow: 0 0 0 4px rgba(39, 196, 153, 0.35);
-    }
-
-    .hero-card-main {
-      display: grid;
-      grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.1fr);
-      gap: 1.2rem;
-      align-items: flex-start;
-    }
-
-    @media (max-width: 880px) {
-      .hero-card-main {
-        grid-template-columns: minmax(0, 1fr);
-      }
-
-      .hero-card {
-        margin-top: 0.5rem;
-      }
-    }
-
-    .hero-card-list-title {
-      font-size: 0.85rem;
-      text-transform: uppercase;
-      letter-spacing: 0.16em;
-      color: var(--text-soft);
-      margin-bottom: 0.5rem;
-    }
-
-    .hero-card-title {
-      font-size: 1.05rem;
-      font-weight: 600;
-      margin-bottom: 0.4rem;
-    }
-
-    .hero-card-text {
-      font-size: 0.83rem;
-      color: var(--text-soft);
-      margin-bottom: 0.7rem;
-    }
-
-    .hero-card-list {
-      list-style: none;
-      display: grid;
-      gap: 0.35rem;
-      margin-bottom: 0.1rem;
-    }
-
-    .hero-card-list li {
-      font-size: 0.8rem;
-      display: flex;
-      gap: 0.4rem;
-      color: var(--text-muted);
-    }
-
-    .hero-card-list li::before {
-      content: "●";
-      font-size: 0.55rem;
-      color: #27c499;
-      margin-top: 0.18rem;
-    }
-
-    .hero-card-metric {
-      padding: 0.7rem 0.9rem;
-      border-radius: 16px;
-      background: rgba(6, 17, 42, 0.95);
-      border: 1px solid rgba(255, 255, 255, 0.06);
-      font-size: 0.83rem;
-      color: var(--text-soft);
-      margin-bottom: 0.65rem;
-    }
-
-    .hero-card-metric strong {
-      font-size: 1rem;
-      color: #e5f3ff;
-    }
-
-    .hero-tag-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.35rem;
-      margin-top: 0.3rem;
-    }
-
-    .hero-tag {
-      font-size: 0.7rem;
-      padding: 0.12rem 0.55rem;
-      border-radius: 999px;
-      background: rgba(9, 24, 49, 0.9);
-      border: 1px solid rgba(255, 255, 255, 0.06);
-      color: var(--text-soft);
-    }
-
-    .hero-glow-orb {
-      position: absolute;
-      width: 200px;
-      height: 200px;
-      border-radius: 999px;
-      background: radial-gradient(circle, rgba(39, 196, 153, 0.18), transparent 60%);
-      right: -45px;
-      top: -60px;
-      z-index: -1;
-      filter: blur(1px);
-    }
-
-    /* Generic sections */
-    section {
-      padding-block: 2.4rem;
-    }
-
-    .section-header {
-      display: flex;
-      flex-direction: column;
-      gap: 0.35rem;
-      margin-bottom: 1.6rem;
-      max-width: 34rem;
-    }
-
-    .section-kicker {
-      font-size: 0.78rem;
-      text-transform: uppercase;
-      letter-spacing: 0.18em;
-      color: var(--text-soft);
-      display: inline-flex;
-      align-items: center;
-      gap: 0.4rem;
-    }
-
-    .section-kicker::before,
-    .section-kicker::after {
-      content: "";
-      width: 22px;
-      height: 1px;
-      border-radius: 999px;
-      background: linear-gradient(90deg, #27c499, rgba(39, 196, 153, 0));
-    }
-
-    .section-kicker::after {
-      background: linear-gradient(90deg, rgba(39, 196, 153, 0), #5be4ff);
-    }
-
-    .section-title {
-      font-size: 1.6rem;
-      font-weight: 600;
-    }
-
-    .section-subtitle {
-      font-size: 0.9rem;
-      color: var(--text-muted);
-    }
-
-    .section-alt {
-      background: radial-gradient(circle at 0 0, rgba(39, 196, 153, 0.2), transparent 55%),
-        radial-gradient(circle at 100% 100%, rgba(78, 117, 255, 0.18), transparent 55%),
-        var(--bg-alt);
-      border-top: 1px solid rgba(255, 255, 255, 0.04);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-    }
-
-    /* Services / Solutions */
-    .cards-grid {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 1.2rem;
-    }
-
-    @media (max-width: 960px) {
-      .cards-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-    }
-
-    @media (max-width: 640px) {
-      .cards-grid {
-        grid-template-columns: minmax(0, 1fr);
-      }
-    }
-
-    .card {
-      border-radius: var(--radius-lg);
-      padding: 1.25rem 1.15rem;
-      background: rgba(9, 15, 37, 0.96);
-      border: 1px solid var(--border-subtle);
-      box-shadow: 0 16px 35px rgba(0, 0, 0, 0.4);
-      position: relative;
-      overflow: hidden;
-    }
-
-    .card::before {
-      content: "";
-      position: absolute;
-      inset: -40%;
-      background: radial-gradient(
-        circle at 0 0,
-        rgba(39, 196, 153, 0.2),
-        transparent 55%
-      );
-      opacity: 0;
-      transition: opacity var(--transition-fast);
-      pointer-events: none;
-    }
-
-    .card:hover::before {
-      opacity: 1;
-    }
-
-    .card-icon {
-      width: 34px;
-      height: 34px;
-      border-radius: 14px;
-      background: rgba(39, 196, 153, 0.15);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 1.05rem;
-      margin-bottom: 0.6rem;
-    }
-
-    .card-title {
-      font-size: 1rem;
-      font-weight: 600;
-      margin-bottom: 0.35rem;
-    }
-
-    .card-text {
-      font-size: 0.86rem;
-      color: var(--text-muted);
-      margin-bottom: 0.7rem;
-    }
-
-    .card-meta {
-      font-size: 0.78rem;
-      color: var(--text-soft);
-    }
-
-    /* Roadmap / Future focus */
-    .priority-grid {
-      display: grid;
-      grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.1fr);
-      gap: 1.6rem;
-      align-items: start;
-    }
-
-    @media (max-width: 880px) {
-      .priority-grid {
-        grid-template-columns: minmax(0, 1fr);
-      }
-    }
-
-    .priority-panel {
-      border-radius: 20px;
-      padding: 1.35rem 1.2rem;
-      background: rgba(8, 13, 34, 0.98);
-      border: 1px solid var(--border-subtle);
-      box-shadow: var(--shadow-soft);
-    }
-
-    .priority-tag {
-      font-size: 0.76rem;
-      padding: 0.18rem 0.55rem;
-      border-radius: 999px;
-      background: rgba(39, 196, 153, 0.16);
-      color: #c2f7e6;
-      display: inline-flex;
-      align-items: center;
-      gap: 0.3rem;
-      margin-bottom: 0.5rem;
-    }
-
-    .priority-tag span.dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 999px;
-      background: #27c499;
-    }
-
-    .priority-title {
-      font-size: 1.05rem;
-      margin-bottom: 0.5rem;
-    }
-
-    .priority-text {
-      font-size: 0.86rem;
-      color: var(--text-muted);
-      margin-bottom: 0.75rem;
-    }
-
-    .priority-list {
-      list-style: none;
-      display: grid;
-      gap: 0.4rem;
-    }
-
-    .priority-list li {
-      font-size: 0.84rem;
-      color: var(--text-muted);
-      display: flex;
-      gap: 0.4rem;
-    }
-
-    .priority-list li::before {
-      content: "▹";
-      color: var(--accent);
-      margin-top: 0.08rem;
-      font-size: 0.85rem;
-    }
-
-    /* Customers / Testimonial */
-    .customers-section-inner {
-      display: grid;
-      grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
-      gap: 1.8rem;
-      align-items: center;
-    }
-
-    @media (max-width: 880px) {
-      .customers-section-inner {
-        grid-template-columns: minmax(0, 1fr);
-      }
-    }
-
-    .stat-pill {
-      font-size: 0.8rem;
-      padding: 0.4rem 0.85rem;
-      border-radius: 999px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      color: var(--text-soft);
-      background: rgba(9, 14, 36, 0.96);
-      display: inline-flex;
-      align-items: center;
-      gap: 0.4rem;
-      margin-bottom: 0.8rem;
-    }
-
-    .stat-pill strong {
-      color: var(--accent);
-    }
-
-    .stat-highlight {
-      font-size: 1.5rem;
-      font-weight: 650;
-      margin-bottom: 0.3rem;
-    }
-
-    .stat-caption {
-      font-size: 0.9rem;
-      color: var(--text-muted);
-      margin-bottom: 0.6rem;
-    }
-
-    .quote-card {
-      margin-top: 0.9rem;
-      padding: 0.9rem 0.95rem;
-      border-radius: 16px;
-      background: rgba(9, 14, 37, 0.96);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      font-size: 0.83rem;
-      color: var(--text-soft);
-    }
-
-    .quote-card::before {
-      content: "“";
-      font-size: 1.5rem;
-      color: rgba(255, 255, 255, 0.25);
-      margin-right: 0.3rem;
-    }
-
-    .quote-meta {
-      margin-top: 0.4rem;
-      font-size: 0.78rem;
-      color: var(--text-muted);
-    }
-
-    .device-mock {
-      border-radius: 22px;
-      padding: 0.95rem;
-      background: radial-gradient(circle at 0 0, rgba(91, 228, 255, 0.25), transparent 55%),
-        rgba(6, 11, 28, 0.98);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      box-shadow: var(--shadow-soft);
-    }
-
-    .device-top {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 0.65rem;
-      font-size: 0.72rem;
-      color: var(--text-soft);
-    }
-
-    .device-dot-row {
-      display: flex;
-      gap: 0.25rem;
-    }
-
-    .device-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.18);
-    }
-
-    .device-dot:nth-child(1) {
-      background: #ff6b6b;
-    }
-
-    .device-dot:nth-child(2) {
-      background: #ffd166;
-    }
-
-    .device-dot:nth-child(3) {
-      background: #27c499;
-    }
-
-    .device-body {
-      border-radius: 14px;
-      overflow: hidden;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      background: rgba(4, 9, 24, 0.98);
-    }
-
-    .device-row {
-      display: grid;
-      grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
-      gap: 0.85rem;
-      padding: 0.85rem 0.8rem;
-    }
-
-    @media (max-width: 640px) {
-      .device-row {
-        grid-template-columns: minmax(0, 1fr);
-      }
-    }
-
-    .device-col-title {
-      font-size: 0.8rem;
-      text-transform: uppercase;
-      letter-spacing: 0.13em;
-      color: var(--text-soft);
-      margin-bottom: 0.3rem;
-    }
-
-    .device-list {
-      list-style: none;
-      display: grid;
-      gap: 0.25rem;
-      font-size: 0.78rem;
-      color: var(--text-soft);
-    }
-
-    .device-list li {
-      display: flex;
-      justify-content: space-between;
-      gap: 0.5rem;
-    }
-
-    .device-pill {
-      font-size: 0.72rem;
-      padding: 0.22rem 0.55rem;
-      border-radius: 999px;
-      background: rgba(6, 15, 40, 0.98);
-      border: 1px solid rgba(255, 255, 255, 0.06);
-    }
-
-    .device-stat {
-      font-size: 0.85rem;
-      color: #e4f2ff;
-      font-weight: 600;
-    }
-
-    .device-footer {
-      border-top: 1px solid rgba(255, 255, 255, 0.06);
-      padding: 0.6rem 0.8rem;
-      display: flex;
-      justify-content: space-between;
-      gap: 0.6rem;
-      align-items: center;
-      font-size: 0.74rem;
-      color: var(--text-soft);
-    }
-
-    .device-footer span strong {
-      color: var(--accent);
-    }
-
-    /* Features */
-    .features-grid {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 1rem;
-    }
-
-    @media (max-width: 960px) {
-      .features-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-    }
-
-    @media (max-width: 640px) {
-      .features-grid {
-        grid-template-columns: minmax(0, 1fr);
-      }
-    }
-
-    .feature-card {
-      border-radius: 18px;
-      padding: 1rem 0.95rem;
-      background: rgba(9, 15, 37, 0.98);
-      border: 1px solid var(--border-subtle);
-      font-size: 0.86rem;
-    }
-
-    .feature-label {
-      font-size: 0.78rem;
-      padding: 0.2rem 0.55rem;
-      border-radius: 999px;
-      background: rgba(39, 196, 153, 0.16);
-      color: #c2f7e6;
-      display: inline-flex;
-      align-items: center;
-      gap: 0.3rem;
-      margin-bottom: 0.45rem;
-    }
-
-    .feature-title {
-      font-size: 0.96rem;
-      font-weight: 600;
-      margin-bottom: 0.3rem;
-    }
-
-    .feature-text {
-      font-size: 0.84rem;
-      color: var(--text-muted);
-    }
-
-    /* Modules */
-    .modules-grid {
-      display: grid;
-      grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.2fr);
-      gap: 1.3rem;
-      margin-bottom: 1.4rem;
-    }
-
-    @media (max-width: 880px) {
-      .modules-grid {
-        grid-template-columns: minmax(0, 1fr);
-      }
-    }
-
-    .module-card {
-      border-radius: 18px;
-      padding: 1.1rem 1rem;
-      background: rgba(8, 14, 34, 0.98);
-      border: 1px solid var(--border-subtle);
-      font-size: 0.86rem;
-    }
-
-    .module-badge {
-      font-size: 0.74rem;
-      padding: 0.2rem 0.55rem;
-      border-radius: 999px;
-      background: rgba(9, 24, 49, 0.96);
-      color: var(--text-soft);
-      display: inline-flex;
-      align-items: center;
-      gap: 0.3rem;
-      margin-bottom: 0.4rem;
-    }
-
-    .module-title {
-      font-size: 1rem;
-      font-weight: 600;
-      margin-bottom: 0.3rem;
-    }
-
-    .module-text {
-      font-size: 0.86rem;
-      color: var(--text-muted);
-      margin-bottom: 0.6rem;
-    }
-
-    .module-meta-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.4rem;
-      font-size: 0.78rem;
-      color: var(--text-soft);
-    }
-
-    .module-chip {
-      padding: 0.22rem 0.55rem;
-      border-radius: 999px;
-      border: 1px solid rgba(255, 255, 255, 0.06);
-      background: rgba(6, 15, 40, 0.98);
-    }
-
-    .module-tag {
-      font-size: 0.78rem;
-      padding: 0.22rem 0.6rem;
-      border-radius: 999px;
-      background: rgba(92, 106, 150, 0.4);
-      color: #dde5ff;
-      display: inline-flex;
-      align-items: center;
-      gap: 0.3rem;
-    }
-
-    .module-tag-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 999px;
-      background: var(--accent);
-    }
-
-    /* FAQ */
-    .faq-grid {
-      display: grid;
-      grid-template-columns: minmax(0, 1.25fr) minmax(0, 1.1fr);
-      gap: 1.6rem;
-      align-items: flex-start;
-    }
-
-    @media (max-width: 880px) {
-      .faq-grid {
-        grid-template-columns: minmax(0, 1fr);
-      }
-    }
-
-    .faq-intro {
-      font-size: 0.88rem;
-      color: var(--text-muted);
-      margin-top: 0.2rem;
-      max-width: 22rem;
-    }
-
-    .faq-list {
-      border-radius: 18px;
-      background: rgba(8, 14, 34, 0.98);
-      border: 1px solid var(--border-subtle);
-      box-shadow: var(--shadow-soft);
-      overflow: hidden;
-    }
-
-    .faq-item + .faq-item {
-      border-top: 1px solid rgba(255, 255, 255, 0.06);
-    }
-
-    .faq-button {
-      width: 100%;
-      padding: 0.8rem 1rem;
-      display: flex;
-      justify-content: space-between;
-      gap: 0.8rem;
-      align-items: center;
-      text-align: left;
-      background: none;
-      border: none;
-      color: var(--text-main);
-      cursor: pointer;
-      font-size: 0.9rem;
-    }
-
-    .faq-button span {
-      flex: 1;
-    }
-
-    .faq-toggle-icon {
-      width: 24px;
-      height: 24px;
-      border-radius: 999px;
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 1rem;
-      color: var(--text-soft);
-    }
-
-    .faq-answer {
-      padding: 0 1rem 0.85rem;
-      font-size: 0.85rem;
-      color: var(--text-muted);
-      display: none;
-    }
-
-    .faq-item.is-open .faq-answer {
-      display: block;
-    }
-
-    .faq-item.is-open .faq-toggle-icon {
-      background: rgba(39, 196, 153, 0.16);
-      border-color: rgba(39, 196, 153, 0.5);
-      color: #c8f9e7;
-    }
-
-    /* Resources / Blog */
-    .resources-grid {
-      display: grid;
-      grid-template-columns: minmax(0, 1.25fr) minmax(0, 1.1fr);
-      gap: 1.6rem;
-      align-items: stretch;
-    }
-
-    @media (max-width: 880px) {
-      .resources-grid {
-        grid-template-columns: minmax(0, 1fr);
-      }
-    }
-
-    .resource-card {
-      border-radius: 18px;
-      padding: 1.1rem 1rem;
-      background: rgba(9, 15, 37, 0.98);
-      border: 1px solid var(--border-subtle);
-      font-size: 0.86rem;
-      display: flex;
-      flex-direction: column;
-      gap: 0.55rem;
-    }
-
-    .resource-meta {
-      font-size: 0.78rem;
-      color: var(--text-soft);
-    }
-
-    .resource-title {
-      font-size: 0.98rem;
-      font-weight: 600;
-    }
-
-    .resource-text {
-      font-size: 0.85rem;
-      color: var(--text-muted);
-      flex: 1;
-    }
-
-    .resource-link {
-      margin-top: 0.4rem;
-      font-size: 0.86rem;
-      display: inline-flex;
-      align-items: center;
-      gap: 0.3rem;
-      color: var(--accent);
-    }
-
-    .resource-link:hover {
-      text-decoration: underline;
-    }
-
-    /* CTA strip */
-    .cta-strip {
-      margin-top: 2rem;
-      padding: 1.4rem 1.2rem;
-      border-radius: 18px;
-      background: linear-gradient(135deg, rgba(39, 196, 153, 0.2), rgba(91, 228, 255, 0.18));
-      border: 1px solid rgba(255, 255, 255, 0.16);
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 0.85rem;
-      justify-content: space-between;
-    }
-
-    .cta-strip-text {
-      font-size: 0.95rem;
-    }
-
-    .cta-strip-text strong {
-      font-weight: 600;
-    }
-
-    .cta-strip-actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.6rem;
-    }
-
-    .cta-strip-btn-main {
-      padding: 0.6rem 1.1rem;
-      border-radius: 999px;
-      border: none;
-      cursor: pointer;
-      background: #020409;
-      color: #f6f8ff;
-      font-size: 0.9rem;
-      font-weight: 500;
-      display: inline-flex;
-      align-items: center;
-      gap: 0.35rem;
-    }
-
-    .cta-strip-btn-outline {
-      padding: 0.55rem 1rem;
-      border-radius: 999px;
-      border: 1px solid rgba(2, 4, 9, 0.35);
-      background: rgba(255, 255, 255, 0.12);
-      color: #020409;
-      font-size: 0.86rem;
-      cursor: pointer;
-    }
-
-    /* Contact */
-    .contact-section {
-      background: radial-gradient(circle at 0 0, rgba(39, 196, 153, 0.2), transparent 55%),
-        radial-gradient(circle at 100% 100%, rgba(91, 228, 255, 0.15), transparent 55%),
-        var(--bg-soft);
-      border-top: 1px solid rgba(255, 255, 255, 0.06);
-    }
-
-    .contact-grid {
-      display: grid;
-      grid-template-columns: minmax(0, 1.15fr) minmax(0, 1.1fr);
-      gap: 1.8rem;
-      align-items: flex-start;
-    }
-
-    @media (max-width: 880px) {
-      .contact-grid {
-        grid-template-columns: minmax(0, 1fr);
-      }
-    }
-
-    .contact-card {
-      border-radius: 20px;
-      padding: 1.3rem 1.2rem;
-      background: rgba(9, 14, 36, 0.98);
-      border: 1px solid var(--border-subtle);
-      box-shadow: var(--shadow-soft);
-    }
-
-    .contact-form-grid {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      gap: 0.8rem;
-      margin-top: 0.8rem;
-    }
-
-    @media (max-width: 640px) {
-      .contact-form-grid {
-        grid-template-columns: minmax(0, 1fr);
-      }
-    }
-
-    .field {
-      display: flex;
-      flex-direction: column;
-      gap: 0.18rem;
-      font-size: 0.82rem;
-    }
-
-    .field label {
-      color: var(--text-soft);
-    }
-
-    .field input,
-    .field select,
-    .field textarea {
-      border-radius: 11px;
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      background: rgba(5, 9, 24, 0.96);
-      padding: 0.55rem 0.6rem;
-      font-size: 0.84rem;
-      color: var(--text-main);
-      outline: none;
-      transition: border-color 0.16s ease-out, box-shadow 0.16s ease-out,
-        background 0.16s ease-out;
-      resize: vertical;
-      min-height: 40px;
-    }
-
-    .field input::placeholder,
-    .field textarea::placeholder {
-      color: rgba(167, 176, 201, 0.65);
-    }
-
-    .field input:focus,
-    .field select:focus,
-    .field textarea:focus {
-      border-color: rgba(39, 196, 153, 0.75);
-      box-shadow: 0 0 0 1px rgba(39, 196, 153, 0.4);
-      background: rgba(5, 10, 26, 1);
-    }
-
-    .field-helper {
-      font-size: 0.75rem;
-      color: var(--text-soft);
-    }
-
-    .contact-submit-row {
-      margin-top: 0.8rem;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.6rem;
-      align-items: center;
-      font-size: 0.8rem;
-      color: var(--text-soft);
-    }
-
-    .contact-submit {
-      padding: 0.7rem 1.3rem;
-      border-radius: 999px;
-      border: none;
-      cursor: pointer;
-      background: linear-gradient(135deg, #27c499, #30d7ff);
-      color: #020409;
-      font-size: 0.9rem;
-      font-weight: 600;
-      display: inline-flex;
-      align-items: center;
-      gap: 0.4rem;
-      box-shadow: 0 14px 35px rgba(39, 196, 153, 0.55);
-    }
-
-    .contact-badge {
-      font-size: 0.75rem;
-      padding: 0.22rem 0.55rem;
-      border-radius: 999px;
-      background: rgba(9, 24, 49, 0.96);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      color: var(--text-soft);
-      display: inline-flex;
-      align-items: center;
-      gap: 0.3rem;
-    }
-
-    .contact-info-card {
-      border-radius: 18px;
-      padding: 1.1rem 1rem;
-      background: rgba(7, 13, 31, 0.98);
-      border: 1px solid var(--border-subtle);
-      font-size: 0.84rem;
-    }
-
-    .contact-info-section + .contact-info-section {
-      margin-top: 0.8rem;
-    }
-
-    .contact-info-label {
-      font-size: 0.8rem;
-      text-transform: uppercase;
-      letter-spacing: 0.13em;
-      color: var(--text-soft);
-      margin-bottom: 0.25rem;
-    }
-
-    .contact-info-line {
-      display: flex;
-      flex-direction: column;
-      gap: 0.1rem;
-      margin-bottom: 0.35rem;
-    }
-
-    .contact-info-line strong {
-      font-weight: 600;
-    }
-
-    .contact-info-link {
-      color: var(--accent);
-      word-break: break-all;
-    }
-
-    /* Footer */
-    .site-footer {
-      padding: 1.4rem 0 1.8rem;
-      border-top: 1px solid rgba(255, 255, 255, 0.06);
-      background: #030512;
-      margin-top: auto;
-    }
-
-    .footer-inner {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 1rem;
-      align-items: center;
-      justify-content: space-between;
-      font-size: 0.78rem;
-      color: var(--text-soft);
-    }
-
-    .footer-links {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.6rem;
-    }
-
-    .footer-links a {
-      color: var(--text-soft);
-    }
-
-    .footer-links a:hover {
-      color: var(--accent);
-    }
-  </style>
+  <!-- Open Graph / Social -->
+  <meta property="og:title" content="InCheck 360 – Operations, Compliance & Safety Platform" />
+  <meta
+    property="og:description"
+    content="Digital toolkits for F&B and retail brands to standardize daily operations, simplify compliance, and keep every location on track."
+  />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://incheck360.com/" />
+  <!-- Replace with your real image -->
+  <meta property="og:image" content="assets/og-image.jpg" />
+
+  <!-- Favicon (update paths as needed) -->
+  <link rel="icon" href="assets/favicon.ico" />
+
+  <!-- Font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+    rel="stylesheet"
+  />
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-<div class="page-shell">
-  <!-- Header / Nav -->
-  <header class="site-header">
-    <div class="inner">
-      <div class="nav">
-        <div class="nav-left">
-          <div class="logo-mark">iC</div>
-          <div>
-            <div class="logo-text-main">InCheck 360</div>
-            <div class="logo-text-sub">Store-level execution platform</div>
-          </div>
-        </div>
+  <!-- ================= HEADER / NAV ================= -->
+  <header class="site-header" id="top">
+    <div class="container header-inner">
+      <a href="#top" class="logo">
+        <!-- You can replace with an <img> logo -->
+        <span class="logo-mark">IC</span>
+        <span class="logo-text">InCheck 360</span>
+      </a>
 
-        <nav class="nav-center" id="primary-nav">
-          <button class="nav-link" data-nav-target="#solutions"><span>Solutions</span></button>
-          <button class="nav-link" data-nav-target="#features"><span>Features</span></button>
-          <button class="nav-link" data-nav-target="#modules"><span>Modules</span></button>
-          <button class="nav-link" data-nav-target="#customers"><span>Customers</span></button>
-          <button class="nav-link" data-nav-target="#resources"><span>Resources</span></button>
-          <button class="nav-link" data-nav-target="#faqs"><span>FAQs</span></button>
-          <button class="nav-link" data-nav-target="#contact"><span>Contact</span></button>
-        </nav>
+      <button
+        class="nav-toggle"
+        aria-label="Toggle navigation"
+        aria-expanded="false"
+        aria-controls="primary-navigation"
+      >
+        <span class="nav-toggle-line"></span>
+        <span class="nav-toggle-line"></span>
+      </button>
 
-        <div class="nav-right">
-          <a href="https://app.incheck360.com" class="nav-cta-secondary">Login</a>
-          <button class="nav-cta-primary" data-nav-target="#contact">
-            <span>Book a live demo</span> →
-          </button>
-        </div>
-
-        <button class="nav-toggle" id="nav-toggle" aria-label="Toggle navigation">
-          <div class="nav-toggle-bar"></div>
-        </button>
-      </div>
+      <nav class="nav" id="primary-navigation">
+        <ul class="nav-list">
+          <li><a href="#services">Services</a></li>
+          <li><a href="#roadmap">Compliance</a></li>
+          <li><a href="#features">Features</a></li>
+          <li><a href="#modules">Modules</a></li>
+          <li><a href="#faq">FAQs</a></li>
+          <li><a href="#blog">Blog</a></li>
+          <li><a href="#contact">Contact</a></li>
+        </ul>
+        <a href="#contact" class="btn btn-primary btn-nav">Book a Demo</a>
+      </nav>
     </div>
   </header>
 
+  <!-- ================= HERO ================= -->
   <main>
-    <!-- Hero -->
-    <section class="hero">
-      <div class="inner">
-        <div class="hero-grid">
-          <div>
-            <div class="hero-label-row">
-              <span class="pill">
-                <span class="pill-dot"></span>
-                Built for F&amp;B &amp; retail ops
-              </span>
-              <span class="pill-sub">Checklists · SOPs · Compliance · Visibility</span>
-            </div>
+    <section class="hero" id="hero">
+      <div class="container hero-inner">
+        <div class="hero-content">
+          <p class="eyebrow">Operations • Compliance • Safety</p>
+          <h1>
+            Optimize Operations.<br />
+            Simplify Compliance.<br />
+            Elevate Safety.
+          </h1>
+          <p class="hero-subtitle">
+            A unified operations platform built for F&amp;B and retail brands. Standardize workflows,
+            monitor safety in real time, and keep every location on the same playbook.
+          </p>
 
-            <h1 class="hero-title">
-              Optimize operations.<br />
-              Simplify compliance.<br />
-              <span class="highlight">Elevate safety.</span>
-            </h1>
-
-            <p class="hero-subtitle">
-              InCheck 360 gives every store the same digital playbook for daily tasks, food safety,
-              and loss prevention—while leadership gets real-time visibility across every location.
-            </p>
-
-            <div class="hero-metrics-row">
-              <div class="hero-metric">
-                <span class="hero-metric-tag">Results</span>
-                <span><strong>72% fewer checklist issues</strong> reported in the first month.</span>
-              </div>
-              <div class="hero-metric">
-                <span class="hero-metric-tag">Scale</span>
-                <span>Designed for growing brands—from 5 to 500+ locations.</span>
-              </div>
-            </div>
-
-            <div class="hero-cta-row">
-              <button class="hero-cta-primary" data-nav-target="#contact">
-                <span>Book a live demo</span> →
-              </button>
-              <button class="hero-cta-secondary" data-nav-target="#solutions">
-                Preview workflows
-              </button>
-            </div>
-
-            <p class="hero-footnote">
-              <strong>Operations, compliance, and safety teams</strong> use InCheck 360 to replace
-              paper checklists, centralize SOPs, and close issues before they become incidents.
-            </p>
+          <div class="hero-actions">
+            <a href="#contact" class="btn btn-primary">Book a Demo</a>
+            <a href="#features" class="btn btn-outline">Explore Features</a>
           </div>
 
-          <div class="hero-visual">
-            <div class="hero-card">
-              <div class="hero-card-badge">
-                <span class="hero-card-badge-dot"></span>
-                Live compliance snapshot · Multi-location brand
+          <div class="hero-metrics">
+            <div class="metric">
+              <span class="metric-value">72%</span>
+              <span class="metric-label">fewer checklist violations*</span>
+            </div>
+            <div class="metric">
+              <span class="metric-value">30</span>
+              <span class="metric-label">days to impact</span>
+            </div>
+            <div class="metric">
+              <span class="metric-value">5–500</span>
+              <span class="metric-label">locations, one platform</span>
+            </div>
+          </div>
+          <p class="metric-footnote">
+            *Based on improvements seen after deploying standardized digital checklists and real-time monitoring.
+          </p>
+        </div>
+
+        <div class="hero-media">
+          <!-- Replace with real dashboard screenshot -->
+          <div class="hero-card">
+            <div class="hero-card-header">
+              <span class="hero-card-title">Today’s Operations Pulse</span>
+              <span class="hero-card-pill">Live</span>
+            </div>
+            <div class="hero-card-body">
+              <div class="hero-stat-row">
+                <span>Completed checklists</span>
+                <span>134 / 145</span>
               </div>
-              <div class="hero-card-main">
-                <div>
-                  <div class="hero-card-list-title">Today’s execution</div>
-                  <div class="hero-card-title">Shift-ready stores at a glance</div>
-                  <p class="hero-card-text">
-                    Track completion of opening, service, and closing routines in real time—across
-                    every site and brand.
-                  </p>
-                  <ul class="hero-card-list">
-                    <li>98% of critical tasks completed on time</li>
-                    <li>3 stores flagged for food-safety follow-up</li>
-                    <li>1 escalation awaiting regional approval</li>
-                  </ul>
-                  <div class="hero-tag-row">
-                    <span class="hero-tag">Checklists</span>
-                    <span class="hero-tag">Escalations</span>
-                    <span class="hero-tag">Store-level execution</span>
-                  </div>
-                </div>
-                <div>
-                  <div class="hero-card-metric">
-                    <div><strong>+34%</strong> increase in task completion quality</div>
-                    <div class="hero-tag-row" style="margin-top:0.4rem;">
-                      <span class="hero-tag">Loss prevention</span>
-                      <span class="hero-tag">Food safety</span>
-                    </div>
-                  </div>
-                  <div class="hero-card-list-title">Compliance focus</div>
-                  <ul class="hero-card-list">
-                    <li>Automated alerts for missed temperature checks</li>
-                    <li>Dispute handling centralized per location</li>
-                    <li>Audit trails ready for inspectors</li>
-                  </ul>
-                </div>
+              <div class="hero-progress">
+                <div class="hero-progress-bar" style="width: 92%"></div>
               </div>
-              <div class="hero-glow-orb"></div>
+
+              <div class="hero-stat-row">
+                <span>Critical violations</span>
+                <span class="hero-stat-badge hero-stat-badge--critical">3</span>
+              </div>
+
+              <ul class="hero-list">
+                <li>
+                  <span class="dot dot--green"></span>
+                  Dubai Mall – All opening checks completed
+                </li>
+                <li>
+                  <span class="dot dot--orange"></span>
+                  Enschede – Temperature log missing for 10:00 shift
+                </li>
+                <li>
+                  <span class="dot dot--red"></span>
+                  Al Barsha – Cold storage above threshold, escalation triggered
+                </li>
+              </ul>
+            </div>
+
+            <div class="hero-card-footer">
+              <span class="hero-card-footer-text">Give your teams clarity, every shift.</span>
             </div>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- Solutions / Services -->
-    <section id="solutions" class="section-alt">
-      <div class="inner">
+    <!-- ================= SERVICES ================= -->
+    <section class="section" id="services">
+      <div class="container">
         <header class="section-header">
-          <div class="section-kicker">Our solutions</div>
-          <h2 class="section-title">Standardized operations across every location</h2>
+          <p class="eyebrow">Our Services</p>
+          <h2>Examining Essential Services</h2>
           <p class="section-subtitle">
-            InCheck 360 replaces scattered spreadsheets and paper binders with one central
-            platform. Frontline teams know exactly what to do and when; leaders see how every
-            store is performing.
+            InCheck 360 centralizes operational workflows so multi-unit F&amp;B and retail brands can
+            standardize performance, streamline daily tasks, and gain real-time visibility across every
+            store.
           </p>
         </header>
 
-        <div class="cards-grid">
-          <article class="card">
-            <div class="card-icon">📋</div>
-            <h3 class="card-title">Operations task management</h3>
-            <p class="card-text">
-              Build, assign, and track recurring tasks like opening/closing routines, temperature
-              logs, and cleaning schedules—by shift, role, or location.
-            </p>
-            <p class="card-meta">
-              Ensure nothing slips through the cracks and every shift hands over cleanly.
+        <div class="card-grid card-grid--3">
+          <article class="card service-card">
+            <h3>Operations Task Management</h3>
+            <p>
+              Turn opening, closing, and food safety routines into guided digital checklists with clear
+              ownership, timestamps, and follow-ups for every shift.
             </p>
           </article>
 
-          <article class="card">
-            <div class="card-icon">📚</div>
-            <h3 class="card-title">Deployment &amp; reference materials</h3>
-            <p class="card-text">
-              Publish SOPs, brand standards, and updated playbooks centrally so teams always see
-              the most current guidance—without hunting through email or messaging apps.
-            </p>
-            <p class="card-meta">
-              Target content by role, store type, or region for maximum relevance.
+          <article class="card service-card">
+            <h3>Deployment &amp; Reference Materials</h3>
+            <p>
+              Distribute SOPs, brand standards, and playbooks by role, shift, or region. Teams always see
+              the latest version—no more outdated PDFs or binders.
             </p>
           </article>
 
-          <article class="card">
-            <div class="card-icon">⚙️</div>
-            <h3 class="card-title">Workflow automation</h3>
-            <p class="card-text">
-              Trigger reminders, escalations, and approvals based on checklist results, missed
-              tasks, or incident reports—automatically.
-            </p>
-            <p class="card-meta">
-              Replace manual chasing with rules that run reliably every day.
+          <article class="card service-card">
+            <h3>Workflow Automation</h3>
+            <p>
+              Trigger reminders, escalations, and corrective actions automatically based on task status,
+              overdue items, or incomplete checklists.
             </p>
           </article>
 
-          <article class="card">
-            <div class="card-icon">📊</div>
-            <h3 class="card-title">Operational visibility</h3>
-            <p class="card-text">
-              Real-time dashboards show task completion, compliance trends, and location-level
-              risk—so you can intervene early, not after a failed inspection.
-            </p>
-            <p class="card-meta">
-              Filter by region, brand, or timeframe to see performance at a glance.
+          <article class="card service-card">
+            <h3>Operational Visibility</h3>
+            <p>
+              Dashboards surface completion rates, compliance scores, and repeat issues so supervisors know
+              exactly where to focus.
             </p>
           </article>
 
-          <article class="card">
-            <div class="card-icon">🚀</div>
-            <h3 class="card-title">Project &amp; rollout tracking</h3>
-            <p class="card-text">
-              Coordinate new menu launches, equipment installations, or layout changes with
-              structured rollouts and status tracking at each site.
-            </p>
-            <p class="card-meta">
-              Everyone sees where a project stands—from HQ to store managers.
+          <article class="card service-card">
+            <h3>Project &amp; Rollout Tracking</h3>
+            <p>
+              Coordinate LTOs, equipment installations, and new initiatives with rollout timelines and
+              store-level tracking.
             </p>
           </article>
 
-          <article class="card">
-            <div class="card-icon">📨</div>
-            <h3 class="card-title">Escalations &amp; communications</h3>
-            <p class="card-text">
-              Route issues to the right people, automatically notify managers, and log responses
-              so follow-ups are tracked—not lost in inboxes.
-            </p>
-            <p class="card-meta">
-              Keep leadership informed without adding more admin work.
+          <article class="card service-card">
+            <h3>Escalations &amp; Communications</h3>
+            <p>
+              Route incidents and critical issues to the right manager instantly, with full context and
+              audit trails.
             </p>
           </article>
         </div>
       </div>
     </section>
 
-    <!-- Future focus / compliance -->
-    <section>
-      <div class="inner">
-        <div class="priority-grid">
-          <div class="priority-panel">
-            <span class="priority-tag">
-              <span class="dot"></span>
-              For compliance &amp; risk teams
-            </span>
-            <h3 class="priority-title">Continuous compliance monitoring</h3>
-            <p class="priority-text">
-              Connect store-level activity to your compliance program. See where food-safety
-              checks, cash-handling policies, and loss-prevention steps are being followed—and
-              where they are not.
-            </p>
-            <ul class="priority-list">
-              <li>Surface non-compliant behavior and repeat issues by store or region.</li>
-              <li>
-                Monitor inventory shrink, cash discrepancies, and safety-critical checklists in
-                one place.
-              </li>
-              <li>Detect patterns early so you can act before they become incidents.</li>
-            </ul>
-          </div>
-
-          <div class="priority-panel">
-            <span class="priority-tag">
-              <span class="dot"></span>
-              Audit-ready reporting
-            </span>
-            <h3 class="priority-title">Audit trails &amp; documented proof</h3>
-            <p class="priority-text">
-              Generate organized, exportable records of critical checks and incident handling.
-              When regulators or internal auditors ask for proof, it’s already there.
-            </p>
-            <ul class="priority-list">
-              <li>On-demand reports by location, date range, checklist, or incident type.</li>
-              <li>Attach photos, notes, and corrective actions to individual tasks.</li>
-              <li>Demonstrate due diligence with clean, consistent evidence.</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Customers / Stats -->
-    <section id="customers">
-      <div class="inner">
-        <header class="section-header">
-          <div class="section-kicker">Customer impact</div>
-          <h2 class="section-title">Brands rely on InCheck 360 for store-level execution</h2>
+    <!-- ================= ROADMAP / COMPLIANCE ================= -->
+    <section class="section section-alt" id="roadmap">
+      <div class="container roadmap-grid">
+        <div>
+          <p class="eyebrow">Appreciation Feature</p>
+          <h2>Our Priority Options for the Future</h2>
           <p class="section-subtitle">
-            InCheck 360 helps operations and compliance teams align daily routines with brand
-            standards, while giving leaders the visibility they need to coach, support, and scale.
+            We’re focused on helping operations, safety, and loss prevention teams simplify compliance and
+            stay ahead of risk while maintaining visibility across every location.
+          </p>
+          <ul class="icon-list">
+            <li>
+              <h3>Compliance Monitoring</h3>
+              <p>
+                Monitor adherence to safety and loss-prevention standards in real time. Detect shrinkage,
+                cash discrepancies, and procedural violations early.
+              </p>
+            </li>
+            <li>
+              <h3>Audit-Ready Reporting</h3>
+              <p>
+                Keep a single source of truth for checks, incidents, and resolutions. Generate organized
+                audit trails by location, period, or issue type.
+              </p>
+            </li>
+          </ul>
+          <a href="#contact" class="btn btn-primary">Talk to our team</a>
+        </div>
+
+        <div class="roadmap-highlight">
+          <h3>Built for Compliance Teams</h3>
+          <ul>
+            <li>Role-based access and approval flows</li>
+            <li>Evidence capture (photos, notes, attachments)</li>
+            <li>Standardized investigation and follow-up steps</li>
+            <li>Dashboards for compliance and loss prevention leaders</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= SOCIAL PROOF ================= -->
+    <section class="section" id="customers">
+      <div class="container customers-grid">
+        <div>
+          <p class="eyebrow">Customer Results</p>
+          <h2>Store-level execution your teams can rely on</h2>
+          <p class="section-subtitle">
+            Brands using InCheck 360 give every store a clear, consistent checklist so teams know exactly
+            what to do, when to do it, and how to prove it’s done.
+          </p>
+
+          <div class="quote-card card">
+            <p class="quote">
+              “Within the first month, we dramatically reduced critical checklist gaps and finally had a
+              clear view of what was happening in each store.”
+            </p>
+            <p class="quote-author">Operations Director, Multi-unit F&amp;B Brand</p>
+          </div>
+        </div>
+
+        <div class="customers-stats">
+          <div class="stat-block">
+            <span class="stat-label">Checklist violations reduced by</span>
+            <span class="stat-value">up to 72%</span>
+          </div>
+          <div class="stat-block">
+            <span class="stat-label">Locations onboarded in under</span>
+            <span class="stat-value">30 days</span>
+          </div>
+          <div class="stat-block">
+            <span class="stat-label">Time saved per manager each week</span>
+            <span class="stat-value">4–6 hrs</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= FEATURES ================= -->
+    <section class="section section-alt" id="features">
+      <div class="container">
+        <header class="section-header">
+          <p class="eyebrow">Powerful Platform</p>
+          <h2>Features that drive operational excellence</h2>
+          <p class="section-subtitle">
+            From task execution to real-time reporting, InCheck 360 keeps frontline teams coordinated and
+            leadership fully informed.
           </p>
         </header>
 
-        <div class="customers-section-inner">
-          <div>
-            <div class="stat-pill">
-              <strong>Performance</strong>
-              · Operations, safety &amp; loss prevention in one platform
-            </div>
-            <div class="stat-highlight">“Every store knows exactly what to do and when.”</div>
-            <p class="stat-caption">
-              When checklists, SOPs, and compliance workflows live together, teams don’t have to
-              guess. They simply follow the playbook.
+        <div class="card-grid card-grid--4">
+          <article class="card feature-card">
+            <h3>Safe &amp; Standardized</h3>
+            <p>Deliver the right procedures at the right time for each role, shift, and location.</p>
+          </article>
+
+          <article class="card feature-card">
+            <h3>Real-Time Insights</h3>
+            <p>Monitor completion rates, violations, and trends from one centralized dashboard.</p>
+          </article>
+
+          <article class="card feature-card">
+            <h3>Automated Workflows</h3>
+            <p>Automate follow-ups, alerts, and approvals based on real-time task status.</p>
+          </article>
+
+          <article class="card feature-card">
+            <h3>Simple &amp; Scalable</h3>
+            <p>Deploy to five or five hundred locations with the same configuration and control.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= MODULES ================= -->
+    <section class="section" id="modules">
+      <div class="container">
+        <header class="section-header">
+          <p class="eyebrow">Our Modules</p>
+          <h2>Modular tools built for modern operations</h2>
+          <p class="section-subtitle">
+            InCheck 360 is built around modules that help standardize daily operations, improve compliance,
+            and provide complete visibility across all stores.
+          </p>
+        </header>
+
+        <div class="modules-grid">
+          <article class="card module-card">
+            <h3>Checklist</h3>
+            <p>
+              Build dynamic, role-based checklists for opening, closing, safety, and brand standards so
+              every store follows the same playbook.
             </p>
-            <div class="quote-card">
-              InCheck 360 helped us bring structure to daily routines and food-safety checks across
-              all locations. We now see issues days earlier than before and can support stores
-              before problems escalate.
-              <div class="quote-meta">
-                — Operations &amp; Compliance Leader, Multi-site F&amp;B brand
-              </div>
+            <a href="/checklist" class="link">Read more &rarr;</a>
+          </article>
+
+          <article class="card module-card">
+            <h3>Reference Materials</h3>
+            <p>
+              Centralize SOPs, training guides, and operational docs in one searchable library accessible
+              from any device.
+            </p>
+            <a href="/reference-materials" class="link">Read more &rarr;</a>
+          </article>
+
+          <article class="card module-card module-card--coming-soon">
+            <h3>Compliance</h3>
+            <p>
+              Gain full visibility into violations, repeat offenders, and risk hotspots, with dispute and
+              investigation workflows.
+            </p>
+            <span class="pill">Coming soon</span>
+          </article>
+        </div>
+
+        <div class="coming-soon card">
+          <h3>Elevating control with upcoming modules</h3>
+          <ul class="coming-soon-list">
+            <li>Smart sensor integrations for temperature and environment monitoring</li>
+            <li>Digital labelling for traceability and food safety</li>
+            <li>AI-driven analytics for behavior, layout, and workflow insights</li>
+            <li>AIoT infrastructure combining IoT data and machine learning</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= FAQ ================= -->
+    <section class="section section-alt" id="faq">
+      <div class="container">
+        <header class="section-header">
+          <p class="eyebrow">FAQs</p>
+          <h2>Frequently asked questions</h2>
+          <p class="section-subtitle">
+            We’re here to help operations teams streamline checklists, track performance, and improve
+            compliance. Here are some of the most common questions.
+          </p>
+        </header>
+
+        <div class="faq-list" data-accordion>
+          <article class="faq-item">
+            <button class="faq-question" aria-expanded="false">
+              <span>What is InCheck 360 and how does it help my business?</span>
+              <span class="faq-icon">+</span>
+            </button>
+            <div class="faq-answer">
+              <p>
+                InCheck 360 is an operations management platform for F&amp;B, QSR, and retail teams. It
+                digitizes daily tasks, centralizes SOPs, and gives leadership real-time visibility across
+                all locations so you can spot and fix issues quickly.
+              </p>
+            </div>
+          </article>
+
+          <article class="faq-item">
+            <button class="faq-question" aria-expanded="false">
+              <span>How do we get started and onboard locations?</span>
+              <span class="faq-icon">+</span>
+            </button>
+            <div class="faq-answer">
+              <p>
+                Start by booking a demo. We’ll map your existing processes into checklists and workflows,
+                then roll out pilots before scaling to all locations with training and support.
+              </p>
+            </div>
+          </article>
+
+          <article class="faq-item">
+            <button class="faq-question" aria-expanded="false">
+              <span>Can we customize tasks and rules per store or region?</span>
+              <span class="faq-icon">+</span>
+            </button>
+            <div class="faq-answer">
+              <p>
+                Yes. You can configure templates, escalation paths, and reference materials by location,
+                shift type, brand, or role—while still maintaining central standards.
+              </p>
+            </div>
+          </article>
+
+          <article class="faq-item">
+            <button class="faq-question" aria-expanded="false">
+              <span>Is our operational data secure?</span>
+              <span class="faq-icon">+</span>
+            </button>
+            <div class="faq-answer">
+              <p>
+                InCheck 360 uses secure cloud infrastructure with encryption, role-based permissions, and
+                detailed audit logs so you have control over who sees what.
+              </p>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= BLOG ================= -->
+    <section class="section" id="blog">
+      <div class="container">
+        <header class="section-header">
+          <p class="eyebrow">Blog</p>
+          <h2>Latest news &amp; articles</h2>
+        </header>
+
+        <div class="card-grid card-grid--3 blog-grid">
+          <!-- Example blog article card – you can generate these from a CMS -->
+          <article class="card blog-card">
+            <p class="blog-date">June 20, 2025</p>
+            <h3 class="blog-title">
+              <a href="/blog/from-gut-feeling-to-data-driven">
+                From Gut Feeling to Data-Driven: The New Era of Restaurant Operations
+              </a>
+            </h3>
+            <p class="blog-excerpt">
+              How operations leaders are moving from paper checklists and intuition to real-time data that
+              drives every decision.
+            </p>
+            <a href="/blog/from-gut-feeling-to-data-driven" class="link">Read article &rarr;</a>
+          </article>
+
+          <!-- Placeholder cards -->
+          <article class="card blog-card">
+            <p class="blog-date">Coming Soon</p>
+            <h3 class="blog-title">
+              <a href="/blog/standardizing-operations-across-markets">
+                Standardizing Operations Across Markets Without Losing Local Flexibility
+              </a>
+            </h3>
+            <p class="blog-excerpt">
+              Practical steps for multi-country brands to maintain consistent standards while adapting to
+              local realities.
+            </p>
+            <a href="/blog/standardizing-operations-across-markets" class="link">Read article &rarr;</a>
+          </article>
+
+          <article class="card blog-card">
+            <p class="blog-date">Coming Soon</p>
+            <h3 class="blog-title">
+              <a href="/blog/closing-the-compliance-gap">
+                Closing the Compliance Gap with Real-Time Visibility
+              </a>
+            </h3>
+            <p class="blog-excerpt">
+              Why real-time dashboards and alerts are becoming essential for compliance and loss prevention
+              teams.
+            </p>
+            <a href="/blog/closing-the-compliance-gap" class="link">Read article &rarr;</a>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= CONTACT ================= -->
+    <section class="section section-alt" id="contact">
+      <div class="container contact-grid">
+        <div>
+          <p class="eyebrow">Contact</p>
+          <h2>Book a demo or talk to our team</h2>
+          <p class="section-subtitle">
+            Share a few details and we’ll connect you with an InCheck 360 specialist to walk through your
+            current operations and explore how we can support your teams.
+          </p>
+
+          <div class="contact-details">
+            <div>
+              <h3>Address</h3>
+              <p>Enschede, The Netherlands</p>
+              <p>Barsha Heights, Tecom, UAE</p>
+            </div>
+            <div>
+              <h3>Email</h3>
+              <p><a href="mailto:info@incheck360.nl">info@incheck360.nl</a></p>
+            </div>
+            <div>
+              <h3>Call</h3>
+              <p><a href="tel:+3197010280855">+31 970 102 80855</a></p>
+              <p><a href="tel:+971585512933">+971 58 551 2933</a></p>
+            </div>
+          </div>
+        </div>
+
+        <form class="card contact-form" id="demo-form" novalidate>
+          <div class="form-row">
+            <div class="form-field">
+              <label for="name">Full name</label>
+              <input type="text" id="name" name="name" required />
+              <p class="field-error" data-error-for="name"></p>
+            </div>
+            <div class="form-field">
+              <label for="email">Work email</label>
+              <input type="email" id="email" name="email" required />
+              <p class="field-error" data-error-for="email"></p>
             </div>
           </div>
 
-          <div>
-            <div class="device-mock">
-              <div class="device-top">
-                <div class="device-dot-row">
-                  <span class="device-dot"></span>
-                  <span class="device-dot"></span>
-                  <span class="device-dot"></span>
-                </div>
-                <span>Ops dashboard · Today</span>
-              </div>
-              <div class="device-body">
-                <div class="device-row">
-                  <div>
-                    <div class="device-col-title">Checklists</div>
-                    <ul class="device-list">
-                      <li>
-                        <span>Opening routines</span>
-                        <span class="device-stat">97% complete</span>
-                      </li>
-                      <li>
-                        <span>Food-safety checks</span>
-                        <span class="device-stat">96% on time</span>
-                      </li>
-                      <li>
+          <div class="form-row">
+            <div class="form-field">
+              <label for="company">Company</label>
+              <input type="text" id="company" name="company" />
+              <p class="field-error" data-error-for="company"></p>
+            </div>
+            <div class="form-field">
+              <label for="locations">Number of locations</label>
+              <select id="locations" name="locations">
+                <option value="">Select</option>
+                <option value="1-5">1–5</option>
+                <option value="6-25">6–25</option>
+                <option value="26-100">26–100</option>
+                <option value="100+">100+</option>
+              </select>
+              <p class="field-error" data-error-for="locations"></p>
+            </div>
+          </div>
+
+          <div class="form-field">
+            <label for="message">What challenges are you looking to solve?</label>
+            <textarea id="message" name="message" rows="4"></textarea>
+            <p class="field-error" data-error-for="message"></p>
+          </div>
+
+          <div class="form-footer">
+            <button type="submit" class="btn btn-primary">Submit</button>
+            <p class="form-footnote">
+              By submitting, you agree to be contacted about InCheck 360 products and services.
+            </p>
+          </div>
+          <p class="form-success" id="form-success-message" hidden>
+            Thank you! Your request has been submitted. Our team will reach out shortly.
+          </p>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <!-- ================= FOOTER ================= -->
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <p>InCheck 360 Holding B.V &copy; <span id="year"></span>. All rights reserved.</p>
+      <nav class="footer-nav">
+        <a href="#top">Back to top</a>
+      </nav>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="main.js"></script>
+</body>
+</html>
