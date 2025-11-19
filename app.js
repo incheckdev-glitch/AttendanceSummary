@@ -3158,7 +3158,7 @@ async function deleteEventFromSheet(id) {
 /* ---------- CSV export ---------- */
 function csvEscape(v) {
   const s = String(v == null ? '' : v);
-  if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
   return s;
 }
 
