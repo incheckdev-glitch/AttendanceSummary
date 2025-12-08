@@ -4128,12 +4128,6 @@ function wireModals() {
     });
   }
 
-  if (E.eventSave) {
-    E.eventSave.addEventListener('click', () => {
-      if (E.eventForm?.requestSubmit) E.eventForm.requestSubmit();
-    });
-  }
-
   if (E.eventDelete) {
     E.eventDelete.addEventListener('click', async () => {
       if (!E.eventForm) return;
