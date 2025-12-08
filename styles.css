@@ -33,6 +33,12 @@
   --chip:#020617;
   --skeleton:#0b1120;
   --shimmer:linear-gradient(90deg, transparent, rgba(148,163,184,.18), transparent);
+   --risk-bar-track:rgba(55,65,81,.55);
+  --ai-table-header-border:rgba(31,41,55,.9);
+  --ai-table-row-odd:#020617;
+  --ai-table-row-even:#030712;
+  --ai-table-row-hover:#111827;
+  --ai-table-cell-border:rgba(15,23,42,.9);
 }
 :root[data-theme="light"] {
   --bg:#f3f4f6;
@@ -52,6 +58,12 @@
   --chip:#f9fafb;
   --skeleton:#e5e7eb;
   --shimmer:linear-gradient(90deg, transparent, rgba(156,163,175,.25), transparent);
+    --risk-bar-track:rgba(148,163,184,.5);
+  --ai-table-header-border:rgba(209,213,219,.9);
+  --ai-table-row-odd:#ffffff;
+  --ai-table-row-even:#f9fafb;
+  --ai-table-row-hover:#f3f4f6;
+  --ai-table-cell-border:rgba(229,231,235,.9);
 }
 
 /* Base */
@@ -144,6 +156,7 @@ header{
   background:var(--accent);
   border-color:var(--accent);
   color:#fff;
+   text-shadow:0 1px 0 rgba(0,0,0,.16);
 }
 .btn.ghost{
   border-color:transparent;
@@ -467,7 +480,7 @@ th.sorted-desc::after{
   width:100%;
   height:5px;
   border-radius:999px;
-  background:rgba(55,65,81,.55);
+  background:var(--risk-bar-track);
   overflow:hidden;
   margin-top:3px;
 }
@@ -626,24 +639,24 @@ th.sorted-desc::after{
 .card:has(#aiModulesTableBody) thead th{
   position:static;
   background:transparent;
-  border-bottom:1px solid rgba(31,41,55,.9);
+border-bottom:1px solid var(--ai-table-header-border);
   padding:6px 9px;
   font-size:11px;
   cursor:default;
 }
 .card:has(#aiModulesTableBody) tbody td{
   padding:7px 9px;
-  border-bottom:1px solid rgba(15,23,42,.9);
+    border-bottom:1px solid var(--ai-table-cell-border);
   font-size:13px;
 }
 .card:has(#aiModulesTableBody) tbody tr:nth-child(odd){
-  background:#020617;
+  background:var(--ai-table-row-odd);
 }
 .card:has(#aiModulesTableBody) tbody tr:nth-child(even){
-  background:#030712;
+background:var(--ai-table-row-even);
 }
 .card:has(#aiModulesTableBody) tbody tr:hover{
-  background:#111827;
+   background:var(--ai-table-row-hover);
 }
 .card:has(#aiModulesTableBody) td:nth-child(2),
 .card:has(#aiModulesTableBody) td:nth-child(3),
