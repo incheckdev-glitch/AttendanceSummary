@@ -2929,7 +2929,7 @@ function ensureCalendar() {
   scheduleCalendarResize();
 }
 
-function renderCalendarEvents() {
+ function renderCalendarEvents() {
   if (!calendar) return;
   const activeTypes = new Set();
   if (E.eventFilterDeployment && E.eventFilterDeployment.checked)
@@ -2945,7 +2945,7 @@ function renderCalendarEvents() {
   const { flagsById } = computeChangeCollisions(DataStore.rows, DataStore.events);
 
   calendar.removeAllEvents();
-  DataStore.events.forEach(ev => {
+      DataStore.events.forEach(ev => {
     const type = ev.type || 'Other';
     if (activeTypes.size && !activeTypes.has(type)) return;
     const risk = riskMap.get(ev.id) || 0;
@@ -2972,7 +2972,7 @@ function renderCalendarEvents() {
     if (flags.freeze) classNames.push('event-freeze');
     if (flags.hotIssues) classNames.push('event-hot');
 
-    calendar.addEvent({
+      calendar.addEvent({
       id: ev.id,
       title: ev.title,
       start: ev.start,
@@ -2994,11 +2994,10 @@ function renderCalendarEvents() {
         hotIssues: !!flags.hotIssues
       },
       classNames
+    });    
     });
-  });
   scheduleCalendarResize();
-}
-}
+  }
 
 /* ---------- Networking & data loading ---------- */
 async function safeFetchText(url, opts = {}) {
