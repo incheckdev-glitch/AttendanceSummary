@@ -631,9 +631,9 @@ th.sorted-desc::after{
   grid-column:1 / -1;
   max-height:none;
 }
-.card:has(#aiModulesTableBody) > div{
-  max-height:none;
-  overflow:visible;
+.card:has(#aiModulesTableBody) > .table-wrap{
+  max-height:360px;
+  overflow:auto;
 }
 .card:has(#aiModulesTableBody) table{
   width:100%;
