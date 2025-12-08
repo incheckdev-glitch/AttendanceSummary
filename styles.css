@@ -158,6 +158,10 @@ header{
   color:#fff;
    text-shadow:0 1px 0 rgba(0,0,0,.16);
 }
+:root[data-theme="light"] .btn.primary{
+  color:#000;
+  text-shadow:none;
+}
 .btn.ghost{
   border-color:transparent;
   background:transparent;
