@@ -2724,8 +2724,10 @@ function setActiveView(view) {
 
 /* ---------- Calendar wiring ---------- */
 let calendar = null,
-   calendarReady = false,
-  calendarResizeTimer = null;
+calendarReady = false,
+  calendarResizeTimer = null,
+  calendarResizeObserver = null,
+  calendarResizeObservedEl = null;
 
 function wireCalendar() {
   if (E.addEventBtn)
@@ -2754,8 +2756,41 @@ function wireCalendar() {
       E.calendarTz.textContent = '';
     }
   }
-  
+
+  observeCalendarContainer();
   window.addEventListener('resize', scheduleCalendarResize);
+}
+
+function scheduleCalendarResize() {
+  if (!calendar) return;
+  clearTimeout(calendarResizeTimer);
+  calendarResizeTimer = setTimeout(() => {
+    if (calendar) calendar.updateSize();
+  }, 120);
+}
+
+function observeCalendarContainer() {
+  const el = document.getElementById('calendar');
+  const card = el ? el.closest('.card') || el : null;
+
+  if (!card) return;
+  if (calendarResizeObservedEl === card) return;
+
+  if (calendarResizeObserver) {
+    calendarResizeObserver.disconnect();
+  }
+
+  calendarResizeObservedEl = card;
+  calendarResizeObserver = new ResizeObserver(entries => {
+    for (const entry of entries) {
+      if (entry.contentRect && entry.contentRect.width > 0) {
+        scheduleCalendarResize();
+        break;
+      }
+    }
+  });
+
+  calendarResizeObserver.observe(card);
 }
 
 function scheduleCalendarResize() {
