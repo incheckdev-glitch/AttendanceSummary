@@ -2717,13 +2717,15 @@ function setActiveView(view) {
   if (view === 'calendar') {
     ensureCalendar();
     renderCalendarEvents();
+    scheduleCalendarResize();
   }
   if (view === 'insights') Analytics.refresh(UI.Issues.applyFilters());
 }
 
 /* ---------- Calendar wiring ---------- */
 let calendar = null,
-  calendarReady = false;
+   calendarReady = false,
+  calendarResizeTimer = null;
 
 function wireCalendar() {
   if (E.addEventBtn)
@@ -2752,6 +2754,16 @@ function wireCalendar() {
       E.calendarTz.textContent = '';
     }
   }
+  
+  window.addEventListener('resize', scheduleCalendarResize);
+}
+
+function scheduleCalendarResize() {
+  if (!calendar) return;
+  clearTimeout(calendarResizeTimer);
+  calendarResizeTimer = setTimeout(() => {
+    if (calendar) calendar.updateSize();
+  }, 120);
 }
 
 function ensureCalendar() {
@@ -2879,6 +2891,7 @@ function ensureCalendar() {
   calendarReady = true;
   renderCalendarEvents();
   calendar.render();
+  scheduleCalendarResize();
 }
 
 function renderCalendarEvents() {
@@ -2948,6 +2961,8 @@ function renderCalendarEvents() {
       classNames
     });
   });
+  scheduleCalendarResize();
+}
 }
 
 /* ---------- Networking & data loading ---------- */
