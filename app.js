@@ -301,11 +301,23 @@ const U = {
 
 /** Filters persisted */
 const Filters = {
-  state: { search: '', module: 'All', priority: 'All', status: 'All', start: '', end: '' },
+   state: {
+    search: '',
+    module: 'All',
+    category: 'All',
+    priority: 'All',
+    status: 'All',
+    start: '',
+    end: ''
+  },
   load() {
     try {
       const raw = localStorage.getItem(LS_KEYS.filters);
-      if (raw) this.state = JSON.parse(raw);
+      if (raw)
+        this.state = {
+          ...this.state,
+          ...JSON.parse(raw)
+        };
     } catch {}
   },
   save() {
@@ -1384,6 +1396,7 @@ function cacheEls() {
     'tbodySkeleton',
     'rowCount',
     'moduleFilter',
+    'categoryFilter',
     'priorityFilter',
     'statusFilter',
     'resetBtn',
@@ -1540,6 +1553,19 @@ UI.Issues = {
       E.moduleFilter.innerHTML = ['All', ...uniq(DataStore.rows.map(r => r.module))]
         .map(v => `<option>${v}</option>`)
         .join('');
+     if (E.categoryFilter) {
+      const suggested = [];
+      DataStore.computed.forEach(meta =>
+        (meta.suggestions?.categories || []).forEach(c => suggested.push(c.label))
+      );
+      const categories = uniq([
+        ...DataStore.rows.map(r => r.type),
+        ...suggested
+      ]);
+      E.categoryFilter.innerHTML = ['All', ...categories]
+        .map(v => `<option>${v}</option>`)
+        .join('');
+    }
     if (E.priorityFilter)
       E.priorityFilter.innerHTML = ['All', ...uniq(DataStore.rows.map(r => r.priority))]
         .map(v => `<option>${v}</option>`)
@@ -1556,8 +1582,15 @@ UI.Issues = {
     const start = s.start ? new Date(s.start) : null;
     const end = s.end ? U.dateAddDays(s.end, 1) : null;
 
+     const matchesCategory = r => {
+      if (!s.category || s.category === 'All') return true;
+      if (r.type && r.type === s.category) return true;
+      const cats = DataStore.computed.get(r.id)?.suggestions?.categories || [];
+      return cats.some(c => c.label === s.category);
+    };
+
     return DataStore.rows.filter(r => {
-      const hay = [r.id, r.module, r.title, r.desc, r.log]
+     const hay = [r.id, r.module, r.title, r.desc, r.log, r.type]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
@@ -1576,6 +1609,7 @@ UI.Issues = {
 
       return (
         (!s.module || s.module === 'All' || r.module === s.module) &&
+         matchesCategory(r) &&
         (!s.priority || s.priority === 'All' || r.priority === s.priority) &&
         (!s.status || s.status === 'All' || r.status === s.status) &&
         keepDate
@@ -1601,6 +1635,7 @@ UI.Issues = {
           Filters.state = {
             search: '',
             module: 'All',
+            category: 'All',
             priority: 'All',
             status: 'All',
             start: '',
@@ -1712,6 +1747,8 @@ UI.Issues = {
       if (Filters.state.search) parts.push(`search "${Filters.state.search}"`);
       if (Filters.state.module && Filters.state.module !== 'All')
         parts.push(`module = ${Filters.state.module}`);
+       if (Filters.state.category && Filters.state.category !== 'All')
+        parts.push(`category = ${Filters.state.category}`);
       if (Filters.state.priority && Filters.state.priority !== 'All')
         parts.push(`priority = ${Filters.state.priority}`);
       if (Filters.state.status && Filters.state.status !== 'All')
@@ -1732,6 +1769,7 @@ UI.Issues = {
           Filters.state = {
             search: '',
             module: 'All',
+            category: 'All',
             priority: 'All',
             status: 'All',
             start: '',
@@ -1739,6 +1777,7 @@ UI.Issues = {
           };
           Filters.save();
           if (E.searchInput) E.searchInput.value = '';
+          if (E.categoryFilter) E.categoryFilter.value = 'All';
           if (E.startDateFilter) E.startDateFilter.value = '';
           if (E.endDateFilter) E.endDateFilter.value = '';
           UI.Issues.renderFilters();
@@ -1859,6 +1898,7 @@ UI.Issues.renderFilterChips = function () {
   const s = Filters.state;
   if (s.search) addChip('Search', s.search, 'search');
   if (s.module && s.module !== 'All') addChip('Module', s.module, 'module');
+  if (s.category && s.category !== 'All') addChip('Category', s.category, 'category');
   if (s.priority && s.priority !== 'All') addChip('Priority', s.priority, 'priority');
   if (s.status && s.status !== 'All') addChip('Status', s.status, 'status');
   if (s.start) addChip('From', s.start, 'start');
@@ -1877,6 +1917,7 @@ UI.Issues.renderFilterChips = function () {
       if (!key) return;
       if (key === 'search') Filters.state.search = '';
       if (key === 'module') Filters.state.module = 'All';
+      if (key === 'category') Filters.state.category = 'All';
       if (key === 'priority') Filters.state.priority = 'All';
       if (key === 'status') Filters.state.status = 'All';
       if (key === 'start') Filters.state.start = '';
@@ -1885,6 +1926,7 @@ UI.Issues.renderFilterChips = function () {
       Filters.save();
       if (E.searchInput && key === 'search') E.searchInput.value = '';
       if (E.moduleFilter && key === 'module') E.moduleFilter.value = 'All';
+      if (E.categoryFilter && key === 'category') E.categoryFilter.value = 'All';
       if (E.priorityFilter && key === 'priority') E.priorityFilter.value = 'All';
       if (E.statusFilter && key === 'status') E.statusFilter.value = 'All';
       if (E.startDateFilter && key === 'start') E.startDateFilter.value = '';
@@ -2946,6 +2988,7 @@ async function loadIssues(force = false) {
       DataStore.hydrateFromRows(cached);
       UI.Issues.renderFilters();
       setIfOptionExists(E.moduleFilter, Filters.state.module);
+      setIfOptionExists(E.categoryFilter, Filters.state.category);
       setIfOptionExists(E.priorityFilter, Filters.state.priority);
       setIfOptionExists(E.statusFilter, Filters.state.status);
       UI.skeleton(false);
@@ -2961,6 +3004,7 @@ async function loadIssues(force = false) {
     IssuesCache.save(DataStore.rows);
     UI.Issues.renderFilters();
     setIfOptionExists(E.moduleFilter, Filters.state.module);
+    setIfOptionExists(E.categoryFilter, Filters.state.category);
     setIfOptionExists(E.priorityFilter, Filters.state.priority);
     setIfOptionExists(E.statusFilter, Filters.state.status);
     UI.refreshAll();
@@ -3837,6 +3881,14 @@ function wireFilters() {
       UI.refreshAll();
     });
   }
+   if (E.categoryFilter) {
+    E.categoryFilter.addEventListener('change', () => {
+      Filters.state.category = E.categoryFilter.value;
+      Filters.save();
+      UI.refreshAll();
+    });
+    setIfOptionExists(E.categoryFilter, Filters.state.category);
+  }
   if (E.priorityFilter) {
     E.priorityFilter.addEventListener('change', () => {
       Filters.state.priority = E.priorityFilter.value;
@@ -3874,6 +3926,7 @@ function wireFilters() {
       Filters.state = {
         search: '',
         module: 'All',
+        category: 'All',
         priority: 'All',
         status: 'All',
         start: '',
@@ -3881,6 +3934,7 @@ function wireFilters() {
       };
       Filters.save();
       if (E.searchInput) E.searchInput.value = '';
+      if (E.categoryFilter) E.categoryFilter.value = 'All';
       if (E.startDateFilter) E.startDateFilter.value = '';
       if (E.endDateFilter) E.endDateFilter.value = '';
       UI.Issues.renderFilters();
@@ -4118,6 +4172,7 @@ function applyDSLToFilters(q) {
   const next = {
     search: '',
     module: 'All',
+    category: 'All',
     priority: 'All',
     status: 'All',
     start: '',
