@@ -1554,14 +1554,7 @@ UI.Issues = {
         .map(v => `<option>${v}</option>`)
         .join('');
      if (E.categoryFilter) {
-      const suggested = [];
-      DataStore.computed.forEach(meta =>
-        (meta.suggestions?.categories || []).forEach(c => suggested.push(c.label))
-      );
-      const categories = uniq([
-        ...DataStore.rows.map(r => r.type),
-        ...suggested
-      ]);
+     const categories = uniq(DataStore.rows.map(r => r.type));
       E.categoryFilter.innerHTML = ['All', ...categories]
         .map(v => `<option>${v}</option>`)
         .join('');
