@@ -97,6 +97,7 @@ header{
   backdrop-filter:blur(12px);
   border-bottom:1px solid var(--border);
   display:flex;align-items:center;gap:12px;padding:10px 18px;
+  justify-content:center;
 }
 :root[data-theme="light"] header{
   background:rgba(255,255,255,.96);
@@ -120,9 +121,9 @@ header{
 
 /* Toolbar */
 .toolbar{
-  margin-left:auto;
   display:flex;gap:10px;align-items:center;flex-wrap:wrap;
   font-size:13px;
+  justify-content:center;
 }
 
 /* Inputs / buttons */
