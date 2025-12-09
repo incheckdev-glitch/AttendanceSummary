@@ -2716,7 +2716,7 @@ openEditTicket() {
   }
 };
 
-function applyTicketEdits(e) {
+async function applyTicketEdits(e) {
   if (e) e.preventDefault();
   const current = UI.Modals.selectedIssue;
   if (!current) {
@@ -2758,7 +2758,58 @@ function applyTicketEdits(e) {
 
   UI.Modals.closeEditTicket();
   UI.Modals.openIssue(updated.id);
-  UI.toast('Ticket updated locally.');
+ 
+  const syncResult = await saveTicketToSheet(updated);
+  if (syncResult.synced) {
+    UI.toast('Ticket updated in Google Sheet.');
+  } else if (syncResult.skipped) {
+    UI.toast('Ticket updated locally. Configure TICKET_API_URL to sync.');
+  } else {
+    UI.toast('Ticket updated locally (sync failed: ' + syncResult.error + ').');
+  }
+}
+
+async function saveTicketToSheet(ticket) {
+  if (!CONFIG.TICKET_API_URL) return { synced: false, skipped: true };
+
+  UI.spinner(true);
+  try {
+    const res = await fetch(CONFIG.TICKET_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'updateTicket', ticket })
+    });
+
+    let data;
+    try {
+      data = await res.json();
+    } catch (jsonErr) {
+      console.error('Invalid JSON from ticket backend', jsonErr);
+      const text = await res.text().catch(() => '');
+      console.error('Raw response:', text);
+      return { synced: false, error: 'Invalid JSON from ticket backend' };
+    }
+
+    if (data?.ok) {
+      const serverTicket = data.ticket;
+      if (serverTicket && serverTicket.id) {
+        const merged = { ...ticket, ...serverTicket };
+        DataStore.rows = DataStore.rows.map(row =>
+          row.id === merged.id ? merged : row
+        );
+        DataStore.hydrateFromRows(DataStore.rows);
+        IssuesCache.save(DataStore.rows);
+        UI.refreshAll();
+      }
+      return { synced: true };
+    }
+
+    return { synced: false, error: data?.error || 'Unknown error from ticket backend' };
+  } catch (err) {
+    return { synced: false, error: err.message };
+  } finally {
+    UI.spinner(false);
+  }
 }
 
 function debounce(fn, ms = 250) {
