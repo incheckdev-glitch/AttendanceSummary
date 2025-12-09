@@ -2551,8 +2551,7 @@ UI.Modals = {
     this.selectedIssue = null;
     if (this.lastFocus?.focus) this.lastFocus.focus();
   },
-  openEvent(ev) {
-      openEditTicket() {
+openEditTicket() {
     const r = this.selectedIssue;
     if (!r || !E.editTicketModal || !E.editTicketForm) return;
     this.lastEditFocus = document.activeElement;
@@ -2576,6 +2575,7 @@ UI.Modals = {
     E.editTicketModal.style.display = 'none';
     if (this.lastEditFocus?.focus) this.lastEditFocus.focus();
   },
+   openEvent(ev = {}) {
     this.lastEventFocus = document.activeElement;
     const isEdit = !!(ev && ev.id);
     if (E.eventForm) E.eventForm.dataset.id = isEdit ? ev.id : '';
@@ -2716,8 +2716,7 @@ UI.Modals = {
   }
 };
 
-function debounce(fn, ms = 250) {
-  function applyTicketEdits(e) {
+function applyTicketEdits(e) {
   if (e) e.preventDefault();
   const current = UI.Modals.selectedIssue;
   if (!current) {
@@ -2762,6 +2761,7 @@ function debounce(fn, ms = 250) {
   UI.toast('Ticket updated locally.');
 }
 
+function debounce(fn, ms = 250) {
   let t;
   return (...a) => {
     clearTimeout(t);
