@@ -1806,6 +1806,16 @@ UI.Issues = {
     if (typeof Chart === 'undefined') return;
     const cssVar = n =>
       getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+     const palette = [
+      cssVar('--accent'),
+      cssVar('--danger'),
+      cssVar('--ok'),
+      cssVar('--warn'),
+      cssVar('--info'),
+      cssVar('--purple'),
+      cssVar('--neutral'),
+      cssVar('--status-onstage')
+    ];
     const statusColors = {
       Resolved: cssVar('--status-resolved'),
       'Under Development': cssVar('--status-underdev'),
@@ -1840,7 +1850,7 @@ UI.Issues = {
           datasets: [
             {
               data: values,
-              backgroundColor: labels.map(l => colors[l] || cssVar('--accent'))
+               backgroundColor: labels.map((l, i) => colors[l] || palette[i % palette.length])
             }
           ]
         },
