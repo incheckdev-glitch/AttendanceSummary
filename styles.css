@@ -39,18 +39,6 @@
   --ai-table-row-even:#030712;
   --ai-table-row-hover:#111827;
   --ai-table-cell-border:rgba(15,23,42,.9);
-  
-  /* Issues table column tints */
-  --col-id:#60a5fa;
-  --col-module:#34d399;
-  --col-title:#a78bfa;
-  --col-priority:#fbbf24;
-  --col-status:#4ade80;
-  --col-date:#fb7185;
-  --col-log:#f472b6;
-  --col-link:#38bdf8;
-  --col-alpha:0.14;
-  --col-alpha-hover:0.22;
 }
 :root[data-theme="light"] {
   --bg:#f3f4f6;
@@ -76,9 +64,6 @@
   --ai-table-row-even:#f9fafb;
   --ai-table-row-hover:#f3f4f6;
   --ai-table-cell-border:rgba(229,231,235,.9);
-  
-  --col-alpha:0.18;
-  --col-alpha-hover:0.28;
 }
 
 /* Base */
@@ -427,38 +412,6 @@ th.sorted-desc::after{
   border-bottom-color:transparent;
   transform:translateY(1px);
 }
-
-#issuesTable th:nth-child(1){background-color:color-mix(in srgb,var(--col-id) 26%,transparent)}
-#issuesTable td:nth-child(1){background-color:color-mix(in srgb,var(--col-id) calc(var(--col-alpha)*100%),transparent)}
-#issuesTable tr:hover td:nth-child(1){background-color:color-mix(in srgb,var(--col-id) calc(var(--col-alpha-hover)*100%),transparent)}
-
-#issuesTable th:nth-child(2){background-color:color-mix(in srgb,var(--col-module) 26%,transparent)}
-#issuesTable td:nth-child(2){background-color:color-mix(in srgb,var(--col-module) calc(var(--col-alpha)*100%),transparent)}
-#issuesTable tr:hover td:nth-child(2){background-color:color-mix(in srgb,var(--col-module) calc(var(--col-alpha-hover)*100%),transparent)}
-
-#issuesTable th:nth-child(3){background-color:color-mix(in srgb,var(--col-title) 26%,transparent)}
-#issuesTable td:nth-child(3){background-color:color-mix(in srgb,var(--col-title) calc(var(--col-alpha)*100%),transparent)}
-#issuesTable tr:hover td:nth-child(3){background-color:color-mix(in srgb,var(--col-title) calc(var(--col-alpha-hover)*100%),transparent)}
-
-#issuesTable th:nth-child(4){background-color:color-mix(in srgb,var(--col-priority) 26%,transparent)}
-#issuesTable td:nth-child(4){background-color:color-mix(in srgb,var(--col-priority) calc(var(--col-alpha)*100%),transparent)}
-#issuesTable tr:hover td:nth-child(4){background-color:color-mix(in srgb,var(--col-priority) calc(var(--col-alpha-hover)*100%),transparent)}
-
-#issuesTable th:nth-child(5){background-color:color-mix(in srgb,var(--col-status) 26%,transparent)}
-#issuesTable td:nth-child(5){background-color:color-mix(in srgb,var(--col-status) calc(var(--col-alpha)*100%),transparent)}
-#issuesTable tr:hover td:nth-child(5){background-color:color-mix(in srgb,var(--col-status) calc(var(--col-alpha-hover)*100%),transparent)}
-
-#issuesTable th:nth-child(6){background-color:color-mix(in srgb,var(--col-date) 26%,transparent)}
-#issuesTable td:nth-child(6){background-color:color-mix(in srgb,var(--col-date) calc(var(--col-alpha)*100%),transparent)}
-#issuesTable tr:hover td:nth-child(6){background-color:color-mix(in srgb,var(--col-date) calc(var(--col-alpha-hover)*100%),transparent)}
-
-#issuesTable th:nth-child(7){background-color:color-mix(in srgb,var(--col-log) 26%,transparent)}
-#issuesTable td:nth-child(7){background-color:color-mix(in srgb,var(--col-log) calc(var(--col-alpha)*100%),transparent)}
-#issuesTable tr:hover td:nth-child(7){background-color:color-mix(in srgb,var(--col-log) calc(var(--col-alpha-hover)*100%),transparent)}
-
-#issuesTable th:nth-child(8){background-color:color-mix(in srgb,var(--col-link) 26%,transparent)}
-#issuesTable td:nth-child(8){background-color:color-mix(in srgb,var(--col-link) calc(var(--col-alpha)*100%),transparent)}
-#issuesTable tr:hover td:nth-child(8){background-color:color-mix(in srgb,var(--col-link) calc(var(--col-alpha-hover)*100%),transparent)}
 
 /* Loading skeleton */
 .skeleton{
