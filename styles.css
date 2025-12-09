@@ -39,6 +39,7 @@
   --ai-table-row-even:#030712;
   --ai-table-row-hover:#111827;
   --ai-table-cell-border:rgba(15,23,42,.9);
+  
 }
 :root[data-theme="light"] {
   --bg:#f3f4f6;
@@ -64,6 +65,7 @@
   --ai-table-row-even:#f9fafb;
   --ai-table-row-hover:#f3f4f6;
   --ai-table-cell-border:rgba(229,231,235,.9);
+  
 }
 
 /* Base */
