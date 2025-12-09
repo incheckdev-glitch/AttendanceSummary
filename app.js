@@ -12,7 +12,7 @@
 
 const CONFIG = {
   DATA_VERSION: '2',
-
+EDIT_PASS: 'qwerty123456',
   // Issues CSV (read-only)
   SHEET_URL:
     "https://docs.google.com/spreadsheets/d/e/2PACX-1vTRwAjNAQxiPP8uR15t_vx03JkjgEBjgUwp2bpx8rsHx-JJxVDBZyf5ap77rAKrYHfgkVMwLJVm6pGn/pub?output=csv",
@@ -1410,6 +1410,22 @@ function cacheEls() {
     'copyLink',
     'modalClose',
     'drawerBtn',
+     'editTicketBtn',
+    'editTicketModal',
+    'editTicketForm',
+    'editTicketTitle',
+    'editTicketModule',
+    'editTicketPriority',
+    'editTicketStatus',
+    'editTicketDate',
+    'editTicketDesc',
+    'editTicketLog',
+    'editTicketAttachment',
+    'editTicketPassword',
+    'editTicketSave',
+    'editTicketCancel',
+    'editTicketClose',
+    'editTicketId',
     'sidebar',
     'spinner',
     'toast',
@@ -2442,6 +2458,7 @@ UI.Modals = {
   selectedIssue: null,
   lastFocus: null,
   lastEventFocus: null,
+  lastEditFocus: null,
   openIssue(id) {
     const r = DataStore.byId.get(id);
     if (!r || !E.issueModal) return;
@@ -2535,6 +2552,30 @@ UI.Modals = {
     if (this.lastFocus?.focus) this.lastFocus.focus();
   },
   openEvent(ev) {
+      openEditTicket() {
+    const r = this.selectedIssue;
+    if (!r || !E.editTicketModal || !E.editTicketForm) return;
+    this.lastEditFocus = document.activeElement;
+
+    if (E.editTicketId) E.editTicketId.value = r.id || '';
+    if (E.editTicketTitle) E.editTicketTitle.value = r.title || '';
+    if (E.editTicketModule) E.editTicketModule.value = r.module || '';
+    if (E.editTicketPriority) E.editTicketPriority.value = r.priority || '';
+    if (E.editTicketStatus) E.editTicketStatus.value = r.status || '';
+    if (E.editTicketDate) E.editTicketDate.value = r.date || '';
+    if (E.editTicketDesc) E.editTicketDesc.value = r.desc || '';
+    if (E.editTicketLog) E.editTicketLog.value = r.log || '';
+    if (E.editTicketAttachment) E.editTicketAttachment.value = r.file || '';
+    if (E.editTicketPassword) E.editTicketPassword.value = '';
+
+    E.editTicketModal.style.display = 'flex';
+    E.editTicketTitle?.focus();
+  },
+  closeEditTicket() {
+    if (!E.editTicketModal) return;
+    E.editTicketModal.style.display = 'none';
+    if (this.lastEditFocus?.focus) this.lastEditFocus.focus();
+  },
     this.lastEventFocus = document.activeElement;
     const isEdit = !!(ev && ev.id);
     if (E.eventForm) E.eventForm.dataset.id = isEdit ? ev.id : '';
@@ -2676,6 +2717,51 @@ UI.Modals = {
 };
 
 function debounce(fn, ms = 250) {
+  function applyTicketEdits(e) {
+  if (e) e.preventDefault();
+  const current = UI.Modals.selectedIssue;
+  if (!current) {
+    UI.toast('Open a ticket first.');
+    return;
+  }
+
+  const passphrase = (E.editTicketPassword?.value || '').trim();
+  if (passphrase !== CONFIG.EDIT_PASS) {
+    UI.toast('Incorrect passphrase.');
+    return;
+  }
+
+  const moduleVal = (E.editTicketModule?.value || 'Unspecified').trim();
+  const priorityVal = (E.editTicketPriority?.value || '').trim();
+  const statusVal = (E.editTicketStatus?.value || '').trim();
+
+  const updated = {
+    ...current,
+    id: current.id,
+    module: moduleVal || 'Unspecified',
+    title: (E.editTicketTitle?.value || '').trim() || current.title,
+    priority: priorityVal
+      ? DataStore.normalizePriority(priorityVal)
+      : current.priority,
+    status: statusVal ? DataStore.normalizeStatus(statusVal) : current.status,
+    date: E.editTicketDate?.value || current.date,
+    desc: (E.editTicketDesc?.value || '').trim(),
+    log: (E.editTicketLog?.value || '').trim(),
+    file: (E.editTicketAttachment?.value || '').trim()
+  };
+
+  DataStore.rows = DataStore.rows.map(row =>
+    row.id === updated.id ? updated : row
+  );
+  DataStore.hydrateFromRows(DataStore.rows);
+  IssuesCache.save(DataStore.rows);
+  UI.refreshAll();
+
+  UI.Modals.closeEditTicket();
+  UI.Modals.openIssue(updated.id);
+  UI.toast('Ticket updated locally.');
+}
+
   let t;
   return (...a) => {
     clearTimeout(t);
@@ -4108,6 +4194,9 @@ function wireModals() {
     E.modalClose.addEventListener('click', () => UI.Modals.closeIssue());
   }
   if (E.issueModal) {
+     if (E.editTicketBtn) {
+    E.editTicketBtn.addEventListener('click', () => UI.Modals.openEditTicket());
+  }
     E.issueModal.addEventListener('click', e => {
       // click outside panel closes
       if (e.target === E.issueModal) UI.Modals.closeIssue();
@@ -4116,10 +4205,34 @@ function wireModals() {
       if (e.key === 'Escape') {
         e.preventDefault();
         UI.Modals.closeIssue();
-            } else if (e.key === 'Tab') {
+           } else if (e.key === 'Tab') {
         trapFocus(E.issueModal, e);
       }
     });
+  }
+
+
+    if (E.editTicketModal) {
+    E.editTicketModal.addEventListener('click', e => {
+      if (e.target === E.editTicketModal) UI.Modals.closeEditTicket();
+    });
+    E.editTicketModal.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        UI.Modals.closeEditTicket();
+      } else if (e.key === 'Tab') {
+        trapFocus(E.editTicketModal, e);
+      }
+    });
+  }
+  if (E.editTicketClose) {
+    E.editTicketClose.addEventListener('click', () => UI.Modals.closeEditTicket());
+  }
+  if (E.editTicketCancel) {
+    E.editTicketCancel.addEventListener('click', () => UI.Modals.closeEditTicket());
+  }
+  if (E.editTicketForm) {
+    E.editTicketForm.addEventListener('submit', applyTicketEdits);
   }
 
   if (E.copyId) {
