@@ -3309,7 +3309,7 @@ function exportIssuesToExcel(rows, suffix) {
     'RiskTotal',
     'RiskSeverity',
     'RiskImpact',
-    'RiskUrgency'
+    'RiskUrgency',
     'RiskReasons',
     'SuggestedPriority',
     'SuggestedCategories'
