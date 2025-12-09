@@ -105,12 +105,7 @@ header{
 .brand{
   display:flex;align-items:center;gap:10px;
 }
-.brand .logo{
-  width:28px;height:28px;border-radius:8px;
-  display:grid;place-items:center;
-  background:linear-gradient(135deg,#1d4ed8,#22c55e);
-  color:#fff;font-weight:700;font-size:14px;
-}
+.brand-logo{height:38px;width:auto;display:block;object-fit:contain;}
 .brand-text{display:flex;flex-direction:column}
 .brand-text span:first-child{
   font-size:11px;
