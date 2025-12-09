@@ -3251,15 +3251,49 @@ async function deleteEventFromSheet(id) {
   }
 }
 
-/* ---------- CSV export ---------- */
-function csvEscape(v) {
-  const s = String(v == null ? '' : v);
-  if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
-  return s;
+/* ---------- Excel export ---------- */
+function buildIssueExportRow(issue) {
+  const meta = DataStore.computed.get(issue.id) || {};
+  const risk = meta.risk || {};
+  const suggestions = meta.suggestions || {};
+  const categories = (suggestions.categories || []).map(c => c.label).join(', ');
+  const reasons = Array.isArray(risk.reasons)
+    ? risk.reasons.map(r => r.reason || r).join('; ')
+    : '';
+  let ageDays = '';
+  if (issue.date) {
+    const d = new Date(issue.date);
+    if (!isNaN(d)) ageDays = Math.floor((Date.now() - d.getTime()) / 86400000);
+  }
+  return {
+    ID: issue.id,
+    Module: issue.module,
+    Title: issue.title,
+    Description: issue.desc,
+    Priority: issue.priority,
+    Status: issue.status,
+    Type: issue.type,
+    Date: issue.date,
+    AgeDays: ageDays,
+    Log: issue.log,
+    Link: issue.file,
+    RiskTotal: risk.total ?? '',
+    RiskSeverity: risk.severity ?? '',
+    RiskImpact: risk.impact ?? '',
+    RiskUrgency: risk.urgency ?? '',
+    RiskReasons: reasons,
+    SuggestedPriority: suggestions.priority || '',
+    SuggestedCategories: categories
+  };
 }
 
-function exportIssuesToCsv(rows, suffix) {
+function exportIssuesToExcel(rows, suffix) {
   if (!rows.length) return UI.toast('Nothing to export (no rows).');
+    if (typeof XLSX === 'undefined') {
+    UI.toast('Excel export unavailable (missing XLSX library).');
+    return;
+  }
+
   const headers = [
     'ID',
     'Module',
@@ -3269,51 +3303,65 @@ function exportIssuesToCsv(rows, suffix) {
     'Status',
     'Type',
     'Date',
+    'AgeDays',
     'Log',
     'Link',
     'RiskTotal',
     'RiskSeverity',
     'RiskImpact',
     'RiskUrgency'
+    'RiskReasons',
+    'SuggestedPriority',
+    'SuggestedCategories'
   ];
-  const lines = [headers.join(',')];
-  rows.forEach(r => {
-    const meta = DataStore.computed.get(r.id) || {};
-    const risk = meta.risk || {};
-    const arr = [
-      r.id,
-      r.module,
-      r.title,
-      r.desc,
-      r.priority,
-      r.status,
-      r.type,
-      r.date,
-      r.log,
-      r.file,
-      risk.total ?? '',
-      risk.severity ?? '',
-      risk.impact ?? '',
-      risk.urgency ?? ''
-    ].map(csvEscape);
-    lines.push(arr.join(','));
+  
+  const issueRows = rows.map(buildIssueExportRow);
+  const wsIssues = XLSX.utils.json_to_sheet([]);
+  XLSX.utils.sheet_add_aoa(wsIssues, [headers]);
+  XLSX.utils.sheet_add_json(wsIssues, issueRows, {
+    header: headers,
+    skipHeader: true,
+    origin: 'A2'
   });
-  const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
+   wsIssues['!cols'] = headers.map(h => ({ wch: Math.max(12, h.length + 4) }));
+
+  const statusCounts = rows.reduce((acc, r) => {
+    acc[r.status] = (acc[r.status] || 0) + 1;
+    return acc;
+  }, {});
+  const summaryRows = [
+    ['Generated at', new Date().toLocaleString()],
+    ['Filter - Search', Filters.state.search || ''],
+    ['Filter - Module', Filters.state.module || 'All'],
+    ['Filter - Category', Filters.state.category || 'All'],
+    ['Filter - Priority', Filters.state.priority || 'All'],
+    ['Filter - Status', Filters.state.status || 'All'],
+    ['Filter - Start Date', Filters.state.start || ''],
+    ['Filter - End Date', Filters.state.end || ''],
+    ['Total issues (all)', DataStore.rows.length],
+    ['Total issues (filtered)', rows.length],
+    [],
+    ['Status breakdown', 'Count']
+  ];
+  Object.entries(statusCounts)
+    .sort((a, b) => b[1] - a[1])
+    .forEach(([status, count]) => summaryRows.push([status, count]));
+  const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
+  wsSummary['!cols'] = [{ wch: 24 }, { wch: 18 }];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, wsSummary, 'Summary');
+  XLSX.utils.book_append_sheet(wb, wsIssues, 'Issues');
+
   const ts = new Date().toISOString().slice(0, 10);
-  a.href = url;
-  a.download = `incheck_issues_${suffix || 'filtered'}_${ts}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  UI.toast('Exported CSV');
+ const filename = `incheck_issues_${suffix || 'filtered'}_${ts}.xlsx`;
+  XLSX.writeFile(wb, filename);
+  UI.toast('Exported Excel workbook');
 }
 
-function exportFilteredCsv() {
+function exportFilteredExcel() {
   const rows = UI.Issues.applyFilters();
-  exportIssuesToCsv(rows, 'filtered');
+ exportIssuesToExcel(rows, 'filtered');
 }
 
 /* ---------- Release Planner wiring & rendering ---------- */
@@ -3835,7 +3883,7 @@ function wireCore() {
       loadIssues(true);
       loadEvents(true);
     });
-  if (E.exportCsv) E.exportCsv.addEventListener('click', exportFilteredCsv);
+  if (E.exportCsv) E.exportCsv.addEventListener('click', exportFilteredExcel);
   if (E.createTicketBtn)
     E.createTicketBtn.addEventListener('click', () =>
       window.open(
@@ -4405,7 +4453,7 @@ function wireAIQuery() {
         UI.toast('Nothing to export yet.');
         return;
       }
-      exportIssuesToCsv(LAST_AI_QUERY.rows, 'aiquery');
+      exportIssuesToExcel(LAST_AI_QUERY.rows, 'aiquery');
     });
   }
 
