@@ -1,6 +1,6 @@
 
 /**
- * InCheck Pro Dashboard — Issues · Ops · AI Copilot
+ * ticketing Dashboard
  * Single-file architecture:
  *  - CONFIG / LS_KEYS
  *  - DataStore (issues + text analytics)
@@ -3182,7 +3182,7 @@ async function saveEventToSheet(event) {
       allDay: !!event.allDay
     };
 
-    console.log('[InCheck] sending event payload to Apps Script:', payload);
+     console.log('[Ticketing Dashboard] sending event payload to Apps Script:', payload);
 
     const res = await fetch(CONFIG.CALENDAR_API_URL, {
       method: 'POST',
