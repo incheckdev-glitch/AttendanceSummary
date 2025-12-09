@@ -1,10 +1,9 @@
 <svg width="320" height="80" viewBox="0 0 320 80" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
   <title id="title">InCheck 360 brand logo</title>
-  <desc id="desc">Two thin vertical bars next to the word InCheck with the numbers three six zero underneath</desc>
+  <desc id="desc">Two thin vertical bars next to the words InCheck 360</desc>
   <g fill="#1F55F5">
     <rect x="20" y="14" width="6" height="52" rx="3" />
     <rect x="34" y="14" width="6" height="52" rx="3" />
-    <text x="60" y="48" font-family="'Inter', 'Segoe UI', system-ui, sans-serif" font-size="32" font-weight="700">InCheck</text>
-    <text x="212" y="63" font-family="'Inter', 'Segoe UI', system-ui, sans-serif" font-size="18" letter-spacing="6">360</text>
+    <text x="60" y="48" font-family="'Inter', 'Segoe UI', system-ui, sans-serif" font-size="32" font-weight="700">InCheck 360</text>
   </g>
 </svg>
