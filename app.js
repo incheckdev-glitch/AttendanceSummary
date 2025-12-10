@@ -25,7 +25,7 @@ EDIT_PASS: 'qwerty123456',
     ),
 
     // Optional Apps Script endpoint for writing ticket edits back to the Google Sheet
-  TICKET_API_URL: "https://script.google.com/macros/s/AKfycbxFJjYeXET4AbXaD3iPe00YPzzJRzJBI8T7aKcYoyoZVlzJ7KKiODch5KiX0soYVNkoVQ/exec",
+  TICKET_API_URL: "https://script.google.com/macros/s/AKfycby5U6Rkaz_sYe2N-sHHXqY37UgzTQ5bb1RlGq9iARLbItkY7mXYyiDvDtgjbs4iO9Ki5A/exec",
 
   TREND_DAYS_RECENT: 7,
   TREND_DAYS_WINDOW: 14,
