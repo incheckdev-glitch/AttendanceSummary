@@ -2785,7 +2785,7 @@ async function saveTicketToSheet(ticket) {
     const res = await fetch(CONFIG.TICKET_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'updateTicket', ticket }),
+   body: JSON.stringify({ action: 'updateTicket', ticket }),
       mode: 'cors',
       redirect: 'follow'
     });
@@ -2809,9 +2809,34 @@ async function saveTicketToSheet(ticket) {
         error: `Unexpected response type (${contentType || 'unknown'}). Check the Apps Script deployment.`
       };
     }
-      if (!res.ok) {
-      const errMsg = data?.error || `HTTP ${res.status}: ${res.statusText}`;
-        console.error('Ticket sync failed with non-OK status:', errMsg, raw);
+      
+    const normalizeError = () => {
+      if (data?.error) {
+        if (typeof data.error === 'string') return data.error;
+        if (typeof data.error?.message === 'string') return data.error.message;
+        if (typeof data.error?.status === 'number' && data.error?.message) {
+          return `HTTP ${data.error.status}: ${data.error.message}`;
+        }
+        try {
+          return JSON.stringify(data.error);
+        } catch (_) {}
+        return String(data.error);
+      }
+      if (typeof data?.message === 'string') return data.message;
+      return `HTTP ${res.status}: ${res.statusText || 'Unknown status'}`;
+    };
+
+    if (!res.ok) {
+      let errMsg = normalizeError();
+      if (
+        res.status === 502 &&
+        CONFIG.TICKET_API_URL.includes('corsproxy.io') &&
+        !errMsg.includes('cors proxy')
+      ) {
+        errMsg +=
+          ' (corsproxy.io could not reach the Apps Script URL—confirm the deployment is accessible or update TICKET_API_URL.)';
+      }
+      console.error('Ticket sync failed with non-OK status:', errMsg, raw);
       return { synced: false, error: errMsg };
     }
 
