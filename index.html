@@ -477,6 +477,7 @@
       <div class="header">
         <h2 id="modalTitle" style="margin:0;font-size:20px">Issue</h2>
         <div class="actions">
+          
           <button id="copyId" class="btn sm" aria-label="Copy issue ID">
             <span class="icon" aria-hidden="true">🆔</span> Copy ID
           </button>
@@ -489,6 +490,87 @@
       <div id="modalBody"></div>
     </div>
   </div>
+
+  <!-- Ticket Edit Modal -->
+  <div id="issueEditModal" class="modal" role="dialog" aria-modal="true"
+       aria-labelledby="issueEditTitle" aria-describedby="issueEditBody">
+    <div class="modal-content">
+      <div class="header">
+        <h2 id="issueEditTitle" style="margin:0;font-size:20px">Edit ticket</h2>
+        <div class="actions">
+          <button class="modal-close" id="issueEditClose" aria-label="Close ticket edit dialog">✕</button>
+        </div>
+      </div>
+
+      <form id="issueEditForm">
+        <div id="issueEditBody">
+          <div class="filter-group">
+            <div class="filter-row">
+              <label class="muted" for="issueEditId">Ticket ID</label>
+              <input id="issueEditId" class="input" type="text" readonly aria-readonly="true" />
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="issueEditModule">Module</label>
+              <input id="issueEditModule" class="input" type="text" required placeholder="e.g. Payments" />
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="issueEditTitleInput">Title</label>
+              <input id="issueEditTitleInput" class="input" type="text" required placeholder="Short summary" />
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="issueEditPriority">Priority</label>
+              <select id="issueEditPriority" class="select">
+                <option value="">Unspecified</option>
+                <option value="High">High</option>
+                <option value="Medium">Medium</option>
+                <option value="Low">Low</option>
+              </select>
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="issueEditStatus">Status</label>
+              <select id="issueEditStatus" class="select">
+                <option>Not Started Yet</option>
+                <option>Under Development</option>
+                <option>On Stage</option>
+                <option>Sent</option>
+                <option>Resolved</option>
+                <option>Rejected</option>
+                <option>On Hold</option>
+              </select>
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="issueEditType">Category / Type</label>
+              <input id="issueEditType" class="input" type="text" placeholder="Bug, Feature, etc." />
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="issueEditDate">Date</label>
+              <input id="issueEditDate" class="input" type="date" />
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="issueEditDesc">Description</label>
+              <textarea id="issueEditDesc" class="input" rows="3" style="border-radius:12px;resize:vertical;"></textarea>
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="issueEditLog">Log / Notes</label>
+              <textarea id="issueEditLog" class="input" rows="2" style="border-radius:12px;resize:vertical;"></textarea>
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="issueEditFile">Attachment URL (optional)</label>
+              <input id="issueEditFile" class="input" type="url" placeholder="https://…" />
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;margin-top:8px;">
+          <button type="button" class="btn ghost sm" id="issueEditCancel">Cancel</button>
+          <button type="submit" class="btn primary sm" id="issueEditSubmit">
+            <span class="icon" aria-hidden="true">💾</span> Save changes
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
 
   <!-- Event Modal -->
   <div id="eventModal" class="modal" role="dialog" aria-modal="true"
