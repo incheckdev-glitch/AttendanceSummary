@@ -1751,6 +1751,11 @@ UI.Issues = {
                 )}" target="_blank" rel="noopener noreferrer" aria-label="Open attachment link">🔗</a>`
               : '-'
           }</td>
+          <td>
+            <button type="button" class="btn ghost sm" data-action="edit-issue" aria-label="Edit ${U.escapeAttr(
+              r.id || 'ticket'
+            )}">✏️ Edit</button>
+          </td>
         </tr>
       `
         )
@@ -1771,7 +1776,7 @@ UI.Issues = {
       const desc = parts.length ? parts.join(', ') : 'no filters';
       E.issuesTbody.innerHTML = `
         <tr>
-          <td colspan="8" style="text-align:center;color:var(--muted)">
+          <td colspan="9" style="text-align:center;color:var(--muted)">
             No issues found for ${U.escapeHtml(desc)}.
             <button type="button" class="btn sm" id="clearFiltersBtn" style="margin-left:8px">Clear filters</button>
           </td>
@@ -1806,8 +1811,16 @@ UI.Issues = {
         }
       });
       tr.addEventListener('click', e => {
+        if (e.target.closest('button[data-action="edit-issue"]')) return;
         if (!e.target.closest('a')) UI.Modals.openIssue(tr.getAttribute('data-id'));
       });
+       const editBtn = tr.querySelector('button[data-action="edit-issue"]');
+      if (editBtn) {
+        editBtn.addEventListener('click', e => {
+          e.stopPropagation();
+          IssueEditor.open(tr.getAttribute('data-id'));
+        });
+      }
     });
 
     U.qAll('#issuesTable thead th').forEach(th => {
@@ -3143,7 +3156,7 @@ async function loadIssues(force = false) {
     if (!DataStore.rows.length && E.issuesTbody) {
       E.issuesTbody.innerHTML = `
         <tr>
-          <td colspan="8" style="color:#ffb4b4;text-align:center">
+          <td colspan="9" style="color:#ffb4b4;text-align:center">
             Error loading data and no cached data found.
             <button type="button" id="retryLoad" class="btn sm" style="margin-left:8px">Retry</button>
           </td>
