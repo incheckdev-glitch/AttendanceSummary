@@ -17,17 +17,11 @@ const CONFIG = {
   SHEET_URL:
     "https://docs.google.com/spreadsheets/d/e/2PACX-1vTRwAjNAQxiPP8uR15t_vx03JkjgEBjgUwp2bpx8rsHx-JJxVDBZyf5ap77rAKrYHfgkVMwLJVm6pGn/pub?output=csv",
 
-   // Apps Script web apps (wrapped via corsproxy to handle CORS)
+   // Apps Script web apps
   CALENDAR_API_URL:
-    "https://corsproxy.io/?" +
-    encodeURIComponent(
-     "https://script.google.com/macros/s/AKfycbxKtgMGt2o0b-JwPPQOySuTK_l46_YOV7Nts8gtgTMqLTvCsPGH9eEuNXLMTasEkYLR2w/exec"
-    ),
+   "https://script.google.com/macros/s/AKfycbxKtgMGt2o0b-JwPPQOySuTK_l46_YOV7Nts8gtgTMqLTvCsPGH9eEuNXLMTasEkYLR2w/exec",
   ISSUE_API_URL:
-    "https://corsproxy.io/?" +
-    encodeURIComponent(
-      "https://script.google.com/macros/s/AKfycbxKtgMGt2o0b-JwPPQOySuTK_l46_YOV7Nts8gtgTMqLTvCsPGH9eEuNXLMTasEkYLR2w/exec"
-    ),
+    "https://script.google.com/macros/s/AKfycbxKtgMGt2o0b-JwPPQOySuTK_l46_YOV7Nts8gtgTMqLTvCsPGH9eEuNXLMTasEkYLR2w/exec",
 
   TREND_DAYS_RECENT: 7,
   TREND_DAYS_WINDOW: 14,
