@@ -12,7 +12,7 @@
 
 const CONFIG = {
   DATA_VERSION: '2',
-EDIT_PASS: 'qwerty123456',
+
   // Issues CSV (read-only)
   SHEET_URL:
     "https://docs.google.com/spreadsheets/d/e/2PACX-1vTRwAjNAQxiPP8uR15t_vx03JkjgEBjgUwp2bpx8rsHx-JJxVDBZyf5ap77rAKrYHfgkVMwLJVm6pGn/pub?output=csv",
@@ -23,14 +23,6 @@ EDIT_PASS: 'qwerty123456',
     encodeURIComponent(
       "https://script.google.com/macros/s/AKfycbyzvLTrplAeh9YFmF7a59eFS4jitj5GftBRrDLd_K9cUiIv3vjizxYN6juNEfeRfEAD8w/exec"
     ),
-
-    // Optional Apps Script endpoint for writing ticket edits back to the Google Sheet
-TICKET_API_URL:
-    "https://corsproxy.io/?" +
-    encodeURIComponent(
-      "https://script.google.com/macros/s/AKfycby5U6Rkaz_sYe2N-sHHXqY37UgzTQ5bb1RlGq9iARLbItkY7mXYyiDvDtgjbs4iO9Ki5A/exec"
-    ),
-   TICKET_SHEET_NAME: 'Form Responses 1',
 
   TREND_DAYS_RECENT: 7,
   TREND_DAYS_WINDOW: 14,
@@ -1418,22 +1410,6 @@ function cacheEls() {
     'copyLink',
     'modalClose',
     'drawerBtn',
-     'editTicketBtn',
-    'editTicketModal',
-    'editTicketForm',
-    'editTicketTitle',
-    'editTicketModule',
-    'editTicketPriority',
-    'editTicketStatus',
-    'editTicketDate',
-    'editTicketDesc',
-    'editTicketLog',
-    'editTicketAttachment',
-    'editTicketPassword',
-    'editTicketSave',
-    'editTicketCancel',
-    'editTicketClose',
-    'editTicketId',
     'sidebar',
     'spinner',
     'toast',
@@ -2466,7 +2442,6 @@ UI.Modals = {
   selectedIssue: null,
   lastFocus: null,
   lastEventFocus: null,
-  lastEditFocus: null,
   openIssue(id) {
     const r = DataStore.byId.get(id);
     if (!r || !E.issueModal) return;
@@ -2559,31 +2534,7 @@ UI.Modals = {
     this.selectedIssue = null;
     if (this.lastFocus?.focus) this.lastFocus.focus();
   },
-openEditTicket() {
-    const r = this.selectedIssue;
-    if (!r || !E.editTicketModal || !E.editTicketForm) return;
-    this.lastEditFocus = document.activeElement;
-
-    if (E.editTicketId) E.editTicketId.value = r.id || '';
-    if (E.editTicketTitle) E.editTicketTitle.value = r.title || '';
-    if (E.editTicketModule) E.editTicketModule.value = r.module || '';
-    if (E.editTicketPriority) E.editTicketPriority.value = r.priority || '';
-    if (E.editTicketStatus) E.editTicketStatus.value = r.status || '';
-    if (E.editTicketDate) E.editTicketDate.value = r.date || '';
-    if (E.editTicketDesc) E.editTicketDesc.value = r.desc || '';
-    if (E.editTicketLog) E.editTicketLog.value = r.log || '';
-    if (E.editTicketAttachment) E.editTicketAttachment.value = r.file || '';
-    if (E.editTicketPassword) E.editTicketPassword.value = '';
-
-    E.editTicketModal.style.display = 'flex';
-    E.editTicketTitle?.focus();
-  },
-  closeEditTicket() {
-    if (!E.editTicketModal) return;
-    E.editTicketModal.style.display = 'none';
-    if (this.lastEditFocus?.focus) this.lastEditFocus.focus();
-  },
-   openEvent(ev = {}) {
+  openEvent(ev) {
     this.lastEventFocus = document.activeElement;
     const isEdit = !!(ev && ev.id);
     if (E.eventForm) E.eventForm.dataset.id = isEdit ? ev.id : '';
@@ -2723,168 +2674,6 @@ openEditTicket() {
     if (this.lastEventFocus?.focus) this.lastEventFocus.focus();
   }
 };
-
-async function applyTicketEdits(e) {
-  if (e) e.preventDefault();
-  const current = UI.Modals.selectedIssue;
-  if (!current) {
-    UI.toast('Open a ticket first.');
-    return;
-  }
-
-  const passphrase = (E.editTicketPassword?.value || '').trim();
-  if (passphrase !== CONFIG.EDIT_PASS) {
-    UI.toast('Incorrect passphrase.');
-    return;
-  }
-
-  const moduleVal = (E.editTicketModule?.value || 'Unspecified').trim();
-  const priorityVal = (E.editTicketPriority?.value || '').trim();
-  const statusVal = (E.editTicketStatus?.value || '').trim();
-
-  const updated = {
-    ...current,
-    id: current.id,
-    module: moduleVal || 'Unspecified',
-    title: (E.editTicketTitle?.value || '').trim() || current.title,
-    priority: priorityVal
-      ? DataStore.normalizePriority(priorityVal)
-      : current.priority,
-    status: statusVal ? DataStore.normalizeStatus(statusVal) : current.status,
-    date: E.editTicketDate?.value || current.date,
-    desc: (E.editTicketDesc?.value || '').trim(),
-    log: (E.editTicketLog?.value || '').trim(),
-    file: (E.editTicketAttachment?.value || '').trim()
-  };
-
-  DataStore.rows = DataStore.rows.map(row =>
-    row.id === updated.id ? updated : row
-  );
-  DataStore.hydrateFromRows(DataStore.rows);
-  IssuesCache.save(DataStore.rows);
-  UI.refreshAll();
-
-  UI.Modals.closeEditTicket();
-  UI.Modals.openIssue(updated.id);
- 
-  const syncResult = await saveTicketToSheet(updated);
-  if (syncResult.synced) {
-    UI.toast('Ticket updated in Google Sheet.');
-  } else if (syncResult.skipped) {
-    UI.toast('Ticket updated locally. Configure TICKET_API_URL to sync.');
-  } else {
-    UI.toast('Ticket updated locally (sync failed: ' + syncResult.error + ').');
-  }
-}
-
-async function saveTicketToSheet(ticket) {
-  if (!CONFIG.TICKET_API_URL) return { synced: false, skipped: true };
-
-  UI.spinner(true);
-  try {
-    const res = await fetch(CONFIG.TICKET_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-   body: JSON.stringify({ action: 'updateTicket', ticket }),
-      mode: 'cors',
-      redirect: 'follow'
-    });
-
-    const contentType = res.headers.get('content-type') || '';
-    const raw = await res.text();
-    
-    let data;
-     if (contentType.includes('application/json')) {
-      try {
-        data = JSON.parse(raw);
-      } catch (jsonErr) {
-        console.error('Invalid JSON from ticket backend', jsonErr);
-        console.error('Raw response:', raw);
-        return { synced: false, error: 'Invalid JSON from ticket backend' };
-      }
-    } else {
-      console.error('Ticket backend returned non-JSON payload:', raw);
-      return {
-        synced: false,
-        error: `Unexpected response type (${contentType || 'unknown'}). Check the Apps Script deployment.`
-      };
-    }
-   
-    const normalizeError = () => {
-      if (data?.error) {
-        if (typeof data.error === 'string') return data.error;
-        if (typeof data.error?.message === 'string') return data.error.message;
-        if (typeof data.error?.status === 'number' && data.error?.message) {
-          return `HTTP ${data.error.status}: ${data.error.message}`;
-        }
-        try {
-          return JSON.stringify(data.error);
-        } catch (_) {}
-        return String(data.error);
-      }
-      if (typeof data?.message === 'string') return data.message;
-      return `HTTP ${res.status}: ${res.statusText || 'Unknown status'}`;
-    };
-
-    if (!res.ok) {
-      let errMsg = normalizeError();
-      if (
-        res.status === 502 &&
-        CONFIG.TICKET_API_URL.includes('corsproxy.io') &&
-        !errMsg.includes('cors proxy')
-      ) {
-        errMsg +=
-          ` (corsproxy.io could not reach the Apps Script URL${decodeCorsProxyTarget(
-            CONFIG.TICKET_API_URL
-          )}—confirm the deployment is accessible or update TICKET_API_URL.)`;
-      }
-      console.error('Ticket sync failed with non-OK status:', errMsg, raw);
-      return { synced: false, error: errMsg };
-    }
-
-    if (data?.ok) {
-      const serverTicket = data.ticket;
-      if (serverTicket && serverTicket.id) {
-        const merged = { ...ticket, ...serverTicket };
-        DataStore.rows = DataStore.rows.map(row =>
-          row.id === merged.id ? merged : row
-        );
-        DataStore.hydrateFromRows(DataStore.rows);
-        IssuesCache.save(DataStore.rows);
-        UI.refreshAll();
-      }
-      return { synced: true };
-    }
-
-    return { synced: false, error: data?.error || 'Unknown error from ticket backend' };
-  } catch (err) {
-    let message = err?.message || 'Network error';
-    if (
-      CONFIG.TICKET_API_URL.includes('corsproxy.io') &&
-      !message.toLowerCase().includes('corsproxy.io could not reach')
-    ) {
-      message += ` (Ticket sync request did not reach the Apps Script endpoint${decodeCorsProxyTarget(
-        CONFIG.TICKET_API_URL
-      )}. Check that the deployment is live, accessible without auth, and that the URL is correct.)`;
-    }
-    return { synced: false, error: message };
-  } finally {
-    UI.spinner(false);
-  }
-}
-
-function decodeCorsProxyTarget(url) {
-  try {
-    const idx = url.indexOf('?');
-    if (idx === -1) return '';
-    const encoded = url.slice(idx + 1);
-    const decoded = decodeURIComponent(encoded);
-    if (!decoded || decoded === url) return '';
-    return ` (target: ${decoded}) `;
-  } catch (_) {
-    return ' ';
-  }
-}
 
 function debounce(fn, ms = 250) {
   let t;
@@ -3307,7 +3096,7 @@ async function loadEvents(force = false) {
 
   try {
     UI.spinner(true);
-    const res = await fetch(eventsUrl, { cache: 'no-store' });
+    const res = await fetch(CONFIG.CALENDAR_API_URL, { cache: 'no-store' });
     if (!res.ok) throw new Error(`Events API failed: ${res.status}`);
     const data = await res.json().catch(() => ({}));
     const events = Array.isArray(data.events) ? data.events : [];
@@ -3403,15 +3192,12 @@ async function saveEventToSheet(event) {
       allDay: !!event.allDay
     };
 
-      console.log('[Ticketing Dashboard] sending event payload to Apps Script:', payload);
+     console.log('[Ticketing Dashboard] sending event payload to Apps Script:', payload);
 
-    const saveUrl = buildCalendarApiUrl('saveEvent');
-    if (!saveUrl) throw new Error('Missing CALENDAR_API_URL');
-
-    const res = await fetch(saveUrl, {
+    const res = await fetch(CONFIG.CALENDAR_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-     body: JSON.stringify(payload)
+      body: JSON.stringify({ action: 'save', event: payload })
     });
 
     let data;
@@ -3448,13 +3234,10 @@ async function saveEventToSheet(event) {
 async function deleteEventFromSheet(id) {
   UI.spinner(true);
   try {
-    const deleteUrl = buildCalendarApiUrl('deleteEvent');
-    if (!deleteUrl) throw new Error('Missing CALENDAR_API_URL');
-
-    const res = await fetch(deleteUrl, {
+    const res = await fetch(CONFIG.CALENDAR_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id })
+      body: JSON.stringify({ action: 'delete', event: { id } })
     });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'Delete failed');
@@ -4325,9 +4108,6 @@ function wireModals() {
     E.modalClose.addEventListener('click', () => UI.Modals.closeIssue());
   }
   if (E.issueModal) {
-     if (E.editTicketBtn) {
-    E.editTicketBtn.addEventListener('click', () => UI.Modals.openEditTicket());
-  }
     E.issueModal.addEventListener('click', e => {
       // click outside panel closes
       if (e.target === E.issueModal) UI.Modals.closeIssue();
@@ -4336,34 +4116,10 @@ function wireModals() {
       if (e.key === 'Escape') {
         e.preventDefault();
         UI.Modals.closeIssue();
-           } else if (e.key === 'Tab') {
+            } else if (e.key === 'Tab') {
         trapFocus(E.issueModal, e);
       }
     });
-  }
-
-
-    if (E.editTicketModal) {
-    E.editTicketModal.addEventListener('click', e => {
-      if (e.target === E.editTicketModal) UI.Modals.closeEditTicket();
-    });
-    E.editTicketModal.addEventListener('keydown', e => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        UI.Modals.closeEditTicket();
-      } else if (e.key === 'Tab') {
-        trapFocus(E.editTicketModal, e);
-      }
-    });
-  }
-  if (E.editTicketClose) {
-    E.editTicketClose.addEventListener('click', () => UI.Modals.closeEditTicket());
-  }
-  if (E.editTicketCancel) {
-    E.editTicketCancel.addEventListener('click', () => UI.Modals.closeEditTicket());
-  }
-  if (E.editTicketForm) {
-    E.editTicketForm.addEventListener('submit', applyTicketEdits);
   }
 
   if (E.copyId) {
