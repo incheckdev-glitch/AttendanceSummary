@@ -18,9 +18,13 @@ const CONFIG = {
     "https://docs.google.com/spreadsheets/d/e/2PACX-1vTRwAjNAQxiPP8uR15t_vx03JkjgEBjgUwp2bpx8rsHx-JJxVDBZyf5ap77rAKrYHfgkVMwLJVm6pGn/pub?output=csv",
 
   // Ticket CRUD Apps Script web app URL (wrapped via corsproxy to handle CORS)
+   // Ticket & calendar Apps Script web app URLs (wrapped via corsproxy to handle CORS)
+  // If you deploy a single Apps Script that serves both calendar + issues, you can
+  // point ISSUE_API_URL and CALENDAR_API_URL to the same deployed web app URL.
   ISSUE_API_URL:
     "https://corsproxy.io/?" +
     encodeURIComponent('https://script.google.com/macros/s/AKfycbzxaqPmjl7tIv5-l9OWlmhpIZgQiajnJY7oYIJpUHl1uKpP2PK4-jeTadR7LrN4VRNo/exec'),
+    
   // Calendar Apps Script web app URL (wrapped via corsproxy to handle CORS)
   CALENDAR_API_URL:
     "https://corsproxy.io/?" +
