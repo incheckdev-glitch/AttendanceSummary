@@ -205,6 +205,17 @@ header{
 }
 .icon{font-size:18px;line-height:1}
 
+code{
+  background:var(--border);
+  color:var(--text);
+  border-radius:6px;
+  padding:2px 6px;
+  font-size:12px;
+}
+:root[data-theme="light"] code{
+  background:#e5e7eb;
+}
+
 #accentColor{
   padding:2px;
   width:38px;
@@ -504,11 +515,42 @@ th.sorted-desc::after{
   max-width:760px;width:92%;max-height:90%;overflow:auto;
   box-shadow:var(--shadow);
 }
+.modal-issue .modal-content{max-width:820px}
+.modal-body{display:grid;gap:12px}
 .modal .header{
   display:flex;align-items:center;gap:10px;justify-content:space-between;margin-bottom:8px;
 }
 .modal .actions{display:flex;gap:8px;flex-wrap:wrap}
 .modal-close{cursor:pointer;border:none;background:transparent;color:var(--muted);font-size:20px}
+
+.inline-edit{
+  margin-top:12px;
+  padding:12px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+.inline-edit__header{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  justify-content:space-between;
+  flex-wrap:wrap;
+}
+.inline-edit__title{margin:0;font-size:16px;line-height:1.3}
+.inline-edit__hint{font-size:13px}
+.inline-edit label{font-size:12px;letter-spacing:.01em}
+.inline-edit .input,
+.inline-edit textarea.input{
+  width:100%;
+  border-radius:10px;
+}
+.inline-edit textarea.input{
+  min-height:96px;
+  resize:vertical;
+  line-height:1.5;
+}
+.inline-edit__feedback{min-height:18px}
 
 /* Pagination */
 .table-actions{
