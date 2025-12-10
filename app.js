@@ -2785,22 +2785,33 @@ async function saveTicketToSheet(ticket) {
     const res = await fetch(CONFIG.TICKET_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-     body: JSON.stringify({ action: 'updateTicket', ticket }),
+    body: JSON.stringify({ action: 'updateTicket', ticket }),
       mode: 'cors',
       redirect: 'follow'
     });
 
+    const contentType = res.headers.get('content-type') || '';
     const raw = await res.text();
+    
     let data;
-    try {
-      data = JSON.parse(raw);
-    } catch (jsonErr) {
-      console.error('Invalid JSON from ticket backend', jsonErr);
-      console.error('Raw response:', raw);
-      return { synced: false, error: 'Invalid JSON from ticket backend' };
+     if (contentType.includes('application/json')) {
+      try {
+        data = JSON.parse(raw);
+      } catch (jsonErr) {
+        console.error('Invalid JSON from ticket backend', jsonErr);
+        console.error('Raw response:', raw);
+        return { synced: false, error: 'Invalid JSON from ticket backend' };
+      }
+    } else {
+      console.error('Ticket backend returned non-JSON payload:', raw);
+      return {
+        synced: false,
+        error: `Unexpected response type (${contentType || 'unknown'}). Check the Apps Script deployment.`
+      };
     }
       if (!res.ok) {
       const errMsg = data?.error || `HTTP ${res.status}: ${res.statusText}`;
+        console.error('Ticket sync failed with non-OK status:', errMsg, raw);
       return { synced: false, error: errMsg };
     }
 
