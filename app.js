@@ -2809,7 +2809,7 @@ async function saveTicketToSheet(ticket) {
         error: `Unexpected response type (${contentType || 'unknown'}). Check the Apps Script deployment.`
       };
     }
-      
+   
     const normalizeError = () => {
       if (data?.error) {
         if (typeof data.error === 'string') return data.error;
@@ -2834,7 +2834,9 @@ async function saveTicketToSheet(ticket) {
         !errMsg.includes('cors proxy')
       ) {
         errMsg +=
-          ' (corsproxy.io could not reach the Apps Script URL—confirm the deployment is accessible or update TICKET_API_URL.)';
+          ` (corsproxy.io could not reach the Apps Script URL${decodeCorsProxyTarget(
+            CONFIG.TICKET_API_URL
+          )}—confirm the deployment is accessible or update TICKET_API_URL.)`;
       }
       console.error('Ticket sync failed with non-OK status:', errMsg, raw);
       return { synced: false, error: errMsg };
@@ -2856,9 +2858,31 @@ async function saveTicketToSheet(ticket) {
 
     return { synced: false, error: data?.error || 'Unknown error from ticket backend' };
   } catch (err) {
-    return { synced: false, error: err.message };
+    let message = err?.message || 'Network error';
+    if (
+      CONFIG.TICKET_API_URL.includes('corsproxy.io') &&
+      !message.toLowerCase().includes('corsproxy.io could not reach')
+    ) {
+      message += ` (Ticket sync request did not reach the Apps Script endpoint${decodeCorsProxyTarget(
+        CONFIG.TICKET_API_URL
+      )}. Check that the deployment is live, accessible without auth, and that the URL is correct.)`;
+    }
+    return { synced: false, error: message };
   } finally {
     UI.spinner(false);
+  }
+}
+
+function decodeCorsProxyTarget(url) {
+  try {
+    const idx = url.indexOf('?');
+    if (idx === -1) return '';
+    const encoded = url.slice(idx + 1);
+    const decoded = decodeURIComponent(encoded);
+    if (!decoded || decoded === url) return '';
+    return ` (target: ${decoded}) `;
+  } catch (_) {
+    return ' ';
   }
 }
 
