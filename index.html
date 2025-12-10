@@ -168,16 +168,17 @@
                 <th data-key="date" class="sortable" scope="col" aria-sort="none">Date</th>
                 <th data-key="log" class="sortable" scope="col" aria-sort="none">Log</th>
                 <th scope="col">Link</th>
+                <th scope="col">Actions</th>
               </tr></thead>
               <tbody id="tbodySkeleton">
-                <tr><td colspan="8"><div class="skeleton" style="height:16px;border-radius:6px"></div></td></tr>
-                <tr><td colspan="8"><div class="skeleton" style="height:16px;border-radius:6px"></div></td></tr>
-                <tr><td colspan="8"><div class="skeleton" style="height:16px;border-radius:6px"></div></td></tr>
-                <tr><td colspan="8"><div class="skeleton" style="height:16px;border-radius:6px"></div></td></tr>
-                <tr><td colspan="8"><div class="skeleton" style="height:16px;border-radius:6px"></div></td></tr>
-                <tr><td colspan="8"><div class="skeleton" style="height:16px;border-radius:6px"></div></td></tr>
-                <tr><td colspan="8"><div class="skeleton" style="height:16px;border-radius:6px"></div></td></tr>
-                <tr><td colspan="8"><div class="skeleton" style="height:16px;border-radius:6px"></div></td></tr>
+              <tr><td colspan="9"><div class="skeleton" style="height:16px;border-radius:6px"></div></td></tr>
+                <tr><td colspan="9"><div class="skeleton" style="height:16px;border-radius:6px"></div></td></tr>
+                <tr><td colspan="9"><div class="skeleton" style="height:16px;border-radius:6px"></div></td></tr>
+                <tr><td colspan="9"><div class="skeleton" style="height:16px;border-radius:6px"></div></td></tr>
+                <tr><td colspan="9"><div class="skeleton" style="height:16px;border-radius:6px"></div></td></tr>
+                <tr><td colspan="9"><div class="skeleton" style="height:16px;border-radius:6px"></div></td></tr>
+                <tr><td colspan="9"><div class="skeleton" style="height:16px;border-radius:6px"></div></td></tr>
+                <tr><td colspan="9"><div class="skeleton" style="height:16px;border-radius:6px"></div></td></tr>
               </tbody>
               <tbody id="issuesTbody" style="display:none"></tbody>
             </table>
@@ -477,7 +478,9 @@
       <div class="header">
         <h2 id="modalTitle" style="margin:0;font-size:20px">Issue</h2>
         <div class="actions">
-          
+           <button id="editTicketBtn" class="btn sm primary" aria-label="Edit ticket">
+            <span class="icon" aria-hidden="true">✏️</span> Edit
+          </button>
           <button id="copyId" class="btn sm" aria-label="Copy issue ID">
             <span class="icon" aria-hidden="true">🆔</span> Copy ID
           </button>
