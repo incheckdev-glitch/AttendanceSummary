@@ -2525,7 +2525,13 @@ UI.Modals = {
     }
 
     E.modalTitle.textContent = r.title || r.id || 'Issue';
+        const editInline = `
+      <div class="issue-modal-actions-inline">
+        <button type="button" class="btn primary sm" data-action="edit-from-modal">✏️ Edit ticket</button>
+      </div>`;
+
     E.modalBody.innerHTML = `
+    ${editInline}
       <p><b>ID:</b> ${U.escapeHtml(r.id || '-')}</p>
       <p><b>Module:</b> ${U.escapeHtml(r.module || '-')}</p>
       <p><b>Priority:</b> ${U.escapeHtml(r.priority || '-')}</p>
@@ -2558,6 +2564,12 @@ UI.Modals = {
       </div>
       ${linkedSection}
     `;
+    if (E.editTicketBtn) E.editTicketBtn.style.display = 'inline-flex';
+    const inlineEdit = E.modalBody.querySelector('[data-action="edit-from-modal"]');
+    if (inlineEdit)
+      inlineEdit.addEventListener('click', () => {
+        IssueEditor.open(r.id);
+      });
     E.issueModal.style.display = 'flex';
     E.copyId?.focus();
   },
