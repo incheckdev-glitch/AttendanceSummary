@@ -2785,17 +2785,23 @@ async function saveTicketToSheet(ticket) {
     const res = await fetch(CONFIG.TICKET_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'updateTicket', ticket })
+     body: JSON.stringify({ action: 'updateTicket', ticket }),
+      mode: 'cors',
+      redirect: 'follow'
     });
 
+    const raw = await res.text();
     let data;
     try {
-      data = await res.json();
+      data = JSON.parse(raw);
     } catch (jsonErr) {
       console.error('Invalid JSON from ticket backend', jsonErr);
-      const text = await res.text().catch(() => '');
-      console.error('Raw response:', text);
+      console.error('Raw response:', raw);
       return { synced: false, error: 'Invalid JSON from ticket backend' };
+    }
+      if (!res.ok) {
+      const errMsg = data?.error || `HTTP ${res.status}: ${res.statusText}`;
+      return { synced: false, error: errMsg };
     }
 
     if (data?.ok) {
