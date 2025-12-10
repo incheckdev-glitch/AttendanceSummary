@@ -398,6 +398,7 @@ tr:hover{
   background:var(--card);
   position:relative;
 }
+.issue-modal-actions-inline{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
 .table-wrap::after{
   content:"";
   position:sticky;
