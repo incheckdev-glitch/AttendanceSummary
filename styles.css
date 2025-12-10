@@ -375,15 +375,6 @@ tbody td{
   padding:8px 9px;
   border-bottom:1px solid rgba(31,41,55,.65);
 }
-#issuesTable th:last-child,
-#issuesTable td:last-child{
-  text-align:right;
-  white-space:nowrap;
-  width:1%;
-}
-#issuesTable td:last-child .btn{
-  margin-left:auto;
-}
 tr:hover{
   background:rgba(31,41,55,.8);
 }
@@ -398,7 +389,6 @@ tr:hover{
   background:var(--card);
   position:relative;
 }
-.issue-modal-actions-inline{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
 .table-wrap::after{
   content:"";
   position:sticky;
