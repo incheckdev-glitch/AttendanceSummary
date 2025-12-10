@@ -144,6 +144,9 @@ const CONFIG = {
     ]
   },
 
+   // Simple passphrase to allow inline ticket edits
+  TICKET_EDIT_PASSWORD: 'qwerty123456',
+  
   /**
    * F&B / Middle East release-planning heuristics
    * Used by ReleasePlanner
@@ -443,6 +446,16 @@ const DataStore = {
       meta.risk = { ...risk, reasons };
       meta.suggestions = { priority: sPrio, categories };
     });
+     },
+
+  applyIssueUpdate(update) {
+    if (!update || !update.id) return;
+    const rowsCopy = [...this.rows];
+    const idx = rowsCopy.findIndex(r => r.id === update.id);
+    if (idx === -1) return;
+    rowsCopy[idx] = { ...rowsCopy[idx], ...update };
+    this.hydrateFromRows(rowsCopy);
+    IssuesCache.save(this.rows);
   }
 };
 
@@ -2524,9 +2537,73 @@ UI.Modals = {
         }.
       </div>
       ${linkedSection}
+      <div class="card" style="margin-top:12px;padding:12px;display:flex;flex-direction:column;gap:8px;">
+        <div style="display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap;">
+          <h3 style="margin:0;font-size:16px;">Update ticket inline</h3>
+          <span class="muted" style="font-size:13px;">Use passphrase <code>qwerty123456</code></span>
+        </div>
+        <label class="muted" for="issueEditPassword">Password</label>
+        <input id="issueEditPassword" class="input" type="password" placeholder="Enter edit password" autocomplete="off" />
+
+        <label class="muted" for="issueEditStatus">Status</label>
+        <input id="issueEditStatus" class="input" type="text" value="${U.escapeAttr(
+          r.status || ''
+        )}" />
+
+        <label class="muted" for="issueEditLog">Log / notes</label>
+        <textarea id="issueEditLog" class="input" rows="3" placeholder="Add log update...">${U.escapeHtml(
+          r.log || ''
+        )}</textarea>
+
+        <button type="button" class="btn primary" id="issueUpdateBtn">Save update</button>
+        <div id="issueUpdateFeedback" class="muted" aria-live="polite"></div>
+      </div>
     `;
     E.issueModal.style.display = 'flex';
     E.copyId?.focus();
+    
+    const passwordInput = E.modalBody.querySelector('#issueEditPassword');
+    const statusInput = E.modalBody.querySelector('#issueEditStatus');
+    const logInput = E.modalBody.querySelector('#issueEditLog');
+    const saveBtn = E.modalBody.querySelector('#issueUpdateBtn');
+    const feedback = E.modalBody.querySelector('#issueUpdateFeedback');
+
+    if (saveBtn && passwordInput && statusInput && logInput && feedback) {
+      saveBtn.addEventListener('click', async () => {
+        feedback.textContent = '';
+        feedback.style.color = 'var(--muted, #6b7280)';
+
+        const pass = (passwordInput.value || '').trim();
+        if (pass !== CONFIG.TICKET_EDIT_PASSWORD) {
+          feedback.textContent = 'Incorrect password.';
+          feedback.style.color = 'var(--danger, #c62828)';
+          return;
+        }
+
+        const payload = {
+          id: r.id,
+          status: (statusInput.value || '').trim() || r.status,
+          log: (logInput.value || '').trim() || r.log
+        };
+
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving…';
+        try {
+          const updated = await updateIssueInSheet(payload);
+          DataStore.applyIssueUpdate(updated);
+          UI.refreshAll();
+          feedback.textContent = 'Ticket updated successfully.';
+          feedback.style.color = 'var(--success, #2e7d32)';
+          this.openIssue(payload.id);
+        } catch (err) {
+          feedback.textContent = err.message || 'Update failed';
+          feedback.style.color = 'var(--danger, #c62828)';
+        } finally {
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Save update';
+        }
+      });
+    }
   },
   closeIssue() {
     if (!E.issueModal) return;
@@ -3249,6 +3326,31 @@ async function deleteEventFromSheet(id) {
   } finally {
     UI.spinner(false);
   }
+}
+
+async function updateIssueInSheet(issue) {
+  if (!issue || !issue.id) throw new Error('Missing ticket ID');
+  if (!CONFIG.CALENDAR_API_URL) throw new Error('Calendar API not configured');
+
+  const res = await fetch(CONFIG.CALENDAR_API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'updateIssue', issue })
+  });
+
+  let data;
+  try {
+    data = await res.json();
+  } catch (err) {
+    console.error('Invalid JSON from updateIssue', err);
+    throw new Error('Invalid response from backend');
+  }
+
+  if (!data.ok) {
+    throw new Error(data.error || 'Update failed');
+  }
+
+  return data.issue || issue;
 }
 
 /* ---------- Excel export ---------- */
