@@ -4,11 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Ticketing Dashboard</title>
-  <link
-    rel="icon"
-    type="image/svg+xml"
-    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23004080'/%3E%3Ctext x='32' y='40' text-anchor='middle' font-family='Inter, Arial, sans-serif' font-size='28' fill='white'%3ET%3C/text%3E%3C/svg%3E"
-  />
+
   <!-- Fonts & Libs -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -481,9 +477,6 @@
       <div class="header">
         <h2 id="modalTitle" style="margin:0;font-size:20px">Issue</h2>
         <div class="actions">
-           <button id="editTicketBtn" class="btn sm" aria-label="Edit ticket">
-            <span class="icon" aria-hidden="true">✏️</span> Edit
-          </button>
           <button id="copyId" class="btn sm" aria-label="Copy issue ID">
             <span class="icon" aria-hidden="true">🆔</span> Copy ID
           </button>
@@ -494,86 +487,6 @@
         </div>
       </div>
       <div id="modalBody"></div>
-    </div>
-  </div>
-
-   <!-- Edit Ticket Modal -->
-  <div id="editTicketModal" class="modal" role="dialog" aria-modal="true"
-       aria-labelledby="editTicketTitleLabel" aria-describedby="editTicketDescLabel">
-    <div class="modal-content">
-      <div class="header">
-        <h2 id="editTicketTitleLabel" style="margin:0;font-size:20px">Edit Ticket</h2>
-        <div class="actions">
-          <button class="modal-close" id="editTicketClose" aria-label="Close edit dialog">✕</button>
-        </div>
-      </div>
-
-      <form id="editTicketForm">
-        <div class="filter-group" id="editTicketDescLabel">
-          <div class="filter-row">
-            <label class="muted" for="editTicketId">Ticket ID</label>
-            <input id="editTicketId" class="input" type="text" readonly />
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="editTicketTitle">Title</label>
-            <input id="editTicketTitle" class="input" type="text" placeholder="Ticket title" />
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="editTicketModule">Module</label>
-            <input id="editTicketModule" class="input" type="text" placeholder="Impacted module" />
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="editTicketPriority">Priority</label>
-            <select id="editTicketPriority" class="select">
-              <option value="">(keep current)</option>
-              <option value="High">High</option>
-              <option value="Medium">Medium</option>
-              <option value="Low">Low</option>
-            </select>
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="editTicketStatus">Status</label>
-            <select id="editTicketStatus" class="select">
-              <option value="">(keep current)</option>
-              <option value="Not Started Yet">Not Started Yet</option>
-              <option value="Under Development">Under Development</option>
-              <option value="On Hold">On Hold</option>
-              <option value="On Stage">On Stage</option>
-              <option value="Resolved">Resolved</option>
-              <option value="Rejected">Rejected</option>
-            </select>
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="editTicketDate">Date</label>
-            <input id="editTicketDate" class="input" type="date" />
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="editTicketDesc">Description</label>
-            <textarea id="editTicketDesc" class="input" rows="3" placeholder="Short description"></textarea>
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="editTicketLog">Log / Notes</label>
-            <textarea id="editTicketLog" class="input" rows="3" placeholder="Latest notes"></textarea>
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="editTicketAttachment">Attachment link</label>
-            <input id="editTicketAttachment" class="input" type="url" placeholder="https://…" />
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="editTicketPassword">Passphrase</label>
-            <input id="editTicketPassword" class="input" type="password" required
-                    placeholder="Required to save" autocomplete="current-password" />
-            <div class="muted" style="font-size:12px;margin-top:4px;">
-              Edits are stored locally and protected by a shared passphrase.
-            </div>
-          </div>
-        </div>
-
-        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
-          <button id="editTicketCancel" type="button" class="btn ghost">Cancel</button>
-          <button id="editTicketSave" type="submit" class="btn primary">Save changes</button>
-        </div>
-      </form>
     </div>
   </div>
 
