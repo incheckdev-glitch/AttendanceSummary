@@ -20,7 +20,7 @@ const CONFIG = {
   // Ticket CRUD Apps Script web app URL (wrapped via corsproxy to handle CORS)
   ISSUE_API_URL:
     "https://corsproxy.io/?" +
-    encodeURIComponent('https://script.google.com/macros/s/AKfycbwMvf22FxvJ-QWAHCvKHCNHq8hcJAVWocc-dlzhtt2wfgkrCiKWpyzcCXSauede16--qA/exec'),
+    encodeURIComponent('https://script.google.com/macros/s/AKfycbzxaqPmjl7tIv5-l9OWlmhpIZgQiajnJY7oYIJpUHl1uKpP2PK4-jeTadR7LrN4VRNo/exec'),
   // Calendar Apps Script web app URL (wrapped via corsproxy to handle CORS)
   CALENDAR_API_URL:
     "https://corsproxy.io/?" +
