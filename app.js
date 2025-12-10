@@ -3237,7 +3237,7 @@ async function loadEvents(force = false) {
 
   try {
     UI.spinner(true);
-    const res = await fetch(CONFIG.CALENDAR_API_URL, { cache: 'no-store' });
+    const res = await fetch(eventsUrl, { cache: 'no-store' });
     if (!res.ok) throw new Error(`Events API failed: ${res.status}`);
     const data = await res.json().catch(() => ({}));
     const events = Array.isArray(data.events) ? data.events : [];
@@ -3333,12 +3333,15 @@ async function saveEventToSheet(event) {
       allDay: !!event.allDay
     };
 
-     console.log('[Ticketing Dashboard] sending event payload to Apps Script:', payload);
+      console.log('[Ticketing Dashboard] sending event payload to Apps Script:', payload);
 
-    const res = await fetch(CONFIG.CALENDAR_API_URL, {
+    const saveUrl = buildCalendarApiUrl('saveEvent');
+    if (!saveUrl) throw new Error('Missing CALENDAR_API_URL');
+
+    const res = await fetch(saveUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'save', event: payload })
+     body: JSON.stringify(payload)
     });
 
     let data;
@@ -3375,10 +3378,13 @@ async function saveEventToSheet(event) {
 async function deleteEventFromSheet(id) {
   UI.spinner(true);
   try {
-    const res = await fetch(CONFIG.CALENDAR_API_URL, {
+    const deleteUrl = buildCalendarApiUrl('deleteEvent');
+    if (!deleteUrl) throw new Error('Missing CALENDAR_API_URL');
+
+    const res = await fetch(deleteUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'delete', event: { id } })
+      body: JSON.stringify({ id })
     });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'Delete failed');
