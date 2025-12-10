@@ -17,14 +17,6 @@ const CONFIG = {
   SHEET_URL:
     "https://docs.google.com/spreadsheets/d/e/2PACX-1vTRwAjNAQxiPP8uR15t_vx03JkjgEBjgUwp2bpx8rsHx-JJxVDBZyf5ap77rAKrYHfgkVMwLJVm6pGn/pub?output=csv",
 
-  // Ticket CRUD Apps Script web app URL (wrapped via corsproxy to handle CORS)
-   // Ticket & calendar Apps Script web app URLs (wrapped via corsproxy to handle CORS)
-  // If you deploy a single Apps Script that serves both calendar + issues, you can
-  // point ISSUE_API_URL and CALENDAR_API_URL to the same deployed web app URL.
-  ISSUE_API_URL:
-    "https://corsproxy.io/?" +
-    encodeURIComponent('https://script.google.com/macros/s/AKfycbzxaqPmjl7tIv5-l9OWlmhpIZgQiajnJY7oYIJpUHl1uKpP2PK4-jeTadR7LrN4VRNo/exec'),
-    
   // Calendar Apps Script web app URL (wrapped via corsproxy to handle CORS)
   CALENDAR_API_URL:
     "https://corsproxy.io/?" +
@@ -1417,7 +1409,6 @@ function cacheEls() {
     'copyId',
     'copyLink',
     'modalClose',
-    'editTicketBtn',
     'drawerBtn',
     'sidebar',
     'spinner',
@@ -1494,21 +1485,6 @@ function cacheEls() {
     'eventStatus',
     'eventModules',
     'eventImpactType',
-    'issueEditModal',
-    'issueEditForm',
-    'issueEditClose',
-    'issueEditId',
-    'issueEditModule',
-    'issueEditTitleInput',
-    'issueEditPriority',
-    'issueEditStatus',
-    'issueEditType',
-    'issueEditDate',
-    'issueEditDesc',
-    'issueEditLog',
-    'issueEditFile',
-    'issueEditSubmit',
-    'issueEditCancel',
     // Release Planner IDs
     'plannerRegion',
     'plannerEnv',
@@ -1755,11 +1731,6 @@ UI.Issues = {
                 )}" target="_blank" rel="noopener noreferrer" aria-label="Open attachment link">🔗</a>`
               : '-'
           }</td>
-          <td>
-            <button type="button" class="btn ghost sm" data-action="edit-issue" aria-label="Edit ${U.escapeAttr(
-              r.id || 'ticket'
-            )}">✏️ Edit</button>
-          </td>
         </tr>
       `
         )
@@ -1780,7 +1751,7 @@ UI.Issues = {
       const desc = parts.length ? parts.join(', ') : 'no filters';
       E.issuesTbody.innerHTML = `
         <tr>
-          <td colspan="9" style="text-align:center;color:var(--muted)">
+          <td colspan="8" style="text-align:center;color:var(--muted)">
             No issues found for ${U.escapeHtml(desc)}.
             <button type="button" class="btn sm" id="clearFiltersBtn" style="margin-left:8px">Clear filters</button>
           </td>
@@ -1815,16 +1786,8 @@ UI.Issues = {
         }
       });
       tr.addEventListener('click', e => {
-        if (e.target.closest('button[data-action="edit-issue"]')) return;
         if (!e.target.closest('a')) UI.Modals.openIssue(tr.getAttribute('data-id'));
       });
-       const editBtn = tr.querySelector('button[data-action="edit-issue"]');
-      if (editBtn) {
-        editBtn.addEventListener('click', e => {
-          e.stopPropagation();
-          IssueEditor.open(tr.getAttribute('data-id'));
-        });
-      }
     });
 
     U.qAll('#issuesTable thead th').forEach(th => {
@@ -2529,13 +2492,7 @@ UI.Modals = {
     }
 
     E.modalTitle.textContent = r.title || r.id || 'Issue';
-        const editInline = `
-      <div class="issue-modal-actions-inline">
-        <button type="button" class="btn primary sm" data-action="edit-from-modal">✏️ Edit ticket</button>
-      </div>`;
-
     E.modalBody.innerHTML = `
-    ${editInline}
       <p><b>ID:</b> ${U.escapeHtml(r.id || '-')}</p>
       <p><b>Module:</b> ${U.escapeHtml(r.module || '-')}</p>
       <p><b>Priority:</b> ${U.escapeHtml(r.priority || '-')}</p>
@@ -2568,12 +2525,6 @@ UI.Modals = {
       </div>
       ${linkedSection}
     `;
-    if (E.editTicketBtn) E.editTicketBtn.style.display = 'inline-flex';
-    const inlineEdit = E.modalBody.querySelector('[data-action="edit-from-modal"]');
-    if (inlineEdit)
-      inlineEdit.addEventListener('click', () => {
-        IssueEditor.open(r.id);
-      });
     E.issueModal.style.display = 'flex';
     E.copyId?.focus();
   },
@@ -2721,64 +2672,6 @@ UI.Modals = {
     E.eventModal.style.display = 'none';
     if (E.eventForm) E.eventForm.dataset.id = '';
     if (this.lastEventFocus?.focus) this.lastEventFocus.focus();
-  }
-};
-
-const IssueEditor = {
-  lastFocus: null,
-  open(issueOrId) {
-    const issue =
-      typeof issueOrId === 'string'
-        ? DataStore.byId.get(issueOrId)
-        : issueOrId || UI.Modals.selectedIssue;
-    if (!issue || !E.issueEditModal) return;
-    this.lastFocus = document.activeElement;
-    UI.Modals.selectedIssue = issue;
-    this.fill(issue);
-    E.issueEditModal.style.display = 'flex';
-    E.issueEditModule?.focus();
-  },
-  close() {
-    if (!E.issueEditModal) return;
-    E.issueEditModal.style.display = 'none';
-    if (this.lastFocus?.focus) this.lastFocus.focus();
-  },
-  fill(issue) {
-    if (E.issueEditId) E.issueEditId.value = issue.id || '';
-    if (E.issueEditModule) E.issueEditModule.value = issue.module || '';
-    if (E.issueEditTitleInput) E.issueEditTitleInput.value = issue.title || '';
-    if (E.issueEditPriority)
-      E.issueEditPriority.value = DataStore.normalizePriority(issue.priority || '');
-    if (E.issueEditStatus)
-      E.issueEditStatus.value = DataStore.normalizeStatus(issue.status || '');
-    if (E.issueEditType) E.issueEditType.value = issue.type || '';
-    if (E.issueEditDate)
-      E.issueEditDate.value = issue.date ? toLocalDateValue(issue.date) : '';
-    if (E.issueEditDesc) E.issueEditDesc.value = issue.desc || '';
-    if (E.issueEditLog) E.issueEditLog.value = issue.log || '';
-    if (E.issueEditFile) E.issueEditFile.value = issue.file || '';
-  },
-  getFormValues() {
-    const id = (E.issueEditId?.value || '').trim();
-    const module = (E.issueEditModule?.value || '').trim();
-    const title = (E.issueEditTitleInput?.value || '').trim();
-    const status = DataStore.normalizeStatus((E.issueEditStatus?.value || '').trim());
-    const priority = DataStore.normalizePriority(
-      (E.issueEditPriority?.value || '').trim()
-    );
-    const date = E.issueEditDate?.value || '';
-    return {
-      id,
-      module: module || 'Unspecified',
-      title,
-      priority,
-      status: status || 'Not Started Yet',
-      type: (E.issueEditType?.value || '').trim(),
-      date,
-      desc: (E.issueEditDesc?.value || '').trim(),
-      log: (E.issueEditLog?.value || '').trim(),
-      file: (E.issueEditFile?.value || '').trim()
-    };
   }
 };
 
@@ -3172,7 +3065,7 @@ async function loadIssues(force = false) {
     if (!DataStore.rows.length && E.issuesTbody) {
       E.issuesTbody.innerHTML = `
         <tr>
-          <td colspan="9" style="color:#ffb4b4;text-align:center">
+          <td colspan="8" style="color:#ffb4b4;text-align:center">
             Error loading data and no cached data found.
             <button type="button" id="retryLoad" class="btn sm" style="margin-left:8px">Retry</button>
           </td>
@@ -3356,54 +3249,6 @@ async function deleteEventFromSheet(id) {
   } finally {
     UI.spinner(false);
   }
-}
-
-async function saveIssueToSheet(issue) {
-  if (!issue || !issue.id) {
-    UI.toast('Missing ticket ID to update.');
-    return null;
-  }
-
-  if (!CONFIG.ISSUE_API_URL || CONFIG.ISSUE_API_URL.includes('YOUR_ISSUE_WEB_APP_URL')) {
-    UI.toast('Ticket editing not configured. Set CONFIG.ISSUE_API_URL to your Apps Script web app.');
-    return null;
-  }
-
-  UI.spinner(true);
-  try {
-    const res = await fetch(CONFIG.ISSUE_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'updateIssue', issue })
-    });
-
-    const data = await res.json().catch(() => ({}));
-    if (data.ok) {
-      UI.toast('Ticket updated');
-      return data.issue || issue;
-    }
-
-    UI.toast('Error updating ticket: ' + (data.error || 'Unknown error'));
-    return null;
-  } catch (e) {
-    UI.toast('Network error updating ticket: ' + e.message);
-    return null;
-  } finally {
-    UI.spinner(false);
-  }
-}
-
-function applyIssueUpdateLocally(updatedIssue) {
-  if (!updatedIssue || !updatedIssue.id) return;
-  const idx = DataStore.rows.findIndex(r => r.id === updatedIssue.id);
-  if (idx >= 0) {
-    DataStore.rows[idx] = { ...DataStore.rows[idx], ...updatedIssue };
-  } else {
-    DataStore.rows.push(updatedIssue);
-  }
-  DataStore.hydrateFromRows(DataStore.rows);
-  IssuesCache.save(DataStore.rows);
-  UI.refreshAll();
 }
 
 /* ---------- Excel export ---------- */
@@ -4300,50 +4145,6 @@ function wireModals() {
         .writeText(link)
         .then(() => UI.toast('Issue link copied'))
         .catch(() => UI.toast('Clipboard blocked'));
-    });
-  }
-
-  if (E.editTicketBtn) {
-    E.editTicketBtn.addEventListener('click', () => IssueEditor.open());
-  }
-
-  if (E.issueEditClose) {
-    E.issueEditClose.addEventListener('click', () => IssueEditor.close());
-  }
-  if (E.issueEditCancel) {
-    E.issueEditCancel.addEventListener('click', () => IssueEditor.close());
-  }
-  if (E.issueEditModal) {
-    E.issueEditModal.addEventListener('click', e => {
-      if (e.target === E.issueEditModal) IssueEditor.close();
-    });
-    E.issueEditModal.addEventListener('keydown', e => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        IssueEditor.close();
-      } else if (e.key === 'Tab') {
-        trapFocus(E.issueEditModal, e);
-      }
-    });
-  }
-  if (E.issueEditForm) {
-    E.issueEditForm.addEventListener('submit', async e => {
-      e.preventDefault();
-      const payload = IssueEditor.getFormValues();
-      if (!payload.id) {
-        UI.toast('Ticket ID is required');
-        return;
-      }
-      if (!payload.title) {
-        UI.toast('Title is required');
-        return;
-      }
-
-      const saved = await saveIssueToSheet(payload);
-      if (!saved) return;
-      applyIssueUpdateLocally(saved);
-      IssueEditor.close();
-      UI.Modals.openIssue(saved.id);
     });
   }
 
