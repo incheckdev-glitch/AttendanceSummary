@@ -3317,11 +3317,11 @@ async function saveIssueToSheet(issue, passcode) {
   UI.spinner(true);
   try {
     const payload = normalizeIssueForStore(issue);
-    const res = await fetch(CONFIG.ISSUE_API_URL, {
+    const requestOptions = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'updateIssue', passcode, issue: payload })
-    });
+   };
 
       if (!res.ok) {
       const raw = await res.text();
@@ -3334,23 +3334,52 @@ async function saveIssueToSheet(issue, passcode) {
       );
     }
 
-    let data = {};
-    try {
-      data = await res.json();
-    } catch (jsonErr) {
-      console.error('Invalid JSON from issue backend', jsonErr);
-      const text = await res.text();
-      console.error('Raw response:', text);
-      UI.toast('Issues: invalid JSON from backend, using local changes');
-      return payload;
+ const attempts = [];
+    const send = async (url, label) => {
+      const res = await fetch(url, requestOptions);
+      const bodyText = await res.text();
+      let json = null;
+      try {
+        json = bodyText ? JSON.parse(bodyText) : null;
+      } catch (parseErr) {
+        console.error(`Invalid JSON from issue backend (${label})`, parseErr);
+      }
+      attempts.push({ label, res, bodyText, json });
+      return attempts[attempts.length - 1];
+    };
+
+    const primary = await send(CONFIG.ISSUE_API_URL, 'via CORS proxy');
+    const proxyFailed =
+      primary.res.status === 502 && CONFIG.ISSUE_API_URL.includes('corsproxy.io/?');
+    if (proxyFailed) {
+      const directUrl = decodeURIComponent(CONFIG.ISSUE_API_URL.split('corsproxy.io/?')[1]);
+      await send(directUrl, 'direct Apps Script');
     }
 
-    if (data.ok) {
-      UI.toast('Issue updated');
-      return normalizeIssueForStore(data.issue || payload);
+     const success = attempts.find(a => a.res.ok && a.json);
+    if (success) {
+      if (success.json.ok) {
+        UI.toast(`Issue updated (${success.label})`);
+        return normalizeIssueForStore(success.json.issue || payload);
+      }
+
+      throw new Error(success.json.error || 'Unknown error');
     }
 
-    throw new Error(data.error || 'Unknown error');
+     const readableAttempts = attempts
+      .map(
+        a =>
+          `${a.label}: ${a.res.status} ${a.res.statusText}${
+            a.bodyText ? ` - ${a.bodyText}` : ''
+          }`
+      )
+      .join(' | ');
+
+    const hint = proxyFailed
+      ? 'CORS proxy could not reach the Google Apps Script endpoint. Verify the script is deployed and accessible.'
+      : 'Unexpected response from the issue API.';
+
+    throw new Error(`${hint} (${readableAttempts})`);
   } catch (e) {
     UI.toast('Error updating issue: ' + e.message);
     return null;
