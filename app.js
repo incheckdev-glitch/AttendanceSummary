@@ -21,7 +21,7 @@ const CONFIG = {
   CALENDAR_API_URL:
     "https://corsproxy.io/?" +
     encodeURIComponent(
-      "https://script.google.com/macros/s/AKfycbxxBcG04HyiVNYE_C_8BVaTtZb2Sk68-Up3cxdAXlJPzTyPacrWP_IfUFBbO1Hrl2yauQ/exec"
+      "https://script.google.com/macros/s/AKfycbz3RyG4U92CNzC9ufbN3XvZu6TEo_SnVP4PCDI-Ng5-t75WhQjdRjQOeL3fHboCj-nVVA/exec"
     ),
 
   TREND_DAYS_RECENT: 7,
@@ -171,7 +171,7 @@ const CONFIG = {
   // Apps Script endpoint for editing tickets (expects POST JSON)
   ISSUE_UPDATE_API_URL:
     'https://corsproxy.io/?' +
-    encodeURIComponent('https://script.google.com/macros/s/AKfycbxxBcG04HyiVNYE_C_8BVaTtZb2Sk68-Up3cxdAXlJPzTyPacrWP_IfUFBbO1Hrl2yauQ/exec'),
+    encodeURIComponent('https://script.google.com/macros/s/AKfycbz3RyG4U92CNzC9ufbN3XvZu6TEo_SnVP4PCDI-Ng5-t75WhQjdRjQOeL3fHboCj-nVVA/exec'),
 
   // Simple password gate to prevent accidental edits
   ISSUE_EDIT_PASSWORD: '1234567890'
