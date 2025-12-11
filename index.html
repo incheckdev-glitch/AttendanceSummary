@@ -484,6 +484,9 @@
       <div class="header">
         <h2 id="modalTitle" style="margin:0;font-size:20px">Issue</h2>
         <div class="actions">
+          <button id="editIssueBtn" class="btn sm primary" aria-label="Edit issue">
+            <span class="icon" aria-hidden="true">✏️</span> Edit
+          </button>
           <button id="copyId" class="btn sm" aria-label="Copy issue ID">
             <span class="icon" aria-hidden="true">🆔</span> Copy ID
           </button>
@@ -497,6 +500,125 @@
     </div>
   </div>
 
+  <!-- Edit Issue Modal -->
+  <div id="editIssueModal" class="modal" role="dialog" aria-modal="true"
+       aria-labelledby="editIssueTitle" aria-describedby="editIssueBody">
+    <div class="modal-content">
+      <div class="header">
+        <h2 id="editIssueTitle" style="margin:0;font-size:20px">Edit Ticket</h2>
+        <div class="actions">
+          <button class="modal-close" id="editIssueClose" aria-label="Close edit dialog">✕</button>
+        </div>
+      </div>
+
+      <form id="editIssueForm">
+        <div id="editIssueBody">
+          <div class="filter-group">
+            <div class="filter-row">
+              <label class="muted" for="editIssuePasscode">Passcode (required)</label>
+              <input id="editIssuePasscode" class="input" type="password" required
+                     placeholder="Enter 1234567890 to allow edits" autocomplete="off" />
+              <div class="muted" style="font-size:12px;margin-top:4px;">
+                Updates are pushed directly to the Google Sheet.
+              </div>
+            </div>
+
+            <div class="filter-row">
+              <label class="muted" for="editIssueId">Ticket ID</label>
+              <input id="editIssueId" class="input" type="text" readonly />
+            </div>
+
+            <div class="filter-row">
+              <label class="muted" for="editIssueTitleInput">Title</label>
+              <input id="editIssueTitleInput" class="input" type="text" required />
+            </div>
+
+            <div class="filter-row">
+              <label class="muted" for="editIssueDesc">Description</label>
+              <textarea id="editIssueDesc" class="input" rows="3" required></textarea>
+            </div>
+
+            <div class="filter-row">
+              <label class="muted" for="editIssueModule">Module</label>
+              <input id="editIssueModule" class="input" type="text" required />
+            </div>
+
+            <div class="filter-row">
+              <label class="muted" for="editIssuePriority">Priority</label>
+              <select id="editIssuePriority" class="select" required>
+                <option value="High">High</option>
+                <option value="Medium">Medium</option>
+                <option value="Low">Low</option>
+              </select>
+            </div>
+
+            <div class="filter-row">
+              <label class="muted" for="editIssueStatus">Status</label>
+              <select id="editIssueStatus" class="select" required>
+                <option value="Not Started Yet">Not Started Yet</option>
+                <option value="Under Development">Under Development</option>
+                <option value="On Hold">On Hold</option>
+                <option value="On Stage">On Stage</option>
+                <option value="Sent">Sent</option>
+                <option value="Resolved">Resolved</option>
+                <option value="Rejected">Rejected</option>
+              </select>
+            </div>
+
+            <div class="filter-row">
+              <label class="muted" for="editIssueType">Category</label>
+              <input id="editIssueType" class="input" type="text" />
+            </div>
+
+            <div class="filter-row">
+              <label class="muted" for="editIssueDepartment">Department</label>
+              <input id="editIssueDepartment" class="input" type="text" />
+            </div>
+
+            <div class="filter-row">
+              <label class="muted" for="editIssueName">Name</label>
+              <input id="editIssueName" class="input" type="text" />
+            </div>
+
+            <div class="filter-row">
+              <label class="muted" for="editIssueEmail">Email Addressee</label>
+              <input id="editIssueEmail" class="input" type="email" />
+            </div>
+
+            <div class="filter-row">
+              <label class="muted" for="editIssueNotificationSent">Notification Sent</label>
+              <input id="editIssueNotificationSent" class="input" type="text" />
+            </div>
+
+            <div class="filter-row">
+              <label class="muted" for="editIssueNotificationReview">Notification Sent Under Review</label>
+              <input id="editIssueNotificationReview" class="input" type="text" />
+            </div>
+
+            <div class="filter-row">
+              <label class="muted" for="editIssueLog">Log / Notes</label>
+              <textarea id="editIssueLog" class="input" rows="3"></textarea>
+            </div>
+
+            <div class="filter-row">
+              <label class="muted" for="editIssueFile">Link</label>
+              <input id="editIssueFile" class="input" type="url" />
+            </div>
+
+            <div class="filter-row">
+              <label class="muted" for="editIssueDate">Date</label>
+              <input id="editIssueDate" class="input" type="date" />
+            </div>
+          </div>
+
+          <div class="actions" style="justify-content:flex-end;gap:8px;">
+            <button type="button" class="btn ghost" id="editIssueCancel">Cancel</button>
+            <button type="submit" class="btn primary">Save changes</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
   <!-- Event Modal -->
   <div id="eventModal" class="modal" role="dialog" aria-modal="true"
        aria-labelledby="eventModalTitle" aria-describedby="eventModalBody">
