@@ -603,16 +603,16 @@ th.sorted-desc::after{
 
 /* Hide log col on small screens */
 @media(max-width:768px){
-  #issuesTable th:nth-child(7),
-  #issuesTable td:nth-child(7){display:none}
+ #issuesTable th:nth-child(14),
+  #issuesTable td:nth-child(14){display:none}
 }
 
 /* Extra compact mode: hide module + priority on very small screens */
 @media(max-width:480px){
-  #issuesTable th:nth-child(2),
-  #issuesTable td:nth-child(2),
-  #issuesTable th:nth-child(4),
-  #issuesTable td:nth-child(4){
+  #issuesTable th:nth-child(8),
+  #issuesTable td:nth-child(8),
+  #issuesTable th:nth-child(7),
+  #issuesTable td:nth-child(7){
     display:none;
   }
 }
