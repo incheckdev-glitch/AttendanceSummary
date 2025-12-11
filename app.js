@@ -21,7 +21,7 @@ const CONFIG = {
   CALENDAR_API_URL:
     "https://corsproxy.io/?" +
     encodeURIComponent(
-      "https://script.google.com/macros/s/AKfycbyzvLTrplAeh9YFmF7a59eFS4jitj5GftBRrDLd_K9cUiIv3vjizxYN6juNEfeRfEAD8w/exec"
+      "https://script.google.com/macros/s/AKfycbxxBcG04HyiVNYE_C_8BVaTtZb2Sk68-Up3cxdAXlJPzTyPacrWP_IfUFBbO1Hrl2yauQ/exec"
     ),
 
   TREND_DAYS_RECENT: 7,
