@@ -3323,6 +3323,17 @@ async function saveIssueToSheet(issue, passcode) {
       body: JSON.stringify({ action: 'updateIssue', passcode, issue: payload })
     });
 
+      if (!res.ok) {
+      const raw = await res.text();
+      const hint =
+        res.status === 502
+          ? 'CORS proxy could not reach the Google Apps Script endpoint. Verify the script is deployed and accessible.'
+          : 'Unexpected response from the issue API.';
+      throw new Error(
+        `${hint} (${res.status} ${res.statusText}${raw ? `: ${raw}` : ''})`
+      );
+    }
+
     let data = {};
     try {
       data = await res.json();
@@ -3346,7 +3357,7 @@ async function saveIssueToSheet(issue, passcode) {
   } finally {
     UI.spinner(false);
   }
-}
+ }
 
 async function saveEventToSheet(event) {
   UI.spinner(true);
