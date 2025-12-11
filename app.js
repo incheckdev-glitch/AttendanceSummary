@@ -375,11 +375,17 @@ const DataStore = {
     return p;
   },
   normalizeRow(raw) {
+        const rawFields = Object.entries(raw || {})
+      .map(([key, value]) => ({
+        key: String(key || '').trim(),
+        value: String(value ?? '').trim()
+      }))
+      .filter(({ key }) => key);
+
     const lower = {};
-    for (const k in raw) {
-      if (!k) continue;
-      lower[k.toLowerCase().replace(/\s+/g, ' ').trim()] = String(raw[k] ?? '').trim();
-    }
+    rawFields.forEach(({ key, value }) => {
+      lower[key.toLowerCase().replace(/\s+/g, ' ').trim()] = value;
+    });
     const pick = (...keys) => {
       for (const key of keys) {
         if (lower[key]) return lower[key];
@@ -396,7 +402,8 @@ const DataStore = {
       status: DataStore.normalizeStatus(pick('status') || 'Not Started Yet'),
       type: pick('category', 'type'),
       date: pick('timestamp', 'date', 'created at'),
-      log: pick('log', 'logs', 'comment', 'notes')
+       log: pick('log', 'logs', 'comment', 'notes'),
+      rawFields
     };
   },
   tokenize(issue) {
@@ -2479,6 +2486,31 @@ UI.Modals = {
         .filter(Boolean);
       return ids.includes(r.id);
     });
+    
+    const sheetFieldRows = (r.rawFields || [])
+      .map(
+        ({ key, value }) => `
+            <tr>
+              <td style="padding:6px 8px;border-bottom:1px solid var(--border);width:32%;vertical-align:top;"><strong>${U.escapeHtml(
+                key
+              )}</strong></td>
+              <td style="padding:6px 8px;border-bottom:1px solid var(--border);vertical-align:top;">${U.escapeHtml(
+                value || '—'
+              )}</td>
+            </tr>`
+      )
+      .join('');
+
+    const allFieldsSection = sheetFieldRows
+      ? `
+        <div class="card" style="margin:12px 0 0;padding:10px 12px;border:1px solid var(--border);border-radius:12px;">
+          <strong>All fields from Google Sheet</strong>
+          <div class="muted small" style="margin:4px 0 8px;">Includes every column for this ticket.</div>
+          <div style="max-height:260px;overflow:auto;border:1px solid var(--border);border-radius:10px;">
+            <table style="width:100%;border-collapse:collapse;font-size:13px;">${sheetFieldRows}</table>
+          </div>
+        </div>`
+      : '';
     let linkedSection = '';
     if (linkedReleases.length) {
       const items = linkedReleases
@@ -2520,6 +2552,7 @@ UI.Modals = {
             )}" target="_blank" rel="noopener noreferrer">Open link</a></p>`
           : ''
       }
+        ${allFieldsSection}
       <div style="margin-top:10px" class="muted">
         Suggested: priority <b>${U.escapeHtml(
           meta.suggestions?.priority || '-'
