@@ -178,6 +178,9 @@ const CONFIG = {
   }
 };
 
+const EDIT_TICKET_URL =
+  'https://script.google.com/macros/s/AKfycby8yzhIexlrXy9r_pflGzcghjGHdEUhZBe7TWF4ACrxCpHNEwPHDh99dVjnucSDlLyyPQ/exec';
+
 const LS_KEYS = {
   filters: 'incheckFilters',
   theme: 'theme',
@@ -2811,6 +2814,118 @@ function applyIssueUpdate(savedIssue) {
   IssuesCache.save(DataStore.rows);
 }
 
+async function onEditIssueSubmit(event) {
+  console.log('Edit form submitted');
+  event.preventDefault();
+
+  const passcode = (E.editIssuePasscode?.value || '').trim();
+  if (passcode !== CONFIG.ISSUE_EDIT_PASSCODE) {
+    console.warn('Edit blocked: invalid passcode');
+    UI.toast('Invalid passcode');
+    return;
+  }
+
+  const id = (E.editIssueId?.value || '').trim();
+  const title = (E.editIssueTitleInput?.value || '').trim();
+  const description = (E.editIssueDesc?.value || '').trim();
+  const module = (E.editIssueModule?.value || '').trim();
+  const priority = E.editIssuePriority?.value || '';
+  const status = E.editIssueStatus?.value || '';
+  const type = (E.editIssueType?.value || '').trim();
+  const department = (E.editIssueDepartment?.value || '').trim();
+  const name = (E.editIssueName?.value || '').trim();
+  const emailAddressee = (E.editIssueEmail?.value || '').trim();
+  const notificationSent = (E.editIssueNotificationSent?.value || '').trim();
+  const notificationUnderReview = (E.editIssueNotificationReview?.value || '').trim();
+  const log = (E.editIssueLog?.value || '').trim();
+  const link = (E.editIssueFile?.value || '').trim();
+  const date = E.editIssueDate?.value || '';
+
+  const missingFields = [];
+  if (!id) missingFields.push('Ticket ID');
+  if (!title) missingFields.push('Title');
+  if (!description) missingFields.push('Description');
+  if (!module) missingFields.push('Module');
+  if (!priority) missingFields.push('Priority');
+  if (!status) missingFields.push('Status');
+
+  if (missingFields.length) {
+    console.warn('Edit blocked: missing fields', missingFields);
+    UI.toast(`Please fill the required fields: ${missingFields.join(', ')}`);
+    return;
+  }
+
+  const payload = {
+    id,
+    title,
+    description,
+    module,
+    priority,
+    status,
+    type,
+    department,
+    name,
+    emailAddressee,
+    notificationSent,
+    notificationUnderReview,
+    log,
+    link,
+    date
+  };
+
+  console.log('Sending edit payload', payload);
+
+  try {
+    const response = await fetch(EDIT_TICKET_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    let data = null;
+    try {
+      data = await response.json();
+    } catch (err) {
+      console.error('Failed to parse edit response JSON', err);
+    }
+
+    console.log('Edit response', { status: response.status, data });
+
+    if (!response.ok || !data?.success) {
+      throw new Error(data?.error || 'Request failed');
+    }
+
+    UI.toast('Ticket updated successfully');
+
+    const updatedIssue = {
+      id,
+      title,
+      desc: description,
+      module,
+      priority,
+      status,
+      type,
+      department,
+      name,
+      emailAddressee,
+      notificationSent,
+      notificationUnderReview,
+      log,
+      file: link,
+      date,
+      ...(data.issue || {})
+    };
+
+    applyIssueUpdate(updatedIssue);
+    IssueEditor.close();
+    UI.Modals.closeIssue();
+    UI.refreshAll();
+  } catch (error) {
+    console.error('Failed to update ticket', error);
+    UI.toast('Failed to update ticket');
+  }
+}
+
 function debounce(fn, ms = 250) {
   let t;
   return (...a) => {
@@ -4413,29 +4528,9 @@ function wireModals() {
     });
   }
 
-  if (E.editIssueForm) {
-    E.editIssueForm.addEventListener('submit', async e => {
-      e.preventDefault();
-      const passcode = (E.editIssuePasscode?.value || '').trim();
-      if (passcode !== CONFIG.ISSUE_EDIT_PASSCODE) {
-        UI.toast('Invalid passcode');
-        return;
-      }
-
-      const formValues = IssueEditor.collectForm();
-      if (!formValues) {
-        UI.toast('Select a ticket to edit.');
-        return;
-      }
-
-      const saved = await saveIssueToSheet(formValues, passcode);
-      if (!saved) return;
-
-      applyIssueUpdate(saved);
-      IssueEditor.close();
-      UI.Modals.closeIssue();
-      UI.refreshAll();
-    });
+ const editIssueForm = document.getElementById('editIssueForm');
+  if (editIssueForm) {
+    editIssueForm.addEventListener('submit', onEditIssueSubmit);
   }
   // Event modal
   if (E.eventModalClose) {
