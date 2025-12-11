@@ -3334,28 +3334,23 @@ async function saveIssueToSheet(issue, passcode) {
       );
     }
 
-const attempts = [];
+ const attempts = [];
     const send = async (url, label) => {
+      const res = await fetch(url, requestOptions);
+      const bodyText = await res.text();
+      let json = null;
       try {
-        const response = await fetch(url, requestOptions);
-        const bodyText = await response.text();
-        let json = null;
-        try {
-          json = bodyText ? JSON.parse(bodyText) : null;
-        } catch (parseErr) {
-          console.error(`Invalid JSON from issue backend (${label})`, parseErr);
-        }
-        attempts.push({ label, response, bodyText, json });
-      } catch (err) {
-        attempts.push({ label, error: err });
+        json = bodyText ? JSON.parse(bodyText) : null;
+      } catch (parseErr) {
+        console.error(`Invalid JSON from issue backend (${label})`, parseErr);
       }
+      attempts.push({ label, res, bodyText, json });
       return attempts[attempts.length - 1];
     };
 
     const primary = await send(CONFIG.ISSUE_API_URL, 'via CORS proxy');
     const proxyFailed =
-      CONFIG.ISSUE_API_URL.includes('corsproxy.io/?') &&
-      (!primary?.response || primary.response.status === 502);
+      primary.res.status === 502 && CONFIG.ISSUE_API_URL.includes('corsproxy.io/?');
     if (proxyFailed) {
       const directUrl = decodeURIComponent(CONFIG.ISSUE_API_URL.split('corsproxy.io/?')[1]);
       await send(directUrl, 'direct Apps Script');
