@@ -11,7 +11,7 @@
  */
 
 const CONFIG = {
-  DATA_VERSION: '2',
+  DATA_VERSION: '3',
 
   // Issues CSV (read-only)
   SHEET_URL:
@@ -380,10 +380,15 @@ const DataStore = {
     };
     return {
       id: pick('ticket id', 'id'),
+      name: pick('name', 'requester', 'requester name'),
+      department: pick('department', 'dept'),
       module: pick('impacted module', 'module', 'issue location') || 'Unspecified',
       title: pick('title'),
       desc: pick('description'),
       file: pick('file upload', 'link', 'url'),
+      emailAddressee: pick('email addressee', 'email', 'email address'),
+      notificationSent: pick('notification sent'),
+      notificationUnderReview: pick('notification sent under review'),
       priority: DataStore.normalizePriority(pick('priority')),
       status: DataStore.normalizeStatus(pick('status') || 'Not Started Yet'),
       type: pick('category', 'type'),
@@ -1583,7 +1588,19 @@ UI.Issues = {
     };
 
     return DataStore.rows.filter(r => {
-     const hay = [r.id, r.module, r.title, r.desc, r.log, r.type]
+      const hay = [
+        r.id,
+        r.module,
+        r.title,
+        r.desc,
+        r.log,
+        r.type,
+        r.name,
+        r.department,
+        r.emailAddressee,
+        r.notificationSent,
+        r.notificationUnderReview
+      ]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
@@ -1718,11 +1735,12 @@ UI.Issues = {
           r.id || ''
         )}" data-id="${U.escapeAttr(r.id)}">
           <td>${U.escapeHtml(r.id || '-')}</td>
-          <td>${U.escapeHtml(r.module || '-')}</td>
+         <td>${U.escapeHtml(r.date || '-')}</td>
+          <td>${U.escapeHtml(r.name || '-')}</td>
+          <td>${U.escapeHtml(r.department || '-')}</td>
           <td>${U.escapeHtml(r.title || '-')}</td>
-          <td>${badgePrio(r.priority || '-')}</td>
-          <td>${badgeStatus(r.status || '-')}</td>
-          <td>${U.escapeHtml(r.date || '-')}</td>
+          <td>${U.escapeHtml(r.desc || '-')}</td>
+          <td>${U.escapeHtml(r.module || '-')}</td>
           <td>${U.escapeHtml(r.log || '-')}</td>
           <td>${
             r.file
@@ -1731,6 +1749,12 @@ UI.Issues = {
                 )}" target="_blank" rel="noopener noreferrer" aria-label="Open attachment link">🔗</a>`
               : '-'
           }</td>
+            <td>${U.escapeHtml(r.emailAddressee || '-')}</td>
+          <td>${U.escapeHtml(r.type || '-')}</td>
+          <td>${badgeStatus(r.status || '-')}</td>
+          <td>${U.escapeHtml(r.notificationSent || '-')}</td>
+          <td>${U.escapeHtml(r.log || '-')}</td>
+          <td>${U.escapeHtml(r.notificationUnderReview || '-')}</td>
         </tr>
       `
         )
@@ -1751,7 +1775,7 @@ UI.Issues = {
       const desc = parts.length ? parts.join(', ') : 'no filters';
       E.issuesTbody.innerHTML = `
         <tr>
-          <td colspan="8" style="text-align:center;color:var(--muted)">
+          <td colspan="15" style="text-align:center;color:var(--muted)">
             No issues found for ${U.escapeHtml(desc)}.
             <button type="button" class="btn sm" id="clearFiltersBtn" style="margin-left:8px">Clear filters</button>
           </td>
@@ -2494,10 +2518,15 @@ UI.Modals = {
     E.modalTitle.textContent = r.title || r.id || 'Issue';
     E.modalBody.innerHTML = `
       <p><b>ID:</b> ${U.escapeHtml(r.id || '-')}</p>
+      <p><b>Name:</b> ${U.escapeHtml(r.name || '-')}</p>
+      <p><b>Department:</b> ${U.escapeHtml(r.department || '-')}</p>
       <p><b>Module:</b> ${U.escapeHtml(r.module || '-')}</p>
       <p><b>Priority:</b> ${U.escapeHtml(r.priority || '-')}</p>
       <p><b>Status:</b> ${U.escapeHtml(r.status || '-')}</p>
       <p><b>Date:</b> ${U.escapeHtml(r.date || '-')}</p>
+      <p><b>Email Addressee:</b> ${U.escapeHtml(r.emailAddressee || '-')}</p>
+      <p><b>Notification Sent:</b> ${U.escapeHtml(r.notificationSent || '-')}</p>
+      <p><b>Notification Sent Under Review:</b> ${U.escapeHtml(r.notificationUnderReview || '-')}</p>
       <p><b>Risk:</b> ${risk.total}
          <br><span class="muted">Tech ${risk.technical}, Biz ${risk.business}, Ops ${risk.operational}, Time ${risk.time}</span>
          <br><span class="muted">Severity ${risk.severity}, Impact ${risk.impact}, Urgency ${risk.urgency}</span>
@@ -3065,7 +3094,7 @@ async function loadIssues(force = false) {
     if (!DataStore.rows.length && E.issuesTbody) {
       E.issuesTbody.innerHTML = `
         <tr>
-          <td colspan="8" style="color:#ffb4b4;text-align:center">
+          <td colspan="15" style="color:#ffb4b4;text-align:center">
             Error loading data and no cached data found.
             <button type="button" id="retryLoad" class="btn sm" style="margin-left:8px">Retry</button>
           </td>
@@ -3267,12 +3296,17 @@ function buildIssueExportRow(issue) {
   }
   return {
     ID: issue.id,
+     Name: issue.name,
+    Department: issue.department,
     Module: issue.module,
     Title: issue.title,
     Description: issue.desc,
+    EmailAddressee: issue.emailAddressee,
     Priority: issue.priority,
     Status: issue.status,
     Type: issue.type,
+    NotificationSent: issue.notificationSent,
+    NotificationUnderReview: issue.notificationUnderReview,
     Date: issue.date,
     AgeDays: ageDays,
     Log: issue.log,
@@ -3296,12 +3330,17 @@ function exportIssuesToExcel(rows, suffix) {
 
   const headers = [
     'ID',
+    'Name',
+    'Department',
     'Module',
     'Title',
     'Description',
+    'EmailAddressee',
     'Priority',
     'Status',
     'Type',
+    'NotificationSent',
+    'NotificationUnderReview',
     'Date',
     'AgeDays',
     'Log',
