@@ -344,6 +344,7 @@ const DataStore = {
   df: new Map(),
   N: 0,
   events: [],
+  sheetFields: [],
   etag: null,
 
   normalizeStatus(s) {
@@ -366,7 +367,38 @@ const DataStore = {
     if (i.startsWith('l')) return 'Low';
     return p;
   },
-  normalizeRow(raw) {
+ buildFieldMeta(fields = []) {
+    const seen = new Set();
+    return fields
+      .map((name, idx) => {
+        const trimmed = (name || '').trim();
+        if (!trimmed) return null;
+        let key = trimmed
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '_')
+          .replace(/^_+|_+$/g, '');
+        if (!key) key = `col_${idx + 1}`;
+        let unique = key,
+          counter = 1;
+        while (seen.has(unique)) {
+          unique = `${key}_${counter++}`;
+        }
+        seen.add(unique);
+        return { name: trimmed, key: unique };
+      })
+      .filter(Boolean);
+  },
+  normalizeRow(raw, fieldMeta = []) {
+    const rawFields = {};
+    for (const k in raw) {
+      if (!k) continue;
+      rawFields[k.trim()] = String(raw[k] ?? '').trim();
+    }
+    const rawByKey = {};
+    fieldMeta.forEach(f => {
+      rawByKey[f.key] = rawFields[f.name] ?? '';
+    });
+    
     const lower = {};
     for (const k in raw) {
       if (!k) continue;
@@ -388,7 +420,9 @@ const DataStore = {
       status: DataStore.normalizeStatus(pick('status') || 'Not Started Yet'),
       type: pick('category', 'type'),
       date: pick('timestamp', 'date', 'created at'),
-      log: pick('log', 'logs', 'comment', 'notes')
+      log: pick('log', 'logs', 'comment', 'notes'),
+      raw: rawFields,
+      rawByKey
     };
   },
   tokenize(issue) {
@@ -399,13 +433,20 @@ const DataStore = {
       .filter(w => w && w.length > 2 && !STOPWORDS.has(w));
   },
   hydrate(csvText) {
-    const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true }).data
-      .map(DataStore.normalizeRow)
+   const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true });
+    const fieldMeta = this.buildFieldMeta(parsed.meta?.fields || []);
+    const normalized = parsed.data
+      .map(r => DataStore.normalizeRow(r, fieldMeta))
       .filter(r => r.id && r.id.trim() !== '');
-    this.hydrateFromRows(parsed);
+   this.hydrateFromRows(normalized, fieldMeta);
   },
-  hydrateFromRows(parsed) {
+  hydrateFromRows(parsed, fieldMeta = null) {
     this.rows = parsed || [];
+     if (fieldMeta && fieldMeta.length) this.sheetFields = fieldMeta;
+    else if (!this.sheetFields.length) {
+      const sample = this.rows.find(r => r.raw) || {};
+      this.sheetFields = this.buildFieldMeta(Object.keys(sample.raw || {}));
+    }
     this.byId.clear();
     this.byModule.clear();
     this.byStatus.clear();
@@ -454,14 +495,17 @@ const IssuesCache = {
       const raw = localStorage.getItem(LS_KEYS.issues);
       if (!raw) return null;
       const data = JSON.parse(raw);
-      return Array.isArray(data) ? data : null;
+       if (Array.isArray(data)) return { rows: data, fields: [] };
+      if (data && Array.isArray(data.rows)) return { rows: data.rows, fields: data.fields || [] };
+      return null;
     } catch {
       return null;
     }
   },
-  save(rows) {
+  save(rows, fields = []) {
     try {
-      localStorage.setItem(LS_KEYS.issues, JSON.stringify(rows || []));
+       const payload = { rows: rows || [], fields: fields || [] };
+      localStorage.setItem(LS_KEYS.issues, JSON.stringify(payload));
       localStorage.setItem(LS_KEYS.issuesLastUpdated, new Date().toISOString());
       localStorage.setItem(LS_KEYS.dataVersion, CONFIG.DATA_VERSION);
     } catch {}
@@ -1392,6 +1436,7 @@ const E = {};
 function cacheEls() {
   [
     'issuesTable',
+    'issuesThead',
     'issuesTbody',
     'tbodySkeleton',
     'rowCount',
@@ -1654,20 +1699,65 @@ UI.Issues = {
   },
   renderTable(list) {
     if (!E.issuesTbody) return;
+    const fields =
+      DataStore.sheetFields && DataStore.sheetFields.length
+        ? DataStore.sheetFields
+        : [
+            { name: 'ID', key: 'id' },
+            { name: 'Module', key: 'module' },
+            { name: 'Title', key: 'title' },
+            { name: 'Priority', key: 'priority' },
+            { name: 'Status', key: 'status' },
+            { name: 'Date', key: 'date' },
+            { name: 'Log', key: 'log' },
+            { name: 'Link', key: 'file' }
+          ];
+
+    if (GridState.sortKey && !fields.some(f => f.key === GridState.sortKey)) {
+      GridState.sortKey = null;
+    }
+
+    if (E.issuesThead) {
+      const headHtml = fields
+        .map(f => {
+          const ariaSort =
+            GridState.sortKey === f.key ? (GridState.sortAsc ? 'ascending' : 'descending') : 'none';
+          return `<th data-key="${U.escapeAttr(f.key)}" class="sortable" scope="col" aria-sort="${ariaSort}" tabindex="0" role="button" aria-label="Sort by ${U.escapeAttr(
+            f.name
+          )}">${U.escapeHtml(f.name)}</th>`;
+        })
+        .join('');
+      E.issuesThead.innerHTML = fields.length ? `<tr>${headHtml}</tr>` : '';
+    }
+
+    if (E.tbodySkeleton) {
+      E.tbodySkeleton.querySelectorAll('td').forEach(td => {
+        td.colSpan = Math.max(1, fields.length);
+      });
+    }
+
+    const getValue = (row, key) => {
+      if (row.rawByKey && key in row.rawByKey) return row.rawByKey[key];
+      if (row.raw && key in row.raw) return row.raw[key];
+      return row[key] ?? '';
+    };
+    
     const { sortKey, sortAsc } = GridState;
     const sorted = sortKey
       ? [...list].sort((a, b) => {
-          const va = a[sortKey] || '',
-            vb = b[sortKey] || '';
-          if (sortKey === 'date') {
-            const da = new Date(va),
-              db = new Date(vb);
+          const meta = fields.find(f => f.key === sortKey);
+          const va = getValue(a, sortKey);
+          const vb = getValue(b, sortKey);
+          const isDateField = meta && /date|time|timestamp/i.test(meta.name || '');
+          if (isDateField) {
+            const da = new Date(va);
+            const db = new Date(vb);
             if (isNaN(da) && isNaN(db)) return 0;
             if (isNaN(da)) return 1;
             if (isNaN(db)) return -1;
             return da - db;
           }
-          return String(va).localeCompare(String(vb), undefined, {
+         return String(va || '').localeCompare(String(vb || ''), undefined, {
             numeric: true,
             sensitivity: 'base'
           });
@@ -1703,28 +1793,29 @@ UI.Issues = {
       else btn.removeAttribute('disabled');
     });
 
-    const badgeStatus = s =>
-      `<span class="pill status-${(s || '').replace(/\s/g, '\\ ')}">${U.escapeHtml(
-        s || '-'
-      )}</span>`;
-    const badgePrio = p =>
-      `<span class="pill priority-${p || ''}">${U.escapeHtml(p || '-')}</span>`;
+    const renderCell = (val, key) => {
+      const text = String(val || '').trim();
+      if (!text) return '-';
+      if (/^https?:\/\//i.test(text))
+        return `<a href="${U.escapeAttr(text)}" target="_blank" rel="noopener noreferrer">${U.escapeHtml(text)}</a>`;
+      if (key === 'priority')
+        return `<span class="pill priority-${text}">${U.escapeHtml(text)}</span>`;
+      if (key === 'status')
+        return `<span class="pill status-${text.replace(/\s/g, '\\ ')}">${U.escapeHtml(text)}</span>`;
+      return U.escapeHtml(text);
+    };
 
     if (pageData.length) {
       E.issuesTbody.innerHTML = pageData
-        .map(
-          r => `
+         .map(r => {
+          const cells = fields
+            .map(f => `<td>${renderCell(getValue(r, f.key), f.key)}</td>`)
+            .join('');
+          return `
         <tr role="button" tabindex="0" aria-label="Open issue ${U.escapeHtml(
           r.id || ''
         )}" data-id="${U.escapeAttr(r.id)}">
-          <td>${U.escapeHtml(r.id || '-')}</td>
-          <td>${U.escapeHtml(r.module || '-')}</td>
-          <td>${U.escapeHtml(r.title || '-')}</td>
-          <td>${badgePrio(r.priority || '-')}</td>
-          <td>${badgeStatus(r.status || '-')}</td>
-          <td>${U.escapeHtml(r.date || '-')}</td>
-          <td>${U.escapeHtml(r.log || '-')}</td>
-          <td>${
+           ${cells}
             r.file
               ? `<a href="${U.escapeAttr(
                   r.file
@@ -1732,8 +1823,8 @@ UI.Issues = {
               : '-'
           }</td>
         </tr>
-      `
-        )
+     `;
+        })
         .join('');
     } else {
       const parts = [];
@@ -1751,7 +1842,7 @@ UI.Issues = {
       const desc = parts.length ? parts.join(', ') : 'no filters';
       E.issuesTbody.innerHTML = `
         <tr>
-          <td colspan="8" style="text-align:center;color:var(--muted)">
+          <td colspan="${Math.max(1, fields.length)}" style="text-align:center;color:var(--muted)">
             No issues found for ${U.escapeHtml(desc)}.
             <button type="button" class="btn sm" id="clearFiltersBtn" style="margin-left:8px">Clear filters</button>
           </td>
@@ -3036,8 +3127,8 @@ function saveEventsCache() {
 async function loadIssues(force = false) {
   if (!force && !DataStore.rows.length) {
     const cached = IssuesCache.load();
-    if (cached && cached.length) {
-      DataStore.hydrateFromRows(cached);
+    if (cached && cached.rows && cached.rows.length) {
+      DataStore.hydrateFromRows(cached.rows, cached.fields);
       UI.Issues.renderFilters();
       setIfOptionExists(E.moduleFilter, Filters.state.module);
       setIfOptionExists(E.categoryFilter, Filters.state.category);
@@ -3053,7 +3144,7 @@ async function loadIssues(force = false) {
     UI.skeleton(true);
     const text = await safeFetchText(CONFIG.SHEET_URL);
     DataStore.hydrate(text);
-    IssuesCache.save(DataStore.rows);
+   IssuesCache.save(DataStore.rows, DataStore.sheetFields);
     UI.Issues.renderFilters();
     setIfOptionExists(E.moduleFilter, Filters.state.module);
     setIfOptionExists(E.categoryFilter, Filters.state.category);
@@ -3065,7 +3156,7 @@ async function loadIssues(force = false) {
     if (!DataStore.rows.length && E.issuesTbody) {
       E.issuesTbody.innerHTML = `
         <tr>
-          <td colspan="8" style="color:#ffb4b4;text-align:center">
+         <td colspan="${Math.max(1, DataStore.sheetFields.length || 8)}" style="color:#ffb4b4;text-align:center">
             Error loading data and no cached data found.
             <button type="button" id="retryLoad" class="btn sm" style="margin-left:8px">Retry</button>
           </td>
@@ -3914,25 +4005,27 @@ function wireCore() {
 }
 
 function wireSorting() {
-  U.qAll('#issuesTable thead th.sortable').forEach(th => {
-    th.addEventListener('click', () => {
-      const key = th.getAttribute('data-key');
-      if (GridState.sortKey === key) GridState.sortAsc = !GridState.sortAsc;
-      else {
-        GridState.sortKey = key;
-        GridState.sortAsc = true;
-      }
-      UI.refreshAll();
-    });
-    th.addEventListener('keydown', e => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        th.click();
-      }
-    });
-    th.tabIndex = 0;
-    th.setAttribute('role', 'button');
-    th.setAttribute('aria-label', `Sort by ${th.textContent}`);
+ if (!E.issuesThead) return;
+  const sortByTh = th => {
+    const key = th.getAttribute('data-key');
+    if (!key) return;
+    if (GridState.sortKey === key) GridState.sortAsc = !GridState.sortAsc;
+    else {
+      GridState.sortKey = key;
+      GridState.sortAsc = true;
+    }
+    UI.refreshAll();
+  };
+  E.issuesThead.addEventListener('click', e => {
+    const th = e.target.closest('th.sortable');
+    if (th) sortByTh(th);
+  });
+  E.issuesThead.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const th = e.target.closest('th.sortable');
+    if (!th) return;
+    e.preventDefault();
+    sortByTh(th);
   });
 }
 
