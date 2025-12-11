@@ -21,14 +21,14 @@ const CONFIG = {
   CALENDAR_API_URL:
     "https://corsproxy.io/?" +
     encodeURIComponent(
-      "https://script.google.com/macros/s/AKfycbz3RyG4U92CNzC9ufbN3XvZu6TEo_SnVP4PCDI-Ng5-t75WhQjdRjQOeL3fHboCj-nVVA/exec"
+      "https://script.google.com/macros/s/AKfycbwqUuR2HT_ucR36KoUtJJImNlXv5grl4uqoLpUZgNTQH03L9cc0ekVNc1ZeYPAN7tRAmA/exec"
     ),
 
   // Issues Apps Script web app URL (must support action=updateIssue)
   ISSUE_API_URL:
     "https://corsproxy.io/?" +
     encodeURIComponent(
-      "https://script.google.com/macros/s/AKfycbz3RyG4U92CNzC9ufbN3XvZu6TEo_SnVP4PCDI-Ng5-t75WhQjdRjQOeL3fHboCj-nVVA/exec"
+      "https://script.google.com/macros/s/AKfycbwqUuR2HT_ucR36KoUtJJImNlXv5grl4uqoLpUZgNTQH03L9cc0ekVNc1ZeYPAN7tRAmA/exec"
     ),
 
   ISSUE_EDIT_PASSCODE: '1234567890',
