@@ -21,9 +21,18 @@ const CONFIG = {
   CALENDAR_API_URL:
     "https://corsproxy.io/?" +
     encodeURIComponent(
-      "https://script.google.com/macros/s/AKfycbyzvLTrplAeh9YFmF7a59eFS4jitj5GftBRrDLd_K9cUiIv3vjizxYN6juNEfeRfEAD8w/exec"
+      "https://script.google.com/macros/s/AKfycbz3RyG4U92CNzC9ufbN3XvZu6TEo_SnVP4PCDI-Ng5-t75WhQjdRjQOeL3fHboCj-nVVA/exec"
     ),
 
+  // Issues Apps Script web app URL (must support action=updateIssue)
+  ISSUE_API_URL:
+    "https://corsproxy.io/?" +
+    encodeURIComponent(
+      "https://script.google.com/macros/s/AKfycbz3RyG4U92CNzC9ufbN3XvZu6TEo_SnVP4PCDI-Ng5-t75WhQjdRjQOeL3fHboCj-nVVA/exec"
+    ),
+
+  ISSUE_EDIT_PASSCODE: '1234567890',
+  
   TREND_DAYS_RECENT: 7,
   TREND_DAYS_WINDOW: 14,
 
@@ -1413,7 +1422,29 @@ function cacheEls() {
     'modalTitle',
     'copyId',
     'copyLink',
+    'editIssueBtn',
     'modalClose',
+    'editIssueModal',
+    'editIssueForm',
+    'editIssueClose',
+    'editIssueCancel',
+    'editIssuePasscode',
+    'editIssueId',
+    'editIssueTitleInput',
+    'editIssueDesc',
+    'editIssueModule',
+    'editIssuePriority',
+    'editIssueStatus',
+    'editIssueType',
+    'editIssueDepartment',
+    'editIssueName',
+    'editIssueEmail',
+    'editIssueNotificationSent',
+    'editIssueNotificationReview',
+    'editIssueLog',
+    'editIssueFile',
+    'editIssueDate',
+    'drawerBtn',
     'drawerBtn',
     'sidebar',
     'spinner',
@@ -2553,6 +2584,10 @@ UI.Modals = {
         }.
       </div>
       ${linkedSection}
+      if (E.editIssueBtn) {
+      E.editIssueBtn.disabled = false;
+      E.editIssueBtn.dataset.id = r.id || '';
+    }
     `;
     E.issueModal.style.display = 'flex';
     E.copyId?.focus();
@@ -2561,6 +2596,7 @@ UI.Modals = {
     if (!E.issueModal) return;
     E.issueModal.style.display = 'none';
     this.selectedIssue = null;
+    IssueEditor.close();
     if (this.lastFocus?.focus) this.lastFocus.focus();
   },
   openEvent(ev) {
@@ -2703,6 +2739,77 @@ UI.Modals = {
     if (this.lastEventFocus?.focus) this.lastEventFocus.focus();
   }
 };
+
+const IssueEditor = {
+  issue: null,
+  open(issue) {
+    if (!issue || !E.editIssueModal) return;
+    this.issue = issue;
+
+    const setVal = (el, val = '') => {
+      if (el) el.value = val || '';
+    };
+
+    setVal(E.editIssuePasscode, '');
+    setVal(E.editIssueId, issue.id || '');
+    setVal(E.editIssueTitleInput, issue.title || '');
+    setVal(E.editIssueDesc, issue.desc || '');
+    setVal(E.editIssueModule, issue.module || '');
+    setVal(E.editIssuePriority, issue.priority || '');
+    setVal(E.editIssueStatus, issue.status || '');
+    setVal(E.editIssueType, issue.type || '');
+    setVal(E.editIssueDepartment, issue.department || '');
+    setVal(E.editIssueName, issue.name || '');
+    setVal(E.editIssueEmail, issue.emailAddressee || '');
+    setVal(E.editIssueNotificationSent, issue.notificationSent || '');
+    setVal(E.editIssueNotificationReview, issue.notificationUnderReview || '');
+    setVal(E.editIssueLog, issue.log || '');
+    setVal(E.editIssueFile, issue.file || '');
+
+    if (E.editIssueDate) {
+      const d = issue.date ? new Date(issue.date) : null;
+      setVal(E.editIssueDate, d && !isNaN(d) ? toLocalDateValue(d) : '');
+    }
+
+    E.editIssueModal.style.display = 'flex';
+    (E.editIssuePasscode || E.editIssueTitleInput)?.focus?.();
+  },
+  close() {
+    if (E.editIssueModal) E.editIssueModal.style.display = 'none';
+    this.issue = null;
+  },
+  collectForm() {
+    if (!this.issue) return null;
+    return {
+      id: this.issue.id,
+      title: (E.editIssueTitleInput?.value || '').trim(),
+      desc: (E.editIssueDesc?.value || '').trim(),
+      module: (E.editIssueModule?.value || '').trim() || 'Unspecified',
+      priority: E.editIssuePriority?.value || '',
+      status: E.editIssueStatus?.value || '',
+      type: (E.editIssueType?.value || '').trim(),
+      department: (E.editIssueDepartment?.value || '').trim(),
+      name: (E.editIssueName?.value || '').trim(),
+      emailAddressee: (E.editIssueEmail?.value || '').trim(),
+      notificationSent: (E.editIssueNotificationSent?.value || '').trim(),
+      notificationUnderReview: (E.editIssueNotificationReview?.value || '').trim(),
+      log: (E.editIssueLog?.value || '').trim(),
+      file: (E.editIssueFile?.value || '').trim(),
+      date: E.editIssueDate?.value || ''
+    };
+  }
+};
+
+function applyIssueUpdate(savedIssue) {
+  if (!savedIssue) return;
+  const normalized = normalizeIssueForStore(savedIssue);
+  const rows = DataStore.rows.slice();
+  const idx = rows.findIndex(r => r.id === normalized.id);
+  if (idx === -1) rows.push(normalized);
+  else rows[idx] = { ...rows[idx], ...normalized };
+  DataStore.hydrateFromRows(rows);
+  IssuesCache.save(DataStore.rows);
+}
 
 function debounce(fn, ms = 250) {
   let t;
@@ -3181,6 +3288,66 @@ async function loadEvents(force = false) {
 }
 
 /* ---------- Save/Delete to Apps Script ---------- */
+function normalizeIssueForStore(issue) {
+  return {
+    id: issue.id || '',
+    name: issue.name || '',
+    department: issue.department || '',
+    module: issue.module || 'Unspecified',
+    title: issue.title || '',
+    desc: issue.desc || '',
+    file: issue.file || '',
+    emailAddressee: issue.emailAddressee || '',
+    notificationSent: issue.notificationSent || '',
+    notificationUnderReview: issue.notificationUnderReview || '',
+    priority: DataStore.normalizePriority(issue.priority),
+    status: DataStore.normalizeStatus(issue.status),
+    type: issue.type || '',
+    date: issue.date || '',
+    log: issue.log || ''
+  };
+}
+
+async function saveIssueToSheet(issue, passcode) {
+  if (!CONFIG.ISSUE_API_URL) {
+    UI.toast('Issue update endpoint is not configured.');
+    return null;
+  }
+
+  UI.spinner(true);
+  try {
+    const payload = normalizeIssueForStore(issue);
+    const res = await fetch(CONFIG.ISSUE_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'updateIssue', passcode, issue: payload })
+    });
+
+    let data = {};
+    try {
+      data = await res.json();
+    } catch (jsonErr) {
+      console.error('Invalid JSON from issue backend', jsonErr);
+      const text = await res.text();
+      console.error('Raw response:', text);
+      UI.toast('Issues: invalid JSON from backend, using local changes');
+      return payload;
+    }
+
+    if (data.ok) {
+      UI.toast('Issue updated');
+      return normalizeIssueForStore(data.issue || payload);
+    }
+
+    throw new Error(data.error || 'Unknown error');
+  } catch (e) {
+    UI.toast('Error updating issue: ' + e.message);
+    return null;
+  } finally {
+    UI.spinner(false);
+  }
+}
+
 async function saveEventToSheet(event) {
   UI.spinner(true);
   try {
@@ -4187,6 +4354,60 @@ function wireModals() {
     });
   }
 
+  if (E.editIssueBtn) {
+    E.editIssueBtn.addEventListener('click', () => {
+      if (!UI.Modals.selectedIssue) {
+        UI.toast('Open a ticket before editing.');
+        return;
+      }
+      IssueEditor.open(UI.Modals.selectedIssue);
+    });
+  }
+
+  if (E.editIssueClose) {
+    E.editIssueClose.addEventListener('click', () => IssueEditor.close());
+  }
+  if (E.editIssueCancel) {
+    E.editIssueCancel.addEventListener('click', () => IssueEditor.close());
+  }
+  if (E.editIssueModal) {
+    E.editIssueModal.addEventListener('click', e => {
+      if (e.target === E.editIssueModal) IssueEditor.close();
+    });
+    E.editIssueModal.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        IssueEditor.close();
+      } else if (e.key === 'Tab') {
+        trapFocus(E.editIssueModal, e);
+      }
+    });
+  }
+
+  if (E.editIssueForm) {
+    E.editIssueForm.addEventListener('submit', async e => {
+      e.preventDefault();
+      const passcode = (E.editIssuePasscode?.value || '').trim();
+      if (passcode !== CONFIG.ISSUE_EDIT_PASSCODE) {
+        UI.toast('Invalid passcode');
+        return;
+      }
+
+      const formValues = IssueEditor.collectForm();
+      if (!formValues) {
+        UI.toast('Select a ticket to edit.');
+        return;
+      }
+
+      const saved = await saveIssueToSheet(formValues, passcode);
+      if (!saved) return;
+
+      applyIssueUpdate(saved);
+      IssueEditor.close();
+      UI.Modals.closeIssue();
+      UI.refreshAll();
+    });
+  }
   // Event modal
   if (E.eventModalClose) {
     E.eventModalClose.addEventListener('click', () => UI.Modals.closeEvent());
