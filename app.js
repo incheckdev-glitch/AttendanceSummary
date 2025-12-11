@@ -21,7 +21,7 @@ const CONFIG = {
   CALENDAR_API_URL:
     "https://corsproxy.io/?" +
     encodeURIComponent(
-      "https://script.google.com/macros/s/AKfycbz3RyG4U92CNzC9ufbN3XvZu6TEo_SnVP4PCDI-Ng5-t75WhQjdRjQOeL3fHboCj-nVVA/exec"
+      "https://script.google.com/macros/s/AKfycbyzvLTrplAeh9YFmF7a59eFS4jitj5GftBRrDLd_K9cUiIv3vjizxYN6juNEfeRfEAD8w/exec"
     ),
 
   TREND_DAYS_RECENT: 7,
@@ -166,15 +166,7 @@ const CONFIG = {
     ]
     // Note: public / religious holidays are taken from the calendar feed
     // (events whose type or description indicate a holiday / Eid / Ramadan, etc.).
-    },
-
-  // Apps Script endpoint for editing tickets (expects POST JSON)
-  ISSUE_UPDATE_API_URL:
-    'https://corsproxy.io/?' +
-    encodeURIComponent('https://script.google.com/macros/s/AKfycbz3RyG4U92CNzC9ufbN3XvZu6TEo_SnVP4PCDI-Ng5-t75WhQjdRjQOeL3fHboCj-nVVA/exec'),
-
-  // Simple password gate to prevent accidental edits
-  ISSUE_EDIT_PASSWORD: '1234567890'
+  }
 };
 
 const LS_KEYS = {
@@ -375,17 +367,11 @@ const DataStore = {
     return p;
   },
   normalizeRow(raw) {
-        const rawFields = Object.entries(raw || {})
-      .map(([key, value]) => ({
-        key: String(key || '').trim(),
-        value: String(value ?? '').trim()
-      }))
-      .filter(({ key }) => key);
-
     const lower = {};
-    rawFields.forEach(({ key, value }) => {
-      lower[key.toLowerCase().replace(/\s+/g, ' ').trim()] = value;
-    });
+    for (const k in raw) {
+      if (!k) continue;
+      lower[k.toLowerCase().replace(/\s+/g, ' ').trim()] = String(raw[k] ?? '').trim();
+    }
     const pick = (...keys) => {
       for (const key of keys) {
         if (lower[key]) return lower[key];
@@ -402,8 +388,7 @@ const DataStore = {
       status: DataStore.normalizeStatus(pick('status') || 'Not Started Yet'),
       type: pick('category', 'type'),
       date: pick('timestamp', 'date', 'created at'),
-       log: pick('log', 'logs', 'comment', 'notes'),
-      rawFields
+      log: pick('log', 'logs', 'comment', 'notes')
     };
   },
   tokenize(issue) {
@@ -2486,31 +2471,6 @@ UI.Modals = {
         .filter(Boolean);
       return ids.includes(r.id);
     });
-    
-    const sheetFieldRows = (r.rawFields || [])
-      .map(
-        ({ key, value }) => `
-            <tr>
-              <td style="padding:6px 8px;border-bottom:1px solid var(--border);width:32%;vertical-align:top;"><strong>${U.escapeHtml(
-                key
-              )}</strong></td>
-              <td style="padding:6px 8px;border-bottom:1px solid var(--border);vertical-align:top;">${U.escapeHtml(
-                value || '—'
-              )}</td>
-            </tr>`
-      )
-      .join('');
-
-    const allFieldsSection = sheetFieldRows
-      ? `
-        <div class="card" style="margin:12px 0 0;padding:10px 12px;border:1px solid var(--border);border-radius:12px;">
-          <strong>All fields from Google Sheet</strong>
-          <div class="muted small" style="margin:4px 0 8px;">Includes every column for this ticket.</div>
-          <div style="max-height:260px;overflow:auto;border:1px solid var(--border);border-radius:10px;">
-            <table style="width:100%;border-collapse:collapse;font-size:13px;">${sheetFieldRows}</table>
-          </div>
-        </div>`
-      : '';
     let linkedSection = '';
     if (linkedReleases.length) {
       const items = linkedReleases
@@ -2552,7 +2512,6 @@ UI.Modals = {
             )}" target="_blank" rel="noopener noreferrer">Open link</a></p>`
           : ''
       }
-        ${allFieldsSection}
       <div style="margin-top:10px" class="muted">
         Suggested: priority <b>${U.escapeHtml(
           meta.suggestions?.priority || '-'
@@ -2565,160 +2524,15 @@ UI.Modals = {
         }.
       </div>
       ${linkedSection}
-      <div class="edit-card" id="issueEditCard">
-        <div class="edit-card__header">
-          <strong>Update ticket in Google Sheet</strong>
-          <p class="muted small">
-            Changes are pushed via the Apps Script endpoint after entering the shared password (1234567890).
-          </p>
-        </div>
-
-        <form id="issueEditForm">
-          <div class="filter-group">
-            <div class="filter-row">
-              <label class="muted" for="issueEditPassword">Password</label>
-              <input id="issueEditPassword" class="input" type="password"
-                     placeholder="1234567890" autocomplete="current-password" />
-            </div>
-            <div class="filter-row">
-              <label class="muted" for="issueEditStatus">Status</label>
-              <select id="issueEditStatus" class="select"></select>
-            </div>
-            <div class="filter-row">
-              <label class="muted" for="issueEditPriority">Priority</label>
-              <select id="issueEditPriority" class="select"></select>
-            </div>
-            <div class="filter-row">
-              <label class="muted" for="issueEditLog">Log / notes</label>
-              <textarea id="issueEditLog" class="input" rows="3" placeholder="Update the ticket log"></textarea>
-            </div>
-          </div>
-          <div class="edit-actions">
-            <button type="submit" class="btn primary" id="issueEditSubmit">Save to Google Sheet</button>
-            <button type="button" class="btn ghost sm" id="issueEditReload">Reload latest sheet</button>
-            <span id="issueEditStatusText" class="muted" aria-live="polite"></span>
-          </div>
-        </form>
-      </div>
     `;
     E.issueModal.style.display = 'flex';
     E.copyId?.focus();
-    this.initIssueEditForm(r);
   },
   closeIssue() {
     if (!E.issueModal) return;
     E.issueModal.style.display = 'none';
     this.selectedIssue = null;
     if (this.lastFocus?.focus) this.lastFocus.focus();
-  },
-  initIssueEditForm(issue) {
-    const form = document.getElementById('issueEditForm');
-    if (!form) return;
-
-    const statusSelect = form.querySelector('#issueEditStatus');
-    if (statusSelect) {
-      const statuses = Array.from(
-        new Set([
-          'Not Started Yet',
-          ...Array.from(DataStore.byStatus.keys()),
-          issue.status || ''
-        ])
-      )
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b));
-      statusSelect.innerHTML = statuses
-        .map(s => `<option value="${U.escapeAttr(s)}">${U.escapeHtml(s)}</option>`)
-        .join('');
-      statusSelect.value = issue.status || statuses[0] || '';
-    }
-
-    const prioritySelect = form.querySelector('#issueEditPriority');
-    if (prioritySelect) {
-      const priorities = Array.from(
-        new Set(['High', 'Medium', 'Low', ...Array.from(DataStore.byPriority.keys())])
-      )
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b));
-      prioritySelect.innerHTML = priorities
-        .map(p => `<option value="${U.escapeAttr(p)}">${U.escapeHtml(p)}</option>`)
-        .join('');
-      prioritySelect.value = issue.priority || priorities[0] || '';
-    }
-
-    const logInput = form.querySelector('#issueEditLog');
-    if (logInput) logInput.value = issue.log || '';
-
-    const passwordInput = form.querySelector('#issueEditPassword');
-    if (passwordInput) {
-      passwordInput.placeholder = CONFIG.ISSUE_EDIT_PASSWORD || 'password';
-      if (!passwordInput.value && CONFIG.ISSUE_EDIT_PASSWORD)
-        passwordInput.value = CONFIG.ISSUE_EDIT_PASSWORD;
-    }
-
-    form.addEventListener('submit', e => {
-      e.preventDefault();
-      this.submitIssueEdit(issue);
-    });
-
-    const reloadBtn = form.querySelector('#issueEditReload');
-    if (reloadBtn)
-      reloadBtn.addEventListener('click', () => {
-        loadIssues(true);
-        const statusText = form.querySelector('#issueEditStatusText');
-        if (statusText) statusText.textContent = 'Reloading sheet…';
-      });
-  },
-  async submitIssueEdit(issue) {
-    const form = document.getElementById('issueEditForm');
-    if (!form) return;
-
-    const statusSelect = form.querySelector('#issueEditStatus');
-    const prioritySelect = form.querySelector('#issueEditPriority');
-    const logInput = form.querySelector('#issueEditLog');
-    const passwordInput = form.querySelector('#issueEditPassword');
-    const statusText = form.querySelector('#issueEditStatusText');
-    const submitBtn = form.querySelector('#issueEditSubmit');
-
-    const showStatus = msg => {
-      if (statusText) statusText.textContent = msg;
-    };
-
-    const password = (passwordInput?.value || '').trim();
-    if (!password) {
-      showStatus('Enter the shared password to save.');
-      return;
-    }
-    if (CONFIG.ISSUE_EDIT_PASSWORD && password !== CONFIG.ISSUE_EDIT_PASSWORD) {
-      showStatus('Password is incorrect.');
-      return;
-    }
-    if (!CONFIG.ISSUE_UPDATE_API_URL) {
-      showStatus('Set CONFIG.ISSUE_UPDATE_API_URL to enable saving.');
-      return;
-    }
-
-    const updates = {
-      status: statusSelect?.value || issue.status,
-      priority: prioritySelect?.value || issue.priority,
-      log: logInput?.value || issue.log
-    };
-
-    if (submitBtn) submitBtn.disabled = true;
-    showStatus('Saving to Google Sheet…');
-
-    try {
-      await pushIssueUpdate(issue.id, { password, updates });
-      showStatus('Saved! Refreshing ticket…');
-      UI.toast('Ticket saved to Google Sheet');
-      await loadIssues(true);
-      const updated = DataStore.byId.get(issue.id);
-      if (updated) this.openIssue(updated.id);
-    } catch (err) {
-      console.error('Issue update failed', err);
-      showStatus('Error: ' + err.message);
-    } finally {
-      if (submitBtn) submitBtn.disabled = false;
-    }
   },
   openEvent(ev) {
     this.lastEventFocus = document.activeElement;
@@ -3265,46 +3079,6 @@ async function loadIssues(force = false) {
     UI.spinner(false);
     UI.skeleton(false);
   }
-}
-
-/* ---------- Issue editing (Apps Script) ---------- */
-/**
- * Expected Apps Script contract:
- *  - POST JSON body: { action:'updateIssue', id:'TICKET_ID', password:'1234567890', updates:{ status, priority, log } }
- *  - Return JSON: { success:true, message?:string }
- *  - Enable CORS or access via the configured corsproxy wrapper
- */
-async function pushIssueUpdate(issueId, payload) {
-  if (!CONFIG.ISSUE_UPDATE_API_URL)
-    throw new Error('Issue update API URL is not configured.');
-
-  const body = {
-    action: 'updateIssue',
-    id: issueId,
-    password: payload.password || '',
-    updates: payload.updates || {}
-  };
-
-  const res = await fetch(CONFIG.ISSUE_UPDATE_API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-
-  const text = await res.text();
-  let data = {};
-  try {
-    data = JSON.parse(text);
-  } catch {
-    // fall back to raw text when the backend does not return JSON
-  }
-
-  if (!res.ok)
-    throw new Error(data.message || `Update failed (${res.status})`);
-  if (data.success === false)
-    throw new Error(data.message || 'Update rejected by Apps Script');
-
-  return data;
 }
 
 async function loadEvents(force = false) {
