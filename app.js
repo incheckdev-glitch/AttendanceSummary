@@ -21,14 +21,14 @@ const CONFIG = {
   CALENDAR_API_URL:
     "https://corsproxy.io/?" +
     encodeURIComponent(
-      "https://script.google.com/macros/s/AKfycby8yzhIexlrXy9r_pflGzcghjGHdEUhZBe7TWF4ACrxCpHNEwPHDh99dVjnucSDlLyyPQ/exec"
+      "https://script.google.com/macros/s/AKfycbwRX_RgOR5H3G4Numzl8Xl0ITUOhUh9d6u-D5M2O3rt6qB2cu34tRtLYd9_AkZFPZxvWA/exec"
     ),
 
   // Issues Apps Script web app URL (must support action=updateIssue)
   ISSUE_API_URL:
     "https://corsproxy.io/?" +
     encodeURIComponent(
-      "https://script.google.com/macros/s/AKfycby8yzhIexlrXy9r_pflGzcghjGHdEUhZBe7TWF4ACrxCpHNEwPHDh99dVjnucSDlLyyPQ/exec"
+      "https://script.google.com/macros/s/AKfycbwRX_RgOR5H3G4Numzl8Xl0ITUOhUh9d6u-D5M2O3rt6qB2cu34tRtLYd9_AkZFPZxvWA/exec"
     ),
 
   ISSUE_EDIT_PASSCODE: '1234567890',
@@ -3455,11 +3455,24 @@ async function saveIssueToSheet(issue, passcode) {
   UI.spinner(true);
   try {
     const payload = normalizeIssueForStore(issue);
+     const requestBody = {
+      action: 'updateIssue',
+      id: payload.id || issue.id || '',
+      password: passcode || CONFIG.ISSUE_EDIT_PASSCODE,
+      updates: {
+        title: payload.title,
+        description: payload.desc,
+        module: payload.module,
+        priority: payload.priority,
+        status: payload.status,
+        log: payload.log
+      }
+    };
     const requestOptions = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'updateIssue', passcode, issue: payload })
-   };
+      body: JSON.stringify(requestBody)
+    };
 
       const attempts = [];
     const send = async (url, label) => {
