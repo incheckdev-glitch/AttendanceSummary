@@ -2892,7 +2892,12 @@ async function onEditIssueSubmit(event) {
     console.log('Edit response', { status: response.status, data });
 
     if (!response.ok || !data?.success) {
-      throw new Error(data?.error || 'Request failed');
+       const detail =
+        data?.error ||
+        `${response.status} ${response.statusText || 'Request failed'}`;
+      throw new Error(
+        `${detail} – the upstream Apps Script or CORS proxy may be unavailable`
+      );
     }
 
     UI.toast('Ticket updated successfully');
@@ -2922,9 +2927,10 @@ async function onEditIssueSubmit(event) {
     UI.refreshAll();
   } catch (error) {
     console.error('Failed to update ticket', error);
-    UI.toast('Failed to update ticket');
+    UI.toast(`Failed to update ticket: ${error.message}`);
   }
-}
+  }
+
 
 function debounce(fn, ms = 250) {
   let t;
