@@ -178,8 +178,8 @@ const CONFIG = {
   }
 };
 
-const EDIT_TICKET_URL =
-  'https://script.google.com/macros/s/AKfycby8yzhIexlrXy9r_pflGzcghjGHdEUhZBe7TWF4ACrxCpHNEwPHDh99dVjnucSDlLyyPQ/exec';
+// Use the proxied issue endpoint for ticket edits to avoid CORS failures
+const EDIT_TICKET_URL = CONFIG.ISSUE_API_URL;
 
 const LS_KEYS = {
   filters: 'incheckFilters',
