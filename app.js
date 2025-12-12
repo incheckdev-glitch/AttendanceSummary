@@ -2876,52 +2876,11 @@ async function onEditIssueSubmit(event) {
   console.log('Sending edit payload', payload);
 
   try {
-    const response = await fetch(EDIT_TICKET_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
+    const savedIssue = await saveIssueToSheet(payload, passcode);
+    if (!savedIssue) throw new Error('Issue update failed');
 
-    let data = null;
-    try {
-      data = await response.json();
-    } catch (err) {
-      console.error('Failed to parse edit response JSON', err);
-    }
-
-    console.log('Edit response', { status: response.status, data });
-
-    if (!response.ok || !data?.success) {
-       const detail =
-        data?.error ||
-        `${response.status} ${response.statusText || 'Request failed'}`;
-      throw new Error(
-        `${detail} – the upstream Apps Script or CORS proxy may be unavailable`
-      );
-    }
-
+    applyIssueUpdate({ ...payload, ...savedIssue });
     UI.toast('Ticket updated successfully');
-
-    const updatedIssue = {
-      id,
-      title,
-      desc: description,
-      module,
-      priority,
-      status,
-      type,
-      department,
-      name,
-      emailAddressee,
-      notificationSent,
-      notificationUnderReview,
-      log,
-      file: link,
-      date,
-      ...(data.issue || {})
-    };
-
-    applyIssueUpdate(updatedIssue);
     IssueEditor.close();
     UI.Modals.closeIssue();
     UI.refreshAll();
@@ -2929,7 +2888,7 @@ async function onEditIssueSubmit(event) {
     console.error('Failed to update ticket', error);
     UI.toast(`Failed to update ticket: ${error.message}`);
   }
-  }
+}
 
 
 function debounce(fn, ms = 250) {
@@ -3438,13 +3397,24 @@ async function saveIssueToSheet(issue, passcode) {
   UI.spinner(true);
   try {
     const payload = normalizeIssueForStore(issue);
+    const updates = {};
+
+    if (payload.status !== undefined) updates.status = payload.status;
+    if (payload.priority !== undefined) updates.priority = payload.priority;
+    if (payload.log !== undefined) updates.log = payload.log;
+
     const requestOptions = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'updateIssue', passcode, issue: payload })
-   };
+      body: JSON.stringify({
+        action: 'updateIssue',
+        id: payload.id,
+        password: passcode,
+        updates
+      })
+    };
 
-      const attempts = [];
+    const attempts = [];
     const send = async (url, label) => {
       const res = await fetch(url, requestOptions);
       const bodyText = await res.text();
@@ -3466,9 +3436,9 @@ async function saveIssueToSheet(issue, passcode) {
       await send(directUrl, 'direct Apps Script');
     }
 
-     const success = attempts.find(a => a.res.ok && a.json);
+    const success = attempts.find(a => a.res.ok && a.json);
     if (success) {
-      if (success.json.ok) {
+      if (success.json.ok || success.json.success) {
         UI.toast(`Issue updated (${success.label})`);
         return normalizeIssueForStore(success.json.issue || payload);
       }
@@ -3476,7 +3446,7 @@ async function saveIssueToSheet(issue, passcode) {
       throw new Error(success.json.error || 'Unknown error');
     }
 
-     const readableAttempts = attempts
+    const readableAttempts = attempts
       .map(
         a =>
           `${a.label}: ${a.res.status} ${a.res.statusText}${
@@ -3496,7 +3466,8 @@ async function saveIssueToSheet(issue, passcode) {
   } finally {
     UI.spinner(false);
   }
- }
+
+}
 
 async function saveEventToSheet(event) {
   UI.spinner(true);
