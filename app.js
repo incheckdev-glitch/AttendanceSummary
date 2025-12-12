@@ -2882,19 +2882,36 @@ async function onEditIssueSubmit(event) {
       body: JSON.stringify(payload)
     });
 
+    const rawText = await response.text();
     let data = null;
     try {
-      data = await response.json();
+      data = JSON.parse(rawText);
     } catch (err) {
-      console.error('Failed to parse edit response JSON', err);
+     console.error('Failed to parse edit response JSON', err, rawText);
     }
 
-    console.log('Edit response', { status: response.status, data });
+     console.log('Edit response', { status: response.status, data, raw: rawText });
 
     if (!response.ok || !data?.success) {
-       const detail =
-        data?.error ||
+        const normalizeDetail = detail => {
+        if (!detail) return null;
+        if (typeof detail === 'string') return detail;
+        if (detail instanceof Error) return detail.message;
+        if (typeof detail === 'object') {
+          try {
+            return JSON.stringify(detail);
+          } catch (err) {
+            console.error('Failed to stringify error detail', err, detail);
+          }
+        }
+        return String(detail);
+      };
+
+      const detail =
+        normalizeDetail(data?.error || data?.message) ||
+        rawText ||
         `${response.status} ${response.statusText || 'Request failed'}`;
+      
       throw new Error(
         `${detail} – the upstream Apps Script or CORS proxy may be unavailable`
       );
