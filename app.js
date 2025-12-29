@@ -12,6 +12,7 @@
 
 const CONFIG = {
   DATA_VERSION: '3',
+   DATA_STALE_HOURS: 6,
 
   // Issues CSV (read-only)
   SHEET_URL:
@@ -31,7 +32,6 @@ const CONFIG = {
       "https://script.google.com/macros/s/AKfycbwRX_RgOR5H3G4Numzl8Xl0ITUOhUh9d6u-D5M2O3rt6qB2cu34tRtLYd9_AkZFPZxvWA/exec"
     ),
 
-  ISSUE_EDIT_PASSCODE: '1234567890',
   
   TREND_DAYS_RECENT: 7,
   TREND_DAYS_WINDOW: 14,
@@ -191,7 +191,9 @@ const LS_KEYS = {
   pageSize: 'pageSize',
   view: 'incheckView',
   accentColor: 'incheckAccent',
-  accentColorStorage: 'incheckAccentColor'
+ accentColorStorage: 'incheckAccentColor',
+  savedViews: 'incheckSavedViews',
+  columns: 'incheckColumns'
 };
 
 const STOPWORDS = new Set([
@@ -339,6 +341,144 @@ const Filters = {
   }
 };
 
+const ColumnManager = {
+  columns: [
+    { key: 'id', label: 'Ticket ID' },
+    { key: 'date', label: 'Date' },
+    { key: 'name', label: 'Name' },
+    { key: 'department', label: 'Department' },
+    { key: 'title', label: 'Title' },
+    { key: 'desc', label: 'Description' },
+    { key: 'priority', label: 'Priority' },
+    { key: 'module', label: 'Module' },
+    { key: 'file', label: 'Link' },
+    { key: 'emailAddressee', label: 'Email Addressee' },
+    { key: 'type', label: 'Category' },
+    { key: 'status', label: 'Status' },
+    { key: 'notificationSent', label: 'Notification Sent' },
+    { key: 'log', label: 'Log' },
+    { key: 'notificationUnderReview', label: 'Notification Sent Under Review' }
+  ],
+  state: {},
+  load() {
+    const defaults = this.columns.reduce((acc, col) => {
+      acc[col.key] = true;
+      return acc;
+    }, {});
+    try {
+      const raw = localStorage.getItem(LS_KEYS.columns);
+      const parsed = raw ? JSON.parse(raw) : null;
+      this.state = { ...defaults, ...(parsed || {}) };
+    } catch {
+      this.state = defaults;
+    }
+  },
+  save() {
+    try {
+      localStorage.setItem(LS_KEYS.columns, JSON.stringify(this.state));
+    } catch {}
+  },
+  apply() {
+    this.columns.forEach(col => {
+      const visible = this.state[col.key] !== false;
+      document.querySelectorAll(`[data-col="${col.key}"]`).forEach(el => {
+        el.classList.toggle('col-hidden', !visible);
+      });
+    });
+  },
+  renderPanel() {
+    if (!E.columnList) return;
+    E.columnList.innerHTML = this.columns
+      .map(
+        col => `
+        <label>
+          <input type="checkbox" data-col-toggle="${col.key}" ${
+            this.state[col.key] !== false ? 'checked' : ''
+          } />
+          ${U.escapeHtml(col.label)}
+        </label>
+      `
+      )
+      .join('');
+
+    E.columnList.querySelectorAll('[data-col-toggle]').forEach(input => {
+      input.addEventListener('change', () => {
+        const key = input.getAttribute('data-col-toggle');
+        if (!key) return;
+        this.state[key] = input.checked;
+        this.save();
+        this.apply();
+      });
+    });
+  },
+  getState() {
+    return { ...this.state };
+  },
+  setState(nextState) {
+    const defaults = this.columns.reduce((acc, col) => {
+      acc[col.key] = true;
+      return acc;
+    }, {});
+    this.state = { ...defaults, ...(nextState || {}) };
+    this.save();
+    this.apply();
+    this.renderPanel();
+  }
+};
+
+const SavedViews = {
+  views: {},
+  load() {
+    try {
+      const raw = localStorage.getItem(LS_KEYS.savedViews);
+      const parsed = raw ? JSON.parse(raw) : null;
+      this.views = parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      this.views = {};
+    }
+  },
+  save() {
+    try {
+      localStorage.setItem(LS_KEYS.savedViews, JSON.stringify(this.views));
+    } catch {}
+  },
+  refreshSelect() {
+    if (!E.savedViews) return;
+    const names = Object.keys(this.views).sort((a, b) => a.localeCompare(b));
+    E.savedViews.innerHTML = [
+      '<option value="">Saved views</option>',
+      ...names.map(name => `<option value="${U.escapeAttr(name)}">${U.escapeHtml(name)}</option>`)
+    ].join('');
+  },
+  add(name, payload) {
+    this.views[name] = payload;
+    this.save();
+    this.refreshSelect();
+  },
+  remove(name) {
+    if (!name || !this.views[name]) return;
+    delete this.views[name];
+    this.save();
+    this.refreshSelect();
+  },
+  apply(name) {
+    const view = this.views[name];
+    if (!view) return false;
+    Filters.state = { ...Filters.state, ...(view.filters || {}) };
+    syncFilterInputs();
+    Filters.save();
+    if (view.sort) {
+      GridState.sortKey = view.sort.key || null;
+      GridState.sortAsc = view.sort.asc !== false;
+    }
+    ColumnManager.setState(view.columns || {});
+    GridState.page = 1;
+    UI.refreshAll();
+    return true;
+  }
+};
+
+
 function UndefaultCount(arr) {
   const m = new Map();
   arr.forEach(t => m.set(t, (m.get(t) || 0) + 1));
@@ -483,12 +623,11 @@ const IssuesCache = {
       localStorage.setItem(LS_KEYS.dataVersion, CONFIG.DATA_VERSION);
     } catch {}
   },
-  lastLabel() {
+  lastUpdated() {
     const iso = localStorage.getItem(LS_KEYS.issuesLastUpdated);
-    if (!iso) return '';
+    if (!iso) return null;
     const d = new Date(iso);
-    if (isNaN(d)) return '';
-    return `Last updated: ${d.toLocaleString()}`;
+  return isNaN(d) ? null : d;
   }
 };
 
@@ -1411,6 +1550,9 @@ function cacheEls() {
     'issuesTable',
     'issuesTbody',
     'tbodySkeleton',
+    'columnToggleBtn',
+    'columnPanel',
+    'columnList',
     'rowCount',
     'moduleFilter',
     'categoryFilter',
@@ -1453,6 +1595,9 @@ function cacheEls() {
     'spinner',
     'toast',
     'searchInput',
+     'savedViews',
+    'saveViewBtn',
+    'deleteViewBtn',
     'themeSelect',
     'firstPage',
     'prevPage',
@@ -1512,6 +1657,7 @@ function cacheEls() {
     'eventFilterOther',
     'loadingStatus',
     'issuesSummaryText',
+    'issuesLastUpdated',
     'activeFiltersChips',
     'calendarTz',
     'onlineStatusChip',
@@ -1606,6 +1752,10 @@ UI.Issues = {
       E.statusFilter.innerHTML = ['All', ...uniq(DataStore.rows.map(r => r.status))]
         .map(v => `<option>${v}</option>`)
         .join('');
+     setIfOptionExists(E.moduleFilter, Filters.state.module);
+    setIfOptionExists(E.categoryFilter, Filters.state.category);
+    setIfOptionExists(E.priorityFilter, Filters.state.priority);
+    setIfOptionExists(E.statusFilter, Filters.state.status);
   },
   applyFilters() {
     const s = Filters.state;
@@ -1761,37 +1911,36 @@ UI.Issues = {
     const badgePrio = p =>
       `<span class="pill priority-${p || ''}">${U.escapeHtml(p || '-')}</span>`;
 
+    const renderCell = (row, col) => {
+      if (col.key === 'priority') return badgePrio(row.priority || '-');
+      if (col.key === 'status') return badgeStatus(row.status || '-');
+      if (col.key === 'file') {
+        return row.file
+          ? `<a href="${U.escapeAttr(
+              row.file
+            )}" target="_blank" rel="noopener noreferrer" aria-label="Open attachment link">🔗</a>`
+          : '-';
+      }
+      const value = row[col.key];
+      return U.escapeHtml(value || '-');
+    };
+
     if (pageData.length) {
       E.issuesTbody.innerHTML = pageData
-        .map(
-          r => `
+      .map(r => {
+          const cells = ColumnManager.columns
+            .map(
+              col => `<td data-col="${col.key}">${renderCell(r, col)}</td>`
+            )
+            .join('');
+          return 
         <tr role="button" tabindex="0" aria-label="Open issue ${U.escapeHtml(
           r.id || ''
         )}" data-id="${U.escapeAttr(r.id)}">
-          <td>${U.escapeHtml(r.id || '-')}</td>
-         <td>${U.escapeHtml(r.date || '-')}</td>
-          <td>${U.escapeHtml(r.name || '-')}</td>
-          <td>${U.escapeHtml(r.department || '-')}</td>
-          <td>${U.escapeHtml(r.title || '-')}</td>
-          <td>${U.escapeHtml(r.desc || '-')}</td>
-          <td>${U.escapeHtml(r.module || '-')}</td>
-          <td>${U.escapeHtml(r.log || '-')}</td>
-          <td>${
-            r.file
-              ? `<a href="${U.escapeAttr(
-                  r.file
-                )}" target="_blank" rel="noopener noreferrer" aria-label="Open attachment link">🔗</a>`
-              : '-'
-          }</td>
-            <td>${U.escapeHtml(r.emailAddressee || '-')}</td>
-          <td>${U.escapeHtml(r.type || '-')}</td>
-          <td>${badgeStatus(r.status || '-')}</td>
-          <td>${U.escapeHtml(r.notificationSent || '-')}</td>
-          <td>${U.escapeHtml(r.log || '-')}</td>
-          <td>${U.escapeHtml(r.notificationUnderReview || '-')}</td>
+          ${cells}
         </tr>
-      `
-        )
+       `;
+        })
         .join('');
     } else {
       const parts = [];
@@ -1835,6 +1984,7 @@ UI.Issues = {
           UI.refreshAll();
         });
     }
+ColumnManager.apply();
 
     E.issuesTbody.querySelectorAll('tr[data-id]').forEach(tr => {
       tr.addEventListener('keydown', e => {
@@ -2010,10 +2160,24 @@ UI.Issues.renderSummary = function (list) {
     const risk = DataStore.computed.get(r.id)?.risk?.total || 0;
     if (risk >= CONFIG.RISK.highRisk) highRisk++;
   });
-  const last = IssuesCache.lastLabel();
   E.issuesSummaryText.textContent =
-    `${total} issue${total === 1 ? '' : 's'} · ${open} open · ${highRisk} high-risk` +
-    (last ? ` · ${last}` : '');
+     `${total} issue${total === 1 ? '' : 's'} · ${open} open · ${highRisk} high-risk`;
+
+  if (E.issuesLastUpdated) {
+    const lastUpdated = IssuesCache.lastUpdated();
+    if (!lastUpdated) {
+      E.issuesLastUpdated.textContent = 'Last updated: --';
+      E.issuesLastUpdated.classList.remove('stale');
+    } else {
+      E.issuesLastUpdated.textContent = `Last updated: ${lastUpdated.toLocaleString()}`;
+      const ageHours = (Date.now() - lastUpdated.getTime()) / 36e5;
+      E.issuesLastUpdated.classList.toggle('stale', ageHours > CONFIG.DATA_STALE_HOURS);
+      E.issuesLastUpdated.title =
+        ageHours > CONFIG.DATA_STALE_HOURS
+          ? `Data is ${Math.round(ageHours)} hours old`
+          : '';
+    }
+  }
 };
 
 /** Analytics (AI tab) */
@@ -2819,9 +2983,9 @@ async function onEditIssueSubmit(event) {
   event.preventDefault();
 
   const passcode = (E.editIssuePasscode?.value || '').trim();
-  if (passcode !== CONFIG.ISSUE_EDIT_PASSCODE) {
-    console.warn('Edit blocked: invalid passcode');
-    UI.toast('Invalid passcode');
+  if (!passcode) {
+    console.warn('Edit blocked: missing passcode');
+    UI.toast('Passcode is required to save changes');
     return;
   }
 
@@ -2870,7 +3034,8 @@ async function onEditIssueSubmit(event) {
     notificationUnderReview,
     log,
     link,
-    date
+    date,
+    passcode
   };
 
   console.log('Sending edit payload', payload);
@@ -3458,7 +3623,7 @@ async function saveIssueToSheet(issue, passcode) {
      const requestBody = {
       action: 'updateIssue',
       id: payload.id || issue.id || '',
-      password: passcode || CONFIG.ISSUE_EDIT_PASSCODE,
+      password: passcode || '',
       updates: {
         title: payload.title,
         description: payload.desc,
@@ -4241,6 +4406,16 @@ function setIfOptionExists(select, value) {
   if (options.some(o => o.value === value)) select.value = value;
 }
 
+function syncFilterInputs() {
+  if (E.searchInput) E.searchInput.value = Filters.state.search || '';
+  if (E.moduleFilter) setIfOptionExists(E.moduleFilter, Filters.state.module);
+  if (E.categoryFilter) setIfOptionExists(E.categoryFilter, Filters.state.category);
+  if (E.priorityFilter) setIfOptionExists(E.priorityFilter, Filters.state.priority);
+  if (E.statusFilter) setIfOptionExists(E.statusFilter, Filters.state.status);
+  if (E.startDateFilter) E.startDateFilter.value = Filters.state.start || '';
+  if (E.endDateFilter) E.endDateFilter.value = Filters.state.end || '';
+}
+
 function wireCore() {
   [E.issuesTab, E.calendarTab, E.insightsTab].forEach(btn => {
     if (!btn) return;
@@ -4264,6 +4439,50 @@ function wireCore() {
       }, 250)
     );
 
+  if (E.savedViews) {
+    E.savedViews.addEventListener('change', () => {
+      const name = E.savedViews.value;
+      if (!name) return;
+      const applied = SavedViews.apply(name);
+      if (!applied) UI.toast('Saved view not found.');
+    });
+  }
+
+  if (E.saveViewBtn) {
+    E.saveViewBtn.addEventListener('click', () => {
+      const name = window.prompt('Name this view');
+      if (!name) return;
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      if (SavedViews.views[trimmed]) {
+        const overwrite = window.confirm(`Replace saved view "${trimmed}"?`);
+        if (!overwrite) return;
+      }
+      SavedViews.add(trimmed, {
+        filters: { ...Filters.state },
+        columns: ColumnManager.getState(),
+        sort: { key: GridState.sortKey, asc: GridState.sortAsc }
+      });
+      if (E.savedViews) E.savedViews.value = trimmed;
+      UI.toast(`Saved view "${trimmed}"`);
+    });
+  }
+
+  if (E.deleteViewBtn) {
+    E.deleteViewBtn.addEventListener('click', () => {
+      const name = E.savedViews?.value;
+      if (!name) {
+        UI.toast('Select a saved view to delete.');
+        return;
+      }
+      const confirmed = window.confirm(`Delete saved view "${name}"?`);
+      if (!confirmed) return;
+      SavedViews.remove(name);
+      if (E.savedViews) E.savedViews.value = '';
+      UI.toast(`Deleted view "${name}"`);
+    });
+  }
+
   if (E.refreshNow)
     E.refreshNow.addEventListener('click', () => {
       loadIssues(true);
@@ -4285,6 +4504,29 @@ function wireCore() {
     });
   }
 
+  if (E.columnToggleBtn && E.columnPanel) {
+    const setPanel = open => {
+      E.columnPanel.classList.toggle('open', open);
+      E.columnPanel.setAttribute('aria-hidden', open ? 'false' : 'true');
+      E.columnToggleBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+    E.columnToggleBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      const open = !E.columnPanel.classList.contains('open');
+      setPanel(open);
+    });
+    document.addEventListener('click', e => {
+      if (!E.columnPanel.classList.contains('open')) return;
+      if (E.columnPanel.contains(e.target) || E.columnToggleBtn.contains(e.target)) return;
+      setPanel(false);
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && E.columnPanel.classList.contains('open')) {
+        setPanel(false);
+      }
+    });
+  }
+  
   UI.refreshAll = () => {
     const list = UI.Issues.applyFilters();
     UI.Issues.renderSummary(list);
@@ -4366,6 +4608,7 @@ function wireFilters() {
       Filters.save();
       UI.refreshAll();
     });
+    setIfOptionExists(E.moduleFilter, Filters.state.module);
   }
    if (E.categoryFilter) {
     E.categoryFilter.addEventListener('change', () => {
@@ -4381,6 +4624,7 @@ function wireFilters() {
       Filters.save();
       UI.refreshAll();
     });
+     setIfOptionExists(E.priorityFilter, Filters.state.priority);
   }
   if (E.statusFilter) {
     E.statusFilter.addEventListener('change', () => {
@@ -4388,6 +4632,7 @@ function wireFilters() {
       Filters.save();
       UI.refreshAll();
     });
+    setIfOptionExists(E.statusFilter, Filters.state.status);
   }
   if (E.startDateFilter) {
     E.startDateFilter.value = Filters.state.start || '';
@@ -4931,7 +5176,12 @@ function wireKeyboardShortcuts() {
 document.addEventListener('DOMContentLoaded', () => {
   cacheEls();
   Filters.load();
-
+ ColumnManager.load();
+  SavedViews.load();
+  ColumnManager.renderPanel();
+  ColumnManager.apply();
+  SavedViews.refreshSelect();
+  
   if (E.pageSize) {
     E.pageSize.value = String(GridState.pageSize);
   }
