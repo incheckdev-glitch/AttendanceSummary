@@ -137,6 +137,10 @@
                 role="tab" aria-selected="false" aria-controls="insightsView">
           <span class="icon" aria-hidden="true">🤖</span> AI Insights
         </button>
+         <button id="ticketingTab" class="view-tab" data-view="ticketing"
+                role="tab" aria-selected="false" aria-controls="ticketingView">
+          <span class="icon" aria-hidden="true">🎫</span> Ticketing Helper
+        </button>
       </div>
 
       <!-- Issues view -->
@@ -144,7 +148,7 @@
         <div class="card summary-bar" id="issuesSummaryCard">
           <span id="issuesSummaryText" aria-live="polite">Loading summary…</span>
           <span id="issuesLastUpdated" class="summary-meta" aria-live="polite">Last updated: --</span>
-          <span class="shortcut-chip">Shortcuts: 1/2/3 tabs · / search · Ctrl+K AI</span>
+         <span class="shortcut-chip">Shortcuts: 1/2/3/4 tabs · / search · Ctrl+K AI</span>
         </div>
 
         <div class="grid cols-4" id="kpis" aria-live="polite"></div>
@@ -493,6 +497,44 @@
             <button id="aiQueryExport" class="btn ghost sm" type="button" title="Export query results as CSV">Export CSV</button>
           </div>
           <div id="aiQueryResults" class="muted" style="font-size:13px;margin-top:8px;"></div>
+        </div>
+      </section>
+      
+      <!-- Ticketing Helper view -->
+      <section id="ticketingView" class="view" role="tabpanel" aria-labelledby="ticketingTab">
+        <div class="card">
+          <strong>Ticketing Helper</strong>
+          <div class="muted" style="margin-top:4px;">
+            SLA health, aging watchlist, and response helpers based on the current issue filters.
+          </div>
+          <div id="ticketingLastUpdated" class="summary-meta" style="margin-top:6px;">Last updated: --</div>
+        </div>
+
+        <div class="grid cols-4">
+          <div class="card">
+            <strong>SLA health</strong>
+            <div id="ticketingSlaSummary" class="muted" style="font-size:13px;margin-top:6px;"></div>
+          </div>
+          <div class="card">
+            <strong>Aging watchlist</strong>
+            <ul id="ticketingSlaList" class="ticketing-list muted"></ul>
+          </div>
+          <div class="card">
+            <strong>Suggested replies</strong>
+            <ul id="ticketingTemplateList" class="ticketing-list muted"></ul>
+          </div>
+          <div class="card">
+            <strong>Cleanup queue</strong>
+            <ul id="ticketingCleanupList" class="ticketing-list muted"></ul>
+          </div>
+        </div>
+
+        <div class="card">
+          <strong>Next best actions</strong>
+          <div class="muted" style="font-size:12px;margin-top:4px;">
+            Quick actions to keep tickets moving and prevent SLA breaches.
+          </div>
+          <ul id="ticketingActionsList" class="ticketing-list muted"></ul>
         </div>
       </section>
     </main>
