@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Ticketing Dashboard</title>
+  <title>InCheck 360 — Ticketing Ops</title>
 
   <!-- Fonts & Libs -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
@@ -23,7 +23,8 @@
     <div class="brand" aria-label="InCheck brand">
       <img src="assets/incheck-logo.svg" class="brand-logo" alt="InCheck 360 logo" />
       <div class="brand-text">
-       
+       <span>InCheck 360</span>
+        <span>Ticketing Operations</span>
       </div>
     </div>
 
@@ -36,6 +37,14 @@
              placeholder="Search ID, title, description, log…  ( / to focus )"
              aria-label="Search issues" />
 
+      <div class="saved-views" aria-label="Saved views">
+        <select id="savedViews" class="select sm" aria-label="Saved views">
+          <option value="">Saved views</option>
+        </select>
+        <button id="saveViewBtn" class="btn ghost sm" type="button">Save view</button>
+        <button id="deleteViewBtn" class="btn ghost sm" type="button">Delete view</button>
+      </div>
+      
       <select id="themeSelect" class="select" aria-label="Theme">
         <option value="system">System</option>
         <option value="dark">Dark</option>
@@ -134,6 +143,7 @@
       <section id="issuesView" class="view active" role="tabpanel" aria-labelledby="issuesTab">
         <div class="card summary-bar" id="issuesSummaryCard">
           <span id="issuesSummaryText" aria-live="polite">Loading summary…</span>
+          <span id="issuesLastUpdated" class="summary-meta" aria-live="polite">Last updated: --</span>
           <span class="shortcut-chip">Shortcuts: 1/2/3 tabs · / search · Ctrl+K AI</span>
         </div>
 
@@ -147,12 +157,21 @@
         </div>
 
         <div class="card" aria-label="Issues table">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
             <div>
               <strong>Issues</strong>
               <div class="muted">Live feed from InCheck issues sheet.</div>
             </div>
-            <span id="rowCount" class="muted" aria-live="polite"></span>
+          <div class="table-tools">
+              <span id="rowCount" class="muted" aria-live="polite"></span>
+              <button id="columnToggleBtn" class="btn ghost sm" type="button" aria-expanded="false">
+                Columns
+              </button>
+              <div id="columnPanel" class="column-panel" aria-hidden="true">
+                <div class="column-panel-header">Visible columns</div>
+                <div id="columnList" class="column-list"></div>
+              </div>
+            </div>
           </div>
 
           <div id="activeFiltersChips" class="filter-chips" aria-live="polite"></div>
@@ -161,21 +180,21 @@
             <table id="issuesTable">
               <thead>
                 <tr>
-                  <th data-key="id" class="sortable" scope="col" aria-sort="none">Ticket ID</th>
-                  <th data-key="date" class="sortable" scope="col" aria-sort="none">Date</th>
-                  <th data-key="name" class="sortable" scope="col" aria-sort="none">Name</th>
-                  <th data-key="department" class="sortable" scope="col" aria-sort="none">Department</th>
-                  <th data-key="title" class="sortable" scope="col" aria-sort="none">Title</th>
-                  <th data-key="desc" class="sortable" scope="col" aria-sort="none">Description</th>
-                  <th data-key="priority" class="sortable" scope="col" aria-sort="none">Priority</th>
-                  <th data-key="module" class="sortable" scope="col" aria-sort="none">Module</th>
-                  <th scope="col">Link</th>
-                  <th data-key="emailAddressee" class="sortable" scope="col" aria-sort="none">Email Addressee</th>
-                  <th data-key="type" class="sortable" scope="col" aria-sort="none">Category</th>
-                  <th data-key="status" class="sortable" scope="col" aria-sort="none">Status</th>
-                  <th data-key="notificationSent" class="sortable" scope="col" aria-sort="none">Notification Sent</th>
-                  <th data-key="log" class="sortable" scope="col" aria-sort="none">Log</th>
-                  <th data-key="notificationUnderReview" class="sortable" scope="col" aria-sort="none">Notification Sent Under Review</th>
+                  <th data-col="id" data-key="id" class="sortable" scope="col" aria-sort="none">Ticket ID</th>
+                  <th data-col="date" data-key="date" class="sortable" scope="col" aria-sort="none">Date</th>
+                  <th data-col="name" data-key="name" class="sortable" scope="col" aria-sort="none">Name</th>
+                  <th data-col="department" data-key="department" class="sortable" scope="col" aria-sort="none">Department</th>
+                  <th data-col="title" data-key="title" class="sortable" scope="col" aria-sort="none">Title</th>
+                  <th data-col="desc" data-key="desc" class="sortable" scope="col" aria-sort="none">Description</th>
+                  <th data-col="priority" data-key="priority" class="sortable" scope="col" aria-sort="none">Priority</th>
+                  <th data-col="module" data-key="module" class="sortable" scope="col" aria-sort="none">Module</th>
+                  <th data-col="file" scope="col">Link</th>
+                  <th data-col="emailAddressee" data-key="emailAddressee" class="sortable" scope="col" aria-sort="none">Email Addressee</th>
+                  <th data-col="type" data-key="type" class="sortable" scope="col" aria-sort="none">Category</th>
+                  <th data-col="status" data-key="status" class="sortable" scope="col" aria-sort="none">Status</th>
+                  <th data-col="notificationSent" data-key="notificationSent" class="sortable" scope="col" aria-sort="none">Notification Sent</th>
+                  <th data-col="log" data-key="log" class="sortable" scope="col" aria-sort="none">Log</th>
+                  <th data-col="notificationUnderReview" data-key="notificationUnderReview" class="sortable" scope="col" aria-sort="none">Notification Sent Under Review</th>
                 </tr>
               </thead>
               <tbody id="tbodySkeleton">
@@ -519,9 +538,9 @@
             <div class="filter-row">
               <label class="muted" for="editIssuePasscode">Passcode (required)</label>
               <input id="editIssuePasscode" class="input" type="password" required
-                     placeholder="Enter 1234567890 to allow edits" autocomplete="off" />
+                    placeholder="Enter passcode to allow edits" autocomplete="off" />
               <div class="muted" style="font-size:12px;margin-top:4px;">
-                Updates are pushed directly to the Google Sheet.
+                Updates are validated server-side and pushed directly to the Google Sheet.
               </div>
             </div>
 
