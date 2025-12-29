@@ -1671,6 +1671,7 @@ function cacheEls() {
     'ticketingSlaList',
     'ticketingTemplateList',
     'ticketingCleanupList',
+     'ticketingFollowupList',
     'ticketingActionsList',
     'eventAllDay',
     'eventEnv',
@@ -2630,6 +2631,27 @@ const TicketingHelper = {
     'Data / Sync':
       'We are checking sync pipelines and will confirm when data is fully reconciled.'
   },
+    templateFor(issue) {
+    const meta = DataStore.computed.get(issue.id) || {};
+    const label =
+      issue.type || meta.suggestions?.categories?.[0]?.label || 'UI / UX';
+    return (
+      this.TEMPLATE_LIBRARY[label] || this.TEMPLATE_LIBRARY['UI / UX']
+    );
+  },
+  contactFor(issue) {
+    return issue.emailAddressee || issue.name || 'Unassigned';
+  },
+  hasNotification(issue) {
+    return Boolean(issue.notificationSent && issue.notificationSent.trim());
+  },
+  notificationStatus(issue) {
+    if (this.hasNotification(issue)) return 'Notification sent';
+    if (issue.notificationUnderReview && issue.notificationUnderReview.trim()) {
+      return 'Notification under review';
+    }
+    return 'No notification sent';
+  },
   isClosed(issue) {
     const st = (issue.status || '').toLowerCase();
     return st.startsWith('resolved') || st.startsWith('rejected');
@@ -2656,6 +2678,23 @@ const TicketingHelper = {
       return x.age >= Math.max(1, Math.round(threshold * 0.7)) && x.age < threshold;
     });
 
+      const followups = dated
+      .filter(({ issue, age }) => {
+        const threshold = this.thresholdDays(issue);
+        const windowStart = Math.max(1, Math.round(threshold * 0.5));
+        return (
+          !this.hasNotification(issue) &&
+          age >= windowStart &&
+          issue.status !== 'Sent'
+        );
+      })
+      .sort((a, b) => {
+        const ratioA = a.age / this.thresholdDays(a.issue);
+        const ratioB = b.age / this.thresholdDays(b.issue);
+        return ratioB - ratioA;
+      })
+      .slice(0, 6);
+    
     const highOpen = open.filter(i => i.priority === 'High').length;
     const medOpen = open.filter(i => i.priority === 'Medium').length;
     const lowOpen = open.filter(i => i.priority === 'Low').length;
@@ -2667,7 +2706,7 @@ const TicketingHelper = {
       E.ticketingSlaSummary.innerHTML = `
         <div>Open tickets: <strong>${open.length}</strong></div>
         <div>High priority: <strong>${highOpen}</strong> · Medium: <strong>${medOpen}</strong> · Low: <strong>${lowOpen}</strong></div>
-        <div>At risk: <strong>${atRisk.length}</strong> · Breached: <strong>${breached.length}</strong></div>
+        <div>At risk: <strong>${atRisk.length}</strong> · Breached: <strong>${breached.length}</strong> · Follow-ups: <strong>${followups.length}</strong></div>
       `;
     }
 
@@ -2722,7 +2761,9 @@ const TicketingHelper = {
       E.ticketingTemplateList.innerHTML = topCategories.length
         ? topCategories
             .map(([label, count]) => {
-              const template = this.TEMPLATE_LIBRARY[label] || this.TEMPLATE_LIBRARY['UI / UX'];
+               const template =
+                this.TEMPLATE_LIBRARY[label] ||
+                this.TEMPLATE_LIBRARY['UI / UX'];
               return `
                 <li>
                   <div class="ticketing-title">${U.escapeHtml(label)} <span class="muted">(${count})</span></div>
@@ -2732,6 +2773,43 @@ const TicketingHelper = {
             })
             .join('')
         : '<li>No category data available.</li>';
+    }
+
+    if (E.ticketingFollowupList) {
+      E.ticketingFollowupList.innerHTML = followups.length
+        ? followups
+            .map(({ issue, age }) => {
+              const threshold = this.thresholdDays(issue);
+              const contact = this.contactFor(issue);
+              const template = this.templateFor(issue);
+              return `
+                <li>
+                  <div class="ticketing-item">
+                    <button class="btn sm" data-open="${U.escapeAttr(issue.id)}">${U.escapeHtml(
+                issue.id
+              )}</button>
+                    <div>
+                      <div class="ticketing-title">${U.escapeHtml(issue.title || 'Untitled')}</div>
+                      <div class="ticketing-meta">${U.escapeHtml(
+                        this.notificationStatus(issue)
+                      )} · ${age}d open · SLA ${threshold}d · Contact: ${U.escapeHtml(
+                contact
+              )}</div>
+                      <div class="ticketing-note">Suggested reply: ${U.escapeHtml(
+                        template
+                      )}</div>
+                      <div class="ticketing-actions">
+                        <button class="btn sm ghost" data-copy-template="${U.escapeAttr(
+                          issue.id
+                        )}">Copy reply</button>
+                      </div>
+                    </div>
+                  </div>
+                </li>
+              `;
+            })
+            .join('')
+        : '<li>No follow-ups needed based on the current view.</li>';
     }
 
     const cleanup = open
@@ -2784,6 +2862,13 @@ const TicketingHelper = {
           } to keep customers informed.`
         );
       }
+       if (followups.length) {
+        actions.push(
+          `Send first response updates for ${followups.length} ticket${
+            followups.length > 1 ? 's' : ''
+          } without outbound notifications.`
+        );
+      }
       if (cleanup.length) {
         actions.push(
           `Fill missing fields for ${cleanup.length} ticket${
@@ -2803,6 +2888,19 @@ const TicketingHelper = {
       b.addEventListener('click', () =>
         UI.Modals.openIssue(b.getAttribute('data-open'))
       )
+    );
+    
+    U.qAll('#ticketingView [data-copy-template]').forEach(b =>
+      b.addEventListener('click', () => {
+        const id = b.getAttribute('data-copy-template');
+        const issue = DataStore.byId.get(id);
+        if (!issue) return;
+        const template = this.templateFor(issue);
+        navigator.clipboard
+          .writeText(template)
+          .then(() => UI.toast('Suggested reply copied'))
+          .catch(() => UI.toast('Clipboard blocked'));
+      })
     );
   }
 };
