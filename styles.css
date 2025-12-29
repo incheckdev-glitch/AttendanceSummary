@@ -734,6 +734,32 @@ background:var(--ai-table-row-even);
 }
 
 /* =========================================================
+   Ticketing Helper
+   ========================================================= */
+
+.ticketing-list{
+  list-style:none;
+  margin:6px 0 0;
+  padding:0;
+  display:grid;
+  gap:8px;
+  font-size:13px;
+}
+.ticketing-item{
+  display:flex;
+  gap:8px;
+  align-items:flex-start;
+}
+.ticketing-title{
+  font-weight:600;
+}
+.ticketing-meta{
+  color:var(--muted);
+  font-size:12px;
+  margin-top:2px;
+}
+
+/* =========================================================
    Release Planner – F&B Middle East
    ========================================================= */
 
