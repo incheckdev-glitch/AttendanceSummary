@@ -1611,9 +1611,11 @@ function cacheEls() {
     'issuesTab',
     'calendarTab',
     'insightsTab',
+    'ticketingTab',
     'issuesView',
     'calendarView',
     'insightsView',
+    'ticketingView',
     'addEventBtn',
     'eventModal',
     'eventModalTitle',
@@ -1664,6 +1666,12 @@ function cacheEls() {
     'accentColor',
     'shortcutsHelp',
     'aiQueryExport',
+    'ticketingLastUpdated',
+    'ticketingSlaSummary',
+    'ticketingSlaList',
+    'ticketingTemplateList',
+    'ticketingCleanupList',
+    'ticketingActionsList',
     'eventAllDay',
     'eventEnv',
     'eventOwner',
@@ -2606,6 +2614,200 @@ Reasons: ${(meta.risk?.reasons || []).join(', ')}`;
   }
 };
 
+const TicketingHelper = {
+  SLA_DAYS: { High: 2, Medium: 5, Low: 10, '': 7 },
+  TEMPLATE_LIBRARY: {
+    'Authentication / Login':
+      'Thanks for reporting. We are checking authentication logs and will update once we confirm the root cause.',
+    'Payments / Billing':
+      'We are validating the billing transaction details and will confirm the charge/refund status shortly.',
+    'Performance / Latency':
+      'We are investigating latency metrics and will share mitigation steps or a timeline for a fix.',
+    'Reliability / Errors':
+      'We are reviewing error logs and will provide a remediation update once the fix is verified.',
+    'UI / UX':
+      'Thanks for the UI report. We are reproducing the issue and will share a fix ETA.',
+    'Data / Sync':
+      'We are checking sync pipelines and will confirm when data is fully reconciled.'
+  },
+  isClosed(issue) {
+    const st = (issue.status || '').toLowerCase();
+    return st.startsWith('resolved') || st.startsWith('rejected');
+  },
+  ageDays(issue) {
+    if (!issue.date) return null;
+    const when = new Date(issue.date);
+    if (isNaN(when)) return null;
+    return Math.max(0, Math.floor((Date.now() - when.getTime()) / 86400000));
+  },
+  thresholdDays(issue) {
+    return this.SLA_DAYS[issue.priority || ''] ?? this.SLA_DAYS[''];
+  },
+  refresh(list) {
+    if (!E.ticketingView) return;
+    const open = list.filter(i => !this.isClosed(i));
+    const dated = open
+      .map(i => ({ issue: i, age: this.ageDays(i) }))
+      .filter(x => x.age !== null);
+
+    const breached = dated.filter(x => x.age >= this.thresholdDays(x.issue));
+    const atRisk = dated.filter(x => {
+      const threshold = this.thresholdDays(x.issue);
+      return x.age >= Math.max(1, Math.round(threshold * 0.7)) && x.age < threshold;
+    });
+
+    const highOpen = open.filter(i => i.priority === 'High').length;
+    const medOpen = open.filter(i => i.priority === 'Medium').length;
+    const lowOpen = open.filter(i => i.priority === 'Low').length;
+
+    if (E.ticketingLastUpdated) {
+      E.ticketingLastUpdated.textContent = `Last updated: ${U.fmtTS(new Date())}`;
+    }
+    if (E.ticketingSlaSummary) {
+      E.ticketingSlaSummary.innerHTML = `
+        <div>Open tickets: <strong>${open.length}</strong></div>
+        <div>High priority: <strong>${highOpen}</strong> · Medium: <strong>${medOpen}</strong> · Low: <strong>${lowOpen}</strong></div>
+        <div>At risk: <strong>${atRisk.length}</strong> · Breached: <strong>${breached.length}</strong></div>
+      `;
+    }
+
+    const watchlist = [...breached, ...atRisk]
+      .sort((a, b) => {
+        const ratioA = a.age / this.thresholdDays(a.issue);
+        const ratioB = b.age / this.thresholdDays(b.issue);
+        return ratioB - ratioA;
+      })
+      .slice(0, 6);
+
+    if (E.ticketingSlaList) {
+      E.ticketingSlaList.innerHTML = watchlist.length
+        ? watchlist
+            .map(({ issue, age }) => {
+              const threshold = this.thresholdDays(issue);
+              const status = age >= threshold ? 'breached' : 'at risk';
+              return `
+                <li>
+                  <div class="ticketing-item">
+                    <button class="btn sm" data-open="${U.escapeAttr(issue.id)}">${U.escapeHtml(
+                issue.id
+              )}</button>
+                    <div>
+                      <div class="ticketing-title">${U.escapeHtml(issue.title || 'Untitled')}</div>
+                      <div class="ticketing-meta">${U.escapeHtml(
+                        issue.priority || 'Unset'
+                      )} · ${age}d open · SLA ${threshold}d · ${status}</div>
+                    </div>
+                  </div>
+                </li>
+              `;
+            })
+            .join('')
+        : '<li>No tickets near SLA breach.</li>';
+    }
+
+    const categoryCounts = new Map();
+    open.forEach(issue => {
+      const meta = DataStore.computed.get(issue.id) || {};
+      const label =
+        issue.type ||
+        meta.suggestions?.categories?.[0]?.label ||
+        'General Follow-up';
+      categoryCounts.set(label, (categoryCounts.get(label) || 0) + 1);
+    });
+    const topCategories = Array.from(categoryCounts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 4);
+
+    if (E.ticketingTemplateList) {
+      E.ticketingTemplateList.innerHTML = topCategories.length
+        ? topCategories
+            .map(([label, count]) => {
+              const template = this.TEMPLATE_LIBRARY[label] || this.TEMPLATE_LIBRARY['UI / UX'];
+              return `
+                <li>
+                  <div class="ticketing-title">${U.escapeHtml(label)} <span class="muted">(${count})</span></div>
+                  <div class="ticketing-meta">${U.escapeHtml(template)}</div>
+                </li>
+              `;
+            })
+            .join('')
+        : '<li>No category data available.</li>';
+    }
+
+    const cleanup = open
+      .map(issue => {
+        const missing = [];
+        if (!issue.priority) missing.push('priority');
+        if (!issue.module || issue.module === 'Unspecified') missing.push('module');
+        if (!issue.type) missing.push('category');
+        if (!issue.desc) missing.push('description');
+        return { issue, missing };
+      })
+      .filter(x => x.missing.length)
+      .slice(0, 6);
+
+    if (E.ticketingCleanupList) {
+      E.ticketingCleanupList.innerHTML = cleanup.length
+        ? cleanup
+            .map(({ issue, missing }) => `
+              <li>
+                <div class="ticketing-item">
+                  <button class="btn sm" data-open="${U.escapeAttr(issue.id)}">${U.escapeHtml(
+                issue.id
+              )}</button>
+                  <div>
+                    <div class="ticketing-title">${U.escapeHtml(issue.title || 'Untitled')}</div>
+                    <div class="ticketing-meta">Missing: ${U.escapeHtml(
+                      missing.join(', ')
+                    )}</div>
+                  </div>
+                </div>
+              </li>
+            `)
+            .join('')
+        : '<li>No cleanup items in the current view.</li>';
+    }
+
+    if (E.ticketingActionsList) {
+      const actions = [];
+      if (breached.length) {
+        actions.push(
+          `Escalate ${breached.length} breached ticket${
+            breached.length > 1 ? 's' : ''
+          } to the on-call lead.`
+        );
+      }
+      if (atRisk.length) {
+        actions.push(
+          `Send proactive updates on ${atRisk.length} at-risk ticket${
+            atRisk.length > 1 ? 's' : ''
+          } to keep customers informed.`
+        );
+      }
+      if (cleanup.length) {
+        actions.push(
+          `Fill missing fields for ${cleanup.length} ticket${
+            cleanup.length > 1 ? 's' : ''
+          } to keep reporting accurate.`
+        );
+      }
+      if (!actions.length) {
+        actions.push('All clear. Focus on closing existing tickets and keeping response times tight.');
+      }
+      E.ticketingActionsList.innerHTML = actions
+        .map(action => `<li>${U.escapeHtml(action)}</li>`)
+        .join('');
+    }
+
+    U.qAll('#ticketingView [data-open]').forEach(b =>
+      b.addEventListener('click', () =>
+        UI.Modals.openIssue(b.getAttribute('data-open'))
+      )
+    );
+  }
+};
+
+
 function buildClustersWeighted(list) {
   const max = Math.min(list.length, 400);
   const docs = list.slice(-max).map(r => {
@@ -3137,20 +3339,24 @@ function trapFocus(container, e) {
 }
 
 function setActiveView(view) {
-  const names = ['issues', 'calendar', 'insights'];
+  const names = ['issues', 'calendar', 'insights', 'ticketing'];
   names.forEach(name => {
     const tab =
       name === 'issues'
         ? E.issuesTab
         : name === 'calendar'
         ? E.calendarTab
-        : E.insightsTab;
+       : name === 'insights'
+        ? E.insightsTab
+        : E.ticketingTab;
     const panel =
       name === 'issues'
         ? E.issuesView
         : name === 'calendar'
         ? E.calendarView
-        : E.insightsView;
+        : name === 'insights'
+        ? E.insightsView
+        : E.ticketingView;
     const active = name === view;
     if (tab) {
       tab.classList.toggle('active', active);
@@ -3167,6 +3373,7 @@ function setActiveView(view) {
     scheduleCalendarResize();
   }
   if (view === 'insights') Analytics.refresh(UI.Issues.applyFilters());
+  if (view === 'ticketing') TicketingHelper.refresh(UI.Issues.applyFilters());
 }
 
 /* ---------- Calendar wiring ---------- */
@@ -4415,7 +4622,7 @@ function syncFilterInputs() {
 }
 
 function wireCore() {
-  [E.issuesTab, E.calendarTab, E.insightsTab].forEach(btn => {
+  [E.issuesTab, E.calendarTab, E.insightsTab, E.ticketingTab].forEach(btn => {
     if (!btn) return;
     btn.addEventListener('click', () => setActiveView(btn.dataset.view));
   });
@@ -4498,7 +4705,7 @@ function wireCore() {
 
   if (E.shortcutsHelp) {
     E.shortcutsHelp.addEventListener('click', () => {
-      UI.toast('Shortcuts: 1/2/3 switch tabs · / focus search · Ctrl+K AI query');
+     UI.toast('Shortcuts: 1/2/3/4 switch tabs · / focus search · Ctrl+K AI query');
     });
   }
 
@@ -4535,6 +4742,9 @@ function wireCore() {
     refreshPlannerTickets(list);
     if (E.insightsView && E.insightsView.classList.contains('active')) {
       Analytics.refresh(list);
+    }
+     if (E.ticketingView && E.ticketingView.classList.contains('active')) {
+      TicketingHelper.refresh(list);
     }
   };
 }
@@ -5158,13 +5368,15 @@ function wireKeyboardShortcuts() {
 
     if (isInputLike) return;
 
-    // 1/2/3 → switch tabs
+    // 1/2/3/4 → switch tabs
     if (e.key === '1') {
       setActiveView('issues');
     } else if (e.key === '2') {
       setActiveView('calendar');
     } else if (e.key === '3') {
       setActiveView('insights');
+      } else if (e.key === '4') {
+      setActiveView('ticketing');
     }
   });
 }
@@ -5197,7 +5409,9 @@ document.addEventListener('DOMContentLoaded', () => {
   wireKeyboardShortcuts();
 
   const view = localStorage.getItem(LS_KEYS.view) || 'issues';
-  setActiveView(view === 'calendar' || view === 'insights' ? view : 'issues');
+   setActiveView(
+    view === 'calendar' || view === 'insights' || view === 'ticketing' ? view : 'issues'
+  );
 
   loadIssues(false);
   loadEvents(false);
