@@ -1933,13 +1933,11 @@ UI.Issues = {
               col => `<td data-col="${col.key}">${renderCell(r, col)}</td>`
             )
             .join('');
-          return 
-        <tr role="button" tabindex="0" aria-label="Open issue ${U.escapeHtml(
-          r.id || ''
-        )}" data-id="${U.escapeAttr(r.id)}">
-          ${cells}
-        </tr>
-       `;
+        return `<tr role="button" tabindex="0" aria-label="Open issue ${U.escapeHtml(
+            r.id || ''
+          )}" data-id="${U.escapeAttr(r.id)}">
+            ${cells}
+          </tr>`;
         })
         .join('');
     } else {
