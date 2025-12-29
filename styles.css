@@ -758,7 +758,17 @@ background:var(--ai-table-row-even);
   font-size:12px;
   margin-top:2px;
 }
-
+.ticketing-note{
+  color:var(--muted);
+  font-size:12px;
+  margin-top:4px;
+}
+.ticketing-actions{
+  display:flex;
+  gap:6px;
+  flex-wrap:wrap;
+  margin-top:6px;
+}
 /* =========================================================
    Release Planner – F&B Middle East
    ========================================================= */
