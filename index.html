@@ -329,13 +329,33 @@
                 </label>
               </div>
             </div>
-            <button id="addEventBtn" class="btn primary sm" type="button">
-              <span class="icon" aria-hidden="true">➕</span> Add Event
-            </button>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button id="freezeManageBtn" class="btn ghost sm" type="button">
+                ❄️ Freeze windows
+              </button>
+              <button id="addEventBtn" class="btn primary sm" type="button">
+                <span class="icon" aria-hidden="true">➕</span> Add Event
+              </button>
+            </div>
           </div>
           <div id="calendar" aria-label="Deployment & maintenance calendar"></div>
         </div>
 
+         <div class="card" id="freezeWindowsCard" aria-label="Change freeze windows">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+            <div>
+              <strong>Change freeze windows</strong>
+              <div class="muted" style="margin-top:4px;font-size:12px;">
+                Highlight calendar events during freeze periods and reduce collision risk.
+              </div>
+            </div>
+            <button id="freezeManageBtnSecondary" class="btn sm ghost" type="button">
+              Manage freezes
+            </button>
+          </div>
+          <div id="freezeWindowsList" class="freeze-window-list"></div>
+        </div>
+        
         <!-- Release Planner (F&B / Middle East) -->
         <div class="card" id="releasePlannerCard" aria-label="Release planner for F&B clients">
           <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:flex-start;">
@@ -418,6 +438,9 @@
                     title="Convert top suggestion to calendar event">
               ➕ Add top suggestion to calendar…
             </button>
+            <button id="plannerExportScorecard" class="btn ghost sm" type="button">
+              📤 Export scorecard
+            </button>
             <span class="muted" style="font-size:11px;">
               Scored for F&amp;B rush hours in MENA · lower is safer
             </span>
@@ -477,6 +500,9 @@
           </div>
           <div class="card">
             <strong>Suggested categories</strong>
+            <div class="muted" style="font-size:12px;margin-top:4px;">
+              Apply a suggestion to untagged tickets in the current filter.
+            </div>
             <ul id="aiLabelsList" class="muted" style="font-size:13px;margin-top:6px;padding-left:18px;"></ul>
           </div>
           <div class="card">
@@ -492,6 +518,9 @@
         <div class="grid cols-4">
           <div class="card">
             <strong>Trends & bursts (last 14 days)</strong>
+             <div class="muted" style="font-size:11px;margin-top:4px;">
+              Includes week-over-week and month-over-month deltas.
+            </div>
             <ul id="aiTrendsList" class="muted" style="font-size:13px;margin-top:6px;padding-left:18px;"></ul>
           </div>
           <div class="card">
@@ -530,8 +559,14 @@
         </div>
 
         <div class="card">
-          <strong>Similar issue clusters</strong>
-          <div id="aiClusters" style="margin-top:6px;display:grid;gap:10px;"></div>
+           <strong>Root cause clustering dashboard</strong>
+          <div class="muted" style="font-size:12px;margin-top:4px;">
+            Group related issues, inspect top modules, and apply a cluster filter.
+          </div>
+          <div class="cluster-dashboard">
+            <div id="aiClustersList" class="cluster-list"></div>
+            <div id="aiClustersDetail" class="cluster-detail muted"></div>
+          </div>
         </div>
 
         <div class="card">
@@ -851,6 +886,24 @@
                         placeholder="Details, impact, owner…"
                         style="border-radius:12px; resize:vertical;"></textarea>
             </div>
+            
+            <div class="filter-row">
+              <label class="muted">Deployment readiness checklist</label>
+              <div class="readiness-list">
+                <label class="readiness-item">
+                  <input type="checkbox" data-readiness="qa" /> QA sign-off completed
+                </label>
+                <label class="readiness-item">
+                  <input type="checkbox" data-readiness="monitoring" /> Monitoring & dashboards ready
+                </label>
+                <label class="readiness-item">
+                  <input type="checkbox" data-readiness="rollback" /> Rollback plan confirmed
+                </label>
+                <label class="readiness-item">
+                  <input type="checkbox" data-readiness="comms" /> Stakeholder communications drafted
+                </label>
+              </div>
+            </div>
           </div>
           <div id="eventIssueLinkedInfo" class="muted"
                style="margin-top:4px;display:none;font-size:12px;"></div>
@@ -870,6 +923,55 @@
           </button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Freeze Windows Modal -->
+  <div id="freezeModal" class="modal" role="dialog" aria-modal="true"
+       aria-labelledby="freezeModalTitle" aria-describedby="freezeModalBody">
+    <div class="modal-content">
+      <div class="header">
+        <h2 id="freezeModalTitle" style="margin:0;font-size:20px">Manage change freeze windows</h2>
+        <div class="actions">
+          <button class="modal-close" id="freezeModalClose" aria-label="Close freeze dialog">✕</button>
+        </div>
+      </div>
+
+      <div id="freezeModalBody">
+        <div class="muted" style="font-size:12px;margin-bottom:8px;">
+          Freeze windows highlight risky deployment times in the calendar.
+        </div>
+        <div id="freezeModalList" class="freeze-window-list"></div>
+
+        <form id="freezeForm" style="margin-top:12px;">
+          <div class="filter-group">
+            <div class="filter-row">
+              <label class="muted">Days</label>
+              <div class="freeze-day-grid">
+                <label><input type="checkbox" value="0" /> Sun</label>
+                <label><input type="checkbox" value="1" /> Mon</label>
+                <label><input type="checkbox" value="2" /> Tue</label>
+                <label><input type="checkbox" value="3" /> Wed</label>
+                <label><input type="checkbox" value="4" /> Thu</label>
+                <label><input type="checkbox" value="5" /> Fri</label>
+                <label><input type="checkbox" value="6" /> Sat</label>
+              </div>
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="freezeStart">Start time</label>
+              <input id="freezeStart" class="input" type="time" required />
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="freezeEnd">End time</label>
+              <input id="freezeEnd" class="input" type="time" required />
+            </div>
+          </div>
+          <div class="actions" style="justify-content:flex-end;gap:8px;">
+            <button type="button" class="btn ghost" id="freezeReset">Reset defaults</button>
+            <button type="submit" class="btn primary">Add freeze window</button>
+          </div>
+        </form>
+      </div>
     </div>
   </div>
 
