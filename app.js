@@ -193,7 +193,8 @@ const LS_KEYS = {
   accentColor: 'incheckAccent',
  accentColorStorage: 'incheckAccentColor',
   savedViews: 'incheckSavedViews',
-  columns: 'incheckColumns'
+  columns: 'incheckColumns',
+  role: 'incheckRole'
 };
 
 const STOPWORDS = new Set([
@@ -272,6 +273,64 @@ const STOPWORDS = new Set([
   'ticket',
   'inc'
 ]);
+
+const ROLE_CONFIG = {
+  ops: {
+    label: 'Ops lead',
+    permissions: ['full', 'assign', 'read'],
+    kpiOnly: false
+  },
+  ic: {
+    label: 'IC',
+    permissions: ['assign', 'read'],
+    kpiOnly: false
+  },
+  exec: {
+    label: 'Executive',
+    permissions: ['read'],
+    kpiOnly: true
+  }
+};
+
+let currentRole = 'ops';
+
+function getRoleKey() {
+  const saved = localStorage.getItem(LS_KEYS.role);
+  return ROLE_CONFIG[saved] ? saved : 'ops';
+}
+
+function applyRolePermissions(roleKey) {
+  const safeRole = ROLE_CONFIG[roleKey] ? roleKey : 'ops';
+  currentRole = safeRole;
+  const role = ROLE_CONFIG[safeRole];
+  if (E.roleSelect) {
+    E.roleSelect.value = safeRole;
+  }
+
+  document.querySelectorAll('[data-permission]').forEach(el => {
+    const required = (el.dataset.permission || '')
+      .split(' ')
+      .map(v => v.trim())
+      .filter(Boolean);
+    const allowed = required.some(permission => role.permissions.includes(permission));
+    el.hidden = !allowed;
+    el.setAttribute('aria-hidden', allowed ? 'false' : 'true');
+  });
+
+  document.querySelectorAll('[data-visibility]').forEach(el => {
+    const visibility = el.dataset.visibility;
+    let visible = true;
+    if (visibility === 'kpi-hide' && role.kpiOnly) {
+      visible = false;
+    }
+    el.hidden = !visible;
+    el.setAttribute('aria-hidden', visible ? 'false' : 'true');
+  });
+
+  if (role.kpiOnly) {
+    setActiveView('issues');
+  }
+}
 
 const U = {
   q: (s, r = document) => r.querySelector(s),
@@ -1598,6 +1657,7 @@ function cacheEls() {
     'searchInput',
     'launchDashboard',
      'savedViews',
+    'roleSelect',
     'saveViewBtn',
     'deleteViewBtn',
     'themeSelect',
@@ -3493,6 +3553,9 @@ function trapFocus(container, e) {
 }
 
 function setActiveView(view) {
+   if (ROLE_CONFIG[currentRole]?.kpiOnly && view !== 'issues') {
+    view = 'issues';
+  }
   const names = ['issues', 'calendar', 'insights', 'ticketing'];
   names.forEach(name => {
     const tab =
@@ -5083,6 +5146,21 @@ function wireTheme() {
   }
 }
 
+function wireRoles() {
+  const role = getRoleKey();
+  applyRolePermissions(role);
+
+  if (E.roleSelect) {
+    E.roleSelect.addEventListener('change', () => {
+      const value = E.roleSelect.value;
+      try {
+        localStorage.setItem(LS_KEYS.role, value);
+      } catch {}
+      applyRolePermissions(value);
+    });
+  }
+}
+
 function wireConnectivity() {
   if (!E.onlineStatusChip) return;
   const update = () => {
@@ -5572,6 +5650,7 @@ document.addEventListener('DOMContentLoaded', () => {
   wirePaging();
   wireFilters();
   wireTheme();
+   wireRoles();
   wireConnectivity();
   wireModals();
   wireCalendar();
