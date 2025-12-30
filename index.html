@@ -21,7 +21,7 @@
 <body>
   <header>
     <div class="brand" aria-label="InCheck brand">
-      <img src="assets/incheck-logo.svg" class="brand-logo" alt="InCheck 360 logo" />
+        <img src="assets/incheck-logo.svg" class="brand-logo" alt="InCheck 360 logo" width="38" height="38" />
       <div class="brand-text">
        <span>InCheck 360</span>
         <span>Ticketing Operations</span>
@@ -78,7 +78,99 @@
 
   <div id="loadingStatus" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 
-  <div class="wrap">
+  <section class="hero section">
+    <div class="container hero-grid">
+      <div>
+        <div class="hero-eyebrow">Operational clarity in minutes</div>
+        <h1>Keep ticketing ops aligned, visible, and ready for every release.</h1>
+        <p>
+          InCheck 360 brings together live issue tracking, deployment calendars, and AI signals so
+          your team can prioritize the next best action with confidence.
+        </p>
+        <div class="hero-actions">
+          <a class="btn primary cta" href="#app">Launch the dashboard</a>
+          <a class="btn ghost cta" href="#features">Explore features</a>
+        </div>
+        <small class="muted">No setup required · Works with your existing issue sheet</small>
+      </div>
+      <div class="hero-card">
+        <div>
+          <strong>Today’s ops snapshot</strong>
+          <p class="muted" style="margin-top:6px;">
+            Monitor critical queues, deployment risk, and SLA health in a single view.
+          </p>
+        </div>
+        <div class="hero-metrics">
+          <div class="metric">
+            <h3>96%</h3>
+            <span>Tickets triaged in &lt; 2 hours</span>
+          </div>
+          <div class="metric">
+            <h3>14</h3>
+            <span>High-impact issues tracked daily</span>
+          </div>
+          <div class="metric">
+            <h3>3x</h3>
+            <span>Faster change readiness reviews</span>
+          </div>
+        </div>
+        <div class="muted" style="font-size:.85rem;">
+          “Everything ops needs to see before standup.”
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section alt" id="features">
+    <div class="container">
+      <h2>Designed for high-velocity support teams</h2>
+      <p class="muted" style="margin-top:8px;">
+        A focused toolkit for ops leaders to prioritize, coordinate, and ship with confidence.
+      </p>
+      <div class="feature-grid" style="margin-top:28px;">
+        <article class="feature-card">
+          <img src="assets/icon-priority.svg" width="40" height="40" alt="Priority signal icon" />
+          <h3>Priority intelligence</h3>
+          <p class="muted">Surface high-risk tickets, SLA breaches, and AI-assisted triage insights.</p>
+        </article>
+        <article class="feature-card">
+          <img src="assets/icon-calendar.svg" width="40" height="40" alt="Calendar planning icon" />
+          <h3>Release-ready planning</h3>
+          <p class="muted">Coordinate deployments, maintenance windows, and release risk in one timeline.</p>
+        </article>
+        <article class="feature-card">
+          <img src="assets/icon-collab.svg" width="40" height="40" alt="Collaboration icon" />
+          <h3>Ops-ready collaboration</h3>
+          <p class="muted">Share saved views, highlight next actions, and keep stakeholders aligned.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <h2>Trusted by global operations teams</h2>
+      <p class="muted" style="margin-top:8px;">
+        Social proof from teams focused on uptime, customer trust, and clean releases.
+      </p>
+      <div class="testimonial-grid" style="margin-top:28px;">
+        <article class="testimonial">
+          <p>“We cut our daily triage meeting from 45 minutes to 15 with the shared dashboards.”</p>
+          <strong>— Support Lead, Enterprise SaaS</strong>
+        </article>
+        <article class="testimonial">
+          <p>“The calendar + risk view keeps every squad aligned before we push production.”</p>
+          <strong>— Release Manager, Retail Tech</strong>
+        </article>
+        <article class="testimonial">
+          <p>“The AI signals help us flag incidents before customers feel them.”</p>
+          <strong>— Ops Director, Hospitality Platform</strong>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <div class="wrap" id="app">
     <aside class="sidebar" id="sidebar" aria-label="Filters">
       <h3>Filters</h3>
       <div class="filter-group" role="group" aria-label="Field filters">
@@ -805,6 +897,41 @@
   <div class="spinner" id="spinner" aria-hidden="true"><div class="ring"></div></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+  <footer class="section alt footer">
+    <div class="container footer-grid">
+      <div>
+        <div class="brand" aria-label="InCheck brand">
+          <img src="assets/incheck-logo.svg" class="brand-logo" alt="InCheck 360 logo" width="38" height="38" />
+          <div class="brand-text">
+            <span>InCheck 360</span>
+            <span>Ticketing Operations</span>
+          </div>
+        </div>
+        <p class="muted" style="margin-top:12px;">
+          A unified workspace for tracking issues, planning releases, and staying ahead of risk.
+        </p>
+      </div>
+      <div>
+        <strong>Contact</strong>
+        <div style="margin-top:10px;display:grid;gap:6px;">
+          <span class="muted">ops@incheck360.com</span>
+          <span class="muted">+1 (555) 018-3600</span>
+        </div>
+      </div>
+      <div>
+        <strong>Resources</strong>
+        <div style="margin-top:10px;display:grid;gap:6px;">
+          <a href="#features">Features</a>
+          <a href="#app">Dashboard</a>
+          <a href="#">Security</a>
+        </div>
+      </div>
+    </div>
+    <div class="container" style="margin-top:28px;">
+      <small class="muted">© 2024 InCheck 360. All rights reserved.</small>
+    </div>
+  </footer>
+  
   <!-- App logic -->
   <script src="app.js"></script>
 </body>
