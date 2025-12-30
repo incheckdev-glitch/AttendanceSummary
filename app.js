@@ -1666,6 +1666,9 @@ function cacheEls() {
     'calendarTz',
     'onlineStatusChip',
     'accentColor',
+    'heroTriagePct',
+    'heroHighImpactCount',
+    'heroChangeReadiness',
     'shortcutsHelp',
     'aiQueryExport',
     'ticketingLastUpdated',
@@ -1723,6 +1726,57 @@ const UI = {
   },
   setAnalyzing(v) {
     if (E.aiAnalyzing) E.aiAnalyzing.style.display = v ? 'block' : 'none';
+  },
+  updateHeroMetrics(rows) {
+    if (!E.heroTriagePct && !E.heroHighImpactCount && !E.heroChangeReadiness) return;
+    const safeRows = Array.isArray(rows) ? rows : [];
+    const parseDate = value => {
+      if (!value) return null;
+      const d = new Date(value);
+      return isNaN(d) ? null : d;
+    };
+
+    const triageDurations = safeRows
+      .map(r => {
+        const created = parseDate(r.date);
+        const triaged = parseDate(r.notificationSent || r.notificationUnderReview);
+        if (!created || !triaged) return null;
+        return (triaged - created) / 3600000;
+      })
+      .filter(v => v != null && v >= 0);
+
+    const triageUnderTwo = triageDurations.filter(v => v <= 2).length;
+    const triagePct = triageDurations.length
+      ? Math.round((triageUnderTwo / triageDurations.length) * 100)
+      : 0;
+    if (E.heroTriagePct) E.heroTriagePct.textContent = `${triagePct}%`;
+
+    const dailyHighImpact = safeRows.filter(r => {
+      const created = parseDate(r.date);
+      if (!created) return false;
+      if (!U.isBetween(created, U.daysAgo(1), null)) return false;
+      const meta = DataStore.computed.get(r.id);
+      const impactScore = meta?.risk?.impact ?? 0;
+      return impactScore >= 4 || r.priority === 'High';
+    }).length;
+    if (E.heroHighImpactCount) E.heroHighImpactCount.textContent = String(dailyHighImpact);
+
+    const reviewDurations = safeRows
+      .map(r => {
+        const created = parseDate(r.date);
+        const reviewed = parseDate(r.notificationUnderReview);
+        if (!created || !reviewed) return null;
+        return (reviewed - created) / 3600000;
+      })
+      .filter(v => v != null && v >= 0);
+    const avgReviewHours = reviewDurations.length
+      ? reviewDurations.reduce((a, b) => a + b, 0) / reviewDurations.length
+      : 0;
+    const baselineHours = 24;
+    const speed = avgReviewHours ? baselineHours / avgReviewHours : 0;
+    if (E.heroChangeReadiness) {
+      E.heroChangeReadiness.textContent = `${speed ? speed.toFixed(1) : '0'}x`;
+    }
   },
   skeleton(show) {
     if (!E.issuesTbody || !E.tbodySkeleton) return;
@@ -4839,6 +4893,7 @@ function wireCore() {
     UI.Issues.renderKPIs(list);
     UI.Issues.renderTable(list);
     UI.Issues.renderCharts(list);
+    UI.updateHeroMetrics(DataStore.rows);
     refreshPlannerTickets(list);
     if (E.insightsView && E.insightsView.classList.contains('active')) {
       Analytics.refresh(list);
