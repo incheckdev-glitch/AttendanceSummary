@@ -28,29 +28,21 @@
       </div>
     </div>
 
-    <button id="drawerBtn" class="btn drawer-toggle" aria-expanded="false" aria-controls="sidebar" data-visibility="kpi-hide">
+    <button id="drawerBtn" class="btn drawer-toggle" aria-expanded="false" aria-controls="sidebar">
       <span class="icon" aria-hidden="true">🧰</span> Filters
     </button>
 
     <div class="toolbar">
-      <input id="searchInput" class="input" type="search" data-visibility="kpi-hide"
+      <input id="searchInput" class="input" type="search"
              placeholder="Search ID, title, description, log…  ( / to focus )"
              aria-label="Search issues" />
 
-     <div class="saved-views" aria-label="Saved views" data-visibility="kpi-hide">
+      <div class="saved-views" aria-label="Saved views">
         <select id="savedViews" class="select sm" aria-label="Saved views">
           <option value="">Saved views</option>
         </select>
-        <button id="saveViewBtn" class="btn ghost sm" type="button" data-permission="full">Save view</button>
-        <button id="deleteViewBtn" class="btn ghost sm" type="button" data-permission="full">Delete view</button>
-      </div>
-
-      <div class="role-select" aria-label="Role selection">
-        <select id="roleSelect" class="select sm" aria-label="Role">
-          <option value="ops">Ops lead</option>
-          <option value="ic">IC</option>
-          <option value="exec">Executive</option>
-        </select>
+        <button id="saveViewBtn" class="btn ghost sm" type="button">Save view</button>
+        <button id="deleteViewBtn" class="btn ghost sm" type="button">Delete view</button>
       </div>
       
       <select id="themeSelect" class="select" aria-label="Theme">
@@ -61,23 +53,23 @@
 
       <input id="accentColor" class="input" type="color" aria-label="Accent color" />
 
-     <button id="refreshNow" class="btn" aria-label="Refresh from source" data-visibility="kpi-hide">
+      <button id="refreshNow" class="btn" aria-label="Refresh from source">
         <span class="icon" aria-hidden="true">🔄</span> Refresh
       </button>
-       <button id="exportCsv" class="btn" aria-label="Export filtered issues as Excel" data-permission="full" data-visibility="kpi-hide">
+      <button id="exportCsv" class="btn" aria-label="Export filtered issues as Excel">
         <span class="icon" aria-hidden="true">📥</span> Export
       </button>
-       <button id="createTicketBtn" class="btn primary" aria-label="Create new ticket" data-permission="full" data-visibility="kpi-hide">
+      <button id="createTicketBtn" class="btn primary" aria-label="Create new ticket">
         <span class="icon" aria-hidden="true">➕</span> Create Ticket
       </button>
 
-       <button id="shortcutsHelp" class="btn ghost sm" type="button" title="Keyboard shortcuts" data-visibility="kpi-hide">
+      <button id="shortcutsHelp" class="btn ghost sm" type="button" title="Keyboard shortcuts">
         <span class="icon" aria-hidden="true">⌨️</span>
       </button>
 
       <span class="chip online" id="onlineStatusChip" aria-live="polite">Online</span>
 
-      <div class="statusline" data-visibility="kpi-hide">
+      <div class="statusline">
         <span class="chip" id="syncIssuesText">Issues: never</span><span class="dot err" id="syncIssuesDot"></span>
         <span class="chip" id="syncEventsText">Events: never</span><span class="dot err" id="syncEventsDot"></span>
       </div>
@@ -158,7 +150,7 @@
 
   
   <div class="wrap" id="app">
-   <aside class="sidebar" id="sidebar" aria-label="Filters" data-visibility="kpi-hide">
+    <aside class="sidebar" id="sidebar" aria-label="Filters">
       <h3>Filters</h3>
       <div class="filter-group" role="group" aria-label="Field filters">
         <div class="filter-row">
@@ -203,7 +195,7 @@
     </aside>
 
     <main class="content">
-      <div class="view-tabs" role="tablist" data-visibility="kpi-hide">
+      <div class="view-tabs" role="tablist">
         <button id="issuesTab" class="view-tab active" data-view="issues"
                 role="tab" aria-selected="true" aria-controls="issuesView">
           <span class="icon" aria-hidden="true">📋</span> Issues
@@ -224,7 +216,7 @@
 
       <!-- Issues view -->
       <section id="issuesView" class="view active" role="tabpanel" aria-labelledby="issuesTab">
-       <div class="card summary-bar" id="issuesSummaryCard" data-visibility="kpi-hide">
+        <div class="card summary-bar" id="issuesSummaryCard">
           <span id="issuesSummaryText" aria-live="polite">Loading summary…</span>
           <span id="issuesLastUpdated" class="summary-meta" aria-live="polite">Last updated: --</span>
          <span class="shortcut-chip">Shortcuts: 1/2/3/4 tabs · / search · Ctrl+K AI</span>
@@ -232,14 +224,14 @@
 
         <div class="grid cols-4" id="kpis" aria-live="polite"></div>
 
-       <div class="charts" aria-label="Charts" data-visibility="kpi-hide">
+        <div class="charts" aria-label="Charts">
           <div class="card"><canvas id="byModule" height="140" aria-label="Issues by module" role="img"></canvas></div>
           <div class="card"><canvas id="byPriority" height="140" aria-label="Issues by priority" role="img"></canvas></div>
           <div class="card"><canvas id="byStatus" height="140" aria-label="Issues by status" role="img"></canvas></div>
           <div class="card"><canvas id="byType" height="140" aria-label="Issues by type" role="img"></canvas></div>
         </div>
 
-        <div class="card" aria-label="Issues table" data-visibility="kpi-hide">
+        <div class="card" aria-label="Issues table">
            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
             <div>
               <strong>Issues</strong>
@@ -313,7 +305,7 @@
       </section>
 
       <!-- Calendar view -->
-       <section id="calendarView" class="view" role="tabpanel" aria-labelledby="calendarTab" data-visibility="kpi-hide">
+      <section id="calendarView" class="view" role="tabpanel" aria-labelledby="calendarTab">
         <div class="card" aria-label="Calendar">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
             <div>
@@ -337,7 +329,7 @@
                 </label>
               </div>
             </div>
-            <button id="addEventBtn" class="btn primary sm" type="button" data-permission="full">
+            <button id="addEventBtn" class="btn primary sm" type="button">
               <span class="icon" aria-hidden="true">➕</span> Add Event
             </button>
           </div>
@@ -422,7 +414,7 @@
             <button id="plannerRun" class="btn sm" type="button">
               <span class="icon" aria-hidden="true">✨</span> Suggest windows
             </button>
-           <button id="plannerAddEvent" class="btn ghost sm" type="button" disabled data-permission="full"
+            <button id="plannerAddEvent" class="btn ghost sm" type="button" disabled
                     title="Convert top suggestion to calendar event">
               ➕ Add top suggestion to calendar…
             </button>
@@ -458,7 +450,7 @@
               </div>
 
               <div class="filter-row" style="display:flex;align-items:flex-end;">
-                <button type="button" class="btn primary sm" id="plannerAssignBtn" data-permission="assign">
+                <button type="button" class="btn primary sm" id="plannerAssignBtn">
                   Assign selected tickets
                 </button>
               </div>
@@ -468,7 +460,7 @@
       </section>
 
       <!-- AI Insights view -->
-       <section id="insightsView" class="view" role="tabpanel" aria-labelledby="insightsTab" data-visibility="kpi-hide">
+      <section id="insightsView" class="view" role="tabpanel" aria-labelledby="insightsTab">
         <div class="card">
           <strong>AI Insights / Copilot</strong>
           <div class="muted" style="margin-top:4px;">
@@ -580,7 +572,7 @@
       </section>
       
       <!-- Ticketing Helper view -->
-     <section id="ticketingView" class="view" role="tabpanel" aria-labelledby="ticketingTab" data-visibility="kpi-hide">
+      <section id="ticketingView" class="view" role="tabpanel" aria-labelledby="ticketingTab">
         <div class="card">
           <strong>Ticketing Helper</strong>
           <div class="muted" style="margin-top:4px;">
