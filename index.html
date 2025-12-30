@@ -19,63 +19,6 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <header>
-    <div class="brand" aria-label="InCheck brand">
-        <img src="assets/incheck-logo.svg" class="brand-logo" alt="InCheck 360 logo" width="38" height="38" />
-      <div class="brand-text">
-       <span>InCheck 360</span>
-        <span>Ticketing Operations</span>
-      </div>
-    </div>
-
-    <button id="drawerBtn" class="btn drawer-toggle" aria-expanded="false" aria-controls="sidebar">
-      <span class="icon" aria-hidden="true">🧰</span> Filters
-    </button>
-
-    <div class="toolbar">
-      <input id="searchInput" class="input" type="search"
-             placeholder="Search ID, title, description, log…  ( / to focus )"
-             aria-label="Search issues" />
-
-      <div class="saved-views" aria-label="Saved views">
-        <select id="savedViews" class="select sm" aria-label="Saved views">
-          <option value="">Saved views</option>
-        </select>
-        <button id="saveViewBtn" class="btn ghost sm" type="button">Save view</button>
-        <button id="deleteViewBtn" class="btn ghost sm" type="button">Delete view</button>
-      </div>
-      
-      <select id="themeSelect" class="select" aria-label="Theme">
-        <option value="system">System</option>
-        <option value="dark">Dark</option>
-        <option value="light">Light</option>
-      </select>
-
-      <input id="accentColor" class="input" type="color" aria-label="Accent color" />
-
-      <button id="refreshNow" class="btn" aria-label="Refresh from source">
-        <span class="icon" aria-hidden="true">🔄</span> Refresh
-      </button>
-      <button id="exportCsv" class="btn" aria-label="Export filtered issues as Excel">
-        <span class="icon" aria-hidden="true">📥</span> Export
-      </button>
-      <button id="createTicketBtn" class="btn primary" aria-label="Create new ticket">
-        <span class="icon" aria-hidden="true">➕</span> Create Ticket
-      </button>
-
-      <button id="shortcutsHelp" class="btn ghost sm" type="button" title="Keyboard shortcuts">
-        <span class="icon" aria-hidden="true">⌨️</span>
-      </button>
-
-      <span class="chip online" id="onlineStatusChip" aria-live="polite">Online</span>
-
-      <div class="statusline">
-        <span class="chip" id="syncIssuesText">Issues: never</span><span class="dot err" id="syncIssuesDot"></span>
-        <span class="chip" id="syncEventsText">Events: never</span><span class="dot err" id="syncEventsDot"></span>
-      </div>
-    </div>
-  </header>
-
   <div id="loadingStatus" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 
   <section class="hero section">
@@ -88,7 +31,7 @@
           your team can prioritize the next best action with confidence.
         </p>
         <div class="hero-actions">
-          <a class="btn primary cta" href="#app">Launch the dashboard</a>
+         <a class="btn primary cta" href="#dashboard">Launch the dashboard</a>
           <a class="btn ghost cta" href="#features">Explore features</a>
         </div>
         <small class="muted">No setup required · Works with your existing issue sheet</small>
@@ -148,7 +91,63 @@
   </section>
 
   
-  <div class="wrap" id="app">
+ <div class="wrap" id="dashboard">
+    <header>
+      <div class="brand" aria-label="InCheck brand">
+          <img src="assets/incheck-logo.svg" class="brand-logo" alt="InCheck 360 logo" width="38" height="38" />
+        <div class="brand-text">
+         <span>InCheck 360</span>
+          <span>Ticketing Operations</span>
+        </div>
+      </div>
+
+      <button id="drawerBtn" class="btn drawer-toggle" aria-expanded="false" aria-controls="sidebar">
+        <span class="icon" aria-hidden="true">🧰</span> Filters
+      </button>
+
+      <div class="toolbar">
+        <input id="searchInput" class="input" type="search"
+               placeholder="Search ID, title, description, log…  ( / to focus )"
+               aria-label="Search issues" />
+
+        <div class="saved-views" aria-label="Saved views">
+          <select id="savedViews" class="select sm" aria-label="Saved views">
+            <option value="">Saved views</option>
+          </select>
+          <button id="saveViewBtn" class="btn ghost sm" type="button">Save view</button>
+          <button id="deleteViewBtn" class="btn ghost sm" type="button">Delete view</button>
+        </div>
+        
+        <select id="themeSelect" class="select" aria-label="Theme">
+          <option value="system">System</option>
+          <option value="dark">Dark</option>
+          <option value="light">Light</option>
+        </select>
+
+        <input id="accentColor" class="input" type="color" aria-label="Accent color" />
+
+        <button id="refreshNow" class="btn" aria-label="Refresh from source">
+          <span class="icon" aria-hidden="true">🔄</span> Refresh
+        </button>
+        <button id="exportCsv" class="btn" aria-label="Export filtered issues as Excel">
+          <span class="icon" aria-hidden="true">📥</span> Export
+        </button>
+        <button id="createTicketBtn" class="btn primary" aria-label="Create new ticket">
+          <span class="icon" aria-hidden="true">➕</span> Create Ticket
+        </button>
+
+        <button id="shortcutsHelp" class="btn ghost sm" type="button" title="Keyboard shortcuts">
+          <span class="icon" aria-hidden="true">⌨️</span>
+        </button>
+
+        <span class="chip online" id="onlineStatusChip" aria-live="polite">Online</span>
+
+        <div class="statusline">
+          <span class="chip" id="syncIssuesText">Issues: never</span><span class="dot err" id="syncIssuesDot"></span>
+          <span class="chip" id="syncEventsText">Events: never</span><span class="dot err" id="syncEventsDot"></span>
+        </div>
+      </div>
+    </header>
     <aside class="sidebar" id="sidebar" aria-label="Filters">
       <h3>Filters</h3>
       <div class="filter-group" role="group" aria-label="Field filters">
@@ -900,7 +899,7 @@
         <strong>Resources</strong>
         <div style="margin-top:10px;display:grid;gap:6px;">
           <a href="#features">Features</a>
-          <a href="#app">Dashboard</a>
+         <a href="#dashboard">Dashboard</a>
           <a href="#">Security</a>
         </div>
       </div>
