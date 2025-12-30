@@ -1661,6 +1661,7 @@ function cacheEls() {
     'eventCancel',
     'eventDelete',
     'eventIssueLinkedInfo',
+    'eventChecklistStatus',
     'aiPatternsList',
     'aiLabelsList',
     'aiRisksList',
@@ -3222,6 +3223,7 @@ function setReadinessChecklistState(state = {}) {
     if (!key) return;
     input.checked = !!state[key];
   });
+  updateChecklistStatus(state);
 }
 
 function readinessProgress(readiness = {}) {
@@ -3229,6 +3231,18 @@ function readinessProgress(readiness = {}) {
   if (!keys.length) return { done: 0, total: 0 };
   const done = keys.filter(k => readiness[k]).length;
   return { done, total: keys.length };
+}
+
+function updateChecklistStatus(readiness = {}) {
+  if (!E.eventChecklistStatus) return;
+  const normalized =
+    readiness && Object.keys(readiness).length ? readiness : getReadinessChecklistState();
+  const state = readinessProgress(normalized);
+  if (!state.total) {
+    E.eventChecklistStatus.textContent = 'Checklist completion: 0/0';
+    return;
+  }
+  E.eventChecklistStatus.textContent = `Checklist completion: ${state.done}/${state.total}`;
 }
 
 /** Modals */
@@ -3381,7 +3395,7 @@ UI.Modals = {
     }
     if (E.eventDescription) E.eventDescription.value = ev.description || '';
 
-    setReadinessChecklistState(ev.readiness || {});
+    setReadinessChecklistState(ev.readiness || ev.checklist || {});
     
     if (E.eventIssueLinkedInfo) {
       const issueIdStr = ev.issueId || '';
@@ -3945,7 +3959,10 @@ function ensureCalendar() {
           owner: info.event.extendedProps.owner || '',
           modules: info.event.extendedProps.modules || [],
           impactType: info.event.extendedProps.impactType || 'No downtime expected',
-          readiness: info.event.extendedProps.readiness || {},
+          readiness:
+            info.event.extendedProps.readiness ||
+            info.event.extendedProps.checklist ||
+            {},
           notificationStatus: info.event.extendedProps.notificationStatus || ''
         };
       UI.Modals.openEvent(ev);
@@ -3987,7 +4004,7 @@ function ensureCalendar() {
 
       const env = ext.env || 'Prod';
       const status = ext.status || 'Planned';
-const readiness = ext.readiness || {};
+const readiness = ext.readiness || ext.checklist || {};
       const readinessState = readinessProgress(readiness);
       
       let tooltip = ext.description || '';
@@ -4304,7 +4321,8 @@ async function loadEvents(force = false) {
         modules: modulesArr,
         impactType: ev.impactType || ev.impact || 'No downtime expected',
        notificationStatus: ev.notificationStatus || '',
-        readiness: readiness && typeof readiness === 'object' ? readiness : {}
+        readiness: readiness && typeof readiness === 'object' ? readiness : {},
+        checklist: readiness && typeof readiness === 'object' ? readiness : {}
       };
     });
 
@@ -4474,7 +4492,8 @@ async function saveEventToSheet(event) {
 
       notificationStatus: event.notificationStatus || '',
      allDay: !!event.allDay,
-      readiness: event.readiness || {}
+      readiness: event.readiness || event.checklist || {},
+      checklist: event.checklist || event.readiness || {}
     };
 
      console.log('[Ticketing Dashboard] sending event payload to Apps Script:', payload);
@@ -4505,6 +4524,9 @@ async function saveEventToSheet(event) {
       }
       if (!savedEvent.readiness && payload.readiness) {
         savedEvent.readiness = payload.readiness;
+      }
+         if (!savedEvent.checklist && payload.checklist) {
+        savedEvent.checklist = payload.checklist;
       }
       return savedEvent;
     } else {
@@ -5695,6 +5717,12 @@ function wireModals() {
     });
   }
 
+  U.qAll('[data-readiness]').forEach(input => {
+    input.addEventListener('change', () => {
+      updateChecklistStatus(getReadinessChecklistState());
+    });
+  });
+  
   if (E.eventForm) {
     E.eventForm.addEventListener('submit', async e => {
       e.preventDefault();
@@ -5708,6 +5736,19 @@ function wireModals() {
       }
 
       const readiness = getReadinessChecklistState();
+      const impactType = E.eventImpactType?.value || 'No downtime expected';
+      const readinessState = readinessProgress(readiness);
+
+      if (
+        impactType === 'High risk change' &&
+        readinessState.total &&
+        readinessState.done < readinessState.total
+      ) {
+        const proceed = window.confirm(
+          'This event is marked as a high-risk change, but the checklist is incomplete. Save anyway?'
+        );
+        if (!proceed) return;
+      }
       
       const ev = {
         id,
@@ -5717,12 +5758,13 @@ function wireModals() {
         status: E.eventStatus?.value || 'Planned',
         owner: (E.eventOwner?.value || '').trim(),
         modules: E.eventModules?.value || '',
-        impactType: E.eventImpactType?.value || 'No downtime expected',
+       impactType,
         issueId: (E.eventIssueId?.value || '').trim(),
         start: E.eventStart?.value || '',
         end: E.eventEnd?.value || '',
         description: (E.eventDescription?.value || '').trim(),
         readiness,
+         checklist: readiness,
         allDay,
         notificationStatus: ''
       };
