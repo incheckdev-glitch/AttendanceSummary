@@ -1592,9 +1592,11 @@ function cacheEls() {
     'drawerBtn',
     'drawerBtn',
     'sidebar',
+     'app',
     'spinner',
     'toast',
     'searchInput',
+    'launchDashboard',
      'savedViews',
     'saveViewBtn',
     'deleteViewBtn',
@@ -5039,6 +5041,21 @@ function wireConnectivity() {
   update();
 }
 
+function wireDashboardGate() {
+  if (!E.app || !E.launchDashboard) return;
+
+  E.app.classList.add('is-locked');
+  E.app.setAttribute('aria-hidden', 'true');
+
+  E.launchDashboard.addEventListener('click', event => {
+    event.preventDefault();
+    E.app.classList.remove('is-locked');
+    E.app.setAttribute('aria-hidden', 'false');
+    E.app.scrollIntoView({ behavior: 'smooth' });
+    window.location.hash = '#app';
+  });
+}
+
 function wireModals() {
   // Issue modal
   if (E.modalClose) {
@@ -5494,6 +5511,7 @@ document.addEventListener('DOMContentLoaded', () => {
     E.pageSize.value = String(GridState.pageSize);
   }
 
+  wireDashboardGate();
   wireCore();
   wireSorting();
   wirePaging();
