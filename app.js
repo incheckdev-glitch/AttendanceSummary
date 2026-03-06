@@ -1,8 +1,10 @@
 const API_URL = "https://script.google.com/macros/s/AKfycbzeiw45H5PVs8_91N8x-u-COmmhzotE41vGgy40-NtEO6vKEMwNgott4VQ0SRy5WZf_/exec";
 const UTIL_CAP_PCT = 140;
 
-const FETCH_TIMEOUT_MS = 3000;
-const JSONP_TIMEOUT_MS = 4500;
+const FETCH_TIMEOUT_MS = 12000;
+const JSONP_TIMEOUT_MS = 12000;
+const API_RETRY_COUNT = 1;
+const API_RETRY_DELAY_MS = 350;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const PERIODS_CACHE_TTL_MS = 60 * 60 * 1000;
 
@@ -465,26 +467,42 @@ async function fetchJson(url, options = {}) {
   }
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function apiCall(url, options = {}) {
   const transports = Array.isArray(options.preferredTransports) && options.preferredTransports.length
     ? options.preferredTransports
     : getPreferredTransports();
 
   const errors = [];
-
+  const retries = Number.isFinite(options.retries) ? Number(options.retries) : API_RETRY_COUNT;
+  
   for (const transport of transports) {
-    if (options.signal?.aborted) throw new Error("Request aborted");
-
-    try {
-      const data = transport === "jsonp"
-        ? await jsonp(url, options)
-        : await fetchJson(url, options);
-
-      rememberPreferredTransport(transport);
-      return { data, transport, errors };
-    } catch (err) {
+     for (let attempt = 0; attempt <= retries; attempt += 1) {
       if (options.signal?.aborted) throw new Error("Request aborted");
-      errors.push(`${transport}: ${String(err?.message || err)}`);
+
+     try {
+        const data = transport === "jsonp"
+          ? await jsonp(url, options)
+          : await fetchJson(url, options);
+
+              rememberPreferredTransport(transport);
+        return { data, transport, errors };
+      } catch (err) {
+        if (options.signal?.aborted) throw new Error("Request aborted");
+
+        const msg = String(err?.message || err);
+        errors.push(`${transport} (attempt ${attempt + 1}/${retries + 1}): ${msg}`);
+
+        const canRetry = attempt < retries && (msg.includes("timeout") || msg.includes("HTTP 5") || msg.includes("load error"));
+        if (canRetry) {
+          await sleep(API_RETRY_DELAY_MS * (attempt + 1));
+          continue;
+        }
+        break;
+      }
     }
   }
 
