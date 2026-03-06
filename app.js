@@ -366,7 +366,6 @@ function getPreferredTransports() {
 function jsonp(url, options = {}) {
   return new Promise((resolve, reject) => {
     const cb = "cb_" + Math.random().toString(36).slice(2);
-     const fallbackNoop = () => {};
     const sep = url.includes("?") ? "&" : "?";
     const src = url + sep + "__ts=" + Date.now() + "&callback=" + cb;
     const s = document.createElement("script");
@@ -382,15 +381,7 @@ function jsonp(url, options = {}) {
       done = true;
       clearTimeout(timeoutId);
       if (abortHandler && signal) signal.removeEventListener("abort", abortHandler);
-       // Avoid noisy `ReferenceError: <callback> is not defined` errors when a
-      // delayed JSONP response arrives after timeout/abort. Keep a short-lived
-      // no-op callback around, then remove it asynchronously.
-      window[cb] = fallbackNoop;
-      setTimeout(() => {
-        if (window[cb] === fallbackNoop) {
-          try { delete window[cb]; } catch (e) {}
-        }
-      }, timeoutMs);
+      try { delete window[cb]; } catch (e) {}
       s.remove();
     }
 
