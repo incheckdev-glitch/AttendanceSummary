@@ -795,3 +795,19 @@
   background: rgba(59,130,246,.05);
   color: #1e293b;
 }
+
+.sectionDivider{
+  height:1px;
+  background: rgba(231,236,255,.9);
+}
+
+.actionLine{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.actionsRow{
+  flex-direction:column;
+  align-items:flex-start;
+}
