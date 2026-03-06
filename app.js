@@ -193,6 +193,20 @@ const fmt1 = (n) => (Number.isFinite(n) ? n : 0).toLocaleString(undefined, { max
 const fmt2 = (n) => (Number.isFinite(n) ? n : 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
 const fmtPct = (x) => (x == null ? "—" : (x * 100).toFixed(1) + "%");
 
+function parseNumeric(value) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : NaN;
+  if (typeof value === "string") {
+    const cleaned = value
+      .trim()
+      .replace(/,/g, "")
+      .replace(/[^0-9.+-]/g, "");
+    if (!cleaned) return NaN;
+    const parsed = Number(cleaned);
+    return Number.isFinite(parsed) ? parsed : NaN;
+  }
+  return NaN;
+}
+
 function fmtCurrency(amount, currency) {
   if (!Number.isFinite(amount)) return "—";
   try {
@@ -504,7 +518,8 @@ function buildMetaFromSummary(summary) {
       committedMinutes: Number(c.committedMinutes ?? 0),
       primaryCsm: normalizeStr(c.primaryCsm || ""),
       currency: normalizeStr(c.currency || ""),
-      backendOverageAmount: Number(c.overageAmount ?? NaN),
+    backendOverageAmount: parseNumeric(c.overageAmount ?? c.overage_amount ?? c.overageCost),
+      backendRatePerHour: parseNumeric(c.ratePerHour ?? c.rate_per_hour ?? c.hourlyRate),
     });
   });
   return meta;
@@ -723,7 +738,7 @@ function buildViewData({ summary, sessionsRaw, filters, rates }) {
     const remaining = Math.max(committed - consumed, 0);
 
     const rateInfo = rates[name] || {};
-    const ratePerHour = Number(rateInfo.ratePerHour ?? NaN);
+    const ratePerHour = parseNumeric(rateInfo.ratePerHour ?? m.backendRatePerHour);
     const currency = normalizeStr(rateInfo.currency || m.currency || "EUR");
 
     let overageAmount = NaN;
