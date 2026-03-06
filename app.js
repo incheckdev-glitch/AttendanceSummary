@@ -193,20 +193,6 @@ const fmt1 = (n) => (Number.isFinite(n) ? n : 0).toLocaleString(undefined, { max
 const fmt2 = (n) => (Number.isFinite(n) ? n : 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
 const fmtPct = (x) => (x == null ? "—" : (x * 100).toFixed(1) + "%");
 
-function parseNumeric(value) {
-  if (typeof value === "number") return Number.isFinite(value) ? value : NaN;
-  if (typeof value === "string") {
-    const cleaned = value
-      .trim()
-      .replace(/,/g, "")
-      .replace(/[^0-9.+-]/g, "");
-    if (!cleaned) return NaN;
-    const parsed = Number(cleaned);
-    return Number.isFinite(parsed) ? parsed : NaN;
-  }
-  return NaN;
-}
-
 function fmtCurrency(amount, currency) {
   if (!Number.isFinite(amount)) return "—";
   try {
@@ -518,8 +504,7 @@ function buildMetaFromSummary(summary) {
       committedMinutes: Number(c.committedMinutes ?? 0),
       primaryCsm: normalizeStr(c.primaryCsm || ""),
       currency: normalizeStr(c.currency || ""),
-    backendOverageAmount: parseNumeric(c.overageAmount ?? c.overage_amount ?? c.overageCost),
-      backendRatePerHour: parseNumeric(c.ratePerHour ?? c.rate_per_hour ?? c.hourlyRate),
+      backendOverageAmount: Number(c.overageAmount ?? NaN),
     });
   });
   return meta;
@@ -738,7 +723,7 @@ function buildViewData({ summary, sessionsRaw, filters, rates }) {
     const remaining = Math.max(committed - consumed, 0);
 
     const rateInfo = rates[name] || {};
-    const ratePerHour = parseNumeric(rateInfo.ratePerHour ?? m.backendRatePerHour);
+    const ratePerHour = Number(rateInfo.ratePerHour ?? NaN);
     const currency = normalizeStr(rateInfo.currency || m.currency || "EUR");
 
     let overageAmount = NaN;
@@ -1841,29 +1826,13 @@ async function fetchViewPayload(period, from, to, debug, label, options = {}) {
   debug.endpoints[`${label}Summary`] = summaryUrl;
   debug.endpoints[`${label}Sessions`] = sessionsUrl;
 
-  const requestWithDebug = async (requestLabel, fn) => {
-    const started = performance.now();
-    try {
-      const res = await fn();
-      debug.transports[`${label}${requestLabel}`] = res.transport;
-      return res;
-    } catch (err) {
-      debug.transports[`${label}${requestLabel}`] = "failed";
-      if (Array.isArray(err?.transportErrors) && err.transportErrors.length) {
-        debug.timings[`${label}${requestLabel}Errors`] = err.transportErrors;
-      }
-      throw err;
-    } finally {
-      debug.timings[`${label}${requestLabel}Ms`] = Math.round(performance.now() - started);
-    }
-  };
-
   const [summaryRes, sessionsRes] = await Promise.all([
-    requestWithDebug("Summary", () => getSummaryPayload(period, options)),
-    requestWithDebug("Sessions", () => getSessionsPayload(period, from, to, options)),
+    getSummaryPayload(period, options),
+    getSessionsPayload(period, from, to, options),
   ]);
 
-  
+  debug.transports[`${label}Summary`] = summaryRes.transport;
+  debug.transports[`${label}Sessions`] = sessionsRes.transport;
   debug.timings[`${label}FetchMs`] = Math.round(performance.now() - t0);
 
   const summary = summaryRes.data;
