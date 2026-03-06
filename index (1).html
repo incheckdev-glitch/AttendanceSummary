@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>CSM Sessions Dashboard (Enhanced)</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <link rel="stylesheet" href="https://unpkg.com/tabulator-tables@6.2.0/dist/css/tabulator.min.css">
+  <script src="https://unpkg.com/tabulator-tables@6.2.0/dist/js/tabulator.min.js"></script>
+  <link rel="stylesheet" href="styles.css">
+
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div>
+          <h1>CSM Sessions Dashboard</h1>
+          <div class="sub">A friendlier monthly view of sessions, commitments, overage, and follow-up priorities</div>
+        </div>
+      </div>
+
+      <div class="inline">
+        <div class="pill" id="connectionPill"><span class="dot" id="connDot"></span><span id="connText">Connecting…</span></div>
+        <div class="pill"><span style="font-family:var(--mono)" id="lastRefreshed">Last refreshed: —</span></div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div>
+        <label>Billing month</label>
+        <select id="period"></select>
+      </div>
+
+      <div>
+        <label>From (optional)</label>
+        <input id="from" type="date"/>
+      </div>
+      <div>
+        <label>To (optional)</label>
+        <input id="to" type="date"/>
+      </div>
+
+      <div>
+        <label>CSM</label>
+        <select id="csmFilter"></select>
+      </div>
+
+      <div>
+        <label>Client</label>
+        <select id="clientFilter"></select>
+      </div>
+
+      <div>
+        <label>Locations (count)</label>
+        <select id="locationsFilter">
+          <option value="all">All</option>
+          <option value="1">1</option>
+          <option value="2-3">2–3</option>
+          <option value="4+">4+</option>
+        </select>
+      </div>
+
+      <div class="toggle" title="Only show clients near limit or already over (threshold configurable in Settings).">
+        <input id="atRiskToggle" type="checkbox"/>
+        <span style="font-size:12px; color:var(--muted); font-weight:850;">At risk only</span>
+      </div>
+
+      <div class="toggle" title="Only show clients with overage > 0 minutes.">
+        <input id="overageOnlyToggle" type="checkbox"/>
+        <span style="font-size:12px; color:var(--muted); font-weight:850;">Overage only</span>
+      </div>
+
+      <div class="inline">
+        <button id="refreshBtn">Refresh</button>
+        <button id="settingsBtn" class="secondary">Settings</button>
+        <button id="exportClientsBtn" class="secondary">Export clients CSV</button>
+        <button id="exportSessionsBtn" class="secondary">Export sessions CSV</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="grid">
+    <section class="card overviewHero">
+      <div>
+        <h2 class="heroTitle" id="overviewTitle">Your monthly service overview</h2>
+        <div class="heroSub" id="overviewSubtitle">A clearer snapshot of session activity, client health, and follow-up priorities for the selected month.</div>
+        <div class="heroMeta">
+          <div class="heroStat">
+            <div class="label">Focus period</div>
+            <div class="value" id="heroPeriodValue">—</div>
+          </div>
+          <div class="heroStat">
+            <div class="label">Clients needing review</div>
+            <div class="value" id="heroRiskValue">—</div>
+          </div>
+          <div class="heroStat">
+            <div class="label">Planned follow-ups</div>
+            <div class="value" id="heroActionsValue">—</div>
+          </div>
+        </div>
+      </div>
+      <div class="heroFilters">
+        <h3>Current view</h3>
+        <p>These chips reflect the active filters so the overview stays easy to scan at a glance.</p>
+        <div class="chipRow" id="overviewChips"></div>
+      </div>
+    </section>
+
+    <div class="card kpi">
+      <div class="t"><span>Total sessions</span></div>
+      <div class="v" id="k_totalSessions"><div class="skeleton"></div></div>
+      <div class="s">How many sessions took place in the selected view</div>
+    </div>
+
+    <div class="card kpi">
+      <div class="t"><span>Total minutes</span></div>
+      <div class="v" id="k_totalMinutes"><div class="skeleton"></div></div>
+      <div class="s">Total delivery time across the selected filters</div>
+    </div>
+
+    <div class="card kpi">
+      <div class="t"><span>Average duration</span></div>
+      <div class="v" id="k_avg"><div class="skeleton"></div></div>
+      <div class="s">Average minutes spent per session</div>
+    </div>
+
+    <div class="card kpi">
+      <div class="t"><span>Unique clients</span></div>
+      <div class="v" id="k_clients"><div class="skeleton"></div></div>
+      <div class="s">Clients with activity or commitments in this view</div>
+    </div>
+
+    <div class="card kpi">
+      <div class="t"><span>Committed minutes</span></div>
+      <div class="v" id="k_committed"><div class="skeleton"></div></div>
+      <div class="s">Combined committed minutes for the visible client list</div>
+    </div>
+
+    <div class="card kpi">
+      <div class="t"><span>Overage minutes</span></div>
+      <div class="v" id="k_over"><div class="skeleton"></div></div>
+      <div class="s">Extra minutes beyond commitment, where applicable</div>
+    </div>
+
+    <div class="card kpi">
+      <div class="t"><span>Overage amount</span></div>
+      <div class="v" id="k_over_amt"><div class="skeleton"></div></div>
+      <div class="s">Uses the client rate in the Clients table, or backend values when available</div>
+    </div>
+
+    <div class="card kpi">
+      <div class="t"><span>Data quality</span></div>
+      <div class="v" id="k_quality" style="font-size:16px; line-height:1.2;"><div class="skeleton"></div></div>
+      <div class="s">A quick check for missing briefs, CSM values, and incomplete records</div>
+    </div>
+
+    <div class="card span6">
+      <div class="sectionTitle">
+        <div>
+          <div class="title">Minutes per day</div>
+          <div class="subtitle">Busy days in the current view</div>
+        </div>
+      </div>
+      <canvas id="chartDaily" height="120"></canvas>
+    </div>
+
+    <div class="card span6">
+      <div class="sectionTitle">
+        <div>
+          <div class="title">Top clients by minutes</div>
+          <div class="subtitle">Top 10 consuming the most time (current view)</div>
+        </div>
+      </div>
+      <canvas id="chartTopClients" height="120"></canvas>
+    </div>
+
+    <div class="card span12">
+      <div class="sectionTitle">
+        <div>
+          <div class="title">Suggested actions</div>
+          <div class="subtitle">A simple queue of practical next steps based on the current view</div>
+        </div>
+        <div class="inline">
+          <button id="copyActionsBtn" class="secondary miniBtn" title="Copies a small action summary to your clipboard.">Copy</button>
+        </div>
+      </div>
+      <div id="actionsList" class="actionsList"></div>
+      <div id="actionsEmpty" class="subtitle" style="display:none;">All good — no urgent suggestions in this view.</div>
+    </div>
+
+    <div class="card span12">
+      <div class="sectionTitle">
+        <div>
+          <div class="title">Needs attention</div>
+          <div class="subtitle">Clients close to the limit or already over it. Click a client for a focused drill-down.</div>
+        </div>
+        <div class="pill">
+          <span class="dot good"></span><span>&lt; warn</span>&nbsp;&nbsp;
+          <span class="dot warn"></span><span>warn–99%</span>&nbsp;&nbsp;
+          <span class="dot bad"></span><span>≥ 100%</span>
+        </div>
+      </div>
+      <div id="attentionList" class="attentionList"></div>
+      <div id="attentionEmpty" class="subtitle" style="display:none;">
+        🎉 No clients are near the limit right now in this view.
+      </div>
+    </div>
+
+    <div class="card span12">
+      <div class="sectionTitle">
+        <div>
+          <div class="title">Clients</div>
+          <div class="subtitle">Search, sort, and export. Use “Columns” to show or hide fields. Rate/hr can still be edited directly in the table.</div>
+        </div>
+        <div class="inline">
+          <input id="clientSearch" placeholder="Search by client or CSM…" />
+          <button id="clearClientSearch" class="secondary">Clear</button>
+          <div class="colsMenuWrap">
+            <button id="clientsColsBtn" class="secondary">Columns</button>
+            <div id="clientsColsMenu" class="colsMenu"></div>
+          </div>
+        </div>
+      </div>
+      <div class="tableWrap">
+        <div id="clientsTable"></div>
+      </div>
+    </div>
+
+    <div class="card span12">
+      <div class="sectionTitle">
+        <div>
+          <div class="title">Sessions</div>
+          <div class="subtitle">Filtered by the selected month, active filters, and any optional date range.</div>
+        </div>
+        <div class="inline">
+          <input id="sessionSearch" placeholder="Search by client, account, CSM, contact…" />
+          <button id="clearSessionSearch" class="secondary">Clear</button>
+          <div class="colsMenuWrap">
+            <button id="sessionsColsBtn" class="secondary">Columns</button>
+            <div id="sessionsColsMenu" class="colsMenu"></div>
+          </div>
+        </div>
+      </div>
+      <div class="tableWrap">
+        <div id="sessionsTable"></div>
+      </div>
+
+      <div id="friendlyError" class="subtitle" style="display:none; margin-top:10px;">
+        <div style="font-weight:900; color:var(--text); margin-bottom:6px;">Couldn’t load data</div>
+        <div id="friendlyErrorDetails"></div>
+        <div class="divider"></div>
+        The dashboard now tries regular JSON first, then JSONP as a fallback.
+        If you rely on JSONP, open this link and make sure it starts with <span style="font-family:var(--mono)">TEST(</span>:
+        <br/>
+        <span style="font-family:var(--mono); color:var(--primary2);" id="jsonpTestLink"></span>
+        <div class="divider"></div>
+        <button id="copyDebugBtn" class="secondary miniBtn">Copy debug info</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="drawerBackdrop" class="drawerBackdrop"></div>
+<aside id="drawer" class="drawer" aria-hidden="true">
+  <div class="drawerHeader">
+    <div style="min-width:0;">
+      <div class="drawerTitle" id="drawerTitle">Client</div>
+      <div class="drawerSub" id="drawerSub">—</div>
+    </div>
+    <div class="inline">
+      <button id="drawerCopyBtn" class="secondary miniBtn">Copy summary</button>
+      <button id="drawerCloseBtn" class="secondary miniBtn">Close</button>
+    </div>
+  </div>
+  <div class="drawerBody">
+    <div class="drawerCard">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+        <div>
+          <div style="font-weight:950;">Utilization & overage</div>
+          <div class="help">Committed vs consumed for the current view.</div>
+        </div>
+        <div class="pill"><span class="dot" id="drawerDot"></span><span id="drawerUtilText">—</span></div>
+      </div>
+      <div class="kv">
+        <div>
+          <div class="k">Committed</div>
+          <div class="val" id="drawerCommitted">—</div>
+        </div>
+        <div>
+          <div class="k">Consumed</div>
+          <div class="val" id="drawerConsumed">—</div>
+        </div>
+        <div>
+          <div class="k">Remaining</div>
+          <div class="val" id="drawerRemaining">—</div>
+        </div>
+        <div>
+          <div class="k">Overage</div>
+          <div class="val" id="drawerOverage">—</div>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <canvas id="chartClientTrend" height="120"></canvas>
+    </div>
+
+    <div class="drawerCard">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+        <div>
+          <div style="font-weight:950;">Follow-up helpers</div>
+          <div class="help">Shortcuts for working faster.</div>
+        </div>
+        <div class="inline">
+          <button id="drawerFocusBtn" class="secondary miniBtn" title="Filter tables to this client.">Focus tables</button>
+          <button id="drawerClearFocusBtn" class="secondary miniBtn" title="Clear client focus.">Clear focus</button>
+        </div>
+      </div>
+      <div class="listSmall" id="drawerHints"></div>
+    </div>
+
+    <div class="drawerCard">
+      <div style="font-weight:950;">Recent sessions</div>
+      <div class="help">Last 5 sessions in the current view.</div>
+      <div class="listSmall" id="drawerSessions"></div>
+    </div>
+  </div>
+</aside>
+
+<div id="modalBackdrop" class="modalBackdrop"></div>
+<div id="settingsModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+  <div class="modalHeader">
+    <div>
+      <div class="drawerTitle" id="settingsTitle">Settings</div>
+      <div class="drawerSub">These are saved locally in your browser (localStorage).</div>
+    </div>
+    <div class="inline">
+      <button id="resetSettingsBtn" class="secondary miniBtn" title="Resets thresholds and alert settings (keeps column preferences).">Reset</button>
+      <button id="closeSettingsBtn" class="secondary miniBtn">Close</button>
+    </div>
+  </div>
+  <div class="modalBody">
+    <div class="modalGrid">
+      <div class="drawerCard">
+        <div style="font-weight:950;">Attention thresholds</div>
+        <div class="help">Clients are “at risk” when utilization ≥ warn. “Bad” is ≥ 100%.</div>
+        <div style="margin-top:10px; display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+          <div>
+            <label>Warn threshold</label>
+            <input id="warnThreshold" class="miniInput" type="number" min="0" max="0.99" step="0.01" placeholder="0.80"/>
+          </div>
+          <div>
+            <label>Action threshold</label>
+            <input id="actionThreshold" class="miniInput" type="number" min="0" max="1.50" step="0.01" placeholder="0.92"/>
+          </div>
+        </div>
+        <div class="help">Tip: action threshold is where you want to start proactive outreach (default 0.92).</div>
+      </div>
+
+      <div class="drawerCard">
+        <div style="font-weight:950;">Alerts</div>
+        <div class="help">Optional: browser notifications when a client crosses a threshold on refresh (requires permission).</div>
+        <div style="margin-top:10px;" class="inline">
+          <button id="enableAlertsBtn" class="secondary miniBtn">Enable notifications</button>
+          <div class="pill"><span class="dot" id="alertsDot"></span><span id="alertsText">Disabled</span></div>
+        </div>
+        <div class="help">Alerts only fire after a successful refresh. Local filter changes do not trigger notifications.</div>
+      </div>
+
+      <div class="drawerCard">
+        <div style="font-weight:950;">Column visibility</div>
+        <div class="help">Your table column choices are saved locally.</div>
+        <div style="margin-top:10px;" class="inline">
+          <button id="resetColsBtn" class="secondary miniBtn">Reset columns</button>
+        </div>
+        <div class="help">This resets Clients + Sessions visible columns to default.</div>
+      </div>
+    </div>
+
+    <div style="margin-top:12px; display:flex; justify-content:flex-end; gap:10px; flex-wrap:wrap;">
+      <button id="saveSettingsBtn">Save settings</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
