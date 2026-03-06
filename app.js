@@ -1841,13 +1841,29 @@ async function fetchViewPayload(period, from, to, debug, label, options = {}) {
   debug.endpoints[`${label}Summary`] = summaryUrl;
   debug.endpoints[`${label}Sessions`] = sessionsUrl;
 
+  const requestWithDebug = async (requestLabel, fn) => {
+    const started = performance.now();
+    try {
+      const res = await fn();
+      debug.transports[`${label}${requestLabel}`] = res.transport;
+      return res;
+    } catch (err) {
+      debug.transports[`${label}${requestLabel}`] = "failed";
+      if (Array.isArray(err?.transportErrors) && err.transportErrors.length) {
+        debug.timings[`${label}${requestLabel}Errors`] = err.transportErrors;
+      }
+      throw err;
+    } finally {
+      debug.timings[`${label}${requestLabel}Ms`] = Math.round(performance.now() - started);
+    }
+  };
+
   const [summaryRes, sessionsRes] = await Promise.all([
-    getSummaryPayload(period, options),
-    getSessionsPayload(period, from, to, options),
+    requestWithDebug("Summary", () => getSummaryPayload(period, options)),
+    requestWithDebug("Sessions", () => getSessionsPayload(period, from, to, options)),
   ]);
 
-  debug.transports[`${label}Summary`] = summaryRes.transport;
-  debug.transports[`${label}Sessions`] = sessionsRes.transport;
+  
   debug.timings[`${label}FetchMs`] = Math.round(performance.now() - t0);
 
   const summary = summaryRes.data;
