@@ -684,3 +684,65 @@
     }
   
   
+
+.viewSwitcher{
+  margin-top: 12px;
+  display: inline-flex;
+  gap: 8px;
+  background: rgba(255,255,255,.85);
+  border:1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px;
+  box-shadow: var(--shadow);
+}
+.viewTab{
+  border-radius: 999px;
+  min-height: 36px;
+  padding: 8px 14px;
+  background: transparent;
+  border: 1px solid transparent;
+  font-weight: 800;
+  color: var(--muted);
+  box-shadow: none;
+}
+.viewTab.active{
+  background: linear-gradient(180deg, rgba(59,130,246,.2), rgba(59,130,246,.08));
+  border-color: rgba(59,130,246,.3);
+  color: var(--text);
+}
+.viewPane{ display:none; }
+.viewPane.active{ display:block; }
+.span12{ grid-column: span 12; }
+.plannerHero{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:14px;
+}
+.plannerHero h2{ margin:0 0 6px 0; }
+.plannerHero p{ margin:0; color:var(--muted); }
+.plannerBadge{
+  font-family: var(--mono);
+  font-size: 12px;
+  background: rgba(59,130,246,.08);
+  border:1px solid rgba(59,130,246,.22);
+  padding: 8px 10px;
+  border-radius: 12px;
+}
+.plannerList{ margin-top: 10px; display:flex; flex-direction:column; gap:8px; }
+.plannerRow{
+  border:1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(246,248,255,.8);
+}
+.plannerRow .title{ font-weight: 800; }
+.plannerRow .meta{ color: var(--muted); font-size: 12px; margin-top: 4px; }
+.plannerSnapshot{
+  margin-top:10px;
+  border:1px dashed rgba(59,130,246,.3);
+  border-radius: 14px;
+  padding: 12px;
+  background: rgba(59,130,246,.05);
+  color: #1e293b;
+}
