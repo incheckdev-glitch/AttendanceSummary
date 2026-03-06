@@ -1,5 +1,6 @@
   const API_URL = "https://script.google.com/macros/s/AKfycbzeiw45H5PVs8_91N8x-u-COmmhzotE41vGgy40-NtEO6vKEMwNgott4VQ0SRy5WZf_/exec";
   const UTIL_CAP_PCT = 140;
+const FETCH_TIMEOUT_MS = 15000;
 
   const els = {
     period: document.getElementById("period"),
@@ -93,6 +94,8 @@
   let charts = { daily: null, topClients: null, clientTrend: null };
   let tables = { clients: null, sessions: null };
   let currentDrawerClient = null;
+let activeRefreshController = null;
+  let refreshSequence = 0;
 
   let state = {
     periods: [],
@@ -344,27 +347,53 @@
     });
   }
 
-  async function fetchJson(url){
+  async function fetchJson(url, options = {}){
     const sep = url.includes("?") ? "&" : "?";
-    const res = await fetch(url + sep + "__ts=" + Date.now(), {
-      method: "GET",
-      credentials: "omit",
-      cache: "no-store",
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const text = await res.text();
+     const ctrl = new AbortController();
+    const externalSignal = options.signal;
+    const timeoutMs = Number.isFinite(options.timeoutMs) ? Number(options.timeoutMs) : FETCH_TIMEOUT_MS;
+    const timeoutId = setTimeout(() => ctrl.abort(), timeoutMs);
+
+    let onAbort = null;
+    if (externalSignal){
+      if (externalSignal.aborted) ctrl.abort();
+      else {
+        onAbort = () => ctrl.abort();
+        externalSignal.addEventListener("abort", onAbort, { once: true });
+      }
+    }
+    
     try{
-      return JSON.parse(text);
+       const res = await fetch(url + sep + "__ts=" + Date.now(), {
+        method: "GET",
+        credentials: "omit",
+        cache: "no-store",
+        signal: ctrl.signal,
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const text = await res.text();
+      try{
+        return JSON.parse(text);
+      }catch(e){
+        throw new Error("Invalid JSON response");
+      }
     }catch(e){
-      throw new Error("Invalid JSON response");
+       if (ctrl.signal.aborted) throw new Error("JSON timeout");
+      throw e;
+    }finally{
+      clearTimeout(timeoutId);
+      if (externalSignal && onAbort){
+        externalSignal.removeEventListener("abort", onAbort);
+      }
     }
   }
 
-  async function apiCall(url){
+   async function apiCall(url, options = {}){
     try{
-      const data = await fetchJson(url);
+      const data = await fetchJson(url, options);
       return { data, transport: "json" };
     }catch(fetchErr){
+      if (options.signal && options.signal.aborted) throw fetchErr;
       const data = await jsonp(url);
       return {
         data,
@@ -652,6 +681,12 @@
     const allowedClients = new Set(clients.map(x => x.client));
     const sessions = filteredSessions.filter(s => allowedClients.has(s.client));
 
+    const sessionsByClient = new Map();
+    for (const s of sessions){
+      if (!sessionsByClient.has(s.client)) sessionsByClient.set(s.client, []);
+      sessionsByClient.get(s.client).push(s);
+    }
+    
     const dailyMap = new Map();
     for (const s of sessions){
       const d = s.date || "";
@@ -688,6 +723,7 @@
       meta,
       clients,
       sessions,
+      sessionsByClient,
       daily,
       totals: {
         totalMinutes,
@@ -1223,8 +1259,8 @@
     els.drawerRemaining.textContent = fmtInt(client.remainingMinutes) + " min";
     els.drawerOverage.textContent = fmtInt(client.overageMinutes) + " min";
 
-    const sessions = (view.sessions || [])
-      .filter(s => s.client === client.client)
+     const clientSessions = view.sessionsByClient?.get(client.client) || (view.sessions || []).filter(s => s.client === client.client);
+    const sessions = [...clientSessions]
       .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
       .slice(0, 5);
 
@@ -1271,8 +1307,7 @@
     }
 
     const dailyMap = new Map();
-    for (const s of (view.sessions || [])){
-      if (s.client !== client.client) continue;
+     for (const s of clientSessions){
       dailyMap.set(s.date, (dailyMap.get(s.date) || 0) + Number(s.durationMinutes || 0));
     }
     const daily = Array.from(dailyMap.entries())
@@ -1568,7 +1603,7 @@
       + (to ? `&to=${encodeURIComponent(to)}` : "");
   }
 
-  async function fetchViewPayload(period, from, to, debug, label){
+  async function fetchViewPayload(period, from, to, debug, label, options = {}){
     const summaryUrl = API_URL + `?action=summary&period=${encodeURIComponent(period)}`;
     const sessionsUrl = buildSessionsUrl(period, from, to);
 
@@ -1576,8 +1611,8 @@
     debug.endpoints[`${label}Sessions`] = sessionsUrl;
 
     const [summaryRes, sessionsRes] = await Promise.all([
-      apiCall(summaryUrl),
-      apiCall(sessionsUrl),
+      apiCall(summaryUrl, options),
+      apiCall(sessionsUrl, options),
     ]);
 
     debug.transports[`${label}Summary`] = summaryRes.transport;
@@ -1599,6 +1634,12 @@
   }
 
   async function refreshAll(){
+    if (activeRefreshController) activeRefreshController.abort();
+
+    const refreshId = ++refreshSequence;
+    const controller = new AbortController();
+    activeRefreshController = controller;
+    
     els.friendlyError.style.display = "none";
     els.refreshBtn.disabled = true;
 
@@ -1619,7 +1660,12 @@
     };
 
     try{
-      const currentPayload = await fetchViewPayload(period, from, to, debug, "current");
+       const currentPayload = await fetchViewPayload(period, from, to, debug, "current", {
+        signal: controller.signal,
+      });
+
+      if (refreshId !== refreshSequence) return;
+      
       state.rawSummary = currentPayload.summary;
       state.rawSessions = currentPayload.sessions;
 
@@ -1643,11 +1689,13 @@
       setConnection("ok", summarizeTransport(allTransports));
       state.lastDebug = debug;
     }catch(e){
+       if (refreshId !== refreshSequence || controller.signal.aborted) return;
       setConnection("bad", "Couldn’t load data");
       state.lastDebug = debug;
       showFriendlyError(e, debug);
     } finally {
-      els.refreshBtn.disabled = false;
+     if (activeRefreshController === controller) activeRefreshController = null;
+      if (refreshId === refreshSequence) els.refreshBtn.disabled = false;
     }
   }
 
