@@ -38,9 +38,7 @@
     .wrap{ max-width: 1320px; margin:0 auto; padding: 18px 16px 30px; }
 
     header{
-      position: sticky;
-      top:0;
-      z-index:10;
+      position: static;
       backdrop-filter: blur(10px);
       background: rgba(246,248,255,.72);
       border-bottom: 1px solid rgba(231,236,255,.9);
