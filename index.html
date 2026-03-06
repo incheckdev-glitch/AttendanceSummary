@@ -32,6 +32,24 @@
     </div>
 
     <div class="controls">
+      <div class="inline controlsActions">
+        <div class="toggle" title="Only show clients near limit or already over (threshold configurable in Settings).">
+          <input id="atRiskToggle" type="checkbox"/>
+          <span style="font-size:12px; color:var(--muted); font-weight:850;">At risk only</span>
+        </div>
+
+        <div class="toggle" title="Only show clients with overage > 0 minutes.">
+          <input id="overageOnlyToggle" type="checkbox"/>
+          <span style="font-size:12px; color:var(--muted); font-weight:850;">Overage only</span>
+        </div>
+
+        <button id="addSessionBtn">Add session</button>
+        <button id="refreshBtn">Refresh</button>
+        <button id="settingsBtn" class="secondary">Settings</button>
+        <button id="exportClientsBtn" class="secondary">Export clients CSV</button>
+        <button id="exportSessionsBtn" class="secondary">Export sessions CSV</button>
+      </div>
+      
       <div>
         <label>Billing month</label>
         <select id="period"></select>
@@ -66,23 +84,6 @@
         </select>
       </div>
 
-      <div class="toggle" title="Only show clients near limit or already over (threshold configurable in Settings).">
-        <input id="atRiskToggle" type="checkbox"/>
-        <span style="font-size:12px; color:var(--muted); font-weight:850;">At risk only</span>
-      </div>
-
-      <div class="toggle" title="Only show clients with overage > 0 minutes.">
-        <input id="overageOnlyToggle" type="checkbox"/>
-        <span style="font-size:12px; color:var(--muted); font-weight:850;">Overage only</span>
-      </div>
-
-      <div class="inline">
-        <button id="addSessionBtn">Add session</button>
-        <button id="refreshBtn">Refresh</button>
-        <button id="settingsBtn" class="secondary">Settings</button>
-        <button id="exportClientsBtn" class="secondary">Export clients CSV</button>
-        <button id="exportSessionsBtn" class="secondary">Export sessions CSV</button>
-      </div>
     </div>
     
     <div class="viewSwitcher" role="tablist" aria-label="Dashboard views">
