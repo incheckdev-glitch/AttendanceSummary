@@ -84,10 +84,16 @@
         <button id="exportSessionsBtn" class="secondary">Export sessions CSV</button>
       </div>
     </div>
+    
+    <div class="viewSwitcher" role="tablist" aria-label="Dashboard views">
+      <button id="overviewViewBtn" class="viewTab active" type="button" role="tab" aria-selected="true">Overview view</button>
+      <button id="plannerViewBtn" class="viewTab" type="button" role="tab" aria-selected="false">Planner view</button>
+    </div>
   </div>
 </header>
 
 <div class="wrap">
+    <section id="overviewView" class="viewPane active">
   <div class="grid">
     <section class="card overviewHero">
       <div>
@@ -267,6 +273,37 @@
       </div>
     </div>
   </div>
+      </section>
+
+  <section id="plannerView" class="viewPane">
+    <div class="grid">
+      <section class="card plannerHero span12">
+        <div>
+          <h2>Planning workspace</h2>
+          <p id="plannerSummaryText">Use this view for quick follow-up planning and to keep outreach organized.</p>
+        </div>
+        <div class="plannerBadge" id="plannerPeriodBadge">Period: —</div>
+      </section>
+
+      <section class="card span6">
+        <div class="sectionTitle">Priority clients</div>
+        <div class="subtitle">Top clients near limit or over commitment in the current filters.</div>
+        <div id="plannerPriorityList" class="plannerList"></div>
+      </section>
+
+      <section class="card span6">
+        <div class="sectionTitle">Suggested next actions</div>
+        <div class="subtitle">Action ideas generated from current utilization and overage.</div>
+        <div id="plannerActionsList" class="plannerList"></div>
+      </section>
+
+      <section class="card span12">
+        <div class="sectionTitle">Friendly status snapshot</div>
+        <div class="subtitle">A simple summary you can share with your team before follow-ups.</div>
+        <div id="plannerSnapshot" class="plannerSnapshot"></div>
+      </section>
+    </div>
+  </section>
 </div>
 
 <div id="drawerBackdrop" class="drawerBackdrop"></div>
