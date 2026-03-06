@@ -59,12 +59,12 @@
             <select id="csmFilter"></select>
           </div>
 
-       <div class="filterField">
+           <div class="filterField">
             <label>Client</label>
             <select id="clientFilter"></select>
           </div>
-      </div>
- <div class="filterField">
+    
+          <div class="filterField">
             <label>Locations (count)</label>
             <select id="locationsFilter">
               <option value="all">All</option>
@@ -75,7 +75,7 @@
           </div>
         </div>
 
-      <div class="controlsAside">
+    <div class="controlsAside">
           <div class="quickToggles">
             <div class="asideTitle">Quick focus</div>
             <div class="toggle" title="Only show clients near limit or already over (threshold configurable in Settings).">
@@ -89,12 +89,16 @@
             </div>
           </div>
 
-          <div class="inline actionsRow">
-            <button id="addSessionBtn">Add session</button>
-            <button id="refreshBtn">Refresh</button>
-            <button id="settingsBtn" class="secondary">Settings</button>
-            <button id="exportClientsBtn" class="secondary">Export clients CSV</button>
-            <button id="exportSessionsBtn" class="secondary">Export sessions CSV</button>
+          <div class="actionsRow">
+            <div class="inline actionLine">
+              <button id="addSessionBtn">Add session</button>
+              <button id="refreshBtn">Refresh</button>
+              <button id="settingsBtn" class="secondary">Settings</button>
+            </div>
+            <div class="inline actionLine">
+              <button id="exportClientsBtn" class="secondary">Export clients CSV</button>
+              <button id="exportSessionsBtn" class="secondary">Export sessions CSV</button>
+            </div>
           </div>
         </div>
       </div>
@@ -107,6 +111,8 @@
   </div>
 </header>
 
+  <div class="sectionDivider" aria-hidden="true"></div>
+  
 <div class="wrap">
     <section id="overviewView" class="viewPane active">
   <div class="grid">
