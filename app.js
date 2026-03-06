@@ -12,6 +12,7 @@
     atRiskToggle: document.getElementById("atRiskToggle"),
     overageOnlyToggle: document.getElementById("overageOnlyToggle"),
 
+     addSessionBtn: document.getElementById("addSessionBtn"),
     refreshBtn: document.getElementById("refreshBtn"),
     settingsBtn: document.getElementById("settingsBtn"),
     exportClientsBtn: document.getElementById("exportClientsBtn"),
@@ -1666,6 +1667,9 @@
     renderAll(view);
   }
 
+ els.addSessionBtn.addEventListener("click", () => {
+    window.open("https://forms.gle/6jtzeHebozTJfFRz5", "_blank", "noopener,noreferrer");
+  });
   els.refreshBtn.addEventListener("click", refreshAll);
   els.period.addEventListener("change", refreshAll);
   els.from.addEventListener("change", refreshAll);
