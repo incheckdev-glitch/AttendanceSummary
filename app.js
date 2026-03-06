@@ -18,7 +18,16 @@ const FETCH_TIMEOUT_MS = 15000;
     settingsBtn: document.getElementById("settingsBtn"),
     exportClientsBtn: document.getElementById("exportClientsBtn"),
     exportSessionsBtn: document.getElementById("exportSessionsBtn"),
-
+overviewViewBtn: document.getElementById("overviewViewBtn"),
+    plannerViewBtn: document.getElementById("plannerViewBtn"),
+    overviewView: document.getElementById("overviewView"),
+    plannerView: document.getElementById("plannerView"),
+    plannerSummaryText: document.getElementById("plannerSummaryText"),
+    plannerPeriodBadge: document.getElementById("plannerPeriodBadge"),
+    plannerPriorityList: document.getElementById("plannerPriorityList"),
+    plannerActionsList: document.getElementById("plannerActionsList"),
+    plannerSnapshot: document.getElementById("plannerSnapshot"),
+    
     connectionPill: document.getElementById("connectionPill"),
     connDot: document.getElementById("connDot"),
     connText: document.getElementById("connText"),
@@ -103,6 +112,7 @@ let activeRefreshController = null;
     rawSessions: [],
     lastDebug: null,
     currentView: null,
+    activeUiView: "overview",
   };
 
   const LS = {
@@ -856,6 +866,55 @@ let activeRefreshController = null;
   els.clientsColsMenu.addEventListener("click", (e) => e.stopPropagation());
   els.sessionsColsMenu.addEventListener("click", (e) => e.stopPropagation());
 
+ function setActiveView(viewName){
+    const isPlanner = viewName === "planner";
+    state.activeUiView = isPlanner ? "planner" : "overview";
+
+    els.overviewView.classList.toggle("active", !isPlanner);
+    els.plannerView.classList.toggle("active", isPlanner);
+    els.overviewViewBtn.classList.toggle("active", !isPlanner);
+    els.plannerViewBtn.classList.toggle("active", isPlanner);
+
+    els.overviewViewBtn.setAttribute("aria-selected", String(!isPlanner));
+    els.plannerViewBtn.setAttribute("aria-selected", String(isPlanner));
+  }
+
+  function renderPlannerView(view){
+    const filters = view.filters || {};
+    const clients = [...(view.clients || [])]
+      .filter(c => c.utilization != null)
+      .sort((a,b) => (b.utilization - a.utilization))
+      .slice(0, 5);
+
+    const actions = (view.actions || []).slice(0, 5);
+    const atRiskCount = (view.clients || []).filter(c => c.utilization != null && c.utilization >= SETTINGS.warnThreshold).length;
+
+    els.plannerPeriodBadge.textContent = `Period: ${filters.period || "—"}`;
+    els.plannerSummaryText.textContent = `${fmtInt(atRiskCount)} clients need attention. Use this planner to align outreach, prioritize at-risk accounts, and prepare next actions.`;
+
+    els.plannerPriorityList.innerHTML = clients.length
+      ? clients.map(c => `
+        <div class="plannerRow">
+          <div class="title">${escapeHtml(c.client)}</div>
+          <div class="meta">${fmtInt(c.consumedMinutes)} / ${fmtInt(c.committedMinutes)} min • Utilization ${fmtPct(c.utilization)}</div>
+        </div>
+      `).join("")
+      : '<div class="plannerRow"><div class="meta">No priority clients in this filter.</div></div>';
+
+    els.plannerActionsList.innerHTML = actions.length
+      ? actions.map(a => `
+        <div class="plannerRow">
+          <div class="title">${escapeHtml(a.title)}</div>
+          <div class="meta">${escapeHtml(a.suggestion)}</div>
+        </div>
+      `).join("")
+      : '<div class="plannerRow"><div class="meta">No urgent actions right now.</div></div>';
+
+    const totals = view.totals || {};
+    const msg = `In ${filters.period || "this period"}, your team logged ${fmtInt(totals.totalSessions)} sessions for ${fmtInt(totals.totalMinutes)} minutes across ${fmtInt(totals.uniqueClients)} clients.`;
+    els.plannerSnapshot.textContent = msg;
+  }
+
   function renderAll(view){
     state.currentView = view;
     renderOverview(view);
@@ -864,7 +923,8 @@ let activeRefreshController = null;
     renderActions(view);
     renderCharts(view);
     renderTables(view);
-
+ renderPlannerView(view);
+    
     if (currentDrawerClient){
       const exists = view.clients.some(c => c.client === currentDrawerClient);
       if (exists) openClientDrawer(currentDrawerClient, view);
@@ -1769,12 +1829,16 @@ let activeRefreshController = null;
   els.modalBackdrop.addEventListener("click", closeSettings);
   els.closeSettingsBtn.addEventListener("click", closeSettings);
 
+  els.overviewViewBtn.addEventListener("click", () => setActiveView("overview"));
+  els.plannerViewBtn.addEventListener("click", () => setActiveView("planner"));
+
   function initSettingsUI(){
     updateAlertsUI();
   }
 
   (async function init(){
     initSettingsUI();
+    setActiveView("overview");
     try{
       setConnection("warn", "Connecting…");
       const transport = await loadPeriods();
