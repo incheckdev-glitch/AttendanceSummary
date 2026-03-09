@@ -155,10 +155,6 @@
       box-shadow: var(--shadow-soft);
     }
 
-    .content {
-      padding: 18px;
-    }
-
     .topbar {
       display: flex;
       justify-content: space-between;
@@ -167,16 +163,6 @@
       margin-bottom: 18px;
     }
 
-    .title-wrap h2 {
-      margin: 0;
-      font-size: 24px;
-    }
-
-    .title-wrap p {
-      margin: 6px 0 0;
-      color: var(--muted);
-      font-size: 13px;
-    }
 
     .top-actions {
       display: flex;
@@ -195,7 +181,13 @@
       box-shadow: var(--shadow-soft);
     }
 
-      .pill.connected {
+        .pill.loading {
+      color: #92400e;
+      background: #fef3c7;
+      border-color: #fcd34d;
+    }
+
+    .pill.connected {
       color: #1e40af;
       background: #dbeafe;
       border-color: #93c5fd;
@@ -334,6 +326,20 @@
     .chart-wrap {
       position: relative;
       height: 300px;
+    }
+ .chart-empty-note {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      font-size: 13px;
+      color: var(--muted);
+      background: rgba(255,255,255,0.8);
+      border: 1px dashed rgba(37,99,235,0.18);
+      border-radius: 16px;
+      padding: 16px;
+      pointer-events: none;
     }
 
     .table-wrap {
@@ -527,7 +533,7 @@
         </div>
         <div class="top-actions">
           <button class="secondary mobile-toggle" id="sidebarToggle">☰ Filters</button>
-          <div class="pill" id="statusPill">Disconnected</div>
+          <div class="pill loading" id="statusPill">Loading…</div>
           <button class="secondary" id="exportBtn">⬇ Export filtered CSV</button>
         </div>
       </div>
@@ -607,8 +613,8 @@
         </div>
         <div class="card">
           <div class="card-head">
-            <h3>Top CSM Workload</h3>
-            <span>By total minutes</span>
+            <h3>Top CSM Workload (Minutes)</h3>
+            <span>By total visible minutes</span>
           </div>
           <div class="chart-wrap"><canvas id="csmChart"></canvas></div>
         </div>
@@ -974,6 +980,7 @@ const medianMinutes = calcMedian(durationValues);
     function destroyCharts() {
       Object.values(state.charts).forEach(chart => chart?.destroy?.());
       state.charts = {};
+       document.querySelectorAll('.chart-empty-note').forEach(el => el.remove());
     }
 
     function makeChart(id, config) {
@@ -982,17 +989,95 @@ const medianMinutes = calcMedian(durationValues);
       state.charts[id] = new Chart(ctx, config);
     }
 
+     function toggleChartEmpty(id, message) {
+      const canvas = document.getElementById(id);
+      if (!canvas || !canvas.parentElement) return;
+      const wrap = canvas.parentElement;
+      const existing = wrap.querySelector('.chart-empty-note');
+      if (!message) {
+        if (existing) existing.remove();
+        return;
+      }
+      if (existing) {
+        existing.textContent = message;
+        return;
+      }
+      const note = document.createElement('div');
+      note.className = 'chart-empty-note';
+      note.textContent = message;
+      wrap.appendChild(note);
+    }
+
+    function axisOptions(label, stacked = false) {
+      return {
+        x: {
+          stacked,
+          ticks: { color: '#64748b' },
+          title: { color: '#64748b' },
+          grid: { color: 'rgba(148,163,184,0.18)' }
+        },
+        y: {
+          stacked,
+          ticks: { color: '#64748b' },
+          title: { display: true, text: label, color: '#64748b' },
+          grid: { color: 'rgba(148,163,184,0.18)' }
+        }
+      };
+    }
+
+    function chartPlugins(legendPosition = 'top') {
+      return {
+        legend: { position: legendPosition, labels: { color: '#334155' } },
+        tooltip: {
+          backgroundColor: 'rgba(15,23,42,0.92)',
+          titleColor: '#f8fafc',
+          bodyColor: '#f8fafc'
+        }
+      };
+    }
+
+    function baseOptions(label) {
+      return {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: chartPlugins(),
+        scales: axisOptions(label)
+      };
+    }
+
+    function doughnutOptions() {
+      return {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: chartPlugins('bottom')
+      };
+    }
+
+    function stackedOptions(label) {
+      return {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: chartPlugins(),
+        scales: axisOptions(label, true)
+      };
+    }
+    
     function renderCharts() {
       destroyCharts();
       const rows = state.filtered;
-      if (!rows.length) return;
+  const chartIds = ['trendChart','csmChart','clientChart','typeChart','effortChart','channelChart','weekdayChart','weeklyChart','csmEffortChart','clientShareChart','workloadBalanceChart'];
+      if (!rows.length) {
+        chartIds.forEach(id => toggleChartEmpty(id, 'No chart data for the current filters.'));
+        return;
+      }
+      chartIds.forEach(id => toggleChartEmpty(id, ''));
 
       const trendMap = aggregate(rows.filter(r => r.dateKey), r => r.dateKey);
       const trendLabels = [...trendMap.keys()].sort();
       const trendData = trendLabels.map(label => trendMap.get(label));
 
       const csmEntries = topEntries(aggregate(rows, r => r.csm, r => r.minutes), 10);
-       const csmAverage = csmEntries.length ? csmEntries.reduce((sum, [, minutes]) => sum + minutes, 0) / csmEntries.length : 0;
+     const csmAverage = csmEntries.length ? csmEntries.reduce((sum, [, minutes]) => sum + minutes, 0) / csmEntries.length : 0;
       const clientEntries = topEntries(aggregate(rows, r => r.client, r => r.minutes), 10);
       const typeEntries = topEntries(aggregate(rows, r => r.type), 10);
       const effortEntries = topEntries(aggregate(rows, r => r.effort), 10);
@@ -1027,72 +1112,55 @@ const medianMinutes = calcMedian(durationValues);
 
       makeChart('trendChart', {
         type: 'line',
-        data: {
-          labels: trendLabels,
-          datasets: [{ label: 'Tasks', data: trendData, borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,0.10)', fill: true, tension: 0.24 }]
-        },
+         data: { labels: trendLabels, datasets: [{ label: 'Tasks', data: trendData, borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,0.10)', fill: true, tension: 0.24 }] },
         options: baseOptions('Tasks')
       });
 
       makeChart('csmChart', {
         type: 'bar',
-        data: {
-          labels: csmEntries.map(([k]) => k),
-          datasets: [{ label: 'Minutes', data: csmEntries.map(([,v]) => v), backgroundColor: '#06b6d4' }]
+       data: { labels: csmEntries.map(([k]) => k), datasets: [{ label: 'Minutes', data: csmEntries.map(([,v]) => v), backgroundColor: '#06b6d4' }] },
         },
         options: baseOptions('Minutes')
       });
 
       makeChart('clientChart', {
         type: 'bar',
-        data: {
-          labels: clientEntries.map(([k]) => k),
-          datasets: [{ label: 'Minutes', data: clientEntries.map(([,v]) => v), backgroundColor: '#f59e0b' }]
+        data: { labels: clientEntries.map(([k]) => k), datasets: [{ label: 'Minutes', data: clientEntries.map(([,v]) => v), backgroundColor: '#f59e0b' }] },
         },
         options: { ...baseOptions('Minutes'), indexAxis: 'y' }
       });
 
       makeChart('typeChart', {
         type: 'doughnut',
-        data: {
-          labels: typeEntries.map(([k]) => k),
-          datasets: [{ data: typeEntries.map(([,v]) => v), backgroundColor: ['#2563eb','#06b6d4','#16a34a','#f59e0b','#8b5cf6','#ef4444'] }]
+        data: { labels: typeEntries.map(([k]) => k), datasets: [{ data: typeEntries.map(([,v]) => v), backgroundColor: ['#2563eb','#06b6d4','#16a34a','#f59e0b','#8b5cf6','#ef4444'] }] },
         },
         options: doughnutOptions()
       });
 
       makeChart('effortChart', {
         type: 'pie',
-        data: {
-          labels: effortEntries.map(([k]) => k),
-          datasets: [{ data: effortEntries.map(([,v]) => v), backgroundColor: ['#16a34a','#f59e0b','#ef4444','#94a3b8'] }]
+         data: { labels: effortEntries.map(([k]) => k), datasets: [{ data: effortEntries.map(([,v]) => v), backgroundColor: ['#16a34a','#f59e0b','#ef4444','#94a3b8'] }] },
         },
         options: doughnutOptions()
       });
 
       makeChart('channelChart', {
         type: 'bar',
-        data: {
-          labels: channelEntries.map(([k]) => k),
-          datasets: [{ label: 'Tasks', data: channelEntries.map(([,v]) => v), backgroundColor: '#8b5cf6' }]
+            data: { labels: channelEntries.map(([k]) => k), datasets: [{ label: 'Tasks', data: channelEntries.map(([,v]) => v), backgroundColor: '#8b5cf6' }] },
         },
         options: baseOptions('Tasks')
       });
 
       makeChart('weekdayChart', {
         type: 'bar',
-        data: {
-          labels: weekdayOrder,
-          datasets: [{ label: 'Minutes', data: weekdayOrder.map(day => weekdayMap.get(day) || 0), backgroundColor: '#0ea5e9' }]
+       data: { labels: weekdayOrder, datasets: [{ label: 'Minutes', data: weekdayOrder.map(day => weekdayMap.get(day) || 0), backgroundColor: '#0ea5e9' }] },
         },
         options: baseOptions('Minutes')
       });
 
       makeChart('weeklyChart', {
         type: 'line',
-        data: {
-          labels: weeklyLabels,
-          datasets: [{ label: 'Minutes', data: weeklyData, borderColor: '#16a34a', backgroundColor: 'rgba(22,163,74,0.10)', fill: true, tension: 0.24 }]
+        data: { labels: weeklyLabels, datasets: [{ label: 'Minutes', data: weeklyData, borderColor: '#16a34a', backgroundColor: 'rgba(22,163,74,0.10)', fill: true, tension: 0.24 }] },
         },
         options: baseOptions('Minutes')
       });
@@ -1113,69 +1181,22 @@ const medianMinutes = calcMedian(durationValues);
 
       makeChart('clientShareChart', {
         type: 'doughnut',
-        data: {
-          labels: clientShareLabels,
-          datasets: [{ data: clientShareData, backgroundColor: ['#2563eb','#06b6d4','#16a34a','#f59e0b','#8b5cf6','#94a3b8'] }]
+       data: { labels: clientShareLabels, datasets: [{ data: clientShareData, backgroundColor: ['#2563eb','#06b6d4','#16a34a','#f59e0b','#8b5cf6','#94a3b8'] }] },
         },
         options: doughnutOptions()
       });
       
       makeChart('workloadBalanceChart', {
+        type: 'bar',
         data: {
           labels: csmEntries.map(([k]) => k),
           datasets: [
             { type: 'bar', label: 'Total Minutes', data: csmEntries.map(([, v]) => v), backgroundColor: '#3b82f6' },
-            {
-              type: 'line',
-              label: 'Average Minutes',
-              data: csmEntries.map(() => csmAverage),
-              borderColor: '#ef4444',
-              borderWidth: 2,
-              pointRadius: 0,
-              tension: 0
-            }
+             { type: 'line', label: 'Average Minutes', data: csmEntries.map(() => csmAverage), borderColor: '#ef4444', borderWidth: 2, pointRadius: 0, tension: 0 }
           ]
         },
         options: baseOptions('Minutes')
       });
-    }
-
-    function baseOptions(label) {
-      return {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { labels: { color: '#475569' } }
-        },
-        scales: {
-          x: { ticks: { color: '#64748b' }, grid: { color: 'rgba(148,163,184,0.20)' } },
-          y: { ticks: { color: '#64748b' }, grid: { color: 'rgba(148,163,184,0.20)' }, title: { display: true, text: label, color: '#64748b' } }
-        }
-      };
-    }
-
-    function doughnutOptions() {
-      return {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { position: 'bottom', labels: { color: '#334155' } }
-        }
-      };
-    }
-
-    function stackedOptions(label) {
-      return {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { labels: { color: '#334155' } }
-        },
-        scales: {
-          x: { stacked: true, ticks: { color: '#64748b' }, grid: { color: 'rgba(15,23,42,0.06)' } },
-          y: { stacked: true, ticks: { color: '#64748b' }, grid: { color: 'rgba(15,23,42,0.06)' }, title: { display: true, text: label, color: '#64748b' } }
-        }
-      };
     }
 
     function renderTable() {
@@ -1236,19 +1257,19 @@ const medianMinutes = calcMedian(durationValues);
       });
     }
 
-    async function loadCSV() {
+    async function loadData() {
      const url = SAMPLE_API.trim();
       if (!url) {
-        setStatus('Apps Script endpoint is not configured.', true);
+       setStatus('error', 'Apps Script endpoint is not configured.');
         return;
       }
 
-      setStatus('Loading…');
+     setStatus('loading', 'Loading…');
 
       try {
         const response = await loadViaJsonp(buildApiUrl(url, 'tasks'));
         if (!response || response.ok === false) {
-          throw new Error(response?.error || 'Apps Script returned an error');
+          setStatus('loading', 'Loading…');
         }
 
         const tasks = response.tasks || response.activities || [];
@@ -1258,10 +1279,10 @@ const medianMinutes = calcMedian(durationValues);
 
         updateFilterOptions(state.rows);
         applyFilters();
-        setStatus(`Connected · ${state.rows.length} tasks`);
+       setStatus('connected', `Connected · ${state.rows.length} tasks`);
       } catch (error) {
         console.error(error);
-        setStatus('Could not load Apps Script data. Check endpoint and deployment access.', true);
+        setStatus('error', 'Could not load Apps Script data. Check endpoint and deployment access.');
       }
     }
 
@@ -1293,10 +1314,21 @@ const medianMinutes = calcMedian(durationValues);
       applyFilters();
     }
 
-    function setStatus(text, isError = false) {
+    function setStatus(stateName, text) {
       els.statusPill.textContent = text;
-      els.statusPill.classList.toggle('error', isError);
-      els.statusPill.classList.toggle('connected', !isError);
+       els.statusPill.classList.remove('loading', 'connected', 'error');
+      if (['loading', 'connected', 'error'].includes(stateName)) {
+        els.statusPill.classList.add(stateName);
+      }
+    }
+
+    function initializeDashboard() {
+      renderKPIs();
+      renderInsights();
+      renderCharts();
+      renderTable();
+      setStatus('loading', 'Loading…');
+      loadData();
     }
 
     function escapeHtml(value) {
@@ -1308,7 +1340,7 @@ const medianMinutes = calcMedian(durationValues);
         .replace(/'/g, '&#039;');
     }
 
-    document.getElementById('syncBtn').addEventListener('click', loadCSV);
+    document.getElementById('syncBtn').addEventListener('click', loadData);
     document.getElementById('resetBtn').addEventListener('click', resetFilters);
     document.getElementById('exportBtn').addEventListener('click', exportFilteredCSV);
     document.getElementById('sidebarToggle').addEventListener('click', () => els.sidebar.classList.toggle('open'));
@@ -1318,9 +1350,7 @@ const medianMinutes = calcMedian(durationValues);
       els.fromFilter, els.toFilter, els.textFilter, els.tableSearch
     ].forEach(el => el.addEventListener('input', applyFilters));
 
-    loadCSV();
-    renderKPIs();
-    renderTable();
+   initializeDashboard();
   </script>
 </body>
 </html>
