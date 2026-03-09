@@ -975,19 +975,23 @@
       const clientShareData = clientShareEntries.map(([,v]) => v);
       if (otherClientMinutes > 0) {
         clientShareLabels.push('Others');
-        clientShareData.push(otherCliefunction baseOptions(label) {
-      return {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { labels: { color: '#334155' } }
+         clientShareData.push(otherClientMinutes);
+      }
+
+      makeChart('trendChart', {
+        type: 'line',
+        data: {
+          labels: trendLabels,
+          datasets: [{ label: 'Tasks', data: trendData, borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,0.10)', fill: true, tension: 0.24 }]
         },
-        scales: {
-          x: { ticks: { color: '#64748b' }, grid: { color: 'rgba(15,23,42,0.06)' } },
-          y: { ticks: { color: '#64748b' }, grid: { color: 'rgba(15,23,42,0.06)' }, title: { display: true, text: label, color: '#64748b' } }
-        }
-      };
-    } [{ label: 'Minutes', data: csmEntries.map(([,v]) => v), backgroundColor: '#06b6d4' }]
+        options: baseOptions('Tasks')
+      });
+
+      makeChart('csmChart', {
+        type: 'bar',
+        data: {
+          labels: csmEntries.map(([k]) => k),
+          datasets: [{ label: 'Minutes', data: csmEntries.map(([,v]) => v), backgroundColor: '#06b6d4' }]
         },
         options: baseOptions('Minutes')
       });
