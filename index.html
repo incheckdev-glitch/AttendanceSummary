@@ -1118,50 +1118,48 @@ const medianMinutes = calcMedian(durationValues);
 
      makeChart('csmChart', {
   type: 'bar',
-  data: { ... },
-  },
-  options: baseOptions('Minutes')
+data: { labels: csmEntries.map(([k]) => k), datasets: [{ label: 'Minutes', data: csmEntries.map(([,v]) => v), backgroundColor: '#06b6d4' }] },
 });
 
       makeChart('clientChart', {
         type: 'bar',
         data: { labels: clientEntries.map(([k]) => k), datasets: [{ label: 'Minutes', data: clientEntries.map(([,v]) => v), backgroundColor: '#f59e0b' }] },
-        },
+       
         options: { ...baseOptions('Minutes'), indexAxis: 'y' }
       });
 
       makeChart('typeChart', {
         type: 'doughnut',
         data: { labels: typeEntries.map(([k]) => k), datasets: [{ data: typeEntries.map(([,v]) => v), backgroundColor: ['#2563eb','#06b6d4','#16a34a','#f59e0b','#8b5cf6','#ef4444'] }] },
-        },
+     
         options: doughnutOptions()
       });
 
       makeChart('effortChart', {
         type: 'pie',
          data: { labels: effortEntries.map(([k]) => k), datasets: [{ data: effortEntries.map(([,v]) => v), backgroundColor: ['#16a34a','#f59e0b','#ef4444','#94a3b8'] }] },
-        },
+        
         options: doughnutOptions()
       });
 
       makeChart('channelChart', {
         type: 'bar',
             data: { labels: channelEntries.map(([k]) => k), datasets: [{ label: 'Tasks', data: channelEntries.map(([,v]) => v), backgroundColor: '#8b5cf6' }] },
-        },
+        
         options: baseOptions('Tasks')
       });
 
       makeChart('weekdayChart', {
         type: 'bar',
        data: { labels: weekdayOrder, datasets: [{ label: 'Minutes', data: weekdayOrder.map(day => weekdayMap.get(day) || 0), backgroundColor: '#0ea5e9' }] },
-        },
+        
         options: baseOptions('Minutes')
       });
 
       makeChart('weeklyChart', {
         type: 'line',
         data: { labels: weeklyLabels, datasets: [{ label: 'Minutes', data: weeklyData, borderColor: '#16a34a', backgroundColor: 'rgba(22,163,74,0.10)', fill: true, tension: 0.24 }] },
-        },
+        
         options: baseOptions('Minutes')
       });
 
@@ -1182,7 +1180,7 @@ const medianMinutes = calcMedian(durationValues);
       makeChart('clientShareChart', {
         type: 'doughnut',
        data: { labels: clientShareLabels, datasets: [{ data: clientShareData, backgroundColor: ['#2563eb','#06b6d4','#16a34a','#f59e0b','#8b5cf6','#94a3b8'] }] },
-        },
+        
         options: doughnutOptions()
       });
       
