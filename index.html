@@ -459,11 +459,6 @@
         </div>
       </div>
 
-      <div class="field">
-        <label>Apps Script Web App URL</label>
-        <input id="csvUrl" type="text" placeholder="Paste Apps Script /exec URL here" />
-      </div>
-
       <div class="btn-row">
         <button id="syncBtn">⟳ Sync</button>
         <button class="secondary" id="resetBtn">Reset filters</button>
@@ -684,7 +679,7 @@
               </tr>
             </thead>
             <tbody id="tableBody">
-              <tr><td colspan="8" class="empty">Paste the Apps Script /exec URL and click Sync.</td></tr>
+              <tr><td colspan="8" class="empty">Click Sync to load the latest Apps Script data.</td></tr>
             </tbody>
           </table>
         </div>
@@ -702,7 +697,6 @@
     };
 
     const els = {
-      csvUrl: document.getElementById('csvUrl'),
       csmFilter: document.getElementById('csmFilter'),
       clientFilter: document.getElementById('clientFilter'),
       typeFilter: document.getElementById('typeFilter'),
@@ -1172,9 +1166,9 @@
     }
 
     async function loadCSV() {
-      const url = els.csvUrl.value.trim();
+     const url = SAMPLE_API.trim();
       if (!url) {
-        setStatus('Paste an Apps Script /exec URL', true);
+        setStatus('Apps Script endpoint is not configured.', true);
         return;
       }
 
@@ -1196,7 +1190,7 @@
         setStatus(`Connected · ${state.rows.length} tasks`);
       } catch (error) {
         console.error(error);
-        setStatus('Could not load Apps Script data. Check the /exec URL and deployment access.', true);
+        setStatus('Could not load Apps Script data. Check endpoint and deployment access.', true);
       }
     }
 
@@ -1254,7 +1248,7 @@
       els.fromFilter, els.toFilter, els.textFilter, els.tableSearch
     ].forEach(el => el.addEventListener('input', applyFilters));
 
-    els.csvUrl.value = SAMPLE_API;
+   
     renderKPIs();
     renderTable();
   </script>
