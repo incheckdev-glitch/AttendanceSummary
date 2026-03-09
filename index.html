@@ -195,6 +195,18 @@
       box-shadow: var(--shadow-soft);
     }
 
+      .pill.connected {
+      color: #1e40af;
+      background: #dbeafe;
+      border-color: #93c5fd;
+    }
+
+    .pill.error {
+      color: #b91c1c;
+      background: #fee2e2;
+      border-color: #fca5a5;
+    }
+
     .grid-kpi {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -596,7 +608,7 @@
         <div class="card">
           <div class="card-head">
             <h3>Top CSM Workload</h3>
-            <span>By task count</span>
+            <span>By total minutes</span>
           </div>
           <div class="chart-wrap"><canvas id="csmChart"></canvas></div>
         </div>
@@ -661,6 +673,13 @@
             <span>Share of total minutes</span>
           </div>
           <div class="chart-wrap"><canvas id="clientShareChart"></canvas></div>
+        </div>
+         <div class="card">
+          <div class="card-head">
+            <h3>Workload Balance by CSM</h3>
+            <span>Total minutes vs average minutes</span>
+          </div>
+          <div class="chart-wrap"><canvas id="workloadBalanceChart"></canvas></div>
         </div>
       </section>
 
@@ -842,6 +861,20 @@
       return `${((value / total) * 100).toFixed(1)}%`;
     }
 
+    function calcMedian(values) {
+      if (!values.length) return 0;
+      const sorted = [...values].sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+    }
+
+    function calcStdDev(values) {
+      if (!values.length) return 0;
+      const mean = values.reduce((sum, val) => sum + val, 0) / values.length;
+      const variance = values.reduce((sum, val) => sum + ((val - mean) ** 2), 0) / values.length;
+      return Math.sqrt(variance);
+    }
+
     function renderKPIs() {
       const rows = state.filtered;
       const totalTasks = rows.length;
@@ -871,19 +904,26 @@
       const csmSummaryBody = document.getElementById('csmSummaryBody');
 
       if (!rows.length) {
-        insightList.innerHTML = '<div class="empty">No workload signals yet for the selected filters.</div>';
-        csmSummaryBody.innerHTML = '<tr><td colspan="5" class="empty">No data yet.</td></tr>';
+       insightList.innerHTML = '<div class="empty">No workload signals available. Sync data or broaden filters to see analytics.</div>';
+        csmSummaryBody.innerHTML = '<tr><td colspan="5" class="empty">No CSM activity available for this filter set.</td></tr>';
         return;
       }
 
       const totalMinutes = rows.reduce((sum, row) => sum + row.minutes, 0);
+        const durationValues = rows.map(r => r.minutes || 0);
       const byCsmMinutes = topEntries(aggregate(rows, r => r.csm, r => r.minutes), 1)[0] || ['—', 0];
       const byClientMinutes = topEntries(aggregate(rows, r => r.client, r => r.minutes), 1)[0] || ['—', 0];
+         const csmMinuteEntries = [...aggregate(rows, r => r.csm, r => r.minutes).entries()];
+      const csmMinutes = csmMinuteEntries.map(([, minutes]) => minutes);
+      const avgCsmMinutes = csmMinutes.length ? csmMinutes.reduce((sum, m) => sum + m, 0) / csmMinutes.length : 0;
+      const overloadedCsmCount = csmMinutes.filter(minutes => minutes > (avgCsmMinutes * 1.25)).length;
       const topFiveClientMinutes = topEntries(aggregate(rows, r => r.client, r => r.minutes), 5).reduce((sum, [, value]) => sum + value, 0);
       const dominantType = topEntries(aggregate(rows, r => r.type), 1)[0] || ['—', 0];
       const dominantChannel = topEntries(aggregate(rows, r => r.channel), 1)[0] || ['—', 0];
       const weekdayMinutes = topEntries(aggregate(rows.filter(r => r.date), r => weekdayName(r.date), r => r.minutes), 1)[0] || ['—', 0];
-
+const medianMinutes = calcMedian(durationValues);
+      const stdDevMinutes = calcStdDev(durationValues);
+      
       const insights = [
         { label: 'Busiest CSM', detail: `${byCsmMinutes[0]} is carrying the heaviest visible load by minutes.`, metric: `${fmt.format(byCsmMinutes[1])} min` },
         { label: 'Busiest Client', detail: `${byClientMinutes[0]} consumes the most visible support time.`, metric: `${fmt.format(byClientMinutes[1])} min` },
@@ -891,6 +931,9 @@
         { label: 'Dominant Work Type', detail: `${dominantType[0]} appears most often in the current filter.`, metric: fmt.format(dominantType[1]) },
         { label: 'Primary Channel', detail: `${dominantChannel[0]} is the main route for submitted work.`, metric: fmt.format(dominantChannel[1]) },
         { label: 'Peak Weekday', detail: `${weekdayMinutes[0]} carries the highest visible workload minutes.`, metric: `${fmt.format(weekdayMinutes[1])} min` },
+              { label: 'Median Task Duration', detail: 'Middle task duration for visible records.', metric: `${fmt.format(Number(medianMinutes.toFixed(1)))} min` },
+        { label: 'Workload Variability', detail: 'Standard deviation of task duration (minutes).', metric: `${fmt.format(Number(stdDevMinutes.toFixed(1)))} min` },
+        { label: 'Overloaded CSMs', detail: 'CSMs above 125% of average visible CSM minutes.', metric: `${fmt.format(overloadedCsmCount)}` },
       ];
 
       insightList.innerHTML = insights.map(item => `
@@ -949,6 +992,7 @@
       const trendData = trendLabels.map(label => trendMap.get(label));
 
       const csmEntries = topEntries(aggregate(rows, r => r.csm, r => r.minutes), 10);
+       const csmAverage = csmEntries.length ? csmEntries.reduce((sum, [, minutes]) => sum + minutes, 0) / csmEntries.length : 0;
       const clientEntries = topEntries(aggregate(rows, r => r.client, r => r.minutes), 10);
       const typeEntries = topEntries(aggregate(rows, r => r.type), 10);
       const effortEntries = topEntries(aggregate(rows, r => r.effort), 10);
@@ -1075,6 +1119,25 @@
         },
         options: doughnutOptions()
       });
+      
+      makeChart('workloadBalanceChart', {
+        data: {
+          labels: csmEntries.map(([k]) => k),
+          datasets: [
+            { type: 'bar', label: 'Total Minutes', data: csmEntries.map(([, v]) => v), backgroundColor: '#3b82f6' },
+            {
+              type: 'line',
+              label: 'Average Minutes',
+              data: csmEntries.map(() => csmAverage),
+              borderColor: '#ef4444',
+              borderWidth: 2,
+              pointRadius: 0,
+              tension: 0
+            }
+          ]
+        },
+        options: baseOptions('Minutes')
+      });
     }
 
     function baseOptions(label) {
@@ -1082,11 +1145,11 @@
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: { labels: { color: '#d9e3fb' } }
+          legend: { labels: { color: '#475569' } }
         },
         scales: {
-          x: { ticks: { color: '#9fb0d0' }, grid: { color: 'rgba(255,255,255,0.06)' } },
-          y: { ticks: { color: '#9fb0d0' }, grid: { color: 'rgba(255,255,255,0.06)' }, title: { display: true, text: label, color: '#9fb0d0' } }
+          x: { ticks: { color: '#64748b' }, grid: { color: 'rgba(148,163,184,0.20)' } },
+          y: { ticks: { color: '#64748b' }, grid: { color: 'rgba(148,163,184,0.20)' }, title: { display: true, text: label, color: '#64748b' } }
         }
       };
     }
@@ -1232,9 +1295,8 @@
 
     function setStatus(text, isError = false) {
       els.statusPill.textContent = text;
-      els.statusPill.style.color = isError ? '#fecaca' : '#dbeafe';
-      els.statusPill.style.background = isError ? 'rgba(239,68,68,0.12)' : 'rgba(255,255,255,0.05)';
-      els.statusPill.style.borderColor = isError ? 'rgba(239,68,68,0.35)' : 'rgba(255,255,255,0.08)';
+      els.statusPill.classList.toggle('error', isError);
+      els.statusPill.classList.toggle('connected', !isError);
     }
 
     function escapeHtml(value) {
@@ -1256,7 +1318,7 @@
       els.fromFilter, els.toFilter, els.textFilter, els.tableSearch
     ].forEach(el => el.addEventListener('input', applyFilters));
 
-   
+    loadCSV();
     renderKPIs();
     renderTable();
   </script>
