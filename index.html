@@ -331,6 +331,14 @@
       box-shadow: inset 0 1px 0 rgba(255,255,255,0.8);
     }
 
+     .table-wrap-static {
+      overflow: visible;
+    }
+
+    .compact-table {
+      min-width: 100%;
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
@@ -558,8 +566,8 @@
             <h3>Top CSM Snapshot</h3>
             <span>Tasks, minutes, clients</span>
           </div>
-          <div class="table-wrap">
-            <table>
+           <div class="table-wrap table-wrap-static">
+            <table class="compact-table">
               <thead>
                 <tr>
                   <th>CSM</th>
