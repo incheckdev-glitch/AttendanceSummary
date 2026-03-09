@@ -1116,12 +1116,12 @@ const medianMinutes = calcMedian(durationValues);
         options: baseOptions('Tasks')
       });
 
-      makeChart('csmChart', {
-        type: 'bar',
-       data: { labels: csmEntries.map(([k]) => k), datasets: [{ label: 'Minutes', data: csmEntries.map(([,v]) => v), backgroundColor: '#06b6d4' }] },
-        },
-        options: baseOptions('Minutes')
-      });
+     makeChart('csmChart', {
+  type: 'bar',
+  data: { ... },
+  },
+  options: baseOptions('Minutes')
+});
 
       makeChart('clientChart', {
         type: 'bar',
