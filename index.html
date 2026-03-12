@@ -412,6 +412,35 @@
       font-size: 12px;
     }
 
+     .pagination {
+      margin-top: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .pagination-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .pagination-btn {
+      padding: 8px 12px;
+      border-radius: 10px;
+      font-size: 12px;
+      box-shadow: none;
+    }
+
+    .pagination-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
     .title-wrap h2 {
       margin: 0;
       font-size: 28px;
@@ -716,6 +745,13 @@
             </tbody>
           </table>
         </div>
+          <div class="pagination">
+          <div class="small" id="tablePageInfo">Page 1 of 1</div>
+          <div class="pagination-actions">
+            <button id="prevPageBtn" class="secondary pagination-btn" type="button">Previous</button>
+            <button id="nextPageBtn" class="secondary pagination-btn" type="button">Next</button>
+          </div>
+        </div>
       </section>
     </main>
   </div>
@@ -727,8 +763,10 @@
       rows: [],
       filtered: [],
       charts: {},
+       currentTablePage: 1,
     };
 
+    const TABLE_PAGE_SIZE = 10;
     const els = {
       csmFilter: document.getElementById('csmFilter'),
       clientFilter: document.getElementById('clientFilter'),
@@ -743,6 +781,9 @@
       tableBody: document.getElementById('tableBody'),
       tableSummary: document.getElementById('tableSummary'),
       sidebar: document.getElementById('sidebar'),
+       tablePageInfo: document.getElementById('tablePageInfo'),
+      prevPageBtn: document.getElementById('prevPageBtn'),
+      nextPageBtn: document.getElementById('nextPageBtn'),
     };
 
     const fmt = new Intl.NumberFormat();
@@ -808,6 +849,7 @@
     }
 
     function applyFilters() {
+       state.currentTablePage = 1;
       const term = (els.textFilter.value || '').trim().toLowerCase();
       const tableTerm = (els.tableSearch.value || '').trim().toLowerCase();
       const from = els.fromFilter.value ? new Date(els.fromFilter.value + 'T00:00:00') : null;
@@ -1207,14 +1249,24 @@ data: { labels: csmEntries.map(([k]) => k), datasets: [{ label: 'Minutes', data:
 
     function renderTable() {
       const rows = [...state.filtered].sort((a, b) => (b.date?.getTime() || 0) - (a.date?.getTime() || 0));
+        const totalPages = Math.max(1, Math.ceil(rows.length / TABLE_PAGE_SIZE));
+      state.currentTablePage = Math.min(state.currentTablePage, totalPages);
+      const start = (state.currentTablePage - 1) * TABLE_PAGE_SIZE;
+      const visibleRows = rows.slice(start, start + TABLE_PAGE_SIZE);
+      const startLabel = rows.length ? fmt.format(start + 1) : '0';
+      const endLabel = rows.length ? fmt.format(Math.min(start + TABLE_PAGE_SIZE, rows.length)) : '0';
       document.getElementById('tableSummary').textContent = `${fmt.format(rows.length)} visible rows`;
+        els.tablePageInfo.textContent = `Page ${fmt.format(state.currentTablePage)} of ${fmt.format(totalPages)} · Showing ${startLabel}-${endLabel}`;
+      
+      els.prevPageBtn.disabled = state.currentTablePage <= 1;
+      els.nextPageBtn.disabled = state.currentTablePage >= totalPages;
 
       if (!rows.length) {
         els.tableBody.innerHTML = '<tr><td colspan="8" class="empty">No matching submissions for the current filters.</td></tr>';
         return;
       }
 
-      els.tableBody.innerHTML = rows.map(r => `
+        els.tableBody.innerHTML = visibleRows.map(r => `
         <tr>
           <td>${escapeHtml(r.timestamp)}</td>
           <td>${escapeHtml(r.csm)}</td>
@@ -1351,6 +1403,18 @@ data: { labels: csmEntries.map(([k]) => k), datasets: [{ label: 'Minutes', data:
     document.getElementById('exportBtn').addEventListener('click', exportFilteredCSV);
     document.getElementById('sidebarToggle').addEventListener('click', () => els.sidebar.classList.toggle('open'));
 
+     els.prevPageBtn.addEventListener('click', () => {
+      if (state.currentTablePage <= 1) return;
+      state.currentTablePage -= 1;
+      renderTable();
+    });
+
+    els.nextPageBtn.addEventListener('click', () => {
+      const totalPages = Math.max(1, Math.ceil(state.filtered.length / TABLE_PAGE_SIZE));
+      if (state.currentTablePage >= totalPages) return;
+      state.currentTablePage += 1;
+      renderTable();
+    });
     [
       els.csmFilter, els.clientFilter, els.typeFilter, els.effortFilter, els.channelFilter,
       els.fromFilter, els.toFilter, els.textFilter, els.tableSearch
