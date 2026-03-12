@@ -638,7 +638,7 @@
         <div class="card">
           <div class="card-head">
             <h3>Effort Requirement</h3>
-            <span>Low (Repetitive Task) / Medium / High</span>
+            <span>Low / Medium / High</span>
           </div>
           <div class="chart-wrap"><canvas id="effortChart"></canvas></div>
         </div>
@@ -1092,10 +1092,10 @@ const medianMinutes = calcMedian(durationValues);
       const weeklyData = weeklyLabels.map(label => weeklyMap.get(label));
 
       const topCsmNames = csmEntries.slice(0, 6).map(([name]) => name);
-      const effortBuckets = { Low (Repetitive Task): [], Medium: [], High: [], Other: [] };
+      const effortBuckets = { Low: [], Medium: [], High: [], Other: [] };
       topCsmNames.forEach(name => {
         const rowsForCsm = rows.filter(r => r.csm === name);
-        effortBuckets.Low (Repetitive Task).push(rowsForCsm.filter(r => String(r.effort || '').toLowerCase() === 'low').length);
+        effortBuckets.Low.push(rowsForCsm.filter(r => String(r.effort || '').toLowerCase() === 'low').length);
         effortBuckets.Medium.push(rowsForCsm.filter(r => String(r.effort || '').toLowerCase() === 'medium').length);
         effortBuckets.High.push(rowsForCsm.filter(r => String(r.effort || '').toLowerCase() === 'high').length);
         effortBuckets.Other.push(rowsForCsm.filter(r => !['low','medium','high'].includes(String(r.effort || '').toLowerCase())).length);
@@ -1168,7 +1168,7 @@ data: { labels: csmEntries.map(([k]) => k), datasets: [{ label: 'Minutes', data:
         data: {
           labels: topCsmNames,
           datasets: [
-            { label: 'Low (Repetitive Task)', data: effortBuckets.Low (Repetitive Task), backgroundColor: '#16a34a' },
+            { label: 'Low', data: effortBuckets.Low, backgroundColor: '#16a34a' },
             { label: 'Medium', data: effortBuckets.Medium, backgroundColor: '#f59e0b' },
             { label: 'High', data: effortBuckets.High, backgroundColor: '#ef4444' },
             { label: 'Other', data: effortBuckets.Other, backgroundColor: '#94a3b8' }
