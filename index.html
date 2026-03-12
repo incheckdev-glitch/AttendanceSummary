@@ -747,6 +747,16 @@
 
     const fmt = new Intl.NumberFormat();
 
+     function normalizeEffort(value) {
+      const raw = String(value || '').trim();
+      const key = raw.toLowerCase();
+      if (!raw) return '';
+      if (key === 'low' || key === 'low (repetitive task)') return 'Low';
+      if (key === 'medium') return 'Medium';
+      if (key === 'high' || key === 'high (analytical effort)') return 'High';
+      return raw;
+    }
+
     function normalizeRow(row) {
       const timestamp = row.timestamp || row.Timestamp || row.timestampDateTime || '';
       const notes = row.notes || row['Notes (optional)'] || row['Notes'] || '';
@@ -761,7 +771,7 @@
         client: String(row.client || row['Client'] || '').trim(),
         minutes,
         type: String(row.type || row['Type of Support'] || '').trim(),
-        effort: String(row.effort || row['Effort Requirement'] || '').trim(),
+       effort: normalizeEffort(row.effort || row['Effort Requirement'] || ''),
         channel: String(row.channel || row['Support Channel'] || '').trim(),
         notes: String(notes).trim(),
         date,
@@ -1092,13 +1102,12 @@ const medianMinutes = calcMedian(durationValues);
       const weeklyData = weeklyLabels.map(label => weeklyMap.get(label));
 
       const topCsmNames = csmEntries.slice(0, 6).map(([name]) => name);
-      const effortBuckets = { Low: [], Medium: [], High: [], Other: [] };
+     const effortBuckets = { Low: [], Medium: [], High: [] };
       topCsmNames.forEach(name => {
         const rowsForCsm = rows.filter(r => r.csm === name);
         effortBuckets.Low.push(rowsForCsm.filter(r => String(r.effort || '').toLowerCase() === 'low').length);
         effortBuckets.Medium.push(rowsForCsm.filter(r => String(r.effort || '').toLowerCase() === 'medium').length);
         effortBuckets.High.push(rowsForCsm.filter(r => String(r.effort || '').toLowerCase() === 'high').length);
-        effortBuckets.Other.push(rowsForCsm.filter(r => !['low','medium','high'].includes(String(r.effort || '').toLowerCase())).length);
       });
 
       const clientShareEntries = topEntries(aggregate(rows, r => r.client, r => r.minutes), 5);
@@ -1170,8 +1179,7 @@ data: { labels: csmEntries.map(([k]) => k), datasets: [{ label: 'Minutes', data:
           datasets: [
             { label: 'Low', data: effortBuckets.Low, backgroundColor: '#16a34a' },
             { label: 'Medium', data: effortBuckets.Medium, backgroundColor: '#f59e0b' },
-            { label: 'High', data: effortBuckets.High, backgroundColor: '#ef4444' },
-            { label: 'Other', data: effortBuckets.Other, backgroundColor: '#94a3b8' }
+             { label: 'High', data: effortBuckets.High, backgroundColor: '#ef4444' }
           ]
         },
         options: stackedOptions('Tasks')
