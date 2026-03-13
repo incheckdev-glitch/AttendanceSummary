@@ -1,8 +1,10 @@
 "use client";
 
+import type { ReactNode } from "react";
+
 type NavLinkProps = {
   href: string;
-  children: React.ReactNode;
+  children: ReactNode;
   light?: boolean;
   onNavigate?: () => void;
   className?: string;
