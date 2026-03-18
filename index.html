@@ -3,33 +3,35 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Incheck360 Support Analytics Workspace</title>
+  <title>Incheck360 Support Intelligence Command Center</title>
   <style>
     :root {
-      --bg: #f5f7fb;
-      --bg-2: #eef3fb;
+      --bg: #f4f7fb;
+      --bg-alt: #ecf2fb;
       --panel: #ffffff;
-      --panel-soft: #f8fbff;
-      --panel-alt: #f3f7fd;
-      --border: #e3ebf5;
-      --border-strong: #d4dfec;
-      --text: #162132;
-      --text-soft: #617188;
-      --text-faint: #8796aa;
-      --primary: #2563eb;
-      --primary-2: #1d4ed8;
-      --primary-soft: #dbeafe;
-      --success: #16a34a;
-      --success-soft: #dcfce7;
-      --warning: #d97706;
-      --warning-soft: #fef3c7;
-      --danger: #dc2626;
-      --danger-soft: #fee2e2;
-      --purple: #7c3aed;
-      --purple-soft: #ede9fe;
-      --shadow-sm: 0 4px 14px rgba(15, 23, 42, 0.05);
-      --shadow-md: 0 12px 30px rgba(15, 23, 42, 0.08);
-      --radius-xl: 22px;
+      --panel-soft: #f7faff;
+      --panel-alt: #f2f6fd;
+      --line: #dfe8f5;
+      --line-strong: #cfdbee;
+      --text: #122033;
+      --text-soft: #5f7189;
+      --text-faint: #8798af;
+      --blue: #2563eb;
+      --blue-2: #1d4ed8;
+      --blue-soft: #dbeafe;
+      --green: #16a34a;
+      --green-soft: #dcfce7;
+      --amber: #d97706;
+      --amber-soft: #fef3c7;
+      --red: #dc2626;
+      --red-soft: #fee2e2;
+      --violet: #7c3aed;
+      --violet-soft: #ede9fe;
+      --cyan: #0891b2;
+      --cyan-soft: #cffafe;
+      --shadow-sm: 0 8px 20px rgba(15, 23, 42, 0.05);
+      --shadow-md: 0 18px 40px rgba(15, 23, 42, 0.08);
+      --radius-xl: 24px;
       --radius-lg: 18px;
       --radius-md: 14px;
       --radius-sm: 10px;
@@ -37,23 +39,24 @@
     }
 
     body.dark-theme {
-      --bg: #0b1220;
-      --bg-2: #10182a;
-      --panel: #121c2f;
-      --panel-soft: #162338;
-      --panel-alt: #18253d;
-      --border: #24344f;
-      --border-strong: #2e4260;
+      --bg: #09111f;
+      --bg-alt: #0f192c;
+      --panel: #121d31;
+      --panel-soft: #16233a;
+      --panel-alt: #192841;
+      --line: #243653;
+      --line-strong: #304666;
       --text: #edf3ff;
-      --text-soft: #a8b7cb;
-      --text-faint: #7f90a8;
-      --primary-soft: rgba(37, 99, 235, 0.18);
-      --success-soft: rgba(22, 163, 74, 0.16);
-      --warning-soft: rgba(217, 119, 6, 0.16);
-      --danger-soft: rgba(220, 38, 38, 0.16);
-      --purple-soft: rgba(124, 58, 237, 0.18);
-      --shadow-sm: 0 8px 22px rgba(0, 0, 0, 0.22);
-      --shadow-md: 0 20px 46px rgba(0, 0, 0, 0.28);
+      --text-soft: #a4b4c9;
+      --text-faint: #8092ab;
+      --blue-soft: rgba(37, 99, 235, 0.16);
+      --green-soft: rgba(22, 163, 74, 0.16);
+      --amber-soft: rgba(217, 119, 6, 0.16);
+      --red-soft: rgba(220, 38, 38, 0.16);
+      --violet-soft: rgba(124, 58, 237, 0.18);
+      --cyan-soft: rgba(8, 145, 178, 0.18);
+      --shadow-sm: 0 10px 24px rgba(0, 0, 0, 0.22);
+      --shadow-md: 0 22px 48px rgba(0, 0, 0, 0.3);
     }
 
     * { box-sizing: border-box; }
@@ -65,12 +68,12 @@
       color: var(--text);
       background:
         radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 20%),
-        linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
+        linear-gradient(180deg, var(--bg) 0%, var(--bg-alt) 100%);
       transition: background var(--transition), color var(--transition);
     }
 
     a {
-      color: var(--primary);
+      color: var(--blue);
       text-decoration: none;
     }
 
@@ -78,94 +81,34 @@
       text-decoration: underline;
     }
 
-    .app-shell {
-      max-width: 1680px;
-      margin: 0 auto;
-      padding: 18px;
-    }
-
-    .panel {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      box-shadow: var(--shadow-sm);
-    }
-
-    .appbar {
-      display: grid;
-      grid-template-columns: auto 1fr auto;
-      gap: 16px;
-      align-items: center;
-      padding: 16px 18px;
-      margin-bottom: 16px;
-    }
-
-    .brand-badge {
-      width: 42px;
-      height: 42px;
-      border-radius: 14px;
-      display: grid;
-      place-items: center;
-      font-weight: 900;
-      color: #fff;
-      background: linear-gradient(135deg, var(--primary), var(--primary-2));
-      box-shadow: 0 10px 24px rgba(37, 99, 235, 0.22);
-    }
-
-    .appbar-title h1 {
-      margin: 0;
-      font-size: 24px;
-      letter-spacing: -0.03em;
-    }
-
-    .appbar-title p {
-      margin: 4px 0 0;
-      color: var(--text-soft);
-      font-size: 13px;
-    }
-
-    .appbar-actions {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      justify-content: flex-end;
-    }
-
-    .appbar-actions button,
     button,
     select,
     input,
     textarea {
       font: inherit;
-    }
-
-    button,
-    select,
-    input,
-    textarea {
       width: 100%;
-      padding: 11px 13px;
       border-radius: 12px;
-      border: 1px solid var(--border);
+      border: 1px solid var(--line);
       background: var(--panel);
       color: var(--text);
-      transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition), opacity var(--transition);
+      padding: 11px 13px;
       outline: none;
+      transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition), opacity var(--transition);
     }
 
     input:focus,
     select:focus,
     textarea:focus {
-      border-color: rgba(37, 99, 235, 0.45);
+      border-color: rgba(37, 99, 235, 0.44);
       box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
     }
 
     button {
       cursor: pointer;
       font-weight: 800;
-      background: linear-gradient(135deg, var(--primary), var(--primary-2));
-      color: #fff;
       border: none;
+      color: #fff;
+      background: linear-gradient(135deg, var(--blue), var(--blue-2));
       box-shadow: 0 10px 20px rgba(37, 99, 235, 0.18);
     }
 
@@ -182,20 +125,89 @@
     .secondary-btn {
       background: var(--panel);
       color: var(--text);
-      border: 1px solid var(--border);
+      border: 1px solid var(--line);
       box-shadow: none;
     }
 
-    .workspace-grid {
+    .ghost-btn {
+      background: transparent;
+      color: var(--text-soft);
+      border: 1px dashed var(--line);
+      box-shadow: none;
+    }
+
+    .shell {
+      max-width: 1780px;
+      margin: 0 auto;
+      padding: 18px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 16px;
+      align-items: center;
+      padding: 16px 18px;
+      margin-bottom: 16px;
+    }
+
+    .brand {
+      width: 44px;
+      height: 44px;
+      border-radius: 16px;
+      display: grid;
+      place-items: center;
+      font-weight: 900;
+      color: #fff;
+      background: linear-gradient(135deg, var(--blue), var(--blue-2));
+      box-shadow: 0 12px 24px rgba(37, 99, 235, 0.2);
+    }
+
+    .topbar-title h1 {
+      margin: 0;
+      font-size: 24px;
+      letter-spacing: -0.03em;
+    }
+
+    .topbar-title p {
+      margin: 4px 0 0;
+      font-size: 13px;
+      color: var(--text-soft);
+    }
+
+    .topbar-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: 320px minmax(0, 1fr) 340px;
+      gap: 16px;
+      align-items: start;
+    }
+
+    .rail,
+    .main-stack,
+    .insight-rail {
       display: grid;
       gap: 16px;
     }
 
-    .filter-panel {
+    .panel-block {
       padding: 18px;
     }
 
-    .section-head {
+    .panel-head {
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -204,31 +216,30 @@
       flex-wrap: wrap;
     }
 
-    .section-head h2,
-    .section-head h3 {
+    .panel-head h2,
+    .panel-head h3,
+    .panel-head h4 {
       margin: 0;
       letter-spacing: -0.02em;
     }
 
-    .section-sub {
+    .panel-sub {
       margin-top: 4px;
       font-size: 13px;
       color: var(--text-soft);
     }
 
-    .filter-grid {
+    .field-grid {
       display: grid;
-      grid-template-columns: 1.4fr 1fr 1fr 1fr 140px;
       gap: 12px;
-      align-items: end;
     }
 
-    .filter-field {
+    .field-group {
       display: grid;
       gap: 6px;
     }
 
-    .filter-label {
+    .field-label {
       font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.05em;
@@ -242,83 +253,65 @@
 
     .input-icon {
       position: absolute;
-      left: 12px;
       top: 50%;
+      left: 12px;
       transform: translateY(-50%);
       color: var(--text-faint);
-      font-size: 14px;
       pointer-events: none;
+      font-size: 14px;
     }
 
     .input-wrap input {
       padding-left: 36px;
     }
 
-    .chip-row {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin-top: 14px;
-    }
-
-    .filter-chip {
-      width: auto;
-      padding: 8px 12px;
-      border-radius: 999px;
-      font-size: 12px;
-      font-weight: 800;
-      border: 1px solid var(--border);
-      background: var(--panel-soft);
-      color: var(--text-soft);
-      box-shadow: none;
-    }
-
-    .filter-chip.active {
-      background: var(--primary-soft);
-      color: var(--primary);
-      border-color: transparent;
-    }
-
-    .kpi-grid {
+    .segment-list {
       display: grid;
-      grid-template-columns: repeat(6, minmax(0, 1fr));
-      gap: 14px;
+      gap: 8px;
     }
 
-    .kpi-card {
-      padding: 16px;
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      box-shadow: var(--shadow-sm);
-    }
-
-    .kpi-top {
+    .segment-btn {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 12px;
+      gap: 10px;
+      padding: 11px 13px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: var(--panel-soft);
+      color: var(--text-soft);
+      font-weight: 800;
+      box-shadow: none;
+    }
+
+    .segment-btn.active {
+      background: var(--blue-soft);
+      color: var(--blue);
+      border-color: transparent;
+    }
+
+    .micro-stack {
+      display: grid;
       gap: 10px;
     }
 
-    .kpi-label {
-      font-size: 12px;
-      font-weight: 800;
-      color: var(--text-soft);
+    .micro-card {
+      padding: 14px;
+      border-radius: 16px;
+      background: var(--panel-soft);
+      border: 1px solid var(--line);
+    }
+
+    .micro-label {
+      font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.05em;
+      color: var(--text-soft);
+      font-weight: 800;
+      margin-bottom: 7px;
     }
 
-    .kpi-icon {
-      width: 36px;
-      height: 36px;
-      display: grid;
-      place-items: center;
-      border-radius: 12px;
-      font-size: 16px;
-    }
-
-    .kpi-value {
+    .micro-value {
       font-size: 28px;
       font-weight: 900;
       letter-spacing: -0.04em;
@@ -326,58 +319,73 @@
       margin-bottom: 6px;
     }
 
-    .kpi-sub {
+    .micro-sub {
       font-size: 12px;
       color: var(--text-faint);
+      line-height: 1.5;
     }
 
-    .analytics-grid {
+    .hero {
+      padding: 20px;
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .hero-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
       gap: 14px;
+      flex-wrap: wrap;
     }
 
-    .analytics-card {
-      padding: 18px;
-      min-height: 260px;
+    .hero-title h2 {
+      margin: 0;
+      font-size: 28px;
+      letter-spacing: -0.04em;
     }
 
-    .analytics-card.span-2 {
-      grid-column: span 2;
+    .hero-title p {
+      margin: 6px 0 0;
+      font-size: 14px;
+      color: var(--text-soft);
+      max-width: 760px;
+      line-height: 1.6;
     }
 
-    .analytics-card.span-3 {
-      grid-column: span 3;
-      min-height: 180px;
+    .pill-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
     }
 
     .pill {
       display: inline-flex;
       align-items: center;
       gap: 8px;
+      padding: 8px 12px;
       border-radius: 999px;
-      padding: 8px 11px;
       font-size: 12px;
       font-weight: 800;
-      background: var(--panel-soft);
-      border: 1px solid var(--border);
       color: var(--text-soft);
+      background: var(--panel-soft);
+      border: 1px solid var(--line);
     }
 
-    .analytics-stat-grid {
+    .hero-grid {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 12px;
     }
 
-    .mini-stat {
-      padding: 14px;
-      border-radius: 14px;
-      border: 1px solid var(--border);
+    .hero-stat {
+      padding: 16px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
       background: var(--panel-soft);
     }
 
-    .mini-stat .label {
+    .hero-stat .label {
       font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.05em;
@@ -386,153 +394,234 @@
       margin-bottom: 8px;
     }
 
-    .mini-stat .value {
+    .hero-stat .value {
+      font-size: 30px;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      margin-bottom: 6px;
+      line-height: 1;
+    }
+
+    .hero-stat .sub {
+      font-size: 12px;
+      color: var(--text-faint);
+      line-height: 1.5;
+    }
+
+    .view-canvas {
+      padding: 18px;
+      min-height: 460px;
+    }
+
+    .view-grid {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+    }
+
+    .span-12 { grid-column: span 12; }
+    .span-8 { grid-column: span 8; }
+    .span-7 { grid-column: span 7; }
+    .span-6 { grid-column: span 6; }
+    .span-5 { grid-column: span 5; }
+    .span-4 { grid-column: span 4; }
+    .span-3 { grid-column: span 3; }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--panel-soft);
+      padding: 16px;
+      min-height: 180px;
+    }
+
+    .card-title {
+      margin: 0;
+      font-size: 16px;
+      letter-spacing: -0.02em;
+    }
+
+    .card-sub {
+      margin-top: 4px;
+      font-size: 12px;
+      color: var(--text-soft);
+      line-height: 1.5;
+    }
+
+    .card-head {
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+
+    .summary-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .summary-box {
+      padding: 14px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    .summary-box .k {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-soft);
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+
+    .summary-box .v {
       font-size: 24px;
       font-weight: 900;
       letter-spacing: -0.03em;
+      line-height: 1;
+      margin-bottom: 6px;
     }
 
-    .mini-stat .sub {
-      margin-top: 5px;
+    .summary-box .s {
       font-size: 12px;
       color: var(--text-faint);
     }
 
-    .distribution {
+    .bar-list {
       display: grid;
       gap: 10px;
     }
 
-    .dist-row {
+    .bar-row {
       display: grid;
-      grid-template-columns: 150px 1fr 50px;
+      grid-template-columns: 150px 1fr 56px;
       gap: 10px;
       align-items: center;
     }
 
-    .dist-label {
+    .bar-label {
       font-size: 13px;
-      font-weight: 700;
       color: var(--text-soft);
+      font-weight: 700;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
 
-    .dist-bar {
+    .bar-track {
       height: 10px;
       border-radius: 999px;
-      border: 1px solid var(--border);
-      background: var(--panel-soft);
       overflow: hidden;
+      border: 1px solid var(--line);
+      background: var(--panel);
     }
 
-    .dist-fill {
+    .bar-fill {
       height: 100%;
       border-radius: inherit;
     }
 
-    .dist-value {
+    .bar-value {
       text-align: right;
       font-size: 12px;
       font-weight: 800;
       color: var(--text-soft);
     }
 
-    .ring-wrap {
-      display: grid;
-      grid-template-columns: 170px 1fr;
-      gap: 14px;
-      align-items: center;
-    }
-
-    .ring {
-      width: 170px;
-      height: 170px;
-      border-radius: 50%;
-      position: relative;
-      display: grid;
-      place-items: center;
-      margin: 0 auto;
-      border: 1px solid var(--border);
-    }
-
-    .ring::after {
-      content: "";
-      position: absolute;
-      width: 104px;
-      height: 104px;
-      border-radius: 50%;
+    .heatmap-shell {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 14px;
       background: var(--panel);
-      border: 1px solid var(--border);
+      max-height: 320px;
     }
 
-    .ring-center {
-      position: relative;
-      z-index: 1;
-      text-align: center;
+    .heatmap {
+      width: 100%;
+      min-width: 760px;
+      border-collapse: collapse;
     }
 
-    .ring-center .big {
-      font-size: 28px;
-      font-weight: 900;
-      letter-spacing: -0.04em;
-    }
-
-    .ring-center .small {
-      font-size: 12px;
-      color: var(--text-soft);
-      font-weight: 700;
-    }
-
-    .legend {
-      display: grid;
-      gap: 10px;
-    }
-
-    .legend-row {
-      display: grid;
-      grid-template-columns: auto 1fr auto;
-      gap: 10px;
-      align-items: center;
+    .heatmap th,
+    .heatmap td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
       font-size: 13px;
     }
 
-    .legend-dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-    }
-
-    .legend-label {
+    .heatmap th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: var(--panel-soft);
+      text-align: left;
       color: var(--text-soft);
-      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-size: 11px;
     }
 
-    .legend-value {
-      color: var(--text);
+    .heatmap .row-head {
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .heatmap .cell {
+      text-align: center;
       font-weight: 800;
     }
+
+    .signal-list,
+    .insight-list,
+    .alert-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .signal-item,
+    .insight-item,
+    .alert-item {
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: var(--panel-soft);
+      border: 1px solid var(--line);
+      line-height: 1.6;
+      font-size: 13px;
+      color: var(--text-soft);
+    }
+
+    .signal-item strong,
+    .insight-item strong,
+    .alert-item strong {
+      color: var(--text);
+    }
+
+    .tone-red { background: var(--red-soft); }
+    .tone-amber { background: var(--amber-soft); }
+    .tone-green { background: var(--green-soft); }
+    .tone-violet { background: var(--violet-soft); }
+    .tone-cyan { background: var(--cyan-soft); }
 
     .table-panel {
       padding: 18px;
     }
 
-    .table-shell {
-      overflow: hidden;
-      border-radius: 16px;
-      border: 1px solid var(--border);
-      background: var(--panel);
-    }
-
     .table-wrap {
       overflow: auto;
-      max-height: 74vh;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      max-height: 72vh;
     }
 
     table {
       width: 100%;
-      min-width: 1320px;
+      min-width: 1280px;
       border-collapse: collapse;
     }
 
@@ -545,21 +634,21 @@
       font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.05em;
-      border-bottom: 1px solid var(--border);
       padding: 14px 12px;
+      border-bottom: 1px solid var(--line);
       text-align: left;
     }
 
     tbody td {
       padding: 14px 12px;
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid var(--line);
       font-size: 14px;
       vertical-align: top;
     }
 
     tbody tr {
-      transition: background var(--transition);
       cursor: pointer;
+      transition: background var(--transition);
     }
 
     tbody tr:hover {
@@ -571,32 +660,32 @@
     }
 
     tbody tr.selected-row {
-      background: rgba(37, 99, 235, 0.10);
+      background: rgba(37, 99, 235, 0.1);
     }
 
-    .id-badge {
+    .queue-id {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      min-width: 46px;
+      min-width: 52px;
       padding: 6px 10px;
       border-radius: 999px;
-      background: var(--primary-soft);
-      color: var(--primary);
+      background: var(--blue-soft);
+      color: var(--blue);
       font-size: 12px;
       font-weight: 900;
     }
 
     .issue-title {
       font-weight: 800;
-      margin-bottom: 6px;
       line-height: 1.35;
+      margin-bottom: 6px;
     }
 
-    .issue-desc {
+    .issue-sub {
       font-size: 12px;
       color: var(--text-soft);
-      line-height: 1.5;
+      line-height: 1.55;
       max-width: 420px;
       word-break: break-word;
     }
@@ -623,19 +712,91 @@
     .action-btn {
       width: auto;
       padding: 8px 11px;
-      font-size: 12px;
       border-radius: 10px;
+      font-size: 12px;
       box-shadow: none;
+    }
+
+    .readonly-box {
+      padding: 14px;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: var(--panel-soft);
+      line-height: 1.6;
+      font-size: 13px;
+      color: var(--text-soft);
+    }
+
+    .readonly-box strong {
+      color: var(--text);
+    }
+
+    .compact-stat-grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .compact-stat {
+      padding: 12px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: var(--panel-soft);
+    }
+
+    .compact-stat .k {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-soft);
+      font-weight: 800;
+      margin-bottom: 7px;
+    }
+
+    .compact-stat .v {
+      font-size: 22px;
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      line-height: 1;
+    }
+
+    .compact-stat .s {
+      margin-top: 6px;
+      font-size: 12px;
+      color: var(--text-faint);
+      line-height: 1.5;
+    }
+
+    .muted {
+      color: var(--text-faint);
+      font-size: 12px;
+    }
+
+    .empty-state {
+      padding: 34px 22px;
+      text-align: center;
+      color: var(--text-soft);
+    }
+
+    .empty-state h4 {
+      margin: 0 0 8px;
+      font-size: 16px;
+      color: var(--text);
+    }
+
+    .empty-state p {
+      margin: 0;
+      font-size: 13px;
     }
 
     .loading-overlay {
       position: fixed;
       inset: 0;
-      background: rgba(15, 23, 42, 0.24);
-      backdrop-filter: blur(4px);
       display: none;
       place-items: center;
       z-index: 1000;
+      background: rgba(15, 23, 42, 0.22);
+      backdrop-filter: blur(4px);
     }
 
     .loading-overlay.show {
@@ -643,19 +804,19 @@
     }
 
     .loading-card {
-      width: 240px;
+      width: 250px;
+      padding: 22px;
       border-radius: 20px;
-      padding: 20px;
       text-align: center;
     }
 
     .spinner {
-      width: 38px;
-      height: 38px;
+      width: 40px;
+      height: 40px;
       margin: 0 auto 12px;
       border-radius: 50%;
-      border: 3px solid var(--primary-soft);
-      border-top-color: var(--primary);
+      border: 3px solid var(--blue-soft);
+      border-top-color: var(--blue);
       animation: spin 0.9s linear infinite;
     }
 
@@ -664,7 +825,7 @@
       right: 20px;
       bottom: 20px;
       min-width: 260px;
-      max-width: 380px;
+      max-width: 400px;
       padding: 14px 16px;
       border-radius: 14px;
       color: #fff;
@@ -712,7 +873,7 @@
       max-height: 92vh;
       overflow: auto;
       background: var(--panel);
-      border: 1px solid var(--border);
+      border: 1px solid var(--line);
       border-radius: 22px;
       box-shadow: var(--shadow-md);
       padding: 18px;
@@ -765,39 +926,8 @@
       padding-top: 8px;
     }
 
-    .field-group {
-      display: grid;
-      gap: 8px;
-    }
-
-    .field-group label {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--text-soft);
-      font-weight: 800;
-    }
-
     .readonly {
       background: var(--panel-soft);
-    }
-
-    .selected-box,
-    .smart-box,
-    .security-box {
-      padding: 14px;
-      border-radius: 16px;
-      border: 1px solid var(--border);
-      background: var(--panel-soft);
-      line-height: 1.6;
-      font-size: 13px;
-      color: var(--text-soft);
-    }
-
-    .selected-box strong,
-    .smart-box strong,
-    .security-box strong {
-      color: var(--text);
     }
 
     .modal-actions {
@@ -810,155 +940,65 @@
       padding-top: 10px;
     }
 
-    .muted {
-      color: var(--text-faint);
-      font-size: 12px;
-    }
-
     .success {
-      color: var(--success);
+      color: var(--green);
       font-size: 13px;
       font-weight: 800;
     }
 
     .error {
-      color: var(--danger);
+      color: var(--red);
       font-size: 13px;
       font-weight: 800;
-    }
-
-    .empty-state {
-      padding: 40px 24px;
-      text-align: center;
-      color: var(--text-soft);
-    }
-
-    .empty-state h4 {
-      margin: 0 0 8px;
-      font-size: 16px;
-      color: var(--text);
-    }
-
-    .empty-state p {
-      margin: 0;
-      font-size: 13px;
-    }
-
-    .footer-note {
-      font-size: 12px;
-      color: var(--text-faint);
-      line-height: 1.6;
-    }
-
-    .matrix-shell {
-      overflow: auto;
-      max-height: 280px;
-      border: 1px solid var(--border);
-      border-radius: 14px;
-    }
-
-    .matrix-table {
-      width: 100%;
-      min-width: 720px;
-      border-collapse: collapse;
-    }
-
-    .matrix-table th,
-    .matrix-table td {
-      padding: 10px 12px;
-      border-bottom: 1px solid var(--border);
-      font-size: 13px;
-    }
-
-    .matrix-table th {
-      position: sticky;
-      top: 0;
-      background: var(--panel-soft);
-      z-index: 1;
-    }
-
-    .matrix-row-head {
-      font-weight: 800;
-      white-space: nowrap;
-    }
-
-    .matrix-cell {
-      text-align: center;
-      font-weight: 800;
-      border-left: 1px solid var(--border);
-    }
-
-    .insight-list {
-      display: grid;
-      gap: 10px;
-    }
-
-    .insight-item {
-      padding: 12px 14px;
-      border-radius: 14px;
-      background: var(--panel-soft);
-      border: 1px solid var(--border);
-      font-size: 14px;
-      line-height: 1.5;
-      color: var(--text-soft);
-    }
-
-    .insight-item strong {
-      color: var(--text);
     }
 
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
 
-    @media (max-width: 1280px) {
-      .kpi-grid,
-      .analytics-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+    @media (max-width: 1480px) {
+      .workspace {
+        grid-template-columns: 290px minmax(0, 1fr);
       }
 
-      .filter-grid {
-        grid-template-columns: 1fr 1fr 1fr;
-      }
-
-      .analytics-card.span-2,
-      .analytics-card.span-3 {
+      .insight-rail {
         grid-column: span 2;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
       }
     }
 
-    @media (max-width: 920px) {
-      .app-shell {
-        padding: 14px;
-      }
-
-      .appbar,
-      .filter-grid,
-      .kpi-grid,
-      .analytics-grid,
-      .analytics-stat-grid,
-      .ring-wrap,
+    @media (max-width: 1120px) {
+      .workspace,
+      .insight-rail,
+      .hero-grid,
+      .summary-grid,
+      .compact-stat-grid,
       .grid-2,
       .grid-3,
       .modal-actions {
         grid-template-columns: 1fr;
       }
 
-      .analytics-card.span-2,
-      .analytics-card.span-3 {
-        grid-column: span 1;
-      }
-
-      .appbar {
+      .view-grid {
         grid-template-columns: 1fr;
       }
 
-      .appbar-actions {
-        justify-content: flex-start;
+      .span-12,
+      .span-8,
+      .span-7,
+      .span-6,
+      .span-5,
+      .span-4,
+      .span-3 {
+        grid-column: span 1;
       }
 
-      .dist-row {
-        grid-template-columns: 120px 1fr 40px;
+      .topbar {
+        grid-template-columns: 1fr;
+      }
+
+      .topbar-actions {
+        justify-content: flex-start;
       }
     }
   </style>
@@ -967,8 +1007,8 @@
   <div class="loading-overlay" id="loadingOverlay">
     <div class="loading-card panel">
       <div class="spinner"></div>
-      <div style="font-weight:800; color:var(--text); margin-bottom:4px;">Loading workspace</div>
-      <div class="muted">Refreshing analytics and issue queue...</div>
+      <div style="font-weight:800; color:var(--text); margin-bottom:4px;">Loading command center</div>
+      <div class="muted">Refreshing issue intelligence and queue status...</div>
     </div>
   </div>
 
@@ -978,28 +1018,28 @@
     <div class="modal">
       <div class="modal-header">
         <div>
-          <h2 class="modal-title">Issue Details & Edit</h2>
-          <div class="modal-sub">Full submission details plus editable workflow fields.</div>
+          <h2 class="modal-title">Issue Workbench</h2>
+          <div class="modal-sub">Full submission details with editable workflow controls.</div>
         </div>
         <button type="button" class="secondary-btn" id="closeModalBtn">✕</button>
       </div>
 
       <div class="edit-grid">
-        <div class="selected-box" id="selectedIssueInfo">No issue selected.</div>
-        <div class="smart-box" id="smartSuggestionBox"><strong>Smart suggestion:</strong> Select an issue to see recommended next actions.</div>
+        <div class="readonly-box" id="selectedIssueInfo">No issue selected.</div>
+        <div class="readonly-box" id="smartSuggestionBox"><strong>Recommendation:</strong> Select an issue to see next-best actions.</div>
 
         <div class="section-title">Identifiers</div>
         <div class="grid-3">
           <div class="field-group">
-            <label for="issueId">Row ID</label>
+            <label class="field-label" for="issueId">Row ID</label>
             <input id="issueId" class="readonly" readonly />
           </div>
           <div class="field-group">
-            <label for="timestamp">Timestamp</label>
+            <label class="field-label" for="timestamp">Timestamp</label>
             <input id="timestamp" class="readonly" readonly />
           </div>
           <div class="field-group">
-            <label for="requestDate">Request Date</label>
+            <label class="field-label" for="requestDate">Request Date</label>
             <input id="requestDate" class="readonly" readonly />
           </div>
         </div>
@@ -1007,147 +1047,146 @@
         <div class="section-title">Reporter & Company</div>
         <div class="grid-2">
           <div class="field-group">
-            <label for="submittedBy">Submitted By</label>
+            <label class="field-label" for="submittedBy">Submitted By</label>
             <input id="submittedBy" class="readonly" readonly />
           </div>
           <div class="field-group">
-            <label for="companyName">Company Name</label>
+            <label class="field-label" for="companyName">Company Name</label>
             <input id="companyName" class="readonly" readonly />
           </div>
         </div>
 
         <div class="field-group">
-          <label for="issueTitle">Issue Title</label>
+          <label class="field-label" for="issueTitle">Issue Title</label>
           <input id="issueTitle" class="readonly" readonly />
         </div>
 
         <div class="grid-2">
           <div class="field-group">
-            <label for="issueCategory">Issue Category</label>
+            <label class="field-label" for="issueCategory">Issue Category</label>
             <input id="issueCategory" class="readonly" readonly />
           </div>
           <div class="field-group">
-            <label for="priorityLevel">Priority Level</label>
+            <label class="field-label" for="priorityLevel">Priority Level</label>
             <input id="priorityLevel" class="readonly" readonly />
           </div>
         </div>
 
         <div class="field-group">
-          <label for="detailedDescription">Detailed Description</label>
+          <label class="field-label" for="detailedDescription">Detailed Description</label>
           <textarea id="detailedDescription" class="readonly" readonly></textarea>
         </div>
 
         <div class="section-title">Operational Context</div>
         <div class="grid-2">
           <div class="field-group">
-            <label for="issueOngoingIntermittent">Ongoing / Intermittent</label>
+            <label class="field-label" for="issueOngoingIntermittent">Ongoing / Intermittent</label>
             <input id="issueOngoingIntermittent" class="readonly" readonly />
           </div>
           <div class="field-group">
-            <label for="impactType">Impact Type</label>
+            <label class="field-label" for="impactType">Impact Type</label>
             <input id="impactType" class="readonly" readonly />
           </div>
         </div>
 
         <div class="grid-2">
           <div class="field-group">
-            <label for="workaroundAvailable">Workaround Available</label>
+            <label class="field-label" for="workaroundAvailable">Workaround Available</label>
             <input id="workaroundAvailable" class="readonly" readonly />
           </div>
           <div class="field-group">
-            <label for="environment">Environment</label>
+            <label class="field-label" for="environment">Environment</label>
             <input id="environment" class="readonly" readonly />
           </div>
         </div>
 
         <div class="field-group">
-          <label for="workaroundDetails">Workaround Details</label>
+          <label class="field-label" for="workaroundDetails">Workaround Details</label>
           <textarea id="workaroundDetails" class="readonly" readonly></textarea>
         </div>
 
         <div class="grid-2">
           <div class="field-group">
-            <label for="productModuleAffected">Product / Module Affected</label>
+            <label class="field-label" for="productModuleAffected">Product / Module Affected</label>
             <input id="productModuleAffected" class="readonly" readonly />
           </div>
           <div class="field-group">
-            <label for="browserDeviceOs">Browser / Device / OS</label>
+            <label class="field-label" for="browserDeviceOs">Browser / Device / OS</label>
             <input id="browserDeviceOs" class="readonly" readonly />
           </div>
         </div>
 
         <div class="field-group">
-          <label for="errorMessage">Error Message</label>
+          <label class="field-label" for="errorMessage">Error Message</label>
           <textarea id="errorMessage" class="readonly" readonly></textarea>
         </div>
 
         <div class="grid-2">
           <div class="field-group">
-            <label for="attachmentUpload">Attachment Upload</label>
+            <label class="field-label" for="attachmentUpload">Attachment Upload</label>
             <input id="attachmentUpload" class="readonly" readonly />
           </div>
           <div class="field-group">
-            <label for="reportedChannel">Reported Channel</label>
+            <label class="field-label" for="reportedChannel">Reported Channel</label>
             <input id="reportedChannel" class="readonly" readonly />
           </div>
         </div>
 
         <div class="field-group">
-          <label for="sourceOfIssue">Source of Issue</label>
+          <label class="field-label" for="sourceOfIssue">Source of Issue</label>
           <input id="sourceOfIssue" class="readonly" readonly />
         </div>
 
         <div class="section-title">Resolution Workflow</div>
         <div class="grid-2">
           <div class="field-group">
-            <label for="finalStatus">Final Status</label>
+            <label class="field-label" for="finalStatus">Final Status</label>
             <select id="finalStatus"></select>
           </div>
           <div class="field-group">
-            <label for="resolutionClosureDate">Resolution / Closure Date</label>
+            <label class="field-label" for="resolutionClosureDate">Resolution / Closure Date</label>
             <input id="resolutionClosureDate" class="readonly" readonly />
           </div>
         </div>
 
         <div class="grid-2">
           <div class="field-group">
-            <label for="initialAssessment">Initial Assessment</label>
+            <label class="field-label" for="initialAssessment">Initial Assessment</label>
             <select id="initialAssessment"></select>
           </div>
           <div class="field-group">
-            <label for="rootCauseType">Root Cause Type</label>
+            <label class="field-label" for="rootCauseType">Root Cause Type</label>
             <select id="rootCauseType"></select>
           </div>
         </div>
 
         <div class="grid-2">
           <div class="field-group">
-            <label for="escalationRequired">Escalation Required?</label>
+            <label class="field-label" for="escalationRequired">Escalation Required?</label>
             <select id="escalationRequired"></select>
           </div>
           <div class="field-group">
-            <label for="wasCsInformed">Was CS Informed?</label>
+            <label class="field-label" for="wasCsInformed">Was CS Informed?</label>
             <select id="wasCsInformed"></select>
           </div>
         </div>
 
         <div class="field-group">
-          <label for="developmentTicket">Development Ticket</label>
+          <label class="field-label" for="developmentTicket">Development Ticket</label>
           <input id="developmentTicket" placeholder="Development ticket ID or link" />
         </div>
 
         <div class="field-group">
-          <label for="internalNotes">Internal Notes</label>
-          <textarea id="internalNotes" rows="7" placeholder="Document root cause, actions taken, workaround, or handoff notes..."></textarea>
+          <label class="field-label" for="internalNotes">Internal Notes</label>
+          <textarea id="internalNotes" rows="7" placeholder="Root cause, resolution steps, workaround, or handoff notes..."></textarea>
         </div>
 
-        <div class="section-title">Security</div>
-        <div class="security-box">
-          <strong>Backend-validated save:</strong> this page still relies on backend validation. For production security, enforce user auth and authorization in Apps Script or your backend.
+        <div class="readonly-box">
+          <strong>Security note:</strong> keep backend auth and authorization in Apps Script or your backend. This page should never be the only control point for update permissions.
         </div>
 
         <div class="field-group">
-          <label for="editPassword">Edit Password</label>
+          <label class="field-label" for="editPassword">Edit Password</label>
           <input id="editPassword" type="password" placeholder="Enter edit password" />
         </div>
 
@@ -1157,253 +1196,152 @@
           <button id="saveBtn" type="button">Save Update</button>
           <button id="resetEditorBtn" class="secondary-btn" type="button">Reset Changes</button>
         </div>
-
-        <div class="footer-note">
-          Full row details stay in the popup. The main screen stays focused on analytics and the queue.
-        </div>
       </div>
     </div>
   </div>
 
-  <div class="app-shell">
-    <section class="panel appbar">
-      <div class="brand-badge">IC</div>
-
-      <div class="appbar-title">
-        <h1>Support Analytics Workspace</h1>
-        <p>Filters · KPIs · trends · cross-field intelligence · detailed submissions</p>
+  <div class="shell">
+    <section class="panel topbar">
+      <div class="brand">IC</div>
+      <div class="topbar-title">
+        <h1>Support Intelligence Command Center</h1>
+        <p>Operational command view · workflow bottlenecks · signal detection · data quality · issue explorer</p>
       </div>
-
-      <div class="appbar-actions">
+      <div class="topbar-actions">
         <button type="button" id="refreshBtnTop">⟳ Sync</button>
         <button type="button" class="secondary-btn" id="clearBtnTop">Reset filters</button>
         <button type="button" class="secondary-btn" id="themeToggleBtn">🌙 Dark Mode</button>
       </div>
     </section>
 
-    <div class="workspace-grid">
-      <section class="panel filter-panel">
-        <div class="section-head">
-          <div>
-            <h2>Filters</h2>
-            <div class="section-sub">Filter issues by search, status, priority, and sort order.</div>
-          </div>
-          <div style="display:flex; gap:8px; flex-wrap:wrap;">
-            <div class="pill" id="issuesCountPill">Showing 0 issues</div>
-            <div class="pill" id="selectedCountPill">No issue selected</div>
-          </div>
-        </div>
-
-        <div class="filter-grid">
-          <div class="filter-field">
-            <label class="filter-label" for="searchInput">Search Notes / Client / Module</label>
-            <div class="input-wrap">
-              <span class="input-icon">⌕</span>
-              <input id="searchInput" placeholder="Search by company, issue title, module, description, error, notes, or ticket..." />
-            </div>
-          </div>
-
-          <div class="filter-field">
-            <label class="filter-label" for="statusFilter">Status</label>
-            <select id="statusFilter"></select>
-          </div>
-
-          <div class="filter-field">
-            <label class="filter-label" for="priorityFilter">Priority</label>
-            <select id="priorityFilter"></select>
-          </div>
-
-          <div class="filter-field">
-            <label class="filter-label" for="sortSelect">Sort</label>
-            <select id="sortSelect"></select>
-          </div>
-
-          <button id="refreshBtn" type="button">Refresh</button>
-        </div>
-
-        <div class="chip-row" id="quickFilterChips"></div>
-      </section>
-
-      <section class="kpi-grid" id="summaryCards"></section>
-
-      <section class="analytics-grid">
-        <article class="panel analytics-card">
-          <div class="section-head">
+    <div class="workspace">
+      <aside class="rail">
+        <section class="panel panel-block">
+          <div class="panel-head">
             <div>
-              <h3>Operational Snapshot</h3>
-              <div class="section-sub">Core metrics for the current filtered view.</div>
+              <h3>Controls</h3>
+              <div class="panel-sub">Search, filter, sort, and switch analysis mode.</div>
             </div>
-            <div class="pill" id="filteredSummaryPill">0 issues in view</div>
+            <div class="pill" id="issuesCountPill">0 issues</div>
           </div>
-          <div class="analytics-stat-grid" id="filteredOverviewStats"></div>
-        </article>
 
-        <article class="panel analytics-card">
-          <div class="section-head">
-            <div>
-              <h3>Status Distribution</h3>
-              <div class="section-sub">Current status mix for visible issues.</div>
+          <div class="field-grid">
+            <div class="field-group">
+              <label class="field-label" for="searchInput">Search</label>
+              <div class="input-wrap">
+                <span class="input-icon">⌕</span>
+                <input id="searchInput" placeholder="Search title, company, module, error, notes, ticket..." />
+              </div>
             </div>
-          </div>
-          <div class="distribution" id="statusDistribution"></div>
-        </article>
 
-        <article class="panel analytics-card">
-          <div class="section-head">
-            <div>
-              <h3>Priority Mix</h3>
-              <div class="section-sub">Severity balance in the queue.</div>
+            <div class="field-group">
+              <label class="field-label" for="statusFilter">Status</label>
+              <select id="statusFilter"></select>
             </div>
-          </div>
-          <div class="ring-wrap">
-            <div id="priorityRingWrap"></div>
-            <div class="legend" id="priorityLegend"></div>
-          </div>
-        </article>
 
-        <article class="panel analytics-card">
-          <div class="section-head">
-            <div>
-              <h3>Aging Buckets</h3>
-              <div class="section-sub">Active issue age grouped by days open.</div>
+            <div class="field-group">
+              <label class="field-label" for="priorityFilter">Priority</label>
+              <select id="priorityFilter"></select>
             </div>
-          </div>
-          <div class="distribution" id="agingDistribution"></div>
-        </article>
 
-        <article class="panel analytics-card">
-          <div class="section-head">
-            <div>
-              <h3>Module Hotspots</h3>
-              <div class="section-sub">Where issues are concentrating right now.</div>
+            <div class="field-group">
+              <label class="field-label" for="sortSelect">Sort</label>
+              <select id="sortSelect"></select>
             </div>
-          </div>
-          <div class="distribution" id="moduleDistribution"></div>
-        </article>
 
-        <article class="panel analytics-card">
-          <div class="section-head">
-            <div>
-              <h3>Top Companies</h3>
-              <div class="section-sub">Organizations with the most visible issues.</div>
-            </div>
-          </div>
-          <div class="distribution" id="companyDistribution"></div>
-        </article>
-
-        <article class="panel analytics-card">
-          <div class="section-head">
-            <div>
-              <h3>Workflow Intelligence</h3>
-              <div class="section-sub">Assessment, cause, escalation, CS, resolution time, and ticket hygiene.</div>
-            </div>
-          </div>
-          <div class="analytics-stat-grid" id="workflowStats"></div>
-        </article>
-
-        <article class="panel analytics-card">
-          <div class="section-head">
-            <div>
-              <h3>Submission Quality</h3>
-              <div class="section-sub">Field completeness across all tracked columns.</div>
-            </div>
-          </div>
-          <div class="distribution" id="dataQualityDistribution"></div>
-        </article>
-
-        <article class="panel analytics-card">
-          <div class="section-head">
-            <div>
-              <h3>Channel & Source Mix</h3>
-              <div class="section-sub">How issues enter the support workflow.</div>
-            </div>
-          </div>
-          <div class="distribution" id="channelSourceDistribution"></div>
-        </article>
-
-        <article class="panel analytics-card">
-          <div class="section-head">
-            <div>
-              <h3>Environment Insights</h3>
-              <div class="section-sub">Environment, client footprint, and affected platforms.</div>
-            </div>
-          </div>
-          <div class="distribution" id="environmentDistribution"></div>
-        </article>
-
-        <article class="panel analytics-card">
-          <div class="section-head">
-            <div>
-              <h3>Assessment Mix</h3>
-              <div class="section-sub">How issues are being classified by initial assessment.</div>
-            </div>
-          </div>
-          <div class="distribution" id="assessmentDistribution"></div>
-        </article>
-
-        <article class="panel analytics-card">
-          <div class="section-head">
-            <div>
-              <h3>Root Cause Mix</h3>
-              <div class="section-sub">Root cause trends across the current filtered issue set.</div>
-            </div>
-          </div>
-          <div class="distribution" id="rootCauseDistribution"></div>
-        </article>
-
-        <article class="panel analytics-card span-2">
-          <div class="section-head">
-            <div>
-              <h3>Cross-Field Matrix</h3>
-              <div class="section-sub">Relationships between key dimensions across all columns.</div>
-            </div>
-            <div style="display:flex; gap:8px; flex-wrap:wrap;">
-              <div class="pill" id="matrixTitlePill">Priority × Status</div>
-              <select id="matrixSelect" style="width:auto; min-width:220px;">
+            <div class="field-group">
+              <label class="field-label" for="matrixSelect">Matrix</label>
+              <select id="matrixSelect">
                 <option value="priorityStatus">Priority × Status</option>
                 <option value="categoryImpact">Category × Impact</option>
                 <option value="moduleRootCause">Module × Root Cause</option>
                 <option value="channelSource">Channel × Source</option>
               </select>
             </div>
-          </div>
-          <div id="crossFieldMatrix"></div>
-        </article>
 
-        <article class="panel analytics-card">
-          <div class="section-head">
+            <button type="button" id="refreshBtn">Refresh Data</button>
+          </div>
+        </section>
+
+        <section class="panel panel-block">
+          <div class="panel-head">
             <div>
-              <h3>Text Signals</h3>
-              <div class="section-sub">Recurring terms from title, description, error message, and notes.</div>
+              <h3>Analysis Modes</h3>
+              <div class="panel-sub">Choose how the center workspace is organized.</div>
             </div>
           </div>
-          <div class="distribution" id="textSignalsDistribution"></div>
-        </article>
 
-        <article class="panel analytics-card span-3">
-          <div class="section-head">
+          <div class="segment-list" id="viewTabs">
+            <button type="button" class="segment-btn active" data-view="overview">
+              <span>Overview</span>
+              <span>⌂</span>
+            </button>
+            <button type="button" class="segment-btn" data-view="workflow">
+              <span>Workflow</span>
+              <span>⇄</span>
+            </button>
+            <button type="button" class="segment-btn" data-view="signals">
+              <span>Signals</span>
+              <span>✦</span>
+            </button>
+            <button type="button" class="segment-btn" data-view="quality">
+              <span>Data Quality</span>
+              <span>✓</span>
+            </button>
+          </div>
+        </section>
+
+        <section class="panel panel-block">
+          <div class="panel-head">
             <div>
-              <h3>Executive Insights</h3>
-              <div class="section-sub">High-level findings derived automatically from the current visible dataset.</div>
+              <h3>Quick Metrics</h3>
+              <div class="panel-sub">Fast read of the current filtered dataset.</div>
             </div>
           </div>
-          <div class="insight-list" id="executiveInsights"></div>
-        </article>
-      </section>
+          <div class="micro-stack" id="leftQuickMetrics"></div>
+        </section>
 
-      <section class="panel table-panel">
-        <div class="section-head">
-          <div>
-            <h3>Submitted Issue Details</h3>
-            <div class="section-sub">Click a row to select it. Click Edit to open the full issue popup.</div>
+        <section class="panel panel-block">
+          <div class="panel-head">
+            <div>
+              <h3>Status Shortcuts</h3>
+              <div class="panel-sub">Jump to a status-focused slice.</div>
+            </div>
           </div>
-          <div style="display:flex; gap:8px; flex-wrap:wrap;">
-            <div class="pill" id="tableMetaPill">Sorted by sheet order</div>
-            <button id="exportBtn" type="button">⬇ Export filtered CSV</button>
-          </div>
-        </div>
+          <div class="segment-list" id="quickFilterChips"></div>
+        </section>
+      </aside>
 
-        <div class="table-shell">
+      <main class="main-stack">
+        <section class="panel hero">
+          <div class="hero-top">
+            <div class="hero-title">
+              <h2 id="heroHeadline">Support posture looks stable</h2>
+              <p id="heroNarrative">The workspace will summarize the current queue, identify pressure zones, and point at the biggest operational risks.</p>
+            </div>
+            <div class="pill-row">
+              <div class="pill" id="selectedCountPill">No issue selected</div>
+              <div class="pill" id="tableMetaPill">Sheet order</div>
+              <div class="pill">Last refresh: <span id="lastRefreshPill">—</span></div>
+            </div>
+          </div>
+
+          <div class="hero-grid" id="heroStats"></div>
+        </section>
+
+        <section class="panel view-canvas" id="viewCanvas"></section>
+
+        <section class="panel table-panel">
+          <div class="panel-head">
+            <div>
+              <h3>Issue Explorer</h3>
+              <div class="panel-sub">Single queue view for scan, selection, and editing.</div>
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button type="button" id="exportBtn">⬇ Export CSV</button>
+            </div>
+          </div>
+
           <div class="table-wrap">
             <table>
               <thead>
@@ -1417,7 +1355,7 @@
                   <th>Escalation</th>
                   <th>Ticket</th>
                   <th>Age</th>
-                  <th>Closure Date</th>
+                  <th>Closure</th>
                   <th>Action</th>
                 </tr>
               </thead>
@@ -1428,13 +1366,40 @@
               </tbody>
             </table>
           </div>
-        </div>
+        </section>
+      </main>
 
-        <div style="margin-top:12px; display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;">
-          <div class="muted">Last refreshed: <span id="lastRefreshPill">—</span></div>
-          <div class="muted">Analytics cards and the queue follow the same active filters.</div>
-        </div>
-      </section>
+      <aside class="insight-rail">
+        <section class="panel panel-block">
+          <div class="panel-head">
+            <div>
+              <h3>Focused Issue</h3>
+              <div class="panel-sub">Selection snapshot and edit entry point.</div>
+            </div>
+          </div>
+          <div class="readonly-box" id="focusedIssuePanel">No issue selected yet.</div>
+        </section>
+
+        <section class="panel panel-block">
+          <div class="panel-head">
+            <div>
+              <h3>Operational Alerts</h3>
+              <div class="panel-sub">Backlog and workflow warnings generated from the current view.</div>
+            </div>
+          </div>
+          <div class="alert-list" id="alertPanel"></div>
+        </section>
+
+        <section class="panel panel-block">
+          <div class="panel-head">
+            <div>
+              <h3>Health Snapshot</h3>
+              <div class="panel-sub">Data hygiene and process discipline at a glance.</div>
+            </div>
+          </div>
+          <div class="compact-stat-grid" id="healthMiniStats"></div>
+        </section>
+      </aside>
     </div>
   </div>
 
@@ -1498,13 +1463,6 @@
         'High': { bg: '#ffedd5', text: '#c2410c' },
         'Medium': { bg: '#fef3c7', text: '#b45309' },
         'Low': { bg: '#dcfce7', text: '#15803d' }
-      },
-
-      PRIORITY_RING_COLORS: {
-        'Critical': '#dc2626',
-        'High': '#ea580c',
-        'Medium': '#d97706',
-        'Low': '#16a34a'
       },
 
       PRIORITY_ORDER: {
@@ -1579,18 +1537,10 @@
         initialAssessment: ['initialAssessment', 'Initial assessment', 'initial_assessment'],
         rootCauseType: ['rootCauseType', 'Root cause type', 'root_cause_type'],
         internalNotes: ['internalNotes', 'Internal notes', 'internal_notes'],
-        escalationRequired: [
-          'escalationRequired',
-          'Escalation required?',
-          'escalation_required'
-        ],
+        escalationRequired: ['escalationRequired', 'Escalation required?', 'escalation_required'],
         developmentTicket: ['developmentTicket', 'Development ticket', 'development_ticket'],
         finalStatus: ['finalStatus', 'Final status', 'final_status'],
-        resolutionClosureDate: [
-          'resolutionClosureDate',
-          'Resolution / Closure date',
-          'resolution_closure_date'
-        ],
+        resolutionClosureDate: ['resolutionClosureDate', 'Resolution / Closure date', 'resolution_closure_date'],
         wasCsInformed: ['wasCsInformed', 'Was CS informed?', 'was_cs_informed']
       }
     };
@@ -1607,6 +1557,7 @@
       pendingOps: 0,
       isSaving: false,
       modalOpen: false,
+      activeView: 'overview',
       activeMatrix: 'priorityStatus'
     };
 
@@ -1628,44 +1579,34 @@
       els.loadingOverlay = document.getElementById('loadingOverlay');
       els.toast = document.getElementById('toast');
 
-      els.summaryCards = document.getElementById('summaryCards');
-      els.filteredSummaryPill = document.getElementById('filteredSummaryPill');
-      els.filteredOverviewStats = document.getElementById('filteredOverviewStats');
-      els.statusDistribution = document.getElementById('statusDistribution');
-      els.priorityRingWrap = document.getElementById('priorityRingWrap');
-      els.priorityLegend = document.getElementById('priorityLegend');
-      els.agingDistribution = document.getElementById('agingDistribution');
-      els.moduleDistribution = document.getElementById('moduleDistribution');
-      els.companyDistribution = document.getElementById('companyDistribution');
-
-      els.workflowStats = document.getElementById('workflowStats');
-      els.dataQualityDistribution = document.getElementById('dataQualityDistribution');
-      els.channelSourceDistribution = document.getElementById('channelSourceDistribution');
-      els.environmentDistribution = document.getElementById('environmentDistribution');
-      els.assessmentDistribution = document.getElementById('assessmentDistribution');
-      els.rootCauseDistribution = document.getElementById('rootCauseDistribution');
-      els.crossFieldMatrix = document.getElementById('crossFieldMatrix');
-      els.matrixTitlePill = document.getElementById('matrixTitlePill');
-      els.matrixSelect = document.getElementById('matrixSelect');
-      els.textSignalsDistribution = document.getElementById('textSignalsDistribution');
-      els.executiveInsights = document.getElementById('executiveInsights');
-
-      els.lastRefreshPill = document.getElementById('lastRefreshPill');
-      els.issuesCountPill = document.getElementById('issuesCountPill');
-      els.selectedCountPill = document.getElementById('selectedCountPill');
-      els.tableMetaPill = document.getElementById('tableMetaPill');
-
       els.searchInput = document.getElementById('searchInput');
       els.statusFilter = document.getElementById('statusFilter');
       els.priorityFilter = document.getElementById('priorityFilter');
       els.sortSelect = document.getElementById('sortSelect');
+      els.matrixSelect = document.getElementById('matrixSelect');
       els.quickFilterChips = document.getElementById('quickFilterChips');
+      els.viewTabs = document.getElementById('viewTabs');
 
       els.refreshBtn = document.getElementById('refreshBtn');
       els.refreshBtnTop = document.getElementById('refreshBtnTop');
       els.exportBtn = document.getElementById('exportBtn');
       els.themeToggleBtn = document.getElementById('themeToggleBtn');
       els.clearBtnTop = document.getElementById('clearBtnTop');
+
+      els.issuesCountPill = document.getElementById('issuesCountPill');
+      els.selectedCountPill = document.getElementById('selectedCountPill');
+      els.tableMetaPill = document.getElementById('tableMetaPill');
+      els.lastRefreshPill = document.getElementById('lastRefreshPill');
+
+      els.heroHeadline = document.getElementById('heroHeadline');
+      els.heroNarrative = document.getElementById('heroNarrative');
+      els.heroStats = document.getElementById('heroStats');
+      els.leftQuickMetrics = document.getElementById('leftQuickMetrics');
+      els.viewCanvas = document.getElementById('viewCanvas');
+
+      els.focusedIssuePanel = document.getElementById('focusedIssuePanel');
+      els.alertPanel = document.getElementById('alertPanel');
+      els.healthMiniStats = document.getElementById('healthMiniStats');
 
       els.issuesTable = document.getElementById('issuesTable');
 
@@ -1750,8 +1691,9 @@
 
       els.statusFilter.addEventListener('change', loadDashboard);
       els.priorityFilter.addEventListener('change', loadDashboard);
+
       els.sortSelect.addEventListener('change', () => {
-        localStorage.setItem('supportDashboardSort', els.sortSelect.value);
+        localStorage.setItem('supportCommandSort', els.sortSelect.value);
         renderDashboard();
       });
 
@@ -1765,6 +1707,14 @@
         if (!button) return;
         els.statusFilter.value = button.dataset.status || '';
         loadDashboard();
+      });
+
+      els.viewTabs.addEventListener('click', (event) => {
+        const button = event.target.closest('button[data-view]');
+        if (!button) return;
+        state.activeView = button.dataset.view;
+        syncViewButtons();
+        renderDashboard();
       });
 
       els.issuesTable.addEventListener('click', (event) => {
@@ -1808,7 +1758,7 @@
     }
 
     function restoreSavedSort() {
-      const savedSort = localStorage.getItem('supportDashboardSort');
+      const savedSort = localStorage.getItem('supportCommandSort');
       if (savedSort && CONFIG.SORT_OPTIONS.some(option => option.value === savedSort)) {
         els.sortSelect.value = savedSort;
       } else {
@@ -1820,13 +1770,21 @@
       els.searchInput.value = '';
       els.statusFilter.value = '';
       els.priorityFilter.value = '';
-      els.sortSelect.value = localStorage.getItem('supportDashboardSort') || 'sheet';
+      els.sortSelect.value = localStorage.getItem('supportCommandSort') || 'sheet';
       els.matrixSelect.value = state.activeMatrix;
+      state.activeView = 'overview';
+      syncViewButtons();
       clearSelection({ preserveMessage: true, closeModal: true });
 
       if (!preserveLoad) {
         loadDashboard();
       }
+    }
+
+    function syncViewButtons() {
+      els.viewTabs.querySelectorAll('[data-view]').forEach(button => {
+        button.classList.toggle('active', button.dataset.view === state.activeView);
+      });
     }
 
     async function apiGet(action, params = {}, signal) {
@@ -1990,26 +1948,14 @@
     }
 
     function renderDashboard() {
-      renderGlobalCards(state.summary);
-      const metrics = deriveAdvancedMetrics(state.issues);
+      const metrics = deriveIntelligenceMetrics(state.issues);
 
-      renderFilteredOverview(metrics);
-      renderStatusDistribution(metrics);
-      renderPriorityRing(metrics);
-      renderAgingDistribution(metrics);
-      renderModuleDistribution(metrics);
-      renderCompanyDistribution(metrics);
-
-      renderWorkflowStats(metrics);
-      renderDataQuality(metrics);
-      renderChannelSource(metrics);
-      renderEnvironmentInsights(metrics);
-      renderAssessmentDistribution(metrics);
-      renderRootCauseDistribution(metrics);
-      renderCrossFieldMatrix(metrics, state.activeMatrix);
-      renderTextSignals(metrics);
-      renderExecutiveInsights(metrics);
-
+      renderHero(metrics);
+      renderLeftQuickMetrics(metrics);
+      renderMainView(metrics);
+      renderAlertPanel(metrics);
+      renderHealthMiniStats(metrics);
+      renderFocusedIssuePanel();
       renderQuickFilterChips();
       renderTable(getRenderableIssues());
       updatePills();
@@ -2017,29 +1963,7 @@
       syncSelection();
     }
 
-    function renderGlobalCards(summary) {
-      const cards = [
-        { label: 'Total Issues', value: summary.total || 0, hint: 'All recorded issues', icon: '🗂', tone: 'primary' },
-        { label: 'Open / Active', value: summary.open || 0, hint: 'Needs follow-up', icon: '🟡', tone: 'warning' },
-        { label: 'Resolved / Closed', value: summary.resolvedClosed || 0, hint: 'Completed cases', icon: '✅', tone: 'success' },
-        { label: 'Escalated', value: summary.escalated || 0, hint: 'Sent to development', icon: '🚀', tone: 'purple' },
-        { label: 'High / Critical', value: summary.highCritical || 0, hint: 'Priority focus', icon: '🔥', tone: 'danger' },
-        { label: 'With Ticket', value: summary.withTicket || 0, hint: 'Linked to development', icon: '🎫', tone: 'primary' }
-      ];
-
-      els.summaryCards.innerHTML = cards.map(card => `
-        <article class="kpi-card">
-          <div class="kpi-top">
-            <div class="kpi-label">${escapeHtml(card.label)}</div>
-            <div class="kpi-icon" style="${iconToneStyle(card.tone)}">${escapeHtml(card.icon)}</div>
-          </div>
-          <div class="kpi-value">${escapeHtml(card.value)}</div>
-          <div class="kpi-sub">${escapeHtml(card.hint)}</div>
-        </article>
-      `).join('');
-    }
-
-    function deriveAdvancedMetrics(issues) {
+    function deriveIntelligenceMetrics(issues) {
       const now = new Date();
 
       const metrics = {
@@ -2089,7 +2013,10 @@
           categoryImpact: {},
           moduleRootCause: {},
           channelSource: {}
-        }
+        },
+
+        alerts: [],
+        narrative: ''
       };
 
       const fieldsToTrackCompleteness = [
@@ -2201,9 +2128,7 @@
           else if (ageDays <= 14) metrics.agingCounts['8–14d']++;
           else metrics.agingCounts['15d+']++;
 
-          if (ageDays > metrics.oldestActiveDays) {
-            metrics.oldestActiveDays = ageDays;
-          }
+          if (ageDays > metrics.oldestActiveDays) metrics.oldestActiveDays = ageDays;
 
           if (ageDays > 7 || ((priorityNorm === 'high' || priorityNorm === 'critical') && ageDays > 3)) {
             metrics.slaRisk++;
@@ -2244,53 +2169,115 @@
       metrics.avgResolutionDays = resolvedCount ? roundToOne(totalResolutionDays / resolvedCount) : 0;
       metrics.completionRate = metrics.total ? Math.round((metrics.resolvedClosed / metrics.total) * 100) : 0;
 
+      buildDerivedAlerts(metrics);
+      buildNarrative(metrics);
+
       return metrics;
     }
 
-    function renderFilteredOverview(metrics) {
-      els.filteredSummaryPill.textContent = `${metrics.total} issue${metrics.total === 1 ? '' : 's'} in current view`;
+    function buildDerivedAlerts(metrics) {
+      if (metrics.slaRisk > 0) {
+        metrics.alerts.push({
+          tone: 'tone-red',
+          title: 'SLA pressure',
+          text: `${metrics.slaRisk} active issues are crossing age thresholds and need action.`
+        });
+      }
 
-      const cards = [
+      if (metrics.escalatedNoTicket > 0) {
+        metrics.alerts.push({
+          tone: 'tone-amber',
+          title: 'Escalation hygiene',
+          text: `${metrics.escalatedNoTicket} escalated issues do not have a linked development ticket.`
+        });
+      }
+
+      const unknownRoot = metrics.rootCauseCounts['Unknown'] || 0;
+      if (unknownRoot > 0) {
+        metrics.alerts.push({
+          tone: 'tone-violet',
+          title: 'Classification gap',
+          text: `${unknownRoot} issues still have unknown root cause classification.`
+        });
+      }
+
+      const blankNotes = metrics.dataQuality.internalNotes?.blank || 0;
+      if (blankNotes > 0) {
+        metrics.alerts.push({
+          tone: 'tone-cyan',
+          title: 'Documentation gap',
+          text: `${blankNotes} visible issues have no internal notes recorded.`
+        });
+      }
+
+      if (!metrics.alerts.length) {
+        metrics.alerts.push({
+          tone: 'tone-green',
+          title: 'Queue health',
+          text: 'No major workflow alerts detected in the current filtered view.'
+        });
+      }
+    }
+
+    function buildNarrative(metrics) {
+      const topModule = topEntries(metrics.moduleCounts, 1)[0];
+      const topCompany = topEntries(metrics.companyCounts, 1)[0];
+
+      if (!metrics.total) {
+        metrics.narrative = 'No issues match the current filters. Adjust the controls to populate the workspace.';
+        return;
+      }
+
+      const parts = [
+        `${metrics.active} of ${metrics.total} visible issues are still active.`,
+        metrics.slaRisk ? `${metrics.slaRisk} are entering SLA risk.` : 'No major SLA pressure is currently visible.',
+        topModule ? `The main hotspot is ${topModule[0]}.` : null,
+        topCompany ? `The most affected company is ${topCompany[0]}.` : null
+      ].filter(Boolean);
+
+      metrics.narrative = parts.join(' ');
+    }
+        function renderHero(metrics) {
+      const topModule = topEntries(metrics.moduleCounts, 1)[0];
+      const topRootCause = topEntries(metrics.rootCauseCounts, 1)[0];
+
+      let headline = 'Support posture looks stable';
+      if (metrics.slaRisk > 0) headline = 'Backlog needs intervention';
+      else if (metrics.active > 0 && metrics.highCritical > 0) headline = 'Priority queue requires attention';
+      else if (metrics.total === 0) headline = 'No matching issues in view';
+
+      els.heroHeadline.textContent = headline;
+      els.heroNarrative.textContent = metrics.narrative;
+
+      const heroCards = [
         {
-          label: 'Completion Rate',
+          label: 'Visible Issues',
+          value: metrics.total,
+          sub: 'All issues matching the current filters',
+          tone: 'var(--blue-soft)'
+        },
+        {
+          label: 'Active Backlog',
+          value: metrics.active,
+          sub: 'Open, in progress, waiting, or escalated',
+          tone: 'var(--amber-soft)'
+        },
+        {
+          label: 'Completion',
           value: `${metrics.completionRate}%`,
           sub: `${metrics.resolvedClosed} resolved or closed`,
-          bg: 'var(--success-soft)'
+          tone: 'var(--green-soft)'
         },
         {
-          label: 'Active Now',
-          value: metrics.active,
-          sub: 'Open, in progress, waiting, escalated',
-          bg: 'var(--primary-soft)'
-        },
-        {
-          label: 'Avg Age',
-          value: `${metrics.avgAgeDays}d`,
-          sub: 'Average issue age in current view',
-          bg: 'var(--panel-soft)'
-        },
-        {
-          label: 'Oldest Active',
-          value: `${metrics.oldestActiveDays}d`,
-          sub: 'Longest-running active issue',
-          bg: 'var(--warning-soft)'
-        },
-        {
-          label: 'SLA Risk',
+          label: 'SLA Pressure',
           value: metrics.slaRisk,
-          sub: 'Older active issues needing attention',
-          bg: 'var(--danger-soft)'
-        },
-        {
-          label: 'Escalated w/o Ticket',
-          value: metrics.escalatedNoTicket,
-          sub: 'Escalated items missing dev reference',
-          bg: 'var(--purple-soft)'
+          sub: `Oldest active issue: ${metrics.oldestActiveDays}d`,
+          tone: metrics.slaRisk ? 'var(--red-soft)' : 'var(--panel-soft)'
         }
       ];
 
-      els.filteredOverviewStats.innerHTML = cards.map(card => `
-        <div class="mini-stat" style="background:${card.bg}">
+      els.heroStats.innerHTML = heroCards.map(card => `
+        <div class="hero-stat" style="background:${card.tone}">
           <div class="label">${escapeHtml(card.label)}</div>
           <div class="value">${escapeHtml(card.value)}</div>
           <div class="sub">${escapeHtml(card.sub)}</div>
@@ -2298,159 +2285,331 @@
       `).join('');
     }
 
-    function renderStatusDistribution(metrics) {
-      renderSimpleDistribution(
-        els.statusDistribution,
-        CONFIG.STATUS_OPTIONS
-          .filter(label => Number(metrics.statusCounts[label] || 0) > 0)
-          .map(label => ({
-            label,
-            value: metrics.statusCounts[label] || 0,
-            color: getStatusTheme(label).fill
-          })),
-        metrics.total,
-        'No status data'
-      );
-    }
+    function renderLeftQuickMetrics(metrics) {
+      const ticketCoverage = metrics.total ? Math.round((metrics.withTickets / metrics.total) * 100) : 0;
+      const rootKnown = metrics.total
+        ? Math.round(((metrics.total - (metrics.rootCauseCounts['Unknown'] || 0)) / metrics.total) * 100)
+        : 0;
 
-    function renderPriorityRing(metrics) {
-      const priorities = ['Critical', 'High', 'Medium', 'Low'];
-      const total = priorities.reduce((sum, key) => sum + Number(metrics.priorityCounts[key] || 0), 0);
+      const items = [
+        {
+          label: 'Average Age',
+          value: `${metrics.avgAgeDays}d`,
+          sub: 'Average age of visible issues'
+        },
+        {
+          label: 'Escalation Rate',
+          value: `${metrics.total ? Math.round((metrics.escalated / metrics.total) * 100) : 0}%`,
+          sub: `${metrics.escalated} escalated items`
+        },
+        {
+          label: 'Ticket Coverage',
+          value: `${ticketCoverage}%`,
+          sub: `${metrics.withTickets} linked to development`
+        },
+        {
+          label: 'Known Root Cause',
+          value: `${rootKnown}%`,
+          sub: 'Issues with cause classification'
+        }
+      ];
 
-      if (!total) {
-        els.priorityRingWrap.innerHTML = `
-          <div class="ring" style="background:conic-gradient(#cbd5e1 0 100%);">
-            <div class="ring-center">
-              <div class="big">0</div>
-              <div class="small">issues</div>
-            </div>
-          </div>
-        `;
-        els.priorityLegend.innerHTML = `<div class="muted">No priority data in the current view.</div>`;
-        return;
-      }
-
-      let cumulative = 0;
-      const slices = priorities
-        .filter(key => Number(metrics.priorityCounts[key] || 0) > 0)
-        .map(key => {
-          const value = Number(metrics.priorityCounts[key] || 0);
-          const size = (value / total) * 100;
-          const start = cumulative;
-          cumulative += size;
-          return `${CONFIG.PRIORITY_RING_COLORS[key]} ${start}% ${cumulative}%`;
-        });
-
-      els.priorityRingWrap.innerHTML = `
-        <div class="ring" style="background:conic-gradient(${slices.join(', ')});">
-          <div class="ring-center">
-            <div class="big">${total}</div>
-            <div class="small">prioritized</div>
-          </div>
-        </div>
-      `;
-
-      els.priorityLegend.innerHTML = priorities.map(key => `
-        <div class="legend-row">
-          <span class="legend-dot" style="background:${CONFIG.PRIORITY_RING_COLORS[key]}"></span>
-          <span class="legend-label">${escapeHtml(key)}</span>
-          <span class="legend-value">${escapeHtml(metrics.priorityCounts[key] || 0)}</span>
+      els.leftQuickMetrics.innerHTML = items.map(item => `
+        <div class="micro-card">
+          <div class="micro-label">${escapeHtml(item.label)}</div>
+          <div class="micro-value">${escapeHtml(item.value)}</div>
+          <div class="micro-sub">${escapeHtml(item.sub)}</div>
         </div>
       `).join('');
     }
 
-    function renderAgingDistribution(metrics) {
-      const order = ['0–2d', '3–7d', '8–14d', '15d+'];
-      renderSimpleDistribution(
-        els.agingDistribution,
-        order.map(label => ({
-          label,
-          value: metrics.agingCounts[label] || 0,
-          color: label === '15d+' ? '#dc2626' : label === '8–14d' ? '#ea580c' : label === '3–7d' ? '#d97706' : '#16a34a'
-        })),
-        metrics.active || 1,
-        'No active issues'
-      );
+    function renderMainView(metrics) {
+      switch (state.activeView) {
+        case 'workflow':
+          renderWorkflowView(metrics);
+          break;
+        case 'signals':
+          renderSignalsView(metrics);
+          break;
+        case 'quality':
+          renderQualityView(metrics);
+          break;
+        case 'overview':
+        default:
+          renderOverviewView(metrics);
+          break;
+      }
     }
 
-    function renderModuleDistribution(metrics) {
-      const rows = topEntries(metrics.moduleCounts, 5).map(([label, value]) => ({
+    function renderOverviewView(metrics) {
+      const topCategory = topEntries(metrics.issueCategoryCounts, 6).map(([label, value]) => ({
         label,
         value,
         color: '#2563eb'
       }));
 
-      renderSimpleDistribution(
-        els.moduleDistribution,
-        rows,
-        metrics.total || 1,
-        'No module data'
-      );
-    }
-
-    function renderCompanyDistribution(metrics) {
-      const rows = topEntries(metrics.companyCounts, 5).map(([label, value]) => ({
+      const topModules = topEntries(metrics.moduleCounts, 6).map(([label, value]) => ({
         label,
         value,
         color: '#7c3aed'
       }));
 
-      renderSimpleDistribution(
-        els.companyDistribution,
-        rows,
-        metrics.total || 1,
-        'No company data'
-      );
+      const topCompanies = topEntries(metrics.companyCounts, 6).map(([label, value]) => ({
+        label,
+        value,
+        color: '#0891b2'
+      }));
+
+      els.viewCanvas.innerHTML = `
+        <div class="view-grid">
+          <section class="card span-4">
+            <div class="card-head">
+              <div>
+                <h3 class="card-title">Queue Snapshot</h3>
+                <div class="card-sub">Immediate operating picture for the filtered workload.</div>
+              </div>
+            </div>
+            <div class="summary-grid">
+              ${renderSummaryBoxes([
+                ['High / Critical', metrics.highCritical, 'Priority issues currently visible'],
+                ['With Tickets', metrics.withTickets, 'Issues linked to development'],
+                ['Escalated', metrics.escalated, 'Escalated items in current view'],
+                ['Avg Resolution', `${metrics.avgResolutionDays}d`, 'Average closure time']
+              ])}
+            </div>
+          </section>
+
+          <section class="card span-4">
+            <div class="card-head">
+              <div>
+                <h3 class="card-title">Top Categories</h3>
+                <div class="card-sub">Most common issue categories in the current slice.</div>
+              </div>
+            </div>
+            ${renderBarList(topCategory, metrics.total || 1, 'No category data')}
+          </section>
+
+          <section class="card span-4">
+            <div class="card-head">
+              <div>
+                <h3 class="card-title">Aging Structure</h3>
+                <div class="card-sub">Distribution of active issues by age bucket.</div>
+              </div>
+            </div>
+            ${renderBarList([
+              { label: '0–2d', value: metrics.agingCounts['0–2d'] || 0, color: '#16a34a' },
+              { label: '3–7d', value: metrics.agingCounts['3–7d'] || 0, color: '#d97706' },
+              { label: '8–14d', value: metrics.agingCounts['8–14d'] || 0, color: '#ea580c' },
+              { label: '15d+', value: metrics.agingCounts['15d+'] || 0, color: '#dc2626' }
+            ], metrics.active || 1, 'No active issues')}
+          </section>
+
+          <section class="card span-6">
+            <div class="card-head">
+              <div>
+                <h3 class="card-title">Module Hotspots</h3>
+                <div class="card-sub">Where the current issue concentration sits.</div>
+              </div>
+            </div>
+            ${renderBarList(topModules, metrics.total || 1, 'No module data')}
+          </section>
+
+          <section class="card span-6">
+            <div class="card-head">
+              <div>
+                <h3 class="card-title">Most Impacted Companies</h3>
+                <div class="card-sub">Organizations with the highest visible issue load.</div>
+              </div>
+            </div>
+            ${renderBarList(topCompanies, metrics.total || 1, 'No company data')}
+          </section>
+
+          <section class="card span-12">
+            <div class="card-head">
+              <div>
+                <h3 class="card-title">Cross-Field Matrix</h3>
+                <div class="card-sub">Current matrix selection from the left control rail.</div>
+              </div>
+            </div>
+            ${renderHeatmap(metrics, state.activeMatrix)}
+          </section>
+        </div>
+      `;
     }
 
-    function renderWorkflowStats(metrics) {
-      const csYes = metrics.csInformedCounts['Yes'] || 0;
-      const unknownRootCause = metrics.rootCauseCounts['Unknown'] || 0;
+    function renderWorkflowView(metrics) {
+      const assessmentRows = topEntries(metrics.assessmentCounts, 7).map(([label, value]) => ({
+        label,
+        value,
+        color: '#2563eb'
+      }));
 
-      const cards = [
-        {
-          label: 'Ticket Coverage',
-          value: `${metrics.total ? Math.round((metrics.withTickets / metrics.total) * 100) : 0}%`,
-          sub: `${metrics.withTickets} / ${metrics.total} issues linked to dev`
-        },
-        {
-          label: 'Escalation Rate',
-          value: `${metrics.total ? Math.round((metrics.escalated / metrics.total) * 100) : 0}%`,
-          sub: `${metrics.escalated} escalated issues`
-        },
-        {
-          label: 'CS Informed',
-          value: `${metrics.total ? Math.round((csYes / metrics.total) * 100) : 0}%`,
-          sub: `${csYes} issues marked as informed`
-        },
-        {
-          label: 'Avg Resolution Time',
-          value: `${metrics.avgResolutionDays}d`,
-          sub: 'Mean time from request to closure'
-        },
-        {
-          label: 'Unknown Root Cause',
-          value: unknownRootCause,
-          sub: 'Issues missing clear cause classification'
-        },
-        {
-          label: 'Escalated w/o Ticket',
-          value: metrics.escalatedNoTicket,
-          sub: 'Escalated items with no dev reference'
-        }
+      const rootCauseRows = topEntries(metrics.rootCauseCounts, 7).map(([label, value]) => ({
+        label,
+        value,
+        color: '#7c3aed'
+      }));
+
+      const workflowSignals = [
+        `Ticket coverage is ${metrics.total ? Math.round((metrics.withTickets / metrics.total) * 100) : 0}% across the current queue.`,
+        `${metrics.escalatedNoTicket} escalated items are missing development references.`,
+        `${metrics.rootCauseCounts['Unknown'] || 0} issues still have unknown root cause.`,
+        `${metrics.csInformedCounts['Yes'] || 0} issues are marked as CS informed.`,
+        `Average resolution time is ${metrics.avgResolutionDays} days.`
       ];
 
-      els.workflowStats.innerHTML = cards.map(card => `
-        <div class="mini-stat">
-          <div class="label">${escapeHtml(card.label)}</div>
-          <div class="value">${escapeHtml(card.value)}</div>
-          <div class="sub">${escapeHtml(card.sub)}</div>
+      els.viewCanvas.innerHTML = `
+        <div class="view-grid">
+          <section class="card span-4">
+            <div class="card-head">
+              <div>
+                <h3 class="card-title">Workflow KPIs</h3>
+                <div class="card-sub">Process outcome and escalation discipline.</div>
+              </div>
+            </div>
+            <div class="summary-grid">
+              ${renderSummaryBoxes([
+                ['Escalated', metrics.escalated, 'Items requiring deeper support / dev'],
+                ['No Ticket', metrics.escalatedNoTicket, 'Escalations missing ticket'],
+                ['CS Informed', metrics.csInformedCounts['Yes'] || 0, 'Communication recorded'],
+                ['Unknown Cause', metrics.rootCauseCounts['Unknown'] || 0, 'Needs deeper classification']
+              ])}
+            </div>
+          </section>
+
+          <section class="card span-4">
+            <div class="card-head">
+              <div>
+                <h3 class="card-title">Initial Assessment</h3>
+                <div class="card-sub">How the team is classifying new work.</div>
+              </div>
+            </div>
+            ${renderBarList(assessmentRows, metrics.total || 1, 'No assessment data')}
+          </section>
+
+          <section class="card span-4">
+            <div class="card-head">
+              <div>
+                <h3 class="card-title">Root Cause Mix</h3>
+                <div class="card-sub">Cause distribution for the current queue.</div>
+              </div>
+            </div>
+            ${renderBarList(rootCauseRows, metrics.total || 1, 'No root cause data')}
+          </section>
+
+          <section class="card span-7">
+            <div class="card-head">
+              <div>
+                <h3 class="card-title">Module × Root Cause</h3>
+                <div class="card-sub">Pinpoint where problem types are concentrating.</div>
+              </div>
+            </div>
+            ${renderHeatmap(metrics, 'moduleRootCause')}
+          </section>
+
+          <section class="card span-5">
+            <div class="card-head">
+              <div>
+                <h3 class="card-title">Workflow Signals</h3>
+                <div class="card-sub">Plain-language readout for the current process state.</div>
+              </div>
+            </div>
+            <div class="signal-list">
+              ${workflowSignals.map(text => `<div class="signal-item"><strong>Signal:</strong> ${escapeHtml(text)}</div>`).join('')}
+            </div>
+          </section>
         </div>
-      `).join('');
+      `;
     }
 
-    function renderDataQuality(metrics) {
-      const rows = Object.entries(metrics.dataQuality)
+    function renderSignalsView(metrics) {
+      const topTerms = topEntries(metrics.textTerms, 12).map(([label, value]) => ({
+        label,
+        value,
+        color: '#0891b2'
+      }));
+
+      const channelSourceRows = topEntries(
+        {
+          ...prefixKeys(metrics.channelCounts, 'Channel'),
+          ...prefixKeys(metrics.sourceCounts, 'Source')
+        },
+        10
+      ).map(([label, value]) => ({
+        label,
+        value,
+        color: label.startsWith('Channel:') ? '#2563eb' : '#7c3aed'
+      }));
+
+      const environmentRows = topEntries(
+        {
+          ...prefixKeys(metrics.environmentCounts, 'Env'),
+          ...prefixKeys(metrics.browserOsCounts, 'Client')
+        },
+        10
+      ).map(([label, value]) => ({
+        label,
+        value,
+        color: label.startsWith('Env:') ? '#16a34a' : '#d97706'
+      }));
+
+      els.viewCanvas.innerHTML = `
+        <div class="view-grid">
+          <section class="card span-4">
+            <div class="card-head">
+              <div>
+                <h3 class="card-title">Text Signals</h3>
+                <div class="card-sub">Recurring words from titles, descriptions, errors, and notes.</div>
+              </div>
+            </div>
+            ${renderBarList(topTerms, sumTopValues(topTerms) || 1, 'No text signals')}
+          </section>
+
+          <section class="card span-4">
+            <div class="card-head">
+              <div>
+                <h3 class="card-title">Channel & Source Mix</h3>
+                <div class="card-sub">Where issues come from and how they are reported.</div>
+              </div>
+            </div>
+            ${renderBarList(channelSourceRows, metrics.total || 1, 'No channel/source data')}
+          </section>
+
+          <section class="card span-4">
+            <div class="card-head">
+              <div>
+                <h3 class="card-title">Environment Footprint</h3>
+                <div class="card-sub">Environment and client context across the queue.</div>
+              </div>
+            </div>
+            ${renderBarList(environmentRows, metrics.total || 1, 'No environment data')}
+          </section>
+
+          <section class="card span-6">
+            <div class="card-head">
+              <div>
+                <h3 class="card-title">Category × Impact</h3>
+                <div class="card-sub">Which issue types are carrying the most operational impact.</div>
+              </div>
+            </div>
+            ${renderHeatmap(metrics, 'categoryImpact')}
+          </section>
+
+          <section class="card span-6">
+            <div class="card-head">
+              <div>
+                <h3 class="card-title">Channel × Source</h3>
+                <div class="card-sub">How the support funnel is behaving across intake paths.</div>
+              </div>
+            </div>
+            ${renderHeatmap(metrics, 'channelSource')}
+          </section>
+        </div>
+      `;
+    }
+
+    function renderQualityView(metrics) {
+      const qualityRows = Object.entries(metrics.dataQuality)
         .map(([field, stats]) => ({
           label: prettyFieldName(field),
           value: stats.filled,
@@ -2458,83 +2617,173 @@
         }))
         .sort((a, b) => b.pct - a.pct);
 
-      if (!rows.length) {
-        els.dataQualityDistribution.innerHTML = `<div class="muted">No data quality stats.</div>`;
-        return;
-      }
+      const weakest = [...qualityRows].sort((a, b) => a.pct - b.pct).slice(0, 6);
+      const strongest = qualityRows.slice(0, 6);
 
-      els.dataQualityDistribution.innerHTML = rows.map(row => `
-        <div class="dist-row">
-          <div class="dist-label">${escapeHtml(row.label)}</div>
-          <div class="dist-bar">
-            <div class="dist-fill" style="width:${row.pct}%; background:#2563eb;"></div>
-          </div>
-          <div class="dist-value">${row.pct}%</div>
+      const dataSignals = [
+        `Internal notes completeness is ${getFieldPct(metrics, 'internalNotes')}%.`,
+        `Development ticket coverage is ${getFieldPct(metrics, 'developmentTicket')}%.`,
+        `Root cause completeness is ${getFieldPct(metrics, 'rootCauseType')}%.`,
+        `Error message coverage is ${getFieldPct(metrics, 'errorMessage')}%.`,
+        `Attachment coverage is ${getFieldPct(metrics, 'attachmentUpload')}%.`
+      ];
+
+      els.viewCanvas.innerHTML = `
+        <div class="view-grid">
+          <section class="card span-7">
+            <div class="card-head">
+              <div>
+                <h3 class="card-title">Field Completeness</h3>
+                <div class="card-sub">Coverage across every tracked submission and workflow field.</div>
+              </div>
+            </div>
+            <div class="bar-list">
+              ${qualityRows.length ? qualityRows.map(row => `
+                <div class="bar-row">
+                  <div class="bar-label">${escapeHtml(row.label)}</div>
+                  <div class="bar-track">
+                    <div class="bar-fill" style="width:${row.pct}%; background:#2563eb;"></div>
+                  </div>
+                  <div class="bar-value">${row.pct}%</div>
+                </div>
+              `).join('') : renderEmptyBlock('No data quality stats')}
+            </div>
+          </section>
+
+          <section class="card span-5">
+            <div class="card-head">
+              <div>
+                <h3 class="card-title">Weakest Fields</h3>
+                <div class="card-sub">Areas where reporting quality is currently weakest.</div>
+              </div>
+            </div>
+            <div class="signal-list">
+              ${weakest.length ? weakest.map(row => `
+                <div class="signal-item"><strong>${escapeHtml(row.label)}:</strong> ${row.pct}% filled</div>
+              `).join('') : '<div class="muted">No data.</div>'}
+            </div>
+          </section>
+
+          <section class="card span-6">
+            <div class="card-head">
+              <div>
+                <h3 class="card-title">Strongest Fields</h3>
+                <div class="card-sub">Fields that are being captured consistently.</div>
+              </div>
+            </div>
+            <div class="signal-list">
+              ${strongest.length ? strongest.map(row => `
+                <div class="signal-item"><strong>${escapeHtml(row.label)}:</strong> ${row.pct}% filled</div>
+              `).join('') : '<div class="muted">No data.</div>'}
+            </div>
+          </section>
+
+          <section class="card span-6">
+            <div class="card-head">
+              <div>
+                <h3 class="card-title">Quality Signals</h3>
+                <div class="card-sub">Operational meaning of the current completeness levels.</div>
+              </div>
+            </div>
+            <div class="signal-list">
+              ${dataSignals.map(text => `<div class="signal-item"><strong>Signal:</strong> ${escapeHtml(text)}</div>`).join('')}
+            </div>
+          </section>
+        </div>
+      `;
+    }
+
+    function renderAlertPanel(metrics) {
+      els.alertPanel.innerHTML = metrics.alerts.map(alert => `
+        <div class="alert-item ${alert.tone}">
+          <strong>${escapeHtml(alert.title)}:</strong> ${escapeHtml(alert.text)}
         </div>
       `).join('');
     }
 
-    function renderChannelSource(metrics) {
-      const merged = {};
-      Object.entries(metrics.channelCounts).forEach(([k, v]) => merged[`Channel: ${k}`] = v);
-      Object.entries(metrics.sourceCounts).forEach(([k, v]) => merged[`Source: ${k}`] = v);
+    function renderHealthMiniStats(metrics) {
+      const notePct = getFieldPct(metrics, 'internalNotes');
+      const ticketPct = getFieldPct(metrics, 'developmentTicket');
+      const causePct = getFieldPct(metrics, 'rootCauseType');
+      const csPct = getFieldPct(metrics, 'wasCsInformed');
 
-      renderSimpleDistribution(
-        els.channelSourceDistribution,
-        topEntries(merged, 8).map(([label, value]) => ({
-          label,
-          value,
-          color: label.startsWith('Channel:') ? '#2563eb' : '#7c3aed'
-        })),
-        metrics.total || 1,
-        'No channel/source data'
-      );
+      const cards = [
+        ['Notes', `${notePct}%`, 'Internal notes filled'],
+        ['Tickets', `${ticketPct}%`, 'Development ticket coverage'],
+        ['Root Cause', `${causePct}%`, 'Cause classification coverage'],
+        ['CS Informed', `${csPct}%`, 'Communication tracking']
+      ];
+
+      els.healthMiniStats.innerHTML = cards.map(card => `
+        <div class="compact-stat">
+          <div class="k">${escapeHtml(card[0])}</div>
+          <div class="v">${escapeHtml(card[1])}</div>
+          <div class="s">${escapeHtml(card[2])}</div>
+        </div>
+      `).join('');
     }
 
-    function renderEnvironmentInsights(metrics) {
-      const merged = {};
-      topEntries(metrics.environmentCounts, 4).forEach(([k, v]) => merged[`Env: ${k}`] = v);
-      topEntries(metrics.browserOsCounts, 4).forEach(([k, v]) => merged[`Client: ${k}`] = v);
+    function renderFocusedIssuePanel() {
+      const issue = getSelectedIssue();
+      if (!issue) {
+        els.focusedIssuePanel.innerHTML = 'No issue selected yet.';
+        return;
+      }
 
-      renderSimpleDistribution(
-        els.environmentDistribution,
-        Object.entries(merged).map(([label, value]) => ({
-          label,
-          value,
-          color: label.startsWith('Env:') ? '#16a34a' : '#d97706'
-        })),
-        metrics.total || 1,
-        'No environment data'
-      );
+      const title = issueVal(issue, 'issueTitle') || 'Untitled issue';
+      const company = issueVal(issue, 'companyName') || '—';
+      const module = issueVal(issue, 'productModuleAffected') || '—';
+      const priority = issueVal(issue, 'priorityLevel') || '—';
+      const status = issueVal(issue, 'finalStatus') || 'Open';
+      const ticket = issueVal(issue, 'developmentTicket') || '—';
+      const age = `${getIssueAgeDays(issue, new Date())}d`;
+
+      els.focusedIssuePanel.innerHTML = `
+        <strong>${escapeHtml(title)}</strong><br>
+        <span class="muted">Company:</span> ${escapeHtml(company)}<br>
+        <span class="muted">Module:</span> ${escapeHtml(module)}<br>
+        <span class="muted">Priority:</span> ${escapeHtml(priority)}<br>
+        <span class="muted">Status:</span> ${escapeHtml(status)}<br>
+        <span class="muted">Age:</span> ${escapeHtml(age)}<br>
+        <span class="muted">Ticket:</span> ${escapeHtml(ticket)}
+      `;
     }
 
-    function renderAssessmentDistribution(metrics) {
-      renderSimpleDistribution(
-        els.assessmentDistribution,
-        topEntries(metrics.assessmentCounts, 7).map(([label, value]) => ({
-          label,
-          value,
-          color: '#0ea5e9'
-        })),
-        metrics.total || 1,
-        'No assessment data'
-      );
+    function renderSummaryBoxes(items) {
+      return items.map(item => `
+        <div class="summary-box">
+          <div class="k">${escapeHtml(item[0])}</div>
+          <div class="v">${escapeHtml(item[1])}</div>
+          <div class="s">${escapeHtml(item[2])}</div>
+        </div>
+      `).join('');
     }
 
-    function renderRootCauseDistribution(metrics) {
-      renderSimpleDistribution(
-        els.rootCauseDistribution,
-        topEntries(metrics.rootCauseCounts, 7).map(([label, value]) => ({
-          label,
-          value,
-          color: '#8b5cf6'
-        })),
-        metrics.total || 1,
-        'No root cause data'
-      );
+    function renderBarList(rows, total, emptyTitle) {
+      const safeTotal = total || 1;
+      const validRows = rows.filter(row => Number(row.value || 0) > 0);
+
+      if (!validRows.length) return renderEmptyBlock(emptyTitle);
+
+      return `
+        <div class="bar-list">
+          ${validRows.map(row => {
+            const percent = Math.round((row.value / safeTotal) * 100);
+            return `
+              <div class="bar-row">
+                <div class="bar-label">${escapeHtml(row.label)}</div>
+                <div class="bar-track">
+                  <div class="bar-fill" style="width:${percent}%; background:${row.color};"></div>
+                </div>
+                <div class="bar-value">${escapeHtml(row.value)}</div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
     }
 
-    function renderCrossFieldMatrix(metrics, matrixKey = 'priorityStatus') {
+    function renderHeatmap(metrics, matrixKey) {
       const map = {
         priorityStatus: { title: 'Priority × Status', data: metrics.matrices.priorityStatus },
         categoryImpact: { title: 'Category × Impact', data: metrics.matrices.categoryImpact },
@@ -2543,24 +2792,19 @@
       };
 
       const selected = map[matrixKey] || map.priorityStatus;
-      els.matrixTitlePill.textContent = selected.title;
-
       const rows = Object.keys(selected.data || {});
       const cols = [...new Set(rows.flatMap(row => Object.keys(selected.data[row] || {})))];
 
-      if (!rows.length || !cols.length) {
-        els.crossFieldMatrix.innerHTML = `<div class="muted">No matrix data available.</div>`;
-        return;
-      }
+      if (!rows.length || !cols.length) return renderEmptyBlock('No matrix data available');
 
       const maxValue = Math.max(
         1,
         ...rows.flatMap(row => cols.map(col => Number((selected.data[row] || {})[col] || 0)))
       );
 
-      els.crossFieldMatrix.innerHTML = `
-        <div class="matrix-shell">
-          <table class="matrix-table">
+      return `
+        <div class="heatmap-shell">
+          <table class="heatmap">
             <thead>
               <tr>
                 <th>Row / Col</th>
@@ -2570,12 +2814,12 @@
             <tbody>
               ${rows.map(row => `
                 <tr>
-                  <td class="matrix-row-head">${escapeHtml(row)}</td>
+                  <td class="row-head">${escapeHtml(row)}</td>
                   ${cols.map(col => {
                     const value = Number((selected.data[row] || {})[col] || 0);
                     const opacity = value ? Math.max(0.08, value / maxValue) : 0.02;
                     return `
-                      <td class="matrix-cell" style="background:rgba(37,99,235,${opacity});">
+                      <td class="cell" style="background:rgba(37,99,235,${opacity});">
                         ${value || '—'}
                       </td>
                     `;
@@ -2588,70 +2832,13 @@
       `;
     }
 
-    function renderTextSignals(metrics) {
-      renderSimpleDistribution(
-        els.textSignalsDistribution,
-        topEntries(metrics.textTerms, 10).map(([label, value]) => ({
-          label,
-          value,
-          color: '#0ea5e9'
-        })),
-        topEntries(metrics.textTerms, 10).reduce((sum, [, value]) => sum + value, 0) || 1,
-        'No text signal data'
-      );
-    }
-
-    function renderExecutiveInsights(metrics) {
-      const topModule = topEntries(metrics.moduleCounts, 1)[0];
-      const topCompany = topEntries(metrics.companyCounts, 1)[0];
-      const topRootCause = topEntries(metrics.rootCauseCounts, 1)[0];
-      const topChannel = topEntries(metrics.channelCounts, 1)[0];
-      const topCategory = topEntries(metrics.issueCategoryCounts, 1)[0];
-      const topAssessment = topEntries(metrics.assessmentCounts, 1)[0];
-
-      const insights = [
-        `Backlog currently contains ${metrics.active} active issues and ${metrics.slaRisk} are aging into SLA risk.`,
-        topModule ? `Most affected module is ${topModule[0]} with ${topModule[1]} visible issues.` : null,
-        topCompany ? `Most impacted company is ${topCompany[0]} with ${topCompany[1]} visible issues.` : null,
-        topRootCause ? `Most common root cause classification is ${topRootCause[0]} with ${topRootCause[1]} issues.` : null,
-        topChannel ? `Most common reported channel is ${topChannel[0]} with ${topChannel[1]} issues.` : null,
-        topCategory ? `Top issue category is ${topCategory[0]} with ${topCategory[1]} issues.` : null,
-        topAssessment ? `Most frequent initial assessment is ${topAssessment[0]} with ${topAssessment[1]} issues.` : null,
-        metrics.escalatedNoTicket > 0 ? `${metrics.escalatedNoTicket} escalated issues are missing a development ticket.` : null,
-        metrics.avgResolutionDays ? `Average closure time is ${metrics.avgResolutionDays} days.` : null
-      ].filter(Boolean);
-
-      els.executiveInsights.innerHTML = insights.length
-        ? insights.map(text => `<div class="insight-item"><strong>Insight:</strong> ${escapeHtml(text)}</div>`).join('')
-        : `<div class="muted">No executive insights available.</div>`;
-    }
-
-    function renderSimpleDistribution(container, rows, total, emptyTitle) {
-      const safeTotal = total || 1;
-      const validRows = rows.filter(row => Number(row.value || 0) > 0);
-
-      if (!validRows.length) {
-        container.innerHTML = `
-          <div class="empty-state">
-            <h4>${escapeHtml(emptyTitle)}</h4>
-            <p>Try changing filters to display issues.</p>
-          </div>
-        `;
-        return;
-      }
-
-      container.innerHTML = validRows.map(row => {
-        const percent = Math.round((row.value / safeTotal) * 100);
-        return `
-          <div class="dist-row">
-            <div class="dist-label">${escapeHtml(row.label)}</div>
-            <div class="dist-bar">
-              <div class="dist-fill" style="width:${percent}%; background:${row.color};"></div>
-            </div>
-            <div class="dist-value">${escapeHtml(row.value)}</div>
-          </div>
-        `;
-      }).join('');
+    function renderEmptyBlock(title) {
+      return `
+        <div class="empty-state">
+          <h4>${escapeHtml(title)}</h4>
+          <p>Try changing the current filters.</p>
+        </div>
+      `;
     }
 
     function renderQuickFilterChips() {
@@ -2661,76 +2848,20 @@
       els.quickFilterChips.innerHTML = statuses.map(status => {
         const active = status === current;
         const value = status === 'All' ? '' : status;
-
         return `
           <button
             type="button"
-            class="filter-chip ${active ? 'active' : ''}"
+            class="segment-btn ${active ? 'active' : ''}"
             data-status="${escapeAttribute(value)}"
           >
-            ${escapeHtml(status)}
+            <span>${escapeHtml(status)}</span>
+            <span>${escapeHtml(state.issues.filter(issue => (issueVal(issue, 'finalStatus') || 'Open') === (status === 'All' ? (issueVal(issue, 'finalStatus') || 'Open') : status)).length || '')}</span>
           </button>
         `;
       }).join('');
     }
 
-    function increment(obj, key) {
-      obj[key] = (obj[key] || 0) + 1;
-    }
-
-    function incrementMatrix(matrix, rowKey, colKey) {
-      if (!matrix[rowKey]) matrix[rowKey] = {};
-      matrix[rowKey][colKey] = (matrix[rowKey][colKey] || 0) + 1;
-    }
-
-    function extractTerms(text) {
-      const stopWords = new Set([
-        'the','and','for','with','this','that','from','have','into','your','there','when',
-        'where','which','will','been','were','them','they','their','issue','error','user',
-        'customers','customer','page','screen','click','cannot','does','dont','cant','not',
-        'but','are','was','had','has','our','out','too','its','you','all','any','more',
-        'use','using','after','before','same','need','needs','should','could','would'
-      ]);
-
-      return String(text || '')
-        .toLowerCase()
-        .replace(/[^a-z0-9\s]/g, ' ')
-        .split(/\s+/)
-        .filter(word => word.length >= 4 && !stopWords.has(word))
-        .slice(0, 300);
-    }
-
-    function prettyFieldName(key) {
-      const map = {
-        submittedBy: 'Submitted By',
-        companyName: 'Company Name',
-        issueTitle: 'Issue Title',
-        issueCategory: 'Issue Category',
-        detailedDescription: 'Detailed Description',
-        issueOngoingIntermittent: 'Ongoing / Intermittent',
-        priorityLevel: 'Priority Level',
-        impactType: 'Impact Type',
-        workaroundAvailable: 'Workaround Available',
-        workaroundDetails: 'Workaround Details',
-        environment: 'Environment',
-        productModuleAffected: 'Module Affected',
-        browserDeviceOs: 'Browser / Device / OS',
-        errorMessage: 'Error Message',
-        attachmentUpload: 'Attachment Upload',
-        reportedChannel: 'Reported Channel',
-        sourceOfIssue: 'Source of Issue',
-        initialAssessment: 'Initial Assessment',
-        rootCauseType: 'Root Cause Type',
-        internalNotes: 'Internal Notes',
-        escalationRequired: 'Escalation Required',
-        developmentTicket: 'Development Ticket',
-        finalStatus: 'Final Status',
-        resolutionClosureDate: 'Closure Date',
-        wasCsInformed: 'CS Informed'
-     };
-      return map[key] || key;
-    }
-        function renderTable(issues) {
+    function renderTable(issues) {
       if (!issues.length) {
         renderTableMessage('No issues found', 'Try adjusting the search term or filters.');
         return;
@@ -2742,10 +2873,10 @@
 
         return `
           <tr data-id="${issueId}" class="${issueId === Number(state.selectedIssueId) ? 'selected-row' : ''}">
-            <td><span class="id-badge">#${escapeHtml(issueVal(issue, 'id') || '—')}</span></td>
+            <td><span class="queue-id">#${escapeHtml(issueVal(issue, 'id') || '—')}</span></td>
             <td>
               <div class="issue-title">${escapeHtml(issueVal(issue, 'issueTitle') || 'Untitled issue')}</div>
-              <div class="issue-desc">${escapeHtml(issueVal(issue, 'detailedDescription') || 'No description provided.')}</div>
+              <div class="issue-sub">${escapeHtml(issueVal(issue, 'detailedDescription') || 'No description provided.')}</div>
             </td>
             <td>${escapeHtml(issueVal(issue, 'companyName') || '—')}</td>
             <td>${escapeHtml(issueVal(issue, 'productModuleAffected') || '—')}</td>
@@ -2831,6 +2962,7 @@
       state.selectedIssueId = Number(issueVal(issue, 'id'));
       els.selectedCountPill.textContent = `Selected #${issueVal(issue, 'id')}`;
       updateSelectedRowUI();
+      renderFocusedIssuePanel();
     }
 
     function openEditModal(id) {
@@ -2840,6 +2972,7 @@
       state.selectedIssueId = Number(issueVal(issue, 'id'));
       populateEditor(issue);
       updateSelectedRowUI();
+      renderFocusedIssuePanel();
 
       state.modalOpen = true;
       els.editModalBackdrop.classList.add('show');
@@ -2925,7 +3058,8 @@
       updateSelectedRowUI();
       clearAllModalFields();
       els.selectedIssueInfo.textContent = 'No issue selected.';
-      els.smartSuggestionBox.innerHTML = '<strong>Smart suggestion:</strong> Select an issue to see recommended next actions.';
+      els.smartSuggestionBox.innerHTML = '<strong>Recommendation:</strong> Select an issue to see next-best actions.';
+      els.focusedIssuePanel.textContent = 'No issue selected yet.';
 
       if (!preserveMessage) {
         setMessage('');
@@ -2968,9 +3102,7 @@
         els.internalNotes,
         els.editPassword
       ].forEach(el => {
-        if (el && ('value' in el)) {
-          el.value = '';
-        }
+        if (el && ('value' in el)) el.value = '';
       });
     }
 
@@ -2984,6 +3116,7 @@
       }
 
       updateSelectedRowUI();
+      renderFocusedIssuePanel();
 
       if (state.modalOpen) {
         populateEditor(issue);
@@ -3019,12 +3152,12 @@
       const hasTicket = String(issueVal(issue, 'developmentTicket') || '').trim().length > 0;
       const hasNotes = String(issueVal(issue, 'internalNotes') || '').trim().length > 0;
 
-      let message = 'Review and save the issue after confirming its status and notes.';
+      let message = 'Review the current workflow fields and capture concise internal notes before saving.';
 
       if (status === 'escalated to development' && !hasTicket) {
         message = 'This issue is escalated but has no development ticket. Add a ticket ID or link before saving.';
       } else if ((status === 'resolved' || status === 'closed') && !hasNotes) {
-        message = 'This issue is being completed. Add brief internal notes so the resolution history is clear.';
+        message = 'This issue is being completed. Add brief internal notes so the resolution trail is clear.';
       } else if ((status === 'waiting for customer' || status === 'waiting for cs') && csInformed === 'no') {
         message = 'The issue is waiting on communication. Consider marking “Was CS informed?” as Yes after the handoff.';
       } else if (escalation === 'yes' && !hasTicket) {
@@ -3033,7 +3166,7 @@
         message = 'Add internal notes to make future follow-up easier for the team.';
       }
 
-      return `<strong>Smart suggestion:</strong> ${escapeHtml(message)}`;
+      return `<strong>Recommendation:</strong> ${escapeHtml(message)}`;
     }
 
     function renderTicket(ticket) {
@@ -3130,6 +3263,37 @@
         .slice(0, limit);
     }
 
+    function increment(obj, key) {
+      obj[key] = (obj[key] || 0) + 1;
+    }
+
+    function incrementMatrix(matrix, rowKey, colKey) {
+      if (!matrix[rowKey]) matrix[rowKey] = {};
+      matrix[rowKey][colKey] = (matrix[rowKey][colKey] || 0) + 1;
+    }
+
+    function prefixKeys(obj, prefix) {
+      const out = {};
+      Object.entries(obj || {}).forEach(([key, value]) => {
+        out[`${prefix}: ${key}`] = value;
+      });
+      return out;
+    }
+
+    function sumTopValues(rows) {
+      return rows.reduce((sum, row) => sum + Number(row.value || 0), 0);
+    }
+
+    function getFieldPct(metrics, fieldKey) {
+      const item = metrics.dataQuality[fieldKey];
+      if (!item || !metrics.total) return 0;
+      return Math.round((item.filled / metrics.total) * 100);
+    }
+
+    function getSelectedIssue() {
+      return state.issues.find(item => Number(issueVal(item, 'id') || 0) === Number(state.selectedIssueId)) || null;
+    }
+
     function compareText(a, b) {
       return String(a || '').localeCompare(String(b || ''), undefined, { sensitivity: 'base' });
     }
@@ -3144,12 +3308,58 @@
       return Math.round(value * 10) / 10;
     }
 
+    function extractTerms(text) {
+      const stopWords = new Set([
+        'the','and','for','with','this','that','from','have','into','your','there','when',
+        'where','which','will','been','were','them','they','their','issue','error','user',
+        'customers','customer','page','screen','click','cannot','does','dont','cant','not',
+        'but','are','was','had','has','our','out','too','its','you','all','any','more',
+        'use','using','after','before','same','need','needs','should','could','would'
+      ]);
+
+      return String(text || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .split(/\s+/)
+        .filter(word => word.length >= 4 && !stopWords.has(word))
+        .slice(0, 300);
+    }
+
+    function prettyFieldName(key) {
+      const map = {
+        submittedBy: 'Submitted By',
+        companyName: 'Company Name',
+        issueTitle: 'Issue Title',
+        issueCategory: 'Issue Category',
+        detailedDescription: 'Detailed Description',
+        issueOngoingIntermittent: 'Ongoing / Intermittent',
+        priorityLevel: 'Priority Level',
+        impactType: 'Impact Type',
+        workaroundAvailable: 'Workaround Available',
+        workaroundDetails: 'Workaround Details',
+        environment: 'Environment',
+        productModuleAffected: 'Module Affected',
+        browserDeviceOs: 'Browser / Device / OS',
+        errorMessage: 'Error Message',
+        attachmentUpload: 'Attachment Upload',
+        reportedChannel: 'Reported Channel',
+        sourceOfIssue: 'Source of Issue',
+        initialAssessment: 'Initial Assessment',
+        rootCauseType: 'Root Cause Type',
+        internalNotes: 'Internal Notes',
+        escalationRequired: 'Escalation Required',
+        developmentTicket: 'Development Ticket',
+        finalStatus: 'Final Status',
+        resolutionClosureDate: 'Closure Date',
+        wasCsInformed: 'CS Informed'
+      };
+      return map[key] || key;
+    }
+
     function setMessage(message, isError = false) {
       els.saveMessage.textContent = message;
       els.saveMessage.className = isError ? 'error' : 'success';
-      if (!message) {
-        els.saveMessage.className = 'muted';
-      }
+      if (!message) els.saveMessage.className = 'muted';
     }
 
     function beginBusy() {
@@ -3254,7 +3464,7 @@
       const a = document.createElement('a');
 
       a.href = url;
-      a.download = `support-dashboard-${formatFileStamp(new Date())}.csv`;
+      a.download = `support-intelligence-${formatFileStamp(new Date())}.csv`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -3273,12 +3483,12 @@
     function toggleTheme() {
       document.body.classList.toggle('dark-theme');
       const isDark = document.body.classList.contains('dark-theme');
-      localStorage.setItem('supportDashboardTheme', isDark ? 'dark' : 'light');
+      localStorage.setItem('supportCommandTheme', isDark ? 'dark' : 'light');
       updateThemeButton();
     }
 
     function applySavedTheme() {
-      const saved = localStorage.getItem('supportDashboardTheme');
+      const saved = localStorage.getItem('supportCommandTheme');
       if (saved === 'dark') {
         document.body.classList.add('dark-theme');
       }
@@ -3351,17 +3561,6 @@
       return `"${text}"`;
     }
 
-    function iconToneStyle(tone) {
-      const map = {
-        primary: 'background:#dbeafe;color:#1d4ed8;',
-        success: 'background:#dcfce7;color:#15803d;',
-        warning: 'background:#fef3c7;color:#b45309;',
-        danger: 'background:#fee2e2;color:#b91c1c;',
-        purple: 'background:#ede9fe;color:#6d28d9;'
-      };
-      return map[tone] || map.primary;
-    }
-
     function escapeHtml(value) {
       return String(value)
         .replaceAll('&', '&amp;')
@@ -3377,4 +3576,3 @@
   </script>
 </body>
 </html>
-    
