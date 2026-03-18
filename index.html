@@ -5,110 +5,526 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Incheck360 Support Dashboard</title>
   <style>
+    :root {
+      --bg: #f3f6fb;
+      --bg-soft: #eef3fb;
+      --surface: rgba(255, 255, 255, 0.92);
+      --surface-strong: #ffffff;
+      --border: #e5eaf2;
+      --border-strong: #d8e0ec;
+      --text: #142033;
+      --text-soft: #5f6f86;
+      --text-faint: #8896aa;
+      --primary: #2563eb;
+      --primary-soft: #dbeafe;
+      --primary-strong: #1d4ed8;
+      --success: #16a34a;
+      --success-soft: #dcfce7;
+      --warning: #d97706;
+      --warning-soft: #fef3c7;
+      --danger: #dc2626;
+      --danger-soft: #fee2e2;
+      --purple: #7c3aed;
+      --purple-soft: #ede9fe;
+      --shadow-sm: 0 6px 18px rgba(15, 23, 42, 0.05);
+      --shadow-md: 0 16px 40px rgba(15, 23, 42, 0.08);
+      --radius-lg: 18px;
+      --radius-md: 14px;
+      --radius-sm: 10px;
+      --transition: 180ms ease;
+    }
+
     * {
       box-sizing: border-box;
     }
 
+    html {
+      scroll-behavior: smooth;
+    }
+
     body {
       margin: 0;
-      font-family: Arial, sans-serif;
-      background: #f5f7fb;
-      color: #1f2937;
+      font-family: Inter, Arial, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(37, 99, 235, 0.10), transparent 24%),
+        radial-gradient(circle at top right, rgba(124, 58, 237, 0.08), transparent 20%),
+        linear-gradient(180deg, #f8fbff 0%, #f3f6fb 100%);
     }
 
     .container {
-      max-width: 1400px;
+      max-width: 1500px;
       margin: 0 auto;
       padding: 24px;
     }
 
-    h1 {
-      margin: 0 0 20px;
-      font-size: 28px;
+    .hero {
+      position: relative;
+      overflow: hidden;
+      background:
+        linear-gradient(135deg, rgba(37, 99, 235, 0.98), rgba(29, 78, 216, 0.92) 55%, rgba(124, 58, 237, 0.88));
+      color: #fff;
+      border-radius: 28px;
+      padding: 28px;
+      box-shadow: var(--shadow-md);
+      margin-bottom: 22px;
     }
 
-    h3 {
-      margin-top: 0;
+    .hero::after {
+      content: '';
+      position: absolute;
+      width: 280px;
+      height: 280px;
+      right: -60px;
+      top: -80px;
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 50%;
+      filter: blur(4px);
     }
 
-    .cards {
+    .hero::before {
+      content: '';
+      position: absolute;
+      width: 180px;
+      height: 180px;
+      left: -40px;
+      bottom: -70px;
+      background: rgba(255, 255, 255, 0.10);
+      border-radius: 50%;
+    }
+
+    .hero-content {
+      position: relative;
+      z-index: 1;
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      grid-template-columns: 1.6fr 1fr;
+      gap: 18px;
+      align-items: end;
+    }
+
+    .hero h1 {
+      margin: 0 0 8px;
+      font-size: 34px;
+      line-height: 1.1;
+      letter-spacing: -0.03em;
+    }
+
+    .hero p {
+      margin: 0;
+      color: rgba(255, 255, 255, 0.88);
+      font-size: 15px;
+      max-width: 760px;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      align-items: end;
+      flex-wrap: wrap;
+    }
+
+    .hero-actions button {
+      width: auto;
+      min-width: 140px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.14);
+      color: #fff;
+      backdrop-filter: blur(6px);
+    }
+
+    .hero-actions button:hover {
+      background: rgba(255, 255, 255, 0.22);
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
       gap: 16px;
-      margin-bottom: 24px;
-    }
-
-    .card {
-      background: #ffffff;
-      border-radius: 14px;
-      padding: 18px;
-      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
-    }
-
-    .card h4 {
-      margin: 0 0 10px;
-      font-size: 14px;
-      color: #6b7280;
-      font-weight: 600;
-    }
-
-    .card .value {
-      font-size: 28px;
-      font-weight: 700;
-    }
-
-    .toolbar {
-      display: grid;
-      grid-template-columns: 1fr 180px 180px 140px;
-      gap: 12px;
       margin-bottom: 20px;
     }
 
-    .layout {
-      display: grid;
-      grid-template-columns: 2fr 1fr;
-      gap: 20px;
+    .card {
+      background: var(--surface);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.7);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
     }
 
-    .panel {
-      background: #ffffff;
+    .summary-card {
+      padding: 18px;
+      transition: transform var(--transition), box-shadow var(--transition);
+    }
+
+    .summary-card:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+    }
+
+    .summary-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .summary-label {
+      margin: 0;
+      font-size: 13px;
+      color: var(--text-soft);
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    .summary-icon {
+      width: 40px;
+      height: 40px;
       border-radius: 14px;
-      padding: 16px;
-      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
-      overflow: hidden;
+      display: grid;
+      place-items: center;
+      font-size: 18px;
+      background: var(--bg-soft);
     }
 
-    input, select, textarea, button {
-      width: 100%;
-      padding: 10px 12px;
-      border: 1px solid #d1d5db;
-      border-radius: 8px;
+    .summary-value {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-bottom: 6px;
+    }
+
+    .summary-hint {
+      color: var(--text-faint);
+      font-size: 12px;
+    }
+
+    .toolbar-card {
+      padding: 18px;
+      margin-bottom: 20px;
+    }
+
+    .toolbar-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+
+    .toolbar-title {
+      margin: 0;
+      font-size: 16px;
+    }
+
+    .toolbar-subtitle {
+      color: var(--text-soft);
+      font-size: 13px;
+      margin-top: 4px;
+    }
+
+    .toolbar-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .pill-info {
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      color: var(--text-soft);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .toolbar-grid {
+      display: grid;
+      grid-template-columns: 1.4fr 220px 220px 140px;
+      gap: 12px;
+    }
+
+    .input-wrap {
+      position: relative;
+    }
+
+    .input-icon {
+      position: absolute;
+      top: 50%;
+      left: 12px;
+      transform: translateY(-50%);
+      color: var(--text-faint);
+      pointer-events: none;
       font-size: 14px;
+    }
+
+    input,
+    select,
+    textarea,
+    button {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--text);
+      padding: 11px 13px;
+      font-size: 14px;
+      outline: none;
+      transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition);
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      border-color: rgba(37, 99, 235, 0.5);
+      box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.10);
+    }
+
+    .input-wrap input {
+      padding-left: 36px;
     }
 
     textarea {
       resize: vertical;
+      min-height: 120px;
+      line-height: 1.5;
     }
 
     button {
-      background: #111827;
-      color: #ffffff;
+      background: linear-gradient(135deg, var(--primary), var(--primary-strong));
+      color: #fff;
       border: none;
+      font-weight: 700;
       cursor: pointer;
-      font-weight: 600;
+      box-shadow: 0 10px 20px rgba(37, 99, 235, 0.18);
     }
 
     button:hover {
-      opacity: 0.95;
+      transform: translateY(-1px);
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
     }
 
     .secondary-btn {
-      background: #374151;
+      background: #fff;
+      color: var(--text);
+      border: 1px solid var(--border);
+      box-shadow: none;
     }
 
-    .stack {
+    .secondary-btn:hover {
+      background: #f8fafc;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.8fr) minmax(340px, 420px);
+      gap: 20px;
+      align-items: start;
+    }
+
+    .panel {
+      padding: 18px;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+
+    .panel-header h3 {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: -0.02em;
+    }
+
+    .panel-header p {
+      margin: 4px 0 0;
+      color: var(--text-soft);
+      font-size: 13px;
+    }
+
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .mini-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      color: var(--text-soft);
+    }
+
+    .mini-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--primary);
+      display: inline-block;
+    }
+
+    .table-shell {
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: #fff;
+    }
+
+    .table-wrap {
+      overflow: auto;
+      max-height: 76vh;
+    }
+
+    table {
+      width: 100%;
+      min-width: 1050px;
+      border-collapse: collapse;
+      font-size: 14px;
+      background: #fff;
+    }
+
+    thead th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: #f8fafc;
+      color: var(--text-soft);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-size: 11px;
+      font-weight: 800;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th, td {
+      text-align: left;
+      padding: 14px 12px;
+      border-bottom: 1px solid #edf2f7;
+      vertical-align: top;
+    }
+
+    tbody tr {
+      transition: background var(--transition), transform var(--transition);
+    }
+
+    tbody tr:hover {
+      background: #f8fbff;
+    }
+
+    tbody tr.selected-row {
+      background: #eff6ff;
+    }
+
+    .id-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 42px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #eef2ff;
+      color: #3730a3;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .issue-title {
+      font-weight: 800;
+      margin-bottom: 6px;
+      color: var(--text);
+      line-height: 1.35;
+    }
+
+    .issue-desc {
+      color: var(--text-soft);
+      font-size: 12px;
+      line-height: 1.5;
+      max-width: 360px;
+      word-break: break-word;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 11px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+      border: 1px solid transparent;
+    }
+
+    .chip-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .action-btn {
+      width: auto;
+      padding: 8px 12px;
+      font-size: 12px;
+      border-radius: 10px;
+      box-shadow: none;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 18px;
+    }
+
+    .selected-box {
+      padding: 14px;
+      border-radius: 14px;
+      background: linear-gradient(180deg, #f8fbff 0%, #f7fafc 100%);
+      border: 1px solid var(--border);
+      font-size: 13px;
+      color: var(--text-soft);
+      line-height: 1.6;
+    }
+
+    .selected-box strong {
+      color: var(--text);
+    }
+
+    .edit-grid {
       display: grid;
       gap: 12px;
+    }
+
+    .field-group {
+      display: grid;
+      gap: 8px;
+    }
+
+    .field-group label {
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--text-soft);
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
     }
 
     .grid-2 {
@@ -118,218 +534,390 @@
     }
 
     .muted {
-      color: #6b7280;
+      color: var(--text-faint);
       font-size: 12px;
-    }
-
-    .table-wrap {
-      overflow-x: auto;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 14px;
-      min-width: 900px;
-    }
-
-    th, td {
-      text-align: left;
-      padding: 10px 8px;
-      border-bottom: 1px solid #e5e7eb;
-      vertical-align: top;
-    }
-
-    th {
-      color: #6b7280;
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.03em;
-    }
-
-    .issue-title {
-      font-weight: 700;
-      margin-bottom: 4px;
-    }
-
-    .issue-desc {
-      color: #6b7280;
-      font-size: 12px;
-      line-height: 1.4;
-      max-width: 400px;
-      white-space: normal;
-      word-break: break-word;
-    }
-
-    .status-pill {
-      display: inline-block;
-      padding: 5px 9px;
-      border-radius: 999px;
-      background: #eef2ff;
-      font-size: 12px;
-      white-space: nowrap;
-    }
-
-    .row-actions button {
-      padding: 8px 10px;
-      font-size: 12px;
-    }
-
-    .selected-box {
-      padding: 10px;
-      background: #f9fafb;
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      font-size: 13px;
     }
 
     .success {
-      color: #166534;
+      color: var(--success);
       font-size: 13px;
+      font-weight: 700;
     }
 
     .error {
-      color: #b91c1c;
+      color: var(--danger);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 800;
+      color: var(--text-soft);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-top: 4px;
+      margin-bottom: 2px;
+    }
+
+    .footer-note {
+      margin-top: 10px;
+      font-size: 12px;
+      color: var(--text-faint);
+      line-height: 1.5;
+    }
+
+    .empty-state {
+      padding: 42px 20px;
+      text-align: center;
+      color: var(--text-soft);
+    }
+
+    .empty-state h4 {
+      margin: 0 0 8px;
+      color: var(--text);
+      font-size: 16px;
+    }
+
+    .empty-state p {
+      margin: 0;
       font-size: 13px;
     }
 
-    .loading {
-      opacity: 0.6;
-      pointer-events: none;
+    .loading-overlay {
+      position: fixed;
+      inset: 0;
+      display: none;
+      place-items: center;
+      background: rgba(15, 23, 42, 0.18);
+      backdrop-filter: blur(4px);
+      z-index: 999;
     }
 
-    @media (max-width: 1000px) {
-      .layout,
-      .toolbar,
-      .grid-2 {
+    .loading-overlay.show {
+      display: grid;
+    }
+
+    .loading-card {
+      width: 220px;
+      background: rgba(255, 255, 255, 0.96);
+      border: 1px solid rgba(255, 255, 255, 0.8);
+      border-radius: 20px;
+      padding: 20px;
+      text-align: center;
+      box-shadow: var(--shadow-md);
+    }
+
+    .spinner {
+      width: 38px;
+      height: 38px;
+      margin: 0 auto 12px;
+      border-radius: 50%;
+      border: 3px solid #dbeafe;
+      border-top-color: var(--primary);
+      animation: spin 0.9s linear infinite;
+    }
+
+    .toast {
+      position: fixed;
+      right: 22px;
+      bottom: 22px;
+      min-width: 260px;
+      max-width: 360px;
+      padding: 14px 16px;
+      border-radius: 14px;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 700;
+      box-shadow: var(--shadow-md);
+      transform: translateY(18px);
+      opacity: 0;
+      pointer-events: none;
+      transition: all var(--transition);
+      z-index: 1000;
+    }
+
+    .toast.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    .toast.success {
+      background: linear-gradient(135deg, #16a34a, #15803d);
+    }
+
+    .toast.error {
+      background: linear-gradient(135deg, #dc2626, #b91c1c);
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    @media (max-width: 1200px) {
+      .summary-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .layout {
         grid-template-columns: 1fr;
       }
 
+      .sidebar {
+        position: static;
+      }
+    }
+
+    @media (max-width: 900px) {
+      .hero-content,
+      .toolbar-grid,
+      .grid-2,
+      .summary-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-actions {
+        justify-content: flex-start;
+      }
+
+      .container {
+        padding: 16px;
+      }
+
+      .hero {
+        padding: 22px;
+      }
+
+      .hero h1 {
+        font-size: 28px;
+      }
+
       table {
-        min-width: 700px;
+        min-width: 900px;
       }
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1>Incheck360 Support Dashboard</h1>
-
-    <div class="cards" id="summaryCards"></div>
-
-    <div class="toolbar">
-      <input id="searchInput" placeholder="Search by company, issue, module, ticket..." />
-      <select id="statusFilter">
-        <option value="">All Statuses</option>
-        <option value="Open">Open</option>
-        <option value="In Progress">In Progress</option>
-        <option value="Waiting for CS">Waiting for CS</option>
-        <option value="Waiting for Customer">Waiting for Customer</option>
-        <option value="Escalated to Development">Escalated to Development</option>
-        <option value="Resolved">Resolved</option>
-        <option value="Closed">Closed</option>
-      </select>
-      <select id="priorityFilter">
-        <option value="">All Priorities</option>
-        <option value="Low">Low</option>
-        <option value="Medium">Medium</option>
-        <option value="High">High</option>
-        <option value="Critical">Critical</option>
-      </select>
-      <button id="refreshBtn">Refresh</button>
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-card">
+      <div class="spinner"></div>
+      <div style="font-weight: 800; color: var(--text); margin-bottom: 4px;">Loading dashboard</div>
+      <div class="muted">Please wait a moment...</div>
     </div>
+  </div>
 
-    <div class="layout">
-      <div class="panel">
-        <h3>Issues</h3>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Issue</th>
-                <th>Company</th>
-                <th>Module</th>
-                <th>Priority</th>
-                <th>Status</th>
-                <th>Escalation</th>
-                <th>Ticket</th>
-                <th>Closure Date</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody id="issuesTable">
-              <tr>
-                <td colspan="10">Loading...</td>
-              </tr>
-            </tbody>
-          </table>
+  <div class="toast" id="toast"></div>
+
+  <div class="container">
+    <section class="hero">
+      <div class="hero-content">
+        <div>
+          <h1>Incheck360 Support Dashboard</h1>
+          <p>
+            Track support issues, monitor escalation trends, and update cases faster with a cleaner, more professional workspace.
+          </p>
+        </div>
+
+        <div class="hero-actions">
+          <button type="button" id="refreshBtnTop">↻ Refresh Data</button>
+          <button type="button" class="secondary-btn" id="clearBtnTop">Clear Selection</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="summary-grid" id="summaryCards"></section>
+
+    <section class="card toolbar-card">
+      <div class="toolbar-header">
+        <div>
+          <h3 class="toolbar-title">Search & Filters</h3>
+          <div class="toolbar-subtitle">Quickly find issues by keyword, status, or priority.</div>
+        </div>
+        <div class="toolbar-right">
+          <div class="pill-info" id="issuesCountPill">Showing 0 issues</div>
+          <div class="pill-info" id="selectedCountPill">No issue selected</div>
         </div>
       </div>
 
-      <div class="panel">
-        <h3>Edit Issue</h3>
-        <div class="stack">
+      <div class="toolbar-grid">
+        <div class="input-wrap">
+          <span class="input-icon">⌕</span>
+          <input id="searchInput" placeholder="Search by company, issue title, module, ticket, or description..." />
+        </div>
+
+        <select id="statusFilter">
+          <option value="">All Statuses</option>
+          <option value="Open">Open</option>
+          <option value="In Progress">In Progress</option>
+          <option value="Waiting for CS">Waiting for CS</option>
+          <option value="Waiting for Customer">Waiting for Customer</option>
+          <option value="Escalated to Development">Escalated to Development</option>
+          <option value="Resolved">Resolved</option>
+          <option value="Closed">Closed</option>
+        </select>
+
+        <select id="priorityFilter">
+          <option value="">All Priorities</option>
+          <option value="Low">Low</option>
+          <option value="Medium">Medium</option>
+          <option value="High">High</option>
+          <option value="Critical">Critical</option>
+        </select>
+
+        <button id="refreshBtn">Refresh</button>
+      </div>
+    </section>
+
+    <section class="layout">
+      <div class="card panel">
+        <div class="panel-header">
+          <div>
+            <h3>Issue Queue</h3>
+            <p>Click any issue to load it into the editor.</p>
+          </div>
+          <div class="badge-row" id="statusOverview"></div>
+        </div>
+
+        <div class="table-shell">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Issue</th>
+                  <th>Company</th>
+                  <th>Module</th>
+                  <th>Priority</th>
+                  <th>Status</th>
+                  <th>Escalation</th>
+                  <th>Ticket</th>
+                  <th>Closure Date</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="issuesTable">
+                <tr>
+                  <td colspan="10">Loading...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <aside class="card panel sidebar">
+        <div class="panel-header">
+          <div>
+            <h3>Edit Issue</h3>
+            <p>Update the selected issue and save changes securely.</p>
+          </div>
+        </div>
+
+        <div class="edit-grid">
           <div class="selected-box" id="selectedIssueInfo">
             No issue selected.
           </div>
 
-          <input id="issueId" placeholder="Row ID" readonly />
-          <input id="issueTitle" placeholder="Issue Title" readonly />
-          <input id="companyName" placeholder="Company Name" readonly />
-
-          <select id="finalStatus">
-            <option value="">Select Final Status</option>
-            <option value="Open">Open</option>
-            <option value="In Progress">In Progress</option>
-            <option value="Waiting for CS">Waiting for CS</option>
-            <option value="Waiting for Customer">Waiting for Customer</option>
-            <option value="Escalated to Development">Escalated to Development</option>
-            <option value="Resolved">Resolved</option>
-            <option value="Closed">Closed</option>
-          </select>
+          <div class="section-title">Issue Info</div>
 
           <div class="grid-2">
-            <select id="initialAssessment">
-              <option value="">Initial Assessment</option>
-              <option value="Resolved by R&D">Resolved by R&D</option>
-              <option value="Need More Information">Need More Information</option>
+            <div class="field-group">
+              <label for="issueId">Row ID</label>
+              <input id="issueId" placeholder="Row ID" readonly />
+            </div>
+            <div class="field-group">
+              <label for="companyName">Company</label>
+              <input id="companyName" placeholder="Company Name" readonly />
+            </div>
+          </div>
+
+          <div class="field-group">
+            <label for="issueTitle">Issue Title</label>
+            <input id="issueTitle" placeholder="Issue Title" readonly />
+          </div>
+
+          <div class="section-title">Resolution Details</div>
+
+          <div class="field-group">
+            <label for="finalStatus">Final Status</label>
+            <select id="finalStatus">
+              <option value="">Select Final Status</option>
+              <option value="Open">Open</option>
+              <option value="In Progress">In Progress</option>
+              <option value="Waiting for CS">Waiting for CS</option>
+              <option value="Waiting for Customer">Waiting for Customer</option>
               <option value="Escalated to Development">Escalated to Development</option>
-              <option value="Not a Bug">Not a Bug</option>
-              <option value="Duplicate">Duplicate</option>
-              <option value="Cannot Reproduce">Cannot Reproduce</option>
-            </select>
-
-            <select id="rootCauseType">
-              <option value="">Root Cause Type</option>
-              <option value="User Error">User Error</option>
-              <option value="Configuration">Configuration</option>
-              <option value="Data Problem">Data Problem</option>
-              <option value="System Bug">System Bug</option>
-              <option value="Third-Party Dependency">Third-Party Dependency</option>
-              <option value="Performance Limitation">Performance Limitation</option>
-              <option value="Unknown">Unknown</option>
+              <option value="Resolved">Resolved</option>
+              <option value="Closed">Closed</option>
             </select>
           </div>
 
           <div class="grid-2">
-            <select id="escalationRequired">
-              <option value="">Escalation Required?</option>
-              <option value="Yes">Yes</option>
-              <option value="No">No</option>
-            </select>
+            <div class="field-group">
+              <label for="initialAssessment">Initial Assessment</label>
+              <select id="initialAssessment">
+                <option value="">Initial Assessment</option>
+                <option value="Resolved by R&D">Resolved by R&amp;D</option>
+                <option value="Need More Information">Need More Information</option>
+                <option value="Escalated to Development">Escalated to Development</option>
+                <option value="Not a Bug">Not a Bug</option>
+                <option value="Duplicate">Duplicate</option>
+                <option value="Cannot Reproduce">Cannot Reproduce</option>
+              </select>
+            </div>
 
-            <select id="wasCsInformed">
-              <option value="">Was CS Informed?</option>
-              <option value="Yes">Yes</option>
-              <option value="No">No</option>
-            </select>
+            <div class="field-group">
+              <label for="rootCauseType">Root Cause Type</label>
+              <select id="rootCauseType">
+                <option value="">Root Cause Type</option>
+                <option value="User Error">User Error</option>
+                <option value="Configuration">Configuration</option>
+                <option value="Data Problem">Data Problem</option>
+                <option value="System Bug">System Bug</option>
+                <option value="Third-Party Dependency">Third-Party Dependency</option>
+                <option value="Performance Limitation">Performance Limitation</option>
+                <option value="Unknown">Unknown</option>
+              </select>
+            </div>
           </div>
 
-          <input id="developmentTicket" placeholder="Development Ticket ID / Link" />
-          <textarea id="internalNotes" rows="7" placeholder="Internal Notes"></textarea>
+          <div class="grid-2">
+            <div class="field-group">
+              <label for="escalationRequired">Escalation Required?</label>
+              <select id="escalationRequired">
+                <option value="">Escalation Required?</option>
+                <option value="Yes">Yes</option>
+                <option value="No">No</option>
+              </select>
+            </div>
 
-          <input id="editPassword" type="password" placeholder="Edit password" />
+            <div class="field-group">
+              <label for="wasCsInformed">Was CS Informed?</label>
+              <select id="wasCsInformed">
+                <option value="">Was CS Informed?</option>
+                <option value="Yes">Yes</option>
+                <option value="No">No</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="field-group">
+            <label for="developmentTicket">Development Ticket</label>
+            <input id="developmentTicket" placeholder="Development Ticket ID or Link" />
+          </div>
+
+          <div class="field-group">
+            <label for="internalNotes">Internal Notes</label>
+            <textarea id="internalNotes" rows="7" placeholder="Add internal notes, resolution details, or follow-up context..."></textarea>
+          </div>
+
+          <div class="section-title">Security</div>
+
+          <div class="field-group">
+            <label for="editPassword">Edit Password</label>
+            <input id="editPassword" type="password" placeholder="Enter edit password" />
+          </div>
 
           <div class="grid-2">
             <button id="saveBtn">Save Update</button>
@@ -337,9 +925,13 @@
           </div>
 
           <div id="saveMessage" class="muted"></div>
+
+          <div class="footer-note">
+            Tip: select an issue from the table, update only the fields you need, then save. Closure date is still handled by your Apps Script logic.
+          </div>
         </div>
-      </div>
-    </div>
+      </aside>
+    </section>
   </div>
 
   <script>
@@ -347,6 +939,7 @@
     let currentIssues = [];
     let selectedIssueId = null;
     let searchTimer = null;
+    let dashboardSummary = {};
 
     async function apiGet(action, params = {}) {
       const url = new URL(API_URL);
@@ -376,19 +969,49 @@
 
     function renderCards(summary) {
       const cards = [
-        { label: 'Total Issues', value: summary.total || 0 },
-        { label: 'Open / Active', value: summary.open || 0 },
-        { label: 'Resolved / Closed', value: summary.resolvedClosed || 0 },
-        { label: 'Escalated', value: summary.escalated || 0 },
-        { label: 'High / Critical', value: summary.highCritical || 0 }
+        { label: 'Total Issues', value: summary.total || 0, icon: '🗂', hint: 'All submitted issues', tone: 'primary' },
+        { label: 'Open / Active', value: summary.open || 0, icon: '🟡', hint: 'Needs attention', tone: 'warning' },
+        { label: 'Resolved / Closed', value: summary.resolvedClosed || 0, icon: '✅', hint: 'Completed issues', tone: 'success' },
+        { label: 'Escalated', value: summary.escalated || 0, icon: '🚀', hint: 'Sent to development', tone: 'purple' },
+        { label: 'High / Critical', value: summary.highCritical || 0, icon: '🔥', hint: 'Priority focus', tone: 'danger' }
       ];
 
       document.getElementById('summaryCards').innerHTML = cards.map(card => `
-        <div class="card">
-          <h4>${escapeHtml(card.label)}</h4>
-          <div class="value">${escapeHtml(card.value)}</div>
-        </div>
+        <article class="card summary-card">
+          <div class="summary-top">
+            <div class="summary-label">${escapeHtml(card.label)}</div>
+            <div class="summary-icon" style="${summaryIconStyle(card.tone)}">${escapeHtml(card.icon)}</div>
+          </div>
+          <div class="summary-value">${escapeHtml(card.value)}</div>
+          <div class="summary-hint">${escapeHtml(card.hint)}</div>
+        </article>
       `).join('');
+    }
+
+    function renderStatusOverview(summary) {
+      const byStatus = summary.byStatus || {};
+      const preferredOrder = [
+        'Open',
+        'In Progress',
+        'Waiting for CS',
+        'Waiting for Customer',
+        'Escalated to Development',
+        'Resolved',
+        'Closed'
+      ];
+
+      const items = preferredOrder
+        .filter(label => Number(byStatus[label] || 0) > 0)
+        .map(label => `
+          <div class="mini-badge">
+            <span class="mini-dot" style="background:${statusColor(label)}"></span>
+            ${escapeHtml(label)} · ${escapeHtml(byStatus[label])}
+          </div>
+        `);
+
+      document.getElementById('statusOverview').innerHTML = items.join('') || `
+        <div class="mini-badge">No status data available</div>
+      `;
     }
 
     function renderTable(issues) {
@@ -397,28 +1020,33 @@
       if (!issues.length) {
         tbody.innerHTML = `
           <tr>
-            <td colspan="10">No issues found.</td>
+            <td colspan="10">
+              <div class="empty-state">
+                <h4>No issues found</h4>
+                <p>Try adjusting your search term or filters.</p>
+              </div>
+            </td>
           </tr>
         `;
         return;
       }
 
       tbody.innerHTML = issues.map(issue => `
-        <tr>
-          <td>#${escapeHtml(issue.id)}</td>
+        <tr class="${Number(issue.id) === Number(selectedIssueId) ? 'selected-row' : ''}">
+          <td><span class="id-badge">#${escapeHtml(issue.id)}</span></td>
           <td>
-            <div class="issue-title">${escapeHtml(issue.issueTitle || '')}</div>
-            <div class="issue-desc">${escapeHtml(issue.detailedDescription || '')}</div>
+            <div class="issue-title">${escapeHtml(issue.issueTitle || 'Untitled issue')}</div>
+            <div class="issue-desc">${escapeHtml(issue.detailedDescription || 'No description provided.')}</div>
           </td>
-          <td>${escapeHtml(issue.companyName || '')}</td>
-          <td>${escapeHtml(issue.productModuleAffected || '')}</td>
-          <td>${escapeHtml(issue.priorityLevel || '')}</td>
-          <td><span class="status-pill">${escapeHtml(issue.finalStatus || 'Open')}</span></td>
-          <td>${escapeHtml(issue.escalationRequired || '')}</td>
-          <td>${escapeHtml(issue.developmentTicket || '')}</td>
-          <td>${formatDate(issue.resolutionClosureDate)}</td>
-          <td class="row-actions">
-            <button onclick="selectIssue(${issue.id})">Edit</button>
+          <td>${escapeHtml(issue.companyName || '—')}</td>
+          <td>${escapeHtml(issue.productModuleAffected || '—')}</td>
+          <td>${buildPriorityChip(issue.priorityLevel || '')}</td>
+          <td>${buildStatusChip(issue.finalStatus || 'Open')}</td>
+          <td>${buildYesNoChip(issue.escalationRequired || '')}</td>
+          <td>${renderTicket(issue.developmentTicket)}</td>
+          <td>${formatDate(issue.resolutionClosureDate) || '—'}</td>
+          <td>
+            <button class="action-btn" type="button" onclick="selectIssue(${Number(issue.id)})">Edit</button>
           </td>
         </tr>
       `).join('');
@@ -442,12 +1070,15 @@
       document.getElementById('internalNotes').value = issue.internalNotes || '';
 
       document.getElementById('selectedIssueInfo').innerHTML = `
-        <strong>Selected:</strong> ${escapeHtml(issue.issueTitle || '')}<br>
-        <span class="muted">Company:</span> ${escapeHtml(issue.companyName || '')}<br>
-        <span class="muted">Priority:</span> ${escapeHtml(issue.priorityLevel || '')}<br>
-        <span class="muted">Current Status:</span> ${escapeHtml(issue.finalStatus || 'Open')}
+        <strong>Selected:</strong> ${escapeHtml(issue.issueTitle || 'Untitled issue')}<br>
+        <span class="muted">Company:</span> ${escapeHtml(issue.companyName || '—')}<br>
+        <span class="muted">Priority:</span> ${escapeHtml(issue.priorityLevel || '—')}<br>
+        <span class="muted">Current Status:</span> ${escapeHtml(issue.finalStatus || 'Open')}<br>
+        <span class="muted">Ticket:</span> ${escapeHtml(issue.developmentTicket || '—')}
       `;
 
+      document.getElementById('selectedCountPill').textContent = `Selected #${issue.id}`;
+      renderTable(currentIssues);
       setMessage('');
     }
 
@@ -463,8 +1094,11 @@
       document.getElementById('wasCsInformed').value = '';
       document.getElementById('developmentTicket').value = '';
       document.getElementById('internalNotes').value = '';
+      document.getElementById('editPassword').value = '';
       document.getElementById('selectedIssueInfo').textContent = 'No issue selected.';
+      document.getElementById('selectedCountPill').textContent = 'No issue selected';
       setMessage('');
+      renderTable(currentIssues);
     }
 
     async function loadDashboard() {
@@ -488,19 +1122,25 @@
           throw new Error(issuesRes.error || 'Failed to load issues');
         }
 
+        dashboardSummary = summaryRes.data || {};
         currentIssues = issuesRes.data || [];
-        renderCards(summaryRes.data || {});
+
+        renderCards(dashboardSummary);
+        renderStatusOverview(dashboardSummary);
         renderTable(currentIssues);
+        updateIssuesCount();
 
         if (selectedIssueId) {
           const refreshed = currentIssues.find(item => Number(item.id) === Number(selectedIssueId));
           if (refreshed) {
             selectIssue(refreshed.id);
+          } else {
+            clearForm();
           }
         }
       } catch (error) {
         console.error(error);
-        alert(error.message);
+        showToast(error.message || 'Something went wrong.', true);
       } finally {
         setLoading(false);
       }
@@ -512,11 +1152,13 @@
 
       if (!id) {
         setMessage('Select an issue first.', true);
+        showToast('Select an issue first.', true);
         return;
       }
 
       if (!editPassword) {
         setMessage('Enter edit password.', true);
+        showToast('Enter edit password.', true);
         return;
       }
 
@@ -541,18 +1183,35 @@
 
         if (!result.ok) {
           setMessage(result.error || 'Save failed.', true);
+          showToast(result.error || 'Save failed.', true);
           return;
         }
 
         setMessage('Saved successfully.');
+        showToast('Issue updated successfully.');
         await loadDashboard();
         selectIssue(id);
       } catch (error) {
         console.error(error);
         setMessage(error.message || 'Save failed.', true);
+        showToast(error.message || 'Save failed.', true);
       } finally {
         setLoading(false);
       }
+    }
+
+    function updateIssuesCount() {
+      const count = currentIssues.length;
+      const searchTerm = document.getElementById('searchInput').value.trim();
+      const status = document.getElementById('statusFilter').value.trim();
+      const priority = document.getElementById('priorityFilter').value.trim();
+
+      let suffix = '';
+      if (searchTerm || status || priority) {
+        suffix = ' (filtered)';
+      }
+
+      document.getElementById('issuesCountPill').textContent = `Showing ${count} issue${count === 1 ? '' : 's'}${suffix}`;
     }
 
     function setMessage(message, isError = false) {
@@ -565,7 +1224,21 @@
     }
 
     function setLoading(isLoading) {
-      document.body.classList.toggle('loading', isLoading);
+      document.getElementById('loadingOverlay').classList.toggle('show', isLoading);
+      document.getElementById('saveBtn').disabled = isLoading;
+      document.getElementById('refreshBtn').disabled = isLoading;
+      document.getElementById('refreshBtnTop').disabled = isLoading;
+    }
+
+    function showToast(message, isError = false) {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.className = `toast ${isError ? 'error' : 'success'} show`;
+
+      clearTimeout(showToast._timer);
+      showToast._timer = setTimeout(() => {
+        toast.className = `toast ${isError ? 'error' : 'success'}`;
+      }, 2600);
     }
 
     function formatDate(value) {
@@ -574,7 +1247,120 @@
       if (Number.isNaN(date.getTime())) {
         return escapeHtml(String(value));
       }
-      return date.toLocaleDateString();
+      return date.toLocaleDateString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    }
+
+    function renderTicket(ticket) {
+      if (!ticket) return '—';
+      const value = String(ticket).trim();
+      const isLink = /^https?:\/\//i.test(value);
+      if (isLink) {
+        return `<a href="${escapeAttribute(value)}" target="_blank" rel="noopener noreferrer">${escapeHtml(shorten(value, 28))}</a>`;
+      }
+      return escapeHtml(value);
+    }
+
+    function buildStatusChip(status) {
+      const label = status || 'Open';
+      const color = statusColor(label);
+      const bg = statusBg(label);
+      return `
+        <span class="chip" style="background:${bg}; color:${color}; border-color:${bg};">
+          <span class="chip-dot" style="background:${color}"></span>
+          ${escapeHtml(label)}
+        </span>
+      `;
+    }
+
+    function buildPriorityChip(priority) {
+      const label = priority || '—';
+      const normalized = String(label).toLowerCase();
+      let bg = '#f8fafc';
+      let color = '#64748b';
+
+      if (normalized === 'critical') {
+        bg = '#fee2e2';
+        color = '#b91c1c';
+      } else if (normalized === 'high') {
+        bg = '#ffedd5';
+        color = '#c2410c';
+      } else if (normalized === 'medium') {
+        bg = '#fef3c7';
+        color = '#b45309';
+      } else if (normalized === 'low') {
+        bg = '#dcfce7';
+        color = '#15803d';
+      }
+
+      return `
+        <span class="chip" style="background:${bg}; color:${color}; border-color:${bg};">
+          <span class="chip-dot" style="background:${color}"></span>
+          ${escapeHtml(label)}
+        </span>
+      `;
+    }
+
+    function buildYesNoChip(value) {
+      const label = value || '—';
+      const normalized = String(label).toLowerCase();
+
+      if (normalized === 'yes') {
+        return `
+          <span class="chip" style="background:#fef3c7; color:#b45309; border-color:#fef3c7;">
+            <span class="chip-dot" style="background:#b45309"></span>
+            Yes
+          </span>
+        `;
+      }
+
+      if (normalized === 'no') {
+        return `
+          <span class="chip" style="background:#dcfce7; color:#15803d; border-color:#dcfce7;">
+            <span class="chip-dot" style="background:#15803d"></span>
+            No
+          </span>
+        `;
+      }
+
+      return '—';
+    }
+
+    function summaryIconStyle(tone) {
+      const styles = {
+        primary: 'background:#dbeafe;color:#1d4ed8;',
+        success: 'background:#dcfce7;color:#15803d;',
+        warning: 'background:#fef3c7;color:#b45309;',
+        danger: 'background:#fee2e2;color:#b91c1c;',
+        purple: 'background:#ede9fe;color:#6d28d9;'
+      };
+      return styles[tone] || styles.primary;
+    }
+
+    function statusColor(status) {
+      const normalized = String(status || '').toLowerCase();
+      if (normalized === 'resolved' || normalized === 'closed') return '#15803d';
+      if (normalized === 'escalated to development') return '#6d28d9';
+      if (normalized === 'waiting for cs' || normalized === 'waiting for customer') return '#b45309';
+      if (normalized === 'in progress') return '#2563eb';
+      return '#475569';
+    }
+
+    function statusBg(status) {
+      const normalized = String(status || '').toLowerCase();
+      if (normalized === 'resolved' || normalized === 'closed') return '#dcfce7';
+      if (normalized === 'escalated to development') return '#ede9fe';
+      if (normalized === 'waiting for cs' || normalized === 'waiting for customer') return '#fef3c7';
+      if (normalized === 'in progress') return '#dbeafe';
+      return '#e2e8f0';
+    }
+
+    function shorten(value, max) {
+      const text = String(value || '');
+      return text.length > max ? text.slice(0, max - 1) + '…' : text;
     }
 
     function escapeHtml(value) {
@@ -586,9 +1372,15 @@
         .replaceAll("'", '&#039;');
     }
 
+    function escapeAttribute(value) {
+      return escapeHtml(value).replaceAll('`', '&#096;');
+    }
+
     document.getElementById('refreshBtn').addEventListener('click', loadDashboard);
+    document.getElementById('refreshBtnTop').addEventListener('click', loadDashboard);
     document.getElementById('saveBtn').addEventListener('click', saveIssue);
     document.getElementById('clearBtn').addEventListener('click', clearForm);
+    document.getElementById('clearBtnTop').addEventListener('click', clearForm);
 
     document.getElementById('searchInput').addEventListener('input', () => {
       clearTimeout(searchTimer);
