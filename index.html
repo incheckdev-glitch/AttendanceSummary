@@ -6,18 +6,19 @@
   <title>Incheck360 Support Dashboard</title>
   <style>
     :root {
-      --bg: #f3f6fb;
-      --bg-soft: #eef3fb;
+      --bg: #f4f7fb;
+      --bg-2: #eef3fb;
       --surface: rgba(255, 255, 255, 0.92);
       --surface-strong: #ffffff;
-      --border: #e5eaf2;
-      --border-strong: #d8e0ec;
-      --text: #142033;
-      --text-soft: #5f6f86;
-      --text-faint: #8896aa;
+      --surface-soft: #f8fbff;
+      --border: #e5ebf4;
+      --border-2: #d9e2ee;
+      --text: #162132;
+      --text-soft: #617188;
+      --text-faint: #8a98ab;
       --primary: #2563eb;
+      --primary-2: #1d4ed8;
       --primary-soft: #dbeafe;
-      --primary-strong: #1d4ed8;
       --success: #16a34a;
       --success-soft: #dcfce7;
       --warning: #d97706;
@@ -26,12 +27,35 @@
       --danger-soft: #fee2e2;
       --purple: #7c3aed;
       --purple-soft: #ede9fe;
-      --shadow-sm: 0 6px 18px rgba(15, 23, 42, 0.05);
-      --shadow-md: 0 16px 40px rgba(15, 23, 42, 0.08);
+      --shadow-sm: 0 6px 16px rgba(15, 23, 42, 0.06);
+      --shadow-md: 0 18px 40px rgba(15, 23, 42, 0.08);
+      --shadow-lg: 0 24px 60px rgba(15, 23, 42, 0.12);
+      --radius-xl: 24px;
       --radius-lg: 18px;
       --radius-md: 14px;
       --radius-sm: 10px;
       --transition: 180ms ease;
+    }
+
+    body.dark-theme {
+      --bg: #0b1220;
+      --bg-2: #111a2d;
+      --surface: rgba(17, 26, 45, 0.88);
+      --surface-strong: #111a2d;
+      --surface-soft: #162038;
+      --border: #22314a;
+      --border-2: #2e405d;
+      --text: #edf3ff;
+      --text-soft: #a7b6cc;
+      --text-faint: #7f8ea5;
+      --primary-soft: rgba(37, 99, 235, 0.18);
+      --success-soft: rgba(22, 163, 74, 0.16);
+      --warning-soft: rgba(217, 119, 6, 0.16);
+      --danger-soft: rgba(220, 38, 38, 0.16);
+      --purple-soft: rgba(124, 58, 237, 0.18);
+      --shadow-sm: 0 8px 20px rgba(0, 0, 0, 0.22);
+      --shadow-md: 0 24px 48px rgba(0, 0, 0, 0.28);
+      --shadow-lg: 0 30px 70px rgba(0, 0, 0, 0.34);
     }
 
     * {
@@ -47,122 +71,161 @@
       font-family: Inter, Arial, sans-serif;
       color: var(--text);
       background:
-        radial-gradient(circle at top left, rgba(37, 99, 235, 0.10), transparent 24%),
-        radial-gradient(circle at top right, rgba(124, 58, 237, 0.08), transparent 20%),
-        linear-gradient(180deg, #f8fbff 0%, #f3f6fb 100%);
+        radial-gradient(circle at top left, rgba(37, 99, 235, 0.10), transparent 22%),
+        radial-gradient(circle at top right, rgba(124, 58, 237, 0.10), transparent 18%),
+        linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
+      transition: background var(--transition), color var(--transition);
+    }
+
+    a {
+      color: var(--primary);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
     }
 
     .container {
-      max-width: 1500px;
+      max-width: 1560px;
       margin: 0 auto;
-      padding: 24px;
+      padding: 22px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid rgba(255, 255, 255, 0.24);
+      box-shadow: var(--shadow-sm);
+      backdrop-filter: blur(12px);
+      border-radius: var(--radius-lg);
     }
 
     .hero {
       position: relative;
       overflow: hidden;
-      background:
-        linear-gradient(135deg, rgba(37, 99, 235, 0.98), rgba(29, 78, 216, 0.92) 55%, rgba(124, 58, 237, 0.88));
-      color: #fff;
-      border-radius: 28px;
       padding: 28px;
-      box-shadow: var(--shadow-md);
-      margin-bottom: 22px;
+      margin-bottom: 18px;
+      border-radius: 28px;
+      background:
+        linear-gradient(135deg, rgba(37, 99, 235, 0.98), rgba(29, 78, 216, 0.93) 52%, rgba(124, 58, 237, 0.88));
+      color: #fff;
+      box-shadow: var(--shadow-lg);
     }
 
+    .hero::before,
     .hero::after {
       content: '';
       position: absolute;
-      width: 280px;
-      height: 280px;
-      right: -60px;
-      top: -80px;
-      background: rgba(255, 255, 255, 0.12);
       border-radius: 50%;
-      filter: blur(4px);
+      background: rgba(255, 255, 255, 0.10);
     }
 
     .hero::before {
-      content: '';
-      position: absolute;
-      width: 180px;
-      height: 180px;
-      left: -40px;
-      bottom: -70px;
-      background: rgba(255, 255, 255, 0.10);
-      border-radius: 50%;
+      width: 220px;
+      height: 220px;
+      left: -60px;
+      bottom: -90px;
+    }
+
+    .hero::after {
+      width: 300px;
+      height: 300px;
+      right: -70px;
+      top: -90px;
     }
 
     .hero-content {
       position: relative;
       z-index: 1;
       display: grid;
-      grid-template-columns: 1.6fr 1fr;
+      grid-template-columns: 1.5fr 1fr;
       gap: 18px;
-      align-items: end;
+      align-items: center;
     }
 
     .hero h1 {
-      margin: 0 0 8px;
-      font-size: 34px;
-      line-height: 1.1;
-      letter-spacing: -0.03em;
+      margin: 0 0 10px;
+      font-size: 36px;
+      line-height: 1.08;
+      letter-spacing: -0.04em;
     }
 
     .hero p {
       margin: 0;
+      max-width: 840px;
       color: rgba(255, 255, 255, 0.88);
       font-size: 15px;
-      max-width: 760px;
+      line-height: 1.6;
+    }
+
+    .hero-meta {
+      margin-top: 16px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .hero-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 12px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.14);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      font-size: 12px;
+      font-weight: 700;
+      color: #fff;
+      backdrop-filter: blur(6px);
     }
 
     .hero-actions {
       display: flex;
-      gap: 10px;
       justify-content: flex-end;
-      align-items: end;
+      align-items: center;
+      gap: 10px;
       flex-wrap: wrap;
     }
 
     .hero-actions button {
       width: auto;
       min-width: 140px;
+      padding: 11px 14px;
+      border-radius: 12px;
       border: 1px solid rgba(255, 255, 255, 0.14);
       background: rgba(255, 255, 255, 0.14);
       color: #fff;
-      backdrop-filter: blur(6px);
+      box-shadow: none;
+      backdrop-filter: blur(8px);
     }
 
     .hero-actions button:hover {
       background: rgba(255, 255, 255, 0.22);
+      text-decoration: none;
     }
 
-    .summary-grid {
+    .section {
+      margin-bottom: 18px;
+    }
+
+    .grid-global {
       display: grid;
       grid-template-columns: repeat(5, minmax(0, 1fr));
-      gap: 16px;
-      margin-bottom: 20px;
+      gap: 14px;
+      margin-bottom: 18px;
     }
 
-    .card {
-      background: var(--surface);
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(255, 255, 255, 0.7);
-      border-radius: var(--radius-lg);
-      box-shadow: var(--shadow-sm);
-    }
-
-    .summary-card {
+    .kpi-card {
       padding: 18px;
       transition: transform var(--transition), box-shadow var(--transition);
     }
 
-    .summary-card:hover {
+    .kpi-card:hover {
       transform: translateY(-2px);
       box-shadow: var(--shadow-md);
     }
 
-    .summary-top {
+    .kpi-top {
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -170,165 +233,40 @@
       margin-bottom: 14px;
     }
 
-    .summary-label {
-      margin: 0;
+    .kpi-label {
       font-size: 13px;
+      font-weight: 800;
       color: var(--text-soft);
-      font-weight: 700;
       letter-spacing: 0.02em;
     }
 
-    .summary-icon {
+    .kpi-icon {
       width: 40px;
       height: 40px;
       border-radius: 14px;
       display: grid;
       place-items: center;
       font-size: 18px;
-      background: var(--bg-soft);
     }
 
-    .summary-value {
+    .kpi-value {
       font-size: 32px;
       font-weight: 800;
-      letter-spacing: -0.03em;
+      letter-spacing: -0.04em;
       margin-bottom: 6px;
+      color: var(--text);
     }
 
-    .summary-hint {
+    .kpi-sub {
       color: var(--text-faint);
       font-size: 12px;
     }
 
-    .toolbar-card {
-      padding: 18px;
-      margin-bottom: 20px;
-    }
-
-    .toolbar-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 14px;
-      flex-wrap: wrap;
-    }
-
-    .toolbar-title {
-      margin: 0;
-      font-size: 16px;
-    }
-
-    .toolbar-subtitle {
-      color: var(--text-soft);
-      font-size: 13px;
-      margin-top: 4px;
-    }
-
-    .toolbar-right {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
-    .pill-info {
-      padding: 8px 12px;
-      border-radius: 999px;
-      background: #f8fafc;
-      border: 1px solid var(--border);
-      color: var(--text-soft);
-      font-size: 12px;
-      font-weight: 700;
-    }
-
-    .toolbar-grid {
+    .grid-analytics {
       display: grid;
-      grid-template-columns: 1.4fr 220px 220px 140px;
-      gap: 12px;
-    }
-
-    .input-wrap {
-      position: relative;
-    }
-
-    .input-icon {
-      position: absolute;
-      top: 50%;
-      left: 12px;
-      transform: translateY(-50%);
-      color: var(--text-faint);
-      pointer-events: none;
-      font-size: 14px;
-    }
-
-    input,
-    select,
-    textarea,
-    button {
-      width: 100%;
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      background: #fff;
-      color: var(--text);
-      padding: 11px 13px;
-      font-size: 14px;
-      outline: none;
-      transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition);
-    }
-
-    input:focus,
-    select:focus,
-    textarea:focus {
-      border-color: rgba(37, 99, 235, 0.5);
-      box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.10);
-    }
-
-    .input-wrap input {
-      padding-left: 36px;
-    }
-
-    textarea {
-      resize: vertical;
-      min-height: 120px;
-      line-height: 1.5;
-    }
-
-    button {
-      background: linear-gradient(135deg, var(--primary), var(--primary-strong));
-      color: #fff;
-      border: none;
-      font-weight: 700;
-      cursor: pointer;
-      box-shadow: 0 10px 20px rgba(37, 99, 235, 0.18);
-    }
-
-    button:hover {
-      transform: translateY(-1px);
-    }
-
-    button:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-      transform: none;
-    }
-
-    .secondary-btn {
-      background: #fff;
-      color: var(--text);
-      border: 1px solid var(--border);
-      box-shadow: none;
-    }
-
-    .secondary-btn:hover {
-      background: #f8fafc;
-    }
-
-    .layout {
-      display: grid;
-      grid-template-columns: minmax(0, 1.8fr) minmax(340px, 420px);
-      gap: 20px;
-      align-items: start;
+      grid-template-columns: 1.15fr 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 18px;
     }
 
     .panel {
@@ -339,7 +277,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 10px;
+      gap: 12px;
       margin-bottom: 14px;
       flex-wrap: wrap;
     }
@@ -348,116 +286,382 @@
       margin: 0;
       font-size: 18px;
       letter-spacing: -0.02em;
+      color: var(--text);
     }
 
-    .panel-header p {
+    .panel-sub {
       margin: 4px 0 0;
-      color: var(--text-soft);
       font-size: 13px;
+      color: var(--text-soft);
     }
 
-    .badge-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-
-    .mini-badge {
+    .pill {
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      padding: 8px 10px;
       border-radius: 999px;
+      padding: 8px 11px;
       font-size: 12px;
-      font-weight: 700;
-      background: #f8fafc;
+      font-weight: 800;
+      background: var(--surface-soft);
       border: 1px solid var(--border);
       color: var(--text-soft);
     }
 
-    .mini-dot {
-      width: 8px;
-      height: 8px;
+    .analytics-stat-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .mini-stat {
+      padding: 14px;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: var(--surface-soft);
+    }
+
+    .mini-stat .label {
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--text-soft);
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .mini-stat .value {
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      color: var(--text);
+    }
+
+    .mini-stat .sub {
+      font-size: 12px;
+      color: var(--text-faint);
+      margin-top: 5px;
+    }
+
+    .distribution {
+      display: grid;
+      gap: 10px;
+    }
+
+    .dist-row {
+      display: grid;
+      grid-template-columns: 150px 1fr 48px;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .dist-label {
+      font-size: 13px;
+      color: var(--text-soft);
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .dist-bar {
+      height: 10px;
+      border-radius: 999px;
+      background: var(--surface-soft);
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    .dist-fill {
+      height: 100%;
+      border-radius: inherit;
+    }
+
+    .dist-value {
+      font-size: 12px;
+      color: var(--text-soft);
+      font-weight: 800;
+      text-align: right;
+    }
+
+    .ring-wrap {
+      display: grid;
+      grid-template-columns: 170px 1fr;
+      gap: 14px;
+      align-items: center;
+    }
+
+    .ring {
+      width: 170px;
+      height: 170px;
       border-radius: 50%;
-      background: var(--primary);
-      display: inline-block;
+      position: relative;
+      margin: 0 auto;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--border);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
+    }
+
+    .ring::after {
+      content: '';
+      position: absolute;
+      width: 104px;
+      height: 104px;
+      border-radius: 50%;
+      background: var(--surface-strong);
+      border: 1px solid var(--border);
+      box-shadow: inset 0 1px 4px rgba(0,0,0,0.04);
+    }
+
+    .ring-center {
+      position: relative;
+      z-index: 1;
+      text-align: center;
+    }
+
+    .ring-center .big {
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      color: var(--text);
+    }
+
+    .ring-center .small {
+      font-size: 12px;
+      color: var(--text-soft);
+      font-weight: 700;
+    }
+
+    .legend {
+      display: grid;
+      gap: 10px;
+    }
+
+    .legend-row {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 10px;
+      align-items: center;
+      font-size: 13px;
+    }
+
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    .legend-label {
+      color: var(--text-soft);
+      font-weight: 700;
+    }
+
+    .legend-value {
+      color: var(--text);
+      font-weight: 800;
+    }
+
+    .toolbar-card {
+      padding: 18px;
+      margin-bottom: 18px;
+    }
+
+    .toolbar-grid {
+      display: grid;
+      grid-template-columns: 1.35fr 220px 220px 160px;
+      gap: 12px;
+    }
+
+    .input-wrap {
+      position: relative;
+    }
+
+    .input-icon {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-faint);
+      font-size: 14px;
+      pointer-events: none;
+    }
+
+    input,
+    select,
+    textarea,
+    button {
+      width: 100%;
+      padding: 11px 13px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--surface-strong);
+      color: var(--text);
+      font-size: 14px;
+      transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition), background var(--transition), color var(--transition);
+      outline: none;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      border-color: rgba(37, 99, 235, 0.52);
+      box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+    }
+
+    .input-wrap input {
+      padding-left: 36px;
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 120px;
+      line-height: 1.55;
+    }
+
+    button {
+      background: linear-gradient(135deg, var(--primary), var(--primary-2));
+      color: #fff;
+      border: none;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 12px 24px rgba(37, 99, 235, 0.18);
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+    }
+
+    button:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .secondary-btn {
+      background: var(--surface-strong);
+      color: var(--text);
+      border: 1px solid var(--border);
+      box-shadow: none;
+    }
+
+    .secondary-btn:hover {
+      background: var(--surface-soft);
+    }
+
+    .chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .filter-chip {
+      width: auto;
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      border: 1px solid var(--border);
+      background: var(--surface-soft);
+      color: var(--text-soft);
+      box-shadow: none;
+    }
+
+    .filter-chip.active {
+      background: var(--primary-soft);
+      color: var(--primary);
+      border-color: rgba(37, 99, 235, 0.18);
+    }
+
+    .main-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.8fr) minmax(360px, 430px);
+      gap: 18px;
+      align-items: start;
     }
 
     .table-shell {
       overflow: hidden;
+      border-radius: 18px;
       border: 1px solid var(--border);
-      border-radius: 16px;
-      background: #fff;
+      background: var(--surface-strong);
     }
 
     .table-wrap {
       overflow: auto;
-      max-height: 76vh;
+      max-height: 74vh;
     }
 
     table {
       width: 100%;
-      min-width: 1050px;
+      min-width: 1150px;
       border-collapse: collapse;
-      font-size: 14px;
-      background: #fff;
+      background: var(--surface-strong);
     }
 
     thead th {
       position: sticky;
       top: 0;
       z-index: 2;
-      background: #f8fafc;
+      background: var(--surface-soft);
       color: var(--text-soft);
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
       font-size: 11px;
-      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
       border-bottom: 1px solid var(--border);
+      padding: 14px 12px;
+      text-align: left;
     }
 
-    th, td {
-      text-align: left;
+    tbody td {
       padding: 14px 12px;
-      border-bottom: 1px solid #edf2f7;
+      border-bottom: 1px solid var(--border);
       vertical-align: top;
+      color: var(--text);
+      font-size: 14px;
     }
 
     tbody tr {
       transition: background var(--transition), transform var(--transition);
+      cursor: pointer;
     }
 
     tbody tr:hover {
-      background: #f8fbff;
+      background: rgba(37, 99, 235, 0.04);
+    }
+
+    body.dark-theme tbody tr:hover {
+      background: rgba(59, 130, 246, 0.08);
     }
 
     tbody tr.selected-row {
-      background: #eff6ff;
+      background: rgba(37, 99, 235, 0.10);
     }
 
     .id-badge {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      min-width: 42px;
+      min-width: 44px;
       padding: 6px 10px;
       border-radius: 999px;
-      background: #eef2ff;
-      color: #3730a3;
+      background: var(--primary-soft);
+      color: var(--primary);
       font-size: 12px;
       font-weight: 800;
     }
 
     .issue-title {
       font-weight: 800;
-      margin-bottom: 6px;
       color: var(--text);
+      margin-bottom: 6px;
       line-height: 1.35;
     }
 
     .issue-desc {
-      color: var(--text-soft);
       font-size: 12px;
+      color: var(--text-soft);
       line-height: 1.5;
       max-width: 360px;
       word-break: break-word;
@@ -467,12 +671,12 @@
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      padding: 7px 11px;
+      padding: 7px 10px;
       border-radius: 999px;
       font-size: 12px;
       font-weight: 800;
-      white-space: nowrap;
       border: 1px solid transparent;
+      white-space: nowrap;
     }
 
     .chip-dot {
@@ -484,7 +688,7 @@
 
     .action-btn {
       width: auto;
-      padding: 8px 12px;
+      padding: 8px 11px;
       font-size: 12px;
       border-radius: 10px;
       box-shadow: none;
@@ -492,26 +696,49 @@
 
     .sidebar {
       position: sticky;
-      top: 18px;
+      top: 16px;
     }
 
-    .selected-box {
+    .selected-box,
+    .smart-box,
+    .security-box {
       padding: 14px;
-      border-radius: 14px;
-      background: linear-gradient(180deg, #f8fbff 0%, #f7fafc 100%);
+      border-radius: 16px;
       border: 1px solid var(--border);
+      background: var(--surface-soft);
+      line-height: 1.6;
       font-size: 13px;
       color: var(--text-soft);
-      line-height: 1.6;
     }
 
-    .selected-box strong {
+    .selected-box strong,
+    .smart-box strong,
+    .security-box strong {
       color: var(--text);
+    }
+
+    .smart-box {
+      background:
+        linear-gradient(180deg, rgba(37, 99, 235, 0.07), rgba(37, 99, 235, 0.03));
+    }
+
+    body.dark-theme .smart-box {
+      background:
+        linear-gradient(180deg, rgba(37, 99, 235, 0.14), rgba(37, 99, 235, 0.06));
     }
 
     .edit-grid {
       display: grid;
       gap: 12px;
+    }
+
+    .section-title {
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--text-soft);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-top: 2px;
     }
 
     .field-group {
@@ -523,7 +750,7 @@
       font-size: 12px;
       font-weight: 800;
       color: var(--text-soft);
-      letter-spacing: 0.02em;
+      letter-spacing: 0.03em;
       text-transform: uppercase;
     }
 
@@ -541,34 +768,23 @@
     .success {
       color: var(--success);
       font-size: 13px;
-      font-weight: 700;
+      font-weight: 800;
     }
 
     .error {
       color: var(--danger);
       font-size: 13px;
-      font-weight: 700;
-    }
-
-    .section-title {
-      font-size: 13px;
       font-weight: 800;
-      color: var(--text-soft);
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      margin-top: 4px;
-      margin-bottom: 2px;
     }
 
     .footer-note {
-      margin-top: 10px;
       font-size: 12px;
       color: var(--text-faint);
-      line-height: 1.5;
+      line-height: 1.6;
     }
 
     .empty-state {
-      padding: 42px 20px;
+      padding: 46px 24px;
       text-align: center;
       color: var(--text-soft);
     }
@@ -587,11 +803,11 @@
     .loading-overlay {
       position: fixed;
       inset: 0;
+      background: rgba(15, 23, 42, 0.22);
+      backdrop-filter: blur(4px);
       display: none;
       place-items: center;
-      background: rgba(15, 23, 42, 0.18);
-      backdrop-filter: blur(4px);
-      z-index: 999;
+      z-index: 1000;
     }
 
     .loading-overlay.show {
@@ -600,12 +816,12 @@
 
     .loading-card {
       width: 220px;
-      background: rgba(255, 255, 255, 0.96);
-      border: 1px solid rgba(255, 255, 255, 0.8);
       border-radius: 20px;
       padding: 20px;
       text-align: center;
-      box-shadow: var(--shadow-md);
+      background: var(--surface-strong);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-lg);
     }
 
     .spinner {
@@ -613,33 +829,33 @@
       height: 38px;
       margin: 0 auto 12px;
       border-radius: 50%;
-      border: 3px solid #dbeafe;
+      border: 3px solid var(--primary-soft);
       border-top-color: var(--primary);
       animation: spin 0.9s linear infinite;
     }
 
     .toast {
       position: fixed;
-      right: 22px;
-      bottom: 22px;
+      right: 20px;
+      bottom: 20px;
       min-width: 260px;
       max-width: 360px;
       padding: 14px 16px;
       border-radius: 14px;
       color: #fff;
       font-size: 14px;
-      font-weight: 700;
-      box-shadow: var(--shadow-md);
+      font-weight: 800;
+      box-shadow: var(--shadow-lg);
       transform: translateY(18px);
       opacity: 0;
       pointer-events: none;
       transition: all var(--transition);
-      z-index: 1000;
+      z-index: 1100;
     }
 
     .toast.show {
-      transform: translateY(0);
       opacity: 1;
+      transform: translateY(0);
     }
 
     .toast.success {
@@ -650,16 +866,22 @@
       background: linear-gradient(135deg, #dc2626, #b91c1c);
     }
 
+    .tiny-note {
+      font-size: 11px;
+      color: var(--text-faint);
+    }
+
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
 
-    @media (max-width: 1200px) {
-      .summary-grid {
+    @media (max-width: 1250px) {
+      .grid-global {
         grid-template-columns: repeat(3, minmax(0, 1fr));
       }
 
-      .layout {
+      .grid-analytics,
+      .main-layout {
         grid-template-columns: 1fr;
       }
 
@@ -668,32 +890,33 @@
       }
     }
 
-    @media (max-width: 900px) {
+    @media (max-width: 920px) {
+      .container {
+        padding: 16px;
+      }
+
       .hero-content,
       .toolbar-grid,
+      .grid-global,
       .grid-2,
-      .summary-grid {
+      .ring-wrap {
         grid-template-columns: 1fr;
+      }
+
+      .hero h1 {
+        font-size: 29px;
       }
 
       .hero-actions {
         justify-content: flex-start;
       }
 
-      .container {
-        padding: 16px;
-      }
-
-      .hero {
-        padding: 22px;
-      }
-
-      .hero h1 {
-        font-size: 28px;
+      .dist-row {
+        grid-template-columns: 120px 1fr 40px;
       }
 
       table {
-        min-width: 900px;
+        min-width: 980px;
       }
     }
   </style>
@@ -702,48 +925,94 @@
   <div class="loading-overlay" id="loadingOverlay">
     <div class="loading-card">
       <div class="spinner"></div>
-      <div style="font-weight: 800; color: var(--text); margin-bottom: 4px;">Loading dashboard</div>
-      <div class="muted">Please wait a moment...</div>
+      <div style="font-weight:800; color:var(--text); margin-bottom:4px;">Loading dashboard</div>
+      <div class="muted">Refreshing metrics and issues...</div>
     </div>
   </div>
 
   <div class="toast" id="toast"></div>
 
   <div class="container">
-    <section class="hero">
+    <section class="hero section">
       <div class="hero-content">
         <div>
-          <h1>Incheck360 Support Dashboard</h1>
+          <h1>Incheck360 Support Command Center</h1>
           <p>
-            Track support issues, monitor escalation trends, and update cases faster with a cleaner, more professional workspace.
+            A premium operational dashboard for tracking support issues, spotting trends, and updating cases with speed and clarity.
           </p>
+          <div class="hero-meta">
+            <div class="hero-pill">Global metrics + filtered insights</div>
+            <div class="hero-pill">Ctrl/Cmd + K to search</div>
+            <div class="hero-pill" id="lastRefreshPill">Last refreshed: —</div>
+          </div>
         </div>
 
         <div class="hero-actions">
+          <button type="button" id="themeToggleBtn">🌙 Dark Mode</button>
+          <button type="button" id="exportBtn">⬇ Export CSV</button>
           <button type="button" id="refreshBtnTop">↻ Refresh Data</button>
           <button type="button" class="secondary-btn" id="clearBtnTop">Clear Selection</button>
         </div>
       </div>
     </section>
 
-    <section class="summary-grid" id="summaryCards"></section>
+    <section class="grid-global" id="summaryCards"></section>
 
-    <section class="card toolbar-card">
-      <div class="toolbar-header">
-        <div>
-          <h3 class="toolbar-title">Search & Filters</h3>
-          <div class="toolbar-subtitle">Quickly find issues by keyword, status, or priority.</div>
+    <section class="grid-analytics section">
+      <article class="card panel">
+        <div class="panel-header">
+          <div>
+            <h3>Filtered Overview</h3>
+            <div class="panel-sub">Live analytics based on your current search and filters.</div>
+          </div>
+          <div class="pill" id="filteredSummaryPill">0 issues in view</div>
         </div>
-        <div class="toolbar-right">
-          <div class="pill-info" id="issuesCountPill">Showing 0 issues</div>
-          <div class="pill-info" id="selectedCountPill">No issue selected</div>
+
+        <div class="analytics-stat-grid" id="filteredOverviewStats"></div>
+      </article>
+
+      <article class="card panel">
+        <div class="panel-header">
+          <div>
+            <h3>Status Distribution</h3>
+            <div class="panel-sub">Breakdown of statuses in the current filtered result.</div>
+          </div>
+        </div>
+
+        <div class="distribution" id="statusDistribution"></div>
+      </article>
+
+      <article class="card panel">
+        <div class="panel-header">
+          <div>
+            <h3>Priority Mix</h3>
+            <div class="panel-sub">Current issue severity balance.</div>
+          </div>
+        </div>
+
+        <div class="ring-wrap">
+          <div id="priorityRingWrap"></div>
+          <div class="legend" id="priorityLegend"></div>
+        </div>
+      </article>
+    </section>
+
+    <section class="card toolbar-card section">
+      <div class="panel-header">
+        <div>
+          <h3>Search & Filters</h3>
+          <div class="panel-sub">Filter the issue queue instantly and refine with quick status chips.</div>
+        </div>
+        <div style="display:flex; flex-wrap:wrap; gap:8px;">
+          <div class="pill" id="issuesCountPill">Showing 0 issues</div>
+          <div class="pill" id="selectedCountPill">No issue selected</div>
         </div>
       </div>
 
       <div class="toolbar-grid">
         <div class="input-wrap">
           <span class="input-icon">⌕</span>
-          <input id="searchInput" placeholder="Search by company, issue title, module, ticket, or description..." />
+          <input id="searchInput" placeholder="Search by company, issue title, module, description, or ticket..." />
         </div>
 
         <select id="statusFilter">
@@ -767,16 +1036,18 @@
 
         <button id="refreshBtn">Refresh</button>
       </div>
+
+      <div class="chip-row" id="quickFilterChips"></div>
     </section>
 
-    <section class="layout">
-      <div class="card panel">
+    <section class="main-layout">
+      <article class="card panel">
         <div class="panel-header">
           <div>
             <h3>Issue Queue</h3>
-            <p>Click any issue to load it into the editor.</p>
+            <div class="panel-sub">Click any row to inspect and edit that issue.</div>
           </div>
-          <div class="badge-row" id="statusOverview"></div>
+          <div class="pill" id="tableMetaPill">Sorted by current sheet order</div>
         </div>
 
         <div class="table-shell">
@@ -804,19 +1075,23 @@
             </table>
           </div>
         </div>
-      </div>
+      </article>
 
       <aside class="card panel sidebar">
         <div class="panel-header">
           <div>
-            <h3>Edit Issue</h3>
-            <p>Update the selected issue and save changes securely.</p>
+            <h3>Issue Editor</h3>
+            <div class="panel-sub">Update resolution details and save securely.</div>
           </div>
         </div>
 
         <div class="edit-grid">
           <div class="selected-box" id="selectedIssueInfo">
             No issue selected.
+          </div>
+
+          <div class="smart-box" id="smartSuggestionBox">
+            <strong>Smart suggestion:</strong> Select an issue to see recommended next actions.
           </div>
 
           <div class="section-title">Issue Info</div>
@@ -826,6 +1101,7 @@
               <label for="issueId">Row ID</label>
               <input id="issueId" placeholder="Row ID" readonly />
             </div>
+
             <div class="field-group">
               <label for="companyName">Company</label>
               <input id="companyName" placeholder="Company Name" readonly />
@@ -837,7 +1113,7 @@
             <input id="issueTitle" placeholder="Issue Title" readonly />
           </div>
 
-          <div class="section-title">Resolution Details</div>
+          <div class="section-title">Resolution</div>
 
           <div class="field-group">
             <label for="finalStatus">Final Status</label>
@@ -904,15 +1180,19 @@
 
           <div class="field-group">
             <label for="developmentTicket">Development Ticket</label>
-            <input id="developmentTicket" placeholder="Development Ticket ID or Link" />
+            <input id="developmentTicket" placeholder="Development ticket ID or link" />
           </div>
 
           <div class="field-group">
             <label for="internalNotes">Internal Notes</label>
-            <textarea id="internalNotes" rows="7" placeholder="Add internal notes, resolution details, or follow-up context..."></textarea>
+            <textarea id="internalNotes" rows="7" placeholder="Document root cause, actions taken, workaround, or handoff notes..."></textarea>
           </div>
 
           <div class="section-title">Security</div>
+
+          <div class="security-box">
+            <strong>Secure save:</strong> updates still use your Apps Script password validation and backend closure-date logic.
+          </div>
 
           <div class="field-group">
             <label for="editPassword">Edit Password</label>
@@ -927,7 +1207,7 @@
           <div id="saveMessage" class="muted"></div>
 
           <div class="footer-note">
-            Tip: select an issue from the table, update only the fields you need, then save. Closure date is still handled by your Apps Script logic.
+            The global KPI cards show all issues. The analytics section shows only the issues currently visible after filters.
           </div>
         </div>
       </aside>
@@ -936,10 +1216,12 @@
 
   <script>
     const API_URL = 'https://script.google.com/macros/s/AKfycbwX0LqxxJ7-YN7EDzzqomxVFVLvIhSXvbYgd4LgLE42gq1Hl4wJmCYPTy2rcsjQ_KVV/exec';
+
     let currentIssues = [];
     let selectedIssueId = null;
     let searchTimer = null;
     let dashboardSummary = {};
+    let lastRefreshedAt = null;
 
     async function apiGet(action, params = {}) {
       const url = new URL(API_URL);
@@ -967,29 +1249,128 @@
       return response.json();
     }
 
-    function renderCards(summary) {
+    function renderGlobalCards(summary) {
       const cards = [
-        { label: 'Total Issues', value: summary.total || 0, icon: '🗂', hint: 'All submitted issues', tone: 'primary' },
-        { label: 'Open / Active', value: summary.open || 0, icon: '🟡', hint: 'Needs attention', tone: 'warning' },
-        { label: 'Resolved / Closed', value: summary.resolvedClosed || 0, icon: '✅', hint: 'Completed issues', tone: 'success' },
-        { label: 'Escalated', value: summary.escalated || 0, icon: '🚀', hint: 'Sent to development', tone: 'purple' },
-        { label: 'High / Critical', value: summary.highCritical || 0, icon: '🔥', hint: 'Priority focus', tone: 'danger' }
+        { label: 'Total Issues', value: summary.total || 0, hint: 'All recorded issues', icon: '🗂', tone: 'primary' },
+        { label: 'Open / Active', value: summary.open || 0, hint: 'Needs follow-up', icon: '🟡', tone: 'warning' },
+        { label: 'Resolved / Closed', value: summary.resolvedClosed || 0, hint: 'Completed cases', icon: '✅', tone: 'success' },
+        { label: 'Escalated', value: summary.escalated || 0, hint: 'Sent to development', icon: '🚀', tone: 'purple' },
+        { label: 'High / Critical', value: summary.highCritical || 0, hint: 'Priority focus', icon: '🔥', tone: 'danger' }
       ];
 
       document.getElementById('summaryCards').innerHTML = cards.map(card => `
-        <article class="card summary-card">
-          <div class="summary-top">
-            <div class="summary-label">${escapeHtml(card.label)}</div>
-            <div class="summary-icon" style="${summaryIconStyle(card.tone)}">${escapeHtml(card.icon)}</div>
+        <article class="card kpi-card">
+          <div class="kpi-top">
+            <div class="kpi-label">${escapeHtml(card.label)}</div>
+            <div class="kpi-icon" style="${iconToneStyle(card.tone)}">${escapeHtml(card.icon)}</div>
           </div>
-          <div class="summary-value">${escapeHtml(card.value)}</div>
-          <div class="summary-hint">${escapeHtml(card.hint)}</div>
+          <div class="kpi-value">${escapeHtml(card.value)}</div>
+          <div class="kpi-sub">${escapeHtml(card.hint)}</div>
         </article>
       `).join('');
     }
 
-    function renderStatusOverview(summary) {
-      const byStatus = summary.byStatus || {};
+    function deriveFilteredMetrics(issues) {
+      const metrics = {
+        total: issues.length,
+        active: 0,
+        escalated: 0,
+        highCritical: 0,
+        withTickets: 0,
+        statusCounts: {},
+        priorityCounts: {},
+        categoryCounts: {},
+        companyCounts: {}
+      };
+
+      issues.forEach(issue => {
+        const status = normalizeValue(issue.finalStatus || 'Open');
+        const priority = normalizeValue(issue.priorityLevel || 'Blank');
+        const category = issue.issueCategory || 'Blank';
+        const company = issue.companyName || 'Blank';
+        const escalation = normalizeValue(issue.escalationRequired || '');
+        const ticket = String(issue.developmentTicket || '').trim();
+
+        if (!status || ['open', 'in progress', 'waiting for cs', 'waiting for customer', 'escalated to development'].includes(status)) {
+          metrics.active++;
+        }
+
+        if (status === 'escalated to development' || escalation === 'yes') {
+          metrics.escalated++;
+        }
+
+        if (['high', 'critical'].includes(priority)) {
+          metrics.highCritical++;
+        }
+
+        if (ticket) {
+          metrics.withTickets++;
+        }
+
+        metrics.statusCounts[issue.finalStatus || 'Open'] = (metrics.statusCounts[issue.finalStatus || 'Open'] || 0) + 1;
+        metrics.priorityCounts[issue.priorityLevel || 'Blank'] = (metrics.priorityCounts[issue.priorityLevel || 'Blank'] || 0) + 1;
+        metrics.categoryCounts[category] = (metrics.categoryCounts[category] || 0) + 1;
+        metrics.companyCounts[company] = (metrics.companyCounts[company] || 0) + 1;
+      });
+
+      return metrics;
+    }
+
+    function renderFilteredOverview(metrics) {
+      const topCompany = findTopEntry(metrics.companyCounts);
+      const topCategory = findTopEntry(metrics.categoryCounts);
+
+      document.getElementById('filteredSummaryPill').textContent = `${metrics.total} issue${metrics.total === 1 ? '' : 's'} in current view`;
+
+      const cards = [
+        {
+          label: 'Active',
+          value: metrics.active,
+          sub: 'Open, in progress, waiting, escalated',
+          bg: 'var(--primary-soft)'
+        },
+        {
+          label: 'Escalated',
+          value: metrics.escalated,
+          sub: 'Marked escalated or sent to development',
+          bg: 'var(--purple-soft)'
+        },
+        {
+          label: 'High / Critical',
+          value: metrics.highCritical,
+          sub: 'Priority focus area',
+          bg: 'var(--danger-soft)'
+        },
+        {
+          label: 'With Ticket',
+          value: metrics.withTickets,
+          sub: 'Has development ticket reference',
+          bg: 'var(--success-soft)'
+        },
+        {
+          label: 'Top Company',
+          value: topCompany ? topCompany.label : '—',
+          sub: topCompany ? `${topCompany.value} issue${topCompany.value === 1 ? '' : 's'}` : 'No data',
+          bg: 'var(--surface-soft)'
+        },
+        {
+          label: 'Top Category',
+          value: topCategory ? topCategory.label : '—',
+          sub: topCategory ? `${topCategory.value} issue${topCategory.value === 1 ? '' : 's'}` : 'No data',
+          bg: 'var(--surface-soft)'
+        }
+      ];
+
+      document.getElementById('filteredOverviewStats').innerHTML = cards.map(card => `
+        <div class="mini-stat" style="background:${card.bg}">
+          <div class="label">${escapeHtml(card.label)}</div>
+          <div class="value">${escapeHtml(card.value)}</div>
+          <div class="sub">${escapeHtml(card.sub)}</div>
+        </div>
+      `).join('');
+    }
+
+    function renderStatusDistribution(metrics) {
       const preferredOrder = [
         'Open',
         'In Progress',
@@ -1000,18 +1381,112 @@
         'Closed'
       ];
 
-      const items = preferredOrder
-        .filter(label => Number(byStatus[label] || 0) > 0)
-        .map(label => `
-          <div class="mini-badge">
-            <span class="mini-dot" style="background:${statusColor(label)}"></span>
-            ${escapeHtml(label)} · ${escapeHtml(byStatus[label])}
-          </div>
-        `);
+      const total = metrics.total || 1;
+      const rows = preferredOrder
+        .filter(label => Number(metrics.statusCounts[label] || 0) > 0)
+        .map(label => {
+          const count = metrics.statusCounts[label] || 0;
+          const percent = Math.round((count / total) * 100);
+          return `
+            <div class="dist-row">
+              <div class="dist-label">${escapeHtml(label)}</div>
+              <div class="dist-bar">
+                <div class="dist-fill" style="width:${percent}%; background:${statusColor(label)};"></div>
+              </div>
+              <div class="dist-value">${count}</div>
+            </div>
+          `;
+        });
 
-      document.getElementById('statusOverview').innerHTML = items.join('') || `
-        <div class="mini-badge">No status data available</div>
+      document.getElementById('statusDistribution').innerHTML = rows.length ? rows.join('') : `
+        <div class="empty-state" style="padding:24px 10px;">
+          <h4>No status data</h4>
+          <p>Try changing filters to display issues.</p>
+        </div>
       `;
+    }
+
+    function renderPriorityRing(metrics) {
+      const priorities = ['Critical', 'High', 'Medium', 'Low'];
+      const colors = {
+        Critical: '#dc2626',
+        High: '#ea580c',
+        Medium: '#d97706',
+        Low: '#16a34a'
+      };
+
+      const total = priorities.reduce((sum, key) => sum + Number(metrics.priorityCounts[key] || 0), 0);
+
+      if (!total) {
+        document.getElementById('priorityRingWrap').innerHTML = `
+          <div class="ring" style="background:conic-gradient(#cbd5e1 0 100%);">
+            <div class="ring-center">
+              <div class="big">0</div>
+              <div class="small">issues</div>
+            </div>
+          </div>
+        `;
+        document.getElementById('priorityLegend').innerHTML = `
+          <div class="muted">No priority data in the current view.</div>
+        `;
+        return;
+      }
+
+      let cumulative = 0;
+      const slices = priorities
+        .filter(key => Number(metrics.priorityCounts[key] || 0) > 0)
+        .map(key => {
+          const value = Number(metrics.priorityCounts[key] || 0);
+          const size = (value / total) * 100;
+          const start = cumulative;
+          cumulative += size;
+          return `${colors[key]} ${start}% ${cumulative}%`;
+        });
+
+      document.getElementById('priorityRingWrap').innerHTML = `
+        <div class="ring" style="background:conic-gradient(${slices.join(', ')});">
+          <div class="ring-center">
+            <div class="big">${total}</div>
+            <div class="small">prioritized</div>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('priorityLegend').innerHTML = priorities.map(key => `
+        <div class="legend-row">
+          <span class="legend-dot" style="background:${colors[key]}"></span>
+          <span class="legend-label">${escapeHtml(key)}</span>
+          <span class="legend-value">${escapeHtml(metrics.priorityCounts[key] || 0)}</span>
+        </div>
+      `).join('');
+    }
+
+    function renderQuickFilterChips() {
+      const statuses = [
+        'All',
+        'Open',
+        'In Progress',
+        'Waiting for CS',
+        'Waiting for Customer',
+        'Escalated to Development',
+        'Resolved',
+        'Closed'
+      ];
+
+      const current = document.getElementById('statusFilter').value.trim() || 'All';
+
+      document.getElementById('quickFilterChips').innerHTML = statuses.map(status => {
+        const active = status === current;
+        return `
+          <button
+            type="button"
+            class="filter-chip ${active ? 'active' : ''}"
+            onclick="applyQuickStatusFilter('${escapeJs(status === 'All' ? '' : status)}')"
+          >
+            ${escapeHtml(status)}
+          </button>
+        `;
+      }).join('');
     }
 
     function renderTable(issues) {
@@ -1023,7 +1498,7 @@
             <td colspan="10">
               <div class="empty-state">
                 <h4>No issues found</h4>
-                <p>Try adjusting your search term or filters.</p>
+                <p>Try adjusting the search term or filters.</p>
               </div>
             </td>
           </tr>
@@ -1032,7 +1507,7 @@
       }
 
       tbody.innerHTML = issues.map(issue => `
-        <tr class="${Number(issue.id) === Number(selectedIssueId) ? 'selected-row' : ''}">
+        <tr class="${Number(issue.id) === Number(selectedIssueId) ? 'selected-row' : ''}" onclick="selectIssue(${Number(issue.id)})">
           <td><span class="id-badge">#${escapeHtml(issue.id)}</span></td>
           <td>
             <div class="issue-title">${escapeHtml(issue.issueTitle || 'Untitled issue')}</div>
@@ -1046,7 +1521,7 @@
           <td>${renderTicket(issue.developmentTicket)}</td>
           <td>${formatDate(issue.resolutionClosureDate) || '—'}</td>
           <td>
-            <button class="action-btn" type="button" onclick="selectIssue(${Number(issue.id)})">Edit</button>
+            <button class="action-btn" type="button" onclick="event.stopPropagation(); selectIssue(${Number(issue.id)})">Edit</button>
           </td>
         </tr>
       `).join('');
@@ -1073,11 +1548,13 @@
         <strong>Selected:</strong> ${escapeHtml(issue.issueTitle || 'Untitled issue')}<br>
         <span class="muted">Company:</span> ${escapeHtml(issue.companyName || '—')}<br>
         <span class="muted">Priority:</span> ${escapeHtml(issue.priorityLevel || '—')}<br>
-        <span class="muted">Current Status:</span> ${escapeHtml(issue.finalStatus || 'Open')}<br>
+        <span class="muted">Status:</span> ${escapeHtml(issue.finalStatus || 'Open')}<br>
+        <span class="muted">Escalation:</span> ${escapeHtml(issue.escalationRequired || '—')}<br>
         <span class="muted">Ticket:</span> ${escapeHtml(issue.developmentTicket || '—')}
       `;
 
       document.getElementById('selectedCountPill').textContent = `Selected #${issue.id}`;
+      document.getElementById('smartSuggestionBox').innerHTML = buildSmartSuggestion(issue);
       renderTable(currentIssues);
       setMessage('');
     }
@@ -1097,6 +1574,7 @@
       document.getElementById('editPassword').value = '';
       document.getElementById('selectedIssueInfo').textContent = 'No issue selected.';
       document.getElementById('selectedCountPill').textContent = 'No issue selected';
+      document.getElementById('smartSuggestionBox').innerHTML = '<strong>Smart suggestion:</strong> Select an issue to see recommended next actions.';
       setMessage('');
       renderTable(currentIssues);
     }
@@ -1124,11 +1602,18 @@
 
         dashboardSummary = summaryRes.data || {};
         currentIssues = issuesRes.data || [];
+        lastRefreshedAt = new Date();
 
-        renderCards(dashboardSummary);
-        renderStatusOverview(dashboardSummary);
+        renderGlobalCards(dashboardSummary);
+
+        const filteredMetrics = deriveFilteredMetrics(currentIssues);
+        renderFilteredOverview(filteredMetrics);
+        renderStatusDistribution(filteredMetrics);
+        renderPriorityRing(filteredMetrics);
+        renderQuickFilterChips();
         renderTable(currentIssues);
-        updateIssuesCount();
+        updatePills();
+        updateLastRefresh();
 
         if (selectedIssueId) {
           const refreshed = currentIssues.find(item => Number(item.id) === Number(selectedIssueId));
@@ -1200,7 +1685,12 @@
       }
     }
 
-    function updateIssuesCount() {
+    function applyQuickStatusFilter(value) {
+      document.getElementById('statusFilter').value = value;
+      loadDashboard();
+    }
+
+    function updatePills() {
       const count = currentIssues.length;
       const searchTerm = document.getElementById('searchInput').value.trim();
       const status = document.getElementById('statusFilter').value.trim();
@@ -1212,62 +1702,55 @@
       }
 
       document.getElementById('issuesCountPill').textContent = `Showing ${count} issue${count === 1 ? '' : 's'}${suffix}`;
+      document.getElementById('tableMetaPill').textContent = status || priority || searchTerm ? 'Current filtered view' : 'Full issue list';
     }
 
-    function setMessage(message, isError = false) {
-      const el = document.getElementById('saveMessage');
-      el.textContent = message;
-      el.className = isError ? 'error' : 'success';
-      if (!message) {
-        el.className = 'muted';
+    function updateLastRefresh() {
+      document.getElementById('lastRefreshPill').textContent = `Last refreshed: ${lastRefreshedAt ? formatDateTime(lastRefreshedAt) : '—'}`;
+    }
+
+    function buildSmartSuggestion(issue) {
+      const status = normalizeValue(issue.finalStatus || 'Open');
+      const escalation = normalizeValue(issue.escalationRequired || '');
+      const csInformed = normalizeValue(issue.wasCsInformed || '');
+      const hasTicket = String(issue.developmentTicket || '').trim().length > 0;
+      const hasNotes = String(issue.internalNotes || '').trim().length > 0;
+
+      let message = 'Review and save the issue after confirming its status and notes.';
+
+      if (status === 'escalated to development' && !hasTicket) {
+        message = 'This issue is escalated but has no development ticket. Add a ticket ID or link before saving.';
+      } else if ((status === 'resolved' || status === 'closed') && !hasNotes) {
+        message = 'This issue is being completed. Add brief internal notes so the resolution history is clear.';
+      } else if ((status === 'waiting for customer' || status === 'waiting for cs') && csInformed === 'no') {
+        message = 'The issue is waiting on communication. Consider marking “Was CS informed?” as Yes after the handoff.';
+      } else if (escalation === 'yes' && !hasTicket) {
+        message = 'Escalation is marked Yes, but no development ticket is linked yet.';
+      } else if (!hasNotes) {
+        message = 'Add internal notes to make future follow-up easier for the team.';
       }
-    }
 
-    function setLoading(isLoading) {
-      document.getElementById('loadingOverlay').classList.toggle('show', isLoading);
-      document.getElementById('saveBtn').disabled = isLoading;
-      document.getElementById('refreshBtn').disabled = isLoading;
-      document.getElementById('refreshBtnTop').disabled = isLoading;
-    }
-
-    function showToast(message, isError = false) {
-      const toast = document.getElementById('toast');
-      toast.textContent = message;
-      toast.className = `toast ${isError ? 'error' : 'success'} show`;
-
-      clearTimeout(showToast._timer);
-      showToast._timer = setTimeout(() => {
-        toast.className = `toast ${isError ? 'error' : 'success'}`;
-      }, 2600);
-    }
-
-    function formatDate(value) {
-      if (!value) return '';
-      const date = new Date(value);
-      if (Number.isNaN(date.getTime())) {
-        return escapeHtml(String(value));
-      }
-      return date.toLocaleDateString(undefined, {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-      });
+      return `<strong>Smart suggestion:</strong> ${escapeHtml(message)}`;
     }
 
     function renderTicket(ticket) {
       if (!ticket) return '—';
+
       const value = String(ticket).trim();
       const isLink = /^https?:\/\//i.test(value);
+
       if (isLink) {
-        return `<a href="${escapeAttribute(value)}" target="_blank" rel="noopener noreferrer">${escapeHtml(shorten(value, 28))}</a>`;
+        return `<a href="${escapeAttribute(value)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">${escapeHtml(shorten(value, 32))}</a>`;
       }
+
       return escapeHtml(value);
     }
 
     function buildStatusChip(status) {
       const label = status || 'Open';
-      const color = statusColor(label);
       const bg = statusBg(label);
+      const color = statusTextColor(label);
+
       return `
         <span class="chip" style="background:${bg}; color:${color}; border-color:${bg};">
           <span class="chip-dot" style="background:${color}"></span>
@@ -1278,9 +1761,10 @@
 
     function buildPriorityChip(priority) {
       const label = priority || '—';
-      const normalized = String(label).toLowerCase();
-      let bg = '#f8fafc';
-      let color = '#64748b';
+      const normalized = normalizeValue(label);
+
+      let bg = 'var(--surface-soft)';
+      let color = 'var(--text-soft)';
 
       if (normalized === 'critical') {
         bg = '#fee2e2';
@@ -1306,7 +1790,7 @@
 
     function buildYesNoChip(value) {
       const label = value || '—';
-      const normalized = String(label).toLowerCase();
+      const normalized = normalizeValue(label);
 
       if (normalized === 'yes') {
         return `
@@ -1329,28 +1813,17 @@
       return '—';
     }
 
-    function summaryIconStyle(tone) {
-      const styles = {
-        primary: 'background:#dbeafe;color:#1d4ed8;',
-        success: 'background:#dcfce7;color:#15803d;',
-        warning: 'background:#fef3c7;color:#b45309;',
-        danger: 'background:#fee2e2;color:#b91c1c;',
-        purple: 'background:#ede9fe;color:#6d28d9;'
-      };
-      return styles[tone] || styles.primary;
-    }
-
     function statusColor(status) {
-      const normalized = String(status || '').toLowerCase();
-      if (normalized === 'resolved' || normalized === 'closed') return '#15803d';
-      if (normalized === 'escalated to development') return '#6d28d9';
-      if (normalized === 'waiting for cs' || normalized === 'waiting for customer') return '#b45309';
+      const normalized = normalizeValue(status);
+      if (normalized === 'resolved' || normalized === 'closed') return '#16a34a';
+      if (normalized === 'escalated to development') return '#7c3aed';
+      if (normalized === 'waiting for cs' || normalized === 'waiting for customer') return '#d97706';
       if (normalized === 'in progress') return '#2563eb';
-      return '#475569';
+      return '#64748b';
     }
 
     function statusBg(status) {
-      const normalized = String(status || '').toLowerCase();
+      const normalized = normalizeValue(status);
       if (normalized === 'resolved' || normalized === 'closed') return '#dcfce7';
       if (normalized === 'escalated to development') return '#ede9fe';
       if (normalized === 'waiting for cs' || normalized === 'waiting for customer') return '#fef3c7';
@@ -1358,9 +1831,178 @@
       return '#e2e8f0';
     }
 
+    function statusTextColor(status) {
+      const normalized = normalizeValue(status);
+      if (normalized === 'resolved' || normalized === 'closed') return '#15803d';
+      if (normalized === 'escalated to development') return '#6d28d9';
+      if (normalized === 'waiting for cs' || normalized === 'waiting for customer') return '#b45309';
+      if (normalized === 'in progress') return '#1d4ed8';
+      return '#475569';
+    }
+
+    function iconToneStyle(tone) {
+      const map = {
+        primary: 'background:#dbeafe;color:#1d4ed8;',
+        success: 'background:#dcfce7;color:#15803d;',
+        warning: 'background:#fef3c7;color:#b45309;',
+        danger: 'background:#fee2e2;color:#b91c1c;',
+        purple: 'background:#ede9fe;color:#6d28d9;'
+      };
+      return map[tone] || map.primary;
+    }
+
+    function setMessage(message, isError = false) {
+      const el = document.getElementById('saveMessage');
+      el.textContent = message;
+      el.className = isError ? 'error' : 'success';
+      if (!message) {
+        el.className = 'muted';
+      }
+    }
+
+    function setLoading(isLoading) {
+      document.getElementById('loadingOverlay').classList.toggle('show', isLoading);
+      document.getElementById('saveBtn').disabled = isLoading;
+      document.getElementById('refreshBtn').disabled = isLoading;
+      document.getElementById('refreshBtnTop').disabled = isLoading;
+      document.getElementById('exportBtn').disabled = isLoading;
+    }
+
+    function showToast(message, isError = false) {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.className = `toast ${isError ? 'error' : 'success'} show`;
+
+      clearTimeout(showToast._timer);
+      showToast._timer = setTimeout(() => {
+        toast.className = `toast ${isError ? 'error' : 'success'}`;
+      }, 2600);
+    }
+
+    function exportCurrentIssuesCsv() {
+      if (!currentIssues.length) {
+        showToast('No issues to export in the current view.', true);
+        return;
+      }
+
+      const columns = [
+        ['ID', 'id'],
+        ['Timestamp', 'timestamp'],
+        ['Request Date', 'requestDate'],
+        ['Submitted By', 'submittedBy'],
+        ['Company Name', 'companyName'],
+        ['Issue Title', 'issueTitle'],
+        ['Issue Category', 'issueCategory'],
+        ['Detailed Description', 'detailedDescription'],
+        ['Priority Level', 'priorityLevel'],
+        ['Product Module Affected', 'productModuleAffected'],
+        ['Reported Channel', 'reportedChannel'],
+        ['Source Of Issue', 'sourceOfIssue'],
+        ['Initial Assessment', 'initialAssessment'],
+        ['Root Cause Type', 'rootCauseType'],
+        ['Internal Notes', 'internalNotes'],
+        ['Escalation Required', 'escalationRequired'],
+        ['Development Ticket', 'developmentTicket'],
+        ['Final Status', 'finalStatus'],
+        ['Resolution / Closure Date', 'resolutionClosureDate'],
+        ['Was CS Informed', 'wasCsInformed']
+      ];
+
+      const rows = [
+        columns.map(col => csvEscape(col[0])).join(','),
+        ...currentIssues.map(issue =>
+          columns.map(col => csvEscape(issue[col[1]])).join(',')
+        )
+      ];
+
+      const csv = rows.join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `support-dashboard-${formatFileStamp(new Date())}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      showToast('Filtered issue list exported.');
+    }
+
+    function toggleTheme() {
+      const body = document.body;
+      body.classList.toggle('dark-theme');
+      const isDark = body.classList.contains('dark-theme');
+      localStorage.setItem('supportDashboardTheme', isDark ? 'dark' : 'light');
+      updateThemeButton();
+    }
+
+    function applySavedTheme() {
+      const saved = localStorage.getItem('supportDashboardTheme');
+      if (saved === 'dark') {
+        document.body.classList.add('dark-theme');
+      }
+      updateThemeButton();
+    }
+
+    function updateThemeButton() {
+      const isDark = document.body.classList.contains('dark-theme');
+      document.getElementById('themeToggleBtn').textContent = isDark ? '☀ Light Mode' : '🌙 Dark Mode';
+    }
+
+    function formatDate(value) {
+      if (!value) return '';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) {
+        return escapeHtml(String(value));
+      }
+      return date.toLocaleDateString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    }
+
+    function formatDateTime(value) {
+      const date = value instanceof Date ? value : new Date(value);
+      if (Number.isNaN(date.getTime())) return '—';
+      return date.toLocaleString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
+
+    function formatFileStamp(date) {
+      const d = date instanceof Date ? date : new Date(date);
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mi = String(d.getMinutes()).padStart(2, '0');
+      return `${yyyy}${mm}${dd}-${hh}${mi}`;
+    }
+
+    function findTopEntry(obj) {
+      const entries = Object.entries(obj || {}).sort((a, b) => b[1] - a[1]);
+      if (!entries.length) return null;
+      return { label: entries[0][0], value: entries[0][1] };
+    }
+
+    function normalizeValue(value) {
+      return String(value || '').trim().toLowerCase();
+    }
+
     function shorten(value, max) {
       const text = String(value || '');
       return text.length > max ? text.slice(0, max - 1) + '…' : text;
+    }
+
+    function csvEscape(value) {
+      const text = String(value == null ? '' : value).replaceAll('"', '""');
+      return `"${text}"`;
     }
 
     function escapeHtml(value) {
@@ -1376,20 +2018,42 @@
       return escapeHtml(value).replaceAll('`', '&#096;');
     }
 
+    function escapeJs(value) {
+      return String(value).replaceAll('\\', '\\\\').replaceAll("'", "\\'");
+    }
+
     document.getElementById('refreshBtn').addEventListener('click', loadDashboard);
     document.getElementById('refreshBtnTop').addEventListener('click', loadDashboard);
     document.getElementById('saveBtn').addEventListener('click', saveIssue);
     document.getElementById('clearBtn').addEventListener('click', clearForm);
     document.getElementById('clearBtnTop').addEventListener('click', clearForm);
+    document.getElementById('exportBtn').addEventListener('click', exportCurrentIssuesCsv);
+    document.getElementById('themeToggleBtn').addEventListener('click', toggleTheme);
 
     document.getElementById('searchInput').addEventListener('input', () => {
       clearTimeout(searchTimer);
-      searchTimer = setTimeout(loadDashboard, 350);
+      searchTimer = setTimeout(loadDashboard, 300);
     });
 
     document.getElementById('statusFilter').addEventListener('change', loadDashboard);
     document.getElementById('priorityFilter').addEventListener('change', loadDashboard);
 
+    document.addEventListener('keydown', (event) => {
+      const isMac = navigator.platform.toUpperCase().includes('MAC');
+      const cmdOrCtrl = isMac ? event.metaKey : event.ctrlKey;
+
+      if (cmdOrCtrl && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        document.getElementById('searchInput').focus();
+        document.getElementById('searchInput').select();
+      }
+
+      if (event.key === 'Escape') {
+        clearForm();
+      }
+    });
+
+    applySavedTheme();
     loadDashboard();
   </script>
 </body>
