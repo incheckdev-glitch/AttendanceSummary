@@ -92,18 +92,6 @@
       padding: 22px;
     }
 
-    .sr-only {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      padding: 0;
-      margin: -1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-      white-space: nowrap;
-      border: 0;
-    }
-
     .card {
       background: var(--surface);
       border: 1px solid rgba(255, 255, 255, 0.24);
@@ -150,7 +138,7 @@
       position: relative;
       z-index: 1;
       display: grid;
-      grid-template-columns: 1.5fr 1fr;
+      grid-template-columns: 1.4fr 1fr;
       gap: 18px;
       align-items: center;
     }
@@ -274,9 +262,9 @@
       font-size: 12px;
     }
 
-    .grid-analytics {
+    .analytics-grid {
       display: grid;
-      grid-template-columns: 1.15fr 1fr 1fr;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 14px;
       margin-bottom: 18px;
     }
@@ -482,7 +470,7 @@
 
     .toolbar-grid {
       display: grid;
-      grid-template-columns: 1.35fr 220px 220px 220px 140px;
+      grid-template-columns: 1.25fr 220px 220px 220px 140px;
       gap: 12px;
       align-items: end;
     }
@@ -531,9 +519,7 @@
 
     input:focus,
     select:focus,
-    textarea:focus,
-    button:focus-visible,
-    tbody tr:focus-visible {
+    textarea:focus {
       border-color: rgba(37, 99, 235, 0.52);
       box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
     }
@@ -603,13 +589,6 @@
       border-color: rgba(37, 99, 235, 0.18);
     }
 
-    .main-layout {
-      display: grid;
-      grid-template-columns: minmax(0, 1.8fr) minmax(360px, 430px);
-      gap: 18px;
-      align-items: start;
-    }
-
     .table-shell {
       overflow: hidden;
       border-radius: 18px;
@@ -624,7 +603,7 @@
 
     table {
       width: 100%;
-      min-width: 1220px;
+      min-width: 1250px;
       border-collapse: collapse;
       background: var(--surface-strong);
     }
@@ -652,9 +631,8 @@
     }
 
     tbody tr {
-      transition: background var(--transition), transform var(--transition);
+      transition: background var(--transition);
       cursor: pointer;
-      outline: none;
     }
 
     tbody tr:hover {
@@ -693,7 +671,7 @@
       font-size: 12px;
       color: var(--text-soft);
       line-height: 1.5;
-      max-width: 360px;
+      max-width: 380px;
       word-break: break-word;
     }
 
@@ -724,72 +702,6 @@
       box-shadow: none;
     }
 
-    .sidebar {
-      position: sticky;
-      top: 16px;
-    }
-
-    .selected-box,
-    .smart-box,
-    .security-box {
-      padding: 14px;
-      border-radius: 16px;
-      border: 1px solid var(--border);
-      background: var(--surface-soft);
-      line-height: 1.6;
-      font-size: 13px;
-      color: var(--text-soft);
-    }
-
-    .selected-box strong,
-    .smart-box strong,
-    .security-box strong {
-      color: var(--text);
-    }
-
-    .smart-box {
-      background:
-        linear-gradient(180deg, rgba(37, 99, 235, 0.07), rgba(37, 99, 235, 0.03));
-    }
-
-    body.dark-theme .smart-box {
-      background:
-        linear-gradient(180deg, rgba(37, 99, 235, 0.14), rgba(37, 99, 235, 0.06));
-    }
-
-    .edit-grid {
-      display: grid;
-      gap: 12px;
-    }
-
-    .section-title {
-      font-size: 12px;
-      font-weight: 800;
-      color: var(--text-soft);
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      margin-top: 2px;
-    }
-
-    .field-group {
-      display: grid;
-      gap: 8px;
-    }
-
-    .field-group label {
-      font-size: 12px;
-      font-weight: 800;
-      color: var(--text-soft);
-      letter-spacing: 0.03em;
-      text-transform: uppercase;
-    }
-
-    .grid-2 {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-    }
-
     .muted {
       color: var(--text-faint);
       font-size: 12px;
@@ -805,12 +717,6 @@
       color: var(--danger);
       font-size: 13px;
       font-weight: 800;
-    }
-
-    .footer-note {
-      font-size: 12px;
-      color: var(--text-faint);
-      line-height: 1.6;
     }
 
     .empty-state {
@@ -845,7 +751,7 @@
     }
 
     .loading-card {
-      width: 240px;
+      width: 220px;
       border-radius: 20px;
       padding: 20px;
       text-align: center;
@@ -896,9 +802,145 @@
       background: linear-gradient(135deg, #dc2626, #b91c1c);
     }
 
-    .tiny-note {
-      font-size: 11px;
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.42);
+      backdrop-filter: blur(5px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1200;
+      padding: 20px;
+    }
+
+    .modal-backdrop.show {
+      display: flex;
+    }
+
+    .modal {
+      width: min(760px, 100%);
+      max-height: 92vh;
+      overflow: auto;
+      background: var(--surface-strong);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      box-shadow: var(--shadow-lg);
+      padding: 18px;
+    }
+
+    .modal-header {
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 16px;
+      position: sticky;
+      top: 0;
+      background: var(--surface-strong);
+      padding-bottom: 10px;
+      z-index: 2;
+    }
+
+    .modal-title {
+      margin: 0;
+      font-size: 22px;
+      letter-spacing: -0.03em;
+      color: var(--text);
+    }
+
+    .modal-sub {
+      margin-top: 5px;
+      font-size: 13px;
+      color: var(--text-soft);
+    }
+
+    .modal-close {
+      width: auto;
+      min-width: 42px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: var(--surface-soft);
+      color: var(--text);
+      border: 1px solid var(--border);
+      box-shadow: none;
+    }
+
+    .edit-grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .section-title {
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--text-soft);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-top: 2px;
+    }
+
+    .field-group {
+      display: grid;
+      gap: 8px;
+    }
+
+    .field-group label {
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--text-soft);
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .selected-box,
+    .smart-box,
+    .security-box {
+      padding: 14px;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: var(--surface-soft);
+      line-height: 1.6;
+      font-size: 13px;
+      color: var(--text-soft);
+    }
+
+    .selected-box strong,
+    .smart-box strong,
+    .security-box strong {
+      color: var(--text);
+    }
+
+    .smart-box {
+      background:
+        linear-gradient(180deg, rgba(37, 99, 235, 0.07), rgba(37, 99, 235, 0.03));
+    }
+
+    body.dark-theme .smart-box {
+      background:
+        linear-gradient(180deg, rgba(37, 99, 235, 0.14), rgba(37, 99, 235, 0.06));
+    }
+
+    .modal-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      position: sticky;
+      bottom: 0;
+      background: linear-gradient(180deg, rgba(255,255,255,0), var(--surface-strong) 35%);
+      padding-top: 10px;
+    }
+
+    .footer-note {
+      font-size: 12px;
       color: var(--text-faint);
+      line-height: 1.6;
     }
 
     @keyframes spin {
@@ -910,17 +952,12 @@
         grid-template-columns: repeat(3, minmax(0, 1fr));
       }
 
-      .grid-analytics,
-      .main-layout {
-        grid-template-columns: 1fr;
+      .analytics-grid {
+        grid-template-columns: 1fr 1fr;
       }
 
       .toolbar-grid {
         grid-template-columns: 1fr 1fr 1fr;
-      }
-
-      .sidebar {
-        position: static;
       }
     }
 
@@ -934,7 +971,9 @@
       .grid-global,
       .grid-2,
       .ring-wrap,
-      .analytics-stat-grid {
+      .analytics-grid,
+      .analytics-stat-grid,
+      .modal-actions {
         grid-template-columns: 1fr;
       }
 
@@ -950,80 +989,148 @@
         grid-template-columns: 120px 1fr 40px;
       }
 
-      .table-wrap {
-        max-height: none;
-      }
-
       table {
-        min-width: 100%;
+        min-width: 1050px;
       }
 
-      thead {
-        display: none;
-      }
-
-      tbody,
-      tbody tr,
-      tbody td {
-        display: block;
-        width: 100%;
-      }
-
-      tbody tr {
-        padding: 14px;
-        border-bottom: 1px solid var(--border);
-      }
-
-      tbody td {
-        border-bottom: none;
-        padding: 8px 0;
-      }
-
-      tbody td::before {
-        content: attr(data-label);
-        display: block;
-        margin-bottom: 4px;
-        font-size: 11px;
-        font-weight: 800;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: var(--text-faint);
-      }
-
-      .issue-desc {
-        max-width: none;
+      .modal {
+        padding: 16px;
       }
     }
   </style>
 </head>
 <body>
-  <div class="loading-overlay" id="loadingOverlay" aria-hidden="true">
-    <div class="loading-card" role="status" aria-live="polite">
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-card">
       <div class="spinner"></div>
       <div style="font-weight:800; color:var(--text); margin-bottom:4px;">Loading dashboard</div>
       <div class="muted">Refreshing metrics and issues...</div>
     </div>
   </div>
 
-  <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+  <div class="toast" id="toast"></div>
 
-  <div class="container" id="appRoot" aria-busy="false">
+  <div class="modal-backdrop" id="editModalBackdrop" aria-hidden="true">
+    <div class="modal">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title">Edit Issue</h2>
+          <div class="modal-sub">Update resolution details and save with backend validation.</div>
+        </div>
+        <button type="button" class="modal-close secondary-btn" id="closeModalBtn">✕</button>
+      </div>
+
+      <div class="edit-grid">
+        <div class="selected-box" id="selectedIssueInfo">
+          No issue selected.
+        </div>
+
+        <div class="smart-box" id="smartSuggestionBox">
+          <strong>Smart suggestion:</strong> Select an issue to see recommended next actions.
+        </div>
+
+        <div class="section-title">Issue Info</div>
+
+        <div class="grid-2">
+          <div class="field-group">
+            <label for="issueId">Row ID</label>
+            <input id="issueId" placeholder="Row ID" readonly />
+          </div>
+
+          <div class="field-group">
+            <label for="companyName">Company</label>
+            <input id="companyName" placeholder="Company Name" readonly />
+          </div>
+        </div>
+
+        <div class="field-group">
+          <label for="issueTitle">Issue Title</label>
+          <input id="issueTitle" placeholder="Issue Title" readonly />
+        </div>
+
+        <div class="section-title">Resolution</div>
+
+        <div class="field-group">
+          <label for="finalStatus">Final Status</label>
+          <select id="finalStatus"></select>
+        </div>
+
+        <div class="grid-2">
+          <div class="field-group">
+            <label for="initialAssessment">Initial Assessment</label>
+            <select id="initialAssessment"></select>
+          </div>
+
+          <div class="field-group">
+            <label for="rootCauseType">Root Cause Type</label>
+            <select id="rootCauseType"></select>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="field-group">
+            <label for="escalationRequired">Escalation Required?</label>
+            <select id="escalationRequired"></select>
+          </div>
+
+          <div class="field-group">
+            <label for="wasCsInformed">Was CS Informed?</label>
+            <select id="wasCsInformed"></select>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <label for="developmentTicket">Development Ticket</label>
+          <input id="developmentTicket" placeholder="Development ticket ID or link" />
+        </div>
+
+        <div class="field-group">
+          <label for="internalNotes">Internal Notes</label>
+          <textarea id="internalNotes" rows="7" placeholder="Document root cause, actions taken, workaround, or handoff notes..."></textarea>
+        </div>
+
+        <div class="section-title">Security</div>
+
+        <div class="security-box">
+          <strong>Backend-validated save:</strong> the UI sends updates to Apps Script, but true security still must be enforced on the backend.
+        </div>
+
+        <div class="field-group">
+          <label for="editPassword">Edit Password</label>
+          <input id="editPassword" type="password" placeholder="Enter edit password" />
+        </div>
+
+        <div id="saveMessage" class="muted"></div>
+
+        <div class="modal-actions">
+          <button id="saveBtn" type="button">Save Update</button>
+          <button id="clearBtn" class="secondary-btn" type="button">Clear</button>
+        </div>
+
+        <div class="footer-note">
+          Global KPI cards show all issues. Advanced analytics show only the currently visible filtered result.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
     <section class="hero section">
       <div class="hero-content">
         <div>
           <h1>Incheck360 Support Command Center</h1>
           <p>
-            A premium operational dashboard for tracking support issues, spotting trends, and updating cases with speed and clarity.
+            A premium operational dashboard for tracking support issues, spotting trends, identifying SLA risk, and updating cases with speed and clarity.
           </p>
           <div class="hero-meta">
-            <div class="hero-pill">Global metrics + filtered insights</div>
+            <div class="hero-pill">Advanced operational analytics</div>
             <div class="hero-pill">Ctrl/Cmd + K to search</div>
             <div class="hero-pill" id="lastRefreshPill">Last refreshed: —</div>
           </div>
         </div>
 
         <div class="hero-actions">
-          <button type="button" id="themeToggleBtn" aria-pressed="false">🌙 Dark Mode</button>
+          <button type="button" id="themeToggleBtn">🌙 Dark Mode</button>
           <button type="button" id="exportBtn">⬇ Export CSV</button>
           <button type="button" id="refreshBtnTop">↻ Refresh Data</button>
           <button type="button" class="secondary-btn" id="clearBtnTop">Clear Selection</button>
@@ -1033,16 +1140,15 @@
 
     <section class="grid-global" id="summaryCards"></section>
 
-    <section class="grid-analytics section">
+    <section class="analytics-grid section">
       <article class="card panel">
         <div class="panel-header">
           <div>
-            <h3>Filtered Overview</h3>
-            <div class="panel-sub">Live analytics based on your current search and filters.</div>
+            <h3>Operational Snapshot</h3>
+            <div class="panel-sub">Core metrics for the current filtered view.</div>
           </div>
           <div class="pill" id="filteredSummaryPill">0 issues in view</div>
         </div>
-
         <div class="analytics-stat-grid" id="filteredOverviewStats"></div>
       </article>
 
@@ -1050,10 +1156,9 @@
         <div class="panel-header">
           <div>
             <h3>Status Distribution</h3>
-            <div class="panel-sub">Breakdown of statuses in the current filtered result.</div>
+            <div class="panel-sub">Current status mix for visible issues.</div>
           </div>
         </div>
-
         <div class="distribution" id="statusDistribution"></div>
       </article>
 
@@ -1061,14 +1166,43 @@
         <div class="panel-header">
           <div>
             <h3>Priority Mix</h3>
-            <div class="panel-sub">Current issue severity balance.</div>
+            <div class="panel-sub">Severity balance in the queue.</div>
           </div>
         </div>
-
         <div class="ring-wrap">
           <div id="priorityRingWrap"></div>
           <div class="legend" id="priorityLegend"></div>
         </div>
+      </article>
+
+      <article class="card panel">
+        <div class="panel-header">
+          <div>
+            <h3>Aging Buckets</h3>
+            <div class="panel-sub">Active issue age grouped by days open.</div>
+          </div>
+        </div>
+        <div class="distribution" id="agingDistribution"></div>
+      </article>
+
+      <article class="card panel">
+        <div class="panel-header">
+          <div>
+            <h3>Module Hotspots</h3>
+            <div class="panel-sub">Where issues are concentrating right now.</div>
+          </div>
+        </div>
+        <div class="distribution" id="moduleDistribution"></div>
+      </article>
+
+      <article class="card panel">
+        <div class="panel-header">
+          <div>
+            <h3>Top Companies</h3>
+            <div class="panel-sub">Organizations with the most visible issues.</div>
+          </div>
+        </div>
+        <div class="distribution" id="companyDistribution"></div>
       </article>
     </section>
 
@@ -1114,143 +1248,41 @@
       <div class="chip-row" id="quickFilterChips"></div>
     </section>
 
-    <section class="main-layout">
-      <article class="card panel">
-        <div class="panel-header">
-          <div>
-            <h3>Issue Queue</h3>
-            <div class="panel-sub">Click any row to inspect and edit that issue.</div>
-          </div>
-          <div class="pill" id="tableMetaPill">Sorted by sheet order</div>
+    <section class="card panel section">
+      <div class="panel-header">
+        <div>
+          <h3>Issue Queue</h3>
+          <div class="panel-sub">Click a row to select it. Click Edit to open the popup editor.</div>
         </div>
+        <div class="pill" id="tableMetaPill">Sorted by sheet order</div>
+      </div>
 
-        <div class="table-shell">
-          <div class="table-wrap">
-            <table aria-label="Issue queue">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Issue</th>
-                  <th>Company</th>
-                  <th>Module</th>
-                  <th>Priority</th>
-                  <th>Status</th>
-                  <th>Escalation</th>
-                  <th>Ticket</th>
-                  <th>Closure Date</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody id="issuesTable">
-                <tr>
-                  <td colspan="10">Loading...</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+      <div class="table-shell">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Issue</th>
+                <th>Company</th>
+                <th>Module</th>
+                <th>Priority</th>
+                <th>Status</th>
+                <th>Escalation</th>
+                <th>Ticket</th>
+                <th>Age</th>
+                <th>Closure Date</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="issuesTable">
+              <tr>
+                <td colspan="11">Loading...</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-      </article>
-
-      <aside class="card panel sidebar">
-        <div class="panel-header">
-          <div>
-            <h3>Issue Editor</h3>
-            <div class="panel-sub">Update resolution details and save with backend validation.</div>
-          </div>
-        </div>
-
-        <div class="edit-grid">
-          <div class="selected-box" id="selectedIssueInfo">
-            No issue selected.
-          </div>
-
-          <div class="smart-box" id="smartSuggestionBox">
-            <strong>Smart suggestion:</strong> Select an issue to see recommended next actions.
-          </div>
-
-          <div class="section-title">Issue Info</div>
-
-          <div class="grid-2">
-            <div class="field-group">
-              <label for="issueId">Row ID</label>
-              <input id="issueId" placeholder="Row ID" readonly />
-            </div>
-
-            <div class="field-group">
-              <label for="companyName">Company</label>
-              <input id="companyName" placeholder="Company Name" readonly />
-            </div>
-          </div>
-
-          <div class="field-group">
-            <label for="issueTitle">Issue Title</label>
-            <input id="issueTitle" placeholder="Issue Title" readonly />
-          </div>
-
-          <div class="section-title">Resolution</div>
-
-          <div class="field-group">
-            <label for="finalStatus">Final Status</label>
-            <select id="finalStatus"></select>
-          </div>
-
-          <div class="grid-2">
-            <div class="field-group">
-              <label for="initialAssessment">Initial Assessment</label>
-              <select id="initialAssessment"></select>
-            </div>
-
-            <div class="field-group">
-              <label for="rootCauseType">Root Cause Type</label>
-              <select id="rootCauseType"></select>
-            </div>
-          </div>
-
-          <div class="grid-2">
-            <div class="field-group">
-              <label for="escalationRequired">Escalation Required?</label>
-              <select id="escalationRequired"></select>
-            </div>
-
-            <div class="field-group">
-              <label for="wasCsInformed">Was CS Informed?</label>
-              <select id="wasCsInformed"></select>
-            </div>
-          </div>
-
-          <div class="field-group">
-            <label for="developmentTicket">Development Ticket</label>
-            <input id="developmentTicket" placeholder="Development ticket ID or link" />
-          </div>
-
-          <div class="field-group">
-            <label for="internalNotes">Internal Notes</label>
-            <textarea id="internalNotes" rows="7" placeholder="Document root cause, actions taken, workaround, or handoff notes..."></textarea>
-          </div>
-
-          <div class="section-title">Security</div>
-
-          <div class="security-box">
-            <strong>Backend-validated save:</strong> this UI still sends updates to Apps Script, but true security must be enforced server-side with real auth, authorization, and rate limiting.
-          </div>
-
-          <div class="field-group">
-            <label for="editPassword">Edit Password</label>
-            <input id="editPassword" type="password" placeholder="Enter edit password" />
-          </div>
-
-          <div class="grid-2">
-            <button id="saveBtn" type="button">Save Update</button>
-            <button id="clearBtn" class="secondary-btn" type="button">Clear</button>
-          </div>
-
-          <div id="saveMessage" class="muted" role="status" aria-live="polite" aria-atomic="true"></div>
-
-          <div class="footer-note">
-            The global KPI cards show all issues. The analytics section shows only the issues currently visible after filters.
-          </div>
-        </div>
-      </aside>
+      </div>
     </section>
   </div>
 
@@ -1337,6 +1369,7 @@
         { value: 'company_asc', label: 'Company (A → Z)' },
         { value: 'newest', label: 'Newest first' },
         { value: 'oldest', label: 'Oldest first' },
+        { value: 'age_desc', label: 'Oldest issues first' },
         { value: 'closure_desc', label: 'Latest closure date' }
       ]
     };
@@ -1349,9 +1382,10 @@
       searchTimer: null,
       toastTimer: null,
       loadController: null,
-      latestLoadRequestId: 0,
+      latestRequestId: 0,
       pendingOps: 0,
-      isSaving: false
+      isSaving: false,
+      modalOpen: false
     };
 
     const els = {};
@@ -1364,12 +1398,11 @@
       bindEvents();
       applySavedTheme();
       restoreSavedSort();
-      clearSelection({ clearPassword: true, preserveMessage: true, rerender: false });
+      clearSelection({ clearPassword: true, preserveMessage: true });
       loadDashboard();
     }
 
     function cacheDom() {
-      els.appRoot = document.getElementById('appRoot');
       els.loadingOverlay = document.getElementById('loadingOverlay');
       els.toast = document.getElementById('toast');
 
@@ -1379,6 +1412,9 @@
       els.statusDistribution = document.getElementById('statusDistribution');
       els.priorityRingWrap = document.getElementById('priorityRingWrap');
       els.priorityLegend = document.getElementById('priorityLegend');
+      els.agingDistribution = document.getElementById('agingDistribution');
+      els.moduleDistribution = document.getElementById('moduleDistribution');
+      els.companyDistribution = document.getElementById('companyDistribution');
 
       els.lastRefreshPill = document.getElementById('lastRefreshPill');
       els.issuesCountPill = document.getElementById('issuesCountPill');
@@ -1399,6 +1435,8 @@
 
       els.issuesTable = document.getElementById('issuesTable');
 
+      els.editModalBackdrop = document.getElementById('editModalBackdrop');
+      els.closeModalBtn = document.getElementById('closeModalBtn');
       els.selectedIssueInfo = document.getElementById('selectedIssueInfo');
       els.smartSuggestionBox = document.getElementById('smartSuggestionBox');
 
@@ -1443,28 +1481,22 @@
       `).join('');
     }
 
-    function restoreSavedSort() {
-      const savedSort = localStorage.getItem('supportDashboardSort');
-      if (savedSort && CONFIG.SORT_OPTIONS.some(option => option.value === savedSort)) {
-        els.sortSelect.value = savedSort;
-      } else {
-        els.sortSelect.value = 'sheet';
-      }
-    }
-
     function bindEvents() {
       els.refreshBtn.addEventListener('click', loadDashboard);
       els.refreshBtnTop.addEventListener('click', loadDashboard);
       els.exportBtn.addEventListener('click', exportCurrentIssuesCsv);
       els.themeToggleBtn.addEventListener('click', toggleTheme);
-      els.clearBtn.addEventListener('click', () => clearSelection({ clearPassword: true }));
       els.clearBtnTop.addEventListener('click', () => clearSelection({ clearPassword: true }));
+      els.clearBtn.addEventListener('click', () => clearEditorFields());
       els.saveBtn.addEventListener('click', saveIssue);
 
-      els.searchInput.addEventListener('input', handleSearchInput);
+      els.searchInput.addEventListener('input', () => {
+        clearTimeout(state.searchTimer);
+        state.searchTimer = setTimeout(loadDashboard, 300);
+      });
+
       els.statusFilter.addEventListener('change', loadDashboard);
       els.priorityFilter.addEventListener('change', loadDashboard);
-
       els.sortSelect.addEventListener('change', () => {
         localStorage.setItem('supportDashboardSort', els.sortSelect.value);
         renderDashboard();
@@ -1473,24 +1505,28 @@
       els.quickFilterChips.addEventListener('click', (event) => {
         const button = event.target.closest('button[data-status]');
         if (!button) return;
-
         els.statusFilter.value = button.dataset.status || '';
         loadDashboard();
       });
 
       els.issuesTable.addEventListener('click', (event) => {
+        const editButton = event.target.closest('button[data-action="edit"]');
+        if (editButton) {
+          event.stopPropagation();
+          openEditModal(Number(editButton.dataset.id));
+          return;
+        }
+
         const row = event.target.closest('tr[data-id]');
         if (!row) return;
         selectIssue(Number(row.dataset.id));
       });
 
-      els.issuesTable.addEventListener('keydown', (event) => {
-        const row = event.target.closest('tr[data-id]');
-        if (!row) return;
+      els.closeModalBtn.addEventListener('click', closeEditModal);
 
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          selectIssue(Number(row.dataset.id));
+      els.editModalBackdrop.addEventListener('click', (event) => {
+        if (event.target === els.editModalBackdrop) {
+          closeEditModal();
         }
       });
 
@@ -1504,16 +1540,22 @@
         }
 
         if (event.key === 'Escape') {
-          clearSelection({ clearPassword: true });
+          if (state.modalOpen) {
+            closeEditModal();
+          } else {
+            clearSelection({ clearPassword: true });
+          }
         }
       });
     }
 
-    function handleSearchInput() {
-      clearTimeout(state.searchTimer);
-      state.searchTimer = setTimeout(() => {
-        loadDashboard();
-      }, 300);
+    function restoreSavedSort() {
+      const savedSort = localStorage.getItem('supportDashboardSort');
+      if (savedSort && CONFIG.SORT_OPTIONS.some(option => option.value === savedSort)) {
+        els.sortSelect.value = savedSort;
+      } else {
+        els.sortSelect.value = 'sheet';
+      }
     }
 
     async function apiGet(action, params = {}, signal) {
@@ -1531,12 +1573,14 @@
         method: 'GET',
         signal,
         cache: 'no-store',
-        headers: {
-          'Accept': 'application/json'
-        }
+        headers: { 'Accept': 'application/json' }
       });
 
-      return parseJsonResponse(response);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      return response.json();
     }
 
     async function apiPost(payload) {
@@ -1550,26 +1594,15 @@
         body: JSON.stringify(payload)
       });
 
-      return parseJsonResponse(response);
-    }
-
-    async function parseJsonResponse(response) {
-      const text = await response.text();
-
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
 
-      try {
-        return text ? JSON.parse(text) : {};
-      } catch (error) {
-        console.error('Invalid JSON response:', text);
-        throw new Error('Server returned invalid JSON.');
-      }
+      return response.json();
     }
 
     async function loadDashboard() {
-      const requestId = ++state.latestLoadRequestId;
+      const requestId = ++state.latestRequestId;
 
       if (state.loadController) {
         state.loadController.abort();
@@ -1590,15 +1623,10 @@
           apiGet('issues', { q, status, priority }, controller.signal)
         ]);
 
-        if (requestId !== state.latestLoadRequestId) return;
+        if (requestId !== state.latestRequestId) return;
 
-        if (!summaryRes.ok) {
-          throw new Error(summaryRes.error || 'Failed to load summary.');
-        }
-
-        if (!issuesRes.ok) {
-          throw new Error(issuesRes.error || 'Failed to load issues.');
-        }
+        if (!summaryRes.ok) throw new Error(summaryRes.error || 'Failed to load summary.');
+        if (!issuesRes.ok) throw new Error(issuesRes.error || 'Failed to load issues.');
 
         state.summary = summaryRes.data || {};
         state.issues = Array.isArray(issuesRes.data) ? issuesRes.data : [];
@@ -1607,14 +1635,11 @@
         renderDashboard();
       } catch (error) {
         if (error.name === 'AbortError') return;
-
         console.error(error);
-
-        if (!state.issues.length) {
-          renderTableMessage('Unable to load issues', error.message || 'Something went wrong while loading the dashboard.');
-        }
-
         showToast(error.message || 'Something went wrong.', true);
+        if (!state.issues.length) {
+          renderTableMessage('Unable to load issues', error.message || 'Something went wrong.');
+        }
       } finally {
         if (state.loadController === controller) {
           state.loadController = null;
@@ -1628,13 +1653,13 @@
       const editPassword = els.editPassword.value.trim();
 
       if (!id) {
-        setMessage('Select an issue first.', 'error');
+        setMessage('Select an issue first.', true);
         showToast('Select an issue first.', true);
         return;
       }
 
       if (!editPassword) {
-        setMessage('Enter edit password.', 'error');
+        setMessage('Enter edit password.', true);
         showToast('Enter edit password.', true);
         return;
       }
@@ -1654,7 +1679,7 @@
 
       setSavingState(true);
       beginBusy();
-      setMessage('Saving...', 'muted');
+      setMessage('Saving...');
 
       try {
         const result = await apiPost(payload);
@@ -1665,11 +1690,12 @@
 
         els.editPassword.value = '';
         await loadDashboard();
-        setMessage('Saved successfully.', 'success');
+        setMessage('Saved successfully.');
         showToast('Issue updated successfully.');
+        closeEditModal();
       } catch (error) {
         console.error(error);
-        setMessage(error.message || 'Save failed.', 'error');
+        setMessage(error.message || 'Save failed.', true);
         showToast(error.message || 'Save failed.', true);
       } finally {
         endBusy();
@@ -1680,17 +1706,19 @@
     function renderDashboard() {
       renderGlobalCards(state.summary);
 
-      const metrics = deriveFilteredMetrics(state.issues);
+      const metrics = deriveAdvancedMetrics(state.issues);
       renderFilteredOverview(metrics);
       renderStatusDistribution(metrics);
       renderPriorityRing(metrics);
+      renderAgingDistribution(metrics);
+      renderModuleDistribution(metrics);
+      renderCompanyDistribution(metrics);
       renderQuickFilterChips();
 
-      const renderableIssues = getRenderableIssues();
-      renderTable(renderableIssues);
+      renderTable(getRenderableIssues());
       updatePills();
       updateLastRefresh();
-      syncSelectionAfterRefresh();
+      syncSelection();
     }
 
     function renderGlobalCards(summary) {
@@ -1714,94 +1742,136 @@
       `).join('');
     }
 
-    function deriveFilteredMetrics(issues) {
+    function deriveAdvancedMetrics(issues) {
+      const now = new Date();
+
       const metrics = {
         total: issues.length,
         active: 0,
+        resolvedClosed: 0,
         escalated: 0,
         highCritical: 0,
         withTickets: 0,
+        escalatedNoTicket: 0,
+        slaRisk: 0,
+        avgAgeDays: 0,
+        oldestActiveDays: 0,
+        completionRate: 0,
         statusCounts: {},
         priorityCounts: {},
-        categoryCounts: {},
-        companyCounts: {}
+        moduleCounts: {},
+        companyCounts: {},
+        agingCounts: {
+          '0–2d': 0,
+          '3–7d': 0,
+          '8–14d': 0,
+          '15d+': 0
+        }
       };
+
+      let totalAgeDays = 0;
+      let agedCount = 0;
 
       issues.forEach(issue => {
         const statusLabel = issue.finalStatus || 'Open';
         const priorityLabel = issue.priorityLevel || 'Blank';
-        const category = issue.issueCategory || 'Blank';
-        const company = issue.companyName || 'Blank';
+        const moduleLabel = issue.productModuleAffected || 'Blank';
+        const companyLabel = issue.companyName || 'Blank';
         const escalation = normalizeValue(issue.escalationRequired || '');
-        const ticket = String(issue.developmentTicket || '').trim();
-
-        if (CONFIG.ACTIVE_STATUSES.has(normalizeValue(statusLabel))) {
-          metrics.active++;
-        }
-
-        if (normalizeValue(statusLabel) === 'escalated to development' || escalation === 'yes') {
-          metrics.escalated++;
-        }
-
-        if (['high', 'critical'].includes(normalizeValue(priorityLabel))) {
-          metrics.highCritical++;
-        }
-
-        if (ticket) {
-          metrics.withTickets++;
-        }
+        const hasTicket = String(issue.developmentTicket || '').trim().length > 0;
+        const statusNorm = normalizeValue(statusLabel);
+        const priorityNorm = normalizeValue(priorityLabel);
+        const isActive = CONFIG.ACTIVE_STATUSES.has(statusNorm);
+        const ageDays = getIssueAgeDays(issue, now);
 
         metrics.statusCounts[statusLabel] = (metrics.statusCounts[statusLabel] || 0) + 1;
         metrics.priorityCounts[priorityLabel] = (metrics.priorityCounts[priorityLabel] || 0) + 1;
-        metrics.categoryCounts[category] = (metrics.categoryCounts[category] || 0) + 1;
-        metrics.companyCounts[company] = (metrics.companyCounts[company] || 0) + 1;
+        metrics.moduleCounts[moduleLabel] = (metrics.moduleCounts[moduleLabel] || 0) + 1;
+        metrics.companyCounts[companyLabel] = (metrics.companyCounts[companyLabel] || 0) + 1;
+
+        if (isActive) {
+          metrics.active++;
+
+          if (ageDays <= 2) metrics.agingCounts['0–2d']++;
+          else if (ageDays <= 7) metrics.agingCounts['3–7d']++;
+          else if (ageDays <= 14) metrics.agingCounts['8–14d']++;
+          else metrics.agingCounts['15d+']++;
+
+          if (ageDays > metrics.oldestActiveDays) {
+            metrics.oldestActiveDays = ageDays;
+          }
+
+          if (ageDays > 7 || ((priorityNorm === 'high' || priorityNorm === 'critical') && ageDays > 3)) {
+            metrics.slaRisk++;
+          }
+        } else if (statusNorm === 'resolved' || statusNorm === 'closed') {
+          metrics.resolvedClosed++;
+        }
+
+        if (statusNorm === 'escalated to development' || escalation === 'yes') {
+          metrics.escalated++;
+          if (!hasTicket) metrics.escalatedNoTicket++;
+        }
+
+        if (priorityNorm === 'high' || priorityNorm === 'critical') {
+          metrics.highCritical++;
+        }
+
+        if (hasTicket) {
+          metrics.withTickets++;
+        }
+
+        if (ageDays >= 0) {
+          totalAgeDays += ageDays;
+          agedCount++;
+        }
       });
+
+      metrics.avgAgeDays = agedCount ? roundToOne(totalAgeDays / agedCount) : 0;
+      metrics.completionRate = metrics.total ? Math.round((metrics.resolvedClosed / metrics.total) * 100) : 0;
 
       return metrics;
     }
 
     function renderFilteredOverview(metrics) {
-      const topCompany = findTopEntry(metrics.companyCounts);
-      const topCategory = findTopEntry(metrics.categoryCounts);
-
       els.filteredSummaryPill.textContent = `${metrics.total} issue${metrics.total === 1 ? '' : 's'} in current view`;
 
       const cards = [
         {
-          label: 'Active',
+          label: 'Completion Rate',
+          value: `${metrics.completionRate}%`,
+          sub: `${metrics.resolvedClosed} resolved or closed`,
+          bg: 'var(--success-soft)'
+        },
+        {
+          label: 'Active Now',
           value: metrics.active,
           sub: 'Open, in progress, waiting, escalated',
           bg: 'var(--primary-soft)'
         },
         {
-          label: 'Escalated',
-          value: metrics.escalated,
-          sub: 'Marked escalated or sent to development',
-          bg: 'var(--purple-soft)'
+          label: 'Avg Age',
+          value: `${metrics.avgAgeDays}d`,
+          sub: 'Average issue age in current view',
+          bg: 'var(--surface-soft)'
         },
         {
-          label: 'High / Critical',
-          value: metrics.highCritical,
-          sub: 'Priority focus area',
+          label: 'Oldest Active',
+          value: `${metrics.oldestActiveDays}d`,
+          sub: 'Longest-running active issue',
+          bg: 'var(--warning-soft)'
+        },
+        {
+          label: 'SLA Risk',
+          value: metrics.slaRisk,
+          sub: 'Older active issues needing attention',
           bg: 'var(--danger-soft)'
         },
         {
-          label: 'With Ticket',
-          value: metrics.withTickets,
-          sub: 'Has development ticket reference',
-          bg: 'var(--success-soft)'
-        },
-        {
-          label: 'Top Company',
-          value: topCompany ? topCompany.label : '—',
-          sub: topCompany ? `${topCompany.value} issue${topCompany.value === 1 ? '' : 's'}` : 'No data',
-          bg: 'var(--surface-soft)'
-        },
-        {
-          label: 'Top Category',
-          value: topCategory ? topCategory.label : '—',
-          sub: topCategory ? `${topCategory.value} issue${topCategory.value === 1 ? '' : 's'}` : 'No data',
-          bg: 'var(--surface-soft)'
+          label: 'Escalated w/o Ticket',
+          value: metrics.escalatedNoTicket,
+          sub: 'Escalated items missing dev reference',
+          bg: 'var(--purple-soft)'
         }
       ];
 
@@ -1815,31 +1885,18 @@
     }
 
     function renderStatusDistribution(metrics) {
-      const total = metrics.total || 1;
-      const rows = CONFIG.STATUS_OPTIONS
-        .filter(label => Number(metrics.statusCounts[label] || 0) > 0)
-        .map(label => {
-          const count = metrics.statusCounts[label] || 0;
-          const percent = Math.round((count / total) * 100);
-          const theme = getStatusTheme(label);
-
-          return `
-            <div class="dist-row">
-              <div class="dist-label">${escapeHtml(label)}</div>
-              <div class="dist-bar">
-                <div class="dist-fill" style="width:${percent}%; background:${theme.fill};"></div>
-              </div>
-              <div class="dist-value">${count}</div>
-            </div>
-          `;
-        });
-
-      els.statusDistribution.innerHTML = rows.length ? rows.join('') : `
-        <div class="empty-state" style="padding:24px 10px;">
-          <h4>No status data</h4>
-          <p>Try changing filters to display issues.</p>
-        </div>
-      `;
+      renderSimpleDistribution(
+        els.statusDistribution,
+        CONFIG.STATUS_OPTIONS
+          .filter(label => Number(metrics.statusCounts[label] || 0) > 0)
+          .map(label => ({
+            label,
+            value: metrics.statusCounts[label] || 0,
+            color: getStatusTheme(label).fill
+          })),
+        metrics.total,
+        'No status data'
+      );
     }
 
     function renderPriorityRing(metrics) {
@@ -1855,7 +1912,6 @@
             </div>
           </div>
         `;
-
         els.priorityLegend.innerHTML = `<div class="muted">No priority data in the current view.</div>`;
         return;
       }
@@ -1889,6 +1945,78 @@
       `).join('');
     }
 
+    function renderAgingDistribution(metrics) {
+      const order = ['0–2d', '3–7d', '8–14d', '15d+'];
+      renderSimpleDistribution(
+        els.agingDistribution,
+        order.map(label => ({
+          label,
+          value: metrics.agingCounts[label] || 0,
+          color: label === '15d+' ? '#dc2626' : label === '8–14d' ? '#ea580c' : label === '3–7d' ? '#d97706' : '#16a34a'
+        })),
+        metrics.active || 1,
+        'No active issues'
+      );
+    }
+
+    function renderModuleDistribution(metrics) {
+      const rows = topEntries(metrics.moduleCounts, 5).map(([label, value]) => ({
+        label,
+        value,
+        color: '#2563eb'
+      }));
+
+      renderSimpleDistribution(
+        els.moduleDistribution,
+        rows,
+        metrics.total || 1,
+        'No module data'
+      );
+    }
+
+    function renderCompanyDistribution(metrics) {
+      const rows = topEntries(metrics.companyCounts, 5).map(([label, value]) => ({
+        label,
+        value,
+        color: '#7c3aed'
+      }));
+
+      renderSimpleDistribution(
+        els.companyDistribution,
+        rows,
+        metrics.total || 1,
+        'No company data'
+      );
+    }
+
+    function renderSimpleDistribution(container, rows, total, emptyTitle) {
+      const safeTotal = total || 1;
+      const validRows = rows.filter(row => Number(row.value || 0) > 0);
+
+      if (!validRows.length) {
+        container.innerHTML = `
+          <div class="empty-state" style="padding:24px 10px;">
+            <h4>${escapeHtml(emptyTitle)}</h4>
+            <p>Try changing filters to display issues.</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = validRows.map(row => {
+        const percent = Math.round((row.value / safeTotal) * 100);
+        return `
+          <div class="dist-row">
+            <div class="dist-label">${escapeHtml(row.label)}</div>
+            <div class="dist-bar">
+              <div class="dist-fill" style="width:${percent}%; background:${row.color};"></div>
+            </div>
+            <div class="dist-value">${escapeHtml(row.value)}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
     function renderQuickFilterChips() {
       const current = els.statusFilter.value.trim() || 'All';
       const statuses = ['All', ...CONFIG.STATUS_OPTIONS];
@@ -1902,7 +2030,6 @@
             type="button"
             class="filter-chip ${active ? 'active' : ''}"
             data-status="${escapeAttribute(value)}"
-            aria-pressed="${active ? 'true' : 'false'}"
           >
             ${escapeHtml(status)}
           </button>
@@ -1918,42 +2045,42 @@
 
       els.issuesTable.innerHTML = issues.map(issue => {
         const issueId = Number(issue.id);
-        const selected = issueId === Number(state.selectedIssueId);
+        const ageDays = getIssueAgeDays(issue, new Date());
 
         return `
-          <tr
-            data-id="${issueId}"
-            tabindex="0"
-            role="button"
-            aria-selected="${selected ? 'true' : 'false'}"
-            class="${selected ? 'selected-row' : ''}"
-          >
-            <td data-label="ID"><span class="id-badge">#${escapeHtml(issue.id)}</span></td>
-            <td data-label="Issue">
+          <tr data-id="${issueId}" class="${issueId === Number(state.selectedIssueId) ? 'selected-row' : ''}">
+            <td><span class="id-badge">#${escapeHtml(issue.id)}</span></td>
+            <td>
               <div class="issue-title">${escapeHtml(issue.issueTitle || 'Untitled issue')}</div>
               <div class="issue-desc">${escapeHtml(issue.detailedDescription || 'No description provided.')}</div>
             </td>
-            <td data-label="Company">${escapeHtml(issue.companyName || '—')}</td>
-            <td data-label="Module">${escapeHtml(issue.productModuleAffected || '—')}</td>
-            <td data-label="Priority">${buildPriorityChip(issue.priorityLevel || '')}</td>
-            <td data-label="Status">${buildStatusChip(issue.finalStatus || 'Open')}</td>
-            <td data-label="Escalation">${buildYesNoChip(issue.escalationRequired || '')}</td>
-            <td data-label="Ticket">${renderTicket(issue.developmentTicket)}</td>
-            <td data-label="Closure Date">${escapeHtml(formatDate(issue.resolutionClosureDate) || '—')}</td>
-            <td data-label="Action">
-              <button class="action-btn" type="button">Edit</button>
+            <td>${escapeHtml(issue.companyName || '—')}</td>
+            <td>${escapeHtml(issue.productModuleAffected || '—')}</td>
+            <td>${buildPriorityChip(issue.priorityLevel || '')}</td>
+            <td>${buildStatusChip(issue.finalStatus || 'Open')}</td>
+            <td>${buildYesNoChip(issue.escalationRequired || '')}</td>
+            <td>${renderTicket(issue.developmentTicket)}</td>
+            <td>${escapeHtml(`${ageDays}d`)}</td>
+            <td>${escapeHtml(formatDate(issue.resolutionClosureDate) || '—')}</td>
+            <td>
+              <button
+                class="action-btn"
+                type="button"
+                data-action="edit"
+                data-id="${issueId}"
+              >
+                Edit
+              </button>
             </td>
           </tr>
         `;
       }).join('');
-
-      updateSelectedRowUI();
     }
 
     function renderTableMessage(title, message) {
       els.issuesTable.innerHTML = `
         <tr>
-          <td colspan="10">
+          <td colspan="11">
             <div class="empty-state">
               <h4>${escapeHtml(title)}</h4>
               <p>${escapeHtml(message)}</p>
@@ -1978,28 +2105,23 @@
         case 'status_asc':
           return items.sort((a, b) => {
             const diff = getStatusIndex(a.finalStatus) - getStatusIndex(b.finalStatus);
-            return diff || compareText(a.companyName, b.companyName) || Number(a.id || 0) - Number(b.id || 0);
+            return diff || compareText(a.companyName, b.companyName);
           });
 
         case 'company_asc':
-          return items.sort((a, b) => {
-            return compareText(a.companyName, b.companyName) || safeDateMs(b.timestamp) - safeDateMs(a.timestamp);
-          });
+          return items.sort((a, b) => compareText(a.companyName, b.companyName));
 
         case 'newest':
-          return items.sort((a, b) => {
-            return safeDateMs(b.timestamp) - safeDateMs(a.timestamp) || Number(b.id || 0) - Number(a.id || 0);
-          });
+          return items.sort((a, b) => safeDateMs(b.timestamp) - safeDateMs(a.timestamp));
 
         case 'oldest':
-          return items.sort((a, b) => {
-            return safeDateMs(a.timestamp) - safeDateMs(b.timestamp) || Number(a.id || 0) - Number(b.id || 0);
-          });
+          return items.sort((a, b) => safeDateMs(a.timestamp) - safeDateMs(b.timestamp));
+
+        case 'age_desc':
+          return items.sort((a, b) => getIssueAgeDays(b, new Date()) - getIssueAgeDays(a, new Date()));
 
         case 'closure_desc':
-          return items.sort((a, b) => {
-            return safeDateMs(b.resolutionClosureDate) - safeDateMs(a.resolutionClosureDate) || safeDateMs(b.timestamp) - safeDateMs(a.timestamp);
-          });
+          return items.sort((a, b) => safeDateMs(b.resolutionClosureDate) - safeDateMs(a.resolutionClosureDate));
 
         case 'sheet':
         default:
@@ -2012,9 +2134,32 @@
       if (!issue) return;
 
       state.selectedIssueId = Number(issue.id);
+      els.selectedCountPill.textContent = `Selected #${issue.id}`;
+      updateSelectedRowUI();
+    }
+
+    function openEditModal(id) {
+      const issue = state.issues.find(item => Number(item.id) === Number(id));
+      if (!issue) return;
+
+      state.selectedIssueId = Number(issue.id);
       populateEditor(issue);
       updateSelectedRowUI();
-      setMessage('', 'muted');
+
+      state.modalOpen = true;
+      els.editModalBackdrop.classList.add('show');
+      els.editModalBackdrop.setAttribute('aria-hidden', 'false');
+
+      setTimeout(() => {
+        els.finalStatus.focus();
+      }, 0);
+    }
+
+    function closeEditModal() {
+      state.modalOpen = false;
+      els.editModalBackdrop.classList.remove('show');
+      els.editModalBackdrop.setAttribute('aria-hidden', 'true');
+      setMessage('');
     }
 
     function populateEditor(issue) {
@@ -2038,12 +2183,28 @@
         <span class="muted">Ticket:</span> ${escapeHtml(issue.developmentTicket || '—')}
       `;
 
-      els.selectedCountPill.textContent = `Selected #${issue.id}`;
       els.smartSuggestionBox.innerHTML = buildSmartSuggestion(issue);
+      els.selectedCountPill.textContent = `Selected #${issue.id}`;
+      setMessage('');
     }
 
-    function clearSelection({ clearPassword = true, preserveMessage = false, rerender = true } = {}) {
+    function clearEditorFields() {
+      els.finalStatus.value = '';
+      els.initialAssessment.value = '';
+      els.rootCauseType.value = '';
+      els.escalationRequired.value = '';
+      els.wasCsInformed.value = '';
+      els.developmentTicket.value = '';
+      els.internalNotes.value = '';
+      els.editPassword.value = '';
+      setMessage('');
+    }
+
+    function clearSelection({ clearPassword = true, preserveMessage = false } = {}) {
       state.selectedIssueId = null;
+
+      els.selectedCountPill.textContent = 'No issue selected';
+      updateSelectedRowUI();
 
       els.issueId.value = '';
       els.issueTitle.value = '';
@@ -2055,42 +2216,36 @@
       els.wasCsInformed.value = '';
       els.developmentTicket.value = '';
       els.internalNotes.value = '';
-
-      if (clearPassword) {
-        els.editPassword.value = '';
-      }
+      if (clearPassword) els.editPassword.value = '';
 
       els.selectedIssueInfo.textContent = 'No issue selected.';
-      els.selectedCountPill.textContent = 'No issue selected';
       els.smartSuggestionBox.innerHTML = '<strong>Smart suggestion:</strong> Select an issue to see recommended next actions.';
 
       if (!preserveMessage) {
-        setMessage('', 'muted');
-      }
-
-      if (rerender) {
-        updateSelectedRowUI();
+        setMessage('');
       }
     }
 
-    function syncSelectionAfterRefresh() {
+    function syncSelection() {
       if (!state.selectedIssueId) return;
 
       const issue = state.issues.find(item => Number(item.id) === Number(state.selectedIssueId));
       if (!issue) {
         clearSelection({ clearPassword: false, preserveMessage: true });
+        closeEditModal();
         return;
       }
 
-      populateEditor(issue);
       updateSelectedRowUI();
+
+      if (state.modalOpen) {
+        populateEditor(issue);
+      }
     }
 
     function updateSelectedRowUI() {
       els.issuesTable.querySelectorAll('tr[data-id]').forEach(row => {
-        const isSelected = Number(row.dataset.id) === Number(state.selectedIssueId);
-        row.classList.toggle('selected-row', isSelected);
-        row.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+        row.classList.toggle('selected-row', Number(row.dataset.id) === Number(state.selectedIssueId));
       });
     }
 
@@ -2102,6 +2257,7 @@
       const hasFilters = Boolean(searchTerm || status || priority);
 
       const sortLabel = CONFIG.SORT_OPTIONS.find(option => option.value === els.sortSelect.value)?.label || 'Sheet order';
+
       els.issuesCountPill.textContent = `Showing ${count} issue${count === 1 ? '' : 's'}${hasFilters ? ' (filtered)' : ''}`;
       els.tableMetaPill.textContent = `${hasFilters ? 'Filtered view' : 'Full issue list'} • ${sortLabel}`;
     }
@@ -2139,17 +2295,10 @@
       if (!value) return '—';
 
       const isLink = /^https?:\/\//i.test(value);
-      if (!isLink) {
-        return escapeHtml(value);
-      }
+      if (!isLink) return escapeHtml(value);
 
       return `
-        <a
-          href="${escapeAttribute(value)}"
-          target="_blank"
-          rel="noopener noreferrer"
-          title="${escapeAttribute(value)}"
-        >
+        <a href="${escapeAttribute(value)}" target="_blank" rel="noopener noreferrer">
           ${escapeHtml(shorten(value, 32))}
         </a>
       `;
@@ -2158,13 +2307,25 @@
     function buildStatusChip(status) {
       const label = status || 'Open';
       const theme = getStatusTheme(label);
-      return buildChip(label, theme.bg, theme.text);
+
+      return `
+        <span class="chip" style="background:${theme.bg}; color:${theme.text}; border-color:${theme.bg};">
+          <span class="chip-dot" style="background:${theme.text}"></span>
+          ${escapeHtml(label)}
+        </span>
+      `;
     }
 
     function buildPriorityChip(priority) {
       const label = priority || '—';
       const theme = CONFIG.PRIORITY_THEME[label] || { bg: 'var(--surface-soft)', text: 'var(--text-soft)' };
-      return buildChip(label, theme.bg, theme.text);
+
+      return `
+        <span class="chip" style="background:${theme.bg}; color:${theme.text}; border-color:${theme.bg};">
+          <span class="chip-dot" style="background:${theme.text}"></span>
+          ${escapeHtml(label)}
+        </span>
+      `;
     }
 
     function buildYesNoChip(value) {
@@ -2172,23 +2333,24 @@
       const normalized = normalizeValue(label);
 
       if (normalized === 'yes') {
-        return buildChip('Yes', '#fef3c7', '#b45309');
+        return `
+          <span class="chip" style="background:#fef3c7; color:#b45309; border-color:#fef3c7;">
+            <span class="chip-dot" style="background:#b45309"></span>
+            Yes
+          </span>
+        `;
       }
 
       if (normalized === 'no') {
-        return buildChip('No', '#dcfce7', '#15803d');
+        return `
+          <span class="chip" style="background:#dcfce7; color:#15803d; border-color:#dcfce7;">
+            <span class="chip-dot" style="background:#15803d"></span>
+            No
+          </span>
+        `;
       }
 
       return '—';
-    }
-
-    function buildChip(label, bg, color) {
-      return `
-        <span class="chip" style="background:${bg}; color:${color}; border-color:${bg};">
-          <span class="chip-dot" style="background:${color}"></span>
-          ${escapeHtml(label)}
-        </span>
-      `;
     }
 
     function getStatusTheme(status) {
@@ -2200,13 +2362,48 @@
     }
 
     function getStatusIndex(status) {
-      const value = status || 'Open';
-      const index = CONFIG.STATUS_OPTIONS.indexOf(value);
+      const label = status || 'Open';
+      const index = CONFIG.STATUS_OPTIONS.indexOf(label);
       return index === -1 ? 999 : index;
+    }
+
+    function getIssueAgeDays(issue, now = new Date()) {
+      const rawDate = issue.timestamp || issue.requestDate;
+      if (!rawDate) return 0;
+
+      const createdAt = new Date(rawDate);
+      if (Number.isNaN(createdAt.getTime())) return 0;
+
+      const ms = now.getTime() - createdAt.getTime();
+      return Math.max(0, Math.floor(ms / (1000 * 60 * 60 * 24)));
+    }
+
+    function topEntries(obj, limit = 5) {
+      return Object.entries(obj || {})
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, limit);
     }
 
     function compareText(a, b) {
       return String(a || '').localeCompare(String(b || ''), undefined, { sensitivity: 'base' });
+    }
+
+    function safeDateMs(value) {
+      if (!value) return 0;
+      const d = new Date(value);
+      return Number.isNaN(d.getTime()) ? 0 : d.getTime();
+    }
+
+    function roundToOne(value) {
+      return Math.round(value * 10) / 10;
+    }
+
+    function setMessage(message, isError = false) {
+      els.saveMessage.textContent = message;
+      els.saveMessage.className = isError ? 'error' : 'success';
+      if (!message) {
+        els.saveMessage.className = 'muted';
+      }
     }
 
     function beginBusy() {
@@ -2223,11 +2420,9 @@
       state.isSaving = isSaving;
       els.saveBtn.textContent = isSaving ? 'Saving...' : 'Save Update';
 
-      els.editorInputs.forEach(input => {
-        input.disabled = isSaving;
-      });
-
+      els.editorInputs.forEach(input => input.disabled = isSaving);
       els.clearBtn.disabled = isSaving;
+
       updateBusyUI();
     }
 
@@ -2235,8 +2430,6 @@
       const isBusy = state.pendingOps > 0;
 
       els.loadingOverlay.classList.toggle('show', isBusy);
-      els.loadingOverlay.setAttribute('aria-hidden', isBusy ? 'false' : 'true');
-      els.appRoot.setAttribute('aria-busy', isBusy ? 'true' : 'false');
 
       els.refreshBtn.disabled = isBusy;
       els.refreshBtnTop.disabled = isBusy;
@@ -2249,24 +2442,17 @@
 
       if (!state.isSaving) {
         els.saveBtn.disabled = isBusy;
-        els.clearBtn.disabled = isBusy;
       }
     }
 
     function showToast(message, isError = false) {
       clearTimeout(state.toastTimer);
-
       els.toast.textContent = message;
       els.toast.className = `toast ${isError ? 'error' : 'success'} show`;
 
       state.toastTimer = setTimeout(() => {
         els.toast.className = `toast ${isError ? 'error' : 'success'}`;
       }, 2600);
-    }
-
-    function setMessage(message, type = 'muted') {
-      els.saveMessage.textContent = message;
-      els.saveMessage.className = type;
     }
 
     function exportCurrentIssuesCsv() {
@@ -2320,6 +2506,13 @@
       showToast('Filtered issue list exported.');
     }
 
+    function populateSelect(selectElement, placeholder, values) {
+      selectElement.innerHTML = [
+        `<option value="">${escapeHtml(placeholder)}</option>`,
+        ...values.map(value => `<option value="${escapeAttribute(value)}">${escapeHtml(value)}</option>`)
+      ].join('');
+    }
+
     function toggleTheme() {
       document.body.classList.toggle('dark-theme');
       const isDark = document.body.classList.contains('dark-theme');
@@ -2338,38 +2531,13 @@
     function updateThemeButton() {
       const isDark = document.body.classList.contains('dark-theme');
       els.themeToggleBtn.textContent = isDark ? '☀ Light Mode' : '🌙 Dark Mode';
-      els.themeToggleBtn.setAttribute('aria-pressed', isDark ? 'true' : 'false');
-    }
-
-    function populateSelect(selectElement, placeholder, values) {
-      selectElement.innerHTML = [
-        `<option value="">${escapeHtml(placeholder)}</option>`,
-        ...values.map(value => `<option value="${escapeAttribute(value)}">${escapeHtml(value)}</option>`)
-      ].join('');
-    }
-
-    function findTopEntry(obj) {
-      const entries = Object.entries(obj || {}).sort((a, b) => b[1] - a[1]);
-      if (!entries.length) return null;
-      return { label: entries[0][0], value: entries[0][1] };
-    }
-
-    function normalizeValue(value) {
-      return String(value || '').trim().toLowerCase();
-    }
-
-    function safeDateMs(value) {
-      if (!value) return 0;
-      const date = new Date(value);
-      return Number.isNaN(date.getTime()) ? 0 : date.getTime();
     }
 
     function formatDate(value) {
       if (!value) return '';
       const date = new Date(value);
-      if (Number.isNaN(date.getTime())) {
-        return String(value);
-      }
+      if (Number.isNaN(date.getTime())) return String(value);
+
       return date.toLocaleDateString(undefined, {
         year: 'numeric',
         month: 'short',
@@ -2400,14 +2568,18 @@
       return `${yyyy}${mm}${dd}-${hh}${mi}`;
     }
 
-    function csvEscape(value) {
-      const text = String(value == null ? '' : value).replaceAll('"', '""');
-      return `"${text}"`;
+    function normalizeValue(value) {
+      return String(value || '').trim().toLowerCase();
     }
 
     function shorten(value, max) {
       const text = String(value || '');
       return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+    }
+
+    function csvEscape(value) {
+      const text = String(value == null ? '' : value).replaceAll('"', '""');
+      return `"${text}"`;
     }
 
     function iconToneStyle(tone) {
