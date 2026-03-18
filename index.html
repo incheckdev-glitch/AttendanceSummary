@@ -92,6 +92,18 @@
       padding: 22px;
     }
 
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
     .card {
       background: var(--surface);
       border: 1px solid rgba(255, 255, 255, 0.24);
@@ -335,6 +347,7 @@
       font-weight: 800;
       letter-spacing: -0.03em;
       color: var(--text);
+      word-break: break-word;
     }
 
     .mini-stat .sub {
@@ -469,8 +482,22 @@
 
     .toolbar-grid {
       display: grid;
-      grid-template-columns: 1.35fr 220px 220px 160px;
+      grid-template-columns: 1.35fr 220px 220px 220px 140px;
       gap: 12px;
+      align-items: end;
+    }
+
+    .toolbar-field {
+      display: grid;
+      gap: 6px;
+    }
+
+    .toolbar-label {
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--text-soft);
     }
 
     .input-wrap {
@@ -498,13 +525,15 @@
       background: var(--surface-strong);
       color: var(--text);
       font-size: 14px;
-      transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition), background var(--transition), color var(--transition);
+      transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition), background var(--transition), color var(--transition), opacity var(--transition);
       outline: none;
     }
 
     input:focus,
     select:focus,
-    textarea:focus {
+    textarea:focus,
+    button:focus-visible,
+    tbody tr:focus-visible {
       border-color: rgba(37, 99, 235, 0.52);
       box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
     }
@@ -528,7 +557,7 @@
       box-shadow: 0 12px 24px rgba(37, 99, 235, 0.18);
     }
 
-    button:hover {
+    button:hover:not(:disabled) {
       transform: translateY(-1px);
     }
 
@@ -545,7 +574,7 @@
       box-shadow: none;
     }
 
-    .secondary-btn:hover {
+    .secondary-btn:hover:not(:disabled) {
       background: var(--surface-soft);
     }
 
@@ -595,7 +624,7 @@
 
     table {
       width: 100%;
-      min-width: 1150px;
+      min-width: 1220px;
       border-collapse: collapse;
       background: var(--surface-strong);
     }
@@ -625,6 +654,7 @@
     tbody tr {
       transition: background var(--transition), transform var(--transition);
       cursor: pointer;
+      outline: none;
     }
 
     tbody tr:hover {
@@ -815,7 +845,7 @@
     }
 
     .loading-card {
-      width: 220px;
+      width: 240px;
       border-radius: 20px;
       padding: 20px;
       text-align: center;
@@ -885,6 +915,10 @@
         grid-template-columns: 1fr;
       }
 
+      .toolbar-grid {
+        grid-template-columns: 1fr 1fr 1fr;
+      }
+
       .sidebar {
         position: static;
       }
@@ -899,7 +933,8 @@
       .toolbar-grid,
       .grid-global,
       .grid-2,
-      .ring-wrap {
+      .ring-wrap,
+      .analytics-stat-grid {
         grid-template-columns: 1fr;
       }
 
@@ -915,24 +950,64 @@
         grid-template-columns: 120px 1fr 40px;
       }
 
+      .table-wrap {
+        max-height: none;
+      }
+
       table {
-        min-width: 980px;
+        min-width: 100%;
+      }
+
+      thead {
+        display: none;
+      }
+
+      tbody,
+      tbody tr,
+      tbody td {
+        display: block;
+        width: 100%;
+      }
+
+      tbody tr {
+        padding: 14px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      tbody td {
+        border-bottom: none;
+        padding: 8px 0;
+      }
+
+      tbody td::before {
+        content: attr(data-label);
+        display: block;
+        margin-bottom: 4px;
+        font-size: 11px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-faint);
+      }
+
+      .issue-desc {
+        max-width: none;
       }
     }
   </style>
 </head>
 <body>
-  <div class="loading-overlay" id="loadingOverlay">
-    <div class="loading-card">
+  <div class="loading-overlay" id="loadingOverlay" aria-hidden="true">
+    <div class="loading-card" role="status" aria-live="polite">
       <div class="spinner"></div>
       <div style="font-weight:800; color:var(--text); margin-bottom:4px;">Loading dashboard</div>
       <div class="muted">Refreshing metrics and issues...</div>
     </div>
   </div>
 
-  <div class="toast" id="toast"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
-  <div class="container">
+  <div class="container" id="appRoot" aria-busy="false">
     <section class="hero section">
       <div class="hero-content">
         <div>
@@ -948,7 +1023,7 @@
         </div>
 
         <div class="hero-actions">
-          <button type="button" id="themeToggleBtn">🌙 Dark Mode</button>
+          <button type="button" id="themeToggleBtn" aria-pressed="false">🌙 Dark Mode</button>
           <button type="button" id="exportBtn">⬇ Export CSV</button>
           <button type="button" id="refreshBtnTop">↻ Refresh Data</button>
           <button type="button" class="secondary-btn" id="clearBtnTop">Clear Selection</button>
@@ -1010,31 +1085,30 @@
       </div>
 
       <div class="toolbar-grid">
-        <div class="input-wrap">
-          <span class="input-icon">⌕</span>
-          <input id="searchInput" placeholder="Search by company, issue title, module, description, or ticket..." />
+        <div class="toolbar-field">
+          <label class="toolbar-label" for="searchInput">Search</label>
+          <div class="input-wrap">
+            <span class="input-icon">⌕</span>
+            <input id="searchInput" placeholder="Search by company, issue title, module, description, or ticket..." />
+          </div>
         </div>
 
-        <select id="statusFilter">
-          <option value="">All Statuses</option>
-          <option value="Open">Open</option>
-          <option value="In Progress">In Progress</option>
-          <option value="Waiting for CS">Waiting for CS</option>
-          <option value="Waiting for Customer">Waiting for Customer</option>
-          <option value="Escalated to Development">Escalated to Development</option>
-          <option value="Resolved">Resolved</option>
-          <option value="Closed">Closed</option>
-        </select>
+        <div class="toolbar-field">
+          <label class="toolbar-label" for="statusFilter">Status</label>
+          <select id="statusFilter"></select>
+        </div>
 
-        <select id="priorityFilter">
-          <option value="">All Priorities</option>
-          <option value="Low">Low</option>
-          <option value="Medium">Medium</option>
-          <option value="High">High</option>
-          <option value="Critical">Critical</option>
-        </select>
+        <div class="toolbar-field">
+          <label class="toolbar-label" for="priorityFilter">Priority</label>
+          <select id="priorityFilter"></select>
+        </div>
 
-        <button id="refreshBtn">Refresh</button>
+        <div class="toolbar-field">
+          <label class="toolbar-label" for="sortSelect">Sort</label>
+          <select id="sortSelect"></select>
+        </div>
+
+        <button id="refreshBtn" type="button">Refresh</button>
       </div>
 
       <div class="chip-row" id="quickFilterChips"></div>
@@ -1047,12 +1121,12 @@
             <h3>Issue Queue</h3>
             <div class="panel-sub">Click any row to inspect and edit that issue.</div>
           </div>
-          <div class="pill" id="tableMetaPill">Sorted by current sheet order</div>
+          <div class="pill" id="tableMetaPill">Sorted by sheet order</div>
         </div>
 
         <div class="table-shell">
           <div class="table-wrap">
-            <table>
+            <table aria-label="Issue queue">
               <thead>
                 <tr>
                   <th>ID</th>
@@ -1081,7 +1155,7 @@
         <div class="panel-header">
           <div>
             <h3>Issue Editor</h3>
-            <div class="panel-sub">Update resolution details and save securely.</div>
+            <div class="panel-sub">Update resolution details and save with backend validation.</div>
           </div>
         </div>
 
@@ -1117,64 +1191,30 @@
 
           <div class="field-group">
             <label for="finalStatus">Final Status</label>
-            <select id="finalStatus">
-              <option value="">Select Final Status</option>
-              <option value="Open">Open</option>
-              <option value="In Progress">In Progress</option>
-              <option value="Waiting for CS">Waiting for CS</option>
-              <option value="Waiting for Customer">Waiting for Customer</option>
-              <option value="Escalated to Development">Escalated to Development</option>
-              <option value="Resolved">Resolved</option>
-              <option value="Closed">Closed</option>
-            </select>
+            <select id="finalStatus"></select>
           </div>
 
           <div class="grid-2">
             <div class="field-group">
               <label for="initialAssessment">Initial Assessment</label>
-              <select id="initialAssessment">
-                <option value="">Initial Assessment</option>
-                <option value="Resolved by R&D">Resolved by R&amp;D</option>
-                <option value="Need More Information">Need More Information</option>
-                <option value="Escalated to Development">Escalated to Development</option>
-                <option value="Not a Bug">Not a Bug</option>
-                <option value="Duplicate">Duplicate</option>
-                <option value="Cannot Reproduce">Cannot Reproduce</option>
-              </select>
+              <select id="initialAssessment"></select>
             </div>
 
             <div class="field-group">
               <label for="rootCauseType">Root Cause Type</label>
-              <select id="rootCauseType">
-                <option value="">Root Cause Type</option>
-                <option value="User Error">User Error</option>
-                <option value="Configuration">Configuration</option>
-                <option value="Data Problem">Data Problem</option>
-                <option value="System Bug">System Bug</option>
-                <option value="Third-Party Dependency">Third-Party Dependency</option>
-                <option value="Performance Limitation">Performance Limitation</option>
-                <option value="Unknown">Unknown</option>
-              </select>
+              <select id="rootCauseType"></select>
             </div>
           </div>
 
           <div class="grid-2">
             <div class="field-group">
               <label for="escalationRequired">Escalation Required?</label>
-              <select id="escalationRequired">
-                <option value="">Escalation Required?</option>
-                <option value="Yes">Yes</option>
-                <option value="No">No</option>
-              </select>
+              <select id="escalationRequired"></select>
             </div>
 
             <div class="field-group">
               <label for="wasCsInformed">Was CS Informed?</label>
-              <select id="wasCsInformed">
-                <option value="">Was CS Informed?</option>
-                <option value="Yes">Yes</option>
-                <option value="No">No</option>
-              </select>
+              <select id="wasCsInformed"></select>
             </div>
           </div>
 
@@ -1191,7 +1231,7 @@
           <div class="section-title">Security</div>
 
           <div class="security-box">
-            <strong>Secure save:</strong> updates still use your Apps Script password validation and backend closure-date logic.
+            <strong>Backend-validated save:</strong> this UI still sends updates to Apps Script, but true security must be enforced server-side with real auth, authorization, and rate limiting.
           </div>
 
           <div class="field-group">
@@ -1200,11 +1240,11 @@
           </div>
 
           <div class="grid-2">
-            <button id="saveBtn">Save Update</button>
+            <button id="saveBtn" type="button">Save Update</button>
             <button id="clearBtn" class="secondary-btn" type="button">Clear</button>
           </div>
 
-          <div id="saveMessage" class="muted"></div>
+          <div id="saveMessage" class="muted" role="status" aria-live="polite" aria-atomic="true"></div>
 
           <div class="footer-note">
             The global KPI cards show all issues. The analytics section shows only the issues currently visible after filters.
@@ -1215,17 +1255,271 @@
   </div>
 
   <script>
-    const API_URL = 'https://script.google.com/macros/s/AKfycbwX0LqxxJ7-YN7EDzzqomxVFVLvIhSXvbYgd4LgLE42gq1Hl4wJmCYPTy2rcsjQ_KVV/exec';
+    const CONFIG = {
+      API_URL: 'https://script.google.com/macros/s/AKfycbwX0LqxxJ7-YN7EDzzqomxVFVLvIhSXvbYgd4LgLE42gq1Hl4wJmCYPTy2rcsjQ_KVV/exec',
 
-    let currentIssues = [];
-    let selectedIssueId = null;
-    let searchTimer = null;
-    let dashboardSummary = {};
-    let lastRefreshedAt = null;
+      STATUS_OPTIONS: [
+        'Open',
+        'In Progress',
+        'Waiting for CS',
+        'Waiting for Customer',
+        'Escalated to Development',
+        'Resolved',
+        'Closed'
+      ],
 
-    async function apiGet(action, params = {}) {
-      const url = new URL(API_URL);
+      PRIORITY_OPTIONS: ['Low', 'Medium', 'High', 'Critical'],
+
+      INITIAL_ASSESSMENT_OPTIONS: [
+        'Resolved by R&D',
+        'Need More Information',
+        'Escalated to Development',
+        'Not a Bug',
+        'Duplicate',
+        'Cannot Reproduce'
+      ],
+
+      ROOT_CAUSE_OPTIONS: [
+        'User Error',
+        'Configuration',
+        'Data Problem',
+        'System Bug',
+        'Third-Party Dependency',
+        'Performance Limitation',
+        'Unknown'
+      ],
+
+      YES_NO_OPTIONS: ['Yes', 'No'],
+
+      ACTIVE_STATUSES: new Set([
+        'open',
+        'in progress',
+        'waiting for cs',
+        'waiting for customer',
+        'escalated to development'
+      ]),
+
+      STATUS_THEME: {
+        'Open': { bg: '#e2e8f0', text: '#475569', fill: '#64748b' },
+        'In Progress': { bg: '#dbeafe', text: '#1d4ed8', fill: '#2563eb' },
+        'Waiting for CS': { bg: '#fef3c7', text: '#b45309', fill: '#d97706' },
+        'Waiting for Customer': { bg: '#fef3c7', text: '#b45309', fill: '#d97706' },
+        'Escalated to Development': { bg: '#ede9fe', text: '#6d28d9', fill: '#7c3aed' },
+        'Resolved': { bg: '#dcfce7', text: '#15803d', fill: '#16a34a' },
+        'Closed': { bg: '#dcfce7', text: '#15803d', fill: '#16a34a' }
+      },
+
+      PRIORITY_THEME: {
+        'Critical': { bg: '#fee2e2', text: '#b91c1c' },
+        'High': { bg: '#ffedd5', text: '#c2410c' },
+        'Medium': { bg: '#fef3c7', text: '#b45309' },
+        'Low': { bg: '#dcfce7', text: '#15803d' }
+      },
+
+      PRIORITY_RING_COLORS: {
+        'Critical': '#dc2626',
+        'High': '#ea580c',
+        'Medium': '#d97706',
+        'Low': '#16a34a'
+      },
+
+      PRIORITY_ORDER: {
+        'Critical': 4,
+        'High': 3,
+        'Medium': 2,
+        'Low': 1
+      },
+
+      SORT_OPTIONS: [
+        { value: 'sheet', label: 'Sheet order' },
+        { value: 'priority_desc', label: 'Priority (High → Low)' },
+        { value: 'status_asc', label: 'Status' },
+        { value: 'company_asc', label: 'Company (A → Z)' },
+        { value: 'newest', label: 'Newest first' },
+        { value: 'oldest', label: 'Oldest first' },
+        { value: 'closure_desc', label: 'Latest closure date' }
+      ]
+    };
+
+    const state = {
+      issues: [],
+      summary: {},
+      selectedIssueId: null,
+      lastRefreshedAt: null,
+      searchTimer: null,
+      toastTimer: null,
+      loadController: null,
+      latestLoadRequestId: 0,
+      pendingOps: 0,
+      isSaving: false
+    };
+
+    const els = {};
+
+    document.addEventListener('DOMContentLoaded', init);
+
+    function init() {
+      cacheDom();
+      initStaticOptions();
+      bindEvents();
+      applySavedTheme();
+      restoreSavedSort();
+      clearSelection({ clearPassword: true, preserveMessage: true, rerender: false });
+      loadDashboard();
+    }
+
+    function cacheDom() {
+      els.appRoot = document.getElementById('appRoot');
+      els.loadingOverlay = document.getElementById('loadingOverlay');
+      els.toast = document.getElementById('toast');
+
+      els.summaryCards = document.getElementById('summaryCards');
+      els.filteredSummaryPill = document.getElementById('filteredSummaryPill');
+      els.filteredOverviewStats = document.getElementById('filteredOverviewStats');
+      els.statusDistribution = document.getElementById('statusDistribution');
+      els.priorityRingWrap = document.getElementById('priorityRingWrap');
+      els.priorityLegend = document.getElementById('priorityLegend');
+
+      els.lastRefreshPill = document.getElementById('lastRefreshPill');
+      els.issuesCountPill = document.getElementById('issuesCountPill');
+      els.selectedCountPill = document.getElementById('selectedCountPill');
+      els.tableMetaPill = document.getElementById('tableMetaPill');
+
+      els.searchInput = document.getElementById('searchInput');
+      els.statusFilter = document.getElementById('statusFilter');
+      els.priorityFilter = document.getElementById('priorityFilter');
+      els.sortSelect = document.getElementById('sortSelect');
+      els.quickFilterChips = document.getElementById('quickFilterChips');
+
+      els.refreshBtn = document.getElementById('refreshBtn');
+      els.refreshBtnTop = document.getElementById('refreshBtnTop');
+      els.exportBtn = document.getElementById('exportBtn');
+      els.themeToggleBtn = document.getElementById('themeToggleBtn');
+      els.clearBtnTop = document.getElementById('clearBtnTop');
+
+      els.issuesTable = document.getElementById('issuesTable');
+
+      els.selectedIssueInfo = document.getElementById('selectedIssueInfo');
+      els.smartSuggestionBox = document.getElementById('smartSuggestionBox');
+
+      els.issueId = document.getElementById('issueId');
+      els.companyName = document.getElementById('companyName');
+      els.issueTitle = document.getElementById('issueTitle');
+      els.finalStatus = document.getElementById('finalStatus');
+      els.initialAssessment = document.getElementById('initialAssessment');
+      els.rootCauseType = document.getElementById('rootCauseType');
+      els.escalationRequired = document.getElementById('escalationRequired');
+      els.wasCsInformed = document.getElementById('wasCsInformed');
+      els.developmentTicket = document.getElementById('developmentTicket');
+      els.internalNotes = document.getElementById('internalNotes');
+      els.editPassword = document.getElementById('editPassword');
+      els.saveBtn = document.getElementById('saveBtn');
+      els.clearBtn = document.getElementById('clearBtn');
+      els.saveMessage = document.getElementById('saveMessage');
+
+      els.editorInputs = [
+        els.finalStatus,
+        els.initialAssessment,
+        els.rootCauseType,
+        els.escalationRequired,
+        els.wasCsInformed,
+        els.developmentTicket,
+        els.internalNotes,
+        els.editPassword
+      ];
+    }
+
+    function initStaticOptions() {
+      populateSelect(els.statusFilter, 'All Statuses', CONFIG.STATUS_OPTIONS);
+      populateSelect(els.priorityFilter, 'All Priorities', CONFIG.PRIORITY_OPTIONS);
+      populateSelect(els.finalStatus, 'Select Final Status', CONFIG.STATUS_OPTIONS);
+      populateSelect(els.initialAssessment, 'Initial Assessment', CONFIG.INITIAL_ASSESSMENT_OPTIONS);
+      populateSelect(els.rootCauseType, 'Root Cause Type', CONFIG.ROOT_CAUSE_OPTIONS);
+      populateSelect(els.escalationRequired, 'Escalation Required?', CONFIG.YES_NO_OPTIONS);
+      populateSelect(els.wasCsInformed, 'Was CS Informed?', CONFIG.YES_NO_OPTIONS);
+
+      els.sortSelect.innerHTML = CONFIG.SORT_OPTIONS.map(option => `
+        <option value="${escapeAttribute(option.value)}">${escapeHtml(option.label)}</option>
+      `).join('');
+    }
+
+    function restoreSavedSort() {
+      const savedSort = localStorage.getItem('supportDashboardSort');
+      if (savedSort && CONFIG.SORT_OPTIONS.some(option => option.value === savedSort)) {
+        els.sortSelect.value = savedSort;
+      } else {
+        els.sortSelect.value = 'sheet';
+      }
+    }
+
+    function bindEvents() {
+      els.refreshBtn.addEventListener('click', loadDashboard);
+      els.refreshBtnTop.addEventListener('click', loadDashboard);
+      els.exportBtn.addEventListener('click', exportCurrentIssuesCsv);
+      els.themeToggleBtn.addEventListener('click', toggleTheme);
+      els.clearBtn.addEventListener('click', () => clearSelection({ clearPassword: true }));
+      els.clearBtnTop.addEventListener('click', () => clearSelection({ clearPassword: true }));
+      els.saveBtn.addEventListener('click', saveIssue);
+
+      els.searchInput.addEventListener('input', handleSearchInput);
+      els.statusFilter.addEventListener('change', loadDashboard);
+      els.priorityFilter.addEventListener('change', loadDashboard);
+
+      els.sortSelect.addEventListener('change', () => {
+        localStorage.setItem('supportDashboardSort', els.sortSelect.value);
+        renderDashboard();
+      });
+
+      els.quickFilterChips.addEventListener('click', (event) => {
+        const button = event.target.closest('button[data-status]');
+        if (!button) return;
+
+        els.statusFilter.value = button.dataset.status || '';
+        loadDashboard();
+      });
+
+      els.issuesTable.addEventListener('click', (event) => {
+        const row = event.target.closest('tr[data-id]');
+        if (!row) return;
+        selectIssue(Number(row.dataset.id));
+      });
+
+      els.issuesTable.addEventListener('keydown', (event) => {
+        const row = event.target.closest('tr[data-id]');
+        if (!row) return;
+
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          selectIssue(Number(row.dataset.id));
+        }
+      });
+
+      document.addEventListener('keydown', (event) => {
+        const key = event.key.toLowerCase();
+
+        if ((event.metaKey || event.ctrlKey) && key === 'k') {
+          event.preventDefault();
+          els.searchInput.focus();
+          els.searchInput.select();
+        }
+
+        if (event.key === 'Escape') {
+          clearSelection({ clearPassword: true });
+        }
+      });
+    }
+
+    function handleSearchInput() {
+      clearTimeout(state.searchTimer);
+      state.searchTimer = setTimeout(() => {
+        loadDashboard();
+      }, 300);
+    }
+
+    async function apiGet(action, params = {}, signal) {
+      const url = new URL(CONFIG.API_URL);
       url.searchParams.set('action', action);
+      url.searchParams.set('_ts', Date.now().toString());
 
       Object.entries(params).forEach(([key, value]) => {
         if (value !== undefined && value !== null && value !== '') {
@@ -1233,20 +1527,170 @@
         }
       });
 
-      const response = await fetch(url.toString());
-      return response.json();
+      const response = await fetch(url.toString(), {
+        method: 'GET',
+        signal,
+        cache: 'no-store',
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
+
+      return parseJsonResponse(response);
     }
 
     async function apiPost(payload) {
-      const response = await fetch(API_URL, {
+      const response = await fetch(CONFIG.API_URL, {
         method: 'POST',
+        cache: 'no-store',
         headers: {
-          'Content-Type': 'text/plain;charset=utf-8'
+          'Content-Type': 'text/plain;charset=utf-8',
+          'Accept': 'application/json'
         },
         body: JSON.stringify(payload)
       });
 
-      return response.json();
+      return parseJsonResponse(response);
+    }
+
+    async function parseJsonResponse(response) {
+      const text = await response.text();
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      try {
+        return text ? JSON.parse(text) : {};
+      } catch (error) {
+        console.error('Invalid JSON response:', text);
+        throw new Error('Server returned invalid JSON.');
+      }
+    }
+
+    async function loadDashboard() {
+      const requestId = ++state.latestLoadRequestId;
+
+      if (state.loadController) {
+        state.loadController.abort();
+      }
+
+      const controller = new AbortController();
+      state.loadController = controller;
+
+      const q = els.searchInput.value.trim();
+      const status = els.statusFilter.value.trim();
+      const priority = els.priorityFilter.value.trim();
+
+      beginBusy();
+
+      try {
+        const [summaryRes, issuesRes] = await Promise.all([
+          apiGet('summary', {}, controller.signal),
+          apiGet('issues', { q, status, priority }, controller.signal)
+        ]);
+
+        if (requestId !== state.latestLoadRequestId) return;
+
+        if (!summaryRes.ok) {
+          throw new Error(summaryRes.error || 'Failed to load summary.');
+        }
+
+        if (!issuesRes.ok) {
+          throw new Error(issuesRes.error || 'Failed to load issues.');
+        }
+
+        state.summary = summaryRes.data || {};
+        state.issues = Array.isArray(issuesRes.data) ? issuesRes.data : [];
+        state.lastRefreshedAt = new Date();
+
+        renderDashboard();
+      } catch (error) {
+        if (error.name === 'AbortError') return;
+
+        console.error(error);
+
+        if (!state.issues.length) {
+          renderTableMessage('Unable to load issues', error.message || 'Something went wrong while loading the dashboard.');
+        }
+
+        showToast(error.message || 'Something went wrong.', true);
+      } finally {
+        if (state.loadController === controller) {
+          state.loadController = null;
+        }
+        endBusy();
+      }
+    }
+
+    async function saveIssue() {
+      const id = Number(els.issueId.value);
+      const editPassword = els.editPassword.value.trim();
+
+      if (!id) {
+        setMessage('Select an issue first.', 'error');
+        showToast('Select an issue first.', true);
+        return;
+      }
+
+      if (!editPassword) {
+        setMessage('Enter edit password.', 'error');
+        showToast('Enter edit password.', true);
+        return;
+      }
+
+      const payload = {
+        action: 'updateIssue',
+        id,
+        editPassword,
+        finalStatus: els.finalStatus.value.trim(),
+        initialAssessment: els.initialAssessment.value.trim(),
+        rootCauseType: els.rootCauseType.value.trim(),
+        escalationRequired: els.escalationRequired.value.trim(),
+        wasCsInformed: els.wasCsInformed.value.trim(),
+        developmentTicket: els.developmentTicket.value.trim(),
+        internalNotes: els.internalNotes.value.trim()
+      };
+
+      setSavingState(true);
+      beginBusy();
+      setMessage('Saving...', 'muted');
+
+      try {
+        const result = await apiPost(payload);
+
+        if (!result.ok) {
+          throw new Error(result.error || 'Save failed.');
+        }
+
+        els.editPassword.value = '';
+        await loadDashboard();
+        setMessage('Saved successfully.', 'success');
+        showToast('Issue updated successfully.');
+      } catch (error) {
+        console.error(error);
+        setMessage(error.message || 'Save failed.', 'error');
+        showToast(error.message || 'Save failed.', true);
+      } finally {
+        endBusy();
+        setSavingState(false);
+      }
+    }
+
+    function renderDashboard() {
+      renderGlobalCards(state.summary);
+
+      const metrics = deriveFilteredMetrics(state.issues);
+      renderFilteredOverview(metrics);
+      renderStatusDistribution(metrics);
+      renderPriorityRing(metrics);
+      renderQuickFilterChips();
+
+      const renderableIssues = getRenderableIssues();
+      renderTable(renderableIssues);
+      updatePills();
+      updateLastRefresh();
+      syncSelectionAfterRefresh();
     }
 
     function renderGlobalCards(summary) {
@@ -1258,7 +1702,7 @@
         { label: 'High / Critical', value: summary.highCritical || 0, hint: 'Priority focus', icon: '🔥', tone: 'danger' }
       ];
 
-      document.getElementById('summaryCards').innerHTML = cards.map(card => `
+      els.summaryCards.innerHTML = cards.map(card => `
         <article class="card kpi-card">
           <div class="kpi-top">
             <div class="kpi-label">${escapeHtml(card.label)}</div>
@@ -1284,22 +1728,22 @@
       };
 
       issues.forEach(issue => {
-        const status = normalizeValue(issue.finalStatus || 'Open');
-        const priority = normalizeValue(issue.priorityLevel || 'Blank');
+        const statusLabel = issue.finalStatus || 'Open';
+        const priorityLabel = issue.priorityLevel || 'Blank';
         const category = issue.issueCategory || 'Blank';
         const company = issue.companyName || 'Blank';
         const escalation = normalizeValue(issue.escalationRequired || '');
         const ticket = String(issue.developmentTicket || '').trim();
 
-        if (!status || ['open', 'in progress', 'waiting for cs', 'waiting for customer', 'escalated to development'].includes(status)) {
+        if (CONFIG.ACTIVE_STATUSES.has(normalizeValue(statusLabel))) {
           metrics.active++;
         }
 
-        if (status === 'escalated to development' || escalation === 'yes') {
+        if (normalizeValue(statusLabel) === 'escalated to development' || escalation === 'yes') {
           metrics.escalated++;
         }
 
-        if (['high', 'critical'].includes(priority)) {
+        if (['high', 'critical'].includes(normalizeValue(priorityLabel))) {
           metrics.highCritical++;
         }
 
@@ -1307,8 +1751,8 @@
           metrics.withTickets++;
         }
 
-        metrics.statusCounts[issue.finalStatus || 'Open'] = (metrics.statusCounts[issue.finalStatus || 'Open'] || 0) + 1;
-        metrics.priorityCounts[issue.priorityLevel || 'Blank'] = (metrics.priorityCounts[issue.priorityLevel || 'Blank'] || 0) + 1;
+        metrics.statusCounts[statusLabel] = (metrics.statusCounts[statusLabel] || 0) + 1;
+        metrics.priorityCounts[priorityLabel] = (metrics.priorityCounts[priorityLabel] || 0) + 1;
         metrics.categoryCounts[category] = (metrics.categoryCounts[category] || 0) + 1;
         metrics.companyCounts[company] = (metrics.companyCounts[company] || 0) + 1;
       });
@@ -1320,7 +1764,7 @@
       const topCompany = findTopEntry(metrics.companyCounts);
       const topCategory = findTopEntry(metrics.categoryCounts);
 
-      document.getElementById('filteredSummaryPill').textContent = `${metrics.total} issue${metrics.total === 1 ? '' : 's'} in current view`;
+      els.filteredSummaryPill.textContent = `${metrics.total} issue${metrics.total === 1 ? '' : 's'} in current view`;
 
       const cards = [
         {
@@ -1361,7 +1805,7 @@
         }
       ];
 
-      document.getElementById('filteredOverviewStats').innerHTML = cards.map(card => `
+      els.filteredOverviewStats.innerHTML = cards.map(card => `
         <div class="mini-stat" style="background:${card.bg}">
           <div class="label">${escapeHtml(card.label)}</div>
           <div class="value">${escapeHtml(card.value)}</div>
@@ -1371,34 +1815,26 @@
     }
 
     function renderStatusDistribution(metrics) {
-      const preferredOrder = [
-        'Open',
-        'In Progress',
-        'Waiting for CS',
-        'Waiting for Customer',
-        'Escalated to Development',
-        'Resolved',
-        'Closed'
-      ];
-
       const total = metrics.total || 1;
-      const rows = preferredOrder
+      const rows = CONFIG.STATUS_OPTIONS
         .filter(label => Number(metrics.statusCounts[label] || 0) > 0)
         .map(label => {
           const count = metrics.statusCounts[label] || 0;
           const percent = Math.round((count / total) * 100);
+          const theme = getStatusTheme(label);
+
           return `
             <div class="dist-row">
               <div class="dist-label">${escapeHtml(label)}</div>
               <div class="dist-bar">
-                <div class="dist-fill" style="width:${percent}%; background:${statusColor(label)};"></div>
+                <div class="dist-fill" style="width:${percent}%; background:${theme.fill};"></div>
               </div>
               <div class="dist-value">${count}</div>
             </div>
           `;
         });
 
-      document.getElementById('statusDistribution').innerHTML = rows.length ? rows.join('') : `
+      els.statusDistribution.innerHTML = rows.length ? rows.join('') : `
         <div class="empty-state" style="padding:24px 10px;">
           <h4>No status data</h4>
           <p>Try changing filters to display issues.</p>
@@ -1408,17 +1844,10 @@
 
     function renderPriorityRing(metrics) {
       const priorities = ['Critical', 'High', 'Medium', 'Low'];
-      const colors = {
-        Critical: '#dc2626',
-        High: '#ea580c',
-        Medium: '#d97706',
-        Low: '#16a34a'
-      };
-
       const total = priorities.reduce((sum, key) => sum + Number(metrics.priorityCounts[key] || 0), 0);
 
       if (!total) {
-        document.getElementById('priorityRingWrap').innerHTML = `
+        els.priorityRingWrap.innerHTML = `
           <div class="ring" style="background:conic-gradient(#cbd5e1 0 100%);">
             <div class="ring-center">
               <div class="big">0</div>
@@ -1426,9 +1855,8 @@
             </div>
           </div>
         `;
-        document.getElementById('priorityLegend').innerHTML = `
-          <div class="muted">No priority data in the current view.</div>
-        `;
+
+        els.priorityLegend.innerHTML = `<div class="muted">No priority data in the current view.</div>`;
         return;
       }
 
@@ -1440,10 +1868,10 @@
           const size = (value / total) * 100;
           const start = cumulative;
           cumulative += size;
-          return `${colors[key]} ${start}% ${cumulative}%`;
+          return `${CONFIG.PRIORITY_RING_COLORS[key]} ${start}% ${cumulative}%`;
         });
 
-      document.getElementById('priorityRingWrap').innerHTML = `
+      els.priorityRingWrap.innerHTML = `
         <div class="ring" style="background:conic-gradient(${slices.join(', ')});">
           <div class="ring-center">
             <div class="big">${total}</div>
@@ -1452,9 +1880,9 @@
         </div>
       `;
 
-      document.getElementById('priorityLegend').innerHTML = priorities.map(key => `
+      els.priorityLegend.innerHTML = priorities.map(key => `
         <div class="legend-row">
-          <span class="legend-dot" style="background:${colors[key]}"></span>
+          <span class="legend-dot" style="background:${CONFIG.PRIORITY_RING_COLORS[key]}"></span>
           <span class="legend-label">${escapeHtml(key)}</span>
           <span class="legend-value">${escapeHtml(metrics.priorityCounts[key] || 0)}</span>
         </div>
@@ -1462,26 +1890,19 @@
     }
 
     function renderQuickFilterChips() {
-      const statuses = [
-        'All',
-        'Open',
-        'In Progress',
-        'Waiting for CS',
-        'Waiting for Customer',
-        'Escalated to Development',
-        'Resolved',
-        'Closed'
-      ];
+      const current = els.statusFilter.value.trim() || 'All';
+      const statuses = ['All', ...CONFIG.STATUS_OPTIONS];
 
-      const current = document.getElementById('statusFilter').value.trim() || 'All';
-
-      document.getElementById('quickFilterChips').innerHTML = statuses.map(status => {
+      els.quickFilterChips.innerHTML = statuses.map(status => {
         const active = status === current;
+        const value = status === 'All' ? '' : status;
+
         return `
           <button
             type="button"
             class="filter-chip ${active ? 'active' : ''}"
-            onclick="applyQuickStatusFilter('${escapeJs(status === 'All' ? '' : status)}')"
+            data-status="${escapeAttribute(value)}"
+            aria-pressed="${active ? 'true' : 'false'}"
           >
             ${escapeHtml(status)}
           </button>
@@ -1490,61 +1911,125 @@
     }
 
     function renderTable(issues) {
-      const tbody = document.getElementById('issuesTable');
-
       if (!issues.length) {
-        tbody.innerHTML = `
-          <tr>
-            <td colspan="10">
-              <div class="empty-state">
-                <h4>No issues found</h4>
-                <p>Try adjusting the search term or filters.</p>
-              </div>
-            </td>
-          </tr>
-        `;
+        renderTableMessage('No issues found', 'Try adjusting the search term or filters.');
         return;
       }
 
-      tbody.innerHTML = issues.map(issue => `
-        <tr class="${Number(issue.id) === Number(selectedIssueId) ? 'selected-row' : ''}" onclick="selectIssue(${Number(issue.id)})">
-          <td><span class="id-badge">#${escapeHtml(issue.id)}</span></td>
-          <td>
-            <div class="issue-title">${escapeHtml(issue.issueTitle || 'Untitled issue')}</div>
-            <div class="issue-desc">${escapeHtml(issue.detailedDescription || 'No description provided.')}</div>
-          </td>
-          <td>${escapeHtml(issue.companyName || '—')}</td>
-          <td>${escapeHtml(issue.productModuleAffected || '—')}</td>
-          <td>${buildPriorityChip(issue.priorityLevel || '')}</td>
-          <td>${buildStatusChip(issue.finalStatus || 'Open')}</td>
-          <td>${buildYesNoChip(issue.escalationRequired || '')}</td>
-          <td>${renderTicket(issue.developmentTicket)}</td>
-          <td>${formatDate(issue.resolutionClosureDate) || '—'}</td>
-          <td>
-            <button class="action-btn" type="button" onclick="event.stopPropagation(); selectIssue(${Number(issue.id)})">Edit</button>
+      els.issuesTable.innerHTML = issues.map(issue => {
+        const issueId = Number(issue.id);
+        const selected = issueId === Number(state.selectedIssueId);
+
+        return `
+          <tr
+            data-id="${issueId}"
+            tabindex="0"
+            role="button"
+            aria-selected="${selected ? 'true' : 'false'}"
+            class="${selected ? 'selected-row' : ''}"
+          >
+            <td data-label="ID"><span class="id-badge">#${escapeHtml(issue.id)}</span></td>
+            <td data-label="Issue">
+              <div class="issue-title">${escapeHtml(issue.issueTitle || 'Untitled issue')}</div>
+              <div class="issue-desc">${escapeHtml(issue.detailedDescription || 'No description provided.')}</div>
+            </td>
+            <td data-label="Company">${escapeHtml(issue.companyName || '—')}</td>
+            <td data-label="Module">${escapeHtml(issue.productModuleAffected || '—')}</td>
+            <td data-label="Priority">${buildPriorityChip(issue.priorityLevel || '')}</td>
+            <td data-label="Status">${buildStatusChip(issue.finalStatus || 'Open')}</td>
+            <td data-label="Escalation">${buildYesNoChip(issue.escalationRequired || '')}</td>
+            <td data-label="Ticket">${renderTicket(issue.developmentTicket)}</td>
+            <td data-label="Closure Date">${escapeHtml(formatDate(issue.resolutionClosureDate) || '—')}</td>
+            <td data-label="Action">
+              <button class="action-btn" type="button">Edit</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      updateSelectedRowUI();
+    }
+
+    function renderTableMessage(title, message) {
+      els.issuesTable.innerHTML = `
+        <tr>
+          <td colspan="10">
+            <div class="empty-state">
+              <h4>${escapeHtml(title)}</h4>
+              <p>${escapeHtml(message)}</p>
+            </div>
           </td>
         </tr>
-      `).join('');
+      `;
+    }
+
+    function getRenderableIssues() {
+      return sortIssues([...state.issues], els.sortSelect.value);
+    }
+
+    function sortIssues(items, sortBy) {
+      switch (sortBy) {
+        case 'priority_desc':
+          return items.sort((a, b) => {
+            const diff = getPriorityRank(b.priorityLevel) - getPriorityRank(a.priorityLevel);
+            return diff || safeDateMs(b.timestamp) - safeDateMs(a.timestamp) || Number(b.id || 0) - Number(a.id || 0);
+          });
+
+        case 'status_asc':
+          return items.sort((a, b) => {
+            const diff = getStatusIndex(a.finalStatus) - getStatusIndex(b.finalStatus);
+            return diff || compareText(a.companyName, b.companyName) || Number(a.id || 0) - Number(b.id || 0);
+          });
+
+        case 'company_asc':
+          return items.sort((a, b) => {
+            return compareText(a.companyName, b.companyName) || safeDateMs(b.timestamp) - safeDateMs(a.timestamp);
+          });
+
+        case 'newest':
+          return items.sort((a, b) => {
+            return safeDateMs(b.timestamp) - safeDateMs(a.timestamp) || Number(b.id || 0) - Number(a.id || 0);
+          });
+
+        case 'oldest':
+          return items.sort((a, b) => {
+            return safeDateMs(a.timestamp) - safeDateMs(b.timestamp) || Number(a.id || 0) - Number(b.id || 0);
+          });
+
+        case 'closure_desc':
+          return items.sort((a, b) => {
+            return safeDateMs(b.resolutionClosureDate) - safeDateMs(a.resolutionClosureDate) || safeDateMs(b.timestamp) - safeDateMs(a.timestamp);
+          });
+
+        case 'sheet':
+        default:
+          return items;
+      }
     }
 
     function selectIssue(id) {
-      const issue = currentIssues.find(item => Number(item.id) === Number(id));
+      const issue = state.issues.find(item => Number(item.id) === Number(id));
       if (!issue) return;
 
-      selectedIssueId = issue.id;
+      state.selectedIssueId = Number(issue.id);
+      populateEditor(issue);
+      updateSelectedRowUI();
+      setMessage('', 'muted');
+    }
 
-      document.getElementById('issueId').value = issue.id || '';
-      document.getElementById('issueTitle').value = issue.issueTitle || '';
-      document.getElementById('companyName').value = issue.companyName || '';
-      document.getElementById('finalStatus').value = issue.finalStatus || '';
-      document.getElementById('initialAssessment').value = issue.initialAssessment || '';
-      document.getElementById('rootCauseType').value = issue.rootCauseType || '';
-      document.getElementById('escalationRequired').value = issue.escalationRequired || '';
-      document.getElementById('wasCsInformed').value = issue.wasCsInformed || '';
-      document.getElementById('developmentTicket').value = issue.developmentTicket || '';
-      document.getElementById('internalNotes').value = issue.internalNotes || '';
+    function populateEditor(issue) {
+      els.issueId.value = issue.id || '';
+      els.issueTitle.value = issue.issueTitle || '';
+      els.companyName.value = issue.companyName || '';
+      els.finalStatus.value = issue.finalStatus || '';
+      els.initialAssessment.value = issue.initialAssessment || '';
+      els.rootCauseType.value = issue.rootCauseType || '';
+      els.escalationRequired.value = issue.escalationRequired || '';
+      els.wasCsInformed.value = issue.wasCsInformed || '';
+      els.developmentTicket.value = issue.developmentTicket || '';
+      els.internalNotes.value = issue.internalNotes || '';
 
-      document.getElementById('selectedIssueInfo').innerHTML = `
+      els.selectedIssueInfo.innerHTML = `
         <strong>Selected:</strong> ${escapeHtml(issue.issueTitle || 'Untitled issue')}<br>
         <span class="muted">Company:</span> ${escapeHtml(issue.companyName || '—')}<br>
         <span class="muted">Priority:</span> ${escapeHtml(issue.priorityLevel || '—')}<br>
@@ -1553,160 +2038,76 @@
         <span class="muted">Ticket:</span> ${escapeHtml(issue.developmentTicket || '—')}
       `;
 
-      document.getElementById('selectedCountPill').textContent = `Selected #${issue.id}`;
-      document.getElementById('smartSuggestionBox').innerHTML = buildSmartSuggestion(issue);
-      renderTable(currentIssues);
-      setMessage('');
+      els.selectedCountPill.textContent = `Selected #${issue.id}`;
+      els.smartSuggestionBox.innerHTML = buildSmartSuggestion(issue);
     }
 
-    function clearForm() {
-      selectedIssueId = null;
-      document.getElementById('issueId').value = '';
-      document.getElementById('issueTitle').value = '';
-      document.getElementById('companyName').value = '';
-      document.getElementById('finalStatus').value = '';
-      document.getElementById('initialAssessment').value = '';
-      document.getElementById('rootCauseType').value = '';
-      document.getElementById('escalationRequired').value = '';
-      document.getElementById('wasCsInformed').value = '';
-      document.getElementById('developmentTicket').value = '';
-      document.getElementById('internalNotes').value = '';
-      document.getElementById('editPassword').value = '';
-      document.getElementById('selectedIssueInfo').textContent = 'No issue selected.';
-      document.getElementById('selectedCountPill').textContent = 'No issue selected';
-      document.getElementById('smartSuggestionBox').innerHTML = '<strong>Smart suggestion:</strong> Select an issue to see recommended next actions.';
-      setMessage('');
-      renderTable(currentIssues);
-    }
+    function clearSelection({ clearPassword = true, preserveMessage = false, rerender = true } = {}) {
+      state.selectedIssueId = null;
 
-    async function loadDashboard() {
-      const q = document.getElementById('searchInput').value.trim();
-      const status = document.getElementById('statusFilter').value.trim();
-      const priority = document.getElementById('priorityFilter').value.trim();
+      els.issueId.value = '';
+      els.issueTitle.value = '';
+      els.companyName.value = '';
+      els.finalStatus.value = '';
+      els.initialAssessment.value = '';
+      els.rootCauseType.value = '';
+      els.escalationRequired.value = '';
+      els.wasCsInformed.value = '';
+      els.developmentTicket.value = '';
+      els.internalNotes.value = '';
 
-      setLoading(true);
+      if (clearPassword) {
+        els.editPassword.value = '';
+      }
 
-      try {
-        const [summaryRes, issuesRes] = await Promise.all([
-          apiGet('summary'),
-          apiGet('issues', { q, status, priority })
-        ]);
+      els.selectedIssueInfo.textContent = 'No issue selected.';
+      els.selectedCountPill.textContent = 'No issue selected';
+      els.smartSuggestionBox.innerHTML = '<strong>Smart suggestion:</strong> Select an issue to see recommended next actions.';
 
-        if (!summaryRes.ok) {
-          throw new Error(summaryRes.error || 'Failed to load summary');
-        }
+      if (!preserveMessage) {
+        setMessage('', 'muted');
+      }
 
-        if (!issuesRes.ok) {
-          throw new Error(issuesRes.error || 'Failed to load issues');
-        }
-
-        dashboardSummary = summaryRes.data || {};
-        currentIssues = issuesRes.data || [];
-        lastRefreshedAt = new Date();
-
-        renderGlobalCards(dashboardSummary);
-
-        const filteredMetrics = deriveFilteredMetrics(currentIssues);
-        renderFilteredOverview(filteredMetrics);
-        renderStatusDistribution(filteredMetrics);
-        renderPriorityRing(filteredMetrics);
-        renderQuickFilterChips();
-        renderTable(currentIssues);
-        updatePills();
-        updateLastRefresh();
-
-        if (selectedIssueId) {
-          const refreshed = currentIssues.find(item => Number(item.id) === Number(selectedIssueId));
-          if (refreshed) {
-            selectIssue(refreshed.id);
-          } else {
-            clearForm();
-          }
-        }
-      } catch (error) {
-        console.error(error);
-        showToast(error.message || 'Something went wrong.', true);
-      } finally {
-        setLoading(false);
+      if (rerender) {
+        updateSelectedRowUI();
       }
     }
 
-    async function saveIssue() {
-      const id = Number(document.getElementById('issueId').value);
-      const editPassword = document.getElementById('editPassword').value.trim();
+    function syncSelectionAfterRefresh() {
+      if (!state.selectedIssueId) return;
 
-      if (!id) {
-        setMessage('Select an issue first.', true);
-        showToast('Select an issue first.', true);
+      const issue = state.issues.find(item => Number(item.id) === Number(state.selectedIssueId));
+      if (!issue) {
+        clearSelection({ clearPassword: false, preserveMessage: true });
         return;
       }
 
-      if (!editPassword) {
-        setMessage('Enter edit password.', true);
-        showToast('Enter edit password.', true);
-        return;
-      }
-
-      const payload = {
-        action: 'updateIssue',
-        id,
-        editPassword,
-        finalStatus: document.getElementById('finalStatus').value,
-        initialAssessment: document.getElementById('initialAssessment').value,
-        rootCauseType: document.getElementById('rootCauseType').value,
-        escalationRequired: document.getElementById('escalationRequired').value,
-        wasCsInformed: document.getElementById('wasCsInformed').value,
-        developmentTicket: document.getElementById('developmentTicket').value,
-        internalNotes: document.getElementById('internalNotes').value
-      };
-
-      setLoading(true);
-      setMessage('Saving...');
-
-      try {
-        const result = await apiPost(payload);
-
-        if (!result.ok) {
-          setMessage(result.error || 'Save failed.', true);
-          showToast(result.error || 'Save failed.', true);
-          return;
-        }
-
-        setMessage('Saved successfully.');
-        showToast('Issue updated successfully.');
-        await loadDashboard();
-        selectIssue(id);
-      } catch (error) {
-        console.error(error);
-        setMessage(error.message || 'Save failed.', true);
-        showToast(error.message || 'Save failed.', true);
-      } finally {
-        setLoading(false);
-      }
+      populateEditor(issue);
+      updateSelectedRowUI();
     }
 
-    function applyQuickStatusFilter(value) {
-      document.getElementById('statusFilter').value = value;
-      loadDashboard();
+    function updateSelectedRowUI() {
+      els.issuesTable.querySelectorAll('tr[data-id]').forEach(row => {
+        const isSelected = Number(row.dataset.id) === Number(state.selectedIssueId);
+        row.classList.toggle('selected-row', isSelected);
+        row.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+      });
     }
 
     function updatePills() {
-      const count = currentIssues.length;
-      const searchTerm = document.getElementById('searchInput').value.trim();
-      const status = document.getElementById('statusFilter').value.trim();
-      const priority = document.getElementById('priorityFilter').value.trim();
+      const count = state.issues.length;
+      const searchTerm = els.searchInput.value.trim();
+      const status = els.statusFilter.value.trim();
+      const priority = els.priorityFilter.value.trim();
+      const hasFilters = Boolean(searchTerm || status || priority);
 
-      let suffix = '';
-      if (searchTerm || status || priority) {
-        suffix = ' (filtered)';
-      }
-
-      document.getElementById('issuesCountPill').textContent = `Showing ${count} issue${count === 1 ? '' : 's'}${suffix}`;
-      document.getElementById('tableMetaPill').textContent = status || priority || searchTerm ? 'Current filtered view' : 'Full issue list';
+      const sortLabel = CONFIG.SORT_OPTIONS.find(option => option.value === els.sortSelect.value)?.label || 'Sheet order';
+      els.issuesCountPill.textContent = `Showing ${count} issue${count === 1 ? '' : 's'}${hasFilters ? ' (filtered)' : ''}`;
+      els.tableMetaPill.textContent = `${hasFilters ? 'Filtered view' : 'Full issue list'} • ${sortLabel}`;
     }
 
     function updateLastRefresh() {
-      document.getElementById('lastRefreshPill').textContent = `Last refreshed: ${lastRefreshedAt ? formatDateTime(lastRefreshedAt) : '—'}`;
+      els.lastRefreshPill.textContent = `Last refreshed: ${state.lastRefreshedAt ? formatDateTime(state.lastRefreshedAt) : '—'}`;
     }
 
     function buildSmartSuggestion(issue) {
@@ -1734,58 +2135,36 @@
     }
 
     function renderTicket(ticket) {
-      if (!ticket) return '—';
+      const value = String(ticket || '').trim();
+      if (!value) return '—';
 
-      const value = String(ticket).trim();
       const isLink = /^https?:\/\//i.test(value);
-
-      if (isLink) {
-        return `<a href="${escapeAttribute(value)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">${escapeHtml(shorten(value, 32))}</a>`;
+      if (!isLink) {
+        return escapeHtml(value);
       }
 
-      return escapeHtml(value);
+      return `
+        <a
+          href="${escapeAttribute(value)}"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="${escapeAttribute(value)}"
+        >
+          ${escapeHtml(shorten(value, 32))}
+        </a>
+      `;
     }
 
     function buildStatusChip(status) {
       const label = status || 'Open';
-      const bg = statusBg(label);
-      const color = statusTextColor(label);
-
-      return `
-        <span class="chip" style="background:${bg}; color:${color}; border-color:${bg};">
-          <span class="chip-dot" style="background:${color}"></span>
-          ${escapeHtml(label)}
-        </span>
-      `;
+      const theme = getStatusTheme(label);
+      return buildChip(label, theme.bg, theme.text);
     }
 
     function buildPriorityChip(priority) {
       const label = priority || '—';
-      const normalized = normalizeValue(label);
-
-      let bg = 'var(--surface-soft)';
-      let color = 'var(--text-soft)';
-
-      if (normalized === 'critical') {
-        bg = '#fee2e2';
-        color = '#b91c1c';
-      } else if (normalized === 'high') {
-        bg = '#ffedd5';
-        color = '#c2410c';
-      } else if (normalized === 'medium') {
-        bg = '#fef3c7';
-        color = '#b45309';
-      } else if (normalized === 'low') {
-        bg = '#dcfce7';
-        color = '#15803d';
-      }
-
-      return `
-        <span class="chip" style="background:${bg}; color:${color}; border-color:${bg};">
-          <span class="chip-dot" style="background:${color}"></span>
-          ${escapeHtml(label)}
-        </span>
-      `;
+      const theme = CONFIG.PRIORITY_THEME[label] || { bg: 'var(--surface-soft)', text: 'var(--text-soft)' };
+      return buildChip(label, theme.bg, theme.text);
     }
 
     function buildYesNoChip(value) {
@@ -1793,94 +2172,107 @@
       const normalized = normalizeValue(label);
 
       if (normalized === 'yes') {
-        return `
-          <span class="chip" style="background:#fef3c7; color:#b45309; border-color:#fef3c7;">
-            <span class="chip-dot" style="background:#b45309"></span>
-            Yes
-          </span>
-        `;
+        return buildChip('Yes', '#fef3c7', '#b45309');
       }
 
       if (normalized === 'no') {
-        return `
-          <span class="chip" style="background:#dcfce7; color:#15803d; border-color:#dcfce7;">
-            <span class="chip-dot" style="background:#15803d"></span>
-            No
-          </span>
-        `;
+        return buildChip('No', '#dcfce7', '#15803d');
       }
 
       return '—';
     }
 
-    function statusColor(status) {
-      const normalized = normalizeValue(status);
-      if (normalized === 'resolved' || normalized === 'closed') return '#16a34a';
-      if (normalized === 'escalated to development') return '#7c3aed';
-      if (normalized === 'waiting for cs' || normalized === 'waiting for customer') return '#d97706';
-      if (normalized === 'in progress') return '#2563eb';
-      return '#64748b';
+    function buildChip(label, bg, color) {
+      return `
+        <span class="chip" style="background:${bg}; color:${color}; border-color:${bg};">
+          <span class="chip-dot" style="background:${color}"></span>
+          ${escapeHtml(label)}
+        </span>
+      `;
     }
 
-    function statusBg(status) {
-      const normalized = normalizeValue(status);
-      if (normalized === 'resolved' || normalized === 'closed') return '#dcfce7';
-      if (normalized === 'escalated to development') return '#ede9fe';
-      if (normalized === 'waiting for cs' || normalized === 'waiting for customer') return '#fef3c7';
-      if (normalized === 'in progress') return '#dbeafe';
-      return '#e2e8f0';
+    function getStatusTheme(status) {
+      return CONFIG.STATUS_THEME[status] || CONFIG.STATUS_THEME['Open'];
     }
 
-    function statusTextColor(status) {
-      const normalized = normalizeValue(status);
-      if (normalized === 'resolved' || normalized === 'closed') return '#15803d';
-      if (normalized === 'escalated to development') return '#6d28d9';
-      if (normalized === 'waiting for cs' || normalized === 'waiting for customer') return '#b45309';
-      if (normalized === 'in progress') return '#1d4ed8';
-      return '#475569';
+    function getPriorityRank(priority) {
+      return CONFIG.PRIORITY_ORDER[priority] || 0;
     }
 
-    function iconToneStyle(tone) {
-      const map = {
-        primary: 'background:#dbeafe;color:#1d4ed8;',
-        success: 'background:#dcfce7;color:#15803d;',
-        warning: 'background:#fef3c7;color:#b45309;',
-        danger: 'background:#fee2e2;color:#b91c1c;',
-        purple: 'background:#ede9fe;color:#6d28d9;'
-      };
-      return map[tone] || map.primary;
+    function getStatusIndex(status) {
+      const value = status || 'Open';
+      const index = CONFIG.STATUS_OPTIONS.indexOf(value);
+      return index === -1 ? 999 : index;
     }
 
-    function setMessage(message, isError = false) {
-      const el = document.getElementById('saveMessage');
-      el.textContent = message;
-      el.className = isError ? 'error' : 'success';
-      if (!message) {
-        el.className = 'muted';
+    function compareText(a, b) {
+      return String(a || '').localeCompare(String(b || ''), undefined, { sensitivity: 'base' });
+    }
+
+    function beginBusy() {
+      state.pendingOps += 1;
+      updateBusyUI();
+    }
+
+    function endBusy() {
+      state.pendingOps = Math.max(0, state.pendingOps - 1);
+      updateBusyUI();
+    }
+
+    function setSavingState(isSaving) {
+      state.isSaving = isSaving;
+      els.saveBtn.textContent = isSaving ? 'Saving...' : 'Save Update';
+
+      els.editorInputs.forEach(input => {
+        input.disabled = isSaving;
+      });
+
+      els.clearBtn.disabled = isSaving;
+      updateBusyUI();
+    }
+
+    function updateBusyUI() {
+      const isBusy = state.pendingOps > 0;
+
+      els.loadingOverlay.classList.toggle('show', isBusy);
+      els.loadingOverlay.setAttribute('aria-hidden', isBusy ? 'false' : 'true');
+      els.appRoot.setAttribute('aria-busy', isBusy ? 'true' : 'false');
+
+      els.refreshBtn.disabled = isBusy;
+      els.refreshBtnTop.disabled = isBusy;
+      els.exportBtn.disabled = isBusy;
+      els.searchInput.disabled = isBusy;
+      els.statusFilter.disabled = isBusy;
+      els.priorityFilter.disabled = isBusy;
+      els.sortSelect.disabled = isBusy;
+      els.clearBtnTop.disabled = isBusy;
+
+      if (!state.isSaving) {
+        els.saveBtn.disabled = isBusy;
+        els.clearBtn.disabled = isBusy;
       }
     }
 
-    function setLoading(isLoading) {
-      document.getElementById('loadingOverlay').classList.toggle('show', isLoading);
-      document.getElementById('saveBtn').disabled = isLoading;
-      document.getElementById('refreshBtn').disabled = isLoading;
-      document.getElementById('refreshBtnTop').disabled = isLoading;
-      document.getElementById('exportBtn').disabled = isLoading;
-    }
-
     function showToast(message, isError = false) {
-      const toast = document.getElementById('toast');
-      toast.textContent = message;
-      toast.className = `toast ${isError ? 'error' : 'success'} show`;
+      clearTimeout(state.toastTimer);
 
-      clearTimeout(showToast._timer);
-      showToast._timer = setTimeout(() => {
-        toast.className = `toast ${isError ? 'error' : 'success'}`;
+      els.toast.textContent = message;
+      els.toast.className = `toast ${isError ? 'error' : 'success'} show`;
+
+      state.toastTimer = setTimeout(() => {
+        els.toast.className = `toast ${isError ? 'error' : 'success'}`;
       }, 2600);
     }
 
+    function setMessage(message, type = 'muted') {
+      els.saveMessage.textContent = message;
+      els.saveMessage.className = type;
+    }
+
     function exportCurrentIssuesCsv() {
-      if (!currentIssues.length) {
+      const issues = getRenderableIssues();
+
+      if (!issues.length) {
         showToast('No issues to export in the current view.', true);
         return;
       }
@@ -1909,16 +2301,15 @@
       ];
 
       const rows = [
-        columns.map(col => csvEscape(col[0])).join(','),
-        ...currentIssues.map(issue =>
-          columns.map(col => csvEscape(issue[col[1]])).join(',')
-        )
+        columns.map(([label]) => csvEscape(label)).join(','),
+        ...issues.map(issue => columns.map(([, key]) => csvEscape(issue[key])).join(','))
       ];
 
       const csv = rows.join('\n');
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
+
       a.href = url;
       a.download = `support-dashboard-${formatFileStamp(new Date())}.csv`;
       document.body.appendChild(a);
@@ -1930,9 +2321,8 @@
     }
 
     function toggleTheme() {
-      const body = document.body;
-      body.classList.toggle('dark-theme');
-      const isDark = body.classList.contains('dark-theme');
+      document.body.classList.toggle('dark-theme');
+      const isDark = document.body.classList.contains('dark-theme');
       localStorage.setItem('supportDashboardTheme', isDark ? 'dark' : 'light');
       updateThemeButton();
     }
@@ -1947,14 +2337,38 @@
 
     function updateThemeButton() {
       const isDark = document.body.classList.contains('dark-theme');
-      document.getElementById('themeToggleBtn').textContent = isDark ? '☀ Light Mode' : '🌙 Dark Mode';
+      els.themeToggleBtn.textContent = isDark ? '☀ Light Mode' : '🌙 Dark Mode';
+      els.themeToggleBtn.setAttribute('aria-pressed', isDark ? 'true' : 'false');
+    }
+
+    function populateSelect(selectElement, placeholder, values) {
+      selectElement.innerHTML = [
+        `<option value="">${escapeHtml(placeholder)}</option>`,
+        ...values.map(value => `<option value="${escapeAttribute(value)}">${escapeHtml(value)}</option>`)
+      ].join('');
+    }
+
+    function findTopEntry(obj) {
+      const entries = Object.entries(obj || {}).sort((a, b) => b[1] - a[1]);
+      if (!entries.length) return null;
+      return { label: entries[0][0], value: entries[0][1] };
+    }
+
+    function normalizeValue(value) {
+      return String(value || '').trim().toLowerCase();
+    }
+
+    function safeDateMs(value) {
+      if (!value) return 0;
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? 0 : date.getTime();
     }
 
     function formatDate(value) {
       if (!value) return '';
       const date = new Date(value);
       if (Number.isNaN(date.getTime())) {
-        return escapeHtml(String(value));
+        return String(value);
       }
       return date.toLocaleDateString(undefined, {
         year: 'numeric',
@@ -1966,6 +2380,7 @@
     function formatDateTime(value) {
       const date = value instanceof Date ? value : new Date(value);
       if (Number.isNaN(date.getTime())) return '—';
+
       return date.toLocaleString(undefined, {
         year: 'numeric',
         month: 'short',
@@ -1985,24 +2400,25 @@
       return `${yyyy}${mm}${dd}-${hh}${mi}`;
     }
 
-    function findTopEntry(obj) {
-      const entries = Object.entries(obj || {}).sort((a, b) => b[1] - a[1]);
-      if (!entries.length) return null;
-      return { label: entries[0][0], value: entries[0][1] };
-    }
-
-    function normalizeValue(value) {
-      return String(value || '').trim().toLowerCase();
+    function csvEscape(value) {
+      const text = String(value == null ? '' : value).replaceAll('"', '""');
+      return `"${text}"`;
     }
 
     function shorten(value, max) {
       const text = String(value || '');
-      return text.length > max ? text.slice(0, max - 1) + '…' : text;
+      return text.length > max ? `${text.slice(0, max - 1)}…` : text;
     }
 
-    function csvEscape(value) {
-      const text = String(value == null ? '' : value).replaceAll('"', '""');
-      return `"${text}"`;
+    function iconToneStyle(tone) {
+      const map = {
+        primary: 'background:#dbeafe;color:#1d4ed8;',
+        success: 'background:#dcfce7;color:#15803d;',
+        warning: 'background:#fef3c7;color:#b45309;',
+        danger: 'background:#fee2e2;color:#b91c1c;',
+        purple: 'background:#ede9fe;color:#6d28d9;'
+      };
+      return map[tone] || map.primary;
     }
 
     function escapeHtml(value) {
@@ -2017,44 +2433,6 @@
     function escapeAttribute(value) {
       return escapeHtml(value).replaceAll('`', '&#096;');
     }
-
-    function escapeJs(value) {
-      return String(value).replaceAll('\\', '\\\\').replaceAll("'", "\\'");
-    }
-
-    document.getElementById('refreshBtn').addEventListener('click', loadDashboard);
-    document.getElementById('refreshBtnTop').addEventListener('click', loadDashboard);
-    document.getElementById('saveBtn').addEventListener('click', saveIssue);
-    document.getElementById('clearBtn').addEventListener('click', clearForm);
-    document.getElementById('clearBtnTop').addEventListener('click', clearForm);
-    document.getElementById('exportBtn').addEventListener('click', exportCurrentIssuesCsv);
-    document.getElementById('themeToggleBtn').addEventListener('click', toggleTheme);
-
-    document.getElementById('searchInput').addEventListener('input', () => {
-      clearTimeout(searchTimer);
-      searchTimer = setTimeout(loadDashboard, 300);
-    });
-
-    document.getElementById('statusFilter').addEventListener('change', loadDashboard);
-    document.getElementById('priorityFilter').addEventListener('change', loadDashboard);
-
-    document.addEventListener('keydown', (event) => {
-      const isMac = navigator.platform.toUpperCase().includes('MAC');
-      const cmdOrCtrl = isMac ? event.metaKey : event.ctrlKey;
-
-      if (cmdOrCtrl && event.key.toLowerCase() === 'k') {
-        event.preventDefault();
-        document.getElementById('searchInput').focus();
-        document.getElementById('searchInput').select();
-      }
-
-      if (event.key === 'Escape') {
-        clearForm();
-      }
-    });
-
-    applySavedTheme();
-    loadDashboard();
   </script>
 </body>
 </html>
