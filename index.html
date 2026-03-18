@@ -3,19 +3,19 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Incheck360 Support Dashboard</title>
+  <title>Incheck360 Support Analytics Workspace</title>
   <style>
     :root {
-      --bg: #f4f7fb;
+      --bg: #f5f7fb;
       --bg-2: #eef3fb;
-      --surface: rgba(255, 255, 255, 0.92);
-      --surface-strong: #ffffff;
-      --surface-soft: #f8fbff;
-      --border: #e5ebf4;
-      --border-2: #d9e2ee;
+      --panel: #ffffff;
+      --panel-soft: #f8fbff;
+      --panel-alt: #f3f7fd;
+      --border: #e3ebf5;
+      --border-strong: #d4dfec;
       --text: #162132;
       --text-soft: #617188;
-      --text-faint: #8a98ab;
+      --text-faint: #8796aa;
       --primary: #2563eb;
       --primary-2: #1d4ed8;
       --primary-soft: #dbeafe;
@@ -27,10 +27,9 @@
       --danger-soft: #fee2e2;
       --purple: #7c3aed;
       --purple-soft: #ede9fe;
-      --shadow-sm: 0 6px 16px rgba(15, 23, 42, 0.06);
-      --shadow-md: 0 18px 40px rgba(15, 23, 42, 0.08);
-      --shadow-lg: 0 24px 60px rgba(15, 23, 42, 0.12);
-      --radius-xl: 24px;
+      --shadow-sm: 0 4px 14px rgba(15, 23, 42, 0.05);
+      --shadow-md: 0 12px 30px rgba(15, 23, 42, 0.08);
+      --radius-xl: 22px;
       --radius-lg: 18px;
       --radius-md: 14px;
       --radius-sm: 10px;
@@ -39,40 +38,33 @@
 
     body.dark-theme {
       --bg: #0b1220;
-      --bg-2: #111a2d;
-      --surface: rgba(17, 26, 45, 0.88);
-      --surface-strong: #111a2d;
-      --surface-soft: #162038;
-      --border: #22314a;
-      --border-2: #2e405d;
+      --bg-2: #10182a;
+      --panel: #121c2f;
+      --panel-soft: #162338;
+      --panel-alt: #18253d;
+      --border: #24344f;
+      --border-strong: #2e4260;
       --text: #edf3ff;
-      --text-soft: #a7b6cc;
-      --text-faint: #7f8ea5;
+      --text-soft: #a8b7cb;
+      --text-faint: #7f90a8;
       --primary-soft: rgba(37, 99, 235, 0.18);
       --success-soft: rgba(22, 163, 74, 0.16);
       --warning-soft: rgba(217, 119, 6, 0.16);
       --danger-soft: rgba(220, 38, 38, 0.16);
       --purple-soft: rgba(124, 58, 237, 0.18);
-      --shadow-sm: 0 8px 20px rgba(0, 0, 0, 0.22);
-      --shadow-md: 0 24px 48px rgba(0, 0, 0, 0.28);
-      --shadow-lg: 0 30px 70px rgba(0, 0, 0, 0.34);
+      --shadow-sm: 0 8px 22px rgba(0, 0, 0, 0.22);
+      --shadow-md: 0 20px 46px rgba(0, 0, 0, 0.28);
     }
 
-    * {
-      box-sizing: border-box;
-    }
-
-    html {
-      scroll-behavior: smooth;
-    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
 
     body {
       margin: 0;
       font-family: Inter, Arial, sans-serif;
       color: var(--text);
       background:
-        radial-gradient(circle at top left, rgba(37, 99, 235, 0.10), transparent 22%),
-        radial-gradient(circle at top right, rgba(124, 58, 237, 0.10), transparent 18%),
+        radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 20%),
         linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
       transition: background var(--transition), color var(--transition);
     }
@@ -86,194 +78,124 @@
       text-decoration: underline;
     }
 
-    .container {
-      max-width: 1560px;
+    .app-shell {
+      max-width: 1600px;
       margin: 0 auto;
-      padding: 22px;
-    }
-
-    .card {
-      background: var(--surface);
-      border: 1px solid rgba(255, 255, 255, 0.24);
-      box-shadow: var(--shadow-sm);
-      backdrop-filter: blur(12px);
-      border-radius: var(--radius-lg);
-    }
-
-    .hero {
-      position: relative;
-      overflow: hidden;
-      padding: 28px;
-      margin-bottom: 18px;
-      border-radius: 28px;
-      background:
-        linear-gradient(135deg, rgba(37, 99, 235, 0.98), rgba(29, 78, 216, 0.93) 52%, rgba(124, 58, 237, 0.88));
-      color: #fff;
-      box-shadow: var(--shadow-lg);
-    }
-
-    .hero::before,
-    .hero::after {
-      content: '';
-      position: absolute;
-      border-radius: 50%;
-      background: rgba(255, 255, 255, 0.10);
-    }
-
-    .hero::before {
-      width: 220px;
-      height: 220px;
-      left: -60px;
-      bottom: -90px;
-    }
-
-    .hero::after {
-      width: 300px;
-      height: 300px;
-      right: -70px;
-      top: -90px;
-    }
-
-    .hero-content {
-      position: relative;
-      z-index: 1;
-      display: grid;
-      grid-template-columns: 1.4fr 1fr;
-      gap: 18px;
-      align-items: center;
-    }
-
-    .hero h1 {
-      margin: 0 0 10px;
-      font-size: 36px;
-      line-height: 1.08;
-      letter-spacing: -0.04em;
-    }
-
-    .hero p {
-      margin: 0;
-      max-width: 840px;
-      color: rgba(255, 255, 255, 0.88);
-      font-size: 15px;
-      line-height: 1.6;
-    }
-
-    .hero-meta {
-      margin-top: 16px;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-    }
-
-    .hero-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 9px 12px;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.14);
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      font-size: 12px;
-      font-weight: 700;
-      color: #fff;
-      backdrop-filter: blur(6px);
-    }
-
-    .hero-actions {
-      display: flex;
-      justify-content: flex-end;
-      align-items: center;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-
-    .hero-actions button {
-      width: auto;
-      min-width: 140px;
-      padding: 11px 14px;
-      border-radius: 12px;
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      background: rgba(255, 255, 255, 0.14);
-      color: #fff;
-      box-shadow: none;
-      backdrop-filter: blur(8px);
-    }
-
-    .hero-actions button:hover {
-      background: rgba(255, 255, 255, 0.22);
-      text-decoration: none;
-    }
-
-    .section {
-      margin-bottom: 18px;
-    }
-
-    .grid-global {
-      display: grid;
-      grid-template-columns: repeat(5, minmax(0, 1fr));
-      gap: 14px;
-      margin-bottom: 18px;
-    }
-
-    .kpi-card {
       padding: 18px;
-      transition: transform var(--transition), box-shadow var(--transition);
-    }
-
-    .kpi-card:hover {
-      transform: translateY(-2px);
-      box-shadow: var(--shadow-md);
-    }
-
-    .kpi-top {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      margin-bottom: 14px;
-    }
-
-    .kpi-label {
-      font-size: 13px;
-      font-weight: 800;
-      color: var(--text-soft);
-      letter-spacing: 0.02em;
-    }
-
-    .kpi-icon {
-      width: 40px;
-      height: 40px;
-      border-radius: 14px;
-      display: grid;
-      place-items: center;
-      font-size: 18px;
-    }
-
-    .kpi-value {
-      font-size: 32px;
-      font-weight: 800;
-      letter-spacing: -0.04em;
-      margin-bottom: 6px;
-      color: var(--text);
-    }
-
-    .kpi-sub {
-      color: var(--text-faint);
-      font-size: 12px;
-    }
-
-    .analytics-grid {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 14px;
-      margin-bottom: 18px;
     }
 
     .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .appbar {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 16px;
+      align-items: center;
+      padding: 16px 18px;
+      margin-bottom: 16px;
+    }
+
+    .brand-badge {
+      width: 42px;
+      height: 42px;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      font-weight: 900;
+      color: #fff;
+      background: linear-gradient(135deg, var(--primary), var(--primary-2));
+      box-shadow: 0 10px 24px rgba(37, 99, 235, 0.22);
+    }
+
+    .appbar-title h1 {
+      margin: 0;
+      font-size: 24px;
+      letter-spacing: -0.03em;
+    }
+
+    .appbar-title p {
+      margin: 4px 0 0;
+      color: var(--text-soft);
+      font-size: 13px;
+    }
+
+    .appbar-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .appbar-actions button,
+    button,
+    select,
+    input,
+    textarea {
+      font: inherit;
+    }
+
+    button,
+    select,
+    input,
+    textarea {
+      width: 100%;
+      padding: 11px 13px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition), opacity var(--transition);
+      outline: none;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      border-color: rgba(37, 99, 235, 0.45);
+      box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+    }
+
+    button {
+      cursor: pointer;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--primary), var(--primary-2));
+      color: #fff;
+      border: none;
+      box-shadow: 0 10px 20px rgba(37, 99, 235, 0.18);
+    }
+
+    button:hover:not(:disabled) {
+      transform: translateY(-1px);
+    }
+
+    button:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .secondary-btn {
+      background: var(--panel);
+      color: var(--text);
+      border: 1px solid var(--border);
+      box-shadow: none;
+    }
+
+    .workspace-grid {
+      display: grid;
+      gap: 16px;
+    }
+
+    .filter-panel {
       padding: 18px;
     }
 
-    .panel-header {
+    .section-head {
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -282,17 +204,142 @@
       flex-wrap: wrap;
     }
 
-    .panel-header h3 {
+    .section-head h2,
+    .section-head h3 {
       margin: 0;
-      font-size: 18px;
       letter-spacing: -0.02em;
-      color: var(--text);
     }
 
-    .panel-sub {
-      margin: 4px 0 0;
+    .section-sub {
+      margin-top: 4px;
       font-size: 13px;
       color: var(--text-soft);
+    }
+
+    .filter-grid {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr 1fr 1fr 140px;
+      gap: 12px;
+      align-items: end;
+    }
+
+    .filter-field {
+      display: grid;
+      gap: 6px;
+    }
+
+    .filter-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-soft);
+      font-weight: 800;
+    }
+
+    .input-wrap {
+      position: relative;
+    }
+
+    .input-icon {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-faint);
+      font-size: 14px;
+      pointer-events: none;
+    }
+
+    .input-wrap input {
+      padding-left: 36px;
+    }
+
+    .chip-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+
+    .filter-chip {
+      width: auto;
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      border: 1px solid var(--border);
+      background: var(--panel-soft);
+      color: var(--text-soft);
+      box-shadow: none;
+    }
+
+    .filter-chip.active {
+      background: var(--primary-soft);
+      color: var(--primary);
+      border-color: transparent;
+    }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .kpi-card {
+      padding: 16px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .kpi-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      gap: 10px;
+    }
+
+    .kpi-label {
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--text-soft);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .kpi-icon {
+      width: 36px;
+      height: 36px;
+      display: grid;
+      place-items: center;
+      border-radius: 12px;
+      font-size: 16px;
+    }
+
+    .kpi-value {
+      font-size: 28px;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+
+    .kpi-sub {
+      font-size: 12px;
+      color: var(--text-faint);
+    }
+
+    .analytics-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .analytics-card {
+      padding: 18px;
+      min-height: 260px;
     }
 
     .pill {
@@ -303,7 +350,7 @@
       padding: 8px 11px;
       font-size: 12px;
       font-weight: 800;
-      background: var(--surface-soft);
+      background: var(--panel-soft);
       border: 1px solid var(--border);
       color: var(--text-soft);
     }
@@ -316,32 +363,30 @@
 
     .mini-stat {
       padding: 14px;
-      border-radius: 16px;
+      border-radius: 14px;
       border: 1px solid var(--border);
-      background: var(--surface-soft);
+      background: var(--panel-soft);
     }
 
     .mini-stat .label {
-      font-size: 12px;
-      font-weight: 800;
-      color: var(--text-soft);
-      margin-bottom: 8px;
+      font-size: 11px;
       text-transform: uppercase;
-      letter-spacing: 0.04em;
+      letter-spacing: 0.05em;
+      color: var(--text-soft);
+      font-weight: 800;
+      margin-bottom: 8px;
     }
 
     .mini-stat .value {
       font-size: 24px;
-      font-weight: 800;
+      font-weight: 900;
       letter-spacing: -0.03em;
-      color: var(--text);
-      word-break: break-word;
     }
 
     .mini-stat .sub {
+      margin-top: 5px;
       font-size: 12px;
       color: var(--text-faint);
-      margin-top: 5px;
     }
 
     .distribution {
@@ -351,26 +396,26 @@
 
     .dist-row {
       display: grid;
-      grid-template-columns: 150px 1fr 48px;
+      grid-template-columns: 150px 1fr 50px;
       gap: 10px;
       align-items: center;
     }
 
     .dist-label {
       font-size: 13px;
-      color: var(--text-soft);
       font-weight: 700;
-      white-space: nowrap;
+      color: var(--text-soft);
       overflow: hidden;
       text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .dist-bar {
       height: 10px;
       border-radius: 999px;
-      background: var(--surface-soft);
-      overflow: hidden;
       border: 1px solid var(--border);
+      background: var(--panel-soft);
+      overflow: hidden;
     }
 
     .dist-fill {
@@ -379,10 +424,10 @@
     }
 
     .dist-value {
-      font-size: 12px;
-      color: var(--text-soft);
-      font-weight: 800;
       text-align: right;
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--text-soft);
     }
 
     .ring-wrap {
@@ -397,22 +442,20 @@
       height: 170px;
       border-radius: 50%;
       position: relative;
-      margin: 0 auto;
       display: grid;
       place-items: center;
+      margin: 0 auto;
       border: 1px solid var(--border);
-      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
     }
 
     .ring::after {
-      content: '';
+      content: "";
       position: absolute;
       width: 104px;
       height: 104px;
       border-radius: 50%;
-      background: var(--surface-strong);
+      background: var(--panel);
       border: 1px solid var(--border);
-      box-shadow: inset 0 1px 4px rgba(0,0,0,0.04);
     }
 
     .ring-center {
@@ -423,9 +466,8 @@
 
     .ring-center .big {
       font-size: 28px;
-      font-weight: 800;
+      font-weight: 900;
       letter-spacing: -0.04em;
-      color: var(--text);
     }
 
     .ring-center .small {
@@ -463,137 +505,15 @@
       font-weight: 800;
     }
 
-    .toolbar-card {
+    .table-panel {
       padding: 18px;
-      margin-bottom: 18px;
-    }
-
-    .toolbar-grid {
-      display: grid;
-      grid-template-columns: 1.25fr 220px 220px 220px 140px;
-      gap: 12px;
-      align-items: end;
-    }
-
-    .toolbar-field {
-      display: grid;
-      gap: 6px;
-    }
-
-    .toolbar-label {
-      font-size: 12px;
-      font-weight: 800;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      color: var(--text-soft);
-    }
-
-    .input-wrap {
-      position: relative;
-    }
-
-    .input-icon {
-      position: absolute;
-      left: 12px;
-      top: 50%;
-      transform: translateY(-50%);
-      color: var(--text-faint);
-      font-size: 14px;
-      pointer-events: none;
-    }
-
-    input,
-    select,
-    textarea,
-    button {
-      width: 100%;
-      padding: 11px 13px;
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      background: var(--surface-strong);
-      color: var(--text);
-      font-size: 14px;
-      transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition), background var(--transition), color var(--transition), opacity var(--transition);
-      outline: none;
-    }
-
-    input:focus,
-    select:focus,
-    textarea:focus {
-      border-color: rgba(37, 99, 235, 0.52);
-      box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
-    }
-
-    .input-wrap input {
-      padding-left: 36px;
-    }
-
-    textarea {
-      resize: vertical;
-      min-height: 120px;
-      line-height: 1.55;
-    }
-
-    button {
-      background: linear-gradient(135deg, var(--primary), var(--primary-2));
-      color: #fff;
-      border: none;
-      font-weight: 800;
-      cursor: pointer;
-      box-shadow: 0 12px 24px rgba(37, 99, 235, 0.18);
-    }
-
-    button:hover:not(:disabled) {
-      transform: translateY(-1px);
-    }
-
-    button:disabled {
-      opacity: 0.65;
-      cursor: not-allowed;
-      transform: none;
-    }
-
-    .secondary-btn {
-      background: var(--surface-strong);
-      color: var(--text);
-      border: 1px solid var(--border);
-      box-shadow: none;
-    }
-
-    .secondary-btn:hover:not(:disabled) {
-      background: var(--surface-soft);
-    }
-
-    .chip-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 14px;
-    }
-
-    .filter-chip {
-      width: auto;
-      padding: 8px 12px;
-      border-radius: 999px;
-      font-size: 12px;
-      font-weight: 800;
-      border: 1px solid var(--border);
-      background: var(--surface-soft);
-      color: var(--text-soft);
-      box-shadow: none;
-    }
-
-    .filter-chip.active {
-      background: var(--primary-soft);
-      color: var(--primary);
-      border-color: rgba(37, 99, 235, 0.18);
     }
 
     .table-shell {
       overflow: hidden;
-      border-radius: 18px;
+      border-radius: 16px;
       border: 1px solid var(--border);
-      background: var(--surface-strong);
+      background: var(--panel);
     }
 
     .table-wrap {
@@ -605,14 +525,13 @@
       width: 100%;
       min-width: 1320px;
       border-collapse: collapse;
-      background: var(--surface-strong);
     }
 
     thead th {
       position: sticky;
       top: 0;
       z-index: 2;
-      background: var(--surface-soft);
+      background: var(--panel-soft);
       color: var(--text-soft);
       font-size: 11px;
       text-transform: uppercase;
@@ -625,9 +544,8 @@
     tbody td {
       padding: 14px 12px;
       border-bottom: 1px solid var(--border);
-      vertical-align: top;
-      color: var(--text);
       font-size: 14px;
+      vertical-align: top;
     }
 
     tbody tr {
@@ -651,18 +569,17 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      min-width: 44px;
+      min-width: 46px;
       padding: 6px 10px;
       border-radius: 999px;
       background: var(--primary-soft);
       color: var(--primary);
       font-size: 12px;
-      font-weight: 800;
+      font-weight: 900;
     }
 
     .issue-title {
       font-weight: 800;
-      color: var(--text);
       margin-bottom: 6px;
       line-height: 1.35;
     }
@@ -671,7 +588,7 @@
       font-size: 12px;
       color: var(--text-soft);
       line-height: 1.5;
-      max-width: 380px;
+      max-width: 420px;
       word-break: break-word;
     }
 
@@ -702,44 +619,10 @@
       box-shadow: none;
     }
 
-    .muted {
-      color: var(--text-faint);
-      font-size: 12px;
-    }
-
-    .success {
-      color: var(--success);
-      font-size: 13px;
-      font-weight: 800;
-    }
-
-    .error {
-      color: var(--danger);
-      font-size: 13px;
-      font-weight: 800;
-    }
-
-    .empty-state {
-      padding: 46px 24px;
-      text-align: center;
-      color: var(--text-soft);
-    }
-
-    .empty-state h4 {
-      margin: 0 0 8px;
-      color: var(--text);
-      font-size: 16px;
-    }
-
-    .empty-state p {
-      margin: 0;
-      font-size: 13px;
-    }
-
     .loading-overlay {
       position: fixed;
       inset: 0;
-      background: rgba(15, 23, 42, 0.22);
+      background: rgba(15, 23, 42, 0.24);
       backdrop-filter: blur(4px);
       display: none;
       place-items: center;
@@ -755,9 +638,6 @@
       border-radius: 20px;
       padding: 20px;
       text-align: center;
-      background: var(--surface-strong);
-      border: 1px solid var(--border);
-      box-shadow: var(--shadow-lg);
     }
 
     .spinner {
@@ -781,7 +661,7 @@
       color: #fff;
       font-size: 14px;
       font-weight: 800;
-      box-shadow: var(--shadow-lg);
+      box-shadow: var(--shadow-md);
       transform: translateY(18px);
       opacity: 0;
       pointer-events: none;
@@ -805,13 +685,13 @@
     .modal-backdrop {
       position: fixed;
       inset: 0;
-      background: rgba(15, 23, 42, 0.44);
-      backdrop-filter: blur(6px);
       display: none;
       align-items: center;
       justify-content: center;
-      z-index: 1200;
       padding: 20px;
+      background: rgba(15, 23, 42, 0.42);
+      backdrop-filter: blur(6px);
+      z-index: 1200;
     }
 
     .modal-backdrop.show {
@@ -822,22 +702,22 @@
       width: min(980px, 100%);
       max-height: 92vh;
       overflow: auto;
-      background: var(--surface-strong);
+      background: var(--panel);
       border: 1px solid var(--border);
       border-radius: 22px;
-      box-shadow: var(--shadow-lg);
+      box-shadow: var(--shadow-md);
       padding: 18px;
     }
 
     .modal-header {
       display: flex;
-      align-items: start;
       justify-content: space-between;
       gap: 12px;
+      align-items: start;
       margin-bottom: 16px;
       position: sticky;
       top: 0;
-      background: var(--surface-strong);
+      background: var(--panel);
       padding-bottom: 10px;
       z-index: 2;
     }
@@ -846,24 +726,12 @@
       margin: 0;
       font-size: 22px;
       letter-spacing: -0.03em;
-      color: var(--text);
     }
 
     .modal-sub {
-      margin-top: 5px;
+      margin-top: 4px;
       font-size: 13px;
       color: var(--text-soft);
-    }
-
-    .modal-close {
-      width: auto;
-      min-width: 42px;
-      padding: 10px 12px;
-      border-radius: 12px;
-      background: var(--surface-soft);
-      color: var(--text);
-      border: 1px solid var(--border);
-      box-shadow: none;
     }
 
     .edit-grid {
@@ -871,14 +739,21 @@
       gap: 12px;
     }
 
+    .grid-2, .grid-3 {
+      display: grid;
+      gap: 12px;
+    }
+
+    .grid-2 { grid-template-columns: 1fr 1fr; }
+    .grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+
     .section-title {
-      font-size: 12px;
-      font-weight: 800;
-      color: var(--text-soft);
+      font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.06em;
-      margin-top: 8px;
-      padding-top: 4px;
+      color: var(--text-soft);
+      font-weight: 900;
+      padding-top: 8px;
     }
 
     .field-group {
@@ -887,23 +762,15 @@
     }
 
     .field-group label {
-      font-size: 12px;
-      font-weight: 800;
-      color: var(--text-soft);
-      letter-spacing: 0.03em;
+      font-size: 11px;
       text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-soft);
+      font-weight: 800;
     }
 
-    .grid-2 {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-    }
-
-    .grid-3 {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 12px;
+    .readonly {
+      background: var(--panel-soft);
     }
 
     .selected-box,
@@ -912,7 +779,7 @@
       padding: 14px;
       border-radius: 16px;
       border: 1px solid var(--border);
-      background: var(--surface-soft);
+      background: var(--panel-soft);
       line-height: 1.6;
       font-size: 13px;
       color: var(--text-soft);
@@ -924,24 +791,48 @@
       color: var(--text);
     }
 
-    .smart-box {
-      background:
-        linear-gradient(180deg, rgba(37, 99, 235, 0.07), rgba(37, 99, 235, 0.03));
-    }
-
-    body.dark-theme .smart-box {
-      background:
-        linear-gradient(180deg, rgba(37, 99, 235, 0.14), rgba(37, 99, 235, 0.06));
-    }
-
     .modal-actions {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 12px;
       position: sticky;
       bottom: 0;
-      background: linear-gradient(180deg, rgba(255,255,255,0), var(--surface-strong) 35%);
+      background: linear-gradient(180deg, rgba(255,255,255,0), var(--panel) 35%);
       padding-top: 10px;
+    }
+
+    .muted {
+      color: var(--text-faint);
+      font-size: 12px;
+    }
+
+    .success {
+      color: var(--success);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .error {
+      color: var(--danger);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .empty-state {
+      padding: 40px 24px;
+      text-align: center;
+      color: var(--text-soft);
+    }
+
+    .empty-state h4 {
+      margin: 0 0 8px;
+      font-size: 16px;
+      color: var(--text);
+    }
+
+    .empty-state p {
+      margin: 0;
+      font-size: 13px;
     }
 
     .footer-note {
@@ -950,69 +841,58 @@
       line-height: 1.6;
     }
 
-    .readonly {
-      background: var(--surface-soft);
-    }
-
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
 
-    @media (max-width: 1250px) {
-      .grid-global {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-      }
-
+    @media (max-width: 1280px) {
+      .kpi-grid,
       .analytics-grid {
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
-      .toolbar-grid {
+      .filter-grid {
         grid-template-columns: 1fr 1fr 1fr;
       }
     }
 
     @media (max-width: 920px) {
-      .container {
-        padding: 16px;
+      .app-shell {
+        padding: 14px;
       }
 
-      .hero-content,
-      .toolbar-grid,
-      .grid-global,
-      .grid-2,
-      .grid-3,
-      .ring-wrap,
+      .appbar,
+      .filter-grid,
+      .kpi-grid,
       .analytics-grid,
       .analytics-stat-grid,
+      .ring-wrap,
+      .grid-2,
+      .grid-3,
       .modal-actions {
         grid-template-columns: 1fr;
       }
 
-      .hero h1 {
-        font-size: 29px;
+      .appbar {
+        grid-template-columns: 1fr;
       }
 
-      .hero-actions {
+      .appbar-actions {
         justify-content: flex-start;
       }
 
       .dist-row {
         grid-template-columns: 120px 1fr 40px;
       }
-
-      table {
-        min-width: 1200px;
-      }
     }
   </style>
 </head>
 <body>
   <div class="loading-overlay" id="loadingOverlay">
-    <div class="loading-card">
+    <div class="loading-card panel">
       <div class="spinner"></div>
-      <div style="font-weight:800; color:var(--text); margin-bottom:4px;">Loading dashboard</div>
-      <div class="muted">Refreshing metrics and issues...</div>
+      <div style="font-weight:800; color:var(--text); margin-bottom:4px;">Loading workspace</div>
+      <div class="muted">Refreshing analytics and issue queue...</div>
     </div>
   </div>
 
@@ -1025,20 +905,14 @@
           <h2 class="modal-title">Issue Details & Edit</h2>
           <div class="modal-sub">Full submission details plus editable workflow fields.</div>
         </div>
-        <button type="button" class="modal-close secondary-btn" id="closeModalBtn">✕</button>
+        <button type="button" class="secondary-btn" id="closeModalBtn">✕</button>
       </div>
 
       <div class="edit-grid">
-        <div class="selected-box" id="selectedIssueInfo">
-          No issue selected.
-        </div>
-
-        <div class="smart-box" id="smartSuggestionBox">
-          <strong>Smart suggestion:</strong> Select an issue to see recommended next actions.
-        </div>
+        <div class="selected-box" id="selectedIssueInfo">No issue selected.</div>
+        <div class="smart-box" id="smartSuggestionBox"><strong>Smart suggestion:</strong> Select an issue to see recommended next actions.</div>
 
         <div class="section-title">Identifiers</div>
-
         <div class="grid-3">
           <div class="field-group">
             <label for="issueId">Row ID</label>
@@ -1055,7 +929,6 @@
         </div>
 
         <div class="section-title">Reporter & Company</div>
-
         <div class="grid-2">
           <div class="field-group">
             <label for="submittedBy">Submitted By</label>
@@ -1089,7 +962,6 @@
         </div>
 
         <div class="section-title">Operational Context</div>
-
         <div class="grid-2">
           <div class="field-group">
             <label for="issueOngoingIntermittent">Ongoing / Intermittent</label>
@@ -1150,7 +1022,6 @@
         </div>
 
         <div class="section-title">Resolution Workflow</div>
-
         <div class="grid-2">
           <div class="field-group">
             <label for="finalStatus">Final Status</label>
@@ -1195,7 +1066,6 @@
         </div>
 
         <div class="section-title">Security</div>
-
         <div class="security-box">
           <strong>Backend-validated save:</strong> this page still relies on backend validation. For production security, enforce user auth and authorization in Apps Script or your backend.
         </div>
@@ -1213,182 +1083,184 @@
         </div>
 
         <div class="footer-note">
-          Global KPI cards show all issues. Advanced analytics show only the currently visible filtered result. The popup shows full row details plus editable workflow fields.
+          Full row details stay in the popup. The main screen stays focused on analytics and the queue.
         </div>
       </div>
     </div>
   </div>
 
-  <div class="container">
-    <section class="hero section">
-      <div class="hero-content">
-        <div>
-          <h1>Incheck360 Support Command Center</h1>
-          <p>
-            A premium operational dashboard for tracking support issues, spotting trends, identifying SLA risk, and updating cases with speed and clarity.
-          </p>
-          <div class="hero-meta">
-            <div class="hero-pill">Advanced operational analytics</div>
-            <div class="hero-pill">Full issue details in popup</div>
-            <div class="hero-pill" id="lastRefreshPill">Last refreshed: —</div>
-          </div>
-        </div>
+  <div class="app-shell">
+    <section class="panel appbar">
+      <div class="brand-badge">IC</div>
 
-        <div class="hero-actions">
-          <button type="button" id="themeToggleBtn">🌙 Dark Mode</button>
-          <button type="button" id="exportBtn">⬇ Export CSV</button>
-          <button type="button" id="refreshBtnTop">↻ Refresh Data</button>
-          <button type="button" class="secondary-btn" id="clearBtnTop">Clear Selection</button>
-        </div>
+      <div class="appbar-title">
+        <h1>Support Analytics Workspace</h1>
+        <p>Filters · KPIs · Trends · Distributions · Detailed submissions</p>
+      </div>
+
+      <div class="appbar-actions">
+        <button type="button" id="refreshBtnTop">⟳ Sync</button>
+        <button type="button" class="secondary-btn" id="clearBtnTop">Reset filters</button>
+        <button type="button" class="secondary-btn" id="themeToggleBtn">🌙 Dark Mode</button>
       </div>
     </section>
 
-    <section class="grid-global" id="summaryCards"></section>
-
-    <section class="analytics-grid section">
-      <article class="card panel">
-        <div class="panel-header">
+    <div class="workspace-grid">
+      <section class="panel filter-panel">
+        <div class="section-head">
           <div>
-            <h3>Operational Snapshot</h3>
-            <div class="panel-sub">Core metrics for the current filtered view.</div>
+            <h2>Filters</h2>
+            <div class="section-sub">Filter issues by search, status, priority, and sort order.</div>
           </div>
-          <div class="pill" id="filteredSummaryPill">0 issues in view</div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <div class="pill" id="issuesCountPill">Showing 0 issues</div>
+            <div class="pill" id="selectedCountPill">No issue selected</div>
+          </div>
         </div>
-        <div class="analytics-stat-grid" id="filteredOverviewStats"></div>
-      </article>
 
-      <article class="card panel">
-        <div class="panel-header">
+        <div class="filter-grid">
+          <div class="filter-field">
+            <label class="filter-label" for="searchInput">Search Notes / Client / Module</label>
+            <div class="input-wrap">
+              <span class="input-icon">⌕</span>
+              <input id="searchInput" placeholder="Search by company, issue title, module, description, or ticket..." />
+            </div>
+          </div>
+
+          <div class="filter-field">
+            <label class="filter-label" for="statusFilter">Status</label>
+            <select id="statusFilter"></select>
+          </div>
+
+          <div class="filter-field">
+            <label class="filter-label" for="priorityFilter">Priority</label>
+            <select id="priorityFilter"></select>
+          </div>
+
+          <div class="filter-field">
+            <label class="filter-label" for="sortSelect">Sort</label>
+            <select id="sortSelect"></select>
+          </div>
+
+          <button id="refreshBtn" type="button">Refresh</button>
+        </div>
+
+        <div class="chip-row" id="quickFilterChips"></div>
+      </section>
+
+      <section class="kpi-grid" id="summaryCards"></section>
+
+      <section class="analytics-grid">
+        <article class="panel analytics-card">
+          <div class="section-head">
+            <div>
+              <h3>Operational Snapshot</h3>
+              <div class="section-sub">Core metrics for the current filtered view.</div>
+            </div>
+            <div class="pill" id="filteredSummaryPill">0 issues in view</div>
+          </div>
+          <div class="analytics-stat-grid" id="filteredOverviewStats"></div>
+        </article>
+
+        <article class="panel analytics-card">
+          <div class="section-head">
+            <div>
+              <h3>Status Distribution</h3>
+              <div class="section-sub">Current status mix for visible issues.</div>
+            </div>
+          </div>
+          <div class="distribution" id="statusDistribution"></div>
+        </article>
+
+        <article class="panel analytics-card">
+          <div class="section-head">
+            <div>
+              <h3>Priority Mix</h3>
+              <div class="section-sub">Severity balance in the queue.</div>
+            </div>
+          </div>
+          <div class="ring-wrap">
+            <div id="priorityRingWrap"></div>
+            <div class="legend" id="priorityLegend"></div>
+          </div>
+        </article>
+
+        <article class="panel analytics-card">
+          <div class="section-head">
+            <div>
+              <h3>Aging Buckets</h3>
+              <div class="section-sub">Active issue age grouped by days open.</div>
+            </div>
+          </div>
+          <div class="distribution" id="agingDistribution"></div>
+        </article>
+
+        <article class="panel analytics-card">
+          <div class="section-head">
+            <div>
+              <h3>Module Hotspots</h3>
+              <div class="section-sub">Where issues are concentrating right now.</div>
+            </div>
+          </div>
+          <div class="distribution" id="moduleDistribution"></div>
+        </article>
+
+        <article class="panel analytics-card">
+          <div class="section-head">
+            <div>
+              <h3>Top Companies</h3>
+              <div class="section-sub">Organizations with the most visible issues.</div>
+            </div>
+          </div>
+          <div class="distribution" id="companyDistribution"></div>
+        </article>
+      </section>
+
+      <section class="panel table-panel">
+        <div class="section-head">
           <div>
-            <h3>Status Distribution</h3>
-            <div class="panel-sub">Current status mix for visible issues.</div>
+            <h3>Submitted Issue Details</h3>
+            <div class="section-sub">Click a row to select it. Click Edit to open the full issue popup.</div>
           </div>
-        </div>
-        <div class="distribution" id="statusDistribution"></div>
-      </article>
-
-      <article class="card panel">
-        <div class="panel-header">
-          <div>
-            <h3>Priority Mix</h3>
-            <div class="panel-sub">Severity balance in the queue.</div>
-          </div>
-        </div>
-        <div class="ring-wrap">
-          <div id="priorityRingWrap"></div>
-          <div class="legend" id="priorityLegend"></div>
-        </div>
-      </article>
-
-      <article class="card panel">
-        <div class="panel-header">
-          <div>
-            <h3>Aging Buckets</h3>
-            <div class="panel-sub">Active issue age grouped by days open.</div>
-          </div>
-        </div>
-        <div class="distribution" id="agingDistribution"></div>
-      </article>
-
-      <article class="card panel">
-        <div class="panel-header">
-          <div>
-            <h3>Module Hotspots</h3>
-            <div class="panel-sub">Where issues are concentrating right now.</div>
-          </div>
-        </div>
-        <div class="distribution" id="moduleDistribution"></div>
-      </article>
-
-      <article class="card panel">
-        <div class="panel-header">
-          <div>
-            <h3>Top Companies</h3>
-            <div class="panel-sub">Organizations with the most visible issues.</div>
-          </div>
-        </div>
-        <div class="distribution" id="companyDistribution"></div>
-      </article>
-    </section>
-
-    <section class="card toolbar-card section">
-      <div class="panel-header">
-        <div>
-          <h3>Search & Filters</h3>
-          <div class="panel-sub">Filter the issue queue instantly and refine with quick status chips.</div>
-        </div>
-        <div style="display:flex; flex-wrap:wrap; gap:8px;">
-          <div class="pill" id="issuesCountPill">Showing 0 issues</div>
-          <div class="pill" id="selectedCountPill">No issue selected</div>
-        </div>
-      </div>
-
-      <div class="toolbar-grid">
-        <div class="toolbar-field">
-          <label class="toolbar-label" for="searchInput">Search</label>
-          <div class="input-wrap">
-            <span class="input-icon">⌕</span>
-            <input id="searchInput" placeholder="Search by company, issue title, module, description, or ticket..." />
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <div class="pill" id="tableMetaPill">Sorted by sheet order</div>
+            <button id="exportBtn" type="button">⬇ Export filtered CSV</button>
           </div>
         </div>
 
-        <div class="toolbar-field">
-          <label class="toolbar-label" for="statusFilter">Status</label>
-          <select id="statusFilter"></select>
+        <div class="table-shell">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Issue</th>
+                  <th>Company</th>
+                  <th>Module</th>
+                  <th>Priority</th>
+                  <th>Status</th>
+                  <th>Escalation</th>
+                  <th>Ticket</th>
+                  <th>Age</th>
+                  <th>Closure Date</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="issuesTable">
+                <tr>
+                  <td colspan="11">Loading...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        <div class="toolbar-field">
-          <label class="toolbar-label" for="priorityFilter">Priority</label>
-          <select id="priorityFilter"></select>
+        <div style="margin-top:12px; display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+          <div class="muted">Last refreshed: <span id="lastRefreshPill">—</span></div>
+          <div class="muted">Analytics cards and the queue follow the same active filters.</div>
         </div>
-
-        <div class="toolbar-field">
-          <label class="toolbar-label" for="sortSelect">Sort</label>
-          <select id="sortSelect"></select>
-        </div>
-
-        <button id="refreshBtn" type="button">Refresh</button>
-      </div>
-
-      <div class="chip-row" id="quickFilterChips"></div>
-    </section>
-
-    <section class="card panel section">
-      <div class="panel-header">
-        <div>
-          <h3>Issue Queue</h3>
-          <div class="panel-sub">Click a row to select it. Click Edit to open the full details popup.</div>
-        </div>
-        <div class="pill" id="tableMetaPill">Sorted by sheet order</div>
-      </div>
-
-      <div class="table-shell">
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Issue</th>
-                <th>Company</th>
-                <th>Module</th>
-                <th>Priority</th>
-                <th>Status</th>
-                <th>Escalation</th>
-                <th>Ticket</th>
-                <th>Age</th>
-                <th>Closure Date</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody id="issuesTable">
-              <tr>
-                <td colspan="11">Loading...</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </section>
+      </section>
+    </div>
   </div>
 
   <script>
@@ -1572,7 +1444,7 @@
       bindEvents();
       applySavedTheme();
       restoreSavedSort();
-      clearSelection({ preserveMessage: true });
+      resetFiltersAndSelection({ preserveLoad: true });
       loadDashboard();
     }
 
@@ -1679,7 +1551,7 @@
       els.refreshBtnTop.addEventListener('click', loadDashboard);
       els.exportBtn.addEventListener('click', exportCurrentIssuesCsv);
       els.themeToggleBtn.addEventListener('click', toggleTheme);
-      els.clearBtnTop.addEventListener('click', () => clearSelection({ closeModal: true }));
+      els.clearBtnTop.addEventListener('click', () => resetFiltersAndSelection());
       els.resetEditorBtn.addEventListener('click', resetEditorToSelectedIssue);
       els.saveBtn.addEventListener('click', saveIssue);
 
@@ -1748,6 +1620,18 @@
         els.sortSelect.value = savedSort;
       } else {
         els.sortSelect.value = 'sheet';
+      }
+    }
+
+    function resetFiltersAndSelection({ preserveLoad = false } = {}) {
+      els.searchInput.value = '';
+      els.statusFilter.value = '';
+      els.priorityFilter.value = '';
+      els.sortSelect.value = localStorage.getItem('supportDashboardSort') || 'sheet';
+      clearSelection({ preserveMessage: true, closeModal: true });
+
+      if (!preserveLoad) {
+        loadDashboard();
       }
     }
 
@@ -1913,7 +1797,6 @@
 
     function renderDashboard() {
       renderGlobalCards(state.summary);
-
       const metrics = deriveAdvancedMetrics(state.issues);
       renderFilteredOverview(metrics);
       renderStatusDistribution(metrics);
@@ -1922,7 +1805,6 @@
       renderModuleDistribution(metrics);
       renderCompanyDistribution(metrics);
       renderQuickFilterChips();
-
       renderTable(getRenderableIssues());
       updatePills();
       updateLastRefresh();
@@ -1935,11 +1817,12 @@
         { label: 'Open / Active', value: summary.open || 0, hint: 'Needs follow-up', icon: '🟡', tone: 'warning' },
         { label: 'Resolved / Closed', value: summary.resolvedClosed || 0, hint: 'Completed cases', icon: '✅', tone: 'success' },
         { label: 'Escalated', value: summary.escalated || 0, hint: 'Sent to development', icon: '🚀', tone: 'purple' },
-        { label: 'High / Critical', value: summary.highCritical || 0, hint: 'Priority focus', icon: '🔥', tone: 'danger' }
+        { label: 'High / Critical', value: summary.highCritical || 0, hint: 'Priority focus', icon: '🔥', tone: 'danger' },
+        { label: 'With Ticket', value: summary.withTicket || 0, hint: 'Linked to development', icon: '🎫', tone: 'primary' }
       ];
 
       els.summaryCards.innerHTML = cards.map(card => `
-        <article class="card kpi-card">
+        <article class="kpi-card">
           <div class="kpi-top">
             <div class="kpi-label">${escapeHtml(card.label)}</div>
             <div class="kpi-icon" style="${iconToneStyle(card.tone)}">${escapeHtml(card.icon)}</div>
@@ -2061,7 +1944,7 @@
           label: 'Avg Age',
           value: `${metrics.avgAgeDays}d`,
           sub: 'Average issue age in current view',
-          bg: 'var(--surface-soft)'
+          bg: 'var(--panel-soft)'
         },
         {
           label: 'Oldest Active',
@@ -2203,7 +2086,7 @@
 
       if (!validRows.length) {
         container.innerHTML = `
-          <div class="empty-state" style="padding:24px 10px;">
+          <div class="empty-state">
             <h4>${escapeHtml(emptyTitle)}</h4>
             <p>Try changing filters to display issues.</p>
           </div>
@@ -2436,9 +2319,7 @@
       state.selectedIssueId = null;
       els.selectedCountPill.textContent = 'No issue selected';
       updateSelectedRowUI();
-
       clearAllModalFields();
-
       els.selectedIssueInfo.textContent = 'No issue selected.';
       els.smartSuggestionBox.innerHTML = '<strong>Smart suggestion:</strong> Select an issue to see recommended next actions.';
 
@@ -2483,7 +2364,7 @@
         els.internalNotes,
         els.editPassword
       ].forEach(el => {
-        if (el.tagName === 'SELECT' || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+        if (el && ('value' in el)) {
           el.value = '';
         }
       });
@@ -2517,7 +2398,6 @@
       const status = els.statusFilter.value.trim();
       const priority = els.priorityFilter.value.trim();
       const hasFilters = Boolean(searchTerm || status || priority);
-
       const sortLabel = CONFIG.SORT_OPTIONS.find(option => option.value === els.sortSelect.value)?.label || 'Sheet order';
 
       els.issuesCountPill.textContent = `Showing ${count} issue${count === 1 ? '' : 's'}${hasFilters ? ' (filtered)' : ''}`;
@@ -2525,7 +2405,7 @@
     }
 
     function updateLastRefresh() {
-      els.lastRefreshPill.textContent = `Last refreshed: ${state.lastRefreshedAt ? formatDateTime(state.lastRefreshedAt) : '—'}`;
+      els.lastRefreshPill.textContent = state.lastRefreshedAt ? formatDateTime(state.lastRefreshedAt) : '—';
     }
 
     function buildSmartSuggestion(issue) {
@@ -2580,7 +2460,7 @@
 
     function buildPriorityChip(priority) {
       const label = priority || '—';
-      const theme = CONFIG.PRIORITY_THEME[label] || { bg: 'var(--surface-soft)', text: 'var(--text-soft)' };
+      const theme = CONFIG.PRIORITY_THEME[label] || { bg: 'var(--panel-soft)', text: 'var(--text-soft)' };
 
       return `
         <span class="chip" style="background:${theme.bg}; color:${theme.text}; border-color:${theme.bg};">
