@@ -603,7 +603,7 @@
 
     table {
       width: 100%;
-      min-width: 1250px;
+      min-width: 1320px;
       border-collapse: collapse;
       background: var(--surface-strong);
     }
@@ -751,7 +751,7 @@
     }
 
     .loading-card {
-      width: 220px;
+      width: 240px;
       border-radius: 20px;
       padding: 20px;
       text-align: center;
@@ -775,7 +775,7 @@
       right: 20px;
       bottom: 20px;
       min-width: 260px;
-      max-width: 360px;
+      max-width: 380px;
       padding: 14px 16px;
       border-radius: 14px;
       color: #fff;
@@ -805,8 +805,8 @@
     .modal-backdrop {
       position: fixed;
       inset: 0;
-      background: rgba(15, 23, 42, 0.42);
-      backdrop-filter: blur(5px);
+      background: rgba(15, 23, 42, 0.44);
+      backdrop-filter: blur(6px);
       display: none;
       align-items: center;
       justify-content: center;
@@ -819,7 +819,7 @@
     }
 
     .modal {
-      width: min(760px, 100%);
+      width: min(980px, 100%);
       max-height: 92vh;
       overflow: auto;
       background: var(--surface-strong);
@@ -877,7 +877,8 @@
       color: var(--text-soft);
       text-transform: uppercase;
       letter-spacing: 0.06em;
-      margin-top: 2px;
+      margin-top: 8px;
+      padding-top: 4px;
     }
 
     .field-group {
@@ -896,6 +897,12 @@
     .grid-2 {
       display: grid;
       grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
       gap: 12px;
     }
 
@@ -943,6 +950,10 @@
       line-height: 1.6;
     }
 
+    .readonly {
+      background: var(--surface-soft);
+    }
+
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
@@ -970,6 +981,7 @@
       .toolbar-grid,
       .grid-global,
       .grid-2,
+      .grid-3,
       .ring-wrap,
       .analytics-grid,
       .analytics-stat-grid,
@@ -990,11 +1002,7 @@
       }
 
       table {
-        min-width: 1050px;
-      }
-
-      .modal {
-        padding: 16px;
+        min-width: 1200px;
       }
     }
   </style>
@@ -1014,8 +1022,8 @@
     <div class="modal">
       <div class="modal-header">
         <div>
-          <h2 class="modal-title">Edit Issue</h2>
-          <div class="modal-sub">Update resolution details and save with backend validation.</div>
+          <h2 class="modal-title">Issue Details & Edit</h2>
+          <div class="modal-sub">Full submission details plus editable workflow fields.</div>
         </div>
         <button type="button" class="modal-close secondary-btn" id="closeModalBtn">✕</button>
       </div>
@@ -1029,30 +1037,129 @@
           <strong>Smart suggestion:</strong> Select an issue to see recommended next actions.
         </div>
 
-        <div class="section-title">Issue Info</div>
+        <div class="section-title">Identifiers</div>
+
+        <div class="grid-3">
+          <div class="field-group">
+            <label for="issueId">Row ID</label>
+            <input id="issueId" class="readonly" readonly />
+          </div>
+          <div class="field-group">
+            <label for="timestamp">Timestamp</label>
+            <input id="timestamp" class="readonly" readonly />
+          </div>
+          <div class="field-group">
+            <label for="requestDate">Request Date</label>
+            <input id="requestDate" class="readonly" readonly />
+          </div>
+        </div>
+
+        <div class="section-title">Reporter & Company</div>
 
         <div class="grid-2">
           <div class="field-group">
-            <label for="issueId">Row ID</label>
-            <input id="issueId" placeholder="Row ID" readonly />
+            <label for="submittedBy">Submitted By</label>
+            <input id="submittedBy" class="readonly" readonly />
           </div>
-
           <div class="field-group">
-            <label for="companyName">Company</label>
-            <input id="companyName" placeholder="Company Name" readonly />
+            <label for="companyName">Company Name</label>
+            <input id="companyName" class="readonly" readonly />
           </div>
         </div>
 
         <div class="field-group">
           <label for="issueTitle">Issue Title</label>
-          <input id="issueTitle" placeholder="Issue Title" readonly />
+          <input id="issueTitle" class="readonly" readonly />
         </div>
 
-        <div class="section-title">Resolution</div>
+        <div class="grid-2">
+          <div class="field-group">
+            <label for="issueCategory">Issue Category</label>
+            <input id="issueCategory" class="readonly" readonly />
+          </div>
+          <div class="field-group">
+            <label for="priorityLevel">Priority Level</label>
+            <input id="priorityLevel" class="readonly" readonly />
+          </div>
+        </div>
 
         <div class="field-group">
-          <label for="finalStatus">Final Status</label>
-          <select id="finalStatus"></select>
+          <label for="detailedDescription">Detailed Description</label>
+          <textarea id="detailedDescription" class="readonly" readonly></textarea>
+        </div>
+
+        <div class="section-title">Operational Context</div>
+
+        <div class="grid-2">
+          <div class="field-group">
+            <label for="issueOngoingIntermittent">Ongoing / Intermittent</label>
+            <input id="issueOngoingIntermittent" class="readonly" readonly />
+          </div>
+          <div class="field-group">
+            <label for="impactType">Impact Type</label>
+            <input id="impactType" class="readonly" readonly />
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="field-group">
+            <label for="workaroundAvailable">Workaround Available</label>
+            <input id="workaroundAvailable" class="readonly" readonly />
+          </div>
+          <div class="field-group">
+            <label for="environment">Environment</label>
+            <input id="environment" class="readonly" readonly />
+          </div>
+        </div>
+
+        <div class="field-group">
+          <label for="workaroundDetails">Workaround Details</label>
+          <textarea id="workaroundDetails" class="readonly" readonly></textarea>
+        </div>
+
+        <div class="grid-2">
+          <div class="field-group">
+            <label for="productModuleAffected">Product / Module Affected</label>
+            <input id="productModuleAffected" class="readonly" readonly />
+          </div>
+          <div class="field-group">
+            <label for="browserDeviceOs">Browser / Device / OS</label>
+            <input id="browserDeviceOs" class="readonly" readonly />
+          </div>
+        </div>
+
+        <div class="field-group">
+          <label for="errorMessage">Error Message</label>
+          <textarea id="errorMessage" class="readonly" readonly></textarea>
+        </div>
+
+        <div class="grid-2">
+          <div class="field-group">
+            <label for="attachmentUpload">Attachment Upload</label>
+            <input id="attachmentUpload" class="readonly" readonly />
+          </div>
+          <div class="field-group">
+            <label for="reportedChannel">Reported Channel</label>
+            <input id="reportedChannel" class="readonly" readonly />
+          </div>
+        </div>
+
+        <div class="field-group">
+          <label for="sourceOfIssue">Source of Issue</label>
+          <input id="sourceOfIssue" class="readonly" readonly />
+        </div>
+
+        <div class="section-title">Resolution Workflow</div>
+
+        <div class="grid-2">
+          <div class="field-group">
+            <label for="finalStatus">Final Status</label>
+            <select id="finalStatus"></select>
+          </div>
+          <div class="field-group">
+            <label for="resolutionClosureDate">Resolution / Closure Date</label>
+            <input id="resolutionClosureDate" class="readonly" readonly />
+          </div>
         </div>
 
         <div class="grid-2">
@@ -1060,7 +1167,6 @@
             <label for="initialAssessment">Initial Assessment</label>
             <select id="initialAssessment"></select>
           </div>
-
           <div class="field-group">
             <label for="rootCauseType">Root Cause Type</label>
             <select id="rootCauseType"></select>
@@ -1072,7 +1178,6 @@
             <label for="escalationRequired">Escalation Required?</label>
             <select id="escalationRequired"></select>
           </div>
-
           <div class="field-group">
             <label for="wasCsInformed">Was CS Informed?</label>
             <select id="wasCsInformed"></select>
@@ -1092,7 +1197,7 @@
         <div class="section-title">Security</div>
 
         <div class="security-box">
-          <strong>Backend-validated save:</strong> the UI sends updates to Apps Script, but true security still must be enforced on the backend.
+          <strong>Backend-validated save:</strong> this page still relies on backend validation. For production security, enforce user auth and authorization in Apps Script or your backend.
         </div>
 
         <div class="field-group">
@@ -1104,11 +1209,11 @@
 
         <div class="modal-actions">
           <button id="saveBtn" type="button">Save Update</button>
-          <button id="clearBtn" class="secondary-btn" type="button">Clear</button>
+          <button id="resetEditorBtn" class="secondary-btn" type="button">Reset Changes</button>
         </div>
 
         <div class="footer-note">
-          Global KPI cards show all issues. Advanced analytics show only the currently visible filtered result.
+          Global KPI cards show all issues. Advanced analytics show only the currently visible filtered result. The popup shows full row details plus editable workflow fields.
         </div>
       </div>
     </div>
@@ -1124,7 +1229,7 @@
           </p>
           <div class="hero-meta">
             <div class="hero-pill">Advanced operational analytics</div>
-            <div class="hero-pill">Ctrl/Cmd + K to search</div>
+            <div class="hero-pill">Full issue details in popup</div>
             <div class="hero-pill" id="lastRefreshPill">Last refreshed: —</div>
           </div>
         </div>
@@ -1252,7 +1357,7 @@
       <div class="panel-header">
         <div>
           <h3>Issue Queue</h3>
-          <div class="panel-sub">Click a row to select it. Click Edit to open the popup editor.</div>
+          <div class="panel-sub">Click a row to select it. Click Edit to open the full details popup.</div>
         </div>
         <div class="pill" id="tableMetaPill">Sorted by sheet order</div>
       </div>
@@ -1371,7 +1476,76 @@
         { value: 'oldest', label: 'Oldest first' },
         { value: 'age_desc', label: 'Oldest issues first' },
         { value: 'closure_desc', label: 'Latest closure date' }
-      ]
+      ],
+
+      FIELD_ALIASES: {
+        id: ['id', 'ID', 'rowId', 'Row ID'],
+        timestamp: ['timestamp', 'Timestamp'],
+        requestDate: ['requestDate', 'Request date', 'request_date'],
+        submittedBy: ['submittedBy', 'Submitted by', 'submitted_by'],
+        companyName: ['companyName', 'Company name', 'company_name'],
+        issueTitle: ['issueTitle', 'Issue title', 'issue_title'],
+        issueCategory: ['issueCategory', 'Issue category', 'issue_category'],
+        detailedDescription: ['detailedDescription', 'Detailed description', 'detailed_description'],
+        issueOngoingIntermittent: [
+          'issueOngoingIntermittent',
+          'isIssueOngoingOrIntermittent',
+          'ongoingIntermittent',
+          'Is the issue ongoing or intermittent?'
+        ],
+        priorityLevel: ['priorityLevel', 'Priority level', 'priority_level'],
+        impactType: ['impactType', 'Impact type', 'impact_type'],
+        workaroundAvailable: [
+          'workaroundAvailable',
+          'isThereAWorkaroundAvailable',
+          'Is there a workaround available?'
+        ],
+        workaroundDetails: [
+          'workaroundDetails',
+          'Workaround details  (If Applicable)',
+          'Workaround details (If Applicable)',
+          'workaround_details'
+        ],
+        environment: ['environment', 'Environment'],
+        productModuleAffected: [
+          'productModuleAffected',
+          'Product / module affected',
+          'product_module_affected'
+        ],
+        browserDeviceOs: [
+          'browserDeviceOs',
+          'Browser / device / OS',
+          'browser_device_os'
+        ],
+        errorMessage: [
+          'errorMessage',
+          'Error message (if Available)',
+          'error_message'
+        ],
+        attachmentUpload: [
+          'attachmentUpload',
+          'Attachment upload',
+          'attachment_upload'
+        ],
+        reportedChannel: ['reportedChannel', 'Reported Channel', 'reported_channel'],
+        sourceOfIssue: ['sourceOfIssue', 'Source of Issue', 'source_of_issue'],
+        initialAssessment: ['initialAssessment', 'Initial assessment', 'initial_assessment'],
+        rootCauseType: ['rootCauseType', 'Root cause type', 'root_cause_type'],
+        internalNotes: ['internalNotes', 'Internal notes', 'internal_notes'],
+        escalationRequired: [
+          'escalationRequired',
+          'Escalation required?',
+          'escalation_required'
+        ],
+        developmentTicket: ['developmentTicket', 'Development ticket', 'development_ticket'],
+        finalStatus: ['finalStatus', 'Final status', 'final_status'],
+        resolutionClosureDate: [
+          'resolutionClosureDate',
+          'Resolution / Closure date',
+          'resolution_closure_date'
+        ],
+        wasCsInformed: ['wasCsInformed', 'Was CS informed?', 'was_cs_informed']
+      }
     };
 
     const state = {
@@ -1398,7 +1572,7 @@
       bindEvents();
       applySavedTheme();
       restoreSavedSort();
-      clearSelection({ clearPassword: true, preserveMessage: true });
+      clearSelection({ preserveMessage: true });
       loadDashboard();
     }
 
@@ -1441,9 +1615,28 @@
       els.smartSuggestionBox = document.getElementById('smartSuggestionBox');
 
       els.issueId = document.getElementById('issueId');
+      els.timestamp = document.getElementById('timestamp');
+      els.requestDate = document.getElementById('requestDate');
+      els.submittedBy = document.getElementById('submittedBy');
       els.companyName = document.getElementById('companyName');
       els.issueTitle = document.getElementById('issueTitle');
+      els.issueCategory = document.getElementById('issueCategory');
+      els.detailedDescription = document.getElementById('detailedDescription');
+      els.issueOngoingIntermittent = document.getElementById('issueOngoingIntermittent');
+      els.priorityLevel = document.getElementById('priorityLevel');
+      els.impactType = document.getElementById('impactType');
+      els.workaroundAvailable = document.getElementById('workaroundAvailable');
+      els.workaroundDetails = document.getElementById('workaroundDetails');
+      els.environment = document.getElementById('environment');
+      els.productModuleAffected = document.getElementById('productModuleAffected');
+      els.browserDeviceOs = document.getElementById('browserDeviceOs');
+      els.errorMessage = document.getElementById('errorMessage');
+      els.attachmentUpload = document.getElementById('attachmentUpload');
+      els.reportedChannel = document.getElementById('reportedChannel');
+      els.sourceOfIssue = document.getElementById('sourceOfIssue');
+
       els.finalStatus = document.getElementById('finalStatus');
+      els.resolutionClosureDate = document.getElementById('resolutionClosureDate');
       els.initialAssessment = document.getElementById('initialAssessment');
       els.rootCauseType = document.getElementById('rootCauseType');
       els.escalationRequired = document.getElementById('escalationRequired');
@@ -1452,7 +1645,7 @@
       els.internalNotes = document.getElementById('internalNotes');
       els.editPassword = document.getElementById('editPassword');
       els.saveBtn = document.getElementById('saveBtn');
-      els.clearBtn = document.getElementById('clearBtn');
+      els.resetEditorBtn = document.getElementById('resetEditorBtn');
       els.saveMessage = document.getElementById('saveMessage');
 
       els.editorInputs = [
@@ -1486,8 +1679,8 @@
       els.refreshBtnTop.addEventListener('click', loadDashboard);
       els.exportBtn.addEventListener('click', exportCurrentIssuesCsv);
       els.themeToggleBtn.addEventListener('click', toggleTheme);
-      els.clearBtnTop.addEventListener('click', () => clearSelection({ clearPassword: true }));
-      els.clearBtn.addEventListener('click', () => clearEditorFields());
+      els.clearBtnTop.addEventListener('click', () => clearSelection({ closeModal: true }));
+      els.resetEditorBtn.addEventListener('click', resetEditorToSelectedIssue);
       els.saveBtn.addEventListener('click', saveIssue);
 
       els.searchInput.addEventListener('input', () => {
@@ -1543,7 +1736,7 @@
           if (state.modalOpen) {
             closeEditModal();
           } else {
-            clearSelection({ clearPassword: true });
+            clearSelection();
           }
         }
       });
@@ -1576,11 +1769,18 @@
         headers: { 'Accept': 'application/json' }
       });
 
+      const text = await response.text();
+
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
 
-      return response.json();
+      try {
+        return text ? JSON.parse(text) : {};
+      } catch (error) {
+        console.error('Invalid JSON response:', text);
+        throw new Error('Server returned invalid JSON.');
+      }
     }
 
     async function apiPost(payload) {
@@ -1594,11 +1794,18 @@
         body: JSON.stringify(payload)
       });
 
+      const text = await response.text();
+
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
 
-      return response.json();
+      try {
+        return text ? JSON.parse(text) : {};
+      } catch (error) {
+        console.error('Invalid JSON response:', text);
+        throw new Error('Server returned invalid JSON.');
+      }
     }
 
     async function loadDashboard() {
@@ -1637,6 +1844,7 @@
         if (error.name === 'AbortError') return;
         console.error(error);
         showToast(error.message || 'Something went wrong.', true);
+
         if (!state.issues.length) {
           renderTableMessage('Unable to load issues', error.message || 'Something went wrong.');
         }
@@ -1773,12 +1981,12 @@
       let agedCount = 0;
 
       issues.forEach(issue => {
-        const statusLabel = issue.finalStatus || 'Open';
-        const priorityLabel = issue.priorityLevel || 'Blank';
-        const moduleLabel = issue.productModuleAffected || 'Blank';
-        const companyLabel = issue.companyName || 'Blank';
-        const escalation = normalizeValue(issue.escalationRequired || '');
-        const hasTicket = String(issue.developmentTicket || '').trim().length > 0;
+        const statusLabel = issueVal(issue, 'finalStatus') || 'Open';
+        const priorityLabel = issueVal(issue, 'priorityLevel') || 'Blank';
+        const moduleLabel = issueVal(issue, 'productModuleAffected') || 'Blank';
+        const companyLabel = issueVal(issue, 'companyName') || 'Blank';
+        const escalation = normalizeValue(issueVal(issue, 'escalationRequired'));
+        const hasTicket = String(issueVal(issue, 'developmentTicket') || '').trim().length > 0;
         const statusNorm = normalizeValue(statusLabel);
         const priorityNorm = normalizeValue(priorityLabel);
         const isActive = CONFIG.ACTIVE_STATUSES.has(statusNorm);
@@ -2044,24 +2252,24 @@
       }
 
       els.issuesTable.innerHTML = issues.map(issue => {
-        const issueId = Number(issue.id);
+        const issueId = Number(issueVal(issue, 'id') || 0);
         const ageDays = getIssueAgeDays(issue, new Date());
 
         return `
           <tr data-id="${issueId}" class="${issueId === Number(state.selectedIssueId) ? 'selected-row' : ''}">
-            <td><span class="id-badge">#${escapeHtml(issue.id)}</span></td>
+            <td><span class="id-badge">#${escapeHtml(issueVal(issue, 'id') || '—')}</span></td>
             <td>
-              <div class="issue-title">${escapeHtml(issue.issueTitle || 'Untitled issue')}</div>
-              <div class="issue-desc">${escapeHtml(issue.detailedDescription || 'No description provided.')}</div>
+              <div class="issue-title">${escapeHtml(issueVal(issue, 'issueTitle') || 'Untitled issue')}</div>
+              <div class="issue-desc">${escapeHtml(issueVal(issue, 'detailedDescription') || 'No description provided.')}</div>
             </td>
-            <td>${escapeHtml(issue.companyName || '—')}</td>
-            <td>${escapeHtml(issue.productModuleAffected || '—')}</td>
-            <td>${buildPriorityChip(issue.priorityLevel || '')}</td>
-            <td>${buildStatusChip(issue.finalStatus || 'Open')}</td>
-            <td>${buildYesNoChip(issue.escalationRequired || '')}</td>
-            <td>${renderTicket(issue.developmentTicket)}</td>
+            <td>${escapeHtml(issueVal(issue, 'companyName') || '—')}</td>
+            <td>${escapeHtml(issueVal(issue, 'productModuleAffected') || '—')}</td>
+            <td>${buildPriorityChip(issueVal(issue, 'priorityLevel') || '')}</td>
+            <td>${buildStatusChip(issueVal(issue, 'finalStatus') || 'Open')}</td>
+            <td>${buildYesNoChip(issueVal(issue, 'escalationRequired') || '')}</td>
+            <td>${renderTicket(issueVal(issue, 'developmentTicket'))}</td>
             <td>${escapeHtml(`${ageDays}d`)}</td>
-            <td>${escapeHtml(formatDate(issue.resolutionClosureDate) || '—')}</td>
+            <td>${escapeHtml(formatDate(issueVal(issue, 'resolutionClosureDate')) || '—')}</td>
             <td>
               <button
                 class="action-btn"
@@ -2098,30 +2306,30 @@
       switch (sortBy) {
         case 'priority_desc':
           return items.sort((a, b) => {
-            const diff = getPriorityRank(b.priorityLevel) - getPriorityRank(a.priorityLevel);
-            return diff || safeDateMs(b.timestamp) - safeDateMs(a.timestamp) || Number(b.id || 0) - Number(a.id || 0);
+            const diff = getPriorityRank(issueVal(b, 'priorityLevel')) - getPriorityRank(issueVal(a, 'priorityLevel'));
+            return diff || safeDateMs(issueVal(b, 'timestamp')) - safeDateMs(issueVal(a, 'timestamp')) || Number(issueVal(b, 'id') || 0) - Number(issueVal(a, 'id') || 0);
           });
 
         case 'status_asc':
           return items.sort((a, b) => {
-            const diff = getStatusIndex(a.finalStatus) - getStatusIndex(b.finalStatus);
-            return diff || compareText(a.companyName, b.companyName);
+            const diff = getStatusIndex(issueVal(a, 'finalStatus')) - getStatusIndex(issueVal(b, 'finalStatus'));
+            return diff || compareText(issueVal(a, 'companyName'), issueVal(b, 'companyName'));
           });
 
         case 'company_asc':
-          return items.sort((a, b) => compareText(a.companyName, b.companyName));
+          return items.sort((a, b) => compareText(issueVal(a, 'companyName'), issueVal(b, 'companyName')));
 
         case 'newest':
-          return items.sort((a, b) => safeDateMs(b.timestamp) - safeDateMs(a.timestamp));
+          return items.sort((a, b) => safeDateMs(issueVal(b, 'timestamp')) - safeDateMs(issueVal(a, 'timestamp')));
 
         case 'oldest':
-          return items.sort((a, b) => safeDateMs(a.timestamp) - safeDateMs(b.timestamp));
+          return items.sort((a, b) => safeDateMs(issueVal(a, 'timestamp')) - safeDateMs(issueVal(b, 'timestamp')));
 
         case 'age_desc':
           return items.sort((a, b) => getIssueAgeDays(b, new Date()) - getIssueAgeDays(a, new Date()));
 
         case 'closure_desc':
-          return items.sort((a, b) => safeDateMs(b.resolutionClosureDate) - safeDateMs(a.resolutionClosureDate));
+          return items.sort((a, b) => safeDateMs(issueVal(b, 'resolutionClosureDate')) - safeDateMs(issueVal(a, 'resolutionClosureDate')));
 
         case 'sheet':
         default:
@@ -2130,19 +2338,19 @@
     }
 
     function selectIssue(id) {
-      const issue = state.issues.find(item => Number(item.id) === Number(id));
+      const issue = state.issues.find(item => Number(issueVal(item, 'id') || 0) === Number(id));
       if (!issue) return;
 
-      state.selectedIssueId = Number(issue.id);
-      els.selectedCountPill.textContent = `Selected #${issue.id}`;
+      state.selectedIssueId = Number(issueVal(issue, 'id'));
+      els.selectedCountPill.textContent = `Selected #${issueVal(issue, 'id')}`;
       updateSelectedRowUI();
     }
 
     function openEditModal(id) {
-      const issue = state.issues.find(item => Number(item.id) === Number(id));
+      const issue = state.issues.find(item => Number(issueVal(item, 'id') || 0) === Number(id));
       if (!issue) return;
 
-      state.selectedIssueId = Number(issue.id);
+      state.selectedIssueId = Number(issueVal(issue, 'id'));
       populateEditor(issue);
       updateSelectedRowUI();
 
@@ -2163,60 +2371,73 @@
     }
 
     function populateEditor(issue) {
-      els.issueId.value = issue.id || '';
-      els.issueTitle.value = issue.issueTitle || '';
-      els.companyName.value = issue.companyName || '';
-      els.finalStatus.value = issue.finalStatus || '';
-      els.initialAssessment.value = issue.initialAssessment || '';
-      els.rootCauseType.value = issue.rootCauseType || '';
-      els.escalationRequired.value = issue.escalationRequired || '';
-      els.wasCsInformed.value = issue.wasCsInformed || '';
-      els.developmentTicket.value = issue.developmentTicket || '';
-      els.internalNotes.value = issue.internalNotes || '';
+      const id = issueVal(issue, 'id');
+      const issueTitle = issueVal(issue, 'issueTitle');
+      const companyName = issueVal(issue, 'companyName');
+      const priorityLevel = issueVal(issue, 'priorityLevel');
+      const finalStatus = issueVal(issue, 'finalStatus') || 'Open';
+      const escalationRequired = issueVal(issue, 'escalationRequired');
+      const developmentTicket = issueVal(issue, 'developmentTicket');
+
+      els.issueId.value = id || '';
+      els.timestamp.value = formatDateTime(issueVal(issue, 'timestamp')) || '';
+      els.requestDate.value = formatDate(issueVal(issue, 'requestDate')) || '';
+      els.submittedBy.value = issueVal(issue, 'submittedBy') || '';
+      els.companyName.value = companyName || '';
+      els.issueTitle.value = issueTitle || '';
+      els.issueCategory.value = issueVal(issue, 'issueCategory') || '';
+      els.detailedDescription.value = issueVal(issue, 'detailedDescription') || '';
+      els.issueOngoingIntermittent.value = issueVal(issue, 'issueOngoingIntermittent') || '';
+      els.priorityLevel.value = priorityLevel || '';
+      els.impactType.value = issueVal(issue, 'impactType') || '';
+      els.workaroundAvailable.value = issueVal(issue, 'workaroundAvailable') || '';
+      els.workaroundDetails.value = issueVal(issue, 'workaroundDetails') || '';
+      els.environment.value = issueVal(issue, 'environment') || '';
+      els.productModuleAffected.value = issueVal(issue, 'productModuleAffected') || '';
+      els.browserDeviceOs.value = issueVal(issue, 'browserDeviceOs') || '';
+      els.errorMessage.value = issueVal(issue, 'errorMessage') || '';
+      els.attachmentUpload.value = issueVal(issue, 'attachmentUpload') || '';
+      els.reportedChannel.value = issueVal(issue, 'reportedChannel') || '';
+      els.sourceOfIssue.value = issueVal(issue, 'sourceOfIssue') || '';
+
+      els.finalStatus.value = finalStatus || '';
+      els.resolutionClosureDate.value = formatDate(issueVal(issue, 'resolutionClosureDate')) || '';
+      els.initialAssessment.value = issueVal(issue, 'initialAssessment') || '';
+      els.rootCauseType.value = issueVal(issue, 'rootCauseType') || '';
+      els.escalationRequired.value = escalationRequired || '';
+      els.wasCsInformed.value = issueVal(issue, 'wasCsInformed') || '';
+      els.developmentTicket.value = developmentTicket || '';
+      els.internalNotes.value = issueVal(issue, 'internalNotes') || '';
 
       els.selectedIssueInfo.innerHTML = `
-        <strong>Selected:</strong> ${escapeHtml(issue.issueTitle || 'Untitled issue')}<br>
-        <span class="muted">Company:</span> ${escapeHtml(issue.companyName || '—')}<br>
-        <span class="muted">Priority:</span> ${escapeHtml(issue.priorityLevel || '—')}<br>
-        <span class="muted">Status:</span> ${escapeHtml(issue.finalStatus || 'Open')}<br>
-        <span class="muted">Escalation:</span> ${escapeHtml(issue.escalationRequired || '—')}<br>
-        <span class="muted">Ticket:</span> ${escapeHtml(issue.developmentTicket || '—')}
+        <strong>Selected:</strong> ${escapeHtml(issueTitle || 'Untitled issue')}<br>
+        <span class="muted">Company:</span> ${escapeHtml(companyName || '—')}<br>
+        <span class="muted">Priority:</span> ${escapeHtml(priorityLevel || '—')}<br>
+        <span class="muted">Status:</span> ${escapeHtml(finalStatus || 'Open')}<br>
+        <span class="muted">Escalation:</span> ${escapeHtml(escalationRequired || '—')}<br>
+        <span class="muted">Ticket:</span> ${escapeHtml(developmentTicket || '—')}
       `;
 
       els.smartSuggestionBox.innerHTML = buildSmartSuggestion(issue);
-      els.selectedCountPill.textContent = `Selected #${issue.id}`;
+      els.selectedCountPill.textContent = `Selected #${id}`;
       setMessage('');
     }
 
-    function clearEditorFields() {
-      els.finalStatus.value = '';
-      els.initialAssessment.value = '';
-      els.rootCauseType.value = '';
-      els.escalationRequired.value = '';
-      els.wasCsInformed.value = '';
-      els.developmentTicket.value = '';
-      els.internalNotes.value = '';
+    function resetEditorToSelectedIssue() {
+      if (!state.selectedIssueId) return;
+      const issue = state.issues.find(item => Number(issueVal(item, 'id') || 0) === Number(state.selectedIssueId));
+      if (!issue) return;
+      populateEditor(issue);
       els.editPassword.value = '';
       setMessage('');
     }
 
-    function clearSelection({ clearPassword = true, preserveMessage = false } = {}) {
+    function clearSelection({ preserveMessage = false, closeModal = false } = {}) {
       state.selectedIssueId = null;
-
       els.selectedCountPill.textContent = 'No issue selected';
       updateSelectedRowUI();
 
-      els.issueId.value = '';
-      els.issueTitle.value = '';
-      els.companyName.value = '';
-      els.finalStatus.value = '';
-      els.initialAssessment.value = '';
-      els.rootCauseType.value = '';
-      els.escalationRequired.value = '';
-      els.wasCsInformed.value = '';
-      els.developmentTicket.value = '';
-      els.internalNotes.value = '';
-      if (clearPassword) els.editPassword.value = '';
+      clearAllModalFields();
 
       els.selectedIssueInfo.textContent = 'No issue selected.';
       els.smartSuggestionBox.innerHTML = '<strong>Smart suggestion:</strong> Select an issue to see recommended next actions.';
@@ -2224,15 +2445,56 @@
       if (!preserveMessage) {
         setMessage('');
       }
+
+      if (closeModal && state.modalOpen) {
+        closeEditModal();
+      }
+    }
+
+    function clearAllModalFields() {
+      [
+        els.issueId,
+        els.timestamp,
+        els.requestDate,
+        els.submittedBy,
+        els.companyName,
+        els.issueTitle,
+        els.issueCategory,
+        els.detailedDescription,
+        els.issueOngoingIntermittent,
+        els.priorityLevel,
+        els.impactType,
+        els.workaroundAvailable,
+        els.workaroundDetails,
+        els.environment,
+        els.productModuleAffected,
+        els.browserDeviceOs,
+        els.errorMessage,
+        els.attachmentUpload,
+        els.reportedChannel,
+        els.sourceOfIssue,
+        els.finalStatus,
+        els.resolutionClosureDate,
+        els.initialAssessment,
+        els.rootCauseType,
+        els.escalationRequired,
+        els.wasCsInformed,
+        els.developmentTicket,
+        els.internalNotes,
+        els.editPassword
+      ].forEach(el => {
+        if (el.tagName === 'SELECT' || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+          el.value = '';
+        }
+      });
     }
 
     function syncSelection() {
       if (!state.selectedIssueId) return;
 
-      const issue = state.issues.find(item => Number(item.id) === Number(state.selectedIssueId));
+      const issue = state.issues.find(item => Number(issueVal(item, 'id') || 0) === Number(state.selectedIssueId));
       if (!issue) {
-        clearSelection({ clearPassword: false, preserveMessage: true });
-        closeEditModal();
+        clearSelection({ preserveMessage: true, closeModal: true });
         return;
       }
 
@@ -2267,11 +2529,11 @@
     }
 
     function buildSmartSuggestion(issue) {
-      const status = normalizeValue(issue.finalStatus || 'Open');
-      const escalation = normalizeValue(issue.escalationRequired || '');
-      const csInformed = normalizeValue(issue.wasCsInformed || '');
-      const hasTicket = String(issue.developmentTicket || '').trim().length > 0;
-      const hasNotes = String(issue.internalNotes || '').trim().length > 0;
+      const status = normalizeValue(issueVal(issue, 'finalStatus') || 'Open');
+      const escalation = normalizeValue(issueVal(issue, 'escalationRequired'));
+      const csInformed = normalizeValue(issueVal(issue, 'wasCsInformed'));
+      const hasTicket = String(issueVal(issue, 'developmentTicket') || '').trim().length > 0;
+      const hasNotes = String(issueVal(issue, 'internalNotes') || '').trim().length > 0;
 
       let message = 'Review and save the issue after confirming its status and notes.';
 
@@ -2368,7 +2630,7 @@
     }
 
     function getIssueAgeDays(issue, now = new Date()) {
-      const rawDate = issue.timestamp || issue.requestDate;
+      const rawDate = issueVal(issue, 'timestamp') || issueVal(issue, 'requestDate');
       if (!rawDate) return 0;
 
       const createdAt = new Date(rawDate);
@@ -2421,7 +2683,7 @@
       els.saveBtn.textContent = isSaving ? 'Saving...' : 'Save Update';
 
       els.editorInputs.forEach(input => input.disabled = isSaving);
-      els.clearBtn.disabled = isSaving;
+      els.resetEditorBtn.disabled = isSaving;
 
       updateBusyUI();
     }
@@ -2472,8 +2734,16 @@
         ['Issue Title', 'issueTitle'],
         ['Issue Category', 'issueCategory'],
         ['Detailed Description', 'detailedDescription'],
+        ['Is the Issue Ongoing or Intermittent?', 'issueOngoingIntermittent'],
         ['Priority Level', 'priorityLevel'],
-        ['Product Module Affected', 'productModuleAffected'],
+        ['Impact Type', 'impactType'],
+        ['Is There a Workaround Available?', 'workaroundAvailable'],
+        ['Workaround Details', 'workaroundDetails'],
+        ['Environment', 'environment'],
+        ['Product / Module Affected', 'productModuleAffected'],
+        ['Browser / Device / OS', 'browserDeviceOs'],
+        ['Error Message', 'errorMessage'],
+        ['Attachment Upload', 'attachmentUpload'],
         ['Reported Channel', 'reportedChannel'],
         ['Source Of Issue', 'sourceOfIssue'],
         ['Initial Assessment', 'initialAssessment'],
@@ -2488,7 +2758,9 @@
 
       const rows = [
         columns.map(([label]) => csvEscape(label)).join(','),
-        ...issues.map(issue => columns.map(([, key]) => csvEscape(issue[key])).join(','))
+        ...issues.map(issue =>
+          columns.map(([, key]) => csvEscape(issueVal(issue, key))).join(',')
+        )
       ];
 
       const csv = rows.join('\n');
@@ -2533,6 +2805,18 @@
       els.themeToggleBtn.textContent = isDark ? '☀ Light Mode' : '🌙 Dark Mode';
     }
 
+    function issueVal(issue, key) {
+      const aliases = CONFIG.FIELD_ALIASES[key] || [key];
+
+      for (const alias of aliases) {
+        if (Object.prototype.hasOwnProperty.call(issue, alias) && issue[alias] !== undefined && issue[alias] !== null) {
+          return issue[alias];
+        }
+      }
+
+      return '';
+    }
+
     function formatDate(value) {
       if (!value) return '';
       const date = new Date(value);
@@ -2547,7 +2831,7 @@
 
     function formatDateTime(value) {
       const date = value instanceof Date ? value : new Date(value);
-      if (Number.isNaN(date.getTime())) return '—';
+      if (Number.isNaN(date.getTime())) return value ? String(value) : '';
 
       return date.toLocaleString(undefined, {
         year: 'numeric',
