@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pro Support Command Centre</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --panel: #121a2b;
+      --panel-2: #182235;
+      --text: #e6edf7;
+      --muted: #9fb0cc;
+      --border: #26324a;
+      --primary: #5aa9ff;
+      --success: #29c36a;
+      --warning: #f2b84b;
+      --danger: #ef5b5b;
+      --shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: linear-gradient(180deg, #09101c 0%, #0b1220 100%);
+      color: var(--text);
+    }
+
+    .container {
+      max-width: 1480px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 32px;
+      line-height: 1.1;
+    }
+
+    .subtext {
+      color: var(--muted);
+      margin-top: 6px;
+      font-size: 14px;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .tab {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 16px;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: 0.2s ease;
+    }
+
+    .tab.active,
+    .tab:hover {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #08111f;
+      font-weight: 700;
+    }
+
+    .panel {
+      background: rgba(18, 26, 43, 0.92);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+
+    .config {
+      padding: 18px;
+      margin-bottom: 20px;
+      display: grid;
+      grid-template-columns: 1.4fr auto auto;
+      gap: 12px;
+      align-items: end;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    label {
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    input, select, textarea, button {
+      font: inherit;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      background: var(--panel-2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      outline: none;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(90, 169, 255, 0.15);
+    }
+
+    button {
+      border: 0;
+      border-radius: 12px;
+      padding: 12px 16px;
+      cursor: pointer;
+      font-weight: 700;
+      transition: transform 0.15s ease, opacity 0.15s ease;
+    }
+
+    button:hover { transform: translateY(-1px); }
+    button:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+    .btn-primary { background: var(--primary); color: #08111f; }
+    .btn-secondary { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
+
+    .statusbar {
+      margin: 10px 0 22px;
+      color: var(--muted);
+      font-size: 14px;
+      min-height: 20px;
+    }
+
+    .view { display: none; }
+    .view.active { display: block; }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    .card {
+      padding: 18px;
+      min-height: 120px;
+    }
+
+    .card .label {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+
+    .card .value {
+      font-size: 36px;
+      font-weight: 800;
+      margin-top: 12px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .chart-panel {
+      padding: 18px;
+      min-height: 380px;
+    }
+
+    .chart-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin: 0 0 16px;
+    }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 12px;
+      padding: 18px;
+      margin-bottom: 16px;
+    }
+
+    .toolbar-actions {
+      display: flex;
+      gap: 10px;
+      align-items: end;
+    }
+
+    .table-wrap {
+      overflow: auto;
+      border-radius: var(--radius);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 1150px;
+    }
+
+    th, td {
+      padding: 14px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+      font-size: 14px;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      background: #121a2b;
+      z-index: 2;
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    tbody tr:hover {
+      background: rgba(255,255,255,0.03);
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+      border: 1px solid transparent;
+    }
+
+    .pill-open { background: rgba(90,169,255,0.12); color: #9bd0ff; border-color: rgba(90,169,255,0.35); }
+    .pill-resolved { background: rgba(41,195,106,0.12); color: #8ee3b0; border-color: rgba(41,195,106,0.35); }
+    .pill-warning { background: rgba(242,184,75,0.12); color: #ffd58a; border-color: rgba(242,184,75,0.35); }
+    .pill-danger { background: rgba(239,91,91,0.12); color: #ff9d9d; border-color: rgba(239,91,91,0.35); }
+    .pill-muted { background: rgba(159,176,204,0.12); color: #c7d2e7; border-color: rgba(159,176,204,0.28); }
+
+    .pagination {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 18px;
+      margin-top: 14px;
+    }
+
+    .pagination-controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .details {
+      padding: 20px;
+    }
+
+    .details-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 18px;
+    }
+
+    .detail-box {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+    }
+
+    .detail-box h4 {
+      margin: 0 0 8px;
+      font-size: 13px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 13px;
+      word-break: break-all;
+    }
+
+    .empty {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--muted);
+    }
+
+    .footer-note {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    @media (max-width: 1200px) {
+      .cards, .grid-2, .toolbar, .config, .details-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div>
+        <h1>Pro Support Command Centre</h1>
+        <div class="subtext">Single-file dashboard for your Google Apps Script + Google Sheet support backend</div>
+      </div>
+      <div class="tabs">
+        <button class="tab active" data-view="dashboard">Dashboard</button>
+        <button class="tab" data-view="issues">Issues</button>
+        <button class="tab" data-view="analytics">Analytics</button>
+      </div>
+    </div>
+
+    <div class="panel config">
+      <div class="field">
+        <label for="apiBaseUrl">Apps Script Web App URL</label>
+        <input id="apiBaseUrl" type="text" placeholder="Paste your deployed Apps Script web app URL here" />
+      </div>
+      <button id="saveConfigBtn" class="btn-secondary">Save URL</button>
+      <button id="loadAllBtn" class="btn-primary">Load Dashboard</button>
+    </div>
+
+    <div id="statusbar" class="statusbar"></div>
+
+    <section id="dashboard" class="view active">
+      <div class="cards">
+        <div class="panel card"><div class="label">Total Issues</div><div class="value" id="cardTotal">0</div></div>
+        <div class="panel card"><div class="label">Open</div><div class="value" id="cardOpen">0</div></div>
+        <div class="panel card"><div class="label">Resolved / Closed</div><div class="value" id="cardResolved">0</div></div>
+        <div class="panel card"><div class="label">Escalated</div><div class="value" id="cardEscalated">0</div></div>
+        <div class="panel card"><div class="label">High / Critical</div><div class="value" id="cardHighCritical">0</div></div>
+      </div>
+
+      <div class="grid-2">
+        <div class="panel chart-panel">
+          <h3 class="chart-title">Issues by Status</h3>
+          <canvas id="statusChart"></canvas>
+        </div>
+        <div class="panel chart-panel">
+          <h3 class="chart-title">Issues by Priority</h3>
+          <canvas id="priorityChart"></canvas>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="panel chart-panel">
+          <h3 class="chart-title">Issues by Category</h3>
+          <canvas id="categoryChart"></canvas>
+        </div>
+        <div class="panel chart-panel">
+          <h3 class="chart-title">Issues by Source / Channel</h3>
+          <canvas id="sourceChart"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <section id="issues" class="view">
+      <div class="panel toolbar">
+        <div class="field">
+          <label for="searchInput">Search</label>
+          <input id="searchInput" type="text" placeholder="Company, title, category, description" />
+        </div>
+        <div class="field">
+          <label for="statusFilter">Status</label>
+          <select id="statusFilter">
+            <option value="">All</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="priorityFilter">Priority</label>
+          <select id="priorityFilter">
+            <option value="">All</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="categoryFilter">Category</label>
+          <select id="categoryFilter">
+            <option value="">All</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="companyFilter">Company</label>
+          <select id="companyFilter">
+            <option value="">All</option>
+          </select>
+        </div>
+        <div class="toolbar-actions">
+          <button id="applyFiltersBtn" class="btn-primary">Apply</button>
+          <button id="resetFiltersBtn" class="btn-secondary">Reset</button>
+        </div>
+      </div>
+
+      <div class="panel table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Request Date</th>
+              <th>Company</th>
+              <th>Issue Title</th>
+              <th>Category</th>
+              <th>Priority</th>
+              <th>Status</th>
+              <th>Product / Module</th>
+              <th>Reported Channel</th>
+              <th>Escalated</th>
+              <th>Closure Date</th>
+            </tr>
+          </thead>
+          <tbody id="issuesTableBody"></tbody>
+        </table>
+        <div id="issuesEmpty" class="empty" style="display:none;">No issues found.</div>
+      </div>
+
+      <div class="panel pagination">
+        <div id="paginationInfo">Page 1</div>
+        <div class="pagination-controls">
+          <button id="prevPageBtn" class="btn-secondary">Previous</button>
+          <button id="nextPageBtn" class="btn-primary">Next</button>
+        </div>
+      </div>
+
+      <div class="panel details" id="detailsPanel" style="margin-top: 16px; display:none;">
+        <h3 class="chart-title" id="detailsTitle">Issue Details</h3>
+        <div class="details-grid" id="detailsGrid"></div>
+      </div>
+    </section>
+
+    <section id="analytics" class="view">
+      <div class="grid-2">
+        <div class="panel chart-panel">
+          <h3 class="chart-title">Open vs Closed</h3>
+          <canvas id="openClosedChart"></canvas>
+        </div>
+        <div class="panel chart-panel">
+          <h3 class="chart-title">Escalation Rate</h3>
+          <canvas id="escalationChart"></canvas>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="panel chart-panel">
+          <h3 class="chart-title">Top Companies</h3>
+          <canvas id="companiesChart"></canvas>
+        </div>
+        <div class="panel chart-panel">
+          <h3 class="chart-title">Top Modules</h3>
+          <canvas id="modulesChart"></canvas>
+        </div>
+      </div>
+
+      <div class="panel details">
+        <h3 class="chart-title">Computed KPI Snapshot</h3>
+        <div class="details-grid" id="kpiGrid"></div>
+        <div class="footer-note">
+          This single-file version computes some analytics client-side from the issues endpoint, so it works even if your Apps Script only has <span class="mono">summary</span> and <span class="mono">issues</span> actions.
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const state = {
+      apiBaseUrl: localStorage.getItem('pscc_api_base_url') || '',
+      issuesPage: 1,
+      pageSize: 25,
+      issues: [],
+      filteredIssues: [],
+      charts: {},
+      selectedIssue: null
+    };
+
+    const el = (id) => document.getElementById(id);
+
+    function setStatus(message, isError = false) {
+      const bar = el('statusbar');
+      bar.textContent = message || '';
+      bar.style.color = isError ? '#ff9d9d' : 'var(--muted)';
+    }
+
+    function normalize(value) {
+      return String(value || '').trim().toLowerCase();
+    }
+
+    function formatDate(value) {
+      if (!value) return '—';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return String(value);
+      return new Intl.DateTimeFormat('en-GB', {
+        year: 'numeric',
+        month: 'short',
+        day: '2-digit'
+      }).format(date);
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function statusClass(status) {
+      const s = normalize(status);
+      if (['resolved', 'closed'].includes(s)) return 'pill pill-resolved';
+      if (['high', 'critical'].includes(s)) return 'pill pill-danger';
+      if (['in progress', 'waiting for cs', 'waiting for customer', 'escalated to development'].includes(s)) return 'pill pill-warning';
+      if (['open', 'new'].includes(s)) return 'pill pill-open';
+      return 'pill pill-muted';
+    }
+
+    function priorityClass(priority) {
+      const p = normalize(priority);
+      if (p === 'critical') return 'pill pill-danger';
+      if (p === 'high') return 'pill pill-warning';
+      if (p === 'medium') return 'pill pill-open';
+      return 'pill pill-muted';
+    }
+
+    function getApiBaseUrl() {
+      const url = el('apiBaseUrl').value.trim();
+      if (!url) {
+        throw new Error('Please enter your Apps Script Web App URL first.');
+      }
+      return url;
+    }
+
+    function buildUrl(action, params = {}) {
+      const base = getApiBaseUrl();
+      const url = new URL(base);
+      url.searchParams.set('action', action);
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          url.searchParams.set(key, value);
+        }
+      });
+      return url.toString();
+    }
+
+    async function fetchJson(url) {
+      const response = await fetch(url, { method: 'GET' });
+      if (!response.ok) {
+        throw new Error('Request failed with status ' + response.status);
+      }
+      const data = await response.json();
+      if (!data.ok) {
+        throw new Error(data.error || 'Unknown API error');
+      }
+      return data.data;
+    }
+
+    function countBy(items, keyFn) {
+      const out = {};
+      items.forEach((item) => {
+        const key = keyFn(item) || 'Blank';
+        out[key] = (out[key] || 0) + 1;
+      });
+      return out;
+    }
+
+    function topEntries(obj, limit = 8) {
+      return Object.entries(obj)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, limit);
+    }
+
+    function computeAnalytics(issues) {
+      const openStatuses = new Set(['', 'open', 'in progress', 'waiting for cs', 'waiting for customer', 'escalated to development']);
+
+      const open = issues.filter((issue) => openStatuses.has(normalize(issue.finalStatus))).length;
+      const closed = issues.filter((issue) => ['resolved', 'closed'].includes(normalize(issue.finalStatus))).length;
+      const escalated = issues.filter((issue) => normalize(issue.escalationRequired) === 'yes' || normalize(issue.finalStatus) === 'escalated to development').length;
+      const noWorkaround = issues.filter((issue) => normalize(issue.workaroundAvailable) === 'no').length;
+      const waitingCustomer = issues.filter((issue) => normalize(issue.finalStatus) === 'waiting for customer').length;
+      const waitingCs = issues.filter((issue) => normalize(issue.finalStatus) === 'waiting for cs').length;
+      const categories = countBy(issues, (x) => x.issueCategory || 'Blank');
+      const companies = countBy(issues, (x) => x.companyName || 'Blank');
+      const modules = countBy(issues, (x) => x.productModuleAffected || 'Blank');
+
+      let resolutionDays = [];
+      issues.forEach((issue) => {
+        const start = new Date(issue.requestDate || issue.timestamp);
+        const end = new Date(issue.resolutionClosureDate);
+        if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
+          const days = Math.max(0, Math.round((end - start) / (1000 * 60 * 60 * 24)));
+          resolutionDays.push(days);
+        }
+      });
+
+      const avgResolutionDays = resolutionDays.length
+        ? (resolutionDays.reduce((sum, n) => sum + n, 0) / resolutionDays.length).toFixed(1)
+        : '—';
+
+      return {
+        open,
+        closed,
+        escalated,
+        noWorkaround,
+        waitingCustomer,
+        waitingCs,
+        topCategories: topEntries(categories),
+        topCompanies: topEntries(companies),
+        topModules: topEntries(modules),
+        avgResolutionDays,
+        escalationRate: issues.length ? ((escalated / issues.length) * 100).toFixed(1) + '%' : '0%'
+      };
+    }
+
+    function destroyChart(name) {
+      if (state.charts[name]) {
+        state.charts[name].destroy();
+      }
+    }
+
+    function renderChart(name, canvasId, type, labels, data, label) {
+      destroyChart(name);
+      const ctx = el(canvasId);
+      state.charts[name] = new Chart(ctx, {
+        type,
+        data: {
+          labels,
+          datasets: [{ label, data, borderWidth: 2 }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { labels: { color: '#e6edf7' } }
+          },
+          scales: type === 'doughnut' || type === 'pie' ? {} : {
+            x: { ticks: { color: '#c7d2e7' }, grid: { color: 'rgba(255,255,255,0.06)' } },
+            y: { ticks: { color: '#c7d2e7' }, grid: { color: 'rgba(255,255,255,0.06)' } }
+          }
+        }
+      });
+    }
+
+    function setCardValues(summary) {
+      el('cardTotal').textContent = summary.total || 0;
+      el('cardOpen').textContent = summary.open || 0;
+      el('cardResolved').textContent = summary.resolvedClosed || 0;
+      el('cardEscalated').textContent = summary.escalated || 0;
+      el('cardHighCritical').textContent = summary.highCritical || 0;
+    }
+
+    function renderDashboard(summary, issues) {
+      setCardValues(summary);
+      const bySource = countBy(issues, (x) => x.sourceOfIssue || x.reportedChannel || 'Blank');
+
+      renderChart('statusChart', 'statusChart', 'doughnut', Object.keys(summary.byStatus || {}), Object.values(summary.byStatus || {}), 'Issues');
+      renderChart('priorityChart', 'priorityChart', 'bar', Object.keys(summary.byPriority || {}), Object.values(summary.byPriority || {}), 'Issues');
+      renderChart('categoryChart', 'categoryChart', 'bar', Object.keys(summary.byCategory || {}), Object.values(summary.byCategory || {}), 'Issues');
+      renderChart('sourceChart', 'sourceChart', 'bar', Object.keys(bySource), Object.values(bySource), 'Issues');
+    }
+
+    function populateFilterOptions(issues) {
+      const sets = {
+        statusFilter: new Set(),
+        priorityFilter: new Set(),
+        categoryFilter: new Set(),
+        companyFilter: new Set()
+      };
+
+      issues.forEach((issue) => {
+        if (issue.finalStatus) sets.statusFilter.add(issue.finalStatus);
+        if (issue.priorityLevel) sets.priorityFilter.add(issue.priorityLevel);
+        if (issue.issueCategory) sets.categoryFilter.add(issue.issueCategory);
+        if (issue.companyName) sets.companyFilter.add(issue.companyName);
+      });
+
+      Object.entries(sets).forEach(([id, set]) => {
+        const select = el(id);
+        const current = select.value;
+        select.innerHTML = '<option value="">All</option>' + Array.from(set)
+          .sort((a, b) => a.localeCompare(b))
+          .map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`)
+          .join('');
+        select.value = current;
+      });
+    }
+
+    function getActiveFilters() {
+      return {
+        q: el('searchInput').value.trim(),
+        status: el('statusFilter').value,
+        priority: el('priorityFilter').value,
+        category: el('categoryFilter').value,
+        company: el('companyFilter').value
+      };
+    }
+
+    function applyClientFilters() {
+      const filters = getActiveFilters();
+      state.filteredIssues = state.issues.filter((issue) => {
+        const haystack = [
+          issue.companyName,
+          issue.issueTitle,
+          issue.issueCategory,
+          issue.detailedDescription,
+          issue.productModuleAffected,
+          issue.reportedChannel,
+          issue.sourceOfIssue
+        ].join(' ').toLowerCase();
+
+        if (filters.q && !haystack.includes(filters.q.toLowerCase())) return false;
+        if (filters.status && issue.finalStatus !== filters.status) return false;
+        if (filters.priority && issue.priorityLevel !== filters.priority) return false;
+        if (filters.category && issue.issueCategory !== filters.category) return false;
+        if (filters.company && issue.companyName !== filters.company) return false;
+        return true;
+      });
+
+      state.issuesPage = 1;
+      renderIssuesTable();
+    }
+
+    function renderIssuesTable() {
+      const tbody = el('issuesTableBody');
+      const empty = el('issuesEmpty');
+      const all = state.filteredIssues;
+      const startIndex = (state.issuesPage - 1) * state.pageSize;
+      const pageItems = all.slice(startIndex, startIndex + state.pageSize);
+
+      if (!pageItems.length) {
+        tbody.innerHTML = '';
+        empty.style.display = 'block';
+      } else {
+        empty.style.display = 'none';
+        tbody.innerHTML = pageItems.map((issue) => `
+          <tr data-id="${issue.id}">
+            <td>${issue.id}</td>
+            <td>${escapeHtml(formatDate(issue.requestDate || issue.timestamp))}</td>
+            <td>${escapeHtml(issue.companyName || '—')}</td>
+            <td>${escapeHtml(issue.issueTitle || '—')}</td>
+            <td>${escapeHtml(issue.issueCategory || '—')}</td>
+            <td><span class="${priorityClass(issue.priorityLevel)}">${escapeHtml(issue.priorityLevel || 'Blank')}</span></td>
+            <td><span class="${statusClass(issue.finalStatus)}">${escapeHtml(issue.finalStatus || 'Open')}</span></td>
+            <td>${escapeHtml(issue.productModuleAffected || '—')}</td>
+            <td>${escapeHtml(issue.reportedChannel || '—')}</td>
+            <td>${escapeHtml(issue.escalationRequired || '—')}</td>
+            <td>${escapeHtml(formatDate(issue.resolutionClosureDate))}</td>
+          </tr>
+        `).join('');
+      }
+
+      const totalPages = Math.max(1, Math.ceil(all.length / state.pageSize));
+      el('paginationInfo').textContent = `Page ${state.issuesPage} of ${totalPages} • ${all.length} issues`;
+      el('prevPageBtn').disabled = state.issuesPage <= 1;
+      el('nextPageBtn').disabled = state.issuesPage >= totalPages;
+
+      tbody.querySelectorAll('tr').forEach((row) => {
+        row.addEventListener('click', () => {
+          const id = Number(row.dataset.id);
+          const issue = all.find((x) => Number(x.id) === id);
+          if (issue) renderIssueDetails(issue);
+        });
+      });
+    }
+
+    function renderIssueDetails(issue) {
+      state.selectedIssue = issue;
+      el('detailsPanel').style.display = 'block';
+      el('detailsTitle').textContent = `Issue #${issue.id} — ${issue.issueTitle || 'Untitled Issue'}`;
+
+      const items = [
+        ['Company', issue.companyName],
+        ['Submitted by', issue.submittedBy],
+        ['Request date', formatDate(issue.requestDate || issue.timestamp)],
+        ['Category', issue.issueCategory],
+        ['Priority', issue.priorityLevel],
+        ['Final status', issue.finalStatus],
+        ['Impact type', issue.impactType],
+        ['Workaround available', issue.workaroundAvailable],
+        ['Workaround details', issue.workaroundDetails],
+        ['Environment', issue.environment],
+        ['Product / module affected', issue.productModuleAffected],
+        ['Browser / device / OS', issue.browserDeviceOs],
+        ['Error message', issue.errorMessage],
+        ['Reported channel', issue.reportedChannel],
+        ['Source of issue', issue.sourceOfIssue],
+        ['Initial assessment', issue.initialAssessment],
+        ['Root cause type', issue.rootCauseType],
+        ['Internal notes', issue.internalNotes],
+        ['Escalation required?', issue.escalationRequired],
+        ['Development ticket', issue.developmentTicket],
+        ['Resolution / closure date', formatDate(issue.resolutionClosureDate)],
+        ['Was CS informed?', issue.wasCsInformed],
+        ['Attachment', issue.attachmentUpload]
+      ];
+
+      el('detailsGrid').innerHTML = items.map(([title, value]) => `
+        <div class="detail-box">
+          <h4>${escapeHtml(title)}</h4>
+          <div>${escapeHtml(value || '—')}</div>
+        </div>
+      `).join('') + `
+        <div class="detail-box" style="grid-column: 1 / -1;">
+          <h4>Detailed description</h4>
+          <div>${escapeHtml(issue.detailedDescription || '—')}</div>
+        </div>
+      `;
+    }
+
+    function renderAnalytics(issues) {
+      const a = computeAnalytics(issues);
+      renderChart('openClosedChart', 'openClosedChart', 'doughnut', ['Open', 'Closed'], [a.open, a.closed], 'Issues');
+      renderChart('escalationChart', 'escalationChart', 'bar', ['Escalated', 'Not escalated'], [a.escalated, Math.max(issues.length - a.escalated, 0)], 'Issues');
+      renderChart('companiesChart', 'companiesChart', 'bar', a.topCompanies.map(([k]) => k), a.topCompanies.map(([, v]) => v), 'Issues');
+      renderChart('modulesChart', 'modulesChart', 'bar', a.topModules.map(([k]) => k), a.topModules.map(([, v]) => v), 'Issues');
+
+      const kpis = [
+        ['Average Resolution Days', a.avgResolutionDays],
+        ['Escalation Rate', a.escalationRate],
+        ['Issues Without Workaround', a.noWorkaround],
+        ['Waiting for Customer', a.waitingCustomer],
+        ['Waiting for CS', a.waitingCs],
+        ['Top Category', a.topCategories[0] ? `${a.topCategories[0][0]} (${a.topCategories[0][1]})` : '—']
+      ];
+
+      el('kpiGrid').innerHTML = kpis.map(([title, value]) => `
+        <div class="detail-box">
+          <h4>${escapeHtml(title)}</h4>
+          <div>${escapeHtml(value)}</div>
+        </div>
+      `).join('');
+    }
+
+    async function loadData() {
+      try {
+        setStatus('Loading dashboard data...');
+        const summary = await fetchJson(buildUrl('summary'));
+        const issuesResponse = await fetchJson(buildUrl('issues'));
+        const issues = Array.isArray(issuesResponse) ? issuesResponse : (issuesResponse.items || []);
+
+        state.issues = issues;
+        state.filteredIssues = issues.slice();
+
+        populateFilterOptions(issues);
+        renderDashboard(summary, issues);
+        renderIssuesTable();
+        renderAnalytics(issues);
+        setStatus(`Loaded ${issues.length} issues successfully.`);
+      } catch (error) {
+        console.error(error);
+        setStatus(error.message || 'Failed to load dashboard.', true);
+      }
+    }
+
+    function switchView(viewId) {
+      document.querySelectorAll('.tab').forEach((btn) => btn.classList.toggle('active', btn.dataset.view === viewId));
+      document.querySelectorAll('.view').forEach((view) => view.classList.toggle('active', view.id === viewId));
+    }
+
+    function bindEvents() {
+      document.querySelectorAll('.tab').forEach((btn) => {
+        btn.addEventListener('click', () => switchView(btn.dataset.view));
+      });
+
+      el('saveConfigBtn').addEventListener('click', () => {
+        const url = el('apiBaseUrl').value.trim();
+        localStorage.setItem('pscc_api_base_url', url);
+        setStatus('Apps Script URL saved locally in this browser.');
+      });
+
+      el('loadAllBtn').addEventListener('click', async () => {
+        const url = el('apiBaseUrl').value.trim();
+        localStorage.setItem('pscc_api_base_url', url);
+        await loadData();
+      });
+
+      el('applyFiltersBtn').addEventListener('click', applyClientFilters);
+      el('resetFiltersBtn').addEventListener('click', () => {
+        el('searchInput').value = '';
+        el('statusFilter').value = '';
+        el('priorityFilter').value = '';
+        el('categoryFilter').value = '';
+        el('companyFilter').value = '';
+        state.filteredIssues = state.issues.slice();
+        state.issuesPage = 1;
+        renderIssuesTable();
+      });
+
+      el('prevPageBtn').addEventListener('click', () => {
+        if (state.issuesPage > 1) {
+          state.issuesPage -= 1;
+          renderIssuesTable();
+        }
+      });
+
+      el('nextPageBtn').addEventListener('click', () => {
+        const totalPages = Math.max(1, Math.ceil(state.filteredIssues.length / state.pageSize));
+        if (state.issuesPage < totalPages) {
+          state.issuesPage += 1;
+          renderIssuesTable();
+        }
+      });
+    }
+
+    function init() {
+      el('apiBaseUrl').value = state.apiBaseUrl;
+      bindEvents();
+      if (state.apiBaseUrl) {
+        loadData();
+      } else {
+        setStatus('Add your Apps Script Web App URL, then click Load Dashboard.');
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>
