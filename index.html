@@ -5,115 +5,208 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Incheck360 Support Dashboard</title>
   <style>
+    * {
+      box-sizing: border-box;
+    }
+
     body {
-      font-family: Arial, sans-serif;
       margin: 0;
+      font-family: Arial, sans-serif;
       background: #f5f7fb;
       color: #1f2937;
     }
+
     .container {
-      max-width: 1280px;
+      max-width: 1400px;
       margin: 0 auto;
       padding: 24px;
     }
+
     h1 {
       margin: 0 0 20px;
+      font-size: 28px;
     }
+
+    h3 {
+      margin-top: 0;
+    }
+
     .cards {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
       gap: 16px;
       margin-bottom: 24px;
     }
+
     .card {
-      background: white;
-      border-radius: 12px;
+      background: #ffffff;
+      border-radius: 14px;
       padding: 18px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
     }
-    .card h3 {
-      margin: 0 0 8px;
+
+    .card h4 {
+      margin: 0 0 10px;
       font-size: 14px;
       color: #6b7280;
       font-weight: 600;
     }
+
     .card .value {
       font-size: 28px;
       font-weight: 700;
     }
+
     .toolbar {
       display: grid;
       grid-template-columns: 1fr 180px 180px 140px;
       gap: 12px;
       margin-bottom: 20px;
     }
-    input, select, textarea, button {
-      width: 100%;
-      padding: 10px 12px;
-      border: 1px solid #d1d5db;
-      border-radius: 8px;
-      box-sizing: border-box;
-      font-size: 14px;
-    }
-    button {
-      cursor: pointer;
-      background: #111827;
-      color: white;
-      border: 0;
-    }
+
     .layout {
       display: grid;
       grid-template-columns: 2fr 1fr;
       gap: 20px;
     }
+
     .panel {
-      background: white;
-      border-radius: 12px;
+      background: #ffffff;
+      border-radius: 14px;
       padding: 16px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+      overflow: hidden;
     }
+
+    input, select, textarea, button {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+
+    textarea {
+      resize: vertical;
+    }
+
+    button {
+      background: #111827;
+      color: #ffffff;
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    button:hover {
+      opacity: 0.95;
+    }
+
+    .secondary-btn {
+      background: #374151;
+    }
+
+    .stack {
+      display: grid;
+      gap: 12px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .muted {
+      color: #6b7280;
+      font-size: 12px;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
       font-size: 14px;
+      min-width: 900px;
     }
+
     th, td {
       text-align: left;
       padding: 10px 8px;
       border-bottom: 1px solid #e5e7eb;
       vertical-align: top;
     }
+
     th {
       color: #6b7280;
       font-size: 12px;
       text-transform: uppercase;
+      letter-spacing: 0.03em;
     }
-    .muted {
+
+    .issue-title {
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .issue-desc {
       color: #6b7280;
       font-size: 12px;
+      line-height: 1.4;
+      max-width: 400px;
+      white-space: normal;
+      word-break: break-word;
     }
-    .issue-title {
-      font-weight: 600;
-    }
+
     .status-pill {
       display: inline-block;
-      padding: 4px 8px;
+      padding: 5px 9px;
       border-radius: 999px;
       background: #eef2ff;
       font-size: 12px;
+      white-space: nowrap;
     }
-    .grid-2 {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
+
+    .row-actions button {
+      padding: 8px 10px;
+      font-size: 12px;
     }
-    .stack {
-      display: grid;
-      gap: 12px;
+
+    .selected-box {
+      padding: 10px;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      font-size: 13px;
     }
-    @media (max-width: 980px) {
-      .layout, .toolbar, .grid-2 {
+
+    .success {
+      color: #166534;
+      font-size: 13px;
+    }
+
+    .error {
+      color: #b91c1c;
+      font-size: 13px;
+    }
+
+    .loading {
+      opacity: 0.6;
+      pointer-events: none;
+    }
+
+    @media (max-width: 1000px) {
+      .layout,
+      .toolbar,
+      .grid-2 {
         grid-template-columns: 1fr;
+      }
+
+      table {
+        min-width: 700px;
       }
     }
   </style>
@@ -128,20 +221,20 @@
       <input id="searchInput" placeholder="Search by company, issue, module, ticket..." />
       <select id="statusFilter">
         <option value="">All Statuses</option>
-        <option>Open</option>
-        <option>In Progress</option>
-        <option>Waiting for CS</option>
-        <option>Waiting for Customer</option>
-        <option>Escalated to Development</option>
-        <option>Resolved</option>
-        <option>Closed</option>
+        <option value="Open">Open</option>
+        <option value="In Progress">In Progress</option>
+        <option value="Waiting for CS">Waiting for CS</option>
+        <option value="Waiting for Customer">Waiting for Customer</option>
+        <option value="Escalated to Development">Escalated to Development</option>
+        <option value="Resolved">Resolved</option>
+        <option value="Closed">Closed</option>
       </select>
       <select id="priorityFilter">
         <option value="">All Priorities</option>
-        <option>Low</option>
-        <option>Medium</option>
-        <option>High</option>
-        <option>Critical</option>
+        <option value="Low">Low</option>
+        <option value="Medium">Medium</option>
+        <option value="High">High</option>
+        <option value="Critical">Critical</option>
       </select>
       <button id="refreshBtn">Refresh</button>
     </div>
@@ -149,74 +242,101 @@
     <div class="layout">
       <div class="panel">
         <h3>Issues</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Issue</th>
-              <th>Company</th>
-              <th>Priority</th>
-              <th>Status</th>
-              <th>Escalation</th>
-              <th>Ticket</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="issuesTable"></tbody>
-        </table>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Issue</th>
+                <th>Company</th>
+                <th>Module</th>
+                <th>Priority</th>
+                <th>Status</th>
+                <th>Escalation</th>
+                <th>Ticket</th>
+                <th>Closure Date</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="issuesTable">
+              <tr>
+                <td colspan="10">Loading...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div class="panel">
         <h3>Edit Issue</h3>
         <div class="stack">
+          <div class="selected-box" id="selectedIssueInfo">
+            No issue selected.
+          </div>
+
           <input id="issueId" placeholder="Row ID" readonly />
           <input id="issueTitle" placeholder="Issue Title" readonly />
+          <input id="companyName" placeholder="Company Name" readonly />
+
           <select id="finalStatus">
-            <option>Open</option>
-            <option>In Progress</option>
-            <option>Waiting for CS</option>
-            <option>Waiting for Customer</option>
-            <option>Escalated to Development</option>
-            <option>Resolved</option>
-            <option>Closed</option>
+            <option value="">Select Final Status</option>
+            <option value="Open">Open</option>
+            <option value="In Progress">In Progress</option>
+            <option value="Waiting for CS">Waiting for CS</option>
+            <option value="Waiting for Customer">Waiting for Customer</option>
+            <option value="Escalated to Development">Escalated to Development</option>
+            <option value="Resolved">Resolved</option>
+            <option value="Closed">Closed</option>
           </select>
+
           <div class="grid-2">
             <select id="initialAssessment">
               <option value="">Initial Assessment</option>
-              <option>Resolved by R&D</option>
-              <option>Need More Information</option>
-              <option>Escalated to Development</option>
-              <option>Not a Bug</option>
-              <option>Duplicate</option>
-              <option>Cannot Reproduce</option>
+              <option value="Resolved by R&D">Resolved by R&D</option>
+              <option value="Need More Information">Need More Information</option>
+              <option value="Escalated to Development">Escalated to Development</option>
+              <option value="Not a Bug">Not a Bug</option>
+              <option value="Duplicate">Duplicate</option>
+              <option value="Cannot Reproduce">Cannot Reproduce</option>
             </select>
+
             <select id="rootCauseType">
               <option value="">Root Cause Type</option>
-              <option>User Error</option>
-              <option>Configuration</option>
-              <option>Data Problem</option>
-              <option>System Bug</option>
-              <option>Third-Party Dependency</option>
-              <option>Performance Limitation</option>
-              <option>Unknown</option>
+              <option value="User Error">User Error</option>
+              <option value="Configuration">Configuration</option>
+              <option value="Data Problem">Data Problem</option>
+              <option value="System Bug">System Bug</option>
+              <option value="Third-Party Dependency">Third-Party Dependency</option>
+              <option value="Performance Limitation">Performance Limitation</option>
+              <option value="Unknown">Unknown</option>
             </select>
           </div>
+
           <div class="grid-2">
             <select id="escalationRequired">
               <option value="">Escalation Required?</option>
-              <option>Yes</option>
-              <option>No</option>
+              <option value="Yes">Yes</option>
+              <option value="No">No</option>
             </select>
+
             <select id="wasCsInformed">
               <option value="">Was CS Informed?</option>
-              <option>Yes</option>
-              <option>No</option>
+              <option value="Yes">Yes</option>
+              <option value="No">No</option>
             </select>
           </div>
-          <input id="developmentTicket" placeholder="Development Ticket" />
-          <textarea id="internalNotes" rows="6" placeholder="Internal Notes"></textarea>
-          <button id="saveBtn">Save Update</button>
-          <div class="muted" id="saveMessage"></div>
+
+          <input id="developmentTicket" placeholder="Development Ticket ID / Link" />
+          <textarea id="internalNotes" rows="7" placeholder="Internal Notes"></textarea>
+
+          <input id="editPassword" type="password" placeholder="Edit password" />
+
+          <div class="grid-2">
+            <button id="saveBtn">Save Update</button>
+            <button id="clearBtn" class="secondary-btn" type="button">Clear</button>
+          </div>
+
+          <div id="saveMessage" class="muted"></div>
         </div>
       </div>
     </div>
@@ -225,6 +345,8 @@
   <script>
     const API_URL = 'https://script.google.com/macros/s/AKfycbwX0LqxxJ7-YN7EDzzqomxVFVLvIhSXvbYgd4LgLE42gq1Hl4wJmCYPTy2rcsjQ_KVV/exec';
     let currentIssues = [];
+    let selectedIssueId = null;
+    let searchTimer = null;
 
     async function apiGet(action, params = {}) {
       const url = new URL(API_URL);
@@ -254,54 +376,95 @@
 
     function renderCards(summary) {
       const cards = [
-        { label: 'Total Issues', value: summary.total },
-        { label: 'Open / Active', value: summary.open },
-        { label: 'Resolved / Closed', value: summary.resolvedClosed },
-        { label: 'Escalated', value: summary.escalated },
-        { label: 'High / Critical', value: summary.highCritical }
+        { label: 'Total Issues', value: summary.total || 0 },
+        { label: 'Open / Active', value: summary.open || 0 },
+        { label: 'Resolved / Closed', value: summary.resolvedClosed || 0 },
+        { label: 'Escalated', value: summary.escalated || 0 },
+        { label: 'High / Critical', value: summary.highCritical || 0 }
       ];
 
       document.getElementById('summaryCards').innerHTML = cards.map(card => `
         <div class="card">
-          <h3>${card.label}</h3>
-          <div class="value">${card.value}</div>
+          <h4>${escapeHtml(card.label)}</h4>
+          <div class="value">${escapeHtml(card.value)}</div>
         </div>
       `).join('');
     }
 
     function renderTable(issues) {
       const tbody = document.getElementById('issuesTable');
+
+      if (!issues.length) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="10">No issues found.</td>
+          </tr>
+        `;
+        return;
+      }
+
       tbody.innerHTML = issues.map(issue => `
         <tr>
-          <td>#${issue.id}</td>
+          <td>#${escapeHtml(issue.id)}</td>
           <td>
             <div class="issue-title">${escapeHtml(issue.issueTitle || '')}</div>
-            <div class="muted">${escapeHtml(issue.issueCategory || '')}</div>
+            <div class="issue-desc">${escapeHtml(issue.detailedDescription || '')}</div>
           </td>
           <td>${escapeHtml(issue.companyName || '')}</td>
+          <td>${escapeHtml(issue.productModuleAffected || '')}</td>
           <td>${escapeHtml(issue.priorityLevel || '')}</td>
           <td><span class="status-pill">${escapeHtml(issue.finalStatus || 'Open')}</span></td>
           <td>${escapeHtml(issue.escalationRequired || '')}</td>
           <td>${escapeHtml(issue.developmentTicket || '')}</td>
-          <td><button onclick="selectIssue(${issue.id})">Edit</button></td>
+          <td>${formatDate(issue.resolutionClosureDate)}</td>
+          <td class="row-actions">
+            <button onclick="selectIssue(${issue.id})">Edit</button>
+          </td>
         </tr>
       `).join('');
     }
 
     function selectIssue(id) {
-      const issue = currentIssues.find(item => item.id === id);
+      const issue = currentIssues.find(item => Number(item.id) === Number(id));
       if (!issue) return;
+
+      selectedIssueId = issue.id;
 
       document.getElementById('issueId').value = issue.id || '';
       document.getElementById('issueTitle').value = issue.issueTitle || '';
-      document.getElementById('finalStatus').value = issue.finalStatus || 'Open';
+      document.getElementById('companyName').value = issue.companyName || '';
+      document.getElementById('finalStatus').value = issue.finalStatus || '';
       document.getElementById('initialAssessment').value = issue.initialAssessment || '';
       document.getElementById('rootCauseType').value = issue.rootCauseType || '';
       document.getElementById('escalationRequired').value = issue.escalationRequired || '';
       document.getElementById('wasCsInformed').value = issue.wasCsInformed || '';
       document.getElementById('developmentTicket').value = issue.developmentTicket || '';
       document.getElementById('internalNotes').value = issue.internalNotes || '';
-      document.getElementById('saveMessage').textContent = '';
+
+      document.getElementById('selectedIssueInfo').innerHTML = `
+        <strong>Selected:</strong> ${escapeHtml(issue.issueTitle || '')}<br>
+        <span class="muted">Company:</span> ${escapeHtml(issue.companyName || '')}<br>
+        <span class="muted">Priority:</span> ${escapeHtml(issue.priorityLevel || '')}<br>
+        <span class="muted">Current Status:</span> ${escapeHtml(issue.finalStatus || 'Open')}
+      `;
+
+      setMessage('');
+    }
+
+    function clearForm() {
+      selectedIssueId = null;
+      document.getElementById('issueId').value = '';
+      document.getElementById('issueTitle').value = '';
+      document.getElementById('companyName').value = '';
+      document.getElementById('finalStatus').value = '';
+      document.getElementById('initialAssessment').value = '';
+      document.getElementById('rootCauseType').value = '';
+      document.getElementById('escalationRequired').value = '';
+      document.getElementById('wasCsInformed').value = '';
+      document.getElementById('developmentTicket').value = '';
+      document.getElementById('internalNotes').value = '';
+      document.getElementById('selectedIssueInfo').textContent = 'No issue selected.';
+      setMessage('');
     }
 
     async function loadDashboard() {
@@ -309,29 +472,58 @@
       const status = document.getElementById('statusFilter').value.trim();
       const priority = document.getElementById('priorityFilter').value.trim();
 
-      const [summaryRes, issuesRes] = await Promise.all([
-        apiGet('summary'),
-        apiGet('issues', { q, status, priority })
-      ]);
+      setLoading(true);
 
-      if (!summaryRes.ok) throw new Error(summaryRes.error || 'Failed to load summary');
-      if (!issuesRes.ok) throw new Error(issuesRes.error || 'Failed to load issues');
+      try {
+        const [summaryRes, issuesRes] = await Promise.all([
+          apiGet('summary'),
+          apiGet('issues', { q, status, priority })
+        ]);
 
-      currentIssues = issuesRes.data || [];
-      renderCards(summaryRes.data);
-      renderTable(currentIssues);
+        if (!summaryRes.ok) {
+          throw new Error(summaryRes.error || 'Failed to load summary');
+        }
+
+        if (!issuesRes.ok) {
+          throw new Error(issuesRes.error || 'Failed to load issues');
+        }
+
+        currentIssues = issuesRes.data || [];
+        renderCards(summaryRes.data || {});
+        renderTable(currentIssues);
+
+        if (selectedIssueId) {
+          const refreshed = currentIssues.find(item => Number(item.id) === Number(selectedIssueId));
+          if (refreshed) {
+            selectIssue(refreshed.id);
+          }
+        }
+      } catch (error) {
+        console.error(error);
+        alert(error.message);
+      } finally {
+        setLoading(false);
+      }
     }
 
     async function saveIssue() {
       const id = Number(document.getElementById('issueId').value);
+      const editPassword = document.getElementById('editPassword').value.trim();
+
       if (!id) {
-        document.getElementById('saveMessage').textContent = 'Select an issue first.';
+        setMessage('Select an issue first.', true);
+        return;
+      }
+
+      if (!editPassword) {
+        setMessage('Enter edit password.', true);
         return;
       }
 
       const payload = {
         action: 'updateIssue',
         id,
+        editPassword,
         finalStatus: document.getElementById('finalStatus').value,
         initialAssessment: document.getElementById('initialAssessment').value,
         rootCauseType: document.getElementById('rootCauseType').value,
@@ -341,15 +533,48 @@
         internalNotes: document.getElementById('internalNotes').value
       };
 
-      const result = await apiPost(payload);
-      if (!result.ok) {
-        document.getElementById('saveMessage').textContent = result.error || 'Save failed.';
-        return;
-      }
+      setLoading(true);
+      setMessage('Saving...');
 
-      document.getElementById('saveMessage').textContent = 'Saved successfully.';
-      await loadDashboard();
-      selectIssue(id);
+      try {
+        const result = await apiPost(payload);
+
+        if (!result.ok) {
+          setMessage(result.error || 'Save failed.', true);
+          return;
+        }
+
+        setMessage('Saved successfully.');
+        await loadDashboard();
+        selectIssue(id);
+      } catch (error) {
+        console.error(error);
+        setMessage(error.message || 'Save failed.', true);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    function setMessage(message, isError = false) {
+      const el = document.getElementById('saveMessage');
+      el.textContent = message;
+      el.className = isError ? 'error' : 'success';
+      if (!message) {
+        el.className = 'muted';
+      }
+    }
+
+    function setLoading(isLoading) {
+      document.body.classList.toggle('loading', isLoading);
+    }
+
+    function formatDate(value) {
+      if (!value) return '';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) {
+        return escapeHtml(String(value));
+      }
+      return date.toLocaleDateString();
     }
 
     function escapeHtml(value) {
@@ -363,14 +588,17 @@
 
     document.getElementById('refreshBtn').addEventListener('click', loadDashboard);
     document.getElementById('saveBtn').addEventListener('click', saveIssue);
-    document.getElementById('searchInput').addEventListener('input', () => setTimeout(loadDashboard, 250));
+    document.getElementById('clearBtn').addEventListener('click', clearForm);
+
+    document.getElementById('searchInput').addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(loadDashboard, 350);
+    });
+
     document.getElementById('statusFilter').addEventListener('change', loadDashboard);
     document.getElementById('priorityFilter').addEventListener('change', loadDashboard);
 
-    loadDashboard().catch(error => {
-      console.error(error);
-      alert(error.message);
-    });
+    loadDashboard();
   </script>
 </body>
 </html>
