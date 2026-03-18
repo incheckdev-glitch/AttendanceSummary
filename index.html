@@ -79,7 +79,7 @@
     }
 
     .app-shell {
-      max-width: 1600px;
+      max-width: 1680px;
       margin: 0 auto;
       padding: 18px;
     }
@@ -340,6 +340,15 @@
     .analytics-card {
       padding: 18px;
       min-height: 260px;
+    }
+
+    .analytics-card.span-2 {
+      grid-column: span 2;
+    }
+
+    .analytics-card.span-3 {
+      grid-column: span 3;
+      min-height: 180px;
     }
 
     .pill {
@@ -841,6 +850,63 @@
       line-height: 1.6;
     }
 
+    .matrix-shell {
+      overflow: auto;
+      max-height: 280px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+    }
+
+    .matrix-table {
+      width: 100%;
+      min-width: 720px;
+      border-collapse: collapse;
+    }
+
+    .matrix-table th,
+    .matrix-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+
+    .matrix-table th {
+      position: sticky;
+      top: 0;
+      background: var(--panel-soft);
+      z-index: 1;
+    }
+
+    .matrix-row-head {
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .matrix-cell {
+      text-align: center;
+      font-weight: 800;
+      border-left: 1px solid var(--border);
+    }
+
+    .insight-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .insight-item {
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: var(--panel-soft);
+      border: 1px solid var(--border);
+      font-size: 14px;
+      line-height: 1.5;
+      color: var(--text-soft);
+    }
+
+    .insight-item strong {
+      color: var(--text);
+    }
+
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
@@ -853,6 +919,11 @@
 
       .filter-grid {
         grid-template-columns: 1fr 1fr 1fr;
+      }
+
+      .analytics-card.span-2,
+      .analytics-card.span-3 {
+        grid-column: span 2;
       }
     }
 
@@ -871,6 +942,11 @@
       .grid-3,
       .modal-actions {
         grid-template-columns: 1fr;
+      }
+
+      .analytics-card.span-2,
+      .analytics-card.span-3 {
+        grid-column: span 1;
       }
 
       .appbar {
@@ -1095,7 +1171,7 @@
 
       <div class="appbar-title">
         <h1>Support Analytics Workspace</h1>
-        <p>Filters · KPIs · Trends · Distributions · Detailed submissions</p>
+        <p>Filters · KPIs · trends · cross-field intelligence · detailed submissions</p>
       </div>
 
       <div class="appbar-actions">
@@ -1123,7 +1199,7 @@
             <label class="filter-label" for="searchInput">Search Notes / Client / Module</label>
             <div class="input-wrap">
               <span class="input-icon">⌕</span>
-              <input id="searchInput" placeholder="Search by company, issue title, module, description, or ticket..." />
+              <input id="searchInput" placeholder="Search by company, issue title, module, description, error, notes, or ticket..." />
             </div>
           </div>
 
@@ -1213,6 +1289,105 @@
             </div>
           </div>
           <div class="distribution" id="companyDistribution"></div>
+        </article>
+
+        <article class="panel analytics-card">
+          <div class="section-head">
+            <div>
+              <h3>Workflow Intelligence</h3>
+              <div class="section-sub">Assessment, cause, escalation, CS, resolution time, and ticket hygiene.</div>
+            </div>
+          </div>
+          <div class="analytics-stat-grid" id="workflowStats"></div>
+        </article>
+
+        <article class="panel analytics-card">
+          <div class="section-head">
+            <div>
+              <h3>Submission Quality</h3>
+              <div class="section-sub">Field completeness across all tracked columns.</div>
+            </div>
+          </div>
+          <div class="distribution" id="dataQualityDistribution"></div>
+        </article>
+
+        <article class="panel analytics-card">
+          <div class="section-head">
+            <div>
+              <h3>Channel & Source Mix</h3>
+              <div class="section-sub">How issues enter the support workflow.</div>
+            </div>
+          </div>
+          <div class="distribution" id="channelSourceDistribution"></div>
+        </article>
+
+        <article class="panel analytics-card">
+          <div class="section-head">
+            <div>
+              <h3>Environment Insights</h3>
+              <div class="section-sub">Environment, client footprint, and affected platforms.</div>
+            </div>
+          </div>
+          <div class="distribution" id="environmentDistribution"></div>
+        </article>
+
+        <article class="panel analytics-card">
+          <div class="section-head">
+            <div>
+              <h3>Assessment Mix</h3>
+              <div class="section-sub">How issues are being classified by initial assessment.</div>
+            </div>
+          </div>
+          <div class="distribution" id="assessmentDistribution"></div>
+        </article>
+
+        <article class="panel analytics-card">
+          <div class="section-head">
+            <div>
+              <h3>Root Cause Mix</h3>
+              <div class="section-sub">Root cause trends across the current filtered issue set.</div>
+            </div>
+          </div>
+          <div class="distribution" id="rootCauseDistribution"></div>
+        </article>
+
+        <article class="panel analytics-card span-2">
+          <div class="section-head">
+            <div>
+              <h3>Cross-Field Matrix</h3>
+              <div class="section-sub">Relationships between key dimensions across all columns.</div>
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <div class="pill" id="matrixTitlePill">Priority × Status</div>
+              <select id="matrixSelect" style="width:auto; min-width:220px;">
+                <option value="priorityStatus">Priority × Status</option>
+                <option value="categoryImpact">Category × Impact</option>
+                <option value="moduleRootCause">Module × Root Cause</option>
+                <option value="channelSource">Channel × Source</option>
+              </select>
+            </div>
+          </div>
+          <div id="crossFieldMatrix"></div>
+        </article>
+
+        <article class="panel analytics-card">
+          <div class="section-head">
+            <div>
+              <h3>Text Signals</h3>
+              <div class="section-sub">Recurring terms from title, description, error message, and notes.</div>
+            </div>
+          </div>
+          <div class="distribution" id="textSignalsDistribution"></div>
+        </article>
+
+        <article class="panel analytics-card span-3">
+          <div class="section-head">
+            <div>
+              <h3>Executive Insights</h3>
+              <div class="section-sub">High-level findings derived automatically from the current visible dataset.</div>
+            </div>
+          </div>
+          <div class="insight-list" id="executiveInsights"></div>
         </article>
       </section>
 
@@ -1431,7 +1606,8 @@
       latestRequestId: 0,
       pendingOps: 0,
       isSaving: false,
-      modalOpen: false
+      modalOpen: false,
+      activeMatrix: 'priorityStatus'
     };
 
     const els = {};
@@ -1461,6 +1637,18 @@
       els.agingDistribution = document.getElementById('agingDistribution');
       els.moduleDistribution = document.getElementById('moduleDistribution');
       els.companyDistribution = document.getElementById('companyDistribution');
+
+      els.workflowStats = document.getElementById('workflowStats');
+      els.dataQualityDistribution = document.getElementById('dataQualityDistribution');
+      els.channelSourceDistribution = document.getElementById('channelSourceDistribution');
+      els.environmentDistribution = document.getElementById('environmentDistribution');
+      els.assessmentDistribution = document.getElementById('assessmentDistribution');
+      els.rootCauseDistribution = document.getElementById('rootCauseDistribution');
+      els.crossFieldMatrix = document.getElementById('crossFieldMatrix');
+      els.matrixTitlePill = document.getElementById('matrixTitlePill');
+      els.matrixSelect = document.getElementById('matrixSelect');
+      els.textSignalsDistribution = document.getElementById('textSignalsDistribution');
+      els.executiveInsights = document.getElementById('executiveInsights');
 
       els.lastRefreshPill = document.getElementById('lastRefreshPill');
       els.issuesCountPill = document.getElementById('issuesCountPill');
@@ -1567,6 +1755,11 @@
         renderDashboard();
       });
 
+      els.matrixSelect.addEventListener('change', () => {
+        state.activeMatrix = els.matrixSelect.value;
+        renderDashboard();
+      });
+
       els.quickFilterChips.addEventListener('click', (event) => {
         const button = event.target.closest('button[data-status]');
         if (!button) return;
@@ -1628,6 +1821,7 @@
       els.statusFilter.value = '';
       els.priorityFilter.value = '';
       els.sortSelect.value = localStorage.getItem('supportDashboardSort') || 'sheet';
+      els.matrixSelect.value = state.activeMatrix;
       clearSelection({ preserveMessage: true, closeModal: true });
 
       if (!preserveLoad) {
@@ -1798,12 +1992,24 @@
     function renderDashboard() {
       renderGlobalCards(state.summary);
       const metrics = deriveAdvancedMetrics(state.issues);
+
       renderFilteredOverview(metrics);
       renderStatusDistribution(metrics);
       renderPriorityRing(metrics);
       renderAgingDistribution(metrics);
       renderModuleDistribution(metrics);
       renderCompanyDistribution(metrics);
+
+      renderWorkflowStats(metrics);
+      renderDataQuality(metrics);
+      renderChannelSource(metrics);
+      renderEnvironmentInsights(metrics);
+      renderAssessmentDistribution(metrics);
+      renderRootCauseDistribution(metrics);
+      renderCrossFieldMatrix(metrics, state.activeMatrix);
+      renderTextSignals(metrics);
+      renderExecutiveInsights(metrics);
+
       renderQuickFilterChips();
       renderTable(getRenderableIssues());
       updatePills();
@@ -1848,37 +2054,144 @@
         avgAgeDays: 0,
         oldestActiveDays: 0,
         completionRate: 0,
+        avgResolutionDays: 0,
+
         statusCounts: {},
         priorityCounts: {},
         moduleCounts: {},
         companyCounts: {},
+        issueCategoryCounts: {},
+        impactTypeCounts: {},
+        environmentCounts: {},
+        browserOsCounts: {},
+        sourceCounts: {},
+        channelCounts: {},
+        ongoingCounts: {},
+        workaroundCounts: {},
+        attachmentCounts: {},
+        submittedByCounts: {},
+        assessmentCounts: {},
+        rootCauseCounts: {},
+        csInformedCounts: {},
+        escalationCounts: {},
+
         agingCounts: {
           '0–2d': 0,
           '3–7d': 0,
           '8–14d': 0,
           '15d+': 0
+        },
+
+        dataQuality: {},
+        textTerms: {},
+        matrices: {
+          priorityStatus: {},
+          categoryImpact: {},
+          moduleRootCause: {},
+          channelSource: {}
         }
       };
 
+      const fieldsToTrackCompleteness = [
+        'submittedBy',
+        'companyName',
+        'issueTitle',
+        'issueCategory',
+        'detailedDescription',
+        'issueOngoingIntermittent',
+        'priorityLevel',
+        'impactType',
+        'workaroundAvailable',
+        'workaroundDetails',
+        'environment',
+        'productModuleAffected',
+        'browserDeviceOs',
+        'errorMessage',
+        'attachmentUpload',
+        'reportedChannel',
+        'sourceOfIssue',
+        'initialAssessment',
+        'rootCauseType',
+        'internalNotes',
+        'escalationRequired',
+        'developmentTicket',
+        'finalStatus',
+        'resolutionClosureDate',
+        'wasCsInformed'
+      ];
+
+      fieldsToTrackCompleteness.forEach(field => {
+        metrics.dataQuality[field] = { filled: 0, blank: 0 };
+      });
+
       let totalAgeDays = 0;
-      let agedCount = 0;
+      let ageCount = 0;
+      let totalResolutionDays = 0;
+      let resolvedCount = 0;
 
       issues.forEach(issue => {
-        const statusLabel = issueVal(issue, 'finalStatus') || 'Open';
-        const priorityLabel = issueVal(issue, 'priorityLevel') || 'Blank';
-        const moduleLabel = issueVal(issue, 'productModuleAffected') || 'Blank';
-        const companyLabel = issueVal(issue, 'companyName') || 'Blank';
-        const escalation = normalizeValue(issueVal(issue, 'escalationRequired'));
+        const status = issueVal(issue, 'finalStatus') || 'Open';
+        const priority = issueVal(issue, 'priorityLevel') || 'Blank';
+        const module = issueVal(issue, 'productModuleAffected') || 'Blank';
+        const company = issueVal(issue, 'companyName') || 'Blank';
+        const category = issueVal(issue, 'issueCategory') || 'Blank';
+        const impact = issueVal(issue, 'impactType') || 'Blank';
+        const environment = issueVal(issue, 'environment') || 'Blank';
+        const browserOs = issueVal(issue, 'browserDeviceOs') || 'Blank';
+        const source = issueVal(issue, 'sourceOfIssue') || 'Blank';
+        const channel = issueVal(issue, 'reportedChannel') || 'Blank';
+        const ongoing = issueVal(issue, 'issueOngoingIntermittent') || 'Blank';
+        const workaround = issueVal(issue, 'workaroundAvailable') || 'Blank';
+        const submittedBy = issueVal(issue, 'submittedBy') || 'Blank';
+        const initialAssessment = issueVal(issue, 'initialAssessment') || 'Blank';
+        const rootCause = issueVal(issue, 'rootCauseType') || 'Blank';
+        const csInformed = issueVal(issue, 'wasCsInformed') || 'Blank';
+        const escalationRequired = issueVal(issue, 'escalationRequired') || 'Blank';
+        const attachment = String(issueVal(issue, 'attachmentUpload') || '').trim() ? 'Has attachment' : 'No attachment';
         const hasTicket = String(issueVal(issue, 'developmentTicket') || '').trim().length > 0;
-        const statusNorm = normalizeValue(statusLabel);
-        const priorityNorm = normalizeValue(priorityLabel);
+
+        const statusNorm = normalizeValue(status);
+        const priorityNorm = normalizeValue(priority);
         const isActive = CONFIG.ACTIVE_STATUSES.has(statusNorm);
         const ageDays = getIssueAgeDays(issue, now);
 
-        metrics.statusCounts[statusLabel] = (metrics.statusCounts[statusLabel] || 0) + 1;
-        metrics.priorityCounts[priorityLabel] = (metrics.priorityCounts[priorityLabel] || 0) + 1;
-        metrics.moduleCounts[moduleLabel] = (metrics.moduleCounts[moduleLabel] || 0) + 1;
-        metrics.companyCounts[companyLabel] = (metrics.companyCounts[companyLabel] || 0) + 1;
+        increment(metrics.statusCounts, status);
+        increment(metrics.priorityCounts, priority);
+        increment(metrics.moduleCounts, module);
+        increment(metrics.companyCounts, company);
+        increment(metrics.issueCategoryCounts, category);
+        increment(metrics.impactTypeCounts, impact);
+        increment(metrics.environmentCounts, environment);
+        increment(metrics.browserOsCounts, browserOs);
+        increment(metrics.sourceCounts, source);
+        increment(metrics.channelCounts, channel);
+        increment(metrics.ongoingCounts, ongoing);
+        increment(metrics.workaroundCounts, workaround);
+        increment(metrics.attachmentCounts, attachment);
+        increment(metrics.submittedByCounts, submittedBy);
+        increment(metrics.assessmentCounts, initialAssessment);
+        increment(metrics.rootCauseCounts, rootCause);
+        increment(metrics.csInformedCounts, csInformed);
+        increment(metrics.escalationCounts, escalationRequired);
+
+        incrementMatrix(metrics.matrices.priorityStatus, priority, status);
+        incrementMatrix(metrics.matrices.categoryImpact, category, impact);
+        incrementMatrix(metrics.matrices.moduleRootCause, module, rootCause);
+        incrementMatrix(metrics.matrices.channelSource, channel, source);
+
+        fieldsToTrackCompleteness.forEach(field => {
+          const value = String(issueVal(issue, field) || '').trim();
+          if (value) metrics.dataQuality[field].filled++;
+          else metrics.dataQuality[field].blank++;
+        });
+
+        const textBlob = [
+          issueVal(issue, 'issueTitle'),
+          issueVal(issue, 'detailedDescription'),
+          issueVal(issue, 'errorMessage'),
+          issueVal(issue, 'internalNotes')
+        ].join(' ');
+        extractTerms(textBlob).forEach(term => increment(metrics.textTerms, term));
 
         if (isActive) {
           metrics.active++;
@@ -1895,11 +2208,13 @@
           if (ageDays > 7 || ((priorityNorm === 'high' || priorityNorm === 'critical') && ageDays > 3)) {
             metrics.slaRisk++;
           }
-        } else if (statusNorm === 'resolved' || statusNorm === 'closed') {
+        }
+
+        if (statusNorm === 'resolved' || statusNorm === 'closed') {
           metrics.resolvedClosed++;
         }
 
-        if (statusNorm === 'escalated to development' || escalation === 'yes') {
+        if (normalizeValue(escalationRequired) === 'yes' || statusNorm === 'escalated to development') {
           metrics.escalated++;
           if (!hasTicket) metrics.escalatedNoTicket++;
         }
@@ -1914,11 +2229,19 @@
 
         if (ageDays >= 0) {
           totalAgeDays += ageDays;
-          agedCount++;
+          ageCount++;
+        }
+
+        const createdMs = safeDateMs(issueVal(issue, 'timestamp') || issueVal(issue, 'requestDate'));
+        const closedMs = safeDateMs(issueVal(issue, 'resolutionClosureDate'));
+        if (createdMs && closedMs && closedMs >= createdMs) {
+          totalResolutionDays += Math.floor((closedMs - createdMs) / (1000 * 60 * 60 * 24));
+          resolvedCount++;
         }
       });
 
-      metrics.avgAgeDays = agedCount ? roundToOne(totalAgeDays / agedCount) : 0;
+      metrics.avgAgeDays = ageCount ? roundToOne(totalAgeDays / ageCount) : 0;
+      metrics.avgResolutionDays = resolvedCount ? roundToOne(totalResolutionDays / resolvedCount) : 0;
       metrics.completionRate = metrics.total ? Math.round((metrics.resolvedClosed / metrics.total) * 100) : 0;
 
       return metrics;
@@ -2080,6 +2403,229 @@
       );
     }
 
+    function renderWorkflowStats(metrics) {
+      const csYes = metrics.csInformedCounts['Yes'] || 0;
+      const unknownRootCause = metrics.rootCauseCounts['Unknown'] || 0;
+
+      const cards = [
+        {
+          label: 'Ticket Coverage',
+          value: `${metrics.total ? Math.round((metrics.withTickets / metrics.total) * 100) : 0}%`,
+          sub: `${metrics.withTickets} / ${metrics.total} issues linked to dev`
+        },
+        {
+          label: 'Escalation Rate',
+          value: `${metrics.total ? Math.round((metrics.escalated / metrics.total) * 100) : 0}%`,
+          sub: `${metrics.escalated} escalated issues`
+        },
+        {
+          label: 'CS Informed',
+          value: `${metrics.total ? Math.round((csYes / metrics.total) * 100) : 0}%`,
+          sub: `${csYes} issues marked as informed`
+        },
+        {
+          label: 'Avg Resolution Time',
+          value: `${metrics.avgResolutionDays}d`,
+          sub: 'Mean time from request to closure'
+        },
+        {
+          label: 'Unknown Root Cause',
+          value: unknownRootCause,
+          sub: 'Issues missing clear cause classification'
+        },
+        {
+          label: 'Escalated w/o Ticket',
+          value: metrics.escalatedNoTicket,
+          sub: 'Escalated items with no dev reference'
+        }
+      ];
+
+      els.workflowStats.innerHTML = cards.map(card => `
+        <div class="mini-stat">
+          <div class="label">${escapeHtml(card.label)}</div>
+          <div class="value">${escapeHtml(card.value)}</div>
+          <div class="sub">${escapeHtml(card.sub)}</div>
+        </div>
+      `).join('');
+    }
+
+    function renderDataQuality(metrics) {
+      const rows = Object.entries(metrics.dataQuality)
+        .map(([field, stats]) => ({
+          label: prettyFieldName(field),
+          value: stats.filled,
+          pct: metrics.total ? Math.round((stats.filled / metrics.total) * 100) : 0
+        }))
+        .sort((a, b) => b.pct - a.pct);
+
+      if (!rows.length) {
+        els.dataQualityDistribution.innerHTML = `<div class="muted">No data quality stats.</div>`;
+        return;
+      }
+
+      els.dataQualityDistribution.innerHTML = rows.map(row => `
+        <div class="dist-row">
+          <div class="dist-label">${escapeHtml(row.label)}</div>
+          <div class="dist-bar">
+            <div class="dist-fill" style="width:${row.pct}%; background:#2563eb;"></div>
+          </div>
+          <div class="dist-value">${row.pct}%</div>
+        </div>
+      `).join('');
+    }
+
+    function renderChannelSource(metrics) {
+      const merged = {};
+      Object.entries(metrics.channelCounts).forEach(([k, v]) => merged[`Channel: ${k}`] = v);
+      Object.entries(metrics.sourceCounts).forEach(([k, v]) => merged[`Source: ${k}`] = v);
+
+      renderSimpleDistribution(
+        els.channelSourceDistribution,
+        topEntries(merged, 8).map(([label, value]) => ({
+          label,
+          value,
+          color: label.startsWith('Channel:') ? '#2563eb' : '#7c3aed'
+        })),
+        metrics.total || 1,
+        'No channel/source data'
+      );
+    }
+
+    function renderEnvironmentInsights(metrics) {
+      const merged = {};
+      topEntries(metrics.environmentCounts, 4).forEach(([k, v]) => merged[`Env: ${k}`] = v);
+      topEntries(metrics.browserOsCounts, 4).forEach(([k, v]) => merged[`Client: ${k}`] = v);
+
+      renderSimpleDistribution(
+        els.environmentDistribution,
+        Object.entries(merged).map(([label, value]) => ({
+          label,
+          value,
+          color: label.startsWith('Env:') ? '#16a34a' : '#d97706'
+        })),
+        metrics.total || 1,
+        'No environment data'
+      );
+    }
+
+    function renderAssessmentDistribution(metrics) {
+      renderSimpleDistribution(
+        els.assessmentDistribution,
+        topEntries(metrics.assessmentCounts, 7).map(([label, value]) => ({
+          label,
+          value,
+          color: '#0ea5e9'
+        })),
+        metrics.total || 1,
+        'No assessment data'
+      );
+    }
+
+    function renderRootCauseDistribution(metrics) {
+      renderSimpleDistribution(
+        els.rootCauseDistribution,
+        topEntries(metrics.rootCauseCounts, 7).map(([label, value]) => ({
+          label,
+          value,
+          color: '#8b5cf6'
+        })),
+        metrics.total || 1,
+        'No root cause data'
+      );
+    }
+
+    function renderCrossFieldMatrix(metrics, matrixKey = 'priorityStatus') {
+      const map = {
+        priorityStatus: { title: 'Priority × Status', data: metrics.matrices.priorityStatus },
+        categoryImpact: { title: 'Category × Impact', data: metrics.matrices.categoryImpact },
+        moduleRootCause: { title: 'Module × Root Cause', data: metrics.matrices.moduleRootCause },
+        channelSource: { title: 'Channel × Source', data: metrics.matrices.channelSource }
+      };
+
+      const selected = map[matrixKey] || map.priorityStatus;
+      els.matrixTitlePill.textContent = selected.title;
+
+      const rows = Object.keys(selected.data || {});
+      const cols = [...new Set(rows.flatMap(row => Object.keys(selected.data[row] || {})))];
+
+      if (!rows.length || !cols.length) {
+        els.crossFieldMatrix.innerHTML = `<div class="muted">No matrix data available.</div>`;
+        return;
+      }
+
+      const maxValue = Math.max(
+        1,
+        ...rows.flatMap(row => cols.map(col => Number((selected.data[row] || {})[col] || 0)))
+      );
+
+      els.crossFieldMatrix.innerHTML = `
+        <div class="matrix-shell">
+          <table class="matrix-table">
+            <thead>
+              <tr>
+                <th>Row / Col</th>
+                ${cols.map(col => `<th>${escapeHtml(col)}</th>`).join('')}
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.map(row => `
+                <tr>
+                  <td class="matrix-row-head">${escapeHtml(row)}</td>
+                  ${cols.map(col => {
+                    const value = Number((selected.data[row] || {})[col] || 0);
+                    const opacity = value ? Math.max(0.08, value / maxValue) : 0.02;
+                    return `
+                      <td class="matrix-cell" style="background:rgba(37,99,235,${opacity});">
+                        ${value || '—'}
+                      </td>
+                    `;
+                  }).join('')}
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function renderTextSignals(metrics) {
+      renderSimpleDistribution(
+        els.textSignalsDistribution,
+        topEntries(metrics.textTerms, 10).map(([label, value]) => ({
+          label,
+          value,
+          color: '#0ea5e9'
+        })),
+        topEntries(metrics.textTerms, 10).reduce((sum, [, value]) => sum + value, 0) || 1,
+        'No text signal data'
+      );
+    }
+
+    function renderExecutiveInsights(metrics) {
+      const topModule = topEntries(metrics.moduleCounts, 1)[0];
+      const topCompany = topEntries(metrics.companyCounts, 1)[0];
+      const topRootCause = topEntries(metrics.rootCauseCounts, 1)[0];
+      const topChannel = topEntries(metrics.channelCounts, 1)[0];
+      const topCategory = topEntries(metrics.issueCategoryCounts, 1)[0];
+      const topAssessment = topEntries(metrics.assessmentCounts, 1)[0];
+
+      const insights = [
+        `Backlog currently contains ${metrics.active} active issues and ${metrics.slaRisk} are aging into SLA risk.`,
+        topModule ? `Most affected module is ${topModule[0]} with ${topModule[1]} visible issues.` : null,
+        topCompany ? `Most impacted company is ${topCompany[0]} with ${topCompany[1]} visible issues.` : null,
+        topRootCause ? `Most common root cause classification is ${topRootCause[0]} with ${topRootCause[1]} issues.` : null,
+        topChannel ? `Most common reported channel is ${topChannel[0]} with ${topChannel[1]} issues.` : null,
+        topCategory ? `Top issue category is ${topCategory[0]} with ${topCategory[1]} issues.` : null,
+        topAssessment ? `Most frequent initial assessment is ${topAssessment[0]} with ${topAssessment[1]} issues.` : null,
+        metrics.escalatedNoTicket > 0 ? `${metrics.escalatedNoTicket} escalated issues are missing a development ticket.` : null,
+        metrics.avgResolutionDays ? `Average closure time is ${metrics.avgResolutionDays} days.` : null
+      ].filter(Boolean);
+
+      els.executiveInsights.innerHTML = insights.length
+        ? insights.map(text => `<div class="insight-item"><strong>Insight:</strong> ${escapeHtml(text)}</div>`).join('')
+        : `<div class="muted">No executive insights available.</div>`;
+    }
+
     function renderSimpleDistribution(container, rows, total, emptyTitle) {
       const safeTotal = total || 1;
       const validRows = rows.filter(row => Number(row.value || 0) > 0);
@@ -2128,7 +2674,63 @@
       }).join('');
     }
 
-    function renderTable(issues) {
+    function increment(obj, key) {
+      obj[key] = (obj[key] || 0) + 1;
+    }
+
+    function incrementMatrix(matrix, rowKey, colKey) {
+      if (!matrix[rowKey]) matrix[rowKey] = {};
+      matrix[rowKey][colKey] = (matrix[rowKey][colKey] || 0) + 1;
+    }
+
+    function extractTerms(text) {
+      const stopWords = new Set([
+        'the','and','for','with','this','that','from','have','into','your','there','when',
+        'where','which','will','been','were','them','they','their','issue','error','user',
+        'customers','customer','page','screen','click','cannot','does','dont','cant','not',
+        'but','are','was','had','has','our','out','too','its','you','all','any','more',
+        'use','using','after','before','same','need','needs','should','could','would'
+      ]);
+
+      return String(text || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .split(/\s+/)
+        .filter(word => word.length >= 4 && !stopWords.has(word))
+        .slice(0, 300);
+    }
+
+    function prettyFieldName(key) {
+      const map = {
+        submittedBy: 'Submitted By',
+        companyName: 'Company Name',
+        issueTitle: 'Issue Title',
+        issueCategory: 'Issue Category',
+        detailedDescription: 'Detailed Description',
+        issueOngoingIntermittent: 'Ongoing / Intermittent',
+        priorityLevel: 'Priority Level',
+        impactType: 'Impact Type',
+        workaroundAvailable: 'Workaround Available',
+        workaroundDetails: 'Workaround Details',
+        environment: 'Environment',
+        productModuleAffected: 'Module Affected',
+        browserDeviceOs: 'Browser / Device / OS',
+        errorMessage: 'Error Message',
+        attachmentUpload: 'Attachment Upload',
+        reportedChannel: 'Reported Channel',
+        sourceOfIssue: 'Source of Issue',
+        initialAssessment: 'Initial Assessment',
+        rootCauseType: 'Root Cause Type',
+        internalNotes: 'Internal Notes',
+        escalationRequired: 'Escalation Required',
+        developmentTicket: 'Development Ticket',
+        finalStatus: 'Final Status',
+        resolutionClosureDate: 'Closure Date',
+        wasCsInformed: 'CS Informed'
+     };
+      return map[key] || key;
+    }
+        function renderTable(issues) {
       if (!issues.length) {
         renderTableMessage('No issues found', 'Try adjusting the search term or filters.');
         return;
@@ -2190,7 +2792,9 @@
         case 'priority_desc':
           return items.sort((a, b) => {
             const diff = getPriorityRank(issueVal(b, 'priorityLevel')) - getPriorityRank(issueVal(a, 'priorityLevel'));
-            return diff || safeDateMs(issueVal(b, 'timestamp')) - safeDateMs(issueVal(a, 'timestamp')) || Number(issueVal(b, 'id') || 0) - Number(issueVal(a, 'id') || 0);
+            return diff ||
+              safeDateMs(issueVal(b, 'timestamp')) - safeDateMs(issueVal(a, 'timestamp')) ||
+              Number(issueVal(b, 'id') || 0) - Number(issueVal(a, 'id') || 0);
           });
 
         case 'status_asc':
@@ -2581,6 +3185,7 @@
       els.priorityFilter.disabled = isBusy;
       els.sortSelect.disabled = isBusy;
       els.clearBtnTop.disabled = isBusy;
+      els.matrixSelect.disabled = isBusy;
 
       if (!state.isSaving) {
         els.saveBtn.disabled = isBusy;
@@ -2772,3 +3377,4 @@
   </script>
 </body>
 </html>
+    
