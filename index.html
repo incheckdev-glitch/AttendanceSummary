@@ -3,941 +3,2772 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Pro Support Command Centre</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <title>Incheck360 Support Analytics Workspace</title>
   <style>
     :root {
+      --bg: #f5f7fb;
+      --bg-2: #eef3fb;
+      --panel: #ffffff;
+      --panel-soft: #f8fbff;
+      --panel-alt: #f3f7fd;
+      --border: #e3ebf5;
+      --border-strong: #d4dfec;
+      --text: #162132;
+      --text-soft: #617188;
+      --text-faint: #8796aa;
+      --primary: #2563eb;
+      --primary-2: #1d4ed8;
+      --primary-soft: #dbeafe;
+      --success: #16a34a;
+      --success-soft: #dcfce7;
+      --warning: #d97706;
+      --warning-soft: #fef3c7;
+      --danger: #dc2626;
+      --danger-soft: #fee2e2;
+      --purple: #7c3aed;
+      --purple-soft: #ede9fe;
+      --shadow-sm: 0 4px 14px rgba(15, 23, 42, 0.05);
+      --shadow-md: 0 12px 30px rgba(15, 23, 42, 0.08);
+      --radius-xl: 22px;
+      --radius-lg: 18px;
+      --radius-md: 14px;
+      --radius-sm: 10px;
+      --transition: 180ms ease;
+    }
+
+    body.dark-theme {
       --bg: #0b1220;
-      --panel: #121a2b;
-      --panel-2: #182235;
-      --text: #e6edf7;
-      --muted: #9fb0cc;
-      --border: #26324a;
-      --primary: #5aa9ff;
-      --success: #29c36a;
-      --warning: #f2b84b;
-      --danger: #ef5b5b;
-      --shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
-      --radius: 18px;
+      --bg-2: #10182a;
+      --panel: #121c2f;
+      --panel-soft: #162338;
+      --panel-alt: #18253d;
+      --border: #24344f;
+      --border-strong: #2e4260;
+      --text: #edf3ff;
+      --text-soft: #a8b7cb;
+      --text-faint: #7f90a8;
+      --primary-soft: rgba(37, 99, 235, 0.18);
+      --success-soft: rgba(22, 163, 74, 0.16);
+      --warning-soft: rgba(217, 119, 6, 0.16);
+      --danger-soft: rgba(220, 38, 38, 0.16);
+      --purple-soft: rgba(124, 58, 237, 0.18);
+      --shadow-sm: 0 8px 22px rgba(0, 0, 0, 0.22);
+      --shadow-md: 0 20px 46px rgba(0, 0, 0, 0.28);
     }
 
     * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+
     body {
       margin: 0;
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: linear-gradient(180deg, #09101c 0%, #0b1220 100%);
+      font-family: Inter, Arial, sans-serif;
       color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 20%),
+        linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
+      transition: background var(--transition), color var(--transition);
     }
 
-    .container {
-      max-width: 1480px;
+    a {
+      color: var(--primary);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .app-shell {
+      max-width: 1600px;
       margin: 0 auto;
-      padding: 24px;
-    }
-
-    .topbar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 16px;
-      margin-bottom: 24px;
-      flex-wrap: wrap;
-    }
-
-    h1 {
-      margin: 0;
-      font-size: 32px;
-      line-height: 1.1;
-    }
-
-    .subtext {
-      color: var(--muted);
-      margin-top: 6px;
-      font-size: 14px;
-    }
-
-    .tabs {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
-    .tab {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      color: var(--text);
-      padding: 10px 16px;
-      border-radius: 999px;
-      cursor: pointer;
-      transition: 0.2s ease;
-    }
-
-    .tab.active,
-    .tab:hover {
-      background: var(--primary);
-      border-color: var(--primary);
-      color: #08111f;
-      font-weight: 700;
+      padding: 18px;
     }
 
     .panel {
-      background: rgba(18, 26, 43, 0.92);
+      background: var(--panel);
       border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(10px);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
     }
 
-    .config {
-      padding: 18px;
-      margin-bottom: 20px;
+    .appbar {
       display: grid;
-      grid-template-columns: 1.4fr auto auto;
-      gap: 12px;
-      align-items: end;
+      grid-template-columns: auto 1fr auto;
+      gap: 16px;
+      align-items: center;
+      padding: 16px 18px;
+      margin-bottom: 16px;
     }
 
-    .field {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
+    .brand-badge {
+      width: 42px;
+      height: 42px;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      font-weight: 900;
+      color: #fff;
+      background: linear-gradient(135deg, var(--primary), var(--primary-2));
+      box-shadow: 0 10px 24px rgba(37, 99, 235, 0.22);
     }
 
-    label {
+    .appbar-title h1 {
+      margin: 0;
+      font-size: 24px;
+      letter-spacing: -0.03em;
+    }
+
+    .appbar-title p {
+      margin: 4px 0 0;
+      color: var(--text-soft);
       font-size: 13px;
-      color: var(--muted);
-      font-weight: 600;
     }
 
-    input, select, textarea, button {
+    .appbar-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .appbar-actions button,
+    button,
+    select,
+    input,
+    textarea {
       font: inherit;
     }
 
-    input, select, textarea {
+    button,
+    select,
+    input,
+    textarea {
       width: 100%;
-      background: var(--panel-2);
-      color: var(--text);
-      border: 1px solid var(--border);
+      padding: 11px 13px;
       border-radius: 12px;
-      padding: 12px 14px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition), opacity var(--transition);
       outline: none;
     }
 
-    input:focus, select:focus, textarea:focus {
-      border-color: var(--primary);
-      box-shadow: 0 0 0 3px rgba(90, 169, 255, 0.15);
+    input:focus,
+    select:focus,
+    textarea:focus {
+      border-color: rgba(37, 99, 235, 0.45);
+      box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
     }
 
     button {
-      border: 0;
-      border-radius: 12px;
-      padding: 12px 16px;
       cursor: pointer;
-      font-weight: 700;
-      transition: transform 0.15s ease, opacity 0.15s ease;
-    }
-
-    button:hover { transform: translateY(-1px); }
-    button:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
-
-    .btn-primary { background: var(--primary); color: #08111f; }
-    .btn-secondary { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
-
-    .statusbar {
-      margin: 10px 0 22px;
-      color: var(--muted);
-      font-size: 14px;
-      min-height: 20px;
-    }
-
-    .view { display: none; }
-    .view.active { display: block; }
-
-    .cards {
-      display: grid;
-      grid-template-columns: repeat(5, minmax(0, 1fr));
-      gap: 16px;
-      margin-bottom: 18px;
-    }
-
-    .card {
-      padding: 18px;
-      min-height: 120px;
-    }
-
-    .card .label {
-      color: var(--muted);
-      font-size: 13px;
-      font-weight: 700;
-      letter-spacing: 0.02em;
-      text-transform: uppercase;
-    }
-
-    .card .value {
-      font-size: 36px;
       font-weight: 800;
-      margin-top: 12px;
+      background: linear-gradient(135deg, var(--primary), var(--primary-2));
+      color: #fff;
+      border: none;
+      box-shadow: 0 10px 20px rgba(37, 99, 235, 0.18);
     }
 
-    .grid-2 {
+    button:hover:not(:disabled) {
+      transform: translateY(-1px);
+    }
+
+    button:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .secondary-btn {
+      background: var(--panel);
+      color: var(--text);
+      border: 1px solid var(--border);
+      box-shadow: none;
+    }
+
+    .workspace-grid {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 16px;
-      margin-bottom: 16px;
     }
 
-    .chart-panel {
+    .filter-panel {
       padding: 18px;
-      min-height: 380px;
     }
 
-    .chart-title {
-      font-size: 18px;
-      font-weight: 700;
-      margin: 0 0 16px;
-    }
-
-    .toolbar {
-      display: grid;
-      grid-template-columns: repeat(6, minmax(0, 1fr));
-      gap: 12px;
-      padding: 18px;
-      margin-bottom: 16px;
-    }
-
-    .toolbar-actions {
+    .section-head {
       display: flex;
-      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+
+    .section-head h2,
+    .section-head h3 {
+      margin: 0;
+      letter-spacing: -0.02em;
+    }
+
+    .section-sub {
+      margin-top: 4px;
+      font-size: 13px;
+      color: var(--text-soft);
+    }
+
+    .filter-grid {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr 1fr 1fr 140px;
+      gap: 12px;
       align-items: end;
     }
 
-    .table-wrap {
-      overflow: auto;
-      border-radius: var(--radius);
+    .filter-field {
+      display: grid;
+      gap: 6px;
     }
 
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      min-width: 1150px;
-    }
-
-    th, td {
-      padding: 14px 12px;
-      text-align: left;
-      border-bottom: 1px solid var(--border);
-      vertical-align: top;
-      font-size: 14px;
-    }
-
-    th {
-      position: sticky;
-      top: 0;
-      background: #121a2b;
-      z-index: 2;
-      font-size: 12px;
-      color: var(--muted);
+    .filter-label {
+      font-size: 11px;
       text-transform: uppercase;
-      letter-spacing: 0.04em;
+      letter-spacing: 0.05em;
+      color: var(--text-soft);
+      font-weight: 800;
     }
 
-    tbody tr:hover {
-      background: rgba(255,255,255,0.03);
+    .input-wrap {
+      position: relative;
+    }
+
+    .input-icon {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-faint);
+      font-size: 14px;
+      pointer-events: none;
+    }
+
+    .input-wrap input {
+      padding-left: 36px;
+    }
+
+    .chip-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+
+    .filter-chip {
+      width: auto;
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      border: 1px solid var(--border);
+      background: var(--panel-soft);
+      color: var(--text-soft);
+      box-shadow: none;
+    }
+
+    .filter-chip.active {
+      background: var(--primary-soft);
+      color: var(--primary);
+      border-color: transparent;
+    }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .kpi-card {
+      padding: 16px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .kpi-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      gap: 10px;
+    }
+
+    .kpi-label {
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--text-soft);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .kpi-icon {
+      width: 36px;
+      height: 36px;
+      display: grid;
+      place-items: center;
+      border-radius: 12px;
+      font-size: 16px;
+    }
+
+    .kpi-value {
+      font-size: 28px;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+
+    .kpi-sub {
+      font-size: 12px;
+      color: var(--text-faint);
+    }
+
+    .analytics-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .analytics-card {
+      padding: 18px;
+      min-height: 260px;
     }
 
     .pill {
       display: inline-flex;
       align-items: center;
+      gap: 8px;
       border-radius: 999px;
-      padding: 6px 10px;
+      padding: 8px 11px;
       font-size: 12px;
-      font-weight: 700;
-      white-space: nowrap;
-      border: 1px solid transparent;
+      font-weight: 800;
+      background: var(--panel-soft);
+      border: 1px solid var(--border);
+      color: var(--text-soft);
     }
 
-    .pill-open { background: rgba(90,169,255,0.12); color: #9bd0ff; border-color: rgba(90,169,255,0.35); }
-    .pill-resolved { background: rgba(41,195,106,0.12); color: #8ee3b0; border-color: rgba(41,195,106,0.35); }
-    .pill-warning { background: rgba(242,184,75,0.12); color: #ffd58a; border-color: rgba(242,184,75,0.35); }
-    .pill-danger { background: rgba(239,91,91,0.12); color: #ff9d9d; border-color: rgba(239,91,91,0.35); }
-    .pill-muted { background: rgba(159,176,204,0.12); color: #c7d2e7; border-color: rgba(159,176,204,0.28); }
-
-    .pagination {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+    .analytics-stat-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 12px;
-      padding: 16px 18px;
-      margin-top: 14px;
     }
 
-    .pagination-controls {
-      display: flex;
+    .mini-stat {
+      padding: 14px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: var(--panel-soft);
+    }
+
+    .mini-stat .label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-soft);
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+
+    .mini-stat .value {
+      font-size: 24px;
+      font-weight: 900;
+      letter-spacing: -0.03em;
+    }
+
+    .mini-stat .sub {
+      margin-top: 5px;
+      font-size: 12px;
+      color: var(--text-faint);
+    }
+
+    .distribution {
+      display: grid;
+      gap: 10px;
+    }
+
+    .dist-row {
+      display: grid;
+      grid-template-columns: 150px 1fr 50px;
       gap: 10px;
       align-items: center;
     }
 
-    .details {
-      padding: 20px;
+    .dist-label {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-soft);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
-    .details-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 14px;
-      margin-top: 18px;
-    }
-
-    .detail-box {
-      background: var(--panel-2);
+    .dist-bar {
+      height: 10px;
+      border-radius: 999px;
       border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 14px;
+      background: var(--panel-soft);
+      overflow: hidden;
     }
 
-    .detail-box h4 {
-      margin: 0 0 8px;
-      font-size: 13px;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
+    .dist-fill {
+      height: 100%;
+      border-radius: inherit;
     }
 
-    .mono {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      font-size: 13px;
-      word-break: break-all;
+    .dist-value {
+      text-align: right;
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--text-soft);
     }
 
-    .empty {
+    .ring-wrap {
+      display: grid;
+      grid-template-columns: 170px 1fr;
+      gap: 14px;
+      align-items: center;
+    }
+
+    .ring {
+      width: 170px;
+      height: 170px;
+      border-radius: 50%;
+      position: relative;
+      display: grid;
+      place-items: center;
+      margin: 0 auto;
+      border: 1px solid var(--border);
+    }
+
+    .ring::after {
+      content: "";
+      position: absolute;
+      width: 104px;
+      height: 104px;
+      border-radius: 50%;
+      background: var(--panel);
+      border: 1px solid var(--border);
+    }
+
+    .ring-center {
+      position: relative;
+      z-index: 1;
       text-align: center;
-      padding: 40px 20px;
-      color: var(--muted);
+    }
+
+    .ring-center .big {
+      font-size: 28px;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+    }
+
+    .ring-center .small {
+      font-size: 12px;
+      color: var(--text-soft);
+      font-weight: 700;
+    }
+
+    .legend {
+      display: grid;
+      gap: 10px;
+    }
+
+    .legend-row {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 10px;
+      align-items: center;
+      font-size: 13px;
+    }
+
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    .legend-label {
+      color: var(--text-soft);
+      font-weight: 700;
+    }
+
+    .legend-value {
+      color: var(--text);
+      font-weight: 800;
+    }
+
+    .table-panel {
+      padding: 18px;
+    }
+
+    .table-shell {
+      overflow: hidden;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+    }
+
+    .table-wrap {
+      overflow: auto;
+      max-height: 74vh;
+    }
+
+    table {
+      width: 100%;
+      min-width: 1320px;
+      border-collapse: collapse;
+    }
+
+    thead th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: var(--panel-soft);
+      color: var(--text-soft);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--border);
+      padding: 14px 12px;
+      text-align: left;
+    }
+
+    tbody td {
+      padding: 14px 12px;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+      vertical-align: top;
+    }
+
+    tbody tr {
+      transition: background var(--transition);
+      cursor: pointer;
+    }
+
+    tbody tr:hover {
+      background: rgba(37, 99, 235, 0.04);
+    }
+
+    body.dark-theme tbody tr:hover {
+      background: rgba(59, 130, 246, 0.08);
+    }
+
+    tbody tr.selected-row {
+      background: rgba(37, 99, 235, 0.10);
+    }
+
+    .id-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 46px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: var(--primary-soft);
+      color: var(--primary);
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .issue-title {
+      font-weight: 800;
+      margin-bottom: 6px;
+      line-height: 1.35;
+    }
+
+    .issue-desc {
+      font-size: 12px;
+      color: var(--text-soft);
+      line-height: 1.5;
+      max-width: 420px;
+      word-break: break-word;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+
+    .chip-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .action-btn {
+      width: auto;
+      padding: 8px 11px;
+      font-size: 12px;
+      border-radius: 10px;
+      box-shadow: none;
+    }
+
+    .loading-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.24);
+      backdrop-filter: blur(4px);
+      display: none;
+      place-items: center;
+      z-index: 1000;
+    }
+
+    .loading-overlay.show {
+      display: grid;
+    }
+
+    .loading-card {
+      width: 240px;
+      border-radius: 20px;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .spinner {
+      width: 38px;
+      height: 38px;
+      margin: 0 auto 12px;
+      border-radius: 50%;
+      border: 3px solid var(--primary-soft);
+      border-top-color: var(--primary);
+      animation: spin 0.9s linear infinite;
+    }
+
+    .toast {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      min-width: 260px;
+      max-width: 380px;
+      padding: 14px 16px;
+      border-radius: 14px;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 800;
+      box-shadow: var(--shadow-md);
+      transform: translateY(18px);
+      opacity: 0;
+      pointer-events: none;
+      transition: all var(--transition);
+      z-index: 1100;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .toast.success {
+      background: linear-gradient(135deg, #16a34a, #15803d);
+    }
+
+    .toast.error {
+      background: linear-gradient(135deg, #dc2626, #b91c1c);
+    }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(15, 23, 42, 0.42);
+      backdrop-filter: blur(6px);
+      z-index: 1200;
+    }
+
+    .modal-backdrop.show {
+      display: flex;
+    }
+
+    .modal {
+      width: min(980px, 100%);
+      max-height: 92vh;
+      overflow: auto;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      box-shadow: var(--shadow-md);
+      padding: 18px;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: start;
+      margin-bottom: 16px;
+      position: sticky;
+      top: 0;
+      background: var(--panel);
+      padding-bottom: 10px;
+      z-index: 2;
+    }
+
+    .modal-title {
+      margin: 0;
+      font-size: 22px;
+      letter-spacing: -0.03em;
+    }
+
+    .modal-sub {
+      margin-top: 4px;
+      font-size: 13px;
+      color: var(--text-soft);
+    }
+
+    .edit-grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .grid-2, .grid-3 {
+      display: grid;
+      gap: 12px;
+    }
+
+    .grid-2 { grid-template-columns: 1fr 1fr; }
+    .grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+
+    .section-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-soft);
+      font-weight: 900;
+      padding-top: 8px;
+    }
+
+    .field-group {
+      display: grid;
+      gap: 8px;
+    }
+
+    .field-group label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-soft);
+      font-weight: 800;
+    }
+
+    .readonly {
+      background: var(--panel-soft);
+    }
+
+    .selected-box,
+    .smart-box,
+    .security-box {
+      padding: 14px;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: var(--panel-soft);
+      line-height: 1.6;
+      font-size: 13px;
+      color: var(--text-soft);
+    }
+
+    .selected-box strong,
+    .smart-box strong,
+    .security-box strong {
+      color: var(--text);
+    }
+
+    .modal-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      position: sticky;
+      bottom: 0;
+      background: linear-gradient(180deg, rgba(255,255,255,0), var(--panel) 35%);
+      padding-top: 10px;
+    }
+
+    .muted {
+      color: var(--text-faint);
+      font-size: 12px;
+    }
+
+    .success {
+      color: var(--success);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .error {
+      color: var(--danger);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .empty-state {
+      padding: 40px 24px;
+      text-align: center;
+      color: var(--text-soft);
+    }
+
+    .empty-state h4 {
+      margin: 0 0 8px;
+      font-size: 16px;
+      color: var(--text);
+    }
+
+    .empty-state p {
+      margin: 0;
+      font-size: 13px;
     }
 
     .footer-note {
-      margin-top: 18px;
-      color: var(--muted);
-      font-size: 13px;
+      font-size: 12px;
+      color: var(--text-faint);
+      line-height: 1.6;
     }
 
-    @media (max-width: 1200px) {
-      .cards, .grid-2, .toolbar, .config, .details-grid { grid-template-columns: 1fr; }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    @media (max-width: 1280px) {
+      .kpi-grid,
+      .analytics-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .filter-grid {
+        grid-template-columns: 1fr 1fr 1fr;
+      }
+    }
+
+    @media (max-width: 920px) {
+      .app-shell {
+        padding: 14px;
+      }
+
+      .appbar,
+      .filter-grid,
+      .kpi-grid,
+      .analytics-grid,
+      .analytics-stat-grid,
+      .ring-wrap,
+      .grid-2,
+      .grid-3,
+      .modal-actions {
+        grid-template-columns: 1fr;
+      }
+
+      .appbar {
+        grid-template-columns: 1fr;
+      }
+
+      .appbar-actions {
+        justify-content: flex-start;
+      }
+
+      .dist-row {
+        grid-template-columns: 120px 1fr 40px;
+      }
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="topbar">
-      <div>
-        <h1>Pro Support Command Centre</h1>
-        <div class="subtext">Single-file dashboard for your Google Apps Script + Google Sheet support backend</div>
-      </div>
-      <div class="tabs">
-        <button class="tab active" data-view="dashboard">Dashboard</button>
-        <button class="tab" data-view="issues">Issues</button>
-        <button class="tab" data-view="analytics">Analytics</button>
-      </div>
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-card panel">
+      <div class="spinner"></div>
+      <div style="font-weight:800; color:var(--text); margin-bottom:4px;">Loading workspace</div>
+      <div class="muted">Refreshing analytics and issue queue...</div>
     </div>
+  </div>
 
-    <div class="panel config">
-      <div class="field">
-        <label for="apiBaseUrl">Apps Script Web App URL</label>
-        <input id="apiBaseUrl" type="text" placeholder="Paste your deployed Apps Script web app URL here" />
-      </div>
-      <button id="saveConfigBtn" class="btn-secondary">Save URL</button>
-      <button id="loadAllBtn" class="btn-primary">Load Dashboard</button>
-    </div>
+  <div class="toast" id="toast"></div>
 
-    <div id="statusbar" class="statusbar"></div>
-
-    <section id="dashboard" class="view active">
-      <div class="cards">
-        <div class="panel card"><div class="label">Total Issues</div><div class="value" id="cardTotal">0</div></div>
-        <div class="panel card"><div class="label">Open</div><div class="value" id="cardOpen">0</div></div>
-        <div class="panel card"><div class="label">Resolved / Closed</div><div class="value" id="cardResolved">0</div></div>
-        <div class="panel card"><div class="label">Escalated</div><div class="value" id="cardEscalated">0</div></div>
-        <div class="panel card"><div class="label">High / Critical</div><div class="value" id="cardHighCritical">0</div></div>
+  <div class="modal-backdrop" id="editModalBackdrop" aria-hidden="true">
+    <div class="modal">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title">Issue Details & Edit</h2>
+          <div class="modal-sub">Full submission details plus editable workflow fields.</div>
+        </div>
+        <button type="button" class="secondary-btn" id="closeModalBtn">✕</button>
       </div>
 
-      <div class="grid-2">
-        <div class="panel chart-panel">
-          <h3 class="chart-title">Issues by Status</h3>
-          <canvas id="statusChart"></canvas>
-        </div>
-        <div class="panel chart-panel">
-          <h3 class="chart-title">Issues by Priority</h3>
-          <canvas id="priorityChart"></canvas>
-        </div>
-      </div>
+      <div class="edit-grid">
+        <div class="selected-box" id="selectedIssueInfo">No issue selected.</div>
+        <div class="smart-box" id="smartSuggestionBox"><strong>Smart suggestion:</strong> Select an issue to see recommended next actions.</div>
 
-      <div class="grid-2">
-        <div class="panel chart-panel">
-          <h3 class="chart-title">Issues by Category</h3>
-          <canvas id="categoryChart"></canvas>
+        <div class="section-title">Identifiers</div>
+        <div class="grid-3">
+          <div class="field-group">
+            <label for="issueId">Row ID</label>
+            <input id="issueId" class="readonly" readonly />
+          </div>
+          <div class="field-group">
+            <label for="timestamp">Timestamp</label>
+            <input id="timestamp" class="readonly" readonly />
+          </div>
+          <div class="field-group">
+            <label for="requestDate">Request Date</label>
+            <input id="requestDate" class="readonly" readonly />
+          </div>
         </div>
-        <div class="panel chart-panel">
-          <h3 class="chart-title">Issues by Source / Channel</h3>
-          <canvas id="sourceChart"></canvas>
-        </div>
-      </div>
-    </section>
 
-    <section id="issues" class="view">
-      <div class="panel toolbar">
-        <div class="field">
-          <label for="searchInput">Search</label>
-          <input id="searchInput" type="text" placeholder="Company, title, category, description" />
+        <div class="section-title">Reporter & Company</div>
+        <div class="grid-2">
+          <div class="field-group">
+            <label for="submittedBy">Submitted By</label>
+            <input id="submittedBy" class="readonly" readonly />
+          </div>
+          <div class="field-group">
+            <label for="companyName">Company Name</label>
+            <input id="companyName" class="readonly" readonly />
+          </div>
         </div>
-        <div class="field">
-          <label for="statusFilter">Status</label>
-          <select id="statusFilter">
-            <option value="">All</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="priorityFilter">Priority</label>
-          <select id="priorityFilter">
-            <option value="">All</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="categoryFilter">Category</label>
-          <select id="categoryFilter">
-            <option value="">All</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="companyFilter">Company</label>
-          <select id="companyFilter">
-            <option value="">All</option>
-          </select>
-        </div>
-        <div class="toolbar-actions">
-          <button id="applyFiltersBtn" class="btn-primary">Apply</button>
-          <button id="resetFiltersBtn" class="btn-secondary">Reset</button>
-        </div>
-      </div>
 
-      <div class="panel table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Request Date</th>
-              <th>Company</th>
-              <th>Issue Title</th>
-              <th>Category</th>
-              <th>Priority</th>
-              <th>Status</th>
-              <th>Product / Module</th>
-              <th>Reported Channel</th>
-              <th>Escalated</th>
-              <th>Closure Date</th>
-            </tr>
-          </thead>
-          <tbody id="issuesTableBody"></tbody>
-        </table>
-        <div id="issuesEmpty" class="empty" style="display:none;">No issues found.</div>
-      </div>
-
-      <div class="panel pagination">
-        <div id="paginationInfo">Page 1</div>
-        <div class="pagination-controls">
-          <button id="prevPageBtn" class="btn-secondary">Previous</button>
-          <button id="nextPageBtn" class="btn-primary">Next</button>
+        <div class="field-group">
+          <label for="issueTitle">Issue Title</label>
+          <input id="issueTitle" class="readonly" readonly />
         </div>
-      </div>
 
-      <div class="panel details" id="detailsPanel" style="margin-top: 16px; display:none;">
-        <h3 class="chart-title" id="detailsTitle">Issue Details</h3>
-        <div class="details-grid" id="detailsGrid"></div>
-      </div>
-    </section>
+        <div class="grid-2">
+          <div class="field-group">
+            <label for="issueCategory">Issue Category</label>
+            <input id="issueCategory" class="readonly" readonly />
+          </div>
+          <div class="field-group">
+            <label for="priorityLevel">Priority Level</label>
+            <input id="priorityLevel" class="readonly" readonly />
+          </div>
+        </div>
 
-    <section id="analytics" class="view">
-      <div class="grid-2">
-        <div class="panel chart-panel">
-          <h3 class="chart-title">Open vs Closed</h3>
-          <canvas id="openClosedChart"></canvas>
+        <div class="field-group">
+          <label for="detailedDescription">Detailed Description</label>
+          <textarea id="detailedDescription" class="readonly" readonly></textarea>
         </div>
-        <div class="panel chart-panel">
-          <h3 class="chart-title">Escalation Rate</h3>
-          <canvas id="escalationChart"></canvas>
-        </div>
-      </div>
 
-      <div class="grid-2">
-        <div class="panel chart-panel">
-          <h3 class="chart-title">Top Companies</h3>
-          <canvas id="companiesChart"></canvas>
+        <div class="section-title">Operational Context</div>
+        <div class="grid-2">
+          <div class="field-group">
+            <label for="issueOngoingIntermittent">Ongoing / Intermittent</label>
+            <input id="issueOngoingIntermittent" class="readonly" readonly />
+          </div>
+          <div class="field-group">
+            <label for="impactType">Impact Type</label>
+            <input id="impactType" class="readonly" readonly />
+          </div>
         </div>
-        <div class="panel chart-panel">
-          <h3 class="chart-title">Top Modules</h3>
-          <canvas id="modulesChart"></canvas>
-        </div>
-      </div>
 
-      <div class="panel details">
-        <h3 class="chart-title">Computed KPI Snapshot</h3>
-        <div class="details-grid" id="kpiGrid"></div>
+        <div class="grid-2">
+          <div class="field-group">
+            <label for="workaroundAvailable">Workaround Available</label>
+            <input id="workaroundAvailable" class="readonly" readonly />
+          </div>
+          <div class="field-group">
+            <label for="environment">Environment</label>
+            <input id="environment" class="readonly" readonly />
+          </div>
+        </div>
+
+        <div class="field-group">
+          <label for="workaroundDetails">Workaround Details</label>
+          <textarea id="workaroundDetails" class="readonly" readonly></textarea>
+        </div>
+
+        <div class="grid-2">
+          <div class="field-group">
+            <label for="productModuleAffected">Product / Module Affected</label>
+            <input id="productModuleAffected" class="readonly" readonly />
+          </div>
+          <div class="field-group">
+            <label for="browserDeviceOs">Browser / Device / OS</label>
+            <input id="browserDeviceOs" class="readonly" readonly />
+          </div>
+        </div>
+
+        <div class="field-group">
+          <label for="errorMessage">Error Message</label>
+          <textarea id="errorMessage" class="readonly" readonly></textarea>
+        </div>
+
+        <div class="grid-2">
+          <div class="field-group">
+            <label for="attachmentUpload">Attachment Upload</label>
+            <input id="attachmentUpload" class="readonly" readonly />
+          </div>
+          <div class="field-group">
+            <label for="reportedChannel">Reported Channel</label>
+            <input id="reportedChannel" class="readonly" readonly />
+          </div>
+        </div>
+
+        <div class="field-group">
+          <label for="sourceOfIssue">Source of Issue</label>
+          <input id="sourceOfIssue" class="readonly" readonly />
+        </div>
+
+        <div class="section-title">Resolution Workflow</div>
+        <div class="grid-2">
+          <div class="field-group">
+            <label for="finalStatus">Final Status</label>
+            <select id="finalStatus"></select>
+          </div>
+          <div class="field-group">
+            <label for="resolutionClosureDate">Resolution / Closure Date</label>
+            <input id="resolutionClosureDate" class="readonly" readonly />
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="field-group">
+            <label for="initialAssessment">Initial Assessment</label>
+            <select id="initialAssessment"></select>
+          </div>
+          <div class="field-group">
+            <label for="rootCauseType">Root Cause Type</label>
+            <select id="rootCauseType"></select>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="field-group">
+            <label for="escalationRequired">Escalation Required?</label>
+            <select id="escalationRequired"></select>
+          </div>
+          <div class="field-group">
+            <label for="wasCsInformed">Was CS Informed?</label>
+            <select id="wasCsInformed"></select>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <label for="developmentTicket">Development Ticket</label>
+          <input id="developmentTicket" placeholder="Development ticket ID or link" />
+        </div>
+
+        <div class="field-group">
+          <label for="internalNotes">Internal Notes</label>
+          <textarea id="internalNotes" rows="7" placeholder="Document root cause, actions taken, workaround, or handoff notes..."></textarea>
+        </div>
+
+        <div class="section-title">Security</div>
+        <div class="security-box">
+          <strong>Backend-validated save:</strong> this page still relies on backend validation. For production security, enforce user auth and authorization in Apps Script or your backend.
+        </div>
+
+        <div class="field-group">
+          <label for="editPassword">Edit Password</label>
+          <input id="editPassword" type="password" placeholder="Enter edit password" />
+        </div>
+
+        <div id="saveMessage" class="muted"></div>
+
+        <div class="modal-actions">
+          <button id="saveBtn" type="button">Save Update</button>
+          <button id="resetEditorBtn" class="secondary-btn" type="button">Reset Changes</button>
+        </div>
+
         <div class="footer-note">
-          This single-file version computes some analytics client-side from the issues endpoint, so it works even if your Apps Script only has <span class="mono">summary</span> and <span class="mono">issues</span> actions.
+          Full row details stay in the popup. The main screen stays focused on analytics and the queue.
         </div>
       </div>
+    </div>
+  </div>
+
+  <div class="app-shell">
+    <section class="panel appbar">
+      <div class="brand-badge">IC</div>
+
+      <div class="appbar-title">
+        <h1>Support Analytics Workspace</h1>
+        <p>Filters · KPIs · Trends · Distributions · Detailed submissions</p>
+      </div>
+
+      <div class="appbar-actions">
+        <button type="button" id="refreshBtnTop">⟳ Sync</button>
+        <button type="button" class="secondary-btn" id="clearBtnTop">Reset filters</button>
+        <button type="button" class="secondary-btn" id="themeToggleBtn">🌙 Dark Mode</button>
+      </div>
     </section>
+
+    <div class="workspace-grid">
+      <section class="panel filter-panel">
+        <div class="section-head">
+          <div>
+            <h2>Filters</h2>
+            <div class="section-sub">Filter issues by search, status, priority, and sort order.</div>
+          </div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <div class="pill" id="issuesCountPill">Showing 0 issues</div>
+            <div class="pill" id="selectedCountPill">No issue selected</div>
+          </div>
+        </div>
+
+        <div class="filter-grid">
+          <div class="filter-field">
+            <label class="filter-label" for="searchInput">Search Notes / Client / Module</label>
+            <div class="input-wrap">
+              <span class="input-icon">⌕</span>
+              <input id="searchInput" placeholder="Search by company, issue title, module, description, or ticket..." />
+            </div>
+          </div>
+
+          <div class="filter-field">
+            <label class="filter-label" for="statusFilter">Status</label>
+            <select id="statusFilter"></select>
+          </div>
+
+          <div class="filter-field">
+            <label class="filter-label" for="priorityFilter">Priority</label>
+            <select id="priorityFilter"></select>
+          </div>
+
+          <div class="filter-field">
+            <label class="filter-label" for="sortSelect">Sort</label>
+            <select id="sortSelect"></select>
+          </div>
+
+          <button id="refreshBtn" type="button">Refresh</button>
+        </div>
+
+        <div class="chip-row" id="quickFilterChips"></div>
+      </section>
+
+      <section class="kpi-grid" id="summaryCards"></section>
+
+      <section class="analytics-grid">
+        <article class="panel analytics-card">
+          <div class="section-head">
+            <div>
+              <h3>Operational Snapshot</h3>
+              <div class="section-sub">Core metrics for the current filtered view.</div>
+            </div>
+            <div class="pill" id="filteredSummaryPill">0 issues in view</div>
+          </div>
+          <div class="analytics-stat-grid" id="filteredOverviewStats"></div>
+        </article>
+
+        <article class="panel analytics-card">
+          <div class="section-head">
+            <div>
+              <h3>Status Distribution</h3>
+              <div class="section-sub">Current status mix for visible issues.</div>
+            </div>
+          </div>
+          <div class="distribution" id="statusDistribution"></div>
+        </article>
+
+        <article class="panel analytics-card">
+          <div class="section-head">
+            <div>
+              <h3>Priority Mix</h3>
+              <div class="section-sub">Severity balance in the queue.</div>
+            </div>
+          </div>
+          <div class="ring-wrap">
+            <div id="priorityRingWrap"></div>
+            <div class="legend" id="priorityLegend"></div>
+          </div>
+        </article>
+
+        <article class="panel analytics-card">
+          <div class="section-head">
+            <div>
+              <h3>Aging Buckets</h3>
+              <div class="section-sub">Active issue age grouped by days open.</div>
+            </div>
+          </div>
+          <div class="distribution" id="agingDistribution"></div>
+        </article>
+
+        <article class="panel analytics-card">
+          <div class="section-head">
+            <div>
+              <h3>Module Hotspots</h3>
+              <div class="section-sub">Where issues are concentrating right now.</div>
+            </div>
+          </div>
+          <div class="distribution" id="moduleDistribution"></div>
+        </article>
+
+        <article class="panel analytics-card">
+          <div class="section-head">
+            <div>
+              <h3>Top Companies</h3>
+              <div class="section-sub">Organizations with the most visible issues.</div>
+            </div>
+          </div>
+          <div class="distribution" id="companyDistribution"></div>
+        </article>
+      </section>
+
+      <section class="panel table-panel">
+        <div class="section-head">
+          <div>
+            <h3>Submitted Issue Details</h3>
+            <div class="section-sub">Click a row to select it. Click Edit to open the full issue popup.</div>
+          </div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <div class="pill" id="tableMetaPill">Sorted by sheet order</div>
+            <button id="exportBtn" type="button">⬇ Export filtered CSV</button>
+          </div>
+        </div>
+
+        <div class="table-shell">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Issue</th>
+                  <th>Company</th>
+                  <th>Module</th>
+                  <th>Priority</th>
+                  <th>Status</th>
+                  <th>Escalation</th>
+                  <th>Ticket</th>
+                  <th>Age</th>
+                  <th>Closure Date</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="issuesTable">
+                <tr>
+                  <td colspan="11">Loading...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div style="margin-top:12px; display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+          <div class="muted">Last refreshed: <span id="lastRefreshPill">—</span></div>
+          <div class="muted">Analytics cards and the queue follow the same active filters.</div>
+        </div>
+      </section>
+    </div>
   </div>
 
   <script>
-    const state = {
-      apiBaseUrl: localStorage.getItem('pscc_api_base_url') || '',
-      issuesPage: 1,
-      pageSize: 25,
-      issues: [],
-      filteredIssues: [],
-      charts: {},
-      selectedIssue: null
+    const CONFIG = {
+      API_URL: 'https://script.google.com/macros/s/AKfycbwX0LqxxJ7-YN7EDzzqomxVFVLvIhSXvbYgd4LgLE42gq1Hl4wJmCYPTy2rcsjQ_KVV/exec',
+
+      STATUS_OPTIONS: [
+        'Open',
+        'In Progress',
+        'Waiting for CS',
+        'Waiting for Customer',
+        'Escalated to Development',
+        'Resolved',
+        'Closed'
+      ],
+
+      PRIORITY_OPTIONS: ['Low', 'Medium', 'High', 'Critical'],
+
+      INITIAL_ASSESSMENT_OPTIONS: [
+        'Resolved by R&D',
+        'Need More Information',
+        'Escalated to Development',
+        'Not a Bug',
+        'Duplicate',
+        'Cannot Reproduce'
+      ],
+
+      ROOT_CAUSE_OPTIONS: [
+        'User Error',
+        'Configuration',
+        'Data Problem',
+        'System Bug',
+        'Third-Party Dependency',
+        'Performance Limitation',
+        'Unknown'
+      ],
+
+      YES_NO_OPTIONS: ['Yes', 'No'],
+
+      ACTIVE_STATUSES: new Set([
+        'open',
+        'in progress',
+        'waiting for cs',
+        'waiting for customer',
+        'escalated to development'
+      ]),
+
+      STATUS_THEME: {
+        'Open': { bg: '#e2e8f0', text: '#475569', fill: '#64748b' },
+        'In Progress': { bg: '#dbeafe', text: '#1d4ed8', fill: '#2563eb' },
+        'Waiting for CS': { bg: '#fef3c7', text: '#b45309', fill: '#d97706' },
+        'Waiting for Customer': { bg: '#fef3c7', text: '#b45309', fill: '#d97706' },
+        'Escalated to Development': { bg: '#ede9fe', text: '#6d28d9', fill: '#7c3aed' },
+        'Resolved': { bg: '#dcfce7', text: '#15803d', fill: '#16a34a' },
+        'Closed': { bg: '#dcfce7', text: '#15803d', fill: '#16a34a' }
+      },
+
+      PRIORITY_THEME: {
+        'Critical': { bg: '#fee2e2', text: '#b91c1c' },
+        'High': { bg: '#ffedd5', text: '#c2410c' },
+        'Medium': { bg: '#fef3c7', text: '#b45309' },
+        'Low': { bg: '#dcfce7', text: '#15803d' }
+      },
+
+      PRIORITY_RING_COLORS: {
+        'Critical': '#dc2626',
+        'High': '#ea580c',
+        'Medium': '#d97706',
+        'Low': '#16a34a'
+      },
+
+      PRIORITY_ORDER: {
+        'Critical': 4,
+        'High': 3,
+        'Medium': 2,
+        'Low': 1
+      },
+
+      SORT_OPTIONS: [
+        { value: 'sheet', label: 'Sheet order' },
+        { value: 'priority_desc', label: 'Priority (High → Low)' },
+        { value: 'status_asc', label: 'Status' },
+        { value: 'company_asc', label: 'Company (A → Z)' },
+        { value: 'newest', label: 'Newest first' },
+        { value: 'oldest', label: 'Oldest first' },
+        { value: 'age_desc', label: 'Oldest issues first' },
+        { value: 'closure_desc', label: 'Latest closure date' }
+      ],
+
+      FIELD_ALIASES: {
+        id: ['id', 'ID', 'rowId', 'Row ID'],
+        timestamp: ['timestamp', 'Timestamp'],
+        requestDate: ['requestDate', 'Request date', 'request_date'],
+        submittedBy: ['submittedBy', 'Submitted by', 'submitted_by'],
+        companyName: ['companyName', 'Company name', 'company_name'],
+        issueTitle: ['issueTitle', 'Issue title', 'issue_title'],
+        issueCategory: ['issueCategory', 'Issue category', 'issue_category'],
+        detailedDescription: ['detailedDescription', 'Detailed description', 'detailed_description'],
+        issueOngoingIntermittent: [
+          'issueOngoingIntermittent',
+          'isIssueOngoingOrIntermittent',
+          'ongoingIntermittent',
+          'Is the issue ongoing or intermittent?'
+        ],
+        priorityLevel: ['priorityLevel', 'Priority level', 'priority_level'],
+        impactType: ['impactType', 'Impact type', 'impact_type'],
+        workaroundAvailable: [
+          'workaroundAvailable',
+          'isThereAWorkaroundAvailable',
+          'Is there a workaround available?'
+        ],
+        workaroundDetails: [
+          'workaroundDetails',
+          'Workaround details  (If Applicable)',
+          'Workaround details (If Applicable)',
+          'workaround_details'
+        ],
+        environment: ['environment', 'Environment'],
+        productModuleAffected: [
+          'productModuleAffected',
+          'Product / module affected',
+          'product_module_affected'
+        ],
+        browserDeviceOs: [
+          'browserDeviceOs',
+          'Browser / device / OS',
+          'browser_device_os'
+        ],
+        errorMessage: [
+          'errorMessage',
+          'Error message (if Available)',
+          'error_message'
+        ],
+        attachmentUpload: [
+          'attachmentUpload',
+          'Attachment upload',
+          'attachment_upload'
+        ],
+        reportedChannel: ['reportedChannel', 'Reported Channel', 'reported_channel'],
+        sourceOfIssue: ['sourceOfIssue', 'Source of Issue', 'source_of_issue'],
+        initialAssessment: ['initialAssessment', 'Initial assessment', 'initial_assessment'],
+        rootCauseType: ['rootCauseType', 'Root cause type', 'root_cause_type'],
+        internalNotes: ['internalNotes', 'Internal notes', 'internal_notes'],
+        escalationRequired: [
+          'escalationRequired',
+          'Escalation required?',
+          'escalation_required'
+        ],
+        developmentTicket: ['developmentTicket', 'Development ticket', 'development_ticket'],
+        finalStatus: ['finalStatus', 'Final status', 'final_status'],
+        resolutionClosureDate: [
+          'resolutionClosureDate',
+          'Resolution / Closure date',
+          'resolution_closure_date'
+        ],
+        wasCsInformed: ['wasCsInformed', 'Was CS informed?', 'was_cs_informed']
+      }
     };
 
-    const el = (id) => document.getElementById(id);
+    const state = {
+      issues: [],
+      summary: {},
+      selectedIssueId: null,
+      lastRefreshedAt: null,
+      searchTimer: null,
+      toastTimer: null,
+      loadController: null,
+      latestRequestId: 0,
+      pendingOps: 0,
+      isSaving: false,
+      modalOpen: false
+    };
 
-    function setStatus(message, isError = false) {
-      const bar = el('statusbar');
-      bar.textContent = message || '';
-      bar.style.color = isError ? '#ff9d9d' : 'var(--muted)';
+    const els = {};
+
+    document.addEventListener('DOMContentLoaded', init);
+
+    function init() {
+      cacheDom();
+      initStaticOptions();
+      bindEvents();
+      applySavedTheme();
+      restoreSavedSort();
+      resetFiltersAndSelection({ preserveLoad: true });
+      loadDashboard();
     }
 
-    function normalize(value) {
-      return String(value || '').trim().toLowerCase();
+    function cacheDom() {
+      els.loadingOverlay = document.getElementById('loadingOverlay');
+      els.toast = document.getElementById('toast');
+
+      els.summaryCards = document.getElementById('summaryCards');
+      els.filteredSummaryPill = document.getElementById('filteredSummaryPill');
+      els.filteredOverviewStats = document.getElementById('filteredOverviewStats');
+      els.statusDistribution = document.getElementById('statusDistribution');
+      els.priorityRingWrap = document.getElementById('priorityRingWrap');
+      els.priorityLegend = document.getElementById('priorityLegend');
+      els.agingDistribution = document.getElementById('agingDistribution');
+      els.moduleDistribution = document.getElementById('moduleDistribution');
+      els.companyDistribution = document.getElementById('companyDistribution');
+
+      els.lastRefreshPill = document.getElementById('lastRefreshPill');
+      els.issuesCountPill = document.getElementById('issuesCountPill');
+      els.selectedCountPill = document.getElementById('selectedCountPill');
+      els.tableMetaPill = document.getElementById('tableMetaPill');
+
+      els.searchInput = document.getElementById('searchInput');
+      els.statusFilter = document.getElementById('statusFilter');
+      els.priorityFilter = document.getElementById('priorityFilter');
+      els.sortSelect = document.getElementById('sortSelect');
+      els.quickFilterChips = document.getElementById('quickFilterChips');
+
+      els.refreshBtn = document.getElementById('refreshBtn');
+      els.refreshBtnTop = document.getElementById('refreshBtnTop');
+      els.exportBtn = document.getElementById('exportBtn');
+      els.themeToggleBtn = document.getElementById('themeToggleBtn');
+      els.clearBtnTop = document.getElementById('clearBtnTop');
+
+      els.issuesTable = document.getElementById('issuesTable');
+
+      els.editModalBackdrop = document.getElementById('editModalBackdrop');
+      els.closeModalBtn = document.getElementById('closeModalBtn');
+      els.selectedIssueInfo = document.getElementById('selectedIssueInfo');
+      els.smartSuggestionBox = document.getElementById('smartSuggestionBox');
+
+      els.issueId = document.getElementById('issueId');
+      els.timestamp = document.getElementById('timestamp');
+      els.requestDate = document.getElementById('requestDate');
+      els.submittedBy = document.getElementById('submittedBy');
+      els.companyName = document.getElementById('companyName');
+      els.issueTitle = document.getElementById('issueTitle');
+      els.issueCategory = document.getElementById('issueCategory');
+      els.detailedDescription = document.getElementById('detailedDescription');
+      els.issueOngoingIntermittent = document.getElementById('issueOngoingIntermittent');
+      els.priorityLevel = document.getElementById('priorityLevel');
+      els.impactType = document.getElementById('impactType');
+      els.workaroundAvailable = document.getElementById('workaroundAvailable');
+      els.workaroundDetails = document.getElementById('workaroundDetails');
+      els.environment = document.getElementById('environment');
+      els.productModuleAffected = document.getElementById('productModuleAffected');
+      els.browserDeviceOs = document.getElementById('browserDeviceOs');
+      els.errorMessage = document.getElementById('errorMessage');
+      els.attachmentUpload = document.getElementById('attachmentUpload');
+      els.reportedChannel = document.getElementById('reportedChannel');
+      els.sourceOfIssue = document.getElementById('sourceOfIssue');
+
+      els.finalStatus = document.getElementById('finalStatus');
+      els.resolutionClosureDate = document.getElementById('resolutionClosureDate');
+      els.initialAssessment = document.getElementById('initialAssessment');
+      els.rootCauseType = document.getElementById('rootCauseType');
+      els.escalationRequired = document.getElementById('escalationRequired');
+      els.wasCsInformed = document.getElementById('wasCsInformed');
+      els.developmentTicket = document.getElementById('developmentTicket');
+      els.internalNotes = document.getElementById('internalNotes');
+      els.editPassword = document.getElementById('editPassword');
+      els.saveBtn = document.getElementById('saveBtn');
+      els.resetEditorBtn = document.getElementById('resetEditorBtn');
+      els.saveMessage = document.getElementById('saveMessage');
+
+      els.editorInputs = [
+        els.finalStatus,
+        els.initialAssessment,
+        els.rootCauseType,
+        els.escalationRequired,
+        els.wasCsInformed,
+        els.developmentTicket,
+        els.internalNotes,
+        els.editPassword
+      ];
     }
 
-    function formatDate(value) {
-      if (!value) return '—';
-      const date = new Date(value);
-      if (Number.isNaN(date.getTime())) return String(value);
-      return new Intl.DateTimeFormat('en-GB', {
-        year: 'numeric',
-        month: 'short',
-        day: '2-digit'
-      }).format(date);
+    function initStaticOptions() {
+      populateSelect(els.statusFilter, 'All Statuses', CONFIG.STATUS_OPTIONS);
+      populateSelect(els.priorityFilter, 'All Priorities', CONFIG.PRIORITY_OPTIONS);
+      populateSelect(els.finalStatus, 'Select Final Status', CONFIG.STATUS_OPTIONS);
+      populateSelect(els.initialAssessment, 'Initial Assessment', CONFIG.INITIAL_ASSESSMENT_OPTIONS);
+      populateSelect(els.rootCauseType, 'Root Cause Type', CONFIG.ROOT_CAUSE_OPTIONS);
+      populateSelect(els.escalationRequired, 'Escalation Required?', CONFIG.YES_NO_OPTIONS);
+      populateSelect(els.wasCsInformed, 'Was CS Informed?', CONFIG.YES_NO_OPTIONS);
+
+      els.sortSelect.innerHTML = CONFIG.SORT_OPTIONS.map(option => `
+        <option value="${escapeAttribute(option.value)}">${escapeHtml(option.label)}</option>
+      `).join('');
     }
 
-    function escapeHtml(value) {
-      return String(value ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-    }
+    function bindEvents() {
+      els.refreshBtn.addEventListener('click', loadDashboard);
+      els.refreshBtnTop.addEventListener('click', loadDashboard);
+      els.exportBtn.addEventListener('click', exportCurrentIssuesCsv);
+      els.themeToggleBtn.addEventListener('click', toggleTheme);
+      els.clearBtnTop.addEventListener('click', () => resetFiltersAndSelection());
+      els.resetEditorBtn.addEventListener('click', resetEditorToSelectedIssue);
+      els.saveBtn.addEventListener('click', saveIssue);
 
-    function statusClass(status) {
-      const s = normalize(status);
-      if (['resolved', 'closed'].includes(s)) return 'pill pill-resolved';
-      if (['high', 'critical'].includes(s)) return 'pill pill-danger';
-      if (['in progress', 'waiting for cs', 'waiting for customer', 'escalated to development'].includes(s)) return 'pill pill-warning';
-      if (['open', 'new'].includes(s)) return 'pill pill-open';
-      return 'pill pill-muted';
-    }
+      els.searchInput.addEventListener('input', () => {
+        clearTimeout(state.searchTimer);
+        state.searchTimer = setTimeout(loadDashboard, 300);
+      });
 
-    function priorityClass(priority) {
-      const p = normalize(priority);
-      if (p === 'critical') return 'pill pill-danger';
-      if (p === 'high') return 'pill pill-warning';
-      if (p === 'medium') return 'pill pill-open';
-      return 'pill pill-muted';
-    }
+      els.statusFilter.addEventListener('change', loadDashboard);
+      els.priorityFilter.addEventListener('change', loadDashboard);
+      els.sortSelect.addEventListener('change', () => {
+        localStorage.setItem('supportDashboardSort', els.sortSelect.value);
+        renderDashboard();
+      });
 
-    function getApiBaseUrl() {
-      const url = el('apiBaseUrl').value.trim();
-      if (!url) {
-        throw new Error('Please enter your Apps Script Web App URL first.');
-      }
-      return url;
-    }
+      els.quickFilterChips.addEventListener('click', (event) => {
+        const button = event.target.closest('button[data-status]');
+        if (!button) return;
+        els.statusFilter.value = button.dataset.status || '';
+        loadDashboard();
+      });
 
-    function buildUrl(action, params = {}) {
-      const base = getApiBaseUrl();
-      const url = new URL(base);
-      url.searchParams.set('action', action);
-      Object.entries(params).forEach(([key, value]) => {
-        if (value !== undefined && value !== null && value !== '') {
-          url.searchParams.set(key, value);
+      els.issuesTable.addEventListener('click', (event) => {
+        const editButton = event.target.closest('button[data-action="edit"]');
+        if (editButton) {
+          event.stopPropagation();
+          openEditModal(Number(editButton.dataset.id));
+          return;
+        }
+
+        const row = event.target.closest('tr[data-id]');
+        if (!row) return;
+        selectIssue(Number(row.dataset.id));
+      });
+
+      els.closeModalBtn.addEventListener('click', closeEditModal);
+
+      els.editModalBackdrop.addEventListener('click', (event) => {
+        if (event.target === els.editModalBackdrop) {
+          closeEditModal();
         }
       });
-      return url.toString();
-    }
 
-    async function fetchJson(url) {
-      const response = await fetch(url, { method: 'GET' });
-      if (!response.ok) {
-        throw new Error('Request failed with status ' + response.status);
-      }
-      const data = await response.json();
-      if (!data.ok) {
-        throw new Error(data.error || 'Unknown API error');
-      }
-      return data.data;
-    }
+      document.addEventListener('keydown', (event) => {
+        const key = event.key.toLowerCase();
 
-    function countBy(items, keyFn) {
-      const out = {};
-      items.forEach((item) => {
-        const key = keyFn(item) || 'Blank';
-        out[key] = (out[key] || 0) + 1;
-      });
-      return out;
-    }
-
-    function topEntries(obj, limit = 8) {
-      return Object.entries(obj)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, limit);
-    }
-
-    function computeAnalytics(issues) {
-      const openStatuses = new Set(['', 'open', 'in progress', 'waiting for cs', 'waiting for customer', 'escalated to development']);
-
-      const open = issues.filter((issue) => openStatuses.has(normalize(issue.finalStatus))).length;
-      const closed = issues.filter((issue) => ['resolved', 'closed'].includes(normalize(issue.finalStatus))).length;
-      const escalated = issues.filter((issue) => normalize(issue.escalationRequired) === 'yes' || normalize(issue.finalStatus) === 'escalated to development').length;
-      const noWorkaround = issues.filter((issue) => normalize(issue.workaroundAvailable) === 'no').length;
-      const waitingCustomer = issues.filter((issue) => normalize(issue.finalStatus) === 'waiting for customer').length;
-      const waitingCs = issues.filter((issue) => normalize(issue.finalStatus) === 'waiting for cs').length;
-      const categories = countBy(issues, (x) => x.issueCategory || 'Blank');
-      const companies = countBy(issues, (x) => x.companyName || 'Blank');
-      const modules = countBy(issues, (x) => x.productModuleAffected || 'Blank');
-
-      let resolutionDays = [];
-      issues.forEach((issue) => {
-        const start = new Date(issue.requestDate || issue.timestamp);
-        const end = new Date(issue.resolutionClosureDate);
-        if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
-          const days = Math.max(0, Math.round((end - start) / (1000 * 60 * 60 * 24)));
-          resolutionDays.push(days);
+        if ((event.metaKey || event.ctrlKey) && key === 'k') {
+          event.preventDefault();
+          els.searchInput.focus();
+          els.searchInput.select();
         }
-      });
 
-      const avgResolutionDays = resolutionDays.length
-        ? (resolutionDays.reduce((sum, n) => sum + n, 0) / resolutionDays.length).toFixed(1)
-        : '—';
-
-      return {
-        open,
-        closed,
-        escalated,
-        noWorkaround,
-        waitingCustomer,
-        waitingCs,
-        topCategories: topEntries(categories),
-        topCompanies: topEntries(companies),
-        topModules: topEntries(modules),
-        avgResolutionDays,
-        escalationRate: issues.length ? ((escalated / issues.length) * 100).toFixed(1) + '%' : '0%'
-      };
-    }
-
-    function destroyChart(name) {
-      if (state.charts[name]) {
-        state.charts[name].destroy();
-      }
-    }
-
-    function renderChart(name, canvasId, type, labels, data, label) {
-      destroyChart(name);
-      const ctx = el(canvasId);
-      state.charts[name] = new Chart(ctx, {
-        type,
-        data: {
-          labels,
-          datasets: [{ label, data, borderWidth: 2 }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { labels: { color: '#e6edf7' } }
-          },
-          scales: type === 'doughnut' || type === 'pie' ? {} : {
-            x: { ticks: { color: '#c7d2e7' }, grid: { color: 'rgba(255,255,255,0.06)' } },
-            y: { ticks: { color: '#c7d2e7' }, grid: { color: 'rgba(255,255,255,0.06)' } }
+        if (event.key === 'Escape') {
+          if (state.modalOpen) {
+            closeEditModal();
+          } else {
+            clearSelection();
           }
         }
       });
     }
 
-    function setCardValues(summary) {
-      el('cardTotal').textContent = summary.total || 0;
-      el('cardOpen').textContent = summary.open || 0;
-      el('cardResolved').textContent = summary.resolvedClosed || 0;
-      el('cardEscalated').textContent = summary.escalated || 0;
-      el('cardHighCritical').textContent = summary.highCritical || 0;
-    }
-
-    function renderDashboard(summary, issues) {
-      setCardValues(summary);
-      const bySource = countBy(issues, (x) => x.sourceOfIssue || x.reportedChannel || 'Blank');
-
-      renderChart('statusChart', 'statusChart', 'doughnut', Object.keys(summary.byStatus || {}), Object.values(summary.byStatus || {}), 'Issues');
-      renderChart('priorityChart', 'priorityChart', 'bar', Object.keys(summary.byPriority || {}), Object.values(summary.byPriority || {}), 'Issues');
-      renderChart('categoryChart', 'categoryChart', 'bar', Object.keys(summary.byCategory || {}), Object.values(summary.byCategory || {}), 'Issues');
-      renderChart('sourceChart', 'sourceChart', 'bar', Object.keys(bySource), Object.values(bySource), 'Issues');
-    }
-
-    function populateFilterOptions(issues) {
-      const sets = {
-        statusFilter: new Set(),
-        priorityFilter: new Set(),
-        categoryFilter: new Set(),
-        companyFilter: new Set()
-      };
-
-      issues.forEach((issue) => {
-        if (issue.finalStatus) sets.statusFilter.add(issue.finalStatus);
-        if (issue.priorityLevel) sets.priorityFilter.add(issue.priorityLevel);
-        if (issue.issueCategory) sets.categoryFilter.add(issue.issueCategory);
-        if (issue.companyName) sets.companyFilter.add(issue.companyName);
-      });
-
-      Object.entries(sets).forEach(([id, set]) => {
-        const select = el(id);
-        const current = select.value;
-        select.innerHTML = '<option value="">All</option>' + Array.from(set)
-          .sort((a, b) => a.localeCompare(b))
-          .map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`)
-          .join('');
-        select.value = current;
-      });
-    }
-
-    function getActiveFilters() {
-      return {
-        q: el('searchInput').value.trim(),
-        status: el('statusFilter').value,
-        priority: el('priorityFilter').value,
-        category: el('categoryFilter').value,
-        company: el('companyFilter').value
-      };
-    }
-
-    function applyClientFilters() {
-      const filters = getActiveFilters();
-      state.filteredIssues = state.issues.filter((issue) => {
-        const haystack = [
-          issue.companyName,
-          issue.issueTitle,
-          issue.issueCategory,
-          issue.detailedDescription,
-          issue.productModuleAffected,
-          issue.reportedChannel,
-          issue.sourceOfIssue
-        ].join(' ').toLowerCase();
-
-        if (filters.q && !haystack.includes(filters.q.toLowerCase())) return false;
-        if (filters.status && issue.finalStatus !== filters.status) return false;
-        if (filters.priority && issue.priorityLevel !== filters.priority) return false;
-        if (filters.category && issue.issueCategory !== filters.category) return false;
-        if (filters.company && issue.companyName !== filters.company) return false;
-        return true;
-      });
-
-      state.issuesPage = 1;
-      renderIssuesTable();
-    }
-
-    function renderIssuesTable() {
-      const tbody = el('issuesTableBody');
-      const empty = el('issuesEmpty');
-      const all = state.filteredIssues;
-      const startIndex = (state.issuesPage - 1) * state.pageSize;
-      const pageItems = all.slice(startIndex, startIndex + state.pageSize);
-
-      if (!pageItems.length) {
-        tbody.innerHTML = '';
-        empty.style.display = 'block';
+    function restoreSavedSort() {
+      const savedSort = localStorage.getItem('supportDashboardSort');
+      if (savedSort && CONFIG.SORT_OPTIONS.some(option => option.value === savedSort)) {
+        els.sortSelect.value = savedSort;
       } else {
-        empty.style.display = 'none';
-        tbody.innerHTML = pageItems.map((issue) => `
-          <tr data-id="${issue.id}">
-            <td>${issue.id}</td>
-            <td>${escapeHtml(formatDate(issue.requestDate || issue.timestamp))}</td>
-            <td>${escapeHtml(issue.companyName || '—')}</td>
-            <td>${escapeHtml(issue.issueTitle || '—')}</td>
-            <td>${escapeHtml(issue.issueCategory || '—')}</td>
-            <td><span class="${priorityClass(issue.priorityLevel)}">${escapeHtml(issue.priorityLevel || 'Blank')}</span></td>
-            <td><span class="${statusClass(issue.finalStatus)}">${escapeHtml(issue.finalStatus || 'Open')}</span></td>
-            <td>${escapeHtml(issue.productModuleAffected || '—')}</td>
-            <td>${escapeHtml(issue.reportedChannel || '—')}</td>
-            <td>${escapeHtml(issue.escalationRequired || '—')}</td>
-            <td>${escapeHtml(formatDate(issue.resolutionClosureDate))}</td>
-          </tr>
-        `).join('');
+        els.sortSelect.value = 'sheet';
+      }
+    }
+
+    function resetFiltersAndSelection({ preserveLoad = false } = {}) {
+      els.searchInput.value = '';
+      els.statusFilter.value = '';
+      els.priorityFilter.value = '';
+      els.sortSelect.value = localStorage.getItem('supportDashboardSort') || 'sheet';
+      clearSelection({ preserveMessage: true, closeModal: true });
+
+      if (!preserveLoad) {
+        loadDashboard();
+      }
+    }
+
+    async function apiGet(action, params = {}, signal) {
+      const url = new URL(CONFIG.API_URL);
+      url.searchParams.set('action', action);
+      url.searchParams.set('_ts', Date.now().toString());
+
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          url.searchParams.set(key, value);
+        }
+      });
+
+      const response = await fetch(url.toString(), {
+        method: 'GET',
+        signal,
+        cache: 'no-store',
+        headers: { 'Accept': 'application/json' }
+      });
+
+      const text = await response.text();
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
       }
 
-      const totalPages = Math.max(1, Math.ceil(all.length / state.pageSize));
-      el('paginationInfo').textContent = `Page ${state.issuesPage} of ${totalPages} • ${all.length} issues`;
-      el('prevPageBtn').disabled = state.issuesPage <= 1;
-      el('nextPageBtn').disabled = state.issuesPage >= totalPages;
+      try {
+        return text ? JSON.parse(text) : {};
+      } catch (error) {
+        console.error('Invalid JSON response:', text);
+        throw new Error('Server returned invalid JSON.');
+      }
+    }
 
-      tbody.querySelectorAll('tr').forEach((row) => {
-        row.addEventListener('click', () => {
-          const id = Number(row.dataset.id);
-          const issue = all.find((x) => Number(x.id) === id);
-          if (issue) renderIssueDetails(issue);
-        });
+    async function apiPost(payload) {
+      const response = await fetch(CONFIG.API_URL, {
+        method: 'POST',
+        cache: 'no-store',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(payload)
       });
+
+      const text = await response.text();
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      try {
+        return text ? JSON.parse(text) : {};
+      } catch (error) {
+        console.error('Invalid JSON response:', text);
+        throw new Error('Server returned invalid JSON.');
+      }
     }
 
-    function renderIssueDetails(issue) {
-      state.selectedIssue = issue;
-      el('detailsPanel').style.display = 'block';
-      el('detailsTitle').textContent = `Issue #${issue.id} — ${issue.issueTitle || 'Untitled Issue'}`;
+    async function loadDashboard() {
+      const requestId = ++state.latestRequestId;
 
-      const items = [
-        ['Company', issue.companyName],
-        ['Submitted by', issue.submittedBy],
-        ['Request date', formatDate(issue.requestDate || issue.timestamp)],
-        ['Category', issue.issueCategory],
-        ['Priority', issue.priorityLevel],
-        ['Final status', issue.finalStatus],
-        ['Impact type', issue.impactType],
-        ['Workaround available', issue.workaroundAvailable],
-        ['Workaround details', issue.workaroundDetails],
-        ['Environment', issue.environment],
-        ['Product / module affected', issue.productModuleAffected],
-        ['Browser / device / OS', issue.browserDeviceOs],
-        ['Error message', issue.errorMessage],
-        ['Reported channel', issue.reportedChannel],
-        ['Source of issue', issue.sourceOfIssue],
-        ['Initial assessment', issue.initialAssessment],
-        ['Root cause type', issue.rootCauseType],
-        ['Internal notes', issue.internalNotes],
-        ['Escalation required?', issue.escalationRequired],
-        ['Development ticket', issue.developmentTicket],
-        ['Resolution / closure date', formatDate(issue.resolutionClosureDate)],
-        ['Was CS informed?', issue.wasCsInformed],
-        ['Attachment', issue.attachmentUpload]
-      ];
+      if (state.loadController) {
+        state.loadController.abort();
+      }
 
-      el('detailsGrid').innerHTML = items.map(([title, value]) => `
-        <div class="detail-box">
-          <h4>${escapeHtml(title)}</h4>
-          <div>${escapeHtml(value || '—')}</div>
-        </div>
-      `).join('') + `
-        <div class="detail-box" style="grid-column: 1 / -1;">
-          <h4>Detailed description</h4>
-          <div>${escapeHtml(issue.detailedDescription || '—')}</div>
-        </div>
-      `;
+      const controller = new AbortController();
+      state.loadController = controller;
+
+      const q = els.searchInput.value.trim();
+      const status = els.statusFilter.value.trim();
+      const priority = els.priorityFilter.value.trim();
+
+      beginBusy();
+
+      try {
+        const [summaryRes, issuesRes] = await Promise.all([
+          apiGet('summary', {}, controller.signal),
+          apiGet('issues', { q, status, priority }, controller.signal)
+        ]);
+
+        if (requestId !== state.latestRequestId) return;
+
+        if (!summaryRes.ok) throw new Error(summaryRes.error || 'Failed to load summary.');
+        if (!issuesRes.ok) throw new Error(issuesRes.error || 'Failed to load issues.');
+
+        state.summary = summaryRes.data || {};
+        state.issues = Array.isArray(issuesRes.data) ? issuesRes.data : [];
+        state.lastRefreshedAt = new Date();
+
+        renderDashboard();
+      } catch (error) {
+        if (error.name === 'AbortError') return;
+        console.error(error);
+        showToast(error.message || 'Something went wrong.', true);
+
+        if (!state.issues.length) {
+          renderTableMessage('Unable to load issues', error.message || 'Something went wrong.');
+        }
+      } finally {
+        if (state.loadController === controller) {
+          state.loadController = null;
+        }
+        endBusy();
+      }
     }
 
-    function renderAnalytics(issues) {
-      const a = computeAnalytics(issues);
-      renderChart('openClosedChart', 'openClosedChart', 'doughnut', ['Open', 'Closed'], [a.open, a.closed], 'Issues');
-      renderChart('escalationChart', 'escalationChart', 'bar', ['Escalated', 'Not escalated'], [a.escalated, Math.max(issues.length - a.escalated, 0)], 'Issues');
-      renderChart('companiesChart', 'companiesChart', 'bar', a.topCompanies.map(([k]) => k), a.topCompanies.map(([, v]) => v), 'Issues');
-      renderChart('modulesChart', 'modulesChart', 'bar', a.topModules.map(([k]) => k), a.topModules.map(([, v]) => v), 'Issues');
+    async function saveIssue() {
+      const id = Number(els.issueId.value);
+      const editPassword = els.editPassword.value.trim();
 
-      const kpis = [
-        ['Average Resolution Days', a.avgResolutionDays],
-        ['Escalation Rate', a.escalationRate],
-        ['Issues Without Workaround', a.noWorkaround],
-        ['Waiting for Customer', a.waitingCustomer],
-        ['Waiting for CS', a.waitingCs],
-        ['Top Category', a.topCategories[0] ? `${a.topCategories[0][0]} (${a.topCategories[0][1]})` : '—']
+      if (!id) {
+        setMessage('Select an issue first.', true);
+        showToast('Select an issue first.', true);
+        return;
+      }
+
+      if (!editPassword) {
+        setMessage('Enter edit password.', true);
+        showToast('Enter edit password.', true);
+        return;
+      }
+
+      const payload = {
+        action: 'updateIssue',
+        id,
+        editPassword,
+        finalStatus: els.finalStatus.value.trim(),
+        initialAssessment: els.initialAssessment.value.trim(),
+        rootCauseType: els.rootCauseType.value.trim(),
+        escalationRequired: els.escalationRequired.value.trim(),
+        wasCsInformed: els.wasCsInformed.value.trim(),
+        developmentTicket: els.developmentTicket.value.trim(),
+        internalNotes: els.internalNotes.value.trim()
+      };
+
+      setSavingState(true);
+      beginBusy();
+      setMessage('Saving...');
+
+      try {
+        const result = await apiPost(payload);
+
+        if (!result.ok) {
+          throw new Error(result.error || 'Save failed.');
+        }
+
+        els.editPassword.value = '';
+        await loadDashboard();
+        setMessage('Saved successfully.');
+        showToast('Issue updated successfully.');
+        closeEditModal();
+      } catch (error) {
+        console.error(error);
+        setMessage(error.message || 'Save failed.', true);
+        showToast(error.message || 'Save failed.', true);
+      } finally {
+        endBusy();
+        setSavingState(false);
+      }
+    }
+
+    function renderDashboard() {
+      renderGlobalCards(state.summary);
+      const metrics = deriveAdvancedMetrics(state.issues);
+      renderFilteredOverview(metrics);
+      renderStatusDistribution(metrics);
+      renderPriorityRing(metrics);
+      renderAgingDistribution(metrics);
+      renderModuleDistribution(metrics);
+      renderCompanyDistribution(metrics);
+      renderQuickFilterChips();
+      renderTable(getRenderableIssues());
+      updatePills();
+      updateLastRefresh();
+      syncSelection();
+    }
+
+    function renderGlobalCards(summary) {
+      const cards = [
+        { label: 'Total Issues', value: summary.total || 0, hint: 'All recorded issues', icon: '🗂', tone: 'primary' },
+        { label: 'Open / Active', value: summary.open || 0, hint: 'Needs follow-up', icon: '🟡', tone: 'warning' },
+        { label: 'Resolved / Closed', value: summary.resolvedClosed || 0, hint: 'Completed cases', icon: '✅', tone: 'success' },
+        { label: 'Escalated', value: summary.escalated || 0, hint: 'Sent to development', icon: '🚀', tone: 'purple' },
+        { label: 'High / Critical', value: summary.highCritical || 0, hint: 'Priority focus', icon: '🔥', tone: 'danger' },
+        { label: 'With Ticket', value: summary.withTicket || 0, hint: 'Linked to development', icon: '🎫', tone: 'primary' }
       ];
 
-      el('kpiGrid').innerHTML = kpis.map(([title, value]) => `
-        <div class="detail-box">
-          <h4>${escapeHtml(title)}</h4>
-          <div>${escapeHtml(value)}</div>
+      els.summaryCards.innerHTML = cards.map(card => `
+        <article class="kpi-card">
+          <div class="kpi-top">
+            <div class="kpi-label">${escapeHtml(card.label)}</div>
+            <div class="kpi-icon" style="${iconToneStyle(card.tone)}">${escapeHtml(card.icon)}</div>
+          </div>
+          <div class="kpi-value">${escapeHtml(card.value)}</div>
+          <div class="kpi-sub">${escapeHtml(card.hint)}</div>
+        </article>
+      `).join('');
+    }
+
+    function deriveAdvancedMetrics(issues) {
+      const now = new Date();
+
+      const metrics = {
+        total: issues.length,
+        active: 0,
+        resolvedClosed: 0,
+        escalated: 0,
+        highCritical: 0,
+        withTickets: 0,
+        escalatedNoTicket: 0,
+        slaRisk: 0,
+        avgAgeDays: 0,
+        oldestActiveDays: 0,
+        completionRate: 0,
+        statusCounts: {},
+        priorityCounts: {},
+        moduleCounts: {},
+        companyCounts: {},
+        agingCounts: {
+          '0–2d': 0,
+          '3–7d': 0,
+          '8–14d': 0,
+          '15d+': 0
+        }
+      };
+
+      let totalAgeDays = 0;
+      let agedCount = 0;
+
+      issues.forEach(issue => {
+        const statusLabel = issueVal(issue, 'finalStatus') || 'Open';
+        const priorityLabel = issueVal(issue, 'priorityLevel') || 'Blank';
+        const moduleLabel = issueVal(issue, 'productModuleAffected') || 'Blank';
+        const companyLabel = issueVal(issue, 'companyName') || 'Blank';
+        const escalation = normalizeValue(issueVal(issue, 'escalationRequired'));
+        const hasTicket = String(issueVal(issue, 'developmentTicket') || '').trim().length > 0;
+        const statusNorm = normalizeValue(statusLabel);
+        const priorityNorm = normalizeValue(priorityLabel);
+        const isActive = CONFIG.ACTIVE_STATUSES.has(statusNorm);
+        const ageDays = getIssueAgeDays(issue, now);
+
+        metrics.statusCounts[statusLabel] = (metrics.statusCounts[statusLabel] || 0) + 1;
+        metrics.priorityCounts[priorityLabel] = (metrics.priorityCounts[priorityLabel] || 0) + 1;
+        metrics.moduleCounts[moduleLabel] = (metrics.moduleCounts[moduleLabel] || 0) + 1;
+        metrics.companyCounts[companyLabel] = (metrics.companyCounts[companyLabel] || 0) + 1;
+
+        if (isActive) {
+          metrics.active++;
+
+          if (ageDays <= 2) metrics.agingCounts['0–2d']++;
+          else if (ageDays <= 7) metrics.agingCounts['3–7d']++;
+          else if (ageDays <= 14) metrics.agingCounts['8–14d']++;
+          else metrics.agingCounts['15d+']++;
+
+          if (ageDays > metrics.oldestActiveDays) {
+            metrics.oldestActiveDays = ageDays;
+          }
+
+          if (ageDays > 7 || ((priorityNorm === 'high' || priorityNorm === 'critical') && ageDays > 3)) {
+            metrics.slaRisk++;
+          }
+        } else if (statusNorm === 'resolved' || statusNorm === 'closed') {
+          metrics.resolvedClosed++;
+        }
+
+        if (statusNorm === 'escalated to development' || escalation === 'yes') {
+          metrics.escalated++;
+          if (!hasTicket) metrics.escalatedNoTicket++;
+        }
+
+        if (priorityNorm === 'high' || priorityNorm === 'critical') {
+          metrics.highCritical++;
+        }
+
+        if (hasTicket) {
+          metrics.withTickets++;
+        }
+
+        if (ageDays >= 0) {
+          totalAgeDays += ageDays;
+          agedCount++;
+        }
+      });
+
+      metrics.avgAgeDays = agedCount ? roundToOne(totalAgeDays / agedCount) : 0;
+      metrics.completionRate = metrics.total ? Math.round((metrics.resolvedClosed / metrics.total) * 100) : 0;
+
+      return metrics;
+    }
+
+    function renderFilteredOverview(metrics) {
+      els.filteredSummaryPill.textContent = `${metrics.total} issue${metrics.total === 1 ? '' : 's'} in current view`;
+
+      const cards = [
+        {
+          label: 'Completion Rate',
+          value: `${metrics.completionRate}%`,
+          sub: `${metrics.resolvedClosed} resolved or closed`,
+          bg: 'var(--success-soft)'
+        },
+        {
+          label: 'Active Now',
+          value: metrics.active,
+          sub: 'Open, in progress, waiting, escalated',
+          bg: 'var(--primary-soft)'
+        },
+        {
+          label: 'Avg Age',
+          value: `${metrics.avgAgeDays}d`,
+          sub: 'Average issue age in current view',
+          bg: 'var(--panel-soft)'
+        },
+        {
+          label: 'Oldest Active',
+          value: `${metrics.oldestActiveDays}d`,
+          sub: 'Longest-running active issue',
+          bg: 'var(--warning-soft)'
+        },
+        {
+          label: 'SLA Risk',
+          value: metrics.slaRisk,
+          sub: 'Older active issues needing attention',
+          bg: 'var(--danger-soft)'
+        },
+        {
+          label: 'Escalated w/o Ticket',
+          value: metrics.escalatedNoTicket,
+          sub: 'Escalated items missing dev reference',
+          bg: 'var(--purple-soft)'
+        }
+      ];
+
+      els.filteredOverviewStats.innerHTML = cards.map(card => `
+        <div class="mini-stat" style="background:${card.bg}">
+          <div class="label">${escapeHtml(card.label)}</div>
+          <div class="value">${escapeHtml(card.value)}</div>
+          <div class="sub">${escapeHtml(card.sub)}</div>
         </div>
       `).join('');
     }
 
-    async function loadData() {
-      try {
-        setStatus('Loading dashboard data...');
-        const summary = await fetchJson(buildUrl('summary'));
-        const issuesResponse = await fetchJson(buildUrl('issues'));
-        const issues = Array.isArray(issuesResponse) ? issuesResponse : (issuesResponse.items || []);
+    function renderStatusDistribution(metrics) {
+      renderSimpleDistribution(
+        els.statusDistribution,
+        CONFIG.STATUS_OPTIONS
+          .filter(label => Number(metrics.statusCounts[label] || 0) > 0)
+          .map(label => ({
+            label,
+            value: metrics.statusCounts[label] || 0,
+            color: getStatusTheme(label).fill
+          })),
+        metrics.total,
+        'No status data'
+      );
+    }
 
-        state.issues = issues;
-        state.filteredIssues = issues.slice();
+    function renderPriorityRing(metrics) {
+      const priorities = ['Critical', 'High', 'Medium', 'Low'];
+      const total = priorities.reduce((sum, key) => sum + Number(metrics.priorityCounts[key] || 0), 0);
 
-        populateFilterOptions(issues);
-        renderDashboard(summary, issues);
-        renderIssuesTable();
-        renderAnalytics(issues);
-        setStatus(`Loaded ${issues.length} issues successfully.`);
-      } catch (error) {
-        console.error(error);
-        setStatus(error.message || 'Failed to load dashboard.', true);
+      if (!total) {
+        els.priorityRingWrap.innerHTML = `
+          <div class="ring" style="background:conic-gradient(#cbd5e1 0 100%);">
+            <div class="ring-center">
+              <div class="big">0</div>
+              <div class="small">issues</div>
+            </div>
+          </div>
+        `;
+        els.priorityLegend.innerHTML = `<div class="muted">No priority data in the current view.</div>`;
+        return;
+      }
+
+      let cumulative = 0;
+      const slices = priorities
+        .filter(key => Number(metrics.priorityCounts[key] || 0) > 0)
+        .map(key => {
+          const value = Number(metrics.priorityCounts[key] || 0);
+          const size = (value / total) * 100;
+          const start = cumulative;
+          cumulative += size;
+          return `${CONFIG.PRIORITY_RING_COLORS[key]} ${start}% ${cumulative}%`;
+        });
+
+      els.priorityRingWrap.innerHTML = `
+        <div class="ring" style="background:conic-gradient(${slices.join(', ')});">
+          <div class="ring-center">
+            <div class="big">${total}</div>
+            <div class="small">prioritized</div>
+          </div>
+        </div>
+      `;
+
+      els.priorityLegend.innerHTML = priorities.map(key => `
+        <div class="legend-row">
+          <span class="legend-dot" style="background:${CONFIG.PRIORITY_RING_COLORS[key]}"></span>
+          <span class="legend-label">${escapeHtml(key)}</span>
+          <span class="legend-value">${escapeHtml(metrics.priorityCounts[key] || 0)}</span>
+        </div>
+      `).join('');
+    }
+
+    function renderAgingDistribution(metrics) {
+      const order = ['0–2d', '3–7d', '8–14d', '15d+'];
+      renderSimpleDistribution(
+        els.agingDistribution,
+        order.map(label => ({
+          label,
+          value: metrics.agingCounts[label] || 0,
+          color: label === '15d+' ? '#dc2626' : label === '8–14d' ? '#ea580c' : label === '3–7d' ? '#d97706' : '#16a34a'
+        })),
+        metrics.active || 1,
+        'No active issues'
+      );
+    }
+
+    function renderModuleDistribution(metrics) {
+      const rows = topEntries(metrics.moduleCounts, 5).map(([label, value]) => ({
+        label,
+        value,
+        color: '#2563eb'
+      }));
+
+      renderSimpleDistribution(
+        els.moduleDistribution,
+        rows,
+        metrics.total || 1,
+        'No module data'
+      );
+    }
+
+    function renderCompanyDistribution(metrics) {
+      const rows = topEntries(metrics.companyCounts, 5).map(([label, value]) => ({
+        label,
+        value,
+        color: '#7c3aed'
+      }));
+
+      renderSimpleDistribution(
+        els.companyDistribution,
+        rows,
+        metrics.total || 1,
+        'No company data'
+      );
+    }
+
+    function renderSimpleDistribution(container, rows, total, emptyTitle) {
+      const safeTotal = total || 1;
+      const validRows = rows.filter(row => Number(row.value || 0) > 0);
+
+      if (!validRows.length) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <h4>${escapeHtml(emptyTitle)}</h4>
+            <p>Try changing filters to display issues.</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = validRows.map(row => {
+        const percent = Math.round((row.value / safeTotal) * 100);
+        return `
+          <div class="dist-row">
+            <div class="dist-label">${escapeHtml(row.label)}</div>
+            <div class="dist-bar">
+              <div class="dist-fill" style="width:${percent}%; background:${row.color};"></div>
+            </div>
+            <div class="dist-value">${escapeHtml(row.value)}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderQuickFilterChips() {
+      const current = els.statusFilter.value.trim() || 'All';
+      const statuses = ['All', ...CONFIG.STATUS_OPTIONS];
+
+      els.quickFilterChips.innerHTML = statuses.map(status => {
+        const active = status === current;
+        const value = status === 'All' ? '' : status;
+
+        return `
+          <button
+            type="button"
+            class="filter-chip ${active ? 'active' : ''}"
+            data-status="${escapeAttribute(value)}"
+          >
+            ${escapeHtml(status)}
+          </button>
+        `;
+      }).join('');
+    }
+
+    function renderTable(issues) {
+      if (!issues.length) {
+        renderTableMessage('No issues found', 'Try adjusting the search term or filters.');
+        return;
+      }
+
+      els.issuesTable.innerHTML = issues.map(issue => {
+        const issueId = Number(issueVal(issue, 'id') || 0);
+        const ageDays = getIssueAgeDays(issue, new Date());
+
+        return `
+          <tr data-id="${issueId}" class="${issueId === Number(state.selectedIssueId) ? 'selected-row' : ''}">
+            <td><span class="id-badge">#${escapeHtml(issueVal(issue, 'id') || '—')}</span></td>
+            <td>
+              <div class="issue-title">${escapeHtml(issueVal(issue, 'issueTitle') || 'Untitled issue')}</div>
+              <div class="issue-desc">${escapeHtml(issueVal(issue, 'detailedDescription') || 'No description provided.')}</div>
+            </td>
+            <td>${escapeHtml(issueVal(issue, 'companyName') || '—')}</td>
+            <td>${escapeHtml(issueVal(issue, 'productModuleAffected') || '—')}</td>
+            <td>${buildPriorityChip(issueVal(issue, 'priorityLevel') || '')}</td>
+            <td>${buildStatusChip(issueVal(issue, 'finalStatus') || 'Open')}</td>
+            <td>${buildYesNoChip(issueVal(issue, 'escalationRequired') || '')}</td>
+            <td>${renderTicket(issueVal(issue, 'developmentTicket'))}</td>
+            <td>${escapeHtml(`${ageDays}d`)}</td>
+            <td>${escapeHtml(formatDate(issueVal(issue, 'resolutionClosureDate')) || '—')}</td>
+            <td>
+              <button
+                class="action-btn"
+                type="button"
+                data-action="edit"
+                data-id="${issueId}"
+              >
+                Edit
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function renderTableMessage(title, message) {
+      els.issuesTable.innerHTML = `
+        <tr>
+          <td colspan="11">
+            <div class="empty-state">
+              <h4>${escapeHtml(title)}</h4>
+              <p>${escapeHtml(message)}</p>
+            </div>
+          </td>
+        </tr>
+      `;
+    }
+
+    function getRenderableIssues() {
+      return sortIssues([...state.issues], els.sortSelect.value);
+    }
+
+    function sortIssues(items, sortBy) {
+      switch (sortBy) {
+        case 'priority_desc':
+          return items.sort((a, b) => {
+            const diff = getPriorityRank(issueVal(b, 'priorityLevel')) - getPriorityRank(issueVal(a, 'priorityLevel'));
+            return diff || safeDateMs(issueVal(b, 'timestamp')) - safeDateMs(issueVal(a, 'timestamp')) || Number(issueVal(b, 'id') || 0) - Number(issueVal(a, 'id') || 0);
+          });
+
+        case 'status_asc':
+          return items.sort((a, b) => {
+            const diff = getStatusIndex(issueVal(a, 'finalStatus')) - getStatusIndex(issueVal(b, 'finalStatus'));
+            return diff || compareText(issueVal(a, 'companyName'), issueVal(b, 'companyName'));
+          });
+
+        case 'company_asc':
+          return items.sort((a, b) => compareText(issueVal(a, 'companyName'), issueVal(b, 'companyName')));
+
+        case 'newest':
+          return items.sort((a, b) => safeDateMs(issueVal(b, 'timestamp')) - safeDateMs(issueVal(a, 'timestamp')));
+
+        case 'oldest':
+          return items.sort((a, b) => safeDateMs(issueVal(a, 'timestamp')) - safeDateMs(issueVal(b, 'timestamp')));
+
+        case 'age_desc':
+          return items.sort((a, b) => getIssueAgeDays(b, new Date()) - getIssueAgeDays(a, new Date()));
+
+        case 'closure_desc':
+          return items.sort((a, b) => safeDateMs(issueVal(b, 'resolutionClosureDate')) - safeDateMs(issueVal(a, 'resolutionClosureDate')));
+
+        case 'sheet':
+        default:
+          return items;
       }
     }
 
-    function switchView(viewId) {
-      document.querySelectorAll('.tab').forEach((btn) => btn.classList.toggle('active', btn.dataset.view === viewId));
-      document.querySelectorAll('.view').forEach((view) => view.classList.toggle('active', view.id === viewId));
+    function selectIssue(id) {
+      const issue = state.issues.find(item => Number(issueVal(item, 'id') || 0) === Number(id));
+      if (!issue) return;
+
+      state.selectedIssueId = Number(issueVal(issue, 'id'));
+      els.selectedCountPill.textContent = `Selected #${issueVal(issue, 'id')}`;
+      updateSelectedRowUI();
     }
 
-    function bindEvents() {
-      document.querySelectorAll('.tab').forEach((btn) => {
-        btn.addEventListener('click', () => switchView(btn.dataset.view));
-      });
+    function openEditModal(id) {
+      const issue = state.issues.find(item => Number(issueVal(item, 'id') || 0) === Number(id));
+      if (!issue) return;
 
-      el('saveConfigBtn').addEventListener('click', () => {
-        const url = el('apiBaseUrl').value.trim();
-        localStorage.setItem('pscc_api_base_url', url);
-        setStatus('Apps Script URL saved locally in this browser.');
-      });
+      state.selectedIssueId = Number(issueVal(issue, 'id'));
+      populateEditor(issue);
+      updateSelectedRowUI();
 
-      el('loadAllBtn').addEventListener('click', async () => {
-        const url = el('apiBaseUrl').value.trim();
-        localStorage.setItem('pscc_api_base_url', url);
-        await loadData();
-      });
+      state.modalOpen = true;
+      els.editModalBackdrop.classList.add('show');
+      els.editModalBackdrop.setAttribute('aria-hidden', 'false');
 
-      el('applyFiltersBtn').addEventListener('click', applyClientFilters);
-      el('resetFiltersBtn').addEventListener('click', () => {
-        el('searchInput').value = '';
-        el('statusFilter').value = '';
-        el('priorityFilter').value = '';
-        el('categoryFilter').value = '';
-        el('companyFilter').value = '';
-        state.filteredIssues = state.issues.slice();
-        state.issuesPage = 1;
-        renderIssuesTable();
-      });
-
-      el('prevPageBtn').addEventListener('click', () => {
-        if (state.issuesPage > 1) {
-          state.issuesPage -= 1;
-          renderIssuesTable();
-        }
-      });
-
-      el('nextPageBtn').addEventListener('click', () => {
-        const totalPages = Math.max(1, Math.ceil(state.filteredIssues.length / state.pageSize));
-        if (state.issuesPage < totalPages) {
-          state.issuesPage += 1;
-          renderIssuesTable();
-        }
-      });
+      setTimeout(() => {
+        els.finalStatus.focus();
+      }, 0);
     }
 
-    function init() {
-      el('apiBaseUrl').value = state.apiBaseUrl;
-      bindEvents();
-      if (state.apiBaseUrl) {
-        loadData();
-      } else {
-        setStatus('Add your Apps Script Web App URL, then click Load Dashboard.');
+    function closeEditModal() {
+      state.modalOpen = false;
+      els.editModalBackdrop.classList.remove('show');
+      els.editModalBackdrop.setAttribute('aria-hidden', 'true');
+      setMessage('');
+    }
+
+    function populateEditor(issue) {
+      const id = issueVal(issue, 'id');
+      const issueTitle = issueVal(issue, 'issueTitle');
+      const companyName = issueVal(issue, 'companyName');
+      const priorityLevel = issueVal(issue, 'priorityLevel');
+      const finalStatus = issueVal(issue, 'finalStatus') || 'Open';
+      const escalationRequired = issueVal(issue, 'escalationRequired');
+      const developmentTicket = issueVal(issue, 'developmentTicket');
+
+      els.issueId.value = id || '';
+      els.timestamp.value = formatDateTime(issueVal(issue, 'timestamp')) || '';
+      els.requestDate.value = formatDate(issueVal(issue, 'requestDate')) || '';
+      els.submittedBy.value = issueVal(issue, 'submittedBy') || '';
+      els.companyName.value = companyName || '';
+      els.issueTitle.value = issueTitle || '';
+      els.issueCategory.value = issueVal(issue, 'issueCategory') || '';
+      els.detailedDescription.value = issueVal(issue, 'detailedDescription') || '';
+      els.issueOngoingIntermittent.value = issueVal(issue, 'issueOngoingIntermittent') || '';
+      els.priorityLevel.value = priorityLevel || '';
+      els.impactType.value = issueVal(issue, 'impactType') || '';
+      els.workaroundAvailable.value = issueVal(issue, 'workaroundAvailable') || '';
+      els.workaroundDetails.value = issueVal(issue, 'workaroundDetails') || '';
+      els.environment.value = issueVal(issue, 'environment') || '';
+      els.productModuleAffected.value = issueVal(issue, 'productModuleAffected') || '';
+      els.browserDeviceOs.value = issueVal(issue, 'browserDeviceOs') || '';
+      els.errorMessage.value = issueVal(issue, 'errorMessage') || '';
+      els.attachmentUpload.value = issueVal(issue, 'attachmentUpload') || '';
+      els.reportedChannel.value = issueVal(issue, 'reportedChannel') || '';
+      els.sourceOfIssue.value = issueVal(issue, 'sourceOfIssue') || '';
+
+      els.finalStatus.value = finalStatus || '';
+      els.resolutionClosureDate.value = formatDate(issueVal(issue, 'resolutionClosureDate')) || '';
+      els.initialAssessment.value = issueVal(issue, 'initialAssessment') || '';
+      els.rootCauseType.value = issueVal(issue, 'rootCauseType') || '';
+      els.escalationRequired.value = escalationRequired || '';
+      els.wasCsInformed.value = issueVal(issue, 'wasCsInformed') || '';
+      els.developmentTicket.value = developmentTicket || '';
+      els.internalNotes.value = issueVal(issue, 'internalNotes') || '';
+
+      els.selectedIssueInfo.innerHTML = `
+        <strong>Selected:</strong> ${escapeHtml(issueTitle || 'Untitled issue')}<br>
+        <span class="muted">Company:</span> ${escapeHtml(companyName || '—')}<br>
+        <span class="muted">Priority:</span> ${escapeHtml(priorityLevel || '—')}<br>
+        <span class="muted">Status:</span> ${escapeHtml(finalStatus || 'Open')}<br>
+        <span class="muted">Escalation:</span> ${escapeHtml(escalationRequired || '—')}<br>
+        <span class="muted">Ticket:</span> ${escapeHtml(developmentTicket || '—')}
+      `;
+
+      els.smartSuggestionBox.innerHTML = buildSmartSuggestion(issue);
+      els.selectedCountPill.textContent = `Selected #${id}`;
+      setMessage('');
+    }
+
+    function resetEditorToSelectedIssue() {
+      if (!state.selectedIssueId) return;
+      const issue = state.issues.find(item => Number(issueVal(item, 'id') || 0) === Number(state.selectedIssueId));
+      if (!issue) return;
+      populateEditor(issue);
+      els.editPassword.value = '';
+      setMessage('');
+    }
+
+    function clearSelection({ preserveMessage = false, closeModal = false } = {}) {
+      state.selectedIssueId = null;
+      els.selectedCountPill.textContent = 'No issue selected';
+      updateSelectedRowUI();
+      clearAllModalFields();
+      els.selectedIssueInfo.textContent = 'No issue selected.';
+      els.smartSuggestionBox.innerHTML = '<strong>Smart suggestion:</strong> Select an issue to see recommended next actions.';
+
+      if (!preserveMessage) {
+        setMessage('');
+      }
+
+      if (closeModal && state.modalOpen) {
+        closeEditModal();
       }
     }
 
-    init();
+    function clearAllModalFields() {
+      [
+        els.issueId,
+        els.timestamp,
+        els.requestDate,
+        els.submittedBy,
+        els.companyName,
+        els.issueTitle,
+        els.issueCategory,
+        els.detailedDescription,
+        els.issueOngoingIntermittent,
+        els.priorityLevel,
+        els.impactType,
+        els.workaroundAvailable,
+        els.workaroundDetails,
+        els.environment,
+        els.productModuleAffected,
+        els.browserDeviceOs,
+        els.errorMessage,
+        els.attachmentUpload,
+        els.reportedChannel,
+        els.sourceOfIssue,
+        els.finalStatus,
+        els.resolutionClosureDate,
+        els.initialAssessment,
+        els.rootCauseType,
+        els.escalationRequired,
+        els.wasCsInformed,
+        els.developmentTicket,
+        els.internalNotes,
+        els.editPassword
+      ].forEach(el => {
+        if (el && ('value' in el)) {
+          el.value = '';
+        }
+      });
+    }
+
+    function syncSelection() {
+      if (!state.selectedIssueId) return;
+
+      const issue = state.issues.find(item => Number(issueVal(item, 'id') || 0) === Number(state.selectedIssueId));
+      if (!issue) {
+        clearSelection({ preserveMessage: true, closeModal: true });
+        return;
+      }
+
+      updateSelectedRowUI();
+
+      if (state.modalOpen) {
+        populateEditor(issue);
+      }
+    }
+
+    function updateSelectedRowUI() {
+      els.issuesTable.querySelectorAll('tr[data-id]').forEach(row => {
+        row.classList.toggle('selected-row', Number(row.dataset.id) === Number(state.selectedIssueId));
+      });
+    }
+
+    function updatePills() {
+      const count = state.issues.length;
+      const searchTerm = els.searchInput.value.trim();
+      const status = els.statusFilter.value.trim();
+      const priority = els.priorityFilter.value.trim();
+      const hasFilters = Boolean(searchTerm || status || priority);
+      const sortLabel = CONFIG.SORT_OPTIONS.find(option => option.value === els.sortSelect.value)?.label || 'Sheet order';
+
+      els.issuesCountPill.textContent = `Showing ${count} issue${count === 1 ? '' : 's'}${hasFilters ? ' (filtered)' : ''}`;
+      els.tableMetaPill.textContent = `${hasFilters ? 'Filtered view' : 'Full issue list'} • ${sortLabel}`;
+    }
+
+    function updateLastRefresh() {
+      els.lastRefreshPill.textContent = state.lastRefreshedAt ? formatDateTime(state.lastRefreshedAt) : '—';
+    }
+
+    function buildSmartSuggestion(issue) {
+      const status = normalizeValue(issueVal(issue, 'finalStatus') || 'Open');
+      const escalation = normalizeValue(issueVal(issue, 'escalationRequired'));
+      const csInformed = normalizeValue(issueVal(issue, 'wasCsInformed'));
+      const hasTicket = String(issueVal(issue, 'developmentTicket') || '').trim().length > 0;
+      const hasNotes = String(issueVal(issue, 'internalNotes') || '').trim().length > 0;
+
+      let message = 'Review and save the issue after confirming its status and notes.';
+
+      if (status === 'escalated to development' && !hasTicket) {
+        message = 'This issue is escalated but has no development ticket. Add a ticket ID or link before saving.';
+      } else if ((status === 'resolved' || status === 'closed') && !hasNotes) {
+        message = 'This issue is being completed. Add brief internal notes so the resolution history is clear.';
+      } else if ((status === 'waiting for customer' || status === 'waiting for cs') && csInformed === 'no') {
+        message = 'The issue is waiting on communication. Consider marking “Was CS informed?” as Yes after the handoff.';
+      } else if (escalation === 'yes' && !hasTicket) {
+        message = 'Escalation is marked Yes, but no development ticket is linked yet.';
+      } else if (!hasNotes) {
+        message = 'Add internal notes to make future follow-up easier for the team.';
+      }
+
+      return `<strong>Smart suggestion:</strong> ${escapeHtml(message)}`;
+    }
+
+    function renderTicket(ticket) {
+      const value = String(ticket || '').trim();
+      if (!value) return '—';
+
+      const isLink = /^https?:\/\//i.test(value);
+      if (!isLink) return escapeHtml(value);
+
+      return `
+        <a href="${escapeAttribute(value)}" target="_blank" rel="noopener noreferrer">
+          ${escapeHtml(shorten(value, 32))}
+        </a>
+      `;
+    }
+
+    function buildStatusChip(status) {
+      const label = status || 'Open';
+      const theme = getStatusTheme(label);
+
+      return `
+        <span class="chip" style="background:${theme.bg}; color:${theme.text}; border-color:${theme.bg};">
+          <span class="chip-dot" style="background:${theme.text}"></span>
+          ${escapeHtml(label)}
+        </span>
+      `;
+    }
+
+    function buildPriorityChip(priority) {
+      const label = priority || '—';
+      const theme = CONFIG.PRIORITY_THEME[label] || { bg: 'var(--panel-soft)', text: 'var(--text-soft)' };
+
+      return `
+        <span class="chip" style="background:${theme.bg}; color:${theme.text}; border-color:${theme.bg};">
+          <span class="chip-dot" style="background:${theme.text}"></span>
+          ${escapeHtml(label)}
+        </span>
+      `;
+    }
+
+    function buildYesNoChip(value) {
+      const label = value || '—';
+      const normalized = normalizeValue(label);
+
+      if (normalized === 'yes') {
+        return `
+          <span class="chip" style="background:#fef3c7; color:#b45309; border-color:#fef3c7;">
+            <span class="chip-dot" style="background:#b45309"></span>
+            Yes
+          </span>
+        `;
+      }
+
+      if (normalized === 'no') {
+        return `
+          <span class="chip" style="background:#dcfce7; color:#15803d; border-color:#dcfce7;">
+            <span class="chip-dot" style="background:#15803d"></span>
+            No
+          </span>
+        `;
+      }
+
+      return '—';
+    }
+
+    function getStatusTheme(status) {
+      return CONFIG.STATUS_THEME[status] || CONFIG.STATUS_THEME['Open'];
+    }
+
+    function getPriorityRank(priority) {
+      return CONFIG.PRIORITY_ORDER[priority] || 0;
+    }
+
+    function getStatusIndex(status) {
+      const label = status || 'Open';
+      const index = CONFIG.STATUS_OPTIONS.indexOf(label);
+      return index === -1 ? 999 : index;
+    }
+
+    function getIssueAgeDays(issue, now = new Date()) {
+      const rawDate = issueVal(issue, 'timestamp') || issueVal(issue, 'requestDate');
+      if (!rawDate) return 0;
+
+      const createdAt = new Date(rawDate);
+      if (Number.isNaN(createdAt.getTime())) return 0;
+
+      const ms = now.getTime() - createdAt.getTime();
+      return Math.max(0, Math.floor(ms / (1000 * 60 * 60 * 24)));
+    }
+
+    function topEntries(obj, limit = 5) {
+      return Object.entries(obj || {})
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, limit);
+    }
+
+    function compareText(a, b) {
+      return String(a || '').localeCompare(String(b || ''), undefined, { sensitivity: 'base' });
+    }
+
+    function safeDateMs(value) {
+      if (!value) return 0;
+      const d = new Date(value);
+      return Number.isNaN(d.getTime()) ? 0 : d.getTime();
+    }
+
+    function roundToOne(value) {
+      return Math.round(value * 10) / 10;
+    }
+
+    function setMessage(message, isError = false) {
+      els.saveMessage.textContent = message;
+      els.saveMessage.className = isError ? 'error' : 'success';
+      if (!message) {
+        els.saveMessage.className = 'muted';
+      }
+    }
+
+    function beginBusy() {
+      state.pendingOps += 1;
+      updateBusyUI();
+    }
+
+    function endBusy() {
+      state.pendingOps = Math.max(0, state.pendingOps - 1);
+      updateBusyUI();
+    }
+
+    function setSavingState(isSaving) {
+      state.isSaving = isSaving;
+      els.saveBtn.textContent = isSaving ? 'Saving...' : 'Save Update';
+
+      els.editorInputs.forEach(input => input.disabled = isSaving);
+      els.resetEditorBtn.disabled = isSaving;
+
+      updateBusyUI();
+    }
+
+    function updateBusyUI() {
+      const isBusy = state.pendingOps > 0;
+
+      els.loadingOverlay.classList.toggle('show', isBusy);
+
+      els.refreshBtn.disabled = isBusy;
+      els.refreshBtnTop.disabled = isBusy;
+      els.exportBtn.disabled = isBusy;
+      els.searchInput.disabled = isBusy;
+      els.statusFilter.disabled = isBusy;
+      els.priorityFilter.disabled = isBusy;
+      els.sortSelect.disabled = isBusy;
+      els.clearBtnTop.disabled = isBusy;
+
+      if (!state.isSaving) {
+        els.saveBtn.disabled = isBusy;
+      }
+    }
+
+    function showToast(message, isError = false) {
+      clearTimeout(state.toastTimer);
+      els.toast.textContent = message;
+      els.toast.className = `toast ${isError ? 'error' : 'success'} show`;
+
+      state.toastTimer = setTimeout(() => {
+        els.toast.className = `toast ${isError ? 'error' : 'success'}`;
+      }, 2600);
+    }
+
+    function exportCurrentIssuesCsv() {
+      const issues = getRenderableIssues();
+
+      if (!issues.length) {
+        showToast('No issues to export in the current view.', true);
+        return;
+      }
+
+      const columns = [
+        ['ID', 'id'],
+        ['Timestamp', 'timestamp'],
+        ['Request Date', 'requestDate'],
+        ['Submitted By', 'submittedBy'],
+        ['Company Name', 'companyName'],
+        ['Issue Title', 'issueTitle'],
+        ['Issue Category', 'issueCategory'],
+        ['Detailed Description', 'detailedDescription'],
+        ['Is the Issue Ongoing or Intermittent?', 'issueOngoingIntermittent'],
+        ['Priority Level', 'priorityLevel'],
+        ['Impact Type', 'impactType'],
+        ['Is There a Workaround Available?', 'workaroundAvailable'],
+        ['Workaround Details', 'workaroundDetails'],
+        ['Environment', 'environment'],
+        ['Product / Module Affected', 'productModuleAffected'],
+        ['Browser / Device / OS', 'browserDeviceOs'],
+        ['Error Message', 'errorMessage'],
+        ['Attachment Upload', 'attachmentUpload'],
+        ['Reported Channel', 'reportedChannel'],
+        ['Source Of Issue', 'sourceOfIssue'],
+        ['Initial Assessment', 'initialAssessment'],
+        ['Root Cause Type', 'rootCauseType'],
+        ['Internal Notes', 'internalNotes'],
+        ['Escalation Required', 'escalationRequired'],
+        ['Development Ticket', 'developmentTicket'],
+        ['Final Status', 'finalStatus'],
+        ['Resolution / Closure Date', 'resolutionClosureDate'],
+        ['Was CS Informed', 'wasCsInformed']
+      ];
+
+      const rows = [
+        columns.map(([label]) => csvEscape(label)).join(','),
+        ...issues.map(issue =>
+          columns.map(([, key]) => csvEscape(issueVal(issue, key))).join(',')
+        )
+      ];
+
+      const csv = rows.join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+
+      a.href = url;
+      a.download = `support-dashboard-${formatFileStamp(new Date())}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      showToast('Filtered issue list exported.');
+    }
+
+    function populateSelect(selectElement, placeholder, values) {
+      selectElement.innerHTML = [
+        `<option value="">${escapeHtml(placeholder)}</option>`,
+        ...values.map(value => `<option value="${escapeAttribute(value)}">${escapeHtml(value)}</option>`)
+      ].join('');
+    }
+
+    function toggleTheme() {
+      document.body.classList.toggle('dark-theme');
+      const isDark = document.body.classList.contains('dark-theme');
+      localStorage.setItem('supportDashboardTheme', isDark ? 'dark' : 'light');
+      updateThemeButton();
+    }
+
+    function applySavedTheme() {
+      const saved = localStorage.getItem('supportDashboardTheme');
+      if (saved === 'dark') {
+        document.body.classList.add('dark-theme');
+      }
+      updateThemeButton();
+    }
+
+    function updateThemeButton() {
+      const isDark = document.body.classList.contains('dark-theme');
+      els.themeToggleBtn.textContent = isDark ? '☀ Light Mode' : '🌙 Dark Mode';
+    }
+
+    function issueVal(issue, key) {
+      const aliases = CONFIG.FIELD_ALIASES[key] || [key];
+
+      for (const alias of aliases) {
+        if (Object.prototype.hasOwnProperty.call(issue, alias) && issue[alias] !== undefined && issue[alias] !== null) {
+          return issue[alias];
+        }
+      }
+
+      return '';
+    }
+
+    function formatDate(value) {
+      if (!value) return '';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return String(value);
+
+      return date.toLocaleDateString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    }
+
+    function formatDateTime(value) {
+      const date = value instanceof Date ? value : new Date(value);
+      if (Number.isNaN(date.getTime())) return value ? String(value) : '';
+
+      return date.toLocaleString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
+
+    function formatFileStamp(date) {
+      const d = date instanceof Date ? date : new Date(date);
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mi = String(d.getMinutes()).padStart(2, '0');
+      return `${yyyy}${mm}${dd}-${hh}${mi}`;
+    }
+
+    function normalizeValue(value) {
+      return String(value || '').trim().toLowerCase();
+    }
+
+    function shorten(value, max) {
+      const text = String(value || '');
+      return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+    }
+
+    function csvEscape(value) {
+      const text = String(value == null ? '' : value).replaceAll('"', '""');
+      return `"${text}"`;
+    }
+
+    function iconToneStyle(tone) {
+      const map = {
+        primary: 'background:#dbeafe;color:#1d4ed8;',
+        success: 'background:#dcfce7;color:#15803d;',
+        warning: 'background:#fef3c7;color:#b45309;',
+        danger: 'background:#fee2e2;color:#b91c1c;',
+        purple: 'background:#ede9fe;color:#6d28d9;'
+      };
+      return map[tone] || map.primary;
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    function escapeAttribute(value) {
+      return escapeHtml(value).replaceAll('`', '&#096;');
+    }
   </script>
 </body>
 </html>
