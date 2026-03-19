@@ -1737,6 +1737,101 @@
       }
     };
 
+    const LOCAL_DATA_KEY = 'supportDashboardLocalIssues';
+
+    const DEFAULT_LOCAL_ISSUES = [
+      {
+        id: 101,
+        timestamp: '2026-03-14T09:15:00Z',
+        requestDate: '2026-03-14',
+        submittedBy: 'Alicia Gomez',
+        companyName: 'Northwind Health',
+        issueTitle: 'Attendance totals do not update after clock-out',
+        issueCategory: 'Attendance',
+        detailedDescription: 'Manager dashboard continues to show active employees after they clock out.',
+        issueOngoingIntermittent: 'Yes',
+        priorityLevel: 'High',
+        impactType: 'Reporting delay',
+        workaroundAvailable: 'Yes',
+        workaroundDetails: 'Manual refresh corrects the summary after several minutes.',
+        environment: 'Production',
+        productModuleAffected: 'Attendance Summary',
+        browserDeviceOs: 'Chrome / Windows 11',
+        errorMessage: '',
+        attachmentUpload: '',
+        reportedChannel: 'Email',
+        sourceOfIssue: 'Customer',
+        initialAssessment: 'Need More Information',
+        rootCauseType: 'Unknown',
+        internalNotes: 'Customer provided screenshots; monitor live updates after refresh cycle.',
+        escalationRequired: 'Yes',
+        developmentTicket: 'AS-142',
+        finalStatus: 'In Progress',
+        resolutionClosureDate: '',
+        wasCsInformed: 'Yes'
+      },
+      {
+        id: 102,
+        timestamp: '2026-03-16T15:45:00Z',
+        requestDate: '2026-03-16',
+        submittedBy: 'Marcus Lee',
+        companyName: 'Summit Logistics',
+        issueTitle: 'Closed shift still appears in daily attendance export',
+        issueCategory: 'Exports',
+        detailedDescription: 'Completed shift is duplicated in CSV export for one location.',
+        issueOngoingIntermittent: 'No',
+        priorityLevel: 'Medium',
+        impactType: 'Incorrect export',
+        workaroundAvailable: 'Yes',
+        workaroundDetails: 'Delete duplicate row before import.',
+        environment: 'Production',
+        productModuleAffected: 'Exports',
+        browserDeviceOs: 'Edge / Windows 10',
+        errorMessage: '',
+        attachmentUpload: '',
+        reportedChannel: 'Chat',
+        sourceOfIssue: 'Customer',
+        initialAssessment: 'Cannot Reproduce',
+        rootCauseType: 'Configuration',
+        internalNotes: 'Potential location-specific setting; waiting for site configuration details.',
+        escalationRequired: 'No',
+        developmentTicket: '',
+        finalStatus: 'Waiting for Customer',
+        resolutionClosureDate: '',
+        wasCsInformed: 'Yes'
+      },
+      {
+        id: 103,
+        timestamp: '2026-03-10T12:20:00Z',
+        requestDate: '2026-03-10',
+        submittedBy: 'Jamie Patel',
+        companyName: 'Blue Ridge Retail',
+        issueTitle: 'Historical attendance widget blank for one day',
+        issueCategory: 'Dashboard',
+        detailedDescription: 'Historical view showed no totals for March 8, but current data is intact.',
+        issueOngoingIntermittent: 'No',
+        priorityLevel: 'Low',
+        impactType: 'Display issue',
+        workaroundAvailable: 'No',
+        workaroundDetails: '',
+        environment: 'Production',
+        productModuleAffected: 'Attendance Summary',
+        browserDeviceOs: 'Safari / macOS',
+        errorMessage: '',
+        attachmentUpload: '',
+        reportedChannel: 'Phone',
+        sourceOfIssue: 'Customer',
+        initialAssessment: 'Resolved by R&D',
+        rootCauseType: 'System Bug',
+        internalNotes: 'Backfill job corrected the missing day.',
+        escalationRequired: 'No',
+        developmentTicket: 'AS-131',
+        finalStatus: 'Resolved',
+        resolutionClosureDate: '2026-03-12',
+        wasCsInformed: 'Yes'
+      }
+    ];
+
     const state = {
       issues: [],
       summary: {},
@@ -1750,7 +1845,8 @@
       isSaving: false,
        modalOpen: false,
       currentMetrics: null,
-      customFocusFilter: ''
+     customFocusFilter: '',
+      usingLocalFallback: false
     };
 
     const els = {};
@@ -1992,6 +2088,84 @@
       }
     }
 
+    function cloneLocalIssues() {
+      return DEFAULT_LOCAL_ISSUES.map(issue => ({ ...issue }));
+    }
+
+    function readLocalIssues() {
+      try {
+        const raw = localStorage.getItem(LOCAL_DATA_KEY);
+        if (!raw) {
+          const seeded = cloneLocalIssues();
+          localStorage.setItem(LOCAL_DATA_KEY, JSON.stringify(seeded));
+          return seeded;
+        }
+
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) throw new Error('Local issue cache is invalid.');
+        return parsed;
+      } catch (error) {
+        console.warn('Unable to read local fallback data. Re-seeding demo issues.', error);
+        const seeded = cloneLocalIssues();
+        localStorage.setItem(LOCAL_DATA_KEY, JSON.stringify(seeded));
+        return seeded;
+      }
+    }
+
+    function writeLocalIssues(issues) {
+      localStorage.setItem(LOCAL_DATA_KEY, JSON.stringify(issues));
+    }
+
+    function matchesSearch(issue, term) {
+      if (!term) return true;
+      const haystack = Object.values(issue || {})
+        .map(value => String(value ?? '').toLowerCase())
+        .join(' ');
+      return haystack.includes(term);
+    }
+
+    function buildLocalSummary(issues) {
+      return {
+        totalIssues: issues.length,
+        openIssues: issues.filter(issue => CONFIG.ACTIVE_STATUSES.has(normalizeValue(issueVal(issue, 'finalStatus') || 'Open'))).length,
+        resolvedIssues: issues.filter(issue => {
+          const status = normalizeValue(issueVal(issue, 'finalStatus'));
+          return status === 'resolved' || status === 'closed';
+        }).length,
+        escalatedIssues: issues.filter(issue => normalizeValue(issueVal(issue, 'escalationRequired')) === 'yes').length,
+        highPriorityIssues: issues.filter(issue => {
+          const priority = normalizeValue(issueVal(issue, 'priorityLevel'));
+          return priority === 'high' || priority === 'critical';
+        }).length
+      };
+    }
+
+    async function loadLocalFallbackData(action, params = {}) {
+      const issues = readLocalIssues();
+
+      if (action === 'summary') {
+        return { ok: true, data: buildLocalSummary(issues), source: 'local' };
+      }
+
+      if (action === 'issues') {
+        const q = String(params.q || '').trim().toLowerCase();
+        const status = normalizeValue(params.status);
+        const priority = normalizeValue(params.priority);
+
+        const filtered = issues.filter(issue => {
+          const issueStatus = normalizeValue(issueVal(issue, 'finalStatus') || 'Open');
+          const issuePriority = normalizeValue(issueVal(issue, 'priorityLevel'));
+          return matchesSearch(issue, q)
+            && (!status || issueStatus === status)
+            && (!priority || issuePriority === priority);
+        });
+
+        return { ok: true, data: filtered, source: 'local' };
+      }
+
+      throw new Error(`Unsupported local action: ${action}`);
+    }
+
     async function apiGet(action, params = {}, signal) {
       const url = new URL(CONFIG.API_URL);
       url.searchParams.set('action', action);
@@ -2016,6 +2190,8 @@
         throw new Error(`HTTP ${response.status}`);
       }
 
+       state.usingLocalFallback = false;
+      
       try {
         return text ? JSON.parse(text) : {};
       } catch (error) {
@@ -2025,27 +2201,58 @@
     }
 
     async function apiPost(payload) {
-      const response = await fetch(CONFIG.API_URL, {
-        method: 'POST',
-        cache: 'no-store',
-        headers: {
-          'Content-Type': 'text/plain;charset=utf-8',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify(payload)
-      });
+     try {
+        const response = await fetch(CONFIG.API_URL, {
+          method: 'POST',
+          cache: 'no-store',
+          headers: {
+            'Content-Type': 'text/plain;charset=utf-8',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
 
-      const text = await response.text();
+        const text = await response.text();
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
+          throw new Error(`HTTP ${response.status}`);
+        }
 
-      try {
-        return text ? JSON.parse(text) : {};
+       state.usingLocalFallback = false;
+
+        try {
+          return text ? JSON.parse(text) : {};
+        } catch (error) {
+          console.error('Invalid JSON response:', text);
+          throw new Error('Server returned invalid JSON.');
+        }
       } catch (error) {
-        console.error('Invalid JSON response:', text);
-        throw new Error('Server returned invalid JSON.');
+          if (payload.action !== 'updateIssue') throw error;
+
+        const issues = readLocalIssues();
+        const index = issues.findIndex(issue => Number(issueVal(issue, 'id') || 0) === Number(payload.id));
+
+        if (index === -1) {
+          throw new Error('Issue not found in local fallback data.');
+        }
+
+        issues[index] = {
+          ...issues[index],
+          finalStatus: payload.finalStatus,
+          initialAssessment: payload.initialAssessment,
+          rootCauseType: payload.rootCauseType,
+          escalationRequired: payload.escalationRequired,
+          wasCsInformed: payload.wasCsInformed,
+          developmentTicket: payload.developmentTicket,
+          internalNotes: payload.internalNotes,
+          resolutionClosureDate: payload.finalStatus === 'Resolved' || payload.finalStatus === 'Closed'
+            ? new Date().toISOString().slice(0, 10)
+            : issues[index].resolutionClosureDate || ''
+        };
+
+        writeLocalIssues(issues);
+        state.usingLocalFallback = true;
+        return { ok: true, data: issues[index], source: 'local' };
       }
     }
 
@@ -2067,8 +2274,16 @@
 
       try {
         const [summaryRes, issuesRes] = await Promise.all([
-          apiGet('summary', {}, controller.signal),
-          apiGet('issues', { q, status, priority }, controller.signal)
+          apiGet('summary', {}, controller.signal).catch(async (error) => {
+            console.warn('Summary API unavailable; using local fallback.', error);
+            state.usingLocalFallback = true;
+            return loadLocalFallbackData('summary');
+          }),
+          apiGet('issues', { q, status, priority }, controller.signal).catch(async (error) => {
+            console.warn('Issues API unavailable; using local fallback.', error);
+            state.usingLocalFallback = true;
+            return loadLocalFallbackData('issues', { q, status, priority });
+          })
         ]);
 
         if (requestId !== state.latestRequestId) return;
@@ -2080,6 +2295,10 @@
         state.issues = Array.isArray(issuesRes.data) ? issuesRes.data : [];
         state.lastRefreshedAt = new Date();
 
+        if (state.usingLocalFallback) {
+          showToast('Remote API unavailable. Loaded local fallback data instead.');
+        }
+        
         renderDashboard();
       } catch (error) {
         if (error.name === 'AbortError') return;
