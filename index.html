@@ -218,9 +218,47 @@
 
     .filter-grid {
       display: grid;
-      grid-template-columns: 1.4fr 1fr 1fr 1fr 140px;
+      grid-template-columns: minmax(0, 1.5fr) repeat(5, minmax(0, 1fr)) 140px;
       gap: 12px;
       align-items: end;
+    }
+
+    .date-range-fieldset {
+      margin: 0;
+      padding: 0;
+      border: 0;
+      min-width: 0;
+    }
+
+    .date-range-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .date-preset-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+
+    .link-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: auto;
+      padding: 11px 14px;
+      border-radius: 12px;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--success), #15803d);
+      color: #fff;
+      box-shadow: 0 10px 20px rgba(22, 163, 74, 0.18);
+    }
+
+    .link-btn:hover {
+      text-decoration: none;
+      transform: translateY(-1px);
     }
 
     .filter-field {
@@ -1082,7 +1120,7 @@
       }
 
       .filter-grid {
-        grid-template-columns: 1fr 1fr 1fr;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
       }
     }
 
@@ -1333,6 +1371,7 @@
       </div>
 
       <div class="appbar-actions">
+        <a class="link-btn" href="https://forms.gle/jb8tdCWJYyK4bCbk9" target="_blank" rel="noopener noreferrer">＋ Add New Issue</a>
         <button type="button" id="refreshBtnTop">⟳ Sync</button>
         <button type="button" class="secondary-btn" id="clearBtnTop">Reset filters</button>
         <button type="button" class="secondary-btn" id="themeToggleBtn">🌙 Dark Mode</button>
@@ -1344,7 +1383,7 @@
         <div class="section-head">
           <div>
             <h2>Filters</h2>
-            <div class="section-sub">Filter issues by search, status, priority, and sort order.</div>
+           <div class="section-sub">Filter issues by search, status, priority, date range, and sort order.</div>
           </div>
           <div style="display:flex; gap:8px; flex-wrap:wrap;">
             <div class="pill" id="issuesCountPill">Showing 0 issues</div>
@@ -1375,6 +1414,13 @@
             <label class="filter-label" for="sortSelect">Sort</label>
             <select id="sortSelect"></select>
           </div>
+          <fieldset class="filter-field date-range-fieldset">
+            <label class="filter-label">Date range</label>
+            <div class="date-range-row">
+              <input id="startDateFilter" type="date" aria-label="Start date" />
+              <input id="endDateFilter" type="date" aria-label="End date" />
+            </div>
+          </fieldset>
            <div class="filter-field">
             <label class="filter-label" for="focusFilter">Focus</label>
             <select id="focusFilter" class="focus-select">
@@ -1391,6 +1437,7 @@
           <button id="refreshBtn" type="button">Refresh</button>
         </div>
 
+        <div class="date-preset-row" id="datePresetChips"></div>
         <div class="chip-row" id="quickFilterChips"></div>
       </section>
 
@@ -1846,6 +1893,7 @@
        modalOpen: false,
       currentMetrics: null,
      customFocusFilter: '',
+      activeDatePreset: 'all',
       usingLocalFallback: false
     };
 
@@ -1886,7 +1934,10 @@
       els.statusFilter = document.getElementById('statusFilter');
       els.priorityFilter = document.getElementById('priorityFilter');
       els.sortSelect = document.getElementById('sortSelect');
+      els.startDateFilter = document.getElementById('startDateFilter');
+      els.endDateFilter = document.getElementById('endDateFilter');
        els.focusFilter = document.getElementById('focusFilter');
+       els.datePresetChips = document.getElementById('datePresetChips');
       els.quickFilterChips = document.getElementById('quickFilterChips');
 
       els.actionCallouts = document.getElementById('actionCallouts');
@@ -1985,6 +2036,14 @@
 
       els.statusFilter.addEventListener('change', loadDashboard);
       els.priorityFilter.addEventListener('change', loadDashboard);
+        els.startDateFilter.addEventListener('change', () => {
+        state.activeDatePreset = '';
+        renderDashboard();
+      });
+      els.endDateFilter.addEventListener('change', () => {
+        state.activeDatePreset = '';
+        renderDashboard();
+      });
       els.focusFilter.addEventListener('change', () => {
         state.customFocusFilter = '';
         renderDashboard();
@@ -2002,6 +2061,12 @@
         loadDashboard();
       });
 
+         els.datePresetChips.addEventListener('click', (event) => {
+        const button = event.target.closest('button[data-preset]');
+        if (!button) return;
+        applyDatePreset(button.dataset.preset || 'all');
+      });
+      
       document.body.addEventListener('click', (event) => {
         const target = event.target.closest('[data-filter]');
         if (!target) return;
@@ -2078,8 +2143,11 @@
       els.searchInput.value = '';
       els.statusFilter.value = '';
       els.priorityFilter.value = '';
+       els.startDateFilter.value = '';
+      els.endDateFilter.value = '';
        els.focusFilter.value = '';
       state.customFocusFilter = '';
+       state.activeDatePreset = 'all';
       els.sortSelect.value = localStorage.getItem('supportDashboardSort') || 'sheet';
       clearSelection({ preserveMessage: true, closeModal: true });
 
@@ -2383,6 +2451,7 @@
       renderAgingDistribution(metrics);
       renderModuleDistribution(metrics);
       renderCompanyDistribution(metrics);
+        renderDatePresetChips();
       renderQuickFilterChips();
       renderTable(getRenderableIssues());
       updatePills();
@@ -2808,6 +2877,106 @@ metrics.trendDays = buildTrendDays(issues, now);
       }).join('');
     }
 
+    
+    function renderDatePresetChips() {
+      const presets = [
+        ['all', 'All dates'],
+        ['today', 'Today'],
+        ['yesterday', 'Yesterday'],
+        ['last7', 'Last 7 d'],
+        ['thisMonth', 'This month'],
+        ['last30', 'Last 30 days'],
+        ['lastMonth', 'Last month']
+      ];
+
+      els.datePresetChips.innerHTML = presets.map(([value, label]) => `
+        <button type="button" class="filter-chip ${state.activeDatePreset === value ? 'active' : ''}" data-preset="${escapeAttribute(value)}">${escapeHtml(label)}</button>
+      `).join('');
+    }
+
+    function applyDatePreset(preset) {
+      const range = getPresetRange(preset);
+      state.activeDatePreset = preset;
+      els.startDateFilter.value = range.start || '';
+      els.endDateFilter.value = range.end || '';
+      renderDashboard();
+    }
+
+    function getPresetRange(preset, now = new Date()) {
+      const today = new Date(now);
+      today.setHours(0, 0, 0, 0);
+      const format = (date) => date.toISOString().slice(0, 10);
+      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+
+      switch (preset) {
+        case 'today':
+          return { start: format(today), end: format(today) };
+        case 'yesterday': {
+          const yesterday = new Date(today);
+          yesterday.setDate(yesterday.getDate() - 1);
+          return { start: format(yesterday), end: format(yesterday) };
+        }
+        case 'last7': {
+          const start = new Date(today);
+          start.setDate(start.getDate() - 6);
+          return { start: format(start), end: format(today) };
+        }
+        case 'thisMonth':
+          return { start: format(startOfMonth), end: format(today) };
+        case 'last30': {
+          const start = new Date(today);
+          start.setDate(start.getDate() - 29);
+          return { start: format(start), end: format(today) };
+        }
+        case 'lastMonth': {
+          const start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+          const end = new Date(today.getFullYear(), today.getMonth(), 0);
+          return { start: format(start), end: format(end) };
+        }
+        case 'all':
+        default:
+          return { start: '', end: '' };
+      }
+    }
+
+    function matchesDateRangeFilter(issue) {
+      const start = parseFilterDate(els.startDateFilter.value);
+      const end = parseFilterDate(els.endDateFilter.value, true);
+      if (!start && !end) return true;
+
+      const issueDate = getIssueFilterDate(issue);
+      if (!issueDate) return false;
+      if (start && issueDate < start) return false;
+      if (end && issueDate > end) return false;
+      return true;
+    }
+
+    function getIssueFilterDate(issue) {
+      return parseDate(issueVal(issue, 'requestDate') || issueVal(issue, 'timestamp'));
+    }
+
+    function parseFilterDate(value, endOfSelectedDay = false) {
+      if (!value) return null;
+      const date = new Date(`${value}T00:00:00`);
+      if (Number.isNaN(date.getTime())) return null;
+      if (endOfSelectedDay) {
+        date.setHours(23, 59, 59, 999);
+      }
+      return date;
+    }
+
+    function getDateFilterLabel() {
+      const start = els.startDateFilter.value;
+      const end = els.endDateFilter.value;
+      if (!start && !end) return '';
+      if (start && end) {
+        if (start === end) return `Date ${formatDate(start)}`;
+        return `${formatDate(start)} → ${formatDate(end)}`;
+      }
+      if (start) return `From ${formatDate(start)}`;
+      return `Through ${formatDate(end)}`;
+    }
+    
     function renderQuickFilterChips() {
       const current = els.statusFilter.value.trim() || 'All';
       const statuses = ['All', ...CONFIG.STATUS_OPTIONS];
@@ -2885,7 +3054,8 @@ metrics.trendDays = buildTrendDays(issues, now);
 
     function getRenderableIssues() {
        const focus = getCurrentFocusFilter();
-      const filtered = focus ? state.issues.filter(issue => matchesFocusFilter(issue, focus)) : [...state.issues];
+        const datedIssues = state.issues.filter(matchesDateRangeFilter);
+      const filtered = focus ? datedIssues.filter(issue => matchesFocusFilter(issue, focus)) : [...datedIssues];
       return sortIssues(filtered, els.sortSelect.value);
     }
 
@@ -3190,12 +3360,13 @@ metrics.trendDays = buildTrendDays(issues, now);
       const status = els.statusFilter.value.trim();
       const priority = els.priorityFilter.value.trim();
       const focus = getCurrentFocusFilter();
+      const dateLabel = getDateFilterLabel();
       const focusLabel = CONFIG.FOCUS_FILTERS[focus] || focus.replace(/^company:/, 'Company: ').replace(/^module:/, 'Module: ').replace(/^aging:/, 'Aging: ');
-      const hasFilters = Boolean(searchTerm || status || priority || focus);
+     const hasFilters = Boolean(searchTerm || status || priority || focus || dateLabel);
       const sortLabel = CONFIG.SORT_OPTIONS.find(option => option.value === els.sortSelect.value)?.label || 'Sheet order';
 
       els.issuesCountPill.textContent = `Showing ${count} issue${count === 1 ? '' : 's'}${hasFilters ? ' (filtered)' : ''}`;
-       els.tableMetaPill.textContent = `${hasFilters ? 'Filtered view' : 'Full issue list'} • ${sortLabel}${focus ? ` • ${focusLabel}` : ''}`;
+       els.tableMetaPill.textContent = `${hasFilters ? 'Filtered view' : 'Full issue list'} • ${sortLabel}${focus ? ` • ${focusLabel}` : ''}${dateLabel ? ` • ${dateLabel}` : ''}`;
     }
 
     function updateLastRefresh() {
@@ -3386,6 +3557,9 @@ metrics.trendDays = buildTrendDays(issues, now);
       els.searchInput.disabled = isBusy;
       els.statusFilter.disabled = isBusy;
       els.priorityFilter.disabled = isBusy;
+       els.startDateFilter.disabled = isBusy;
+      els.endDateFilter.disabled = isBusy;
+      els.focusFilter.disabled = isBusy;
       els.sortSelect.disabled = isBusy;
       els.clearBtnTop.disabled = isBusy;
 
