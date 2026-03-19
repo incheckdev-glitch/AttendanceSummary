@@ -323,7 +323,7 @@
       gap: 14px;
     }
 
-     .kpi-card {
+    .kpi-card {
       position: relative;
       overflow: hidden;
       cursor: pointer;
@@ -569,7 +569,6 @@
       font-weight: 800;
     }
 
-    
     .focus-select {
       min-width: 180px;
     }
@@ -1137,11 +1136,10 @@
       .ring-wrap,
       .grid-2,
       .grid-3,
-       .modal-actions,
+      .modal-actions,
       .hero-grid,
       .action-strip,
       .trend-grid {
-        
         grid-template-columns: 1fr;
       }
 
@@ -1383,7 +1381,7 @@
         <div class="section-head">
           <div>
             <h2>Filters</h2>
-           <div class="section-sub">Filter issues by search, status, priority, date range, and sort order.</div>
+            <div class="section-sub">Filter issues by search, status, priority, date range, and sort order.</div>
           </div>
           <div style="display:flex; gap:8px; flex-wrap:wrap;">
             <div class="pill" id="issuesCountPill">Showing 0 issues</div>
@@ -1414,6 +1412,7 @@
             <label class="filter-label" for="sortSelect">Sort</label>
             <select id="sortSelect"></select>
           </div>
+
           <fieldset class="filter-field date-range-fieldset">
             <label class="filter-label">Date range</label>
             <div class="date-range-row">
@@ -1421,7 +1420,8 @@
               <input id="endDateFilter" type="date" aria-label="End date" />
             </div>
           </fieldset>
-           <div class="filter-field">
+
+          <div class="filter-field">
             <label class="filter-label" for="focusFilter">Focus</label>
             <select id="focusFilter" class="focus-select">
               <option value="">All issues</option>
@@ -1497,7 +1497,7 @@
         </section>
       </section>
 
-     <section class="section-stack">
+      <section class="section-stack">
         <div class="section-head">
           <div>
             <h2>Diagnostic Breakdown</h2>
@@ -1505,71 +1505,71 @@
           </div>
         </div>
         <section class="analytics-grid">
-        <article class="panel analytics-card">
-          <div class="section-head">
-            <div>
-              <h3>Operational Snapshot</h3>
-              <div class="section-sub">Core metrics for the current filtered view.</div>
+          <article class="panel analytics-card">
+            <div class="section-head">
+              <div>
+                <h3>Operational Snapshot</h3>
+                <div class="section-sub">Core metrics for the current filtered view.</div>
+              </div>
+              <div class="pill" id="filteredSummaryPill">0 issues in view</div>
             </div>
-            <div class="pill" id="filteredSummaryPill">0 issues in view</div>
-          </div>
-          <div class="analytics-stat-grid" id="filteredOverviewStats"></div>
-        </article>
+            <div class="analytics-stat-grid" id="filteredOverviewStats"></div>
+          </article>
 
-        <article class="panel analytics-card">
-          <div class="section-head">
-            <div>
-              <h3>Status Distribution</h3>
-              <div class="section-sub">Current status mix for visible issues.</div>
+          <article class="panel analytics-card">
+            <div class="section-head">
+              <div>
+                <h3>Status Distribution</h3>
+                <div class="section-sub">Current status mix for visible issues.</div>
+              </div>
             </div>
-          </div>
-          <div class="distribution" id="statusDistribution"></div>
-        </article>
+            <div class="distribution" id="statusDistribution"></div>
+          </article>
 
-        <article class="panel analytics-card">
-          <div class="section-head">
-            <div>
-              <h3>Priority Mix</h3>
-              <div class="section-sub">Severity balance in the queue.</div>
+          <article class="panel analytics-card">
+            <div class="section-head">
+              <div>
+                <h3>Priority Mix</h3>
+                <div class="section-sub">Severity balance in the queue.</div>
+              </div>
             </div>
-          </div>
-          <div class="ring-wrap">
-            <div id="priorityRingWrap"></div>
-            <div class="legend" id="priorityLegend"></div>
-          </div>
-        </article>
+            <div class="ring-wrap">
+              <div id="priorityRingWrap"></div>
+              <div class="legend" id="priorityLegend"></div>
+            </div>
+          </article>
 
-        <article class="panel analytics-card">
-          <div class="section-head">
-            <div>
-              <h3>Aging Buckets</h3>
-              <div class="section-sub">Active issue age grouped by days open.</div>
+          <article class="panel analytics-card">
+            <div class="section-head">
+              <div>
+                <h3>Aging Buckets</h3>
+                <div class="section-sub">Active issue age grouped by days open.</div>
+              </div>
             </div>
-          </div>
-          <div class="distribution" id="agingDistribution"></div>
-        </article>
+            <div class="distribution" id="agingDistribution"></div>
+          </article>
 
-        <article class="panel analytics-card">
-          <div class="section-head">
-            <div>
-              <h3>Module Hotspots</h3>
-              <div class="section-sub">Where issues are concentrating right now.</div>
+          <article class="panel analytics-card">
+            <div class="section-head">
+              <div>
+                <h3>Module Hotspots</h3>
+                <div class="section-sub">Where issues are concentrating right now.</div>
+              </div>
             </div>
-          </div>
-          <div class="distribution" id="moduleDistribution"></div>
-        </article>
+            <div class="distribution" id="moduleDistribution"></div>
+          </article>
 
-        <article class="panel analytics-card">
-          <div class="section-head">
-            <div>
-              <h3>Top Companies</h3>
-              <div class="section-sub">Organizations with the most visible issues.</div>
+          <article class="panel analytics-card">
+            <div class="section-head">
+              <div>
+                <h3>Top Companies</h3>
+                <div class="section-sub">Organizations with the most visible issues.</div>
+              </div>
             </div>
-          </div>
-          <div class="distribution" id="companyDistribution"></div>
-        </article>
+            <div class="distribution" id="companyDistribution"></div>
+          </article>
+        </section>
       </section>
-       </section>
 
       <section class="panel table-panel" id="queueSection">
         <div class="section-head">
@@ -1705,7 +1705,7 @@
         { value: 'closure_desc', label: 'Latest closure date' }
       ],
 
-       FOCUS_FILTERS: {
+      FOCUS_FILTERS: {
         needs_attention: 'Needs attention',
         sla_risk: 'SLA risk',
         escalated_no_ticket: 'Escalated without ticket',
@@ -1713,7 +1713,7 @@
         waiting_on_customer: 'Waiting on customer',
         high_priority: 'High / critical'
       },
-      
+
       FIELD_ALIASES: {
         id: ['id', 'ID', 'rowId', 'Row ID'],
         timestamp: ['timestamp', 'Timestamp'],
@@ -1881,7 +1881,6 @@
 
     const state = {
       issues: [],
-      summary: {},
       selectedIssueId: null,
       lastRefreshedAt: null,
       searchTimer: null,
@@ -1890,9 +1889,9 @@
       latestRequestId: 0,
       pendingOps: 0,
       isSaving: false,
-       modalOpen: false,
+      modalOpen: false,
       currentMetrics: null,
-     customFocusFilter: '',
+      customFocusFilter: '',
       activeDatePreset: 'all',
       usingLocalFallback: false
     };
@@ -1936,8 +1935,8 @@
       els.sortSelect = document.getElementById('sortSelect');
       els.startDateFilter = document.getElementById('startDateFilter');
       els.endDateFilter = document.getElementById('endDateFilter');
-       els.focusFilter = document.getElementById('focusFilter');
-       els.datePresetChips = document.getElementById('datePresetChips');
+      els.focusFilter = document.getElementById('focusFilter');
+      els.datePresetChips = document.getElementById('datePresetChips');
       els.quickFilterChips = document.getElementById('quickFilterChips');
 
       els.actionCallouts = document.getElementById('actionCallouts');
@@ -2036,18 +2035,22 @@
 
       els.statusFilter.addEventListener('change', loadDashboard);
       els.priorityFilter.addEventListener('change', loadDashboard);
-        els.startDateFilter.addEventListener('change', () => {
+
+      els.startDateFilter.addEventListener('change', () => {
         state.activeDatePreset = '';
         renderDashboard();
       });
+
       els.endDateFilter.addEventListener('change', () => {
         state.activeDatePreset = '';
         renderDashboard();
       });
+
       els.focusFilter.addEventListener('change', () => {
         state.customFocusFilter = '';
         renderDashboard();
       });
+
       els.sortSelect.addEventListener('change', () => {
         localStorage.setItem('supportDashboardSort', els.sortSelect.value);
         renderDashboard();
@@ -2061,12 +2064,12 @@
         loadDashboard();
       });
 
-         els.datePresetChips.addEventListener('click', (event) => {
+      els.datePresetChips.addEventListener('click', (event) => {
         const button = event.target.closest('button[data-preset]');
         if (!button) return;
         applyDatePreset(button.dataset.preset || 'all');
       });
-      
+
       document.body.addEventListener('click', (event) => {
         const target = event.target.closest('[data-filter]');
         if (!target) return;
@@ -2089,7 +2092,7 @@
         state.customFocusFilter = '';
         renderDashboard();
       });
-      
+
       els.issuesTable.addEventListener('click', (event) => {
         const editButton = event.target.closest('button[data-action="edit"]');
         if (editButton) {
@@ -2103,7 +2106,7 @@
         selectIssue(Number(row.dataset.id));
       });
 
-      els.closeModalBtn.addEventListener('click', closeEditModal);
+      els.closeModalBtn.addEventListener('click', () => closeEditModal());
 
       els.editModalBackdrop.addEventListener('click', (event) => {
         if (event.target === els.editModalBackdrop) {
@@ -2143,11 +2146,11 @@
       els.searchInput.value = '';
       els.statusFilter.value = '';
       els.priorityFilter.value = '';
-       els.startDateFilter.value = '';
+      els.startDateFilter.value = '';
       els.endDateFilter.value = '';
-       els.focusFilter.value = '';
+      els.focusFilter.value = '';
       state.customFocusFilter = '';
-       state.activeDatePreset = 'all';
+      state.activeDatePreset = 'all';
       els.sortSelect.value = localStorage.getItem('supportDashboardSort') || 'sheet';
       clearSelection({ preserveMessage: true, closeModal: true });
 
@@ -2180,10 +2183,6 @@
       }
     }
 
-    function writeLocalIssues(issues) {
-      localStorage.setItem(LOCAL_DATA_KEY, JSON.stringify(issues));
-    }
-
     function matchesSearch(issue, term) {
       if (!term) return true;
       const haystack = Object.values(issue || {})
@@ -2192,28 +2191,8 @@
       return haystack.includes(term);
     }
 
-    function buildLocalSummary(issues) {
-      return {
-        totalIssues: issues.length,
-        openIssues: issues.filter(issue => CONFIG.ACTIVE_STATUSES.has(normalizeValue(issueVal(issue, 'finalStatus') || 'Open'))).length,
-        resolvedIssues: issues.filter(issue => {
-          const status = normalizeValue(issueVal(issue, 'finalStatus'));
-          return status === 'resolved' || status === 'closed';
-        }).length,
-        escalatedIssues: issues.filter(issue => normalizeValue(issueVal(issue, 'escalationRequired')) === 'yes').length,
-        highPriorityIssues: issues.filter(issue => {
-          const priority = normalizeValue(issueVal(issue, 'priorityLevel'));
-          return priority === 'high' || priority === 'critical';
-        }).length
-      };
-    }
-
     async function loadLocalFallbackData(action, params = {}) {
       const issues = readLocalIssues();
-
-      if (action === 'summary') {
-        return { ok: true, data: buildLocalSummary(issues), source: 'local' };
-      }
 
       if (action === 'issues') {
         const q = String(params.q || '').trim().toLowerCase();
@@ -2258,8 +2237,6 @@
         throw new Error(`HTTP ${response.status}`);
       }
 
-       state.usingLocalFallback = false;
-      
       try {
         return text ? JSON.parse(text) : {};
       } catch (error) {
@@ -2269,58 +2246,27 @@
     }
 
     async function apiPost(payload) {
-     try {
-        const response = await fetch(CONFIG.API_URL, {
-          method: 'POST',
-          cache: 'no-store',
-          headers: {
-            'Content-Type': 'text/plain;charset=utf-8',
-            'Accept': 'application/json'
-          },
-          body: JSON.stringify(payload)
-        });
+      const response = await fetch(CONFIG.API_URL, {
+        method: 'POST',
+        cache: 'no-store',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
 
-        const text = await response.text();
+      const text = await response.text();
 
       if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
+        throw new Error(`HTTP ${response.status}`);
+      }
 
-       state.usingLocalFallback = false;
-
-        try {
-          return text ? JSON.parse(text) : {};
-        } catch (error) {
-          console.error('Invalid JSON response:', text);
-          throw new Error('Server returned invalid JSON.');
-        }
+      try {
+        return text ? JSON.parse(text) : {};
       } catch (error) {
-          if (payload.action !== 'updateIssue') throw error;
-
-        const issues = readLocalIssues();
-        const index = issues.findIndex(issue => Number(issueVal(issue, 'id') || 0) === Number(payload.id));
-
-        if (index === -1) {
-          throw new Error('Issue not found in local fallback data.');
-        }
-
-        issues[index] = {
-          ...issues[index],
-          finalStatus: payload.finalStatus,
-          initialAssessment: payload.initialAssessment,
-          rootCauseType: payload.rootCauseType,
-          escalationRequired: payload.escalationRequired,
-          wasCsInformed: payload.wasCsInformed,
-          developmentTicket: payload.developmentTicket,
-          internalNotes: payload.internalNotes,
-          resolutionClosureDate: payload.finalStatus === 'Resolved' || payload.finalStatus === 'Closed'
-            ? new Date().toISOString().slice(0, 10)
-            : issues[index].resolutionClosureDate || ''
-        };
-
-        writeLocalIssues(issues);
-        state.usingLocalFallback = true;
-        return { ok: true, data: issues[index], source: 'local' };
+        console.error('Invalid JSON response:', text);
+        throw new Error('Server returned invalid JSON.');
       }
     }
 
@@ -2341,32 +2287,22 @@
       beginBusy();
 
       try {
-        const [summaryRes, issuesRes] = await Promise.all([
-          apiGet('summary', {}, controller.signal).catch(async (error) => {
-            console.warn('Summary API unavailable; using local fallback.', error);
-            state.usingLocalFallback = true;
-            return loadLocalFallbackData('summary');
-          }),
-          apiGet('issues', { q, status, priority }, controller.signal).catch(async (error) => {
-            console.warn('Issues API unavailable; using local fallback.', error);
-            state.usingLocalFallback = true;
-            return loadLocalFallbackData('issues', { q, status, priority });
-          })
-        ]);
+        const issuesRes = await apiGet('issues', { q, status, priority }, controller.signal).catch(async (error) => {
+          console.warn('Issues API unavailable; using local fallback.', error);
+          return loadLocalFallbackData('issues', { q, status, priority });
+        });
 
         if (requestId !== state.latestRequestId) return;
-
-        if (!summaryRes.ok) throw new Error(summaryRes.error || 'Failed to load summary.');
         if (!issuesRes.ok) throw new Error(issuesRes.error || 'Failed to load issues.');
 
-        state.summary = summaryRes.data || {};
+        state.usingLocalFallback = issuesRes?.source === 'local';
         state.issues = Array.isArray(issuesRes.data) ? issuesRes.data : [];
         state.lastRefreshedAt = new Date();
 
         if (state.usingLocalFallback) {
           showToast('Remote API unavailable. Loaded local fallback data instead.');
         }
-        
+
         renderDashboard();
       } catch (error) {
         if (error.name === 'AbortError') return;
@@ -2397,6 +2333,13 @@
       if (!editPassword) {
         setMessage('Enter edit password.', true);
         showToast('Enter edit password.', true);
+        return;
+      }
+
+      if (state.usingLocalFallback) {
+        const msg = 'Editing is disabled while the app is using local fallback data.';
+        setMessage(msg, true);
+        showToast(msg, true);
         return;
       }
 
@@ -2440,8 +2383,12 @@
     }
 
     function renderDashboard() {
-      const metrics = deriveAdvancedMetrics(state.issues);
-       state.currentMetrics = metrics;
+      const visibleIssues = getVisibleIssues();
+      const renderableIssues = sortIssues([...visibleIssues], els.sortSelect.value);
+      const metrics = deriveAdvancedMetrics(visibleIssues);
+
+      state.currentMetrics = metrics;
+
       renderActionCallouts(metrics);
       renderGlobalCards(metrics);
       renderTrendCharts(metrics);
@@ -2451,19 +2398,19 @@
       renderAgingDistribution(metrics);
       renderModuleDistribution(metrics);
       renderCompanyDistribution(metrics);
-        renderDatePresetChips();
+      renderDatePresetChips();
       renderQuickFilterChips();
-      renderTable(getRenderableIssues());
+      renderTable(renderableIssues);
       updatePills();
       updateLastRefresh();
       syncSelection();
     }
 
-   function renderActionCallouts(metrics) {
+    function renderActionCallouts(metrics) {
       const callouts = [
-        { label: 'Needs action', value: metrics.needsAttention, sub: `${metrics.active} active in queue`, tone: 'danger' },
-        { label: 'SLA risk', value: metrics.slaRisk, sub: `${metrics.oldestActiveDays}d oldest active`, tone: 'warning' },
-        { label: 'Missing hygiene', value: metrics.missingNotes, sub: `${metrics.escalatedNoTicket} escalated without ticket`, tone: 'primary' }
+        { label: 'Needs action', value: metrics.needsAttention, sub: `${metrics.active} active in queue` },
+        { label: 'SLA risk', value: metrics.slaRisk, sub: `${metrics.oldestActiveDays}d oldest active` },
+        { label: 'Missing hygiene', value: metrics.missingNotes, sub: `${metrics.escalatedNoTicket} escalated without ticket` }
       ];
 
       const filters = ['needs_attention', 'sla_risk', 'missing_notes'];
@@ -2478,7 +2425,7 @@
 
     function renderGlobalCards(metrics) {
       const cards = [
-   { label: 'Needs Attention', value: metrics.needsAttention, hint: 'High priority, aging, or blocked workflow items', icon: '🚨', tone: 'danger', filter: 'needs_attention' },
+        { label: 'Needs Attention', value: metrics.needsAttention, hint: 'High priority, aging, or blocked workflow items', icon: '🚨', tone: 'danger', filter: 'needs_attention' },
         { label: 'SLA Risk', value: metrics.slaRisk, hint: 'Active issues older than your risk threshold', icon: '⏱', tone: 'warning', filter: 'sla_risk' },
         { label: 'Escalated w/o Ticket', value: metrics.escalatedNoTicket, hint: 'Escalations missing a development reference', icon: '🎫', tone: 'purple', filter: 'escalated_no_ticket' },
         { label: 'Missing Notes', value: metrics.missingNotes, hint: 'Items missing internal follow-up context', icon: '📝', tone: 'primary', filter: 'missing_notes' },
@@ -2500,10 +2447,11 @@
       `).join('');
     }
 
-     function renderTrendCharts(metrics) {
+    function renderTrendCharts(metrics) {
       renderBacklogTrend(metrics.trendDays || []);
       renderFlowTrend(metrics.trendDays || []);
     }
+
     function deriveAdvancedMetrics(issues) {
       const now = new Date();
 
@@ -2531,7 +2479,7 @@
           '3–7d': 0,
           '8–14d': 0,
           '15d+': 0
-       },
+        },
         trendDays: []
       };
 
@@ -2553,7 +2501,7 @@
         const isSlaRisk = isActive && (ageDays > 7 || ((priorityNorm === 'high' || priorityNorm === 'critical') && ageDays > 3));
         const isWaitingCustomer = statusNorm === 'waiting for customer';
         const needsAttention = isSlaRisk || (!hasNotes && isActive) || (isWaitingCustomer && ageDays > 2) || ((priorityNorm === 'high' || priorityNorm === 'critical') && isActive);
-        
+
         metrics.statusCounts[statusLabel] = (metrics.statusCounts[statusLabel] || 0) + 1;
         metrics.priorityCounts[priorityLabel] = (metrics.priorityCounts[priorityLabel] || 0) + 1;
         metrics.moduleCounts[moduleLabel] = (metrics.moduleCounts[moduleLabel] || 0) + 1;
@@ -2600,7 +2548,8 @@
 
       metrics.avgAgeDays = agedCount ? roundToOne(totalAgeDays / agedCount) : 0;
       metrics.completionRate = metrics.total ? Math.round((metrics.resolvedClosed / metrics.total) * 100) : 0;
-metrics.trendDays = buildTrendDays(issues, now);
+      metrics.trendDays = buildTrendDays(issues, now);
+
       return metrics;
     }
 
@@ -2614,6 +2563,8 @@ metrics.trendDays = buildTrendDays(issues, now);
         const day = new Date(start);
         day.setDate(start.getDate() + i);
         const dayKey = day.toISOString().slice(0, 10);
+        const dayEnd = endOfDay(day);
+
         let opened = 0;
         let closed = 0;
         let backlog = 0;
@@ -2627,7 +2578,14 @@ metrics.trendDays = buildTrendDays(issues, now);
           if (createdAt && createdAt.toISOString().slice(0, 10) === dayKey) opened++;
           if (closedAt && closedAt.toISOString().slice(0, 10) === dayKey) closed++;
 
-          if (createdAt && createdAt <= endOfDay(day) && (!closedAt || closedAt > endOfDay(day) || !isClosedStatus)) {
+          if (!createdAt || createdAt > dayEnd) return;
+
+          if (!isClosedStatus) {
+            backlog++;
+            return;
+          }
+
+          if (closedAt && closedAt > dayEnd) {
             backlog++;
           }
         });
@@ -2688,7 +2646,6 @@ metrics.trendDays = buildTrendDays(issues, now);
       ` : '<div class="empty-state"><h4>No flow data</h4><p>Refresh the dashboard after issues load.</p></div>';
     }
 
-    
     function renderFilteredOverview(metrics) {
       els.filteredSummaryPill.textContent = `${metrics.total} issue${metrics.total === 1 ? '' : 's'} in current view`;
 
@@ -2731,7 +2688,7 @@ metrics.trendDays = buildTrendDays(issues, now);
         }
       ];
 
-        const filters = ['','needs_attention','','','sla_risk','escalated_no_ticket'];
+      const filters = ['', 'needs_attention', '', '', 'sla_risk', 'escalated_no_ticket'];
       els.filteredOverviewStats.innerHTML = cards.map((card, index) => `
         <div class="mini-stat interactive" ${filters[index] ? `data-filter="${filters[index]}"` : ''} style="background:${card.bg}" tabindex="0">
           <div class="label">${escapeHtml(card.label)}</div>
@@ -2821,7 +2778,7 @@ metrics.trendDays = buildTrendDays(issues, now);
       const rows = topEntries(metrics.moduleCounts, 5).map(([label, value]) => ({
         label,
         value,
-          color: '#2563eb',
+        color: '#2563eb',
         filter: `module:${label}`
       }));
 
@@ -2837,7 +2794,7 @@ metrics.trendDays = buildTrendDays(issues, now);
       const rows = topEntries(metrics.companyCounts, 5).map(([label, value]) => ({
         label,
         value,
-       color: '#7c3aed',
+        color: '#7c3aed',
         filter: `company:${label}`
       }));
 
@@ -2877,7 +2834,6 @@ metrics.trendDays = buildTrendDays(issues, now);
       }).join('');
     }
 
-    
     function renderDatePresetChips() {
       const presets = [
         ['all', 'All dates'],
@@ -2905,7 +2861,7 @@ metrics.trendDays = buildTrendDays(issues, now);
     function getPresetRange(preset, now = new Date()) {
       const today = new Date(now);
       today.setHours(0, 0, 0, 0);
-      const format = (date) => date.toISOString().slice(0, 10);
+      const format = (date) => formatInputDate(date);
       const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
 
       switch (preset) {
@@ -2956,11 +2912,12 @@ metrics.trendDays = buildTrendDays(issues, now);
     }
 
     function parseFilterDate(value, endOfSelectedDay = false) {
-      if (!value) return null;
-      const date = new Date(`${value}T00:00:00`);
-      if (Number.isNaN(date.getTime())) return null;
+      const date = parseDate(value);
+      if (!date) return null;
       if (endOfSelectedDay) {
         date.setHours(23, 59, 59, 999);
+      } else {
+        date.setHours(0, 0, 0, 0);
       }
       return date;
     }
@@ -2976,7 +2933,7 @@ metrics.trendDays = buildTrendDays(issues, now);
       if (start) return `From ${formatDate(start)}`;
       return `Through ${formatDate(end)}`;
     }
-    
+
     function renderQuickFilterChips() {
       const current = els.statusFilter.value.trim() || 'All';
       const statuses = ['All', ...CONFIG.STATUS_OPTIONS];
@@ -3052,11 +3009,14 @@ metrics.trendDays = buildTrendDays(issues, now);
       `;
     }
 
+    function getVisibleIssues() {
+      const focus = getCurrentFocusFilter();
+      const datedIssues = state.issues.filter(matchesDateRangeFilter);
+      return focus ? datedIssues.filter(issue => matchesFocusFilter(issue, focus)) : datedIssues;
+    }
+
     function getRenderableIssues() {
-       const focus = getCurrentFocusFilter();
-        const datedIssues = state.issues.filter(matchesDateRangeFilter);
-      const filtered = focus ? datedIssues.filter(issue => matchesFocusFilter(issue, focus)) : [...datedIssues];
-      return sortIssues(filtered, els.sortSelect.value);
+      return sortIssues([...getVisibleIssues()], els.sortSelect.value);
     }
 
     function matchesFocusFilter(issue, focus) {
@@ -3152,7 +3112,9 @@ metrics.trendDays = buildTrendDays(issues, now);
         case 'priority_desc':
           return items.sort((a, b) => {
             const diff = getPriorityRank(issueVal(b, 'priorityLevel')) - getPriorityRank(issueVal(a, 'priorityLevel'));
-            return diff || safeDateMs(issueVal(b, 'timestamp')) - safeDateMs(issueVal(a, 'timestamp')) || Number(issueVal(b, 'id') || 0) - Number(issueVal(a, 'id') || 0);
+            return diff
+              || safeDateMs(issueVal(b, 'timestamp')) - safeDateMs(issueVal(a, 'timestamp'))
+              || Number(issueVal(b, 'id') || 0) - Number(issueVal(a, 'id') || 0);
           });
 
         case 'status_asc':
@@ -3208,11 +3170,14 @@ metrics.trendDays = buildTrendDays(issues, now);
       }, 0);
     }
 
-    function closeEditModal() {
+    function closeEditModal({ preserveMessage = false } = {}) {
       state.modalOpen = false;
       els.editModalBackdrop.classList.remove('show');
       els.editModalBackdrop.setAttribute('aria-hidden', 'true');
-      setMessage('');
+
+      if (!preserveMessage) {
+        setMessage('');
+      }
     }
 
     function populateEditor(issue) {
@@ -3290,7 +3255,7 @@ metrics.trendDays = buildTrendDays(issues, now);
       }
 
       if (closeModal && state.modalOpen) {
-        closeEditModal();
+        closeEditModal({ preserveMessage });
       }
     }
 
@@ -3362,11 +3327,11 @@ metrics.trendDays = buildTrendDays(issues, now);
       const focus = getCurrentFocusFilter();
       const dateLabel = getDateFilterLabel();
       const focusLabel = CONFIG.FOCUS_FILTERS[focus] || focus.replace(/^company:/, 'Company: ').replace(/^module:/, 'Module: ').replace(/^aging:/, 'Aging: ');
-     const hasFilters = Boolean(searchTerm || status || priority || focus || dateLabel);
+      const hasFilters = Boolean(searchTerm || status || priority || focus || dateLabel);
       const sortLabel = CONFIG.SORT_OPTIONS.find(option => option.value === els.sortSelect.value)?.label || 'Sheet order';
 
       els.issuesCountPill.textContent = `Showing ${count} issue${count === 1 ? '' : 's'}${hasFilters ? ' (filtered)' : ''}`;
-       els.tableMetaPill.textContent = `${hasFilters ? 'Filtered view' : 'Full issue list'} • ${sortLabel}${focus ? ` • ${focusLabel}` : ''}${dateLabel ? ` • ${dateLabel}` : ''}`;
+      els.tableMetaPill.textContent = `${hasFilters ? 'Filtered view' : 'Full issue list'} • ${sortLabel}${focus ? ` • ${focusLabel}` : ''}${dateLabel ? ` • ${dateLabel}` : ''}`;
     }
 
     function updateLastRefresh() {
@@ -3476,10 +3441,8 @@ metrics.trendDays = buildTrendDays(issues, now);
 
     function getIssueAgeDays(issue, now = new Date()) {
       const rawDate = issueVal(issue, 'timestamp') || issueVal(issue, 'requestDate');
-      if (!rawDate) return 0;
-
-      const createdAt = new Date(rawDate);
-      if (Number.isNaN(createdAt.getTime())) return 0;
+      const createdAt = parseDate(rawDate);
+      if (!createdAt) return 0;
 
       const ms = now.getTime() - createdAt.getTime();
       return Math.max(0, Math.floor(ms / (1000 * 60 * 60 * 24)));
@@ -3496,23 +3459,36 @@ metrics.trendDays = buildTrendDays(issues, now);
     }
 
     function safeDateMs(value) {
-      if (!value) return 0;
-      const d = new Date(value);
-      return Number.isNaN(d.getTime()) ? 0 : d.getTime();
+      const d = parseDate(value);
+      return d ? d.getTime() : 0;
     }
-    
+
     function parseDate(value) {
       if (!value) return null;
-      const date = new Date(value);
+
+      if (value instanceof Date) {
+        return Number.isNaN(value.getTime()) ? null : new Date(value.getTime());
+      }
+
+      const text = String(value).trim();
+      if (!text) return null;
+
+      if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+        const [y, m, d] = text.split('-').map(Number);
+        const date = new Date(y, m - 1, d);
+        return Number.isNaN(date.getTime()) ? null : date;
+      }
+
+      const date = new Date(text);
       return Number.isNaN(date.getTime()) ? null : date;
     }
 
     function endOfDay(value) {
-      const date = value instanceof Date ? new Date(value) : new Date(value);
+      const date = parseDate(value);
+      if (!date) return null;
       date.setHours(23, 59, 59, 999);
       return date;
     }
-
 
     function roundToOne(value) {
       return Math.round(value * 10) / 10;
@@ -3557,14 +3533,14 @@ metrics.trendDays = buildTrendDays(issues, now);
       els.searchInput.disabled = isBusy;
       els.statusFilter.disabled = isBusy;
       els.priorityFilter.disabled = isBusy;
-       els.startDateFilter.disabled = isBusy;
+      els.startDateFilter.disabled = isBusy;
       els.endDateFilter.disabled = isBusy;
       els.focusFilter.disabled = isBusy;
       els.sortSelect.disabled = isBusy;
       els.clearBtnTop.disabled = isBusy;
 
       if (!state.isSaving) {
-        els.saveBtn.disabled = isBusy;
+        els.saveBtn.disabled = isBusy || state.usingLocalFallback;
       }
     }
 
@@ -3679,9 +3655,8 @@ metrics.trendDays = buildTrendDays(issues, now);
     }
 
     function formatDate(value) {
-      if (!value) return '';
-      const date = new Date(value);
-      if (Number.isNaN(date.getTime())) return String(value);
+      const date = parseDate(value);
+      if (!date) return value ? String(value) : '';
 
       return date.toLocaleDateString(undefined, {
         year: 'numeric',
@@ -3691,8 +3666,8 @@ metrics.trendDays = buildTrendDays(issues, now);
     }
 
     function formatDateTime(value) {
-      const date = value instanceof Date ? value : new Date(value);
-      if (Number.isNaN(date.getTime())) return value ? String(value) : '';
+      const date = parseDate(value);
+      if (!date) return value ? String(value) : '';
 
       return date.toLocaleString(undefined, {
         year: 'numeric',
@@ -3703,8 +3678,17 @@ metrics.trendDays = buildTrendDays(issues, now);
       });
     }
 
+    function formatInputDate(value) {
+      const date = parseDate(value);
+      if (!date) return '';
+      const yyyy = date.getFullYear();
+      const mm = String(date.getMonth() + 1).padStart(2, '0');
+      const dd = String(date.getDate()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd}`;
+    }
+
     function formatFileStamp(date) {
-      const d = date instanceof Date ? date : new Date(date);
+      const d = parseDate(date) || new Date();
       const yyyy = d.getFullYear();
       const mm = String(d.getMonth() + 1).padStart(2, '0');
       const dd = String(d.getDate()).padStart(2, '0');
