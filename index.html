@@ -3,3737 +3,1879 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Incheck360 Support Analytics Workspace</title>
+  <title>InCheck360 — Operational Excellence Platform</title>
+  <meta
+    name="description"
+    content="Run every location with the same standard, visibility, and accountability."
+  />
   <style>
     :root {
-      --bg: #f5f7fb;
-      --bg-2: #eef3fb;
-      --panel: #ffffff;
-      --panel-soft: #f8fbff;
-      --panel-alt: #f3f7fd;
-      --border: #e3ebf5;
-      --border-strong: #d4dfec;
-      --text: #162132;
-      --text-soft: #617188;
-      --text-faint: #8796aa;
-      --primary: #2563eb;
-      --primary-2: #1d4ed8;
-      --primary-soft: #dbeafe;
-      --success: #16a34a;
-      --success-soft: #dcfce7;
-      --warning: #d97706;
-      --warning-soft: #fef3c7;
-      --danger: #dc2626;
-      --danger-soft: #fee2e2;
-      --purple: #7c3aed;
-      --purple-soft: #ede9fe;
-      --shadow-sm: 0 4px 14px rgba(15, 23, 42, 0.05);
-      --shadow-md: 0 12px 30px rgba(15, 23, 42, 0.08);
-      --radius-xl: 22px;
-      --radius-lg: 18px;
-      --radius-md: 14px;
-      --radius-sm: 10px;
-      --transition: 180ms ease;
+      --blue: #1463ff;
+      --blue-dark: #0e46b8;
+      --blue-light: #eaf1ff;
+      --navy: #08152e;
+      --bg-soft: #f8fbff;
+      --border: #dce7ff;
+      --text: #0f172a;
+      --muted: #64748b;
+      --white: #ffffff;
+      --radius-xl: 20px;
+      --radius-2xl: 28px;
+      --shadow: 0 10px 30px rgba(20, 99, 255, 0.08);
+      --shadow-strong: 0 20px 50px rgba(20, 99, 255, 0.18);
+      --container: 1200px;
     }
 
-    body.dark-theme {
-      --bg: #0b1220;
-      --bg-2: #10182a;
-      --panel: #121c2f;
-      --panel-soft: #162338;
-      --panel-alt: #18253d;
-      --border: #24344f;
-      --border-strong: #2e4260;
-      --text: #edf3ff;
-      --text-soft: #a8b7cb;
-      --text-faint: #7f90a8;
-      --primary-soft: rgba(37, 99, 235, 0.18);
-      --success-soft: rgba(22, 163, 74, 0.16);
-      --warning-soft: rgba(217, 119, 6, 0.16);
-      --danger-soft: rgba(220, 38, 38, 0.16);
-      --purple-soft: rgba(124, 58, 237, 0.18);
-      --shadow-sm: 0 8px 22px rgba(0, 0, 0, 0.22);
-      --shadow-md: 0 20px 46px rgba(0, 0, 0, 0.28);
+    * {
+      box-sizing: border-box;
     }
 
-    * { box-sizing: border-box; }
-    html { scroll-behavior: smooth; }
+    html {
+      scroll-behavior: smooth;
+    }
 
     body {
       margin: 0;
-      font-family: Inter, Arial, sans-serif;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       color: var(--text);
-      background:
-        radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 20%),
-        linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
-      transition: background var(--transition), color var(--transition);
+      background: var(--white);
+      line-height: 1.5;
+    }
+
+    img {
+      max-width: 100%;
+      display: block;
     }
 
     a {
-      color: var(--primary);
+      color: inherit;
       text-decoration: none;
     }
 
-    a:hover {
-      text-decoration: underline;
-    }
-
-    .app-shell {
-      max-width: 1600px;
-      margin: 0 auto;
-      padding: 18px;
-    }
-
-    .panel {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      box-shadow: var(--shadow-sm);
-    }
-
-    .appbar {
-      display: grid;
-      grid-template-columns: auto 1fr auto;
-      gap: 16px;
-      align-items: center;
-      padding: 16px 18px;
-      margin-bottom: 16px;
-    }
-
-    .brand-badge {
-      width: 42px;
-      height: 42px;
-      border-radius: 14px;
-      display: grid;
-      place-items: center;
-      font-weight: 900;
-      color: #fff;
-      background: linear-gradient(135deg, var(--primary), var(--primary-2));
-      box-shadow: 0 10px 24px rgba(37, 99, 235, 0.22);
-    }
-
-    .appbar-title h1 {
-      margin: 0;
-      font-size: 24px;
-      letter-spacing: -0.03em;
-    }
-
-    .appbar-title p {
-      margin: 4px 0 0;
-      color: var(--text-soft);
-      font-size: 13px;
-    }
-
-    .appbar-actions {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      justify-content: flex-end;
-    }
-
-    .appbar-actions button,
     button,
-    select,
     input,
+    select,
     textarea {
       font: inherit;
     }
 
-    button,
-    select,
-    input,
-    textarea {
-      width: 100%;
-      padding: 11px 13px;
+    .container {
+      width: min(var(--container), calc(100% - 48px));
+      margin: 0 auto;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: var(--blue-light);
+      color: var(--blue);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    .badge.dark {
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+    }
+
+    .section {
+      padding: 96px 0;
+    }
+
+    .section-soft {
+      background: var(--bg-soft);
+    }
+
+    .section-dark {
+      background: linear-gradient(180deg, #08152e 0%, #0c1e46 100%);
+      color: #fff;
+    }
+
+    .section-title-wrap {
+      max-width: 760px;
+    }
+
+    .section-title-wrap.center {
+      margin: 0 auto;
+      text-align: center;
+    }
+
+    .section-title {
+      margin: 0;
+      font-size: clamp(32px, 4vw, 48px);
+      line-height: 1.08;
+      letter-spacing: -0.03em;
+    }
+
+    .section-copy {
+      margin: 18px 0 0;
+      font-size: 18px;
+      color: var(--muted);
+      line-height: 1.75;
+    }
+
+    .section-dark .section-copy {
+      color: rgba(255, 255, 255, 0.75);
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(220, 231, 255, 0.9);
+    }
+
+    .topbar-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 80px;
+      gap: 20px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-width: 0;
+    }
+
+    .brand-mark {
+      width: 44px;
+      height: 44px;
+      border-radius: 16px;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      background: linear-gradient(135deg, var(--blue), var(--blue-dark));
+      box-shadow: var(--shadow);
+      font-size: 18px;
+      font-weight: 800;
+    }
+
+    .brand-meta {
+      min-width: 0;
+    }
+
+    .brand-kicker {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.2em;
+      color: var(--blue);
+      font-weight: 800;
+    }
+
+    .brand-title {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .nav {
+      display: flex;
+      align-items: center;
+      gap: 28px;
+    }
+
+    .nav a {
+      color: #475569;
+      font-size: 14px;
+      transition: color 0.2s ease;
+    }
+
+    .nav a:hover {
+      color: var(--text);
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      min-height: 46px;
+      padding: 0 18px;
+      border-radius: 14px;
+      border: 1px solid transparent;
+      font-weight: 700;
+      transition: 0.2s ease;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .btn-primary {
+      background: var(--blue);
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      background: var(--blue-dark);
+    }
+
+    .btn-secondary {
+      background: #fff;
+      border-color: #cfe0ff;
+      color: var(--blue);
+    }
+
+    .btn-secondary:hover {
+      background: #f5f9ff;
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: #334155;
+      border-color: transparent;
+    }
+
+    .btn-ghost:hover {
+      background: #f8fafc;
+    }
+
+    .menu-toggle {
+      display: none;
+      width: 44px;
+      height: 44px;
       border-radius: 12px;
       border: 1px solid var(--border);
-      background: var(--panel);
-      color: var(--text);
-      transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition), opacity var(--transition);
-      outline: none;
-    }
-
-    input:focus,
-    select:focus,
-    textarea:focus {
-      border-color: rgba(37, 99, 235, 0.45);
-      box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
-    }
-
-    button {
+      background: #fff;
       cursor: pointer;
-      font-weight: 800;
-      background: linear-gradient(135deg, var(--primary), var(--primary-2));
-      color: #fff;
-      border: none;
-      box-shadow: 0 10px 20px rgba(37, 99, 235, 0.18);
+      font-size: 18px;
     }
 
-    button:hover:not(:disabled) {
-      transform: translateY(-1px);
+    .mobile-panel {
+      display: none;
+      border-top: 1px solid var(--border);
+      background: #fff;
     }
 
-    button:disabled {
-      opacity: 0.65;
-      cursor: not-allowed;
-      transform: none;
+    .mobile-panel.open {
+      display: block;
     }
 
-    .secondary-btn {
-      background: var(--panel);
-      color: var(--text);
-      border: 1px solid var(--border);
-      box-shadow: none;
+    .mobile-links {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      padding: 18px 0 20px;
     }
 
-    .workspace-grid {
+    .mobile-links a {
+      font-size: 15px;
+      color: #475569;
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      background: linear-gradient(180deg, #f7faff 0%, #ffffff 100%);
+      padding: 72px 0 84px;
+    }
+
+    .hero-glow {
+      position: absolute;
+      border-radius: 999px;
+      filter: blur(70px);
+      pointer-events: none;
+      opacity: 0.7;
+    }
+
+    .hero-glow.left {
+      width: 280px;
+      height: 280px;
+      left: -70px;
+      top: 80px;
+      background: rgba(20, 99, 255, 0.14);
+    }
+
+    .hero-glow.right {
+      width: 380px;
+      height: 380px;
+      right: -60px;
+      top: -20px;
+      background: rgba(58, 139, 255, 0.14);
+    }
+
+    .hero-grid {
+      position: relative;
+      z-index: 1;
       display: grid;
-      gap: 16px;
+      grid-template-columns: 1.08fr 0.92fr;
+      gap: 48px;
+      align-items: center;
     }
 
-    .filter-panel {
+    .hero h1 {
+      margin: 0;
+      max-width: 760px;
+      font-size: clamp(42px, 6vw, 72px);
+      line-height: 0.98;
+      letter-spacing: -0.05em;
+    }
+
+    .hero-copy {
+      margin: 24px 0 0;
+      max-width: 760px;
+      font-size: 19px;
+      line-height: 1.8;
+      color: var(--muted);
+    }
+
+    .hero-cta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      margin-top: 32px;
+    }
+
+    .hero-highlights {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 32px;
+    }
+
+    .mini-card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 18px;
+      box-shadow: var(--shadow);
+    }
+
+    .mini-card strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 15px;
+    }
+
+    .mini-card p {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.7;
+      color: #475569;
+    }
+
+    .hero-panel-wrap {
+      background: linear-gradient(180deg, #0c1630 0%, #0e46b8 100%);
+      border: 1px solid #cfe0ff;
+      border-radius: 34px;
+      padding: 16px;
+      box-shadow: var(--shadow-strong);
+    }
+
+    .hero-panel {
+      background: #fff;
+      border-radius: 28px;
+      padding: 22px;
+    }
+
+    .panel-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    .panel-kicker {
+      font-size: 14px;
+      color: #64748b;
+      margin-bottom: 4px;
+    }
+
+    .panel-title {
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.2;
+      letter-spacing: -0.03em;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 30px;
+      padding: 0 12px;
+      border-radius: 999px;
+      background: var(--blue-light);
+      color: var(--blue);
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .panel-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 18px;
+    }
+
+    .feature-box {
+      border: 1px solid #e2e8f0;
+      background: var(--bg-soft);
+      border-radius: 18px;
+      padding: 16px;
+    }
+
+    .feature-box strong {
+      display: block;
+      font-size: 14px;
+    }
+
+    .feature-box span {
+      display: block;
+      margin-top: 4px;
+      font-size: 13px;
+      color: #64748b;
+      line-height: 1.6;
+    }
+
+    .control-box {
+      margin-top: 18px;
+      border: 1px solid #e2e8f0;
+      border-radius: 22px;
       padding: 18px;
     }
 
-    .section-head {
+    .control-head {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 12px;
       margin-bottom: 14px;
+    }
+
+    .control-item {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 16px;
+      border-radius: 18px;
+      background: #f8fafc;
+      margin-bottom: 10px;
+    }
+
+    .control-item:last-child {
+      margin-bottom: 0;
+    }
+
+    .control-item strong {
+      display: block;
+      font-size: 15px;
+    }
+
+    .control-item span:first-child {
+      display: block;
+      font-size: 13px;
+      color: #64748b;
+      margin-top: 4px;
+      line-height: 1.6;
+    }
+
+    .trustbar {
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-soft);
+    }
+
+    .trustbar-inner {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 20px;
+      padding: 24px 0;
       flex-wrap: wrap;
     }
 
-    .section-head h2,
-    .section-head h3 {
+    .trustbar-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #64748b;
+    }
+
+    .trust-items {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .trust-chip {
+      border: 1px solid var(--border);
+      background: #fff;
+      border-radius: 999px;
+      padding: 10px 14px;
+      font-size: 14px;
+      color: #334155;
+      box-shadow: var(--shadow);
+    }
+
+    .stats {
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-soft);
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 20px;
+      padding: 32px 0;
+    }
+
+    .stat-card {
+      border: 1px solid var(--border);
+      background: #fff;
+      border-radius: 22px;
+      padding: 20px;
+      box-shadow: var(--shadow);
+    }
+
+    .stat-card strong {
+      display: block;
+      font-size: 30px;
+      line-height: 1.1;
+      letter-spacing: -0.03em;
+    }
+
+    .stat-card p {
+      margin: 10px 0 0;
+      font-size: 14px;
+      color: #64748b;
+      line-height: 1.7;
+    }
+
+    .card-grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 24px;
+      margin-top: 42px;
+    }
+
+    .card-grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 24px;
+      margin-top: 42px;
+    }
+
+    .surface-card {
+      border: 1px solid var(--border);
+      background: #fff;
+      border-radius: 28px;
+      padding: 28px;
+      box-shadow: var(--shadow);
+    }
+
+    .surface-card.dark {
+      border-color: rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.05);
+      box-shadow: none;
+      backdrop-filter: blur(10px);
+    }
+
+    .icon-box {
+      width: 48px;
+      height: 48px;
+      border-radius: 16px;
+      display: grid;
+      place-items: center;
+      background: var(--blue-light);
+      color: var(--blue);
+      font-weight: 800;
+      font-size: 16px;
+      margin-bottom: 18px;
+    }
+
+    .surface-card h3,
+    .surface-card h4 {
       margin: 0;
+      letter-spacing: -0.03em;
+    }
+
+    .surface-card h3 {
+      font-size: 24px;
+    }
+
+    .surface-card h4 {
+      font-size: 20px;
+    }
+
+    .surface-card p {
+      margin: 12px 0 0;
+      color: #64748b;
+      line-height: 1.8;
+      font-size: 15px;
+    }
+
+    .surface-card.dark p {
+      color: rgba(255, 255, 255, 0.75);
+    }
+
+    .bullet-list {
+      display: grid;
+      gap: 12px;
+      margin-top: 22px;
+    }
+
+    .bullet {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      padding: 14px 16px;
+      border-radius: 18px;
+      background: var(--bg-soft);
+      color: #334155;
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+    .bullet.dark {
+      background: rgba(255, 255, 255, 0.1);
+      color: rgba(255, 255, 255, 0.86);
+    }
+
+    .bullet-mark {
+      width: 22px;
+      height: 22px;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      background: var(--blue-light);
+      color: var(--blue);
+      font-size: 12px;
+      font-weight: 800;
+      margin-top: 1px;
+    }
+
+    .bullet.dark .bullet-mark {
+      background: rgba(255, 255, 255, 0.14);
+      color: #fff;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 0.95fr 1.05fr;
+      gap: 40px;
+      align-items: start;
+    }
+
+    .cta-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 20px;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--blue);
+    }
+
+    .faq-list {
+      margin-top: 42px;
+      display: grid;
+      gap: 14px;
+    }
+
+    details.faq-item {
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      background: #fff;
+      padding: 0 22px;
+      box-shadow: var(--shadow);
+    }
+
+    details.faq-item summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 20px 0;
+      font-weight: 700;
+      font-size: 16px;
+    }
+
+    details.faq-item summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .faq-answer {
+      padding: 0 0 20px;
+      color: #64748b;
+      font-size: 15px;
+      line-height: 1.8;
+    }
+
+    .contact-shell {
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 32px;
+      background: linear-gradient(135deg, #08152e 0%, #0e46b8 100%);
+      color: #fff;
+      padding: 36px;
+      box-shadow: var(--shadow-strong);
+    }
+
+    .contact-grid {
+      display: grid;
+      grid-template-columns: 1.05fr 0.95fr;
+      gap: 30px;
+      align-items: start;
+    }
+
+    .contact-copy {
+      color: rgba(255, 255, 255, 0.8);
+      font-size: 17px;
+      line-height: 1.8;
+      margin-top: 18px;
+    }
+
+    .contact-detail-list {
+      display: grid;
+      gap: 14px;
+      margin-top: 28px;
+    }
+
+    .contact-detail {
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 22px;
+      padding: 18px;
+      backdrop-filter: blur(10px);
+    }
+
+    .contact-detail .icon-box {
+      margin: 0;
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+    }
+
+    .contact-detail small {
+      display: block;
+      color: rgba(255, 255, 255, 0.72);
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+
+    .contact-detail strong {
+      font-size: 18px;
       letter-spacing: -0.02em;
     }
 
-    .section-sub {
-      margin-top: 4px;
-      font-size: 13px;
-      color: var(--text-soft);
+    .form-card {
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--text);
+      border-radius: 30px;
+      padding: 28px;
+      box-shadow: var(--shadow);
     }
 
-    .filter-grid {
-      display: grid;
-      grid-template-columns: minmax(0, 1.5fr) repeat(5, minmax(0, 1fr)) 140px;
-      gap: 12px;
-      align-items: end;
-    }
-
-    .date-range-fieldset {
+    .form-card h3 {
       margin: 0;
-      padding: 0;
-      border: 0;
-      min-width: 0;
-    }
-
-    .date-range-row {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
-    }
-
-    .date-preset-row {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin-top: 14px;
-    }
-
-    .link-btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: auto;
-      padding: 11px 14px;
-      border-radius: 12px;
-      font-weight: 800;
-      background: linear-gradient(135deg, var(--success), #15803d);
-      color: #fff;
-      box-shadow: 0 10px 20px rgba(22, 163, 74, 0.18);
-    }
-
-    .link-btn:hover {
-      text-decoration: none;
-      transform: translateY(-1px);
-    }
-
-    .filter-field {
-      display: grid;
-      gap: 6px;
-    }
-
-    .filter-label {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--text-soft);
-      font-weight: 800;
-    }
-
-    .input-wrap {
-      position: relative;
-    }
-
-    .input-icon {
-      position: absolute;
-      left: 12px;
-      top: 50%;
-      transform: translateY(-50%);
-      color: var(--text-faint);
-      font-size: 14px;
-      pointer-events: none;
-    }
-
-    .input-wrap input {
-      padding-left: 36px;
-    }
-
-    .chip-row {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin-top: 14px;
-    }
-
-    .filter-chip {
-      width: auto;
-      padding: 8px 12px;
-      border-radius: 999px;
-      font-size: 12px;
-      font-weight: 800;
-      border: 1px solid var(--border);
-      background: var(--panel-soft);
-      color: var(--text-soft);
-      box-shadow: none;
-    }
-
-    .filter-chip.active {
-      background: var(--primary-soft);
-      color: var(--primary);
-      border-color: transparent;
-    }
-
-    .kpi-grid {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 14px;
-    }
-
-    .kpi-card {
-      position: relative;
-      overflow: hidden;
-      cursor: pointer;
-    }
-
-    .kpi-card::after {
-      content: "";
-      position: absolute;
-      inset: auto 0 0 0;
-      height: 4px;
-      background: linear-gradient(90deg, transparent, rgba(37, 99, 235, 0.5), transparent);
-      opacity: 0;
-      transition: opacity var(--transition);
-    }
-
-    .kpi-card:hover::after,
-    .kpi-card:focus-visible::after {
-      opacity: 1;
-    }
-
-    .kpi-card {
-      padding: 16px;
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      box-shadow: var(--shadow-sm);
-    }
-
-    .kpi-top {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 12px;
-      gap: 10px;
-    }
-
-    .kpi-label {
-      font-size: 12px;
-      font-weight: 800;
-      color: var(--text-soft);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-
-    .kpi-icon {
-      width: 36px;
-      height: 36px;
-      display: grid;
-      place-items: center;
-      border-radius: 12px;
-      font-size: 16px;
-    }
-
-    .kpi-value {
       font-size: 28px;
-      font-weight: 900;
-      letter-spacing: -0.04em;
-      line-height: 1;
-      margin-bottom: 6px;
-    }
-
-    .kpi-sub {
-      font-size: 12px;
-      color: var(--text-faint);
-    }
-
-    .analytics-grid {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 14px;
-    }
-
-    .section-stack {
-      display: grid;
-      gap: 14px;
-    }
-    
-    .analytics-card {
-      padding: 18px;
-      min-height: 260px;
-    }
-    
-    .pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      border-radius: 999px;
-      padding: 8px 11px;
-      font-size: 12px;
-      font-weight: 800;
-      background: var(--panel-soft);
-      border: 1px solid var(--border);
-      color: var(--text-soft);
-    }
-
-    .analytics-stat-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 12px;
-    }
-
-    .mini-stat {
-      padding: 14px;
-      border-radius: 14px;
-      border: 1px solid var(--border);
-      background: var(--panel-soft);
-    }
-
-    .mini-stat .label {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--text-soft);
-      font-weight: 800;
-      margin-bottom: 8px;
-    }
-
-    .mini-stat .value {
-      font-size: 24px;
-      font-weight: 900;
       letter-spacing: -0.03em;
     }
 
-    .mini-stat .sub {
-      margin-top: 5px;
-      font-size: 12px;
-      color: var(--text-faint);
+    .form-card p {
+      margin: 12px 0 0;
+      color: #64748b;
+      line-height: 1.8;
+      font-size: 15px;
     }
 
-    .distribution {
+    .form-grid {
       display: grid;
-      gap: 10px;
-    }
-
-    .dist-row {
-      display: grid;
-      grid-template-columns: 150px 1fr 50px;
-      gap: 10px;
-      align-items: center;
-    }
-
-    .dist-label {
-      font-size: 13px;
-      font-weight: 700;
-      color: var(--text-soft);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .dist-bar {
-      height: 10px;
-      border-radius: 999px;
-      border: 1px solid var(--border);
-      background: var(--panel-soft);
-      overflow: hidden;
-    }
-
-    .dist-fill {
-      height: 100%;
-      border-radius: inherit;
-    }
-
-    .dist-value {
-      text-align: right;
-      font-size: 12px;
-      font-weight: 800;
-      color: var(--text-soft);
-    }
-
-    .ring-wrap {
-      display: grid;
-      grid-template-columns: 170px 1fr;
-      gap: 14px;
-      align-items: center;
-    }
-
-    .ring {
-      width: 170px;
-      height: 170px;
-      border-radius: 50%;
-      position: relative;
-      display: grid;
-      place-items: center;
-      margin: 0 auto;
-      border: 1px solid var(--border);
-    }
-
-    .ring::after {
-      content: "";
-      position: absolute;
-      width: 104px;
-      height: 104px;
-      border-radius: 50%;
-      background: var(--panel);
-      border: 1px solid var(--border);
-    }
-
-    .ring-center {
-      position: relative;
-      z-index: 1;
-      text-align: center;
-    }
-
-    .ring-center .big {
-      font-size: 28px;
-      font-weight: 900;
-      letter-spacing: -0.04em;
-    }
-
-    .ring-center .small {
-      font-size: 12px;
-      color: var(--text-soft);
-      font-weight: 700;
-    }
-
-    .legend {
-      display: grid;
-      gap: 10px;
-    }
-
-    .legend-row {
-      display: grid;
-      grid-template-columns: auto 1fr auto;
-      gap: 10px;
-      align-items: center;
-      font-size: 13px;
-    }
-
-    .legend-dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-    }
-
-    .legend-label {
-      color: var(--text-soft);
-      font-weight: 700;
-    }
-
-    .legend-value {
-      color: var(--text);
-      font-weight: 800;
-    }
-
-    .focus-select {
-      min-width: 180px;
-    }
-
-    .section-kicker {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      margin-bottom: 8px;
-      font-size: 11px;
-      font-weight: 900;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: var(--primary);
-    }
-
-    .hero-panel {
-      padding: 18px;
-      background: linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(124, 58, 237, 0.06));
-    }
-
-    .hero-grid {
-      display: grid;
-      grid-template-columns: 1.3fr 1fr;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 16px;
-      align-items: center;
+      margin-top: 24px;
     }
 
-    .hero-title {
-      margin: 0;
-      font-size: 28px;
-      letter-spacing: -0.04em;
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
     }
 
-    .hero-copy {
-      margin: 10px 0 0;
-      max-width: 680px;
+    .field.full {
+      grid-column: 1 / -1;
+    }
+
+    .field label {
       font-size: 14px;
-      line-height: 1.65;
-      color: var(--text-soft);
-    }
-
-    .hero-actions {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      margin-top: 16px;
-    }
-
-    .action-strip {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 12px;
-    }
-
-    .action-callout {
-      padding: 14px;
-      border-radius: 16px;
-      border: 1px solid var(--border);
-      background: rgba(255,255,255,0.6);
-    }
-
-    .action-callout .label {
-      font-size: 11px;
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--text-soft);
-      margin-bottom: 8px;
-    }
-
-    .action-callout .value {
-      font-size: 24px;
-      font-weight: 900;
-      letter-spacing: -0.04em;
-    }
-
-    .action-callout .sub {
-      margin-top: 6px;
-      font-size: 12px;
-      color: var(--text-soft);
-    }
-
-    .trend-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 14px;
-    }
-
-    .trend-card {
-      padding: 18px;
-      min-height: 280px;
-    }
-
-    .trend-bars {
-      display: grid;
-      grid-template-columns: repeat(7, minmax(0, 1fr));
-      gap: 10px;
-      align-items: end;
-      min-height: 170px;
-      margin-top: 16px;
-    }
-
-    .trend-col {
-      display: grid;
-      gap: 8px;
-      justify-items: center;
-    }
-
-    .trend-stack {
-      width: 100%;
-      min-height: 140px;
-      display: flex;
-      align-items: end;
-      justify-content: center;
-      gap: 5px;
-    }
-
-    .trend-bar {
-      width: 16px;
-      border-radius: 999px 999px 4px 4px;
-      min-height: 8px;
-    }
-
-    .trend-bar.backlog { background: #2563eb; }
-    .trend-bar.opened { background: #7c3aed; }
-    .trend-bar.closed { background: #16a34a; }
-
-    .trend-day {
-      font-size: 11px;
-      font-weight: 800;
-      color: var(--text-faint);
-      text-transform: uppercase;
-    }
-
-    .trend-caption {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 12px;
-    }
-
-    .legend-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 7px 10px;
-      border-radius: 999px;
-      border: 1px solid var(--border);
-      background: var(--panel-soft);
-      font-size: 12px;
       font-weight: 700;
-      color: var(--text-soft);
+      color: #0f172a;
     }
 
-    .legend-swatch {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-    }
-
-    .flag-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      margin-top: 8px;
-    }
-
-    .flag-chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 5px 8px;
-      border-radius: 999px;
-      font-size: 11px;
-      font-weight: 800;
-      border: 1px solid transparent;
-    }
-
-    .flag-chip.risk { background: #fee2e2; color: #b91c1c; }
-    .flag-chip.waiting { background: #fef3c7; color: #b45309; }
-    .flag-chip.ticket { background: #ede9fe; color: #6d28d9; }
-    .flag-chip.notes { background: #dbeafe; color: #1d4ed8; }
-
-    .dist-row[data-filter],
-    .legend-row[data-filter],
-    .mini-stat[data-filter],
-    .kpi-card[data-filter] {
-      cursor: pointer;
-    }
-
-    .interactive:hover,
-    .interactive:focus-visible {
-      outline: none;
-      transform: translateY(-1px);
-      box-shadow: var(--shadow-sm);
-    }
-
-    .view-note {
-      font-size: 12px;
-      color: var(--text-soft);
-    }
-    
-    .table-panel {
-      padding: 18px;
-    }
-
-    .table-shell {
-      overflow: hidden;
-      border-radius: 16px;
-      border: 1px solid var(--border);
-      background: var(--panel);
-    }
-
-    .table-wrap {
-      overflow: auto;
-      max-height: 74vh;
-    }
-
-    table {
+    .field input,
+    .field select,
+    .field textarea {
       width: 100%;
-      min-width: 1320px;
-      border-collapse: collapse;
-    }
-
-    thead th {
-      position: sticky;
-      top: 0;
-      z-index: 2;
-      background: var(--panel-soft);
-      color: var(--text-soft);
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      border-bottom: 1px solid var(--border);
-      padding: 14px 12px;
-      text-align: left;
-    }
-
-    tbody td {
-      padding: 14px 12px;
-      border-bottom: 1px solid var(--border);
-      font-size: 14px;
-      vertical-align: top;
-    }
-
-    tbody tr {
-      transition: background var(--transition);
-      cursor: pointer;
-    }
-
-    tbody tr:hover {
-      background: rgba(37, 99, 235, 0.04);
-    }
-
-    body.dark-theme tbody tr:hover {
-      background: rgba(59, 130, 246, 0.08);
-    }
-
-    tbody tr.selected-row {
-      background: rgba(37, 99, 235, 0.10);
-    }
-
-    .id-badge {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 46px;
-      padding: 6px 10px;
-      border-radius: 999px;
-      background: var(--primary-soft);
-      color: var(--primary);
-      font-size: 12px;
-      font-weight: 900;
-    }
-
-    .issue-title {
-      font-weight: 800;
-      margin-bottom: 6px;
-      line-height: 1.35;
-    }
-
-    .issue-desc {
-      font-size: 12px;
-      color: var(--text-soft);
-      line-height: 1.5;
-      max-width: 420px;
-      word-break: break-word;
-    }
-
-    .chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 7px 10px;
-      border-radius: 999px;
-      font-size: 12px;
-      font-weight: 800;
-      border: 1px solid transparent;
-      white-space: nowrap;
-    }
-
-    .chip-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      display: inline-block;
-    }
-
-    .action-btn {
-      width: auto;
-      padding: 8px 11px;
-      font-size: 12px;
-      border-radius: 10px;
-      box-shadow: none;
-    }
-
-    .loading-overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(15, 23, 42, 0.24);
-      backdrop-filter: blur(4px);
-      display: none;
-      place-items: center;
-      z-index: 1000;
-    }
-
-    .loading-overlay.show {
-      display: grid;
-    }
-
-    .loading-card {
-      width: 240px;
-      border-radius: 20px;
-      padding: 20px;
-      text-align: center;
-    }
-
-    .spinner {
-      width: 38px;
-      height: 38px;
-      margin: 0 auto 12px;
-      border-radius: 50%;
-      border: 3px solid var(--primary-soft);
-      border-top-color: var(--primary);
-      animation: spin 0.9s linear infinite;
-    }
-
-    .toast {
-      position: fixed;
-      right: 20px;
-      bottom: 20px;
-      min-width: 260px;
-      max-width: 380px;
-      padding: 14px 16px;
-      border-radius: 14px;
-      color: #fff;
-      font-size: 14px;
-      font-weight: 800;
-      box-shadow: var(--shadow-md);
-      transform: translateY(18px);
-      opacity: 0;
-      pointer-events: none;
-      transition: all var(--transition);
-      z-index: 1100;
-    }
-
-    .toast.show {
-      opacity: 1;
-      transform: translateY(0);
-    }
-
-    .toast.success {
-      background: linear-gradient(135deg, #16a34a, #15803d);
-    }
-
-    .toast.error {
-      background: linear-gradient(135deg, #dc2626, #b91c1c);
-    }
-
-    .modal-backdrop {
-      position: fixed;
-      inset: 0;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-      background: rgba(15, 23, 42, 0.42);
-      backdrop-filter: blur(6px);
-      z-index: 1200;
-    }
-
-    .modal-backdrop.show {
-      display: flex;
-    }
-
-    .modal {
-      width: min(980px, 100%);
-      max-height: 92vh;
-      overflow: auto;
-      background: var(--panel);
       border: 1px solid var(--border);
-      border-radius: 22px;
-      box-shadow: var(--shadow-md);
-      padding: 18px;
+      background: #fff;
+      border-radius: 14px;
+      padding: 14px 14px;
+      color: #0f172a;
+      outline: none;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
 
-    .modal-header {
+    .field input:focus,
+    .field select:focus,
+    .field textarea:focus {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 4px rgba(20, 99, 255, 0.1);
+    }
+
+    .form-actions {
       display: flex;
       justify-content: space-between;
-      gap: 12px;
-      align-items: start;
-      margin-bottom: 16px;
-      position: sticky;
-      top: 0;
-      background: var(--panel);
-      padding-bottom: 10px;
-      z-index: 2;
+      align-items: center;
+      gap: 18px;
+      border-top: 1px solid #e2e8f0;
+      margin-top: 22px;
+      padding-top: 20px;
     }
 
-    .modal-title {
-      margin: 0;
-      font-size: 22px;
-      letter-spacing: -0.03em;
+    .form-note {
+      max-width: 520px;
+      font-size: 12px;
+      color: #64748b;
+      line-height: 1.7;
     }
 
-    .modal-sub {
-      margin-top: 4px;
-      font-size: 13px;
-      color: var(--text-soft);
-    }
-
-    .edit-grid {
-      display: grid;
-      gap: 12px;
-    }
-
-    .grid-2, .grid-3 {
-      display: grid;
-      gap: 12px;
-    }
-
-    .grid-2 { grid-template-columns: 1fr 1fr; }
-    .grid-3 { grid-template-columns: 1fr 1fr 1fr; }
-
-    .section-title {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: var(--text-soft);
-      font-weight: 900;
-      padding-top: 8px;
-    }
-
-    .field-group {
-      display: grid;
-      gap: 8px;
-    }
-
-    .field-group label {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--text-soft);
-      font-weight: 800;
-    }
-
-    .readonly {
-      background: var(--panel-soft);
-    }
-
-    .selected-box,
-    .smart-box,
-    .security-box {
-      padding: 14px;
-      border-radius: 16px;
+    .success-box {
+      margin-top: 20px;
       border: 1px solid var(--border);
-      background: var(--panel-soft);
-      line-height: 1.6;
-      font-size: 13px;
-      color: var(--text-soft);
+      background: var(--bg-soft);
+      border-radius: 20px;
+      padding: 18px;
+      display: none;
     }
 
-    .selected-box strong,
-    .smart-box strong,
-    .security-box strong {
-      color: var(--text);
+    .success-box.show {
+      display: block;
     }
 
-    .modal-actions {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-      position: sticky;
-      bottom: 0;
-      background: linear-gradient(180deg, rgba(255,255,255,0), var(--panel) 35%);
-      padding-top: 10px;
-    }
-
-    .muted {
-      color: var(--text-faint);
-      font-size: 12px;
-    }
-
-    .success {
-      color: var(--success);
-      font-size: 13px;
-      font-weight: 800;
-    }
-
-    .error {
-      color: var(--danger);
-      font-size: 13px;
-      font-weight: 800;
-    }
-
-    .empty-state {
-      padding: 40px 24px;
-      text-align: center;
-      color: var(--text-soft);
-    }
-
-    .empty-state h4 {
-      margin: 0 0 8px;
+    .success-box strong {
+      display: block;
       font-size: 16px;
-      color: var(--text);
     }
 
-    .empty-state p {
-      margin: 0;
-      font-size: 13px;
+    .success-box p {
+      margin: 8px 0 0;
+      font-size: 14px;
+      color: #64748b;
     }
 
-    .footer-note {
+    .footer {
+      border-top: 1px solid var(--border);
+      background: #fff;
+      padding: 44px 0;
+    }
+
+    .footer-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr 0.8fr 0.9fr;
+      gap: 28px;
+    }
+
+    .footer h5 {
+      margin: 0 0 14px;
       font-size: 12px;
-      color: var(--text-faint);
-      line-height: 1.6;
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      color: #64748b;
     }
 
-    @keyframes spin {
-      to { transform: rotate(360deg); }
+    .footer p,
+    .footer a,
+    .footer li {
+      color: #64748b;
+      font-size: 14px;
+      line-height: 1.9;
     }
 
-    @media (max-width: 1280px) {
-      .kpi-grid,
-      .analytics-grid {
+    .footer a:hover {
+      color: var(--blue);
+    }
+
+    .footer-list {
+      display: grid;
+      gap: 6px;
+    }
+
+    @media (max-width: 1100px) {
+      .hero-grid,
+      .two-col,
+      .contact-grid,
+      .footer-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .card-grid-4 {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
-      .filter-grid {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+      .card-grid-3 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .stats-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
     }
 
-    @media (max-width: 920px) {
-      .app-shell {
-        padding: 14px;
+    @media (max-width: 780px) {
+      .container {
+        width: min(var(--container), calc(100% - 32px));
       }
 
-      .appbar,
-      .filter-grid,
-      .kpi-grid,
-      .analytics-grid,
-      .analytics-stat-grid,
-      .ring-wrap,
-      .grid-2,
-      .grid-3,
-      .modal-actions,
-      .hero-grid,
-      .action-strip,
-      .trend-grid {
+      .nav,
+      .actions .btn-ghost,
+      .actions .btn-primary.desktop-only {
+        display: none;
+      }
+
+      .menu-toggle {
+        display: inline-grid;
+        place-items: center;
+      }
+
+      .hero {
+        padding: 56px 0 72px;
+      }
+
+      .hero-highlights,
+      .panel-grid,
+      .form-grid,
+      .card-grid-3,
+      .card-grid-4,
+      .stats-grid {
         grid-template-columns: 1fr;
       }
 
-      .appbar {
-        grid-template-columns: 1fr;
+      .section,
+      .section-soft,
+      .section-dark {
+        padding-top: 76px;
+        padding-bottom: 76px;
       }
 
-      .appbar-actions {
-        justify-content: flex-start;
+      .contact-shell {
+        padding: 24px;
       }
 
-      .dist-row {
-        grid-template-columns: 120px 1fr 40px;
+      .form-actions {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .trustbar-inner {
+        align-items: flex-start;
       }
     }
   </style>
 </head>
 <body>
-  <div class="loading-overlay" id="loadingOverlay">
-    <div class="loading-card panel">
-      <div class="spinner"></div>
-      <div style="font-weight:800; color:var(--text); margin-bottom:4px;">Loading workspace</div>
-      <div class="muted">Refreshing analytics and issue queue...</div>
+  <header class="topbar">
+    <div class="container topbar-inner">
+      <a class="brand" href="#top">
+        <div class="brand-mark">◎</div>
+        <div class="brand-meta">
+          <div class="brand-kicker">InCheck360</div>
+          <div class="brand-title">Operational Excellence Platform</div>
+        </div>
+      </a>
+
+      <nav class="nav">
+        <a href="#platform">Platform</a>
+        <a href="#modules">Modules</a>
+        <a href="#industries">Industries</a>
+        <a href="#pricing">Pricing</a>
+        <a href="#faq">FAQ</a>
+        <a href="#contact">Book a demo</a>
+      </nav>
+
+      <div class="actions">
+        <a class="btn btn-ghost" href="https://app.incheck360.com" target="_blank" rel="noreferrer">Log in</a>
+        <a class="btn btn-primary desktop-only" href="#contact">Book a demo</a>
+        <button class="menu-toggle" id="menuToggle" aria-label="Open menu">☰</button>
+      </div>
     </div>
-  </div>
 
-  <div class="toast" id="toast"></div>
+    <div class="mobile-panel" id="mobilePanel">
+      <div class="container">
+        <div class="mobile-links">
+          <a href="#platform">Platform</a>
+          <a href="#modules">Modules</a>
+          <a href="#industries">Industries</a>
+          <a href="#pricing">Pricing</a>
+          <a href="#faq">FAQ</a>
+          <a href="#contact">Book a demo</a>
+          <a href="https://app.incheck360.com" target="_blank" rel="noreferrer">Log in</a>
+        </div>
+      </div>
+    </div>
+  </header>
 
-  <div class="modal-backdrop" id="editModalBackdrop" aria-hidden="true">
-    <div class="modal">
-      <div class="modal-header">
+  <main id="top">
+    <section class="hero">
+      <div class="hero-glow left"></div>
+      <div class="hero-glow right"></div>
+
+      <div class="container hero-grid">
         <div>
-          <h2 class="modal-title">Issue Details & Edit</h2>
-          <div class="modal-sub">Full submission details plus editable workflow fields.</div>
-        </div>
-        <button type="button" class="secondary-btn" id="closeModalBtn">✕</button>
-      </div>
+          <span class="badge">Built for F&amp;B, retail, QSR, franchise, and multi-location operators</span>
+          <h1>Run every location with the same standard, visibility, and accountability.</h1>
+          <p class="hero-copy">
+            InCheck360 helps operations teams replace paper checklists, scattered spreadsheets,
+            and disconnected tools with one platform for daily execution, SOP access, compliance
+            workflows, and real-time oversight.
+          </p>
 
-      <div class="edit-grid">
-        <div class="selected-box" id="selectedIssueInfo">No issue selected.</div>
-        <div class="smart-box" id="smartSuggestionBox"><strong>Smart suggestion:</strong> Select an issue to see recommended next actions.</div>
+          <div class="hero-cta">
+            <a class="btn btn-primary" href="#contact">Book a demo →</a>
+            <a class="btn btn-secondary" href="#modules">Explore modules</a>
+          </div>
 
-        <div class="section-title">Identifiers</div>
-        <div class="grid-3">
-          <div class="field-group">
-            <label for="issueId">Row ID</label>
-            <input id="issueId" class="readonly" readonly />
-          </div>
-          <div class="field-group">
-            <label for="timestamp">Timestamp</label>
-            <input id="timestamp" class="readonly" readonly />
-          </div>
-          <div class="field-group">
-            <label for="requestDate">Request Date</label>
-            <input id="requestDate" class="readonly" readonly />
-          </div>
-        </div>
-
-        <div class="section-title">Reporter & Company</div>
-        <div class="grid-2">
-          <div class="field-group">
-            <label for="submittedBy">Submitted By</label>
-            <input id="submittedBy" class="readonly" readonly />
-          </div>
-          <div class="field-group">
-            <label for="companyName">Company Name</label>
-            <input id="companyName" class="readonly" readonly />
+          <div class="hero-highlights">
+            <div class="mini-card">
+              <strong>Standardize routines</strong>
+              <p>By role, shift, and location across every store.</p>
+            </div>
+            <div class="mini-card">
+              <strong>Keep SOPs in one place</strong>
+              <p>Policies, guides, and task evidence in one system.</p>
+            </div>
+            <div class="mini-card">
+              <strong>Catch issues early</strong>
+              <p>See missed tasks, gaps, and risks in real time.</p>
+            </div>
+            <div class="mini-card">
+              <strong>Scale with control</strong>
+              <p>Roll out one standard from 5 to 500 locations.</p>
+            </div>
           </div>
         </div>
 
-        <div class="field-group">
-          <label for="issueTitle">Issue Title</label>
-          <input id="issueTitle" class="readonly" readonly />
-        </div>
+        <div class="hero-panel-wrap">
+          <div class="hero-panel">
+            <div class="panel-head">
+              <div>
+                <div class="panel-kicker">Live operations view</div>
+                <h2 class="panel-title">One system for frontline execution</h2>
+              </div>
+              <span class="pill">Real-time</span>
+            </div>
 
-        <div class="grid-2">
-          <div class="field-group">
-            <label for="issueCategory">Issue Category</label>
-            <input id="issueCategory" class="readonly" readonly />
-          </div>
-          <div class="field-group">
-            <label for="priorityLevel">Priority Level</label>
-            <input id="priorityLevel" class="readonly" readonly />
-          </div>
-        </div>
+            <div class="panel-grid">
+              <div class="feature-box">
+                <strong>Dynamic checklists</strong>
+                <span>By role, shift, and location</span>
+              </div>
+              <div class="feature-box">
+                <strong>SOP access</strong>
+                <span>Guides and policies in one place</span>
+              </div>
+              <div class="feature-box">
+                <strong>Automations</strong>
+                <span>Alerts, reminders, and escalations</span>
+              </div>
+              <div class="feature-box">
+                <strong>Visibility</strong>
+                <span>Tasks, issues, and compliance status</span>
+              </div>
+            </div>
 
-        <div class="field-group">
-          <label for="detailedDescription">Detailed Description</label>
-          <textarea id="detailedDescription" class="readonly" readonly></textarea>
-        </div>
+            <div class="control-box">
+              <div class="control-head">
+                <div>
+                  <div class="panel-kicker">What teams can monitor</div>
+                  <strong style="font-size:18px;">Daily control across every store</strong>
+                </div>
+                <span class="pill">Live</span>
+              </div>
 
-        <div class="section-title">Operational Context</div>
-        <div class="grid-2">
-          <div class="field-group">
-            <label for="issueOngoingIntermittent">Ongoing / Intermittent</label>
-            <input id="issueOngoingIntermittent" class="readonly" readonly />
-          </div>
-          <div class="field-group">
-            <label for="impactType">Impact Type</label>
-            <input id="impactType" class="readonly" readonly />
-          </div>
-        </div>
+              <div class="control-item">
+                <div>
+                  <strong>Opening and closing routines</strong>
+                  <span>Keep every shift consistent</span>
+                </div>
+                <span class="pill">Active</span>
+              </div>
 
-        <div class="grid-2">
-          <div class="field-group">
-            <label for="workaroundAvailable">Workaround Available</label>
-            <input id="workaroundAvailable" class="readonly" readonly />
-          </div>
-          <div class="field-group">
-            <label for="environment">Environment</label>
-            <input id="environment" class="readonly" readonly />
-          </div>
-        </div>
+              <div class="control-item">
+                <div>
+                  <strong>Food safety and hygiene checks</strong>
+                  <span>Maintain proof of execution</span>
+                </div>
+                <span class="pill">Active</span>
+              </div>
 
-        <div class="field-group">
-          <label for="workaroundDetails">Workaround Details</label>
-          <textarea id="workaroundDetails" class="readonly" readonly></textarea>
-        </div>
+              <div class="control-item">
+                <div>
+                  <strong>SOP deployment</strong>
+                  <span>Publish updates across locations</span>
+                </div>
+                <span class="pill">Active</span>
+              </div>
 
-        <div class="grid-2">
-          <div class="field-group">
-            <label for="productModuleAffected">Product / Module Affected</label>
-            <input id="productModuleAffected" class="readonly" readonly />
-          </div>
-          <div class="field-group">
-            <label for="browserDeviceOs">Browser / Device / OS</label>
-            <input id="browserDeviceOs" class="readonly" readonly />
-          </div>
-        </div>
-
-        <div class="field-group">
-          <label for="errorMessage">Error Message</label>
-          <textarea id="errorMessage" class="readonly" readonly></textarea>
-        </div>
-
-        <div class="grid-2">
-          <div class="field-group">
-            <label for="attachmentUpload">Attachment Upload</label>
-            <input id="attachmentUpload" class="readonly" readonly />
-          </div>
-          <div class="field-group">
-            <label for="reportedChannel">Reported Channel</label>
-            <input id="reportedChannel" class="readonly" readonly />
+              <div class="control-item">
+                <div>
+                  <strong>Alerts and escalations</strong>
+                  <span>Surface exceptions faster</span>
+                </div>
+                <span class="pill">Active</span>
+              </div>
+            </div>
           </div>
         </div>
-
-        <div class="field-group">
-          <label for="sourceOfIssue">Source of Issue</label>
-          <input id="sourceOfIssue" class="readonly" readonly />
-        </div>
-
-        <div class="section-title">Resolution Workflow</div>
-        <div class="grid-2">
-          <div class="field-group">
-            <label for="finalStatus">Final Status</label>
-            <select id="finalStatus"></select>
-          </div>
-          <div class="field-group">
-            <label for="resolutionClosureDate">Resolution / Closure Date</label>
-            <input id="resolutionClosureDate" class="readonly" readonly />
-          </div>
-        </div>
-
-        <div class="grid-2">
-          <div class="field-group">
-            <label for="initialAssessment">Initial Assessment</label>
-            <select id="initialAssessment"></select>
-          </div>
-          <div class="field-group">
-            <label for="rootCauseType">Root Cause Type</label>
-            <select id="rootCauseType"></select>
-          </div>
-        </div>
-
-        <div class="grid-2">
-          <div class="field-group">
-            <label for="escalationRequired">Escalation Required?</label>
-            <select id="escalationRequired"></select>
-          </div>
-          <div class="field-group">
-            <label for="wasCsInformed">Was CS Informed?</label>
-            <select id="wasCsInformed"></select>
-          </div>
-        </div>
-
-        <div class="field-group">
-          <label for="developmentTicket">Development Ticket</label>
-          <input id="developmentTicket" placeholder="Development ticket ID or link" />
-        </div>
-
-        <div class="field-group">
-          <label for="internalNotes">Internal Notes</label>
-          <textarea id="internalNotes" rows="7" placeholder="Document root cause, actions taken, workaround, or handoff notes..."></textarea>
-        </div>
-
-        <div class="section-title">Security</div>
-        <div class="security-box">
-          <strong>Backend-validated save:</strong> this page still relies on backend validation. For production security, enforce user auth and authorization in Apps Script or your backend.
-        </div>
-
-        <div class="field-group">
-          <label for="editPassword">Edit Password</label>
-          <input id="editPassword" type="password" placeholder="Enter edit password" />
-        </div>
-
-        <div id="saveMessage" class="muted"></div>
-
-        <div class="modal-actions">
-          <button id="saveBtn" type="button">Save Update</button>
-          <button id="resetEditorBtn" class="secondary-btn" type="button">Reset Changes</button>
-        </div>
-
-        <div class="footer-note">
-          Full row details stay in the popup. The main screen stays focused on analytics and the queue.
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="app-shell">
-    <section class="panel appbar">
-      <div class="brand-badge">IC</div>
-
-      <div class="appbar-title">
-        <h1>Support Analytics Workspace</h1>
-        <p>Filters · KPIs · Trends · Distributions · Detailed submissions</p>
-      </div>
-
-      <div class="appbar-actions">
-        <a class="link-btn" href="https://forms.gle/jb8tdCWJYyK4bCbk9" target="_blank" rel="noopener noreferrer">＋ Add New Issue</a>
-        <button type="button" id="refreshBtnTop">⟳ Sync</button>
-        <button type="button" class="secondary-btn" id="clearBtnTop">Reset filters</button>
-        <button type="button" class="secondary-btn" id="themeToggleBtn">🌙 Dark Mode</button>
       </div>
     </section>
 
-    <div class="workspace-grid">
-      <section class="panel filter-panel">
-        <div class="section-head">
-          <div>
-            <h2>Filters</h2>
-            <div class="section-sub">Filter issues by search, status, priority, date range, and sort order.</div>
+    <section class="trustbar">
+      <div class="container trustbar-inner">
+        <div class="trustbar-title">Built for structured frontline operations</div>
+        <div class="trust-items">
+          <span class="trust-chip">Multi-location F&amp;B teams</span>
+          <span class="trust-chip">QSR and franchise operators</span>
+          <span class="trust-chip">Retail and store operations leaders</span>
+          <span class="trust-chip">Compliance and quality teams</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="stats">
+      <div class="container">
+        <div class="stats-grid">
+          <div class="stat-card">
+            <strong>72%</strong>
+            <p>Reported reduction in checklist violations within 30 days</p>
           </div>
-          <div style="display:flex; gap:8px; flex-wrap:wrap;">
-            <div class="pill" id="issuesCountPill">Showing 0 issues</div>
-            <div class="pill" id="selectedCountPill">No issue selected</div>
+          <div class="stat-card">
+            <strong>5–500</strong>
+            <p>Locations supported under one operating standard</p>
+          </div>
+          <div class="stat-card">
+            <strong>Real-time</strong>
+            <p>Visibility into task completion, compliance status, and escalations</p>
+          </div>
+          <div class="stat-card">
+            <strong>Secure cloud</strong>
+            <p>Encrypted storage, role-based access, and full audit trails</p>
           </div>
         </div>
-
-        <div class="filter-grid">
-          <div class="filter-field">
-            <label class="filter-label" for="searchInput">Search Notes / Client / Module</label>
-            <div class="input-wrap">
-              <span class="input-icon">⌕</span>
-              <input id="searchInput" placeholder="Search by company, issue title, module, description, or ticket..." />
-            </div>
-          </div>
-
-          <div class="filter-field">
-            <label class="filter-label" for="statusFilter">Status</label>
-            <select id="statusFilter"></select>
-          </div>
-
-          <div class="filter-field">
-            <label class="filter-label" for="priorityFilter">Priority</label>
-            <select id="priorityFilter"></select>
-          </div>
-
-          <div class="filter-field">
-            <label class="filter-label" for="sortSelect">Sort</label>
-            <select id="sortSelect"></select>
-          </div>
-
-          <fieldset class="filter-field date-range-fieldset">
-            <label class="filter-label">Date range</label>
-            <div class="date-range-row">
-              <input id="startDateFilter" type="date" aria-label="Start date" />
-              <input id="endDateFilter" type="date" aria-label="End date" />
-            </div>
-          </fieldset>
-
-          <div class="filter-field">
-            <label class="filter-label" for="focusFilter">Focus</label>
-            <select id="focusFilter" class="focus-select">
-              <option value="">All issues</option>
-              <option value="needs_attention">Needs attention</option>
-              <option value="sla_risk">SLA risk</option>
-              <option value="escalated_no_ticket">Escalated without ticket</option>
-              <option value="missing_notes">Missing notes</option>
-              <option value="waiting_on_customer">Waiting on customer</option>
-              <option value="high_priority">High / critical</option>
-            </select>
-          </div>
-
-          <button id="refreshBtn" type="button">Refresh</button>
+      </div>
+    </section>
+        <section class="section" id="platform">
+      <div class="container">
+        <div class="section-title-wrap">
+          <span class="badge">Platform</span>
+          <h2 class="section-title">Everything operators need to run consistent, compliant locations.</h2>
+          <p class="section-copy">
+            InCheck360 brings frontline execution, SOP access, follow-up workflows,
+            and operational visibility into one structured system.
+          </p>
         </div>
 
-        <div class="date-preset-row" id="datePresetChips"></div>
-        <div class="chip-row" id="quickFilterChips"></div>
-      </section>
-
-      <section class="panel hero-panel">
-        <div class="hero-grid">
-          <div>
-            <div class="section-kicker">Workflow redesign</div>
-            <h2 class="hero-title">Lead with action, then explain the why.</h2>
-            <p class="hero-copy">This workspace now surfaces issues that need action first, adds 7-day trend views for backlog movement, and keeps the diagnostic breakdowns below for root-cause analysis. Use the focus filter or click any action card to jump straight into the queue slice that matters.</p>
-            <div class="hero-actions">
-              <button type="button" id="jumpToQueueBtn">Jump to queue</button>
-              <button type="button" class="secondary-btn" id="clearFocusBtn">Clear focus view</button>
-            </div>
-          </div>
-          <div class="action-strip" id="actionCallouts"></div>
-        </div>
-      </section>
-
-      <section class="section-stack">
-        <div class="section-head">
-          <div>
-            <h2>Action Board</h2>
-            <div class="section-sub">Top-level indicators should answer what needs action right now.</div>
-          </div>
-          <div class="view-note">Click a card to filter the queue instantly.</div>
-        </div>
-        <section class="kpi-grid" id="summaryCards"></section>
-      </section>
-
-      <section class="section-stack">
-        <div class="section-head">
-          <div>
-            <h2>Trend View</h2>
-            <div class="section-sub">Use recent movement to tell whether the operation is improving or slipping.</div>
-          </div>
-          <div class="view-note">7-day trend snapshots update with the current filters.</div>
-        </div>
-        <section class="trend-grid">
-          <article class="panel trend-card">
-            <div class="section-head">
-              <div>
-                <h3>Backlog Momentum</h3>
-                <div class="section-sub">Open backlog by day across the last 7 days.</div>
-              </div>
-            </div>
-            <div id="backlogTrend"></div>
-          </article>
-          <article class="panel trend-card">
-            <div class="section-head">
-              <div>
-                <h3>Intake vs Resolution</h3>
-                <div class="section-sub">New issues compared with resolved/closed work.</div>
-              </div>
-            </div>
-            <div id="flowTrend"></div>
-          </article>
-        </section>
-      </section>
-
-      <section class="section-stack">
-        <div class="section-head">
-          <div>
-            <h2>Diagnostic Breakdown</h2>
-            <div class="section-sub">After the action view, use these panels to understand where the pressure is coming from.</div>
-          </div>
-        </div>
-        <section class="analytics-grid">
-          <article class="panel analytics-card">
-            <div class="section-head">
-              <div>
-                <h3>Operational Snapshot</h3>
-                <div class="section-sub">Core metrics for the current filtered view.</div>
-              </div>
-              <div class="pill" id="filteredSummaryPill">0 issues in view</div>
-            </div>
-            <div class="analytics-stat-grid" id="filteredOverviewStats"></div>
+        <div class="card-grid-3">
+          <article class="surface-card">
+            <div class="icon-box">CL</div>
+            <h3>Daily execution management</h3>
+            <p>
+              Digitize recurring routines like opening checks, closing procedures,
+              hygiene tasks, and temperature logs so every shift follows the same standard.
+            </p>
           </article>
 
-          <article class="panel analytics-card">
-            <div class="section-head">
-              <div>
-                <h3>Status Distribution</h3>
-                <div class="section-sub">Current status mix for visible issues.</div>
-              </div>
-            </div>
-            <div class="distribution" id="statusDistribution"></div>
+          <article class="surface-card">
+            <div class="icon-box">SOP</div>
+            <h3>SOP and policy distribution</h3>
+            <p>
+              Give teams instant access to the latest procedures, guides, and reference
+              materials based on role, department, shift, or location.
+            </p>
           </article>
 
-          <article class="panel analytics-card">
-            <div class="section-head">
-              <div>
-                <h3>Priority Mix</h3>
-                <div class="section-sub">Severity balance in the queue.</div>
-              </div>
-            </div>
-            <div class="ring-wrap">
-              <div id="priorityRingWrap"></div>
-              <div class="legend" id="priorityLegend"></div>
-            </div>
+          <article class="surface-card">
+            <div class="icon-box">WF</div>
+            <h3>Automated follow-up</h3>
+            <p>
+              Trigger reminders, escalations, and confirmations automatically when tasks
+              are overdue, incomplete, or missed during shift handovers.
+            </p>
           </article>
 
-          <article class="panel analytics-card">
-            <div class="section-head">
-              <div>
-                <h3>Aging Buckets</h3>
-                <div class="section-sub">Active issue age grouped by days open.</div>
-              </div>
-            </div>
-            <div class="distribution" id="agingDistribution"></div>
+          <article class="surface-card">
+            <div class="icon-box">OP</div>
+            <h3>Operational visibility</h3>
+            <p>
+              Track completion rates, missed checklists, recurring issues, and store-level
+              compliance from one centralized dashboard.
+            </p>
           </article>
 
-          <article class="panel analytics-card">
-            <div class="section-head">
-              <div>
-                <h3>Module Hotspots</h3>
-                <div class="section-sub">Where issues are concentrating right now.</div>
-              </div>
-            </div>
-            <div class="distribution" id="moduleDistribution"></div>
+          <article class="surface-card">
+            <div class="icon-box">RL</div>
+            <h3>Rollout consistency</h3>
+            <p>
+              Launch procedural updates, campaigns, equipment changes, and new standards
+              across locations with better coordination and accountability.
+            </p>
           </article>
 
-          <article class="panel analytics-card">
-            <div class="section-head">
-              <div>
-                <h3>Top Companies</h3>
-                <div class="section-sub">Organizations with the most visible issues.</div>
-              </div>
-            </div>
-            <div class="distribution" id="companyDistribution"></div>
+          <article class="surface-card">
+            <div class="icon-box">AL</div>
+            <h3>Incident communication</h3>
+            <p>
+              Improve response times with structured alerts, manager notifications,
+              and follow-up workflows connected to frontline execution.
+            </p>
           </article>
-        </section>
-      </section>
+        </div>
+      </div>
+    </section>
 
-      <section class="panel table-panel" id="queueSection">
-        <div class="section-head">
-          <div>
-            <h3>Submitted Issue Details</h3>
-            <div class="section-sub">Click a row to select it. Click Edit to open the full issue popup.</div>
-          </div>
-          <div style="display:flex; gap:8px; flex-wrap:wrap;">
-            <div class="pill" id="tableMetaPill">Sorted by sheet order</div>
-            <button id="exportBtn" type="button">⬇ Export filtered CSV</button>
-          </div>
+    <section class="section section-dark">
+      <div class="container">
+        <div class="section-title-wrap">
+          <span class="badge dark">Why teams choose InCheck360</span>
+          <h2 class="section-title">Replace paper, patchwork tools, and inconsistent execution.</h2>
+          <p class="section-copy">
+            Give managers, operators, and compliance teams one place to monitor routines,
+            support stores, and keep standards aligned across every shift.
+          </p>
         </div>
 
-        <div class="table-shell">
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Issue</th>
-                  <th>Company</th>
-                  <th>Module</th>
-                  <th>Priority</th>
-                  <th>Status</th>
-                  <th>Escalation</th>
-                  <th>Ticket</th>
-                  <th>Age</th>
-                  <th>Closure Date</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody id="issuesTable">
-                <tr>
-                  <td colspan="11">Loading...</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+        <div class="card-grid-3">
+          <article class="surface-card dark">
+            <h3>Operational control</h3>
+            <p>
+              Standardize recurring routines, proofs of execution, and issue follow-up
+              without relying on paper checklists or disconnected spreadsheets.
+            </p>
+          </article>
+
+          <article class="surface-card dark">
+            <h3>Compliance confidence</h3>
+            <p>
+              Support food safety, hygiene, store standards, and audit readiness
+              with structured daily workflows and accessible records.
+            </p>
+          </article>
+
+          <article class="surface-card dark">
+            <h3>Faster decisions</h3>
+            <p>
+              See what is overdue, where support is needed, and how execution is
+              performing across locations in real time.
+            </p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="modules">
+      <div class="container">
+        <div class="section-title-wrap">
+          <span class="badge">Modules</span>
+          <h2 class="section-title">Three modules built for daily execution, SOP access, and compliance control.</h2>
+          <p class="section-copy">
+            Start with core execution and reference materials today, then extend into a dedicated
+            compliance layer as your operational model evolves.
+          </p>
         </div>
 
-        <div style="margin-top:12px; display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;">
-          <div class="muted">Last refreshed: <span id="lastRefreshPill">—</span></div>
-          <div class="muted">Analytics cards and the queue follow the same active filters.</div>
+        <div class="card-grid-3">
+          <article class="surface-card">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+              <div class="icon-box" style="margin-bottom:0;">CK</div>
+              <span class="pill">Live</span>
+            </div>
+            <h3 style="margin-top:20px;">Checklist</h3>
+            <p>
+              Create dynamic routines that guide teams through the right tasks at the right
+              time based on role, shift, and location.
+            </p>
+
+            <div class="bullet-list">
+              <div class="bullet">
+                <span class="bullet-mark">✓</span>
+                <span>Recurring checklists by role, shift, department, or store</span>
+              </div>
+              <div class="bullet">
+                <span class="bullet-mark">✓</span>
+                <span>Conditional logic, photo uploads, and validation steps</span>
+              </div>
+              <div class="bullet">
+                <span class="bullet-mark">✓</span>
+                <span>Timestamps, completion status, and missed-item visibility</span>
+              </div>
+            </div>
+
+            <a class="cta-link" href="#contact">Book a demo →</a>
+          </article>
+
+          <article class="surface-card">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+              <div class="icon-box" style="margin-bottom:0;">RM</div>
+              <span class="pill">Live</span>
+            </div>
+            <h3 style="margin-top:20px;">Reference Materials</h3>
+            <p>
+              Centralize SOPs, training guides, policies, and operational documents so teams
+              always work from the latest version.
+            </p>
+
+            <div class="bullet-list">
+              <div class="bullet">
+                <span class="bullet-mark">✓</span>
+                <span>Support for PDFs, videos, and image-based guides</span>
+              </div>
+              <div class="bullet">
+                <span class="bullet-mark">✓</span>
+                <span>Visibility controls by job title, location, department, or shift</span>
+              </div>
+              <div class="bullet">
+                <span class="bullet-mark">✓</span>
+                <span>Instant updates across every store and team</span>
+              </div>
+            </div>
+
+            <a class="cta-link" href="#contact">Book a demo →</a>
+          </article>
+
+          <article class="surface-card">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+              <div class="icon-box" style="margin-bottom:0;">CP</div>
+              <span class="pill" style="background:#f1f5f9;color:#475569;">Coming soon</span>
+            </div>
+            <h3 style="margin-top:20px;">Compliance</h3>
+            <p>
+              Extend execution data into a dedicated compliance layer for stronger visibility
+              into risk, repeat issues, and procedural gaps.
+            </p>
+
+            <div class="bullet-list">
+              <div class="bullet">
+                <span class="bullet-mark">✓</span>
+                <span>Centralized compliance monitoring and alerts</span>
+              </div>
+              <div class="bullet">
+                <span class="bullet-mark">✓</span>
+                <span>Better visibility into violations and recurring issues</span>
+              </div>
+              <div class="bullet">
+                <span class="bullet-mark">✓</span>
+                <span>Stronger accountability across stores and teams</span>
+              </div>
+            </div>
+
+            <a class="cta-link" href="#contact">Book a demo →</a>
+          </article>
         </div>
-      </section>
+      </div>
+    </section>
+
+    <section class="section section-soft">
+      <div class="container two-col">
+        <div class="section-title-wrap">
+          <span class="badge">Outcomes</span>
+          <h2 class="section-title">Why teams switch from paper, spreadsheets, and disconnected tools.</h2>
+          <p class="section-copy">
+            The value of InCheck360 is not only task digitization. It is the ability to scale
+            one operating standard with stronger visibility, faster follow-up, and clearer accountability.
+          </p>
+        </div>
+
+        <div class="card-grid-4" style="margin-top:0;">
+          <article class="surface-card" style="padding:22px;">
+            <div class="icon-box" style="width:44px;height:44px;margin-bottom:14px;">ST</div>
+            <h4>Safer, more consistent execution</h4>
+            <p>Deliver the right task, checklist, or procedure at the right time for every team member and every location.</p>
+          </article>
+
+          <article class="surface-card" style="padding:22px;">
+            <div class="icon-box" style="width:44px;height:44px;margin-bottom:14px;">RT</div>
+            <h4>Real-time operational insight</h4>
+            <p>See what is complete, what is overdue, and where support is needed before issues become bigger problems.</p>
+          </article>
+
+          <article class="surface-card" style="padding:22px;">
+            <div class="icon-box" style="width:44px;height:44px;margin-bottom:14px;">FX</div>
+            <h4>Faster corrective action</h4>
+            <p>Turn exceptions, missed tasks, and shift issues into immediate follow-up instead of delayed manual reporting.</p>
+          </article>
+
+          <article class="surface-card" style="padding:22px;">
+            <div class="icon-box" style="width:44px;height:44px;margin-bottom:14px;">SC</div>
+            <h4>Scalable operating standards</h4>
+            <p>Roll out one structured operating model across multiple stores without losing local visibility or control.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+        <section class="section" id="industries">
+      <div class="container">
+        <div class="section-title-wrap">
+          <span class="badge">Industries</span>
+          <h2 class="section-title">Built for businesses with structured frontline operations.</h2>
+          <p class="section-copy">
+            InCheck360 is designed for teams that need daily routines, SOP visibility,
+            compliance workflows, and store-level accountability across multiple locations.
+          </p>
+        </div>
+
+        <div class="card-grid-4">
+          <article class="surface-card">
+            <div class="icon-box">FB</div>
+            <h4>F&amp;B and QSR</h4>
+            <p>Standardize food safety checks, temperature logs, opening and closing routines, and daily store execution.</p>
+          </article>
+
+          <article class="surface-card">
+            <div class="icon-box">RT</div>
+            <h4>Retail chains</h4>
+            <p>Keep store standards, recurring tasks, issue resolution, and team accountability aligned across branches.</p>
+          </article>
+
+          <article class="surface-card">
+            <div class="icon-box">MU</div>
+            <h4>Multi-unit operators</h4>
+            <p>Maintain one operating framework while preserving visibility by region, department, site, and shift.</p>
+          </article>
+
+          <article class="surface-card">
+            <div class="icon-box">FR</div>
+            <h4>Franchise networks</h4>
+            <p>Roll out standards, updates, campaigns, and procedures consistently while keeping local teams coordinated.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="pricing">
+      <div class="container">
+        <div class="section-title-wrap">
+          <span class="badge">Pricing</span>
+          <h2 class="section-title">Flexible rollout options for growing operations.</h2>
+          <p class="section-copy">
+            Choose a package that fits your current rollout size, then expand modules,
+            capacity, and users as your operating model scales.
+          </p>
+        </div>
+
+        <div class="card-grid-3">
+          <article class="surface-card" style="background:linear-gradient(180deg,#1463ff 0%,#0e46b8 100%);color:#fff;border-color:transparent;">
+            <span class="badge dark">Best for full rollout</span>
+            <h3 style="margin-top:16px;">InCheck Full</h3>
+            <p style="color:rgba(255,255,255,0.82);">
+              For operators who want the complete InCheck360 operating stack across execution,
+              SOP access, and daily oversight.
+            </p>
+
+            <div class="bullet-list">
+              <div class="bullet dark"><span class="bullet-mark">✓</span><span>Checklist module included</span></div>
+              <div class="bullet dark"><span class="bullet-mark">✓</span><span>Reference Materials module included</span></div>
+              <div class="bullet dark"><span class="bullet-mark">✓</span><span>Journal module included</span></div>
+              <div class="bullet dark"><span class="bullet-mark">✓</span><span>Unlimited checklist usage</span></div>
+              <div class="bullet dark"><span class="bullet-mark">✓</span><span>Unlimited app users</span></div>
+              <div class="bullet dark"><span class="bullet-mark">✓</span><span>Unlimited web app users</span></div>
+            </div>
+
+            <a class="btn" href="#contact" style="margin-top:22px;background:#fff;color:#1463ff;">Book a demo</a>
+          </article>
+
+          <article class="surface-card">
+            <span class="badge">Flexible starting point</span>
+            <h3 style="margin-top:16px;">InCheck Lite</h3>
+            <p>
+              For teams that want a lower-friction entry into digital checklists and SOP
+              distribution, with room to expand over time.
+            </p>
+
+            <div class="bullet-list">
+              <div class="bullet"><span class="bullet-mark">✓</span><span>Checklist module included</span></div>
+              <div class="bullet"><span class="bullet-mark">✓</span><span>Reference Materials module included</span></div>
+              <div class="bullet"><span class="bullet-mark">✓</span><span>Journal optional</span></div>
+              <div class="bullet"><span class="bullet-mark">✓</span><span>4 app users included</span></div>
+              <div class="bullet"><span class="bullet-mark">✓</span><span>Unlimited web app users</span></div>
+              <div class="bullet"><span class="bullet-mark">✓</span><span>Optional paid add-ons as you scale</span></div>
+            </div>
+
+            <a class="btn btn-primary" href="#contact" style="margin-top:22px;">Book a demo</a>
+          </article>
+
+          <article class="surface-card" style="background:var(--bg-soft);">
+            <span class="badge">Add-ons</span>
+            <h3 style="margin-top:16px;">Expand your package as your rollout grows.</h3>
+            <p>
+              Start with the package that fits today, then add more capacity,
+              users, and functionality as your needs evolve.
+            </p>
+
+            <div class="bullet-list">
+              <div class="bullet"><span class="bullet-mark">›</span><span>Journal can be added to InCheck Lite</span></div>
+              <div class="bullet"><span class="bullet-mark">›</span><span>Additional checklist capacity can be added</span></div>
+              <div class="bullet"><span class="bullet-mark">›</span><span>Additional app users can be added</span></div>
+              <div class="bullet"><span class="bullet-mark">›</span><span>Commercial terms can scale with rollout size and team structure</span></div>
+            </div>
+
+            <div style="margin-top:20px;padding:16px;border-radius:18px;border:1px solid var(--border);background:#fff;">
+              <strong style="display:block;font-size:14px;">Commercial model</strong>
+              <p style="margin:8px 0 0;font-size:14px;">
+                Pricing can be tailored to rollout size, module selection, and team structure.
+              </p>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" style="background:linear-gradient(180deg,#ffffff 0%,#f7faff 100%);">
+      <div class="container two-col">
+        <article class="surface-card" style="padding:32px;">
+          <span class="badge">Roadmap</span>
+          <h2 class="section-title" style="font-size:40px;margin-top:18px;">Built to extend operational control over time.</h2>
+          <p class="section-copy" style="margin-top:16px;">
+            InCheck360 can evolve beyond daily task execution into a broader operational
+            intelligence layer that connects frontline workflows, environmental data,
+            and smarter decision support.
+          </p>
+
+          <div class="bullet-list">
+            <div class="bullet"><span class="bullet-mark">✓</span><span>Smart sensor integration for real-time environmental monitoring</span></div>
+            <div class="bullet"><span class="bullet-mark">✓</span><span>Digital labeling to improve traceability and food safety</span></div>
+            <div class="bullet"><span class="bullet-mark">✓</span><span>AI-driven analytics for workflow patterns and operational insights</span></div>
+            <div class="bullet"><span class="bullet-mark">✓</span><span>AIoT infrastructure that combines device data with machine learning</span></div>
+          </div>
+        </article>
+
+        <div style="display:grid;gap:16px;">
+          <article class="surface-card" style="padding:22px;">
+            <div style="display:flex;gap:14px;align-items:flex-start;">
+              <div class="icon-box" style="margin:0;">IR</div>
+              <div>
+                <h4>Inspection readiness</h4>
+                <p>Keep audit evidence, task history, and operational records organized and easy to review.</p>
+              </div>
+            </div>
+          </article>
+
+          <article class="surface-card" style="padding:22px;">
+            <div style="display:flex;gap:14px;align-items:flex-start;">
+              <div class="icon-box" style="margin:0;">SC</div>
+              <div>
+                <h4>Security and control</h4>
+                <p>Protect operational data with secure cloud infrastructure, encrypted storage, permissions, and audit trails.</p>
+              </div>
+            </div>
+          </article>
+
+          <article class="surface-card" style="padding:22px;">
+            <div style="display:flex;gap:14px;align-items:flex-start;">
+              <div class="icon-box" style="margin:0;">AC</div>
+              <div>
+                <h4>Operational accountability</h4>
+                <p>Create clear ownership for what must be done, when it must be done, and who is responsible.</p>
+              </div>
+            </div>
+          </article>
+
+          <article class="surface-card" style="padding:32px;background:linear-gradient(135deg,#1463ff 0%,#0e46b8 100%);color:#fff;border-color:transparent;">
+            <span class="badge dark">Proof point</span>
+            <h3 style="margin-top:18px;">A platform built to improve consistency at store level.</h3>
+            <p style="color:rgba(255,255,255,0.82);">
+              InCheck360 is positioned around measurable operational improvement,
+              stronger routine adherence, and better visibility into what is happening across locations.
+            </p>
+
+            <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:24px;">
+              <div style="padding:18px;border-radius:18px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.16);">
+                <strong style="display:block;font-size:34px;">72%</strong>
+                <span style="display:block;margin-top:8px;font-size:14px;color:rgba(255,255,255,0.76);line-height:1.6;">
+                  reported reduction in checklist violations
+                </span>
+              </div>
+              <div style="padding:18px;border-radius:18px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.16);">
+                <strong style="display:block;font-size:34px;">5–500</strong>
+                <span style="display:block;margin-top:8px;font-size:14px;color:rgba(255,255,255,0.76);line-height:1.6;">
+                  locations supported under one operating model
+                </span>
+              </div>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-soft" id="faq">
+      <div class="container">
+        <div class="section-title-wrap center">
+          <span class="badge">FAQ</span>
+          <h2 class="section-title">Questions teams ask before they book a demo.</h2>
+          <p class="section-copy">
+            These are the questions buyers usually want answered before exploring rollout options,
+            workflows, and implementation details.
+          </p>
+        </div>
+
+        <div class="faq-list">
+          <details class="faq-item">
+            <summary>What is InCheck360?</summary>
+            <div class="faq-answer">
+              InCheck360 is an operations management platform for multi-location teams.
+              It helps businesses digitize recurring routines, centralize SOPs, and monitor
+              execution and compliance in real time.
+            </div>
+          </details>
+
+          <details class="faq-item">
+            <summary>Who is InCheck360 built for?</summary>
+            <div class="faq-answer">
+              It is designed for F&amp;B, QSR, retail, franchise, and other multi-location operators
+              that need more consistent frontline execution across stores and shifts.
+            </div>
+          </details>
+
+          <details class="faq-item">
+            <summary>Can tasks and SOPs be customized by location or role?</summary>
+            <div class="faq-answer">
+              Yes. Workflows, checklists, reference materials, and visibility rules can be configured
+              by role, shift, department, and location.
+            </div>
+          </details>
+
+          <details class="faq-item">
+            <summary>Does the platform support compliance workflows?</summary>
+            <div class="faq-answer">
+              Yes. Teams can use structured task execution, proof of completion, and centralized records
+              to strengthen compliance and day-to-day operational control.
+            </div>
+          </details>
+
+          <details class="faq-item">
+            <summary>Is operational data secure?</summary>
+            <div class="faq-answer">
+              Yes. The platform is positioned around secure cloud infrastructure,
+              encrypted storage, role-based access, and audit trails.
+            </div>
+          </details>
+
+          <details class="faq-item">
+            <summary>How do teams get started?</summary>
+            <div class="faq-answer">
+              The best first step is to book a demo. From there, the rollout can be planned around
+              locations, roles, operational priorities, and onboarding needs.
+            </div>
+          </details>
+        </div>
+      </div>
+    </section>
+        <section class="section" id="contact">
+      <div class="container">
+        <div class="contact-shell">
+          <div class="contact-grid">
+            <div>
+              <span class="badge dark">Book a demo</span>
+              <h2 class="section-title" style="margin-top:18px;">See how InCheck360 can fit your operation.</h2>
+              <p class="contact-copy">
+                Tell us about your business, your number of locations, and the workflows
+                you want to improve. We’ll tailor the conversation to your rollout needs.
+              </p>
+
+              <div class="contact-detail-list">
+                <div class="contact-detail">
+                  <div class="icon-box">PH</div>
+                  <div>
+                    <small>Call us</small>
+                    <strong><a href="tel:+3197010280855">+31 970 102 80855</a></strong>
+                  </div>
+                </div>
+
+                <div class="contact-detail">
+                  <div class="icon-box">EM</div>
+                  <div>
+                    <small>Email us</small>
+                    <strong><a href="mailto:info@incheck360.nl">info@incheck360.nl</a></strong>
+                  </div>
+                </div>
+
+                <div class="contact-detail">
+                  <div class="icon-box">LC</div>
+                  <div>
+                    <small>Location</small>
+                    <strong>Enschede, The Netherlands</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-card">
+              <h3>Request your demo</h3>
+              <p>
+                Share a few details and the team can tailor the conversation
+                to your operation, rollout size, and priorities.
+              </p>
+
+              <form id="demoForm">
+                <div class="form-grid">
+                  <div class="field">
+                    <label for="name">Full name</label>
+                    <input id="name" name="name" type="text" placeholder="Jane Smith" required />
+                  </div>
+
+                  <div class="field">
+                    <label for="email">Work email</label>
+                    <input id="email" name="email" type="email" placeholder="jane@company.com" required />
+                  </div>
+
+                  <div class="field">
+                    <label for="company">Company</label>
+                    <input id="company" name="company" type="text" placeholder="Your company" required />
+                  </div>
+
+                  <div class="field">
+                    <label for="locations">Number of locations</label>
+                    <input id="locations" name="locations" type="text" placeholder="e.g. 12" required />
+                  </div>
+
+                  <div class="field">
+                    <label for="industry">Industry</label>
+                    <select id="industry" name="industry" required>
+                      <option value="">Select your industry</option>
+                      <option>F&amp;B / QSR</option>
+                      <option>Retail</option>
+                      <option>Franchise</option>
+                      <option>Multi-unit operations</option>
+                      <option>Other</option>
+                    </select>
+                  </div>
+
+                  <div class="field full">
+                    <label for="message">What do you want to improve?</label>
+                    <textarea
+                      id="message"
+                      name="message"
+                      rows="5"
+                      placeholder="Tell us about your workflows, compliance needs, or rollout goals."
+                    ></textarea>
+                  </div>
+                </div>
+
+                <div class="form-actions">
+                  <div class="form-note">
+                    This form currently shows a success message in the browser only.
+                    You can later connect it to Formspree, HubSpot, a webhook, or your own backend.
+                  </div>
+                  <button class="btn btn-primary" type="submit">Book a demo</button>
+                </div>
+
+                <div class="success-box" id="successBox">
+                  <strong>Thanks — your request has been captured.</strong>
+                  <p>Next step: connect this form to your backend, CRM, or email automation.</p>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-grid">
+      <div>
+        <div class="brand">
+          <div class="brand-mark">◎</div>
+          <div class="brand-meta">
+            <div class="brand-title">InCheck360</div>
+            <div class="brand-kicker" style="letter-spacing:0.04em;text-transform:none;font-size:13px;color:#64748b;">Operational Excellence Platform</div>
+          </div>
+        </div>
+        <p style="max-width:440px;margin-top:16px;">
+          Built for brands that need sharper execution, stronger compliance,
+          and clearer visibility across every location.
+        </p>
+      </div>
+
+      <div>
+        <h5>Platform</h5>
+        <div class="footer-list">
+          <a href="#platform">Platform</a>
+          <a href="#modules">Modules</a>
+          <a href="#pricing">Pricing</a>
+          <a href="#faq">FAQ</a>
+        </div>
+      </div>
+
+      <div>
+        <h5>Solutions</h5>
+        <div class="footer-list">
+          <a href="#industries">F&amp;B and QSR</a>
+          <a href="#industries">Retail chains</a>
+          <a href="#industries">Franchise networks</a>
+          <a href="#contact">Book a demo</a>
+        </div>
+      </div>
+
+      <div>
+        <h5>Company</h5>
+        <div class="footer-list">
+          <span>Enschede, The Netherlands</span>
+          <a href="mailto:info@incheck360.nl">info@incheck360.nl</a>
+          <a href="tel:+3197010280855">+31 970 102 80855</a>
+          <span>InCheck360 Holding B.V.</span>
+        </div>
+      </div>
     </div>
-  </div>
+  </footer>
 
   <script>
-    const CONFIG = {
-      API_URL: 'https://script.google.com/macros/s/AKfycbwX0LqxxJ7-YN7EDzzqomxVFVLvIhSXvbYgd4LgLE42gq1Hl4wJmCYPTy2rcsjQ_KVV/exec',
+    (function () {
+      const menuToggle = document.getElementById("menuToggle");
+      const mobilePanel = document.getElementById("mobilePanel");
+      const mobileLinks = mobilePanel.querySelectorAll("a");
+      const demoForm = document.getElementById("demoForm");
+      const successBox = document.getElementById("successBox");
 
-      STATUS_OPTIONS: [
-        'Open',
-        'In Progress',
-        'Waiting for CS',
-        'Waiting for Customer',
-        'Escalated to Development',
-        'Resolved',
-        'Closed'
-      ],
-
-      PRIORITY_OPTIONS: ['Low', 'Medium', 'High', 'Critical'],
-
-      INITIAL_ASSESSMENT_OPTIONS: [
-        'Resolved by R&D',
-        'Need More Information',
-        'Escalated to Development',
-        'Not a Bug',
-        'Duplicate',
-        'Cannot Reproduce'
-      ],
-
-      ROOT_CAUSE_OPTIONS: [
-        'User Error',
-        'Configuration',
-        'Data Problem',
-        'System Bug',
-        'Third-Party Dependency',
-        'Performance Limitation',
-        'Unknown'
-      ],
-
-      YES_NO_OPTIONS: ['Yes', 'No'],
-
-      ACTIVE_STATUSES: new Set([
-        'open',
-        'in progress',
-        'waiting for cs',
-        'waiting for customer',
-        'escalated to development'
-      ]),
-
-      STATUS_THEME: {
-        'Open': { bg: '#e2e8f0', text: '#475569', fill: '#64748b' },
-        'In Progress': { bg: '#dbeafe', text: '#1d4ed8', fill: '#2563eb' },
-        'Waiting for CS': { bg: '#fef3c7', text: '#b45309', fill: '#d97706' },
-        'Waiting for Customer': { bg: '#fef3c7', text: '#b45309', fill: '#d97706' },
-        'Escalated to Development': { bg: '#ede9fe', text: '#6d28d9', fill: '#7c3aed' },
-        'Resolved': { bg: '#dcfce7', text: '#15803d', fill: '#16a34a' },
-        'Closed': { bg: '#dcfce7', text: '#15803d', fill: '#16a34a' }
-      },
-
-      PRIORITY_THEME: {
-        'Critical': { bg: '#fee2e2', text: '#b91c1c' },
-        'High': { bg: '#ffedd5', text: '#c2410c' },
-        'Medium': { bg: '#fef3c7', text: '#b45309' },
-        'Low': { bg: '#dcfce7', text: '#15803d' }
-      },
-
-      PRIORITY_RING_COLORS: {
-        'Critical': '#dc2626',
-        'High': '#ea580c',
-        'Medium': '#d97706',
-        'Low': '#16a34a'
-      },
-
-      PRIORITY_ORDER: {
-        'Critical': 4,
-        'High': 3,
-        'Medium': 2,
-        'Low': 1
-      },
-
-      SORT_OPTIONS: [
-        { value: 'sheet', label: 'Sheet order' },
-        { value: 'priority_desc', label: 'Priority (High → Low)' },
-        { value: 'status_asc', label: 'Status' },
-        { value: 'company_asc', label: 'Company (A → Z)' },
-        { value: 'newest', label: 'Newest first' },
-        { value: 'oldest', label: 'Oldest first' },
-        { value: 'age_desc', label: 'Oldest issues first' },
-        { value: 'closure_desc', label: 'Latest closure date' }
-      ],
-
-      FOCUS_FILTERS: {
-        needs_attention: 'Needs attention',
-        sla_risk: 'SLA risk',
-        escalated_no_ticket: 'Escalated without ticket',
-        missing_notes: 'Missing notes',
-        waiting_on_customer: 'Waiting on customer',
-        high_priority: 'High / critical'
-      },
-
-      FIELD_ALIASES: {
-        id: ['id', 'ID', 'rowId', 'Row ID'],
-        timestamp: ['timestamp', 'Timestamp'],
-        requestDate: ['requestDate', 'Request date', 'request_date'],
-        submittedBy: ['submittedBy', 'Submitted by', 'submitted_by'],
-        companyName: ['companyName', 'Company name', 'company_name'],
-        issueTitle: ['issueTitle', 'Issue title', 'issue_title'],
-        issueCategory: ['issueCategory', 'Issue category', 'issue_category'],
-        detailedDescription: ['detailedDescription', 'Detailed description', 'detailed_description'],
-        issueOngoingIntermittent: [
-          'issueOngoingIntermittent',
-          'isIssueOngoingOrIntermittent',
-          'ongoingIntermittent',
-          'Is the issue ongoing or intermittent?'
-        ],
-        priorityLevel: ['priorityLevel', 'Priority level', 'priority_level'],
-        impactType: ['impactType', 'Impact type', 'impact_type'],
-        workaroundAvailable: [
-          'workaroundAvailable',
-          'isThereAWorkaroundAvailable',
-          'Is there a workaround available?'
-        ],
-        workaroundDetails: [
-          'workaroundDetails',
-          'Workaround details  (If Applicable)',
-          'Workaround details (If Applicable)',
-          'workaround_details'
-        ],
-        environment: ['environment', 'Environment'],
-        productModuleAffected: [
-          'productModuleAffected',
-          'Product / module affected',
-          'product_module_affected'
-        ],
-        browserDeviceOs: [
-          'browserDeviceOs',
-          'Browser / device / OS',
-          'browser_device_os'
-        ],
-        errorMessage: [
-          'errorMessage',
-          'Error message (if Available)',
-          'error_message'
-        ],
-        attachmentUpload: [
-          'attachmentUpload',
-          'Attachment upload',
-          'attachment_upload'
-        ],
-        reportedChannel: ['reportedChannel', 'Reported Channel', 'reported_channel'],
-        sourceOfIssue: ['sourceOfIssue', 'Source of Issue', 'source_of_issue'],
-        initialAssessment: ['initialAssessment', 'Initial assessment', 'initial_assessment'],
-        rootCauseType: ['rootCauseType', 'Root cause type', 'root_cause_type'],
-        internalNotes: ['internalNotes', 'Internal notes', 'internal_notes'],
-        escalationRequired: [
-          'escalationRequired',
-          'Escalation required?',
-          'escalation_required'
-        ],
-        developmentTicket: ['developmentTicket', 'Development ticket', 'development_ticket'],
-        finalStatus: ['finalStatus', 'Final status', 'final_status'],
-        resolutionClosureDate: [
-          'resolutionClosureDate',
-          'Resolution / Closure date',
-          'resolution_closure_date'
-        ],
-        wasCsInformed: ['wasCsInformed', 'Was CS informed?', 'was_cs_informed']
-      }
-    };
-
-    const LOCAL_DATA_KEY = 'supportDashboardLocalIssues';
-
-    const DEFAULT_LOCAL_ISSUES = [
-      {
-        id: 101,
-        timestamp: '2026-03-14T09:15:00Z',
-        requestDate: '2026-03-14',
-        submittedBy: 'Alicia Gomez',
-        companyName: 'Northwind Health',
-        issueTitle: 'Attendance totals do not update after clock-out',
-        issueCategory: 'Attendance',
-        detailedDescription: 'Manager dashboard continues to show active employees after they clock out.',
-        issueOngoingIntermittent: 'Yes',
-        priorityLevel: 'High',
-        impactType: 'Reporting delay',
-        workaroundAvailable: 'Yes',
-        workaroundDetails: 'Manual refresh corrects the summary after several minutes.',
-        environment: 'Production',
-        productModuleAffected: 'Attendance Summary',
-        browserDeviceOs: 'Chrome / Windows 11',
-        errorMessage: '',
-        attachmentUpload: '',
-        reportedChannel: 'Email',
-        sourceOfIssue: 'Customer',
-        initialAssessment: 'Need More Information',
-        rootCauseType: 'Unknown',
-        internalNotes: 'Customer provided screenshots; monitor live updates after refresh cycle.',
-        escalationRequired: 'Yes',
-        developmentTicket: 'AS-142',
-        finalStatus: 'In Progress',
-        resolutionClosureDate: '',
-        wasCsInformed: 'Yes'
-      },
-      {
-        id: 102,
-        timestamp: '2026-03-16T15:45:00Z',
-        requestDate: '2026-03-16',
-        submittedBy: 'Marcus Lee',
-        companyName: 'Summit Logistics',
-        issueTitle: 'Closed shift still appears in daily attendance export',
-        issueCategory: 'Exports',
-        detailedDescription: 'Completed shift is duplicated in CSV export for one location.',
-        issueOngoingIntermittent: 'No',
-        priorityLevel: 'Medium',
-        impactType: 'Incorrect export',
-        workaroundAvailable: 'Yes',
-        workaroundDetails: 'Delete duplicate row before import.',
-        environment: 'Production',
-        productModuleAffected: 'Exports',
-        browserDeviceOs: 'Edge / Windows 10',
-        errorMessage: '',
-        attachmentUpload: '',
-        reportedChannel: 'Chat',
-        sourceOfIssue: 'Customer',
-        initialAssessment: 'Cannot Reproduce',
-        rootCauseType: 'Configuration',
-        internalNotes: 'Potential location-specific setting; waiting for site configuration details.',
-        escalationRequired: 'No',
-        developmentTicket: '',
-        finalStatus: 'Waiting for Customer',
-        resolutionClosureDate: '',
-        wasCsInformed: 'Yes'
-      },
-      {
-        id: 103,
-        timestamp: '2026-03-10T12:20:00Z',
-        requestDate: '2026-03-10',
-        submittedBy: 'Jamie Patel',
-        companyName: 'Blue Ridge Retail',
-        issueTitle: 'Historical attendance widget blank for one day',
-        issueCategory: 'Dashboard',
-        detailedDescription: 'Historical view showed no totals for March 8, but current data is intact.',
-        issueOngoingIntermittent: 'No',
-        priorityLevel: 'Low',
-        impactType: 'Display issue',
-        workaroundAvailable: 'No',
-        workaroundDetails: '',
-        environment: 'Production',
-        productModuleAffected: 'Attendance Summary',
-        browserDeviceOs: 'Safari / macOS',
-        errorMessage: '',
-        attachmentUpload: '',
-        reportedChannel: 'Phone',
-        sourceOfIssue: 'Customer',
-        initialAssessment: 'Resolved by R&D',
-        rootCauseType: 'System Bug',
-        internalNotes: 'Backfill job corrected the missing day.',
-        escalationRequired: 'No',
-        developmentTicket: 'AS-131',
-        finalStatus: 'Resolved',
-        resolutionClosureDate: '2026-03-12',
-        wasCsInformed: 'Yes'
-      }
-    ];
-
-    const state = {
-      issues: [],
-      selectedIssueId: null,
-      lastRefreshedAt: null,
-      searchTimer: null,
-      toastTimer: null,
-      loadController: null,
-      latestRequestId: 0,
-      pendingOps: 0,
-      isSaving: false,
-      modalOpen: false,
-      currentMetrics: null,
-      customFocusFilter: '',
-      activeDatePreset: 'all',
-      usingLocalFallback: false
-    };
-
-    const els = {};
-
-    document.addEventListener('DOMContentLoaded', init);
-
-    function init() {
-      cacheDom();
-      initStaticOptions();
-      bindEvents();
-      applySavedTheme();
-      restoreSavedSort();
-      resetFiltersAndSelection({ preserveLoad: true });
-      loadDashboard();
-    }
-
-    function cacheDom() {
-      els.loadingOverlay = document.getElementById('loadingOverlay');
-      els.toast = document.getElementById('toast');
-
-      els.summaryCards = document.getElementById('summaryCards');
-      els.filteredSummaryPill = document.getElementById('filteredSummaryPill');
-      els.filteredOverviewStats = document.getElementById('filteredOverviewStats');
-      els.statusDistribution = document.getElementById('statusDistribution');
-      els.priorityRingWrap = document.getElementById('priorityRingWrap');
-      els.priorityLegend = document.getElementById('priorityLegend');
-      els.agingDistribution = document.getElementById('agingDistribution');
-      els.moduleDistribution = document.getElementById('moduleDistribution');
-      els.companyDistribution = document.getElementById('companyDistribution');
-
-      els.lastRefreshPill = document.getElementById('lastRefreshPill');
-      els.issuesCountPill = document.getElementById('issuesCountPill');
-      els.selectedCountPill = document.getElementById('selectedCountPill');
-      els.tableMetaPill = document.getElementById('tableMetaPill');
-
-      els.searchInput = document.getElementById('searchInput');
-      els.statusFilter = document.getElementById('statusFilter');
-      els.priorityFilter = document.getElementById('priorityFilter');
-      els.sortSelect = document.getElementById('sortSelect');
-      els.startDateFilter = document.getElementById('startDateFilter');
-      els.endDateFilter = document.getElementById('endDateFilter');
-      els.focusFilter = document.getElementById('focusFilter');
-      els.datePresetChips = document.getElementById('datePresetChips');
-      els.quickFilterChips = document.getElementById('quickFilterChips');
-
-      els.actionCallouts = document.getElementById('actionCallouts');
-      els.backlogTrend = document.getElementById('backlogTrend');
-      els.flowTrend = document.getElementById('flowTrend');
-      els.jumpToQueueBtn = document.getElementById('jumpToQueueBtn');
-      els.clearFocusBtn = document.getElementById('clearFocusBtn');
-      els.queueSection = document.getElementById('queueSection');
-
-      els.refreshBtn = document.getElementById('refreshBtn');
-      els.refreshBtnTop = document.getElementById('refreshBtnTop');
-      els.exportBtn = document.getElementById('exportBtn');
-      els.themeToggleBtn = document.getElementById('themeToggleBtn');
-      els.clearBtnTop = document.getElementById('clearBtnTop');
-
-      els.issuesTable = document.getElementById('issuesTable');
-
-      els.editModalBackdrop = document.getElementById('editModalBackdrop');
-      els.closeModalBtn = document.getElementById('closeModalBtn');
-      els.selectedIssueInfo = document.getElementById('selectedIssueInfo');
-      els.smartSuggestionBox = document.getElementById('smartSuggestionBox');
-
-      els.issueId = document.getElementById('issueId');
-      els.timestamp = document.getElementById('timestamp');
-      els.requestDate = document.getElementById('requestDate');
-      els.submittedBy = document.getElementById('submittedBy');
-      els.companyName = document.getElementById('companyName');
-      els.issueTitle = document.getElementById('issueTitle');
-      els.issueCategory = document.getElementById('issueCategory');
-      els.detailedDescription = document.getElementById('detailedDescription');
-      els.issueOngoingIntermittent = document.getElementById('issueOngoingIntermittent');
-      els.priorityLevel = document.getElementById('priorityLevel');
-      els.impactType = document.getElementById('impactType');
-      els.workaroundAvailable = document.getElementById('workaroundAvailable');
-      els.workaroundDetails = document.getElementById('workaroundDetails');
-      els.environment = document.getElementById('environment');
-      els.productModuleAffected = document.getElementById('productModuleAffected');
-      els.browserDeviceOs = document.getElementById('browserDeviceOs');
-      els.errorMessage = document.getElementById('errorMessage');
-      els.attachmentUpload = document.getElementById('attachmentUpload');
-      els.reportedChannel = document.getElementById('reportedChannel');
-      els.sourceOfIssue = document.getElementById('sourceOfIssue');
-
-      els.finalStatus = document.getElementById('finalStatus');
-      els.resolutionClosureDate = document.getElementById('resolutionClosureDate');
-      els.initialAssessment = document.getElementById('initialAssessment');
-      els.rootCauseType = document.getElementById('rootCauseType');
-      els.escalationRequired = document.getElementById('escalationRequired');
-      els.wasCsInformed = document.getElementById('wasCsInformed');
-      els.developmentTicket = document.getElementById('developmentTicket');
-      els.internalNotes = document.getElementById('internalNotes');
-      els.editPassword = document.getElementById('editPassword');
-      els.saveBtn = document.getElementById('saveBtn');
-      els.resetEditorBtn = document.getElementById('resetEditorBtn');
-      els.saveMessage = document.getElementById('saveMessage');
-
-      els.editorInputs = [
-        els.finalStatus,
-        els.initialAssessment,
-        els.rootCauseType,
-        els.escalationRequired,
-        els.wasCsInformed,
-        els.developmentTicket,
-        els.internalNotes,
-        els.editPassword
-      ];
-    }
-
-    function initStaticOptions() {
-      populateSelect(els.statusFilter, 'All Statuses', CONFIG.STATUS_OPTIONS);
-      populateSelect(els.priorityFilter, 'All Priorities', CONFIG.PRIORITY_OPTIONS);
-      populateSelect(els.finalStatus, 'Select Final Status', CONFIG.STATUS_OPTIONS);
-      populateSelect(els.initialAssessment, 'Initial Assessment', CONFIG.INITIAL_ASSESSMENT_OPTIONS);
-      populateSelect(els.rootCauseType, 'Root Cause Type', CONFIG.ROOT_CAUSE_OPTIONS);
-      populateSelect(els.escalationRequired, 'Escalation Required?', CONFIG.YES_NO_OPTIONS);
-      populateSelect(els.wasCsInformed, 'Was CS Informed?', CONFIG.YES_NO_OPTIONS);
-
-      els.sortSelect.innerHTML = CONFIG.SORT_OPTIONS.map(option => `
-        <option value="${escapeAttribute(option.value)}">${escapeHtml(option.label)}</option>
-      `).join('');
-    }
-
-    function bindEvents() {
-      els.refreshBtn.addEventListener('click', loadDashboard);
-      els.refreshBtnTop.addEventListener('click', loadDashboard);
-      els.exportBtn.addEventListener('click', exportCurrentIssuesCsv);
-      els.themeToggleBtn.addEventListener('click', toggleTheme);
-      els.clearBtnTop.addEventListener('click', () => resetFiltersAndSelection());
-      els.resetEditorBtn.addEventListener('click', resetEditorToSelectedIssue);
-      els.saveBtn.addEventListener('click', saveIssue);
-
-      els.searchInput.addEventListener('input', () => {
-        clearTimeout(state.searchTimer);
-        state.searchTimer = setTimeout(loadDashboard, 300);
+      menuToggle.addEventListener("click", function () {
+        mobilePanel.classList.toggle("open");
+        menuToggle.textContent = mobilePanel.classList.contains("open") ? "✕" : "☰";
+        menuToggle.setAttribute(
+          "aria-label",
+          mobilePanel.classList.contains("open") ? "Close menu" : "Open menu"
+        );
       });
 
-      els.statusFilter.addEventListener('change', loadDashboard);
-      els.priorityFilter.addEventListener('change', loadDashboard);
-
-      els.startDateFilter.addEventListener('change', () => {
-        state.activeDatePreset = '';
-        renderDashboard();
-      });
-
-      els.endDateFilter.addEventListener('change', () => {
-        state.activeDatePreset = '';
-        renderDashboard();
-      });
-
-      els.focusFilter.addEventListener('change', () => {
-        state.customFocusFilter = '';
-        renderDashboard();
-      });
-
-      els.sortSelect.addEventListener('change', () => {
-        localStorage.setItem('supportDashboardSort', els.sortSelect.value);
-        renderDashboard();
-      });
-
-      els.quickFilterChips.addEventListener('click', (event) => {
-        const button = event.target.closest('button[data-status]');
-        if (!button) return;
-        els.statusFilter.value = button.dataset.status || '';
-        state.customFocusFilter = '';
-        loadDashboard();
-      });
-
-      els.datePresetChips.addEventListener('click', (event) => {
-        const button = event.target.closest('button[data-preset]');
-        if (!button) return;
-        applyDatePreset(button.dataset.preset || 'all');
-      });
-
-      document.body.addEventListener('click', (event) => {
-        const target = event.target.closest('[data-filter]');
-        if (!target) return;
-        applyDataFilter(target.dataset.filter || '');
-      });
-
-      document.addEventListener('keydown', (event) => {
-        if ((event.key === 'Enter' || event.key === ' ') && document.activeElement?.matches('[data-filter]')) {
-          event.preventDefault();
-          applyDataFilter(document.activeElement.dataset.filter || '');
-        }
-      });
-
-      els.jumpToQueueBtn.addEventListener('click', () => {
-        els.queueSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      });
-
-      els.clearFocusBtn.addEventListener('click', () => {
-        els.focusFilter.value = '';
-        state.customFocusFilter = '';
-        renderDashboard();
-      });
-
-      els.issuesTable.addEventListener('click', (event) => {
-        const editButton = event.target.closest('button[data-action="edit"]');
-        if (editButton) {
-          event.stopPropagation();
-          openEditModal(Number(editButton.dataset.id));
-          return;
-        }
-
-        const row = event.target.closest('tr[data-id]');
-        if (!row) return;
-        selectIssue(Number(row.dataset.id));
-      });
-
-      els.closeModalBtn.addEventListener('click', () => closeEditModal());
-
-      els.editModalBackdrop.addEventListener('click', (event) => {
-        if (event.target === els.editModalBackdrop) {
-          closeEditModal();
-        }
-      });
-
-      document.addEventListener('keydown', (event) => {
-        const key = event.key.toLowerCase();
-
-        if ((event.metaKey || event.ctrlKey) && key === 'k') {
-          event.preventDefault();
-          els.searchInput.focus();
-          els.searchInput.select();
-        }
-
-        if (event.key === 'Escape') {
-          if (state.modalOpen) {
-            closeEditModal();
-          } else {
-            clearSelection();
-          }
-        }
-      });
-    }
-
-    function restoreSavedSort() {
-      const savedSort = localStorage.getItem('supportDashboardSort');
-      if (savedSort && CONFIG.SORT_OPTIONS.some(option => option.value === savedSort)) {
-        els.sortSelect.value = savedSort;
-      } else {
-        els.sortSelect.value = 'sheet';
-      }
-    }
-
-    function resetFiltersAndSelection({ preserveLoad = false } = {}) {
-      els.searchInput.value = '';
-      els.statusFilter.value = '';
-      els.priorityFilter.value = '';
-      els.startDateFilter.value = '';
-      els.endDateFilter.value = '';
-      els.focusFilter.value = '';
-      state.customFocusFilter = '';
-      state.activeDatePreset = 'all';
-      els.sortSelect.value = localStorage.getItem('supportDashboardSort') || 'sheet';
-      clearSelection({ preserveMessage: true, closeModal: true });
-
-      if (!preserveLoad) {
-        loadDashboard();
-      }
-    }
-
-    function cloneLocalIssues() {
-      return DEFAULT_LOCAL_ISSUES.map(issue => ({ ...issue }));
-    }
-
-    function readLocalIssues() {
-      try {
-        const raw = localStorage.getItem(LOCAL_DATA_KEY);
-        if (!raw) {
-          const seeded = cloneLocalIssues();
-          localStorage.setItem(LOCAL_DATA_KEY, JSON.stringify(seeded));
-          return seeded;
-        }
-
-        const parsed = JSON.parse(raw);
-        if (!Array.isArray(parsed)) throw new Error('Local issue cache is invalid.');
-        return parsed;
-      } catch (error) {
-        console.warn('Unable to read local fallback data. Re-seeding demo issues.', error);
-        const seeded = cloneLocalIssues();
-        localStorage.setItem(LOCAL_DATA_KEY, JSON.stringify(seeded));
-        return seeded;
-      }
-    }
-
-    function matchesSearch(issue, term) {
-      if (!term) return true;
-      const haystack = Object.values(issue || {})
-        .map(value => String(value ?? '').toLowerCase())
-        .join(' ');
-      return haystack.includes(term);
-    }
-
-    async function loadLocalFallbackData(action, params = {}) {
-      const issues = readLocalIssues();
-
-      if (action === 'issues') {
-        const q = String(params.q || '').trim().toLowerCase();
-        const status = normalizeValue(params.status);
-        const priority = normalizeValue(params.priority);
-
-        const filtered = issues.filter(issue => {
-          const issueStatus = normalizeValue(issueVal(issue, 'finalStatus') || 'Open');
-          const issuePriority = normalizeValue(issueVal(issue, 'priorityLevel'));
-          return matchesSearch(issue, q)
-            && (!status || issueStatus === status)
-            && (!priority || issuePriority === priority);
+      mobileLinks.forEach(function (link) {
+        link.addEventListener("click", function () {
+          mobilePanel.classList.remove("open");
+          menuToggle.textContent = "☰";
+          menuToggle.setAttribute("aria-label", "Open menu");
         });
-
-        return { ok: true, data: filtered, source: 'local' };
-      }
-
-      throw new Error(`Unsupported local action: ${action}`);
-    }
-
-    async function apiGet(action, params = {}, signal) {
-      const url = new URL(CONFIG.API_URL);
-      url.searchParams.set('action', action);
-      url.searchParams.set('_ts', Date.now().toString());
-
-      Object.entries(params).forEach(([key, value]) => {
-        if (value !== undefined && value !== null && value !== '') {
-          url.searchParams.set(key, value);
-        }
       });
 
-      const response = await fetch(url.toString(), {
-        method: 'GET',
-        signal,
-        cache: 'no-store',
-        headers: { 'Accept': 'application/json' }
+      demoForm.addEventListener("submit", function (event) {
+        event.preventDefault();
+        successBox.classList.add("show");
+        demoForm.reset();
       });
-
-      const text = await response.text();
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      try {
-        return text ? JSON.parse(text) : {};
-      } catch (error) {
-        console.error('Invalid JSON response:', text);
-        throw new Error('Server returned invalid JSON.');
-      }
-    }
-
-    async function apiPost(payload) {
-      const response = await fetch(CONFIG.API_URL, {
-        method: 'POST',
-        cache: 'no-store',
-        headers: {
-          'Content-Type': 'text/plain;charset=utf-8',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify(payload)
-      });
-
-      const text = await response.text();
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      try {
-        return text ? JSON.parse(text) : {};
-      } catch (error) {
-        console.error('Invalid JSON response:', text);
-        throw new Error('Server returned invalid JSON.');
-      }
-    }
-
-    async function loadDashboard() {
-      const requestId = ++state.latestRequestId;
-
-      if (state.loadController) {
-        state.loadController.abort();
-      }
-
-      const controller = new AbortController();
-      state.loadController = controller;
-
-      const q = els.searchInput.value.trim();
-      const status = els.statusFilter.value.trim();
-      const priority = els.priorityFilter.value.trim();
-
-      beginBusy();
-
-      try {
-        const issuesRes = await apiGet('issues', { q, status, priority }, controller.signal).catch(async (error) => {
-          console.warn('Issues API unavailable; using local fallback.', error);
-          return loadLocalFallbackData('issues', { q, status, priority });
-        });
-
-        if (requestId !== state.latestRequestId) return;
-        if (!issuesRes.ok) throw new Error(issuesRes.error || 'Failed to load issues.');
-
-        state.usingLocalFallback = issuesRes?.source === 'local';
-        state.issues = Array.isArray(issuesRes.data) ? issuesRes.data : [];
-        state.lastRefreshedAt = new Date();
-
-        if (state.usingLocalFallback) {
-          showToast('Remote API unavailable. Loaded local fallback data instead.');
-        }
-
-        renderDashboard();
-      } catch (error) {
-        if (error.name === 'AbortError') return;
-        console.error(error);
-        showToast(error.message || 'Something went wrong.', true);
-
-        if (!state.issues.length) {
-          renderTableMessage('Unable to load issues', error.message || 'Something went wrong.');
-        }
-      } finally {
-        if (state.loadController === controller) {
-          state.loadController = null;
-        }
-        endBusy();
-      }
-    }
-
-    async function saveIssue() {
-      const id = Number(els.issueId.value);
-      const editPassword = els.editPassword.value.trim();
-
-      if (!id) {
-        setMessage('Select an issue first.', true);
-        showToast('Select an issue first.', true);
-        return;
-      }
-
-      if (!editPassword) {
-        setMessage('Enter edit password.', true);
-        showToast('Enter edit password.', true);
-        return;
-      }
-
-      if (state.usingLocalFallback) {
-        const msg = 'Editing is disabled while the app is using local fallback data.';
-        setMessage(msg, true);
-        showToast(msg, true);
-        return;
-      }
-
-      const payload = {
-        action: 'updateIssue',
-        id,
-        editPassword,
-        finalStatus: els.finalStatus.value.trim(),
-        initialAssessment: els.initialAssessment.value.trim(),
-        rootCauseType: els.rootCauseType.value.trim(),
-        escalationRequired: els.escalationRequired.value.trim(),
-        wasCsInformed: els.wasCsInformed.value.trim(),
-        developmentTicket: els.developmentTicket.value.trim(),
-        internalNotes: els.internalNotes.value.trim()
-      };
-
-      setSavingState(true);
-      beginBusy();
-      setMessage('Saving...');
-
-      try {
-        const result = await apiPost(payload);
-
-        if (!result.ok) {
-          throw new Error(result.error || 'Save failed.');
-        }
-
-        els.editPassword.value = '';
-        await loadDashboard();
-        setMessage('Saved successfully.');
-        showToast('Issue updated successfully.');
-        closeEditModal();
-      } catch (error) {
-        console.error(error);
-        setMessage(error.message || 'Save failed.', true);
-        showToast(error.message || 'Save failed.', true);
-      } finally {
-        endBusy();
-        setSavingState(false);
-      }
-    }
-
-    function renderDashboard() {
-      const visibleIssues = getVisibleIssues();
-      const renderableIssues = sortIssues([...visibleIssues], els.sortSelect.value);
-      const metrics = deriveAdvancedMetrics(visibleIssues);
-
-      state.currentMetrics = metrics;
-
-      renderActionCallouts(metrics);
-      renderGlobalCards(metrics);
-      renderTrendCharts(metrics);
-      renderFilteredOverview(metrics);
-      renderStatusDistribution(metrics);
-      renderPriorityRing(metrics);
-      renderAgingDistribution(metrics);
-      renderModuleDistribution(metrics);
-      renderCompanyDistribution(metrics);
-      renderDatePresetChips();
-      renderQuickFilterChips();
-      renderTable(renderableIssues);
-      updatePills();
-      updateLastRefresh();
-      syncSelection();
-    }
-
-    function renderActionCallouts(metrics) {
-      const callouts = [
-        { label: 'Needs action', value: metrics.needsAttention, sub: `${metrics.active} active in queue` },
-        { label: 'SLA risk', value: metrics.slaRisk, sub: `${metrics.oldestActiveDays}d oldest active` },
-        { label: 'Missing hygiene', value: metrics.missingNotes, sub: `${metrics.escalatedNoTicket} escalated without ticket` }
-      ];
-
-      const filters = ['needs_attention', 'sla_risk', 'missing_notes'];
-      els.actionCallouts.innerHTML = callouts.map((card, index) => `
-        <div class="action-callout interactive" data-filter="${filters[index]}" tabindex="0">
-          <div class="label">${escapeHtml(card.label)}</div>
-          <div class="value">${escapeHtml(card.value)}</div>
-          <div class="sub">${escapeHtml(card.sub)}</div>
-        </div>
-      `).join('');
-    }
-
-    function renderGlobalCards(metrics) {
-      const cards = [
-        { label: 'Needs Attention', value: metrics.needsAttention, hint: 'High priority, aging, or blocked workflow items', icon: '🚨', tone: 'danger', filter: 'needs_attention' },
-        { label: 'SLA Risk', value: metrics.slaRisk, hint: 'Active issues older than your risk threshold', icon: '⏱', tone: 'warning', filter: 'sla_risk' },
-        { label: 'Escalated w/o Ticket', value: metrics.escalatedNoTicket, hint: 'Escalations missing a development reference', icon: '🎫', tone: 'purple', filter: 'escalated_no_ticket' },
-        { label: 'Missing Notes', value: metrics.missingNotes, hint: 'Items missing internal follow-up context', icon: '📝', tone: 'primary', filter: 'missing_notes' },
-        { label: 'Waiting on Customer', value: metrics.waitingOnCustomer, hint: 'Follow-up required to unblock progress', icon: '📨', tone: 'warning', filter: 'waiting_on_customer' },
-        { label: 'High / Critical', value: metrics.highCritical, hint: 'Priority focus in the current view', icon: '🔥', tone: 'danger', filter: 'high_priority' },
-        { label: 'Resolved / Closed', value: metrics.resolvedClosed, hint: `${metrics.completionRate}% completion in view`, icon: '✅', tone: 'success', filter: '' },
-        { label: 'With Ticket', value: metrics.withTickets, hint: 'Development-linked items', icon: '🧾', tone: 'primary', filter: '' }
-      ];
-
-      els.summaryCards.innerHTML = cards.map(card => `
-        <article class="kpi-card interactive" ${card.filter ? `data-filter="${escapeAttribute(card.filter)}"` : ''} tabindex="0">
-          <div class="kpi-top">
-            <div class="kpi-label">${escapeHtml(card.label)}</div>
-            <div class="kpi-icon" style="${iconToneStyle(card.tone)}">${escapeHtml(card.icon)}</div>
-          </div>
-          <div class="kpi-value">${escapeHtml(card.value)}</div>
-          <div class="kpi-sub">${escapeHtml(card.hint)}</div>
-        </article>
-      `).join('');
-    }
-
-    function renderTrendCharts(metrics) {
-      renderBacklogTrend(metrics.trendDays || []);
-      renderFlowTrend(metrics.trendDays || []);
-    }
-
-    function deriveAdvancedMetrics(issues) {
-      const now = new Date();
-
-      const metrics = {
-        total: issues.length,
-        active: 0,
-        resolvedClosed: 0,
-        escalated: 0,
-        highCritical: 0,
-        withTickets: 0,
-        escalatedNoTicket: 0,
-        missingNotes: 0,
-        waitingOnCustomer: 0,
-        needsAttention: 0,
-        slaRisk: 0,
-        avgAgeDays: 0,
-        oldestActiveDays: 0,
-        completionRate: 0,
-        statusCounts: {},
-        priorityCounts: {},
-        moduleCounts: {},
-        companyCounts: {},
-        agingCounts: {
-          '0–2d': 0,
-          '3–7d': 0,
-          '8–14d': 0,
-          '15d+': 0
-        },
-        trendDays: []
-      };
-
-      let totalAgeDays = 0;
-      let agedCount = 0;
-
-      issues.forEach(issue => {
-        const statusLabel = issueVal(issue, 'finalStatus') || 'Open';
-        const priorityLabel = issueVal(issue, 'priorityLevel') || 'Blank';
-        const moduleLabel = issueVal(issue, 'productModuleAffected') || 'Blank';
-        const companyLabel = issueVal(issue, 'companyName') || 'Blank';
-        const escalation = normalizeValue(issueVal(issue, 'escalationRequired'));
-        const hasTicket = String(issueVal(issue, 'developmentTicket') || '').trim().length > 0;
-        const hasNotes = String(issueVal(issue, 'internalNotes') || '').trim().length > 0;
-        const statusNorm = normalizeValue(statusLabel);
-        const priorityNorm = normalizeValue(priorityLabel);
-        const isActive = CONFIG.ACTIVE_STATUSES.has(statusNorm);
-        const ageDays = getIssueAgeDays(issue, now);
-        const isSlaRisk = isActive && (ageDays > 7 || ((priorityNorm === 'high' || priorityNorm === 'critical') && ageDays > 3));
-        const isWaitingCustomer = statusNorm === 'waiting for customer';
-        const needsAttention = isSlaRisk || (!hasNotes && isActive) || (isWaitingCustomer && ageDays > 2) || ((priorityNorm === 'high' || priorityNorm === 'critical') && isActive);
-
-        metrics.statusCounts[statusLabel] = (metrics.statusCounts[statusLabel] || 0) + 1;
-        metrics.priorityCounts[priorityLabel] = (metrics.priorityCounts[priorityLabel] || 0) + 1;
-        metrics.moduleCounts[moduleLabel] = (metrics.moduleCounts[moduleLabel] || 0) + 1;
-        metrics.companyCounts[companyLabel] = (metrics.companyCounts[companyLabel] || 0) + 1;
-
-        if (isActive) {
-          metrics.active++;
-
-          if (ageDays <= 2) metrics.agingCounts['0–2d']++;
-          else if (ageDays <= 7) metrics.agingCounts['3–7d']++;
-          else if (ageDays <= 14) metrics.agingCounts['8–14d']++;
-          else metrics.agingCounts['15d+']++;
-
-          if (ageDays > metrics.oldestActiveDays) {
-            metrics.oldestActiveDays = ageDays;
-          }
-
-          if (isSlaRisk) metrics.slaRisk++;
-          if (!hasNotes) metrics.missingNotes++;
-          if (isWaitingCustomer) metrics.waitingOnCustomer++;
-          if (needsAttention) metrics.needsAttention++;
-        } else if (statusNorm === 'resolved' || statusNorm === 'closed') {
-          metrics.resolvedClosed++;
-        }
-
-        if (statusNorm === 'escalated to development' || escalation === 'yes') {
-          metrics.escalated++;
-          if (!hasTicket) metrics.escalatedNoTicket++;
-        }
-
-        if (priorityNorm === 'high' || priorityNorm === 'critical') {
-          metrics.highCritical++;
-        }
-
-        if (hasTicket) {
-          metrics.withTickets++;
-        }
-
-        if (ageDays >= 0) {
-          totalAgeDays += ageDays;
-          agedCount++;
-        }
-      });
-
-      metrics.avgAgeDays = agedCount ? roundToOne(totalAgeDays / agedCount) : 0;
-      metrics.completionRate = metrics.total ? Math.round((metrics.resolvedClosed / metrics.total) * 100) : 0;
-      metrics.trendDays = buildTrendDays(issues, now);
-
-      return metrics;
-    }
-
-    function buildTrendDays(issues, now = new Date()) {
-      const days = [];
-      const start = new Date(now);
-      start.setHours(0, 0, 0, 0);
-      start.setDate(start.getDate() - 6);
-
-      for (let i = 0; i < 7; i += 1) {
-        const day = new Date(start);
-        day.setDate(start.getDate() + i);
-        const dayKey = day.toISOString().slice(0, 10);
-        const dayEnd = endOfDay(day);
-
-        let opened = 0;
-        let closed = 0;
-        let backlog = 0;
-
-        issues.forEach(issue => {
-          const createdAt = parseDate(issueVal(issue, 'timestamp') || issueVal(issue, 'requestDate'));
-          const closedAt = parseDate(issueVal(issue, 'resolutionClosureDate'));
-          const statusNorm = normalizeValue(issueVal(issue, 'finalStatus') || 'Open');
-          const isClosedStatus = statusNorm === 'resolved' || statusNorm === 'closed';
-
-          if (createdAt && createdAt.toISOString().slice(0, 10) === dayKey) opened++;
-          if (closedAt && closedAt.toISOString().slice(0, 10) === dayKey) closed++;
-
-          if (!createdAt || createdAt > dayEnd) return;
-
-          if (!isClosedStatus) {
-            backlog++;
-            return;
-          }
-
-          if (closedAt && closedAt > dayEnd) {
-            backlog++;
-          }
-        });
-
-        days.push({
-          key: dayKey,
-          label: day.toLocaleDateString(undefined, { weekday: 'short' }),
-          opened,
-          closed,
-          backlog
-        });
-      }
-
-      return days;
-    }
-
-    function renderBacklogTrend(days) {
-      const max = Math.max(...days.map(day => day.backlog), 1);
-
-      els.backlogTrend.innerHTML = days.length ? `
-        <div class="trend-bars">
-          ${days.map(day => `
-            <div class="trend-col">
-              <div class="trend-stack">
-                <div class="trend-bar backlog" style="height:${Math.max(8, Math.round((day.backlog / max) * 140))}px"></div>
-              </div>
-              <div class="trend-day">${escapeHtml(day.label)}</div>
-              <div class="dist-value">${escapeHtml(day.backlog)}</div>
-            </div>
-          `).join('')}
-        </div>
-        <div class="trend-caption">
-          <span class="legend-pill"><span class="legend-swatch" style="background:#2563eb"></span>Backlog</span>
-        </div>
-      ` : '<div class="empty-state"><h4>No trend data</h4><p>Refresh the dashboard after issues load.</p></div>';
-    }
-
-    function renderFlowTrend(days) {
-      const max = Math.max(...days.flatMap(day => [day.opened, day.closed]), 1);
-
-      els.flowTrend.innerHTML = days.length ? `
-        <div class="trend-bars">
-          ${days.map(day => `
-            <div class="trend-col">
-              <div class="trend-stack">
-                <div class="trend-bar opened" style="height:${Math.max(8, Math.round((day.opened / max) * 140))}px"></div>
-                <div class="trend-bar closed" style="height:${Math.max(8, Math.round((day.closed / max) * 140))}px"></div>
-              </div>
-              <div class="trend-day">${escapeHtml(day.label)}</div>
-              <div class="dist-value">${escapeHtml(day.opened)} / ${escapeHtml(day.closed)}</div>
-            </div>
-          `).join('')}
-        </div>
-        <div class="trend-caption">
-          <span class="legend-pill"><span class="legend-swatch" style="background:#7c3aed"></span>Opened</span>
-          <span class="legend-pill"><span class="legend-swatch" style="background:#16a34a"></span>Resolved / Closed</span>
-        </div>
-      ` : '<div class="empty-state"><h4>No flow data</h4><p>Refresh the dashboard after issues load.</p></div>';
-    }
-
-    function renderFilteredOverview(metrics) {
-      els.filteredSummaryPill.textContent = `${metrics.total} issue${metrics.total === 1 ? '' : 's'} in current view`;
-
-      const cards = [
-        {
-          label: 'Completion Rate',
-          value: `${metrics.completionRate}%`,
-          sub: `${metrics.resolvedClosed} resolved or closed`,
-          bg: 'var(--success-soft)'
-        },
-        {
-          label: 'Active Now',
-          value: metrics.active,
-          sub: 'Open, in progress, waiting, escalated',
-          bg: 'var(--primary-soft)'
-        },
-        {
-          label: 'Avg Age',
-          value: `${metrics.avgAgeDays}d`,
-          sub: 'Average issue age in current view',
-          bg: 'var(--panel-soft)'
-        },
-        {
-          label: 'Oldest Active',
-          value: `${metrics.oldestActiveDays}d`,
-          sub: 'Longest-running active issue',
-          bg: 'var(--warning-soft)'
-        },
-        {
-          label: 'SLA Risk',
-          value: metrics.slaRisk,
-          sub: 'Older active issues needing attention',
-          bg: 'var(--danger-soft)'
-        },
-        {
-          label: 'Escalated w/o Ticket',
-          value: metrics.escalatedNoTicket,
-          sub: 'Escalated items missing dev reference',
-          bg: 'var(--purple-soft)'
-        }
-      ];
-
-      const filters = ['', 'needs_attention', '', '', 'sla_risk', 'escalated_no_ticket'];
-      els.filteredOverviewStats.innerHTML = cards.map((card, index) => `
-        <div class="mini-stat interactive" ${filters[index] ? `data-filter="${filters[index]}"` : ''} style="background:${card.bg}" tabindex="0">
-          <div class="label">${escapeHtml(card.label)}</div>
-          <div class="value">${escapeHtml(card.value)}</div>
-          <div class="sub">${escapeHtml(card.sub)}</div>
-        </div>
-      `).join('');
-    }
-
-    function renderStatusDistribution(metrics) {
-      renderSimpleDistribution(
-        els.statusDistribution,
-        CONFIG.STATUS_OPTIONS
-          .filter(label => Number(metrics.statusCounts[label] || 0) > 0)
-          .map(label => ({
-            label,
-            value: metrics.statusCounts[label] || 0,
-            color: getStatusTheme(label).fill
-          })),
-        metrics.total,
-        'No status data'
-      );
-    }
-
-    function renderPriorityRing(metrics) {
-      const priorities = ['Critical', 'High', 'Medium', 'Low'];
-      const total = priorities.reduce((sum, key) => sum + Number(metrics.priorityCounts[key] || 0), 0);
-
-      if (!total) {
-        els.priorityRingWrap.innerHTML = `
-          <div class="ring" style="background:conic-gradient(#cbd5e1 0 100%);">
-            <div class="ring-center">
-              <div class="big">0</div>
-              <div class="small">issues</div>
-            </div>
-          </div>
-        `;
-        els.priorityLegend.innerHTML = `<div class="muted">No priority data in the current view.</div>`;
-        return;
-      }
-
-      let cumulative = 0;
-      const slices = priorities
-        .filter(key => Number(metrics.priorityCounts[key] || 0) > 0)
-        .map(key => {
-          const value = Number(metrics.priorityCounts[key] || 0);
-          const size = (value / total) * 100;
-          const start = cumulative;
-          cumulative += size;
-          return `${CONFIG.PRIORITY_RING_COLORS[key]} ${start}% ${cumulative}%`;
-        });
-
-      els.priorityRingWrap.innerHTML = `
-        <div class="ring" style="background:conic-gradient(${slices.join(', ')});">
-          <div class="ring-center">
-            <div class="big">${total}</div>
-            <div class="small">prioritized</div>
-          </div>
-        </div>
-      `;
-
-      els.priorityLegend.innerHTML = priorities.map(key => `
-        <div class="legend-row">
-          <span class="legend-dot" style="background:${CONFIG.PRIORITY_RING_COLORS[key]}"></span>
-          <span class="legend-label">${escapeHtml(key)}</span>
-          <span class="legend-value">${escapeHtml(metrics.priorityCounts[key] || 0)}</span>
-        </div>
-      `).join('');
-    }
-
-    function renderAgingDistribution(metrics) {
-      const order = ['0–2d', '3–7d', '8–14d', '15d+'];
-      renderSimpleDistribution(
-        els.agingDistribution,
-        order.map(label => ({
-          label,
-          value: metrics.agingCounts[label] || 0,
-          color: label === '15d+' ? '#dc2626' : label === '8–14d' ? '#ea580c' : label === '3–7d' ? '#d97706' : '#16a34a',
-          filter: `aging:${label}`
-        })),
-        metrics.active || 1,
-        'No active issues'
-      );
-    }
-
-    function renderModuleDistribution(metrics) {
-      const rows = topEntries(metrics.moduleCounts, 5).map(([label, value]) => ({
-        label,
-        value,
-        color: '#2563eb',
-        filter: `module:${label}`
-      }));
-
-      renderSimpleDistribution(
-        els.moduleDistribution,
-        rows,
-        metrics.total || 1,
-        'No module data'
-      );
-    }
-
-    function renderCompanyDistribution(metrics) {
-      const rows = topEntries(metrics.companyCounts, 5).map(([label, value]) => ({
-        label,
-        value,
-        color: '#7c3aed',
-        filter: `company:${label}`
-      }));
-
-      renderSimpleDistribution(
-        els.companyDistribution,
-        rows,
-        metrics.total || 1,
-        'No company data'
-      );
-    }
-
-    function renderSimpleDistribution(container, rows, total, emptyTitle) {
-      const safeTotal = total || 1;
-      const validRows = rows.filter(row => Number(row.value || 0) > 0);
-
-      if (!validRows.length) {
-        container.innerHTML = `
-          <div class="empty-state">
-            <h4>${escapeHtml(emptyTitle)}</h4>
-            <p>Try changing filters to display issues.</p>
-          </div>
-        `;
-        return;
-      }
-
-      container.innerHTML = validRows.map(row => {
-        const percent = Math.round((row.value / safeTotal) * 100);
-        return `
-          <div class="dist-row interactive" ${row.filter ? `data-filter="${escapeAttribute(row.filter)}"` : ''} tabindex="0">
-            <div class="dist-label">${escapeHtml(row.label)}</div>
-            <div class="dist-bar">
-              <div class="dist-fill" style="width:${percent}%; background:${row.color};"></div>
-            </div>
-            <div class="dist-value">${escapeHtml(row.value)}</div>
-          </div>
-        `;
-      }).join('');
-    }
-
-    function renderDatePresetChips() {
-      const presets = [
-        ['all', 'All dates'],
-        ['today', 'Today'],
-        ['yesterday', 'Yesterday'],
-        ['last7', 'Last 7 d'],
-        ['thisMonth', 'This month'],
-        ['last30', 'Last 30 days'],
-        ['lastMonth', 'Last month']
-      ];
-
-      els.datePresetChips.innerHTML = presets.map(([value, label]) => `
-        <button type="button" class="filter-chip ${state.activeDatePreset === value ? 'active' : ''}" data-preset="${escapeAttribute(value)}">${escapeHtml(label)}</button>
-      `).join('');
-    }
-
-    function applyDatePreset(preset) {
-      const range = getPresetRange(preset);
-      state.activeDatePreset = preset;
-      els.startDateFilter.value = range.start || '';
-      els.endDateFilter.value = range.end || '';
-      renderDashboard();
-    }
-
-    function getPresetRange(preset, now = new Date()) {
-      const today = new Date(now);
-      today.setHours(0, 0, 0, 0);
-      const format = (date) => formatInputDate(date);
-      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-
-      switch (preset) {
-        case 'today':
-          return { start: format(today), end: format(today) };
-        case 'yesterday': {
-          const yesterday = new Date(today);
-          yesterday.setDate(yesterday.getDate() - 1);
-          return { start: format(yesterday), end: format(yesterday) };
-        }
-        case 'last7': {
-          const start = new Date(today);
-          start.setDate(start.getDate() - 6);
-          return { start: format(start), end: format(today) };
-        }
-        case 'thisMonth':
-          return { start: format(startOfMonth), end: format(today) };
-        case 'last30': {
-          const start = new Date(today);
-          start.setDate(start.getDate() - 29);
-          return { start: format(start), end: format(today) };
-        }
-        case 'lastMonth': {
-          const start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-          const end = new Date(today.getFullYear(), today.getMonth(), 0);
-          return { start: format(start), end: format(end) };
-        }
-        case 'all':
-        default:
-          return { start: '', end: '' };
-      }
-    }
-
-    function matchesDateRangeFilter(issue) {
-      const start = parseFilterDate(els.startDateFilter.value);
-      const end = parseFilterDate(els.endDateFilter.value, true);
-      if (!start && !end) return true;
-
-      const issueDate = getIssueFilterDate(issue);
-      if (!issueDate) return false;
-      if (start && issueDate < start) return false;
-      if (end && issueDate > end) return false;
-      return true;
-    }
-
-    function getIssueFilterDate(issue) {
-      return parseDate(issueVal(issue, 'requestDate') || issueVal(issue, 'timestamp'));
-    }
-
-    function parseFilterDate(value, endOfSelectedDay = false) {
-      const date = parseDate(value);
-      if (!date) return null;
-      if (endOfSelectedDay) {
-        date.setHours(23, 59, 59, 999);
-      } else {
-        date.setHours(0, 0, 0, 0);
-      }
-      return date;
-    }
-
-    function getDateFilterLabel() {
-      const start = els.startDateFilter.value;
-      const end = els.endDateFilter.value;
-      if (!start && !end) return '';
-      if (start && end) {
-        if (start === end) return `Date ${formatDate(start)}`;
-        return `${formatDate(start)} → ${formatDate(end)}`;
-      }
-      if (start) return `From ${formatDate(start)}`;
-      return `Through ${formatDate(end)}`;
-    }
-
-    function renderQuickFilterChips() {
-      const current = els.statusFilter.value.trim() || 'All';
-      const statuses = ['All', ...CONFIG.STATUS_OPTIONS];
-
-      els.quickFilterChips.innerHTML = statuses.map(status => {
-        const active = status === current;
-        const value = status === 'All' ? '' : status;
-
-        return `
-          <button
-            type="button"
-            class="filter-chip ${active ? 'active' : ''}"
-            data-status="${escapeAttribute(value)}"
-          >
-            ${escapeHtml(status)}
-          </button>
-        `;
-      }).join('');
-    }
-
-    function renderTable(issues) {
-      if (!issues.length) {
-        renderTableMessage('No issues found', 'Try adjusting the search term or filters.');
-        return;
-      }
-
-      els.issuesTable.innerHTML = issues.map(issue => {
-        const issueId = Number(issueVal(issue, 'id') || 0);
-        const ageDays = getIssueAgeDays(issue, new Date());
-        const flags = buildIssueFlags(issue, ageDays);
-
-        return `
-          <tr data-id="${issueId}" class="${issueId === Number(state.selectedIssueId) ? 'selected-row' : ''}">
-            <td><span class="id-badge">#${escapeHtml(issueVal(issue, 'id') || '—')}</span></td>
-            <td>
-              <div class="issue-title">${escapeHtml(issueVal(issue, 'issueTitle') || 'Untitled issue')}</div>
-              <div class="issue-desc">${escapeHtml(issueVal(issue, 'detailedDescription') || 'No description provided.')}</div>
-              ${flags ? `<div class="flag-row">${flags}</div>` : ''}
-            </td>
-            <td>${escapeHtml(issueVal(issue, 'companyName') || '—')}</td>
-            <td>${escapeHtml(issueVal(issue, 'productModuleAffected') || '—')}</td>
-            <td>${buildPriorityChip(issueVal(issue, 'priorityLevel') || '')}</td>
-            <td>${buildStatusChip(issueVal(issue, 'finalStatus') || 'Open')}</td>
-            <td>${buildYesNoChip(issueVal(issue, 'escalationRequired') || '')}</td>
-            <td>${renderTicket(issueVal(issue, 'developmentTicket'))}</td>
-            <td>${escapeHtml(`${ageDays}d`)}</td>
-            <td>${escapeHtml(formatDate(issueVal(issue, 'resolutionClosureDate')) || '—')}</td>
-            <td>
-              <button
-                class="action-btn"
-                type="button"
-                data-action="edit"
-                data-id="${issueId}"
-              >
-                Edit
-              </button>
-            </td>
-          </tr>
-        `;
-      }).join('');
-    }
-
-    function renderTableMessage(title, message) {
-      els.issuesTable.innerHTML = `
-        <tr>
-          <td colspan="11">
-            <div class="empty-state">
-              <h4>${escapeHtml(title)}</h4>
-              <p>${escapeHtml(message)}</p>
-            </div>
-          </td>
-        </tr>
-      `;
-    }
-
-    function getVisibleIssues() {
-      const focus = getCurrentFocusFilter();
-      const datedIssues = state.issues.filter(matchesDateRangeFilter);
-      return focus ? datedIssues.filter(issue => matchesFocusFilter(issue, focus)) : datedIssues;
-    }
-
-    function getRenderableIssues() {
-      return sortIssues([...getVisibleIssues()], els.sortSelect.value);
-    }
-
-    function matchesFocusFilter(issue, focus) {
-      const ageDays = getIssueAgeDays(issue, new Date());
-      const status = normalizeValue(issueVal(issue, 'finalStatus') || 'Open');
-      const priority = normalizeValue(issueVal(issue, 'priorityLevel'));
-      const hasTicket = String(issueVal(issue, 'developmentTicket') || '').trim().length > 0;
-      const hasNotes = String(issueVal(issue, 'internalNotes') || '').trim().length > 0;
-      const escalation = normalizeValue(issueVal(issue, 'escalationRequired'));
-      const isActive = CONFIG.ACTIVE_STATUSES.has(status);
-      const isHighPriority = priority === 'high' || priority === 'critical';
-      const isSlaRisk = isActive && (ageDays > 7 || (isHighPriority && ageDays > 3));
-
-      switch (focus) {
-        case 'needs_attention':
-          return isSlaRisk || (isActive && !hasNotes) || (status === 'waiting for customer' && ageDays > 2) || (isActive && isHighPriority);
-        case 'sla_risk':
-          return isSlaRisk;
-        case 'escalated_no_ticket':
-          return (status === 'escalated to development' || escalation === 'yes') && !hasTicket;
-        case 'missing_notes':
-          return isActive && !hasNotes;
-        case 'waiting_on_customer':
-          return status === 'waiting for customer';
-        case 'high_priority':
-          return isHighPriority;
-        default:
-          if (focus.startsWith('company:')) {
-            return String(issueVal(issue, 'companyName') || '') === focus.slice(8);
-          }
-          if (focus.startsWith('module:')) {
-            return String(issueVal(issue, 'productModuleAffected') || '') === focus.slice(7);
-          }
-          if (focus.startsWith('aging:')) {
-            return matchesAgingBucket(ageDays, focus.slice(6));
-          }
-          return true;
-      }
-    }
-
-    function matchesAgingBucket(ageDays, bucket) {
-      if (bucket === '0–2d') return ageDays <= 2;
-      if (bucket === '3–7d') return ageDays >= 3 && ageDays <= 7;
-      if (bucket === '8–14d') return ageDays >= 8 && ageDays <= 14;
-      if (bucket === '15d+') return ageDays >= 15;
-      return true;
-    }
-
-    function applyDataFilter(filterValue) {
-      if (!filterValue) return;
-
-      if (Object.prototype.hasOwnProperty.call(CONFIG.FOCUS_FILTERS, filterValue)) {
-        els.focusFilter.value = filterValue;
-        state.customFocusFilter = '';
-      } else {
-        els.focusFilter.value = '';
-        state.customFocusFilter = filterValue;
-      }
-
-      renderDashboard();
-      els.queueSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-
-    function getCurrentFocusFilter() {
-      return state.customFocusFilter || els.focusFilter.value.trim();
-    }
-
-    function buildIssueFlags(issue, ageDays) {
-      const status = normalizeValue(issueVal(issue, 'finalStatus') || 'Open');
-      const priority = normalizeValue(issueVal(issue, 'priorityLevel'));
-      const hasTicket = String(issueVal(issue, 'developmentTicket') || '').trim().length > 0;
-      const hasNotes = String(issueVal(issue, 'internalNotes') || '').trim().length > 0;
-      const flags = [];
-
-      if ((priority === 'high' || priority === 'critical') && ageDays > 3) {
-        flags.push('<span class="flag-chip risk">SLA risk</span>');
-      }
-      if (status === 'waiting for customer') {
-        flags.push('<span class="flag-chip waiting">Waiting</span>');
-      }
-      if (status === 'escalated to development' && !hasTicket) {
-        flags.push('<span class="flag-chip ticket">Missing ticket</span>');
-      }
-      if (!hasNotes) {
-        flags.push('<span class="flag-chip notes">Needs notes</span>');
-      }
-
-      return flags.join('');
-    }
-
-    function sortIssues(items, sortBy) {
-      switch (sortBy) {
-        case 'priority_desc':
-          return items.sort((a, b) => {
-            const diff = getPriorityRank(issueVal(b, 'priorityLevel')) - getPriorityRank(issueVal(a, 'priorityLevel'));
-            return diff
-              || safeDateMs(issueVal(b, 'timestamp')) - safeDateMs(issueVal(a, 'timestamp'))
-              || Number(issueVal(b, 'id') || 0) - Number(issueVal(a, 'id') || 0);
-          });
-
-        case 'status_asc':
-          return items.sort((a, b) => {
-            const diff = getStatusIndex(issueVal(a, 'finalStatus')) - getStatusIndex(issueVal(b, 'finalStatus'));
-            return diff || compareText(issueVal(a, 'companyName'), issueVal(b, 'companyName'));
-          });
-
-        case 'company_asc':
-          return items.sort((a, b) => compareText(issueVal(a, 'companyName'), issueVal(b, 'companyName')));
-
-        case 'newest':
-          return items.sort((a, b) => safeDateMs(issueVal(b, 'timestamp')) - safeDateMs(issueVal(a, 'timestamp')));
-
-        case 'oldest':
-          return items.sort((a, b) => safeDateMs(issueVal(a, 'timestamp')) - safeDateMs(issueVal(b, 'timestamp')));
-
-        case 'age_desc':
-          return items.sort((a, b) => getIssueAgeDays(b, new Date()) - getIssueAgeDays(a, new Date()));
-
-        case 'closure_desc':
-          return items.sort((a, b) => safeDateMs(issueVal(b, 'resolutionClosureDate')) - safeDateMs(issueVal(a, 'resolutionClosureDate')));
-
-        case 'sheet':
-        default:
-          return items;
-      }
-    }
-
-    function selectIssue(id) {
-      const issue = state.issues.find(item => Number(issueVal(item, 'id') || 0) === Number(id));
-      if (!issue) return;
-
-      state.selectedIssueId = Number(issueVal(issue, 'id'));
-      els.selectedCountPill.textContent = `Selected #${issueVal(issue, 'id')}`;
-      updateSelectedRowUI();
-    }
-
-    function openEditModal(id) {
-      const issue = state.issues.find(item => Number(issueVal(item, 'id') || 0) === Number(id));
-      if (!issue) return;
-
-      state.selectedIssueId = Number(issueVal(issue, 'id'));
-      populateEditor(issue);
-      updateSelectedRowUI();
-
-      state.modalOpen = true;
-      els.editModalBackdrop.classList.add('show');
-      els.editModalBackdrop.setAttribute('aria-hidden', 'false');
-
-      setTimeout(() => {
-        els.finalStatus.focus();
-      }, 0);
-    }
-
-    function closeEditModal({ preserveMessage = false } = {}) {
-      state.modalOpen = false;
-      els.editModalBackdrop.classList.remove('show');
-      els.editModalBackdrop.setAttribute('aria-hidden', 'true');
-
-      if (!preserveMessage) {
-        setMessage('');
-      }
-    }
-
-    function populateEditor(issue) {
-      const id = issueVal(issue, 'id');
-      const issueTitle = issueVal(issue, 'issueTitle');
-      const companyName = issueVal(issue, 'companyName');
-      const priorityLevel = issueVal(issue, 'priorityLevel');
-      const finalStatus = issueVal(issue, 'finalStatus') || 'Open';
-      const escalationRequired = issueVal(issue, 'escalationRequired');
-      const developmentTicket = issueVal(issue, 'developmentTicket');
-
-      els.issueId.value = id || '';
-      els.timestamp.value = formatDateTime(issueVal(issue, 'timestamp')) || '';
-      els.requestDate.value = formatDate(issueVal(issue, 'requestDate')) || '';
-      els.submittedBy.value = issueVal(issue, 'submittedBy') || '';
-      els.companyName.value = companyName || '';
-      els.issueTitle.value = issueTitle || '';
-      els.issueCategory.value = issueVal(issue, 'issueCategory') || '';
-      els.detailedDescription.value = issueVal(issue, 'detailedDescription') || '';
-      els.issueOngoingIntermittent.value = issueVal(issue, 'issueOngoingIntermittent') || '';
-      els.priorityLevel.value = priorityLevel || '';
-      els.impactType.value = issueVal(issue, 'impactType') || '';
-      els.workaroundAvailable.value = issueVal(issue, 'workaroundAvailable') || '';
-      els.workaroundDetails.value = issueVal(issue, 'workaroundDetails') || '';
-      els.environment.value = issueVal(issue, 'environment') || '';
-      els.productModuleAffected.value = issueVal(issue, 'productModuleAffected') || '';
-      els.browserDeviceOs.value = issueVal(issue, 'browserDeviceOs') || '';
-      els.errorMessage.value = issueVal(issue, 'errorMessage') || '';
-      els.attachmentUpload.value = issueVal(issue, 'attachmentUpload') || '';
-      els.reportedChannel.value = issueVal(issue, 'reportedChannel') || '';
-      els.sourceOfIssue.value = issueVal(issue, 'sourceOfIssue') || '';
-
-      els.finalStatus.value = finalStatus || '';
-      els.resolutionClosureDate.value = formatDate(issueVal(issue, 'resolutionClosureDate')) || '';
-      els.initialAssessment.value = issueVal(issue, 'initialAssessment') || '';
-      els.rootCauseType.value = issueVal(issue, 'rootCauseType') || '';
-      els.escalationRequired.value = escalationRequired || '';
-      els.wasCsInformed.value = issueVal(issue, 'wasCsInformed') || '';
-      els.developmentTicket.value = developmentTicket || '';
-      els.internalNotes.value = issueVal(issue, 'internalNotes') || '';
-
-      els.selectedIssueInfo.innerHTML = `
-        <strong>Selected:</strong> ${escapeHtml(issueTitle || 'Untitled issue')}<br>
-        <span class="muted">Company:</span> ${escapeHtml(companyName || '—')}<br>
-        <span class="muted">Priority:</span> ${escapeHtml(priorityLevel || '—')}<br>
-        <span class="muted">Status:</span> ${escapeHtml(finalStatus || 'Open')}<br>
-        <span class="muted">Escalation:</span> ${escapeHtml(escalationRequired || '—')}<br>
-        <span class="muted">Ticket:</span> ${escapeHtml(developmentTicket || '—')}
-      `;
-
-      els.smartSuggestionBox.innerHTML = buildSmartSuggestion(issue);
-      els.selectedCountPill.textContent = `Selected #${id}`;
-      setMessage('');
-    }
-
-    function resetEditorToSelectedIssue() {
-      if (!state.selectedIssueId) return;
-      const issue = state.issues.find(item => Number(issueVal(item, 'id') || 0) === Number(state.selectedIssueId));
-      if (!issue) return;
-      populateEditor(issue);
-      els.editPassword.value = '';
-      setMessage('');
-    }
-
-    function clearSelection({ preserveMessage = false, closeModal = false } = {}) {
-      state.selectedIssueId = null;
-      els.selectedCountPill.textContent = 'No issue selected';
-      updateSelectedRowUI();
-      clearAllModalFields();
-      els.selectedIssueInfo.textContent = 'No issue selected.';
-      els.smartSuggestionBox.innerHTML = '<strong>Smart suggestion:</strong> Select an issue to see recommended next actions.';
-
-      if (!preserveMessage) {
-        setMessage('');
-      }
-
-      if (closeModal && state.modalOpen) {
-        closeEditModal({ preserveMessage });
-      }
-    }
-
-    function clearAllModalFields() {
-      [
-        els.issueId,
-        els.timestamp,
-        els.requestDate,
-        els.submittedBy,
-        els.companyName,
-        els.issueTitle,
-        els.issueCategory,
-        els.detailedDescription,
-        els.issueOngoingIntermittent,
-        els.priorityLevel,
-        els.impactType,
-        els.workaroundAvailable,
-        els.workaroundDetails,
-        els.environment,
-        els.productModuleAffected,
-        els.browserDeviceOs,
-        els.errorMessage,
-        els.attachmentUpload,
-        els.reportedChannel,
-        els.sourceOfIssue,
-        els.finalStatus,
-        els.resolutionClosureDate,
-        els.initialAssessment,
-        els.rootCauseType,
-        els.escalationRequired,
-        els.wasCsInformed,
-        els.developmentTicket,
-        els.internalNotes,
-        els.editPassword
-      ].forEach(el => {
-        if (el && ('value' in el)) {
-          el.value = '';
-        }
-      });
-    }
-
-    function syncSelection() {
-      if (!state.selectedIssueId) return;
-
-      const issue = state.issues.find(item => Number(issueVal(item, 'id') || 0) === Number(state.selectedIssueId));
-      if (!issue) {
-        clearSelection({ preserveMessage: true, closeModal: true });
-        return;
-      }
-
-      updateSelectedRowUI();
-
-      if (state.modalOpen) {
-        populateEditor(issue);
-      }
-    }
-
-    function updateSelectedRowUI() {
-      els.issuesTable.querySelectorAll('tr[data-id]').forEach(row => {
-        row.classList.toggle('selected-row', Number(row.dataset.id) === Number(state.selectedIssueId));
-      });
-    }
-
-    function updatePills() {
-      const count = getRenderableIssues().length;
-      const searchTerm = els.searchInput.value.trim();
-      const status = els.statusFilter.value.trim();
-      const priority = els.priorityFilter.value.trim();
-      const focus = getCurrentFocusFilter();
-      const dateLabel = getDateFilterLabel();
-      const focusLabel = CONFIG.FOCUS_FILTERS[focus] || focus.replace(/^company:/, 'Company: ').replace(/^module:/, 'Module: ').replace(/^aging:/, 'Aging: ');
-      const hasFilters = Boolean(searchTerm || status || priority || focus || dateLabel);
-      const sortLabel = CONFIG.SORT_OPTIONS.find(option => option.value === els.sortSelect.value)?.label || 'Sheet order';
-
-      els.issuesCountPill.textContent = `Showing ${count} issue${count === 1 ? '' : 's'}${hasFilters ? ' (filtered)' : ''}`;
-      els.tableMetaPill.textContent = `${hasFilters ? 'Filtered view' : 'Full issue list'} • ${sortLabel}${focus ? ` • ${focusLabel}` : ''}${dateLabel ? ` • ${dateLabel}` : ''}`;
-    }
-
-    function updateLastRefresh() {
-      els.lastRefreshPill.textContent = state.lastRefreshedAt ? formatDateTime(state.lastRefreshedAt) : '—';
-    }
-
-    function buildSmartSuggestion(issue) {
-      const status = normalizeValue(issueVal(issue, 'finalStatus') || 'Open');
-      const escalation = normalizeValue(issueVal(issue, 'escalationRequired'));
-      const csInformed = normalizeValue(issueVal(issue, 'wasCsInformed'));
-      const hasTicket = String(issueVal(issue, 'developmentTicket') || '').trim().length > 0;
-      const hasNotes = String(issueVal(issue, 'internalNotes') || '').trim().length > 0;
-
-      let message = 'Review and save the issue after confirming its status and notes.';
-
-      if (status === 'escalated to development' && !hasTicket) {
-        message = 'This issue is escalated but has no development ticket. Add a ticket ID or link before saving.';
-      } else if ((status === 'resolved' || status === 'closed') && !hasNotes) {
-        message = 'This issue is being completed. Add brief internal notes so the resolution history is clear.';
-      } else if ((status === 'waiting for customer' || status === 'waiting for cs') && csInformed === 'no') {
-        message = 'The issue is waiting on communication. Consider marking “Was CS informed?” as Yes after the handoff.';
-      } else if (escalation === 'yes' && !hasTicket) {
-        message = 'Escalation is marked Yes, but no development ticket is linked yet.';
-      } else if (!hasNotes) {
-        message = 'Add internal notes to make future follow-up easier for the team.';
-      }
-
-      return `<strong>Smart suggestion:</strong> ${escapeHtml(message)}`;
-    }
-
-    function renderTicket(ticket) {
-      const value = String(ticket || '').trim();
-      if (!value) return '—';
-
-      const isLink = /^https?:\/\//i.test(value);
-      if (!isLink) return escapeHtml(value);
-
-      return `
-        <a href="${escapeAttribute(value)}" target="_blank" rel="noopener noreferrer">
-          ${escapeHtml(shorten(value, 32))}
-        </a>
-      `;
-    }
-
-    function buildStatusChip(status) {
-      const label = status || 'Open';
-      const theme = getStatusTheme(label);
-
-      return `
-        <span class="chip" style="background:${theme.bg}; color:${theme.text}; border-color:${theme.bg};">
-          <span class="chip-dot" style="background:${theme.text}"></span>
-          ${escapeHtml(label)}
-        </span>
-      `;
-    }
-
-    function buildPriorityChip(priority) {
-      const label = priority || '—';
-      const theme = CONFIG.PRIORITY_THEME[label] || { bg: 'var(--panel-soft)', text: 'var(--text-soft)' };
-
-      return `
-        <span class="chip" style="background:${theme.bg}; color:${theme.text}; border-color:${theme.bg};">
-          <span class="chip-dot" style="background:${theme.text}"></span>
-          ${escapeHtml(label)}
-        </span>
-      `;
-    }
-
-    function buildYesNoChip(value) {
-      const label = value || '—';
-      const normalized = normalizeValue(label);
-
-      if (normalized === 'yes') {
-        return `
-          <span class="chip" style="background:#fef3c7; color:#b45309; border-color:#fef3c7;">
-            <span class="chip-dot" style="background:#b45309"></span>
-            Yes
-          </span>
-        `;
-      }
-
-      if (normalized === 'no') {
-        return `
-          <span class="chip" style="background:#dcfce7; color:#15803d; border-color:#dcfce7;">
-            <span class="chip-dot" style="background:#15803d"></span>
-            No
-          </span>
-        `;
-      }
-
-      return '—';
-    }
-
-    function getStatusTheme(status) {
-      return CONFIG.STATUS_THEME[status] || CONFIG.STATUS_THEME['Open'];
-    }
-
-    function getPriorityRank(priority) {
-      return CONFIG.PRIORITY_ORDER[priority] || 0;
-    }
-
-    function getStatusIndex(status) {
-      const label = status || 'Open';
-      const index = CONFIG.STATUS_OPTIONS.indexOf(label);
-      return index === -1 ? 999 : index;
-    }
-
-    function getIssueAgeDays(issue, now = new Date()) {
-      const rawDate = issueVal(issue, 'timestamp') || issueVal(issue, 'requestDate');
-      const createdAt = parseDate(rawDate);
-      if (!createdAt) return 0;
-
-      const ms = now.getTime() - createdAt.getTime();
-      return Math.max(0, Math.floor(ms / (1000 * 60 * 60 * 24)));
-    }
-
-    function topEntries(obj, limit = 5) {
-      return Object.entries(obj || {})
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, limit);
-    }
-
-    function compareText(a, b) {
-      return String(a || '').localeCompare(String(b || ''), undefined, { sensitivity: 'base' });
-    }
-
-    function safeDateMs(value) {
-      const d = parseDate(value);
-      return d ? d.getTime() : 0;
-    }
-
-    function parseDate(value) {
-      if (!value) return null;
-
-      if (value instanceof Date) {
-        return Number.isNaN(value.getTime()) ? null : new Date(value.getTime());
-      }
-
-      const text = String(value).trim();
-      if (!text) return null;
-
-      if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
-        const [y, m, d] = text.split('-').map(Number);
-        const date = new Date(y, m - 1, d);
-        return Number.isNaN(date.getTime()) ? null : date;
-      }
-
-      const date = new Date(text);
-      return Number.isNaN(date.getTime()) ? null : date;
-    }
-
-    function endOfDay(value) {
-      const date = parseDate(value);
-      if (!date) return null;
-      date.setHours(23, 59, 59, 999);
-      return date;
-    }
-
-    function roundToOne(value) {
-      return Math.round(value * 10) / 10;
-    }
-
-    function setMessage(message, isError = false) {
-      els.saveMessage.textContent = message;
-      els.saveMessage.className = isError ? 'error' : 'success';
-      if (!message) {
-        els.saveMessage.className = 'muted';
-      }
-    }
-
-    function beginBusy() {
-      state.pendingOps += 1;
-      updateBusyUI();
-    }
-
-    function endBusy() {
-      state.pendingOps = Math.max(0, state.pendingOps - 1);
-      updateBusyUI();
-    }
-
-    function setSavingState(isSaving) {
-      state.isSaving = isSaving;
-      els.saveBtn.textContent = isSaving ? 'Saving...' : 'Save Update';
-
-      els.editorInputs.forEach(input => input.disabled = isSaving);
-      els.resetEditorBtn.disabled = isSaving;
-
-      updateBusyUI();
-    }
-
-    function updateBusyUI() {
-      const isBusy = state.pendingOps > 0;
-
-      els.loadingOverlay.classList.toggle('show', isBusy);
-
-      els.refreshBtn.disabled = isBusy;
-      els.refreshBtnTop.disabled = isBusy;
-      els.exportBtn.disabled = isBusy;
-      els.searchInput.disabled = isBusy;
-      els.statusFilter.disabled = isBusy;
-      els.priorityFilter.disabled = isBusy;
-      els.startDateFilter.disabled = isBusy;
-      els.endDateFilter.disabled = isBusy;
-      els.focusFilter.disabled = isBusy;
-      els.sortSelect.disabled = isBusy;
-      els.clearBtnTop.disabled = isBusy;
-
-      if (!state.isSaving) {
-        els.saveBtn.disabled = isBusy || state.usingLocalFallback;
-      }
-    }
-
-    function showToast(message, isError = false) {
-      clearTimeout(state.toastTimer);
-      els.toast.textContent = message;
-      els.toast.className = `toast ${isError ? 'error' : 'success'} show`;
-
-      state.toastTimer = setTimeout(() => {
-        els.toast.className = `toast ${isError ? 'error' : 'success'}`;
-      }, 2600);
-    }
-
-    function exportCurrentIssuesCsv() {
-      const issues = getRenderableIssues();
-
-      if (!issues.length) {
-        showToast('No issues to export in the current view.', true);
-        return;
-      }
-
-      const columns = [
-        ['ID', 'id'],
-        ['Timestamp', 'timestamp'],
-        ['Request Date', 'requestDate'],
-        ['Submitted By', 'submittedBy'],
-        ['Company Name', 'companyName'],
-        ['Issue Title', 'issueTitle'],
-        ['Issue Category', 'issueCategory'],
-        ['Detailed Description', 'detailedDescription'],
-        ['Is the Issue Ongoing or Intermittent?', 'issueOngoingIntermittent'],
-        ['Priority Level', 'priorityLevel'],
-        ['Impact Type', 'impactType'],
-        ['Is There a Workaround Available?', 'workaroundAvailable'],
-        ['Workaround Details', 'workaroundDetails'],
-        ['Environment', 'environment'],
-        ['Product / Module Affected', 'productModuleAffected'],
-        ['Browser / Device / OS', 'browserDeviceOs'],
-        ['Error Message', 'errorMessage'],
-        ['Attachment Upload', 'attachmentUpload'],
-        ['Reported Channel', 'reportedChannel'],
-        ['Source Of Issue', 'sourceOfIssue'],
-        ['Initial Assessment', 'initialAssessment'],
-        ['Root Cause Type', 'rootCauseType'],
-        ['Internal Notes', 'internalNotes'],
-        ['Escalation Required', 'escalationRequired'],
-        ['Development Ticket', 'developmentTicket'],
-        ['Final Status', 'finalStatus'],
-        ['Resolution / Closure Date', 'resolutionClosureDate'],
-        ['Was CS Informed', 'wasCsInformed']
-      ];
-
-      const rows = [
-        columns.map(([label]) => csvEscape(label)).join(','),
-        ...issues.map(issue =>
-          columns.map(([, key]) => csvEscape(issueVal(issue, key))).join(',')
-        )
-      ];
-
-      const csv = rows.join('\n');
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-
-      a.href = url;
-      a.download = `support-dashboard-${formatFileStamp(new Date())}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      showToast('Filtered issue list exported.');
-    }
-
-    function populateSelect(selectElement, placeholder, values) {
-      selectElement.innerHTML = [
-        `<option value="">${escapeHtml(placeholder)}</option>`,
-        ...values.map(value => `<option value="${escapeAttribute(value)}">${escapeHtml(value)}</option>`)
-      ].join('');
-    }
-
-    function toggleTheme() {
-      document.body.classList.toggle('dark-theme');
-      const isDark = document.body.classList.contains('dark-theme');
-      localStorage.setItem('supportDashboardTheme', isDark ? 'dark' : 'light');
-      updateThemeButton();
-    }
-
-    function applySavedTheme() {
-      const saved = localStorage.getItem('supportDashboardTheme');
-      if (saved === 'dark') {
-        document.body.classList.add('dark-theme');
-      }
-      updateThemeButton();
-    }
-
-    function updateThemeButton() {
-      const isDark = document.body.classList.contains('dark-theme');
-      els.themeToggleBtn.textContent = isDark ? '☀ Light Mode' : '🌙 Dark Mode';
-    }
-
-    function issueVal(issue, key) {
-      const aliases = CONFIG.FIELD_ALIASES[key] || [key];
-
-      for (const alias of aliases) {
-        if (Object.prototype.hasOwnProperty.call(issue, alias) && issue[alias] !== undefined && issue[alias] !== null) {
-          return issue[alias];
-        }
-      }
-
-      return '';
-    }
-
-    function formatDate(value) {
-      const date = parseDate(value);
-      if (!date) return value ? String(value) : '';
-
-      return date.toLocaleDateString(undefined, {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-      });
-    }
-
-    function formatDateTime(value) {
-      const date = parseDate(value);
-      if (!date) return value ? String(value) : '';
-
-      return date.toLocaleString(undefined, {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-    }
-
-    function formatInputDate(value) {
-      const date = parseDate(value);
-      if (!date) return '';
-      const yyyy = date.getFullYear();
-      const mm = String(date.getMonth() + 1).padStart(2, '0');
-      const dd = String(date.getDate()).padStart(2, '0');
-      return `${yyyy}-${mm}-${dd}`;
-    }
-
-    function formatFileStamp(date) {
-      const d = parseDate(date) || new Date();
-      const yyyy = d.getFullYear();
-      const mm = String(d.getMonth() + 1).padStart(2, '0');
-      const dd = String(d.getDate()).padStart(2, '0');
-      const hh = String(d.getHours()).padStart(2, '0');
-      const mi = String(d.getMinutes()).padStart(2, '0');
-      return `${yyyy}${mm}${dd}-${hh}${mi}`;
-    }
-
-    function normalizeValue(value) {
-      return String(value || '').trim().toLowerCase();
-    }
-
-    function shorten(value, max) {
-      const text = String(value || '');
-      return text.length > max ? `${text.slice(0, max - 1)}…` : text;
-    }
-
-    function csvEscape(value) {
-      const text = String(value == null ? '' : value).replaceAll('"', '""');
-      return `"${text}"`;
-    }
-
-    function iconToneStyle(tone) {
-      const map = {
-        primary: 'background:#dbeafe;color:#1d4ed8;',
-        success: 'background:#dcfce7;color:#15803d;',
-        warning: 'background:#fef3c7;color:#b45309;',
-        danger: 'background:#fee2e2;color:#b91c1c;',
-        purple: 'background:#ede9fe;color:#6d28d9;'
-      };
-      return map[tone] || map.primary;
-    }
-
-    function escapeHtml(value) {
-      return String(value)
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;')
-        .replaceAll("'", '&#039;');
-    }
-
-    function escapeAttribute(value) {
-      return escapeHtml(value).replaceAll('`', '&#096;');
-    }
+    })();
   </script>
 </body>
 </html>
