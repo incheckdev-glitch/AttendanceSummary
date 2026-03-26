@@ -4097,6 +4097,9 @@ async function saveIssueToSheet(issue, passcode, options = {}) {
     const latestAttempts = attempts.slice(-2);
       const variantSuccess = latestAttempts.find(attempt => {
         if (!attempt.res.ok) return false;
+           // Some Apps Script handlers return 200/204 with an empty body.
+        // Treat those as success and fall back to the submitted payload.
+        if (!attempt.bodyText) return true;
         if (!attempt.json) return false;
         // Accept common success shapes from Apps Script handlers:
         // { ok: true, ... }, { success: true, ... }, or a direct issue payload.
@@ -4109,9 +4112,9 @@ async function saveIssueToSheet(issue, passcode, options = {}) {
       });
       if (variantSuccess) {
         UI.toast(`Issue updated (${variantSuccess.label})`);
-       return normalizeIssueForStore(
-          variantSuccess.json.data || variantSuccess.json.issue || variantSuccess.json || payload
-        );
+       const returnedIssue =
+          variantSuccess.json?.data || variantSuccess.json?.issue || variantSuccess.json || {};
+        return normalizeIssueForStore({ ...payload, ...returnedIssue });
       }
       }
 
