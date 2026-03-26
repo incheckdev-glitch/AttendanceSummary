@@ -178,7 +178,6 @@ const CONFIG = {
 };
 
 // Use the proxied issue endpoint for ticket edits to avoid CORS failures
-const EDIT_TICKET_URL = CONFIG.ISSUE_API_URL;
 
 const LS_KEYS = {
   filters: 'incheckFilters',
@@ -3306,10 +3305,10 @@ async function onEditIssueSubmit(event) {
     return;
   }
 
-  const payload = {
+const issueUpdate = {
     id,
     title,
-    description,
+     desc: description,
     module,
     priority,
     status,
@@ -3320,75 +3319,17 @@ async function onEditIssueSubmit(event) {
     notificationSent,
     notificationUnderReview,
     log,
-    link,
-    date,
-    passcode
+  file: link,
+    date
   };
 
-  console.log('Sending edit payload', payload);
+  console.log('Saving edit issue update', issueUpdate);
 
   try {
-    const response = await fetch(EDIT_TICKET_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-
-    const rawText = await response.text();
-    let data = null;
-    try {
-      data = JSON.parse(rawText);
-    } catch (err) {
-     console.error('Failed to parse edit response JSON', err, rawText);
+    const updatedIssue = await saveIssueToSheet(issueUpdate, passcode);
+    if (!updatedIssue) {
+      throw new Error('Issue update did not return a response.');
     }
-
-     console.log('Edit response', { status: response.status, data, raw: rawText });
-
-    if (!response.ok || !data?.success) {
-        const normalizeDetail = detail => {
-        if (!detail) return null;
-        if (typeof detail === 'string') return detail;
-        if (detail instanceof Error) return detail.message;
-        if (typeof detail === 'object') {
-          try {
-            return JSON.stringify(detail);
-          } catch (err) {
-            console.error('Failed to stringify error detail', err, detail);
-          }
-        }
-        return String(detail);
-      };
-
-      const detail =
-        normalizeDetail(data?.error || data?.message) ||
-        rawText ||
-        `${response.status} ${response.statusText || 'Request failed'}`;
-      
-      throw new Error(
-        `${detail} – the upstream Apps Script or CORS proxy may be unavailable`
-      );
-    }
-
-    UI.toast('Ticket updated successfully');
-
-    const updatedIssue = {
-      id,
-      title,
-      desc: description,
-      module,
-      priority,
-      status,
-      type,
-      department,
-      name,
-      emailAddressee,
-      notificationSent,
-      notificationUnderReview,
-      log,
-      file: link,
-      date,
-      ...(data.issue || {})
-    };
 
     applyIssueUpdate(updatedIssue);
     IssueEditor.close();
