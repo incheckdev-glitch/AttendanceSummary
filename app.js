@@ -4016,10 +4016,14 @@ async function saveIssueToSheet(issue, passcode, options = {}) {
   if (useSpinner) UI.spinner(true);
   try {
     const payload = normalizeIssueForStore(issue);
+     const issueId = payload.id || issue.id || '';
+    if (!issueId) {
+      throw new Error('Missing ticket ID for update.');
+    }
     const updateRequestBody = {
       resource: 'tickets',
       action: 'update',
-      id: payload.id || issue.id || '',
+      id: issueId,
       password: passcode || '',
        passcode: passcode || '',
       updates: {
@@ -4047,14 +4051,16 @@ async function saveIssueToSheet(issue, passcode, options = {}) {
         body: updateRequestBody
       },
       {
-        label: 'save ticket payload',
+        // Legacy Apps Script variants that expect flattened update fields
+        // instead of an "updates" envelope.
+        label: 'update payload (flat)',
         body: {
           resource: 'tickets',
-          action: 'save',
+          action: 'update',
+          id: issueId,
           password: passcode || '',
           passcode: passcode || '',
-          ticket: payload,
-          issue: payload
+          ...updateRequestBody.updates
         }
       }
     ];
