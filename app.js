@@ -4016,57 +4016,89 @@ async function saveIssueToSheet(issue, passcode, options = {}) {
   if (useSpinner) UI.spinner(true);
   try {
     const payload = normalizeIssueForStore(issue);
-    const requestBody = {
+    const updateRequestBody = {
       resource: 'tickets',
       action: 'update',
       id: payload.id || issue.id || '',
       password: passcode || '',
+       passcode: passcode || '',
       updates: {
         title: payload.title,
         description: payload.desc,
+         desc: payload.desc,
         module: payload.module,
         priority: payload.priority,
         status: payload.status,
-       log: payload.log,
+        log: payload.log,
+        date: payload.date,
+        file: payload.file,
+        department: payload.department,
+        name: payload.name,
+        emailAddressee: payload.emailAddressee,
+        notificationSent: payload.notificationSent,
+        notificationUnderReview: payload.notificationUnderReview,
         type: payload.type
       }
     };
-    const requestOptions = {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody)
-    };
 
-      const attempts = [];
-    const send = async (url, label) => {
-      const res = await fetch(url, requestOptions);
+     const compatibilityBodies = [
+      {
+        label: 'update payload',
+        body: updateRequestBody
+      },
+      {
+        label: 'save ticket payload',
+        body: {
+          resource: 'tickets',
+          action: 'save',
+          password: passcode || '',
+          passcode: passcode || '',
+          ticket: payload,
+          issue: payload
+        }
+      }
+    ];
+
+    const attempts = [];
+    const send = async (url, variant) => {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(variant.body)
+      });
+      
       const bodyText = await res.text();
       let json = null;
       try {
         json = bodyText ? JSON.parse(bodyText) : null;
       } catch (parseErr) {
-        console.error(`Invalid JSON from issue backend (${label})`, parseErr);
+       console.error(`Invalid JSON from issue backend (${variant.label})`, parseErr);
       }
-      attempts.push({ label, res, bodyText, json });
+       attempts.push({ label: variant.label, res, bodyText, json });
       return attempts[attempts.length - 1];
     };
 
-    const primary = await send(CONFIG.ISSUE_API_URL, 'via CORS proxy');
-    const proxyFailed =
-      primary.res.status === 502 && CONFIG.ISSUE_API_URL.includes('corsproxy.io/?');
-    if (proxyFailed) {
-      const directUrl = decodeURIComponent(CONFIG.ISSUE_API_URL.split('corsproxy.io/?')[1]);
-      await send(directUrl, 'direct Apps Script');
-    }
-
-     const success = attempts.find(a => a.res.ok && a.json);
-    if (success) {
-      if (success.json.ok) {
-        UI.toast(`Issue updated (${success.label})`);
-       return normalizeIssueForStore(success.json.data || success.json.issue || payload);
+    let proxyFailed = false;
+    for (const variant of compatibilityBodies) {
+      const primary = await send(CONFIG.ISSUE_API_URL, variant);
+      proxyFailed =
+        primary.res.status === 502 && CONFIG.ISSUE_API_URL.includes('corsproxy.io/?');
+      if (proxyFailed) {
+        const directUrl = decodeURIComponent(CONFIG.ISSUE_API_URL.split('corsproxy.io/?')[1]);
+        await send(directUrl, variant);
       }
 
-      throw new Error(success.json.error || 'Unknown error');
+    const latestAttempts = attempts.slice(-2);
+      const variantSuccess = latestAttempts.find(a => a.res.ok && a.json && a.json.ok);
+      if (variantSuccess) {
+        UI.toast(`Issue updated (${variantSuccess.label})`);
+        return normalizeIssueForStore(variantSuccess.json.data || variantSuccess.json.issue || payload);
+      }
+      }
+
+      const structuredFailure = attempts.find(a => a.res.ok && a.json && !a.json.ok);
+    if (structuredFailure) {
+      throw new Error(structuredFailure.json.error || 'Unknown error');
     }
 
      const readableAttempts = attempts
