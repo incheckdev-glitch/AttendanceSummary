@@ -10,6 +10,9 @@
  *  - Release planner (F&B / Middle East)
  */
 
+const APPS_SCRIPT_WEBAPP_URL =
+  "https://script.google.com/macros/s/AKfycbx1ykxGN7tKDJSf9IjVA3U0zUoBsg8vW209ROM-1jIe7YxxrfNU_GJ4G-MrnjvRS40tIw/exec";
+
 const CONFIG = {
   DATA_VERSION: '3',
    DATA_STALE_HOURS: 6,
@@ -21,16 +24,12 @@ const CONFIG = {
   // Calendar Apps Script web app URL (wrapped via corsproxy to handle CORS)
   CALENDAR_API_URL:
     "https://corsproxy.io/?" +
-    encodeURIComponent(
-      "https://script.google.com/macros/s/AKfycbwRX_RgOR5H3G4Numzl8Xl0ITUOhUh9d6u-D5M2O3rt6qB2cu34tRtLYd9_AkZFPZxvWA/exec"
-    ),
-
+    encodeURIComponent(APPS_SCRIPT_WEBAPP_URL),
+  
   // Issues Apps Script web app URL (must support action=updateIssue)
   ISSUE_API_URL:
     "https://corsproxy.io/?" +
-    encodeURIComponent(
-      "https://script.google.com/macros/s/AKfycbwRX_RgOR5H3G4Numzl8Xl0ITUOhUh9d6u-D5M2O3rt6qB2cu34tRtLYd9_AkZFPZxvWA/exec"
-    ),
+   encodeURIComponent(APPS_SCRIPT_WEBAPP_URL),
 
   
   TREND_DAYS_RECENT: 7,
