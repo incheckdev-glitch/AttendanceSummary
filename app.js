@@ -4095,14 +4095,32 @@ async function saveIssueToSheet(issue, passcode, options = {}) {
       }
 
     const latestAttempts = attempts.slice(-2);
-      const variantSuccess = latestAttempts.find(a => a.res.ok && a.json && a.json.ok);
+      const variantSuccess = latestAttempts.find(attempt => {
+        if (!attempt.res.ok) return false;
+        if (!attempt.json) return false;
+        // Accept common success shapes from Apps Script handlers:
+        // { ok: true, ... }, { success: true, ... }, or a direct issue payload.
+        if (attempt.json.ok === true || attempt.json.success === true) return true;
+        if (attempt.json.ok === false || attempt.json.success === false) return false;
+        return (
+          typeof attempt.json === 'object' &&
+          !!(attempt.json.id || attempt.json.issue || attempt.json.data)
+        );
+      });
       if (variantSuccess) {
         UI.toast(`Issue updated (${variantSuccess.label})`);
-        return normalizeIssueForStore(variantSuccess.json.data || variantSuccess.json.issue || payload);
+       return normalizeIssueForStore(
+          variantSuccess.json.data || variantSuccess.json.issue || variantSuccess.json || payload
+        );
       }
       }
 
-      const structuredFailure = attempts.find(a => a.res.ok && a.json && !a.json.ok);
+      const structuredFailure = attempts.find(
+        attempt =>
+          attempt.res.ok &&
+          attempt.json &&
+          (attempt.json.ok === false || attempt.json.success === false)
+      );
     if (structuredFailure) {
       throw new Error(structuredFailure.json.error || 'Unknown error');
     }
@@ -4123,7 +4141,7 @@ async function saveIssueToSheet(issue, passcode, options = {}) {
     throw new Error(`${hint} (${readableAttempts})`);
   } catch (e) {
     UI.toast('Error updating issue: ' + e.message);
-    return null;
+   throw e;
   } finally {
     if (useSpinner) UI.spinner(false);
   }
