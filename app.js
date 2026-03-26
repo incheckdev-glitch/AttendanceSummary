@@ -26,7 +26,7 @@ const CONFIG = {
     "https://corsproxy.io/?" +
     encodeURIComponent(APPS_SCRIPT_WEBAPP_URL),
   
-  // Issues Apps Script web app URL (must support action=updateIssue)
+  // Issues Apps Script web app URL (tickets resource: create/update/delete)
   ISSUE_API_URL:
     "https://corsproxy.io/?" +
    encodeURIComponent(APPS_SCRIPT_WEBAPP_URL),
@@ -3978,7 +3978,8 @@ async function loadEvents(force = false) {
 
   try {
     UI.spinner(true);
-    const res = await fetch(CONFIG.CALENDAR_API_URL, { cache: 'no-store' });
+   const eventsUrl = withResourceParam(CONFIG.CALENDAR_API_URL, 'events');
+    const res = await fetch(eventsUrl, { cache: 'no-store' });
     if (!res.ok) throw new Error(`Events API failed: ${res.status}`);
     const data = await res.json().catch(() => ({}));
     const events = Array.isArray(data.events) ? data.events : [];
@@ -4074,8 +4075,9 @@ async function saveIssueToSheet(issue, passcode, options = {}) {
   if (useSpinner) UI.spinner(true);
   try {
     const payload = normalizeIssueForStore(issue);
-     const requestBody = {
-      action: 'updateIssue',
+    const requestBody = {
+      resource: 'tickets',
+      action: 'update',
       id: payload.id || issue.id || '',
       password: passcode || '',
       updates: {
@@ -4120,7 +4122,7 @@ async function saveIssueToSheet(issue, passcode, options = {}) {
     if (success) {
       if (success.json.ok) {
         UI.toast(`Issue updated (${success.label})`);
-        return normalizeIssueForStore(success.json.issue || payload);
+       return normalizeIssueForStore(success.json.data || success.json.issue || payload);
       }
 
       throw new Error(success.json.error || 'Unknown error');
@@ -4192,10 +4194,10 @@ async function saveEventToSheet(event) {
 
      console.log('[Ticketing Dashboard] sending event payload to Apps Script:', payload);
 
-    const res = await fetch(CONFIG.CALENDAR_API_URL, {
+    const res = await fetch(withResourceParam(CONFIG.CALENDAR_API_URL, 'events'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'save', event: payload })
+      body: JSON.stringify({ resource: 'events', action: 'save', event: payload })
     });
 
     let data;
@@ -4238,10 +4240,10 @@ async function saveEventToSheet(event) {
 async function deleteEventFromSheet(id) {
   UI.spinner(true);
   try {
-    const res = await fetch(CONFIG.CALENDAR_API_URL, {
+   const res = await fetch(withResourceParam(CONFIG.CALENDAR_API_URL, 'events'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'delete', event: { id } })
+       body: JSON.stringify({ resource: 'events', action: 'delete', id })
     });
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'Delete failed');
@@ -4252,6 +4254,34 @@ async function deleteEventFromSheet(id) {
     return false;
   } finally {
     UI.spinner(false);
+  }
+}
+
+function withResourceParam(url, resource) {
+  const value = String(resource || '').trim();
+  if (!value) return url;
+
+  if (url.includes('corsproxy.io/?')) {
+    try {
+      const proxy = 'https://corsproxy.io/?';
+      const encodedTarget = url.slice(proxy.length);
+      const targetUrl = decodeURIComponent(encodedTarget);
+      const target = new URL(targetUrl);
+      target.searchParams.set('resource', value);
+      return proxy + encodeURIComponent(target.toString());
+    } catch (err) {
+      console.warn('Unable to append resource to proxied URL, using original', err);
+      return url;
+    }
+  }
+
+  try {
+    const direct = new URL(url);
+    direct.searchParams.set('resource', value);
+    return direct.toString();
+  } catch (err) {
+    console.warn('Unable to append resource to URL, using original', err);
+    return url;
   }
 }
 
