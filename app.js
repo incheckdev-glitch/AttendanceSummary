@@ -4024,9 +4024,16 @@ async function saveIssueToSheet(issue, passcode, options = {}) {
       resource: 'tickets',
       action: 'update',
       id: issueId,
+       ticket_id: issueId,
+      key: {
+        id: issueId,
+        ticket_id: issueId
+      },
       password: passcode || '',
        passcode: passcode || '',
       updates: {
+         id: issueId,
+        ticket_id: issueId,
         title: payload.title,
         description: payload.desc,
          desc: payload.desc,
@@ -4058,6 +4065,11 @@ async function saveIssueToSheet(issue, passcode, options = {}) {
           resource: 'tickets',
           action: 'update',
           id: issueId,
+          ticket_id: issueId,
+          key: {
+            id: issueId,
+            ticket_id: issueId
+          },
           password: passcode || '',
           passcode: passcode || '',
           ...updateRequestBody.updates
@@ -4097,6 +4109,9 @@ async function saveIssueToSheet(issue, passcode, options = {}) {
     const latestAttempts = attempts.slice(-2);
       const variantSuccess = latestAttempts.find(attempt => {
         if (!attempt.res.ok) return false;
+         // Some Apps Script handlers return 200/204 with an empty body.
+        // Treat those as success and fall back to the submitted payload.
+        if (!attempt.bodyText) return true;
            // Some Apps Script handlers return 200/204 with an empty body.
         // Treat those as success and fall back to the submitted payload.
         if (!attempt.bodyText) return true;
@@ -4112,7 +4127,7 @@ async function saveIssueToSheet(issue, passcode, options = {}) {
       });
       if (variantSuccess) {
         UI.toast(`Issue updated (${variantSuccess.label})`);
-       const returnedIssue =
+        const returnedIssue =
           variantSuccess.json?.data || variantSuccess.json?.issue || variantSuccess.json || {};
         return normalizeIssueForStore({ ...payload, ...returnedIssue });
       }
