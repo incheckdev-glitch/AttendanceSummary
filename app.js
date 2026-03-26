@@ -4266,44 +4266,42 @@ function withResourceParam(url, resource) {
 
 /* ---------- Excel export ---------- */
 function buildIssueExportRow(issue) {
-  const meta = DataStore.computed.get(issue.id) || {};
-  const risk = meta.risk || {};
-  const suggestions = meta.suggestions || {};
-  const categories = (suggestions.categories || []).map(c => c.label).join(', ');
-  const reasons = Array.isArray(risk.reasons)
-    ? risk.reasons.map(r => r.reason || r).join('; ')
-    : '';
-  let ageDays = '';
-  if (issue.date) {
-    const d = new Date(issue.date);
-    if (!isNaN(d)) ageDays = Math.floor((Date.now() - d.getTime()) / 86400000);
-  }
   return {
-    ID: issue.id,
-     Name: issue.name,
+     'Ticket ID': issue.id,
+    Date: issue.date,
+    Name: issue.name,
     Department: issue.department,
-    Module: issue.module,
     Title: issue.title,
     Description: issue.desc,
-    EmailAddressee: issue.emailAddressee,
     Priority: issue.priority,
-    Status: issue.status,
-    Type: issue.type,
-    NotificationSent: issue.notificationSent,
-    NotificationUnderReview: issue.notificationUnderReview,
-    Date: issue.date,
-    AgeDays: ageDays,
-    Log: issue.log,
+    Module: issue.module,
     Link: issue.file,
-    RiskTotal: risk.total ?? '',
-    RiskSeverity: risk.severity ?? '',
-    RiskImpact: risk.impact ?? '',
-    RiskUrgency: risk.urgency ?? '',
-    RiskReasons: reasons,
-    SuggestedPriority: suggestions.priority || '',
-    SuggestedCategories: categories
+    'Email Addressee': issue.emailAddressee,
+    Category: issue.type,
+    Status: issue.status,
+    'Notification Sent': issue.notificationSent,
+    Log: issue.log,
+    'Notification Sent Under Review': issue.notificationUnderReview
   };
 }
+
+const ISSUE_EXPORT_HEADERS = [
+  'Ticket ID',
+  'Date',
+  'Name',
+  'Department',
+  'Title',
+  'Description',
+  'Priority',
+  'Module',
+  'Link',
+  'Email Addressee',
+  'Category',
+  'Status',
+  'Notification Sent',
+  'Log',
+  'Notification Sent Under Review'
+];
 
 function exportIssuesToExcel(rows, suffix) {
   if (!rows.length) return UI.toast('Nothing to export (no rows).');
@@ -4312,41 +4310,17 @@ function exportIssuesToExcel(rows, suffix) {
     return;
   }
 
-  const headers = [
-    'ID',
-    'Name',
-    'Department',
-    'Module',
-    'Title',
-    'Description',
-    'EmailAddressee',
-    'Priority',
-    'Status',
-    'Type',
-    'NotificationSent',
-    'NotificationUnderReview',
-    'Date',
-    'AgeDays',
-    'Log',
-    'Link',
-    'RiskTotal',
-    'RiskSeverity',
-    'RiskImpact',
-    'RiskUrgency',
-    'RiskReasons',
-    'SuggestedPriority',
-    'SuggestedCategories'
-  ];
+ 
   
   const issueRows = rows.map(buildIssueExportRow);
   const wsIssues = XLSX.utils.json_to_sheet([]);
-  XLSX.utils.sheet_add_aoa(wsIssues, [headers]);
+  XLSX.utils.sheet_add_aoa(wsIssues, [ISSUE_EXPORT_HEADERS]);
   XLSX.utils.sheet_add_json(wsIssues, issueRows, {
-    header: headers,
+    header: ISSUE_EXPORT_HEADERS,
     skipHeader: true,
     origin: 'A2'
   });
-   wsIssues['!cols'] = headers.map(h => ({ wch: Math.max(12, h.length + 4) }));
+   wsIssues['!cols'] = ISSUE_EXPORT_HEADERS.map(h => ({ wch: Math.max(12, h.length + 4) }));
 
   const statusCounts = rows.reduce((acc, r) => {
     acc[r.status] = (acc[r.status] || 0) + 1;
