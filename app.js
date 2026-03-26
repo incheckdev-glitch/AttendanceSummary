@@ -4006,6 +4006,22 @@ function normalizeIssueForStore(issue) {
   };
 }
 
+function buildIssueIdCandidates(id) {
+  const raw = String(id || '').trim();
+  if (!raw) return [];
+  const candidates = new Set([raw]);
+
+  // Some Google Sheet exports preserve a leading apostrophe for text IDs (e.g. "'12345").
+  const withoutLeadingQuote = raw.replace(/^'+/, '').trim();
+  if (withoutLeadingQuote) candidates.add(withoutLeadingQuote);
+
+  // Preserve compatibility for handlers that normalize casing internally.
+  candidates.add(raw.toUpperCase());
+  candidates.add(raw.toLowerCase());
+
+  return Array.from(candidates).filter(Boolean);
+}
+
 async function saveIssueToSheet(issue, passcode, options = {}) {
   if (!CONFIG.ISSUE_API_URL) {
     UI.toast('Issue update endpoint is not configured.');
@@ -4017,65 +4033,68 @@ async function saveIssueToSheet(issue, passcode, options = {}) {
   try {
     const payload = normalizeIssueForStore(issue);
      const issueId = payload.id || issue.id || '';
-    if (!issueId) {
+    const issueIdCandidates = buildIssueIdCandidates(issueId);
+    if (!issueIdCandidates.length) {
       throw new Error('Missing ticket ID for update.');
     }
-    const updateRequestBody = {
-      resource: 'tickets',
-      action: 'update',
-      id: issueId,
-       ticket_id: issueId,
-      key: {
-        id: issueId,
-        ticket_id: issueId
-      },
-      password: passcode || '',
-       passcode: passcode || '',
-      updates: {
-         id: issueId,
-        ticket_id: issueId,
-        title: payload.title,
-        description: payload.desc,
-         desc: payload.desc,
-        module: payload.module,
-        priority: payload.priority,
-        status: payload.status,
-        log: payload.log,
-        date: payload.date,
-        file: payload.file,
-        department: payload.department,
-        name: payload.name,
-        emailAddressee: payload.emailAddressee,
-        notificationSent: payload.notificationSent,
-        notificationUnderReview: payload.notificationUnderReview,
-        type: payload.type
-      }
-    };
-
-     const compatibilityBodies = [
-      {
-        label: 'update payload',
-        body: updateRequestBody
-      },
-      {
-        // Legacy Apps Script variants that expect flattened update fields
-        // instead of an "updates" envelope.
-        label: 'update payload (flat)',
-        body: {
-          resource: 'tickets',
-          action: 'update',
-          id: issueId,
-          ticket_id: issueId,
-          key: {
-            id: issueId,
-            ticket_id: issueId
-          },
-          password: passcode || '',
-          passcode: passcode || '',
-          ...updateRequestBody.updates
+    const compatibilityBodies = issueIdCandidates.flatMap(candidateId => {
+      const updateRequestBody = {
+        resource: 'tickets',
+        action: 'update',
+        id: candidateId,
+        ticket_id: candidateId,
+        key: {
+          id: candidateId,
+          ticket_id: candidateId
+        },
+        password: passcode || '',
+        passcode: passcode || '',
+        updates: {
+          id: candidateId,
+          ticket_id: candidateId,
+          title: payload.title,
+          description: payload.desc,
+          desc: payload.desc,
+          module: payload.module,
+          priority: payload.priority,
+          status: payload.status,
+          log: payload.log,
+          date: payload.date,
+          file: payload.file,
+          department: payload.department,
+          name: payload.name,
+          emailAddressee: payload.emailAddressee,
+          notificationSent: payload.notificationSent,
+          notificationUnderReview: payload.notificationUnderReview,
+          type: payload.type
         }
-      }
-    ];
+      };
+
+     return [
+        {
+          label: `update payload [id=${candidateId}]`,
+          body: updateRequestBody
+        },
+        {
+          // Legacy Apps Script variants that expect flattened update fields
+          // instead of an "updates" envelope.
+          label: `update payload (flat) [id=${candidateId}]`,
+          body: {
+            resource: 'tickets',
+            action: 'update',
+            id: candidateId,
+            ticket_id: candidateId,
+            key: {
+              id: candidateId,
+              ticket_id: candidateId
+            },
+            password: passcode || '',
+            passcode: passcode || '',
+            ...updateRequestBody.updates
+          }
+        }
+       ];
+    });
 
     const attempts = [];
     const send = async (url, variant) => {
