@@ -68,6 +68,7 @@
       </button>
 
       <span class="chip online" id="onlineStatusChip" aria-live="polite">Online</span>
+      <span class="chip" id="currentRoleChip" aria-live="polite">Role: guest</span>
 
       <div class="statusline">
         <span class="chip" id="syncIssuesText">Issues: never</span><span class="dot err" id="syncIssuesDot"></span>
@@ -635,13 +636,8 @@
       <form id="editIssueForm">
         <div id="editIssueBody">
           <div class="filter-group">
-            <div class="filter-row">
-              <label class="muted" for="editIssuePasscode">Passcode (required)</label>
-              <input id="editIssuePasscode" class="input" type="password" required
-                    placeholder="Enter passcode to allow edits" autocomplete="off" />
-              <div class="muted" style="font-size:12px;margin-top:4px;">
-                Updates are validated server-side and pushed directly to the Google Sheet.
-              </div>
+            <div class="muted" style="font-size:12px;margin-bottom:10px;">
+              Updates are validated server-side based on your current role session.
             </div>
 
             <div class="filter-row">
@@ -790,10 +786,8 @@
       <form id="eventForm">
         <div id="eventModalBody">
           <div class="filter-group">
-            <div class="filter-row">
-              <label class="muted" for="eventPasscode">Passcode (required for new events)</label>
-              <input id="eventPasscode" class="input" type="password"
-                     placeholder="Enter passcode to create a new event" />
+            <div class="muted" style="font-size:12px;margin-bottom:10px;">
+              Event changes are validated server-side based on your current role session.
             </div>
             <div class="filter-row">
               <label class="muted" for="eventTitle">Title</label>
