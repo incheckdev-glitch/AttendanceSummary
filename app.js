@@ -41,8 +41,8 @@ const CONFIG = {
     RUNTIME_CONFIG.ISSUE_API_URL ||
     "https://corsproxy.io/?" +
       encodeURIComponent(APPS_SCRIPT_WEBAPP_URL),
-  ADMIN_PASSCODE: RUNTIME_CONFIG.ADMIN_PASSCODE || '',
-  VIEWER_PASSCODE: RUNTIME_CONFIG.VIEWER_PASSCODE || '',
+  ADMIN_PASSCODE: RUNTIME_CONFIG.ADMIN_PASSCODE || 'incheck@360',
+  VIEWER_PASSCODE: RUNTIME_CONFIG.VIEWER_PASSCODE || '12345678',
 
   
   TREND_DAYS_RECENT: 7,
@@ -6276,10 +6276,8 @@ function wireDashboardGate() {
 
   E.launchDashboard.addEventListener('click', event => {
     event.preventDefault();
-    if (!Session.isAuthenticated()) {
-      const loggedIn = requestSessionLogin();
-      if (!loggedIn) return;
-    }
+    const loggedIn = requestSessionLogin();
+    if (!loggedIn) return;
     E.app.classList.remove('is-locked');
     E.app.setAttribute('aria-hidden', 'false');
     E.app.scrollIntoView({ behavior: 'smooth' });
