@@ -477,6 +477,7 @@ const Filters = {
 };
 
 const ColumnManager = {
+  restrictedForViewer: new Set(['youtrackReference', 'devTeamStatus', 'issueRelated', 'notes']),
   columns: [
     { key: 'id', label: 'Ticket ID' },
     { key: 'date', label: 'Date' },
@@ -499,6 +500,10 @@ const ColumnManager = {
     { key: 'notificationUnderReview', label: 'Notification Sent Under Review' }
   ],
   state: {},
+  isColumnAllowed(key) {
+    if (Permissions.isAdmin()) return true;
+    return !this.restrictedForViewer.has(key);
+  },
   load() {
     const defaults = this.columns.reduce((acc, col) => {
       acc[col.key] = true;
@@ -511,6 +516,9 @@ const ColumnManager = {
     } catch {
       this.state = defaults;
     }
+    this.columns.forEach(col => {
+      if (!this.isColumnAllowed(col.key)) this.state[col.key] = false;
+    });
   },
   save() {
     try {
@@ -519,7 +527,7 @@ const ColumnManager = {
   },
   apply() {
     this.columns.forEach(col => {
-      const visible = this.state[col.key] !== false;
+      const visible = this.isColumnAllowed(col.key) && this.state[col.key] !== false;
       document.querySelectorAll(`[data-col="${col.key}"]`).forEach(el => {
         el.classList.toggle('col-hidden', !visible);
       });
@@ -528,6 +536,7 @@ const ColumnManager = {
   renderPanel() {
     if (!E.columnList) return;
     E.columnList.innerHTML = this.columns
+      .filter(col => this.isColumnAllowed(col.key))
       .map(
         col => `
         <label>
@@ -559,6 +568,9 @@ const ColumnManager = {
       return acc;
     }, {});
     this.state = { ...defaults, ...(nextState || {}) };
+    this.columns.forEach(col => {
+      if (!this.isColumnAllowed(col.key)) this.state[col.key] = false;
+    });
     this.save();
     this.apply();
     this.renderPanel();
@@ -1966,6 +1978,7 @@ const UI = {
   },
   applyRolePermissions() {
     const role = Session.role() || 'guest';
+    const isAdmin = Permissions.isAdmin();
     if (E.currentRoleChip) E.currentRoleChip.textContent = `Role: ${role}`;
     if (E.addEventBtn) E.addEventBtn.style.display = Permissions.canManageEvents() ? '' : 'none';
     if (E.freezeManageBtn)
@@ -1975,6 +1988,18 @@ const UI = {
     if (E.plannerAddEvent) E.plannerAddEvent.style.display = Permissions.canChangePlanner() ? '' : 'none';
     if (E.plannerAssignBtn) E.plannerAssignBtn.style.display = Permissions.canChangePlanner() ? '' : 'none';
     if (E.editIssueBtn) E.editIssueBtn.style.display = Permissions.canEditTicket() ? '' : 'none';
+    if (E.devTeamStatusFilter?.closest('.filter-row'))
+      E.devTeamStatusFilter.closest('.filter-row').style.display = isAdmin ? '' : 'none';
+    if (E.issueRelatedFilter?.closest('.filter-row'))
+      E.issueRelatedFilter.closest('.filter-row').style.display = isAdmin ? '' : 'none';
+    if (!isAdmin) {
+      if (Filters.state.devTeamStatus !== 'All') Filters.state.devTeamStatus = 'All';
+      if (Filters.state.issueRelated !== 'All') Filters.state.issueRelated = 'All';
+      Filters.save();
+      syncFilterInputs();
+    }
+    ColumnManager.apply();
+    ColumnManager.renderPanel();
   },
   updateHeroMetrics(rows) {
     if (!E.heroTriagePct && !E.heroHighImpactCount && !E.heroChangeReadiness) return;
@@ -3271,6 +3296,7 @@ UI.Modals = {
     const requesterEmail = U.escapeHtml(r.email || r.emailAddressee || '-');
     const category = U.escapeHtml(r.type || '-');
     const logValue = U.escapeHtml(r.log || '—');
+    const canViewRestrictedFields = Permissions.isAdmin();
     const youtrackReference = U.escapeHtml(r.youtrackReference || '—');
     const devTeamStatus = U.escapeHtml(r.devTeamStatus || '—');
     const issueRelated = U.escapeHtml(r.issueRelated || '—');
@@ -3316,9 +3342,17 @@ UI.Modals = {
           <div class="ticket-col">
             <p class="ticket-meta-item"><span class="ticket-label">🏷 Category:</span> <span>${category}</span></p>
             <p class="ticket-meta-item"><span class="ticket-label">📧 Email Address:</span> <span>${requesterEmail}</span></p>
-            <p class="ticket-meta-item"><span class="ticket-label">🔗 YouTrack Ref:</span> <span>${youtrackReference}</span></p>
             <p class="ticket-meta-item"><span class="ticket-label">📌 Status:</span> <span>${status}</span></p>
-            <p class="ticket-meta-item"><span class="ticket-label">🧑‍💻 Dev Team Status:</span> <span>${devTeamStatusBadge}</span></p>
+            ${
+              canViewRestrictedFields
+                ? `<p class="ticket-meta-item"><span class="ticket-label">🔗 YouTrack Ref:</span> <span>${youtrackReference}</span></p>`
+                : ''
+            }
+            ${
+              canViewRestrictedFields
+                ? `<p class="ticket-meta-item"><span class="ticket-label">🧑‍💻 Dev Team Status:</span> <span>${devTeamStatusBadge}</span></p>`
+                : ''
+            }
             <p class="ticket-meta-item"><span class="ticket-label">🆔 Ticket #:</span> <span>${ticketId}</span></p>
           </div>
         </section>
@@ -3328,15 +3362,23 @@ UI.Modals = {
           <p>${description}</p>
         </section>
 
-        <section class="ticket-description">
+        ${
+          canViewRestrictedFields
+            ? `<section class="ticket-description">
           <h5>Issue Related</h5>
           <p>${issueRelatedBadges || issueRelated}</p>
-        </section>
+        </section>`
+            : ''
+        }
 
-        <section class="ticket-description">
+        ${
+          canViewRestrictedFields
+            ? `<section class="ticket-description">
           <h5>Notes</h5>
           <p>${notesValue}</p>
-        </section>
+        </section>`
+            : ''
+        }
 
         <section class="ticket-log">
           <h5>Log</h5>
