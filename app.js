@@ -293,6 +293,21 @@ const Permissions = {
   }
 };
 
+const ALWAYS_VISIBLE_COLUMNS = Object.freeze([
+  'youtrackReference',
+  'devTeamStatus',
+  'issueRelated',
+  'notes'
+]);
+
+function enforceEssentialVisibility(columnState) {
+  const next = { ...(columnState || {}) };
+  ALWAYS_VISIBLE_COLUMNS.forEach(key => {
+    next[key] = true;
+  });
+  return next;
+}
+
 function requirePermission(check, message) {
   if (check()) return true;
   UI.toast(message || 'You do not have permission for this action.');
@@ -507,9 +522,9 @@ const ColumnManager = {
     try {
       const raw = localStorage.getItem(LS_KEYS.columns);
       const parsed = raw ? JSON.parse(raw) : null;
-      this.state = { ...defaults, ...(parsed || {}) };
+      this.state = enforceEssentialVisibility({ ...defaults, ...(parsed || {}) });
     } catch {
-      this.state = defaults;
+      this.state = enforceEssentialVisibility(defaults);
     }
   },
   save() {
@@ -558,7 +573,7 @@ const ColumnManager = {
       acc[col.key] = true;
       return acc;
     }, {});
-    this.state = { ...defaults, ...(nextState || {}) };
+    this.state = enforceEssentialVisibility({ ...defaults, ...(nextState || {}) });
     this.save();
     this.apply();
     this.renderPanel();
@@ -1975,6 +1990,18 @@ const UI = {
     if (E.plannerAddEvent) E.plannerAddEvent.style.display = Permissions.canChangePlanner() ? '' : 'none';
     if (E.plannerAssignBtn) E.plannerAssignBtn.style.display = Permissions.canChangePlanner() ? '' : 'none';
     if (E.editIssueBtn) E.editIssueBtn.style.display = Permissions.canEditTicket() ? '' : 'none';
+    if (E.devTeamStatusFilter) {
+      const row = E.devTeamStatusFilter.closest('.filter-row');
+      if (row) row.style.display = '';
+    }
+    if (E.issueRelatedFilter) {
+      const row = E.issueRelatedFilter.closest('.filter-row');
+      if (row) row.style.display = '';
+    }
+    ColumnManager.state = enforceEssentialVisibility(ColumnManager.state);
+    ColumnManager.save();
+    ColumnManager.apply();
+    ColumnManager.renderPanel();
   },
   updateHeroMetrics(rows) {
     if (!E.heroTriagePct && !E.heroHighImpactCount && !E.heroChangeReadiness) return;
