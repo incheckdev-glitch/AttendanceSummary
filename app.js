@@ -41,6 +41,8 @@ const CONFIG = {
     RUNTIME_CONFIG.ISSUE_API_URL ||
     "https://corsproxy.io/?" +
       encodeURIComponent(APPS_SCRIPT_WEBAPP_URL),
+  ADMIN_PASSCODE: RUNTIME_CONFIG.ADMIN_PASSCODE || '',
+  VIEWER_PASSCODE: RUNTIME_CONFIG.VIEWER_PASSCODE || '',
 
   
   TREND_DAYS_RECENT: 7,
@@ -213,8 +215,89 @@ const LS_KEYS = {
   savedViews: 'incheckSavedViews',
   columns: 'incheckColumns',
   freezeWindows: 'incheckFreezeWindows',
-  calendarReadPasscode: 'incheckCalendarReadPasscode'
+  calendarReadPasscode: 'incheckCalendarReadPasscode',
+  session: 'incheckSession'
 };
+
+const ROLES = Object.freeze({
+  ADMIN: 'admin',
+  VIEWER: 'viewer'
+});
+
+const Session = {
+  state: {
+    role: null,
+    authCode: ''
+  },
+  restore() {
+    try {
+      const raw = localStorage.getItem(LS_KEYS.session);
+      if (!raw) return false;
+      const parsed = JSON.parse(raw);
+      const role = parsed?.role === ROLES.ADMIN ? ROLES.ADMIN : parsed?.role === ROLES.VIEWER ? ROLES.VIEWER : null;
+      if (!role) return false;
+      this.state.role = role;
+      this.state.authCode = String(parsed?.authCode || '');
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  persist() {
+    try {
+      localStorage.setItem(LS_KEYS.session, JSON.stringify(this.state));
+    } catch {}
+  },
+  login(role, passcode = '') {
+    const normalizedRole =
+      role === ROLES.ADMIN ? ROLES.ADMIN : role === ROLES.VIEWER ? ROLES.VIEWER : null;
+    if (!normalizedRole) return false;
+    const expected =
+      normalizedRole === ROLES.ADMIN ? CONFIG.ADMIN_PASSCODE : CONFIG.VIEWER_PASSCODE;
+    const entered = String(passcode || '');
+    if (expected && entered !== expected) return false;
+    this.state.role = normalizedRole;
+    this.state.authCode = entered;
+    this.persist();
+    return true;
+  },
+  isAuthenticated() {
+    return this.state.role === ROLES.ADMIN || this.state.role === ROLES.VIEWER;
+  },
+  role() {
+    return this.state.role || null;
+  },
+  authContext() {
+    return { role: this.role(), authCode: this.state.authCode || '' };
+  }
+};
+
+const Permissions = {
+  isAdmin() {
+    return Session.role() === ROLES.ADMIN;
+  },
+  canCreateTicket() {
+    return Session.isAuthenticated();
+  },
+  canEditTicket() {
+    return this.isAdmin();
+  },
+  canManageEvents() {
+    return this.isAdmin();
+  },
+  canChangePlanner() {
+    return this.isAdmin();
+  },
+  canManageFreezeWindows() {
+    return this.isAdmin();
+  }
+};
+
+function requirePermission(check, message) {
+  if (check()) return true;
+  UI.toast(message || 'You do not have permission for this action.');
+  return false;
+}
 
 const STOPWORDS = new Set([
   'the',
@@ -1714,7 +1797,6 @@ function cacheEls() {
     'editIssueForm',
     'editIssueClose',
     'editIssueCancel',
-    'editIssuePasscode',
     'editIssueId',
     'editIssueTitleInput',
     'editIssueDesc',
@@ -1766,7 +1848,6 @@ function cacheEls() {
     'eventModalTitle',
     'eventModalClose',
     'eventForm',
-    'eventPasscode',
     'eventTitle',
     'eventType',
     'eventIssueId',
@@ -1811,6 +1892,7 @@ function cacheEls() {
     'activeFiltersChips',
     'calendarTz',
     'onlineStatusChip',
+    'currentRoleChip',
     'accentColor',
     'heroTriagePct',
     'heroHighImpactCount',
@@ -1881,6 +1963,18 @@ const UI = {
   },
   setAnalyzing(v) {
     if (E.aiAnalyzing) E.aiAnalyzing.style.display = v ? 'block' : 'none';
+  },
+  applyRolePermissions() {
+    const role = Session.role() || 'guest';
+    if (E.currentRoleChip) E.currentRoleChip.textContent = `Role: ${role}`;
+    if (E.addEventBtn) E.addEventBtn.style.display = Permissions.canManageEvents() ? '' : 'none';
+    if (E.freezeManageBtn)
+      E.freezeManageBtn.style.display = Permissions.canManageFreezeWindows() ? '' : 'none';
+    if (E.freezeManageBtnSecondary)
+      E.freezeManageBtnSecondary.style.display = Permissions.canManageFreezeWindows() ? '' : 'none';
+    if (E.plannerAddEvent) E.plannerAddEvent.style.display = Permissions.canChangePlanner() ? '' : 'none';
+    if (E.plannerAssignBtn) E.plannerAssignBtn.style.display = Permissions.canChangePlanner() ? '' : 'none';
+    if (E.editIssueBtn) E.editIssueBtn.style.display = Permissions.canEditTicket() ? '' : 'none';
   },
   updateHeroMetrics(rows) {
     if (!E.heroTriagePct && !E.heroHighImpactCount && !E.heroChangeReadiness) return;
@@ -3034,14 +3128,8 @@ Reasons: ${(meta.risk?.reasons || []).join(', ')}`;
 };
 
 async function applySuggestedCategory(label) {
-  const passcode = window.prompt(
-    `Enter the passcode to apply "${label}" to matching tickets`
-  );
-  if (passcode === null) return;
-  if (!passcode.trim()) {
-    UI.toast('Passcode is required to apply suggestions.');
+  if (!requirePermission(() => Permissions.canEditTicket(), 'Only admin can apply ticket category suggestions.'))
     return;
-  }
 
   const list = UI.Issues.applyFilters();
   const candidates = list.filter(issue => {
@@ -3060,7 +3148,7 @@ async function applySuggestedCategory(label) {
   let updated = 0;
   for (const issue of candidates) {
     const updatedIssue = { ...issue, type: label };
-    const saved = await saveIssueToSheet(updatedIssue, passcode.trim(), { silent: true });
+    const saved = await saveIssueToSheet(updatedIssue, Session.authContext(), { silent: true });
     if (saved) {
       applyIssueUpdate({ ...updatedIssue, ...saved });
       updated++;
@@ -3257,7 +3345,7 @@ UI.Modals = {
       </article>
     `;
     if (E.editIssueBtn) {
-      E.editIssueBtn.disabled = false;
+      E.editIssueBtn.disabled = !Permissions.canEditTicket();
       E.editIssueBtn.dataset.id = r.id || '';
     }
     if (E.replyRecipientLabel) E.replyRecipientLabel.textContent = `To: ${r.emailAddressee || r.email || '—'}`;
@@ -3274,13 +3362,15 @@ UI.Modals = {
   openEvent(ev) {
     this.lastEventFocus = document.activeElement;
     const isEdit = !!(ev && ev.id);
+    const canManageEvents = Permissions.canManageEvents();
     if (E.eventForm) E.eventForm.dataset.id = isEdit ? ev.id : '';
-    if (E.eventModalTitle) E.eventModalTitle.textContent = isEdit ? 'Edit Event' : 'Add Event';
-    if (E.eventDelete) E.eventDelete.style.display = isEdit ? 'inline-flex' : 'none';
-    if (E.eventPasscode) {
-      E.eventPasscode.value = '';
-      E.eventPasscode.required = !isEdit;
-    }
+    if (E.eventModalTitle)
+      E.eventModalTitle.textContent = canManageEvents
+        ? isEdit
+          ? 'Edit Event'
+          : 'Add Event'
+        : 'Event';
+    if (E.eventDelete) E.eventDelete.style.display = canManageEvents && isEdit ? 'inline-flex' : 'none';
 
     const allDay = !!ev.allDay;
     if (E.eventAllDay) E.eventAllDay.checked = allDay;
@@ -3407,15 +3497,26 @@ UI.Modals = {
 
     if (E.eventModal) {
       E.eventModal.style.display = 'flex';
-      if (!isEdit && E.eventPasscode) E.eventPasscode.focus();
-      else E.eventTitle?.focus();
+      if (!canManageEvents && E.eventForm) {
+        E.eventForm
+          .querySelectorAll('input,select,textarea,button[type="submit"]')
+          .forEach(el => {
+            if (el.id === 'eventCancel') return;
+            if (el.id === 'eventModalClose') return;
+            el.disabled = true;
+          });
+      } else if (E.eventForm) {
+        E.eventForm.querySelectorAll('input,select,textarea,button[type="submit"]').forEach(el => {
+          el.disabled = false;
+        });
+      }
+      E.eventTitle?.focus();
     }
   },
   closeEvent() {
     if (!E.eventModal) return;
     E.eventModal.style.display = 'none';
     if (E.eventForm) E.eventForm.dataset.id = '';
-    if (E.eventPasscode) E.eventPasscode.value = '';
     if (this.lastEventFocus?.focus) this.lastEventFocus.focus();
   }
 };
@@ -3505,7 +3606,6 @@ const IssueEditor = {
       if (el) el.value = val || '';
     };
 
-    setVal(E.editIssuePasscode, '');
     setVal(E.editIssueId, issue.id || '');
     setVal(E.editIssueTitleInput, issue.title || '');
     setVal(E.editIssueDesc, issue.desc || '');
@@ -3530,7 +3630,7 @@ const IssueEditor = {
     }
 
     E.editIssueModal.style.display = 'flex';
-    (E.editIssuePasscode || E.editIssueTitleInput)?.focus?.();
+    E.editIssueTitleInput?.focus?.();
   },
   close() {
     if (E.editIssueModal) E.editIssueModal.style.display = 'none';
@@ -3610,13 +3710,7 @@ function applyIssueUpdate(savedIssue) {
 async function onEditIssueSubmit(event) {
   console.log('Edit form submitted');
   event.preventDefault();
-
-  const passcode = (E.editIssuePasscode?.value || '').trim();
-  if (!passcode) {
-    console.warn('Edit blocked: missing passcode');
-    UI.toast('Passcode is required to save changes');
-    return;
-  }
+  if (!requirePermission(() => Permissions.canEditTicket(), 'Only admin can edit tickets.')) return;
 
   const id = (E.editIssueId?.value || '').trim();
   const title = (E.editIssueTitleInput?.value || '').trim();
@@ -3677,7 +3771,7 @@ const issueUpdate = {
   console.log('Saving edit issue update', issueUpdate);
 
   try {
-    const updatedIssue = await saveIssueToSheet(issueUpdate, passcode);
+    const updatedIssue = await saveIssueToSheet(issueUpdate, Session.authContext());
     if (!updatedIssue) {
       throw new Error('Issue update did not return a response.');
     }
@@ -3760,6 +3854,7 @@ calendarReady = false,
 function wireCalendar() {
   if (E.addEventBtn)
     E.addEventBtn.addEventListener('click', () => {
+      if (!requirePermission(() => Permissions.canManageEvents(), 'Only admin can create events.')) return;
       const now = new Date();
       UI.Modals.openEvent({
         start: now,
@@ -3801,7 +3896,12 @@ function wireFreezeWindows() {
   };
 
   [E.freezeManageBtn, E.freezeManageBtnSecondary].forEach(btn => {
-    if (btn) btn.addEventListener('click', openModal);
+    if (btn)
+      btn.addEventListener('click', () => {
+        if (!requirePermission(() => Permissions.canManageFreezeWindows(), 'Only admin can manage freeze windows.'))
+          return;
+        openModal();
+      });
   });
 
   if (E.freezeModalClose) {
@@ -3817,6 +3917,8 @@ function wireFreezeWindows() {
   if (E.freezeForm) {
     E.freezeForm.addEventListener('submit', e => {
       e.preventDefault();
+      if (!requirePermission(() => Permissions.canManageFreezeWindows(), 'Only admin can change freeze windows.'))
+        return;
       const days = Array.from(
         E.freezeForm.querySelectorAll('.freeze-day-grid input[type="checkbox"]:checked')
       ).map(input => Number(input.value));
@@ -3856,6 +3958,8 @@ function wireFreezeWindows() {
 
   if (E.freezeReset) {
     E.freezeReset.addEventListener('click', () => {
+      if (!requirePermission(() => Permissions.canManageFreezeWindows(), 'Only admin can reset freeze windows.'))
+        return;
       DataStore.freezeWindows = withFreezeIds(CONFIG.CHANGE.freezeWindows || []);
       saveFreezeWindowsCache();
       renderFreezeWindows();
@@ -3914,21 +4018,23 @@ function ensureCalendar() {
   calendar = new FullCalendar.Calendar(el, {
     initialView: 'dayGridMonth',
     selectable: true,
-    editable: true,
+    editable: Permissions.canManageEvents(),
     height: 'auto',
     headerToolbar: {
       left: 'title',
       center: '',
       right: 'dayGridMonth,timeGridWeek,listWeek today prev,next'
     },
-    select: info =>
+    select: info => {
+      if (!requirePermission(() => Permissions.canManageEvents(), 'Only admin can create events.')) return;
       UI.Modals.openEvent({
         start: info.start,
         end: info.end,
         allDay: info.allDay,
         env: 'Prod',
         status: 'Planned'
-      }),
+      });
+    },
     eventClick: info => {
       const ev =
         DataStore.events.find(e => e.id === info.event.id) || {
@@ -3954,6 +4060,10 @@ function ensureCalendar() {
       UI.Modals.openEvent(ev);
     },
     eventDrop: async info => {
+      if (!requirePermission(() => Permissions.canManageEvents(), 'Only admin can move events.')) {
+        info.revert();
+        return;
+      }
       const ev = DataStore.events.find(e => e.id === info.event.id);
       if (!ev) {
         info.revert();
@@ -3965,7 +4075,7 @@ function ensureCalendar() {
         end: info.event.end,
         allDay: info.event.allDay
       };
-      const saved = await saveEventToSheet(updated);
+      const saved = await saveEventToSheet(updated, Session.authContext());
       if (!saved) {
         info.revert();
         return;
@@ -4220,6 +4330,8 @@ function renderFreezeWindows() {
   if (E.freezeModalList) {
     E.freezeModalList.querySelectorAll('[data-remove-freeze]').forEach(btn => {
       btn.addEventListener('click', () => {
+        if (!requirePermission(() => Permissions.canManageFreezeWindows(), 'Only admin can remove freeze windows.'))
+          return;
         const id = btn.getAttribute('data-remove-freeze');
         if (!id) return;
         DataStore.freezeWindows = getFreezeWindows().filter(win => win.id !== id);
@@ -4322,12 +4434,16 @@ async function loadEvents(force = false, options = {}) {
   try {
     UI.spinner(true);
     const readPasscode = getCalendarReadPasscode();
+    const auth = Session.authContext();
     const eventsUrl = withResourceParam(CONFIG.CALENDAR_API_URL, 'events', {
       action: 'read',
       sheetName: CONFIG.CALENDAR_SHEET_NAME,
       tabName: CONFIG.CALENDAR_SHEET_NAME,
       public: 'true',
       access: 'public',
+      role: auth.role || '',
+      sessionRole: auth.role || '',
+      authCode: auth.authCode || '',
       passcode: readPasscode,
       password: readPasscode
     });
@@ -4630,7 +4746,7 @@ function buildIssueUpdateFields(payload, candidateId) {
   };
 }
 
-async function saveIssueToSheet(issue, passcode, options = {}) {
+async function saveIssueToSheet(issue, auth = {}, options = {}) {
   if (!CONFIG.ISSUE_API_URL) {
     UI.toast('Issue update endpoint is not configured.');
     return null;
@@ -4656,8 +4772,11 @@ async function saveIssueToSheet(issue, passcode, options = {}) {
           id: candidateId,
           ticket_id: candidateId
         },
-        password: passcode || '',
-        passcode: passcode || '',
+        role: auth.role || '',
+        sessionRole: auth.role || '',
+        authCode: auth.authCode || '',
+        password: auth.authCode || '',
+        passcode: auth.authCode || '',
         updates
       };
 
@@ -4679,8 +4798,11 @@ async function saveIssueToSheet(issue, passcode, options = {}) {
               id: candidateId,
               ticket_id: candidateId
             },
-            password: passcode || '',
-            passcode: passcode || '',
+            role: auth.role || '',
+            sessionRole: auth.role || '',
+            authCode: auth.authCode || '',
+            password: auth.authCode || '',
+            passcode: auth.authCode || '',
             ...updateRequestBody.updates
           }
         }
@@ -4763,7 +4885,7 @@ async function saveIssueToSheet(issue, passcode, options = {}) {
   }
  }
 
-async function saveEventToSheet(event, passcode = '') {
+async function saveEventToSheet(event, auth = {}) {
   UI.spinner(true);
   try {
     // Ensure we always have a clean ID
@@ -4817,8 +4939,11 @@ async function saveEventToSheet(event, passcode = '') {
         resource: 'events',
         action: 'save',
         event: payload,
-        password: passcode || '',
-        passcode: passcode || '',
+        role: auth.role || '',
+        sessionRole: auth.role || '',
+        authCode: auth.authCode || '',
+        password: auth.authCode || '',
+        passcode: auth.authCode || '',
         sheetName: CONFIG.CALENDAR_SHEET_NAME,
         tabName: CONFIG.CALENDAR_SHEET_NAME
       })
@@ -4864,7 +4989,7 @@ async function saveEventToSheet(event, passcode = '') {
   }
 }
 
-async function deleteEventFromSheet(id) {
+async function deleteEventFromSheet(id, auth = {}) {
   UI.spinner(true);
   try {
    const res = await fetch(withResourceParam(CONFIG.CALENDAR_API_URL, 'events', {
@@ -4877,6 +5002,11 @@ async function deleteEventFromSheet(id) {
         resource: 'events',
         action: 'delete',
         id,
+        role: auth.role || '',
+        sessionRole: auth.role || '',
+        authCode: auth.authCode || '',
+        password: auth.authCode || '',
+        passcode: auth.authCode || '',
         sheetName: CONFIG.CALENDAR_SHEET_NAME,
         tabName: CONFIG.CALENDAR_SHEET_NAME
       })
@@ -5192,6 +5322,7 @@ function renderPlannerResults(result, context) {
   if (!E.plannerResults) return;
   const { slots, bug, bomb, ticketContext } = result;
   const { env, modules, releaseType, horizonDays, region, description, tickets } = context;
+  const allowPlannerChanges = Permissions.canChangePlanner();
 
   if (!slots.length) {
     E.plannerResults.innerHTML =
@@ -5317,14 +5448,18 @@ function renderPlannerResults(result, context) {
         <div class="planner-slot-meta">
           Expected effect on F&amp;B clients: ${U.escapeHtml(blastComment)}
         </div>
-        <div class="planner-slot-meta">
+        ${
+          allowPlannerChanges
+            ? `<div class="planner-slot-meta">
           <button type="button"
                   class="btn sm"
                   data-add-release="${U.escapeAttr(startIso)}"
                   data-add-release-end="${U.escapeAttr(endIso)}">
             ➕ Add this window as Release event
           </button>
-        </div>
+        </div>`
+            : ''
+        }
       </div>
     `;
     })
@@ -5337,6 +5472,8 @@ function renderPlannerResults(result, context) {
   // Wire per-slot "Add" buttons – include selected tickets as linked issue IDs
   E.plannerResults.querySelectorAll('[data-add-release]').forEach(btn => {
     btn.addEventListener('click', async () => {
+      if (!requirePermission(() => Permissions.canChangePlanner(), 'Only admin can create planner events.'))
+        return;
       const startIso = btn.getAttribute('data-add-release');
       const endIso = btn.getAttribute('data-add-release-end');
       if (!startIso || !endIso) return;
@@ -5381,7 +5518,7 @@ function renderPlannerResults(result, context) {
         notificationStatus: ''
       };
 
-      const saved = await saveEventToSheet(newEvent);
+      const saved = await saveEventToSheet(newEvent, Session.authContext());
       if (!saved) {
         UI.toast('Could not save release event');
         return;
@@ -5601,6 +5738,8 @@ function wirePlanner() {
 
   if (E.plannerAddEvent) {
     E.plannerAddEvent.addEventListener('click', async () => {
+      if (!requirePermission(() => Permissions.canChangePlanner(), 'Only admin can create planner events.'))
+        return;
       if (
         !LAST_PLANNER_CONTEXT ||
         !LAST_PLANNER_RESULT ||
@@ -5657,7 +5796,7 @@ function wirePlanner() {
         notificationStatus: ''
       };
 
-      const saved = await saveEventToSheet(newEvent);
+      const saved = await saveEventToSheet(newEvent, Session.authContext());
       if (!saved) {
         UI.toast('Could not save release event');
         return;
@@ -5691,6 +5830,8 @@ function wirePlanner() {
 
   if (E.plannerAssignBtn) {
     E.plannerAssignBtn.addEventListener('click', async () => {
+      if (!requirePermission(() => Permissions.canChangePlanner(), 'Only admin can assign planner tickets.'))
+        return;
       const planId = E.plannerReleasePlan?.value || '';
       if (!planId) {
         UI.toast('Select a Release event first.');
@@ -5721,7 +5862,7 @@ function wirePlanner() {
         issueId: merged.join(', ')
       };
 
-      const saved = await saveEventToSheet(updatedEvent);
+      const saved = await saveEventToSheet(updatedEvent, Session.authContext());
       if (!saved) {
         UI.toast('Could not assign tickets to Release event.');
         return;
@@ -5834,13 +5975,15 @@ function wireCore() {
     });
   if (E.exportCsv) E.exportCsv.addEventListener('click', exportFilteredExcel);
   if (E.createTicketBtn)
-    E.createTicketBtn.addEventListener('click', () =>
+    E.createTicketBtn.addEventListener('click', () => {
+      if (!requirePermission(() => Permissions.canCreateTicket(), 'Login is required to create a ticket.'))
+        return;
       window.open(
         'https://forms.gle/PPnEP1AQneoBT79s5',
         '_blank',
         'noopener,noreferrer'
-      )
-    );
+      );
+    });
 
   if (E.shortcutsHelp) {
     E.shortcutsHelp.addEventListener('click', () => {
@@ -6101,9 +6244,42 @@ function wireDashboardGate() {
 
   E.app.classList.add('is-locked');
   E.app.setAttribute('aria-hidden', 'true');
+  Session.restore();
+  UI.applyRolePermissions();
+
+  const requestSessionLogin = () => {
+    const roleInput = window
+      .prompt('Enter role (admin/viewer)', ROLES.VIEWER)
+      ?.trim()
+      .toLowerCase();
+    if (!roleInput) return false;
+    const role =
+      roleInput === ROLES.ADMIN ? ROLES.ADMIN : roleInput === ROLES.VIEWER ? ROLES.VIEWER : null;
+    if (!role) {
+      UI.toast('Invalid role. Use "admin" or "viewer".');
+      return false;
+    }
+    const needsPasscode =
+      (role === ROLES.ADMIN && !!CONFIG.ADMIN_PASSCODE) ||
+      (role === ROLES.VIEWER && !!CONFIG.VIEWER_PASSCODE);
+    const passcode = needsPasscode
+      ? window.prompt(`Enter ${role} passcode`) ?? ''
+      : '';
+    const ok = Session.login(role, passcode);
+    if (!ok) {
+      UI.toast('Login failed. Invalid role/passcode.');
+      return false;
+    }
+    UI.applyRolePermissions();
+    return true;
+  };
 
   E.launchDashboard.addEventListener('click', event => {
     event.preventDefault();
+    if (!Session.isAuthenticated()) {
+      const loggedIn = requestSessionLogin();
+      if (!loggedIn) return;
+    }
     E.app.classList.remove('is-locked');
     E.app.setAttribute('aria-hidden', 'false');
     E.app.scrollIntoView({ behavior: 'smooth' });
@@ -6167,6 +6343,7 @@ function wireModals() {
     E.editIssueBtn.addEventListener('click', e => {
       e.preventDefault();
       e.stopPropagation();
+      if (!requirePermission(() => Permissions.canEditTicket(), 'Only admin can edit tickets.')) return;
       const selectedIssue =
         UI.Modals.selectedIssue ||
         DataStore.byId.get(E.editIssueBtn?.dataset?.id || '');
@@ -6254,15 +6431,10 @@ function wireModals() {
   if (E.eventForm) {
     E.eventForm.addEventListener('submit', async e => {
       e.preventDefault();
-      const id = E.eventForm.dataset.id || '';
-      const isNewEvent = !id;
-      const allDay = !!(E.eventAllDay && E.eventAllDay.checked);
-      const passcode = (E.eventPasscode?.value || '').trim();
-
-      if (isNewEvent && !passcode) {
-        UI.toast('Passcode is required to create a new event');
+      if (!requirePermission(() => Permissions.canManageEvents(), 'Only admin can create or edit events.'))
         return;
-      }
+      const id = E.eventForm.dataset.id || '';
+      const allDay = !!(E.eventAllDay && E.eventAllDay.checked);
 
       const title = (E.eventTitle?.value || '').trim();
       if (!title) {
@@ -6304,7 +6476,7 @@ function wireModals() {
         notificationStatus: ''
       };
 
-      const saved = await saveEventToSheet(ev, passcode);
+      const saved = await saveEventToSheet(ev, Session.authContext());
       if (!saved) return;
 
       const idx = DataStore.events.findIndex(x => x.id === saved.id);
@@ -6321,6 +6493,7 @@ function wireModals() {
 
   if (E.eventDelete) {
     E.eventDelete.addEventListener('click', async () => {
+      if (!requirePermission(() => Permissions.canManageEvents(), 'Only admin can delete events.')) return;
       if (!E.eventForm) return;
       const id = E.eventForm.dataset.id;
       if (!id) {
@@ -6328,7 +6501,7 @@ function wireModals() {
         return;
       }
       if (!window.confirm('Delete this event from the calendar?')) return;
-      const ok = await deleteEventFromSheet(id);
+      const ok = await deleteEventFromSheet(id, Session.authContext());
       if (!ok) return;
       const idx = DataStore.events.findIndex(ev => ev.id === id);
       if (idx > -1) DataStore.events.splice(idx, 1);
