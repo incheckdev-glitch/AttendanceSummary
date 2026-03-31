@@ -42,7 +42,7 @@ const CONFIG = {
     "https://corsproxy.io/?" +
       encodeURIComponent(APPS_SCRIPT_WEBAPP_URL),
   ADMIN_PASSCODE: RUNTIME_CONFIG.ADMIN_PASSCODE || 'incheck@360',
-  VIEWER_PASSCODE: RUNTIME_CONFIG.VIEWER_PASSCODE || '12345678',
+  VIEWER_PASSCODE: RUNTIME_CONFIG.VIEWER_PASSCODE || '',
 
   
   TREND_DAYS_RECENT: 7,
@@ -253,7 +253,7 @@ const Session = {
       role === ROLES.ADMIN ? ROLES.ADMIN : role === ROLES.VIEWER ? ROLES.VIEWER : null;
     if (!normalizedRole) return false;
     const expected =
-      normalizedRole === ROLES.ADMIN ? CONFIG.ADMIN_PASSCODE : CONFIG.VIEWER_PASSCODE;
+      normalizedRole === ROLES.ADMIN ? CONFIG.ADMIN_PASSCODE : '';
     const entered = String(passcode || '');
     if (expected && entered !== expected) return false;
     this.state.role = normalizedRole;
@@ -6259,9 +6259,7 @@ function wireDashboardGate() {
       UI.toast('Invalid role. Use "admin" or "viewer".');
       return false;
     }
-    const needsPasscode =
-      (role === ROLES.ADMIN && !!CONFIG.ADMIN_PASSCODE) ||
-      (role === ROLES.VIEWER && !!CONFIG.VIEWER_PASSCODE);
+    const needsPasscode = role === ROLES.ADMIN && !!CONFIG.ADMIN_PASSCODE;
     const passcode = needsPasscode
       ? window.prompt(`Enter ${role} passcode`) ?? ''
       : '';
