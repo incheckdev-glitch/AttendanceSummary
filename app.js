@@ -4193,8 +4193,6 @@ const HealthMonitor = {
     pushPayload('save', { row });
     pushPayload('save', { event: row });
     pushPayload('save', { record: row });
-    pushPayload('append', { row });
-    pushPayload('append', row);
 
     for (const payload of payloads) {
       try {
