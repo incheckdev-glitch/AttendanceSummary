@@ -2007,6 +2007,10 @@ function cacheEls() {
     'healthFailureCount',
     'healthWindowBar',
     'healthChecksList',
+    'healthChecksPagination',
+    'healthChecksPrevPage',
+    'healthChecksNextPage',
+    'healthChecksPageInfo',
     'healthLatencyTrendChart',
     'healthStatusDistributionChart',
     'healthLatencyBucketsChart',
@@ -4115,6 +4119,8 @@ function setActiveView(view) {
 const HealthMonitor = {
   history: [],
   allHistory: [],
+  checksPage: 1,
+  checksPerPage: 10,
   timerId: null,
   loading: false,
   lastLoadedAt: null,
@@ -4280,14 +4286,22 @@ const HealthMonitor = {
     const bounds = this.getRangeBounds();
     if (!bounds) {
       this.history = [...this.allHistory];
+      this.checksPage = 1;
       return;
     }
     this.history = this.allHistory.filter(item => item.ts >= bounds.start && item.ts < bounds.end);
+    this.checksPage = 1;
   },
 
   setRangePreset(preset) {
     this.rangePreset = String(preset || 'all');
     this.applyRangePreset();
+    this.render();
+  },
+
+  setChecksPage(page) {
+    const totalPages = Math.max(1, Math.ceil(this.history.length / this.checksPerPage));
+    this.checksPage = Math.min(totalPages, Math.max(1, Number(page) || 1));
     this.render();
   },
 
@@ -4474,10 +4488,15 @@ const HealthMonitor = {
       }
     }
     if (E.healthChecksList) {
+      const totalPages = Math.max(1, Math.ceil(this.history.length / this.checksPerPage));
+      if (this.checksPage > totalPages) this.checksPage = totalPages;
+      const startIndex = (this.checksPage - 1) * this.checksPerPage;
+      const endIndex = startIndex + this.checksPerPage;
+      const pagedHistory = this.history.slice(startIndex, endIndex);
       if (!this.history.length) {
         E.healthChecksList.innerHTML = '<li>No checks yet.</li>';
       } else {
-        E.healthChecksList.innerHTML = this.history
+        E.healthChecksList.innerHTML = pagedHistory
           .map(item => {
             const failureText = item.note ? ` (${U.escapeHtml(item.note)})` : '';
             const status = item.ok ? '✅ Online' : `❌ Offline${failureText}`;
@@ -4487,6 +4506,18 @@ const HealthMonitor = {
             return `<li><span>${U.escapeHtml(this.formatTs(item.ts))}</span><span>${status}${latencyText}${metaText}</span></li>`;
           })
           .join('');
+      }
+      if (E.healthChecksPagination) {
+        E.healthChecksPagination.style.display = this.history.length ? 'flex' : 'none';
+      }
+      if (E.healthChecksPageInfo) {
+        E.healthChecksPageInfo.textContent = `Page ${this.checksPage} of ${totalPages}`;
+      }
+      if (E.healthChecksPrevPage) {
+        E.healthChecksPrevPage.disabled = this.checksPage <= 1;
+      }
+      if (E.healthChecksNextPage) {
+        E.healthChecksNextPage.disabled = this.checksPage >= totalPages;
       }
     }
     if (E.healthRefreshBtn) {
@@ -6778,6 +6809,16 @@ function wireCore() {
   if (E.healthRangePreset) {
     E.healthRangePreset.addEventListener('change', e => {
       HealthMonitor.setRangePreset(e.target.value);
+    });
+  }
+  if (E.healthChecksPrevPage) {
+    E.healthChecksPrevPage.addEventListener('click', () => {
+      HealthMonitor.setChecksPage(HealthMonitor.checksPage - 1);
+    });
+  }
+  if (E.healthChecksNextPage) {
+    E.healthChecksNextPage.addEventListener('click', () => {
+      HealthMonitor.setChecksPage(HealthMonitor.checksPage + 1);
     });
   }
 
