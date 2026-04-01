@@ -1992,6 +1992,7 @@ function cacheEls() {
     'heroChangeReadiness',
     'shortcutsHelp',
     'healthRefreshBtn',
+    'healthSheetSubtext',
     'healthStatusBadge',
     'healthLastChecked',
     'healthLatency',
@@ -4152,47 +4153,80 @@ const HealthMonitor = {
     };
   },
 
+  candidateTabNames() {
+    const preferred = String(CONFIG.HEALTH_MONITOR.SHEET_NAME || '').trim();
+    const fallbacks = ['Table2', 'Monitor Health', 'Sheet1'];
+    const deduped = new Set();
+    [preferred, ...fallbacks].forEach(name => {
+      const tab = String(name || '').trim();
+      if (tab) deduped.add(tab);
+    });
+    return [...deduped];
+  },
+
+  async fetchRowsForTab(tabName) {
+    const auth = Session.authContext();
+    const readPasscode = String(CONFIG.HEALTH_MONITOR.WRITE_PASSCODE || '').trim();
+    const endpoint = withResourceParam(CONFIG.HEALTH_MONITOR.POST_URL, 'health_monitor', {
+      action: 'read',
+      sheetName: tabName,
+      tabName,
+      public: 'true',
+      access: 'public',
+      role: auth.role || '',
+      sessionRole: auth.role || '',
+      authCode: auth.authCode || '',
+      passcode: readPasscode,
+      password: readPasscode
+    });
+    const res = await fetch(endpoint, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`Health monitor API failed: ${res.status}`);
+    const raw = await res.text();
+    const data = parseApiJson(raw, 'Health monitor API');
+
+    if (
+      data &&
+      typeof data === 'object' &&
+      (data.ok === false || data.success === false)
+    ) {
+      throw new Error(data.error || data.message || 'Health monitor API rejected read access.');
+    }
+
+    return extractHealthMonitorPayload(data)
+      .map(item => this.normalizeRow(item))
+      .filter(item => Number.isFinite(item.ts))
+      .sort((a, b) => b.ts - a.ts);
+  },
+
   async loadFromSheet(force = false) {
     if (this.loading || !CONFIG.HEALTH_MONITOR.POST_URL) return;
     this.loading = true;
     this.render();
 
     try {
-      const auth = Session.authContext();
-      const readPasscode = String(CONFIG.HEALTH_MONITOR.WRITE_PASSCODE || '').trim();
-      const endpoint = withResourceParam(CONFIG.HEALTH_MONITOR.POST_URL, 'health_monitor', {
-        action: 'read',
-        sheetName: CONFIG.HEALTH_MONITOR.SHEET_NAME,
-        tabName: CONFIG.HEALTH_MONITOR.SHEET_NAME,
-        public: 'true',
-        access: 'public',
-        role: auth.role || '',
-        sessionRole: auth.role || '',
-        authCode: auth.authCode || '',
-        passcode: readPasscode,
-        password: readPasscode
-      });
-      const res = await fetch(endpoint, { cache: 'no-store' });
-      if (!res.ok) throw new Error(`Health monitor API failed: ${res.status}`);
-      const raw = await res.text();
-      const data = parseApiJson(raw, 'Health monitor API');
-
-      if (
-        data &&
-        typeof data === 'object' &&
-        (data.ok === false || data.success === false)
-      ) {
-        throw new Error(data.error || data.message || 'Health monitor API rejected read access.');
+      const tabNames = this.candidateTabNames();
+      let rows = [];
+      let chosenTab = '';
+      let latestError = null;
+      for (const tabName of tabNames) {
+        try {
+          const candidateRows = await this.fetchRowsForTab(tabName);
+          if (candidateRows.length > rows.length) {
+            rows = candidateRows;
+            chosenTab = tabName;
+          }
+          if (candidateRows.length) break;
+        } catch (error) {
+          latestError = error;
+        }
       }
+      if (!rows.length && latestError) throw latestError;
 
-      const rows = extractHealthMonitorPayload(data)
-        .map(item => this.normalizeRow(item))
-        .filter(item => Number.isFinite(item.ts))
-        .sort((a, b) => b.ts - a.ts)
-        .slice(0, CONFIG.HEALTH_MONITOR.MAX_HISTORY);
-
-      this.history = rows;
+      this.history = rows.slice(0, CONFIG.HEALTH_MONITOR.MAX_HISTORY);
       this.lastLoadedAt = Date.now();
+      if (chosenTab && E.healthSheetSubtext) {
+        E.healthSheetSubtext.textContent = `Health telemetry loaded directly from Google Sheet tab ${chosenTab}.`;
+      }
       if (force) UI.toast('Health monitor refreshed from sheet.');
     } catch (error) {
       UI.toast(`Unable to load Monitor Health: ${error.message}`);
@@ -5089,6 +5123,29 @@ function mapRowsWithHeaders(headers, rows) {
     });
 }
 
+function isLikelyHealthRow(row) {
+  if (!row || typeof row !== 'object') return false;
+  const ts = getEventField(row, [
+    'checked_at_utc',
+    'checked_at',
+    'checked at',
+    'checkedAt',
+    'timestamp',
+    'created_at',
+    'datetime',
+    'date'
+  ]);
+  const hasTimestamp = Number.isFinite(Date.parse(String(ts || '').trim()));
+  const hasUpState = String(getEventField(row, ['is_up', 'is up', 'status', 'health', 'state']) || '').trim() !== '';
+  const hasLatency = String(getEventField(row, ['latency_ms', 'latency ms', 'latency']) || '').trim() !== '';
+  return hasTimestamp && (hasUpState || hasLatency);
+}
+
+function scoreHealthPayload(rows) {
+  if (!Array.isArray(rows) || !rows.length) return 0;
+  return rows.reduce((score, row) => score + (isLikelyHealthRow(row) ? 1 : 0), 0);
+}
+
 function extractHealthMonitorPayload(data) {
   if (typeof data === 'string') {
     try {
@@ -5104,10 +5161,13 @@ function extractHealthMonitorPayload(data) {
     if (Array.isArray(first)) {
       const [headers = [], ...rows] = data;
       if (Array.isArray(headers) && headers.length) {
-        return mapRowsWithHeaders(headers, rows);
+        const mappedRows = mapRowsWithHeaders(headers, rows);
+        if (scoreHealthPayload(mappedRows) > 0) return mappedRows;
+        return [];
       }
     }
-    return data;
+    if (scoreHealthPayload(data) > 0) return data;
+    return [];
   }
   if (!data || typeof data !== 'object') return [];
 
@@ -5128,18 +5188,24 @@ function extractHealthMonitorPayload(data) {
     data.monitorHealth,
     data.contents
   ];
+  let bestRows = [];
+  let bestScore = 0;
   for (const candidate of candidates) {
+    let nested = [];
     if (Array.isArray(candidate) || (candidate && typeof candidate === 'object')) {
-      const nested = extractHealthMonitorPayload(candidate);
-      if (nested.length) return nested;
+      nested = extractHealthMonitorPayload(candidate);
     }
     if (typeof candidate === 'string') {
-      const nested = extractHealthMonitorPayload(candidate);
-      if (nested.length) return nested;
+      nested = extractHealthMonitorPayload(candidate);
+    }
+    const score = scoreHealthPayload(nested);
+    if (score > bestScore) {
+      bestRows = nested;
+      bestScore = score;
     }
   }
 
-  return [];
+  return bestRows;
 }
 
 function normalizeEventDate(value) {
