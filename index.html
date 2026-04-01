@@ -483,6 +483,15 @@
               </div>
             </div>
             <div class="health-actions">
+              <label class="muted" for="healthRangePreset">Range</label>
+              <select id="healthRangePreset" class="select sm" aria-label="Health monitoring range preset">
+                <option value="all">All records</option>
+                <option value="today">Today</option>
+                <option value="yesterday">Yesterday</option>
+                <option value="last7days">Last 7 days</option>
+                <option value="thisMonth">This month</option>
+                <option value="lastMonth">Last month</option>
+              </select>
               <a id="healthOpenAppLink" class="btn ghost sm" href="https://app.incheck360.com/" target="_blank" rel="noopener noreferrer">
                 Open app
               </a>
@@ -554,7 +563,7 @@
         </div>
 
         <div class="card">
-          <strong>Recent checks</strong>
+          <strong>Health checks</strong>
           <ul id="healthChecksList" class="muted health-check-list"></ul>
         </div>
       </section>

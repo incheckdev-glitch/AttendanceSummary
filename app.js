@@ -1995,6 +1995,7 @@ function cacheEls() {
     'heroChangeReadiness',
     'shortcutsHelp',
     'healthRefreshBtn',
+    'healthRangePreset',
     'healthSheetSubtext',
     'healthStatusBadge',
     'healthLastChecked',
@@ -4113,10 +4114,12 @@ function setActiveView(view) {
 
 const HealthMonitor = {
   history: [],
+  allHistory: [],
   timerId: null,
   loading: false,
   lastLoadedAt: null,
   charts: {},
+  rangePreset: 'all',
 
   formatTs(ts) {
     try {
@@ -4229,7 +4232,8 @@ const HealthMonitor = {
       }
       if (!rows.length && latestError) throw latestError;
 
-      this.history = rows.slice(0, CONFIG.HEALTH_MONITOR.MAX_HISTORY);
+      this.allHistory = rows;
+      this.applyRangePreset();
       this.lastLoadedAt = Date.now();
       if (chosenTab && E.healthSheetSubtext) {
         E.healthSheetSubtext.textContent = `Health telemetry loaded directly from Google Sheet tab ${chosenTab}.`;
@@ -4245,6 +4249,46 @@ const HealthMonitor = {
 
   async checkNow() {
     await this.loadFromSheet(true);
+  },
+
+  getRangeBounds() {
+    if (this.rangePreset === 'all') return null;
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const oneDayMs = 24 * 60 * 60 * 1000;
+    const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+
+    switch (this.rangePreset) {
+      case 'today':
+        return { start: startOfDay, end: startOfDay + oneDayMs };
+      case 'yesterday':
+        return { start: startOfDay - oneDayMs, end: startOfDay };
+      case 'last7days':
+        return { start: startOfDay - (6 * oneDayMs), end: startOfDay + oneDayMs };
+      case 'thisMonth':
+        return { start: startOfThisMonth, end: Number.POSITIVE_INFINITY };
+      case 'lastMonth': {
+        const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
+        return { start: startOfLastMonth, end: startOfThisMonth };
+      }
+      default:
+        return null;
+    }
+  },
+
+  applyRangePreset() {
+    const bounds = this.getRangeBounds();
+    if (!bounds) {
+      this.history = [...this.allHistory];
+      return;
+    }
+    this.history = this.allHistory.filter(item => item.ts >= bounds.start && item.ts < bounds.end);
+  },
+
+  setRangePreset(preset) {
+    this.rangePreset = String(preset || 'all');
+    this.applyRangePreset();
+    this.render();
   },
 
   bucketizeLatencies(list) {
@@ -4280,7 +4324,7 @@ const HealthMonitor = {
       this.charts[id] = new Chart(canvas, cfg);
     };
 
-    const timeline = this.history.slice(0, CONFIG.HEALTH_MONITOR.MAX_HISTORY).reverse();
+    const timeline = this.history.slice().reverse();
     const labels = timeline.map(item =>
       new Date(item.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     );
@@ -4418,7 +4462,7 @@ const HealthMonitor = {
         E.healthWindowBar.innerHTML = '<span class="muted">No checks yet.</span>';
       } else {
         E.healthWindowBar.innerHTML = this.history
-          .slice(0, CONFIG.HEALTH_MONITOR.MAX_HISTORY)
+          .slice()
           .reverse()
           .map(item => {
             const status = item.ok ? 'Up' : 'Down';
@@ -4434,7 +4478,6 @@ const HealthMonitor = {
         E.healthChecksList.innerHTML = '<li>No checks yet.</li>';
       } else {
         E.healthChecksList.innerHTML = this.history
-          .slice(0, 10)
           .map(item => {
             const failureText = item.note ? ` (${U.escapeHtml(item.note)})` : '';
             const status = item.ok ? '✅ Online' : `❌ Offline${failureText}`;
@@ -4449,6 +4492,9 @@ const HealthMonitor = {
     if (E.healthRefreshBtn) {
       E.healthRefreshBtn.disabled = this.loading;
       E.healthRefreshBtn.textContent = this.loading ? 'Refreshing…' : 'Refresh from sheet';
+    }
+    if (E.healthRangePreset && E.healthRangePreset.value !== this.rangePreset) {
+      E.healthRangePreset.value = this.rangePreset;
     }
     this.renderCharts();
   },
@@ -6728,6 +6774,11 @@ function wireCore() {
   }
   if (E.healthRefreshBtn) {
     E.healthRefreshBtn.addEventListener('click', () => HealthMonitor.checkNow());
+  }
+  if (E.healthRangePreset) {
+    E.healthRangePreset.addEventListener('change', e => {
+      HealthMonitor.setRangePreset(e.target.value);
+    });
   }
 
   if (E.columnToggleBtn && E.columnPanel) {
