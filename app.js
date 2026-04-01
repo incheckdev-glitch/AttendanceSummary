@@ -201,7 +201,15 @@ CATEGORY_ORDER: [
     TARGET_URL: 'https://app.incheck360.com/',
     INTERVAL_MS: 60_000,
     TIMEOUT_MS: 10_000,
-    MAX_HISTORY: 25
+    MAX_HISTORY: 25,
+    ENABLE_POST_TO_SHEET: RUNTIME_CONFIG.HEALTH_MONITOR_ENABLE_POST_TO_SHEET !== false,
+    POST_URL:
+      RUNTIME_CONFIG.HEALTH_MONITOR_POST_URL ||
+      "https://corsproxy.io/?" + encodeURIComponent(APPS_SCRIPT_WEBAPP_URL),
+    SHEET_NAME: RUNTIME_CONFIG.HEALTH_MONITOR_SHEET_NAME || 'HealthMonitoring',
+    ENVIRONMENT: RUNTIME_CONFIG.HEALTH_MONITOR_ENVIRONMENT || 'prod',
+    REGION: RUNTIME_CONFIG.HEALTH_MONITOR_REGION || 'us',
+    WRITE_PASSCODE: RUNTIME_CONFIG.HEALTH_MONITOR_WRITE_PASSCODE || ''
   }
 };
 
@@ -4135,9 +4143,70 @@ const HealthMonitor = {
       this.checking = false;
     }
 
-    this.history.unshift({ ts: Date.now(), ok, latency, note });
+    const record = { ts: Date.now(), ok, latency, note };
+    this.history.unshift(record);
     this.history = this.history.slice(0, CONFIG.HEALTH_MONITOR.MAX_HISTORY);
+    await this.postResultToSheet(record);
     this.render();
+  },
+
+  buildSheetRow(record) {
+    return {
+      checked_at_utc: new Date(record.ts).toISOString(),
+      target_label: CONFIG.HEALTH_MONITOR.TARGET_LABEL,
+      target_url: CONFIG.HEALTH_MONITOR.TARGET_URL,
+      is_up: !!record.ok,
+      latency_ms: Number.isFinite(record.latency) ? Math.round(record.latency) : '',
+      failure_note: record.ok ? '' : String(record.note || 'request_failed'),
+      timeout_ms: CONFIG.HEALTH_MONITOR.TIMEOUT_MS,
+      check_interval_ms: CONFIG.HEALTH_MONITOR.INTERVAL_MS,
+      environment: CONFIG.HEALTH_MONITOR.ENVIRONMENT,
+      region: CONFIG.HEALTH_MONITOR.REGION
+    };
+  },
+
+  async postResultToSheet(record) {
+    if (!CONFIG.HEALTH_MONITOR.ENABLE_POST_TO_SHEET || !CONFIG.HEALTH_MONITOR.POST_URL) return;
+    const row = this.buildSheetRow(record);
+    const endpoint = withResourceParam(CONFIG.HEALTH_MONITOR.POST_URL, 'health_monitor', {
+      sheetName: CONFIG.HEALTH_MONITOR.SHEET_NAME,
+      tabName: CONFIG.HEALTH_MONITOR.SHEET_NAME
+    });
+    const payloads = [
+      {
+        resource: 'health_monitor',
+        action: 'save',
+        row,
+        sheetName: CONFIG.HEALTH_MONITOR.SHEET_NAME,
+        tabName: CONFIG.HEALTH_MONITOR.SHEET_NAME,
+        passcode: CONFIG.HEALTH_MONITOR.WRITE_PASSCODE
+      },
+      {
+        resource: 'health_monitor',
+        action: 'append',
+        ...row,
+        sheetName: CONFIG.HEALTH_MONITOR.SHEET_NAME,
+        tabName: CONFIG.HEALTH_MONITOR.SHEET_NAME,
+        passcode: CONFIG.HEALTH_MONITOR.WRITE_PASSCODE
+      }
+    ];
+
+    for (const payload of payloads) {
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const raw = await res.text();
+        let parsed = null;
+        try {
+          parsed = raw ? parseApiJson(raw, 'Health monitor API') : null;
+        } catch {}
+        if (res.ok && (!parsed || parsed.ok === true || parsed.success === true)) return;
+      } catch {}
+    }
+    console.warn('Health monitor: unable to persist check to Google Sheet tab.');
   },
 
   render() {
