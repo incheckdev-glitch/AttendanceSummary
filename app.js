@@ -4107,7 +4107,8 @@ function setActiveView(view) {
 const HealthMonitor = {
   history: [],
   timerId: null,
-  checking: false,
+  loading: false,
+  lastLoadedAt: null,
 
   formatTs(ts) {
     try {
@@ -4117,104 +4118,80 @@ const HealthMonitor = {
     }
   },
 
-  async checkNow() {
-    if (this.checking) return;
-    this.checking = true;
-    const started = Date.now();
-    let ok = false;
-    let latency = null;
-    let note = 'reachable';
+  normalizeRow(raw) {
+    const rawTimestamp = getEventField(raw, ['checked_at_utc', 'checked at utc', 'checkedAtUtc', 'timestamp']);
+    const parsedTs = Date.parse(String(rawTimestamp || '').trim());
+    const ts = Number.isFinite(parsedTs) ? parsedTs : NaN;
+    const okRaw = getEventField(raw, ['is_up', 'is up', 'up', 'status']);
+    const latencyRaw = getEventField(raw, ['latency_ms', 'latency ms', 'latency']);
+    const failureNote = getEventField(raw, ['failure_note', 'failure note', 'note', 'error']);
+
+    return {
+      ts,
+      ok: parseBoolean(okRaw),
+      latency: Number.isFinite(Number(latencyRaw)) ? Number(latencyRaw) : null,
+      note: String(failureNote || '').trim(),
+      targetLabel: String(getEventField(raw, ['target_label', 'target label']) || '').trim(),
+      targetUrl: String(getEventField(raw, ['target_url', 'target url']) || '').trim(),
+      timeoutMs: Number(getEventField(raw, ['timeout_ms', 'timeout ms'])),
+      checkIntervalMs: Number(getEventField(raw, ['check_interval_ms', 'check interval ms'])),
+      environment: String(getEventField(raw, ['environment']) || '').trim(),
+      region: String(getEventField(raw, ['region']) || '').trim()
+    };
+  },
+
+  async loadFromSheet(force = false) {
+    if (this.loading || !CONFIG.HEALTH_MONITOR.POST_URL) return;
+    this.loading = true;
+    this.render();
 
     try {
-      const ctrl = new AbortController();
-      const timeoutId = setTimeout(() => ctrl.abort(), CONFIG.HEALTH_MONITOR.TIMEOUT_MS);
-      await fetch(CONFIG.HEALTH_MONITOR.TARGET_URL, {
-        method: 'GET',
-        mode: 'no-cors',
-        cache: 'no-store',
-        signal: ctrl.signal
-      });
-      clearTimeout(timeoutId);
-      ok = true;
-      latency = Date.now() - started;
-    } catch (error) {
-      note = String(error?.name || 'request_failed');
-    } finally {
-      this.checking = false;
-    }
-
-    const record = { ts: Date.now(), ok, latency, note };
-    this.history.unshift(record);
-    this.history = this.history.slice(0, CONFIG.HEALTH_MONITOR.MAX_HISTORY);
-    await this.postResultToSheet(record);
-    this.render();
-  },
-
-  buildSheetRow(record) {
-    return {
-      checked_at_utc: new Date(record.ts).toISOString(),
-      target_label: CONFIG.HEALTH_MONITOR.TARGET_LABEL,
-      target_url: CONFIG.HEALTH_MONITOR.TARGET_URL,
-      is_up: !!record.ok,
-      latency_ms: Number.isFinite(record.latency) ? Math.round(record.latency) : '',
-      failure_note: record.ok ? '' : String(record.note || 'request_failed'),
-      timeout_ms: CONFIG.HEALTH_MONITOR.TIMEOUT_MS,
-      check_interval_ms: CONFIG.HEALTH_MONITOR.INTERVAL_MS,
-      environment: CONFIG.HEALTH_MONITOR.ENVIRONMENT,
-      region: CONFIG.HEALTH_MONITOR.REGION
-    };
-  },
-
-  async postResultToSheet(record) {
-    if (!CONFIG.HEALTH_MONITOR.ENABLE_POST_TO_SHEET || !CONFIG.HEALTH_MONITOR.POST_URL) return;
-    const row = this.buildSheetRow(record);
-    const writePasscode = String(CONFIG.HEALTH_MONITOR.WRITE_PASSCODE || '');
-    const endpoint = withResourceParam(CONFIG.HEALTH_MONITOR.POST_URL, 'health_monitor', {
-      sheetName: CONFIG.HEALTH_MONITOR.SHEET_NAME,
-      tabName: CONFIG.HEALTH_MONITOR.SHEET_NAME
-    });
-    const authFields = {
-      passcode: writePasscode,
-      password: writePasscode,
-      authCode: writePasscode
-    };
-    const payloads = [];
-    const pushPayload = (action, data) => {
-      payloads.push({
-        resource: 'health_monitor',
-        action,
+      const auth = Session.authContext();
+      const readPasscode = String(CONFIG.HEALTH_MONITOR.WRITE_PASSCODE || '').trim();
+      const endpoint = withResourceParam(CONFIG.HEALTH_MONITOR.POST_URL, 'health_monitor', {
+        action: 'read',
         sheetName: CONFIG.HEALTH_MONITOR.SHEET_NAME,
         tabName: CONFIG.HEALTH_MONITOR.SHEET_NAME,
-        ...authFields,
-        ...data
+        public: 'true',
+        access: 'public',
+        role: auth.role || '',
+        sessionRole: auth.role || '',
+        authCode: auth.authCode || '',
+        passcode: readPasscode,
+        password: readPasscode
       });
-    };
+      const res = await fetch(endpoint, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`Health monitor API failed: ${res.status}`);
+      const raw = await res.text();
+      const data = parseApiJson(raw, 'Health monitor API');
 
-    pushPayload('save', { row });
-    pushPayload('save', { event: row });
-    pushPayload('save', { record: row });
+      if (
+        data &&
+        typeof data === 'object' &&
+        (data.ok === false || data.success === false)
+      ) {
+        throw new Error(data.error || data.message || 'Health monitor API rejected read access.');
+      }
 
-    for (const payload of payloads) {
-      try {
-        const res = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        const raw = await res.text();
-        let parsed = null;
-        try {
-          parsed = raw ? parseApiJson(raw, 'Health monitor API') : null;
-        } catch {}
-        if (res.ok && (!parsed || parsed.ok === true || parsed.success === true)) return;
-        console.warn('Health monitor: write attempt rejected', {
-          action: payload.action,
-          status: res.status,
-          response: raw?.slice?.(0, 250) || ''
-        });
-      } catch {}
+      const rows = extractHealthMonitorPayload(data)
+        .map(item => this.normalizeRow(item))
+        .filter(item => Number.isFinite(item.ts))
+        .sort((a, b) => b.ts - a.ts)
+        .slice(0, CONFIG.HEALTH_MONITOR.MAX_HISTORY);
+
+      this.history = rows;
+      this.lastLoadedAt = Date.now();
+      if (force) UI.toast('Health monitor refreshed from sheet.');
+    } catch (error) {
+      UI.toast(`Unable to load Monitor Health: ${error.message}`);
+    } finally {
+      this.loading = false;
+      this.render();
     }
-    console.warn('Health monitor: unable to persist check to Google Sheet tab.');
+  },
+
+  async checkNow() {
+    await this.loadFromSheet(true);
   },
 
   render() {
@@ -4281,20 +4258,27 @@ const HealthMonitor = {
         E.healthChecksList.innerHTML = this.history
           .slice(0, 10)
           .map(item => {
-            const status = item.ok ? '✅ Online' : `❌ Offline (${U.escapeHtml(item.note)})`;
+            const failureText = item.note ? ` (${U.escapeHtml(item.note)})` : '';
+            const status = item.ok ? '✅ Online' : `❌ Offline${failureText}`;
             const latencyText = Number.isFinite(item.latency) ? ` · ${item.latency} ms` : '';
-            return `<li><span>${U.escapeHtml(this.formatTs(item.ts))}</span><span>${status}${latencyText}</span></li>`;
+            const meta = [item.environment, item.region, item.targetLabel].filter(Boolean).join(' · ');
+            const metaText = meta ? `<div class="muted">${U.escapeHtml(meta)}</div>` : '';
+            return `<li><span>${U.escapeHtml(this.formatTs(item.ts))}</span><span>${status}${latencyText}${metaText}</span></li>`;
           })
           .join('');
       }
+    }
+    if (E.healthRefreshBtn) {
+      E.healthRefreshBtn.disabled = this.loading;
+      E.healthRefreshBtn.textContent = this.loading ? 'Refreshing…' : 'Refresh from sheet';
     }
   },
 
   start() {
     this.render();
-    if (!this.history.length) this.checkNow();
+    if (!this.history.length) this.loadFromSheet(false);
     if (!this.timerId) {
-      this.timerId = setInterval(() => this.checkNow(), CONFIG.HEALTH_MONITOR.INTERVAL_MS);
+      this.timerId = setInterval(() => this.loadFromSheet(false), CONFIG.HEALTH_MONITOR.INTERVAL_MS);
     }
   }
 };
@@ -5071,6 +5055,44 @@ function extractEventsPayload(data) {
       const parsed = JSON.parse(data.events);
       if (Array.isArray(parsed)) return parsed;
     } catch {}
+  }
+
+  return [];
+}
+
+function extractHealthMonitorPayload(data) {
+  if (typeof data === 'string') {
+    try {
+      const parsed = JSON.parse(data);
+      return extractHealthMonitorPayload(parsed);
+    } catch {
+      return [];
+    }
+  }
+  if (Array.isArray(data)) return data;
+  if (!data || typeof data !== 'object') return [];
+
+  const candidates = [
+    data.rows,
+    data.data,
+    data.items,
+    data.result,
+    data.payload,
+    data.response,
+    data.health,
+    data.monitorHealth,
+    data.contents
+  ];
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
+    if (candidate && typeof candidate === 'object') {
+      const nested = extractHealthMonitorPayload(candidate);
+      if (nested.length) return nested;
+    }
+    if (typeof candidate === 'string') {
+      const nested = extractHealthMonitorPayload(candidate);
+      if (nested.length) return nested;
+    }
   }
 
   return [];
