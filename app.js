@@ -6259,10 +6259,8 @@ function wireDashboardGate() {
       UI.toast('Invalid role. Use "admin" or "viewer".');
       return false;
     }
-    const needsPasscode = role === ROLES.ADMIN && !!CONFIG.ADMIN_PASSCODE;
-    const passcode = needsPasscode
-      ? window.prompt(`Enter ${role} passcode`) ?? ''
-      : '';
+    // Admin can sign in directly by role without entering a separate passcode.
+    const passcode = '';
     const ok = Session.login(role, passcode);
     if (!ok) {
       UI.toast('Login failed. Invalid role/passcode.');
