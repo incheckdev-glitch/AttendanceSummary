@@ -2006,6 +2006,9 @@ function cacheEls() {
     'healthFailureCount',
     'healthWindowBar',
     'healthChecksList',
+    'healthLatencyTrendChart',
+    'healthStatusDistributionChart',
+    'healthLatencyBucketsChart',
     'aiQueryExport',
     'eventAllDay',
     'eventEnv',
@@ -4113,6 +4116,7 @@ const HealthMonitor = {
   timerId: null,
   loading: false,
   lastLoadedAt: null,
+  charts: {},
 
   formatTs(ts) {
     try {
@@ -4243,6 +4247,131 @@ const HealthMonitor = {
     await this.loadFromSheet(true);
   },
 
+  bucketizeLatencies(list) {
+    const buckets = { '<250ms': 0, '250-499ms': 0, '500-999ms': 0, '1000ms+': 0, 'n/a': 0 };
+    list.forEach(item => {
+      if (!Number.isFinite(item.latency)) {
+        buckets['n/a'] += 1;
+        return;
+      }
+      if (item.latency < 250) buckets['<250ms'] += 1;
+      else if (item.latency < 500) buckets['250-499ms'] += 1;
+      else if (item.latency < 1000) buckets['500-999ms'] += 1;
+      else buckets['1000ms+'] += 1;
+    });
+    return buckets;
+  },
+
+  renderCharts() {
+    if (typeof Chart === 'undefined') return;
+    const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+    const textColor = cssVar('--text') || '#e5e7eb';
+    const mutedColor = cssVar('--muted') || '#9ca3af';
+    const gridColor = 'rgba(128,128,128,.2)';
+    const upColor = cssVar('--ok') || '#16a34a';
+    const downColor = cssVar('--warn') || '#d97706';
+    const latencyColor = cssVar('--info') || '#2563eb';
+    const bucketColors = [cssVar('--ok'), cssVar('--info'), cssVar('--warn'), cssVar('--danger'), cssVar('--neutral')];
+
+    const make = (id, cfg) => {
+      const canvas = E[id];
+      if (!canvas) return;
+      if (this.charts[id]) this.charts[id].destroy();
+      this.charts[id] = new Chart(canvas, cfg);
+    };
+
+    const timeline = this.history.slice(0, CONFIG.HEALTH_MONITOR.MAX_HISTORY).reverse();
+    const labels = timeline.map(item =>
+      new Date(item.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    );
+    const latencyData = timeline.map(item => (Number.isFinite(item.latency) ? item.latency : null));
+    const statusData = timeline.map(item => (item.ok ? 1 : 0));
+
+    make('healthLatencyTrendChart', {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Latency (ms)',
+            data: latencyData,
+            borderColor: latencyColor,
+            backgroundColor: 'rgba(37,99,235,.25)',
+            tension: 0.35,
+            yAxisID: 'yLatency'
+          },
+          {
+            label: 'Availability',
+            data: statusData,
+            borderColor: upColor,
+            backgroundColor: 'rgba(22,163,74,.2)',
+            stepped: true,
+            tension: 0,
+            yAxisID: 'yStatus'
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: textColor } } },
+        scales: {
+          x: { ticks: { color: mutedColor }, grid: { color: gridColor } },
+          yLatency: {
+            position: 'left',
+            ticks: { color: mutedColor },
+            grid: { color: gridColor },
+            beginAtZero: true
+          },
+          yStatus: {
+            position: 'right',
+            min: 0,
+            max: 1,
+            ticks: {
+              stepSize: 1,
+              color: mutedColor,
+              callback: value => (Number(value) === 1 ? 'Up' : 'Down')
+            },
+            grid: { display: false }
+          }
+        }
+      }
+    });
+
+    const upCount = this.history.filter(item => item.ok).length;
+    const downCount = this.history.filter(item => !item.ok).length;
+    make('healthStatusDistributionChart', {
+      type: 'doughnut',
+      data: {
+        labels: ['Online', 'Offline'],
+        datasets: [{ data: [upCount, downCount], backgroundColor: [upColor, downColor] }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: textColor } } }
+      }
+    });
+
+    const latencyBuckets = this.bucketizeLatencies(this.history);
+    make('healthLatencyBucketsChart', {
+      type: 'bar',
+      data: {
+        labels: Object.keys(latencyBuckets),
+        datasets: [{ label: 'Checks', data: Object.values(latencyBuckets), backgroundColor: bucketColors }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: textColor } } },
+        scales: {
+          x: { ticks: { color: mutedColor }, grid: { color: gridColor } },
+          y: { beginAtZero: true, ticks: { color: mutedColor }, grid: { color: gridColor } }
+        }
+      }
+    });
+  },
+
   render() {
     const latest = this.history[0] || null;
     const latencies = this.history
@@ -4321,6 +4450,7 @@ const HealthMonitor = {
       E.healthRefreshBtn.disabled = this.loading;
       E.healthRefreshBtn.textContent = this.loading ? 'Refreshing…' : 'Refresh from sheet';
     }
+    this.renderCharts();
   },
 
   start() {

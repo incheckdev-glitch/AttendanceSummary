@@ -537,6 +537,22 @@
           </div>
         </div>
 
+        <div class="grid cols-2 health-charts-grid">
+          <div class="card health-chart-card">
+            <strong>Latency & availability trend</strong>
+            <canvas id="healthLatencyTrendChart" height="180" aria-label="Latency and availability trend chart" role="img"></canvas>
+          </div>
+          <div class="card health-chart-card">
+            <strong>Check status distribution</strong>
+            <canvas id="healthStatusDistributionChart" height="180" aria-label="Check status distribution chart" role="img"></canvas>
+          </div>
+        </div>
+
+        <div class="card health-chart-card">
+          <strong>Latency distribution</strong>
+          <canvas id="healthLatencyBucketsChart" height="160" aria-label="Latency buckets chart" role="img"></canvas>
+        </div>
+
         <div class="card">
           <strong>Recent checks</strong>
           <ul id="healthChecksList" class="muted health-check-list"></ul>

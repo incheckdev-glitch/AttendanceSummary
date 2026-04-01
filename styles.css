@@ -477,6 +477,14 @@ header{
   border-bottom:1px dashed var(--border);
   padding-bottom:4px;
 }
+.health-charts-grid{
+  align-items:stretch;
+}
+.health-chart-card canvas{
+  margin-top:10px;
+  width:100% !important;
+  max-height:240px;
+}
 
 /* Layout */
 .wrap{
