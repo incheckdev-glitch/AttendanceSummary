@@ -4119,10 +4119,22 @@ const HealthMonitor = {
   },
 
   normalizeRow(raw) {
-    const rawTimestamp = getEventField(raw, ['checked_at_utc', 'checked at utc', 'checkedAtUtc', 'timestamp']);
+    const rawTimestamp = getEventField(raw, [
+      'checked_at_utc',
+      'checked at utc',
+      'checkedAtUtc',
+      'checked_at',
+      'checked at',
+      'checkedAt',
+      'timestamp',
+      'created_at',
+      'created at',
+      'datetime',
+      'date'
+    ]);
     const parsedTs = Date.parse(String(rawTimestamp || '').trim());
     const ts = Number.isFinite(parsedTs) ? parsedTs : NaN;
-    const okRaw = getEventField(raw, ['is_up', 'is up', 'up', 'status']);
+    const okRaw = getEventField(raw, ['is_up', 'is up', 'up', 'status', 'health', 'state']);
     const latencyRaw = getEventField(raw, ['latency_ms', 'latency ms', 'latency']);
     const failureNote = getEventField(raw, ['failure_note', 'failure note', 'note', 'error']);
 
@@ -5060,6 +5072,23 @@ function extractEventsPayload(data) {
   return [];
 }
 
+function mapRowsWithHeaders(headers, rows) {
+  if (!Array.isArray(headers) || !Array.isArray(rows)) return [];
+  const normalizedHeaders = headers.map((header, idx) => {
+    const raw = String(header ?? '').trim();
+    return raw || `column_${idx + 1}`;
+  });
+  return rows
+    .filter(row => Array.isArray(row))
+    .map(row => {
+      const mapped = {};
+      normalizedHeaders.forEach((header, idx) => {
+        mapped[header] = row[idx];
+      });
+      return mapped;
+    });
+}
+
 function extractHealthMonitorPayload(data) {
   if (typeof data === 'string') {
     try {
@@ -5069,11 +5098,27 @@ function extractHealthMonitorPayload(data) {
       return [];
     }
   }
-  if (Array.isArray(data)) return data;
+  if (Array.isArray(data)) {
+    if (!data.length) return [];
+    const first = data[0];
+    if (Array.isArray(first)) {
+      const [headers = [], ...rows] = data;
+      if (Array.isArray(headers) && headers.length) {
+        return mapRowsWithHeaders(headers, rows);
+      }
+    }
+    return data;
+  }
   if (!data || typeof data !== 'object') return [];
+
+  if (Array.isArray(data.headers) && Array.isArray(data.rows)) {
+    return mapRowsWithHeaders(data.headers, data.rows);
+  }
 
   const candidates = [
     data.rows,
+    data.values,
+    data.records,
     data.data,
     data.items,
     data.result,
@@ -5084,8 +5129,7 @@ function extractHealthMonitorPayload(data) {
     data.contents
   ];
   for (const candidate of candidates) {
-    if (Array.isArray(candidate)) return candidate;
-    if (candidate && typeof candidate === 'object') {
+    if (Array.isArray(candidate) || (candidate && typeof candidate === 'object')) {
       const nested = extractHealthMonitorPayload(candidate);
       if (nested.length) return nested;
     }
@@ -5131,7 +5175,7 @@ function parseBoolean(value) {
   const normalized = String(value || '')
     .trim()
     .toLowerCase();
-  return ['1', 'true', 'yes', 'y'].includes(normalized);
+  return ['1', 'true', 'yes', 'y', 'up', 'online', 'ok', 'healthy', 'success'].includes(normalized);
 }
 
 /* ---------- Save/Delete to Apps Script ---------- */
