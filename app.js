@@ -1878,7 +1878,6 @@ function cacheEls() {
     'editIssueForm',
     'editIssueClose',
     'editIssueCancel',
-    'editIssueId',
     'editIssueTitleInput',
     'editIssueDesc',
     'editIssueModule',
@@ -1888,13 +1887,9 @@ function cacheEls() {
     'editIssueDepartment',
     'editIssueName',
     'editIssueEmail',
-    'editIssueNotificationSent',
-    'editIssueNotificationReview',
     'editIssueYoutrackReference',
     'editIssueDevTeamStatus',
     'editIssueRelated',
-    'editIssueNotes',
-    'editIssueLog',
     'editIssueFile',
     'editIssueDate',
     'drawerBtn',
@@ -3726,7 +3721,6 @@ const IssueEditor = {
       if (el) el.value = val || '';
     };
 
-    setVal(E.editIssueId, issue.id || '');
     setVal(E.editIssueTitleInput, issue.title || '');
     setVal(E.editIssueDesc, issue.desc || '');
     setVal(E.editIssueModule, issue.module || '');
@@ -3736,12 +3730,8 @@ const IssueEditor = {
     setVal(E.editIssueDepartment, issue.department || '');
     setVal(E.editIssueName, issue.name || '');
     setVal(E.editIssueEmail, issue.emailAddressee || '');
-    setVal(E.editIssueNotificationSent, issue.notificationSent || '');
-    setVal(E.editIssueNotificationReview, issue.notificationUnderReview || '');
     setVal(E.editIssueYoutrackReference, issue.youtrackReference || '');
     this.syncSheetDropdowns(issue.devTeamStatus || '', issue.issueRelated || '');
-    setVal(E.editIssueNotes, issue.notes || '');
-    setVal(E.editIssueLog, issue.log || '');
     setVal(E.editIssueFile, issue.file || '');
 
     if (E.editIssueDate) {
@@ -3769,13 +3759,13 @@ const IssueEditor = {
       department: (E.editIssueDepartment?.value || '').trim(),
       name: (E.editIssueName?.value || '').trim(),
       emailAddressee: (E.editIssueEmail?.value || '').trim(),
-      notificationSent: (E.editIssueNotificationSent?.value || '').trim(),
-      notificationUnderReview: (E.editIssueNotificationReview?.value || '').trim(),
+      notificationSent: this.issue.notificationSent || '',
+      notificationUnderReview: this.issue.notificationUnderReview || '',
       youtrackReference: (E.editIssueYoutrackReference?.value || '').trim(),
       devTeamStatus: (E.editIssueDevTeamStatus?.value || '').trim(),
       issueRelated: this.getSelectedMultiValues(E.editIssueRelated).join(', '),
-      notes: (E.editIssueNotes?.value || '').trim(),
-      log: (E.editIssueLog?.value || '').trim(),
+      notes: this.issue.notes || '',
+      log: this.issue.log || '',
       file: (E.editIssueFile?.value || '').trim(),
       date: E.editIssueDate?.value || ''
     };
@@ -3866,7 +3856,7 @@ async function onEditIssueSubmit(event) {
   event.preventDefault();
   if (!requirePermission(() => Permissions.canEditTicket(), 'Only admin can edit tickets.')) return;
 
-  const id = (E.editIssueId?.value || '').trim();
+  const id = (IssueEditor.issue?.id || '').trim();
   const title = (E.editIssueTitleInput?.value || '').trim();
   const description = (E.editIssueDesc?.value || '').trim();
   const module = (E.editIssueModule?.value || '').trim();
@@ -3876,13 +3866,13 @@ async function onEditIssueSubmit(event) {
   const department = (E.editIssueDepartment?.value || '').trim();
   const name = (E.editIssueName?.value || '').trim();
   const emailAddressee = (E.editIssueEmail?.value || '').trim();
-  const notificationSent = (E.editIssueNotificationSent?.value || '').trim();
-  const notificationUnderReview = (E.editIssueNotificationReview?.value || '').trim();
+  const notificationSent = IssueEditor.issue?.notificationSent || '';
+  const notificationUnderReview = IssueEditor.issue?.notificationUnderReview || '';
   const youtrackReference = (E.editIssueYoutrackReference?.value || '').trim();
   const devTeamStatus = (E.editIssueDevTeamStatus?.value || '').trim();
   const issueRelated = IssueEditor.getSelectedMultiValues(E.editIssueRelated).join(', ');
-  const notes = (E.editIssueNotes?.value || '').trim();
-  const log = (E.editIssueLog?.value || '').trim();
+  const notes = IssueEditor.issue?.notes || '';
+  const log = IssueEditor.issue?.log || '';
   const link = (E.editIssueFile?.value || '').trim();
   const date = E.editIssueDate?.value || '';
 
