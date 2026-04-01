@@ -1948,6 +1948,8 @@ function cacheEls() {
     'plannerAssignBtn',
     'plannerAddEvent',
     'plannerExportScorecard',
+    'releasePlannerCard',
+    'freezeWindowsCard',
     'freezeManageBtn',
     'freezeManageBtnSecondary',
     'freezeWindowsList',
@@ -1995,6 +1997,8 @@ const UI = {
   applyRolePermissions() {
     const role = Session.role() || 'guest';
     const canUseInternalIssueFilters = Permissions.canUseInternalIssueFilters();
+    const canManageFreezeWindows = Permissions.canManageFreezeWindows();
+    const canChangePlanner = Permissions.canChangePlanner();
 
     if (!canUseInternalIssueFilters) {
       Filters.state.devTeamStatus = 'All';
@@ -2006,12 +2010,12 @@ const UI = {
 
     if (E.currentRoleChip) E.currentRoleChip.textContent = `Role: ${role}`;
     if (E.addEventBtn) E.addEventBtn.style.display = Permissions.canManageEvents() ? '' : 'none';
-    if (E.freezeManageBtn)
-      E.freezeManageBtn.style.display = Permissions.canManageFreezeWindows() ? '' : 'none';
-    if (E.freezeManageBtnSecondary)
-      E.freezeManageBtnSecondary.style.display = Permissions.canManageFreezeWindows() ? '' : 'none';
-    if (E.plannerAddEvent) E.plannerAddEvent.style.display = Permissions.canChangePlanner() ? '' : 'none';
-    if (E.plannerAssignBtn) E.plannerAssignBtn.style.display = Permissions.canChangePlanner() ? '' : 'none';
+    if (E.freezeManageBtn) E.freezeManageBtn.style.display = canManageFreezeWindows ? '' : 'none';
+    if (E.freezeManageBtnSecondary) E.freezeManageBtnSecondary.style.display = canManageFreezeWindows ? '' : 'none';
+    if (E.freezeWindowsCard) E.freezeWindowsCard.style.display = canManageFreezeWindows ? '' : 'none';
+    if (E.plannerAddEvent) E.plannerAddEvent.style.display = canChangePlanner ? '' : 'none';
+    if (E.plannerAssignBtn) E.plannerAssignBtn.style.display = canChangePlanner ? '' : 'none';
+    if (E.releasePlannerCard) E.releasePlannerCard.style.display = canChangePlanner ? '' : 'none';
     if (E.editIssueBtn) E.editIssueBtn.style.display = Permissions.canEditTicket() ? '' : 'none';
     if (E.devTeamStatusFilterRow)
       E.devTeamStatusFilterRow.style.display = canUseInternalIssueFilters ? '' : 'none';
