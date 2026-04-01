@@ -489,6 +489,7 @@ const Filters = {
 };
 
 const ColumnManager = {
+  restrictedForViewer: new Set(['youtrackReference', 'devTeamStatus', 'issueRelated', 'notes']),
   columns: [
     { key: 'id', label: 'Ticket ID' },
     { key: 'date', label: 'Date' },
@@ -511,6 +512,19 @@ const ColumnManager = {
     { key: 'notificationUnderReview', label: 'Notification Sent Under Review' }
   ],
   state: {},
+  isColumnAllowed(colKey) {
+    if (Session.role() !== ROLES.VIEWER) return true;
+    return !this.restrictedForViewer.has(colKey);
+  },
+  getAvailableColumns() {
+    return this.columns.filter(col => this.isColumnAllowed(col.key));
+  },
+  getVisibleColumns() {
+    return this.getAvailableColumns().filter(col => this.state[col.key] !== false);
+  },
+  getVisibleColumnCount() {
+    return this.getVisibleColumns().length || this.getAvailableColumns().length || 1;
+  },
   load() {
     const defaults = this.columns.reduce((acc, col) => {
       acc[col.key] = true;
@@ -531,7 +545,7 @@ const ColumnManager = {
   },
   apply() {
     this.columns.forEach(col => {
-      const visible = this.state[col.key] !== false;
+      const visible = this.isColumnAllowed(col.key) && this.state[col.key] !== false;
       document.querySelectorAll(`[data-col="${col.key}"]`).forEach(el => {
         el.classList.toggle('col-hidden', !visible);
       });
@@ -539,7 +553,7 @@ const ColumnManager = {
   },
   renderPanel() {
     if (!E.columnList) return;
-    E.columnList.innerHTML = this.columns
+    E.columnList.innerHTML = this.getAvailableColumns()
       .map(
         col => `
         <label>
@@ -2329,7 +2343,7 @@ UI.Issues = {
     if (pageData.length) {
       E.issuesTbody.innerHTML = pageData
       .map(r => {
-          const cells = ColumnManager.columns
+          const cells = ColumnManager.getAvailableColumns()
             .map(
               col => `<td data-col="${col.key}">${renderCell(r, col)}</td>`
             )
@@ -2361,7 +2375,7 @@ UI.Issues = {
       const desc = parts.length ? parts.join(', ') : 'no filters';
       E.issuesTbody.innerHTML = `
         <tr>
-          <td colspan="${ColumnManager.columns.length}" style="text-align:center;color:var(--muted)">
+          <td colspan="${ColumnManager.getVisibleColumnCount()}" style="text-align:center;color:var(--muted)">
             No issues found for ${U.escapeHtml(desc)}.
             <button type="button" class="btn sm" id="clearFiltersBtn" style="margin-left:8px">Clear filters</button>
           </td>
@@ -3316,6 +3330,29 @@ UI.Modals = {
     const notesValue = U.escapeHtml(r.notes || '—');
 
     E.modalTitle.textContent = `TICKET:${r.id || '-'}`;
+    const internalMetaHtml = ColumnManager.isColumnAllowed('youtrackReference')
+      ? `
+            <p class="ticket-meta-item"><span class="ticket-label">🔗 YouTrack Ref:</span> <span>${youtrackReference}</span></p>
+            <p class="ticket-meta-item"><span class="ticket-label">🧑‍💻 Dev Team Status:</span> <span>${devTeamStatusBadge}</span></p>
+      `
+      : '';
+    const internalSectionsHtml = ColumnManager.isColumnAllowed('issueRelated')
+      ? `
+        <section class="ticket-description">
+          <h5>Issue Related</h5>
+          <p>${issueRelatedBadges || issueRelated}</p>
+        </section>
+      `
+      : '';
+    const internalNotesHtml = ColumnManager.isColumnAllowed('notes')
+      ? `
+        <section class="ticket-description">
+          <h5>Notes</h5>
+          <p>${notesValue}</p>
+        </section>
+      `
+      : '';
+
     E.modalBody.innerHTML = `
       <article class="ticket-detail">
         <section class="ticket-hero">
@@ -3344,9 +3381,8 @@ UI.Modals = {
           <div class="ticket-col">
             <p class="ticket-meta-item"><span class="ticket-label">🏷 Category:</span> <span>${category}</span></p>
             <p class="ticket-meta-item"><span class="ticket-label">📧 Email Address:</span> <span>${requesterEmail}</span></p>
-            <p class="ticket-meta-item"><span class="ticket-label">🔗 YouTrack Ref:</span> <span>${youtrackReference}</span></p>
             <p class="ticket-meta-item"><span class="ticket-label">📌 Status:</span> <span>${status}</span></p>
-            <p class="ticket-meta-item"><span class="ticket-label">🧑‍💻 Dev Team Status:</span> <span>${devTeamStatusBadge}</span></p>
+            ${internalMetaHtml}
             <p class="ticket-meta-item"><span class="ticket-label">🆔 Ticket #:</span> <span>${ticketId}</span></p>
           </div>
         </section>
@@ -3356,15 +3392,8 @@ UI.Modals = {
           <p>${description}</p>
         </section>
 
-        <section class="ticket-description">
-          <h5>Issue Related</h5>
-          <p>${issueRelatedBadges || issueRelated}</p>
-        </section>
-
-        <section class="ticket-description">
-          <h5>Notes</h5>
-          <p>${notesValue}</p>
-        </section>
+        ${internalSectionsHtml}
+        ${internalNotesHtml}
 
         <section class="ticket-log">
           <h5>Log</h5>
@@ -4453,7 +4482,7 @@ async function loadIssues(force = false) {
     if (!DataStore.rows.length && E.issuesTbody) {
       E.issuesTbody.innerHTML = `
         <tr>
-          <td colspan="${ColumnManager.columns.length}" style="color:#ffb4b4;text-align:center">
+          <td colspan="${ColumnManager.getVisibleColumnCount()}" style="color:#ffb4b4;text-align:center">
             Error loading data and no cached data found.
             <button type="button" id="retryLoad" class="btn sm" style="margin-left:8px">Retry</button>
           </td>
@@ -5115,7 +5144,7 @@ function withResourceParam(url, resource, extraParams = {}) {
 
 /* ---------- Excel export ---------- */
 function buildIssueExportRow(issue) {
-  return {
+  const row = {
      'Ticket ID': issue.id,
     Date: issue.date,
     Name: issue.name,
@@ -5129,13 +5158,16 @@ function buildIssueExportRow(issue) {
     Category: issue.type,
     Status: issue.status,
     'Notification Sent': issue.notificationSent,
-    'YouTrack Reference': issue.youtrackReference,
-    'Dev Team Status': issue.devTeamStatus,
-    'Issue Related': issue.issueRelated,
-    Notes: issue.notes,
     Log: issue.log,
     'Notification Sent Under Review': issue.notificationUnderReview
   };
+  if (Permissions.isAdmin()) {
+    row['YouTrack Reference'] = issue.youtrackReference;
+    row['Dev Team Status'] = issue.devTeamStatus;
+    row['Issue Related'] = issue.issueRelated;
+    row.Notes = issue.notes;
+  }
+  return row;
 }
 
 const ISSUE_EXPORT_HEADERS = [
@@ -5152,12 +5184,15 @@ const ISSUE_EXPORT_HEADERS = [
   'Category',
   'Status',
   'Notification Sent',
+  'Log',
+  'Notification Sent Under Review'
+];
+
+const ISSUE_EXPORT_HEADERS_ADMIN_ONLY = [
   'YouTrack Reference',
   'Dev Team Status',
   'Issue Related',
-  'Notes',
-  'Log',
-  'Notification Sent Under Review'
+  'Notes'
 ];
 
 function exportIssuesToExcel(rows, suffix) {
@@ -5170,14 +5205,17 @@ function exportIssuesToExcel(rows, suffix) {
  
   
   const issueRows = rows.map(buildIssueExportRow);
+  const headers = Permissions.isAdmin()
+    ? [...ISSUE_EXPORT_HEADERS.slice(0, 13), ...ISSUE_EXPORT_HEADERS_ADMIN_ONLY, ...ISSUE_EXPORT_HEADERS.slice(13)]
+    : ISSUE_EXPORT_HEADERS;
   const wsIssues = XLSX.utils.json_to_sheet([]);
-  XLSX.utils.sheet_add_aoa(wsIssues, [ISSUE_EXPORT_HEADERS]);
+  XLSX.utils.sheet_add_aoa(wsIssues, [headers]);
   XLSX.utils.sheet_add_json(wsIssues, issueRows, {
-    header: ISSUE_EXPORT_HEADERS,
+    header: headers,
     skipHeader: true,
     origin: 'A2'
   });
-   wsIssues['!cols'] = ISSUE_EXPORT_HEADERS.map(h => ({ wch: Math.max(12, h.length + 4) }));
+   wsIssues['!cols'] = headers.map(h => ({ wch: Math.max(12, h.length + 4) }));
 
   const statusCounts = rows.reduce((acc, r) => {
     acc[r.status] = (acc[r.status] || 0) + 1;
@@ -5224,7 +5262,7 @@ function buildIssueDetailExportRows(issue, risk = {}, meta = {}) {
     .map(c => c.label)
     .join(', ') || '—';
   const reasons = risk.reasons?.length ? risk.reasons.join(', ') : '—';
-  return [
+  const rows = [
     ['Ticket', `TICKET:${issue.id || '-'}`],
     ['Name', issue.name || 'Unknown'],
     ['Title', issue.title || 'Untitled ticket'],
@@ -5239,10 +5277,6 @@ function buildIssueDetailExportRows(issue, risk = {}, meta = {}) {
     ['Email', issue.email || '—'],
     ['Email Addressee', issue.emailAddressee || '—'],
     ['Notification Sent', issue.notificationSent || '—'],
-    ['YouTrack Reference', issue.youtrackReference || '—'],
-    ['Dev Team Status', issue.devTeamStatus || '—'],
-    ['Issue Related', issue.issueRelated || '—'],
-    ['Notes', issue.notes || '—'],
     ['Notification Under Review', issue.notificationUnderReview || '—'],
     ['Log', issue.log || '—'],
     ['Suggested Priority', meta.suggestions?.priority || '—'],
@@ -5251,6 +5285,17 @@ function buildIssueDetailExportRows(issue, risk = {}, meta = {}) {
     ['Severity / Impact / Urgency', `${risk.severity || 0} / ${risk.impact || 0} / ${risk.urgency || 0}`],
     ['Reasons', reasons]
   ];
+  if (Permissions.isAdmin()) {
+    rows.splice(
+      14,
+      0,
+      ['YouTrack Reference', issue.youtrackReference || '—'],
+      ['Dev Team Status', issue.devTeamStatus || '—'],
+      ['Issue Related', issue.issueRelated || '—'],
+      ['Notes', issue.notes || '—']
+    );
+  }
+  return rows;
 }
 
 function exportSelectedIssueToExcel() {
