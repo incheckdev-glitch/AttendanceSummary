@@ -1992,6 +1992,7 @@ function cacheEls() {
     'heroChangeReadiness',
     'shortcutsHelp',
     'healthRefreshBtn',
+    'healthSheetSubtext',
     'healthStatusBadge',
     'healthLastChecked',
     'healthLatency',
@@ -4152,47 +4153,80 @@ const HealthMonitor = {
     };
   },
 
+  candidateTabNames() {
+    const preferred = String(CONFIG.HEALTH_MONITOR.SHEET_NAME || '').trim();
+    const fallbacks = ['Table2', 'Monitor Health', 'Sheet1'];
+    const deduped = new Set();
+    [preferred, ...fallbacks].forEach(name => {
+      const tab = String(name || '').trim();
+      if (tab) deduped.add(tab);
+    });
+    return [...deduped];
+  },
+
+  async fetchRowsForTab(tabName) {
+    const auth = Session.authContext();
+    const readPasscode = String(CONFIG.HEALTH_MONITOR.WRITE_PASSCODE || '').trim();
+    const endpoint = withResourceParam(CONFIG.HEALTH_MONITOR.POST_URL, 'health_monitor', {
+      action: 'read',
+      sheetName: tabName,
+      tabName,
+      public: 'true',
+      access: 'public',
+      role: auth.role || '',
+      sessionRole: auth.role || '',
+      authCode: auth.authCode || '',
+      passcode: readPasscode,
+      password: readPasscode
+    });
+    const res = await fetch(endpoint, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`Health monitor API failed: ${res.status}`);
+    const raw = await res.text();
+    const data = parseApiJson(raw, 'Health monitor API');
+
+    if (
+      data &&
+      typeof data === 'object' &&
+      (data.ok === false || data.success === false)
+    ) {
+      throw new Error(data.error || data.message || 'Health monitor API rejected read access.');
+    }
+
+    return extractHealthMonitorPayload(data)
+      .map(item => this.normalizeRow(item))
+      .filter(item => Number.isFinite(item.ts))
+      .sort((a, b) => b.ts - a.ts);
+  },
+
   async loadFromSheet(force = false) {
     if (this.loading || !CONFIG.HEALTH_MONITOR.POST_URL) return;
     this.loading = true;
     this.render();
 
     try {
-      const auth = Session.authContext();
-      const readPasscode = String(CONFIG.HEALTH_MONITOR.WRITE_PASSCODE || '').trim();
-      const endpoint = withResourceParam(CONFIG.HEALTH_MONITOR.POST_URL, 'health_monitor', {
-        action: 'read',
-        sheetName: CONFIG.HEALTH_MONITOR.SHEET_NAME,
-        tabName: CONFIG.HEALTH_MONITOR.SHEET_NAME,
-        public: 'true',
-        access: 'public',
-        role: auth.role || '',
-        sessionRole: auth.role || '',
-        authCode: auth.authCode || '',
-        passcode: readPasscode,
-        password: readPasscode
-      });
-      const res = await fetch(endpoint, { cache: 'no-store' });
-      if (!res.ok) throw new Error(`Health monitor API failed: ${res.status}`);
-      const raw = await res.text();
-      const data = parseApiJson(raw, 'Health monitor API');
-
-      if (
-        data &&
-        typeof data === 'object' &&
-        (data.ok === false || data.success === false)
-      ) {
-        throw new Error(data.error || data.message || 'Health monitor API rejected read access.');
+      const tabNames = this.candidateTabNames();
+      let rows = [];
+      let chosenTab = '';
+      let latestError = null;
+      for (const tabName of tabNames) {
+        try {
+          const candidateRows = await this.fetchRowsForTab(tabName);
+          if (candidateRows.length > rows.length) {
+            rows = candidateRows;
+            chosenTab = tabName;
+          }
+          if (candidateRows.length) break;
+        } catch (error) {
+          latestError = error;
+        }
       }
+      if (!rows.length && latestError) throw latestError;
 
-      const rows = extractHealthMonitorPayload(data)
-        .map(item => this.normalizeRow(item))
-        .filter(item => Number.isFinite(item.ts))
-        .sort((a, b) => b.ts - a.ts)
-        .slice(0, CONFIG.HEALTH_MONITOR.MAX_HISTORY);
-
-      this.history = rows;
+      this.history = rows.slice(0, CONFIG.HEALTH_MONITOR.MAX_HISTORY);
       this.lastLoadedAt = Date.now();
+      if (chosenTab && E.healthSheetSubtext) {
+        E.healthSheetSubtext.textContent = `Health telemetry loaded directly from Google Sheet tab ${chosenTab}.`;
+      }
       if (force) UI.toast('Health monitor refreshed from sheet.');
     } catch (error) {
       UI.toast(`Unable to load Monitor Health: ${error.message}`);
