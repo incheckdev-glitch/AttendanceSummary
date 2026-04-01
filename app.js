@@ -322,6 +322,9 @@ const Permissions = {
   isAdmin() {
     return Session.role() === ROLES.ADMIN;
   },
+  canViewHealthMonitor() {
+    return this.isAdmin();
+  },
   canCreateTicket() {
     return Session.isAuthenticated();
   },
@@ -2110,6 +2113,11 @@ const UI = {
       E.devTeamStatusFilterRow.style.display = canUseInternalIssueFilters ? '' : 'none';
     if (E.issueRelatedFilterRow)
       E.issueRelatedFilterRow.style.display = canUseInternalIssueFilters ? '' : 'none';
+    if (E.healthTab) E.healthTab.style.display = Permissions.canViewHealthMonitor() ? '' : 'none';
+
+    if (!Permissions.canViewHealthMonitor() && E.healthView?.classList.contains('active')) {
+      setActiveView('issues');
+    }
 
     // Re-apply role-scoped column visibility immediately after login/logout
     // so viewer-restricted columns are hidden without requiring refresh.
@@ -4079,6 +4087,10 @@ function trapFocus(container, e) {
 }
 
 function setActiveView(view) {
+  if (view === 'health' && !Permissions.canViewHealthMonitor()) {
+    UI.toast('Only admin can access the Health Monitor tab.');
+    view = 'issues';
+  }
  const names = ['issues', 'calendar', 'insights', 'health'];
   names.forEach(name => {
     const tab =
