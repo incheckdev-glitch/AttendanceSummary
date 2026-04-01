@@ -229,6 +229,21 @@ const Session = {
     role: null,
     authCode: ''
   },
+  clearRoleScopedCache() {
+    const roleScopedKeys = [
+      LS_KEYS.issues,
+      LS_KEYS.issuesLastUpdated,
+      LS_KEYS.events,
+      LS_KEYS.eventsLastUpdated,
+      LS_KEYS.dataVersion,
+      LS_KEYS.calendarReadPasscode
+    ];
+    roleScopedKeys.forEach(key => {
+      try {
+        localStorage.removeItem(key);
+      } catch {}
+    });
+  },
   restore() {
     try {
       const raw = localStorage.getItem(LS_KEYS.session);
@@ -252,10 +267,14 @@ const Session = {
     const normalizedRole =
       role === ROLES.ADMIN ? ROLES.ADMIN : role === ROLES.VIEWER ? ROLES.VIEWER : null;
     if (!normalizedRole) return false;
+    const previousRole = this.state.role;
     const expected =
       normalizedRole === ROLES.ADMIN ? CONFIG.ADMIN_PASSCODE : '';
     const entered = String(passcode || '');
     if (expected && entered !== expected) return false;
+    if (previousRole && previousRole !== normalizedRole) {
+      this.clearRoleScopedCache();
+    }
     this.state.role = normalizedRole;
     this.state.authCode = entered;
     this.persist();
