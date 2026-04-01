@@ -2075,6 +2075,11 @@ const UI = {
       E.devTeamStatusFilterRow.style.display = canUseInternalIssueFilters ? '' : 'none';
     if (E.issueRelatedFilterRow)
       E.issueRelatedFilterRow.style.display = canUseInternalIssueFilters ? '' : 'none';
+
+    // Re-apply role-scoped column visibility immediately after login/logout
+    // so viewer-restricted columns are hidden without requiring refresh.
+    ColumnManager.renderPanel();
+    ColumnManager.apply();
   },
   updateHeroMetrics(rows) {
     if (!E.heroTriagePct && !E.heroHighImpactCount && !E.heroChangeReadiness) return;
