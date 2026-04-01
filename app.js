@@ -202,6 +202,9 @@ CATEGORY_ORDER: [
     INTERVAL_MS: 60_000,
     TIMEOUT_MS: 10_000,
     MAX_HISTORY: 25,
+    READ_URL:
+      RUNTIME_CONFIG.HEALTH_MONITOR_READ_URL ||
+      `${APPS_SCRIPT_WEBAPP_URL}?resource=monitor_health`,
     ENABLE_POST_TO_SHEET: RUNTIME_CONFIG.HEALTH_MONITOR_ENABLE_POST_TO_SHEET !== false,
     POST_URL:
       RUNTIME_CONFIG.HEALTH_MONITOR_POST_URL ||
@@ -4167,7 +4170,7 @@ const HealthMonitor = {
   async fetchRowsForTab(tabName) {
     const auth = Session.authContext();
     const readPasscode = String(CONFIG.HEALTH_MONITOR.WRITE_PASSCODE || '').trim();
-    const endpoint = withResourceParam(CONFIG.HEALTH_MONITOR.POST_URL, 'health_monitor', {
+    const endpoint = withResourceParam(CONFIG.HEALTH_MONITOR.READ_URL, 'monitor_health', {
       action: 'read',
       sheetName: tabName,
       tabName,
@@ -4199,7 +4202,7 @@ const HealthMonitor = {
   },
 
   async loadFromSheet(force = false) {
-    if (this.loading || !CONFIG.HEALTH_MONITOR.POST_URL) return;
+    if (this.loading || !CONFIG.HEALTH_MONITOR.READ_URL) return;
     this.loading = true;
     this.render();
 
