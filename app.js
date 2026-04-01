@@ -269,8 +269,17 @@ const Session = {
   },
   authContext() {
     return { role: this.role(), authCode: this.state.authCode || '' };
+  },
+  setAuthCode(passcode = '') {
+    this.state.authCode = String(passcode || '');
+    this.persist();
   }
 };
+
+function isPasscodeAuthError(error) {
+  const message = String(error?.message || '');
+  return /unauthorized|invalid\s+passcode|forbidden/i.test(message);
+}
 
 const Permissions = {
   isAdmin() {
@@ -3781,6 +3790,29 @@ const issueUpdate = {
     UI.Modals.closeIssue();
     UI.refreshAll();
   } catch (error) {
+    if (isPasscodeAuthError(error)) {
+      const entered = window.prompt('Ticket updates require a valid passcode. Enter passcode to retry:');
+      if (entered !== null) {
+        const trimmed = entered.trim();
+        if (trimmed) {
+          try {
+            Session.setAuthCode(trimmed);
+            const updatedIssue = await saveIssueToSheet(issueUpdate, Session.authContext());
+            if (!updatedIssue) throw new Error('Issue update did not return a response.');
+            applyIssueUpdate(updatedIssue);
+            IssueEditor.close();
+            UI.Modals.closeIssue();
+            UI.refreshAll();
+            return;
+          } catch (retryError) {
+            console.error('Failed to update ticket after passcode retry', retryError);
+            UI.toast(`Failed to update ticket: ${retryError.message}`);
+            return;
+          }
+        }
+      }
+    }
+
     console.error('Failed to update ticket', error);
     UI.toast(`Failed to update ticket: ${error.message}`);
   }
