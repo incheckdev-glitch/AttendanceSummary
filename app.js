@@ -5089,6 +5089,29 @@ function mapRowsWithHeaders(headers, rows) {
     });
 }
 
+function isLikelyHealthRow(row) {
+  if (!row || typeof row !== 'object') return false;
+  const ts = getEventField(row, [
+    'checked_at_utc',
+    'checked_at',
+    'checked at',
+    'checkedAt',
+    'timestamp',
+    'created_at',
+    'datetime',
+    'date'
+  ]);
+  const hasTimestamp = Number.isFinite(Date.parse(String(ts || '').trim()));
+  const hasUpState = String(getEventField(row, ['is_up', 'is up', 'status', 'health', 'state']) || '').trim() !== '';
+  const hasLatency = String(getEventField(row, ['latency_ms', 'latency ms', 'latency']) || '').trim() !== '';
+  return hasTimestamp && (hasUpState || hasLatency);
+}
+
+function scoreHealthPayload(rows) {
+  if (!Array.isArray(rows) || !rows.length) return 0;
+  return rows.reduce((score, row) => score + (isLikelyHealthRow(row) ? 1 : 0), 0);
+}
+
 function extractHealthMonitorPayload(data) {
   if (typeof data === 'string') {
     try {
@@ -5104,10 +5127,13 @@ function extractHealthMonitorPayload(data) {
     if (Array.isArray(first)) {
       const [headers = [], ...rows] = data;
       if (Array.isArray(headers) && headers.length) {
-        return mapRowsWithHeaders(headers, rows);
+        const mappedRows = mapRowsWithHeaders(headers, rows);
+        if (scoreHealthPayload(mappedRows) > 0) return mappedRows;
+        return [];
       }
     }
-    return data;
+    if (scoreHealthPayload(data) > 0) return data;
+    return [];
   }
   if (!data || typeof data !== 'object') return [];
 
@@ -5128,18 +5154,24 @@ function extractHealthMonitorPayload(data) {
     data.monitorHealth,
     data.contents
   ];
+  let bestRows = [];
+  let bestScore = 0;
   for (const candidate of candidates) {
+    let nested = [];
     if (Array.isArray(candidate) || (candidate && typeof candidate === 'object')) {
-      const nested = extractHealthMonitorPayload(candidate);
-      if (nested.length) return nested;
+      nested = extractHealthMonitorPayload(candidate);
     }
     if (typeof candidate === 'string') {
-      const nested = extractHealthMonitorPayload(candidate);
-      if (nested.length) return nested;
+      nested = extractHealthMonitorPayload(candidate);
+    }
+    const score = scoreHealthPayload(nested);
+    if (score > bestScore) {
+      bestRows = nested;
+      bestScore = score;
     }
   }
 
-  return [];
+  return bestRows;
 }
 
 function normalizeEventDate(value) {
