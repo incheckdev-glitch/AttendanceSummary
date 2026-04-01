@@ -4168,28 +4168,33 @@ const HealthMonitor = {
   async postResultToSheet(record) {
     if (!CONFIG.HEALTH_MONITOR.ENABLE_POST_TO_SHEET || !CONFIG.HEALTH_MONITOR.POST_URL) return;
     const row = this.buildSheetRow(record);
+    const writePasscode = String(CONFIG.HEALTH_MONITOR.WRITE_PASSCODE || '');
     const endpoint = withResourceParam(CONFIG.HEALTH_MONITOR.POST_URL, 'health_monitor', {
       sheetName: CONFIG.HEALTH_MONITOR.SHEET_NAME,
       tabName: CONFIG.HEALTH_MONITOR.SHEET_NAME
     });
-    const payloads = [
-      {
+    const authFields = {
+      passcode: writePasscode,
+      password: writePasscode,
+      authCode: writePasscode
+    };
+    const payloads = [];
+    const pushPayload = (action, data) => {
+      payloads.push({
         resource: 'health_monitor',
-        action: 'save',
-        row,
+        action,
         sheetName: CONFIG.HEALTH_MONITOR.SHEET_NAME,
         tabName: CONFIG.HEALTH_MONITOR.SHEET_NAME,
-        passcode: CONFIG.HEALTH_MONITOR.WRITE_PASSCODE
-      },
-      {
-        resource: 'health_monitor',
-        action: 'append',
-        ...row,
-        sheetName: CONFIG.HEALTH_MONITOR.SHEET_NAME,
-        tabName: CONFIG.HEALTH_MONITOR.SHEET_NAME,
-        passcode: CONFIG.HEALTH_MONITOR.WRITE_PASSCODE
-      }
-    ];
+        ...authFields,
+        ...data
+      });
+    };
+
+    pushPayload('save', { row });
+    pushPayload('save', { event: row });
+    pushPayload('save', { record: row });
+    pushPayload('append', { row });
+    pushPayload('append', row);
 
     for (const payload of payloads) {
       try {
@@ -4204,6 +4209,11 @@ const HealthMonitor = {
           parsed = raw ? parseApiJson(raw, 'Health monitor API') : null;
         } catch {}
         if (res.ok && (!parsed || parsed.ok === true || parsed.success === true)) return;
+        console.warn('Health monitor: write attempt rejected', {
+          action: payload.action,
+          status: res.status,
+          response: raw?.slice?.(0, 250) || ''
+        });
       } catch {}
     }
     console.warn('Health monitor: unable to persist check to Google Sheet tab.');
