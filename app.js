@@ -1796,6 +1796,16 @@ function cacheEls() {
     'issuesTbody',
     'tbodySkeleton',
     'columnToggleBtn',
+    'bulkEditBtn',
+    'bulkEditModal',
+    'bulkEditForm',
+    'bulkEditClose',
+    'bulkEditCancel',
+    'bulkIssueIds',
+    'bulkPriority',
+    'bulkStatus',
+    'bulkDevTeamStatus',
+    'bulkNotes',
     'columnPanel',
     'columnList',
     'rowCount',
@@ -2017,6 +2027,7 @@ const UI = {
     if (E.plannerAssignBtn) E.plannerAssignBtn.style.display = canChangePlanner ? '' : 'none';
     if (E.releasePlannerCard) E.releasePlannerCard.style.display = canChangePlanner ? '' : 'none';
     if (E.editIssueBtn) E.editIssueBtn.style.display = Permissions.canEditTicket() ? '' : 'none';
+    if (E.bulkEditBtn) E.bulkEditBtn.style.display = Permissions.canEditTicket() ? '' : 'none';
     if (E.devTeamStatusFilterRow)
       E.devTeamStatusFilterRow.style.display = canUseInternalIssueFilters ? '' : 'none';
     if (E.issueRelatedFilterRow)
@@ -3723,6 +3734,40 @@ const IssueEditor = {
   }
 };
 
+const BulkEditor = {
+  parseIds(raw = '') {
+    return Array.from(
+      new Set(
+        String(raw || '')
+          .split(/[\n,]/g)
+          .map(v => v.trim())
+          .filter(Boolean)
+      )
+    );
+  },
+  open() {
+    if (!E.bulkEditModal) return;
+    if (E.bulkIssueIds) {
+      const filtered = UI.Issues.applyFilters().map(r => r.id).filter(Boolean);
+      E.bulkIssueIds.value = filtered.slice(0, 30).join(', ');
+    }
+    IssueEditor.syncSelectOptions(
+      E.bulkDevTeamStatus,
+      IssueEditor.DEV_TEAM_STATUS_OPTIONS.concat((DataStore.rows || []).map(r => r.devTeamStatus)),
+      '',
+      'Keep current'
+    );
+    if (E.bulkPriority) E.bulkPriority.value = '';
+    if (E.bulkStatus) E.bulkStatus.value = '';
+    if (E.bulkNotes) E.bulkNotes.value = '';
+    E.bulkEditModal.style.display = 'flex';
+    E.bulkIssueIds?.focus?.();
+  },
+  close() {
+    if (E.bulkEditModal) E.bulkEditModal.style.display = 'none';
+  }
+};
+
 function buildIssueReplyMail(issue) {
   const khaledEmail = 'khaled.yakan@incheck360.nl';
   const toEmail = khaledEmail;
@@ -3869,6 +3914,66 @@ const issueUpdate = {
     UI.toast(`Failed to update ticket: ${error.message}`);
   }
   }
+
+async function onBulkEditSubmit(event) {
+  event.preventDefault();
+  if (!requirePermission(() => Permissions.canEditTicket(), 'Only admin can bulk edit tickets.')) return;
+
+  const ticketIds = BulkEditor.parseIds(E.bulkIssueIds?.value || '');
+  const patch = {
+    priority: E.bulkPriority?.value || '',
+    status: E.bulkStatus?.value || '',
+    devTeamStatus: (E.bulkDevTeamStatus?.value || '').trim(),
+    notes: (E.bulkNotes?.value || '').trim()
+  };
+  const changedKeys = Object.keys(patch).filter(key => patch[key]);
+
+  if (!ticketIds.length) {
+    UI.toast('Enter at least one ticket ID.');
+    return;
+  }
+  if (!changedKeys.length) {
+    UI.toast('Choose at least one field to update.');
+    return;
+  }
+
+  let success = 0;
+  const failures = [];
+  UI.spinner(true);
+  try {
+    for (const id of ticketIds) {
+      const baseIssue = DataStore.byId.get(id);
+      if (!baseIssue) {
+        failures.push(`${id} (not found in dataset)`);
+        continue;
+      }
+      const payload = {
+        ...baseIssue,
+        ...patch,
+        id
+      };
+      try {
+        const updated = await saveIssueToSheet(payload, Session.authContext(), { silent: true });
+        if (!updated) throw new Error('No response');
+        applyIssueUpdate(updated);
+        success += 1;
+      } catch (error) {
+        failures.push(`${id} (${error.message})`);
+      }
+    }
+  } finally {
+    UI.spinner(false);
+  }
+
+  BulkEditor.close();
+  UI.refreshAll();
+  if (!failures.length) {
+    UI.toast(`Bulk update completed: ${success} ticket(s) updated.`);
+    return;
+  }
+  UI.toast(`Bulk update done: ${success} updated, ${failures.length} failed.`);
+  console.error('Bulk update failures', failures);
+}
 
 
 function debounce(fn, ms = 250) {
@@ -6474,6 +6579,34 @@ function wireModals() {
  const editIssueForm = document.getElementById('editIssueForm');
   if (editIssueForm) {
     editIssueForm.addEventListener('submit', onEditIssueSubmit);
+  }
+  if (E.bulkEditBtn) {
+    E.bulkEditBtn.addEventListener('click', () => {
+      if (!requirePermission(() => Permissions.canEditTicket(), 'Only admin can bulk edit tickets.')) return;
+      BulkEditor.open();
+    });
+  }
+  if (E.bulkEditClose) {
+    E.bulkEditClose.addEventListener('click', () => BulkEditor.close());
+  }
+  if (E.bulkEditCancel) {
+    E.bulkEditCancel.addEventListener('click', () => BulkEditor.close());
+  }
+  if (E.bulkEditModal) {
+    E.bulkEditModal.addEventListener('click', e => {
+      if (e.target === E.bulkEditModal) BulkEditor.close();
+    });
+    E.bulkEditModal.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        BulkEditor.close();
+      } else if (e.key === 'Tab') {
+        trapFocus(E.bulkEditModal, e);
+      }
+    });
+  }
+  if (E.bulkEditForm) {
+    E.bulkEditForm.addEventListener('submit', onBulkEditSubmit);
   }
   // Event modal
   if (E.eventModalClose) {

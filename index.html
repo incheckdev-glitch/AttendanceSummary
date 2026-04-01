@@ -218,6 +218,9 @@
             </div>
           <div class="table-tools">
               <span id="rowCount" class="muted" aria-live="polite"></span>
+              <button id="bulkEditBtn" class="btn ghost sm" type="button">
+                Bulk edit
+              </button>
               <button id="columnToggleBtn" class="btn ghost sm" type="button" aria-expanded="false">
                 Columns
               </button>
@@ -590,6 +593,70 @@
       </section>
       
     </main>
+  </div>
+
+  <!-- Bulk Edit Modal -->
+  <div id="bulkEditModal" class="modal" role="dialog" aria-modal="true"
+       aria-labelledby="bulkEditTitle" aria-describedby="bulkEditBody">
+    <div class="modal-content">
+      <div class="header">
+        <h2 id="bulkEditTitle" style="margin:0;font-size:20px">Bulk Edit Tickets</h2>
+        <div class="actions">
+          <button class="modal-close" id="bulkEditClose" aria-label="Close bulk edit dialog">✕</button>
+        </div>
+      </div>
+      <form id="bulkEditForm">
+        <div id="bulkEditBody">
+          <div class="filter-group">
+            <div class="muted" style="font-size:12px;margin-bottom:10px;">
+              Admin-only bulk update. Leave a field empty to keep current values unchanged.
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="bulkIssueIds">Ticket IDs (comma or new line separated)</label>
+              <textarea id="bulkIssueIds" class="input" rows="4"
+                        placeholder="e.g. 10293, 10294&#10;INC-309"></textarea>
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="bulkPriority">Priority</label>
+              <select id="bulkPriority" class="select">
+                <option value="">Keep current</option>
+                <option value="High">High</option>
+                <option value="Medium">Medium</option>
+                <option value="Low">Low</option>
+              </select>
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="bulkStatus">Status</label>
+              <select id="bulkStatus" class="select">
+                <option value="">Keep current</option>
+                <option value="Not Started Yet">Not Started Yet</option>
+                <option value="Under Development">Under Development</option>
+                <option value="On Hold">On Hold</option>
+                <option value="On Stage">On Stage</option>
+                <option value="Sent">Sent</option>
+                <option value="Resolved">Resolved</option>
+                <option value="Rejected">Rejected</option>
+              </select>
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="bulkDevTeamStatus">Dev Team Status</label>
+              <select id="bulkDevTeamStatus" class="select">
+                <option value="">Keep current</option>
+              </select>
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="bulkNotes">Notes</label>
+              <textarea id="bulkNotes" class="input" rows="3"
+                        placeholder="Optional replacement notes applied to all selected tickets"></textarea>
+            </div>
+          </div>
+          <div class="actions" style="justify-content:flex-end;gap:8px;">
+            <button type="button" class="btn ghost" id="bulkEditCancel">Cancel</button>
+            <button type="submit" class="btn primary">Apply bulk update</button>
+          </div>
+        </div>
+      </form>
+    </div>
   </div>
 
   <!-- Issue Modal -->
