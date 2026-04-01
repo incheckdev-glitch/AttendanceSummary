@@ -474,15 +474,15 @@
 
       <!-- Monitor Health view -->
       <section id="healthView" class="view" role="tabpanel" aria-labelledby="healthTab">
-        <div class="card">
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div class="card health-header-card">
+          <div class="health-header">
             <div>
               <strong>App Monitor — app.incheck360.com</strong>
-              <div class="muted" style="font-size:12px;margin-top:4px;">
-                Lightweight uptime checks from this browser session.
+              <div class="muted health-subtitle">
+                Professional uptime telemetry based on this browser session (rolling window).
               </div>
             </div>
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <div class="health-actions">
               <a id="healthOpenAppLink" class="btn ghost sm" href="https://app.incheck360.com/" target="_blank" rel="noopener noreferrer">
                 Open app
               </a>
@@ -494,25 +494,52 @@
         <div class="grid cols-4">
           <div class="card">
             <strong>Current status</strong>
-            <div id="healthStatusBadge" class="chip" style="margin-top:8px;">Unknown</div>
+            <div id="healthStatusBadge" class="chip health-chip">Unknown</div>
           </div>
           <div class="card">
             <strong>Last checked</strong>
-            <div id="healthLastChecked" class="muted" style="margin-top:8px;">--</div>
+            <div id="healthLastChecked" class="muted health-metric">--</div>
           </div>
           <div class="card">
             <strong>Last response time</strong>
-            <div id="healthLatency" class="muted" style="margin-top:8px;">--</div>
+            <div id="healthLatency" class="muted health-metric">--</div>
           </div>
           <div class="card">
-            <strong>Session uptime ratio</strong>
-            <div id="healthUptime" class="muted" style="margin-top:8px;">--</div>
+            <strong>Availability (window)</strong>
+            <div id="healthUptime" class="muted health-metric">--</div>
+          </div>
+        </div>
+
+        <div class="grid cols-4">
+          <div class="card">
+            <strong>Average latency</strong>
+            <div id="healthAvgLatency" class="muted health-metric">--</div>
+          </div>
+          <div class="card">
+            <strong>P95 latency</strong>
+            <div id="healthP95Latency" class="muted health-metric">--</div>
+          </div>
+          <div class="card">
+            <strong>Latest incident streak</strong>
+            <div id="healthFailureStreak" class="muted health-metric">--</div>
+          </div>
+          <div class="card">
+            <strong>Failed checks (window)</strong>
+            <div id="healthFailureCount" class="muted health-metric">--</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <strong>Window health bar</strong>
+          <div id="healthWindowBar" class="health-window-bar" aria-label="Health checks history bar"></div>
+          <div class="muted" style="margin-top:8px;">
+            Green = successful check · Orange = failed check
           </div>
         </div>
 
         <div class="card">
           <strong>Recent checks</strong>
-          <ul id="healthChecksList" class="muted" style="font-size:13px;margin-top:8px;padding-left:18px;"></ul>
+          <ul id="healthChecksList" class="muted health-check-list"></ul>
         </div>
       </section>
 
