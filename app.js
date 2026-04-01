@@ -195,6 +195,13 @@ CATEGORY_ORDER: [
     ]
     // Note: public / religious holidays are taken from the calendar feed
     // (events whose type or description indicate a holiday / Eid / Ramadan, etc.).
+  },
+  HEALTH_MONITOR: {
+    TARGET_LABEL: 'app.incheck360.com',
+    TARGET_URL: 'https://app.incheck360.com/',
+    INTERVAL_MS: 60_000,
+    TIMEOUT_MS: 10_000,
+    MAX_HISTORY: 25
   }
 };
 
@@ -1916,9 +1923,11 @@ function cacheEls() {
     'issuesTab',
     'calendarTab',
     'insightsTab',
+    'healthTab',
     'issuesView',
     'calendarView',
     'insightsView',
+    'healthView',
     'addEventBtn',
     'eventModal',
     'eventModalTitle',
@@ -1974,6 +1983,12 @@ function cacheEls() {
     'heroHighImpactCount',
     'heroChangeReadiness',
     'shortcutsHelp',
+    'healthRefreshBtn',
+    'healthStatusBadge',
+    'healthLastChecked',
+    'healthLatency',
+    'healthUptime',
+    'healthChecksList',
     'aiQueryExport',
     'eventAllDay',
     'eventEnv',
@@ -4039,20 +4054,24 @@ function trapFocus(container, e) {
 }
 
 function setActiveView(view) {
- const names = ['issues', 'calendar', 'insights'];
+ const names = ['issues', 'calendar', 'insights', 'health'];
   names.forEach(name => {
     const tab =
       name === 'issues'
         ? E.issuesTab
         : name === 'calendar'
         ? E.calendarTab
-      : E.insightsTab;
+      : name === 'insights'
+      ? E.insightsTab
+      : E.healthTab;
     const panel =
       name === 'issues'
         ? E.issuesView
         : name === 'calendar'
         ? E.calendarView
-       : E.insightsView;
+       : name === 'insights'
+       ? E.insightsView
+       : E.healthView;
     const active = name === view;
     if (tab) {
       tab.classList.toggle('active', active);
@@ -4069,7 +4088,96 @@ function setActiveView(view) {
     scheduleCalendarResize();
   }
   if (view === 'insights') Analytics.refresh(UI.Issues.applyFilters());
+  if (view === 'health') HealthMonitor.start();
 }
+
+const HealthMonitor = {
+  history: [],
+  timerId: null,
+  checking: false,
+
+  formatTs(ts) {
+    try {
+      return new Date(ts).toLocaleString();
+    } catch {
+      return '--';
+    }
+  },
+
+  async checkNow() {
+    if (this.checking) return;
+    this.checking = true;
+    const started = Date.now();
+    let ok = false;
+    let latency = null;
+    let note = 'reachable';
+
+    try {
+      const ctrl = new AbortController();
+      const timeoutId = setTimeout(() => ctrl.abort(), CONFIG.HEALTH_MONITOR.TIMEOUT_MS);
+      await fetch(CONFIG.HEALTH_MONITOR.TARGET_URL, {
+        method: 'GET',
+        mode: 'no-cors',
+        cache: 'no-store',
+        signal: ctrl.signal
+      });
+      clearTimeout(timeoutId);
+      ok = true;
+      latency = Date.now() - started;
+    } catch (error) {
+      note = String(error?.name || 'request_failed');
+    } finally {
+      this.checking = false;
+    }
+
+    this.history.unshift({ ts: Date.now(), ok, latency, note });
+    this.history = this.history.slice(0, CONFIG.HEALTH_MONITOR.MAX_HISTORY);
+    this.render();
+  },
+
+  render() {
+    const latest = this.history[0] || null;
+    if (E.healthStatusBadge) {
+      E.healthStatusBadge.textContent = latest ? (latest.ok ? 'Online' : 'Offline') : 'Unknown';
+      E.healthStatusBadge.className = `chip ${latest?.ok ? 'online' : 'offline'}`;
+    }
+    if (E.healthLastChecked) E.healthLastChecked.textContent = latest ? this.formatTs(latest.ts) : '--';
+    if (E.healthLatency) {
+      E.healthLatency.textContent = latest && Number.isFinite(latest.latency) ? `${latest.latency} ms` : 'n/a';
+    }
+    if (E.healthUptime) {
+      if (!this.history.length) {
+        E.healthUptime.textContent = '--';
+      } else {
+        const up = this.history.filter(h => h.ok).length;
+        const pct = Math.round((up / this.history.length) * 100);
+        E.healthUptime.textContent = `${pct}% (${up}/${this.history.length})`;
+      }
+    }
+    if (E.healthChecksList) {
+      if (!this.history.length) {
+        E.healthChecksList.innerHTML = '<li>No checks yet.</li>';
+      } else {
+        E.healthChecksList.innerHTML = this.history
+          .slice(0, 10)
+          .map(item => {
+            const status = item.ok ? '✅ Online' : `❌ Offline (${U.escapeHtml(item.note)})`;
+            const latencyText = Number.isFinite(item.latency) ? ` · ${item.latency} ms` : '';
+            return `<li>${U.escapeHtml(this.formatTs(item.ts))} · ${status}${latencyText}</li>`;
+          })
+          .join('');
+      }
+    }
+  },
+
+  start() {
+    this.render();
+    if (!this.history.length) this.checkNow();
+    if (!this.timerId) {
+      this.timerId = setInterval(() => this.checkNow(), CONFIG.HEALTH_MONITOR.INTERVAL_MS);
+    }
+  }
+};
 
 /* ---------- Calendar wiring ---------- */
 let calendar = null,
@@ -6145,7 +6253,7 @@ function syncFilterInputs() {
 }
 
 function wireCore() {
-   [E.issuesTab, E.calendarTab, E.insightsTab].forEach(btn => {
+   [E.issuesTab, E.calendarTab, E.insightsTab, E.healthTab].forEach(btn => {
     if (!btn) return;
     btn.addEventListener('click', () => setActiveView(btn.dataset.view));
   });
@@ -6230,8 +6338,11 @@ function wireCore() {
 
   if (E.shortcutsHelp) {
     E.shortcutsHelp.addEventListener('click', () => {
-     UI.toast('Shortcuts: 1/2/3 switch tabs · / focus search · Ctrl+K AI query');
+     UI.toast('Shortcuts: 1/2/3/4 switch tabs · / focus search · Ctrl+K AI query');
     });
+  }
+  if (E.healthRefreshBtn) {
+    E.healthRefreshBtn.addEventListener('click', () => HealthMonitor.checkNow());
   }
 
   if (E.columnToggleBtn && E.columnPanel) {
@@ -7019,13 +7130,15 @@ function wireKeyboardShortcuts() {
 
     if (isInputLike) return;
 
-    // 1/2/3 → switch tabs
+    // 1/2/3/4 → switch tabs
     if (e.key === '1') {
       setActiveView('issues');
     } else if (e.key === '2') {
       setActiveView('calendar');
     } else if (e.key === '3') {
       setActiveView('insights');
+    } else if (e.key === '4') {
+      setActiveView('health');
     }
   });
 }
@@ -7064,7 +7177,9 @@ document.addEventListener('DOMContentLoaded', () => {
   renderFreezeWindows();
   
   const view = localStorage.getItem(LS_KEYS.view) || 'issues';
-  setActiveView(view === 'calendar' || view === 'insights' ? view : 'issues');
+  setActiveView(
+    view === 'calendar' || view === 'insights' || view === 'health' ? view : 'issues'
+  );
 
   loadIssues(false);
   loadEvents(false);

@@ -191,6 +191,10 @@
                 role="tab" aria-selected="false" aria-controls="insightsView">
           <span class="icon" aria-hidden="true">🤖</span> AI Insights
         </button>
+        <button id="healthTab" class="view-tab" data-view="health"
+                role="tab" aria-selected="false" aria-controls="healthView">
+          <span class="icon" aria-hidden="true">🩺</span> Monitor Health
+        </button>
       </div>
 
       <!-- Issues view -->
@@ -198,7 +202,7 @@
         <div class="card summary-bar" id="issuesSummaryCard">
           <span id="issuesSummaryText" aria-live="polite">Loading summary…</span>
           <span id="issuesLastUpdated" class="summary-meta" aria-live="polite">Last updated: --</span>
-         <span class="shortcut-chip">Shortcuts: 1/2/3 tabs · / search · Ctrl+K AI</span>
+         <span class="shortcut-chip">Shortcuts: 1/2/3/4 tabs · / search · Ctrl+K AI</span>
         </div>
 
         <div class="grid cols-4" id="kpis" aria-live="polite"></div>
@@ -465,6 +469,50 @@
               </div>
             </div>
           </div>
+        </div>
+      </section>
+
+      <!-- Monitor Health view -->
+      <section id="healthView" class="view" role="tabpanel" aria-labelledby="healthTab">
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+            <div>
+              <strong>App Monitor — app.incheck360.com</strong>
+              <div class="muted" style="font-size:12px;margin-top:4px;">
+                Lightweight uptime checks from this browser session.
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <a id="healthOpenAppLink" class="btn ghost sm" href="https://app.incheck360.com/" target="_blank" rel="noopener noreferrer">
+                Open app
+              </a>
+              <button id="healthRefreshBtn" class="btn sm" type="button">Run check now</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid cols-4">
+          <div class="card">
+            <strong>Current status</strong>
+            <div id="healthStatusBadge" class="chip" style="margin-top:8px;">Unknown</div>
+          </div>
+          <div class="card">
+            <strong>Last checked</strong>
+            <div id="healthLastChecked" class="muted" style="margin-top:8px;">--</div>
+          </div>
+          <div class="card">
+            <strong>Last response time</strong>
+            <div id="healthLatency" class="muted" style="margin-top:8px;">--</div>
+          </div>
+          <div class="card">
+            <strong>Session uptime ratio</strong>
+            <div id="healthUptime" class="muted" style="margin-top:8px;">--</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <strong>Recent checks</strong>
+          <ul id="healthChecksList" class="muted" style="font-size:13px;margin-top:8px;padding-left:18px;"></ul>
         </div>
       </section>
 
