@@ -509,6 +509,22 @@ const Filters = {
 
 const ColumnManager = {
   restrictedForViewer: new Set(['youtrackReference', 'devTeamStatus', 'issueRelated', 'notes']),
+  defaultVisibleByRole: {
+    [ROLES.ADMIN]: new Set([
+      'id',
+      'date',
+      'title',
+      'desc',
+      'priority',
+      'file',
+      'type',
+      'status',
+      'youtrackReference',
+      'devTeamStatus',
+      'issueRelated',
+      'notes'
+    ])
+  },
   columns: [
     { key: 'id', label: 'Ticket ID' },
     { key: 'date', label: 'Date' },
@@ -544,11 +560,22 @@ const ColumnManager = {
   getVisibleColumnCount() {
     return this.getVisibleColumns().length || this.getAvailableColumns().length || 1;
   },
-  load() {
-    const defaults = this.columns.reduce((acc, col) => {
-      acc[col.key] = true;
+  buildDefaultState() {
+    const role = Session.role();
+    const preferredVisible = this.defaultVisibleByRole[role];
+    if (!preferredVisible) {
+      return this.columns.reduce((acc, col) => {
+        acc[col.key] = true;
+        return acc;
+      }, {});
+    }
+    return this.columns.reduce((acc, col) => {
+      acc[col.key] = preferredVisible.has(col.key);
       return acc;
     }, {});
+  },
+  load() {
+    const defaults = this.buildDefaultState();
     try {
       const raw = localStorage.getItem(LS_KEYS.columns);
       const parsed = raw ? JSON.parse(raw) : null;
@@ -599,10 +626,7 @@ const ColumnManager = {
     return { ...this.state };
   },
   setState(nextState) {
-    const defaults = this.columns.reduce((acc, col) => {
-      acc[col.key] = true;
-      return acc;
-    }, {});
+    const defaults = this.buildDefaultState();
     this.state = { ...defaults, ...(nextState || {}) };
     this.save();
     this.apply();
@@ -7015,8 +7039,9 @@ function wireKeyboardShortcuts() {
 
 document.addEventListener('DOMContentLoaded', () => {
   cacheEls();
+  Session.restore();
   Filters.load();
- ColumnManager.load();
+  ColumnManager.load();
   SavedViews.load();
   ColumnManager.renderPanel();
   ColumnManager.apply();
