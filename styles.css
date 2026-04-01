@@ -433,6 +433,51 @@ header{
 .chip.online{border-color:var(--ok);color:var(--ok)}
 .chip.offline{border-color:var(--warn);color:var(--warn)}
 
+.health-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.health-subtitle{font-size:12px;margin-top:4px}
+.health-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.health-chip,.health-metric{margin-top:8px}
+.health-window-bar{
+  margin-top:10px;
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(12px,1fr));
+  gap:4px;
+}
+.health-window-pill{
+  width:100%;
+  height:14px;
+  border-radius:999px;
+  border:1px solid var(--border);
+  background:var(--neutral);
+}
+.health-window-pill.ok{
+  background:linear-gradient(180deg,rgba(34,197,94,.95),rgba(21,128,61,.95));
+}
+.health-window-pill.bad{
+  background:linear-gradient(180deg,rgba(245,158,11,.95),rgba(217,119,6,.95));
+}
+.health-check-list{
+  font-size:13px;
+  margin-top:8px;
+  padding-left:0;
+  list-style:none;
+  display:grid;
+  gap:6px;
+}
+.health-check-list li{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  border-bottom:1px dashed var(--border);
+  padding-bottom:4px;
+}
+
 /* Layout */
 .wrap{
   display:grid;grid-template-columns:280px minmax(0,1fr);

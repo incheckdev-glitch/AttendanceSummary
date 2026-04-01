@@ -1988,6 +1988,11 @@ function cacheEls() {
     'healthLastChecked',
     'healthLatency',
     'healthUptime',
+    'healthAvgLatency',
+    'healthP95Latency',
+    'healthFailureStreak',
+    'healthFailureCount',
+    'healthWindowBar',
     'healthChecksList',
     'aiQueryExport',
     'eventAllDay',
@@ -4137,6 +4142,25 @@ const HealthMonitor = {
 
   render() {
     const latest = this.history[0] || null;
+    const latencies = this.history
+      .map(item => item.latency)
+      .filter(v => Number.isFinite(v))
+      .sort((a, b) => a - b);
+    const failures = this.history.filter(item => !item.ok).length;
+    const uptimePct = this.history.length
+      ? Math.round((this.history.filter(h => h.ok).length / this.history.length) * 100)
+      : null;
+    const avgLatency = latencies.length
+      ? Math.round(latencies.reduce((sum, value) => sum + value, 0) / latencies.length)
+      : null;
+    const p95Latency = latencies.length
+      ? latencies[Math.max(0, Math.ceil(latencies.length * 0.95) - 1)]
+      : null;
+    const currentFailureStreak = this.history.reduce((streak, item) => {
+      if (streak.broken || item.ok) return { ...streak, broken: true };
+      return { broken: false, count: streak.count + 1 };
+    }, { broken: false, count: 0 }).count;
+
     if (E.healthStatusBadge) {
       E.healthStatusBadge.textContent = latest ? (latest.ok ? 'Online' : 'Offline') : 'Unknown';
       E.healthStatusBadge.className = `chip ${latest?.ok ? 'online' : 'offline'}`;
@@ -4150,8 +4174,27 @@ const HealthMonitor = {
         E.healthUptime.textContent = '--';
       } else {
         const up = this.history.filter(h => h.ok).length;
-        const pct = Math.round((up / this.history.length) * 100);
-        E.healthUptime.textContent = `${pct}% (${up}/${this.history.length})`;
+        E.healthUptime.textContent = `${uptimePct}% (${up}/${this.history.length})`;
+      }
+    }
+    if (E.healthAvgLatency) E.healthAvgLatency.textContent = Number.isFinite(avgLatency) ? `${avgLatency} ms` : 'n/a';
+    if (E.healthP95Latency) E.healthP95Latency.textContent = Number.isFinite(p95Latency) ? `${p95Latency} ms` : 'n/a';
+    if (E.healthFailureStreak) E.healthFailureStreak.textContent = `${currentFailureStreak} check${currentFailureStreak === 1 ? '' : 's'}`;
+    if (E.healthFailureCount) E.healthFailureCount.textContent = `${failures} / ${this.history.length || 0}`;
+    if (E.healthWindowBar) {
+      if (!this.history.length) {
+        E.healthWindowBar.innerHTML = '<span class="muted">No checks yet.</span>';
+      } else {
+        E.healthWindowBar.innerHTML = this.history
+          .slice(0, CONFIG.HEALTH_MONITOR.MAX_HISTORY)
+          .reverse()
+          .map(item => {
+            const status = item.ok ? 'Up' : 'Down';
+            const latencyText = Number.isFinite(item.latency) ? `${item.latency} ms` : 'n/a';
+            const label = `${this.formatTs(item.ts)} · ${status} · ${latencyText}`;
+            return `<span class="health-window-pill ${item.ok ? 'ok' : 'bad'}" title="${U.escapeHtml(label)}" aria-label="${U.escapeHtml(label)}"></span>`;
+          })
+          .join('');
       }
     }
     if (E.healthChecksList) {
@@ -4163,7 +4206,7 @@ const HealthMonitor = {
           .map(item => {
             const status = item.ok ? '✅ Online' : `❌ Offline (${U.escapeHtml(item.note)})`;
             const latencyText = Number.isFinite(item.latency) ? ` · ${item.latency} ms` : '';
-            return `<li>${U.escapeHtml(this.formatTs(item.ts))} · ${status}${latencyText}</li>`;
+            return `<li><span>${U.escapeHtml(this.formatTs(item.ts))}</span><span>${status}${latencyText}</span></li>`;
           })
           .join('');
       }
