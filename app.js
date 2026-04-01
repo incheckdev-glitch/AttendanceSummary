@@ -299,6 +299,9 @@ const Permissions = {
   },
   canManageFreezeWindows() {
     return this.isAdmin();
+  },
+  canUseInternalIssueFilters() {
+    return this.isAdmin();
   }
 };
 
@@ -1787,7 +1790,9 @@ function cacheEls() {
     'priorityFilter',
     'statusFilter',
     'devTeamStatusFilter',
+    'devTeamStatusFilterRow',
     'issueRelatedFilter',
+    'issueRelatedFilterRow',
     'resetBtn',
     'refreshNow',
     'exportCsv',
@@ -1975,6 +1980,16 @@ const UI = {
   },
   applyRolePermissions() {
     const role = Session.role() || 'guest';
+    const canUseInternalIssueFilters = Permissions.canUseInternalIssueFilters();
+
+    if (!canUseInternalIssueFilters) {
+      Filters.state.devTeamStatus = 'All';
+      Filters.state.issueRelated = 'All';
+      Filters.save();
+      setIfOptionExists(E.devTeamStatusFilter, 'All');
+      setIfOptionExists(E.issueRelatedFilter, 'All');
+    }
+
     if (E.currentRoleChip) E.currentRoleChip.textContent = `Role: ${role}`;
     if (E.addEventBtn) E.addEventBtn.style.display = Permissions.canManageEvents() ? '' : 'none';
     if (E.freezeManageBtn)
@@ -1984,6 +1999,10 @@ const UI = {
     if (E.plannerAddEvent) E.plannerAddEvent.style.display = Permissions.canChangePlanner() ? '' : 'none';
     if (E.plannerAssignBtn) E.plannerAssignBtn.style.display = Permissions.canChangePlanner() ? '' : 'none';
     if (E.editIssueBtn) E.editIssueBtn.style.display = Permissions.canEditTicket() ? '' : 'none';
+    if (E.devTeamStatusFilterRow)
+      E.devTeamStatusFilterRow.style.display = canUseInternalIssueFilters ? '' : 'none';
+    if (E.issueRelatedFilterRow)
+      E.issueRelatedFilterRow.style.display = canUseInternalIssueFilters ? '' : 'none';
   },
   updateHeroMetrics(rows) {
     if (!E.heroTriagePct && !E.heroHighImpactCount && !E.heroChangeReadiness) return;
