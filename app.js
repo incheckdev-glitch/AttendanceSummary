@@ -2022,6 +2022,7 @@ function cacheEls() {
     'healthSheetSubtext',
     'healthOpenAppLink',
     'healthOpenApiLink',
+    'healthPrintBtn',
     'healthStatusBadge',
     'healthLastChecked',
     'healthLatency',
@@ -6289,6 +6290,66 @@ function exportSelectedIssueToPdf() {
   }
 }
 
+function exportHealthMonitorPrintScreen() {
+  const healthView = E.healthView;
+  if (!healthView) return UI.toast('Monitor health screen is unavailable.');
+
+  const clone = healthView.cloneNode(true);
+  const sourceCanvases = healthView.querySelectorAll('canvas');
+  const cloneCanvases = clone.querySelectorAll('canvas');
+  cloneCanvases.forEach((canvas, idx) => {
+    const source = sourceCanvases[idx];
+    if (!source) return;
+    const image = document.createElement('img');
+    image.src = source.toDataURL('image/png');
+    image.alt = source.getAttribute('aria-label') || 'Health chart';
+    image.style.width = '100%';
+    image.style.height = 'auto';
+    image.style.display = 'block';
+    canvas.replaceWith(image);
+  });
+
+  const title = 'Monitor Health Print Screen';
+  const baseHref = U.escapeAttr(window.location.href);
+  const printableDoc = `
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>${U.escapeHtml(title)}</title>
+        <base href="${baseHref}" />
+        <link rel="stylesheet" href="styles.css" />
+        <style>
+          body { margin: 24px; background: #fff; color: #111; }
+          .view { display: block !important; }
+          .card { break-inside: avoid; page-break-inside: avoid; }
+          .health-actions { display: none !important; }
+          @media print { body { margin: 0; } }
+        </style>
+      </head>
+      <body>${clone.outerHTML}</body>
+    </html>
+  `;
+
+  const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=1280,height=920');
+  if (!printWindow) {
+    UI.toast('Pop-up blocked. Allow pop-ups and try again.');
+    return;
+  }
+  printWindow.document.write(printableDoc);
+  printWindow.document.close();
+  const printNow = () => {
+    printWindow.focus();
+    printWindow.print();
+    UI.toast('Monitor health print screen is ready in the print dialog.');
+  };
+  if (printWindow.document.readyState === 'complete') {
+    setTimeout(printNow, 150);
+  } else {
+    printWindow.addEventListener('load', () => setTimeout(printNow, 150), { once: true });
+  }
+}
+
 /* ---------- Release Planner wiring & rendering ---------- */
 
 let LAST_PLANNER_CONTEXT = null;
@@ -6968,6 +7029,9 @@ function wireCore() {
   }
   if (E.healthRefreshBtn) {
     E.healthRefreshBtn.addEventListener('click', () => HealthMonitor.checkNow());
+  }
+  if (E.healthPrintBtn) {
+    E.healthPrintBtn.addEventListener('click', exportHealthMonitorPrintScreen);
   }
   if (E.healthRangePreset) {
     E.healthRangePreset.addEventListener('change', e => {
