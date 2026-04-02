@@ -1467,3 +1467,20 @@ background:var(--ai-table-row-even);
     padding:12px;
   }
 }
+
+/* CSM Daily */
+.csm-daily-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.csm-daily-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#csmDailyStatusPill.connected{background:rgba(22,163,74,.2);color:#86efac}
+#csmDailyStatusPill.loading{background:rgba(245,158,11,.2);color:#fde68a}
+#csmDailyStatusPill.error{background:rgba(239,68,68,.2);color:#fecaca}
+.csm-charts{grid-template-columns:repeat(2,minmax(0,1fr));}
+@media(max-width:980px){.csm-charts{grid-template-columns:1fr}}
+.csm-filter-group{margin-bottom:2px;}
+body[data-active-view="csmDaily"] #searchInput::placeholder{opacity:.9}
