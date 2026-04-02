@@ -702,10 +702,30 @@ body.auth-locked .login-hint{
 .view.active{display:block}
 .view>*+*{margin-top:14px}
 
-.csm-activity-card{padding-bottom:14px}
-.csm-activity-frame{width:100%;min-height:78vh;border:1px solid var(--border);border-radius:12px;margin-top:12px;background:#fff}
+.csmv-shell{padding:14px}
+.csmv-topbar{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-bottom:10px}
+.csmv-top-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#csmvStatusPill{border:1px solid var(--border)}
+#csmvStatusPill.loading{color:#92400e;background:#fef3c7;border-color:#fcd34d}
+#csmvStatusPill.connected{color:#1e40af;background:#dbeafe;border-color:#93c5fd}
+#csmvStatusPill.error{color:#b91c1c;background:#fee2e2;border-color:#fca5a5}
+.csmv-layout{display:grid;grid-template-columns:280px 1fr;gap:12px}
+.csmv-sidebar{border:1px solid var(--border);border-radius:12px;padding:12px;background:var(--card);position:sticky;top:12px;height:max-content}
+.csmv-sidebar h4{margin:8px 0}
+.csmv-btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.csmv-main{display:flex;flex-direction:column;gap:12px}
+.csmv-kpi-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
+.csmv-kpi-value{font-size:24px;font-weight:700}
+.csmv-insight-list{display:grid;gap:8px;margin-top:10px}
+.csmv-insight-item{display:flex;justify-content:space-between;gap:8px;padding:10px;border:1px solid var(--border);border-radius:10px;background:rgba(37,99,235,.05)}
+.csmv-insight-item span{color:var(--muted);font-size:12px;display:block}
+.csmv-insight-metric{font-weight:700;white-space:nowrap}
+.csmv-chart-wrap{position:relative;height:260px;margin-top:8px}
+.csmv-mobile-toggle{display:none}
+@media(max-width:980px){.csmv-layout{grid-template-columns:1fr}.csmv-sidebar{position:fixed;left:0;top:0;bottom:0;width:min(90vw,320px);z-index:50;transform:translateX(-105%);transition:transform .25s ease;overflow:auto}.csmv-sidebar.open{transform:translateX(0)}.csmv-mobile-toggle{display:inline-flex}}
 
 .grid{display:grid;gap:14px}
+.grid.cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}
 .grid.cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}
 @media(max-width:980px){.grid.cols-4{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:640px){.grid.cols-4{grid-template-columns:1fr}}
