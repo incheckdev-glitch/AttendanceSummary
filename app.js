@@ -6318,6 +6318,15 @@ function exportHealthMonitorPrintScreen() {
 
   const title = 'Monitor Health Print Screen';
   const baseHref = U.escapeAttr(window.location.href);
+  const printHeader = `
+    <header class="health-print-header" aria-label="InCheck header">
+      <img src="assets/incheck-logo.svg" alt="InCheck 360 logo" width="40" height="40" />
+      <div>
+        <strong>InCheck 360</strong>
+        <div>Monitor Health Report</div>
+      </div>
+    </header>
+  `;
   const printableDoc = `
     <!doctype html>
     <html>
@@ -6328,6 +6337,23 @@ function exportHealthMonitorPrintScreen() {
         <link rel="stylesheet" href="styles.css" />
         <style>
           body { margin: 24px; background: #fff; color: #111; }
+          .health-print-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+            border-bottom: 1px solid #d1d5db;
+            padding-bottom: 12px;
+          }
+          .health-print-header strong {
+            display: block;
+            font-size: 18px;
+            line-height: 1.2;
+          }
+          .health-print-header div {
+            color: #4b5563;
+            font-size: 13px;
+          }
           .view { display: block !important; }
           .card { break-inside: avoid; page-break-inside: avoid; }
           .health-actions { display: none !important; }
@@ -6335,7 +6361,7 @@ function exportHealthMonitorPrintScreen() {
           @media print { body { margin: 0; } }
         </style>
       </head>
-      <body>${clone.outerHTML}</body>
+      <body>${printHeader}${clone.outerHTML}</body>
     </html>
   `;
 
