@@ -42,9 +42,7 @@ const CONFIG = {
     "https://corsproxy.io/?" +
       encodeURIComponent(APPS_SCRIPT_WEBAPP_URL),
   CSM_DAILY_API_URL:
-    RUNTIME_CONFIG.CSM_DAILY_API_URL ||
-    "https://corsproxy.io/?" +
-      encodeURIComponent(`${APPS_SCRIPT_WEBAPP_URL}?resource=csm_daily`),
+    RUNTIME_CONFIG.CSM_DAILY_API_URL || '',
   ADMIN_PASSCODE: RUNTIME_CONFIG.ADMIN_PASSCODE || 'incheck@360',
   VIEWER_PASSCODE: RUNTIME_CONFIG.VIEWER_PASSCODE || '12345678',
 
@@ -7226,6 +7224,7 @@ const CSMDaily = {
     this.state.loading = true;
     this.setStatus('loading');
     try {
+      if (!CONFIG.CSM_DAILY_API_URL) throw new Error('CSM Daily is not linked to Google Sheets.');
       const res = await fetch(CONFIG.CSM_DAILY_API_URL, { cache: 'no-store' });
       if (!res.ok) throw new Error(`API ${res.status}`);
       const text = await res.text();
