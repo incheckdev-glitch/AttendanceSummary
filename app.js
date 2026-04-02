@@ -4166,6 +4166,13 @@ const HealthMonitor = {
     const okRaw = getEventField(raw, ['is_up', 'is up', 'up', 'status', 'health', 'state']);
     const latencyRaw = getEventField(raw, ['latency_ms', 'latency ms', 'latency']);
     const failureNote = getEventField(raw, ['failure_note', 'failure note', 'note', 'error']);
+    const tcpConnectRaw = getEventField(raw, ['tcp_connect_ms', 'tcp connect ms', 'tcp_ms']);
+    const tlsHandshakeRaw = getEventField(raw, ['tls_handshake_ms', 'tls handshake ms', 'tls_ms']);
+    const ttfbRaw = getEventField(raw, ['ttfb_ms', 'ttfb ms', 'ttfb']);
+    const contentCheckRaw = getEventField(raw, ['content_check_passed', 'content check passed', 'content_ok']);
+    const sslExpiryDaysRaw = getEventField(raw, ['ssl_expiry_days', 'ssl expiry days', 'ssl days']);
+    const consecutiveFailuresRaw = getEventField(raw, ['consecutive_failures', 'consecutive failures']);
+    const alertSentRaw = getEventField(raw, ['alert_sent', 'alert sent']);
 
     return {
       ts,
@@ -4177,7 +4184,14 @@ const HealthMonitor = {
       timeoutMs: Number(getEventField(raw, ['timeout_ms', 'timeout ms'])),
       checkIntervalMs: Number(getEventField(raw, ['check_interval_ms', 'check interval ms'])),
       environment: String(getEventField(raw, ['environment']) || '').trim(),
-      region: String(getEventField(raw, ['region']) || '').trim()
+      region: String(getEventField(raw, ['region']) || '').trim(),
+      tcpConnectMs: Number.isFinite(Number(tcpConnectRaw)) ? Number(tcpConnectRaw) : null,
+      tlsHandshakeMs: Number.isFinite(Number(tlsHandshakeRaw)) ? Number(tlsHandshakeRaw) : null,
+      ttfbMs: Number.isFinite(Number(ttfbRaw)) ? Number(ttfbRaw) : null,
+      contentCheckPassed: parseBoolean(contentCheckRaw),
+      sslExpiryDays: Number.isFinite(Number(sslExpiryDaysRaw)) ? Number(sslExpiryDaysRaw) : null,
+      consecutiveFailures: Number.isFinite(Number(consecutiveFailuresRaw)) ? Number(consecutiveFailuresRaw) : null,
+      alertSent: parseBoolean(alertSentRaw)
     };
   },
 
@@ -4515,7 +4529,17 @@ const HealthMonitor = {
             const latencyText = Number.isFinite(item.latency) ? ` · ${item.latency} ms` : '';
             const meta = [item.environment, item.region, item.targetLabel].filter(Boolean).join(' · ');
             const metaText = meta ? `<div class="muted">${U.escapeHtml(meta)}</div>` : '';
-            return `<li><span>${U.escapeHtml(this.formatTs(item.ts))}</span><span>${status}${latencyText}${metaText}</span></li>`;
+            const metrics = [
+              Number.isFinite(item.tcpConnectMs) ? `TCP ${item.tcpConnectMs} ms` : '',
+              Number.isFinite(item.tlsHandshakeMs) ? `TLS ${item.tlsHandshakeMs} ms` : '',
+              Number.isFinite(item.ttfbMs) ? `TTFB ${item.ttfbMs} ms` : '',
+              Number.isFinite(item.sslExpiryDays) ? `SSL ${item.sslExpiryDays}d` : '',
+              Number.isFinite(item.consecutiveFailures) ? `Fails ${item.consecutiveFailures}` : '',
+              item.contentCheckPassed ? 'Content ✅' : '',
+              item.alertSent ? 'Alert sent' : ''
+            ].filter(Boolean).join(' · ');
+            const metricsText = metrics ? `<div class="muted">${U.escapeHtml(metrics)}</div>` : '';
+            return `<li><span>${U.escapeHtml(this.formatTs(item.ts))}</span><span>${status}${latencyText}${metaText}${metricsText}</span></li>`;
           })
           .join('');
       }
