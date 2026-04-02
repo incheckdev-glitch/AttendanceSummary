@@ -6299,6 +6299,8 @@ function exportHealthMonitorPrintScreen() {
   if (!healthView) return UI.toast('Monitor health screen is unavailable.');
 
   const clone = healthView.cloneNode(true);
+  const healthWindowBarCard = clone.querySelector('#healthWindowBar')?.closest('.card');
+  if (healthWindowBarCard) healthWindowBarCard.remove();
   const healthChecksCard = clone.querySelector('#healthChecksList')?.closest('.card');
   if (healthChecksCard) healthChecksCard.remove();
 
