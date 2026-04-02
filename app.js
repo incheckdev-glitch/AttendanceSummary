@@ -5656,14 +5656,15 @@ function normalizeEventDate(value) {
 
 function getEventField(eventObj, aliases) {
   if (!eventObj || typeof eventObj !== 'object' || !Array.isArray(aliases)) return '';
+  const normalize = value => String(value).replace(/[\s_-]+/g, '').toLowerCase();
   for (const alias of aliases) {
     if (!alias) continue;
     if (Object.prototype.hasOwnProperty.call(eventObj, alias) && eventObj[alias] != null) {
       return eventObj[alias];
     }
-    const normalizedAlias = String(alias).replace(/\s+/g, '').toLowerCase();
+    const normalizedAlias = normalize(alias);
     const key = Object.keys(eventObj).find(
-      k => String(k).replace(/\s+/g, '').toLowerCase() === normalizedAlias
+      k => normalize(k) === normalizedAlias
     );
     if (key && eventObj[key] != null) return eventObj[key];
   }
@@ -7162,9 +7163,52 @@ const CSMDaily = {
     return { timestamp: Number.isFinite(ts.getTime()) ? ts : null, timestampLabel: Number.isFinite(ts.getTime()) ? ts.toISOString() : '', csm: csm || 'Unknown', client: client || 'Unknown', minutes: Number.isFinite(minutes) && minutes >= 0 ? minutes : 0, type: type || 'Unspecified', effort, channel: channel || 'Unspecified', notes };
   },
   extractRows(data) {
-    if (Array.isArray(data)) return data;
-    if (!data || typeof data !== 'object') return [];
-    return data.rows || data.data || data.items || data.result || [];
+    const fromHeaders = payload => {
+      if (!payload || typeof payload !== 'object') return [];
+      if (Array.isArray(payload.headers) && Array.isArray(payload.rows)) {
+        return mapRowsWithHeaders(payload.headers, payload.rows);
+      }
+      return [];
+    };
+    const extract = payload => {
+      if (typeof payload === 'string') {
+        try {
+          return extract(JSON.parse(payload));
+        } catch {
+          return [];
+        }
+      }
+      if (Array.isArray(payload)) {
+        if (!payload.length) return [];
+        if (Array.isArray(payload[0])) {
+          const [headers = [], ...rows] = payload;
+          if (Array.isArray(headers) && headers.length) return mapRowsWithHeaders(headers, rows);
+        }
+        return payload;
+      }
+      if (!payload || typeof payload !== 'object') return [];
+
+      const mappedRows = fromHeaders(payload);
+      if (mappedRows.length) return mappedRows;
+
+      const candidates = [
+        payload.rows,
+        payload.values,
+        payload.records,
+        payload.data,
+        payload.items,
+        payload.result,
+        payload.payload,
+        payload.response,
+        payload.contents
+      ];
+      for (const candidate of candidates) {
+        const rows = extract(candidate);
+        if (rows.length) return rows;
+      }
+      return [];
+    };
+    return extract(data);
   },
   async load(force = false) {
     if (!force) {
