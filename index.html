@@ -587,6 +587,17 @@
           <canvas id="healthLatencyBucketsChart" height="160" aria-label="Latency buckets chart" role="img"></canvas>
         </div>
 
+        <div class="grid cols-2 health-kpi-widgets">
+          <div class="card health-kpi-widget">
+            <strong>Uptime %</strong>
+            <div id="healthUptimeWidget" class="health-kpi-value">--</div>
+          </div>
+          <div class="card health-kpi-widget">
+            <strong>Downtime</strong>
+            <div id="healthDowntimeWidget" class="health-kpi-value">--</div>
+          </div>
+        </div>
+
         <div class="card">
           <strong>Health checks</strong>
           <ul id="healthChecksList" class="muted health-check-list"></ul>

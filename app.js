@@ -2031,6 +2031,8 @@ function cacheEls() {
     'healthFailureStreak',
     'healthFailureCount',
     'healthDowntime',
+    'healthUptimeWidget',
+    'healthDowntimeWidget',
     'healthWindowBar',
     'healthChecksList',
     'healthChecksPagination',
@@ -4605,11 +4607,15 @@ const HealthMonitor = {
         E.healthUptime.textContent = `${uptimePct}% (${up}/${this.history.length})`;
       }
     }
+    if (E.healthUptimeWidget) {
+      E.healthUptimeWidget.textContent = Number.isFinite(uptimePct) ? `${uptimePct}%` : '--';
+    }
     if (E.healthAvgLatency) E.healthAvgLatency.textContent = Number.isFinite(avgLatency) ? `${avgLatency} ms` : 'n/a';
     if (E.healthP95Latency) E.healthP95Latency.textContent = Number.isFinite(p95Latency) ? `${p95Latency} ms` : 'n/a';
     if (E.healthFailureStreak) E.healthFailureStreak.textContent = `${currentFailureStreak} check${currentFailureStreak === 1 ? '' : 's'}`;
     if (E.healthFailureCount) E.healthFailureCount.textContent = `${failures} / ${this.history.length || 0}`;
     if (E.healthDowntime) E.healthDowntime.textContent = `${this.formatDurationMs(totalDowntimeMs)} (${failures} checks)`;
+    if (E.healthDowntimeWidget) E.healthDowntimeWidget.textContent = this.formatDurationMs(totalDowntimeMs);
     if (E.healthWindowBar) {
       if (!this.history.length) {
         E.healthWindowBar.innerHTML = '<span class="muted">No checks yet.</span>';
