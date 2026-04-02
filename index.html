@@ -88,12 +88,27 @@
          InCheck 360 Ticketing Ops is our internal hub for issue tracking, deployment calendars, and AI signals—built to drive confident prioritization and faster execution.
         </p>
         <div class="hero-actions">
-          <a id="launchDashboard" class="btn primary cta" href="#app">Launch the dashboard</a>
           <a class="btn ghost cta" href="#features">Explore features</a>
         </div>
         <small class="muted">Internal-only access · Works with our existing issue sheet</small>
       </div>
-    
+      <aside class="hero-card login-card" aria-label="Login panel">
+        <h2>Sign in to start</h2>
+        <p class="muted">Use your role and passcode to open the internal dashboard.</p>
+        <form id="loginForm" class="login-form">
+          <label for="loginRole" class="muted">Role</label>
+          <select id="loginRole" class="select" required>
+            <option value="viewer">Viewer</option>
+            <option value="admin">Admin</option>
+          </select>
+
+          <label for="loginPasscode" class="muted">Passcode</label>
+          <input id="loginPasscode" class="input" type="password" placeholder="Enter passcode" autocomplete="current-password" />
+
+          <button id="loginBtn" class="btn primary" type="submit">Login</button>
+          <small id="loginHint" class="muted">Viewer can continue without a passcode unless your environment requires one.</small>
+        </form>
+      </aside>
     </div>
   </section>
 
