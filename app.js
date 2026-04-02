@@ -6322,9 +6322,9 @@ function exportHealthMonitorPrintScreen() {
   const baseHref = U.escapeAttr(window.location.href);
   const printHeader = `
     <header class="health-print-header" aria-label="InCheck header">
-      <img src="assets/incheck-logo.svg" alt="InCheck 360 logo" width="40" height="40" />
+      <img src="assets/incheck-logo.svg" alt="InCheck360 MonitorCore logo" width="40" height="40" />
       <div>
-        <strong>InCheck 360</strong>
+        <strong>InCheck360 MonitorCore</strong>
         <div>Monitor Health Report</div>
       </div>
     </header>
