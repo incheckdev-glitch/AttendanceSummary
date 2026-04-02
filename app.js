@@ -42,7 +42,7 @@ const CONFIG = {
     "https://corsproxy.io/?" +
       encodeURIComponent(APPS_SCRIPT_WEBAPP_URL),
   ADMIN_PASSCODE: RUNTIME_CONFIG.ADMIN_PASSCODE || 'incheck@360',
-  VIEWER_PASSCODE: RUNTIME_CONFIG.VIEWER_PASSCODE || '',
+  VIEWER_PASSCODE: RUNTIME_CONFIG.VIEWER_PASSCODE || '12345678',
 
   
   TREND_DAYS_RECENT: 7,
@@ -291,7 +291,11 @@ const Session = {
     if (!normalizedRole) return false;
     const previousRole = this.state.role;
     const expected =
-      normalizedRole === ROLES.ADMIN ? CONFIG.ADMIN_PASSCODE : '';
+      normalizedRole === ROLES.ADMIN
+        ? CONFIG.ADMIN_PASSCODE
+        : normalizedRole === ROLES.VIEWER
+          ? CONFIG.VIEWER_PASSCODE
+          : '';
     const entered = String(passcode || '');
     if (expected && entered !== expected) return false;
     if (previousRole && previousRole !== normalizedRole) {
@@ -7387,7 +7391,7 @@ function wireDashboardGate() {
     const isAdmin = E.loginRole.value === ROLES.ADMIN;
     E.loginHint.textContent = isAdmin
       ? 'Admin passcode is required.'
-      : 'Viewer can continue without a passcode unless your environment requires one.';
+      : 'Viewer passcode is required.';
   };
 
   E.loginRole.addEventListener('change', updateLoginHint);
