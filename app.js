@@ -7224,16 +7224,27 @@ function wireConnectivity() {
 function wireDashboardGate() {
   if (!E.app || !E.loginForm || !E.loginRole || !E.loginPasscode) return;
 
+  const getDefaultViewForRole = role => {
+    if (role === ROLES.ADMIN) return 'issues';
+    if (role === ROLES.VIEWER) return 'calendar';
+    return 'issues';
+  };
+
   const unlockApp = () => {
+    document.body.classList.remove('auth-locked');
     E.app.classList.remove('is-locked');
     E.app.setAttribute('aria-hidden', 'false');
+    const role = Session.role();
+    setActiveView(getDefaultViewForRole(role));
     E.app.scrollIntoView({ behavior: 'smooth' });
     window.location.hash = '#app';
   };
 
   const lockApp = () => {
+    document.body.classList.add('auth-locked');
     E.app.classList.add('is-locked');
     E.app.setAttribute('aria-hidden', 'true');
+    window.location.hash = '#loginSection';
   };
 
   lockApp();
@@ -7241,6 +7252,7 @@ function wireDashboardGate() {
   UI.applyRolePermissions();
 
   if (Session.isAuthenticated()) {
+    E.loginRole.value = Session.role() || ROLES.VIEWER;
     unlockApp();
   }
 
@@ -7819,10 +7831,12 @@ document.addEventListener('DOMContentLoaded', () => {
   loadFreezeWindowsCache();
   renderFreezeWindows();
   
-  const view = localStorage.getItem(LS_KEYS.view) || 'issues';
-  setActiveView(
-    view === 'calendar' || view === 'insights' || view === 'health' ? view : 'issues'
-  );
+  if (!Session.isAuthenticated()) {
+    const view = localStorage.getItem(LS_KEYS.view) || 'issues';
+    setActiveView(
+      view === 'calendar' || view === 'insights' || view === 'health' ? view : 'issues'
+    );
+  }
 
   loadIssues(false);
   loadEvents(false);
