@@ -477,7 +477,7 @@
         <div class="card health-header-card">
           <div class="health-header">
             <div>
-              <strong>App Monitor — app.incheck360.com</strong>
+              <strong>Service Monitor — app.incheck360.com + api.incheck360.com</strong>
               <div id="healthSheetSubtext" class="muted health-subtitle">
                 Health telemetry loaded directly from Google Sheet tab <em>Monitor Health</em>.
               </div>
@@ -492,8 +492,15 @@
                 <option value="thisMonth">This month</option>
                 <option value="lastMonth">Last month</option>
               </select>
+              <label class="muted" for="healthTargetPreset">Target</label>
+              <select id="healthTargetPreset" class="select sm" aria-label="Health monitoring target preset">
+                <option value="all">All targets</option>
+              </select>
               <a id="healthOpenAppLink" class="btn ghost sm" href="https://app.incheck360.com/" target="_blank" rel="noopener noreferrer">
                 Open app
+              </a>
+              <a id="healthOpenApiLink" class="btn ghost sm" href="https://api.incheck360.com/" target="_blank" rel="noopener noreferrer">
+                Open API
               </a>
               <button id="healthRefreshBtn" class="btn sm" type="button">Refresh from sheet</button>
             </div>

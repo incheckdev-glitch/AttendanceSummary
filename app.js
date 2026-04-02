@@ -199,6 +199,10 @@ CATEGORY_ORDER: [
   HEALTH_MONITOR: {
     TARGET_LABEL: 'app.incheck360.com',
     TARGET_URL: 'https://app.incheck360.com/',
+    TARGETS: RUNTIME_CONFIG.HEALTH_MONITOR_TARGETS || [
+      { label: 'app.incheck360.com', url: 'https://app.incheck360.com/' },
+      { label: 'api.incheck360.com', url: 'https://api.incheck360.com/' }
+    ],
     INTERVAL_MS: 60_000,
     TIMEOUT_MS: 10_000,
     MAX_HISTORY: 25,
@@ -1999,7 +2003,10 @@ function cacheEls() {
     'shortcutsHelp',
     'healthRefreshBtn',
     'healthRangePreset',
+    'healthTargetPreset',
     'healthSheetSubtext',
+    'healthOpenAppLink',
+    'healthOpenApiLink',
     'healthStatusBadge',
     'healthLastChecked',
     'healthLatency',
@@ -4131,6 +4138,7 @@ function setActiveView(view) {
 const HealthMonitor = {
   history: [],
   allHistory: [],
+  rangeHistory: [],
   checksPage: 1,
   checksPerPage: 10,
   timerId: null,
@@ -4138,6 +4146,7 @@ const HealthMonitor = {
   lastLoadedAt: null,
   charts: {},
   rangePreset: 'all',
+  targetPreset: 'all',
 
   formatTs(ts) {
     try {
@@ -4311,17 +4320,65 @@ const HealthMonitor = {
   applyRangePreset() {
     const bounds = this.getRangeBounds();
     if (!bounds) {
-      this.history = [...this.allHistory];
-      this.checksPage = 1;
+      this.rangeHistory = [...this.allHistory];
+      this.applyTargetPreset();
       return;
     }
-    this.history = this.allHistory.filter(item => item.ts >= bounds.start && item.ts < bounds.end);
+    this.rangeHistory = this.allHistory.filter(item => item.ts >= bounds.start && item.ts < bounds.end);
     this.checksPage = 1;
+    this.applyTargetPreset();
   },
 
   setRangePreset(preset) {
     this.rangePreset = String(preset || 'all');
     this.applyRangePreset();
+    this.render();
+  },
+
+  getTargetKey(item) {
+    const label = String(item?.targetLabel || '').trim();
+    const url = String(item?.targetUrl || '').trim();
+    if (label) return label;
+    if (url) return url;
+    return 'Unknown target';
+  },
+
+  getTargetOptions() {
+    const options = new Map();
+    (CONFIG.HEALTH_MONITOR.TARGETS || []).forEach(target => {
+      const key = String(target?.label || target?.url || '').trim();
+      if (!key) return;
+      options.set(key, {
+        key,
+        label: String(target?.label || key).trim(),
+        url: String(target?.url || '').trim()
+      });
+    });
+    this.allHistory.forEach(item => {
+      const key = this.getTargetKey(item);
+      if (!options.has(key)) {
+        options.set(key, {
+          key,
+          label: String(item.targetLabel || key).trim(),
+          url: String(item.targetUrl || '').trim()
+        });
+      }
+    });
+    return [{ key: 'all', label: 'All targets', url: '' }, ...[...options.values()]];
+  },
+
+  applyTargetPreset() {
+    if (this.targetPreset === 'all') {
+      this.history = [...this.rangeHistory];
+    } else {
+      this.history = this.rangeHistory.filter(item => this.getTargetKey(item) === this.targetPreset);
+    }
+    this.checksPage = 1;
+  },
+
+  setTargetPreset(preset) {
+    this.targetPreset = String(preset || 'all');
+    this.applyTargetPreset();
     this.render();
   },
 
@@ -4457,6 +4514,12 @@ const HealthMonitor = {
   },
 
   render() {
+    const targetOptions = this.getTargetOptions();
+    const knownTargetKeys = new Set(targetOptions.map(item => item.key));
+    if (!knownTargetKeys.has(this.targetPreset)) {
+      this.targetPreset = 'all';
+      this.applyTargetPreset();
+    }
     const latest = this.history[0] || null;
     const latencies = this.history
       .map(item => item.latency)
@@ -4562,6 +4625,14 @@ const HealthMonitor = {
     }
     if (E.healthRangePreset && E.healthRangePreset.value !== this.rangePreset) {
       E.healthRangePreset.value = this.rangePreset;
+    }
+    if (E.healthTargetPreset) {
+      const currentHtml = E.healthTargetPreset.innerHTML;
+      const nextHtml = targetOptions
+        .map(item => `<option value="${U.escapeHtml(item.key)}">${U.escapeHtml(item.label)}</option>`)
+        .join('');
+      if (currentHtml !== nextHtml) E.healthTargetPreset.innerHTML = nextHtml;
+      if (E.healthTargetPreset.value !== this.targetPreset) E.healthTargetPreset.value = this.targetPreset;
     }
     this.renderCharts();
   },
@@ -6845,6 +6916,11 @@ function wireCore() {
   if (E.healthRangePreset) {
     E.healthRangePreset.addEventListener('change', e => {
       HealthMonitor.setRangePreset(e.target.value);
+    });
+  }
+  if (E.healthTargetPreset) {
+    E.healthTargetPreset.addEventListener('change', e => {
+      HealthMonitor.setTargetPreset(e.target.value);
     });
   }
   if (E.healthChecksPrevPage) {
