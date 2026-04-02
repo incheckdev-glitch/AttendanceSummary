@@ -702,6 +702,15 @@ body.auth-locked .login-hint{
 .view.active{display:block}
 .view>*+*{margin-top:14px}
 
+
+/* CSM Daily: prevent scroll chaining/jumps while scrolling dense tables/content */
+#csmDailyView{
+  overflow-anchor:none;
+}
+#csmDailyView .table-wrap{
+  overscroll-behavior:contain;
+}
+
 .grid{display:grid;gap:14px}
 .grid.cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}
 @media(max-width:980px){.grid.cols-4{grid-template-columns:repeat(2,minmax(0,1fr))}}
