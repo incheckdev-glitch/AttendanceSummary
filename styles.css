@@ -536,6 +536,16 @@ header{
   width:100% !important;
   max-height:240px;
 }
+.health-kpi-widgets{
+  margin-top:2px;
+}
+.health-kpi-widget .health-kpi-value{
+  margin-top:8px;
+  font-size:clamp(1.5rem,2.8vw,2.2rem);
+  font-weight:700;
+  letter-spacing:-.02em;
+  color:var(--text);
+}
 
 /* Layout */
 .wrap{
