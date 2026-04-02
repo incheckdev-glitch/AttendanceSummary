@@ -97,6 +97,28 @@ body{
   -webkit-font-smoothing:antialiased;
 }
 
+body.auth-locked #appHeader,
+body.auth-locked #features,
+body.auth-locked #app,
+body.auth-locked #appFooter{
+  display:none;
+}
+
+body.auth-locked #loginSection{
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+}
+
+body.auth-locked #loginSection .hero-grid{
+  grid-template-columns:minmax(320px, 460px);
+  justify-content:center;
+}
+
+body.auth-locked #loginSection .hero-grid > div{
+  display:none;
+}
+
 h1,h2,h3,h4{
   font-weight:700;
   letter-spacing:-.02em;
