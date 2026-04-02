@@ -706,8 +706,15 @@ body.auth-locked .login-hint{
 /* CSM Daily: prevent scroll chaining/jumps while scrolling dense tables/content */
 #csmDailyView{
   overflow-anchor:none;
+  overscroll-behavior-y:contain;
+  touch-action:pan-y;
 }
 #csmDailyView .table-wrap{
+  overscroll-behavior:contain;
+}
+#csmDailyView .card,
+#csmDailyView .charts,
+#csmDailyView canvas{
   overscroll-behavior:contain;
 }
 
