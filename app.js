@@ -7792,8 +7792,10 @@ function wireDashboardGate() {
     if (E.logoutBtn) E.logoutBtn.hidden = false;
     const role = Session.role();
     setActiveView(getDefaultViewForRole(role));
-    E.app.scrollIntoView({ behavior: 'smooth' });
-    window.location.hash = '#app';
+    // Avoid forcing a jump to #app after login (caused unwanted auto-scrolling).
+    if (window.location.hash) {
+      history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
   };
 
   const lockApp = () => {
