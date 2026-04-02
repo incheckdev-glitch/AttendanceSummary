@@ -2015,6 +2015,7 @@ function cacheEls() {
     'healthP95Latency',
     'healthFailureStreak',
     'healthFailureCount',
+    'healthDowntime',
     'healthWindowBar',
     'healthChecksList',
     'healthChecksPagination',
@@ -4403,6 +4404,38 @@ const HealthMonitor = {
     return buckets;
   },
 
+  formatDurationMs(durationMs) {
+    if (!Number.isFinite(durationMs) || durationMs <= 0) return '0m';
+    const totalSeconds = Math.floor(durationMs / 1000);
+    const days = Math.floor(totalSeconds / 86400);
+    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    const parts = [];
+    if (days) parts.push(`${days}d`);
+    if (hours) parts.push(`${hours}h`);
+    if (minutes) parts.push(`${minutes}m`);
+    if (!parts.length) parts.push(`${seconds}s`);
+    return parts.slice(0, 2).join(' ');
+  },
+
+  computeDowntimeMs() {
+    if (!this.history.length) return 0;
+    const timeline = this.history.slice().sort((a, b) => a.ts - b.ts);
+    let total = 0;
+    for (let i = 0; i < timeline.length; i += 1) {
+      const current = timeline[i];
+      const next = timeline[i + 1];
+      if (current.ok) continue;
+      if (next && Number.isFinite(next.ts)) {
+        total += Math.max(0, next.ts - current.ts);
+      } else if (Number.isFinite(current.checkIntervalMs) && current.checkIntervalMs > 0) {
+        total += current.checkIntervalMs;
+      }
+    }
+    return total;
+  },
+
   renderCharts() {
     if (typeof Chart === 'undefined') return;
     const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -4526,6 +4559,7 @@ const HealthMonitor = {
       .filter(v => Number.isFinite(v))
       .sort((a, b) => a - b);
     const failures = this.history.filter(item => !item.ok).length;
+    const totalDowntimeMs = this.computeDowntimeMs();
     const uptimePct = this.history.length
       ? Math.round((this.history.filter(h => h.ok).length / this.history.length) * 100)
       : null;
@@ -4560,6 +4594,7 @@ const HealthMonitor = {
     if (E.healthP95Latency) E.healthP95Latency.textContent = Number.isFinite(p95Latency) ? `${p95Latency} ms` : 'n/a';
     if (E.healthFailureStreak) E.healthFailureStreak.textContent = `${currentFailureStreak} check${currentFailureStreak === 1 ? '' : 's'}`;
     if (E.healthFailureCount) E.healthFailureCount.textContent = `${failures} / ${this.history.length || 0}`;
+    if (E.healthDowntime) E.healthDowntime.textContent = `${this.formatDurationMs(totalDowntimeMs)} (${failures} checks)`;
     if (E.healthWindowBar) {
       if (!this.history.length) {
         E.healthWindowBar.innerHTML = '<span class="muted">No checks yet.</span>';
