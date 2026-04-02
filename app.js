@@ -7211,6 +7211,8 @@ const CSMDaily = {
     return extract(data);
   },
   async load(force = false) {
+    const shouldPreserveScroll = this.state.active;
+    const scrollYBeforeLoad = shouldPreserveScroll ? window.scrollY : 0;
     if (!force) {
       try {
         const cached = JSON.parse(localStorage.getItem(LS_KEYS.csmDailyRows) || '[]');
@@ -7237,6 +7239,11 @@ const CSMDaily = {
       this.setStatus('connected');
       this.renderFilters();
       this.renderAll();
+      if (shouldPreserveScroll) {
+        requestAnimationFrame(() => {
+          window.scrollTo({ top: scrollYBeforeLoad, behavior: 'auto' });
+        });
+      }
     } catch (e) {
       this.setStatus('error', e.message || 'Failed');
       this.renderAll();
