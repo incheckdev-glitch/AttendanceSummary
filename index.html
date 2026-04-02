@@ -571,6 +571,17 @@
           </div>
         </div>
 
+        <div class="grid cols-2 health-kpi-widgets">
+          <div class="card health-kpi-widget">
+            <strong>Uptime %</strong>
+            <div id="healthUptimeWidget" class="health-kpi-value">--</div>
+          </div>
+          <div class="card health-kpi-widget">
+            <strong>Downtime</strong>
+            <div id="healthDowntimeWidget" class="health-kpi-value">--</div>
+          </div>
+        </div>
+
         <div class="grid cols-2 health-charts-grid">
           <div class="card health-chart-card">
             <strong>Latency & availability trend</strong>
@@ -585,17 +596,6 @@
         <div class="card health-chart-card">
           <strong>Latency distribution</strong>
           <canvas id="healthLatencyBucketsChart" height="160" aria-label="Latency buckets chart" role="img"></canvas>
-        </div>
-
-        <div class="grid cols-2 health-kpi-widgets">
-          <div class="card health-kpi-widget">
-            <strong>Uptime %</strong>
-            <div id="healthUptimeWidget" class="health-kpi-value">--</div>
-          </div>
-          <div class="card health-kpi-widget">
-            <strong>Downtime</strong>
-            <div id="healthDowntimeWidget" class="health-kpi-value">--</div>
-          </div>
         </div>
 
         <div class="card">
