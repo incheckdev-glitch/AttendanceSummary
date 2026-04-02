@@ -302,6 +302,16 @@ const Session = {
     this.persist();
     return true;
   },
+  logout() {
+    if (this.state.role) {
+      this.clearRoleScopedCache();
+    }
+    this.state.role = null;
+    this.state.authCode = '';
+    try {
+      localStorage.removeItem(LS_KEYS.session);
+    } catch {}
+  },
   isAuthenticated() {
     return this.state.role === ROLES.ADMIN || this.state.role === ROLES.VIEWER;
   },
