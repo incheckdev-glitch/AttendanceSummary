@@ -216,10 +216,6 @@
                 role="tab" aria-selected="false" aria-controls="healthView">
           <span class="icon" aria-hidden="true">🩺</span> Monitor Health
         </button>
-        <button id="csmActivityTab" class="view-tab" data-view="csm-activity"
-                role="tab" aria-selected="false" aria-controls="csmActivityView">
-          <span class="icon" aria-hidden="true">📈</span> CSM Daily Activity
-        </button>
       </div>
 
       <!-- Issues view -->
@@ -227,7 +223,7 @@
         <div class="card summary-bar" id="issuesSummaryCard">
           <span id="issuesSummaryText" aria-live="polite">Loading summary…</span>
           <span id="issuesLastUpdated" class="summary-meta" aria-live="polite">Last updated: --</span>
-         <span class="shortcut-chip">Shortcuts: 1/2/3/4/5 tabs · / search · Ctrl+K AI</span>
+         <span class="shortcut-chip">Shortcuts: 1/2/3/4 tabs · / search · Ctrl+K AI</span>
         </div>
 
         <div class="grid cols-4" id="kpis" aria-live="polite"></div>
@@ -615,67 +611,6 @@
             <button id="healthChecksPrevPage" class="btn ghost sm" type="button" aria-label="Previous health checks page">Previous</button>
             <span id="healthChecksPageInfo" class="muted">Page 1 of 1</span>
             <button id="healthChecksNextPage" class="btn ghost sm" type="button" aria-label="Next health checks page">Next</button>
-          </div>
-        </div>
-      </section>
-
-      <!-- CSM Daily Activity view -->
-      <section id="csmActivityView" class="view" role="tabpanel" aria-labelledby="csmActivityTab">
-        <div class="card csmv-shell">
-          <div class="csmv-topbar">
-            <div>
-              <strong>CSM Daily Activity Dashboard</strong>
-              <div class="muted" style="margin-top:6px;">Native in-platform analytics with filters, KPI cards, charts, and task-level submissions.</div>
-            </div>
-            <div class="csmv-top-actions">
-              <button class="btn ghost sm csmv-mobile-toggle" id="csmvSidebarToggle" type="button">☰ Filters</button>
-              <span class="chip" id="csmvStatusPill">Loading…</span>
-              <button class="btn ghost sm" id="csmvExportBtn" type="button">⬇ Export filtered CSV</button>
-            </div>
-          </div>
-
-          <div class="csmv-layout">
-            <aside class="csmv-sidebar" id="csmvSidebar">
-              <div class="csmv-btn-row">
-                <button id="csmvSyncBtn" class="btn sm" type="button">⟳ Sync</button>
-                <button class="btn ghost sm" id="csmvResetBtn" type="button">Reset filters</button>
-              </div>
-              <h4>Filters</h4>
-              <div class="filter-row"><label class="muted" for="csmvCsmFilter">CSM Name</label><select id="csmvCsmFilter" class="select"><option value="">All</option></select></div>
-              <div class="filter-row"><label class="muted" for="csmvClientFilter">Client</label><select id="csmvClientFilter" class="select"><option value="">All</option></select></div>
-              <div class="filter-row"><label class="muted" for="csmvTypeFilter">Type of Support</label><select id="csmvTypeFilter" class="select"><option value="">All</option></select></div>
-              <div class="filter-row"><label class="muted" for="csmvEffortFilter">Effort Requirement</label><select id="csmvEffortFilter" class="select"><option value="">All</option></select></div>
-              <div class="filter-row"><label class="muted" for="csmvChannelFilter">Support Channel</label><select id="csmvChannelFilter" class="select"><option value="">All</option></select></div>
-              <div class="filter-row"><label class="muted" for="csmvFromFilter">From</label><input id="csmvFromFilter" class="input" type="date" /></div>
-              <div class="filter-row"><label class="muted" for="csmvToFilter">To</label><input id="csmvToFilter" class="input" type="date" /></div>
-              <div class="filter-row"><label class="muted" for="csmvTextFilter">Search Notes / Client</label><input id="csmvTextFilter" class="input" type="text" placeholder="keyword" /></div>
-            </aside>
-
-            <div class="csmv-main">
-              <section class="grid cols-4 csmv-kpis">
-                <div class="card"><div class="csmv-kpi-label">Total Tasks</div><div class="csmv-kpi-value" id="csmvKpiTasks">0</div><div class="muted" id="csmvKpiTasksSub">No data loaded yet</div></div>
-                <div class="card"><div class="csmv-kpi-label">Total Minutes</div><div class="csmv-kpi-value" id="csmvKpiMinutes">0</div><div class="muted" id="csmvKpiMinutesSub">Across current filter</div></div>
-                <div class="card"><div class="csmv-kpi-label">Average Minutes / Task</div><div class="csmv-kpi-value" id="csmvKpiAvg">0</div><div class="muted">Time spent efficiency snapshot</div></div>
-                <div class="card"><div class="csmv-kpi-label">Active Clients</div><div class="csmv-kpi-value" id="csmvKpiClients">0</div><div class="muted" id="csmvKpiClientsSub">Unique clients in current view</div></div>
-              </section>
-
-              <section class="grid cols-2 csmv-grid-2">
-                <div class="card"><strong>Workload Insights</strong><div id="csmvInsightList" class="csmv-insight-list"></div></div>
-                <div class="card"><strong>Top CSM Snapshot</strong><div class="table-wrap"><table><thead><tr><th>CSM</th><th>Tasks</th><th>Minutes</th><th>Avg/Task</th><th>Clients</th></tr></thead><tbody id="csmvSummaryBody"><tr><td colspan="5" class="muted">No data yet.</td></tr></tbody></table></div></div>
-              </section>
-
-              <section class="grid cols-2 csmv-grid-2">
-                <div class="card"><strong>Tasks Over Time</strong><div class="csmv-chart-wrap"><canvas id="csmvTrendChart"></canvas></div></div>
-                <div class="card"><strong>Top CSM Workload (Minutes)</strong><div class="csmv-chart-wrap"><canvas id="csmvCsmChart"></canvas></div></div>
-              </section>
-
-              <section class="card">
-                <div class="summary-bar"><strong>Submitted Task Details</strong><input class="input" id="csmvTableSearch" type="text" placeholder="Search inside visible rows" style="max-width:280px" /></div>
-                <div class="muted" id="csmvTableSummary" style="margin-top:6px;">0 rows</div>
-                <div class="table-wrap" style="margin-top:8px;"><table><thead><tr><th>Timestamp</th><th>CSM Name</th><th>Client</th><th>Minutes</th><th>Type</th><th>Effort</th><th>Channel</th><th>Notes</th></tr></thead><tbody id="csmvTableBody"><tr><td colspan="8" class="muted">Click Sync to load the latest Apps Script data.</td></tr></tbody></table></div>
-                <div class="summary-bar" style="margin-top:8px;"><span id="csmvTablePageInfo" class="muted">Page 1 of 1</span><div><button id="csmvPrevPageBtn" class="btn ghost sm" type="button">Previous</button><button id="csmvNextPageBtn" class="btn ghost sm" type="button">Next</button></div></div>
-              </section>
-            </div>
           </div>
         </div>
       </section>

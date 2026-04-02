@@ -1965,8 +1965,6 @@ function cacheEls() {
     'calendarView',
     'insightsView',
     'healthView',
-    'csmActivityTab',
-    'csmActivityView',
     'addEventBtn',
     'eventModal',
     'eventModalTitle',
@@ -4123,7 +4121,7 @@ function setActiveView(view) {
     UI.toast('Only admin can access the Health Monitor tab.');
     view = 'issues';
   }
- const names = ['issues', 'calendar', 'insights', 'health', 'csm-activity'];
+ const names = ['issues', 'calendar', 'insights', 'health'];
   names.forEach(name => {
     const tab =
       name === 'issues'
@@ -4132,9 +4130,7 @@ function setActiveView(view) {
         ? E.calendarTab
       : name === 'insights'
       ? E.insightsTab
-      : name === 'health'
-      ? E.healthTab
-      : E.csmActivityTab;
+      : E.healthTab;
     const panel =
       name === 'issues'
         ? E.issuesView
@@ -4142,9 +4138,7 @@ function setActiveView(view) {
         ? E.calendarView
        : name === 'insights'
        ? E.insightsView
-       : name === 'health'
-       ? E.healthView
-       : E.csmActivityView;
+       : E.healthView;
     const active = name === view;
     if (tab) {
       tab.classList.toggle('active', active);
@@ -7022,7 +7016,7 @@ function syncFilterInputs() {
 }
 
 function wireCore() {
-   [E.issuesTab, E.calendarTab, E.insightsTab, E.healthTab, E.csmActivityTab].forEach(btn => {
+   [E.issuesTab, E.calendarTab, E.insightsTab, E.healthTab].forEach(btn => {
     if (!btn) return;
     btn.addEventListener('click', () => setActiveView(btn.dataset.view));
   });
@@ -7107,7 +7101,7 @@ function wireCore() {
 
   if (E.shortcutsHelp) {
     E.shortcutsHelp.addEventListener('click', () => {
-     UI.toast('Shortcuts: 1/2/3/4/5 switch tabs · / focus search · Ctrl+K AI query');
+     UI.toast('Shortcuts: 1/2/3/4 switch tabs · / focus search · Ctrl+K AI query');
     });
   }
   if (E.healthRefreshBtn) {
@@ -7961,7 +7955,7 @@ function wireKeyboardShortcuts() {
 
     if (isInputLike) return;
 
-    // 1/2/3/4/5 → switch tabs
+    // 1/2/3/4 → switch tabs
     if (e.key === '1') {
       setActiveView('issues');
     } else if (e.key === '2') {
@@ -7970,8 +7964,6 @@ function wireKeyboardShortcuts() {
       setActiveView('insights');
     } else if (e.key === '4') {
       setActiveView('health');
-    } else if (e.key === '5') {
-      setActiveView('csm-activity');
     }
   });
 }
@@ -8005,7 +7997,6 @@ document.addEventListener('DOMContentLoaded', () => {
   wirePlanner();
   wireAIQuery();
   wireKeyboardShortcuts();
-  initCSMActivityDashboard();
 
   loadFreezeWindowsCache();
   renderFreezeWindows();
@@ -8020,295 +8011,3 @@ document.addEventListener('DOMContentLoaded', () => {
   loadIssues(false);
   loadEvents(false);
 });
-
-/* ---------- CSM Activity (native in-platform) ---------- */
-
-function initCSMActivityDashboard() {
-  const root = document.getElementById('csmActivityView');
-  if (!root) return;
-
-  const apiUrl =
-    (RUNTIME_CONFIG.CSM_ACTIVITY_API_URL ||
-      'https://script.google.com/macros/s/AKfycbzyAbLpHQ2IQDpcDipuguGy8GQk_D9z0d9-QX1Ohj6qrcSPn3rugeOSWriOjXE4a15p/exec').trim();
-
-  const state = { rows: [], filtered: [], charts: {}, currentPage: 1, pageSize: 10 };
-  const els = {
-    csmFilter: document.getElementById('csmvCsmFilter'),
-    clientFilter: document.getElementById('csmvClientFilter'),
-    typeFilter: document.getElementById('csmvTypeFilter'),
-    effortFilter: document.getElementById('csmvEffortFilter'),
-    channelFilter: document.getElementById('csmvChannelFilter'),
-    fromFilter: document.getElementById('csmvFromFilter'),
-    toFilter: document.getElementById('csmvToFilter'),
-    textFilter: document.getElementById('csmvTextFilter'),
-    tableSearch: document.getElementById('csmvTableSearch'),
-    tableBody: document.getElementById('csmvTableBody'),
-    tableSummary: document.getElementById('csmvTableSummary'),
-    pageInfo: document.getElementById('csmvTablePageInfo'),
-    prevPage: document.getElementById('csmvPrevPageBtn'),
-    nextPage: document.getElementById('csmvNextPageBtn'),
-    statusPill: document.getElementById('csmvStatusPill'),
-    summaryBody: document.getElementById('csmvSummaryBody'),
-    insightList: document.getElementById('csmvInsightList'),
-    sidebar: document.getElementById('csmvSidebar')
-  };
-
-  const fmt = new Intl.NumberFormat();
-  const escapeHtml = value => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-  const parseDate = value => {
-    if (!value) return null;
-    const direct = new Date(value);
-    if (!Number.isNaN(direct.getTime())) return direct;
-    const retry = new Date(String(value).replace(/(\d{1,2})\/(\d{1,2})\/(\d{4})/, '$3-$1-$2'));
-    return Number.isNaN(retry.getTime()) ? null : retry;
-  };
-  const normalizeEffort = value => {
-    const raw = String(value || '').trim().toLowerCase();
-    if (raw === 'low' || raw === 'low (repetitive task)') return 'Low';
-    if (raw === 'medium') return 'Medium';
-    if (raw === 'high' || raw === 'high (analytical effort)') return 'High';
-    return String(value || '').trim();
-  };
-  const normalizeRow = row => {
-    const timestamp = row.timestamp || row.Timestamp || row.timestampDateTime || '';
-    const notes = row.notes || row['Notes (optional)'] || row.Notes || '';
-    const minutesRaw = row.minutes ?? row['Time Spent (Minutes)'] ?? row['Time Spent'] ?? 0;
-    const minutes = Number(String(minutesRaw).replace(/[^0-9.-]/g, '')) || 0;
-    const date = parseDate(row.date || timestamp);
-    return {
-      timestamp,
-      csm: String(row.csm || row['CSM Name'] || '').trim(),
-      client: String(row.client || row.Client || '').trim(),
-      minutes,
-      type: String(row.type || row['Type of Support'] || '').trim(),
-      effort: normalizeEffort(row.effort || row['Effort Requirement'] || ''),
-      channel: String(row.channel || row['Support Channel'] || '').trim(),
-      notes: String(notes).trim(),
-      date
-    };
-  };
-
-  const uniqueSorted = values => [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b));
-  const fillSelect = (select, values) => {
-    if (!select) return;
-    const current = select.value;
-    select.innerHTML = '<option value="">All</option>' + values.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
-    if (values.includes(current)) select.value = current;
-  };
-
-  function updateFilterOptions() {
-    fillSelect(els.csmFilter, uniqueSorted(state.rows.map(r => r.csm)));
-    fillSelect(els.clientFilter, uniqueSorted(state.rows.map(r => r.client)));
-    fillSelect(els.typeFilter, uniqueSorted(state.rows.map(r => r.type)));
-    fillSelect(els.effortFilter, uniqueSorted(state.rows.map(r => r.effort)));
-    fillSelect(els.channelFilter, uniqueSorted(state.rows.map(r => r.channel)));
-  }
-
-  function setStatus(stateName, text) {
-    if (!els.statusPill) return;
-    els.statusPill.textContent = text;
-    els.statusPill.classList.remove('loading', 'connected', 'error');
-    if (stateName) els.statusPill.classList.add(stateName);
-  }
-
-  function renderKPIs() {
-    const rows = state.filtered;
-    const totalTasks = rows.length;
-    const totalMinutes = rows.reduce((s, r) => s + r.minutes, 0);
-    const clients = new Set(rows.map(r => r.client).filter(Boolean)).size;
-    const csms = new Set(rows.map(r => r.csm).filter(Boolean)).size;
-    document.getElementById('csmvKpiTasks').textContent = fmt.format(totalTasks);
-    document.getElementById('csmvKpiMinutes').textContent = fmt.format(totalMinutes);
-    document.getElementById('csmvKpiAvg').textContent = fmt.format(totalTasks ? (totalMinutes / totalTasks).toFixed(1) : 0);
-    document.getElementById('csmvKpiClients').textContent = fmt.format(clients);
-    document.getElementById('csmvKpiTasksSub').textContent = `${fmt.format(csms)} active CSMs in current view`;
-    document.getElementById('csmvKpiMinutesSub').textContent = totalTasks ? `${fmt.format(totalMinutes)} tracked minutes` : 'Across current filter';
-    document.getElementById('csmvKpiClientsSub').textContent = `${fmt.format(clients)} unique clients in current view`;
-  }
-
-  function renderInsights() {
-    const rows = state.filtered;
-    if (!rows.length) {
-      els.insightList.innerHTML = '<div class="muted">No workload signals available.</div>';
-      els.summaryBody.innerHTML = '<tr><td colspan="5" class="muted">No CSM activity available for this filter set.</td></tr>';
-      return;
-    }
-    const byCsm = rows.reduce((m, r) => (m.set(r.csm || 'Unknown', (m.get(r.csm || 'Unknown') || 0) + r.minutes), m), new Map());
-    const top = [...byCsm.entries()].sort((a, b) => b[1] - a[1])[0] || ['—', 0];
-    els.insightList.innerHTML = `<div class="csmv-insight-item"><div><strong>Busiest CSM</strong><span>${escapeHtml(top[0])} currently has the highest visible minute load.</span></div><div class="csmv-insight-metric">${fmt.format(top[1])} min</div></div>`;
-
-    const csmMap = {};
-    rows.forEach(r => {
-      const key = r.csm || 'Unknown';
-      if (!csmMap[key]) csmMap[key] = { tasks: 0, minutes: 0, clients: new Set() };
-      csmMap[key].tasks += 1;
-      csmMap[key].minutes += r.minutes;
-      if (r.client) csmMap[key].clients.add(r.client);
-    });
-    const summaryRows = Object.entries(csmMap)
-      .map(([name, value]) => ({ name, ...value, avg: value.tasks ? value.minutes / value.tasks : 0 }))
-      .sort((a, b) => b.minutes - a.minutes)
-      .slice(0, 8);
-    els.summaryBody.innerHTML = summaryRows
-      .map(row => `<tr><td>${escapeHtml(row.name)}</td><td>${fmt.format(row.tasks)}</td><td>${fmt.format(row.minutes)}</td><td>${fmt.format(row.avg.toFixed(1))}</td><td>${fmt.format(row.clients.size)}</td></tr>`)
-      .join('');
-  }
-
-  function destroyCharts() {
-    Object.values(state.charts).forEach(chart => chart?.destroy?.());
-    state.charts = {};
-  }
-
-  function renderCharts() {
-    if (typeof Chart === 'undefined') return;
-    destroyCharts();
-    const rows = state.filtered;
-    const trendCtx = document.getElementById('csmvTrendChart');
-    const csmCtx = document.getElementById('csmvCsmChart');
-    if (!rows.length || !trendCtx || !csmCtx) return;
-
-    const trendMap = rows.reduce((m, r) => {
-      const key = r.date ? r.date.toISOString().slice(0, 10) : 'Unknown';
-      m.set(key, (m.get(key) || 0) + 1);
-      return m;
-    }, new Map());
-    const trendLabels = [...trendMap.keys()].sort();
-
-    const byCsm = rows.reduce((m, r) => {
-      const key = r.csm || 'Unknown';
-      m.set(key, (m.get(key) || 0) + r.minutes);
-      return m;
-    }, new Map());
-    const topCsm = [...byCsm.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
-
-    state.charts.trend = new Chart(trendCtx, {
-      type: 'line',
-      data: { labels: trendLabels, datasets: [{ label: 'Tasks', data: trendLabels.map(l => trendMap.get(l)), borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,0.12)', fill: true, tension: 0.24 }] },
-      options: { responsive: true, maintainAspectRatio: false }
-    });
-    state.charts.csm = new Chart(csmCtx, {
-      type: 'bar',
-      data: { labels: topCsm.map(([k]) => k), datasets: [{ label: 'Minutes', data: topCsm.map(([, v]) => v), backgroundColor: '#06b6d4' }] },
-      options: { responsive: true, maintainAspectRatio: false }
-    });
-  }
-
-  function renderTable() {
-    const rows = [...state.filtered].sort((a, b) => (b.date?.getTime() || 0) - (a.date?.getTime() || 0));
-    const totalPages = Math.max(1, Math.ceil(rows.length / state.pageSize));
-    state.currentPage = Math.min(state.currentPage, totalPages);
-    const start = (state.currentPage - 1) * state.pageSize;
-    const visibleRows = rows.slice(start, start + state.pageSize);
-    els.tableSummary.textContent = `${fmt.format(rows.length)} visible rows`;
-    els.pageInfo.textContent = `Page ${fmt.format(state.currentPage)} of ${fmt.format(totalPages)}`;
-    els.prevPage.disabled = state.currentPage <= 1;
-    els.nextPage.disabled = state.currentPage >= totalPages;
-    if (!rows.length) {
-      els.tableBody.innerHTML = '<tr><td colspan="8" class="muted">No matching submissions for the current filters.</td></tr>';
-      return;
-    }
-    els.tableBody.innerHTML = visibleRows.map(r => `<tr><td>${escapeHtml(r.timestamp)}</td><td>${escapeHtml(r.csm)}</td><td>${escapeHtml(r.client)}</td><td>${fmt.format(r.minutes)}</td><td>${escapeHtml(r.type || '—')}</td><td>${escapeHtml(r.effort || '—')}</td><td>${escapeHtml(r.channel || '—')}</td><td>${escapeHtml(r.notes || '—')}</td></tr>`).join('');
-  }
-
-  function applyFilters() {
-    state.currentPage = 1;
-    const term = (els.textFilter.value || '').trim().toLowerCase();
-    const tableTerm = (els.tableSearch.value || '').trim().toLowerCase();
-    const from = els.fromFilter.value ? new Date(`${els.fromFilter.value}T00:00:00`) : null;
-    const to = els.toFilter.value ? new Date(`${els.toFilter.value}T23:59:59`) : null;
-    state.filtered = state.rows.filter(r =>
-      !(els.csmFilter.value && r.csm !== els.csmFilter.value) &&
-      !(els.clientFilter.value && r.client !== els.clientFilter.value) &&
-      !(els.typeFilter.value && r.type !== els.typeFilter.value) &&
-      !(els.effortFilter.value && r.effort !== els.effortFilter.value) &&
-      !(els.channelFilter.value && r.channel !== els.channelFilter.value) &&
-      !(from && (!r.date || r.date < from)) &&
-      !(to && (!r.date || r.date > to)) &&
-      (!term || `${r.client} ${r.notes} ${r.csm} ${r.type} ${r.channel}`.toLowerCase().includes(term)) &&
-      (!tableTerm || `${r.timestamp} ${r.client} ${r.notes} ${r.csm} ${r.type} ${r.channel} ${r.effort}`.toLowerCase().includes(tableTerm))
-    );
-    renderKPIs();
-    renderInsights();
-    renderCharts();
-    renderTable();
-  }
-
-  const buildApiUrl = (baseUrl, action) => `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}action=${encodeURIComponent(action)}&callback=__dashboardJsonp`;
-  function cleanupJsonp(scriptEl) {
-    if (scriptEl?.parentNode) scriptEl.parentNode.removeChild(scriptEl);
-    try { delete window.__dashboardJsonp; } catch (_) { window.__dashboardJsonp = undefined; }
-  }
-  function loadViaJsonp(url) {
-    return new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      const timer = setTimeout(() => { cleanupJsonp(script); reject(new Error('Request timed out')); }, 15000);
-      window.__dashboardJsonp = data => { clearTimeout(timer); cleanupJsonp(script); resolve(data); };
-      script.onerror = () => { clearTimeout(timer); cleanupJsonp(script); reject(new Error('Could not reach Apps Script endpoint')); };
-      script.src = url;
-      document.body.appendChild(script);
-    });
-  }
-
-  async function loadData() {
-    if (!apiUrl) {
-      setStatus('error', 'CSM endpoint is not configured.');
-      return;
-    }
-    setStatus('loading', 'Loading…');
-    try {
-      const response = await loadViaJsonp(buildApiUrl(apiUrl, 'tasks'));
-      const tasks = response?.tasks || response?.activities || [];
-      state.rows = tasks.map(normalizeRow).filter(r => r.csm || r.client || r.timestamp);
-      updateFilterOptions();
-      applyFilters();
-      setStatus('connected', `Connected · ${state.rows.length} tasks`);
-    } catch (error) {
-      console.error(error);
-      setStatus('error', 'Could not load Apps Script data.');
-    }
-  }
-
-  function exportFilteredCSV() {
-    if (!state.filtered.length || typeof Papa === 'undefined') return;
-    const csv = Papa.unparse(state.filtered.map(r => ({
-      Timestamp: r.timestamp,
-      'CSM Name': r.csm,
-      Client: r.client,
-      'Time Spent (Minutes)': r.minutes,
-      'Type of Support': r.type,
-      'Effort Requirement': r.effort,
-      'Support Channel': r.channel,
-      'Notes (optional)': r.notes
-    })));
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'csm_activity_filtered.csv';
-    a.click();
-    URL.revokeObjectURL(a.href);
-  }
-
-  function resetFilters() {
-    [els.csmFilter, els.clientFilter, els.typeFilter, els.effortFilter, els.channelFilter].forEach(el => (el.value = ''));
-    [els.fromFilter, els.toFilter, els.textFilter, els.tableSearch].forEach(el => (el.value = ''));
-    applyFilters();
-  }
-
-  document.getElementById('csmvSyncBtn')?.addEventListener('click', loadData);
-  document.getElementById('csmvResetBtn')?.addEventListener('click', resetFilters);
-  document.getElementById('csmvExportBtn')?.addEventListener('click', exportFilteredCSV);
-  document.getElementById('csmvSidebarToggle')?.addEventListener('click', () => els.sidebar?.classList.toggle('open'));
-  els.prevPage?.addEventListener('click', () => { if (state.currentPage > 1) { state.currentPage -= 1; renderTable(); } });
-  els.nextPage?.addEventListener('click', () => {
-    const totalPages = Math.max(1, Math.ceil(state.filtered.length / state.pageSize));
-    if (state.currentPage < totalPages) { state.currentPage += 1; renderTable(); }
-  });
-  [els.csmFilter, els.clientFilter, els.typeFilter, els.effortFilter, els.channelFilter, els.fromFilter, els.toFilter, els.textFilter, els.tableSearch]
-    .forEach(el => el?.addEventListener('input', applyFilters));
-
-  renderKPIs();
-  renderInsights();
-  renderCharts();
-  renderTable();
-  loadData();
-}
