@@ -1965,6 +1965,8 @@ function cacheEls() {
     'calendarView',
     'insightsView',
     'healthView',
+    'csmActivityTab',
+    'csmActivityView',
     'addEventBtn',
     'eventModal',
     'eventModalTitle',
@@ -4121,7 +4123,7 @@ function setActiveView(view) {
     UI.toast('Only admin can access the Health Monitor tab.');
     view = 'issues';
   }
- const names = ['issues', 'calendar', 'insights', 'health'];
+ const names = ['issues', 'calendar', 'insights', 'health', 'csm-activity'];
   names.forEach(name => {
     const tab =
       name === 'issues'
@@ -4130,7 +4132,9 @@ function setActiveView(view) {
         ? E.calendarTab
       : name === 'insights'
       ? E.insightsTab
-      : E.healthTab;
+      : name === 'health'
+      ? E.healthTab
+      : E.csmActivityTab;
     const panel =
       name === 'issues'
         ? E.issuesView
@@ -4138,7 +4142,9 @@ function setActiveView(view) {
         ? E.calendarView
        : name === 'insights'
        ? E.insightsView
-       : E.healthView;
+       : name === 'health'
+       ? E.healthView
+       : E.csmActivityView;
     const active = name === view;
     if (tab) {
       tab.classList.toggle('active', active);
@@ -7016,7 +7022,7 @@ function syncFilterInputs() {
 }
 
 function wireCore() {
-   [E.issuesTab, E.calendarTab, E.insightsTab, E.healthTab].forEach(btn => {
+   [E.issuesTab, E.calendarTab, E.insightsTab, E.healthTab, E.csmActivityTab].forEach(btn => {
     if (!btn) return;
     btn.addEventListener('click', () => setActiveView(btn.dataset.view));
   });
@@ -7101,7 +7107,7 @@ function wireCore() {
 
   if (E.shortcutsHelp) {
     E.shortcutsHelp.addEventListener('click', () => {
-     UI.toast('Shortcuts: 1/2/3/4 switch tabs · / focus search · Ctrl+K AI query');
+     UI.toast('Shortcuts: 1/2/3/4/5 switch tabs · / focus search · Ctrl+K AI query');
     });
   }
   if (E.healthRefreshBtn) {
@@ -7955,7 +7961,7 @@ function wireKeyboardShortcuts() {
 
     if (isInputLike) return;
 
-    // 1/2/3/4 → switch tabs
+    // 1/2/3/4/5 → switch tabs
     if (e.key === '1') {
       setActiveView('issues');
     } else if (e.key === '2') {
@@ -7964,6 +7970,8 @@ function wireKeyboardShortcuts() {
       setActiveView('insights');
     } else if (e.key === '4') {
       setActiveView('health');
+    } else if (e.key === '5') {
+      setActiveView('csm-activity');
     }
   });
 }

@@ -216,6 +216,10 @@
                 role="tab" aria-selected="false" aria-controls="healthView">
           <span class="icon" aria-hidden="true">🩺</span> Monitor Health
         </button>
+        <button id="csmActivityTab" class="view-tab" data-view="csm-activity"
+                role="tab" aria-selected="false" aria-controls="csmActivityView">
+          <span class="icon" aria-hidden="true">📈</span> CSM Daily Activity
+        </button>
       </div>
 
       <!-- Issues view -->
@@ -223,7 +227,7 @@
         <div class="card summary-bar" id="issuesSummaryCard">
           <span id="issuesSummaryText" aria-live="polite">Loading summary…</span>
           <span id="issuesLastUpdated" class="summary-meta" aria-live="polite">Last updated: --</span>
-         <span class="shortcut-chip">Shortcuts: 1/2/3/4 tabs · / search · Ctrl+K AI</span>
+         <span class="shortcut-chip">Shortcuts: 1/2/3/4/5 tabs · / search · Ctrl+K AI</span>
         </div>
 
         <div class="grid cols-4" id="kpis" aria-live="polite"></div>
@@ -612,6 +616,20 @@
             <span id="healthChecksPageInfo" class="muted">Page 1 of 1</span>
             <button id="healthChecksNextPage" class="btn ghost sm" type="button" aria-label="Next health checks page">Next</button>
           </div>
+        </div>
+      </section>
+
+      <!-- CSM Daily Activity view -->
+      <section id="csmActivityView" class="view" role="tabpanel" aria-labelledby="csmActivityTab">
+        <div class="card csm-activity-card">
+          <strong>CSM Daily Activity Dashboard</strong>
+          <div class="muted" style="margin-top:6px;">Embedded analytics dashboard with filters, KPI cards, charts, and task-level submissions.</div>
+          <iframe
+            src="csm-daily-activity.html"
+            title="CSM Daily Activity Dashboard"
+            class="csm-activity-frame"
+            loading="lazy"
+          ></iframe>
         </div>
       </section>
 
