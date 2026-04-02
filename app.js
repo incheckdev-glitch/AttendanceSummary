@@ -6295,6 +6295,9 @@ function exportHealthMonitorPrintScreen() {
   if (!healthView) return UI.toast('Monitor health screen is unavailable.');
 
   const clone = healthView.cloneNode(true);
+  const healthChecksCard = clone.querySelector('#healthChecksList')?.closest('.card');
+  if (healthChecksCard) healthChecksCard.remove();
+
   const sourceCanvases = healthView.querySelectorAll('canvas');
   const cloneCanvases = clone.querySelectorAll('canvas');
   cloneCanvases.forEach((canvas, idx) => {
@@ -6324,6 +6327,7 @@ function exportHealthMonitorPrintScreen() {
           .view { display: block !important; }
           .card { break-inside: avoid; page-break-inside: avoid; }
           .health-actions { display: none !important; }
+          #healthChecksList, #healthChecksPagination { display: none !important; }
           @media print { body { margin: 0; } }
         </style>
       </head>
@@ -6331,22 +6335,63 @@ function exportHealthMonitorPrintScreen() {
     </html>
   `;
 
-  const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=1280,height=920');
-  if (!printWindow) {
-    UI.toast('Pop-up blocked. Allow pop-ups and try again.');
-    return;
-  }
-  printWindow.document.write(printableDoc);
-  printWindow.document.close();
-  const printNow = () => {
-    printWindow.focus();
-    printWindow.print();
+  const printNow = (targetWindow) => {
+    targetWindow.focus();
+    targetWindow.print();
     UI.toast('Monitor health print screen is ready in the print dialog.');
   };
-  if (printWindow.document.readyState === 'complete') {
-    setTimeout(printNow, 150);
+
+  const printWindow = window.open('about:blank', '_blank', 'width=1280,height=920');
+  if (printWindow) {
+    printWindow.document.open();
+    printWindow.document.write(printableDoc);
+    printWindow.document.close();
+    if (printWindow.document.readyState === 'complete') {
+      setTimeout(() => printNow(printWindow), 150);
+    } else {
+      printWindow.addEventListener('load', () => setTimeout(() => printNow(printWindow), 150), {
+        once: true
+      });
+    }
+    return;
+  }
+
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.right = '-9999px';
+  iframe.style.bottom = '0';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = '0';
+  iframe.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(iframe);
+
+  const frameDoc = iframe.contentDocument || iframe.contentWindow?.document;
+  if (!frameDoc) {
+    iframe.remove();
+    UI.toast('Unable to prepare monitor health print screen.');
+    return;
+  }
+
+  frameDoc.open();
+  frameDoc.write(printableDoc);
+  frameDoc.close();
+
+  const printFromFrame = () => {
+    const frameWindow = iframe.contentWindow;
+    if (!frameWindow) {
+      iframe.remove();
+      UI.toast('Unable to open print dialog. Check browser print settings.');
+      return;
+    }
+    printNow(frameWindow);
+    setTimeout(() => iframe.remove(), 1500);
+  };
+
+  if (frameDoc.readyState === 'complete') {
+    setTimeout(printFromFrame, 150);
   } else {
-    printWindow.addEventListener('load', () => setTimeout(printNow, 150), { once: true });
+    iframe.addEventListener('load', () => setTimeout(printFromFrame, 150), { once: true });
   }
 }
 
