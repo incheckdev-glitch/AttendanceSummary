@@ -96,20 +96,19 @@
         <small class="muted">Internal-only access · Works with our existing issue sheet</small>
       </div>
       <aside class="hero-card login-card" aria-label="Login panel">
-        <h2>Sign in to start</h2>
-        <p class="muted">Use your role and passcode to open the internal dashboard.</p>
+        <img src="assets/incheck-logo.svg" class="login-logo" alt="InCheck 360" width="168" height="44" />
         <form id="loginForm" class="login-form">
-          <label for="loginRole" class="muted">Role</label>
+          <label for="loginRole" class="sr-only">Role</label>
           <select id="loginRole" class="select" required>
-            <option value="viewer">Viewer</option>
-            <option value="admin">Admin</option>
+            <option value="viewer">Email *</option>
+            <option value="admin">Admin Email *</option>
           </select>
 
-          <label for="loginPasscode" class="muted">Passcode</label>
-          <input id="loginPasscode" class="input" type="password" placeholder="Enter passcode" autocomplete="current-password" />
+          <label for="loginPasscode" class="sr-only">Passcode</label>
+          <input id="loginPasscode" class="input" type="password" placeholder="Password *" autocomplete="current-password" />
 
-          <button id="loginBtn" class="btn primary" type="submit">Login</button>
-          <small id="loginHint" class="muted">Viewer passcode is required.</small>
+          <button id="loginBtn" class="btn primary" type="submit">LOG IN</button>
+          <small id="loginHint" class="login-hint">Viewer passcode is required.</small>
         </form>
       </aside>
     </div>

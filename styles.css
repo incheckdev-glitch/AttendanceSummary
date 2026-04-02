@@ -112,15 +112,20 @@ body.auth-locked #loginSection{
   min-height:100vh;
   display:flex;
   align-items:center;
+  background:#202994;
 }
 
 body.auth-locked #loginSection .hero-grid{
-  grid-template-columns:minmax(320px, 460px);
+  grid-template-columns:minmax(320px, 420px);
   justify-content:center;
 }
 
 body.auth-locked #loginSection .hero-grid > div{
   display:none;
+}
+
+body.auth-locked #loginSection .container{
+  max-width:560px;
 }
 
 h1,h2,h3,h4{
@@ -366,17 +371,67 @@ header{
 }
 .login-form{
   display:grid;
-  gap:10px;
+  gap:14px;
 }
 .login-form .input,
 .login-form .select,
 .login-form .btn{
   width:100%;
-  border-radius:12px;
+  border-radius:8px;
 }
 .login-form .btn{
   justify-content:center;
-  margin-top:6px;
+  margin-top:8px;
+  letter-spacing:.02em;
+  font-weight:700;
+}
+
+body.auth-locked .login-card{
+  background:transparent;
+  border:0;
+  box-shadow:none;
+  padding:0;
+  gap:22px;
+}
+
+body.auth-locked .login-logo{
+  width:170px;
+  height:auto;
+  margin:0 auto 10px;
+  display:block;
+  filter:brightness(0) invert(1);
+}
+
+body.auth-locked .login-form .input,
+body.auth-locked .login-form .select{
+  border:none;
+  background:#f3f4f6;
+  color:#374151;
+  min-height:50px;
+  padding:0 20px;
+  font-size:1.05rem;
+}
+
+body.auth-locked .login-form .input::placeholder{
+  color:#4b5563;
+}
+
+body.auth-locked .login-form .btn.primary{
+  border:none;
+  background:#18256e;
+  color:#fff;
+  min-height:50px;
+}
+
+body.auth-locked .login-form .btn.primary:hover{
+  background:#121d58;
+  transform:none;
+  box-shadow:none;
+}
+
+body.auth-locked .login-hint{
+  color:#dbe3ff;
+  text-align:center;
 }
 .feature-grid{
   display:grid;
