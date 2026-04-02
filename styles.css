@@ -334,6 +334,24 @@ header{
   color:var(--muted);
   font-size:.85rem;
 }
+
+.login-card h2{
+  font-size:1.45rem;
+}
+.login-form{
+  display:grid;
+  gap:10px;
+}
+.login-form .input,
+.login-form .select,
+.login-form .btn{
+  width:100%;
+  border-radius:12px;
+}
+.login-form .btn{
+  justify-content:center;
+  margin-top:6px;
+}
 .feature-grid{
   display:grid;
   grid-template-columns:repeat(3,minmax(0,1fr));

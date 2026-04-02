@@ -1924,7 +1924,11 @@ function cacheEls() {
     'spinner',
     'toast',
     'searchInput',
-    'launchDashboard',
+    'loginForm',
+    'loginRole',
+    'loginPasscode',
+    'loginBtn',
+    'loginHint',
      'savedViews',
     'saveViewBtn',
     'deleteViewBtn',
@@ -7218,46 +7222,61 @@ function wireConnectivity() {
 }
 
 function wireDashboardGate() {
-  if (!E.app || !E.launchDashboard) return;
+  if (!E.app || !E.loginForm || !E.loginRole || !E.loginPasscode) return;
 
-  E.app.classList.add('is-locked');
-  E.app.setAttribute('aria-hidden', 'true');
-  Session.restore();
-  UI.applyRolePermissions();
-
-  const requestSessionLogin = () => {
-    const roleInput = window
-      .prompt('Enter role (admin/viewer)', ROLES.VIEWER)
-      ?.trim()
-      .toLowerCase();
-    if (!roleInput) return false;
-    const role =
-      roleInput === ROLES.ADMIN ? ROLES.ADMIN : roleInput === ROLES.VIEWER ? ROLES.VIEWER : null;
-    if (!role) {
-      UI.toast('Invalid role. Use "admin" or "viewer".');
-      return false;
-    }
-    const needsPasscode = role === ROLES.ADMIN && !!CONFIG.ADMIN_PASSCODE;
-    const passcode = needsPasscode
-      ? window.prompt(`Enter ${role} passcode`) ?? ''
-      : '';
-    const ok = Session.login(role, passcode);
-    if (!ok) {
-      UI.toast('Login failed. Invalid role/passcode.');
-      return false;
-    }
-    UI.applyRolePermissions();
-    return true;
-  };
-
-  E.launchDashboard.addEventListener('click', event => {
-    event.preventDefault();
-    const loggedIn = requestSessionLogin();
-    if (!loggedIn) return;
+  const unlockApp = () => {
     E.app.classList.remove('is-locked');
     E.app.setAttribute('aria-hidden', 'false');
     E.app.scrollIntoView({ behavior: 'smooth' });
     window.location.hash = '#app';
+  };
+
+  const lockApp = () => {
+    E.app.classList.add('is-locked');
+    E.app.setAttribute('aria-hidden', 'true');
+  };
+
+  lockApp();
+  Session.restore();
+  UI.applyRolePermissions();
+
+  if (Session.isAuthenticated()) {
+    unlockApp();
+  }
+
+  const updateLoginHint = () => {
+    if (!E.loginHint) return;
+    const isAdmin = E.loginRole.value === ROLES.ADMIN;
+    E.loginHint.textContent = isAdmin
+      ? 'Admin passcode is required.'
+      : 'Viewer can continue without a passcode unless your environment requires one.';
+  };
+
+  E.loginRole.addEventListener('change', updateLoginHint);
+  updateLoginHint();
+
+  E.loginForm.addEventListener('submit', event => {
+    event.preventDefault();
+    const role = String(E.loginRole.value || '').trim().toLowerCase();
+    const passcode = String(E.loginPasscode.value || '');
+
+    const normalizedRole =
+      role === ROLES.ADMIN ? ROLES.ADMIN : role === ROLES.VIEWER ? ROLES.VIEWER : null;
+    if (!normalizedRole) {
+      UI.toast('Invalid role. Use admin or viewer.');
+      return;
+    }
+
+    const ok = Session.login(normalizedRole, passcode);
+    if (!ok) {
+      UI.toast('Login failed. Invalid role/passcode.');
+      return;
+    }
+
+    UI.applyRolePermissions();
+    E.loginPasscode.value = '';
+    unlockApp();
+    UI.toast(`Logged in as ${normalizedRole}.`);
   });
 }
 
