@@ -104,6 +104,10 @@ body.auth-locked #appFooter{
   display:none;
 }
 
+body:not(.auth-locked) #loginSection{
+  display:none;
+}
+
 body.auth-locked #loginSection{
   min-height:100vh;
   display:flex;

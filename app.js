@@ -1939,6 +1939,7 @@ function cacheEls() {
     'loginPasscode',
     'loginBtn',
     'loginHint',
+    'logoutBtn',
      'savedViews',
     'saveViewBtn',
     'deleteViewBtn',
@@ -7244,6 +7245,7 @@ function wireDashboardGate() {
     document.body.classList.remove('auth-locked');
     E.app.classList.remove('is-locked');
     E.app.setAttribute('aria-hidden', 'false');
+    if (E.logoutBtn) E.logoutBtn.hidden = false;
     const role = Session.role();
     setActiveView(getDefaultViewForRole(role));
     E.app.scrollIntoView({ behavior: 'smooth' });
@@ -7254,6 +7256,7 @@ function wireDashboardGate() {
     document.body.classList.add('auth-locked');
     E.app.classList.add('is-locked');
     E.app.setAttribute('aria-hidden', 'true');
+    if (E.logoutBtn) E.logoutBtn.hidden = true;
     window.location.hash = '#loginSection';
   };
 
@@ -7298,6 +7301,18 @@ function wireDashboardGate() {
     unlockApp();
     UI.toast(`Logged in as ${normalizedRole}.`);
   });
+
+  if (E.logoutBtn) {
+    E.logoutBtn.addEventListener('click', () => {
+      Session.logout();
+      UI.applyRolePermissions();
+      E.loginPasscode.value = '';
+      E.loginRole.value = ROLES.VIEWER;
+      updateLoginHint();
+      lockApp();
+      UI.toast('Logged out.');
+    });
+  }
 }
 
 function wireModals() {
