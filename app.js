@@ -7248,13 +7248,11 @@ function wireDashboardGate() {
   };
 
   lockApp();
-  Session.restore();
+  // Always start in a logged-out state so the login page is the only visible
+  // screen until the user explicitly authenticates in this browser session.
+  Session.logout();
   UI.applyRolePermissions();
-
-  if (Session.isAuthenticated()) {
-    E.loginRole.value = Session.role() || ROLES.VIEWER;
-    unlockApp();
-  }
+  E.loginRole.value = ROLES.VIEWER;
 
   const updateLoginHint = () => {
     if (!E.loginHint) return;
