@@ -4579,7 +4579,7 @@ const HealthMonitor = {
     const failures = this.history.filter(item => !item.ok).length;
     const totalDowntimeMs = this.computeDowntimeMs();
     const uptimePct = this.history.length
-      ? Math.round((this.history.filter(h => h.ok).length / this.history.length) * 100)
+      ? (this.history.filter(h => h.ok).length / this.history.length) * 100
       : null;
     const avgLatency = latencies.length
       ? Math.round(latencies.reduce((sum, value) => sum + value, 0) / latencies.length)
@@ -4605,11 +4605,11 @@ const HealthMonitor = {
         E.healthUptime.textContent = '--';
       } else {
         const up = this.history.filter(h => h.ok).length;
-        E.healthUptime.textContent = `${uptimePct}% (${up}/${this.history.length})`;
+        E.healthUptime.textContent = `${uptimePct.toFixed(2)}% (${up}/${this.history.length})`;
       }
     }
     if (E.healthUptimeWidget) {
-      E.healthUptimeWidget.textContent = Number.isFinite(uptimePct) ? `${uptimePct}%` : '--';
+      E.healthUptimeWidget.textContent = Number.isFinite(uptimePct) ? `${uptimePct.toFixed(2)}%` : '--';
     }
     if (E.healthAvgLatency) E.healthAvgLatency.textContent = Number.isFinite(avgLatency) ? `${avgLatency} ms` : 'n/a';
     if (E.healthP95Latency) E.healthP95Latency.textContent = Number.isFinite(p95Latency) ? `${p95Latency} ms` : 'n/a';
