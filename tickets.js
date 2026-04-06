@@ -71,19 +71,17 @@ const DataStore = {
       ) || columnKCategory;
     
     return {
-      id:
-        pick('ticket id', 'ticket', 'ticket #', 'ticket number', 'id', '#') ||
-        pickByIndex(0),
-      name: pick('name', 'requester', 'requester name') || pickByIndex(2),
-      department: pick('department', 'dept') || pickByIndex(3),
-      module: pick('impacted module', 'module', 'issue location') || pickByIndex(7) || 'Unspecified',
-      title: pick('title', 'subject') || pickByIndex(4),
-      desc: pick('description', 'details') || pickByIndex(5),
-      file: pick('file upload', 'file', 'link', 'url') || pickByIndex(8),
-      emailAddressee: pick('email addressee', 'email', 'email address') || pickByIndex(9),
-      notificationSent: pick('notification sent') || pickByIndex(12),
-      notificationUnderReview: pick('notification sent under review') || pickByIndex(18),
-      youtrackReference: pick('youtrack reference', 'you track reference', 'youtrack', 'youtrack ref') || pickByIndex(13),
+      id: pick('ticket id', 'id'),
+      name: pick('name', 'requester', 'requester name'),
+      department: pick('department', 'dept'),
+      module: pick('impacted module', 'module', 'issue location') || 'Unspecified',
+      title: pick('title'),
+      desc: pick('description'),
+      file: pick('file upload', 'link', 'url'),
+      emailAddressee: pick('email addressee', 'email', 'email address'),
+      notificationSent: pick('notification sent'),
+      notificationUnderReview: pick('notification sent under review'),
+      youtrackReference: pick('youtrack reference', 'you track reference', 'youtrack', 'youtrack ref'),
       // Keep positional fallbacks aligned with export order:
       // R (index 17) = Dev Team Status, S (index 18) = Issue Related.
       devTeamStatus:
@@ -92,16 +90,14 @@ const DataStore = {
       issueRelated:
         pick('issue related', 'related issue', 'related issues', 'issue relation', 'issue_related') ||
         String(raw.__col_18 ?? '').trim(),
-      notes: pick('notes') || pickByIndex(16),
-      // Prefer Google Sheet column L (index 11) where this team's sheet stores priority.
-      // Fall back to column G (index 6) to support compact sheets like the one in shared screenshots.
-      priority: DataStore.normalizePriority(
-        String(raw.__col_11 ?? '').trim() || String(raw.__col_6 ?? '').trim() || pick('priority')
-      ),
-      status: DataStore.normalizeStatus(pick('status') || pickByIndex(11) || 'Not Started Yet'),
-      type: resolvedType || pickByIndex(10),
-      date: pick('timestamp', 'date', 'created at') || pickByIndex(1),
-      log: pick('log', 'logs', 'comment') || pickByIndex(17)
+      notes: pick('notes'),
+       // Always prefer Google Sheet column L (index 11) for priority when duplicate
+      // "Priority" headers exist.
+      priority: DataStore.normalizePriority(String(raw.__col_11 ?? '').trim() || pick('priority')),
+      status: DataStore.normalizeStatus(pick('status') || 'Not Started Yet'),
+      type: resolvedType,
+      date: pick('timestamp', 'date', 'created at'),
+      log: pick('log', 'logs', 'comment')
     };
   },
   tokenize(issue) {

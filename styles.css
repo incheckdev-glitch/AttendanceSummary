@@ -864,61 +864,6 @@ th.sorted-desc::after{
 }
 .modal .actions{display:flex;gap:8px;flex-wrap:wrap}
 .modal-close{cursor:pointer;border:none;background:transparent;color:var(--muted);font-size:20px}
-.create-ticket-grid{
-  display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:10px;
-}
-.field-error{
-  min-height:14px;
-  color:var(--danger);
-  font-size:11px;
-}
-.form-error-banner{
-  border:1px solid color-mix(in oklab, var(--danger) 70%, var(--border) 30%);
-  background:color-mix(in oklab, var(--danger) 14%, transparent);
-  color:var(--danger);
-  padding:8px 10px;
-  border-radius:10px;
-  font-size:12px;
-}
-.is-invalid{
-  border-color:var(--danger)!important;
-}
-.upload-dropzone{
-  border:1px dashed var(--border);
-  border-radius:12px;
-  min-height:86px;
-  padding:12px;
-  display:grid;
-  gap:6px;
-  align-content:center;
-  cursor:pointer;
-  background:color-mix(in oklab, var(--card) 88%, transparent);
-  transition:border-color .15s ease, background .15s ease, box-shadow .15s ease;
-}
-.upload-dropzone:hover,
-.upload-dropzone:focus-visible,
-.upload-dropzone.is-dragover{
-  border-color:var(--accent);
-  background:color-mix(in oklab, var(--accent) 14%, transparent);
-  box-shadow:var(--focus);
-  outline:none;
-}
-.upload-dropzone-title{
-  font-size:13px;
-  font-weight:600;
-}
-.upload-dropzone-meta{
-  font-size:12px;
-  word-break:break-word;
-}
-
-@media(max-width:640px){
-  .create-ticket-grid{
-    grid-template-columns:1fr;
-  }
-}
 .ticket-detail{
   border:1px solid var(--border);
   border-radius:20px;
@@ -1453,3 +1398,4 @@ background:var(--ai-table-row-even);
     padding:12px;
   }
 }
+
