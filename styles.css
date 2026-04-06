@@ -864,6 +864,32 @@ th.sorted-desc::after{
 }
 .modal .actions{display:flex;gap:8px;flex-wrap:wrap}
 .modal-close{cursor:pointer;border:none;background:transparent;color:var(--muted);font-size:20px}
+.create-ticket-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+}
+.field-error{
+  min-height:14px;
+  color:var(--danger);
+  font-size:11px;
+}
+.form-error-banner{
+  border:1px solid color-mix(in oklab, var(--danger) 70%, var(--border) 30%);
+  background:color-mix(in oklab, var(--danger) 14%, transparent);
+  color:var(--danger);
+  padding:8px 10px;
+  border-radius:10px;
+  font-size:12px;
+}
+.is-invalid{
+  border-color:var(--danger)!important;
+}
+@media(max-width:640px){
+  .create-ticket-grid{
+    grid-template-columns:1fr;
+  }
+}
 .ticket-detail{
   border:1px solid var(--border);
   border-radius:20px;
@@ -1398,4 +1424,3 @@ background:var(--ai-table-row-even);
     padding:12px;
   }
 }
-
