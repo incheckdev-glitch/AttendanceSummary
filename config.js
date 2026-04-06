@@ -5,5 +5,5 @@
  *   API_BASE_URL: 'https://your-proxy.example.com/api'
  */
 window.RUNTIME_CONFIG = {
-  API_BASE_URL: 'https://attendance-summary-dusky.vercel.app'
+  API_BASE_URL: 'https://attendance-summary-dusky.vercel.app/api/proxy'
 };
