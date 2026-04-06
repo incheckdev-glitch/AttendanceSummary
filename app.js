@@ -24,27 +24,20 @@ const CONFIG = {
   SHEET_URL:
     "https://docs.google.com/spreadsheets/d/e/2PACX-1vTRwAjNAQxiPP8uR15t_vx03JkjgEBjgUwp2bpx8rsHx-JJxVDBZyf5ap77rAKrYHfgkVMwLJVm6pGn/pub?output=csv",
 
-  // Calendar Apps Script web app URL (wrapped via corsproxy to handle CORS)
+  // Calendar Apps Script web app URL
   CALENDAR_API_URL:
     RUNTIME_CONFIG.CALENDAR_API_URL ||
-    "https://corsproxy.io/?" +
-      encodeURIComponent(APPS_SCRIPT_WEBAPP_URL),
-
-  // Optional passcode used when calendar read access is protected.
-  CALENDAR_READ_PASSCODE: RUNTIME_CONFIG.CALENDAR_READ_PASSCODE || '',
+    APPS_SCRIPT_WEBAPP_URL,
 
   // Exact Google Sheet tab name used by the Apps Script calendar backend
   CALENDAR_SHEET_NAME: 'CalendarEvents',
   
-  // Issues Apps Script web app URL (tickets resource: create/update/delete)
+  // Issues Apps Script web app URL (tickets resource)
   ISSUE_API_URL:
     RUNTIME_CONFIG.ISSUE_API_URL ||
-    "https://corsproxy.io/?" +
-      encodeURIComponent(APPS_SCRIPT_WEBAPP_URL),
+    APPS_SCRIPT_WEBAPP_URL,
   CSM_DAILY_API_URL:
     RUNTIME_CONFIG.CSM_DAILY_API_URL || '',
-  ADMIN_PASSCODE: RUNTIME_CONFIG.ADMIN_PASSCODE || 'incheck@360',
-  VIEWER_PASSCODE: RUNTIME_CONFIG.VIEWER_PASSCODE || '12345678',
 
   
   TREND_DAYS_RECENT: 7,
@@ -213,8 +206,7 @@ CATEGORY_ORDER: [
       `${APPS_SCRIPT_WEBAPP_URL}?resource=monitor_health`,
     ENABLE_POST_TO_SHEET: RUNTIME_CONFIG.HEALTH_MONITOR_ENABLE_POST_TO_SHEET !== false,
     POST_URL:
-      RUNTIME_CONFIG.HEALTH_MONITOR_POST_URL ||
-      "https://corsproxy.io/?" + encodeURIComponent(APPS_SCRIPT_WEBAPP_URL),
+      RUNTIME_CONFIG.HEALTH_MONITOR_POST_URL || APPS_SCRIPT_WEBAPP_URL,
     SHEET_NAME: RUNTIME_CONFIG.HEALTH_MONITOR_SHEET_NAME || 'Monitor Health',
     ENVIRONMENT: RUNTIME_CONFIG.HEALTH_MONITOR_ENVIRONMENT || 'prod',
     REGION: RUNTIME_CONFIG.HEALTH_MONITOR_REGION || 'us',
@@ -235,11 +227,10 @@ const LS_KEYS = {
   pageSize: 'pageSize',
   view: 'incheckView',
   accentColor: 'incheckAccent',
- accentColorStorage: 'incheckAccentColor',
+  accentColorStorage: 'incheckAccentColor',
   savedViews: 'incheckSavedViews',
   columns: 'incheckColumns',
   freezeWindows: 'incheckFreezeWindows',
-  calendarReadPasscode: 'incheckCalendarReadPasscode',
   session: 'incheckSession',
   csmDailyFilters: 'incheckCsmDailyFilters',
   csmDailyRows: 'incheckCsmDailyRows',
@@ -251,10 +242,44 @@ const ROLES = Object.freeze({
   VIEWER: 'viewer'
 });
 
+const Api = {
+  async post(resource, action, payload = {}) {
+    const endpoint = APPS_SCRIPT_WEBAPP_URL;
+    const requestBody = {
+      resource,
+      action,
+      ...payload
+    };
+    let response;
+    try {
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+      });
+    } catch (error) {
+      throw new Error('Network error while contacting backend.');
+    }
+
+    const rawText = await response.text();
+    const data = parseApiJson(rawText, `Apps Script ${resource || 'api'}`);
+    if (!response.ok) {
+      throw new Error(data?.error || data?.message || `HTTP ${response.status}`);
+    }
+    if (data && typeof data === 'object' && (data.ok === false || data.success === false)) {
+      throw new Error(data.error || data.message || 'Backend rejected request.');
+    }
+    if (data && typeof data === 'object' && 'data' in data && data.data !== undefined) {
+      return data.data;
+    }
+    return data;
+  }
+};
+
 const Session = {
   state: {
     role: null,
-    authCode: ''
+    authToken: ''
   },
   clearRoleScopedCache() {
     const roleScopedKeys = [
@@ -262,8 +287,7 @@ const Session = {
       LS_KEYS.issuesLastUpdated,
       LS_KEYS.events,
       LS_KEYS.eventsLastUpdated,
-      LS_KEYS.dataVersion,
-      LS_KEYS.calendarReadPasscode
+      LS_KEYS.dataVersion
     ];
     roleScopedKeys.forEach(key => {
       try {
@@ -273,13 +297,14 @@ const Session = {
   },
   restore() {
     try {
-      const raw = localStorage.getItem(LS_KEYS.session);
+      const raw = sessionStorage.getItem(LS_KEYS.session);
       if (!raw) return false;
       const parsed = JSON.parse(raw);
       const role = parsed?.role === ROLES.ADMIN ? ROLES.ADMIN : parsed?.role === ROLES.VIEWER ? ROLES.VIEWER : null;
-      if (!role) return false;
+      const authToken = String(parsed?.authToken || '');
+      if (!role || !authToken) return false;
       this.state.role = role;
-      this.state.authCode = String(parsed?.authCode || '');
+      this.state.authToken = authToken;
       return true;
     } catch {
       return false;
@@ -287,39 +312,63 @@ const Session = {
   },
   persist() {
     try {
-      localStorage.setItem(LS_KEYS.session, JSON.stringify(this.state));
+      sessionStorage.setItem(LS_KEYS.session, JSON.stringify(this.state));
     } catch {}
   },
-  login(role, passcode = '') {
+  async login(passcode = '') {
+    const enteredPasscode = String(passcode || '').trim();
+    if (!enteredPasscode) throw new Error('Passcode is required.');
+
+    const response = await Api.post('auth', 'login', { passcode: enteredPasscode });
+    const authToken = String(response?.authToken || response?.token || '').trim();
+    const backendRole = String(response?.role || response?.userRole || '').trim().toLowerCase();
     const normalizedRole =
-      role === ROLES.ADMIN ? ROLES.ADMIN : role === ROLES.VIEWER ? ROLES.VIEWER : null;
-    if (!normalizedRole) return false;
+      backendRole === ROLES.ADMIN ? ROLES.ADMIN : backendRole === ROLES.VIEWER ? ROLES.VIEWER : null;
+    if (!authToken || !normalizedRole) {
+      throw new Error('Login succeeded but backend did not return a valid session.');
+    }
+
     const previousRole = this.state.role;
-    const expected =
-      normalizedRole === ROLES.ADMIN
-        ? CONFIG.ADMIN_PASSCODE
-        : normalizedRole === ROLES.VIEWER
-          ? CONFIG.VIEWER_PASSCODE
-          : '';
-    const entered = String(passcode || '');
-    if (expected && entered !== expected) return false;
     if (previousRole && previousRole !== normalizedRole) {
       this.clearRoleScopedCache();
     }
     this.state.role = normalizedRole;
-    this.state.authCode = entered;
+    this.state.authToken = authToken;
     this.persist();
-    return true;
+    return { role: normalizedRole };
   },
-  logout() {
+  async logout() {
+    const authToken = this.state.authToken || '';
+    if (authToken) {
+      try {
+        await Api.post('auth', 'logout', { authToken });
+      } catch (error) {
+        console.warn('Auth logout request failed', error);
+      }
+    }
+    this.clearClientSession();
+  },
+  clearClientSession() {
     if (this.state.role) {
       this.clearRoleScopedCache();
     }
     this.state.role = null;
-    this.state.authCode = '';
+    this.state.authToken = '';
     try {
-      localStorage.removeItem(LS_KEYS.session);
+      sessionStorage.removeItem(LS_KEYS.session);
     } catch {}
+  },
+  async validateSession() {
+    const authToken = this.state.authToken || '';
+    if (!authToken) return false;
+    const response = await Api.post('auth', 'session', { authToken });
+    const backendRole = String(response?.role || response?.userRole || '').trim().toLowerCase();
+    const normalizedRole =
+      backendRole === ROLES.ADMIN ? ROLES.ADMIN : backendRole === ROLES.VIEWER ? ROLES.VIEWER : null;
+    if (!normalizedRole) return false;
+    this.state.role = normalizedRole;
+    this.persist();
+    return true;
   },
   isAuthenticated() {
     return this.state.role === ROLES.ADMIN || this.state.role === ROLES.VIEWER;
@@ -328,17 +377,13 @@ const Session = {
     return this.state.role || null;
   },
   authContext() {
-    return { role: this.role(), authCode: this.state.authCode || '' };
-  },
-  setAuthCode(passcode = '') {
-    this.state.authCode = String(passcode || '');
-    this.persist();
+    return { role: this.role(), authToken: this.state.authToken || '' };
   }
 };
 
-function isPasscodeAuthError(error) {
+function isAuthError(error) {
   const message = String(error?.message || '');
-  return /unauthorized|invalid\s+passcode|forbidden/i.test(message);
+  return /unauthorized|forbidden|invalid.*token|expired.*session|invalid.*session|auth/i.test(message);
 }
 
 const Permissions = {
@@ -372,6 +417,26 @@ function requirePermission(check, message) {
   if (check()) return true;
   UI.toast(message || 'You do not have permission for this action.');
   return false;
+}
+
+async function handleExpiredSession(message = 'Session expired. Please log in again.') {
+  Session.clearClientSession();
+  UI.applyRolePermissions();
+  try {
+    const loginPasscodeEl = document.getElementById('loginPasscode');
+    const loginRoleEl = document.getElementById('loginRole');
+    if (loginPasscodeEl) loginPasscodeEl.value = '';
+    if (loginRoleEl) loginRoleEl.value = ROLES.VIEWER;
+    const loginSection = document.getElementById('loginSection');
+    if (loginSection) window.location.hash = '#loginSection';
+    document.body.classList.add('auth-locked');
+    const appEl = document.getElementById('app');
+    if (appEl) {
+      appEl.classList.add('is-locked');
+      appEl.setAttribute('aria-hidden', 'true');
+    }
+  } catch {}
+  UI.toast(message);
 }
 
 const STOPWORDS = new Set([
@@ -4046,29 +4111,6 @@ const issueUpdate = {
     UI.Modals.closeIssue();
     UI.refreshAll();
   } catch (error) {
-    if (isPasscodeAuthError(error)) {
-      const entered = window.prompt('Ticket updates require a valid passcode. Enter passcode to retry:');
-      if (entered !== null) {
-        const trimmed = entered.trim();
-        if (trimmed) {
-          try {
-            Session.setAuthCode(trimmed);
-            const updatedIssue = await saveIssueToSheet(issueUpdate, Session.authContext());
-            if (!updatedIssue) throw new Error('Issue update did not return a response.');
-            applyIssueUpdate(updatedIssue);
-            IssueEditor.close();
-            UI.Modals.closeIssue();
-            UI.refreshAll();
-            return;
-          } catch (retryError) {
-            console.error('Failed to update ticket after passcode retry', retryError);
-            UI.toast(`Failed to update ticket: ${retryError.message}`);
-            return;
-          }
-        }
-      }
-    }
-
     console.error('Failed to update ticket', error);
     UI.toast(`Failed to update ticket: ${error.message}`);
   }
@@ -4290,10 +4332,8 @@ const HealthMonitor = {
       public: 'true',
       access: 'public',
       role: auth.role || '',
-      sessionRole: auth.role || '',
-      authCode: auth.authCode || '',
-      passcode: readPasscode,
-      password: readPasscode
+      authToken: auth.authToken || '',
+      passcode: readPasscode
     });
     const res = await fetch(endpoint, { cache: 'no-store' });
     if (!res.ok) throw new Error(`Health monitor API failed: ${res.status}`);
@@ -5155,27 +5195,6 @@ function saveEventsCache() {
   } catch {}
 }
 
-function getCalendarReadPasscode() {
-  const configured = String(CONFIG.CALENDAR_READ_PASSCODE || '').trim();
-  if (configured) return configured;
-  try {
-    return String(localStorage.getItem(LS_KEYS.calendarReadPasscode) || '').trim();
-  } catch {
-    return '';
-  }
-}
-
-function setCalendarReadPasscode(passcode) {
-  try {
-    const trimmed = String(passcode || '').trim();
-    if (!trimmed) {
-      localStorage.removeItem(LS_KEYS.calendarReadPasscode);
-      return;
-    }
-    localStorage.setItem(LS_KEYS.calendarReadPasscode, trimmed);
-  } catch {}
-}
-
 function loadFreezeWindowsCache() {
   try {
     const raw = localStorage.getItem(LS_KEYS.freezeWindows);
@@ -5290,8 +5309,12 @@ async function loadIssues(force = false) {
   try {
     UI.spinner(true);
     UI.skeleton(true);
-    const text = await safeFetchText(CONFIG.SHEET_URL);
-    DataStore.hydrate(text);
+    const auth = Session.authContext();
+    const response = await Api.post('tickets', 'list', {
+      authToken: auth.authToken || ''
+    });
+    const rows = extractEventsPayload(response).map(raw => DataStore.normalizeRow(raw));
+    DataStore.hydrateFromRows(rows.filter(r => r.id && String(r.id).trim() !== ''));
     IssuesCache.save(DataStore.rows);
     UI.Issues.renderFilters();
     setIfOptionExists(E.moduleFilter, Filters.state.module);
@@ -5304,6 +5327,27 @@ async function loadIssues(force = false) {
     openIssueFromLink();
     UI.setSync('issues', true, new Date());
   } catch (e) {
+    if (isAuthError(e)) {
+      await handleExpiredSession('Session expired while loading tickets.');
+      return;
+    }
+    try {
+      const text = await safeFetchText(CONFIG.SHEET_URL);
+      DataStore.hydrate(text);
+      IssuesCache.save(DataStore.rows);
+      UI.Issues.renderFilters();
+      setIfOptionExists(E.moduleFilter, Filters.state.module);
+      setIfOptionExists(E.categoryFilter, Filters.state.category);
+      setIfOptionExists(E.priorityFilter, Filters.state.priority);
+      setIfOptionExists(E.statusFilter, Filters.state.status);
+      setIfOptionExists(E.devTeamStatusFilter, Filters.state.devTeamStatus);
+      setIfOptionExists(E.issueRelatedFilter, Filters.state.issueRelated);
+      UI.refreshAll();
+      openIssueFromLink();
+      UI.toast('Loaded tickets from CSV fallback because backend list call failed.');
+      UI.setSync('issues', true, new Date());
+      return;
+    } catch {}
     if (!DataStore.rows.length && E.issuesTbody) {
       E.issuesTbody.innerHTML = `
         <tr>
@@ -5338,36 +5382,12 @@ async function loadEvents(force = false, options = {}) {
 
   try {
     UI.spinner(true);
-    const readPasscode = getCalendarReadPasscode();
     const auth = Session.authContext();
-    const eventsUrl = withResourceParam(CONFIG.CALENDAR_API_URL, 'events', {
-      action: 'read',
+    const data = await Api.post('events', 'list', {
+      authToken: auth.authToken || '',
       sheetName: CONFIG.CALENDAR_SHEET_NAME,
-      tabName: CONFIG.CALENDAR_SHEET_NAME,
-      public: 'true',
-      access: 'public',
-      role: auth.role || '',
-      sessionRole: auth.role || '',
-      authCode: auth.authCode || '',
-      passcode: readPasscode,
-      password: readPasscode
+      tabName: CONFIG.CALENDAR_SHEET_NAME
     });
-    const res = await fetch(eventsUrl, { cache: 'no-store' });
-    if (!res.ok) throw new Error(`Events API failed: ${res.status}`);
-    const text = await res.text();
-    const data = parseApiJson(text, 'Calendar API');
-
-    if (
-      data &&
-      typeof data === 'object' &&
-      (data.ok === false || data.success === false)
-    ) {
-      throw new Error(
-        data.error ||
-          data.message ||
-          'Calendar API rejected public read access.'
-      );
-    }
 
     const events = extractEventsPayload(data);
 
@@ -5427,19 +5447,9 @@ async function loadEvents(force = false, options = {}) {
     UI.setSync('events', true, new Date());
   } catch (e) {
     const errMsg = String(e?.message || 'Unknown error');
-    const needsPasscode = /unauthorized|invalid\s+passcode|forbidden/i.test(errMsg);
-
-    if (needsPasscode && options?.allowPasscodePrompt !== false) {
-      const entered = window.prompt(
-        'Calendar read access now requires a passcode. Enter passcode to retry loading events:'
-      );
-      if (entered !== null) {
-        const trimmed = entered.trim();
-        if (trimmed) {
-          setCalendarReadPasscode(trimmed);
-          return loadEvents(true, { allowPasscodePrompt: false });
-        }
-      }
+    if (isAuthError(e)) {
+      await handleExpiredSession('Session expired while loading calendar events.');
+      return;
     }
 
     DataStore.events = cached || [];
@@ -5450,8 +5460,6 @@ async function loadEvents(force = false, options = {}) {
     UI.toast(
       DataStore.events.length
         ? 'Using cached events (API error)'
-        : needsPasscode
-        ? 'Unable to load calendar events: Invalid or missing calendar read passcode.'
         : 'Unable to load calendar events: ' + errMsg
     );
   } finally {
@@ -5477,7 +5485,7 @@ function parseApiJson(text, sourceName = 'API') {
   }
 
   throw new Error(
-    `${sourceName} returned a non-JSON response. Ensure calendar read access is public (no passcode required).`
+    `${sourceName} returned a non-JSON response.`
   );
 }
 
@@ -5493,7 +5501,7 @@ function extractEventsPayload(data) {
   if (Array.isArray(data)) return data;
   if (!data || typeof data !== 'object') return [];
 
-  // corsproxy / Apps Script variants may nest JSON in different envelope keys.
+  // Apps Script responses may nest JSON in different envelope keys.
   const candidates = [
     data.events,
     data.data,
@@ -5772,19 +5780,13 @@ async function saveIssueToSheet(issue, auth = {}, options = {}) {
     const compatibilityBodies = issueIdCandidates.flatMap(candidateId => {
       const updates = buildIssueUpdateFields(payload, candidateId);
       const updateRequestBody = {
-        resource: 'tickets',
-        action: 'update',
         id: candidateId,
         ticket_id: candidateId,
         key: {
           id: candidateId,
           ticket_id: candidateId
         },
-        role: auth.role || '',
-        sessionRole: auth.role || '',
-        authCode: auth.authCode || '',
-        password: auth.authCode || '',
-        passcode: auth.authCode || '',
+        authToken: auth.authToken || '',
         updates
       };
 
@@ -5798,94 +5800,34 @@ async function saveIssueToSheet(issue, auth = {}, options = {}) {
           // instead of an "updates" envelope.
           label: `update payload (flat) [id=${candidateId}]`,
           body: {
-            resource: 'tickets',
-            action: 'update',
             id: candidateId,
             ticket_id: candidateId,
             key: {
               id: candidateId,
               ticket_id: candidateId
             },
-            role: auth.role || '',
-            sessionRole: auth.role || '',
-            authCode: auth.authCode || '',
-            password: auth.authCode || '',
-            passcode: auth.authCode || '',
+            authToken: auth.authToken || '',
             ...updateRequestBody.updates
           }
         }
        ];
     });
-
-    const attempts = [];
-    const send = async (url, variant) => {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(variant.body)
-      });
-      
-      const bodyText = await res.text();
-      let json = null;
-      try {
-        json = bodyText ? JSON.parse(bodyText) : null;
-      } catch (parseErr) {
-       console.error(`Invalid JSON from issue backend (${variant.label})`, parseErr);
-      }
-       attempts.push({ label: variant.label, res, bodyText, json });
-      return attempts[attempts.length - 1];
-    };
-
-    let proxyFailed = false;
     for (const variant of compatibilityBodies) {
-      const primary = await send(CONFIG.ISSUE_API_URL, variant);
-      proxyFailed =
-        primary.res.status === 502 && CONFIG.ISSUE_API_URL.includes('corsproxy.io/?');
-      if (proxyFailed) {
-        const directUrl = decodeURIComponent(CONFIG.ISSUE_API_URL.split('corsproxy.io/?')[1]);
-        await send(directUrl, variant);
-      }
-
-     const latestAttempts = attempts.slice(-2);
-      const variantSuccess = latestAttempts.find(attempt => {
-        if (!attempt.res.ok) return false;
-        // Require explicit success from backend so wrong passcodes are rejected.
-        // This prevents treating echoed payloads or ambiguous responses as success.
-        return attempt.json.ok === true || attempt.json.success === true;
-      });
-      if (variantSuccess) {
-        UI.toast(`Issue updated (${variantSuccess.label})`);
-        const returnedIssue =
-          variantSuccess.json?.data || variantSuccess.json?.issue || variantSuccess.json || {};
+      try {
+        const result = await Api.post('tickets', 'update', variant.body);
+        UI.toast('Issue updated');
+        const returnedIssue = result?.issue || result || {};
         return normalizeIssueForStore({ ...payload, ...returnedIssue });
+      } catch (error) {
+        if (isAuthError(error)) throw error;
       }
-      }
-
-      const structuredFailure = attempts.find(
-        attempt =>
-          attempt.res.ok &&
-          attempt.json &&
-          (attempt.json.ok === false || attempt.json.success === false)
-      );
-    if (structuredFailure) {
-      throw new Error(structuredFailure.json.error || 'Unknown error');
     }
-
-     const readableAttempts = attempts
-      .map(
-        a =>
-          `${a.label}: ${a.res.status} ${a.res.statusText}${
-            a.bodyText ? ` - ${a.bodyText}` : ''
-          }`
-      )
-      .join(' | ');
-
-    const hint = proxyFailed
-      ? 'CORS proxy could not reach the Google Apps Script endpoint. Verify the script is deployed and accessible.'
-      : 'Unexpected response from the issue API.';
-
-    throw new Error(`${hint} (${readableAttempts})`);
+    throw new Error('Issue update rejected by backend.');
   } catch (e) {
+    if (isAuthError(e)) {
+      await handleExpiredSession('Session expired while updating ticket.');
+      return null;
+    }
     UI.toast('Error updating issue: ' + e.message);
    throw e;
   } finally {
@@ -5937,41 +5879,15 @@ async function saveEventToSheet(event, auth = {}) {
 
      console.log('[Ticketing Dashboard] sending event payload to Apps Script:', payload);
 
-    const res = await fetch(withResourceParam(CONFIG.CALENDAR_API_URL, 'events', {
+    const data = await Api.post('events', 'save', {
+      authToken: auth.authToken || '',
       sheetName: CONFIG.CALENDAR_SHEET_NAME,
-      tabName: CONFIG.CALENDAR_SHEET_NAME
-    }), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        resource: 'events',
-        action: 'save',
-        event: payload,
-        role: auth.role || '',
-        sessionRole: auth.role || '',
-        authCode: auth.authCode || '',
-        password: auth.authCode || '',
-        passcode: auth.authCode || '',
-        sheetName: CONFIG.CALENDAR_SHEET_NAME,
-        tabName: CONFIG.CALENDAR_SHEET_NAME
-      })
+      tabName: CONFIG.CALENDAR_SHEET_NAME,
+      event: payload
     });
-
-    const rawText = await res.text();
-    let data;
-    try {
-      data = parseApiJson(rawText, 'Calendar API');
-    } catch (jsonErr) {
-      console.error('Invalid JSON from calendar backend', jsonErr);
-      console.error('Raw response:', rawText);
-      UI.toast('Calendar: invalid response from backend, using local event');
-      return payload;
-    }
-
-    if (res.ok && (data.ok === true || data.success === true)) {
+    if (data) {
       UI.toast('Event saved');
-      // Make sure we keep notificationStatus from server if set
-      const savedEvent = data.event || payload;
+      const savedEvent = data.event || data || payload;
       if (!savedEvent.notificationStatus && payload.notificationStatus) {
         savedEvent.notificationStatus = payload.notificationStatus;
       }
@@ -5982,14 +5898,13 @@ async function saveEventToSheet(event, auth = {}) {
         savedEvent.checklist = payload.checklist;
       }
       return savedEvent;
-    } else {
-      UI.toast(
-        'Error saving event: ' +
-          (data.error || data.message || `HTTP ${res.status}`)
-      );
+    }
+    return null;
+  } catch (e) {
+    if (isAuthError(e)) {
+      await handleExpiredSession('Session expired while saving event.');
       return null;
     }
-  } catch (e) {
     UI.toast('Network error saving event: ' + e.message);
     return null;
   } finally {
@@ -6000,33 +5915,19 @@ async function saveEventToSheet(event, auth = {}) {
 async function deleteEventFromSheet(id, auth = {}) {
   UI.spinner(true);
   try {
-   const res = await fetch(withResourceParam(CONFIG.CALENDAR_API_URL, 'events', {
+    await Api.post('events', 'delete', {
+      authToken: auth.authToken || '',
       sheetName: CONFIG.CALENDAR_SHEET_NAME,
-      tabName: CONFIG.CALENDAR_SHEET_NAME
-    }), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-       body: JSON.stringify({
-        resource: 'events',
-        action: 'delete',
-        id,
-        role: auth.role || '',
-        sessionRole: auth.role || '',
-        authCode: auth.authCode || '',
-        password: auth.authCode || '',
-        passcode: auth.authCode || '',
-        sheetName: CONFIG.CALENDAR_SHEET_NAME,
-        tabName: CONFIG.CALENDAR_SHEET_NAME
-      })
+      tabName: CONFIG.CALENDAR_SHEET_NAME,
+      id
     });
-    const rawText = await res.text();
-    const data = parseApiJson(rawText, 'Calendar API');
-    if (!(res.ok && (data.ok === true || data.success === true))) {
-      throw new Error(data.error || data.message || `Delete failed (HTTP ${res.status})`);
-    }
     UI.toast('Event deleted');
     return true;
   } catch (e) {
+    if (isAuthError(e)) {
+      await handleExpiredSession('Session expired while deleting event.');
+      return false;
+    }
     UI.toast('Error deleting event: ' + e.message);
     return false;
   } finally {
@@ -6037,24 +5938,6 @@ async function deleteEventFromSheet(id, auth = {}) {
 function withResourceParam(url, resource, extraParams = {}) {
   const value = String(resource || '').trim();
   if (!value && (!extraParams || !Object.keys(extraParams).length)) return url;
-
-  if (url.includes('corsproxy.io/?')) {
-    try {
-      const proxy = 'https://corsproxy.io/?';
-      const encodedTarget = url.slice(proxy.length);
-      const targetUrl = decodeURIComponent(encodedTarget);
-      const target = new URL(targetUrl);
-      if (value) target.searchParams.set('resource', value);
-      Object.entries(extraParams || {}).forEach(([k, v]) => {
-        if (v === undefined || v === null || v === '') return;
-        target.searchParams.set(k, String(v));
-      });
-      return proxy + encodeURIComponent(target.toString());
-    } catch (err) {
-      console.warn('Unable to append resource to proxied URL, using original', err);
-      return url;
-    }
-  }
 
   try {
     const direct = new URL(url);
@@ -7844,9 +7727,6 @@ function wireDashboardGate() {
   };
 
   lockApp();
-  // Always start in a logged-out state so the login page is the only visible
-  // screen until the user explicitly authenticates in this browser session.
-  Session.logout();
   UI.applyRolePermissions();
   E.loginRole.value = ROLES.VIEWER;
 
@@ -7854,40 +7734,47 @@ function wireDashboardGate() {
     if (!E.loginHint) return;
     const isAdmin = E.loginRole.value === ROLES.ADMIN;
     E.loginHint.textContent = isAdmin
-      ? 'Admin passcode is required.'
-      : 'Viewer passcode is required.';
+      ? 'Enter your admin passcode.'
+      : 'Enter your viewer passcode.';
   };
 
   E.loginRole.addEventListener('change', updateLoginHint);
   updateLoginHint();
+  if (Session.isAuthenticated()) {
+    E.loginRole.value = Session.role() || ROLES.VIEWER;
+    unlockApp();
+  }
 
-  E.loginForm.addEventListener('submit', event => {
+  E.loginForm.addEventListener('submit', async event => {
     event.preventDefault();
-    const role = String(E.loginRole.value || '').trim().toLowerCase();
     const passcode = String(E.loginPasscode.value || '');
 
-    const normalizedRole =
-      role === ROLES.ADMIN ? ROLES.ADMIN : role === ROLES.VIEWER ? ROLES.VIEWER : null;
-    if (!normalizedRole) {
-      UI.toast('Invalid role. Use admin or viewer.');
+    if (!passcode.trim()) {
+      UI.toast('Passcode is required.');
       return;
     }
 
-    const ok = Session.login(normalizedRole, passcode);
-    if (!ok) {
-      UI.toast('Login failed. Invalid role/passcode.');
+    try {
+      const preferredRole = String(E.loginRole.value || '').trim().toLowerCase();
+      const session = await Session.login(passcode);
+      UI.applyRolePermissions();
+      E.loginPasscode.value = '';
+      E.loginRole.value = session.role || preferredRole || ROLES.VIEWER;
+      unlockApp();
+      if (preferredRole && session.role !== preferredRole) {
+        UI.toast(`Logged in as ${session.role}. Selected role was adjusted to match backend.`);
+      } else {
+        UI.toast(`Logged in as ${session.role}.`);
+      }
+    } catch (error) {
+      UI.toast(`Login failed: ${error.message}`);
       return;
     }
-
-    UI.applyRolePermissions();
-    E.loginPasscode.value = '';
-    unlockApp();
-    UI.toast(`Logged in as ${normalizedRole}.`);
   });
 
   if (E.logoutBtn) {
-    E.logoutBtn.addEventListener('click', () => {
-      Session.logout();
+    E.logoutBtn.addEventListener('click', async () => {
+      await Session.logout();
       UI.applyRolePermissions();
       E.loginPasscode.value = '';
       E.loginRole.value = ROLES.VIEWER;
@@ -8404,9 +8291,9 @@ function wireKeyboardShortcuts() {
 
 /* ---------- Bootstrapping ---------- */
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   cacheEls();
-  Session.restore();
+  const hadSession = Session.restore();
   Filters.load();
   ColumnManager.load();
   SavedViews.load();
@@ -8431,6 +8318,17 @@ document.addEventListener('DOMContentLoaded', () => {
   wirePlanner();
   wireAIQuery();
   wireKeyboardShortcuts();
+
+  if (hadSession) {
+    try {
+      const valid = await Session.validateSession();
+      if (!valid) {
+        await handleExpiredSession('Saved session is invalid or expired. Please log in again.');
+      }
+    } catch (error) {
+      await handleExpiredSession('Unable to restore session. Please log in again.');
+    }
+  }
 
   loadFreezeWindowsCache();
   renderFreezeWindows();
