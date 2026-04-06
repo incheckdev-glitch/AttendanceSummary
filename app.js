@@ -12,9 +12,12 @@
 
 const RUNTIME_CONFIG = window.__TICKETING_DASHBOARD_CONFIG__ || {};
 
-const APPS_SCRIPT_WEBAPP_URL =
+const API_BASE_URL =
+  RUNTIME_CONFIG.API_BASE_URL ||
+  RUNTIME_CONFIG.PROXY_API_BASE_URL ||
+  RUNTIME_CONFIG.BACKEND_API_BASE_URL ||
   RUNTIME_CONFIG.APPS_SCRIPT_WEBAPP_URL ||
-  "https://script.google.com/macros/s/AKfycbx4zME96v1hFoatreS2SuJv46fRGVmkZo3E_36J69AWWOLlZQhX_pi7rSuVPmrPDD8dRA/exec";
+  '';
 
 const CONFIG = {
   DATA_VERSION: '4',
@@ -24,18 +27,18 @@ const CONFIG = {
   SHEET_URL:
     "https://docs.google.com/spreadsheets/d/e/2PACX-1vTRwAjNAQxiPP8uR15t_vx03JkjgEBjgUwp2bpx8rsHx-JJxVDBZyf5ap77rAKrYHfgkVMwLJVm6pGn/pub?output=csv",
 
-  // Calendar Apps Script web app URL
+  // Calendar backend/proxy URL
   CALENDAR_API_URL:
     RUNTIME_CONFIG.CALENDAR_API_URL ||
-    APPS_SCRIPT_WEBAPP_URL,
+    API_BASE_URL,
 
-  // Exact Google Sheet tab name used by the Apps Script calendar backend
+  // Exact Google Sheet tab name used by the calendar backend
   CALENDAR_SHEET_NAME: 'CalendarEvents',
   
-  // Issues Apps Script web app URL (tickets resource)
+  // Issues backend/proxy URL (tickets resource)
   ISSUE_API_URL:
     RUNTIME_CONFIG.ISSUE_API_URL ||
-    APPS_SCRIPT_WEBAPP_URL,
+    API_BASE_URL,
   CSM_DAILY_API_URL:
     RUNTIME_CONFIG.CSM_DAILY_API_URL || '',
 
@@ -203,10 +206,10 @@ CATEGORY_ORDER: [
     MAX_HISTORY: 25,
     READ_URL:
       RUNTIME_CONFIG.HEALTH_MONITOR_READ_URL ||
-      `${APPS_SCRIPT_WEBAPP_URL}?resource=monitor_health`,
+      `${API_BASE_URL}?resource=monitor_health`,
     ENABLE_POST_TO_SHEET: RUNTIME_CONFIG.HEALTH_MONITOR_ENABLE_POST_TO_SHEET !== false,
     POST_URL:
-      RUNTIME_CONFIG.HEALTH_MONITOR_POST_URL || APPS_SCRIPT_WEBAPP_URL,
+      RUNTIME_CONFIG.HEALTH_MONITOR_POST_URL || API_BASE_URL,
     SHEET_NAME: RUNTIME_CONFIG.HEALTH_MONITOR_SHEET_NAME || 'Monitor Health',
     ENVIRONMENT: RUNTIME_CONFIG.HEALTH_MONITOR_ENVIRONMENT || 'prod',
     REGION: RUNTIME_CONFIG.HEALTH_MONITOR_REGION || 'us',
@@ -214,7 +217,7 @@ CATEGORY_ORDER: [
   }
 };
 
-// Use the proxied issue endpoint for ticket edits to avoid CORS failures
+// Use the backend/proxy endpoint for writes to avoid browser CORS failures.
 
 const LS_KEYS = {
   filters: 'incheckFilters',
@@ -243,8 +246,48 @@ const ROLES = Object.freeze({
 });
 
 const Api = {
+  ensureBaseUrl() {
+    if (!API_BASE_URL) {
+      throw new Error('API_BASE_URL is not configured.');
+    }
+    return API_BASE_URL;
+  },
+  buildUrl(resource = '', params = {}) {
+    const endpoint = this.ensureBaseUrl();
+    const url = new URL(endpoint);
+    if (resource) url.searchParams.set('resource', String(resource));
+    Object.entries(params || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === '') return;
+      url.searchParams.set(key, String(value));
+    });
+    return url.toString();
+  },
+  async get(resource, params = {}) {
+    const endpoint = this.buildUrl(resource, params);
+    let response;
+    try {
+      response = await fetch(endpoint, {
+        method: 'GET',
+        cache: 'no-store'
+      });
+    } catch (error) {
+      throw buildNetworkRequestError(endpoint, error);
+    }
+    const rawText = await response.text();
+    const data = parseApiJson(rawText, `Backend ${resource || 'api'}`);
+    if (!response.ok) {
+      throw new Error(data?.error || data?.message || `HTTP ${response.status}`);
+    }
+    if (data && typeof data === 'object' && (data.ok === false || data.success === false)) {
+      throw new Error(data.error || data.message || 'Backend rejected request.');
+    }
+    if (data && typeof data === 'object' && 'data' in data && data.data !== undefined) {
+      return data.data;
+    }
+    return data;
+  },
   async post(resource, action, payload = {}) {
-    const endpoint = APPS_SCRIPT_WEBAPP_URL;
+    const endpoint = this.ensureBaseUrl();
     const requestBody = {
       resource,
       action,
@@ -262,7 +305,7 @@ const Api = {
     }
 
     const rawText = await response.text();
-    const data = parseApiJson(rawText, `Apps Script ${resource || 'api'}`);
+    const data = parseApiJson(rawText, `Backend ${resource || 'api'}`);
     if (!response.ok) {
       throw new Error(data?.error || data?.message || `HTTP ${response.status}`);
     }
@@ -282,9 +325,9 @@ function buildNetworkRequestError(url, originalError) {
     /failed to fetch|networkerror|load failed|err_failed/i.test(rawMessage);
   if (looksLikeCorsFailure) {
     return new Error(
-      `Request to ${url} failed before a response was received. ` +
+        `Request to ${url} failed before a response was received. ` +
         'This is commonly caused by CORS (missing Access-Control-Allow-Origin) ' +
-        'or an unreachable Apps Script deployment.'
+        'or an unreachable backend/proxy endpoint.'
     );
   }
   return new Error(rawMessage || `Network error while contacting ${url}.`);
@@ -4350,7 +4393,7 @@ const HealthMonitor = {
   async fetchRowsForTab(tabName) {
     const auth = Session.authContext();
     const readPasscode = String(CONFIG.HEALTH_MONITOR.WRITE_PASSCODE || '').trim();
-    const endpoint = withResourceParam(CONFIG.HEALTH_MONITOR.READ_URL, 'monitor_health', {
+    const data = await Api.get('monitor_health', {
       action: 'read',
       sheetName: tabName,
       tabName,
@@ -4360,10 +4403,6 @@ const HealthMonitor = {
       authToken: auth.authToken || '',
       passcode: readPasscode
     });
-    const res = await fetch(endpoint, { cache: 'no-store' });
-    if (!res.ok) throw new Error(`Health monitor API failed: ${res.status}`);
-    const raw = await res.text();
-    const data = parseApiJson(raw, 'Health monitor API');
 
     if (
       data &&
@@ -5531,7 +5570,7 @@ function extractEventsPayload(data) {
   if (Array.isArray(data)) return data;
   if (!data || typeof data !== 'object') return [];
 
-  // Apps Script responses may nest JSON in different envelope keys.
+  // Backend responses may nest JSON in different envelope keys.
   const candidates = [
     data.events,
     data.data,
@@ -5703,7 +5742,7 @@ function parseBoolean(value) {
   return ['1', 'true', 'yes', 'y', 'up', 'online', 'ok', 'healthy', 'success'].includes(normalized);
 }
 
-/* ---------- Save/Delete to Apps Script ---------- */
+/* ---------- Save/Delete via backend proxy ---------- */
 function normalizeIssueForStore(issue) {
   return {
     id: issue.id || '',
@@ -5826,7 +5865,7 @@ async function saveIssueToSheet(issue, auth = {}, options = {}) {
           body: updateRequestBody
         },
         {
-          // Legacy Apps Script variants that expect flattened update fields
+          // Legacy backend variants that expect flattened update fields
           // instead of an "updates" envelope.
           label: `update payload (flat) [id=${candidateId}]`,
           body: {
@@ -5884,7 +5923,7 @@ async function saveEventToSheet(event, auth = {}) {
           .filter(Boolean)
       : [];
 
-    // Canonical payload with ALL fields Apps Script expects
+    // Canonical payload with all fields expected by backend proxy
     const payload = {
       id: evId,
       title: event.title || '',
@@ -5907,7 +5946,7 @@ async function saveEventToSheet(event, auth = {}) {
       checklist: event.checklist || event.readiness || {}
     };
 
-     console.log('[Ticketing Dashboard] sending event payload to Apps Script:', payload);
+     console.log('[Ticketing Dashboard] sending event payload to backend proxy:', payload);
 
     const data = await Api.post('events', 'save', {
       authToken: auth.authToken || '',
@@ -5962,24 +6001,6 @@ async function deleteEventFromSheet(id, auth = {}) {
     return false;
   } finally {
     UI.spinner(false);
-  }
-}
-
-function withResourceParam(url, resource, extraParams = {}) {
-  const value = String(resource || '').trim();
-  if (!value && (!extraParams || !Object.keys(extraParams).length)) return url;
-
-  try {
-    const direct = new URL(url);
-    if (value) direct.searchParams.set('resource', value);
-    Object.entries(extraParams || {}).forEach(([k, v]) => {
-      if (v === undefined || v === null || v === '') return;
-      direct.searchParams.set(k, String(v));
-    });
-    return direct.toString();
-  } catch (err) {
-    console.warn('Unable to append resource to URL, using original', err);
-    return url;
   }
 }
 
