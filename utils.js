@@ -341,9 +341,7 @@ const SavedViews = {
     const view = this.views[name];
     if (!view) return false;
     Filters.state = { ...Filters.state, ...(view.filters || {}) };
-    CSMDaily.state.filters = { ...CSMDaily.state.filters, ...(view.csmDailyFilters || {}) };
     syncFilterInputs();
-    CSMDaily.saveFilters();
     Filters.save();
     if (view.sort) {
       GridState.sortKey = view.sort.key || null;

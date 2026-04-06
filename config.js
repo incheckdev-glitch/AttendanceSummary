@@ -26,10 +26,7 @@ const LS_KEYS = {
   savedViews: 'incheckSavedViews',
   columns: 'incheckColumns',
   freezeWindows: 'incheckFreezeWindows',
-  session: 'incheckSession',
-  csmDailyFilters: 'incheckCsmDailyFilters',
-  csmDailyRows: 'incheckCsmDailyRows',
-  csmDailyLastUpdated: 'incheckCsmDailyLastUpdated'
+  session: 'incheckSession'
 };
 
 const ROLES = Object.freeze({

@@ -1929,17 +1929,8 @@ function setActiveView(view) {
     scheduleCalendarResize();
   }
   if (view === 'insights') Analytics.refresh(UI.Issues.applyFilters());
-  if (view === 'csmDaily') {
-    CSMDaily.setActive(true);
-    CSMDaily.syncFilterInputs();
-    if (!CSMDaily.state.rows.length) CSMDaily.load(false);
-    else CSMDaily.renderAll();
-  } else {
-    CSMDaily.setActive(false);
-  }
 }
 
-/* moved to health.js */
 /* ---------- Calendar wiring ---------- */
 let calendar = null,
 calendarReady = false,
@@ -2723,108 +2714,6 @@ function extractEventsPayload(data) {
   return [];
 }
 
-function mapRowsWithHeaders(headers, rows) {
-  if (!Array.isArray(headers) || !Array.isArray(rows)) return [];
-  const normalizedHeaders = headers.map((header, idx) => {
-    const raw = String(header ?? '').trim();
-    return raw || `column_${idx + 1}`;
-  });
-  return rows
-    .filter(row => Array.isArray(row))
-    .map(row => {
-      const mapped = {};
-      normalizedHeaders.forEach((header, idx) => {
-        mapped[header] = row[idx];
-      });
-      return mapped;
-    });
-}
-
-function isLikelyHealthRow(row) {
-  if (!row || typeof row !== 'object') return false;
-  const ts = getEventField(row, [
-    'checked_at_utc',
-    'checked_at',
-    'checked at',
-    'checkedAt',
-    'timestamp',
-    'created_at',
-    'datetime',
-    'date'
-  ]);
-  const hasTimestamp = Number.isFinite(Date.parse(String(ts || '').trim()));
-  const hasUpState = String(getEventField(row, ['is_up', 'is up', 'status', 'health', 'state']) || '').trim() !== '';
-  const hasLatency = String(getEventField(row, ['latency_ms', 'latency ms', 'latency']) || '').trim() !== '';
-  return hasTimestamp && (hasUpState || hasLatency);
-}
-
-function scoreHealthPayload(rows) {
-  if (!Array.isArray(rows) || !rows.length) return 0;
-  return rows.reduce((score, row) => score + (isLikelyHealthRow(row) ? 1 : 0), 0);
-}
-
-function extractHealthMonitorPayload(data) {
-  if (typeof data === 'string') {
-    try {
-      const parsed = JSON.parse(data);
-      return extractHealthMonitorPayload(parsed);
-    } catch {
-      return [];
-    }
-  }
-  if (Array.isArray(data)) {
-    if (!data.length) return [];
-    const first = data[0];
-    if (Array.isArray(first)) {
-      const [headers = [], ...rows] = data;
-      if (Array.isArray(headers) && headers.length) {
-        const mappedRows = mapRowsWithHeaders(headers, rows);
-        if (scoreHealthPayload(mappedRows) > 0) return mappedRows;
-        return [];
-      }
-    }
-    if (scoreHealthPayload(data) > 0) return data;
-    return [];
-  }
-  if (!data || typeof data !== 'object') return [];
-
-  if (Array.isArray(data.headers) && Array.isArray(data.rows)) {
-    return mapRowsWithHeaders(data.headers, data.rows);
-  }
-
-  const candidates = [
-    data.rows,
-    data.values,
-    data.records,
-    data.data,
-    data.items,
-    data.result,
-    data.payload,
-    data.response,
-    data.health,
-    data.monitorHealth,
-    data.contents
-  ];
-  let bestRows = [];
-  let bestScore = 0;
-  for (const candidate of candidates) {
-    let nested = [];
-    if (Array.isArray(candidate) || (candidate && typeof candidate === 'object')) {
-      nested = extractHealthMonitorPayload(candidate);
-    }
-    if (typeof candidate === 'string') {
-      nested = extractHealthMonitorPayload(candidate);
-    }
-    const score = scoreHealthPayload(nested);
-    if (score > bestScore) {
-      bestRows = nested;
-      bestScore = score;
-    }
-  }
-
-  return bestRows;
-}
-
 function normalizeEventDate(value) {
   if (!value) return '';
   const raw = String(value).trim();
@@ -3383,139 +3272,6 @@ function exportSelectedIssueToPdf() {
   frameDoc.open();
   frameDoc.write(printableDoc);
   frameDoc.close();
-
-  if (frameDoc.readyState === 'complete') {
-    setTimeout(printFromFrame, 150);
-  } else {
-    iframe.addEventListener('load', () => setTimeout(printFromFrame, 150), { once: true });
-  }
-}
-
-function exportHealthMonitorPrintScreen() {
-  const healthView = E.healthView;
-  if (!healthView) return UI.toast('Monitor health screen is unavailable.');
-
-  const clone = healthView.cloneNode(true);
-  const healthWindowBarCard = clone.querySelector('#healthWindowBar')?.closest('.card');
-  if (healthWindowBarCard) healthWindowBarCard.remove();
-  const healthChecksCard = clone.querySelector('#healthChecksList')?.closest('.card');
-  if (healthChecksCard) healthChecksCard.remove();
-
-  const sourceCanvases = healthView.querySelectorAll('canvas');
-  const cloneCanvases = clone.querySelectorAll('canvas');
-  cloneCanvases.forEach((canvas, idx) => {
-    const source = sourceCanvases[idx];
-    if (!source) return;
-    const image = document.createElement('img');
-    image.src = source.toDataURL('image/png');
-    image.alt = source.getAttribute('aria-label') || 'Health chart';
-    image.style.width = '100%';
-    image.style.height = 'auto';
-    image.style.display = 'block';
-    canvas.replaceWith(image);
-  });
-
-  const title = 'Monitor Health Print Screen';
-  const baseHref = U.escapeAttr(window.location.href);
-  const printHeader = `
-    <header class="health-print-header" aria-label="InCheck header">
-      <img src="assets/incheck-logo.svg" alt="InCheck360 MonitorCore logo" width="40" height="40" />
-      <div>
-        <strong>InCheck360 MonitorCore</strong>
-        <div>Monitor Health Report</div>
-      </div>
-    </header>
-  `;
-  const printableDoc = `
-    <!doctype html>
-    <html>
-      <head>
-        <meta charset="utf-8" />
-        <title>${U.escapeHtml(title)}</title>
-        <base href="${baseHref}" />
-        <link rel="stylesheet" href="styles.css" />
-        <style>
-          body { margin: 24px; background: #fff; color: #111; }
-          .health-print-header {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 16px;
-            border-bottom: 1px solid #d1d5db;
-            padding-bottom: 12px;
-          }
-          .health-print-header strong {
-            display: block;
-            font-size: 18px;
-            line-height: 1.2;
-          }
-          .health-print-header div {
-            color: #4b5563;
-            font-size: 13px;
-          }
-          .view { display: block !important; }
-          .card { break-inside: avoid; page-break-inside: avoid; }
-          .health-actions { display: none !important; }
-          #healthChecksList, #healthChecksPagination { display: none !important; }
-          @media print { body { margin: 0; } }
-        </style>
-      </head>
-      <body>${printHeader}${clone.outerHTML}</body>
-    </html>
-  `;
-
-  const printNow = (targetWindow) => {
-    targetWindow.focus();
-    targetWindow.print();
-    UI.toast('Monitor health print screen is ready in the print dialog.');
-  };
-
-  const printWindow = window.open('about:blank', '_blank', 'width=1280,height=920');
-  if (printWindow) {
-    printWindow.document.open();
-    printWindow.document.write(printableDoc);
-    printWindow.document.close();
-    if (printWindow.document.readyState === 'complete') {
-      setTimeout(() => printNow(printWindow), 150);
-    } else {
-      printWindow.addEventListener('load', () => setTimeout(() => printNow(printWindow), 150), {
-        once: true
-      });
-    }
-    return;
-  }
-
-  const iframe = document.createElement('iframe');
-  iframe.style.position = 'fixed';
-  iframe.style.right = '-9999px';
-  iframe.style.bottom = '0';
-  iframe.style.width = '0';
-  iframe.style.height = '0';
-  iframe.style.border = '0';
-  iframe.setAttribute('aria-hidden', 'true');
-  document.body.appendChild(iframe);
-
-  const frameDoc = iframe.contentDocument || iframe.contentWindow?.document;
-  if (!frameDoc) {
-    iframe.remove();
-    UI.toast('Unable to prepare monitor health print screen.');
-    return;
-  }
-
-  frameDoc.open();
-  frameDoc.write(printableDoc);
-  frameDoc.close();
-
-  const printFromFrame = () => {
-    const frameWindow = iframe.contentWindow;
-    if (!frameWindow) {
-      iframe.remove();
-      UI.toast('Unable to open print dialog. Check browser print settings.');
-      return;
-    }
-    printNow(frameWindow);
-    setTimeout(() => iframe.remove(), 1500);
-  };
 
   if (frameDoc.readyState === 'complete') {
     setTimeout(printFromFrame, 150);
@@ -4100,10 +3856,6 @@ function setIfOptionExists(select, value) {
 }
 
 function syncFilterInputs() {
-  if (CSMDaily.state.active) {
-    CSMDaily.syncFilterInputs();
-    return;
-  }
   if (E.searchInput) E.searchInput.value = Filters.state.search || '';
   if (E.moduleFilter) setIfOptionExists(E.moduleFilter, Filters.state.module);
   if (E.categoryFilter) setIfOptionExists(E.categoryFilter, Filters.state.category);
@@ -4117,7 +3869,6 @@ function syncFilterInputs() {
 }
 
 
-/* moved to csm-daily.js */
 function wireCore() {
    [E.issuesTab, E.calendarTab, E.insightsTab].forEach(btn => {
     if (!btn) return;
@@ -4135,16 +3886,9 @@ function wireCore() {
     E.searchInput.addEventListener(
       'input',
       debounce(() => {
-        if (CSMDaily.state.active) {
-          CSMDaily.state.filters.search = E.searchInput.value || '';
-          CSMDaily.state.page = 1;
-          CSMDaily.saveFilters();
-          CSMDaily.renderAll();
-        } else {
-          Filters.state.search = E.searchInput.value || '';
-          Filters.save();
-          UI.refreshAll();
-        }
+        Filters.state.search = E.searchInput.value || '';
+        Filters.save();
+        UI.refreshAll();
       }, 250)
     );
 
@@ -4169,7 +3913,6 @@ function wireCore() {
       }
       SavedViews.add(trimmed, {
         filters: { ...Filters.state },
-        csmDailyFilters: { ...CSMDaily.state.filters },
         columns: ColumnManager.getState(),
         sort: { key: GridState.sortKey, asc: GridState.sortAsc }
       });
@@ -4195,17 +3938,12 @@ function wireCore() {
 
   if (E.refreshNow)
     E.refreshNow.addEventListener('click', () => {
-      if (CSMDaily.state.active) {
-        CSMDaily.load(true);
-      } else {
-        loadIssues(true);
-        loadEvents(true);
-      }
+      loadIssues(true);
+      loadEvents(true);
     });
   if (E.exportCsv)
     E.exportCsv.addEventListener('click', () => {
-      if (CSMDaily.state.active) CSMDaily.exportCsv();
-      else exportFilteredExcel();
+      exportFilteredExcel();
     });
   if (E.createTicketBtn)
     E.createTicketBtn.addEventListener('click', () => {
@@ -4223,43 +3961,7 @@ function wireCore() {
      UI.toast('Shortcuts: 1/2/3 switch tabs · / focus search · Ctrl+K AI query');
     });
   }
-  if (E.healthRefreshBtn) {
-    E.healthRefreshBtn.addEventListener('click', () => HealthMonitor.checkNow());
-  }
-  if (E.healthPrintBtn) {
-    E.healthPrintBtn.addEventListener('click', exportHealthMonitorPrintScreen);
-  }
-  if (E.healthRangePreset) {
-    E.healthRangePreset.addEventListener('change', e => {
-      HealthMonitor.setRangePreset(e.target.value);
-    });
-  }
-  if (E.healthTargetPreset) {
-    E.healthTargetPreset.addEventListener('change', e => {
-      HealthMonitor.setTargetPreset(e.target.value);
-    });
-  }
-  if (E.healthChecksPrevPage) {
-    E.healthChecksPrevPage.addEventListener('click', () => {
-      HealthMonitor.setChecksPage(HealthMonitor.checksPage - 1);
-    });
-  }
-  if (E.healthChecksNextPage) {
-    E.healthChecksNextPage.addEventListener('click', () => {
-      HealthMonitor.setChecksPage(HealthMonitor.checksPage + 1);
-    });
-  }
-  if (E.csmSyncBtn) E.csmSyncBtn.addEventListener('click', () => CSMDaily.load(true));
-  if (E.csmExportBtn) E.csmExportBtn.addEventListener('click', () => CSMDaily.exportCsv());
-  if (E.csmPrevPage) E.csmPrevPage.addEventListener('click', () => { CSMDaily.state.page = Math.max(1, CSMDaily.state.page - 1); CSMDaily.renderTaskTable(CSMDaily.applyFilters()); });
-  if (E.csmNextPage) E.csmNextPage.addEventListener('click', () => { CSMDaily.state.page += 1; CSMDaily.renderTaskTable(CSMDaily.applyFilters()); });
-  if (E.csmTableSearch)
-    E.csmTableSearch.addEventListener('input', debounce(() => {
-      CSMDaily.state.filters.tableSearch = E.csmTableSearch.value || '';
-      CSMDaily.state.page = 1;
-      CSMDaily.saveFilters();
-      CSMDaily.renderTaskTable(CSMDaily.applyFilters());
-    }, 180));
+
 
   if (E.columnToggleBtn && E.columnPanel) {
     const setPanel = open => {
@@ -4285,10 +3987,6 @@ function wireCore() {
   }
   
   UI.refreshAll = () => {
-    if (CSMDaily.state.active) {
-      CSMDaily.renderAll();
-      return;
-    }
     const list = UI.Issues.applyFilters();
     UI.Issues.renderSummary(list);
     UI.Issues.renderFilterChips();
@@ -4364,36 +4062,6 @@ function wirePaging() {
 }
 
 function wireFilters() {
-  const wireCsmSelect = (el, key) => {
-    if (!el) return;
-    el.addEventListener('change', () => {
-      CSMDaily.state.filters[key] = el.value;
-      CSMDaily.state.page = 1;
-      CSMDaily.saveFilters();
-      if (CSMDaily.state.active) CSMDaily.renderAll();
-    });
-  };
-  wireCsmSelect(E.csmNameFilter, 'csm');
-  wireCsmSelect(E.csmClientFilter, 'client');
-  wireCsmSelect(E.csmTypeFilter, 'type');
-  wireCsmSelect(E.csmEffortFilter, 'effort');
-  wireCsmSelect(E.csmChannelFilter, 'channel');
-  if (E.csmStartDateFilter) {
-    E.csmStartDateFilter.addEventListener('change', () => {
-      CSMDaily.state.filters.start = E.csmStartDateFilter.value || '';
-      CSMDaily.state.page = 1;
-      CSMDaily.saveFilters();
-      if (CSMDaily.state.active) CSMDaily.renderAll();
-    });
-  }
-  if (E.csmEndDateFilter) {
-    E.csmEndDateFilter.addEventListener('change', () => {
-      CSMDaily.state.filters.end = E.csmEndDateFilter.value || '';
-      CSMDaily.state.page = 1;
-      CSMDaily.saveFilters();
-      if (CSMDaily.state.active) CSMDaily.renderAll();
-    });
-  }
   if (E.moduleFilter) {
     E.moduleFilter.addEventListener('change', () => {
       Filters.state.module = E.moduleFilter.value;
@@ -4462,24 +4130,6 @@ function wireFilters() {
 
   if (E.resetBtn)
     E.resetBtn.addEventListener('click', () => {
-      if (CSMDaily.state.active) {
-        CSMDaily.state.filters = {
-          csm: 'All',
-          client: 'All',
-          type: 'All',
-          effort: 'All',
-          channel: 'All',
-          start: '',
-          end: '',
-          search: '',
-          tableSearch: ''
-        };
-        CSMDaily.state.page = 1;
-        CSMDaily.saveFilters();
-        CSMDaily.syncFilterInputs();
-        CSMDaily.renderAll();
-        return;
-      }
       Filters.state = {
         search: '',
         module: 'All',
@@ -5219,7 +4869,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     );
   }
 
-  CSMDaily.loadFilters();
   if (isAuthenticated && Session.isAuthenticated()) {
     await Promise.all([loadIssues(false), loadEvents(false)]);
   }
