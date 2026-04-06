@@ -7,7 +7,7 @@ window.API_BASE_URL = String(
     runtimeConfig.BACKEND_API_BASE_URL ||
     'https://script.google.com/macros/s/AKfycbwCX9dQFFj-mfakqg3cpl8yRkjn9SmVRrD6CPuYdUmsdE_Dmgwbv6OOeQmEZsbtyYifLg/exec'
 )
-  .trim() ||
+  .trim() || '/api/proxy';
   'https://script.google.com/macros/s/AKfycbwCX9dQFFj-mfakqg3cpl8yRkjn9SmVRrD6CPuYdUmsdE_Dmgwbv6OOeQmEZsbtyYifLg/exec';
 
 const API_BASE_URL = window.API_BASE_URL;
