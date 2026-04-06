@@ -4160,11 +4160,7 @@ function trapFocus(container, e) {
 }
 
 function setActiveView(view) {
-  if (view === 'health' && !Permissions.canViewHealthMonitor()) {
-    UI.toast('Only admin can access the Health Monitor tab.');
-    view = 'issues';
-  }
- const names = ['issues', 'calendar', 'insights', 'health', 'csmDaily'];
+ const names = ['issues', 'calendar', 'insights', 'csmDaily'];
   names.forEach(name => {
     const tab =
       name === 'issues'
@@ -4173,8 +4169,6 @@ function setActiveView(view) {
         ? E.calendarTab
       : name === 'insights'
       ? E.insightsTab
-      : name === 'health'
-      ? E.healthTab
       : E.csmDailyTab;
     const panel =
       name === 'issues'
@@ -4183,8 +4177,6 @@ function setActiveView(view) {
         ? E.calendarView
        : name === 'insights'
        ? E.insightsView
-       : name === 'health'
-       ? E.healthView
        : E.csmDailyView;
     const active = name === view;
     if (tab) {
@@ -4202,7 +4194,6 @@ function setActiveView(view) {
     scheduleCalendarResize();
   }
   if (view === 'insights') Analytics.refresh(UI.Issues.applyFilters());
-  if (view === 'health') HealthMonitor.start();
   if (view === 'csmDaily') {
     CSMDaily.setActive(true);
     CSMDaily.syncFilterInputs();
@@ -7384,7 +7375,7 @@ const CSMDaily = {
 };
 
 function wireCore() {
-   [E.issuesTab, E.calendarTab, E.insightsTab, E.healthTab, E.csmDailyTab].forEach(btn => {
+   [E.issuesTab, E.calendarTab, E.insightsTab, E.csmDailyTab].forEach(btn => {
     if (!btn) return;
     btn.addEventListener('click', () => setActiveView(btn.dataset.view));
   });
@@ -7485,7 +7476,7 @@ function wireCore() {
 
   if (E.shortcutsHelp) {
     E.shortcutsHelp.addEventListener('click', () => {
-     UI.toast('Shortcuts: 1/2/3/4/5 switch tabs · / focus search · Ctrl+K AI query');
+     UI.toast('Shortcuts: 1/2/3/4 switch tabs · / focus search · Ctrl+K AI query');
     });
   }
   if (E.healthRefreshBtn) {
@@ -8404,7 +8395,7 @@ function wireKeyboardShortcuts() {
 
     if (isInputLike) return;
 
-    // 1/2/3/4/5 → switch tabs
+    // 1/2/3/4 → switch tabs
     if (e.key === '1') {
       setActiveView('issues');
     } else if (e.key === '2') {
@@ -8412,8 +8403,6 @@ function wireKeyboardShortcuts() {
     } else if (e.key === '3') {
       setActiveView('insights');
     } else if (e.key === '4') {
-      setActiveView('health');
-    } else if (e.key === '5') {
       setActiveView('csmDaily');
     }
   });
@@ -8455,7 +8444,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!Session.isAuthenticated()) {
     const view = localStorage.getItem(LS_KEYS.view) || 'issues';
     setActiveView(
-      view === 'calendar' || view === 'insights' || view === 'health' || view === 'csmDaily' ? view : 'issues'
+      view === 'calendar' || view === 'insights' || view === 'csmDaily' ? view : 'issues'
     );
   }
 
