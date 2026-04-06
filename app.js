@@ -12,11 +12,12 @@
 
 const RUNTIME_CONFIG = window.RUNTIME_CONFIG || {};
 
-const API_BASE_URL =
+const API_BASE_URL = String(
   RUNTIME_CONFIG.API_BASE_URL ||
   RUNTIME_CONFIG.PROXY_API_BASE_URL ||
   RUNTIME_CONFIG.BACKEND_API_BASE_URL ||
-  '';
+  '/api/proxy'
+).trim();
 
 const CONFIG = {
   DATA_VERSION: '4',
