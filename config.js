@@ -6,7 +6,7 @@
  * so previews/custom domains do not trigger cross-origin login requests.
  */
 window.RUNTIME_CONFIG = {
-  API_BASE_URL: 'https://attendance-summary-dusky.vercel.app/api/proxy'
+  API_BASE_URL: '/api/proxy'
 };
 
 // Use the backend/proxy endpoint for writes to avoid browser CORS failures.
