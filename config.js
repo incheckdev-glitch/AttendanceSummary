@@ -24,7 +24,7 @@ function resolveApiEndpoint(endpoint = '') {
 window.resolveApiEndpoint = resolveApiEndpoint;
 
 window.CONFIG = {
-  DATA_VERSION: '4',
+  DATA_VERSION: '5',
   DATA_STALE_HOURS: 6,
 
   SHEET_URL:

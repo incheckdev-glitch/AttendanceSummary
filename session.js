@@ -109,8 +109,11 @@ const Session = {
   role() {
     return this.state.role || null;
   },
+  getAuthToken() {
+    return this.state.authToken || '';
+  },
   authContext() {
-    return { role: this.role(), authToken: this.state.authToken || '' };
+    return { role: this.role(), authToken: this.getAuthToken() };
   }
 };
 

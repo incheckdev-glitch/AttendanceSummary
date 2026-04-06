@@ -59,11 +59,12 @@ UI.Issues = {
       E.statusFilter.innerHTML = ['All', ...uniq(DataStore.rows.map(r => r.status))]
         .map(v => `<option>${v}</option>`)
         .join('');
-    if (E.devTeamStatusFilter)
+    const allowInternalFilters = Permissions.canUseInternalIssueFilters();
+    if (E.devTeamStatusFilter && allowInternalFilters)
       E.devTeamStatusFilter.innerHTML = ['All', ...uniq(DataStore.rows.map(r => r.devTeamStatus))]
         .map(v => `<option>${v}</option>`)
         .join('');
-    if (E.issueRelatedFilter) {
+    if (E.issueRelatedFilter && allowInternalFilters) {
       const issueRelatedOptions = uniq(
         DataStore.rows.flatMap(r =>
           String(r.issueRelated || '')
@@ -80,11 +81,14 @@ UI.Issues = {
     setIfOptionExists(E.categoryFilter, Filters.state.category);
     setIfOptionExists(E.priorityFilter, Filters.state.priority);
     setIfOptionExists(E.statusFilter, Filters.state.status);
-    setIfOptionExists(E.devTeamStatusFilter, Filters.state.devTeamStatus);
-    setIfOptionExists(E.issueRelatedFilter, Filters.state.issueRelated);
+    if (allowInternalFilters) {
+      setIfOptionExists(E.devTeamStatusFilter, Filters.state.devTeamStatus);
+      setIfOptionExists(E.issueRelatedFilter, Filters.state.issueRelated);
+    }
   },
   applyFilters() {
     const s = Filters.state;
+    const allowInternalFilters = Permissions.canUseInternalIssueFilters();
     const qstr = (s.search || '').toLowerCase().trim();
     const terms = qstr ? qstr.split(/\s+/).filter(Boolean) : [];
     const start = s.start ? new Date(s.start) : null;
@@ -109,12 +113,11 @@ UI.Issues = {
         r.department,
         r.emailAddressee,
         r.notificationSent,
-        r.youtrackReference,
-        r.devTeamStatus,
-        r.issueRelated,
-        r.notes,
         r.notificationUnderReview
       ]
+        .concat(
+          allowInternalFilters ? [r.youtrackReference, r.devTeamStatus, r.issueRelated, r.notes] : []
+        )
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
@@ -136,15 +139,17 @@ UI.Issues = {
          matchesCategory(r) &&
         (!s.priority || s.priority === 'All' || r.priority === s.priority) &&
         (!s.status || s.status === 'All' || r.status === s.status) &&
-        (!s.devTeamStatus ||
-          s.devTeamStatus === 'All' ||
-          (r.devTeamStatus || '') === s.devTeamStatus) &&
-        (!s.issueRelated ||
-          s.issueRelated === 'All' ||
-          String(r.issueRelated || '')
-            .split(',')
-            .map(v => v.trim())
-            .includes(s.issueRelated)) &&
+        (!allowInternalFilters ||
+          (!s.devTeamStatus ||
+            s.devTeamStatus === 'All' ||
+            (r.devTeamStatus || '') === s.devTeamStatus)) &&
+        (!allowInternalFilters ||
+          (!s.issueRelated ||
+            s.issueRelated === 'All' ||
+            String(r.issueRelated || '')
+              .split(',')
+              .map(v => v.trim())
+              .includes(s.issueRelated))) &&
         keepDate
       );
     });
@@ -2439,7 +2444,7 @@ async function loadIssues(force = false) {
   if (!force && !DataStore.rows.length) {
     const cached = IssuesCache.load();
     if (cached && cached.length) {
-      DataStore.hydrateFromRows(cached);
+      DataStore.hydrateFromRows(cached.map(raw => DataStore.normalizeRow(raw)));
       UI.Issues.renderFilters();
       setIfOptionExists(E.moduleFilter, Filters.state.module);
       setIfOptionExists(E.categoryFilter, Filters.state.category);
@@ -2456,13 +2461,16 @@ async function loadIssues(force = false) {
   try {
     UI.spinner(true);
     UI.skeleton(true);
-    const auth = Session.authContext();
-    const response = await Api.post('tickets', 'list', {
-      authToken: auth.authToken || ''
-    });
-    const rows = extractEventsPayload(response).map(raw => DataStore.normalizeRow(raw));
+    const response = await Api.postAuthenticated(
+      'tickets',
+      'list',
+      { filters: buildTicketListFiltersPayload() },
+      { requireAuth: true }
+    );
+    const rawRows = extractEventsPayload(response);
+    const rows = rawRows.map(raw => DataStore.normalizeRow(raw));
     DataStore.hydrateFromRows(rows.filter(r => r.id && String(r.id).trim() !== ''));
-    IssuesCache.save(DataStore.rows);
+    IssuesCache.save(rawRows);
     UI.Issues.renderFilters();
     setIfOptionExists(E.moduleFilter, Filters.state.module);
     setIfOptionExists(E.categoryFilter, Filters.state.category);
@@ -2478,23 +2486,6 @@ async function loadIssues(force = false) {
       await handleExpiredSession('Session expired while loading tickets.');
       return;
     }
-    try {
-      const text = await safeFetchText(CONFIG.SHEET_URL);
-      DataStore.hydrate(text);
-      IssuesCache.save(DataStore.rows);
-      UI.Issues.renderFilters();
-      setIfOptionExists(E.moduleFilter, Filters.state.module);
-      setIfOptionExists(E.categoryFilter, Filters.state.category);
-      setIfOptionExists(E.priorityFilter, Filters.state.priority);
-      setIfOptionExists(E.statusFilter, Filters.state.status);
-      setIfOptionExists(E.devTeamStatusFilter, Filters.state.devTeamStatus);
-      setIfOptionExists(E.issueRelatedFilter, Filters.state.issueRelated);
-      UI.refreshAll();
-      openIssueFromLink();
-      UI.toast('Loaded tickets from CSV fallback because backend list call failed.');
-      UI.setSync('issues', true, new Date());
-      return;
-    } catch {}
     if (!DataStore.rows.length && E.issuesTbody) {
       E.issuesTbody.innerHTML = `
         <tr>
@@ -2529,12 +2520,15 @@ async function loadEvents(force = false, options = {}) {
 
   try {
     UI.spinner(true);
-    const auth = Session.authContext();
-    const data = await Api.post('events', 'list', {
-      authToken: auth.authToken || '',
-      sheetName: CONFIG.CALENDAR_SHEET_NAME,
-      tabName: CONFIG.CALENDAR_SHEET_NAME
-    });
+    const data = await Api.postAuthenticated(
+      'events',
+      'list',
+      {
+        sheetName: CONFIG.CALENDAR_SHEET_NAME,
+        tabName: CONFIG.CALENDAR_SHEET_NAME
+      },
+      { requireAuth: true }
+    );
 
     const events = extractEventsPayload(data);
 
@@ -2751,9 +2745,40 @@ function parseBoolean(value) {
   return ['1', 'true', 'yes', 'y', 'up', 'online', 'ok', 'healthy', 'success'].includes(normalized);
 }
 
+const RESTRICTED_VIEWER_FIELDS = ['youtrackReference', 'devTeamStatus', 'issueRelated', 'notes'];
+
+function getCurrentAuthToken() {
+  return typeof Session?.getAuthToken === 'function'
+    ? Session.getAuthToken()
+    : String(Session?.authContext?.().authToken || '');
+}
+
+function buildTicketListFiltersPayload() {
+  const state = Filters?.state || {};
+  const payload = {};
+  if (state.search) payload.search = state.search;
+  if (state.module && state.module !== 'All') payload.module = state.module;
+  if (state.category && state.category !== 'All') payload.category = state.category;
+  if (state.priority && state.priority !== 'All') payload.priority = state.priority;
+  if (state.status && state.status !== 'All') payload.status = state.status;
+  if (state.start) payload.start = state.start;
+  if (state.end) payload.end = state.end;
+  if (Permissions.canUseInternalIssueFilters()) {
+    if (state.devTeamStatus && state.devTeamStatus !== 'All')
+      payload.devTeamStatus = state.devTeamStatus;
+    if (state.issueRelated && state.issueRelated !== 'All')
+      payload.issueRelated = state.issueRelated;
+  }
+  return payload;
+}
+
 /* ---------- Save/Delete via backend proxy ---------- */
-function normalizeIssueForStore(issue) {
-  return {
+function normalizeIssueForStore(issue, options = {}) {
+  const includeRestricted =
+    options.includeRestrictedFields !== undefined
+      ? !!options.includeRestrictedFields
+      : Permissions.isAdmin();
+  const normalized = {
     id: issue.id || '',
     name: issue.name || '',
     department: issue.department || '',
@@ -2764,16 +2789,19 @@ function normalizeIssueForStore(issue) {
     emailAddressee: issue.emailAddressee || '',
     notificationSent: issue.notificationSent || '',
     notificationUnderReview: issue.notificationUnderReview || '',
-    youtrackReference: issue.youtrackReference || '',
-    devTeamStatus: issue.devTeamStatus || '',
-    issueRelated: issue.issueRelated || '',
-    notes: issue.notes || '',
     priority: DataStore.normalizePriority(issue.priority),
     status: DataStore.normalizeStatus(issue.status),
     type: issue.type || '',
     date: issue.date || '',
     log: issue.log || ''
   };
+  if (includeRestricted) {
+    normalized.youtrackReference = issue.youtrackReference || '';
+    normalized.devTeamStatus = issue.devTeamStatus || '';
+    normalized.issueRelated = issue.issueRelated || '';
+    normalized.notes = issue.notes || '';
+  }
+  return normalized;
 }
 
 function buildIssueIdCandidates(id) {
@@ -2793,7 +2821,7 @@ function buildIssueIdCandidates(id) {
 }
 
 function buildIssueUpdateFields(payload, candidateId) {
-  return {
+  const fields = {
     id: candidateId,
     ticket_id: candidateId,
     title: payload.title,
@@ -2838,6 +2866,22 @@ function buildIssueUpdateFields(payload, candidateId) {
     'Issue Related': payload.issueRelated,
     notes: payload.notes
   };
+  if (!Permissions.isAdmin()) {
+    RESTRICTED_VIEWER_FIELDS.forEach(field => {
+      delete fields[field];
+    });
+    delete fields.youTrackReference;
+    delete fields.youtrack_reference;
+    delete fields['youtrack reference'];
+    delete fields['YouTrack Reference'];
+    delete fields.dev_team_status;
+    delete fields['dev team status'];
+    delete fields['Dev Team Status'];
+    delete fields.issue_related;
+    delete fields['issue related'];
+    delete fields['Issue Related'];
+  }
+  return fields;
 }
 
 async function saveIssueToSheet(issue, auth = {}, options = {}) {
@@ -2849,7 +2893,7 @@ async function saveIssueToSheet(issue, auth = {}, options = {}) {
  const useSpinner = !options.silent;
   if (useSpinner) UI.spinner(true);
   try {
-    const payload = normalizeIssueForStore(issue);
+    const payload = normalizeIssueForStore(issue, { includeRestrictedFields: Permissions.isAdmin() });
      const issueId = payload.id || issue.id || '';
     const issueIdCandidates = buildIssueIdCandidates(issueId);
     if (!issueIdCandidates.length) {
@@ -2864,7 +2908,7 @@ async function saveIssueToSheet(issue, auth = {}, options = {}) {
           id: candidateId,
           ticket_id: candidateId
         },
-        authToken: auth.authToken || '',
+        authToken: auth.authToken || getCurrentAuthToken(),
         updates
       };
 
@@ -2884,7 +2928,7 @@ async function saveIssueToSheet(issue, auth = {}, options = {}) {
               id: candidateId,
               ticket_id: candidateId
             },
-            authToken: auth.authToken || '',
+            authToken: auth.authToken || getCurrentAuthToken(),
             ...updateRequestBody.updates
           }
         }
@@ -2892,7 +2936,9 @@ async function saveIssueToSheet(issue, auth = {}, options = {}) {
     });
     for (const variant of compatibilityBodies) {
       try {
-        const result = await Api.post('tickets', 'update', variant.body);
+        const result = await Api.postAuthenticated('tickets', 'update', variant.body, {
+          requireAuth: true
+        });
         UI.toast('Issue updated');
         const returnedIssue = result?.issue || result || {};
         return normalizeIssueForStore({ ...payload, ...returnedIssue });
@@ -2957,8 +3003,8 @@ async function saveEventToSheet(event, auth = {}) {
 
      console.log('[Ticketing Dashboard] sending event payload to backend proxy:', payload);
 
-    const data = await Api.post('events', 'save', {
-      authToken: auth.authToken || '',
+    const data = await Api.postAuthenticated('events', 'save', {
+      authToken: auth.authToken || getCurrentAuthToken(),
       sheetName: CONFIG.CALENDAR_SHEET_NAME,
       tabName: CONFIG.CALENDAR_SHEET_NAME,
       event: payload
@@ -2993,8 +3039,8 @@ async function saveEventToSheet(event, auth = {}) {
 async function deleteEventFromSheet(id, auth = {}) {
   UI.spinner(true);
   try {
-    await Api.post('events', 'delete', {
-      authToken: auth.authToken || '',
+    await Api.postAuthenticated('events', 'delete', {
+      authToken: auth.authToken || getCurrentAuthToken(),
       sheetName: CONFIG.CALENDAR_SHEET_NAME,
       tabName: CONFIG.CALENDAR_SHEET_NAME,
       id

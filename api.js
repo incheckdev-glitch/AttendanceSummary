@@ -46,6 +46,20 @@ const Api = {
       action,
       ...payload
     });
+  },
+  async postAuthenticated(resource, action, payload = {}, options = {}) {
+    const requireAuth = options?.requireAuth !== false;
+    const authToken =
+      typeof Session?.getAuthToken === 'function'
+        ? Session.getAuthToken()
+        : String(Session?.authContext?.().authToken || '');
+    if (requireAuth && !authToken) {
+      throw new Error('Missing authentication token.');
+    }
+    return this.post(resource, action, {
+      ...payload,
+      authToken: authToken || ''
+    });
   }
 };
 

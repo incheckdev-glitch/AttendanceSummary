@@ -169,8 +169,27 @@ const DataStore = {
 };
 
 const IssuesCache = {
+  SCHEMA_VERSION: '2',
+  schemaKey: 'incheckIssuesCacheSchemaVersion',
+  clear() {
+    try {
+      localStorage.removeItem(LS_KEYS.issues);
+      localStorage.removeItem(LS_KEYS.issuesLastUpdated);
+      localStorage.removeItem(LS_KEYS.dataVersion);
+      localStorage.removeItem(this.schemaKey);
+    } catch {}
+  },
+  migrateIfNeeded() {
+    try {
+      const schema = localStorage.getItem(this.schemaKey);
+      if (schema === this.SCHEMA_VERSION) return;
+      this.clear();
+      localStorage.setItem(this.schemaKey, this.SCHEMA_VERSION);
+    } catch {}
+  },
   load() {
     try {
+      this.migrateIfNeeded();
       const storedVersion = localStorage.getItem(LS_KEYS.dataVersion);
       if (storedVersion && storedVersion !== CONFIG.DATA_VERSION) return null;
       const lastUpdated = localStorage.getItem(LS_KEYS.issuesLastUpdated);
@@ -185,7 +204,8 @@ const IssuesCache = {
   },
   save(rows) {
     try {
-      localStorage.setItem(LS_KEYS.issues, JSON.stringify(rows || []));
+      this.migrateIfNeeded();
+      localStorage.setItem(LS_KEYS.issues, JSON.stringify(Array.isArray(rows) ? rows : []));
       localStorage.setItem(LS_KEYS.issuesLastUpdated, new Date().toISOString());
       localStorage.setItem(LS_KEYS.dataVersion, CONFIG.DATA_VERSION);
     } catch {}
