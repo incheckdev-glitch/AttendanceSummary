@@ -329,13 +329,21 @@ const Session = {
       sessionStorage.setItem(LS_KEYS.session, JSON.stringify(this.state));
     } catch {}
   },
-  async login(passcode = '') {
+  async login(role = '', passcode = '') {
+    const selectedRole = String(role || '').trim().toLowerCase();
     const enteredPasscode = String(passcode || '').trim();
+    const normalizedSelectedRole =
+      selectedRole === ROLES.ADMIN ? ROLES.ADMIN : selectedRole === ROLES.VIEWER ? ROLES.VIEWER : null;
+    if (!normalizedSelectedRole) throw new Error('Role is required.');
     if (!enteredPasscode) throw new Error('Passcode is required.');
 
-    const response = await Api.post('auth', 'login', { passcode: enteredPasscode });
-    const authToken = String(response?.authToken || response?.token || '').trim();
-    const backendRole = String(response?.role || response?.userRole || '').trim().toLowerCase();
+    const response = await Api.post('auth', 'login', {
+      role: normalizedSelectedRole,
+      passcode: enteredPasscode
+    });
+    const session = response?.session || {};
+    const authToken = String(session.token || '').trim();
+    const backendRole = String(session.role || '').trim().toLowerCase();
     const normalizedRole =
       backendRole === ROLES.ADMIN ? ROLES.ADMIN : backendRole === ROLES.VIEWER ? ROLES.VIEWER : null;
     if (!authToken || !normalizedRole) {
@@ -376,11 +384,14 @@ const Session = {
     const authToken = this.state.authToken || '';
     if (!authToken) return false;
     const response = await Api.post('auth', 'session', { authToken });
-    const backendRole = String(response?.role || response?.userRole || '').trim().toLowerCase();
+    const session = response?.session || {};
+    const backendRole = String(session.role || '').trim().toLowerCase();
+    const refreshedAuthToken = String(session.token || authToken).trim();
     const normalizedRole =
       backendRole === ROLES.ADMIN ? ROLES.ADMIN : backendRole === ROLES.VIEWER ? ROLES.VIEWER : null;
-    if (!normalizedRole) return false;
+    if (!normalizedRole || !refreshedAuthToken) return false;
     this.state.role = normalizedRole;
+    this.state.authToken = refreshedAuthToken;
     this.persist();
     return true;
   },
@@ -7766,21 +7777,26 @@ function wireDashboardGate() {
 
   E.loginForm.addEventListener('submit', async event => {
     event.preventDefault();
+    const selectedRole = String(E.loginRole.value || '').trim().toLowerCase();
     const passcode = String(E.loginPasscode.value || '');
 
+    if (selectedRole !== ROLES.ADMIN && selectedRole !== ROLES.VIEWER) {
+      UI.toast('Role is required.');
+      return;
+    }
     if (!passcode.trim()) {
       UI.toast('Passcode is required.');
       return;
     }
 
     try {
-      const preferredRole = String(E.loginRole.value || '').trim().toLowerCase();
-      const session = await Session.login(passcode);
+      const session = await Session.login(selectedRole, passcode);
       UI.applyRolePermissions();
       E.loginPasscode.value = '';
-      E.loginRole.value = session.role || preferredRole || ROLES.VIEWER;
+      E.loginRole.value = session.role || selectedRole || ROLES.VIEWER;
       unlockApp();
-      if (preferredRole && session.role !== preferredRole) {
+      await Promise.all([loadIssues(true), loadEvents(true)]);
+      if (selectedRole && session.role !== selectedRole) {
         UI.toast(`Logged in as ${session.role}. Selected role was adjusted to match backend.`);
       } else {
         UI.toast(`Logged in as ${session.role}.`);
@@ -8338,11 +8354,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   wireAIQuery();
   wireKeyboardShortcuts();
 
+  let isAuthenticated = Session.isAuthenticated();
   if (hadSession) {
     try {
       const valid = await Session.validateSession();
       if (!valid) {
         await handleExpiredSession('Saved session is invalid or expired. Please log in again.');
+      } else {
+        isAuthenticated = true;
       }
     } catch (error) {
       await handleExpiredSession('Unable to restore session. Please log in again.');
@@ -8360,6 +8379,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   CSMDaily.loadFilters();
-  loadIssues(false);
-  loadEvents(false);
+  if (isAuthenticated && Session.isAuthenticated()) {
+    await Promise.all([loadIssues(false), loadEvents(false)]);
+  }
 });
