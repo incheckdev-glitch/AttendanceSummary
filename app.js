@@ -258,7 +258,7 @@ const Api = {
         body: JSON.stringify(requestBody)
       });
     } catch (error) {
-      throw new Error('Network error while contacting backend.');
+      throw buildNetworkRequestError(endpoint, error);
     }
 
     const rawText = await response.text();
@@ -275,6 +275,20 @@ const Api = {
     return data;
   }
 };
+
+function buildNetworkRequestError(url, originalError) {
+  const rawMessage = String(originalError?.message || '').trim();
+  const looksLikeCorsFailure =
+    /failed to fetch|networkerror|load failed|err_failed/i.test(rawMessage);
+  if (looksLikeCorsFailure) {
+    return new Error(
+      `Request to ${url} failed before a response was received. ` +
+        'This is commonly caused by CORS (missing Access-Control-Allow-Origin) ' +
+        'or an unreachable Apps Script deployment.'
+    );
+  }
+  return new Error(rawMessage || `Network error while contacting ${url}.`);
+}
 
 const Session = {
   state: {
@@ -5170,7 +5184,12 @@ const readiness = ext.readiness || ext.checklist || {};
 
 /* ---------- Networking & data loading ---------- */
 async function safeFetchText(url, opts = {}) {
-  const res = await fetch(url, { cache: 'no-store', ...opts });
+  let res;
+  try {
+    res = await fetch(url, { cache: 'no-store', ...opts });
+  } catch (error) {
+    throw buildNetworkRequestError(url, error);
+  }
   if (!res.ok)
     throw new Error(`Failed to fetch ${url}: ${res.status} ${res.statusText}`);
   return await res.text();
