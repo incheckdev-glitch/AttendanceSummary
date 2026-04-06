@@ -5,12 +5,10 @@ window.API_BASE_URL = String(
   runtimeConfig.API_BASE_URL ||
     runtimeConfig.PROXY_API_BASE_URL ||
     runtimeConfig.BACKEND_API_BASE_URL ||
-  'https://script.google.com/macros/s/AKfycbwCX9dQFFj-mfakqg3cpl8yRkjn9SmVRrD6CPuYdUmsdE_Dmgwbv6OOeQmEZsbtyYifLg/exec'
-)
-  .trim() ||
-  'https://script.google.com/macros/s/AKfycbwCX9dQFFj-mfakqg3cpl8yRkjn9SmVRrD6CPuYdUmsdE_Dmgwbv6OOeQmEZsbtyYifLg/exec';
+ '/api/proxy'
+  
+  .trim() || '/api/proxy';
  
-
 const API_BASE_URL = window.API_BASE_URL;
 
 function resolveApiEndpoint(endpoint = '') {
