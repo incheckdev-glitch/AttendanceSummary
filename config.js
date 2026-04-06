@@ -5,8 +5,8 @@ window.API_BASE_URL = String(
   runtimeConfig.API_BASE_URL ||
     runtimeConfig.PROXY_API_BASE_URL ||
     runtimeConfig.BACKEND_API_BASE_URL ||
- '/api/proxy'
-  
+    '/api/proxy'
+)
   .trim() || '/api/proxy';
  
 const API_BASE_URL = window.API_BASE_URL;
