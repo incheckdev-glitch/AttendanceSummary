@@ -8,3 +8,31 @@
 window.RUNTIME_CONFIG = {
   API_BASE_URL: '/api/proxy'
 };
+
+// Use the backend/proxy endpoint for writes to avoid browser CORS failures.
+
+const LS_KEYS = {
+  filters: 'incheckFilters',
+  theme: 'theme',
+  events: 'incheckEvents',
+  issues: 'incheckIssues',
+  issuesLastUpdated: 'incheckIssuesLastUpdated',
+  eventsLastUpdated: 'incheckEventsLastUpdated',
+  dataVersion: 'incheckDataVersion',
+  pageSize: 'pageSize',
+  view: 'incheckView',
+  accentColor: 'incheckAccent',
+  accentColorStorage: 'incheckAccentColor',
+  savedViews: 'incheckSavedViews',
+  columns: 'incheckColumns',
+  freezeWindows: 'incheckFreezeWindows',
+  session: 'incheckSession',
+  csmDailyFilters: 'incheckCsmDailyFilters',
+  csmDailyRows: 'incheckCsmDailyRows',
+  csmDailyLastUpdated: 'incheckCsmDailyLastUpdated'
+};
+
+const ROLES = Object.freeze({
+  ADMIN: 'admin',
+  VIEWER: 'viewer'
+});
