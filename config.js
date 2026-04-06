@@ -5,5 +5,5 @@
  *   API_BASE_URL: 'https://your-proxy.example.com/api'
  */
 window.RUNTIME_CONFIG = {
-  API_BASE_URL: 'https://script.google.com/macros/s/AKfycbx4zME96v1hFoatreS2SuJv46fRGVmkZo3E_36J69AWWOLlZQhX_pi7rSuVPmrPDD8dRA/exec'
+  API_BASE_URL: 'https://attendance-summary-dusky.vercel.app'
 };
