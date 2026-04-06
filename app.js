@@ -277,7 +277,7 @@ const Api = {
     if (!response.ok) {
       throw new Error(data?.error || data?.message || `HTTP ${response.status}`);
     }
-    if (data && typeof data === 'object' && (data.ok === false || data.success === false)) {
+    if (data && typeof data === 'object' && hasExplicitBackendFailure(data)) {
       throw new Error(data.error || data.message || 'Backend rejected request.');
     }
     if (data && typeof data === 'object' && 'data' in data && data.data !== undefined) {
@@ -313,7 +313,7 @@ async function apiPost(payload = {}) {
   if (!response.ok) {
     throw new Error(data?.error || data?.message || `HTTP ${response.status}`);
   }
-  if (data && typeof data === 'object' && (data.ok === false || data.success === false)) {
+  if (data && typeof data === 'object' && hasExplicitBackendFailure(data)) {
     throw new Error(data.error || data.message || 'Backend rejected request.');
   }
   if (data && typeof data === 'object' && 'data' in data && data.data !== undefined) {
@@ -334,6 +334,21 @@ function buildNetworkRequestError(url, originalError) {
     );
   }
   return new Error(rawMessage || `Network error while contacting ${url}.`);
+}
+
+function hasExplicitBackendFailure(data) {
+  const normalizeBool = value => {
+    if (typeof value === 'boolean') return value;
+    const normalized = String(value || '')
+      .trim()
+      .toLowerCase();
+    if (['false', '0', 'no', 'n'].includes(normalized)) return false;
+    if (['true', '1', 'yes', 'y'].includes(normalized)) return true;
+    return null;
+  };
+  const ok = normalizeBool(data?.ok);
+  const success = normalizeBool(data?.success);
+  return ok === false || success === false;
 }
 
 const Session = {
@@ -5554,6 +5569,39 @@ function parseApiJson(text, sourceName = 'API') {
     try {
       return JSON.parse(candidate);
     } catch {}
+  }
+
+  // Some backends return URL-encoded objects (e.g. "ok=true&token=...").
+  if (raw.includes('=') && !raw.includes('<')) {
+    try {
+      const params = new URLSearchParams(raw);
+      if (Array.from(params.keys()).length) {
+        const mapped = {};
+        params.forEach((value, key) => {
+          mapped[key] = value;
+        });
+        return mapped;
+      }
+    } catch {}
+  }
+
+  // Support simple "key: value" response bodies.
+  if (/^[A-Za-z0-9_.-]+\s*:\s*.+$/m.test(raw) && !raw.includes('<')) {
+    const mapped = {};
+    raw.split(/\r?\n/).forEach(line => {
+      const idx = line.indexOf(':');
+      if (idx <= 0) return;
+      const key = line.slice(0, idx).trim();
+      const value = line.slice(idx + 1).trim();
+      if (!key) return;
+      mapped[key] = value;
+    });
+    if (Object.keys(mapped).length) return mapped;
+  }
+
+  const looksLikeHtml = /<!doctype html|<html[\s>]/i.test(raw);
+  if (looksLikeHtml) {
+    throw new Error(`${sourceName} returned HTML instead of JSON. Check API_BASE_URL/proxy.`);
   }
 
   throw new Error(
