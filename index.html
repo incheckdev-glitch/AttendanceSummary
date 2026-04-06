@@ -175,30 +175,7 @@
         </div>
       </div>
 
-      <div class="filter-group csm-filter-group" id="csmFiltersFields" role="group" aria-label="CSM Daily filters" style="display:none;">
-        <div class="filter-row">
-          <label class="muted" for="csmNameFilter">CSM Name</label>
-          <select id="csmNameFilter" class="select" aria-label="Filter by CSM name"></select>
-        </div>
-        <div class="filter-row">
-          <label class="muted" for="csmClientFilter">Client</label>
-          <select id="csmClientFilter" class="select" aria-label="Filter by client"></select>
-        </div>
-        <div class="filter-row">
-          <label class="muted" for="csmTypeFilter">Type of Support</label>
-          <select id="csmTypeFilter" class="select" aria-label="Filter by support type"></select>
-        </div>
-        <div class="filter-row">
-          <label class="muted" for="csmEffortFilter">Effort Requirement</label>
-          <select id="csmEffortFilter" class="select" aria-label="Filter by effort"></select>
-        </div>
-        <div class="filter-row">
-          <label class="muted" for="csmChannelFilter">Support Channel</label>
-          <select id="csmChannelFilter" class="select" aria-label="Filter by channel"></select>
-        </div>
-      </div>
-
-      <div class="divider" role="separator"></div>
+            <div class="divider" role="separator"></div>
 
       <div class="filter-group" role="group" aria-label="Date range">
         <div class="filter-row">
@@ -211,18 +188,7 @@
         </div>
       </div>
 
-      <div class="filter-group csm-filter-group" id="csmFiltersDates" role="group" aria-label="CSM Daily date range" style="display:none;">
-        <div class="filter-row">
-          <label class="muted" for="csmStartDateFilter">From date</label>
-          <input type="date" id="csmStartDateFilter" class="input" aria-label="From date">
-        </div>
-        <div class="filter-row">
-          <label class="muted" for="csmEndDateFilter">To date</label>
-          <input type="date" id="csmEndDateFilter" class="input" aria-label="To date">
-        </div>
-      </div>
-
-      <div class="divider" role="separator"></div>
+            <div class="divider" role="separator"></div>
 
       <div class="filter-group">
         <button id="resetBtn" class="btn ghost" aria-label="Reset all filters">Reset</button>
@@ -519,92 +485,6 @@
                 </button>
               </div>
             </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- CSM Daily view -->
-      <section id="csmDailyView" class="view" role="tabpanel" aria-label="CSM Daily">
-        <div class="card csm-daily-header">
-          <div>
-            <strong>CSM Daily</strong>
-            <div class="muted">Daily Customer Success workload intelligence aligned with MonitorCore operations.</div>
-          </div>
-          <div class="csm-daily-actions">
-            <span id="csmDailyStatusPill" class="chip">Loading</span>
-            <button id="csmSyncBtn" class="btn ghost sm" type="button">Sync</button>
-            <button id="csmExportBtn" class="btn sm" type="button">Export filtered CSV</button>
-          </div>
-        </div>
-
-        <div class="grid cols-4" id="csmKpis" aria-live="polite"></div>
-
-        <div id="csmInsights" class="grid cols-4" aria-live="polite"></div>
-
-        <div class="card">
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
-            <strong>Top CSM summary</strong>
-            <span id="csmSummaryRowCount" class="muted">No rows</span>
-          </div>
-          <div class="table-wrap" role="region" aria-label="Top CSM summary table">
-            <table id="csmSummaryTable">
-              <thead>
-                <tr>
-                  <th scope="col">CSM</th>
-                  <th scope="col">Tasks</th>
-                  <th scope="col">Minutes</th>
-                  <th scope="col">Avg / Task</th>
-                  <th scope="col">Clients</th>
-                </tr>
-              </thead>
-              <tbody id="csmSummaryBody"></tbody>
-            </table>
-          </div>
-        </div>
-
-        <div class="charts csm-charts" aria-label="CSM daily charts">
-          <div class="card"><strong>Tasks Over Time</strong><canvas id="csmTasksOverTimeChart" height="170" role="img"></canvas></div>
-          <div class="card"><strong>Top CSM Workload (Minutes)</strong><canvas id="csmTopWorkloadChart" height="170" role="img"></canvas></div>
-          <div class="card"><strong>Minutes by Client</strong><canvas id="csmMinutesByClientChart" height="170" role="img"></canvas></div>
-          <div class="card"><strong>Type of Support distribution</strong><canvas id="csmTypeDistributionChart" height="170" role="img"></canvas></div>
-          <div class="card"><strong>Effort Requirement distribution</strong><canvas id="csmEffortDistributionChart" height="170" role="img"></canvas></div>
-          <div class="card"><strong>Support Channels</strong><canvas id="csmChannelDistributionChart" height="170" role="img"></canvas></div>
-          <div class="card"><strong>Weekday Workload</strong><canvas id="csmWeekdayWorkloadChart" height="170" role="img"></canvas></div>
-          <div class="card"><strong>Weekly Workload Trend</strong><canvas id="csmWeeklyTrendChart" height="170" role="img"></canvas></div>
-          <div class="card"><strong>Effort Mix by CSM</strong><canvas id="csmEffortMixByCsmChart" height="170" role="img"></canvas></div>
-          <div class="card"><strong>Client Concentration</strong><canvas id="csmClientConcentrationChart" height="170" role="img"></canvas></div>
-          <div class="card"><strong>Workload Balance by CSM</strong><canvas id="csmWorkloadBalanceChart" height="170" role="img"></canvas></div>
-        </div>
-
-        <div class="card" aria-label="CSM task details table">
-          <div class="table-tools" style="justify-content:space-between;">
-            <strong>Detailed Tasks</strong>
-            <input id="csmTableSearch" class="input" type="search" placeholder="Search visible tasks" style="max-width:260px;" aria-label="Search visible CSM rows">
-          </div>
-          <div class="table-wrap" role="region" aria-label="CSM details table">
-            <table id="csmTaskTable">
-              <thead>
-                <tr>
-                  <th scope="col">Timestamp</th>
-                  <th scope="col">CSM Name</th>
-                  <th scope="col">Client</th>
-                  <th scope="col">Time Spent (Minutes)</th>
-                  <th scope="col">Type of Support</th>
-                  <th scope="col">Effort Requirement</th>
-                  <th scope="col">Support Channel</th>
-                  <th scope="col">Notes</th>
-                </tr>
-              </thead>
-              <tbody id="csmTaskBody"></tbody>
-            </table>
-          </div>
-          <div class="table-actions">
-            <div class="pagination" role="group" aria-label="CSM pagination">
-              <button id="csmPrevPage" class="btn ghost sm" type="button">Previous</button>
-              <span id="csmPageInfo" class="muted">Page 1 / 1</span>
-              <button id="csmNextPage" class="btn ghost sm" type="button">Next</button>
-            </div>
-            <span id="csmVisibleRowCount" class="muted">No rows</span>
           </div>
         </div>
       </section>
@@ -1189,8 +1069,6 @@
   <script src="calendar.js"></script>
   <script src="planner.js"></script>
   <script src="ui.js"></script>
-  <script src="health.js"></script>
-  <script src="csm-daily.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

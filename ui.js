@@ -88,13 +88,9 @@ function cacheEls() {
     'issuesTab',
     'calendarTab',
     'insightsTab',
-    'healthTab',
-    'csmDailyTab',
     'issuesView',
     'calendarView',
     'insightsView',
-    'healthView',
-    'csmDailyView',
     'addEventBtn',
     'eventModal',
     'eventModalTitle',
@@ -150,33 +146,6 @@ function cacheEls() {
     'heroHighImpactCount',
     'heroChangeReadiness',
     'shortcutsHelp',
-    'healthRefreshBtn',
-    'healthRangePreset',
-    'healthTargetPreset',
-    'healthSheetSubtext',
-    'healthOpenAppLink',
-    'healthOpenApiLink',
-    'healthPrintBtn',
-    'healthStatusBadge',
-    'healthLastChecked',
-    'healthLatency',
-    'healthUptime',
-    'healthAvgLatency',
-    'healthP95Latency',
-    'healthFailureStreak',
-    'healthFailureCount',
-    'healthDowntime',
-    'healthUptimeWidget',
-    'healthDowntimeWidget',
-    'healthWindowBar',
-    'healthChecksList',
-    'healthChecksPagination',
-    'healthChecksPrevPage',
-    'healthChecksNextPage',
-    'healthChecksPageInfo',
-    'healthLatencyTrendChart',
-    'healthStatusDistributionChart',
-    'healthLatencyBucketsChart',
     'aiQueryExport',
     'eventAllDay',
     'eventEnv',
@@ -212,39 +181,6 @@ function cacheEls() {
     'freezeEnd',
     'freezeReset'
     ,
-    'csmFiltersFields',
-    'csmFiltersDates',
-    'csmNameFilter',
-    'csmClientFilter',
-    'csmTypeFilter',
-    'csmEffortFilter',
-    'csmChannelFilter',
-    'csmStartDateFilter',
-    'csmEndDateFilter',
-    'csmDailyStatusPill',
-    'csmSyncBtn',
-    'csmExportBtn',
-    'csmKpis',
-    'csmInsights',
-    'csmSummaryBody',
-    'csmSummaryRowCount',
-    'csmTableSearch',
-    'csmTaskBody',
-    'csmPrevPage',
-    'csmNextPage',
-    'csmPageInfo',
-    'csmVisibleRowCount',
-    'csmTasksOverTimeChart',
-    'csmTopWorkloadChart',
-    'csmMinutesByClientChart',
-    'csmTypeDistributionChart',
-    'csmEffortDistributionChart',
-    'csmChannelDistributionChart',
-    'csmWeekdayWorkloadChart',
-    'csmWeeklyTrendChart',
-    'csmEffortMixByCsmChart',
-    'csmClientConcentrationChart',
-    'csmWorkloadBalanceChart'
   ].forEach(id => (E[id] = document.getElementById(id)));
 }
 
@@ -307,12 +243,6 @@ const UI = {
       E.devTeamStatusFilterRow.style.display = canUseInternalIssueFilters ? '' : 'none';
     if (E.issueRelatedFilterRow)
       E.issueRelatedFilterRow.style.display = canUseInternalIssueFilters ? '' : 'none';
-    if (E.healthTab) E.healthTab.style.display = Permissions.canViewHealthMonitor() ? '' : 'none';
-
-    if (!Permissions.canViewHealthMonitor() && E.healthView?.classList.contains('active')) {
-      setActiveView('issues');
-    }
-
     // Re-apply role-scoped column visibility immediately after login/logout
     // so viewer-restricted columns are hidden without requiring refresh.
     ColumnManager.renderPanel();

@@ -2,9 +2,6 @@ const Permissions = {
   isAdmin() {
     return Session.role() === ROLES.ADMIN;
   },
-  canViewHealthMonitor() {
-    return this.isAdmin();
-  },
   canCreateTicket() {
     return Session.isAuthenticated();
   },
