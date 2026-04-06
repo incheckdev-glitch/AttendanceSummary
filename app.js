@@ -10,13 +10,12 @@
  *  - Release planner (F&B / Middle East)
  */
 
-const RUNTIME_CONFIG = window.__TICKETING_DASHBOARD_CONFIG__ || {};
+const RUNTIME_CONFIG = window.RUNTIME_CONFIG || {};
 
 const API_BASE_URL =
   RUNTIME_CONFIG.API_BASE_URL ||
   RUNTIME_CONFIG.PROXY_API_BASE_URL ||
   RUNTIME_CONFIG.BACKEND_API_BASE_URL ||
-  RUNTIME_CONFIG.APPS_SCRIPT_WEBAPP_URL ||
   '';
 
 const CONFIG = {
@@ -287,37 +286,41 @@ const Api = {
     return data;
   },
   async post(resource, action, payload = {}) {
-    const endpoint = this.ensureBaseUrl();
-    const requestBody = {
+    return apiPost({
       resource,
       action,
       ...payload
-    };
-    let response;
-    try {
-      response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody)
-      });
-    } catch (error) {
-      throw buildNetworkRequestError(endpoint, error);
-    }
-
-    const rawText = await response.text();
-    const data = parseApiJson(rawText, `Backend ${resource || 'api'}`);
-    if (!response.ok) {
-      throw new Error(data?.error || data?.message || `HTTP ${response.status}`);
-    }
-    if (data && typeof data === 'object' && (data.ok === false || data.success === false)) {
-      throw new Error(data.error || data.message || 'Backend rejected request.');
-    }
-    if (data && typeof data === 'object' && 'data' in data && data.data !== undefined) {
-      return data.data;
-    }
-    return data;
+    });
   }
 };
+
+async function apiPost(payload = {}) {
+  const endpoint = Api.ensureBaseUrl();
+  const requestBody = payload && typeof payload === 'object' ? payload : {};
+  let response;
+  try {
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody)
+    });
+  } catch (error) {
+    throw buildNetworkRequestError(endpoint, error);
+  }
+
+  const rawText = await response.text();
+  const data = parseApiJson(rawText, `Backend ${requestBody.resource || 'api'}`);
+  if (!response.ok) {
+    throw new Error(data?.error || data?.message || `HTTP ${response.status}`);
+  }
+  if (data && typeof data === 'object' && (data.ok === false || data.success === false)) {
+    throw new Error(data.error || data.message || 'Backend rejected request.');
+  }
+  if (data && typeof data === 'object' && 'data' in data && data.data !== undefined) {
+    return data.data;
+  }
+  return data;
+}
 
 function buildNetworkRequestError(url, originalError) {
   const rawMessage = String(originalError?.message || '').trim();
@@ -8349,6 +8352,12 @@ function wireKeyboardShortcuts() {
 
 document.addEventListener('DOMContentLoaded', async () => {
   cacheEls();
+  if (!API_BASE_URL) {
+    console.error(
+      'API_BASE_URL is not configured. Set window.RUNTIME_CONFIG.API_BASE_URL before app.js loads.'
+    );
+    UI.toast('Backend URL is not configured. Please set RUNTIME_CONFIG.API_BASE_URL.');
+  }
   const hadSession = Session.restore();
   Filters.load();
   ColumnManager.load();
