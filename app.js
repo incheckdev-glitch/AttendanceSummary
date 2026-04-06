@@ -4160,20 +4160,24 @@ function trapFocus(container, e) {
 }
 
 function setActiveView(view) {
- const names = ['issues', 'calendar', 'insights'];
+ const names = ['issues', 'calendar', 'insights', 'csmDaily'];
   names.forEach(name => {
     const tab =
       name === 'issues'
         ? E.issuesTab
         : name === 'calendar'
         ? E.calendarTab
-      : E.insightsTab;
+      : name === 'insights'
+      ? E.insightsTab
+      : E.csmDailyTab;
     const panel =
       name === 'issues'
         ? E.issuesView
         : name === 'calendar'
         ? E.calendarView
-       : E.insightsView;
+       : name === 'insights'
+       ? E.insightsView
+       : E.csmDailyView;
     const active = name === view;
     if (tab) {
       tab.classList.toggle('active', active);
@@ -7371,7 +7375,7 @@ const CSMDaily = {
 };
 
 function wireCore() {
-   [E.issuesTab, E.calendarTab, E.insightsTab].forEach(btn => {
+   [E.issuesTab, E.calendarTab, E.insightsTab, E.csmDailyTab].forEach(btn => {
     if (!btn) return;
     btn.addEventListener('click', () => setActiveView(btn.dataset.view));
   });
@@ -7472,7 +7476,7 @@ function wireCore() {
 
   if (E.shortcutsHelp) {
     E.shortcutsHelp.addEventListener('click', () => {
-     UI.toast('Shortcuts: 1/2/3 switch tabs · / focus search · Ctrl+K AI query');
+     UI.toast('Shortcuts: 1/2/3/4 switch tabs · / focus search · Ctrl+K AI query');
     });
   }
   if (E.healthRefreshBtn) {
@@ -8391,13 +8395,15 @@ function wireKeyboardShortcuts() {
 
     if (isInputLike) return;
 
-    // 1/2/3 → switch tabs
+    // 1/2/3/4 → switch tabs
     if (e.key === '1') {
       setActiveView('issues');
     } else if (e.key === '2') {
       setActiveView('calendar');
     } else if (e.key === '3') {
       setActiveView('insights');
+    } else if (e.key === '4') {
+      setActiveView('csmDaily');
     }
   });
 }
