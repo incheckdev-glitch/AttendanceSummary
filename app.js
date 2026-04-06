@@ -1694,6 +1694,148 @@ const BulkEditor = {
   }
 };
 
+const TicketCreator = {
+  submitting: false,
+  safeFields: [
+    'name',
+    'department',
+    'title',
+    'description',
+    'priority',
+    'module',
+    'email_addressee',
+    'category',
+    'link'
+  ],
+  fieldMap: {
+    name: { input: 'newTicketName', error: 'newTicketNameError' },
+    department: { input: 'newTicketDepartment', error: 'newTicketDepartmentError' },
+    title: { input: 'newTicketTitle', error: 'newTicketTitleError' },
+    description: { input: 'newTicketDescription', error: 'newTicketDescriptionError' },
+    priority: { input: 'newTicketPriority', error: 'newTicketPriorityError' },
+    module: { input: 'newTicketModule', error: 'newTicketModuleError' },
+    email_addressee: { input: 'newTicketEmailAddressee', error: 'newTicketEmailAddresseeError' },
+    category: { input: 'newTicketCategory', error: 'newTicketCategoryError' },
+    link: { input: 'newTicketLink', error: 'newTicketLinkError' }
+  },
+  emailRegex: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+  readValue(key) {
+    const config = this.fieldMap[key];
+    const inputEl = config ? E[config.input] : null;
+    return String(inputEl?.value || '').trim();
+  },
+  setFieldError(key, message = '') {
+    const config = this.fieldMap[key];
+    if (!config) return;
+    const inputEl = E[config.input];
+    const errorEl = E[config.error];
+    if (inputEl) inputEl.classList.toggle('is-invalid', !!message);
+    if (errorEl) errorEl.textContent = message || '';
+  },
+  clearErrors() {
+    this.safeFields.forEach(field => this.setFieldError(field, ''));
+    if (E.createTicketError) {
+      E.createTicketError.hidden = true;
+      E.createTicketError.textContent = '';
+    }
+  },
+  showFormError(message = '') {
+    if (!E.createTicketError) return;
+    E.createTicketError.hidden = !message;
+    E.createTicketError.textContent = message || '';
+  },
+  setSubmittingState(isSubmitting) {
+    this.submitting = !!isSubmitting;
+    if (E.createTicketSubmit) {
+      E.createTicketSubmit.disabled = this.submitting;
+      E.createTicketSubmit.textContent = this.submitting ? 'Creating…' : 'Create ticket';
+    }
+    if (E.createTicketCancel) E.createTicketCancel.disabled = this.submitting;
+    if (E.createTicketClose) E.createTicketClose.disabled = this.submitting;
+  },
+  collectFormValues() {
+    const ticket = {};
+    this.safeFields.forEach(field => {
+      ticket[field] = this.readValue(field);
+    });
+    if (!ticket.module) ticket.module = 'Unspecified';
+    return ticket;
+  },
+  validate(ticket = {}) {
+    const errors = {};
+    if (!ticket.title) errors.title = 'Title is required.';
+    if (!ticket.description) errors.description = 'Description is required.';
+    if (!ticket.category) errors.category = 'Category is required.';
+    if (!ticket.priority) errors.priority = 'Priority is required.';
+    if (!ticket.email_addressee) {
+      errors.email_addressee = 'Email addressee is required.';
+    } else if (!this.emailRegex.test(ticket.email_addressee)) {
+      errors.email_addressee = 'Enter a valid email address.';
+    }
+    return errors;
+  },
+  renderValidationErrors(errors = {}) {
+    this.safeFields.forEach(field => this.setFieldError(field, errors[field] || ''));
+    const first = Object.keys(errors)[0];
+    if (first) {
+      const firstEl = E[this.fieldMap[first]?.input || ''];
+      if (firstEl?.focus) firstEl.focus();
+    }
+  },
+  open() {
+    if (!E.createTicketModal) return;
+    this.clearErrors();
+    this.setSubmittingState(false);
+    E.createTicketModal.style.display = 'flex';
+    E.newTicketTitle?.focus?.();
+  },
+  reset() {
+    if (E.createTicketForm) E.createTicketForm.reset();
+    if (E.newTicketModule) E.newTicketModule.value = 'Unspecified';
+    this.clearErrors();
+    this.setSubmittingState(false);
+  },
+  close() {
+    if (!E.createTicketModal) return;
+    E.createTicketModal.style.display = 'none';
+    this.reset();
+  },
+  async submit() {
+    if (this.submitting) return;
+    if (!requirePermission(() => Permissions.canCreateTicket(), 'Login is required to create a ticket.'))
+      return;
+
+    this.clearErrors();
+    const ticket = this.collectFormValues();
+    const validationErrors = this.validate(ticket);
+    if (Object.keys(validationErrors).length) {
+      this.renderValidationErrors(validationErrors);
+      return;
+    }
+
+    this.setSubmittingState(true);
+    try {
+      await Api.postAuthenticated(
+        'tickets',
+        'create',
+        { ticket },
+        { requireAuth: true }
+      );
+      this.close();
+      UI.toast('Ticket created successfully.');
+      await loadIssues(true);
+    } catch (error) {
+      if (isAuthError(error)) {
+        await handleExpiredSession('Session expired while creating a ticket.');
+        return;
+      }
+      this.showFormError(`Failed to create ticket: ${error.message}`);
+    } finally {
+      this.setSubmittingState(false);
+    }
+  }
+};
+
 function buildIssueReplyMail(issue) {
   const khaledEmail = 'khaled.yakan@incheck360.nl';
   const toEmail = khaledEmail;
@@ -3995,11 +4137,7 @@ function wireCore() {
     E.createTicketBtn.addEventListener('click', () => {
       if (!requirePermission(() => Permissions.canCreateTicket(), 'Login is required to create a ticket.'))
         return;
-      window.open(
-        'https://forms.gle/PPnEP1AQneoBT79s5',
-        '_blank',
-        'noopener,noreferrer'
-      );
+      TicketCreator.open();
     });
 
   if (E.shortcutsHelp) {
@@ -4470,6 +4608,32 @@ function wireModals() {
   }
   if (E.bulkEditForm) {
     E.bulkEditForm.addEventListener('submit', onBulkEditSubmit);
+  }
+
+  if (E.createTicketClose) {
+    E.createTicketClose.addEventListener('click', () => TicketCreator.close());
+  }
+  if (E.createTicketCancel) {
+    E.createTicketCancel.addEventListener('click', () => TicketCreator.close());
+  }
+  if (E.createTicketModal) {
+    E.createTicketModal.addEventListener('click', e => {
+      if (e.target === E.createTicketModal && !TicketCreator.submitting) TicketCreator.close();
+    });
+    E.createTicketModal.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && !TicketCreator.submitting) {
+        e.preventDefault();
+        TicketCreator.close();
+      } else if (e.key === 'Tab') {
+        trapFocus(E.createTicketModal, e);
+      }
+    });
+  }
+  if (E.createTicketForm) {
+    E.createTicketForm.addEventListener('submit', async e => {
+      e.preventDefault();
+      await TicketCreator.submit();
+    });
   }
   // Event modal
   if (E.eventModalClose) {
