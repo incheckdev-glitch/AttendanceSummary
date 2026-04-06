@@ -4160,24 +4160,20 @@ function trapFocus(container, e) {
 }
 
 function setActiveView(view) {
- const names = ['issues', 'calendar', 'insights', 'csmDaily'];
+ const names = ['issues', 'calendar', 'insights'];
   names.forEach(name => {
     const tab =
       name === 'issues'
         ? E.issuesTab
         : name === 'calendar'
         ? E.calendarTab
-      : name === 'insights'
-      ? E.insightsTab
-      : E.csmDailyTab;
+      : E.insightsTab;
     const panel =
       name === 'issues'
         ? E.issuesView
         : name === 'calendar'
         ? E.calendarView
-       : name === 'insights'
-       ? E.insightsView
-       : E.csmDailyView;
+       : E.insightsView;
     const active = name === view;
     if (tab) {
       tab.classList.toggle('active', active);
@@ -7375,7 +7371,7 @@ const CSMDaily = {
 };
 
 function wireCore() {
-   [E.issuesTab, E.calendarTab, E.insightsTab, E.csmDailyTab].forEach(btn => {
+   [E.issuesTab, E.calendarTab, E.insightsTab].forEach(btn => {
     if (!btn) return;
     btn.addEventListener('click', () => setActiveView(btn.dataset.view));
   });
@@ -7476,7 +7472,7 @@ function wireCore() {
 
   if (E.shortcutsHelp) {
     E.shortcutsHelp.addEventListener('click', () => {
-     UI.toast('Shortcuts: 1/2/3/4 switch tabs · / focus search · Ctrl+K AI query');
+     UI.toast('Shortcuts: 1/2/3 switch tabs · / focus search · Ctrl+K AI query');
     });
   }
   if (E.healthRefreshBtn) {
@@ -8395,15 +8391,13 @@ function wireKeyboardShortcuts() {
 
     if (isInputLike) return;
 
-    // 1/2/3/4 → switch tabs
+    // 1/2/3 → switch tabs
     if (e.key === '1') {
       setActiveView('issues');
     } else if (e.key === '2') {
       setActiveView('calendar');
     } else if (e.key === '3') {
       setActiveView('insights');
-    } else if (e.key === '4') {
-      setActiveView('csmDaily');
     }
   });
 }
@@ -8444,7 +8438,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!Session.isAuthenticated()) {
     const view = localStorage.getItem(LS_KEYS.view) || 'issues';
     setActiveView(
-      view === 'calendar' || view === 'insights' || view === 'csmDaily' ? view : 'issues'
+      view === 'calendar' || view === 'insights' ? view : 'issues'
     );
   }
 
