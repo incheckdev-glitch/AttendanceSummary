@@ -885,6 +885,35 @@ th.sorted-desc::after{
 .is-invalid{
   border-color:var(--danger)!important;
 }
+.upload-dropzone{
+  border:1px dashed var(--border);
+  border-radius:12px;
+  min-height:86px;
+  padding:12px;
+  display:grid;
+  gap:6px;
+  align-content:center;
+  cursor:pointer;
+  background:color-mix(in oklab, var(--card) 88%, transparent);
+  transition:border-color .15s ease, background .15s ease, box-shadow .15s ease;
+}
+.upload-dropzone:hover,
+.upload-dropzone:focus-visible,
+.upload-dropzone.is-dragover{
+  border-color:var(--accent);
+  background:color-mix(in oklab, var(--accent) 14%, transparent);
+  box-shadow:var(--focus);
+  outline:none;
+}
+.upload-dropzone-title{
+  font-size:13px;
+  font-weight:600;
+}
+.upload-dropzone-meta{
+  font-size:12px;
+  word-break:break-word;
+}
+
 @media(max-width:640px){
   .create-ticket-grid{
     grid-template-columns:1fr;

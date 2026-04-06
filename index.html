@@ -695,8 +695,14 @@
               <small id="newTicketEmailAddresseeError" class="field-error" aria-live="polite"></small>
             </div>
             <div class="filter-row">
-              <label class="muted" for="newTicketLink">Reference link</label>
-              <input id="newTicketLink" class="input" type="url" placeholder="https://example.com/details" />
+              <label class="muted" for="newTicketLink">Reference link / upload</label>
+              <div id="newTicketUploadDropzone" class="upload-dropzone" tabindex="0" role="button" aria-label="Upload attachment by dragging a file or clicking to select">
+                <input id="newTicketUpload" type="file" class="sr-only" aria-hidden="true" tabindex="-1" />
+                <div class="upload-dropzone-title">Drag and drop a file here, or click to browse</div>
+                <div id="newTicketUploadName" class="upload-dropzone-meta muted">No file selected</div>
+              </div>
+              <input id="newTicketLink" class="input" type="url" placeholder="https://example.com/details (auto-filled after upload)" />
+              <small class="muted">Dropped files are converted to a local browser link so you can submit quickly.</small>
               <small id="newTicketLinkError" class="field-error" aria-live="polite"></small>
             </div>
             <small class="muted">
