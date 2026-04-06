@@ -276,7 +276,7 @@ const Api = {
     const rawText = await response.text();
     const data = parseApiJson(rawText, `Backend ${resource || 'api'}`);
     if (!response.ok) {
-      throw new Error(data?.error || data?.message || `HTTP ${response.status}`);
+      throw buildHttpResponseError(response, data, endpoint);
     }
     if (data && typeof data === 'object' && hasExplicitBackendFailure(data)) {
       throw new Error(data.error || data.message || 'Backend rejected request.');
@@ -312,7 +312,7 @@ async function apiPost(payload = {}) {
   const rawText = await response.text();
   const data = parseApiJson(rawText, `Backend ${requestBody.resource || 'api'}`);
   if (!response.ok) {
-    throw new Error(data?.error || data?.message || `HTTP ${response.status}`);
+    throw buildHttpResponseError(response, data, endpoint);
   }
   if (data && typeof data === 'object' && hasExplicitBackendFailure(data)) {
     throw new Error(data.error || data.message || 'Backend rejected request.');
@@ -350,6 +350,26 @@ function hasExplicitBackendFailure(data) {
   const ok = normalizeBool(data?.ok);
   const success = normalizeBool(data?.success);
   return ok === false || success === false;
+}
+
+function buildHttpResponseError(response, data, endpoint) {
+  const backendMessage = String(data?.error || data?.message || '').trim();
+  if (backendMessage) return new Error(backendMessage);
+
+  const status = Number(response?.status || 0);
+  const statusText = String(response?.statusText || '').trim();
+  const endpointLabel = String(endpoint || API_BASE_URL || 'backend endpoint');
+
+  if (status === 404) {
+    return new Error(
+      `HTTP 404 from ${endpointLabel}. Login/auth routes were not found on the configured backend. ` +
+      'Verify API_BASE_URL points to a backend/proxy that implements auth.'
+    );
+  }
+
+  return new Error(
+    `HTTP ${status || 'error'}${statusText ? ` ${statusText}` : ''} from ${endpointLabel}.`
+  );
 }
 
 const Session = {
