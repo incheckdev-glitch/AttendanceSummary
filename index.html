@@ -246,10 +246,6 @@
                 role="tab" aria-selected="false" aria-controls="insightsView">
           <span class="icon" aria-hidden="true">🤖</span> AI Insights
         </button>
-        <button id="healthTab" class="view-tab" data-view="health"
-                role="tab" aria-selected="false" aria-controls="healthView">
-          <span class="icon" aria-hidden="true">🩺</span> Monitor Health
-        </button>
         <button id="csmDailyTab" class="view-tab" data-view="csmDaily"
                 role="tab" aria-selected="false" aria-controls="csmDailyView">
           <span class="icon" aria-hidden="true">📊</span> CSM Daily
@@ -261,7 +257,7 @@
         <div class="card summary-bar" id="issuesSummaryCard">
           <span id="issuesSummaryText" aria-live="polite">Loading summary…</span>
           <span id="issuesLastUpdated" class="summary-meta" aria-live="polite">Last updated: --</span>
-         <span class="shortcut-chip">Shortcuts: 1/2/3/4/5 tabs · / search · Ctrl+K AI</span>
+         <span class="shortcut-chip">Shortcuts: 1/2/3/4 tabs · / search · Ctrl+K AI</span>
         </div>
 
         <div class="grid cols-4" id="kpis" aria-live="polite"></div>
@@ -527,128 +523,6 @@
                 </button>
               </div>
             </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Monitor Health view -->
-      <section id="healthView" class="view" role="tabpanel" aria-labelledby="healthTab">
-        <div class="card health-header-card">
-          <div class="health-header">
-            <div>
-              <strong>Service Monitor — app.incheck360.com + api.incheck360.com</strong>
-              <div id="healthSheetSubtext" class="muted health-subtitle">
-                Health telemetry loaded directly from Google Sheet tab <em>Monitor Health</em>.
-              </div>
-            </div>
-            <div class="health-actions">
-              <label class="muted" for="healthRangePreset">Range</label>
-              <select id="healthRangePreset" class="select sm" aria-label="Health monitoring range preset">
-                <option value="all">All records</option>
-                <option value="today">Today</option>
-                <option value="yesterday">Yesterday</option>
-                <option value="last7days">Last 7 days</option>
-                <option value="thisMonth">This month</option>
-                <option value="lastMonth">Last month</option>
-              </select>
-              <label class="muted" for="healthTargetPreset">Target</label>
-              <select id="healthTargetPreset" class="select sm" aria-label="Health monitoring target preset">
-                <option value="all">All targets</option>
-              </select>
-              <a id="healthOpenAppLink" class="btn ghost sm" href="https://app.incheck360.com/" target="_blank" rel="noopener noreferrer">
-                Open app
-              </a>
-              <a id="healthOpenApiLink" class="btn ghost sm" href="https://api.incheck360.com/" target="_blank" rel="noopener noreferrer">
-                Open API
-              </a>
-              <button id="healthPrintBtn" class="btn ghost sm" type="button" aria-label="Export monitor health as print screen">
-                Print screen
-              </button>
-              <button id="healthRefreshBtn" class="btn sm" type="button">Refresh from sheet</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="grid cols-4">
-          <div class="card">
-            <strong>Current status</strong>
-            <div id="healthStatusBadge" class="chip health-chip">Unknown</div>
-          </div>
-          <div class="card">
-            <strong>Last checked</strong>
-            <div id="healthLastChecked" class="muted health-metric">--</div>
-          </div>
-          <div class="card">
-            <strong>Last response time</strong>
-            <div id="healthLatency" class="muted health-metric">--</div>
-          </div>
-          <div class="card">
-            <strong>Availability (window)</strong>
-            <div id="healthUptime" class="muted health-metric">--</div>
-          </div>
-        </div>
-
-        <div class="grid cols-4">
-          <div class="card">
-            <strong>Average latency</strong>
-            <div id="healthAvgLatency" class="muted health-metric">--</div>
-          </div>
-          <div class="card">
-            <strong>P95 latency</strong>
-            <div id="healthP95Latency" class="muted health-metric">--</div>
-          </div>
-          <div class="card">
-            <strong>Latest incident streak</strong>
-            <div id="healthFailureStreak" class="muted health-metric">--</div>
-          </div>
-          <div class="card">
-            <strong>Downtime (window)</strong>
-            <div id="healthDowntime" class="muted health-metric">--</div>
-          </div>
-        </div>
-
-        <div class="card">
-          <strong>Window health bar</strong>
-          <div id="healthWindowBar" class="health-window-bar" aria-label="Health checks history bar"></div>
-          <div class="muted" style="margin-top:8px;">
-            Green = successful check · Orange = failed check
-          </div>
-        </div>
-
-        <div class="grid cols-2 health-kpi-widgets">
-          <div class="card health-kpi-widget">
-            <strong>Uptime %</strong>
-            <div id="healthUptimeWidget" class="health-kpi-value">--</div>
-          </div>
-          <div class="card health-kpi-widget">
-            <strong>Downtime</strong>
-            <div id="healthDowntimeWidget" class="health-kpi-value">--</div>
-          </div>
-        </div>
-
-        <div class="grid cols-2 health-charts-grid">
-          <div class="card health-chart-card">
-            <strong>Latency & availability trend</strong>
-            <canvas id="healthLatencyTrendChart" height="180" aria-label="Latency and availability trend chart" role="img"></canvas>
-          </div>
-          <div class="card health-chart-card">
-            <strong>Check status distribution</strong>
-            <canvas id="healthStatusDistributionChart" height="180" aria-label="Check status distribution chart" role="img"></canvas>
-          </div>
-        </div>
-
-        <div class="card health-chart-card">
-          <strong>Latency distribution</strong>
-          <canvas id="healthLatencyBucketsChart" height="160" aria-label="Latency buckets chart" role="img"></canvas>
-        </div>
-
-        <div class="card">
-          <strong>Health checks</strong>
-          <ul id="healthChecksList" class="muted health-check-list"></ul>
-          <div id="healthChecksPagination" class="health-checks-pagination">
-            <button id="healthChecksPrevPage" class="btn ghost sm" type="button" aria-label="Previous health checks page">Previous</button>
-            <span id="healthChecksPageInfo" class="muted">Page 1 of 1</span>
-            <button id="healthChecksNextPage" class="btn ghost sm" type="button" aria-label="Next health checks page">Next</button>
           </div>
         </div>
       </section>
