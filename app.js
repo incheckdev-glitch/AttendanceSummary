@@ -19,6 +19,16 @@ const API_BASE_URL = String(
   '/api/proxy'
 ).trim();
 
+function resolveApiEndpoint(endpoint = '') {
+  const rawEndpoint = String(endpoint || '').trim();
+  if (!rawEndpoint) return '';
+  try {
+    return new URL(rawEndpoint, window.location.origin).toString();
+  } catch (_) {
+    return rawEndpoint;
+  }
+}
+
 const CONFIG = {
   DATA_VERSION: '4',
    DATA_STALE_HOURS: 6,
@@ -247,10 +257,11 @@ const ROLES = Object.freeze({
 
 const Api = {
   ensureBaseUrl() {
-    if (!API_BASE_URL) {
+    const resolved = resolveApiEndpoint(API_BASE_URL);
+    if (!resolved) {
       throw new Error('API_BASE_URL is not configured.');
     }
-    return API_BASE_URL;
+    return resolved;
   },
   buildUrl(resource = '', params = {}) {
     const endpoint = this.ensureBaseUrl();
