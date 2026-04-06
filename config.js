@@ -6,5 +6,5 @@
  * so previews/custom domains do not trigger cross-origin login requests.
  */
 window.RUNTIME_CONFIG = {
-  API_BASE_URL: '/api/proxy'
+  API_BASE_URL: 'https://attendance-summary-ngcyzy1e0-incheckdev-5498s-projects.vercel.app/api/proxy'
 };
