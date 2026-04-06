@@ -1,15 +1,24 @@
-/**
- * Runtime frontend configuration.
- * Set API_BASE_URL to your backend/proxy endpoint (NOT GitHub Pages URL).
- *
- * IMPORTANT: keep this as a same-origin relative path for Vercel deployments
- * so previews/custom domains do not trigger cross-origin login requests.
- */
 window.RUNTIME_CONFIG = {
   API_BASE_URL: '/api/proxy'
 };
 
-// Use the backend/proxy endpoint for writes to avoid browser CORS failures.
+const API_BASE_URL = String(
+  (window.RUNTIME_CONFIG && (
+    window.RUNTIME_CONFIG.API_BASE_URL ||
+    window.RUNTIME_CONFIG.PROXY_API_BASE_URL ||
+    window.RUNTIME_CONFIG.BACKEND_API_BASE_URL
+  )) || '/api/proxy'
+).trim();
+
+function resolveApiEndpoint(endpoint = '') {
+  const rawEndpoint = String(endpoint || '').trim();
+  if (!rawEndpoint) return '';
+  try {
+    return new URL(rawEndpoint, window.location.origin).toString();
+  } catch (_) {
+    return rawEndpoint;
+  }
+}
 
 const LS_KEYS = {
   filters: 'incheckFilters',
