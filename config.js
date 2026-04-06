@@ -5,5 +5,5 @@
  *   API_BASE_URL: 'https://your-proxy.example.com/api'
  */
 window.RUNTIME_CONFIG = {
-  API_BASE_URL: ''
+  API_BASE_URL: 'https://incheckdev-glitch.github.io/AttendanceSummary/api'
 };
