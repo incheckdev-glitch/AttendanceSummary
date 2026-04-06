@@ -41,6 +41,10 @@ const CONFIG = {
     RUNTIME_CONFIG.ISSUE_API_URL ||
     "https://corsproxy.io/?" +
       encodeURIComponent(APPS_SCRIPT_WEBAPP_URL),
+  FINANCE_API_URL:
+    RUNTIME_CONFIG.FINANCE_API_URL ||
+    "https://corsproxy.io/?" +
+      encodeURIComponent(APPS_SCRIPT_WEBAPP_URL),
   CSM_DAILY_API_URL:
     RUNTIME_CONFIG.CSM_DAILY_API_URL || '',
   ADMIN_PASSCODE: RUNTIME_CONFIG.ADMIN_PASSCODE || 'incheck@360',
@@ -243,7 +247,11 @@ const LS_KEYS = {
   session: 'incheckSession',
   csmDailyFilters: 'incheckCsmDailyFilters',
   csmDailyRows: 'incheckCsmDailyRows',
-  csmDailyLastUpdated: 'incheckCsmDailyLastUpdated'
+  csmDailyLastUpdated: 'incheckCsmDailyLastUpdated',
+  renewals: 'incheckRenewals',
+  expenses: 'incheckExpenses',
+  financeSummary: 'incheckFinanceSummary',
+  financeLastUpdated: 'incheckFinanceLastUpdated'
 };
 
 const ROLES = Object.freeze({
@@ -750,6 +758,9 @@ const DataStore = {
   df: new Map(),
   N: 0,
   events: [],
+  renewals: [],
+  expenses: [],
+  financeSummary: null,
   freezeWindows: [],
   etag: null,
 
@@ -5665,6 +5676,203 @@ function parseBoolean(value) {
   return ['1', 'true', 'yes', 'y', 'up', 'online', 'ok', 'healthy', 'success'].includes(normalized);
 }
 
+/* ---------- Finance API helpers (renewals / expenses / finance) ---------- */
+function normalizeFinanceAmount(value) {
+  if (value === null || value === undefined || value === '') return 0;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+
+  const text = String(value);
+  const match = text.match(/-?\d{1,3}(?:[\s,]\d{3})*(?:\.\d+)?|-?\d+(?:\.\d+)?/);
+  if (!match) return 0;
+
+  const normalized = match[0].replace(/[\s,](?=\d{3}(\D|$))/g, '');
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeRenewalRecordFromApi(record = {}) {
+  const amountRaw = record.amount ?? record.amountUsd ?? '';
+  const currency = String(
+    record.currency ??
+      (String(amountRaw).includes('€') ? 'EUR' : 'USD')
+  )
+    .trim()
+    .toUpperCase();
+
+  return {
+    id: String(record.id || '').trim(),
+    subscription: String(record.subscription || record.title || '').trim(),
+    department: String(record.department || '').trim(),
+    amountRaw: amountRaw,
+    amountNumeric: normalizeFinanceAmount(amountRaw),
+    currency,
+    renewalDate: record.renewalDate || record['renewal date'] || '',
+    billingCycle: record.billingCycle || record['billing cycle'] || '',
+    status: record.status || '',
+    paidBy: record.paidBy || record['paid by'] || '',
+    notes: record.notes || ''
+  };
+}
+
+function normalizeExpenseRecordFromApi(record = {}) {
+  return {
+    id: String(record.id || '').trim(),
+    date: record.date || '',
+    description: String(record.description || record.title || '').trim(),
+    department: String(record.department || '').trim(),
+    category: String(record.category || '').trim(),
+    amountDollarRaw: record.amountDollar ?? record['amount dollar'] ?? '',
+    amountEuroRaw: record.amountEuro ?? record['amount euro'] ?? '',
+    amountDollar: normalizeFinanceAmount(record.amountDollar ?? record['amount dollar'] ?? ''),
+    amountEuro: normalizeFinanceAmount(record.amountEuro ?? record['amount euro'] ?? ''),
+    paidBy: record.paidBy || record['paid by'] || '',
+    paymentMethod: record.paymentMethod || record['payment method'] || '',
+    reference: record.reference || '',
+    notes: record.notes || ''
+  };
+}
+
+function loadFinanceCache() {
+  try {
+    const lastUpdated = localStorage.getItem(LS_KEYS.financeLastUpdated);
+    if (!U.isRecentIso(lastUpdated, CONFIG.DATA_STALE_HOURS)) return false;
+
+    const renewalsRaw = localStorage.getItem(LS_KEYS.renewals);
+    const expensesRaw = localStorage.getItem(LS_KEYS.expenses);
+    const financeRaw = localStorage.getItem(LS_KEYS.financeSummary);
+    if (!renewalsRaw && !expensesRaw && !financeRaw) return false;
+
+    DataStore.renewals = renewalsRaw ? JSON.parse(renewalsRaw) : [];
+    DataStore.expenses = expensesRaw ? JSON.parse(expensesRaw) : [];
+    DataStore.financeSummary = financeRaw ? JSON.parse(financeRaw) : null;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function saveFinanceCache() {
+  try {
+    localStorage.setItem(LS_KEYS.renewals, JSON.stringify(DataStore.renewals || []));
+    localStorage.setItem(LS_KEYS.expenses, JSON.stringify(DataStore.expenses || []));
+    localStorage.setItem(LS_KEYS.financeSummary, JSON.stringify(DataStore.financeSummary || null));
+    localStorage.setItem(LS_KEYS.financeLastUpdated, new Date().toISOString());
+  } catch {}
+}
+
+async function financeFetch(resource, method = 'GET', body = null, query = {}) {
+  if (!CONFIG.FINANCE_API_URL) {
+    throw new Error('Finance API endpoint is not configured.');
+  }
+
+  const auth = Session.authContext ? Session.authContext() : { role: '', authCode: '' };
+  const queryParams = {
+    ...query,
+    role: auth.role || '',
+    sessionRole: auth.role || '',
+    authCode: auth.authCode || '',
+    passcode: auth.authCode || '',
+    password: auth.authCode || ''
+  };
+
+  const url = withResourceParam(CONFIG.FINANCE_API_URL, resource, queryParams);
+  const options = {
+    method,
+    cache: 'no-store',
+    headers: { 'Content-Type': 'application/json' }
+  };
+  if (body) options.body = JSON.stringify(body);
+
+  const res = await fetch(url, options);
+  const text = await res.text();
+  const data = parseApiJson(text, 'Finance API');
+
+  if (!res.ok || data.ok === false || data.success === false) {
+    throw new Error(data.error || data.message || `Finance API failed (${res.status})`);
+  }
+
+  return data;
+}
+
+const FinanceApi = {
+  async getRenewals(filters = {}) {
+    const data = await financeFetch('renewals', 'GET', null, filters);
+    const rows = Array.isArray(data.renewals) ? data.renewals : [];
+    DataStore.renewals = rows.map(normalizeRenewalRecordFromApi);
+    saveFinanceCache();
+    return DataStore.renewals;
+  },
+  async createRenewal(renewal) {
+    const data = await financeFetch('renewals', 'POST', {
+      resource: 'renewals',
+      action: 'create',
+      renewal
+    });
+    await this.refreshSummary();
+    return normalizeRenewalRecordFromApi(data.renewal || renewal);
+  },
+  async updateRenewal(renewal) {
+    const data = await financeFetch('renewals', 'POST', {
+      resource: 'renewals',
+      action: 'update',
+      renewal
+    });
+    await this.refreshSummary();
+    return normalizeRenewalRecordFromApi(data.renewal || renewal);
+  },
+  async deleteRenewal(id) {
+    const data = await financeFetch('renewals', 'POST', {
+      resource: 'renewals',
+      action: 'delete',
+      id
+    });
+    await this.refreshSummary();
+    return data;
+  },
+  async getExpenses(filters = {}) {
+    const data = await financeFetch('expenses', 'GET', null, filters);
+    const rows = Array.isArray(data.expenses) ? data.expenses : [];
+    DataStore.expenses = rows.map(normalizeExpenseRecordFromApi);
+    saveFinanceCache();
+    return DataStore.expenses;
+  },
+  async createExpense(expense) {
+    const data = await financeFetch('expenses', 'POST', {
+      resource: 'expenses',
+      action: 'create',
+      expense
+    });
+    await this.refreshSummary();
+    return normalizeExpenseRecordFromApi(data.expense || expense);
+  },
+  async updateExpense(expense) {
+    const data = await financeFetch('expenses', 'POST', {
+      resource: 'expenses',
+      action: 'update',
+      expense
+    });
+    await this.refreshSummary();
+    return normalizeExpenseRecordFromApi(data.expense || expense);
+  },
+  async deleteExpense(id) {
+    const data = await financeFetch('expenses', 'POST', {
+      resource: 'expenses',
+      action: 'delete',
+      id
+    });
+    await this.refreshSummary();
+    return data;
+  },
+  async refreshSummary() {
+    const data = await financeFetch('finance', 'GET', null, { includeDetails: 'true' });
+    DataStore.financeSummary = data.finance || null;
+    saveFinanceCache();
+    return DataStore.financeSummary;
+  }
+};
+
+window.FinanceApi = FinanceApi;
+
 /* ---------- Save/Delete to Apps Script ---------- */
 function normalizeIssueForStore(issue) {
   return {
@@ -8433,6 +8641,7 @@ document.addEventListener('DOMContentLoaded', () => {
   wireKeyboardShortcuts();
 
   loadFreezeWindowsCache();
+  loadFinanceCache();
   renderFreezeWindows();
   
   if (!Session.isAuthenticated()) {
