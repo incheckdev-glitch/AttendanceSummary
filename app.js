@@ -1719,6 +1719,29 @@ const TicketCreator = {
     link: { input: 'newTicketLink', error: 'newTicketLinkError' }
   },
   emailRegex: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+  uploadedObjectUrl: '',
+  setUploadMeta(text = 'No file selected') {
+    if (E.newTicketUploadName) E.newTicketUploadName.textContent = text;
+  },
+  cleanupObjectUrl() {
+    if (!this.uploadedObjectUrl) return;
+    try {
+      URL.revokeObjectURL(this.uploadedObjectUrl);
+    } catch {}
+    this.uploadedObjectUrl = '';
+  },
+  applyUploadedFile(file) {
+    if (!file) return;
+    this.cleanupObjectUrl();
+    const objectUrl = URL.createObjectURL(file);
+    this.uploadedObjectUrl = objectUrl;
+    if (E.newTicketLink) E.newTicketLink.value = objectUrl;
+    this.setUploadMeta(`Selected: ${file.name} (${Math.max(1, Math.round(file.size / 1024))} KB)`);
+  },
+  handleDropzoneDragState(active) {
+    if (!E.newTicketUploadDropzone) return;
+    E.newTicketUploadDropzone.classList.toggle('is-dragover', !!active);
+  },
   readValue(key) {
     const config = this.fieldMap[key];
     const inputEl = config ? E[config.input] : null;
@@ -1792,6 +1815,10 @@ const TicketCreator = {
   reset() {
     if (E.createTicketForm) E.createTicketForm.reset();
     if (E.newTicketModule) E.newTicketModule.value = 'Unspecified';
+    if (E.newTicketUpload) E.newTicketUpload.value = '';
+    this.cleanupObjectUrl();
+    this.setUploadMeta();
+    this.handleDropzoneDragState(false);
     this.clearErrors();
     this.setSubmittingState(false);
   },
@@ -4489,6 +4516,48 @@ function wireDashboardGate() {
   }
 }
 
+function wireTicketUploadDropzone() {
+  if (!E.newTicketUploadDropzone || !E.newTicketUpload) return;
+
+  E.newTicketUploadDropzone.addEventListener('click', () => E.newTicketUpload?.click());
+  E.newTicketUploadDropzone.addEventListener('keydown', event => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      E.newTicketUpload?.click();
+    }
+  });
+
+  ['dragenter', 'dragover'].forEach(type => {
+    E.newTicketUploadDropzone.addEventListener(type, event => {
+      event.preventDefault();
+      TicketCreator.handleDropzoneDragState(true);
+    });
+  });
+
+  ['dragleave', 'dragend'].forEach(type => {
+    E.newTicketUploadDropzone.addEventListener(type, event => {
+      event.preventDefault();
+      const related = event.relatedTarget;
+      if (related && E.newTicketUploadDropzone.contains(related)) return;
+      TicketCreator.handleDropzoneDragState(false);
+    });
+  });
+
+  E.newTicketUploadDropzone.addEventListener('drop', event => {
+    event.preventDefault();
+    TicketCreator.handleDropzoneDragState(false);
+    const file = event.dataTransfer?.files?.[0];
+    if (!file) return;
+    TicketCreator.applyUploadedFile(file);
+  });
+
+  E.newTicketUpload.addEventListener('change', event => {
+    const file = event.target?.files?.[0];
+    if (!file) return;
+    TicketCreator.applyUploadedFile(file);
+  });
+}
+
 function wireModals() {
   // Issue modal
   if (E.modalClose) {
@@ -4635,6 +4704,8 @@ function wireModals() {
       await TicketCreator.submit();
     });
   }
+
+  wireTicketUploadDropzone();
   // Event modal
   if (E.eventModalClose) {
     E.eventModalClose.addEventListener('click', () => UI.Modals.closeEvent());
