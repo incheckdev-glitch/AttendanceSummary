@@ -3,7 +3,7 @@ const Permissions = {
     return Session.role() === ROLES.ADMIN;
   },
   canCreateTicket() {
-    return Session.isAuthenticated();
+    return this.isAdmin();
   },
   canEditTicket() {
     return this.isAdmin();
