@@ -102,14 +102,17 @@
           <span>Secure operations access</span>
         </div>
         <form id="loginForm" class="login-form">
-          <label for="loginRole" class="sr-only">Email</label>
-          <input id="loginRole" class="input" type="email" placeholder="Email *" autocomplete="email" required />
+          <label for="loginRole" class="sr-only">Role</label>
+          <select id="loginRole" class="select" required>
+            <option value="viewer">Viewer</option>
+            <option value="admin">Admin</option>
+          </select>
 
           <label for="loginPasscode" class="sr-only">Passcode</label>
-          <input id="loginPasscode" class="input" type="password" placeholder="Password *" autocomplete="current-password" required />
+          <input id="loginPasscode" class="input" type="password" placeholder="Password *" autocomplete="current-password" />
 
           <button id="loginBtn" class="btn primary" type="submit">LOG IN</button>
-          <small id="loginHint" class="login-hint">Enter your Supabase email and password.</small>
+          <small id="loginHint" class="login-hint">Viewer passcode is required.</small>
         </form>
       </aside>
     </div>
@@ -613,80 +616,6 @@
     </main>
   </div>
 
-  <!-- Create Ticket Modal -->
-  <div id="createTicketModal" class="modal" role="dialog" aria-modal="true"
-       aria-labelledby="createTicketTitle" aria-describedby="createTicketBody">
-    <div class="modal-content">
-      <div class="header">
-        <h2 id="createTicketTitle" style="margin:0;font-size:20px">Create Ticket</h2>
-        <div class="actions">
-          <button class="modal-close" id="createTicketClose" aria-label="Close create ticket dialog">✕</button>
-        </div>
-      </div>
-      <form id="createTicketForm">
-        <div id="createTicketBody">
-          <div class="filter-group">
-            <div class="muted" style="font-size:12px;margin-bottom:10px;">
-              Submit a new ticket directly to the database.
-            </div>
-            <div class="filter-row">
-              <label class="muted" for="createTicketName">Name</label>
-              <input id="createTicketName" class="input" type="text" required />
-            </div>
-            <div class="filter-row">
-              <label class="muted" for="createTicketDepartment">Department</label>
-              <input id="createTicketDepartment" class="input" type="text" />
-            </div>
-            <div class="filter-row">
-              <label class="muted" for="createTicketModule">Module</label>
-              <input id="createTicketModule" class="input" type="text" required />
-            </div>
-            <div class="filter-row">
-              <label class="muted" for="createTicketTitleInput">Title</label>
-              <input id="createTicketTitleInput" class="input" type="text" required />
-            </div>
-            <div class="filter-row">
-              <label class="muted" for="createTicketDesc">Description</label>
-              <textarea id="createTicketDesc" class="input" rows="4" required></textarea>
-            </div>
-            <div class="filter-row">
-              <label class="muted" for="createTicketEmail">Email Address</label>
-              <input id="createTicketEmail" class="input" type="email" required />
-            </div>
-            <div class="filter-row">
-              <label class="muted" for="createTicketPriority">Priority</label>
-              <select id="createTicketPriority" class="select" required>
-                <option value="High">High</option>
-                <option value="Medium" selected>Medium</option>
-                <option value="Low">Low</option>
-              </select>
-            </div>
-            <div class="filter-row">
-              <label class="muted" for="createTicketStatus">Status</label>
-              <select id="createTicketStatus" class="select" required>
-                <option value="Not Started Yet" selected>Not Started Yet</option>
-                <option value="Under Development">Under Development</option>
-                <option value="On Hold">On Hold</option>
-                <option value="On Stage">On Stage</option>
-                <option value="Sent">Sent</option>
-                <option value="Resolved">Resolved</option>
-                <option value="Rejected">Rejected</option>
-              </select>
-            </div>
-            <div class="filter-row">
-              <label class="muted" for="createTicketCategory">Category</label>
-              <input id="createTicketCategory" class="input" type="text" placeholder="e.g. Bug, Support" />
-            </div>
-          </div>
-          <div class="actions" style="justify-content:flex-end;gap:8px;">
-            <button type="button" class="btn ghost" id="createTicketCancel">Cancel</button>
-            <button type="submit" class="btn primary" id="createTicketSubmit">Create ticket</button>
-          </div>
-        </div>
-      </form>
-    </div>
-  </div>
-
   <!-- Bulk Edit Modal -->
   <div id="bulkEditModal" class="modal" role="dialog" aria-modal="true"
        aria-labelledby="bulkEditTitle" aria-describedby="bulkEditBody">
@@ -1131,7 +1060,6 @@
   
   <!-- Runtime config + app modules -->
   <script src="config.js"></script>
-  <script type="module" src="legacyApi.js"></script>
   <script src="api.js"></script>
   <script src="session.js"></script>
   <script src="permissions.js"></script>

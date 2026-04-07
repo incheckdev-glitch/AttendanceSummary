@@ -1694,69 +1694,6 @@ const BulkEditor = {
   }
 };
 
-const CreateTicketForm = {
-  lastFocus: null,
-  buildTicketId() {
-    const now = new Date();
-    const y = now.getUTCFullYear();
-    const m = String(now.getUTCMonth() + 1).padStart(2, '0');
-    const d = String(now.getUTCDate()).padStart(2, '0');
-    const rand = Math.floor(Math.random() * 900 + 100);
-    return `INC-${y}${m}${d}-${rand}`;
-  },
-  open() {
-    if (!E.createTicketModal) return;
-    this.lastFocus = document.activeElement;
-    if (E.createTicketForm) E.createTicketForm.reset();
-    if (E.createTicketPriority) E.createTicketPriority.value = 'Medium';
-    if (E.createTicketStatus) E.createTicketStatus.value = 'Not Started Yet';
-    E.createTicketModal.style.display = 'flex';
-    E.createTicketName?.focus?.();
-  },
-  close() {
-    if (E.createTicketModal) E.createTicketModal.style.display = 'none';
-    if (this.lastFocus?.focus) this.lastFocus.focus();
-  },
-  async submit(event) {
-    event.preventDefault();
-    if (!requirePermission(() => Permissions.canCreateTicket(), 'Login is required to create a ticket.'))
-      return;
-
-    const payload = {
-      ticket_id: this.buildTicketId(),
-      name: (E.createTicketName?.value || '').trim(),
-      department: (E.createTicketDepartment?.value || '').trim(),
-      module: (E.createTicketModule?.value || '').trim(),
-      title: (E.createTicketTitleInput?.value || '').trim(),
-      description: (E.createTicketDesc?.value || '').trim(),
-      email_addressee: (E.createTicketEmail?.value || '').trim(),
-      priority: E.createTicketPriority?.value || 'Medium',
-      status: E.createTicketStatus?.value || 'Not Started Yet',
-      category: (E.createTicketCategory?.value || '').trim(),
-      date: new Date().toISOString(),
-      log: 'Created via dashboard create ticket form'
-    };
-
-    if (!payload.name || !payload.module || !payload.title || !payload.description || !payload.email_addressee) {
-      UI.toast('Please complete all required fields.');
-      return;
-    }
-
-    if (E.createTicketSubmit) E.createTicketSubmit.disabled = true;
-    try {
-      await Api.postAuthenticated('tickets', 'create', payload, { requireAuth: true });
-      this.close();
-      await loadIssues(true);
-      UI.toast('Ticket created successfully.');
-    } catch (error) {
-      console.error('Failed to create ticket', error);
-      UI.toast(`Failed to create ticket: ${error.message}`);
-    } finally {
-      if (E.createTicketSubmit) E.createTicketSubmit.disabled = false;
-    }
-  }
-};
-
 function buildIssueReplyMail(issue) {
   const khaledEmail = 'khaled.yakan@incheck360.nl';
   const toEmail = khaledEmail;
@@ -4056,9 +3993,13 @@ function wireCore() {
     });
   if (E.createTicketBtn)
     E.createTicketBtn.addEventListener('click', () => {
-      if (!requirePermission(() => Permissions.canCreateTicket(), 'Only admin can create tickets.'))
+      if (!requirePermission(() => Permissions.canCreateTicket(), 'Login is required to create a ticket.'))
         return;
-      CreateTicketForm.open();
+      window.open(
+        'https://forms.gle/PPnEP1AQneoBT79s5',
+        '_blank',
+        'noopener,noreferrer'
+      );
     });
 
   if (E.shortcutsHelp) {
@@ -4348,35 +4289,49 @@ function wireDashboardGate() {
 
   lockApp();
   UI.applyRolePermissions();
+  E.loginRole.value = ROLES.VIEWER;
 
   const updateLoginHint = () => {
     if (!E.loginHint) return;
-    E.loginHint.textContent = 'Enter your Supabase email and password.';
+    const isAdmin = E.loginRole.value === ROLES.ADMIN;
+    E.loginHint.textContent = isAdmin
+      ? 'Enter your admin passcode.'
+      : 'Enter your viewer passcode.';
   };
 
-  E.loginRole.addEventListener('input', updateLoginHint);
+  E.loginRole.addEventListener('change', updateLoginHint);
   updateLoginHint();
   if (Session.isAuthenticated()) {
+    E.loginRole.value = Session.role() || ROLES.VIEWER;
     unlockApp();
   }
 
   E.loginForm.addEventListener('submit', async event => {
     event.preventDefault();
-    const email = String(E.loginRole.value || '').trim();
-    const password = String(E.loginPasscode.value || '');
+    const selectedRole = String(E.loginRole.value || '').trim().toLowerCase();
+    const passcode = String(E.loginPasscode.value || '');
 
-    if (!email || !password.trim()) {
-      UI.toast('Email and password are required.');
+    if (selectedRole !== ROLES.ADMIN && selectedRole !== ROLES.VIEWER) {
+      UI.toast('Role is required.');
+      return;
+    }
+    if (!passcode.trim()) {
+      UI.toast('Passcode is required.');
       return;
     }
 
     try {
-      const session = await Session.login(email, password);
+      const session = await Session.login(selectedRole, passcode);
       UI.applyRolePermissions();
       E.loginPasscode.value = '';
+      E.loginRole.value = session.role || selectedRole || ROLES.VIEWER;
       unlockApp();
       await Promise.all([loadIssues(true), loadEvents(true)]);
-      UI.toast(`Logged in as ${session.role}.`);
+      if (selectedRole && session.role !== selectedRole) {
+        UI.toast(`Logged in as ${session.role}. Selected role was adjusted to match backend.`);
+      } else {
+        UI.toast(`Logged in as ${session.role}.`);
+      }
     } catch (error) {
       UI.toast(`Login failed: ${error.message}`);
       return;
@@ -4388,7 +4343,7 @@ function wireDashboardGate() {
       await Session.logout();
       UI.applyRolePermissions();
       E.loginPasscode.value = '';
-      E.loginRole.value = '';
+      E.loginRole.value = ROLES.VIEWER;
       updateLoginHint();
       lockApp();
       UI.toast('Logged out.');
@@ -4515,31 +4470,6 @@ function wireModals() {
   }
   if (E.bulkEditForm) {
     E.bulkEditForm.addEventListener('submit', onBulkEditSubmit);
-  }
-
-  if (E.createTicketClose) {
-    E.createTicketClose.addEventListener('click', () => CreateTicketForm.close());
-  }
-  if (E.createTicketCancel) {
-    E.createTicketCancel.addEventListener('click', () => CreateTicketForm.close());
-  }
-  if (E.createTicketModal) {
-    E.createTicketModal.addEventListener('click', e => {
-      if (e.target === E.createTicketModal) CreateTicketForm.close();
-    });
-    E.createTicketModal.addEventListener('keydown', e => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        CreateTicketForm.close();
-      } else if (e.key === 'Tab') {
-        trapFocus(E.createTicketModal, e);
-      }
-    });
-  }
-  if (E.createTicketForm) {
-    E.createTicketForm.addEventListener('submit', e => {
-      CreateTicketForm.submit(e);
-    });
   }
   // Event modal
   if (E.eventModalClose) {

@@ -3,7 +3,7 @@ const Permissions = {
     return Session.role() === ROLES.ADMIN;
   },
   canCreateTicket() {
-    return this.isAdmin();
+    return Session.isAuthenticated();
   },
   canEditTicket() {
     return this.isAdmin();
@@ -35,7 +35,7 @@ async function handleExpiredSession(message = 'Session expired. Please log in ag
     const loginPasscodeEl = document.getElementById('loginPasscode');
     const loginRoleEl = document.getElementById('loginRole');
     if (loginPasscodeEl) loginPasscodeEl.value = '';
-    if (loginRoleEl) loginRoleEl.value = '';
+    if (loginRoleEl) loginRoleEl.value = ROLES.VIEWER;
     const loginSection = document.getElementById('loginSection');
     if (loginSection) window.location.hash = '#loginSection';
     document.body.classList.add('auth-locked');
