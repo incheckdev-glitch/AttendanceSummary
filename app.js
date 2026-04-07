@@ -1694,6 +1694,69 @@ const BulkEditor = {
   }
 };
 
+const CreateTicketForm = {
+  lastFocus: null,
+  buildTicketId() {
+    const now = new Date();
+    const y = now.getUTCFullYear();
+    const m = String(now.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(now.getUTCDate()).padStart(2, '0');
+    const rand = Math.floor(Math.random() * 900 + 100);
+    return `INC-${y}${m}${d}-${rand}`;
+  },
+  open() {
+    if (!E.createTicketModal) return;
+    this.lastFocus = document.activeElement;
+    if (E.createTicketForm) E.createTicketForm.reset();
+    if (E.createTicketPriority) E.createTicketPriority.value = 'Medium';
+    if (E.createTicketStatus) E.createTicketStatus.value = 'Not Started Yet';
+    E.createTicketModal.style.display = 'flex';
+    E.createTicketName?.focus?.();
+  },
+  close() {
+    if (E.createTicketModal) E.createTicketModal.style.display = 'none';
+    if (this.lastFocus?.focus) this.lastFocus.focus();
+  },
+  async submit(event) {
+    event.preventDefault();
+    if (!requirePermission(() => Permissions.canCreateTicket(), 'Login is required to create a ticket.'))
+      return;
+
+    const payload = {
+      ticket_id: this.buildTicketId(),
+      name: (E.createTicketName?.value || '').trim(),
+      department: (E.createTicketDepartment?.value || '').trim(),
+      module: (E.createTicketModule?.value || '').trim(),
+      title: (E.createTicketTitleInput?.value || '').trim(),
+      description: (E.createTicketDesc?.value || '').trim(),
+      email_addressee: (E.createTicketEmail?.value || '').trim(),
+      priority: E.createTicketPriority?.value || 'Medium',
+      status: E.createTicketStatus?.value || 'Not Started Yet',
+      category: (E.createTicketCategory?.value || '').trim(),
+      date: new Date().toISOString(),
+      log: 'Created via dashboard create ticket form'
+    };
+
+    if (!payload.name || !payload.module || !payload.title || !payload.description || !payload.email_addressee) {
+      UI.toast('Please complete all required fields.');
+      return;
+    }
+
+    if (E.createTicketSubmit) E.createTicketSubmit.disabled = true;
+    try {
+      await Api.postAuthenticated('tickets', 'create', payload, { requireAuth: true });
+      this.close();
+      await loadIssues(true);
+      UI.toast('Ticket created successfully.');
+    } catch (error) {
+      console.error('Failed to create ticket', error);
+      UI.toast(`Failed to create ticket: ${error.message}`);
+    } finally {
+      if (E.createTicketSubmit) E.createTicketSubmit.disabled = false;
+    }
+  }
+};
+
 function buildIssueReplyMail(issue) {
   const khaledEmail = 'khaled.yakan@incheck360.nl';
   const toEmail = khaledEmail;
@@ -3995,11 +4058,7 @@ function wireCore() {
     E.createTicketBtn.addEventListener('click', () => {
       if (!requirePermission(() => Permissions.canCreateTicket(), 'Login is required to create a ticket.'))
         return;
-      window.open(
-        'https://forms.gle/PPnEP1AQneoBT79s5',
-        '_blank',
-        'noopener,noreferrer'
-      );
+      CreateTicketForm.open();
     });
 
   if (E.shortcutsHelp) {
@@ -4456,6 +4515,31 @@ function wireModals() {
   }
   if (E.bulkEditForm) {
     E.bulkEditForm.addEventListener('submit', onBulkEditSubmit);
+  }
+
+  if (E.createTicketClose) {
+    E.createTicketClose.addEventListener('click', () => CreateTicketForm.close());
+  }
+  if (E.createTicketCancel) {
+    E.createTicketCancel.addEventListener('click', () => CreateTicketForm.close());
+  }
+  if (E.createTicketModal) {
+    E.createTicketModal.addEventListener('click', e => {
+      if (e.target === E.createTicketModal) CreateTicketForm.close();
+    });
+    E.createTicketModal.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        CreateTicketForm.close();
+      } else if (e.key === 'Tab') {
+        trapFocus(E.createTicketModal, e);
+      }
+    });
+  }
+  if (E.createTicketForm) {
+    E.createTicketForm.addEventListener('submit', e => {
+      CreateTicketForm.submit(e);
+    });
   }
   // Event modal
   if (E.eventModalClose) {
