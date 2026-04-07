@@ -254,7 +254,7 @@ async function ticketsRequest(action, payload = {}) {
   }
 
   if (action === ACTIONS.CREATE) {
-    ensureRole(role, ['admin', 'viewer']);
+    ensureRole(role, ['admin'], 'Only admin can create tickets.');
     const normalized = cleanUpdateFields(payload, role);
     const safePayload = Object.fromEntries(
       Object.entries(normalized).filter(([key]) => PUBLIC_TICKET_FIELDS.includes(key))

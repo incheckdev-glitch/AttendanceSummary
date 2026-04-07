@@ -4056,7 +4056,7 @@ function wireCore() {
     });
   if (E.createTicketBtn)
     E.createTicketBtn.addEventListener('click', () => {
-      if (!requirePermission(() => Permissions.canCreateTicket(), 'Login is required to create a ticket.'))
+      if (!requirePermission(() => Permissions.canCreateTicket(), 'Only admin can create tickets.'))
         return;
       CreateTicketForm.open();
     });
