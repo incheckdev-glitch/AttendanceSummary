@@ -102,17 +102,14 @@
           <span>Secure operations access</span>
         </div>
         <form id="loginForm" class="login-form">
-          <label for="loginRole" class="sr-only">Role</label>
-          <select id="loginRole" class="select" required>
-            <option value="viewer">Viewer</option>
-            <option value="admin">Admin</option>
-          </select>
+          <label for="loginRole" class="sr-only">Email</label>
+          <input id="loginRole" class="input" type="email" placeholder="Email *" autocomplete="email" required />
 
           <label for="loginPasscode" class="sr-only">Passcode</label>
-          <input id="loginPasscode" class="input" type="password" placeholder="Password *" autocomplete="current-password" />
+          <input id="loginPasscode" class="input" type="password" placeholder="Password *" autocomplete="current-password" required />
 
           <button id="loginBtn" class="btn primary" type="submit">LOG IN</button>
-          <small id="loginHint" class="login-hint">Viewer passcode is required.</small>
+          <small id="loginHint" class="login-hint">Enter your Supabase email and password.</small>
         </form>
       </aside>
     </div>
@@ -1060,6 +1057,7 @@
   
   <!-- Runtime config + app modules -->
   <script src="config.js"></script>
+  <script type="module" src="legacyApi.js"></script>
   <script src="api.js"></script>
   <script src="session.js"></script>
   <script src="permissions.js"></script>

@@ -4289,49 +4289,35 @@ function wireDashboardGate() {
 
   lockApp();
   UI.applyRolePermissions();
-  E.loginRole.value = ROLES.VIEWER;
 
   const updateLoginHint = () => {
     if (!E.loginHint) return;
-    const isAdmin = E.loginRole.value === ROLES.ADMIN;
-    E.loginHint.textContent = isAdmin
-      ? 'Enter your admin passcode.'
-      : 'Enter your viewer passcode.';
+    E.loginHint.textContent = 'Enter your Supabase email and password.';
   };
 
-  E.loginRole.addEventListener('change', updateLoginHint);
+  E.loginRole.addEventListener('input', updateLoginHint);
   updateLoginHint();
   if (Session.isAuthenticated()) {
-    E.loginRole.value = Session.role() || ROLES.VIEWER;
     unlockApp();
   }
 
   E.loginForm.addEventListener('submit', async event => {
     event.preventDefault();
-    const selectedRole = String(E.loginRole.value || '').trim().toLowerCase();
-    const passcode = String(E.loginPasscode.value || '');
+    const email = String(E.loginRole.value || '').trim();
+    const password = String(E.loginPasscode.value || '');
 
-    if (selectedRole !== ROLES.ADMIN && selectedRole !== ROLES.VIEWER) {
-      UI.toast('Role is required.');
-      return;
-    }
-    if (!passcode.trim()) {
-      UI.toast('Passcode is required.');
+    if (!email || !password.trim()) {
+      UI.toast('Email and password are required.');
       return;
     }
 
     try {
-      const session = await Session.login(selectedRole, passcode);
+      const session = await Session.login(email, password);
       UI.applyRolePermissions();
       E.loginPasscode.value = '';
-      E.loginRole.value = session.role || selectedRole || ROLES.VIEWER;
       unlockApp();
       await Promise.all([loadIssues(true), loadEvents(true)]);
-      if (selectedRole && session.role !== selectedRole) {
-        UI.toast(`Logged in as ${session.role}. Selected role was adjusted to match backend.`);
-      } else {
-        UI.toast(`Logged in as ${session.role}.`);
-      }
+      UI.toast(`Logged in as ${session.role}.`);
     } catch (error) {
       UI.toast(`Login failed: ${error.message}`);
       return;
@@ -4343,7 +4329,7 @@ function wireDashboardGate() {
       await Session.logout();
       UI.applyRolePermissions();
       E.loginPasscode.value = '';
-      E.loginRole.value = ROLES.VIEWER;
+      E.loginRole.value = '';
       updateLoginHint();
       lockApp();
       UI.toast('Logged out.');
