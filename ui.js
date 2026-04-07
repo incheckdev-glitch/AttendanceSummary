@@ -244,7 +244,7 @@ const UI = {
     }
 
     if (E.currentRoleChip) E.currentRoleChip.textContent = `Role: ${role}`;
-    if (E.createTicketBtn) E.createTicketBtn.style.display = '';
+    if (E.createTicketBtn) E.createTicketBtn.style.display = Permissions.canCreateTicket() ? '' : 'none';
     if (E.addEventBtn) E.addEventBtn.style.display = Permissions.canManageEvents() ? '' : 'none';
     if (E.freezeManageBtn) E.freezeManageBtn.style.display = canManageFreezeWindows ? '' : 'none';
     if (E.freezeManageBtnSecondary) E.freezeManageBtnSecondary.style.display = canManageFreezeWindows ? '' : 'none';
