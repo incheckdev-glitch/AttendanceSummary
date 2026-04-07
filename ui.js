@@ -83,6 +83,20 @@ function cacheEls() {
     'pageInfo',
     'pageSize',
     'createTicketBtn',
+    'createTicketModal',
+    'createTicketForm',
+    'createTicketClose',
+    'createTicketCancel',
+    'createTicketSubmit',
+    'createTicketName',
+    'createTicketDepartment',
+    'createTicketModule',
+    'createTicketTitleInput',
+    'createTicketDesc',
+    'createTicketEmail',
+    'createTicketPriority',
+    'createTicketStatus',
+    'createTicketCategory',
     'startDateFilter',
     'endDateFilter',
     'issuesTab',
@@ -230,6 +244,7 @@ const UI = {
     }
 
     if (E.currentRoleChip) E.currentRoleChip.textContent = `Role: ${role}`;
+    if (E.createTicketBtn) E.createTicketBtn.style.display = '';
     if (E.addEventBtn) E.addEventBtn.style.display = Permissions.canManageEvents() ? '' : 'none';
     if (E.freezeManageBtn) E.freezeManageBtn.style.display = canManageFreezeWindows ? '' : 'none';
     if (E.freezeManageBtnSecondary) E.freezeManageBtnSecondary.style.display = canManageFreezeWindows ? '' : 'none';
