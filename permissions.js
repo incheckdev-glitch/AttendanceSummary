@@ -35,7 +35,7 @@ async function handleExpiredSession(message = 'Session expired. Please log in ag
     const loginPasscodeEl = document.getElementById('loginPasscode');
     const loginRoleEl = document.getElementById('loginRole');
     if (loginPasscodeEl) loginPasscodeEl.value = '';
-    if (loginRoleEl) loginRoleEl.value = ROLES.VIEWER;
+    if (loginRoleEl) loginRoleEl.value = '';
     const loginSection = document.getElementById('loginSection');
     if (loginSection) window.location.hash = '#loginSection';
     document.body.classList.add('auth-locked');

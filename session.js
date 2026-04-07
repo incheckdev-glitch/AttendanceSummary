@@ -23,10 +23,9 @@ const Session = {
       if (!raw) return false;
       const parsed = JSON.parse(raw);
       const role = parsed?.role === ROLES.ADMIN ? ROLES.ADMIN : parsed?.role === ROLES.VIEWER ? ROLES.VIEWER : null;
-      const authToken = String(parsed?.authToken || '');
-      if (!role || !authToken) return false;
+      if (!role) return false;
       this.state.role = role;
-      this.state.authToken = authToken;
+      this.state.authToken = String(parsed?.authToken || 'supabase-session');
       return true;
     } catch {
       return false;
@@ -38,43 +37,31 @@ const Session = {
     } catch {}
   },
   async login(role = '', passcode = '') {
-    const selectedRole = String(role || '').trim().toLowerCase();
-    const enteredPasscode = String(passcode || '').trim();
-    const normalizedSelectedRole =
-      selectedRole === ROLES.ADMIN ? ROLES.ADMIN : selectedRole === ROLES.VIEWER ? ROLES.VIEWER : null;
-    if (!normalizedSelectedRole) throw new Error('Role is required.');
-    if (!enteredPasscode) throw new Error('Passcode is required.');
+    // Legacy signature kept for minimal UI changes: role field carries email, passcode carries password.
+    const email = String(role || '').trim();
+    const password = String(passcode || '').trim();
+    if (!email || !password) throw new Error('Email and password are required.');
 
-    const response = await Api.post('auth', 'login', {
-      role: normalizedSelectedRole,
-      passcode: enteredPasscode
-    });
-    const session = response?.session || {};
-    const authToken = String(session.token || '').trim();
-    const backendRole = String(session.role || '').trim().toLowerCase();
+    const response = await Api.post('auth', 'login', { email, password });
+    const profile = response?.profile || {};
     const normalizedRole =
-      backendRole === ROLES.ADMIN ? ROLES.ADMIN : backendRole === ROLES.VIEWER ? ROLES.VIEWER : null;
-    if (!authToken || !normalizedRole) {
-      throw new Error('Login succeeded but backend did not return a valid session.');
-    }
+      String(profile?.role || '').trim().toLowerCase() === ROLES.ADMIN ? ROLES.ADMIN : ROLES.VIEWER;
 
     const previousRole = this.state.role;
     if (previousRole && previousRole !== normalizedRole) {
       this.clearRoleScopedCache();
     }
+
     this.state.role = normalizedRole;
-    this.state.authToken = authToken;
+    this.state.authToken = String(response?.session?.access_token || 'supabase-session');
     this.persist();
-    return { role: normalizedRole };
+    return { role: normalizedRole, user: response?.user || null, profile };
   },
   async logout() {
-    const authToken = this.state.authToken || '';
-    if (authToken) {
-      try {
-        await Api.post('auth', 'logout', { authToken });
-      } catch (error) {
-        console.warn('Auth logout request failed', error);
-      }
+    try {
+      await Api.post('auth', 'logout', {});
+    } catch (error) {
+      console.warn('Auth logout request failed', error);
     }
     this.clearClientSession();
   },
@@ -89,17 +76,16 @@ const Session = {
     } catch {}
   },
   async validateSession() {
-    const authToken = this.state.authToken || '';
-    if (!authToken) return false;
-    const response = await Api.post('auth', 'session', { authToken });
-    const session = response?.session || {};
-    const backendRole = String(session.role || '').trim().toLowerCase();
-    const refreshedAuthToken = String(session.token || authToken).trim();
-    const normalizedRole =
-      backendRole === ROLES.ADMIN ? ROLES.ADMIN : backendRole === ROLES.VIEWER ? ROLES.VIEWER : null;
-    if (!normalizedRole || !refreshedAuthToken) return false;
+    const response = await Api.post('auth', 'session', {});
+    if (!response?.session || !response?.user) return false;
+
+    const backendRole = String(response?.profile?.role || '')
+      .trim()
+      .toLowerCase();
+    const normalizedRole = backendRole === ROLES.ADMIN ? ROLES.ADMIN : ROLES.VIEWER;
+
     this.state.role = normalizedRole;
-    this.state.authToken = refreshedAuthToken;
+    this.state.authToken = String(response?.session?.access_token || 'supabase-session');
     this.persist();
     return true;
   },
