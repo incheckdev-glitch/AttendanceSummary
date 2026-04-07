@@ -1,4 +1,4 @@
-import { supabase } from './supabaseClient.js';
+import { isSupabaseConfigured, supabase } from './supabaseClient.js';
 
 const RESOURCES = { AUTH: 'auth', TICKETS: 'tickets', EVENTS: 'events' };
 const ACTIONS = {
@@ -74,6 +74,14 @@ function normalizeAction(action = '') {
     insert: ACTIONS.CREATE
   };
   return aliases[value] || value;
+}
+
+function ensureSupabaseConfigured() {
+  if (!isSupabaseConfigured || !supabase) {
+    throw new Error(
+      'Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY (or runtime equivalents).'
+    );
+  }
 }
 
 async function getCurrentUser() {
@@ -356,6 +364,7 @@ async function eventsRequest(action, payload = {}) {
 
 export async function apiRequest(payload = {}) {
   try {
+    ensureSupabaseConfigured();
     const resource = normalizeResource(payload.resource);
     const action = normalizeAction(payload.action);
 
