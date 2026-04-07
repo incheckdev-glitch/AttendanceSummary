@@ -1719,7 +1719,7 @@ const CreateTicketForm = {
   },
   async submit(event) {
     event.preventDefault();
-    if (!requirePermission(() => Permissions.canCreateTicket(), 'Only admin can create tickets.'))
+    if (!requirePermission(() => Permissions.canCreateTicket(), 'Login is required to create a ticket.'))
       return;
 
     const payload = {
