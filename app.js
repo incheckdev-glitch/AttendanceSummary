@@ -3068,7 +3068,6 @@ async function saveIssueToSheet(issue, auth = {}, options = {}) {
           id: candidateId,
           ticket_id: candidateId
         },
-        authToken: auth.authToken || getCurrentAuthToken(),
         updates
       };
 
@@ -3088,7 +3087,6 @@ async function saveIssueToSheet(issue, auth = {}, options = {}) {
               id: candidateId,
               ticket_id: candidateId
             },
-            authToken: auth.authToken || getCurrentAuthToken(),
             ...updateRequestBody.updates
           }
         }
