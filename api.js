@@ -268,6 +268,10 @@ const Api = {
     }
     return this.unwrapApiPayload(data);
   },
+
+  isMigratedResource(resource = '') {
+    return Boolean(window.SupabaseData?.isMigratedResource?.(resource));
+  },
   async post(resource, action, payload = {}) {
     const safePayload = payload && typeof payload === 'object' ? payload : {};
     return apiPost({
@@ -278,6 +282,10 @@ const Api = {
   },
   async postAuthenticated(resource, action, payload = {}, options = {}) {
     const requireAuth = options?.requireAuth !== false;
+    if (this.isMigratedResource(resource)) {
+      return this.post(resource, action, { ...payload });
+    }
+
     const authToken =
       typeof Session?.getAuthToken === 'function'
         ? Session.getAuthToken()

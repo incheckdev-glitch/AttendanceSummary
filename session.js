@@ -40,7 +40,7 @@ const Session = {
     return {
       role: role || null,
       authToken: String(session?.access_token || ''),
-      user_id: String(profile?.user_id || authUser?.id || ''),
+      user_id: String(profile?.id || authUser?.id || ''),
       name: String(profile?.full_name || profile?.name || authUser?.user_metadata?.full_name || '').trim(),
       email: String(profile?.email || authUser?.email || '').trim(),
       username: String(profile?.username || authUser?.user_metadata?.username || '').trim(),
@@ -63,7 +63,11 @@ const Session = {
     const id = String(userId || '').trim();
     if (!id) return null;
     const client = SupabaseClient.getClient();
-    const { data, error } = await client.from('profiles').select('*').eq('user_id', id).single();
+    const { data, error } = await client
+      .from('profiles')
+      .select('id, name, email, username, role_key, is_active')
+      .eq('id', id)
+      .single();
     if (error) throw new Error(`Unable to load user profile: ${error.message}`);
     if (!data?.is_active) {
       await client.auth.signOut();
