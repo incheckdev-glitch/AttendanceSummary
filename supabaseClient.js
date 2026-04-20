@@ -12,10 +12,18 @@ const supabaseAnonKey =
   window.SUPABASE_ANON_KEY ||
   ''
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true
-  }
-})
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error('Missing Supabase URL or anon key.')
+}
+
+const SHARED_CLIENT_KEY = '__SUPABASE_BROWSER_CLIENT__'
+
+export const supabase =
+  window[SHARED_CLIENT_KEY] ||
+  (window[SHARED_CLIENT_KEY] = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true
+    }
+  }))
