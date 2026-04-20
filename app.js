@@ -4507,12 +4507,10 @@ function wireDashboardGate() {
     else lockApp();
   };
 
-  lockApp();
+  const hasStartupAuth = Session.isAuthenticated();
   UI.applyRolePermissions();
-
-  if (Session.isAuthenticated()) {
-    unlockApp();
-  }
+  if (hasStartupAuth) unlockApp();
+  else lockApp();
   Session.subscribe(() => {
     syncAuthUi();
   });
@@ -5966,6 +5964,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       console.warn('[startup/auth] Initial auth health check failed', error);
     });
   }
+  const restored = await Session.restore();
+  console.info('[startup/auth] restore result', { restored });
+
   Filters.load();
   ColumnManager.load();
   SavedViews.load();
