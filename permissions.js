@@ -112,13 +112,24 @@ const Permissions = {
     };
   },
   normalizeAllowedRoles(row = {}) {
-    if (Array.isArray(row.allowed_roles)) {
-      return row.allowed_roles.map(v => this.normalizeRole(v)).filter(Boolean);
-    }
-    return String(row.allowed_roles_csv || '')
+    const normalizedFromArray = Array.isArray(row.allowed_roles)
+      ? row.allowed_roles.map(v => this.normalizeRole(v)).filter(Boolean)
+      : [];
+    if (normalizedFromArray.length) return normalizedFromArray;
+
+    const normalizedFromCsv = String(row.allowed_roles_csv || '')
       .split(',')
       .map(v => this.normalizeRole(v))
       .filter(Boolean);
+    if (normalizedFromCsv.length) return normalizedFromCsv;
+
+    const hasSupabaseRoleRow = row && typeof row === 'object' && 'role_key' in row && 'is_allowed' in row;
+    if (hasSupabaseRoleRow && Boolean(row.is_allowed)) {
+      const normalizedRoleKey = this.normalizeRole(row.role_key);
+      return normalizedRoleKey ? [normalizedRoleKey] : [];
+    }
+
+    return [];
   },
   async loadMatrix(force = false) {
     if (!Session.isAuthenticated()) {
@@ -137,13 +148,23 @@ const Permissions = {
       const normalized = this.extractListResult(response);
       const rows = normalized.rows;
       const matrix = new Map();
+      console.info('[Permissions] raw role_permissions rows', rows);
       rows.forEach(row => {
         const resource = String(row.resource || '').trim().toLowerCase();
         const action = String(row.action || '').trim().toLowerCase();
         if (!resource || !action) return;
         const key = `${resource}:${action}`;
         const existing = matrix.get(key) || [];
-        const merged = [...new Set([...existing, ...this.normalizeAllowedRoles(row)])];
+        const normalizedAllowedRoles = this.normalizeAllowedRoles(row);
+        console.info('[Permissions] normalized allowed roles per row', {
+          resource,
+          action,
+          role_key: row.role_key,
+          is_allowed: row.is_allowed,
+          normalizedAllowedRoles
+        });
+        if (!normalizedAllowedRoles.length) return;
+        const merged = [...new Set([...existing, ...normalizedAllowedRoles])];
         matrix.set(key, merged);
       });
       this.state.rows = rows;
@@ -154,6 +175,7 @@ const Permissions = {
       this.state.limit = normalized.limit;
       this.state.offset = normalized.offset;
       this.state.matrix = matrix;
+      console.info('[Permissions] final permission matrix keys', [...matrix.keys()]);
       this.state.loaded = true;
       return rows;
     } catch (error) {
