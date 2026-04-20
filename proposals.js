@@ -98,6 +98,20 @@ const Proposals = {
       .toString()
       .padStart(3, '0')}`;
   },
+  generateProposalId() {
+    const date = new Date();
+    const stamp = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(
+      date.getDate()
+    ).padStart(2, '0')}`;
+    const suffix = Math.floor(Math.random() * 1000000)
+      .toString()
+      .padStart(6, '0');
+    return `PR-${stamp}-${suffix}`;
+  },
+  ensureProposalId(value = '') {
+    const trimmed = String(value ?? '').trim();
+    return trimmed || this.generateProposalId();
+  },
   sanitizeRefNumber(value = '') {
     const raw = String(value ?? '').trim();
     if (!raw) return '';
@@ -118,12 +132,12 @@ const Proposals = {
       normalized[field] = typeof value === 'string' ? value.trim() : value;
     });
     normalized.id = String(source.id || normalized.id || '').trim();
-    normalized.proposal_id = String(normalized.proposal_id || '').trim();
+    normalized.proposal_id = String(normalized.proposal_id || source.proposalId || '').trim();
     normalized.ref_number = this.ensureRefNumber(normalized.ref_number || '');
     normalized.proposal_title = String(normalized.proposal_title || '').trim();
     normalized.customer_name = String(normalized.customer_name || '').trim();
     normalized.status = String(normalized.status || '').trim();
-    normalized.currency = String(normalized.currency || '').trim();
+    normalized.currency = String(normalized.currency || source.currency || '').trim();
     normalized.deal_id = String(normalized.deal_id || '').trim();
     normalized.deal_code = String(source.deal_code || source.dealCode || '').trim();
     if (!normalized.deal_code && normalized.deal_id) {
@@ -133,8 +147,20 @@ const Proposals = {
     }
     normalized.proposal_valid_until = String(source.proposal_valid_until || source.proposalValidUntil || normalized.valid_until || '').trim();
     normalized.valid_until = String(normalized.valid_until || normalized.proposal_valid_until || '').trim();
+    normalized.saas_total = this.toNumberSafe(
+      source.subtotal_locations ?? source.subtotalLocations ?? normalized.saas_total
+    );
+    normalized.one_time_total = this.toNumberSafe(
+      source.subtotal_one_time ?? source.subtotalOneTime ?? normalized.one_time_total
+    );
+    normalized.grand_total = this.toNumberSafe(source.grand_total ?? source.grandTotal ?? normalized.grand_total);
+    normalized.total_discount = this.toNumberSafe(
+      source.total_discount ?? source.totalDiscount ?? normalized.total_discount
+    );
     normalized.agreement_id = String(source.agreement_id ?? source.agreementId ?? normalized.agreement_id ?? '').trim();
-    normalized.generated_by = String(normalized.generated_by || '').trim();
+    normalized.generated_by = String(
+      normalized.generated_by || source.generatedBy || source.created_by || source.createdBy || ''
+    ).trim();
     return normalized;
   },
   hasConflictError(error, conflictCode = '') {
@@ -415,21 +441,24 @@ const Proposals = {
     return Api.postAuthenticated('proposals', 'get', { id: proposalId });
   },
   async createProposal(proposal, items) {
+    const preparedProposal = this.buildProposalForPersist(proposal, items, { ensureBusinessProposalId: true });
     return Api.postAuthenticated('proposals', 'create', {
-      proposal: this.prepareProposalForSave(proposal),
+      proposal: this.prepareProposalForSave(preparedProposal),
       items
     });
   },
   async saveProposal(proposal, items) {
+    const preparedProposal = this.buildProposalForPersist(proposal, items, { ensureBusinessProposalId: true });
     return Api.postAuthenticated('proposals', 'save', {
-      proposal: this.prepareProposalForSave(proposal),
+      proposal: this.prepareProposalForSave(preparedProposal),
       items
     });
   },
   async updateProposal(proposalId, updates, items) {
+    const preparedUpdates = this.buildProposalForPersist(updates, items, { ensureBusinessProposalId: false });
     return Api.postAuthenticated('proposals', 'update', {
       id: proposalId,
-      updates: this.prepareProposalForSave(updates),
+      updates: this.prepareProposalForSave(preparedUpdates),
       items
     });
   },
@@ -452,6 +481,22 @@ const Proposals = {
       }
     });
     return sanitized;
+  },
+  buildProposalForPersist(proposal = {}, items = [], { ensureBusinessProposalId = false } = {}) {
+    const base = { ...(proposal && typeof proposal === 'object' ? proposal : {}) };
+    const totals = this.calculateTotalsFromItems(items);
+    const proposalValidUntil = String(base.proposal_valid_until || base.valid_until || '').trim();
+    const generatedByFallback = String(
+      base.generated_by || Session?.state?.name || Session?.state?.email || Session?.state?.username || ''
+    ).trim();
+    return {
+      ...base,
+      ...(ensureBusinessProposalId ? { proposal_id: this.ensureProposalId(base.proposal_id) } : {}),
+      proposal_valid_until: proposalValidUntil,
+      valid_until: proposalValidUntil,
+      generated_by: generatedByFallback,
+      ...totals
+    };
   },
   async deleteProposal(proposalId) {
     return Api.postAuthenticated('proposals', 'delete', { id: proposalId });
@@ -1157,15 +1202,39 @@ const Proposals = {
       terms_conditions: String(E.proposalFormTerms?.value || '').trim()
     };
   },
-  renderTotalsPreview() {
-    const items = this.collectProposalItems();
-    const saasTotal = items
+  calculateTotalsFromItems(items = []) {
+    const safeItems = Array.isArray(items) ? items : [];
+    const subtotalLocations = safeItems
       .filter(item => item.section === 'annual_saas')
       .reduce((sum, item) => sum + this.toNumberSafe(item.line_total), 0);
-    const oneTimeTotal = items
+    const subtotalOneTime = safeItems
       .filter(item => item.section === 'one_time_fee')
       .reduce((sum, item) => sum + this.toNumberSafe(item.line_total), 0);
-    const grandTotal = saasTotal + oneTimeTotal;
+    const totalDiscount = safeItems
+      .filter(item => item.section === 'annual_saas' || item.section === 'one_time_fee')
+      .reduce((sum, item) => {
+        const unit = this.toNumberSafe(item.unit_price);
+        const qty = this.toNumberSafe(item.quantity);
+        const discounted = this.toNumberSafe(item.discounted_unit_price);
+        const lineDiscount = Math.max(0, unit - discounted) * qty;
+        return sum + lineDiscount;
+      }, 0);
+    const grandTotal = subtotalLocations + subtotalOneTime;
+    return {
+      subtotal_locations: subtotalLocations,
+      subtotal_one_time: subtotalOneTime,
+      total_discount: totalDiscount,
+      grand_total: grandTotal,
+      saas_total: subtotalLocations,
+      one_time_total: subtotalOneTime
+    };
+  },
+  renderTotalsPreview() {
+    const items = this.collectProposalItems();
+    const totals = this.calculateTotalsFromItems(items);
+    const saasTotal = this.toNumberSafe(totals.subtotal_locations);
+    const oneTimeTotal = this.toNumberSafe(totals.subtotal_one_time);
+    const grandTotal = this.toNumberSafe(totals.grand_total);
 
     if (E.proposalSaasTotal) E.proposalSaasTotal.textContent = this.formatMoney(saasTotal);
     if (E.proposalOneTimeTotal) E.proposalOneTimeTotal.textContent = this.formatMoney(oneTimeTotal);
