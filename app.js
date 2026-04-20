@@ -33,6 +33,11 @@
 /* moved to calendar.js */
 /* moved to planner.js */
 /* moved to ui.js */
+
+function issueDisplayId(issue) {
+  return String(issue?.ticket_id || issue?.id || '').trim();
+}
+
 /** Issues UI */
 UI.Issues = {
   getFilteredList() {
@@ -292,6 +297,7 @@ UI.Issues = {
     };
 
     const renderCell = (row, col) => {
+      if (col.key === 'id') return U.escapeHtml(issueDisplayId(row) || '-');
       if (col.key === 'priority') return badgePrio(row.priority || '-');
       if (col.key === 'status') return badgeStatus(row.status || '-');
       if (col.key === 'devTeamStatus') return badgeDevTeamStatus(row.devTeamStatus || '-');
@@ -319,7 +325,7 @@ UI.Issues = {
             )
             .join('');
         return `<tr role="button" tabindex="0" aria-label="Open issue ${U.escapeHtml(
-            r.id || ''
+            issueDisplayId(r) || r.id || ''
           )}" data-id="${U.escapeAttr(r.id)}">
             ${cells}
           </tr>`;
@@ -762,7 +768,7 @@ const Analytics = {
               r => `
       <li><button class="btn sm" data-open="${U.escapeAttr(
         r.id
-      )}">${U.escapeHtml(r.id)}</button> ${U.escapeHtml(r.title || '')}</li>
+      )}">${U.escapeHtml(issueDisplayId(r) || r.id)}</button> ${U.escapeHtml(r.title || '')}</li>
     `
             )
             .join('')
@@ -907,7 +913,7 @@ const Analytics = {
               return `
         <li style="margin-bottom:4px;">
           <strong>[${U.escapeHtml(r.priority || '-')} ] ${U.escapeHtml(
-          r.id || ''
+          issueDisplayId(r) || r.id || ''
         )}</strong>
           <span class="event-risk-badge ${badgeClass}">RISK ${score}</span>
           <span class="muted"> · sev ${meta.severity ?? 0} · imp ${
@@ -955,7 +961,7 @@ const Analytics = {
           issue => `
             <li>
               <button class="btn sm" data-open="${U.escapeAttr(issue.id)}">${U.escapeHtml(
-            issue.id
+            issueDisplayId(issue) || issue.id
           )}</button>
               ${U.escapeHtml(issue.title || '')}
             </li>`
@@ -1067,7 +1073,7 @@ const Analytics = {
                 meta.suggestions?.priority || '-'
               }; categories: ${cats}`;
               return `<li style="margin-bottom:6px;">
-        <strong>${U.escapeHtml(i.id)}</strong> — ${U.escapeHtml(i.title || '')}
+        <strong>${U.escapeHtml(issueDisplayId(i) || i.id)}</strong> — ${U.escapeHtml(i.title || '')}
         <div class="muted">Missing: ${
           miss.join(', ') || '—'
         } · ${U.escapeHtml(note)}</div>
@@ -1118,7 +1124,7 @@ const Analytics = {
         const id = b.getAttribute('data-copy');
         const r = DataStore.byId.get(id);
         const meta = DataStore.computed.get(id) || {};
-        const text = `Issue ${r.id}
+        const text = `Issue ${issueDisplayId(r) || r.id}
 Title: ${r.title}
 Suggested Priority: ${meta.suggestions?.priority}
 Suggested Categories: ${(meta.suggestions?.categories || [])
@@ -1274,7 +1280,7 @@ UI.Modals = {
     if (!r || !E.issueModal) return;
     this.selectedIssue = r;
     this.lastFocus = document.activeElement;
-    const ticketId = U.escapeHtml(r.id || '-');
+    const ticketId = U.escapeHtml(issueDisplayId(r) || '-');
     const personName = U.escapeHtml(r.name || 'Unknown');
     const personInitial = U.escapeHtml((r.name || '?').trim().charAt(0).toUpperCase() || '?');
     const title = U.escapeHtml(r.title || 'Untitled ticket');
@@ -1303,7 +1309,7 @@ UI.Modals = {
       .join(' ');
     const notesValue = U.escapeHtml(r.notes || '—');
 
-    E.modalTitle.textContent = `TICKET:${r.id || '-'}`;
+    E.modalTitle.textContent = `TICKET:${issueDisplayId(r) || '-'}`;
     const internalMetaHtml = ColumnManager.isColumnAllowed('youtrackReference')
       ? `
             <p class="ticket-meta-item"><span class="ticket-label">🔗 YouTrack Ref:</span> <span>${youtrackReference}</span></p>
@@ -1468,7 +1474,7 @@ UI.Modals = {
                 <li>
                   <button type="button" class="btn sm" data-open-issue="${U.escapeAttr(
                     issue.id
-                  )}">${U.escapeHtml(issue.id)}</button>
+                  )}">${U.escapeHtml(issueDisplayId(issue) || issue.id)}</button>
                   ${U.escapeHtml(issue.title || '')}
                   ${
                     r
@@ -1668,6 +1674,7 @@ const IssueEditor = {
     if (!this.issue) return null;
     return {
       id: this.issue.id,
+      ticket_id: this.issue.ticket_id || '',
       title: (E.editIssueTitleInput?.value || '').trim(),
       desc: (E.editIssueDesc?.value || '').trim(),
       module: (E.editIssueModule?.value || '').trim() || 'Unspecified',
@@ -3015,7 +3022,7 @@ function normalizeIssueForStore(issue, options = {}) {
       : Permissions.isAdminLike();
   const normalized = {
     id: issue.id || issue.ticket_uuid || '',
-    ticket_id: issue.ticket_id || issue.ticketCode || '',
+    ticket_id: issue.ticket_id || issue.ticketCode || issueDisplayId(issue) || '',
     name: issue.name || '',
     department: issue.department || '',
     module: issue.module || 'Unspecified',
@@ -3258,7 +3265,7 @@ async function deleteEventFromSheet(id, auth = {}) {
 /* ---------- Excel export ---------- */
 function buildIssueExportRow(issue) {
   const row = {
-     'Ticket ID': issue.id,
+     'Ticket ID': issueDisplayId(issue) || issue.id,
     Date: issue.date,
     Name: issue.name,
     Department: issue.department,
@@ -3376,7 +3383,7 @@ function buildIssueDetailExportRows(issue, risk = {}, meta = {}) {
     .join(', ') || '—';
   const reasons = risk.reasons?.length ? risk.reasons.join(', ') : '—';
   const rows = [
-    ['Ticket', `TICKET:${issue.id || '-'}`],
+    ['Ticket', `TICKET:${issueDisplayId(issue) || issue.id || '-'}`],
     ['Name', issue.name || 'Unknown'],
     ['Title', issue.title || 'Untitled ticket'],
     ['Description', issue.desc || '—'],
@@ -3430,7 +3437,7 @@ function exportSelectedIssueToExcel() {
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Ticket View');
-  const safeId = String(issue.id || 'ticket').replace(/[^\w-]+/g, '_');
+  const safeId = String(issueDisplayId(issue) || issue.id || 'ticket').replace(/[^\w-]+/g, '_');
   XLSX.writeFile(wb, `ticket_${safeId}.xlsx`);
   UI.toast('Ticket exported as Excel');
 }
@@ -3441,7 +3448,7 @@ function exportSelectedIssueToPdf() {
   const detailHtml = E.modalBody?.innerHTML || '';
   if (!detailHtml.trim()) return UI.toast('Nothing to export.');
 
-  const title = `TICKET:${issue.id || '-'}`;
+  const title = `TICKET:${issueDisplayId(issue) || issue.id || '-'}`;
   const baseHref = U.escapeAttr(window.location.href);
   const printableDoc = `
     <!doctype html>
@@ -3823,7 +3830,7 @@ function refreshPlannerTickets(currentList) {
     .map(r => {
       const meta = DataStore.computed.get(r.id) || {};
       const risk = meta.risk?.total || 0;
-      const label = `[${r.priority || '-'} | R${risk}] ${r.id} — ${
+      const label = `[${r.priority || '-'} | R${risk}] ${issueDisplayId(r) || r.id} — ${
         r.title || ''
       }`.slice(0, 140);
       return `<option value="${U.escapeAttr(r.id)}">${U.escapeHtml(label)}</option>`;
@@ -5117,7 +5124,7 @@ function wireAIQuery() {
         return `
         <li style="margin-bottom:6px;">
           <button class="btn sm" data-open="${U.escapeAttr(r.id)}">${U.escapeHtml(
-          r.id
+          issueDisplayId(r) || r.id
         )}</button>
           <strong>${U.escapeHtml(r.title || '')}</strong>
           <div class="muted">

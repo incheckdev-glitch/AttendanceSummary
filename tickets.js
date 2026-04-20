@@ -71,7 +71,8 @@ const DataStore = {
       ) || columnKCategory;
     
     return {
-      id: pick('ticket id', 'id'),
+      id: pick('id', 'ticket uuid', 'ticket_uuid', 'row id') || pick('ticket id'),
+      ticket_id: pick('ticket id', 'ticket_id', 'ticket code'),
       name: pick('name', 'requester', 'requester name'),
       department: pick('department', 'dept'),
       module: pick('impacted module', 'module', 'issue location') || 'Unspecified',
@@ -169,7 +170,7 @@ const DataStore = {
 };
 
 const IssuesCache = {
-  SCHEMA_VERSION: '2',
+  SCHEMA_VERSION: '3',
   schemaKey: 'incheckIssuesCacheSchemaVersion',
   clear() {
     try {
@@ -197,7 +198,16 @@ const IssuesCache = {
       const raw = localStorage.getItem(LS_KEYS.issues);
       if (!raw) return null;
       const data = JSON.parse(raw);
-      return Array.isArray(data) ? data : null;
+      if (!Array.isArray(data)) return null;
+      const hasLegacyTicketIds = data.some(row => {
+        const rawId = String(row?.id || '').trim();
+        return /^TK-/i.test(rawId) && !String(row?.ticket_id || '').trim();
+      });
+      if (hasLegacyTicketIds) {
+        this.clear();
+        return null;
+      }
+      return data;
     } catch {
       return null;
     }
