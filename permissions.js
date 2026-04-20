@@ -236,7 +236,12 @@ const Permissions = {
     return this.canUpdateLead() || this.canDeleteLead();
   },
   canManageEvents() {
-    return this.can('events', 'save', { fallback: this.isAdminLike() });
+    return (
+      this.can('events', 'create', { fallback: false }) ||
+      this.can('events', 'update', { fallback: false }) ||
+      this.can('events', 'delete', { fallback: false }) ||
+      this.isAdminLike()
+    );
   },
   canManageUsers() {
     return this.can('users', 'list', { fallback: this.isAdmin() });

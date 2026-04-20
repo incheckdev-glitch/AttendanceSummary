@@ -2190,7 +2190,7 @@ calendarReady = false,
 function wireCalendar() {
   if (E.addEventBtn)
     E.addEventBtn.addEventListener('click', () => {
-      if (!requirePermission(() => Permissions.canManageEvents(), 'Only admin can create events.')) return;
+      if (!requirePermission(() => Permissions.canManageEvents(), 'Only admin/dev can create events.')) return;
       const now = new Date();
       UI.Modals.openEvent({
         start: now,
@@ -2362,7 +2362,7 @@ function ensureCalendar() {
       right: 'dayGridMonth,timeGridWeek,listWeek today prev,next'
     },
     select: info => {
-      if (!requirePermission(() => Permissions.canManageEvents(), 'Only admin can create events.')) return;
+      if (!requirePermission(() => Permissions.canManageEvents(), 'Only admin/dev can create events.')) return;
       UI.Modals.openEvent({
         start: info.start,
         end: info.end,
@@ -2396,7 +2396,7 @@ function ensureCalendar() {
       UI.Modals.openEvent(ev);
     },
     eventDrop: async info => {
-      if (!requirePermission(() => Permissions.canManageEvents(), 'Only admin can move events.')) {
+      if (!requirePermission(() => Permissions.canManageEvents(), 'Only admin/dev can move events.')) {
         info.revert();
         return;
       }
@@ -2411,7 +2411,7 @@ function ensureCalendar() {
         end: info.event.end,
         allDay: info.event.allDay
       };
-      const saved = await saveEventToSheet(updated, Session.authContext());
+      const saved = await saveEventRecord(updated);
       if (!saved) {
         info.revert();
         return;
@@ -3104,7 +3104,7 @@ async function saveIssueToSheet(issue, auth = {}, options = {}) {
   }
  }
 
-async function saveEventToSheet(event, auth = {}) {
+async function saveEventRecord(event) {
   UI.spinner(true);
   try {
     const hasId = event.id && String(event.id).trim();
@@ -3126,7 +3126,7 @@ async function saveEventToSheet(event, auth = {}) {
 }
 
 
-async function deleteEventFromSheet(id, auth = {}) {
+async function deleteEventRecord(id) {
   UI.spinner(true);
   try {
     await EventsService.deleteEvent(id);
@@ -3567,7 +3567,7 @@ function renderPlannerResults(result, context) {
   // Wire per-slot "Add" buttons – include selected tickets as linked issue IDs
   E.plannerResults.querySelectorAll('[data-add-release]').forEach(btn => {
     btn.addEventListener('click', async () => {
-      if (!requirePermission(() => Permissions.canChangePlanner(), 'Only admin can create planner events.'))
+      if (!requirePermission(() => Permissions.canManageEvents(), 'Only admin/dev can create planner events.'))
         return;
       const startIso = btn.getAttribute('data-add-release');
       const endIso = btn.getAttribute('data-add-release-end');
@@ -3613,7 +3613,7 @@ function renderPlannerResults(result, context) {
         notificationStatus: ''
       };
 
-      const saved = await saveEventToSheet(newEvent, Session.authContext());
+      const saved = await saveEventRecord(newEvent);
       if (!saved) {
         UI.toast('Could not save release event');
         return;
@@ -3828,7 +3828,7 @@ function wirePlanner() {
 
   if (E.plannerAddEvent) {
     E.plannerAddEvent.addEventListener('click', async () => {
-      if (!requirePermission(() => Permissions.canChangePlanner(), 'Only admin can create planner events.'))
+      if (!requirePermission(() => Permissions.canManageEvents(), 'Only admin/dev can create planner events.'))
         return;
       if (
         !LAST_PLANNER_CONTEXT ||
@@ -3886,7 +3886,7 @@ function wirePlanner() {
         notificationStatus: ''
       };
 
-      const saved = await saveEventToSheet(newEvent, Session.authContext());
+      const saved = await saveEventRecord(newEvent);
       if (!saved) {
         UI.toast('Could not save release event');
         return;
@@ -3920,7 +3920,7 @@ function wirePlanner() {
 
   if (E.plannerAssignBtn) {
     E.plannerAssignBtn.addEventListener('click', async () => {
-      if (!requirePermission(() => Permissions.canChangePlanner(), 'Only admin can assign planner tickets.'))
+      if (!requirePermission(() => Permissions.canManageEvents(), 'Only admin/dev can assign planner tickets.'))
         return;
       const planId = E.plannerReleasePlan?.value || '';
       if (!planId) {
@@ -3952,7 +3952,7 @@ function wirePlanner() {
         issueId: merged.join(', ')
       };
 
-      const saved = await saveEventToSheet(updatedEvent, Session.authContext());
+      const saved = await saveEventRecord(updatedEvent);
       if (!saved) {
         UI.toast('Could not assign tickets to Release event.');
         return;
@@ -4792,7 +4792,7 @@ function wireModals() {
   if (E.eventForm) {
     E.eventForm.addEventListener('submit', async e => {
       e.preventDefault();
-      if (!requirePermission(() => Permissions.canManageEvents(), 'Only admin can create or edit events.'))
+      if (!requirePermission(() => Permissions.canManageEvents(), 'Only admin/dev can create or edit events.'))
         return;
       const id = E.eventForm.dataset.id || '';
       const allDay = !!(E.eventAllDay && E.eventAllDay.checked);
@@ -4837,7 +4837,7 @@ function wireModals() {
         notificationStatus: ''
       };
 
-      const saved = await saveEventToSheet(ev, Session.authContext());
+      const saved = await saveEventRecord(ev);
       if (!saved) return;
 
       const idx = DataStore.events.findIndex(x => x.id === saved.id);
@@ -4854,7 +4854,7 @@ function wireModals() {
 
   if (E.eventDelete) {
     E.eventDelete.addEventListener('click', async () => {
-      if (!requirePermission(() => Permissions.canManageEvents(), 'Only admin can delete events.')) return;
+      if (!requirePermission(() => Permissions.canManageEvents(), 'Only admin/dev can delete events.')) return;
       if (!E.eventForm) return;
       const id = E.eventForm.dataset.id;
       if (!id) {
@@ -4862,7 +4862,7 @@ function wireModals() {
         return;
       }
       if (!window.confirm('Delete this event from the calendar?')) return;
-      const ok = await deleteEventFromSheet(id, Session.authContext());
+      const ok = await deleteEventRecord(id);
       if (!ok) return;
       const idx = DataStore.events.findIndex(ev => ev.id === id);
       if (idx > -1) DataStore.events.splice(idx, 1);
