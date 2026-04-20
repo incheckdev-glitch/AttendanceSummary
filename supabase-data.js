@@ -188,6 +188,12 @@
     return new Error(`${prefix}: ${msg}`);
   }
 
+  function isUuid(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      String(value || '').trim()
+    );
+  }
+
   function normalizeRow(resource, row) {
     if (!row || typeof row !== 'object') return row;
     const out = { ...row };
@@ -779,7 +785,14 @@
     }
     if (resource === 'proposals' && action === 'create_from_deal') {
       if (!isAdminDev()) throw new Error('Only admin/dev can create proposals from deals.');
-      const dealUuid = String(payload.id || payload.deal_id || '').trim();
+      const idCandidate = String(payload.id || '').trim();
+      const fallbackCandidate = String(payload.deal_id || '').trim();
+      const dealUuid = isUuid(idCandidate)
+        ? idCandidate
+        : isUuid(fallbackCandidate)
+        ? fallbackCandidate
+        : '';
+      if (!dealUuid) throw new Error('Deal UUID is required to create proposal from deal.');
       const { data, error } = await client.rpc('create_proposal_from_deal', { p_deal_uuid: dealUuid });
       if (error) throw friendlyError('Proposal creation from deal failed', error);
       return data;

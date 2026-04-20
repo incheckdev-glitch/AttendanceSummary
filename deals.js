@@ -695,11 +695,11 @@ const Deals = {
             `<button class="btn ghost sm" type="button" data-deal-delete="${U.escapeAttr(row.id)}">Delete</button>`
           );
         }
-        if (row.deal_id && !this.isProposalAlreadyCreated(row)) {
-          const inFlight = this.state.rowActionInFlight.has(`create-proposal:${row.deal_id}`);
+        if (row.id && !this.isProposalAlreadyCreated(row)) {
+          const inFlight = this.state.rowActionInFlight.has(`create-proposal:${row.id}`);
           actionButtons.push(
             `<button class="btn ghost sm" type="button" data-deal-create-proposal="${U.escapeAttr(
-              row.deal_id
+              row.id
             )}" ${inFlight ? 'disabled' : ''}>Create Proposal</button>`
           );
         }
