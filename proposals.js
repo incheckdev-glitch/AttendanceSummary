@@ -1244,16 +1244,25 @@ const Proposals = {
     const items = this.collectProposalItems();
     const currentRecord = this.state.rows.find(row => String(row.id || '') === proposalId) || {};
     const requestedDiscount = items.reduce((max, item) => Math.max(max, this.toNumberSafe(item.discount_percent)), 0);
-    const workflowCheck = await window.WorkflowEngine?.enforceBeforeSave?.('proposals', currentRecord, {
-      id: proposalId,
-      current_status: currentRecord?.status || '',
-      requested_status: proposal.status || '',
-      discount_percent: requestedDiscount,
-      requested_changes: { proposal, items }
+    const currentStatus = String(currentRecord?.status || '').trim();
+    const requestedStatus = String(proposal.status || '').trim();
+    const shouldValidateWorkflow = this.shouldValidateWorkflowBeforeSave({
+      proposalId,
+      currentStatus,
+      requestedStatus
     });
-    if (workflowCheck && !workflowCheck.allowed) {
-      UI.toast(window.WorkflowEngine.composeDeniedMessage(workflowCheck, 'Proposal save blocked.'));
-      return;
+    if (shouldValidateWorkflow) {
+      const workflowCheck = await window.WorkflowEngine?.enforceBeforeSave?.('proposals', currentRecord, {
+        id: proposalId,
+        current_status: currentStatus,
+        requested_status: requestedStatus,
+        discount_percent: requestedDiscount,
+        requested_changes: { proposal, items }
+      });
+      if (workflowCheck && !workflowCheck.allowed) {
+        UI.toast(window.WorkflowEngine.composeDeniedMessage(workflowCheck, 'Proposal save blocked.'));
+        return;
+      }
     }
 
     if (!proposal.proposal_title) {
@@ -1480,28 +1489,35 @@ const Proposals = {
       return;
     }
     const deal = await this.resolveDealForProposal(trimmedDealId);
+    if (!deal) {
+      UI.toast('Unable to load deal details for proposal draft.');
+      return;
+    }
     if (window.Deals?.isProposalAlreadyCreated?.(deal)) {
       UI.toast('This deal has already been converted to a proposal.');
       return;
     }
     try {
-      const response = await this.createFromDeal(trimmedDealId);
-      let createdProposalUuid = this.getCreatedProposalId(response);
-      if (!createdProposalUuid) {
-        createdProposalUuid = await this.findCreatedProposalUuidByDealId(trimmedDealId);
+      if (openAfterCreate) {
+        const proposalDraft = this.proposalDraftFromDeal(deal);
+        this.openProposalForm(proposalDraft, [], { readOnly: false });
       }
-      await this.loadAndRefresh({ force: true });
-      if (createdProposalUuid && openAfterCreate) {
-        await this.openProposalFormById(createdProposalUuid, { readOnly: false });
-      }
-      UI.toast('Proposal created from deal.');
+      UI.toast('Prefilled proposal draft opened. Save to create the proposal.');
     } catch (error) {
       if (this.hasConflictError(error, 'DEAL_ALREADY_CONVERTED_TO_PROPOSAL')) {
         UI.toast('This deal has already been converted to a proposal.');
         return;
       }
-      UI.toast('Unable to create proposal from deal: ' + (error?.message || 'Unknown error'));
+      UI.toast('Unable to open proposal draft from deal: ' + (error?.message || 'Unknown error'));
     }
+  },
+  shouldValidateWorkflowBeforeSave({ proposalId = '', currentStatus = '', requestedStatus = '' } = {}) {
+    const hasPersistedRecord = !!String(proposalId || '').trim();
+    if (!hasPersistedRecord) return false;
+    const fromStatus = String(currentStatus || '').trim().toLowerCase();
+    const toStatus = String(requestedStatus || '').trim().toLowerCase();
+    if (!fromStatus || !toStatus) return false;
+    return fromStatus !== toStatus;
   },
   addRow(section) {
     const groups = this.groupedItems(this.collectProposalItems());
