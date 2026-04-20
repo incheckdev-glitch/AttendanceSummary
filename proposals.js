@@ -504,8 +504,190 @@ const Proposals = {
   async createFromDeal(dealId) {
     return Api.postAuthenticated('proposals', 'create_from_deal', { id: dealId });
   },
-  async generateProposalHtml(proposalId) {
-    return Api.postAuthenticated('proposals', 'generate_proposal_html', { proposal_id: proposalId });
+  async loadProposalPreviewData(proposalUuid) {
+    const id = String(proposalUuid || '').trim();
+    if (!id) throw new Error('Missing proposal UUID.');
+    const client = window.SupabaseClient?.getClient?.();
+    if (!client) throw new Error('Supabase client is not available.');
+
+    const [{ data: proposal, error: proposalError }, { data: items, error: itemsError }] = await Promise.all([
+      client.from('proposals').select('*').eq('id', id).maybeSingle(),
+      client
+        .from('proposal_items')
+        .select('*')
+        .eq('proposal_id', id)
+        .order('line_no', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: true, nullsFirst: false })
+    ]);
+
+    if (proposalError) throw new Error(`Unable to load proposal: ${proposalError.message || 'Unknown error'}`);
+    if (!proposal) throw new Error('Proposal was not found.');
+    if (itemsError) throw new Error(`Unable to load proposal items: ${itemsError.message || 'Unknown error'}`);
+
+    return {
+      proposal: this.normalizeProposal(proposal),
+      items: Array.isArray(items) ? items.map(item => this.normalizeItem(item)) : []
+    };
+  },
+  buildProposalPreviewHtml(proposal = {}, items = []) {
+    const proposalData = proposal && typeof proposal === 'object' ? proposal : {};
+    const normalizedItems = (Array.isArray(items) ? items : []).map((item, index) => {
+      const normalized = this.normalizeItem(item);
+      if (!normalized.line_no) normalized.line_no = index + 1;
+      return normalized;
+    });
+    const currency = String(proposalData.currency || '').trim().toUpperCase();
+    const money = value => this.formatMoneyWithCurrency(this.toNumberSafe(value), currency, false);
+    const dateValue = value => {
+      const raw = String(value || '').trim();
+      if (!raw) return '—';
+      const formatted = U.fmtDisplayDate(raw);
+      return formatted && formatted !== 'Invalid Date' ? formatted : raw;
+    };
+    const textValue = value => {
+      const text = String(value ?? '').trim();
+      return text ? U.escapeHtml(text) : '—';
+    };
+    const sectionLabel = section => {
+      const normalized = String(section || '').trim().toLowerCase();
+      if (normalized === 'annual_saas') return 'Annual SaaS';
+      if (normalized === 'one_time_fee') return 'One-Time Fee';
+      if (normalized === 'capability') return 'Capability';
+      return normalized ? normalized.replace(/[_-]+/g, ' ').replace(/\b\w/g, m => m.toUpperCase()) : 'General';
+    };
+
+    const groupedItems = new Map();
+    normalizedItems.forEach((item, index) => {
+      const key = String(item.section || '').trim() || 'general';
+      if (!groupedItems.has(key)) groupedItems.set(key, []);
+      groupedItems.get(key).push({ ...item, line_no: item.line_no || index + 1 });
+    });
+
+    const rowsHtml = rows =>
+      rows
+        .map(item => {
+          const quantity = this.toNumberSafe(item.quantity);
+          const unitPrice = this.toNumberSafe(item.unit_price);
+          const discountPercent = this.toNumberSafe(item.discount_percent);
+          const discountedUnitPrice =
+            this.toNumberSafe(item.discounted_unit_price) ||
+            unitPrice * (1 - this.normalizeDiscount(discountPercent));
+          const lineTotal = this.toNumberSafe(item.line_total) || discountedUnitPrice * quantity;
+          return `<tr>
+            <td>${U.escapeHtml(String(item.line_no || '—'))}</td>
+            <td>${textValue(item.location_name)}</td>
+            <td>${textValue(item.item_name || item.capability_name)}</td>
+            <td style="text-align:right;">${quantity ? U.escapeHtml(String(quantity)) : '—'}</td>
+            <td style="text-align:right;">${money(unitPrice)}</td>
+            <td style="text-align:right;">${discountPercent ? `${U.escapeHtml(String(discountPercent))}%` : '0%'}</td>
+            <td style="text-align:right;">${money(discountedUnitPrice)}</td>
+            <td style="text-align:right;">${money(lineTotal)}</td>
+          </tr>`;
+        })
+        .join('');
+
+    const sectionsHtml = groupedItems.size
+      ? [...groupedItems.entries()]
+          .map(([section, rows]) => `<section style="margin-top:18px;">
+            <h3 style="margin:0 0 8px 0;font-size:16px;color:#1f2937;">${U.escapeHtml(sectionLabel(section))}</h3>
+            <table style="width:100%;border-collapse:collapse;font-size:12px;">
+              <thead>
+                <tr>
+                  <th style="text-align:left;border:1px solid #d1d5db;padding:6px;">Line</th>
+                  <th style="text-align:left;border:1px solid #d1d5db;padding:6px;">Location</th>
+                  <th style="text-align:left;border:1px solid #d1d5db;padding:6px;">Item</th>
+                  <th style="text-align:right;border:1px solid #d1d5db;padding:6px;">Qty</th>
+                  <th style="text-align:right;border:1px solid #d1d5db;padding:6px;">Unit Price</th>
+                  <th style="text-align:right;border:1px solid #d1d5db;padding:6px;">Discount</th>
+                  <th style="text-align:right;border:1px solid #d1d5db;padding:6px;">Disc. Unit</th>
+                  <th style="text-align:right;border:1px solid #d1d5db;padding:6px;">Line Total</th>
+                </tr>
+              </thead>
+              <tbody>${rowsHtml(rows)}</tbody>
+            </table>
+          </section>`)
+          .join('')
+      : '<div style="padding:12px;border:1px solid #d1d5db;border-radius:8px;color:#6b7280;">No proposal items available.</div>';
+
+    return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Proposal Preview · ${U.escapeHtml(String(proposalData.proposal_id || proposalData.id || ''))}</title>
+</head>
+<body style="font-family:Inter,Arial,sans-serif;margin:24px;color:#111827;line-height:1.35;">
+  <header style="display:flex;justify-content:space-between;gap:20px;border-bottom:2px solid #e5e7eb;padding-bottom:12px;">
+    <div>
+      <h1 style="margin:0 0 6px 0;font-size:24px;">Proposal</h1>
+      <div style="font-size:14px;color:#4b5563;">${textValue(proposalData.proposal_title || proposalData.proposal_id || proposalData.id)}</div>
+    </div>
+    <div style="text-align:right;font-size:12px;">
+      <div><strong>Status:</strong> ${textValue(proposalData.status || 'Draft')}</div>
+      <div><strong>Proposal ID:</strong> ${textValue(proposalData.proposal_id)}</div>
+      <div><strong>Reference:</strong> ${textValue(proposalData.ref_number)}</div>
+      <div><strong>Date:</strong> ${U.escapeHtml(dateValue(proposalData.proposal_date))}</div>
+      <div><strong>Valid Until:</strong> ${U.escapeHtml(dateValue(proposalData.proposal_valid_until || proposalData.valid_until))}</div>
+    </div>
+  </header>
+  <section style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;">
+    <article style="border:1px solid #d1d5db;border-radius:8px;padding:10px;">
+      <h2 style="margin:0 0 8px 0;font-size:15px;">Customer</h2>
+      <div><strong>Name:</strong> ${textValue(proposalData.customer_name)}</div>
+      <div><strong>Address:</strong> ${textValue(proposalData.customer_address)}</div>
+      <div><strong>Contact:</strong> ${textValue(proposalData.customer_contact_name)}</div>
+      <div><strong>Mobile:</strong> ${textValue(proposalData.customer_contact_mobile)}</div>
+      <div><strong>Email:</strong> ${textValue(proposalData.customer_contact_email)}</div>
+    </article>
+    <article style="border:1px solid #d1d5db;border-radius:8px;padding:10px;">
+      <h2 style="margin:0 0 8px 0;font-size:15px;">Provider</h2>
+      <div><strong>Contact:</strong> ${textValue(proposalData.provider_contact_name)}</div>
+      <div><strong>Mobile:</strong> ${textValue(proposalData.provider_contact_mobile)}</div>
+      <div><strong>Email:</strong> ${textValue(proposalData.provider_contact_email)}</div>
+      <div><strong>Service Start:</strong> ${U.escapeHtml(dateValue(proposalData.service_start_date))}</div>
+      <div><strong>Contract Term:</strong> ${textValue(proposalData.contract_term)}</div>
+    </article>
+  </section>
+  <section style="margin-top:16px;border:1px solid #d1d5db;border-radius:8px;padding:10px;">
+    <h2 style="margin:0 0 8px 0;font-size:15px;">Commercial Terms</h2>
+    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;font-size:12px;">
+      <div><strong>Account Number:</strong> ${textValue(proposalData.account_number)}</div>
+      <div><strong>Billing Frequency:</strong> ${textValue(proposalData.billing_frequency)}</div>
+      <div><strong>Payment Term:</strong> ${textValue(proposalData.payment_term)}</div>
+      <div><strong>PO Number:</strong> ${textValue(proposalData.po_number)}</div>
+      <div><strong>Provider Sign Date:</strong> ${U.escapeHtml(dateValue(proposalData.provider_sign_date))}</div>
+      <div><strong>Generated By:</strong> ${textValue(proposalData.generated_by)}</div>
+    </div>
+  </section>
+  <section style="margin-top:16px;">
+    <h2 style="margin:0 0 8px 0;font-size:17px;">Proposal Items</h2>
+    ${sectionsHtml}
+  </section>
+  <section style="margin-top:16px;border:1px solid #d1d5db;border-radius:8px;padding:10px;">
+    <h2 style="margin:0 0 8px 0;font-size:15px;">Totals</h2>
+    <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;font-size:13px;">
+      <div><strong>Subtotal Locations:</strong><br/>${money(proposalData.subtotal_locations || proposalData.saas_total)}</div>
+      <div><strong>Subtotal One-Time:</strong><br/>${money(proposalData.subtotal_one_time || proposalData.one_time_total)}</div>
+      <div><strong>Total Discount:</strong><br/>${money(proposalData.total_discount)}</div>
+      <div><strong>Grand Total:</strong><br/><span style="font-size:16px;font-weight:700;">${money(proposalData.grand_total)}</span></div>
+    </div>
+    ${currency ? `<div style="margin-top:8px;color:#6b7280;font-size:12px;">Currency: ${U.escapeHtml(currency)}</div>` : ''}
+  </section>
+  <section style="margin-top:16px;border:1px solid #d1d5db;border-radius:8px;padding:10px;">
+    <h2 style="margin:0 0 8px 0;font-size:15px;">Terms & Signatories</h2>
+    <div style="font-size:12px;white-space:pre-wrap;">${textValue(proposalData.terms_conditions)}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px;font-size:12px;">
+      <div>
+        <strong>Customer Signatory:</strong> ${textValue(proposalData.customer_signatory_name)}<br/>
+        <strong>Title:</strong> ${textValue(proposalData.customer_signatory_title)}
+      </div>
+      <div>
+        <strong>Provider Signatory:</strong> ${textValue(proposalData.provider_signatory_name)}<br/>
+        <strong>Title:</strong> ${textValue(proposalData.provider_signatory_title)}
+      </div>
+    </div>
+  </section>
+</body>
+</html>`;
   },
   applyFilters() {
     const terms = String(this.state.search || '')
@@ -795,7 +977,7 @@ const Proposals = {
           <td>
             <button class="btn ghost sm" type="button" data-proposal-view="${id}">View</button>
             ${Permissions.canUpdateProposal() ? `<button class="btn ghost sm" type="button" data-proposal-edit="${id}">Edit</button>` : ''}
-            ${Permissions.canGenerateProposalHtml() ? `<button class="btn ghost sm" type="button" data-proposal-preview="${id}">Preview</button>` : ''}
+            ${Permissions.canPreviewProposal() ? `<button class="btn ghost sm" type="button" data-proposal-preview="${id}">Preview</button>` : ''}
             ${Permissions.canCreateAgreementFromProposal() && !this.isAgreementAlreadyCreated(row)
               ? `<button class="btn ghost sm" type="button" data-proposal-convert-agreement="${id}">Convert to Agreement</button>`
               : ''}
@@ -1479,20 +1661,21 @@ const Proposals = {
       UI.toast('Missing proposal ID for preview.');
       return;
     }
-    if (!Permissions.canGenerateProposalHtml()) {
+    if (!Permissions.canPreviewProposal()) {
       UI.toast('You do not have permission to preview proposals.');
       return;
     }
     try {
-      const response = await this.generateProposalHtml(proposalId);
-      const html = this.extractHtml(response);
+      const { proposal, items } = await this.loadProposalPreviewData(proposalId);
+      const html = this.buildProposalPreviewHtml(proposal, items);
       if (!html) {
-        UI.toast('Backend did not return proposal HTML.');
+        UI.toast('Unable to build proposal preview.');
         return;
       }
       const brandedHtml = U.addIncheckDocumentLogo(U.formatPreviewHtmlDates(html));
       if (E.proposalPreviewFrame) E.proposalPreviewFrame.srcdoc = brandedHtml;
-      if (E.proposalPreviewTitle) E.proposalPreviewTitle.textContent = `Proposal Preview · ${proposalId}`;
+      const previewLabel = String(proposal?.proposal_id || proposal?.id || proposalId).trim();
+      if (E.proposalPreviewTitle) E.proposalPreviewTitle.textContent = `Proposal Preview · ${previewLabel}`;
       if (E.proposalPreviewModal) {
         E.proposalPreviewModal.style.display = 'flex';
         E.proposalPreviewModal.setAttribute('aria-hidden', 'false');

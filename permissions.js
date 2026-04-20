@@ -302,8 +302,14 @@ const Permissions = {
   canCreateProposalFromDeal() {
     return this.can('proposals', 'create_from_deal', { fallback: this.canCreateProposal() });
   },
+  canPreviewProposal() {
+    return (
+      this.can('proposals', 'get', { fallback: false }) ||
+      this.can('proposals', 'list', { fallback: Session.isAuthenticated() })
+    );
+  },
   canGenerateProposalHtml() {
-    return this.can('proposals', 'generate_proposal_html', { fallback: Session.isAuthenticated() });
+    return this.canPreviewProposal();
   },
   canCreateAgreement() {
     return this.can('agreements', 'create', { fallback: Session.isAuthenticated() });
