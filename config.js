@@ -62,12 +62,12 @@ const rawApiBaseUrl =
   '/api/proxy';
 const SUPABASE_URL =
   runtimeConfig.SUPABASE_URL ||
-  window.SUPABASE_URL ||
-  '';
+  runtimeConfig.NEXT_PUBLIC_SUPABASE_URL ||
+  'https://ghvceonzwcvdxccdtoua.supabase.co';
 const SUPABASE_ANON_KEY =
   runtimeConfig.SUPABASE_ANON_KEY ||
-  window.SUPABASE_ANON_KEY ||
-  '';
+  runtimeConfig.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+  'sb_publishable_0neF-7OK8rdNA_Lxuwoaww_dSL7TNwL';
 window.SUPABASE_URL = String(SUPABASE_URL || '').trim();
 window.SUPABASE_ANON_KEY = String(SUPABASE_ANON_KEY || '').trim();
 
