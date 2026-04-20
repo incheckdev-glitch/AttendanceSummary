@@ -103,6 +103,7 @@ const WorkflowEngine = {
     this.beginRequestProcessing('Checking workflow approval request…');
     try {
       const validation = await this.validateWorkflowTransition(resource, record, requestedChanges);
+      const noActiveRuleMessage = /no active workflow rule found/i;
       const allowed = this.toBool(validation?.allowed ?? validation?.is_allowed ?? true);
       const approvalCreated = this.toBool(validation?.approval_created);
       const baseResult = {
@@ -115,6 +116,14 @@ const WorkflowEngine = {
         hardStopDiscountLimit: validation?.hard_stop_discount_percent,
         response: validation
       };
+      if (!baseResult.allowed && noActiveRuleMessage.test(baseResult.reason || '')) {
+        return {
+          ...baseResult,
+          allowed: true,
+          skipped: true,
+          reason: ''
+        };
+      }
       if (baseResult.allowed && !baseResult.approvalCreated) {
         const localRuleResult = this.evaluateLocalRule(resource, record, requestedChanges);
         if (localRuleResult && localRuleResult.allowed === false) {
@@ -125,7 +134,8 @@ const WorkflowEngine = {
     } catch (error) {
       const reason = String(error?.message || 'Workflow validation failed.').trim();
       const authzError = /forbidden|unauthorized|permission/i.test(reason);
-      if (authzError) {
+      const noActiveRuleError = /no active workflow rule found/i.test(reason);
+      if (authzError || noActiveRuleError) {
         console.warn('Workflow validation skipped due to missing permission.', error);
         return {
           allowed: true,
