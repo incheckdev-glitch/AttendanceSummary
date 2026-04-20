@@ -40,6 +40,34 @@
     'status',
     'log',
   ]);
+  const EVENT_PUBLIC_COLUMNS = new Set([
+    'event_code',
+    'title',
+    'description',
+    'start_at',
+    'end_at',
+    'location',
+    'status',
+    'created_by',
+    'updated_by'
+  ]);
+  const EVENT_LEGACY_FIELDS = new Set([
+    'allDay',
+    'all_day',
+    'start',
+    'end',
+    'startDate',
+    'endDate',
+    'date',
+    'finish',
+    'authToken',
+    'backendToken',
+    'backendUrl',
+    'sheetName',
+    'tabName',
+    'resource',
+    'action'
+  ]);
 
   const devLog = (...args) => {
     try {
@@ -101,6 +129,15 @@
       out.issueRelated = out.issueRelated ?? out.issue_related ?? '';
       out.issue_related = out.issue_related ?? out.issueRelated ?? '';
     }
+    if (resource === 'events') {
+      out.event_code = out.event_code ?? out.eventCode ?? '';
+      out.eventCode = out.eventCode ?? out.event_code ?? '';
+      out.start = out.start ?? out.start_at ?? out.startDate ?? out.date ?? '';
+      out.end = out.end ?? out.end_at ?? out.endDate ?? out.finish ?? '';
+      out.start_at = out.start_at ?? out.start ?? '';
+      out.end_at = out.end_at ?? out.end ?? '';
+      out.allDay = out.allDay ?? out.all_day ?? false;
+    }
     return out;
   }
 
@@ -127,6 +164,37 @@
     const sanitized = {};
     Object.entries(record).forEach(([key, value]) => {
       if (!TICKET_PUBLIC_COLUMNS.has(key)) return;
+      if (value === undefined || value === null) return;
+      sanitized[key] = value;
+    });
+    return sanitized;
+  }
+
+  function parseEventDateValue(value) {
+    if (value === undefined || value === null) return undefined;
+    const raw = String(value).trim();
+    if (!raw) return '';
+    if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(raw)) return raw.replace(/\s+/, 'T');
+    return raw;
+  }
+
+  function sanitizeEventRecord(record = {}, { includeCreatedBy = false, userId = '' } = {}) {
+    const mapped = compactObject({
+      event_code: firstDefined(record, ['event_code', 'eventCode']),
+      title: firstDefined(record, ['title', 'eventTitle', 'name']),
+      description: firstDefined(record, ['description', 'notes']),
+      start_at: parseEventDateValue(firstDefined(record, ['start_at', 'start', 'startDate', 'date'])),
+      end_at: parseEventDateValue(firstDefined(record, ['end_at', 'end', 'endDate', 'finish'])),
+      location: firstDefined(record, ['location']),
+      status: firstDefined(record, ['status']) || 'Planned',
+      created_by: includeCreatedBy
+        ? (firstDefined(record, ['created_by', 'createdBy']) || userId || undefined)
+        : undefined,
+      updated_by: firstDefined(record, ['updated_by', 'updatedBy']) || userId || undefined
+    });
+    const sanitized = {};
+    Object.entries(mapped).forEach(([key, value]) => {
+      if (!EVENT_PUBLIC_COLUMNS.has(key)) return;
       if (value === undefined || value === null) return;
       sanitized[key] = value;
     });
@@ -448,16 +516,24 @@
       delete record.resource; delete record.action; delete record.authToken;
       if (resource === 'tickets') devLog('[tickets/create] raw form data', record);
       if (resource === 'events' && !isAdminDev()) throw new Error('Only admin/dev can create events.');
-      const currentUserId = resource === 'tickets' ? await getCurrentUserId(client) : '';
+      const currentUserId = ['tickets', 'events'].includes(resource) ? await getCurrentUserId(client) : '';
       const createRecord =
         resource === 'tickets'
           ? toTicketPublicRecord(stripTicketInternalFields(record), { includeTicketId: true, userId: currentUserId })
-          : record;
+          : resource === 'events'
+            ? sanitizeEventRecord(record, { includeCreatedBy: true, userId: currentUserId })
+            : record;
+      if (resource === 'events') {
+        EVENT_LEGACY_FIELDS.forEach(field => { delete createRecord[field]; });
+      }
       if (resource === 'tickets') {
         devLog('[tickets/create] normalized payload', createRecord);
         if (!Object.keys(createRecord).length) {
           throw new Error('Ticket create payload is empty after normalization.');
         }
+      }
+      if (resource === 'events' && !Object.keys(createRecord).length) {
+        throw new Error('Event create payload is empty after normalization.');
       }
       const { data, error } = await client.from(table).insert(createRecord).select('*').single();
       if (error) throw friendlyError(`Unable to create ${resource} record`, error);
@@ -508,7 +584,15 @@
       const publicUpdates =
         resource === 'tickets'
           ? toTicketPublicRecord(stripTicketInternalFields(safeUpdates), { includeTicketId: false })
-          : safeUpdates;
+          : resource === 'events'
+            ? sanitizeEventRecord(safeUpdates, { includeCreatedBy: false, userId: await getCurrentUserId(client) })
+            : safeUpdates;
+      if (resource === 'events') {
+        EVENT_LEGACY_FIELDS.forEach(field => { delete publicUpdates[field]; });
+      }
+      if (resource === 'events' && !Object.keys(publicUpdates).length) {
+        throw new Error('Event update payload is empty after normalization.');
+      }
       const { data, error } = await client.from(table).update(publicUpdates).eq(key, id).select('*').single();
       if (error) throw friendlyError(`Unable to update ${resource} record`, error);
       if (resource === 'tickets' && isAdminDev()) {
