@@ -112,6 +112,13 @@ const Proposals = {
     const trimmed = String(value ?? '').trim();
     return trimmed || this.generateProposalId();
   },
+  buildBusinessProposalIdentifiers(proposal = {}, { ensureProposalId = false, ensureRefNumber = false } = {}) {
+    const source = proposal && typeof proposal === 'object' ? proposal : {};
+    const identifiers = {};
+    if (ensureProposalId) identifiers.proposal_id = this.ensureProposalId(source.proposal_id);
+    if (ensureRefNumber) identifiers.ref_number = this.ensureRefNumber(source.ref_number);
+    return identifiers;
+  },
   sanitizeRefNumber(value = '') {
     const raw = String(value ?? '').trim();
     if (!raw) return '';
@@ -489,9 +496,13 @@ const Proposals = {
     const generatedByFallback = String(
       base.generated_by || Session?.state?.name || Session?.state?.email || Session?.state?.username || ''
     ).trim();
+    const businessIdentifiers = this.buildBusinessProposalIdentifiers(base, {
+      ensureProposalId: ensureBusinessProposalId,
+      ensureRefNumber: ensureBusinessProposalId
+    });
     return {
       ...base,
-      ...(ensureBusinessProposalId ? { proposal_id: this.ensureProposalId(base.proposal_id) } : {}),
+      ...businessIdentifiers,
       proposal_valid_until: proposalValidUntil,
       valid_until: proposalValidUntil,
       generated_by: generatedByFallback,
@@ -1024,6 +1035,8 @@ const Proposals = {
   },
   emptyProposal() {
     return {
+      proposal_id: this.generateProposalId(),
+      ref_number: this.generateRefNumber(),
       proposal_title: '',
       deal_id: '',
       lead_id: '',
