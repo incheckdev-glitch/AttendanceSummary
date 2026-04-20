@@ -3014,7 +3014,8 @@ function normalizeIssueForStore(issue, options = {}) {
       ? !!options.includeRestrictedFields
       : Permissions.isAdminLike();
   const normalized = {
-    id: issue.id || '',
+    id: issue.id || issue.ticket_uuid || '',
+    ticket_id: issue.ticket_id || issue.ticketCode || '',
     name: issue.name || '',
     department: issue.department || '',
     module: issue.module || 'Unspecified',
@@ -3080,9 +3081,9 @@ async function saveIssueToSheet(issue, auth = {}, options = {}) {
   if (useSpinner) UI.spinner(true);
   try {
     const payload = normalizeIssueForStore(issue, { includeRestrictedFields: Permissions.isAdminLike() });
-    const issueId = String(payload.id || issue.id || '').trim();
-    if (!issueId) {
-      throw new Error('Missing ticket ID for update.');
+    const issueRowId = String(payload.id || issue.id || '').trim();
+    if (!issueRowId) {
+      throw new Error('Missing ticket UUID for update.');
     }
 
     const currentRole = String(Session.role?.() || '').toLowerCase();
@@ -3099,14 +3100,14 @@ async function saveIssueToSheet(issue, auth = {}, options = {}) {
     const { data: updatedTicket, error: publicError } = await client
       .from('tickets')
       .update(publicUpdates)
-      .eq('ticket_id', issueId)
+      .eq('id', issueRowId)
       .select('*')
       .single();
     if (publicError) throw publicError;
 
     let mergedTicket = updatedTicket || {};
     if (['admin', 'dev'].includes(currentRole)) {
-      const internalUpdates = buildTicketInternalUpdatePayload(payload, issueId);
+      const internalUpdates = buildTicketInternalUpdatePayload(payload, issueRowId);
       if (internalUpdates) {
         const { data: internalRow, error: internalError } = await client
           .from('ticket_internal')
@@ -3127,6 +3128,8 @@ async function saveIssueToSheet(issue, auth = {}, options = {}) {
     UI.toast('Issue updated');
     return normalizeIssueForStore({
       ...mergedTicket,
+      id: mergedTicket?.id ?? issueRowId,
+      ticket_id: mergedTicket?.ticket_id ?? payload.ticket_id ?? issue.ticket_id ?? '',
       date: mergedTicket?.date_submitted ?? payload.date,
       date_submitted: mergedTicket?.date_submitted ?? payload.date,
       desc: mergedTicket?.description ?? payload.desc,

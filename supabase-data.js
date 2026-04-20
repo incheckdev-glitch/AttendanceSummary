@@ -11,7 +11,7 @@
   };
 
   const PK_KEYS = {
-    users: ['user_id','id'], roles: ['role_key','id'], role_permissions: ['permission_id','id'], tickets: ['ticket_id','id'],
+    users: ['user_id','id'], roles: ['role_key','id'], role_permissions: ['permission_id','id'], tickets: ['id','ticket_id'],
     events: ['event_id','id'], csm: ['id','activity_id'], leads: ['lead_id','id'], deals: ['deal_id','id'],
     proposal_catalog: ['catalog_item_id','id'], proposals: ['proposal_id','id'], agreements: ['agreement_id','id'],
     clients: ['client_id','id'], invoices: ['invoice_id','id'], receipts: ['receipt_id','id'], operations_onboarding: ['onboarding_id','id']
@@ -66,8 +66,8 @@
     if (resource === 'tickets') {
       out.date = out.date ?? out.date_submitted ?? '';
       out.date_submitted = out.date_submitted ?? out.date ?? '';
-      out.ticket_id = out.ticket_id ?? out.id ?? '';
-      out.id = out.id ?? out.ticket_id ?? '';
+      out.ticket_id = out.ticket_id ?? '';
+      out.id = out.id ?? '';
       out.desc = out.desc ?? out.description ?? '';
       out.description = out.description ?? out.desc ?? '';
       out.type = out.type ?? out.category ?? '';
@@ -152,7 +152,7 @@
   }
 
   function toTicketPublicRecord(row = {}, { includeTicketId = true, userId = '' } = {}) {
-    const candidateTicketId = firstDefined(row, ['ticket_id', 'id']);
+    const candidateTicketId = firstDefined(row, ['ticket_id', 'ticketCode', 'ticket_code']);
     const nowIso = new Date().toISOString();
     const mapped = compactObject({
       ticket_id: includeTicketId ? (isBlankValue(candidateTicketId) ? generateTicketId() : candidateTicketId) : undefined,
@@ -183,13 +183,13 @@
     return sanitizeForInsertOrUpdate(mapped);
   }
 
-  function ticketIdFrom(row = {}) {
-    return row.ticket_id || row.id;
+  function ticketRowIdFrom(row = {}) {
+    return row.id;
   }
 
   function toTicketInternalRecord(row = {}) {
     return {
-      ticket_id: ticketIdFrom(row),
+      ticket_id: ticketRowIdFrom(row),
       youtrack_reference: row.youtrack_reference ?? row.youtrackReference ?? '',
       dev_team_status: row.dev_team_status ?? row.devTeamStatus ?? '',
       issue_related: row.issue_related ?? row.issueRelated ?? '',
@@ -411,10 +411,10 @@
       if (error) throw friendlyError('Unable to load tickets', error);
       const normalized = (tickets || []).map(row => normalizeRow(resource, row));
       if (!isAdminDev()) return { handled: true, data: normalizeList(resource, normalized) };
-      const ids = normalized.map(row => String(ticketIdFrom(row) || '')).filter(Boolean);
+      const ids = normalized.map(row => String(ticketRowIdFrom(row) || '')).filter(Boolean);
       const internalById = await loadTicketInternalByIds(ids);
       const withInternal = normalized.map(row =>
-        mergeTicketInternal(row, internalById.get(String(ticketIdFrom(row) || '')))
+        mergeTicketInternal(row, internalById.get(String(ticketRowIdFrom(row) || '')))
       );
       return { handled: true, data: normalizeList(resource, withInternal) };
     }
@@ -432,8 +432,8 @@
       if (error) throw friendlyError(`Unable to load ${resource} record`, error);
       if (resource === 'tickets') {
         if (!isAdminDev()) return { handled: true, data: normalizeRow(resource, data) };
-        const byId = await loadTicketInternalByIds([String(ticketIdFrom(data) || id)]);
-        return { handled: true, data: mergeTicketInternal(data, byId.get(String(ticketIdFrom(data) || id))) };
+        const byId = await loadTicketInternalByIds([String(ticketRowIdFrom(data) || id)]);
+        return { handled: true, data: mergeTicketInternal(data, byId.get(String(ticketRowIdFrom(data) || id))) };
       }
       return { handled: true, data: await withItems(resource, data) };
     }
@@ -459,7 +459,7 @@
       const created = normalizeRow(resource, data);
       if (resource === 'tickets' && isAdminDev()) {
         const internalRecord = toTicketInternalRecord(raw || {});
-        internalRecord.ticket_id = ticketIdFrom(created) || internalRecord.ticket_id;
+        internalRecord.ticket_id = ticketRowIdFrom(created) || internalRecord.ticket_id;
         if (internalRecord.ticket_id) {
           const { data: internalData, error: internalError } = await client
             .from('ticket_internal')
