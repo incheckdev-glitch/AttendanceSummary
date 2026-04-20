@@ -4464,6 +4464,10 @@ function wireConnectivity() {
 
 function wireDashboardGate() {
   if (!E.app || !E.loginForm || !E.loginIdentifier || !E.loginPasscode) return;
+  if (E.loginForm.dataset.dashboardGateSubmitBound === 'true') {
+    console.info('[wireDashboardGate] submit handler already attached; skipping duplicate bind');
+    return;
+  }
 
   const getDefaultViewForRole = role => {
     if (role === ROLES.ADMIN || role === ROLES.DEV) return 'issues';
@@ -4513,10 +4517,27 @@ function wireDashboardGate() {
     syncAuthUi();
   });
 
+  E.loginForm.noValidate = true;
+  console.info('[wireDashboardGate] native form validation disabled for login form (manual validation is used)');
+  E.loginForm.addEventListener('invalid', event => {
+    const targetId = event?.target?.id || '(unknown)';
+    console.warn('[wireDashboardGate.loginSubmit] native invalid event detected', { targetId });
+  }, true);
+
   E.loginForm.addEventListener('submit', async event => {
+    console.info('[wireDashboardGate.loginSubmit] submit event fired', {
+      defaultPreventedBeforeHandler: event.defaultPrevented
+    });
     event.preventDefault();
+    console.info('[wireDashboardGate.loginSubmit] event.preventDefault() reached', {
+      defaultPreventedAfterHandler: event.defaultPrevented
+    });
     const identifier = String(E.loginIdentifier.value || '').trim();
     const passcode = String(E.loginPasscode.value || '');
+    console.info('[wireDashboardGate.loginSubmit] credential presence', {
+      hasIdentifier: Boolean(identifier),
+      hasPasscode: Boolean(passcode.trim())
+    });
     const defaultLoginBtnLabel = E.loginBtn?.dataset?.defaultLabel || E.loginBtn?.textContent || 'LOG IN';
     if (E.loginBtn) {
       E.loginBtn.dataset.defaultLabel = defaultLoginBtnLabel;
@@ -4555,7 +4576,12 @@ function wireDashboardGate() {
     }
 
     try {
+      console.info('[wireDashboardGate.loginSubmit] before Session.login()');
       const user = await Session.login(identifier, passcode);
+      console.info('[wireDashboardGate.loginSubmit] after Session.login() resolved', {
+        hasUser: Boolean(user),
+        role: user?.role || null
+      });
       UI.applyRolePermissions();
       E.loginIdentifier.value = '';
       E.loginPasscode.value = '';
@@ -4584,8 +4610,12 @@ function wireDashboardGate() {
       } else {
         UI.toast(`Login failed: ${error.message}`);
       }
+      console.error('[wireDashboardGate.loginSubmit] catch block reached', {
+        message: error?.message || String(error)
+      });
       return;
     } finally {
+      console.info('[wireDashboardGate.loginSubmit] finally block reached');
       if (E.loginBtn) {
         E.loginBtn.disabled = false;
         E.loginBtn.textContent = defaultLoginBtnLabel;
@@ -4593,6 +4623,8 @@ function wireDashboardGate() {
       }
     }
   });
+  E.loginForm.dataset.dashboardGateSubmitBound = 'true';
+  console.info('[wireDashboardGate] login submit handler attached');
 
   if (E.logoutBtn) {
     E.logoutBtn.addEventListener('click', () => {

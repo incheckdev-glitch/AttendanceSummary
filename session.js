@@ -80,8 +80,16 @@ const Session = {
   },
 
   async login(identifier = '', passcode = '') {
+    console.info('[Session.login] entered', {
+      hasIdentifierInput: Boolean(String(identifier || '').trim()),
+      hasPasscodeInput: Boolean(String(passcode || '').trim())
+    });
     const email = String(identifier || '').trim().toLowerCase();
     const password = String(passcode || '').trim();
+    console.info('[Session.login] sanitized credentials', {
+      email,
+      passwordPresent: Boolean(password)
+    });
     if (!email) throw new Error('Email is required.');
     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailPattern.test(email)) throw new Error('Enter a valid email address.');
