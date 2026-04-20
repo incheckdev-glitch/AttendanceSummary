@@ -63,6 +63,8 @@
     if (resource === 'tickets') {
       out.date = out.date ?? out.date_submitted ?? '';
       out.date_submitted = out.date_submitted ?? out.date ?? '';
+      out.ticket_id = out.ticket_id ?? out.id ?? '';
+      out.id = out.id ?? out.ticket_id ?? '';
       out.desc = out.desc ?? out.description ?? '';
       out.description = out.description ?? out.desc ?? '';
       out.type = out.type ?? out.category ?? '';
@@ -75,6 +77,12 @@
         out.notificationUnderReview ?? out.notification_under_review ?? out.notificationSentUnderReview ?? '';
       out.notification_under_review =
         out.notification_under_review ?? out.notificationUnderReview ?? out.notificationSentUnderReview ?? '';
+      out.youtrackReference = out.youtrackReference ?? out.youtrack_reference ?? '';
+      out.youtrack_reference = out.youtrack_reference ?? out.youtrackReference ?? '';
+      out.devTeamStatus = out.devTeamStatus ?? out.dev_team_status ?? '';
+      out.dev_team_status = out.dev_team_status ?? out.devTeamStatus ?? '';
+      out.issueRelated = out.issueRelated ?? out.issue_related ?? '';
+      out.issue_related = out.issue_related ?? out.issueRelated ?? '';
     }
     return out;
   }
@@ -91,10 +99,21 @@
   function compactObject(record = {}) {
     const compacted = {};
     Object.entries(record).forEach(([key, value]) => {
-      if (value === undefined) return;
+      if (value === undefined || value === null) return;
       compacted[key] = value;
     });
     return compacted;
+  }
+
+  function sanitizeForInsertOrUpdate(record = {}) {
+    if (!record || typeof record !== 'object') return {};
+    const sanitized = {};
+    Object.entries(record).forEach(([key, value]) => {
+      if (!TICKET_PUBLIC_COLUMNS.has(key)) return;
+      if (value === undefined || value === null) return;
+      sanitized[key] = value;
+    });
+    return sanitized;
   }
 
   function toTicketPublicRecord(row = {}, { includeTicketId = true } = {}) {
@@ -121,10 +140,7 @@
       date_submitted: firstDefined(row, ['date_submitted', 'date', 'timestamp', 'created_at'])
     });
 
-    Object.keys(mapped).forEach(key => {
-      if (!TICKET_PUBLIC_COLUMNS.has(key)) delete mapped[key];
-    });
-    return mapped;
+    return sanitizeForInsertOrUpdate(mapped);
   }
 
   function ticketIdFrom(row = {}) {
@@ -166,6 +182,7 @@
 
   async function loadTicketInternalByIds(ids = []) {
     if (!ids.length) return new Map();
+    if (!isAdminDev()) return new Map();
     const client = getClient();
     const { data: internalRows, error } = await client
       .from('ticket_internal')
@@ -353,7 +370,13 @@
       const { data: tickets, error } = await query;
       if (error) throw friendlyError('Unable to load tickets', error);
       const normalized = (tickets || []).map(row => normalizeRow(resource, row));
-      return { handled: true, data: normalizeList(resource, normalized) };
+      if (!isAdminDev()) return { handled: true, data: normalizeList(resource, normalized) };
+      const ids = normalized.map(row => String(ticketIdFrom(row) || '')).filter(Boolean);
+      const internalById = await loadTicketInternalByIds(ids);
+      const withInternal = normalized.map(row =>
+        mergeTicketInternal(row, internalById.get(String(ticketIdFrom(row) || '')))
+      );
+      return { handled: true, data: normalizeList(resource, withInternal) };
     }
 
     if (action === 'list') {
