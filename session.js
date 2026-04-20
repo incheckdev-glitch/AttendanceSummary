@@ -75,20 +75,28 @@ const Session = {
   },
 
   async login(identifier = '', passcode = '') {
-    const email = String(identifier || '').trim();
+    const email = String(identifier || '').trim().toLowerCase();
     const password = String(passcode || '').trim();
-    if (!email) throw new Error('Username or email is required.');
+    if (!email) throw new Error('Email is required.');
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailPattern.test(email)) throw new Error('Enter a valid email address.');
     if (!password) throw new Error('Password is required.');
 
     const client = SupabaseClient.getClient();
     const { data, error } = await client.auth.signInWithPassword({ email, password });
     if (error) throw new Error(error.message || 'Login failed.');
 
-    const { data: userData, error: userError } = await client.auth.getUser();
-    if (userError) throw new Error(userError.message || 'Unable to load logged-in user.');
+    const { data: sessionData, error: sessionError } = await client.auth.getSession();
+    if (sessionError) throw new Error(sessionError.message || 'Unable to load logged-in session.');
 
-    const authUser = userData?.user || data?.user || null;
-    const session = data?.session || null;
+    const { data: userData, error: userError } = await client.auth.getUser();
+    if (userError && !sessionData?.session?.user) {
+      throw new Error(userError.message || 'Unable to load logged-in user.');
+    }
+
+    const authUser = userData?.user || data?.user || sessionData?.session?.user || null;
+    const session = sessionData?.session || data?.session || null;
+    if (!authUser?.id || !session) throw new Error('Login succeeded but no active session was found.');
     const profile = await this.fetchProfile(authUser?.id);
     this.applyState(this.buildState(authUser, session, profile));
     this.ensureReactiveAuthState();
@@ -106,8 +114,8 @@ const Session = {
     }
 
     const { data: userData, error: userError } = await client.auth.getUser();
-    if (userError) throw new Error(userError.message || 'Unable to restore user.');
-    const authUser = userData?.user || null;
+    if (userError && !session?.user) throw new Error(userError.message || 'Unable to restore user.');
+    const authUser = userData?.user || session?.user || null;
     if (!authUser?.id) {
       this.clearClientSession({ clearRoleCache: false });
       return false;
@@ -164,7 +172,12 @@ const Session = {
       session: this.state.session
     };
   },
-  isAuthenticated() { return !!this.state.session && !!String(this.state.role || '').trim(); },
+  isAuthenticated() {
+    const hasSessionToken = Boolean(this.state.session?.access_token);
+    const hasUser = Boolean(this.state.user?.id || this.state.session?.user?.id);
+    const hasRole = Boolean(String(this.state.role || '').trim());
+    return hasSessionToken && hasUser && hasRole;
+  },
   role() { return this.state.role || null; },
   username() { return this.state.username || ''; },
   userId() { return this.state.user_id || ''; },
