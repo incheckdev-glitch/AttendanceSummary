@@ -1731,7 +1731,7 @@ const TicketCreator = {
       email: (E.createTicketEmail?.value || '').trim(),
       file: (E.createTicketFile?.value || '').trim(),
       link: (E.createTicketFile?.value || '').trim(),
-      status: 'Not Started Yet',
+      status: 'new',
       date: now
     };
   }
@@ -1765,6 +1765,15 @@ function setButtonPendingState(buttonEl, isPending, pendingText, idleText) {
   buttonEl.disabled = !!isPending;
   buttonEl.setAttribute('aria-busy', isPending ? 'true' : 'false');
   buttonEl.textContent = isPending ? pendingText : defaultLabel;
+}
+
+function debugTicketCreateLog(label, payload) {
+  try {
+    const host = String(window.location.hostname || '').toLowerCase();
+    if (window.RUNTIME_CONFIG?.DEBUG_API || host === 'localhost' || host === '127.0.0.1') {
+      console.log(`[tickets/create] ${label}`, payload);
+    }
+  } catch {}
 }
 
 const BulkEditor = {
@@ -4736,6 +4745,7 @@ function wireModals() {
       UI.spinner(true);
       try {
         const payload = TicketCreator.buildPayload();
+        debugTicketCreateLog('raw form payload', payload);
         await createTicketInDatabase(payload);
         UI.toast('Ticket created successfully.');
         TicketCreator.close();
