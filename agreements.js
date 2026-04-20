@@ -106,6 +106,25 @@ const Agreements = {
     const num = this.toNumberSafe(value);
     return num.toLocaleString(undefined, { maximumFractionDigits: 2 });
   },
+  formatMoneyWithCurrency(value, currency = '', includeZeroDecimals = false) {
+    const amount = this.toNumberSafe(value);
+    const normalizedCurrency = String(currency || '').trim().toUpperCase();
+    const options = {
+      minimumFractionDigits: includeZeroDecimals ? 2 : 0,
+      maximumFractionDigits: 2
+    };
+    const formatted = amount.toLocaleString(undefined, options);
+    return normalizedCurrency ? `${normalizedCurrency} ${formatted}` : formatted;
+  },
+  normalizeDateFieldsForSave(record = {}, dateFields = []) {
+    const next = record && typeof record === 'object' ? { ...record } : {};
+    (Array.isArray(dateFields) ? dateFields : []).forEach(field => {
+      const raw = next[field];
+      const trimmed = typeof raw === 'string' ? raw.trim() : raw;
+      next[field] = trimmed ? trimmed : null;
+    });
+    return next;
+  },
   normalizeAgreement(raw = {}) {
     const source = raw && typeof raw === 'object' ? raw : {};
     const normalized = {};
@@ -369,6 +388,295 @@ const Agreements = {
   async updateClient(clientId, updates) { return Api.updateClient(clientId, updates); },
   async createAgreementFromProposal(proposalId) { return Api.createAgreementFromProposal(proposalId); },
   async generateAgreementHtml(agreementId) { return Api.generateAgreementHtml(agreementId); },
+  async loadAgreementPreviewData(agreementUuid) {
+    const id = String(agreementUuid || '').trim();
+    if (!id) throw new Error('Missing agreement UUID.');
+    const client = window.SupabaseClient?.getClient?.();
+    if (!client) throw new Error('Supabase client is not available.');
+
+    const [{ data: agreement, error: agreementError }, { data: items, error: itemsError }] = await Promise.all([
+      client.from('agreements').select('*').eq('id', id).maybeSingle(),
+      client
+        .from('agreement_items')
+        .select('*')
+        .eq('agreement_id', id)
+        .order('line_no', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: true, nullsFirst: false })
+    ]);
+
+    if (agreementError) throw new Error(`Unable to load agreement: ${agreementError.message || 'Unknown error'}`);
+    if (!agreement) throw new Error('Agreement was not found.');
+    if (itemsError) throw new Error(`Unable to load agreement items: ${itemsError.message || 'Unknown error'}`);
+
+    return {
+      agreement: this.normalizeAgreement(agreement),
+      items: Array.isArray(items) ? items.map(item => this.normalizeItem(item)) : []
+    };
+  },
+  buildAgreementPreviewHtml(agreement = {}, items = []) {
+    const agreementData = agreement && typeof agreement === 'object' ? agreement : {};
+    const normalizedItems = (Array.isArray(items) ? items : []).map((item, index) => {
+      const normalized = this.normalizeItem(item);
+      if (!normalized.line_no) normalized.line_no = index + 1;
+      return normalized;
+    });
+    const currency = String(agreementData.currency || '').trim().toUpperCase();
+    const money = value => this.formatMoneyWithCurrency(this.toNumberSafe(value), currency, false);
+    const dateValue = value => {
+      const raw = String(value || '').trim();
+      if (!raw) return '—';
+      const formatted = U.fmtDisplayDate(raw);
+      return formatted && formatted !== 'Invalid Date' ? formatted : raw;
+    };
+    const textValue = value => {
+      const text = String(value ?? '').trim();
+      return text ? U.escapeHtml(text) : '—';
+    };
+    const boolValue = value => {
+      const normalized = String(value ?? '').trim().toLowerCase();
+      if (!normalized) return '—';
+      if (['true', 'yes', 'y', '1', 'signed'].includes(normalized)) return 'Yes';
+      if (['false', 'no', 'n', '0', 'unsigned'].includes(normalized)) return 'No';
+      return U.escapeHtml(String(value));
+    };
+    const sectionLabel = section => {
+      const normalized = String(section || '').trim().toLowerCase();
+      if (normalized === 'annual_saas') return 'Annual SaaS';
+      if (normalized === 'one_time_fee') return 'One-Time Fee';
+      if (normalized === 'capability') return 'Capability';
+      return normalized ? normalized.replace(/[_-]+/g, ' ').replace(/\b\w/g, m => m.toUpperCase()) : 'General';
+    };
+
+    const groupedItems = new Map();
+    normalizedItems.forEach((item, index) => {
+      const key = String(item.section || '').trim() || 'general';
+      if (!groupedItems.has(key)) groupedItems.set(key, []);
+      groupedItems.get(key).push({ ...item, line_no: item.line_no || index + 1 });
+    });
+
+    const rowsHtml = rows =>
+      rows.map(item => {
+        const quantity = this.toNumberSafe(item.quantity);
+        const unitPrice = this.toNumberSafe(item.unit_price);
+        const discountPercent = this.toNumberSafe(item.discount_percent);
+        const discountRatio = discountPercent > 1 ? discountPercent / 100 : discountPercent;
+        const discountedUnitPrice =
+          this.toNumberSafe(item.discounted_unit_price) ||
+          unitPrice * (1 - Math.max(0, discountRatio));
+        const lineTotal = this.toNumberSafe(item.line_total) || discountedUnitPrice * quantity;
+        return `<tr>
+            <td class="cell-center nowrap">${U.escapeHtml(String(item.line_no || '—'))}</td>
+            <td class="cell-left">${textValue(item.location_name)}</td>
+            <td class="cell-left">${textValue(item.item_name || item.capability_name)}</td>
+            <td class="cell-center nowrap">${quantity ? U.escapeHtml(String(quantity)) : '—'}</td>
+            <td class="cell-center nowrap">${money(unitPrice)}</td>
+            <td class="cell-center nowrap">${U.escapeHtml(String(discountPercent || 0))}%</td>
+            <td class="cell-center nowrap">${money(discountedUnitPrice)}</td>
+            <td class="cell-center nowrap">${money(lineTotal)}</td>
+          </tr>`;
+      }).join('');
+
+    const sectionsHtml = groupedItems.size
+      ? [...groupedItems.entries()]
+          .map(([section, rows], sectionIndex) => `<section class="agreement-items-section${sectionIndex ? ' section-spaced' : ''}">
+            <div class="agreement-section-title">${U.escapeHtml(sectionLabel(section))}</div>
+            <table class="agreement-items-table">
+              <colgroup>
+                <col style="width:7%;" />
+                <col style="width:19%;" />
+                <col style="width:28%;" />
+                <col style="width:8%;" />
+                <col style="width:12%;" />
+                <col style="width:10%;" />
+                <col style="width:12%;" />
+                <col style="width:14%;" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>Line</th>
+                  <th>Location</th>
+                  <th>Item</th>
+                  <th>Qty</th>
+                  <th>Unit Price</th>
+                  <th>Discount</th>
+                  <th>Disc. Unit</th>
+                  <th>Line Total</th>
+                </tr>
+              </thead>
+              <tbody>${rowsHtml(rows)}</tbody>
+            </table>
+          </section>`)
+          .join('')
+      : '<div style="padding:12px;border:1px solid #d1d5db;border-radius:8px;color:#6b7280;">No agreement items available.</div>';
+
+    return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Agreement Preview · ${U.escapeHtml(String(agreementData.agreement_id || agreementData.agreement_number || agreementData.id || ''))}</title>
+  <style>
+    .agreement-items-section { margin-top: 12px; }
+    .agreement-items-section.section-spaced { margin-top: 18px; }
+    .agreement-section-title {
+      margin: 0 0 8px 0;
+      padding: 7px 10px;
+      border: 1px solid #d1d5db;
+      border-bottom: none;
+      border-radius: 8px 8px 0 0;
+      font-size: 14px;
+      font-weight: 700;
+      color: #1f2937;
+      background: #eef2f7;
+      letter-spacing: 0.02em;
+    }
+    .agreement-items-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      font-size: 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 0 0 8px 8px;
+      overflow: hidden;
+    }
+    .agreement-items-table th,
+    .agreement-items-table td {
+      border: 1px solid #d1d5db;
+      padding: 8px 10px;
+      vertical-align: middle;
+    }
+    .agreement-items-table th {
+      text-align: center;
+      font-weight: 700;
+      font-size: 12px;
+      color: #1f2937;
+      background: #e5e7eb;
+      min-height: 36px;
+      line-height: 1.25;
+    }
+    .agreement-items-table td {
+      color: #111827;
+      background: #ffffff;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      line-height: 1.35;
+    }
+    .agreement-items-table tbody tr:nth-child(even) td { background: #f9fafb; }
+    .agreement-items-table .cell-center { text-align: center; }
+    .agreement-items-table .cell-left { text-align: left; }
+    .agreement-items-table .nowrap { white-space: nowrap; }
+    .agreement-totals-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      margin-top: 4px;
+    }
+    .agreement-totals-table td {
+      border-bottom: 1px solid #e5e7eb;
+      padding: 8px 6px;
+      vertical-align: middle;
+    }
+    .agreement-totals-table .label { font-weight: 600; color: #374151; }
+    .agreement-totals-table .value {
+      text-align: right;
+      font-weight: 600;
+      color: #111827;
+      white-space: nowrap;
+    }
+    .agreement-totals-table .grand-total td {
+      font-weight: 700;
+      border-top: 2px solid #9ca3af;
+      border-bottom: none;
+      background: #f3f4f6;
+    }
+    .agreement-totals-table .grand-total .value { font-size: 16px; color: #111827; }
+  </style>
+</head>
+<body style="font-family:Inter,Arial,sans-serif;margin:24px;color:#111827;line-height:1.35;">
+  <header style="display:flex;justify-content:space-between;gap:20px;border-bottom:2px solid #e5e7eb;padding-bottom:12px;">
+    <div>
+      <h1 style="margin:0 0 6px 0;font-size:24px;">Agreement</h1>
+      <div style="font-size:14px;color:#4b5563;">${textValue(agreementData.agreement_title || agreementData.agreement_number || agreementData.agreement_id || agreementData.id)}</div>
+    </div>
+    <div style="text-align:right;font-size:12px;">
+      <div><strong>Status:</strong> ${textValue(agreementData.status || 'Draft')}</div>
+      <div><strong>Agreement ID:</strong> ${textValue(agreementData.agreement_id)}</div>
+      <div><strong>Agreement Number:</strong> ${textValue(agreementData.agreement_number)}</div>
+      <div><strong>Date:</strong> ${U.escapeHtml(dateValue(agreementData.agreement_date))}</div>
+      <div><strong>Effective Date:</strong> ${U.escapeHtml(dateValue(agreementData.effective_date))}</div>
+    </div>
+  </header>
+  <section style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;">
+    <article style="border:1px solid #d1d5db;border-radius:8px;padding:10px;">
+      <h2 style="margin:0 0 8px 0;font-size:15px;">Customer</h2>
+      <div><strong>Name:</strong> ${textValue(agreementData.customer_name)}</div>
+      <div><strong>Address:</strong> ${textValue(agreementData.customer_address)}</div>
+      <div><strong>Contact:</strong> ${textValue(agreementData.customer_contact_name)}</div>
+      <div><strong>Mobile:</strong> ${textValue(agreementData.customer_contact_mobile)}</div>
+      <div><strong>Email:</strong> ${textValue(agreementData.customer_contact_email)}</div>
+    </article>
+    <article style="border:1px solid #d1d5db;border-radius:8px;padding:10px;">
+      <h2 style="margin:0 0 8px 0;font-size:15px;">Provider</h2>
+      <div><strong>Contact:</strong> ${textValue(agreementData.provider_contact_name)}</div>
+      <div><strong>Mobile:</strong> ${textValue(agreementData.provider_contact_mobile)}</div>
+      <div><strong>Email:</strong> ${textValue(agreementData.provider_contact_email)}</div>
+      <div><strong>Service Start:</strong> ${U.escapeHtml(dateValue(agreementData.service_start_date))}</div>
+      <div><strong>Contract Term:</strong> ${textValue(agreementData.contract_term || agreementData.agreement_length)}</div>
+    </article>
+  </section>
+  <section style="margin-top:16px;border:1px solid #d1d5db;border-radius:8px;padding:10px;">
+    <h2 style="margin:0 0 8px 0;font-size:15px;">Commercial Terms</h2>
+    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;font-size:12px;">
+      <div><strong>Account Number:</strong> ${textValue(agreementData.account_number)}</div>
+      <div><strong>Billing Frequency:</strong> ${textValue(agreementData.billing_frequency)}</div>
+      <div><strong>Payment Term:</strong> ${textValue(agreementData.payment_term)}</div>
+      <div><strong>PO Number:</strong> ${textValue(agreementData.po_number)}</div>
+      <div><strong>Service Start Date:</strong> ${U.escapeHtml(dateValue(agreementData.service_start_date))}</div>
+      <div><strong>Currency:</strong> ${textValue(currency)}</div>
+    </div>
+  </section>
+  <section style="margin-top:16px;">
+    <h2 style="margin:0 0 8px 0;font-size:17px;">Agreement Items</h2>
+    ${sectionsHtml}
+  </section>
+  <section style="margin-top:16px;border:1px solid #d1d5db;border-radius:8px;padding:10px;">
+    <h2 style="margin:0 0 8px 0;font-size:15px;">Totals</h2>
+    <table class="agreement-totals-table">
+      <tbody>
+        <tr><td class="label">Subtotal Locations</td><td class="value">${money(agreementData.subtotal_locations || agreementData.saas_total)}</td></tr>
+        <tr><td class="label">Subtotal One-Time</td><td class="value">${money(agreementData.subtotal_one_time || agreementData.one_time_total)}</td></tr>
+        <tr><td class="label">Total Discount</td><td class="value">${money(agreementData.total_discount)}</td></tr>
+        <tr class="grand-total"><td class="label">Grand Total</td><td class="value">${money(agreementData.grand_total)}</td></tr>
+      </tbody>
+    </table>
+    ${currency ? `<div style="margin-top:8px;color:#6b7280;font-size:12px;">Currency: ${U.escapeHtml(currency)}</div>` : ''}
+  </section>
+  <section style="margin-top:16px;border:1px solid #d1d5db;border-radius:8px;padding:10px;">
+    <h2 style="margin:0 0 8px 0;font-size:15px;">Signature & Approval</h2>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:12px;">
+      <div>
+        <strong>Customer Signatory:</strong> ${textValue(agreementData.customer_signatory_name)}<br/>
+        <strong>Title:</strong> ${textValue(agreementData.customer_signatory_title)}<br/>
+        <strong>Sign Date:</strong> ${U.escapeHtml(dateValue(agreementData.customer_sign_date))}
+      </div>
+      <div>
+        <strong>Provider Signatory:</strong> ${textValue(agreementData.provider_signatory_name_primary || agreementData.provider_signatory_name)}<br/>
+        <strong>Title:</strong> ${textValue(agreementData.provider_signatory_title_primary || agreementData.provider_signatory_title)}<br/>
+        <strong>Sign Date:</strong> ${U.escapeHtml(dateValue(agreementData.provider_sign_date))}
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px;font-size:12px;">
+      <div><strong>GM Signed:</strong> ${boolValue(agreementData.gm_signed)}</div>
+      <div><strong>Financial Controller Signed:</strong> ${boolValue(agreementData.financial_controller_signed)}</div>
+      <div><strong>Signed Date:</strong> ${U.escapeHtml(dateValue(agreementData.signed_date))}</div>
+    </div>
+  </section>
+  <section style="margin-top:16px;border:1px solid #d1d5db;border-radius:8px;padding:10px;">
+    <h2 style="margin:0 0 8px 0;font-size:15px;">Terms & Conditions</h2>
+    <div style="font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere;">${textValue(agreementData.terms_conditions)}</div>
+  </section>
+</body>
+</html>`;
+  },
   async createInvoiceFromAgreement(agreementId) { return Api.createInvoiceFromAgreement(agreementId); },
   extractTechnicalRequest(response) {
     const payload = Api.unwrapApiPayload(response);
@@ -665,13 +973,15 @@ const Agreements = {
       const inputId = `agreementForm${field.replace(/(^|_)([a-z])/g, (_, __, ch) => ch.toUpperCase())}`;
       agreement[field] = v(inputId);
     });
-    agreement.account_number = String(agreement.account_number || '').trim();
+    const agreementDateFields = ['agreement_date', 'effective_date', 'service_start_date', 'provider_sign_date', 'customer_sign_date', 'signed_date'];
+    const normalizedAgreement = this.normalizeDateFieldsForSave(agreement, agreementDateFields);
+    normalizedAgreement.account_number = String(normalizedAgreement.account_number || '').trim();
     const items = this.collectItems();
     const totals = this.calculateTotals(items);
-    agreement.saas_total = totals.saas_total;
-    agreement.one_time_total = totals.one_time_total;
-    agreement.grand_total = totals.grand_total;
-    return { agreement, items };
+    normalizedAgreement.saas_total = totals.saas_total;
+    normalizedAgreement.one_time_total = totals.one_time_total;
+    normalizedAgreement.grand_total = totals.grand_total;
+    return { agreement: normalizedAgreement, items };
   },
   calculateTotals(items = []) {
     const safeItems = Array.isArray(items) ? items : [];
@@ -709,12 +1019,13 @@ const Agreements = {
         notes: get('notes')
       };
       const item = { ...baseItem, ...this.normalizeItem(mergedItem, section) };
+      const normalizedDateItem = this.normalizeDateFieldsForSave(item, ['service_start_date', 'service_end_date']);
       if (section === 'annual_saas' || section === 'one_time_fee') {
-        const discount = item.discount_percent > 1 ? item.discount_percent / 100 : item.discount_percent;
-        item.discounted_unit_price = item.unit_price * (1 - Math.max(0, discount));
-        item.line_total = item.discounted_unit_price * (item.quantity || 0);
+        const discount = normalizedDateItem.discount_percent > 1 ? normalizedDateItem.discount_percent / 100 : normalizedDateItem.discount_percent;
+        normalizedDateItem.discounted_unit_price = normalizedDateItem.unit_price * (1 - Math.max(0, discount));
+        normalizedDateItem.line_total = normalizedDateItem.discounted_unit_price * (normalizedDateItem.quantity || 0);
       }
-      return item;
+      return normalizedDateItem;
     });
   },
   renderItemRows(items = []) {
@@ -864,17 +1175,29 @@ const Agreements = {
     const { agreement, items } = this.collectFormValues();
     const currentRecord = this.state.rows.find(row => String(row.id || '') === id) || {};
     const requestedDiscount = items.reduce((max, item) => Math.max(max, this.toNumberSafe(item.discount_percent)), 0);
-    const workflowCheck = await window.WorkflowEngine?.enforceBeforeSave?.('agreements', currentRecord, {
-      agreement_id: id,
-      id,
-      current_status: currentRecord?.status || '',
-      requested_status: agreement.status || '',
-      discount_percent: requestedDiscount,
-      requested_changes: { agreement, items }
-    });
-    if (workflowCheck && !workflowCheck.allowed) {
-      UI.toast(window.WorkflowEngine.composeDeniedMessage(workflowCheck, 'Agreement save blocked.'));
-      return;
+    const normalizeStatus = value => String(value || '').trim().toLowerCase();
+    const currentStatus = String(currentRecord?.status || '').trim();
+    agreement.status = String(agreement.status || '').trim() || currentStatus || 'Draft';
+    const currentStatusNormalized = normalizeStatus(currentStatus);
+    const requestedStatusNormalized = normalizeStatus(agreement.status);
+    const isNewAgreement = !id;
+    const isNoTransition = currentStatusNormalized === requestedStatusNormalized;
+    const isBlankToDraft = !currentStatusNormalized && requestedStatusNormalized === 'draft';
+    const hasMeaningfulStatusTransition = !isNewAgreement && !isNoTransition && !isBlankToDraft;
+
+    if (hasMeaningfulStatusTransition) {
+      const workflowCheck = await window.WorkflowEngine?.enforceBeforeSave?.('agreements', currentRecord, {
+        agreement_id: id,
+        id,
+        current_status: currentStatus,
+        requested_status: agreement.status || '',
+        discount_percent: requestedDiscount,
+        requested_changes: { agreement, items }
+      });
+      if (workflowCheck && !workflowCheck.allowed) {
+        UI.toast(window.WorkflowEngine.composeDeniedMessage(workflowCheck, 'Agreement save blocked.'));
+        return;
+      }
     }
     this.state.saveInFlight = true;
     this.setFormBusy(true);
@@ -946,14 +1269,15 @@ const Agreements = {
       return;
     }
     try {
-      const response = await this.generateAgreementHtml(agreementId);
-      const html = String(response?.html || response?.agreement_html || response?.content || response || '').trim();
+      const { agreement, items } = await this.loadAgreementPreviewData(agreementId);
+      const html = this.buildAgreementPreviewHtml(agreement, items);
       if (!html) {
-        UI.toast('No agreement HTML was returned by backend.');
+        UI.toast('Unable to build agreement preview.');
         return;
       }
       const brandedHtml = U.addIncheckDocumentLogo(U.formatPreviewHtmlDates(html));
-      if (E.agreementPreviewTitle) E.agreementPreviewTitle.textContent = `Agreement Preview · ${agreementId}`;
+      const previewLabel = String(agreement?.agreement_id || agreement?.agreement_number || agreement?.id || agreementId).trim();
+      if (E.agreementPreviewTitle) E.agreementPreviewTitle.textContent = `Agreement Preview · ${previewLabel}`;
       if (E.agreementPreviewFrame) E.agreementPreviewFrame.srcdoc = brandedHtml;
       if (E.agreementPreviewModal) {
         E.agreementPreviewModal.classList.add('open');
@@ -1203,7 +1527,7 @@ const Agreements = {
     if (E.agreementFormDeleteBtn) E.agreementFormDeleteBtn.addEventListener('click', () => this.deleteById(E.agreementForm?.dataset.id || ''));
     if (E.agreementFormPreviewBtn) E.agreementFormPreviewBtn.addEventListener('click', () => {
       const id = String(E.agreementForm?.dataset.id || '').trim();
-      if (!id) return UI.toast('Save the agreement first to preview backend-generated HTML.');
+      if (!id) return UI.toast('Save the agreement first to preview.');
       this.previewAgreementHtml(id);
     });
 
