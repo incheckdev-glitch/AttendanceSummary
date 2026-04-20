@@ -2,31 +2,31 @@
   const runtimeConfig = global.RUNTIME_CONFIG || {};
 
   const supabaseUrl = String(
-    runtimeConfig.SUPABASE_URL || runtimeConfig.NEXT_PUBLIC_SUPABASE_URL || global.SUPABASE_URL || ''
+    runtimeConfig.SUPABASE_URL || global.SUPABASE_URL || ''
   ).trim();
   const supabaseAnonKey = String(
-    runtimeConfig.SUPABASE_ANON_KEY || runtimeConfig.NEXT_PUBLIC_SUPABASE_ANON_KEY || global.SUPABASE_ANON_KEY || ''
+    runtimeConfig.SUPABASE_ANON_KEY || global.SUPABASE_ANON_KEY || ''
   ).trim();
 
-  let cachedClient = null;
+  const SHARED_CLIENT_KEY = '__SUPABASE_BROWSER_CLIENT__';
 
   function ensureBrowserClient() {
-    if (cachedClient) return cachedClient;
+    if (global[SHARED_CLIENT_KEY]) return global[SHARED_CLIENT_KEY];
     if (!supabaseUrl || !supabaseAnonKey) {
-      throw new Error('Supabase is not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY in runtime config.');
+      throw new Error('Missing Supabase URL or anon key.');
     }
     const createClient = global.supabase?.createClient;
     if (typeof createClient !== 'function') {
       throw new Error('Supabase SDK is unavailable. Ensure supabase-js is loaded before app scripts.');
     }
-    cachedClient = createClient(supabaseUrl, supabaseAnonKey, {
+    global[SHARED_CLIENT_KEY] = createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true
       }
     });
-    return cachedClient;
+    return global[SHARED_CLIENT_KEY];
   }
 
   global.SupabaseClient = {
