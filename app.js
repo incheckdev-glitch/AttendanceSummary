@@ -2910,9 +2910,7 @@ function parseBoolean(value) {
 const RESTRICTED_VIEWER_FIELDS = ['youtrackReference', 'devTeamStatus', 'issueRelated', 'notes'];
 
 function getCurrentAuthToken() {
-  return typeof Session?.getAuthToken === 'function'
-    ? Session.getAuthToken()
-    : String(Session?.authContext?.().authToken || '');
+  return '';
 }
 
 function buildTicketListFiltersPayload() {
@@ -5967,11 +5965,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   let isAuthenticated = Session.isAuthenticated();
   try {
-    const valid = await Session.validateSession();
-    if (!valid) {
-      await handleExpiredSession('No valid session found. Please log in.');
-    } else {
+    const restored = await Session.restore();
+    if (restored) {
       await Permissions.loadMatrix(true);
+      UI.applyRolePermissions();
       isAuthenticated = true;
     }
   } catch (error) {
