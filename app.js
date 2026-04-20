@@ -4496,12 +4496,22 @@ function wireDashboardGate() {
     window.location.hash = '#loginSection';
   };
 
+  const syncAuthUi = () => {
+    const isAuthenticated = Session.isAuthenticated();
+    UI.applyRolePermissions();
+    if (isAuthenticated) unlockApp();
+    else lockApp();
+  };
+
   lockApp();
   UI.applyRolePermissions();
 
   if (Session.isAuthenticated()) {
     unlockApp();
   }
+  Session.subscribe(() => {
+    syncAuthUi();
+  });
 
   E.loginForm.addEventListener('submit', async event => {
     event.preventDefault();
@@ -5914,7 +5924,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       console.warn('[startup/auth] Initial auth health check failed', error);
     });
   }
-  const hadSession = Session.restore();
+  Session.ensureReactiveAuthState();
   Filters.load();
   ColumnManager.load();
   SavedViews.load();
@@ -5956,26 +5966,21 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (window.Notifications?.wire) Notifications.wire();
 
   let isAuthenticated = Session.isAuthenticated();
-  if (hadSession) {
-    try {
-      const valid = await Session.validateSession();
-      if (!valid) {
-        await handleExpiredSession('Saved session is invalid or expired. Please log in again.');
-      } else {
-        await Permissions.loadMatrix(true);
-        isAuthenticated = true;
-      }
-    } catch (error) {
+  try {
+    const valid = await Session.validateSession();
+    if (!valid) {
+      await handleExpiredSession('No valid session found. Please log in.');
+    } else {
+      await Permissions.loadMatrix(true);
+      isAuthenticated = true;
+    }
+  } catch (error) {
+    const message = String(error?.message || '');
+    if (/inactive/.test(message.toLowerCase())) {
+      await handleExpiredSession(message);
+    } else {
       await handleExpiredSession('Unable to restore session. Please log in again.');
     }
-  } else {
-    try {
-      const valid = await Session.validateSession();
-      if (valid) {
-        await Permissions.loadMatrix(true);
-        isAuthenticated = true;
-      }
-    } catch {}
   }
 
   loadFreezeWindowsCache();
