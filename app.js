@@ -4513,7 +4513,7 @@ function wireDashboardGate() {
 
   E.loginForm.addEventListener('submit', async event => {
     event.preventDefault();
-    const identifier = String(E.loginIdentifier.value || '');
+    const identifier = String(E.loginIdentifier.value || '').trim();
     const passcode = String(E.loginPasscode.value || '');
     const defaultLoginBtnLabel = E.loginBtn?.dataset?.defaultLabel || E.loginBtn?.textContent || 'LOG IN';
     if (E.loginBtn) {
@@ -4523,8 +4523,18 @@ function wireDashboardGate() {
       E.loginBtn.setAttribute('aria-busy', 'true');
     }
 
-    if (!identifier.trim()) {
-      UI.toast('Username or email is required.');
+    if (!identifier) {
+      UI.toast('Email is required.');
+      if (E.loginBtn) {
+        E.loginBtn.disabled = false;
+        E.loginBtn.textContent = defaultLoginBtnLabel;
+        E.loginBtn.removeAttribute('aria-busy');
+      }
+      return;
+    }
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailPattern.test(identifier)) {
+      UI.toast('Enter a valid email address.');
       if (E.loginBtn) {
         E.loginBtn.disabled = false;
         E.loginBtn.textContent = defaultLoginBtnLabel;
@@ -4563,8 +4573,8 @@ function wireDashboardGate() {
     } catch (error) {
       const message = String(error?.message || '').toLowerCase();
 
-      if (/invalid|credential|password|passcode|identifier|unauthorized/.test(message)) {
-        UI.toast('Invalid credentials. Please check your username/email and password.');
+      if (/invalid|credential|password|passcode|identifier|unauthorized|email/.test(message)) {
+        UI.toast('Invalid credentials. Please check your email and password.');
       } else if (/inactive/.test(message)) {
         UI.toast('Your account is inactive. Please contact an administrator.');
       } else if (/failed before a response|network|cors|unreachable/.test(message)) {
