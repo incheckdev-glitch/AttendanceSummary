@@ -585,33 +585,43 @@ const Proposals = {
             unitPrice * (1 - this.normalizeDiscount(discountPercent));
           const lineTotal = this.toNumberSafe(item.line_total) || discountedUnitPrice * quantity;
           return `<tr>
-            <td>${U.escapeHtml(String(item.line_no || '—'))}</td>
-            <td>${textValue(item.location_name)}</td>
-            <td>${textValue(item.item_name || item.capability_name)}</td>
-            <td style="text-align:right;">${quantity ? U.escapeHtml(String(quantity)) : '—'}</td>
-            <td style="text-align:right;">${money(unitPrice)}</td>
-            <td style="text-align:right;">${discountPercent ? `${U.escapeHtml(String(discountPercent))}%` : '0%'}</td>
-            <td style="text-align:right;">${money(discountedUnitPrice)}</td>
-            <td style="text-align:right;">${money(lineTotal)}</td>
+            <td class="cell-center nowrap">${U.escapeHtml(String(item.line_no || '—'))}</td>
+            <td class="cell-left">${textValue(item.location_name)}</td>
+            <td class="cell-left">${textValue(item.item_name || item.capability_name)}</td>
+            <td class="cell-center nowrap">${quantity ? U.escapeHtml(String(quantity)) : '—'}</td>
+            <td class="cell-center nowrap">${money(unitPrice)}</td>
+            <td class="cell-center nowrap">${discountPercent ? `${U.escapeHtml(String(discountPercent))}%` : '0%'}</td>
+            <td class="cell-center nowrap">${money(discountedUnitPrice)}</td>
+            <td class="cell-center nowrap">${money(lineTotal)}</td>
           </tr>`;
         })
         .join('');
 
     const sectionsHtml = groupedItems.size
       ? [...groupedItems.entries()]
-          .map(([section, rows]) => `<section style="margin-top:18px;">
-            <h3 style="margin:0 0 8px 0;font-size:16px;color:#1f2937;">${U.escapeHtml(sectionLabel(section))}</h3>
-            <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          .map(([section, rows], sectionIndex) => `<section class="proposal-items-section${sectionIndex ? ' section-spaced' : ''}">
+            <div class="proposal-section-title">${U.escapeHtml(sectionLabel(section))}</div>
+            <table class="proposal-items-table">
+              <colgroup>
+                <col style="width:7%;" />
+                <col style="width:19%;" />
+                <col style="width:28%;" />
+                <col style="width:8%;" />
+                <col style="width:12%;" />
+                <col style="width:10%;" />
+                <col style="width:12%;" />
+                <col style="width:14%;" />
+              </colgroup>
               <thead>
                 <tr>
-                  <th style="text-align:left;border:1px solid #d1d5db;padding:6px;">Line</th>
-                  <th style="text-align:left;border:1px solid #d1d5db;padding:6px;">Location</th>
-                  <th style="text-align:left;border:1px solid #d1d5db;padding:6px;">Item</th>
-                  <th style="text-align:right;border:1px solid #d1d5db;padding:6px;">Qty</th>
-                  <th style="text-align:right;border:1px solid #d1d5db;padding:6px;">Unit Price</th>
-                  <th style="text-align:right;border:1px solid #d1d5db;padding:6px;">Discount</th>
-                  <th style="text-align:right;border:1px solid #d1d5db;padding:6px;">Disc. Unit</th>
-                  <th style="text-align:right;border:1px solid #d1d5db;padding:6px;">Line Total</th>
+                  <th>Line</th>
+                  <th>Location</th>
+                  <th>Item</th>
+                  <th>Qty</th>
+                  <th>Unit Price</th>
+                  <th>Discount</th>
+                  <th>Disc. Unit</th>
+                  <th>Line Total</th>
                 </tr>
               </thead>
               <tbody>${rowsHtml(rows)}</tbody>
@@ -625,6 +635,96 @@ const Proposals = {
 <head>
   <meta charset="utf-8" />
   <title>Proposal Preview · ${U.escapeHtml(String(proposalData.proposal_id || proposalData.id || ''))}</title>
+  <style>
+    .proposal-items-section { margin-top: 12px; }
+    .proposal-items-section.section-spaced { margin-top: 18px; }
+    .proposal-section-title {
+      margin: 0 0 8px 0;
+      padding: 7px 10px;
+      border: 1px solid #d1d5db;
+      border-bottom: none;
+      border-radius: 8px 8px 0 0;
+      font-size: 14px;
+      font-weight: 700;
+      color: #1f2937;
+      background: #eef2f7;
+      letter-spacing: 0.02em;
+    }
+    .proposal-items-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      font-size: 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 0 0 8px 8px;
+      overflow: hidden;
+    }
+    .proposal-items-table th,
+    .proposal-items-table td {
+      border: 1px solid #d1d5db;
+      padding: 8px 10px;
+      vertical-align: middle;
+    }
+    .proposal-items-table th {
+      text-align: center;
+      font-weight: 700;
+      font-size: 12px;
+      color: #1f2937;
+      background: #e5e7eb;
+      min-height: 36px;
+      line-height: 1.25;
+    }
+    .proposal-items-table td {
+      color: #111827;
+      background: #ffffff;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      line-height: 1.35;
+    }
+    .proposal-items-table tbody tr:nth-child(even) td {
+      background: #f9fafb;
+    }
+    .proposal-items-table .cell-center {
+      text-align: center;
+    }
+    .proposal-items-table .cell-left {
+      text-align: left;
+    }
+    .proposal-items-table .nowrap {
+      white-space: nowrap;
+    }
+    .proposal-totals-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      margin-top: 4px;
+    }
+    .proposal-totals-table td {
+      border-bottom: 1px solid #e5e7eb;
+      padding: 8px 6px;
+      vertical-align: middle;
+    }
+    .proposal-totals-table .label {
+      font-weight: 600;
+      color: #374151;
+    }
+    .proposal-totals-table .value {
+      text-align: right;
+      font-weight: 600;
+      color: #111827;
+      white-space: nowrap;
+    }
+    .proposal-totals-table .grand-total td {
+      font-weight: 700;
+      border-top: 2px solid #9ca3af;
+      border-bottom: none;
+      background: #f3f4f6;
+    }
+    .proposal-totals-table .grand-total .value {
+      font-size: 16px;
+      color: #111827;
+    }
+  </style>
 </head>
 <body style="font-family:Inter,Arial,sans-serif;margin:24px;color:#111827;line-height:1.35;">
   <header style="display:flex;justify-content:space-between;gap:20px;border-bottom:2px solid #e5e7eb;padding-bottom:12px;">
@@ -675,12 +775,26 @@ const Proposals = {
   </section>
   <section style="margin-top:16px;border:1px solid #d1d5db;border-radius:8px;padding:10px;">
     <h2 style="margin:0 0 8px 0;font-size:15px;">Totals</h2>
-    <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;font-size:13px;">
-      <div><strong>Subtotal Locations:</strong><br/>${money(proposalData.subtotal_locations || proposalData.saas_total)}</div>
-      <div><strong>Subtotal One-Time:</strong><br/>${money(proposalData.subtotal_one_time || proposalData.one_time_total)}</div>
-      <div><strong>Total Discount:</strong><br/>${money(proposalData.total_discount)}</div>
-      <div><strong>Grand Total:</strong><br/><span style="font-size:16px;font-weight:700;">${money(proposalData.grand_total)}</span></div>
-    </div>
+    <table class="proposal-totals-table">
+      <tbody>
+        <tr>
+          <td class="label">Subtotal Locations</td>
+          <td class="value">${money(proposalData.subtotal_locations || proposalData.saas_total)}</td>
+        </tr>
+        <tr>
+          <td class="label">Subtotal One-Time</td>
+          <td class="value">${money(proposalData.subtotal_one_time || proposalData.one_time_total)}</td>
+        </tr>
+        <tr>
+          <td class="label">Total Discount</td>
+          <td class="value">${money(proposalData.total_discount)}</td>
+        </tr>
+        <tr class="grand-total">
+          <td class="label">Grand Total</td>
+          <td class="value">${money(proposalData.grand_total)}</td>
+        </tr>
+      </tbody>
+    </table>
     ${currency ? `<div style="margin-top:8px;color:#6b7280;font-size:12px;">Currency: ${U.escapeHtml(currency)}</div>` : ''}
   </section>
   <section style="margin-top:16px;border:1px solid #d1d5db;border-radius:8px;padding:10px;">
