@@ -415,17 +415,43 @@ const Proposals = {
     return Api.postAuthenticated('proposals', 'get', { id: proposalId });
   },
   async createProposal(proposal, items) {
-    return Api.postAuthenticated('proposals', 'create', { proposal, items });
+    return Api.postAuthenticated('proposals', 'create', {
+      proposal: this.prepareProposalForSave(proposal),
+      items
+    });
   },
   async saveProposal(proposal, items) {
-    return Api.postAuthenticated('proposals', 'save', { proposal, items });
+    return Api.postAuthenticated('proposals', 'save', {
+      proposal: this.prepareProposalForSave(proposal),
+      items
+    });
   },
   async updateProposal(proposalId, updates, items) {
     return Api.postAuthenticated('proposals', 'update', {
       id: proposalId,
-      updates,
+      updates: this.prepareProposalForSave(updates),
       items
     });
+  },
+  normalizeDateForSave(value) {
+    const trimmed = String(value ?? '').trim();
+    return trimmed || null;
+  },
+  prepareProposalForSave(proposal = {}) {
+    const sanitized = { ...(proposal && typeof proposal === 'object' ? proposal : {}) };
+    [
+      'proposal_date',
+      'proposal_valid_until',
+      'valid_until',
+      'service_start_date',
+      'customer_sign_date',
+      'provider_sign_date'
+    ].forEach(field => {
+      if (Object.prototype.hasOwnProperty.call(sanitized, field)) {
+        sanitized[field] = this.normalizeDateForSave(sanitized[field]);
+      }
+    });
+    return sanitized;
   },
   async deleteProposal(proposalId) {
     return Api.postAuthenticated('proposals', 'delete', { id: proposalId });
