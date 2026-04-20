@@ -1402,21 +1402,72 @@ const Proposals = {
     }
   },
   getCreatedProposalId(response) {
+    const parseJsonIfNeeded = value => {
+      if (typeof value !== 'string') return value;
+      const trimmed = value.trim();
+      if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) return value;
+      try {
+        return JSON.parse(trimmed);
+      } catch {
+        return value;
+      }
+    };
+    const isUuid = value =>
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        String(value || '').trim()
+      );
+    const fromDirectString = String(response || '').trim();
+    if (isUuid(fromDirectString)) return fromDirectString;
+
     const candidates = [
-      response?.proposal,
-      response?.data?.proposal,
-      response?.result?.proposal,
-      response?.payload?.proposal,
-      response?.created_proposal,
-      response?.createdProposal,
-      response
+      parseJsonIfNeeded(response),
+      parseJsonIfNeeded(response?.data),
+      parseJsonIfNeeded(response?.result),
+      parseJsonIfNeeded(response?.payload),
+      parseJsonIfNeeded(response?.proposal),
+      parseJsonIfNeeded(response?.data?.proposal),
+      parseJsonIfNeeded(response?.result?.proposal),
+      parseJsonIfNeeded(response?.payload?.proposal),
+      parseJsonIfNeeded(response?.created_proposal),
+      parseJsonIfNeeded(response?.createdProposal)
     ];
     for (const candidate of candidates) {
+      if (Array.isArray(candidate)) {
+        for (const entry of candidate) {
+          if (!entry || typeof entry !== 'object') continue;
+          const arrayId = String(
+            entry.id || entry.proposal_uuid || entry.proposal_id_uuid || entry.created_proposal_uuid || ''
+          ).trim();
+          if (isUuid(arrayId)) return arrayId;
+        }
+        continue;
+      }
       if (!candidate || typeof candidate !== 'object') continue;
-      const id = String(candidate.id || candidate.proposal_uuid || candidate.proposal_id_uuid || '').trim();
-      if (id) return id;
+      const id = String(
+        candidate.id ||
+          candidate.proposal_uuid ||
+          candidate.proposal_id_uuid ||
+          candidate.created_proposal_uuid ||
+          candidate.created_uuid ||
+          ''
+      ).trim();
+      if (isUuid(id)) return id;
     }
     return '';
+  },
+  async findCreatedProposalUuidByDealId(dealUuid) {
+    const id = String(dealUuid || '').trim();
+    if (!id) return '';
+    const response = await Api.postAuthenticated('proposals', 'list', {
+      deal_id: id,
+      limit: 1,
+      page: 1,
+      sort_by: 'created_at',
+      sort_dir: 'desc'
+    });
+    const rows = this.extractRows(response);
+    const first = Array.isArray(rows) && rows.length ? this.normalizeProposal(rows[0]) : null;
+    return String(first?.id || '').trim();
   },
   async createFromDealFlow(dealId, { openAfterCreate = true } = {}) {
     if (!Permissions.canCreateProposalFromDeal()) {
@@ -1435,11 +1486,13 @@ const Proposals = {
     }
     try {
       const response = await this.createFromDeal(trimmedDealId);
-      const createdProposalUuid = this.getCreatedProposalId(response);
+      let createdProposalUuid = this.getCreatedProposalId(response);
+      if (!createdProposalUuid) {
+        createdProposalUuid = await this.findCreatedProposalUuidByDealId(trimmedDealId);
+      }
       await this.loadAndRefresh({ force: true });
-      const targetId = createdProposalUuid || String(response?.id || '').trim();
-      if (targetId && openAfterCreate) {
-        await this.openProposalFormById(targetId, { readOnly: false });
+      if (createdProposalUuid && openAfterCreate) {
+        await this.openProposalFormById(createdProposalUuid, { readOnly: false });
       }
       UI.toast('Proposal created from deal.');
     } catch (error) {
