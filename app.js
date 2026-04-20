@@ -4472,6 +4472,7 @@ function wireDashboardGate() {
   };
 
   const unlockApp = () => {
+    console.info('[wireDashboardGate.unlockApp] unlocking app UI');
     document.body.classList.remove('auth-locked');
     E.app.classList.remove('is-locked');
     E.app.setAttribute('aria-hidden', 'false');
@@ -4483,6 +4484,7 @@ function wireDashboardGate() {
     if (window.location.hash) {
       history.replaceState(null, '', window.location.pathname + window.location.search);
     }
+    console.info('[wireDashboardGate.unlockApp] app unlocked');
   };
 
   const lockApp = () => {

@@ -65,6 +65,11 @@ const Session = {
       .select('id, name, email, username, role_key, is_active')
       .eq('id', id)
       .single();
+    console.info('[Session.fetchProfile] result', {
+      userId: id,
+      hasData: Boolean(data),
+      error: error ? { message: error.message, code: error.code, status: error.status } : null
+    });
     if (error) throw new Error(`Unable to load user profile: ${error.message}`);
     if (!data?.is_active) {
       await client.auth.signOut();
@@ -84,12 +89,22 @@ const Session = {
 
     const client = SupabaseClient.getClient();
     const { data, error } = await client.auth.signInWithPassword({ email, password });
+    console.info('[Session.login] signInWithPassword result', {
+      email,
+      hasSession: Boolean(data?.session),
+      hasUser: Boolean(data?.user),
+      error: error ? { message: error.message, status: error.status } : null
+    });
     if (error) throw new Error(error.message || 'Login failed.');
 
     const { data: sessionData, error: sessionError } = await client.auth.getSession();
     if (sessionError) throw new Error(sessionError.message || 'Unable to load logged-in session.');
 
     const { data: userData, error: userError } = await client.auth.getUser();
+    console.info('[Session.login] getUser result', {
+      hasUser: Boolean(userData?.user),
+      error: userError ? { message: userError.message, status: userError.status } : null
+    });
     if (userError && !sessionData?.session?.user) {
       throw new Error(userError.message || 'Unable to load logged-in user.');
     }
@@ -176,7 +191,16 @@ const Session = {
     const hasSessionToken = Boolean(this.state.session?.access_token);
     const hasUser = Boolean(this.state.user?.id || this.state.session?.user?.id);
     const hasRole = Boolean(String(this.state.role || '').trim());
-    return hasSessionToken && hasUser && hasRole;
+    const result = hasSessionToken && hasUser && hasRole;
+    console.info('[Session.isAuthenticated] result', {
+      result,
+      hasSessionToken,
+      hasUser,
+      hasRole,
+      userId: this.state.user?.id || this.state.session?.user?.id || null,
+      role: this.state.role || null
+    });
+    return result;
   },
   role() { return this.state.role || null; },
   username() { return this.state.username || ''; },

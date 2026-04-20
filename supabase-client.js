@@ -40,4 +40,5 @@
       return ensureBrowserClient();
     }
   };
+  console.info('[SupabaseClient] Active runtime client: supabase-client.js');
 })(window);
