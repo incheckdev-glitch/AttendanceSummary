@@ -117,16 +117,13 @@ const Proposals = {
       const value = source[field] ?? source[camel] ?? '';
       normalized[field] = typeof value === 'string' ? value.trim() : value;
     });
-    normalized.id = String(source.id || normalized.id || '').trim();
-    normalized.proposal_id = String(normalized.proposal_id || '').trim();
+    normalized.proposal_id = String(normalized.proposal_id || source.id || '').trim();
     normalized.ref_number = this.ensureRefNumber(normalized.ref_number || '');
     normalized.proposal_title = String(normalized.proposal_title || '').trim();
     normalized.customer_name = String(normalized.customer_name || '').trim();
     normalized.status = String(normalized.status || '').trim();
     normalized.currency = String(normalized.currency || '').trim();
     normalized.deal_id = String(normalized.deal_id || '').trim();
-    normalized.proposal_valid_until = String(source.proposal_valid_until || source.proposalValidUntil || normalized.valid_until || '').trim();
-    normalized.valid_until = String(normalized.valid_until || normalized.proposal_valid_until || '').trim();
     normalized.agreement_id = String(source.agreement_id ?? source.agreementId ?? normalized.agreement_id ?? '').trim();
     normalized.generated_by = String(normalized.generated_by || '').trim();
     return normalized;
@@ -209,8 +206,7 @@ const Proposals = {
       .trim()
       .toLowerCase();
     const normalized = {
-      id: String(source.id || '').trim(),
-      item_id: String(pick(source.item_id, source.itemId)).trim(),
+      item_id: String(pick(source.item_id, source.itemId, source.id)).trim(),
       proposal_id: String(pick(source.proposal_id, source.proposalId)).trim(),
       catalog_item_id: String(pick(source.catalog_item_id, source.catalogItemId)).trim(),
       section,
@@ -316,7 +312,7 @@ const Proposals = {
     }
 
     return {
-      proposal: this.normalizeProposal(proposal || { id: fallbackId }),
+      proposal: this.normalizeProposal(proposal || { proposal_id: fallbackId }),
       items: Array.isArray(items) ? items.map(item => this.normalizeItem(item)) : []
     };
   },
@@ -332,7 +328,7 @@ const Proposals = {
     const cacheKey = String(id || '').trim();
     if (!cacheKey) return;
     this.state.detailCacheById[cacheKey] = {
-      proposal: this.normalizeProposal(proposal || { id: cacheKey }),
+      proposal: this.normalizeProposal(proposal || { proposal_id: cacheKey }),
       items: Array.isArray(items) ? items.map(item => this.normalizeItem(item)) : [],
       cachedAt: Date.now()
     };
@@ -380,13 +376,13 @@ const Proposals = {
   },
   upsertLocalRow(row) {
     const normalized = this.normalizeProposal(row);
-    const idx = this.state.rows.findIndex(item => String(item.id || '') === String(normalized.id || ''));
+    const idx = this.state.rows.findIndex(item => String(item.proposal_id || '') === String(normalized.proposal_id || ''));
     if (idx === -1) this.state.rows.unshift(normalized);
     else this.state.rows[idx] = { ...this.state.rows[idx], ...normalized };
     this.rerenderVisibleTable();
   },
   removeLocalRow(id) {
-    this.state.rows = this.state.rows.filter(item => String(item.id || '') !== String(id || ''));
+    this.state.rows = this.state.rows.filter(item => String(item.proposal_id || '') !== String(id || ''));
     this.rerenderVisibleTable();
   },
   rerenderVisibleTable() {
@@ -395,7 +391,7 @@ const Proposals = {
     this.render();
   },
   async getProposal(proposalId) {
-    return Api.postAuthenticated('proposals', 'get', { id: proposalId });
+    return Api.postAuthenticated('proposals', 'get', { proposal_id: proposalId });
   },
   async createProposal(proposal, items) {
     return Api.postAuthenticated('proposals', 'create', { proposal, items });
@@ -405,16 +401,16 @@ const Proposals = {
   },
   async updateProposal(proposalId, updates, items) {
     return Api.postAuthenticated('proposals', 'update', {
-      id: proposalId,
+      proposal_id: proposalId,
       updates,
       items
     });
   },
   async deleteProposal(proposalId) {
-    return Api.postAuthenticated('proposals', 'delete', { id: proposalId });
+    return Api.postAuthenticated('proposals', 'delete', { proposal_id: proposalId });
   },
   async createFromDeal(dealId) {
-    return Api.postAuthenticated('proposals', 'create_from_deal', { id: dealId });
+    return Api.postAuthenticated('proposals', 'create_from_deal', { deal_id: dealId });
   },
   async generateProposalHtml(proposalId) {
     return Api.postAuthenticated('proposals', 'generate_proposal_html', { proposal_id: proposalId });
@@ -688,7 +684,7 @@ const Proposals = {
 
     E.proposalsTbody.innerHTML = rows
       .map(row => {
-        const id = U.escapeAttr(row.id || '');
+        const id = U.escapeAttr(row.proposal_id || '');
         return `<tr>
           <td>${textCell(row.proposal_id)}</td>
           <td>${textCell(row.ref_number)}</td>
@@ -1087,7 +1083,7 @@ const Proposals = {
       proposal_title: String(E.proposalFormTitleField?.value || '').trim(),
       deal_id: String(E.proposalFormDealId?.value || '').trim(),
       proposal_date: String(E.proposalFormProposalDate?.value || '').trim(),
-      proposal_valid_until: String(E.proposalFormValidUntil?.value || '').trim(),
+      valid_until: String(E.proposalFormValidUntil?.value || '').trim(),
       status: String(E.proposalFormStatus?.value || '').trim(),
       currency: String(E.proposalFormCurrency?.value || '').trim(),
       customer_name: String(E.proposalFormCustomerName?.value || '').trim(),
@@ -1134,9 +1130,9 @@ const Proposals = {
     this.state.openingProposalIds.add(id);
     this.setTriggerBusy(trigger, true);
     console.time('proposal-open');
-    const localSummary = this.state.rows.find(row => String(row.id || '').trim() === id);
+    const localSummary = this.state.rows.find(row => String(row.proposal_id || '').trim() === id);
     this.openProposalForm(
-      localSummary ? { ...this.emptyProposal(), ...localSummary, id } : { id },
+      localSummary ? { ...this.emptyProposal(), ...localSummary, proposal_id: id } : { proposal_id: id },
       [],
       { readOnly }
     );
@@ -1169,15 +1165,15 @@ const Proposals = {
   openProposalForm(proposal = null, items = [], { readOnly = false } = {}) {
     if (!E.proposalFormModal || !E.proposalForm) return;
     const base = proposal ? this.normalizeProposal(proposal) : this.emptyProposal();
-    const mode = base.id ? 'edit' : 'create';
+    const mode = base.proposal_id ? 'edit' : 'create';
     this.resetForm();
     this.state.formMode = mode;
     this.state.formReadOnly = !!readOnly;
-    this.state.currentProposalId = base.id || '';
+    this.state.currentProposalId = base.proposal_id || '';
     this.state.currentItems = Array.isArray(items) ? items.map(item => this.normalizeItem(item)) : [];
 
     E.proposalForm.dataset.mode = mode;
-    E.proposalForm.dataset.id = base.id || '';
+    E.proposalForm.dataset.id = base.proposal_id || '';
     E.proposalForm.dataset.refNumber = base.ref_number || '';
     this.assignFormValues(base);
     this.renderProposalItems(this.state.currentItems);
@@ -1224,10 +1220,10 @@ const Proposals = {
     const proposalId = String(E.proposalForm?.dataset.id || '').trim();
     const proposal = this.collectProposalFormData();
     const items = this.collectProposalItems();
-    const currentRecord = this.state.rows.find(row => String(row.id || '') === proposalId) || {};
+    const currentRecord = this.state.rows.find(row => String(row.proposal_id || '') === proposalId) || {};
     const requestedDiscount = items.reduce((max, item) => Math.max(max, this.toNumberSafe(item.discount_percent)), 0);
     const workflowCheck = await window.WorkflowEngine?.enforceBeforeSave?.('proposals', currentRecord, {
-      id: proposalId,
+      proposal_id: proposalId,
       current_status: currentRecord?.status || '',
       requested_status: proposal.status || '',
       discount_percent: requestedDiscount,
@@ -1257,7 +1253,7 @@ const Proposals = {
       const parsed = this.extractProposalAndItems(response, proposalId);
       if (parsed?.proposal) {
         this.upsertLocalRow(parsed.proposal);
-        this.setCachedDetail(parsed.proposal.id || proposalId, parsed.proposal, parsed.items);
+        this.setCachedDetail(parsed.proposal.proposal_id || proposalId, parsed.proposal, parsed.items);
         if (mode !== 'edit' && parsed.proposal.deal_id) {
           this.markDealAsConvertedToProposal(parsed.proposal.deal_id, parsed.proposal.proposal_id);
         }
@@ -1395,7 +1391,7 @@ const Proposals = {
     ];
     for (const candidate of candidates) {
       if (!candidate || typeof candidate !== 'object') continue;
-      const id = String(candidate.id || candidate.proposal_uuid || candidate.proposal_id_uuid || '').trim();
+      const id = String(candidate.proposal_id || candidate.id || '').trim();
       if (id) return id;
     }
     return '';
@@ -1415,22 +1411,13 @@ const Proposals = {
       UI.toast('This deal has already been converted to a proposal.');
       return;
     }
-    try {
-      const response = await this.createFromDeal(trimmedDealId);
-      const createdProposalUuid = this.getCreatedProposalId(response);
-      await this.loadAndRefresh({ force: true });
-      const targetId = createdProposalUuid || String(response?.id || '').trim();
-      if (targetId && openAfterCreate) {
-        await this.openProposalFormById(targetId, { readOnly: false });
-      }
-      UI.toast('Proposal created from deal.');
-    } catch (error) {
-      if (this.hasConflictError(error, 'DEAL_ALREADY_CONVERTED_TO_PROPOSAL')) {
-        UI.toast('This deal has already been converted to a proposal.');
-        return;
-      }
-      UI.toast('Unable to create proposal from deal: ' + (error?.message || 'Unknown error'));
-    }
+    if (!openAfterCreate) return;
+    const draft = this.proposalDraftFromDeal({ ...(deal || {}), deal_id: trimmedDealId });
+
+    this.openProposalForm(draft, [], { readOnly: false });
+    UI.toast(
+      'Proposal template opened. Review and complete missing details, then save to create the proposal.'
+    );
   },
   addRow(section) {
     const groups = this.groupedItems(this.collectProposalItems());

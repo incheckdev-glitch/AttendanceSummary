@@ -454,7 +454,8 @@ const Api = {
   },
   async listProposalCatalogItems(options = {}) {
     const payload = {
-      ...this.buildSummaryListPayload(options)
+      ...this.buildSummaryListPayload(options),
+      sheetName: CONFIG.PROPOSAL_CATALOG_SHEET_NAME
     };
     const response = await this.postAuthenticatedCached('proposal_catalog', 'list', payload, {
       forceRefresh: options?.forceRefresh === true
@@ -463,23 +464,27 @@ const Api = {
   },
   async getProposalCatalogItem(catalogItemId) {
     return this.postAuthenticated('proposal_catalog', 'get', {
-      id: catalogItemId
+      catalog_item_id: catalogItemId,
+      sheetName: CONFIG.PROPOSAL_CATALOG_SHEET_NAME
     });
   },
   async createProposalCatalogItem(item) {
     return this.postAuthenticated('proposal_catalog', 'create', {
-      item
+      item,
+      sheetName: CONFIG.PROPOSAL_CATALOG_SHEET_NAME
     });
   },
   async updateProposalCatalogItem(catalogItemId, updates) {
     return this.postAuthenticated('proposal_catalog', 'update', {
-      id: catalogItemId,
-      updates
+      catalog_item_id: catalogItemId,
+      updates,
+      sheetName: CONFIG.PROPOSAL_CATALOG_SHEET_NAME
     });
   },
   async deleteProposalCatalogItem(catalogItemId) {
     return this.postAuthenticated('proposal_catalog', 'delete', {
-      id: catalogItemId
+      catalog_item_id: catalogItemId,
+      sheetName: CONFIG.PROPOSAL_CATALOG_SHEET_NAME
     });
   },
   async listAgreements(options = {}) {

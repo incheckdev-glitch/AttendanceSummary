@@ -2132,7 +2132,13 @@ function setActiveView(view) {
   if (E.dealsFiltersPanel) E.dealsFiltersPanel.style.display = view === 'deals' ? '' : 'none';
   const runViewLoader = (label, loader) => {
     try {
-      loader();
+      const result = loader();
+      if (result && typeof result.then === 'function') {
+        result.catch(error => {
+          console.error(`[setActiveView] ${label} loader failed`, error);
+          UI.toast(`Unable to load ${label}. Other tabs remain available.`);
+        });
+      }
     } catch (error) {
       console.error(`[setActiveView] ${label} loader failed`, error);
       UI.toast(`Unable to load ${label}. Other tabs remain available.`);
