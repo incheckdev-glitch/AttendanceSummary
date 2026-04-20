@@ -25,6 +25,16 @@ const Api = {
     };
   },
   async runAuthProxyHealthCheck() {
+    if (window.SupabaseClient?.hasConfig?.()) {
+      return {
+        ok: true,
+        status: 200,
+        endpoint: window.SupabaseClient.getUrl(),
+        data: { mode: 'supabase' },
+        isLocalProxy: false,
+        localProxyEndpoint: resolveApiEndpoint('/api/proxy')
+      };
+    }
     const { endpoint, localProxyEndpoint, isLocalProxy } = this.getAuthDiagnostics();
     const payload = {
       resource: 'auth',
@@ -981,10 +991,14 @@ const Api = {
 };
 
 async function apiPost(payload = {}) {
-  const endpoint = Api.ensureBaseUrl();
   const requestBody = payload && typeof payload === 'object' ? payload : {};
   const resource = String(requestBody?.resource || '').trim();
   const action = String(requestBody?.action || '').trim();
+  if (window.SupabaseData?.isMigratedResource?.(resource)) {
+    const dispatched = await window.SupabaseData.dispatch(requestBody);
+    if (dispatched?.handled) return dispatched.data;
+  }
+  const endpoint = Api.ensureBaseUrl();
   if (isDevEnvironment()) {
     console.log('[api] post', { endpoint, resource, action });
   }

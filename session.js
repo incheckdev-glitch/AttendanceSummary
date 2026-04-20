@@ -5,160 +5,162 @@ const Session = {
     user_id: '',
     name: '',
     email: '',
-    username: ''
+    username: '',
+    session: null,
+    authUser: null,
+    profile: null
   },
+  listeners: new Set(),
+  authSubscription: null,
+
   clearRoleScopedCache() {
-    const roleScopedKeys = [
-      LS_KEYS.issues,
-      LS_KEYS.issuesLastUpdated,
-      LS_KEYS.events,
-      LS_KEYS.eventsLastUpdated,
-      LS_KEYS.dataVersion
-    ];
-    roleScopedKeys.forEach(key => {
-      try {
-        localStorage.removeItem(key);
-      } catch {}
+    const roleScopedKeys = [LS_KEYS.issues, LS_KEYS.issuesLastUpdated, LS_KEYS.events, LS_KEYS.eventsLastUpdated, LS_KEYS.dataVersion];
+    roleScopedKeys.forEach(key => { try { localStorage.removeItem(key); } catch {} });
+    try { if (window.Api?.clearApiCache) window.Api.clearApiCache(); } catch {}
+  },
+
+  subscribe(listener) {
+    if (typeof listener !== 'function') return () => {};
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  },
+
+  notify() {
+    this.listeners.forEach(listener => {
+      try { listener(this.user()); } catch {}
     });
-    try {
-      if (window.Api?.clearApiCache) window.Api.clearApiCache();
-    } catch {}
   },
-  normalizeSessionPayload(session = {}, fallbackToken = '') {
-    const token = String(session?.token || session?.authToken || fallbackToken || '').trim();
-    const role = String(session?.role || '')
-      .trim()
-      .toLowerCase();
-    if (!token || !role) return null;
+
+  normalizeRole(roleValue) {
+    return String(roleValue || '').trim().toLowerCase();
+  },
+
+  buildState(authUser = null, session = null, profile = null) {
+    const role = this.normalizeRole(profile?.role_key);
     return {
-      authToken: token,
-      role,
-      user_id: String(session?.user_id || session?.id || '').trim(),
-      name: String(session?.name || '').trim(),
-      email: String(session?.email || '').trim(),
-      username: String(session?.username || '').trim()
+      role: role || null,
+      authToken: String(session?.access_token || ''),
+      user_id: String(profile?.user_id || authUser?.id || ''),
+      name: String(profile?.full_name || profile?.name || authUser?.user_metadata?.full_name || '').trim(),
+      email: String(profile?.email || authUser?.email || '').trim(),
+      username: String(profile?.username || authUser?.user_metadata?.username || '').trim(),
+      session: session || null,
+      authUser: authUser || null,
+      profile: profile || null
     };
   },
-  applySessionPayload(payload, { clearRoleCacheOnChange = true } = {}) {
-    if (!payload) return false;
-    const previousRole = this.state.role;
-    if (clearRoleCacheOnChange && previousRole && previousRole !== payload.role) {
-      this.clearRoleScopedCache();
-    }
-    this.state = {
-      role: payload.role,
-      authToken: payload.authToken,
-      user_id: payload.user_id,
-      name: payload.name,
-      email: payload.email,
-      username: payload.username
-    };
+
+  applyState(nextState, { clearRoleCacheOnChange = true } = {}) {
+    const prevRole = this.state.role;
+    if (clearRoleCacheOnChange && prevRole && prevRole !== nextState.role) this.clearRoleScopedCache();
+    this.state = nextState;
     this.persist();
+    this.notify();
     return true;
   },
+
+  async fetchProfile(userId) {
+    const id = String(userId || '').trim();
+    if (!id) return null;
+    const client = SupabaseClient.getClient();
+    const { data, error } = await client.from('profiles').select('*').eq('user_id', id).single();
+    if (error) throw new Error(`Unable to load user profile: ${error.message}`);
+    if (!data?.is_active) {
+      await client.auth.signOut();
+      throw new Error('Your account is inactive. Please contact an administrator.');
+    }
+    return data;
+  },
+
+  persist() {
+    const serializable = {
+      role: this.state.role,
+      user_id: this.state.user_id,
+      name: this.state.name,
+      email: this.state.email,
+      username: this.state.username
+    };
+    try { sessionStorage.setItem(LS_KEYS.session, JSON.stringify(serializable)); } catch {}
+    try { localStorage.setItem(LS_KEYS.persistentSession, JSON.stringify(serializable)); } catch {}
+  },
+
   restore() {
     try {
-      const sessionRaw = sessionStorage.getItem(LS_KEYS.session);
-      const persistentRaw = localStorage.getItem(LS_KEYS.persistentSession);
-      const raw = sessionRaw || persistentRaw;
+      const raw = sessionStorage.getItem(LS_KEYS.session) || localStorage.getItem(LS_KEYS.persistentSession);
       if (!raw) return false;
       const parsed = JSON.parse(raw);
-      const normalized = this.normalizeSessionPayload(
-        {
-          token: parsed?.authToken,
-          role: parsed?.role,
-          user_id: parsed?.user_id,
-          name: parsed?.name,
-          email: parsed?.email,
-          username: parsed?.username
-        },
-        ''
-      );
-      if (!normalized) return false;
-      return this.applySessionPayload(normalized, { clearRoleCacheOnChange: false });
+      this.state = { ...this.state, ...parsed };
+      return Boolean(parsed?.role);
     } catch {
       return false;
     }
   },
-  persist() {
-    try {
-      sessionStorage.setItem(LS_KEYS.session, JSON.stringify(this.state));
-    } catch {}
-    try {
-      localStorage.setItem(LS_KEYS.persistentSession, JSON.stringify(this.state));
-    } catch {}
-  },
+
   async login(identifier = '', passcode = '') {
-    const enteredIdentifier = String(identifier || '').trim();
-    const enteredPasscode = String(passcode || '').trim();
-    if (!enteredIdentifier) throw new Error('Username or email is required.');
-    if (!enteredPasscode) throw new Error('Password is required.');
+    const email = String(identifier || '').trim();
+    const password = String(passcode || '').trim();
+    if (!email) throw new Error('Username or email is required.');
+    if (!password) throw new Error('Password is required.');
 
-    const response = await Api.post('auth', 'login', {
-      identifier: enteredIdentifier,
-      passcode: enteredPasscode
-    });
-    const normalized = this.normalizeSessionPayload(this.extractSession(response));
-    if (!normalized) {
-      throw new Error('Login succeeded but backend returned an invalid session payload.');
-    }
+    const client = SupabaseClient.getClient();
+    const { data, error } = await client.auth.signInWithPassword({ email, password });
+    if (error) throw new Error(error.message || 'Login failed.');
 
-    this.applySessionPayload(normalized);
+    const authUser = data?.user || null;
+    const session = data?.session || null;
+    const profile = await this.fetchProfile(authUser?.id);
+    this.applyState(this.buildState(authUser, session, profile));
+    this.ensureReactiveAuthState();
     return this.user();
   },
-  logout({ preserveCache = true } = {}) {
-    const authToken = this.state.authToken || '';
-    this.clearClientSession({ clearRoleCache: !preserveCache });
 
-    if (authToken) {
-      Api.post('auth', 'logout', { authToken }).catch(error => {
-        console.warn('Auth logout request failed', error);
-      });
-    }
-  },
-  clearClientSession({ clearRoleCache = true } = {}) {
-    if (clearRoleCache && this.state.role) {
-      this.clearRoleScopedCache();
-    }
-    this.state = {
-      role: null,
-      authToken: '',
-      user_id: '',
-      name: '',
-      email: '',
-      username: ''
-    };
-    try {
-      sessionStorage.removeItem(LS_KEYS.session);
-    } catch {}
-    try {
-      localStorage.removeItem(LS_KEYS.persistentSession);
-    } catch {}
-  },
   async validateSession() {
-    const authToken = this.state.authToken || '';
-    if (!authToken) return false;
-    const response = await Api.post('auth', 'session', { authToken });
-    const normalized = this.normalizeSessionPayload(this.extractSession(response), authToken);
-    if (!normalized) return false;
-    this.applySessionPayload(normalized, { clearRoleCacheOnChange: false });
+    const client = SupabaseClient.getClient();
+    const [{ data: sessionData, error: sessionError }, { data: userData, error: userError }] = await Promise.all([
+      client.auth.getSession(), client.auth.getUser()
+    ]);
+    if (sessionError) throw new Error(sessionError.message || 'Unable to restore session.');
+    if (userError) throw new Error(userError.message || 'Unable to restore user.');
+    const session = sessionData?.session || null;
+    const authUser = userData?.user || null;
+    if (!session || !authUser) return false;
+    const profile = await this.fetchProfile(authUser.id);
+    this.applyState(this.buildState(authUser, session, profile), { clearRoleCacheOnChange: false });
+    this.ensureReactiveAuthState();
     return true;
   },
-  extractSession(response = {}) {
-    const candidates = [
-      response?.session,
-      response?.data?.session,
-      response?.result?.session,
-      response?.payload?.session,
-      response
-    ];
-    for (const candidate of candidates) {
-      if (!candidate || typeof candidate !== 'object') continue;
-      if (candidate.session && typeof candidate.session === 'object') return candidate.session;
-      if (candidate.token || candidate.authToken) return candidate;
-    }
-    return {};
+
+  logout({ preserveCache = true } = {}) {
+    this.clearClientSession({ clearRoleCache: !preserveCache });
+    SupabaseClient.getClient().auth.signOut().catch(error => console.warn('Supabase signOut failed', error));
   },
+
+  clearClientSession({ clearRoleCache = true } = {}) {
+    if (clearRoleCache && this.state.role) this.clearRoleScopedCache();
+    this.state = { role: null, authToken: '', user_id: '', name: '', email: '', username: '', session: null, authUser: null, profile: null };
+    try { sessionStorage.removeItem(LS_KEYS.session); } catch {}
+    try { localStorage.removeItem(LS_KEYS.persistentSession); } catch {}
+    this.notify();
+  },
+
+  ensureReactiveAuthState() {
+    if (this.authSubscription) return;
+    const client = SupabaseClient.getClient();
+    const subscription = client.auth.onAuthStateChange(async (_event, session) => {
+      if (!session?.user) {
+        this.clearClientSession({ clearRoleCache: false });
+        return;
+      }
+      try {
+        const profile = await this.fetchProfile(session.user.id);
+        this.applyState(this.buildState(session.user, session, profile), { clearRoleCacheOnChange: false });
+      } catch (error) {
+        console.warn('Auth state change profile fetch failed', error);
+      }
+    });
+    this.authSubscription = subscription?.data?.subscription || null;
+  },
+
   user() {
     return {
       role: this.state.role,
@@ -166,55 +168,24 @@ const Session = {
       user_id: this.state.user_id,
       name: this.state.name,
       email: this.state.email,
-      username: this.state.username
+      username: this.state.username,
+      authUser: this.state.authUser,
+      profile: this.state.profile,
+      session: this.state.session
     };
   },
-  isAuthenticated() {
-    return !!this.state.authToken && !!String(this.state.role || '').trim();
-  },
-  role() {
-    return this.state.role || null;
-  },
-  username() {
-    return this.state.username || '';
-  },
-  userId() {
-    return this.state.user_id || '';
-  },
-  displayName() {
-    return this.state.name || this.state.username || this.state.email || '';
-  },
-  getAuthToken() {
-    return this.state.authToken || '';
-  },
-  isAdmin() {
-    return this.role() === ROLES.ADMIN;
-  },
-  authContext() {
-    return { role: this.role(), authToken: this.getAuthToken() };
-  }
+  isAuthenticated() { return !!this.state.session && !!String(this.state.role || '').trim(); },
+  role() { return this.state.role || null; },
+  username() { return this.state.username || ''; },
+  userId() { return this.state.user_id || ''; },
+  displayName() { return this.state.name || this.state.username || this.state.email || ''; },
+  getAuthToken() { return this.state.authToken || ''; },
+  isAdmin() { return this.role() === ROLES.ADMIN; },
+  authContext() { return { role: this.role(), authToken: this.getAuthToken(), session: this.state.session, user: this.state.authUser, profile: this.state.profile }; }
 };
 
 function isAuthError(error) {
-  const message = String(error?.message || '')
-    .trim()
-    .toLowerCase();
+  const message = String(error?.message || '').trim().toLowerCase();
   if (!message) return false;
-
-  const authErrorPatterns = [
-    /\bunauthorized\b/,
-    /\bforbidden\b/,
-    /invalid\s+(?:auth(?:entication)?\s+)?token/,
-    /token\s+(?:is\s+)?invalid/,
-    /expired\s+(?:auth(?:entication)?\s+)?token/,
-    /expired\s+session/,
-    /session\s+expired/,
-    /invalid\s+session/,
-    /missing\s+authentication\s+token/,
-    /authentication\s+required/,
-    /not\s+authenticated/,
-    /permission\s+denied/
-  ];
-
-  return authErrorPatterns.some(pattern => pattern.test(message));
+  return [/\bunauthorized\b/, /\bforbidden\b/, /invalid\s+session/, /expired\s+session/, /not\s+authenticated/, /auth/i].some(pattern => pattern.test(message));
 }
