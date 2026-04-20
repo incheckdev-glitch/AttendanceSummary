@@ -1011,19 +1011,13 @@ Sample:
 
             <div class="card csm-header-card">
               <div>
-                <h2>InCheck CSM Activity Analytics</h2>
+                <h2>CSM Daily Activity Tracker</h2>
                 <div class="muted">Reference-inspired layout with live filters, KPI cards, charts, and detailed submissions.</div>
               </div>
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                <a
-                  href="https://forms.gle/EwutYftKANWFCgvt8"
-                  class="btn sm"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="Add CSM activity through Google Form"
-                >
+                <button id="csmAddActivityBtn" class="btn sm" type="button" aria-label="Add CSM activity">
                   <span class="icon" aria-hidden="true">➕</span> Add Activity
-                </a>
+                </button>
                 <span id="csmRowCount" class="chip">0 rows</span>
               </div>
             </div>
@@ -2417,38 +2411,86 @@ Sample:
   <div id="csmFormModal" class="modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="csmFormTitle">
     <div class="modal-content">
       <div class="modal-header">
-        <h2 id="csmFormTitle" style="margin:0;font-size:20px">Create CSM Activity</h2>
+        <h2 id="csmFormTitle" style="margin:0;font-size:20px">CSM Daily Activity Tracker</h2>
         <button class="modal-close" id="csmFormCloseBtn" aria-label="Close CSM activity form">✕</button>
       </div>
       <form id="csmForm" class="stack" style="margin-top:12px;">
         <div class="grid cols-2">
           <div class="filter-row">
-            <label class="muted" for="csmFormTimestamp">Timestamp *</label>
-            <input id="csmFormTimestamp" class="input" type="datetime-local" required />
-          </div>
-          <div class="filter-row">
             <label class="muted" for="csmFormMinutes">Time Spent (Minutes) *</label>
-            <input id="csmFormMinutes" class="input" type="number" min="0" step="1" required />
+            <input id="csmFormMinutes" class="input" type="number" min="1" step="1" required />
           </div>
           <div class="filter-row">
             <label class="muted" for="csmFormCsmName">CSM Name *</label>
-            <input id="csmFormCsmName" class="input" type="text" required />
+            <select id="csmFormCsmName" class="select" required>
+              <option value="">Select CSM Name</option>
+              <option value="Omar Chatila">Omar Chatila</option>
+              <option value="Thomas Moujaly">Thomas Moujaly</option>
+              <option value="Dina Makouyan">Dina Makouyan</option>
+            </select>
           </div>
           <div class="filter-row">
             <label class="muted" for="csmFormClient">Client *</label>
-            <input id="csmFormClient" class="input" type="text" required />
+            <select id="csmFormClient" class="select" required>
+              <option value="">Select Client</option>
+              <option value="ALL">ALL</option>
+              <option value="Global Catering Solution">Global Catering Solution</option>
+              <option value="Dekerco Foods and Processing SAL">Dekerco Foods and Processing SAL</option>
+              <option value="The Chain SA">The Chain SA</option>
+              <option value="IEX Recreational Playground LLC">IEX Recreational Playground LLC</option>
+              <option value="Al Naif Icecream Industry">Al Naif Icecream Industry</option>
+              <option value="Kareem Trading LLC">Kareem Trading LLC</option>
+              <option value="NAST">NAST</option>
+              <option value="Bachir Trading SARL">Bachir Trading SARL</option>
+              <option value="Shawarmer Foods Company LTD">Shawarmer Foods Company LTD</option>
+              <option value="Advanced Foods">Advanced Foods</option>
+              <option value="KCal Management DMMC">KCal Management DMMC</option>
+              <option value="Independent Restaurant Management LLC">Independent Restaurant Management LLC</option>
+              <option value="Mamaesh Pastry L.L.C">Mamaesh Pastry L.L.C</option>
+              <option value="Blackspoon Management FZ-LLC">Blackspoon Management FZ-LLC</option>
+              <option value="Shababik">Shababik</option>
+              <option value="Fig Tree Ventures">Fig Tree Ventures</option>
+              <option value="Boubess Group">Boubess Group</option>
+              <option value="WHIZLINK SPORTS &amp; RECREATIONAL CLUB L.L.C">WHIZLINK SPORTS &amp; RECREATIONAL CLUB L.L.C</option>
+              <option value="Brosco Restaurant L.L.C. Company">Brosco Restaurant L.L.C. Company</option>
+              <option value="The Bros S.A.R.L">The Bros S.A.R.L</option>
+              <option value="Yummy Junction International Investment LLC">Yummy Junction International Investment LLC</option>
+              <option value="Incheck Sales Demo Account">Incheck Sales Demo Account</option>
+              <option value="Uni S.A.L">Uni S.A.L</option>
+              <option value="Mint &amp; Spice SARL">Mint &amp; Spice SARL</option>
+              <option value="Sibon">Sibon</option>
+            </select>
           </div>
           <div class="filter-row">
             <label class="muted" for="csmFormSupportType">Type of Support *</label>
-            <input id="csmFormSupportType" class="input" type="text" required />
+            <select id="csmFormSupportType" class="select" required>
+              <option value="">Select Type of Support</option>
+              <option value="Onboarding Setup">Onboarding Setup</option>
+              <option value="Onboarding Meeting">Onboarding Meeting</option>
+              <option value="Onboarding Training">Onboarding Training</option>
+              <option value="Regular Support Setup">Regular Support Setup</option>
+              <option value="Regular Support Call">Regular Support Call</option>
+              <option value="Weekly Completion Report">Weekly Completion Report</option>
+            </select>
           </div>
           <div class="filter-row">
             <label class="muted" for="csmFormEffort">Effort Requirement *</label>
-            <input id="csmFormEffort" class="input" type="text" required />
+            <select id="csmFormEffort" class="select" required>
+              <option value="">Select Effort Requirement</option>
+              <option value="Low (Repetitive Task)">Low (Repetitive Task)</option>
+              <option value="Medium">Medium</option>
+              <option value="High (Analytical Effort)">High (Analytical Effort)</option>
+            </select>
           </div>
           <div class="filter-row" style="grid-column:1 / -1;">
             <label class="muted" for="csmFormChannel">Support Channel *</label>
-            <input id="csmFormChannel" class="input" type="text" required />
+            <select id="csmFormChannel" class="select" required>
+              <option value="">Select Support Channel</option>
+              <option value="Email">Email</option>
+              <option value="Whatsapp">Whatsapp</option>
+              <option value="Teams Meeting">Teams Meeting</option>
+              <option value="Web App">Web App</option>
+            </select>
           </div>
           <div class="filter-row" style="grid-column:1 / -1;">
             <label class="muted" for="csmFormNotes">Notes</label>
@@ -3350,6 +3392,7 @@ Sample:
   <script src="roles-admin.js"></script>
   <script src="users.js"></script>
   <script src="events-service.js"></script>
+  <script src="csm-service.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

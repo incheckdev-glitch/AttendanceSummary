@@ -4120,7 +4120,11 @@ function wireCore() {
         return;
       }
       if (isCsmView) {
-        window.open('https://forms.gle/jV7XLrquc8beyi228', '_blank', 'noopener,noreferrer');
+        if (!Permissions.canCreateCsmActivity()) {
+          UI.toast('You do not have permission to create CSM activity.');
+          return;
+        }
+        CSMActivity.openForm();
         return;
       }
       TicketCreator.open();
@@ -5156,7 +5160,7 @@ const CSMActivity = {
       inlineSubmitBtn.disabled = !!v;
       inlineSubmitBtn.textContent = v ? 'Saving…' : 'Create Activity';
     }
-    ['csmFormTimestamp','csmFormCsmName','csmFormClient','csmFormMinutes','csmFormSupportType','csmFormEffort','csmFormChannel','csmFormNotes']
+    ['csmFormCsmName','csmFormClient','csmFormMinutes','csmFormSupportType','csmFormEffort','csmFormChannel','csmFormNotes']
       .forEach(id => { if (E[id]) E[id].disabled = !!v; });
     ['csmInlineTimestamp','csmInlineCsmName','csmInlineClient','csmInlineMinutes','csmInlineSupportType','csmInlineEffort','csmInlineChannel','csmInlineNotes']
       .forEach(id => { if (E[id]) E[id].disabled = !!v; });
@@ -5179,13 +5183,7 @@ const CSMActivity = {
     this.loadError = '';
     this.refresh();
     try {
-      const response = await Api.postAuthenticatedCached(
-        'csm',
-        'list',
-        { limit: 50, offset: 0, summary_only: true, sort_by: 'updated_at', sort_dir: 'desc' },
-        { requireAuth: true, forceRefresh: force }
-      );
-      const rows = this.extractRows(response).map(raw => this.backendToView(raw));
+      const rows = await window.CsmActivityService.listActivities();
       this.rows = rows.filter(row => row.id || row.csmName || row.client || row.timestamp);
       this.loaded = true;
       this.lastLoadedAt = Date.now();
@@ -5604,8 +5602,8 @@ const CSMActivity = {
     if (!E.csmFormModal || !E.csmForm) return;
     E.csmForm.dataset.mode = row ? 'edit' : 'create';
     E.csmForm.dataset.id = row?.id || '';
-    if (E.csmFormTitle) E.csmFormTitle.textContent = row ? 'Edit CSM Activity' : 'Create CSM Activity';
-    if (E.csmFormTimestamp) E.csmFormTimestamp.value = row?.timestamp ? String(row.timestamp).slice(0, 16) : '';
+    E.csmForm.dataset.timestamp = row?.timestamp || '';
+    if (E.csmFormTitle) E.csmFormTitle.textContent = row ? 'Edit CSM Daily Activity Tracker' : 'CSM Daily Activity Tracker';
     if (E.csmFormCsmName) E.csmFormCsmName.value = row?.csmName || '';
     if (E.csmFormClient) E.csmFormClient.value = row?.client || '';
     if (E.csmFormMinutes) E.csmFormMinutes.value = row ? String(Math.round(Number(row.timeSpentMinutes) || 0)) : '';
@@ -5625,7 +5623,6 @@ const CSMActivity = {
   },
   readFormValues() {
     return {
-      timestamp: String(E.csmFormTimestamp?.value || '').trim(),
       csmName: String(E.csmFormCsmName?.value || '').trim(),
       client: String(E.csmFormClient?.value || '').trim(),
       timeSpentMinutes: Number(E.csmFormMinutes?.value || 0),
@@ -5653,11 +5650,11 @@ const CSMActivity = {
     }
   },
   validateForm(activity) {
-    if (!activity.timestamp || !activity.csmName || !activity.client || !activity.supportType || !activity.effortRequirement || !activity.supportChannel) {
+    if (!activity.csmName || !activity.client || !activity.supportType || !activity.effortRequirement || !activity.supportChannel) {
       return 'Please complete all required fields.';
     }
-    if (!Number.isFinite(activity.timeSpentMinutes) || activity.timeSpentMinutes < 0) {
-      return 'Time spent minutes must be a valid non-negative number.';
+    if (!Number.isFinite(activity.timeSpentMinutes) || activity.timeSpentMinutes < 1) {
+      return 'Time spent minutes must be a valid number greater than or equal to 1.';
     }
     return '';
   },
@@ -5674,11 +5671,18 @@ const CSMActivity = {
     try {
       if (mode === 'edit') {
         if (!Permissions.canUpdateCsmActivity()) throw new Error('You do not have permission to update CSM activity.');
-        await Api.postAuthenticated('csm', 'update', { id, updates: this.viewToBackendActivity(activity) }, { requireAuth: true });
+        const existingTimestamp = String(E.csmForm?.dataset.timestamp || '').trim();
+        await window.CsmActivityService.updateActivity(id, {
+          ...this.viewToBackendActivity(activity),
+          timestamp: existingTimestamp || undefined
+        });
         UI.toast('CSM activity updated.');
       } else {
         if (!Permissions.canCreateCsmActivity()) throw new Error('You do not have permission to create CSM activity.');
-        await Api.postAuthenticated('csm', 'create', { activity: this.viewToBackendActivity(activity) }, { requireAuth: true });
+        await window.CsmActivityService.createActivity({
+          ...this.viewToBackendActivity(activity),
+          timestamp: new Date().toISOString()
+        });
         UI.toast('CSM activity created.');
       }
       this.closeForm();
@@ -5706,7 +5710,10 @@ const CSMActivity = {
     }
     this.setBusySaving(true);
     try {
-      await Api.postAuthenticated('csm', 'create', { activity: this.viewToBackendActivity(activity) }, { requireAuth: true });
+      await window.CsmActivityService.createActivity({
+        ...this.viewToBackendActivity(activity),
+        timestamp: new Date().toISOString()
+      });
       UI.toast('CSM activity created.');
       this.clearInlineForm();
       await this.loadAndRefresh({ force: true });
@@ -5726,7 +5733,7 @@ const CSMActivity = {
     if (!confirmed) return;
     this.setBusySaving(true);
     try {
-      await Api.postAuthenticated('csm', 'delete', { id }, { requireAuth: true });
+      await window.CsmActivityService.deleteActivity(id);
       UI.toast('CSM activity deleted.');
       this.closeForm();
       await this.loadAndRefresh({ force: true });
@@ -5745,6 +5752,16 @@ const CSMActivity = {
 function wireCSMActivity() {
   CSMActivity.hydrateOptions();
   CSMActivity.refresh();
+
+  if (E.csmAddActivityBtn) {
+    E.csmAddActivityBtn.addEventListener('click', () => {
+      if (!Permissions.canCreateCsmActivity()) {
+        UI.toast('You do not have permission to create CSM activity.');
+        return;
+      }
+      CSMActivity.openForm();
+    });
+  }
 
   const bindState = (element, key, type = 'value') => {
     if (!element) return;
