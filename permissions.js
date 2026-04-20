@@ -172,11 +172,16 @@ const Permissions = {
     this.state.matrix = new Map();
   },
   can(resource, action, options = {}) {
+    if (!Session.isAuthenticated()) return false;
     const role = this.normalizeRole(Session.role());
-    if (!Session.isAuthenticated() || !role) return false;
     const normalizedResource = String(resource || '').trim().toLowerCase();
     const normalizedAction = String(action || '').trim().toLowerCase();
     if (!normalizedResource || !normalizedAction) return false;
+
+    if (!role) {
+      if (typeof options.fallback === 'boolean') return options.fallback;
+      return false;
+    }
 
     if (role === ROLES.ADMIN && !this.state.loaded) return true;
     const allowed = this.state.matrix.get(`${normalizedResource}:${normalizedAction}`);
