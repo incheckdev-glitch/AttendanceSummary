@@ -125,6 +125,12 @@ const Proposals = {
     normalized.status = String(normalized.status || '').trim();
     normalized.currency = String(normalized.currency || '').trim();
     normalized.deal_id = String(normalized.deal_id || '').trim();
+    normalized.deal_code = String(source.deal_code || source.dealCode || '').trim();
+    if (!normalized.deal_code && normalized.deal_id) {
+      const localRows = Array.isArray(window.Deals?.state?.rows) ? window.Deals.state.rows : [];
+      const linkedDeal = localRows.find(row => String(row?.id || '').trim() === normalized.deal_id);
+      normalized.deal_code = String(linkedDeal?.deal_id || '').trim();
+    }
     normalized.proposal_valid_until = String(source.proposal_valid_until || source.proposalValidUntil || normalized.valid_until || '').trim();
     normalized.valid_until = String(normalized.valid_until || normalized.proposal_valid_until || '').trim();
     normalized.agreement_id = String(source.agreement_id ?? source.agreementId ?? normalized.agreement_id ?? '').trim();
@@ -145,7 +151,7 @@ const Proposals = {
   markDealAsConvertedToProposal(dealId, proposalId = '') {
     const id = String(dealId || '').trim();
     if (!id || !window.Deals?.state?.rows) return;
-    const deal = window.Deals.state.rows.find(row => String(row?.deal_id || '').trim() === id);
+    const deal = window.Deals.state.rows.find(row => String(row?.id || '').trim() === id);
     if (!deal) return;
     window.Deals.upsertLocalRow?.({
       ...deal,
@@ -163,7 +169,8 @@ const Proposals = {
     const titleParts = [companyName || fullName, serviceInterest].filter(Boolean);
     return {
       ...this.emptyProposal(),
-      deal_id: String(deal.deal_id || deal.dealId || '').trim(),
+      deal_id: String(deal.id || '').trim(),
+      deal_code: String(deal.deal_id || deal.dealId || '').trim(),
       lead_id: String(deal.lead_id || deal.leadId || '').trim(),
       proposal_title: titleParts.length ? `${titleParts.join(' · ')} Proposal` : '',
       customer_name: companyName || fullName,
@@ -178,7 +185,7 @@ const Proposals = {
     if (!trimmedDealId) return null;
 
     const localRows = Array.isArray(window.Deals?.state?.rows) ? window.Deals.state.rows : [];
-    const localMatch = localRows.find(row => String(row?.deal_id || '').trim() === trimmedDealId);
+    const localMatch = localRows.find(row => String(row?.id || '').trim() === trimmedDealId);
     if (localMatch) return localMatch;
 
     if (typeof window.Deals?.getDeal === 'function') {
@@ -194,6 +201,16 @@ const Proposals = {
       }
     }
     return null;
+  },
+  resolveDealUuid(value = '') {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const localRows = Array.isArray(window.Deals?.state?.rows) ? window.Deals.state.rows : [];
+    const matchedDeal = localRows.find(
+      row => String(row?.id || '').trim() === raw || String(row?.deal_id || '').trim() === raw
+    );
+    if (matchedDeal?.id) return String(matchedDeal.id).trim();
+    return raw;
   },
   normalizeItem(raw = {}, sectionFallback = '') {
     const source = raw && typeof raw === 'object' ? raw : {};
@@ -442,6 +459,7 @@ const Proposals = {
         row.proposal_title,
         row.customer_name,
         row.deal_id,
+        row.deal_code,
         row.status,
         row.currency,
         row.generated_by
@@ -694,7 +712,7 @@ const Proposals = {
           <td>${textCell(row.ref_number)}</td>
           <td>${textCell(row.proposal_title)}</td>
           <td>${textCell(row.customer_name)}</td>
-          <td>${textCell(row.deal_id)}</td>
+          <td>${textCell(row.deal_code || row.deal_id)}</td>
           <td>${textCell(row.status)}</td>
           <td>${textCell(row.currency)}</td>
           <td>${this.formatMoney(row.saas_total)}</td>
@@ -1085,7 +1103,7 @@ const Proposals = {
       proposal_id: String(E.proposalFormProposalId?.value || '').trim(),
       ref_number: this.ensureRefNumber(existingRefNumber),
       proposal_title: String(E.proposalFormTitleField?.value || '').trim(),
-      deal_id: String(E.proposalFormDealId?.value || '').trim(),
+      deal_id: this.resolveDealUuid(E.proposalFormDealId?.value || ''),
       proposal_date: String(E.proposalFormProposalDate?.value || '').trim(),
       proposal_valid_until: String(E.proposalFormValidUntil?.value || '').trim(),
       status: String(E.proposalFormStatus?.value || '').trim(),
