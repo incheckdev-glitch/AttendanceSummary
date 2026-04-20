@@ -107,7 +107,7 @@
   ]);
   const PROPOSAL_CATALOG_COLUMNS = new Set([
     'catalog_item_id','is_active','section','category','item_name','default_location_name','unit_price','discount_percent','quantity',
-    'capability_name','capability_value','notes','sort_order','created_by','updated_by'
+    'capability_name','capability_value','notes','sort_order'
   ]);
   const PROPOSAL_COLUMNS = new Set([
     'proposal_id','ref_number','deal_id','customer_name','customer_address','customer_contact_name','customer_contact_mobile',
@@ -395,11 +395,7 @@
       capability_name: firstDefined(record, ['capability_name', 'capabilityName']),
       capability_value: firstDefined(record, ['capability_value', 'capabilityValue']),
       notes: firstDefined(record, ['notes']),
-      sort_order: firstDefined(record, ['sort_order', 'sortOrder']),
-      created_by: includeCreatedBy
-        ? (firstDefined(record, ['created_by', 'createdBy']) || userId || undefined)
-        : undefined,
-      updated_by: firstDefined(record, ['updated_by', 'updatedBy']) || userId || undefined
+      sort_order: firstDefined(record, ['sort_order', 'sortOrder'])
     });
     const sanitized = {};
     Object.entries(mapped).forEach(([key, value]) => {
@@ -409,6 +405,15 @@
     });
     PROPOSAL_CATALOG_LEGACY_FIELDS.forEach(key => delete sanitized[key]);
     return sanitized;
+  }
+
+  function pickProposalCatalogMutationId(payload = {}) {
+    const value = firstDefined(payload, ['id']) ??
+      firstDefined(payload.updates || {}, ['id']) ??
+      firstDefined(payload.item || {}, ['id']);
+    const id = String(value || '').trim();
+    if (!id) throw new Error('proposal_catalog update/delete requires UUID id.');
+    return id;
   }
 
   function sanitizeProposalRecord(record = {}, { includeCreatedBy = false, userId = '' } = {}) {
@@ -943,6 +948,8 @@
             pickedId ??
             ''
           )
+        : resource === 'proposal_catalog'
+          ? pickProposalCatalogMutationId(payload)
         : pickedId;
       const key = resource === 'tickets' ? 'id' : (PK_KEYS[resource][0] || 'id');
       const updates = payload.updates || payload.item || payload.activity || payload;
@@ -1020,6 +1027,8 @@
       const pickedId = pickId(resource, payload);
       const id = resource === 'tickets'
         ? String(firstDefined(payload, ['id']) ?? firstDefined(payload.item || {}, ['id']) ?? pickedId ?? '')
+        : resource === 'proposal_catalog'
+          ? pickProposalCatalogMutationId(payload)
         : pickedId;
       const key = resource === 'tickets' ? 'id' : (PK_KEYS[resource][0] || 'id');
       if (resource === 'tickets' && !isAdminDev()) throw new Error('Only admin/dev can delete tickets.');
