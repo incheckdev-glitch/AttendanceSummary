@@ -1,27 +1,99 @@
 window.RUNTIME_CONFIG = window.RUNTIME_CONFIG || {};
 const runtimeConfig = window.RUNTIME_CONFIG;
 
-window.API_BASE_URL = String(
-  runtimeConfig.API_BASE_URL ||
-    runtimeConfig.PROXY_API_BASE_URL ||
-    runtimeConfig.BACKEND_API_BASE_URL ||
-    '/api/proxy'
-)
-  .trim() || '/api/proxy';
- 
-const API_BASE_URL = window.API_BASE_URL;
+function normalizeEndpointPathname(pathname = '/') {
+  const withLeadingSlash = String(pathname || '/').startsWith('/')
+    ? String(pathname || '/')
+    : `/${String(pathname || '/')}`;
+  const collapsed = withLeadingSlash.replace(/\/{2,}/g, '/');
+  if (collapsed === '/') return '/';
+  return collapsed.replace(/\/+$/g, '') || '/';
+}
+
+function normalizeApiBaseUrl(value = '') {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return '';
+
+  const looksLikeAbsolute = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed);
+  if (looksLikeAbsolute) {
+    try {
+      const url = new URL(trimmed);
+      url.pathname = normalizeEndpointPathname(url.pathname || '/');
+      return url.toString();
+    } catch {
+      return trimmed.replace(/\/+$/g, '');
+    }
+  }
+
+  const sanitized = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  return normalizeEndpointPathname(sanitized);
+}
+
+function isLikelyMalformedApiBaseUrl(value = '') {
+  const raw = String(value || '').trim();
+  if (!raw) return true;
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      const parsed = new URL(raw);
+      return !/^https?:$/i.test(parsed.protocol);
+    } catch {
+      return true;
+    }
+  }
+  return !raw.startsWith('/');
+}
 
 function resolveApiEndpoint(endpoint = '') {
-  const rawEndpoint = String(endpoint || '').trim();
-  if (!rawEndpoint) return '';
+  const normalized = normalizeApiBaseUrl(endpoint);
+  if (!normalized) return '';
   try {
-    return new URL(rawEndpoint, window.location.origin).toString();
-  } catch (_) {
-    return rawEndpoint;
+    const resolved = new URL(normalized, window.location.origin);
+    resolved.pathname = normalizeEndpointPathname(resolved.pathname || '/');
+    return resolved.toString();
+  } catch {
+    return normalized;
   }
 }
 
+const rawApiBaseUrl =
+  runtimeConfig.API_BASE_URL ||
+  runtimeConfig.PROXY_API_BASE_URL ||
+  runtimeConfig.BACKEND_API_BASE_URL ||
+  '/api/proxy';
+
+// Deployment notes:
+// - Vercel deployment: /api/proxy must exist and APPS_SCRIPT_WEBAPP_URL must point to the Apps Script /exec URL.
+// - Static frontend deployment (without Vercel functions): set API_BASE_URL to a live backend endpoint; do not rely on /api/proxy.
+window.API_BASE_URL = normalizeApiBaseUrl(rawApiBaseUrl) || '/api/proxy';
+const API_BASE_URL = window.API_BASE_URL;
+
+const RESOLVED_API_ENDPOINT = resolveApiEndpoint(API_BASE_URL);
+const LOCAL_PROXY_ENDPOINT = new URL('/api/proxy', window.location.origin);
+const resolvedApiUrl = RESOLVED_API_ENDPOINT ? new URL(RESOLVED_API_ENDPOINT, window.location.origin) : null;
+const normalizedResolvedPathname = resolvedApiUrl
+  ? normalizeEndpointPathname(resolvedApiUrl.pathname)
+  : '';
+const localProxyPathname = normalizeEndpointPathname(LOCAL_PROXY_ENDPOINT.pathname);
+const isProxyPath = Boolean(normalizedResolvedPathname) && normalizedResolvedPathname === localProxyPathname;
+const isSameOriginWithLocalProxy =
+  !!resolvedApiUrl &&
+  resolvedApiUrl.origin === LOCAL_PROXY_ENDPOINT.origin &&
+  isProxyPath;
+const usingProxy = isProxyPath;
+const notificationHubEndpoint = RESOLVED_API_ENDPOINT;
+
 window.resolveApiEndpoint = resolveApiEndpoint;
+window.API_RUNTIME_DIAGNOSTICS = Object.freeze({
+  apiBaseUrl: API_BASE_URL,
+  resolvedEndpoint: RESOLVED_API_ENDPOINT,
+  notificationHubEndpoint,
+  isProxy: usingProxy,
+  isSameOriginWithLocalProxy,
+  isMalformed: isLikelyMalformedApiBaseUrl(rawApiBaseUrl)
+});
+window.BACKEND_ENDPOINTS = Object.freeze({
+  proxyBaseUrl: API_BASE_URL
+});
 
 window.CONFIG = {
   DATA_VERSION: '5',
@@ -30,10 +102,23 @@ window.CONFIG = {
   SHEET_URL:
     'https://docs.google.com/spreadsheets/d/e/2PACX-1vTRwAjNAQxiPP8uR15t_vx03JkjgEBjgUwp2bpx8rsHx-JJxVDBZyf5ap77rAKrYHfgkVMwLJVm6pGn/pub?output=csv',
 
-  CALENDAR_API_URL: runtimeConfig.CALENDAR_API_URL || API_BASE_URL,
+  CALENDAR_API_URL: runtimeConfig.CALENDAR_API_URL || window.BACKEND_ENDPOINTS.proxyBaseUrl,
   CALENDAR_SHEET_NAME: 'CalendarEvents',
+  DEALS_SHEET_NAME: 'Deals',
+  PROPOSAL_CATALOG_SHEET_NAME: runtimeConfig.PROPOSAL_CATALOG_SHEET_NAME || 'Proposal Catalog',
+  ROLES_SHEET_NAME: runtimeConfig.ROLES_SHEET_NAME || 'Roles',
+  ROLE_PERMISSIONS_SHEET_NAME: runtimeConfig.ROLE_PERMISSIONS_SHEET_NAME || 'Role Permissions',
+  RECEIPTS_SHEET_NAME: runtimeConfig.RECEIPTS_SHEET_NAME || 'Receipts',
+  RECEIPT_ITEMS_SHEET_NAME: runtimeConfig.RECEIPT_ITEMS_SHEET_NAME || 'Receipt Items',
 
-  ISSUE_API_URL: runtimeConfig.ISSUE_API_URL || API_BASE_URL,
+  WORKFLOWS_SHEET_NAME: runtimeConfig.WORKFLOWS_SHEET_NAME || 'Workflows',
+  WORKFLOW_RULES_SHEET_NAME: runtimeConfig.WORKFLOW_RULES_SHEET_NAME || 'Workflow Rules',
+  WORKFLOW_APPROVALS_SHEET_NAME: runtimeConfig.WORKFLOW_APPROVALS_SHEET_NAME || 'Workflow Approvals',
+  WORKFLOW_AUDIT_LOG_SHEET_NAME: runtimeConfig.WORKFLOW_AUDIT_LOG_SHEET_NAME || 'Workflow Audit Log',
+  OPERATIONS_ONBOARDING_SHEET_NAME:
+    runtimeConfig.OPERATIONS_ONBOARDING_SHEET_NAME || 'Operations Onboarding',
+
+  ISSUE_API_URL: runtimeConfig.ISSUE_API_URL || window.BACKEND_ENDPOINTS.proxyBaseUrl,
 
   TREND_DAYS_RECENT: 7,
   TREND_DAYS_WINDOW: 14,
@@ -188,14 +273,18 @@ window.LS_KEYS = {
   savedViews: 'incheckSavedViews',
   columns: 'incheckColumns',
   freezeWindows: 'incheckFreezeWindows',
-  session: 'incheckSession'
+  session: 'incheckSession',
+  persistentSession: 'incheckPersistentSession',
+  csmActivity: 'incheckCsmActivity'
 };
 
 const LS_KEYS = window.LS_KEYS;
 
 window.ROLES = Object.freeze({
   ADMIN: 'admin',
-  VIEWER: 'viewer'
+  VIEWER: 'viewer',
+  HOO: 'hoo',
+  DEV: 'dev'
 });
 
 const ROLES = window.ROLES;

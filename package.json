@@ -1,0 +1,19 @@
+{
+  "name": "ticketing-dashboard",
+  "version": "1.0.0",
+  "description": "InCheck360 MonitorCore - Internal operations workspace",
+  "main": "index.html",
+  "scripts": {
+    "test": "echo \"No tests configured\""
+  },
+  "keywords": [
+    "ticketing",
+    "dashboard",
+    "analytics"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@vercel/analytics": "^2.0.1"
+  }
+}

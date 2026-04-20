@@ -35,6 +35,29 @@
 /* moved to ui.js */
 /** Issues UI */
 UI.Issues = {
+  getFilteredList() {
+    return this.applyFilters();
+  },
+  renderTableOnly(list = this.getFilteredList()) {
+    this.renderTable(list);
+  },
+  renderSummaryOnly(list = this.getFilteredList()) {
+    this.renderSummary(list);
+    this.renderFilterChips();
+    this.renderKPIs(list);
+  },
+  refreshChartsOnly(list = this.getFilteredList()) {
+    this.renderCharts(list);
+  },
+  lightRefresh(list = this.getFilteredList()) {
+    this.renderSummaryOnly(list);
+    this.renderTableOnly(list);
+  },
+  fullRefresh(list = this.getFilteredList()) {
+    this.renderSummaryOnly(list);
+    this.renderTableOnly(list);
+    this.refreshChartsOnly(list);
+  },
   renderFilters() {
     const uniq = a =>
       [...new Set(a.filter(Boolean).map(v => v.trim()))].sort((a, b) =>
@@ -186,7 +209,8 @@ UI.Issues = {
           Filters.state.search = '';
         }
         Filters.save();
-        UI.refreshAll();
+        GridState.page = 1;
+        UI.refreshTableAndSummary();
       };
       d.addEventListener('keydown', e => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -346,7 +370,8 @@ UI.Issues = {
           if (E.startDateFilter) E.startDateFilter.value = '';
           if (E.endDateFilter) E.endDateFilter.value = '';
           UI.Issues.renderFilters();
-          UI.refreshAll();
+          GridState.page = 1;
+          UI.refreshTableAndSummary();
         });
     }
 ColumnManager.apply();
@@ -413,20 +438,23 @@ ColumnManager.apply();
       const el = U.q('#' + id);
       if (!el) return;
       UI._charts = UI._charts || {};
-      if (UI._charts[id]) UI._charts[id].destroy();
       const labels = Object.keys(data),
         values = Object.values(data);
+      const dataset = {
+        data: values,
+        backgroundColor: labels.map((l, i) => colors[l] || palette[i % palette.length])
+      };
+      const existing = UI._charts[id];
+      if (existing && existing.config?.type === type) {
+        existing.data.labels = labels;
+        existing.data.datasets = [dataset];
+        existing.update('none');
+        return;
+      }
+      if (existing) existing.destroy();
       UI._charts[id] = new Chart(el, {
         type,
-        data: {
-          labels,
-          datasets: [
-            {
-              data: values,
-               backgroundColor: labels.map((l, i) => colors[l] || palette[i % palette.length])
-            }
-          ]
-        },
+        data: { labels, datasets: [dataset] },
         options: {
           responsive: true,
           maintainAspectRatio: false,
@@ -535,7 +563,7 @@ UI.Issues.renderFilterChips = function () {
       if (E.startDateFilter && key === 'start') E.startDateFilter.value = '';
       if (E.endDateFilter && key === 'end') E.endDateFilter.value = '';
 
-      UI.refreshAll();
+      UI.refreshTableAndSummary();
     });
   });
 };
@@ -561,7 +589,7 @@ UI.Issues.renderSummary = function (list) {
       E.issuesLastUpdated.textContent = 'Last updated: --';
       E.issuesLastUpdated.classList.remove('stale');
     } else {
-      E.issuesLastUpdated.textContent = `Last updated: ${lastUpdated.toLocaleString()}`;
+      E.issuesLastUpdated.textContent = `Last updated: ${U.fmtDisplayDate(lastUpdated)}`;
       const ageHours = (Date.now() - lastUpdated.getTime()) / 36e5;
       E.issuesLastUpdated.classList.toggle('stale', ageHours > CONFIG.DATA_STALE_HOURS);
       E.issuesLastUpdated.title =
@@ -1526,6 +1554,8 @@ UI.Modals = {
 
 const IssueEditor = {
   issue: null,
+  isOpening: false,
+  isSaving: false,
   DEV_TEAM_STATUS_OPTIONS: [
     'Local',
     'Staging',
@@ -1660,6 +1690,17 @@ const IssueEditor = {
   }
 };
 
+function setButtonPendingState(buttonEl, isPending, pendingText, idleText) {
+  if (!buttonEl) return;
+  if (!buttonEl.dataset.defaultLabel) {
+    buttonEl.dataset.defaultLabel = idleText || buttonEl.textContent.trim();
+  }
+  const defaultLabel = buttonEl.dataset.defaultLabel;
+  buttonEl.disabled = !!isPending;
+  buttonEl.setAttribute('aria-busy', isPending ? 'true' : 'false');
+  buttonEl.textContent = isPending ? pendingText : defaultLabel;
+}
+
 const BulkEditor = {
   parseIds(raw = '') {
     return Array.from(
@@ -1740,9 +1781,9 @@ function applyIssueUpdate(savedIssue) {
 }
 
 async function onEditIssueSubmit(event) {
-  console.log('Edit form submitted');
   event.preventDefault();
   if (!requirePermission(() => Permissions.canEditTicket(), 'Only admin can edit tickets.')) return;
+  if (IssueEditor.isSaving) return;
 
   const id = (IssueEditor.issue?.id || '').trim();
   const title = (E.editIssueTitleInput?.value || '').trim();
@@ -1800,8 +1841,9 @@ const issueUpdate = {
     date
   };
 
-  console.log('Saving edit issue update', issueUpdate);
-
+  IssueEditor.isSaving = true;
+  const saveButton = event.target?.querySelector('button[type="submit"]');
+  setButtonPendingState(saveButton, true, 'Saving...');
   try {
     const updatedIssue = await saveIssueToSheet(issueUpdate, Session.authContext());
     if (!updatedIssue) {
@@ -1815,8 +1857,11 @@ const issueUpdate = {
   } catch (error) {
     console.error('Failed to update ticket', error);
     UI.toast(`Failed to update ticket: ${error.message}`);
+  } finally {
+    IssueEditor.isSaving = false;
+    setButtonPendingState(saveButton, false, 'Saving...');
   }
-  }
+}
 
 async function onBulkEditSubmit(event) {
   event.preventDefault();
@@ -1904,20 +1949,89 @@ function trapFocus(container, e) {
 }
 
 function setActiveView(view) {
- const names = ['issues', 'calendar', 'insights'];
+ if (!Permissions.canAccessTab(view)) view = 'issues';
+ const names = ['issues', 'calendar', 'insights', 'csm', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'notifications', 'workflow', 'users', 'roles', 'rolePermissions'];
   names.forEach(name => {
     const tab =
       name === 'issues'
         ? E.issuesTab
         : name === 'calendar'
         ? E.calendarTab
-      : E.insightsTab;
+        : name === 'insights'
+        ? E.insightsTab
+        : name === 'csm'
+        ? E.csmTab
+        : name === 'leads'
+        ? E.leadsTab
+        : name === 'deals'
+        ? E.dealsTab
+        : name === 'proposals'
+        ? E.proposalsTab
+        : name === 'agreements'
+        ? E.agreementsTab
+        : name === 'operationsOnboarding'
+        ? E.operationsOnboardingTab
+        : name === 'technicalAdmin'
+        ? E.technicalAdminTab
+        : name === 'invoices'
+        ? E.invoicesTab
+        : name === 'receipts'
+        ? E.receiptsTab
+        : name === 'lifecycleAnalytics'
+        ? E.lifecycleAnalyticsTab
+        : name === 'clients'
+        ? E.clientsTab
+        : name === 'proposalCatalog'
+        ? E.proposalCatalogTab
+        : name === 'notifications'
+        ? E.notificationsTab
+        : name === 'workflow'
+        ? E.workflowTab
+        : name === 'users'
+        ? E.usersTab
+        : name === 'roles'
+        ? E.rolesTab
+        : E.rolePermissionsTab;
     const panel =
       name === 'issues'
         ? E.issuesView
         : name === 'calendar'
         ? E.calendarView
-       : E.insightsView;
+        : name === 'insights'
+        ? E.insightsView
+        : name === 'csm'
+        ? E.csmView
+        : name === 'leads'
+        ? E.leadsView
+        : name === 'deals'
+        ? E.dealsView
+        : name === 'proposals'
+        ? E.proposalsView
+        : name === 'agreements'
+        ? E.agreementsView
+        : name === 'operationsOnboarding'
+        ? E.operationsOnboardingView
+        : name === 'technicalAdmin'
+        ? E.technicalAdminView
+        : name === 'invoices'
+        ? E.invoicesView
+        : name === 'receipts'
+        ? E.receiptsView
+        : name === 'lifecycleAnalytics'
+        ? E.lifecycleAnalyticsView
+        : name === 'clients'
+        ? E.clientsView
+        : name === 'proposalCatalog'
+        ? E.proposalCatalogView
+        : name === 'notifications'
+        ? E.notificationsView
+        : name === 'workflow'
+        ? E.workflowView
+        : name === 'users'
+        ? E.usersView
+        : name === 'roles'
+        ? E.rolesView
+        : E.rolePermissionsView;
     const active = name === view;
     if (tab) {
       tab.classList.toggle('active', active);
@@ -1928,12 +2042,60 @@ function setActiveView(view) {
   try {
     localStorage.setItem(LS_KEYS.view, view);
   } catch {}
+  if (E.app) E.app.classList.toggle('csm-filters-only', view === 'csm');
+  if (E.mainFiltersPanel)
+    E.mainFiltersPanel.style.display =
+      view === 'leads' || view === 'deals' || view === 'proposals' || view === 'agreements' || view === 'operationsOnboarding' || view === 'technicalAdmin' || view === 'invoices' || view === 'receipts' || view === 'lifecycleAnalytics' || view === 'clients' || view === 'proposalCatalog' || view === 'notifications' || view === 'workflow' ? 'none' : '';
+  if (E.leadsFiltersPanel) E.leadsFiltersPanel.style.display = view === 'leads' ? '' : 'none';
+  if (E.dealsFiltersPanel) E.dealsFiltersPanel.style.display = view === 'deals' ? '' : 'none';
   if (view === 'calendar') {
     ensureCalendar();
     renderCalendarEvents();
     scheduleCalendarResize();
   }
   if (view === 'insights') Analytics.refresh(UI.Issues.applyFilters());
+  if (view === 'csm') CSMActivity.loadAndRefresh();
+  if (view === 'leads' && window.Leads?.loadAndRefresh) Leads.loadAndRefresh();
+  if (view === 'deals' && window.Deals?.loadAndRefresh) Deals.loadAndRefresh();
+  if (view === 'proposals' && window.Proposals?.loadAndRefresh) Proposals.loadAndRefresh();
+  if (view === 'agreements' && window.Agreements?.loadAndRefresh) Agreements.loadAndRefresh();
+  if (view === 'operationsOnboarding' && window.OperationsOnboarding?.loadAndRefresh) OperationsOnboarding.loadAndRefresh();
+  if (view === 'technicalAdmin' && window.TechnicalAdmin?.loadAndRefresh) TechnicalAdmin.loadAndRefresh();
+  if (view === 'invoices' && window.Invoices?.refresh) Invoices.refresh();
+  if (view === 'receipts' && window.Receipts?.refresh) Receipts.refresh();
+  if (view === 'lifecycleAnalytics' && window.LifecycleAnalytics?.init) LifecycleAnalytics.init();
+  if (view === 'clients' && window.Clients?.loadAndRefresh) Clients.loadAndRefresh();
+  if (view === 'proposalCatalog' && window.ProposalCatalog?.loadAndRefresh) ProposalCatalog.loadAndRefresh();
+  if (view === 'notifications' && window.Notifications?.loadHub) Notifications.loadHub(true);
+  if (view === 'workflow' && window.Workflow?.loadAndRefresh) Workflow.loadAndRefresh(true);
+  if (view === 'users' && window.UserAdmin?.refresh) UserAdmin.refresh();
+  if ((view === 'roles' || view === 'rolePermissions') && window.RolesAdmin?.loadAll) RolesAdmin.loadAll();
+  updatePrimaryActionButton(view);
+  if (E.app) {
+    const appTop = E.app.getBoundingClientRect().top + window.scrollY - 10;
+    window.scrollTo({ top: Math.max(0, appTop), behavior: 'smooth' });
+  }
+}
+
+function updatePrimaryActionButton(activeView) {
+  if (!E.createTicketBtn) return;
+  const isCsm = activeView === 'csm';
+  const isLeads = activeView === 'leads';
+  const isAgreements = activeView === 'agreements';
+  const isInvoices = activeView === 'invoices';
+  E.createTicketBtn.innerHTML = isCsm
+    ? '<span class="icon" aria-hidden="true">➕</span> Add activity'
+    : isLeads
+    ? '<span class="icon" aria-hidden="true">➕</span> Create Lead'
+    : isAgreements
+    ? '<span class="icon" aria-hidden="true">➕</span> Create Agreement'
+    : isInvoices
+    ? '<span class="icon" aria-hidden="true">➕</span> Create Invoice'
+    : '<span class="icon" aria-hidden="true">➕</span> Create Ticket';
+  E.createTicketBtn.setAttribute(
+    'aria-label',
+    isCsm ? 'Add activity' : isLeads ? 'Create lead' : isAgreements ? 'Create agreement' : isInvoices ? 'Create invoice' : 'Create new ticket'
+  );
 }
 
 /* ---------- Calendar wiring ---------- */
@@ -2453,7 +2615,7 @@ async function loadIssues(force = false) {
       setIfOptionExists(E.devTeamStatusFilter, Filters.state.devTeamStatus);
       setIfOptionExists(E.issueRelatedFilter, Filters.state.issueRelated);
       UI.skeleton(false);
-      UI.refreshAll();
+      UI.refreshTableAndSummary();
       openIssueFromLink();
     }
   }
@@ -2941,7 +3103,9 @@ async function saveIssueToSheet(issue, auth = {}, options = {}) {
         });
         UI.toast('Issue updated');
         const returnedIssue = result?.issue || result || {};
-        return normalizeIssueForStore({ ...payload, ...returnedIssue });
+        // Prefer the just-submitted payload for immediate UI consistency; some
+        // backends may echo a stale row while Google Sheet propagation completes.
+        return normalizeIssueForStore({ ...returnedIssue, ...payload });
       } catch (error) {
         if (isAuthError(error)) throw error;
       }
@@ -3139,7 +3303,7 @@ function exportIssuesToExcel(rows, suffix) {
     return acc;
   }, {});
   const summaryRows = [
-    ['Generated at', new Date().toLocaleString()],
+    ['Generated at', U.fmtDisplayDate(new Date())],
     ['Filter - Search', Filters.state.search || ''],
     ['Filter - Module', Filters.state.module || 'All'],
     ['Filter - Category', Filters.state.category || 'All'],
@@ -3406,11 +3570,7 @@ function renderPlannerResults(result, context) {
   const htmlSlots = slots
     .map((slot, idx) => {
       const d = slot.start;
-      const dateStr = d.toLocaleDateString(undefined, {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric'
-      });
+      const dateStr = U.fmtDisplayDate(d);
       const timeStr = d.toLocaleTimeString(undefined, {
         hour: '2-digit',
         minute: '2-digit'
@@ -3562,7 +3722,7 @@ function exportPlannerScorecard() {
   const { slots, bug, bomb, ticketContext } = LAST_PLANNER_RESULT;
 
   const summaryRows = [
-    ['Generated at', new Date().toLocaleString()],
+    ['Generated at', U.fmtDisplayDate(new Date())],
     ['Environment', env],
     ['Region', region],
     ['Release type', releaseType],
@@ -3593,8 +3753,8 @@ function exportPlannerScorecard() {
   slots.forEach((slot, idx) => {
     slotsRows.push([
       idx + 1,
-      slot.start ? new Date(slot.start).toLocaleString() : '',
-      slot.end ? new Date(slot.end).toLocaleString() : '',
+      slot.start ? U.fmtDisplayDate(slot.start) : '',
+      slot.end ? U.fmtDisplayDate(slot.end) : '',
       Number(slot.totalRisk || 0).toFixed(2),
       Number(slot.safetyScore || 0).toFixed(2),
       Number(slot.rushRisk || 0).toFixed(2),
@@ -3678,12 +3838,7 @@ function refreshPlannerReleasePlans(context) {
       const d = ev.start ? new Date(ev.start) : null;
       const when =
         d && !isNaN(d)
-          ? d.toLocaleString(undefined, {
-              month: 'short',
-              day: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit'
-            })
+          ? U.fmtDisplayDate(d)
           : '(no date)';
       const label = `[${when}] ${ev.title || 'Release'} (${ev.env || 'Prod'})`;
       return `<option value="${U.escapeAttr(ev.id)}">${U.escapeHtml(label)}</option>`;
@@ -3916,7 +4071,7 @@ function syncFilterInputs() {
 
 
 function wireCore() {
-   [E.issuesTab, E.calendarTab, E.insightsTab].forEach(btn => {
+   [E.issuesTab, E.calendarTab, E.insightsTab, E.csmTab, E.leadsTab, E.dealsTab, E.proposalsTab, E.agreementsTab, E.operationsOnboardingTab, E.technicalAdminTab, E.invoicesTab, E.receiptsTab, E.lifecycleAnalyticsTab, E.clientsTab, E.proposalCatalogTab, E.notificationsTab, E.workflowTab, E.usersTab, E.rolesTab, E.rolePermissionsTab].forEach(btn => {
     if (!btn) return;
     btn.addEventListener('click', () => setActiveView(btn.dataset.view));
   });
@@ -3934,7 +4089,8 @@ function wireCore() {
       debounce(() => {
         Filters.state.search = E.searchInput.value || '';
         Filters.save();
-        UI.refreshAll();
+        GridState.page = 1;
+        UI.refreshTableAndSummary();
       }, 250)
     );
 
@@ -3986,6 +4142,24 @@ function wireCore() {
     E.refreshNow.addEventListener('click', () => {
       loadIssues(true);
       loadEvents(true);
+      if (E.csmView?.classList.contains('active')) CSMActivity.loadAndRefresh({ force: true });
+      if (E.leadsView?.classList.contains('active') && window.Leads?.loadAndRefresh)
+        Leads.loadAndRefresh({ force: true });
+      if (E.dealsView?.classList.contains('active') && window.Deals?.loadAndRefresh)
+        Deals.loadAndRefresh({ force: true });
+      if (E.proposalsView?.classList.contains('active') && window.Proposals?.loadAndRefresh)
+        Proposals.loadAndRefresh({ force: true });
+      if (E.agreementsView?.classList.contains('active') && window.Agreements?.loadAndRefresh)
+        Agreements.loadAndRefresh({ force: true });
+      if (E.invoicesView?.classList.contains('active') && window.Invoices?.refresh)
+        Invoices.refresh(true);
+      if (E.receiptsView?.classList.contains('active') && window.Receipts?.refresh)
+        Receipts.refresh(true);
+      if (E.clientsView?.classList.contains('active') && window.Clients?.loadAndRefresh)
+        Clients.loadAndRefresh({ force: true });
+      if (E.proposalCatalogView?.classList.contains('active') && window.ProposalCatalog?.loadAndRefresh)
+        ProposalCatalog.loadAndRefresh({ force: true });
+      if (window.Notifications?.refreshAll) Notifications.refreshAll(true);
     });
   if (E.exportCsv)
     E.exportCsv.addEventListener('click', () => {
@@ -3995,8 +4169,36 @@ function wireCore() {
     E.createTicketBtn.addEventListener('click', () => {
       if (!requirePermission(() => Permissions.canCreateTicket(), 'Login is required to create a ticket.'))
         return;
+      const isCsmView = E.csmView?.classList.contains('active');
+      const isLeadsView = E.leadsView?.classList.contains('active');
+      const isAgreementsView = E.agreementsView?.classList.contains('active');
+      const isInvoicesView = E.invoicesView?.classList.contains('active');
+      if (isLeadsView && window.Leads?.openForm) {
+        if (!Permissions.canCreateLead()) {
+          UI.toast('Login is required to create leads.');
+          return;
+        }
+        Leads.openForm();
+        return;
+      }
+      if (isAgreementsView && window.Agreements?.openAgreementForm) {
+        if (!Permissions.canCreateAgreement()) {
+          UI.toast('Login is required to create agreements.');
+          return;
+        }
+        Agreements.openAgreementForm();
+        return;
+      }
+      if (isInvoicesView && window.Invoices?.openInvoice) {
+        if (!Permissions.canCreateInvoice()) {
+          UI.toast('You do not have permission to create invoices.');
+          return;
+        }
+        Invoices.openInvoice(Invoices.emptyInvoice(), [], { readOnly: false });
+        return;
+      }
       window.open(
-        'https://forms.gle/PPnEP1AQneoBT79s5',
+        isCsmView ? 'https://forms.gle/jV7XLrquc8beyi228' : 'https://forms.gle/PPnEP1AQneoBT79s5',
         '_blank',
         'noopener,noreferrer'
       );
@@ -4004,7 +4206,7 @@ function wireCore() {
 
   if (E.shortcutsHelp) {
     E.shortcutsHelp.addEventListener('click', () => {
-     UI.toast('Shortcuts: 1/2/3 switch tabs · / focus search · Ctrl+K AI query');
+     UI.toast('Shortcuts: 1/2/3/4/5/6/7/8/9/0 switch tabs · / focus search · Ctrl+K AI query');
     });
   }
 
@@ -4032,17 +4234,21 @@ function wireCore() {
     });
   }
   
+  UI.refreshTableAndSummary = () => {
+    const list = UI.Issues.applyFilters();
+    UI.Issues.lightRefresh(list);
+    return list;
+  };
   UI.refreshAll = () => {
     const list = UI.Issues.applyFilters();
-    UI.Issues.renderSummary(list);
-    UI.Issues.renderFilterChips();
-    UI.Issues.renderKPIs(list);
-    UI.Issues.renderTable(list);
-    UI.Issues.renderCharts(list);
+    UI.Issues.fullRefresh(list);
     UI.updateHeroMetrics(DataStore.rows);
     refreshPlannerTickets(list);
     if (E.insightsView && E.insightsView.classList.contains('active')) {
       Analytics.refresh(list);
+    }
+    if (E.csmView && E.csmView.classList.contains('active')) {
+      CSMActivity.refresh();
     }
   };
 }
@@ -4056,7 +4262,7 @@ function wireSorting() {
         GridState.sortKey = key;
         GridState.sortAsc = true;
       }
-      UI.refreshAll();
+      UI.refreshTableAndSummary();
     });
     th.addEventListener('keydown', e => {
       if (e.key === 'Enter' || e.key === ' ') {
@@ -4076,18 +4282,18 @@ function wirePaging() {
       GridState.pageSize = +E.pageSize.value;
       localStorage.setItem(LS_KEYS.pageSize, GridState.pageSize);
       GridState.page = 1;
-      UI.refreshAll();
+      UI.refreshTableAndSummary();
     });
   if (E.firstPage)
     E.firstPage.addEventListener('click', () => {
       GridState.page = 1;
-      UI.refreshAll();
+      UI.refreshTableAndSummary();
     });
   if (E.prevPage)
     E.prevPage.addEventListener('click', () => {
       if (GridState.page > 1) {
         GridState.page--;
-        UI.refreshAll();
+        UI.refreshTableAndSummary();
       }
     });
   if (E.nextPage)
@@ -4096,14 +4302,14 @@ function wirePaging() {
       const pages = Math.max(1, Math.ceil(list.length / GridState.pageSize));
       if (GridState.page < pages) {
         GridState.page++;
-        UI.refreshAll();
+        UI.refreshTableAndSummary();
       }
     });
   if (E.lastPage)
     E.lastPage.addEventListener('click', () => {
       const list = UI.Issues.applyFilters();
       GridState.page = Math.max(1, Math.ceil(list.length / GridState.pageSize));
-      UI.refreshAll();
+      UI.refreshTableAndSummary();
     });
 }
 
@@ -4112,7 +4318,7 @@ function wireFilters() {
     E.moduleFilter.addEventListener('change', () => {
       Filters.state.module = E.moduleFilter.value;
       Filters.save();
-      UI.refreshAll();
+      UI.refreshTableAndSummary();
     });
     setIfOptionExists(E.moduleFilter, Filters.state.module);
   }
@@ -4120,7 +4326,7 @@ function wireFilters() {
     E.categoryFilter.addEventListener('change', () => {
       Filters.state.category = E.categoryFilter.value;
       Filters.save();
-      UI.refreshAll();
+      UI.refreshTableAndSummary();
     });
     setIfOptionExists(E.categoryFilter, Filters.state.category);
   }
@@ -4128,7 +4334,7 @@ function wireFilters() {
     E.priorityFilter.addEventListener('change', () => {
       Filters.state.priority = E.priorityFilter.value;
       Filters.save();
-      UI.refreshAll();
+      UI.refreshTableAndSummary();
     });
      setIfOptionExists(E.priorityFilter, Filters.state.priority);
   }
@@ -4136,7 +4342,7 @@ function wireFilters() {
     E.statusFilter.addEventListener('change', () => {
       Filters.state.status = E.statusFilter.value;
       Filters.save();
-      UI.refreshAll();
+      UI.refreshTableAndSummary();
     });
     setIfOptionExists(E.statusFilter, Filters.state.status);
   }
@@ -4144,7 +4350,7 @@ function wireFilters() {
     E.devTeamStatusFilter.addEventListener('change', () => {
       Filters.state.devTeamStatus = E.devTeamStatusFilter.value;
       Filters.save();
-      UI.refreshAll();
+      UI.refreshTableAndSummary();
     });
     setIfOptionExists(E.devTeamStatusFilter, Filters.state.devTeamStatus);
   }
@@ -4152,7 +4358,7 @@ function wireFilters() {
     E.issueRelatedFilter.addEventListener('change', () => {
       Filters.state.issueRelated = E.issueRelatedFilter.value;
       Filters.save();
-      UI.refreshAll();
+      UI.refreshTableAndSummary();
     });
     setIfOptionExists(E.issueRelatedFilter, Filters.state.issueRelated);
   }
@@ -4161,7 +4367,7 @@ function wireFilters() {
     E.startDateFilter.addEventListener('change', () => {
       Filters.state.start = E.startDateFilter.value;
       Filters.save();
-      UI.refreshAll();
+      UI.refreshTableAndSummary();
     });
   }
   if (E.endDateFilter) {
@@ -4169,7 +4375,7 @@ function wireFilters() {
     E.endDateFilter.addEventListener('change', () => {
       Filters.state.end = E.endDateFilter.value;
       Filters.save();
-      UI.refreshAll();
+      UI.refreshTableAndSummary();
     });
   }
   if (E.searchInput) E.searchInput.value = Filters.state.search || '';
@@ -4193,7 +4399,8 @@ function wireFilters() {
       if (E.startDateFilter) E.startDateFilter.value = '';
       if (E.endDateFilter) E.endDateFilter.value = '';
       UI.Issues.renderFilters();
-      UI.refreshAll();
+      GridState.page = 1;
+      UI.refreshTableAndSummary();
     });
 }
 
@@ -4258,10 +4465,10 @@ function wireConnectivity() {
 }
 
 function wireDashboardGate() {
-  if (!E.app || !E.loginForm || !E.loginRole || !E.loginPasscode) return;
+  if (!E.app || !E.loginForm || !E.loginIdentifier || !E.loginPasscode) return;
 
   const getDefaultViewForRole = role => {
-    if (role === ROLES.ADMIN) return 'issues';
+    if (role === ROLES.ADMIN || role === ROLES.DEV) return 'issues';
     if (role === ROLES.VIEWER) return 'calendar';
     return 'issues';
   };
@@ -4273,6 +4480,7 @@ function wireDashboardGate() {
     if (E.logoutBtn) E.logoutBtn.hidden = false;
     const role = Session.role();
     setActiveView(getDefaultViewForRole(role));
+    if (window.Notifications?.onAuthStateChanged) Notifications.onAuthStateChanged();
     // Avoid forcing a jump to #app after login (caused unwanted auto-scrolling).
     if (window.location.hash) {
       history.replaceState(null, '', window.location.pathname + window.location.search);
@@ -4284,67 +4492,117 @@ function wireDashboardGate() {
     E.app.classList.add('is-locked');
     E.app.setAttribute('aria-hidden', 'true');
     if (E.logoutBtn) E.logoutBtn.hidden = true;
+    if (window.Notifications?.reset) Notifications.reset();
     window.location.hash = '#loginSection';
   };
 
   lockApp();
   UI.applyRolePermissions();
-  E.loginRole.value = ROLES.VIEWER;
 
-  const updateLoginHint = () => {
-    if (!E.loginHint) return;
-    const isAdmin = E.loginRole.value === ROLES.ADMIN;
-    E.loginHint.textContent = isAdmin
-      ? 'Enter your admin passcode.'
-      : 'Enter your viewer passcode.';
-  };
-
-  E.loginRole.addEventListener('change', updateLoginHint);
-  updateLoginHint();
   if (Session.isAuthenticated()) {
-    E.loginRole.value = Session.role() || ROLES.VIEWER;
     unlockApp();
   }
 
   E.loginForm.addEventListener('submit', async event => {
     event.preventDefault();
-    const selectedRole = String(E.loginRole.value || '').trim().toLowerCase();
+    const identifier = String(E.loginIdentifier.value || '');
     const passcode = String(E.loginPasscode.value || '');
+    const defaultLoginBtnLabel = E.loginBtn?.dataset?.defaultLabel || E.loginBtn?.textContent || 'LOG IN';
+    if (E.loginBtn) {
+      E.loginBtn.dataset.defaultLabel = defaultLoginBtnLabel;
+      E.loginBtn.disabled = true;
+      E.loginBtn.textContent = 'Logging in…';
+      E.loginBtn.setAttribute('aria-busy', 'true');
+    }
 
-    if (selectedRole !== ROLES.ADMIN && selectedRole !== ROLES.VIEWER) {
-      UI.toast('Role is required.');
+    if (!identifier.trim()) {
+      UI.toast('Username or email is required.');
+      if (E.loginBtn) {
+        E.loginBtn.disabled = false;
+        E.loginBtn.textContent = defaultLoginBtnLabel;
+        E.loginBtn.removeAttribute('aria-busy');
+      }
       return;
     }
     if (!passcode.trim()) {
-      UI.toast('Passcode is required.');
+      UI.toast('Password is required.');
+      if (E.loginBtn) {
+        E.loginBtn.disabled = false;
+        E.loginBtn.textContent = defaultLoginBtnLabel;
+        E.loginBtn.removeAttribute('aria-busy');
+      }
       return;
     }
 
     try {
-      const session = await Session.login(selectedRole, passcode);
-      UI.applyRolePermissions();
-      E.loginPasscode.value = '';
-      E.loginRole.value = session.role || selectedRole || ROLES.VIEWER;
-      unlockApp();
-      await Promise.all([loadIssues(true), loadEvents(true)]);
-      if (selectedRole && session.role !== selectedRole) {
-        UI.toast(`Logged in as ${session.role}. Selected role was adjusted to match backend.`);
-      } else {
-        UI.toast(`Logged in as ${session.role}.`);
+      if (typeof Api?.runAuthProxyHealthCheck === 'function') {
+        await Api.runAuthProxyHealthCheck();
       }
+      const user = await Session.login(identifier, passcode);
+      UI.applyRolePermissions();
+      E.loginIdentifier.value = '';
+      E.loginPasscode.value = '';
+      unlockApp();
+      UI.toast(`Logged in as ${user.role}.`);
+      Permissions.loadMatrix(true)
+        .then(() => {
+          UI.applyRolePermissions();
+        })
+        .catch(error => {
+          console.warn('Post-login permission matrix refresh failed', error);
+        });
+      Promise.all([loadIssues(false), loadEvents(false)]).catch(error => {
+        console.warn('Post-login data refresh failed', error);
+        UI.toast('Logged in, but latest dashboard data could not be refreshed.');
+      });
     } catch (error) {
-      UI.toast(`Login failed: ${error.message}`);
+      const message = String(error?.message || '').toLowerCase();
+      const resolvedEndpoint =
+        (typeof Api?.ensureBaseUrl === 'function' && (() => {
+          try {
+            return Api.ensureBaseUrl();
+          } catch {
+            return '';
+          }
+        })()) ||
+        (window.resolveApiEndpoint ? resolveApiEndpoint(API_BASE_URL) : API_BASE_URL);
+
+      if (/invalid|credential|password|passcode|identifier|unauthorized/.test(message)) {
+        UI.toast('Invalid credentials. Please check your username/email and password.');
+      } else if (/failed before a response|network|cors|unreachable/.test(message)) {
+        UI.toast('Backend unavailable. Please try again in a moment.');
+      } else if (/http 404/.test(message)) {
+        if (error?.code === 'MISSING_PROXY_ROUTE') {
+          console.error('[auth/login] Missing local /api/proxy route', { resolvedEndpoint, error });
+        } else if (error?.code === 'UPSTREAM_404') {
+          console.error('[auth/login] Proxy route exists but Apps Script upstream returned 404', { resolvedEndpoint, error });
+        } else {
+          console.error('[auth/login] Auth route 404 from configured endpoint', { resolvedEndpoint, error });
+        }
+        UI.toast('Auth backend route not found. Please verify API_BASE_URL/proxy.');
+      } else if (error?.code === 'UPSTREAM_NON_JSON' || error?.code === 'UPSTREAM_NON_JSON_HTML') {
+        console.error('[auth/login] Upstream returned non-JSON response', { resolvedEndpoint, error });
+        UI.toast('Backend response format error. Please verify API/proxy configuration.');
+      } else {
+        UI.toast(`Login failed: ${error.message}`);
+      }
       return;
+    } finally {
+      if (E.loginBtn) {
+        E.loginBtn.disabled = false;
+        E.loginBtn.textContent = defaultLoginBtnLabel;
+        E.loginBtn.removeAttribute('aria-busy');
+      }
     }
   });
 
   if (E.logoutBtn) {
-    E.logoutBtn.addEventListener('click', async () => {
-      await Session.logout();
+    E.logoutBtn.addEventListener('click', () => {
+      Session.logout();
+      Permissions.reset();
       UI.applyRolePermissions();
+      E.loginIdentifier.value = '';
       E.loginPasscode.value = '';
-      E.loginRole.value = ROLES.VIEWER;
-      updateLoginHint();
       lockApp();
       UI.toast('Logged out.');
     });
@@ -4404,18 +4662,29 @@ function wireModals() {
   }
 
   if (E.editIssueBtn) {
-    E.editIssueBtn.addEventListener('click', e => {
+    E.editIssueBtn.addEventListener('click', async e => {
       e.preventDefault();
       e.stopPropagation();
+      if (IssueEditor.isOpening) return;
       if (!requirePermission(() => Permissions.canEditTicket(), 'Only admin can edit tickets.')) return;
+      IssueEditor.isOpening = true;
+      setButtonPendingState(E.editIssueBtn, true, 'Opening...');
       const selectedIssue =
         UI.Modals.selectedIssue ||
         DataStore.byId.get(E.editIssueBtn?.dataset?.id || '');
       if (!selectedIssue) {
         UI.toast('Open a ticket before editing.');
+        IssueEditor.isOpening = false;
+        setButtonPendingState(E.editIssueBtn, false, 'Opening...');
         return;
       }
-      IssueEditor.open(selectedIssue);
+      try {
+        await Promise.resolve();
+        IssueEditor.open(selectedIssue);
+      } finally {
+        IssueEditor.isOpening = false;
+        setButtonPendingState(E.editIssueBtn, false, 'Opening...');
+      }
     });
   }
 
@@ -4810,6 +5079,737 @@ function wireAIQuery() {
   renderHelp();
 }
 
+/* ---------- CSM Daily Activity ---------- */
+const CSMActivity = {
+  cacheTtlMs: 2 * 60 * 1000,
+  rows: [],
+  loaded: false,
+  lastLoadedAt: 0,
+  isLoading: false,
+  isSaving: false,
+  loadError: '',
+  state: {
+    search: '',
+    csmName: 'All',
+    client: 'All',
+    supportType: 'All',
+    effort: 'All',
+    channel: 'All',
+    minMinutes: '',
+    maxMinutes: '',
+    startDate: '',
+    endDate: ''
+  },
+  charts: {
+    weekdayWorkload: null,
+    weeklyTrend: null,
+    effortMixByCsm: null,
+    clientConcentration: null,
+    workloadBalance: null
+  },
+  backendToView(raw = {}) {
+    const timestamp = String(raw.timestamp || raw.date || raw.created_at || '').trim();
+    const parsedDate = timestamp ? new Date(timestamp) : null;
+    return {
+      id: String(raw.id || '').trim(),
+      timestamp,
+      parsedDate: parsedDate && !isNaN(parsedDate) ? parsedDate : null,
+      csmName: String(raw.csm_name || raw.csmName || '').trim(),
+      client: String(raw.client || '').trim(),
+      timeSpentMinutes: Number.parseFloat(raw.time_spent_minutes ?? raw.timeSpentMinutes ?? 0) || 0,
+      supportType: String(raw.type_of_support || raw.supportType || '').trim(),
+      effortRequirement: String(raw.effort_requirement || raw.effortRequirement || '').trim(),
+      supportChannel: String(raw.support_channel || raw.supportChannel || '').trim(),
+      notes: String(raw.notes_optional || raw.notes || '').trim(),
+      createdAt: String(raw.created_at || '').trim(),
+      updatedAt: String(raw.updated_at || '').trim()
+    };
+  },
+  viewToBackendActivity(row = {}) {
+    return {
+      timestamp: String(row.timestamp || '').trim(),
+      csm_name: String(row.csmName || '').trim(),
+      client: String(row.client || '').trim(),
+      time_spent_minutes: Number(row.timeSpentMinutes) || 0,
+      type_of_support: String(row.supportType || '').trim(),
+      effort_requirement: String(row.effortRequirement || '').trim(),
+      support_channel: String(row.supportChannel || '').trim(),
+      notes_optional: String(row.notes || '').trim()
+    };
+  },
+  extractRows(payload) {
+    if (Array.isArray(payload)) return payload;
+    if (payload && Array.isArray(payload.data)) return payload.data;
+    return [];
+  },
+  setBusySaving(v) {
+    this.isSaving = !!v;
+    const saveBtn = E.csmFormSaveBtn;
+    const deleteBtn = E.csmFormDeleteBtn;
+    const inlineSubmitBtn = E.csmInlineSubmitBtn;
+    if (saveBtn) {
+      saveBtn.disabled = !!v;
+      saveBtn.textContent = v ? 'Saving…' : 'Save';
+    }
+    if (deleteBtn) deleteBtn.disabled = !!v;
+    if (inlineSubmitBtn) {
+      inlineSubmitBtn.disabled = !!v;
+      inlineSubmitBtn.textContent = v ? 'Saving…' : 'Create Activity';
+    }
+    ['csmFormTimestamp','csmFormCsmName','csmFormClient','csmFormMinutes','csmFormSupportType','csmFormEffort','csmFormChannel','csmFormNotes']
+      .forEach(id => { if (E[id]) E[id].disabled = !!v; });
+    ['csmInlineTimestamp','csmInlineCsmName','csmInlineClient','csmInlineMinutes','csmInlineSupportType','csmInlineEffort','csmInlineChannel','csmInlineNotes']
+      .forEach(id => { if (E[id]) E[id].disabled = !!v; });
+  },
+  canCreate() {
+    return Permissions.canCreateCsmActivity();
+  },
+  canEditDelete() {
+    return Permissions.canUpdateCsmActivity() || Permissions.canDeleteCsmActivity();
+  },
+  async loadAndRefresh(options = {}) {
+    const force = !!options.force;
+    if (this.isLoading) return;
+    const hasWarmCache = this.loaded && Date.now() - this.lastLoadedAt <= this.cacheTtlMs;
+    if (hasWarmCache && !force) {
+      this.refresh();
+      return;
+    }
+    this.isLoading = true;
+    this.loadError = '';
+    this.refresh();
+    try {
+      const response = await Api.postAuthenticatedCached(
+        'csm',
+        'list',
+        { limit: 50, offset: 0, summary_only: true, sort_by: 'updated_at', sort_dir: 'desc' },
+        { requireAuth: true, forceRefresh: force }
+      );
+      const rows = this.extractRows(response).map(raw => this.backendToView(raw));
+      this.rows = rows.filter(row => row.id || row.csmName || row.client || row.timestamp);
+      this.loaded = true;
+      this.lastLoadedAt = Date.now();
+      this.hydrateOptions();
+      this.refresh();
+    } catch (error) {
+      if (isAuthError(error)) {
+        await handleExpiredSession('Session expired while loading CSM activity.');
+        return;
+      }
+      this.loadError = String(error?.message || 'Unknown backend error');
+      this.rows = [];
+      this.loaded = false;
+      this.hydrateOptions();
+      this.refresh();
+      UI.toast('Error loading CSM activity: ' + this.loadError);
+    } finally {
+      this.isLoading = false;
+      this.refresh();
+    }
+  },
+  hydrateOptions() {
+    const uniq = values =>
+      [...new Set(values.map(v => String(v || '').trim()).filter(Boolean))].sort((a, b) =>
+        a.localeCompare(b)
+      );
+    const assign = (el, values, selected) => {
+      if (!el) return;
+      el.innerHTML = ['All', ...values].map(v => `<option value="${U.escapeHtml(v)}">${U.escapeHtml(v)}</option>`).join('');
+      setIfOptionExists(el, selected || 'All');
+    };
+    assign(E.csmNameFilter, uniq(this.rows.map(r => r.csmName)), this.state.csmName);
+    assign(E.csmClientFilter, uniq(this.rows.map(r => r.client)), this.state.client);
+    assign(E.csmSupportTypeFilter, uniq(this.rows.map(r => r.supportType)), this.state.supportType);
+    assign(E.csmEffortFilter, uniq(this.rows.map(r => r.effortRequirement)), this.state.effort);
+    assign(E.csmChannelFilter, uniq(this.rows.map(r => r.supportChannel)), this.state.channel);
+  },
+  applyFilters() {
+    const s = this.state;
+    const terms = (s.search || '').toLowerCase().trim().split(/\s+/).filter(Boolean);
+    const minMinutes = s.minMinutes === '' ? null : Number(s.minMinutes);
+    const maxMinutes = s.maxMinutes === '' ? null : Number(s.maxMinutes);
+    const startDate = s.startDate ? new Date(`${s.startDate}T00:00:00`) : null;
+    const endDate = s.endDate ? new Date(`${s.endDate}T23:59:59.999`) : null;
+    return this.rows.filter(row => {
+      const hay = [row.csmName, row.client, row.supportType, row.effortRequirement, row.supportChannel, row.notes]
+        .join(' ')
+        .toLowerCase();
+      if (terms.length && !terms.every(term => hay.includes(term))) return false;
+      if (s.csmName !== 'All' && row.csmName !== s.csmName) return false;
+      if (s.client !== 'All' && row.client !== s.client) return false;
+      if (s.supportType !== 'All' && row.supportType !== s.supportType) return false;
+      if (s.effort !== 'All' && row.effortRequirement !== s.effort) return false;
+      if (s.channel !== 'All' && row.supportChannel !== s.channel) return false;
+      if (minMinutes != null && row.timeSpentMinutes < minMinutes) return false;
+      if (maxMinutes != null && row.timeSpentMinutes > maxMinutes) return false;
+      if (startDate || endDate) {
+        if (!row.parsedDate) return false;
+        if (startDate && row.parsedDate < startDate) return false;
+        if (endDate && row.parsedDate > endDate) return false;
+      }
+      return true;
+    });
+  },
+  destroyChart(chart) {
+    if (chart && typeof chart.destroy === 'function') chart.destroy();
+  },
+  upsertChart(existingChart, ctx, config) {
+    if (existingChart && existingChart.config?.type === config.type) {
+      existingChart.data = config.data;
+      existingChart.options = config.options || existingChart.options;
+      existingChart.update('none');
+      return existingChart;
+    }
+    this.destroyChart(existingChart);
+    return new Chart(ctx, config);
+  },
+  renderCharts(list) {
+    const minutes = row => Number(row.timeSpentMinutes) || 0;
+    const countByKey = key => {
+      const map = new Map();
+      list.forEach(row => {
+        const label = String(row[key] || 'Unspecified').trim() || 'Unspecified';
+        map.set(label, (map.get(label) || 0) + 1);
+      });
+      return map;
+    };
+    const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const weekdayIndex = date => (date.getUTCDay() + 6) % 7;
+    const isoWeekLabel = date => {
+      const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+      const dayNum = d.getUTCDay() || 7;
+      d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+      const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+      const week = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+      return `${d.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+    };
+    const totalByKey = key => {
+      const map = new Map();
+      list.forEach(row => {
+        const label = String(row[key] || 'Unspecified').trim() || 'Unspecified';
+        map.set(label, (map.get(label) || 0) + minutes(row));
+      });
+      return map;
+    };
+
+    if (E.csmMinutesByClientChart?.getContext) {
+      const byClient = [...totalByKey('client').entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
+      this.charts.minutesByClient = this.upsertChart(this.charts.minutesByClient, E.csmMinutesByClientChart.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: byClient.map(row => row[0]),
+          datasets: [{ label: 'Minutes', data: byClient.map(row => Math.round(row[1])), backgroundColor: '#f59e0b' }]
+        },
+        options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: true } }, scales: { x: { beginAtZero: true, title: { display: true, text: 'Minutes' } } } }
+      });
+    }
+
+    if (E.csmTypeOfSupportChart?.getContext) {
+      const bySupport = [...countByKey('supportType').entries()].sort((a, b) => b[1] - a[1]);
+      this.charts.typeOfSupport = this.upsertChart(this.charts.typeOfSupport, E.csmTypeOfSupportChart.getContext('2d'), {
+        type: 'doughnut',
+        data: {
+          labels: bySupport.map(row => row[0]),
+          datasets: [{ data: bySupport.map(row => row[1]), backgroundColor: ['#2563eb', '#06b6d4', '#16a34a', '#f59e0b', '#8b5cf6', '#ef4444', '#94a3b8'] }]
+        },
+        options: { responsive: true, cutout: '50%' }
+      });
+    }
+
+    if (E.csmEffortRequirementChart?.getContext) {
+      const effortCounts = { Low: 0, Medium: 0, High: 0 };
+      list.forEach(row => {
+        const effort = String(row.effortRequirement || '').trim().toLowerCase();
+        if (effort.startsWith('h')) effortCounts.High += 1;
+        else if (effort.startsWith('m')) effortCounts.Medium += 1;
+        else effortCounts.Low += 1;
+      });
+      this.charts.effortRequirement = this.upsertChart(this.charts.effortRequirement, E.csmEffortRequirementChart.getContext('2d'), {
+        type: 'pie',
+        data: {
+          labels: ['Low', 'Medium', 'High'],
+          datasets: [{ data: [effortCounts.Low, effortCounts.Medium, effortCounts.High], backgroundColor: ['#16a34a', '#f59e0b', '#ef4444'] }]
+        },
+        options: { responsive: true }
+      });
+    }
+
+    if (E.csmSupportChannelsChart?.getContext) {
+      const byChannel = [...countByKey('supportChannel').entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
+      this.charts.supportChannels = this.upsertChart(this.charts.supportChannels, E.csmSupportChannelsChart.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: byChannel.map(row => row[0]),
+          datasets: [{ label: 'Tasks', data: byChannel.map(row => row[1]), backgroundColor: '#8b5cf6' }]
+        },
+        options: { responsive: true, plugins: { legend: { display: true } }, scales: { y: { beginAtZero: true, title: { display: true, text: 'Tasks' } } } }
+      });
+    }
+
+    if (E.csmWeekdayWorkloadChart?.getContext) {
+      const weekdayMinutes = new Array(7).fill(0);
+      list.forEach(row => {
+        if (!row.parsedDate) return;
+        weekdayMinutes[weekdayIndex(row.parsedDate)] += minutes(row);
+      });
+      this.charts.weekdayWorkload = this.upsertChart(this.charts.weekdayWorkload, E.csmWeekdayWorkloadChart.getContext('2d'), {
+        type: 'bar',
+        data: { labels: weekdays, datasets: [{ label: 'Minutes', data: weekdayMinutes.map(v => Math.round(v)), backgroundColor: '#0ea5e9' }] },
+        options: { responsive: true, plugins: { legend: { display: true } }, scales: { y: { beginAtZero: true, title: { display: true, text: 'Minutes' } } } }
+      });
+    }
+
+    if (E.csmWeeklyTrendChart?.getContext) {
+      const byWeek = new Map();
+      list.forEach(row => {
+        if (!row.parsedDate) return;
+        const week = isoWeekLabel(row.parsedDate);
+        byWeek.set(week, (byWeek.get(week) || 0) + minutes(row));
+      });
+      const weeklyRows = [...byWeek.entries()].sort((a, b) => a[0].localeCompare(b[0])).slice(-12);
+      this.charts.weeklyTrend = this.upsertChart(this.charts.weeklyTrend, E.csmWeeklyTrendChart.getContext('2d'), {
+        type: 'line',
+        data: { labels: weeklyRows.map(r => r[0]), datasets: [{ label: 'Minutes', data: weeklyRows.map(r => Math.round(r[1])), borderColor: '#16a34a', backgroundColor: 'rgba(22,163,74,.15)', fill: true, tension: 0.35 }] },
+        options: { responsive: true, scales: { y: { beginAtZero: false, title: { display: true, text: 'Minutes' } } } }
+      });
+    }
+
+    if (E.csmEffortMixByCsmChart?.getContext) {
+      const names = [...new Set(list.map(row => row.csmName || 'Unspecified'))];
+      const byEffort = { Low: new Map(), Medium: new Map(), High: new Map() };
+      list.forEach(row => {
+        const csm = row.csmName || 'Unspecified';
+        const effort = String(row.effortRequirement || '').trim().toLowerCase();
+        const bucket = effort.startsWith('h') ? 'High' : effort.startsWith('m') ? 'Medium' : 'Low';
+        byEffort[bucket].set(csm, (byEffort[bucket].get(csm) || 0) + 1);
+      });
+      this.charts.effortMixByCsm = this.upsertChart(this.charts.effortMixByCsm, E.csmEffortMixByCsmChart.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: names,
+          datasets: [
+            { label: 'Low', data: names.map(n => byEffort.Low.get(n) || 0), backgroundColor: '#16a34a' },
+            { label: 'Medium', data: names.map(n => byEffort.Medium.get(n) || 0), backgroundColor: '#f59e0b' },
+            { label: 'High', data: names.map(n => byEffort.High.get(n) || 0), backgroundColor: '#ef4444' }
+          ]
+        },
+        options: { responsive: true, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, title: { display: true, text: 'Tasks' } } } }
+      });
+    }
+
+    if (E.csmClientConcentrationChart?.getContext) {
+      const byClient = [...totalByKey('client').entries()].sort((a, b) => b[1] - a[1]);
+      const top = byClient.slice(0, 5);
+      const otherMinutes = byClient.slice(5).reduce((sum, row) => sum + row[1], 0);
+      if (otherMinutes > 0) top.push(['Others', otherMinutes]);
+      this.charts.clientConcentration = this.upsertChart(this.charts.clientConcentration, E.csmClientConcentrationChart.getContext('2d'), {
+        type: 'doughnut',
+        data: {
+          labels: top.map(r => r[0]),
+          datasets: [{ data: top.map(r => Math.round(r[1])), backgroundColor: ['#2563eb', '#06b6d4', '#16a34a', '#f59e0b', '#8b5cf6', '#94a3b8'] }]
+        },
+        options: { responsive: true, cutout: '50%' }
+      });
+    }
+
+    if (E.csmWorkloadBalanceChart?.getContext) {
+      const byCsm = [...totalByKey('csmName').entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
+      const avg = byCsm.length ? byCsm.reduce((sum, row) => sum + row[1], 0) / byCsm.length : 0;
+      this.charts.workloadBalance = this.upsertChart(this.charts.workloadBalance, E.csmWorkloadBalanceChart.getContext('2d'), {
+        data: {
+          labels: byCsm.map(r => r[0]),
+          datasets: [
+            { type: 'bar', label: 'Total Minutes', data: byCsm.map(r => Math.round(r[1])), backgroundColor: '#3b82f6' },
+            { type: 'line', label: 'Average Minutes', data: byCsm.map(() => Math.round(avg)), borderColor: '#ef4444', borderWidth: 2, pointRadius: 0, tension: 0 }
+          ]
+        },
+        options: { responsive: true, scales: { y: { beginAtZero: true, title: { display: true, text: 'Minutes' } } } }
+      });
+    }
+  },
+  renderTable(list) {
+    if (!E.csmTableBody) return;
+    if (this.isLoading) {
+      E.csmTableBody.innerHTML = '<tr><td colspan="9" class="muted" style="text-align:center;">Loading CSM activity…</td></tr>';
+      if (E.csmRowCount) E.csmRowCount.textContent = 'Loading…';
+      return;
+    }
+    if (this.loadError) {
+      E.csmTableBody.innerHTML = `<tr><td colspan="9" class="muted" style="text-align:center;color:#ffb4b4;">${U.escapeHtml(this.loadError)}</td></tr>`;
+      if (E.csmRowCount) E.csmRowCount.textContent = 'Error';
+      return;
+    }
+    if (!list.length) {
+      const msg = this.rows.length
+        ? 'No activity rows match the current filters.'
+        : 'No CSM activities found in backend yet.';
+      E.csmTableBody.innerHTML = `<tr><td colspan="9" class="muted" style="text-align:center;">${U.escapeHtml(msg)}</td></tr>`;
+      if (E.csmRowCount) E.csmRowCount.textContent = '0 rows';
+      return;
+    }
+    E.csmTableBody.innerHTML = list
+      .map(
+        row => `<tr>
+          <td>${U.escapeHtml(row.timestamp || '—')}</td>
+          <td>${U.escapeHtml(row.csmName || '—')}</td>
+          <td>${U.escapeHtml(row.client || '—')}</td>
+          <td>${Math.round(Number(row.timeSpentMinutes) || 0)}</td>
+          <td>${U.escapeHtml(row.supportType || '—')}</td>
+          <td>${U.escapeHtml(row.effortRequirement || '—')}</td>
+          <td>${U.escapeHtml(row.supportChannel || '—')}</td>
+          <td>${U.escapeHtml(row.notes || '—')}</td>
+          <td>${this.canEditDelete() ? `<button class="btn ghost sm" type="button" data-csm-edit="${U.escapeAttr(row.id)}">Edit</button> <button class="btn ghost sm" type="button" data-csm-delete="${U.escapeAttr(row.id)}">Delete</button>` : '<span class="muted">—</span>'}</td>
+        </tr>`
+      )
+      .join('');
+    if (E.csmRowCount) E.csmRowCount.textContent = `${list.length} row${list.length === 1 ? '' : 's'}`;
+  },
+  renderKPIs(list) {
+    const totalActivities = list.length;
+    const totalMinutes = list.reduce((sum, row) => sum + (Number(row.timeSpentMinutes) || 0), 0);
+    const averageMinutes = totalActivities ? totalMinutes / totalActivities : 0;
+    const byCsm = new Map();
+    const clients = new Set();
+    let weightedLoadScore = 0;
+    let highEffortCount = 0;
+    list.forEach(row => {
+      const csmName = row.csmName || 'Unspecified';
+      byCsm.set(csmName, (byCsm.get(csmName) || 0) + (Number(row.timeSpentMinutes) || 0));
+      if (row.client) clients.add(row.client);
+      const effort = String(row.effortRequirement || '').trim().toLowerCase();
+      const effortScore = effort.startsWith('h') ? 3 : effort.startsWith('m') ? 2 : effort.startsWith('l') ? 1 : 0;
+      weightedLoadScore += effortScore;
+      if (effort.startsWith('h')) highEffortCount += 1;
+    });
+    const activeCsmCount = byCsm.size;
+    const activeClientCount = clients.size;
+    const highEffortShare = totalActivities ? (highEffortCount / totalActivities) * 100 : 0;
+    const avgWeightedScore = totalActivities ? weightedLoadScore / totalActivities : 0;
+
+    if (E.csmKpiActivities) E.csmKpiActivities.textContent = String(totalActivities);
+    if (E.csmKpiActivitiesSub) E.csmKpiActivitiesSub.textContent = `${activeCsmCount} active CSM${activeCsmCount === 1 ? '' : 's'} in current view`;
+    if (E.csmKpiMinutes) E.csmKpiMinutes.textContent = String(Math.round(totalMinutes));
+    if (E.csmKpiMinutesSub) E.csmKpiMinutesSub.textContent = `${Math.round(totalMinutes)} tracked minutes`;
+    if (E.csmKpiAvg) E.csmKpiAvg.textContent = averageMinutes ? averageMinutes.toFixed(1) : '0';
+    if (E.csmKpiAvgSub) E.csmKpiAvgSub.textContent = 'Time spent efficiency snapshot';
+    if (E.csmKpiActiveClients) E.csmKpiActiveClients.textContent = String(activeClientCount);
+    if (E.csmKpiActiveClientsSub) E.csmKpiActiveClientsSub.textContent = `${activeClientCount} unique clients in current view`;
+    if (E.csmKpiWeightedLoad) E.csmKpiWeightedLoad.textContent = String(weightedLoadScore);
+    if (E.csmKpiWeightedLoadSub) E.csmKpiWeightedLoadSub.textContent = `Average score ${avgWeightedScore.toFixed(1)} per task (Low=1, Medium=2, High=3)`;
+    if (E.csmKpiHighEffortShare) E.csmKpiHighEffortShare.textContent = `${highEffortShare.toFixed(1)}%`;
+    if (E.csmKpiHighEffortShareSub) E.csmKpiHighEffortShareSub.textContent = `${highEffortCount} high-effort task${highEffortCount === 1 ? '' : 's'} in current filter`;
+  },
+  renderInsights(list) {
+    const totalMinutes = list.reduce((sum, row) => sum + (Number(row.timeSpentMinutes) || 0), 0);
+    const byCsm = new Map();
+    const byClient = new Map();
+    const bySupport = new Map();
+    const byChannel = new Map();
+    const byWeekday = new Map();
+    const durations = [];
+    list.forEach(row => {
+      const mins = Number(row.timeSpentMinutes) || 0;
+      byCsm.set(row.csmName || 'Unspecified', (byCsm.get(row.csmName || 'Unspecified') || 0) + mins);
+      byClient.set(row.client || 'Unspecified', (byClient.get(row.client || 'Unspecified') || 0) + mins);
+      bySupport.set(row.supportType || 'Unspecified', (bySupport.get(row.supportType || 'Unspecified') || 0) + 1);
+      byChannel.set(row.supportChannel || 'Unspecified', (byChannel.get(row.supportChannel || 'Unspecified') || 0) + 1);
+      durations.push(mins);
+      if (row.timestamp) {
+        const date = new Date(row.timestamp);
+        if (!isNaN(date.getTime())) {
+          const weekday = date.toLocaleDateString('en-US', { weekday: 'short' });
+          byWeekday.set(weekday, (byWeekday.get(weekday) || 0) + mins);
+        }
+      }
+    });
+    const topCsm = [...byCsm.entries()].sort((a, b) => b[1] - a[1])[0] || ['—', 0];
+    const topClient = [...byClient.entries()].sort((a, b) => b[1] - a[1])[0] || ['—', 0];
+    const primarySupport = [...bySupport.entries()].sort((a, b) => b[1] - a[1])[0] || ['—', 0];
+    const primaryChannel = [...byChannel.entries()].sort((a, b) => b[1] - a[1])[0] || ['—', 0];
+    const top5ClientMinutes = [...byClient.values()]
+      .sort((a, b) => b - a)
+      .slice(0, 5)
+      .reduce((sum, value) => sum + value, 0);
+    const top5ClientShare = totalMinutes ? ((top5ClientMinutes / totalMinutes) * 100).toFixed(1) : '0.0';
+    const peakWeekday = [...byWeekday.entries()].sort((a, b) => b[1] - a[1])[0] || ['—', 0];
+    const orderedDurations = durations.slice().sort((a, b) => a - b);
+    const medianMinutes = orderedDurations.length
+      ? orderedDurations.length % 2 === 0
+        ? (orderedDurations[orderedDurations.length / 2 - 1] + orderedDurations[orderedDurations.length / 2]) / 2
+        : orderedDurations[Math.floor(orderedDurations.length / 2)]
+      : 0;
+    const meanMinutes = durations.length ? totalMinutes / durations.length : 0;
+    const variance = durations.length
+      ? durations.reduce((sum, mins) => sum + (mins - meanMinutes) ** 2, 0) / durations.length
+      : 0;
+    const stdDevMinutes = Math.sqrt(variance);
+    const csmMinutes = [...byCsm.values()];
+    const avgCsmMinutes = csmMinutes.length ? csmMinutes.reduce((sum, mins) => sum + mins, 0) / csmMinutes.length : 0;
+    const overloadedCount = csmMinutes.filter(mins => mins > avgCsmMinutes * 1.25).length;
+
+    if (E.csmInsightList) {
+      const insights = [
+        ['Busiest CSM', `${topCsm[0]} is carrying the heaviest visible load by minutes.`, `${Math.round(topCsm[1])} min`],
+        ['Busiest Client', `${topClient[0]} consumes the most visible support time.`, `${Math.round(topClient[1])} min`],
+        ['Client Concentration', `Top 5 clients share of visible workload minutes.`, `${top5ClientShare}%`],
+        ['Dominant Work Type', `${primarySupport[0]} appears most often in the current filter.`, `${primarySupport[1]}`],
+        ['Primary Channel', `${primaryChannel[0]} is the main route for submitted work.`, `${primaryChannel[1]}`],
+        ['Peak Weekday', `${peakWeekday[0]} carries the highest visible workload minutes.`, `${Math.round(peakWeekday[1])} min`],
+        ['Median Task Duration', `Middle task duration for visible records.`, `${Math.round(medianMinutes)} min`],
+        ['Workload Variability', `Standard deviation of task duration (minutes).`, `${Math.round(stdDevMinutes)} min`],
+        ['Overloaded CSMs', `CSMs above 125% of average visible CSM minutes.`, `${overloadedCount}`]
+      ];
+      E.csmInsightList.innerHTML = insights
+        .map(
+          ([label, text, value]) =>
+            `<article class="csm-insight-item"><div><strong>${U.escapeHtml(label)}</strong><p class="muted">${U.escapeHtml(text)}</p></div><span class="csm-insight-value">${U.escapeHtml(value)}</span></article>`
+        )
+        .join('');
+    }
+
+    if (E.csmTopSnapshotBody) {
+      const rows = [...byCsm.entries()]
+        .map(([name, minutes]) => {
+          const personRows = list.filter(item => (item.csmName || 'Unspecified') === name);
+          const tasks = personRows.length;
+          const avg = tasks ? minutes / tasks : 0;
+          const clients = new Set(personRows.map(item => item.client).filter(Boolean)).size;
+          return { name, tasks, minutes, avg, clients };
+        })
+        .sort((a, b) => b.minutes - a.minutes)
+        .slice(0, 8);
+      E.csmTopSnapshotBody.innerHTML = rows.length
+        ? rows
+            .map(
+              row => `<tr><td>${U.escapeHtml(row.name)}</td><td>${row.tasks}</td><td>${Math.round(row.minutes)}</td><td>${row.avg.toFixed(1)}</td><td>${row.clients}</td></tr>`
+            )
+            .join('')
+        : '<tr><td colspan="5" class="muted" style="text-align:center;">No data for current filters.</td></tr>';
+    }
+  },
+  refresh() {
+    const canCreate = this.canCreate();
+    if (E.csmInlineSubmitBtn) {
+      E.csmInlineSubmitBtn.style.display = canCreate ? '' : 'none';
+    }
+    ['csmInlineTimestamp','csmInlineCsmName','csmInlineClient','csmInlineMinutes','csmInlineSupportType','csmInlineEffort','csmInlineChannel','csmInlineNotes']
+      .forEach(id => { if (E[id]) E[id].disabled = !canCreate || this.isSaving; });
+    const filtered = this.applyFilters();
+    this.renderKPIs(filtered);
+    this.renderInsights(filtered);
+    this.renderCharts(filtered);
+    this.renderTable(filtered);
+  },
+  openForm(row = null) {
+    if (!E.csmFormModal || !E.csmForm) return;
+    E.csmForm.dataset.mode = row ? 'edit' : 'create';
+    E.csmForm.dataset.id = row?.id || '';
+    if (E.csmFormTitle) E.csmFormTitle.textContent = row ? 'Edit CSM Activity' : 'Create CSM Activity';
+    if (E.csmFormTimestamp) E.csmFormTimestamp.value = row?.timestamp ? String(row.timestamp).slice(0, 16) : '';
+    if (E.csmFormCsmName) E.csmFormCsmName.value = row?.csmName || '';
+    if (E.csmFormClient) E.csmFormClient.value = row?.client || '';
+    if (E.csmFormMinutes) E.csmFormMinutes.value = row ? String(Math.round(Number(row.timeSpentMinutes) || 0)) : '';
+    if (E.csmFormSupportType) E.csmFormSupportType.value = row?.supportType || '';
+    if (E.csmFormEffort) E.csmFormEffort.value = row?.effortRequirement || '';
+    if (E.csmFormChannel) E.csmFormChannel.value = row?.supportChannel || '';
+    if (E.csmFormNotes) E.csmFormNotes.value = row?.notes || '';
+    if (E.csmFormDeleteBtn) E.csmFormDeleteBtn.style.display = row && this.canEditDelete() ? '' : 'none';
+    this.setBusySaving(false);
+    E.csmFormModal.style.display = 'flex';
+    E.csmFormModal.setAttribute('aria-hidden', 'false');
+  },
+  closeForm() {
+    if (!E.csmFormModal) return;
+    E.csmFormModal.style.display = 'none';
+    E.csmFormModal.setAttribute('aria-hidden', 'true');
+  },
+  readFormValues() {
+    return {
+      timestamp: String(E.csmFormTimestamp?.value || '').trim(),
+      csmName: String(E.csmFormCsmName?.value || '').trim(),
+      client: String(E.csmFormClient?.value || '').trim(),
+      timeSpentMinutes: Number(E.csmFormMinutes?.value || 0),
+      supportType: String(E.csmFormSupportType?.value || '').trim(),
+      effortRequirement: String(E.csmFormEffort?.value || '').trim(),
+      supportChannel: String(E.csmFormChannel?.value || '').trim(),
+      notes: String(E.csmFormNotes?.value || '').trim()
+    };
+  },
+  readInlineFormValues() {
+    return {
+      timestamp: String(E.csmInlineTimestamp?.value || '').trim(),
+      csmName: String(E.csmInlineCsmName?.value || '').trim(),
+      client: String(E.csmInlineClient?.value || '').trim(),
+      timeSpentMinutes: Number(E.csmInlineMinutes?.value || 0),
+      supportType: String(E.csmInlineSupportType?.value || '').trim(),
+      effortRequirement: String(E.csmInlineEffort?.value || '').trim(),
+      supportChannel: String(E.csmInlineChannel?.value || '').trim(),
+      notes: String(E.csmInlineNotes?.value || '').trim()
+    };
+  },
+  clearInlineForm() {
+    if (E.csmInlineCreateForm && typeof E.csmInlineCreateForm.reset === 'function') {
+      E.csmInlineCreateForm.reset();
+    }
+  },
+  validateForm(activity) {
+    if (!activity.timestamp || !activity.csmName || !activity.client || !activity.supportType || !activity.effortRequirement || !activity.supportChannel) {
+      return 'Please complete all required fields.';
+    }
+    if (!Number.isFinite(activity.timeSpentMinutes) || activity.timeSpentMinutes < 0) {
+      return 'Time spent minutes must be a valid non-negative number.';
+    }
+    return '';
+  },
+  async submitForm() {
+    const mode = E.csmForm?.dataset.mode === 'edit' ? 'edit' : 'create';
+    const id = String(E.csmForm?.dataset.id || '').trim();
+    const activity = this.readFormValues();
+    const validationError = this.validateForm(activity);
+    if (validationError) {
+      UI.toast(validationError);
+      return;
+    }
+    this.setBusySaving(true);
+    try {
+      if (mode === 'edit') {
+        if (!Permissions.canUpdateCsmActivity()) throw new Error('You do not have permission to update CSM activity.');
+        await Api.postAuthenticated('csm', 'update', { id, updates: this.viewToBackendActivity(activity) }, { requireAuth: true });
+        UI.toast('CSM activity updated.');
+      } else {
+        if (!Permissions.canCreateCsmActivity()) throw new Error('You do not have permission to create CSM activity.');
+        await Api.postAuthenticated('csm', 'create', { activity: this.viewToBackendActivity(activity) }, { requireAuth: true });
+        UI.toast('CSM activity created.');
+      }
+      this.closeForm();
+      await this.loadAndRefresh({ force: true });
+    } catch (error) {
+      if (isAuthError(error)) {
+        await handleExpiredSession('Session expired while saving CSM activity.');
+        return;
+      }
+      UI.toast('Unable to save CSM activity: ' + (error?.message || 'Unknown error'));
+    } finally {
+      this.setBusySaving(false);
+    }
+  },
+  async submitInlineForm() {
+    if (!Permissions.canCreateCsmActivity()) {
+      UI.toast('You do not have permission to create CSM activity.');
+      return;
+    }
+    const activity = this.readInlineFormValues();
+    const validationError = this.validateForm(activity);
+    if (validationError) {
+      UI.toast(validationError);
+      return;
+    }
+    this.setBusySaving(true);
+    try {
+      await Api.postAuthenticated('csm', 'create', { activity: this.viewToBackendActivity(activity) }, { requireAuth: true });
+      UI.toast('CSM activity created.');
+      this.clearInlineForm();
+      await this.loadAndRefresh({ force: true });
+    } catch (error) {
+      if (isAuthError(error)) {
+        await handleExpiredSession('Session expired while creating CSM activity.');
+        return;
+      }
+      UI.toast('Unable to create CSM activity: ' + (error?.message || 'Unknown error'));
+    } finally {
+      this.setBusySaving(false);
+    }
+  },
+  async deleteActivity(id) {
+    if (!id || !Permissions.canDeleteCsmActivity()) return;
+    const confirmed = window.confirm('Delete this CSM activity? This cannot be undone.');
+    if (!confirmed) return;
+    this.setBusySaving(true);
+    try {
+      await Api.postAuthenticated('csm', 'delete', { id }, { requireAuth: true });
+      UI.toast('CSM activity deleted.');
+      this.closeForm();
+      await this.loadAndRefresh({ force: true });
+    } catch (error) {
+      if (isAuthError(error)) {
+        await handleExpiredSession('Session expired while deleting CSM activity.');
+        return;
+      }
+      UI.toast('Unable to delete CSM activity: ' + (error?.message || 'Unknown error'));
+    } finally {
+      this.setBusySaving(false);
+    }
+  }
+};
+
+function wireCSMActivity() {
+  CSMActivity.hydrateOptions();
+  CSMActivity.refresh();
+
+  const bindState = (element, key, type = 'value') => {
+    if (!element) return;
+    const sync = () => {
+      CSMActivity.state[key] = type === 'valueAsNumber' ? element.valueAsNumber : element.value;
+      if (type === 'valueAsNumber' && Number.isNaN(CSMActivity.state[key])) CSMActivity.state[key] = '';
+      CSMActivity.refresh();
+    };
+    element.addEventListener('input', sync);
+    element.addEventListener('change', sync);
+  };
+
+  bindState(E.csmSearchInput, 'search');
+  bindState(E.csmNameFilter, 'csmName');
+  bindState(E.csmClientFilter, 'client');
+  bindState(E.csmSupportTypeFilter, 'supportType');
+  bindState(E.csmEffortFilter, 'effort');
+  bindState(E.csmChannelFilter, 'channel');
+  bindState(E.csmMinMinutesFilter, 'minMinutes');
+  bindState(E.csmMaxMinutesFilter, 'maxMinutes');
+  bindState(E.csmStartDateFilter, 'startDate');
+  bindState(E.csmEndDateFilter, 'endDate');
+
+  if (E.csmTableBody) {
+    E.csmTableBody.addEventListener('click', event => {
+      const editId = event.target?.getAttribute('data-csm-edit');
+      if (editId) {
+        const row = CSMActivity.rows.find(item => item.id === editId);
+        if (row) CSMActivity.openForm(row);
+        return;
+      }
+      const deleteId = event.target?.getAttribute('data-csm-delete');
+      if (deleteId) {
+        CSMActivity.deleteActivity(deleteId);
+      }
+    });
+  }
+
+  if (E.csmFormCloseBtn) E.csmFormCloseBtn.addEventListener('click', () => CSMActivity.closeForm());
+  if (E.csmFormCancelBtn) E.csmFormCancelBtn.addEventListener('click', () => CSMActivity.closeForm());
+  if (E.csmFormModal) {
+    E.csmFormModal.addEventListener('click', event => {
+      if (event.target === E.csmFormModal) CSMActivity.closeForm();
+    });
+  }
+  if (E.csmForm) {
+    E.csmForm.addEventListener('submit', event => {
+      event.preventDefault();
+      CSMActivity.submitForm();
+    });
+  }
+  if (E.csmFormDeleteBtn) {
+    E.csmFormDeleteBtn.addEventListener('click', () => {
+      const id = String(E.csmForm?.dataset.id || '').trim();
+      if (id) CSMActivity.deleteActivity(id);
+    });
+  }
+  if (E.csmInlineCreateForm) {
+    E.csmInlineCreateForm.addEventListener('submit', event => {
+      event.preventDefault();
+      CSMActivity.submitInlineForm();
+    });
+  }
+}
+
 /* ---------- Keyboard shortcuts ---------- */
 
 function wireKeyboardShortcuts() {
@@ -4844,26 +5844,91 @@ function wireKeyboardShortcuts() {
 
     if (isInputLike) return;
 
-    // 1/2/3 → switch tabs
+    // 1/2/3/4/5/6/7/8/9 → switch tabs
     if (e.key === '1') {
       setActiveView('issues');
     } else if (e.key === '2') {
       setActiveView('calendar');
     } else if (e.key === '3') {
       setActiveView('insights');
+    } else if (e.key === '4') {
+      setActiveView('csm');
+    } else if (e.key === '5') {
+      setActiveView('leads');
+    } else if (e.key === '6') {
+      setActiveView('deals');
+    } else if (e.key === '7') {
+      setActiveView('proposals');
+    } else if (e.key === '8') {
+      setActiveView('proposalCatalog');
+    } else if (e.key === '9') {
+      setActiveView('agreements');
+    } else if (e.key === '0') {
+      setActiveView('clients');
+    } else if (e.key === '-' && Permissions.canAccessTab('users')) {
+      setActiveView('users');
+    } else if (e.key === '=' && Permissions.canAccessTab('roles')) {
+      setActiveView('roles');
     }
   });
+}
+
+function logApiStartupDiagnostics() {
+  const diagnostics = window.API_RUNTIME_DIAGNOSTICS || {};
+  const resolvedBaseUrl = String(diagnostics.apiBaseUrl || API_BASE_URL || '').trim();
+  const resolvedEndpoint =
+    String(diagnostics.resolvedEndpoint || (window.resolveApiEndpoint ? resolveApiEndpoint(resolvedBaseUrl) : '') || '').trim();
+  const notificationHubEndpoint = String(diagnostics.notificationHubEndpoint || resolvedEndpoint || '').trim();
+  const isProxy =
+    diagnostics.isProxy !== undefined
+      ? Boolean(diagnostics.isProxy)
+      : (() => {
+          try {
+            const proxyUrl = new URL('/api/proxy', window.location.origin);
+            const endpointUrl = new URL(resolvedEndpoint, window.location.origin);
+            return endpointUrl.pathname === proxyUrl.pathname;
+          } catch {
+            return false;
+          }
+        })();
+
+  console.info('[startup/auth] API diagnostics', {
+    apiBaseUrl: resolvedBaseUrl,
+    resolvedEndpoint,
+    usingProxy: isProxy,
+    notificationHubEndpoint
+  });
+  console.info(
+    `[startup/notifications] endpoint=${notificationHubEndpoint || 'n/a'}; isProxy=${isProxy ? 'yes' : 'no'}`
+  );
+
+  if (!resolvedBaseUrl) {
+    console.warn('[startup/auth] API_BASE_URL is empty. Configure window.RUNTIME_CONFIG.API_BASE_URL (or PROXY_API_BASE_URL/BACKEND_API_BASE_URL).');
+    return;
+  }
+
+  if (window.API_RUNTIME_DIAGNOSTICS?.isMalformed) {
+    console.warn(
+      `[startup/auth] API_BASE_URL may be malformed: "${resolvedBaseUrl}". Expected a relative path like /api/proxy or full https URL.`
+    );
+  }
 }
 
 /* ---------- Bootstrapping ---------- */
 
 document.addEventListener('DOMContentLoaded', async () => {
   cacheEls();
+  logApiStartupDiagnostics();
   if (!API_BASE_URL) {
     console.error(
       'API_BASE_URL is not configured. Set window.RUNTIME_CONFIG.API_BASE_URL before app.js loads.'
     );
     UI.toast('Backend URL is not configured. Please set RUNTIME_CONFIG.API_BASE_URL.');
+  }
+  if (typeof Api?.runAuthProxyHealthCheck === 'function') {
+    Api.runAuthProxyHealthCheck().catch(error => {
+      console.warn('[startup/auth] Initial auth health check failed', error);
+    });
   }
   const hadSession = Session.restore();
   Filters.load();
@@ -4879,6 +5944,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   wireDashboardGate();
   wireCore();
+  if (window.UserAdmin?.wire) UserAdmin.wire();
+  if (window.RolesAdmin?.wire) RolesAdmin.wire();
   wireSorting();
   wirePaging();
   wireFilters();
@@ -4889,7 +5956,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   wireFreezeWindows();
   wirePlanner();
   wireAIQuery();
+  wireCSMActivity();
+  if (window.Leads?.wire) Leads.wire();
+  if (window.Deals?.wire) Deals.wire();
+  if (window.Proposals?.wire) Proposals.wire();
+  if (window.Agreements?.wire) Agreements.wire();
+  if (window.OperationsOnboarding?.wire) OperationsOnboarding.wire();
+  if (window.TechnicalAdmin?.wire) TechnicalAdmin.wire();
+  if (window.Invoices?.init) Invoices.init();
+  if (window.Receipts?.init) Receipts.init();
+  if (window.Clients?.wire) Clients.wire();
+  if (window.ProposalCatalog?.wire) ProposalCatalog.wire();
+  if (window.Workflow?.wire) Workflow.wire();
   wireKeyboardShortcuts();
+  if (window.Notifications?.wire) Notifications.wire();
 
   let isAuthenticated = Session.isAuthenticated();
   if (hadSession) {
@@ -4898,6 +5978,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (!valid) {
         await handleExpiredSession('Saved session is invalid or expired. Please log in again.');
       } else {
+        await Permissions.loadMatrix(true);
         isAuthenticated = true;
       }
     } catch (error) {
@@ -4911,7 +5992,23 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (!Session.isAuthenticated()) {
     const view = localStorage.getItem(LS_KEYS.view) || 'issues';
     setActiveView(
-      view === 'calendar' || view === 'insights' ? view : 'issues'
+      view === 'calendar' ||
+        view === 'insights' ||
+        view === 'csm' ||
+        view === 'leads' ||
+        view === 'deals' ||
+        view === 'proposals' ||
+        view === 'agreements' ||
+        view === 'invoices' ||
+        view === 'receipts' ||
+        view === 'proposalCatalog' ||
+        view === 'notifications' ||
+        view === 'workflow' ||
+        view === 'users' ||
+        view === 'roles' ||
+        view === 'rolePermissions'
+        ? view
+        : 'issues'
     );
   }
 

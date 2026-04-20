@@ -84,6 +84,67 @@ const U = {
     if (isNaN(x)) return '—';
     return x.toISOString().replace('T', ' ').slice(0, 16);
   },
+  fmtDate: d => {
+    if (!d) return '—';
+    const x = d instanceof Date ? d : new Date(d);
+    if (isNaN(x)) return '—';
+    return x.toISOString().slice(0, 10);
+  },
+  fmtDisplayDateSafe: (value, fallback = '—') => {
+    if (value === null || value === undefined) return fallback;
+    if (value instanceof Date) {
+      return Number.isNaN(value.getTime()) ? fallback : value.toDateString();
+    }
+    const raw = String(value).trim();
+    if (!raw) return fallback;
+
+    const textualDateMatch = raw.match(
+      /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})\s+(\d{4})\b/
+    );
+    if (textualDateMatch) {
+      return `${textualDateMatch[1]} ${textualDateMatch[2]} ${String(textualDateMatch[3]).padStart(2, '0')} ${textualDateMatch[4]}`;
+    }
+
+    const isoDateMatch = raw.match(/^(\d{4}-\d{2}-\d{2})(?:[T\s].*)?$/);
+    const normalized = isoDateMatch ? `${isoDateMatch[1]}T00:00:00` : raw;
+    const parsed = new Date(normalized);
+    if (Number.isNaN(parsed.getTime())) return fallback;
+    return parsed.toDateString();
+  },
+  fmtDisplayDate: value => U.fmtDisplayDateSafe(value, '—'),
+  formatPreviewHtmlDates: html => {
+    const rawHtml = String(html || '').trim();
+    if (!rawHtml) return '';
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(rawHtml, 'text/html');
+    const textWalker = doc.createTreeWalker(doc.body || doc, NodeFilter.SHOW_TEXT);
+
+    const datePattern =
+      /\b(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\s+\d{4}(?:\s+\d{2}:\d{2}(?::\d{2})?\s+GMT[+-]\d{4}(?:\s+\([^)]*\)|\s+[A-Za-z][A-Za-z\s/_-]*)?)?|\b\d{4}-\d{2}-\d{2}(?:[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?/g;
+
+    let node = textWalker.nextNode();
+    while (node) {
+      const parentTag = String(node.parentElement?.tagName || '').toLowerCase();
+      if (parentTag !== 'script' && parentTag !== 'style') {
+        node.nodeValue = String(node.nodeValue || '').replace(datePattern, match => {
+          const formatted = U.fmtDisplayDate(match);
+          return formatted === '—' ? match : formatted;
+        });
+      }
+      node = textWalker.nextNode();
+    }
+
+    return doc.documentElement.outerHTML;
+  },
+  fmtNumber: value => {
+    const num = typeof value === 'number' ? value : Number(value);
+    if (!Number.isFinite(num)) return '0';
+    return new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2
+    }).format(num);
+  },
   escapeHtml: s =>
     String(s).replace(/[&<>"']/g, m => (
       {
@@ -142,6 +203,32 @@ const U = {
     if (min && x < min) return false;
     if (max && x >= max) return false;
     return true;
+  },
+  addIncheckDocumentLogo: html => {
+    const raw = String(html || '').trim();
+    if (!raw) return '';
+    if (/data-incheck360-doc-logo/i.test(raw)) return raw;
+
+    const styleTag = `<style data-incheck360-doc-logo-style>
+      .incheck360-doc-logo-wrap{display:flex;justify-content:center;margin:0 0 16px;}
+      .incheck360-doc-logo{width:220px;max-width:100%;height:auto;display:block;}
+    </style>`;
+    const logoMarkup =
+      '<div class="incheck360-doc-logo-wrap" data-incheck360-doc-logo><img class="incheck360-doc-logo" src="assets/incheck-logo.svg" alt="InCheck 360 logo" /></div>';
+
+    let output = raw;
+    if (/<\/head>/i.test(output) && !/data-incheck360-doc-logo-style/i.test(output)) {
+      output = output.replace(/<\/head>/i, `${styleTag}</head>`);
+    } else if (!/data-incheck360-doc-logo-style/i.test(output)) {
+      output = `${styleTag}${output}`;
+    }
+
+    if (/<body[^>]*>/i.test(output)) {
+      output = output.replace(/<body([^>]*)>/i, `<body$1>${logoMarkup}`);
+    } else {
+      output = `${logoMarkup}${output}`;
+    }
+    return output;
   }
 };
 
@@ -191,6 +278,20 @@ const ColumnManager = {
       'devTeamStatus',
       'issueRelated',
       'notes'
+    ]),
+    [ROLES.DEV]: new Set([
+      'id',
+      'date',
+      'title',
+      'desc',
+      'priority',
+      'file',
+      'type',
+      'status',
+      'youtrackReference',
+      'devTeamStatus',
+      'issueRelated',
+      'notes'
     ])
   },
   columns: [
@@ -216,7 +317,8 @@ const ColumnManager = {
   ],
   state: {},
   isColumnAllowed(colKey) {
-    if (Session.role() !== ROLES.VIEWER) return true;
+    const role = Session.role();
+    if (role === ROLES.ADMIN || role === ROLES.DEV) return true;
     return !this.restrictedForViewer.has(colKey);
   },
   getAvailableColumns() {

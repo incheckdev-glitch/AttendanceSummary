@@ -17,6 +17,12 @@
 
   <!-- Your app styles -->
   <link rel="stylesheet" href="styles.css" />
+
+  <!-- Vercel Web Analytics -->
+  <script>
+    window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+  </script>
+  <script defer src="/_vercel/insights/script.js"></script>
 </head>
 <body class="auth-locked">
   <header id="appHeader">
@@ -37,21 +43,11 @@
              placeholder="Search ID, title, description, log…  ( / to focus )"
              aria-label="Search issues" />
 
-      <div class="saved-views" aria-label="Saved views">
-        <select id="savedViews" class="select sm" aria-label="Saved views">
-          <option value="">Saved views</option>
-        </select>
-        <button id="saveViewBtn" class="btn ghost sm" type="button">Save view</button>
-        <button id="deleteViewBtn" class="btn ghost sm" type="button">Delete view</button>
-      </div>
-      
       <select id="themeSelect" class="select" aria-label="Theme">
         <option value="system">System</option>
         <option value="dark">Dark</option>
         <option value="light">Light</option>
       </select>
-
-      <input id="accentColor" class="input" type="color" aria-label="Accent color" />
 
       <button id="refreshNow" class="btn" aria-label="Refresh from source">
         <span class="icon" aria-hidden="true">🔄</span> Refresh
@@ -59,24 +55,32 @@
       <button id="exportCsv" class="btn" aria-label="Export filtered issues as Excel">
         <span class="icon" aria-hidden="true">📥</span> Export
       </button>
-      <button id="createTicketBtn" class="btn primary" aria-label="Create new ticket">
-        <span class="icon" aria-hidden="true">➕</span> Create Ticket
-      </button>
-
       <button id="shortcutsHelp" class="btn ghost sm" type="button" title="Keyboard shortcuts">
         <span class="icon" aria-hidden="true">⌨️</span>
       </button>
 
+      <div class="notification-shell">
+        <button id="notificationBellBtn" class="btn ghost sm notification-bell" type="button" aria-label="Notifications (0 unread)">
+          <span class="icon" aria-hidden="true">🔔</span>
+          <span id="notificationUnreadBadge" class="notification-unread-badge" style="display:none;">0</span>
+        </button>
+        <div id="notificationPreviewPanel" class="notification-preview-panel" aria-label="Notification preview">
+          <div class="notification-preview-header">
+            <strong>Notifications</strong>
+            <button id="notificationOpenHubBtn" class="btn ghost sm" type="button">Open Notification Hub</button>
+          </div>
+          <div id="notificationPreviewState" class="muted">No new notifications.</div>
+          <div id="notificationPreviewList" class="notification-preview-list"></div>
+        </div>
+      </div>
+
       <span class="chip online" id="onlineStatusChip" aria-live="polite">Online</span>
+      <span class="chip" id="currentUserChip" aria-live="polite">User: guest</span>
       <span class="chip" id="currentRoleChip" aria-live="polite">Role: guest</span>
       <button id="logoutBtn" class="btn ghost sm" type="button" aria-label="Log out">
         Logout
       </button>
 
-      <div class="statusline">
-        <span class="chip" id="syncIssuesText">Issues: never</span><span class="dot err" id="syncIssuesDot"></span>
-        <span class="chip" id="syncEventsText">Events: never</span><span class="dot err" id="syncEventsDot"></span>
-      </div>
     </div>
   </header>
 
@@ -91,7 +95,7 @@
          InCheck360 MonitorCore is our internal hub for issue tracking, deployment calendars, and AI signals—built to drive confident prioritization and faster execution.
         </p>
         <div class="hero-actions">
-          <a class="btn ghost cta" href="#features">Explore features</a>
+          <a class="btn ghost cta" href="#app">Explore dashboard</a>
         </div>
         <small class="muted">Internal-only access · Works with our existing issue sheet</small>
       </div>
@@ -102,51 +106,22 @@
           <span>Secure operations access</span>
         </div>
         <form id="loginForm" class="login-form">
-          <label for="loginRole" class="sr-only">Role</label>
-          <select id="loginRole" class="select" required>
-            <option value="viewer">Viewer</option>
-            <option value="admin">Admin</option>
-          </select>
+          <label for="loginIdentifier" class="sr-only">Username or email</label>
+          <input id="loginIdentifier" class="input" type="text" placeholder="Username or email *" autocomplete="username" />
 
-          <label for="loginPasscode" class="sr-only">Passcode</label>
+          <label for="loginPasscode" class="sr-only">Password</label>
           <input id="loginPasscode" class="input" type="password" placeholder="Password *" autocomplete="current-password" />
 
           <button id="loginBtn" class="btn primary" type="submit">LOG IN</button>
-          <small id="loginHint" class="login-hint">Viewer passcode is required.</small>
+          <small id="loginHint" class="login-hint">Sign in with your assigned account credentials.</small>
         </form>
       </aside>
     </div>
   </section>
 
-  <section class="section alt" id="features">
-    <div class="container">
-      <h2>Built for internal support operations</h2>
-      <p class="muted" style="margin-top:8px;">
-        A focused toolkit for ops leaders to prioritize, coordinate, and ship with confidence.
-      </p>
-      <div class="feature-grid" style="margin-top:28px;">
-        <article class="feature-card">
-          <img src="assets/icon-priority.svg" width="40" height="40" alt="Priority signal icon" />
-          <h3>Priority intelligence</h3>
-          <p class="muted">Surface high-risk tickets, SLA breaches, and AI-assisted triage insights.</p>
-        </article>
-        <article class="feature-card">
-          <img src="assets/icon-calendar.svg" width="40" height="40" alt="Calendar planning icon" />
-          <h3>Release-ready planning</h3>
-          <p class="muted">Coordinate deployments, maintenance windows, and release risk in one timeline.</p>
-        </article>
-        <article class="feature-card">
-          <img src="assets/icon-collab.svg" width="40" height="40" alt="Collaboration icon" />
-          <h3>Ops-ready collaboration</h3>
-          <p class="muted">Share saved views, highlight next actions, and keep stakeholders aligned.</p>
-        </article>
-      </div>
-    </div>
-  </section>
-
-  
   <div class="wrap" id="app">
     <aside class="sidebar" id="sidebar" aria-label="Filters">
+      <div id="mainFiltersPanel">
       <h3>Filters</h3>
       <div class="filter-group" role="group" aria-label="Field filters">
         <div class="filter-row">
@@ -179,12 +154,12 @@
 
       <div class="filter-group" role="group" aria-label="Date range">
         <div class="filter-row">
-          <label class="muted" for="startDateFilter">Start Date</label>
-          <input type="date" id="startDateFilter" class="input" aria-label="Start date">
-        </div>
-        <div class="filter-row">
           <label class="muted" for="endDateFilter">End Date</label>
           <input type="date" id="endDateFilter" class="input" aria-label="End date">
+        </div>
+        <div class="filter-row">
+          <label class="muted" for="startDateFilter">Start Date</label>
+          <input type="date" id="startDateFilter" class="input" aria-label="Start date">
         </div>
       </div>
 
@@ -196,30 +171,222 @@
           Tip: click any KPI to filter by that status. “Total Issues” resets everything.
         </span>
       </div>
+      </div>
+
+      <div id="leadsFiltersPanel" style="display:none;">
+        <h3>Leads Filters</h3>
+        <div class="filter-group" style="margin-bottom:10px;">
+          <div class="filter-row">
+            <label class="muted" for="leadsSearchInput">Search</label>
+            <input id="leadsSearchInput" class="input" type="search" placeholder="Lead ID, name, company, email, notes..." />
+          </div>
+        </div>
+
+        <div class="filter-group" style="margin-bottom:10px;">
+          <div class="filter-row">
+            <label class="muted" for="leadsStatusFilter">Status</label>
+            <select id="leadsStatusFilter" class="select"><option>All</option></select>
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="leadsServiceInterestFilter">Service Interest</label>
+            <select id="leadsServiceInterestFilter" class="select"><option>All</option></select>
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="leadsAssignedToFilter">Assigned To</label>
+            <select id="leadsAssignedToFilter" class="select"><option>All</option></select>
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="leadsProposalNeededFilter">Proposal Needed</label>
+            <select id="leadsProposalNeededFilter" class="select">
+              <option value="All">All</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+            </select>
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="leadsAgreementNeededFilter">Agreement Needed</label>
+            <select id="leadsAgreementNeededFilter" class="select">
+              <option value="All">All</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+            </select>
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="leadsStartDateFilter">Created From</label>
+            <input id="leadsStartDateFilter" class="input" type="date" />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="leadsEndDateFilter">Created To</label>
+            <input id="leadsEndDateFilter" class="input" type="date" />
+          </div>
+        </div>
+
+        <div class="filter-group">
+          <button id="leadsResetBtn" class="btn ghost" type="button">Reset Leads Filters</button>
+        </div>
+      </div>
+
+      <div id="dealsFiltersPanel" style="display:none;">
+        <h3>Deals Filters</h3>
+        <div class="filter-group" style="margin-bottom:10px;">
+          <div class="filter-row">
+            <label class="muted" for="dealsSidebarSearchInput">Search</label>
+            <input id="dealsSidebarSearchInput" class="input" type="search" placeholder="Deal ID, lead, company, owner, notes..." />
+          </div>
+        </div>
+
+        <div class="filter-group" style="margin-bottom:10px;">
+          <div class="filter-row">
+            <label class="muted" for="dealsStageFilter">Stage</label>
+            <select id="dealsStageFilter" class="select"><option>All</option></select>
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="dealsStatusFilter">Status</label>
+            <select id="dealsStatusFilter" class="select"><option>All</option></select>
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="dealsPriorityFilter">Priority</label>
+            <select id="dealsPriorityFilter" class="select"><option>All</option></select>
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="dealsServiceInterestFilter">Service Interest</label>
+            <select id="dealsServiceInterestFilter" class="select"><option>All</option></select>
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="dealsLeadSourceFilter">Lead Source</label>
+            <select id="dealsLeadSourceFilter" class="select"><option>All</option></select>
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="dealsAssignedToFilter">Assigned To</label>
+            <select id="dealsAssignedToFilter" class="select"><option>All</option></select>
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="dealsProposalNeededFilter">Proposal Needed</label>
+            <select id="dealsProposalNeededFilter" class="select">
+              <option value="All">All</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+            </select>
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="dealsAgreementNeededFilter">Agreement Needed</label>
+            <select id="dealsAgreementNeededFilter" class="select">
+              <option value="All">All</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+            </select>
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="dealsStartDateFilter">Converted From</label>
+            <input id="dealsStartDateFilter" class="input" type="date" />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="dealsEndDateFilter">Converted To</label>
+            <input id="dealsEndDateFilter" class="input" type="date" />
+          </div>
+        </div>
+
+        <div class="filter-group">
+          <button id="dealsResetBtn" class="btn ghost" type="button">Reset Deals Filters</button>
+        </div>
+      </div>
     </aside>
 
     <main class="content">
-      <div class="view-tabs" role="tablist">
-        <button id="issuesTab" class="view-tab active" data-view="issues"
-                role="tab" aria-selected="true" aria-controls="issuesView">
-          <span class="icon" aria-hidden="true">📋</span> Issues
-        </button>
-        <button id="calendarTab" class="view-tab" data-view="calendar"
-                role="tab" aria-selected="false" aria-controls="calendarView">
-          <span class="icon" aria-hidden="true">📅</span> Calendar
-        </button>
-        <button id="insightsTab" class="view-tab" data-view="insights"
-                role="tab" aria-selected="false" aria-controls="insightsView">
-          <span class="icon" aria-hidden="true">🤖</span> AI Insights
-        </button>
-      </div>
+      <div class="content-layout">
+        <aside class="view-menu card" aria-label="View navigation">
+          <div class="view-menu-title">Views</div>
+          <div class="view-tabs" role="tablist" aria-orientation="vertical">
+            <button id="issuesTab" class="view-tab active" data-view="issues"
+                    role="tab" aria-selected="true" aria-controls="issuesView">
+              <span class="icon" aria-hidden="true">📋</span> Issues
+            </button>
+            <button id="calendarTab" class="view-tab" data-view="calendar"
+                    role="tab" aria-selected="false" aria-controls="calendarView">
+              <span class="icon" aria-hidden="true">📅</span> Calendar
+            </button>
+            <button id="insightsTab" class="view-tab" data-view="insights"
+                    role="tab" aria-selected="false" aria-controls="insightsView">
+              <span class="icon" aria-hidden="true">🤖</span> AI Insights
+            </button>
+            <button id="csmTab" class="view-tab" data-view="csm"
+                    role="tab" aria-selected="false" aria-controls="csmView">
+              <span class="icon" aria-hidden="true">🧑‍💼</span> CSM Daily Activity
+            </button>
+            <button id="leadsTab" class="view-tab" data-view="leads"
+                    role="tab" aria-selected="false" aria-controls="leadsView">
+              <span class="icon" aria-hidden="true">🧲</span> Leads
+            </button>
+            <button id="dealsTab" class="view-tab" data-view="deals"
+                    role="tab" aria-selected="false" aria-controls="dealsView">
+              <span class="icon" aria-hidden="true">🤝</span> Deals
+            </button>
+            <button id="proposalsTab" class="view-tab" data-view="proposals"
+                    role="tab" aria-selected="false" aria-controls="proposalsView">
+              <span class="icon" aria-hidden="true">🧾</span> Proposals
+            </button>
+            <button id="agreementsTab" class="view-tab" data-view="agreements"
+                    role="tab" aria-selected="false" aria-controls="agreementsView">
+              <span class="icon" aria-hidden="true">📄</span> Agreements
+            </button>
+            <button id="operationsOnboardingTab" class="view-tab" data-view="operationsOnboarding"
+                    role="tab" aria-selected="false" aria-controls="operationsOnboardingView">
+              <span class="icon" aria-hidden="true">🧭</span> Operations Onboarding
+            </button>
+            <button id="technicalAdminTab" class="view-tab" data-view="technicalAdmin"
+                    role="tab" aria-selected="false" aria-controls="technicalAdminView">
+              <span class="icon" aria-hidden="true">🛠️</span> Technical Admin
+            </button>
+            <button id="invoicesTab" class="view-tab" data-view="invoices"
+                    role="tab" aria-selected="false" aria-controls="invoicesView">
+              <span class="icon" aria-hidden="true">🧮</span> Invoices
+            </button>
+            <button id="receiptsTab" class="view-tab" data-view="receipts"
+                    role="tab" aria-selected="false" aria-controls="receiptsView">
+              <span class="icon" aria-hidden="true">🧾</span> Receipts
+            </button>
+            <button id="lifecycleAnalyticsTab" class="view-tab" data-view="lifecycleAnalytics"
+                    role="tab" aria-selected="false" aria-controls="lifecycleAnalyticsView">
+              <span class="icon" aria-hidden="true">🧭</span> Lifecycle Analytics
+            </button>
+            <button id="clientsTab" class="view-tab" data-view="clients"
+                    role="tab" aria-selected="false" aria-controls="clientsView">
+              <span class="icon" aria-hidden="true">🏢</span> Clients
+            </button>
+            <button id="proposalCatalogTab" class="view-tab" data-view="proposalCatalog"
+                    role="tab" aria-selected="false" aria-controls="proposalCatalogView">
+              <span class="icon" aria-hidden="true">📚</span> Proposal Catalog
+            </button>
+            <button id="notificationsTab" class="view-tab" data-view="notifications"
+                    role="tab" aria-selected="false" aria-controls="notificationsView">
+              <span class="icon" aria-hidden="true">🔔</span> Notification Hub
+            </button>
+            <button id="workflowTab" class="view-tab" data-view="workflow"
+                    role="tab" aria-selected="false" aria-controls="workflowView" style="display:none;">
+              <span class="icon" aria-hidden="true">⚙️</span> Workflow
+            </button>
+            <button id="usersTab" class="view-tab" data-view="users"
+                    role="tab" aria-selected="false" aria-controls="usersView" style="display:none;">
+              <span class="icon" aria-hidden="true">👥</span> Users
+            </button>
+            <button id="rolesTab" class="view-tab" data-view="roles"
+                    role="tab" aria-selected="false" aria-controls="rolesView" style="display:none;">
+              <span class="icon" aria-hidden="true">🧩</span> Roles
+            </button>
+            <button id="rolePermissionsTab" class="view-tab" data-view="rolePermissions"
+                    role="tab" aria-selected="false" aria-controls="rolePermissionsView" style="display:none;">
+              <span class="icon" aria-hidden="true">🛡️</span> Role Permissions
+            </button>
+          </div>
+        </aside>
+        <div class="content-panels">
 
       <!-- Issues view -->
       <section id="issuesView" class="view active" role="tabpanel" aria-labelledby="issuesTab">
         <div class="card summary-bar" id="issuesSummaryCard">
           <span id="issuesSummaryText" aria-live="polite">Loading summary…</span>
           <span id="issuesLastUpdated" class="summary-meta" aria-live="polite">Last updated: --</span>
-         <span class="shortcut-chip">Shortcuts: 1/2/3 tabs · / search · Ctrl+K AI</span>
+         <span class="shortcut-chip">Shortcuts: 1/2/3/4/5/6 tabs · / search · Ctrl+K AI</span>
         </div>
 
         <div class="grid cols-4" id="kpis" aria-live="polite"></div>
@@ -238,6 +405,9 @@
               <div class="muted">Live feed from InCheck issues sheet.</div>
             </div>
           <div class="table-tools">
+              <button id="createTicketBtn" class="btn primary" aria-label="Create new ticket" type="button">
+                <span class="icon" aria-hidden="true">➕</span> Create Ticket
+              </button>
               <span id="rowCount" class="muted" aria-live="polite"></span>
               <button id="bulkEditBtn" class="btn ghost sm" type="button">
                 Bulk edit
@@ -308,6 +478,190 @@
               </select>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section id="notificationsView" class="view" role="tabpanel" aria-labelledby="notificationsTab">
+        <div class="grid cols-4" aria-live="polite">
+          <article class="card kpi"><div class="label">Unread</div><div id="notificationsSummaryTotalUnread" class="value">0</div></article>
+          <article class="card kpi"><div class="label">High Priority</div><div id="notificationsSummaryHighUnread" class="value">0</div></article>
+          <article class="card kpi"><div class="label">Approvals</div><div id="notificationsSummaryApprovalsUnread" class="value">0</div></article>
+          <article class="card kpi"><div class="label">Operations</div><div id="notificationsSummaryOperationsUnread" class="value">0</div></article>
+        </div>
+
+        <div class="card" aria-label="Notification hub filters">
+          <div id="notificationsFilterButtons" class="notification-filter-row">
+            <button class="chip-btn active" type="button" data-filter="all">All</button>
+            <button class="chip-btn" type="button" data-filter="unread">Unread</button>
+            <button class="chip-btn" type="button" data-filter="approvals">Approvals</button>
+            <button class="chip-btn" type="button" data-filter="operations">Operations</button>
+            <button class="chip-btn" type="button" data-filter="tickets">Tickets</button>
+            <button class="chip-btn" type="button" data-filter="assignments">Assignments</button>
+            <button class="chip-btn" type="button" data-filter="high">High Priority</button>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center;">
+            <input id="notificationsSearchInput" class="input" type="search" placeholder="Search notifications..." />
+            <button id="notificationsRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
+            <button id="notificationsMarkAllBtn" class="btn sm" type="button">Mark all as read</button>
+          </div>
+        </div>
+
+        <div class="card" aria-label="Notifications list">
+          <div id="notificationsState" class="muted" style="margin-bottom:8px;">No notifications loaded.</div>
+          <pre id="notificationsDebugBox" class="muted" style="margin:0 0 8px 0;padding:8px;border:1px solid var(--line);border-radius:8px;background:rgba(127,127,127,0.08);font-size:12px;line-height:1.35;white-space:pre-wrap;">Resolved endpoint: —
+Is proxy: —
+Raw rows: 0
+Normalized items: 0
+Mode: all
+Search: —
+Sample:
+- —</pre>
+          <div class="table-wrap" role="region" aria-label="Notifications table">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Title</th>
+                  <th scope="col">Message</th>
+                  <th scope="col">Type</th>
+                  <th scope="col">Priority</th>
+                  <th scope="col">Created</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Action</th>
+                  <th scope="col">Open</th>
+                </tr>
+              </thead>
+              <tbody id="notificationsTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="rolesView" class="view" role="tabpanel" aria-labelledby="rolesTab">
+        <div class="grid cols-3" id="rolesKpis" aria-live="polite">
+          <article class="card kpi"><div class="label">Total Roles</div><div id="rolesTotalCount" class="value">0</div></article>
+          <article class="card kpi"><div class="label">Active Roles</div><div id="rolesActiveCount" class="value">0</div></article>
+          <article class="card kpi"><div class="label">Inactive Roles</div><div id="rolesInactiveCount" class="value">0</div></article>
+        </div>
+        <div class="card" aria-label="Roles management">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+            <div>
+              <strong>Roles</strong>
+              <div class="muted">Manage dynamic roles from backend resource.</div>
+            </div>
+            <button id="rolesRefreshBtn" class="btn ghost sm" type="button">Refresh roles</button>
+          </div>
+          <div id="rolesState" class="muted" style="margin-bottom:8px;">No data loaded.</div>
+          <div class="table-wrap" role="region" aria-label="Roles table">
+            <table id="rolesTable">
+              <thead>
+                <tr>
+                  <th scope="col">role_id</th>
+                  <th scope="col">role_key</th>
+                  <th scope="col">display_name</th>
+                  <th scope="col">description</th>
+                  <th scope="col">is_active</th>
+                  <th scope="col">updated_at</th>
+                  <th scope="col">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="rolesTbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card" aria-label="Create role">
+          <strong>Create role</strong>
+          <form id="roleCreateForm" class="user-form-grid" style="margin-top:10px;">
+            <input id="roleCreateKey" class="input" type="text" placeholder="role_key *" required />
+            <input id="roleCreateDisplayName" class="input" type="text" placeholder="Display name *" required />
+            <input id="roleCreateDescription" class="input" type="text" placeholder="Description" />
+            <select id="roleCreateIsActive" class="select">
+              <option value="true">Active</option>
+              <option value="false">Inactive</option>
+            </select>
+            <button id="roleCreateSubmit" class="btn primary" type="submit">Create role</button>
+          </form>
+        </div>
+      </section>
+
+      <section id="rolePermissionsView" class="view" role="tabpanel" aria-labelledby="rolePermissionsTab">
+        <div class="card" aria-label="Permission matrix">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+            <div>
+              <strong>Permission matrix</strong>
+              <div class="muted">Manage access rules by resource + action.</div>
+            </div>
+            <button id="rolePermissionsRefreshBtn" class="btn ghost sm" type="button">Refresh permissions</button>
+          </div>
+          <form id="rolePermissionsFiltersForm" class="user-form-grid" style="margin-bottom:10px;">
+            <input id="rolePermissionsSearchResource" class="input" type="search" placeholder="Search resource" />
+            <input id="rolePermissionsSearchAction" class="input" type="search" placeholder="Search action" />
+            <input id="rolePermissionsSearchAllowedRoles" class="input" type="search" placeholder="Search allowed roles" />
+            <input id="rolePermissionsResourceFilter" class="input" type="search" placeholder="Optional exact resource filter" />
+          </form>
+          <div id="rolePermissionsState" class="muted" style="margin-bottom:8px;">No data loaded.</div>
+          <div class="table-wrap" role="region" aria-label="Permission matrix table">
+            <table id="rolePermissionsTable">
+              <thead>
+                <tr>
+                  <th scope="col">permission_id</th>
+                  <th scope="col">resource</th>
+                  <th scope="col">action</th>
+                  <th scope="col">allowed_roles</th>
+                  <th scope="col">description</th>
+                  <th scope="col">updated_at</th>
+                  <th scope="col">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="rolePermissionsTbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card" aria-label="Create permission rule">
+          <strong>Create permission rule</strong>
+          <form id="rolePermissionCreateForm" class="user-form-grid" style="margin-top:10px;">
+            <input id="rolePermissionCreateResource" class="input" type="text" placeholder="resource *" required />
+            <input id="rolePermissionCreateAction" class="input" type="text" placeholder="action *" required />
+            <input id="rolePermissionCreateAllowedRoles" class="input" type="text" placeholder="allowed roles CSV (e.g. admin,manager)" required />
+            <input id="rolePermissionCreateDescription" class="input" type="text" placeholder="Description" />
+            <button id="rolePermissionCreateSubmit" class="btn primary" type="submit">Create rule</button>
+          </form>
+        </div>
+
+        <div class="card" aria-label="Tab CRUD access helper">
+          <strong>Tab access + CRUD helper</strong>
+          <div class="muted" style="margin:6px 0 10px;">Grant one role access to an individual tab or all tabs with selected actions.</div>
+          <form id="tabPermissionBulkForm" class="user-form-grid">
+            <select id="tabPermissionRole" class="select" required>
+              <option value="">Select role *</option>
+            </select>
+            <select id="tabPermissionTarget" class="select" required>
+              <option value="all_tabs">All tabs</option>
+              <option value="calendar">Calendar</option>
+              <option value="insights">AI Insights</option>
+              <option value="csm">CSM Daily Activity</option>
+              <option value="leads">Leads</option>
+              <option value="deals">Deals</option>
+              <option value="proposals">Proposals</option>
+              <option value="agreements">Agreements</option>
+              <option value="technicalAdmin">Technical Admin</option>
+              <option value="invoices">Invoices</option>
+              <option value="receipts">Receipts</option>
+              <option value="lifecycleAnalytics">Lifecycle Analytics</option>
+              <option value="clients">Clients</option>
+              <option value="proposalCatalog">Proposal Catalog</option>
+              <option value="workflow">Workflow</option>
+              <option value="users">Users</option>
+              <option value="roles">Roles</option>
+              <option value="rolePermissions">Role Permissions</option>
+            </select>
+            <label><input id="tabPermissionActionView" type="checkbox" checked /> View</label>
+            <label><input id="tabPermissionActionCreate" type="checkbox" /> Create</label>
+            <label><input id="tabPermissionActionEdit" type="checkbox" /> Edit</label>
+            <label><input id="tabPermissionActionDelete" type="checkbox" /> Delete</label>
+            <button id="tabPermissionBulkSubmit" class="btn primary" type="submit">Apply access</button>
+          </form>
         </div>
       </section>
 
@@ -612,7 +966,1012 @@
           <div id="aiQueryResults" class="muted" style="font-size:13px;margin-top:8px;"></div>
         </div>
       </section>
-      
+
+      <section id="csmView" class="view" role="tabpanel" aria-labelledby="csmTab">
+        <div class="csm-shell">
+          <div class="csm-main">
+            <aside class="card csm-panel">
+              <h3 class="csm-filters-title">Filters</h3>
+              <div class="csm-filters-grid">
+                <div class="filter-row">
+                  <label class="muted" for="csmNameFilter">CSM Name</label>
+                  <select id="csmNameFilter" class="select" aria-label="CSM Name" title="CSM Name"></select>
+                </div>
+                <div class="filter-row">
+                  <label class="muted" for="csmClientFilter">Client</label>
+                  <select id="csmClientFilter" class="select" aria-label="Client" title="Client"></select>
+                </div>
+                <div class="filter-row">
+                  <label class="muted" for="csmSupportTypeFilter">Type of Support</label>
+                  <select id="csmSupportTypeFilter" class="select" aria-label="Type of Support" title="Type of Support"></select>
+                </div>
+                <div class="filter-row">
+                  <label class="muted" for="csmEffortFilter">Effort Requirement</label>
+                  <select id="csmEffortFilter" class="select" aria-label="Effort Requirement" title="Effort Requirement"></select>
+                </div>
+                <div class="filter-row">
+                  <label class="muted" for="csmChannelFilter">Support Channel</label>
+                  <select id="csmChannelFilter" class="select" aria-label="Support Channel" title="Support Channel"></select>
+                </div>
+                <div class="filter-row">
+                  <label class="muted" for="csmStartDateFilter">From</label>
+                  <input id="csmStartDateFilter" class="input" type="date" aria-label="From" title="From" />
+                </div>
+                <div class="filter-row">
+                  <label class="muted" for="csmEndDateFilter">To</label>
+                  <input id="csmEndDateFilter" class="input" type="date" aria-label="To" title="To" />
+                </div>
+                <div class="filter-row">
+                  <label class="muted" for="csmSearchInput">Search Notes / Client</label>
+                  <input id="csmSearchInput" class="input" type="search" placeholder="keyword" aria-label="Search Notes / Client" />
+                </div>
+              </div>
+            </aside>
+
+            <div class="card csm-header-card">
+              <div>
+                <h2>InCheck CSM Activity Analytics</h2>
+                <div class="muted">Reference-inspired layout with live filters, KPI cards, charts, and detailed submissions.</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <a
+                  href="https://forms.gle/EwutYftKANWFCgvt8"
+                  class="btn sm"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Add CSM activity through Google Form"
+                >
+                  <span class="icon" aria-hidden="true">➕</span> Add Activity
+                </a>
+                <span id="csmRowCount" class="chip">0 rows</span>
+              </div>
+            </div>
+
+            <div class="grid cols-4 csm-kpi-grid csm-kpi-grid-six">
+              <div class="card csm-kpi">
+                <div class="label">Total Tasks</div>
+                <div id="csmKpiActivities" class="value">0</div>
+                <div id="csmKpiActivitiesSub" class="sub">0 active CSMs in current view</div>
+              </div>
+              <div class="card csm-kpi">
+                <div class="label">Total Minutes</div>
+                <div id="csmKpiMinutes" class="value">0</div>
+                <div id="csmKpiMinutesSub" class="sub">0 tracked minutes</div>
+              </div>
+              <div class="card csm-kpi">
+                <div class="label">Average Minutes / Task</div>
+                <div id="csmKpiAvg" class="value">0</div>
+                <div id="csmKpiAvgSub" class="sub">Time spent efficiency snapshot</div>
+              </div>
+              <div class="card csm-kpi">
+                <div class="label">Active Clients</div>
+                <div id="csmKpiActiveClients" class="value">0</div>
+                <div id="csmKpiActiveClientsSub" class="sub">0 unique clients in current view</div>
+              </div>
+              <div class="card csm-kpi">
+                <div class="label">Weighted Load Score</div>
+                <div id="csmKpiWeightedLoad" class="value">0</div>
+                <div id="csmKpiWeightedLoadSub" class="sub">Low=1, Medium=2, High=3</div>
+              </div>
+              <div class="card csm-kpi">
+                <div class="label">High-Effort Share</div>
+                <div id="csmKpiHighEffortShare" class="value">0%</div>
+                <div id="csmKpiHighEffortShareSub" class="sub">0 high-effort tasks in current filter</div>
+              </div>
+            </div>
+
+            <div class="csm-split-grid">
+              <div class="card">
+                <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;">
+                  <strong>Workload Insights</strong>
+                  <span class="chip">Key derived signals</span>
+                </div>
+                <div id="csmInsightList" class="csm-insight-list"></div>
+              </div>
+              <div class="card">
+                <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;">
+                  <strong>Top CSM Snapshot</strong>
+                  <span class="chip">Tasks, minutes, clients</span>
+                </div>
+                <div class="table-wrap" style="max-height:300px;margin-top:10px;">
+                  <table>
+                    <thead>
+                      <tr><th>CSM</th><th>Tasks</th><th>Minutes</th><th>Avg / Task</th><th>Clients</th></tr>
+                    </thead>
+                    <tbody id="csmTopSnapshotBody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div class="charts" aria-label="CSM summary widgets">
+              <div class="card csm-widget-card">
+                <div class="csm-widget-head"><strong>Minutes by Client</strong><span class="chip">Top clients by time spent</span></div>
+                <canvas id="csmMinutesByClientChart" height="130" aria-label="Minutes by client" role="img"></canvas>
+              </div>
+              <div class="card csm-widget-card">
+                <div class="csm-widget-head"><strong>Type of Support</strong><span class="chip">Distribution of submitted work</span></div>
+                <canvas id="csmTypeOfSupportChart" height="130" aria-label="Type of support" role="img"></canvas>
+              </div>
+              <div class="card csm-widget-card">
+                <div class="csm-widget-head"><strong>Effort Requirement</strong><span class="chip">Low / Medium / High</span></div>
+                <canvas id="csmEffortRequirementChart" height="130" aria-label="Effort requirement" role="img"></canvas>
+              </div>
+              <div class="card csm-widget-card">
+                <div class="csm-widget-head"><strong>Support Channels</strong><span class="chip">Where work is happening</span></div>
+                <canvas id="csmSupportChannelsChart" height="130" aria-label="Support channels" role="img"></canvas>
+              </div>
+            </div>
+
+            <div class="charts" aria-label="CSM analytics charts">
+              <div class="card csm-widget-card">
+                <div class="csm-widget-head"><strong>Weekday Workload</strong><span class="chip">Minutes by day of week</span></div>
+                <canvas id="csmWeekdayWorkloadChart" height="130" aria-label="Weekday workload" role="img"></canvas>
+              </div>
+              <div class="card csm-widget-card">
+                <div class="csm-widget-head"><strong>Weekly Workload Trend</strong><span class="chip">Minutes by week</span></div>
+                <canvas id="csmWeeklyTrendChart" height="130" aria-label="Weekly workload trend" role="img"></canvas>
+              </div>
+              <div class="card csm-widget-card">
+                <div class="csm-widget-head"><strong>Effort Mix by CSM</strong><span class="chip">Stacked task count</span></div>
+                <canvas id="csmEffortMixByCsmChart" height="130" aria-label="Effort mix by CSM" role="img"></canvas>
+              </div>
+              <div class="card csm-widget-card">
+                <div class="csm-widget-head"><strong>Client Concentration</strong><span class="chip">Share of total minutes</span></div>
+                <canvas id="csmClientConcentrationChart" height="130" aria-label="Client concentration" role="img"></canvas>
+              </div>
+              <div class="card csm-widget-card">
+                <div class="csm-widget-head"><strong>Workload Balance by CSM</strong><span class="chip">Total minutes vs average minutes</span></div>
+                <canvas id="csmWorkloadBalanceChart" height="130" aria-label="Workload balance by CSM" role="img"></canvas>
+              </div>
+            </div>
+
+            <div class="card">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+                <strong>Submitted Task Details</strong>
+                <span class="muted">Live backend rows</span>
+              </div>
+              <div class="table-wrap" role="region" aria-label="CSM daily activity table">
+                <table id="csmTable">
+                  <thead>
+                    <tr>
+                      <th>Timestamp</th>
+                      <th>CSM Name</th>
+                      <th>Client</th>
+                      <th>Time Spent (Minutes)</th>
+                      <th>Type of Support</th>
+                      <th>Effort Requirement</th>
+                      <th>Support Channel</th>
+                      <th>Notes</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="csmTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="usersView" class="view" role="tabpanel" aria-labelledby="usersTab">
+        <div class="card" aria-label="User management">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+            <div>
+              <strong>Users</strong>
+              <div class="muted">Admin-only account and role management.</div>
+            </div>
+            <button id="usersRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
+          </div>
+          <div id="usersState" class="muted" style="margin-bottom:8px;">No data loaded.</div>
+          <div class="table-wrap" role="region" aria-label="Users table">
+            <table id="usersTable">
+              <thead>
+                <tr>
+                  <th scope="col">name</th>
+                  <th scope="col">email</th>
+                  <th scope="col">username</th>
+                  <th scope="col">role</th>
+                  <th scope="col">is_active</th>
+                  <th scope="col">created_at</th>
+                  <th scope="col">updated_at</th>
+                  <th scope="col">last_login_at</th>
+                  <th scope="col">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="usersTbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card" aria-label="Create user">
+          <strong>Create user</strong>
+          <form id="userCreateForm" class="user-form-grid" style="margin-top:10px;">
+            <input id="userCreateName" class="input" type="text" placeholder="Full name *" required />
+            <input id="userCreateUsername" class="input" type="text" placeholder="Username *" required />
+            <input id="userCreateEmail" class="input" type="email" placeholder="Email *" required />
+            <select id="userCreateRole" class="select">
+              <option value="">Loading roles…</option>
+            </select>
+            <input id="userCreatePassword" class="input" type="password" placeholder="Temporary password *" required />
+            <button id="userCreateSubmit" class="btn primary" type="submit">Create user</button>
+          </form>
+        </div>
+      </section>
+
+      <div id="userEditModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="userEditTitle" aria-hidden="true">
+        <div class="modal-content" style="max-width:760px;">
+          <div class="header">
+            <h2 id="userEditTitle" style="margin:0;font-size:20px">Edit user</h2>
+            <button class="modal-close" id="userEditClose" aria-label="Close user edit">✕</button>
+          </div>
+          <form id="userEditForm" class="user-form-grid">
+            <input id="userEditName" class="input" type="text" placeholder="Full name *" required />
+            <input id="userEditUsername" class="input" type="text" placeholder="Username *" required />
+            <input id="userEditEmail" class="input" type="email" placeholder="Email *" required />
+            <select id="userEditRole" class="select" required>
+              <option value="">Loading roles…</option>
+            </select>
+            <div style="grid-column:1 / -1;display:flex;justify-content:flex-end;gap:8px;">
+              <button id="userEditCancel" class="btn ghost" type="button">Cancel</button>
+              <button id="userEditSubmit" class="btn primary" type="submit">Save changes</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <section id="leadsView" class="view" role="tabpanel" aria-labelledby="leadsTab">
+        <div class="card" aria-label="Leads list">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+            <div>
+              <strong>Leads</strong>
+              <div class="muted">Lead pipeline synced with backend resource.</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button id="leadsRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
+              <button id="leadsCreateBtn" class="btn sm" type="button">Create Lead</button>
+            </div>
+          </div>
+
+          <div id="leadsAnalytics" class="leads-analytics" aria-label="Leads analytics widgets">
+            <div id="leadsAnalyticsGrid" class="grid leads-analytics-grid">
+              <article class="card kpi leads-kpi-card" data-kpi-filter="total"><div class="label">Total Leads</div><div id="leadsKpiTotal" class="value">0</div><div class="sub">Loaded leads</div></article>
+              <article class="card kpi leads-kpi-card" data-kpi-filter="new"><div class="label">New Leads</div><div id="leadsKpiNew" class="value">0</div><div class="sub">Status = New</div></article>
+              <article class="card kpi leads-kpi-card" data-kpi-filter="qualified"><div class="label">Qualified Leads</div><div id="leadsKpiQualified" class="value">0</div><div class="sub">Status = Qualified</div></article>
+              <article class="card kpi leads-kpi-card" data-kpi-filter="proposal-sent"><div class="label">Proposal Sent</div><div id="leadsKpiProposalSent" class="value">0</div><div class="sub">Status = Proposal Sent</div></article>
+              <article class="card kpi leads-kpi-card" data-kpi-filter="won"><div class="label">Won Leads</div><div id="leadsKpiWon" class="value">0</div><div class="sub">Closed won</div></article>
+              <article class="card kpi leads-kpi-card" data-kpi-filter="lost"><div class="label">Lost Leads</div><div id="leadsKpiLost" class="value">0</div><div class="sub">Closed lost</div></article>
+              <article class="card kpi leads-kpi-card" data-kpi-filter="high-priority"><div class="label">High Priority Leads</div><div id="leadsKpiHighPriority" class="value">0</div><div class="sub">High or Urgent</div></article>
+              <article class="card kpi leads-kpi-card" data-kpi-filter="pipeline-value"><div class="label">Estimated Pipeline Value</div><div id="leadsKpiPipelineValue" class="value">0</div><div id="leadsKpiPipelineSub" class="sub">Total estimated value</div></article>
+              <article class="card kpi leads-kpi-card" data-kpi-filter="proposal-needed"><div class="label">Proposal Needed</div><div id="leadsKpiProposalNeeded" class="value">0</div><div class="sub">proposal_needed = Yes</div></article>
+              <article class="card kpi leads-kpi-card" data-kpi-filter="agreement-needed"><div class="label">Agreement Needed</div><div id="leadsKpiAgreementNeeded" class="value">0</div><div class="sub">agreement_needed = Yes</div></article>
+              <article class="card kpi leads-kpi-card" data-kpi-filter="conversion-rate"><div class="label">Conversion Rate</div><div id="leadsKpiConversionRate" class="value">0%</div><div class="sub">Won / Total</div></article>
+            </div>
+
+            <div class="card leads-status-card" aria-label="Leads status distribution">
+              <div class="leads-status-head">
+                <strong>Status Distribution</strong>
+                <span class="muted">Based on visible leads</span>
+              </div>
+              <div id="leadsStatusDistribution" class="leads-status-bars"></div>
+            </div>
+          </div>
+
+          <div id="leadsState" class="muted" style="margin-bottom:8px;">No data loaded.</div>
+          <div class="table-wrap" role="region" aria-label="Leads table">
+            <table id="leadsTable">
+              <thead>
+                <tr>
+                  <th>Lead ID</th>
+                  <th>Created At</th>
+                  <th>Full Name</th>
+                  <th>Company Name</th>
+                  <th>Phone</th>
+                  <th>Email</th>
+                  <th>Country</th>
+                  <th>Lead Source</th>
+                  <th>Service Interest</th>
+                  <th>Status</th>
+                  <th>Priority</th>
+                  <th>Estimated Value</th>
+                  <th>Currency</th>
+                  <th>Assigned To</th>
+                  <th>Next Follow-up</th>
+                  <th>Last Contact</th>
+                  <th>Proposal Needed</th>
+                  <th>Agreement Needed</th>
+                  <th>Notes</th>
+                  <th>Updated At</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="leadsTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="dealsView" class="view" role="tabpanel" aria-labelledby="dealsTab">
+        <div class="card" aria-label="Deals list">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+            <div>
+              <strong>Deals</strong>
+              <div class="muted">Converted opportunities synced from backend deals resource.</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <input id="dealsSearchInput" class="input" type="search"
+                     placeholder="Search deal, lead, company, owner, notes..." aria-label="Search deals" />
+              <button id="dealsCreateBtn" class="btn sm" type="button">Create Deal</button>
+              <button id="dealsRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
+            </div>
+          </div>
+          <div id="dealsAnalytics" class="deals-analytics" aria-label="Deals analytics widgets">
+            <div id="dealsAnalyticsGrid" class="grid deals-analytics-grid">
+              <article class="card kpi deals-kpi-card" data-kpi-filter="total"><div class="label">Total Deals</div><div id="dealsKpiTotal" class="value">0</div><div class="sub">Visible deals</div></article>
+              <article class="card kpi deals-kpi-card" data-kpi-filter="open"><div class="label">Open Deals</div><div id="dealsKpiOpen" class="value">0</div><div class="sub">Open / Active / In Progress</div></article>
+              <article class="card kpi deals-kpi-card" data-kpi-filter="won"><div class="label">Won Deals</div><div id="dealsKpiWon" class="value">0</div><div class="sub">Status matched as won</div></article>
+              <article class="card kpi deals-kpi-card" data-kpi-filter="lost"><div class="label">Lost Deals</div><div id="dealsKpiLost" class="value">0</div><div class="sub">Status matched as lost</div></article>
+              <article class="card kpi deals-kpi-card" data-kpi-filter="proposal-needed"><div class="label">Proposal Needed</div><div id="dealsKpiProposalNeeded" class="value">0</div><div class="sub">proposal_needed = Yes</div></article>
+              <article class="card kpi deals-kpi-card" data-kpi-filter="agreement-needed"><div class="label">Agreement Needed</div><div id="dealsKpiAgreementNeeded" class="value">0</div><div class="sub">agreement_needed = Yes</div></article>
+              <article class="card kpi deals-kpi-card" data-kpi-filter="high-priority"><div class="label">High Priority Deals</div><div id="dealsKpiHighPriority" class="value">0</div><div class="sub">High or Urgent</div></article>
+              <article class="card kpi deals-kpi-card" data-kpi-filter="pipeline-value"><div class="label">Total Pipeline Value</div><div id="dealsKpiPipelineValue" class="value">0</div><div id="dealsKpiPipelineSub" class="sub">Visible estimated value</div></article>
+              <article class="card kpi deals-kpi-card" data-kpi-filter="weighted-pipeline"><div class="label">Weighted Pipeline</div><div id="dealsKpiWeightedPipelineValue" class="value">0</div><div id="dealsKpiWeightedPipelineSub" class="sub">Stage probability weighted</div></article>
+              <article class="card kpi deals-kpi-card" data-kpi-filter="win-rate"><div class="label">Win Rate</div><div id="dealsKpiWinRate" class="value">0%</div><div class="sub">Won / (Won + Lost)</div></article>
+              <article class="card kpi deals-kpi-card" data-kpi-filter="average-deal-size"><div class="label">Average Deal Size</div><div id="dealsKpiAverageDealSize" class="value">0</div><div class="sub">Across valid values</div></article>
+              <article class="card kpi deals-kpi-card" data-kpi-filter="average-won-deal-size"><div class="label">Average Won Deal Size</div><div id="dealsKpiAverageWonDealSize" class="value">0</div><div class="sub">Won deals only</div></article>
+              <article class="card kpi deals-kpi-card" data-kpi-filter="converted-from-leads"><div class="label">Converted from Leads</div><div id="dealsKpiConvertedFromLeads" class="value">0</div><div class="sub">lead_id or converted_at</div></article>
+              <article class="card kpi deals-kpi-card" data-kpi-filter="unique-companies"><div class="label">Unique Companies</div><div id="dealsKpiUniqueCompanies" class="value">0</div><div class="sub">Distinct companies</div></article>
+              <article class="card kpi deals-kpi-card" data-kpi-filter="unique-assignees"><div class="label">Unique Assignees</div><div id="dealsKpiUniqueAssignees" class="value">0</div><div class="sub">Distinct owners</div></article>
+            </div>
+            <div class="deals-breakdown-grid">
+              <article class="card deals-breakdown-card" aria-label="Deals stage distribution">
+                <div class="deals-breakdown-title">Stage distribution</div>
+                <div id="dealsStageDistribution" class="deals-status-bars"></div>
+              </article>
+              <article class="card deals-breakdown-card" aria-label="Deals status distribution">
+                <div class="deals-breakdown-title">Status distribution</div>
+                <div id="dealsStatusDistribution" class="deals-status-bars"></div>
+              </article>
+              <article class="card deals-breakdown-card" aria-label="Deals assignee breakdown">
+                <div class="deals-breakdown-title">Assignee breakdown</div>
+                <div id="dealsAssigneeBreakdown" class="deals-status-bars"></div>
+              </article>
+              <article class="card deals-breakdown-card" aria-label="Deals service interest breakdown">
+                <div class="deals-breakdown-title">Top services</div>
+                <div id="dealsServiceBreakdown" class="deals-status-bars"></div>
+              </article>
+              <article class="card deals-breakdown-card" aria-label="Deals lead source breakdown">
+                <div class="deals-breakdown-title">Lead sources</div>
+                <div id="dealsSourceBreakdown" class="deals-status-bars"></div>
+              </article>
+            </div>
+          </div>
+          <div id="dealsState" class="muted" style="margin-bottom:8px;">No data loaded.</div>
+          <div class="table-wrap" role="region" aria-label="Deals table">
+            <table id="dealsTable">
+              <thead>
+                <tr>
+                  <th>Deal ID</th>
+                  <th>Lead ID</th>
+                  <th>Full Name</th>
+                  <th>Company Name</th>
+                  <th>Phone</th>
+                  <th>Email</th>
+                  <th>Country</th>
+                  <th>Lead Source</th>
+                  <th>Service Interest</th>
+                  <th>Stage</th>
+                  <th>Status</th>
+                  <th>Priority</th>
+                  <th>Estimated Value</th>
+                  <th>Currency</th>
+                  <th>Assigned To</th>
+                  <th>Proposal Needed</th>
+                  <th>Agreement Needed</th>
+                  <th>Converted At</th>
+                  <th>Converted By</th>
+                  <th>Notes</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="dealsTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="clientsView" class="view" role="tabpanel" aria-labelledby="clientsTab">
+        <div class="card" aria-label="Clients intelligence hub">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+            <div>
+              <strong>Clients Intelligence Hub</strong>
+              <div class="muted">Consolidated company view across agreements, invoices, and receipts.</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <input id="clientsSearchInput" class="input" type="search" placeholder="Search by company..." aria-label="Search clients by company" />
+              <select id="clientsStatusFilter" class="select" aria-label="Filter clients by status">
+                <option>All</option>
+              </select>
+              <select id="clientsSortSelect" class="select" aria-label="Sort clients">
+                <option value="due_desc">Due Amount (High→Low)</option>
+                <option value="paid_desc">Paid Amount (High→Low)</option>
+                <option value="agreement_desc">Agreement Value (High→Low)</option>
+              </select>
+              <button id="clientsRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
+              <button id="clientsCreateBtn" class="btn sm" type="button">New Client</button>
+            </div>
+          </div>
+          <div id="clientsState" class="muted" style="margin-bottom:8px;">No data loaded.</div>
+          <div id="clientsGlobalRenewals" class="muted" style="margin-bottom:8px;"></div>
+          <div class="table-wrap" role="region" aria-label="Clients table">
+            <table id="clientsTable">
+              <thead>
+                <tr>
+                  <th>Company Name</th>
+                  <th>Legal Name</th>
+                  <th>Locations</th>
+                  <th>Agreements</th>
+                  <th>Invoiced</th>
+                  <th>Paid</th>
+                  <th>Due</th>
+                  <th>Status</th>
+                  <th>Last Activity</th>
+                </tr>
+              </thead>
+              <tbody id="clientsTbody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card" style="margin-top:12px;" aria-label="Client detail panel">
+          <div id="clientsDetailEmpty" class="muted">Select a client to view full analytics, related records, and quick actions.</div>
+          <div id="clientsDetailPanel" style="display:none;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">
+              <div>
+                <h3 id="clientDetailName" style="margin:0 0 2px;">—</h3>
+                <div id="clientDetailMeta" class="muted">—</div>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                <span id="clientDetailStatus" class="chip">Unknown</span>
+                <button id="clientActionProposalBtn" class="btn ghost sm" type="button">New Proposal</button>
+                <button id="clientActionAgreementBtn" class="btn ghost sm" type="button">New Agreement</button>
+                <button id="clientActionInvoiceBtn" class="btn ghost sm" type="button">Issue Invoice</button>
+                <button id="clientActionCloneBtn" class="btn ghost sm" type="button">Create From Previous Agreement</button>
+              </div>
+            </div>
+            <div id="clientDetailOverview" class="muted" style="margin:10px 0 14px;"></div>
+            <div id="clientDetailTabButtons" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+              <button class="btn ghost sm" type="button" data-client-detail-tab="overview">Overview</button>
+              <button class="btn ghost sm" type="button" data-client-detail-tab="statement">Statement of Account</button>
+              <button class="btn ghost sm" type="button" data-client-detail-tab="renewals">Renewals &amp; Payments Timeline</button>
+            </div>
+            <section id="clientOverviewSection">
+              <details open>
+                <summary><strong>Analytics</strong></summary>
+                <div id="clientAnalyticsCards" class="grid cols-4" style="margin-top:8px;"></div>
+              </details>
+              <div style="margin-top:14px;">
+                <strong>Related Agreements</strong>
+                <div class="table-wrap" style="margin-top:6px;">
+                  <table>
+                    <thead><tr><th>Agreement #</th><th>Status</th><th>Value</th><th>Start Date</th><th>End Date</th><th>Actions</th></tr></thead>
+                    <tbody id="clientRelatedAgreementsTbody"></tbody>
+                  </table>
+                </div>
+              </div>
+              <div style="margin-top:14px;">
+                <strong>Related Invoices</strong>
+                <div class="table-wrap" style="margin-top:6px;">
+                  <table>
+                    <thead><tr><th>Invoice #</th><th>Status</th><th>Grand Total</th><th>Amount Paid</th><th>Pending Amount</th><th>Actions</th></tr></thead>
+                    <tbody id="clientRelatedInvoicesTbody"></tbody>
+                  </table>
+                </div>
+              </div>
+              <div style="margin-top:14px;">
+                <strong>Related Receipts</strong>
+                <div class="table-wrap" style="margin-top:6px;">
+                  <table>
+                    <thead><tr><th>Receipt #</th><th>Payment State</th><th>Received Amount</th><th>Pending Amount</th><th>Actions</th></tr></thead>
+                    <tbody id="clientRelatedReceiptsTbody"></tbody>
+                  </table>
+                </div>
+              </div>
+              <div style="margin-top:14px;">
+                <strong>Timeline</strong>
+                <ul id="clientTimeline" style="margin:8px 0 0 18px;"></ul>
+              </div>
+            </section>
+            <section id="clientStatementSection" style="display:none;">
+              <div id="clientStatementCards" class="grid cols-5" style="gap:8px;"></div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+                <select id="clientStatementFiltersStatus" class="select">
+                  <option value="all">All</option>
+                  <option value="open">Open Only</option>
+                  <option value="overdue">Overdue Only</option>
+                </select>
+                <input id="clientStatementDateFrom" class="input" type="date" />
+                <input id="clientStatementDateTo" class="input" type="date" />
+                <input id="clientStatementSearchDoc" class="input" type="search" placeholder="Search document #" />
+                <button id="clientStatementApplyFiltersBtn" class="btn ghost sm" type="button">Apply</button>
+                <button id="clientStatementResetFiltersBtn" class="btn ghost sm" type="button">Reset</button>
+                <button id="clientStatementExportPdfBtn" class="btn ghost sm" type="button">Preview</button>
+              </div>
+              <div class="table-wrap" style="margin-top:8px;">
+                <table>
+                  <thead><tr><th>Date</th><th>Type</th><th>Document No</th><th>Reference</th><th>Currency</th><th>Debit</th><th>Credit</th><th>Running Balance</th><th>Due Date</th><th>Status</th><th>Notes</th></tr></thead>
+                  <tbody id="clientStatementTbody"></tbody>
+                </table>
+              </div>
+            </section>
+            <section id="clientRenewalsSection" style="display:none;">
+              <div id="clientRenewalEvents" class="grid cols-4" style="gap:8px;"></div>
+              <div id="clientRenewalBuckets" class="grid cols-5" style="gap:8px;margin-top:8px;"></div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+                <input id="clientRenewalsDateFrom" class="input" type="date" />
+                <input id="clientRenewalsDateTo" class="input" type="date" />
+                <button id="clientRenewalsApplyFiltersBtn" class="btn ghost sm" type="button">Apply</button>
+                <button id="clientRenewalsResetFiltersBtn" class="btn ghost sm" type="button">Reset</button>
+              </div>
+              <div class="table-wrap" style="margin-top:8px;">
+                <table>
+                  <thead><tr><th>Location</th><th>Module</th><th>Service Start Date</th><th>Service End Date</th><th>Renewal Date</th><th>Billing Frequency</th><th>Payment Status</th></tr></thead>
+                  <tbody id="clientRenewalsTbody"></tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <div id="newClientModal" class="modal" aria-hidden="true">
+        <div class="modal-content" style="max-width:760px;">
+          <div class="header">
+            <strong>New Client</strong>
+            <button id="newClientCloseBtn" class="modal-close" type="button" aria-label="Close">×</button>
+          </div>
+          <form id="newClientForm" class="grid cols-2" style="gap:10px;">
+            <input class="input" name="customer_name" placeholder="Company Name *" required />
+            <input class="input" name="customer_legal_name" placeholder="Legal Name" />
+            <input class="input" name="primary_contact_name" placeholder="Primary Contact Name" />
+            <input class="input" name="primary_contact_email" placeholder="Primary Contact Email" type="email" />
+            <input class="input" name="phone" placeholder="Phone" />
+            <input class="input" name="country" placeholder="Country" />
+            <input class="input" name="address" placeholder="Address" />
+            <input class="input" name="billing_address" placeholder="Billing Address" />
+            <input class="input" name="tax_number" placeholder="Tax Number" />
+            <input class="input" name="industry" placeholder="Industry" />
+            <select class="select" name="status">
+              <option value="Active">Active</option>
+              <option value="Prospect">Prospect</option>
+              <option value="Inactive">Inactive</option>
+            </select>
+            <input class="input" name="source" placeholder="Source (manual/import/signed_agreement)" value="manual" />
+            <textarea class="input" name="notes" placeholder="Notes" style="grid-column:1/-1;min-height:78px;"></textarea>
+            <div class="actions" style="grid-column:1/-1;justify-content:flex-end;">
+              <button id="newClientCancelBtn" class="btn ghost" type="button">Cancel</button>
+              <button id="newClientSaveBtn" class="btn" type="submit">Save Client</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <section id="proposalsView" class="view" role="tabpanel" aria-labelledby="proposalsTab">
+        <div class="card" aria-label="Proposals list">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+            <div>
+              <strong>Proposals</strong>
+              <div class="muted">Proposal records synced from backend proposals resource.</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <input id="proposalsSearchInput" class="input" type="search" placeholder="Search proposal ID, title, deal, customer..." aria-label="Search proposals" />
+              <input id="proposalsCustomerFilter" class="input" type="search" placeholder="Customer filter..." aria-label="Filter by customer" />
+              <select id="proposalsStatusFilter" class="select" aria-label="Filter by proposal status">
+                <option>All</option>
+              </select>
+              <button id="proposalsRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
+              <button id="proposalsCreateBtn" class="btn sm" type="button">Create Proposal</button>
+            </div>
+          </div>
+          <div id="proposalsAnalytics" class="deals-analytics" aria-label="Proposals analytics widgets">
+            <div id="proposalsAnalyticsGrid" class="grid deals-analytics-grid">
+              <article class="card kpi deals-kpi-card" data-kpi-filter="total"><div class="label">Visible Proposals</div><div id="proposalsKpiTotal" class="value">0</div><div class="sub">Rows after filters</div></article>
+              <article class="card kpi deals-kpi-card" data-kpi-filter="draft"><div class="label">Draft</div><div id="proposalsKpiDraft" class="value">0</div><div class="sub">Status matched as draft</div></article>
+              <article class="card kpi deals-kpi-card" data-kpi-filter="sent"><div class="label">Sent</div><div id="proposalsKpiSent" class="value">0</div><div class="sub">Status matched as sent</div></article>
+              <article class="card kpi deals-kpi-card" data-kpi-filter="approved"><div class="label">Approved</div><div id="proposalsKpiApproved" class="value">0</div><div class="sub">Status matched as approved</div></article>
+              <article class="card kpi deals-kpi-card" data-kpi-filter="rejected"><div class="label">Rejected</div><div id="proposalsKpiRejected" class="value">0</div><div class="sub">Status matched as rejected</div></article>
+              <article class="card kpi deals-kpi-card" data-kpi-filter="expired"><div class="label">Expired</div><div id="proposalsKpiExpired" class="value">0</div><div class="sub">Status matched as expired</div></article>
+              <article class="card kpi deals-kpi-card" data-kpi-filter="unique-customers"><div class="label">Unique Customers</div><div id="proposalsKpiUniqueCustomers" class="value">0</div><div class="sub">Distinct customer_name</div></article>
+              <article class="card kpi deals-kpi-card" data-kpi-filter="linked-deals"><div class="label">Linked Deals</div><div id="proposalsKpiLinkedDeals" class="value">0</div><div class="sub">Rows with deal_id</div></article>
+              <article class="card kpi deals-kpi-card" data-kpi-filter="avg-grand-total"><div class="label">Avg Grand Total</div><div id="proposalsKpiAvgGrandTotal" class="value">0</div><div class="sub">Average grand total</div></article>
+              <article class="card kpi deals-kpi-card" data-kpi-filter="grand-total"><div class="label">Total Grand Value</div><div id="proposalsKpiGrandTotal" class="value">0</div><div id="proposalsKpiGrandTotalSub" class="sub">Sum of grand total</div></article>
+              <article class="card kpi deals-kpi-card" data-kpi-filter="saas-total"><div class="label">Total SaaS Value</div><div id="proposalsKpiSaasTotal" class="value">0</div><div id="proposalsKpiSaasTotalSub" class="sub">Sum of SaaS totals</div></article>
+              <article class="card kpi deals-kpi-card" data-kpi-filter="one-time-total"><div class="label">Total One-Time Value</div><div id="proposalsKpiOneTimeTotal" class="value">0</div><div id="proposalsKpiOneTimeTotalSub" class="sub">Sum of one-time totals</div></article>
+            </div>
+            <div class="deals-breakdown-grid">
+              <article class="card deals-breakdown-card" aria-label="Proposal status distribution">
+                <div class="deals-breakdown-title">Status distribution</div>
+                <div id="proposalsStatusDistribution" class="deals-status-bars"></div>
+              </article>
+              <article class="card deals-breakdown-card" aria-label="Proposal currency distribution">
+                <div class="deals-breakdown-title">Currency distribution</div>
+                <div id="proposalsCurrencyDistribution" class="deals-status-bars"></div>
+              </article>
+              <article class="card deals-breakdown-card" aria-label="Top proposal generators">
+                <div class="deals-breakdown-title">Top generators</div>
+                <div id="proposalsGeneratedByDistribution" class="deals-status-bars"></div>
+              </article>
+            </div>
+          </div>
+          <div id="proposalsState" class="muted" style="margin-bottom:8px;">No data loaded.</div>
+          <div class="table-wrap" role="region" aria-label="Proposals table">
+            <table id="proposalsTable">
+              <thead>
+                <tr>
+                  <th>Proposal ID</th>
+                  <th>Ref Number</th>
+                  <th>Proposal Title</th>
+                  <th>Customer Name</th>
+                  <th>Deal ID</th>
+                  <th>Status</th>
+                  <th>Currency</th>
+                  <th>SaaS Total</th>
+                  <th>One Time Total</th>
+                  <th>Grand Total</th>
+                  <th>Proposal Date</th>
+                  <th>Valid Until</th>
+                  <th>Generated By</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="proposalsTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="agreementsView" class="view" role="tabpanel" aria-labelledby="agreementsTab">
+        <div class="grid cols-4" id="agreementsSummary" aria-live="polite"></div>
+        <div class="card" aria-label="Agreements list">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+            <div>
+              <strong>Agreements</strong>
+              <div class="muted">Agreement records synced from backend agreements resource.</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <input id="agreementsSearchInput" class="input" type="search" placeholder="Search ID, number, title, customer, contact..." aria-label="Search agreements" />
+              <select id="agreementsStatusFilter" class="select" aria-label="Filter by agreement status"><option>All</option></select>
+              <input id="agreementsProposalDealFilter" class="input" type="search" placeholder="Proposal ID or Deal ID" aria-label="Filter by proposal or deal" />
+              <input id="agreementsCreateFromProposalInput" class="input" type="text" placeholder="Proposal ID (e.g. PROP-0001)" aria-label="Proposal ID to create agreement" />
+              <button id="agreementsCreateFromProposalBtn" class="btn ghost sm" type="button">Create from Proposal</button>
+              <button id="agreementsRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
+              <button id="agreementsCreateBtn" class="btn sm" type="button">Create Agreement</button>
+            </div>
+          </div>
+          <div id="agreementsState" class="muted" style="margin-bottom:8px;">No data loaded.</div>
+          <div class="table-wrap" role="region" aria-label="Agreements table">
+            <table id="agreementsTable">
+              <thead>
+                <tr>
+                  <th>Agreement ID</th><th>Agreement Number</th><th>Title</th><th>Customer</th><th>Proposal ID</th><th>Deal ID</th><th>Start Date</th><th>Agreement Length</th><th>Billing Frequency</th><th>Payment Term</th><th>Currency</th><th>Grand Total</th><th>Status</th><th>Updated At</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="agreementsTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="operationsOnboardingView" class="view" role="tabpanel" aria-labelledby="operationsOnboardingTab">
+        <div class="grid cols-4" id="operationsOnboardingSummary" aria-live="polite"></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin:8px 0;flex-wrap:wrap;">
+          <div id="operationsOnboardingDrilldownState" class="muted">No drilldown filter active.</div>
+          <button id="operationsOnboardingClearDrilldownBtn" class="btn ghost sm" type="button">Clear Drilldown</button>
+        </div>
+
+        <div id="operationsOnboardingAnalytics" class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:12px;">
+          <article class="card"><strong>Status distribution</strong><div id="operationsOnboardingStatusDistribution" class="deals-status-bars" style="margin-top:8px;"></div></article>
+          <article class="card"><strong>Request type distribution</strong><div id="operationsOnboardingRequestDistribution" class="deals-status-bars" style="margin-top:8px;"></div></article>
+          <article class="card"><strong>Agreements vs Clients vs Locations</strong><div id="operationsOnboardingComparativeChart" style="margin-top:8px;"></div></article>
+          <article class="card"><strong>Locations by client</strong><div id="operationsOnboardingLocationsByClient" class="deals-status-bars" style="margin-top:8px;"></div></article>
+          <article class="card"><strong>Agreements by client</strong><div id="operationsOnboardingAgreementsByClient" class="deals-status-bars" style="margin-top:8px;"></div></article>
+          <article class="card"><strong>CSM workload</strong><div id="operationsOnboardingCsmChart" class="deals-status-bars" style="margin-top:8px;"></div></article>
+          <article class="card" style="grid-column:1/-1;"><strong>Trend over time (week/month)</strong><div id="operationsOnboardingTrendChart" style="margin-top:8px;"></div></article>
+        </div>
+
+        <div id="operationsOnboardingAnalyticsTables" class="grid" style="grid-template-columns:1fr;gap:12px;margin-bottom:12px;">
+          <article class="card"><strong>Client rollup</strong><div class="table-wrap" role="region" aria-label="Operations onboarding client rollup"><table><thead><tr><th>Client</th><th>Unique Client Key</th><th>Agreements</th><th>Locations</th><th>Active Onboardings</th><th>Completed</th><th>Technical Admin Requests</th><th>Assigned CSM</th><th>Overdue</th><th>Last Request Date</th></tr></thead><tbody id="operationsOnboardingClientRollupBody"></tbody></table></div></article>
+          <article class="card"><strong>Agreement rollup</strong><div class="table-wrap" role="region" aria-label="Operations onboarding agreement rollup"><table><thead><tr><th>Agreement No</th><th>Client</th><th>Locations</th><th>Onboarding Status</th><th>Request Type</th><th>Assigned CSM</th><th>Requested At</th><th>Days Open</th></tr></thead><tbody id="operationsOnboardingAgreementRollupBody"></tbody></table></div></article>
+          <article class="card"><strong>Overdue / stuck</strong><div class="table-wrap" role="region" aria-label="Operations onboarding overdue"><table><thead><tr><th>Agreement No</th><th>Client</th><th>Locations</th><th>Status</th><th>Assigned CSM</th><th>Days Open</th><th>Notes</th></tr></thead><tbody id="operationsOnboardingOverdueBody"></tbody></table></div></article>
+          <article class="card"><strong>CSM workload table</strong><div class="table-wrap" role="region" aria-label="Operations onboarding csm workload"><table><thead><tr><th>CSM Name</th><th>Active Agreements</th><th>Unique Clients</th><th>Total Locations</th><th>Completed Agreements</th><th>Overdue Items</th><th>Avg Completion Days</th></tr></thead><tbody id="operationsOnboardingCsmWorkloadBody"></tbody></table></div></article>
+        </div>
+
+        <div class="card" aria-label="Operations onboarding list">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+            <div>
+              <strong>Operations Onboarding</strong>
+              <div class="muted">Track onboarding status and CSM handovers tied to signed Agreements.</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <input id="operationsOnboardingSearchInput" class="input" type="search" placeholder="Search onboarding, agreement, client..." aria-label="Search operations onboarding" />
+              <select id="operationsOnboardingStatusFilter" class="select" aria-label="Filter by onboarding status"><option>All</option></select>
+              <select id="operationsOnboardingRequestTypeFilter" class="select" aria-label="Filter by request type"><option>All</option></select>
+              <select id="operationsOnboardingCsmFilter" class="select" aria-label="Filter by assigned CSM"><option>All</option></select>
+              <button id="operationsOnboardingRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
+            </div>
+          </div>
+          <div id="operationsOnboardingState" class="muted" style="margin-bottom:8px;">No data loaded.</div>
+          <div class="table-wrap" role="region" aria-label="Operations onboarding table">
+            <table>
+              <thead>
+                <tr>
+                  <th>Onboarding ID</th><th>Agreement ID</th><th>Agreement Number</th><th>Client Name</th><th>Signed Date</th><th>Onboarding Status</th><th>Request Type</th><th>Requested By</th><th>Requested At</th><th>Technical Request Status</th><th>Technical Request Message</th><th>Assigned CSM</th><th>Number of Locations</th><th>Service Start Date</th><th>Service End Date</th><th>Billing Frequency</th><th>Payment Term</th><th>Updated At</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="operationsOnboardingTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="technicalAdminView" class="view" role="tabpanel" aria-labelledby="technicalAdminTab">
+        <div class="grid cols-4" id="technicalAdminSummary" aria-live="polite"></div>
+        <div class="card" aria-label="Technical admin request list">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+            <div>
+              <strong>Technical Admin Requests</strong>
+              <div class="muted">Track all technical admin requests raised from agreements.</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <input id="technicalAdminSearchInput" class="input" type="search" placeholder="Search request, agreement, client..." aria-label="Search technical admin requests" />
+              <select id="technicalAdminStatusFilter" class="select" aria-label="Filter by request status"><option>All</option></select>
+              <button id="technicalAdminRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
+            </div>
+          </div>
+          <div id="technicalAdminState" class="muted" style="margin-bottom:8px;">No data loaded.</div>
+          <div class="table-wrap" role="region" aria-label="Technical admin requests table">
+            <table id="technicalAdminTable">
+              <thead>
+                <tr>
+                  <th>Technical Request ID</th><th>Agreement Number</th><th>Client Name</th><th>Number of Locations</th><th>Service Start Date</th><th>Service End Date</th><th>Billing Frequency</th><th>Payment Term</th><th>Request Status</th><th>Requested By</th><th>Requested At</th><th>Assigned To</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="technicalAdminTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="invoicesView" class="view" role="tabpanel" aria-labelledby="invoicesTab">
+        <div class="grid cols-4" id="invoiceSummary" aria-live="polite"></div>
+        <div class="card" aria-label="Invoices list">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+            <div>
+              <strong>Invoices</strong>
+              <div class="muted">Invoice records synced from backend invoices resource.</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <input id="invoicesSearchInput" class="input" type="search" placeholder="Search invoice number, customer, agreement..." aria-label="Search invoices" />
+              <select id="invoicesStatusFilter" class="select" aria-label="Filter by invoice status"><option>All</option></select>
+              <button id="invoicesRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
+              <button id="invoicesCreateBtn" class="btn sm" type="button">Create Invoice</button>
+            </div>
+          </div>
+          <div id="invoicesState" class="muted" style="margin-bottom:8px;">No data loaded.</div>
+          <div class="table-wrap" role="region" aria-label="Invoices table">
+            <table id="invoicesTable">
+              <thead>
+                <tr>
+                  <th>Invoice #</th><th>Customer</th><th>Agreement #</th><th>Invoice Date</th><th>Due Date</th><th>Currency</th><th>Grand Total</th><th>Status</th><th>Updated At</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="invoicesTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="receiptsView" class="view" role="tabpanel" aria-labelledby="receiptsTab">
+        <div class="grid cols-4" id="receiptSummary" aria-live="polite"></div>
+        <div class="card" aria-label="Receipts list">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+            <div>
+              <strong>Receipts</strong>
+              <div class="muted">Receipt voucher records synced from backend receipts resource.</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <input id="receiptsSearchInput" class="input" type="search" placeholder="Receipt number..." aria-label="Filter by receipt number" />
+              <input id="receiptsInvoiceFilter" class="input" type="search" placeholder="Invoice number..." aria-label="Filter by invoice number" />
+              <input id="receiptsCustomerFilter" class="input" type="search" placeholder="Customer name..." aria-label="Filter by customer name" />
+              <select id="receiptsStatusFilter" class="select" aria-label="Filter by status"><option>All</option></select>
+              <button id="receiptsRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
+            </div>
+          </div>
+          <div id="receiptsState" class="muted" style="margin-bottom:8px;">No data loaded.</div>
+          <div class="table-wrap" role="region" aria-label="Receipts table">
+            <table id="receiptsTable">
+              <thead><tr><th>Receipt #</th><th>Invoice #</th><th>Customer</th><th>Receipt Date</th><th>Currency</th><th>Received</th><th>Payment State</th><th>Status</th><th>Updated At</th><th>Actions</th></tr></thead>
+              <tbody id="receiptsTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="lifecycleAnalyticsView" class="view" role="tabpanel" aria-labelledby="lifecycleAnalyticsTab">
+        <div class="card" aria-label="Lifecycle analytics search">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+            <div>
+              <strong>360 Analytics</strong>
+              <div class="muted">Search any lifecycle entity and resolve its full lead-to-receipt journey.</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <input id="lifecycleSearchInput" class="input" type="search" placeholder="Search by ID, company, email, phone, lead, deal, proposal, agreement, invoice, or receipt" aria-label="Search lifecycle records" style="min-width:320px;" />
+              <input id="lifecycleDateFrom" class="input" type="date" aria-label="Lifecycle date from" />
+              <input id="lifecycleDateTo" class="input" type="date" aria-label="Lifecycle date to" />
+              <select id="lifecycleStageFilter" class="select" aria-label="Filter by stage">
+                <option>All</option>
+                <option>Lead</option>
+                <option>Deal</option>
+                <option>Proposal</option>
+                <option>Agreement</option>
+                <option>Invoice</option>
+                <option>Receipt</option>
+              </select>
+              <select id="lifecycleOwnerFilter" class="select" aria-label="Filter by owner"><option>All</option></select>
+              <button id="lifecycleSearchBtn" class="btn sm" type="button">Search</button>
+              <button id="lifecycleExportBtn" class="btn ghost sm" type="button">Export</button>
+            </div>
+          </div>
+          <div id="lifecycleState" class="muted" style="margin-bottom:8px;">Search by lead/deal/proposal/agreement/invoice/receipt ID, company, phone, or email.</div>
+          <div id="lifecycleResultBody"></div>
+        </div>
+      </section>
+
+      <section id="workflowView" class="view" role="tabpanel" aria-labelledby="workflowTab">
+        <div class="card" aria-label="Workflow rules builder">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+            <div>
+              <strong>Workflow Rules Builder</strong>
+              <div class="muted">Define transition permissions, approvals, and discount thresholds by resource and role.</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <select id="workflowResourceFilter" class="select" aria-label="Filter workflow resource">
+                <option value="">All resources</option>
+                <option value="proposals">proposals</option>
+                <option value="agreements">agreements</option>
+                <option value="invoices">invoices</option>
+                <option value="receipts">receipts</option>
+              </select>
+              <button id="workflowRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
+            </div>
+          </div>
+          <form id="workflowRuleForm" class="grid cols-4" style="gap:10px;margin-bottom:10px;">
+            <input id="workflowRuleId" class="input" placeholder="Rule ID (for edit)" />
+            <select id="workflowResource" class="select" required>
+              <option value="">Select resource</option>
+              <option value="proposals">proposals</option>
+              <option value="agreements">agreements</option>
+              <option value="invoices">invoices</option>
+              <option value="receipts">receipts</option>
+            </select>
+            <select id="workflowCurrentStatus" class="select" required>
+              <option value="">Select current status</option>
+            </select>
+            <select id="workflowNextStatus" class="select" required>
+              <option value="">Select next status</option>
+            </select>
+            <select id="workflowAllowedRoles" class="select" required>
+              <option value="">Select allowed role</option>
+            </select>
+            <select id="workflowRequiresApproval" class="select"><option value="false">No Approval</option><option value="true">Requires Approval</option></select>
+            <select id="workflowApprovalRole" class="select">
+              <option value="">Select approval role</option>
+            </select>
+            <input id="workflowMaxDiscount" class="input" type="number" step="0.01" placeholder="Max discount %" />
+            <input id="workflowHardStopDiscount" class="input" type="number" step="0.01" placeholder="Hard stop discount %" />
+            <select id="workflowEditableFields" class="select" multiple aria-label="Editable fields"></select>
+            <select id="workflowRequiredFields" class="select" multiple aria-label="Required fields"></select>
+            <select id="workflowRequireComment" class="select"><option value="false">Comment Optional</option><option value="true">Comment Required</option></select>
+            <select id="workflowRequireAttachment" class="select"><option value="false">Attachment Optional</option><option value="true">Attachment Required</option></select>
+            <select id="workflowIsActive" class="select"><option value="true">Active</option><option value="false">Inactive</option></select>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <button id="workflowRuleSaveBtn" class="btn sm" type="submit">Save Rule</button>
+              <button id="workflowRuleResetBtn" class="btn ghost sm" type="button">Reset</button>
+            </div>
+          </form>
+          <div id="workflowRulesDebug" class="muted" style="margin:6px 0 8px 0;">Loaded 0 workflow rule(s)</div><div class="table-wrap"><table><thead><tr><th>Resource</th><th>Current</th><th>Next</th><th>Allowed Roles</th><th>Approval</th><th>Discount Limit</th><th>Hard Stop</th><th>Active</th><th>Actions</th></tr></thead><tbody id="workflowRulesTbody"></tbody></table></div>
+        </div>
+
+        <div class="grid cols-2" style="margin-top:12px;gap:12px;">
+          <div class="card">
+            <strong>Discount Policy</strong>
+            <div class="muted" style="margin:8px 0;">Aggregated max/hard-stop discount by resource and role.</div>
+            <div class="table-wrap"><table><thead><tr><th>Resource</th><th>Role</th><th>Max %</th><th>Hard Stop %</th></tr></thead><tbody id="workflowDiscountPolicyTbody"></tbody></table></div>
+          </div>
+          <div class="card">
+            <strong>Transition Matrix</strong>
+            <div style="display:flex;gap:8px;align-items:center;margin:8px 0;">
+              <select id="workflowMatrixResource" class="select"><option value="proposals">proposals</option><option value="agreements">agreements</option><option value="invoices">invoices</option><option value="receipts">receipts</option></select>
+            </div>
+            <div id="workflowMatrixContainer" class="table-wrap"></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:12px;">
+          <strong>Pending Approvals</strong>
+          <div class="table-wrap" style="margin-top:8px;"><table><thead><tr><th>Resource</th><th>Record #</th><th>Company</th><th>Requested By</th><th>Current</th><th>Requested</th><th>Discount</th><th>Approval Role</th><th>Status</th><th>Actions</th></tr></thead><tbody id="workflowApprovalsTbody"></tbody></table></div>
+        </div>
+
+        <div class="card" style="margin-top:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+            <strong>Workflow Audit Log</strong>
+            <div style="display:flex;gap:8px;">
+              <input id="workflowAuditSearch" class="input" placeholder="Search reason/user/record" />
+              <select id="workflowAuditResourceFilter" class="select"><option value="">All resources</option><option value="proposals">proposals</option><option value="agreements">agreements</option><option value="invoices">invoices</option><option value="receipts">receipts</option></select>
+              <select id="workflowAuditAllowedFilter" class="select"><option value="">All decisions</option><option value="true">Allowed</option><option value="false">Denied</option></select>
+            </div>
+          </div>
+          <div class="table-wrap" style="margin-top:8px;"><table><thead><tr><th>Date</th><th>Resource</th><th>Record</th><th>Action</th><th>Old</th><th>New</th><th>User</th><th>Allowed</th><th>Reason</th></tr></thead><tbody id="workflowAuditTbody"></tbody></table></div>
+        </div>
+      </section>
+
+      <section id="proposalCatalogView" class="view" role="tabpanel" aria-labelledby="proposalCatalogTab">
+        <div class="grid cols-4" id="proposalCatalogSummary" aria-live="polite"></div>
+        <div class="card" aria-label="Proposal catalog list">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+            <div>
+              <strong>Proposal Catalog</strong>
+              <div class="muted">Reusable proposal items for annual SaaS, one-time fee, and capability entries.</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <input id="proposalCatalogSearchInput" class="input" type="search" placeholder="Search item, category, notes..." aria-label="Search proposal catalog items" />
+              <select id="proposalCatalogSectionFilter" class="select" aria-label="Filter by section">
+                <option value="All">All Sections</option>
+                <option value="annual_saas">annual_saas</option>
+                <option value="one_time_fee">one_time_fee</option>
+                <option value="capability">capability</option>
+              </select>
+              <select id="proposalCatalogActiveFilter" class="select" aria-label="Filter by active state">
+                <option value="All">All Statuses</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+              <select id="proposalCatalogSortFilter" class="select" aria-label="Sort proposal catalog">
+                <option value="updated_desc">Updated (Newest)</option>
+                <option value="created_desc">Created (Newest)</option>
+                <option value="sort_order_asc">Sort Order (Asc)</option>
+              </select>
+              <button id="proposalCatalogRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
+              <button id="proposalCatalogCreateBtn" class="btn sm" type="button">Add Item</button>
+            </div>
+          </div>
+          <div id="proposalCatalogState" class="muted" style="margin-bottom:8px;">No data loaded.</div>
+          <div class="table-wrap" role="region" aria-label="Proposal catalog table">
+            <table id="proposalCatalogTable">
+              <thead>
+                <tr>
+                  <th>Catalog ID</th>
+                  <th>Active</th>
+                  <th>Section</th>
+                  <th>Category</th>
+                  <th>Item Name</th>
+                  <th>Default Location</th>
+                  <th>Unit Price</th>
+                  <th>Discount %</th>
+                  <th>Quantity</th>
+                  <th>Capability Name</th>
+                  <th>Capability Value</th>
+                  <th>Sort Order</th>
+                  <th>Updated At</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="proposalCatalogTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+        </div>
+      </div>
     </main>
   </div>
 
@@ -972,6 +2331,295 @@
   </div>
 
   <!-- Freeze Windows Modal -->
+
+
+  <div id="csmFormModal" class="modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="csmFormTitle">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="csmFormTitle" style="margin:0;font-size:20px">Create CSM Activity</h2>
+        <button class="modal-close" id="csmFormCloseBtn" aria-label="Close CSM activity form">✕</button>
+      </div>
+      <form id="csmForm" class="stack" style="margin-top:12px;">
+        <div class="grid cols-2">
+          <div class="filter-row">
+            <label class="muted" for="csmFormTimestamp">Timestamp *</label>
+            <input id="csmFormTimestamp" class="input" type="datetime-local" required />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="csmFormMinutes">Time Spent (Minutes) *</label>
+            <input id="csmFormMinutes" class="input" type="number" min="0" step="1" required />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="csmFormCsmName">CSM Name *</label>
+            <input id="csmFormCsmName" class="input" type="text" required />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="csmFormClient">Client *</label>
+            <input id="csmFormClient" class="input" type="text" required />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="csmFormSupportType">Type of Support *</label>
+            <input id="csmFormSupportType" class="input" type="text" required />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="csmFormEffort">Effort Requirement *</label>
+            <input id="csmFormEffort" class="input" type="text" required />
+          </div>
+          <div class="filter-row" style="grid-column:1 / -1;">
+            <label class="muted" for="csmFormChannel">Support Channel *</label>
+            <input id="csmFormChannel" class="input" type="text" required />
+          </div>
+          <div class="filter-row" style="grid-column:1 / -1;">
+            <label class="muted" for="csmFormNotes">Notes</label>
+            <textarea id="csmFormNotes" class="input" rows="3" placeholder="Optional notes"></textarea>
+          </div>
+        </div>
+        <div class="actions" style="justify-content:space-between;gap:8px;">
+          <button id="csmFormDeleteBtn" type="button" class="btn ghost" style="display:none;">Delete</button>
+          <div style="display:flex;gap:8px;">
+            <button id="csmFormCancelBtn" type="button" class="btn ghost">Cancel</button>
+            <button id="csmFormSaveBtn" type="submit" class="btn">Save</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+  <div id="leadFormModal" class="modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="leadFormTitle">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="leadFormTitle" style="margin:0;font-size:20px">Create Lead</h2>
+        <button class="modal-close" id="leadFormCloseBtn" aria-label="Close lead form">✕</button>
+      </div>
+      <form id="leadForm" class="stack" style="margin-top:12px;">
+        <div class="grid cols-2">
+          <div class="filter-row">
+            <label class="muted" for="leadFormLeadId">Lead ID</label>
+            <input id="leadFormLeadId" class="input" type="text" readonly />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="leadFormCreatedAt">Created At</label>
+            <input id="leadFormCreatedAt" class="input" type="text" readonly />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="leadFormFullName">Full Name *</label>
+            <input id="leadFormFullName" class="input" type="text" required />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="leadFormCompanyName">Company Name</label>
+            <input id="leadFormCompanyName" class="input" type="text" />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="leadFormPhone">Phone</label>
+            <input id="leadFormPhone" class="input" type="text" />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="leadFormEmail">Email</label>
+            <input id="leadFormEmail" class="input" type="email" />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="leadFormCountry">Country</label>
+            <input id="leadFormCountry" class="input" type="text" />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="leadFormLeadSource">Lead Source</label>
+            <select id="leadFormLeadSource" class="select">
+              <option value="">—</option>
+            </select>
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="leadFormServiceInterest">Service Interest</label>
+            <select id="leadFormServiceInterest" class="select">
+              <option value="">—</option>
+            </select>
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="leadFormStatus">Status</label>
+            <select id="leadFormStatus" class="select">
+              <option value="">—</option>
+            </select>
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="leadFormPriority">Priority</label>
+            <select id="leadFormPriority" class="select">
+              <option value="">—</option>
+            </select>
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="leadFormEstimatedValue">Estimated Value</label>
+            <input id="leadFormEstimatedValue" class="input" type="number" step="0.01" />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="leadFormCurrency">Currency</label>
+            <select id="leadFormCurrency" class="select">
+              <option value="">—</option>
+            </select>
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="leadFormAssignedTo">Assigned To</label>
+            <input id="leadFormAssignedTo" class="input" type="text" />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="leadFormNextFollowupDate">Next Follow-up</label>
+            <input id="leadFormNextFollowupDate" class="input" type="date" />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="leadFormLastContactDate">Last Contact</label>
+            <input id="leadFormLastContactDate" class="input" type="date" />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="leadFormProposalNeeded">Proposal Needed</label>
+            <select id="leadFormProposalNeeded" class="select">
+              <option value="">—</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+            </select>
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="leadFormAgreementNeeded">Agreement Needed</label>
+            <select id="leadFormAgreementNeeded" class="select">
+              <option value="">—</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+            </select>
+          </div>
+          <div class="filter-row" style="grid-column:1 / -1;">
+            <label class="muted" for="leadFormNotes">Notes</label>
+            <textarea id="leadFormNotes" class="input" rows="3" placeholder="Optional notes"></textarea>
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="leadFormUpdatedAt">Updated At</label>
+            <input id="leadFormUpdatedAt" class="input" type="text" readonly />
+          </div>
+        </div>
+        <div class="actions" style="justify-content:space-between;gap:8px;">
+          <button id="leadFormDeleteBtn" type="button" class="btn ghost" style="display:none;">Delete</button>
+          <div style="display:flex;gap:8px;">
+            <button id="leadFormCancelBtn" type="button" class="btn ghost">Cancel</button>
+            <button id="leadFormSaveBtn" type="submit" class="btn">Save</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+  <div id="dealFormModal" class="modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="dealFormTitle">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="dealFormTitle" style="margin:0;font-size:20px">Create Deal</h2>
+        <button class="modal-close" id="dealFormCloseBtn" aria-label="Close deal form">✕</button>
+      </div>
+      <form id="dealForm" class="stack" style="margin-top:12px;">
+        <div class="grid cols-2">
+          <div class="filter-row">
+            <label class="muted" for="dealFormDealId">Deal ID</label>
+            <input id="dealFormDealId" class="input" type="text" readonly />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="dealFormLeadId">Lead ID</label>
+            <input id="dealFormLeadId" class="input" type="text" />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="dealFormFullName">Full Name</label>
+            <input id="dealFormFullName" class="input" type="text" />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="dealFormCompanyName">Company Name</label>
+            <input id="dealFormCompanyName" class="input" type="text" />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="dealFormPhone">Phone</label>
+            <input id="dealFormPhone" class="input" type="text" />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="dealFormEmail">Email</label>
+            <input id="dealFormEmail" class="input" type="email" />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="dealFormCountry">Country</label>
+            <input id="dealFormCountry" class="input" type="text" />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="dealFormLeadSource">Lead Source</label>
+            <select id="dealFormLeadSource" class="select">
+              <option value="">—</option>
+            </select>
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="dealFormServiceInterest">Service Interest</label>
+            <select id="dealFormServiceInterest" class="select">
+              <option value="">—</option>
+            </select>
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="dealFormStage">Stage</label>
+            <select id="dealFormStage" class="select">
+              <option value="">—</option>
+            </select>
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="dealFormStatus">Status</label>
+            <select id="dealFormStatus" class="select">
+              <option value="">—</option>
+            </select>
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="dealFormPriority">Priority</label>
+            <select id="dealFormPriority" class="select">
+              <option value="">—</option>
+            </select>
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="dealFormEstimatedValue">Estimated Value</label>
+            <input id="dealFormEstimatedValue" class="input" type="number" step="0.01" />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="dealFormCurrency">Currency</label>
+            <select id="dealFormCurrency" class="select">
+              <option value="">—</option>
+            </select>
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="dealFormAssignedTo">Assigned To</label>
+            <input id="dealFormAssignedTo" class="input" type="text" />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="dealFormConvertedBy">Converted By</label>
+            <input id="dealFormConvertedBy" class="input" type="text" />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="dealFormProposalNeeded">Proposal Needed</label>
+            <select id="dealFormProposalNeeded" class="select">
+              <option value="">—</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+            </select>
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="dealFormAgreementNeeded">Agreement Needed</label>
+            <select id="dealFormAgreementNeeded" class="select">
+              <option value="">—</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+            </select>
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="dealFormConvertedAt">Converted At</label>
+            <input id="dealFormConvertedAt" class="input" type="text" readonly />
+          </div>
+          <div class="filter-row" style="grid-column:1 / -1;">
+            <label class="muted" for="dealFormNotes">Notes</label>
+            <textarea id="dealFormNotes" class="input" rows="3" placeholder="Optional notes"></textarea>
+          </div>
+        </div>
+        <div class="actions" style="justify-content:space-between;gap:8px;">
+          <button id="dealFormDeleteBtn" type="button" class="btn ghost" style="display:none;">Delete</button>
+          <div style="display:flex;gap:8px;">
+            <button id="dealFormCancelBtn" type="button" class="btn ghost">Cancel</button>
+            <button id="dealFormSaveBtn" type="submit" class="btn">Save</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
   <div id="freezeModal" class="modal" role="dialog" aria-modal="true"
        aria-labelledby="freezeModalTitle" aria-describedby="freezeModalBody">
     <div class="modal-content">
@@ -1019,6 +2667,541 @@
       </div>
     </div>
   </div>
+  <div id="proposalFormModal" class="modal" role="dialog" aria-modal="true"
+       aria-labelledby="proposalFormTitle" aria-hidden="true">
+    <div class="modal-content" style="max-width:1100px;">
+      <div class="header">
+        <h2 id="proposalFormTitle" style="margin:0;font-size:20px">Create Proposal</h2>
+        <div class="actions">
+          <button class="modal-close" id="proposalFormCloseBtn" aria-label="Close proposal form">✕</button>
+        </div>
+      </div>
+      <form id="proposalForm">
+        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+          <div class="filter-row">
+            <label class="muted" for="proposalFormProposalId">Proposal ID</label>
+            <input id="proposalFormProposalId" class="input" type="text" readonly />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="proposalFormTitleField">Proposal Title</label>
+            <input id="proposalFormTitleField" class="input" type="text" required />
+          </div>
+          <div class="filter-row"><label class="muted" for="proposalFormDealId">Deal ID</label><input id="proposalFormDealId" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="proposalFormProposalDate">Proposal Date</label><input id="proposalFormProposalDate" class="input" type="date" /></div>
+          <div class="filter-row"><label class="muted" for="proposalFormValidUntil">Valid Until</label><input id="proposalFormValidUntil" class="input" type="date" /></div>
+          <div class="filter-row">
+            <label class="muted" for="proposalFormStatus">Status</label>
+            <select id="proposalFormStatus" class="select">
+              <option value="Draft">Draft</option>
+              <option value="Pending Approval">Pending Approval</option>
+              <option value="Sent">Sent</option>
+              <option value="Viewed">Viewed</option>
+              <option value="Under Discussion">Under Discussion</option>
+              <option value="Accepted">Accepted</option>
+              <option value="Rejected">Rejected</option>
+              <option value="Expired">Expired</option>
+            </select>
+          </div>
+          <div class="filter-row"><label class="muted" for="proposalFormCurrency">Currency</label><input id="proposalFormCurrency" class="input" type="text" placeholder="USD" /></div>
+        </div>
+
+        <div class="divider" style="margin:12px 0;"></div>
+        <strong style="display:block;margin-bottom:8px;">Customer</strong>
+        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+          <div class="filter-row"><label class="muted" for="proposalFormCustomerName">Customer Name</label><input id="proposalFormCustomerName" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="proposalFormCustomerAddress">Customer Address</label><input id="proposalFormCustomerAddress" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="proposalFormCustomerContactName">Contact Name</label><input id="proposalFormCustomerContactName" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="proposalFormCustomerContactMobile">Contact Mobile</label><input id="proposalFormCustomerContactMobile" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="proposalFormCustomerContactEmail">Contact Email</label><input id="proposalFormCustomerContactEmail" class="input" type="email" /></div>
+        </div>
+
+        <div class="divider" style="margin:12px 0;"></div>
+        <strong style="display:block;margin-bottom:8px;">Provider</strong>
+        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+          <div class="filter-row"><label class="muted" for="proposalFormProviderContactName">Provider Contact Name</label><input id="proposalFormProviderContactName" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="proposalFormProviderContactMobile">Provider Contact Mobile</label><input id="proposalFormProviderContactMobile" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="proposalFormProviderContactEmail">Provider Contact Email</label><input id="proposalFormProviderContactEmail" class="input" type="email" /></div>
+        </div>
+
+        <div class="divider" style="margin:12px 0;"></div>
+        <strong style="display:block;margin-bottom:8px;">Commercial Details</strong>
+        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+          <div class="filter-row"><label class="muted" for="proposalFormServiceStartDate">Service Start Date</label><input id="proposalFormServiceStartDate" class="input" type="date" /></div>
+          <div class="filter-row">
+            <label class="muted" for="proposalFormContractTerm">Contract Term</label>
+            <input id="proposalFormContractTerm" class="input" type="text" list="proposalContractTermOptions" />
+          </div>
+          <div class="filter-row"><label class="muted" for="proposalFormAccountNumber">Account Number</label><input id="proposalFormAccountNumber" class="input" type="text" /></div>
+          <div class="filter-row">
+            <label class="muted" for="proposalFormBillingFrequency">Billing Frequency</label>
+            <input id="proposalFormBillingFrequency" class="input" type="text" list="proposalBillingCycleOptions" />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="proposalFormPaymentTerm">Payment Term</label>
+            <input id="proposalFormPaymentTerm" class="input" type="text" list="proposalPaymentTermOptions" />
+          </div>
+          <div class="filter-row"><label class="muted" for="proposalFormPoNumber">PO Number</label><input id="proposalFormPoNumber" class="input" type="text" /></div>
+        </div>
+        <datalist id="proposalBillingCycleOptions">
+          <option value="One-time"></option>
+          <option value="Monthly"></option>
+          <option value="Quarterly"></option>
+          <option value="Semi-Annual"></option>
+          <option value="Annual"></option>
+        </datalist>
+        <datalist id="proposalContractTermOptions">
+          <option value="1 year"></option>
+          <option value="2 years"></option>
+          <option value="3 years"></option>
+        </datalist>
+        <datalist id="proposalPaymentTermOptions">
+          <option value="Due on Receipt"></option>
+          <option value="Net 7"></option>
+          <option value="Net 15"></option>
+          <option value="Net 30"></option>
+          <option value="Net 45"></option>
+          <option value="Net 60"></option>
+          <option value="50% Upfront / 50% Delivery"></option>
+          <option value="Milestone Based"></option>
+        </datalist>
+
+        <div class="divider" style="margin:12px 0;"></div>
+        <strong style="display:block;margin-bottom:8px;">Signatory</strong>
+        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+          <div class="filter-row"><label class="muted" for="proposalFormCustomerSignatoryName">Customer Signatory Name</label><input id="proposalFormCustomerSignatoryName" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="proposalFormCustomerSignatoryTitle">Customer Signatory Title</label><input id="proposalFormCustomerSignatoryTitle" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="proposalFormCustomerSignDate">Customer Sign Date</label><input id="proposalFormCustomerSignDate" class="input" type="date" /></div>
+          <div class="filter-row"><label class="muted" for="proposalFormProviderSignatoryName">Provider Signatory Name</label><input id="proposalFormProviderSignatoryName" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="proposalFormProviderSignatoryTitle">Provider Signatory Title</label><input id="proposalFormProviderSignatoryTitle" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="proposalFormProviderSignDate">Provider Sign Date</label><input id="proposalFormProviderSignDate" class="input" type="date" /></div>
+        </div>
+
+        <div class="divider" style="margin:12px 0;"></div>
+        <div class="filter-row">
+          <label class="muted" for="proposalFormTerms">Terms &amp; Conditions</label>
+          <textarea id="proposalFormTerms" class="input" rows="4"></textarea>
+        </div>
+
+        <div class="divider" style="margin:12px 0;"></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <strong>Annual SaaS Items</strong>
+          <button id="proposalAddAnnualRowBtn" class="btn ghost sm" type="button">Add Row</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Location</th><th>Item</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Discounted Unit</th><th>Line Total</th><th>Actions</th></tr></thead>
+            <tbody id="proposalAnnualItemsTbody"></tbody>
+          </table>
+        </div>
+        <datalist id="proposalCatalogOptions-annual_saas"></datalist>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 6px;">
+          <strong>One Time Fee Items</strong>
+          <button id="proposalAddOneTimeRowBtn" class="btn ghost sm" type="button">Add Row</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Location</th><th>Item</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Discounted Unit</th><th>Line Total</th><th>Actions</th></tr></thead>
+            <tbody id="proposalOneTimeItemsTbody"></tbody>
+          </table>
+        </div>
+        <datalist id="proposalCatalogOptions-one_time_fee"></datalist>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 6px;">
+          <strong>Capability Rows</strong>
+          <button id="proposalAddCapabilityRowBtn" class="btn ghost sm" type="button">Add Row</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Capability Name</th><th>Capability Value</th><th>Actions</th></tr></thead>
+            <tbody id="proposalCapabilityItemsTbody"></tbody>
+          </table>
+        </div>
+
+        <div class="card" style="margin-top:12px;">
+          <strong>Totals Preview</strong>
+          <div class="grid" style="grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:8px;">
+            <div><div class="muted">SaaS Total</div><div id="proposalSaasTotal">0</div></div>
+            <div><div class="muted">One Time Total</div><div id="proposalOneTimeTotal">0</div></div>
+            <div><div class="muted">Grand Total</div><div id="proposalGrandTotal">0</div></div>
+          </div>
+        </div>
+
+        <div class="actions" style="justify-content:space-between;gap:8px;margin-top:12px;">
+          <div style="display:flex;gap:8px;">
+            <button id="proposalFormDeleteBtn" type="button" class="btn ghost" style="display:none;">Delete</button>
+            <button id="proposalFormPreviewBtn" type="button" class="btn ghost">Preview Proposal</button>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button id="proposalFormCancelBtn" type="button" class="btn ghost">Cancel</button>
+            <button id="proposalFormSaveBtn" type="submit" class="btn">Save</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+  <div id="proposalPreviewModal" class="modal" role="dialog" aria-modal="true"
+       aria-labelledby="proposalPreviewTitle" aria-hidden="true">
+    <div class="modal-content" style="max-width:1100px;">
+      <div class="header">
+        <h2 id="proposalPreviewTitle" style="margin:0;font-size:20px">Proposal Preview</h2>
+        <div class="actions">
+          <button class="btn ghost sm" id="proposalPreviewExportPdfBtn" type="button">Extract PDF</button>
+          <button class="modal-close" id="proposalPreviewCloseBtn" aria-label="Close proposal preview">✕</button>
+        </div>
+      </div>
+      <iframe id="proposalPreviewFrame" title="Proposal preview content" style="width:100%;min-height:70vh;border:1px solid var(--border);border-radius:10px;background:#fff;"></iframe>
+    </div>
+  </div>
+  <div id="proposalCatalogFormModal" class="modal" role="dialog" aria-modal="true"
+       aria-labelledby="proposalCatalogFormTitle" aria-hidden="true">
+    <div class="modal-content" style="max-width:820px;">
+      <div class="header">
+        <h2 id="proposalCatalogFormTitle" style="margin:0;font-size:20px;">Proposal Catalog Item</h2>
+        <div class="actions">
+          <button class="modal-close" id="proposalCatalogFormCloseBtn" aria-label="Close proposal catalog form">✕</button>
+        </div>
+      </div>
+      <form id="proposalCatalogForm">
+        <input type="hidden" id="proposalCatalogFormItemId" />
+        <div class="filter-group">
+          <div class="filter-row">
+            <label class="muted" for="proposalCatalogFormIsActive">Active</label>
+            <select id="proposalCatalogFormIsActive" class="select">
+              <option value="true">Active</option>
+              <option value="false">Inactive</option>
+            </select>
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="proposalCatalogFormSection">Section</label>
+            <select id="proposalCatalogFormSection" class="select" required>
+              <option value="annual_saas">annual_saas</option>
+              <option value="one_time_fee">one_time_fee</option>
+              <option value="capability">capability</option>
+            </select>
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="proposalCatalogFormCategory">Category</label>
+            <input id="proposalCatalogFormCategory" class="input" type="text" />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="proposalCatalogFormItemName">Item Name</label>
+            <input id="proposalCatalogFormItemName" class="input" type="text" />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="proposalCatalogFormLocation">Default Location</label>
+            <input id="proposalCatalogFormLocation" class="input" type="text" />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="proposalCatalogFormUnitPrice">Unit Price</label>
+            <input id="proposalCatalogFormUnitPrice" class="input" type="number" step="0.01" />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="proposalCatalogFormDiscountPercent">Discount %</label>
+            <input id="proposalCatalogFormDiscountPercent" class="input" type="number" step="0.01" />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="proposalCatalogFormQuantity">Quantity</label>
+            <input id="proposalCatalogFormQuantity" class="input" type="number" step="0.01" />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="proposalCatalogFormCapabilityName">Capability Name</label>
+            <input id="proposalCatalogFormCapabilityName" class="input" type="text" />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="proposalCatalogFormCapabilityValue">Capability Value</label>
+            <input id="proposalCatalogFormCapabilityValue" class="input" type="text" />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="proposalCatalogFormSortOrder">Sort Order</label>
+            <input id="proposalCatalogFormSortOrder" class="input" type="number" step="1" />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="proposalCatalogFormNotes">Notes</label>
+            <textarea id="proposalCatalogFormNotes" class="input" rows="3"></textarea>
+          </div>
+        </div>
+        <div class="actions" style="justify-content:space-between;gap:8px;margin-top:12px;">
+          <button id="proposalCatalogFormDeleteBtn" type="button" class="btn ghost" style="display:none;">Delete</button>
+          <div style="display:flex;gap:8px;">
+            <button id="proposalCatalogFormCancelBtn" type="button" class="btn ghost">Cancel</button>
+            <button id="proposalCatalogFormSaveBtn" type="submit" class="btn">Save</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+
+  <div id="agreementFormModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="agreementFormTitle" aria-hidden="true">
+    <div class="modal-content" style="max-width:1100px;">
+      <div class="header"><h2 id="agreementFormTitle" style="margin:0;font-size:20px">Create Agreement</h2><div class="actions"><button class="modal-close" id="agreementFormCloseBtn" aria-label="Close agreement form">✕</button></div></div>
+      <form id="agreementForm">
+        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+          <div class="filter-row"><label class="muted" for="agreementFormAgreementId">Agreement ID</label><input id="agreementFormAgreementId" class="input" type="text" readonly /></div>
+          <div class="filter-row"><label class="muted" for="agreementFormAgreementNumber">Agreement Number</label><input id="agreementFormAgreementNumber" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="agreementFormAgreementTitle">Agreement Title</label><input id="agreementFormAgreementTitle" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="agreementFormStatus">Status</label>
+            <select id="agreementFormStatus" class="select">
+              <option value="Draft">Draft</option>
+              <option value="Sent">Sent</option>
+              <option value="Under Review">Under Review</option>
+              <option value="Revision Required">Revision Required</option>
+              <option value="Approved">Approved</option>
+              <option value="Signed">Signed</option>
+              <option value="Rejected">Rejected</option>
+              <option value="Expired">Expired</option>
+              <option value="Cancelled">Cancelled</option>
+            </select>
+          </div>
+          <div class="filter-row"><label class="muted" for="agreementFormProposalId">Proposal ID</label><input id="agreementFormProposalId" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="agreementFormDealId">Deal ID</label><input id="agreementFormDealId" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="agreementFormLeadId">Lead ID</label><input id="agreementFormLeadId" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="agreementFormCurrency">Currency</label><input id="agreementFormCurrency" class="input" type="text" /></div>
+        </div>
+        <div class="divider" style="margin:12px 0;"></div><strong style="display:block;margin-bottom:8px;">Contact Details</strong>
+        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+          <div class="filter-row"><label class="muted" for="agreementFormCustomerName">Customer Name</label><input id="agreementFormCustomerName" class="input" type="text" /></div><div class="filter-row"><label class="muted" for="agreementFormCustomerContactEmail">Customer Contact Email</label><input id="agreementFormCustomerContactEmail" class="input" type="email" /></div>
+          <div class="filter-row"><label class="muted" for="agreementFormCustomerContactName">Customer Contact Name</label><input id="agreementFormCustomerContactName" class="input" type="text" /></div><div class="filter-row"><label class="muted" for="agreementFormCustomerContactMobile">Customer Contact Mobile</label><input id="agreementFormCustomerContactMobile" class="input" type="text" /></div>
+          <div class="filter-row" style="grid-column:1 / -1;"><label class="muted" for="agreementFormCustomerAddress">Customer Address</label><input id="agreementFormCustomerAddress" class="input" type="text" /></div>
+        </div>
+        <div class="divider" style="margin:12px 0;"></div><strong style="display:block;margin-bottom:8px;">Agreement Details</strong>
+        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+          <div class="filter-row"><label class="muted" for="agreementFormAgreementDate">Agreement Date</label><input id="agreementFormAgreementDate" class="input" type="date" /></div><div class="filter-row"><label class="muted" for="agreementFormEffectiveDate">Effective Date</label><input id="agreementFormEffectiveDate" class="input" type="date" /></div>
+          <div class="filter-row"><label class="muted" for="agreementFormServiceStartDate">Service Start Date</label><input id="agreementFormServiceStartDate" class="input" type="date" /></div><div class="filter-row"><label class="muted" for="agreementFormAgreementLength">Agreement Length</label><input id="agreementFormAgreementLength" class="input" type="text" list="agreementLengthOptions" /></div>
+          <div class="filter-row"><label class="muted" for="agreementFormAccountNumber">Account Number</label><input id="agreementFormAccountNumber" class="input" type="text" /></div><div class="filter-row"><label class="muted" for="agreementFormPoNumber">PO Number</label><input id="agreementFormPoNumber" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="agreementFormBillingFrequency">Billing Frequency</label><input id="agreementFormBillingFrequency" class="input" type="text" list="agreementBillingCycleOptions" /></div><div class="filter-row"><label class="muted" for="agreementFormPaymentTerm">Payment Term</label><input id="agreementFormPaymentTerm" class="input" type="text" list="agreementPaymentTermOptions" /></div>
+        </div>
+        <datalist id="agreementBillingCycleOptions">
+          <option value="One-time"></option>
+          <option value="Monthly"></option>
+          <option value="Quarterly"></option>
+          <option value="Semi-Annual"></option>
+          <option value="Annual"></option>
+        </datalist>
+        <datalist id="agreementLengthOptions">
+          <option value="1 year"></option>
+          <option value="2 years"></option>
+          <option value="3 years"></option>
+        </datalist>
+        <datalist id="agreementPaymentTermOptions">
+          <option value="Due on Receipt"></option>
+          <option value="Net 7"></option>
+          <option value="Net 15"></option>
+          <option value="Net 30"></option>
+          <option value="Net 45"></option>
+          <option value="Net 60"></option>
+          <option value="50% Upfront / 50% Delivery"></option>
+          <option value="Milestone Based"></option>
+        </datalist>
+        <div class="divider" style="margin:12px 0;"></div><strong style="display:block;margin-bottom:8px;">Agreement Parties</strong>
+        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+          <div class="filter-row"><label class="muted" for="agreementFormCustomerLegalName">Customer Legal Name</label><input id="agreementFormCustomerLegalName" class="input" type="text" /></div><div class="filter-row"><label class="muted" for="agreementFormProviderLegalName">Provider Legal Name</label><input id="agreementFormProviderLegalName" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="agreementFormProviderName">Provider Name</label><input id="agreementFormProviderName" class="input" type="text" /></div><div class="filter-row"><label class="muted" for="agreementFormProviderContactEmail">Provider Contact Email</label><input id="agreementFormProviderContactEmail" class="input" type="email" /></div>
+          <div class="filter-row"><label class="muted" for="agreementFormProviderContactName">Provider Contact Name</label><input id="agreementFormProviderContactName" class="input" type="text" /></div><div class="filter-row"><label class="muted" for="agreementFormProviderContactMobile">Provider Contact Mobile</label><input id="agreementFormProviderContactMobile" class="input" type="text" /></div>
+          <div class="filter-row" style="grid-column:1 / -1;"><label class="muted" for="agreementFormProviderAddress">Provider Address</label><input id="agreementFormProviderAddress" class="input" type="text" /></div>
+        </div>
+        <div class="divider" style="margin:12px 0;"></div><strong style="display:block;margin-bottom:8px;">Subscription Details / Items</strong>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><strong>Annual SaaS Rows</strong><button id="agreementAddAnnualRowBtn" class="btn ghost sm" type="button">Add Row</button></div>
+        <div class="table-wrap"><table><thead><tr><th>Location</th><th>Location Address</th><th>Service Start</th><th>Service End</th><th>Item</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Discounted Unit</th><th>Line Total</th><th>Actions</th></tr></thead><tbody id="agreementAnnualItemsTbody"></tbody></table></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 6px;"><strong>One-time Fee Rows</strong><button id="agreementAddOneTimeRowBtn" class="btn ghost sm" type="button">Add Row</button></div>
+        <div class="table-wrap"><table><thead><tr><th>Location</th><th>Location Address</th><th>Service Start</th><th>Service End</th><th>Item</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Discounted Unit</th><th>Line Total</th><th>Actions</th></tr></thead><tbody id="agreementOneTimeItemsTbody"></tbody></table></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 6px;"><strong>Capability Rows</strong><button id="agreementAddCapabilityRowBtn" class="btn ghost sm" type="button">Add Row</button></div>
+        <div class="table-wrap"><table><thead><tr><th>Capability Name</th><th>Capability Value</th><th>Notes</th><th>Actions</th></tr></thead><tbody id="agreementCapabilityItemsTbody"></tbody></table></div>
+        <div class="card" style="margin-top:12px;"><strong>Totals Preview</strong><div class="grid" style="grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:8px;"><div><div class="muted">SaaS Total</div><div id="agreementSaasTotal">0</div></div><div><div class="muted">One Time Total</div><div id="agreementOneTimeTotal">0</div></div><div><div class="muted">Grand Total</div><div id="agreementGrandTotal">0</div></div></div></div>
+        <div class="divider" style="margin:12px 0;"></div><strong style="display:block;margin-bottom:8px;">Agreement Terms</strong>
+        <div class="filter-row"><label class="muted" for="agreementFormTermsConditions">Terms &amp; Conditions</label><textarea id="agreementFormTermsConditions" class="input" rows="4"></textarea></div>
+        <div class="filter-row"><label class="muted" for="agreementFormNotes">Notes</label><textarea id="agreementFormNotes" class="input" rows="3"></textarea></div>
+        <div class="divider" style="margin:12px 0;"></div><strong style="display:block;margin-bottom:8px;">Signatories</strong>
+        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+          <div class="filter-row"><label class="muted" for="agreementFormCustomerSignatoryName">Customer Signatory Name</label><input id="agreementFormCustomerSignatoryName" class="input" type="text" /></div><div class="filter-row"><label class="muted" for="agreementFormCustomerSignatoryTitle">Customer Signatory Title</label><input id="agreementFormCustomerSignatoryTitle" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="agreementFormProviderSignatoryNamePrimary">Provider Signatory Primary</label><input id="agreementFormProviderSignatoryNamePrimary" class="input" type="text" /></div><div class="filter-row"><label class="muted" for="agreementFormProviderSignatoryTitlePrimary">Provider Signatory Title Primary</label><input id="agreementFormProviderSignatoryTitlePrimary" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="agreementFormProviderSignatoryNameSecondary">Provider Signatory Secondary</label><input id="agreementFormProviderSignatoryNameSecondary" class="input" type="text" /></div><div class="filter-row"><label class="muted" for="agreementFormProviderSignatoryTitleSecondary">Provider Signatory Title Secondary</label><input id="agreementFormProviderSignatoryTitleSecondary" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="agreementFormProviderSignDate">Provider Sign Date</label><input id="agreementFormProviderSignDate" class="input" type="date" /></div><div class="filter-row"><label class="muted" for="agreementFormCustomerSignDate">Customer Sign Date</label><input id="agreementFormCustomerSignDate" class="input" type="date" /></div>
+        </div>
+        <div class="actions" style="justify-content:space-between;gap:8px;margin-top:12px;"><div style="display:flex;gap:8px;"><button id="agreementFormDeleteBtn" type="button" class="btn ghost" style="display:none;">Delete</button><button id="agreementFormPreviewBtn" type="button" class="btn ghost">View Agreement</button></div><div style="display:flex;gap:8px;"><button id="agreementFormCancelBtn" type="button" class="btn ghost">Cancel</button><button id="agreementFormSaveBtn" type="submit" class="btn">Save</button></div></div>
+      </form>
+    </div>
+  </div>
+
+  <div id="agreementPreviewModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="agreementPreviewTitle" aria-hidden="true">
+    <div class="modal-content" style="max-width:1100px;"><div class="header"><h2 id="agreementPreviewTitle" style="margin:0;font-size:20px">Agreement Preview</h2><div class="actions"><button class="btn ghost sm" id="agreementPreviewExportPdfBtn" type="button">Extract PDF</button><button class="modal-close" id="agreementPreviewCloseBtn" aria-label="Close agreement preview">✕</button></div></div>
+      <iframe id="agreementPreviewFrame" title="Agreement preview content" style="width:100%;min-height:70vh;border:1px solid var(--border);border-radius:10px;background:#fff;"></iframe>
+    </div>
+  </div>
+
+  <div id="operationsOnboardingDetailsModal" class="modal" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal-content" style="max-width:820px;">
+      <div class="header">
+        <h2 style="margin:0;font-size:20px;">Onboarding Details</h2>
+        <div class="actions"><button class="modal-close" id="operationsOnboardingDetailsCloseBtn" aria-label="Close onboarding details">✕</button></div>
+      </div>
+      <div id="operationsOnboardingDetailsContent" class="muted"></div>
+    </div>
+  </div>
+
+  <div id="operationsAssignCsmModal" class="modal" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal-content" style="max-width:720px;">
+      <div class="header"><h2 style="margin:0;font-size:20px;">Assign to CSM</h2><div class="actions"><button class="modal-close" id="operationsAssignCsmCloseBtn" aria-label="Close assign CSM">✕</button></div></div>
+      <form id="operationsAssignCsmForm">
+        <div class="filter-row"><label class="muted" for="operationsAssignCsmName">CSM Name</label><input id="operationsAssignCsmName" class="input" type="text" required /></div>
+        <div class="filter-row"><label class="muted" for="operationsAssignCsmHandoverNote">Handover Note</label><textarea id="operationsAssignCsmHandoverNote" class="input" rows="4"></textarea></div>
+        <div class="actions" style="justify-content:flex-end;gap:8px;margin-top:12px;"><button id="operationsAssignCsmCancelBtn" type="button" class="btn ghost">Cancel</button><button type="submit" class="btn">Assign</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div id="operationsUpdateStatusModal" class="modal" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal-content" style="max-width:720px;">
+      <div class="header"><h2 style="margin:0;font-size:20px;">Update Onboarding Status</h2><div class="actions"><button class="modal-close" id="operationsUpdateStatusCloseBtn" aria-label="Close onboarding status">✕</button></div></div>
+      <form id="operationsUpdateStatusForm">
+        <div class="filter-row"><label class="muted" for="operationsUpdateStatusValue">Onboarding Status</label><input id="operationsUpdateStatusValue" class="input" type="text" required /></div>
+        <div class="filter-row"><label class="muted" for="operationsUpdateStatusNotes">Notes</label><textarea id="operationsUpdateStatusNotes" class="input" rows="4"></textarea></div>
+        <div class="actions" style="justify-content:flex-end;gap:8px;margin-top:12px;"><button id="operationsUpdateStatusCancelBtn" type="button" class="btn ghost">Cancel</button><button type="submit" class="btn">Update</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div id="technicalAdminDetailsModal" class="modal" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal-content" style="max-width:900px;">
+      <div class="header">
+        <h2 id="technicalAdminDetailsTitle" style="margin:0;font-size:20px;">Technical Admin Request</h2>
+        <div class="actions"><button class="modal-close" id="technicalAdminDetailsCloseBtn" aria-label="Close technical admin details">✕</button></div>
+      </div>
+      <div id="technicalAdminDetailsContent" class="muted"></div>
+    </div>
+  </div>
+
+  <div id="invoiceFormModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="invoiceFormTitle" aria-hidden="true">
+    <div class="modal-content" style="max-width:1200px;">
+      <div class="header"><h2 id="invoiceFormTitle" style="margin:0;font-size:20px">Invoice</h2><div class="actions"><button class="modal-close" id="invoiceFormCloseBtn" aria-label="Close invoice form">✕</button></div></div>
+      <form id="invoiceForm">
+        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+          <div class="filter-row"><label class="muted" for="invoiceFormInvoiceId">Invoice ID</label><input id="invoiceFormInvoiceId" class="input" type="text" readonly /></div>
+          <div class="filter-row"><label class="muted" for="invoiceFormInvoiceNumber">Invoice Number</label><input id="invoiceFormInvoiceNumber" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="invoiceFormAgreementId">Agreement ID</label><input id="invoiceFormAgreementId" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="invoiceFormStatus">Status</label><select id="invoiceFormStatus" class="select"><option>Draft</option><option>Issued</option><option>Sent</option><option>Unpaid</option><option>Partially Paid</option><option>Paid</option><option>Overdue</option><option>Cancelled</option></select></div>
+          <div class="filter-row"><label class="muted" for="invoiceFormInvoiceDate">Invoice Date</label><input id="invoiceFormInvoiceDate" class="input" type="date" /></div>
+          <div class="filter-row"><label class="muted" for="invoiceFormDueDate">Due Date</label><input id="invoiceFormDueDate" class="input" type="date" /></div>
+          <div class="filter-row"><label class="muted" for="invoiceFormCurrency">Currency</label><input id="invoiceFormCurrency" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="invoiceFormPaymentTerm">Payment Term</label><input id="invoiceFormPaymentTerm" class="input" type="text" list="agreementPaymentTermOptions" /></div>
+        </div>
+        <div class="divider" style="margin:12px 0;"></div>
+        <strong style="display:block;margin-bottom:8px;">Customer</strong>
+        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+          <div class="filter-row"><label class="muted" for="invoiceFormCustomerName">Customer Name</label><input id="invoiceFormCustomerName" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="invoiceFormCustomerLegalName">Customer Legal Name</label><input id="invoiceFormCustomerLegalName" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="invoiceFormCustomerContactName">Contact Name</label><input id="invoiceFormCustomerContactName" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="invoiceFormCustomerContactEmail">Contact Email</label><input id="invoiceFormCustomerContactEmail" class="input" type="email" /></div>
+          <div class="filter-row" style="grid-column:1 / -1;"><label class="muted" for="invoiceFormCustomerAddress">Customer Address</label><input id="invoiceFormCustomerAddress" class="input" type="text" /></div>
+        </div>
+        <div class="divider" style="margin:12px 0;"></div>
+        <strong style="display:block;margin-bottom:8px;">Invoice Items</strong>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <strong>Annual SaaS Rows</strong>
+          <button id="invoiceAddAnnualRowBtn" class="btn ghost sm" type="button">Add Row</button>
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>Location</th><th>Location Address</th><th>Service Start</th><th>Service End</th><th>Item Name</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Discounted Unit Price</th><th>Line Total</th><th>Notes</th><th>Actions</th></tr></thead><tbody id="invoiceAnnualItemsTbody"></tbody></table></div>
+        <datalist id="invoiceCatalogOptions-annual_saas"></datalist>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 6px;">
+          <strong>One-time Fee Rows</strong>
+          <button id="invoiceAddOneTimeRowBtn" class="btn ghost sm" type="button">Add Row</button>
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>Location</th><th>Location Address</th><th>Service Start</th><th>Service End</th><th>Item Name</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Discounted Unit Price</th><th>Line Total</th><th>Notes</th><th>Actions</th></tr></thead><tbody id="invoiceOneTimeItemsTbody"></tbody></table></div>
+        <datalist id="invoiceCatalogOptions-one_time_fee"></datalist>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 6px;">
+          <strong>Capability Rows</strong>
+          <button id="invoiceAddCapabilityRowBtn" class="btn ghost sm" type="button">Add Row</button>
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>Capability Name</th><th>Capability Value</th><th>Notes</th><th>Actions</th></tr></thead><tbody id="invoiceCapabilityItemsTbody"></tbody></table></div>
+        <div class="divider" style="margin:12px 0;"></div>
+        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+          <div class="filter-row"><label class="muted" for="invoiceFormSubtotalSubscription">Subtotal Subscription</label><input id="invoiceFormSubtotalSubscription" class="input" type="number" step="0.01" /></div>
+          <div class="filter-row"><label class="muted" for="invoiceFormSubtotalOneTime">Subtotal One Time</label><input id="invoiceFormSubtotalOneTime" class="input" type="number" step="0.01" /></div>
+          <div class="filter-row"><label class="muted" for="invoiceFormGrandTotal">Grand Total</label><input id="invoiceFormGrandTotal" class="input" type="number" step="0.01" /></div>
+          <div id="invoiceFormAmountPaidWrap" class="filter-row" style="display:none;"><label class="muted" for="invoiceFormAmountPaid">Amount Paid</label><input id="invoiceFormAmountPaid" class="input" type="number" step="0.01" min="0" /></div>
+          <div id="invoiceFormPendingAmountWrap" class="filter-row" style="display:none;"><label class="muted" for="invoiceFormPendingAmount">Pending Amount</label><input id="invoiceFormPendingAmount" class="input" type="number" step="0.01" readonly /></div>
+          <div class="filter-row"><label class="muted" for="invoiceFormPaymentState">Payment State</label><input id="invoiceFormPaymentState" class="input" type="text" readonly /></div>
+          <div class="filter-row"><label class="muted">Payment Conclusion</label><div id="invoicePaymentConclusion" class="input" style="display:flex;align-items:center;">Pending Settlement</div></div>
+          <div class="filter-row"><label class="muted" for="invoiceFormAmountInWords">Amount in Words</label><input id="invoiceFormAmountInWords" class="input" type="text" /></div>
+          <div class="filter-row" style="grid-column:1 / -1;"><label class="muted" for="invoiceFormNotes">Notes</label><textarea id="invoiceFormNotes" class="input" rows="3"></textarea></div>
+        </div>
+        <div class="divider" style="margin:12px 0;"></div>
+        <strong style="display:block;margin-bottom:8px;">Linked Receipts</strong>
+        <div id="invoiceReceiptsState" class="muted" style="margin-bottom:8px;">No receipts linked yet.</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Receipt #</th>
+                <th>Receipt Date</th>
+                <th>Received Amount</th>
+                <th>Pending Amount</th>
+                <th>Payment State</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="invoiceReceiptsTbody"></tbody>
+          </table>
+        </div>
+        <div class="actions" style="justify-content:space-between;gap:8px;margin-top:12px;"><div style="display:flex;gap:8px;"><button id="invoiceFormDeleteBtn" type="button" class="btn ghost" style="display:none;">Delete</button><button id="invoiceFormPreviewBtn" type="button" class="btn ghost">Preview Invoice</button></div><div style="display:flex;gap:8px;"><button id="invoiceFormCancelBtn" type="button" class="btn ghost">Cancel</button><button id="invoiceFormSaveBtn" type="submit" class="btn">Save</button></div></div>
+      </form>
+    </div>
+  </div>
+  <div id="invoicePreviewModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="invoicePreviewTitle" aria-hidden="true">
+    <div class="modal-content" style="max-width:1100px;"><div class="header"><h2 id="invoicePreviewTitle" style="margin:0;font-size:20px">Invoice Preview</h2><div class="actions"><button class="btn ghost sm" id="invoicePreviewExportPdfBtn" type="button">Extract PDF</button><button class="modal-close" id="invoicePreviewCloseBtn" aria-label="Close invoice preview">✕</button></div></div>
+      <iframe id="invoicePreviewFrame" title="Invoice preview content" style="width:100%;min-height:70vh;border:1px solid var(--border);border-radius:10px;background:#fff;"></iframe>
+    </div>
+  </div>
+
+
+  <div id="receiptFormModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="receiptFormTitle" aria-hidden="true">
+    <div class="modal-content" style="max-width:1200px;">
+      <div class="header"><h2 id="receiptFormTitle" style="margin:0;font-size:20px">Receipt</h2><div class="actions"><button class="modal-close" id="receiptFormCloseBtn" aria-label="Close receipt form">✕</button></div></div>
+      <form id="receiptForm">
+        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+          <div class="filter-row"><label class="muted" for="receiptFormReceiptId">Receipt ID</label><input id="receiptFormReceiptId" class="input" type="text" readonly /></div>
+          <div class="filter-row"><label class="muted" for="receiptFormReceiptNumber">Receipt Number</label><input id="receiptFormReceiptNumber" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="receiptFormInvoiceId">Invoice ID</label><input id="receiptFormInvoiceId" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="receiptFormInvoiceNumber">Invoice Number</label><input id="receiptFormInvoiceNumber" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="receiptFormReceiptDate">Receipt Date</label><input id="receiptFormReceiptDate" class="input" type="date" /></div>
+          <div class="filter-row"><label class="muted" for="receiptFormCurrency">Currency</label><input id="receiptFormCurrency" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="receiptFormStatus">Status</label><input id="receiptFormStatus" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="receiptFormSupportEmail">Support Email</label><input id="receiptFormSupportEmail" class="input" type="email" /></div>
+          <div class="filter-row"><label class="muted" for="receiptFormCustomerName">Customer Name</label><input id="receiptFormCustomerName" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="receiptFormCustomerLegalName">Customer Legal Name</label><input id="receiptFormCustomerLegalName" class="input" type="text" /></div>
+          <div class="filter-row" style="grid-column:1 / -1;"><label class="muted" for="receiptFormCustomerAddress">Customer Address</label><input id="receiptFormCustomerAddress" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="receiptFormAmountInWords">Amount in Words</label><input id="receiptFormAmountInWords" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="receiptFormInvoiceGrandTotal">Invoice Total</label><input id="receiptFormInvoiceGrandTotal" class="input" type="number" step="0.01" /></div>
+          <div class="filter-row"><label class="muted" for="receiptFormReceivedAmount">Received Amount</label><input id="receiptFormReceivedAmount" class="input" type="number" step="0.01" /></div>
+          <div class="filter-row"><label class="muted" for="receiptFormPendingAmount">Pending Amount</label><input id="receiptFormPendingAmount" class="input" type="number" step="0.01" /></div>
+          <div class="filter-row"><label class="muted" for="receiptFormPaymentState">Payment State</label><input id="receiptFormPaymentState" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="receiptFormPaymentNotes">Payment Notes</label><input id="receiptFormPaymentNotes" class="input" type="text" /></div>
+        </div>
+        <div class="divider" style="margin:12px 0;"></div>
+        <strong style="display:block;margin-bottom:8px;">Location Details</strong>
+        <div class="table-wrap"><table><thead><tr><th>Location Name</th><th>Location Address</th><th>Start Date</th><th>End Date</th><th>Modules</th><th>Amount</th><th>Notes</th></tr></thead><tbody id="receiptLocationItemsTbody"></tbody></table></div>
+        <div class="divider" style="margin:12px 0;"></div>
+        <strong style="display:block;margin-bottom:8px;">One-time Fees</strong>
+        <div class="table-wrap"><table><thead><tr><th>Item Name</th><th>Qty</th><th>Unit Price</th><th>Discount %</th><th>Line Total</th><th>Notes</th></tr></thead><tbody id="receiptOneTimeItemsTbody"></tbody></table></div>
+        <div class="actions" style="justify-content:space-between;gap:8px;margin-top:12px;"><div style="display:flex;gap:8px;"><button id="receiptFormDeleteBtn" type="button" class="btn ghost" style="display:none;">Delete</button><button id="receiptFormPreviewBtn" type="button" class="btn ghost">Preview Receipt</button></div><div style="display:flex;gap:8px;"><button id="receiptFormCancelBtn" type="button" class="btn ghost">Cancel</button><button id="receiptFormSaveBtn" type="submit" class="btn">Save</button></div></div>
+      </form>
+    </div>
+  </div>
+  <div id="receiptPreviewModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="receiptPreviewTitle" aria-hidden="true">
+    <div class="modal-content" style="max-width:1100px;"><div class="header"><h2 id="receiptPreviewTitle" style="margin:0;font-size:20px">Receipt Preview</h2><div class="actions"><button class="btn ghost sm" id="receiptPreviewExportPdfBtn" type="button">Extract PDF</button><button class="modal-close" id="receiptPreviewCloseBtn" aria-label="Close receipt preview">✕</button></div></div>
+      <iframe id="receiptPreviewFrame" title="Receipt preview content" style="width:100%;min-height:70vh;border:1px solid var(--border);border-radius:10px;background:#fff;"></iframe>
+    </div>
+  </div>
+  <div id="clientStatementPreviewModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="clientStatementPreviewTitle" aria-hidden="true">
+    <div class="modal-content" style="max-width:1100px;"><div class="header"><h2 id="clientStatementPreviewTitle" style="margin:0;font-size:20px">Statement of Account Preview</h2><div class="actions"><button class="btn ghost sm" id="clientStatementPreviewExportPdfBtn" type="button">Extract PDF</button><button class="modal-close" id="clientStatementPreviewCloseBtn" aria-label="Close statement preview">✕</button></div></div>
+      <iframe id="clientStatementPreviewFrame" title="Statement of account preview content" style="width:100%;min-height:70vh;border:1px solid var(--border);border-radius:10px;background:#fff;"></iframe>
+    </div>
+  </div>
+
 
   <div class="spinner" id="spinner" aria-hidden="true"><div class="ring"></div></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -1047,7 +3230,6 @@
       <div>
         <strong>Resources</strong>
         <div style="margin-top:10px;display:grid;gap:6px;">
-          <a href="#features">Features</a>
           <a href="#app">Dashboard</a>
           <a href="#">Security</a>
         </div>
@@ -1069,6 +3251,21 @@
   <script src="calendar.js"></script>
   <script src="planner.js"></script>
   <script src="ui.js"></script>
+  <script src="leads.js"></script>
+  <script src="deals.js"></script>
+  <script src="proposals.js"></script>
+  <script src="agreements.js"></script>
+  <script src="operations-onboarding.js"></script>
+  <script src="technical-admin.js"></script>
+  <script src="invoices.js"></script>
+  <script src="receipts.js"></script>
+  <script src="lifecycle-analytics.js"></script>
+  <script src="clients.js"></script>
+  <script src="proposal-catalog.js"></script>
+  <script src="notifications.js"></script>
+  <script src="workflow.js"></script>
+  <script src="roles-admin.js"></script>
+  <script src="users.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
