@@ -20,6 +20,23 @@
   const ITEM_TABLES = { proposals: 'proposal_items', agreements: 'agreement_items', invoices: 'invoice_items', receipts: 'receipt_items' };
   const ITEM_FK = { proposals: 'proposal_id', agreements: 'agreement_id', invoices: 'invoice_id', receipts: 'receipt_id' };
   const TICKET_INTERNAL_FIELDS = ['youtrack_reference', 'dev_team_status', 'issue_related', 'notes'];
+  const TICKET_PUBLIC_COLUMNS = new Set([
+    'ticket_id',
+    'name',
+    'department',
+    'module',
+    'title',
+    'description',
+    'category',
+    'priority',
+    'status',
+    'email_addressee',
+    'file',
+    'notification_sent',
+    'notification_under_review',
+    'log',
+    'date_submitted'
+  ]);
 
   const devLog = (...args) => {
     try {
@@ -43,7 +60,71 @@
     for (const key of PK_KEYS[resource] || []) {
       if (out[key] !== undefined && out.id === undefined) out.id = out[key];
     }
+    if (resource === 'tickets') {
+      out.date = out.date ?? out.date_submitted ?? '';
+      out.date_submitted = out.date_submitted ?? out.date ?? '';
+      out.desc = out.desc ?? out.description ?? '';
+      out.description = out.description ?? out.desc ?? '';
+      out.type = out.type ?? out.category ?? '';
+      out.category = out.category ?? out.type ?? '';
+      out.emailAddressee = out.emailAddressee ?? out.email_addressee ?? out.email ?? '';
+      out.email_addressee = out.email_addressee ?? out.emailAddressee ?? out.email ?? '';
+      out.notificationSent = out.notificationSent ?? out.notification_sent ?? '';
+      out.notification_sent = out.notification_sent ?? out.notificationSent ?? '';
+      out.notificationUnderReview =
+        out.notificationUnderReview ?? out.notification_under_review ?? out.notificationSentUnderReview ?? '';
+      out.notification_under_review =
+        out.notification_under_review ?? out.notificationUnderReview ?? out.notificationSentUnderReview ?? '';
+    }
     return out;
+  }
+
+  function firstDefined(source = {}, keys = []) {
+    for (const key of keys) {
+      if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
+      const value = source[key];
+      if (value !== undefined) return value;
+    }
+    return undefined;
+  }
+
+  function compactObject(record = {}) {
+    const compacted = {};
+    Object.entries(record).forEach(([key, value]) => {
+      if (value === undefined) return;
+      compacted[key] = value;
+    });
+    return compacted;
+  }
+
+  function toTicketPublicRecord(row = {}, { includeTicketId = true } = {}) {
+    const candidateTicketId = firstDefined(row, ['ticket_id', 'id']);
+    const mapped = compactObject({
+      ticket_id: includeTicketId ? candidateTicketId : undefined,
+      name: firstDefined(row, ['name']),
+      department: firstDefined(row, ['department']),
+      module: firstDefined(row, ['module', 'impactedModule', 'impacted_module', 'impacted module']),
+      title: firstDefined(row, ['title']),
+      description: firstDefined(row, ['description', 'desc']),
+      category: firstDefined(row, ['category', 'type', 'issueType', 'issue_type']),
+      priority: firstDefined(row, ['priority']),
+      status: firstDefined(row, ['status']),
+      email_addressee: firstDefined(row, ['email_addressee', 'emailAddressee', 'email']),
+      file: firstDefined(row, ['file', 'link', 'fileUpload', 'file_upload']),
+      notification_sent: firstDefined(row, ['notification_sent', 'notificationSent']),
+      notification_under_review: firstDefined(row, [
+        'notification_under_review',
+        'notificationUnderReview',
+        'notificationSentUnderReview'
+      ]),
+      log: firstDefined(row, ['log']),
+      date_submitted: firstDefined(row, ['date_submitted', 'date', 'timestamp', 'created_at'])
+    });
+
+    Object.keys(mapped).forEach(key => {
+      if (!TICKET_PUBLIC_COLUMNS.has(key)) delete mapped[key];
+    });
+    return mapped;
   }
 
   function ticketIdFrom(row = {}) {
@@ -298,7 +379,10 @@
       const raw = payload[resource.slice(0, -1)] || payload.item || payload.activity || payload[resource] || payload;
       const record = raw && typeof raw === 'object' ? { ...raw } : {};
       delete record.resource; delete record.action; delete record.authToken;
-      const createRecord = resource === 'tickets' ? stripTicketInternalFields(record) : record;
+      const createRecord =
+        resource === 'tickets'
+          ? toTicketPublicRecord(stripTicketInternalFields(record), { includeTicketId: true })
+          : record;
       const { data, error } = await client.from(table).insert(createRecord).select('*').single();
       if (error) throw friendlyError(`Unable to create ${resource} record`, error);
       const created = normalizeRow(resource, data);
@@ -336,7 +420,10 @@
       if (resource === 'tickets' && !isAdminDev()) throw new Error('Only admin/dev can update tickets.');
       if (resource === 'events' && !isAdminDev()) throw new Error('Only admin/dev can update events.');
       if (resource === 'csm' && !['admin','hoo'].includes(role())) throw new Error('Only admin/hoo can update CSM activities.');
-      const publicUpdates = resource === 'tickets' ? stripTicketInternalFields(safeUpdates) : safeUpdates;
+      const publicUpdates =
+        resource === 'tickets'
+          ? toTicketPublicRecord(stripTicketInternalFields(safeUpdates), { includeTicketId: false })
+          : safeUpdates;
       const { data, error } = await client.from(table).update(publicUpdates).eq(key, id).select('*').single();
       if (error) throw friendlyError(`Unable to update ${resource} record`, error);
       if (resource === 'tickets' && isAdminDev()) {
