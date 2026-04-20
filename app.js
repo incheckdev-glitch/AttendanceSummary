@@ -5966,7 +5966,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       console.warn('[startup/auth] Initial auth health check failed', error);
     });
   }
-  Session.ensureReactiveAuthState();
   Filters.load();
   ColumnManager.load();
   SavedViews.load();
@@ -6007,21 +6006,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   wireKeyboardShortcuts();
   if (window.Notifications?.wire) Notifications.wire();
 
-  let isAuthenticated = Session.isAuthenticated();
-  try {
-    const restored = await Session.restore();
-    if (restored) {
-      await Permissions.loadMatrix(true);
-      UI.applyRolePermissions();
-      isAuthenticated = true;
-    }
-  } catch (error) {
-    const message = String(error?.message || '');
-    if (/inactive/.test(message.toLowerCase())) {
-      await handleExpiredSession(message);
-    } else {
-      await handleExpiredSession('Unable to restore session. Please log in again.');
-    }
+  const isAuthenticated = Session.isAuthenticated();
+  if (isAuthenticated) {
+    await Permissions.loadMatrix(true);
+    UI.applyRolePermissions();
   }
 
   loadFreezeWindowsCache();
