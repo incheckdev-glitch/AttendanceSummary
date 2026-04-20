@@ -3003,7 +3003,7 @@ function normalizeIssueForStore(issue, options = {}) {
   const includeRestricted =
     options.includeRestrictedFields !== undefined
       ? !!options.includeRestrictedFields
-      : Permissions.isAdmin();
+      : Permissions.isAdminLike();
   const normalized = {
     id: issue.id || '',
     name: issue.name || '',
@@ -3092,7 +3092,7 @@ function buildIssueUpdateFields(payload, candidateId) {
     'Issue Related': payload.issueRelated,
     notes: payload.notes
   };
-  if (!Permissions.isAdmin()) {
+  if (!Permissions.isAdminLike()) {
     RESTRICTED_VIEWER_FIELDS.forEach(field => {
       delete fields[field];
     });
@@ -3119,7 +3119,7 @@ async function saveIssueToSheet(issue, auth = {}, options = {}) {
  const useSpinner = !options.silent;
   if (useSpinner) UI.spinner(true);
   try {
-    const payload = normalizeIssueForStore(issue, { includeRestrictedFields: Permissions.isAdmin() });
+    const payload = normalizeIssueForStore(issue, { includeRestrictedFields: Permissions.isAdminLike() });
      const issueId = payload.id || issue.id || '';
     const issueIdCandidates = buildIssueIdCandidates(issueId);
     if (!issueIdCandidates.length) {
@@ -3304,7 +3304,7 @@ function buildIssueExportRow(issue) {
     Log: issue.log,
     'Notification Sent Under Review': issue.notificationUnderReview
   };
-  if (Permissions.isAdmin()) {
+  if (Permissions.isAdminLike()) {
     row['YouTrack Reference'] = issue.youtrackReference;
     row['Dev Team Status'] = issue.devTeamStatus;
     row['Issue Related'] = issue.issueRelated;
@@ -3348,7 +3348,7 @@ function exportIssuesToExcel(rows, suffix) {
  
   
   const issueRows = rows.map(buildIssueExportRow);
-  const headers = Permissions.isAdmin()
+  const headers = Permissions.isAdminLike()
     ? [...ISSUE_EXPORT_HEADERS.slice(0, 13), ...ISSUE_EXPORT_HEADERS_ADMIN_ONLY, ...ISSUE_EXPORT_HEADERS.slice(13)]
     : ISSUE_EXPORT_HEADERS;
   const wsIssues = XLSX.utils.json_to_sheet([]);
@@ -3428,7 +3428,7 @@ function buildIssueDetailExportRows(issue, risk = {}, meta = {}) {
     ['Severity / Impact / Urgency', `${risk.severity || 0} / ${risk.impact || 0} / ${risk.urgency || 0}`],
     ['Reasons', reasons]
   ];
-  if (Permissions.isAdmin()) {
+  if (Permissions.isAdminLike()) {
     rows.splice(
       14,
       0,
