@@ -2,10 +2,10 @@
   const runtimeConfig = global.RUNTIME_CONFIG || {};
 
   const supabaseUrl = String(
-    runtimeConfig.SUPABASE_URL || runtimeConfig.NEXT_PUBLIC_SUPABASE_URL || global.SUPABASE_URL || ''
+    runtimeConfig.SUPABASE_URL || runtimeConfig.NEXT_PUBLIC_SUPABASE_URL || global.SUPABASE_URL || 'https://ghvceonzwcvdxccdtoua.supabase.co'
   ).trim();
   const supabaseAnonKey = String(
-    runtimeConfig.SUPABASE_ANON_KEY || runtimeConfig.NEXT_PUBLIC_SUPABASE_ANON_KEY || global.SUPABASE_ANON_KEY || ''
+    runtimeConfig.SUPABASE_ANON_KEY || runtimeConfig.NEXT_PUBLIC_SUPABASE_ANON_KEY || global.SUPABASE_ANON_KEY || 'sb_publishable_0neF-7OK8rdNA_Lxuwoaww_dSL7TNwL'
   ).trim();
 
   let cachedClient = null;
