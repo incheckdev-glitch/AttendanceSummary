@@ -2040,6 +2040,74 @@ Sample:
     </div>
   </div>
 
+  <!-- Create Ticket Modal -->
+  <div id="createTicketModal" class="modal" role="dialog" aria-modal="true"
+       aria-labelledby="createTicketTitle" aria-describedby="createTicketBody">
+    <div class="modal-content">
+      <div class="header">
+        <h2 id="createTicketTitle" style="margin:0;font-size:20px">Create Ticket</h2>
+        <div class="actions">
+          <button class="modal-close" id="createTicketClose" aria-label="Close create ticket dialog">✕</button>
+        </div>
+      </div>
+      <form id="createTicketForm">
+        <div id="createTicketBody">
+          <div class="filter-group">
+            <div class="muted" style="font-size:12px;margin-bottom:10px;">
+              Submit a new ticket directly to the database.
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="createTicketName">Name</label>
+              <input id="createTicketName" class="input" type="text" required />
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="createTicketDepartment">Department</label>
+              <input id="createTicketDepartment" class="input" type="text" required />
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="createTicketModule">Impacted Module</label>
+              <input id="createTicketModule" class="input" type="text" required />
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="createTicketSubject">Title</label>
+              <input id="createTicketSubject" class="input" type="text" required />
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="createTicketDesc">Description</label>
+              <textarea id="createTicketDesc" class="input" rows="3" required></textarea>
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="createTicketType">Category</label>
+              <select id="createTicketType" class="select" required>
+                <option value="">Select category</option>
+              </select>
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="createTicketPriority">Priority</label>
+              <select id="createTicketPriority" class="select" required>
+                <option value="High">High</option>
+                <option value="Medium" selected>Medium</option>
+                <option value="Low">Low</option>
+              </select>
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="createTicketEmail">Email Addressee</label>
+              <input id="createTicketEmail" class="input" type="email" required />
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="createTicketFile">File URL (optional)</label>
+              <input id="createTicketFile" class="input" type="url" />
+            </div>
+          </div>
+        </div>
+        <div class="actions" style="justify-content:flex-end;gap:8px;">
+          <button type="button" class="btn ghost" id="createTicketCancel">Cancel</button>
+          <button type="submit" class="btn primary" id="createTicketSubmit">Create ticket</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Issue Modal -->
   <div id="issueModal" class="modal" role="dialog" aria-modal="true"
        aria-labelledby="modalTitle" aria-describedby="modalBody">

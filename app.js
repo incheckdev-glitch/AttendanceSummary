@@ -1690,6 +1690,72 @@ const IssueEditor = {
   }
 };
 
+const TicketCreator = {
+  isSubmitting: false,
+  open() {
+    if (!E.createTicketModal) return;
+    this.syncCategoryOptions();
+    if (E.createTicketForm) E.createTicketForm.reset();
+    if (E.createTicketPriority) E.createTicketPriority.value = 'Medium';
+    E.createTicketModal.style.display = 'flex';
+    E.createTicketName?.focus?.();
+  },
+  close() {
+    if (E.createTicketModal) E.createTicketModal.style.display = 'none';
+  },
+  syncCategoryOptions(selected = '') {
+    if (!E.createTicketType) return;
+    const categories = buildIssueCategoryOptions(selected ? [selected] : []);
+    E.createTicketType.innerHTML = ['<option value="">Select category</option>']
+      .concat(categories.map(v => `<option value="${U.escapeAttr(v)}">${U.escapeHtml(v)}</option>`))
+      .join('');
+    E.createTicketType.value = selected || '';
+  },
+  buildPayload() {
+    const now = new Date().toISOString();
+    const generatedId = `TK-${Date.now()}`;
+    return {
+      id: generatedId,
+      ticket_id: generatedId,
+      name: (E.createTicketName?.value || '').trim(),
+      department: (E.createTicketDepartment?.value || '').trim(),
+      module: (E.createTicketModule?.value || '').trim() || 'Unspecified',
+      impactedModule: (E.createTicketModule?.value || '').trim() || 'Unspecified',
+      title: (E.createTicketSubject?.value || '').trim(),
+      description: (E.createTicketDesc?.value || '').trim(),
+      desc: (E.createTicketDesc?.value || '').trim(),
+      category: (E.createTicketType?.value || '').trim(),
+      type: (E.createTicketType?.value || '').trim(),
+      priority: (E.createTicketPriority?.value || '').trim(),
+      emailAddressee: (E.createTicketEmail?.value || '').trim(),
+      email: (E.createTicketEmail?.value || '').trim(),
+      file: (E.createTicketFile?.value || '').trim(),
+      link: (E.createTicketFile?.value || '').trim(),
+      status: 'Not Started Yet',
+      date: now
+    };
+  }
+};
+
+async function createTicketInDatabase(ticketPayload) {
+  const variants = [
+    { body: { ticket: ticketPayload }, label: 'ticket envelope' },
+    { body: { issue: ticketPayload }, label: 'issue envelope' },
+    { body: { payload: ticketPayload }, label: 'payload envelope' },
+    { body: { ...ticketPayload }, label: 'flat payload' }
+  ];
+  let lastError = null;
+  for (const variant of variants) {
+    try {
+      return await Api.postAuthenticated('tickets', 'create', variant.body, { requireAuth: true });
+    } catch (error) {
+      if (isAuthError(error)) throw error;
+      lastError = error;
+    }
+  }
+  throw lastError || new Error('Ticket create rejected by backend.');
+}
+
 function setButtonPendingState(buttonEl, isPending, pendingText, idleText) {
   if (!buttonEl) return;
   if (!buttonEl.dataset.defaultLabel) {
@@ -4193,11 +4259,11 @@ function wireCore() {
         Invoices.openInvoice(Invoices.emptyInvoice(), [], { readOnly: false });
         return;
       }
-      window.open(
-        isCsmView ? 'https://forms.gle/jV7XLrquc8beyi228' : 'https://forms.gle/PPnEP1AQneoBT79s5',
-        '_blank',
-        'noopener,noreferrer'
-      );
+      if (isCsmView) {
+        window.open('https://forms.gle/jV7XLrquc8beyi228', '_blank', 'noopener,noreferrer');
+        return;
+      }
+      TicketCreator.open();
     });
 
   if (E.shortcutsHelp) {
@@ -4639,6 +4705,53 @@ function wireModals() {
   // Issue modal
   if (E.modalClose) {
     E.modalClose.addEventListener('click', () => UI.Modals.closeIssue());
+  }
+  if (E.createTicketClose) {
+    E.createTicketClose.addEventListener('click', () => TicketCreator.close());
+  }
+  if (E.createTicketCancel) {
+    E.createTicketCancel.addEventListener('click', () => TicketCreator.close());
+  }
+  if (E.createTicketModal) {
+    E.createTicketModal.addEventListener('click', e => {
+      if (e.target === E.createTicketModal) TicketCreator.close();
+    });
+    E.createTicketModal.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        TicketCreator.close();
+      } else if (e.key === 'Tab') {
+        trapFocus(E.createTicketModal, e);
+      }
+    });
+  }
+  if (E.createTicketForm) {
+    E.createTicketForm.addEventListener('submit', async e => {
+      e.preventDefault();
+      if (!requirePermission(() => Permissions.canCreateTicket(), 'Login is required to create a ticket.'))
+        return;
+      if (TicketCreator.isSubmitting) return;
+      TicketCreator.isSubmitting = true;
+      setButtonPendingState(E.createTicketSubmit, true, 'Creating...');
+      UI.spinner(true);
+      try {
+        const payload = TicketCreator.buildPayload();
+        await createTicketInDatabase(payload);
+        UI.toast('Ticket created successfully.');
+        TicketCreator.close();
+        await loadIssues(true);
+      } catch (error) {
+        if (isAuthError(error)) {
+          await handleExpiredSession('Session expired while creating ticket.');
+          return;
+        }
+        UI.toast(`Failed to create ticket: ${error.message}`);
+      } finally {
+        TicketCreator.isSubmitting = false;
+        setButtonPendingState(E.createTicketSubmit, false, 'Creating...');
+        UI.spinner(false);
+      }
+    });
   }
   if (E.issueModal) {
     E.issueModal.addEventListener('click', e => {
