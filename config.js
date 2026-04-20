@@ -60,6 +60,16 @@ const rawApiBaseUrl =
   runtimeConfig.PROXY_API_BASE_URL ||
   runtimeConfig.BACKEND_API_BASE_URL ||
   '/api/proxy';
+const SUPABASE_URL =
+  runtimeConfig.SUPABASE_URL ||
+  runtimeConfig.NEXT_PUBLIC_SUPABASE_URL ||
+  '';
+const SUPABASE_ANON_KEY =
+  runtimeConfig.SUPABASE_ANON_KEY ||
+  runtimeConfig.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+  '';
+window.SUPABASE_URL = String(SUPABASE_URL || '').trim();
+window.SUPABASE_ANON_KEY = String(SUPABASE_ANON_KEY || '').trim();
 
 // Deployment notes:
 // - Vercel deployment: /api/proxy must exist and APPS_SCRIPT_WEBAPP_URL must point to the Apps Script /exec URL.

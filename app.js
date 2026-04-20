@@ -5874,6 +5874,12 @@ function wireKeyboardShortcuts() {
 }
 
 function logApiStartupDiagnostics() {
+  if (window.SupabaseClient?.hasConfig?.()) {
+    console.info('[startup/auth] Supabase mode enabled', {
+      supabaseUrl: window.SupabaseClient.getUrl()
+    });
+    return;
+  }
   const diagnostics = window.API_RUNTIME_DIAGNOSTICS || {};
   const resolvedBaseUrl = String(diagnostics.apiBaseUrl || API_BASE_URL || '').trim();
   const resolvedEndpoint =
@@ -5984,6 +5990,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (error) {
       await handleExpiredSession('Unable to restore session. Please log in again.');
     }
+  } else {
+    try {
+      const valid = await Session.validateSession();
+      if (valid) {
+        await Permissions.loadMatrix(true);
+        isAuthenticated = true;
+      }
+    } catch {}
   }
 
   loadFreezeWindowsCache();
