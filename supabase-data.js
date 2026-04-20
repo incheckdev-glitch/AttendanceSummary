@@ -342,6 +342,13 @@
     return value === undefined || value === null || (typeof value === 'string' && value.trim() === '');
   }
 
+  function normalizeNullableUuidValue(value) {
+    if (value === undefined || value === null) return undefined;
+    const normalized = String(value).trim();
+    if (!normalized) return undefined;
+    return normalized;
+  }
+
   function toDbBoolean(value) {
     if (value === undefined || value === null || value === '') return undefined;
     if (typeof value === 'boolean') return value;
@@ -426,7 +433,7 @@
     const mapped = compactObject({
       proposal_id: firstDefined(record, ['proposal_id', 'proposalId']),
       ref_number: firstDefined(record, ['ref_number', 'refNumber']),
-      deal_id: firstDefined(record, ['deal_id', 'dealId']),
+      deal_id: normalizeNullableUuidValue(firstDefined(record, ['deal_id', 'dealId'])),
       customer_name: firstDefined(record, ['customer_name', 'customerName']),
       customer_address: firstDefined(record, ['customer_address', 'customerAddress']),
       customer_contact_name: firstDefined(record, ['customer_contact_name', 'customerContactName']),
@@ -474,7 +481,7 @@
   function sanitizeProposalItemRecord(record = {}, proposalUuid = '') {
     const mapped = compactObject({
       item_id: firstDefined(record, ['item_id', 'itemId']),
-      proposal_id: proposalUuid || firstDefined(record, ['proposal_id', 'proposalId']),
+      proposal_id: normalizeNullableUuidValue(proposalUuid || firstDefined(record, ['proposal_id', 'proposalId'])),
       section: firstDefined(record, ['section']),
       line_no: firstDefined(record, ['line_no', 'lineNo', 'line']),
       location_name: firstDefined(record, ['location_name', 'locationName']),
