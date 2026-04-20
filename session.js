@@ -127,9 +127,61 @@ const Session = {
   },
 
   async restore() {
-    // Temporary rollback for 9E startup restore:
-    // Keep manual login as the source of truth and avoid startup auto-lock side effects.
-    return true;
+    console.info('[Session.restore] start');
+    const client = SupabaseClient.getClient();
+    try {
+      const { data: sessionData, error: sessionError } = await client.auth.getSession();
+      const session = sessionData?.session || null;
+      console.info('[Session.restore] getSession result', {
+        hasSession: Boolean(session),
+        error: sessionError ? { message: sessionError.message, status: sessionError.status } : null
+      });
+      if (sessionError || !session) {
+        this.clearClientSession({ clearRoleCache: false });
+        console.info('[Session.restore] restored false');
+        return false;
+      }
+
+      const { data: userData, error: userError } = await client.auth.getUser();
+      const authUser = userData?.user || session?.user || null;
+      console.info('[Session.restore] getUser result', {
+        hasUser: Boolean(authUser),
+        error: userError ? { message: userError.message, status: userError.status } : null
+      });
+      if (userError || !authUser?.id) {
+        await client.auth.signOut();
+        this.clearClientSession({ clearRoleCache: false });
+        console.info('[Session.restore] restored false');
+        return false;
+      }
+
+      const { data: profile, error: profileError } = await client
+        .from('profiles')
+        .select('id, name, email, username, role_key, is_active')
+        .eq('id', authUser.id)
+        .maybeSingle();
+      console.info('[Session.restore] profile result', {
+        hasProfile: Boolean(profile),
+        isActive: profile?.is_active ?? null,
+        error: profileError ? { message: profileError.message, code: profileError.code, status: profileError.status } : null
+      });
+
+      if (profileError || !profile || !profile.is_active) {
+        await client.auth.signOut();
+        this.clearClientSession({ clearRoleCache: false });
+        console.info('[Session.restore] restored false');
+        return false;
+      }
+
+      this.applyState(this.buildState(authUser, session, profile), { clearRoleCacheOnChange: false });
+      console.info('[Session.restore] restored true');
+      return true;
+    } catch (error) {
+      console.warn('[Session.restore] unexpected error', error);
+      this.clearClientSession({ clearRoleCache: false });
+      console.info('[Session.restore] restored false');
+      return false;
+    }
   },
 
   async validateSession() {
@@ -168,13 +220,13 @@ const Session = {
     };
   },
   isAuthenticated() {
-    const hasSessionToken = Boolean(this.state.session?.access_token);
-    const hasUser = Boolean(this.state.user?.id || this.state.session?.user?.id);
+    const hasSession = Boolean(this.state.session && (this.state.session?.user?.id || this.state.session?.access_token));
+    const hasUser = Boolean(this.state.user?.id);
     const hasRole = Boolean(String(this.state.role || '').trim());
-    const result = hasSessionToken && hasUser && hasRole;
+    const result = hasSession && hasUser && hasRole;
     console.info('[Session.isAuthenticated] result', {
       result,
-      hasSessionToken,
+      hasSession,
       hasUser,
       hasRole,
       userId: this.state.user?.id || this.state.session?.user?.id || null,
