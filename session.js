@@ -247,3 +247,7 @@ function isAuthError(error) {
   if (!message) return false;
   return [/\bunauthorized\b/, /\bforbidden\b/, /invalid\s+session/, /expired\s+session/, /not\s+authenticated/, /auth/i].some(pattern => pattern.test(message));
 }
+
+window.Session = Session;
+window.isAuthError = isAuthError;
+console.info('[Session] exposed on window', { hasRoleFn: typeof window.Session?.role === 'function' });
