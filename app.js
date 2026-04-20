@@ -2130,28 +2130,38 @@ function setActiveView(view) {
       view === 'leads' || view === 'deals' || view === 'proposals' || view === 'agreements' || view === 'operationsOnboarding' || view === 'technicalAdmin' || view === 'invoices' || view === 'receipts' || view === 'lifecycleAnalytics' || view === 'clients' || view === 'proposalCatalog' || view === 'notifications' || view === 'workflow' ? 'none' : '';
   if (E.leadsFiltersPanel) E.leadsFiltersPanel.style.display = view === 'leads' ? '' : 'none';
   if (E.dealsFiltersPanel) E.dealsFiltersPanel.style.display = view === 'deals' ? '' : 'none';
+  const runViewLoader = (label, loader) => {
+    try {
+      loader();
+    } catch (error) {
+      console.error(`[setActiveView] ${label} loader failed`, error);
+      UI.toast(`Unable to load ${label}. Other tabs remain available.`);
+    }
+  };
   if (view === 'calendar') {
-    ensureCalendar();
-    renderCalendarEvents();
-    scheduleCalendarResize();
+    runViewLoader('calendar', () => {
+      ensureCalendar();
+      renderCalendarEvents();
+      scheduleCalendarResize();
+    });
   }
-  if (view === 'insights') Analytics.refresh(UI.Issues.applyFilters());
-  if (view === 'csm') CSMActivity.loadAndRefresh();
-  if (view === 'leads' && window.Leads?.loadAndRefresh) Leads.loadAndRefresh();
-  if (view === 'deals' && window.Deals?.loadAndRefresh) Deals.loadAndRefresh();
-  if (view === 'proposals' && window.Proposals?.loadAndRefresh) Proposals.loadAndRefresh();
-  if (view === 'agreements' && window.Agreements?.loadAndRefresh) Agreements.loadAndRefresh();
-  if (view === 'operationsOnboarding' && window.OperationsOnboarding?.loadAndRefresh) OperationsOnboarding.loadAndRefresh();
-  if (view === 'technicalAdmin' && window.TechnicalAdmin?.loadAndRefresh) TechnicalAdmin.loadAndRefresh();
-  if (view === 'invoices' && window.Invoices?.refresh) Invoices.refresh();
-  if (view === 'receipts' && window.Receipts?.refresh) Receipts.refresh();
-  if (view === 'lifecycleAnalytics' && window.LifecycleAnalytics?.init) LifecycleAnalytics.init();
-  if (view === 'clients' && window.Clients?.loadAndRefresh) Clients.loadAndRefresh();
-  if (view === 'proposalCatalog' && window.ProposalCatalog?.loadAndRefresh) ProposalCatalog.loadAndRefresh();
-  if (view === 'notifications' && window.Notifications?.loadHub) Notifications.loadHub(true);
-  if (view === 'workflow' && window.Workflow?.loadAndRefresh) Workflow.loadAndRefresh(true);
-  if (view === 'users' && window.UserAdmin?.refresh) UserAdmin.refresh();
-  if ((view === 'roles' || view === 'rolePermissions') && window.RolesAdmin?.loadAll) RolesAdmin.loadAll();
+  if (view === 'insights') runViewLoader('insights', () => Analytics.refresh(UI.Issues.applyFilters()));
+  if (view === 'csm') runViewLoader('csm', () => CSMActivity.loadAndRefresh());
+  if (view === 'leads' && window.Leads?.loadAndRefresh) runViewLoader('leads', () => Leads.loadAndRefresh());
+  if (view === 'deals' && window.Deals?.loadAndRefresh) runViewLoader('deals', () => Deals.loadAndRefresh());
+  if (view === 'proposals' && window.Proposals?.loadAndRefresh) runViewLoader('proposals', () => Proposals.loadAndRefresh());
+  if (view === 'agreements' && window.Agreements?.loadAndRefresh) runViewLoader('agreements', () => Agreements.loadAndRefresh());
+  if (view === 'operationsOnboarding' && window.OperationsOnboarding?.loadAndRefresh) runViewLoader('operations onboarding', () => OperationsOnboarding.loadAndRefresh());
+  if (view === 'technicalAdmin' && window.TechnicalAdmin?.loadAndRefresh) runViewLoader('technical admin', () => TechnicalAdmin.loadAndRefresh());
+  if (view === 'invoices' && window.Invoices?.refresh) runViewLoader('invoices', () => Invoices.refresh());
+  if (view === 'receipts' && window.Receipts?.refresh) runViewLoader('receipts', () => Receipts.refresh());
+  if (view === 'lifecycleAnalytics' && window.LifecycleAnalytics?.init) runViewLoader('lifecycle analytics', () => LifecycleAnalytics.init());
+  if (view === 'clients' && window.Clients?.loadAndRefresh) runViewLoader('clients', () => Clients.loadAndRefresh());
+  if (view === 'proposalCatalog' && window.ProposalCatalog?.loadAndRefresh) runViewLoader('proposal catalog', () => ProposalCatalog.loadAndRefresh());
+  if (view === 'notifications' && window.Notifications?.loadHub) runViewLoader('notifications', () => Notifications.loadHub(true));
+  if (view === 'workflow' && window.Workflow?.loadAndRefresh) runViewLoader('workflow', () => Workflow.loadAndRefresh(true));
+  if (view === 'users' && window.UserAdmin?.refresh) runViewLoader('users', () => UserAdmin.refresh());
+  if ((view === 'roles' || view === 'rolePermissions') && window.RolesAdmin?.loadAll) runViewLoader('roles and permissions', () => RolesAdmin.loadAll());
   updatePrimaryActionButton(view);
   if (E.app) {
     const appTop = E.app.getBoundingClientRect().top + window.scrollY - 10;
