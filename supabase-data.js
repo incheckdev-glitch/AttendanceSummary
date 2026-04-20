@@ -739,12 +739,14 @@
       return { ok: true };
     }
     if (action === 'validate_transition') {
-      const { data, error } = await client.rpc('validate_workflow_transition', {
+      const rpcPayload = {
         p_resource: payload.target_workflow_resource || payload.resource || payload.target_resource || '',
-        p_from_status: payload.from_status || payload.current_status || '',
-        p_to_status: payload.to_status || payload.next_status || '',
-        p_amount: Number(payload.amount || payload.numeric || 0)
-      });
+        p_current_status: payload.from_status || payload.current_status || '',
+        p_next_status: payload.to_status || payload.next_status || '',
+        p_discount_percent: Number(payload.amount || payload.numeric || 0)
+      };
+      console.debug('[workflow] validate_workflow_transition payload', rpcPayload);
+      const { data, error } = await client.rpc('validate_workflow_transition', rpcPayload);
       if (error) throw friendlyError('Workflow validation failed', error);
       return data;
     }
