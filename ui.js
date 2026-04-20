@@ -905,6 +905,30 @@ function cacheEls() {
 
 /** UI helpers */
 const UI = {
+  tabRegistry() {
+    return [
+      { key: 'issues', tabEl: E.issuesTab, viewEl: E.issuesView, alwaysVisible: true },
+      { key: 'calendar', tabEl: E.calendarTab, viewEl: E.calendarView },
+      { key: 'insights', tabEl: E.insightsTab, viewEl: E.insightsView },
+      { key: 'csm', tabEl: E.csmTab, viewEl: E.csmView },
+      { key: 'leads', tabEl: E.leadsTab, viewEl: E.leadsView },
+      { key: 'deals', tabEl: E.dealsTab, viewEl: E.dealsView },
+      { key: 'proposals', tabEl: E.proposalsTab, viewEl: E.proposalsView },
+      { key: 'agreements', tabEl: E.agreementsTab, viewEl: E.agreementsView },
+      { key: 'operationsOnboarding', tabEl: E.operationsOnboardingTab, viewEl: E.operationsOnboardingView },
+      { key: 'technicalAdmin', tabEl: E.technicalAdminTab, viewEl: E.technicalAdminView },
+      { key: 'invoices', tabEl: E.invoicesTab, viewEl: E.invoicesView },
+      { key: 'receipts', tabEl: E.receiptsTab, viewEl: E.receiptsView },
+      { key: 'lifecycleAnalytics', tabEl: E.lifecycleAnalyticsTab, viewEl: E.lifecycleAnalyticsView },
+      { key: 'clients', tabEl: E.clientsTab, viewEl: E.clientsView },
+      { key: 'proposalCatalog', tabEl: E.proposalCatalogTab, viewEl: E.proposalCatalogView },
+      { key: 'notifications', tabEl: E.notificationsTab, viewEl: E.notificationsView },
+      { key: 'workflow', tabEl: E.workflowTab, viewEl: E.workflowView },
+      { key: 'users', tabEl: E.usersTab, viewEl: E.usersView },
+      { key: 'roles', tabEl: E.rolesTab, viewEl: E.rolesView },
+      { key: 'rolePermissions', tabEl: E.rolePermissionsTab, viewEl: E.rolePermissionsView }
+    ];
+  },
   toast(msg, ms = 3500) {
     if (!E.toast) return;
     const normalizedMsg = String(msg ?? '')
@@ -935,7 +959,7 @@ const UI = {
     if (E.aiAnalyzing) E.aiAnalyzing.style.display = v ? 'block' : 'none';
   },
   applyRolePermissions() {
-    const role = Session.role() || 'guest';
+    const role = Session.role() || Session.authContext?.().profile?.role_key || 'guest';
     const displayName = Session.displayName() || Session.username() || 'guest';
     const canUseInternalIssueFilters = Permissions.canUseInternalIssueFilters();
     const canManageFreezeWindows = Permissions.canManageFreezeWindows();
@@ -951,42 +975,45 @@ const UI = {
 
     if (E.currentUserChip) E.currentUserChip.textContent = `User: ${displayName}`;
     if (E.currentRoleChip) E.currentRoleChip.textContent = `Role: ${role}`;
-    const tabAccessRules = [
-      { key: 'csm', tabEl: E.csmTab, viewEl: E.csmView },
-      { key: 'leads', tabEl: E.leadsTab, viewEl: E.leadsView },
-      { key: 'deals', tabEl: E.dealsTab, viewEl: E.dealsView },
-      { key: 'proposals', tabEl: E.proposalsTab, viewEl: E.proposalsView },
-      { key: 'agreements', tabEl: E.agreementsTab, viewEl: E.agreementsView },
-      { key: 'operationsOnboarding', tabEl: E.operationsOnboardingTab, viewEl: E.operationsOnboardingView, forceAllowed: Permissions.canViewOperationsOnboarding() },
-      { key: 'technicalAdmin', tabEl: E.technicalAdminTab, viewEl: E.technicalAdminView, forceAllowed: Permissions.canViewTechnicalAdmin() },
-      { key: 'invoices', tabEl: E.invoicesTab, viewEl: E.invoicesView },
-      { key: 'receipts', tabEl: E.receiptsTab, viewEl: E.receiptsView },
-      { key: 'lifecycleAnalytics', tabEl: E.lifecycleAnalyticsTab, viewEl: E.lifecycleAnalyticsView },
-      { key: 'clients', tabEl: E.clientsTab, viewEl: E.clientsView },
-      { key: 'proposalCatalog', tabEl: E.proposalCatalogTab, viewEl: E.proposalCatalogView },
-      { key: 'notifications', tabEl: E.notificationsTab, viewEl: E.notificationsView },
-      { key: 'users', tabEl: E.usersTab, viewEl: E.usersView, forceAllowed: Permissions.canManageUsers() },
-      { key: 'roles', tabEl: E.rolesTab, viewEl: E.rolesView, forceAllowed: Permissions.canManageRolesPermissions() },
-      { key: 'rolePermissions', tabEl: E.rolePermissionsTab, viewEl: E.rolePermissionsView, forceAllowed: Permissions.canManageRolesPermissions() },
-      { key: 'workflow', tabEl: E.workflowTab, viewEl: E.workflowView, forceAllowed: Permissions.canManageWorkflow() },
-      {
-        key: 'calendar',
-        tabEl: E.calendarTab,
-        viewEl: E.calendarView
-      },
-      {
-        key: 'insights',
-        tabEl: E.insightsTab,
-        viewEl: E.insightsView
+    const tabRegistry = this.tabRegistry();
+    console.info(
+      '[Tabs] full registry before filtering',
+      tabRegistry.map(rule => ({
+        key: rule.key,
+        tabFound: Boolean(rule.tabEl),
+        viewFound: Boolean(rule.viewEl),
+        currentDisplay: rule.tabEl?.style?.display ?? null
+      }))
+    );
+    console.info('[Tabs] role used for filtering', { role });
+    const visibleTabs = [];
+    tabRegistry.forEach(rule => {
+      let allowed = true;
+      try {
+        if (!rule.alwaysVisible) {
+          if (rule.key === 'operationsOnboarding') {
+            allowed = Permissions.canViewOperationsOnboarding();
+          } else if (rule.key === 'technicalAdmin') {
+            allowed = Permissions.canViewTechnicalAdmin();
+          } else if (rule.key === 'users') {
+            allowed = Permissions.canManageUsers();
+          } else if (rule.key === 'roles' || rule.key === 'rolePermissions') {
+            allowed = Permissions.canManageRolesPermissions();
+          } else if (rule.key === 'workflow') {
+            allowed = Permissions.canManageWorkflow();
+          } else {
+            allowed = Permissions.canAccessTab(rule.key);
+          }
+        }
+      } catch (error) {
+        console.error(`[Tabs] permission check failed for "${rule.key}"`, error);
+        allowed = rule.alwaysVisible || rule.key === 'issues';
       }
-    ];
-    tabAccessRules.forEach(rule => {
-      const allowed = typeof rule.forceAllowed === 'boolean' ? rule.forceAllowed : Permissions.canAccessTab(rule.key);
       if (rule.tabEl) rule.tabEl.style.display = allowed ? '' : 'none';
-      if (!allowed && rule.viewEl?.classList.contains('active')) {
-        setActiveView('issues');
-      }
+      if (allowed) visibleTabs.push(rule.key);
+      if (!allowed && rule.viewEl?.classList.contains('active')) setActiveView('issues');
     });
+    console.info('[Tabs] final visible tabs after filtering', visibleTabs);
     if (E.addEventBtn) E.addEventBtn.style.display = Permissions.canManageEvents() ? '' : 'none';
     if (E.freezeManageBtn) E.freezeManageBtn.style.display = canManageFreezeWindows ? '' : 'none';
     if (E.freezeManageBtnSecondary) E.freezeManageBtnSecondary.style.display = canManageFreezeWindows ? '' : 'none';
