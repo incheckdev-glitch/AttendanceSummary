@@ -127,31 +127,15 @@ const Session = {
   },
 
   async restore() {
-    const client = SupabaseClient.getClient();
-    const { data: sessionData, error: sessionError } = await client.auth.getSession();
-    if (sessionError) throw new Error(sessionError.message || 'Unable to restore session.');
-    const session = sessionData?.session || null;
-    if (!session) {
-      this.clearClientSession({ clearRoleCache: false });
-      return false;
-    }
-
-    const { data: userData, error: userError } = await client.auth.getUser();
-    if (userError && !session?.user) throw new Error(userError.message || 'Unable to restore user.');
-    const authUser = userData?.user || session?.user || null;
-    if (!authUser?.id) {
-      this.clearClientSession({ clearRoleCache: false });
-      return false;
-    }
-
-    const profile = await this.fetchProfile(authUser.id);
-    this.applyState(this.buildState(authUser, session, profile), { clearRoleCacheOnChange: false });
-    this.ensureReactiveAuthState();
+    // Temporary rollback for 9E startup restore:
+    // Keep manual login as the source of truth and avoid startup auto-lock side effects.
     return true;
   },
 
   async validateSession() {
-    return this.restore();
+    // Temporary rollback for 9E startup validation:
+    // Be harmless and do not clear/override state outside explicit login/logout flows.
+    return this.isAuthenticated();
   },
 
   logout({ preserveCache = true } = {}) {
@@ -166,21 +150,9 @@ const Session = {
   },
 
   ensureReactiveAuthState() {
-    if (this.authSubscription) return;
-    const client = SupabaseClient.getClient();
-    const subscription = client.auth.onAuthStateChange(async (_event, session) => {
-      if (!session?.user) {
-        this.clearClientSession({ clearRoleCache: false });
-        return;
-      }
-      try {
-        const profile = await this.fetchProfile(session.user.id);
-        this.applyState(this.buildState(session.user, session, profile), { clearRoleCacheOnChange: false });
-      } catch (error) {
-        console.warn('Auth state change profile fetch failed', error);
-      }
-    });
-    this.authSubscription = subscription?.data?.subscription || null;
+    // Temporary rollback for 9E reactive auth gate.
+    // Disable auto re-lock/clear behavior until startup/login flow is stabilized.
+    return;
   },
 
   user() {
