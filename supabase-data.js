@@ -22,20 +22,23 @@
   const TICKET_INTERNAL_FIELDS = ['youtrack_reference', 'dev_team_status', 'issue_related', 'notes'];
   const TICKET_PUBLIC_COLUMNS = new Set([
     'ticket_id',
+    'date_submitted',
     'name',
     'department',
+    'business_priority',
     'module',
+    'link',
+    'email_addressee',
+    'category',
     'title',
     'description',
-    'category',
     'priority',
-    'status',
-    'email_addressee',
-    'file',
     'notification_sent',
-    'notification_under_review',
+    'notification_sent_under_review',
+    'created_by',
+    'updated_by',
+    'status',
     'log',
-    'date_submitted'
   ]);
 
   const devLog = (...args) => {
@@ -71,12 +74,26 @@
       out.category = out.category ?? out.type ?? '';
       out.emailAddressee = out.emailAddressee ?? out.email_addressee ?? out.email ?? '';
       out.email_addressee = out.email_addressee ?? out.emailAddressee ?? out.email ?? '';
+      out.link = out.link ?? out.file ?? '';
+      out.file = out.file ?? out.link ?? '';
       out.notificationSent = out.notificationSent ?? out.notification_sent ?? '';
       out.notification_sent = out.notification_sent ?? out.notificationSent ?? '';
       out.notificationUnderReview =
-        out.notificationUnderReview ?? out.notification_under_review ?? out.notificationSentUnderReview ?? '';
+        out.notificationUnderReview ??
+        out.notification_sent_under_review ??
+        out.notification_under_review ??
+        out.notificationSentUnderReview ??
+        '';
+      out.notification_sent_under_review =
+        out.notification_sent_under_review ??
+        out.notificationUnderReview ??
+        out.notification_under_review ??
+        out.notificationSentUnderReview ??
+        '';
       out.notification_under_review =
-        out.notification_under_review ?? out.notificationUnderReview ?? out.notificationSentUnderReview ?? '';
+        out.notification_under_review ?? out.notification_sent_under_review ?? out.notificationUnderReview ?? '';
+      out.business_priority = out.business_priority ?? out.businessPriority ?? '';
+      out.businessPriority = out.businessPriority ?? out.business_priority ?? '';
       out.youtrackReference = out.youtrackReference ?? out.youtrack_reference ?? '';
       out.youtrack_reference = out.youtrack_reference ?? out.youtrackReference ?? '';
       out.devTeamStatus = out.devTeamStatus ?? out.dev_team_status ?? '';
@@ -116,28 +133,51 @@
     return sanitized;
   }
 
-  function toTicketPublicRecord(row = {}, { includeTicketId = true } = {}) {
+  function isBlankValue(value) {
+    return value === undefined || value === null || (typeof value === 'string' && value.trim() === '');
+  }
+
+  async function getCurrentUserId(client) {
+    try {
+      const { data, error } = await client.auth.getUser();
+      if (error) return '';
+      return String(data?.user?.id || '').trim();
+    } catch {
+      return '';
+    }
+  }
+
+  function generateTicketId() {
+    return `TK-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+  }
+
+  function toTicketPublicRecord(row = {}, { includeTicketId = true, userId = '' } = {}) {
     const candidateTicketId = firstDefined(row, ['ticket_id', 'id']);
+    const nowIso = new Date().toISOString();
     const mapped = compactObject({
-      ticket_id: includeTicketId ? candidateTicketId : undefined,
+      ticket_id: includeTicketId ? (isBlankValue(candidateTicketId) ? generateTicketId() : candidateTicketId) : undefined,
+      date_submitted: firstDefined(row, ['date_submitted', 'date', 'timestamp', 'created_at']) || nowIso,
       name: firstDefined(row, ['name']),
       department: firstDefined(row, ['department']),
+      business_priority: firstDefined(row, ['business_priority', 'businessPriority']),
       module: firstDefined(row, ['module', 'impactedModule', 'impacted_module', 'impacted module']),
+      link: firstDefined(row, ['link', 'file', 'fileUpload', 'file_upload']),
+      email_addressee: firstDefined(row, ['email_addressee', 'emailAddressee', 'email']),
+      category: firstDefined(row, ['category', 'type', 'issueType', 'issue_type']),
       title: firstDefined(row, ['title']),
       description: firstDefined(row, ['description', 'desc']),
-      category: firstDefined(row, ['category', 'type', 'issueType', 'issue_type']),
       priority: firstDefined(row, ['priority']),
-      status: firstDefined(row, ['status']),
-      email_addressee: firstDefined(row, ['email_addressee', 'emailAddressee', 'email']),
-      file: firstDefined(row, ['file', 'link', 'fileUpload', 'file_upload']),
+      status: firstDefined(row, ['status']) || 'new',
       notification_sent: firstDefined(row, ['notification_sent', 'notificationSent']),
-      notification_under_review: firstDefined(row, [
+      notification_sent_under_review: firstDefined(row, [
+        'notification_sent_under_review',
         'notification_under_review',
         'notificationUnderReview',
         'notificationSentUnderReview'
       ]),
       log: firstDefined(row, ['log']),
-      date_submitted: firstDefined(row, ['date_submitted', 'date', 'timestamp', 'created_at'])
+      created_by: firstDefined(row, ['created_by', 'createdBy']) || userId || undefined,
+      updated_by: firstDefined(row, ['updated_by', 'updatedBy']) || userId || undefined
     });
 
     return sanitizeForInsertOrUpdate(mapped);
@@ -402,10 +442,18 @@
       const raw = payload[resource.slice(0, -1)] || payload.item || payload.activity || payload[resource] || payload;
       const record = raw && typeof raw === 'object' ? { ...raw } : {};
       delete record.resource; delete record.action; delete record.authToken;
+      if (resource === 'tickets') devLog('[tickets/create] raw form data', record);
+      const currentUserId = resource === 'tickets' ? await getCurrentUserId(client) : '';
       const createRecord =
         resource === 'tickets'
-          ? toTicketPublicRecord(stripTicketInternalFields(record), { includeTicketId: true })
+          ? toTicketPublicRecord(stripTicketInternalFields(record), { includeTicketId: true, userId: currentUserId })
           : record;
+      if (resource === 'tickets') {
+        devLog('[tickets/create] normalized payload', createRecord);
+        if (!Object.keys(createRecord).length) {
+          throw new Error('Ticket create payload is empty after normalization.');
+        }
+      }
       const { data, error } = await client.from(table).insert(createRecord).select('*').single();
       if (error) throw friendlyError(`Unable to create ${resource} record`, error);
       const created = normalizeRow(resource, data);
