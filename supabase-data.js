@@ -447,6 +447,7 @@
       const record = raw && typeof raw === 'object' ? { ...raw } : {};
       delete record.resource; delete record.action; delete record.authToken;
       if (resource === 'tickets') devLog('[tickets/create] raw form data', record);
+      if (resource === 'events' && !isAdminDev()) throw new Error('Only admin/dev can create events.');
       const currentUserId = resource === 'tickets' ? await getCurrentUserId(client) : '';
       const createRecord =
         resource === 'tickets'

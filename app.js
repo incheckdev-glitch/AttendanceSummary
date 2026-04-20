@@ -2760,68 +2760,9 @@ async function loadEvents(force = false, options = {}) {
     UI.setSync('events', true, new Date());
   }
 
-  if (!CONFIG.CALENDAR_API_URL) return;
-
   try {
     UI.spinner(true);
-    const data = await Api.postAuthenticated(
-      'events',
-      'list',
-      {
-        sheetName: CONFIG.CALENDAR_SHEET_NAME,
-        tabName: CONFIG.CALENDAR_SHEET_NAME
-      },
-      { requireAuth: true }
-    );
-
-    const events = extractEventsPayload(data);
-
-    const normalized = events.map(ev => {
-      const modulesArr = Array.isArray(ev.modules)
-        ? ev.modules
-        : typeof getEventField(ev, ['modules', 'module']) === 'string'
-        ? getEventField(ev, ['modules', 'module'])
-            .split(/[,\n;|]/)
-            .map(s => s.trim())
-            .filter(Boolean)
-        : [];
-      let readiness =
-        getEventField(ev, ['readiness', 'checklist', 'readinessChecklist']) || {};
-      if (typeof readiness === 'string') {
-        try {
-          readiness = JSON.parse(readiness);
-        } catch {
-          readiness = {};
-        }
-      }
-      return {
-        id:
-          getEventField(ev, ['id', 'eventId', 'event_id']) ||
-          'ev_' + Date.now() + '_' + Math.random().toString(36).slice(2),
-        title: getEventField(ev, ['title', 'eventTitle', 'name']) || '',
-        type: getEventField(ev, ['type', 'eventType']) || 'Other',
-        start: normalizeEventDate(
-          getEventField(ev, ['start', 'startDate', 'start date', 'date']) || ''
-        ),
-        end: normalizeEventDate(
-          getEventField(ev, ['end', 'endDate', 'end date', 'finish']) || ''
-        ),
-        allDay: parseBoolean(getEventField(ev, ['allDay', 'all_day', 'all day'])),
-        description: getEventField(ev, ['description', 'notes']) || '',
-        issueId: getEventField(ev, ['issueId', 'issue_id', 'ticketId']) || '',
-        env: getEventField(ev, ['env', 'environment']) || 'Prod',
-        status: getEventField(ev, ['status']) || 'Planned',
-        owner: getEventField(ev, ['owner']) || '',
-        modules: modulesArr,
-        impactType:
-          getEventField(ev, ['impactType', 'impact', 'impact type']) ||
-          'No downtime expected',
-        notificationStatus:
-          getEventField(ev, ['notificationStatus', 'notification_status']) || '',
-        readiness: readiness && typeof readiness === 'object' ? readiness : {},
-        checklist: readiness && typeof readiness === 'object' ? readiness : {}
-      };
-    }).filter(ev => ev.start);
+    const normalized = (await EventsService.listEvents()).filter(ev => ev.start);
 
     DataStore.events = normalized;
     saveEventsCache();
@@ -2844,13 +2785,14 @@ async function loadEvents(force = false, options = {}) {
     UI.setSync('events', !!DataStore.events.length, null);
     UI.toast(
       DataStore.events.length
-        ? 'Using cached events (API error)'
+        ? 'Using cached events (Supabase error)'
         : 'Unable to load calendar events: ' + errMsg
     );
   } finally {
     UI.spinner(false);
   }
 }
+
 
 function parseApiJson(text, sourceName = 'API') {
   if (!text || !String(text).trim()) return {};
@@ -3165,89 +3107,29 @@ async function saveIssueToSheet(issue, auth = {}, options = {}) {
 async function saveEventToSheet(event, auth = {}) {
   UI.spinner(true);
   try {
-    // Ensure we always have a clean ID
-    const evId =
-      event.id && String(event.id).trim()
-        ? String(event.id).trim()
-        : 'ev_' + Date.now() + '_' + Math.random().toString(36).slice(2);
-
-    // Normalize modules into an array of strings
-    const modulesArr = Array.isArray(event.modules)
-      ? event.modules
-      : typeof event.modules === 'string'
-      ? event.modules
-          .split(',')
-          .map(s => s.trim())
-          .filter(Boolean)
-      : [];
-
-    // Canonical payload with all fields expected by backend proxy
-    const payload = {
-      id: evId,
-      title: event.title || '',
-      type: event.type || 'Deployment',
-
-      env: event.env || event.environment || 'Prod',
-      status: event.status || 'Planned',
-      owner: event.owner || '',
-      modules: modulesArr,
-      impactType: event.impactType || event.impact || 'No downtime expected',
-      issueId: event.issueId || '',
-
-      start: event.start || '',
-      end: event.end || '',
-      description: event.description || '',
-
-      notificationStatus: event.notificationStatus || '',
-     allDay: !!event.allDay,
-      readiness: event.readiness || event.checklist || {},
-      checklist: event.checklist || event.readiness || {}
-    };
-
-     console.log('[Ticketing Dashboard] sending event payload to backend proxy:', payload);
-
-    const data = await Api.postAuthenticated('events', 'save', {
-      authToken: auth.authToken || getCurrentAuthToken(),
-      sheetName: CONFIG.CALENDAR_SHEET_NAME,
-      tabName: CONFIG.CALENDAR_SHEET_NAME,
-      event: payload
-    });
-    if (data) {
-      UI.toast('Event saved');
-      const savedEvent = data.event || data || payload;
-      if (!savedEvent.notificationStatus && payload.notificationStatus) {
-        savedEvent.notificationStatus = payload.notificationStatus;
-      }
-      if (!savedEvent.readiness && payload.readiness) {
-        savedEvent.readiness = payload.readiness;
-      }
-         if (!savedEvent.checklist && payload.checklist) {
-        savedEvent.checklist = payload.checklist;
-      }
-      return savedEvent;
-    }
-    return null;
+    const hasId = event.id && String(event.id).trim();
+    const savedEvent = hasId
+      ? await EventsService.updateEvent(event.id, event)
+      : await EventsService.createEvent(event);
+    UI.toast('Event saved');
+    return savedEvent;
   } catch (e) {
     if (isAuthError(e)) {
       await handleExpiredSession('Session expired while saving event.');
       return null;
     }
-    UI.toast('Network error saving event: ' + e.message);
+    UI.toast('Error saving event: ' + e.message);
     return null;
   } finally {
     UI.spinner(false);
   }
 }
 
+
 async function deleteEventFromSheet(id, auth = {}) {
   UI.spinner(true);
   try {
-    await Api.postAuthenticated('events', 'delete', {
-      authToken: auth.authToken || getCurrentAuthToken(),
-      sheetName: CONFIG.CALENDAR_SHEET_NAME,
-      tabName: CONFIG.CALENDAR_SHEET_NAME,
-      id
-    });
+    await EventsService.deleteEvent(id);
     UI.toast('Event deleted');
     return true;
   } catch (e) {
@@ -3261,6 +3143,7 @@ async function deleteEventFromSheet(id, auth = {}) {
     UI.spinner(false);
   }
 }
+
 
 /* ---------- Excel export ---------- */
 function buildIssueExportRow(issue) {
