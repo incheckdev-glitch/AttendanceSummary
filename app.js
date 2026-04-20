@@ -3007,7 +3007,7 @@ function buildTicketListFiltersPayload() {
   return payload;
 }
 
-/* ---------- Save/Delete via backend proxy ---------- */
+/* ---------- Ticket/Event persistence ---------- */
 function normalizeIssueForStore(issue, options = {}) {
   const includeRestricted =
     options.includeRestrictedFields !== undefined
@@ -3039,149 +3039,107 @@ function normalizeIssueForStore(issue, options = {}) {
   return normalized;
 }
 
-function buildIssueIdCandidates(id) {
-  const raw = String(id || '').trim();
-  if (!raw) return [];
-  const candidates = new Set([raw]);
+function buildPublicTicketUpdatePayload(payload = {}) {
+  const publicPayload = {};
+  const assignIfDefined = (key, value) => {
+    if (value === undefined || value === null) return;
+    publicPayload[key] = value;
+  };
 
-  // Some Google Sheet exports preserve a leading apostrophe for text IDs (e.g. "'12345").
-  const withoutLeadingQuote = raw.replace(/^'+/, '').trim();
-  if (withoutLeadingQuote) candidates.add(withoutLeadingQuote);
+  assignIfDefined('date_submitted', payload.date);
+  assignIfDefined('name', payload.name);
+  assignIfDefined('department', payload.department);
+  assignIfDefined('module', payload.module);
+  assignIfDefined('title', payload.title);
+  assignIfDefined('description', payload.desc);
+  assignIfDefined('link', payload.file);
+  assignIfDefined('email_addressee', payload.emailAddressee);
+  assignIfDefined('notification_sent', payload.notificationSent);
+  assignIfDefined('notification_sent_under_review', payload.notificationUnderReview);
+  assignIfDefined('priority', payload.priority);
+  assignIfDefined('status', payload.status);
+  assignIfDefined('category', payload.type);
+  assignIfDefined('log', payload.log);
 
-  // Preserve compatibility for handlers that normalize casing internally.
-  candidates.add(raw.toUpperCase());
-  candidates.add(raw.toLowerCase());
-
-  return Array.from(candidates).filter(Boolean);
+  return publicPayload;
 }
 
-function buildIssueUpdateFields(payload, candidateId) {
-  const fields = {
-    id: candidateId,
-    ticket_id: candidateId,
-    title: payload.title,
-    description: payload.desc,
-    desc: payload.desc,
-    module: payload.module,
-    impactedModule: payload.module,
-    'impacted module': payload.module,
-    priority: payload.priority,
-    status: payload.status,
-    category: payload.type,
-    issueType: payload.type,
-    type: payload.type,
-    log: payload.log,
-    date: payload.date,
-    file: payload.file,
-    link: payload.file,
-    fileUpload: payload.file,
-    'file upload': payload.file,
-    department: payload.department,
-    name: payload.name,
-    emailAddressee: payload.emailAddressee,
-    email: payload.emailAddressee,
-    'email addressee': payload.emailAddressee,
-    notificationSent: payload.notificationSent,
-    'notification sent': payload.notificationSent,
-    notificationUnderReview: payload.notificationUnderReview,
-    notificationSentUnderReview: payload.notificationUnderReview,
-    'notification sent under review': payload.notificationUnderReview,
-    youtrackReference: payload.youtrackReference,
-    youTrackReference: payload.youtrackReference,
-    youtrack_reference: payload.youtrackReference,
-    'youtrack reference': payload.youtrackReference,
-    'YouTrack Reference': payload.youtrackReference,
-    devTeamStatus: payload.devTeamStatus,
-    dev_team_status: payload.devTeamStatus,
-    'dev team status': payload.devTeamStatus,
-    'Dev Team Status': payload.devTeamStatus,
-    issueRelated: payload.issueRelated,
-    issue_related: payload.issueRelated,
-    'issue related': payload.issueRelated,
-    'Issue Related': payload.issueRelated,
-    notes: payload.notes
+function buildTicketInternalUpdatePayload(payload = {}, ticketId = '') {
+  const internalPayload = {
+    ticket_id: String(ticketId || '').trim(),
+    youtrack_reference: payload.youtrackReference ?? '',
+    dev_team_status: payload.devTeamStatus ?? '',
+    issue_related: payload.issueRelated ?? '',
+    notes: payload.notes ?? ''
   };
-  if (!Permissions.isAdminLike()) {
-    RESTRICTED_VIEWER_FIELDS.forEach(field => {
-      delete fields[field];
-    });
-    delete fields.youTrackReference;
-    delete fields.youtrack_reference;
-    delete fields['youtrack reference'];
-    delete fields['YouTrack Reference'];
-    delete fields.dev_team_status;
-    delete fields['dev team status'];
-    delete fields['Dev Team Status'];
-    delete fields.issue_related;
-    delete fields['issue related'];
-    delete fields['Issue Related'];
-  }
-  return fields;
+  return internalPayload.ticket_id ? internalPayload : null;
 }
 
 async function saveIssueToSheet(issue, auth = {}, options = {}) {
-  if (!CONFIG.ISSUE_API_URL) {
-    UI.toast('Issue update endpoint is not configured.');
-    return null;
-  }
-
  const useSpinner = !options.silent;
   if (useSpinner) UI.spinner(true);
   try {
     const payload = normalizeIssueForStore(issue, { includeRestrictedFields: Permissions.isAdminLike() });
-     const issueId = payload.id || issue.id || '';
-    const issueIdCandidates = buildIssueIdCandidates(issueId);
-    if (!issueIdCandidates.length) {
+    const issueId = String(payload.id || issue.id || '').trim();
+    if (!issueId) {
       throw new Error('Missing ticket ID for update.');
     }
-    const compatibilityBodies = issueIdCandidates.flatMap(candidateId => {
-      const updates = buildIssueUpdateFields(payload, candidateId);
-      const updateRequestBody = {
-        id: candidateId,
-        ticket_id: candidateId,
-        key: {
-          id: candidateId,
-          ticket_id: candidateId
-        },
-        updates
-      };
 
-     return [
-        {
-          label: `update payload [id=${candidateId}]`,
-          body: updateRequestBody
-        },
-        {
-          // Legacy backend variants that expect flattened update fields
-          // instead of an "updates" envelope.
-          label: `update payload (flat) [id=${candidateId}]`,
-          body: {
-            id: candidateId,
-            ticket_id: candidateId,
-            key: {
-              id: candidateId,
-              ticket_id: candidateId
-            },
-            ...updateRequestBody.updates
-          }
-        }
-       ];
-    });
-    for (const variant of compatibilityBodies) {
-      try {
-        const result = await Api.postAuthenticated('tickets', 'update', variant.body, {
-          requireAuth: true
-        });
-        UI.toast('Issue updated');
-        const returnedIssue = result?.issue || result || {};
-        // Prefer the just-submitted payload for immediate UI consistency; some
-        // backends may echo a stale row while Google Sheet propagation completes.
-        return normalizeIssueForStore({ ...returnedIssue, ...payload });
-      } catch (error) {
-        if (isAuthError(error)) throw error;
+    const currentRole = String(Session.role?.() || '').toLowerCase();
+    if (!['admin', 'dev'].includes(currentRole)) {
+      throw new Error('Only admin/dev can update tickets.');
+    }
+
+    const client = SupabaseClient.getClient();
+    const publicUpdates = buildPublicTicketUpdatePayload(payload);
+    if (!Object.keys(publicUpdates).length) {
+      throw new Error('Ticket update payload is empty after schema mapping.');
+    }
+
+    const { data: updatedTicket, error: publicError } = await client
+      .from('tickets')
+      .update(publicUpdates)
+      .eq('ticket_id', issueId)
+      .select('*')
+      .single();
+    if (publicError) throw publicError;
+
+    let mergedTicket = updatedTicket || {};
+    if (['admin', 'dev'].includes(currentRole)) {
+      const internalUpdates = buildTicketInternalUpdatePayload(payload, issueId);
+      if (internalUpdates) {
+        const { data: internalRow, error: internalError } = await client
+          .from('ticket_internal')
+          .upsert(internalUpdates, { onConflict: 'ticket_id' })
+          .select('*')
+          .single();
+        if (internalError) throw internalError;
+        mergedTicket = {
+          ...mergedTicket,
+          youtrack_reference: internalRow?.youtrack_reference ?? '',
+          dev_team_status: internalRow?.dev_team_status ?? '',
+          issue_related: internalRow?.issue_related ?? '',
+          notes: internalRow?.notes ?? ''
+        };
       }
     }
-    throw new Error('Issue update rejected by backend.');
+
+    UI.toast('Issue updated');
+    return normalizeIssueForStore({
+      ...mergedTicket,
+      date: mergedTicket?.date_submitted ?? payload.date,
+      date_submitted: mergedTicket?.date_submitted ?? payload.date,
+      desc: mergedTicket?.description ?? payload.desc,
+      type: mergedTicket?.category ?? payload.type,
+      file: mergedTicket?.link ?? payload.file,
+      emailAddressee: mergedTicket?.email_addressee ?? payload.emailAddressee,
+      notificationSent: mergedTicket?.notification_sent ?? payload.notificationSent,
+      notificationUnderReview:
+        mergedTicket?.notification_sent_under_review ?? payload.notificationUnderReview,
+      youtrackReference: mergedTicket?.youtrack_reference ?? payload.youtrackReference,
+      devTeamStatus: mergedTicket?.dev_team_status ?? payload.devTeamStatus,
+      issueRelated: mergedTicket?.issue_related ?? payload.issueRelated
+    });
   } catch (e) {
     if (isAuthError(e)) {
       await handleExpiredSession('Session expired while updating ticket.');
