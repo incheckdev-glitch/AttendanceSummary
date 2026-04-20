@@ -19,6 +19,7 @@
 
   const ITEM_TABLES = { proposals: 'proposal_items', agreements: 'agreement_items', invoices: 'invoice_items', receipts: 'receipt_items' };
   const ITEM_FK = { proposals: 'proposal_id', agreements: 'agreement_id', invoices: 'invoice_id', receipts: 'receipt_id' };
+  const TICKET_INTERNAL_FIELDS = ['youtrack_reference', 'dev_team_status', 'issue_related', 'notes'];
 
   const devLog = (...args) => {
     try {
@@ -43,6 +44,54 @@
       if (out[key] !== undefined && out.id === undefined) out.id = out[key];
     }
     return out;
+  }
+
+  function ticketIdFrom(row = {}) {
+    return row.ticket_id || row.id;
+  }
+
+  function toTicketInternalRecord(row = {}) {
+    return {
+      ticket_id: ticketIdFrom(row),
+      youtrack_reference: row.youtrack_reference ?? row.youtrackReference ?? '',
+      dev_team_status: row.dev_team_status ?? row.devTeamStatus ?? '',
+      issue_related: row.issue_related ?? row.issueRelated ?? '',
+      notes: row.notes ?? ''
+    };
+  }
+
+  function mergeTicketInternal(ticket = {}, internal = {}) {
+    if (!internal || typeof internal !== 'object') return normalizeRow('tickets', ticket);
+    const merged = {
+      ...ticket,
+      youtrack_reference: internal.youtrack_reference ?? internal.youtrackReference ?? '',
+      dev_team_status: internal.dev_team_status ?? internal.devTeamStatus ?? '',
+      issue_related: internal.issue_related ?? internal.issueRelated ?? '',
+      notes: internal.notes ?? ''
+    };
+    return normalizeRow('tickets', merged);
+  }
+
+  function stripTicketInternalFields(row = {}) {
+    const clean = { ...(row || {}) };
+    TICKET_INTERNAL_FIELDS.forEach(key => {
+      delete clean[key];
+    });
+    delete clean.youtrackReference;
+    delete clean.devTeamStatus;
+    delete clean.issueRelated;
+    return clean;
+  }
+
+  async function loadTicketInternalByIds(ids = []) {
+    if (!ids.length) return new Map();
+    const client = getClient();
+    const { data: internalRows, error } = await client
+      .from('ticket_internal')
+      .select('*')
+      .in('ticket_id', ids);
+    if (error) throw friendlyError('Unable to load internal ticket fields', error);
+    return new Map((internalRows || []).map(r => [String(r.ticket_id || r.id), r]));
   }
 
   function normalizeList(resource, rows) {
@@ -223,19 +272,7 @@
       const { data: tickets, error } = await query;
       if (error) throw friendlyError('Unable to load tickets', error);
       const normalized = (tickets || []).map(row => normalizeRow(resource, row));
-      if (!isAdminDev()) return { handled: true, data: normalizeList(resource, normalized) };
-      const ids = normalized.map(row => row.ticket_id || row.id).filter(Boolean);
-      if (!ids.length) return { handled: true, data: normalizeList(resource, normalized) };
-      const { data: internalRows, error: internalError } = await client.from('ticket_internal').select('*').in('ticket_id', ids);
-      if (internalError) throw friendlyError('Unable to load internal ticket fields', internalError);
-      const byId = new Map((internalRows || []).map(r => [String(r.ticket_id || r.id), r]));
-      return {
-        handled: true,
-        data: normalizeList(
-          resource,
-          normalized.map(row => ({ ...row, ...(byId.get(String(row.ticket_id || row.id)) || {}) }))
-        )
-      };
+      return { handled: true, data: normalizeList(resource, normalized) };
     }
 
     if (action === 'list') {
@@ -249,6 +286,11 @@
       const key = PK_KEYS[resource][0] || 'id';
       const { data, error } = await client.from(table).select('*').eq(key, id).single();
       if (error) throw friendlyError(`Unable to load ${resource} record`, error);
+      if (resource === 'tickets') {
+        if (!isAdminDev()) return { handled: true, data: normalizeRow(resource, data) };
+        const byId = await loadTicketInternalByIds([String(ticketIdFrom(data) || id)]);
+        return { handled: true, data: mergeTicketInternal(data, byId.get(String(ticketIdFrom(data) || id))) };
+      }
       return { handled: true, data: await withItems(resource, data) };
     }
 
@@ -256,9 +298,23 @@
       const raw = payload[resource.slice(0, -1)] || payload.item || payload.activity || payload[resource] || payload;
       const record = raw && typeof raw === 'object' ? { ...raw } : {};
       delete record.resource; delete record.action; delete record.authToken;
-      const { data, error } = await client.from(table).insert(record).select('*').single();
+      const createRecord = resource === 'tickets' ? stripTicketInternalFields(record) : record;
+      const { data, error } = await client.from(table).insert(createRecord).select('*').single();
       if (error) throw friendlyError(`Unable to create ${resource} record`, error);
       const created = normalizeRow(resource, data);
+      if (resource === 'tickets' && isAdminDev()) {
+        const internalRecord = toTicketInternalRecord(raw || {});
+        internalRecord.ticket_id = ticketIdFrom(created) || internalRecord.ticket_id;
+        if (internalRecord.ticket_id) {
+          const { data: internalData, error: internalError } = await client
+            .from('ticket_internal')
+            .upsert(internalRecord, { onConflict: 'ticket_id' })
+            .select('*')
+            .single();
+          if (internalError) throw friendlyError('Unable to save internal ticket fields', internalError);
+          return { handled: true, data: mergeTicketInternal(created, internalData) };
+        }
+      }
       const items = Array.isArray(payload.items) ? payload.items : [];
       const itemTable = ITEM_TABLES[resource];
       const fk = ITEM_FK[resource];
@@ -280,9 +336,20 @@
       if (resource === 'tickets' && !isAdminDev()) throw new Error('Only admin/dev can update tickets.');
       if (resource === 'events' && !isAdminDev()) throw new Error('Only admin/dev can update events.');
       if (resource === 'csm' && !['admin','hoo'].includes(role())) throw new Error('Only admin/hoo can update CSM activities.');
-
-      const { data, error } = await client.from(table).update(safeUpdates).eq(key, id).select('*').single();
+      const publicUpdates = resource === 'tickets' ? stripTicketInternalFields(safeUpdates) : safeUpdates;
+      const { data, error } = await client.from(table).update(publicUpdates).eq(key, id).select('*').single();
       if (error) throw friendlyError(`Unable to update ${resource} record`, error);
+      if (resource === 'tickets' && isAdminDev()) {
+        const internalUpdates = toTicketInternalRecord(safeUpdates);
+        internalUpdates.ticket_id = String(id);
+        const { data: internalData, error: internalError } = await client
+          .from('ticket_internal')
+          .upsert(internalUpdates, { onConflict: 'ticket_id' })
+          .select('*')
+          .single();
+        if (internalError) throw friendlyError('Unable to save internal ticket fields', internalError);
+        return { handled: true, data: mergeTicketInternal(data, internalData) };
+      }
 
       const itemTable = ITEM_TABLES[resource];
       const fk = ITEM_FK[resource];
@@ -303,6 +370,10 @@
       if (resource === 'tickets' && !isAdminDev()) throw new Error('Only admin/dev can delete tickets.');
       if (resource === 'events' && !isAdminDev()) throw new Error('Only admin/dev can delete events.');
       if (resource === 'csm' && !['admin','hoo'].includes(role())) throw new Error('Only admin/hoo can delete CSM activities.');
+      if (resource === 'tickets' && isAdminDev()) {
+        const { error: internalDeleteError } = await client.from('ticket_internal').delete().eq('ticket_id', id);
+        if (internalDeleteError) throw friendlyError('Unable to delete internal ticket fields', internalDeleteError);
+      }
       const { error } = await client.from(table).delete().eq(key, id);
       if (error) throw friendlyError(`Unable to delete ${resource} record`, error);
       return { handled: true, data: { ok: true } };
