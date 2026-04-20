@@ -429,10 +429,12 @@
     return id;
   }
 
-  function sanitizeProposalRecord(record = {}, { includeCreatedBy = false, userId = '' } = {}) {
+  function sanitizeProposalRecord(record = {}, { includeCreatedBy = false, userId = '', ensureBusinessIds = false } = {}) {
+    const proposalIdSource = firstDefined(record, ['proposal_id', 'proposalId']);
+    const refNumberSource = firstDefined(record, ['ref_number', 'refNumber']);
     const mapped = compactObject({
-      proposal_id: firstDefined(record, ['proposal_id', 'proposalId']),
-      ref_number: firstDefined(record, ['ref_number', 'refNumber']),
+      proposal_id: ensureBusinessIds ? ensureBusinessProposalId(proposalIdSource) : proposalIdSource,
+      ref_number: ensureBusinessIds ? ensureProposalRefNumber(refNumberSource) : refNumberSource,
       deal_id: normalizeNullableUuidValue(firstDefined(record, ['deal_id', 'dealId'])),
       customer_name: firstDefined(record, ['customer_name', 'customerName']),
       customer_address: firstDefined(record, ['customer_address', 'customerAddress']),
@@ -517,6 +519,40 @@
 
   function generateTicketId() {
     return `TK-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+  }
+
+  function generateBusinessProposalId() {
+    const date = new Date();
+    const stamp = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(
+      date.getDate()
+    ).padStart(2, '0')}`;
+    const suffix = Math.floor(Math.random() * 1000000)
+      .toString()
+      .padStart(6, '0');
+    return `PR-${stamp}-${suffix}`;
+  }
+
+  function ensureBusinessProposalId(value = '') {
+    const trimmed = String(value ?? '').trim();
+    return trimmed || generateBusinessProposalId();
+  }
+
+  function generateProposalRefNumber() {
+    return `${Date.now()}${Math.floor(Math.random() * 1000)
+      .toString()
+      .padStart(3, '0')}`;
+  }
+
+  function sanitizeProposalRefNumber(value = '') {
+    const raw = String(value ?? '').trim();
+    if (!raw) return '';
+    if (/^\d+(?:\.0+)?$/.test(raw)) return raw.split('.')[0];
+    return raw.replace(/\D+/g, '');
+  }
+
+  function ensureProposalRefNumber(value = '') {
+    const sanitized = sanitizeProposalRefNumber(value);
+    return sanitized || generateProposalRefNumber();
   }
 
   function toTicketPublicRecord(row = {}, { includeTicketId = true, userId = '' } = {}) {
@@ -804,7 +840,37 @@
       if (!dealUuid) throw new Error('Deal UUID is required to create proposal from deal.');
       const { data, error } = await client.rpc('create_proposal_from_deal', { p_deal_uuid: dealUuid });
       if (error) throw friendlyError('Proposal creation from deal failed', error);
-      return data;
+      const candidateUuid = String(
+        data?.id ||
+        data?.proposal_uuid ||
+        data?.proposal_id_uuid ||
+        data?.created_proposal_uuid ||
+        data?.created_uuid ||
+        ''
+      ).trim();
+      if (!isUuid(candidateUuid)) return data;
+
+      const { data: createdProposal, error: getProposalError } = await client
+        .from('proposals')
+        .select('*')
+        .eq('id', candidateUuid)
+        .maybeSingle();
+      if (getProposalError || !createdProposal) return data;
+
+      const ensuredProposalId = ensureBusinessProposalId(createdProposal.proposal_id);
+      const ensuredRefNumber = ensureProposalRefNumber(createdProposal.ref_number);
+      const hasProposalId = String(createdProposal.proposal_id || '').trim();
+      const hasRefNumber = String(createdProposal.ref_number || '').trim();
+      if (hasProposalId && hasRefNumber) return createdProposal;
+
+      const { data: updatedProposal, error: updateError } = await client
+        .from('proposals')
+        .update({ proposal_id: ensuredProposalId, ref_number: ensuredRefNumber })
+        .eq('id', candidateUuid)
+        .select('*')
+        .maybeSingle();
+      if (updateError) throw friendlyError('Unable to finalize proposal business identifiers', updateError);
+      return updatedProposal || createdProposal;
     }
     if (resource === 'agreements' && action === 'create_from_proposal') {
       const { data, error } = await client.rpc('create_agreement_from_proposal', { proposal_uuid: payload.proposal_id || payload.id });
@@ -908,7 +974,7 @@
             : resource === 'proposal_catalog'
               ? sanitizeProposalCatalogRecord(record, { includeCreatedBy: true, userId: currentUserId })
             : resource === 'proposals'
-              ? sanitizeProposalRecord(record, { includeCreatedBy: true, userId: currentUserId })
+              ? sanitizeProposalRecord(record, { includeCreatedBy: true, userId: currentUserId, ensureBusinessIds: true })
             : record;
       if (resource === 'events') {
         EVENT_LEGACY_FIELDS.forEach(field => { delete createRecord[field]; });
