@@ -94,7 +94,9 @@ const Agreements = {
   markProposalAsConvertedToAgreement(proposalId, agreementId = '') {
     const id = String(proposalId || '').trim();
     if (!id || !window.Proposals?.state?.rows) return;
-    const proposal = window.Proposals.state.rows.find(row => String(row?.proposal_id || '').trim() === id);
+    const proposal = window.Proposals.state.rows.find(row =>
+      String(row?.id || '').trim() === id || String(row?.proposal_id || '').trim() === id
+    );
     if (!proposal) return;
     window.Proposals.upsertLocalRow?.({
       ...proposal,
@@ -225,6 +227,117 @@ const Agreements = {
   ensureAccountNumber(value = '') {
     const trimmed = String(value || '').trim();
     return trimmed || this.generateAccountNumber();
+  },
+  generateAgreementBusinessId() {
+    const now = new Date();
+    const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+    const suffix = Math.floor(Math.random() * 1000000).toString().padStart(6, '0');
+    return `AG-${stamp}-${suffix}`;
+  },
+  generateAgreementNumber() {
+    const now = new Date();
+    const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+    const suffix = Math.floor(Math.random() * 1000000).toString().padStart(6, '0');
+    return `AGR-${stamp}-${suffix}`;
+  },
+  ensureAgreementBusinessIdentifiers(agreement = {}) {
+    const next = agreement && typeof agreement === 'object' ? { ...agreement } : {};
+    next.agreement_id = String(next.agreement_id || '').trim() || this.generateAgreementBusinessId();
+    next.agreement_number = String(next.agreement_number || '').trim() || this.generateAgreementNumber();
+    return next;
+  },
+  generateAgreementItemId() {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+    return `agr-item-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  },
+  hydrateItemIdsForSave(items = [], { isCreate = false } = {}) {
+    return (Array.isArray(items) ? items : []).map((item, index) => {
+      const normalized = this.normalizeItem({ ...item, line_no: index + 1 }, item?.section || '');
+      const next = { ...normalized, line_no: index + 1 };
+      if (isCreate || !String(next.item_id || '').trim()) {
+        next.item_id = this.generateAgreementItemId();
+      }
+      return next;
+    });
+  },
+  mapProposalItemToAgreementDraftItem(item = {}, index = 0) {
+    const source = item && typeof item === 'object' ? item : {};
+    const section = String(source.section || source.item_section || source.type || 'annual_saas').trim().toLowerCase() || 'annual_saas';
+    return this.normalizeItem(
+      {
+        section,
+        line_no: Number(source.line_no || index + 1) || index + 1,
+        location_name: source.location_name || source.locationName || '',
+        location_address: source.location_address || source.locationAddress || '',
+        service_start_date: source.service_start_date || source.serviceStartDate || '',
+        service_end_date: source.service_end_date || source.serviceEndDate || '',
+        item_name: source.item_name || source.itemName || source.name || '',
+        unit_price: source.unit_price ?? source.unitPrice ?? 0,
+        discount_percent: source.discount_percent ?? source.discountPercent ?? 0,
+        discounted_unit_price: source.discounted_unit_price ?? source.discountedUnitPrice ?? 0,
+        quantity: source.quantity ?? source.qty ?? 0,
+        line_total: source.line_total ?? source.lineTotal ?? 0,
+        capability_name: source.capability_name || source.capabilityName || '',
+        capability_value: source.capability_value || source.capabilityValue || '',
+        notes: source.notes || ''
+      },
+      section
+    );
+  },
+  buildDraftAgreementFromProposal(proposal = {}, proposalItems = []) {
+    const source = proposal && typeof proposal === 'object' ? proposal : {};
+    const proposalUuid = String(source.id || source.proposal_uuid || '').trim();
+    const draft = this.normalizeAgreement({
+      ...this.emptyAgreement(),
+      proposal_id: proposalUuid,
+      deal_id: String(source.deal_id || source.dealId || '').trim(),
+      lead_id: String(source.lead_id || source.leadId || '').trim(),
+      agreement_title: String(source.proposal_title || source.title || '').trim(),
+      agreement_date: String(source.proposal_date || '').trim(),
+      effective_date: String(source.proposal_date || '').trim(),
+      service_start_date: String(source.service_start_date || source.serviceStartDate || '').trim(),
+      agreement_length: String(source.contract_term || source.agreement_length || source.agreementLength || '').trim(),
+      account_number: this.ensureAccountNumber(source.account_number || source.accountNumber || ''),
+      billing_frequency: String(source.billing_frequency || source.billingFrequency || '').trim(),
+      payment_term: String(source.payment_term || source.paymentTerm || '').trim(),
+      po_number: String(source.po_number || source.poNumber || '').trim(),
+      currency: String(source.currency || '').trim(),
+      customer_name: String(source.customer_name || source.customerName || '').trim(),
+      customer_legal_name: String(source.customer_legal_name || source.customerLegalName || source.customer_name || '').trim(),
+      customer_address: String(source.customer_address || source.customerAddress || '').trim(),
+      customer_contact_name: String(source.customer_contact_name || source.customerContactName || '').trim(),
+      customer_contact_mobile: String(source.customer_contact_mobile || source.customerContactMobile || '').trim(),
+      customer_contact_email: String(source.customer_contact_email || source.customerContactEmail || '').trim(),
+      provider_name: String(source.provider_name || source.providerName || '').trim(),
+      provider_legal_name: String(source.provider_legal_name || source.providerLegalName || '').trim(),
+      provider_address: String(source.provider_address || source.providerAddress || '').trim(),
+      provider_contact_name: String(source.provider_contact_name || source.providerContactName || '').trim(),
+      provider_contact_mobile: String(source.provider_contact_mobile || source.providerContactMobile || '').trim(),
+      provider_contact_email: String(source.provider_contact_email || source.providerContactEmail || '').trim(),
+      terms_conditions: String(source.terms_conditions || source.termsConditions || '').trim(),
+      customer_signatory_name: String(source.customer_signatory_name || source.customerSignatoryName || '').trim(),
+      customer_signatory_title: String(source.customer_signatory_title || source.customerSignatoryTitle || '').trim(),
+      provider_signatory_name_primary: String(
+        source.provider_signatory_name_primary || source.provider_signatory_name || source.providerSignatoryNamePrimary || source.providerSignatoryName || ''
+      ).trim(),
+      provider_signatory_title_primary: String(
+        source.provider_signatory_title_primary || source.provider_signatory_title || source.providerSignatoryTitlePrimary || source.providerSignatoryTitle || ''
+      ).trim(),
+      provider_signatory_name_secondary: String(source.provider_signatory_name_secondary || source.providerSignatoryNameSecondary || '').trim(),
+      provider_signatory_title_secondary: String(source.provider_signatory_title_secondary || source.providerSignatoryTitleSecondary || '').trim(),
+      provider_sign_date: String(source.provider_sign_date || source.providerSignDate || '').trim(),
+      customer_sign_date: String(source.customer_sign_date || source.customerSignDate || '').trim(),
+      generated_by: String(source.generated_by || source.generatedBy || '').trim(),
+      status: 'Draft'
+    });
+    const draftItems = (Array.isArray(proposalItems) ? proposalItems : []).map((item, index) =>
+      this.mapProposalItemToAgreementDraftItem(item, index)
+    );
+    const totals = this.calculateTotals(draftItems);
+    draft.saas_total = totals.saas_total;
+    draft.one_time_total = totals.one_time_total;
+    draft.grand_total = totals.grand_total;
+    return { agreement: draft, items: draftItems };
   },
   extractRows(response) {
     const candidates = [response, response?.agreements, response?.items, response?.rows, response?.data, response?.result, response?.payload, response?.data?.agreements, response?.result?.agreements, response?.payload?.agreements];
@@ -1086,6 +1199,8 @@ const Agreements = {
     this.renderItemRows(items);
     E.agreementForm.dataset.id = agreement.id || '';
     E.agreementForm.dataset.mode = agreement.id ? 'edit' : 'create';
+    E.agreementForm.dataset.source = agreement.id ? '' : String(agreement.proposal_id || '').trim() ? 'proposal' : '';
+    E.agreementForm.dataset.proposalUuid = String(agreement.proposal_id || '').trim();
     if (E.agreementFormTitle) E.agreementFormTitle.textContent = agreement.id ? (readOnly ? 'View Agreement' : 'Edit Agreement') : 'Create Agreement';
     if (E.agreementFormDeleteBtn) E.agreementFormDeleteBtn.style.display = !readOnly && agreement.id && Permissions.canDeleteAgreement() ? '' : 'none';
     if (E.agreementFormSaveBtn) {
@@ -1103,6 +1218,8 @@ const Agreements = {
     E.agreementFormModal.setAttribute('aria-hidden', 'true');
     E.agreementForm.reset();
     E.agreementForm.dataset.id = '';
+    E.agreementForm.dataset.source = '';
+    E.agreementForm.dataset.proposalUuid = '';
     this.state.currentAgreementId = '';
     this.renderItemRows([]);
   },
@@ -1172,7 +1289,16 @@ const Agreements = {
       UI.toast('Login is required to save agreements.');
       return;
     }
+    const source = String(E.agreementForm?.dataset.source || '').trim();
+    const formProposalUuid = String(E.agreementForm?.dataset.proposalUuid || '').trim();
     const { agreement, items } = this.collectFormValues();
+    if (!id) {
+      agreement.proposal_id = String(agreement.proposal_id || formProposalUuid || '').trim();
+      const withBusinessIds = this.ensureAgreementBusinessIdentifiers(agreement);
+      agreement.agreement_id = withBusinessIds.agreement_id;
+      agreement.agreement_number = withBusinessIds.agreement_number;
+    }
+    const preparedItems = this.hydrateItemIdsForSave(items, { isCreate: !id });
     const currentRecord = this.state.rows.find(row => String(row.id || '') === id) || {};
     const requestedDiscount = items.reduce((max, item) => Math.max(max, this.toNumberSafe(item.discount_percent)), 0);
     const normalizeStatus = value => String(value || '').trim().toLowerCase();
@@ -1192,7 +1318,7 @@ const Agreements = {
         current_status: currentStatus,
         requested_status: agreement.status || '',
         discount_percent: requestedDiscount,
-        requested_changes: { agreement, items }
+        requested_changes: { agreement, items: preparedItems }
       });
       if (workflowCheck && !workflowCheck.allowed) {
         UI.toast(window.WorkflowEngine.composeDeniedMessage(workflowCheck, 'Agreement save blocked.'));
@@ -1204,11 +1330,11 @@ const Agreements = {
     console.time('entity-save');
     try {
       const saveResponse = id
-        ? await this.updateAgreement(id, agreement, items)
-        : await this.createAgreement(agreement, items);
+        ? await this.updateAgreement(id, agreement, preparedItems)
+        : await this.createAgreement(agreement, preparedItems);
       const persistedAgreement = this.extractAgreementAndItems(saveResponse, id).agreement;
       const persistedAgreementUuid = String(persistedAgreement?.id || id || '').trim();
-      this.setCachedDetail(persistedAgreementUuid, persistedAgreement, items);
+      this.setCachedDetail(persistedAgreementUuid, persistedAgreement, preparedItems);
       try {
         await this.syncSignedAgreementToClient({ ...agreement, ...persistedAgreement }, String(persistedAgreement?.agreement_id || '').trim());
       } catch (clientSyncError) {
@@ -1221,7 +1347,7 @@ const Agreements = {
         }
       }
       this.closeAgreementForm();
-      UI.toast(id ? 'Agreement updated.' : 'Agreement created.');
+      UI.toast(id ? 'Agreement updated.' : source === 'proposal' ? 'Agreement created from proposal.' : 'Agreement created.');
     } catch (error) {
       if (typeof isAuthError === 'function' && isAuthError(error)) {
         handleExpiredSession('Session expired. Please log in again.');
@@ -1346,21 +1472,13 @@ const Agreements = {
         UI.toast('This proposal has already been converted to an agreement.');
         return;
       }
-      const rpcResponse = await this.createAgreementFromProposal(resolvedProposalUuid);
-      const createdAgreementUuid = String(
-        rpcResponse?.id ||
-        rpcResponse?.agreement_uuid ||
-        rpcResponse?.agreement_id_uuid ||
-        rpcResponse?.created_agreement_uuid ||
-        ''
-      ).trim();
-      if (!createdAgreementUuid) {
-        UI.toast('Agreement was created but no agreement UUID was returned.');
-        return;
-      }
-      await this.loadAndRefresh({ force: true });
-      await this.openAgreementFormById(createdAgreementUuid, { readOnly: false });
-      UI.toast(`Agreement created from proposal ${String(proposal.proposal_id || proposalRef).trim()}.`);
+      const proposalItems = Array.isArray(extracted.items) ? extracted.items : [];
+      const draft = this.buildDraftAgreementFromProposal(
+        { ...proposal, id: resolvedProposalUuid },
+        proposalItems
+      );
+      this.openAgreementForm(draft.agreement, draft.items, { readOnly: false });
+      UI.toast(`Agreement form prefilled from proposal ${String(proposal.proposal_id || proposalRef).trim()}. Save to create.`);
     } catch (error) {
       if (typeof isAuthError === 'function' && isAuthError(error)) {
         handleExpiredSession('Session expired. Please log in again.');
