@@ -4535,9 +4535,6 @@ function wireDashboardGate() {
     }
 
     try {
-      if (typeof Api?.runAuthProxyHealthCheck === 'function') {
-        await Api.runAuthProxyHealthCheck();
-      }
       const user = await Session.login(identifier, passcode);
       UI.applyRolePermissions();
       E.loginIdentifier.value = '';
@@ -4557,32 +4554,13 @@ function wireDashboardGate() {
       });
     } catch (error) {
       const message = String(error?.message || '').toLowerCase();
-      const resolvedEndpoint =
-        (typeof Api?.ensureBaseUrl === 'function' && (() => {
-          try {
-            return Api.ensureBaseUrl();
-          } catch {
-            return '';
-          }
-        })()) ||
-        (window.resolveApiEndpoint ? resolveApiEndpoint(API_BASE_URL) : API_BASE_URL);
 
       if (/invalid|credential|password|passcode|identifier|unauthorized/.test(message)) {
         UI.toast('Invalid credentials. Please check your username/email and password.');
+      } else if (/inactive/.test(message)) {
+        UI.toast('Your account is inactive. Please contact an administrator.');
       } else if (/failed before a response|network|cors|unreachable/.test(message)) {
-        UI.toast('Backend unavailable. Please try again in a moment.');
-      } else if (/http 404/.test(message)) {
-        if (error?.code === 'MISSING_PROXY_ROUTE') {
-          console.error('[auth/login] Missing local /api/proxy route', { resolvedEndpoint, error });
-        } else if (error?.code === 'UPSTREAM_404') {
-          console.error('[auth/login] Proxy route exists but Apps Script upstream returned 404', { resolvedEndpoint, error });
-        } else {
-          console.error('[auth/login] Auth route 404 from configured endpoint', { resolvedEndpoint, error });
-        }
-        UI.toast('Auth backend route not found. Please verify API_BASE_URL/proxy.');
-      } else if (error?.code === 'UPSTREAM_NON_JSON' || error?.code === 'UPSTREAM_NON_JSON_HTML') {
-        console.error('[auth/login] Upstream returned non-JSON response', { resolvedEndpoint, error });
-        UI.toast('Backend response format error. Please verify API/proxy configuration.');
+        UI.toast('Login service is temporarily unavailable. Please try again in a moment.');
       } else {
         UI.toast(`Login failed: ${error.message}`);
       }

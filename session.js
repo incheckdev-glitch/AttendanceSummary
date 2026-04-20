@@ -1,13 +1,12 @@
 const Session = {
   state: {
     role: null,
-    authToken: '',
     user_id: '',
     name: '',
     email: '',
     username: '',
     session: null,
-    authUser: null,
+    user: null,
     profile: null
   },
   listeners: new Set(),
@@ -35,17 +34,16 @@ const Session = {
     return String(roleValue || '').trim().toLowerCase();
   },
 
-  buildState(authUser = null, session = null, profile = null) {
+  buildState(user = null, session = null, profile = null) {
     const role = this.normalizeRole(profile?.role_key);
     return {
       role: role || null,
-      authToken: String(session?.access_token || ''),
-      user_id: String(profile?.id || authUser?.id || ''),
-      name: String(profile?.full_name || profile?.name || authUser?.user_metadata?.full_name || '').trim(),
-      email: String(profile?.email || authUser?.email || '').trim(),
-      username: String(profile?.username || authUser?.user_metadata?.username || '').trim(),
+      user_id: String(profile?.id || user?.id || ''),
+      name: String(profile?.full_name || profile?.name || user?.user_metadata?.full_name || '').trim(),
+      email: String(profile?.email || user?.email || '').trim(),
+      username: String(profile?.username || user?.user_metadata?.username || '').trim(),
       session: session || null,
-      authUser: authUser || null,
+      user: user || null,
       profile: profile || null
     };
   },
@@ -110,7 +108,10 @@ const Session = {
     const { data, error } = await client.auth.signInWithPassword({ email, password });
     if (error) throw new Error(error.message || 'Login failed.');
 
-    const authUser = data?.user || null;
+    const { data: userData, error: userError } = await client.auth.getUser();
+    if (userError) throw new Error(userError.message || 'Unable to load logged-in user.');
+
+    const authUser = userData?.user || data?.user || null;
     const session = data?.session || null;
     const profile = await this.fetchProfile(authUser?.id);
     this.applyState(this.buildState(authUser, session, profile));
@@ -141,7 +142,7 @@ const Session = {
 
   clearClientSession({ clearRoleCache = true } = {}) {
     if (clearRoleCache && this.state.role) this.clearRoleScopedCache();
-    this.state = { role: null, authToken: '', user_id: '', name: '', email: '', username: '', session: null, authUser: null, profile: null };
+    this.state = { role: null, user_id: '', name: '', email: '', username: '', session: null, user: null, profile: null };
     try { sessionStorage.removeItem(LS_KEYS.session); } catch {}
     try { localStorage.removeItem(LS_KEYS.persistentSession); } catch {}
     this.notify();
@@ -168,12 +169,11 @@ const Session = {
   user() {
     return {
       role: this.state.role,
-      authToken: this.state.authToken,
       user_id: this.state.user_id,
       name: this.state.name,
       email: this.state.email,
       username: this.state.username,
-      authUser: this.state.authUser,
+      user: this.state.user,
       profile: this.state.profile,
       session: this.state.session
     };
@@ -183,9 +183,8 @@ const Session = {
   username() { return this.state.username || ''; },
   userId() { return this.state.user_id || ''; },
   displayName() { return this.state.name || this.state.username || this.state.email || ''; },
-  getAuthToken() { return this.state.authToken || ''; },
   isAdmin() { return this.role() === ROLES.ADMIN; },
-  authContext() { return { role: this.role(), authToken: this.getAuthToken(), session: this.state.session, user: this.state.authUser, profile: this.state.profile }; }
+  authContext() { return { role: this.role(), session: this.state.session, user: this.state.user, profile: this.state.profile }; }
 };
 
 function isAuthError(error) {
