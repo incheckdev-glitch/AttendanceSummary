@@ -52,7 +52,6 @@ const Session = {
     const prevRole = this.state.role;
     if (clearRoleCacheOnChange && prevRole && prevRole !== nextState.role) this.clearRoleScopedCache();
     this.state = nextState;
-    this.persist();
     this.notify();
     return true;
   },
@@ -69,33 +68,10 @@ const Session = {
     if (error) throw new Error(`Unable to load user profile: ${error.message}`);
     if (!data?.is_active) {
       await client.auth.signOut();
+      this.clearClientSession({ clearRoleCache: false });
       throw new Error('Your account is inactive. Please contact an administrator.');
     }
     return data;
-  },
-
-  persist() {
-    const serializable = {
-      role: this.state.role,
-      user_id: this.state.user_id,
-      name: this.state.name,
-      email: this.state.email,
-      username: this.state.username
-    };
-    try { sessionStorage.setItem(LS_KEYS.session, JSON.stringify(serializable)); } catch {}
-    try { localStorage.setItem(LS_KEYS.persistentSession, JSON.stringify(serializable)); } catch {}
-  },
-
-  restore() {
-    try {
-      const raw = sessionStorage.getItem(LS_KEYS.session) || localStorage.getItem(LS_KEYS.persistentSession);
-      if (!raw) return false;
-      const parsed = JSON.parse(raw);
-      this.state = { ...this.state, ...parsed };
-      return Boolean(parsed?.role);
-    } catch {
-      return false;
-    }
   },
 
   async login(identifier = '', passcode = '') {
@@ -128,7 +104,10 @@ const Session = {
     if (userError) throw new Error(userError.message || 'Unable to restore user.');
     const session = sessionData?.session || null;
     const authUser = userData?.user || null;
-    if (!session || !authUser) return false;
+    if (!session || !authUser) {
+      this.clearClientSession({ clearRoleCache: false });
+      return false;
+    }
     const profile = await this.fetchProfile(authUser.id);
     this.applyState(this.buildState(authUser, session, profile), { clearRoleCacheOnChange: false });
     this.ensureReactiveAuthState();
@@ -143,8 +122,6 @@ const Session = {
   clearClientSession({ clearRoleCache = true } = {}) {
     if (clearRoleCache && this.state.role) this.clearRoleScopedCache();
     this.state = { role: null, user_id: '', name: '', email: '', username: '', session: null, user: null, profile: null };
-    try { sessionStorage.removeItem(LS_KEYS.session); } catch {}
-    try { localStorage.removeItem(LS_KEYS.persistentSession); } catch {}
     this.notify();
   },
 
