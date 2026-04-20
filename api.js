@@ -128,10 +128,12 @@ const Api = {
   buildPagedListPayload(resource = '', action = 'list', state = {}, filters = {}) {
     const safeState = state && typeof state === 'object' ? state : {};
     const safeFilters = filters && typeof filters === 'object' ? filters : {};
-    const authToken =
-      typeof Session?.getAuthToken === 'function'
+    const migratedResource = this.isMigratedResource(resource);
+    const authToken = migratedResource
+      ? ''
+      : typeof Session?.getAuthToken === 'function'
         ? Session.getAuthToken()
-        : String(Session?.authContext?.().authToken || '');
+        : '';
 
     const payload = {
       resource,
@@ -146,7 +148,7 @@ const Api = {
       payload[key] = value;
     });
 
-    if (authToken) payload.authToken = authToken;
+    if (!migratedResource && authToken) payload.authToken = authToken;
     return payload;
   },
   buildSummaryListPayload(options = {}, fallbackFields = []) {
@@ -289,7 +291,7 @@ const Api = {
     const authToken =
       typeof Session?.getAuthToken === 'function'
         ? Session.getAuthToken()
-        : String(Session?.authContext?.().authToken || '');
+        : '';
     if (requireAuth && !authToken) {
       throw new Error('Missing authentication token.');
     }

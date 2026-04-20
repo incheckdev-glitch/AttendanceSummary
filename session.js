@@ -95,23 +95,32 @@ const Session = {
     return this.user();
   },
 
-  async validateSession() {
+  async restore() {
     const client = SupabaseClient.getClient();
-    const [{ data: sessionData, error: sessionError }, { data: userData, error: userError }] = await Promise.all([
-      client.auth.getSession(), client.auth.getUser()
-    ]);
+    const { data: sessionData, error: sessionError } = await client.auth.getSession();
     if (sessionError) throw new Error(sessionError.message || 'Unable to restore session.');
-    if (userError) throw new Error(userError.message || 'Unable to restore user.');
     const session = sessionData?.session || null;
-    const authUser = userData?.user || null;
-    if (!session || !authUser) {
+    if (!session) {
       this.clearClientSession({ clearRoleCache: false });
       return false;
     }
+
+    const { data: userData, error: userError } = await client.auth.getUser();
+    if (userError) throw new Error(userError.message || 'Unable to restore user.');
+    const authUser = userData?.user || null;
+    if (!authUser?.id) {
+      this.clearClientSession({ clearRoleCache: false });
+      return false;
+    }
+
     const profile = await this.fetchProfile(authUser.id);
     this.applyState(this.buildState(authUser, session, profile), { clearRoleCacheOnChange: false });
     this.ensureReactiveAuthState();
     return true;
+  },
+
+  async validateSession() {
+    return this.restore();
   },
 
   logout({ preserveCache = true } = {}) {
