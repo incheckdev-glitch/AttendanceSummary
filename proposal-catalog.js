@@ -54,7 +54,8 @@ const ProposalCatalog = {
       .trim()
       .toLowerCase();
     return {
-      catalog_item_id: this.normalizeText(pick(source.catalog_item_id, source.catalogItemId, source.id)),
+      id: this.normalizeText(source.id),
+      catalog_item_id: this.normalizeText(pick(source.catalog_item_id, source.catalogItemId)),
       created_at: this.normalizeText(pick(source.created_at, source.createdAt)),
       updated_at: this.normalizeText(pick(source.updated_at, source.updatedAt)),
       is_active: this.toBool(pick(source.is_active, source.isActive), true),
@@ -130,7 +131,7 @@ const ProposalCatalog = {
   },
   upsertLocalRow(row) {
     const normalized = this.normalizeItem(row);
-    const idx = this.state.rows.findIndex(item => item.catalog_item_id === normalized.catalog_item_id);
+    const idx = this.state.rows.findIndex(item => item.id === normalized.id);
     if (idx === -1) this.state.rows.unshift(normalized);
     else this.state.rows[idx] = { ...this.state.rows[idx], ...normalized };
     this.applyFilters();
@@ -138,22 +139,22 @@ const ProposalCatalog = {
     this.render();
   },
   removeLocalRow(id) {
-    this.state.rows = this.state.rows.filter(item => item.catalog_item_id !== id);
+    this.state.rows = this.state.rows.filter(item => item.id !== id);
     this.applyFilters();
     this.renderSummary();
     this.render();
   },
-  async getProposalCatalogItem(catalogItemId) {
-    return Api.getProposalCatalogItem(catalogItemId);
+  async getProposalCatalogItem(catalogItemUuid) {
+    return Api.getProposalCatalogItem(catalogItemUuid);
   },
   async createProposalCatalogItem(item) {
     return Api.createProposalCatalogItem(item);
   },
-  async updateProposalCatalogItem(catalogItemId, updates) {
-    return Api.updateProposalCatalogItem(catalogItemId, updates);
+  async updateProposalCatalogItem(catalogItemUuid, updates) {
+    return Api.updateProposalCatalogItem(catalogItemUuid, updates);
   },
-  async deleteProposalCatalogItem(catalogItemId) {
-    return Api.deleteProposalCatalogItem(catalogItemId);
+  async deleteProposalCatalogItem(catalogItemUuid) {
+    return Api.deleteProposalCatalogItem(catalogItemUuid);
   },
   applyFilters() {
     const terms = String(this.state.search || '')
@@ -260,7 +261,7 @@ const ProposalCatalog = {
 
     E.proposalCatalogTbody.innerHTML = rows
       .map(row => {
-        const id = U.escapeAttr(row.catalog_item_id || '');
+        const id = U.escapeAttr(row.id || '');
         return `<tr>
           <td>${textCell(row.catalog_item_id)}</td>
           <td>${activeCell(row.is_active)}</td>
@@ -347,12 +348,12 @@ const ProposalCatalog = {
   openForm(item = null) {
     if (!E.proposalCatalogFormModal || !E.proposalCatalogForm) return;
     const normalized = item ? this.normalizeItem(item) : this.normalizeItem({});
-    const mode = normalized.catalog_item_id ? 'edit' : 'create';
+    const mode = normalized.id ? 'edit' : 'create';
     this.state.formMode = mode;
-    this.state.currentId = normalized.catalog_item_id || '';
+    this.state.currentId = normalized.id || '';
 
     E.proposalCatalogForm.dataset.mode = mode;
-    E.proposalCatalogForm.dataset.id = normalized.catalog_item_id || '';
+    E.proposalCatalogForm.dataset.id = normalized.id || '';
     if (E.proposalCatalogFormTitle)
       E.proposalCatalogFormTitle.textContent =
         mode === 'edit' ? `Edit Catalog Item · ${normalized.catalog_item_id}` : 'Create Catalog Item';
@@ -432,7 +433,7 @@ const ProposalCatalog = {
       UI.toast('Login is required to manage proposal catalog items.');
       return;
     }
-    const itemId = this.getValue(E.proposalCatalogFormItemId);
+    const recordId = String(E.proposalCatalogForm?.dataset.id || '').trim();
     const payload = this.sanitizePayload(this.collectFormPayload());
 
     if (!payload.item_name && !payload.capability_name && !payload.category) {
@@ -442,9 +443,9 @@ const ProposalCatalog = {
 
     this.setFormBusy(true);
     try {
-      if (mode === 'edit' && itemId) {
-        const response = await this.updateProposalCatalogItem(itemId, payload);
-        this.upsertLocalRow(response?.item || response?.data?.item || { ...payload, catalog_item_id: itemId });
+      if (mode === 'edit' && recordId) {
+        const response = await this.updateProposalCatalogItem(recordId, payload);
+        this.upsertLocalRow(response?.item || response?.data?.item || response || { ...payload, id: recordId });
         UI.toast('Catalog item updated.');
       } else {
         const response = await this.createProposalCatalogItem(payload);
@@ -462,14 +463,14 @@ const ProposalCatalog = {
       this.setFormBusy(false);
     }
   },
-  async openFormById(catalogItemId) {
-    const local = this.state.rows.find(item => item.catalog_item_id === catalogItemId);
+  async openFormById(catalogItemUuid) {
+    const local = this.state.rows.find(item => item.id === catalogItemUuid);
     if (local) {
       this.openForm(local);
       return;
     }
     try {
-      const response = await this.getProposalCatalogItem(catalogItemId);
+      const response = await this.getProposalCatalogItem(catalogItemUuid);
       const source =
         response?.item ||
         response?.data?.item ||
@@ -481,18 +482,20 @@ const ProposalCatalog = {
       UI.toast('Unable to load catalog item: ' + (error?.message || 'Unknown error'));
     }
   },
-  async deleteById(catalogItemId) {
+  async deleteById(catalogItemUuid) {
     if (!Permissions.canDeleteProposalCatalogItem()) {
       UI.toast('You do not have permission to delete catalog items.');
       return;
     }
-    if (!catalogItemId) return;
-    const confirmed = window.confirm(`Delete catalog item ${catalogItemId}?`);
+    if (!catalogItemUuid) return;
+    const row = this.state.rows.find(item => item.id === catalogItemUuid);
+    const label = row?.catalog_item_id || catalogItemUuid;
+    const confirmed = window.confirm(`Delete catalog item ${label}?`);
     if (!confirmed) return;
 
     try {
-      await this.deleteProposalCatalogItem(catalogItemId);
-      this.removeLocalRow(catalogItemId);
+      await this.deleteProposalCatalogItem(catalogItemUuid);
+      this.removeLocalRow(catalogItemUuid);
       UI.toast('Catalog item deleted.');
       this.closeForm();
     } catch (error) {
@@ -562,7 +565,7 @@ const ProposalCatalog = {
       E.proposalCatalogFormCancelBtn.addEventListener('click', () => this.closeForm());
     if (E.proposalCatalogFormDeleteBtn) {
       E.proposalCatalogFormDeleteBtn.addEventListener('click', () => {
-        const id = this.getValue(E.proposalCatalogFormItemId);
+        const id = String(E.proposalCatalogForm?.dataset.id || '').trim();
         if (id) this.deleteById(id);
       });
     }
