@@ -148,6 +148,29 @@
     'converted_by',
     'converted_at'
   ]);
+  const LIST_CONTROL_PARAMS = new Set([
+    'page', 'pageSize', 'perPage', 'limit', 'offset',
+    'sort', 'sortBy', 'sortDir', 'sort_by', 'sort_dir',
+    'search', 'q', 'mode', 'tab', 'view',
+    'summary_only', 'fields',
+    'resource', 'action', 'authToken', 'sheetName', 'tabName', 'updates', 'item'
+  ]);
+  const LIST_COLUMNS_BY_RESOURCE = {
+    proposal_catalog: new Set([
+      'id', 'catalog_item_id', 'is_active', 'section', 'category', 'item_name', 'default_location_name',
+      'unit_price', 'discount_percent', 'quantity', 'capability_name', 'capability_value', 'notes',
+      'sort_order', 'created_by', 'updated_by', 'created_at', 'updated_at'
+    ]),
+    proposals: new Set([
+      'id', 'proposal_id', 'ref_number', 'deal_id', 'customer_name', 'customer_address', 'customer_contact_name',
+      'customer_contact_mobile', 'customer_contact_email', 'provider_contact_name', 'provider_contact_mobile',
+      'provider_contact_email', 'proposal_title', 'proposal_date', 'proposal_valid_until', 'service_start_date',
+      'contract_term', 'account_number', 'billing_frequency', 'payment_term', 'po_number', 'terms_conditions',
+      'customer_signatory_name', 'customer_signatory_title', 'provider_signatory_name', 'provider_signatory_title',
+      'provider_sign_date', 'subtotal_locations', 'subtotal_one_time', 'total_discount', 'grand_total', 'status',
+      'generated_by', 'created_by', 'updated_by', 'created_at', 'updated_at'
+    ])
+  };
 
   const devLog = (...args) => {
     try {
@@ -568,6 +591,24 @@
     return { rows: normalizedRows, total: normalizedRows.length, returned: normalizedRows.length, hasMore: false, page: 1, limit: normalizedRows.length || 50, offset: 0 };
   }
 
+  function normalizePagedList(resource, rows, controls = {}, total = 0) {
+    const normalizedRows = Array.isArray(rows) ? rows.map(r => normalizeRow(resource, r)) : [];
+    const limit = Math.max(1, Number(controls.limit || normalizedRows.length || 50));
+    const page = Math.max(1, Number(controls.page || 1));
+    const offset = Math.max(0, Number(controls.offset ?? (page - 1) * limit));
+    const returned = normalizedRows.length;
+    const safeTotal = Number.isFinite(Number(total)) ? Number(total) : returned;
+    return {
+      rows: normalizedRows,
+      total: safeTotal,
+      returned,
+      hasMore: offset + returned < safeTotal,
+      page,
+      limit,
+      offset
+    };
+  }
+
   function pickId(resource, payload = {}) {
     for (const key of PK_KEYS[resource] || []) {
       const value = payload[key] ?? payload.id;
@@ -576,11 +617,47 @@
     return payload.id;
   }
 
-  function applyFilters(query, payload = {}) {
-    const filters = payload.filters && typeof payload.filters === 'object' ? payload.filters : payload;
-    Object.entries(filters || {}).forEach(([key, value]) => {
-      if (value === undefined || value === null || value === '' || ['resource','action','authToken','sheetName','tabName','updates','item'].includes(key)) return;
-      if (key === 'search') return;
+  function splitListPayload(payload = {}) {
+    const rawFilters = payload.filters && typeof payload.filters === 'object' ? payload.filters : payload;
+    const controls = {};
+    const dbFilters = {};
+    Object.entries(rawFilters || {}).forEach(([key, value]) => {
+      if (LIST_CONTROL_PARAMS.has(key)) {
+        controls[key] = value;
+        return;
+      }
+      dbFilters[key] = value;
+    });
+    return { controls, dbFilters };
+  }
+
+  function normalizeListControls(controls = {}, resource = '') {
+    const numberOr = (value, fallback) => {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : fallback;
+    };
+    const page = Math.max(1, numberOr(controls.page, 1));
+    const limit = Math.max(1, numberOr(controls.pageSize ?? controls.perPage ?? controls.limit, 50));
+    const rawOffset = controls.offset;
+    const offset = rawOffset === undefined || rawOffset === null || rawOffset === ''
+      ? Math.max(0, (page - 1) * limit)
+      : Math.max(0, numberOr(rawOffset, 0));
+    const sortByRaw = String(controls.sort_by ?? controls.sortBy ?? controls.sort ?? 'updated_at').trim();
+    const sortDirRaw = String(controls.sort_dir ?? controls.sortDir ?? 'desc').trim().toLowerCase();
+    const allowedColumns = LIST_COLUMNS_BY_RESOURCE[resource];
+    const sortBy = allowedColumns && allowedColumns.has(sortByRaw) ? sortByRaw : 'updated_at';
+    const sortDir = sortDirRaw === 'asc' ? 'asc' : 'desc';
+    const from = offset;
+    const to = offset + limit - 1;
+    return { page, limit, offset, sortBy, sortDir, from, to };
+  }
+
+  function applyFilters(query, payload = {}, { resource = '' } = {}) {
+    const { dbFilters } = splitListPayload(payload);
+    const allowedColumns = LIST_COLUMNS_BY_RESOURCE[resource];
+    Object.entries(dbFilters || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === '') return;
+      if (allowedColumns && !allowedColumns.has(key)) return;
       query = query.eq(key, value);
     });
     return query;
@@ -755,9 +832,15 @@
     }
 
     if (action === 'list') {
-      const { data, error } = await applyFilters(client.from(table).select('*'), payload).order('updated_at', { ascending: false });
+      const { controls } = splitListPayload(payload);
+      const listControls = normalizeListControls(controls, resource);
+      let query = client.from(table).select('*', { count: 'exact' });
+      query = applyFilters(query, payload, { resource });
+      query = query.order(listControls.sortBy, { ascending: listControls.sortDir === 'asc' });
+      query = query.range(listControls.from, listControls.to);
+      const { data, error, count } = await query;
       if (error) throw friendlyError(`Unable to load ${resource}`, error);
-      return { handled: true, data: normalizeList(resource, data) };
+      return { handled: true, data: normalizePagedList(resource, data, listControls, count) };
     }
 
     if (action === 'get') {
