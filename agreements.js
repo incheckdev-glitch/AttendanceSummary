@@ -42,6 +42,10 @@ const Agreements = {
     'provider_signatory_title_secondary',
     'provider_sign_date',
     'customer_sign_date',
+    'gm_signed',
+    'financial_controller_signed',
+    'signed_date',
+    'total_discount',
     'generated_by',
     'notes'
   ],
@@ -110,9 +114,21 @@ const Agreements = {
       const value = source[field] ?? source[camel] ?? '';
       normalized[field] = typeof value === 'string' ? value.trim() : value;
     });
-    normalized.agreement_id = String(normalized.agreement_id || source.id || '').trim();
+    normalized.id = String(source.id || normalized.id || '').trim();
+    normalized.agreement_id = String(normalized.agreement_id || source.agreementId || '').trim();
     normalized.agreement_number = String(normalized.agreement_number || '').trim();
     normalized.agreement_title = String(normalized.agreement_title || '').trim();
+    normalized.agreement_length = String(normalized.agreement_length || source.contract_term || '').trim();
+    normalized.provider_signatory_name_primary = String(
+      normalized.provider_signatory_name_primary || source.provider_signatory_name || ''
+    ).trim();
+    normalized.provider_signatory_title_primary = String(
+      normalized.provider_signatory_title_primary || source.provider_signatory_title || ''
+    ).trim();
+    normalized.saas_total = this.toNumberSafe(source.subtotal_locations ?? normalized.saas_total);
+    normalized.one_time_total = this.toNumberSafe(source.subtotal_one_time ?? normalized.one_time_total);
+    normalized.total_discount = this.toNumberSafe(source.total_discount ?? normalized.total_discount);
+    normalized.grand_total = this.toNumberSafe(source.grand_total ?? normalized.grand_total);
     normalized.customer_name = String(normalized.customer_name || '').trim();
     normalized.status = String(normalized.status || '').trim() || 'Draft';
     normalized.currency = String(normalized.currency || '').trim();
@@ -175,7 +191,8 @@ const Agreements = {
       terms_conditions: '', customer_signatory_name: '', customer_signatory_title: '',
       provider_signatory_name_primary: '', provider_signatory_title_primary: '',
       provider_signatory_name_secondary: '', provider_signatory_title_secondary: '', provider_sign_date: '',
-      customer_sign_date: '', generated_by: '', notes: ''
+      customer_sign_date: '', gm_signed: '', financial_controller_signed: '', signed_date: '', total_discount: '',
+      generated_by: '', notes: ''
     };
   },
   generateAccountNumber() {
@@ -330,7 +347,7 @@ const Agreements = {
   },
   upsertLocalRow(row) {
     const normalized = this.normalizeAgreement(row);
-    const idx = this.state.rows.findIndex(item => String(item.agreement_id || '') === String(normalized.agreement_id || ''));
+    const idx = this.state.rows.findIndex(item => String(item.id || '') === String(normalized.id || ''));
     if (idx === -1) this.state.rows.unshift(normalized);
     else this.state.rows[idx] = { ...this.state.rows[idx], ...normalized };
     this.applyFilters();
@@ -338,7 +355,7 @@ const Agreements = {
     this.render();
   },
   removeLocalRow(id) {
-    this.state.rows = this.state.rows.filter(item => String(item.agreement_id || '') !== String(id || ''));
+    this.state.rows = this.state.rows.filter(item => String(item.id || '') !== String(id || ''));
     this.applyFilters();
     this.renderFilters();
     this.render();
@@ -624,7 +641,7 @@ const Agreements = {
     }
     const textCell = value => U.escapeHtml(String(value ?? '').trim() || '—');
     E.agreementsTbody.innerHTML = rows.map(row => {
-      const id = U.escapeAttr(row.agreement_id || '');
+      const id = U.escapeAttr(row.id || '');
       return `<tr>
         <td>${textCell(row.agreement_id)}</td><td>${textCell(row.agreement_number)}</td><td>${textCell(row.agreement_title)}</td>
         <td>${textCell(row.customer_name)}</td><td>${textCell(row.proposal_id)}</td><td>${textCell(row.deal_id)}</td>
@@ -756,16 +773,16 @@ const Agreements = {
     if (!E.agreementFormModal || !E.agreementForm) return;
     this.assignFormValues(agreement);
     this.renderItemRows(items);
-    E.agreementForm.dataset.id = agreement.agreement_id || '';
-    E.agreementForm.dataset.mode = agreement.agreement_id ? 'edit' : 'create';
-    if (E.agreementFormTitle) E.agreementFormTitle.textContent = agreement.agreement_id ? (readOnly ? 'View Agreement' : 'Edit Agreement') : 'Create Agreement';
-    if (E.agreementFormDeleteBtn) E.agreementFormDeleteBtn.style.display = !readOnly && agreement.agreement_id && Permissions.canDeleteAgreement() ? '' : 'none';
+    E.agreementForm.dataset.id = agreement.id || '';
+    E.agreementForm.dataset.mode = agreement.id ? 'edit' : 'create';
+    if (E.agreementFormTitle) E.agreementFormTitle.textContent = agreement.id ? (readOnly ? 'View Agreement' : 'Edit Agreement') : 'Create Agreement';
+    if (E.agreementFormDeleteBtn) E.agreementFormDeleteBtn.style.display = !readOnly && agreement.id && Permissions.canDeleteAgreement() ? '' : 'none';
     if (E.agreementFormSaveBtn) {
-      const canSave = agreement.agreement_id ? Permissions.canUpdateAgreement() : Permissions.canCreateAgreement();
+      const canSave = agreement.id ? Permissions.canUpdateAgreement() : Permissions.canCreateAgreement();
       E.agreementFormSaveBtn.style.display = !readOnly && canSave ? '' : 'none';
     }
     this.setFormReadOnly(readOnly);
-    this.state.currentAgreementId = String(agreement.agreement_id || '').trim();
+    this.state.currentAgreementId = String(agreement.id || '').trim();
     E.agreementFormModal.classList.add('open');
     E.agreementFormModal.setAttribute('aria-hidden', 'false');
   },
@@ -801,9 +818,9 @@ const Agreements = {
     this.state.openingAgreementIds.add(id);
     this.setTriggerBusy(trigger, true);
     console.time('agreement-open');
-    const localSummary = this.state.rows.find(row => String(row.agreement_id || '').trim() === id);
+    const localSummary = this.state.rows.find(row => String(row.id || '').trim() === id);
     this.openAgreementForm(
-      localSummary ? { ...this.emptyAgreement(), ...localSummary, agreement_id: id } : { agreement_id: id },
+      localSummary ? { ...this.emptyAgreement(), ...localSummary, id } : { id },
       [],
       { readOnly }
     );
@@ -845,10 +862,11 @@ const Agreements = {
       return;
     }
     const { agreement, items } = this.collectFormValues();
-    const currentRecord = this.state.rows.find(row => String(row.agreement_id || '') === id) || {};
+    const currentRecord = this.state.rows.find(row => String(row.id || '') === id) || {};
     const requestedDiscount = items.reduce((max, item) => Math.max(max, this.toNumberSafe(item.discount_percent)), 0);
     const workflowCheck = await window.WorkflowEngine?.enforceBeforeSave?.('agreements', currentRecord, {
       agreement_id: id,
+      id,
       current_status: currentRecord?.status || '',
       requested_status: agreement.status || '',
       discount_percent: requestedDiscount,
@@ -866,17 +884,17 @@ const Agreements = {
         ? await this.updateAgreement(id, agreement, items)
         : await this.createAgreement(agreement, items);
       const persistedAgreement = this.extractAgreementAndItems(saveResponse, id).agreement;
-      const persistedAgreementId = String(persistedAgreement?.agreement_id || id || '').trim();
-      this.setCachedDetail(persistedAgreementId, persistedAgreement, items);
+      const persistedAgreementUuid = String(persistedAgreement?.id || id || '').trim();
+      this.setCachedDetail(persistedAgreementUuid, persistedAgreement, items);
       try {
-        await this.syncSignedAgreementToClient({ ...agreement, ...persistedAgreement }, persistedAgreementId);
+        await this.syncSignedAgreementToClient({ ...agreement, ...persistedAgreement }, String(persistedAgreement?.agreement_id || '').trim());
       } catch (clientSyncError) {
         UI.toast(`Agreement saved, but client sync failed: ${clientSyncError?.message || 'Unknown error'}`);
       }
       if (persistedAgreement) {
         this.upsertLocalRow(persistedAgreement);
         if (!id && persistedAgreement.proposal_id) {
-          this.markProposalAsConvertedToAgreement(persistedAgreement.proposal_id, persistedAgreementId);
+          this.markProposalAsConvertedToAgreement(persistedAgreement.proposal_id, String(persistedAgreement.agreement_id || '').trim());
         }
       }
       this.closeAgreementForm();
@@ -903,7 +921,9 @@ const Agreements = {
       return;
     }
     const id = String(agreementId || '').trim();
-    if (!id || !window.confirm(`Delete agreement ${id}?`)) return;
+    const row = this.state.rows.find(entry => String(entry?.id || '').trim() === id);
+    const label = String(row?.agreement_id || row?.agreement_number || id).trim();
+    if (!id || !window.confirm(`Delete agreement ${label}?`)) return;
     try {
       await this.deleteAgreement(id);
       delete this.state.detailCacheById[id];
@@ -974,59 +994,49 @@ const Agreements = {
       UI.toast('You do not have permission to create agreements from proposals.');
       return;
     }
-    const id = String(proposalId || '').trim();
-    if (!id) {
+    const proposalRef = String(proposalId || '').trim();
+    if (!proposalRef) {
       UI.toast('Proposal ID is required.');
       return;
     }
-    const localProposal = window.Proposals?.state?.rows?.find(row => String(row?.proposal_id || '').trim() === id);
+    const localProposal = window.Proposals?.state?.rows?.find(row =>
+      String(row?.id || '').trim() === proposalRef || String(row?.proposal_id || '').trim() === proposalRef
+    );
     if (window.Proposals?.isAgreementAlreadyCreated?.(localProposal)) {
       UI.toast('This proposal has already been converted to an agreement.');
       return;
     }
     try {
-      const proposalResponse = await window.Proposals?.getProposal?.(id);
-      const extracted = window.Proposals?.extractProposalAndItems?.(proposalResponse, id) || {};
-      const proposal = extracted.proposal && typeof extracted.proposal === 'object'
-        ? extracted.proposal
-        : { proposal_id: id };
+      const isUuid = value =>
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+      const proposalUuid = String(localProposal?.id || proposalRef).trim();
+      if (!isUuid(proposalUuid)) {
+        UI.toast('Proposal UUID is required. Select a proposal that is loaded in the proposals list.');
+        return;
+      }
+      const proposalResponse = await window.Proposals?.getProposal?.(proposalUuid);
+      const extracted = window.Proposals?.extractProposalAndItems?.(proposalResponse, proposalUuid) || {};
+      const proposal = extracted.proposal && typeof extracted.proposal === 'object' ? extracted.proposal : { id: proposalUuid };
+      const resolvedProposalUuid = String(proposal.id || proposalUuid).trim();
       if (window.Proposals?.isAgreementAlreadyCreated?.(proposal)) {
         UI.toast('This proposal has already been converted to an agreement.');
         return;
       }
-      const proposalItems = Array.isArray(extracted.items) ? extracted.items : [];
-      const draftAgreement = this.normalizeAgreement({
-        ...this.emptyAgreement(),
-        proposal_id: String(proposal.proposal_id || id).trim(),
-        deal_id: String(proposal.deal_id || '').trim(),
-        lead_id: String(proposal.lead_id || '').trim(),
-        agreement_title: String(proposal.proposal_title || '').trim(),
-        service_start_date: String(proposal.service_start_date || '').trim(),
-        agreement_length: String(proposal.contract_term || '').trim(),
-        account_number: String(proposal.account_number || '').trim(),
-        billing_frequency: String(proposal.billing_frequency || '').trim(),
-        payment_term: String(proposal.payment_term || '').trim(),
-        po_number: String(proposal.po_number || '').trim(),
-        currency: String(proposal.currency || '').trim(),
-        customer_name: String(proposal.customer_name || '').trim(),
-        customer_address: String(proposal.customer_address || '').trim(),
-        customer_contact_name: String(proposal.customer_contact_name || '').trim(),
-        customer_contact_mobile: String(proposal.customer_contact_mobile || '').trim(),
-        customer_contact_email: String(proposal.customer_contact_email || '').trim(),
-        provider_contact_name: String(proposal.provider_contact_name || '').trim(),
-        provider_contact_mobile: String(proposal.provider_contact_mobile || '').trim(),
-        provider_contact_email: String(proposal.provider_contact_email || '').trim(),
-        terms_conditions: String(proposal.terms_conditions || '').trim(),
-        customer_signatory_name: String(proposal.customer_signatory_name || '').trim(),
-        customer_signatory_title: String(proposal.customer_signatory_title || '').trim(),
-        provider_signatory_name_primary: String(proposal.provider_signatory_name || '').trim(),
-        provider_signatory_title_primary: String(proposal.provider_signatory_title || '').trim()
-      });
-      const mappedItems = proposalItems.map(item => this.normalizeItem(item, item?.section || 'annual_saas'));
-      this.openAgreementForm(draftAgreement, mappedItems, { readOnly: false });
-      UI.toast(
-        `Agreement draft opened from proposal ${id}. Review mapped fields, complete missing details, and save when ready.`
-      );
+      const rpcResponse = await this.createAgreementFromProposal(resolvedProposalUuid);
+      const createdAgreementUuid = String(
+        rpcResponse?.id ||
+        rpcResponse?.agreement_uuid ||
+        rpcResponse?.agreement_id_uuid ||
+        rpcResponse?.created_agreement_uuid ||
+        ''
+      ).trim();
+      if (!createdAgreementUuid) {
+        UI.toast('Agreement was created but no agreement UUID was returned.');
+        return;
+      }
+      await this.loadAndRefresh({ force: true });
+      await this.openAgreementFormById(createdAgreementUuid, { readOnly: false });
+      UI.toast(`Agreement created from proposal ${String(proposal.proposal_id || proposalRef).trim()}.`);
     } catch (error) {
       if (typeof isAuthError === 'function' && isAuthError(error)) {
         handleExpiredSession('Session expired. Please log in again.');
