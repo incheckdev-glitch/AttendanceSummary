@@ -312,7 +312,7 @@ const Permissions = {
     return this.canPreviewProposal();
   },
   canCreateAgreement() {
-    return this.can('agreements', 'create', { fallback: Session.isAuthenticated() });
+    return this.can('agreements', 'create', { fallback: this.isAdminLike() });
   },
   canUpdateAgreement() {
     return this.can('agreements', 'update', { fallback: this.isAdminLike() });
@@ -324,7 +324,7 @@ const Permissions = {
     return this.can('agreements', 'generate_agreement_html', { fallback: Session.isAuthenticated() });
   },
   canCreateAgreementFromProposal() {
-    return this.can('agreements', 'create_from_proposal', { fallback: this.canCreateAgreement() });
+    return this.can('agreements', 'create_from_proposal', { fallback: this.isAdminLike() });
   },
   canViewOperationsOnboarding() {
     return this.can('operations_onboarding', 'list', { fallback: Session.isAuthenticated() });

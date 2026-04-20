@@ -490,23 +490,23 @@ const Api = {
     return this.normalizeListResponse(response);
   },
   async getAgreement(agreementId) {
-    return this.postAuthenticated('agreements', 'get', { agreement_id: agreementId });
+    return this.postAuthenticated('agreements', 'get', { id: agreementId });
   },
   async createAgreement(agreement, items = []) {
     return this.postAuthenticated('agreements', 'create', { agreement, items });
   },
   async updateAgreement(agreementId, updates, items = []) {
     return this.postAuthenticated('agreements', 'update', {
-      agreement_id: agreementId,
+      id: agreementId,
       updates,
       items
     });
   },
   async deleteAgreement(agreementId) {
-    return this.postAuthenticated('agreements', 'delete', { agreement_id: agreementId });
+    return this.postAuthenticated('agreements', 'delete', { id: agreementId });
   },
   async createAgreementFromProposal(proposalId) {
-    return this.postAuthenticated('agreements', 'create_from_proposal', { proposal_id: proposalId });
+    return this.postAuthenticated('agreements', 'create_from_proposal', { proposal_uuid: proposalId });
   },
   async generateAgreementHtml(agreementId) {
     return this.postAuthenticated('agreements', 'generate_agreement_html', {

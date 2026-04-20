@@ -13,7 +13,7 @@
   const PK_KEYS = {
     users: ['user_id','id'], roles: ['role_key','id'], role_permissions: ['permission_id','id'], tickets: ['id','ticket_id'],
     events: ['event_id','id'], csm: ['id','activity_id'], leads: ['id','lead_id'], deals: ['id','deal_id'],
-    proposal_catalog: ['id','catalog_item_id'], proposals: ['id','proposal_id'], agreements: ['agreement_id','id'],
+    proposal_catalog: ['id','catalog_item_id'], proposals: ['id','proposal_id'], agreements: ['id','agreement_id'],
     clients: ['client_id','id'], invoices: ['invoice_id','id'], receipts: ['receipt_id','id'], operations_onboarding: ['onboarding_id','id']
   };
 
@@ -119,6 +119,26 @@
   const PROPOSAL_ITEM_COLUMNS = new Set([
     'item_id','proposal_id','section','line_no','location_name','item_name','unit_price','discount_percent','discounted_unit_price','quantity',
     'line_total','capability_name','capability_value','notes'
+  ]);
+  const AGREEMENT_COLUMNS = new Set([
+    'agreement_id','proposal_id','agreement_number','customer_name','customer_address','customer_contact_name',
+    'customer_contact_mobile','customer_contact_email','provider_contact_name','provider_contact_mobile',
+    'provider_contact_email','service_start_date','contract_term','account_number','billing_frequency',
+    'payment_term','po_number','terms_conditions','customer_signatory_name','customer_signatory_title',
+    'customer_sign_date','provider_signatory_name','provider_signatory_title','provider_sign_date','gm_signed',
+    'financial_controller_signed','signed_date','status','subtotal_locations','subtotal_one_time','total_discount',
+    'grand_total','generated_by','created_by','updated_by','currency'
+  ]);
+  const AGREEMENT_ITEM_COLUMNS = new Set([
+    'item_id','agreement_id','section','line_no','location_name','item_name','unit_price','discount_percent',
+    'discounted_unit_price','quantity','line_total','capability_name','capability_value','notes'
+  ]);
+  const AGREEMENT_LEGACY_FIELDS = new Set([
+    'authToken','backendToken','backendUrl','sheetName','tabName','resource','action','agreement_title','agreement_date',
+    'effective_date','agreement_length','lead_id','deal_id','customer_legal_name','provider_name','provider_legal_name',
+    'provider_address','provider_signatory_name_primary','provider_signatory_title_primary',
+    'provider_signatory_name_secondary','provider_signatory_title_secondary','saas_total','one_time_total','notes',
+    'agreement_items','items'
   ]);
   const PROPOSAL_LEGACY_FIELDS = new Set([
     'authToken','backendToken','backendUrl','sheetName','tabName','resource','action','lead_id','agreement_id','currency','saas_total','one_time_total',
@@ -274,6 +294,17 @@
       out.proposalId = out.proposalId ?? out.proposal_id ?? '';
       out.proposal_valid_until = out.proposal_valid_until ?? out.valid_until ?? '';
       out.valid_until = out.valid_until ?? out.proposal_valid_until ?? '';
+    }
+    if (resource === 'agreements') {
+      out.id = out.id ?? '';
+      out.agreement_id = out.agreement_id ?? out.agreementId ?? '';
+      out.agreementId = out.agreementId ?? out.agreement_id ?? '';
+      out.contract_term = out.contract_term ?? out.agreement_length ?? '';
+      out.agreement_length = out.agreement_length ?? out.contract_term ?? '';
+      out.subtotal_locations = out.subtotal_locations ?? out.saas_total ?? 0;
+      out.saas_total = out.saas_total ?? out.subtotal_locations ?? 0;
+      out.subtotal_one_time = out.subtotal_one_time ?? out.one_time_total ?? 0;
+      out.one_time_total = out.one_time_total ?? out.subtotal_one_time ?? 0;
     }
     return out;
   }
@@ -501,6 +532,90 @@
     Object.entries(mapped).forEach(([key, value]) => {
       if (!PROPOSAL_ITEM_COLUMNS.has(key)) return;
       if (value === undefined || value === null) return;
+      sanitized[key] = value;
+    });
+    return sanitized;
+  }
+
+  function normalizeNullableDateValue(value) {
+    if (value === undefined || value === null) return undefined;
+    const normalized = String(value).trim();
+    if (!normalized) return null;
+    return normalized;
+  }
+
+  function sanitizeAgreementRecord(record = {}, { includeCreatedBy = false, userId = '' } = {}) {
+    const mapped = compactObject({
+      agreement_id: firstDefined(record, ['agreement_id', 'agreementId']),
+      proposal_id: normalizeNullableUuidValue(firstDefined(record, ['proposal_id', 'proposalId'])),
+      agreement_number: firstDefined(record, ['agreement_number', 'agreementNumber']),
+      customer_name: firstDefined(record, ['customer_name', 'customerName']),
+      customer_address: firstDefined(record, ['customer_address', 'customerAddress']),
+      customer_contact_name: firstDefined(record, ['customer_contact_name', 'customerContactName']),
+      customer_contact_mobile: firstDefined(record, ['customer_contact_mobile', 'customerContactMobile']),
+      customer_contact_email: firstDefined(record, ['customer_contact_email', 'customerContactEmail']),
+      provider_contact_name: firstDefined(record, ['provider_contact_name', 'providerContactName']),
+      provider_contact_mobile: firstDefined(record, ['provider_contact_mobile', 'providerContactMobile']),
+      provider_contact_email: firstDefined(record, ['provider_contact_email', 'providerContactEmail']),
+      service_start_date: normalizeNullableDateValue(firstDefined(record, ['service_start_date', 'serviceStartDate'])),
+      contract_term: firstDefined(record, ['contract_term', 'contractTerm', 'agreement_length', 'agreementLength']),
+      account_number: firstDefined(record, ['account_number', 'accountNumber']),
+      billing_frequency: firstDefined(record, ['billing_frequency', 'billingFrequency']),
+      payment_term: firstDefined(record, ['payment_term', 'paymentTerm']),
+      po_number: firstDefined(record, ['po_number', 'poNumber']),
+      terms_conditions: firstDefined(record, ['terms_conditions', 'termsConditions']),
+      customer_signatory_name: firstDefined(record, ['customer_signatory_name', 'customerSignatoryName']),
+      customer_signatory_title: firstDefined(record, ['customer_signatory_title', 'customerSignatoryTitle']),
+      customer_sign_date: normalizeNullableDateValue(firstDefined(record, ['customer_sign_date', 'customerSignDate'])),
+      provider_signatory_name: firstDefined(record, ['provider_signatory_name', 'providerSignatoryName', 'provider_signatory_name_primary']),
+      provider_signatory_title: firstDefined(record, ['provider_signatory_title', 'providerSignatoryTitle', 'provider_signatory_title_primary']),
+      provider_sign_date: normalizeNullableDateValue(firstDefined(record, ['provider_sign_date', 'providerSignDate'])),
+      gm_signed: toDbBoolean(firstDefined(record, ['gm_signed', 'gmSigned'])),
+      financial_controller_signed: toDbBoolean(firstDefined(record, ['financial_controller_signed', 'financialControllerSigned'])),
+      signed_date: normalizeNullableDateValue(firstDefined(record, ['signed_date', 'signedDate'])),
+      status: firstDefined(record, ['status']),
+      subtotal_locations: firstDefined(record, ['subtotal_locations', 'subtotalLocations', 'saas_total']),
+      subtotal_one_time: firstDefined(record, ['subtotal_one_time', 'subtotalOneTime', 'one_time_total']),
+      total_discount: firstDefined(record, ['total_discount', 'totalDiscount']),
+      grand_total: firstDefined(record, ['grand_total', 'grandTotal']),
+      generated_by: firstDefined(record, ['generated_by', 'generatedBy']),
+      created_by: includeCreatedBy
+        ? (firstDefined(record, ['created_by', 'createdBy']) || userId || undefined)
+        : undefined,
+      updated_by: firstDefined(record, ['updated_by', 'updatedBy']) || userId || undefined,
+      currency: firstDefined(record, ['currency'])
+    });
+    const sanitized = {};
+    Object.entries(mapped).forEach(([key, value]) => {
+      if (!AGREEMENT_COLUMNS.has(key)) return;
+      if (value === undefined) return;
+      sanitized[key] = value;
+    });
+    AGREEMENT_LEGACY_FIELDS.forEach(key => delete sanitized[key]);
+    return sanitized;
+  }
+
+  function sanitizeAgreementItemRecord(record = {}, agreementUuid = '') {
+    const mapped = compactObject({
+      item_id: firstDefined(record, ['item_id', 'itemId']),
+      agreement_id: normalizeNullableUuidValue(agreementUuid || firstDefined(record, ['agreement_id', 'agreementId'])),
+      section: firstDefined(record, ['section']),
+      line_no: firstDefined(record, ['line_no', 'lineNo', 'line']),
+      location_name: firstDefined(record, ['location_name', 'locationName']),
+      item_name: firstDefined(record, ['item_name', 'itemName', 'name']),
+      unit_price: firstDefined(record, ['unit_price', 'unitPrice']),
+      discount_percent: firstDefined(record, ['discount_percent', 'discountPercent']),
+      discounted_unit_price: firstDefined(record, ['discounted_unit_price', 'discountedUnitPrice']),
+      quantity: firstDefined(record, ['quantity']),
+      line_total: firstDefined(record, ['line_total', 'lineTotal']),
+      capability_name: firstDefined(record, ['capability_name', 'capabilityName']),
+      capability_value: firstDefined(record, ['capability_value', 'capabilityValue']),
+      notes: firstDefined(record, ['notes'])
+    });
+    const sanitized = {};
+    Object.entries(mapped).forEach(([key, value]) => {
+      if (!AGREEMENT_ITEM_COLUMNS.has(key)) return;
+      if (value === undefined) return;
       sanitized[key] = value;
     });
     return sanitized;
@@ -873,7 +988,10 @@
       return updatedProposal || createdProposal;
     }
     if (resource === 'agreements' && action === 'create_from_proposal') {
-      const { data, error } = await client.rpc('create_agreement_from_proposal', { proposal_uuid: payload.proposal_id || payload.id });
+      if (!isAdminDev()) throw new Error('Only admin/dev can create agreements from proposals.');
+      const proposalUuid = String(payload.proposal_uuid || payload.id || payload.proposal_id || '').trim();
+      if (!isUuid(proposalUuid)) throw new Error('Proposal UUID is required to create agreement from proposal.');
+      const { data, error } = await client.rpc('create_agreement_from_proposal', { p_proposal_uuid: proposalUuid });
       if (error) throw friendlyError('Agreement creation from proposal failed', error);
       return data;
     }
@@ -955,7 +1073,7 @@
       delete record.resource; delete record.action; delete record.authToken;
       if (resource === 'tickets') devLog('[tickets/create] raw form data', record);
       if (resource === 'events' && !isAdminDev()) throw new Error('Only admin/dev can create events.');
-      const currentUserId = ['tickets', 'events', 'leads', 'deals', 'proposal_catalog', 'proposals'].includes(resource)
+      const currentUserId = ['tickets', 'events', 'leads', 'deals', 'proposal_catalog', 'proposals', 'agreements'].includes(resource)
         ? await getCurrentUserId(client)
         : '';
       if (['leads', 'deals'].includes(resource) && !currentUserId) {
@@ -964,6 +1082,7 @@
       if (resource === 'deals' && !isAdminDev()) throw new Error('Only admin/dev can create deals.');
       if (resource === 'proposal_catalog' && !isAdminDev()) throw new Error('Only admin/dev can create proposal catalog items.');
       if (resource === 'proposals' && !isAdminDev()) throw new Error('Only admin/dev can create proposals.');
+      if (resource === 'agreements' && !isAdminDev()) throw new Error('Only admin/dev can create agreements.');
       const createRecord =
         resource === 'tickets'
           ? toTicketPublicRecord(stripTicketInternalFields(record), { includeTicketId: true, userId: currentUserId })
@@ -975,6 +1094,8 @@
               ? sanitizeProposalCatalogRecord(record, { includeCreatedBy: true, userId: currentUserId })
             : resource === 'proposals'
               ? sanitizeProposalRecord(record, { includeCreatedBy: true, userId: currentUserId, ensureBusinessIds: true })
+            : resource === 'agreements'
+              ? sanitizeAgreementRecord(record, { includeCreatedBy: true, userId: currentUserId })
             : record;
       if (resource === 'events') {
         EVENT_LEGACY_FIELDS.forEach(field => { delete createRecord[field]; });
@@ -991,7 +1112,7 @@
       if (['leads', 'deals'].includes(resource) && !Object.keys(createRecord).length) {
         throw new Error(`${resource} create payload is empty after normalization.`);
       }
-      if (['proposal_catalog', 'proposals'].includes(resource) && !Object.keys(createRecord).length) {
+      if (['proposal_catalog', 'proposals', 'agreements'].includes(resource) && !Object.keys(createRecord).length) {
         throw new Error(`${resource} create payload is empty after normalization.`);
       }
       const { data, error } = await client.from(table).insert(createRecord).select('*').single();
@@ -1018,6 +1139,8 @@
         const insertRows = items.map(item =>
           resource === 'proposals'
             ? sanitizeProposalItemRecord(item, parentId)
+            : resource === 'agreements'
+              ? sanitizeAgreementItemRecord(item, parentId)
             : ({ ...item, [fk]: parentId })
         );
         const childResp = await client.from(itemTable).insert(insertRows).select('*');
@@ -1050,6 +1173,7 @@
       if (resource === 'deals' && !isAdminDev()) throw new Error('Only admin/dev can update deals.');
       if (resource === 'proposal_catalog' && !isAdminDev()) throw new Error('Only admin/dev can update proposal catalog items.');
       if (resource === 'proposals' && !isAdminDev()) throw new Error('Only admin/dev can update proposals.');
+      if (resource === 'agreements' && !isAdminDev()) throw new Error('Only admin/dev can update agreements.');
       const publicUpdates =
         resource === 'tickets'
           ? toTicketPublicRecord(stripTicketInternalFields(safeUpdates), { includeTicketId: false })
@@ -1064,6 +1188,8 @@
               ? sanitizeProposalCatalogRecord(safeUpdates, { includeCreatedBy: false, userId: await getCurrentUserId(client) })
             : resource === 'proposals'
               ? sanitizeProposalRecord(safeUpdates, { includeCreatedBy: false, userId: await getCurrentUserId(client) })
+            : resource === 'agreements'
+              ? sanitizeAgreementRecord(safeUpdates, { includeCreatedBy: false, userId: await getCurrentUserId(client) })
             : safeUpdates;
       if (resource === 'events') {
         EVENT_LEGACY_FIELDS.forEach(field => { delete publicUpdates[field]; });
@@ -1074,7 +1200,7 @@
       if (['leads', 'deals'].includes(resource) && !Object.keys(publicUpdates).length) {
         throw new Error(`${resource} update payload is empty after normalization.`);
       }
-      if (['proposal_catalog', 'proposals'].includes(resource) && !Object.keys(publicUpdates).length) {
+      if (['proposal_catalog', 'proposals', 'agreements'].includes(resource) && !Object.keys(publicUpdates).length) {
         throw new Error(`${resource} update payload is empty after normalization.`);
       }
       const { data, error } = await client.from(table).update(publicUpdates).eq(key, id).select('*').single();
@@ -1102,6 +1228,8 @@
           const insertRows = payload.items.map(item =>
             resource === 'proposals'
               ? sanitizeProposalItemRecord(item, parentId)
+              : resource === 'agreements'
+                ? sanitizeAgreementItemRecord(item, parentId)
               : ({ ...item, [fk]: id })
           );
           const childResp = await client.from(itemTable).insert(insertRows).select('*');
@@ -1126,6 +1254,7 @@
       if (resource === 'deals' && !isAdminDev()) throw new Error('Only admin/dev can delete deals.');
       if (resource === 'proposal_catalog' && !isAdminDev()) throw new Error('Only admin/dev can delete proposal catalog items.');
       if (resource === 'proposals' && !isAdminDev()) throw new Error('Only admin/dev can delete proposals.');
+      if (resource === 'agreements' && !isAdminDev()) throw new Error('Only admin/dev can delete agreements.');
       if (resource === 'tickets' && isAdminDev()) {
         const { error: internalDeleteError } = await client.from('ticket_internal').delete().eq('ticket_id', ticketRowId({ id }));
         if (internalDeleteError) throw friendlyError('Unable to delete internal ticket fields', internalDeleteError);
