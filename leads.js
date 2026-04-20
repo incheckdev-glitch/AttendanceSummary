@@ -36,8 +36,10 @@ const Leads = {
     return '';
   },
   normalizeLead(raw = {}) {
-    const leadId = String(raw.lead_id || raw.leadId || raw.id || '').trim();
+    const id = String(raw.id || '').trim();
+    const leadId = String(raw.lead_id || raw.leadId || '').trim();
     return {
+      id,
       lead_id: leadId,
       created_at: raw.created_at || raw.createdAt || '',
       full_name: String(raw.full_name || raw.fullName || '').trim(),
@@ -59,11 +61,12 @@ const Leads = {
       notes: String(raw.notes || '').trim(),
       updated_at: raw.updated_at || raw.updatedAt || '',
       converted_at: raw.converted_at || raw.convertedAt || '',
-      deal_id: String(raw.deal_id || raw.deal_id_ref || raw.converted_deal_id || '').trim()
+      deal_id: String(raw.deal_id || raw.converted_to_deal_id || raw.deal_id_ref || raw.converted_deal_id || '').trim()
     };
   },
   backendLead(lead) {
     return {
+      lead_id: String(lead.lead_id || '').trim() || undefined,
       full_name: lead.full_name,
       company_name: lead.company_name,
       phone: lead.phone,
@@ -72,12 +75,7 @@ const Leads = {
       lead_source: lead.lead_source,
       service_interest: lead.service_interest,
       status: lead.status,
-      priority: lead.priority,
-      estimated_value: lead.estimated_value === '' ? '' : Number(lead.estimated_value),
-      currency: lead.currency,
       assigned_to: lead.assigned_to,
-      next_followup_date: lead.next_followup_date,
-      last_contact_date: lead.last_contact_date,
       proposal_needed: lead.proposal_needed === 'yes',
       agreement_needed: lead.agreement_needed === 'yes',
       notes: lead.notes
@@ -101,6 +99,22 @@ const Leads = {
     }
     return [];
   },
+  getClient() {
+    return SupabaseClient.getClient();
+  },
+  async getCurrentUserId() {
+    try {
+      const { data, error } = await this.getClient().auth.getUser();
+      if (error) return '';
+      return String(data?.user?.id || '').trim();
+    } catch {
+      return '';
+    }
+  },
+  toSupabaseError(prefix, error) {
+    const message = String(error?.message || error?.error_description || 'Unknown error').trim();
+    return new Error(`${prefix}: ${message}`);
+  },
   collectServerFilters() {
     const filters = {};
     if (this.state.status !== 'All') filters.status = this.state.status;
@@ -112,19 +126,28 @@ const Leads = {
     return filters;
   },
   async listLeads(options = {}) {
-    return Api.postAuthenticatedCached('leads', 'list', {
-      filters: this.collectServerFilters(),
-      limit: Number(options.limit || 50),
-      page: Number(options.page || 1),
-      sort_by: options.sortBy || 'updated_at',
-      sort_dir: options.sortDir || 'desc',
-      search: this.state.search || '',
-      summary_only: true
-    }, { forceRefresh: options.forceRefresh === true });
+    const client = this.getClient();
+    let query = client.from('leads').select('*').order('updated_at', { ascending: false });
+    const filters = this.collectServerFilters();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (key === 'search') return;
+      query = query.eq(key, value);
+    });
+    if (filters.search) {
+      const term = String(filters.search).replace(/[%_]/g, ' ').trim();
+      if (term) {
+        query = query.or(
+          `lead_id.ilike.%${term}%,full_name.ilike.%${term}%,company_name.ilike.%${term}%,email.ilike.%${term}%,phone.ilike.%${term}%,country.ilike.%${term}%,lead_source.ilike.%${term}%,service_interest.ilike.%${term}%,assigned_to.ilike.%${term}%,notes.ilike.%${term}%`
+        );
+      }
+    }
+    const { data, error } = await query;
+    if (error) throw this.toSupabaseError('Unable to load leads', error);
+    return data || [];
   },
   upsertLocalRow(row) {
     const normalized = this.normalizeLead(row);
-    const idx = this.state.rows.findIndex(item => item.lead_id === normalized.lead_id);
+    const idx = this.state.rows.findIndex(item => item.id === normalized.id);
     if (idx === -1) this.state.rows.unshift(normalized);
     else this.state.rows[idx] = { ...this.state.rows[idx], ...normalized };
     this.rerenderVisibleTable();
@@ -132,7 +155,7 @@ const Leads = {
   },
   removeLocalRow(id) {
     const before = this.state.rows.length;
-    this.state.rows = this.state.rows.filter(item => item.lead_id !== id);
+    this.state.rows = this.state.rows.filter(item => item.id !== id);
     if (this.state.rows.length !== before) this.rerenderVisibleTable();
   },
   rerenderVisibleTable() {
@@ -144,23 +167,35 @@ const Leads = {
     this.renderLeadAnalytics(this.computeLeadAnalytics(this.state.filteredRows));
   },
   async getLead(id) {
-    return Api.postAuthenticated('leads', 'get', { id, lead_id: id });
+    const { data, error } = await this.getClient().from('leads').select('*').eq('id', id).single();
+    if (error) throw this.toSupabaseError('Unable to load lead details', error);
+    return data;
   },
   async createLead(lead) {
-    return Api.postAuthenticated('leads', 'create', {
-      lead: this.backendLead(lead)
-    });
+    const userId = await this.getCurrentUserId();
+    const payload = {
+      ...this.backendLead(lead),
+      created_by: userId || undefined,
+      updated_by: userId || undefined
+    };
+    const { data, error } = await this.getClient().from('leads').insert(payload).select('*').single();
+    if (error) throw this.toSupabaseError('Unable to create lead', error);
+    return data;
   },
   async updateLead(leadId, updates) {
-    return Api.postAuthenticated('leads', 'update', {
-      lead_id: leadId,
-      updates: this.backendLead(updates)
-    });
+    const userId = await this.getCurrentUserId();
+    const payload = {
+      ...this.backendLead(updates),
+      updated_by: userId || undefined
+    };
+    const { data, error } = await this.getClient().from('leads').update(payload).eq('id', leadId).select('*').single();
+    if (error) throw this.toSupabaseError('Unable to update lead', error);
+    return data;
   },
   async deleteLead(leadId) {
-    return Api.postAuthenticated('leads', 'delete', {
-      lead_id: leadId
-    });
+    const { error } = await this.getClient().from('leads').delete().eq('id', leadId);
+    if (error) throw this.toSupabaseError('Unable to delete lead', error);
+    return { ok: true };
   },
   isUnsupportedConvertActionError(error) {
     const message = String(error?.message || '')
@@ -177,31 +212,9 @@ const Leads = {
     );
   },
   async convertToDeal(leadId) {
-    const attempts = [
-      { resource: 'leads', action: 'convert_to_deal', payload: { lead_id: leadId } },
-      { resource: 'leads', action: 'convert', payload: { lead_id: leadId } },
-      { resource: 'deals', action: 'create_from_lead', payload: { lead_id: leadId } },
-      { resource: 'deals', action: 'convert_from_lead', payload: { lead_id: leadId } },
-      { resource: 'deals', action: 'create', payload: { lead_id: leadId } }
-    ];
-
-    let lastError = null;
-    for (let i = 0; i < attempts.length; i += 1) {
-      const attempt = attempts[i];
-      try {
-        return await Api.postAuthenticated(attempt.resource, attempt.action, attempt.payload);
-      } catch (error) {
-        if (isAuthError(error)) throw error;
-        lastError = error;
-        const hasMoreFallbacks = i < attempts.length - 1;
-        if (!hasMoreFallbacks || !this.isUnsupportedConvertActionError(error)) {
-          throw error;
-        }
-      }
-    }
-
-    if (lastError) throw lastError;
-    throw new Error('Unable to convert lead to deal.');
+    const { data, error } = await this.getClient().rpc('convert_lead_to_deal', { p_lead_uuid: leadId });
+    if (error) throw this.toSupabaseError('Unable to convert lead', error);
+    return data;
   },
   isConvertedLead(row = {}) {
     const status = this.normalizeText(row.status);
@@ -210,7 +223,8 @@ const Leads = {
     return !!String(row.converted_at || '').trim();
   },
   canConvertLead(row = {}) {
-    return Permissions.canCreateLead() && !this.isConvertedLead(row) && !!String(row.lead_id || '').trim();
+    const canConvert = Permissions.can('leads', 'convert_to_deal', { fallback: Permissions.isAdminLike() });
+    return canConvert && !this.isConvertedLead(row) && !!String(row.id || '').trim();
   },
   getConvertedDealId(response) {
     const directDealId = String(
@@ -568,15 +582,15 @@ const Leads = {
         const actionButtons = [];
         if (this.canConvertLead(row)) {
           actionButtons.push(
-            `<button class="btn ghost sm" type="button" data-lead-convert="${U.escapeAttr(row.lead_id)}">Convert to Deal</button>`
+            `<button class="btn ghost sm" type="button" data-lead-convert="${U.escapeAttr(row.id)}">Convert to Deal</button>`
           );
         }
         if (this.canEditDelete()) {
           actionButtons.push(
-            `<button class="btn ghost sm" type="button" data-lead-edit="${U.escapeAttr(row.lead_id)}">Edit</button>`
+            `<button class="btn ghost sm" type="button" data-lead-edit="${U.escapeAttr(row.id)}">Edit</button>`
           );
           actionButtons.push(
-            `<button class="btn ghost sm" type="button" data-lead-delete="${U.escapeAttr(row.lead_id)}">Delete</button>`
+            `<button class="btn ghost sm" type="button" data-lead-delete="${U.escapeAttr(row.id)}">Delete</button>`
           );
         }
         const actions = actionButtons.length ? actionButtons.join(' ') : '<span class="muted">—</span>';
@@ -667,7 +681,7 @@ const Leads = {
     if (!E.leadFormModal || !E.leadForm) return;
     const isEdit = !!row;
     E.leadForm.dataset.mode = isEdit ? 'edit' : 'create';
-    E.leadForm.dataset.id = row?.lead_id || '';
+    E.leadForm.dataset.id = row?.id || '';
     if (E.leadFormTitle) E.leadFormTitle.textContent = isEdit ? 'Edit Lead' : 'Create Lead';
     this.resetForm();
 
@@ -771,7 +785,7 @@ const Leads = {
   },
   async updateLeadWithVerification(leadId, lead) {
     const response = await this.updateLead(leadId, lead);
-    const resolvedRow = response?.lead || response?.data?.lead || { ...lead, lead_id: leadId };
+    const resolvedRow = response || { ...lead, id: leadId };
     return { row: resolvedRow, verifiedAfterError: false };
   },
   formatLeadActionError(error, { resource = 'leads', action = 'unknown' } = {}) {
@@ -817,12 +831,11 @@ const Leads = {
     try {
       if (mode === 'edit') {
         const result = await this.updateLeadWithVerification(leadId, lead);
-        const resolvedRow = result?.row || { ...lead, lead_id: leadId };
+        const resolvedRow = result?.row || { ...lead, id: leadId };
         this.upsertLocalRow(resolvedRow);
         UI.toast(result?.verifiedAfterError ? 'Lead updated (verified).' : 'Lead updated.');
       } else {
-        const response = await this.createLead(lead);
-        const created = response?.lead || response?.data?.lead || response || lead;
+        const created = await this.createLead(lead);
         this.upsertLocalRow(created);
         UI.toast('Lead created.');
       }
@@ -840,18 +853,20 @@ const Leads = {
       this.setFormBusy(false);
     }
   },
-  async deleteLeadById(leadId) {
+  async deleteLeadById(leadUuid) {
     if (!this.canEditDelete()) {
       UI.toast('Only admin/dev can delete leads.');
       return;
     }
-    const confirmed = window.confirm(`Delete lead ${leadId}?`);
+    const row = this.state.rows.find(item => item.id === leadUuid);
+    const label = row?.lead_id || leadUuid;
+    const confirmed = window.confirm(`Delete lead ${label}?`);
     if (!confirmed) return;
 
     this.setFormBusy(true);
     try {
-      await this.deleteLead(leadId);
-      this.removeLocalRow(leadId);
+      await this.deleteLead(leadUuid);
+      this.removeLocalRow(leadUuid);
       UI.toast('Lead deleted.');
       this.closeForm();
       this.rerenderSummaryIfNeeded();
@@ -865,19 +880,19 @@ const Leads = {
       this.setFormBusy(false);
     }
   },
-  async convertLeadById(leadId) {
-    if (!Permissions.canCreateLead()) {
-      UI.toast('Login is required to convert leads.');
+  async convertLeadById(leadUuid) {
+    if (!Permissions.can('leads', 'convert_to_deal', { fallback: Permissions.isAdminLike() })) {
+      UI.toast('Only admin/dev can convert leads.');
       return;
     }
-    const row = this.state.rows.find(item => item.lead_id === leadId);
+    const row = this.state.rows.find(item => item.id === leadUuid);
     if (!this.canConvertLead(row)) {
       UI.toast('This lead is already converted or unavailable.');
       return;
     }
     this.setFormBusy(true);
     try {
-      const response = await this.convertToDeal(leadId);
+      const response = await this.convertToDeal(leadUuid);
       const dealId = this.getConvertedDealId(response);
       UI.toast(dealId ? `Lead converted to deal ${dealId}.` : 'Lead converted to deal.');
       await Promise.all([
@@ -954,7 +969,7 @@ const Leads = {
       E.leadsTbody.addEventListener('click', event => {
         const editId = event.target?.getAttribute('data-lead-edit');
         if (editId) {
-          const row = this.state.rows.find(item => item.lead_id === editId);
+          const row = this.state.rows.find(item => item.id === editId);
           if (row) this.openForm(row);
           return;
         }

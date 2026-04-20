@@ -12,7 +12,7 @@
 
   const PK_KEYS = {
     users: ['user_id','id'], roles: ['role_key','id'], role_permissions: ['permission_id','id'], tickets: ['id','ticket_id'],
-    events: ['event_id','id'], csm: ['id','activity_id'], leads: ['lead_id','id'], deals: ['deal_id','id'],
+    events: ['event_id','id'], csm: ['id','activity_id'], leads: ['id','lead_id'], deals: ['id','deal_id'],
     proposal_catalog: ['catalog_item_id','id'], proposals: ['proposal_id','id'], agreements: ['agreement_id','id'],
     clients: ['client_id','id'], invoices: ['invoice_id','id'], receipts: ['receipt_id','id'], operations_onboarding: ['onboarding_id','id']
   };
@@ -67,6 +67,63 @@
     'tabName',
     'resource',
     'action'
+  ]);
+  const LEAD_COLUMNS = new Set([
+    'lead_id',
+    'full_name',
+    'company_name',
+    'phone',
+    'email',
+    'country',
+    'lead_source',
+    'service_interest',
+    'proposal_needed',
+    'agreement_needed',
+    'status',
+    'assigned_to',
+    'notes',
+    'converted_to_deal_id',
+    'created_by',
+    'updated_by'
+  ]);
+  const DEAL_COLUMNS = new Set([
+    'deal_id',
+    'lead_id',
+    'full_name',
+    'company_name',
+    'phone',
+    'email',
+    'country',
+    'lead_source',
+    'service_interest',
+    'proposal_needed',
+    'agreement_needed',
+    'stage',
+    'status',
+    'assigned_to',
+    'notes',
+    'created_by',
+    'updated_by'
+  ]);
+  const LEADS_DEALS_LEGACY_FIELDS = new Set([
+    'authToken',
+    'backendToken',
+    'backendUrl',
+    'sheetName',
+    'tabName',
+    'resource',
+    'action',
+    'priority',
+    'estimated_value',
+    'estimatedValue',
+    'currency',
+    'next_followup_date',
+    'nextFollowupDate',
+    'last_contact_date',
+    'lastContactDate',
+    'proposal_id',
+    'converted_by',
+    'converted_at'
   ]);
 
   const devLog = (...args) => {
@@ -138,6 +195,20 @@
       out.end_at = out.end_at ?? out.end ?? '';
       out.allDay = out.allDay ?? out.all_day ?? false;
     }
+    if (resource === 'leads') {
+      out.id = out.id ?? '';
+      out.lead_id = out.lead_id ?? out.leadId ?? '';
+      out.leadId = out.leadId ?? out.lead_id ?? '';
+      out.converted_to_deal_id = out.converted_to_deal_id ?? out.convertedDealId ?? out.deal_id ?? '';
+      out.deal_id = out.deal_id ?? out.converted_to_deal_id ?? '';
+    }
+    if (resource === 'deals') {
+      out.id = out.id ?? '';
+      out.deal_id = out.deal_id ?? out.dealId ?? '';
+      out.dealId = out.dealId ?? out.deal_id ?? '';
+      out.lead_id = out.lead_id ?? out.leadId ?? '';
+      out.leadId = out.leadId ?? out.lead_id ?? '';
+    }
     return out;
   }
 
@@ -203,6 +274,51 @@
 
   function isBlankValue(value) {
     return value === undefined || value === null || (typeof value === 'string' && value.trim() === '');
+  }
+
+  function toDbBoolean(value) {
+    if (value === undefined || value === null || value === '') return undefined;
+    if (typeof value === 'boolean') return value;
+    const normalized = String(value).trim().toLowerCase();
+    if (['true', '1', 'yes', 'y'].includes(normalized)) return true;
+    if (['false', '0', 'no', 'n'].includes(normalized)) return false;
+    return undefined;
+  }
+
+  function sanitizeLeadsOrDealsRecord(resource, record = {}, { includeCreatedBy = false, userId = '' } = {}) {
+    const allowedColumns = resource === 'leads' ? LEAD_COLUMNS : DEAL_COLUMNS;
+    const mapped = compactObject({
+      lead_id: firstDefined(record, ['lead_id', 'leadId']),
+      deal_id: firstDefined(record, ['deal_id', 'dealId']),
+      full_name: firstDefined(record, ['full_name', 'fullName']),
+      company_name: firstDefined(record, ['company_name', 'companyName']),
+      phone: firstDefined(record, ['phone']),
+      email: firstDefined(record, ['email']),
+      country: firstDefined(record, ['country']),
+      lead_source: firstDefined(record, ['lead_source', 'leadSource']),
+      service_interest: firstDefined(record, ['service_interest', 'serviceInterest']),
+      proposal_needed: toDbBoolean(firstDefined(record, ['proposal_needed', 'proposalNeeded'])),
+      agreement_needed: toDbBoolean(firstDefined(record, ['agreement_needed', 'agreementNeeded'])),
+      status: firstDefined(record, ['status']),
+      stage: firstDefined(record, ['stage']),
+      assigned_to: firstDefined(record, ['assigned_to', 'assignedTo']),
+      notes: firstDefined(record, ['notes']),
+      converted_to_deal_id: firstDefined(record, ['converted_to_deal_id', 'convertedDealId', 'deal_id', 'dealId']),
+      created_by: includeCreatedBy
+        ? (firstDefined(record, ['created_by', 'createdBy']) || userId || undefined)
+        : undefined,
+      updated_by: firstDefined(record, ['updated_by', 'updatedBy']) || userId || undefined
+    });
+    const sanitized = {};
+    Object.entries(mapped).forEach(([key, value]) => {
+      if (!allowedColumns.has(key)) return;
+      if (value === undefined || value === null) return;
+      sanitized[key] = value;
+    });
+    LEADS_DEALS_LEGACY_FIELDS.forEach(key => {
+      delete sanitized[key];
+    });
+    return sanitized;
   }
 
   async function getCurrentUserId(client) {
@@ -430,7 +546,9 @@
   async function handleRpcResource(resource, action, payload) {
     const client = getClient();
     if (resource === 'leads' && ['convert_to_deal','convert'].includes(action)) {
-      const { data, error } = await client.rpc('convert_lead_to_deal', { lead_uuid: payload.lead_id || payload.id });
+      if (!isAdminDev()) throw new Error('Only admin/dev can convert leads to deals.');
+      const leadUuid = String(payload.id || payload.lead_id || '').trim();
+      const { data, error } = await client.rpc('convert_lead_to_deal', { p_lead_uuid: leadUuid });
       if (error) throw friendlyError('Lead conversion failed', error);
       return data;
     }
@@ -516,12 +634,18 @@
       delete record.resource; delete record.action; delete record.authToken;
       if (resource === 'tickets') devLog('[tickets/create] raw form data', record);
       if (resource === 'events' && !isAdminDev()) throw new Error('Only admin/dev can create events.');
-      const currentUserId = ['tickets', 'events'].includes(resource) ? await getCurrentUserId(client) : '';
+      const currentUserId = ['tickets', 'events', 'leads', 'deals'].includes(resource) ? await getCurrentUserId(client) : '';
+      if (['leads', 'deals'].includes(resource) && !currentUserId) {
+        throw new Error(`You must be logged in to create ${resource}.`);
+      }
+      if (resource === 'deals' && !isAdminDev()) throw new Error('Only admin/dev can create deals.');
       const createRecord =
         resource === 'tickets'
           ? toTicketPublicRecord(stripTicketInternalFields(record), { includeTicketId: true, userId: currentUserId })
           : resource === 'events'
             ? sanitizeEventRecord(record, { includeCreatedBy: true, userId: currentUserId })
+            : ['leads', 'deals'].includes(resource)
+              ? sanitizeLeadsOrDealsRecord(resource, record, { includeCreatedBy: true, userId: currentUserId })
             : record;
       if (resource === 'events') {
         EVENT_LEGACY_FIELDS.forEach(field => { delete createRecord[field]; });
@@ -534,6 +658,9 @@
       }
       if (resource === 'events' && !Object.keys(createRecord).length) {
         throw new Error('Event create payload is empty after normalization.');
+      }
+      if (['leads', 'deals'].includes(resource) && !Object.keys(createRecord).length) {
+        throw new Error(`${resource} create payload is empty after normalization.`);
       }
       const { data, error } = await client.from(table).insert(createRecord).select('*').single();
       if (error) throw friendlyError(`Unable to create ${resource} record`, error);
@@ -581,17 +708,27 @@
       if (resource === 'tickets' && !isAdminDev()) throw new Error('Only admin/dev can update tickets.');
       if (resource === 'events' && !isAdminDev()) throw new Error('Only admin/dev can update events.');
       if (resource === 'csm' && !['admin','hoo'].includes(role())) throw new Error('Only admin/hoo can update CSM activities.');
+      if (resource === 'leads' && !isAdminDev()) throw new Error('Only admin/dev can update leads.');
+      if (resource === 'deals' && !isAdminDev()) throw new Error('Only admin/dev can update deals.');
       const publicUpdates =
         resource === 'tickets'
           ? toTicketPublicRecord(stripTicketInternalFields(safeUpdates), { includeTicketId: false })
           : resource === 'events'
             ? sanitizeEventRecord(safeUpdates, { includeCreatedBy: false, userId: await getCurrentUserId(client) })
+            : ['leads', 'deals'].includes(resource)
+              ? sanitizeLeadsOrDealsRecord(resource, safeUpdates, {
+                includeCreatedBy: false,
+                userId: await getCurrentUserId(client)
+              })
             : safeUpdates;
       if (resource === 'events') {
         EVENT_LEGACY_FIELDS.forEach(field => { delete publicUpdates[field]; });
       }
       if (resource === 'events' && !Object.keys(publicUpdates).length) {
         throw new Error('Event update payload is empty after normalization.');
+      }
+      if (['leads', 'deals'].includes(resource) && !Object.keys(publicUpdates).length) {
+        throw new Error(`${resource} update payload is empty after normalization.`);
       }
       const { data, error } = await client.from(table).update(publicUpdates).eq(key, id).select('*').single();
       if (error) throw friendlyError(`Unable to update ${resource} record`, error);
@@ -629,6 +766,8 @@
       if (resource === 'tickets' && !isAdminDev()) throw new Error('Only admin/dev can delete tickets.');
       if (resource === 'events' && !isAdminDev()) throw new Error('Only admin/dev can delete events.');
       if (resource === 'csm' && !['admin','hoo'].includes(role())) throw new Error('Only admin/hoo can delete CSM activities.');
+      if (resource === 'leads' && !isAdminDev()) throw new Error('Only admin/dev can delete leads.');
+      if (resource === 'deals' && !isAdminDev()) throw new Error('Only admin/dev can delete deals.');
       if (resource === 'tickets' && isAdminDev()) {
         const { error: internalDeleteError } = await client.from('ticket_internal').delete().eq('ticket_id', ticketRowId({ id }));
         if (internalDeleteError) throw friendlyError('Unable to delete internal ticket fields', internalDeleteError);

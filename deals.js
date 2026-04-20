@@ -76,8 +76,10 @@ const Deals = {
       return '';
     };
 
-    const dealId = String(raw.deal_id || raw.dealId || raw.id || '').trim();
+    const id = String(raw.id || '').trim();
+    const dealId = String(raw.deal_id || raw.dealId || '').trim();
     return {
+      id,
       deal_id: dealId,
       lead_id: String(pick(source.lead_id, source.leadId, lead.lead_id, lead.leadId)).trim(),
       full_name: String(pick(source.full_name, source.fullName, lead.full_name, lead.fullName)).trim(),
@@ -120,6 +122,7 @@ const Deals = {
   },
   backendDeal(deal) {
     return {
+      deal_id: String(deal.deal_id || '').trim() || undefined,
       lead_id: deal.lead_id,
       full_name: deal.full_name,
       company_name: deal.company_name,
@@ -130,9 +133,6 @@ const Deals = {
       service_interest: deal.service_interest,
       stage: deal.stage,
       status: deal.status,
-      priority: deal.priority,
-      estimated_value: deal.estimated_value === '' ? '' : Number(deal.estimated_value),
-      currency: deal.currency,
       assigned_to: deal.assigned_to,
       proposal_needed: deal.proposal_needed === 'yes',
       agreement_needed: deal.agreement_needed === 'yes',
@@ -157,27 +157,44 @@ const Deals = {
     }
     return [];
   },
+  getClient() {
+    return SupabaseClient.getClient();
+  },
+  async getCurrentUserId() {
+    try {
+      const { data, error } = await this.getClient().auth.getUser();
+      if (error) return '';
+      return String(data?.user?.id || '').trim();
+    } catch {
+      return '';
+    }
+  },
+  toSupabaseError(prefix, error) {
+    const message = String(error?.message || error?.error_description || 'Unknown error').trim();
+    return new Error(`${prefix}: ${message}`);
+  },
   async listDeals(options = {}) {
-    return Api.postAuthenticatedCached('deals', 'list', {
-      sheetName: CONFIG.DEALS_SHEET_NAME,
-      tabName: CONFIG.DEALS_SHEET_NAME,
-      limit: Number(options.limit || 50),
-      page: Number(options.page || 1),
-      sort_by: options.sortBy || 'updated_at',
-      sort_dir: options.sortDir || 'desc',
-      search: this.state.search || '',
-      summary_only: true
-    }, { forceRefresh: options.forceRefresh === true });
+    const client = this.getClient();
+    let query = client.from('deals').select('*').order('updated_at', { ascending: false });
+    const term = String(this.state.search || '').replace(/[%_]/g, ' ').trim();
+    if (term) {
+      query = query.or(
+        `deal_id.ilike.%${term}%,lead_id.ilike.%${term}%,full_name.ilike.%${term}%,company_name.ilike.%${term}%,email.ilike.%${term}%,phone.ilike.%${term}%,country.ilike.%${term}%,lead_source.ilike.%${term}%,service_interest.ilike.%${term}%,assigned_to.ilike.%${term}%,notes.ilike.%${term}%`
+      );
+    }
+    const { data, error } = await query;
+    if (error) throw this.toSupabaseError('Unable to load deals', error);
+    return data || [];
   },
   upsertLocalRow(row) {
     const normalized = this.normalizeDeal(row);
-    const idx = this.state.rows.findIndex(item => item.deal_id === normalized.deal_id);
+    const idx = this.state.rows.findIndex(item => item.id === normalized.id);
     if (idx === -1) this.state.rows.unshift(normalized);
     else this.state.rows[idx] = { ...this.state.rows[idx], ...normalized };
     this.rerenderVisibleTable();
   },
   removeLocalRow(id) {
-    this.state.rows = this.state.rows.filter(item => item.deal_id !== id);
+    this.state.rows = this.state.rows.filter(item => item.id !== id);
     this.rerenderVisibleTable();
   },
   rerenderVisibleTable() {
@@ -186,23 +203,35 @@ const Deals = {
     this.render();
   },
   async getDeal(id) {
-    return Api.postAuthenticated('deals', 'get', { id });
+    const { data, error } = await this.getClient().from('deals').select('*').eq('id', id).single();
+    if (error) throw this.toSupabaseError('Unable to load deal details', error);
+    return data;
   },
   async createDeal(deal) {
-    return Api.postAuthenticated('deals', 'create', {
-      deal: this.backendDeal(deal)
-    });
+    const userId = await this.getCurrentUserId();
+    const payload = {
+      ...this.backendDeal(deal),
+      created_by: userId || undefined,
+      updated_by: userId || undefined
+    };
+    const { data, error } = await this.getClient().from('deals').insert(payload).select('*').single();
+    if (error) throw this.toSupabaseError('Unable to create deal', error);
+    return data;
   },
   async updateDeal(dealId, updates) {
-    return Api.postAuthenticated('deals', 'update', {
-      deal_id: dealId,
-      updates: this.backendDeal(updates)
-    });
+    const userId = await this.getCurrentUserId();
+    const payload = {
+      ...this.backendDeal(updates),
+      updated_by: userId || undefined
+    };
+    const { data, error } = await this.getClient().from('deals').update(payload).eq('id', dealId).select('*').single();
+    if (error) throw this.toSupabaseError('Unable to update deal', error);
+    return data;
   },
   async deleteDeal(dealId) {
-    return Api.postAuthenticated('deals', 'delete', {
-      deal_id: dealId
-    });
+    const { error } = await this.getClient().from('deals').delete().eq('id', dealId);
+    if (error) throw this.toSupabaseError('Unable to delete deal', error);
+    return { ok: true };
   },
   formatDate(value) {
     if (!value) return '—';
@@ -211,10 +240,13 @@ const Deals = {
     return U.escapeHtml(U.fmtDisplayDate(value));
   },
   canCreate() {
-    return Permissions.canCreateLead();
+    return Permissions.can('deals', 'create', { fallback: Permissions.isAdminLike() });
   },
   canEditDelete() {
-    return Permissions.canEditDeleteLead();
+    return (
+      Permissions.can('deals', 'update', { fallback: Permissions.isAdminLike() }) ||
+      Permissions.can('deals', 'delete', { fallback: Permissions.isAdminLike() })
+    );
   },
   isProposalAlreadyCreated(row = {}) {
     const proposalId = String(row?.proposal_id || '').trim();
@@ -657,10 +689,10 @@ const Deals = {
         const actionButtons = [];
         if (this.canEditDelete()) {
           actionButtons.push(
-            `<button class="btn ghost sm" type="button" data-deal-edit="${U.escapeAttr(row.deal_id)}">Edit</button>`
+            `<button class="btn ghost sm" type="button" data-deal-edit="${U.escapeAttr(row.id)}">Edit</button>`
           );
           actionButtons.push(
-            `<button class="btn ghost sm" type="button" data-deal-delete="${U.escapeAttr(row.deal_id)}">Delete</button>`
+            `<button class="btn ghost sm" type="button" data-deal-delete="${U.escapeAttr(row.id)}">Delete</button>`
           );
         }
         if (row.deal_id && !this.isProposalAlreadyCreated(row)) {
@@ -737,7 +769,7 @@ const Deals = {
     if (!E.dealFormModal || !E.dealForm) return;
     const isEdit = !!row;
     E.dealForm.dataset.mode = isEdit ? 'edit' : 'create';
-    E.dealForm.dataset.id = row?.deal_id || '';
+    E.dealForm.dataset.id = row?.id || '';
     if (E.dealFormTitle) E.dealFormTitle.textContent = isEdit ? 'Edit Deal' : 'Create Deal';
     this.resetForm();
 
@@ -814,7 +846,7 @@ const Deals = {
   async submitForm() {
     if (this.state.saveInFlight) return;
     if (!this.canCreate()) {
-      UI.toast('Login is required to manage deals.');
+      UI.toast('Only admin/dev can manage deals.');
       return;
     }
     const mode = E.dealForm?.dataset.mode === 'edit' ? 'edit' : 'create';
@@ -836,11 +868,11 @@ const Deals = {
     try {
       if (mode === 'edit') {
         const response = await this.updateDeal(dealId, deal);
-        this.upsertLocalRow(response?.deal || response?.data?.deal || { ...deal, deal_id: dealId });
+        this.upsertLocalRow(response || { ...deal, id: dealId });
         UI.toast('Deal updated.');
       } else {
         const response = await this.createDeal(deal);
-        this.upsertLocalRow(response?.deal || response?.data?.deal || response || deal);
+        this.upsertLocalRow(response || deal);
         UI.toast('Deal created.');
       }
       this.closeForm();
@@ -857,18 +889,20 @@ const Deals = {
       this.setFormBusy(false);
     }
   },
-  async deleteDealById(dealId) {
+  async deleteDealById(dealUuid) {
     if (!this.canEditDelete()) {
       UI.toast('Only admin/dev can delete deals.');
       return;
     }
-    const confirmed = window.confirm(`Delete deal ${dealId}?`);
+    const row = this.state.rows.find(item => item.id === dealUuid);
+    const label = row?.deal_id || dealUuid;
+    const confirmed = window.confirm(`Delete deal ${label}?`);
     if (!confirmed) return;
 
     this.setFormBusy(true);
     try {
-      await this.deleteDeal(dealId);
-      this.removeLocalRow(dealId);
+      await this.deleteDeal(dealUuid);
+      this.removeLocalRow(dealUuid);
       UI.toast('Deal deleted.');
       this.closeForm();
       this.rerenderVisibleTable();
@@ -940,7 +974,7 @@ const Deals = {
     if (E.dealsCreateBtn) {
       E.dealsCreateBtn.addEventListener('click', () => {
         if (!this.canCreate()) {
-          UI.toast('Login is required to create deals.');
+          UI.toast('Only admin/dev can create deals.');
           return;
         }
         this.openForm();
@@ -951,7 +985,7 @@ const Deals = {
       E.dealsTbody.addEventListener('click', event => {
         const editId = event.target?.getAttribute('data-deal-edit');
         if (editId) {
-          const row = this.state.rows.find(item => item.deal_id === editId);
+          const row = this.state.rows.find(item => item.id === editId);
           if (row) this.openForm(row);
           return;
         }
