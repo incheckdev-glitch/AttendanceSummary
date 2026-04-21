@@ -3253,19 +3253,20 @@ Sample:
           <div class="filter-row" style="grid-column:1 / -1;"><label class="muted" for="invoiceFormNotes">Notes</label><textarea id="invoiceFormNotes" class="input" rows="3"></textarea></div>
         </div>
         <div class="divider" style="margin:12px 0;"></div>
-        <strong style="display:block;margin-bottom:8px;">Linked Receipts</strong>
+        <strong style="display:block;margin-bottom:8px;">Linked Receipts / Payment History</strong>
         <div id="invoiceReceiptsState" class="muted" style="margin-bottom:8px;">No receipts linked yet.</div>
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Type</th>
-                <th>Receipt #</th>
-                <th>Receipt Date</th>
+                <th>Receipt ID</th>
+                <th>Receipt Number</th>
+                <th>Date</th>
                 <th>Received Amount</th>
-                <th>Pending Amount</th>
-                <th>Payment State</th>
+                <th>Payment Method</th>
+                <th>Payment Reference</th>
                 <th>Status</th>
+                <th>Notes</th>
               </tr>
             </thead>
             <tbody id="invoiceReceiptsTbody"></tbody>
