@@ -282,6 +282,7 @@ const Invoices = {
       const amount = this.toNumberSafe(value);
       return `${currency} ${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     };
+    const sanitize = value => U.escapeHtml(String(value ?? '').trim());
     const textValue = value => {
       const text = String(value ?? '').trim();
       return text ? U.escapeHtml(text) : '—';
@@ -296,49 +297,68 @@ const Invoices = {
       const amount = this.toNumberSafe(value);
       return Number.isFinite(amount) ? U.escapeHtml(String(amount)) : '—';
     };
-    const summaryRows = [
-      ['Invoice UUID', textValue(invoiceData.id)],
-      ['Invoice ID', textValue(invoiceData.invoice_id)],
-      ['Invoice Number', textValue(invoiceData.invoice_number)],
-      ['Client', textValue(invoiceData.customer_name || invoiceData.client_name)],
-      ['Client ID', textValue(invoiceData.client_id)],
-      ['Agreement ID', textValue(invoiceData.agreement_id)],
-      ['Proposal ID', textValue(invoiceData.proposal_id)],
-      ['Issue Date', dateValue(invoiceData.issue_date || invoiceData.invoice_date)],
-      ['Due Date', dateValue(invoiceData.due_date)],
-      ['Billing Frequency', textValue(invoiceData.billing_frequency)],
-      ['Payment Term', textValue(invoiceData.payment_term)],
-      ['Currency', textValue(invoiceData.currency || 'USD')],
-      ['Payment State', textValue(invoiceData.payment_state)],
-      ['Status', textValue(invoiceData.status)]
-    ];
-    const subtotalLocations = this.toNumberSafe(invoiceData.subtotal_locations || invoiceData.subtotal_subscription);
-    const subtotalOneTime = this.toNumberSafe(invoiceData.subtotal_one_time);
-    const invoiceTotal = this.toNumberSafe(invoiceData.invoice_total || invoiceData.grand_total);
-    const receivedAmount = this.toNumberSafe(invoiceData.received_amount || invoiceData.amount_paid);
-    const pendingAmount = this.toNumberSafe(invoiceData.pending_amount);
-    const tableRows = normalizedItems.length
-      ? normalizedItems
+    const itemTotals = this.calculateInvoiceTotals(normalizedItems);
+    const subtotalLocations = this.toNumberSafe(invoiceData.subtotal_locations || invoiceData.subtotal_subscription || itemTotals.subtotal_subscription);
+    const subtotalOneTime = this.toNumberSafe(invoiceData.subtotal_one_time || itemTotals.subtotal_one_time);
+    const invoiceTotal = this.toNumberSafe(invoiceData.invoice_total || invoiceData.grand_total || itemTotals.grand_total);
+    const paidAmount = this.toNumberSafe(invoiceData.received_amount || invoiceData.amount_paid);
+    const pendingAmount = this.toNumberSafe(invoiceData.pending_amount || Math.max(0, invoiceTotal - paidAmount));
+    const amountInWords = String(invoiceData.amount_in_words || '').trim() || this.amountToWords(invoiceTotal, currency);
+    const paymentConclusion = String(invoiceData.payment_conclusion || '').trim() || this.derivePaymentConclusion({ pending_amount: pendingAmount });
+
+    const subscriptionItems = normalizedItems.filter(item => this.isSubscriptionSection(item.section));
+    const oneTimeItems = normalizedItems.filter(item => this.isOneTimeSection(item.section));
+
+    const subscriptionRows = subscriptionItems.length
+      ? subscriptionItems
           .map(item => {
             const computed = this.computeCommercialRow(item);
             return `<tr>
-              <td class="cell-center">${textValue(item.line_no)}</td>
               <td>${textValue(item.location_name)}</td>
-              <td>${textValue(item.item_name)}</td>
+              <td>${textValue(item.location_address)}</td>
               <td class="cell-center">${dateValue(item.service_start_date)}</td>
               <td class="cell-center">${dateValue(item.service_end_date)}</td>
-              <td class="cell-center">${numValue(item.quantity)}</td>
-              <td class="cell-center">${money(item.unit_price)}</td>
-              <td class="cell-center">${U.escapeHtml(String(this.toNumberSafe(item.discount_percent)))}%</td>
-              <td class="cell-center">${money(computed.discounted_unit_price)}</td>
-              <td class="cell-center">${money(computed.line_total)}</td>
-              <td>${textValue(item.capability_name)}</td>
-              <td>${textValue(item.capability_value)}</td>
-              <td>${textValue(item.notes)}</td>
+              <td>${textValue(item.item_name)}</td>
+              <td class="cell-right">${money(computed.line_total)}</td>
             </tr>`;
           })
           .join('')
-      : '<tr><td colspan="13" class="cell-center muted">No invoice items found.</td></tr>';
+      : '<tr><td colspan="6" class="cell-center muted">No subscription items found.</td></tr>';
+
+    const oneTimeRows = oneTimeItems.length
+      ? oneTimeItems
+          .map(item => {
+            const computed = this.computeCommercialRow(item);
+            return `<tr>
+              <td>${textValue(item.location_name)}</td>
+              <td>${textValue(item.location_address)}</td>
+              <td>${textValue(item.item_name)}</td>
+              <td class="cell-right">${money(item.unit_price)}</td>
+              <td class="cell-center">${U.escapeHtml(String(this.toNumberSafe(item.discount_percent)))}%</td>
+              <td class="cell-right">${money(computed.discounted_unit_price)}</td>
+              <td class="cell-right">${money(computed.line_total)}</td>
+            </tr>`;
+          })
+          .join('')
+      : '<tr><td colspan="7" class="cell-center muted">No one-time fee items found.</td></tr>';
+
+    const companyTitle = String(invoiceData.company_name || invoiceData.company_legal_name || 'COMPANY NAME').trim();
+    const companySubtitle = String(invoiceData.company_tagline || 'Business Software Services').trim();
+    const agreementLabel = String(invoiceData.agreement_number || invoiceData.agreement_id || '—').trim();
+    const customerName = String(invoiceData.customer_legal_name || invoiceData.customer_name || invoiceData.client_name || '').trim();
+    const customerAddress = String(invoiceData.customer_address || '').trim();
+    const paymentTerm = String(invoiceData.payment_term || '').trim() || 'Net 30';
+    const footerNote = String(invoiceData.footer_note || invoiceData.notes || '').trim();
+    const bankRows = [
+      ['Bank Name', textValue(invoiceData.bank_name)],
+      ['Account Name', textValue(invoiceData.bank_account_name)],
+      ['Account Number', textValue(invoiceData.bank_account_number)],
+      ['IBAN', textValue(invoiceData.bank_iban)],
+      ['SWIFT / BIC', textValue(invoiceData.bank_swift)],
+      ['Branch', textValue(invoiceData.bank_branch)],
+      ['Beneficiary Address', textValue(invoiceData.bank_beneficiary_address)],
+      ['Payment Reference', textValue(invoiceData.invoice_number || invoiceData.invoice_id)]
+    ];
 
     return `<!doctype html>
 <html>
@@ -347,70 +367,162 @@ const Invoices = {
     <title>Invoice Preview</title>
     <style>
       :root { color-scheme: light; }
-      body { font-family: Inter, Segoe UI, Arial, sans-serif; margin: 24px; color: #101828; }
-      h1 { margin: 0 0 4px; font-size: 26px; }
-      .sub { color: #475467; margin-bottom: 18px; }
-      .card { border: 1px solid #e4e7ec; border-radius: 14px; padding: 14px 16px; margin-bottom: 16px; background: #fff; }
-      .summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 16px; }
-      .summary-label { color: #667085; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px; }
-      .summary-value { font-size: 14px; line-height: 1.35; word-break: break-word; }
-      .notes { white-space: pre-wrap; min-height: 20px; }
+      * { box-sizing: border-box; }
+      body { font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 18px; color: #111827; background: #f3f4f6; }
+      .invoice-sheet { max-width: 1020px; margin: 0 auto; background: #fff; border: 1px solid #d1d5db; padding: 22px; }
+      .header-top { text-align: center; padding-bottom: 12px; border-bottom: 1px solid #111827; }
+      .logo-title { margin: 0; font-size: 26px; letter-spacing: 0.04em; font-weight: 700; }
+      .logo-subtitle { margin: 4px 0 0; color: #4b5563; font-size: 12px; }
+      .invoice-head { display: grid; grid-template-columns: 1fr 300px; gap: 24px; margin-top: 16px; align-items: start; }
+      .invoice-label { margin: 0; font-size: 38px; font-weight: 700; letter-spacing: 0.02em; }
+      .meta-box { border: 1px solid #111827; }
+      .meta-row { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid #d1d5db; }
+      .meta-row:last-child { border-bottom: 0; }
+      .meta-row > div { padding: 7px 10px; font-size: 12.5px; }
+      .meta-row .meta-key { background: #f9fafb; font-weight: 700; border-right: 1px solid #d1d5db; }
+      .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 16px; }
+      .info-box { border: 1px solid #111827; min-height: 124px; }
+      .info-head { background: #f3f4f6; border-bottom: 1px solid #d1d5db; padding: 8px 10px; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; }
+      .info-body { padding: 10px; font-size: 12.5px; line-height: 1.45; }
+      .muted { color: #6b7280; }
+      .section { margin-top: 18px; }
+      .section h2 { margin: 0; font-size: 16px; border-bottom: 1px solid #111827; padding-bottom: 5px; }
+      .section .subhead { font-size: 12px; margin: 6px 0 8px; color: #4b5563; text-transform: uppercase; letter-spacing: 0.04em; }
       table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-      th, td { border: 1px solid #eaecf0; padding: 8px 10px; font-size: 12.5px; vertical-align: middle; }
-      th { background: #f9fafb; text-align: left; }
+      th, td { border: 1px solid #111827; padding: 7px 8px; font-size: 12px; vertical-align: middle; }
+      th { text-align: center; background: #f9fafb; font-weight: 700; }
       .cell-center { text-align: center; vertical-align: middle; }
-      .muted { color: #98a2b3; }
-      .totals { display: grid; gap: 8px; max-width: 420px; margin-left: auto; }
-      .totals-row { display: flex; justify-content: space-between; border-bottom: 1px dashed #eaecf0; padding-bottom: 6px; font-size: 13px; }
-      .totals-row.strong { font-weight: 700; font-size: 14px; border-bottom-style: solid; }
-      @media print { body { margin: 8mm; } .card { break-inside: avoid; } }
+      .cell-right { text-align: right; vertical-align: middle; white-space: nowrap; }
+      .total-row td { font-weight: 700; background: #f9fafb; }
+      .totals-wrap { display: flex; justify-content: flex-end; margin-top: 16px; }
+      .totals-box { width: 380px; border: 1px solid #111827; }
+      .totals-row { display: flex; justify-content: space-between; padding: 9px 10px; border-bottom: 1px solid #d1d5db; font-size: 13px; }
+      .totals-row:last-child { border-bottom: 0; }
+      .totals-row.grand { font-size: 15px; font-weight: 700; background: #f3f4f6; }
+      .terms { margin-top: 14px; font-size: 12.5px; line-height: 1.5; }
+      .terms .strong { font-weight: 700; }
+      .bank { margin-top: 18px; }
+      .bank h3 { margin: 0 0 8px; font-size: 15px; letter-spacing: 0.04em; }
+      .bank-box { border: 1px solid #111827; }
+      .bank-row { display: grid; grid-template-columns: 180px 1fr; border-bottom: 1px solid #d1d5db; }
+      .bank-row:last-child { border-bottom: 0; }
+      .bank-row > div { padding: 7px 9px; font-size: 12px; }
+      .bank-key { background: #f9fafb; font-weight: 700; border-right: 1px solid #d1d5db; }
+      .footer-note { margin-top: 16px; font-size: 11px; color: #4b5563; border-top: 1px solid #e5e7eb; padding-top: 8px; text-align: center; }
+      @media print { body { margin: 0; padding: 0; background: #fff; } .invoice-sheet { border: 0; max-width: none; } }
     </style>
   </head>
   <body>
-    <h1>Invoice Preview</h1>
-    <div class="sub">${textValue(invoiceData.invoice_number || invoiceData.invoice_id || invoiceData.id)}</div>
-    <section class="card">
-      <div class="summary-grid">
-        ${summaryRows
-          .map(([label, value]) => `<div><div class="summary-label">${U.escapeHtml(label)}</div><div class="summary-value">${value}</div></div>`)
-          .join('')}
-      </div>
-    </section>
-    <section class="card">
-      <table>
-        <thead>
-          <tr>
-            <th style="width:5%">Line</th>
-            <th style="width:10%">Location</th>
-            <th style="width:14%">Item</th>
-            <th style="width:8%" class="cell-center">Start</th>
-            <th style="width:8%" class="cell-center">End</th>
-            <th style="width:6%" class="cell-center">Qty</th>
-            <th style="width:8%" class="cell-center">Unit Price</th>
-            <th style="width:6%" class="cell-center">Discount</th>
-            <th style="width:9%" class="cell-center">Disc. Unit</th>
-            <th style="width:9%" class="cell-center">Line Total</th>
-            <th style="width:8%">Capability</th>
-            <th style="width:7%">Value</th>
-            <th style="width:12%">Notes</th>
-          </tr>
-        </thead>
-        <tbody>${tableRows}</tbody>
-      </table>
-    </section>
-    <section class="card totals">
-      <div class="totals-row"><span>Subtotal Locations</span><strong>${money(subtotalLocations)}</strong></div>
-      <div class="totals-row"><span>Subtotal One-Time</span><strong>${money(subtotalOneTime)}</strong></div>
-      <div class="totals-row strong"><span>Invoice Total</span><strong>${money(invoiceTotal)}</strong></div>
-      <div class="totals-row"><span>Received Amount</span><strong>${money(receivedAmount)}</strong></div>
-      <div class="totals-row"><span>Pending Amount</span><strong>${money(pendingAmount)}</strong></div>
-      <div class="totals-row"><span>Payment Conclusion</span><strong>${textValue(invoiceData.payment_conclusion || (pendingAmount <= 0 ? 'Settlement Completed' : 'Pending Settlement'))}</strong></div>
-      <div class="totals-row"><span>Amount in Words</span><strong>${textValue(invoiceData.amount_in_words)}</strong></div>
-    </section>
-    <section class="card">
-      <div class="summary-label">Notes</div>
-      <div class="summary-value notes">${textValue(invoiceData.notes)}</div>
-    </section>
+    <div class="invoice-sheet">
+      <header class="header-top">
+        <h1 class="logo-title">${sanitize(companyTitle || 'COMPANY NAME')}</h1>
+        <div class="logo-subtitle">${sanitize(companySubtitle)}</div>
+      </header>
+
+      <section class="invoice-head">
+        <h2 class="invoice-label">INVOICE</h2>
+        <div class="meta-box">
+          <div class="meta-row"><div class="meta-key">Invoice #</div><div>${textValue(invoiceData.invoice_number || invoiceData.invoice_id)}</div></div>
+          <div class="meta-row"><div class="meta-key">Invoice Date</div><div>${dateValue(invoiceData.issue_date || invoiceData.invoice_date)}</div></div>
+          <div class="meta-row"><div class="meta-key">Due Date</div><div>${dateValue(invoiceData.due_date)}</div></div>
+        </div>
+      </section>
+
+      <section class="info-grid">
+        <div class="info-box">
+          <div class="info-head">BILL TO</div>
+          <div class="info-body">
+            <div><strong>${textValue(customerName)}</strong></div>
+            <div class="muted">${textValue(customerAddress)}</div>
+          </div>
+        </div>
+        <div class="info-box">
+          <div class="info-head">INVOICE INFO</div>
+          <div class="info-body">
+            <div><strong>Related to:</strong> ${textValue(invoiceData.account_reference || invoiceData.related_to || agreementLabel)}</div>
+            <div><strong>Payment Term:</strong> ${textValue(paymentTerm)}</div>
+            <div><strong>Customer Contact:</strong> ${textValue(invoiceData.customer_contact_name)}</div>
+            <div><strong>Email:</strong> ${textValue(invoiceData.customer_contact_email)}</div>
+            <div><strong>Agreement #:</strong> ${textValue(agreementLabel)}</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Subscription Details</h2>
+        <div class="subhead">SaaS Details</div>
+        <table>
+          <thead>
+            <tr>
+              <th style="width:16%">Location Name</th>
+              <th style="width:23%">Location Address</th>
+              <th style="width:12%">Start Date</th>
+              <th style="width:12%">End Date</th>
+              <th>Modules / Item Name</th>
+              <th style="width:14%">Price</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${subscriptionRows}
+            <tr class="total-row">
+              <td colspan="5" class="cell-right">Total SaaS</td>
+              <td class="cell-right">${money(subtotalLocations)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="section">
+        <h2>One Time Fees Details</h2>
+        <div class="subhead">One Time Fees</div>
+        <table>
+          <thead>
+            <tr>
+              <th style="width:14%">Location Name</th>
+              <th style="width:22%">Location Address</th>
+              <th style="width:17%">Service</th>
+              <th style="width:11%">Price</th>
+              <th style="width:9%">Discount %</th>
+              <th style="width:13%">Disc. Price</th>
+              <th style="width:14%">Price / Line Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${oneTimeRows}
+            <tr class="total-row">
+              <td colspan="6" class="cell-right">Total One Time Fees</td>
+              <td class="cell-right">${money(subtotalOneTime)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="totals-wrap">
+        <div class="totals-box">
+          <div class="totals-row"><span>One Time Fees</span><strong>${money(subtotalOneTime)}</strong></div>
+          <div class="totals-row"><span>Subscription Fees</span><strong>${money(subtotalLocations)}</strong></div>
+          <div class="totals-row grand"><span>Grand Total</span><strong>${money(invoiceTotal)}</strong></div>
+        </div>
+      </section>
+
+      <section class="terms">
+        <div><span class="strong">Amount in Words:</span> ${textValue(amountInWords)}</div>
+        <div><span class="strong">Payment Term:</span> ${textValue(paymentTerm)}</div>
+        <div><span class="strong">Payment Note:</span> ${textValue(paymentConclusion)}</div>
+        <div><span class="strong">Additional Notes:</span> ${textValue(invoiceData.notes)}</div>
+      </section>
+
+      <section class="bank">
+        <h3>BANK DETAILS</h3>
+        <div class="bank-box">
+          ${bankRows
+            .map(([label, value]) => `<div class="bank-row"><div class="bank-key">${U.escapeHtml(label)}</div><div>${value}</div></div>`)
+            .join('')}
+        </div>
+      </section>
+
+      <footer class="footer-note">${textValue(footerNote || 'For billing support, please contact accounts@company.com · +1 (000) 000-0000')}</footer>
+    </div>
   </body>
 </html>`;
   },
