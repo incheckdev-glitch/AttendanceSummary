@@ -18,6 +18,10 @@ const Receipts = {
     'subtotal_one_time',
     'grand_total',
     'invoice_total',
+    'old_paid_total',
+    'paid_now',
+    'new_paid_total',
+    'payment_conclusion',
     'invoice_grand_total',
     'amount_received',
     'received_amount',
@@ -99,6 +103,13 @@ const Receipts = {
       normalized.invoice_grand_total ?? normalized.invoice_total ?? normalized.grand_total
     );
     normalized.invoice_total = this.toNumberSafe(normalized.invoice_total ?? normalized.invoice_grand_total ?? normalized.grand_total);
+    normalized.old_paid_total = this.toNumberSafe(normalized.old_paid_total);
+    normalized.paid_now = this.toNumberSafe(normalized.paid_now);
+    normalized.new_paid_total = this.toNumberSafe(
+      normalized.new_paid_total !== '' && normalized.new_paid_total !== null && normalized.new_paid_total !== undefined
+        ? normalized.new_paid_total
+        : (normalized.old_paid_total + normalized.paid_now)
+    );
     const receivedAmountValue =
       normalized.amount_received !== '' && normalized.amount_received !== null && normalized.amount_received !== undefined
         ? normalized.amount_received
@@ -478,7 +489,13 @@ const Receipts = {
     const receiptPendingAmount = this.normalizeAmountInput(receipt.pending_amount);
     const invoicePendingAmount = this.normalizeAmountInput(invoiceSource.pending_amount);
     const effectivePendingAmount = receiptPendingAmount ?? invoicePendingAmount ?? 0;
-    const effectivePaymentState = String(invoiceSource.payment_state || receipt.payment_state || '').trim();
+    const effectiveOldPaidTotal = this.normalizeAmountInput(receipt.old_paid_total) ?? Math.max(0, effectiveReceivedAmount);
+    const effectivePaidNow = this.normalizeAmountInput(receipt.paid_now) ?? effectiveReceivedAmount;
+    const effectiveNewPaidTotal = this.normalizeAmountInput(receipt.new_paid_total) ?? (effectiveOldPaidTotal + effectivePaidNow);
+    const effectivePaymentState = String(receipt.payment_state || invoiceSource.payment_state || '').trim()
+      || (effectiveNewPaidTotal <= 0 ? 'Unpaid' : effectivePendingAmount > 0 ? 'Partially Paid' : 'Paid');
+    const effectivePaymentConclusion = String(receipt.payment_conclusion || '').trim()
+      || this.derivePaymentConclusion({ pending_amount: effectivePendingAmount });
     const effectiveInvoiceTotal = this.normalizeAmountInput(invoiceSource.invoice_total ?? invoiceSource.grand_total ?? invoiceSource.invoice_grand_total)
       ?? this.toNumberSafe(receipt.invoice_grand_total || receipt.invoice_total || receipt.grand_total);
     set('receiptFormReceiptId', receipt.receipt_id);
@@ -493,9 +510,13 @@ const Receipts = {
     set('receiptFormStatus', receipt.status);
     set('receiptFormAmountInWords', this.receiptAmountInWords(receipt.amount_in_words, receipt.currency, effectiveReceivedAmount));
     set('receiptFormInvoiceGrandTotal', effectiveInvoiceTotal);
+    set('receiptFormOldPaidTotal', effectiveOldPaidTotal);
+    set('receiptFormPaidNow', effectivePaidNow);
+    set('receiptFormNewPaidTotal', effectiveNewPaidTotal);
     set('receiptFormReceivedAmount', effectiveReceivedAmount);
     set('receiptFormPendingAmount', effectivePendingAmount);
     set('receiptFormPaymentState', effectivePaymentState);
+    set('receiptFormPaymentConclusion', effectivePaymentConclusion);
     set('receiptFormPaymentNotes', receipt.payment_notes);
     set('receiptFormSupportEmail', receipt.support_email);
     if (E.receiptForm) E.receiptForm.dataset.id = receipt.id || '';
@@ -562,9 +583,45 @@ const Receipts = {
     const pending = this.toNumberSafe(pending_amount);
     const received = this.toNumberSafe(received_amount);
     const total = this.toNumberSafe(invoice_total);
+    const newPaidTotal = Math.max(0, total - pending);
+    if (newPaidTotal <= 0) return 'Unpaid';
+    if (pending > 0) return 'Partially Paid';
     if (pending <= 0) return 'Paid';
     if (received > 0 && (total <= 0 || received < total)) return 'Partially Paid';
     return 'Unpaid';
+  },
+  derivePaymentConclusion({ pending_amount = 0 } = {}) {
+    return this.toNumberSafe(pending_amount) <= 0 ? 'Settlement Completed' : 'Pending Settlement';
+  },
+  async computeReceiptSnapshot(invoiceUuid, paidNowInput) {
+    const invoiceId = String(invoiceUuid || '').trim();
+    if (!invoiceId) throw new Error('Invoice UUID is required to compute receipt settlement snapshot.');
+    const client = window.SupabaseClient?.getClient?.();
+    if (!client) throw new Error('Supabase client unavailable.');
+    const [{ data: invoiceRow, error: invoiceError }, { data: receiptRows, error: receiptsError }] = await Promise.all([
+      client.from('invoices').select('id,invoice_total,grand_total,received_amount').eq('id', invoiceId).maybeSingle(),
+      client.from('receipts').select('id,invoice_id,amount_received').eq('invoice_id', invoiceId)
+    ]);
+    if (invoiceError) throw new Error(invoiceError.message || 'Unable to load invoice before creating receipt.');
+    if (!invoiceRow) throw new Error('Linked invoice was not found before creating receipt.');
+    if (receiptsError) throw new Error(receiptsError.message || 'Unable to load previous receipts before creating receipt.');
+    const invoiceTotal = this.toNumberSafe(invoiceRow.invoice_total || invoiceRow.grand_total);
+    const paidNow = this.toNumberSafe(paidNowInput);
+    const sumPreviousReceipts = (Array.isArray(receiptRows) ? receiptRows : []).reduce((sum, row) => sum + this.toNumberSafe(row?.amount_received), 0);
+    const invoiceReceivedAmount = this.toNumberSafe(invoiceRow.received_amount);
+    const oldPaidTotal = sumPreviousReceipts > 0 ? sumPreviousReceipts : invoiceReceivedAmount;
+    const newPaidTotal = oldPaidTotal + paidNow;
+    const pendingAmount = Math.max(invoiceTotal - newPaidTotal, 0);
+    const paymentState = newPaidTotal <= 0 ? 'Unpaid' : pendingAmount > 0 ? 'Partially Paid' : 'Paid';
+    return {
+      invoice_total: invoiceTotal,
+      old_paid_total: oldPaidTotal,
+      paid_now: paidNow,
+      new_paid_total: newPaidTotal,
+      pending_amount: pendingAmount,
+      payment_state: paymentState,
+      payment_conclusion: this.derivePaymentConclusion({ pending_amount: pendingAmount })
+    };
   },
   buildReceiptDescriptionFromInvoiceItem(item = {}) {
     const location = String(item.location_name || item.locationName || '').trim();
@@ -648,9 +705,13 @@ const Receipts = {
       currency: String(sourceInvoice?.currency || '').trim() || 'USD',
       status: 'Issued',
       invoice_grand_total: invoiceTotal,
+      old_paid_total: invoiceReceivedAmount ?? 0,
+      paid_now: 0,
+      new_paid_total: invoiceReceivedAmount ?? 0,
       received_amount: defaultAmount,
       pending_amount: pendingAmount,
       payment_state: paymentState,
+      payment_conclusion: this.derivePaymentConclusion({ pending_amount: pendingAmount }),
       payment_notes: String(sourceInvoice?.notes || '').trim(),
       amount_received: defaultAmount,
       invoice_total: invoiceTotal
@@ -768,10 +829,14 @@ const Receipts = {
       amount_in_words: get('receiptFormAmountInWords'),
       invoice_grand_total: get('receiptFormInvoiceGrandTotal'),
       invoice_total: get('receiptFormInvoiceGrandTotal'),
+      old_paid_total: get('receiptFormOldPaidTotal'),
+      paid_now: get('receiptFormPaidNow'),
+      new_paid_total: get('receiptFormNewPaidTotal'),
       received_amount: get('receiptFormReceivedAmount'),
       amount_received: get('receiptFormReceivedAmount'),
       pending_amount: get('receiptFormPendingAmount'),
       payment_state: get('receiptFormPaymentState'),
+      payment_conclusion: get('receiptFormPaymentConclusion'),
       payment_notes: get('receiptFormPaymentNotes'),
       support_email: get('receiptFormSupportEmail')
     };
@@ -786,7 +851,22 @@ const Receipts = {
     ).trim();
     const receivedAmount = this.normalizeAmountInput(formValues.received_amount ?? formValues.amount_received);
     const invoiceTotal = this.normalizeAmountInput(formValues.invoice_total ?? formValues.invoice_grand_total);
+    const oldPaidTotal = this.normalizeAmountInput(formValues.old_paid_total);
+    const paidNow = this.normalizeAmountInput(formValues.paid_now);
+    const newPaidTotal = this.normalizeAmountInput(formValues.new_paid_total);
     const pendingAmount = this.normalizeAmountInput(formValues.pending_amount);
+    const normalizedPaidNow = paidNow ?? receivedAmount ?? this.toNumberSafe(existing.paid_now);
+    const normalizedOldPaidTotal = oldPaidTotal ?? this.toNumberSafe(existing.old_paid_total);
+    const normalizedNewPaidTotal = newPaidTotal ?? (normalizedOldPaidTotal + normalizedPaidNow);
+    const normalizedPendingAmount =
+      pendingAmount ??
+      (existing.pending_amount === null || existing.pending_amount === undefined || existing.pending_amount === ''
+        ? Math.max((invoiceTotal ?? this.toNumberSafe(existing.invoice_total || existing.invoice_grand_total || existing.grand_total)) - normalizedNewPaidTotal, 0)
+        : this.toNumberSafe(existing.pending_amount));
+    const normalizedPaymentState = String(formValues.payment_state || existing.payment_state || '').trim()
+      || (normalizedNewPaidTotal <= 0 ? 'Unpaid' : normalizedPendingAmount > 0 ? 'Partially Paid' : 'Paid');
+    const normalizedPaymentConclusion = String(formValues.payment_conclusion || existing.payment_conclusion || '').trim()
+      || this.derivePaymentConclusion({ pending_amount: normalizedPendingAmount });
     return {
       receipt_id: String(formValues.receipt_id || existing.receipt_id || '').trim() || null,
       receipt_number: String(formValues.receipt_number || existing.receipt_number || '').trim() || null,
@@ -811,12 +891,12 @@ const Receipts = {
       customer_address: String(formValues.customer_address || existing.customer_address || '').trim() || null,
       amount_in_words: String(formValues.amount_in_words || existing.amount_in_words || '').trim() || null,
       invoice_total: invoiceTotal ?? this.toNumberSafe(existing.invoice_total || existing.invoice_grand_total || existing.grand_total),
-      pending_amount:
-        pendingAmount ??
-        (existing.pending_amount === null || existing.pending_amount === undefined || existing.pending_amount === ''
-          ? null
-          : this.toNumberSafe(existing.pending_amount)),
-      payment_state: String(formValues.payment_state || existing.payment_state || '').trim() || null,
+      old_paid_total: normalizedOldPaidTotal,
+      paid_now: normalizedPaidNow,
+      new_paid_total: normalizedNewPaidTotal,
+      pending_amount: normalizedPendingAmount,
+      payment_state: normalizedPaymentState,
+      payment_conclusion: normalizedPaymentConclusion,
       payment_notes: String(formValues.payment_notes || existing.payment_notes || '').trim() || null
     };
   },
@@ -844,6 +924,7 @@ const Receipts = {
       this.setFormBusy(true);
       console.time('entity-save');
       try {
+        const snapshot = await this.computeReceiptSnapshot(invoiceUuid, normalizedAmount);
         const response = await Api.createReceiptFromInvoice(invoiceUuid, {
           amount: normalizedAmount,
           payment_method: String(E.receiptForm?.dataset.paymentMethod || '').trim() || null,
@@ -862,19 +943,22 @@ const Receipts = {
         const receiptUuid = String(normalized?.id || receipt?.id || response?.id || '').trim();
         if (receiptUuid) {
           const sourcePendingAmount =
-            this.normalizeAmountInput(updates.pending_amount ?? normalized?.pending_amount ?? receipt?.pending_amount) ?? 0;
+            this.normalizeAmountInput(snapshot.pending_amount ?? updates.pending_amount ?? normalized?.pending_amount ?? receipt?.pending_amount) ?? 0;
           const sourceInvoiceTotal =
-            this.normalizeAmountInput(normalized?.invoice_total ?? receipt?.invoice_total ?? updates.invoice_total ?? updates.invoice_grand_total) ?? 0;
-          const calculatedPendingAmount = Math.max(0, sourcePendingAmount - normalizedAmount);
+            this.normalizeAmountInput(snapshot.invoice_total ?? normalized?.invoice_total ?? receipt?.invoice_total ?? updates.invoice_total ?? updates.invoice_grand_total) ?? 0;
+          const calculatedPendingAmount = sourcePendingAmount;
           const headerPayload = this.buildReceiptHeaderPayload({
             ...updates,
+            amount_received: normalizedAmount,
+            received_amount: normalizedAmount,
             invoice_total: sourceInvoiceTotal,
+            old_paid_total: snapshot.old_paid_total,
+            paid_now: snapshot.paid_now,
+            new_paid_total: snapshot.new_paid_total,
             pending_amount: calculatedPendingAmount,
-            payment_state: this.deriveReceiptPaymentState({
-              pending_amount: calculatedPendingAmount,
-              received_amount: normalizedAmount,
-              invoice_total: sourceInvoiceTotal
-            })
+            payment_state: snapshot.payment_state,
+            payment_conclusion: snapshot.payment_conclusion,
+            amount_in_words: this.receiptAmountInWords(updates.amount_in_words, updates.currency, normalizedAmount)
           }, {
             existing: normalized || receipt || {},
             invoiceUuid
@@ -1038,11 +1122,16 @@ const Receipts = {
     const locationRows = locationItems.length ? locationItems.map(buildDetailRow).join('') : '<tr><td colspan="11" class="muted cell-center">No location detail rows.</td></tr>';
     const subtotalLocations = this.toNumberSafe(r.subtotal_locations || invoice?.subtotal_locations || locationItems.reduce((sum, item) => sum + this.toNumberSafe(item.line_total), 0));
     const subtotalOneTime = this.toNumberSafe(r.subtotal_one_time || invoice?.subtotal_one_time || oneTimeItems.reduce((sum, item) => sum + this.toNumberSafe(item.line_total), 0));
-    const invoiceTotal = this.toNumberSafe(r.invoice_grand_total || r.grand_total || invoice?.grand_total || subtotalLocations + subtotalOneTime);
-    const receivedAmount = this.toNumberSafe(r.amount_received ?? r.received_amount);
+    const invoiceTotal = this.toNumberSafe(r.invoice_grand_total || r.invoice_total || r.grand_total || invoice?.invoice_total || invoice?.grand_total || subtotalLocations + subtotalOneTime);
+    const oldPaidTotal = this.toNumberSafe(r.old_paid_total);
+    const paidNow = this.toNumberSafe(r.paid_now || r.amount_received || r.received_amount);
+    const newPaidTotal = this.toNumberSafe(r.new_paid_total || (oldPaidTotal + paidNow));
     const pendingAmount = r.pending_amount === null || r.pending_amount === undefined || r.pending_amount === ''
-      ? Math.max(0, invoiceTotal - receivedAmount)
+      ? Math.max(0, invoiceTotal - newPaidTotal)
       : this.toNumberSafe(r.pending_amount);
+    const paymentState = String(r.payment_state || '').trim() || (newPaidTotal <= 0 ? 'Unpaid' : pendingAmount > 0 ? 'Partially Paid' : 'Paid');
+    const paymentConclusion = String(r.payment_conclusion || '').trim() || this.derivePaymentConclusion({ pending_amount: pendingAmount });
+    const receivedAmount = paidNow;
     const amountInWords = this.receiptAmountInWords(r.amount_in_words, currency, receivedAmount);
     return `<!doctype html><html><head><meta charset="utf-8" /><title>Receipt Preview</title><style>
       :root{color-scheme:light;}*{box-sizing:border-box;}body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:16px;background:#f3f4f6;color:#111827;}
@@ -1075,10 +1164,13 @@ const Receipts = {
         <div class="row"><span>Subtotal Locations</span><span>${this.money(currency, subtotalLocations)}</span></div>
         <div class="row"><span>Subtotal One Time</span><span>${this.money(currency, subtotalOneTime)}</span></div>
         <div class="row"><span>Invoice Total</span><span>${this.money(currency, invoiceTotal)}</span></div>
-        <div class="row"><span>Received Amount</span><span>${this.money(currency, receivedAmount)}</span></div>
+        <div class="row"><span>Old Paid Total</span><span>${this.money(currency, oldPaidTotal)}</span></div>
+        <div class="row"><span>Paid Now</span><span>${this.money(currency, paidNow)}</span></div>
+        <div class="row"><span>New Paid Total</span><span>${this.money(currency, newPaidTotal)}</span></div>
         <div class="row"><span>Pending Amount</span><span>${this.money(currency, pendingAmount)}</span></div>
-        <div class="row"><span>Payment State</span><span>${text(r.payment_state || r.status)}</span></div>
-        <div class="row"><span>Receipt Total</span><span>${this.money(currency, receivedAmount || invoiceTotal)}</span></div>
+        <div class="row"><span>Payment State</span><span>${text(paymentState || r.status)}</span></div>
+        <div class="row"><span>Payment Conclusion</span><span>${text(paymentConclusion)}</span></div>
+        <div class="row"><span>Amount in Words</span><span>${text(amountInWords)}</span></div>
       </div></div>
       <footer class="footer">This document is computer generated and does not require a signature.</footer>
     </article></body></html>`;
