@@ -695,8 +695,17 @@ const Api = {
   async deleteReceipt(receiptId) {
     return this.postAuthenticated('receipts', 'delete', { id: receiptId, receipt_id: receiptId });
   },
-  async createReceiptFromInvoice(invoiceId) {
-    return this.postAuthenticated('receipts', 'create_from_invoice', { id: invoiceId, invoice_id: invoiceId });
+  async createReceiptFromInvoice(invoiceId, options = {}) {
+    const payload = {
+      id: invoiceId,
+      invoice_id: invoiceId
+    };
+    if (options && typeof options === 'object') {
+      if (options.amount !== undefined) payload.amount = options.amount;
+      if (options.payment_method !== undefined) payload.payment_method = options.payment_method;
+      if (options.payment_reference !== undefined) payload.payment_reference = options.payment_reference;
+    }
+    return this.postAuthenticated('receipts', 'create_from_invoice', payload);
   },
   async previewReceipt(receiptId) {
     return this.postAuthenticated('receipts', 'generate_receipt_html', { receipt_id: receiptId });
