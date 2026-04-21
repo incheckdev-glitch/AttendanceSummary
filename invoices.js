@@ -940,7 +940,24 @@ const Invoices = {
       : itemTotals;
     const invoiceId = String(invoice?.id || '').trim();
     const linkedReceipts = invoiceId ? this.getInvoiceReceipts(invoiceId) : [];
-    const derivedPayment = this.summarizeReceiptPayments(totals.grand_total, linkedReceipts);
+    const formReceivedAmount = Math.max(
+      0,
+      this.toNumberSafe(
+        invoice.received_amount !== undefined && invoice.received_amount !== null && invoice.received_amount !== ''
+          ? invoice.received_amount
+          : invoice.amount_paid
+      )
+    );
+    const receiptPaymentSummary = this.summarizeReceiptPayments(totals.grand_total, linkedReceipts);
+    const receivedAmount = linkedReceipts.length ? receiptPaymentSummary.received_amount : formReceivedAmount;
+    const pendingAmount = Math.max(0, totals.grand_total - receivedAmount);
+    const paymentState = receivedAmount <= 0 ? 'Unpaid' : pendingAmount > 0 ? 'Partially Paid' : 'Paid';
+    const derivedPayment = {
+      received_amount: receivedAmount,
+      amount_paid: receivedAmount,
+      pending_amount: pendingAmount,
+      payment_state: paymentState
+    };
     const amountInWords = this.amountToWords(totals.grand_total, invoice.currency);
     const paymentConclusion = this.derivePaymentConclusion(derivedPayment);
     return {
