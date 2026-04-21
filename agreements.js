@@ -147,6 +147,9 @@ const Agreements = {
     normalized.provider_signatory_name_primary = String(
       normalized.provider_signatory_name_primary || source.provider_signatory_name || ''
     ).trim();
+    normalized.provider_signatory_name_secondary = String(
+      normalized.provider_signatory_name_secondary || source.provider_signatory_secondary || ''
+    ).trim();
     normalized.provider_signatory_title_primary = String(
       normalized.provider_signatory_title_primary || source.provider_signatory_title || ''
     ).trim();
@@ -1121,7 +1124,7 @@ const Agreements = {
       const inputId = `agreementForm${field.replace(/(^|_)([a-z])/g, (_, __, ch) => ch.toUpperCase())}`;
       agreement[field] = v(inputId);
     });
-    const agreementDateFields = ['agreement_date', 'effective_date', 'service_start_date', 'provider_sign_date', 'customer_sign_date', 'signed_date'];
+    const agreementDateFields = ['agreement_date', 'effective_date', 'service_start_date', 'service_end_date', 'provider_sign_date', 'customer_sign_date', 'signed_date'];
     const normalizedAgreement = this.normalizeDateFieldsForSave(agreement, agreementDateFields);
     normalizedAgreement.account_number = String(normalizedAgreement.account_number || '').trim();
     const items = this.collectItems();
