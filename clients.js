@@ -302,7 +302,7 @@ const Clients = {
     return null;
   },
   isAnnualSaasClientLocationItem(item = {}) {
-    const section = this.normalizeText(item.section || item.item_section || item.section_name || item.category || item.type);
+    const section = this.normalizeText(item.section || item.category || item.type);
     return section === 'annual_saas' || section === 'annual' || section === 'subscription';
   },
   countAgreementAnnualSaasRowsForClientAnalytics(agreement = {}) {

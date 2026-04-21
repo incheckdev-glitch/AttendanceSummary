@@ -202,9 +202,18 @@ const ClientsService = {
   countLocationItems(agreement = {}) {
     const items = Array.isArray(agreement.items) ? agreement.items : [];
     return items.filter(item => {
-      const section = this.normalizeText(item.section || item.item_section || item.section_name || item.category || item.type);
+      const section = this.normalizeText(item.section || item.category || item.type);
       return section === 'annual_saas' || section === 'annual' || section === 'subscription';
     }).length;
+  },
+  async fetchAgreementItemsForClients_(db) {
+    const preferredColumns = 'agreement_id,location_name,section,category,type';
+    const minimalColumns = 'agreement_id,location_name,section';
+    const preferredRes = await db.from('agreement_items').select(preferredColumns).limit(5000);
+    if (!preferredRes.error) return preferredRes;
+    const preferredError = String(preferredRes.error?.message || '').toLowerCase();
+    if (!preferredError.includes('column')) return preferredRes;
+    return db.from('agreement_items').select(minimalColumns).limit(5000);
   },
   matchAgreementClient(agreement = {}, client = {}) {
     const sourceAgreement = String(client.source_agreement_id || '').trim();
@@ -312,7 +321,7 @@ const ClientsService = {
     const db = this.getDb();
     const [agreementsRes, itemsRes, invoicesRes, receiptsRes] = await Promise.all([
       db.from('agreements').select(this.AGREEMENT_SELECT_COLUMNS).order('updated_at', { ascending: false }).limit(500),
-      db.from('agreement_items').select('agreement_id,location_name,section,section_name,category,type').limit(5000),
+      this.fetchAgreementItemsForClients_(db),
       db.from('invoices').select('id,invoice_id,invoice_number,agreement_id,client_id,customer_name,customer_legal_name,status,payment_state,invoice_total,received_amount,pending_amount,updated_at,issue_date,due_date,reference,notes,location_name').order('updated_at', { ascending: false }).limit(1000),
       db.from('receipts').select('id,receipt_id,receipt_number,invoice_id,client_id,customer_name,customer_legal_name,status,payment_state,amount_received,pending_amount,updated_at,receipt_date,reference,notes').order('updated_at', { ascending: false }).limit(1000)
     ]);
