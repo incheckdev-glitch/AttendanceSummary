@@ -163,6 +163,7 @@ const Clients = {
       service_end_date: String(raw.service_end_date || raw.serviceEndDate || '').trim(),
       renewal_date: String(raw.renewal_date || raw.renewalDate || raw.next_renewal_date || raw.nextRenewalDate || '').trim(),
       customer_sign_date: String(raw.customer_sign_date || raw.customerSignDate || '').trim(),
+      signed_date: String(raw.signed_date || raw.signedDate || raw.customer_sign_date || raw.customerSignDate || '').trim(),
       agreement_date: String(raw.agreement_date || raw.agreementDate || '').trim(),
       location_name: String(raw.location_name || raw.locationName || '').trim(),
       items: Array.isArray(raw.items)
@@ -248,7 +249,7 @@ const Clients = {
     return this.state.receipts.filter(item => this.matchesClient_(item, client));
   },
   isSignedAgreement(agreement = {}) {
-    return this.normalizeText(agreement.status).includes('signed');
+    return this.normalizeText(agreement.status).includes('signed') || Boolean(String(agreement.signed_date || agreement.customer_sign_date || '').trim());
   },
   isActiveAgreement(agreement = {}) {
     const token = this.normalizeText(agreement.status);
@@ -302,8 +303,17 @@ const Clients = {
     return null;
   },
   isAnnualSaasClientLocationItem(item = {}) {
-    const section = this.normalizeText(item.section || item.category || item.type);
-    return section === 'annual_saas' || section === 'annual' || section === 'subscription';
+    const section = this.normalizeText(item.section || item.category || item.type || item.section_name || item.section_label);
+    if (!section) return false;
+    return [
+      'annual_saas',
+      'annual saas',
+      'saas annual',
+      'annual subscription',
+      'subscription annual',
+      'annual',
+      'subscription'
+    ].some(token => section.includes(token));
   },
   countAgreementAnnualSaasRowsForClientAnalytics(agreement = {}) {
     const items = Array.isArray(agreement.items)
@@ -318,36 +328,58 @@ const Clients = {
   computeClientAnalytics_(client) {
     const agreements = this.listClientRelatedAgreements_(client.client_id);
     const invoices = this.listClientRelatedInvoices_(client.client_id);
-    const receipts = this.listClientRelatedReceipts_(client.client_id);
+    const invoiceUuidSet = new Set(invoices.map(item => String(item.id || '').trim()).filter(Boolean));
+    const receipts = this.listClientRelatedReceipts_(client.client_id).filter(receipt => {
+      const invoiceUuid = String(receipt.invoice_id || '').trim();
+      if (invoiceUuid && invoiceUuidSet.has(invoiceUuid)) return true;
+      return !invoiceUuid;
+    });
     const signedAgreements = agreements.filter(item => this.isSignedAgreement(item));
-    const activeAgreements = agreements.filter(item => this.isActiveAgreement(item));
+    const locationItems = agreements.flatMap(agreement => {
+      const items = Array.isArray(agreement.items)
+        ? agreement.items
+        : Array.isArray(agreement.agreement_items)
+          ? agreement.agreement_items
+          : Array.isArray(agreement.line_items)
+            ? agreement.line_items
+            : [];
+      return items.filter(item => this.isAnnualSaasClientLocationItem(item));
+    });
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const isActiveLocationItem = (item = {}) => {
+      const startValue = String(item.service_start_date || item.serviceStartDate || '').trim();
+      const endValue = String(item.service_end_date || item.serviceEndDate || '').trim();
+      if (!startValue) return false;
+      const start = new Date(startValue);
+      if (Number.isNaN(start.getTime())) return false;
+      start.setHours(0, 0, 0, 0);
+      if (start.getTime() > today.getTime()) return false;
+      if (!endValue) return true;
+      const end = new Date(endValue);
+      if (Number.isNaN(end.getTime())) return false;
+      end.setHours(0, 0, 0, 0);
+      return end.getTime() >= today.getTime();
+    };
+    const activeLocationItems = locationItems.filter(isActiveLocationItem);
 
-    const totalLocations = signedAgreements.reduce(
-      (sum, agreement) => sum + this.countAgreementAnnualSaasRowsForClientAnalytics(agreement),
-      0
-    );
-    const activeLocations = activeAgreements.reduce(
-      (sum, agreement) => sum + this.countAgreementAnnualSaasRowsForClientAnalytics(agreement),
-      0
-    );
+    const totalLocations = locationItems.length;
+    const activeLocations = activeLocationItems.length;
 
-    const totalAgreementValue = signedAgreements.reduce((sum, item) => sum + this.toNumberSafe(item.grand_total), 0);
+    const totalAgreementValue = agreements.reduce((sum, item) => sum + this.toNumberSafe(item.grand_total), 0);
     const totalInvoicedValue = invoices.reduce((sum, item) => sum + this.toNumberSafe(item.grand_total), 0);
-    const totalReceiptsValue = receipts.reduce((sum, item) => sum + this.toNumberSafe(item.received_amount), 0);
-    const paidByInvoices = invoices.reduce((sum, item) => sum + this.toNumberSafe(item.amount_paid), 0);
-    const totalPaidAmount = Math.max(paidByInvoices, totalReceiptsValue);
-    const totalDueAmount = invoices.reduce((sum, item) => sum + this.toNumberSafe(item.pending_amount), 0);
+    const totalPaidAmount = receipts.reduce((sum, item) => sum + this.toNumberSafe(item.received_amount), 0);
+    const totalDueAmount = Math.max(totalInvoicedValue - totalPaidAmount, 0);
 
     const latestAgreementDate = this.maxDate(...agreements.map(item => item.updated_at || item.customer_sign_date || item.agreement_date));
     const latestInvoiceDate = this.maxDate(...invoices.map(item => item.updated_at || item.issued_date));
     const latestReceiptDate = this.maxDate(...receipts.map(item => item.updated_at || item.receipt_date));
 
-    const now = Date.now();
-    const renewalCandidates = activeAgreements
-      .map(item => item.service_end_date || item.renewal_date)
+    const renewalCandidates = activeLocationItems
+      .map(item => String(item.service_end_date || item.serviceEndDate || '').trim())
       .filter(Boolean)
       .map(value => new Date(value))
-      .filter(date => !Number.isNaN(date.getTime()) && date.getTime() > now)
+      .filter(date => !Number.isNaN(date.getTime()) && date.getTime() >= today.getTime())
       .sort((a, b) => a.getTime() - b.getTime());
 
     const paymentBucket = invoices.reduce(
@@ -366,12 +398,13 @@ const Clients = {
       total_locations: totalLocations,
       active_locations: activeLocations,
       total_agreements: agreements.length,
-      signed_agreements: signedAgreements.length,
+      signed_agreements: agreements.filter(item => this.isSignedAgreement(item) || item.signed_date || item.customer_sign_date).length,
       total_agreement_value: totalAgreementValue,
       total_invoiced_value: totalInvoicedValue,
       total_paid_amount: totalPaidAmount,
       total_due_amount: totalDueAmount,
-      total_receipts_value: totalReceiptsValue,
+      total_receipts_value: receipts.length,
+      total_receipts_count: receipts.length,
       unpaid_invoices_count: paymentBucket.unpaid,
       partially_paid_invoices_count: paymentBucket.partial,
       paid_invoices_count: paymentBucket.paid,
