@@ -433,12 +433,81 @@ const Receipts = {
       E.receiptFormModal.classList.remove('open');
       E.receiptFormModal.setAttribute('aria-hidden', 'true');
     }
+    if (E.receiptForm) {
+      delete E.receiptForm.dataset.mode;
+      delete E.receiptForm.dataset.sourceInvoiceUuid;
+      delete E.receiptForm.dataset.clientId;
+      delete E.receiptForm.dataset.paymentMethod;
+      delete E.receiptForm.dataset.paymentReference;
+    }
+    if (E.receiptFormPreviewBtn) E.receiptFormPreviewBtn.style.display = '';
   },
   setFormBusy(value) {
     const busy = !!value;
     if (E.receiptFormSaveBtn) E.receiptFormSaveBtn.disabled = busy;
     if (E.receiptFormDeleteBtn) E.receiptFormDeleteBtn.disabled = busy;
     if (E.receiptFormPreviewBtn) E.receiptFormPreviewBtn.disabled = busy;
+  },
+  normalizeAmountInput(value) {
+    if (value === null || value === undefined) return null;
+    const asString = String(value).trim();
+    if (!asString) return null;
+    const normalized = asString.replace(/,/g, '');
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+  },
+  todayInputValue() {
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  },
+  openCreateFromInvoice(invoice = {}) {
+    const invoiceUuid = String(invoice?.id || '').trim();
+    if (!invoiceUuid) {
+      UI.toast('Invoice UUID is required to create a receipt.');
+      return;
+    }
+    const pendingAmount = this.toNumberSafe(invoice?.pending_amount);
+    const defaultAmount = pendingAmount > 0 ? pendingAmount : '';
+    const paymentState = String(invoice?.payment_state || '').trim() || (pendingAmount <= 0 ? 'Paid' : 'Unpaid');
+    const draft = {
+      receipt_id: '',
+      receipt_number: '',
+      invoice_id: invoiceUuid,
+      invoice_number: String(invoice?.invoice_number || invoice?.invoice_id || '').trim(),
+      client_id: String(invoice?.client_id || '').trim(),
+      receipt_date: this.todayInputValue(),
+      customer_name: String(invoice?.customer_name || '').trim(),
+      customer_legal_name: String(invoice?.customer_legal_name || '').trim(),
+      customer_address: String(invoice?.customer_address || '').trim(),
+      currency: String(invoice?.currency || '').trim() || 'USD',
+      status: 'Issued',
+      invoice_grand_total: this.toNumberSafe(invoice?.grand_total),
+      received_amount: defaultAmount,
+      pending_amount: pendingAmount,
+      payment_state: paymentState,
+      payment_notes: ''
+    };
+    this.state.selectedReceipt = null;
+    this.state.items = [];
+    this.populateForm(draft, [], false);
+    if (E.receiptForm) {
+      E.receiptForm.dataset.id = '';
+      E.receiptForm.dataset.mode = 'create_from_invoice';
+      E.receiptForm.dataset.sourceInvoiceUuid = invoiceUuid;
+      E.receiptForm.dataset.clientId = String(invoice?.client_id || '').trim();
+      E.receiptForm.dataset.paymentMethod = '';
+      E.receiptForm.dataset.paymentReference = '';
+    }
+    if (E.receiptFormTitle) {
+      const label = String(draft.invoice_number || invoiceUuid).trim();
+      E.receiptFormTitle.textContent = `Create Receipt · ${label}`;
+    }
+    if (E.receiptFormDeleteBtn) E.receiptFormDeleteBtn.style.display = 'none';
+    if (E.receiptFormPreviewBtn) E.receiptFormPreviewBtn.style.display = 'none';
+    if (E.receiptFormSaveBtn) E.receiptFormSaveBtn.style.display = Permissions.canCreateReceiptFromInvoice() ? '' : 'none';
   },
   async openReceiptById(receiptId, { readOnly = false, trigger = null } = {}) {
     const id = String(receiptId || '').trim();
@@ -447,6 +516,11 @@ const Receipts = {
     this.state.openingReceiptIds.add(id);
     this.setTriggerBusy(trigger, true);
     console.time('receipt-open');
+    if (E.receiptForm) {
+      delete E.receiptForm.dataset.mode;
+      delete E.receiptForm.dataset.sourceInvoiceUuid;
+    }
+    if (E.receiptFormPreviewBtn) E.receiptFormPreviewBtn.style.display = '';
     const localSummary = this.state.rows.find(row => String(row.receipt_id || '').trim() === id);
     this.populateForm(localSummary ? { ...localSummary, receipt_id: id } : { receipt_id: id }, [], readOnly);
     this.setFormDetailLoading(true);
@@ -499,8 +573,56 @@ const Receipts = {
   async saveForm() {
     if (this.state.saveInFlight) return;
     const id = String(E.receiptForm?.dataset.id || '').trim();
-    if (!id) return;
+    const mode = String(E.receiptForm?.dataset.mode || '').trim();
     const updates = this.collectUpdates();
+    if (mode === 'create_from_invoice') {
+      if (!Permissions.canCreateReceiptFromInvoice()) {
+        UI.toast('You do not have permission to create receipts.');
+        return;
+      }
+      const invoiceUuid = String(E.receiptForm?.dataset.sourceInvoiceUuid || updates.invoice_id || '').trim();
+      const normalizedAmount = this.normalizeAmountInput(updates.received_amount);
+      if (normalizedAmount === null || normalizedAmount <= 0) {
+        UI.toast('Received Amount must be greater than 0 before saving the receipt.');
+        return;
+      }
+      this.state.saveInFlight = true;
+      this.setFormBusy(true);
+      console.time('entity-save');
+      try {
+        const response = await Api.createReceiptFromInvoice(invoiceUuid, {
+          amount: normalizedAmount,
+          payment_method: String(E.receiptForm?.dataset.paymentMethod || '').trim() || null,
+          payment_reference: String(E.receiptForm?.dataset.paymentReference || '').trim() || null
+        });
+        const parsed = this.extractReceiptAndItems(response);
+        const receipt =
+          parsed?.receipt ||
+          response?.receipt ||
+          response?.data?.receipt ||
+          response?.result?.receipt ||
+          response?.payload?.receipt ||
+          response?.item ||
+          response;
+        const normalized = this.upsertLocalRow(receipt);
+        const receiptId = String(normalized?.receipt_id || receipt?.receipt_id || response?.receipt_id || response?.id || '').trim();
+        this.setCachedDetail(receiptId, normalized || receipt, parsed?.items || []);
+        await window.Invoices?.syncAfterReceiptMutation?.({
+          invoiceId: normalized?.invoice_id || receipt?.invoice_id || invoiceUuid,
+          receipt: normalized || receipt
+        });
+        UI.toast(receiptId ? `Receipt ${receiptId} created.` : 'Receipt created from invoice.');
+        this.closeForm();
+      } catch (error) {
+        UI.toast('Unable to create receipt: ' + (error?.message || 'Unknown error'));
+      } finally {
+        console.timeEnd('entity-save');
+        this.state.saveInFlight = false;
+        this.setFormBusy(false);
+      }
+      return;
+    }
+    if (!id) return;
     const currentRecord = this.state.rows.find(row => String(row.receipt_id || '') === id) || {};
     const workflowCheck = await window.WorkflowEngine?.enforceBeforeSave?.('receipts', currentRecord, {
       receipt_id: id,

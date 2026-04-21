@@ -1243,11 +1243,27 @@
       if (!isAdminDev()) throw new Error('Only admin/dev can create receipts from invoices.');
       const invoiceUuid = String(payload.id || payload.invoice_uuid || payload.invoice_id || '').trim();
       if (!isUuid(invoiceUuid)) throw new Error('Invoice UUID is required to create receipt from invoice.');
+      const normalizeOptionalText = value => {
+        const normalized = String(value ?? '').trim();
+        return normalized || null;
+      };
+      const normalizeAmount = value => {
+        if (value === null || value === undefined) return null;
+        if (typeof value === 'string' && !value.trim()) return null;
+        if (typeof value === 'string') {
+          const parsed = Number(value.replace(/,/g, '').trim());
+          return Number.isFinite(parsed) ? parsed : null;
+        }
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : null;
+      };
+      const normalizedAmount = normalizeAmount(payload.amount ?? payload.numeric);
+      if (normalizedAmount === null || normalizedAmount <= 0) throw new Error('Receipt amount must be greater than 0.');
       const { data, error } = await client.rpc('create_receipt_from_invoice', {
         p_invoice_uuid: invoiceUuid,
-        p_amount: Number(payload.amount || payload.numeric || 0),
-        p_payment_method: String(payload.payment_method || payload.method || ''),
-        p_payment_reference: String(payload.payment_reference || payload.reference || '')
+        p_amount: normalizedAmount,
+        p_payment_method: normalizeOptionalText(payload.payment_method || payload.method),
+        p_payment_reference: normalizeOptionalText(payload.payment_reference || payload.reference)
       });
       if (error) throw friendlyError('Receipt creation from invoice failed', error);
       return data;

@@ -3,6 +3,7 @@ const Invoices = {
     'invoice_id',
     'invoice_number',
     'agreement_id',
+    'client_id',
     'invoice_date',
     'issue_date',
     'due_date',
@@ -1806,28 +1807,27 @@ const Invoices = {
       UI.toast(window.WorkflowEngine.composeDeniedMessage(workflowCheck, 'Receipt creation blocked.'));
       return;
     }
-    try {
-      const response = await Api.createReceiptFromInvoice(id);
-      const receipt =
-        response?.receipt ||
-        response?.data?.receipt ||
-        response?.result?.receipt ||
-        response?.payload?.receipt ||
-        response?.item ||
-        response;
-      const receiptId = String(receipt?.receipt_id || response?.receipt_id || response?.id || '').trim();
-      UI.toast(receiptId ? `Receipt ${receiptId} created.` : 'Receipt created from invoice.');
-      if (window.Receipts?.upsertLocalRow) window.Receipts.upsertLocalRow(receipt);
-      this.appendInvoiceReceipt(id, receipt);
-      const selectedInvoiceId = String(E.invoiceForm?.dataset.id || '').trim();
-      if (selectedInvoiceId === id) await this.openInvoiceById(id, { readOnly: false });
-      else await this.refreshInvoiceReceipts(id, { force: true });
-      if (receiptId && window.Receipts?.openReceiptById) {
-        await window.Receipts.openReceiptById(receiptId, { readOnly: false });
-      }
-    } catch (error) {
-      UI.toast('Unable to create receipt: ' + (error?.message || 'Unknown error'));
+    const invoice =
+      this.state.rows.find(row => this.invoiceDbId(row.id) === id) ||
+      (String(this.state.selectedInvoice?.id || '').trim() === id ? this.state.selectedInvoice : null) ||
+      null;
+    if (!window.Receipts?.openCreateFromInvoice) {
+      UI.toast('Receipt form is not available right now. Please refresh and try again.');
+      return;
     }
+    window.Receipts.openCreateFromInvoice({
+      id,
+      invoice_id: invoice?.invoice_id || '',
+      invoice_number: invoice?.invoice_number || invoice?.invoice_id || '',
+      client_id: invoice?.client_id || '',
+      customer_name: invoice?.customer_name || '',
+      customer_legal_name: invoice?.customer_legal_name || '',
+      customer_address: invoice?.customer_address || '',
+      currency: invoice?.currency || 'USD',
+      grand_total: invoice?.grand_total ?? invoice?.invoice_total ?? 0,
+      pending_amount: invoice?.pending_amount ?? 0,
+      payment_state: invoice?.payment_state || ''
+    });
   },
   async syncAfterReceiptMutation({ invoiceId, receipt = null } = {}) {
     const id = String(invoiceId || receipt?.invoice_id || '').trim();
