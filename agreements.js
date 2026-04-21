@@ -1354,7 +1354,7 @@ const Agreements = {
       const persistedAgreementUuid = String(persistedAgreement?.id || id || '').trim();
       this.setCachedDetail(persistedAgreementUuid, persistedAgreement, preparedItems);
       try {
-        await this.syncSignedAgreementToClient({ ...agreement, ...persistedAgreement }, String(persistedAgreement?.agreement_id || '').trim());
+        await this.syncSignedAgreementToClient({ ...agreement, ...persistedAgreement }, String(persistedAgreement?.id || persistedAgreement?.agreement_id || '').trim());
       } catch (clientSyncError) {
         UI.toast(`Agreement saved, but client sync failed: ${clientSyncError?.message || 'Unknown error'}`);
       }
