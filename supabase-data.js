@@ -1262,6 +1262,7 @@
       if (!isAdminDev()) throw new Error('Only admin/dev can create receipts from invoices.');
       const invoiceUuid = String(payload.id || payload.invoice_uuid || payload.invoice_id || '').trim();
       if (!isUuid(invoiceUuid)) throw new Error('Invoice UUID is required to create receipt from invoice.');
+      const logPrefix = '[supabase][receipts.create_from_invoice]';
       const normalizeOptionalText = value => {
         const normalized = String(value ?? '').trim();
         return normalized || null;
@@ -1285,28 +1286,74 @@
         p_payment_reference: normalizeOptionalText(payload.payment_reference || payload.reference)
       });
       if (error) throw friendlyError('Receipt creation from invoice failed', error);
+      devLog(logPrefix, 'RPC created receipt header', { invoiceUuid, rpcResponse: data });
       const pickReceiptUuid = candidate => {
+        if (!candidate) return '';
+        if (Array.isArray(candidate)) {
+          for (const entry of candidate) {
+            const found = pickReceiptUuid(entry);
+            if (found) return found;
+          }
+          return '';
+        }
         const options = [
           candidate?.id,
           candidate?.receipt_uuid,
           candidate?.receipt_id_uuid,
           candidate?.created_receipt_uuid,
           candidate?.created_uuid,
+          candidate?.receipt_id,
+          candidate?.receipt_number,
           candidate?.receipt?.id,
-          candidate?.data?.id
+          candidate?.data?.id,
+          candidate?.data?.receipt?.id,
+          candidate?.created_receipt?.id,
+          candidate?.item?.id
         ];
-        const found = options.map(value => String(value || '').trim()).find(value => isUuid(value));
-        return found || '';
+        const normalized = options.map(value => String(value || '').trim()).filter(Boolean);
+        const directUuid = normalized.find(value => isUuid(value));
+        if (directUuid) return directUuid;
+
+        const businessReceiptId = normalized.find(value => /^RCPT-/i.test(value));
+        if (businessReceiptId) return businessReceiptId;
+        return '';
       };
-      const createdReceiptUuid = pickReceiptUuid(data);
-      if (!createdReceiptUuid) return data;
+      const extractedReceiptRef = pickReceiptUuid(data);
+      let createdReceiptUuid = '';
+      if (isUuid(extractedReceiptRef)) {
+        createdReceiptUuid = extractedReceiptRef;
+      } else if (extractedReceiptRef) {
+        const { data: receiptByBusinessId, error: receiptByBusinessIdError } = await client
+          .from('receipts')
+          .select('*')
+          .eq('receipt_id', extractedReceiptRef)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (receiptByBusinessIdError) throw friendlyError('Unable to resolve receipt UUID from receipt_id', receiptByBusinessIdError);
+        createdReceiptUuid = String(receiptByBusinessId?.id || '').trim();
+      }
+      if (!createdReceiptUuid) {
+        const { data: latestReceipt, error: latestReceiptError } = await client
+          .from('receipts')
+          .select('*')
+          .eq('invoice_id', invoiceUuid)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (latestReceiptError) throw friendlyError('Unable to resolve created receipt UUID from invoice', latestReceiptError);
+        createdReceiptUuid = String(latestReceipt?.id || '').trim();
+      }
+      if (!createdReceiptUuid) throw new Error('Receipt header was created but receipt UUID could not be resolved.');
 
       const { data: createdReceiptRow, error: createdReceiptError } = await client
         .from('receipts')
         .select('*')
         .eq('id', createdReceiptUuid)
         .maybeSingle();
-      if (createdReceiptError || !createdReceiptRow) return data;
+      if (createdReceiptError || !createdReceiptRow) {
+        throw friendlyError('Receipt header was created but could not be loaded', createdReceiptError || new Error('Missing receipt row'));
+      }
 
       const { data: invoiceItems, error: invoiceItemsError } = await client
         .from('invoice_items')
@@ -1317,6 +1364,7 @@
       if (invoiceItemsError) throw friendlyError('Unable to load invoice_items for receipt creation', invoiceItemsError);
 
       const sourceItems = Array.isArray(invoiceItems) ? invoiceItems : [];
+      devLog(logPrefix, `Loaded invoice_items count=${sourceItems.length}`, { invoiceUuid, createdReceiptUuid });
       const receiptItemRows = sourceItems.map((item, index) => {
         const lineTotal = normalizeAmount(item?.line_total ?? item?.amount) ?? 0;
         const description =
@@ -1350,11 +1398,16 @@
           currency: normalizeOptionalText(item?.currency) || normalizeOptionalText(createdReceiptRow?.currency)
         }, createdReceiptUuid);
       });
+      devLog(logPrefix, 'Final receipt_items payload before insert', receiptItemRows);
 
       await client.from('receipt_items').delete().eq('receipt_id', createdReceiptUuid);
-      if (receiptItemRows.length) {
+      if (!receiptItemRows.length) {
+        devLog(logPrefix, 'No invoice_items found; receipt_items payload is empty. Skipping insert by design.', { invoiceUuid, createdReceiptUuid });
+      } else {
         const { error: receiptItemsInsertError } = await client.from('receipt_items').insert(receiptItemRows);
-        if (receiptItemsInsertError) throw friendlyError('Unable to create receipt_items from invoice_items', receiptItemsInsertError);
+        if (receiptItemsInsertError) {
+          throw friendlyError(`Unable to create receipt_items from invoice_items (count=${receiptItemRows.length})`, receiptItemsInsertError);
+        }
       }
       return withItems(resource, createdReceiptRow);
     }
