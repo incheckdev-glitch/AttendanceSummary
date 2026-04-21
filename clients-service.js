@@ -120,7 +120,9 @@ const ClientsService = {
       };
     });
   },
-  isSignedAgreement(agreement = {}) { return this.normalizeText(agreement.status).includes('signed'); },
+  isSignedAgreement(agreement = {}) {
+    return this.normalizeText(agreement.status).includes('signed') || Boolean(String(agreement.signed_date || agreement.customer_sign_date || '').trim());
+  },
   buildSignedClientFromAgreement(agreement = {}) {
     const companyName = String(agreement.customer_legal_name || agreement.customer_name || '').trim();
     const displayName = String(agreement.customer_name || agreement.customer_legal_name || '').trim();
@@ -201,8 +203,17 @@ const ClientsService = {
   countLocationItems(agreement = {}) {
     const items = Array.isArray(agreement.items) ? agreement.items : [];
     return items.filter(item => {
-      const section = this.normalizeText(item.section);
-      return section === 'annual_saas' || section === 'annual' || section === 'subscription';
+      const section = this.normalizeText(item.section || item.category || item.type || item.section_name || item.section_label);
+      if (!section) return false;
+      return [
+        'annual_saas',
+        'annual saas',
+        'saas annual',
+        'annual subscription',
+        'subscription annual',
+        'annual',
+        'subscription'
+      ].some(token => section.includes(token));
     }).length;
   },
   async fetchAgreementItemsForClients_(db) {
@@ -249,9 +260,7 @@ const ClientsService = {
   },
   computeTotalsForClient(client = {}, agreements = [], invoices = [], receipts = []) {
     const linkedAgreements = agreements.filter(row => this.matchAgreementClient(row, client));
-    const signedAgreements = linkedAgreements.filter(row => this.isSignedAgreement(row));
     const linkedInvoices = invoices.filter(row => this.matchRecordClient(row, client));
-    const baselineAgreements = signedAgreements.length ? signedAgreements : linkedAgreements;
     const invoiceIdSet = new Set(linkedInvoices.map(row => String(row.id || '').trim()).filter(Boolean));
     const linkedReceipts = receipts.filter(row => {
       const invoiceUuid = String(row.invoice_id || '').trim();
@@ -260,12 +269,11 @@ const ClientsService = {
     });
 
     const totalAgreements = linkedAgreements.length;
-    const totalLocations = baselineAgreements.reduce((sum, agreement) => sum + this.countLocationItems(agreement), 0);
-    const totalValue = linkedInvoices.length
-      ? linkedInvoices.reduce((sum, invoice) => sum + this.toNumber(invoice.invoice_total ?? invoice.grand_total), 0)
-      : baselineAgreements.reduce((sum, agreement) => sum + this.toNumber(agreement.grand_total), 0);
+    const totalLocations = linkedAgreements.reduce((sum, agreement) => sum + this.countLocationItems(agreement), 0);
+    const totalValue = linkedAgreements.reduce((sum, agreement) => sum + this.toNumber(agreement.grand_total), 0);
+    const totalInvoiced = linkedInvoices.reduce((sum, invoice) => sum + this.toNumber(invoice.invoice_total ?? invoice.grand_total), 0);
     const totalPaid = linkedReceipts.reduce((sum, receipt) => sum + this.toNumber(receipt.amount_received), 0);
-    const totalDue = Math.max(totalValue - totalPaid, 0);
+    const totalDue = Math.max(totalInvoiced - totalPaid, 0);
 
     return {
       total_agreements: totalAgreements,
