@@ -297,6 +297,7 @@ const Invoices = {
   },
   normalizeInvoice(raw = {}) {
     const source = raw && typeof raw === 'object' ? raw : {};
+    const pickDefined = (...values) => values.find(value => value !== undefined && value !== null && !(typeof value === 'string' && value.trim() === ''));
     const normalized = {};
     this.invoiceFields.forEach(field => {
       const camel = field.replace(/_([a-z])/g, (_, ch) => ch.toUpperCase());
@@ -310,14 +311,48 @@ const Invoices = {
     normalized.currency = String(normalized.currency || '').trim() || 'USD';
     normalized.issue_date = this.normalizeDateInputValue(normalized.issue_date || source.issue_date || source.issueDate || source.invoice_date || source.invoiceDate);
     normalized.due_date = this.normalizeDateInputValue(normalized.due_date || source.due_date || source.dueDate);
-    const amountPaidFallback = source.received_amount ?? source.receivedAmount;
-    const grandTotalFallback = source.invoice_total ?? source.invoiceTotal;
-    const subtotalSubscriptionFallback = source.subtotal_locations ?? source.subtotalLocations ?? source.subtotal_subscription ?? source.subtotalSubscription;
-    normalized.subtotal_locations = this.toNumberSafe(normalized.subtotal_locations || source.subtotal_subscription || source.subtotalSubscription || subtotalSubscriptionFallback);
-    normalized.subtotal_one_time = this.toNumberSafe(normalized.subtotal_one_time || source.one_time_total || source.oneTimeTotal);
-    normalized.invoice_total = this.toNumberSafe(normalized.invoice_total || source.grand_total || source.grandTotal || grandTotalFallback);
-    normalized.received_amount = this.toNumberSafe(normalized.received_amount || source.amount_paid || source.amountPaid || amountPaidFallback);
-    normalized.pending_amount = this.toNumberSafe(normalized.pending_amount || source.balance_amount || source.balanceAmount);
+    const subtotalLocations = pickDefined(
+      normalized.subtotal_locations,
+      source.subtotal_locations,
+      source.subtotalLocations,
+      source.subtotal_subscription,
+      source.subtotalSubscription,
+      source.saas_total,
+      source.saasTotal
+    );
+    const subtotalOneTime = pickDefined(
+      normalized.subtotal_one_time,
+      source.subtotal_one_time,
+      source.subtotalOneTime,
+      source.one_time_total,
+      source.oneTimeTotal
+    );
+    const invoiceTotal = pickDefined(
+      normalized.invoice_total,
+      source.invoice_total,
+      source.invoiceTotal,
+      source.grand_total,
+      source.grandTotal
+    );
+    const receivedAmount = pickDefined(
+      normalized.received_amount,
+      source.received_amount,
+      source.receivedAmount,
+      source.amount_paid,
+      source.amountPaid
+    );
+    const pendingAmount = pickDefined(
+      normalized.pending_amount,
+      source.pending_amount,
+      source.pendingAmount,
+      source.balance_amount,
+      source.balanceAmount
+    );
+    normalized.subtotal_locations = this.toNumberSafe(subtotalLocations);
+    normalized.subtotal_one_time = this.toNumberSafe(subtotalOneTime);
+    normalized.invoice_total = this.toNumberSafe(invoiceTotal);
+    normalized.received_amount = this.toNumberSafe(receivedAmount);
+    normalized.pending_amount = this.toNumberSafe(pendingAmount);
     normalized.payment_state = String(normalized.payment_state || source.paymentStatus || '').trim();
     normalized.payment_conclusion = String(normalized.payment_conclusion || source.settlement_status || source.settlementStatus || '').trim();
     if (!normalized.amount_in_words && normalized.invoice_total > 0) {
@@ -952,23 +987,29 @@ const Invoices = {
     return pending <= 0 ? 'Settlement Completed' : 'Pending Settlement';
   },
   deriveCalculatedSummary(invoice = {}, items = [], { preferInvoiceValues = false } = {}) {
+    const pickDefined = (...values) => values.find(value => value !== undefined && value !== null && !(typeof value === 'string' && value.trim() === ''));
     const hasItems = Array.isArray(items) && items.length > 0;
     const itemTotals = this.calculateInvoiceTotals(items);
     const totals = preferInvoiceValues && !hasItems
       ? {
-          subtotal_subscription: this.toNumberSafe(invoice.subtotal_subscription),
-          subtotal_one_time: this.toNumberSafe(invoice.subtotal_one_time),
-          grand_total: this.toNumberSafe(invoice.grand_total)
+          subtotal_subscription: this.toNumberSafe(
+            pickDefined(invoice.subtotal_locations, invoice.subtotal_subscription, invoice.saas_total)
+          ),
+          subtotal_one_time: this.toNumberSafe(
+            pickDefined(invoice.subtotal_one_time, invoice.one_time_total)
+          ),
+          grand_total: this.toNumberSafe(
+            pickDefined(invoice.invoice_total, invoice.grand_total)
+          )
         }
       : itemTotals;
+    totals.grand_total = this.toNumberSafe(totals.subtotal_subscription) + this.toNumberSafe(totals.subtotal_one_time);
     const invoiceId = String(invoice?.id || '').trim();
     const linkedReceipts = invoiceId ? this.getInvoiceReceipts(invoiceId) : [];
     const formReceivedAmount = Math.max(
       0,
       this.toNumberSafe(
-        invoice.received_amount !== undefined && invoice.received_amount !== null && invoice.received_amount !== ''
-          ? invoice.received_amount
-          : invoice.amount_paid
+        pickDefined(invoice.received_amount, invoice.amount_paid, invoice.amount_received)
       )
     );
     const receiptPaymentSummary = this.summarizeReceiptPayments(totals.grand_total, linkedReceipts);

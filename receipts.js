@@ -481,6 +481,7 @@ const Receipts = {
     }
   },
   populateForm(receipt, items, readOnly = false, linkedInvoice = null) {
+    const pickDefined = (...values) => values.find(value => value !== undefined && value !== null && !(typeof value === 'string' && value.trim() === ''));
     const set = (id, value) => {
       const el = E[id];
       if (el) el.value = value ?? '';
@@ -499,8 +500,9 @@ const Receipts = {
       || (effectiveNewPaidTotal <= 0 ? 'Unpaid' : effectivePendingAmount > 0 ? 'Partially Paid' : 'Paid');
     const effectivePaymentConclusion = String(receipt.payment_conclusion || '').trim()
       || this.derivePaymentConclusion({ pending_amount: effectivePendingAmount });
-    const effectiveInvoiceTotal = this.normalizeAmountInput(invoiceSource.invoice_total)
-      ?? this.toNumberSafe(receipt.invoice_total || receipt.invoice_grand_total || receipt.grand_total);
+    const effectiveInvoiceTotal = this.normalizeAmountInput(
+      pickDefined(invoiceSource.invoice_total, receipt.invoice_total, receipt.invoice_grand_total, receipt.grand_total)
+    ) ?? 0;
     set('receiptFormReceiptId', receipt.receipt_id);
     set('receiptFormReceiptNumber', receipt.receipt_number);
     set('receiptFormInvoiceId', receipt.invoice_id);
@@ -1170,11 +1172,20 @@ const Receipts = {
     </tr>`;
     const oneTimeRows = oneTimeItems.length ? oneTimeItems.map(buildOneTimeRow).join('') : '<tr><td colspan="8" class="muted cell-center">No one-time fee rows.</td></tr>';
     const locationRows = locationItems.length ? locationItems.map(buildDetailRow).join('') : '<tr><td colspan="11" class="muted cell-center">No location detail rows.</td></tr>';
-    const subtotalLocations = this.toNumberSafe(r.subtotal_locations || invoice?.subtotal_locations || locationItems.reduce((sum, item) => sum + this.toNumberSafe(item.line_total), 0));
-    const subtotalOneTime = this.toNumberSafe(r.subtotal_one_time || invoice?.subtotal_one_time || oneTimeItems.reduce((sum, item) => sum + this.toNumberSafe(item.line_total), 0));
-    const invoiceTotal = this.toNumberSafe(r.invoice_total || r.invoice_grand_total || r.grand_total || invoice?.invoice_total || subtotalLocations + subtotalOneTime);
+    const pickDefined = (...values) => values.find(value => value !== undefined && value !== null && !(typeof value === 'string' && value.trim() === ''));
+    const hasLocationRows = locationItems.length > 0;
+    const hasOneTimeRows = oneTimeItems.length > 0;
+    const calculatedSubtotalLocations = locationItems.reduce((sum, item) => sum + this.toNumberSafe(item.line_total), 0);
+    const calculatedSubtotalOneTime = oneTimeItems.reduce((sum, item) => sum + this.toNumberSafe(item.line_total), 0);
+    const subtotalLocations = this.toNumberSafe(
+      pickDefined(hasLocationRows ? calculatedSubtotalLocations : undefined, r.subtotal_locations, invoice?.subtotal_locations, 0)
+    );
+    const subtotalOneTime = this.toNumberSafe(
+      pickDefined(hasOneTimeRows ? calculatedSubtotalOneTime : undefined, r.subtotal_one_time, invoice?.subtotal_one_time, 0)
+    );
+    const invoiceTotal = subtotalLocations + subtotalOneTime;
     const oldPaidTotal = this.toNumberSafe(r.old_paid_total);
-    const paidNow = this.toNumberSafe(r.paid_now || r.amount_received || r.received_amount);
+    const paidNow = this.toNumberSafe(pickDefined(r.paid_now, r.amount_received, r.received_amount));
     const newPaidTotal = this.toNumberSafe(r.new_paid_total || (oldPaidTotal + paidNow));
     const pendingAmount = r.pending_amount === null || r.pending_amount === undefined || r.pending_amount === ''
       ? Math.max(0, invoiceTotal - newPaidTotal)
