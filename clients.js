@@ -160,7 +160,6 @@ const Clients = {
       updated_at: String(raw.updated_at || raw.updatedAt || '').trim(),
       service_start_date: String(raw.service_start_date || raw.serviceStartDate || raw.effective_date || '').trim(),
       service_end_date: String(raw.service_end_date || raw.serviceEndDate || '').trim(),
-      end_date: String(raw.end_date || raw.endDate || '').trim(),
       due_date: String(raw.due_date || raw.dueDate || '').trim(),
       renewal_date: String(raw.renewal_date || raw.renewalDate || raw.next_renewal_date || raw.nextRenewalDate || '').trim(),
       customer_sign_date: String(raw.customer_sign_date || raw.customerSignDate || '').trim(),
@@ -335,7 +334,7 @@ const Clients = {
 
     const now = Date.now();
     const renewalCandidates = activeAgreements
-      .map(item => item.end_date || item.service_end_date)
+      .map(item => item.service_end_date || item.renewal_date)
       .filter(Boolean)
       .map(value => new Date(value))
       .filter(date => !Number.isNaN(date.getTime()) && date.getTime() > now)
@@ -544,7 +543,7 @@ const Clients = {
     return 'Pending';
   },
   getRenewalStatus(row = {}) {
-    const days = this.getDaysLeft(row.renewal_date || row.renewalDate || row.end_date || row.service_end_date);
+    const days = this.getDaysLeft(row.renewal_date || row.renewalDate || row.service_end_date);
     const paymentStatus = this.getPaymentStatus(row);
     if (days === null) return paymentStatus || 'Unknown';
     if (days < 0) return 'Renewal Overdue';
@@ -609,9 +608,9 @@ const Clients = {
           agreement_id: agreement.agreement_id,
           agreement_number: agreement.agreement_number,
           client_name: client.customer_name || client.customer_legal_name || '—',
-          renewal_date: this.getField(item, 'renewal_date', 'renewalDate', 'service_end_date', 'serviceEndDate', 'end_date', 'endDate'),
+          renewal_date: this.getField(item, 'renewal_date', 'renewalDate', 'service_end_date', 'serviceEndDate'),
           service_start_date: this.getField(item, 'service_start_date', 'serviceStartDate', 'start_date', 'startDate') || agreement.service_start_date,
-          service_end_date: this.getField(item, 'service_end_date', 'serviceEndDate', 'end_date', 'endDate') || agreement.service_end_date || agreement.end_date,
+          service_end_date: this.getField(item, 'service_end_date', 'serviceEndDate') || agreement.service_end_date,
           location_name: this.getField(item, 'location_name', 'locationName') || agreement.location_name,
           payment_status: this.getField(item, 'payment_status', 'paymentStatus')
         });
@@ -649,7 +648,7 @@ const Clients = {
       location_name: String(this.getField(raw, 'location_name', 'locationName') || '').trim(),
       module_name: String(this.getField(raw, 'module_name', 'moduleName', 'item_name', 'name') || '').trim(),
       service_start_date: String(this.getField(raw, 'service_start_date', 'serviceStartDate', 'start_date', 'startDate') || '').trim(),
-      service_end_date: String(this.getField(raw, 'service_end_date', 'serviceEndDate', 'end_date', 'endDate') || '').trim(),
+      service_end_date: String(this.getField(raw, 'service_end_date', 'serviceEndDate') || '').trim(),
       due_date: String(this.getField(raw, 'due_date', 'dueDate') || '').trim(),
       renewal_date: renewalDate,
       billing_frequency: String(this.getField(raw, 'billing_frequency', 'billingFrequency') || '').trim(),
@@ -1042,7 +1041,7 @@ const Clients = {
               <td>${U.escapeHtml(item.status || '—')}</td>
               <td>${U.escapeHtml(U.fmtNumber(item.grand_total || 0))}</td>
               <td>${U.escapeHtml(U.fmtDisplayDate(item.service_start_date) || '—')}</td>
-              <td>${U.escapeHtml(U.fmtDisplayDate(item.end_date || item.service_end_date) || '—')}</td>
+              <td>${U.escapeHtml(U.fmtDisplayDate(item.service_end_date) || '—')}</td>
               <td>${item.agreement_id ? `<button class="btn ghost sm" type="button" data-agreement-view="${U.escapeAttr(item.agreement_id)}">Open</button>` : '—'}</td>
             </tr>`)
             .join('')

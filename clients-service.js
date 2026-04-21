@@ -127,14 +127,16 @@ const ClientsService = {
     const signedAgreements = linkedAgreements.filter(row => this.isSignedAgreement(row));
     const linkedInvoices = invoices.filter(row => this.matchRecordClient(row, client));
     const linkedReceipts = receipts.filter(row => this.matchRecordClient(row, client));
+    const baselineAgreements = signedAgreements.length ? signedAgreements : linkedAgreements;
 
-    const totalAgreements = signedAgreements.length || linkedAgreements.length;
-    const totalLocations = signedAgreements.reduce((sum, agreement) => sum + this.countLocationItems(agreement), 0);
-    const totalValue = signedAgreements.reduce((sum, agreement) => sum + this.toNumber(agreement.grand_total), 0);
+    const totalAgreements = linkedAgreements.length;
+    const totalLocations = baselineAgreements.reduce((sum, agreement) => sum + this.countLocationItems(agreement), 0);
+    const totalValue = baselineAgreements.reduce((sum, agreement) => sum + this.toNumber(agreement.grand_total), 0);
     const paidFromInvoices = linkedInvoices.reduce((sum, invoice) => sum + this.toNumber(invoice.received_amount ?? invoice.amount_paid), 0);
     const paidFromReceipts = linkedReceipts.reduce((sum, receipt) => sum + this.toNumber(receipt.amount_received ?? receipt.received_amount), 0);
     const totalPaid = Math.max(paidFromInvoices, paidFromReceipts);
-    const totalDue = linkedInvoices.reduce((sum, invoice) => sum + this.toNumber(invoice.pending_amount), 0);
+    const invoiceDue = linkedInvoices.reduce((sum, invoice) => sum + this.toNumber(invoice.pending_amount), 0);
+    const totalDue = invoiceDue > 0 ? invoiceDue : Math.max(totalValue - totalPaid, 0);
 
     return {
       total_agreements: totalAgreements,
@@ -194,7 +196,7 @@ const ClientsService = {
     const clientsList = await this.listClients(options);
     const db = this.getDb();
     const [agreementsRes, itemsRes, invoicesRes, receiptsRes] = await Promise.all([
-      db.from('agreements').select('id,agreement_id,agreement_number,customer_name,customer_legal_name,status,grand_total,updated_at,service_start_date,service_end_date,agreement_date,customer_sign_date,end_date,due_date,renewal_date,location_name').order('updated_at', { ascending: false }).limit(500),
+      db.from('agreements').select('id,agreement_id,agreement_number,customer_name,customer_legal_name,status,grand_total,updated_at,service_start_date,service_end_date,agreement_date,customer_sign_date,due_date,renewal_date,location_name').order('updated_at', { ascending: false }).limit(500),
       db.from('agreement_items').select('agreement_id,section,item_section,section_name,category,type').limit(5000),
       db.from('invoices').select('id,invoice_id,invoice_number,agreement_id,client_id,customer_name,customer_legal_name,status,payment_state,invoice_total,received_amount,pending_amount,updated_at,issue_date,due_date,reference,notes,location_name').order('updated_at', { ascending: false }).limit(1000),
       db.from('receipts').select('id,receipt_id,receipt_number,invoice_id,client_id,customer_name,customer_legal_name,status,payment_state,amount_received,pending_amount,updated_at,receipt_date,reference,notes').order('updated_at', { ascending: false }).limit(1000)
