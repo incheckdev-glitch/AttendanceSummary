@@ -312,7 +312,7 @@ const ClientsService = {
     const db = this.getDb();
     const [agreementsRes, itemsRes, invoicesRes, receiptsRes] = await Promise.all([
       db.from('agreements').select(this.AGREEMENT_SELECT_COLUMNS).order('updated_at', { ascending: false }).limit(500),
-      db.from('agreement_items').select('agreement_id,location_name,section,item_section,section_name,category,type').limit(5000),
+      db.from('agreement_items').select('agreement_id,location_name,section,section_name,category,type').limit(5000),
       db.from('invoices').select('id,invoice_id,invoice_number,agreement_id,client_id,customer_name,customer_legal_name,status,payment_state,invoice_total,received_amount,pending_amount,updated_at,issue_date,due_date,reference,notes,location_name').order('updated_at', { ascending: false }).limit(1000),
       db.from('receipts').select('id,receipt_id,receipt_number,invoice_id,client_id,customer_name,customer_legal_name,status,payment_state,amount_received,pending_amount,updated_at,receipt_date,reference,notes').order('updated_at', { ascending: false }).limit(1000)
     ]);
