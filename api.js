@@ -570,14 +570,9 @@ const Api = {
 
     const requestFields = {
       agreement_id: normalizedAgreementId,
-      request_type: 'Technical Admin',
-      request_details: technicalRequestDetails,
-      request_message: technicalRequestDetails,
       technical_request_type: 'Technical Admin',
       technical_request_details: technicalRequestDetails,
       technical_request_status: 'Requested',
-      technical_admin_request: 'Requested',
-      technical_admin_request_message: technicalRequestDetails,
       requested_by: requestedBy || null,
       requested_at: requestedAt
     };
