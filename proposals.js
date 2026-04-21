@@ -785,10 +785,6 @@ const Proposals = {
           <td class="label">Subtotal One-Time</td>
           <td class="value">${money(proposalData.subtotal_one_time || proposalData.one_time_total)}</td>
         </tr>
-        <tr>
-          <td class="label">Total Discount</td>
-          <td class="value">${money(proposalData.total_discount)}</td>
-        </tr>
         <tr class="grand-total">
           <td class="label">Grand Total</td>
           <td class="value">${money(proposalData.grand_total)}</td>
