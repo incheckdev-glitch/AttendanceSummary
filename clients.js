@@ -24,6 +24,7 @@ const Clients = {
     filteredRows: [],
     selectedClientId: '',
     agreements: [],
+    agreementItems: [],
     invoices: [],
     receipts: [],
     loading: false,
@@ -174,6 +175,20 @@ const Clients = {
           : Array.isArray(raw.line_items)
             ? raw.line_items
             : []
+    };
+  },
+  normalizeAgreementItem(raw = {}) {
+    return {
+      id: String(raw.id || raw.item_id || raw.itemId || '').trim(),
+      agreement_id: String(raw.agreement_id || raw.agreementId || '').trim(),
+      section: String(raw.section || raw.category || raw.type || '').trim(),
+      location_name: String(raw.location_name || raw.locationName || '').trim(),
+      item_name: String(raw.item_name || raw.itemName || raw.module || raw.module_name || raw.moduleName || '').trim(),
+      billing_frequency: String(raw.billing_frequency || raw.billingFrequency || raw.frequency || '').trim(),
+      service_start_date: String(raw.service_start_date || raw.serviceStartDate || '').trim(),
+      service_end_date: String(raw.service_end_date || raw.serviceEndDate || '').trim(),
+      line_total: this.toNumberSafe(raw.line_total ?? raw.lineTotal),
+      created_at: String(raw.created_at || raw.createdAt || '').trim()
     };
   },
   normalizeInvoice(raw = {}) {
@@ -367,6 +382,13 @@ const Clients = {
     if (!client) return [];
     return this.state.agreements.filter(item => this.matchesClientAgreement_(item, client));
   },
+  listClientAgreementLocationItems_(clientId) {
+    const linkedAgreements = this.listClientRelatedAgreements_(clientId);
+    const linkedAgreementUuidSet = new Set(linkedAgreements.map(item => String(item.id || '').trim()).filter(Boolean));
+    return this.state.agreementItems
+      .filter(item => linkedAgreementUuidSet.has(String(item.agreement_id || '').trim()))
+      .filter(item => this.isAnnualSaasClientLocationItem(item));
+  },
   listClientRelatedInvoices_(clientId) {
     const client = this.state.rows.find(row => row.client_id === clientId);
     if (!client) return [];
@@ -446,13 +468,34 @@ const Clients = {
   isAnnualSaasClientLocationItem(item = {}) {
     const section = this.normalizeText(item.section || item.category || item.type || item.section_name || item.section_label);
     const billingFrequency = this.normalizeText(item.billing_frequency || item.billingFrequency || item.frequency);
+    const itemName = this.normalizeText(item.item_name || item.itemName || item.module || item.module_name || item.moduleName);
     if (!section && !billingFrequency) return false;
-    const isOneTimeOrSetup = ['one_time', 'one time', 'one-time', 'setup', 'implementation', 'onboarding'].some(token => section.includes(token));
+    const isOneTimeOrSetup = ['one_time_fee', 'one_time', 'one time', 'one-time', 'setup', 'implementation', 'onboarding'].some(
+      token => section.includes(token)
+    );
     if (isOneTimeOrSetup) return false;
     const isSaasFamily = ['annual_saas', 'saas', 'subscription', 'recurring'].some(token => section.includes(token));
     if (!isSaasFamily) return false;
-    const isAnnual = ['annual', 'yearly', '12 month', '12-month'].some(token => section.includes(token) || billingFrequency.includes(token));
+    const isAnnual = ['annual', 'yearly', '12 month', '12-month'].some(
+      token => section.includes(token) || billingFrequency.includes(token) || itemName.includes(token)
+    );
     return isAnnual;
+  },
+  isActiveAnnualSaasLocationItem(item = {}) {
+    const startValue = String(item.service_start_date || item.serviceStartDate || '').trim();
+    const endValue = String(item.service_end_date || item.serviceEndDate || '').trim();
+    if (!startValue) return false;
+    const start = new Date(startValue);
+    if (Number.isNaN(start.getTime())) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    start.setHours(0, 0, 0, 0);
+    if (today.getTime() < start.getTime()) return false;
+    if (!endValue) return true;
+    const end = new Date(endValue);
+    if (Number.isNaN(end.getTime())) return false;
+    end.setHours(0, 0, 0, 0);
+    return today.getTime() <= end.getTime();
   },
   normalizeCurrencyCode_(value) {
     return String(value || '').trim().toUpperCase() || 'USD';
@@ -482,42 +525,20 @@ const Clients = {
     return items.filter(item => this.isAnnualSaasClientLocationItem(item)).length;
   },
   computeClientAnalytics_(client) {
-    const agreements = this.listClientRelatedAgreements_(client.client_id);
-    const invoices = this.listClientRelatedInvoices_(client.client_id);
+    const clientId = String(client?.client_id || '').trim();
+    const agreements = this.listClientRelatedAgreements_(clientId);
+    const invoices = this.listClientRelatedInvoices_(clientId);
     const invoiceUuidSet = new Set(invoices.map(item => String(item.id || '').trim()).filter(Boolean));
-    const receipts = this.listClientRelatedReceipts_(client.client_id).filter(receipt => {
+    const receipts = this.listClientRelatedReceipts_(clientId).filter(receipt => {
       const invoiceUuid = String(receipt.invoice_id || '').trim();
       if (invoiceUuid && invoiceUuidSet.has(invoiceUuid)) return true;
       return !invoiceUuid;
     });
     const signedAgreements = agreements.filter(item => this.isSignedAgreement(item));
-    const locationItems = agreements.flatMap(agreement => {
-      const items = Array.isArray(agreement.items)
-        ? agreement.items
-        : Array.isArray(agreement.agreement_items)
-          ? agreement.agreement_items
-          : Array.isArray(agreement.line_items)
-            ? agreement.line_items
-            : [];
-      return items.filter(item => this.isAnnualSaasClientLocationItem(item));
-    });
+    const locationItems = this.listClientAgreementLocationItems_(clientId);
+    const activeLocationItems = locationItems.filter(item => this.isActiveAnnualSaasLocationItem(item));
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const isActiveLocationItem = (item = {}) => {
-      const startValue = String(item.service_start_date || item.serviceStartDate || '').trim();
-      const endValue = String(item.service_end_date || item.serviceEndDate || '').trim();
-      if (!startValue) return false;
-      const start = new Date(startValue);
-      if (Number.isNaN(start.getTime())) return false;
-      start.setHours(0, 0, 0, 0);
-      if (start.getTime() > today.getTime()) return false;
-      if (!endValue) return true;
-      const end = new Date(endValue);
-      if (Number.isNaN(end.getTime())) return false;
-      end.setHours(0, 0, 0, 0);
-      return end.getTime() >= today.getTime();
-    };
-    const activeLocationItems = locationItems.filter(isActiveLocationItem);
 
     const totalLocations = locationItems.length;
     const activeLocations = activeLocationItems.length;
@@ -531,7 +552,7 @@ const Clients = {
     const latestInvoiceDate = this.maxDate(...invoices.map(item => item.issued_date || item.created_at || item.updated_at));
     const latestReceiptDate = this.maxDate(...receipts.map(item => item.receipt_date || item.created_at || item.updated_at));
 
-    const renewalCandidates = activeLocationItems
+    const renewalCandidates = locationItems
       .map(item => String(item.service_end_date || item.serviceEndDate || '').trim())
       .filter(Boolean)
       .map(value => new Date(value))
@@ -570,7 +591,7 @@ const Clients = {
       latest_receipt_date: latestReceiptDate,
       latest_activity_date: this.maxDate(latestAgreementDate, latestInvoiceDate, latestReceiptDate),
       next_renewal_date: renewalCandidates.length ? renewalCandidates[0].toISOString() : '',
-      currency: this.getClientCurrency_(client.client_id)
+      currency: this.getClientCurrency_(clientId)
     };
   },
   buildTimeline_(clientId) {
@@ -821,34 +842,26 @@ const Clients = {
   buildClientRenewalRows(client) {
     const clientId = String(client?.client_id || '').trim();
     const agreements = this.listClientRelatedAgreements_(clientId);
+    const agreementByUuid = new Map(agreements.map(agreement => [String(agreement.id || '').trim(), agreement]));
     const rows = [];
-    agreements.forEach(agreement => {
-      const itemRows = Array.isArray(agreement.items)
-        ? agreement.items
-        : Array.isArray(agreement.agreement_items)
-          ? agreement.agreement_items
-          : Array.isArray(agreement.line_items)
-            ? agreement.line_items
-            : [];
-      itemRows.forEach(item => {
-        if (!this.isAnnualSaasClientLocationItem(item)) return;
-        const normalized = this.normalizeRenewalRow({
-          ...item,
-          agreement_id: agreement.agreement_id,
-          agreement_number: agreement.agreement_number,
-          client_name: client.customer_name || client.customer_legal_name || '—',
-          renewal_date: this.getField(item, 'renewal_date', 'renewalDate', 'service_end_date', 'serviceEndDate'),
-          service_start_date: this.getField(item, 'service_start_date', 'serviceStartDate'),
-          service_end_date: this.getField(item, 'service_end_date', 'serviceEndDate'),
-          location_name: this.getField(item, 'location_name', 'locationName'),
-          payment_status: this.getField(item, 'payment_status', 'paymentStatus'),
-          billing_frequency: this.getField(item, 'billing_frequency', 'billingFrequency', 'frequency') || agreement.billing_frequency,
-          currency: this.getField(item, 'currency', 'currency_code') || agreement.currency || this.getClientCurrency_(clientId)
-        });
-        if (normalized.service_start_date || normalized.service_end_date || normalized.location_name || normalized.module_name) {
-          rows.push(normalized);
-        }
+    this.listClientAgreementLocationItems_(clientId).forEach(item => {
+      const agreement = agreementByUuid.get(String(item.agreement_id || '').trim()) || {};
+      const normalized = this.normalizeRenewalRow({
+        ...item,
+        agreement_id: agreement.agreement_id,
+        agreement_number: agreement.agreement_number,
+        client_name: client.customer_name || client.customer_legal_name || '—',
+        renewal_date: this.getField(item, 'renewal_date', 'renewalDate', 'service_end_date', 'serviceEndDate'),
+        service_start_date: this.getField(item, 'service_start_date', 'serviceStartDate'),
+        service_end_date: this.getField(item, 'service_end_date', 'serviceEndDate'),
+        location_name: this.getField(item, 'location_name', 'locationName'),
+        payment_status: this.getField(item, 'payment_status', 'paymentStatus'),
+        billing_frequency: this.getField(item, 'billing_frequency', 'billingFrequency', 'frequency') || agreement.billing_frequency,
+        currency: this.getField(item, 'currency', 'currency_code') || agreement.currency || this.getClientCurrency_(clientId)
       });
+      if (normalized.service_start_date || normalized.service_end_date || normalized.location_name || normalized.module_name) {
+        rows.push(normalized);
+      }
     });
     return rows.sort((a, b) => new Date(a.renewal_date || a.service_end_date || 0).getTime() - new Date(b.renewal_date || b.service_end_date || 0).getTime());
   },
@@ -1397,6 +1410,7 @@ const Clients = {
       this.state.limit = clientsList.limit;
       this.state.offset = clientsList.offset;
       this.state.agreements = this.extractListResult(clientsRes.agreements || []).rows.map(item => this.normalizeAgreement(item));
+      this.state.agreementItems = this.extractListResult(clientsRes.agreement_items || []).rows.map(item => this.normalizeAgreementItem(item));
       this.state.invoices = this.extractListResult(clientsRes.invoices || []).rows.map(item => this.normalizeInvoice(item));
       this.state.receipts = this.extractListResult(clientsRes.receipts || []).rows.map(item => this.normalizeReceipt(item));
 

@@ -203,19 +203,22 @@ const ClientsService = {
   },
   countLocationItems(agreement = {}) {
     const items = Array.isArray(agreement.items) ? agreement.items : [];
-    return items.filter(item => {
-      const section = this.normalizeText(item.section || item.category || item.type || item.section_name || item.section_label);
-      if (!section) return false;
-      return [
-        'annual_saas',
-        'annual saas',
-        'saas annual',
-        'annual subscription',
-        'subscription annual',
-        'annual',
-        'subscription'
-      ].some(token => section.includes(token));
-    }).length;
+    return items.filter(item => this.isAnnualSaasClientLocationItem(item)).length;
+  },
+  isAnnualSaasClientLocationItem(item = {}) {
+    const section = this.normalizeText(item.section || item.category || item.type || item.section_name || item.section_label);
+    const billingFrequency = this.normalizeText(item.billing_frequency || item.billingFrequency || item.frequency);
+    const itemName = this.normalizeText(item.item_name || item.itemName || item.module || item.module_name || item.moduleName);
+    if (!section && !billingFrequency) return false;
+    const isOneTimeOrSetup = ['one_time_fee', 'one_time', 'one time', 'one-time', 'setup', 'implementation', 'onboarding'].some(
+      token => section.includes(token)
+    );
+    if (isOneTimeOrSetup) return false;
+    const isSaasFamily = ['annual_saas', 'saas', 'subscription', 'recurring'].some(token => section.includes(token));
+    if (!isSaasFamily) return false;
+    return ['annual', 'yearly', '12 month', '12-month'].some(
+      token => section.includes(token) || billingFrequency.includes(token) || itemName.includes(token)
+    );
   },
   async fetchAgreementItemsForClients_(db) {
     return db
@@ -259,8 +262,10 @@ const ClientsService = {
     const r2 = this.normalizeCompanyKey(record.customer_name);
     return Boolean((c1 && (c1 === r1 || c1 === r2)) || (c2 && (c2 === r1 || c2 === r2)));
   },
-  computeTotalsForClient(client = {}, agreements = [], invoices = [], receipts = []) {
+  computeTotalsForClient(client = {}, agreements = [], invoices = [], receipts = [], agreementItems = []) {
     const linkedAgreements = agreements.filter(row => this.matchAgreementClient(row, client));
+    const linkedAgreementUuids = new Set(linkedAgreements.map(row => String(row.id || '').trim()).filter(Boolean));
+    const linkedAgreementItems = agreementItems.filter(item => linkedAgreementUuids.has(String(item.agreement_id || '').trim()));
     const linkedInvoices = invoices.filter(row => this.matchRecordClient(row, client));
     const invoiceIdSet = new Set(linkedInvoices.map(row => String(row.id || '').trim()).filter(Boolean));
     const linkedReceipts = receipts.filter(row => {
@@ -270,7 +275,7 @@ const ClientsService = {
     });
 
     const totalAgreements = linkedAgreements.length;
-    const totalLocations = linkedAgreements.reduce((sum, agreement) => sum + this.countLocationItems(agreement), 0);
+    const totalLocations = linkedAgreementItems.filter(item => this.isAnnualSaasClientLocationItem(item)).length;
     const totalValue = linkedAgreements.reduce((sum, agreement) => sum + this.toNumber(agreement.grand_total), 0);
     const totalInvoiced = linkedInvoices.reduce((sum, invoice) => sum + this.toNumber(invoice.invoice_total ?? invoice.grand_total), 0);
     const totalPaid = linkedReceipts.reduce((sum, receipt) => sum + this.toNumber(receipt.amount_received), 0);
@@ -351,7 +356,7 @@ const ClientsService = {
     const clientsList = await this.listClients(options);
     const syncedClients = await this.syncSignedAgreementsToClients(agreements, clientsList.rows || []);
     const clients = syncedClients.map(clientRow => {
-      const totals = this.computeTotalsForClient(clientRow, agreements, invoices, receipts);
+      const totals = this.computeTotalsForClient(clientRow, agreements, invoices, receipts, itemRows);
       return { ...clientRow, ...totals };
     });
     const updates = clients
@@ -388,7 +393,7 @@ const ClientsService = {
       if (failedUpdate?.error) throw this.friendlyError('Unable to refresh client totals', failedUpdate.error);
     }
 
-    return { ...clientsList, rows: clients, agreements, invoices, receipts };
+    return { ...clientsList, rows: clients, agreements, agreement_items: itemRows, invoices, receipts };
   }
 };
 
