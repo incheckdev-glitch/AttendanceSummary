@@ -904,27 +904,21 @@ const Agreements = {
     return [];
   },
   buildClientFromAgreement(agreement = {}, agreementId = '') {
+    const companyName = String(agreement.customer_legal_name || agreement.customer_name || '').trim();
+    const displayName = String(agreement.customer_name || agreement.customer_legal_name || '').trim();
     return {
-      customer_name: String(agreement.customer_name || '').trim(),
-      customer_legal_name: String(agreement.customer_legal_name || '').trim(),
-      customer_contact_name: String(agreement.customer_contact_name || '').trim(),
-      customer_contact_email: String(agreement.customer_contact_email || '').trim(),
-      customer_contact_mobile: String(agreement.customer_contact_mobile || '').trim(),
-      company_address: String(agreement.customer_address || '').trim(),
-      account_status: 'Signed',
-      contract_term: String(agreement.agreement_length || '').trim(),
+      client_name: displayName,
+      company_name: companyName,
+      primary_email: String(agreement.customer_contact_email || '').trim(),
+      primary_phone: String(agreement.customer_contact_mobile || '').trim(),
+      status: 'Signed',
       billing_frequency: String(agreement.billing_frequency || '').trim(),
-      payment_terms: String(agreement.payment_term || '').trim(),
-      currency: String(agreement.currency || '').trim(),
-      latest_grand_total: this.toNumberSafe(agreement.grand_total),
-      total_signed_value: this.toNumberSafe(agreement.grand_total),
-      signed_agreements_count: 1,
-      active_agreements_count: 1,
-      latest_signed_date: String(agreement.customer_sign_date || agreement.agreement_date || '').trim(),
-      latest_agreement_id: String(agreementId || agreement.agreement_id || '').trim(),
-      latest_proposal_id: String(agreement.proposal_id || '').trim(),
-      latest_deal_id: String(agreement.deal_id || '').trim(),
-      latest_lead_id: String(agreement.lead_id || '').trim()
+      payment_term: String(agreement.payment_term || '').trim(),
+      source_agreement_id: String(agreementId || agreement.id || agreement.agreement_id || '').trim(),
+      total_agreements: 1,
+      total_value: this.toNumberSafe(agreement.grand_total),
+      total_paid: 0,
+      total_due: this.toNumberSafe(agreement.grand_total)
     };
   },
   mergeClientValue(existingValue, incomingValue) {
@@ -944,90 +938,50 @@ const Agreements = {
     return !!existingAgreementId && !!incomingAgreementId && existingAgreementId === incomingAgreementId;
   },
   mergeExistingClientWithSignedAgreement(existing = {}, signedClient = {}) {
-    const sameAgreement = this.isSameAgreement(existing, signedClient);
-    const existingFirstSigned = String(existing.first_signed_date || '').trim();
-    const incomingLatestSigned = String(signedClient.latest_signed_date || '').trim();
-    const existingFirstDate = this.parseDateValue(existingFirstSigned);
-    const incomingLatestDate = this.parseDateValue(incomingLatestSigned);
-    const firstSignedDate = existingFirstDate && incomingLatestDate
-      ? (incomingLatestDate < existingFirstDate ? incomingLatestSigned : existingFirstSigned)
-      : (existingFirstSigned || incomingLatestSigned);
-
-    const existingLatestDate = this.parseDateValue(existing.latest_signed_date);
-    const shouldUseIncomingAsLatest = !existingLatestDate || (incomingLatestDate && incomingLatestDate >= existingLatestDate);
-    const incomingLatestAgreementId = String(signedClient.latest_agreement_id || '').trim();
-
-    const nextSignedCount = sameAgreement
-      ? this.toNumberSafe(existing.signed_agreements_count)
-      : this.toNumberSafe(existing.signed_agreements_count) + 1;
-    const nextAgreementsCount = Math.max(
-      this.toNumberSafe(existing.agreements_count),
-      nextSignedCount
-    );
-    const nextActiveCount = Math.max(
-      this.toNumberSafe(existing.active_agreements_count),
-      sameAgreement ? this.toNumberSafe(existing.active_agreements_count) : this.toNumberSafe(existing.active_agreements_count) + 1
-    );
-
+    const sameAgreement = String(existing.source_agreement_id || '').trim() === String(signedClient.source_agreement_id || '').trim();
     return {
-      customer_name: this.mergeClientValue(existing.customer_name, signedClient.customer_name),
-      customer_legal_name: this.mergeClientValue(existing.customer_legal_name, signedClient.customer_legal_name),
-      customer_contact_name: this.mergeClientValue(existing.customer_contact_name, signedClient.customer_contact_name),
-      customer_contact_email: this.mergeClientValue(existing.customer_contact_email, signedClient.customer_contact_email),
-      customer_contact_mobile: this.mergeClientValue(existing.customer_contact_mobile, signedClient.customer_contact_mobile),
-      company_address: this.mergeClientValue(existing.company_address, signedClient.company_address),
-      account_status: this.mergeClientValue(existing.account_status, signedClient.account_status),
-      contract_term: this.mergeClientValue(existing.contract_term, signedClient.contract_term),
+      client_name: this.mergeClientValue(existing.client_name || existing.customer_name, signedClient.client_name),
+      company_name: this.mergeClientValue(existing.company_name || existing.customer_legal_name, signedClient.company_name),
+      primary_email: this.mergeClientValue(existing.primary_email || existing.customer_contact_email, signedClient.primary_email),
+      primary_phone: this.mergeClientValue(existing.primary_phone || existing.customer_contact_mobile, signedClient.primary_phone),
+      status: this.mergeClientValue(existing.status || existing.account_status, signedClient.status),
       billing_frequency: this.mergeClientValue(existing.billing_frequency, signedClient.billing_frequency),
-      payment_terms: this.mergeClientValue(existing.payment_terms, signedClient.payment_terms),
-      currency: this.mergeClientValue(existing.currency, signedClient.currency),
-      latest_grand_total: this.toNumberSafe(signedClient.latest_grand_total) || this.toNumberSafe(existing.latest_grand_total),
-      total_signed_value: sameAgreement
-        ? this.toNumberSafe(existing.total_signed_value)
-        : this.toNumberSafe(existing.total_signed_value) + this.toNumberSafe(signedClient.latest_grand_total),
-      agreements_count: nextAgreementsCount,
-      signed_agreements_count: nextSignedCount,
-      active_agreements_count: nextActiveCount,
-      first_signed_date: firstSignedDate,
-      latest_signed_date: shouldUseIncomingAsLatest
-        ? (incomingLatestSigned || String(existing.latest_signed_date || '').trim())
-        : String(existing.latest_signed_date || '').trim(),
-      latest_agreement_id: shouldUseIncomingAsLatest
-        ? (incomingLatestAgreementId || String(existing.latest_agreement_id || '').trim())
-        : String(existing.latest_agreement_id || '').trim(),
-      latest_proposal_id: shouldUseIncomingAsLatest
-        ? this.mergeClientValue(existing.latest_proposal_id, signedClient.latest_proposal_id)
-        : String(existing.latest_proposal_id || '').trim(),
-      latest_deal_id: shouldUseIncomingAsLatest
-        ? this.mergeClientValue(existing.latest_deal_id, signedClient.latest_deal_id)
-        : String(existing.latest_deal_id || '').trim(),
-      latest_lead_id: shouldUseIncomingAsLatest
-        ? this.mergeClientValue(existing.latest_lead_id, signedClient.latest_lead_id)
-        : String(existing.latest_lead_id || '').trim()
+      payment_term: this.mergeClientValue(existing.payment_term || existing.payment_terms, signedClient.payment_term),
+      source_agreement_id: signedClient.source_agreement_id || existing.source_agreement_id,
+      total_agreements: sameAgreement
+        ? this.toNumberSafe(existing.total_agreements || existing.signed_agreements_count)
+        : this.toNumberSafe(existing.total_agreements || existing.signed_agreements_count) + 1,
+      total_value: sameAgreement
+        ? this.toNumberSafe(existing.total_value || existing.total_signed_value)
+        : this.toNumberSafe(existing.total_value || existing.total_signed_value) + this.toNumberSafe(signedClient.total_value),
+      total_paid: this.toNumberSafe(existing.total_paid),
+      total_due: sameAgreement
+        ? this.toNumberSafe(existing.total_due)
+        : this.toNumberSafe(existing.total_due) + this.toNumberSafe(signedClient.total_due)
     };
   },
   async syncSignedAgreementToClient(agreement = {}, agreementId = '') {
     if (!this.isSignedStatus(agreement.status)) return;
     const signedClient = this.buildClientFromAgreement(agreement, agreementId);
-    const response = await this.listClients();
+    const response = await window.ClientsService.listClients({ page: 1, limit: 500 });
     const rows = this.extractClientRows(response);
     const targetEmail = this.normalizeText(agreement.customer_contact_email);
-    const targetName = this.normalizeText(agreement.customer_name);
+    const targetName = this.normalizeText(agreement.customer_legal_name || agreement.customer_name);
     const existing = rows.find(row => {
-      const latestAgreementId = String(row?.latest_agreement_id || '').trim();
-      if (latestAgreementId && latestAgreementId === signedClient.latest_agreement_id) return true;
-      const email = this.normalizeText(row?.customer_contact_email);
+      const latestAgreementId = String(row?.source_agreement_id || '').trim();
+      if (latestAgreementId && latestAgreementId === signedClient.source_agreement_id) return true;
+      const email = this.normalizeText(row?.primary_email || row?.customer_contact_email);
       if (targetEmail && email && email === targetEmail) return true;
-      const name = this.normalizeText(row?.customer_name);
+      const name = this.normalizeText(row?.company_name || row?.customer_legal_name || row?.client_name || row?.customer_name);
       return targetName && name && name === targetName;
     });
-    const existingId = String(existing?.client_id || '').trim();
+    const existingId = String(existing?.id || '').trim();
     if (existingId) {
       const mergedPayload = this.mergeExistingClientWithSignedAgreement(existing, signedClient);
-      await this.updateClient(existingId, mergedPayload);
+      await window.ClientsService.updateClient(existingId, mergedPayload);
       return;
     }
-    await this.createClient(signedClient);
+    await window.ClientsService.createClient(signedClient);
   },
   applyFilters() {
     const terms = String(this.state.search || '').toLowerCase().trim().split(/\s+/).filter(Boolean);

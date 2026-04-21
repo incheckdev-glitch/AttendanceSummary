@@ -115,8 +115,8 @@ const Clients = {
     };
   },
   normalizeClient(raw = {}) {
-    const customerName = String(raw.customer_name || raw.customerName || '').trim();
-    const legalName = String(raw.customer_legal_name || raw.customerLegalName || '').trim();
+    const customerName = String(raw.customer_name || raw.customerName || raw.client_name || raw.clientName || '').trim();
+    const legalName = String(raw.customer_legal_name || raw.customerLegalName || raw.company_name || raw.companyName || '').trim();
     const normalized = {
       id: String(raw.id || '').trim(),
       client_id: String(raw.client_id || raw.clientId || '').trim(),
@@ -125,14 +125,20 @@ const Clients = {
       customer_legal_name: legalName,
       normalized_company_key: String(raw.normalized_company_key || raw.normalizedCompanyKey || '').trim(),
       primary_contact_name: String(raw.primary_contact_name || raw.primaryContactName || raw.customer_contact_name || '').trim(),
-      primary_contact_email: String(raw.primary_contact_email || raw.primaryContactEmail || raw.customer_contact_email || '').trim(),
-      phone: String(raw.phone || raw.customer_contact_mobile || '').trim(),
+      primary_contact_email: String(raw.primary_contact_email || raw.primaryContactEmail || raw.customer_contact_email || raw.primary_email || raw.primaryEmail || '').trim(),
+      phone: String(raw.phone || raw.customer_contact_mobile || raw.primary_phone || raw.primaryPhone || '').trim(),
       country: String(raw.country || '').trim(),
       address: String(raw.address || raw.company_address || raw.customer_address || '').trim(),
       billing_address: String(raw.billing_address || raw.billingAddress || '').trim(),
       tax_number: String(raw.tax_number || raw.taxNumber || '').trim(),
       industry: String(raw.industry || '').trim(),
       status: String(raw.status || raw.account_status || 'Active').trim(),
+      source_agreement_id: String(raw.source_agreement_id || raw.sourceAgreementId || '').trim(),
+      total_agreements: this.toNumberSafe(raw.total_agreements ?? raw.totalAgreements),
+      total_locations: this.toNumberSafe(raw.total_locations ?? raw.totalLocations),
+      total_value: this.toNumberSafe(raw.total_value ?? raw.totalValue),
+      total_paid: this.toNumberSafe(raw.total_paid ?? raw.totalPaid),
+      total_due: this.toNumberSafe(raw.total_due ?? raw.totalDue),
       notes: String(raw.notes || '').trim(),
       source: String(raw.source || '').trim(),
       created_at: String(raw.created_at || raw.createdAt || '').trim(),
@@ -179,11 +185,11 @@ const Clients = {
       customer_name: String(raw.customer_name || raw.customerName || '').trim(),
       customer_legal_name: String(raw.customer_legal_name || raw.customerLegalName || '').trim(),
       status: String(raw.status || raw.payment_state || '').trim(),
-      grand_total: this.toNumberSafe(raw.grand_total ?? raw.grandTotal),
-      amount_paid: this.toNumberSafe(raw.amount_paid ?? raw.amountPaid),
+      grand_total: this.toNumberSafe(raw.grand_total ?? raw.grandTotal ?? raw.invoice_total ?? raw.invoiceTotal),
+      amount_paid: this.toNumberSafe(raw.amount_paid ?? raw.amountPaid ?? raw.received_amount ?? raw.receivedAmount),
       pending_amount: this.toNumberSafe(raw.pending_amount ?? raw.pendingAmount),
       updated_at: String(raw.updated_at || raw.updatedAt || '').trim(),
-      issued_date: String(raw.issued_date || raw.invoice_date || '').trim(),
+      issued_date: String(raw.issued_date || raw.issue_date || raw.invoice_date || '').trim(),
       due_date: String(raw.due_date || raw.dueDate || '').trim(),
       reference: String(raw.reference || raw.ref || '').trim(),
       notes: String(raw.notes || '').trim(),
@@ -200,7 +206,7 @@ const Clients = {
       customer_name: String(raw.customer_name || raw.customerName || '').trim(),
       customer_legal_name: String(raw.customer_legal_name || raw.customerLegalName || '').trim(),
       payment_state: String(raw.payment_state || raw.status || '').trim(),
-      received_amount: this.toNumberSafe(raw.received_amount ?? raw.receivedAmount ?? raw.amount_paid),
+      received_amount: this.toNumberSafe(raw.received_amount ?? raw.receivedAmount ?? raw.amount_paid ?? raw.amount_received ?? raw.amountReceived),
       pending_amount: this.toNumberSafe(raw.pending_amount ?? raw.pendingAmount),
       updated_at: String(raw.updated_at || raw.updatedAt || '').trim(),
       receipt_date: String(raw.receipt_date || raw.received_date || '').trim(),
@@ -698,43 +704,14 @@ const Clients = {
   async loadClientDetailData_(clientId, { force = false } = {}) {
     const cache = this.state.detailCache[clientId];
     if (!force && cache && Date.now() - cache.loadedAt <= this.state.detailCacheTtlMs) return cache;
-    const safeRequest = async (action, payload = {}) => {
-      try {
-        return await Api.postAuthenticated('clients', action, { client_id: clientId, ...payload });
-      } catch {
-        return null;
-      }
-    };
-    const [detailRes, analyticsRes, timelineRes, statementRes, renewalsRes] = await Promise.all([
-      safeRequest('get'),
-      safeRequest('get_analytics'),
-      safeRequest('get_timeline'),
-      safeRequest('get_statement', { filters: this.state.statementFilters }),
-      safeRequest('get_renewals', { filters: this.state.renewalsFilters })
-    ]);
     const client = this.state.rows.find(row => row.client_id === clientId);
-    const normalizedStatement = this.extractRows(statementRes).map(item => this.normalizeStatementRow(item));
-    const normalizedRenewals = this.extractRows(renewalsRes).map(item => this.normalizeRenewalRow(item));
-    const normalizedTimeline = this.normalizeTimelineEvents_(
-      this.extractTimelineRows_(
-        timelineRes?.timeline,
-        timelineRes?.rows,
-        timelineRes?.data,
-        detailRes?.timeline,
-        detailRes?.rows,
-        detailRes?.data,
-        detailRes?.paymentTimeline?.timeline,
-        detailRes?.paymentTimeline?.rows,
-        detailRes?.paymentTimeline?.data,
-        detailRes?.payment_timeline?.timeline,
-        detailRes?.payment_timeline?.rows,
-        detailRes?.payment_timeline?.data
-      )
-    );
+    const normalizedStatement = [];
+    const normalizedRenewals = [];
+    const normalizedTimeline = [];
     const fallbackTimeline = this.buildTimeline_(clientId);
     const detailBundle = {
-      detail: detailRes || {},
-      analytics: this.resolveBackendAnalytics_(analyticsRes) || client?.analytics || this.computeClientAnalytics_(client || {}),
+      detail: client || {},
+      analytics: client?.analytics || this.computeClientAnalytics_(client || {}),
       timeline: normalizedTimeline.length ? normalizedTimeline : fallbackTimeline,
       statementRows: normalizedStatement.length ? this.computeRunningBalance(normalizedStatement) : this.buildClientStatementRows(client),
       renewalRows: normalizedRenewals.length ? normalizedRenewals : this.buildClientRenewalRows(client),
@@ -1167,20 +1144,12 @@ const Clients = {
     this.state.loadError = '';
     if (E.clientsState) E.clientsState.textContent = 'Loading client intelligence…';
     try {
-      const [clientsRes, agreementsRes, invoicesRes, receiptsRes] = await Promise.all([
-        Api.listClients({
-          limit: this.state.limit,
-          page: this.state.page,
-          sort_by: 'updated_at',
-          sort_dir: 'desc',
-          search: this.state.search || '',
-          summary_only: true,
-          forceRefresh: options.force === true
-        }),
-        Api.listAgreements({ summary_only: true, limit: 50, page: 1, forceRefresh: options.force === true }),
-        Api.listInvoices({}, { summary_only: true, limit: 50, page: 1, forceRefresh: options.force === true }),
-        Api.listReceipts({}, { summary_only: true, limit: 50, page: 1, forceRefresh: options.force === true })
-      ]);
+      const clientsRes = await window.ClientsService.getDashboardData({
+        limit: this.state.limit,
+        page: this.state.page,
+        search: this.state.search || '',
+        status: this.state.status
+      });
       const clientsList = this.extractListResult(clientsRes);
       this.state.rows = clientsList.rows.map(item => {
         const normalized = this.normalizeClient(item);
@@ -1193,15 +1162,15 @@ const Clients = {
       this.state.page = clientsList.page;
       this.state.limit = clientsList.limit;
       this.state.offset = clientsList.offset;
-      this.state.agreements = this.extractListResult(agreementsRes).rows.map(item => this.normalizeAgreement(item));
-      this.state.invoices = this.extractListResult(invoicesRes).rows.map(item => this.normalizeInvoice(item));
-      this.state.receipts = this.extractListResult(receiptsRes).rows.map(item => this.normalizeReceipt(item));
+      this.state.agreements = this.extractListResult(clientsRes.agreements || []).rows.map(item => this.normalizeAgreement(item));
+      this.state.invoices = this.extractListResult(clientsRes.invoices || []).rows.map(item => this.normalizeInvoice(item));
+      this.state.receipts = this.extractListResult(clientsRes.receipts || []).rows.map(item => this.normalizeReceipt(item));
 
       this.state.agreements.forEach(agreement => {
         this.findOrCreateClientFromSignedAgreement_(agreement);
       });
       this.state.rows.forEach(client => {
-        if (!this.hasBackendAnalytics_(client.analytics)) {
+        if (!this.hasBackendAnalytics_(client.analytics) || !this.toNumberSafe(client.analytics.total_agreements || client.total_agreements)) {
           client.analytics = this.computeClientAnalytics_(client);
         }
       });
@@ -1388,8 +1357,7 @@ const Clients = {
           return;
         }
         try {
-          const response = await Api.createClientFromPayload(payload);
-          const created = response?.client || response?.data?.client || payload;
+          const created = await window.ClientsService.createClient(payload);
           this.state.rows.unshift(this.normalizeClient(created));
           this.state.selectedClientId = this.state.rows[0]?.client_id || this.state.selectedClientId;
           this.closeNewClientModal();
