@@ -322,7 +322,7 @@ const ClientsService = {
     const [agreementsRes, itemsRes, invoicesRes, receiptsRes] = await Promise.all([
       db.from('agreements').select(this.AGREEMENT_SELECT_COLUMNS).order('updated_at', { ascending: false }).limit(500),
       this.fetchAgreementItemsForClients_(db),
-      db.from('invoices').select('id,invoice_id,invoice_number,agreement_id,client_id,customer_name,customer_legal_name,status,payment_state,invoice_total,received_amount,pending_amount,updated_at,issue_date,due_date,reference,notes,location_name').order('updated_at', { ascending: false }).limit(1000),
+      db.from('invoices').select('id,invoice_id,invoice_number,client_id,agreement_id,proposal_id,issue_date,due_date,invoice_total,received_amount,pending_amount,payment_state,status,notes,updated_at').order('updated_at', { ascending: false }).limit(1000),
       db.from('receipts').select('id,receipt_id,receipt_number,invoice_id,client_id,customer_name,customer_legal_name,status,payment_state,amount_received,pending_amount,updated_at,receipt_date,reference,notes').order('updated_at', { ascending: false }).limit(1000)
     ]);
     if (agreementsRes.error) throw this.friendlyError('Unable to load agreements for clients', agreementsRes.error);
