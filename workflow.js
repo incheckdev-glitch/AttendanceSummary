@@ -197,9 +197,9 @@ const Workflow = {
   },
   resourceFieldOptions: {
     proposals: ['title', 'status', 'customer_name', 'subtotal', 'discount_percent', 'tax_percent', 'total_amount', 'valid_until', 'notes'],
-    agreements: ['status', 'customer_name', 'start_date', 'end_date', 'payment_terms', 'total_amount', 'notes'],
-    invoices: ['status', 'customer_name', 'issue_date', 'due_date', 'subtotal', 'discount_percent', 'tax_percent', 'total_amount', 'amount_paid', 'notes'],
-    receipts: ['status', 'customer_name', 'receipt_date', 'payment_method', 'reference_number', 'amount', 'notes']
+    agreements: ['status', 'customer_name', 'service_start_date', 'service_end_date', 'payment_term', 'grand_total', 'notes'],
+    invoices: ['status', 'customer_name', 'issue_date', 'due_date', 'subtotal_locations', 'subtotal_one_time', 'invoice_total', 'received_amount', 'pending_amount', 'payment_state', 'amount_in_words', 'notes'],
+    receipts: ['status', 'customer_name', 'receipt_date', 'payment_method', 'payment_reference', 'amount_received', 'invoice_total', 'pending_amount', 'payment_state', 'amount_in_words', 'notes']
   },
   normalizeRows(response) {
     const parseJsonIfNeeded = value => {
