@@ -207,23 +207,44 @@ const ClientsService = {
   },
   isAnnualSaasClientLocationItem(item = {}) {
     const section = this.normalizeText(item.section || item.category || item.type || item.section_name || item.section_label);
-    const billingFrequency = this.normalizeText(item.billing_frequency || item.billingFrequency || item.frequency);
-    const itemName = this.normalizeText(item.item_name || item.itemName || item.module || item.module_name || item.moduleName);
-    if (!section && !billingFrequency) return false;
+    const itemName = this.normalizeText(item.item_name || item.itemName);
+    if (!section && !itemName) return false;
+
     const isOneTimeOrSetup = ['one_time_fee', 'one_time', 'one time', 'one-time', 'setup', 'implementation', 'onboarding'].some(
-      token => section.includes(token)
+      token => section.includes(token) || itemName.includes(token)
     );
     if (isOneTimeOrSetup) return false;
-    const isSaasFamily = ['annual_saas', 'saas', 'subscription', 'recurring'].some(token => section.includes(token));
-    if (!isSaasFamily) return false;
-    return ['annual', 'yearly', '12 month', '12-month'].some(
-      token => section.includes(token) || billingFrequency.includes(token) || itemName.includes(token)
+
+    const isSaasFamily = ['annual_saas', 'saas', 'subscription', 'recurring'].some(
+      token => section.includes(token) || itemName.includes(token)
     );
+    if (!isSaasFamily) return false;
+
+    const isAnnual = ['annual', 'yearly', '12 month', '12-month'].some(
+      token => section.includes(token) || itemName.includes(token)
+    );
+    if (!isAnnual) return false;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const startDateRaw = String(item.service_start_date || '').trim();
+    if (!startDateRaw) return false;
+    const startDate = new Date(startDateRaw);
+    if (Number.isNaN(startDate.getTime())) return false;
+    startDate.setHours(0, 0, 0, 0);
+    if (today < startDate) return false;
+
+    const endDateRaw = String(item.service_end_date || '').trim();
+    if (!endDateRaw) return true;
+    const endDate = new Date(endDateRaw);
+    if (Number.isNaN(endDate.getTime())) return true;
+    endDate.setHours(0, 0, 0, 0);
+    return today <= endDate;
   },
   async fetchAgreementItemsForClients_(db) {
     return db
       .from('agreement_items')
-      .select('id,agreement_id,location_name,section,item_name,module,billing_frequency,line_total,service_start_date,service_end_date,created_at')
+      .select('id,agreement_id,location_name,section,item_name,line_total,service_start_date,service_end_date,created_at')
       .limit(5000);
   },
   coerceLinkedRows_(res, label) {
@@ -347,6 +368,7 @@ const ClientsService = {
 
     const agreementRows = this.coerceLinkedRows_(agreementsRes, 'agreements');
     const itemRows = this.coerceLinkedRows_(itemsRes, 'agreement_items');
+    console.log('[ClientsService] agreement_items count', itemRows.length, itemRows.slice(0, 5));
     const invoiceRows = this.coerceLinkedRows_(invoicesRes, 'invoices');
     const receiptRows = this.coerceLinkedRows_(receiptsRes, 'receipts');
 
