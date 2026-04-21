@@ -101,6 +101,13 @@ const OperationsOnboarding = {
       agreement_id: String(this.pick(source.agreement_id, source.agreementId, source.id, fallbackId)).trim(),
       agreement_number: String(this.pick(source.agreement_number, source.agreementNumber)).trim(),
       customer_name: String(this.pick(source.customer_name, source.customerName)).trim(),
+      agreement_status: String(this.pick(source.agreement_status, source.agreementStatus, source.status)).trim(),
+      status: String(this.pick(source.status, source.agreement_status, source.agreementStatus)).trim(),
+      signed_date: String(this.pick(source.signed_date, source.signedDate, source.customer_sign_date, source.customerSignDate)).trim(),
+      service_start_date: String(this.pick(source.service_start_date, source.serviceStartDate)).trim(),
+      service_end_date: String(this.pick(source.service_end_date, source.serviceEndDate)).trim(),
+      billing_frequency: String(this.pick(source.billing_frequency, source.billingFrequency, source.frequency)).trim(),
+      payment_term: String(this.pick(source.payment_term, source.paymentTerm, source.payment_terms, source.paymentTerms)).trim(),
       location_count: Number(this.pick(source.location_count, source.locationCount, source.locations_count, source.locationsCount)) || 0
     };
   },
@@ -858,9 +865,13 @@ const OperationsOnboarding = {
       const agreement = this.state.agreementMap.get(row.agreement_id) || {};
       const agreementItems = this.state.agreementItemsMap.get(row.agreement_id) || [];
       const locationCount = this.deriveAgreementLocationCount(agreement, agreementItems, row);
+      const serviceStart = row.service_start_date || agreement.service_start_date;
+      const serviceEnd = row.service_end_date || agreement.service_end_date;
+      const billingFrequency = row.billing_frequency || agreement.billing_frequency;
+      const paymentTerm = row.payment_term || agreement.payment_term;
       return `<tr>
           <td>${text(row.onboarding_id)}</td><td>${text(row.agreement_id)}</td><td>${text(row.agreement_number)}</td><td>${text(row.client_name)}</td><td>${text(this.formatDate(row.signed_date))}</td><td>${text(row.onboarding_status)}</td>
-          <td>${text(row.request_type || row.technical_request_type)}</td><td>${text(row.requested_by)}</td><td>${text(this.formatDate(row.requested_at))}</td><td>${text(row.technical_request_status || row.technical_admin_request)}</td><td>${text(row.request_message || row.technical_request_details || row.technical_admin_request_message)}</td><td>${text(row.csm_assigned_to)}</td><td>${text(locationCount)}</td><td>${text(this.formatDate(row.service_start_date))}</td><td>${text(this.formatDate(row.service_end_date))}</td><td>${text(row.billing_frequency)}</td><td>${text(row.payment_term)}</td><td>${text(this.formatDate(row.updated_at))}</td>
+          <td>${text(row.request_type || row.technical_request_type)}</td><td>${text(row.requested_by)}</td><td>${text(this.formatDate(row.requested_at))}</td><td>${text(row.technical_request_status || row.technical_admin_request)}</td><td>${text(row.request_message || row.technical_request_details || row.technical_admin_request_message)}</td><td>${text(row.csm_assigned_to)}</td><td>${text(locationCount)}</td><td>${text(this.formatDate(serviceStart))}</td><td>${text(this.formatDate(serviceEnd))}</td><td>${text(billingFrequency)}</td><td>${text(paymentTerm)}</td><td>${text(this.formatDate(row.updated_at))}</td>
           <td><div style="display:flex;gap:6px;flex-wrap:wrap;">
             <button class="btn ghost sm" type="button" data-op-open-agreement="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Open Agreement</button>
             <button class="btn ghost sm" type="button" data-op-open-details="${onboardingId}">Open Onboarding Details</button>
@@ -913,6 +924,10 @@ const OperationsOnboarding = {
       const agreement = this.state.agreementMap.get(detail.agreement_id) || {};
       const agreementItems = this.state.agreementItemsMap.get(detail.agreement_id) || [];
       const locations = this.deriveAgreementLocationCount(agreement, agreementItems, detail);
+      const serviceStart = detail.service_start_date || agreement.service_start_date;
+      const serviceEnd = detail.service_end_date || agreement.service_end_date;
+      const billingFrequency = detail.billing_frequency || agreement.billing_frequency;
+      const paymentTerm = detail.payment_term || agreement.payment_term;
       if (!E.operationsOnboardingDetailsContent || !E.operationsOnboardingDetailsModal) return;
       E.operationsOnboardingDetailsContent.innerHTML = `
         <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;">
@@ -923,10 +938,10 @@ const OperationsOnboarding = {
           <div><span class="muted">Client Name:</span> ${U.escapeHtml(detail.client_name || '—')}</div>
           <div><span class="muted">Agreement Status:</span> ${U.escapeHtml(detail.agreement_status || '—')}</div>
           <div><span class="muted">Signed Date:</span> ${U.escapeHtml(this.formatDate(detail.signed_date))}</div>
-          <div><span class="muted">Service Start Date:</span> ${U.escapeHtml(this.formatDate(detail.service_start_date))}</div>
-          <div><span class="muted">Service End Date:</span> ${U.escapeHtml(this.formatDate(detail.service_end_date))}</div>
-          <div><span class="muted">Billing Frequency:</span> ${U.escapeHtml(detail.billing_frequency || '—')}</div>
-          <div><span class="muted">Payment Term:</span> ${U.escapeHtml(detail.payment_term || '—')}</div>
+          <div><span class="muted">Service Start Date:</span> ${U.escapeHtml(this.formatDate(serviceStart))}</div>
+          <div><span class="muted">Service End Date:</span> ${U.escapeHtml(this.formatDate(serviceEnd))}</div>
+          <div><span class="muted">Billing Frequency:</span> ${U.escapeHtml(billingFrequency || '—')}</div>
+          <div><span class="muted">Payment Term:</span> ${U.escapeHtml(paymentTerm || '—')}</div>
           <div><span class="muted">Number of Locations:</span> ${U.escapeHtml(String(locations))}</div>
           <div><span class="muted">Module Summary:</span> ${U.escapeHtml(detail.module_summary || '—')}</div>
           <div><span class="muted">Requested By:</span> ${U.escapeHtml(detail.requested_by || '—')}</div>
