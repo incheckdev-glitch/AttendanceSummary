@@ -3,6 +3,7 @@ const ClientsService = {
     'client_id','client_name','company_name','primary_email','primary_phone','billing_frequency','payment_term',
     'status','source_agreement_id','total_agreements','total_locations','total_value','total_paid','total_due','created_by','updated_by'
   ]),
+  AGREEMENT_SELECT_COLUMNS: 'id,agreement_id,agreement_number,customer_name,customer_legal_name,customer_contact_email,customer_contact_mobile,status,grand_total,updated_at,service_start_date,service_end_date,agreement_date,customer_sign_date,billing_frequency,payment_term,location_name',
   getDb() {
     const db = window.SupabaseClient?.getClient?.();
     console.log('[ClientsService] db check', db, typeof db?.from);
@@ -56,6 +57,27 @@ const ClientsService = {
       phone: String(row.primary_phone || '').trim()
     };
   },
+  mapAgreementRow(row = {}) {
+    return {
+      id: String(row.id || '').trim(),
+      agreement_id: String(row.agreement_id || '').trim(),
+      agreement_number: String(row.agreement_number || '').trim(),
+      customer_name: String(row.customer_name || '').trim(),
+      customer_legal_name: String(row.customer_legal_name || '').trim(),
+      customer_contact_email: String(row.customer_contact_email || '').trim(),
+      customer_contact_mobile: String(row.customer_contact_mobile || '').trim(),
+      status: String(row.status || '').trim(),
+      grand_total: this.toNumber(row.grand_total),
+      updated_at: String(row.updated_at || '').trim(),
+      service_start_date: String(row.service_start_date || '').trim(),
+      service_end_date: String(row.service_end_date || '').trim(),
+      agreement_date: String(row.agreement_date || '').trim(),
+      customer_sign_date: String(row.customer_sign_date || '').trim(),
+      billing_frequency: String(row.billing_frequency || '').trim(),
+      payment_term: String(row.payment_term || '').trim(),
+      location_name: String(row.location_name || '').trim()
+    };
+  },
   sanitizeClientPayload(input = {}, { includeCreatedBy = false } = {}) {
     const payload = {
       client_id: input.client_id || input.clientId,
@@ -94,6 +116,83 @@ const ClientsService = {
     return agreements.map(agreement => ({ ...agreement, items: byAgreementId.get(String(agreement.id || '').trim()) || [] }));
   },
   isSignedAgreement(agreement = {}) { return this.normalizeText(agreement.status).includes('signed'); },
+  buildSignedClientFromAgreement(agreement = {}) {
+    const companyName = String(agreement.customer_legal_name || agreement.customer_name || '').trim();
+    const displayName = String(agreement.customer_name || agreement.customer_legal_name || '').trim();
+    const totalValue = this.toNumber(agreement.grand_total);
+    return {
+      client_name: displayName,
+      company_name: companyName,
+      primary_email: String(agreement.customer_contact_email || '').trim(),
+      primary_phone: String(agreement.customer_contact_mobile || '').trim(),
+      billing_frequency: String(agreement.billing_frequency || '').trim(),
+      payment_term: String(agreement.payment_term || '').trim(),
+      source_agreement_id: String(agreement.id || agreement.agreement_id || '').trim(),
+      status: 'Signed',
+      total_agreements: 1,
+      total_value: totalValue,
+      total_paid: 0,
+      total_due: totalValue
+    };
+  },
+  mergeSignedClient(existing = {}, incoming = {}) {
+    const merge = (a, b) => {
+      const value = String(b || '').trim();
+      return value || String(a || '').trim();
+    };
+    const sameAgreement = String(existing.source_agreement_id || '').trim() === String(incoming.source_agreement_id || '').trim();
+    const existingTotalValue = this.toNumber(existing.total_value);
+    const existingTotalAgreements = this.toNumber(existing.total_agreements);
+    return {
+      client_name: merge(existing.client_name, incoming.client_name),
+      company_name: merge(existing.company_name, incoming.company_name),
+      primary_email: merge(existing.primary_email, incoming.primary_email),
+      primary_phone: merge(existing.primary_phone, incoming.primary_phone),
+      billing_frequency: merge(existing.billing_frequency, incoming.billing_frequency),
+      payment_term: merge(existing.payment_term, incoming.payment_term),
+      source_agreement_id: incoming.source_agreement_id || existing.source_agreement_id,
+      status: merge(existing.status, incoming.status) || 'Signed',
+      total_agreements: sameAgreement ? existingTotalAgreements : existingTotalAgreements + 1,
+      total_value: sameAgreement ? existingTotalValue : existingTotalValue + this.toNumber(incoming.total_value),
+      total_paid: this.toNumber(existing.total_paid),
+      total_due: Math.max((sameAgreement ? existingTotalValue : existingTotalValue + this.toNumber(incoming.total_value)) - this.toNumber(existing.total_paid), 0)
+    };
+  },
+  findMatchingClientForAgreement(agreement = {}, clients = []) {
+    const agreementUuid = String(agreement.id || '').trim();
+    const agreementBusinessId = String(agreement.agreement_id || '').trim();
+    const email = this.normalizeText(agreement.customer_contact_email);
+    const company = this.normalizeCompanyKey(agreement.customer_legal_name || agreement.customer_name);
+    return clients.find(client => {
+      const source = String(client.source_agreement_id || '').trim();
+      if (source && (source === agreementUuid || source === agreementBusinessId)) return true;
+      const clientEmail = this.normalizeText(client.primary_email);
+      if (email && clientEmail && clientEmail === email) return true;
+      const clientCompany = this.normalizeCompanyKey(client.company_name || client.client_name);
+      return company && clientCompany && clientCompany === company;
+    }) || null;
+  },
+  async syncSignedAgreementsToClients(agreements = [], baseClients = []) {
+    const signedAgreements = agreements.filter(row => this.isSignedAgreement(row));
+    if (!signedAgreements.length) return baseClients;
+    const clients = Array.isArray(baseClients) ? [...baseClients] : [];
+    for (const agreement of signedAgreements) {
+      const signedPayload = this.buildSignedClientFromAgreement(agreement);
+      if (!signedPayload.source_agreement_id) continue;
+      const existing = this.findMatchingClientForAgreement(agreement, clients);
+      const existingUuid = String(existing?.id || '').trim();
+      if (existingUuid) {
+        const mergedPayload = this.mergeSignedClient(existing, signedPayload);
+        const updated = await this.updateClient(existingUuid, mergedPayload);
+        const index = clients.findIndex(row => String(row.id || '').trim() === existingUuid);
+        if (index >= 0) clients[index] = updated;
+        continue;
+      }
+      const created = await this.createClient(signedPayload);
+      clients.push(created);
+    }
+    return clients;
+  },
   countLocationItems(agreement = {}) {
     const items = Array.isArray(agreement.items) ? agreement.items : [];
     return items.filter(item => {
@@ -204,10 +303,9 @@ const ClientsService = {
     return { ok: true };
   },
   async getDashboardData(options = {}) {
-    const clientsList = await this.listClients(options);
     const db = this.getDb();
     const [agreementsRes, itemsRes, invoicesRes, receiptsRes] = await Promise.all([
-      db.from('agreements').select('id,agreement_id,agreement_number,customer_name,customer_legal_name,status,grand_total,updated_at,service_start_date,service_end_date,agreement_date,customer_sign_date,due_date,renewal_date,location_name').order('updated_at', { ascending: false }).limit(500),
+      db.from('agreements').select(this.AGREEMENT_SELECT_COLUMNS).order('updated_at', { ascending: false }).limit(500),
       db.from('agreement_items').select('agreement_id,section,item_section,section_name,category,type').limit(5000),
       db.from('invoices').select('id,invoice_id,invoice_number,agreement_id,client_id,customer_name,customer_legal_name,status,payment_state,invoice_total,received_amount,pending_amount,updated_at,issue_date,due_date,reference,notes,location_name').order('updated_at', { ascending: false }).limit(1000),
       db.from('receipts').select('id,receipt_id,receipt_number,invoice_id,client_id,customer_name,customer_legal_name,status,payment_state,amount_received,pending_amount,updated_at,receipt_date,reference,notes').order('updated_at', { ascending: false }).limit(1000)
@@ -217,10 +315,12 @@ const ClientsService = {
     if (invoicesRes.error) throw this.friendlyError('Unable to load invoices for clients', invoicesRes.error);
     if (receiptsRes.error) throw this.friendlyError('Unable to load receipts for clients', receiptsRes.error);
 
-    const agreements = this.attachAgreementItems(agreementsRes.data || [], itemsRes.data || []);
+    const agreements = this.attachAgreementItems((agreementsRes.data || []).map(row => this.mapAgreementRow(row)), itemsRes.data || []);
     const invoices = invoicesRes.data || [];
     const receipts = receiptsRes.data || [];
-    const clients = (clientsList.rows || []).map(clientRow => {
+    const clientsList = await this.listClients(options);
+    const syncedClients = await this.syncSignedAgreementsToClients(agreements, clientsList.rows || []);
+    const clients = syncedClients.map(clientRow => {
       const totals = this.computeTotalsForClient(clientRow, agreements, invoices, receipts);
       return { ...clientRow, ...totals };
     });
