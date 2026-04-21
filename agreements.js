@@ -1129,6 +1129,9 @@ const Agreements = {
     normalizedAgreement.saas_total = totals.saas_total;
     normalizedAgreement.one_time_total = totals.one_time_total;
     normalizedAgreement.grand_total = totals.grand_total;
+    normalizedAgreement.contract_term = String(normalizedAgreement.agreement_length || '').trim();
+    normalizedAgreement.subtotal_locations = this.toNumberSafe(normalizedAgreement.saas_total);
+    normalizedAgreement.subtotal_one_time = this.toNumberSafe(normalizedAgreement.one_time_total);
     return { agreement: normalizedAgreement, items };
   },
   calculateTotals(items = []) {
