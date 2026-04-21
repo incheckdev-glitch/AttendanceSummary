@@ -873,7 +873,7 @@ const Agreements = {
     const id = String(agreementId || '').trim();
     if (!id) return UI.toast('Agreement ID is required.');
     try {
-      const response = await Api.postAuthenticated('agreements', 'request_technical_admin', { agreement_id: id });
+      const response = await Api.requestAgreementTechnicalAdmin(id);
       const technicalRequest = this.extractTechnicalRequest(response);
       if (technicalRequest && window.TechnicalAdmin?.upsertLocalRow) {
         TechnicalAdmin.upsertLocalRow(technicalRequest);
