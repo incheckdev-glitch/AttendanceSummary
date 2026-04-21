@@ -209,6 +209,12 @@ const Invoices = {
     }
     return normalized;
   },
+  invoiceDbId(value) {
+    return String(value || '').trim();
+  },
+  invoiceDisplayId(invoice = {}) {
+    return String(invoice?.invoice_number || invoice?.invoice_id || '').trim();
+  },
   normalizeSection(value) {
     const raw = String(value ?? '')
       .trim()
@@ -336,7 +342,7 @@ const Invoices = {
     const key = String(id || '').trim();
     if (!key) return;
     this.state.detailCacheById[key] = {
-      invoice: this.normalizeInvoice(invoice || { invoice_id: key }),
+      invoice: this.normalizeInvoice(invoice || { id: key }),
       items: Array.isArray(items) ? items.map(item => this.normalizeItem(item)) : [],
       cachedAt: Date.now()
     };
@@ -673,7 +679,7 @@ const Invoices = {
     }
 
     return {
-      invoice: this.normalizeInvoice(invoice || { invoice_id: fallbackId }),
+      invoice: this.normalizeInvoice(invoice || { id: fallbackId }),
       items: Array.isArray(items) ? items.map(item => this.normalizeItem(item)) : []
     };
   },
@@ -780,15 +786,18 @@ const Invoices = {
   },
   upsertLocalRow(row) {
     const normalized = this.normalizeInvoice(row);
-    const idx = this.state.rows.findIndex(item => String(item.invoice_id || '') === String(normalized.invoice_id || ''));
+    const id = this.invoiceDbId(normalized.id);
+    if (!id) return normalized;
+    const idx = this.state.rows.findIndex(item => this.invoiceDbId(item.id) === id);
     if (idx === -1) this.state.rows.unshift(normalized);
     else this.state.rows[idx] = { ...this.state.rows[idx], ...normalized };
     this.rerenderVisibleTable();
     return normalized;
   },
   removeLocalRow(id) {
+    const targetId = this.invoiceDbId(id);
     const before = this.state.rows.length;
-    this.state.rows = this.state.rows.filter(item => String(item.invoice_id || '') !== String(id || ''));
+    this.state.rows = this.state.rows.filter(item => this.invoiceDbId(item.id) !== targetId);
     if (this.state.rows.length !== before) this.rerenderVisibleTable();
   },
   rerenderVisibleTable() {
@@ -850,7 +859,7 @@ const Invoices = {
     const textCell = value => U.escapeHtml(String(value ?? '').trim() || '—');
     E.invoicesTbody.innerHTML = rows
       .map(row => {
-        const id = U.escapeAttr(row.invoice_id || '');
+        const id = U.escapeAttr(row.id || '');
         return `<tr>
           <td>${textCell(row.invoice_number || row.invoice_id)}</td>
           <td>${textCell(row.customer_name)}</td>
@@ -1111,19 +1120,19 @@ const Invoices = {
     this.syncPaymentFieldsInForm();
     this.syncPaymentConclusion(this.state.selectedInvoice);
     this.renderInvoiceReceipts(this.state.selectedInvoice);
-    if (this.state.selectedInvoice.invoice_id) this.refreshInvoiceReceipts(this.state.selectedInvoice.invoice_id);
-    E.invoiceForm.dataset.id = this.state.selectedInvoice.invoice_id || '';
+    if (this.state.selectedInvoice.id) this.refreshInvoiceReceipts(this.state.selectedInvoice.id);
+    E.invoiceForm.dataset.id = this.state.selectedInvoice.id || '';
     if (E.invoiceFormTitle) {
-      E.invoiceFormTitle.textContent = this.state.selectedInvoice.invoice_id
+      E.invoiceFormTitle.textContent = this.state.selectedInvoice.id
         ? readOnly
           ? 'Invoice Details'
           : 'Edit Invoice'
         : 'Create Invoice';
     }
-    const canSave = this.state.selectedInvoice.invoice_id
+    const canSave = this.state.selectedInvoice.id
       ? Permissions.canUpdateInvoice()
       : Permissions.canCreateInvoice();
-    if (E.invoiceFormDeleteBtn) E.invoiceFormDeleteBtn.style.display = !readOnly && this.state.selectedInvoice.invoice_id && Permissions.canDeleteInvoice() ? '' : 'none';
+    if (E.invoiceFormDeleteBtn) E.invoiceFormDeleteBtn.style.display = !readOnly && this.state.selectedInvoice.id && Permissions.canDeleteInvoice() ? '' : 'none';
     if (E.invoiceFormSaveBtn) E.invoiceFormSaveBtn.style.display = !readOnly && canSave ? '' : 'none';
     E.invoiceForm.querySelectorAll('input, select, textarea').forEach(el => {
       if (el.id === 'invoiceFormInvoiceId') {
@@ -1304,9 +1313,9 @@ const Invoices = {
     this.state.openingInvoiceIds.add(id);
     this.setTriggerBusy(trigger, true);
     console.time('invoice-open');
-    const localSummary = this.state.rows.find(row => String(row.invoice_id || '').trim() === id);
+    const localSummary = this.state.rows.find(row => this.invoiceDbId(row.id) === id);
     this.openInvoice(
-      localSummary ? { ...this.emptyInvoice(), ...localSummary, invoice_id: id } : { invoice_id: id },
+      localSummary ? { ...this.emptyInvoice(), ...localSummary, id } : { id },
       [],
       { readOnly }
     );
@@ -1346,7 +1355,7 @@ const Invoices = {
       grand_total: summary.grand_total
     });
     this.assignFormValues(payloadInvoice);
-    const currentRecord = this.state.rows.find(row => String(row.invoice_id || '') === id) || {};
+    const currentRecord = this.state.rows.find(row => this.invoiceDbId(row.id) === id) || {};
     const requestedDiscount = items.reduce((max, item) => Math.max(max, this.toNumberSafe(item.discount_percent)), 0);
     const workflowCheck = await window.WorkflowEngine?.enforceBeforeSave?.('invoices', currentRecord, {
       invoice_id: id,
@@ -1380,11 +1389,11 @@ const Invoices = {
       const persisted = this.normalizeInvoice({
         ...payloadInvoice,
         ...(parsed?.invoice || {}),
-        invoice_id: parsed?.invoice?.invoice_id || id || payloadInvoice.invoice_id
+        id: parsed?.invoice?.id || id || payloadInvoice.id
       });
       const normalized = this.upsertLocalRow(persisted);
-      this.setCachedDetail(normalized?.invoice_id || id, persisted, persistedItems);
-      if (normalized?.invoice_id && this.state.selectedInvoice?.invoice_id === normalized.invoice_id) {
+      this.setCachedDetail(normalized?.id || id, persisted, persistedItems);
+      if (normalized?.id && this.state.selectedInvoice?.id === normalized.id) {
         this.state.selectedInvoice = normalized;
         this.state.items = persistedItems;
       }
@@ -1400,7 +1409,9 @@ const Invoices = {
   async deleteInvoice(invoiceId) {
     if (!Permissions.canDeleteInvoice()) return UI.toast('Insufficient permissions to delete invoices.');
     const id = String(invoiceId || '').trim();
-    if (!id || !window.confirm(`Delete invoice ${id}?`)) return;
+    const displayInvoice =
+      this.invoiceDisplayId(this.state.rows.find(row => this.invoiceDbId(row.id) === id)) || id;
+    if (!id || !window.confirm(`Delete invoice ${displayInvoice}?`)) return;
     this.setFormBusy(true);
     try {
       await Api.deleteInvoice(id);
@@ -1421,7 +1432,7 @@ const Invoices = {
       UI.toast('You do not have permission to create receipts.');
       return;
     }
-    const currentRecord = this.state.rows.find(row => String(row.invoice_id || '') === id) || {};
+    const currentRecord = this.state.rows.find(row => this.invoiceDbId(row.id) === id) || {};
     const workflowCheck = await window.WorkflowEngine?.enforceBeforeSave?.('receipts', currentRecord, {
       source_invoice_id: id,
       current_status: currentRecord?.status || '',
@@ -1465,7 +1476,7 @@ const Invoices = {
       return;
     }
     await this.refreshInvoiceReceipts(id, { force: true });
-    const summary = this.state.rows.find(row => String(row.invoice_id || '').trim() === id);
+    const summary = this.state.rows.find(row => this.invoiceDbId(row.id) === id);
     if (summary) {
       try {
         const response = await Api.getInvoice(id);
@@ -1520,9 +1531,9 @@ const Invoices = {
   async openCreateFromAgreementResult(invoice) {
     const normalized = this.normalizeInvoice(invoice || {});
     if (typeof setActiveView === 'function') setActiveView('invoices');
-    if (normalized?.invoice_id) this.upsertLocalRow(normalized);
-    if (normalized.invoice_id) {
-      await this.openInvoiceById(normalized.invoice_id, { readOnly: false });
+    if (normalized?.id) this.upsertLocalRow(normalized);
+    if (normalized.id) {
+      await this.openInvoiceById(normalized.id, { readOnly: false });
     }
   },
   async openCreateFromAgreementTemplate(agreementId) {
@@ -1539,8 +1550,8 @@ const Invoices = {
           agreement_id: id
         });
         invoiceTemplate.invoice_number = this.ensureInvoiceNumber(invoiceTemplate.invoice_number);
-        if (invoiceTemplate.invoice_id) {
-          await this.openInvoiceById(invoiceTemplate.invoice_id, { readOnly: false });
+        if (invoiceTemplate.id) {
+          await this.openInvoiceById(invoiceTemplate.id, { readOnly: false });
           return;
         }
         this.openInvoice(invoiceTemplate, items, { readOnly: false });
