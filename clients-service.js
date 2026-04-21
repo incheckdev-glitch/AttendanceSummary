@@ -3,7 +3,7 @@ const ClientsService = {
     'client_id','client_name','company_name','primary_email','primary_phone','billing_frequency','payment_term',
     'status','source_agreement_id','total_agreements','total_locations','total_value','total_paid','total_due','created_by','updated_by'
   ]),
-  AGREEMENT_SELECT_COLUMNS: 'id,agreement_id,agreement_number,customer_name,customer_legal_name,customer_contact_email,customer_contact_mobile,status,grand_total,updated_at,service_start_date,service_end_date,agreement_date,customer_sign_date,billing_frequency,payment_term,location_name',
+  AGREEMENT_SELECT_COLUMNS: 'id,agreement_id,agreement_number,customer_name,customer_legal_name,customer_contact_email,customer_contact_mobile,status,grand_total,updated_at,service_start_date,service_end_date,agreement_date,customer_sign_date,billing_frequency,payment_term',
   getDb() {
     const db = window.SupabaseClient?.getClient?.();
     console.log('[ClientsService] db check', db, typeof db?.from);
@@ -74,8 +74,7 @@ const ClientsService = {
       agreement_date: String(row.agreement_date || '').trim(),
       customer_sign_date: String(row.customer_sign_date || '').trim(),
       billing_frequency: String(row.billing_frequency || '').trim(),
-      payment_term: String(row.payment_term || '').trim(),
-      location_name: String(row.location_name || '').trim()
+      payment_term: String(row.payment_term || '').trim()
     };
   },
   sanitizeClientPayload(input = {}, { includeCreatedBy = false } = {}) {
@@ -113,7 +112,14 @@ const ClientsService = {
       if (!byAgreementId.has(key)) byAgreementId.set(key, []);
       byAgreementId.get(key).push(item);
     });
-    return agreements.map(agreement => ({ ...agreement, items: byAgreementId.get(String(agreement.id || '').trim()) || [] }));
+    return agreements.map(agreement => {
+      const items = byAgreementId.get(String(agreement.id || '').trim()) || [];
+      return {
+        ...agreement,
+        items,
+        location_name: String(items.find(item => String(item.location_name || '').trim())?.location_name || '').trim()
+      };
+    });
   },
   isSignedAgreement(agreement = {}) { return this.normalizeText(agreement.status).includes('signed'); },
   buildSignedClientFromAgreement(agreement = {}) {
@@ -306,7 +312,7 @@ const ClientsService = {
     const db = this.getDb();
     const [agreementsRes, itemsRes, invoicesRes, receiptsRes] = await Promise.all([
       db.from('agreements').select(this.AGREEMENT_SELECT_COLUMNS).order('updated_at', { ascending: false }).limit(500),
-      db.from('agreement_items').select('agreement_id,section,item_section,section_name,category,type').limit(5000),
+      db.from('agreement_items').select('agreement_id,location_name,section,item_section,section_name,category,type').limit(5000),
       db.from('invoices').select('id,invoice_id,invoice_number,agreement_id,client_id,customer_name,customer_legal_name,status,payment_state,invoice_total,received_amount,pending_amount,updated_at,issue_date,due_date,reference,notes,location_name').order('updated_at', { ascending: false }).limit(1000),
       db.from('receipts').select('id,receipt_id,receipt_number,invoice_id,client_id,customer_name,customer_legal_name,status,payment_state,amount_received,pending_amount,updated_at,receipt_date,reference,notes').order('updated_at', { ascending: false }).limit(1000)
     ]);
