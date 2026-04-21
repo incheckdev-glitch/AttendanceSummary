@@ -158,7 +158,9 @@
     'payment_reference','is_settlement','notes','status','created_by','updated_by'
   ]);
   const RECEIPT_ITEM_COLUMNS = new Set([
-    'item_id','receipt_id','line_no','description','amount','notes','service_start_date','service_end_date'
+    'item_id','receipt_id','invoice_item_id','section','line_no','location_name','location_address','item_name','description',
+    'quantity','unit_price','discount_percent','discounted_unit_price','line_total','amount',
+    'capability_name','capability_value','notes','service_start_date','service_end_date','currency'
   ]);
   const AGREEMENT_LEGACY_FIELDS = new Set([
     'authToken','backendToken','backendUrl','sheetName','tabName','resource','action',
@@ -494,15 +496,32 @@
   }
 
   function sanitizeReceiptItemRecord(record = {}, receiptUuid = '') {
+    const normalizeOptionalDate = value => {
+      const raw = trimOrNull(value);
+      return raw || null;
+    };
     const sanitized = compactObject({
       item_id: trimOrNull(firstDefined(record, ['item_id', 'itemId'])),
       receipt_id: receiptUuid,
+      invoice_item_id: trimOrNull(firstDefined(record, ['invoice_item_id', 'invoiceItemId'])),
+      section: trimOrNull(firstDefined(record, ['section'])),
       line_no: numberOrNull(firstDefined(record, ['line_no', 'lineNo'])),
+      location_name: trimOrNull(firstDefined(record, ['location_name', 'locationName'])),
+      location_address: trimOrNull(firstDefined(record, ['location_address', 'locationAddress'])),
+      item_name: trimOrNull(firstDefined(record, ['item_name', 'itemName'])),
       description: trimOrNull(firstDefined(record, ['description', 'item_name', 'itemName'])),
+      quantity: numberOrNull(firstDefined(record, ['quantity'])),
+      unit_price: numberOrNull(firstDefined(record, ['unit_price', 'unitPrice'])),
+      discount_percent: numberOrNull(firstDefined(record, ['discount_percent', 'discountPercent'])),
+      discounted_unit_price: numberOrNull(firstDefined(record, ['discounted_unit_price', 'discountedUnitPrice'])),
+      line_total: numberOrNull(firstDefined(record, ['line_total', 'lineTotal'])),
       amount: numberOrNull(firstDefined(record, ['amount', 'line_total', 'lineTotal'])),
+      capability_name: trimOrNull(firstDefined(record, ['capability_name', 'capabilityName'])),
+      capability_value: trimOrNull(firstDefined(record, ['capability_value', 'capabilityValue'])),
       notes: trimOrNull(firstDefined(record, ['notes'])),
-      service_start_date: trimOrNull(firstDefined(record, ['service_start_date', 'serviceStartDate'])),
-      service_end_date: trimOrNull(firstDefined(record, ['service_end_date', 'serviceEndDate']))
+      service_start_date: normalizeOptionalDate(firstDefined(record, ['service_start_date', 'serviceStartDate'])),
+      service_end_date: normalizeOptionalDate(firstDefined(record, ['service_end_date', 'serviceEndDate'])),
+      currency: trimOrNull(firstDefined(record, ['currency']))
     });
     Object.keys(sanitized).forEach(key => { if (!RECEIPT_ITEM_COLUMNS.has(key)) delete sanitized[key]; });
     return sanitized;
@@ -1266,7 +1285,78 @@
         p_payment_reference: normalizeOptionalText(payload.payment_reference || payload.reference)
       });
       if (error) throw friendlyError('Receipt creation from invoice failed', error);
-      return data;
+      const pickReceiptUuid = candidate => {
+        const options = [
+          candidate?.id,
+          candidate?.receipt_uuid,
+          candidate?.receipt_id_uuid,
+          candidate?.created_receipt_uuid,
+          candidate?.created_uuid,
+          candidate?.receipt?.id,
+          candidate?.data?.id
+        ];
+        const found = options.map(value => String(value || '').trim()).find(value => isUuid(value));
+        return found || '';
+      };
+      const createdReceiptUuid = pickReceiptUuid(data);
+      if (!createdReceiptUuid) return data;
+
+      const { data: createdReceiptRow, error: createdReceiptError } = await client
+        .from('receipts')
+        .select('*')
+        .eq('id', createdReceiptUuid)
+        .maybeSingle();
+      if (createdReceiptError || !createdReceiptRow) return data;
+
+      const { data: invoiceItems, error: invoiceItemsError } = await client
+        .from('invoice_items')
+        .select('*')
+        .eq('invoice_id', invoiceUuid)
+        .order('line_no', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: true, nullsFirst: false });
+      if (invoiceItemsError) throw friendlyError('Unable to load invoice_items for receipt creation', invoiceItemsError);
+
+      const sourceItems = Array.isArray(invoiceItems) ? invoiceItems : [];
+      const receiptItemRows = sourceItems.map((item, index) => {
+        const lineTotal = normalizeAmount(item?.line_total ?? item?.amount) ?? 0;
+        const description =
+          normalizeOptionalText(item?.description) ||
+          [normalizeOptionalText(item?.location_name), normalizeOptionalText(item?.item_name)]
+            .filter(Boolean)
+            .join(' - ') ||
+          'Invoice Item';
+        const serviceStart = normalizeOptionalText(item?.service_start_date);
+        const serviceEnd = normalizeOptionalText(item?.service_end_date);
+        return sanitizeReceiptItemRecord({
+          item_id: `RI-${createdReceiptUuid.slice(0, 8).toUpperCase()}-${String(index + 1).padStart(3, '0')}`,
+          invoice_item_id: item?.id || null,
+          section: normalizeOptionalText(item?.section) || 'location_details',
+          line_no: normalizeAmount(item?.line_no) ?? index + 1,
+          location_name: normalizeOptionalText(item?.location_name),
+          location_address: normalizeOptionalText(item?.location_address),
+          item_name: normalizeOptionalText(item?.item_name),
+          description,
+          quantity: normalizeAmount(item?.quantity),
+          unit_price: normalizeAmount(item?.unit_price),
+          discount_percent: normalizeAmount(item?.discount_percent),
+          discounted_unit_price: normalizeAmount(item?.discounted_unit_price),
+          line_total: lineTotal,
+          amount: lineTotal,
+          capability_name: normalizeOptionalText(item?.capability_name),
+          capability_value: normalizeOptionalText(item?.capability_value),
+          notes: normalizeOptionalText(item?.notes),
+          service_start_date: serviceStart || null,
+          service_end_date: serviceEnd || null,
+          currency: normalizeOptionalText(item?.currency) || normalizeOptionalText(createdReceiptRow?.currency)
+        }, createdReceiptUuid);
+      });
+
+      await client.from('receipt_items').delete().eq('receipt_id', createdReceiptUuid);
+      if (receiptItemRows.length) {
+        const { error: receiptItemsInsertError } = await client.from('receipt_items').insert(receiptItemRows);
+        if (receiptItemsInsertError) throw friendlyError('Unable to create receipt_items from invoice_items', receiptItemsInsertError);
+      }
+      return withItems(resource, createdReceiptRow);
     }
     return null;
   }
