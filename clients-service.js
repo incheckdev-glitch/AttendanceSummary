@@ -3,7 +3,7 @@ const ClientsService = {
     'client_id','client_name','company_name','primary_email','primary_phone','billing_frequency','payment_term',
     'status','source_agreement_id','total_agreements','total_locations','total_value','total_paid','total_due','created_by','updated_by'
   ]),
-  AGREEMENT_SELECT_COLUMNS: 'id,agreement_id,agreement_number,customer_name,customer_legal_name,customer_contact_email,customer_contact_mobile,status,grand_total,updated_at,service_start_date,service_end_date,agreement_date,customer_sign_date,billing_frequency,payment_term',
+  AGREEMENT_SELECT_COLUMNS: 'id,agreement_id,agreement_number,customer_name,customer_legal_name,customer_contact_email,customer_contact_mobile,status,grand_total,updated_at,signed_date,service_start_date,service_end_date,agreement_date,customer_sign_date,billing_frequency,payment_term',
   getDb() {
     const db = window.SupabaseClient?.getClient?.();
     if (!db || typeof db.from !== 'function') {
@@ -219,7 +219,7 @@ const ClientsService = {
   async fetchAgreementItemsForClients_(db) {
     return db
       .from('agreement_items')
-      .select('agreement_id,location_name,section,line_total,service_start_date,service_end_date')
+      .select('id,agreement_id,location_name,section,line_total,service_start_date,service_end_date,created_at')
       .limit(5000);
   },
   coerceLinkedRows_(res, label) {
@@ -334,8 +334,8 @@ const ClientsService = {
     const [agreementsRes, itemsRes, invoicesRes, receiptsRes] = await Promise.all([
       db.from('agreements').select(this.AGREEMENT_SELECT_COLUMNS).order('updated_at', { ascending: false }).limit(500),
       this.fetchAgreementItemsForClients_(db),
-      db.from('invoices').select('id,invoice_id,invoice_number,client_id,agreement_id,proposal_id,issue_date,due_date,invoice_total,received_amount,pending_amount,payment_state,status,notes,updated_at').order('updated_at', { ascending: false }).limit(1000),
-      db.from('receipts').select('id,receipt_id,receipt_number,invoice_id,client_id,customer_name,customer_legal_name,status,payment_state,amount_received,pending_amount,updated_at,receipt_date,payment_reference,notes').order('updated_at', { ascending: false }).limit(1000)
+      db.from('invoices').select('id,invoice_id,invoice_number,client_id,agreement_id,proposal_id,issue_date,due_date,invoice_total,received_amount,pending_amount,payment_state,status,notes,updated_at,created_at').order('updated_at', { ascending: false }).limit(2000),
+      db.from('receipts').select('id,receipt_id,receipt_number,invoice_id,client_id,customer_name,customer_legal_name,status,payment_state,amount_received,pending_amount,updated_at,created_at,receipt_date,payment_reference,notes').order('updated_at', { ascending: false }).limit(2000)
     ]);
     if (agreementsRes.error) throw this.friendlyError('Unable to load agreements for clients', agreementsRes.error);
 
