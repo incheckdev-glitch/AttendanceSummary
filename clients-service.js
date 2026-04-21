@@ -3,10 +3,13 @@ const ClientsService = {
     'client_id','client_name','company_name','primary_email','primary_phone','billing_frequency','payment_term',
     'status','source_agreement_id','total_agreements','total_locations','total_value','total_paid','total_due','created_by','updated_by'
   ]),
-  getClient() {
-    const client = window.SupabaseClient?.getClient?.();
-    if (!client) throw new Error('Supabase client is not available.');
-    return client;
+  getDb() {
+    const db = window.SupabaseClient?.getClient?.();
+    console.log('[ClientsService] db check', db, typeof db?.from);
+    if (!db || typeof db.from !== 'function') {
+      throw new Error('Supabase client is not available.');
+    }
+    return db;
   },
   friendlyError(prefix, error) {
     return new Error(`${prefix}: ${error?.message || 'Unknown error'}`);
@@ -142,10 +145,10 @@ const ClientsService = {
     };
   },
   async listClients({ page = 1, limit = 50, search = '', status = '' } = {}) {
-    const client = this.getClient();
+    const db = this.getDb();
     const from = Math.max(0, (Number(page) - 1) * Number(limit));
     const to = from + Number(limit) - 1;
-    let query = client.from('clients').select('*', { count: 'exact' }).order('updated_at', { ascending: false }).range(from, to);
+    let query = db.from('clients').select('*', { count: 'exact' }).order('updated_at', { ascending: false }).range(from, to);
     if (search) query = query.or(`client_id.ilike.%${search}%,client_name.ilike.%${search}%,company_name.ilike.%${search}%,primary_email.ilike.%${search}%`);
     if (status && status !== 'All') query = query.eq('status', status);
     const { data, error, count } = await query;
@@ -156,7 +159,7 @@ const ClientsService = {
   async getClient(clientIdOrUuid) {
     const id = String(clientIdOrUuid || '').trim();
     if (!id) throw new Error('Client id is required.');
-    const db = this.getClient();
+    const db = this.getDb();
     const query = db.from('clients').select('*');
     const { data, error } = (id.includes('-') ? await query.eq('id', id).maybeSingle() : await query.eq('client_id', id).maybeSingle());
     if (error) throw this.friendlyError('Unable to load client', error);
@@ -164,7 +167,7 @@ const ClientsService = {
     return this.mapDbClientToUi(data);
   },
   async createClient(input = {}) {
-    const db = this.getClient();
+    const db = this.getDb();
     const payload = this.sanitizeClientPayload(input, { includeCreatedBy: true });
     const { data, error } = await db.from('clients').insert(payload).select('*').single();
     if (error) throw this.friendlyError('Unable to create client', error);
@@ -173,7 +176,7 @@ const ClientsService = {
   async updateClient(clientUuid, updates = {}) {
     const id = String(clientUuid || '').trim();
     if (!id) throw new Error('Client UUID is required for update.');
-    const db = this.getClient();
+    const db = this.getDb();
     const payload = this.sanitizeClientPayload(updates, { includeCreatedBy: false });
     const { data, error } = await db.from('clients').update(payload).eq('id', id).select('*').single();
     if (error) throw this.friendlyError('Unable to update client', error);
@@ -182,14 +185,14 @@ const ClientsService = {
   async deleteClient(clientUuid) {
     const id = String(clientUuid || '').trim();
     if (!id) throw new Error('Client UUID is required for delete.');
-    const db = this.getClient();
+    const db = this.getDb();
     const { error } = await db.from('clients').delete().eq('id', id);
     if (error) throw this.friendlyError('Unable to delete client', error);
     return { ok: true };
   },
   async getDashboardData(options = {}) {
     const clientsList = await this.listClients(options);
-    const db = this.getClient();
+    const db = this.getDb();
     const [agreementsRes, itemsRes, invoicesRes, receiptsRes] = await Promise.all([
       db.from('agreements').select('id,agreement_id,agreement_number,customer_name,customer_legal_name,status,grand_total,updated_at,service_start_date,service_end_date,agreement_date,customer_sign_date,end_date,due_date,renewal_date,location_name').order('updated_at', { ascending: false }).limit(500),
       db.from('agreement_items').select('agreement_id,section,item_section,section_name,category,type').limit(5000),
