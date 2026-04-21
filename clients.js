@@ -184,13 +184,13 @@ const Clients = {
       customer_name: String(raw.customer_name || raw.customerName || '').trim(),
       customer_legal_name: String(raw.customer_legal_name || raw.customerLegalName || '').trim(),
       status: String(raw.status || raw.payment_state || '').trim(),
-      grand_total: this.toNumberSafe(raw.grand_total ?? raw.grandTotal ?? raw.invoice_total ?? raw.invoiceTotal),
-      amount_paid: this.toNumberSafe(raw.amount_paid ?? raw.amountPaid ?? raw.received_amount ?? raw.receivedAmount),
+      grand_total: this.toNumberSafe(raw.invoice_total ?? raw.invoiceTotal ?? raw.grand_total ?? raw.grandTotal),
+      amount_paid: this.toNumberSafe(raw.received_amount ?? raw.receivedAmount ?? raw.amount_paid ?? raw.amountPaid),
       pending_amount: this.toNumberSafe(raw.pending_amount ?? raw.pendingAmount),
       updated_at: String(raw.updated_at || raw.updatedAt || '').trim(),
       issued_date: String(raw.issued_date || raw.issue_date || raw.invoice_date || '').trim(),
       due_date: String(raw.due_date || raw.dueDate || '').trim(),
-      reference: String(raw.reference || raw.ref || '').trim(),
+      reference: String(raw.agreement_id || raw.agreementId || raw.reference || raw.ref || '').trim(),
       notes: String(raw.notes || '').trim(),
       location_name: String(raw.location_name || raw.locationName || '').trim()
     };
@@ -209,7 +209,7 @@ const Clients = {
       pending_amount: this.toNumberSafe(raw.pending_amount ?? raw.pendingAmount),
       updated_at: String(raw.updated_at || raw.updatedAt || '').trim(),
       receipt_date: String(raw.receipt_date || raw.received_date || '').trim(),
-      reference: String(raw.reference || raw.ref || '').trim(),
+      reference: String(raw.payment_reference || raw.reference || raw.ref || '').trim(),
       notes: String(raw.notes || '').trim()
     };
   },
@@ -543,7 +543,7 @@ const Clients = {
   },
   getPaymentStatus(row = {}) {
     const pending = this.toNumberSafe(row.pending_amount ?? row.amount_due ?? row.balance ?? 0);
-    const paid = this.toNumberSafe(row.amount_paid ?? row.credit ?? 0);
+    const paid = this.toNumberSafe(row.amount_paid ?? row.received_amount ?? row.credit ?? 0);
     const dueDate = String(row.due_date || row.dueDate || '').trim();
     const daysLeft = this.getDaysLeft(dueDate);
     if (pending <= 0 && paid > 0) return 'Paid';
@@ -596,7 +596,7 @@ const Clients = {
       type: 'Receipt',
       document_no: item.receipt_number || item.receipt_id || '—',
       document_id: item.receipt_id,
-      reference: item.reference || item.invoice_id || '',
+      reference: item.reference || item.payment_reference || item.invoice_id || '',
       debit: 0,
       credit: this.toNumberSafe(item.received_amount),
       due_date: '',
@@ -692,7 +692,7 @@ const Clients = {
   },
   badgeClassFromInvoice_(invoice = {}) {
     const due = this.toNumberSafe(invoice.pending_amount);
-    const paid = this.toNumberSafe(invoice.amount_paid);
+    const paid = this.toNumberSafe(invoice.amount_paid ?? invoice.received_amount);
     if (due <= 0 && paid > 0) return 'online';
     if (paid > 0 && due > 0) return 'offline';
     return '';
