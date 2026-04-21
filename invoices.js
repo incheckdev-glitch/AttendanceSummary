@@ -392,6 +392,32 @@ const Invoices = {
     }
     return merged;
   },
+  copyInvoiceItemFields(sourceItem = {}, mergedItem = {}) {
+    const source = this.normalizeItem(sourceItem);
+    const merged = this.normalizeItem(mergedItem);
+    const pick = (sourceValue, mergedValue) => {
+      if (sourceValue === undefined || sourceValue === null) return mergedValue;
+      if (typeof sourceValue === 'string') return sourceValue.trim() !== '' ? sourceValue : mergedValue;
+      return sourceValue;
+    };
+    return this.normalizeItem({
+      ...merged,
+      section: pick(source.section, merged.section),
+      line_no: pick(source.line_no, merged.line_no),
+      location_name: pick(source.location_name, merged.location_name),
+      item_name: pick(source.item_name, merged.item_name),
+      unit_price: pick(source.unit_price, merged.unit_price),
+      discount_percent: pick(source.discount_percent, merged.discount_percent),
+      discounted_unit_price: pick(source.discounted_unit_price, merged.discounted_unit_price),
+      quantity: pick(source.quantity, merged.quantity),
+      line_total: pick(source.line_total, merged.line_total),
+      capability_name: pick(source.capability_name, merged.capability_name),
+      capability_value: pick(source.capability_value, merged.capability_value),
+      notes: pick(source.notes, merged.notes),
+      service_start_date: pick(source.service_start_date, merged.service_start_date),
+      service_end_date: pick(source.service_end_date, merged.service_end_date)
+    });
+  },
   isSubscriptionSection(section = '') {
     const normalized = this.normalizeSection(section);
     return ['annual_saas', 'subscription', 'recurring', 'saas'].includes(normalized);
@@ -444,9 +470,21 @@ const Invoices = {
     const pending = this.toNumberSafe(invoice.pending_amount);
     return pending <= 0 ? 'Settlement Completed' : 'Pending Settlement';
   },
-  deriveCalculatedSummary(invoice = {}, items = []) {
-    const totals = this.calculateInvoiceTotals(items);
-    const derivedPayment = this.derivePaymentFields({ ...invoice, grand_total: totals.grand_total });
+  deriveCalculatedSummary(invoice = {}, items = [], { preferInvoiceValues = false } = {}) {
+    const hasItems = Array.isArray(items) && items.length > 0;
+    const itemTotals = this.calculateInvoiceTotals(items);
+    const totals = preferInvoiceValues && !hasItems
+      ? {
+          subtotal_subscription: this.toNumberSafe(invoice.subtotal_subscription),
+          subtotal_one_time: this.toNumberSafe(invoice.subtotal_one_time),
+          grand_total: this.toNumberSafe(invoice.grand_total)
+        }
+      : itemTotals;
+    const derivedPayment = this.derivePaymentFields({
+      ...invoice,
+      grand_total: totals.grand_total,
+      amount_paid: this.toNumberSafe(invoice.amount_paid)
+    });
     const amountInWords = this.amountToWords(totals.grand_total, invoice.currency);
     const paymentConclusion = this.derivePaymentConclusion(derivedPayment);
     return { ...totals, ...derivedPayment, amount_in_words: amountInWords, payment_conclusion: paymentConclusion };
@@ -1069,7 +1107,7 @@ const Invoices = {
     this.state.items = Array.isArray(items) ? items.map(item => this.normalizeItem(item)) : [];
     this.assignFormValues(this.state.selectedInvoice);
     this.renderItems(this.state.items);
-    this.applyTotalsToForm(this.deriveCalculatedSummary(this.state.selectedInvoice, this.state.items));
+    this.applyTotalsToForm(this.deriveCalculatedSummary(this.state.selectedInvoice, this.state.items, { preferInvoiceValues: true }));
     this.syncPaymentFieldsInForm();
     this.syncPaymentConclusion(this.state.selectedInvoice);
     this.renderInvoiceReceipts(this.state.selectedInvoice);
@@ -1251,7 +1289,7 @@ const Invoices = {
       mappedInvoice.invoice_number = this.ensureInvoiceNumber(mappedInvoice.invoice_number);
       this.assignFormValues(mappedInvoice);
       const catalogLookup = await this.getProposalCatalogLookup();
-      const normalizedItems = items.map(item => this.mergeCatalogItem(item, catalogLookup));
+      const normalizedItems = items.map(item => this.copyInvoiceItemFields(item, this.mergeCatalogItem(item, catalogLookup)));
       this.state.items = normalizedItems;
       this.renderItems(normalizedItems);
       this.applyTotalsToForm(this.deriveCalculatedSummary(mappedInvoice, normalizedItems));
