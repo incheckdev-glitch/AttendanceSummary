@@ -681,7 +681,6 @@ const Receipts = {
         this.state.selectedReceipt = cached.receipt;
         this.state.items = cached.items;
         this.populateForm(cached.receipt, cached.items, readOnly);
-        return;
       }
       const directLoad = await this.loadReceiptAndItemsByUuid(receiptUuid).catch(() => null);
       const detail = directLoad || this.extractReceiptAndItems(await Api.getReceipt(receiptUuid), receiptUuid);
@@ -764,7 +763,24 @@ const Receipts = {
         const normalized = this.upsertLocalRow(receipt);
         const receiptUuid = String(normalized?.id || receipt?.id || response?.id || '').trim();
         const receiptDisplay = String(normalized?.receipt_id || receipt?.receipt_id || '').trim();
-        this.setCachedDetail(receiptUuid, normalized || receipt, parsed?.items || []);
+        let normalizedDetailItems = parsed?.items || [];
+        if (receiptUuid) {
+          try {
+            const reloaded = await this.loadReceiptAndItemsByUuid(receiptUuid);
+            if (reloaded?.receipt) {
+              this.upsertLocalRow(reloaded.receipt);
+              normalizedDetailItems = Array.isArray(reloaded.items) ? reloaded.items : [];
+              this.setCachedDetail(receiptUuid, reloaded.receipt, normalizedDetailItems);
+            } else {
+              this.setCachedDetail(receiptUuid, normalized || receipt, normalizedDetailItems);
+            }
+          } catch (reloadError) {
+            console.warn('[receipts] create_from_invoice: failed to reload receipt from DB after create', reloadError);
+            this.setCachedDetail(receiptUuid, normalized || receipt, normalizedDetailItems);
+          }
+        } else {
+          this.setCachedDetail(receiptUuid, normalized || receipt, normalizedDetailItems);
+        }
         await window.Invoices?.syncAfterReceiptMutation?.({
           invoiceId: normalized?.invoice_id || receipt?.invoice_id || invoiceUuid,
           receipt: normalized || receipt
