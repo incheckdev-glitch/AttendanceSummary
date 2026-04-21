@@ -125,21 +125,21 @@
   const AGREEMENT_COLUMNS = new Set([
     'agreement_id','proposal_id','agreement_number','customer_name','customer_address','customer_contact_name',
     'customer_contact_mobile','customer_contact_email','provider_contact_name','provider_contact_mobile',
-    'provider_contact_email','service_start_date','contract_term','account_number','billing_frequency',
+    'provider_contact_email','service_start_date','service_end_date','agreement_date','effective_date','contract_term','account_number','billing_frequency',
     'payment_term','po_number','terms_conditions','customer_signatory_name','customer_signatory_title',
-    'customer_sign_date','provider_signatory_name','provider_signatory_title','provider_sign_date','gm_signed',
+    'customer_sign_date','provider_signatory_name','provider_signatory_title','provider_signatory_secondary','provider_signatory_title_secondary','provider_sign_date','gm_signed',
     'financial_controller_signed','signed_date','status','subtotal_locations','subtotal_one_time','total_discount',
-    'grand_total','generated_by','created_by','updated_by','currency'
+    'grand_total','generated_by','created_by','updated_by','currency','customer_legal_name','provider_legal_name','provider_name'
   ]);
   const AGREEMENT_ITEM_COLUMNS = new Set([
     'item_id','agreement_id','section','line_no','location_name','item_name','unit_price','discount_percent',
     'discounted_unit_price','quantity','line_total','capability_name','capability_value','notes'
   ]);
   const AGREEMENT_LEGACY_FIELDS = new Set([
-    'authToken','backendToken','backendUrl','sheetName','tabName','resource','action','agreement_title','agreement_date',
-    'effective_date','agreement_length','lead_id','deal_id','customer_legal_name','provider_name','provider_legal_name',
+    'authToken','backendToken','backendUrl','sheetName','tabName','resource','action','agreement_title',
+    'agreement_length','lead_id','deal_id',
     'provider_address','provider_signatory_name_primary','provider_signatory_title_primary',
-    'provider_signatory_name_secondary','provider_signatory_title_secondary','saas_total','one_time_total','notes',
+    'provider_signatory_name_secondary','saas_total','one_time_total','notes',
     'agreement_items','items'
   ]);
   const PROPOSAL_LEGACY_FIELDS = new Set([
@@ -580,14 +580,20 @@
       proposal_id: normalizeNullableUuidValue(firstDefined(record, ['proposal_id', 'proposalId'])),
       agreement_number: firstDefined(record, ['agreement_number', 'agreementNumber']),
       customer_name: firstDefined(record, ['customer_name', 'customerName']),
+      customer_legal_name: firstDefined(record, ['customer_legal_name', 'customerLegalName']),
       customer_address: firstDefined(record, ['customer_address', 'customerAddress']),
       customer_contact_name: firstDefined(record, ['customer_contact_name', 'customerContactName']),
       customer_contact_mobile: firstDefined(record, ['customer_contact_mobile', 'customerContactMobile']),
       customer_contact_email: firstDefined(record, ['customer_contact_email', 'customerContactEmail']),
+      provider_name: firstDefined(record, ['provider_name', 'providerName']),
+      provider_legal_name: firstDefined(record, ['provider_legal_name', 'providerLegalName']),
       provider_contact_name: firstDefined(record, ['provider_contact_name', 'providerContactName']),
       provider_contact_mobile: firstDefined(record, ['provider_contact_mobile', 'providerContactMobile']),
       provider_contact_email: firstDefined(record, ['provider_contact_email', 'providerContactEmail']),
+      agreement_date: normalizeNullableDateValue(firstDefined(record, ['agreement_date', 'agreementDate'])),
+      effective_date: normalizeNullableDateValue(firstDefined(record, ['effective_date', 'effectiveDate'])),
       service_start_date: normalizeNullableDateValue(firstDefined(record, ['service_start_date', 'serviceStartDate'])),
+      service_end_date: normalizeNullableDateValue(firstDefined(record, ['service_end_date', 'serviceEndDate'])),
       contract_term: firstDefined(record, ['contract_term', 'contractTerm', 'agreement_length', 'agreementLength']),
       account_number: firstDefined(record, ['account_number', 'accountNumber']),
       billing_frequency: firstDefined(record, ['billing_frequency', 'billingFrequency']),
@@ -599,6 +605,8 @@
       customer_sign_date: normalizeNullableDateValue(firstDefined(record, ['customer_sign_date', 'customerSignDate'])),
       provider_signatory_name: firstDefined(record, ['provider_signatory_name', 'providerSignatoryName', 'provider_signatory_name_primary']),
       provider_signatory_title: firstDefined(record, ['provider_signatory_title', 'providerSignatoryTitle', 'provider_signatory_title_primary']),
+      provider_signatory_secondary: firstDefined(record, ['provider_signatory_secondary', 'providerSignatorySecondary', 'provider_signatory_name_secondary', 'providerSignatoryNameSecondary']),
+      provider_signatory_title_secondary: firstDefined(record, ['provider_signatory_title_secondary', 'providerSignatoryTitleSecondary']),
       provider_sign_date: normalizeNullableDateValue(firstDefined(record, ['provider_sign_date', 'providerSignDate'])),
       gm_signed: toDbBoolean(firstDefined(record, ['gm_signed', 'gmSigned'])),
       financial_controller_signed: toDbBoolean(firstDefined(record, ['financial_controller_signed', 'financialControllerSigned'])),
