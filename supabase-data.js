@@ -112,13 +112,15 @@
   const PROPOSAL_COLUMNS = new Set([
     'proposal_id','ref_number','deal_id','customer_name','customer_address','customer_contact_name','customer_contact_mobile',
     'customer_contact_email','provider_contact_name','provider_contact_mobile','provider_contact_email','proposal_title','proposal_date',
-    'proposal_valid_until','service_start_date','contract_term','account_number','billing_frequency','payment_term','po_number',
+    'proposal_valid_until','agreement_date','effective_date','service_start_date','service_end_date','contract_term','account_number','billing_frequency','payment_term','po_number',
+    'currency','customer_legal_name','provider_name','provider_legal_name',
     'terms_conditions','customer_signatory_name','customer_signatory_title','provider_signatory_name','provider_signatory_title',
-    'provider_sign_date','subtotal_locations','subtotal_one_time','total_discount','grand_total','status','generated_by','created_by','updated_by'
+    'provider_signatory_name_secondary','provider_signatory_title_secondary','provider_sign_date',
+    'subtotal_locations','subtotal_one_time','total_discount','grand_total','status','generated_by','created_by','updated_by'
   ]);
   const PROPOSAL_ITEM_COLUMNS = new Set([
     'item_id','proposal_id','section','line_no','location_name','item_name','unit_price','discount_percent','discounted_unit_price','quantity',
-    'line_total','capability_name','capability_value','notes'
+    'line_total','service_start_date','service_end_date','capability_name','capability_value','notes'
   ]);
   const AGREEMENT_COLUMNS = new Set([
     'agreement_id','proposal_id','agreement_number','customer_name','customer_address','customer_contact_name',
@@ -141,7 +143,7 @@
     'agreement_items','items'
   ]);
   const PROPOSAL_LEGACY_FIELDS = new Set([
-    'authToken','backendToken','backendUrl','sheetName','tabName','resource','action','lead_id','agreement_id','currency','saas_total','one_time_total',
+    'authToken','backendToken','backendUrl','sheetName','tabName','resource','action','lead_id','agreement_id','saas_total','one_time_total',
     'valid_until','customer_sign_date','proposal_items','items'
   ]);
   const PROPOSAL_CATALOG_LEGACY_FIELDS = new Set([
@@ -184,10 +186,12 @@
     proposals: new Set([
       'id', 'proposal_id', 'ref_number', 'deal_id', 'customer_name', 'customer_address', 'customer_contact_name',
       'customer_contact_mobile', 'customer_contact_email', 'provider_contact_name', 'provider_contact_mobile',
-      'provider_contact_email', 'proposal_title', 'proposal_date', 'proposal_valid_until', 'service_start_date',
-      'contract_term', 'account_number', 'billing_frequency', 'payment_term', 'po_number', 'terms_conditions',
+      'provider_contact_email', 'proposal_title', 'proposal_date', 'proposal_valid_until', 'agreement_date',
+      'effective_date', 'service_start_date', 'service_end_date', 'contract_term', 'account_number', 'billing_frequency', 'payment_term', 'po_number',
+      'currency', 'customer_legal_name', 'provider_name', 'provider_legal_name', 'terms_conditions',
       'customer_signatory_name', 'customer_signatory_title', 'provider_signatory_name', 'provider_signatory_title',
-      'provider_sign_date', 'subtotal_locations', 'subtotal_one_time', 'total_discount', 'grand_total', 'status',
+      'provider_signatory_name_secondary', 'provider_signatory_title_secondary', 'provider_sign_date',
+      'subtotal_locations', 'subtotal_one_time', 'total_discount', 'grand_total', 'status',
       'generated_by', 'created_by', 'updated_by', 'created_at', 'updated_at'
     ])
   };
@@ -294,6 +298,12 @@
       out.proposalId = out.proposalId ?? out.proposal_id ?? '';
       out.proposal_valid_until = out.proposal_valid_until ?? out.valid_until ?? '';
       out.valid_until = out.valid_until ?? out.proposal_valid_until ?? '';
+      out.contract_term = out.contract_term ?? '';
+      out.agreement_length = out.agreement_length ?? out.contract_term ?? '';
+      out.subtotal_locations = out.subtotal_locations ?? out.saas_total ?? 0;
+      out.saas_total = out.saas_total ?? out.subtotal_locations ?? 0;
+      out.subtotal_one_time = out.subtotal_one_time ?? out.one_time_total ?? 0;
+      out.one_time_total = out.one_time_total ?? out.subtotal_one_time ?? 0;
     }
     if (resource === 'agreements') {
       out.id = out.id ?? '';
@@ -478,17 +488,26 @@
       proposal_title: firstDefined(record, ['proposal_title', 'proposalTitle']),
       proposal_date: firstDefined(record, ['proposal_date', 'proposalDate']),
       proposal_valid_until: firstDefined(record, ['proposal_valid_until', 'proposalValidUntil', 'valid_until']),
+      agreement_date: firstDefined(record, ['agreement_date', 'agreementDate']),
+      effective_date: firstDefined(record, ['effective_date', 'effectiveDate']),
       service_start_date: firstDefined(record, ['service_start_date', 'serviceStartDate']),
+      service_end_date: firstDefined(record, ['service_end_date', 'serviceEndDate']),
       contract_term: firstDefined(record, ['contract_term', 'contractTerm']),
       account_number: firstDefined(record, ['account_number', 'accountNumber']),
       billing_frequency: firstDefined(record, ['billing_frequency', 'billingFrequency']),
       payment_term: firstDefined(record, ['payment_term', 'paymentTerm']),
       po_number: firstDefined(record, ['po_number', 'poNumber']),
+      currency: firstDefined(record, ['currency']),
+      customer_legal_name: firstDefined(record, ['customer_legal_name', 'customerLegalName']),
+      provider_name: firstDefined(record, ['provider_name', 'providerName']),
+      provider_legal_name: firstDefined(record, ['provider_legal_name', 'providerLegalName']),
       terms_conditions: firstDefined(record, ['terms_conditions', 'termsConditions']),
       customer_signatory_name: firstDefined(record, ['customer_signatory_name', 'customerSignatoryName']),
       customer_signatory_title: firstDefined(record, ['customer_signatory_title', 'customerSignatoryTitle']),
       provider_signatory_name: firstDefined(record, ['provider_signatory_name', 'providerSignatoryName']),
       provider_signatory_title: firstDefined(record, ['provider_signatory_title', 'providerSignatoryTitle']),
+      provider_signatory_name_secondary: firstDefined(record, ['provider_signatory_name_secondary', 'providerSignatoryNameSecondary']),
+      provider_signatory_title_secondary: firstDefined(record, ['provider_signatory_title_secondary', 'providerSignatoryTitleSecondary']),
       provider_sign_date: firstDefined(record, ['provider_sign_date', 'providerSignDate']),
       subtotal_locations: firstDefined(record, ['subtotal_locations', 'subtotalLocations', 'saas_total']),
       subtotal_one_time: firstDefined(record, ['subtotal_one_time', 'subtotalOneTime', 'one_time_total']),
@@ -524,6 +543,8 @@
       discounted_unit_price: firstDefined(record, ['discounted_unit_price', 'discountedUnitPrice']),
       quantity: firstDefined(record, ['quantity']),
       line_total: firstDefined(record, ['line_total', 'lineTotal']),
+      service_start_date: firstDefined(record, ['service_start_date', 'serviceStartDate']),
+      service_end_date: firstDefined(record, ['service_end_date', 'serviceEndDate']),
       capability_name: firstDefined(record, ['capability_name', 'capabilityName']),
       capability_value: firstDefined(record, ['capability_value', 'capabilityValue']),
       notes: firstDefined(record, ['notes'])
