@@ -127,19 +127,20 @@
     'customer_contact_mobile','customer_contact_email','provider_contact_name','provider_contact_mobile',
     'provider_contact_email','service_start_date','service_end_date','agreement_date','effective_date','contract_term','account_number','billing_frequency',
     'payment_term','po_number','terms_conditions','customer_signatory_name','customer_signatory_title',
-    'customer_sign_date','provider_signatory_name','provider_signatory_title','provider_signatory_secondary','provider_signatory_title_secondary','provider_sign_date','gm_signed',
+    'customer_sign_date','provider_signatory_name','provider_signatory_title','provider_signatory_secondary','provider_signatory_name_secondary','provider_signatory_title_secondary','provider_sign_date','gm_signed',
     'financial_controller_signed','signed_date','status','subtotal_locations','subtotal_one_time','total_discount',
-    'grand_total','generated_by','created_by','updated_by','currency','customer_legal_name','provider_legal_name','provider_name'
+    'grand_total','generated_by','created_by','updated_by','currency','customer_legal_name','provider_legal_name','provider_name',
+    'agreement_title','notes'
   ]);
   const AGREEMENT_ITEM_COLUMNS = new Set([
     'item_id','agreement_id','section','line_no','location_name','item_name','unit_price','discount_percent',
-    'discounted_unit_price','quantity','line_total','capability_name','capability_value','notes'
+    'discounted_unit_price','quantity','line_total','service_start_date','service_end_date','capability_name','capability_value','notes'
   ]);
   const AGREEMENT_LEGACY_FIELDS = new Set([
     'authToken','backendToken','backendUrl','sheetName','tabName','resource','action','agreement_title',
     'agreement_length','lead_id','deal_id',
     'provider_address','provider_signatory_name_primary','provider_signatory_title_primary',
-    'provider_signatory_name_secondary','saas_total','one_time_total','notes',
+    'saas_total','one_time_total',
     'agreement_items','items'
   ]);
   const PROPOSAL_LEGACY_FIELDS = new Set([
@@ -579,6 +580,7 @@
       agreement_id: firstDefined(record, ['agreement_id', 'agreementId']),
       proposal_id: normalizeNullableUuidValue(firstDefined(record, ['proposal_id', 'proposalId'])),
       agreement_number: firstDefined(record, ['agreement_number', 'agreementNumber']),
+      agreement_title: firstDefined(record, ['agreement_title', 'agreementTitle']),
       customer_name: firstDefined(record, ['customer_name', 'customerName']),
       customer_legal_name: firstDefined(record, ['customer_legal_name', 'customerLegalName']),
       customer_address: firstDefined(record, ['customer_address', 'customerAddress']),
@@ -606,6 +608,7 @@
       provider_signatory_name: firstDefined(record, ['provider_signatory_name', 'providerSignatoryName', 'provider_signatory_name_primary']),
       provider_signatory_title: firstDefined(record, ['provider_signatory_title', 'providerSignatoryTitle', 'provider_signatory_title_primary']),
       provider_signatory_secondary: firstDefined(record, ['provider_signatory_secondary', 'providerSignatorySecondary', 'provider_signatory_name_secondary', 'providerSignatoryNameSecondary']),
+      provider_signatory_name_secondary: firstDefined(record, ['provider_signatory_name_secondary', 'providerSignatoryNameSecondary', 'provider_signatory_secondary', 'providerSignatorySecondary']),
       provider_signatory_title_secondary: firstDefined(record, ['provider_signatory_title_secondary', 'providerSignatoryTitleSecondary']),
       provider_sign_date: normalizeNullableDateValue(firstDefined(record, ['provider_sign_date', 'providerSignDate'])),
       gm_signed: toDbBoolean(firstDefined(record, ['gm_signed', 'gmSigned'])),
@@ -621,7 +624,8 @@
         ? (firstDefined(record, ['created_by', 'createdBy']) || userId || undefined)
         : undefined,
       updated_by: firstDefined(record, ['updated_by', 'updatedBy']) || userId || undefined,
-      currency: firstDefined(record, ['currency'])
+      currency: firstDefined(record, ['currency']),
+      notes: firstDefined(record, ['notes'])
     });
     const sanitized = {};
     Object.entries(mapped).forEach(([key, value]) => {
@@ -646,6 +650,8 @@
       discounted_unit_price: normalizeNumericValue(firstDefined(record, ['discounted_unit_price', 'discountedUnitPrice']), 0),
       quantity: normalizeNumericValue(firstDefined(record, ['quantity']), 0),
       line_total: normalizeNumericValue(firstDefined(record, ['line_total', 'lineTotal']), 0),
+      service_start_date: normalizeNullableDateValue(firstDefined(record, ['service_start_date', 'serviceStartDate'])),
+      service_end_date: normalizeNullableDateValue(firstDefined(record, ['service_end_date', 'serviceEndDate'])),
       capability_name: firstDefined(record, ['capability_name', 'capabilityName']),
       capability_value: firstDefined(record, ['capability_value', 'capabilityValue']),
       notes: firstDefined(record, ['notes'])
