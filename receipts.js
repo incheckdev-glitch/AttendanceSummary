@@ -64,6 +64,20 @@ const Receipts = {
   normalizeText(value) {
     return String(value ?? '').trim().toLowerCase();
   },
+  sanitizeText(value) {
+    const normalized = String(value ?? '').trim();
+    if (!normalized) return '';
+    const lower = normalized.toLowerCase();
+    if (lower === 'undefined' || lower === 'null' || lower === 'n/a') return '';
+    return normalized;
+  },
+  receiptAmountInWords(value, currency = 'USD', fallbackAmount = 0) {
+    const explicit = this.sanitizeText(value);
+    if (explicit) return explicit;
+    const amountInWords = window.Invoices?.amountToWords?.(fallbackAmount, currency);
+    if (typeof amountInWords === 'string' && amountInWords.trim()) return amountInWords.trim();
+    return `${this.money(currency, fallbackAmount)} only`;
+  },
   normalizeReceipt(raw = {}) {
     const source = raw && typeof raw === 'object' ? raw : {};
     const normalized = {};
@@ -95,7 +109,7 @@ const Receipts = {
     const section = ['one_time_fee', 'one_time', 'setup', 'non_recurring', 'non-recurring'].includes(rawSection)
       ? 'one_time_fee'
       : 'location_details';
-    const description = String(pick(source.description) || '').trim();
+    const description = this.sanitizeText(pick(source.description));
     const parsedLocationAndModule = description.includes(' - ')
       ? description.split(' - ').map(part => part.trim())
       : [];
@@ -107,19 +121,19 @@ const Receipts = {
       receipt_id: String(pick(source.receipt_id, source.receiptId)).trim(),
       section,
       line_no: this.toNumberSafe(pick(source.line_no, source.lineNo, source.line)),
-      location_name: String(pick(source.location_name, source.locationName, parsedLocation)).trim(),
-      location_address: String(pick(source.location_address, source.locationAddress)).trim(),
+      location_name: this.sanitizeText(pick(source.location_name, source.locationName, parsedLocation)),
+      location_address: this.sanitizeText(pick(source.location_address, source.locationAddress)),
       service_start_date: String(pick(source.service_start_date, source.serviceStartDate)).trim(),
       service_end_date: String(pick(source.service_end_date, source.serviceEndDate)).trim(),
-      modules: String(pick(source.modules, source.item_name, source.itemName, parsedModule, description)).trim(),
+      modules: this.sanitizeText(pick(source.modules, source.item_name, source.itemName, parsedModule, description)),
       description,
-      item_name: String(pick(source.item_name, source.itemName, parsedModule, description)).trim(),
+      item_name: this.sanitizeText(pick(source.item_name, source.itemName, parsedModule, description)),
       unit_price: this.toNumberSafe(pick(source.unit_price, source.unitPrice)),
       discounted_unit_price: this.toNumberSafe(pick(source.discounted_unit_price, source.discountedUnitPrice)),
       discount_percent: this.toNumberSafe(pick(source.discount_percent, source.discountPercent)),
       quantity: this.toNumberSafe(pick(source.quantity, source.qty)),
       line_total: this.toNumberSafe(pick(source.line_total, source.lineTotal, source.amount)),
-      notes: String(pick(source.notes)).trim()
+      notes: this.sanitizeText(pick(source.notes))
     };
   },
   receiptDbId(value) {
@@ -411,9 +425,9 @@ const Receipts = {
     if (E.receiptOneTimeItemsTbody) {
       E.receiptOneTimeItemsTbody.innerHTML = oneTime.length
         ? oneTime
-            .map(item => `<tr><td>${U.escapeHtml(item.item_name || item.modules || item.description || '—')}</td><td>${U.escapeHtml(String(item.quantity ?? 0))}</td><td>${this.formatMoney(item.unit_price ?? 0)}</td><td>${U.escapeHtml(String(item.discount_percent ?? 0))}</td><td>${this.formatMoney(item.line_total ?? 0)}</td><td>${U.escapeHtml(item.notes || '—')}</td></tr>`)
+            .map(item => `<tr><td>${U.escapeHtml(item.location_name || '—')}</td><td>${U.escapeHtml(item.location_address || '—')}</td><td>${U.escapeHtml(item.item_name || item.modules || item.description || '—')}</td><td>${U.escapeHtml(String(item.quantity ?? 0))}</td><td>${this.formatMoney(item.unit_price ?? 0)}</td><td>${U.escapeHtml(String(item.discount_percent ?? 0))}</td><td>${this.formatMoney(item.line_total ?? 0)}</td><td>${U.escapeHtml(item.notes || '—')}</td></tr>`)
             .join('')
-        : '<tr><td colspan="6" class="muted" style="text-align:center;">No one-time fee rows.</td></tr>';
+        : '<tr><td colspan="8" class="muted" style="text-align:center;">No one-time fee rows.</td></tr>';
     }
   },
   populateForm(receipt, items, readOnly = false) {
@@ -431,7 +445,8 @@ const Receipts = {
     set('receiptFormCustomerAddress', receipt.customer_address);
     set('receiptFormCurrency', receipt.currency);
     set('receiptFormStatus', receipt.status);
-    set('receiptFormAmountInWords', receipt.amount_in_words);
+    const receivedAmount = this.toNumberSafe(receipt.received_amount || receipt.amount_received || receipt.grand_total);
+    set('receiptFormAmountInWords', this.receiptAmountInWords(receipt.amount_in_words, receipt.currency, receivedAmount));
     set('receiptFormInvoiceGrandTotal', receipt.invoice_grand_total);
     set('receiptFormReceivedAmount', receipt.received_amount || receipt.grand_total);
     set('receiptFormPendingAmount', receipt.pending_amount);
@@ -856,8 +871,8 @@ const Receipts = {
       return U.escapeHtml(U.fmtDisplayDate(v));
     };
     const oneTimeRows = oneTimeItems.length
-      ? oneTimeItems.map(item => `<tr><td>${text(item.item_name || item.modules || item.description)}</td><td class="cell-center">${U.escapeHtml(String(item.quantity ?? 0))}</td><td class="cell-right">${this.money(currency, item.unit_price ?? 0)}</td><td class="cell-center">${U.escapeHtml(String(item.discount_percent ?? 0))}%</td><td class="cell-right">${this.money(currency, item.line_total ?? 0)}</td><td>${text(item.notes)}</td></tr>`).join('')
-      : '<tr><td colspan="6" class="muted cell-center">No one-time fee rows.</td></tr>';
+      ? oneTimeItems.map(item => `<tr><td>${text(item.location_name)}</td><td>${text(item.location_address)}</td><td>${text(item.item_name || item.modules || item.description)}</td><td class="cell-center">${U.escapeHtml(String(item.quantity ?? 0))}</td><td class="cell-right">${this.money(currency, item.unit_price ?? 0)}</td><td class="cell-center">${U.escapeHtml(String(item.discount_percent ?? 0))}%</td><td class="cell-right">${this.money(currency, item.line_total ?? 0)}</td><td>${text(item.notes)}</td></tr>`).join('')
+      : '<tr><td colspan="8" class="muted cell-center">No one-time fee rows.</td></tr>';
     const locationRows = locationItems.length
       ? locationItems.map(item => `<tr><td>${text(item.location_name)}</td><td>${text(item.location_address)}</td><td class="cell-center">${date(item.service_start_date)}</td><td class="cell-center">${date(item.service_end_date)}</td><td>${text(item.modules || item.item_name || item.description)}</td><td class="cell-right">${this.money(currency, item.line_total ?? 0)}</td></tr>`).join('')
       : '<tr><td colspan="6" class="muted cell-center">No location detail rows.</td></tr>';
@@ -866,7 +881,7 @@ const Receipts = {
     const invoiceTotal = this.toNumberSafe(r.invoice_grand_total || r.grand_total || invoice?.grand_total || subtotalLocations + subtotalOneTime);
     const receivedAmount = this.toNumberSafe(r.received_amount || r.amount_received);
     const pendingAmount = this.toNumberSafe(r.pending_amount || Math.max(0, invoiceTotal - receivedAmount));
-    const amountInWords = String(r.amount_in_words || '').trim() || `${this.money(currency, receivedAmount)} only`;
+    const amountInWords = this.receiptAmountInWords(r.amount_in_words, currency, receivedAmount);
     return `<!doctype html><html><head><meta charset="utf-8" /><title>Receipt Preview</title><style>
       :root{color-scheme:light;}*{box-sizing:border-box;}body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:16px;background:#f3f4f6;color:#111827;}
       .receipt-sheet{max-width:1020px;margin:0 auto;background:#fff;border:1px solid #d1d5db;padding:22px;}
@@ -892,7 +907,7 @@ const Receipts = {
       <section class="address-block"><div><strong>${text(r.customer_legal_name || r.customer_name || invoice?.customer_legal_name || invoice?.customer_name)}</strong></div><div>${text(r.customer_address || invoice?.customer_address)}</div></section>
       <div class="notice">If you have any questions about this Invoice, please contact: ${text(r.support_email || invoice?.support_email || 'support@incheck360.com')}</div>
       <section class="section"><h3>Location Details</h3><table><thead><tr><th>Location Name</th><th>Location Address</th><th>Start Date</th><th>End Date</th><th>Modules</th><th>Amount</th></tr></thead><tbody>${locationRows}</tbody></table></section>
-      <section class="section"><h3>One-time Fees</h3><table><thead><tr><th>Item Name</th><th>Qty</th><th>Unit Price</th><th>Discount %</th><th>Line Total</th><th>Notes</th></tr></thead><tbody>${oneTimeRows}</tbody></table></section>
+      <section class="section"><h3>One-time Fees</h3><table><thead><tr><th>Location Name</th><th>Location Address</th><th>Item Name</th><th>Qty</th><th>Unit Price</th><th>Discount %</th><th>Line Total</th><th>Notes</th></tr></thead><tbody>${oneTimeRows}</tbody></table></section>
       <p class="summary">We have received from ${text(r.customer_legal_name || r.customer_name || invoice?.customer_legal_name || invoice?.customer_name)} the sum of ${text(amountInWords)} being partial payment on account of ${text(r.invoice_number || invoice?.invoice_number || r.invoice_id)}. Pending amount: ${this.money(currency, pendingAmount)}.</p>
       <div class="totals-wrap"><div class="totals">
         <div class="row"><span>Subtotal Locations</span><span>${this.money(currency, subtotalLocations)}</span></div>
