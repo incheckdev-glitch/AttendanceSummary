@@ -90,26 +90,46 @@ const Receipts = {
   },
   normalizeItem(raw = {}) {
     const source = raw && typeof raw === 'object' ? raw : {};
-    const pick = (...values) => values.find(v => v !== undefined && v !== null && String(v).trim() !== '') || '';
-    const rawSection = String(pick(source.section, source.item_section, source.itemSection)).trim().toLowerCase();
-    const section = rawSection === 'one_time_fee' ? 'one_time_fee' : 'location_details';
+    const pick = (...values) => values.find(v => v !== undefined && v !== null && !(typeof v === 'string' && v.trim() === ''));
+    const rawSection = String(pick(source.section, source.item_section, source.itemSection, source.type, source.category) || '').trim().toLowerCase();
+    const section = ['one_time_fee', 'one_time', 'setup', 'non_recurring', 'non-recurring'].includes(rawSection)
+      ? 'one_time_fee'
+      : 'location_details';
+    const description = String(pick(source.description) || '').trim();
+    const parsedLocationAndModule = description.includes(' - ')
+      ? description.split(' - ').map(part => part.trim())
+      : [];
+    const parsedLocation = parsedLocationAndModule[0] || '';
+    const parsedModule = parsedLocationAndModule.slice(1).join(' - ') || '';
     return {
+      id: String(pick(source.id)).trim(),
       receipt_item_id: String(pick(source.receipt_item_id, source.receiptItemId)).trim(),
       receipt_id: String(pick(source.receipt_id, source.receiptId)).trim(),
       section,
       line_no: this.toNumberSafe(pick(source.line_no, source.lineNo, source.line)),
-      location_name: String(pick(source.location_name, source.locationName)).trim(),
+      location_name: String(pick(source.location_name, source.locationName, parsedLocation)).trim(),
       location_address: String(pick(source.location_address, source.locationAddress)).trim(),
       service_start_date: String(pick(source.service_start_date, source.serviceStartDate)).trim(),
       service_end_date: String(pick(source.service_end_date, source.serviceEndDate)).trim(),
-      modules: String(pick(source.modules, source.item_name, source.itemName)).trim(),
-      item_name: String(pick(source.item_name, source.itemName)).trim(),
+      modules: String(pick(source.modules, source.item_name, source.itemName, parsedModule, description)).trim(),
+      description,
+      item_name: String(pick(source.item_name, source.itemName, parsedModule, description)).trim(),
       unit_price: this.toNumberSafe(pick(source.unit_price, source.unitPrice)),
+      discounted_unit_price: this.toNumberSafe(pick(source.discounted_unit_price, source.discountedUnitPrice)),
       discount_percent: this.toNumberSafe(pick(source.discount_percent, source.discountPercent)),
       quantity: this.toNumberSafe(pick(source.quantity, source.qty)),
-      line_total: this.toNumberSafe(pick(source.line_total, source.lineTotal)),
+      line_total: this.toNumberSafe(pick(source.line_total, source.lineTotal, source.amount)),
       notes: String(pick(source.notes)).trim()
     };
+  },
+  receiptDbId(value) {
+    return String(value || '').trim();
+  },
+  receiptDisplayId(receipt = {}) {
+    return String(receipt?.receipt_number || receipt?.receipt_id || '').trim();
+  },
+  isUuid(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
   },
   extractRows(response) {
     const candidates = [response, response?.receipts, response?.items, response?.rows, response?.data, response?.result, response?.payload];
@@ -273,15 +293,21 @@ const Receipts = {
   },
   upsertLocalRow(row) {
     const normalized = this.normalizeReceipt(row);
-    const idx = this.state.rows.findIndex(item => String(item.receipt_id || '') === String(normalized.receipt_id || ''));
+    const normalizedDbId = this.receiptDbId(normalized.id);
+    const idx = this.state.rows.findIndex(item => {
+      const itemDbId = this.receiptDbId(item.id);
+      if (itemDbId && normalizedDbId) return itemDbId === normalizedDbId;
+      return String(item.receipt_id || '') === String(normalized.receipt_id || '');
+    });
     if (idx === -1) this.state.rows.unshift(normalized);
     else this.state.rows[idx] = { ...this.state.rows[idx], ...normalized };
     this.rerenderVisibleTable();
     return normalized;
   },
   removeLocalRow(id) {
+    const target = String(id || '').trim();
     const before = this.state.rows.length;
-    this.state.rows = this.state.rows.filter(item => String(item.receipt_id || '') !== String(id || ''));
+    this.state.rows = this.state.rows.filter(item => this.receiptDbId(item.id) !== target && String(item.receipt_id || '').trim() !== target);
     if (this.state.rows.length !== before) this.rerenderVisibleTable();
   },
   rerenderVisibleTable() {
@@ -349,7 +375,7 @@ const Receipts = {
     }
     E.receiptsTbody.innerHTML = rows
       .map(row => {
-        const id = U.escapeAttr(row.receipt_id || '');
+        const rowUuid = U.escapeAttr(row.id || row.receipt_id || '');
         const typeLabel = this.receiptTypeLabel(row);
         const settlementBadge = this.isSettlementReceipt(row) ? ' <span class="pill">Settlement</span>' : '';
         return `<tr>
@@ -363,10 +389,10 @@ const Receipts = {
           <td>${U.escapeHtml(row.status || '—')}</td>
           <td>${U.escapeHtml(U.fmtDisplayDate(row.updated_at))}</td>
           <td><div style="display:flex;gap:6px;flex-wrap:wrap;">
-            <button class="btn ghost sm" type="button" data-receipt-view="${id}">View</button>
-            ${Permissions.canUpdateReceipt() ? `<button class="btn ghost sm" type="button" data-receipt-edit="${id}">Edit</button>` : ''}
-            ${Permissions.canPreviewReceipt() ? `<button class="btn ghost sm" type="button" data-receipt-preview="${id}">Preview</button>` : ''}
-            ${Permissions.canDeleteReceipt() ? `<button class="btn ghost sm" type="button" data-receipt-delete="${id}">Delete</button>` : ''}
+            <button class="btn ghost sm" type="button" data-receipt-view="${rowUuid}">View</button>
+            ${Permissions.canUpdateReceipt() ? `<button class="btn ghost sm" type="button" data-receipt-edit="${rowUuid}">Edit</button>` : ''}
+            ${Permissions.canPreviewReceipt() ? `<button class="btn ghost sm" type="button" data-receipt-preview="${rowUuid}">Preview</button>` : ''}
+            ${Permissions.canDeleteReceipt() ? `<button class="btn ghost sm" type="button" data-receipt-delete="${rowUuid}">Delete</button>` : ''}
           </div></td>
         </tr>`;
       })
@@ -385,7 +411,7 @@ const Receipts = {
     if (E.receiptOneTimeItemsTbody) {
       E.receiptOneTimeItemsTbody.innerHTML = oneTime.length
         ? oneTime
-            .map(item => `<tr><td>${U.escapeHtml(item.item_name || item.modules || '—')}</td><td>${U.escapeHtml(String(item.quantity || 0))}</td><td>${this.formatMoney(item.unit_price)}</td><td>${U.escapeHtml(String(item.discount_percent || 0))}</td><td>${this.formatMoney(item.line_total)}</td><td>${U.escapeHtml(item.notes || '—')}</td></tr>`)
+            .map(item => `<tr><td>${U.escapeHtml(item.item_name || item.modules || item.description || '—')}</td><td>${U.escapeHtml(String(item.quantity ?? 0))}</td><td>${this.formatMoney(item.unit_price ?? 0)}</td><td>${U.escapeHtml(String(item.discount_percent ?? 0))}</td><td>${this.formatMoney(item.line_total ?? 0)}</td><td>${U.escapeHtml(item.notes || '—')}</td></tr>`)
             .join('')
         : '<tr><td colspan="6" class="muted" style="text-align:center;">No one-time fee rows.</td></tr>';
     }
@@ -412,9 +438,9 @@ const Receipts = {
     set('receiptFormPaymentState', receipt.payment_state);
     set('receiptFormPaymentNotes', receipt.payment_notes);
     set('receiptFormSupportEmail', receipt.support_email);
-    if (E.receiptForm) E.receiptForm.dataset.id = receipt.receipt_id || '';
+    if (E.receiptForm) E.receiptForm.dataset.id = receipt.id || '';
     if (E.receiptFormTitle) E.receiptFormTitle.textContent = receipt.receipt_id ? `Receipt · ${receipt.receipt_id}` : 'Create Receipt';
-    if (E.receiptFormDeleteBtn) E.receiptFormDeleteBtn.style.display = !readOnly && receipt.receipt_id && Permissions.canDeleteReceipt() ? '' : 'none';
+    if (E.receiptFormDeleteBtn) E.receiptFormDeleteBtn.style.display = !readOnly && receipt.id && Permissions.canDeleteReceipt() ? '' : 'none';
     if (E.receiptFormSaveBtn) E.receiptFormSaveBtn.style.display = !readOnly && Permissions.canUpdateReceipt() ? '' : 'none';
     this.renderItems(items);
     if (E.receiptForm) {
@@ -584,11 +610,35 @@ const Receipts = {
     if (E.receiptFormPreviewBtn) E.receiptFormPreviewBtn.style.display = 'none';
     if (E.receiptFormSaveBtn) E.receiptFormSaveBtn.style.display = Permissions.canCreateReceiptFromInvoice() ? '' : 'none';
   },
+  resolveReceiptUuid(ref) {
+    const raw = String(ref || '').trim();
+    if (!raw) return '';
+    if (this.isUuid(raw)) return raw;
+    const local = this.state.rows.find(row => {
+      const dbId = this.receiptDbId(row.id);
+      return dbId === raw || String(row.receipt_id || '').trim() === raw || String(row.receipt_number || '').trim() === raw;
+    });
+    return this.receiptDbId(local?.id);
+  },
+  async loadReceiptAndItemsByUuid(receiptUuid) {
+    const id = String(receiptUuid || '').trim();
+    const client = window.SupabaseClient?.getClient?.();
+    if (!client || !id) return null;
+    const [{ data: receiptRow, error: receiptError }, { data: itemRows, error: itemError }] = await Promise.all([
+      client.from('receipts').select('*').eq('id', id).maybeSingle(),
+      client.from('receipt_items').select('*').eq('receipt_id', id).order('line_no', { ascending: true, nullsFirst: false }).order('created_at', { ascending: true, nullsFirst: false })
+    ]);
+    if (receiptError) throw new Error(`Unable to load receipt: ${receiptError.message || 'Unknown error'}`);
+    if (!receiptRow) throw new Error('Receipt was not found.');
+    if (itemError) throw new Error(`Unable to load receipt items: ${itemError.message || 'Unknown error'}`);
+    return { receipt: this.normalizeReceipt(receiptRow), items: Array.isArray(itemRows) ? itemRows.map(item => this.normalizeItem(item)) : [] };
+  },
   async openReceiptById(receiptId, { readOnly = false, trigger = null } = {}) {
     const id = String(receiptId || '').trim();
-    if (!id) return;
-    if (this.state.openingReceiptIds.has(id)) return;
-    this.state.openingReceiptIds.add(id);
+    const receiptUuid = this.resolveReceiptUuid(id);
+    if (!receiptUuid) return;
+    if (this.state.openingReceiptIds.has(receiptUuid)) return;
+    this.state.openingReceiptIds.add(receiptUuid);
     this.setTriggerBusy(trigger, true);
     console.time('receipt-open');
     if (E.receiptForm) {
@@ -596,29 +646,31 @@ const Receipts = {
       delete E.receiptForm.dataset.sourceInvoiceUuid;
     }
     if (E.receiptFormPreviewBtn) E.receiptFormPreviewBtn.style.display = '';
-    const localSummary = this.state.rows.find(row => String(row.receipt_id || '').trim() === id);
-    this.populateForm(localSummary ? { ...localSummary, receipt_id: id } : { receipt_id: id }, [], readOnly);
+    const localSummary = this.state.rows.find(row => this.receiptDbId(row.id) === receiptUuid) || this.state.rows.find(row => String(row.receipt_id || '').trim() === id);
+    this.populateForm(localSummary ? { ...localSummary, id: receiptUuid } : { id: receiptUuid }, [], readOnly);
     this.setFormDetailLoading(true);
     try {
-      const cached = this.getCachedDetail(id);
+      const cached = this.getCachedDetail(receiptUuid);
       if (cached) {
         this.state.selectedReceipt = cached.receipt;
         this.state.items = cached.items;
         this.populateForm(cached.receipt, cached.items, readOnly);
         return;
       }
-      const response = await Api.getReceipt(id);
-      const { receipt, items } = this.extractReceiptAndItems(response, id);
-      this.setCachedDetail(id, receipt, items);
+      const directLoad = await this.loadReceiptAndItemsByUuid(receiptUuid).catch(() => null);
+      const detail = directLoad || this.extractReceiptAndItems(await Api.getReceipt(receiptUuid), receiptUuid);
+      const receipt = this.normalizeReceipt({ ...(detail?.receipt || {}), id: detail?.receipt?.id || receiptUuid });
+      const items = Array.isArray(detail?.items) ? detail.items.map(item => this.normalizeItem(item)) : [];
+      this.setCachedDetail(receiptUuid, receipt, items);
       this.state.selectedReceipt = receipt;
       this.state.items = items;
-      if (String(E.receiptForm?.dataset.id || '').trim() === id) {
+      if (String(E.receiptForm?.dataset.id || '').trim() === receiptUuid) {
         this.populateForm(receipt, items, readOnly);
       }
     } catch (error) {
       UI.toast('Unable to load receipt: ' + (error?.message || 'Unknown error'));
     } finally {
-      this.state.openingReceiptIds.delete(id);
+      this.state.openingReceiptIds.delete(receiptUuid);
       this.setTriggerBusy(trigger, false);
       this.setFormDetailLoading(false);
       console.timeEnd('receipt-open');
@@ -684,13 +736,14 @@ const Receipts = {
           response?.item ||
           response;
         const normalized = this.upsertLocalRow(receipt);
-        const receiptId = String(normalized?.receipt_id || receipt?.receipt_id || response?.receipt_id || response?.id || '').trim();
-        this.setCachedDetail(receiptId, normalized || receipt, parsed?.items || []);
+        const receiptUuid = String(normalized?.id || receipt?.id || response?.id || '').trim();
+        const receiptDisplay = String(normalized?.receipt_id || receipt?.receipt_id || '').trim();
+        this.setCachedDetail(receiptUuid, normalized || receipt, parsed?.items || []);
         await window.Invoices?.syncAfterReceiptMutation?.({
           invoiceId: normalized?.invoice_id || receipt?.invoice_id || invoiceUuid,
           receipt: normalized || receipt
         });
-        UI.toast(receiptId ? `Receipt ${receiptId} created.` : 'Receipt created from invoice.');
+        UI.toast(receiptDisplay ? `Receipt ${receiptDisplay} created.` : 'Receipt created from invoice.');
         this.closeForm();
       } catch (error) {
         UI.toast('Unable to create receipt: ' + (error?.message || 'Unknown error'));
@@ -702,7 +755,7 @@ const Receipts = {
       return;
     }
     if (!id) return;
-    const currentRecord = this.state.rows.find(row => String(row.receipt_id || '') === id) || {};
+    const currentRecord = this.state.rows.find(row => this.receiptDbId(row.id) === id) || {};
     const workflowCheck = await window.WorkflowEngine?.enforceBeforeSave?.('receipts', currentRecord, {
       receipt_id: id,
       current_status: currentRecord?.status || '',
@@ -719,15 +772,15 @@ const Receipts = {
     try {
       const response = await Api.updateReceipt(id, updates);
       const parsed = this.extractReceiptAndItems(response, id);
-      const persisted = parsed?.receipt?.receipt_id ? parsed.receipt : { ...updates, receipt_id: id };
+      const persisted = parsed?.receipt?.id ? parsed.receipt : { ...updates, id, receipt_id: currentRecord?.receipt_id || id };
       const normalized = this.upsertLocalRow(persisted);
-      this.setCachedDetail(normalized?.receipt_id || id, persisted, parsed?.items || this.state.items);
-      if (normalized?.receipt_id && this.state.selectedReceipt?.receipt_id === normalized.receipt_id) {
+      this.setCachedDetail(normalized?.id || id, persisted, parsed?.items || this.state.items);
+      if (normalized?.id && this.state.selectedReceipt?.id === normalized.id) {
         this.state.selectedReceipt = normalized;
         this.state.items = parsed?.items || this.state.items;
       }
       await window.Invoices?.syncAfterReceiptMutation?.({ invoiceId: normalized?.invoice_id || persisted?.invoice_id, receipt: normalized });
-      UI.toast(`Receipt ${id} saved.`);
+      UI.toast(`Receipt ${this.receiptDisplayId(normalized || persisted) || id} saved.`);
       this.closeForm();
     } catch (error) {
       UI.toast('Unable to save receipt: ' + (error?.message || 'Unknown error'));
@@ -738,13 +791,14 @@ const Receipts = {
     }
   },
   async deleteReceipt(receiptId) {
-    const id = String(receiptId || '').trim();
+    const id = this.resolveReceiptUuid(receiptId);
     if (!id) return;
-    if (!window.confirm(`Delete receipt ${id}? This cannot be undone.`)) return;
+    const displayId = this.receiptDisplayId(this.state.rows.find(row => this.receiptDbId(row.id) === id)) || id;
+    if (!window.confirm(`Delete receipt ${displayId}? This cannot be undone.`)) return;
     this.setFormBusy(true);
     try {
       const deletedInvoiceId = String(
-        this.state.rows.find(row => String(row.receipt_id || '').trim() === id)?.invoice_id ||
+        this.state.rows.find(row => this.receiptDbId(row.id) === id)?.invoice_id ||
           this.state.selectedReceipt?.invoice_id ||
           ''
       ).trim();
@@ -752,7 +806,7 @@ const Receipts = {
       delete this.state.detailCacheById[id];
       this.removeLocalRow(id);
       if (deletedInvoiceId) await window.Invoices?.syncAfterReceiptMutation?.({ invoiceId: deletedInvoiceId });
-      UI.toast(`Receipt ${id} deleted.`);
+      UI.toast(`Receipt ${displayId} deleted.`);
       if (String(E.receiptForm?.dataset.id || '').trim() === id) this.closeForm();
     } catch (error) {
       UI.toast('Unable to delete receipt: ' + (error?.message || 'Unknown error'));
@@ -760,33 +814,108 @@ const Receipts = {
       this.setFormBusy(false);
     }
   },
-  formatReceiptPreviewHtml(html) {
-    const branded = U.addIncheckDocumentLogo(html);
-    if (!branded || /data-incheck360-receipt-style/i.test(branded)) return branded;
-
-    const styleTag = `<style data-incheck360-receipt-style>
-      body{font-family:Inter,Segoe UI,Arial,sans-serif;line-height:1.45;color:#0f172a;padding:24px;}
-      h1,h2,h3,h4{margin:0 0 10px;color:#0f172a;}
-      p{margin:0 0 8px;}
-      table{width:100%;border-collapse:collapse;margin:14px 0 18px;}
-      th,td{border:1px solid #dbe2ea;padding:8px 10px;vertical-align:top;text-align:left;}
-      th{background:#f8fafc;font-weight:600;}
-      .section,.block,.panel{margin-bottom:14px;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;}
-    </style>`;
-
-    if (/<\/head>/i.test(branded)) return branded.replace(/<\/head>/i, `${styleTag}</head>`);
-    return `${styleTag}${branded}`;
+  money(currency, value) {
+    const amount = this.toNumberSafe(value);
+    return `${String(currency || 'USD').toUpperCase()} ${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  },
+  async loadReceiptPreviewData(receiptRef) {
+    const receiptUuid = this.resolveReceiptUuid(receiptRef);
+    if (!receiptUuid) throw new Error('Receipt UUID could not be resolved from the selected record.');
+    const detail = await this.loadReceiptAndItemsByUuid(receiptUuid);
+    if (!detail?.receipt) throw new Error('Receipt data was not found.');
+    const client = window.SupabaseClient?.getClient?.();
+    let invoice = null;
+    let invoiceItems = [];
+    const invoiceUuid = String(detail.receipt.invoice_id || '').trim();
+    if (client && invoiceUuid) {
+      const [{ data: invoiceRow }, { data: invoiceItemRows }] = await Promise.all([
+        client.from('invoices').select('*').eq('id', invoiceUuid).maybeSingle(),
+        client.from('invoice_items').select('*').eq('invoice_id', invoiceUuid)
+      ]);
+      invoice = invoiceRow || null;
+      invoiceItems = Array.isArray(invoiceItemRows) ? invoiceItemRows : [];
+    }
+    return { receiptUuid, receipt: detail.receipt, items: detail.items, invoice, invoiceItems };
+  },
+  buildReceiptPreviewHtml(receipt = {}, items = [], invoice = null, invoiceItems = []) {
+    const r = this.normalizeReceipt(receipt || {});
+    const normalizedItems = (Array.isArray(items) ? items : []).map(item => this.normalizeItem(item));
+    const fallbackItems = (Array.isArray(invoiceItems) ? invoiceItems : []).map(item => this.normalizeItem(item));
+    const sourceItems = normalizedItems.length ? normalizedItems : fallbackItems;
+    const isOneTime = section => ['one_time_fee', 'one_time', 'setup', 'non_recurring', 'non-recurring'].includes(String(section || '').trim().toLowerCase());
+    const locationItems = sourceItems.filter(item => !isOneTime(item.section));
+    const oneTimeItems = sourceItems.filter(item => isOneTime(item.section));
+    const currency = r.currency || invoice?.currency || 'USD';
+    const text = value => {
+      const v = String(value ?? '').trim();
+      return v ? U.escapeHtml(v) : '—';
+    };
+    const date = value => {
+      const v = String(value || '').trim();
+      if (!v) return '—';
+      return U.escapeHtml(U.fmtDisplayDate(v));
+    };
+    const oneTimeRows = oneTimeItems.length
+      ? oneTimeItems.map(item => `<tr><td>${text(item.item_name || item.modules || item.description)}</td><td class="cell-center">${U.escapeHtml(String(item.quantity ?? 0))}</td><td class="cell-right">${this.money(currency, item.unit_price ?? 0)}</td><td class="cell-center">${U.escapeHtml(String(item.discount_percent ?? 0))}%</td><td class="cell-right">${this.money(currency, item.line_total ?? 0)}</td><td>${text(item.notes)}</td></tr>`).join('')
+      : '<tr><td colspan="6" class="muted cell-center">No one-time fee rows.</td></tr>';
+    const locationRows = locationItems.length
+      ? locationItems.map(item => `<tr><td>${text(item.location_name)}</td><td>${text(item.location_address)}</td><td class="cell-center">${date(item.service_start_date)}</td><td class="cell-center">${date(item.service_end_date)}</td><td>${text(item.modules || item.item_name || item.description)}</td><td class="cell-right">${this.money(currency, item.line_total ?? 0)}</td></tr>`).join('')
+      : '<tr><td colspan="6" class="muted cell-center">No location detail rows.</td></tr>';
+    const subtotalLocations = this.toNumberSafe(r.subtotal_locations || invoice?.subtotal_locations || locationItems.reduce((sum, item) => sum + this.toNumberSafe(item.line_total), 0));
+    const subtotalOneTime = this.toNumberSafe(r.subtotal_one_time || invoice?.subtotal_one_time || oneTimeItems.reduce((sum, item) => sum + this.toNumberSafe(item.line_total), 0));
+    const invoiceTotal = this.toNumberSafe(r.invoice_grand_total || r.grand_total || invoice?.grand_total || subtotalLocations + subtotalOneTime);
+    const receivedAmount = this.toNumberSafe(r.received_amount || r.amount_received);
+    const pendingAmount = this.toNumberSafe(r.pending_amount || Math.max(0, invoiceTotal - receivedAmount));
+    const amountInWords = String(r.amount_in_words || '').trim() || `${this.money(currency, receivedAmount)} only`;
+    return `<!doctype html><html><head><meta charset="utf-8" /><title>Receipt Preview</title><style>
+      :root{color-scheme:light;}*{box-sizing:border-box;}body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:16px;background:#f3f4f6;color:#111827;}
+      .receipt-sheet{max-width:1020px;margin:0 auto;background:#fff;border:1px solid #d1d5db;padding:22px;}
+      .header-top{text-align:center;border-bottom:1px solid #111827;padding-bottom:10px}.company-title{font-size:26px;font-weight:700;letter-spacing:.04em;margin:0}
+      .meta-grid{display:grid;grid-template-columns:1fr 300px;gap:20px;margin-top:16px}.voucher-title{margin:0;font-size:34px;font-weight:700}
+      .meta-box{border:1px solid #111827}.meta-row{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #d1d5db}.meta-row:last-child{border-bottom:none}
+      .meta-row span{padding:8px 10px;font-size:12px}.label{font-weight:700;background:#f9fafb;border-right:1px solid #d1d5db}
+      .address-block{margin-top:10px;border:1px solid #d1d5db;padding:10px}.notice{margin-top:12px;padding:8px 10px;border:1px solid #dbeafe;background:#f8fbff;font-size:12px}
+      table{width:100%;border-collapse:collapse;margin-top:8px}th,td{border:1px solid #d1d5db;padding:7px 8px;font-size:12px;vertical-align:top}th{background:#f9fafb}
+      .section{margin-top:16px}.section h3{margin:0 0 6px;font-size:14px}.cell-right{text-align:right}.cell-center{text-align:center}.muted{color:#6b7280}
+      .summary{margin-top:14px;font-size:12px;line-height:1.5}.totals-wrap{display:flex;justify-content:flex-end;margin-top:12px}.totals{width:320px;border:1px solid #111827}
+      .totals .row{display:grid;grid-template-columns:1fr auto;border-bottom:1px solid #d1d5db}.totals .row:last-child{border-bottom:none}.totals .row span{padding:7px 10px;font-size:12px}
+      .footer{margin-top:20px;border-top:1px solid #d1d5db;padding-top:8px;font-size:11px;color:#4b5563;text-align:center}
+      @media print{body{background:#fff;padding:0}.receipt-sheet{border:none;max-width:none;padding:16px}}
+    </style></head><body><article class="receipt-sheet">
+      <header class="header-top"><h1 class="company-title">${text(r.provider_legal_name || invoice?.provider_legal_name || 'INCHECK360')}</h1></header>
+      <section class="meta-grid"><div><div><strong>${text(r.provider_legal_name || invoice?.provider_legal_name || 'Company')}</strong></div><div>${text(r.provider_address || invoice?.provider_address || 'Principal office')}</div></div>
+        <div><h2 class="voucher-title">RECEIPT VOUCHER</h2><div class="meta-box">
+          <div class="meta-row"><span class="label">Receipt No.</span><span>${text(r.receipt_number || r.receipt_id)}</span></div>
+          <div class="meta-row"><span class="label">Receipt Date</span><span>${date(r.receipt_date)}</span></div>
+          <div class="meta-row"><span class="label">Invoice No.</span><span>${text(r.invoice_number || invoice?.invoice_number || r.invoice_id)}</span></div>
+        </div></div></section>
+      <section class="address-block"><div><strong>${text(r.customer_legal_name || r.customer_name || invoice?.customer_legal_name || invoice?.customer_name)}</strong></div><div>${text(r.customer_address || invoice?.customer_address)}</div></section>
+      <div class="notice">If you have any questions about this Invoice, please contact: ${text(r.support_email || invoice?.support_email || 'support@incheck360.com')}</div>
+      <section class="section"><h3>Location Details</h3><table><thead><tr><th>Location Name</th><th>Location Address</th><th>Start Date</th><th>End Date</th><th>Modules</th><th>Amount</th></tr></thead><tbody>${locationRows}</tbody></table></section>
+      <section class="section"><h3>One-time Fees</h3><table><thead><tr><th>Item Name</th><th>Qty</th><th>Unit Price</th><th>Discount %</th><th>Line Total</th><th>Notes</th></tr></thead><tbody>${oneTimeRows}</tbody></table></section>
+      <p class="summary">We have received from ${text(r.customer_legal_name || r.customer_name || invoice?.customer_legal_name || invoice?.customer_name)} the sum of ${text(amountInWords)} being partial payment on account of ${text(r.invoice_number || invoice?.invoice_number || r.invoice_id)}. Pending amount: ${this.money(currency, pendingAmount)}.</p>
+      <div class="totals-wrap"><div class="totals">
+        <div class="row"><span>Subtotal Locations</span><span>${this.money(currency, subtotalLocations)}</span></div>
+        <div class="row"><span>Subtotal One Time</span><span>${this.money(currency, subtotalOneTime)}</span></div>
+        <div class="row"><span>Invoice Total</span><span>${this.money(currency, invoiceTotal)}</span></div>
+        <div class="row"><span>Received Amount</span><span>${this.money(currency, receivedAmount)}</span></div>
+        <div class="row"><span>Pending Amount</span><span>${this.money(currency, pendingAmount)}</span></div>
+        <div class="row"><span>Payment State</span><span>${text(r.payment_state || r.status)}</span></div>
+        <div class="row"><span>Receipt Total</span><span>${this.money(currency, receivedAmount || invoiceTotal)}</span></div>
+      </div></div>
+      <footer class="footer">This document is computer generated and does not require a signature.</footer>
+    </article></body></html>`;
   },
   async previewReceipt(receiptId) {
-    const id = String(receiptId || '').trim();
+    const id = this.resolveReceiptUuid(receiptId);
     if (!id) return;
     try {
-      const response = await Api.previewReceipt(id);
-      const html = String(response?.html || response?.receipt_html || response?.content || response || '').trim();
-      if (!html) return UI.toast('No receipt HTML was returned by backend.');
-      const formattedHtml = this.formatReceiptPreviewHtml(U.formatPreviewHtmlDates(html));
-      if (E.receiptPreviewTitle) E.receiptPreviewTitle.textContent = `RECEIPT VOUCHER · ${id}`;
-      if (E.receiptPreviewFrame) E.receiptPreviewFrame.srcdoc = formattedHtml;
+      const { receipt, items, invoice, invoiceItems } = await this.loadReceiptPreviewData(id);
+      const html = this.buildReceiptPreviewHtml(receipt, items, invoice, invoiceItems);
+      const brandedHtml = U.addIncheckDocumentLogo(U.formatPreviewHtmlDates(html));
+      const label = this.receiptDisplayId(receipt) || id;
+      if (E.receiptPreviewTitle) E.receiptPreviewTitle.textContent = `RECEIPT VOUCHER · ${label}`;
+      if (E.receiptPreviewFrame) E.receiptPreviewFrame.srcdoc = brandedHtml;
       if (E.receiptPreviewModal) {
         E.receiptPreviewModal.classList.add('open');
         E.receiptPreviewModal.setAttribute('aria-hidden', 'false');
