@@ -193,7 +193,8 @@ const Clients = {
       due_date: String(raw.due_date || raw.dueDate || '').trim(),
       reference: String(raw.agreement_id || raw.agreementId || raw.reference || raw.ref || '').trim(),
       notes: String(raw.notes || '').trim(),
-      location_name: String(raw.location_name || raw.locationName || '').trim()
+      location_name: String(raw.location_name || raw.locationName || '').trim(),
+      created_at: String(raw.created_at || raw.createdAt || '').trim()
     };
   },
   normalizeReceipt(raw = {}) {
@@ -206,15 +207,21 @@ const Clients = {
       customer_name: String(raw.customer_name || raw.customerName || '').trim(),
       customer_legal_name: String(raw.customer_legal_name || raw.customerLegalName || '').trim(),
       payment_state: String(raw.payment_state || raw.status || '').trim(),
-      received_amount: this.toNumberSafe(raw.received_amount ?? raw.receivedAmount ?? raw.amount_paid ?? raw.amount_received ?? raw.amountReceived),
+      received_amount: this.toNumberSafe(raw.amount_received ?? raw.amountReceived ?? raw.received_amount ?? raw.receivedAmount ?? raw.amount_paid),
       pending_amount: this.toNumberSafe(raw.pending_amount ?? raw.pendingAmount),
       updated_at: String(raw.updated_at || raw.updatedAt || '').trim(),
+      created_at: String(raw.created_at || raw.createdAt || '').trim(),
       receipt_date: String(raw.receipt_date || raw.received_date || '').trim(),
       reference: String(raw.payment_reference || raw.reference || raw.ref || '').trim(),
       notes: String(raw.notes || '').trim()
     };
   },
   matchesClient_(record = {}, client = {}) {
+    const clientUuid = String(client.id || '').trim();
+    if (clientUuid) {
+      const recordClientUuid = String(record.client_id || record.client_uuid || '').trim();
+      if (recordClientUuid && recordClientUuid === clientUuid) return true;
+    }
     const clientId = String(client.client_id || '').trim();
     if (clientId && String(record.client_id || '').trim() === clientId) return true;
     const recordLegal = this.normalizeCompanyKey(record.customer_legal_name);
@@ -241,12 +248,24 @@ const Clients = {
   listClientRelatedInvoices_(clientId) {
     const client = this.state.rows.find(row => row.client_id === clientId);
     if (!client) return [];
-    return this.state.invoices.filter(item => this.matchesClient_(item, client));
+    const linkedAgreements = this.listClientRelatedAgreements_(clientId);
+    const linkedAgreementUuids = new Set(linkedAgreements.map(item => String(item.id || '').trim()).filter(Boolean));
+    return this.state.invoices.filter(item => {
+      if (this.matchesClient_(item, client)) return true;
+      const invoiceAgreementUuid = String(item.agreement_id || '').trim();
+      return Boolean(invoiceAgreementUuid && linkedAgreementUuids.has(invoiceAgreementUuid));
+    });
   },
   listClientRelatedReceipts_(clientId) {
     const client = this.state.rows.find(row => row.client_id === clientId);
     if (!client) return [];
-    return this.state.receipts.filter(item => this.matchesClient_(item, client));
+    const linkedInvoices = this.listClientRelatedInvoices_(clientId);
+    const linkedInvoiceUuids = new Set(linkedInvoices.map(item => String(item.id || '').trim()).filter(Boolean));
+    return this.state.receipts.filter(item => {
+      if (this.matchesClient_(item, client)) return true;
+      const invoiceUuid = String(item.invoice_id || '').trim();
+      return Boolean(invoiceUuid && linkedInvoiceUuids.has(invoiceUuid));
+    });
   },
   isSignedAgreement(agreement = {}) {
     return this.normalizeText(agreement.status).includes('signed') || Boolean(String(agreement.signed_date || agreement.customer_sign_date || '').trim());
@@ -371,9 +390,9 @@ const Clients = {
     const totalPaidAmount = receipts.reduce((sum, item) => sum + this.toNumberSafe(item.received_amount), 0);
     const totalDueAmount = Math.max(totalInvoicedValue - totalPaidAmount, 0);
 
-    const latestAgreementDate = this.maxDate(...agreements.map(item => item.updated_at || item.customer_sign_date || item.agreement_date));
-    const latestInvoiceDate = this.maxDate(...invoices.map(item => item.updated_at || item.issued_date));
-    const latestReceiptDate = this.maxDate(...receipts.map(item => item.updated_at || item.receipt_date));
+    const latestAgreementDate = this.maxDate(...agreements.map(item => item.signed_date || item.customer_sign_date || item.updated_at));
+    const latestInvoiceDate = this.maxDate(...invoices.map(item => item.issued_date || item.created_at || item.updated_at));
+    const latestReceiptDate = this.maxDate(...receipts.map(item => item.receipt_date || item.created_at || item.updated_at));
 
     const renewalCandidates = activeLocationItems
       .map(item => String(item.service_end_date || item.serviceEndDate || '').trim())
@@ -405,6 +424,7 @@ const Clients = {
       total_due_amount: totalDueAmount,
       total_receipts_value: receipts.length,
       total_receipts_count: receipts.length,
+      total_invoices_count: invoices.length,
       unpaid_invoices_count: paymentBucket.unpaid,
       partially_paid_invoices_count: paymentBucket.partial,
       paid_invoices_count: paymentBucket.paid,
@@ -418,16 +438,31 @@ const Clients = {
   buildTimeline_(clientId) {
     const events = [];
     this.listClientRelatedAgreements_(clientId).forEach(item => {
-      events.push({ type: 'signed_agreement', date: item.updated_at || item.customer_sign_date || item.agreement_date, label: `Agreement ${item.agreement_number || item.agreement_id || '—'} ${item.status || ''}`.trim() });
+      const labelId = item.agreement_number || item.agreement_id || '—';
+      events.push({
+        type: 'agreement_signed',
+        date: item.signed_date || item.customer_sign_date || item.updated_at,
+        label: `Agreement ${labelId} Signed`
+      });
     });
     this.listClientRelatedInvoices_(clientId).forEach(item => {
-      events.push({ type: 'issued_invoice', date: item.updated_at || item.issued_date, label: `Invoice ${item.invoice_number || item.invoice_id || '—'} ${item.status || ''}`.trim() });
-      if (this.toNumberSafe(item.amount_paid) > 0) {
-        events.push({ type: 'payment_update', date: item.updated_at || item.issued_date, label: `Payment updated (${U.fmtNumber(item.amount_paid)}) for ${item.invoice_number || item.invoice_id || 'invoice'}` });
-      }
+      const labelId = item.invoice_number || item.invoice_id || '—';
+      events.push({
+        type: 'invoice_issued',
+        date: item.issued_date || item.created_at || item.updated_at,
+        label: `Invoice ${labelId} Issued`
+      });
     });
     this.listClientRelatedReceipts_(clientId).forEach(item => {
-      events.push({ type: 'receipt_created', date: item.updated_at || item.receipt_date, label: `Receipt ${item.receipt_number || item.receipt_id || '—'} ${item.payment_state || ''}`.trim() });
+      const amount = this.toNumberSafe(item.received_amount);
+      const pending = this.toNumberSafe(item.pending_amount);
+      const paymentLabel = pending <= 0 && amount > 0 ? 'Paid' : amount > 0 ? 'Partially Paid' : 'Payment Received';
+      const labelId = item.receipt_number || item.receipt_id || '—';
+      events.push({
+        type: 'receipt_received',
+        date: item.receipt_date || item.created_at || item.updated_at,
+        label: `Receipt ${labelId} ${paymentLabel}`
+      });
     });
     return events
       .filter(item => item.date)
@@ -1064,7 +1099,7 @@ const Clients = {
       ['Total Invoiced', U.fmtNumber(analytics.total_invoiced_value || 0)],
       ['Total Paid', U.fmtNumber(analytics.total_paid_amount || 0)],
       ['Total Due', U.fmtNumber(analytics.total_due_amount || 0)],
-      ['Receipts', U.fmtNumber(analytics.total_receipts_value || 0)],
+      ['Invoices / Receipts', `${analytics.total_invoices_count || 0} / ${analytics.total_receipts_count || 0}`],
       ['Next Renewal', U.fmtDisplayDate(analytics.next_renewal_date) || '—']
     ];
     if (E.clientAnalyticsCards) {
@@ -1212,9 +1247,7 @@ const Clients = {
         this.findOrCreateClientFromSignedAgreement_(agreement);
       });
       this.state.rows.forEach(client => {
-        if (!this.hasBackendAnalytics_(client.analytics) || !this.toNumberSafe(client.analytics.total_agreements || client.total_agreements)) {
-          client.analytics = this.computeClientAnalytics_(client);
-        }
+        client.analytics = this.computeClientAnalytics_(client);
       });
       if (!this.state.selectedClientId && this.state.rows[0]?.client_id) this.state.selectedClientId = this.state.rows[0].client_id;
       this.state.loaded = true;
