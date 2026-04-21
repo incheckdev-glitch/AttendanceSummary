@@ -190,7 +190,8 @@ const Invoices = {
       const value = source[field] ?? source[camel] ?? '';
       normalized[field] = typeof value === 'string' ? value.trim() : value;
     });
-    normalized.invoice_id = String(normalized.invoice_id || source.id || '').trim();
+    normalized.id = String(source.id || '').trim();
+    normalized.invoice_id = String(normalized.invoice_id || '').trim();
     normalized.invoice_number = String(normalized.invoice_number || '').trim();
     normalized.status = String(normalized.status || '').trim() || 'Draft';
     normalized.currency = String(normalized.currency || '').trim() || 'USD';

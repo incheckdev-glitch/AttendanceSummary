@@ -72,7 +72,8 @@ const Receipts = {
       const value = source[field] ?? source[camel] ?? '';
       normalized[field] = typeof value === 'string' ? value.trim() : value;
     });
-    normalized.receipt_id = String(normalized.receipt_id || source.id || '').trim();
+    normalized.id = String(source.id || '').trim();
+    normalized.receipt_id = String(normalized.receipt_id || '').trim();
     normalized.receipt_number = String(normalized.receipt_number || '').trim();
     normalized.currency = String(normalized.currency || '').trim() || 'USD';
     normalized.status = String(normalized.status || '').trim() || 'Issued';

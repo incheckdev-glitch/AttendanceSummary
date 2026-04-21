@@ -641,13 +641,14 @@ const Api = {
     return this.normalizeListResponse(response);
   },
   async getInvoice(invoiceId) {
-    return this.postAuthenticated('invoices', 'get', { invoice_id: invoiceId });
+    return this.postAuthenticated('invoices', 'get', { id: invoiceId, invoice_id: invoiceId });
   },
   async createInvoice(invoice, items = []) {
     return this.postAuthenticated('invoices', 'create', { invoice, items });
   },
   async updateInvoice(invoiceId, updates = {}, items) {
     const payload = {
+      id: invoiceId,
       invoice_id: invoiceId,
       updates
     };
@@ -655,10 +656,10 @@ const Api = {
     return this.postAuthenticated('invoices', 'update', payload);
   },
   async deleteInvoice(invoiceId) {
-    return this.postAuthenticated('invoices', 'delete', { invoice_id: invoiceId });
+    return this.postAuthenticated('invoices', 'delete', { id: invoiceId, invoice_id: invoiceId });
   },
   async createInvoiceFromAgreement(agreementId) {
-    return this.postAuthenticated('invoices', 'create_from_agreement', { agreement_id: agreementId });
+    return this.postAuthenticated('invoices', 'create_from_agreement', { id: agreementId, agreement_id: agreementId });
   },
   async generateInvoiceHtml(invoiceId) {
     return this.postAuthenticated('invoices', 'generate_invoice_html', { invoice_id: invoiceId });
@@ -677,13 +678,14 @@ const Api = {
     return this.normalizeListResponse(response);
   },
   async getReceipt(receiptId) {
-    return this.postAuthenticated('receipts', 'get', { receipt_id: receiptId });
+    return this.postAuthenticated('receipts', 'get', { id: receiptId, receipt_id: receiptId });
   },
   async createReceipt(receipt, items = []) {
     return this.postAuthenticated('receipts', 'create', { receipt, items });
   },
   async updateReceipt(receiptId, updates = {}, items) {
     const payload = {
+      id: receiptId,
       receipt_id: receiptId,
       updates
     };
@@ -691,10 +693,10 @@ const Api = {
     return this.postAuthenticated('receipts', 'update', payload);
   },
   async deleteReceipt(receiptId) {
-    return this.postAuthenticated('receipts', 'delete', { receipt_id: receiptId });
+    return this.postAuthenticated('receipts', 'delete', { id: receiptId, receipt_id: receiptId });
   },
   async createReceiptFromInvoice(invoiceId) {
-    return this.postAuthenticated('receipts', 'create_from_invoice', { invoice_id: invoiceId });
+    return this.postAuthenticated('receipts', 'create_from_invoice', { id: invoiceId, invoice_id: invoiceId });
   },
   async previewReceipt(receiptId) {
     return this.postAuthenticated('receipts', 'generate_receipt_html', { receipt_id: receiptId });
@@ -707,7 +709,7 @@ const Api = {
     return this.normalizeListResponse(response);
   },
   async getClient(clientId) {
-    return this.postAuthenticated('clients', 'get', { client_id: clientId });
+    return this.postAuthenticated('clients', 'get', { id: clientId, client_id: clientId });
   },
   async createClient(client) {
     return this.postAuthenticated('clients', 'create', { client });
@@ -717,12 +719,13 @@ const Api = {
   },
   async updateClient(clientId, updates) {
     return this.postAuthenticated('clients', 'update', {
+      id: clientId,
       client_id: clientId,
       updates
     });
   },
   async deleteClient(clientId) {
-    return this.postAuthenticated('clients', 'delete', { client_id: clientId });
+    return this.postAuthenticated('clients', 'delete', { id: clientId, client_id: clientId });
   },
   async getClientAnalytics(clientId) {
     return this.postAuthenticated('clients', 'get_analytics', { client_id: clientId });

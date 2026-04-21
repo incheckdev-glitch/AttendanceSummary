@@ -14,7 +14,7 @@
     users: ['user_id','id'], roles: ['role_key','id'], role_permissions: ['permission_id','id'], tickets: ['id','ticket_id'],
     events: ['event_id','id'], csm: ['id','activity_id'], leads: ['id','lead_id'], deals: ['id','deal_id'],
     proposal_catalog: ['id','catalog_item_id'], proposals: ['id','proposal_id'], agreements: ['id','agreement_id'],
-    clients: ['client_id','id'], invoices: ['invoice_id','id'], receipts: ['receipt_id','id'], operations_onboarding: ['onboarding_id','id']
+    clients: ['id','client_id'], invoices: ['id','invoice_id'], receipts: ['id','receipt_id'], operations_onboarding: ['onboarding_id','id']
   };
 
   const ITEM_TABLES = { proposals: 'proposal_items', agreements: 'agreement_items', invoices: 'invoice_items', receipts: 'receipt_items' };
@@ -136,6 +136,28 @@
     'item_id','agreement_id','section','line_no','location_name','item_name','unit_price','discount_percent',
     'discounted_unit_price','quantity','line_total','service_start_date','service_end_date','capability_name','capability_value','notes'
   ]);
+  const CLIENT_COLUMNS = new Set([
+    'client_id','client_name','company_name','primary_email','primary_phone','billing_frequency','payment_term',
+    'status','source_agreement_id','total_agreements','total_locations','total_value','total_paid','total_due',
+    'created_by','updated_by'
+  ]);
+  const INVOICE_COLUMNS = new Set([
+    'invoice_id','invoice_number','client_id','agreement_id','proposal_id','issue_date','due_date','billing_frequency',
+    'payment_term','subtotal_locations','subtotal_one_time','invoice_total','received_amount','pending_amount',
+    'payment_state','status','notes','created_by','updated_by','currency'
+  ]);
+  const INVOICE_ITEM_COLUMNS = new Set([
+    'item_id','invoice_id','section','line_no','location_name','item_name','unit_price','discount_percent',
+    'discounted_unit_price','quantity','line_total','capability_name','capability_value','notes',
+    'service_start_date','service_end_date'
+  ]);
+  const RECEIPT_COLUMNS = new Set([
+    'receipt_id','receipt_number','invoice_id','client_id','receipt_date','amount_received','payment_method',
+    'payment_reference','is_settlement','notes','status','created_by','updated_by'
+  ]);
+  const RECEIPT_ITEM_COLUMNS = new Set([
+    'item_id','receipt_id','line_no','description','amount','notes','service_start_date','service_end_date'
+  ]);
   const AGREEMENT_LEGACY_FIELDS = new Set([
     'authToken','backendToken','backendUrl','sheetName','tabName','resource','action',
     'agreement_length','lead_id','deal_id',
@@ -194,6 +216,20 @@
       'provider_signatory_name_secondary', 'provider_signatory_title_secondary', 'provider_sign_date',
       'subtotal_locations', 'subtotal_one_time', 'total_discount', 'grand_total', 'status',
       'generated_by', 'created_by', 'updated_by', 'created_at', 'updated_at'
+    ]),
+    clients: new Set([
+      'id','client_id','client_name','company_name','primary_email','primary_phone','billing_frequency','payment_term',
+      'status','source_agreement_id','total_agreements','total_locations','total_value','total_paid','total_due',
+      'created_by','updated_by','created_at','updated_at'
+    ]),
+    invoices: new Set([
+      'id','invoice_id','invoice_number','client_id','agreement_id','proposal_id','issue_date','due_date','billing_frequency',
+      'payment_term','subtotal_locations','subtotal_one_time','invoice_total','received_amount','pending_amount',
+      'payment_state','status','notes','currency','created_by','updated_by','created_at','updated_at'
+    ]),
+    receipts: new Set([
+      'id','receipt_id','receipt_number','invoice_id','client_id','receipt_date','amount_received','payment_method',
+      'payment_reference','is_settlement','notes','status','created_by','updated_by','created_at','updated_at'
     ])
   };
 
@@ -336,6 +372,126 @@
       compacted[key] = value;
     });
     return compacted;
+  }
+
+  function numberOrNull(value) {
+    if (value === undefined || value === null || value === '') return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  function trimOrNull(value) {
+    if (value === undefined || value === null) return null;
+    const text = String(value).trim();
+    return text ? text : null;
+  }
+
+  function sanitizeClientsRecord(record = {}, { includeCreatedBy = false, userId = '' } = {}) {
+    const sanitized = compactObject({
+      client_id: trimOrNull(firstDefined(record, ['client_id', 'clientId'])),
+      client_name: trimOrNull(firstDefined(record, ['client_name', 'clientName', 'customer_name', 'customerName'])),
+      company_name: trimOrNull(firstDefined(record, ['company_name', 'companyName', 'customer_legal_name', 'customerLegalName'])),
+      primary_email: trimOrNull(firstDefined(record, ['primary_email', 'primaryEmail', 'primary_contact_email', 'primaryContactEmail'])),
+      primary_phone: trimOrNull(firstDefined(record, ['primary_phone', 'primaryPhone', 'phone'])),
+      billing_frequency: trimOrNull(firstDefined(record, ['billing_frequency', 'billingFrequency'])),
+      payment_term: trimOrNull(firstDefined(record, ['payment_term', 'paymentTerm'])),
+      status: trimOrNull(firstDefined(record, ['status'])),
+      source_agreement_id: trimOrNull(firstDefined(record, ['source_agreement_id', 'sourceAgreementId'])),
+      total_agreements: numberOrNull(firstDefined(record, ['total_agreements', 'totalAgreements'])),
+      total_locations: numberOrNull(firstDefined(record, ['total_locations', 'totalLocations'])),
+      total_value: numberOrNull(firstDefined(record, ['total_value', 'totalValue'])),
+      total_paid: numberOrNull(firstDefined(record, ['total_paid', 'totalPaid'])),
+      total_due: numberOrNull(firstDefined(record, ['total_due', 'totalDue']))
+    });
+    Object.keys(sanitized).forEach(key => { if (!CLIENT_COLUMNS.has(key)) delete sanitized[key]; });
+    if (includeCreatedBy && userId) sanitized.created_by = userId;
+    if (userId) sanitized.updated_by = userId;
+    return sanitized;
+  }
+
+  function sanitizeInvoicesRecord(record = {}, { includeCreatedBy = false, userId = '' } = {}) {
+    const sanitized = compactObject({
+      invoice_id: trimOrNull(firstDefined(record, ['invoice_id', 'invoiceId'])),
+      invoice_number: trimOrNull(firstDefined(record, ['invoice_number', 'invoiceNumber'])),
+      client_id: trimOrNull(firstDefined(record, ['client_id', 'clientId'])),
+      agreement_id: trimOrNull(firstDefined(record, ['agreement_id', 'agreementId'])),
+      proposal_id: trimOrNull(firstDefined(record, ['proposal_id', 'proposalId'])),
+      issue_date: trimOrNull(firstDefined(record, ['issue_date', 'issueDate', 'invoice_date'])),
+      due_date: trimOrNull(firstDefined(record, ['due_date', 'dueDate'])),
+      billing_frequency: trimOrNull(firstDefined(record, ['billing_frequency', 'billingFrequency'])),
+      payment_term: trimOrNull(firstDefined(record, ['payment_term', 'paymentTerm'])),
+      subtotal_locations: numberOrNull(firstDefined(record, ['subtotal_locations', 'subtotalLocations', 'subtotal_subscription'])),
+      subtotal_one_time: numberOrNull(firstDefined(record, ['subtotal_one_time', 'subtotalOneTime'])),
+      invoice_total: numberOrNull(firstDefined(record, ['invoice_total', 'invoiceTotal', 'grand_total'])),
+      received_amount: numberOrNull(firstDefined(record, ['received_amount', 'receivedAmount', 'amount_paid'])),
+      pending_amount: numberOrNull(firstDefined(record, ['pending_amount', 'pendingAmount'])),
+      payment_state: trimOrNull(firstDefined(record, ['payment_state', 'paymentState'])),
+      status: trimOrNull(firstDefined(record, ['status'])),
+      notes: trimOrNull(firstDefined(record, ['notes'])),
+      currency: trimOrNull(firstDefined(record, ['currency']))
+    });
+    Object.keys(sanitized).forEach(key => { if (!INVOICE_COLUMNS.has(key)) delete sanitized[key]; });
+    if (includeCreatedBy && userId) sanitized.created_by = userId;
+    if (userId) sanitized.updated_by = userId;
+    return sanitized;
+  }
+
+  function sanitizeInvoiceItemRecord(record = {}, invoiceUuid = '') {
+    const sanitized = compactObject({
+      item_id: trimOrNull(firstDefined(record, ['item_id', 'itemId'])),
+      invoice_id: invoiceUuid,
+      section: trimOrNull(firstDefined(record, ['section'])),
+      line_no: numberOrNull(firstDefined(record, ['line_no', 'lineNo'])),
+      location_name: trimOrNull(firstDefined(record, ['location_name', 'locationName'])),
+      item_name: trimOrNull(firstDefined(record, ['item_name', 'itemName', 'description'])),
+      unit_price: numberOrNull(firstDefined(record, ['unit_price', 'unitPrice'])),
+      discount_percent: numberOrNull(firstDefined(record, ['discount_percent', 'discountPercent'])),
+      discounted_unit_price: numberOrNull(firstDefined(record, ['discounted_unit_price', 'discountedUnitPrice'])),
+      quantity: numberOrNull(firstDefined(record, ['quantity'])),
+      line_total: numberOrNull(firstDefined(record, ['line_total', 'lineTotal'])),
+      capability_name: trimOrNull(firstDefined(record, ['capability_name', 'capabilityName'])),
+      capability_value: trimOrNull(firstDefined(record, ['capability_value', 'capabilityValue'])),
+      notes: trimOrNull(firstDefined(record, ['notes'])),
+      service_start_date: trimOrNull(firstDefined(record, ['service_start_date', 'serviceStartDate'])),
+      service_end_date: trimOrNull(firstDefined(record, ['service_end_date', 'serviceEndDate']))
+    });
+    Object.keys(sanitized).forEach(key => { if (!INVOICE_ITEM_COLUMNS.has(key)) delete sanitized[key]; });
+    return sanitized;
+  }
+
+  function sanitizeReceiptsRecord(record = {}, { includeCreatedBy = false, userId = '' } = {}) {
+    const sanitized = compactObject({
+      receipt_id: trimOrNull(firstDefined(record, ['receipt_id', 'receiptId'])),
+      receipt_number: trimOrNull(firstDefined(record, ['receipt_number', 'receiptNumber'])),
+      invoice_id: trimOrNull(firstDefined(record, ['invoice_id', 'invoiceId'])),
+      client_id: trimOrNull(firstDefined(record, ['client_id', 'clientId'])),
+      receipt_date: trimOrNull(firstDefined(record, ['receipt_date', 'receiptDate', 'received_date'])),
+      amount_received: numberOrNull(firstDefined(record, ['amount_received', 'amountReceived', 'received_amount', 'grand_total'])),
+      payment_method: trimOrNull(firstDefined(record, ['payment_method', 'paymentMethod'])),
+      payment_reference: trimOrNull(firstDefined(record, ['payment_reference', 'paymentReference', 'reference'])),
+      is_settlement: firstDefined(record, ['is_settlement', 'isSettlement']) === true,
+      notes: trimOrNull(firstDefined(record, ['notes'])),
+      status: trimOrNull(firstDefined(record, ['status']))
+    });
+    Object.keys(sanitized).forEach(key => { if (!RECEIPT_COLUMNS.has(key)) delete sanitized[key]; });
+    if (includeCreatedBy && userId) sanitized.created_by = userId;
+    if (userId) sanitized.updated_by = userId;
+    return sanitized;
+  }
+
+  function sanitizeReceiptItemRecord(record = {}, receiptUuid = '') {
+    const sanitized = compactObject({
+      item_id: trimOrNull(firstDefined(record, ['item_id', 'itemId'])),
+      receipt_id: receiptUuid,
+      line_no: numberOrNull(firstDefined(record, ['line_no', 'lineNo'])),
+      description: trimOrNull(firstDefined(record, ['description', 'item_name', 'itemName'])),
+      amount: numberOrNull(firstDefined(record, ['amount', 'line_total', 'lineTotal'])),
+      notes: trimOrNull(firstDefined(record, ['notes'])),
+      service_start_date: trimOrNull(firstDefined(record, ['service_start_date', 'serviceStartDate'])),
+      service_end_date: trimOrNull(firstDefined(record, ['service_end_date', 'serviceEndDate']))
+    });
+    Object.keys(sanitized).forEach(key => { if (!RECEIPT_ITEM_COLUMNS.has(key)) delete sanitized[key]; });
+    return sanitized;
   }
 
   function sanitizeForInsertOrUpdate(record = {}) {
@@ -829,6 +985,29 @@
     return payload.id;
   }
 
+  async function resolveResourceUuid(resource, payload = {}, client) {
+    const directId = String(
+      firstDefined(payload, ['id']) ??
+      firstDefined(payload.item || {}, ['id']) ??
+      firstDefined(payload.updates || {}, ['id']) ??
+      ''
+    ).trim();
+    if (isUuid(directId)) return directId;
+    if (!['clients', 'invoices', 'receipts'].includes(resource)) return pickId(resource, payload);
+    const businessId = String(
+      firstDefined(payload, [resource === 'clients' ? 'client_id' : resource === 'invoices' ? 'invoice_id' : 'receipt_id']) ??
+      firstDefined(payload.item || {}, [resource === 'clients' ? 'client_id' : resource === 'invoices' ? 'invoice_id' : 'receipt_id']) ??
+      firstDefined(payload.updates || {}, [resource === 'clients' ? 'client_id' : resource === 'invoices' ? 'invoice_id' : 'receipt_id']) ??
+      ''
+    ).trim();
+    if (!businessId) return '';
+    const businessKey = resource === 'clients' ? 'client_id' : resource === 'invoices' ? 'invoice_id' : 'receipt_id';
+    const table = TABLE_BY_RESOURCE[resource];
+    const { data, error } = await client.from(table).select('id').eq(businessKey, businessId).maybeSingle();
+    if (error) throw friendlyError(`Unable to resolve ${resource} identifier`, error);
+    return String(data?.id || '').trim();
+  }
+
   function splitListPayload(payload = {}) {
     const rawFilters = payload.filters && typeof payload.filters === 'object' ? payload.filters : payload;
     const controls = {};
@@ -1039,16 +1218,22 @@
       return data;
     }
     if (resource === 'invoices' && action === 'create_from_agreement') {
-      const { data, error } = await client.rpc('create_invoice_from_agreement', { agreement_uuid: payload.agreement_id || payload.id });
+      if (!isAdminDev()) throw new Error('Only admin/dev can create invoices from agreements.');
+      const agreementUuid = String(payload.id || payload.agreement_uuid || payload.agreement_id || '').trim();
+      if (!isUuid(agreementUuid)) throw new Error('Agreement UUID is required to create invoice from agreement.');
+      const { data, error } = await client.rpc('create_invoice_from_agreement', { p_agreement_uuid: agreementUuid });
       if (error) throw friendlyError('Invoice creation from agreement failed', error);
       return data;
     }
     if (resource === 'receipts' && action === 'create_from_invoice') {
+      if (!isAdminDev()) throw new Error('Only admin/dev can create receipts from invoices.');
+      const invoiceUuid = String(payload.id || payload.invoice_uuid || payload.invoice_id || '').trim();
+      if (!isUuid(invoiceUuid)) throw new Error('Invoice UUID is required to create receipt from invoice.');
       const { data, error } = await client.rpc('create_receipt_from_invoice', {
-        invoice_uuid: payload.invoice_id || payload.id,
-        amount_value: Number(payload.amount || payload.numeric || 0),
-        payment_method_value: String(payload.payment_method || payload.method || ''),
-        payment_reference_value: String(payload.payment_reference || payload.reference || '')
+        p_invoice_uuid: invoiceUuid,
+        p_amount: Number(payload.amount || payload.numeric || 0),
+        p_payment_method: String(payload.payment_method || payload.method || ''),
+        p_payment_reference: String(payload.payment_reference || payload.reference || '')
       });
       if (error) throw friendlyError('Receipt creation from invoice failed', error);
       return data;
@@ -1098,7 +1283,9 @@
     }
 
     if (action === 'get') {
-      const id = pickId(resource, payload);
+      const id = ['clients', 'invoices', 'receipts'].includes(resource)
+        ? await resolveResourceUuid(resource, payload, client)
+        : pickId(resource, payload);
       const key = PK_KEYS[resource][0] || 'id';
       const { data, error } = await client.from(table).select('*').eq(key, id).single();
       if (error) throw friendlyError(`Unable to load ${resource} record`, error);
@@ -1116,13 +1303,16 @@
       delete record.resource; delete record.action; delete record.authToken;
       if (resource === 'tickets') devLog('[tickets/create] raw form data', record);
       if (resource === 'events' && !isAdminDev()) throw new Error('Only admin/dev can create events.');
-      const currentUserId = ['tickets', 'events', 'leads', 'deals', 'proposal_catalog', 'proposals', 'agreements'].includes(resource)
+      const currentUserId = ['tickets', 'events', 'leads', 'deals', 'proposal_catalog', 'proposals', 'agreements', 'clients', 'invoices', 'receipts'].includes(resource)
         ? await getCurrentUserId(client)
         : '';
       if (['leads', 'deals'].includes(resource) && !currentUserId) {
         throw new Error(`You must be logged in to create ${resource}.`);
       }
       if (resource === 'deals' && !isAdminDev()) throw new Error('Only admin/dev can create deals.');
+      if (resource === 'clients' && !isAdminDev()) throw new Error('Only admin/dev can create clients.');
+      if (resource === 'invoices' && !isAdminDev()) throw new Error('Only admin/dev can create invoices.');
+      if (resource === 'receipts' && !isAdminDev()) throw new Error('Only admin/dev can create receipts.');
       if (resource === 'proposal_catalog' && !isAdminDev()) throw new Error('Only admin/dev can create proposal catalog items.');
       if (resource === 'proposals' && !isAdminDev()) throw new Error('Only admin/dev can create proposals.');
       if (resource === 'agreements' && !isAdminDev()) throw new Error('Only admin/dev can create agreements.');
@@ -1139,6 +1329,12 @@
               ? sanitizeProposalRecord(record, { includeCreatedBy: true, userId: currentUserId, ensureBusinessIds: true })
             : resource === 'agreements'
               ? sanitizeAgreementRecord(record, { includeCreatedBy: true, userId: currentUserId })
+            : resource === 'clients'
+              ? sanitizeClientsRecord(record, { includeCreatedBy: true, userId: currentUserId })
+            : resource === 'invoices'
+              ? sanitizeInvoicesRecord(record, { includeCreatedBy: true, userId: currentUserId })
+            : resource === 'receipts'
+              ? sanitizeReceiptsRecord(record, { includeCreatedBy: true, userId: currentUserId })
             : record;
       if (resource === 'events') {
         EVENT_LEGACY_FIELDS.forEach(field => { delete createRecord[field]; });
@@ -1155,7 +1351,7 @@
       if (['leads', 'deals'].includes(resource) && !Object.keys(createRecord).length) {
         throw new Error(`${resource} create payload is empty after normalization.`);
       }
-      if (['proposal_catalog', 'proposals', 'agreements'].includes(resource) && !Object.keys(createRecord).length) {
+      if (['proposal_catalog', 'proposals', 'agreements', 'clients', 'invoices', 'receipts'].includes(resource) && !Object.keys(createRecord).length) {
         throw new Error(`${resource} create payload is empty after normalization.`);
       }
       const { data, error } = await client.from(table).insert(createRecord).select('*').single();
@@ -1184,6 +1380,10 @@
             ? sanitizeProposalItemRecord(item, parentId)
             : resource === 'agreements'
               ? sanitizeAgreementItemRecord(item, parentId)
+            : resource === 'invoices'
+              ? sanitizeInvoiceItemRecord(item, parentId)
+            : resource === 'receipts'
+              ? sanitizeReceiptItemRecord(item, parentId)
             : ({ ...item, [fk]: parentId })
         );
         const childResp = await client.from(itemTable).insert(insertRows).select('*');
@@ -1193,7 +1393,9 @@
     }
 
     if (action === 'update') {
-      const pickedId = pickId(resource, payload);
+      const pickedId = ['clients', 'invoices', 'receipts'].includes(resource)
+        ? await resolveResourceUuid(resource, payload, client)
+        : pickId(resource, payload);
       const id = resource === 'tickets'
         ? String(
             firstDefined(payload, ['id']) ??
@@ -1214,6 +1416,9 @@
       if (resource === 'csm' && !['admin','hoo'].includes(role())) throw new Error('Only admin/hoo can update CSM activities.');
       if (resource === 'leads' && !isAdminDev()) throw new Error('Only admin/dev can update leads.');
       if (resource === 'deals' && !isAdminDev()) throw new Error('Only admin/dev can update deals.');
+      if (resource === 'clients' && !isAdminDev()) throw new Error('Only admin/dev can update clients.');
+      if (resource === 'invoices' && !isAdminDev()) throw new Error('Only admin/dev can update invoices.');
+      if (resource === 'receipts' && !isAdminDev()) throw new Error('Only admin/dev can update receipts.');
       if (resource === 'proposal_catalog' && !isAdminDev()) throw new Error('Only admin/dev can update proposal catalog items.');
       if (resource === 'proposals' && !isAdminDev()) throw new Error('Only admin/dev can update proposals.');
       if (resource === 'agreements' && !isAdminDev()) throw new Error('Only admin/dev can update agreements.');
@@ -1233,6 +1438,12 @@
               ? sanitizeProposalRecord(safeUpdates, { includeCreatedBy: false, userId: await getCurrentUserId(client) })
             : resource === 'agreements'
               ? sanitizeAgreementRecord(safeUpdates, { includeCreatedBy: false, userId: await getCurrentUserId(client) })
+            : resource === 'clients'
+              ? sanitizeClientsRecord(safeUpdates, { includeCreatedBy: false, userId: await getCurrentUserId(client) })
+            : resource === 'invoices'
+              ? sanitizeInvoicesRecord(safeUpdates, { includeCreatedBy: false, userId: await getCurrentUserId(client) })
+            : resource === 'receipts'
+              ? sanitizeReceiptsRecord(safeUpdates, { includeCreatedBy: false, userId: await getCurrentUserId(client) })
             : safeUpdates;
       if (resource === 'events') {
         EVENT_LEGACY_FIELDS.forEach(field => { delete publicUpdates[field]; });
@@ -1243,7 +1454,7 @@
       if (['leads', 'deals'].includes(resource) && !Object.keys(publicUpdates).length) {
         throw new Error(`${resource} update payload is empty after normalization.`);
       }
-      if (['proposal_catalog', 'proposals', 'agreements'].includes(resource) && !Object.keys(publicUpdates).length) {
+      if (['proposal_catalog', 'proposals', 'agreements', 'clients', 'invoices', 'receipts'].includes(resource) && !Object.keys(publicUpdates).length) {
         throw new Error(`${resource} update payload is empty after normalization.`);
       }
       const { data, error } = await client.from(table).update(publicUpdates).eq(key, id).select('*').single();
@@ -1273,7 +1484,11 @@
               ? sanitizeProposalItemRecord(item, parentId)
               : resource === 'agreements'
                 ? sanitizeAgreementItemRecord(item, parentId)
-              : ({ ...item, [fk]: id })
+              : resource === 'invoices'
+                ? sanitizeInvoiceItemRecord(item, parentId)
+              : resource === 'receipts'
+                ? sanitizeReceiptItemRecord(item, parentId)
+              : ({ ...item, [fk]: parentId })
           );
           const childResp = await client.from(itemTable).insert(insertRows).select('*');
           if (childResp.error) throw friendlyError(`Unable to update ${itemTable}`, childResp.error);
@@ -1283,7 +1498,9 @@
     }
 
     if (action === 'delete') {
-      const pickedId = pickId(resource, payload);
+      const pickedId = ['clients', 'invoices', 'receipts'].includes(resource)
+        ? await resolveResourceUuid(resource, payload, client)
+        : pickId(resource, payload);
       const id = resource === 'tickets'
         ? String(firstDefined(payload, ['id']) ?? firstDefined(payload.item || {}, ['id']) ?? pickedId ?? '')
         : resource === 'proposal_catalog'
@@ -1295,6 +1512,9 @@
       if (resource === 'csm' && !['admin','hoo'].includes(role())) throw new Error('Only admin/hoo can delete CSM activities.');
       if (resource === 'leads' && !isAdminDev()) throw new Error('Only admin/dev can delete leads.');
       if (resource === 'deals' && !isAdminDev()) throw new Error('Only admin/dev can delete deals.');
+      if (resource === 'clients' && !isAdminDev()) throw new Error('Only admin/dev can delete clients.');
+      if (resource === 'invoices' && !isAdminDev()) throw new Error('Only admin/dev can delete invoices.');
+      if (resource === 'receipts' && !isAdminDev()) throw new Error('Only admin/dev can delete receipts.');
       if (resource === 'proposal_catalog' && !isAdminDev()) throw new Error('Only admin/dev can delete proposal catalog items.');
       if (resource === 'proposals' && !isAdminDev()) throw new Error('Only admin/dev can delete proposals.');
       if (resource === 'agreements' && !isAdminDev()) throw new Error('Only admin/dev can delete agreements.');
