@@ -555,6 +555,18 @@ const Receipts = {
     if (E.receiptFormDeleteBtn) E.receiptFormDeleteBtn.disabled = busy;
     if (E.receiptFormPreviewBtn) E.receiptFormPreviewBtn.disabled = busy;
   },
+  getSupabaseClient() {
+    const clientFactory = window.SupabaseClient?.getClient;
+    if (typeof clientFactory !== 'function') return null;
+    const client = clientFactory.call(window.SupabaseClient);
+    return typeof client?.from === 'function' ? client : null;
+  },
+  requireSupabaseClient() {
+    const client = this.getSupabaseClient();
+    console.log('supabase client check', client, typeof client?.from);
+    if (!client) throw new Error('Supabase client unavailable.');
+    return client;
+  },
   normalizeAmountInput(value) {
     if (value === null || value === undefined) return null;
     const asString = String(value).trim();
@@ -596,8 +608,7 @@ const Receipts = {
   async computeReceiptSnapshot(invoiceUuid, paidNowInput) {
     const invoiceId = String(invoiceUuid || '').trim();
     if (!invoiceId) throw new Error('Invoice UUID is required to compute receipt settlement snapshot.');
-    const client = window.SupabaseClient?.getClient?.();
-    if (!client) throw new Error('Supabase client unavailable.');
+    const client = this.requireSupabaseClient();
     const [{ data: invoiceRow, error: invoiceError }, { data: receiptRows, error: receiptsError }] = await Promise.all([
       client.from('invoices').select('id,invoice_total,grand_total,received_amount').eq('id', invoiceId).maybeSingle(),
       client.from('receipts').select('id,invoice_id,amount_received').eq('invoice_id', invoiceId)
@@ -748,7 +759,7 @@ const Receipts = {
   },
   async loadReceiptAndItemsByUuid(receiptUuid) {
     const id = String(receiptUuid || '').trim();
-    const client = window.SupabaseClient?.getClient?.();
+    const client = this.getSupabaseClient();
     if (!client || !id) return null;
     const [{ data: receiptRow, error: receiptError }, { data: itemRows, error: itemError }] = await Promise.all([
       client.from('receipts').select('*').eq('id', id).maybeSingle(),
@@ -1073,7 +1084,7 @@ const Receipts = {
     if (!receiptUuid) throw new Error('Receipt UUID could not be resolved from the selected record.');
     const detail = await this.loadReceiptAndItemsByUuid(receiptUuid);
     if (!detail?.receipt) throw new Error('Receipt data was not found.');
-    const client = window.SupabaseClient?.getClient?.();
+    const client = this.getSupabaseClient();
     let invoice = null;
     let invoiceItems = [];
     const invoiceUuid = String(detail.receipt.invoice_id || '').trim();
