@@ -219,6 +219,125 @@ const Clients = {
       notes: String(raw.notes || '').trim()
     };
   },
+  resolveLatestAgreementContext_(clientId = '') {
+    const agreements = this.listClientRelatedAgreements_(clientId)
+      .slice()
+      .sort((a, b) => new Date(b.updated_at || b.service_start_date || 0).getTime() - new Date(a.updated_at || a.service_start_date || 0).getTime());
+    const preferred =
+      agreements.find(item => this.isActiveAgreement(item)) ||
+      agreements[0] ||
+      null;
+    return { agreements, preferred };
+  },
+  buildClientActionPrefill_(client = {}) {
+    const clientId = String(client.client_id || '').trim();
+    const { agreements, preferred } = this.resolveLatestAgreementContext_(clientId);
+    const legalName = String(client.customer_legal_name || '').trim();
+    const displayName = String(client.customer_name || legalName || '').trim();
+    const preferredBilling = String(preferred?.billing_frequency || '').trim();
+    const preferredPaymentTerm = String(preferred?.payment_term || '').trim();
+    return {
+      clientId,
+      agreements,
+      preferredAgreement: preferred,
+      customerName: displayName,
+      customerLegalName: legalName || displayName,
+      contactName: String(client.primary_contact_name || '').trim(),
+      contactEmail: String(client.primary_contact_email || '').trim(),
+      contactPhone: String(client.phone || '').trim(),
+      address: String(client.address || client.billing_address || '').trim(),
+      billingFrequency: preferredBilling,
+      paymentTerm: preferredPaymentTerm
+    };
+  },
+  buildProposalDraftFromClient_(client = {}) {
+    const prefill = this.buildClientActionPrefill_(client);
+    const base = window.Proposals?.emptyProposal ? window.Proposals.emptyProposal() : {};
+    return {
+      ...base,
+      client_id: prefill.clientId,
+      customer_name: prefill.customerName,
+      customer_address: prefill.address,
+      customer_contact_name: prefill.contactName,
+      customer_contact_mobile: prefill.contactPhone,
+      customer_contact_email: prefill.contactEmail,
+      billing_frequency: prefill.billingFrequency,
+      payment_term: prefill.paymentTerm
+    };
+  },
+  buildAgreementDraftFromClient_(client = {}) {
+    const prefill = this.buildClientActionPrefill_(client);
+    const base = window.Agreements?.emptyAgreement ? window.Agreements.emptyAgreement() : {};
+    return {
+      ...base,
+      id: '',
+      agreement_id: '',
+      agreement_number: '',
+      client_id: prefill.clientId,
+      customer_name: prefill.customerName,
+      customer_legal_name: prefill.customerLegalName,
+      customer_address: prefill.address,
+      customer_contact_name: prefill.contactName,
+      customer_contact_mobile: prefill.contactPhone,
+      customer_contact_email: prefill.contactEmail,
+      billing_frequency: prefill.billingFrequency,
+      payment_term: prefill.paymentTerm,
+      status: 'Draft'
+    };
+  },
+  buildInvoiceDraftFromClient_(client = {}) {
+    const prefill = this.buildClientActionPrefill_(client);
+    const base = window.Invoices?.emptyInvoice ? window.Invoices.emptyInvoice() : {};
+    return {
+      ...base,
+      id: '',
+      invoice_id: '',
+      client_id: prefill.clientId,
+      agreement_id: String(prefill.preferredAgreement?.id || '').trim(),
+      customer_name: prefill.customerName,
+      customer_legal_name: prefill.customerLegalName,
+      customer_address: prefill.address,
+      customer_contact_name: prefill.contactName,
+      customer_contact_email: prefill.contactEmail,
+      billing_frequency: prefill.billingFrequency,
+      payment_term: prefill.paymentTerm
+    };
+  },
+  async openAgreementCloneDraft_(sourceAgreement = {}, client = {}) {
+    const sourceUuid = String(sourceAgreement.id || '').trim();
+    if (!sourceUuid || !window.Agreements?.openAgreementForm) return;
+    const prefill = this.buildClientActionPrefill_(client);
+    try {
+      const response = await window.Agreements?.getAgreement?.(sourceUuid);
+      const extracted = window.Agreements?.extractAgreementAndItems?.(response, sourceUuid) || {};
+      const source = extracted.agreement || sourceAgreement;
+      const sourceItems = Array.isArray(extracted.items) ? extracted.items : [];
+      const cloned = {
+        ...(window.Agreements.emptyAgreement ? window.Agreements.emptyAgreement() : {}),
+        ...source,
+        id: '',
+        agreement_id: '',
+        agreement_number: '',
+        client_id: prefill.clientId,
+        customer_name: source.customer_name || prefill.customerName,
+        customer_legal_name: source.customer_legal_name || prefill.customerLegalName,
+        customer_contact_name: source.customer_contact_name || prefill.contactName,
+        customer_contact_mobile: source.customer_contact_mobile || prefill.contactPhone,
+        customer_contact_email: source.customer_contact_email || prefill.contactEmail,
+        customer_address: source.customer_address || prefill.address,
+        status: 'Draft',
+        signed_date: '',
+        customer_sign_date: '',
+        provider_sign_date: ''
+      };
+      const clonedItems = sourceItems.map(item => ({ ...item, item_id: '', agreement_id: '' }));
+      console.debug('[Clients] opening create-from-previous-agreement draft', { sourceUuid, items: clonedItems.length });
+      window.Agreements.openAgreementForm(cloned, clonedItems, { readOnly: false });
+      UI.toast('Agreement draft opened from previous agreement.');
+    } catch (error) {
+      UI.toast(error?.message || 'Unable to open agreement draft from previous agreement.');
+    }
+  },
   matchesClient_(record = {}, client = {}) {
     const clientUuid = String(client.id || '').trim();
     if (clientUuid) {
@@ -1158,7 +1277,7 @@ const Clients = {
               <td>${U.escapeHtml(this.formatMoneyWithCurrency_(item.grand_total || 0, item.currency || displayCurrency))}</td>
               <td>${U.escapeHtml(U.fmtDisplayDate(item.service_start_date) || '—')}</td>
               <td>${U.escapeHtml(U.fmtDisplayDate(item.service_end_date) || '—')}</td>
-              <td>${item.agreement_id ? `<button class="btn ghost sm" type="button" data-agreement-view="${U.escapeAttr(item.agreement_id)}">Open</button>` : '—'}</td>
+              <td>${item.id ? `<button class="btn ghost sm" type="button" data-agreement-view="${U.escapeAttr(item.id)}">Open</button>` : '—'}</td>
             </tr>`)
             .join('')
         : '<tr><td colspan="6" class="muted" style="text-align:center;">No agreements.</td></tr>';
@@ -1172,7 +1291,7 @@ const Clients = {
               <td>${U.escapeHtml(this.formatMoneyWithCurrency_(item.grand_total || 0, item.currency || displayCurrency))}</td>
               <td>${U.escapeHtml(this.formatMoneyWithCurrency_(item.amount_paid || 0, item.currency || displayCurrency))}</td>
               <td>${U.escapeHtml(this.formatMoneyWithCurrency_(item.pending_amount || 0, item.currency || displayCurrency))}</td>
-              <td>${item.invoice_id ? `<button class="btn ghost sm" type="button" data-invoice-view="${U.escapeAttr(item.invoice_id)}">Open</button>` : '—'}</td>
+              <td>${item.id ? `<button class="btn ghost sm" type="button" data-invoice-view="${U.escapeAttr(item.id)}">Open</button>` : '—'}</td>
             </tr>`)
             .join('')
         : '<tr><td colspan="6" class="muted" style="text-align:center;">No invoices.</td></tr>';
@@ -1185,7 +1304,7 @@ const Clients = {
               <td>${U.escapeHtml(item.payment_state || '—')}</td>
               <td>${U.escapeHtml(this.formatMoneyWithCurrency_(item.received_amount || 0, item.currency || displayCurrency))}</td>
               <td>${U.escapeHtml(this.formatMoneyWithCurrency_(item.pending_amount || 0, item.currency || displayCurrency))}</td>
-              <td>${item.receipt_id ? `<button class="btn ghost sm" type="button" data-receipt-view="${U.escapeAttr(item.receipt_id)}">Open</button>` : '—'}</td>
+              <td>${item.id ? `<button class="btn ghost sm" type="button" data-receipt-view="${U.escapeAttr(item.id)}">Open</button>` : '—'}</td>
             </tr>`)
             .join('')
         : '<tr><td colspan="5" class="muted" style="text-align:center;">No receipts.</td></tr>';
@@ -1342,28 +1461,41 @@ const Clients = {
     if (!client) return;
     try {
       if (action === 'proposal') {
-        await Api.createProposalFromClient(clientId, { prefill: client });
-        UI.toast('Proposal draft created from client.');
+        const proposalDraft = this.buildProposalDraftFromClient_(client);
+        console.debug('[Clients] action proposal', { clientId, draft: proposalDraft });
+        if (!window.Proposals?.openProposalForm) throw new Error('Proposal form helper is unavailable.');
+        window.Proposals.openProposalForm(proposalDraft, [], { readOnly: false });
+        UI.toast('Proposal form opened from client.');
       } else if (action === 'agreement') {
-        await Api.createAgreementFromClient(clientId, { prefill: client });
-        UI.toast('Agreement draft created from client.');
+        const agreementDraft = this.buildAgreementDraftFromClient_(client);
+        console.debug('[Clients] action agreement', { clientId, draft: agreementDraft });
+        if (!window.Agreements?.openAgreementForm) throw new Error('Agreement form helper is unavailable.');
+        window.Agreements.openAgreementForm(agreementDraft, [], { readOnly: false });
+        UI.toast('Agreement form opened from client.');
       } else if (action === 'invoice') {
-        const agreements = this.listClientRelatedAgreements_(clientId);
-        const agreementId = agreements.length
-          ? window.prompt('Optional Agreement ID for invoice prefill (leave blank for blank invoice):', agreements[0].agreement_id || '')
-          : '';
-        await Api.createInvoiceFromClient(clientId, { agreement_id: String(agreementId || '').trim(), prefill: client });
-        UI.toast('Invoice created from client.');
+        const prefill = this.buildClientActionPrefill_(client);
+        const agreementUuid = String(prefill.preferredAgreement?.id || '').trim();
+        console.debug('[Clients] action invoice', { clientId, agreementUuid });
+        if (agreementUuid && window.Invoices?.openCreateFromAgreementTemplate) {
+          await window.Invoices.openCreateFromAgreementTemplate(agreementUuid);
+          UI.toast('Invoice form opened from agreement template.');
+          return;
+        }
+        const invoiceDraft = this.buildInvoiceDraftFromClient_(client);
+        if (!window.Invoices?.openInvoice) throw new Error('Invoice form helper is unavailable.');
+        window.Invoices.openInvoice(invoiceDraft, [], { readOnly: false });
+        UI.toast('Invoice form opened from client.');
       } else if (action === 'clone') {
-        const agreements = this.listClientRelatedAgreements_(clientId);
+        const { agreements, preferred } = this.resolveLatestAgreementContext_(clientId);
         if (!agreements.length) {
           UI.toast('No previous agreements found for this client.');
           return;
         }
-        const selected = window.prompt('Enter agreement ID to duplicate:', agreements[0].agreement_id || '');
-        if (!selected) return;
-        await Api.createFromPreviousAgreement(clientId, selected, 'agreement');
-        UI.toast('Created new draft from previous agreement.');
+        if (!preferred?.id) {
+          UI.toast('Previous agreement is missing UUID and cannot be opened.');
+          return;
+        }
+        await this.openAgreementCloneDraft_(preferred, client);
       }
     } catch (error) {
       UI.toast(error?.message || 'Client quick action failed.');
@@ -1498,21 +1630,21 @@ const Clients = {
         const agreementBtn = event.target?.closest?.('[data-agreement-view]');
         if (agreementBtn) {
           const id = agreementBtn.getAttribute('data-agreement-view');
-          if (typeof setActiveView === 'function') setActiveView('agreements');
+          console.debug('[Clients] open agreement', { agreementUuid: id });
           if (id && window.Agreements?.openAgreementFormById) window.Agreements.openAgreementFormById(id, { readOnly: true });
           return;
         }
         const invoiceBtn = event.target?.closest?.('[data-invoice-view]');
         if (invoiceBtn) {
           const id = invoiceBtn.getAttribute('data-invoice-view');
-          if (typeof setActiveView === 'function') setActiveView('invoices');
+          console.debug('[Clients] open invoice', { invoiceUuid: id });
           if (id && window.Invoices?.openInvoiceById) window.Invoices.openInvoiceById(id, { readOnly: true });
           return;
         }
         const receiptBtn = event.target?.closest?.('[data-receipt-view]');
         if (receiptBtn) {
           const id = receiptBtn.getAttribute('data-receipt-view');
-          if (typeof setActiveView === 'function') setActiveView('receipts');
+          console.debug('[Clients] open receipt', { receiptUuid: id });
           if (id && window.Receipts?.openReceiptById) window.Receipts.openReceiptById(id, { readOnly: true });
         }
       });
