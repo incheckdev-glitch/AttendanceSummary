@@ -163,7 +163,7 @@ const Invoices = {
   syncPaymentConclusion(invoice = this.state.selectedInvoice) {
     if (!E.invoicePaymentConclusion) return;
     const pending = this.toNumberSafe(invoice?.pending_amount);
-    E.invoicePaymentConclusion.textContent = pending === 0 ? 'Settlement Completed' : 'Pending Settlement';
+    E.invoicePaymentConclusion.textContent = pending <= 0 ? 'Settlement Completed' : 'Pending Settlement';
   },
   async refreshInvoiceReceipts(invoiceId, { force = false } = {}) {
     const id = String(invoiceId || '').trim();
@@ -195,9 +195,18 @@ const Invoices = {
     normalized.invoice_number = String(normalized.invoice_number || '').trim();
     normalized.status = String(normalized.status || '').trim() || 'Draft';
     normalized.currency = String(normalized.currency || '').trim() || 'USD';
-    normalized.amount_paid = this.toNumberSafe(normalized.amount_paid);
+    const amountPaidFallback = source.received_amount ?? source.receivedAmount;
+    const grandTotalFallback = source.invoice_total ?? source.invoiceTotal;
+    const subtotalSubscriptionFallback = source.subtotal_locations ?? source.subtotalLocations;
+    normalized.subtotal_subscription = this.toNumberSafe(normalized.subtotal_subscription || subtotalSubscriptionFallback);
+    normalized.subtotal_one_time = this.toNumberSafe(normalized.subtotal_one_time);
+    normalized.grand_total = this.toNumberSafe(normalized.grand_total || grandTotalFallback);
+    normalized.amount_paid = this.toNumberSafe(normalized.amount_paid || amountPaidFallback);
     normalized.pending_amount = this.toNumberSafe(normalized.pending_amount);
     normalized.payment_state = String(normalized.payment_state || '').trim();
+    if (!normalized.amount_in_words && normalized.grand_total > 0) {
+      normalized.amount_in_words = this.amountToWords(normalized.grand_total, normalized.currency);
+    }
     return normalized;
   },
   normalizeSection(value) {
@@ -205,8 +214,8 @@ const Invoices = {
       .trim()
       .toLowerCase();
     if (!raw) return '';
-    if (['subscription', 'annual', 'annual_saas', 'annual saas', 'saas'].includes(raw)) return 'annual_saas';
-    if (['one_time', 'one-time_fee', 'one_time_fee', 'one-time', 'one-time fee', 'one time fee', 'onetime'].includes(raw))
+    if (['subscription', 'annual', 'annual_saas', 'annual saas', 'saas', 'recurring'].includes(raw)) return 'annual_saas';
+    if (['one_time', 'one-time_fee', 'one_time_fee', 'one-time', 'one-time fee', 'one time fee', 'onetime', 'setup', 'non_recurring', 'non-recurring'].includes(raw))
       return 'one_time_fee';
     if (raw === 'capability') return 'capability';
     return raw;
@@ -242,9 +251,11 @@ const Invoices = {
       item_name: String(pick(source.item_name, source.itemName, source.name)).trim(),
       unit_price: this.toNumberSafe(pick(source.unit_price, source.unitPrice)),
       discount_percent: this.toNumberSafe(pick(source.discount_percent, source.discountPercent)),
-      discounted_unit_price: this.toNumberSafe(pick(source.discounted_unit_price, source.discountedUnitPrice)),
-      quantity: this.toNumberSafe(pick(source.quantity, source.qty)),
-      line_total: this.toNumberSafe(pick(source.line_total, source.lineTotal)),
+      discounted_unit_price: this.toNumberSafe(
+        pick(source.discounted_unit_price, source.discountedUnitPrice, source.discounted_price, source.discountedPrice)
+      ),
+      quantity: this.toNumberSafe(pick(source.quantity, source.qty, source.units)),
+      line_total: this.toNumberSafe(pick(source.line_total, source.lineTotal, source.amount, source.total)),
       capability_name: String(pick(source.capability_name, source.capabilityName)).trim(),
       capability_value: String(pick(source.capability_value, source.capabilityValue)).trim(),
       notes: String(pick(source.notes)).trim()
@@ -371,33 +382,88 @@ const Invoices = {
       item_name: base.item_name || catalogMatch?.item_name || '',
       notes: base.notes || catalogMatch?.notes || ''
     });
-    const discountRatio =
-      merged.discount_percent > 1 ? merged.discount_percent / 100 : Math.max(0, merged.discount_percent);
-    merged.discounted_unit_price = merged.unit_price * (1 - discountRatio);
-    merged.line_total = merged.discounted_unit_price * (merged.quantity || 0);
+    const hasDiscountedUnitPrice = invoiceItem?.discounted_unit_price !== undefined && invoiceItem?.discounted_unit_price !== null;
+    const hasLineTotal = invoiceItem?.line_total !== undefined && invoiceItem?.line_total !== null;
+    if (!hasDiscountedUnitPrice || !hasLineTotal) {
+      const discountRatio =
+        merged.discount_percent > 1 ? merged.discount_percent / 100 : Math.max(0, merged.discount_percent);
+      if (!hasDiscountedUnitPrice) merged.discounted_unit_price = merged.unit_price * (1 - discountRatio);
+      if (!hasLineTotal) merged.line_total = merged.discounted_unit_price * (merged.quantity || 0);
+    }
     return merged;
+  },
+  isSubscriptionSection(section = '') {
+    const normalized = this.normalizeSection(section);
+    return ['annual_saas', 'subscription', 'recurring', 'saas'].includes(normalized);
+  },
+  isOneTimeSection(section = '') {
+    const normalized = this.normalizeSection(section);
+    return ['one_time_fee', 'one_time', 'setup', 'non_recurring', 'non-recurring'].includes(normalized);
   },
   calculateInvoiceTotals(items = []) {
     return (Array.isArray(items) ? items : []).reduce(
       (acc, rawItem) => {
         const item = this.normalizeItem(rawItem);
         const lineTotal = this.toNumberSafe(item.line_total);
-        if (this.normalizeSection(item.section) === 'annual_saas') acc.subtotal_subscription += lineTotal;
-        else if (this.normalizeSection(item.section) === 'one_time_fee') acc.subtotal_one_time += lineTotal;
+        if (this.isSubscriptionSection(item.section)) acc.subtotal_subscription += lineTotal;
+        else if (this.isOneTimeSection(item.section)) acc.subtotal_one_time += lineTotal;
         acc.grand_total += lineTotal;
         return acc;
       },
       { subtotal_subscription: 0, subtotal_one_time: 0, grand_total: 0 }
     );
   },
-  applyTotalsToForm(totals = {}) {
+  amountToWords(value, currency = 'USD') {
+    const amount = this.toNumberSafe(value);
+    const whole = Math.floor(Math.max(0, amount));
+    const cents = Math.round((amount - whole) * 100);
+    const ones = ['Zero','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
+    const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+    const underThousand = n => {
+      if (n < 20) return ones[n];
+      if (n < 100) return `${tens[Math.floor(n / 10)]}${n % 10 ? ` ${ones[n % 10]}` : ''}`;
+      return `${ones[Math.floor(n / 100)]} Hundred${n % 100 ? ` ${underThousand(n % 100)}` : ''}`;
+    };
+    const toWords = n => {
+      if (n === 0) return 'Zero';
+      const chunks = [[1_000_000_000, 'Billion'], [1_000_000, 'Million'], [1_000, 'Thousand'], [1, '']];
+      let remaining = n;
+      const out = [];
+      chunks.forEach(([size, label]) => {
+        if (remaining < size) return;
+        const chunk = Math.floor(remaining / size);
+        remaining %= size;
+        out.push(`${underThousand(chunk)}${label ? ` ${label}` : ''}`);
+      });
+      return out.join(' ');
+    };
+    const currencyLabel = String(currency || 'USD').trim().toUpperCase() === 'USD' ? 'Dollars' : String(currency || 'Currency').trim().toUpperCase();
+    return `${toWords(whole)} ${currencyLabel} and ${String(cents).padStart(2, '0')}/100`;
+  },
+  derivePaymentConclusion(invoice = {}) {
+    const pending = this.toNumberSafe(invoice.pending_amount);
+    return pending <= 0 ? 'Settlement Completed' : 'Pending Settlement';
+  },
+  deriveCalculatedSummary(invoice = {}, items = []) {
+    const totals = this.calculateInvoiceTotals(items);
+    const derivedPayment = this.derivePaymentFields({ ...invoice, grand_total: totals.grand_total });
+    const amountInWords = this.amountToWords(totals.grand_total, invoice.currency);
+    const paymentConclusion = this.derivePaymentConclusion(derivedPayment);
+    return { ...totals, ...derivedPayment, amount_in_words: amountInWords, payment_conclusion: paymentConclusion };
+  },
+  applyTotalsToForm(summary = {}) {
     const set = (id, value) => {
       const el = document.getElementById(id);
       if (el) el.value = this.toNumberSafe(value);
     };
-    set('invoiceFormSubtotalSubscription', totals.subtotal_subscription);
-    set('invoiceFormSubtotalOneTime', totals.subtotal_one_time);
-    set('invoiceFormGrandTotal', totals.grand_total);
+    set('invoiceFormSubtotalSubscription', summary.subtotal_subscription);
+    set('invoiceFormSubtotalOneTime', summary.subtotal_one_time);
+    set('invoiceFormGrandTotal', summary.grand_total);
+    set('invoiceFormAmountPaid', summary.amount_paid);
+    set('invoiceFormPendingAmount', summary.pending_amount);
+    if (E.invoiceFormPaymentState) E.invoiceFormPaymentState.value = String(summary.payment_state || 'Unpaid');
+    if (E.invoiceFormAmountInWords) E.invoiceFormAmountInWords.value = String(summary.amount_in_words || '');
+    if (E.invoicePaymentConclusion) E.invoicePaymentConclusion.textContent = String(summary.payment_conclusion || 'Pending Settlement');
   },
   todayIso() {
     return new Date().toISOString().slice(0, 10);
@@ -601,16 +667,15 @@ const Invoices = {
 
   derivePaymentFields(invoice = {}) {
     const grandTotal = this.toNumberSafe(invoice.grand_total);
-    const normalizedStatus = this.normalizeText(invoice.status);
-    let amountPaid = this.toNumberSafe(invoice.amount_paid);
-
-    amountPaid = Math.max(0, Math.min(amountPaid, grandTotal));
-    if (normalizedStatus === 'paid') amountPaid = grandTotal;
+    const amountPaidCandidate =
+      invoice.amount_paid !== undefined && invoice.amount_paid !== null && invoice.amount_paid !== ''
+        ? invoice.amount_paid
+        : invoice.received_amount;
+    let amountPaid = this.toNumberSafe(amountPaidCandidate);
+    amountPaid = Math.max(0, amountPaid);
 
     const pendingAmount = Math.max(0, grandTotal - amountPaid);
-    let paymentState = 'Unpaid';
-    if (amountPaid >= grandTotal && grandTotal > 0) paymentState = 'Fully Paid';
-    else if (amountPaid > 0) paymentState = 'Partially Paid';
+    const paymentState = amountPaid <= 0 ? 'Unpaid' : pendingAmount > 0 ? 'Partially Paid' : 'Paid';
 
     return {
       amount_paid: amountPaid,
@@ -619,7 +684,6 @@ const Invoices = {
     };
   },
   syncPaymentFieldsInForm() {
-    const status = String(E.invoiceFormStatus?.value || '').trim();
     const grandTotal = this.toNumberSafe(E.invoiceFormGrandTotal?.value);
     const amountPaidInput = E.invoiceFormAmountPaid;
     const wrap = E.invoiceFormAmountPaidWrap;
@@ -627,23 +691,23 @@ const Invoices = {
     const pendingInput = E.invoiceFormPendingAmount;
 
     let amountPaid = this.toNumberSafe(amountPaidInput?.value);
-    if (status === 'Paid') amountPaid = grandTotal;
-    amountPaid = Math.max(0, Math.min(amountPaid, grandTotal));
+    amountPaid = Math.max(0, amountPaid);
 
     const showAmountPaid = true;
     if (wrap) wrap.style.display = '';
     if (amountPaidInput) {
       amountPaidInput.value = amountPaid;
-      amountPaidInput.readOnly = status === 'Paid';
-      amountPaidInput.required = status === 'Partially Paid';
+      amountPaidInput.readOnly = false;
+      amountPaidInput.required = false;
     }
 
     const pendingAmount = Math.max(0, grandTotal - amountPaid);
     if (pendingInput) pendingInput.value = pendingAmount;
     if (pendingWrap) pendingWrap.style.display = '';
 
-    const paymentState = amountPaid >= grandTotal && grandTotal > 0 ? 'Fully Paid' : amountPaid > 0 ? 'Partially Paid' : 'Unpaid';
+    const paymentState = amountPaid <= 0 ? 'Unpaid' : grandTotal - amountPaid > 0 ? 'Partially Paid' : 'Paid';
     if (E.invoiceFormPaymentState) E.invoiceFormPaymentState.value = paymentState;
+    if (E.invoiceFormAmountInWords) E.invoiceFormAmountInWords.value = this.amountToWords(grandTotal, E.invoiceFormCurrency?.value || 'USD');
     this.syncPaymentConclusion({ pending_amount: pendingAmount });
   },
   applyFilters() {
@@ -1005,9 +1069,7 @@ const Invoices = {
     this.state.items = Array.isArray(items) ? items.map(item => this.normalizeItem(item)) : [];
     this.assignFormValues(this.state.selectedInvoice);
     this.renderItems(this.state.items);
-    if (this.state.items.length) {
-      this.applyTotalsToForm(this.calculateInvoiceTotals(this.state.items));
-    }
+    this.applyTotalsToForm(this.deriveCalculatedSummary(this.state.selectedInvoice, this.state.items));
     this.syncPaymentFieldsInForm();
     this.syncPaymentConclusion(this.state.selectedInvoice);
     this.renderInvoiceReceipts(this.state.selectedInvoice);
@@ -1192,8 +1254,7 @@ const Invoices = {
       const normalizedItems = items.map(item => this.mergeCatalogItem(item, catalogLookup));
       this.state.items = normalizedItems;
       this.renderItems(normalizedItems);
-      const totals = this.calculateInvoiceTotals(normalizedItems);
-      this.applyTotalsToForm(totals);
+      this.applyTotalsToForm(this.deriveCalculatedSummary(mappedInvoice, normalizedItems));
     } catch (error) {
       UI.toast('Unable to auto-fill from agreement: ' + (error?.message || 'Unknown error'));
     }
@@ -1238,14 +1299,13 @@ const Invoices = {
     const id = String(E.invoiceForm?.dataset.id || '').trim();
     const { invoice, items } = this.collectFormValues();
     if (!this.validateInvoice(invoice)) return;
-    const totals = this.calculateInvoiceTotals(items);
-    const derivedPayment = this.derivePaymentFields({ ...invoice, grand_total: totals.grand_total });
+    const summary = this.deriveCalculatedSummary(invoice, items);
     const payloadInvoice = this.normalizeInvoice({
       ...invoice,
-      ...derivedPayment,
-      subtotal_subscription: totals.subtotal_subscription,
-      subtotal_one_time: totals.subtotal_one_time,
-      grand_total: totals.grand_total
+      ...summary,
+      subtotal_subscription: summary.subtotal_subscription,
+      subtotal_one_time: summary.subtotal_one_time,
+      grand_total: summary.grand_total
     });
     this.assignFormValues(payloadInvoice);
     const currentRecord = this.state.rows.find(row => String(row.invoice_id || '') === id) || {};
@@ -1567,7 +1627,7 @@ const Invoices = {
         groups[section] = groups[section].filter((_, idx) => idx !== index);
         const items = [...groups.annual_saas, ...groups.one_time_fee, ...groups.capability];
         this.renderItems(items);
-        this.applyTotalsToForm(this.calculateInvoiceTotals(items));
+        this.applyTotalsToForm(this.deriveCalculatedSummary(this.collectFormValues().invoice, items));
       });
       E.invoiceForm.addEventListener('input', event => {
         if (['invoiceFormStatus', 'invoiceFormAmountPaid', 'invoiceFormGrandTotal'].includes(event.target?.id)) {
@@ -1578,8 +1638,8 @@ const Invoices = {
         const tr = event.target.closest('tr[data-item-row]');
         const section = tr?.getAttribute('data-item-row');
         if (!tr || !section || section === 'capability') {
-          this.applyTotalsToForm(this.calculateInvoiceTotals(this.collectItems()));
-        this.syncPaymentFieldsInForm();
+          this.applyTotalsToForm(this.deriveCalculatedSummary(this.collectFormValues().invoice, this.collectItems()));
+          this.syncPaymentFieldsInForm();
           return;
         }
         if (field === 'item_name') this.applyCatalogSelectionToRow(tr, section);
@@ -1593,7 +1653,7 @@ const Invoices = {
         const lineTotalEl = tr.querySelector('[data-item-display="line_total"]');
         if (discountedEl) discountedEl.textContent = this.formatMoney(computed.discounted_unit_price);
         if (lineTotalEl) lineTotalEl.textContent = this.formatMoney(computed.line_total);
-        this.applyTotalsToForm(this.calculateInvoiceTotals(this.collectItems()));
+        this.applyTotalsToForm(this.deriveCalculatedSummary(this.collectFormValues().invoice, this.collectItems()));
         this.syncPaymentFieldsInForm();
       });
       E.invoiceForm.addEventListener('change', event => {
@@ -1613,7 +1673,7 @@ const Invoices = {
         const items = this.collectItems();
         items.push(this.normalizeItem({ section: 'annual_saas', quantity: 1 }));
         this.renderItems(items);
-        this.applyTotalsToForm(this.calculateInvoiceTotals(items));
+        this.applyTotalsToForm(this.deriveCalculatedSummary(this.collectFormValues().invoice, items));
       });
     }
     if (E.invoiceAddOneTimeRowBtn) {
@@ -1621,7 +1681,7 @@ const Invoices = {
         const items = this.collectItems();
         items.push(this.normalizeItem({ section: 'one_time_fee', quantity: 1 }));
         this.renderItems(items);
-        this.applyTotalsToForm(this.calculateInvoiceTotals(items));
+        this.applyTotalsToForm(this.deriveCalculatedSummary(this.collectFormValues().invoice, items));
       });
     }
     if (E.invoiceAddCapabilityRowBtn) {
@@ -1629,7 +1689,7 @@ const Invoices = {
         const items = this.collectItems();
         items.push(this.normalizeItem({ section: 'capability', capability_name: '', capability_value: '' }));
         this.renderItems(items);
-        this.applyTotalsToForm(this.calculateInvoiceTotals(items));
+        this.applyTotalsToForm(this.deriveCalculatedSummary(this.collectFormValues().invoice, items));
       });
     }
     if (E.invoiceFormAgreementId) {
