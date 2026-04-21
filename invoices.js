@@ -102,12 +102,14 @@ const Invoices = {
   },
   normalizeLinkedReceipt(raw = {}) {
     const source = window.Receipts?.normalizeReceipt ? window.Receipts.normalizeReceipt(raw) : { ...(raw || {}) };
+    const amountReceived = this.toNumberSafe(source?.amount_received);
     return {
       id: String(source?.id || '').trim(),
       receipt_id: String(source?.receipt_id || '').trim(),
       receipt_number: String(source?.receipt_number || '').trim(),
       receipt_date: this.normalizeDateInputValue(source?.receipt_date),
-      amount_received: this.toNumberSafe(source?.amount_received ?? source?.received_amount),
+      amount_received: amountReceived,
+      received_amount: amountReceived,
       payment_method: String(source?.payment_method || '').trim(),
       payment_reference: String(source?.payment_reference || '').trim(),
       payment_state: String(source?.payment_state || '').trim(),
@@ -235,7 +237,7 @@ const Invoices = {
       if (client) {
         const { data, error } = await client
           .from('receipts')
-          .select('id,receipt_id,receipt_number,receipt_date,amount_received,received_amount,payment_method,payment_reference,payment_state,status,notes,created_at,invoice_id')
+          .select('id,receipt_id,receipt_number,receipt_date,amount_received,payment_method,payment_reference,payment_state,status,notes,created_at,invoice_id')
           .eq('invoice_id', id)
           .order('receipt_date', { ascending: true, nullsFirst: false })
           .order('created_at', { ascending: true, nullsFirst: false });
@@ -325,7 +327,7 @@ const Invoices = {
         .order('created_at', { ascending: true, nullsFirst: false }),
       client
         .from('receipts')
-        .select('id,receipt_id,receipt_number,receipt_date,amount_received,received_amount,payment_method,payment_reference,payment_state,status,notes,created_at,invoice_id')
+        .select('id,receipt_id,receipt_number,receipt_date,amount_received,payment_method,payment_reference,payment_state,status,notes,created_at,invoice_id')
         .eq('invoice_id', invoiceUuid)
         .order('receipt_date', { ascending: true, nullsFirst: false })
         .order('created_at', { ascending: true, nullsFirst: false })
