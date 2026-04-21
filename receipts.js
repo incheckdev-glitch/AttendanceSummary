@@ -506,7 +506,7 @@ const Receipts = {
       || (effectiveNewPaidTotal <= 0 ? 'Unpaid' : effectivePendingAmount > 0 ? 'Partially Paid' : 'Paid');
     const effectivePaymentConclusion = String(receipt.payment_conclusion || '').trim()
       || this.derivePaymentConclusion({ pending_amount: effectivePendingAmount });
-    const effectiveInvoiceTotal = this.normalizeAmountInput(invoiceSource.invoice_total ?? invoiceSource.grand_total ?? invoiceSource.invoice_grand_total)
+    const effectiveInvoiceTotal = this.normalizeAmountInput(invoiceSource.invoice_total ?? invoiceSource.invoice_grand_total)
       ?? this.toNumberSafe(receipt.invoice_grand_total || receipt.invoice_total || receipt.grand_total);
     set('receiptFormReceiptId', receipt.receipt_id);
     set('receiptFormReceiptNumber', receipt.receipt_number);
@@ -645,13 +645,17 @@ const Receipts = {
     if (!invoiceId) throw new Error('Invoice UUID is required to compute receipt settlement snapshot.');
     const client = this.requireSupabaseClient();
     const [{ data: invoiceRow, error: invoiceError }, { data: receiptRows, error: receiptsError }] = await Promise.all([
-      client.from('invoices').select('id,invoice_total,grand_total,received_amount').eq('id', invoiceId).maybeSingle(),
+      client
+        .from('invoices')
+        .select('id,subtotal_locations,subtotal_one_time,invoice_total,received_amount,pending_amount,payment_state')
+        .eq('id', invoiceId)
+        .maybeSingle(),
       client.from('receipts').select('id,invoice_id,amount_received').eq('invoice_id', invoiceId)
     ]);
     if (invoiceError) throw new Error(invoiceError.message || 'Unable to load invoice before creating receipt.');
     if (!invoiceRow) throw new Error('Linked invoice was not found before creating receipt.');
     if (receiptsError) throw new Error(receiptsError.message || 'Unable to load previous receipts before creating receipt.');
-    const invoiceTotal = this.toNumberSafe(invoiceRow.invoice_total || invoiceRow.grand_total);
+    const invoiceTotal = this.toNumberSafe(invoiceRow.invoice_total);
     const paidNow = this.toNumberSafe(paidNowInput);
     const sumPreviousReceipts = (Array.isArray(receiptRows) ? receiptRows : []).reduce((sum, row) => sum + this.toNumberSafe(row?.amount_received), 0);
     const invoiceReceivedAmount = this.toNumberSafe(invoiceRow.received_amount);
@@ -724,7 +728,7 @@ const Receipts = {
     const hydrated = await this.hydrateInvoiceReceiptDraft(invoice);
     const sourceInvoice = { ...(invoice || {}), ...(hydrated.invoice || {}) };
     const pendingAmount = this.toNumberSafe(sourceInvoice?.pending_amount);
-    const invoiceTotal = this.toNumberSafe(sourceInvoice?.grand_total || sourceInvoice?.invoice_total);
+    const invoiceTotal = this.toNumberSafe(sourceInvoice?.invoice_total);
     const invoiceReceivedAmount = this.normalizeAmountInput(sourceInvoice?.received_amount ?? sourceInvoice?.amount_received);
     const defaultAmount = invoiceReceivedAmount ?? '';
     const paymentState =
@@ -907,7 +911,7 @@ const Receipts = {
     const normalizedPendingAmount =
       pendingAmount ??
       (existing.pending_amount === null || existing.pending_amount === undefined || existing.pending_amount === ''
-        ? Math.max((invoiceTotal ?? this.toNumberSafe(existing.invoice_total || existing.invoice_grand_total || existing.grand_total)) - normalizedNewPaidTotal, 0)
+        ? Math.max((invoiceTotal ?? this.toNumberSafe(existing.invoice_total || existing.invoice_grand_total)) - normalizedNewPaidTotal, 0)
         : this.toNumberSafe(existing.pending_amount));
     const normalizedPaymentState = String(formValues.payment_state || existing.payment_state || '').trim()
       || (normalizedNewPaidTotal <= 0 ? 'Unpaid' : normalizedPendingAmount > 0 ? 'Partially Paid' : 'Paid');
@@ -936,7 +940,7 @@ const Receipts = {
       customer_legal_name: String(formValues.customer_legal_name || existing.customer_legal_name || '').trim() || null,
       customer_address: String(formValues.customer_address || existing.customer_address || '').trim() || null,
       amount_in_words: String(formValues.amount_in_words || existing.amount_in_words || '').trim() || null,
-      invoice_total: invoiceTotal ?? this.toNumberSafe(existing.invoice_total || existing.invoice_grand_total || existing.grand_total),
+      invoice_total: invoiceTotal ?? this.toNumberSafe(existing.invoice_total || existing.invoice_grand_total),
       old_paid_total: normalizedOldPaidTotal,
       paid_now: normalizedPaidNow,
       new_paid_total: normalizedNewPaidTotal,
@@ -1181,7 +1185,7 @@ const Receipts = {
     const locationRows = locationItems.length ? locationItems.map(buildDetailRow).join('') : '<tr><td colspan="11" class="muted cell-center">No location detail rows.</td></tr>';
     const subtotalLocations = this.toNumberSafe(r.subtotal_locations || invoice?.subtotal_locations || locationItems.reduce((sum, item) => sum + this.toNumberSafe(item.line_total), 0));
     const subtotalOneTime = this.toNumberSafe(r.subtotal_one_time || invoice?.subtotal_one_time || oneTimeItems.reduce((sum, item) => sum + this.toNumberSafe(item.line_total), 0));
-    const invoiceTotal = this.toNumberSafe(r.invoice_grand_total || r.invoice_total || r.grand_total || invoice?.invoice_total || invoice?.grand_total || subtotalLocations + subtotalOneTime);
+    const invoiceTotal = this.toNumberSafe(r.invoice_grand_total || r.invoice_total || r.grand_total || invoice?.invoice_total || subtotalLocations + subtotalOneTime);
     const oldPaidTotal = this.toNumberSafe(r.old_paid_total);
     const paidNow = this.toNumberSafe(r.paid_now || r.amount_received || r.received_amount);
     const newPaidTotal = this.toNumberSafe(r.new_paid_total || (oldPaidTotal + paidNow));
