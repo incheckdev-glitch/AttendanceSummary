@@ -102,6 +102,11 @@ const ClientsService = {
     }).length;
   },
   matchAgreementClient(agreement = {}, client = {}) {
+    const clientUuid = String(client.id || '').trim();
+    if (clientUuid) {
+      const agreementClientUuid = String(agreement.client_id || agreement.client_uuid || '').trim();
+      if (agreementClientUuid && agreementClientUuid === clientUuid) return true;
+    }
     const sourceAgreement = String(client.source_agreement_id || '').trim();
     if (sourceAgreement) {
       if (String(agreement.id || '').trim() === sourceAgreement) return true;
@@ -114,6 +119,11 @@ const ClientsService = {
     return Boolean((c1 && (c1 === a1 || c1 === a2)) || (c2 && (c2 === a1 || c2 === a2)));
   },
   matchRecordClient(record = {}, client = {}) {
+    const clientUuid = String(client.id || '').trim();
+    if (clientUuid) {
+      const recordClientUuid = String(record.client_id || record.client_uuid || '').trim();
+      if (recordClientUuid && recordClientUuid === clientUuid) return true;
+    }
     const clientBusinessId = String(client.client_id || '').trim();
     if (clientBusinessId && String(record.client_id || '').trim() === clientBusinessId) return true;
     const c1 = this.normalizeCompanyKey(client.company_name || client.customer_legal_name);
@@ -126,17 +136,21 @@ const ClientsService = {
     const linkedAgreements = agreements.filter(row => this.matchAgreementClient(row, client));
     const signedAgreements = linkedAgreements.filter(row => this.isSignedAgreement(row));
     const linkedInvoices = invoices.filter(row => this.matchRecordClient(row, client));
-    const linkedReceipts = receipts.filter(row => this.matchRecordClient(row, client));
     const baselineAgreements = signedAgreements.length ? signedAgreements : linkedAgreements;
+    const invoiceIdSet = new Set(linkedInvoices.map(row => String(row.id || '').trim()).filter(Boolean));
+    const linkedReceipts = receipts.filter(row => {
+      const invoiceUuid = String(row.invoice_id || '').trim();
+      if (invoiceUuid && invoiceIdSet.has(invoiceUuid)) return true;
+      return this.matchRecordClient(row, client);
+    });
 
     const totalAgreements = linkedAgreements.length;
     const totalLocations = baselineAgreements.reduce((sum, agreement) => sum + this.countLocationItems(agreement), 0);
-    const totalValue = baselineAgreements.reduce((sum, agreement) => sum + this.toNumber(agreement.grand_total), 0);
-    const paidFromInvoices = linkedInvoices.reduce((sum, invoice) => sum + this.toNumber(invoice.received_amount ?? invoice.amount_paid), 0);
-    const paidFromReceipts = linkedReceipts.reduce((sum, receipt) => sum + this.toNumber(receipt.amount_received ?? receipt.received_amount), 0);
-    const totalPaid = Math.max(paidFromInvoices, paidFromReceipts);
-    const invoiceDue = linkedInvoices.reduce((sum, invoice) => sum + this.toNumber(invoice.pending_amount), 0);
-    const totalDue = invoiceDue > 0 ? invoiceDue : Math.max(totalValue - totalPaid, 0);
+    const totalValue = linkedInvoices.length
+      ? linkedInvoices.reduce((sum, invoice) => sum + this.toNumber(invoice.invoice_total ?? invoice.grand_total), 0)
+      : baselineAgreements.reduce((sum, agreement) => sum + this.toNumber(agreement.grand_total), 0);
+    const totalPaid = linkedReceipts.reduce((sum, receipt) => sum + this.toNumber(receipt.amount_received), 0);
+    const totalDue = Math.max(totalValue - totalPaid, 0);
 
     return {
       total_agreements: totalAgreements,
@@ -196,7 +210,7 @@ const ClientsService = {
     const clientsList = await this.listClients(options);
     const db = this.getDb();
     const [agreementsRes, itemsRes, invoicesRes, receiptsRes] = await Promise.all([
-      db.from('agreements').select('id,agreement_id,agreement_number,customer_name,customer_legal_name,status,grand_total,updated_at,service_start_date,service_end_date,agreement_date,customer_sign_date,due_date,renewal_date,location_name').order('updated_at', { ascending: false }).limit(500),
+      db.from('agreements').select('id,agreement_id,agreement_number,client_id,customer_name,customer_legal_name,status,grand_total,updated_at,service_start_date,service_end_date,agreement_date,customer_sign_date,due_date,renewal_date,location_name').order('updated_at', { ascending: false }).limit(500),
       db.from('agreement_items').select('agreement_id,section,item_section,section_name,category,type').limit(5000),
       db.from('invoices').select('id,invoice_id,invoice_number,agreement_id,client_id,customer_name,customer_legal_name,status,payment_state,invoice_total,received_amount,pending_amount,updated_at,issue_date,due_date,reference,notes,location_name').order('updated_at', { ascending: false }).limit(1000),
       db.from('receipts').select('id,receipt_id,receipt_number,invoice_id,client_id,customer_name,customer_legal_name,status,payment_state,amount_received,pending_amount,updated_at,receipt_date,reference,notes').order('updated_at', { ascending: false }).limit(1000)
@@ -213,6 +227,39 @@ const ClientsService = {
       const totals = this.computeTotalsForClient(clientRow, agreements, invoices, receipts);
       return { ...clientRow, ...totals };
     });
+    const updates = clients
+      .filter(row => String(row.id || '').trim())
+      .map(row => {
+        const persisted = (clientsList.rows || []).find(source => String(source.id || '').trim() === String(row.id || '').trim()) || {};
+        const next = {
+          total_agreements: this.toNumber(row.total_agreements),
+          total_locations: this.toNumber(row.total_locations),
+          total_value: this.toNumber(row.total_value),
+          total_paid: this.toNumber(row.total_paid),
+          total_due: this.toNumber(row.total_due)
+        };
+        const unchanged = Object.keys(next).every(key => this.toNumber(persisted[key]) === next[key]);
+        return unchanged ? null : { id: row.id, ...next };
+      })
+      .filter(Boolean);
+    if (updates.length) {
+      const persistedUpdates = await Promise.all(
+        updates.map(update =>
+          db
+            .from('clients')
+            .update({
+              total_agreements: update.total_agreements,
+              total_locations: update.total_locations,
+              total_value: update.total_value,
+              total_paid: update.total_paid,
+              total_due: update.total_due
+            })
+            .eq('id', update.id)
+        )
+      );
+      const failedUpdate = persistedUpdates.find(result => result?.error);
+      if (failedUpdate?.error) throw this.friendlyError('Unable to refresh client totals', failedUpdate.error);
+    }
 
     return { ...clientsList, rows: clients, agreements, invoices, receipts };
   }

@@ -1034,6 +1034,7 @@ const Receipts = {
           invoiceId: normalized?.invoice_id || receipt?.invoice_id || invoiceUuid,
           receipt: normalized || receipt
         });
+        window.dispatchEvent(new CustomEvent('clients:refresh-totals', { detail: { reason: 'receipt-created' } }));
         UI.toast(receiptDisplay ? `Receipt ${receiptDisplay} created.` : 'Receipt created from invoice.');
         if (receiptUuid) {
           await this.openReceiptById(receiptUuid, { readOnly: false });
@@ -1077,6 +1078,7 @@ const Receipts = {
         this.state.items = parsed?.items || this.state.items;
       }
       await window.Invoices?.syncAfterReceiptMutation?.({ invoiceId: normalized?.invoice_id || persisted?.invoice_id, receipt: normalized });
+      window.dispatchEvent(new CustomEvent('clients:refresh-totals', { detail: { reason: 'receipt-saved' } }));
       UI.toast(`Receipt ${this.receiptDisplayId(normalized || persisted) || id} saved.`);
       this.closeForm();
     } catch (error) {
