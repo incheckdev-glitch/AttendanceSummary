@@ -118,7 +118,8 @@ const Clients = {
     const customerName = String(raw.customer_name || raw.customerName || '').trim();
     const legalName = String(raw.customer_legal_name || raw.customerLegalName || '').trim();
     const normalized = {
-      client_id: String(raw.client_id || raw.clientId || raw.id || '').trim(),
+      id: String(raw.id || '').trim(),
+      client_id: String(raw.client_id || raw.clientId || '').trim(),
       client_code: String(raw.client_code || raw.clientCode || '').trim(),
       customer_name: customerName,
       customer_legal_name: legalName,
@@ -170,7 +171,8 @@ const Clients = {
   },
   normalizeInvoice(raw = {}) {
     return {
-      invoice_id: String(raw.invoice_id || raw.invoiceId || raw.id || '').trim(),
+      id: String(raw.id || '').trim(),
+      invoice_id: String(raw.invoice_id || raw.invoiceId || '').trim(),
       invoice_number: String(raw.invoice_number || raw.invoiceNumber || '').trim(),
       agreement_id: String(raw.agreement_id || raw.agreementId || '').trim(),
       client_id: String(raw.client_id || raw.clientId || '').trim(),
@@ -190,7 +192,8 @@ const Clients = {
   },
   normalizeReceipt(raw = {}) {
     return {
-      receipt_id: String(raw.receipt_id || raw.receiptId || raw.id || '').trim(),
+      id: String(raw.id || '').trim(),
+      receipt_id: String(raw.receipt_id || raw.receiptId || '').trim(),
       receipt_number: String(raw.receipt_number || raw.receiptNumber || '').trim(),
       invoice_id: String(raw.invoice_id || raw.invoiceId || '').trim(),
       client_id: String(raw.client_id || raw.clientId || '').trim(),
