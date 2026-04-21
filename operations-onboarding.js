@@ -1,10 +1,4 @@
 const OperationsOnboarding = {
-  LOCATION_MATCH_CONFIG: {
-    positiveKeywords: ['location', 'site', 'store', 'branch', 'facility', 'address', 'premise', 'premises'],
-    negativeKeywords: ['capability', 'license', 'setup fee', 'one time', 'one-time', 'implementation', 'training', 'support', 'discount', 'tax'],
-    explicitSections: ['location', 'locations', 'site', 'sites', 'branch', 'branches'],
-    explicitTypes: ['location', 'locations', 'site', 'branch']
-  },
   OVERDUE_DAYS: 14,
   state: {
     rows: [],
@@ -113,12 +107,17 @@ const OperationsOnboarding = {
   normalizeAgreementItem(raw = {}, fallbackAgreementId = '') {
     const source = raw && typeof raw === 'object' ? raw : {};
     return {
+      id: String(this.pick(source.id, source.item_id, source.itemId)).trim(),
       agreement_id: String(this.pick(source.agreement_id, source.agreementId, fallbackAgreementId)).trim(),
       item_name: String(this.pick(source.item_name, source.itemName, source.name)).trim(),
       section: String(this.pick(source.section)).trim(),
       category: String(this.pick(source.category)).trim(),
       type: String(this.pick(source.type)).trim(),
       line_type: String(this.pick(source.line_type, source.lineType)).trim(),
+      billing_frequency: String(this.pick(source.billing_frequency, source.billingFrequency, source.frequency)).trim(),
+      service_start_date: String(this.pick(source.service_start_date, source.serviceStartDate)).trim(),
+      service_end_date: String(this.pick(source.service_end_date, source.serviceEndDate)).trim(),
+      line_total: Number(this.pick(source.line_total, source.lineTotal)) || 0,
       description: String(this.pick(source.description, source.notes)).trim(),
       location_name: String(this.pick(source.location_name, source.locationName)).trim(),
       location_address: String(this.pick(source.location_address, source.locationAddress)).trim()
@@ -225,42 +224,70 @@ const OperationsOnboarding = {
     if (normalized === 'incheck_full' || normalized === 'incheck full') return 'Technical Admin';
     return 'Other / Blank';
   },
-  isLocationAgreementItem(item = {}) {
+  normalizeToken(value = '') {
+    return String(value || '').toLowerCase().trim();
+  },
+  isAnnualSaasLocationItem(item = {}) {
     const safe = item && typeof item === 'object' ? item : {};
-    const fields = [safe.item_name, safe.section, safe.category, safe.type, safe.line_type, safe.description]
-      .map(value => String(value || '').toLowerCase().trim())
-      .filter(Boolean);
+    const section = this.normalizeToken(safe.section || safe.category || safe.type || safe.section_name || safe.section_label);
+    const billingFrequency = this.normalizeToken(safe.billing_frequency || safe.billingFrequency || safe.frequency);
+    const itemName = this.normalizeToken(safe.item_name || safe.itemName || safe.module || safe.module_name || safe.moduleName);
+    if (!section && !billingFrequency) return false;
+    const isOneTimeOrSetup = ['one_time_fee', 'one_time', 'one time', 'one-time', 'setup', 'implementation', 'onboarding'].some(
+      token => section.includes(token)
+    );
+    if (isOneTimeOrSetup) return false;
+    const isSaasFamily = ['annual_saas', 'saas', 'subscription', 'recurring'].some(token => section.includes(token));
+    if (!isSaasFamily) return false;
+    const isAnnual = ['annual', 'yearly', '12 month', '12-month'].some(
+      token => section.includes(token) || billingFrequency.includes(token) || itemName.includes(token)
+    );
+    return isAnnual;
+  },
+  isActiveAnnualSaasLocationItem(item = {}) {
+    const startValue = String(item.service_start_date || item.serviceStartDate || '').trim();
+    const endValue = String(item.service_end_date || item.serviceEndDate || '').trim();
+    if (!startValue) return false;
+    const start = new Date(startValue);
+    if (Number.isNaN(start.getTime())) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    start.setHours(0, 0, 0, 0);
+    if (today.getTime() < start.getTime()) return false;
+    if (!endValue) return true;
+    const end = new Date(endValue);
+    if (Number.isNaN(end.getTime())) return false;
+    end.setHours(0, 0, 0, 0);
+    return today.getTime() <= end.getTime();
+  },
+  deriveAgreementLocationMetrics(agreementItems = []) {
+    const safeItems = Array.isArray(agreementItems) ? agreementItems : [];
+    const annualItems = safeItems.filter(item => this.isAnnualSaasLocationItem(item));
+    const activeItems = annualItems.filter(item => this.isActiveAnnualSaasLocationItem(item));
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const renewalDates = annualItems
+      .map(item => String(item.service_end_date || item.serviceEndDate || '').trim())
+      .filter(Boolean)
+      .map(value => new Date(value))
+      .filter(date => !Number.isNaN(date.getTime()));
 
-    if (!fields.length) {
-      return Boolean(String(safe.location_name || '').trim() || String(safe.location_address || '').trim());
-    }
+    const upcomingRenewals = renewalDates
+      .filter(date => date.getTime() >= today.getTime())
+      .sort((a, b) => a.getTime() - b.getTime());
+    const overdueRenewals = renewalDates
+      .filter(date => date.getTime() < today.getTime())
+      .sort((a, b) => a.getTime() - b.getTime());
 
-    const hasExplicitSection = fields.some(field => this.LOCATION_MATCH_CONFIG.explicitSections.includes(field));
-    const hasExplicitType = fields.some(field => this.LOCATION_MATCH_CONFIG.explicitTypes.includes(field));
-    if (hasExplicitSection || hasExplicitType) return true;
-
-    if (String(safe.location_name || '').trim() || String(safe.location_address || '').trim()) return true;
-
-    const combined = fields.join(' ');
-    const hasPositiveKeyword = this.LOCATION_MATCH_CONFIG.positiveKeywords.some(keyword => combined.includes(keyword));
-    const hasNegativeKeyword = this.LOCATION_MATCH_CONFIG.negativeKeywords.some(keyword => combined.includes(keyword));
-
-    return hasPositiveKeyword && !hasNegativeKeyword;
+    return {
+      total_locations: annualItems.length,
+      active_locations: activeItems.length,
+      next_renewal_date: upcomingRenewals.length ? upcomingRenewals[0].toISOString() : '',
+      overdue_renewal_date: overdueRenewals.length ? overdueRenewals[0].toISOString() : ''
+    };
   },
   deriveAgreementLocationCount(agreement = {}, agreementItems = [], onboardingRecord = {}) {
-    const safeItems = Array.isArray(agreementItems) ? agreementItems : [];
-    if (safeItems.length) {
-      const derived = safeItems.filter(item => this.isLocationAgreementItem(item)).length;
-      if (derived > 0) return derived;
-    }
-
-    const agreementFallback = Number(this.pick(agreement?.location_count, agreement?.locations_count, agreement?.locationCount, agreement?.locationsCount));
-    if (Number.isFinite(agreementFallback) && agreementFallback > 0) return agreementFallback;
-
-    const onboardingFallback = Number(this.pick(onboardingRecord?.location_count, onboardingRecord?.locations_count, onboardingRecord?.locationCount, onboardingRecord?.locationsCount));
-    if (Number.isFinite(onboardingFallback) && onboardingFallback > 0) return onboardingFallback;
-
-    return 0;
+    return this.deriveAgreementLocationMetrics(agreementItems).total_locations;
   },
   buildAgreementAnalyticsRollup(onboardingRows, agreementMap, agreementItemsMap) {
     const rollup = [];
@@ -269,13 +296,16 @@ const OperationsOnboarding = {
       if (!agreementId) return;
       const agreement = agreementMap.get(agreementId) || {};
       const items = agreementItemsMap.get(agreementId) || [];
-      const locationCount = this.deriveAgreementLocationCount(agreement, items, row);
+      const locationMetrics = this.deriveAgreementLocationMetrics(items);
       rollup.push({
         agreement_id: agreementId,
         agreement_number: row.agreement_number || agreement.agreement_number || agreementId,
         client_name: row.client_name || agreement.customer_name || 'Unknown Client',
         normalized_client: this.normalizeClientName(row.client_name || agreement.customer_name || 'Unknown Client').key,
-        locations: locationCount,
+        locations: locationMetrics.total_locations,
+        active_locations: locationMetrics.active_locations,
+        next_renewal_date: locationMetrics.next_renewal_date,
+        overdue_renewal_date: locationMetrics.overdue_renewal_date,
         onboarding_status: row.onboarding_status || 'Unknown',
         request_type: this.requestTypeBucket(row.request_type),
         raw_request_type: row.request_type || '',
@@ -413,8 +443,13 @@ const OperationsOnboarding = {
     const uniqueClients = clientRollup.length;
     const totalAgreements = new Set(agreementRollup.map(row => row.agreement_id)).size;
     const totalLocations = agreementRollup.reduce((sum, row) => sum + Number(row.locations || 0), 0);
+    const activeLocations = agreementRollup.reduce((sum, row) => sum + Number(row.active_locations || 0), 0);
     const avgLocationsPerClient = uniqueClients > 0 ? totalLocations / uniqueClients : 0;
     const avgAgreementsPerClient = uniqueClients > 0 ? totalAgreements / uniqueClients : 0;
+    const nextRenewalDate = agreementRollup
+      .map(row => String(row.next_renewal_date || '').trim())
+      .filter(Boolean)
+      .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0] || '';
 
     const statusMap = new Map();
     const requestMap = new Map([
@@ -496,6 +531,8 @@ const OperationsOnboarding = {
         uniqueClients,
         totalAgreements,
         totalLocations,
+        activeLocations,
+        nextRenewalDate,
         avgLocationsPerClient,
         avgAgreementsPerClient,
         technicalAdmin: requestMap.get('Technical Admin') || 0,
@@ -509,7 +546,8 @@ const OperationsOnboarding = {
       comparativeTotals: [
         ['Unique Clients', uniqueClients],
         ['Agreements', totalAgreements],
-        ['Locations', totalLocations]
+        ['Annual SaaS Locations', totalLocations],
+        ['Active Annual SaaS Locations', activeLocations]
       ],
       locationsByClient: [...clientLocationsMap.entries()]
         .map(([key, count]) => [clientDisplayMap.get(key) || key, count, key])
@@ -576,9 +614,11 @@ const OperationsOnboarding = {
     const kpis = [
       ['Unique Clients', totals.uniqueClients || 0, 'clear', ''],
       ['Total Agreements', totals.totalAgreements || 0, 'clear', ''],
-      ['Total Locations', totals.totalLocations || 0, 'clear', ''],
+      ['Total Annual SaaS Locations', totals.totalLocations || 0, 'clear', ''],
+      ['Active Annual SaaS Locations', totals.activeLocations || 0, 'clear', ''],
       ['Avg Locations per Client', (totals.avgLocationsPerClient || 0).toFixed(2), 'clear', ''],
       ['Avg Agreements per Client', (totals.avgAgreementsPerClient || 0).toFixed(2), 'clear', ''],
+      ['Next Renewal Date', this.formatDate(totals.nextRenewalDate), 'clear', ''],
       ['Technical Admin Requests', totals.technicalAdmin || 0, 'request_type', 'Technical Admin'],
       ['Assigned to CSM', totals.assignedToCsm || 0, 'assigned', 'true'],
       ['Unassigned', totals.unassigned || 0, 'assigned', 'false'],
