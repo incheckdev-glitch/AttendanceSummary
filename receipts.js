@@ -463,41 +463,116 @@ const Receipts = {
     const dd = String(now.getDate()).padStart(2, '0');
     return `${yyyy}-${mm}-${dd}`;
   },
-  openCreateFromInvoice(invoice = {}) {
+  normalizeDateValue(value) {
+    const raw = String(value ?? '').trim();
+    if (!raw) return '';
+    const prefixMatch = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (prefixMatch) return prefixMatch[1];
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) return '';
+    return parsed.toISOString().slice(0, 10);
+  },
+  deriveReceiptPaymentState({ pending_amount = 0, received_amount = 0, invoice_total = 0 } = {}) {
+    const pending = this.toNumberSafe(pending_amount);
+    const received = this.toNumberSafe(received_amount);
+    const total = this.toNumberSafe(invoice_total);
+    if (pending <= 0) return 'Paid';
+    if (received > 0 && (total <= 0 || received < total)) return 'Partially Paid';
+    return 'Unpaid';
+  },
+  buildReceiptDescriptionFromInvoiceItem(item = {}) {
+    const location = String(item.location_name || item.locationName || '').trim();
+    const itemName = String(item.item_name || item.itemName || item.modules || '').trim();
+    if (location && itemName) return `${location} - ${itemName}`;
+    return location || itemName || String(item.description || '').trim() || 'Invoice Item';
+  },
+  mapInvoiceItemToReceiptItem(item = {}) {
+    const sectionRaw = String(item.section || item.item_section || item.itemSection || '').trim().toLowerCase();
+    const section = ['one_time_fee', 'one_time', 'setup', 'non_recurring', 'non-recurring'].includes(sectionRaw)
+      ? 'one_time_fee'
+      : 'location_details';
+    const lineNo = this.toNumberSafe(item.line_no ?? item.lineNo);
+    const amount = this.toNumberSafe(item.line_total ?? item.lineTotal ?? item.amount);
+    const description = this.buildReceiptDescriptionFromInvoiceItem(item);
+    const itemName = String(item.item_name || item.itemName || item.modules || '').trim();
+    return this.normalizeItem({
+      section,
+      line_no: lineNo > 0 ? lineNo : 0,
+      location_name: String(item.location_name || item.locationName || '').trim(),
+      location_address: String(item.location_address || item.locationAddress || '').trim(),
+      service_start_date: this.normalizeDateValue(item.service_start_date || item.serviceStartDate),
+      service_end_date: this.normalizeDateValue(item.service_end_date || item.serviceEndDate),
+      modules: description,
+      item_name: itemName || description,
+      line_total: amount,
+      notes: String(item.notes || '').trim()
+    });
+  },
+  async hydrateInvoiceReceiptDraft(invoice = {}) {
+    const invoiceUuid = String(invoice?.id || '').trim();
+    if (!invoiceUuid) return { invoice: {}, items: [] };
+    try {
+      const response = await Api.getInvoice(invoiceUuid);
+      const detail = window.Invoices?.extractInvoiceAndItems?.(response, invoiceUuid) || {};
+      return {
+        invoice: detail?.invoice || {},
+        items: Array.isArray(detail?.items) ? detail.items : []
+      };
+    } catch (_error) {
+      return { invoice: {}, items: [] };
+    }
+  },
+  async openCreateFromInvoice(invoice = {}) {
     const invoiceUuid = String(invoice?.id || '').trim();
     if (!invoiceUuid) {
       UI.toast('Invoice UUID is required to create a receipt.');
       return;
     }
-    const pendingAmount = this.toNumberSafe(invoice?.pending_amount);
+    const hydrated = await this.hydrateInvoiceReceiptDraft(invoice);
+    const sourceInvoice = { ...(invoice || {}), ...(hydrated.invoice || {}) };
+    const pendingAmount = this.toNumberSafe(sourceInvoice?.pending_amount);
+    const invoiceTotal = this.toNumberSafe(sourceInvoice?.grand_total || sourceInvoice?.invoice_total);
     const defaultAmount = pendingAmount > 0 ? pendingAmount : '';
-    const paymentState = String(invoice?.payment_state || '').trim() || (pendingAmount <= 0 ? 'Paid' : 'Unpaid');
+    const paymentState =
+      String(sourceInvoice?.payment_state || '').trim() ||
+      this.deriveReceiptPaymentState({
+        pending_amount: pendingAmount,
+        received_amount: defaultAmount,
+        invoice_total: invoiceTotal
+      });
     const draft = {
       receipt_id: '',
       receipt_number: '',
       invoice_id: invoiceUuid,
-      invoice_number: String(invoice?.invoice_number || invoice?.invoice_id || '').trim(),
-      client_id: String(invoice?.client_id || '').trim(),
+      invoice_number: String(sourceInvoice?.invoice_number || sourceInvoice?.invoice_id || '').trim(),
+      client_id: String(sourceInvoice?.client_id || '').trim(),
       receipt_date: this.todayInputValue(),
-      customer_name: String(invoice?.customer_name || '').trim(),
-      customer_legal_name: String(invoice?.customer_legal_name || '').trim(),
-      customer_address: String(invoice?.customer_address || '').trim(),
-      currency: String(invoice?.currency || '').trim() || 'USD',
+      customer_name: String(sourceInvoice?.customer_name || '').trim(),
+      customer_legal_name: String(sourceInvoice?.customer_legal_name || '').trim(),
+      customer_address: String(sourceInvoice?.customer_address || '').trim(),
+      issue_date: this.normalizeDateValue(sourceInvoice?.issue_date),
+      due_date: this.normalizeDateValue(sourceInvoice?.due_date),
+      billing_frequency: String(sourceInvoice?.billing_frequency || '').trim(),
+      payment_term: String(sourceInvoice?.payment_term || '').trim(),
+      currency: String(sourceInvoice?.currency || '').trim() || 'USD',
       status: 'Issued',
-      invoice_grand_total: this.toNumberSafe(invoice?.grand_total),
+      invoice_grand_total: invoiceTotal,
       received_amount: defaultAmount,
       pending_amount: pendingAmount,
       payment_state: paymentState,
-      payment_notes: ''
+      payment_notes: String(sourceInvoice?.notes || '').trim(),
+      amount_received: defaultAmount,
+      invoice_total: invoiceTotal
     };
+    const mappedItems = Array.isArray(hydrated.items) ? hydrated.items.map(item => this.mapInvoiceItemToReceiptItem(item)) : [];
     this.state.selectedReceipt = null;
-    this.state.items = [];
-    this.populateForm(draft, [], false);
+    this.state.items = mappedItems;
+    this.populateForm(draft, mappedItems, false);
     if (E.receiptForm) {
       E.receiptForm.dataset.id = '';
       E.receiptForm.dataset.mode = 'create_from_invoice';
       E.receiptForm.dataset.sourceInvoiceUuid = invoiceUuid;
-      E.receiptForm.dataset.clientId = String(invoice?.client_id || '').trim();
+      E.receiptForm.dataset.clientId = String(sourceInvoice?.client_id || '').trim();
       E.receiptForm.dataset.paymentMethod = '';
       E.receiptForm.dataset.paymentReference = '';
     }
@@ -582,6 +657,10 @@ const Receipts = {
       }
       const invoiceUuid = String(E.receiptForm?.dataset.sourceInvoiceUuid || updates.invoice_id || '').trim();
       const normalizedAmount = this.normalizeAmountInput(updates.received_amount);
+      if (!invoiceUuid) {
+        UI.toast('Invoice UUID is required to create a receipt.');
+        return;
+      }
       if (normalizedAmount === null || normalizedAmount <= 0) {
         UI.toast('Received Amount must be greater than 0 before saving the receipt.');
         return;
