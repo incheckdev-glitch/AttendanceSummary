@@ -158,6 +158,7 @@ const Clients = {
       customer_legal_name: String(raw.customer_legal_name || raw.customerLegalName || '').trim(),
       status: String(raw.status || '').trim(),
       grand_total: this.toNumberSafe(raw.grand_total ?? raw.grandTotal),
+      currency: String(raw.currency || raw.currency_code || raw.currencyCode || '').trim() || 'USD',
       updated_at: String(raw.updated_at || raw.updatedAt || '').trim(),
       service_start_date: String(raw.service_start_date || raw.serviceStartDate || raw.effective_date || '').trim(),
       service_end_date: String(raw.service_end_date || raw.serviceEndDate || '').trim(),
@@ -186,6 +187,7 @@ const Clients = {
       customer_legal_name: String(raw.customer_legal_name || raw.customerLegalName || '').trim(),
       status: String(raw.status || raw.payment_state || '').trim(),
       grand_total: this.toNumberSafe(raw.invoice_total ?? raw.invoiceTotal ?? raw.grand_total ?? raw.grandTotal),
+      currency: String(raw.currency || raw.currency_code || raw.currencyCode || '').trim() || 'USD',
       amount_paid: this.toNumberSafe(raw.received_amount ?? raw.receivedAmount ?? raw.amount_paid ?? raw.amountPaid),
       pending_amount: this.toNumberSafe(raw.pending_amount ?? raw.pendingAmount),
       updated_at: String(raw.updated_at || raw.updatedAt || '').trim(),
@@ -209,6 +211,7 @@ const Clients = {
       payment_state: String(raw.payment_state || raw.status || '').trim(),
       received_amount: this.toNumberSafe(raw.amount_received ?? raw.amountReceived ?? raw.received_amount ?? raw.receivedAmount ?? raw.amount_paid),
       pending_amount: this.toNumberSafe(raw.pending_amount ?? raw.pendingAmount),
+      currency: String(raw.currency || raw.currency_code || raw.currencyCode || '').trim() || 'USD',
       updated_at: String(raw.updated_at || raw.updatedAt || '').trim(),
       created_at: String(raw.created_at || raw.createdAt || '').trim(),
       receipt_date: String(raw.receipt_date || raw.received_date || '').trim(),
@@ -323,16 +326,31 @@ const Clients = {
   },
   isAnnualSaasClientLocationItem(item = {}) {
     const section = this.normalizeText(item.section || item.category || item.type || item.section_name || item.section_label);
-    if (!section) return false;
-    return [
-      'annual_saas',
-      'annual saas',
-      'saas annual',
-      'annual subscription',
-      'subscription annual',
-      'annual',
-      'subscription'
-    ].some(token => section.includes(token));
+    const billingFrequency = this.normalizeText(item.billing_frequency || item.billingFrequency || item.frequency);
+    if (!section && !billingFrequency) return false;
+    const isOneTimeOrSetup = ['one_time', 'one time', 'one-time', 'setup', 'implementation', 'onboarding'].some(token => section.includes(token));
+    if (isOneTimeOrSetup) return false;
+    const isSaasFamily = ['annual_saas', 'saas', 'subscription', 'recurring'].some(token => section.includes(token));
+    if (!isSaasFamily) return false;
+    const isAnnual = ['annual', 'yearly', '12 month', '12-month'].some(token => section.includes(token) || billingFrequency.includes(token));
+    return isAnnual;
+  },
+  normalizeCurrencyCode_(value) {
+    return String(value || '').trim().toUpperCase() || 'USD';
+  },
+  getClientCurrency_(clientId = '') {
+    const agreements = this.listClientRelatedAgreements_(clientId);
+    const invoices = this.listClientRelatedInvoices_(clientId);
+    const receipts = this.listClientRelatedReceipts_(clientId);
+    return this.normalizeCurrencyCode_(
+      agreements.find(item => String(item.currency || '').trim())?.currency ||
+        invoices.find(item => String(item.currency || '').trim())?.currency ||
+        receipts.find(item => String(item.currency || '').trim())?.currency ||
+        'USD'
+    );
+  },
+  formatMoneyWithCurrency_(value, currency = 'USD') {
+    return `${this.normalizeCurrencyCode_(currency)} ${U.fmtNumber(this.toNumberSafe(value))}`;
   },
   countAgreementAnnualSaasRowsForClientAnalytics(agreement = {}) {
     const items = Array.isArray(agreement.items)
@@ -432,11 +450,19 @@ const Clients = {
       latest_invoice_date: latestInvoiceDate,
       latest_receipt_date: latestReceiptDate,
       latest_activity_date: this.maxDate(latestAgreementDate, latestInvoiceDate, latestReceiptDate),
-      next_renewal_date: renewalCandidates.length ? renewalCandidates[0].toISOString() : ''
+      next_renewal_date: renewalCandidates.length ? renewalCandidates[0].toISOString() : '',
+      currency: this.getClientCurrency_(client.client_id)
     };
   },
   buildTimeline_(clientId) {
     const events = [];
+    this.buildClientRenewalRows({ client_id: clientId }).forEach(item => {
+      events.push({
+        type: 'renewal_item',
+        date: item.renewal_date || item.service_end_date,
+        label: `${item.location_name || 'Location'} · ${item.module_name || 'Annual SaaS'} renewal`
+      });
+    });
     this.listClientRelatedAgreements_(clientId).forEach(item => {
       const labelId = item.agreement_number || item.agreement_id || '—';
       events.push({
@@ -466,8 +492,7 @@ const Clients = {
     });
     return events
       .filter(item => item.date)
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-      .slice(0, 20);
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   },
   normalizeEventToken_(value = '') {
     return String(value || '')
@@ -679,25 +704,34 @@ const Clients = {
     const agreements = this.listClientRelatedAgreements_(clientId);
     const rows = [];
     agreements.forEach(agreement => {
-      const itemRows = Array.isArray(agreement.items) ? agreement.items : [];
+      const itemRows = Array.isArray(agreement.items)
+        ? agreement.items
+        : Array.isArray(agreement.agreement_items)
+          ? agreement.agreement_items
+          : Array.isArray(agreement.line_items)
+            ? agreement.line_items
+            : [];
       itemRows.forEach(item => {
+        if (!this.isAnnualSaasClientLocationItem(item)) return;
         const normalized = this.normalizeRenewalRow({
           ...item,
           agreement_id: agreement.agreement_id,
           agreement_number: agreement.agreement_number,
           client_name: client.customer_name || client.customer_legal_name || '—',
           renewal_date: this.getField(item, 'renewal_date', 'renewalDate', 'service_end_date', 'serviceEndDate'),
-          service_start_date: this.getField(item, 'service_start_date', 'serviceStartDate') || agreement.service_start_date,
-          service_end_date: this.getField(item, 'service_end_date', 'serviceEndDate') || agreement.service_end_date,
-          location_name: this.getField(item, 'location_name', 'locationName') || agreement.location_name,
-          payment_status: this.getField(item, 'payment_status', 'paymentStatus')
+          service_start_date: this.getField(item, 'service_start_date', 'serviceStartDate'),
+          service_end_date: this.getField(item, 'service_end_date', 'serviceEndDate'),
+          location_name: this.getField(item, 'location_name', 'locationName'),
+          payment_status: this.getField(item, 'payment_status', 'paymentStatus'),
+          billing_frequency: this.getField(item, 'billing_frequency', 'billingFrequency', 'frequency') || agreement.billing_frequency,
+          currency: this.getField(item, 'currency', 'currency_code') || agreement.currency || this.getClientCurrency_(clientId)
         });
-        if (normalized.renewal_date || normalized.service_start_date || normalized.service_end_date || normalized.location_name || normalized.module_name) {
+        if (normalized.service_start_date || normalized.service_end_date || normalized.location_name || normalized.module_name) {
           rows.push(normalized);
         }
       });
     });
-    return rows;
+    return rows.sort((a, b) => new Date(a.renewal_date || a.service_end_date || 0).getTime() - new Date(b.renewal_date || b.service_end_date || 0).getTime());
   },
   normalizeStatementRow(raw = {}) {
     return {
@@ -733,7 +767,8 @@ const Clients = {
       days_left: this.getDaysLeft(renewalDate),
       amount_due: this.toNumberSafe(this.getField(raw, 'amount_due', 'pending_amount', 'pendingAmount')),
       status: String(this.getField(raw, 'status') || '').trim(),
-      payment_status: paymentStatus || this.getPaymentStatus(raw)
+      payment_status: paymentStatus || this.getPaymentStatus(raw),
+      currency: this.normalizeCurrencyCode_(this.getField(raw, 'currency', 'currency_code', 'currencyCode') || 'USD')
     };
   },
   applyFilters() {
@@ -827,6 +862,7 @@ const Clients = {
   },
   renderStatementSection_(detailData = {}) {
     const rows = this.getFilteredStatementRows_(detailData.statementRows || []);
+    const clientCurrency = this.getClientCurrency_(this.state.selectedClientId);
     const totalInvoiced = rows.reduce((sum, item) => sum + this.toNumberSafe(item.debit), 0);
     const totalPaid = rows.reduce((sum, item) => sum + this.toNumberSafe(item.credit), 0);
     const totalDue = Math.max(totalInvoiced - totalPaid, 0);
@@ -837,9 +873,9 @@ const Clients = {
       .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0];
     if (E.clientStatementCards) {
       E.clientStatementCards.innerHTML = [
-        ['Total Invoiced', U.fmtNumber(totalInvoiced)],
-        ['Total Paid', U.fmtNumber(totalPaid)],
-        ['Total Due', U.fmtNumber(totalDue)],
+        ['Total Invoiced', this.formatMoneyWithCurrency_(totalInvoiced, clientCurrency)],
+        ['Total Paid', this.formatMoneyWithCurrency_(totalPaid, clientCurrency)],
+        ['Total Due', this.formatMoneyWithCurrency_(totalDue, clientCurrency)],
         ['Last Payment Date', U.fmtDisplayDate(lastPayment) || '—'],
         ['Next Renewal Date', U.fmtDisplayDate(nextRenewal) || '—']
       ]
@@ -855,9 +891,9 @@ const Clients = {
               <td>${U.escapeHtml(row.document_no || '—')}</td>
               <td>${U.escapeHtml(row.reference || '—')}</td>
               <td>${U.escapeHtml(row.currency || 'USD')}</td>
-              <td>${U.escapeHtml(U.fmtNumber(row.debit || 0))}</td>
-              <td>${U.escapeHtml(U.fmtNumber(row.credit || 0))}</td>
-              <td>${U.escapeHtml(U.fmtNumber(row.running_balance || 0))}</td>
+              <td>${U.escapeHtml(this.formatMoneyWithCurrency_(row.debit || 0, row.currency || clientCurrency))}</td>
+              <td>${U.escapeHtml(this.formatMoneyWithCurrency_(row.credit || 0, row.currency || clientCurrency))}</td>
+              <td>${U.escapeHtml(this.formatMoneyWithCurrency_(row.running_balance || 0, row.currency || clientCurrency))}</td>
               <td>${U.escapeHtml(U.fmtDisplayDate(row.due_date) || '—')}</td>
               <td>${U.escapeHtml(row.status || this.getPaymentStatus(row))}</td>
               <td>${U.escapeHtml(row.notes || '—')}</td>
@@ -891,6 +927,7 @@ const Clients = {
     const totalDebit = rows.reduce((sum, item) => sum + this.toNumberSafe(item.debit), 0);
     const totalCredit = rows.reduce((sum, item) => sum + this.toNumberSafe(item.credit), 0);
     const balance = Math.max(totalDebit - totalCredit, 0);
+    const clientCurrency = this.getClientCurrency_(client.client_id);
     const html = `
       <!doctype html>
       <html>
@@ -928,9 +965,9 @@ const Clients = {
             <tbody>${bodyRows}</tbody>
           </table>
           <div class="totals">
-            <div class="item"><div class="label">Total Invoiced</div><div class="value">${U.escapeHtml(U.fmtNumber(totalDebit))}</div></div>
-            <div class="item"><div class="label">Total Paid</div><div class="value">${U.escapeHtml(U.fmtNumber(totalCredit))}</div></div>
-            <div class="item"><div class="label">Balance Due</div><div class="value">${U.escapeHtml(U.fmtNumber(balance))}</div></div>
+            <div class="item"><div class="label">Total Invoiced</div><div class="value">${U.escapeHtml(this.formatMoneyWithCurrency_(totalDebit, clientCurrency))}</div></div>
+            <div class="item"><div class="label">Total Paid</div><div class="value">${U.escapeHtml(this.formatMoneyWithCurrency_(totalCredit, clientCurrency))}</div></div>
+            <div class="item"><div class="label">Balance Due</div><div class="value">${U.escapeHtml(this.formatMoneyWithCurrency_(balance, clientCurrency))}</div></div>
           </div>
         </body>
       </html>
@@ -1092,13 +1129,14 @@ const Clients = {
       E.clientDetailOverview.textContent = `Phone: ${client.phone || '—'} | Country: ${client.country || '—'} | Address: ${client.address || '—'} | Billing: ${client.billing_address || '—'} | Tax: ${client.tax_number || '—'} | Industry: ${client.industry || '—'} | Source: ${client.source || '—'} | Notes: ${client.notes || '—'}`;
     }
 
+    const displayCurrency = this.normalizeCurrencyCode_(analytics.currency || this.getClientCurrency_(client.client_id));
     const analyticsCards = [
       ['Locations', `${analytics.total_locations || 0} (${analytics.active_locations || 0} active)`],
       ['Agreements', `${analytics.total_agreements || 0} (${analytics.signed_agreements || 0} signed)`],
-      ['Agreement Value', U.fmtNumber(analytics.total_agreement_value || 0)],
-      ['Total Invoiced', U.fmtNumber(analytics.total_invoiced_value || 0)],
-      ['Total Paid', U.fmtNumber(analytics.total_paid_amount || 0)],
-      ['Total Due', U.fmtNumber(analytics.total_due_amount || 0)],
+      ['Agreement Value', this.formatMoneyWithCurrency_(analytics.total_agreement_value || 0, displayCurrency)],
+      ['Total Invoiced', this.formatMoneyWithCurrency_(analytics.total_invoiced_value || 0, displayCurrency)],
+      ['Total Paid', this.formatMoneyWithCurrency_(analytics.total_paid_amount || 0, displayCurrency)],
+      ['Total Due', this.formatMoneyWithCurrency_(analytics.total_due_amount || 0, displayCurrency)],
       ['Invoices / Receipts', `${analytics.total_invoices_count || 0} / ${analytics.total_receipts_count || 0}`],
       ['Next Renewal', U.fmtDisplayDate(analytics.next_renewal_date) || '—']
     ];
@@ -1117,7 +1155,7 @@ const Clients = {
             .map(item => `<tr>
               <td>${U.escapeHtml(item.agreement_number || item.agreement_id || '—')}</td>
               <td>${U.escapeHtml(item.status || '—')}</td>
-              <td>${U.escapeHtml(U.fmtNumber(item.grand_total || 0))}</td>
+              <td>${U.escapeHtml(this.formatMoneyWithCurrency_(item.grand_total || 0, item.currency || displayCurrency))}</td>
               <td>${U.escapeHtml(U.fmtDisplayDate(item.service_start_date) || '—')}</td>
               <td>${U.escapeHtml(U.fmtDisplayDate(item.service_end_date) || '—')}</td>
               <td>${item.agreement_id ? `<button class="btn ghost sm" type="button" data-agreement-view="${U.escapeAttr(item.agreement_id)}">Open</button>` : '—'}</td>
@@ -1131,9 +1169,9 @@ const Clients = {
             .map(item => `<tr>
               <td>${U.escapeHtml(item.invoice_number || item.invoice_id || '—')}</td>
               <td><span class="chip ${this.badgeClassFromInvoice_(item)}">${U.escapeHtml(item.status || '—')}</span></td>
-              <td>${U.escapeHtml(U.fmtNumber(item.grand_total || 0))}</td>
-              <td>${U.escapeHtml(U.fmtNumber(item.amount_paid || 0))}</td>
-              <td>${U.escapeHtml(U.fmtNumber(item.pending_amount || 0))}</td>
+              <td>${U.escapeHtml(this.formatMoneyWithCurrency_(item.grand_total || 0, item.currency || displayCurrency))}</td>
+              <td>${U.escapeHtml(this.formatMoneyWithCurrency_(item.amount_paid || 0, item.currency || displayCurrency))}</td>
+              <td>${U.escapeHtml(this.formatMoneyWithCurrency_(item.pending_amount || 0, item.currency || displayCurrency))}</td>
               <td>${item.invoice_id ? `<button class="btn ghost sm" type="button" data-invoice-view="${U.escapeAttr(item.invoice_id)}">Open</button>` : '—'}</td>
             </tr>`)
             .join('')
@@ -1145,8 +1183,8 @@ const Clients = {
             .map(item => `<tr>
               <td>${U.escapeHtml(item.receipt_number || item.receipt_id || '—')}</td>
               <td>${U.escapeHtml(item.payment_state || '—')}</td>
-              <td>${U.escapeHtml(U.fmtNumber(item.received_amount || 0))}</td>
-              <td>${U.escapeHtml(U.fmtNumber(item.pending_amount || 0))}</td>
+              <td>${U.escapeHtml(this.formatMoneyWithCurrency_(item.received_amount || 0, item.currency || displayCurrency))}</td>
+              <td>${U.escapeHtml(this.formatMoneyWithCurrency_(item.pending_amount || 0, item.currency || displayCurrency))}</td>
               <td>${item.receipt_id ? `<button class="btn ghost sm" type="button" data-receipt-view="${U.escapeAttr(item.receipt_id)}">Open</button>` : '—'}</td>
             </tr>`)
             .join('')
