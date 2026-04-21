@@ -215,6 +215,189 @@ const Invoices = {
   invoiceDisplayId(invoice = {}) {
     return String(invoice?.invoice_number || invoice?.invoice_id || '').trim();
   },
+  isUuid(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+  },
+  resolveInvoiceUuidForPreview(invoiceRef) {
+    const ref = String(invoiceRef || '').trim();
+    if (!ref) throw new Error('Missing invoice identifier.');
+    if (this.isUuid(ref)) return ref;
+    const localMatch = this.state.rows.find(row => {
+      const rowId = String(row?.id || '').trim();
+      const businessId = String(row?.invoice_id || '').trim();
+      const number = String(row?.invoice_number || '').trim();
+      return rowId === ref || businessId === ref || number === ref;
+    });
+    const resolvedId = String(localMatch?.id || '').trim();
+    if (resolvedId && this.isUuid(resolvedId)) return resolvedId;
+    throw new Error('Invoice UUID could not be resolved from the selected record.');
+  },
+  async loadInvoicePreviewData(invoiceRef) {
+    const invoiceUuid = this.resolveInvoiceUuidForPreview(invoiceRef);
+    const client = window.SupabaseClient?.getClient?.();
+    if (!client) throw new Error('Supabase client is not available.');
+    const [{ data: invoiceRow, error: invoiceError }, { data: itemRows, error: itemsError }] = await Promise.all([
+      client.from('invoices').select('*').eq('id', invoiceUuid).maybeSingle(),
+      client
+        .from('invoice_items')
+        .select('*')
+        .eq('invoice_id', invoiceUuid)
+        .order('line_no', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: true, nullsFirst: false })
+    ]);
+    if (invoiceError) throw new Error(`Unable to load invoice: ${invoiceError.message || 'Unknown error'}`);
+    if (!invoiceRow) throw new Error('Invoice was not found.');
+    if (itemsError) throw new Error(`Unable to load invoice items: ${itemsError.message || 'Unknown error'}`);
+    return {
+      invoiceUuid,
+      invoice: this.normalizeInvoice(invoiceRow),
+      items: Array.isArray(itemRows) ? itemRows.map(item => this.normalizeItem(item)) : []
+    };
+  },
+  buildInvoicePreviewHtml(invoice = {}, items = []) {
+    const invoiceData = invoice && typeof invoice === 'object' ? invoice : {};
+    const normalizedItems = (Array.isArray(items) ? items : []).map((item, index) => {
+      const normalized = this.normalizeItem(item);
+      if (!normalized.line_no) normalized.line_no = index + 1;
+      return normalized;
+    });
+    const currency = String(invoiceData.currency || 'USD').trim().toUpperCase();
+    const money = value => {
+      const amount = this.toNumberSafe(value);
+      return `${currency} ${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    };
+    const textValue = value => {
+      const text = String(value ?? '').trim();
+      return text ? U.escapeHtml(text) : '—';
+    };
+    const dateValue = value => {
+      const raw = String(value || '').trim();
+      if (!raw) return '—';
+      const formatted = U.fmtDisplayDate(raw);
+      return formatted && formatted !== 'Invalid Date' ? formatted : U.escapeHtml(raw);
+    };
+    const numValue = value => {
+      const amount = this.toNumberSafe(value);
+      return Number.isFinite(amount) ? U.escapeHtml(String(amount)) : '—';
+    };
+    const summaryRows = [
+      ['Invoice UUID', textValue(invoiceData.id)],
+      ['Invoice ID', textValue(invoiceData.invoice_id)],
+      ['Invoice Number', textValue(invoiceData.invoice_number)],
+      ['Client', textValue(invoiceData.customer_name || invoiceData.client_name)],
+      ['Client ID', textValue(invoiceData.client_id)],
+      ['Agreement ID', textValue(invoiceData.agreement_id)],
+      ['Proposal ID', textValue(invoiceData.proposal_id)],
+      ['Issue Date', dateValue(invoiceData.issue_date || invoiceData.invoice_date)],
+      ['Due Date', dateValue(invoiceData.due_date)],
+      ['Billing Frequency', textValue(invoiceData.billing_frequency)],
+      ['Payment Term', textValue(invoiceData.payment_term)],
+      ['Currency', textValue(invoiceData.currency || 'USD')],
+      ['Payment State', textValue(invoiceData.payment_state)],
+      ['Status', textValue(invoiceData.status)]
+    ];
+    const subtotalLocations = this.toNumberSafe(invoiceData.subtotal_locations || invoiceData.subtotal_subscription);
+    const subtotalOneTime = this.toNumberSafe(invoiceData.subtotal_one_time);
+    const invoiceTotal = this.toNumberSafe(invoiceData.invoice_total || invoiceData.grand_total);
+    const receivedAmount = this.toNumberSafe(invoiceData.received_amount || invoiceData.amount_paid);
+    const pendingAmount = this.toNumberSafe(invoiceData.pending_amount);
+    const tableRows = normalizedItems.length
+      ? normalizedItems
+          .map(item => {
+            const computed = this.computeCommercialRow(item);
+            return `<tr>
+              <td class="cell-center">${textValue(item.line_no)}</td>
+              <td>${textValue(item.location_name)}</td>
+              <td>${textValue(item.item_name)}</td>
+              <td class="cell-center">${dateValue(item.service_start_date)}</td>
+              <td class="cell-center">${dateValue(item.service_end_date)}</td>
+              <td class="cell-center">${numValue(item.quantity)}</td>
+              <td class="cell-center">${money(item.unit_price)}</td>
+              <td class="cell-center">${U.escapeHtml(String(this.toNumberSafe(item.discount_percent)))}%</td>
+              <td class="cell-center">${money(computed.discounted_unit_price)}</td>
+              <td class="cell-center">${money(computed.line_total)}</td>
+              <td>${textValue(item.capability_name)}</td>
+              <td>${textValue(item.capability_value)}</td>
+              <td>${textValue(item.notes)}</td>
+            </tr>`;
+          })
+          .join('')
+      : '<tr><td colspan="13" class="cell-center muted">No invoice items found.</td></tr>';
+
+    return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Invoice Preview</title>
+    <style>
+      :root { color-scheme: light; }
+      body { font-family: Inter, Segoe UI, Arial, sans-serif; margin: 24px; color: #101828; }
+      h1 { margin: 0 0 4px; font-size: 26px; }
+      .sub { color: #475467; margin-bottom: 18px; }
+      .card { border: 1px solid #e4e7ec; border-radius: 14px; padding: 14px 16px; margin-bottom: 16px; background: #fff; }
+      .summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 16px; }
+      .summary-label { color: #667085; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px; }
+      .summary-value { font-size: 14px; line-height: 1.35; word-break: break-word; }
+      .notes { white-space: pre-wrap; min-height: 20px; }
+      table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+      th, td { border: 1px solid #eaecf0; padding: 8px 10px; font-size: 12.5px; vertical-align: middle; }
+      th { background: #f9fafb; text-align: left; }
+      .cell-center { text-align: center; vertical-align: middle; }
+      .muted { color: #98a2b3; }
+      .totals { display: grid; gap: 8px; max-width: 420px; margin-left: auto; }
+      .totals-row { display: flex; justify-content: space-between; border-bottom: 1px dashed #eaecf0; padding-bottom: 6px; font-size: 13px; }
+      .totals-row.strong { font-weight: 700; font-size: 14px; border-bottom-style: solid; }
+      @media print { body { margin: 8mm; } .card { break-inside: avoid; } }
+    </style>
+  </head>
+  <body>
+    <h1>Invoice Preview</h1>
+    <div class="sub">${textValue(invoiceData.invoice_number || invoiceData.invoice_id || invoiceData.id)}</div>
+    <section class="card">
+      <div class="summary-grid">
+        ${summaryRows
+          .map(([label, value]) => `<div><div class="summary-label">${U.escapeHtml(label)}</div><div class="summary-value">${value}</div></div>`)
+          .join('')}
+      </div>
+    </section>
+    <section class="card">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:5%">Line</th>
+            <th style="width:10%">Location</th>
+            <th style="width:14%">Item</th>
+            <th style="width:8%" class="cell-center">Start</th>
+            <th style="width:8%" class="cell-center">End</th>
+            <th style="width:6%" class="cell-center">Qty</th>
+            <th style="width:8%" class="cell-center">Unit Price</th>
+            <th style="width:6%" class="cell-center">Discount</th>
+            <th style="width:9%" class="cell-center">Disc. Unit</th>
+            <th style="width:9%" class="cell-center">Line Total</th>
+            <th style="width:8%">Capability</th>
+            <th style="width:7%">Value</th>
+            <th style="width:12%">Notes</th>
+          </tr>
+        </thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+    </section>
+    <section class="card totals">
+      <div class="totals-row"><span>Subtotal Locations</span><strong>${money(subtotalLocations)}</strong></div>
+      <div class="totals-row"><span>Subtotal One-Time</span><strong>${money(subtotalOneTime)}</strong></div>
+      <div class="totals-row strong"><span>Invoice Total</span><strong>${money(invoiceTotal)}</strong></div>
+      <div class="totals-row"><span>Received Amount</span><strong>${money(receivedAmount)}</strong></div>
+      <div class="totals-row"><span>Pending Amount</span><strong>${money(pendingAmount)}</strong></div>
+      <div class="totals-row"><span>Payment Conclusion</span><strong>${textValue(invoiceData.payment_conclusion || (pendingAmount <= 0 ? 'Settlement Completed' : 'Pending Settlement'))}</strong></div>
+      <div class="totals-row"><span>Amount in Words</span><strong>${textValue(invoiceData.amount_in_words)}</strong></div>
+    </section>
+    <section class="card">
+      <div class="summary-label">Notes</div>
+      <div class="summary-value notes">${textValue(invoiceData.notes)}</div>
+    </section>
+  </body>
+</html>`;
+  },
   normalizeSection(value) {
     const raw = String(value ?? '')
       .trim()
@@ -1492,11 +1675,12 @@ const Invoices = {
     if (!id) return;
     if (!Permissions.canPreviewInvoice()) return UI.toast('You do not have permission to preview invoices.');
     try {
-      const response = await Api.generateInvoiceHtml(id);
-      const html = String(response?.html || response?.invoice_html || response?.content || response || '').trim();
-      if (!html) return UI.toast('No invoice HTML was returned by backend.');
+      const { invoiceUuid, invoice, items } = await this.loadInvoicePreviewData(id);
+      const html = this.buildInvoicePreviewHtml(invoice, items);
+      if (!String(html || '').trim()) return UI.toast('Unable to build invoice preview.');
       const brandedHtml = U.addIncheckDocumentLogo(U.formatPreviewHtmlDates(html));
-      if (E.invoicePreviewTitle) E.invoicePreviewTitle.textContent = `Invoice Preview · ${id}`;
+      const previewLabel = String(invoice?.invoice_number || invoice?.invoice_id || invoiceUuid).trim();
+      if (E.invoicePreviewTitle) E.invoicePreviewTitle.textContent = `Invoice Preview · ${previewLabel}`;
       if (E.invoicePreviewFrame) E.invoicePreviewFrame.srcdoc = brandedHtml;
       if (E.invoicePreviewModal) {
         E.invoicePreviewModal.classList.add('open');
