@@ -210,17 +210,17 @@ const Invoices = {
     normalized.due_date = this.normalizeDateInputValue(normalized.due_date || source.due_date || source.dueDate);
     const amountPaidFallback = source.received_amount ?? source.receivedAmount;
     const grandTotalFallback = source.invoice_total ?? source.invoiceTotal;
-    const subtotalSubscriptionFallback = source.subtotal_locations ?? source.subtotalLocations;
+    const subtotalSubscriptionFallback = source.subtotal_locations ?? source.subtotalLocations ?? source.subtotal_subscription ?? source.subtotalSubscription;
     normalized.subtotal_subscription = this.toNumberSafe(normalized.subtotal_subscription || subtotalSubscriptionFallback);
     normalized.subtotal_locations = this.toNumberSafe(normalized.subtotal_locations || normalized.subtotal_subscription || subtotalSubscriptionFallback);
-    normalized.subtotal_one_time = this.toNumberSafe(normalized.subtotal_one_time);
+    normalized.subtotal_one_time = this.toNumberSafe(normalized.subtotal_one_time || source.one_time_total || source.oneTimeTotal);
     normalized.grand_total = this.toNumberSafe(normalized.grand_total || grandTotalFallback);
     normalized.invoice_total = this.toNumberSafe(normalized.invoice_total || normalized.grand_total || grandTotalFallback);
     normalized.amount_paid = this.toNumberSafe(normalized.amount_paid || amountPaidFallback);
     normalized.received_amount = this.toNumberSafe(normalized.received_amount || normalized.amount_paid || amountPaidFallback);
-    normalized.pending_amount = this.toNumberSafe(normalized.pending_amount);
-    normalized.payment_state = String(normalized.payment_state || '').trim();
-    normalized.payment_conclusion = String(normalized.payment_conclusion || '').trim();
+    normalized.pending_amount = this.toNumberSafe(normalized.pending_amount || source.balance_amount || source.balanceAmount);
+    normalized.payment_state = String(normalized.payment_state || source.paymentStatus || '').trim();
+    normalized.payment_conclusion = String(normalized.payment_conclusion || source.settlement_status || source.settlementStatus || '').trim();
     if (!normalized.amount_in_words && normalized.grand_total > 0) {
       normalized.amount_in_words = this.amountToWords(normalized.grand_total, normalized.currency);
     }
@@ -711,30 +711,45 @@ const Invoices = {
     return merged;
   },
   copyInvoiceItemFields(sourceItem = {}, mergedItem = {}) {
-    const source = this.normalizeItem(sourceItem);
     const merged = this.normalizeItem(mergedItem);
-    const pick = (sourceValue, mergedValue) => {
-      if (sourceValue === undefined || sourceValue === null) return mergedValue;
-      if (typeof sourceValue === 'string') return sourceValue.trim() !== '' ? sourceValue : mergedValue;
-      return sourceValue;
+    const rawSource = sourceItem && typeof sourceItem === 'object' ? sourceItem : {};
+    const pickProvided = (keys, mergedValue, { numeric = false, normalizeDate = false, normalizeSection = false } = {}) => {
+      const keyList = Array.isArray(keys) ? keys : [keys];
+      let provided = false;
+      let value;
+      keyList.forEach(key => {
+        if (provided) return;
+        if (Object.prototype.hasOwnProperty.call(rawSource, key)) {
+          const candidate = rawSource[key];
+          if (candidate === undefined || candidate === null) return;
+          if (typeof candidate === 'string' && candidate.trim() === '') return;
+          provided = true;
+          value = candidate;
+        }
+      });
+      if (!provided) return mergedValue;
+      if (normalizeSection) return this.normalizeSection(value);
+      if (normalizeDate) return this.normalizeDateInputValue(value);
+      if (numeric) return this.toNumberSafe(value);
+      return String(value).trim();
     };
     return this.normalizeItem({
       ...merged,
-      section: pick(source.section, merged.section),
-      line_no: pick(source.line_no, merged.line_no),
-      location_name: pick(source.location_name, merged.location_name),
-      location_address: pick(source.location_address, merged.location_address),
-      item_name: pick(source.item_name, merged.item_name),
-      unit_price: pick(source.unit_price, merged.unit_price),
-      discount_percent: pick(source.discount_percent, merged.discount_percent),
-      discounted_unit_price: pick(source.discounted_unit_price, merged.discounted_unit_price),
-      quantity: pick(source.quantity, merged.quantity),
-      line_total: pick(source.line_total, merged.line_total),
-      capability_name: pick(source.capability_name, merged.capability_name),
-      capability_value: pick(source.capability_value, merged.capability_value),
-      notes: pick(source.notes, merged.notes),
-      service_start_date: pick(source.service_start_date, merged.service_start_date),
-      service_end_date: pick(source.service_end_date, merged.service_end_date)
+      section: pickProvided(['section', 'item_section', 'itemSection'], merged.section, { normalizeSection: true }),
+      line_no: pickProvided(['line_no', 'lineNo', 'line'], merged.line_no, { numeric: true }),
+      location_name: pickProvided(['location_name', 'locationName'], merged.location_name),
+      location_address: pickProvided(['location_address', 'locationAddress'], merged.location_address),
+      item_name: pickProvided(['item_name', 'itemName', 'description', 'name'], merged.item_name),
+      unit_price: pickProvided(['unit_price', 'unitPrice'], merged.unit_price, { numeric: true }),
+      discount_percent: pickProvided(['discount_percent', 'discountPercent'], merged.discount_percent, { numeric: true }),
+      discounted_unit_price: pickProvided(['discounted_unit_price', 'discountedUnitPrice', 'discounted_price', 'discountedPrice'], merged.discounted_unit_price, { numeric: true }),
+      quantity: pickProvided(['quantity', 'qty', 'units'], merged.quantity, { numeric: true }),
+      line_total: pickProvided(['line_total', 'lineTotal', 'amount', 'total'], merged.line_total, { numeric: true }),
+      capability_name: pickProvided(['capability_name', 'capabilityName'], merged.capability_name),
+      capability_value: pickProvided(['capability_value', 'capabilityValue'], merged.capability_value),
+      notes: pickProvided(['notes'], merged.notes),
+      service_start_date: pickProvided(['service_start_date', 'serviceStartDate'], merged.service_start_date, { normalizeDate: true }),
+      service_end_date: pickProvided(['service_end_date', 'serviceEndDate'], merged.service_end_date, { normalizeDate: true })
     });
   },
   isSubscriptionSection(section = '') {
@@ -990,6 +1005,7 @@ const Invoices = {
       if (!items.length) {
         if (Array.isArray(candidate.items)) items = candidate.items;
         else if (Array.isArray(candidate.invoice_items)) items = candidate.invoice_items;
+        else if (Array.isArray(candidate.agreement_items)) items = candidate.agreement_items;
         else if (Array.isArray(candidate.created_invoice_items)) items = candidate.created_invoice_items;
         else if (candidate.item && Array.isArray(candidate.item.items)) items = candidate.item.items;
         else if (candidate.invoice && Array.isArray(candidate.invoice.items)) items = candidate.invoice.items;
@@ -1650,7 +1666,19 @@ const Invoices = {
           agreement.subtotal_one_time,
           agreement.subtotalOneTime
         ),
-        grand_total: pickAgreementValue(agreement.grand_total, agreement.grandTotal),
+        grand_total: pickAgreementValue(agreement.grand_total, agreement.grandTotal, agreement.invoice_total, agreement.invoiceTotal),
+        invoice_total: pickAgreementValue(agreement.invoice_total, agreement.invoiceTotal, agreement.grand_total, agreement.grandTotal),
+        subtotal_locations: pickAgreementValue(
+          agreement.subtotal_locations,
+          agreement.subtotalLocations,
+          agreement.saas_total,
+          agreement.saasTotal
+        ),
+        received_amount: pickAgreementValue(agreement.received_amount, agreement.receivedAmount, agreement.amount_paid, agreement.amountPaid, 0),
+        pending_amount: pickAgreementValue(agreement.pending_amount, agreement.pendingAmount),
+        payment_state: pickAgreementValue(agreement.payment_state, agreement.paymentState),
+        payment_conclusion: pickAgreementValue(agreement.payment_conclusion, agreement.paymentConclusion),
+        amount_in_words: pickAgreementValue(agreement.amount_in_words, agreement.amountInWords),
         notes: agreement.notes
       });
       // Keep explicit user-entered invoice/due dates when hydrating from agreement.
@@ -1663,6 +1691,7 @@ const Invoices = {
       this.state.items = normalizedItems;
       this.renderItems(normalizedItems);
       const summary = this.deriveCalculatedSummary(mappedInvoice, normalizedItems);
+      this.state.selectedInvoice = this.normalizeInvoice({ ...mappedInvoice, ...summary });
       this.applyTotalsToForm(summary);
       this.syncPaymentFieldsInForm();
       this.syncPaymentConclusion(summary);
@@ -1913,12 +1942,18 @@ const Invoices = {
           ...invoice,
           agreement_id: id
         });
-        invoiceTemplate.invoice_number = this.ensureInvoiceNumber(invoiceTemplate.invoice_number);
-        if (invoiceTemplate.id) {
-          await this.openInvoiceById(invoiceTemplate.id, { readOnly: false });
+        const catalogLookup = await this.getProposalCatalogLookup();
+        const normalizedItems = (Array.isArray(items) ? items : []).map(item =>
+          this.copyInvoiceItemFields(item, this.mergeCatalogItem(item, catalogLookup))
+        );
+        const summary = this.deriveCalculatedSummary(invoiceTemplate, normalizedItems);
+        const hydratedTemplate = this.normalizeInvoice({ ...invoiceTemplate, ...summary });
+        hydratedTemplate.invoice_number = this.ensureInvoiceNumber(hydratedTemplate.invoice_number || invoiceTemplate.invoice_number);
+        if (hydratedTemplate.id) {
+          this.openInvoice(hydratedTemplate, normalizedItems, { readOnly: false });
           return;
         }
-        this.openInvoice(invoiceTemplate, items, { readOnly: false });
+        this.openInvoice(hydratedTemplate, normalizedItems, { readOnly: false });
         return;
       }
     } catch (_error) {
