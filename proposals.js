@@ -547,267 +547,295 @@ const Proposals = {
       if (!normalized.line_no) normalized.line_no = index + 1;
       return normalized;
     });
-    const currency = String(proposalData.currency || '').trim().toUpperCase();
+    const currency = String(proposalData.currency || 'USD').trim().toUpperCase();
     const money = value => this.formatMoneyWithCurrency(this.toNumberSafe(value), currency, false);
-    const dateValue = value => {
-      const raw = String(value || '').trim();
-      if (!raw) return '—';
-      const formatted = U.fmtDisplayDate(raw);
-      return formatted && formatted !== 'Invalid Date' ? formatted : raw;
-    };
     const textValue = value => {
       const text = String(value ?? '').trim();
       return text ? U.escapeHtml(text) : '—';
     };
-    const sectionLabel = section => {
-      const normalized = String(section || '').trim().toLowerCase();
-      if (normalized === 'annual_saas') return 'Annual SaaS';
-      if (normalized === 'one_time_fee') return 'One-Time Fee';
-      if (normalized === 'capability') return 'Capability';
-      return normalized ? normalized.replace(/[_-]+/g, ' ').replace(/\b\w/g, m => m.toUpperCase()) : 'General';
+    const dateValue = value => {
+      const raw = String(value || '').trim();
+      if (!raw) return '—';
+      const formatted = U.fmtDisplayDate(raw);
+      return formatted && formatted !== 'Invalid Date' ? formatted : U.escapeHtml(raw);
+    };
+    const sectionKey = value => String(value || '').trim().toLowerCase();
+    const isSubscription = value => {
+      const key = sectionKey(value);
+      return key === 'annual_saas' || key === 'subscription' || key === 'saas';
+    };
+    const isOneTime = value => {
+      const key = sectionKey(value);
+      return key === 'one_time_fee' || key === 'one-time-fee' || key === 'one_time';
+    };
+    const computeRow = item => {
+      const quantity = this.toNumberSafe(item.quantity);
+      const unitPrice = this.toNumberSafe(item.unit_price);
+      const discountPercent = this.toNumberSafe(item.discount_percent);
+      const discountRatio = this.normalizeDiscount(discountPercent);
+      const discountedUnitPrice = this.toNumberSafe(item.discounted_unit_price) || unitPrice * (1 - discountRatio);
+      const lineTotal = this.toNumberSafe(item.line_total) || discountedUnitPrice * quantity;
+      return {
+        quantity,
+        unitPrice,
+        discountPercent,
+        discountedUnitPrice,
+        lineTotal
+      };
     };
 
-    const groupedItems = new Map();
-    normalizedItems.forEach((item, index) => {
-      const key = String(item.section || '').trim() || 'general';
-      if (!groupedItems.has(key)) groupedItems.set(key, []);
-      groupedItems.get(key).push({ ...item, line_no: item.line_no || index + 1 });
-    });
+    const subscriptionItems = normalizedItems.filter(item => isSubscription(item.section));
+    const oneTimeItems = normalizedItems.filter(item => isOneTime(item.section));
+    const otherItems = normalizedItems.filter(item => !isSubscription(item.section) && !isOneTime(item.section));
 
-    const rowsHtml = rows =>
-      rows
-        .map(item => {
-          const quantity = this.toNumberSafe(item.quantity);
-          const unitPrice = this.toNumberSafe(item.unit_price);
-          const discountPercent = this.toNumberSafe(item.discount_percent);
-          const discountedUnitPrice =
-            this.toNumberSafe(item.discounted_unit_price) ||
-            unitPrice * (1 - this.normalizeDiscount(discountPercent));
-          const lineTotal = this.toNumberSafe(item.line_total) || discountedUnitPrice * quantity;
-          return `<tr>
-            <td class="cell-center nowrap">${U.escapeHtml(String(item.line_no || '—'))}</td>
-            <td class="cell-left">${textValue(item.location_name)}</td>
-            <td class="cell-left">${textValue(item.item_name || item.capability_name)}</td>
-            <td class="cell-center nowrap">${quantity ? U.escapeHtml(String(quantity)) : '—'}</td>
-            <td class="cell-center nowrap">${money(unitPrice)}</td>
-            <td class="cell-center nowrap">${discountPercent ? `${U.escapeHtml(String(discountPercent))}%` : '0%'}</td>
-            <td class="cell-center nowrap">${money(discountedUnitPrice)}</td>
-            <td class="cell-center nowrap">${money(lineTotal)}</td>
-          </tr>`;
-        })
-        .join('');
-
-    const sectionsHtml = groupedItems.size
-      ? [...groupedItems.entries()]
-          .map(([section, rows], sectionIndex) => `<section class="proposal-items-section${sectionIndex ? ' section-spaced' : ''}">
-            <div class="proposal-section-title">${U.escapeHtml(sectionLabel(section))}</div>
-            <table class="proposal-items-table">
-              <colgroup>
-                <col style="width:7%;" />
-                <col style="width:19%;" />
-                <col style="width:28%;" />
-                <col style="width:8%;" />
-                <col style="width:12%;" />
-                <col style="width:10%;" />
-                <col style="width:12%;" />
-                <col style="width:14%;" />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th>Line</th>
-                  <th>Location</th>
-                  <th>Item</th>
-                  <th>Qty</th>
-                  <th>Unit Price</th>
-                  <th>Discount</th>
-                  <th>Disc. Unit</th>
-                  <th>Line Total</th>
-                </tr>
-              </thead>
-              <tbody>${rowsHtml(rows)}</tbody>
-            </table>
-          </section>`)
+    const renderSubscriptionRows = rows => (rows.length
+      ? rows
+          .map(item => {
+            const computed = computeRow(item);
+            return `<tr>
+              <td class="cell-center">${textValue(item.line_no)}</td>
+              <td>${textValue(item.location_name)}</td>
+              <td class="cell-center">${dateValue(item.service_start_date || proposalData.service_start_date)}</td>
+              <td class="cell-center">${dateValue(item.service_end_date)}</td>
+              <td>${textValue(item.item_name || item.capability_name)}</td>
+              <td class="cell-center">${computed.quantity ? U.escapeHtml(String(computed.quantity)) : '—'}</td>
+              <td class="cell-right">${money(computed.unitPrice)}</td>
+              <td class="cell-center">${U.escapeHtml(String(computed.discountPercent || 0))}%</td>
+              <td class="cell-right">${money(computed.discountedUnitPrice)}</td>
+              <td class="cell-right">${money(computed.lineTotal)}</td>
+            </tr>`;
+          })
           .join('')
-      : '<div style="padding:12px;border:1px solid #d1d5db;border-radius:8px;color:#6b7280;">No proposal items available.</div>';
+      : '<tr><td colspan="10" class="cell-center muted">No SaaS / subscription items found.</td></tr>');
+
+    const renderOneTimeRows = rows => (rows.length
+      ? rows
+          .map(item => {
+            const computed = computeRow(item);
+            return `<tr>
+              <td class="cell-center">${textValue(item.line_no)}</td>
+              <td>${textValue(item.location_name)}</td>
+              <td>${textValue(item.item_name || item.capability_name)}</td>
+              <td class="cell-center">${dateValue(item.service_start_date || proposalData.service_start_date)}</td>
+              <td class="cell-center">${dateValue(item.service_end_date)}</td>
+              <td class="cell-center">${computed.quantity ? U.escapeHtml(String(computed.quantity)) : '—'}</td>
+              <td class="cell-right">${money(computed.unitPrice)}</td>
+              <td class="cell-center">${U.escapeHtml(String(computed.discountPercent || 0))}%</td>
+              <td class="cell-right">${money(computed.discountedUnitPrice)}</td>
+              <td class="cell-right">${money(computed.lineTotal)}</td>
+            </tr>`;
+          })
+          .join('')
+      : '<tr><td colspan="10" class="cell-center muted">No one-time fee items found.</td></tr>');
+
+    const subtotalLocations = this.toNumberSafe(proposalData.subtotal_locations || proposalData.saas_total);
+    const subtotalOneTime = this.toNumberSafe(proposalData.subtotal_one_time || proposalData.one_time_total);
+    const grandTotal = this.toNumberSafe(proposalData.grand_total || subtotalLocations + subtotalOneTime);
 
     return `<!doctype html>
 <html>
-<head>
-  <meta charset="utf-8" />
-  <title>Proposal Preview · ${U.escapeHtml(String(proposalData.proposal_id || proposalData.id || ''))}</title>
-  <style>
-    .proposal-items-section { margin-top: 12px; }
-    .proposal-items-section.section-spaced { margin-top: 18px; }
-    .proposal-section-title {
-      margin: 0 0 8px 0;
-      padding: 7px 10px;
-      border: 1px solid #d1d5db;
-      border-bottom: none;
-      border-radius: 8px 8px 0 0;
-      font-size: 14px;
-      font-weight: 700;
-      color: #1f2937;
-      background: #eef2f7;
-      letter-spacing: 0.02em;
-    }
-    .proposal-items-table {
-      width: 100%;
-      border-collapse: collapse;
-      table-layout: fixed;
-      font-size: 12px;
-      border: 1px solid #d1d5db;
-      border-radius: 0 0 8px 8px;
-      overflow: hidden;
-    }
-    .proposal-items-table th,
-    .proposal-items-table td {
-      border: 1px solid #d1d5db;
-      padding: 8px 10px;
-      vertical-align: middle;
-    }
-    .proposal-items-table th {
-      text-align: center;
-      font-weight: 700;
-      font-size: 12px;
-      color: #1f2937;
-      background: #e5e7eb;
-      min-height: 36px;
-      line-height: 1.25;
-    }
-    .proposal-items-table td {
-      color: #111827;
-      background: #ffffff;
-      overflow-wrap: anywhere;
-      word-break: break-word;
-      line-height: 1.35;
-    }
-    .proposal-items-table tbody tr:nth-child(even) td {
-      background: #f9fafb;
-    }
-    .proposal-items-table .cell-center {
-      text-align: center;
-    }
-    .proposal-items-table .cell-left {
-      text-align: left;
-    }
-    .proposal-items-table .nowrap {
-      white-space: nowrap;
-    }
-    .proposal-totals-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 13px;
-      margin-top: 4px;
-    }
-    .proposal-totals-table td {
-      border-bottom: 1px solid #e5e7eb;
-      padding: 8px 6px;
-      vertical-align: middle;
-    }
-    .proposal-totals-table .label {
-      font-weight: 600;
-      color: #374151;
-    }
-    .proposal-totals-table .value {
-      text-align: right;
-      font-weight: 600;
-      color: #111827;
-      white-space: nowrap;
-    }
-    .proposal-totals-table .grand-total td {
-      font-weight: 700;
-      border-top: 2px solid #9ca3af;
-      border-bottom: none;
-      background: #f3f4f6;
-    }
-    .proposal-totals-table .grand-total .value {
-      font-size: 16px;
-      color: #111827;
-    }
-  </style>
-</head>
-<body style="font-family:Inter,Arial,sans-serif;margin:24px;color:#111827;line-height:1.35;">
-  <header style="display:flex;justify-content:space-between;gap:20px;border-bottom:2px solid #e5e7eb;padding-bottom:12px;">
-    <div>
-      <h1 style="margin:0 0 6px 0;font-size:24px;">Proposal</h1>
-      <div style="font-size:14px;color:#4b5563;">${textValue(proposalData.proposal_title || proposalData.proposal_id || proposalData.id)}</div>
+  <head>
+    <meta charset="utf-8" />
+    <title>Proposal Preview · ${U.escapeHtml(String(proposalData.proposal_id || proposalData.id || ''))}</title>
+    <style>
+      :root { color-scheme: light; }
+      * { box-sizing: border-box; }
+      body { font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 18px; color: #111827; background: #f3f4f6; }
+      .doc-sheet { max-width: 1020px; margin: 0 auto; background: #fff; border: 1px solid #d1d5db; padding: 22px; }
+      .header-top { text-align: center; padding-bottom: 12px; border-bottom: 1px solid #111827; }
+      .logo-title { margin: 0; font-size: 26px; letter-spacing: 0.04em; font-weight: 700; }
+      .logo-subtitle { margin: 4px 0 0; color: #4b5563; font-size: 12px; }
+      .doc-head { display: grid; grid-template-columns: 1fr 320px; gap: 24px; margin-top: 16px; align-items: start; }
+      .doc-label { margin: 0; font-size: 36px; font-weight: 700; letter-spacing: 0.02em; }
+      .meta-box { border: 1px solid #111827; }
+      .meta-row { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid #d1d5db; }
+      .meta-row:last-child { border-bottom: 0; }
+      .meta-row > div { padding: 7px 10px; font-size: 12.5px; }
+      .meta-row .meta-key { background: #f9fafb; font-weight: 700; border-right: 1px solid #d1d5db; }
+      .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 16px; }
+      .info-box { border: 1px solid #111827; min-height: 132px; }
+      .info-head { background: #f3f4f6; border-bottom: 1px solid #d1d5db; padding: 8px 10px; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; }
+      .info-body { padding: 10px; font-size: 12.5px; line-height: 1.45; }
+      .muted { color: #6b7280; }
+      .section { margin-top: 18px; }
+      .section h2 { margin: 0; font-size: 16px; border-bottom: 1px solid #111827; padding-bottom: 5px; }
+      .section .subhead { font-size: 12px; margin: 6px 0 8px; color: #4b5563; text-transform: uppercase; letter-spacing: 0.04em; }
+      table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+      th, td { border: 1px solid #111827; padding: 8px; font-size: 12px; vertical-align: middle; }
+      th { text-align: center; background: #f9fafb; font-weight: 700; }
+      .cell-center { text-align: center; vertical-align: middle; }
+      .cell-right { text-align: right; vertical-align: middle; white-space: nowrap; }
+      .total-row td { font-weight: 700; background: #f9fafb; }
+      .totals-wrap { display: flex; justify-content: flex-end; margin-top: 16px; }
+      .totals-box { width: 380px; border: 1px solid #111827; }
+      .totals-row { display: flex; justify-content: space-between; padding: 9px 10px; border-bottom: 1px solid #d1d5db; font-size: 13px; }
+      .totals-row:last-child { border-bottom: 0; }
+      .totals-row.grand { font-size: 15px; font-weight: 700; background: #f3f4f6; }
+      .terms { margin-top: 14px; font-size: 12.5px; line-height: 1.5; border: 1px solid #111827; padding: 10px; }
+      .signature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 12px; }
+      .signature-box { border: 1px solid #111827; min-height: 124px; }
+      .signature-head { background: #f9fafb; border-bottom: 1px solid #d1d5db; padding: 8px 10px; font-size: 12px; font-weight: 700; }
+      .signature-body { padding: 10px; font-size: 12px; line-height: 1.45; }
+      .footer-note { margin-top: 14px; font-size: 11px; color: #4b5563; border-top: 1px solid #e5e7eb; padding-top: 8px; text-align: center; }
+      @media print { body { margin: 0; padding: 0; background: #fff; } .doc-sheet { border: 0; max-width: none; } }
+    </style>
+  </head>
+  <body>
+    <div class="doc-sheet">
+      <header class="header-top">
+        <h1 class="logo-title">${textValue(proposalData.provider_name || proposalData.provider_legal_name || 'COMPANY NAME')}</h1>
+        <div class="logo-subtitle">${textValue(proposalData.provider_address || proposalData.provider_contact_email || 'Commercial Services')}</div>
+      </header>
+
+      <section class="doc-head">
+        <div>
+          <h2 class="doc-label">COMMERCIAL PROPOSAL</h2>
+          <div class="muted" style="margin-top:6px;font-size:13px;">${textValue(proposalData.proposal_title || proposalData.proposal_id || proposalData.ref_number)}</div>
+        </div>
+        <div class="meta-box">
+          <div class="meta-row"><div class="meta-key">Proposal ID</div><div>${textValue(proposalData.proposal_id)}</div></div>
+          <div class="meta-row"><div class="meta-key">Reference #</div><div>${textValue(proposalData.ref_number)}</div></div>
+          <div class="meta-row"><div class="meta-key">Proposal Date</div><div>${dateValue(proposalData.proposal_date)}</div></div>
+          <div class="meta-row"><div class="meta-key">Valid Until</div><div>${dateValue(proposalData.proposal_valid_until || proposalData.valid_until)}</div></div>
+          <div class="meta-row"><div class="meta-key">Status</div><div>${textValue(proposalData.status || 'Draft')}</div></div>
+        </div>
+      </section>
+
+      <section class="info-grid">
+        <div class="info-box">
+          <div class="info-head">CUSTOMER DETAILS</div>
+          <div class="info-body">
+            <div><strong>${textValue(proposalData.customer_name || proposalData.customer_legal_name)}</strong></div>
+            <div class="muted">${textValue(proposalData.customer_address)}</div>
+            <div><strong>Contact:</strong> ${textValue(proposalData.customer_contact_name)}</div>
+            <div><strong>Mobile:</strong> ${textValue(proposalData.customer_contact_mobile)}</div>
+            <div><strong>Email:</strong> ${textValue(proposalData.customer_contact_email)}</div>
+          </div>
+        </div>
+        <div class="info-box">
+          <div class="info-head">PROVIDER DETAILS</div>
+          <div class="info-body">
+            <div><strong>Contact:</strong> ${textValue(proposalData.provider_contact_name)}</div>
+            <div><strong>Mobile:</strong> ${textValue(proposalData.provider_contact_mobile)}</div>
+            <div><strong>Email:</strong> ${textValue(proposalData.provider_contact_email)}</div>
+            <div><strong>Service Start:</strong> ${dateValue(proposalData.service_start_date)}</div>
+            <div><strong>Contract Term:</strong> ${textValue(proposalData.contract_term)}</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="info-grid" style="margin-top:14px;">
+        <div class="info-box">
+          <div class="info-head">COMMERCIAL TERMS</div>
+          <div class="info-body">
+            <div><strong>Billing Frequency:</strong> ${textValue(proposalData.billing_frequency)}</div>
+            <div><strong>Payment Term:</strong> ${textValue(proposalData.payment_term)}</div>
+            <div><strong>PO Number:</strong> ${textValue(proposalData.po_number)}</div>
+            <div><strong>Account Number:</strong> ${textValue(proposalData.account_number)}</div>
+          </div>
+        </div>
+        <div class="info-box">
+          <div class="info-head">DOCUMENT CONTROLS</div>
+          <div class="info-body">
+            <div><strong>Currency:</strong> ${textValue(currency)}</div>
+            <div><strong>Generated By:</strong> ${textValue(proposalData.generated_by)}</div>
+            <div><strong>Provider Sign Date:</strong> ${dateValue(proposalData.provider_sign_date)}</div>
+            <div><strong>Customer Legal Address:</strong> ${textValue(proposalData.customer_address)}</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Subscription Details</h2>
+        <div class="subhead">SaaS / Subscription Rows</div>
+        <table>
+          <thead>
+            <tr>
+              <th style="width:6%">Line</th>
+              <th style="width:15%">Location</th>
+              <th style="width:11%">Service Start</th>
+              <th style="width:11%">Service End</th>
+              <th>Item / Module</th>
+              <th style="width:7%">Qty</th>
+              <th style="width:11%">Unit Price</th>
+              <th style="width:8%">Discount</th>
+              <th style="width:11%">Disc. Unit</th>
+              <th style="width:12%">Line Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${renderSubscriptionRows(subscriptionItems)}
+            <tr class="total-row">
+              <td colspan="9" class="cell-right">Total SaaS / Subscription</td>
+              <td class="cell-right">${money(subtotalLocations)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="section">
+        <h2>One Time Fees Details</h2>
+        <div class="subhead">One Time Fee Rows</div>
+        <table>
+          <thead>
+            <tr>
+              <th style="width:6%">Line</th>
+              <th style="width:16%">Location</th>
+              <th>Service / Item</th>
+              <th style="width:11%">Service Start</th>
+              <th style="width:11%">Service End</th>
+              <th style="width:7%">Qty</th>
+              <th style="width:11%">Unit Price</th>
+              <th style="width:8%">Discount</th>
+              <th style="width:11%">Disc. Unit</th>
+              <th style="width:12%">Line Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${renderOneTimeRows(oneTimeItems.length ? oneTimeItems : otherItems)}
+            <tr class="total-row">
+              <td colspan="9" class="cell-right">Total One Time Fees</td>
+              <td class="cell-right">${money(subtotalOneTime)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="totals-wrap">
+        <div class="totals-box">
+          <div class="totals-row"><span>One Time Fees</span><strong>${money(subtotalOneTime)}</strong></div>
+          <div class="totals-row"><span>Subscription Fees</span><strong>${money(subtotalLocations)}</strong></div>
+          <div class="totals-row grand"><span>Grand Total</span><strong>${money(grandTotal)}</strong></div>
+        </div>
+      </section>
+
+      <section class="terms">
+        <div><strong>Terms & Conditions:</strong></div>
+        <div style="white-space: pre-wrap;">${textValue(proposalData.terms_conditions)}</div>
+      </section>
+
+      <section class="signature-grid">
+        <div class="signature-box">
+          <div class="signature-head">CUSTOMER SIGNATORY</div>
+          <div class="signature-body">
+            <div><strong>Name:</strong> ${textValue(proposalData.customer_signatory_name)}</div>
+            <div><strong>Title:</strong> ${textValue(proposalData.customer_signatory_title)}</div>
+            <div><strong>Sign Date:</strong> ${dateValue(proposalData.customer_sign_date)}</div>
+          </div>
+        </div>
+        <div class="signature-box">
+          <div class="signature-head">PROVIDER SIGNATORY</div>
+          <div class="signature-body">
+            <div><strong>Name:</strong> ${textValue(proposalData.provider_signatory_name)}</div>
+            <div><strong>Title:</strong> ${textValue(proposalData.provider_signatory_title)}</div>
+            <div><strong>Sign Date:</strong> ${dateValue(proposalData.provider_sign_date)}</div>
+          </div>
+        </div>
+      </section>
+
+      <footer class="footer-note">Proposal preview is print-ready and aligned to invoice document style.</footer>
     </div>
-    <div style="text-align:right;font-size:12px;">
-      <div><strong>Status:</strong> ${textValue(proposalData.status || 'Draft')}</div>
-      <div><strong>Proposal ID:</strong> ${textValue(proposalData.proposal_id)}</div>
-      <div><strong>Reference:</strong> ${textValue(proposalData.ref_number)}</div>
-      <div><strong>Date:</strong> ${U.escapeHtml(dateValue(proposalData.proposal_date))}</div>
-      <div><strong>Valid Until:</strong> ${U.escapeHtml(dateValue(proposalData.proposal_valid_until || proposalData.valid_until))}</div>
-    </div>
-  </header>
-  <section style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;">
-    <article style="border:1px solid #d1d5db;border-radius:8px;padding:10px;">
-      <h2 style="margin:0 0 8px 0;font-size:15px;">Customer</h2>
-      <div><strong>Name:</strong> ${textValue(proposalData.customer_name)}</div>
-      <div><strong>Address:</strong> ${textValue(proposalData.customer_address)}</div>
-      <div><strong>Contact:</strong> ${textValue(proposalData.customer_contact_name)}</div>
-      <div><strong>Mobile:</strong> ${textValue(proposalData.customer_contact_mobile)}</div>
-      <div><strong>Email:</strong> ${textValue(proposalData.customer_contact_email)}</div>
-    </article>
-    <article style="border:1px solid #d1d5db;border-radius:8px;padding:10px;">
-      <h2 style="margin:0 0 8px 0;font-size:15px;">Provider</h2>
-      <div><strong>Contact:</strong> ${textValue(proposalData.provider_contact_name)}</div>
-      <div><strong>Mobile:</strong> ${textValue(proposalData.provider_contact_mobile)}</div>
-      <div><strong>Email:</strong> ${textValue(proposalData.provider_contact_email)}</div>
-      <div><strong>Service Start:</strong> ${U.escapeHtml(dateValue(proposalData.service_start_date))}</div>
-      <div><strong>Contract Term:</strong> ${textValue(proposalData.contract_term)}</div>
-    </article>
-  </section>
-  <section style="margin-top:16px;border:1px solid #d1d5db;border-radius:8px;padding:10px;">
-    <h2 style="margin:0 0 8px 0;font-size:15px;">Commercial Terms</h2>
-    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;font-size:12px;">
-      <div><strong>Account Number:</strong> ${textValue(proposalData.account_number)}</div>
-      <div><strong>Billing Frequency:</strong> ${textValue(proposalData.billing_frequency)}</div>
-      <div><strong>Payment Term:</strong> ${textValue(proposalData.payment_term)}</div>
-      <div><strong>PO Number:</strong> ${textValue(proposalData.po_number)}</div>
-      <div><strong>Provider Sign Date:</strong> ${U.escapeHtml(dateValue(proposalData.provider_sign_date))}</div>
-      <div><strong>Generated By:</strong> ${textValue(proposalData.generated_by)}</div>
-    </div>
-  </section>
-  <section style="margin-top:16px;">
-    <h2 style="margin:0 0 8px 0;font-size:17px;">Proposal Items</h2>
-    ${sectionsHtml}
-  </section>
-  <section style="margin-top:16px;border:1px solid #d1d5db;border-radius:8px;padding:10px;">
-    <h2 style="margin:0 0 8px 0;font-size:15px;">Totals</h2>
-    <table class="proposal-totals-table">
-      <tbody>
-        <tr>
-          <td class="label">Subtotal Locations</td>
-          <td class="value">${money(proposalData.subtotal_locations || proposalData.saas_total)}</td>
-        </tr>
-        <tr>
-          <td class="label">Subtotal One-Time</td>
-          <td class="value">${money(proposalData.subtotal_one_time || proposalData.one_time_total)}</td>
-        </tr>
-        <tr class="grand-total">
-          <td class="label">Grand Total</td>
-          <td class="value">${money(proposalData.grand_total)}</td>
-        </tr>
-      </tbody>
-    </table>
-    ${currency ? `<div style="margin-top:8px;color:#6b7280;font-size:12px;">Currency: ${U.escapeHtml(currency)}</div>` : ''}
-  </section>
-  <section style="margin-top:16px;border:1px solid #d1d5db;border-radius:8px;padding:10px;">
-    <h2 style="margin:0 0 8px 0;font-size:15px;">Terms & Signatories</h2>
-    <div style="font-size:12px;white-space:pre-wrap;">${textValue(proposalData.terms_conditions)}</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px;font-size:12px;">
-      <div>
-        <strong>Customer Signatory:</strong> ${textValue(proposalData.customer_signatory_name)}<br/>
-        <strong>Title:</strong> ${textValue(proposalData.customer_signatory_title)}
-      </div>
-      <div>
-        <strong>Provider Signatory:</strong> ${textValue(proposalData.provider_signatory_name)}<br/>
-        <strong>Title:</strong> ${textValue(proposalData.provider_signatory_title)}
-      </div>
-    </div>
-  </section>
-</body>
+  </body>
 </html>`;
   },
   applyFilters() {
