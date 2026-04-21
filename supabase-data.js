@@ -137,7 +137,7 @@
     'discounted_unit_price','quantity','line_total','service_start_date','service_end_date','capability_name','capability_value','notes'
   ]);
   const AGREEMENT_LEGACY_FIELDS = new Set([
-    'authToken','backendToken','backendUrl','sheetName','tabName','resource','action','agreement_title',
+    'authToken','backendToken','backendUrl','sheetName','tabName','resource','action',
     'agreement_length','lead_id','deal_id',
     'provider_address','provider_signatory_name_primary','provider_signatory_title_primary',
     'saas_total','one_time_total',
@@ -576,7 +576,7 @@
   }
 
   function sanitizeAgreementRecord(record = {}, { includeCreatedBy = false, userId = '' } = {}) {
-    const mapped = compactObject({
+    const mapped = {
       agreement_id: firstDefined(record, ['agreement_id', 'agreementId']),
       proposal_id: normalizeNullableUuidValue(firstDefined(record, ['proposal_id', 'proposalId'])),
       agreement_number: firstDefined(record, ['agreement_number', 'agreementNumber']),
@@ -607,7 +607,6 @@
       customer_sign_date: normalizeNullableDateValue(firstDefined(record, ['customer_sign_date', 'customerSignDate'])),
       provider_signatory_name: firstDefined(record, ['provider_signatory_name', 'providerSignatoryName', 'provider_signatory_name_primary']),
       provider_signatory_title: firstDefined(record, ['provider_signatory_title', 'providerSignatoryTitle', 'provider_signatory_title_primary']),
-      provider_signatory_secondary: firstDefined(record, ['provider_signatory_secondary', 'providerSignatorySecondary', 'provider_signatory_name_secondary', 'providerSignatoryNameSecondary']),
       provider_signatory_name_secondary: firstDefined(record, ['provider_signatory_name_secondary', 'providerSignatoryNameSecondary', 'provider_signatory_secondary', 'providerSignatorySecondary']),
       provider_signatory_title_secondary: firstDefined(record, ['provider_signatory_title_secondary', 'providerSignatoryTitleSecondary']),
       provider_sign_date: normalizeNullableDateValue(firstDefined(record, ['provider_sign_date', 'providerSignDate'])),
@@ -626,7 +625,7 @@
       updated_by: firstDefined(record, ['updated_by', 'updatedBy']) || userId || undefined,
       currency: firstDefined(record, ['currency']),
       notes: firstDefined(record, ['notes'])
-    });
+    };
     const sanitized = {};
     Object.entries(mapped).forEach(([key, value]) => {
       if (!AGREEMENT_COLUMNS.has(key)) return;
