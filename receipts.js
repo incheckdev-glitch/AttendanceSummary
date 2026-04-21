@@ -422,19 +422,28 @@ const Receipts = {
   renderItems(items = []) {
     const locations = items.filter(item => item.section === 'location_details');
     const oneTime = items.filter(item => this.isOneTimeSection(item.section));
+    const renderItemRow = item => `<tr>
+      <td>${U.escapeHtml(item.location_name || '—')}</td>
+      <td>${U.escapeHtml(item.location_address || '—')}</td>
+      <td class="cell-center">${U.escapeHtml(U.fmtDisplayDate(item.service_start_date) || '—')}</td>
+      <td class="cell-center">${U.escapeHtml(U.fmtDisplayDate(item.service_end_date) || '—')}</td>
+      <td>${U.escapeHtml(item.item_name || item.modules || item.description || '—')}</td>
+      <td class="cell-center">${U.escapeHtml(String(item.quantity ?? 0))}</td>
+      <td class="cell-right">${this.formatMoney(item.unit_price ?? 0)}</td>
+      <td class="cell-center">${U.escapeHtml(String(item.discount_percent ?? 0))}%</td>
+      <td class="cell-right">${this.formatMoney(item.discounted_unit_price ?? 0)}</td>
+      <td class="cell-right">${this.formatMoney(item.line_total ?? item.amount ?? 0)}</td>
+      <td>${U.escapeHtml(item.notes || '—')}</td>
+    </tr>`;
     if (E.receiptLocationItemsTbody) {
       E.receiptLocationItemsTbody.innerHTML = locations.length
-        ? locations
-            .map(item => `<tr><td>${U.escapeHtml(item.location_name || '—')}</td><td>${U.escapeHtml(item.location_address || '—')}</td><td>${U.escapeHtml(U.fmtDisplayDate(item.service_start_date))}</td><td>${U.escapeHtml(U.fmtDisplayDate(item.service_end_date))}</td><td>${U.escapeHtml(item.modules || item.item_name || '—')}</td><td>${this.formatMoney(item.line_total)}</td><td>${U.escapeHtml(item.notes || '—')}</td></tr>`)
-            .join('')
-        : '<tr><td colspan="7" class="muted" style="text-align:center;">No location detail rows.</td></tr>';
+        ? locations.map(renderItemRow).join('')
+        : '<tr><td colspan="11" class="muted cell-center">No location detail rows.</td></tr>';
     }
     if (E.receiptOneTimeItemsTbody) {
       E.receiptOneTimeItemsTbody.innerHTML = oneTime.length
-        ? oneTime
-            .map(item => `<tr><td>${U.escapeHtml(item.location_name || '—')}</td><td>${U.escapeHtml(item.location_address || '—')}</td><td>${U.escapeHtml(U.fmtDisplayDate(item.service_start_date))}</td><td>${U.escapeHtml(U.fmtDisplayDate(item.service_end_date))}</td><td>${U.escapeHtml(item.item_name || item.modules || item.description || '—')}</td><td>${U.escapeHtml(String(item.quantity ?? 0))}</td><td>${this.formatMoney(item.unit_price ?? 0)}</td><td>${U.escapeHtml(String(item.discount_percent ?? 0))}</td><td>${this.formatMoney(item.line_total ?? 0)}</td><td>${U.escapeHtml(item.notes || '—')}</td></tr>`)
-            .join('')
-        : '<tr><td colspan="10" class="muted" style="text-align:center;">No one-time fee rows.</td></tr>';
+        ? oneTime.map(renderItemRow).join('')
+        : '<tr><td colspan="11" class="muted cell-center">No one-time fee rows.</td></tr>';
     }
   },
   populateForm(receipt, items, readOnly = false) {
@@ -897,12 +906,21 @@ const Receipts = {
       if (!v) return '—';
       return U.escapeHtml(U.fmtDisplayDate(v));
     };
-    const oneTimeRows = oneTimeItems.length
-      ? oneTimeItems.map(item => `<tr><td>${text(item.location_name)}</td><td>${text(item.location_address)}</td><td class="cell-center">${date(item.service_start_date)}</td><td class="cell-center">${date(item.service_end_date)}</td><td>${text(item.item_name || item.modules || item.description)}</td><td class="cell-center">${U.escapeHtml(String(item.quantity ?? 0))}</td><td class="cell-right">${this.money(currency, item.unit_price ?? 0)}</td><td class="cell-center">${U.escapeHtml(String(item.discount_percent ?? 0))}%</td><td class="cell-right">${this.money(currency, item.line_total ?? 0)}</td><td>${text(item.notes)}</td></tr>`).join('')
-      : '<tr><td colspan="10" class="muted cell-center">No one-time fee rows.</td></tr>';
-    const locationRows = locationItems.length
-      ? locationItems.map(item => `<tr><td>${text(item.location_name)}</td><td>${text(item.location_address)}</td><td class="cell-center">${date(item.service_start_date)}</td><td class="cell-center">${date(item.service_end_date)}</td><td>${text(item.modules || item.item_name || item.description)}</td><td class="cell-right">${this.money(currency, item.line_total ?? 0)}</td></tr>`).join('')
-      : '<tr><td colspan="6" class="muted cell-center">No location detail rows.</td></tr>';
+    const buildDetailRow = item => `<tr>
+      <td>${text(item.location_name)}</td>
+      <td>${text(item.location_address)}</td>
+      <td class="cell-center">${date(item.service_start_date)}</td>
+      <td class="cell-center">${date(item.service_end_date)}</td>
+      <td>${text(item.item_name || item.modules || item.description)}</td>
+      <td class="cell-center">${U.escapeHtml(String(item.quantity ?? 0))}</td>
+      <td class="cell-right">${this.money(currency, item.unit_price ?? 0)}</td>
+      <td class="cell-center">${U.escapeHtml(String(item.discount_percent ?? 0))}%</td>
+      <td class="cell-right">${this.money(currency, item.discounted_unit_price ?? 0)}</td>
+      <td class="cell-right">${this.money(currency, item.line_total ?? item.amount ?? 0)}</td>
+      <td>${text(item.notes)}</td>
+    </tr>`;
+    const oneTimeRows = oneTimeItems.length ? oneTimeItems.map(buildDetailRow).join('') : '<tr><td colspan="11" class="muted cell-center">No one-time fee rows.</td></tr>';
+    const locationRows = locationItems.length ? locationItems.map(buildDetailRow).join('') : '<tr><td colspan="11" class="muted cell-center">No location detail rows.</td></tr>';
     const subtotalLocations = this.toNumberSafe(r.subtotal_locations || invoice?.subtotal_locations || locationItems.reduce((sum, item) => sum + this.toNumberSafe(item.line_total), 0));
     const subtotalOneTime = this.toNumberSafe(r.subtotal_one_time || invoice?.subtotal_one_time || oneTimeItems.reduce((sum, item) => sum + this.toNumberSafe(item.line_total), 0));
     const invoiceTotal = this.toNumberSafe(r.invoice_grand_total || r.grand_total || invoice?.grand_total || subtotalLocations + subtotalOneTime);
@@ -933,8 +951,8 @@ const Receipts = {
         </div></div></section>
       <section class="address-block"><div><strong>${text(r.customer_legal_name || r.customer_name || invoice?.customer_legal_name || invoice?.customer_name)}</strong></div><div>${text(r.customer_address || invoice?.customer_address)}</div></section>
       <div class="notice">If you have any questions about this Invoice, please contact: ${text(r.support_email || invoice?.support_email || 'support@incheck360.com')}</div>
-      <section class="section"><h3>Location Details</h3><table><thead><tr><th>Location Name</th><th>Location Address</th><th>Start Date</th><th>End Date</th><th>Modules</th><th>Amount</th></tr></thead><tbody>${locationRows}</tbody></table></section>
-      <section class="section"><h3>One-time Fees</h3><table><thead><tr><th>Location Name</th><th>Location Address</th><th>Service Start Date</th><th>Service End Date</th><th>Item Name</th><th>Qty</th><th>Unit Price</th><th>Discount %</th><th>Line Total</th><th>Notes</th></tr></thead><tbody>${oneTimeRows}</tbody></table></section>
+      <section class="section"><h3>Location Details</h3><table><thead><tr><th>Location Name</th><th>Location Address</th><th>Service Start Date</th><th>Service End Date</th><th>Modules / Item Name</th><th>Qty</th><th>Unit Price</th><th>Discount %</th><th>Discounted Unit Price</th><th>Line Total</th><th>Notes</th></tr></thead><tbody>${locationRows}</tbody></table></section>
+      <section class="section"><h3>One-time Fees</h3><table><thead><tr><th>Location Name</th><th>Location Address</th><th>Service Start Date</th><th>Service End Date</th><th>Modules / Item Name</th><th>Qty</th><th>Unit Price</th><th>Discount %</th><th>Discounted Unit Price</th><th>Line Total</th><th>Notes</th></tr></thead><tbody>${oneTimeRows}</tbody></table></section>
       <p class="summary">We have received from ${text(r.customer_legal_name || r.customer_name || invoice?.customer_legal_name || invoice?.customer_name)} the sum of ${text(amountInWords)} being partial payment on account of ${text(r.invoice_number || invoice?.invoice_number || r.invoice_id)}. Pending amount: ${this.money(currency, pendingAmount)}.</p>
       <div class="totals-wrap"><div class="totals">
         <div class="row"><span>Subtotal Locations</span><span>${this.money(currency, subtotalLocations)}</span></div>
