@@ -1844,7 +1844,7 @@ const Invoices = {
       UI.toast('Receipt form is not available right now. Please refresh and try again.');
       return;
     }
-    window.Receipts.openCreateFromInvoice({
+    await window.Receipts.openCreateFromInvoice({
       id,
       invoice_id: invoice?.invoice_id || '',
       invoice_number: invoice?.invoice_number || invoice?.invoice_id || '',
