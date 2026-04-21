@@ -1365,6 +1365,7 @@ const Agreements = {
         }
       }
       this.closeAgreementForm();
+      window.dispatchEvent(new CustomEvent('clients:refresh-totals', { detail: { reason: 'agreement-saved' } }));
       UI.toast(id ? 'Agreement updated.' : source === 'proposal' ? 'Agreement created from proposal.' : 'Agreement created.');
     } catch (error) {
       if (typeof isAuthError === 'function' && isAuthError(error)) {

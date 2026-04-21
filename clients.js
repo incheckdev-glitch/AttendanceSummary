@@ -1186,6 +1186,11 @@ const Clients = {
       this.state.loading = false;
     }
   },
+  triggerLinkedDataRefresh_(reason = 'linked-data-change') {
+    if (this.state.loading) return;
+    console.debug('[Clients] linked data refresh requested', reason);
+    this.loadAndRefresh({ force: true });
+  },
   collectNewClientFormData() {
     if (!E.newClientForm) return null;
     const fd = new FormData(E.newClientForm);
@@ -1251,6 +1256,9 @@ const Clients = {
     }
   },
   wire() {
+    window.addEventListener('clients:refresh-totals', event => {
+      this.triggerLinkedDataRefresh_(event?.detail?.reason || 'external-event');
+    });
     if (E.clientsRefreshBtn) E.clientsRefreshBtn.addEventListener('click', () => this.loadAndRefresh({ force: true }));
     if (E.clientsSearchInput) {
       E.clientsSearchInput.addEventListener('input', () => {

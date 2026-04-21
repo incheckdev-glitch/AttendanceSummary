@@ -1930,6 +1930,7 @@ const Invoices = {
         this.state.items = persistedItems;
       }
       this.closeForm();
+      window.dispatchEvent(new CustomEvent('clients:refresh-totals', { detail: { reason: 'invoice-saved' } }));
     } catch (error) {
       UI.toast('Unable to save invoice: ' + (error?.message || 'Unknown error'));
     } finally {
