@@ -544,6 +544,15 @@
     return normalized;
   }
 
+  function normalizeNumericValue(value, defaultValue = 0) {
+    if (value === undefined || value === null) return defaultValue;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : defaultValue;
+    const normalized = String(value).trim();
+    if (!normalized) return defaultValue;
+    const parsed = Number(normalized.replace(/,/g, ''));
+    return Number.isFinite(parsed) ? parsed : defaultValue;
+  }
+
   function sanitizeAgreementRecord(record = {}, { includeCreatedBy = false, userId = '' } = {}) {
     const mapped = compactObject({
       agreement_id: firstDefined(record, ['agreement_id', 'agreementId']),
@@ -574,10 +583,10 @@
       financial_controller_signed: toDbBoolean(firstDefined(record, ['financial_controller_signed', 'financialControllerSigned'])),
       signed_date: normalizeNullableDateValue(firstDefined(record, ['signed_date', 'signedDate'])),
       status: firstDefined(record, ['status']),
-      subtotal_locations: firstDefined(record, ['subtotal_locations', 'subtotalLocations', 'saas_total']),
-      subtotal_one_time: firstDefined(record, ['subtotal_one_time', 'subtotalOneTime', 'one_time_total']),
-      total_discount: firstDefined(record, ['total_discount', 'totalDiscount']),
-      grand_total: firstDefined(record, ['grand_total', 'grandTotal']),
+      subtotal_locations: normalizeNumericValue(firstDefined(record, ['subtotal_locations', 'subtotalLocations', 'saas_total']), 0),
+      subtotal_one_time: normalizeNumericValue(firstDefined(record, ['subtotal_one_time', 'subtotalOneTime', 'one_time_total']), 0),
+      total_discount: normalizeNumericValue(firstDefined(record, ['total_discount', 'totalDiscount']), 0),
+      grand_total: normalizeNumericValue(firstDefined(record, ['grand_total', 'grandTotal']), 0),
       generated_by: firstDefined(record, ['generated_by', 'generatedBy']),
       created_by: includeCreatedBy
         ? (firstDefined(record, ['created_by', 'createdBy']) || userId || undefined)
@@ -600,14 +609,14 @@
       item_id: firstDefined(record, ['item_id', 'itemId']),
       agreement_id: normalizeNullableUuidValue(agreementUuid || firstDefined(record, ['agreement_id', 'agreementId'])),
       section: firstDefined(record, ['section']),
-      line_no: firstDefined(record, ['line_no', 'lineNo', 'line']),
+      line_no: normalizeNumericValue(firstDefined(record, ['line_no', 'lineNo', 'line']), 0),
       location_name: firstDefined(record, ['location_name', 'locationName']),
       item_name: firstDefined(record, ['item_name', 'itemName', 'name']),
-      unit_price: firstDefined(record, ['unit_price', 'unitPrice']),
-      discount_percent: firstDefined(record, ['discount_percent', 'discountPercent']),
-      discounted_unit_price: firstDefined(record, ['discounted_unit_price', 'discountedUnitPrice']),
-      quantity: firstDefined(record, ['quantity']),
-      line_total: firstDefined(record, ['line_total', 'lineTotal']),
+      unit_price: normalizeNumericValue(firstDefined(record, ['unit_price', 'unitPrice']), 0),
+      discount_percent: normalizeNumericValue(firstDefined(record, ['discount_percent', 'discountPercent']), 0),
+      discounted_unit_price: normalizeNumericValue(firstDefined(record, ['discounted_unit_price', 'discountedUnitPrice']), 0),
+      quantity: normalizeNumericValue(firstDefined(record, ['quantity']), 0),
+      line_total: normalizeNumericValue(firstDefined(record, ['line_total', 'lineTotal']), 0),
       capability_name: firstDefined(record, ['capability_name', 'capabilityName']),
       capability_value: firstDefined(record, ['capability_value', 'capabilityValue']),
       notes: firstDefined(record, ['notes'])
