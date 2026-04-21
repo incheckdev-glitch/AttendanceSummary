@@ -552,23 +552,88 @@ const Api = {
     }
   },
   async requestAgreementTechnicalAdmin(agreementId, message = '') {
-    const payload = {
-      agreement_id: agreementId,
-      technical_admin_request: true,
-      technical_admin_request_message: String(message || '').trim() || `Please proceed with the following agreement ${agreementId}.`
+    const normalizedAgreementId = String(agreementId || '').trim();
+    if (!normalizedAgreementId) throw new Error('Agreement ID is required.');
+
+    const technicalRequestDetails = String(message || '').trim() || `Please proceed with the following agreement ${normalizedAgreementId}.`;
+    const currentUser = (window.Session?.currentUser && typeof window.Session.currentUser === 'object')
+      ? window.Session.currentUser
+      : {};
+    const requestedBy = String(
+      currentUser.email ||
+      currentUser.user_id ||
+      currentUser.id ||
+      (typeof window.Session?.userId === 'function' ? window.Session.userId() : '') ||
+      ''
+    ).trim();
+    const requestedAt = new Date().toISOString();
+
+    const requestFields = {
+      agreement_id: normalizedAgreementId,
+      request_type: 'Technical Admin',
+      request_details: technicalRequestDetails,
+      request_message: technicalRequestDetails,
+      technical_request_type: 'Technical Admin',
+      technical_request_details: technicalRequestDetails,
+      technical_request_status: 'Requested',
+      technical_admin_request: 'Requested',
+      technical_admin_request_message: technicalRequestDetails,
+      requested_by: requestedBy || null,
+      requested_at: requestedAt
     };
-    try {
-      return await this.postAuthenticated('agreements', 'request_technical_admin', payload);
-    } catch (error) {
-      if (!isOperationsOnboardingRowMissingError(error)) throw error;
-      await this.saveOperationsOnboarding({
-        agreement_id: agreementId,
-        request_type: 'Technical Admin',
-        technical_admin_request: 'Requested',
-        technical_admin_request_message: payload.technical_admin_request_message
-      });
-      return this.postAuthenticated('agreements', 'request_technical_admin', payload);
+
+    const onboardingListResponse = await this.listOperationsOnboarding({ agreement_id: normalizedAgreementId });
+    const onboardingRows = this.normalizeListResponse(onboardingListResponse).rows || [];
+    const existingOnboarding = onboardingRows.find(row => String(row?.agreement_id || '').trim() === normalizedAgreementId) || onboardingRows[0] || null;
+
+    let onboardingRecord;
+    if (existingOnboarding) {
+      const onboardingId = String(existingOnboarding.onboarding_id || existingOnboarding.id || '').trim();
+      if (!onboardingId) throw new Error(`Operations onboarding row is missing onboarding_id for agreement ${normalizedAgreementId}.`);
+      onboardingRecord = await this.updateOperationsOnboarding(onboardingId, requestFields);
+    } else {
+      onboardingRecord = await this.saveOperationsOnboarding(requestFields);
     }
+
+    let technicalRequest = null;
+    if (this.isMigratedResource('technical_admin_requests')) {
+      try {
+        const technicalListResponse = await this.listTechnicalAdminRequests({ agreement_id: normalizedAgreementId });
+        const technicalRows = this.normalizeListResponse(technicalListResponse).rows || [];
+        const existingRequest = technicalRows.find(row => String(row?.agreement_id || '').trim() === normalizedAgreementId) || technicalRows[0] || null;
+        const onboardingPayload = this.unwrapApiPayload(onboardingRecord) || onboardingRecord || {};
+        const technicalPayload = {
+          agreement_id: normalizedAgreementId,
+          onboarding_id: onboardingPayload?.onboarding_id || onboardingPayload?.id || null,
+          technical_request_type: 'Technical Admin',
+          technical_request_details: technicalRequestDetails,
+          technical_request_status: 'Requested',
+          requested_by: requestedBy || null,
+          requested_at: requestedAt
+        };
+        if (existingRequest) {
+          const technicalRequestId = String(existingRequest.technical_request_id || existingRequest.id || '').trim();
+          if (technicalRequestId) {
+            technicalRequest = await this.postAuthenticated('technical_admin_requests', 'update', {
+              technical_request_id: technicalRequestId,
+              updates: technicalPayload
+            });
+          }
+        } else {
+          technicalRequest = await this.postAuthenticated('technical_admin_requests', 'save', {
+            technical_admin_request: technicalPayload
+          });
+        }
+      } catch (error) {
+        console.warn('Unable to upsert technical_admin_requests row for agreement', normalizedAgreementId, error);
+      }
+    }
+
+    return {
+      agreement_id: normalizedAgreementId,
+      operations_onboarding: this.unwrapApiPayload(onboardingRecord) || onboardingRecord,
+      technical_request: this.unwrapApiPayload(technicalRequest) || technicalRequest || null
+    };
   },
   async assignAgreementCsm(agreementId, assignment = {}) {
     return this.postAuthenticated('agreements', 'assign_csm', {
