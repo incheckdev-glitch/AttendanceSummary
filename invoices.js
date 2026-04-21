@@ -154,6 +154,18 @@ const Invoices = {
     this.state.receiptsByInvoiceId[key] = this.sortReceiptsAscending(dedupedById);
     return this.state.receiptsByInvoiceId[key];
   },
+  getSupabaseClient() {
+    const clientFactory = window.SupabaseClient?.getClient;
+    if (typeof clientFactory !== 'function') return null;
+    const client = clientFactory.call(window.SupabaseClient);
+    return typeof client?.from === 'function' ? client : null;
+  },
+  requireSupabaseClient() {
+    const client = this.getSupabaseClient();
+    console.log('supabase client check', client, typeof client?.from);
+    if (!client) throw new Error('Supabase client is not available.');
+    return client;
+  },
   appendInvoiceReceipt(invoiceId, receipt) {
     const key = String(invoiceId || '').trim();
     if (!key || !receipt) return [];
@@ -232,7 +244,7 @@ const Invoices = {
     this.state.loadingInvoiceReceiptIds.add(id);
     this.renderInvoiceReceipts(this.state.selectedInvoice);
     try {
-      const client = window.SupabaseClient?.getClient?.();
+      const client = this.getSupabaseClient();
       let rows = [];
       if (client) {
         const { data, error } = await client
@@ -315,8 +327,7 @@ const Invoices = {
   },
   async loadInvoicePreviewData(invoiceRef) {
     const invoiceUuid = this.resolveInvoiceUuidForPreview(invoiceRef);
-    const client = window.SupabaseClient?.getClient?.();
-    if (!client) throw new Error('Supabase client is not available.');
+    const client = this.requireSupabaseClient();
     const [{ data: invoiceRow, error: invoiceError }, { data: itemRows, error: itemsError }, { data: receiptRows, error: receiptsError }] = await Promise.all([
       client.from('invoices').select('*').eq('id', invoiceUuid).maybeSingle(),
       client
