@@ -102,13 +102,15 @@ const Receipts = {
   receiptTypeLabel(receipt = {}) {
     return this.isSettlementReceipt(receipt) ? 'Settlement' : 'Receipt';
   },
+  isOneTimeSection(section) {
+    const raw = String(section || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+    return ['one_time_fee', 'one_time', 'setup', 'non_recurring'].includes(raw);
+  },
   normalizeItem(raw = {}) {
     const source = raw && typeof raw === 'object' ? raw : {};
     const pick = (...values) => values.find(v => v !== undefined && v !== null && !(typeof v === 'string' && v.trim() === ''));
-    const rawSection = String(pick(source.section, source.item_section, source.itemSection, source.type, source.category) || '').trim().toLowerCase();
-    const section = ['one_time_fee', 'one_time', 'setup', 'non_recurring', 'non-recurring'].includes(rawSection)
-      ? 'one_time_fee'
-      : 'location_details';
+    const rawSection = pick(source.section, source.item_section, source.itemSection, source.type, source.category);
+    const section = this.isOneTimeSection(rawSection) ? 'one_time_fee' : 'location_details';
     const description = this.sanitizeText(pick(source.description));
     const parsedLocationAndModule = description.includes(' - ')
       ? description.split(' - ').map(part => part.trim())
@@ -419,7 +421,7 @@ const Receipts = {
   },
   renderItems(items = []) {
     const locations = items.filter(item => item.section === 'location_details');
-    const oneTime = items.filter(item => item.section === 'one_time_fee');
+    const oneTime = items.filter(item => this.isOneTimeSection(item.section));
     if (E.receiptLocationItemsTbody) {
       E.receiptLocationItemsTbody.innerHTML = locations.length
         ? locations
@@ -430,9 +432,9 @@ const Receipts = {
     if (E.receiptOneTimeItemsTbody) {
       E.receiptOneTimeItemsTbody.innerHTML = oneTime.length
         ? oneTime
-            .map(item => `<tr><td>${U.escapeHtml(item.location_name || '—')}</td><td>${U.escapeHtml(item.location_address || '—')}</td><td>${U.escapeHtml(item.item_name || item.modules || item.description || '—')}</td><td>${U.escapeHtml(String(item.quantity ?? 0))}</td><td>${this.formatMoney(item.unit_price ?? 0)}</td><td>${U.escapeHtml(String(item.discount_percent ?? 0))}</td><td>${this.formatMoney(item.line_total ?? 0)}</td><td>${U.escapeHtml(item.notes || '—')}</td></tr>`)
+            .map(item => `<tr><td>${U.escapeHtml(item.location_name || '—')}</td><td>${U.escapeHtml(item.location_address || '—')}</td><td>${U.escapeHtml(U.fmtDisplayDate(item.service_start_date))}</td><td>${U.escapeHtml(U.fmtDisplayDate(item.service_end_date))}</td><td>${U.escapeHtml(item.item_name || item.modules || item.description || '—')}</td><td>${U.escapeHtml(String(item.quantity ?? 0))}</td><td>${this.formatMoney(item.unit_price ?? 0)}</td><td>${U.escapeHtml(String(item.discount_percent ?? 0))}</td><td>${this.formatMoney(item.line_total ?? 0)}</td><td>${U.escapeHtml(item.notes || '—')}</td></tr>`)
             .join('')
-        : '<tr><td colspan="8" class="muted" style="text-align:center;">No one-time fee rows.</td></tr>';
+        : '<tr><td colspan="10" class="muted" style="text-align:center;">No one-time fee rows.</td></tr>';
     }
   },
   populateForm(receipt, items, readOnly = false) {
@@ -533,10 +535,7 @@ const Receipts = {
     return location || itemName || String(item.description || '').trim() || 'Invoice Item';
   },
   mapInvoiceItemToReceiptItem(item = {}) {
-    const sectionRaw = String(item.section || item.item_section || item.itemSection || '').trim().toLowerCase();
-    const section = ['one_time_fee', 'one_time', 'setup', 'non_recurring', 'non-recurring'].includes(sectionRaw)
-      ? 'one_time_fee'
-      : 'location_details';
+    const section = this.isOneTimeSection(item.section || item.item_section || item.itemSection) ? 'one_time_fee' : 'location_details';
     const lineNo = this.toNumberSafe(item.line_no ?? item.lineNo);
     const amount = this.toNumberSafe(item.line_total ?? item.lineTotal ?? item.amount);
     const description = this.buildReceiptDescriptionFromInvoiceItem(item);
@@ -550,7 +549,14 @@ const Receipts = {
       service_end_date: this.normalizeDateValue(item.service_end_date || item.serviceEndDate),
       modules: description,
       item_name: itemName || description,
+      quantity: this.toNumberSafe(item.quantity ?? item.qty),
+      unit_price: this.toNumberSafe(item.unit_price ?? item.unitPrice),
+      discount_percent: this.toNumberSafe(item.discount_percent ?? item.discountPercent),
+      discounted_unit_price: this.toNumberSafe(item.discounted_unit_price ?? item.discountedUnitPrice),
       line_total: amount,
+      capability_name: String(item.capability_name || item.capabilityName || '').trim(),
+      capability_value: String(item.capability_value || item.capabilityValue || '').trim(),
+      currency: String(item.currency || '').trim(),
       notes: String(item.notes || '').trim()
     });
   },
@@ -862,7 +868,7 @@ const Receipts = {
     const normalizedItems = (Array.isArray(items) ? items : []).map(item => this.normalizeItem(item));
     const fallbackItems = (Array.isArray(invoiceItems) ? invoiceItems : []).map(item => this.normalizeItem(item));
     const sourceItems = normalizedItems.length ? normalizedItems : fallbackItems;
-    const isOneTime = section => ['one_time_fee', 'one_time', 'setup', 'non_recurring', 'non-recurring'].includes(String(section || '').trim().toLowerCase());
+    const isOneTime = section => this.isOneTimeSection(section);
     const locationItems = sourceItems.filter(item => !isOneTime(item.section));
     const oneTimeItems = sourceItems.filter(item => isOneTime(item.section));
     const currency = r.currency || invoice?.currency || 'USD';
@@ -876,8 +882,8 @@ const Receipts = {
       return U.escapeHtml(U.fmtDisplayDate(v));
     };
     const oneTimeRows = oneTimeItems.length
-      ? oneTimeItems.map(item => `<tr><td>${text(item.location_name)}</td><td>${text(item.location_address)}</td><td>${text(item.item_name || item.modules || item.description)}</td><td class="cell-center">${U.escapeHtml(String(item.quantity ?? 0))}</td><td class="cell-right">${this.money(currency, item.unit_price ?? 0)}</td><td class="cell-center">${U.escapeHtml(String(item.discount_percent ?? 0))}%</td><td class="cell-right">${this.money(currency, item.line_total ?? 0)}</td><td>${text(item.notes)}</td></tr>`).join('')
-      : '<tr><td colspan="8" class="muted cell-center">No one-time fee rows.</td></tr>';
+      ? oneTimeItems.map(item => `<tr><td>${text(item.location_name)}</td><td>${text(item.location_address)}</td><td class="cell-center">${date(item.service_start_date)}</td><td class="cell-center">${date(item.service_end_date)}</td><td>${text(item.item_name || item.modules || item.description)}</td><td class="cell-center">${U.escapeHtml(String(item.quantity ?? 0))}</td><td class="cell-right">${this.money(currency, item.unit_price ?? 0)}</td><td class="cell-center">${U.escapeHtml(String(item.discount_percent ?? 0))}%</td><td class="cell-right">${this.money(currency, item.line_total ?? 0)}</td><td>${text(item.notes)}</td></tr>`).join('')
+      : '<tr><td colspan="10" class="muted cell-center">No one-time fee rows.</td></tr>';
     const locationRows = locationItems.length
       ? locationItems.map(item => `<tr><td>${text(item.location_name)}</td><td>${text(item.location_address)}</td><td class="cell-center">${date(item.service_start_date)}</td><td class="cell-center">${date(item.service_end_date)}</td><td>${text(item.modules || item.item_name || item.description)}</td><td class="cell-right">${this.money(currency, item.line_total ?? 0)}</td></tr>`).join('')
       : '<tr><td colspan="6" class="muted cell-center">No location detail rows.</td></tr>';
@@ -895,7 +901,7 @@ const Receipts = {
       .meta-box{border:1px solid #111827}.meta-row{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #d1d5db}.meta-row:last-child{border-bottom:none}
       .meta-row span{padding:8px 10px;font-size:12px}.label{font-weight:700;background:#f9fafb;border-right:1px solid #d1d5db}
       .address-block{margin-top:10px;border:1px solid #d1d5db;padding:10px}.notice{margin-top:12px;padding:8px 10px;border:1px solid #dbeafe;background:#f8fbff;font-size:12px}
-      table{width:100%;border-collapse:collapse;margin-top:8px}th,td{border:1px solid #d1d5db;padding:7px 8px;font-size:12px;vertical-align:top}th{background:#f9fafb}
+      table{width:100%;border-collapse:collapse;margin-top:8px}th,td{border:1px solid #d1d5db;padding:7px 8px;font-size:12px;vertical-align:middle}th{background:#f9fafb}
       .section{margin-top:16px}.section h3{margin:0 0 6px;font-size:14px}.cell-right{text-align:right}.cell-center{text-align:center}.muted{color:#6b7280}
       .summary{margin-top:14px;font-size:12px;line-height:1.5}.totals-wrap{display:flex;justify-content:flex-end;margin-top:12px}.totals{width:320px;border:1px solid #111827}
       .totals .row{display:grid;grid-template-columns:1fr auto;border-bottom:1px solid #d1d5db}.totals .row:last-child{border-bottom:none}.totals .row span{padding:7px 10px;font-size:12px}
@@ -912,7 +918,7 @@ const Receipts = {
       <section class="address-block"><div><strong>${text(r.customer_legal_name || r.customer_name || invoice?.customer_legal_name || invoice?.customer_name)}</strong></div><div>${text(r.customer_address || invoice?.customer_address)}</div></section>
       <div class="notice">If you have any questions about this Invoice, please contact: ${text(r.support_email || invoice?.support_email || 'support@incheck360.com')}</div>
       <section class="section"><h3>Location Details</h3><table><thead><tr><th>Location Name</th><th>Location Address</th><th>Start Date</th><th>End Date</th><th>Modules</th><th>Amount</th></tr></thead><tbody>${locationRows}</tbody></table></section>
-      <section class="section"><h3>One-time Fees</h3><table><thead><tr><th>Location Name</th><th>Location Address</th><th>Item Name</th><th>Qty</th><th>Unit Price</th><th>Discount %</th><th>Line Total</th><th>Notes</th></tr></thead><tbody>${oneTimeRows}</tbody></table></section>
+      <section class="section"><h3>One-time Fees</h3><table><thead><tr><th>Location Name</th><th>Location Address</th><th>Service Start Date</th><th>Service End Date</th><th>Item Name</th><th>Qty</th><th>Unit Price</th><th>Discount %</th><th>Line Total</th><th>Notes</th></tr></thead><tbody>${oneTimeRows}</tbody></table></section>
       <p class="summary">We have received from ${text(r.customer_legal_name || r.customer_name || invoice?.customer_legal_name || invoice?.customer_name)} the sum of ${text(amountInWords)} being partial payment on account of ${text(r.invoice_number || invoice?.invoice_number || r.invoice_id)}. Pending amount: ${this.money(currency, pendingAmount)}.</p>
       <div class="totals-wrap"><div class="totals">
         <div class="row"><span>Subtotal Locations</span><span>${this.money(currency, subtotalLocations)}</span></div>
