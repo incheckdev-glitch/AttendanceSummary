@@ -6,7 +6,6 @@ const ClientsService = {
   AGREEMENT_SELECT_COLUMNS: 'id,agreement_id,agreement_number,customer_name,customer_legal_name,customer_contact_email,customer_contact_mobile,status,grand_total,updated_at,service_start_date,service_end_date,agreement_date,customer_sign_date,billing_frequency,payment_term',
   getDb() {
     const db = window.SupabaseClient?.getClient?.();
-    console.log('[ClientsService] db check', db, typeof db?.from);
     if (!db || typeof db.from !== 'function') {
       throw new Error('Supabase client is not available.');
     }
@@ -202,18 +201,23 @@ const ClientsService = {
   countLocationItems(agreement = {}) {
     const items = Array.isArray(agreement.items) ? agreement.items : [];
     return items.filter(item => {
-      const section = this.normalizeText(item.section || item.category || item.type);
+      const section = this.normalizeText(item.section);
       return section === 'annual_saas' || section === 'annual' || section === 'subscription';
     }).length;
   },
   async fetchAgreementItemsForClients_(db) {
-    const preferredColumns = 'agreement_id,location_name,section,category,type';
-    const minimalColumns = 'agreement_id,location_name,section';
-    const preferredRes = await db.from('agreement_items').select(preferredColumns).limit(5000);
-    if (!preferredRes.error) return preferredRes;
-    const preferredError = String(preferredRes.error?.message || '').toLowerCase();
-    if (!preferredError.includes('column')) return preferredRes;
-    return db.from('agreement_items').select(minimalColumns).limit(5000);
+    return db
+      .from('agreement_items')
+      .select('agreement_id,location_name,section,line_total,service_start_date,service_end_date')
+      .limit(5000);
+  },
+  coerceLinkedRows_(res, label) {
+    if (!res) return [];
+    if (res.error) {
+      console.warn(`[ClientsService] ${label} query failed; continuing with empty data.`, res.error);
+      return [];
+    }
+    return Array.isArray(res.data) ? res.data : [];
   },
   matchAgreementClient(agreement = {}, client = {}) {
     const sourceAgreement = String(client.source_agreement_id || '').trim();
@@ -323,16 +327,18 @@ const ClientsService = {
       db.from('agreements').select(this.AGREEMENT_SELECT_COLUMNS).order('updated_at', { ascending: false }).limit(500),
       this.fetchAgreementItemsForClients_(db),
       db.from('invoices').select('id,invoice_id,invoice_number,client_id,agreement_id,proposal_id,issue_date,due_date,invoice_total,received_amount,pending_amount,payment_state,status,notes,updated_at').order('updated_at', { ascending: false }).limit(1000),
-      db.from('receipts').select('id,receipt_id,receipt_number,invoice_id,client_id,customer_name,customer_legal_name,status,payment_state,amount_received,pending_amount,updated_at,receipt_date,reference,notes').order('updated_at', { ascending: false }).limit(1000)
+      db.from('receipts').select('id,receipt_id,receipt_number,invoice_id,client_id,customer_name,customer_legal_name,status,payment_state,amount_received,pending_amount,updated_at,receipt_date,payment_reference,notes').order('updated_at', { ascending: false }).limit(1000)
     ]);
     if (agreementsRes.error) throw this.friendlyError('Unable to load agreements for clients', agreementsRes.error);
-    if (itemsRes.error) throw this.friendlyError('Unable to load agreement items for clients', itemsRes.error);
-    if (invoicesRes.error) throw this.friendlyError('Unable to load invoices for clients', invoicesRes.error);
-    if (receiptsRes.error) throw this.friendlyError('Unable to load receipts for clients', receiptsRes.error);
 
-    const agreements = this.attachAgreementItems((agreementsRes.data || []).map(row => this.mapAgreementRow(row)), itemsRes.data || []);
-    const invoices = invoicesRes.data || [];
-    const receipts = receiptsRes.data || [];
+    const agreementRows = this.coerceLinkedRows_(agreementsRes, 'agreements');
+    const itemRows = this.coerceLinkedRows_(itemsRes, 'agreement_items');
+    const invoiceRows = this.coerceLinkedRows_(invoicesRes, 'invoices');
+    const receiptRows = this.coerceLinkedRows_(receiptsRes, 'receipts');
+
+    const agreements = this.attachAgreementItems(agreementRows.map(row => this.mapAgreementRow(row)), itemRows);
+    const invoices = invoiceRows;
+    const receipts = receiptRows;
     const clientsList = await this.listClients(options);
     const syncedClients = await this.syncSignedAgreementsToClients(agreements, clientsList.rows || []);
     const clients = syncedClients.map(clientRow => {
