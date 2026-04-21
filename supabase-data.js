@@ -143,8 +143,10 @@
   ]);
   const INVOICE_COLUMNS = new Set([
     'invoice_id','invoice_number','client_id','agreement_id','proposal_id','issue_date','due_date','billing_frequency',
-    'payment_term','subtotal_locations','subtotal_one_time','invoice_total','received_amount','pending_amount',
-    'payment_state','status','notes','created_by','updated_by','currency'
+    'payment_term','customer_name','customer_legal_name','customer_address','customer_contact_name','customer_contact_email',
+    'provider_legal_name','provider_address','support_email','subtotal_locations','subtotal_one_time','invoice_total',
+    'received_amount','pending_amount','payment_state','payment_conclusion','amount_in_words','status','notes',
+    'created_by','updated_by','currency'
   ]);
   const INVOICE_ITEM_COLUMNS = new Set([
     'item_id','invoice_id','section','line_no','location_name','item_name','unit_price','discount_percent',
@@ -224,8 +226,10 @@
     ]),
     invoices: new Set([
       'id','invoice_id','invoice_number','client_id','agreement_id','proposal_id','issue_date','due_date','billing_frequency',
-      'payment_term','subtotal_locations','subtotal_one_time','invoice_total','received_amount','pending_amount',
-      'payment_state','status','notes','currency','created_by','updated_by','created_at','updated_at'
+      'payment_term','customer_name','customer_legal_name','customer_address','customer_contact_name','customer_contact_email',
+      'provider_legal_name','provider_address','support_email','subtotal_locations','subtotal_one_time','invoice_total',
+      'received_amount','pending_amount','payment_state','payment_conclusion','amount_in_words',
+      'status','notes','currency','created_by','updated_by','created_at','updated_at'
     ]),
     receipts: new Set([
       'id','receipt_id','receipt_number','invoice_id','client_id','receipt_date','amount_received','payment_method',
@@ -420,12 +424,22 @@
       due_date: trimOrNull(firstDefined(record, ['due_date', 'dueDate'])),
       billing_frequency: trimOrNull(firstDefined(record, ['billing_frequency', 'billingFrequency'])),
       payment_term: trimOrNull(firstDefined(record, ['payment_term', 'paymentTerm'])),
+      customer_name: trimOrNull(firstDefined(record, ['customer_name', 'customerName'])),
+      customer_legal_name: trimOrNull(firstDefined(record, ['customer_legal_name', 'customerLegalName'])),
+      customer_address: trimOrNull(firstDefined(record, ['customer_address', 'customerAddress'])),
+      customer_contact_name: trimOrNull(firstDefined(record, ['customer_contact_name', 'customerContactName'])),
+      customer_contact_email: trimOrNull(firstDefined(record, ['customer_contact_email', 'customerContactEmail'])),
+      provider_legal_name: trimOrNull(firstDefined(record, ['provider_legal_name', 'providerLegalName'])),
+      provider_address: trimOrNull(firstDefined(record, ['provider_address', 'providerAddress'])),
+      support_email: trimOrNull(firstDefined(record, ['support_email', 'supportEmail'])),
       subtotal_locations: numberOrNull(firstDefined(record, ['subtotal_locations', 'subtotalLocations', 'subtotal_subscription'])),
       subtotal_one_time: numberOrNull(firstDefined(record, ['subtotal_one_time', 'subtotalOneTime'])),
       invoice_total: numberOrNull(firstDefined(record, ['invoice_total', 'invoiceTotal', 'grand_total'])),
       received_amount: numberOrNull(firstDefined(record, ['received_amount', 'receivedAmount', 'amount_paid'])),
       pending_amount: numberOrNull(firstDefined(record, ['pending_amount', 'pendingAmount'])),
       payment_state: trimOrNull(firstDefined(record, ['payment_state', 'paymentState'])),
+      payment_conclusion: trimOrNull(firstDefined(record, ['payment_conclusion', 'paymentConclusion'])),
+      amount_in_words: trimOrNull(firstDefined(record, ['amount_in_words', 'amountInWords'])),
       status: trimOrNull(firstDefined(record, ['status'])),
       notes: trimOrNull(firstDefined(record, ['notes'])),
       currency: trimOrNull(firstDefined(record, ['currency']))
