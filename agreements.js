@@ -887,6 +887,85 @@ const Agreements = {
   isSignedStatus(status) {
     return this.normalizeText(status).includes('signed');
   },
+  hasSignedSignal(agreement = {}) {
+    const statusSigned = this.isSignedStatus(agreement.status);
+    const signedDate = String(agreement.signed_date || '').trim();
+    const customerSignDate = String(agreement.customer_sign_date || '').trim();
+    return statusSigned || Boolean(signedDate) || Boolean(customerSignDate);
+  },
+  buildOperationsOnboardingFromAgreement(agreement = {}, agreementId = '') {
+    const agreementUuid = String(agreementId || agreement.id || '').trim();
+    const signedDate = String(agreement.signed_date || agreement.customer_sign_date || '').trim();
+    const requestedAt = String(agreement.updated_at || agreement.created_at || '').trim();
+    return {
+      agreement_id: agreementUuid,
+      agreement_number: String(agreement.agreement_number || agreement.agreement_id || '').trim(),
+      client_name: String(agreement.customer_name || agreement.customer_legal_name || '').trim(),
+      agreement_status: String(agreement.status || '').trim(),
+      signed_date: signedDate || null,
+      onboarding_status: 'Pending',
+      technical_request_type: '',
+      technical_request_details: '',
+      technical_request_status: '',
+      requested_by: String(agreement.generated_by || window.Session?.currentUser?.email || '').trim(),
+      requested_at: requestedAt || null,
+      csm_assigned_to: '',
+      csm_assigned_at: null,
+      priority: '',
+      open_client_request: '',
+      add_locations_request: '',
+      create_users_request: '',
+      module_setup_request: '',
+      training_request: '',
+      go_live_target_date: null,
+      handover_note: '',
+      notes: String(agreement.notes || '').trim(),
+      completed_at: null,
+      created_at: String(agreement.created_at || '').trim() || null,
+      updated_at: String(agreement.updated_at || '').trim() || null
+    };
+  },
+  unwrapOperationsOnboardingRow(response) {
+    if (!response) return null;
+    const candidates = [
+      response?.onboarding,
+      response?.item,
+      response?.data,
+      response?.result,
+      response?.payload,
+      response
+    ];
+    for (const candidate of candidates) {
+      if (Array.isArray(candidate) && candidate[0] && typeof candidate[0] === 'object') return candidate[0];
+      if (candidate && typeof candidate === 'object') return candidate;
+    }
+    return null;
+  },
+  async syncSignedAgreementToOperationsOnboarding(agreement = {}, agreementId = '') {
+    const agreementUuid = String(agreementId || agreement.id || '').trim();
+    if (!agreementUuid || !this.hasSignedSignal(agreement)) return;
+
+    const onboardingPayload = this.buildOperationsOnboardingFromAgreement(agreement, agreementUuid);
+    try {
+      const detailResponse = await Api.getOperationsOnboarding({ agreement_id: agreementUuid });
+      const existing = this.unwrapOperationsOnboardingRow(detailResponse);
+      const onboardingId = String(existing?.onboarding_id || existing?.id || '').trim();
+      if (onboardingId) {
+        await Api.updateOperationsOnboarding(onboardingId, onboardingPayload);
+      } else {
+        await Api.saveOperationsOnboarding(onboardingPayload);
+      }
+    } catch (error) {
+      const message = String(error?.message || '').toLowerCase();
+      const notFound = message.includes('not found') || message.includes('row not found');
+      if (!notFound) throw error;
+      await Api.saveOperationsOnboarding(onboardingPayload);
+    }
+
+    if (window.OperationsOnboarding?.state?.loaded) {
+      await window.OperationsOnboarding.loadAndRefresh({ force: true });
+    }
+  },
   extractClientRows(response) {
     const candidates = [
       response,
@@ -1357,6 +1436,14 @@ const Agreements = {
         await this.syncSignedAgreementToClient({ ...agreement, ...persistedAgreement }, String(persistedAgreement?.id || persistedAgreement?.agreement_id || '').trim());
       } catch (clientSyncError) {
         UI.toast(`Agreement saved, but client sync failed: ${clientSyncError?.message || 'Unknown error'}`);
+      }
+      try {
+        await this.syncSignedAgreementToOperationsOnboarding(
+          { ...agreement, ...persistedAgreement },
+          String(persistedAgreement?.id || '').trim()
+        );
+      } catch (operationsSyncError) {
+        UI.toast(`Agreement saved, but operations onboarding sync failed: ${operationsSyncError?.message || 'Unknown error'}`);
       }
       if (persistedAgreement) {
         this.upsertLocalRow(persistedAgreement);
