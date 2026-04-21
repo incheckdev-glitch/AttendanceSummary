@@ -11,6 +11,7 @@ const Agreements = {
     'agreement_date',
     'effective_date',
     'service_start_date',
+    'service_end_date',
     'agreement_length',
     'account_number',
     'billing_frequency',
@@ -140,6 +141,9 @@ const Agreements = {
     normalized.agreement_number = String(normalized.agreement_number || '').trim();
     normalized.agreement_title = String(normalized.agreement_title || '').trim();
     normalized.agreement_length = String(normalized.agreement_length || source.contract_term || '').trim();
+    normalized.service_end_date = String(
+      normalized.service_end_date || source.serviceEndDate || source.contract_end_date || source.contractEndDate || ''
+    ).trim();
     normalized.provider_signatory_name_primary = String(
       normalized.provider_signatory_name_primary || source.provider_signatory_name || ''
     ).trim();
@@ -204,7 +208,7 @@ const Agreements = {
   emptyAgreement() {
     return {
       agreement_id: '', agreement_number: '', proposal_id: '', deal_id: '', lead_id: '', agreement_title: '',
-      agreement_date: '', effective_date: '', service_start_date: '', agreement_length: '', account_number: '',
+      agreement_date: '', effective_date: '', service_start_date: '', service_end_date: '', agreement_length: '', account_number: '',
       billing_frequency: '', payment_term: '', po_number: '', currency: '', customer_name: '',
       customer_legal_name: '', customer_address: '', customer_contact_name: '', customer_contact_mobile: '',
       customer_contact_email: '', provider_name: '', provider_legal_name: '', provider_address: '',
@@ -545,6 +549,18 @@ const Agreements = {
       const text = String(value ?? '').trim();
       return text ? U.escapeHtml(text) : '—';
     };
+    const numericTextValue = value => {
+      if (value === null || value === undefined || value === '') return '—';
+      return U.escapeHtml(String(value));
+    };
+    const firstNumber = (...values) => {
+      for (const raw of values) {
+        if (raw === null || raw === undefined || raw === '') continue;
+        const parsed = this.toNumberSafe(raw);
+        if (Number.isFinite(parsed)) return parsed;
+      }
+      return 0;
+    };
     const boolValue = value => {
       const normalized = String(value ?? '').trim().toLowerCase();
       if (!normalized) return '—';
@@ -569,23 +585,26 @@ const Agreements = {
 
     const rowsHtml = rows =>
       rows.map(item => {
-        const quantity = this.toNumberSafe(item.quantity);
-        const unitPrice = this.toNumberSafe(item.unit_price);
-        const discountPercent = this.toNumberSafe(item.discount_percent);
+        const quantity = firstNumber(item.quantity);
+        const unitPrice = firstNumber(item.unit_price);
+        const discountPercent = firstNumber(item.discount_percent);
         const discountRatio = discountPercent > 1 ? discountPercent / 100 : discountPercent;
-        const discountedUnitPrice =
-          this.toNumberSafe(item.discounted_unit_price) ||
-          unitPrice * (1 - Math.max(0, discountRatio));
-        const lineTotal = this.toNumberSafe(item.line_total) || discountedUnitPrice * quantity;
+        const discountedUnitPrice = firstNumber(
+          item.discounted_unit_price,
+          unitPrice * (1 - Math.max(0, discountRatio))
+        );
+        const lineTotal = firstNumber(item.line_total, discountedUnitPrice * quantity);
         return `<tr>
-            <td class="cell-center nowrap">${U.escapeHtml(String(item.line_no || '—'))}</td>
-            <td class="cell-left">${textValue(item.location_name)}</td>
+            <td class="cell-center cell-tight nowrap">${numericTextValue(item.line_no)}</td>
+            <td class="cell-center cell-location">${textValue(item.location_name)}</td>
             <td class="cell-left">${textValue(item.item_name || item.capability_name)}</td>
-            <td class="cell-center nowrap">${quantity ? U.escapeHtml(String(quantity)) : '—'}</td>
-            <td class="cell-center nowrap">${money(unitPrice)}</td>
-            <td class="cell-center nowrap">${U.escapeHtml(String(discountPercent || 0))}%</td>
-            <td class="cell-center nowrap">${money(discountedUnitPrice)}</td>
-            <td class="cell-center nowrap">${money(lineTotal)}</td>
+            <td class="cell-center cell-service nowrap">${U.escapeHtml(dateValue(item.service_start_date))}</td>
+            <td class="cell-center cell-service nowrap">${U.escapeHtml(dateValue(item.service_end_date))}</td>
+            <td class="cell-center cell-tight nowrap">${numericTextValue(quantity)}</td>
+            <td class="cell-center cell-tight nowrap">${money(unitPrice)}</td>
+            <td class="cell-center cell-tight nowrap">${U.escapeHtml(String(discountPercent))}%</td>
+            <td class="cell-center cell-tight nowrap">${money(discountedUnitPrice)}</td>
+            <td class="cell-center cell-tight nowrap">${money(lineTotal)}</td>
           </tr>`;
       }).join('');
 
@@ -595,23 +614,27 @@ const Agreements = {
             <div class="agreement-section-title">${U.escapeHtml(sectionLabel(section))}</div>
             <table class="agreement-items-table">
               <colgroup>
-                <col style="width:7%;" />
-                <col style="width:19%;" />
-                <col style="width:28%;" />
-                <col style="width:8%;" />
-                <col style="width:12%;" />
+                <col style="width:5%;" />
+                <col style="width:13%;" />
+                <col style="width:23%;" />
                 <col style="width:10%;" />
-                <col style="width:12%;" />
-                <col style="width:14%;" />
+                <col style="width:10%;" />
+                <col style="width:7%;" />
+                <col style="width:9%;" />
+                <col style="width:8%;" />
+                <col style="width:8%;" />
+                <col style="width:7%;" />
               </colgroup>
               <thead>
                 <tr>
                   <th>Line</th>
-                  <th>Location</th>
-                  <th>Item</th>
+                  <th>Location Name</th>
+                  <th>Item Name</th>
+                  <th>Service Start</th>
+                  <th>Service End</th>
                   <th>Qty</th>
                   <th>Unit Price</th>
-                  <th>Discount</th>
+                  <th>Discount %</th>
                   <th>Disc. Unit</th>
                   <th>Line Total</th>
                 </tr>
@@ -677,6 +700,15 @@ const Agreements = {
     .agreement-items-table .cell-center { text-align: center; }
     .agreement-items-table .cell-left { text-align: left; }
     .agreement-items-table .nowrap { white-space: nowrap; }
+    .agreement-items-table .cell-tight { padding-left: 6px; padding-right: 6px; }
+    .agreement-items-table .cell-location {
+      text-align: center;
+      font-weight: 500;
+    }
+    .agreement-items-table .cell-service {
+      text-align: center;
+      letter-spacing: 0.01em;
+    }
     .agreement-totals-table {
       width: 100%;
       border-collapse: collapse;
@@ -716,6 +748,8 @@ const Agreements = {
       <div><strong>Agreement Number:</strong> ${textValue(agreementData.agreement_number)}</div>
       <div><strong>Date:</strong> ${U.escapeHtml(dateValue(agreementData.agreement_date))}</div>
       <div><strong>Effective Date:</strong> ${U.escapeHtml(dateValue(agreementData.effective_date))}</div>
+      <div><strong>Service Start:</strong> ${U.escapeHtml(dateValue(agreementData.service_start_date))}</div>
+      <div><strong>Service End:</strong> ${U.escapeHtml(dateValue(agreementData.service_end_date))}</div>
     </div>
   </header>
   <section style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;">
@@ -733,6 +767,7 @@ const Agreements = {
       <div><strong>Mobile:</strong> ${textValue(agreementData.provider_contact_mobile)}</div>
       <div><strong>Email:</strong> ${textValue(agreementData.provider_contact_email)}</div>
       <div><strong>Service Start:</strong> ${U.escapeHtml(dateValue(agreementData.service_start_date))}</div>
+      <div><strong>Service End:</strong> ${U.escapeHtml(dateValue(agreementData.service_end_date))}</div>
       <div><strong>Contract Term:</strong> ${textValue(agreementData.contract_term || agreementData.agreement_length)}</div>
     </article>
   </section>
@@ -744,6 +779,7 @@ const Agreements = {
       <div><strong>Payment Term:</strong> ${textValue(agreementData.payment_term)}</div>
       <div><strong>PO Number:</strong> ${textValue(agreementData.po_number)}</div>
       <div><strong>Service Start Date:</strong> ${U.escapeHtml(dateValue(agreementData.service_start_date))}</div>
+      <div><strong>Service End Date:</strong> ${U.escapeHtml(dateValue(agreementData.service_end_date))}</div>
       <div><strong>Currency:</strong> ${textValue(currency)}</div>
     </div>
   </section>
