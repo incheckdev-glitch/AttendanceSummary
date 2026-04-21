@@ -4,21 +4,30 @@ const Invoices = {
     'invoice_number',
     'agreement_id',
     'invoice_date',
+    'issue_date',
     'due_date',
+    'billing_frequency',
     'customer_name',
     'customer_legal_name',
     'customer_address',
     'customer_contact_name',
     'customer_contact_email',
+    'provider_legal_name',
+    'provider_address',
+    'support_email',
     'payment_term',
     'currency',
     'status',
     'subtotal_subscription',
+    'subtotal_locations',
     'subtotal_one_time',
+    'invoice_total',
     'grand_total',
+    'received_amount',
     'amount_paid',
     'pending_amount',
     'payment_state',
+    'payment_conclusion',
     'amount_in_words',
     'notes',
     'updated_at'
@@ -195,15 +204,22 @@ const Invoices = {
     normalized.invoice_number = String(normalized.invoice_number || '').trim();
     normalized.status = String(normalized.status || '').trim() || 'Draft';
     normalized.currency = String(normalized.currency || '').trim() || 'USD';
+    normalized.issue_date = this.normalizeDateInputValue(normalized.issue_date || source.issue_date || source.issueDate || source.invoice_date || source.invoiceDate);
+    normalized.invoice_date = this.normalizeDateInputValue(normalized.invoice_date || source.invoice_date || source.invoiceDate || normalized.issue_date);
+    normalized.due_date = this.normalizeDateInputValue(normalized.due_date || source.due_date || source.dueDate);
     const amountPaidFallback = source.received_amount ?? source.receivedAmount;
     const grandTotalFallback = source.invoice_total ?? source.invoiceTotal;
     const subtotalSubscriptionFallback = source.subtotal_locations ?? source.subtotalLocations;
     normalized.subtotal_subscription = this.toNumberSafe(normalized.subtotal_subscription || subtotalSubscriptionFallback);
+    normalized.subtotal_locations = this.toNumberSafe(normalized.subtotal_locations || normalized.subtotal_subscription || subtotalSubscriptionFallback);
     normalized.subtotal_one_time = this.toNumberSafe(normalized.subtotal_one_time);
     normalized.grand_total = this.toNumberSafe(normalized.grand_total || grandTotalFallback);
+    normalized.invoice_total = this.toNumberSafe(normalized.invoice_total || normalized.grand_total || grandTotalFallback);
     normalized.amount_paid = this.toNumberSafe(normalized.amount_paid || amountPaidFallback);
+    normalized.received_amount = this.toNumberSafe(normalized.received_amount || normalized.amount_paid || amountPaidFallback);
     normalized.pending_amount = this.toNumberSafe(normalized.pending_amount);
     normalized.payment_state = String(normalized.payment_state || '').trim();
+    normalized.payment_conclusion = String(normalized.payment_conclusion || '').trim();
     if (!normalized.amount_in_words && normalized.grand_total > 0) {
       normalized.amount_in_words = this.amountToWords(normalized.grand_total, normalized.currency);
     }
@@ -594,6 +610,7 @@ const Invoices = {
       section: pick(source.section, merged.section),
       line_no: pick(source.line_no, merged.line_no),
       location_name: pick(source.location_name, merged.location_name),
+      location_address: pick(source.location_address, merged.location_address),
       item_name: pick(source.item_name, merged.item_name),
       unit_price: pick(source.unit_price, merged.unit_price),
       discount_percent: pick(source.discount_percent, merged.discount_percent),
@@ -676,7 +693,15 @@ const Invoices = {
     });
     const amountInWords = this.amountToWords(totals.grand_total, invoice.currency);
     const paymentConclusion = this.derivePaymentConclusion(derivedPayment);
-    return { ...totals, ...derivedPayment, amount_in_words: amountInWords, payment_conclusion: paymentConclusion };
+    return {
+      ...totals,
+      subtotal_locations: totals.subtotal_subscription,
+      invoice_total: totals.grand_total,
+      ...derivedPayment,
+      received_amount: derivedPayment.amount_paid,
+      amount_in_words: amountInWords,
+      payment_conclusion: paymentConclusion
+    };
   },
   applyTotalsToForm(summary = {}) {
     const set = (id, value) => {
@@ -872,21 +897,30 @@ const Invoices = {
       invoice_number: this.generateInvoiceNumber(),
       agreement_id: '',
       invoice_date: this.todayIso(),
+      issue_date: this.todayIso(),
       due_date: '',
+      billing_frequency: '',
       customer_name: '',
       customer_legal_name: '',
       customer_address: '',
       customer_contact_name: '',
       customer_contact_email: '',
+      provider_legal_name: '',
+      provider_address: '',
+      support_email: '',
       payment_term: '',
       currency: 'USD',
       status: 'Draft',
       subtotal_subscription: '',
+      subtotal_locations: '',
       subtotal_one_time: '',
+      invoice_total: '',
       grand_total: '',
+      received_amount: 0,
       amount_paid: 0,
       pending_amount: 0,
       payment_state: 'Unpaid',
+      payment_conclusion: 'Pending Settlement',
       amount_in_words: '',
       notes: ''
     };
@@ -1254,14 +1288,23 @@ const Invoices = {
   collectFormValues() {
     const get = id => String(document.getElementById(id)?.value || '').trim();
     const invoice = {};
+    const existingInvoice = this.state.selectedInvoice || {};
     this.invoiceFields.forEach(field => {
       const id = `invoiceForm${field.replace(/(^|_)([a-z])/g, (_, __, ch) => ch.toUpperCase())}`;
-      invoice[field] = get(id);
+      const inputEl = document.getElementById(id);
+      if (inputEl) invoice[field] = get(id);
+      else invoice[field] = existingInvoice[field] ?? '';
     });
+    invoice.issue_date = String(invoice.issue_date || invoice.invoice_date || '').trim();
+    invoice.invoice_date = String(invoice.invoice_date || invoice.issue_date || '').trim();
     const items = this.collectItems();
     invoice.amount_paid = this.toNumberSafe(E.invoiceFormAmountPaid?.value);
+    invoice.received_amount = invoice.amount_paid;
     invoice.pending_amount = this.toNumberSafe(E.invoiceFormPendingAmount?.value);
     invoice.payment_state = String(E.invoiceFormPaymentState?.value || '').trim();
+    invoice.payment_conclusion = this.derivePaymentConclusion(invoice);
+    invoice.subtotal_locations = this.toNumberSafe(invoice.subtotal_locations || invoice.subtotal_subscription);
+    invoice.invoice_total = this.toNumberSafe(invoice.invoice_total || invoice.grand_total);
     return { invoice, items };
   },
   validateInvoice(invoice = {}) {
@@ -1299,9 +1342,11 @@ const Invoices = {
     this.state.items = Array.isArray(items) ? items.map(item => this.normalizeItem(item)) : [];
     this.assignFormValues(this.state.selectedInvoice);
     this.renderItems(this.state.items);
-    this.applyTotalsToForm(this.deriveCalculatedSummary(this.state.selectedInvoice, this.state.items, { preferInvoiceValues: true }));
+    const summary = this.deriveCalculatedSummary(this.state.selectedInvoice, this.state.items, { preferInvoiceValues: true });
+    this.state.selectedInvoice = this.normalizeInvoice({ ...this.state.selectedInvoice, ...summary });
+    this.applyTotalsToForm(summary);
     this.syncPaymentFieldsInForm();
-    this.syncPaymentConclusion(this.state.selectedInvoice);
+    this.syncPaymentConclusion(summary);
     this.renderInvoiceReceipts(this.state.selectedInvoice);
     if (this.state.selectedInvoice.id) this.refreshInvoiceReceipts(this.state.selectedInvoice.id);
     E.invoiceForm.dataset.id = this.state.selectedInvoice.id || '';
@@ -1429,6 +1474,8 @@ const Invoices = {
       const mappedInvoice = this.normalizeInvoice({
         ...currentFormInvoice,
         agreement_id: id,
+        issue_date: currentFormInvoice.issue_date || currentFormInvoice.invoice_date,
+        invoice_date: currentFormInvoice.invoice_date || currentFormInvoice.issue_date,
         customer_name: pickAgreementValue(agreement.customer_name, agreement.customerName, agreement.customer?.name),
         customer_legal_name: pickAgreementValue(
           agreement.customer_legal_name,
@@ -1453,6 +1500,24 @@ const Invoices = {
           agreement.customer?.contact_email,
           agreement.customer?.contactEmail
         ),
+        provider_legal_name: pickAgreementValue(
+          agreement.provider_legal_name,
+          agreement.providerLegalName,
+          agreement.provider?.legal_name,
+          agreement.provider?.legalName
+        ),
+        provider_address: pickAgreementValue(
+          agreement.provider_address,
+          agreement.providerAddress,
+          agreement.provider?.address
+        ),
+        support_email: pickAgreementValue(
+          agreement.support_email,
+          agreement.supportEmail,
+          agreement.provider_contact_email,
+          agreement.providerContactEmail
+        ),
+        billing_frequency: pickAgreementValue(agreement.billing_frequency, agreement.billingFrequency),
         payment_term: pickAgreementValue(
           agreement.payment_term,
           agreement.payment_terms,
@@ -1484,7 +1549,10 @@ const Invoices = {
       const normalizedItems = items.map(item => this.copyInvoiceItemFields(item, this.mergeCatalogItem(item, catalogLookup)));
       this.state.items = normalizedItems;
       this.renderItems(normalizedItems);
-      this.applyTotalsToForm(this.deriveCalculatedSummary(mappedInvoice, normalizedItems));
+      const summary = this.deriveCalculatedSummary(mappedInvoice, normalizedItems);
+      this.applyTotalsToForm(summary);
+      this.syncPaymentFieldsInForm();
+      this.syncPaymentConclusion(summary);
     } catch (error) {
       UI.toast('Unable to auto-fill from agreement: ' + (error?.message || 'Unknown error'));
     }
