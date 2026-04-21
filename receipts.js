@@ -1,8 +1,10 @@
 const Receipts = {
   receiptFields: [
+    'id',
     'receipt_id',
     'receipt_number',
     'invoice_id',
+    'client_id',
     'invoice_number',
     'agreement_id',
     'customer_name',
@@ -15,7 +17,9 @@ const Receipts = {
     'subtotal_locations',
     'subtotal_one_time',
     'grand_total',
+    'invoice_total',
     'invoice_grand_total',
+    'amount_received',
     'received_amount',
     'pending_amount',
     'payment_state',
@@ -91,6 +95,13 @@ const Receipts = {
     normalized.receipt_number = String(normalized.receipt_number || '').trim();
     normalized.currency = String(normalized.currency || '').trim() || 'USD';
     normalized.status = String(normalized.status || '').trim() || 'Issued';
+    normalized.invoice_grand_total = this.toNumberSafe(
+      normalized.invoice_grand_total || normalized.invoice_total || normalized.grand_total
+    );
+    normalized.invoice_total = this.toNumberSafe(normalized.invoice_total || normalized.invoice_grand_total || normalized.grand_total);
+    normalized.received_amount = this.toNumberSafe(normalized.received_amount || normalized.amount_received || normalized.grand_total);
+    normalized.amount_received = this.toNumberSafe(normalized.amount_received || normalized.received_amount || normalized.grand_total);
+    normalized.pending_amount = this.toNumberSafe(normalized.pending_amount);
     return normalized;
   },
   isSettlementReceipt(receipt = {}) {
@@ -713,6 +724,7 @@ const Receipts = {
   collectUpdates() {
     const get = id => String(E[id]?.value || '').trim();
     return {
+      receipt_id: get('receiptFormReceiptId'),
       receipt_number: get('receiptFormReceiptNumber'),
       invoice_id: get('receiptFormInvoiceId'),
       invoice_number: get('receiptFormInvoiceNumber'),
@@ -724,11 +736,53 @@ const Receipts = {
       status: get('receiptFormStatus'),
       amount_in_words: get('receiptFormAmountInWords'),
       invoice_grand_total: get('receiptFormInvoiceGrandTotal'),
+      invoice_total: get('receiptFormInvoiceGrandTotal'),
       received_amount: get('receiptFormReceivedAmount'),
+      amount_received: get('receiptFormReceivedAmount'),
       pending_amount: get('receiptFormPendingAmount'),
       payment_state: get('receiptFormPaymentState'),
       payment_notes: get('receiptFormPaymentNotes'),
       support_email: get('receiptFormSupportEmail')
+    };
+  },
+  buildReceiptHeaderPayload(formValues = {}, { existing = {}, invoiceUuid = '' } = {}) {
+    const invoiceId = String(formValues.invoice_id || existing.invoice_id || invoiceUuid || '').trim();
+    const clientId = String(
+      E.receiptForm?.dataset.clientId ||
+      existing.client_id ||
+      formValues.client_id ||
+      ''
+    ).trim();
+    const receivedAmount = this.normalizeAmountInput(formValues.received_amount ?? formValues.amount_received);
+    const invoiceTotal = this.normalizeAmountInput(formValues.invoice_total ?? formValues.invoice_grand_total);
+    const pendingAmount = this.normalizeAmountInput(formValues.pending_amount);
+    return {
+      receipt_id: String(formValues.receipt_id || existing.receipt_id || '').trim() || null,
+      receipt_number: String(formValues.receipt_number || existing.receipt_number || '').trim() || null,
+      invoice_id: invoiceId || null,
+      client_id: clientId || null,
+      receipt_date: String(formValues.receipt_date || existing.receipt_date || '').trim() || null,
+      amount_received: receivedAmount ?? this.toNumberSafe(existing.amount_received || existing.received_amount),
+      payment_method: String(E.receiptForm?.dataset.paymentMethod || existing.payment_method || '').trim() || null,
+      payment_reference: String(E.receiptForm?.dataset.paymentReference || existing.payment_reference || '').trim() || null,
+      is_settlement: this.isSettlementReceipt({
+        ...existing,
+        ...formValues,
+        pending_amount: pendingAmount ?? existing.pending_amount
+      }),
+      notes: String(formValues.notes || existing.notes || '').trim() || null,
+      status: String(formValues.status || existing.status || '').trim() || 'Issued',
+      invoice_number: String(formValues.invoice_number || existing.invoice_number || '').trim() || null,
+      currency: String(formValues.currency || existing.currency || '').trim() || 'USD',
+      support_email: String(formValues.support_email || existing.support_email || '').trim() || null,
+      customer_name: String(formValues.customer_name || existing.customer_name || '').trim() || null,
+      customer_legal_name: String(formValues.customer_legal_name || existing.customer_legal_name || '').trim() || null,
+      customer_address: String(formValues.customer_address || existing.customer_address || '').trim() || null,
+      amount_in_words: String(formValues.amount_in_words || existing.amount_in_words || '').trim() || null,
+      invoice_total: invoiceTotal ?? this.toNumberSafe(existing.invoice_total || existing.invoice_grand_total || existing.grand_total),
+      pending_amount: pendingAmount ?? this.toNumberSafe(existing.pending_amount),
+      payment_state: String(formValues.payment_state || existing.payment_state || '').trim() || null,
+      payment_notes: String(formValues.payment_notes || existing.payment_notes || '').trim() || null
     };
   },
   async saveForm() {
@@ -771,6 +825,13 @@ const Receipts = {
           response;
         const normalized = this.upsertLocalRow(receipt);
         const receiptUuid = String(normalized?.id || receipt?.id || response?.id || '').trim();
+        if (receiptUuid) {
+          const headerPayload = this.buildReceiptHeaderPayload(updates, {
+            existing: normalized || receipt || {},
+            invoiceUuid
+          });
+          await Api.updateReceipt(receiptUuid, headerPayload);
+        }
         const receiptDisplay = String(normalized?.receipt_id || receipt?.receipt_id || '').trim();
         let normalizedDetailItems = parsed?.items || [];
         if (receiptUuid) {
@@ -821,7 +882,8 @@ const Receipts = {
     this.setFormBusy(true);
     console.time('entity-save');
     try {
-      const response = await Api.updateReceipt(id, updates);
+      const headerPayload = this.buildReceiptHeaderPayload(updates, { existing: currentRecord });
+      const response = await Api.updateReceipt(id, headerPayload);
       const parsed = this.extractReceiptAndItems(response, id);
       const persisted = parsed?.receipt?.id ? parsed.receipt : { ...updates, id, receipt_id: currentRecord?.receipt_id || id };
       const normalized = this.upsertLocalRow(persisted);

@@ -155,7 +155,10 @@
   ]);
   const RECEIPT_COLUMNS = new Set([
     'receipt_id','receipt_number','invoice_id','client_id','receipt_date','amount_received','payment_method',
-    'payment_reference','is_settlement','notes','status','created_by','updated_by'
+    'payment_reference','is_settlement','notes','status',
+    'invoice_number','currency','support_email','customer_name','customer_legal_name','customer_address',
+    'amount_in_words','invoice_total','pending_amount','payment_state','payment_notes',
+    'created_by','updated_by'
   ]);
   const RECEIPT_ITEM_COLUMNS = new Set([
     'item_id','receipt_id','invoice_item_id','section','line_no','location_name','location_address','item_name','description',
@@ -235,7 +238,10 @@
     ]),
     receipts: new Set([
       'id','receipt_id','receipt_number','invoice_id','client_id','receipt_date','amount_received','payment_method',
-      'payment_reference','is_settlement','notes','status','created_by','updated_by','created_at','updated_at'
+      'payment_reference','is_settlement','notes','status',
+      'invoice_number','currency','support_email','customer_name','customer_legal_name','customer_address',
+      'amount_in_words','invoice_total','pending_amount','payment_state','payment_notes',
+      'created_by','updated_by','created_at','updated_at'
     ])
   };
 
@@ -487,7 +493,18 @@
       payment_reference: trimOrNull(firstDefined(record, ['payment_reference', 'paymentReference', 'reference'])),
       is_settlement: firstDefined(record, ['is_settlement', 'isSettlement']) === true,
       notes: trimOrNull(firstDefined(record, ['notes'])),
-      status: trimOrNull(firstDefined(record, ['status']))
+      status: trimOrNull(firstDefined(record, ['status'])),
+      invoice_number: trimOrNull(firstDefined(record, ['invoice_number', 'invoiceNumber'])),
+      currency: trimOrNull(firstDefined(record, ['currency'])),
+      support_email: trimOrNull(firstDefined(record, ['support_email', 'supportEmail'])),
+      customer_name: trimOrNull(firstDefined(record, ['customer_name', 'customerName'])),
+      customer_legal_name: trimOrNull(firstDefined(record, ['customer_legal_name', 'customerLegalName'])),
+      customer_address: trimOrNull(firstDefined(record, ['customer_address', 'customerAddress'])),
+      amount_in_words: trimOrNull(firstDefined(record, ['amount_in_words', 'amountInWords'])),
+      invoice_total: numberOrNull(firstDefined(record, ['invoice_total', 'invoiceTotal', 'invoice_grand_total', 'invoiceGrandTotal', 'grand_total'])),
+      pending_amount: numberOrNull(firstDefined(record, ['pending_amount', 'pendingAmount'])),
+      payment_state: trimOrNull(firstDefined(record, ['payment_state', 'paymentState'])),
+      payment_notes: trimOrNull(firstDefined(record, ['payment_notes', 'paymentNotes']))
     });
     Object.keys(sanitized).forEach(key => { if (!RECEIPT_COLUMNS.has(key)) delete sanitized[key]; });
     if (includeCreatedBy && userId) sanitized.created_by = userId;
