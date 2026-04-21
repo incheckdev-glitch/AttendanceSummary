@@ -151,6 +151,7 @@ const Clients = {
   },
   normalizeAgreement(raw = {}) {
     return {
+      id: String(raw.id || '').trim(),
       agreement_id: String(raw.agreement_id || raw.agreementId || raw.id || '').trim(),
       agreement_number: String(raw.agreement_number || raw.agreementNumber || '').trim(),
       customer_name: String(raw.customer_name || raw.customerName || '').trim(),
@@ -222,10 +223,20 @@ const Clients = {
     const clientCompany = this.normalizeCompanyKey(client.customer_name);
     return Boolean((recordLegal && (recordLegal === clientLegal || recordLegal === clientCompany)) || (recordCompany && (recordCompany === clientLegal || recordCompany === clientCompany)));
   },
+  matchesClientAgreement_(agreement = {}, client = {}) {
+    const sourceAgreementId = String(client.source_agreement_id || '').trim();
+    if (sourceAgreementId) {
+      const agreementUuid = String(agreement.id || '').trim();
+      const agreementBusinessId = String(agreement.agreement_id || '').trim();
+      if (agreementUuid && agreementUuid === sourceAgreementId) return true;
+      if (agreementBusinessId && agreementBusinessId === sourceAgreementId) return true;
+    }
+    return this.matchesClient_(agreement, client);
+  },
   listClientRelatedAgreements_(clientId) {
     const client = this.state.rows.find(row => row.client_id === clientId);
     if (!client) return [];
-    return this.state.agreements.filter(item => this.matchesClient_(item, client));
+    return this.state.agreements.filter(item => this.matchesClientAgreement_(item, client));
   },
   listClientRelatedInvoices_(clientId) {
     const client = this.state.rows.find(row => row.client_id === clientId);

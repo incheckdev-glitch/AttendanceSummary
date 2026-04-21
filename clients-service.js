@@ -102,15 +102,12 @@ const ClientsService = {
     }).length;
   },
   matchAgreementClient(agreement = {}, client = {}) {
-    const clientUuid = String(client.id || '').trim();
-    if (clientUuid) {
-      const agreementClientUuid = String(agreement.client_id || agreement.client_uuid || '').trim();
-      if (agreementClientUuid && agreementClientUuid === clientUuid) return true;
-    }
     const sourceAgreement = String(client.source_agreement_id || '').trim();
     if (sourceAgreement) {
-      if (String(agreement.id || '').trim() === sourceAgreement) return true;
-      if (String(agreement.agreement_id || '').trim() === sourceAgreement) return true;
+      const agreementUuid = String(agreement.id || '').trim();
+      const agreementBusinessId = String(agreement.agreement_id || '').trim();
+      if (agreementUuid && agreementUuid === sourceAgreement) return true;
+      if (agreementBusinessId && agreementBusinessId === sourceAgreement) return true;
     }
     const c1 = this.normalizeCompanyKey(client.company_name || client.customer_legal_name);
     const c2 = this.normalizeCompanyKey(client.client_name || client.customer_name);
@@ -210,7 +207,7 @@ const ClientsService = {
     const clientsList = await this.listClients(options);
     const db = this.getDb();
     const [agreementsRes, itemsRes, invoicesRes, receiptsRes] = await Promise.all([
-      db.from('agreements').select('id,agreement_id,agreement_number,client_id,customer_name,customer_legal_name,status,grand_total,updated_at,service_start_date,service_end_date,agreement_date,customer_sign_date,due_date,renewal_date,location_name').order('updated_at', { ascending: false }).limit(500),
+      db.from('agreements').select('id,agreement_id,agreement_number,customer_name,customer_legal_name,status,grand_total,updated_at,service_start_date,service_end_date,agreement_date,customer_sign_date,due_date,renewal_date,location_name').order('updated_at', { ascending: false }).limit(500),
       db.from('agreement_items').select('agreement_id,section,item_section,section_name,category,type').limit(5000),
       db.from('invoices').select('id,invoice_id,invoice_number,agreement_id,client_id,customer_name,customer_legal_name,status,payment_state,invoice_total,received_amount,pending_amount,updated_at,issue_date,due_date,reference,notes,location_name').order('updated_at', { ascending: false }).limit(1000),
       db.from('receipts').select('id,receipt_id,receipt_number,invoice_id,client_id,customer_name,customer_legal_name,status,payment_state,amount_received,pending_amount,updated_at,receipt_date,reference,notes').order('updated_at', { ascending: false }).limit(1000)
