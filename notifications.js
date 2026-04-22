@@ -190,12 +190,41 @@ const Notifications = {
       this.renderBell();
       return 0;
     }
+    const messageFromError = error => String(error?.message || error || '').toLowerCase();
+    const isNotificationPermissionError = error => {
+      const message = messageFromError(error);
+      return (
+        (message.includes('forbidden') || message.includes('permission')) &&
+        (message.includes('notification') || message.includes('get_unread_count'))
+      );
+    };
+    const isSessionAuthError = error => {
+      const message = messageFromError(error);
+      return (
+        message.includes('unauthorized') ||
+        message.includes('invalid session') ||
+        message.includes('expired session') ||
+        message.includes('not authenticated') ||
+        message.includes('jwt') ||
+        message.includes('token expired')
+      );
+    };
     try {
       const count = await Api.getNotificationUnreadCount();
       this.state.unreadCount = Number(count) || 0;
       this.renderBell();
       return this.state.unreadCount;
     } catch (error) {
+      if (isNotificationPermissionError(error)) {
+        console.warn('Notifications unread count is not permitted for this role; continuing without unread count.', error);
+        this.renderBell();
+        return this.state.unreadCount;
+      }
+      if (isSessionAuthError(error)) {
+        console.warn('Notification unread count refresh detected a true session/auth error; expiring session.', error);
+        await handleExpiredSession('Session expired while refreshing notifications.');
+        return 0;
+      }
       console.warn('Unable to refresh notification unread count', error);
       return this.state.unreadCount;
     }
