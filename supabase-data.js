@@ -32,7 +32,7 @@
     ,notifications: 'notification_id'
   };
   const LEGACY_IDENTIFIER_KEYS = {
-    users: ['user_id'],
+    users: [],
     roles: ['id', 'role_id', 'key'],
     role_permissions: ['id', 'permission'],
     tickets: ['ticket_id'],
@@ -498,11 +498,11 @@
 
   function sanitizeUserProfileRecord(record = {}, { includeId = false } = {}) {
     const mapped = compactObject({
-      id: includeId ? firstDefined(record, ['id', 'user_id', 'userId']) : undefined,
+      id: includeId ? firstDefined(record, ['id']) : undefined,
       name: firstDefined(record, ['name', 'full_name', 'display_name']),
       email: firstDefined(record, ['email']),
       username: firstDefined(record, ['username']),
-      role_key: firstDefined(record, ['role_key', 'roleKey', 'role']),
+      role_key: firstDefined(record, ['role_key', 'roleKey']),
       is_active: firstDefined(record, ['is_active', 'isActive', 'active', 'enabled'])
     });
     if (mapped.role_key !== undefined) mapped.role_key = String(mapped.role_key || '').trim().toLowerCase();
@@ -1773,7 +1773,9 @@
       assertAllowed(resource, 'list');
       const { controls } = splitListPayload(payload);
       const listControls = normalizeListControls(controls, resource);
-      let query = client.from(table).select('*', { count: 'exact' });
+      let query = resource === 'users'
+        ? client.from('profiles').select('id, name, email, username, role_key, is_active, created_at, updated_at', { count: 'exact' })
+        : client.from(table).select('*', { count: 'exact' });
       query = applyFilters(query, payload, { resource });
       query = query.order(listControls.sortBy, { ascending: listControls.sortDir === 'asc' });
       query = query.range(listControls.from, listControls.to);
@@ -1791,7 +1793,12 @@
         : requireResourceIdentifier(resource, payload, 'get');
       const key = getPrimaryKeyForResource(resource);
       console.log('[CRUD] resource, pk, value', resource, key, id);
-      const { data, error } = await client.from(table).select('*').eq(key, id).single();
+      const userGetColumns = 'id, name, email, username, role_key, is_active, created_at, updated_at';
+      const { data, error } = await client
+        .from(resource === 'users' ? 'profiles' : table)
+        .select(resource === 'users' ? userGetColumns : '*')
+        .eq(key, id)
+        .single();
       if (error) throw friendlyError(`Unable to load ${resource} record`, error);
       if (resource === 'tickets') {
         if (!isAdminDev()) return { handled: true, data: sanitizeReadByRole(resource, data) };
@@ -1809,6 +1816,10 @@
       if (resource === 'users') {
         const email = String(firstDefined(record, ['email']) || '').trim().toLowerCase();
         const password = String(firstDefined(record, ['password', 'passcode', 'newPassword']) || '');
+        const createProfileSeed = sanitizeUserProfileRecord(record);
+        if (!createProfileSeed.name) throw new Error('User name is required.');
+        if (!createProfileSeed.username) throw new Error('Username is required.');
+        if (!createProfileSeed.role_key) throw new Error('Role is required (role_key).');
         if (!email) throw new Error('User email is required.');
         if (!password) throw new Error('User password is required.');
 
@@ -1817,15 +1828,14 @@
           throw new Error('Unable to create login account: auth.admin.createUser is unavailable in this environment.');
         }
 
-        const profileSeed = sanitizeUserProfileRecord(record);
         const { data: createdAuth, error: authError } = await authAdmin.createUser({
           email,
           password,
           email_confirm: true,
           user_metadata: {
-            full_name: profileSeed.name || '',
-            username: profileSeed.username || '',
-            role_key: profileSeed.role_key || ''
+            full_name: createProfileSeed.name || '',
+            username: createProfileSeed.username || '',
+            role_key: createProfileSeed.role_key || ''
           }
         });
         if (authError) throw friendlyError('Unable to create auth user', authError);
@@ -1956,7 +1966,27 @@
         const userUpdates = sanitizeUserProfileRecord(safeUpdates, { includeId: false });
         delete userUpdates.id;
         if (!Object.keys(userUpdates).length) throw new Error('users update payload is empty after normalization.');
-        const { data, error } = await client.from('profiles').update(userUpdates).eq('id', id).select('*').single();
+        const authAdmin = client?.auth?.admin;
+        if (authAdmin?.updateUserById) {
+          const authUpdatePayload = compactObject({
+            email: userUpdates.email,
+            user_metadata: compactObject({
+              full_name: userUpdates.name,
+              username: userUpdates.username,
+              role_key: userUpdates.role_key
+            })
+          });
+          if (Object.keys(authUpdatePayload).length) {
+            const { error: authUpdateError } = await authAdmin.updateUserById(id, authUpdatePayload);
+            if (authUpdateError) throw friendlyError('Unable to update auth user', authUpdateError);
+          }
+        }
+        const { data, error } = await client
+          .from('profiles')
+          .update(userUpdates)
+          .eq('id', id)
+          .select('id, name, email, username, role_key, is_active, created_at, updated_at')
+          .single();
         if (error) throw friendlyError('Unable to update users record', error);
         return { handled: true, data: normalizeRow('users', data) };
       }
@@ -2092,9 +2122,68 @@
     if (resource === 'users' && ['activate','deactivate'].includes(action)) {
       assertAllowed('users', action);
       const id = requireResourceIdentifier(resource, payload, action);
-      const { data, error } = await client.from('profiles').update({ is_active: action === 'activate' }).eq('id', id).select('*').single();
+      const { data, error } = await client
+        .from('profiles')
+        .update({ is_active: action === 'activate' })
+        .eq('id', id)
+        .select('id, name, email, username, role_key, is_active, created_at, updated_at')
+        .single();
       if (error) throw friendlyError('Unable to update user status', error);
       return { handled: true, data: normalizeRow('users', data) };
+    }
+
+    if (resource === 'users' && action === 'repair_profiles') {
+      assertAllowed('users', 'update', 'repair_profiles');
+      const authAdmin = client?.auth?.admin;
+      if (!authAdmin?.listUsers) {
+        throw new Error('Unable to repair users: auth.admin.listUsers is unavailable in this environment.');
+      }
+      const { data: listedUsers, error: listError } = await authAdmin.listUsers({ page: 1, perPage: 1000 });
+      if (listError) throw friendlyError('Unable to load auth users for profile repair', listError);
+      const authUsers = Array.isArray(listedUsers?.users) ? listedUsers.users : [];
+      const repaired = [];
+      const skipped = [];
+      for (const authUser of authUsers) {
+        const authUserId = String(authUser?.id || '').trim();
+        const email = String(authUser?.email || '').trim().toLowerCase();
+        if (!authUserId) continue;
+        const { data: existingById } = await client
+          .from('profiles')
+          .select('id, name, email, username, role_key, is_active')
+          .eq('id', authUserId)
+          .maybeSingle();
+        if (existingById) continue;
+        if (!email) {
+          skipped.push({ auth_user_id: authUserId, reason: 'missing_email' });
+          continue;
+        }
+        const { data: legacyProfile } = await client
+          .from('profiles')
+          .select('id, name, email, username, role_key, is_active')
+          .eq('email', email)
+          .neq('id', authUserId)
+          .maybeSingle();
+        if (!legacyProfile?.role_key) {
+          skipped.push({ auth_user_id: authUserId, email, reason: 'no_legacy_profile_or_role_key' });
+          continue;
+        }
+        const repairedProfile = {
+          id: authUserId,
+          name: legacyProfile.name || authUser.user_metadata?.full_name || '',
+          email,
+          username: legacyProfile.username || authUser.user_metadata?.username || email.split('@')[0],
+          role_key: String(legacyProfile.role_key || '').trim().toLowerCase(),
+          is_active: legacyProfile.is_active !== false
+        };
+        const { data: upsertedProfile, error: upsertError } = await client
+          .from('profiles')
+          .upsert(repairedProfile, { onConflict: 'id' })
+          .select('id, name, email, username, role_key, is_active')
+          .single();
+        if (upsertError) throw friendlyError(`Unable to repair profile for ${email}`, upsertError);
+        repaired.push(normalizeRow('users', upsertedProfile));
+      }
+      return { handled: true, data: { ok: true, repaired, skipped } };
     }
 
     throw new Error(`Unsupported action ${action} for resource ${resource}.`);

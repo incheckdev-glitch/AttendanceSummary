@@ -11,7 +11,8 @@ const UserAdmin = {
     loading: false,
     loadingRoles: false,
     error: '',
-    editingUserId: ''
+    editingUserId: '',
+    didAttemptProfileRepair: false
   },
   wire() {
     if (E.usersRefreshBtn) {
@@ -127,6 +128,15 @@ const UserAdmin = {
     this.state.error = '';
     this.render();
     try {
+      if (!this.state.didAttemptProfileRepair || force) {
+        try {
+          await Api.requestWithSession('users', 'repair_profiles', {});
+        } catch (repairError) {
+          console.warn('[UserAdmin.refresh] profile repair skipped', repairError);
+        } finally {
+          this.state.didAttemptProfileRepair = true;
+        }
+      }
       const response = await Api.requestCached(
         'users',
         'list',
@@ -236,7 +246,7 @@ const UserAdmin = {
     return true;
   },
   getUserId(user = {}) {
-    return String(user.id || user.user_id || user.userId || '').trim();
+    return String(user.id || '').trim();
   },
   getCreatedAt(user = {}) {
     return user.created_at || user.createdAt || user.created || '';
@@ -353,7 +363,6 @@ const UserAdmin = {
     }
     try {
       await Api.requestWithSession('users', 'update', {
-        user_id: userId,
         id: userId,
         updates: {
           name: String(name).trim(),
@@ -363,7 +372,6 @@ const UserAdmin = {
         },
         user: {
           id: userId,
-          user_id: userId,
           name: String(name).trim(),
           email: String(email).trim(),
           username: String(username).trim(),
@@ -390,7 +398,6 @@ const UserAdmin = {
     if (!confirmed) return;
     try {
       await Api.requestWithSession('users', active ? 'deactivate' : 'activate', {
-        user_id: userId,
         id: userId
       });
       UI.toast(`User ${active ? 'deactivated' : 'activated'}.`);
@@ -410,7 +417,6 @@ const UserAdmin = {
     if (!confirmed) return;
     try {
       await Api.requestWithSession('users', 'reset_password', {
-        user_id: this.getUserId(user),
         id: this.getUserId(user),
         newPassword,
         password: newPassword,

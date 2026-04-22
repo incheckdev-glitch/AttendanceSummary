@@ -96,6 +96,46 @@ const Session = {
     return data;
   },
 
+  async restoreOrRepairProfile(authUser = null) {
+    const client = SupabaseClient.getClient();
+    const authUserId = String(authUser?.id || '').trim();
+    const authEmail = String(authUser?.email || '').trim().toLowerCase();
+    if (!authUserId) throw new Error('Authenticated user id is missing.');
+
+    const { data: directProfile, error: directError } = await client
+      .from('profiles')
+      .select('id, name, email, username, role_key, is_active')
+      .eq('id', authUserId)
+      .maybeSingle();
+    if (directError) throw new Error(`Unable to load user profile: ${directError.message}`);
+    if (directProfile?.role_key) return directProfile;
+
+    if (!authEmail) return directProfile || null;
+    const { data: legacyProfile, error: legacyError } = await client
+      .from('profiles')
+      .select('id, name, email, username, role_key, is_active')
+      .eq('email', authEmail)
+      .maybeSingle();
+    if (legacyError) throw new Error(`Unable to load legacy profile by email: ${legacyError.message}`);
+    if (!legacyProfile?.role_key) return directProfile || legacyProfile || null;
+
+    const repairedProfilePayload = {
+      id: authUserId,
+      name: String(legacyProfile.name || authUser?.user_metadata?.full_name || '').trim(),
+      email: authEmail,
+      username: String(legacyProfile.username || authUser?.user_metadata?.username || authEmail.split('@')[0] || '').trim(),
+      role_key: String(legacyProfile.role_key || '').trim().toLowerCase(),
+      is_active: legacyProfile.is_active !== false
+    };
+    const { data: repairedProfile, error: repairError } = await client
+      .from('profiles')
+      .upsert(repairedProfilePayload, { onConflict: 'id' })
+      .select('id, name, email, username, role_key, is_active')
+      .single();
+    if (repairError) throw new Error(`Unable to repair user profile mapping: ${repairError.message}`);
+    return repairedProfile;
+  },
+
   async login(identifier = '', passcode = '') {
     this.purgeLegacyStorage();
     const email = String(identifier || '').trim().toLowerCase();
@@ -120,7 +160,13 @@ const Session = {
     const authUser = userData?.user || data?.user || sessionData?.session?.user || null;
     const session = sessionData?.session || data?.session || null;
     if (!authUser?.id || !session) throw new Error('Login succeeded but no active session was found.');
-    const profile = await this.fetchProfile(authUser?.id);
+    const profile = await this.restoreOrRepairProfile(authUser);
+    if (!profile?.role_key) throw new Error('Login succeeded but no active role_key profile was found.');
+    if (!profile?.is_active) {
+      await client.auth.signOut();
+      this.clearClientSession({ clearRoleCache: false });
+      throw new Error('Your account is inactive. Please contact an administrator.');
+    }
     this.applyState(this.buildState(authUser, session, profile));
     this.ensureReactiveAuthState();
     return this.user();
@@ -145,13 +191,8 @@ const Session = {
         return false;
       }
 
-      const { data: profile, error: profileError } = await client
-        .from('profiles')
-        .select('id, name, email, username, role_key, is_active')
-        .eq('id', authUser.id)
-        .maybeSingle();
-
-      if (profileError || !profile || !profile.is_active) {
+      const profile = await this.restoreOrRepairProfile(authUser);
+      if (!profile || !profile.is_active || !String(profile.role_key || '').trim()) {
         await client.auth.signOut();
         this.clearClientSession({ clearRoleCache: false });
         return false;
