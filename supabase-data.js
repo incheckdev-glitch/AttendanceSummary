@@ -12,7 +12,7 @@
   };
 
   const PK_KEYS = {
-    users: ['user_id','id'], roles: ['id','role_key'], role_permissions: ['permission_id'], tickets: ['id','ticket_id'],
+    users: ['user_id','id'], roles: ['role_key','id'], role_permissions: ['permission_id'], tickets: ['id','ticket_id'],
     events: ['event_id','id'], csm: ['id','activity_id'], leads: ['id','lead_id'], deals: ['id','deal_id'],
     proposal_catalog: ['id','catalog_item_id'], proposals: ['id','proposal_id'], agreements: ['id','agreement_id'],
     clients: ['id','client_id'], invoices: ['id','invoice_id'], receipts: ['id','receipt_id'], operations_onboarding: ['onboarding_id','id'],
