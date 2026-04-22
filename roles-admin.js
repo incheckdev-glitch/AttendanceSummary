@@ -354,6 +354,7 @@ const RolesAdmin = {
 
   async editRole(role) {
     const roleKey = this.roleKey(role);
+    if (!roleKey) return UI.toast('Unable to edit role: missing role_key.');
     const roleName = window.prompt('Role name', this.displayName(role));
     if (roleName == null) return;
     const description = window.prompt('Description', String(role.description || ''));
@@ -370,7 +371,9 @@ const RolesAdmin = {
 
   async deleteRole(role) {
     const roleKey = this.roleKey(role);
+    if (!roleKey) return UI.toast('Unable to delete role: missing role_key.');
     if (!window.confirm(`Delete role "${roleKey}"?`)) return;
+    console.log('[Roles] deleting role_key', roleKey);
     try {
       await Api.deleteRole(roleKey);
       UI.toast('Role deleted.');
@@ -378,7 +381,12 @@ const RolesAdmin = {
       await Permissions.loadMatrix(true);
       UI.applyRolePermissions();
     } catch (error) {
-      UI.toast(`Unable to delete role. ${String(error?.message || 'This role may still be referenced in profiles or permissions.')}`);
+      const rawMessage = String(error?.message || '');
+      const referenceBlockPattern = /(foreign key|violates|is referenced|still referenced|constraint|profiles|role_permissions)/i;
+      const readableMessage = referenceBlockPattern.test(rawMessage)
+        ? 'Unable to delete role: this role_key is still referenced by profiles or permission rules.'
+        : `Unable to delete role. ${rawMessage || 'This role may still be referenced in profiles or permissions.'}`;
+      UI.toast(readableMessage);
     }
   },
 

@@ -935,10 +935,9 @@ const Api = {
     });
     return this.normalizeListResponse(response);
   },
-  async getRole(roleIdOrKey) {
+  async getRole(roleKey) {
     return this.postAuthenticated('roles', 'get', {
-      role_id: roleIdOrKey,
-      role_key: roleIdOrKey,
+      role_key: roleKey,
       sheetName: CONFIG.ROLES_SHEET_NAME
     });
   },
@@ -949,19 +948,17 @@ const Api = {
       sheetName: CONFIG.ROLES_SHEET_NAME
     });
   },
-  async updateRole(roleIdOrKey, updates = {}) {
+  async updateRole(roleKey, updates = {}) {
     return this.postAuthenticated('roles', 'update', {
-      role_id: roleIdOrKey,
-      role_key: roleIdOrKey,
+      role_key: roleKey,
       updates,
-      role: { role_key: roleIdOrKey, ...updates },
+      role: { role_key: roleKey, ...updates },
       sheetName: CONFIG.ROLES_SHEET_NAME
     });
   },
-  async deleteRole(roleIdOrKey) {
+  async deleteRole(roleKey) {
     return this.postAuthenticated('roles', 'delete', {
-      role_id: roleIdOrKey,
-      role_key: roleIdOrKey,
+      role_key: roleKey,
       sheetName: CONFIG.ROLES_SHEET_NAME
     });
   },
