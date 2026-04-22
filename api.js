@@ -984,7 +984,6 @@ const Api = {
   async createRolePermission(payload = {}) {
     const permissionPayload = this.pickRolePermissionColumns(payload);
     return this.postAuthenticated('role_permissions', 'create', {
-      permission: permissionPayload,
       ...permissionPayload,
       sheetName: CONFIG.ROLE_PERMISSIONS_SHEET_NAME
     });
@@ -993,15 +992,13 @@ const Api = {
     const permissionUpdates = this.pickRolePermissionColumns(updates);
     return this.postAuthenticated('role_permissions', 'update', {
       permission_id: permissionId,
-      updates: permissionUpdates,
-      permission: { permission_id: permissionId, ...permissionUpdates },
+      ...permissionUpdates,
       sheetName: CONFIG.ROLE_PERMISSIONS_SHEET_NAME
     });
   },
   async saveRolePermission(payload = {}) {
     const permissionPayload = this.pickRolePermissionColumns(payload);
     return this.postAuthenticated('role_permissions', 'save', {
-      permission: permissionPayload,
       ...permissionPayload,
       sheetName: CONFIG.ROLE_PERMISSIONS_SHEET_NAME
     });
