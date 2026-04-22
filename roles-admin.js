@@ -511,8 +511,7 @@ const RolesAdmin = {
           resource,
           action,
           is_allowed: true,
-          is_active: true,
-          allowed_roles: ''
+          is_active: true
         }));
       }
     });
@@ -576,7 +575,7 @@ const RolesAdmin = {
             is_active: true
           }));
         } else {
-          requests.push(Api.createRolePermission({ role_key: roleKey, resource, action, is_allowed: true, is_active: true, allowed_roles: '' }));
+          requests.push(Api.createRolePermission({ role_key: roleKey, resource, action, is_allowed: true, is_active: true }));
         }
       });
 
