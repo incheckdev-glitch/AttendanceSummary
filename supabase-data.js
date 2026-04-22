@@ -11,12 +11,41 @@
     technical_admin_requests: 'technical_admin_requests'
   };
 
-  const PK_KEYS = {
-    users: ['user_id','id'], roles: ['role_key','id'], role_permissions: ['permission_id'], tickets: ['id','ticket_id'],
-    events: ['event_id','id'], csm: ['id','activity_id'], leads: ['id','lead_id'], deals: ['id','deal_id'],
-    proposal_catalog: ['id','catalog_item_id'], proposals: ['id','proposal_id'], agreements: ['id','agreement_id'],
-    clients: ['id','client_id'], invoices: ['id','invoice_id'], receipts: ['id','receipt_id'], operations_onboarding: ['onboarding_id','id'],
-    technical_admin_requests: ['id','request_id']
+  const PK_BY_RESOURCE = {
+    users: 'user_id',
+    roles: 'role_key',
+    role_permissions: 'permission_id',
+    tickets: 'id',
+    events: 'id',
+    csm: 'id',
+    leads: 'id',
+    deals: 'id',
+    proposal_catalog: 'id',
+    proposals: 'id',
+    agreements: 'id',
+    clients: 'id',
+    invoices: 'id',
+    receipts: 'id',
+    operations_onboarding: 'onboarding_id',
+    technical_admin_requests: 'id'
+  };
+  const LEGACY_IDENTIFIER_KEYS = {
+    users: ['id'],
+    roles: ['id', 'role_id', 'key'],
+    role_permissions: ['id', 'permission'],
+    tickets: ['ticket_id'],
+    events: ['event_id'],
+    csm: ['activity_id'],
+    leads: ['lead_id'],
+    deals: ['deal_id'],
+    proposal_catalog: ['catalog_item_id'],
+    proposals: ['proposal_id'],
+    agreements: ['agreement_id'],
+    clients: ['client_id'],
+    invoices: ['invoice_id'],
+    receipts: ['receipt_id'],
+    operations_onboarding: ['id'],
+    technical_admin_requests: ['request_id', 'technical_request_id']
   };
 
   const ITEM_TABLES = { proposals: 'proposal_items', agreements: 'agreement_items', invoices: 'invoice_items', receipts: 'receipt_items' };
@@ -319,10 +348,21 @@
     );
   }
 
+  function getPrimaryKeyForResource(resource) {
+    const name = String(resource || '').trim();
+    return PK_BY_RESOURCE[name] || 'id';
+  }
+
+  function getIdentifierKeysForResource(resource) {
+    const pk = getPrimaryKeyForResource(resource);
+    const extras = LEGACY_IDENTIFIER_KEYS[resource] || [];
+    return [...new Set([pk, ...extras])];
+  }
+
   function normalizeRow(resource, row) {
     if (!row || typeof row !== 'object') return row;
     const out = { ...row };
-    for (const key of PK_KEYS[resource] || []) {
+    for (const key of getIdentifierKeysForResource(resource)) {
       if (out[key] !== undefined && out.id === undefined) out.id = out[key];
     }
     if (resource === 'tickets') {
@@ -1128,12 +1168,43 @@
     };
   }
 
-  function pickId(resource, payload = {}) {
-    for (const key of PK_KEYS[resource] || []) {
-      const value = resource === 'role_permissions' ? payload[key] : (payload[key] ?? payload.id);
-      if (value !== undefined && value !== null && String(value).trim() !== '') return value;
+  function firstDefinedIdentifier(source, keys = []) {
+    if (!source || typeof source !== 'object') return '';
+    for (const key of keys) {
+      const value = source[key];
+      if (value !== undefined && value !== null && String(value).trim() !== '') return String(value).trim();
     }
-    return resource === 'role_permissions' ? '' : payload.id;
+    return '';
+  }
+
+  function getResourceIdentifier(resource, payload = {}, { action = '' } = {}) {
+    const pk = getPrimaryKeyForResource(resource);
+    const keys = getIdentifierKeysForResource(resource);
+    const containers = [
+      payload,
+      payload.item,
+      payload.updates,
+      payload.activity,
+      payload[resource],
+      payload[resource?.endsWith('s') ? resource.slice(0, -1) : resource]
+    ];
+    for (const source of containers) {
+      const found = firstDefinedIdentifier(source, keys);
+      if (found) {
+        console.log('[CRUD] resource, pk, value', resource, pk, found);
+        return found;
+      }
+    }
+    console.log('[CRUD] resource, pk, value', resource, pk, undefined);
+    return '';
+  }
+
+  function requireResourceIdentifier(resource, payload = {}, context = '') {
+    const pk = getPrimaryKeyForResource(resource);
+    const value = getResourceIdentifier(resource, payload, { action: context });
+    if (value) return value;
+    const suffix = context ? ` for ${context}` : '';
+    throw new Error(`Missing ${pk}${suffix}`);
   }
 
   async function resolveResourceUuid(resource, payload = {}, client) {
@@ -1144,7 +1215,7 @@
       ''
     ).trim();
     if (isUuid(directId)) return directId;
-    if (!['clients', 'invoices', 'receipts'].includes(resource)) return pickId(resource, payload);
+    if (!['clients', 'invoices', 'receipts'].includes(resource)) return getResourceIdentifier(resource, payload, { action: 'resolve uuid' });
     const businessId = String(
       firstDefined(payload, [resource === 'clients' ? 'client_id' : resource === 'invoices' ? 'invoice_id' : 'receipt_id']) ??
       firstDefined(payload.item || {}, [resource === 'clients' ? 'client_id' : resource === 'invoices' ? 'invoice_id' : 'receipt_id']) ??
@@ -1621,8 +1692,9 @@
         ? await resolveTechnicalAdminRequestUuid(payload, client)
         : ['clients', 'invoices', 'receipts'].includes(resource)
         ? await resolveResourceUuid(resource, payload, client)
-        : pickId(resource, payload);
-      const key = PK_KEYS[resource][0] || 'id';
+        : requireResourceIdentifier(resource, payload, 'get');
+      const key = getPrimaryKeyForResource(resource);
+      console.log('[CRUD] resource, pk, value', resource, key, id);
       const { data, error } = await client.from(table).select('*').eq(key, id).single();
       if (error) throw friendlyError(`Unable to load ${resource} record`, error);
       if (resource === 'tickets') {
@@ -1729,7 +1801,7 @@
         ? await resolveTechnicalAdminRequestUuid(payload, client)
         : ['clients', 'invoices', 'receipts'].includes(resource)
         ? await resolveResourceUuid(resource, payload, client)
-        : pickId(resource, payload);
+        : requireResourceIdentifier(resource, payload, 'update');
       const id = resource === 'tickets'
         ? String(
             firstDefined(payload, ['id']) ??
@@ -1741,7 +1813,9 @@
         : resource === 'proposal_catalog'
           ? pickProposalCatalogMutationId(payload)
         : pickedId;
-      const key = resource === 'tickets' ? 'id' : (PK_KEYS[resource][0] || 'id');
+      const key = getPrimaryKeyForResource(resource);
+      if (!id) throw new Error(`Missing ${key} for ${resource} update`);
+      console.log('[CRUD] resource, pk, value', resource, key, id);
       const updates = payload.updates || payload.item || payload.activity || payload;
       const safeUpdates = { ...updates };
       delete safeUpdates.resource; delete safeUpdates.action; delete safeUpdates.authToken;
@@ -1855,13 +1929,15 @@
       assertAllowed(resource, 'delete');
       const pickedId = ['clients', 'invoices', 'receipts'].includes(resource)
         ? await resolveResourceUuid(resource, payload, client)
-        : pickId(resource, payload);
+        : requireResourceIdentifier(resource, payload, 'delete');
       const id = resource === 'tickets'
         ? String(firstDefined(payload, ['id']) ?? firstDefined(payload.item || {}, ['id']) ?? pickedId ?? '')
         : resource === 'proposal_catalog'
           ? pickProposalCatalogMutationId(payload)
         : pickedId;
-      const key = resource === 'tickets' ? 'id' : (PK_KEYS[resource][0] || 'id');
+      const key = getPrimaryKeyForResource(resource);
+      if (!id) throw new Error(`Missing ${key} for ${resource} delete`);
+      console.log('[CRUD] resource, pk, value', resource, key, id);
       if (resource === 'tickets' && isAdminDev()) {
         const { error: internalDeleteError } = await client.from('ticket_internal').delete().eq('ticket_id', ticketRowId({ id }));
         if (internalDeleteError) throw friendlyError('Unable to delete internal ticket fields', internalDeleteError);
@@ -1873,7 +1949,7 @@
 
     if (resource === 'users' && ['activate','deactivate'].includes(action)) {
       assertAllowed('users', action);
-      const id = pickId(resource, payload);
+      const id = requireResourceIdentifier(resource, payload, action);
       const { data, error } = await client.from('profiles').update({ is_active: action === 'activate' }).eq('user_id', id).select('*').single();
       if (error) throw friendlyError('Unable to update user status', error);
       return { handled: true, data };

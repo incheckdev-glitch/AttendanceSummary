@@ -1,4 +1,24 @@
+const RESOURCE_PRIMARY_KEY = {
+  users: 'user_id',
+  roles: 'role_key',
+  role_permissions: 'permission_id',
+  technical_admin_requests: 'id',
+  operations_onboarding: 'onboarding_id',
+  clients: 'id',
+  invoices: 'id',
+  receipts: 'id',
+  proposals: 'id',
+  agreements: 'id',
+  deals: 'id',
+  leads: 'id',
+  events: 'id',
+  csm: 'id'
+};
+
 const Api = {
+  getPrimaryKeyForResource(resource = '') {
+    return RESOURCE_PRIMARY_KEY[String(resource || '').trim()] || 'id';
+  },
   ensureBaseUrl() {
     const resolved = resolveApiEndpoint(API_BASE_URL);
     if (!resolved) {
@@ -367,11 +387,27 @@ const Api = {
       // Ignore storage quota/sandbox failures.
     }
   },
-  mergeIncrementalRows(cachedRows = [], freshRows = []) {
+  mergeIncrementalRows(resource = '', cachedRows = [], freshRows = []) {
     if (!Array.isArray(cachedRows)) return Array.isArray(freshRows) ? freshRows : [];
     if (!Array.isArray(freshRows) || !freshRows.length) return cachedRows;
 
-    const idKeys = ['id', 'uuid', 'ticket_id', 'deal_id', 'client_id', 'agreement_id', 'technical_request_id', 'invoice_id', 'proposal_id', 'user_id', 'role_id', 'key'];
+    const idKeys = [
+      this.getPrimaryKeyForResource(resource),
+      'id',
+      'uuid',
+      'ticket_id',
+      'deal_id',
+      'client_id',
+      'agreement_id',
+      'technical_request_id',
+      'invoice_id',
+      'proposal_id',
+      'user_id',
+      'role_key',
+      'permission_id',
+      'role_id',
+      'key'
+    ];
     const getRowId = row => {
       if (!row || typeof row !== 'object') return '';
       const match = idKeys.find(key => row[key] !== undefined && row[key] !== null && String(row[key]).trim() !== '');
@@ -450,7 +486,7 @@ const Api = {
     try {
       const fresh = await this.postAuthenticated(resource, action, incrementalPayload, options);
       const shouldMerge = Array.isArray(cached?.value) && Array.isArray(fresh);
-      const merged = shouldMerge ? this.mergeIncrementalRows(cached.value, fresh) : fresh;
+      const merged = shouldMerge ? this.mergeIncrementalRows(resource, cached.value, fresh) : fresh;
       this.writeCachedValue(cacheKey, merged);
       return merged;
     } catch (error) {
