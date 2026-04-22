@@ -190,6 +190,11 @@ const Notifications = {
       this.renderBell();
       return 0;
     }
+    if (Permissions.state?.loaded && !Permissions.hasMatrixPermission('notifications', 'get_unread_count')) {
+      console.warn('Notifications unread count is not granted in role_permissions; skipping unread count refresh.');
+      this.renderBell();
+      return this.state.unreadCount;
+    }
     const messageFromError = error => String(error?.message || error || '').toLowerCase();
     const isNotificationPermissionError = error => {
       const message = messageFromError(error);

@@ -2130,10 +2130,28 @@ function setActiveView(view) {
       view === 'leads' || view === 'deals' || view === 'proposals' || view === 'agreements' || view === 'operationsOnboarding' || view === 'technicalAdmin' || view === 'invoices' || view === 'receipts' || view === 'lifecycleAnalytics' || view === 'clients' || view === 'proposalCatalog' || view === 'notifications' || view === 'workflow' ? 'none' : '';
   if (E.leadsFiltersPanel) E.leadsFiltersPanel.style.display = view === 'leads' ? '' : 'none';
   if (E.dealsFiltersPanel) E.dealsFiltersPanel.style.display = view === 'deals' ? '' : 'none';
+  const isForbiddenError = error => {
+    const message = String(error?.message || error || '').toLowerCase();
+    return message.includes('forbidden') || message.includes('permission denied');
+  };
   const runViewLoader = (label, loader) => {
     try {
-      loader();
+      const maybePromise = loader();
+      if (maybePromise && typeof maybePromise.then === 'function') {
+        maybePromise.catch(error => {
+          if (isForbiddenError(error)) {
+            console.warn(`[setActiveView] ${label} loader forbidden for current role; keeping session active.`, error);
+            return;
+          }
+          console.error(`[setActiveView] ${label} loader failed`, error);
+          UI.toast(`Unable to load ${label}. Other tabs remain available.`);
+        });
+      }
     } catch (error) {
+      if (isForbiddenError(error)) {
+        console.warn(`[setActiveView] ${label} loader forbidden for current role; keeping session active.`, error);
+        return;
+      }
       console.error(`[setActiveView] ${label} loader failed`, error);
       UI.toast(`Unable to load ${label}. Other tabs remain available.`);
     }
@@ -4468,15 +4486,35 @@ function wireDashboardGate() {
 
   const syncAuthUi = () => {
     const isAuthenticated = Session.isAuthenticated();
+    if (isAuthenticated) {
+      Permissions.loadMatrix(true)
+        .catch(error => {
+          console.warn('[wireDashboardGate.syncAuthUi] permission matrix refresh failed', error);
+        })
+        .finally(() => {
+          UI.applyRolePermissions();
+          unlockApp();
+        });
+      return;
+    }
     UI.applyRolePermissions();
-    if (isAuthenticated) unlockApp();
-    else lockApp();
+    lockApp();
   };
 
   const hasStartupAuth = Session.isAuthenticated();
-  UI.applyRolePermissions();
-  if (hasStartupAuth) unlockApp();
-  else lockApp();
+  if (hasStartupAuth) {
+    Permissions.loadMatrix(true)
+      .catch(error => {
+        console.warn('[wireDashboardGate] startup permission matrix refresh failed', error);
+      })
+      .finally(() => {
+        UI.applyRolePermissions();
+        unlockApp();
+      });
+  } else {
+    UI.applyRolePermissions();
+    lockApp();
+  }
   Session.subscribe(() => {
     syncAuthUi();
   });
@@ -4546,18 +4584,12 @@ function wireDashboardGate() {
         hasUser: Boolean(user),
         role: user?.role || null
       });
+      await Permissions.loadMatrix(true);
       UI.applyRolePermissions();
       E.loginIdentifier.value = '';
       E.loginPasscode.value = '';
       unlockApp();
       UI.toast(`Logged in as ${user.role}.`);
-      Permissions.loadMatrix(true)
-        .then(() => {
-          UI.applyRolePermissions();
-        })
-        .catch(error => {
-          console.warn('Post-login permission matrix refresh failed', error);
-        });
       Promise.allSettled([loadIssues(false), loadEvents(false)]).then(results => {
         const rejected = results.filter(result => result.status === 'rejected');
         if (rejected.length) {
