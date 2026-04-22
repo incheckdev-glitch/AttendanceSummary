@@ -2716,22 +2716,20 @@ function openIssueFromLink() {
 }
 
 function isPermissionError(error) {
-  console.log('[auth-check] isPermissionError input', error?.message);
-  const message = String(error?.message || '').trim().toLowerCase();
-  if (!message) return false;
-  return [
-    'forbidden',
-    'not permitted',
-    'cannot list',
-    'cannot get',
-    'cannot create',
-    'cannot save',
-    'cannot update',
-    'cannot delete',
-    'cannot get_unread_count',
-    'cannot mark_read',
-    'cannot mark_all_read'
-  ].some(fragment => message.includes(fragment));
+  const message = String(error?.message || error || '').toLowerCase();
+  return (
+    message.includes('forbidden') ||
+    message.includes('not permitted') ||
+    message.includes('cannot list') ||
+    message.includes('cannot get') ||
+    message.includes('cannot create') ||
+    message.includes('cannot save') ||
+    message.includes('cannot update') ||
+    message.includes('cannot delete') ||
+    message.includes('cannot get_unread_count') ||
+    message.includes('cannot mark_read') ||
+    message.includes('cannot mark_all_read')
+  );
 }
 
 async function loadIssues(force = false) {
