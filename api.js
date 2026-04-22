@@ -644,6 +644,46 @@ const Api = {
       notes: update.notes
     });
   },
+  async updateOperationsOnboardingAction({ onboardingId = '', agreementId = '', updates = {}, syncTechnicalStatus = '' } = {}) {
+    const normalizedOnboardingId = String(onboardingId || '').trim();
+    const normalizedAgreementId = String(agreementId || '').trim();
+    if (!normalizedOnboardingId) throw new Error('operations_onboarding onboarding_id is required.');
+    const payload = updates && typeof updates === 'object' ? { ...updates } : {};
+    const response = await this.updateOperationsOnboarding(normalizedOnboardingId, payload);
+    const updatedOnboarding = this.unwrapApiPayload(response) || response || null;
+
+    if (syncTechnicalStatus && normalizedAgreementId) {
+      try {
+        const technicalList = await this.listTechnicalAdminRequests({ agreement_id: normalizedAgreementId });
+        const technicalRows = this.normalizeListResponse(technicalList).rows || [];
+        const technicalStatus = String(syncTechnicalStatus || '').trim();
+        if (technicalRows.length && technicalStatus) {
+          await Promise.all(technicalRows.map(async row => {
+            const technicalRequestId = String(row.technical_request_id || row.request_id || row.id || '').trim();
+            if (!technicalRequestId) return;
+            const statusPayload = {
+              updated_at: payload.updated_at || new Date().toISOString()
+            };
+            if (technicalStatus === 'Completed') statusPayload.completed_at = payload.completed_at || new Date().toISOString();
+            if (technicalStatus === 'In Progress') statusPayload.completed_at = null;
+            await this.updateTechnicalAdminRequestStatus(technicalRequestId, technicalStatus, statusPayload);
+          }));
+        }
+      } catch (syncError) {
+        console.warn('[Api.updateOperationsOnboardingAction] Unable to sync technical_admin_requests status', {
+          onboarding_id: normalizedOnboardingId,
+          agreement_id: normalizedAgreementId,
+          status: syncTechnicalStatus,
+          error: String(syncError?.message || syncError)
+        });
+      }
+    }
+
+    return {
+      operations_onboarding: updatedOnboarding,
+      synced_technical_status: syncTechnicalStatus || null
+    };
+  },
 
 
   async listOperationsOnboarding(filters = {}) {
