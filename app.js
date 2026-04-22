@@ -1754,7 +1754,7 @@ async function createTicketInDatabase(ticketPayload) {
   let lastError = null;
   for (const variant of variants) {
     try {
-      return await Api.postAuthenticated('tickets', 'create', variant.body, { requireAuth: true });
+      return await Api.requestWithSession('tickets', 'create', variant.body, { requireAuth: true });
     } catch (error) {
       if (isAuthError(error)) throw error;
       lastError = error;
@@ -2717,7 +2717,7 @@ async function loadIssues(force = false) {
     UI.skeleton(true);
     const ticketListPayload = { filters: buildTicketListFiltersPayload() };
     console.info('[loadIssues] tickets.list payload', ticketListPayload);
-    const response = await Api.postAuthenticated(
+    const response = await Api.requestWithSession(
       'tickets',
       'list',
       ticketListPayload,

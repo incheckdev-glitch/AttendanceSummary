@@ -36,7 +36,7 @@ const UserAdmin = {
           return;
         }
         try {
-          await Api.postAuthenticated('users', 'create', {
+          await Api.requestWithSession('users', 'create', {
             user: payload,
             ...payload
           });
@@ -127,7 +127,7 @@ const UserAdmin = {
     this.state.error = '';
     this.render();
     try {
-      const response = await Api.postAuthenticatedCached(
+      const response = await Api.requestCached(
         'users',
         'list',
         {
@@ -352,7 +352,7 @@ const UserAdmin = {
       if (!allow) return;
     }
     try {
-      await Api.postAuthenticated('users', 'update', {
+      await Api.requestWithSession('users', 'update', {
         user_id: userId,
         id: userId,
         updates: {
@@ -389,7 +389,7 @@ const UserAdmin = {
     const confirmed = window.confirm(`${active ? 'Deactivate' : 'Activate'} user ${user.username || user.email || userId}?`);
     if (!confirmed) return;
     try {
-      await Api.postAuthenticated('users', active ? 'deactivate' : 'activate', {
+      await Api.requestWithSession('users', active ? 'deactivate' : 'activate', {
         user_id: userId,
         id: userId
       });
@@ -409,7 +409,7 @@ const UserAdmin = {
     const confirmed = window.confirm('Reset password now?');
     if (!confirmed) return;
     try {
-      await Api.postAuthenticated('users', 'reset_password', {
+      await Api.requestWithSession('users', 'reset_password', {
         user_id: this.getUserId(user),
         id: this.getUserId(user),
         newPassword,

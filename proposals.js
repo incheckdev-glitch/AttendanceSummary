@@ -414,7 +414,7 @@ const Proposals = {
     }
   },
   async listProposals(options = {}) {
-    return Api.postAuthenticatedCached(
+    return Api.requestCached(
       'proposals',
       'list',
       {
@@ -445,25 +445,25 @@ const Proposals = {
     this.render();
   },
   async getProposal(proposalId) {
-    return Api.postAuthenticated('proposals', 'get', { id: proposalId });
+    return Api.requestWithSession('proposals', 'get', { id: proposalId });
   },
   async createProposal(proposal, items) {
     const preparedProposal = this.buildProposalForPersist(proposal, items, { ensureBusinessProposalId: true });
-    return Api.postAuthenticated('proposals', 'create', {
+    return Api.requestWithSession('proposals', 'create', {
       proposal: this.prepareProposalForSave(preparedProposal),
       items
     });
   },
   async saveProposal(proposal, items) {
     const preparedProposal = this.buildProposalForPersist(proposal, items, { ensureBusinessProposalId: true });
-    return Api.postAuthenticated('proposals', 'save', {
+    return Api.requestWithSession('proposals', 'save', {
       proposal: this.prepareProposalForSave(preparedProposal),
       items
     });
   },
   async updateProposal(proposalId, updates, items) {
     const preparedUpdates = this.buildProposalForPersist(updates, items, { ensureBusinessProposalId: false });
-    return Api.postAuthenticated('proposals', 'update', {
+    return Api.requestWithSession('proposals', 'update', {
       id: proposalId,
       updates: this.prepareProposalForSave(preparedUpdates),
       items
@@ -510,10 +510,10 @@ const Proposals = {
     };
   },
   async deleteProposal(proposalId) {
-    return Api.postAuthenticated('proposals', 'delete', { id: proposalId });
+    return Api.requestWithSession('proposals', 'delete', { id: proposalId });
   },
   async createFromDeal(dealId) {
-    return Api.postAuthenticated('proposals', 'create_from_deal', { id: dealId });
+    return Api.requestWithSession('proposals', 'create_from_deal', { id: dealId });
   },
   async loadProposalPreviewData(proposalUuid) {
     const id = String(proposalUuid || '').trim();
@@ -1896,7 +1896,7 @@ const Proposals = {
   async findCreatedProposalUuidByDealId(dealUuid) {
     const id = String(dealUuid || '').trim();
     if (!id) return '';
-    const response = await Api.postAuthenticated('proposals', 'list', {
+    const response = await Api.requestWithSession('proposals', 'list', {
       deal_id: id,
       limit: 1,
       page: 1,

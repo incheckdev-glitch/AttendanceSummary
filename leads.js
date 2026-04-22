@@ -789,8 +789,6 @@ const Leads = {
     return { row: resolvedRow, verifiedAfterError: false };
   },
   formatLeadActionError(error, { resource = 'leads', action = 'unknown' } = {}) {
-    const statusMatch = String(error?.message || '').match(/\bHTTP\s+(\d{3})\b/i);
-    const proxyStatus = statusMatch ? statusMatch[1] : 'unknown';
     const rawMessage = String(error?.message || '').trim() || 'Unknown error';
     const backendMessageMatch = rawMessage.match(/Backend message:\s*([^.]*)/i);
     const backendMessage = String(
@@ -798,8 +796,7 @@ const Leads = {
     ).trim();
     return [
       `Unable to save lead.`,
-      `Proxy status: ${proxyStatus}.`,
-      `Backend: ${backendMessage}.`,
+      `Supabase: ${backendMessage}.`,
       `Request: resource=${resource} action=${action}.`
     ].join(' ');
   },

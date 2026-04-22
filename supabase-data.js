@@ -85,6 +85,8 @@
     'created_by',
     'updated_by'
   ]);
+  // TEMPORARY compatibility sanitizer for stale payload keys from older frontend builds.
+  // Do not add new dependencies here; remove this block after all deployed clients are Supabase-only.
   const EVENT_LEGACY_FIELDS = new Set([
     'allDay',
     'all_day',
@@ -94,8 +96,7 @@
     'endDate',
     'date',
     'finish',
-    'authToken',
-    'backendToken',
+        'backendToken',
     'backendUrl',
     'sheetName',
     'tabName',
@@ -112,8 +113,7 @@
     'allowed_roles'
   ]);
   const ROLE_PERMISSION_LEGACY_FIELDS = new Set([
-    'authToken',
-    'backendToken',
+        'backendToken',
     'backendUrl',
     'sheetName',
     'tabName',
@@ -223,23 +223,22 @@
     'capability_name','capability_value','notes','service_start_date','service_end_date','currency'
   ]);
   const AGREEMENT_LEGACY_FIELDS = new Set([
-    'authToken','backendToken','backendUrl','sheetName','tabName','resource','action',
+    'backendToken','backendUrl','sheetName','tabName','resource','action',
     'agreement_length','lead_id','deal_id',
     'provider_address','provider_signatory_name_primary','provider_signatory_title_primary',
     'saas_total','one_time_total',
     'agreement_items','items'
   ]);
   const PROPOSAL_LEGACY_FIELDS = new Set([
-    'authToken','backendToken','backendUrl','sheetName','tabName','resource','action','lead_id','agreement_id','saas_total','one_time_total',
+    'backendToken','backendUrl','sheetName','tabName','resource','action','lead_id','agreement_id','saas_total','one_time_total',
     'valid_until','customer_sign_date','proposal_items','items'
   ]);
   const PROPOSAL_CATALOG_LEGACY_FIELDS = new Set([
-    'authToken','backendToken','backendUrl','sheetName','tabName','resource','action','item_section','itemName','defaultLocationName','unitPrice',
+    'backendToken','backendUrl','sheetName','tabName','resource','action','item_section','itemName','defaultLocationName','unitPrice',
     'discountPercent','sortOrder'
   ]);
   const LEADS_DEALS_LEGACY_FIELDS = new Set([
-    'authToken',
-    'backendToken',
+        'backendToken',
     'backendUrl',
     'sheetName',
     'tabName',
@@ -262,7 +261,7 @@
     'sort', 'sortBy', 'sortDir', 'sort_by', 'sort_dir',
     'search', 'q', 'mode', 'tab', 'view',
     'summary_only', 'fields',
-    'resource', 'action', 'authToken', 'sheetName', 'tabName', 'updates', 'item'
+    'resource', 'action',  'sheetName', 'tabName', 'updates', 'item'
   ]);
   const LIST_COLUMNS_BY_RESOURCE = {
     proposal_catalog: new Set([
@@ -1772,7 +1771,7 @@
       assertAllowed(resource, 'create');
       const raw = payload[resource.slice(0, -1)] || payload.item || payload.activity || payload[resource] || payload;
       const record = raw && typeof raw === 'object' ? { ...raw } : {};
-      delete record.resource; delete record.action; delete record.authToken;
+     
       if (resource === 'tickets') devLog('[tickets/create] raw form data', record);
       const currentUserId = ['tickets', 'events', 'leads', 'deals', 'proposal_catalog', 'proposals', 'agreements', 'clients', 'invoices', 'receipts'].includes(resource)
         ? await getCurrentUserId(client)
@@ -1881,7 +1880,7 @@
       console.log('[CRUD] resource, pk, value', resource, key, id);
       const updates = payload.updates || payload.item || payload.activity || payload;
       const safeUpdates = { ...updates };
-      delete safeUpdates.resource; delete safeUpdates.action; delete safeUpdates.authToken;
+     
       const publicUpdates =
         resource === 'tickets'
           ? toTicketPublicRecord(stripTicketInternalFields(safeUpdates), { includeTicketId: false })

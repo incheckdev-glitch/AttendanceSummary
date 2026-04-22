@@ -97,6 +97,7 @@ const Session = {
   },
 
   async login(identifier = '', passcode = '') {
+    this.purgeLegacyStorage();
     const email = String(identifier || '').trim().toLowerCase();
     const password = String(passcode || '').trim();
     if (!email) throw new Error('Email is required.');
@@ -127,6 +128,7 @@ const Session = {
 
   async restore() {
     const client = SupabaseClient.getClient();
+    this.purgeLegacyStorage();
     try {
       const { data: sessionData, error: sessionError } = await client.auth.getSession();
       const session = sessionData?.session || null;
@@ -175,11 +177,18 @@ const Session = {
 
   clearClientSession({ clearRoleCache = true } = {}) {
     if (clearRoleCache && this.state.role) this.clearRoleScopedCache();
-    try { localStorage.removeItem(this.getLastKnownRoleStorageKey()); } catch {}
-    try { localStorage.removeItem(LS_KEYS?.legacyAuthSession || 'incheckLegacyAuthSession'); } catch {}
-    try { sessionStorage.removeItem('incheckLegacyBootstrapCredentials'); } catch {}
+    this.purgeLegacyStorage();
     this.state = { role: null, user_id: '', name: '', email: '', username: '', session: null, user: null, profile: null };
     this.notify();
+  },
+
+  purgeLegacyStorage() {
+    try { localStorage.removeItem(this.getLastKnownRoleStorageKey()); } catch {}
+    try { localStorage.removeItem('incheckLegacyAuthSession'); } catch {}
+    try { localStorage.removeItem('authToken'); } catch {}
+    try { localStorage.removeItem('backendToken'); } catch {}
+    try { localStorage.removeItem('backendUrl'); } catch {}
+    try { sessionStorage.removeItem('incheckLegacyBootstrapCredentials'); } catch {}
   },
 
   ensureReactiveAuthState() {
