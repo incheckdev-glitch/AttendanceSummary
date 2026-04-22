@@ -321,12 +321,34 @@ const Api = {
         : ''
     );
     if (requireAuth && legacyProtected && typeof Session?.ensureLegacySession === 'function') {
-      await Session.ensureLegacySession({ reason: `${resource}.${action} preflight` });
+      try {
+        await Session.ensureLegacySession({ reason: `${resource}.${action} preflight` });
+      } catch (error) {
+        console.warn('[Api.postAuthenticated] legacy preflight bootstrap failed', {
+          resource,
+          action,
+          message: error?.message || String(error),
+          code: error?.code || null
+        });
+        const normalized = new Error('Unable to establish legacy session. Please sign in again.');
+        normalized.code = error?.code || 'LEGACY_BOOTSTRAP_FAILED';
+        throw normalized;
+      }
     }
     let authToken = getToken();
     if (requireAuth && !authToken) {
-      console.warn('[Api.postAuthenticated] missing auth token after preflight', { resource, action });
-      throw new Error('Session is unavailable. Please log in again.');
+      console.warn('[Api.postAuthenticated] missing auth token after preflight, forcing one bootstrap retry', { resource, action });
+      if (legacyProtected && typeof Session?.ensureLegacySession === 'function') {
+        try {
+          await Session.ensureLegacySession({ forceRefresh: true, reason: `${resource}.${action} missing-token retry` });
+        } catch (error) {
+          const normalized = new Error('Unable to establish legacy session. Please sign in again.');
+          normalized.code = error?.code || 'LEGACY_BOOTSTRAP_FAILED';
+          throw normalized;
+        }
+      }
+      authToken = getToken();
+      if (!authToken) throw new Error('Unable to establish legacy session. Please sign in again.');
     }
     console.info('[Api.postAuthenticated] protected request token preflight', {
       resource,
@@ -350,7 +372,7 @@ const Api = {
       });
       await Session.ensureLegacySession({ forceRefresh: true, reason: `${resource}.${action} auth retry` });
       authToken = getToken();
-      if (!authToken) throw new Error('Session refresh failed. Please log in again.');
+      if (!authToken) throw new Error('Unable to establish legacy session. Please sign in again.');
       console.info('[Api.postAuthenticated] retry token state', {
         resource,
         action,
