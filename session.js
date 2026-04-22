@@ -11,6 +11,8 @@ const Session = {
   },
   listeners: new Set(),
   authSubscription: null,
+  legacyBootstrapPromise: null,
+  legacyBootstrapCredentials: null,
 
   getLegacyAuthStorageKey() {
     return LS_KEYS?.legacyAuthSession || 'incheckLegacyAuthSession';
@@ -55,6 +57,19 @@ const Session = {
     console.info('[Session.legacyAuth] cleared', { reason });
   },
 
+  setLegacyBootstrapCredentials(identifier = '', passcode = '') {
+    const safeIdentifier = String(identifier || '').trim().toLowerCase();
+    const safePasscode = String(passcode || '');
+    if (!safeIdentifier || !safePasscode) {
+      this.legacyBootstrapCredentials = null;
+      return;
+    }
+    this.legacyBootstrapCredentials = {
+      identifier: safeIdentifier,
+      passcode: safePasscode
+    };
+  },
+
   extractLegacyAuthToken(payload = null) {
     if (!payload || typeof payload !== 'object') return '';
     const candidates = [
@@ -89,7 +104,7 @@ const Session = {
     return fromStorage.authToken;
   },
 
-  async ensureLegacyTicketSession(options = {}) {
+  async ensureLegacySession(options = {}) {
     const forceRefresh = options?.forceRefresh === true;
     const reason = String(options?.reason || 'unspecified');
     if (!this.isAuthenticated()) throw new Error('Cannot establish legacy ticket session without an authenticated user.');
@@ -106,50 +121,76 @@ const Session = {
       }
     }
 
-    const supabaseAccessToken = String(this.state?.session?.access_token || '').trim();
-    if (!supabaseAccessToken) throw new Error('Supabase session token is missing. Please log in again.');
+    if (this.legacyBootstrapPromise && !forceRefresh) return this.legacyBootstrapPromise;
 
-    const payload = {
-      role: this.role(),
-      userId: this.userId(),
-      email: this.state.email || this.state.user?.email || '',
-      supabaseAccessToken
+    const bootstrap = async () => {
+      const identifier = String(options?.identifier || this.legacyBootstrapCredentials?.identifier || '').trim().toLowerCase();
+      const passcode = String(options?.passcode || this.legacyBootstrapCredentials?.passcode || '');
+      if (!identifier || !passcode) {
+        this.clearLegacyAuthSession('legacy login credentials missing');
+        throw new Error('Legacy session is unavailable. Please sign in again.');
+      }
+
+      this.clearLegacyAuthSession('pre-login stale cleanup');
+      console.info('[Session.legacyAuth] requesting auth.login', {
+        reason,
+        identifier,
+        role: this.role(),
+        hasPasscode: Boolean(passcode)
+      });
+
+      const response = await Api.post('auth', 'login', {
+        identifier,
+        passcode
+      });
+      const authToken = this.extractLegacyAuthToken(response);
+      console.info('[Session.legacyAuth] auth.login response', {
+        reason,
+        hasAuthToken: Boolean(authToken),
+        tokenPrefix: authToken ? `${authToken.slice(0, 8)}...` : '',
+        keys: response && typeof response === 'object' ? Object.keys(response).slice(0, 8) : []
+      });
+
+      if (!authToken) {
+        this.clearLegacyAuthSession('auth.login response missing token');
+        throw new Error('Unable to establish session. Please log in again.');
+      }
+
+      this.saveLegacyAuthSession({
+        authToken,
+        role: this.role(),
+        userId: this.userId()
+      });
+      const savedToken = this.getAuthToken();
+      console.info('[Session.legacyAuth] stored token after bootstrap', {
+        reason,
+        hasAuthToken: Boolean(savedToken),
+        tokenPrefix: savedToken ? `${savedToken.slice(0, 8)}...` : ''
+      });
+      return authToken;
     };
 
-    const existingToken = this.getAuthToken();
-    if (existingToken && !forceRefresh) payload.authToken = existingToken;
-
-    console.info('[Session.legacyAuth] requesting backend ticket session', {
-      reason,
-      role: payload.role,
-      hasSupabaseAccessToken: Boolean(supabaseAccessToken),
-      hasExistingToken: Boolean(existingToken)
-    });
-
-    const response = await Api.post('auth', 'session', payload);
-    const authToken = this.extractLegacyAuthToken(response);
-    console.info('[Session.legacyAuth] backend session response', {
-      reason,
-      hasAuthToken: Boolean(authToken),
-      tokenPrefix: authToken ? `${authToken.slice(0, 8)}...` : '',
-      keys: response && typeof response === 'object' ? Object.keys(response).slice(0, 8) : []
-    });
-
-    if (!authToken) {
-      this.clearLegacyAuthSession('backend session response missing token');
-      throw new Error('Unable to establish ticket session. Please log in again.');
+    this.legacyBootstrapPromise = bootstrap();
+    try {
+      return await this.legacyBootstrapPromise;
+    } finally {
+      this.legacyBootstrapPromise = null;
     }
+  },
 
-    this.saveLegacyAuthSession({
-      authToken,
-      role: this.role(),
-      userId: this.userId()
-    });
-    return authToken;
+  async ensureLegacyTicketSession(options = {}) {
+    return this.ensureLegacySession(options);
   },
 
   clearRoleScopedCache() {
-    const roleScopedKeys = [LS_KEYS.issues, LS_KEYS.issuesLastUpdated, LS_KEYS.events, LS_KEYS.eventsLastUpdated, LS_KEYS.dataVersion];
+    const roleScopedKeys = [
+      LS_KEYS.issues,
+      LS_KEYS.issuesLastUpdated,
+      LS_KEYS.events,
+      LS_KEYS.eventsLastUpdated,
+      LS_KEYS.csmActivity,
+      LS_KEYS.dataVersion
+    ];
     roleScopedKeys.forEach(key => { try { localStorage.removeItem(key); } catch {} });
     try { if (window.Api?.clearApiCache) window.Api.clearApiCache(); } catch {}
   },
@@ -269,6 +310,13 @@ const Session = {
     if (!authUser?.id || !session) throw new Error('Login succeeded but no active session was found.');
     const profile = await this.fetchProfile(authUser?.id);
     this.applyState(this.buildState(authUser, session, profile));
+    this.setLegacyBootstrapCredentials(email, password);
+    await this.ensureLegacySession({
+      forceRefresh: true,
+      reason: 'post-login bootstrap',
+      identifier: email,
+      passcode: password
+    });
     this.ensureReactiveAuthState();
     return this.user();
   },
@@ -345,6 +393,8 @@ const Session = {
   clearClientSession({ clearRoleCache = true } = {}) {
     if (clearRoleCache && this.state.role) this.clearRoleScopedCache();
     this.clearLegacyAuthSession('client session cleared');
+    this.legacyBootstrapCredentials = null;
+    this.legacyBootstrapPromise = null;
     this.state = { role: null, user_id: '', name: '', email: '', username: '', session: null, user: null, profile: null };
     this.notify();
   },
