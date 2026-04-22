@@ -263,25 +263,21 @@ const Session = {
 };
 
 function isAuthError(error) {
-  const message = String(error?.message || '').trim().toLowerCase();
-  console.log('[auth-check] isAuthError input', error?.message);
+  const message = String(error?.message || error || '').trim().toLowerCase();
+  console.log('[auth-check] isAuthError input', error?.message || error);
   if (!message) return false;
-  return [
-    /\bunauthorized\b/,
-    /invalid\s+session/,
-    /expired\s+session/,
-    /not\s+authenticated/,
-    /missing\s+token/,
-    /missing\s+auth(\s+token)?/,
-    /missing\s+session/,
-    /no\s+active\s+session/
-  ].some(pattern => pattern.test(message));
+  return (
+    message.includes('unauthorized') ||
+    message.includes('invalid session') ||
+    message.includes('expired session') ||
+    message.includes('not authenticated') ||
+    message.includes('missing token') ||
+    message.includes('missing session')
+  );
 }
 
 function isPermissionError(error) {
-  console.log('[auth-check] isPermissionError input', error?.message);
-  const message = String(error?.message || '').trim().toLowerCase();
-  if (!message) return false;
+  const message = String(error?.message || error || '').toLowerCase();
   return (
     message.includes('forbidden') ||
     message.includes('not permitted') ||

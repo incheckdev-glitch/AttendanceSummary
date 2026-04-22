@@ -1159,6 +1159,11 @@ const Proposals = {
     } catch (error) {
       if (typeof isPermissionError === 'function' && isPermissionError(error)) {
         console.log('[auth-check] permission error preserved session', error?.message);
+        this.state.rows = [];
+        this.state.filteredRows = [];
+        this.state.loadError = 'Proposals are not available for your role.';
+        this.render();
+        return;
       }
       if (typeof isAuthError === 'function' && isAuthError(error)) {
         handleExpiredSession('Session expired. Please log in again.');
@@ -1605,6 +1610,11 @@ const Proposals = {
     } catch (error) {
       if (typeof isPermissionError === 'function' && isPermissionError(error)) {
         console.log('[auth-check] permission error preserved session', error?.message);
+        this.state.rows = [];
+        this.state.filteredRows = [];
+        this.state.loadError = 'Proposals are not available for your role.';
+        this.render();
+        return;
       }
       if (typeof isAuthError === 'function' && isAuthError(error)) {
         handleExpiredSession('Session expired. Please log in again.');
@@ -1729,6 +1739,11 @@ const Proposals = {
     } catch (error) {
       if (typeof isPermissionError === 'function' && isPermissionError(error)) {
         console.log('[auth-check] permission error preserved session', error?.message);
+        this.state.rows = [];
+        this.state.filteredRows = [];
+        this.state.loadError = 'Proposals are not available for your role.';
+        this.render();
+        return;
       }
       if (typeof isAuthError === 'function' && isAuthError(error)) {
         handleExpiredSession('Session expired. Please log in again.');
@@ -1765,6 +1780,11 @@ const Proposals = {
     } catch (error) {
       if (typeof isPermissionError === 'function' && isPermissionError(error)) {
         console.log('[auth-check] permission error preserved session', error?.message);
+        this.state.rows = [];
+        this.state.filteredRows = [];
+        this.state.loadError = 'Proposals are not available for your role.';
+        this.render();
+        return;
       }
       if (typeof isAuthError === 'function' && isAuthError(error)) {
         handleExpiredSession('Session expired. Please log in again.');
@@ -1846,6 +1866,11 @@ const Proposals = {
     } catch (error) {
       if (typeof isPermissionError === 'function' && isPermissionError(error)) {
         console.log('[auth-check] permission error preserved session', error?.message);
+        this.state.rows = [];
+        this.state.filteredRows = [];
+        this.state.loadError = 'Proposals are not available for your role.';
+        this.render();
+        return;
       }
       if (typeof isAuthError === 'function' && isAuthError(error)) {
         handleExpiredSession('Session expired. Please log in again.');
