@@ -21,7 +21,8 @@ const TechnicalAdmin = {
   normalizeRow(raw = {}) {
     const source = raw && typeof raw === 'object' ? raw : {};
     return {
-      technical_request_id: String(this.pick(source.technical_request_id, source.technicalRequestId, source.id)).trim(),
+      id: String(this.pick(source.id, source.request_id, source.technical_request_id, source.technicalRequestId)).trim(),
+      technical_request_id: String(this.pick(source.request_id, source.technical_request_id, source.technicalRequestId, source.id)).trim(),
       agreement_id: String(this.pick(source.agreement_id, source.agreementId)).trim(),
       agreement_number: String(this.pick(source.agreement_number, source.agreementNumber)).trim(),
       onboarding_id: String(this.pick(source.onboarding_id, source.onboardingId)).trim(),
@@ -42,7 +43,7 @@ const TechnicalAdmin = {
       agreement_status: String(this.pick(source.agreement_status, source.agreementStatus)).trim(),
       requested_by: String(this.pick(source.requested_by, source.requestedBy)).trim(),
       requested_at: String(this.pick(source.requested_at, source.requestedAt)).trim(),
-      technical_admin_assigned_to: String(this.pick(source.technical_admin_assigned_to, source.technicalAdminAssignedTo)).trim(),
+      technical_admin_assigned_to: String(this.pick(source.assigned_to, source.technical_admin_assigned_to, source.technicalAdminAssignedTo)).trim(),
       started_at: String(this.pick(source.started_at, source.startedAt)).trim(),
       completed_at: String(this.pick(source.completed_at, source.completedAt)).trim(),
       updated_by: String(this.pick(source.updated_by, source.updatedBy)).trim(),
@@ -177,11 +178,12 @@ const TechnicalAdmin = {
     E.technicalAdminTbody.innerHTML = rows
       .map(row => {
         const requestId = U.escapeAttr(row.technical_request_id || '');
+        const requestDbId = U.escapeAttr(row.id || row.technical_request_id || '');
         const agreementId = String(row.agreement_id || '').trim();
         const agreementAction = agreementId
           ? `<button class="btn ghost sm" type="button" data-technical-preview="${U.escapeAttr(agreementId)}" data-technical-request-preview="${requestId}">Preview Agreement</button>`
           : '';
-        return `<tr data-technical-request-id="${requestId}">
+        return `<tr data-technical-request-id="${requestDbId}">
           <td>${text(row.technical_request_id)}</td>
           <td>${text(row.agreement_number)}</td>
           <td>${text(row.client_name)}</td>
@@ -196,7 +198,7 @@ const TechnicalAdmin = {
           <td>${text(row.technical_admin_assigned_to)}</td>
           <td>
             <div style="display:flex;gap:6px;flex-wrap:wrap;">
-              <button class="btn ghost sm" type="button" data-technical-open="${requestId}">Open</button>
+              <button class="btn ghost sm" type="button" data-technical-open="${requestDbId}">Open</button>
               ${agreementAction}
             </div>
           </td>
@@ -212,7 +214,7 @@ const TechnicalAdmin = {
     try {
       const response = await Api.listTechnicalAdminRequests({}, { forceRefresh: !!options.force });
       const rows = response?.rows || [];
-      this.state.rows = rows.map(row => this.normalizeRow(row)).filter(row => row.technical_request_id);
+      this.state.rows = rows.map(row => this.normalizeRow(row)).filter(row => row.id || row.technical_request_id);
       this.state.loaded = true;
     } catch (error) {
       this.state.rows = [];
@@ -226,9 +228,9 @@ const TechnicalAdmin = {
   },
   upsertLocalRow(row) {
     const normalized = this.normalizeRow(row);
-    const requestId = String(normalized.technical_request_id || '').trim();
+    const requestId = String(normalized.id || normalized.technical_request_id || '').trim();
     if (!requestId) return;
-    const idx = this.state.rows.findIndex(item => String(item.technical_request_id || '') === requestId);
+    const idx = this.state.rows.findIndex(item => String(item.id || item.technical_request_id || '') === requestId);
     if (idx === -1) this.state.rows.unshift(normalized);
     else this.state.rows[idx] = { ...this.state.rows[idx], ...normalized };
     this.applyFilters();
@@ -238,7 +240,7 @@ const TechnicalAdmin = {
   getRowById(requestId = '') {
     const id = String(requestId || '').trim();
     if (!id) return null;
-    return this.state.rows.find(row => String(row.technical_request_id || '') === id) || null;
+    return this.state.rows.find(row => String(row.id || row.technical_request_id || '') === id) || null;
   },
   closeDetails() {
     if (!E.technicalAdminDetailsModal) return;
@@ -248,15 +250,16 @@ const TechnicalAdmin = {
   async openDetails(requestId) {
     const id = String(requestId || '').trim();
     if (!id) return;
-    this.state.activeRequestId = id;
     let row = this.getRowById(id);
+    this.state.activeRequestId = String(row?.id || id).trim();
     try {
-      const response = await Api.getTechnicalAdminRequest(id);
+      const response = await Api.getTechnicalAdminRequest(this.state.activeRequestId);
       const detail = Api.unwrapApiPayload(response);
       const detailRow = this.normalizeRow(detail || response || {});
       if (detailRow.technical_request_id) {
         this.upsertLocalRow(detailRow);
         row = detailRow;
+        this.state.activeRequestId = String(detailRow.id || this.state.activeRequestId).trim();
       }
     } catch (_error) {
       // Render local row fallback.
@@ -323,7 +326,8 @@ const TechnicalAdmin = {
         const existing = this.getRowById(id) || { technical_request_id: id };
         this.upsertLocalRow({ ...existing, request_status: status, ...extra });
       }
-      UI.toast(`Technical request ${id} updated to ${status}.`);
+      const labelId = String(this.getRowById(id)?.technical_request_id || id).trim();
+      UI.toast(`Technical request ${labelId} updated to ${status}.`);
       await this.loadAndRefresh({ force: true });
       await this.openDetails(id);
     } catch (error) {
