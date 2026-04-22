@@ -18,8 +18,106 @@ const TechnicalAdmin = {
     }
     return '';
   },
+  normalizeToken(value = '') {
+    return String(value || '').toLowerCase().trim();
+  },
+  parseOptionalNumber(...values) {
+    for (const value of values) {
+      if (value === undefined || value === null || String(value).trim() === '') continue;
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+    return null;
+  },
+  parseAgreementPayload(value) {
+    if (typeof value !== 'string') return value;
+    const trimmed = value.trim();
+    if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) return value;
+    try {
+      return JSON.parse(trimmed);
+    } catch (_error) {
+      return value;
+    }
+  },
+  extractLinkedAgreement(source = {}) {
+    const candidates = [
+      source.agreement,
+      source.linked_agreement,
+      source.linkedAgreement,
+      source.agreement_row,
+      source.agreementRow,
+      source.data,
+      source.item,
+      source.payload
+    ];
+    for (const candidateRaw of candidates) {
+      const candidate = this.parseAgreementPayload(candidateRaw);
+      if (!candidate) continue;
+      if (Array.isArray(candidate)) {
+        const first = candidate[0];
+        if (first && typeof first === 'object') return first;
+        continue;
+      }
+      if (typeof candidate !== 'object') continue;
+      if (candidate.agreement && typeof candidate.agreement === 'object') return candidate.agreement;
+      if (candidate.item && typeof candidate.item === 'object') return candidate.item;
+      if (candidate.agreement_id || candidate.agreement_number || candidate.id || Array.isArray(candidate.agreement_items) || Array.isArray(candidate.items)) {
+        return candidate;
+      }
+    }
+    return {};
+  },
+  extractAgreementItems(source = {}, agreement = {}) {
+    const itemCandidates = [source.agreement_items, source.agreementItems, source.items, agreement.agreement_items, agreement.agreementItems, agreement.items];
+    for (const candidate of itemCandidates) {
+      const parsed = this.parseAgreementPayload(candidate);
+      if (Array.isArray(parsed)) return parsed;
+    }
+    return [];
+  },
+  isAnnualSaasLocationItem(item = {}) {
+    const safe = item && typeof item === 'object' ? item : {};
+    const section = this.normalizeToken(safe.section || safe.category || safe.type || safe.section_name || safe.section_label);
+    const billingFrequency = this.normalizeToken(safe.billing_frequency || safe.billingFrequency || safe.frequency);
+    const itemName = this.normalizeToken(safe.item_name || safe.itemName || safe.module || safe.module_name || safe.moduleName);
+    if (!section && !billingFrequency) return false;
+    const isOneTimeOrSetup = ['one_time_fee', 'one_time', 'one time', 'one-time', 'setup', 'implementation', 'onboarding'].some(
+      token => section.includes(token)
+    );
+    if (isOneTimeOrSetup) return false;
+    const isSaasFamily = ['annual_saas', 'saas', 'subscription', 'recurring'].some(token => section.includes(token));
+    if (!isSaasFamily) return false;
+    const isAnnual = ['annual', 'yearly', '12 month', '12-month'].some(
+      token => section.includes(token) || billingFrequency.includes(token) || itemName.includes(token)
+    );
+    return isAnnual;
+  },
+  deriveAgreementLocationCount(agreementItems = []) {
+    const safeItems = Array.isArray(agreementItems) ? agreementItems : [];
+    return safeItems.filter(item => this.isAnnualSaasLocationItem(item)).length;
+  },
   normalizeRow(raw = {}) {
     const source = raw && typeof raw === 'object' ? raw : {};
+    const agreement = this.extractLinkedAgreement(source);
+    const agreementItems = this.extractAgreementItems(source, agreement);
+    const requestLocationCount = this.parseOptionalNumber(
+      source.location_count,
+      source.number_of_locations,
+      source.locations_count,
+      source.locationCount,
+      source.numberOfLocations,
+      source.locationsCount
+    );
+    const agreementLocationCount = this.parseOptionalNumber(
+      agreement.location_count,
+      agreement.locations_count,
+      agreement.number_of_locations,
+      agreement.locationCount,
+      agreement.locationsCount,
+      agreement.numberOfLocations
+    );
+    const derivedLocationCount = agreementItems.length ? this.deriveAgreementLocationCount(agreementItems) : null;
+    const resolvedLocationCount = requestLocationCount ?? agreementLocationCount ?? derivedLocationCount ?? 0;
     return {
       id: String(this.pick(source.id, source.request_id, source.technical_request_id, source.technicalRequestId)).trim(),
       technical_request_id: String(this.pick(source.request_id, source.technical_request_id, source.technicalRequestId, source.id)).trim(),
@@ -34,16 +132,17 @@ const TechnicalAdmin = {
       request_details: String(this.pick(source.request_details, source.requestDetails)).trim(),
       request_status: String(this.pick(source.request_status, source.requestStatus)).trim() || 'Requested',
       priority: String(this.pick(source.priority)).trim(),
-      location_count: Number(this.pick(source.location_count, source.number_of_locations, source.locations_count, source.locationCount, source.numberOfLocations, source.locationsCount)) || 0,
-      service_start_date: String(this.pick(source.service_start_date, source.serviceStartDate)).trim(),
-      service_end_date: String(this.pick(source.service_end_date, source.serviceEndDate)).trim(),
-      billing_frequency: String(this.pick(source.billing_frequency, source.billingFrequency)).trim(),
-      payment_term: String(this.pick(source.payment_term, source.paymentTerm)).trim(),
+      location_count: Number(resolvedLocationCount) || 0,
+      service_start_date: String(this.pick(source.service_start_date, source.serviceStartDate, agreement.service_start_date, agreement.serviceStartDate)).trim(),
+      service_end_date: String(this.pick(source.service_end_date, source.serviceEndDate, agreement.service_end_date, agreement.serviceEndDate)).trim(),
+      billing_frequency: String(this.pick(source.billing_frequency, source.billingFrequency, agreement.billing_frequency, agreement.billingFrequency, agreement.frequency)).trim(),
+      payment_term: String(this.pick(source.payment_term, source.paymentTerm, agreement.payment_term, agreement.paymentTerm, agreement.payment_terms, agreement.paymentTerms)).trim(),
       module_summary: String(this.pick(source.module_summary, source.moduleSummary)).trim(),
       agreement_status: String(this.pick(source.agreement_status, source.agreementStatus)).trim(),
       requested_by: String(this.pick(source.requested_by, source.requestedBy)).trim(),
       requested_at: String(this.pick(source.requested_at, source.requestedAt)).trim(),
-      technical_admin_assigned_to: String(this.pick(source.assigned_to, source.technical_admin_assigned_to, source.technicalAdminAssignedTo)).trim(),
+      assigned_to: String(this.pick(source.assigned_to, source.assignedTo, source.technical_admin_assigned_to, source.technicalAdminAssignedTo)).trim(),
+      technical_admin_assigned_to: String(this.pick(source.assigned_to, source.assignedTo, source.technical_admin_assigned_to, source.technicalAdminAssignedTo)).trim(),
       started_at: String(this.pick(source.started_at, source.startedAt)).trim(),
       completed_at: String(this.pick(source.completed_at, source.completedAt)).trim(),
       updated_by: String(this.pick(source.updated_by, source.updatedBy)).trim(),
@@ -121,7 +220,7 @@ const TechnicalAdmin = {
         row.request_message,
         row.request_status,
         row.requested_by,
-        row.technical_admin_assigned_to
+        row.assigned_to
       ]
         .filter(Boolean)
         .join(' ')
@@ -195,7 +294,7 @@ const TechnicalAdmin = {
           <td>${this.statusBadge(row.request_status)}</td>
           <td>${text(row.requested_by)}</td>
           <td>${U.escapeHtml(U.fmtDisplayDate(row.requested_at))}</td>
-          <td>${text(row.technical_admin_assigned_to)}</td>
+          <td>${text(row.assigned_to)}</td>
           <td>
             <div style="display:flex;gap:6px;flex-wrap:wrap;">
               <button class="btn ghost sm" type="button" data-technical-open="${requestDbId}">Open</button>
@@ -288,7 +387,7 @@ const TechnicalAdmin = {
           <div><span class="muted">Status:</span> ${this.statusBadge(row.request_status)}</div>
           <div><span class="muted">Requested By:</span> ${U.escapeHtml(row.requested_by || '—')}</div>
           <div><span class="muted">Requested At:</span> ${U.escapeHtml(U.fmtDisplayDate(row.requested_at))}</div>
-          <div><span class="muted">Assigned To:</span> ${U.escapeHtml(row.technical_admin_assigned_to || '—')}</div>
+          <div><span class="muted">Assigned To:</span> ${U.escapeHtml(row.assigned_to || '—')}</div>
           <div><span class="muted">Updated At:</span> ${U.escapeHtml(U.fmtDisplayDate(row.updated_at))}</div>
           <div style="grid-column:1/-1;"><span class="muted">Request Title:</span> ${U.escapeHtml(row.request_title || '—')}</div>
           <div style="grid-column:1/-1;"><span class="muted">Request Message:</span> ${U.escapeHtml(row.request_message || '—')}</div>
