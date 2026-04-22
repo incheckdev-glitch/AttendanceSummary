@@ -691,6 +691,7 @@ const Api = {
   },
   async updateTechnicalAdminRequestStatus(technicalRequestId, status, extra = {}) {
     return this.postAuthenticated('technical_admin_requests', 'update_status', {
+      id: technicalRequestId,
       technical_request_id: technicalRequestId,
       request_status: status,
       ...(extra && typeof extra === 'object' ? extra : {})

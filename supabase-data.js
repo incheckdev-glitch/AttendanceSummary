@@ -16,7 +16,7 @@
     events: ['event_id','id'], csm: ['id','activity_id'], leads: ['id','lead_id'], deals: ['id','deal_id'],
     proposal_catalog: ['id','catalog_item_id'], proposals: ['id','proposal_id'], agreements: ['id','agreement_id'],
     clients: ['id','client_id'], invoices: ['id','invoice_id'], receipts: ['id','receipt_id'], operations_onboarding: ['onboarding_id','id'],
-    technical_admin_requests: ['id','technical_request_id','request_id']
+    technical_admin_requests: ['id','request_id']
   };
 
   const ITEM_TABLES = { proposals: 'proposal_items', agreements: 'agreement_items', invoices: 'invoice_items', receipts: 'receipt_items' };
@@ -379,7 +379,7 @@
     }
     if (resource === 'technical_admin_requests') {
       out.id = out.id ?? '';
-      out.request_id = out.request_id ?? out.technical_request_id ?? '';
+      out.request_id = out.request_id ?? out.technical_request_id ?? out.id ?? '';
       out.technical_request_id = out.technical_request_id ?? out.request_id ?? out.id ?? '';
       out.request_status = out.request_status ?? out.technical_request_status ?? 'Requested';
       out.technical_request_status = out.technical_request_status ?? out.request_status ?? 'Requested';
@@ -388,6 +388,8 @@
       out.request_details = out.request_details ?? out.technical_request_details ?? out.request_message ?? '';
       out.technical_request_details = out.technical_request_details ?? out.request_details ?? '';
       out.request_message = out.request_message ?? out.request_details ?? out.technical_request_details ?? '';
+      out.assigned_to = out.assigned_to ?? out.technical_admin_assigned_to ?? '';
+      out.technical_admin_assigned_to = out.technical_admin_assigned_to ?? out.assigned_to ?? '';
     }
     return out;
   }
@@ -1104,6 +1106,11 @@
     if (error) throw friendlyError('Unable to resolve technical admin request identifier', error);
     if (data?.id) return String(data.id).trim();
 
+    query = client.from('technical_admin_requests').select('id').eq('id', externalId).limit(1);
+    ({ data, error } = await query.maybeSingle());
+    if (error) throw friendlyError('Unable to resolve technical admin request identifier', error);
+    if (data?.id) return String(data.id).trim();
+
     query = client.from('technical_admin_requests').select('id').eq('technical_request_id', externalId).limit(1);
     ({ data, error } = await query.maybeSingle());
     if (error) throw friendlyError('Unable to resolve technical admin request identifier', error);
@@ -1752,6 +1759,7 @@
         technical_request_status: status
       };
       const optionalKeys = [
+        'assigned_to',
         'technical_admin_assigned_to',
         'started_at',
         'completed_at',
@@ -1762,6 +1770,12 @@
       optionalKeys.forEach(key => {
         if (payload[key] !== undefined) safeUpdates[key] = payload[key];
       });
+      if (safeUpdates.technical_admin_assigned_to !== undefined && safeUpdates.assigned_to === undefined) {
+        safeUpdates.assigned_to = safeUpdates.technical_admin_assigned_to;
+      }
+      if (safeUpdates.assigned_to !== undefined && safeUpdates.technical_admin_assigned_to === undefined) {
+        safeUpdates.technical_admin_assigned_to = safeUpdates.assigned_to;
+      }
       const { data, error } = await client
         .from('technical_admin_requests')
         .update(safeUpdates)
