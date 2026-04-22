@@ -624,7 +624,7 @@ Sample:
           <form id="rolePermissionCreateForm" class="user-form-grid" style="margin-top:10px;">
             <input id="rolePermissionCreateResource" class="input" type="text" placeholder="resource *" required />
             <input id="rolePermissionCreateAction" class="input" type="text" placeholder="action *" required />
-            <input id="rolePermissionCreateAllowedRoles" class="input" type="text" placeholder="allowed roles CSV (e.g. admin,manager)" required />
+            <select id="rolePermissionCreateAllowedRoles" class="select" multiple size="4" required aria-label="Allowed roles"></select>
             <input id="rolePermissionCreateDescription" class="input" type="text" placeholder="Description" />
             <button id="rolePermissionCreateSubmit" class="btn primary" type="submit">Create rule</button>
           </form>
