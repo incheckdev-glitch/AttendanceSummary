@@ -272,14 +272,24 @@ const Permissions = {
     if (this.state.loading && !force) return this.state.rows;
     this.state.loading = true;
     try {
-      const response = await Api.listRolePermissions({
-        limit: this.state.limit,
-        page: this.state.page,
-        summary_only: true,
-        forceRefresh: force
-      });
-      const normalized = this.extractListResult(response);
-      const rows = normalized.rows;
+      const rows = [];
+      let page = 1;
+      let hasMore = true;
+      let lastNormalized = null;
+      while (hasMore) {
+        const response = await Api.listRolePermissions({
+          limit: this.state.limit,
+          page,
+          summary_only: true,
+          forceRefresh: force
+        });
+        const normalized = this.extractListResult(response);
+        rows.push(...normalized.rows);
+        hasMore = Boolean(normalized.hasMore);
+        lastNormalized = normalized;
+        page += 1;
+        if (page > 500) break;
+      }
       const matrix = new Map();
       console.info('[Permissions] raw role_permissions rows', rows);
       rows.forEach(row => {
@@ -301,12 +311,12 @@ const Permissions = {
         matrix.set(key, merged);
       });
       this.state.rows = rows;
-      this.state.total = normalized.total;
-      this.state.returned = normalized.returned;
-      this.state.hasMore = normalized.hasMore;
-      this.state.page = normalized.page;
-      this.state.limit = normalized.limit;
-      this.state.offset = normalized.offset;
+      this.state.total = Number(lastNormalized?.total ?? rows.length) || rows.length;
+      this.state.returned = rows.length;
+      this.state.hasMore = false;
+      this.state.page = 1;
+      this.state.limit = Number(lastNormalized?.limit || this.state.limit || 50);
+      this.state.offset = 0;
       this.state.matrix = matrix;
       console.info('[Permissions] final permission matrix keys', [...matrix.keys()]);
       this.state.loaded = true;

@@ -1,5 +1,5 @@
 const RESOURCE_PRIMARY_KEY = {
-  users: 'user_id',
+  users: 'id',
   roles: 'role_key',
   role_permissions: 'permission_id',
   technical_admin_requests: 'id',
