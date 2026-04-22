@@ -11,6 +11,7 @@ const OperationsOnboarding = {
     onboardingStatus: 'All',
     requestType: 'All',
     assignedCsm: 'All',
+    pendingOnboardingId: '',
     pendingAgreementId: '',
     postSubmitHook: null,
     agreementMap: new Map(),
@@ -876,9 +877,9 @@ const OperationsOnboarding = {
             <button class="btn ghost sm" type="button" data-op-open-agreement="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Open Agreement</button>
             <button class="btn ghost sm" type="button" data-op-open-details="${onboardingId}">Open Onboarding Details</button>
             ${canWrite ? `<button class="btn ghost sm" type="button" data-op-technical-admin="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Technical Admin Request</button>
-            <button class="btn ghost sm" type="button" data-op-assign-csm="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Assign CSM</button>
-            <button class="btn ghost sm" type="button" data-op-mark-progress="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Mark In Progress</button>
-            <button class="btn ghost sm" type="button" data-op-mark-completed="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Mark Completed</button>` : ''}
+            <button class="btn ghost sm" type="button" data-op-assign-csm="${onboardingId}" data-op-agreement-id="${agreementId}" ${onboardingId ? '' : 'disabled title="Onboarding ID not available"'}>Assign CSM</button>
+            <button class="btn ghost sm" type="button" data-op-mark-progress="${onboardingId}" data-op-agreement-id="${agreementId}" ${onboardingId ? '' : 'disabled title="Onboarding ID not available"'}>Mark In Progress</button>
+            <button class="btn ghost sm" type="button" data-op-mark-completed="${onboardingId}" data-op-agreement-id="${agreementId}" ${onboardingId ? '' : 'disabled title="Onboarding ID not available"'}>Mark Completed</button>` : ''}
           </div></td>
         </tr>`;
     }).join('');
@@ -963,10 +964,11 @@ const OperationsOnboarding = {
     modalEl.classList.remove('open');
     modalEl.setAttribute('aria-hidden', 'true');
   },
-  openAssignCsmModal(agreementId, onDone) {
+  openAssignCsmModal(onboardingId, agreementId, onDone) {
     if (!this.canWrite()) return UI.toast('Insufficient permissions.');
+    this.state.pendingOnboardingId = String(onboardingId || '').trim();
     this.state.pendingAgreementId = String(agreementId || '').trim();
-    if (!this.state.pendingAgreementId) return UI.toast('Unable to assign CSM for this onboarding row because no Agreement ID is available.');
+    if (!this.state.pendingOnboardingId) return UI.toast('Unable to assign CSM for this onboarding row because no Onboarding ID is available.');
     this.state.postSubmitHook = typeof onDone === 'function' ? onDone : null;
     if (E.operationsAssignCsmForm) E.operationsAssignCsmForm.reset();
     if (E.operationsAssignCsmModal) {
@@ -974,10 +976,11 @@ const OperationsOnboarding = {
       E.operationsAssignCsmModal.setAttribute('aria-hidden', 'false');
     }
   },
-  openUpdateStatusModal(agreementId, onDone) {
+  openUpdateStatusModal(onboardingId, agreementId, onDone) {
     if (!this.canWrite()) return UI.toast('Insufficient permissions.');
+    this.state.pendingOnboardingId = String(onboardingId || '').trim();
     this.state.pendingAgreementId = String(agreementId || '').trim();
-    if (!this.state.pendingAgreementId) return UI.toast('Unable to update onboarding status for this row because no Agreement ID is available.');
+    if (!this.state.pendingOnboardingId) return UI.toast('Unable to update onboarding status for this row because no Onboarding ID is available.');
     this.state.postSubmitHook = typeof onDone === 'function' ? onDone : null;
     if (E.operationsUpdateStatusForm) E.operationsUpdateStatusForm.reset();
     if (E.operationsUpdateStatusModal) {
@@ -986,35 +989,95 @@ const OperationsOnboarding = {
     }
   },
   async submitAssignCsm() {
+    const onboardingId = this.state.pendingOnboardingId;
     const agreementId = this.state.pendingAgreementId;
-    if (!agreementId) return UI.toast('Agreement ID is required.');
+    if (!onboardingId) return UI.toast('Onboarding ID is required.');
+    const nowIso = new Date().toISOString();
+    const payload = {
+      csm_assigned_to: E.operationsAssignCsmName?.value || '',
+      csm_assigned_at: nowIso,
+      handover_note: E.operationsAssignCsmHandoverNote?.value || '',
+      updated_at: nowIso
+    };
+    console.log('[OperationsOnboarding] clicked action: Assign CSM', { onboarding_id: onboardingId, agreement_id: agreementId });
+    console.log('[OperationsOnboarding] Assign CSM payload', payload);
     try {
-      await Api.assignAgreementCsm(agreementId, {
-        csm_assigned_to: E.operationsAssignCsmName?.value || '',
-        handover_note: E.operationsAssignCsmHandoverNote?.value || ''
+      const response = await Api.updateOperationsOnboardingAction({
+        onboardingId,
+        agreementId,
+        updates: payload
       });
-      this.upsertByAgreement(agreementId, { csm_assigned_to: E.operationsAssignCsmName?.value || '' });
+      console.log('[OperationsOnboarding] Assign CSM Supabase response', response);
       this.closeModal(E.operationsAssignCsmModal);
-      UI.toast('CSM assigned.');
+      await this.loadAndRefresh({ force: true });
+      UI.toast('CSM assigned and saved.');
       if (this.state.postSubmitHook) await this.state.postSubmitHook();
     } catch (error) {
+      console.error('[OperationsOnboarding] Assign CSM failed', error);
       UI.toast('Unable to assign CSM: ' + (error?.message || 'Unknown error'));
     }
   },
   async submitUpdateStatus() {
+    const onboardingId = this.state.pendingOnboardingId;
     const agreementId = this.state.pendingAgreementId;
-    if (!agreementId) return UI.toast('Agreement ID is required.');
+    if (!onboardingId) return UI.toast('Onboarding ID is required.');
+    const nextStatus = String(E.operationsUpdateStatusValue?.value || '').trim();
+    const nowIso = new Date().toISOString();
+    const payload = {
+      onboarding_status: nextStatus,
+      notes: E.operationsUpdateStatusNotes?.value || '',
+      updated_at: nowIso
+    };
+    if (nextStatus === 'Completed') payload.completed_at = nowIso;
+    if (nextStatus === 'In Progress') payload.completed_at = null;
+    console.log('[OperationsOnboarding] clicked action: Update Status', { onboarding_id: onboardingId, agreement_id: agreementId, status: nextStatus });
+    console.log('[OperationsOnboarding] Update Status payload', payload);
     try {
-      await Api.updateAgreementOnboardingStatus(agreementId, {
-        onboarding_status: E.operationsUpdateStatusValue?.value || '',
-        notes: E.operationsUpdateStatusNotes?.value || ''
+      const response = await Api.updateOperationsOnboardingAction({
+        onboardingId,
+        agreementId,
+        updates: payload,
+        syncTechnicalStatus: nextStatus === 'In Progress' || nextStatus === 'Completed' ? nextStatus : ''
       });
-      this.upsertByAgreement(agreementId, { onboarding_status: E.operationsUpdateStatusValue?.value || '' });
+      console.log('[OperationsOnboarding] Update Status Supabase response', response);
       this.closeModal(E.operationsUpdateStatusModal);
-      UI.toast('Onboarding status updated.');
+      await this.loadAndRefresh({ force: true });
+      UI.toast('Onboarding status updated and saved.');
       if (this.state.postSubmitHook) await this.state.postSubmitHook();
     } catch (error) {
+      console.error('[OperationsOnboarding] Update Status failed', error);
       UI.toast('Unable to update onboarding status: ' + (error?.message || 'Unknown error'));
+    }
+  },
+  async markStatusDirect(onboardingId, agreementId, status) {
+    if (!this.canWrite()) return UI.toast('Insufficient permissions.');
+    const normalizedOnboardingId = String(onboardingId || '').trim();
+    const normalizedAgreementId = String(agreementId || '').trim();
+    const normalizedStatus = String(status || '').trim();
+    if (!normalizedOnboardingId) return UI.toast('Onboarding ID is required.');
+    if (!normalizedStatus) return UI.toast('Status is required.');
+    const nowIso = new Date().toISOString();
+    const payload = {
+      onboarding_status: normalizedStatus,
+      updated_at: nowIso
+    };
+    if (normalizedStatus === 'Completed') payload.completed_at = nowIso;
+    if (normalizedStatus === 'In Progress') payload.completed_at = null;
+    console.log(`[OperationsOnboarding] clicked action: Mark ${normalizedStatus}`, { onboarding_id: normalizedOnboardingId, agreement_id: normalizedAgreementId });
+    console.log(`[OperationsOnboarding] Mark ${normalizedStatus} payload`, payload);
+    try {
+      const response = await Api.updateOperationsOnboardingAction({
+        onboardingId: normalizedOnboardingId,
+        agreementId: normalizedAgreementId,
+        updates: payload,
+        syncTechnicalStatus: normalizedStatus
+      });
+      console.log(`[OperationsOnboarding] Mark ${normalizedStatus} Supabase response`, response);
+      await this.loadAndRefresh({ force: true });
+      UI.toast(`Onboarding marked ${normalizedStatus}.`);
+    } catch (error) {
+      console.error(`[OperationsOnboarding] Mark ${normalizedStatus} failed`, error);
+      UI.toast(`Unable to mark onboarding ${normalizedStatus}: ` + (error?.message || 'Unknown error'));
     }
   },
   async requestTechnicalAdmin(agreementId) {
@@ -1073,24 +1136,18 @@ const OperationsOnboarding = {
       E.operationsOnboardingTbody.addEventListener('click', event => {
         const trigger = event.target?.closest?.('button');
         if (!trigger) return;
-        const agreementId = trigger.getAttribute('data-op-open-agreement') || trigger.getAttribute('data-op-technical-admin') || trigger.getAttribute('data-op-assign-csm') || trigger.getAttribute('data-op-mark-progress') || trigger.getAttribute('data-op-mark-completed') || '';
-        const onboardingId = trigger.getAttribute('data-op-open-details') || '';
+        const agreementId = trigger.getAttribute('data-op-agreement-id') || trigger.getAttribute('data-op-open-agreement') || trigger.getAttribute('data-op-technical-admin') || '';
+        const actionOnboardingId = trigger.getAttribute('data-op-assign-csm') || trigger.getAttribute('data-op-mark-progress') || trigger.getAttribute('data-op-mark-completed') || '';
+        const detailOnboardingId = trigger.getAttribute('data-op-open-details') || '';
         if (trigger.hasAttribute('data-op-open-agreement')) {
           if (typeof setActiveView === 'function') setActiveView('agreements');
           return window.Agreements?.openAgreementFormById?.(agreementId, { readOnly: !this.canWrite() });
         }
-        if (trigger.hasAttribute('data-op-open-details')) return this.openOnboardingDetails(onboardingId, agreementId);
+        if (trigger.hasAttribute('data-op-open-details')) return this.openOnboardingDetails(detailOnboardingId, agreementId);
         if (trigger.hasAttribute('data-op-technical-admin')) return this.requestTechnicalAdmin(agreementId);
-        if (trigger.hasAttribute('data-op-assign-csm')) return this.openAssignCsmModal(agreementId);
-        if (trigger.hasAttribute('data-op-mark-progress')) {
-          this.openUpdateStatusModal(agreementId);
-          if (E.operationsUpdateStatusValue) E.operationsUpdateStatusValue.value = 'In Progress';
-          return;
-        }
-        if (trigger.hasAttribute('data-op-mark-completed')) {
-          this.openUpdateStatusModal(agreementId);
-          if (E.operationsUpdateStatusValue) E.operationsUpdateStatusValue.value = 'Completed';
-        }
+        if (trigger.hasAttribute('data-op-assign-csm')) return this.openAssignCsmModal(actionOnboardingId, agreementId);
+        if (trigger.hasAttribute('data-op-mark-progress')) return this.markStatusDirect(actionOnboardingId, agreementId, 'In Progress');
+        if (trigger.hasAttribute('data-op-mark-completed')) return this.markStatusDirect(actionOnboardingId, agreementId, 'Completed');
       });
 
     if (E.operationsOnboardingDetailsCloseBtn) E.operationsOnboardingDetailsCloseBtn.addEventListener('click', () => this.closeModal(E.operationsOnboardingDetailsModal));
