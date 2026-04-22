@@ -1,20 +1,22 @@
 (function initSupabaseData(global) {
   const MIGRATED_RESOURCES = new Set([
-    'auth','users','roles','role_permissions','tickets','events','csm','leads','deals','proposal_catalog','proposals','agreements','workflow','clients','invoices','receipts','operations_onboarding'
+    'auth','users','roles','role_permissions','tickets','events','csm','leads','deals','proposal_catalog','proposals','agreements','workflow','clients','invoices','receipts','operations_onboarding','technical_admin_requests'
   ]);
 
   const TABLE_BY_RESOURCE = {
     users: 'profiles', roles: 'roles', role_permissions: 'role_permissions', tickets: 'tickets',
     events: 'events', csm: 'csm_activities', leads: 'leads', deals: 'deals',
     proposal_catalog: 'proposal_catalog_items', proposals: 'proposals', agreements: 'agreements',
-    clients: 'clients', invoices: 'invoices', receipts: 'receipts', operations_onboarding: 'operations_onboarding'
+    clients: 'clients', invoices: 'invoices', receipts: 'receipts', operations_onboarding: 'operations_onboarding',
+    technical_admin_requests: 'technical_admin_requests'
   };
 
   const PK_KEYS = {
     users: ['user_id','id'], roles: ['role_key','id'], role_permissions: ['permission_id','id'], tickets: ['id','ticket_id'],
     events: ['event_id','id'], csm: ['id','activity_id'], leads: ['id','lead_id'], deals: ['id','deal_id'],
     proposal_catalog: ['id','catalog_item_id'], proposals: ['id','proposal_id'], agreements: ['id','agreement_id'],
-    clients: ['id','client_id'], invoices: ['id','invoice_id'], receipts: ['id','receipt_id'], operations_onboarding: ['onboarding_id','id']
+    clients: ['id','client_id'], invoices: ['id','invoice_id'], receipts: ['id','receipt_id'], operations_onboarding: ['onboarding_id','id'],
+    technical_admin_requests: ['id','technical_request_id','request_id']
   };
 
   const ITEM_TABLES = { proposals: 'proposal_items', agreements: 'agreement_items', invoices: 'invoice_items', receipts: 'receipt_items' };
@@ -242,6 +244,16 @@
       'invoice_number','currency','support_email','customer_name','customer_legal_name','customer_address',
       'amount_in_words','invoice_total','pending_amount','payment_state','payment_notes',
       'created_by','updated_by','created_at','updated_at'
+    ]),
+    technical_admin_requests: new Set([
+      'id','request_id','technical_request_id',
+      'agreement_id','agreement_number','onboarding_id','client_id','client_name',
+      'request_type','request_title','request_message','request_details','request_status',
+      'technical_request_type','technical_request_details','technical_request_status',
+      'priority','location_count','service_start_date','service_end_date','billing_frequency','payment_term',
+      'module_summary','agreement_status','requested_by','requested_at',
+      'technical_admin_assigned_to','started_at','completed_at','updated_by','updated_at','notes',
+      'created_at'
     ])
   };
 
@@ -364,6 +376,18 @@
       out.saas_total = out.saas_total ?? out.subtotal_locations ?? 0;
       out.subtotal_one_time = out.subtotal_one_time ?? out.one_time_total ?? 0;
       out.one_time_total = out.one_time_total ?? out.subtotal_one_time ?? 0;
+    }
+    if (resource === 'technical_admin_requests') {
+      out.id = out.id ?? '';
+      out.request_id = out.request_id ?? out.technical_request_id ?? '';
+      out.technical_request_id = out.technical_request_id ?? out.request_id ?? out.id ?? '';
+      out.request_status = out.request_status ?? out.technical_request_status ?? 'Requested';
+      out.technical_request_status = out.technical_request_status ?? out.request_status ?? 'Requested';
+      out.request_type = out.request_type ?? out.technical_request_type ?? '';
+      out.technical_request_type = out.technical_request_type ?? out.request_type ?? '';
+      out.request_details = out.request_details ?? out.technical_request_details ?? out.request_message ?? '';
+      out.technical_request_details = out.technical_request_details ?? out.request_details ?? '';
+      out.request_message = out.request_message ?? out.request_details ?? out.technical_request_details ?? '';
     }
     return out;
   }
@@ -1058,6 +1082,34 @@
     return String(data?.id || '').trim();
   }
 
+  async function resolveTechnicalAdminRequestUuid(payload = {}, client) {
+    const directId = String(
+      firstDefined(payload, ['id']) ??
+      firstDefined(payload.item || {}, ['id']) ??
+      firstDefined(payload.updates || {}, ['id']) ??
+      ''
+    ).trim();
+    if (isUuid(directId)) return directId;
+
+    const externalId = String(
+      firstDefined(payload, ['technical_request_id', 'request_id']) ??
+      firstDefined(payload.item || {}, ['technical_request_id', 'request_id']) ??
+      firstDefined(payload.updates || {}, ['technical_request_id', 'request_id']) ??
+      ''
+    ).trim();
+    if (!externalId) return '';
+
+    let query = client.from('technical_admin_requests').select('id').eq('request_id', externalId).limit(1);
+    let { data, error } = await query.maybeSingle();
+    if (error) throw friendlyError('Unable to resolve technical admin request identifier', error);
+    if (data?.id) return String(data.id).trim();
+
+    query = client.from('technical_admin_requests').select('id').eq('technical_request_id', externalId).limit(1);
+    ({ data, error } = await query.maybeSingle());
+    if (error) throw friendlyError('Unable to resolve technical admin request identifier', error);
+    return String(data?.id || '').trim();
+  }
+
   function splitListPayload(payload = {}) {
     const rawFilters = payload.filters && typeof payload.filters === 'object' ? payload.filters : payload;
     const controls = {};
@@ -1473,7 +1525,9 @@
     }
 
     if (action === 'get') {
-      const id = ['clients', 'invoices', 'receipts'].includes(resource)
+      const id = resource === 'technical_admin_requests'
+        ? await resolveTechnicalAdminRequestUuid(payload, client)
+        : ['clients', 'invoices', 'receipts'].includes(resource)
         ? await resolveResourceUuid(resource, payload, client)
         : pickId(resource, payload);
       const key = PK_KEYS[resource][0] || 'id';
@@ -1583,7 +1637,9 @@
     }
 
     if (action === 'update') {
-      const pickedId = ['clients', 'invoices', 'receipts'].includes(resource)
+      const pickedId = resource === 'technical_admin_requests'
+        ? await resolveTechnicalAdminRequestUuid(payload, client)
+        : ['clients', 'invoices', 'receipts'].includes(resource)
         ? await resolveResourceUuid(resource, payload, client)
         : pickId(resource, payload);
       const id = resource === 'tickets'
@@ -1685,6 +1741,36 @@
         }
       }
       return { handled: true, data: await withItems(resource, data) };
+    }
+
+    if (resource === 'technical_admin_requests' && action === 'update_status') {
+      const id = await resolveTechnicalAdminRequestUuid(payload, client);
+      if (!id) throw new Error('Technical request id is required.');
+      const status = trimOrNull(firstDefined(payload, ['request_status', 'status'])) || 'Requested';
+      const safeUpdates = {
+        request_status: status,
+        technical_request_status: status
+      };
+      const optionalKeys = [
+        'technical_admin_assigned_to',
+        'started_at',
+        'completed_at',
+        'notes',
+        'updated_by',
+        'updated_at'
+      ];
+      optionalKeys.forEach(key => {
+        if (payload[key] !== undefined) safeUpdates[key] = payload[key];
+      });
+      const { data, error } = await client
+        .from('technical_admin_requests')
+        .update(safeUpdates)
+        .eq('id', id)
+        .select('*')
+        .single();
+      if (error) throw friendlyError('Unable to update technical admin request status', error);
+      const technicalRequest = normalizeRow('technical_admin_requests', data);
+      return { handled: true, data: { ok: true, technical_request: technicalRequest, request: technicalRequest } };
     }
 
     if (action === 'delete') {

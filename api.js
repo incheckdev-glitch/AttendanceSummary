@@ -671,11 +671,21 @@ const Api = {
       sheetName: CONFIG.OPERATIONS_ONBOARDING_SHEET_NAME
     });
   },
-  async listTechnicalAdminRequests(filters = {}) {
-    return this.postAuthenticatedCached('technical_admin_requests', 'list', { filters });
+  async listTechnicalAdminRequests(filters = {}, options = {}) {
+    const payload = {
+      filters: {
+        ...(filters && typeof filters === 'object' ? filters : {})
+      }
+    };
+    const response = await this.postAuthenticatedCached('technical_admin_requests', 'list', payload, {
+      forceRefresh: options?.forceRefresh === true
+    });
+    return this.normalizeListResponse(response);
   },
   async getTechnicalAdminRequest(technicalRequestId) {
     return this.postAuthenticated('technical_admin_requests', 'get', {
+      id: technicalRequestId,
+      request_id: technicalRequestId,
       technical_request_id: technicalRequestId
     });
   },

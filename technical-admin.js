@@ -210,8 +210,8 @@ const TechnicalAdmin = {
     this.state.loadError = '';
     this.render();
     try {
-      const response = await Api.listTechnicalAdminRequests({ forceRefresh: !!options.force });
-      const rows = Api.normalizeListResponse(response)?.rows || [];
+      const response = await Api.listTechnicalAdminRequests({}, { forceRefresh: !!options.force });
+      const rows = response?.rows || [];
       this.state.rows = rows.map(row => this.normalizeRow(row)).filter(row => row.technical_request_id);
       this.state.loaded = true;
     } catch (error) {
