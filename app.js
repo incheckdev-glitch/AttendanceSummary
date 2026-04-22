@@ -2715,7 +2715,7 @@ async function loadIssues(force = false) {
   try {
     UI.spinner(true);
     UI.skeleton(true);
-    await Session.ensureLegacyTicketSession({ reason: 'loadIssues initial' });
+    await Session.ensureLegacySession({ reason: 'loadIssues initial' });
     const ticketListPayload = { filters: buildTicketListFiltersPayload() };
     console.info('[loadIssues] tickets.list payload', ticketListPayload);
     const response = await Api.postAuthenticated(
@@ -2740,37 +2740,8 @@ async function loadIssues(force = false) {
     UI.setSync('issues', true, new Date());
   } catch (e) {
     if (isAuthError(e)) {
-      console.warn('[loadIssues] tickets.list auth error; retrying once with session refresh', {
-        message: e?.message || String(e)
-      });
-      try {
-        await Session.ensureLegacyTicketSession({ forceRefresh: true, reason: 'loadIssues auth retry' });
-        const retryPayload = { filters: buildTicketListFiltersPayload() };
-        console.info('[loadIssues] tickets.list payload (retry)', retryPayload);
-        const retryResponse = await Api.postAuthenticated('tickets', 'list', retryPayload, { requireAuth: true });
-        const retryRawRows = extractEventsPayload(retryResponse);
-        const retryRows = retryRawRows.map(raw => DataStore.normalizeRow(raw));
-        DataStore.hydrateFromRows(retryRows.filter(r => r.id && String(r.id).trim() !== ''));
-        IssuesCache.save(retryRawRows);
-        UI.Issues.renderFilters();
-        setIfOptionExists(E.moduleFilter, Filters.state.module);
-        setIfOptionExists(E.categoryFilter, Filters.state.category);
-        setIfOptionExists(E.priorityFilter, Filters.state.priority);
-        setIfOptionExists(E.statusFilter, Filters.state.status);
-        setIfOptionExists(E.devTeamStatusFilter, Filters.state.devTeamStatus);
-        setIfOptionExists(E.issueRelatedFilter, Filters.state.issueRelated);
-        UI.refreshAll();
-        openIssueFromLink();
-        UI.setSync('issues', true, new Date());
-        return;
-      } catch (refreshError) {
-        console.error('[loadIssues] retry after ticket session refresh failed', {
-          originalError: e?.message || String(e),
-          refreshError: refreshError?.message || String(refreshError)
-        });
-        await handleExpiredSession('Session expired while loading tickets.');
-        return;
-      }
+      await handleExpiredSession('Unable to restore your session. Please log in again.');
+      return;
     }
     if (!DataStore.rows.length && E.issuesTbody) {
       E.issuesTbody.innerHTML = `
@@ -4562,13 +4533,7 @@ function wireDashboardGate() {
         .catch(error => {
           console.warn('Post-login permission matrix refresh failed', error);
         });
-      try {
-        await Session.ensureLegacyTicketSession({ forceRefresh: true, reason: 'login success bridge' });
-      } catch (legacySessionError) {
-        console.warn('[wireDashboardGate.loginSubmit] legacy ticket session bridge failed', {
-          message: legacySessionError?.message || String(legacySessionError)
-        });
-      }
+      await Session.ensureLegacySession({ reason: 'login success bridge' });
       Promise.all([loadIssues(false), loadEvents(false)]).catch(error => {
         console.warn('Post-login data refresh failed', error);
         UI.toast('Logged in, but latest dashboard data could not be refreshed.');
@@ -6079,11 +6044,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   if (isAuthenticated && Session.isAuthenticated()) {
     try {
-      await Session.ensureLegacyTicketSession({ reason: 'startup restore' });
+      await Session.ensureLegacySession({ reason: 'startup restore' });
     } catch (legacySessionError) {
       console.warn('[startup/auth] failed to establish legacy ticket session during restore', {
         message: legacySessionError?.message || String(legacySessionError)
       });
+      await handleExpiredSession('Unable to restore your session. Please log in again.');
+      return;
     }
     await Promise.all([loadIssues(false), loadEvents(false)]);
   }

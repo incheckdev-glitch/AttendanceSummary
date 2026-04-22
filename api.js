@@ -308,25 +308,53 @@ const Api = {
       return this.post(resource, action, { ...payload });
     }
 
-    const authToken =
+    const getToken = () => (
       typeof Session?.getAuthToken === 'function'
         ? Session.getAuthToken()
-        : '';
-    if (requireAuth && !authToken) {
-      console.warn('[Api.postAuthenticated] missing auth token', { resource, action });
-      throw new Error('Missing authentication token.');
+        : ''
+    );
+    if (requireAuth && typeof Session?.ensureLegacySession === 'function') {
+      await Session.ensureLegacySession({ reason: `${resource}.${action} preflight` });
     }
-    if (resource === 'tickets' && action === 'list') {
-      console.info('[Api.postAuthenticated] tickets.list token before request', {
+    let authToken = getToken();
+    if (requireAuth && !authToken) {
+      console.warn('[Api.postAuthenticated] missing auth token after preflight', { resource, action });
+      throw new Error('Session is unavailable. Please log in again.');
+    }
+    console.info('[Api.postAuthenticated] protected request token preflight', {
+      resource,
+      action,
+      hasAuthToken: Boolean(authToken),
+      tokenPrefix: authToken ? `${String(authToken).slice(0, 8)}...` : ''
+    });
+    try {
+      return await this.post(resource, action, {
+        ...payload,
+        authToken: authToken || ''
+      });
+    } catch (error) {
+      if (!requireAuth || !window.isAuthError?.(error) || typeof Session?.ensureLegacySession !== 'function') {
+        throw error;
+      }
+      console.warn('[Api.postAuthenticated] auth/session invalid, retrying once', {
+        resource,
+        action,
+        message: error?.message || String(error)
+      });
+      await Session.ensureLegacySession({ forceRefresh: true, reason: `${resource}.${action} auth retry` });
+      authToken = getToken();
+      if (!authToken) throw new Error('Session refresh failed. Please log in again.');
+      console.info('[Api.postAuthenticated] retry token state', {
+        resource,
+        action,
         hasAuthToken: Boolean(authToken),
-        tokenPrefix: authToken ? `${String(authToken).slice(0, 8)}...` : '',
-        payload
+        tokenPrefix: `${String(authToken).slice(0, 8)}...`
+      });
+      return this.post(resource, action, {
+        ...payload,
+        authToken
       });
     }
-    return this.post(resource, action, {
-      ...payload,
-      authToken: authToken || ''
-    });
   },
 
   getCacheConfig() {
