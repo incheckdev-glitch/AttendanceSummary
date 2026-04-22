@@ -982,24 +982,27 @@ const Api = {
     });
   },
   async createRolePermission(payload = {}) {
+    const permissionPayload = this.pickRolePermissionColumns(payload);
     return this.postAuthenticated('role_permissions', 'create', {
-      permission: payload,
-      ...payload,
+      permission: permissionPayload,
+      ...permissionPayload,
       sheetName: CONFIG.ROLE_PERMISSIONS_SHEET_NAME
     });
   },
   async updateRolePermission(permissionId, updates = {}) {
+    const permissionUpdates = this.pickRolePermissionColumns(updates);
     return this.postAuthenticated('role_permissions', 'update', {
       permission_id: permissionId,
-      updates,
-      permission: { permission_id: permissionId, ...updates },
+      updates: permissionUpdates,
+      permission: { permission_id: permissionId, ...permissionUpdates },
       sheetName: CONFIG.ROLE_PERMISSIONS_SHEET_NAME
     });
   },
   async saveRolePermission(payload = {}) {
+    const permissionPayload = this.pickRolePermissionColumns(payload);
     return this.postAuthenticated('role_permissions', 'save', {
-      permission: payload,
-      ...payload,
+      permission: permissionPayload,
+      ...permissionPayload,
       sheetName: CONFIG.ROLE_PERMISSIONS_SHEET_NAME
     });
   },
@@ -1022,6 +1025,13 @@ const Api = {
       }
       keys.forEach(key => localStorage.removeItem(key));
     } catch {}
+  },
+  pickRolePermissionColumns(payload = {}) {
+    const allowedColumns = ['permission_id', 'role_key', 'resource', 'action', 'is_allowed', 'is_active', 'allowed_roles'];
+    return allowedColumns.reduce((acc, key) => {
+      if (Object.prototype.hasOwnProperty.call(payload, key)) acc[key] = payload[key];
+      return acc;
+    }, {});
   },
   debugWorkflowResponse(label, payload) {
     try { console.log('[workflow]', label, payload); } catch {}
