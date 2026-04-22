@@ -19,35 +19,15 @@ const Api = {
   getPrimaryKeyForResource(resource = '') {
     return RESOURCE_PRIMARY_KEY[String(resource || '').trim()] || 'id';
   },
-  ensureBaseUrl() {
-    const resolved = resolveApiEndpoint(API_BASE_URL);
-    if (!resolved) {
-      throw new Error('API_BASE_URL is not configured.');
-    }
-    return resolved;
-  },
   getEndpointDiagnostics() {
-    const endpoint = resolveApiEndpoint(API_BASE_URL);
-    const localProxyEndpoint = resolveApiEndpoint('/api/proxy');
-    if (!endpoint) {
-      return {
-        configured: false,
-        baseUrl: null,
-        mode: 'supabase-only',
-        endpoint: '',
-        localProxyEndpoint,
-        isProxy: false,
-        notificationEndpoint: ''
-      };
-    }
     return {
       configured: true,
-      baseUrl: endpoint,
-      mode: 'legacy-api',
-      endpoint,
-      localProxyEndpoint,
-      isProxy: endpoint === localProxyEndpoint,
-      notificationEndpoint: endpoint
+      baseUrl: '',
+      mode: 'supabase-only',
+      endpoint: '',
+      localProxyEndpoint: '',
+      isProxy: false,
+      notificationEndpoint: ''
     };
   },
   getAuthDiagnostics() {
@@ -68,16 +48,6 @@ const Api = {
       isLocalProxy: false,
       localProxyEndpoint: ''
     };
-  },
-  buildUrl(resource = '', params = {}) {
-    const endpoint = this.ensureBaseUrl();
-    const url = new URL(endpoint);
-    if (resource) url.searchParams.set('resource', String(resource));
-    Object.entries(params || {}).forEach(([key, value]) => {
-      if (value === undefined || value === null || value === '') return;
-      url.searchParams.set(key, String(value));
-    });
-    return url.toString();
   },
   unwrapApiPayload(response) {
     let payload = response;
@@ -213,34 +183,8 @@ const Api = {
   normalizeListResponse(response) {
     return this.mapPagedListResponse(response);
   },
-  async get(resource, params = {}) {
-    const endpoint = this.buildUrl(resource, params);
-    let response;
-    try {
-      response = await fetch(endpoint, {
-        method: 'GET',
-        cache: 'no-store'
-      });
-    } catch (error) {
-      throw buildNetworkRequestError(endpoint, error);
-    }
-    const { data } = await readAppsScriptResponse(response, {
-      sourceName: `Backend ${resource || 'api'}`,
-      endpoint,
-      resource
-    });
-    if (!response.ok) {
-      throw buildHttpResponseError(response, data, endpoint, { resource, action: 'get' });
-    }
-    if (data && typeof data === 'object' && hasExplicitBackendFailure(data)) {
-      throw buildExplicitBackendFailureError(data, {
-        endpoint,
-        resource,
-        action: 'get',
-        status: response.status
-      });
-    }
-    return this.unwrapApiPayload(data);
+  async get() {
+    throw new Error('Api.get is not supported in Supabase-only mode. Use Api.request with resource/action.');
   },
 
   isMigratedResource(resource = '') {
@@ -252,7 +196,7 @@ const Api = {
     if (normalized === 'auth') return false;
     return !this.isMigratedResource(normalized);
   },
-  async post(resource, action, payload = {}) {
+  async request(resource, action, payload = {}) {
     const safePayload = payload && typeof payload === 'object' ? payload : {};
     return apiPost({
       ...safePayload,
@@ -260,9 +204,9 @@ const Api = {
       action
     });
   },
-  async postAuthenticated(resource, action, payload = {}, options = {}) {
+  async requestWithSession(resource, action, payload = {}, options = {}) {
     void options;
-    return this.post(resource, action, { ...payload });
+    return this.request(resource, action, { ...payload });
   },
 
   getCacheConfig() {
@@ -396,7 +340,7 @@ const Api = {
     if (appended.length) merged.push(...appended);
     return merged;
   },
-  async postAuthenticatedCached(resource, action, payload = {}, options = {}) {
+  async requestCached(resource, action, payload = {}, options = {}) {
     const cacheKey = options?.cacheKey || this.buildCacheKey(resource, action, payload);
     const forceRefresh = options?.forceRefresh === true;
     const cached = this.readCachedValue(cacheKey);
@@ -420,7 +364,7 @@ const Api = {
     }
 
     try {
-      const fresh = await this.postAuthenticated(resource, action, incrementalPayload, options);
+      const fresh = await this.requestWithSession(resource, action, incrementalPayload, options);
       const shouldMerge = Array.isArray(cached?.value) && Array.isArray(fresh);
       const merged = shouldMerge ? this.mergeIncrementalRows(resource, cached.value, fresh) : fresh;
       this.writeCachedValue(cacheKey, merged);
@@ -436,70 +380,70 @@ const Api = {
     const payload = {
       ...this.buildSummaryListPayload(options)
     };
-    const response = await this.postAuthenticatedCached('proposal_catalog', 'list', payload, {
+    const response = await this.requestCached('proposal_catalog', 'list', payload, {
       forceRefresh: options?.forceRefresh === true
     });
     return this.normalizeListResponse(response);
   },
   async getProposalCatalogItem(catalogItemId) {
-    return this.postAuthenticated('proposal_catalog', 'get', {
+    return this.requestWithSession('proposal_catalog', 'get', {
       id: catalogItemId
     });
   },
   async createProposalCatalogItem(item) {
-    return this.postAuthenticated('proposal_catalog', 'create', {
+    return this.requestWithSession('proposal_catalog', 'create', {
       item
     });
   },
   async updateProposalCatalogItem(catalogItemId, updates) {
-    return this.postAuthenticated('proposal_catalog', 'update', {
+    return this.requestWithSession('proposal_catalog', 'update', {
       id: catalogItemId,
       updates
     });
   },
   async deleteProposalCatalogItem(catalogItemId) {
-    return this.postAuthenticated('proposal_catalog', 'delete', {
+    return this.requestWithSession('proposal_catalog', 'delete', {
       id: catalogItemId
     });
   },
   async listAgreements(options = {}) {
     const payload = this.buildSummaryListPayload(options);
-    const response = await this.postAuthenticatedCached('agreements', 'list', payload, {
+    const response = await this.requestCached('agreements', 'list', payload, {
       forceRefresh: options?.forceRefresh === true
     });
     return this.normalizeListResponse(response);
   },
   async getAgreement(agreementId) {
-    return this.postAuthenticated('agreements', 'get', { id: agreementId });
+    return this.requestWithSession('agreements', 'get', { id: agreementId });
   },
   async createAgreement(agreement, items = []) {
-    return this.postAuthenticated('agreements', 'create', { agreement, items });
+    return this.requestWithSession('agreements', 'create', { agreement, items });
   },
   async updateAgreement(agreementId, updates, items = []) {
-    return this.postAuthenticated('agreements', 'update', {
+    return this.requestWithSession('agreements', 'update', {
       id: agreementId,
       updates,
       items
     });
   },
   async deleteAgreement(agreementId) {
-    return this.postAuthenticated('agreements', 'delete', { id: agreementId });
+    return this.requestWithSession('agreements', 'delete', { id: agreementId });
   },
   async createAgreementFromProposal(proposalId) {
-    return this.postAuthenticated('agreements', 'create_from_proposal', { proposal_uuid: proposalId });
+    return this.requestWithSession('agreements', 'create_from_proposal', { proposal_uuid: proposalId });
   },
   async generateAgreementHtml(agreementId) {
-    return this.postAuthenticated('agreements', 'generate_agreement_html', {
+    return this.requestWithSession('agreements', 'generate_agreement_html', {
       agreement_id: agreementId
     });
   },
   async sendAgreementToOperations(agreementId) {
-    return this.postAuthenticated('agreements', 'send_to_operations', {
+    return this.requestWithSession('agreements', 'send_to_operations', {
       agreement_id: agreementId
     });
   },
   async getAgreementOnboarding(agreementId) {
-    return this.postAuthenticated('agreements', 'get_onboarding', {
+    return this.requestWithSession('agreements', 'get_onboarding', {
       agreement_id: agreementId
     });
   },
@@ -508,13 +452,13 @@ const Api = {
       agreement_id: agreementId
     };
     try {
-      return await this.postAuthenticated('agreements', 'request_incheck_lite', payload);
+      return await this.requestWithSession('agreements', 'request_incheck_lite', payload);
     } catch (error) {
       if (!isOperationsOnboardingRowMissingError(error)) throw error;
       await this.saveOperationsOnboarding({
         agreement_id: agreementId
       });
-      return this.postAuthenticated('agreements', 'request_incheck_lite', payload);
+      return this.requestWithSession('agreements', 'request_incheck_lite', payload);
     }
   },
   async requestAgreementIncheckFull(agreementId) {
@@ -522,13 +466,13 @@ const Api = {
       agreement_id: agreementId
     };
     try {
-      return await this.postAuthenticated('agreements', 'request_incheck_full', payload);
+      return await this.requestWithSession('agreements', 'request_incheck_full', payload);
     } catch (error) {
       if (!isOperationsOnboardingRowMissingError(error)) throw error;
       await this.saveOperationsOnboarding({
         agreement_id: agreementId
       });
-      return this.postAuthenticated('agreements', 'request_incheck_full', payload);
+      return this.requestWithSession('agreements', 'request_incheck_full', payload);
     }
   },
   async requestAgreementTechnicalAdmin(agreementId, message = '') {
@@ -589,13 +533,13 @@ const Api = {
         if (existingRequest) {
           const technicalRequestId = String(existingRequest.technical_request_id || existingRequest.id || '').trim();
           if (technicalRequestId) {
-            technicalRequest = await this.postAuthenticated('technical_admin_requests', 'update', {
+            technicalRequest = await this.requestWithSession('technical_admin_requests', 'update', {
               technical_request_id: technicalRequestId,
               updates: technicalPayload
             });
           }
         } else {
-          technicalRequest = await this.postAuthenticated('technical_admin_requests', 'save', {
+          technicalRequest = await this.requestWithSession('technical_admin_requests', 'save', {
             technical_admin_request: technicalPayload
           });
         }
@@ -611,14 +555,14 @@ const Api = {
     };
   },
   async assignAgreementCsm(agreementId, assignment = {}) {
-    return this.postAuthenticated('agreements', 'assign_csm', {
+    return this.requestWithSession('agreements', 'assign_csm', {
       agreement_id: agreementId,
       csm_assigned_to: assignment.csm_assigned_to,
       handover_note: assignment.handover_note
     });
   },
   async updateAgreementOnboardingStatus(agreementId, update = {}) {
-    return this.postAuthenticated('agreements', 'update_onboarding_status', {
+    return this.requestWithSession('agreements', 'update_onboarding_status', {
       agreement_id: agreementId,
       onboarding_status: update.onboarding_status,
       notes: update.notes
@@ -667,25 +611,25 @@ const Api = {
 
 
   async listOperationsOnboarding(filters = {}) {
-    return this.postAuthenticatedCached('operations_onboarding', 'list', {
+    return this.requestCached('operations_onboarding', 'list', {
       filters,
       sheetName: CONFIG.OPERATIONS_ONBOARDING_SHEET_NAME
     });
   },
   async getOperationsOnboarding(payload = {}) {
-    return this.postAuthenticated('operations_onboarding', 'get', {
+    return this.requestWithSession('operations_onboarding', 'get', {
       ...payload,
       sheetName: CONFIG.OPERATIONS_ONBOARDING_SHEET_NAME
     });
   },
   async saveOperationsOnboarding(onboarding = {}) {
-    return this.postAuthenticated('operations_onboarding', 'save', {
+    return this.requestWithSession('operations_onboarding', 'save', {
       onboarding,
       sheetName: CONFIG.OPERATIONS_ONBOARDING_SHEET_NAME
     });
   },
   async updateOperationsOnboarding(onboardingId, updates = {}) {
-    return this.postAuthenticated('operations_onboarding', 'update', {
+    return this.requestWithSession('operations_onboarding', 'update', {
       onboarding_id: onboardingId,
       updates,
       sheetName: CONFIG.OPERATIONS_ONBOARDING_SHEET_NAME
@@ -697,20 +641,20 @@ const Api = {
         ...(filters && typeof filters === 'object' ? filters : {})
       }
     };
-    const response = await this.postAuthenticatedCached('technical_admin_requests', 'list', payload, {
+    const response = await this.requestCached('technical_admin_requests', 'list', payload, {
       forceRefresh: options?.forceRefresh === true
     });
     return this.normalizeListResponse(response);
   },
   async getTechnicalAdminRequest(technicalRequestId) {
-    return this.postAuthenticated('technical_admin_requests', 'get', {
+    return this.requestWithSession('technical_admin_requests', 'get', {
       id: technicalRequestId,
       request_id: technicalRequestId,
       technical_request_id: technicalRequestId
     });
   },
   async updateTechnicalAdminRequestStatus(technicalRequestId, status, extra = {}) {
-    return this.postAuthenticated('technical_admin_requests', 'update_status', {
+    return this.requestWithSession('technical_admin_requests', 'update_status', {
       id: technicalRequestId,
       technical_request_id: technicalRequestId,
       request_status: status,
@@ -726,16 +670,16 @@ const Api = {
         ...listPayload
       }
     };
-    const response = await this.postAuthenticatedCached('invoices', 'list', payload, {
+    const response = await this.requestCached('invoices', 'list', payload, {
       forceRefresh: options?.forceRefresh === true
     });
     return this.normalizeListResponse(response);
   },
   async getInvoice(invoiceId) {
-    return this.postAuthenticated('invoices', 'get', { id: invoiceId, invoice_id: invoiceId });
+    return this.requestWithSession('invoices', 'get', { id: invoiceId, invoice_id: invoiceId });
   },
   async createInvoice(invoice, items = []) {
-    return this.postAuthenticated('invoices', 'create', { invoice, items });
+    return this.requestWithSession('invoices', 'create', { invoice, items });
   },
   async updateInvoice(invoiceId, updates = {}, items) {
     const payload = {
@@ -744,16 +688,16 @@ const Api = {
       updates
     };
     if (items !== undefined) payload.items = items;
-    return this.postAuthenticated('invoices', 'update', payload);
+    return this.requestWithSession('invoices', 'update', payload);
   },
   async deleteInvoice(invoiceId) {
-    return this.postAuthenticated('invoices', 'delete', { id: invoiceId, invoice_id: invoiceId });
+    return this.requestWithSession('invoices', 'delete', { id: invoiceId, invoice_id: invoiceId });
   },
   async createInvoiceFromAgreement(agreementId) {
-    return this.postAuthenticated('invoices', 'create_from_agreement', { id: agreementId, agreement_id: agreementId });
+    return this.requestWithSession('invoices', 'create_from_agreement', { id: agreementId, agreement_id: agreementId });
   },
   async generateInvoiceHtml(invoiceId) {
-    return this.postAuthenticated('invoices', 'generate_invoice_html', { invoice_id: invoiceId });
+    return this.requestWithSession('invoices', 'generate_invoice_html', { invoice_id: invoiceId });
   },
   async listReceipts(filters = {}, options = {}) {
     const listPayload = this.buildSummaryListPayload(options);
@@ -763,16 +707,16 @@ const Api = {
         ...listPayload
       }
     };
-    const response = await this.postAuthenticatedCached('receipts', 'list', payload, {
+    const response = await this.requestCached('receipts', 'list', payload, {
       forceRefresh: options?.forceRefresh === true
     });
     return this.normalizeListResponse(response);
   },
   async getReceipt(receiptId) {
-    return this.postAuthenticated('receipts', 'get', { id: receiptId, receipt_id: receiptId });
+    return this.requestWithSession('receipts', 'get', { id: receiptId, receipt_id: receiptId });
   },
   async createReceipt(receipt, items = []) {
-    return this.postAuthenticated('receipts', 'create', { receipt, items });
+    return this.requestWithSession('receipts', 'create', { receipt, items });
   },
   async updateReceipt(receiptId, updates = {}, items) {
     const payload = {
@@ -781,10 +725,10 @@ const Api = {
       updates
     };
     if (items !== undefined) payload.items = items;
-    return this.postAuthenticated('receipts', 'update', payload);
+    return this.requestWithSession('receipts', 'update', payload);
   },
   async deleteReceipt(receiptId) {
-    return this.postAuthenticated('receipts', 'delete', { id: receiptId, receipt_id: receiptId });
+    return this.requestWithSession('receipts', 'delete', { id: receiptId, receipt_id: receiptId });
   },
   async createReceiptFromInvoice(invoiceId, options = {}) {
     const payload = {
@@ -796,75 +740,75 @@ const Api = {
       if (options.payment_method !== undefined) payload.payment_method = options.payment_method;
       if (options.payment_reference !== undefined) payload.payment_reference = options.payment_reference;
     }
-    return this.postAuthenticated('receipts', 'create_from_invoice', payload);
+    return this.requestWithSession('receipts', 'create_from_invoice', payload);
   },
   async previewReceipt(receiptId) {
-    return this.postAuthenticated('receipts', 'generate_receipt_html', { receipt_id: receiptId });
+    return this.requestWithSession('receipts', 'generate_receipt_html', { receipt_id: receiptId });
   },
   async listClients(options = {}) {
     const payload = this.buildSummaryListPayload(options);
-    const response = await this.postAuthenticatedCached('clients', 'list', payload, {
+    const response = await this.requestCached('clients', 'list', payload, {
       forceRefresh: options?.forceRefresh === true
     });
     return this.normalizeListResponse(response);
   },
   async getClient(clientId) {
-    return this.postAuthenticated('clients', 'get', { id: clientId, client_id: clientId });
+    return this.requestWithSession('clients', 'get', { id: clientId, client_id: clientId });
   },
   async createClient(client) {
-    return this.postAuthenticated('clients', 'create', { client });
+    return this.requestWithSession('clients', 'create', { client });
   },
   async createClientFromPayload(client) {
-    return this.postAuthenticated('clients', 'create', { client });
+    return this.requestWithSession('clients', 'create', { client });
   },
   async updateClient(clientId, updates) {
-    return this.postAuthenticated('clients', 'update', {
+    return this.requestWithSession('clients', 'update', {
       id: clientId,
       client_id: clientId,
       updates
     });
   },
   async deleteClient(clientId) {
-    return this.postAuthenticated('clients', 'delete', { id: clientId, client_id: clientId });
+    return this.requestWithSession('clients', 'delete', { id: clientId, client_id: clientId });
   },
   async getClientAnalytics(clientId) {
-    return this.postAuthenticated('clients', 'get_analytics', { client_id: clientId });
+    return this.requestWithSession('clients', 'get_analytics', { client_id: clientId });
   },
   async analyticsSearchEntity(query, filters = {}) {
-    return this.postAuthenticated('analytics', 'search_entity', { query, filters });
+    return this.requestWithSession('analytics', 'search_entity', { query, filters });
   },
   async analyticsGetLifecycle(entityId, filters = {}) {
-    return this.postAuthenticated('analytics', 'get_lifecycle', { entity_id: entityId, filters });
+    return this.requestWithSession('analytics', 'get_lifecycle', { entity_id: entityId, filters });
   },
   async analyticsGetTimeline(entityId, filters = {}) {
-    return this.postAuthenticated('analytics', 'get_timeline', { entity_id: entityId, filters });
+    return this.requestWithSession('analytics', 'get_timeline', { entity_id: entityId, filters });
   },
   async analyticsGetMetrics(entityId, filters = {}) {
-    return this.postAuthenticated('analytics', 'get_metrics', { entity_id: entityId, filters });
+    return this.requestWithSession('analytics', 'get_metrics', { entity_id: entityId, filters });
   },
   async getClientTimeline(clientId) {
-    return this.postAuthenticated('clients', 'get_timeline', { client_id: clientId });
+    return this.requestWithSession('clients', 'get_timeline', { client_id: clientId });
   },
   async createProposalFromClient(clientId, payload = {}) {
-    return this.postAuthenticated('clients', 'create_proposal', {
+    return this.requestWithSession('clients', 'create_proposal', {
       client_id: clientId,
       ...payload
     });
   },
   async createAgreementFromClient(clientId, payload = {}) {
-    return this.postAuthenticated('clients', 'create_agreement', {
+    return this.requestWithSession('clients', 'create_agreement', {
       client_id: clientId,
       ...payload
     });
   },
   async createInvoiceFromClient(clientId, payload = {}) {
-    return this.postAuthenticated('clients', 'create_invoice', {
+    return this.requestWithSession('clients', 'create_invoice', {
       client_id: clientId,
       ...payload
     });
   },
   async createFromPreviousAgreement(clientId, agreementId, flow = 'agreement') {
-    return this.postAuthenticated('clients', 'create_from_previous_agreement', {
+    return this.requestWithSession('clients', 'create_from_previous_agreement', {
       client_id: clientId,
       agreement_id: agreementId,
       flow
@@ -879,10 +823,10 @@ const Api = {
       search: options.search || ''
     };
     if (options.filters && typeof options.filters === 'object') payload.filters = options.filters;
-    return this.postAuthenticated('notifications', 'list', payload);
+    return this.requestWithSession('notifications', 'list', payload);
   },
   async getNotificationUnreadCount() {
-    const response = await this.postAuthenticated('notifications', 'get_unread_count', {});
+    const response = await this.requestWithSession('notifications', 'get_unread_count', {});
     const candidates = [
       response?.unread_count,
       response?.count,
@@ -898,38 +842,38 @@ const Api = {
     return 0;
   },
   async markNotificationRead(notificationId) {
-    return this.postAuthenticated('notifications', 'mark_read', {
+    return this.requestWithSession('notifications', 'mark_read', {
       notification_id: notificationId
     });
   },
   async markAllNotificationsRead() {
-    return this.postAuthenticated('notifications', 'mark_all_read', {});
+    return this.requestWithSession('notifications', 'mark_all_read', {});
   },
   async listRoles(options = {}) {
     const payload = {
       ...this.buildSummaryListPayload(options),
       sheetName: CONFIG.ROLES_SHEET_NAME
     };
-    const response = await this.postAuthenticatedCached('roles', 'list', payload, {
+    const response = await this.requestCached('roles', 'list', payload, {
       forceRefresh: options?.forceRefresh === true
     });
     return this.normalizeListResponse(response);
   },
   async getRole(roleKey) {
-    return this.postAuthenticated('roles', 'get', {
+    return this.requestWithSession('roles', 'get', {
       role_key: roleKey,
       sheetName: CONFIG.ROLES_SHEET_NAME
     });
   },
   async createRole(payload = {}) {
-    return this.postAuthenticated('roles', 'create', {
+    return this.requestWithSession('roles', 'create', {
       role: payload,
       ...payload,
       sheetName: CONFIG.ROLES_SHEET_NAME
     });
   },
   async updateRole(roleKey, updates = {}) {
-    return this.postAuthenticated('roles', 'update', {
+    return this.requestWithSession('roles', 'update', {
       role_key: roleKey,
       updates,
       role: { role_key: roleKey, ...updates },
@@ -937,7 +881,7 @@ const Api = {
     });
   },
   async deleteRole(roleKey) {
-    return this.postAuthenticated('roles', 'delete', {
+    return this.requestWithSession('roles', 'delete', {
       role_key: roleKey,
       sheetName: CONFIG.ROLES_SHEET_NAME
     });
@@ -946,13 +890,13 @@ const Api = {
     const payload = {
       ...this.buildSummaryListPayload(options)
     };
-    const response = await this.postAuthenticatedCached('role_permissions', 'list', payload, {
+    const response = await this.requestCached('role_permissions', 'list', payload, {
       forceRefresh: options?.forceRefresh === true
     });
     return this.normalizeListResponse(response);
   },
   async getRolePermission(permissionId) {
-    return this.postAuthenticated('role_permissions', 'get', {
+    return this.requestWithSession('role_permissions', 'get', {
       permission_id: permissionId
     });
   },
@@ -980,7 +924,7 @@ const Api = {
   async createRolePermission(payload = {}) {
     const permissionPayload = this.sanitizeRolePermissionPayload(payload);
     try { console.log('[RolesPermissions] final sanitized DB payload', permissionPayload); } catch {}
-    return this.postAuthenticated('role_permissions', 'create', {
+    return this.requestWithSession('role_permissions', 'create', {
       ...permissionPayload
     });
   },
@@ -988,7 +932,7 @@ const Api = {
     const permissionUpdates = this.sanitizeRolePermissionPayload(updates);
     try { console.log('[RolesPermissions] update permission_id', permissionId); } catch {}
     try { console.log('[RolesPermissions] final sanitized DB payload', { permission_id: permissionId, ...permissionUpdates }); } catch {}
-    return this.postAuthenticated('role_permissions', 'update', {
+    return this.requestWithSession('role_permissions', 'update', {
       permission_id: permissionId,
       ...permissionUpdates
     });
@@ -996,12 +940,12 @@ const Api = {
   async saveRolePermission(payload = {}) {
     const permissionPayload = this.sanitizeRolePermissionPayload(payload);
     try { console.log('[RolesPermissions] final sanitized DB payload', permissionPayload); } catch {}
-    return this.postAuthenticated('role_permissions', 'save', {
+    return this.requestWithSession('role_permissions', 'save', {
       ...permissionPayload
     });
   },
   async deleteRolePermission(permissionId) {
-    return this.postAuthenticated('role_permissions', 'delete', {
+    return this.requestWithSession('role_permissions', 'delete', {
       permission_id: permissionId
     });
   },
@@ -1023,7 +967,7 @@ const Api = {
     try { console.log('[workflow]', label, payload); } catch {}
   },
   async listWorkflowRules(filters = {}, options = {}) {
-    const response = await this.postAuthenticated('workflow', 'list', {
+    const response = await this.requestWithSession('workflow', 'list', {
       filters,
       sheetName: CONFIG.WORKFLOW_RULES_SHEET_NAME
     }, options);
@@ -1031,7 +975,7 @@ const Api = {
     return response;
   },
   async getWorkflowRule(workflowRuleId) {
-    return this.postAuthenticated('workflow', 'get', {
+    return this.requestWithSession('workflow', 'get', {
       workflow_rule_id: workflowRuleId,
       sheetName: CONFIG.WORKFLOW_RULES_SHEET_NAME
     });
@@ -1043,12 +987,12 @@ const Api = {
       sheetName: CONFIG.WORKFLOW_RULES_SHEET_NAME
     };
     try {
-      return await this.postAuthenticated('workflow', 'save_rule', body);
+      return await this.requestWithSession('workflow', 'save_rule', body);
     } catch (error) {
       const message = String(error?.message || '').toLowerCase();
       const looksLikeAliasMismatch = /unknown workflow action|unknown action|not found|unsupported/.test(message);
       if (!looksLikeAliasMismatch) throw error;
-      return this.postAuthenticated('workflow', 'save', body);
+      return this.requestWithSession('workflow', 'save', body);
     }
   },
   async deleteWorkflowRule(workflowRuleId) {
@@ -1057,12 +1001,12 @@ const Api = {
       sheetName: CONFIG.WORKFLOW_RULES_SHEET_NAME
     };
     try {
-      return await this.postAuthenticated('workflow', 'delete_rule', body);
+      return await this.requestWithSession('workflow', 'delete_rule', body);
     } catch (error) {
       const message = String(error?.message || '').toLowerCase();
       const looksLikeAliasMismatch = /unknown workflow action|unknown action|not found|unsupported/.test(message);
       if (!looksLikeAliasMismatch) throw error;
-      return this.postAuthenticated('workflow', 'delete', body);
+      return this.requestWithSession('workflow', 'delete', body);
     }
   },
   async validateWorkflowTransition(payload = {}) {
@@ -1073,7 +1017,7 @@ const Api = {
       payload?.resource ||
       ''
     ).trim();
-    return this.postAuthenticated('workflow', 'validate_transition', {
+    return this.requestWithSession('workflow', 'validate_transition', {
       ...payload,
       resource: undefined,
       target_workflow_resource: targetResource,
@@ -1083,31 +1027,31 @@ const Api = {
     });
   },
   async requestWorkflowApproval(payload = {}) {
-    return this.postAuthenticated('workflow', 'request_approval', {
+    return this.requestWithSession('workflow', 'request_approval', {
       ...payload,
       sheetName: CONFIG.WORKFLOW_APPROVALS_SHEET_NAME
     });
   },
   async approveWorkflowRequest(payload = {}) {
-    return this.postAuthenticated('workflow', 'approve', {
+    return this.requestWithSession('workflow', 'approve', {
       ...payload,
       sheetName: CONFIG.WORKFLOW_APPROVALS_SHEET_NAME
     });
   },
   async rejectWorkflowRequest(payload = {}) {
-    return this.postAuthenticated('workflow', 'reject', {
+    return this.requestWithSession('workflow', 'reject', {
       ...payload,
       sheetName: CONFIG.WORKFLOW_APPROVALS_SHEET_NAME
     });
   },
   async listPendingWorkflowApprovals(filters = {}) {
-    return this.postAuthenticated('workflow', 'list_pending_approvals', {
+    return this.requestWithSession('workflow', 'list_pending_approvals', {
       filters,
       sheetName: CONFIG.WORKFLOW_APPROVALS_SHEET_NAME
     });
   },
   async listWorkflowAudit(filters = {}) {
-    return this.postAuthenticated('workflow', 'list_audit', {
+    return this.requestWithSession('workflow', 'list_audit', {
       filters,
       sheetName: CONFIG.WORKFLOW_AUDIT_LOG_SHEET_NAME
     });
@@ -1125,177 +1069,10 @@ async function apiPost(payload = {}) {
   throw new Error(`Resource "${resource || 'unknown'}" is not available in SupabaseData. Legacy backend fallback has been removed.`);
 }
 
-function isDevEnvironment() {
-  try {
-    if (window?.RUNTIME_CONFIG?.DEBUG_API === true) return true;
-    const hostname = String(window?.location?.hostname || '').toLowerCase();
-    return hostname === 'localhost' || hostname === '127.0.0.1';
-  } catch {
-    return false;
-  }
-}
-
-async function readAppsScriptResponse(response, context = {}) {
-  const sourceName = context?.sourceName || 'API';
-  const rawText = await response.text();
-  const data = parseAppsScriptJson(rawText, sourceName, context);
-  return { data, rawText };
-}
-
-function parseAppsScriptJson(text, sourceName = 'API', context = {}) {
-  if (!text || !String(text).trim()) return {};
-  const raw = String(text).trim();
-
-  try {
-    return JSON.parse(raw);
-  } catch {}
-
-  const firstBrace = raw.indexOf('{');
-  const lastBrace = raw.lastIndexOf('}');
-  if (firstBrace >= 0 && lastBrace > firstBrace) {
-    const candidate = raw.slice(firstBrace, lastBrace + 1);
-    try {
-      return JSON.parse(candidate);
-    } catch {}
-  }
-
-  const looksLikeHtml = /<!doctype html|<html[\s>]/i.test(raw);
-  if (looksLikeHtml) {
-    const endpoint = String(context?.endpoint || API_BASE_URL || '').trim();
-    const resource = String(context?.resource || '').trim();
-    const action = String(context?.action || '').trim();
-    const err = new Error(
-      `${sourceName} returned HTML instead of JSON. Check API_BASE_URL/proxy.` +
-      (endpoint ? ` endpoint=${endpoint}.` : '') +
-      (resource || action ? ` resource=${resource || '-'} action=${action || '-'}.` : '')
-    );
-    err.code = 'UPSTREAM_NON_JSON_HTML';
-    throw err;
-  }
-
-  const err = new Error(
-    `${sourceName} returned non-JSON response. ` +
-    `${context?.resource || context?.action ? `resource=${context?.resource || '-'} action=${context?.action || '-'}. ` : ''}` +
-    `Sample: ${raw.slice(0, 500)}`
-  );
-  err.code = 'UPSTREAM_NON_JSON';
-  throw err;
-}
-
-function buildNetworkRequestError(url, originalError) {
-  const rawMessage = String(originalError?.message || '').trim();
-  const looksLikeCorsFailure =
-    /failed to fetch|networkerror|load failed|err_failed/i.test(rawMessage);
-  if (looksLikeCorsFailure) {
-    return new Error(
-        `Request to ${url} failed before a response was received. ` +
-        'This is commonly caused by CORS (missing Access-Control-Allow-Origin) ' +
-        'or an unreachable backend/proxy endpoint.'
-    );
-  }
-  return new Error(rawMessage || `Network error while contacting ${url}.`);
-}
-
 function isOperationsOnboardingRowMissingError(error) {
   const message = String(error?.message || '').toLowerCase();
   return (
     message.includes('operations onboarding row not found for agreement') ||
     message.includes('onboarding row not found for agreement')
-  );
-}
-
-function hasExplicitBackendFailure(data) {
-  const normalizeBool = value => {
-    if (typeof value === 'boolean') return value;
-    const normalized = String(value || '')
-      .trim()
-      .toLowerCase();
-    if (['false', '0', 'no', 'n'].includes(normalized)) return false;
-    if (['true', '1', 'yes', 'y'].includes(normalized)) return true;
-    return null;
-  };
-  const ok = normalizeBool(data?.ok);
-  const success = normalizeBool(data?.success);
-  return ok === false || success === false;
-}
-
-function buildExplicitBackendFailureError(data, context = {}) {
-  const endpoint = String((context && context.endpoint) || API_BASE_URL || 'backend endpoint');
-  const resource = String((context && context.resource) || (data && data.resource) || '').trim();
-  const action = String((context && context.action) || (data && data.action) || '').trim();
-  const status = Number((context && context.status) || (data && data.status) || 0);
-  const errorCode = String((data && (data.error_code || data.code)) || '').trim();
-  const backendMessage = String((data && (data.error || data.message)) || 'Backend request failed.').trim();
-
-  const details = [
-    status ? `Status: ${status}.` : '',
-    resource || action ? `Request: resource=${resource || '-'} action=${action || '-'}.` : '',
-    errorCode ? `Code: ${errorCode}.` : ''
-  ].filter(Boolean).join(' ');
-
-  return new Error(
-    `${backendMessage}${details ? ` ${details}` : ''}${endpoint ? ` Endpoint: ${endpoint}.` : ''}`
-  );
-}
-
-function buildHttpResponseError(response, data, endpoint, context = {}) {
-  const status = Number(response?.status || 0);
-  const statusText = String(response?.statusText || '').trim();
-  const endpointLabel = String(endpoint || API_BASE_URL || 'backend endpoint');
-  const backendMessage = String(data?.error || data?.message || '').trim();
-  const resource = String(context?.resource || data?.resource || '').trim();
-  const action = String(context?.action || data?.action || '').trim();
-  const sample = String(
-    data?.upstreamBodySample ||
-      data?.sample ||
-      data?.raw ||
-      ''
-  ).trim();
-
-  if (status === 404) {
-    const localProxyEndpoint = resolveApiEndpoint('/api/proxy');
-    const isLocalProxy = endpointLabel === localProxyEndpoint;
-    const upstreamStatus = Number(data?.upstreamStatus || 0);
-
-    if (isLocalProxy && !upstreamStatus) {
-      const err = new Error(
-        `HTTP 404 from ${endpointLabel}. Local /api/proxy route is missing. ` +
-        'Deploy api/proxy.js (Vercel function) or set API_BASE_URL to a reachable backend endpoint.'
-      );
-      err.code = 'MISSING_PROXY_ROUTE';
-      return err;
-    }
-
-    if (upstreamStatus === 404) {
-      const err = new Error(
-        `HTTP 404 from ${endpointLabel}. Proxy route exists, but upstream Apps Script returned 404. ` +
-        'Check APPS_SCRIPT_WEBAPP_URL and Apps Script deployment path.'
-      );
-      err.code = 'UPSTREAM_404';
-      return err;
-    }
-
-    const err = new Error(
-      `HTTP 404 from ${endpointLabel}. Login/auth routes were not found on the configured backend. ` +
-      'Verify API_BASE_URL points to a backend/proxy that implements auth.'
-    );
-    err.code = 'AUTH_ROUTE_404';
-    return err;
-  }
-
-  const details = [
-    `HTTP ${status || 'error'}${statusText ? ` ${statusText}` : ''} from ${endpointLabel}.`,
-    resource || action ? `Request: resource=${resource || '-'} action=${action || '-'}.` : '',
-    data?.upstreamStatus ? `Upstream status: ${data.upstreamStatus}.` : '',
-    backendMessage ? `Backend message: ${backendMessage}.` : '',
-    data?.details ? `Details: ${String(data.details).slice(0, 500)}.` : '',
-    sample ? `Upstream sample: ${sample.slice(0, 500)}` : ''
-  ]
-    .filter(Boolean)
-    .join(' ');
-  if (details) return new Error(details);
-
-  return new Error(
-    `HTTP ${status || 'error'}${statusText ? ` ${statusText}` : ''} from ${endpointLabel}.`
   );
 }

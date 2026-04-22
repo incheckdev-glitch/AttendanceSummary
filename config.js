@@ -55,11 +55,6 @@ function resolveApiEndpoint(endpoint = '') {
   }
 }
 
-const rawApiBaseUrl =
-  runtimeConfig.API_BASE_URL ||
-  runtimeConfig.PROXY_API_BASE_URL ||
-  runtimeConfig.BACKEND_API_BASE_URL ||
-  '';
 const SUPABASE_URL =
   runtimeConfig.SUPABASE_URL ||
   runtimeConfig.NEXT_PUBLIC_SUPABASE_URL ||
@@ -71,33 +66,15 @@ const SUPABASE_ANON_KEY =
 window.SUPABASE_URL = String(SUPABASE_URL || '').trim();
 window.SUPABASE_ANON_KEY = String(SUPABASE_ANON_KEY || '').trim();
 
-// Legacy backend proxy is deprecated. Keep API_BASE_URL only for backwards-compatible diagnostics.
-window.API_BASE_URL = normalizeApiBaseUrl(rawApiBaseUrl) || '';
-const API_BASE_URL = window.API_BASE_URL;
-
-const RESOLVED_API_ENDPOINT = resolveApiEndpoint(API_BASE_URL);
-const LOCAL_PROXY_ENDPOINT = new URL('/api/proxy', window.location.origin);
-const resolvedApiUrl = RESOLVED_API_ENDPOINT ? new URL(RESOLVED_API_ENDPOINT, window.location.origin) : null;
-const normalizedResolvedPathname = resolvedApiUrl
-  ? normalizeEndpointPathname(resolvedApiUrl.pathname)
-  : '';
-const localProxyPathname = normalizeEndpointPathname(LOCAL_PROXY_ENDPOINT.pathname);
-const isProxyPath = Boolean(normalizedResolvedPathname) && normalizedResolvedPathname === localProxyPathname;
-const isSameOriginWithLocalProxy =
-  !!resolvedApiUrl &&
-  resolvedApiUrl.origin === LOCAL_PROXY_ENDPOINT.origin &&
-  isProxyPath;
-const usingProxy = isProxyPath;
-const notificationHubEndpoint = RESOLVED_API_ENDPOINT;
-
 window.resolveApiEndpoint = resolveApiEndpoint;
 window.API_RUNTIME_DIAGNOSTICS = Object.freeze({
-  apiBaseUrl: API_BASE_URL,
-  resolvedEndpoint: RESOLVED_API_ENDPOINT,
-  notificationHubEndpoint,
-  isProxy: usingProxy,
-  isSameOriginWithLocalProxy,
-  isMalformed: isLikelyMalformedApiBaseUrl(rawApiBaseUrl)
+  apiBaseUrl: '',
+  resolvedEndpoint: '',
+  notificationHubEndpoint: '',
+  isProxy: false,
+  isSameOriginWithLocalProxy: false,
+  isMalformed: false,
+  mode: 'supabase-only'
 });
 window.BACKEND_ENDPOINTS = Object.freeze({
   proxyBaseUrl: ''

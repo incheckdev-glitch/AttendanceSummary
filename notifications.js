@@ -470,26 +470,7 @@ const Notifications = {
   renderDebugInfo() {
     const box = document.getElementById('notificationsDebugBox');
     if (!box) return;
-    const endpointDiagnostics =
-      typeof Api?.getEndpointDiagnostics === 'function' ? Api.getEndpointDiagnostics() : null;
-    const diagnosticsMode = String(endpointDiagnostics?.mode || '').trim();
-    const isSupabaseOnly = diagnosticsMode === 'supabase-only' || endpointDiagnostics?.configured === false;
-    if (isSupabaseOnly) {
-      box.textContent = '';
-      box.style.display = 'none';
-      return;
-    }
     box.style.display = '';
-    const resolvedEndpoint = String(
-      endpointDiagnostics?.notificationEndpoint ||
-      window.API_RUNTIME_DIAGNOSTICS?.notificationHubEndpoint ||
-      window.API_RUNTIME_DIAGNOSTICS?.resolvedEndpoint ||
-      ''
-    ).trim();
-    const isProxy =
-      endpointDiagnostics?.isProxy !== undefined
-        ? Boolean(endpointDiagnostics.isProxy)
-        : Boolean(window.API_RUNTIME_DIAGNOSTICS?.isProxy);
     const rawRows = Array.isArray(this.state.rawRows) ? this.state.rawRows : [];
     const normalizedItems = Array.isArray(this.state.items) ? this.state.items : [];
     const mode = this.state.filters.mode || 'all';
@@ -497,8 +478,7 @@ const Notifications = {
     const titleSource = normalizedItems.length ? normalizedItems : rawRows;
     const sample = titleSource.slice(0, 3).map(item => this.getTitleFromAny(item));
     box.textContent = [
-      `Resolved endpoint: ${resolvedEndpoint || '—'}`,
-      `Is proxy: ${isProxy ? 'yes' : 'no'}`,
+      'Mode: supabase-only',
       `Raw rows: ${rawRows.length}`,
       `Normalized items: ${normalizedItems.length}`,
       `Mode: ${mode}`,
