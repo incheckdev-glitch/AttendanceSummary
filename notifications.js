@@ -197,6 +197,7 @@ const Notifications = {
     }
     const messageFromError = error => String(error?.message || error || '').toLowerCase();
     const isNotificationPermissionError = error => {
+      if (typeof isPermissionError === 'function' && isPermissionError(error)) return true;
       const message = messageFromError(error);
       return (
         (message.includes('forbidden') || message.includes('permission')) &&
@@ -231,6 +232,7 @@ const Notifications = {
       return this.state.unreadCount;
     } catch (error) {
       if (isNotificationPermissionError(error)) {
+        console.log('[auth-check] permission error preserved session', error?.message);
         console.warn('Notifications unread count is not permitted for this role; continuing without unread count.', error);
         this.renderBell();
         return this.state.unreadCount;
@@ -265,8 +267,14 @@ const Notifications = {
       const rows = this.extractRows(response).map(item => this.normalize(item));
       this.state.previewItems = rows.slice(0, 10);
     } catch (error) {
-      console.warn('Unable to load notification preview', error);
-      this.state.previewItems = [];
+      if (typeof isPermissionError === 'function' && isPermissionError(error)) {
+        console.log('[auth-check] permission error preserved session', error?.message);
+        console.warn('Notification preview is not permitted for this role; keeping session active.', error);
+        this.state.previewItems = [];
+      } else {
+        console.warn('Unable to load notification preview', error);
+        this.state.previewItems = [];
+      }
     } finally {
       this.state.previewLoading = false;
       this.renderPreview();
@@ -316,11 +324,19 @@ const Notifications = {
         this.state.rawRows = rows.slice();
       }
     } catch (error) {
-      console.warn('Unable to load notifications hub', error);
-      this.state.items = [];
-      this.state.rawResponse = null;
-      this.state.rawRows = [];
-      UI.toast('Unable to load notifications right now.');
+      if (typeof isPermissionError === 'function' && isPermissionError(error)) {
+        console.log('[auth-check] permission error preserved session', error?.message);
+        console.warn('Unable to load notifications hub for this role; keeping session active.', error);
+        this.state.items = [];
+        this.state.rawResponse = null;
+        this.state.rawRows = [];
+      } else {
+        console.warn('Unable to load notifications hub', error);
+        this.state.items = [];
+        this.state.rawResponse = null;
+        this.state.rawRows = [];
+        UI.toast('Unable to load notifications right now.');
+      }
     } finally {
       this.state.loading = false;
       this.renderHub();

@@ -277,5 +277,18 @@ function isAuthError(error) {
   ].some(pattern => pattern.test(message));
 }
 
+function isPermissionError(error) {
+  const message = String(error?.message || '').trim().toLowerCase();
+  if (!message) return false;
+  return [
+    /\bforbidden\b/,
+    /permission\s+denied/,
+    /insufficient\s+privileges?/,
+    /not\s+allowed/,
+    /access\s+denied/
+  ].some(pattern => pattern.test(message));
+}
+
 window.Session = Session;
 window.isAuthError = isAuthError;
+window.isPermissionError = isPermissionError;

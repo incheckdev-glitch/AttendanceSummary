@@ -2131,6 +2131,7 @@ function setActiveView(view) {
   if (E.leadsFiltersPanel) E.leadsFiltersPanel.style.display = view === 'leads' ? '' : 'none';
   if (E.dealsFiltersPanel) E.dealsFiltersPanel.style.display = view === 'deals' ? '' : 'none';
   const isForbiddenError = error => {
+    if (typeof isPermissionError === 'function') return isPermissionError(error);
     const message = String(error?.message || error || '').toLowerCase();
     return message.includes('forbidden') || message.includes('permission denied');
   };
@@ -2140,6 +2141,7 @@ function setActiveView(view) {
       if (maybePromise && typeof maybePromise.then === 'function') {
         maybePromise.catch(error => {
           if (isForbiddenError(error)) {
+            console.log('[auth-check] permission error preserved session', error?.message);
             console.warn(`[setActiveView] ${label} loader forbidden for current role; keeping session active.`, error);
             return;
           }
@@ -2149,6 +2151,7 @@ function setActiveView(view) {
       }
     } catch (error) {
       if (isForbiddenError(error)) {
+        console.log('[auth-check] permission error preserved session', error?.message);
         console.warn(`[setActiveView] ${label} loader forbidden for current role; keeping session active.`, error);
         return;
       }
@@ -2713,6 +2716,9 @@ function openIssueFromLink() {
 }
 
 function isPermissionError(error) {
+  if (typeof window.isPermissionError === 'function') {
+    return window.isPermissionError(error);
+  }
   const message = String(error?.message || '').trim().toLowerCase();
   return (
     message.includes('forbidden') ||
