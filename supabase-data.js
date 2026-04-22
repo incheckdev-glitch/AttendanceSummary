@@ -70,6 +70,24 @@
     'resource',
     'action'
   ]);
+  const ROLE_PERMISSION_COLUMNS = new Set([
+    'permission_id',
+    'role_key',
+    'resource',
+    'action',
+    'is_allowed',
+    'is_active',
+    'allowed_roles'
+  ]);
+  const ROLE_PERMISSION_LEGACY_FIELDS = new Set([
+    'authToken',
+    'backendToken',
+    'backendUrl',
+    'sheetName',
+    'tabName',
+    'permission',
+    'description'
+  ]);
   const LEAD_COLUMNS = new Set([
     'lead_id',
     'full_name',
@@ -696,6 +714,27 @@
     LEADS_DEALS_LEGACY_FIELDS.forEach(key => {
       delete sanitized[key];
     });
+    return sanitized;
+  }
+
+  function sanitizeRolePermissionRecord(record = {}) {
+    const mapped = compactObject({
+      permission_id: firstDefined(record, ['permission_id', 'permissionId', 'id']),
+      role_key: firstDefined(record, ['role_key', 'roleKey']),
+      resource: firstDefined(record, ['resource']),
+      action: firstDefined(record, ['action']),
+      is_allowed: toDbBoolean(firstDefined(record, ['is_allowed', 'isAllowed'])),
+      is_active: toDbBoolean(firstDefined(record, ['is_active', 'isActive'])),
+      allowed_roles: firstDefined(record, ['allowed_roles', 'allowedRoles'])
+    });
+
+    const sanitized = {};
+    Object.entries(mapped).forEach(([key, value]) => {
+      if (!ROLE_PERMISSION_COLUMNS.has(key)) return;
+      if (value === undefined || value === null) return;
+      sanitized[key] = value;
+    });
+    ROLE_PERMISSION_LEGACY_FIELDS.forEach(key => delete sanitized[key]);
     return sanitized;
   }
 
@@ -1606,6 +1645,8 @@
           ? toTicketPublicRecord(stripTicketInternalFields(record), { includeTicketId: true, userId: currentUserId })
           : resource === 'events'
             ? sanitizeEventRecord(record, { includeCreatedBy: true, userId: currentUserId })
+            : resource === 'role_permissions'
+              ? sanitizeRolePermissionRecord(record)
             : ['leads', 'deals'].includes(resource)
               ? sanitizeLeadsOrDealsRecord(resource, record, { includeCreatedBy: true, userId: currentUserId })
             : resource === 'proposal_catalog'
@@ -1704,6 +1745,8 @@
           ? toTicketPublicRecord(stripTicketInternalFields(safeUpdates), { includeTicketId: false })
           : resource === 'events'
             ? sanitizeEventRecord(safeUpdates, { includeCreatedBy: false, userId: await getCurrentUserId(client) })
+            : resource === 'role_permissions'
+              ? sanitizeRolePermissionRecord(safeUpdates)
             : ['leads', 'deals'].includes(resource)
               ? sanitizeLeadsOrDealsRecord(resource, safeUpdates, {
                 includeCreatedBy: false,

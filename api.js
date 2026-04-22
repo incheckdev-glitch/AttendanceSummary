@@ -967,8 +967,7 @@ const Api = {
   },
   async listRolePermissions(options = {}) {
     const payload = {
-      ...this.buildSummaryListPayload(options),
-      sheetName: CONFIG.ROLE_PERMISSIONS_SHEET_NAME
+      ...this.buildSummaryListPayload(options)
     };
     const response = await this.postAuthenticatedCached('role_permissions', 'list', payload, {
       forceRefresh: options?.forceRefresh === true
@@ -977,36 +976,34 @@ const Api = {
   },
   async getRolePermission(permissionId) {
     return this.postAuthenticated('role_permissions', 'get', {
-      permission_id: permissionId,
-      sheetName: CONFIG.ROLE_PERMISSIONS_SHEET_NAME
+      permission_id: permissionId
     });
   },
   async createRolePermission(payload = {}) {
     const permissionPayload = this.pickRolePermissionColumns(payload);
+    try { console.log('[RolesPermissions] final DB payload', permissionPayload); } catch {}
     return this.postAuthenticated('role_permissions', 'create', {
-      ...permissionPayload,
-      sheetName: CONFIG.ROLE_PERMISSIONS_SHEET_NAME
+      ...permissionPayload
     });
   },
   async updateRolePermission(permissionId, updates = {}) {
     const permissionUpdates = this.pickRolePermissionColumns(updates);
+    try { console.log('[RolesPermissions] final DB payload', { permission_id: permissionId, ...permissionUpdates }); } catch {}
     return this.postAuthenticated('role_permissions', 'update', {
       permission_id: permissionId,
-      ...permissionUpdates,
-      sheetName: CONFIG.ROLE_PERMISSIONS_SHEET_NAME
+      ...permissionUpdates
     });
   },
   async saveRolePermission(payload = {}) {
     const permissionPayload = this.pickRolePermissionColumns(payload);
+    try { console.log('[RolesPermissions] final DB payload', permissionPayload); } catch {}
     return this.postAuthenticated('role_permissions', 'save', {
-      ...permissionPayload,
-      sheetName: CONFIG.ROLE_PERMISSIONS_SHEET_NAME
+      ...permissionPayload
     });
   },
   async deleteRolePermission(permissionId) {
     return this.postAuthenticated('role_permissions', 'delete', {
-      permission_id: permissionId,
-      sheetName: CONFIG.ROLE_PERMISSIONS_SHEET_NAME
+      permission_id: permissionId
     });
   },
 
