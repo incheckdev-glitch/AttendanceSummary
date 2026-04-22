@@ -1,4 +1,132 @@
+const BASE_PERMISSION_MATRIX = Object.freeze({
+  tickets: Object.freeze({
+    list: ['admin', 'dev', 'viewer', 'hoo'],
+    get: ['admin', 'dev', 'viewer', 'hoo'],
+    create: ['admin', 'dev', 'viewer', 'hoo'],
+    update: ['admin', 'dev'],
+    delete: ['admin', 'dev'],
+    internal_filters: ['admin', 'dev']
+  }),
+  events: Object.freeze({
+    list: ['admin', 'dev', 'viewer', 'hoo'],
+    get: ['admin', 'dev', 'viewer', 'hoo'],
+    create: ['admin', 'dev'],
+    update: ['admin', 'dev'],
+    delete: ['admin', 'dev']
+  }),
+  csm: Object.freeze({
+    list: ['admin', 'viewer', 'hoo'],
+    get: ['admin', 'viewer', 'hoo'],
+    create: ['admin', 'hoo'],
+    update: ['admin', 'hoo'],
+    delete: ['admin', 'hoo']
+  }),
+  leads: Object.freeze({
+    list: ['admin', 'dev', 'viewer', 'hoo'],
+    get: ['admin', 'dev', 'viewer', 'hoo'],
+    create: ['admin', 'dev', 'viewer', 'hoo'],
+    update: ['admin', 'dev'],
+    delete: ['admin', 'dev'],
+    convert_to_deal: ['admin', 'dev']
+  }),
+  deals: Object.freeze({
+    list: ['admin', 'dev', 'viewer', 'hoo'],
+    get: ['admin', 'dev', 'viewer', 'hoo'],
+    create: ['admin', 'dev'],
+    update: ['admin', 'dev'],
+    delete: ['admin', 'dev']
+  }),
+  proposal_catalog: Object.freeze({
+    list: ['admin', 'dev', 'viewer', 'hoo'],
+    get: ['admin', 'dev', 'viewer', 'hoo'],
+    create: ['admin', 'dev'],
+    update: ['admin', 'dev'],
+    delete: ['admin', 'dev']
+  }),
+  proposals: Object.freeze({
+    list: ['admin', 'dev', 'viewer', 'hoo'],
+    get: ['admin', 'dev', 'viewer', 'hoo'],
+    create: ['admin', 'dev'],
+    update: ['admin', 'dev'],
+    delete: ['admin', 'dev'],
+    create_from_deal: ['admin', 'dev'],
+    generate_proposal_html: ['admin', 'dev', 'viewer', 'hoo']
+  }),
+  agreements: Object.freeze({
+    list: ['admin', 'dev', 'viewer', 'hoo'],
+    get: ['admin', 'dev', 'viewer', 'hoo'],
+    create: ['admin', 'dev'],
+    update: ['admin', 'dev'],
+    delete: ['admin', 'dev'],
+    create_from_proposal: ['admin', 'dev'],
+    generate_agreement_html: ['admin', 'dev', 'viewer', 'hoo'],
+    send_to_operations: ['admin', 'hoo'],
+    request_incheck_lite: ['admin', 'hoo'],
+    request_incheck_full: ['admin', 'hoo'],
+    assign_csm: ['admin', 'hoo'],
+    update_onboarding_status: ['admin', 'hoo']
+  }),
+  operations_onboarding: Object.freeze({
+    list: ['admin', 'dev', 'viewer', 'hoo'],
+    get: ['admin', 'dev', 'viewer', 'hoo'],
+    create: ['admin', 'hoo'],
+    update: ['admin', 'hoo'],
+    delete: ['admin']
+  }),
+  technical_admin_requests: Object.freeze({
+    list: ['admin', 'dev', 'hoo'],
+    get: ['admin', 'dev', 'hoo'],
+    create: ['admin', 'dev', 'hoo'],
+    update_status: ['admin', 'dev', 'hoo']
+  }),
+  invoices: Object.freeze({
+    list: ['admin', 'dev', 'viewer', 'hoo'],
+    get: ['admin', 'dev', 'viewer', 'hoo'],
+    create: ['admin', 'dev'],
+    update: ['admin', 'dev'],
+    delete: ['admin', 'dev'],
+    create_from_agreement: ['admin', 'dev'],
+    generate_invoice_html: ['admin', 'dev', 'viewer', 'hoo']
+  }),
+  receipts: Object.freeze({
+    list: ['admin', 'dev', 'viewer', 'hoo'],
+    get: ['admin', 'dev', 'viewer', 'hoo'],
+    create: ['admin', 'dev'],
+    update: ['admin', 'dev'],
+    delete: ['admin', 'dev'],
+    create_from_invoice: ['admin', 'dev'],
+    generate_receipt_html: ['admin', 'dev', 'viewer', 'hoo']
+  }),
+  clients: Object.freeze({
+    list: ['admin', 'dev', 'viewer', 'hoo'],
+    get: ['admin', 'dev', 'viewer', 'hoo'],
+    create: ['admin', 'dev', 'hoo'],
+    update: ['admin', 'dev', 'hoo'],
+    delete: ['admin', 'dev']
+  }),
+  analytics: Object.freeze({ list: ['admin', 'dev', 'viewer', 'hoo'] }),
+  insights: Object.freeze({ list: ['admin', 'dev', 'viewer', 'hoo'] }),
+  notifications: Object.freeze({ list: ['admin', 'dev', 'viewer', 'hoo'] }),
+  users: Object.freeze({ list: ['admin'], get: ['admin'], create: ['admin'], update: ['admin'], delete: ['admin'], activate: ['admin'], deactivate: ['admin'] }),
+  roles: Object.freeze({ list: ['admin'], get: ['admin'], create: ['admin'], update: ['admin'], delete: ['admin'] }),
+  role_permissions: Object.freeze({ list: ['admin'], get: ['admin'], create: ['admin'], update: ['admin'], delete: ['admin'] }),
+  workflow: Object.freeze({
+    list: ['admin', 'dev'],
+    get: ['admin', 'dev'],
+    save: ['admin', 'dev'],
+    delete: ['admin'],
+    request_approval: ['admin', 'dev', 'hoo'],
+    approve: ['admin', 'hoo'],
+    reject: ['admin', 'hoo'],
+    list_pending_approvals: ['admin', 'dev', 'hoo'],
+    list_audit: ['admin', 'dev']
+  }),
+  planner: Object.freeze({ manage: ['admin', 'dev'] }),
+  freeze_windows: Object.freeze({ manage: ['admin', 'dev'] })
+});
+
 const Permissions = {
+  baseMatrix: BASE_PERMISSION_MATRIX,
   tabResourceMap: {
     issues: null,
     calendar: 'events',
@@ -205,12 +333,36 @@ const Permissions = {
       return false;
     }
 
-    if (role === ROLES.ADMIN && !this.state.loaded) return true;
-    const allowed = this.state.matrix.get(`${normalizedResource}:${normalizedAction}`);
-    if (Array.isArray(allowed)) return allowed.includes(role);
-    if (role === ROLES.ADMIN) return true;
+    const fromBackend = this.state.matrix.get(`${normalizedResource}:${normalizedAction}`);
+    if (Array.isArray(fromBackend)) return fromBackend.includes(role);
+    const allowedByBase = this.baseMatrix?.[normalizedResource]?.[normalizedAction];
+    if (Array.isArray(allowedByBase)) return allowedByBase.includes(role);
     if (typeof options.fallback === 'boolean') return options.fallback;
-    return false;
+    return role === ROLES.ADMIN;
+  },
+  canPerformAction(resource, action, role = Session.role(), options = {}) {
+    const currentRole = this.normalizeRole(role);
+    const normalizedResource = String(resource || '').trim().toLowerCase();
+    const normalizedAction = String(action || '').trim().toLowerCase();
+    if (!currentRole || !normalizedResource || !normalizedAction) return false;
+    const fromBackend = this.state.matrix.get(`${normalizedResource}:${normalizedAction}`);
+    if (Array.isArray(fromBackend)) return fromBackend.includes(currentRole);
+    const allowedByBase = this.baseMatrix?.[normalizedResource]?.[normalizedAction];
+    if (Array.isArray(allowedByBase)) return allowedByBase.includes(currentRole);
+    if (typeof options.fallback === 'boolean') return options.fallback;
+    return currentRole === ROLES.ADMIN;
+  },
+  canView(resource, role = Session.role()) {
+    return this.canPerformAction(resource, 'list', role) || this.canPerformAction(resource, 'get', role);
+  },
+  canCreate(resource, role = Session.role()) {
+    return this.canPerformAction(resource, 'create', role) || this.canPerformAction(resource, 'save', role);
+  },
+  canEdit(resource, role = Session.role()) {
+    return this.canPerformAction(resource, 'update', role) || this.canPerformAction(resource, 'save', role);
+  },
+  canDelete(resource, role = Session.role()) {
+    return this.canPerformAction(resource, 'delete', role);
   },
   isAdmin() {
     return this.normalizeRole(Session.role()) === ROLES.ADMIN;
@@ -228,201 +380,184 @@ const Permissions = {
     return this.isAdmin() || this.isDev();
   },
   canCreateTicket() {
-    return Session.isAuthenticated();
+    return this.canCreate('tickets');
   },
   canCreateLead() {
-    return Session.isAuthenticated();
+    return this.canCreate('leads');
   },
   canViewCsmActivity() {
-    return this.can('csm', 'list', { fallback: Session.isAuthenticated() && !this.isDev() });
+    return this.canView('csm');
   },
   canCreateCsmActivity() {
-    return this.can('csm', 'create', {
-      fallback: Session.isAuthenticated() && (this.isAdmin() || this.isViewer() || this.isHoo())
-    });
+    return this.canCreate('csm');
   },
   canUpdateCsmActivity() {
-    return this.can('csm', 'update', { fallback: this.isAdmin() || this.isHoo() });
+    return this.canEdit('csm');
   },
   canDeleteCsmActivity() {
-    return this.can('csm', 'delete', { fallback: this.isAdmin() || this.isHoo() });
+    return this.canDelete('csm');
   },
   canManageCsmActivity() {
     return this.canUpdateCsmActivity() || this.canDeleteCsmActivity();
   },
   canEditTicket() {
-    return this.can('tickets', 'update', { fallback: this.isAdminLike() });
+    return this.canEdit('tickets');
   },
   canUpdateLead() {
-    return this.can('leads', 'update', { fallback: this.isAdminLike() });
+    return this.canEdit('leads');
   },
   canDeleteLead() {
-    return this.can('leads', 'delete', { fallback: this.isAdminLike() });
+    return this.canDelete('leads');
   },
   canEditDeleteLead() {
     return this.canUpdateLead() || this.canDeleteLead();
   },
   canManageEvents() {
     return (
-      this.can('events', 'create', { fallback: false }) ||
-      this.can('events', 'update', { fallback: false }) ||
-      this.can('events', 'delete', { fallback: false }) ||
-      this.isAdminLike()
+      this.canCreate('events') ||
+      this.canEdit('events') ||
+      this.canDelete('events')
     );
   },
   canManageUsers() {
-    return this.can('users', 'list', { fallback: this.isAdmin() });
+    return this.canView('users');
   },
   canManageRolesPermissions() {
     return (
-      this.can('roles', 'list', { fallback: this.isAdmin() }) ||
-      this.can('role_permissions', 'list', { fallback: this.isAdmin() })
+      this.canView('roles') ||
+      this.canView('role_permissions')
     );
   },
   canManageWorkflow() {
-    return this.can('workflow', 'list', { fallback: this.isAdminLike() });
+    return this.canView('workflow');
   },
   canEditRolesPermissions() {
     return (
-      this.can('roles', 'update', { fallback: this.isAdmin() }) ||
-      this.can('role_permissions', 'update', { fallback: this.isAdmin() })
+      this.canEdit('roles') ||
+      this.canEdit('role_permissions')
     );
   },
   canCreateProposal() {
-    return this.can('proposals', 'create', { fallback: Session.isAuthenticated() });
+    return this.canCreate('proposals');
   },
   canUpdateProposal() {
-    return this.can('proposals', 'update', {
-      fallback: this.can('proposals', 'save', { fallback: this.canCreateProposal() })
-    });
+    return this.canEdit('proposals');
   },
   canDeleteProposal() {
-    return this.can('proposals', 'delete', { fallback: this.isAdminLike() });
+    return this.canDelete('proposals');
   },
   canCreateProposalFromDeal() {
-    return this.can('proposals', 'create_from_deal', { fallback: this.canCreateProposal() });
+    return this.canPerformAction('proposals', 'create_from_deal');
   },
   canPreviewProposal() {
-    return (
-      this.can('proposals', 'get', { fallback: false }) ||
-      this.can('proposals', 'list', { fallback: Session.isAuthenticated() })
-    );
+    return this.canView('proposals');
   },
   canGenerateProposalHtml() {
     return this.canPreviewProposal();
   },
   canCreateAgreement() {
-    return this.can('agreements', 'create', { fallback: this.isAdminLike() });
+    return this.canCreate('agreements');
   },
   canUpdateAgreement() {
-    return this.can('agreements', 'update', { fallback: this.isAdminLike() });
+    return this.canEdit('agreements');
   },
   canDeleteAgreement() {
-    return this.can('agreements', 'delete', { fallback: this.isAdminLike() });
+    return this.canDelete('agreements');
   },
   canGenerateAgreementHtml() {
-    return this.can('agreements', 'generate_agreement_html', { fallback: Session.isAuthenticated() });
+    return this.canPerformAction('agreements', 'generate_agreement_html');
   },
   canCreateAgreementFromProposal() {
-    return this.can('agreements', 'create_from_proposal', { fallback: this.isAdminLike() });
+    return this.canPerformAction('agreements', 'create_from_proposal');
   },
   canViewOperationsOnboarding() {
-    return this.can('operations_onboarding', 'list', { fallback: Session.isAuthenticated() });
+    return this.canView('operations_onboarding');
   },
   canViewTechnicalAdmin() {
-    return this.can('technical_admin_requests', 'list', { fallback: this.canViewOperationsOnboarding() });
+    return this.canView('technical_admin_requests');
+  },
+  canRequestTechnicalAdmin() {
+    return this.canCreate('technical_admin_requests');
   },
   canManageTechnicalAdmin() {
-    return this.can('technical_admin_requests', 'update_status', { fallback: this.canManageOperationsOnboarding() });
+    return this.canPerformAction('technical_admin_requests', 'update_status');
   },
   canManageOperationsOnboarding() {
-    return this.isAdmin() || this.isDev() || this.isHoo();
+    return this.canEdit('operations_onboarding');
   },
   canSendAgreementToOperations() {
-    return this.can('agreements', 'send_to_operations', { fallback: this.canManageOperationsOnboarding() });
+    return this.canPerformAction('agreements', 'send_to_operations');
   },
   canRequestAgreementIncheckLite() {
-    return this.can('agreements', 'request_incheck_lite', { fallback: this.canManageOperationsOnboarding() });
+    return this.canPerformAction('agreements', 'request_incheck_lite');
   },
   canRequestAgreementIncheckFull() {
-    return this.can('agreements', 'request_incheck_full', { fallback: this.canManageOperationsOnboarding() });
+    return this.canPerformAction('agreements', 'request_incheck_full');
   },
   canAssignAgreementCsm() {
-    return this.can('agreements', 'assign_csm', { fallback: this.canManageOperationsOnboarding() });
+    return this.canPerformAction('agreements', 'assign_csm');
   },
   canUpdateAgreementOnboardingStatus() {
-    return this.can('agreements', 'update_onboarding_status', { fallback: this.canManageOperationsOnboarding() });
+    return this.canPerformAction('agreements', 'update_onboarding_status');
   },
 
 
   canViewInvoices() {
-    return this.can('invoices', 'list', { fallback: Session.isAuthenticated() });
+    return this.canView('invoices');
   },
   canCreateInvoice() {
-    return (
-      this.can('invoices', 'create', { fallback: Session.isAuthenticated() }) ||
-      this.can('invoices', 'save', { fallback: Session.isAuthenticated() })
-    );
+    return this.canCreate('invoices');
   },
   canUpdateInvoice() {
-    return this.can('invoices', 'update', { fallback: this.isAdminLike() });
+    return this.canEdit('invoices');
   },
   canDeleteInvoice() {
-    return this.can('invoices', 'delete', { fallback: this.isAdminLike() });
+    return this.canDelete('invoices');
   },
   canCreateInvoiceFromAgreement() {
-    return this.can('invoices', 'create_from_agreement', { fallback: this.canCreateInvoice() });
+    return this.canPerformAction('invoices', 'create_from_agreement');
   },
   canPreviewInvoice() {
-    return (
-      this.can('invoices', 'generate_invoice_html', { fallback: Session.isAuthenticated() }) ||
-      this.can('invoices', 'get', { fallback: Session.isAuthenticated() })
-    );
+    return this.canPerformAction('invoices', 'generate_invoice_html') || this.canView('invoices');
   },
   canViewReceipts() {
-    return this.can('receipts', 'list', { fallback: Session.isAuthenticated() });
+    return this.canView('receipts');
   },
   canCreateReceipt() {
-    return (
-      this.can('receipts', 'create', { fallback: this.isAdminLike() }) ||
-      this.can('receipts', 'save', { fallback: this.isAdminLike() })
-    );
+    return this.canCreate('receipts');
   },
   canUpdateReceipt() {
-    return this.can('receipts', 'update', { fallback: this.isAdminLike() });
+    return this.canEdit('receipts');
   },
   canDeleteReceipt() {
-    return this.can('receipts', 'delete', { fallback: this.isAdminLike() });
+    return this.canDelete('receipts');
   },
   canCreateReceiptFromInvoice() {
-    return this.can('receipts', 'create_from_invoice', { fallback: this.canCreateReceipt() });
+    return this.canPerformAction('receipts', 'create_from_invoice');
   },
   canPreviewReceipt() {
-    return (
-      this.can('receipts', 'generate_receipt_html', { fallback: Session.isAuthenticated() }) ||
-      this.can('receipts', 'get', { fallback: Session.isAuthenticated() })
-    );
+    return this.canPerformAction('receipts', 'generate_receipt_html') || this.canView('receipts');
   },
   canCreateProposalCatalogItem() {
-    return this.can('proposal_catalog', 'create', { fallback: Session.isAuthenticated() });
+    return this.canCreate('proposal_catalog');
   },
   canUpdateProposalCatalogItem() {
-    return this.can('proposal_catalog', 'update', { fallback: this.isAdminLike() });
+    return this.canEdit('proposal_catalog');
   },
   canDeleteProposalCatalogItem() {
-    return this.can('proposal_catalog', 'delete', { fallback: this.isAdminLike() });
+    return this.canDelete('proposal_catalog');
   },
   canViewClients() {
-    return this.can('clients', 'list', { fallback: this.isAdminLike() });
+    return this.canView('clients');
   },
   canChangePlanner() {
-    return this.can('planner', 'manage', { fallback: this.isAdminLike() });
+    return this.canPerformAction('planner', 'manage');
   },
   canManageFreezeWindows() {
-    return this.can('freeze_windows', 'manage', { fallback: this.isAdminLike() });
+    return this.canPerformAction('freeze_windows', 'manage');
   },
   canUseInternalIssueFilters() {
-    return this.can('tickets', 'internal_filters', { fallback: this.isAdminLike() });
+    return this.canPerformAction('tickets', 'internal_filters');
   },
   canAccessTab(viewKey) {
     const key = String(viewKey || '').trim();
@@ -432,7 +567,7 @@ const Permissions = {
     if (key === 'technicalAdmin') return this.canViewTechnicalAdmin();
     const resource = this.tabResourceMap[key];
     if (!resource) return Session.isAuthenticated();
-    return this.can(resource, 'list', { fallback: Session.isAuthenticated() });
+    return this.canView(resource);
   }
 };
 

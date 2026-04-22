@@ -1166,7 +1166,7 @@ const Agreements = {
         <td><div style="display:flex;gap:6px;flex-wrap:wrap;">
         <button class="btn ghost sm" type="button" data-agreement-view="${id}">View</button>
         ${Permissions.canUpdateAgreement() ? `<button class=\"btn ghost sm\" type=\"button\" data-agreement-edit=\"${id}\">Edit</button>` : ''}
-        ${Permissions.canViewTechnicalAdmin() ? `<button class=\"btn ghost sm\" type=\"button\" data-agreement-request-technical=\"${id}\">Request Technical</button>` : ''}
+        ${Permissions.canRequestTechnicalAdmin() ? `<button class=\"btn ghost sm\" type=\"button\" data-agreement-request-technical=\"${id}\">Request Technical</button>` : ''}
         ${Permissions.canGenerateAgreementHtml() ? `<button class=\"btn ghost sm\" type=\"button\" data-agreement-preview=\"${id}\">View Agreement</button>` : ''}
         ${this.isSignedStatus(row.status) && Permissions.canCreateInvoiceFromAgreement() ? `<button class=\"btn ghost sm\" type=\"button\" data-agreement-create-invoice=\"${id}\">Create Invoice</button>` : ''}
         ${Permissions.canDeleteAgreement() ? `<button class=\"btn ghost sm\" type=\"button\" data-agreement-delete=\"${id}\">Delete</button>` : ''}
@@ -1718,7 +1718,7 @@ const Agreements = {
       }
       const requestTechnicalId = trigger.getAttribute('data-agreement-request-technical');
       if (requestTechnicalId) {
-        if (!Permissions.canViewTechnicalAdmin()) return UI.toast('You do not have permission to request Technical Admin.');
+        if (!Permissions.canRequestTechnicalAdmin()) return UI.toast('You do not have permission to request Technical Admin.');
         return this.runRowAction(`request-technical:${requestTechnicalId}`, trigger, () => this.requestTechnicalAdminFlow(requestTechnicalId));
       }
       const previewId = trigger.getAttribute('data-agreement-preview');
