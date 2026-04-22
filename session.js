@@ -385,7 +385,7 @@ const Session = {
     return this.isAuthenticated();
   },
 
-  logout({ preserveCache = true } = {}) {
+  logout({ preserveCache = false } = {}) {
     this.clearClientSession({ clearRoleCache: !preserveCache });
     SupabaseClient.getClient().auth.signOut().catch(error => console.warn('Supabase signOut failed', error));
   },

@@ -294,6 +294,12 @@ const Api = {
   isMigratedResource(resource = '') {
     return Boolean(window.SupabaseData?.isMigratedResource?.(resource));
   },
+  requiresLegacyAuth(resource = '') {
+    const normalized = String(resource || '').trim();
+    if (!normalized) return false;
+    if (normalized === 'auth') return false;
+    return !this.isMigratedResource(normalized);
+  },
   async post(resource, action, payload = {}) {
     const safePayload = payload && typeof payload === 'object' ? payload : {};
     return apiPost({
@@ -304,7 +310,8 @@ const Api = {
   },
   async postAuthenticated(resource, action, payload = {}, options = {}) {
     const requireAuth = options?.requireAuth !== false;
-    if (this.isMigratedResource(resource)) {
+    const legacyProtected = this.requiresLegacyAuth(resource);
+    if (!legacyProtected) {
       return this.post(resource, action, { ...payload });
     }
 
@@ -313,7 +320,7 @@ const Api = {
         ? Session.getAuthToken()
         : ''
     );
-    if (requireAuth && typeof Session?.ensureLegacySession === 'function') {
+    if (requireAuth && legacyProtected && typeof Session?.ensureLegacySession === 'function') {
       await Session.ensureLegacySession({ reason: `${resource}.${action} preflight` });
     }
     let authToken = getToken();

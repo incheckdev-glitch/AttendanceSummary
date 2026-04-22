@@ -2715,7 +2715,6 @@ async function loadIssues(force = false) {
   try {
     UI.spinner(true);
     UI.skeleton(true);
-    await Session.ensureLegacySession({ reason: 'loadIssues initial' });
     const ticketListPayload = { filters: buildTicketListFiltersPayload() };
     console.info('[loadIssues] tickets.list payload', ticketListPayload);
     const response = await Api.postAuthenticated(
@@ -4533,7 +4532,6 @@ function wireDashboardGate() {
         .catch(error => {
           console.warn('Post-login permission matrix refresh failed', error);
         });
-      await Session.ensureLegacySession({ reason: 'login success bridge' });
       Promise.all([loadIssues(false), loadEvents(false)]).catch(error => {
         console.warn('Post-login data refresh failed', error);
         UI.toast('Logged in, but latest dashboard data could not be refreshed.');
@@ -6043,15 +6041,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   if (isAuthenticated && Session.isAuthenticated()) {
-    try {
-      await Session.ensureLegacySession({ reason: 'startup restore' });
-    } catch (legacySessionError) {
-      console.warn('[startup/auth] failed to establish legacy ticket session during restore', {
-        message: legacySessionError?.message || String(legacySessionError)
-      });
-      await handleExpiredSession('Unable to restore your session. Please log in again.');
-      return;
-    }
     await Promise.all([loadIssues(false), loadEvents(false)]);
   }
 });
