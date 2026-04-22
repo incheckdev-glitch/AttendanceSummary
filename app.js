@@ -2141,7 +2141,7 @@ function setActiveView(view) {
       if (maybePromise && typeof maybePromise.then === 'function') {
         maybePromise.catch(error => {
           if (isForbiddenError(error)) {
-            console.log('[auth-check] permission error preserved session', error?.message);
+            console.log('[startup] permission error preserved session', error?.message);
             console.warn(`[setActiveView] ${label} loader forbidden for current role; keeping session active.`, error);
             return;
           }
@@ -2151,7 +2151,7 @@ function setActiveView(view) {
       }
     } catch (error) {
       if (isForbiddenError(error)) {
-        console.log('[auth-check] permission error preserved session', error?.message);
+        console.log('[startup] permission error preserved session', error?.message);
         console.warn(`[setActiveView] ${label} loader forbidden for current role; keeping session active.`, error);
         return;
       }
@@ -2716,16 +2716,22 @@ function openIssueFromLink() {
 }
 
 function isPermissionError(error) {
-  if (typeof window.isPermissionError === 'function') {
-    return window.isPermissionError(error);
-  }
+  console.log('[auth-check] isPermissionError input', error?.message);
   const message = String(error?.message || '').trim().toLowerCase();
-  return (
-    message.includes('forbidden') ||
-    message.includes('permission denied') ||
-    message.includes('insufficient privileges') ||
-    message.includes('not allowed')
-  );
+  if (!message) return false;
+  return [
+    'forbidden',
+    'not permitted',
+    'cannot list',
+    'cannot get',
+    'cannot create',
+    'cannot save',
+    'cannot update',
+    'cannot delete',
+    'cannot get_unread_count',
+    'cannot mark_read',
+    'cannot mark_all_read'
+  ].some(fragment => message.includes(fragment));
 }
 
 async function loadIssues(force = false) {

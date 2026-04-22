@@ -271,6 +271,7 @@ function isAuthError(error) {
     /invalid\s+session/,
     /expired\s+session/,
     /not\s+authenticated/,
+    /missing\s+token/,
     /missing\s+auth(\s+token)?/,
     /missing\s+session/,
     /no\s+active\s+session/
@@ -278,15 +279,22 @@ function isAuthError(error) {
 }
 
 function isPermissionError(error) {
+  console.log('[auth-check] isPermissionError input', error?.message);
   const message = String(error?.message || '').trim().toLowerCase();
   if (!message) return false;
-  return [
-    /\bforbidden\b/,
-    /permission\s+denied/,
-    /insufficient\s+privileges?/,
-    /not\s+allowed/,
-    /access\s+denied/
-  ].some(pattern => pattern.test(message));
+  return (
+    message.includes('forbidden') ||
+    message.includes('not permitted') ||
+    message.includes('cannot list') ||
+    message.includes('cannot get') ||
+    message.includes('cannot create') ||
+    message.includes('cannot save') ||
+    message.includes('cannot update') ||
+    message.includes('cannot delete') ||
+    message.includes('cannot get_unread_count') ||
+    message.includes('cannot mark_read') ||
+    message.includes('cannot mark_all_read')
+  );
 }
 
 window.Session = Session;

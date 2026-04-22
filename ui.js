@@ -1032,7 +1032,7 @@ const UI = {
       if (allowed) visibleTabs.push(rule.key);
       if (!allowed && rule.viewEl?.classList.contains('active')) setActiveView('issues');
     });
-    console.info('[Tabs] final visible tabs after filtering', visibleTabs);
+    console.log('[tabs] permission-aware filtering result', visibleTabs);
     if (E.addEventBtn) E.addEventBtn.style.display = Permissions.canManageEvents() ? '' : 'none';
     if (E.freezeManageBtn) E.freezeManageBtn.style.display = canManageFreezeWindows ? '' : 'none';
     if (E.freezeManageBtnSecondary) E.freezeManageBtnSecondary.style.display = canManageFreezeWindows ? '' : 'none';

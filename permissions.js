@@ -655,6 +655,7 @@ const Permissions = {
       if (this.state.loaded) return this.hasMatrixPermission(resource, action);
       return this.canPerformAction(resource, action);
     });
+    if (this.state.loaded) return permissionAllowed;
     return roleFallbackAllowed && permissionAllowed;
   }
 };
