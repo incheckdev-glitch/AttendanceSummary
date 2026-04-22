@@ -22,10 +22,13 @@ const RolesAdmin = {
       E.rolePermissionsFiltersForm.addEventListener('input', () => {
         this.state.filters.resource = String(E.rolePermissionsSearchResource?.value || '').trim().toLowerCase();
         this.state.filters.action = String(E.rolePermissionsSearchAction?.value || '').trim().toLowerCase();
-        this.state.filters.role = String(E.rolePermissionsSearchAllowedRoles?.value || '').trim().toLowerCase();
+        this.state.filters.role = String(E.rolePermissionsSearchRole?.value || '').trim().toLowerCase();
         this.state.filters.text = String(E.rolePermissionsSearchText?.value || '').trim().toLowerCase();
         this.renderPermissionsTable();
       });
+    }
+    if (E.rolePermissionsClearFiltersBtn) {
+      E.rolePermissionsClearFiltersBtn.addEventListener('click', () => this.clearPermissionFilters());
     }
 
     if (E.rpRoleCreateForm) {
@@ -85,6 +88,11 @@ const RolesAdmin = {
         }
       });
     }
+    if (E.rolePermissionCreateAllowedRoles) {
+      E.rolePermissionCreateAllowedRoles.addEventListener('change', () => {
+        this.renderSelectedRolePreview(E.rolePermissionCreateAllowedRoles, E.rolePermissionCreateRolesPreview);
+      });
+    }
 
     if (E.tabPermissionBulkForm) {
       E.tabPermissionBulkForm.addEventListener('submit', async e => {
@@ -93,6 +101,15 @@ const RolesAdmin = {
         await this.applyBulkTabPermissions();
       });
     }
+  },
+
+  clearPermissionFilters() {
+    if (E.rolePermissionsSearchResource) E.rolePermissionsSearchResource.value = '';
+    if (E.rolePermissionsSearchAction) E.rolePermissionsSearchAction.value = '';
+    if (E.rolePermissionsSearchRole) E.rolePermissionsSearchRole.value = '';
+    if (E.rolePermissionsSearchText) E.rolePermissionsSearchText.value = '';
+    this.state.filters = { resource: '', action: '', role: '', text: '' };
+    this.renderPermissionsTable();
   },
 
   toggleRoleCreate(force) {
@@ -205,11 +222,13 @@ const RolesAdmin = {
           action,
           roleKeys: [],
           rows: [],
+          description: String(row.description || '').trim(),
           updated_at: row.updated_at || row.created_at || ''
         });
       }
       const rule = grouped.get(key);
       rule.rows.push(row);
+      if (!rule.description) rule.description = String(row.description || '').trim();
       if (this.permissionActive(row) && roleKey) {
         rule.roleKeys = [...new Set([...rule.roleKeys, roleKey])];
       }
@@ -292,6 +311,16 @@ const RolesAdmin = {
       E.rolePermissionCreateAllowedRoles.innerHTML = activeRoles
         .map(option => `<option value="${U.escapeAttr(option.key)}"${selected.has(option.key) ? ' selected' : ''}>${U.escapeHtml(option.label)}</option>`)
         .join('');
+      this.renderSelectedRolePreview(E.rolePermissionCreateAllowedRoles, E.rolePermissionCreateRolesPreview);
+    }
+
+    if (E.rolePermissionsSearchRole) {
+      const currentValue = String(E.rolePermissionsSearchRole.value || '').trim().toLowerCase();
+      E.rolePermissionsSearchRole.innerHTML = [
+        '<option value="">All roles</option>',
+        ...activeRoles.map(option => `<option value="${U.escapeAttr(option.key)}">${U.escapeHtml(option.label)}</option>`)
+      ].join('');
+      E.rolePermissionsSearchRole.value = currentValue;
     }
 
     if (E.tabPermissionRole) {
@@ -300,6 +329,12 @@ const RolesAdmin = {
         .map(option => `<option value="${U.escapeAttr(option.key)}"${selected.has(option.key) ? ' selected' : ''}>${U.escapeHtml(option.label)}</option>`)
         .join('');
     }
+  },
+
+  renderSelectedRolePreview(selectEl, targetEl) {
+    if (!targetEl) return;
+    const selected = this.readMultiSelectValues(selectEl);
+    targetEl.innerHTML = selected.length ? this.permissionChips(selected) : 'No roles selected yet.';
   },
 
   renderRolesTable(error = '') {
@@ -341,9 +376,10 @@ const RolesAdmin = {
         if (!role) return;
         const action = String(event.currentTarget.getAttribute('data-role-action') || '');
         if (action === 'manage') {
-          if (E.rolePermissionsSearchAllowedRoles) E.rolePermissionsSearchAllowedRoles.value = roleKey;
+          if (E.rolePermissionsSearchRole) E.rolePermissionsSearchRole.value = roleKey;
           this.state.filters.role = roleKey;
           this.renderPermissionsTable();
+          E.rolePermissionsView?.scrollIntoView({ behavior: 'smooth', block: 'start' });
           return;
         }
         if (action === 'edit') await this.editRole(role);
@@ -394,7 +430,7 @@ const RolesAdmin = {
       const searchable = `${rule.resource} ${rule.action} ${rule.roleKeys.join(' ')}`;
       if (resource && !rule.resource.includes(resource)) return false;
       if (action && !rule.action.includes(action)) return false;
-      if (role && !rule.roleKeys.some(roleKey => roleKey.includes(role))) return false;
+      if (role && !rule.roleKeys.includes(role)) return false;
       if (text && !searchable.includes(text)) return false;
       return true;
     });
@@ -421,6 +457,7 @@ const RolesAdmin = {
         <td><input class="input sm" data-rule-field="action" type="text" value="${U.escapeAttr(rule.action)}" disabled /></td>
         <td>
           <div data-rule-chips>${this.permissionChips(rule.roleKeys)}</div>
+          <div class="muted rp-chip-wrap" data-rule-selected style="display:none;margin-top:6px;"></div>
           <select class="select sm" data-rule-field="roles" multiple size="5" style="display:none;">${this.state.roles
             .filter(role => role?.is_active !== false)
             .map(role => {
@@ -429,6 +466,7 @@ const RolesAdmin = {
             })
             .join('')}</select>
         </td>
+        <td>${U.escapeHtml(rule.description || '—')}</td>
         <td>${U.escapeHtml(U.fmtDisplayDate(rule.updated_at))}</td>
         <td>
           <div style="display:flex;gap:6px;flex-wrap:wrap;">
@@ -454,6 +492,13 @@ const RolesAdmin = {
         if (actionName === 'duplicate') return this.duplicateRule(rule);
       });
     });
+    E.rolePermissionsTbody.querySelectorAll('[data-rule-field="roles"]').forEach(select => {
+      select.addEventListener('change', () => {
+        const row = select.closest('tr');
+        if (!row) return;
+        this.renderSelectedRolePreview(select, row.querySelector('[data-rule-selected]'));
+      });
+    });
   },
 
   toggleRuleEdit(row, editable) {
@@ -462,8 +507,11 @@ const RolesAdmin = {
     });
     const roleSelect = row.querySelector('[data-rule-field="roles"]');
     const chips = row.querySelector('[data-rule-chips]');
+    const selectedPreview = row.querySelector('[data-rule-selected]');
     if (roleSelect) roleSelect.style.display = editable ? '' : 'none';
     if (chips) chips.style.display = editable ? 'none' : '';
+    if (selectedPreview) selectedPreview.style.display = editable ? '' : 'none';
+    if (editable && roleSelect) this.renderSelectedRolePreview(roleSelect, selectedPreview);
     const editBtn = row.querySelector('[data-rule-action="edit"]');
     const saveBtn = row.querySelector('[data-rule-action="save"]');
     if (editBtn) editBtn.style.display = editable ? 'none' : '';
@@ -530,7 +578,7 @@ const RolesAdmin = {
         resource: String(row.resource || '').trim().toLowerCase(),
         action: this.canonicalAction(row.action),
         is_allowed: false,
-        is_active: false,
+        is_active: false
       })));
       UI.toast('Permission rule removed.');
       await this.refreshPermissions(true);
@@ -585,8 +633,8 @@ const RolesAdmin = {
       .map(row => {
         const payload = {
           role_key: this.roleKey(row),
-          resource: validation.resource,
-          action: validation.action,
+          resource: String(row.resource || '').trim().toLowerCase(),
+          action: this.canonicalAction(row.action),
           is_allowed: false,
           is_active: false
         };

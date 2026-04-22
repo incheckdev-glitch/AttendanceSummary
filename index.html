@@ -647,14 +647,18 @@ Sample:
           <form id="rolePermissionsFiltersForm" class="user-form-grid" style="margin-bottom:10px;">
             <input id="rolePermissionsSearchResource" class="input" type="search" placeholder="Filter resource" />
             <input id="rolePermissionsSearchAction" class="input" type="search" placeholder="Filter action" />
-            <input id="rolePermissionsSearchAllowedRoles" class="input" type="search" placeholder="Filter role" />
+            <select id="rolePermissionsSearchRole" class="select" aria-label="Filter role">
+              <option value="">All roles</option>
+            </select>
             <input id="rolePermissionsSearchText" class="input" type="search" placeholder="Quick search (resource/action/role)" />
+            <button id="rolePermissionsClearFiltersBtn" class="btn ghost" type="button">Clear Filters</button>
           </form>
           <form id="rolePermissionCreateForm" class="user-form-grid" style="margin-bottom:10px;display:none;">
             <input id="rolePermissionCreateResource" class="input" type="text" placeholder="resource *" required />
             <input id="rolePermissionCreateAction" class="input" type="text" placeholder="action *" required />
             <select id="rolePermissionCreateAllowedRoles" class="select" multiple size="5" required aria-label="Allowed roles"></select>
             <input id="rolePermissionCreateDescription" class="input" type="text" placeholder="Description (optional)" />
+            <div id="rolePermissionCreateRolesPreview" class="muted rp-chip-wrap" style="grid-column:1/-1;">No roles selected yet.</div>
             <button id="rolePermissionCreateSubmit" class="btn primary" type="submit">Create Rule</button>
           </form>
           <div id="rolePermissionsState" class="muted" style="margin-bottom:8px;">No data loaded.</div>
