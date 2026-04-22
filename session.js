@@ -21,6 +21,9 @@ const Session = {
   getLastKnownRoleStorageKey() {
     return LS_KEYS?.lastKnownRole || 'incheckLastKnownRole';
   },
+  getLegacyBootstrapStorageKey() {
+    return 'incheckLegacyBootstrapCredentials';
+  },
 
   readLegacyAuthSession() {
     try {
@@ -62,12 +65,43 @@ const Session = {
     const safePasscode = String(passcode || '');
     if (!safeIdentifier || !safePasscode) {
       this.legacyBootstrapCredentials = null;
+      try { sessionStorage.removeItem(this.getLegacyBootstrapStorageKey()); } catch {}
       return;
     }
     this.legacyBootstrapCredentials = {
       identifier: safeIdentifier,
       passcode: safePasscode
     };
+    try {
+      sessionStorage.setItem(
+        this.getLegacyBootstrapStorageKey(),
+        JSON.stringify(this.legacyBootstrapCredentials)
+      );
+    } catch {}
+  },
+
+  loadLegacyBootstrapCredentialsFromStorage() {
+    if (this.legacyBootstrapCredentials?.identifier && this.legacyBootstrapCredentials?.passcode) {
+      return this.legacyBootstrapCredentials;
+    }
+    try {
+      const raw = sessionStorage.getItem(this.getLegacyBootstrapStorageKey());
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      const identifier = String(parsed?.identifier || '').trim().toLowerCase();
+      const passcode = String(parsed?.passcode || '');
+      if (!identifier || !passcode) return null;
+      this.legacyBootstrapCredentials = { identifier, passcode };
+      return this.legacyBootstrapCredentials;
+    } catch {
+      return null;
+    }
+  },
+
+  clearLegacyBootstrapCredentials(reason = 'unspecified') {
+    this.legacyBootstrapCredentials = null;
+    try { sessionStorage.removeItem(this.getLegacyBootstrapStorageKey()); } catch {}
+    console.info('[Session.legacyAuth] cleared bootstrap credentials', { reason });
   },
 
   extractLegacyAuthToken(payload = null) {
@@ -124,11 +158,24 @@ const Session = {
     if (this.legacyBootstrapPromise && !forceRefresh) return this.legacyBootstrapPromise;
 
     const bootstrap = async () => {
-      const identifier = String(options?.identifier || this.legacyBootstrapCredentials?.identifier || '').trim().toLowerCase();
-      const passcode = String(options?.passcode || this.legacyBootstrapCredentials?.passcode || '');
+      const storedBootstrapCredentials = this.loadLegacyBootstrapCredentialsFromStorage();
+      const identifier = String(
+        options?.identifier ||
+        this.legacyBootstrapCredentials?.identifier ||
+        storedBootstrapCredentials?.identifier ||
+        ''
+      ).trim().toLowerCase();
+      const passcode = String(
+        options?.passcode ||
+        this.legacyBootstrapCredentials?.passcode ||
+        storedBootstrapCredentials?.passcode ||
+        ''
+      );
       if (!identifier || !passcode) {
         this.clearLegacyAuthSession('legacy login credentials missing');
-        throw new Error('Legacy session is unavailable. Please sign in again.');
+        const missingCredentialsError = new Error('Legacy protected data is unavailable. Please sign in again.');
+        missingCredentialsError.code = 'LEGACY_BOOTSTRAP_CREDENTIALS_MISSING';
+        throw missingCredentialsError;
       }
 
       this.clearLegacyAuthSession('pre-login stale cleanup');
@@ -153,7 +200,9 @@ const Session = {
 
       if (!authToken) {
         this.clearLegacyAuthSession('auth.login response missing token');
-        throw new Error('Unable to establish session. Please log in again.');
+        const missingTokenError = new Error('Unable to establish legacy session. Please sign in again.');
+        missingTokenError.code = 'LEGACY_BOOTSTRAP_TOKEN_MISSING';
+        throw missingTokenError;
       }
 
       this.saveLegacyAuthSession({
@@ -310,6 +359,7 @@ const Session = {
     if (!authUser?.id || !session) throw new Error('Login succeeded but no active session was found.');
     const profile = await this.fetchProfile(authUser?.id);
     this.applyState(this.buildState(authUser, session, profile));
+    this.loadLegacyBootstrapCredentialsFromStorage();
     this.setLegacyBootstrapCredentials(email, password);
     await this.ensureLegacySession({
       forceRefresh: true,
@@ -369,6 +419,7 @@ const Session = {
       }
 
       this.applyState(this.buildState(authUser, session, profile), { clearRoleCacheOnChange: false });
+      this.loadLegacyBootstrapCredentialsFromStorage();
       console.info('[Session.restore] restored true');
       return true;
     } catch (error) {
@@ -393,7 +444,8 @@ const Session = {
   clearClientSession({ clearRoleCache = true } = {}) {
     if (clearRoleCache && this.state.role) this.clearRoleScopedCache();
     this.clearLegacyAuthSession('client session cleared');
-    this.legacyBootstrapCredentials = null;
+    try { localStorage.removeItem(this.getLastKnownRoleStorageKey()); } catch {}
+    this.clearLegacyBootstrapCredentials('client session cleared');
     this.legacyBootstrapPromise = null;
     this.state = { role: null, user_id: '', name: '', email: '', username: '', session: null, user: null, profile: null };
     this.notify();
@@ -443,7 +495,16 @@ const Session = {
 function isAuthError(error) {
   const message = String(error?.message || '').trim().toLowerCase();
   if (!message) return false;
-  return [/\bunauthorized\b/, /\bforbidden\b/, /invalid\s+session/, /expired\s+session/, /not\s+authenticated/, /auth/i].some(pattern => pattern.test(message));
+  return [
+    /\bunauthorized\b/,
+    /\bforbidden\b/,
+    /invalid\s+session/,
+    /expired\s+session/,
+    /not\s+authenticated/,
+    /legacy\s+session/,
+    /session\s+is\s+unavailable/,
+    /auth/i
+  ].some(pattern => pattern.test(message));
 }
 
 window.Session = Session;
