@@ -42,6 +42,147 @@ const LifecycleAnalytics = {
     const code = this.text(currency).toUpperCase() || 'USD';
     return `${code} ${U.fmtNumber(this.num(value))}`;
   },
+  formatTimelineDate(value) {
+    const raw = this.text(value);
+    if (!raw) return '—';
+    return U.fmtTS(raw);
+  },
+  buildLifecycleTimeline(account = {}) {
+    const events = [];
+    const pushEvent = (item = {}, config = {}) => {
+      const primaryDate = this.text(config.primaryDate ? item[config.primaryDate] : '');
+      const fallbackDate = this.text(config.fallbackDate ? item[config.fallbackDate] : '');
+      const eventDate = primaryDate || fallbackDate;
+      if (!this.toDate(eventDate)) return;
+
+      const metadata = [
+        config.codeLabel && item[config.codeField] ? `${config.codeLabel}: ${this.text(item[config.codeField])}` : '',
+        item.status ? `Status: ${this.text(item.status)}` : '',
+        config.userLabel && item[config.userField] ? `${config.userLabel}: ${this.text(item[config.userField])}` : '',
+        config.noteBuilder ? this.text(config.noteBuilder(item)) : ''
+      ].filter(Boolean);
+
+      events.push({
+        title: config.title,
+        date: eventDate,
+        metadata
+      });
+    };
+
+    const oldestByDate = rows => rows
+      .slice()
+      .sort((a, b) => (this.toDate(a.created_at)?.getTime() || 0) - (this.toDate(b.created_at)?.getTime() || 0));
+
+    const leads = oldestByDate(account.leads || []);
+    const deals = oldestByDate(account.deals || []);
+    const proposals = oldestByDate(account.proposals || []);
+    const agreements = oldestByDate(account.agreements || []);
+    const invoices = oldestByDate(account.invoices || []);
+    const receipts = oldestByDate(account.receipts || []);
+
+    if (leads[0]) {
+      pushEvent(leads[0], {
+        title: 'Lead created',
+        codeLabel: 'Lead',
+        codeField: 'lead_id',
+        userLabel: 'Assigned to',
+        userField: 'assigned_to',
+        primaryDate: 'created_at',
+        fallbackDate: 'updated_at'
+      });
+    }
+
+    if (deals[0]) {
+      pushEvent(deals[0], {
+        title: 'Deal created',
+        codeLabel: 'Deal',
+        codeField: 'deal_id',
+        userLabel: 'Assigned to',
+        userField: 'assigned_to',
+        primaryDate: 'created_at',
+        fallbackDate: 'updated_at',
+        noteBuilder: item => item.stage ? `Stage: ${item.stage}` : ''
+      });
+    }
+
+    if (proposals[0]) {
+      pushEvent(proposals[0], {
+        title: 'Proposal created',
+        codeLabel: 'Proposal',
+        codeField: 'proposal_id',
+        primaryDate: 'proposal_date',
+        fallbackDate: 'created_at',
+        noteBuilder: item => item.ref_number ? `Ref: ${item.ref_number}` : ''
+      });
+    }
+
+    if (agreements[0]) {
+      pushEvent(agreements[0], {
+        title: 'Agreement signed',
+        codeLabel: 'Agreement',
+        codeField: 'agreement_id',
+        primaryDate: 'signed_date',
+        fallbackDate: 'created_at',
+        noteBuilder: item => item.agreement_number ? `Agreement No: ${item.agreement_number}` : ''
+      });
+    }
+
+    if (invoices[0]) {
+      pushEvent(invoices[0], {
+        title: 'Invoice created',
+        codeLabel: 'Invoice',
+        codeField: 'invoice_id',
+        primaryDate: 'issue_date',
+        fallbackDate: 'created_at',
+        noteBuilder: item => item.invoice_number ? `Invoice No: ${item.invoice_number}` : ''
+      });
+    }
+
+    receipts.forEach((receipt, idx) => {
+      pushEvent(receipt, {
+        title: idx === 0 ? 'Receipt created' : 'Additional receipt created',
+        codeLabel: 'Receipt',
+        codeField: 'receipt_id',
+        primaryDate: 'receipt_date',
+        fallbackDate: 'created_at',
+        noteBuilder: item => item.receipt_number ? `Receipt No: ${item.receipt_number}` : ''
+      });
+    });
+
+    return events.sort((a, b) => (this.toDate(a.date)?.getTime() || 0) - (this.toDate(b.date)?.getTime() || 0));
+  },
+  renderLifecycleTimeline(selected = {}) {
+    const timeline = this.buildLifecycleTimeline(selected);
+    if (!timeline.length) {
+      return `
+        <section class="card" style="margin-top:10px;">
+          <strong>Lifecycle Timeline</strong>
+          <div class="muted" style="margin-top:10px;">No lifecycle timeline events are available for this account yet.</div>
+        </section>
+      `;
+    }
+    return `
+      <section class="card" style="margin-top:10px;">
+        <strong>Lifecycle Timeline</strong>
+        <div class="lifecycle-timeline">
+          ${timeline
+            .map(
+              item => `<article class="lifecycle-timeline-item">
+                <div class="lifecycle-timeline-dot" aria-hidden="true"></div>
+                <div class="lifecycle-timeline-content">
+                  <div class="lifecycle-timeline-title-row">
+                    <strong>${this.escape(item.title)}</strong>
+                    <span class="muted">${this.escape(this.formatTimelineDate(item.date))}</span>
+                  </div>
+                  ${item.metadata.map(line => `<div class="muted">${this.escape(line)}</div>`).join('')}
+                </div>
+              </article>`
+            )
+            .join('')}
+        </div>
+      </section>
+    `;
+  },
   toDate(value) {
     const raw = this.text(value);
     if (!raw) return null;
@@ -637,6 +778,7 @@ const LifecycleAnalytics = {
         <div class="card"><div class="label">Open Technical Request</div><div class="value">${this.escape(selected.openTechnicalRequest ? 'Yes' : 'No')}</div></div>
         <div class="card"><div class="label">Operational Readiness</div><div class="value">${this.escape(selected.operationalReadiness)}</div></div>
       </div>
+      ${this.renderLifecycleTimeline(selected)}
       <section class="card" style="margin-top:10px;">
         <strong>Lifecycle Metrics</strong>
         <div class="grid cols-4" style="margin-top:10px;">
