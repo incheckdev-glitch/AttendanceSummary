@@ -142,8 +142,6 @@ const TechnicalAdmin = {
       requested_by: String(this.pick(source.requested_by, source.requestedBy)).trim(),
       requested_at: String(this.pick(source.requested_at, source.requestedAt)).trim(),
       assigned_to: String(this.pick(source.assigned_to, source.assignedTo, source.technical_admin_assigned_to, source.technicalAdminAssignedTo)).trim(),
-      technical_admin_assigned_to: String(this.pick(source.assigned_to, source.assignedTo, source.technical_admin_assigned_to, source.technicalAdminAssignedTo)).trim(),
-      started_at: String(this.pick(source.started_at, source.startedAt)).trim(),
       completed_at: String(this.pick(source.completed_at, source.completedAt)).trim(),
       updated_by: String(this.pick(source.updated_by, source.updatedBy)).trim(),
       updated_at: String(this.pick(source.updated_at, source.updatedAt)).trim(),
@@ -437,7 +435,7 @@ const TechnicalAdmin = {
     const assignee = window.prompt('Assign Technical Admin to:');
     if (assignee == null) return;
     await this.updateStatus((this.getRowById(this.state.activeRequestId)?.request_status || 'Requested'), {
-      technical_admin_assigned_to: String(assignee || '').trim()
+      assigned_to: String(assignee || '').trim()
     });
   },
   wire() {
@@ -469,7 +467,13 @@ const TechnicalAdmin = {
     if (E.technicalAdminDetailsContent)
       E.technicalAdminDetailsContent.addEventListener('click', event => {
         const statusBtn = event.target?.closest?.('button[data-technical-status]');
-        if (statusBtn) return this.updateStatus(statusBtn.getAttribute('data-technical-status') || 'Requested');
+        if (statusBtn) {
+          const nextStatus = statusBtn.getAttribute('data-technical-status') || 'Requested';
+          const statusUpdates = {};
+          if (nextStatus === 'Completed') statusUpdates.completed_at = new Date().toISOString();
+          if (nextStatus === 'Requested') statusUpdates.completed_at = null;
+          return this.updateStatus(nextStatus, statusUpdates);
+        }
         const assignBtn = event.target?.closest?.('button[data-technical-assign]');
         if (assignBtn) return this.assignToFlow();
         const previewBtn = event.target?.closest?.('button[data-technical-preview-detail]');

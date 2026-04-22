@@ -1755,13 +1755,10 @@
       if (!id) throw new Error('Technical request id is required.');
       const status = trimOrNull(firstDefined(payload, ['request_status', 'status'])) || 'Requested';
       const safeUpdates = {
-        request_status: status,
-        technical_request_status: status
+        request_status: status
       };
       const optionalKeys = [
         'assigned_to',
-        'technical_admin_assigned_to',
-        'started_at',
         'completed_at',
         'notes',
         'updated_by',
@@ -1770,12 +1767,6 @@
       optionalKeys.forEach(key => {
         if (payload[key] !== undefined) safeUpdates[key] = payload[key];
       });
-      if (safeUpdates.technical_admin_assigned_to !== undefined && safeUpdates.assigned_to === undefined) {
-        safeUpdates.assigned_to = safeUpdates.technical_admin_assigned_to;
-      }
-      if (safeUpdates.assigned_to !== undefined && safeUpdates.technical_admin_assigned_to === undefined) {
-        safeUpdates.technical_admin_assigned_to = safeUpdates.assigned_to;
-      }
       const { data, error } = await client
         .from('technical_admin_requests')
         .update(safeUpdates)
