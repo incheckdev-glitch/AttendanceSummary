@@ -73,22 +73,25 @@ const RolesAdmin = {
       E.rolePermissionCreateForm.addEventListener('submit', async e => {
         e.preventDefault();
         if (!Permissions.canEditRolesPermissions()) return UI.toast('Forbidden.');
+        const selectedRoles = this.readMultiSelectValues(E.rolePermissionCreateAllowedRoles);
         const payload = {
           resource: String(E.rolePermissionCreateResource?.value || '').trim().toLowerCase(),
           action: this.canonicalAction(E.rolePermissionCreateAction?.value),
-          allowed_roles: this.normalizeAllowedRoles(E.rolePermissionCreateAllowedRoles?.value),
+          allowed_roles: this.normalizeAllowedRoles(selectedRoles),
           description: String(E.rolePermissionCreateDescription?.value || '').trim()
         };
+        console.info('[RolesAdmin] selected roles before create save', payload.allowed_roles);
         if (!payload.resource || !payload.action || !payload.allowed_roles.length) {
           return UI.toast('resource, action, and allowed roles are required.');
         }
         try {
-          await Api.createRolePermission({
-            ...payload,
-            allowed_roles_csv: this.stringifyAllowedRoles(payload.allowed_roles)
-          });
+          const permissionPayload = { ...payload, ...this.buildPermissionRolesPayload(payload.allowed_roles) };
+          console.info('[RolesAdmin] final permission create payload', permissionPayload);
+          const result = await Api.createRolePermission(permissionPayload);
+          console.info('[RolesAdmin] create permission result', result);
           UI.toast('Permission rule created.');
           E.rolePermissionCreateForm.reset();
+          this.applyCreatePermissionRoleOptions();
           await this.refreshPermissions(true);
           await Permissions.loadMatrix(true);
           UI.applyRolePermissions();
@@ -111,13 +114,46 @@ const RolesAdmin = {
   normalizeAllowedRoles(value) {
     const source = Array.isArray(value)
       ? value
-      : String(value || '')
-          .split(',')
-          .map(v => String(v || '').trim());
+      : typeof value === 'string'
+        ? (() => {
+            const trimmed = String(value || '').trim();
+            if (!trimmed) return [];
+            if (trimmed.startsWith('[')) {
+              try {
+                const parsed = JSON.parse(trimmed);
+                if (Array.isArray(parsed)) return parsed.map(v => String(v || '').trim());
+              } catch (_error) {}
+            }
+            return trimmed.split(',').map(v => String(v || '').trim());
+          })()
+        : [];
     return [...new Set(source.map(v => this.normalizeRoleKey(v)).filter(Boolean))];
+  },
+  readMultiSelectValues(selectEl) {
+    if (!selectEl) return [];
+    return [...selectEl.options].filter(option => option.selected).map(option => option.value);
   },
   stringifyAllowedRoles(value) {
     return this.normalizeAllowedRoles(value).join(',');
+  },
+  rolesStorageMode() {
+    const rows = this.state.permissions || [];
+    const hasArrayRoles = rows.some(row => Array.isArray(row?.allowed_roles));
+    if (hasArrayRoles) return 'array';
+    const hasCsvRoles = rows.some(row =>
+      typeof row?.allowed_roles_csv === 'string' ||
+      typeof row?.allowed_roles === 'string'
+    );
+    return hasCsvRoles ? 'csv' : 'csv';
+  },
+  buildPermissionRolesPayload(roles = []) {
+    const normalizedRoles = this.normalizeAllowedRoles(roles);
+    const csv = this.stringifyAllowedRoles(normalizedRoles);
+    const mode = this.rolesStorageMode();
+    if (mode === 'array') {
+      return { allowed_roles: normalizedRoles, allowed_roles_csv: csv };
+    }
+    return { allowed_roles: csv, allowed_roles_csv: csv };
   },
   canonicalAction(action) {
     const normalized = String(action || '').trim().toLowerCase();
@@ -216,11 +252,13 @@ const RolesAdmin = {
       this.state.offset = normalized.offset;
       this.renderRolesTable();
       this.renderRoleSelects();
+      this.applyCreatePermissionRoleOptions();
       this.renderRolesWidgets();
     } catch (error) {
       this.state.roles = [];
       this.renderRolesTable(String(error?.message || 'Unable to load roles.'));
       this.renderRoleSelects();
+      this.applyCreatePermissionRoleOptions();
       this.renderRolesWidgets();
     } finally {
       this.state.loadingRoles = false;
@@ -261,6 +299,28 @@ const RolesAdmin = {
   },
   roleRef(role = {}) {
     return this.roleId(role) || this.roleKey(role);
+  },
+  roleOptions(includeInactive = true) {
+    const deduped = new Map();
+    this.state.roles.forEach(role => {
+      const key = this.roleKey(role);
+      if (!key) return;
+      if (!includeInactive && role?.is_active === false) return;
+      deduped.set(key, this.displayName(role) || key);
+    });
+    return [...deduped.entries()].map(([key, label]) => ({ key, label }));
+  },
+  renderRoleMultiSelect(selectEl, selectedValues = []) {
+    if (!selectEl) return;
+    const normalizedSelected = new Set(this.normalizeAllowedRoles(selectedValues));
+    const options = this.roleOptions(true);
+    console.info('[RolesAdmin] loaded roles options', options.map(option => option.key));
+    selectEl.innerHTML = options
+      .map(option => `<option value="${U.escapeAttr(option.key)}"${normalizedSelected.has(option.key) ? ' selected' : ''}>${U.escapeHtml(option.label)}</option>`)
+      .join('');
+  },
+  applyCreatePermissionRoleOptions() {
+    this.renderRoleMultiSelect(E.rolePermissionCreateAllowedRoles, this.readMultiSelectValues(E.rolePermissionCreateAllowedRoles));
   },
   renderRoleSelects() {
     if (window.UserAdmin?.applyRoleOptions) {
@@ -370,6 +430,13 @@ const RolesAdmin = {
   permissionId(permission = {}) {
     return String(permission.permission_id || permission.id || '').trim();
   },
+  permissionRef(permission = {}) {
+    const id = this.permissionId(permission);
+    if (id) return id;
+    const resource = String(permission.resource || '').trim().toLowerCase();
+    const action = String(permission.action || '').trim().toLowerCase();
+    return `${resource}:${action}`;
+  },
   permissionAllowedRoles(permission = {}) {
     return this.normalizeAllowedRoles(permission.allowed_roles || permission.allowed_roles_csv || permission.allowedRoles);
   },
@@ -404,12 +471,14 @@ const RolesAdmin = {
     E.rolePermissionsTbody.innerHTML = rows
       .map(permission => {
         const permissionId = this.permissionId(permission);
-        return `<tr data-permission-id="${U.escapeAttr(permissionId)}">
+        const permissionRef = this.permissionRef(permission);
+        const allowedRoleValues = this.permissionAllowedRoles(permission);
+        return `<tr data-permission-id="${U.escapeAttr(permissionId)}" data-permission-ref="${U.escapeAttr(permissionRef)}">
           <td>${U.escapeHtml(permissionId || '—')}</td>
           <td>${U.escapeHtml(permission.resource || '—')}</td>
           <td>${U.escapeHtml(permission.action || '—')}</td>
           <td>
-            <input class="input sm" data-permission-field="roles" type="text" value="${U.escapeAttr(this.stringifyAllowedRoles(this.permissionAllowedRoles(permission)))}" />
+            <select class="select sm" data-permission-field="roles" data-permission-ref="${U.escapeAttr(permissionRef)}" multiple size="4">${this.roleOptions(true).map(roleOption => `<option value="${U.escapeAttr(roleOption.key)}"${allowedRoleValues.includes(roleOption.key) ? ' selected' : ''}>${U.escapeHtml(roleOption.label)}</option>`).join('')}</select>
           </td>
           <td><input class="input sm" data-permission-field="description" type="text" value="${U.escapeAttr(permission.description || '')}" /></td>
           <td>${U.escapeHtml(this.formatDate(permission.updated_at))}</td>
@@ -426,8 +495,12 @@ const RolesAdmin = {
       btn.addEventListener('click', async event => {
         const action = String(event.currentTarget.getAttribute('data-permission-action') || '');
         const rowEl = event.currentTarget.closest('tr');
-        const permissionId = String(rowEl?.getAttribute('data-permission-id') || '');
-        const permission = this.state.permissions.find(r => this.permissionId(r) === permissionId);
+        const permissionId = String(rowEl?.getAttribute('data-permission-id') || '').trim();
+        const permissionRef = String(rowEl?.getAttribute('data-permission-ref') || '').trim();
+        const permission = this.state.permissions.find(r => {
+          const rowPermissionId = this.permissionId(r);
+          return rowPermissionId ? rowPermissionId === permissionId : this.permissionRef(r) === permissionRef;
+        });
         if (!permission) return;
         if (action === 'save') await this.savePermissionRow(permission, rowEl);
         if (action === 'delete') await this.deletePermissionRow(permission);
@@ -436,22 +509,27 @@ const RolesAdmin = {
   },
   async savePermissionRow(permission, rowEl) {
     if (!Permissions.canEditRolesPermissions()) return UI.toast('Forbidden.');
-    const allowedRoles = this.normalizeAllowedRoles(
-      rowEl?.querySelector('[data-permission-field="roles"]')?.value || this.permissionAllowedRoles(permission)
-    );
+    const selectedRoles = this.readMultiSelectValues(rowEl?.querySelector('[data-permission-field="roles"]'));
+    const allowedRoles = this.normalizeAllowedRoles(selectedRoles.length ? selectedRoles : this.permissionAllowedRoles(permission));
     const description = String(rowEl?.querySelector('[data-permission-field="description"]')?.value || permission.description || '').trim();
     if (!allowedRoles.length) return UI.toast('allowed roles cannot be empty.');
     const permissionId = this.permissionId(permission);
-    const updates = { allowed_roles: allowedRoles, allowed_roles_csv: this.stringifyAllowedRoles(allowedRoles), description };
+    const updates = { ...this.buildPermissionRolesPayload(allowedRoles), description };
+    console.info('[RolesAdmin] selected roles before row save', allowedRoles);
+    console.info('[RolesAdmin] final permission row payload', updates);
     try {
-      if (permissionId) await Api.updateRolePermission(permissionId, updates);
-      else await Api.saveRolePermission({ ...permission, ...updates });
+      let result = null;
+      if (permissionId) result = await Api.updateRolePermission(permissionId, updates);
+      else result = await Api.saveRolePermission({ ...permission, ...updates });
+      console.info('[RolesAdmin] permission save/update result', result);
       UI.toast('Permission row saved.');
       await this.refreshPermissions(true);
       await Permissions.loadMatrix(true);
       UI.applyRolePermissions();
     } catch (error) {
-      UI.toast(String(error?.message || 'Unable to save permission row.'));
+      const message = String(error?.message || 'Unable to save permission row.');
+      console.error('[RolesAdmin] save permission failed', { error, updates, permission });
+      UI.toast(`Permission save failed: ${message}`);
     }
   },
   async deletePermissionRow(permission) {
