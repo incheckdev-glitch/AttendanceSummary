@@ -1796,12 +1796,10 @@ Sample:
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
             <div>
               <strong>360 Analytics</strong>
-              <div class="muted">Search any lifecycle entity and resolve its full lead-to-receipt journey.</div>
+              <div class="muted">Unified lifecycle, finance, renewal, onboarding, and technical status analytics from Supabase data.</div>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
-              <input id="lifecycleSearchInput" class="input" type="search" placeholder="Search by ID, company, email, phone, lead, deal, proposal, agreement, invoice, or receipt" aria-label="Search lifecycle records" style="min-width:320px;" />
-              <input id="lifecycleDateFrom" class="input" type="date" aria-label="Lifecycle date from" />
-              <input id="lifecycleDateTo" class="input" type="date" aria-label="Lifecycle date to" />
+              <input id="lifecycleSearchInput" class="input" type="search" placeholder="Search client/account, chain IDs, assigned CSM..." aria-label="Search lifecycle records" style="min-width:260px;" />
               <select id="lifecycleStageFilter" class="select" aria-label="Filter by stage">
                 <option>All</option>
                 <option>Lead</option>
@@ -1811,13 +1809,64 @@ Sample:
                 <option>Invoice</option>
                 <option>Receipt</option>
               </select>
-              <select id="lifecycleOwnerFilter" class="select" aria-label="Filter by owner"><option>All</option></select>
-              <button id="lifecycleSearchBtn" class="btn sm" type="button">Search</button>
+              <select id="lifecyclePaymentStateFilter" class="select" aria-label="Filter by payment state">
+                <option>All</option>
+                <option>Not Invoiced</option>
+                <option>Unpaid</option>
+                <option>Partially Paid</option>
+                <option>Paid</option>
+              </select>
+              <select id="lifecycleOnboardingFilter" class="select" aria-label="Filter by onboarding status">
+                <option>All</option>
+                <option>Pending</option>
+                <option>Completed</option>
+                <option>Blocked</option>
+                <option>None</option>
+              </select>
+              <select id="lifecycleTechnicalFilter" class="select" aria-label="Filter by technical admin status">
+                <option>All</option>
+                <option>Pending</option>
+                <option>Completed</option>
+                <option>Blocked</option>
+                <option>None</option>
+              </select>
+              <select id="lifecycleRenewalFilter" class="select" aria-label="Filter by renewal window">
+                <option>All</option>
+                <option>≤30 Days</option>
+                <option>≤90 Days</option>
+                <option>Overdue</option>
+              </select>
+              <select id="lifecycleLocationFilter" class="select" aria-label="Filter by location activity">
+                <option>All</option>
+                <option>Active Only</option>
+                <option>Inactive Only</option>
+              </select>
+              <select id="lifecycleClientFilter" class="select" aria-label="Filter by client/account"><option>All Clients</option></select>
+              <input id="lifecycleDateFrom" class="input" type="date" aria-label="Lifecycle date from" />
+              <input id="lifecycleDateTo" class="input" type="date" aria-label="Lifecycle date to" />
+              <button id="lifecycleSearchBtn" class="btn sm" type="button">Refresh</button>
               <button id="lifecycleExportBtn" class="btn ghost sm" type="button">Export</button>
             </div>
           </div>
-          <div id="lifecycleState" class="muted" style="margin-bottom:8px;">Search by lead/deal/proposal/agreement/invoice/receipt ID, company, phone, or email.</div>
-          <div id="lifecycleResultBody"></div>
+          <div id="lifecycleState" class="muted" style="margin-bottom:8px;">Loading 360 analytics...</div>
+          <section class="grid cols-4" id="lifecycleSummaryCards"></section>
+          <section class="card" style="margin-top:10px;">
+            <strong>360 Accounts Table</strong>
+            <div class="table-wrap" role="region" aria-label="360 analytics accounts table" style="margin-top:10px;">
+              <table id="lifecycleRecordsTable">
+                <thead>
+                  <tr>
+                    <th>Open</th><th>Client / Account</th><th>Current Stage</th><th>Lead→Deal→Proposal→Agreement→Invoice→Receipt</th><th>Agreement Value</th><th>Total Invoiced</th><th>Total Paid</th><th>Total Due</th><th>Locations</th><th>Next Renewal</th><th>Payment State</th><th>Onboarding</th><th>Technical</th><th>Last Activity</th>
+                  </tr>
+                </thead>
+                <tbody id="lifecycleRecordsTbody"></tbody>
+              </table>
+            </div>
+          </section>
+          <section class="card" style="margin-top:10px;">
+            <strong>Account 360 Detail</strong>
+            <div id="lifecycleDetailPanel" style="margin-top:10px;"></div>
+          </section>
         </div>
       </section>
 
