@@ -293,7 +293,15 @@ const Api = {
         ? Session.getAuthToken()
         : '';
     if (requireAuth && !authToken) {
+      console.warn('[Api.postAuthenticated] missing auth token', { resource, action });
       throw new Error('Missing authentication token.');
+    }
+    if (resource === 'tickets' && action === 'list') {
+      console.info('[Api.postAuthenticated] tickets.list token before request', {
+        hasAuthToken: Boolean(authToken),
+        tokenPrefix: authToken ? `${String(authToken).slice(0, 8)}...` : '',
+        payload
+      });
     }
     return this.post(resource, action, {
       ...payload,
@@ -1165,9 +1173,23 @@ async function apiPost(payload = {}) {
     action
   });
   if (!response.ok) {
+    console.error('[apiPost] backend HTTP error', {
+      resource,
+      action,
+      status: response.status,
+      requestBody,
+      backendResponse: data
+    });
     throw buildHttpResponseError(response, data, endpoint, { resource, action });
   }
   if (data && typeof data === 'object' && hasExplicitBackendFailure(data)) {
+    console.error('[apiPost] backend explicit failure', {
+      resource,
+      action,
+      status: response.status,
+      requestBody,
+      backendResponse: data
+    });
     throw buildExplicitBackendFailureError(data, {
       endpoint,
       resource,
