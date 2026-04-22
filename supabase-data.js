@@ -13,7 +13,7 @@
   };
 
   const PK_BY_RESOURCE = {
-    users: 'user_id',
+    users: 'id',
     roles: 'role_key',
     role_permissions: 'permission_id',
     tickets: 'id',
@@ -32,7 +32,7 @@
     ,notifications: 'notification_id'
   };
   const LEGACY_IDENTIFIER_KEYS = {
-    users: ['id'],
+    users: ['user_id'],
     roles: ['id', 'role_id', 'key'],
     role_permissions: ['id', 'permission'],
     tickets: ['ticket_id'],
@@ -263,6 +263,14 @@
     'summary_only', 'fields',
     'resource', 'action',  'sheetName', 'tabName', 'updates', 'item'
   ]);
+  const USER_PROFILE_COLUMNS = new Set([
+    'id',
+    'name',
+    'email',
+    'username',
+    'role_key',
+    'is_active'
+  ]);
   const LIST_COLUMNS_BY_RESOURCE = {
     proposal_catalog: new Set([
       'id', 'catalog_item_id', 'is_active', 'section', 'category', 'item_name', 'default_location_name',
@@ -477,7 +485,33 @@
       out.assigned_to = out.assigned_to ?? out.technical_admin_assigned_to ?? '';
       out.technical_admin_assigned_to = out.technical_admin_assigned_to ?? out.assigned_to ?? '';
     }
+    if (resource === 'users') {
+      out.id = out.id ?? out.user_id ?? '';
+      out.user_id = out.user_id ?? out.id ?? '';
+      out.role_key = out.role_key ?? out.role ?? '';
+      out.role = out.role ?? out.role_key ?? '';
+      out.is_active = out.is_active ?? out.active ?? true;
+      out.active = out.active ?? out.is_active;
+    }
     return out;
+  }
+
+  function sanitizeUserProfileRecord(record = {}, { includeId = false } = {}) {
+    const mapped = compactObject({
+      id: includeId ? firstDefined(record, ['id', 'user_id', 'userId']) : undefined,
+      name: firstDefined(record, ['name', 'full_name', 'display_name']),
+      email: firstDefined(record, ['email']),
+      username: firstDefined(record, ['username']),
+      role_key: firstDefined(record, ['role_key', 'roleKey', 'role']),
+      is_active: firstDefined(record, ['is_active', 'isActive', 'active', 'enabled'])
+    });
+    if (mapped.role_key !== undefined) mapped.role_key = String(mapped.role_key || '').trim().toLowerCase();
+    if (mapped.email !== undefined) mapped.email = String(mapped.email || '').trim().toLowerCase();
+    if (mapped.username !== undefined) mapped.username = String(mapped.username || '').trim();
+    if (mapped.name !== undefined) mapped.name = String(mapped.name || '').trim();
+    if (mapped.is_active !== undefined) mapped.is_active = Boolean(mapped.is_active);
+    Object.keys(mapped).forEach(key => { if (!USER_PROFILE_COLUMNS.has(key)) delete mapped[key]; });
+    return mapped;
   }
 
   function sanitizeReadByRole(resource, row) {
@@ -1771,6 +1805,44 @@
       assertAllowed(resource, 'create');
       const raw = payload[resource.slice(0, -1)] || payload.item || payload.activity || payload[resource] || payload;
       const record = raw && typeof raw === 'object' ? { ...raw } : {};
+
+      if (resource === 'users') {
+        const email = String(firstDefined(record, ['email']) || '').trim().toLowerCase();
+        const password = String(firstDefined(record, ['password', 'passcode', 'newPassword']) || '');
+        if (!email) throw new Error('User email is required.');
+        if (!password) throw new Error('User password is required.');
+
+        const authAdmin = client?.auth?.admin;
+        if (!authAdmin?.createUser) {
+          throw new Error('Unable to create login account: auth.admin.createUser is unavailable in this environment.');
+        }
+
+        const profileSeed = sanitizeUserProfileRecord(record);
+        const { data: createdAuth, error: authError } = await authAdmin.createUser({
+          email,
+          password,
+          email_confirm: true,
+          user_metadata: {
+            full_name: profileSeed.name || '',
+            username: profileSeed.username || '',
+            role_key: profileSeed.role_key || ''
+          }
+        });
+        if (authError) throw friendlyError('Unable to create auth user', authError);
+
+        const authUserId = String(createdAuth?.user?.id || '').trim();
+        if (!authUserId) throw new Error('Auth user was created without a user id.');
+
+        const createUserRecord = sanitizeUserProfileRecord({ ...record, id: authUserId }, { includeId: true });
+        if (createUserRecord.is_active === undefined) createUserRecord.is_active = true;
+        const { data: createdProfile, error: profileError } = await client
+          .from('profiles')
+          .upsert(createUserRecord, { onConflict: 'id' })
+          .select('*')
+          .single();
+        if (profileError) throw friendlyError('Unable to create user profile', profileError);
+        return { handled: true, data: normalizeRow('users', createdProfile) };
+      }
      
       if (resource === 'tickets') devLog('[tickets/create] raw form data', record);
       const currentUserId = ['tickets', 'events', 'leads', 'deals', 'proposal_catalog', 'proposals', 'agreements', 'clients', 'invoices', 'receipts'].includes(resource)
@@ -1880,6 +1952,14 @@
       console.log('[CRUD] resource, pk, value', resource, key, id);
       const updates = payload.updates || payload.item || payload.activity || payload;
       const safeUpdates = { ...updates };
+      if (resource === 'users') {
+        const userUpdates = sanitizeUserProfileRecord(safeUpdates, { includeId: false });
+        delete userUpdates.id;
+        if (!Object.keys(userUpdates).length) throw new Error('users update payload is empty after normalization.');
+        const { data, error } = await client.from('profiles').update(userUpdates).eq('id', id).select('*').single();
+        if (error) throw friendlyError('Unable to update users record', error);
+        return { handled: true, data: normalizeRow('users', data) };
+      }
      
       const publicUpdates =
         resource === 'tickets'
@@ -2012,9 +2092,9 @@
     if (resource === 'users' && ['activate','deactivate'].includes(action)) {
       assertAllowed('users', action);
       const id = requireResourceIdentifier(resource, payload, action);
-      const { data, error } = await client.from('profiles').update({ is_active: action === 'activate' }).eq('user_id', id).select('*').single();
+      const { data, error } = await client.from('profiles').update({ is_active: action === 'activate' }).eq('id', id).select('*').single();
       if (error) throw friendlyError('Unable to update user status', error);
-      return { handled: true, data };
+      return { handled: true, data: normalizeRow('users', data) };
     }
 
     throw new Error(`Unsupported action ${action} for resource ${resource}.`);

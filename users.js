@@ -28,10 +28,10 @@ const UserAdmin = {
           name: String(E.userCreateName?.value || '').trim(),
           username: String(E.userCreateUsername?.value || '').trim(),
           email: String(E.userCreateEmail?.value || '').trim(),
-          role: String(E.userCreateRole?.value || '').trim().toLowerCase(),
+          role_key: String(E.userCreateRole?.value || '').trim().toLowerCase(),
           password: String(E.userCreatePassword?.value || '')
         };
-        if (!payload.name || !payload.username || !payload.email || !payload.password || !payload.role) {
+        if (!payload.name || !payload.username || !payload.email || !payload.password || !payload.role_key) {
           UI.toast('Name, username, email, role, and password are required.');
           return;
         }
@@ -272,7 +272,7 @@ const UserAdmin = {
         const currentUserId = Session.user().user_id;
         const isSelf = !!userId && userId === currentUserId;
         const active = this.normalizeActive(user);
-        const role = this.normalizeRole(user.role || '—') || '—';
+        const roleKey = this.normalizeRole(user.role_key || user.role || '—') || '—';
         const created = this.formatDate(this.getCreatedAt(user));
         const updated = this.formatDate(this.getUpdatedAt(user));
         const lastLogin = this.formatDate(this.getLastLoginAt(user));
@@ -280,7 +280,7 @@ const UserAdmin = {
           <td>${U.escapeHtml(user.name || '—')}</td>
           <td>${U.escapeHtml(user.email || '—')}</td>
           <td>${U.escapeHtml(user.username || '—')}</td>
-          <td>${U.escapeHtml(role)}</td>
+          <td>${U.escapeHtml(roleKey)}</td>
           <td>${active ? 'true' : 'false'}</td>
           <td>${U.escapeHtml(created)}</td>
           <td>${U.escapeHtml(updated)}</td>
@@ -320,7 +320,7 @@ const UserAdmin = {
     if (E.userEditName) E.userEditName.value = String(user.name || '');
     if (E.userEditEmail) E.userEditEmail.value = String(user.email || '');
     if (E.userEditUsername) E.userEditUsername.value = String(user.username || '');
-    const existingRole = this.normalizeRole(user.role || '');
+    const existingRole = this.normalizeRole(user.role_key || user.role || '');
     this.applyRoleOptions(this.state.roles, existingRole);
     if (E.userEditRole) E.userEditRole.value = existingRole;
     if (E.userEditModal) {
@@ -359,7 +359,7 @@ const UserAdmin = {
           name: String(name).trim(),
           email: String(email).trim(),
           username: String(username).trim(),
-          role: normalizedRole
+          role_key: normalizedRole
         },
         user: {
           id: userId,
@@ -367,7 +367,7 @@ const UserAdmin = {
           name: String(name).trim(),
           email: String(email).trim(),
           username: String(username).trim(),
-          role: normalizedRole
+          role_key: normalizedRole
         }
       });
       UI.toast('User updated.');
