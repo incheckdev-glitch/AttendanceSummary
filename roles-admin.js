@@ -476,7 +476,6 @@ const RolesAdmin = {
         action: this.canonicalAction(row.action),
         is_allowed: false,
         is_active: false,
-        description: String(row.description || '').trim()
       })));
       UI.toast('Permission rule removed.');
       await this.refreshPermissions(true);
@@ -504,8 +503,7 @@ const RolesAdmin = {
           resource,
           action,
           is_allowed: true,
-          is_active: true,
-          description
+          is_active: true
         }));
       } else {
         upserts.push(Api.createRolePermission({
@@ -514,7 +512,6 @@ const RolesAdmin = {
           action,
           is_allowed: true,
           is_active: true,
-          description,
           allowed_roles: ''
         }));
       }
@@ -530,8 +527,7 @@ const RolesAdmin = {
         resource,
         action,
         is_allowed: false,
-        is_active: false,
-        description
+        is_active: false
       }));
 
     await Promise.all([...upserts, ...deactivations]);
