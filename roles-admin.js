@@ -57,7 +57,12 @@ const RolesAdmin = {
         if (!Permissions.canEditRolesPermissions()) return UI.toast('Forbidden.');
         const { resource, action } = this.parseResourceAction(
           E.rolePermissionCreateResource?.value,
-          E.rolePermissionCreateAction?.value
+          E.rolePermissionCreateAction?.value,
+          {
+            permission: E.rolePermissionCreateResource?.value,
+            sheetName: E.rolePermissionCreateResource?.value,
+            label: E.rolePermissionCreateResource?.value
+          }
         );
         const selectedRoles = this.readMultiSelectValues(E.rolePermissionCreateAllowedRoles);
         const validation = this.validatePermissionPayload({ roleKeys: selectedRoles, resource, action });
@@ -123,28 +128,30 @@ const RolesAdmin = {
     return map[normalized] || normalized;
   },
 
-  parseResourceAction(resourceValue = '', actionValue = '') {
-    let resource = String(resourceValue || '').trim().toLowerCase();
-    let action = this.canonicalAction(actionValue);
+  parseResourceAction(resourceValue = '', actionValue = '', helperFields = {}) {
+    const helper = helperFields && typeof helperFields === 'object' ? helperFields : {};
+    let resource = String(resourceValue || helper.resource || helper.sheetName || helper.sheet_name || helper.tabName || helper.tab_name || '').trim().toLowerCase();
+    let action = this.canonicalAction(actionValue || helper.action || '');
 
     const splitCombined = value => {
       const normalized = String(value || '').trim().toLowerCase();
       if (!normalized) return null;
-      const parts = normalized.split('.');
-      if (parts.length !== 2) return null;
-      const [resourcePart, actionPart] = parts.map(part => String(part || '').trim()).filter(Boolean);
+      const match = normalized.match(/^([^.:/\s]+)[.:/]([^.:/\s]+)$/);
+      if (!match) return null;
+      const resourcePart = String(match[1] || '').trim();
+      const actionPart = String(match[2] || '').trim();
       if (!resourcePart || !actionPart) return null;
       return { resource: resourcePart, action: this.canonicalAction(actionPart) };
     };
 
+    const fromPermission = splitCombined(helper.permission);
+    const fromLabel = splitCombined(helper.label || helper.combinedLabel || helper.combined_label);
     const fromResource = splitCombined(resource);
     const fromAction = splitCombined(actionValue);
-    if (fromResource) {
-      resource = fromResource.resource;
-      action = fromResource.action;
-    } else if (fromAction) {
-      resource = fromAction.resource;
-      action = fromAction.action;
+    const parsed = fromPermission || fromLabel || fromResource || fromAction;
+    if (parsed) {
+      resource = parsed.resource;
+      action = parsed.action;
     }
     return { resource, action };
   },
@@ -153,9 +160,9 @@ const RolesAdmin = {
     const normalizedRoles = this.normalizeRoleKeys(roleKeys);
     const normalizedResource = String(resource || '').trim().toLowerCase();
     const normalizedAction = this.canonicalAction(action);
-    if (!normalizedRoles.length) return { valid: false, message: 'Please select at least one role before saving permission changes.' };
-    if (!normalizedResource) return { valid: false, message: 'Resource is required before saving permission changes.' };
-    if (!normalizedAction) return { valid: false, message: 'Action is required before saving permission changes.' };
+    if (!normalizedRoles.length) return { valid: false, message: 'role_key is required. Select at least one role before saving permission changes.' };
+    if (!normalizedResource) return { valid: false, message: 'resource is required before saving permission changes.' };
+    if (!normalizedAction) return { valid: false, message: 'action is required before saving permission changes.' };
     return { valid: true, roleKeys: normalizedRoles, resource: normalizedResource, action: normalizedAction };
   },
 
@@ -565,7 +572,7 @@ const RolesAdmin = {
           is_allowed: true,
           is_active: true
         };
-        try { console.log('[RolesPermissions] final payload before save', payload); } catch {}
+        try { console.log('[RolesPermissions] create payload', payload); } catch {}
         upserts.push(Api.createRolePermission(payload));
       }
     });
@@ -645,7 +652,7 @@ const RolesAdmin = {
             is_allowed: true,
             is_active: true
           };
-          try { console.log('[RolesPermissions] final payload before save', payload); } catch {}
+          try { console.log('[RolesPermissions] create payload', payload); } catch {}
           requests.push(Api.createRolePermission(payload));
         }
       });
