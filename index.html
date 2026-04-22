@@ -586,29 +586,85 @@ Sample:
       </section>
 
       <section id="rolePermissionsView" class="view" role="tabpanel" aria-labelledby="rolePermissionsTab">
+        <div class="grid cols-3" id="rolePermissionsKpis" aria-live="polite">
+          <article class="card kpi"><div class="label">Total roles</div><div id="rpTotalRoles" class="value">0</div></article>
+          <article class="card kpi"><div class="label">Permission rows</div><div id="rpTotalRows" class="value">0</div></article>
+          <article class="card kpi"><div class="label">Grouped rules</div><div id="rpTotalGrouped" class="value">0</div></article>
+        </div>
+
+        <div class="card" aria-label="Roles and permissions quick actions">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+            <div>
+              <strong>Roles &amp; Permissions</strong>
+              <div class="muted">Faster grouped management using resource + action in UI and per-role rows in DB.</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button id="rpQuickNewRoleBtn" class="btn ghost sm" type="button">New Role</button>
+              <button id="rpQuickNewRuleBtn" class="btn ghost sm" type="button">New Permission Rule</button>
+              <button id="rolePermissionsRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" aria-label="Roles management">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+            <strong>Section 2: Roles management</strong>
+            <button id="rpRoleCreateInlineBtn" class="btn primary sm" type="button">Create Role</button>
+          </div>
+          <form id="rpRoleCreateForm" class="user-form-grid" style="margin-bottom:10px;display:none;">
+            <input id="rpRoleCreateKey" class="input" type="text" placeholder="role_key *" required />
+            <input id="rpRoleCreateDisplayName" class="input" type="text" placeholder="role_name *" required />
+            <input id="rpRoleCreateDescription" class="input" type="text" placeholder="Description" />
+            <select id="rpRoleCreateIsActive" class="select">
+              <option value="true">Active</option>
+              <option value="false">Inactive</option>
+            </select>
+            <button id="rpRoleCreateSubmit" class="btn primary" type="submit">Save Role</button>
+          </form>
+          <div id="rpRolesState" class="muted" style="margin-bottom:8px;">No data loaded.</div>
+          <div class="table-wrap" role="region" aria-label="Roles table">
+            <table id="rpRolesTable">
+              <thead>
+                <tr>
+                  <th scope="col">role_key</th>
+                  <th scope="col">role_name</th>
+                  <th scope="col">description</th>
+                  <th scope="col">is_active</th>
+                  <th scope="col">updated_at</th>
+                  <th scope="col">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="rpRolesTbody"></tbody>
+            </table>
+          </div>
+        </div>
+
         <div class="card" aria-label="Permission matrix">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-            <div>
-              <strong>Permission matrix</strong>
-              <div class="muted">Manage access rules by resource + action.</div>
-            </div>
-            <button id="rolePermissionsRefreshBtn" class="btn ghost sm" type="button">Refresh permissions</button>
+            <strong>Section 3: Permission matrix / manager</strong>
+            <button id="rpPermissionCreateInlineBtn" class="btn primary sm" type="button">New Permission Rule</button>
           </div>
           <form id="rolePermissionsFiltersForm" class="user-form-grid" style="margin-bottom:10px;">
-            <input id="rolePermissionsSearchResource" class="input" type="search" placeholder="Search resource" />
-            <input id="rolePermissionsSearchAction" class="input" type="search" placeholder="Search action" />
-            <input id="rolePermissionsSearchAllowedRoles" class="input" type="search" placeholder="Search allowed roles" />
-            <input id="rolePermissionsResourceFilter" class="input" type="search" placeholder="Optional exact resource filter" />
+            <input id="rolePermissionsSearchResource" class="input" type="search" placeholder="Filter resource" />
+            <input id="rolePermissionsSearchAction" class="input" type="search" placeholder="Filter action" />
+            <input id="rolePermissionsSearchAllowedRoles" class="input" type="search" placeholder="Filter role" />
+            <input id="rolePermissionsSearchText" class="input" type="search" placeholder="Quick search (resource/action/role)" />
+          </form>
+          <form id="rolePermissionCreateForm" class="user-form-grid" style="margin-bottom:10px;display:none;">
+            <input id="rolePermissionCreateResource" class="input" type="text" placeholder="resource *" required />
+            <input id="rolePermissionCreateAction" class="input" type="text" placeholder="action *" required />
+            <select id="rolePermissionCreateAllowedRoles" class="select" multiple size="5" required aria-label="Allowed roles"></select>
+            <input id="rolePermissionCreateDescription" class="input" type="text" placeholder="Description (optional)" />
+            <button id="rolePermissionCreateSubmit" class="btn primary" type="submit">Create Rule</button>
           </form>
           <div id="rolePermissionsState" class="muted" style="margin-bottom:8px;">No data loaded.</div>
           <div class="table-wrap" role="region" aria-label="Permission matrix table">
             <table id="rolePermissionsTable">
               <thead>
                 <tr>
-                  <th scope="col">permission_id</th>
                   <th scope="col">resource</th>
                   <th scope="col">action</th>
-                  <th scope="col">allowed_roles</th>
+                  <th scope="col">roles</th>
                   <th scope="col">description</th>
                   <th scope="col">updated_at</th>
                   <th scope="col">Actions</th>
@@ -619,49 +675,20 @@ Sample:
           </div>
         </div>
 
-        <div class="card" aria-label="Create permission rule">
-          <strong>Create permission rule</strong>
-          <form id="rolePermissionCreateForm" class="user-form-grid" style="margin-top:10px;">
-            <input id="rolePermissionCreateResource" class="input" type="text" placeholder="resource *" required />
-            <input id="rolePermissionCreateAction" class="input" type="text" placeholder="action *" required />
-            <select id="rolePermissionCreateAllowedRoles" class="select" multiple size="4" required aria-label="Allowed roles"></select>
-            <input id="rolePermissionCreateDescription" class="input" type="text" placeholder="Description" />
-            <button id="rolePermissionCreateSubmit" class="btn primary" type="submit">Create rule</button>
-          </form>
-        </div>
-
         <div class="card" aria-label="Tab CRUD access helper">
-          <strong>Tab access + CRUD helper</strong>
-          <div class="muted" style="margin:6px 0 10px;">Grant one role access to an individual tab or all tabs with selected actions.</div>
+          <strong>CRUD helper (per-role rows)</strong>
+          <div class="muted" style="margin:6px 0 10px;">Choose one or more roles, one resource, then apply checked actions. Unchecked actions are deactivated for selected roles + resource.</div>
           <form id="tabPermissionBulkForm" class="user-form-grid">
-            <select id="tabPermissionRole" class="select" required>
-              <option value="">Select role *</option>
-            </select>
-            <select id="tabPermissionTarget" class="select" required>
-              <option value="all_tabs">All tabs</option>
-              <option value="calendar">Calendar</option>
-              <option value="insights">AI Insights</option>
-              <option value="csm">CSM Daily Activity</option>
-              <option value="leads">Leads</option>
-              <option value="deals">Deals</option>
-              <option value="proposals">Proposals</option>
-              <option value="agreements">Agreements</option>
-              <option value="technicalAdmin">Technical Admin</option>
-              <option value="invoices">Invoices</option>
-              <option value="receipts">Receipts</option>
-              <option value="lifecycleAnalytics">Lifecycle Analytics</option>
-              <option value="clients">Clients</option>
-              <option value="proposalCatalog">Proposal Catalog</option>
-              <option value="workflow">Workflow</option>
-              <option value="users">Users</option>
-              <option value="roles">Roles</option>
-              <option value="rolePermissions">Role Permissions</option>
-            </select>
-            <label><input id="tabPermissionActionView" type="checkbox" checked /> View</label>
-            <label><input id="tabPermissionActionCreate" type="checkbox" /> Create</label>
-            <label><input id="tabPermissionActionEdit" type="checkbox" /> Edit</label>
-            <label><input id="tabPermissionActionDelete" type="checkbox" /> Delete</label>
-            <button id="tabPermissionBulkSubmit" class="btn primary" type="submit">Apply access</button>
+            <select id="tabPermissionRole" class="select" multiple size="5" required></select>
+            <input id="tabPermissionTarget" class="input" type="text" placeholder="resource * (e.g. agreements)" required />
+            <input id="tabPermissionExtraActions" class="input" type="text" placeholder="Extra actions (comma separated)" />
+            <label><input id="tabPermissionActionGet" type="checkbox" checked /> get/view</label>
+            <label><input id="tabPermissionActionList" type="checkbox" checked /> list</label>
+            <label><input id="tabPermissionActionCreate" type="checkbox" /> create</label>
+            <label><input id="tabPermissionActionSave" type="checkbox" /> save</label>
+            <label><input id="tabPermissionActionUpdate" type="checkbox" /> update</label>
+            <label><input id="tabPermissionActionDelete" type="checkbox" /> delete</label>
+            <button id="tabPermissionBulkSubmit" class="btn primary" type="submit">Apply CRUD</button>
           </form>
         </div>
       </section>
