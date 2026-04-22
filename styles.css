@@ -744,12 +744,6 @@ body.auth-locked .login-hint{
   margin:2px 4px 2px 0;
   background:rgba(125,211,252,.08);
 }
-.rp-chip-wrap{
-  display:flex;
-  flex-wrap:wrap;
-  gap:4px;
-  align-items:center;
-}
 
 /* Cards */
 .card{
