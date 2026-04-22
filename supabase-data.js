@@ -12,7 +12,7 @@
   };
 
   const PK_KEYS = {
-    users: ['user_id','id'], roles: ['id','role_key'], role_permissions: ['id','permission_id'], tickets: ['id','ticket_id'],
+    users: ['user_id','id'], roles: ['id','role_key'], role_permissions: ['permission_id'], tickets: ['id','ticket_id'],
     events: ['event_id','id'], csm: ['id','activity_id'], leads: ['id','lead_id'], deals: ['id','deal_id'],
     proposal_catalog: ['id','catalog_item_id'], proposals: ['id','proposal_id'], agreements: ['id','agreement_id'],
     clients: ['id','client_id'], invoices: ['id','invoice_id'], receipts: ['id','receipt_id'], operations_onboarding: ['onboarding_id','id'],
@@ -85,8 +85,13 @@
     'backendUrl',
     'sheetName',
     'tabName',
+    'sheet_name',
+    'id',
     'permission',
-    'description'
+    'description',
+    'roleName',
+    'roleLabel',
+    'selectedRoles'
   ]);
   const LEAD_COLUMNS = new Set([
     'lead_id',
@@ -719,7 +724,7 @@
 
   function sanitizeRolePermissionRecord(record = {}) {
     const mapped = compactObject({
-      permission_id: firstDefined(record, ['permission_id', 'permissionId', 'id']),
+      permission_id: firstDefined(record, ['permission_id', 'permissionId']),
       role_key: firstDefined(record, ['role_key', 'roleKey']),
       resource: firstDefined(record, ['resource']),
       action: firstDefined(record, ['action']),
@@ -1125,10 +1130,10 @@
 
   function pickId(resource, payload = {}) {
     for (const key of PK_KEYS[resource] || []) {
-      const value = payload[key] ?? payload.id;
+      const value = resource === 'role_permissions' ? payload[key] : (payload[key] ?? payload.id);
       if (value !== undefined && value !== null && String(value).trim() !== '') return value;
     }
-    return payload.id;
+    return resource === 'role_permissions' ? '' : payload.id;
   }
 
   async function resolveResourceUuid(resource, payload = {}, client) {
