@@ -192,6 +192,7 @@
   }
 
   async function createActivity(input = {}) {
+    if (!canMutate()) throw new Error('Only admin/hoo can create CSM activities.');
     const payload = await toInsertPayload(input);
     const client = getClient();
     const { data, error } = await client.from(TABLE).insert(payload).select('*').single();

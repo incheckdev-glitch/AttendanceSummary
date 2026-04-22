@@ -267,6 +267,23 @@
   function getClient() { return global.SupabaseClient.getClient(); }
   function role() { return String(global.Session?.role?.() || '').toLowerCase(); }
   function isAdminDev() { return ['admin','dev'].includes(role()); }
+  function allowedRoles(resource, action) {
+    const matrix = global.Permissions?.baseMatrix || {};
+    const rules = matrix?.[resource];
+    if (!rules || typeof rules !== 'object') return null;
+    const list = rules[action];
+    return Array.isArray(list) ? list : null;
+  }
+  function isAllowed(resource, action) {
+    const rule = allowedRoles(resource, action);
+    if (!rule) return role() === 'admin';
+    return rule.includes(role());
+  }
+  function assertAllowed(resource, action, reason = '') {
+    if (isAllowed(resource, action)) return;
+    const suffix = reason ? ` (${reason})` : '';
+    throw new Error(`Forbidden: ${role() || 'unknown'} cannot ${action} ${resource}${suffix}.`);
+  }
 
   function friendlyError(prefix, error) {
     const msg = String(error?.message || error?.error_description || 'Unknown error');
@@ -392,6 +409,20 @@
       out.technical_admin_assigned_to = out.technical_admin_assigned_to ?? out.assigned_to ?? '';
     }
     return out;
+  }
+
+  function sanitizeReadByRole(resource, row) {
+    const normalized = normalizeRow(resource, row);
+    if (!normalized || typeof normalized !== 'object') return normalized;
+    if (resource === 'technical_admin_requests' && role() === 'viewer') {
+      const sanitized = { ...normalized };
+      delete sanitized.request_details;
+      delete sanitized.technical_request_details;
+      delete sanitized.request_message;
+      delete sanitized.notes;
+      return sanitized;
+    }
+    return normalized;
   }
 
   function firstDefined(source = {}, keys = []) {
@@ -1031,12 +1062,12 @@
   }
 
   function normalizeList(resource, rows) {
-    const normalizedRows = Array.isArray(rows) ? rows.map(r => normalizeRow(resource, r)) : [];
+    const normalizedRows = Array.isArray(rows) ? rows.map(r => sanitizeReadByRole(resource, r)) : [];
     return { rows: normalizedRows, total: normalizedRows.length, returned: normalizedRows.length, hasMore: false, page: 1, limit: normalizedRows.length || 50, offset: 0 };
   }
 
   function normalizePagedList(resource, rows, controls = {}, total = 0) {
-    const normalizedRows = Array.isArray(rows) ? rows.map(r => normalizeRow(resource, r)) : [];
+    const normalizedRows = Array.isArray(rows) ? rows.map(r => sanitizeReadByRole(resource, r)) : [];
     const limit = Math.max(1, Number(controls.limit || normalizedRows.length || 50));
     const page = Math.max(1, Number(controls.page || 1));
     const offset = Math.max(0, Number(controls.offset ?? (page - 1) * limit));
@@ -1189,31 +1220,34 @@
   }
 
   async function withItems(resource, row) {
-    if (!ITEM_TABLES[resource] || !row) return normalizeRow(resource, row);
+    if (!ITEM_TABLES[resource] || !row) return sanitizeReadByRole(resource, row);
     const fk = ITEM_FK[resource];
     const id = row.id || row[fk];
-    if (!id) return normalizeRow(resource, row);
+    if (!id) return sanitizeReadByRole(resource, row);
     const client = getClient();
     const { data, error } = await client.from(ITEM_TABLES[resource]).select('*').eq(fk, id).order('created_at', { ascending: true });
     if (error) throw friendlyError(`Unable to load ${ITEM_TABLES[resource]}`, error);
     const key = ITEM_TABLES[resource];
-    return normalizeRow(resource, { ...row, [key]: data || [], items: data || [] });
+    return sanitizeReadByRole(resource, { ...row, [key]: data || [], items: data || [] });
   }
 
   async function handleWorkflow(action, payload) {
     const client = getClient();
     if (action === 'list' || action === 'list_rules') {
+      assertAllowed('workflow', 'list');
       const { data, error } = await applyFilters(client.from('workflow_rules').select('*'), payload).order('updated_at', { ascending: false });
       if (error) throw friendlyError('Unable to load workflow rules', error);
       return normalizeList('workflow', data);
     }
     if (action === 'get') {
+      assertAllowed('workflow', 'get');
       const id = payload.workflow_rule_id || payload.id;
       const { data, error } = await client.from('workflow_rules').select('*').eq('workflow_rule_id', id).single();
       if (error) throw friendlyError('Unable to load workflow rule', error);
       return data;
     }
     if (action === 'save' || action === 'save_rule') {
+      assertAllowed('workflow', 'save');
       const row = payload.rule || payload;
       const id = row.workflow_rule_id || row.id;
       const qb = client.from('workflow_rules');
@@ -1222,12 +1256,14 @@
       return resp.data;
     }
     if (action === 'delete' || action === 'delete_rule') {
+      assertAllowed('workflow', 'delete');
       const id = payload.workflow_rule_id || payload.id;
       const { error } = await client.from('workflow_rules').delete().eq('workflow_rule_id', id);
       if (error) throw friendlyError('Unable to delete workflow rule', error);
       return { ok: true };
     }
     if (action === 'validate_transition') {
+      assertAllowed('workflow', 'get');
       const rpcPayload = {
         p_resource: payload.target_workflow_resource || payload.resource || payload.target_resource || '',
         p_current_status: payload.from_status || payload.current_status || '',
@@ -1240,6 +1276,7 @@
       return data;
     }
     if (action === 'request_approval' || action === 'approve' || action === 'reject' || action === 'list_pending_approvals') {
+      assertAllowed('workflow', action);
       if (action === 'list_pending_approvals') {
         const { data, error } = await client.from('workflow_approvals').select('*').eq('status', 'pending').order('created_at', { ascending: false });
         if (error) throw friendlyError('Unable to load workflow approvals', error);
@@ -1258,6 +1295,7 @@
       return data;
     }
     if (action === 'list_audit') {
+      assertAllowed('workflow', 'list_audit');
       const { data, error } = await client.from('workflow_audit_log').select('*').order('created_at', { ascending: false });
       if (error) throw friendlyError('Unable to load workflow audit log', error);
       return data;
@@ -1268,14 +1306,14 @@
   async function handleRpcResource(resource, action, payload) {
     const client = getClient();
     if (resource === 'leads' && ['convert_to_deal','convert'].includes(action)) {
-      if (!isAdminDev()) throw new Error('Only admin/dev can convert leads to deals.');
+      assertAllowed('leads', 'convert_to_deal');
       const leadUuid = String(payload.id || payload.lead_id || '').trim();
       const { data, error } = await client.rpc('convert_lead_to_deal', { p_lead_uuid: leadUuid });
       if (error) throw friendlyError('Lead conversion failed', error);
       return data;
     }
     if (resource === 'proposals' && action === 'create_from_deal') {
-      if (!isAdminDev()) throw new Error('Only admin/dev can create proposals from deals.');
+      assertAllowed('proposals', 'create_from_deal');
       const idCandidate = String(payload.id || '').trim();
       const fallbackCandidate = String(payload.deal_id || '').trim();
       const dealUuid = isUuid(idCandidate)
@@ -1319,7 +1357,7 @@
       return updatedProposal || createdProposal;
     }
     if (resource === 'agreements' && action === 'create_from_proposal') {
-      if (!isAdminDev()) throw new Error('Only admin/dev can create agreements from proposals.');
+      assertAllowed('agreements', 'create_from_proposal');
       const proposalUuid = String(payload.proposal_uuid || payload.id || payload.proposal_id || '').trim();
       if (!isUuid(proposalUuid)) throw new Error('Proposal UUID is required to create agreement from proposal.');
       const { data, error } = await client.rpc('create_agreement_from_proposal', { p_proposal_uuid: proposalUuid });
@@ -1327,7 +1365,7 @@
       return data;
     }
     if (resource === 'invoices' && action === 'create_from_agreement') {
-      if (!isAdminDev()) throw new Error('Only admin/dev can create invoices from agreements.');
+      assertAllowed('invoices', 'create_from_agreement');
       const agreementUuid = String(payload.id || payload.agreement_uuid || payload.agreement_id || '').trim();
       if (!isUuid(agreementUuid)) throw new Error('Agreement UUID is required to create invoice from agreement.');
       const { data, error } = await client.rpc('create_invoice_from_agreement', { p_agreement_uuid: agreementUuid });
@@ -1335,7 +1373,7 @@
       return data;
     }
     if (resource === 'receipts' && action === 'create_from_invoice') {
-      if (!isAdminDev()) throw new Error('Only admin/dev can create receipts from invoices.');
+      assertAllowed('receipts', 'create_from_invoice');
       const invoiceUuid = String(payload.id || payload.invoice_uuid || payload.invoice_id || '').trim();
       if (!isUuid(invoiceUuid)) throw new Error('Invoice UUID is required to create receipt from invoice.');
       const logPrefix = '[supabase][receipts.create_from_invoice]';
@@ -1506,6 +1544,7 @@
     const client = getClient();
 
     if (resource === 'tickets' && action === 'list') {
+      assertAllowed('tickets', 'list');
       let query = applyFilters(client.from('tickets').select('*'), payload).order('updated_at', { ascending: false });
       const { data: tickets, error } = await query;
       if (error) throw friendlyError('Unable to load tickets', error);
@@ -1520,6 +1559,7 @@
     }
 
     if (action === 'list') {
+      assertAllowed(resource, 'list');
       const { controls } = splitListPayload(payload);
       const listControls = normalizeListControls(controls, resource);
       let query = client.from(table).select('*', { count: 'exact' });
@@ -1532,6 +1572,7 @@
     }
 
     if (action === 'get') {
+      assertAllowed(resource, 'get');
       const id = resource === 'technical_admin_requests'
         ? await resolveTechnicalAdminRequestUuid(payload, client)
         : ['clients', 'invoices', 'receipts'].includes(resource)
@@ -1541,7 +1582,7 @@
       const { data, error } = await client.from(table).select('*').eq(key, id).single();
       if (error) throw friendlyError(`Unable to load ${resource} record`, error);
       if (resource === 'tickets') {
-        if (!isAdminDev()) return { handled: true, data: normalizeRow(resource, data) };
+        if (!isAdminDev()) return { handled: true, data: sanitizeReadByRole(resource, data) };
         const byId = await loadTicketInternalByIds([String(data.id)]);
         return { handled: true, data: mergeTicketInternal(data, byId.get(String(data.id))) };
       }
@@ -1549,24 +1590,17 @@
     }
 
     if (['create','save'].includes(action)) {
+      assertAllowed(resource, 'create');
       const raw = payload[resource.slice(0, -1)] || payload.item || payload.activity || payload[resource] || payload;
       const record = raw && typeof raw === 'object' ? { ...raw } : {};
       delete record.resource; delete record.action; delete record.authToken;
       if (resource === 'tickets') devLog('[tickets/create] raw form data', record);
-      if (resource === 'events' && !isAdminDev()) throw new Error('Only admin/dev can create events.');
       const currentUserId = ['tickets', 'events', 'leads', 'deals', 'proposal_catalog', 'proposals', 'agreements', 'clients', 'invoices', 'receipts'].includes(resource)
         ? await getCurrentUserId(client)
         : '';
       if (['leads', 'deals'].includes(resource) && !currentUserId) {
         throw new Error(`You must be logged in to create ${resource}.`);
       }
-      if (resource === 'deals' && !isAdminDev()) throw new Error('Only admin/dev can create deals.');
-      if (resource === 'clients' && !isAdminDev()) throw new Error('Only admin/dev can create clients.');
-      if (resource === 'invoices' && !isAdminDev()) throw new Error('Only admin/dev can create invoices.');
-      if (resource === 'receipts' && !isAdminDev()) throw new Error('Only admin/dev can create receipts.');
-      if (resource === 'proposal_catalog' && !isAdminDev()) throw new Error('Only admin/dev can create proposal catalog items.');
-      if (resource === 'proposals' && !isAdminDev()) throw new Error('Only admin/dev can create proposals.');
-      if (resource === 'agreements' && !isAdminDev()) throw new Error('Only admin/dev can create agreements.');
       const createRecord =
         resource === 'tickets'
           ? toTicketPublicRecord(stripTicketInternalFields(record), { includeTicketId: true, userId: currentUserId })
@@ -1644,6 +1678,7 @@
     }
 
     if (action === 'update') {
+      assertAllowed(resource, 'update');
       const pickedId = resource === 'technical_admin_requests'
         ? await resolveTechnicalAdminRequestUuid(payload, client)
         : ['clients', 'invoices', 'receipts'].includes(resource)
@@ -1664,17 +1699,6 @@
       const updates = payload.updates || payload.item || payload.activity || payload;
       const safeUpdates = { ...updates };
       delete safeUpdates.resource; delete safeUpdates.action; delete safeUpdates.authToken;
-      if (resource === 'tickets' && !isAdminDev()) throw new Error('Only admin/dev can update tickets.');
-      if (resource === 'events' && !isAdminDev()) throw new Error('Only admin/dev can update events.');
-      if (resource === 'csm' && !['admin','hoo'].includes(role())) throw new Error('Only admin/hoo can update CSM activities.');
-      if (resource === 'leads' && !isAdminDev()) throw new Error('Only admin/dev can update leads.');
-      if (resource === 'deals' && !isAdminDev()) throw new Error('Only admin/dev can update deals.');
-      if (resource === 'clients' && !isAdminDev()) throw new Error('Only admin/dev can update clients.');
-      if (resource === 'invoices' && !isAdminDev()) throw new Error('Only admin/dev can update invoices.');
-      if (resource === 'receipts' && !isAdminDev()) throw new Error('Only admin/dev can update receipts.');
-      if (resource === 'proposal_catalog' && !isAdminDev()) throw new Error('Only admin/dev can update proposal catalog items.');
-      if (resource === 'proposals' && !isAdminDev()) throw new Error('Only admin/dev can update proposals.');
-      if (resource === 'agreements' && !isAdminDev()) throw new Error('Only admin/dev can update agreements.');
       const publicUpdates =
         resource === 'tickets'
           ? toTicketPublicRecord(stripTicketInternalFields(safeUpdates), { includeTicketId: false })
@@ -1751,6 +1775,7 @@
     }
 
     if (resource === 'technical_admin_requests' && action === 'update_status') {
+      assertAllowed('technical_admin_requests', 'update_status');
       const id = await resolveTechnicalAdminRequestUuid(payload, client);
       if (!id) throw new Error('Technical request id is required.');
       const status = trimOrNull(firstDefined(payload, ['request_status', 'status'])) || 'Requested';
@@ -1779,6 +1804,7 @@
     }
 
     if (action === 'delete') {
+      assertAllowed(resource, 'delete');
       const pickedId = ['clients', 'invoices', 'receipts'].includes(resource)
         ? await resolveResourceUuid(resource, payload, client)
         : pickId(resource, payload);
@@ -1788,17 +1814,6 @@
           ? pickProposalCatalogMutationId(payload)
         : pickedId;
       const key = resource === 'tickets' ? 'id' : (PK_KEYS[resource][0] || 'id');
-      if (resource === 'tickets' && !isAdminDev()) throw new Error('Only admin/dev can delete tickets.');
-      if (resource === 'events' && !isAdminDev()) throw new Error('Only admin/dev can delete events.');
-      if (resource === 'csm' && !['admin','hoo'].includes(role())) throw new Error('Only admin/hoo can delete CSM activities.');
-      if (resource === 'leads' && !isAdminDev()) throw new Error('Only admin/dev can delete leads.');
-      if (resource === 'deals' && !isAdminDev()) throw new Error('Only admin/dev can delete deals.');
-      if (resource === 'clients' && !isAdminDev()) throw new Error('Only admin/dev can delete clients.');
-      if (resource === 'invoices' && !isAdminDev()) throw new Error('Only admin/dev can delete invoices.');
-      if (resource === 'receipts' && !isAdminDev()) throw new Error('Only admin/dev can delete receipts.');
-      if (resource === 'proposal_catalog' && !isAdminDev()) throw new Error('Only admin/dev can delete proposal catalog items.');
-      if (resource === 'proposals' && !isAdminDev()) throw new Error('Only admin/dev can delete proposals.');
-      if (resource === 'agreements' && !isAdminDev()) throw new Error('Only admin/dev can delete agreements.');
       if (resource === 'tickets' && isAdminDev()) {
         const { error: internalDeleteError } = await client.from('ticket_internal').delete().eq('ticket_id', ticketRowId({ id }));
         if (internalDeleteError) throw friendlyError('Unable to delete internal ticket fields', internalDeleteError);
@@ -1809,6 +1824,7 @@
     }
 
     if (resource === 'users' && ['activate','deactivate'].includes(action)) {
+      assertAllowed('users', action);
       const id = pickId(resource, payload);
       const { data, error } = await client.from('profiles').update({ is_active: action === 'activate' }).eq('user_id', id).select('*').single();
       if (error) throw friendlyError('Unable to update user status', error);
