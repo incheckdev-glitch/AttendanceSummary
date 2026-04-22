@@ -1157,6 +1157,9 @@ const Proposals = {
       this.applyFilters();
       this.render();
     } catch (error) {
+      if (typeof isPermissionError === 'function' && isPermissionError(error)) {
+        console.log('[auth-check] permission error preserved session', error?.message);
+      }
       if (typeof isAuthError === 'function' && isAuthError(error)) {
         handleExpiredSession('Session expired. Please log in again.');
         return;
@@ -1600,6 +1603,9 @@ const Proposals = {
         this.openProposalForm(proposal, items, { readOnly });
       }
     } catch (error) {
+      if (typeof isPermissionError === 'function' && isPermissionError(error)) {
+        console.log('[auth-check] permission error preserved session', error?.message);
+      }
       if (typeof isAuthError === 'function' && isAuthError(error)) {
         handleExpiredSession('Session expired. Please log in again.');
         return;
@@ -1721,6 +1727,9 @@ const Proposals = {
       if (parsed?.proposal) this.openProposalForm(parsed.proposal, parsed.items, { readOnly: false });
       else this.closeProposalForm();
     } catch (error) {
+      if (typeof isPermissionError === 'function' && isPermissionError(error)) {
+        console.log('[auth-check] permission error preserved session', error?.message);
+      }
       if (typeof isAuthError === 'function' && isAuthError(error)) {
         handleExpiredSession('Session expired. Please log in again.');
         return;
@@ -1754,6 +1763,9 @@ const Proposals = {
       this.closeProposalForm();
       this.rerenderVisibleTable();
     } catch (error) {
+      if (typeof isPermissionError === 'function' && isPermissionError(error)) {
+        console.log('[auth-check] permission error preserved session', error?.message);
+      }
       if (typeof isAuthError === 'function' && isAuthError(error)) {
         handleExpiredSession('Session expired. Please log in again.');
         return;
@@ -1832,6 +1844,9 @@ const Proposals = {
         E.proposalPreviewModal.setAttribute('aria-hidden', 'false');
       }
     } catch (error) {
+      if (typeof isPermissionError === 'function' && isPermissionError(error)) {
+        console.log('[auth-check] permission error preserved session', error?.message);
+      }
       if (typeof isAuthError === 'function' && isAuthError(error)) {
         handleExpiredSession('Session expired. Please log in again.');
         return;
