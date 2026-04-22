@@ -27,9 +27,23 @@ const Api = {
     return resolved;
   },
   getEndpointDiagnostics() {
-    const endpoint = this.ensureBaseUrl();
+    const endpoint = resolveApiEndpoint(API_BASE_URL);
     const localProxyEndpoint = resolveApiEndpoint('/api/proxy');
+    if (!endpoint) {
+      return {
+        configured: false,
+        baseUrl: null,
+        mode: 'supabase-only',
+        endpoint: '',
+        localProxyEndpoint,
+        isProxy: false,
+        notificationEndpoint: ''
+      };
+    }
     return {
+      configured: true,
+      baseUrl: endpoint,
+      mode: 'legacy-api',
       endpoint,
       localProxyEndpoint,
       isProxy: endpoint === localProxyEndpoint,
