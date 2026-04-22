@@ -264,14 +264,16 @@ const Session = {
 
 function isAuthError(error) {
   const message = String(error?.message || '').trim().toLowerCase();
+  console.log('[auth-check] isAuthError input', error?.message);
   if (!message) return false;
   return [
     /\bunauthorized\b/,
-    /\bforbidden\b/,
     /invalid\s+session/,
     /expired\s+session/,
     /not\s+authenticated/,
-    /auth/i
+    /missing\s+auth(\s+token)?/,
+    /missing\s+session/,
+    /no\s+active\s+session/
   ].some(pattern => pattern.test(message));
 }
 

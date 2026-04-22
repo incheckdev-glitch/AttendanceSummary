@@ -2694,6 +2694,16 @@ function openIssueFromLink() {
   UI.Modals.openIssue(issueId);
 }
 
+function isPermissionError(error) {
+  const message = String(error?.message || '').trim().toLowerCase();
+  return (
+    message.includes('forbidden') ||
+    message.includes('permission denied') ||
+    message.includes('insufficient privileges') ||
+    message.includes('not allowed')
+  );
+}
+
 async function loadIssues(force = false) {
   if (!force && !DataStore.rows.length) {
     const cached = IssuesCache.load();
@@ -2738,6 +2748,12 @@ async function loadIssues(force = false) {
     openIssueFromLink();
     UI.setSync('issues', true, new Date());
   } catch (e) {
+    if (isPermissionError(e)) {
+      console.log('[startup] permission error preserved session', e?.message);
+      UI.toast('Some issues are unavailable for your role. Your session is still active.');
+      UI.setSync('issues', !!DataStore.rows.length, null);
+      return;
+    }
     if (isAuthError(e)) {
       await handleExpiredSession('Unable to restore your session. Please log in again.');
       return;
@@ -2785,6 +2801,16 @@ async function loadEvents(force = false, options = {}) {
     UI.setSync('events', true, new Date());
   } catch (e) {
     const errMsg = String(e?.message || 'Unknown error');
+    if (isPermissionError(e)) {
+      console.log('[startup] permission error preserved session', e?.message);
+      DataStore.events = cached || [];
+      ensureCalendar();
+      renderCalendarEvents();
+      refreshPlannerReleasePlans();
+      UI.setSync('events', !!DataStore.events.length, null);
+      UI.toast('Calendar events are restricted for your role. Your session is still active.');
+      return;
+    }
     if (isAuthError(e)) {
       await handleExpiredSession('Session expired while loading calendar events.');
       return;
@@ -4532,9 +4558,12 @@ function wireDashboardGate() {
         .catch(error => {
           console.warn('Post-login permission matrix refresh failed', error);
         });
-      Promise.all([loadIssues(false), loadEvents(false)]).catch(error => {
-        console.warn('Post-login data refresh failed', error);
-        UI.toast('Logged in, but latest dashboard data could not be refreshed.');
+      Promise.allSettled([loadIssues(false), loadEvents(false)]).then(results => {
+        const rejected = results.filter(result => result.status === 'rejected');
+        if (rejected.length) {
+          console.warn('Post-login data refresh failed', rejected);
+          UI.toast('Logged in, but some dashboard data could not be refreshed.');
+        }
       });
     } catch (error) {
       const message = String(error?.message || '').toLowerCase();
@@ -5995,6 +6024,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   if (isAuthenticated && Session.isAuthenticated()) {
-    await Promise.all([loadIssues(false), loadEvents(false)]);
+    const startupResults = await Promise.allSettled([loadIssues(false), loadEvents(false)]);
+    const rejected = startupResults.filter(result => result.status === 'rejected');
+    if (rejected.length) {
+      console.warn('Startup data refresh had module failures; preserving active session.', rejected);
+      UI.toast('Some dashboard modules could not be loaded, but your session is still active.');
+    }
   }
 });

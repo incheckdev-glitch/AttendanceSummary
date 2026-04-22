@@ -198,6 +198,14 @@ const Notifications = {
         (message.includes('notification') || message.includes('get_unread_count'))
       );
     };
+    const isNotificationUnavailableError = error => {
+      const message = messageFromError(error);
+      return (
+        message.includes('unavailable') ||
+        message.includes('temporarily unavailable') ||
+        message.includes('service unavailable')
+      );
+    };
     const isSessionAuthError = error => {
       const message = messageFromError(error);
       return (
@@ -205,6 +213,8 @@ const Notifications = {
         message.includes('invalid session') ||
         message.includes('expired session') ||
         message.includes('not authenticated') ||
+        message.includes('missing auth token') ||
+        message.includes('missing session') ||
         message.includes('jwt') ||
         message.includes('token expired')
       );
@@ -217,6 +227,11 @@ const Notifications = {
     } catch (error) {
       if (isNotificationPermissionError(error)) {
         console.warn('Notifications unread count is not permitted for this role; continuing without unread count.', error);
+        this.renderBell();
+        return this.state.unreadCount;
+      }
+      if (isNotificationUnavailableError(error)) {
+        console.warn('Notifications unread count is unavailable right now; continuing without unread count.', error);
         this.renderBell();
         return this.state.unreadCount;
       }
