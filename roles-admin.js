@@ -74,10 +74,12 @@ const RolesAdmin = {
         e.preventDefault();
         if (!Permissions.canEditRolesPermissions()) return UI.toast('Forbidden.');
         const selectedRoles = this.readMultiSelectValues(E.rolePermissionCreateAllowedRoles);
+        const normalizedAllowedRoles = this.normalizeAllowedRoles(selectedRoles);
         const payload = {
           resource: String(E.rolePermissionCreateResource?.value || '').trim().toLowerCase(),
           action: this.canonicalAction(E.rolePermissionCreateAction?.value),
-          allowed_roles: this.normalizeAllowedRoles(selectedRoles),
+          allowed_roles: normalizedAllowedRoles,
+          allowed_roles_csv: normalizedAllowedRoles.join(','),
           description: String(E.rolePermissionCreateDescription?.value || '').trim()
         };
         console.info('[RolesAdmin] selected roles before create save', payload.allowed_roles);
@@ -85,7 +87,7 @@ const RolesAdmin = {
           return UI.toast('resource, action, and allowed roles are required.');
         }
         try {
-          const permissionPayload = { ...payload, ...this.buildPermissionRolesPayload(payload.allowed_roles) };
+          const permissionPayload = this.buildPermissionDbPayload(payload);
           console.info('[RolesAdmin] final permission create payload', permissionPayload);
           const result = await Api.createRolePermission(permissionPayload);
           console.info('[RolesAdmin] create permission result', result);
@@ -136,24 +138,28 @@ const RolesAdmin = {
   stringifyAllowedRoles(value) {
     return this.normalizeAllowedRoles(value).join(',');
   },
-  rolesStorageMode() {
-    const rows = this.state.permissions || [];
-    const hasArrayRoles = rows.some(row => Array.isArray(row?.allowed_roles));
-    if (hasArrayRoles) return 'array';
-    const hasCsvRoles = rows.some(row =>
-      typeof row?.allowed_roles_csv === 'string' ||
-      typeof row?.allowed_roles === 'string'
-    );
-    return hasCsvRoles ? 'csv' : 'csv';
+  permissionRolesFromCsv(permission = {}) {
+    return this.normalizeAllowedRoles(permission.allowed_roles_csv || permission.allowed_roles || permission.allowedRoles);
   },
-  buildPermissionRolesPayload(roles = []) {
-    const normalizedRoles = this.normalizeAllowedRoles(roles);
-    const csv = this.stringifyAllowedRoles(normalizedRoles);
-    const mode = this.rolesStorageMode();
-    if (mode === 'array') {
-      return { allowed_roles: normalizedRoles, allowed_roles_csv: csv };
-    }
-    return { allowed_roles: csv, allowed_roles_csv: csv };
+  mapPermissionForUi(permission = {}) {
+    const mappedAllowedRoles = this.permissionRolesFromCsv(permission);
+    return {
+      ...permission,
+      allowed_roles: mappedAllowedRoles,
+      allowed_roles_csv: mappedAllowedRoles.join(',')
+    };
+  },
+  buildPermissionDbPayload(payload = {}) {
+    const allowedRoles = this.normalizeAllowedRoles(payload.allowed_roles || payload.allowed_roles_csv);
+    const permissionId = this.permissionId(payload);
+    const dbPayload = {
+      resource: String(payload.resource || '').trim().toLowerCase(),
+      action: this.canonicalAction(payload.action),
+      allowed_roles_csv: allowedRoles.join(','),
+      description: String(payload.description || '').trim()
+    };
+    if (permissionId) dbPayload.permission_id = permissionId;
+    return dbPayload;
   },
   canonicalAction(action) {
     const normalized = String(action || '').trim().toLowerCase();
@@ -275,7 +281,7 @@ const RolesAdmin = {
         summary_only: true,
         forceRefresh: force
       });
-      this.state.permissions = this.extractListResult(response).rows;
+      this.state.permissions = this.extractListResult(response).rows.map(permission => this.mapPermissionForUi(permission));
       this.renderPermissionsTable();
     } catch (error) {
       this.state.permissions = [];
@@ -438,7 +444,7 @@ const RolesAdmin = {
     return `${resource}:${action}`;
   },
   permissionAllowedRoles(permission = {}) {
-    return this.normalizeAllowedRoles(permission.allowed_roles || permission.allowed_roles_csv || permission.allowedRoles);
+    return this.permissionRolesFromCsv(permission);
   },
   filteredPermissionRows() {
     const filters = this.state.filters;
@@ -514,13 +520,13 @@ const RolesAdmin = {
     const description = String(rowEl?.querySelector('[data-permission-field="description"]')?.value || permission.description || '').trim();
     if (!allowedRoles.length) return UI.toast('allowed roles cannot be empty.');
     const permissionId = this.permissionId(permission);
-    const updates = { ...this.buildPermissionRolesPayload(allowedRoles), description };
+    const updates = this.buildPermissionDbPayload({ ...permission, allowed_roles: allowedRoles, description });
     console.info('[RolesAdmin] selected roles before row save', allowedRoles);
     console.info('[RolesAdmin] final permission row payload', updates);
     try {
       let result = null;
       if (permissionId) result = await Api.updateRolePermission(permissionId, updates);
-      else result = await Api.saveRolePermission({ ...permission, ...updates });
+      else result = await Api.saveRolePermission(updates);
       console.info('[RolesAdmin] permission save/update result', result);
       UI.toast('Permission row saved.');
       await this.refreshPermissions(true);
@@ -591,7 +597,6 @@ const RolesAdmin = {
             permission_id: this.permissionId(existing),
             resource,
             action,
-            allowed_roles: [...roles],
             allowed_roles_csv: [...roles].join(','),
             description: String(existing?.description || '').trim() || `${tabKey} ${action} access`
           })
