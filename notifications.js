@@ -472,6 +472,14 @@ const Notifications = {
     if (!box) return;
     const endpointDiagnostics =
       typeof Api?.getEndpointDiagnostics === 'function' ? Api.getEndpointDiagnostics() : null;
+    const diagnosticsMode = String(endpointDiagnostics?.mode || '').trim();
+    const isSupabaseOnly = diagnosticsMode === 'supabase-only' || endpointDiagnostics?.configured === false;
+    if (isSupabaseOnly) {
+      box.textContent = '';
+      box.style.display = 'none';
+      return;
+    }
+    box.style.display = '';
     const resolvedEndpoint = String(
       endpointDiagnostics?.notificationEndpoint ||
       window.API_RUNTIME_DIAGNOSTICS?.notificationHubEndpoint ||
