@@ -213,17 +213,9 @@ const Notifications = {
       );
     };
     const isSessionAuthError = error => {
+      if (typeof isAuthError === 'function') return isAuthError(error);
       const message = messageFromError(error);
-      return (
-        message.includes('unauthorized') ||
-        message.includes('invalid session') ||
-        message.includes('expired session') ||
-        message.includes('not authenticated') ||
-        message.includes('missing auth token') ||
-        message.includes('missing session') ||
-        message.includes('jwt') ||
-        message.includes('token expired')
-      );
+      return message.includes('unauthorized') || message.includes('invalid session') || message.includes('expired session');
     };
     try {
       const count = await Api.getNotificationUnreadCount();
@@ -232,7 +224,7 @@ const Notifications = {
       return this.state.unreadCount;
     } catch (error) {
       if (isNotificationPermissionError(error)) {
-        console.log('[auth-check] permission error preserved session', error?.message);
+        console.log('[startup] permission error preserved session', error?.message);
         console.warn('Notifications unread count is not permitted for this role; continuing without unread count.', error);
         this.renderBell();
         return this.state.unreadCount;
@@ -268,7 +260,7 @@ const Notifications = {
       this.state.previewItems = rows.slice(0, 10);
     } catch (error) {
       if (typeof isPermissionError === 'function' && isPermissionError(error)) {
-        console.log('[auth-check] permission error preserved session', error?.message);
+        console.log('[startup] permission error preserved session', error?.message);
         console.warn('Notification preview is not permitted for this role; keeping session active.', error);
         this.state.previewItems = [];
       } else {
@@ -325,7 +317,7 @@ const Notifications = {
       }
     } catch (error) {
       if (typeof isPermissionError === 'function' && isPermissionError(error)) {
-        console.log('[auth-check] permission error preserved session', error?.message);
+        console.log('[startup] permission error preserved session', error?.message);
         console.warn('Unable to load notifications hub for this role; keeping session active.', error);
         this.state.items = [];
         this.state.rawResponse = null;
