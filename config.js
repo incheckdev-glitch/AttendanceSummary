@@ -285,7 +285,9 @@ window.LS_KEYS = {
   freezeWindows: 'incheckFreezeWindows',
   session: 'incheckSession',
   persistentSession: 'incheckPersistentSession',
-  csmActivity: 'incheckCsmActivity'
+  csmActivity: 'incheckCsmActivity',
+  legacyAuthSession: 'incheckLegacyAuthSession',
+  lastKnownRole: 'incheckLastKnownRole'
 };
 
 const LS_KEYS = window.LS_KEYS;

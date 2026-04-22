@@ -12,6 +12,142 @@ const Session = {
   listeners: new Set(),
   authSubscription: null,
 
+  getLegacyAuthStorageKey() {
+    return LS_KEYS?.legacyAuthSession || 'incheckLegacyAuthSession';
+  },
+
+  getLastKnownRoleStorageKey() {
+    return LS_KEYS?.lastKnownRole || 'incheckLastKnownRole';
+  },
+
+  readLegacyAuthSession() {
+    try {
+      const raw = localStorage.getItem(this.getLegacyAuthStorageKey());
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return null;
+      return {
+        authToken: String(parsed.authToken || '').trim(),
+        userId: String(parsed.userId || '').trim(),
+        role: this.normalizeRole(parsed.role),
+        issuedAt: String(parsed.issuedAt || '').trim()
+      };
+    } catch {
+      return null;
+    }
+  },
+
+  saveLegacyAuthSession(sessionPayload = {}) {
+    const authToken = String(sessionPayload?.authToken || '').trim();
+    if (!authToken) return null;
+    const data = {
+      authToken,
+      userId: String(sessionPayload?.userId || this.userId() || this.state.user?.id || '').trim(),
+      role: this.normalizeRole(sessionPayload?.role || this.role()),
+      issuedAt: new Date().toISOString()
+    };
+    try { localStorage.setItem(this.getLegacyAuthStorageKey(), JSON.stringify(data)); } catch {}
+    return data;
+  },
+
+  clearLegacyAuthSession(reason = 'unspecified') {
+    try { localStorage.removeItem(this.getLegacyAuthStorageKey()); } catch {}
+    console.info('[Session.legacyAuth] cleared', { reason });
+  },
+
+  extractLegacyAuthToken(payload = null) {
+    if (!payload || typeof payload !== 'object') return '';
+    const candidates = [
+      payload.authToken,
+      payload.token,
+      payload.accessToken,
+      payload.backendToken,
+      payload.sessionToken,
+      payload?.session?.authToken,
+      payload?.session?.token,
+      payload?.data?.authToken,
+      payload?.data?.token
+    ];
+    const token = candidates.find(value => String(value || '').trim());
+    return String(token || '').trim();
+  },
+
+  getAuthToken() {
+    const activeUserId = String(this.userId() || this.state.user?.id || '').trim();
+    const activeRole = this.normalizeRole(this.role());
+    const fromStorage = this.readLegacyAuthSession();
+    if (!fromStorage?.authToken) return '';
+
+    if (activeUserId && fromStorage.userId && activeUserId !== fromStorage.userId) {
+      this.clearLegacyAuthSession('stored user does not match active user');
+      return '';
+    }
+    if (activeRole && fromStorage.role && activeRole !== fromStorage.role) {
+      this.clearLegacyAuthSession('stored role does not match active role');
+      return '';
+    }
+    return fromStorage.authToken;
+  },
+
+  async ensureLegacyTicketSession(options = {}) {
+    const forceRefresh = options?.forceRefresh === true;
+    const reason = String(options?.reason || 'unspecified');
+    if (!this.isAuthenticated()) throw new Error('Cannot establish legacy ticket session without an authenticated user.');
+
+    if (!forceRefresh) {
+      const existingToken = this.getAuthToken();
+      if (existingToken) {
+        console.info('[Session.legacyAuth] using stored token', {
+          reason,
+          role: this.role(),
+          tokenPrefix: `${existingToken.slice(0, 8)}...`
+        });
+        return existingToken;
+      }
+    }
+
+    const supabaseAccessToken = String(this.state?.session?.access_token || '').trim();
+    if (!supabaseAccessToken) throw new Error('Supabase session token is missing. Please log in again.');
+
+    const payload = {
+      role: this.role(),
+      userId: this.userId(),
+      email: this.state.email || this.state.user?.email || '',
+      supabaseAccessToken
+    };
+
+    const existingToken = this.getAuthToken();
+    if (existingToken && !forceRefresh) payload.authToken = existingToken;
+
+    console.info('[Session.legacyAuth] requesting backend ticket session', {
+      reason,
+      role: payload.role,
+      hasSupabaseAccessToken: Boolean(supabaseAccessToken),
+      hasExistingToken: Boolean(existingToken)
+    });
+
+    const response = await Api.post('auth', 'session', payload);
+    const authToken = this.extractLegacyAuthToken(response);
+    console.info('[Session.legacyAuth] backend session response', {
+      reason,
+      hasAuthToken: Boolean(authToken),
+      tokenPrefix: authToken ? `${authToken.slice(0, 8)}...` : '',
+      keys: response && typeof response === 'object' ? Object.keys(response).slice(0, 8) : []
+    });
+
+    if (!authToken) {
+      this.clearLegacyAuthSession('backend session response missing token');
+      throw new Error('Unable to establish ticket session. Please log in again.');
+    }
+
+    this.saveLegacyAuthSession({
+      authToken,
+      role: this.role(),
+      userId: this.userId()
+    });
+    return authToken;
+  },
+
   clearRoleScopedCache() {
     const roleScopedKeys = [LS_KEYS.issues, LS_KEYS.issuesLastUpdated, LS_KEYS.events, LS_KEYS.eventsLastUpdated, LS_KEYS.dataVersion];
     roleScopedKeys.forEach(key => { try { localStorage.removeItem(key); } catch {} });
@@ -52,6 +188,17 @@ const Session = {
     const prevRole = this.state.role;
     if (clearRoleCacheOnChange && prevRole && prevRole !== nextState.role) this.clearRoleScopedCache();
     this.state = nextState;
+
+    const currentRole = this.normalizeRole(nextState?.role);
+    let previousKnownRole = '';
+    try { previousKnownRole = this.normalizeRole(localStorage.getItem(this.getLastKnownRoleStorageKey())); } catch {}
+    if (previousKnownRole && currentRole && previousKnownRole !== currentRole) {
+      this.clearLegacyAuthSession('role changed since previous login');
+    }
+    if (currentRole) {
+      try { localStorage.setItem(this.getLastKnownRoleStorageKey(), currentRole); } catch {}
+    }
+
     this.notify();
     return true;
   },
@@ -197,6 +344,7 @@ const Session = {
 
   clearClientSession({ clearRoleCache = true } = {}) {
     if (clearRoleCache && this.state.role) this.clearRoleScopedCache();
+    this.clearLegacyAuthSession('client session cleared');
     this.state = { role: null, user_id: '', name: '', email: '', username: '', session: null, user: null, profile: null };
     this.notify();
   },
