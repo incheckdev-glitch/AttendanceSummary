@@ -55,13 +55,20 @@ const RolesAdmin = {
       E.rolePermissionCreateForm.addEventListener('submit', async e => {
         e.preventDefault();
         if (!Permissions.canEditRolesPermissions()) return UI.toast('Forbidden.');
-        const resource = String(E.rolePermissionCreateResource?.value || '').trim().toLowerCase();
-        const action = this.canonicalAction(E.rolePermissionCreateAction?.value);
+        const { resource, action } = this.parseResourceAction(
+          E.rolePermissionCreateResource?.value,
+          E.rolePermissionCreateAction?.value
+        );
         const selectedRoles = this.readMultiSelectValues(E.rolePermissionCreateAllowedRoles);
-        const roleKeys = this.normalizeRoleKeys(selectedRoles);
-        if (!resource || !action || !roleKeys.length) return UI.toast('resource, action, and roles are required.');
+        const validation = this.validatePermissionPayload({ roleKeys: selectedRoles, resource, action });
+        if (!validation.valid) return UI.toast(validation.message);
         try {
-          await this.upsertPermissionGroup({ resource, action, roleKeys, existingRows: [] });
+          await this.upsertPermissionGroup({
+            resource: validation.resource,
+            action: validation.action,
+            roleKeys: validation.roleKeys,
+            existingRows: []
+          });
           UI.toast('Permission rule created.');
           E.rolePermissionCreateForm.reset();
           this.togglePermissionCreate(false);
@@ -114,6 +121,42 @@ const RolesAdmin = {
     if (!normalized) return '';
     const map = { view: 'get', read: 'get', edit: 'update', manage: 'update' };
     return map[normalized] || normalized;
+  },
+
+  parseResourceAction(resourceValue = '', actionValue = '') {
+    let resource = String(resourceValue || '').trim().toLowerCase();
+    let action = this.canonicalAction(actionValue);
+
+    const splitCombined = value => {
+      const normalized = String(value || '').trim().toLowerCase();
+      if (!normalized) return null;
+      const parts = normalized.split('.');
+      if (parts.length !== 2) return null;
+      const [resourcePart, actionPart] = parts.map(part => String(part || '').trim()).filter(Boolean);
+      if (!resourcePart || !actionPart) return null;
+      return { resource: resourcePart, action: this.canonicalAction(actionPart) };
+    };
+
+    const fromResource = splitCombined(resource);
+    const fromAction = splitCombined(actionValue);
+    if (fromResource) {
+      resource = fromResource.resource;
+      action = fromResource.action;
+    } else if (fromAction) {
+      resource = fromAction.resource;
+      action = fromAction.action;
+    }
+    return { resource, action };
+  },
+
+  validatePermissionPayload({ roleKeys = [], resource = '', action = '' }) {
+    const normalizedRoles = this.normalizeRoleKeys(roleKeys);
+    const normalizedResource = String(resource || '').trim().toLowerCase();
+    const normalizedAction = this.canonicalAction(action);
+    if (!normalizedRoles.length) return { valid: false, message: 'Please select at least one role before saving permission changes.' };
+    if (!normalizedResource) return { valid: false, message: 'Resource is required before saving permission changes.' };
+    if (!normalizedAction) return { valid: false, message: 'Action is required before saving permission changes.' };
+    return { valid: true, roleKeys: normalizedRoles, resource: normalizedResource, action: normalizedAction };
   },
 
   extractRows(response) {
@@ -422,13 +465,21 @@ const RolesAdmin = {
 
   async saveRuleRow(rule, row) {
     if (!Permissions.canEditRolesPermissions()) return UI.toast('Forbidden.');
-    const resource = String(row.querySelector('[data-rule-field="resource"]')?.value || '').trim().toLowerCase();
-    const action = this.canonicalAction(row.querySelector('[data-rule-field="action"]')?.value || '');
-    const roleKeys = this.normalizeRoleKeys(this.readMultiSelectValues(row.querySelector('[data-rule-field="roles"]')));
-    if (!resource || !action || !roleKeys.length) return UI.toast('resource, action, and at least one role are required.');
+    const { resource, action } = this.parseResourceAction(
+      row.querySelector('[data-rule-field="resource"]')?.value,
+      row.querySelector('[data-rule-field="action"]')?.value
+    );
+    const selectedRoles = this.readMultiSelectValues(row.querySelector('[data-rule-field="roles"]'));
+    const validation = this.validatePermissionPayload({ roleKeys: selectedRoles, resource, action });
+    if (!validation.valid) return UI.toast(validation.message);
 
     try {
-      await this.upsertPermissionGroup({ resource, action, roleKeys, existingRows: rule.rows });
+      await this.upsertPermissionGroup({
+        resource: validation.resource,
+        action: validation.action,
+        roleKeys: validation.roleKeys,
+        existingRows: rule.rows
+      });
       UI.toast('Permission rule saved.');
       await this.refreshPermissions(true);
       await Permissions.loadMatrix(true);
@@ -445,10 +496,13 @@ const RolesAdmin = {
     const newAction = window.prompt('Duplicate rule to action', rule.action);
     if (newAction == null) return;
     try {
+      const { resource, action } = this.parseResourceAction(newResource, newAction);
+      const validation = this.validatePermissionPayload({ roleKeys: rule.roleKeys, resource, action });
+      if (!validation.valid) return UI.toast(validation.message);
       await this.upsertPermissionGroup({
-        resource: String(newResource || '').trim().toLowerCase(),
-        action: this.canonicalAction(newAction),
-        roleKeys: rule.roleKeys,
+        resource: validation.resource,
+        action: validation.action,
+        roleKeys: validation.roleKeys,
         existingRows: []
       });
       UI.toast('Rule duplicated.');
@@ -481,7 +535,9 @@ const RolesAdmin = {
   },
 
   async upsertPermissionGroup({ resource, action, roleKeys, existingRows = [] }) {
-    const targetRoles = new Set(this.normalizeRoleKeys(roleKeys));
+    const validation = this.validatePermissionPayload({ roleKeys, resource, action });
+    if (!validation.valid) throw new Error(validation.message);
+    const targetRoles = new Set(validation.roleKeys);
     const rowsByRole = new Map();
     existingRows.forEach(row => {
       const key = this.roleKey(row);
@@ -492,21 +548,25 @@ const RolesAdmin = {
     targetRoles.forEach(roleKey => {
       const existing = rowsByRole.get(roleKey);
       if (existing && this.permissionId(existing)) {
-        upserts.push(Api.updateRolePermission(this.permissionId(existing), {
+        const payload = {
           role_key: roleKey,
-          resource,
-          action,
+          resource: validation.resource,
+          action: validation.action,
           is_allowed: true,
           is_active: true
-        }));
+        };
+        try { console.log('[RolesPermissions] final payload before save', { permission_id: this.permissionId(existing), ...payload }); } catch {}
+        upserts.push(Api.updateRolePermission(this.permissionId(existing), payload));
       } else {
-        upserts.push(Api.createRolePermission({
+        const payload = {
           role_key: roleKey,
-          resource,
-          action,
+          resource: validation.resource,
+          action: validation.action,
           is_allowed: true,
           is_active: true
-        }));
+        };
+        try { console.log('[RolesPermissions] final payload before save', payload); } catch {}
+        upserts.push(Api.createRolePermission(payload));
       }
     });
 
@@ -515,13 +575,17 @@ const RolesAdmin = {
         const existingRole = this.roleKey(row);
         return existingRole && !targetRoles.has(existingRole) && this.permissionId(row);
       })
-      .map(row => Api.updateRolePermission(this.permissionId(row), {
-        role_key: this.roleKey(row),
-        resource,
-        action,
-        is_allowed: false,
-        is_active: false
-      }));
+      .map(row => {
+        const payload = {
+          role_key: this.roleKey(row),
+          resource: validation.resource,
+          action: validation.action,
+          is_allowed: false,
+          is_active: false
+        };
+        try { console.log('[RolesPermissions] final payload before save', { permission_id: this.permissionId(row), ...payload }); } catch {}
+        return Api.updateRolePermission(this.permissionId(row), payload);
+      });
 
     await Promise.all([...upserts, ...deactivations]);
   },
@@ -545,44 +609,59 @@ const RolesAdmin = {
   },
 
   async applyBulkTabPermissions() {
-    const roleKeys = this.normalizeRoleKeys(this.readMultiSelectValues(E.tabPermissionRole));
-    const resource = String(E.tabPermissionTarget?.value || '').trim().toLowerCase();
+    const roleKeys = this.readMultiSelectValues(E.tabPermissionRole);
+    const { resource } = this.parseResourceAction(E.tabPermissionTarget?.value, '');
     const selectedActions = this.selectedCrudActions();
 
-    if (!roleKeys.length) return UI.toast('Please select at least one role.');
-    if (!resource) return UI.toast('Please enter a resource.');
+    const baseValidation = this.validatePermissionPayload({ roleKeys, resource, action: selectedActions[0] || '' });
+    if (!baseValidation.valid) return UI.toast(baseValidation.message);
+    const normalizedRoleKeys = baseValidation.roleKeys;
 
     const actionSet = new Set(selectedActions);
-    const existingRows = this.state.permissions.filter(row => String(row.resource || '').trim().toLowerCase() === resource && roleKeys.includes(this.roleKey(row)));
+    const existingRows = this.state.permissions.filter(row => String(row.resource || '').trim().toLowerCase() === baseValidation.resource && normalizedRoleKeys.includes(this.roleKey(row)));
     const byRoleAction = new Map(existingRows.map(row => [`${this.roleKey(row)}:${this.canonicalAction(row.action)}`, row]));
 
     const requests = [];
-    roleKeys.forEach(roleKey => {
+    normalizedRoleKeys.forEach(roleKey => {
       selectedActions.forEach(action => {
-        const existing = byRoleAction.get(`${roleKey}:${action}`);
+        const actionValidation = this.validatePermissionPayload({ roleKeys: [roleKey], resource: baseValidation.resource, action });
+        if (!actionValidation.valid) return;
+        const existing = byRoleAction.get(`${roleKey}:${actionValidation.action}`);
         if (existing && this.permissionId(existing)) {
-          requests.push(Api.updateRolePermission(this.permissionId(existing), {
+          const payload = {
             role_key: roleKey,
-            resource,
-            action,
+            resource: actionValidation.resource,
+            action: actionValidation.action,
             is_allowed: true,
             is_active: true
-          }));
+          };
+          try { console.log('[RolesPermissions] final payload before save', { permission_id: this.permissionId(existing), ...payload }); } catch {}
+          requests.push(Api.updateRolePermission(this.permissionId(existing), payload));
         } else {
-          requests.push(Api.createRolePermission({ role_key: roleKey, resource, action, is_allowed: true, is_active: true }));
+          const payload = {
+            role_key: roleKey,
+            resource: actionValidation.resource,
+            action: actionValidation.action,
+            is_allowed: true,
+            is_active: true
+          };
+          try { console.log('[RolesPermissions] final payload before save', payload); } catch {}
+          requests.push(Api.createRolePermission(payload));
         }
       });
 
       existingRows
         .filter(row => this.roleKey(row) === roleKey && !actionSet.has(this.canonicalAction(row.action)) && this.permissionId(row))
         .forEach(row => {
-          requests.push(Api.updateRolePermission(this.permissionId(row), {
+          const payload = {
             role_key: roleKey,
-            resource,
+            resource: baseValidation.resource,
             action: this.canonicalAction(row.action),
             is_allowed: false,
             is_active: false
-          }));
+          };
+          try { console.log('[RolesPermissions] final payload before save', { permission_id: this.permissionId(row), ...payload }); } catch {}
+          requests.push(Api.updateRolePermission(this.permissionId(row), payload));
         });
     });
 
@@ -590,7 +669,7 @@ const RolesAdmin = {
 
     try {
       await Promise.all(requests);
-      UI.toast(`Applied CRUD helper on ${resource} for ${roleKeys.length} role(s).`);
+      UI.toast(`Applied CRUD helper on ${baseValidation.resource} for ${normalizedRoleKeys.length} role(s).`);
       await this.refreshPermissions(true);
       await Permissions.loadMatrix(true);
       UI.applyRolePermissions();
