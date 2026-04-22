@@ -66,15 +66,13 @@ const LifecycleAnalytics = {
       .trim();
   },
   isAnnualSaasLocationItem(item = {}) {
-    const section = this.norm(item.section || item.category || item.type);
-    const billing = this.norm(item.billing_frequency);
+    const section = this.norm(item.section);
     const itemName = this.norm(item.item_name);
-    if (!section && !itemName && !billing) return false;
+    if (!section && !itemName) return false;
     const oneTime = ['one_time_fee', 'one_time', 'one time', 'one-time', 'setup', 'implementation', 'onboarding'];
     if (oneTime.some(token => section.includes(token) || itemName.includes(token))) return false;
-    const saasFamily = ['annual_saas', 'saas', 'subscription', 'recurring'];
-    if (!saasFamily.some(token => section.includes(token) || itemName.includes(token))) return false;
-    return ['annual', 'yearly', '12 month', '12-month'].some(token => section.includes(token) || billing.includes(token) || itemName.includes(token));
+    return ['annual_saas', 'saas', 'subscription', 'recurring', 'annual', 'yearly', '12 month', '12-month']
+      .some(token => section.includes(token) || itemName.includes(token));
   },
   isActiveAnnualSaasLocationItem(item = {}) {
     if (!this.isAnnualSaasLocationItem(item)) return false;
@@ -107,6 +105,15 @@ const LifecycleAnalytics = {
     if (paid > 0 && due > 0) return 'Partially Paid';
     return 'Unpaid';
   },
+  derivePaymentStateFromInvoices(invoices = [], totalInvoiced = 0, totalPaid = 0, totalDue = 0) {
+    const states = invoices.map(row => this.norm(row.payment_state)).filter(Boolean);
+    if (states.length) {
+      if (states.every(value => value.includes('paid') && !value.includes('partial') && !value.includes('unpaid'))) return 'Paid';
+      if (states.some(value => value.includes('partial'))) return 'Partially Paid';
+      if (states.some(value => value.includes('unpaid') || value.includes('overdue') || value.includes('due'))) return 'Unpaid';
+    }
+    return this.classifyPaymentState(totalInvoiced, totalPaid, totalDue);
+  },
   statusBadge(status = '') {
     const label = this.text(status) || '—';
     return `<span class="pill status-${U.toStatusClass(label)}">${this.escape(label)}</span>`;
@@ -134,14 +141,14 @@ const LifecycleAnalytics = {
     ] = await Promise.all([
       this.fetchTable(db, 'leads', 'id,lead_id,company_name,full_name,email,phone,status,assigned_to,created_at,updated_at'),
       this.fetchTable(db, 'deals', 'id,deal_id,lead_id,company_name,full_name,email,status,stage,assigned_to,created_at,updated_at'),
-      this.fetchTable(db, 'proposals', 'id,proposal_id,deal_id,lead_id,customer_name,customer_contact_email,status,discount_percent,grand_total,created_at,sent_at,updated_at'),
-      this.fetchTable(db, 'agreements', 'id,agreement_id,agreement_number,proposal_id,deal_id,lead_id,customer_name,customer_legal_name,customer_contact_email,status,grand_total,currency,service_start_date,service_end_date,agreement_date,customer_sign_date,created_at,updated_at,generated_by'),
-      this.fetchTable(db, 'agreement_items', 'id,agreement_id,section,item_name,billing_frequency,service_start_date,service_end_date,line_total,created_at,updated_at'),
-      this.fetchTable(db, 'invoices', 'id,invoice_id,invoice_number,agreement_id,client_id,customer_name,customer_legal_name,status,payment_state,invoice_total,received_amount,pending_amount,currency,issue_date,due_date,created_at,updated_at'),
-      this.fetchTable(db, 'receipts', 'id,receipt_id,receipt_number,invoice_id,agreement_id,client_id,customer_name,customer_legal_name,status,payment_state,amount_received,currency,receipt_date,created_at,updated_at'),
-      this.fetchTable(db, 'clients', 'id,client_id,client_name,company_name,status,primary_email,created_at,updated_at'),
-      this.fetchTable(db, 'operations_onboarding', 'id,onboarding_id,agreement_id,client_id,client_name,onboarding_status,csm_assigned_to,go_live_target_date,open_client_request,technical_request_status,requested_at,completed_at,updated_at,created_at'),
-      this.fetchTable(db, 'technical_admin_requests', 'id,request_id,agreement_id,onboarding_id,client_id,client_name,request_status,technical_request_status,assigned_to,technical_admin_assigned_to,requested_at,completed_at,updated_at,created_at')
+      this.fetchTable(db, 'proposals', 'id,proposal_id,ref_number,deal_id,customer_name,proposal_title,proposal_date,proposal_valid_until,service_start_date,service_end_date,contract_term,billing_frequency,payment_term,subtotal_locations,subtotal_one_time,total_discount,grand_total,status,currency,created_at,updated_at'),
+      this.fetchTable(db, 'agreements', 'id,agreement_id,agreement_number,proposal_id,customer_name,service_start_date,service_end_date,signed_date,status,grand_total,billing_frequency,payment_term,currency,created_at,updated_at'),
+      this.fetchTable(db, 'agreement_items', 'agreement_id,section,location_name,item_name,quantity,line_total,service_start_date,service_end_date'),
+      this.fetchTable(db, 'invoices', 'id,invoice_id,invoice_number,client_id,agreement_id,proposal_id,issue_date,due_date,billing_frequency,payment_term,subtotal_locations,subtotal_one_time,invoice_total,received_amount,pending_amount,payment_state,payment_conclusion,status,currency,created_at,updated_at'),
+      this.fetchTable(db, 'receipts', 'id,receipt_id,receipt_number,invoice_id,client_id,receipt_date,amount_received,invoice_total,pending_amount,payment_state,payment_conclusion,old_paid_total,paid_now,new_paid_total,created_at,updated_at'),
+      this.fetchTable(db, 'clients', 'id,client_id,client_name,company_name,source_agreement_id,total_agreements,total_locations,total_value,total_paid,total_due'),
+      this.fetchTable(db, 'operations_onboarding', 'agreement_id,onboarding_status,technical_request_status,csm_assigned_to,go_live_target_date,updated_at'),
+      this.fetchTable(db, 'technical_admin_requests', 'agreement_id,request_status,assigned_to,requested_at,completed_at,location_count')
     ]);
 
     return { leads, deals, proposals, agreements, agreementItems, invoices, receipts, clients, onboarding, technical };
@@ -151,27 +158,28 @@ const LifecycleAnalytics = {
     today.setHours(0, 0, 0, 0);
 
     const accounts = new Map();
+    const accountByLeadUuid = new Map();
+    const accountByDealUuid = new Map();
+    const accountByProposalUuid = new Map();
+    const accountByAgreementUuid = new Map();
+    const accountByInvoiceUuid = new Map();
     const clientsById = new Map();
-    const clientsByCompany = new Map();
 
     data.clients.forEach(row => {
-      const id = this.text(row.id);
-      if (id) clientsById.set(id, row);
-      const key = this.normalizeCompanyKey(row.company_name || row.client_name);
-      if (key && !clientsByCompany.has(key)) clientsByCompany.set(key, row);
+      const clientUuid = this.text(row.id);
+      if (clientUuid) clientsById.set(clientUuid, row);
     });
 
-    const ensureAccount = ({ clientUuid = '', company = '', email = '' } = {}) => {
-      const companyKey = this.normalizeCompanyKey(company);
-      const key = clientUuid || (companyKey ? `company:${companyKey}` : email ? `email:${this.norm(email)}` : `unknown:${accounts.size + 1}`);
-      if (!accounts.has(key)) {
-        const client = clientUuid ? clientsById.get(clientUuid) : companyKey ? clientsByCompany.get(companyKey) : null;
-        accounts.set(key, {
-          accountKey: key,
+    const ensureAccount = ({ key = '', clientUuid = '', company = '', email = '' } = {}) => {
+      const accountKey = key || (this.isUuid(clientUuid) ? `client:${clientUuid}` : `unknown:${accounts.size + 1}`);
+      if (!accounts.has(accountKey)) {
+        const client = this.isUuid(clientUuid) ? clientsById.get(clientUuid) : null;
+        accounts.set(accountKey, {
+          accountKey,
           clientUuid: this.text(client?.id || clientUuid),
           clientBusinessId: this.text(client?.client_id),
           companyName: this.text(client?.company_name || client?.client_name || company),
-          primaryEmail: this.text(client?.primary_email || email),
+          primaryEmail: this.text(email),
           currency: 'USD',
           leads: [], deals: [], proposals: [], agreements: [], invoices: [], receipts: [],
           onboarding: [], technical: [], locationItems: [],
@@ -180,127 +188,99 @@ const LifecycleAnalytics = {
           metrics: {}
         });
       }
-      const account = accounts.get(key);
+      const account = accounts.get(accountKey);
       if (!account.companyName && company) account.companyName = this.text(company);
       if (!account.primaryEmail && email) account.primaryEmail = this.text(email);
-      if (clientUuid && !account.clientUuid) account.clientUuid = clientUuid;
+      if (this.isUuid(clientUuid) && !account.clientUuid) account.clientUuid = clientUuid;
+      if (!account.clientBusinessId && this.isUuid(account.clientUuid)) {
+        account.clientBusinessId = this.text(clientsById.get(account.clientUuid)?.client_id);
+      }
       return account;
     };
 
-    const leadByUuid = new Map();
     data.leads.forEach(row => {
-      const uuid = this.text(row.id);
-      if (uuid) leadByUuid.set(uuid, row);
-      const account = ensureAccount({ company: row.company_name || row.full_name, email: row.email });
+      const leadUuid = this.text(row.id);
+      const account = ensureAccount({ key: leadUuid ? `lead:${leadUuid}` : '', company: row.company_name || row.full_name, email: row.email });
       account.leads.push(row);
+      if (leadUuid) accountByLeadUuid.set(leadUuid, account.accountKey);
       if (!account.stages.lead) account.stages.lead = row.created_at || row.updated_at;
     });
 
-    const dealByUuid = new Map();
     data.deals.forEach(row => {
-      const uuid = this.text(row.id);
-      if (uuid) dealByUuid.set(uuid, row);
-      const leadLink = this.text(row.lead_id);
-      const linkedLead = this.isUuid(leadLink) ? leadByUuid.get(leadLink) : null;
-      const account = ensureAccount({
-        company: row.company_name || linkedLead?.company_name || row.full_name,
-        email: row.email || linkedLead?.email
-      });
+      const dealUuid = this.text(row.id);
+      const leadUuid = this.text(row.lead_id);
+      const parentAccountKey = this.isUuid(leadUuid) ? accountByLeadUuid.get(leadUuid) : '';
+      const account = parentAccountKey ? accounts.get(parentAccountKey) : ensureAccount({ key: dealUuid ? `deal:${dealUuid}` : '', company: row.company_name || row.full_name, email: row.email });
       account.deals.push(row);
+      if (dealUuid) accountByDealUuid.set(dealUuid, account.accountKey);
       if (!account.stages.deal) account.stages.deal = row.created_at || row.updated_at;
     });
 
-    const proposalByUuid = new Map();
     data.proposals.forEach(row => {
-      const uuid = this.text(row.id);
-      if (uuid) proposalByUuid.set(uuid, row);
-      const dealLink = this.text(row.deal_id);
-      const linkedDeal = this.isUuid(dealLink) ? dealByUuid.get(dealLink) : null;
-      const account = ensureAccount({
-        company: row.customer_name || linkedDeal?.company_name,
-        email: row.customer_contact_email || linkedDeal?.email
-      });
+      const proposalUuid = this.text(row.id);
+      const dealUuid = this.text(row.deal_id);
+      const parentAccountKey = this.isUuid(dealUuid) ? accountByDealUuid.get(dealUuid) : '';
+      const account = parentAccountKey ? accounts.get(parentAccountKey) : ensureAccount({ key: proposalUuid ? `proposal:${proposalUuid}` : '', company: row.customer_name });
       account.proposals.push(row);
-      if (!account.stages.proposal) account.stages.proposal = row.created_at || row.updated_at;
+      if (proposalUuid) accountByProposalUuid.set(proposalUuid, account.accountKey);
+      account.currency = this.text(row.currency) || account.currency;
+      if (!account.stages.proposal) account.stages.proposal = row.proposal_date || row.created_at || row.updated_at;
     });
 
-    const agreementByUuid = new Map();
-    const agreementToAccountKey = new Map();
     data.agreements.forEach(row => {
-      const uuid = this.text(row.id);
-      if (uuid) agreementByUuid.set(uuid, row);
-      const proposalLink = this.text(row.proposal_id);
-      const linkedProposal = this.isUuid(proposalLink) ? proposalByUuid.get(proposalLink) : null;
-      const account = ensureAccount({
-        company: row.customer_legal_name || row.customer_name || linkedProposal?.customer_name,
-        email: row.customer_contact_email || linkedProposal?.customer_contact_email
-      });
+      const agreementUuid = this.text(row.id);
+      const proposalUuid = this.text(row.proposal_id);
+      const parentAccountKey = this.isUuid(proposalUuid) ? accountByProposalUuid.get(proposalUuid) : '';
+      const account = parentAccountKey ? accounts.get(parentAccountKey) : ensureAccount({ key: agreementUuid ? `agreement:${agreementUuid}` : '', company: row.customer_name });
       account.agreements.push(row);
-      if (uuid) agreementToAccountKey.set(uuid, account.accountKey);
+      if (agreementUuid) accountByAgreementUuid.set(agreementUuid, account.accountKey);
       account.currency = this.text(row.currency) || account.currency;
-      if (!account.stages.agreement) account.stages.agreement = row.created_at || row.updated_at || row.agreement_date;
+      if (!account.stages.agreement) account.stages.agreement = row.signed_date || row.created_at || row.updated_at;
     });
 
     data.agreementItems.forEach(item => {
       const agreementUuid = this.text(item.agreement_id);
-      const accountKey = agreementToAccountKey.get(agreementUuid);
+      const accountKey = this.isUuid(agreementUuid) ? accountByAgreementUuid.get(agreementUuid) : '';
       if (!accountKey || !accounts.has(accountKey)) return;
       accounts.get(accountKey).locationItems.push(item);
     });
 
-    const invoiceByUuid = new Map();
-    const invoiceToAccountKey = new Map();
     data.invoices.forEach(row => {
-      const uuid = this.text(row.id);
-      if (uuid) invoiceByUuid.set(uuid, row);
-      const clientUuid = this.text(row.client_id);
+      const invoiceUuid = this.text(row.id);
       const agreementUuid = this.text(row.agreement_id);
-      const accountKeyFromAgreement = agreementToAccountKey.get(agreementUuid);
-      const account = ensureAccount({
-        clientUuid: this.isUuid(clientUuid) ? clientUuid : '',
-        company: row.customer_legal_name || row.customer_name,
-        email: ''
-      });
-      const resolvedAccount = accountKeyFromAgreement && accounts.has(accountKeyFromAgreement) ? accounts.get(accountKeyFromAgreement) : account;
-      resolvedAccount.invoices.push(row);
-      if (uuid) invoiceToAccountKey.set(uuid, resolvedAccount.accountKey);
-      resolvedAccount.currency = this.text(row.currency) || resolvedAccount.currency;
-      if (!resolvedAccount.stages.invoice) resolvedAccount.stages.invoice = row.issue_date || row.created_at || row.updated_at;
+      const parentAccountKey = this.isUuid(agreementUuid) ? accountByAgreementUuid.get(agreementUuid) : '';
+      const account = parentAccountKey
+        ? accounts.get(parentAccountKey)
+        : ensureAccount({ key: invoiceUuid ? `invoice:${invoiceUuid}` : '', clientUuid: this.text(row.client_id) });
+      account.invoices.push(row);
+      if (invoiceUuid) accountByInvoiceUuid.set(invoiceUuid, account.accountKey);
+      account.currency = this.text(row.currency) || account.currency;
+      if (!account.stages.invoice) account.stages.invoice = row.issue_date || row.created_at || row.updated_at;
     });
 
     data.receipts.forEach(row => {
       const invoiceUuid = this.text(row.invoice_id);
-      const accountKeyFromInvoice = invoiceToAccountKey.get(invoiceUuid);
-      const clientUuid = this.text(row.client_id);
-      const account = ensureAccount({
-        clientUuid: this.isUuid(clientUuid) ? clientUuid : '',
-        company: row.customer_legal_name || row.customer_name,
-        email: ''
-      });
-      const resolvedAccount = accountKeyFromInvoice && accounts.has(accountKeyFromInvoice) ? accounts.get(accountKeyFromInvoice) : account;
-      resolvedAccount.receipts.push(row);
-      resolvedAccount.currency = this.text(row.currency) || resolvedAccount.currency;
-      if (!resolvedAccount.stages.receipt) resolvedAccount.stages.receipt = row.receipt_date || row.created_at || row.updated_at;
+      const parentAccountKey = this.isUuid(invoiceUuid) ? accountByInvoiceUuid.get(invoiceUuid) : '';
+      const account = parentAccountKey
+        ? accounts.get(parentAccountKey)
+        : ensureAccount({ key: row.id ? `receipt:${this.text(row.id)}` : '', clientUuid: this.text(row.client_id) });
+      account.receipts.push(row);
+      if (!account.stages.receipt) account.stages.receipt = row.receipt_date || row.created_at || row.updated_at;
     });
 
-    const attachOperationalRows = (rows, targetKey) => {
-      rows.forEach(row => {
-        const agreementUuid = this.text(row.agreement_id);
-        const clientUuid = this.text(row.client_id);
-        const accountKeyFromAgreement = agreementToAccountKey.get(agreementUuid);
-        const account = accountKeyFromAgreement && accounts.has(accountKeyFromAgreement)
-          ? accounts.get(accountKeyFromAgreement)
-          : ensureAccount({
-              clientUuid: this.isUuid(clientUuid) ? clientUuid : '',
-              company: row.client_name,
-              email: ''
-            });
-        account[targetKey].push(row);
-      });
-    };
+    data.onboarding.forEach(row => {
+      const agreementUuid = this.text(row.agreement_id);
+      const accountKey = this.isUuid(agreementUuid) ? accountByAgreementUuid.get(agreementUuid) : '';
+      if (!accountKey || !accounts.has(accountKey)) return;
+      accounts.get(accountKey).onboarding.push(row);
+    });
 
-    attachOperationalRows(data.onboarding, 'onboarding');
-    attachOperationalRows(data.technical, 'technical');
+    data.technical.forEach(row => {
+      const agreementUuid = this.text(row.agreement_id);
+      const accountKey = this.isUuid(agreementUuid) ? accountByAgreementUuid.get(agreementUuid) : '';
+      if (!accountKey || !accounts.has(accountKey)) return;
+      accounts.get(accountKey).technical.push(row);
+    });
 
     return { accounts: [...accounts.values()], today };
   },
@@ -319,21 +299,26 @@ const LifecycleAnalytics = {
     const allActivityDates = [
       ...account.leads.map(item => item.updated_at || item.created_at),
       ...account.deals.map(item => item.updated_at || item.created_at),
-      ...account.proposals.map(item => item.updated_at || item.sent_at || item.created_at),
-      ...account.agreements.map(item => item.updated_at || item.customer_sign_date || item.created_at),
+      ...account.proposals.map(item => item.updated_at || item.proposal_date || item.created_at),
+      ...account.agreements.map(item => item.updated_at || item.signed_date || item.created_at),
       ...account.invoices.map(item => item.updated_at || item.issue_date || item.created_at),
       ...account.receipts.map(item => item.updated_at || item.receipt_date || item.created_at),
-      ...account.onboarding.map(item => item.updated_at || item.requested_at || item.created_at),
-      ...account.technical.map(item => item.updated_at || item.requested_at || item.created_at)
+      ...account.onboarding.map(item => item.updated_at || item.go_live_target_date),
+      ...account.technical.map(item => item.completed_at || item.requested_at)
     ].filter(Boolean);
 
     const firstDate = allActivityDates.map(value => this.toDate(value)).filter(Boolean).sort((a, b) => a.getTime() - b.getTime())[0] || null;
     const lastDate = allActivityDates.map(value => this.toDate(value)).filter(Boolean).sort((a, b) => b.getTime() - a.getTime())[0] || null;
 
-    const proposalSent = account.proposals.map(item => this.toDate(item.sent_at || item.created_at)).filter(Boolean).sort((a, b) => a.getTime() - b.getTime())[0] || null;
-    const agreementSigned = account.agreements.map(item => this.toDate(item.customer_sign_date || item.created_at)).filter(Boolean).sort((a, b) => a.getTime() - b.getTime())[0] || null;
+    const proposalSent = account.proposals.map(item => this.toDate(item.proposal_date || item.created_at)).filter(Boolean).sort((a, b) => a.getTime() - b.getTime())[0] || null;
+    const agreementSigned = account.agreements.map(item => this.toDate(item.signed_date || item.created_at)).filter(Boolean).sort((a, b) => a.getTime() - b.getTime())[0] || null;
 
-    const discounts = account.proposals.map(item => this.num(item.discount_percent)).filter(value => value > 0);
+    const discounts = account.proposals.map(item => {
+      const base = this.num(item.subtotal_locations) + this.num(item.subtotal_one_time);
+      const discount = this.num(item.total_discount);
+      if (base <= 0 || discount <= 0) return 0;
+      return Number(((discount / base) * 100).toFixed(2));
+    }).filter(value => value > 0);
     const averageDiscount = discounts.length ? Number((discounts.reduce((sum, value) => sum + value, 0) / discounts.length).toFixed(2)) : 0;
 
     const biggestStage = Object.entries(stageDurations)
@@ -358,7 +343,7 @@ const LifecycleAnalytics = {
   },
   summarizeOperationalStatus(rows = [], type = 'onboarding') {
     if (!rows.length) return 'None';
-    const values = rows.map(row => this.norm(type === 'onboarding' ? row.onboarding_status : row.request_status || row.technical_request_status));
+    const values = rows.map(row => this.norm(type === 'onboarding' ? row.onboarding_status : row.request_status));
     if (values.some(value => value.includes('block'))) return 'Blocked';
     if (values.some(value => value.includes('progress') || value.includes('pending') || value.includes('requested'))) return 'Pending';
     if (values.every(value => value.includes('complete') || value.includes('closed'))) return 'Completed';
@@ -391,20 +376,23 @@ const LifecycleAnalytics = {
     }
 
     const lifecycle = this.buildLifecycleMetrics(account, today);
-    const paymentState = this.classifyPaymentState(totalInvoiced, totalPaid, totalDue);
+    const paymentState = this.derivePaymentStateFromInvoices(account.invoices, totalInvoiced, totalPaid, totalDue);
     const onboardingStatus = this.summarizeOperationalStatus(account.onboarding, 'onboarding');
     const technicalStatus = this.summarizeOperationalStatus(account.technical, 'technical');
 
     const latestOnboarding = account.onboarding
       .slice()
-      .sort((a, b) => (this.toDate(b.updated_at || b.created_at)?.getTime() || 0) - (this.toDate(a.updated_at || a.created_at)?.getTime() || 0))[0] || null;
+      .sort((a, b) => (this.toDate(b.updated_at || b.go_live_target_date)?.getTime() || 0) - (this.toDate(a.updated_at || a.go_live_target_date)?.getTime() || 0))[0] || null;
     const latestTechnical = account.technical
       .slice()
-      .sort((a, b) => (this.toDate(b.updated_at || b.created_at)?.getTime() || 0) - (this.toDate(a.updated_at || a.created_at)?.getTime() || 0))[0] || null;
+      .sort((a, b) => (this.toDate(b.completed_at || b.requested_at)?.getTime() || 0) - (this.toDate(a.completed_at || a.requested_at)?.getTime() || 0))[0] || null;
 
-    const openClientRequest = account.onboarding.some(row => this.norm(row.open_client_request) === 'yes' || this.norm(row.open_client_request) === 'true');
+    const openClientRequest = account.onboarding.some(row => {
+      const status = this.norm(row.onboarding_status);
+      return status.includes('pending') || status.includes('progress') || status.includes('block');
+    });
     const openTechnicalRequest = account.technical.some(row => {
-      const status = this.norm(row.request_status || row.technical_request_status);
+      const status = this.norm(row.request_status);
       return !(status.includes('complete') || status.includes('closed'));
     });
 
@@ -456,7 +444,7 @@ const LifecycleAnalytics = {
         invoice: this.text(account.invoices[0]?.invoice_id || account.invoices[0]?.id),
         receipt: this.text(account.receipts[0]?.receipt_id || account.receipts[0]?.id)
       },
-      latestTechnicalStatus: this.text(latestTechnical?.request_status || latestTechnical?.technical_request_status)
+      latestTechnicalStatus: this.text(latestTechnical?.request_status)
     };
     return row;
   },
