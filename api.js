@@ -979,24 +979,46 @@ const Api = {
       permission_id: permissionId
     });
   },
+  sanitizeRolePermissionPayload(payload = {}) {
+    const dbColumns = ['permission_id', 'role_key', 'resource', 'action', 'is_allowed', 'is_active', 'allowed_roles'];
+    const strippedFields = [
+      'id',
+      'description',
+      'permission',
+      'sheetName',
+      'sheet_name',
+      'roleName',
+      'roleLabel',
+      'selectedRoles'
+    ];
+    const sanitized = dbColumns.reduce((acc, key) => {
+      if (Object.prototype.hasOwnProperty.call(payload, key)) acc[key] = payload[key];
+      return acc;
+    }, {});
+    strippedFields.forEach(key => {
+      if (Object.prototype.hasOwnProperty.call(sanitized, key)) delete sanitized[key];
+    });
+    return sanitized;
+  },
   async createRolePermission(payload = {}) {
-    const permissionPayload = this.pickRolePermissionColumns(payload);
-    try { console.log('[RolesPermissions] final DB payload', permissionPayload); } catch {}
+    const permissionPayload = this.sanitizeRolePermissionPayload(payload);
+    try { console.log('[RolesPermissions] final sanitized DB payload', permissionPayload); } catch {}
     return this.postAuthenticated('role_permissions', 'create', {
       ...permissionPayload
     });
   },
   async updateRolePermission(permissionId, updates = {}) {
-    const permissionUpdates = this.pickRolePermissionColumns(updates);
-    try { console.log('[RolesPermissions] final DB payload', { permission_id: permissionId, ...permissionUpdates }); } catch {}
+    const permissionUpdates = this.sanitizeRolePermissionPayload(updates);
+    try { console.log('[RolesPermissions] update permission_id', permissionId); } catch {}
+    try { console.log('[RolesPermissions] final sanitized DB payload', { permission_id: permissionId, ...permissionUpdates }); } catch {}
     return this.postAuthenticated('role_permissions', 'update', {
       permission_id: permissionId,
       ...permissionUpdates
     });
   },
   async saveRolePermission(payload = {}) {
-    const permissionPayload = this.pickRolePermissionColumns(payload);
-    try { console.log('[RolesPermissions] final DB payload', permissionPayload); } catch {}
+    const permissionPayload = this.sanitizeRolePermissionPayload(payload);
+    try { console.log('[RolesPermissions] final sanitized DB payload', permissionPayload); } catch {}
     return this.postAuthenticated('role_permissions', 'save', {
       ...permissionPayload
     });
@@ -1019,13 +1041,6 @@ const Api = {
       }
       keys.forEach(key => localStorage.removeItem(key));
     } catch {}
-  },
-  pickRolePermissionColumns(payload = {}) {
-    const allowedColumns = ['permission_id', 'role_key', 'resource', 'action', 'is_allowed', 'is_active', 'allowed_roles'];
-    return allowedColumns.reduce((acc, key) => {
-      if (Object.prototype.hasOwnProperty.call(payload, key)) acc[key] = payload[key];
-      return acc;
-    }, {});
   },
   debugWorkflowResponse(label, payload) {
     try { console.log('[workflow]', label, payload); } catch {}

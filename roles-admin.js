@@ -59,10 +59,9 @@ const RolesAdmin = {
         const action = this.canonicalAction(E.rolePermissionCreateAction?.value);
         const selectedRoles = this.readMultiSelectValues(E.rolePermissionCreateAllowedRoles);
         const roleKeys = this.normalizeRoleKeys(selectedRoles);
-        const description = String(E.rolePermissionCreateDescription?.value || '').trim();
         if (!resource || !action || !roleKeys.length) return UI.toast('resource, action, and roles are required.');
         try {
-          await this.upsertPermissionGroup({ resource, action, roleKeys, description, existingRows: [] });
+          await this.upsertPermissionGroup({ resource, action, roleKeys, existingRows: [] });
           UI.toast('Permission rule created.');
           E.rolePermissionCreateForm.reset();
           this.togglePermissionCreate(false);
@@ -134,7 +133,7 @@ const RolesAdmin = {
   },
 
   permissionId(permission = {}) {
-    return String(permission.permission_id || permission.id || '').trim();
+    return String(permission.permission_id || '').trim();
   },
 
   permissionActive(permission = {}) {
@@ -156,7 +155,6 @@ const RolesAdmin = {
           action,
           roleKeys: [],
           rows: [],
-          description: String(row.description || '').trim(),
           updated_at: row.updated_at || row.created_at || ''
         });
       }
@@ -169,7 +167,6 @@ const RolesAdmin = {
       if (updatedAt && (!rule.updated_at || new Date(updatedAt) > new Date(rule.updated_at))) {
         rule.updated_at = updatedAt;
       }
-      if (!rule.description && row.description) rule.description = String(row.description || '').trim();
     });
     return [...grouped.values()].sort((a, b) => `${a.resource}:${a.action}`.localeCompare(`${b.resource}:${b.action}`));
   },
@@ -344,7 +341,7 @@ const RolesAdmin = {
   filteredPermissionRows() {
     const { resource, action, role, text } = this.state.filters;
     return this.state.groupedPermissions.filter(rule => {
-      const searchable = `${rule.resource} ${rule.action} ${rule.roleKeys.join(' ')} ${String(rule.description || '').toLowerCase()}`;
+      const searchable = `${rule.resource} ${rule.action} ${rule.roleKeys.join(' ')}`;
       if (resource && !rule.resource.includes(resource)) return false;
       if (action && !rule.action.includes(action)) return false;
       if (role && !rule.roleKeys.some(roleKey => roleKey.includes(role))) return false;
@@ -382,7 +379,6 @@ const RolesAdmin = {
             })
             .join('')}</select>
         </td>
-        <td><input class="input sm" data-rule-field="description" type="text" value="${U.escapeAttr(rule.description || '')}" disabled /></td>
         <td>${U.escapeHtml(U.fmtDisplayDate(rule.updated_at))}</td>
         <td>
           <div style="display:flex;gap:6px;flex-wrap:wrap;">
@@ -411,7 +407,7 @@ const RolesAdmin = {
   },
 
   toggleRuleEdit(row, editable) {
-    row.querySelectorAll('[data-rule-field="resource"],[data-rule-field="action"],[data-rule-field="description"]').forEach(input => {
+    row.querySelectorAll('[data-rule-field="resource"],[data-rule-field="action"]').forEach(input => {
       input.disabled = !editable;
     });
     const roleSelect = row.querySelector('[data-rule-field="roles"]');
@@ -429,11 +425,10 @@ const RolesAdmin = {
     const resource = String(row.querySelector('[data-rule-field="resource"]')?.value || '').trim().toLowerCase();
     const action = this.canonicalAction(row.querySelector('[data-rule-field="action"]')?.value || '');
     const roleKeys = this.normalizeRoleKeys(this.readMultiSelectValues(row.querySelector('[data-rule-field="roles"]')));
-    const description = String(row.querySelector('[data-rule-field="description"]')?.value || '').trim();
     if (!resource || !action || !roleKeys.length) return UI.toast('resource, action, and at least one role are required.');
 
     try {
-      await this.upsertPermissionGroup({ resource, action, roleKeys, description, existingRows: rule.rows });
+      await this.upsertPermissionGroup({ resource, action, roleKeys, existingRows: rule.rows });
       UI.toast('Permission rule saved.');
       await this.refreshPermissions(true);
       await Permissions.loadMatrix(true);
@@ -454,7 +449,6 @@ const RolesAdmin = {
         resource: String(newResource || '').trim().toLowerCase(),
         action: this.canonicalAction(newAction),
         roleKeys: rule.roleKeys,
-        description: rule.description,
         existingRows: []
       });
       UI.toast('Rule duplicated.');
@@ -486,7 +480,7 @@ const RolesAdmin = {
     }
   },
 
-  async upsertPermissionGroup({ resource, action, roleKeys, description, existingRows = [] }) {
+  async upsertPermissionGroup({ resource, action, roleKeys, existingRows = [] }) {
     const targetRoles = new Set(this.normalizeRoleKeys(roleKeys));
     const rowsByRole = new Map();
     existingRows.forEach(row => {
