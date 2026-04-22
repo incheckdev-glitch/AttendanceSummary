@@ -59,7 +59,7 @@ const rawApiBaseUrl =
   runtimeConfig.API_BASE_URL ||
   runtimeConfig.PROXY_API_BASE_URL ||
   runtimeConfig.BACKEND_API_BASE_URL ||
-  '/api/proxy';
+  '';
 const SUPABASE_URL =
   runtimeConfig.SUPABASE_URL ||
   runtimeConfig.NEXT_PUBLIC_SUPABASE_URL ||
@@ -71,10 +71,8 @@ const SUPABASE_ANON_KEY =
 window.SUPABASE_URL = String(SUPABASE_URL || '').trim();
 window.SUPABASE_ANON_KEY = String(SUPABASE_ANON_KEY || '').trim();
 
-// Deployment notes:
-// - Vercel deployment: /api/proxy must exist and APPS_SCRIPT_WEBAPP_URL must point to the Apps Script /exec URL.
-// - Static frontend deployment (without Vercel functions): set API_BASE_URL to a live backend endpoint; do not rely on /api/proxy.
-window.API_BASE_URL = normalizeApiBaseUrl(rawApiBaseUrl) || '/api/proxy';
+// Legacy backend proxy is deprecated. Keep API_BASE_URL only for backwards-compatible diagnostics.
+window.API_BASE_URL = normalizeApiBaseUrl(rawApiBaseUrl) || '';
 const API_BASE_URL = window.API_BASE_URL;
 
 const RESOLVED_API_ENDPOINT = resolveApiEndpoint(API_BASE_URL);
@@ -102,7 +100,7 @@ window.API_RUNTIME_DIAGNOSTICS = Object.freeze({
   isMalformed: isLikelyMalformedApiBaseUrl(rawApiBaseUrl)
 });
 window.BACKEND_ENDPOINTS = Object.freeze({
-  proxyBaseUrl: API_BASE_URL
+  proxyBaseUrl: ''
 });
 
 window.CONFIG = {
@@ -112,7 +110,7 @@ window.CONFIG = {
   SHEET_URL:
     'https://docs.google.com/spreadsheets/d/e/2PACX-1vTRwAjNAQxiPP8uR15t_vx03JkjgEBjgUwp2bpx8rsHx-JJxVDBZyf5ap77rAKrYHfgkVMwLJVm6pGn/pub?output=csv',
 
-  CALENDAR_API_URL: runtimeConfig.CALENDAR_API_URL || window.BACKEND_ENDPOINTS.proxyBaseUrl,
+  CALENDAR_API_URL: runtimeConfig.CALENDAR_API_URL || '',
   CALENDAR_SHEET_NAME: 'CalendarEvents',
   DEALS_SHEET_NAME: 'Deals',
   PROPOSAL_CATALOG_SHEET_NAME: runtimeConfig.PROPOSAL_CATALOG_SHEET_NAME || 'Proposal Catalog',
@@ -128,7 +126,7 @@ window.CONFIG = {
   OPERATIONS_ONBOARDING_SHEET_NAME:
     runtimeConfig.OPERATIONS_ONBOARDING_SHEET_NAME || 'Operations Onboarding',
 
-  ISSUE_API_URL: runtimeConfig.ISSUE_API_URL || window.BACKEND_ENDPOINTS.proxyBaseUrl,
+  ISSUE_API_URL: runtimeConfig.ISSUE_API_URL || '',
 
   TREND_DAYS_RECENT: 7,
   TREND_DAYS_WINDOW: 14,
@@ -286,7 +284,6 @@ window.LS_KEYS = {
   session: 'incheckSession',
   persistentSession: 'incheckPersistentSession',
   csmActivity: 'incheckCsmActivity',
-  legacyAuthSession: 'incheckLegacyAuthSession',
   lastKnownRole: 'incheckLastKnownRole'
 };
 
