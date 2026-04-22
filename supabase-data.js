@@ -1,6 +1,6 @@
 (function initSupabaseData(global) {
   const MIGRATED_RESOURCES = new Set([
-    'auth','users','roles','role_permissions','tickets','events','csm','leads','deals','proposal_catalog','proposals','agreements','workflow','clients','invoices','receipts','operations_onboarding','technical_admin_requests'
+    'auth','users','roles','role_permissions','tickets','events','csm','leads','deals','proposal_catalog','proposals','agreements','workflow','clients','invoices','receipts','operations_onboarding','technical_admin_requests','notifications'
   ]);
 
   const TABLE_BY_RESOURCE = {
@@ -9,6 +9,7 @@
     proposal_catalog: 'proposal_catalog_items', proposals: 'proposals', agreements: 'agreements',
     clients: 'clients', invoices: 'invoices', receipts: 'receipts', operations_onboarding: 'operations_onboarding',
     technical_admin_requests: 'technical_admin_requests'
+    ,notifications: 'notifications'
   };
 
   const PK_BY_RESOURCE = {
@@ -28,6 +29,7 @@
     receipts: 'id',
     operations_onboarding: 'onboarding_id',
     technical_admin_requests: 'id'
+    ,notifications: 'notification_id'
   };
   const LEGACY_IDENTIFIER_KEYS = {
     users: ['id'],
@@ -46,6 +48,7 @@
     receipts: ['receipt_id'],
     operations_onboarding: ['id'],
     technical_admin_requests: ['request_id', 'technical_request_id']
+    ,notifications: ['id']
   };
 
   const ITEM_TABLES = { proposals: 'proposal_items', agreements: 'agreement_items', invoices: 'invoice_items', receipts: 'receipt_items' };
@@ -306,6 +309,10 @@
       'module_summary','agreement_status','requested_by','requested_at',
       'technical_admin_assigned_to','started_at','completed_at','updated_by','updated_at','notes',
       'created_at'
+    ]),
+    notifications: new Set([
+      'notification_id','id','recipient_user_id','title','message','type','resource','resource_id',
+      'status','is_read','read_at','created_at','updated_at','priority'
     ])
   };
 
@@ -1671,6 +1678,62 @@
         mergeTicketInternal(row, internalById.get(String(ticketRowId(row) || '')))
       );
       return { handled: true, data: normalizeList(resource, withInternal) };
+    }
+    if (resource === 'notifications' && action === 'list') {
+      assertAllowed('notifications', 'list');
+      const currentUserId = await getCurrentUserId(client);
+      if (!currentUserId) return { handled: true, data: normalizePagedList('notifications', [], normalizeListControls({}, 'notifications'), 0) };
+      const { controls } = splitListPayload(payload);
+      const listControls = normalizeListControls(controls, 'notifications');
+      let query = client
+        .from('notifications')
+        .select('*', { count: 'exact' })
+        .eq('recipient_user_id', currentUserId);
+      query = applyFilters(query, payload, { resource: 'notifications' });
+      query = query.order(listControls.sortBy, { ascending: listControls.sortDir === 'asc' });
+      query = query.range(listControls.from, listControls.to);
+      const { data, error, count } = await query;
+      if (error) throw friendlyError('Unable to load notifications', error);
+      return { handled: true, data: normalizePagedList('notifications', data, listControls, count) };
+    }
+    if (resource === 'notifications' && action === 'get_unread_count') {
+      assertAllowed('notifications', 'get_unread_count');
+      const currentUserId = await getCurrentUserId(client);
+      if (!currentUserId) return { handled: true, data: { unread_count: 0, count: 0 } };
+      const { count, error } = await client
+        .from('notifications')
+        .select('notification_id', { count: 'exact', head: true })
+        .eq('recipient_user_id', currentUserId)
+        .eq('is_read', false);
+      if (error) throw friendlyError('Unable to load unread notification count', error);
+      const unread = Number(count || 0);
+      return { handled: true, data: { unread_count: unread, count: unread } };
+    }
+    if (resource === 'notifications' && action === 'mark_read') {
+      assertAllowed('notifications', 'mark_read');
+      const id = requireResourceIdentifier(resource, payload, action);
+      const currentUserId = await getCurrentUserId(client);
+      const { data, error } = await client
+        .from('notifications')
+        .update({ is_read: true, status: 'read', read_at: new Date().toISOString() })
+        .eq('notification_id', id)
+        .eq('recipient_user_id', currentUserId)
+        .select('*')
+        .single();
+      if (error) throw friendlyError('Unable to mark notification as read', error);
+      return { handled: true, data };
+    }
+    if (resource === 'notifications' && action === 'mark_all_read') {
+      assertAllowed('notifications', 'mark_all_read');
+      const currentUserId = await getCurrentUserId(client);
+      if (!currentUserId) return { handled: true, data: { ok: true, updated: 0 } };
+      const { error } = await client
+        .from('notifications')
+        .update({ is_read: true, status: 'read', read_at: new Date().toISOString() })
+        .eq('recipient_user_id', currentUserId)
+        .eq('is_read', false);
+      if (error) throw friendlyError('Unable to mark all notifications as read', error);
+      return { handled: true, data: { ok: true } };
     }
 
     if (action === 'list') {

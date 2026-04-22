@@ -106,7 +106,12 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
   }),
   analytics: Object.freeze({ list: ['admin', 'dev', 'viewer', 'hoo'] }),
   insights: Object.freeze({ list: ['admin', 'dev', 'viewer', 'hoo'] }),
-  notifications: Object.freeze({ list: ['admin', 'dev', 'viewer', 'hoo'] }),
+  notifications: Object.freeze({
+    list: ['admin', 'dev', 'viewer', 'hoo'],
+    get_unread_count: ['admin', 'dev', 'viewer', 'hoo'],
+    mark_read: ['admin', 'dev', 'viewer', 'hoo'],
+    mark_all_read: ['admin', 'dev', 'viewer', 'hoo']
+  }),
   users: Object.freeze({ list: ['admin'], get: ['admin'], create: ['admin'], update: ['admin'], delete: ['admin'], activate: ['admin'], deactivate: ['admin'] }),
   roles: Object.freeze({ list: ['admin'], get: ['admin'], create: ['admin'], update: ['admin'], delete: ['admin'] }),
   role_permissions: Object.freeze({ list: ['admin'], get: ['admin'], create: ['admin'], update: ['admin'], delete: ['admin'] }),

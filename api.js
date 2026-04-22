@@ -45,69 +45,15 @@ const Api = {
     };
   },
   async runAuthProxyHealthCheck() {
-    if (window.SupabaseClient?.hasConfig?.()) {
-      return {
-        ok: true,
-        status: 200,
-        endpoint: window.SupabaseClient.getUrl(),
-        data: { mode: 'supabase' },
-        isLocalProxy: false,
-        localProxyEndpoint: resolveApiEndpoint('/api/proxy')
-      };
-    }
-    const { endpoint, localProxyEndpoint, isLocalProxy } = this.getAuthDiagnostics();
-    const payload = {
-      resource: 'auth',
-      action: 'session',
-      authToken: 'invalid-test'
+    const hasConfig = window.SupabaseClient?.hasConfig?.();
+    return {
+      ok: Boolean(hasConfig),
+      status: hasConfig ? 200 : 0,
+      endpoint: hasConfig ? window.SupabaseClient.getUrl() : '',
+      data: { mode: 'supabase' },
+      isLocalProxy: false,
+      localProxyEndpoint: ''
     };
-
-    try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        cache: 'no-store',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const parsed = await readAppsScriptResponse(response, {
-        sourceName: 'Auth health check',
-        endpoint,
-        resource: 'auth',
-        action: 'session'
-      });
-      if (response.status === 404) {
-        if (isLocalProxy) {
-          console.error(
-            `[auth/health] Missing local /api/proxy route (endpoint=${endpoint}). Ensure api/proxy.js is deployed.`
-          );
-        } else {
-          console.error(
-            `[auth/health] Backend endpoint returned HTTP 404 (endpoint=${endpoint}). Verify API_BASE_URL points to a valid auth backend.`
-          );
-        }
-      }
-      return {
-        ok: response.ok,
-        status: response.status,
-        endpoint,
-        data: parsed?.data || null,
-        isLocalProxy,
-        localProxyEndpoint
-      };
-    } catch (error) {
-      const message = String(error?.message || error || 'unknown error');
-      console.warn(
-        `[auth/health] Failed before login. endpoint=${endpoint}; localProxy=${localProxyEndpoint}; error=${message}`
-      );
-      return {
-        ok: false,
-        status: 0,
-        endpoint,
-        error,
-        isLocalProxy,
-        localProxyEndpoint
-      };
-    }
   },
   buildUrl(resource = '', params = {}) {
     const endpoint = this.ensureBaseUrl();
@@ -148,13 +94,6 @@ const Api = {
   buildPagedListPayload(resource = '', action = 'list', state = {}, filters = {}) {
     const safeState = state && typeof state === 'object' ? state : {};
     const safeFilters = filters && typeof filters === 'object' ? filters : {};
-    const migratedResource = this.isMigratedResource(resource);
-    const authToken = migratedResource
-      ? ''
-      : typeof Session?.getAuthToken === 'function'
-        ? Session.getAuthToken()
-        : '';
-
     const payload = {
       resource,
       action: action || 'list',
@@ -168,7 +107,6 @@ const Api = {
       payload[key] = value;
     });
 
-    if (!migratedResource && authToken) payload.authToken = authToken;
     return payload;
   },
   buildSummaryListPayload(options = {}, fallbackFields = []) {
@@ -309,81 +247,8 @@ const Api = {
     });
   },
   async postAuthenticated(resource, action, payload = {}, options = {}) {
-    const requireAuth = options?.requireAuth !== false;
-    const legacyProtected = this.requiresLegacyAuth(resource);
-    if (!legacyProtected) {
-      return this.post(resource, action, { ...payload });
-    }
-
-    const getToken = () => (
-      typeof Session?.getAuthToken === 'function'
-        ? Session.getAuthToken()
-        : ''
-    );
-    if (requireAuth && legacyProtected && typeof Session?.ensureLegacySession === 'function') {
-      try {
-        await Session.ensureLegacySession({ reason: `${resource}.${action} preflight` });
-      } catch (error) {
-        console.warn('[Api.postAuthenticated] legacy preflight bootstrap failed', {
-          resource,
-          action,
-          message: error?.message || String(error),
-          code: error?.code || null
-        });
-        const normalized = new Error('Unable to establish legacy session. Please sign in again.');
-        normalized.code = error?.code || 'LEGACY_BOOTSTRAP_FAILED';
-        throw normalized;
-      }
-    }
-    let authToken = getToken();
-    if (requireAuth && !authToken) {
-      console.warn('[Api.postAuthenticated] missing auth token after preflight, forcing one bootstrap retry', { resource, action });
-      if (legacyProtected && typeof Session?.ensureLegacySession === 'function') {
-        try {
-          await Session.ensureLegacySession({ forceRefresh: true, reason: `${resource}.${action} missing-token retry` });
-        } catch (error) {
-          const normalized = new Error('Unable to establish legacy session. Please sign in again.');
-          normalized.code = error?.code || 'LEGACY_BOOTSTRAP_FAILED';
-          throw normalized;
-        }
-      }
-      authToken = getToken();
-      if (!authToken) throw new Error('Unable to establish legacy session. Please sign in again.');
-    }
-    console.info('[Api.postAuthenticated] protected request token preflight', {
-      resource,
-      action,
-      hasAuthToken: Boolean(authToken),
-      tokenPrefix: authToken ? `${String(authToken).slice(0, 8)}...` : ''
-    });
-    try {
-      return await this.post(resource, action, {
-        ...payload,
-        authToken: authToken || ''
-      });
-    } catch (error) {
-      if (!requireAuth || !window.isAuthError?.(error) || typeof Session?.ensureLegacySession !== 'function') {
-        throw error;
-      }
-      console.warn('[Api.postAuthenticated] auth/session invalid, retrying once', {
-        resource,
-        action,
-        message: error?.message || String(error)
-      });
-      await Session.ensureLegacySession({ forceRefresh: true, reason: `${resource}.${action} auth retry` });
-      authToken = getToken();
-      if (!authToken) throw new Error('Unable to establish legacy session. Please sign in again.');
-      console.info('[Api.postAuthenticated] retry token state', {
-        resource,
-        action,
-        hasAuthToken: Boolean(authToken),
-        tokenPrefix: `${String(authToken).slice(0, 8)}...`
-      });
-      return this.post(resource, action, {
-        ...payload,
-        authToken
-      });
-    }
+    void options;
+    return this.post(resource, action, { ...payload });
   },
 
   getCacheConfig() {
@@ -1243,57 +1108,7 @@ async function apiPost(payload = {}) {
     const dispatched = await window.SupabaseData.dispatch(requestBody);
     if (dispatched?.handled) return dispatched.data;
   }
-  const endpoint = Api.ensureBaseUrl();
-  if (isDevEnvironment()) {
-    console.log('[api] post', { endpoint, resource, action });
-  }
-  let response;
-  try {
-    response = await fetch(endpoint, {
-      method: 'POST',
-      cache: 'no-store',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody)
-    });
-  } catch (error) {
-    throw buildNetworkRequestError(endpoint, error);
-  }
-
-  const { data } = await readAppsScriptResponse(response, {
-    sourceName: `Backend ${requestBody.resource || 'api'}`,
-    endpoint,
-    resource,
-    action
-  });
-  if (!response.ok) {
-    console.error('[apiPost] backend HTTP error', {
-      resource,
-      action,
-      status: response.status,
-      requestBody,
-      backendResponse: data
-    });
-    throw buildHttpResponseError(response, data, endpoint, { resource, action });
-  }
-  if (data && typeof data === 'object' && hasExplicitBackendFailure(data)) {
-    console.error('[apiPost] backend explicit failure', {
-      resource,
-      action,
-      status: response.status,
-      requestBody,
-      backendResponse: data
-    });
-    throw buildExplicitBackendFailureError(data, {
-      endpoint,
-      resource,
-      action,
-      status: response.status
-    });
-  }
-  if (data && typeof data === 'object' && 'data' in data && data.data !== undefined) {
-    return data.data;
-  }
-  return data;
+  throw new Error(`Resource "${resource || 'unknown'}" is not available in SupabaseData. Legacy backend fallback has been removed.`);
 }
 
 function isDevEnvironment() {

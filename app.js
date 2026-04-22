@@ -2853,7 +2853,7 @@ function parseApiJson(text, sourceName = 'API') {
 
   const looksLikeHtml = /<!doctype html|<html[\s>]/i.test(raw);
   if (looksLikeHtml) {
-    throw new Error(`${sourceName} returned HTML instead of JSON. Check API_BASE_URL/proxy.`);
+    throw new Error(`${sourceName} returned HTML instead of JSON.`);
   }
 
   throw new Error(
@@ -5903,50 +5903,10 @@ function wireKeyboardShortcuts() {
 }
 
 function logApiStartupDiagnostics() {
-  if (window.SupabaseClient?.hasConfig?.()) {
-    console.info('[startup/auth] Supabase mode enabled', {
-      supabaseUrl: window.SupabaseClient.getUrl()
-    });
-    return;
-  }
-  const diagnostics = window.API_RUNTIME_DIAGNOSTICS || {};
-  const resolvedBaseUrl = String(diagnostics.apiBaseUrl || API_BASE_URL || '').trim();
-  const resolvedEndpoint =
-    String(diagnostics.resolvedEndpoint || (window.resolveApiEndpoint ? resolveApiEndpoint(resolvedBaseUrl) : '') || '').trim();
-  const notificationHubEndpoint = String(diagnostics.notificationHubEndpoint || resolvedEndpoint || '').trim();
-  const isProxy =
-    diagnostics.isProxy !== undefined
-      ? Boolean(diagnostics.isProxy)
-      : (() => {
-          try {
-            const proxyUrl = new URL('/api/proxy', window.location.origin);
-            const endpointUrl = new URL(resolvedEndpoint, window.location.origin);
-            return endpointUrl.pathname === proxyUrl.pathname;
-          } catch {
-            return false;
-          }
-        })();
-
-  console.info('[startup/auth] API diagnostics', {
-    apiBaseUrl: resolvedBaseUrl,
-    resolvedEndpoint,
-    usingProxy: isProxy,
-    notificationHubEndpoint
+  console.info('[startup/auth] Supabase mode enabled', {
+    hasSupabaseConfig: window.SupabaseClient?.hasConfig?.(),
+    supabaseUrl: window.SupabaseClient?.getUrl?.() || ''
   });
-  console.info(
-    `[startup/notifications] endpoint=${notificationHubEndpoint || 'n/a'}; isProxy=${isProxy ? 'yes' : 'no'}`
-  );
-
-  if (!resolvedBaseUrl) {
-    console.warn('[startup/auth] API_BASE_URL is empty. Configure window.RUNTIME_CONFIG.API_BASE_URL (or PROXY_API_BASE_URL/BACKEND_API_BASE_URL).');
-    return;
-  }
-
-  if (window.API_RUNTIME_DIAGNOSTICS?.isMalformed) {
-    console.warn(
-      `[startup/auth] API_BASE_URL may be malformed: "${resolvedBaseUrl}". Expected a relative path like /api/proxy or full https URL.`
-    );
-  }
 }
 
 /* ---------- Bootstrapping ---------- */
@@ -5954,12 +5914,6 @@ function logApiStartupDiagnostics() {
 document.addEventListener('DOMContentLoaded', async () => {
   cacheEls();
   logApiStartupDiagnostics();
-  if (!API_BASE_URL) {
-    console.error(
-      'API_BASE_URL is not configured. Set window.RUNTIME_CONFIG.API_BASE_URL before app.js loads.'
-    );
-    UI.toast('Backend URL is not configured. Please set RUNTIME_CONFIG.API_BASE_URL.');
-  }
   if (typeof Api?.runAuthProxyHealthCheck === 'function') {
     Api.runAuthProxyHealthCheck().catch(error => {
       console.warn('[startup/auth] Initial auth health check failed', error);
