@@ -393,11 +393,12 @@ const Workflow = {
         .map(item => String(item || '').trim().toLowerCase())
         .filter(Boolean);
     })();
+    const resolvedWorkflowRuleId = String(
+      pick(source.workflow_rule_id, source.rule_id, source.miorder, source.minorder, source.id)
+    ).trim();
     return {
       ...source,
-      workflow_rule_id: String(
-        pick(source.workflow_rule_id, source.rule_id, source.id, source.miorder, source.minorder)
-      ).trim(),
+      workflow_rule_id: resolvedWorkflowRuleId,
       id: String(pick(source.id)).trim(),
       resource: String(pick(source.resource)).trim().toLowerCase(),
       current_status: String(pick(source.current_status)).trim(),
@@ -439,8 +440,7 @@ const Workflow = {
     const get = id => String(E[id]?.value || '').trim();
     const workflowRuleId = get('workflowRuleId');
     const legacyId = String(this.state.editingRuleLegacyId || '').trim();
-    return {
-      workflow_rule_id: workflowRuleId,
+    const payload = {
       id: legacyId,
       resource: get('workflowResource').toLowerCase(),
       current_status: get('workflowCurrentStatus'),
@@ -456,6 +456,8 @@ const Workflow = {
       require_attachment: String(get('workflowRequireAttachment')) === 'true',
       is_active: String(get('workflowIsActive')) !== 'false'
     };
+    if (workflowRuleId) payload.workflow_rule_id = workflowRuleId;
+    return payload;
   },
   fillRuleForm(rule = {}) {
     const normalizedRule = this.normalizeWorkflowRule(rule);
@@ -674,7 +676,7 @@ const Workflow = {
         <td>${U.escapeHtml(String(rule.hard_stop_discount_percent ?? '—'))}</td>
         <td>${WorkflowEngine.toBool(rule.is_active) ? 'Yes' : 'No'}</td>
         <td>${this.canManageWorkflowRules()
-          ? `<button class="chip-btn" data-rule-edit="${U.escapeHtml(rule.workflow_rule_id || '')}">Edit</button> <button class="chip-btn" data-rule-delete="${U.escapeHtml(rule.workflow_rule_id || '')}">Delete</button>`
+          ? `<button class="chip-btn" data-rule-edit="${U.escapeHtml(rule.workflow_rule_id || rule.id || '')}">Edit</button> <button class="chip-btn" data-rule-delete="${U.escapeHtml(rule.workflow_rule_id || rule.id || '')}">Delete</button>`
           : '<span class="muted">Read only</span>'}</td>
       </tr>`;
     }).join('');
@@ -819,12 +821,21 @@ const Workflow = {
     const savedRule = this.normalizeWorkflowRule(responseRule);
     const resolvedRuleId =
       String(savedRule.workflow_rule_id || '').trim() ||
-      String(payload.workflow_rule_id || '').trim() ||
-      `local-${Date.now()}`;
+      String(payload.workflow_rule_id || '').trim();
+    if (!resolvedRuleId) {
+      throw new Error('Workflow rule saved but no database workflow_rule_id was returned.');
+    }
     savedRule.workflow_rule_id = resolvedRuleId;
     savedRule.id = String(savedRule.id || payload.id || '').trim();
 
-    const idx = this.state.rules.findIndex(rule => String(rule.workflow_rule_id || '') === resolvedRuleId);
+    const payloadLegacyId = String(payload.id || '').trim();
+    const idx = this.state.rules.findIndex(rule => {
+      const ruleWorkflowId = String(rule.workflow_rule_id || '').trim();
+      const ruleLegacyId = String(rule.id || '').trim();
+      if (ruleWorkflowId && ruleWorkflowId === resolvedRuleId) return true;
+      if (payloadLegacyId && ruleLegacyId && ruleLegacyId === payloadLegacyId) return true;
+      return false;
+    });
     if (idx === -1) this.state.rules.unshift(savedRule);
     else this.state.rules[idx] = { ...this.state.rules[idx], ...savedRule, workflow_rule_id: resolvedRuleId };
 
@@ -843,12 +854,17 @@ const Workflow = {
       UI.toast('Forbidden.');
       return;
     }
+    const normalizedRuleOrId = String(ruleOrId || '').trim();
     const rule = ruleOrId && typeof ruleOrId === 'object'
       ? ruleOrId
-      : this.state.rules.find(item => String(item.workflow_rule_id || '') === String(ruleOrId || '').trim()) || {};
-    const id = String(rule.workflow_rule_id || ruleOrId || '').trim();
+      : this.state.rules.find(item => {
+          const itemWorkflowId = String(item.workflow_rule_id || '').trim();
+          const itemLegacyId = String(item.id || '').trim();
+          return (itemWorkflowId && itemWorkflowId === normalizedRuleOrId) || (itemLegacyId && itemLegacyId === normalizedRuleOrId);
+        }) || {};
+    const id = String(rule.workflow_rule_id || normalizedRuleOrId || '').trim();
     const legacyId = String(rule.id || '').trim();
-    if (!id) return;
+    if (!id && !legacyId) return;
     if (!window.confirm(`Delete workflow rule ${id}?`)) return;
     await Api.deleteWorkflowRule({ workflow_rule_id: id, id: legacyId });
     this.state.rules = this.state.rules.filter(item => {
@@ -903,12 +919,22 @@ const Workflow = {
         const editId = event.target?.closest?.('[data-rule-edit]')?.getAttribute('data-rule-edit');
         const deleteId = event.target?.closest?.('[data-rule-delete]')?.getAttribute('data-rule-delete');
         if (editId) {
-          const rule = this.state.rules.find(item => String(item.workflow_rule_id || '') === String(editId));
+          const normalizedEditId = String(editId || '').trim();
+          const rule = this.state.rules.find(item => {
+            const itemWorkflowId = String(item.workflow_rule_id || '').trim();
+            const itemLegacyId = String(item.id || '').trim();
+            return (itemWorkflowId && itemWorkflowId === normalizedEditId) || (itemLegacyId && itemLegacyId === normalizedEditId);
+          });
           if (rule) this.fillRuleForm(rule);
         }
         if (deleteId) {
           try {
-            const rule = this.state.rules.find(item => String(item.workflow_rule_id || '') === String(deleteId));
+            const normalizedDeleteId = String(deleteId || '').trim();
+            const rule = this.state.rules.find(item => {
+              const itemWorkflowId = String(item.workflow_rule_id || '').trim();
+              const itemLegacyId = String(item.id || '').trim();
+              return (itemWorkflowId && itemWorkflowId === normalizedDeleteId) || (itemLegacyId && itemLegacyId === normalizedDeleteId);
+            });
             await this.deleteRule(rule || deleteId);
           } catch (error) {
             UI.toast(error?.message || 'Unable to delete workflow rule.');
