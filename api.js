@@ -1136,6 +1136,34 @@ const Api = {
     const body = this.buildWorkflowTransitionPayload(payload);
     return this.requestWithSession('workflow', 'validate_transition', body);
   },
+  normalizeWorkflowApprovalResult(result = {}) {
+    const source = result && typeof result === 'object' ? result : {};
+    return {
+      ...source,
+      ok: source.ok === true,
+      reused: source.reused === true,
+      created: source.created === true,
+      pendingApproval: String(source.status || '').trim().toLowerCase() === 'pending',
+      status: String(source.status || '').trim(),
+      approval_id: String(source.approval_id || '').trim(),
+      approval_role: String(source.approval_role || '').trim()
+    };
+  },
+  async createWorkflowApproval(payload = {}) {
+    const source = payload && typeof payload === 'object' ? payload : {};
+    const response = await this.requestWithSession('workflow', 'create_workflow_approval', {
+      p_resource: source.p_resource ?? source.resource ?? '',
+      p_record_id: source.p_record_id ?? source.record_id ?? '',
+      p_workflow_rule_id: source.p_workflow_rule_id ?? source.workflow_rule_id ?? null,
+      p_requester_user_id: source.p_requester_user_id ?? source.requester_user_id ?? null,
+      p_requester_role: source.p_requester_role ?? source.requester_role ?? '',
+      p_approval_role: source.p_approval_role ?? source.approval_role ?? '',
+      p_old_status: source.p_old_status ?? source.old_status ?? '',
+      p_new_status: source.p_new_status ?? source.new_status ?? '',
+      p_requested_changes: source.p_requested_changes ?? source.requested_changes ?? {}
+    });
+    return this.normalizeWorkflowApprovalResult(response);
+  },
   async requestWorkflowApproval(payload = {}) {
     return this.requestWithSession('workflow', 'request_approval', {
       ...payload,

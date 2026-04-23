@@ -1739,6 +1739,26 @@
       }
       return normalizedValidation;
     }
+    if (requestedAction === 'create_approval' || requestedAction === 'create_workflow_approval') {
+      assertAllowed('workflow', 'request_approval');
+      const rpcPayload = {
+        p_resource: String(safePayload.p_resource ?? safePayload.resource ?? '').trim().toLowerCase(),
+        p_record_id: String(safePayload.p_record_id ?? safePayload.record_id ?? '').trim(),
+        p_workflow_rule_id: safePayload.p_workflow_rule_id ?? safePayload.workflow_rule_id ?? null,
+        p_requester_user_id: safePayload.p_requester_user_id ?? safePayload.requester_user_id ?? null,
+        p_requester_role: String(safePayload.p_requester_role ?? safePayload.requester_role ?? '').trim().toLowerCase(),
+        p_approval_role: String(safePayload.p_approval_role ?? safePayload.approval_role ?? '').trim().toLowerCase(),
+        p_old_status: String(safePayload.p_old_status ?? safePayload.old_status ?? '').trim(),
+        p_new_status: String(safePayload.p_new_status ?? safePayload.new_status ?? '').trim(),
+        p_requested_changes:
+          safePayload.p_requested_changes ??
+          safePayload.requested_changes ??
+          {}
+      };
+      const { data, error } = await client.rpc('create_workflow_approval', rpcPayload);
+      if (error) throw workflowError('Unable to create or reuse pending approval via create_workflow_approval RPC', error);
+      return data && typeof data === 'object' ? data : { ok: false, status: '', reason: 'Invalid approval RPC response.' };
+    }
     if (requestedAction === 'request_approval' || requestedAction === 'approve' || requestedAction === 'reject' || requestedAction === 'list_pending_approvals') {
       assertAllowed('workflow', requestedAction);
       if (requestedAction === 'list_pending_approvals') {
