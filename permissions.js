@@ -188,6 +188,13 @@ const Permissions = {
     total: 0,
     matrix: new Map()
   },
+  createMatrixEntry() {
+    return {
+      hasAnyRow: false,
+      allowedRoles: new Set(),
+      deniedRoles: new Set()
+    };
+  },
   normalizeRole(value) {
     return String(value || '')
       .trim()
@@ -329,10 +336,12 @@ const Permissions = {
         const action = String(row.action || '').trim().toLowerCase();
         if (!resource || !action) return;
         const key = `${resource}:${action}`;
-        const existing = matrix.get(key) || [];
+        const existing = matrix.get(key) || this.createMatrixEntry();
+        existing.hasAnyRow = true;
         const isRowAllowed = this.toBoolean(row.is_allowed, true);
         const isRowActive = this.toBoolean(row.is_active, true);
         const normalizedAllowedRoles = this.normalizeAllowedRoles(row);
+        const normalizedRoleKey = this.normalizeRole(row.role_key);
         console.info('[Permissions] normalized allowed roles per row', {
           resource,
           action,
@@ -343,9 +352,21 @@ const Permissions = {
           isRowActive,
           normalizedAllowedRoles
         });
-        if (!isRowAllowed || !isRowActive || !normalizedAllowedRoles.length) return;
-        const merged = [...new Set([...existing, ...normalizedAllowedRoles])];
-        matrix.set(key, merged);
+        if (!isRowActive) {
+          matrix.set(key, existing);
+          return;
+        }
+        if (normalizedRoleKey) {
+          if (isRowAllowed) {
+            existing.allowedRoles.add(normalizedRoleKey);
+            existing.deniedRoles.delete(normalizedRoleKey);
+          } else {
+            existing.deniedRoles.add(normalizedRoleKey);
+            existing.allowedRoles.delete(normalizedRoleKey);
+          }
+        }
+        if (isRowAllowed) normalizedAllowedRoles.forEach(roleValue => existing.allowedRoles.add(roleValue));
+        matrix.set(key, existing);
       });
       this.state.rows = rows;
       this.state.total = Number(lastNormalized?.total ?? rows.length) || rows.length;
@@ -385,20 +406,46 @@ const Permissions = {
       return false;
     }
 
-    const fromBackend = this.state.matrix.get(`${normalizedResource}:${normalizedAction}`);
-    if (Array.isArray(fromBackend)) return fromBackend.includes(role);
-    const allowedByBase = this.baseMatrix?.[normalizedResource]?.[normalizedAction];
-    if (Array.isArray(allowedByBase)) return allowedByBase.includes(role);
-    if (typeof options.fallback === 'boolean') return options.fallback;
-    return role === ROLES.ADMIN;
+    return this.canPerformAction(normalizedResource, normalizedAction, role, options);
   },
   hasMatrixPermission(resource, action, role = Session.role()) {
+    return this.canPerformAction(resource, action, role);
+  },
+  getBaseAllowedRoles(resource, action) {
+    const normalizedResource = String(resource || '').trim().toLowerCase();
+    const normalizedAction = String(action || '').trim().toLowerCase();
+    const allowedByBase = this.baseMatrix?.[normalizedResource]?.[normalizedAction];
+    return Array.isArray(allowedByBase) ? allowedByBase.map(value => this.normalizeRole(value)).filter(Boolean) : [];
+  },
+  getMatrixEntry(resource, action) {
+    const normalizedResource = String(resource || '').trim().toLowerCase();
+    const normalizedAction = String(action || '').trim().toLowerCase();
+    const existing = this.state.matrix.get(`${normalizedResource}:${normalizedAction}`);
+    if (!existing) return null;
+    if (Array.isArray(existing)) {
+      const migrated = this.createMatrixEntry();
+      existing.forEach(roleValue => migrated.allowedRoles.add(this.normalizeRole(roleValue)));
+      migrated.hasAnyRow = existing.length > 0;
+      return migrated;
+    }
+    return existing;
+  },
+  decidePermission(resource, action, role = Session.role(), options = {}) {
     const currentRole = this.normalizeRole(role);
     const normalizedResource = String(resource || '').trim().toLowerCase();
     const normalizedAction = String(action || '').trim().toLowerCase();
     if (!currentRole || !normalizedResource || !normalizedAction) return false;
-    const fromBackend = this.state.matrix.get(`${normalizedResource}:${normalizedAction}`);
-    return Array.isArray(fromBackend) ? fromBackend.includes(currentRole) : false;
+
+    const baseAllowedRoles = this.getBaseAllowedRoles(normalizedResource, normalizedAction);
+    const baseAllowsRole = baseAllowedRoles.includes(currentRole);
+    const matrixEntry = this.getMatrixEntry(normalizedResource, normalizedAction);
+
+    if (matrixEntry?.deniedRoles?.has(currentRole)) return false;
+    if (matrixEntry?.allowedRoles?.has(currentRole)) return true;
+    if (baseAllowsRole) return true;
+
+    if (typeof options.fallback === 'boolean') return options.fallback;
+    return currentRole === ROLES.ADMIN;
   },
   getTabPermissionRequirements(viewKey) {
     const key = String(viewKey || '').trim();
@@ -410,16 +457,7 @@ const Permissions = {
     return [{ resource: fallbackResource, action: 'list' }];
   },
   canPerformAction(resource, action, role = Session.role(), options = {}) {
-    const currentRole = this.normalizeRole(role);
-    const normalizedResource = String(resource || '').trim().toLowerCase();
-    const normalizedAction = String(action || '').trim().toLowerCase();
-    if (!currentRole || !normalizedResource || !normalizedAction) return false;
-    const fromBackend = this.state.matrix.get(`${normalizedResource}:${normalizedAction}`);
-    if (Array.isArray(fromBackend)) return fromBackend.includes(currentRole);
-    const allowedByBase = this.baseMatrix?.[normalizedResource]?.[normalizedAction];
-    if (Array.isArray(allowedByBase)) return allowedByBase.includes(currentRole);
-    if (typeof options.fallback === 'boolean') return options.fallback;
-    return currentRole === ROLES.ADMIN;
+    return this.decidePermission(resource, action, role, options);
   },
   canView(resource, role = Session.role()) {
     return this.canPerformAction(resource, 'list', role) || this.canPerformAction(resource, 'get', role);
@@ -633,30 +671,16 @@ const Permissions = {
     if (!key) return false;
     if (!Session.isAuthenticated()) return false;
 
-    let roleFallbackAllowed = true;
-    if (key === 'operationsOnboarding') roleFallbackAllowed = this.canViewOperationsOnboarding();
-    else if (key === 'technicalAdmin') roleFallbackAllowed = this.canViewTechnicalAdmin();
-    else if (key === 'users') roleFallbackAllowed = this.canManageUsers();
-    else if (key === 'roles' || key === 'rolePermissions') roleFallbackAllowed = this.canManageRolesPermissions();
-    else if (key === 'workflow') roleFallbackAllowed = this.canManageWorkflow();
-    else if (key !== 'issues') {
-      const resource = this.tabResourceMap[key];
-      roleFallbackAllowed = resource ? this.canView(resource) : Session.isAuthenticated();
-    }
-
     const requirements = this.getTabPermissionRequirements(key);
-    if (!requirements.length) return roleFallbackAllowed;
+    if (!requirements.length) return true;
 
-    const permissionAllowed = requirements.some(requirement => {
+    return requirements.some(requirement => {
       if (!requirement || typeof requirement !== 'object') return false;
       const resource = String(requirement.resource || '').trim().toLowerCase();
       const action = String(requirement.action || '').trim().toLowerCase();
       if (!resource || !action) return false;
-      if (this.state.loaded) return this.hasMatrixPermission(resource, action);
       return this.canPerformAction(resource, action);
     });
-    if (this.state.loaded) return permissionAllowed;
-    return roleFallbackAllowed && permissionAllowed;
   }
 };
 

@@ -2131,7 +2131,7 @@ function setActiveView(view) {
   if (E.leadsFiltersPanel) E.leadsFiltersPanel.style.display = view === 'leads' ? '' : 'none';
   if (E.dealsFiltersPanel) E.dealsFiltersPanel.style.display = view === 'deals' ? '' : 'none';
   const isForbiddenError = error => {
-    if (typeof isPermissionError === 'function') return isPermissionError(error);
+    if (typeof window.isPermissionError === 'function') return window.isPermissionError(error);
     const message = String(error?.message || error || '').toLowerCase();
     return message.includes('forbidden') || message.includes('permission denied');
   };
@@ -2715,7 +2715,7 @@ function openIssueFromLink() {
   UI.Modals.openIssue(issueId);
 }
 
-function isPermissionError(error) {
+function isPermissionErrorSafe(error) {
   const message = String(error?.message || error || '').toLowerCase();
   return (
     message.includes('forbidden') ||
@@ -2776,7 +2776,7 @@ async function loadIssues(force = false) {
     openIssueFromLink();
     UI.setSync('issues', true, new Date());
   } catch (e) {
-    if (isPermissionError(e)) {
+    if (isPermissionErrorSafe(e)) {
       console.log('[startup] permission error preserved session', e?.message);
       UI.toast('Some issues are unavailable for your role. Your session is still active.');
       UI.setSync('issues', !!DataStore.rows.length, null);
@@ -2829,7 +2829,7 @@ async function loadEvents(force = false, options = {}) {
     UI.setSync('events', true, new Date());
   } catch (e) {
     const errMsg = String(e?.message || 'Unknown error');
-    if (isPermissionError(e)) {
+    if (isPermissionErrorSafe(e)) {
       console.log('[startup] permission error preserved session', e?.message);
       DataStore.events = cached || [];
       ensureCalendar();

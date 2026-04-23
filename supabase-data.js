@@ -341,6 +341,10 @@
     return Array.isArray(list) ? list : null;
   }
   function isAllowed(resource, action) {
+    if (!global.Session?.isAuthenticated?.()) return false;
+    if (global.Permissions?.canPerformAction) {
+      return Boolean(global.Permissions.canPerformAction(resource, action, role()));
+    }
     const rule = allowedRoles(resource, action);
     if (!rule) return role() === 'admin';
     return rule.includes(role());
