@@ -1574,15 +1574,35 @@
     }
     if (requestedAction === 'save' || requestedAction === 'save_rule') {
       assertAllowed('workflow', 'save');
-      const row = normalizeWorkflowRulePayload(safePayload.rule || safePayload);
-      const cleanRow = { ...row };
+      const rawRow = safePayload.rule || safePayload;
+      const normalizedRow = normalizeWorkflowRulePayload(rawRow);
+      const cleanRow = {
+        workflow_rule_id: normalizedRow.workflow_rule_id,
+        resource: normalizedRow.resource,
+        current_status: normalizedRow.current_status,
+        next_status: normalizedRow.next_status,
+        allowed_roles: normalizeRoleList(normalizedRow.allowed_roles, normalizedRow.allowed_roles_csv),
+        requires_approval: Boolean(normalizedRow.requires_approval),
+        approval_role: firstValue(
+          normalizedRow.approval_role,
+          Array.isArray(normalizedRow.approval_roles) ? normalizedRow.approval_roles[0] : '',
+          normalizedRow.approval_roles_csv
+        ) || null,
+        max_discount_percent: Number(normalizedRow.max_discount_percent || 0),
+        hard_stop_discount_percent: Number(normalizedRow.hard_stop_discount_percent || 0),
+        editable_fields: Array.isArray(normalizedRow.editable_fields) ? normalizedRow.editable_fields : [],
+        required_fields: Array.isArray(normalizedRow.required_fields) ? normalizedRow.required_fields : [],
+        require_comment: Boolean(normalizedRow.require_comment),
+        require_attachment: Boolean(normalizedRow.require_attachment),
+        is_active: normalizedRow.is_active !== false
+      };
       if (!String(cleanRow.workflow_rule_id || '').trim()) delete cleanRow.workflow_rule_id;
-      if (!String(cleanRow.id || '').trim()) delete cleanRow.id;
-      const id = cleanRow.workflow_rule_id || cleanRow.id;
+      const legacyId = normalizeRawId(normalizedRow.id || rawRow.id);
+      const id = cleanRow.workflow_rule_id || legacyId;
       const qb = client.from('workflow_rules');
       if (id) {
-        const updateColumn = cleanRow.workflow_rule_id ? 'workflow_rule_id' : cleanRow.id ? 'id' : '';
-        const updateId = normalizeRawId(cleanRow[updateColumn]);
+        const updateColumn = cleanRow.workflow_rule_id ? 'workflow_rule_id' : legacyId ? 'id' : '';
+        const updateId = normalizeRawId(cleanRow.workflow_rule_id || legacyId);
         if (!updateColumn || !updateId) throw workflowError('Workflow rule could not be matched by workflow_rule_id or id.');
         const resp = await qb.update(cleanRow).eq(updateColumn, updateId).select('*').maybeSingle();
         if (resp.error) throw workflowError('Unable to save workflow rule', resp.error);
