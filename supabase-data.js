@@ -1749,16 +1749,50 @@
         return normalizeList('workflow', normalizeWorkflowRows(data));
       }
       const row = safePayload;
+      const approvalColumns = [
+        'approval_id',
+        'resource',
+        'record_id',
+        'workflow_rule_id',
+        'requester_user_id',
+        'requester_role',
+        'approval_role',
+        'status',
+        'old_status',
+        'new_status',
+        'requested_changes',
+        'reviewer_user_id',
+        'reviewer_comment',
+        'reviewed_at'
+      ];
+      const sanitizedRow = approvalColumns.reduce((acc, key) => {
+        if (row[key] !== undefined) acc[key] = row[key];
+        return acc;
+      }, {});
       if (requestedAction === 'request_approval') {
-        const { data, error } = await client.from('workflow_approvals').insert(row).select('*').maybeSingle();
+        const { data, error } = await client.from('workflow_approvals').insert(sanitizedRow).select('*').maybeSingle();
         if (error) throw workflowError('Unable to create approval request row in workflow_approvals', error);
-        if (!data) throw workflowError('Unable to create approval request row in workflow_approvals', new Error('No row returned from insert.'));
-        console.debug('[workflow] approval creation', { approval_id: data?.approval_id || data?.id || '', status: data?.status || 'pending' });
-        return normalizeWorkflowSingle(data);
+        let insertedRow = data || null;
+        if (!insertedRow) {
+          const { data: followUpRow, error: followUpError } = await client
+            .from('workflow_approvals')
+            .select('*')
+            .eq('resource', sanitizedRow.resource)
+            .eq('record_id', sanitizedRow.record_id)
+            .eq('status', 'pending')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (followUpError) throw workflowError('Unable to fetch approval request row after insert', followUpError);
+          insertedRow = followUpRow || null;
+        }
+        if (!insertedRow) throw workflowError('Unable to create approval request row in workflow_approvals', new Error('No row returned from insert.'));
+        console.debug('[workflow] approval creation', { approval_id: insertedRow?.approval_id || insertedRow?.id || '', status: insertedRow?.status || 'pending' });
+        return normalizeWorkflowSingle(insertedRow);
       }
-      const id = row.approval_id || row.workflow_approval_id || row.id;
+      const id = sanitizedRow.approval_id || row.workflow_approval_id || row.id;
       const nextStatus = requestedAction === 'approve' ? 'approved' : 'rejected';
-      let updateQuery = client.from('workflow_approvals').update({ ...row, status: nextStatus }).select('*').single();
+      let updateQuery = client.from('workflow_approvals').update({ ...sanitizedRow, status: nextStatus }).select('*').single();
       if (id) updateQuery = updateQuery.eq('approval_id', id);
       const { data, error } = await updateQuery;
       if (error) throw workflowError('Unable to update approval request', error);
