@@ -1448,6 +1448,30 @@
     };
     const normalizeWorkflowRows = value => asArray(value).map(row => normalizeRow('workflow', row));
     const normalizeWorkflowSingle = value => normalizeRow('workflow', value || {});
+    const WORKFLOW_HELPER_FIELDS = new Set([
+      'resource',
+      'action',
+      'approval_id',
+      'approval_role',
+      'requester_user_id',
+      'requester_role',
+      'record_snapshot',
+      'target_workflow_resource',
+      'allowed_roles_csv',
+      'approval_roles_csv'
+    ]);
+    const WORKFLOW_RESOURCE_ID_HINTS = {
+      proposals: ['proposal_id'],
+      agreements: ['agreement_id'],
+      invoices: ['invoice_id'],
+      receipts: ['receipt_id']
+    };
+    const WORKFLOW_RESOURCE_BUSINESS_KEY = {
+      proposals: 'proposal_id',
+      agreements: 'agreement_id',
+      invoices: 'invoice_id',
+      receipts: 'receipt_id'
+    };
     const normalizeRoleList = (...values) => {
       const found = values.find(value => value !== undefined && value !== null && (Array.isArray(value) || String(value).trim() !== ''));
       if (Array.isArray(found)) return found.map(value => String(value || '').trim().toLowerCase()).filter(Boolean);
@@ -1456,6 +1480,137 @@
         .map(value => String(value || '').trim().toLowerCase())
         .filter(Boolean);
     };
+    async function insertWorkflowAuditLog(entry = {}) {
+      const payloadRow = compactObject({
+        resource: String(entry.resource || '').trim(),
+        record_id: String(entry.record_id || '').trim(),
+        action: String(entry.action || '').trim(),
+        old_status: entry.old_status ?? null,
+        new_status: entry.new_status ?? null,
+        allowed: entry.allowed === true,
+        reason: String(entry.reason || '').trim(),
+        user_id: entry.user_id ?? null,
+        user_role: String(entry.user_role || '').trim().toLowerCase(),
+        metadata: entry.metadata && typeof entry.metadata === 'object' ? entry.metadata : {}
+      });
+      const { error } = await client.from('workflow_audit_log').insert(payloadRow);
+      if (error) throw workflowError('Unable to write workflow audit log', error);
+    }
+    function normalizeWorkflowResource(resourceValue = '', requestedChanges = {}) {
+      const direct = String(resourceValue || '').trim().toLowerCase();
+      if (direct) return direct;
+      return String(requestedChanges?.resource || requestedChanges?.target_workflow_resource || '').trim().toLowerCase();
+    }
+    async function loadApprovalRowById(approvalId = '') {
+      const id = String(approvalId || '').trim();
+      if (!id) throw new Error('Approval id is required.');
+      const { data, error } = await client
+        .from('workflow_approvals')
+        .select('*')
+        .eq('approval_id', id)
+        .maybeSingle();
+      if (error) throw workflowError('Unable to load approval request', error);
+      if (!data) throw workflowError('Approval request not found.');
+      return normalizeWorkflowSingle(data);
+    }
+    async function resolveWorkflowTargetRecord(resourceValue = '', approval = {}) {
+      const resource = String(resourceValue || '').trim().toLowerCase();
+      const table = TABLE_BY_RESOURCE[resource];
+      const primaryKey = PK_BY_RESOURCE[resource] || 'id';
+      if (!table || !primaryKey) throw workflowError(`Unsupported workflow resource: ${resource || 'unknown'}`);
+      const requestedChanges = approval?.requested_changes && typeof approval.requested_changes === 'object'
+        ? approval.requested_changes
+        : {};
+      const directRecordId = String(approval?.record_id || '').trim();
+      const hintValues = (WORKFLOW_RESOURCE_ID_HINTS[resource] || [])
+        .map(key => String(requestedChanges?.[key] || '').trim())
+        .filter(Boolean);
+      const candidateIds = [...new Set([directRecordId, ...hintValues].filter(Boolean))];
+      const businessIdColumn = WORKFLOW_RESOURCE_BUSINESS_KEY[resource];
+      for (const candidate of candidateIds) {
+        let query = client.from(table).select('*').eq(primaryKey, candidate).limit(1).maybeSingle();
+        let { data, error } = await query;
+        if (error) throw workflowError(`Unable to load ${resource} record`, error);
+        if (!data && businessIdColumn) {
+          ({ data, error } = await client.from(table).select('*').eq(businessIdColumn, candidate).limit(1).maybeSingle());
+          if (error) throw workflowError(`Unable to load ${resource} record`, error);
+        }
+        if (data) {
+          return { record: data, recordId: String(data?.[primaryKey] || '').trim() || String(data?.id || '').trim() || candidate };
+        }
+      }
+      throw workflowError(`Target ${resource} record is missing or could not be resolved.`);
+    }
+    async function applyApprovedWorkflowChanges(resourceValue = '', recordId = '', requestedChanges = {}, reviewerContext = {}) {
+      const resource = String(resourceValue || '').trim().toLowerCase();
+      const requested = requestedChanges && typeof requestedChanges === 'object' ? requestedChanges : {};
+      const requestedWithoutHelpers = Object.fromEntries(
+        Object.entries(requested).filter(([key]) => !WORKFLOW_HELPER_FIELDS.has(String(key || '').trim()))
+      );
+      if (!Object.keys(requestedWithoutHelpers).length) {
+        throw workflowError('Requested changes are empty. Approval cannot be applied.');
+      }
+      const { record } = await resolveWorkflowTargetRecord(resource, { record_id: recordId, requested_changes: requested });
+      const reviewerUserId = String(reviewerContext.userId || '').trim();
+      const sanitizeWithReviewer = (sanitizer, payload = {}) => sanitizer(payload, { includeCreatedBy: false, userId: reviewerUserId });
+      const itemTable = ITEM_TABLES[resource];
+      const fk = ITEM_FK[resource];
+      let publicUpdates = {};
+      if (resource === 'proposals') {
+        publicUpdates = compactObject({
+          discount_percent: numberOrNull(firstDefined(requested, ['discount_percent'])),
+          status: trimOrNull(firstDefined(requested, ['requested_status', 'status'])),
+          client_id: trimOrNull(firstDefined(requested, ['client_id', 'clientId'])),
+          proposal_date: trimOrNull(firstDefined(requested, ['proposal_date', 'proposalDate'])),
+          proposal_valid_until: trimOrNull(firstDefined(requested, ['proposal_valid_until', 'proposalValidUntil', 'valid_until'])),
+          notes: trimOrNull(firstDefined(requested, ['notes'])),
+          updated_by: reviewerUserId || undefined
+        });
+      } else if (resource === 'agreements') {
+        publicUpdates = sanitizeWithReviewer(sanitizeAgreementRecord, requestedWithoutHelpers);
+      } else if (resource === 'invoices') {
+        publicUpdates = sanitizeWithReviewer(sanitizeInvoicesRecord, requestedWithoutHelpers);
+      } else if (resource === 'receipts') {
+        publicUpdates = sanitizeWithReviewer(sanitizeReceiptsRecord, requestedWithoutHelpers);
+      } else {
+        throw workflowError(`Unsupported workflow resource: ${resource}`);
+      }
+      const updatePayload = compactObject(publicUpdates);
+      if (!Object.keys(updatePayload).length && !Array.isArray(requested.items)) {
+        throw workflowError('Requested changes did not include any approved editable fields.');
+      }
+      const key = PK_BY_RESOURCE[resource] || 'id';
+      let updatedRecord = record;
+      if (Object.keys(updatePayload).length) {
+        const { data, error } = await client
+          .from(TABLE_BY_RESOURCE[resource])
+          .update(updatePayload)
+          .eq(key, record.id || recordId)
+          .select('*')
+          .single();
+        if (error) throw workflowError(`Unable to apply approved changes to ${resource}`, error);
+        updatedRecord = data || record;
+      }
+      if (itemTable && Array.isArray(requested.items)) {
+        const parentId = String(updatedRecord?.id || record?.id || recordId || '').trim();
+        if (!parentId) throw workflowError(`Unable to apply ${resource} items because parent record id is missing.`);
+        await client.from(itemTable).delete().eq(fk, parentId);
+        if (requested.items.length) {
+          const insertRows = requested.items.map(item =>
+            resource === 'proposals'
+              ? sanitizeProposalItemRecord(item, parentId)
+              : resource === 'agreements'
+                ? sanitizeAgreementItemRecord(item, parentId)
+                : resource === 'invoices'
+                  ? sanitizeInvoiceItemRecord(item, parentId)
+                  : sanitizeReceiptItemRecord(item, parentId)
+          );
+          const { error } = await client.from(itemTable).insert(insertRows);
+          if (error) throw workflowError(`Unable to apply ${resource} items`, error);
+        }
+      }
+      return { beforeRecord: record, afterRecord: updatedRecord };
+    }
     const normalizeWorkflowRulePayload = row => {
       const source = row && typeof row === 'object' ? { ...row } : {};
       const allowedRoles = normalizeRoleList(source.allowed_roles, source.allowed_roles_csv);
@@ -1808,12 +1963,89 @@
         return normalizeWorkflowSingle(insertedRow);
       }
       const id = sanitizedRow.approval_id || row.workflow_approval_id || row.id;
-      const nextStatus = requestedAction === 'approve' ? 'approved' : 'rejected';
-      let updateQuery = client.from('workflow_approvals').update({ ...sanitizedRow, status: nextStatus }).select('*').single();
-      if (id) updateQuery = updateQuery.eq('approval_id', id);
-      const { data, error } = await updateQuery;
-      if (error) throw workflowError('Unable to update approval request', error);
-      return normalizeWorkflowSingle(data);
+      const approval = await loadApprovalRowById(id);
+      const currentStatus = String(approval?.status || '').trim().toLowerCase();
+      if (currentStatus !== 'pending') {
+        throw workflowError(`Approval ${String(approval?.approval_id || id || '').trim()} is already ${currentStatus || 'processed'} and cannot be processed again.`);
+      }
+      const reviewerUserId = await getCurrentUserId(client);
+      const reviewerRole = role();
+      const reviewerComment = row.reviewer_comment === undefined ? null : String(row.reviewer_comment || '').trim();
+      const reviewPayload = {
+        reviewer_user_id: reviewerUserId || null,
+        reviewer_comment: reviewerComment,
+        reviewed_at: new Date().toISOString()
+      };
+      const requestedChanges = approval?.requested_changes && typeof approval.requested_changes === 'object'
+        ? approval.requested_changes
+        : {};
+      const resource = normalizeWorkflowResource(approval?.resource, requestedChanges);
+      if (!resource) throw workflowError('Approval request is missing resource information.');
+      if (requestedAction === 'reject') {
+        const { data: rejected, error: rejectError } = await client
+          .from('workflow_approvals')
+          .update({ ...reviewPayload, status: 'rejected' })
+          .eq('approval_id', approval.approval_id)
+          .eq('status', 'pending')
+          .select('*')
+          .single();
+        if (rejectError) throw workflowError('Unable to reject approval request', rejectError);
+        await insertWorkflowAuditLog({
+          resource,
+          record_id: approval.record_id || '',
+          action: 'approval_rejected',
+          old_status: approval.old_status || approval.status || 'pending',
+          new_status: 'rejected',
+          allowed: false,
+          reason: reviewerComment || 'Approval request rejected.',
+          user_id: reviewerUserId || null,
+          user_role: reviewerRole,
+          metadata: {
+            approval_id: approval.approval_id,
+            requested_changes_summary: {
+              keys: Object.keys(requestedChanges || {}),
+              changed_fields: Array.isArray(requestedChanges?.changed_fields) ? requestedChanges.changed_fields : []
+            }
+          }
+        });
+        return normalizeWorkflowSingle(rejected);
+      }
+      const { recordId: resolvedRecordId } = await resolveWorkflowTargetRecord(resource, approval);
+      const { beforeRecord, afterRecord } = await applyApprovedWorkflowChanges(
+        resource,
+        resolvedRecordId,
+        requestedChanges,
+        { userId: reviewerUserId, userRole: reviewerRole, approvalId: approval.approval_id }
+      );
+      const { data: approved, error: approveError } = await client
+        .from('workflow_approvals')
+        .update({ ...reviewPayload, status: 'approved' })
+        .eq('approval_id', approval.approval_id)
+        .eq('status', 'pending')
+        .select('*')
+        .single();
+      if (approveError) throw workflowError('Unable to mark approval request as approved', approveError);
+      await insertWorkflowAuditLog({
+        resource,
+        record_id: String(beforeRecord?.id || resolvedRecordId || '').trim(),
+        action: 'approval_applied',
+        old_status: firstValue(approval.old_status, beforeRecord?.status, 'pending'),
+        new_status: firstValue(afterRecord?.status, approval.new_status, 'approved'),
+        allowed: true,
+        reason: 'Workflow approval approved and applied.',
+        user_id: reviewerUserId || null,
+        user_role: reviewerRole,
+        metadata: {
+          approval_id: approval.approval_id,
+          requested_changes_summary: {
+            keys: Object.keys(requestedChanges || {}),
+            changed_fields: Array.isArray(requestedChanges?.changed_fields) ? requestedChanges.changed_fields : [],
+            requested_status: requestedChanges?.requested_status ?? requestedChanges?.status ?? null,
+            discount_percent: requestedChanges?.discount_percent ?? null
+          }
+        }
+      });
+      return normalizeWorkflowSingle(approved);
     }
     if (requestedAction === 'list_audit') {
       assertAllowed('workflow', 'list_audit');

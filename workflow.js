@@ -1136,11 +1136,24 @@ const Workflow = {
     const reviewer_comment = reviewerComment == null
       ? (window.prompt(`${action === 'approve' ? 'Approval' : 'Rejection'} comment`, '') || '')
       : String(reviewerComment || '');
+    const activeApproval = this.state.approvals.find(item => String(item?.approval_id || '').trim() === id);
+    const normalizedApproval = this.normalizePendingApproval(activeApproval || { approval_id: id });
     if (action === 'approve') await Api.approveWorkflowRequest({ approval_id: id, reviewer_comment });
     else await Api.rejectWorkflowRequest({ approval_id: id, reviewer_comment });
-    UI.toast(`Approval ${action}d.`);
+    UI.toast(action === 'approve' ? 'Approval applied successfully.' : 'Approval rejected.');
     if (closePreview) this.closeApprovalPreview();
     await this.loadAndRefresh(true);
+    await this.refreshResourceAfterApproval(normalizedApproval);
+  },
+  async refreshResourceAfterApproval(approval = {}) {
+    const resource = String(approval?.resource || '').trim().toLowerCase();
+    const tasks = [];
+    if (resource === 'proposals' && window.Proposals?.loadAndRefresh) tasks.push(window.Proposals.loadAndRefresh({ force: true }));
+    if (resource === 'agreements' && window.Agreements?.loadAndRefresh) tasks.push(window.Agreements.loadAndRefresh({ force: true }));
+    if (resource === 'invoices' && window.Invoices?.refresh) tasks.push(window.Invoices.refresh(true));
+    if (resource === 'receipts' && window.Receipts?.refresh) tasks.push(window.Receipts.refresh(true));
+    if (!tasks.length) return;
+    await Promise.allSettled(tasks);
   },
   wire() {
     if (E.workflowRuleForm) {
