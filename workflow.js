@@ -142,13 +142,32 @@ const WorkflowEngine = {
     return Api.validateWorkflowTransition(payload);
   },
   async enforceBeforeSave(resource, record, requestedChanges = {}) {
+    const validationUnavailableResult = {
+      allowed: false,
+      pendingApproval: false,
+      approvalCreated: false,
+      reason: 'Workflow validation is unavailable. Save blocked until workflow is reachable.'
+    };
     this.beginRequestProcessing('Checking workflow approval request…');
     try {
       const validation = await this.validateWorkflowTransition(resource, record, requestedChanges);
       try { console.debug('[workflow] validation result', validation); } catch {}
+      const hasUsableValidation =
+        validation &&
+        typeof validation === 'object' &&
+        (
+          Object.prototype.hasOwnProperty.call(validation, 'allowed') ||
+          Object.prototype.hasOwnProperty.call(validation, 'is_allowed') ||
+          Object.prototype.hasOwnProperty.call(validation, 'pendingApproval') ||
+          Object.prototype.hasOwnProperty.call(validation, 'pending_approval') ||
+          Object.prototype.hasOwnProperty.call(validation, 'approvalCreated') ||
+          Object.prototype.hasOwnProperty.call(validation, 'approval_created') ||
+          Object.prototype.hasOwnProperty.call(validation, 'reason')
+        );
+      if (!hasUsableValidation) return validationUnavailableResult;
 
       const noActiveRuleMessage = /no active workflow rule found/i;
-      const allowed = this.toBool(validation?.allowed ?? validation?.is_allowed ?? true);
+      const allowed = this.toBool(validation?.allowed ?? validation?.is_allowed);
       const approvalCreated = this.toBool(validation?.approvalCreated ?? validation?.approval_created);
       const pendingApproval = this.toBool(validation?.pendingApproval ?? validation?.pending_approval);
       const reason = String(validation?.reason || '').trim();
@@ -248,27 +267,8 @@ const WorkflowEngine = {
 
       return baseResult;
     } catch (error) {
-      const reason = String(error?.message || 'Workflow validation failed.').trim();
-      const authzError = /forbidden|unauthorized|permission/i.test(reason);
-      const noActiveRuleError = /no active workflow rule found/i.test(reason);
-      if (authzError || noActiveRuleError) {
-        console.warn('Workflow validation skipped due to missing permission.', error);
-        return {
-          allowed: true,
-          approvalCreated: false,
-          pendingApproval: false,
-          skipped: true,
-          reason: '',
-          response: null
-        };
-      }
-      return {
-        allowed: false,
-        approvalCreated: false,
-        pendingApproval: false,
-        reason,
-        response: null
-      };
+      console.error('[workflow validation unavailable]', error);
+      return validationUnavailableResult;
     } finally {
       this.endRequestProcessing();
     }
