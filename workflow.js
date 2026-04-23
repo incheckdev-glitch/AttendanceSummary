@@ -167,12 +167,12 @@ const WorkflowEngine = {
       }
       if (!baseResult.allowed && baseResult.pendingApproval && !baseResult.approvalCreated) {
         const approvalPayload = {
-          resource: 'proposals',
+          resource,
           record_id: String(requestedChanges?.id || record?.id || record?.proposal_id || '').trim(),
-          workflow_rule_id: validation?.workflow_rule_id || null,
+          workflow_rule_id: validation?.workflow_rule_id || validation?.response?.workflow_rule_id || null,
           requester_user_id: window.Session?.authContext?.()?.user?.id || null,
           requester_role: window.Session?.role?.() || '',
-          approval_role: String(validation?.approval_role || 'admin').trim(),
+          approval_role: String(validation?.approval_role || validation?.response?.approval_role || 'admin').trim(),
           old_status: String(requestedChanges?.current_status || record?.status || '').trim(),
           new_status: String(requestedChanges?.requested_status || requestedChanges?.next_status || record?.status || '').trim(),
           requested_changes: requestedChanges
@@ -281,6 +281,10 @@ const WorkflowEngine = {
     return `<span class="pill ${css}">${U.escapeHtml(raw)}</span>`;
   },
   composeDeniedMessage(result, fallbackPrefix = 'Action blocked by workflow rules.') {
+    if (result?.pendingApproval === true && result?.approvalCreated === true) {
+      const reason = String(result?.reason || '').trim() || 'Approval request submitted successfully.';
+      return `${fallbackPrefix} ${reason}`.trim();
+    }
     const reason = String(result?.reason || '').trim();
     const hasDiscountData = result && result.requestedDiscount != null && result.userDiscountLimit != null;
     const discountPart = hasDiscountData
