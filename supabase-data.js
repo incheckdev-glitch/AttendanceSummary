@@ -342,15 +342,27 @@
   }
   function isAllowed(resource, action) {
     if (!global.Session?.isAuthenticated?.()) return false;
+    const normalizedResource = String(resource || '').trim().toLowerCase();
+    const normalizedAction = String(action || '').trim().toLowerCase();
+    if (!normalizedResource || !normalizedAction) return false;
     if (global.Permissions?.canPerformAction) {
-      return Boolean(global.Permissions.canPerformAction(resource, action, role()));
+      return Boolean(global.Permissions.canPerformAction(normalizedResource, normalizedAction, role()));
     }
-    const rule = allowedRoles(resource, action);
+    const rule = allowedRoles(normalizedResource, normalizedAction);
     if (!rule) return role() === 'admin';
     return rule.includes(role());
   }
   function assertAllowed(resource, action, reason = '') {
-    if (isAllowed(resource, action)) return;
+    const finalDecision = isAllowed(resource, action);
+    if (finalDecision) return;
+    console.debug('[supabase-data.permission-denied]', {
+      resource,
+      action,
+      role: role(),
+      baseAllowedRoles: global.Permissions?.getBaseAllowedRoles?.(resource, action) || [],
+      matrixEntry: global.Permissions?.getMatrixEntry?.(resource, action) || null,
+      finalDecision: global.Permissions?.canPerformAction?.(resource, action, role()) ?? false
+    });
     const suffix = reason ? ` (${reason})` : '';
     throw new Error(`Forbidden: ${role() || 'unknown'} cannot ${action} ${resource}${suffix}.`);
   }

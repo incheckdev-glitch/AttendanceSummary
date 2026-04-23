@@ -4504,6 +4504,16 @@ function wireDashboardGate() {
     }
     await Permissions.loadMatrix(force);
   };
+  const logPermissionSelfTest = () => {
+    if (!Session.isAuthenticated()) return;
+    const currentRole = Session.role();
+    console.info('[permission self-test]', {
+      role: currentRole,
+      ticketsList: Permissions.canPerformAction('tickets', 'list', currentRole),
+      notificationsList: Permissions.canPerformAction('notifications', 'list', currentRole),
+      canLoadRuntimeMatrix: Permissions.canLoadRuntimeMatrix(currentRole)
+    });
+  };
 
   const syncAuthUi = () => {
     const isAuthenticated = Session.isAuthenticated();
@@ -4514,6 +4524,7 @@ function wireDashboardGate() {
         })
         .finally(() => {
           UI.applyRolePermissions();
+          logPermissionSelfTest();
           unlockApp();
         });
       return;
@@ -4530,6 +4541,7 @@ function wireDashboardGate() {
       })
       .finally(() => {
         UI.applyRolePermissions();
+        logPermissionSelfTest();
         unlockApp();
       });
   } else {
@@ -4606,6 +4618,7 @@ function wireDashboardGate() {
         role: user?.role || null
       });
       await refreshPermissionsForCurrentRole(true);
+      logPermissionSelfTest();
       UI.applyRolePermissions();
       E.loginIdentifier.value = '';
       E.loginPasscode.value = '';
@@ -6055,6 +6068,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else {
       await Permissions.loadMatrix(true);
     }
+    console.info('[permission self-test]', {
+      role: Session.role(),
+      ticketsList: Permissions.canPerformAction('tickets', 'list', Session.role()),
+      notificationsList: Permissions.canPerformAction('notifications', 'list', Session.role()),
+      canLoadRuntimeMatrix: Permissions.canLoadRuntimeMatrix(Session.role())
+    });
     UI.applyRolePermissions();
   }
 

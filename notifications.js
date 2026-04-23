@@ -18,7 +18,9 @@ const Notifications = {
     unavailable: false,
     unavailableReason: '',
     permissionDenied: false,
-    permissionDeniedLogged: false
+    permissionDeniedLogged: false,
+    refreshCycleId: 0,
+    cyclePermissionLogKey: ''
   },
   normalize(item = {}) {
     const source = item && typeof item === 'object' ? item : {};
@@ -265,12 +267,14 @@ const Notifications = {
     this.state.rawRows = [];
     this.state.loading = false;
     this.state.previewLoading = false;
-    if (!this.state.permissionDeniedLogged) {
+    const cycleLogKey = `${this.state.refreshCycleId}:${String(context || 'notifications')}`;
+    if (!this.state.permissionDeniedLogged || this.state.cyclePermissionLogKey !== cycleLogKey) {
       console.info('[notifications] permission denied for current role; using empty state.', {
         context,
         message: error?.message || ''
       });
       this.state.permissionDeniedLogged = true;
+      this.state.cyclePermissionLogKey = cycleLogKey;
     }
     this.renderBell();
     this.renderPreview();
@@ -443,6 +447,7 @@ const Notifications = {
     }
   },
   async refreshAll(force = false) {
+    this.state.refreshCycleId = Number(this.state.refreshCycleId || 0) + 1;
     if (this.state.unavailable) {
       this.renderBell();
       this.renderPreview();
@@ -819,6 +824,8 @@ const Notifications = {
     this.state.lastFetchedAt = '';
     this.state.permissionDenied = false;
     this.state.permissionDeniedLogged = false;
+    this.state.cyclePermissionLogKey = '';
+    this.state.refreshCycleId = 0;
     this.clearUnavailable();
     if (E.notificationsSearchInput) E.notificationsSearchInput.value = '';
     if (E.notificationsFilterButtons) {
