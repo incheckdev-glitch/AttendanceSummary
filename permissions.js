@@ -327,7 +327,6 @@ const Permissions = {
       let page = 1;
       let hasMore = true;
       let lastNormalized = null;
-      const denySummary = {};
       let totalActiveRows = 0;
       let totalDeniedRows = 0;
       while (hasMore) {
@@ -369,8 +368,6 @@ const Permissions = {
             existing.deniedRoles.add(normalizedRoleKey);
             existing.allowedRoles.delete(normalizedRoleKey);
             totalDeniedRows += 1;
-            const denyKey = `${normalizedRoleKey}::${resource}::${action}`;
-            denySummary[denyKey] = (denySummary[denyKey] || 0) + 1;
           }
         }
         if (isRowAllowed) normalizedAllowedRoles.forEach(roleValue => existing.allowedRoles.add(roleValue));
@@ -384,16 +381,11 @@ const Permissions = {
       this.state.limit = Number(lastNormalized?.limit || this.state.limit || 50);
       this.state.offset = 0;
       this.state.matrix = matrix;
-      const groupedDenyRows = Object.entries(denySummary).map(([key, count]) => {
-        const [role_key, resource, action] = key.split('::');
-        return { role_key, resource, action, count };
-      });
       console.info('[Permissions] matrix loaded', {
         totalRowsLoaded: rows.length,
         totalActiveRows,
         totalDeniedRows,
-        matrixKeyCount: matrix.size,
-        activeDenyRows: groupedDenyRows
+        matrixKeyCount: matrix.size
       });
       this.state.loaded = true;
       return rows;
