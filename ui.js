@@ -1017,7 +1017,7 @@ const UI = {
           } else if (rule.key === 'users') {
             allowed = Permissions.canManageUsers();
           } else if (rule.key === 'roles' || rule.key === 'rolePermissions') {
-            allowed = Permissions.canManageRolesPermissions();
+            allowed = Permissions.isAdmin();
           } else if (rule.key === 'workflow') {
             allowed = Permissions.canManageWorkflow();
           } else {

@@ -16,7 +16,9 @@ const Notifications = {
     pollTimer: null,
     panelOpen: false,
     unavailable: false,
-    unavailableReason: ''
+    unavailableReason: '',
+    permissionDenied: false,
+    permissionDeniedLogged: false
   },
   normalize(item = {}) {
     const source = item && typeof item === 'object' ? item : {};
@@ -254,6 +256,26 @@ const Notifications = {
       E.notificationsTab.title = '';
     }
   },
+  setPermissionDenied(context = 'notifications', error = null) {
+    this.state.permissionDenied = true;
+    this.state.items = [];
+    this.state.previewItems = [];
+    this.state.unreadCount = 0;
+    this.state.rawResponse = null;
+    this.state.rawRows = [];
+    this.state.loading = false;
+    this.state.previewLoading = false;
+    if (!this.state.permissionDeniedLogged) {
+      console.info('[notifications] permission denied for current role; using empty state.', {
+        context,
+        message: error?.message || ''
+      });
+      this.state.permissionDeniedLogged = true;
+    }
+    this.renderBell();
+    this.renderPreview();
+    this.renderHub();
+  },
   async refreshUnreadCount() {
     if (!Session.isAuthenticated()) {
       this.state.unreadCount = 0;
@@ -265,10 +287,14 @@ const Notifications = {
       this.renderBell();
       return 0;
     }
-    if (Permissions.state?.loaded && !Permissions.hasMatrixPermission('notifications', 'get_unread_count')) {
-      console.warn('Notifications unread count is not granted in role_permissions; skipping unread count refresh.');
+    if (this.state.permissionDenied) {
+      this.state.unreadCount = 0;
       this.renderBell();
-      return this.state.unreadCount;
+      return 0;
+    }
+    if (Permissions.state?.loaded && !Permissions.hasMatrixPermission('notifications', 'get_unread_count')) {
+      this.setPermissionDenied('get_unread_count');
+      return 0;
     }
     const isNotificationPermissionError = error => {
       if (typeof isPermissionError === 'function' && isPermissionError(error)) return true;
@@ -290,10 +316,8 @@ const Notifications = {
       return this.state.unreadCount;
     } catch (error) {
       if (isNotificationPermissionError(error)) {
-        console.log('[startup] permission error preserved session', error?.message);
-        console.warn('Notifications unread count is not permitted for this role; continuing without unread count.', error);
-        this.renderBell();
-        return this.state.unreadCount;
+        this.setPermissionDenied('get_unread_count', error);
+        return 0;
       }
       if (this.isNotificationsUnavailableError(error)) {
         this.setUnavailable(error?.message || 'Notifications feature unavailable');
@@ -319,6 +343,11 @@ const Notifications = {
       this.renderPreview();
       return;
     }
+    if (this.state.permissionDenied) {
+      this.state.previewItems = [];
+      this.renderPreview();
+      return;
+    }
     this.state.previewLoading = true;
     this.renderPreview();
     try {
@@ -333,9 +362,7 @@ const Notifications = {
         this.setUnavailable(error?.message || 'Notifications feature unavailable');
         this.state.previewItems = [];
       } else if (typeof isPermissionError === 'function' && isPermissionError(error)) {
-        console.log('[startup] permission error preserved session', error?.message);
-        console.warn('Notification preview is not permitted for this role; keeping session active.', error);
-        this.state.previewItems = [];
+        this.setPermissionDenied('list_preview', error);
       } else {
         console.warn('Unable to load notification preview', error);
         this.state.previewItems = [];
@@ -363,6 +390,11 @@ const Notifications = {
       return;
     }
     if (this.state.unavailable) {
+      this.state.items = [];
+      this.renderHub();
+      return;
+    }
+    if (this.state.permissionDenied) {
       this.state.items = [];
       this.renderHub();
       return;
@@ -397,11 +429,7 @@ const Notifications = {
       if (this.isNotificationsUnavailableError(error)) {
         this.setUnavailable(error?.message || 'Notifications feature unavailable');
       } else if (typeof isPermissionError === 'function' && isPermissionError(error)) {
-        console.log('[startup] permission error preserved session', error?.message);
-        console.warn('Unable to load notifications hub for this role; keeping session active.', error);
-        this.state.items = [];
-        this.state.rawResponse = null;
-        this.state.rawRows = [];
+        this.setPermissionDenied('list_hub', error);
       } else {
         console.warn('Unable to load notifications hub', error);
         this.state.items = [];
@@ -421,10 +449,16 @@ const Notifications = {
       this.renderHub();
       return;
     }
+    if (this.state.permissionDenied) {
+      this.renderBell();
+      this.renderPreview();
+      this.renderHub();
+      return;
+    }
     await this.refreshUnreadCount();
-    if (this.state.unavailable) return;
+    if (this.state.unavailable || this.state.permissionDenied) return;
     await this.fetchPreview(force);
-    if (this.state.unavailable) return;
+    if (this.state.unavailable || this.state.permissionDenied) return;
     await this.loadHub(force);
   },
   updateLocalRead(notificationId) {
@@ -760,7 +794,7 @@ const Notifications = {
   startPolling() {
     this.stopPolling();
     this.state.pollTimer = window.setInterval(() => {
-      if (!Session.isAuthenticated() || this.state.unavailable) return;
+      if (!Session.isAuthenticated() || this.state.unavailable || this.state.permissionDenied) return;
       this.refreshUnreadCount();
       if (this.state.panelOpen) this.fetchPreview();
     }, this.POLL_INTERVAL_MS);
@@ -783,6 +817,8 @@ const Notifications = {
     this.state.filters.mode = 'all';
     this.state.filters.search = '';
     this.state.lastFetchedAt = '';
+    this.state.permissionDenied = false;
+    this.state.permissionDeniedLogged = false;
     this.clearUnavailable();
     if (E.notificationsSearchInput) E.notificationsSearchInput.value = '';
     if (E.notificationsFilterButtons) {
