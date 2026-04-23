@@ -1981,12 +1981,9 @@ const Proposals = {
     }
   },
   shouldValidateWorkflowBeforeSave({ proposalId = '', currentStatus = '', requestedStatus = '' } = {}) {
-    const hasPersistedRecord = !!String(proposalId || '').trim();
-    if (!hasPersistedRecord) return false;
     const fromStatus = String(currentStatus || '').trim().toLowerCase();
     const toStatus = String(requestedStatus || '').trim().toLowerCase();
-    if (!fromStatus || !toStatus) return false;
-    return fromStatus !== toStatus;
+    return Boolean(toStatus || fromStatus || proposalId);
   },
   addRow(section) {
     const groups = this.groupedItems(this.collectProposalItems());

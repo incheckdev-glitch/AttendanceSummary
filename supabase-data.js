@@ -1675,10 +1675,31 @@
         throw new Error('Workflow validation requires a resource.');
       }
       const rpcPayload = {
-        p_resource: normalizedTransitionPayload.resource,
-        p_current_status: normalizedTransitionPayload.current_status,
-        p_next_status: normalizedTransitionPayload.next_status,
-        p_discount_percent: normalizedTransitionPayload.discount_percent,
+        p_resource:
+          safePayload.target_workflow_resource ||
+          safePayload.resource ||
+          safePayload.target_resource ||
+          safePayload.workflow_resource ||
+          '',
+        p_current_status:
+          safePayload.from_status ||
+          safePayload.current_status ||
+          safePayload.record?.status ||
+          '',
+        p_next_status:
+          safePayload.to_status ||
+          safePayload.next_status ||
+          safePayload.requested_status ||
+          '',
+        p_discount_percent: Number(
+          safePayload.discount_percent ??
+          safePayload.requested_discount_percent ??
+          safePayload.amount ??
+          safePayload.numeric ??
+          0
+        ),
+        p_user_role:
+          global.Session?.role?.() || '',
         p_record_id: normalizedTransitionPayload.record_id || null,
         p_record: normalizedTransitionPayload.record || {},
         p_requested_changes: normalizedTransitionPayload.requested_changes || {}
