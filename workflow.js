@@ -162,19 +162,17 @@ const WorkflowEngine = {
         hardStopDiscountLimit: validation?.hard_stop_discount_percent,
         response: validation
       };
-      const normalizedResource = String(resource || '').trim().toLowerCase();
       if (!baseResult.allowed && pendingApproval && !baseResult.reason) {
         baseResult.reason = 'Approval is required before this transition can continue.';
       }
       if (!baseResult.allowed && baseResult.pendingApproval && !baseResult.approvalCreated) {
-        const auth = window.Session?.authContext?.() || {};
         const approvalPayload = {
-          resource: normalizedResource,
+          resource: 'proposals',
           record_id: String(requestedChanges?.id || record?.id || record?.proposal_id || '').trim(),
-          workflow_rule_id: String(validation?.workflow_rule_id || '').trim() || null,
-          requester_user_id: auth?.user?.id || null,
+          workflow_rule_id: validation?.workflow_rule_id || null,
+          requester_user_id: window.Session?.authContext?.()?.user?.id || null,
           requester_role: window.Session?.role?.() || '',
-          approval_role: String(validation?.approval_role || 'admin').trim().toLowerCase(),
+          approval_role: String(validation?.approval_role || 'admin').trim(),
           old_status: String(requestedChanges?.current_status || record?.status || '').trim(),
           new_status: String(requestedChanges?.requested_status || requestedChanges?.next_status || record?.status || '').trim(),
           requested_changes: requestedChanges
@@ -220,11 +218,10 @@ const WorkflowEngine = {
           },
           reason: this.toBool(approvalResult?.reused)
             ? 'Approval request already exists and is pending.'
-            : 'Approval request created successfully.'
+            : 'Approval request submitted successfully.'
         };
       }
       if (approvalCreated) {
-        try { console.debug('[workflow] approval creation', { approval_id: validation?.approval_id, pending_approval: pendingApproval }); } catch {}
         return {
           ...baseResult,
           allowed: false,
@@ -245,9 +242,6 @@ const WorkflowEngine = {
       if (baseResult.allowed) {
         const localRuleResult = this.evaluateLocalRule(resource, record, requestedChanges);
         if (localRuleResult && localRuleResult.allowed === false) {
-          try {
-            console.debug('[workflow] local fallback result', localRuleResult);
-          } catch {}
           return { ...baseResult, ...localRuleResult };
         }
       }
