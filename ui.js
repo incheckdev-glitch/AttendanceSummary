@@ -81,6 +81,7 @@ function cacheEls() {
     'notificationPreviewState',
     'notificationPreviewList',
     'notificationOpenHubBtn',
+    'notificationSoundToggleBtn',
      'savedViews',
     'saveViewBtn',
     'deleteViewBtn',

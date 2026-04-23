@@ -68,7 +68,10 @@
         <div id="notificationPreviewPanel" class="notification-preview-panel" aria-label="Notification preview">
           <div class="notification-preview-header">
             <strong>Notifications</strong>
-            <button id="notificationOpenHubBtn" class="btn ghost sm" type="button">Open Notification Hub</button>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <button id="notificationSoundToggleBtn" class="btn ghost sm" type="button" aria-pressed="false">🔊 Sound on</button>
+              <button id="notificationOpenHubBtn" class="btn ghost sm" type="button">Open Notification Hub</button>
+            </div>
           </div>
           <div id="notificationPreviewState" class="muted">No new notifications.</div>
           <div id="notificationPreviewList" class="notification-preview-list"></div>
