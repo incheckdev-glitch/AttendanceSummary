@@ -379,7 +379,7 @@ const Permissions = {
       console.info('[Permissions] final permission matrix keys', [...matrix.keys()]);
       this.state.loaded = true;
       return rows;
-   } catch (error) {
+    } catch (error) {
       this.state.rows = [];
       this.state.matrix = new Map();
       const isPermErr =
