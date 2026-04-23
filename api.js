@@ -1065,10 +1065,10 @@ const Api = {
 
     const normalizedResource = String(
       firstNonEmpty(
-        source.resource,
         source.target_workflow_resource,
         source.target_resource,
         source.workflow_resource,
+        source.resource,
         requestedChanges.resource,
         record.resource
       )
@@ -1122,8 +1122,11 @@ const Api = {
     ).trim();
 
     return {
-      resource: normalizedResource,
+      resource: String(source.resource || 'workflow').trim().toLowerCase() || 'workflow',
+      action: String(source.action || 'validate_transition').trim().toLowerCase() || 'validate_transition',
+      target_workflow_resource: normalizedResource,
       current_status: currentStatus,
+      requested_status: nextStatus,
       next_status: nextStatus,
       discount_percent: normalizedDiscount,
       record_id: normalizedRecordId,
