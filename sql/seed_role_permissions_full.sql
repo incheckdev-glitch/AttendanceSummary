@@ -21,7 +21,7 @@ WITH permission_matrix AS (
     "notifications": {"list": ["admin","dev","viewer","hoo"], "get_unread_count": ["admin","dev","viewer","hoo"], "mark_read": ["admin","dev","viewer","hoo"], "mark_all_read": ["admin","dev","viewer","hoo"]},
     "users": {"list": ["admin"], "get": ["admin"], "create": ["admin"], "update": ["admin"], "delete": ["admin"], "activate": ["admin"], "deactivate": ["admin"]},
     "roles": {"list": ["admin"], "get": ["admin"], "create": ["admin"], "update": ["admin"], "delete": ["admin"]},
-   "role_permissions": {"list": ["admin","dev","viewer","hoo"], "get": ["admin","dev","viewer","hoo"], "create": ["admin"], "update": ["admin"], "delete": ["admin"]}
+    "role_permissions": {"list": ["admin"], "get": ["admin"], "create": ["admin"], "update": ["admin"], "delete": ["admin"]},
     "workflow": {"list": ["admin","dev"], "get": ["admin","dev"], "save": ["admin","dev"], "delete": ["admin"], "request_approval": ["admin","dev","hoo"], "approve": ["admin","hoo"], "reject": ["admin","hoo"], "list_pending_approvals": ["admin","dev","hoo"], "list_audit": ["admin","dev"]}
   }'::jsonb AS data
 ),
@@ -103,7 +103,7 @@ SELECT
   action,
   true,
   true,
-  to_jsonb(ARRAY[role_key]),
+  ARRAY[role_key]::text[],
   now(),
   now()
 FROM scoped_rows

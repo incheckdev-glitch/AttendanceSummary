@@ -4494,10 +4494,21 @@ function wireDashboardGate() {
     window.location.hash = '#loginSection';
   };
 
+  const refreshPermissionsForCurrentRole = async (force = false) => {
+    const role = Session.role();
+    if (!Permissions.canLoadRuntimeMatrix(role)) {
+      // Non-admin roles should use base permissions and skip runtime matrix fetches.
+      Permissions.reset();
+      Permissions.state.loaded = true;
+      return;
+    }
+    await Permissions.loadMatrix(force);
+  };
+
   const syncAuthUi = () => {
     const isAuthenticated = Session.isAuthenticated();
     if (isAuthenticated) {
-      Permissions.loadMatrix(true)
+      refreshPermissionsForCurrentRole(true)
         .catch(error => {
           console.warn('[wireDashboardGate.syncAuthUi] permission matrix refresh failed', error);
         })
@@ -4513,7 +4524,7 @@ function wireDashboardGate() {
 
   const hasStartupAuth = Session.isAuthenticated();
   if (hasStartupAuth) {
-    Permissions.loadMatrix(true)
+    refreshPermissionsForCurrentRole(true)
       .catch(error => {
         console.warn('[wireDashboardGate] startup permission matrix refresh failed', error);
       })
@@ -4594,7 +4605,7 @@ function wireDashboardGate() {
         hasUser: Boolean(user),
         role: user?.role || null
       });
-      await Permissions.loadMatrix(true);
+      await refreshPermissionsForCurrentRole(true);
       UI.applyRolePermissions();
       E.loginIdentifier.value = '';
       E.loginPasscode.value = '';
@@ -6035,7 +6046,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const isAuthenticated = Session.isAuthenticated();
   if (isAuthenticated) {
-    await Permissions.loadMatrix(true);
+    const role = Session.role();
+    if (!Permissions.canLoadRuntimeMatrix(role)) {
+      // Runtime matrix is intentionally skipped for non-admin roles to prevent
+      // startup failures when role_permissions is restricted.
+      Permissions.reset();
+      Permissions.state.loaded = true;
+    } else {
+      await Permissions.loadMatrix(true);
+    }
     UI.applyRolePermissions();
   }
 

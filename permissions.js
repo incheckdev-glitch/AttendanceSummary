@@ -114,7 +114,7 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
   }),
   users: Object.freeze({ list: ['admin'], get: ['admin'], create: ['admin'], update: ['admin'], delete: ['admin'], activate: ['admin'], deactivate: ['admin'] }),
   roles: Object.freeze({ list: ['admin'], get: ['admin'], create: ['admin'], update: ['admin'], delete: ['admin'] }),
-  role_permissions: Object.freeze({ list: ['admin', 'dev', 'viewer', 'hoo'], get: ['admin', 'dev', 'viewer', 'hoo'], create: ['admin'], update: ['admin'], delete: ['admin'] }),
+  role_permissions: Object.freeze({ list: ['admin', 'dev'], get: ['admin', 'dev'], create: ['admin'], update: ['admin'], delete: ['admin'] }),
   workflow: Object.freeze({
     list: ['admin', 'dev'],
     get: ['admin', 'dev'],
@@ -303,12 +303,24 @@ const Permissions = {
     if (['false', '0', 'no', 'n'].includes(normalized)) return false;
     return defaultValue;
   },
+  canLoadRuntimeMatrix(role = Session.role()) {
+    const normalizedRole = this.normalizeRole(role);
+    return normalizedRole === ROLES.ADMIN || normalizedRole === ROLES.DEV;
+  },
   async loadMatrix(force = false) {
     if (!Session.isAuthenticated()) {
       this.reset();
       return [];
     }
     if (this.state.loading && !force) return this.state.rows;
+    const currentRole = this.normalizeRole(Session.role());
+    if (!this.canLoadRuntimeMatrix(currentRole)) {
+      // Non-admin-like roles rely on BASE_PERMISSION_MATRIX to avoid startup failures
+      // when role_permissions is protected by backend policies.
+      this.reset();
+      this.state.loaded = true;
+      return [];
+    }
     this.state.loading = true;
     try {
       const rows = [];
@@ -316,6 +328,8 @@ const Permissions = {
       let hasMore = true;
       let lastNormalized = null;
       const denySummary = {};
+      let totalActiveRows = 0;
+      let totalDeniedRows = 0;
       while (hasMore) {
         const response = await Api.listRolePermissions({
           limit: this.state.limit,
@@ -346,6 +360,7 @@ const Permissions = {
           matrix.set(key, existing);
           return;
         }
+        totalActiveRows += 1;
         if (normalizedRoleKey) {
           if (isRowAllowed) {
             existing.allowedRoles.add(normalizedRoleKey);
@@ -353,6 +368,7 @@ const Permissions = {
           } else {
             existing.deniedRoles.add(normalizedRoleKey);
             existing.allowedRoles.delete(normalizedRoleKey);
+            totalDeniedRows += 1;
             const denyKey = `${normalizedRoleKey}::${resource}::${action}`;
             denySummary[denyKey] = (denySummary[denyKey] || 0) + 1;
           }
@@ -374,6 +390,8 @@ const Permissions = {
       });
       console.info('[Permissions] matrix loaded', {
         totalRowsLoaded: rows.length,
+        totalActiveRows,
+        totalDeniedRows,
         matrixKeyCount: matrix.size,
         activeDenyRows: groupedDenyRows
       });
@@ -536,10 +554,7 @@ const Permissions = {
     return this.canView('users');
   },
   canManageRolesPermissions() {
-    return (
-      this.canView('roles') ||
-      this.canView('role_permissions')
-    );
+    return this.isAdmin();
   },
   canManageWorkflow() {
     return this.canView('workflow');
