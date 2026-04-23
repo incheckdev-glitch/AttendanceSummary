@@ -44,6 +44,13 @@ const WorkflowEngine = {
       .map(value => String(value || '').trim())
       .filter(Boolean);
   },
+  parseApprovalRoles(rule = {}) {
+    if (Array.isArray(rule.approval_roles)) return rule.approval_roles;
+    return String(rule.approval_roles_csv || rule.approval_role || '')
+      .split(',')
+      .map(value => String(value || '').trim())
+      .filter(Boolean);
+  },
   evaluateLocalRule(resource, record, requestedChanges = {}) {
     const rules = Array.isArray(window.Workflow?.state?.rules) ? window.Workflow.state.rules : [];
     const normalizedResource = String(resource || '').trim().toLowerCase();
@@ -80,17 +87,19 @@ const WorkflowEngine = {
     const maxDiscount = this.toNumber(matchingRule?.max_discount_percent);
     const requiresApprovalFlag = this.toBool(matchingRule?.requires_approval);
     if ((maxDiscount > 0 && requestedDiscount > maxDiscount) || requiresApprovalFlag) {
-      const approvalRole = String(matchingRule?.approval_role || '').trim();
+      const approvalRoles = this.parseApprovalRoles(matchingRule);
+      const approvalRolesLabel = approvalRoles.join(', ');
       return {
         allowed: false,
         approvalCreated: false,
         pendingApproval: true,
-        reason: approvalRole
-          ? `Approval from ${approvalRole} is required before this transition.`
+        reason: approvalRolesLabel
+          ? `Approval from ${approvalRolesLabel} is required before this transition.`
           : 'Approval is required before this transition.',
         requestedDiscount,
         userDiscountLimit: maxDiscount || null,
-        hardStopDiscountLimit: hardStopLimit || null
+        hardStopDiscountLimit: hardStopLimit || null,
+        approval_roles: approvalRoles
       };
     }
 
@@ -376,6 +385,14 @@ const Workflow = {
         .map(item => String(item || '').trim())
         .filter(Boolean);
     })();
+    const normalizedApprovalRoles = (() => {
+      const value = pick(source.approval_roles, source.approval_roles_csv, source.approval_role, source.approvalrole);
+      if (Array.isArray(value)) return value.map(item => String(item || '').trim().toLowerCase()).filter(Boolean);
+      return String(value || '')
+        .split(',')
+        .map(item => String(item || '').trim().toLowerCase())
+        .filter(Boolean);
+    })();
     return {
       ...source,
       workflow_rule_id: String(
@@ -390,7 +407,9 @@ const Workflow = {
       requires_approval: WorkflowEngine.toBool(
         pick(source.requires_approval, source.requiresapproval)
       ),
-      approval_role: String(pick(source.approval_role, source.approvalrole)).trim().toLowerCase(),
+      approval_roles: normalizedApprovalRoles,
+      approval_roles_csv: normalizedApprovalRoles.join(','),
+      approval_role: normalizedApprovalRoles[0] || '',
       max_discount_percent: Number(pick(source.max_discount_percent, source.maxdiscountpercent) || 0),
       hard_stop_discount_percent: Number(
         pick(source.hard_stop_discount_percent, source.hardstopdiscountpercent) || 0
@@ -426,9 +445,9 @@ const Workflow = {
       resource: get('workflowResource').toLowerCase(),
       current_status: get('workflowCurrentStatus'),
       next_status: get('workflowNextStatus'),
-      allowed_roles: [get('workflowAllowedRoles').toLowerCase()].filter(Boolean),
+      allowed_roles: this.getMultiSelectValues(E.workflowAllowedRoles).map(v => v.toLowerCase()),
       requires_approval: String(get('workflowRequiresApproval')) === 'true',
-      approval_role: get('workflowApprovalRole').toLowerCase(),
+      approval_roles: this.getMultiSelectValues(E.workflowApprovalRoles).map(v => v.toLowerCase()),
       max_discount_percent: Number(get('workflowMaxDiscount') || 0),
       hard_stop_discount_percent: Number(get('workflowHardStopDiscount') || 0),
       editable_fields: this.getMultiSelectValues(E.workflowEditableFields),
@@ -439,27 +458,23 @@ const Workflow = {
     };
   },
   fillRuleForm(rule = {}) {
+    const normalizedRule = this.normalizeWorkflowRule(rule);
     const editableFields = Array.isArray(rule.editable_fields) ? rule.editable_fields : String(rule.editable_fields || '').split(',');
     const requiredFields = Array.isArray(rule.required_fields) ? rule.required_fields : String(rule.required_fields || '').split(',');
-    if (E.workflowRuleId) E.workflowRuleId.value = rule.workflow_rule_id || '';
-    this.state.editingRuleLegacyId = String(rule.id || '').trim();
-    if (E.workflowResource) E.workflowResource.value = rule.resource || '';
-    if (E.workflowCurrentStatus) E.workflowCurrentStatus.value = rule.current_status || '';
-    if (E.workflowNextStatus) E.workflowNextStatus.value = rule.next_status || '';
-    if (E.workflowAllowedRoles) {
-      const firstRole = Array.isArray(rule.allowed_roles)
-        ? rule.allowed_roles[0]
-        : String(rule.allowed_roles || rule.allowed_roles_csv || '').split(',').map(v => v.trim()).filter(Boolean)[0];
-      E.workflowAllowedRoles.value = firstRole || '';
-    }
-    if (E.workflowRequiresApproval) E.workflowRequiresApproval.value = String(WorkflowEngine.toBool(rule.requires_approval));
-    if (E.workflowApprovalRole) E.workflowApprovalRole.value = rule.approval_role || '';
-    if (E.workflowMaxDiscount) E.workflowMaxDiscount.value = rule.max_discount_percent ?? '';
-    if (E.workflowHardStopDiscount) E.workflowHardStopDiscount.value = rule.hard_stop_discount_percent ?? '';
-    if (E.workflowRequireComment) E.workflowRequireComment.value = String(WorkflowEngine.toBool(rule.require_comment));
-    if (E.workflowRequireAttachment) E.workflowRequireAttachment.value = String(WorkflowEngine.toBool(rule.require_attachment));
-    if (E.workflowIsActive) E.workflowIsActive.value = String(rule.is_active !== false);
+    if (E.workflowRuleId) E.workflowRuleId.value = normalizedRule.workflow_rule_id || '';
+    this.state.editingRuleLegacyId = String(normalizedRule.id || '').trim();
+    if (E.workflowResource) E.workflowResource.value = normalizedRule.resource || '';
+    if (E.workflowCurrentStatus) E.workflowCurrentStatus.value = normalizedRule.current_status || '';
+    if (E.workflowNextStatus) E.workflowNextStatus.value = normalizedRule.next_status || '';
+    if (E.workflowRequiresApproval) E.workflowRequiresApproval.value = String(WorkflowEngine.toBool(normalizedRule.requires_approval));
+    if (E.workflowMaxDiscount) E.workflowMaxDiscount.value = normalizedRule.max_discount_percent ?? '';
+    if (E.workflowHardStopDiscount) E.workflowHardStopDiscount.value = normalizedRule.hard_stop_discount_percent ?? '';
+    if (E.workflowRequireComment) E.workflowRequireComment.value = String(WorkflowEngine.toBool(normalizedRule.require_comment));
+    if (E.workflowRequireAttachment) E.workflowRequireAttachment.value = String(WorkflowEngine.toBool(normalizedRule.require_attachment));
+    if (E.workflowIsActive) E.workflowIsActive.value = String(normalizedRule.is_active !== false);
     this.populateRuleSelects();
+    this.setMultiSelectValues(E.workflowAllowedRoles, normalizedRule.allowed_roles || []);
+    this.setMultiSelectValues(E.workflowApprovalRoles, normalizedRule.approval_roles || [normalizedRule.approval_role].filter(Boolean));
     this.setMultiSelectValues(E.workflowEditableFields, editableFields);
     this.setMultiSelectValues(E.workflowRequiredFields, requiredFields);
   },
@@ -520,8 +535,12 @@ const Workflow = {
       roles.map(v => String(v || '').trim().toLowerCase()).filter(Boolean).forEach(role => {
         if (!roleMap.has(role)) roleMap.set(role, role);
       });
-      const approvalRole = String(rule.approval_role || '').trim().toLowerCase();
-      if (approvalRole && !roleMap.has(approvalRole)) roleMap.set(approvalRole, approvalRole);
+      const approvalRoles = Array.isArray(rule.approval_roles)
+        ? rule.approval_roles
+        : String(rule.approval_roles || rule.approval_roles_csv || rule.approval_role || '').split(',');
+      approvalRoles.map(v => String(v || '').trim().toLowerCase()).filter(Boolean).forEach(role => {
+        if (!roleMap.has(role)) roleMap.set(role, role);
+      });
     });
     return [...roleMap.entries()]
       .map(([value, label]) => ({ value, label }))
@@ -549,6 +568,13 @@ const Workflow = {
     if (!selectEl) return [];
     return Array.from(selectEl.selectedOptions || [])
       .map(option => String(option.value || '').trim())
+      .filter(Boolean);
+  },
+  parseRoleList(value, fallback = '') {
+    if (Array.isArray(value)) return value.map(item => String(item || '').trim()).filter(Boolean);
+    return String(value || fallback || '')
+      .split(',')
+      .map(item => String(item || '').trim())
       .filter(Boolean);
   },
   setMultiSelectValues(selectEl, values = []) {
@@ -608,8 +634,8 @@ const Workflow = {
     this.setSelectOptions(E.workflowCurrentStatus, statusOptions, 'Select current status');
     this.setSelectOptions(E.workflowNextStatus, statusOptions, 'Select next status');
     const roles = this.getSystemRoles();
-    this.setRoleSelectOptions(E.workflowAllowedRoles, roles, 'Select allowed role');
-    this.setRoleSelectOptions(E.workflowApprovalRole, roles, 'Select approval role');
+    this.setRoleSelectOptions(E.workflowAllowedRoles, roles, 'Select allowed roles');
+    this.setRoleSelectOptions(E.workflowApprovalRoles, roles, 'Select approval roles');
     const fieldOptions = selectedResource ? this.getFieldsForResource(selectedResource) : [];
     this.setMultiSelectOptions(E.workflowEditableFields, fieldOptions);
     this.setMultiSelectOptions(E.workflowRequiredFields, fieldOptions);
@@ -635,20 +661,23 @@ const Workflow = {
       E.workflowRulesTbody.innerHTML = '<tr><td colspan="9" class="muted" style="text-align:center;">No rules match the current filter. Clear filter to see all.</td></tr>';
       return;
     }
-    E.workflowRulesTbody.innerHTML = rows.map(rule => `
+    E.workflowRulesTbody.innerHTML = rows.map(rule => {
+      const approvalRoles = this.parseRoleList(rule.approval_roles, rule.approval_roles_csv || rule.approval_role);
+      return `
       <tr>
         <td>${U.escapeHtml(rule.resource || '—')}</td>
         <td>${U.escapeHtml(rule.current_status || '—')}</td>
         <td>${U.escapeHtml(rule.next_status || '—')}</td>
         <td>${U.escapeHtml(Array.isArray(rule.allowed_roles) ? rule.allowed_roles.join(', ') : String(rule.allowed_roles || rule.allowed_roles_csv || '—'))}</td>
-        <td>${WorkflowEngine.toBool(rule.requires_approval) ? `Yes (${U.escapeHtml(rule.approval_role || 'required')})` : 'No'}</td>
+        <td>${WorkflowEngine.toBool(rule.requires_approval) ? `Yes (${U.escapeHtml(approvalRoles.join(', ') || 'required')})` : 'No'}</td>
         <td>${U.escapeHtml(String(rule.max_discount_percent ?? '—'))}</td>
         <td>${U.escapeHtml(String(rule.hard_stop_discount_percent ?? '—'))}</td>
         <td>${WorkflowEngine.toBool(rule.is_active) ? 'Yes' : 'No'}</td>
         <td>${this.canManageWorkflowRules()
           ? `<button class="chip-btn" data-rule-edit="${U.escapeHtml(rule.workflow_rule_id || '')}">Edit</button> <button class="chip-btn" data-rule-delete="${U.escapeHtml(rule.workflow_rule_id || '')}">Delete</button>`
           : '<span class="muted">Read only</span>'}</td>
-      </tr>`).join('');
+      </tr>`;
+    }).join('');
   },
   renderDiscountPolicy() {
     if (!E.workflowDiscountPolicyTbody) return;
@@ -661,20 +690,19 @@ const Workflow = {
   },
   renderApprovals() {
     if (!E.workflowApprovalsTbody) return;
-    if (!this.canProcessApprovals()) {
-      E.workflowApprovalsTbody.innerHTML = '<tr><td colspan="10" class="muted" style="text-align:center;">Approvals are visible to admin/dev only.</td></tr>';
-      return;
-    }
-    E.workflowApprovalsTbody.innerHTML = this.state.approvals.map(item => `
+    const currentRole = this.currentRole();
+    E.workflowApprovalsTbody.innerHTML = this.state.approvals.map(item => {
+      const approvalRoles = this.parseRoleList(item.approval_roles, item.approval_roles_csv || item.approval_role).map(v => v.toLowerCase());
+      return `
       <tr>
         <td>${U.escapeHtml(item.resource || '—')}</td><td>${U.escapeHtml(item.record_number || item.record_id || '—')}</td><td>${U.escapeHtml(item.company_name || '—')}</td><td>${U.escapeHtml(item.requested_by_name || '—')}</td>
-        <td>${U.escapeHtml(item.current_status || '—')}</td><td>${U.escapeHtml(item.requested_status || '—')}</td><td>${U.escapeHtml(String(item.discount_percent ?? '0'))}%</td><td>${U.escapeHtml(item.approval_role || '—')}</td>
+        <td>${U.escapeHtml(item.current_status || '—')}</td><td>${U.escapeHtml(item.requested_status || '—')}</td><td>${U.escapeHtml(String(item.discount_percent ?? '0'))}%</td><td>${U.escapeHtml(approvalRoles.join(', ') || '—')}</td>
         <td>${WorkflowEngine.getWorkflowBadgeHtml(item.status || 'Pending Approval')}</td>
-        <td>${this.canProcessApprovals()
+        <td>${this.canProcessApprovals() || approvalRoles.includes(currentRole)
           ? `<button class="chip-btn" data-approval-action="approve" data-approval-id="${U.escapeHtml(item.approval_id || '')}">Approve</button> <button class="chip-btn" data-approval-action="reject" data-approval-id="${U.escapeHtml(item.approval_id || '')}">Reject</button>`
           : '<span class="muted">No action</span>'}</td>
       </tr>
-    `).join('') || '<tr><td colspan="10" class="muted" style="text-align:center;">No pending approvals.</td></tr>';
+    `; }).join('') || '<tr><td colspan="10" class="muted" style="text-align:center;">No pending approvals.</td></tr>';
   },
   renderAudit() {
     if (!E.workflowAuditTbody) return;
@@ -739,7 +767,7 @@ const Workflow = {
       const canReadWorkflowAdminData = this.canProcessApprovals();
       const [rulesResult, approvalsResult, auditResult] = await Promise.allSettled([
         Api.listWorkflowRules({}, { forceRefresh: true }),
-        canReadWorkflowAdminData ? Api.listPendingWorkflowApprovals() : Promise.resolve([]),
+        Api.listPendingWorkflowApprovals(),
         canReadWorkflowAdminData ? Api.listWorkflowAudit() : Promise.resolve([])
       ]);
       if (rulesResult.status !== 'fulfilled') {

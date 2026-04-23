@@ -526,6 +526,21 @@
       out.is_active = out.is_active ?? out.active ?? true;
       out.active = out.active ?? out.is_active;
     }
+    if (resource === 'workflow') {
+      const toRoleArray = (...values) => {
+        const found = values.find(value => value !== undefined && value !== null && (Array.isArray(value) || String(value).trim() !== ''));
+        if (Array.isArray(found)) return found.map(value => String(value || '').trim().toLowerCase()).filter(Boolean);
+        return String(found || '')
+          .split(',')
+          .map(value => String(value || '').trim().toLowerCase())
+          .filter(Boolean);
+      };
+      out.allowed_roles = toRoleArray(out.allowed_roles, out.allowed_roles_csv);
+      out.allowed_roles_csv = out.allowed_roles.join(',');
+      out.approval_roles = toRoleArray(out.approval_roles, out.approval_roles_csv, out.approval_role);
+      out.approval_roles_csv = out.approval_roles.join(',');
+      out.approval_role = out.approval_role ?? out.approval_roles[0] ?? '';
+    }
     return out;
   }
 
@@ -1433,6 +1448,34 @@
     };
     const normalizeWorkflowRows = value => asArray(value).map(row => normalizeRow('workflow', row));
     const normalizeWorkflowSingle = value => normalizeRow('workflow', value || {});
+    const normalizeRoleList = (...values) => {
+      const found = values.find(value => value !== undefined && value !== null && (Array.isArray(value) || String(value).trim() !== ''));
+      if (Array.isArray(found)) return found.map(value => String(value || '').trim().toLowerCase()).filter(Boolean);
+      return String(found || '')
+        .split(',')
+        .map(value => String(value || '').trim().toLowerCase())
+        .filter(Boolean);
+    };
+    const normalizeWorkflowRulePayload = row => {
+      const source = row && typeof row === 'object' ? { ...row } : {};
+      const allowedRoles = normalizeRoleList(source.allowed_roles, source.allowed_roles_csv);
+      const approvalRoles = normalizeRoleList(source.approval_roles, source.approval_roles_csv, source.approval_role);
+      const normalized = {
+        ...source,
+        allowed_roles: allowedRoles,
+        approval_roles: approvalRoles
+      };
+      if (!('allowed_roles_csv' in normalized) || String(normalized.allowed_roles_csv || '').trim() === '') {
+        normalized.allowed_roles_csv = allowedRoles.join(',');
+      }
+      if (!('approval_roles_csv' in normalized) || String(normalized.approval_roles_csv || '').trim() === '') {
+        normalized.approval_roles_csv = approvalRoles.join(',');
+      }
+      if (!('approval_role' in normalized) || String(normalized.approval_role || '').trim() === '') {
+        normalized.approval_role = approvalRoles[0] || '';
+      }
+      return normalized;
+    };
     const workflowError = (message, error) => friendlyError(`Workflow: ${message}`, error);
     const normalizeRawId = value => String(value === undefined || value === null ? '' : value).trim();
     async function findWorkflowRuleMatch(rawId) {
@@ -1531,7 +1574,7 @@
     }
     if (requestedAction === 'save' || requestedAction === 'save_rule') {
       assertAllowed('workflow', 'save');
-      const row = safePayload.rule || safePayload;
+      const row = normalizeWorkflowRulePayload(safePayload.rule || safePayload);
       const id = row.workflow_rule_id || row.id;
       const qb = client.from('workflow_rules');
       if (id) {
@@ -1629,7 +1672,21 @@
       }
       if (error) throw workflowError('Validation failed', error);
       console.debug('[workflow] validation result', data);
-      return data || { allowed: true, reason: '' };
+      const normalizedValidation = normalizeWorkflowSingle(data || { allowed: true, reason: '' });
+      if (!Array.isArray(normalizedValidation.approval_roles)) {
+        normalizedValidation.approval_roles = normalizeRoleList(
+          normalizedValidation.approval_roles,
+          normalizedValidation.approval_roles_csv,
+          normalizedValidation.approval_role
+        );
+      }
+      if (!normalizedValidation.approval_roles_csv) {
+        normalizedValidation.approval_roles_csv = normalizedValidation.approval_roles.join(',');
+      }
+      if (!normalizedValidation.approval_role) {
+        normalizedValidation.approval_role = normalizedValidation.approval_roles[0] || '';
+      }
+      return normalizedValidation;
     }
     if (requestedAction === 'request_approval' || requestedAction === 'approve' || requestedAction === 'reject' || requestedAction === 'list_pending_approvals') {
       assertAllowed('workflow', requestedAction);

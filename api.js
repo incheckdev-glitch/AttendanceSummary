@@ -966,24 +966,60 @@ const Api = {
   debugWorkflowResponse(label, payload) {
     try { console.log('[workflow]', label, payload); } catch {}
   },
+  normalizeWorkflowRulePayload(rule = {}) {
+    const source = rule && typeof rule === 'object' ? { ...rule } : {};
+    const normalizeRoleList = (...values) => {
+      const found = values.find(value => value !== undefined && value !== null && (Array.isArray(value) || String(value).trim() !== ''));
+      if (Array.isArray(found)) {
+        return found.map(value => String(value || '').trim().toLowerCase()).filter(Boolean);
+      }
+      return String(found || '')
+        .split(',')
+        .map(value => String(value || '').trim().toLowerCase())
+        .filter(Boolean);
+    };
+    const allowedRoles = normalizeRoleList(source.allowed_roles, source.allowed_roles_csv);
+    const approvalRoles = normalizeRoleList(source.approval_roles, source.approval_roles_csv, source.approval_role);
+    return {
+      ...source,
+      allowed_roles: allowedRoles,
+      approval_roles: approvalRoles,
+      allowed_roles_csv: allowedRoles.join(','),
+      approval_roles_csv: approvalRoles.join(','),
+      approval_role: source.approval_role || approvalRoles[0] || ''
+    };
+  },
   async listWorkflowRules(filters = {}, options = {}) {
     const response = await this.requestWithSession('workflow', 'list', {
       filters,
       sheetName: CONFIG.WORKFLOW_RULES_SHEET_NAME
     }, options);
-    this.debugWorkflowResponse('list rules response', response);
-    return response;
+    const normalizeRows = rows => Array.isArray(rows) ? rows.map(row => this.normalizeWorkflowRulePayload(row)) : rows;
+    const normalized = Array.isArray(response)
+      ? normalizeRows(response)
+      : response && typeof response === 'object'
+        ? {
+            ...response,
+            items: normalizeRows(response.items),
+            rows: normalizeRows(response.rows),
+            data: normalizeRows(response.data)
+          }
+        : response;
+    this.debugWorkflowResponse('list rules response', normalized);
+    return normalized;
   },
   async getWorkflowRule(workflowRuleId) {
-    return this.requestWithSession('workflow', 'get', {
+    const response = await this.requestWithSession('workflow', 'get', {
       workflow_rule_id: workflowRuleId,
       sheetName: CONFIG.WORKFLOW_RULES_SHEET_NAME
     });
+    return this.normalizeWorkflowRulePayload(response);
   },
   async saveWorkflowRule(rule = {}) {
+    const normalizedRule = this.normalizeWorkflowRulePayload(rule);
     const body = {
-      rule,
-      ...rule,
+      rule: normalizedRule,
+      ...normalizedRule,
       sheetName: CONFIG.WORKFLOW_RULES_SHEET_NAME
     };
     try {
