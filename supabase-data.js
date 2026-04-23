@@ -1724,8 +1724,11 @@
     }
     if (requestedAction === 'create_approval' || requestedAction === 'create_workflow_approval') {
       assertAllowed('workflow', 'request_approval');
+      const requestedChangesPayload = Object.prototype.hasOwnProperty.call(safePayload, 'p_requested_changes')
+        ? safePayload.p_requested_changes
+        : (Object.prototype.hasOwnProperty.call(safePayload, 'requested_changes') ? safePayload.requested_changes : {});
       const rpcPayload = {
-        p_resource: String(safePayload.p_resource ?? safePayload.resource ?? '').trim().toLowerCase(),
+        p_resource: String(safePayload.p_resource ?? safePayload.resource ?? '').trim(),
         p_record_id: String(safePayload.p_record_id ?? safePayload.record_id ?? '').trim(),
         p_workflow_rule_id: safePayload.p_workflow_rule_id ?? safePayload.workflow_rule_id ?? null,
         p_requester_user_id: safePayload.p_requester_user_id ?? safePayload.requester_user_id ?? null,
@@ -1733,11 +1736,9 @@
         p_approval_role: String(safePayload.p_approval_role ?? safePayload.approval_role ?? '').trim().toLowerCase(),
         p_old_status: String(safePayload.p_old_status ?? safePayload.old_status ?? '').trim(),
         p_new_status: String(safePayload.p_new_status ?? safePayload.new_status ?? '').trim(),
-        p_requested_changes:
-          safePayload.p_requested_changes ??
-          safePayload.requested_changes ??
-          {}
+        p_requested_changes: requestedChangesPayload
       };
+      console.debug('[workflow] final approval creation payload', rpcPayload);
       const { data, error } = await client.rpc('create_workflow_approval', rpcPayload);
       if (error) throw workflowError('create_workflow_approval RPC failed while creating/reusing pending approval', error);
       const normalizedApproval = data && typeof data === 'object'
