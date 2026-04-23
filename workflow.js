@@ -685,7 +685,7 @@ const Workflow = {
         ).trim().toLowerCase()
       : normalizedResource;
     const resource = recoveredResource || normalizedResource || 'unknown';
-    const previewRecordId =
+    const targetRecordId =
       requestedChanges?.proposal_id ||
       requestedChanges?.agreement_id ||
       requestedChanges?.invoice_id ||
@@ -707,14 +707,15 @@ const Workflow = {
     return {
       ...row,
       resource,
-      recordId: String(row?.record_id || previewRecordId || '').trim(),
+      recordId: String(row?.record_id || targetRecordId || '').trim(),
       workflowRuleId: String(row?.workflow_rule_id || '').trim(),
       approvalId: String(row?.approval_id || '').trim(),
       proposalId: String(requestedChanges?.proposal_id || '').trim(),
       agreementId: String(requestedChanges?.agreement_id || '').trim(),
       invoiceId: String(requestedChanges?.invoice_id || '').trim(),
       receiptId: String(requestedChanges?.receipt_id || '').trim(),
-      previewRecordId: String(previewRecordId || '').trim(),
+      previewRecordId: String(targetRecordId || '').trim(),
+      targetRecordId: String(targetRecordId || '').trim(),
       previewTitle: String(previewTitle || '').trim(),
       companyName: requestedChanges?.client_name || requestedChanges?.company_name || '',
       currentStatus: row?.old_status || requestedChanges?.current_status || '',
@@ -724,7 +725,7 @@ const Workflow = {
       recordSnapshot,
       requestedChanges,
       displayResource: resource || row?.resource || '—',
-      displayRecordNumber: String(previewTitle || requestedChanges?.proposal_reference || previewRecordId || row?.record_id || '—'),
+      displayRecordNumber: String(previewTitle || requestedChanges?.proposal_reference || targetRecordId || row?.record_id || '—'),
       displayCompany: requestedChanges?.client_name || requestedChanges?.company_name || '—',
       displayRequestedBy: requestedBy || '—',
       displayCurrent: row?.old_status || requestedChanges?.current_status || '—',
@@ -732,6 +733,50 @@ const Workflow = {
       displayDiscount: Number(requestedChanges?.discount_percent ?? 0),
       displayApprovalRoles: row?.approval_role || '—'
     };
+  },
+  buildApprovalContext(normalizedApproval = {}) {
+    const normalized = this.normalizePendingApproval(normalizedApproval);
+    return {
+      ...normalized,
+      approval_id: normalized.approvalId || '',
+      approvalId: normalized.approvalId || '',
+      resource: normalized.resource || '',
+      requester_role: normalized.requester_role || '',
+      approval_role: normalized.approval_role || '',
+      old_status: normalized.old_status || normalized.currentStatus || '',
+      new_status: normalized.new_status || normalized.requestedStatus || '',
+      requested_changes: normalized.requestedChanges || {}
+    };
+  },
+  isPreviewModalOpen(resource = '') {
+    const normalizedResource = String(resource || '').trim().toLowerCase();
+    if (normalizedResource === 'proposals') return E.proposalPreviewModal?.style?.display === 'flex';
+    if (normalizedResource === 'agreements') return E.agreementPreviewModal?.classList?.contains('open') === true;
+    if (normalizedResource === 'invoices') return E.invoicePreviewModal?.classList?.contains('open') === true;
+    if (normalizedResource === 'receipts') return E.receiptPreviewModal?.classList?.contains('open') === true;
+    return false;
+  },
+  async openResourcePreview(resource = '', recordId = '') {
+    const normalizedResource = String(resource || '').trim().toLowerCase();
+    const id = String(recordId || '').trim();
+    if (!id) return false;
+    if (normalizedResource === 'proposals' && typeof window.Proposals?.previewProposalHtml === 'function') {
+      await window.Proposals.previewProposalHtml(id);
+      return this.isPreviewModalOpen(normalizedResource);
+    }
+    if (normalizedResource === 'agreements' && typeof window.Agreements?.previewAgreementHtml === 'function') {
+      await window.Agreements.previewAgreementHtml(id);
+      return this.isPreviewModalOpen(normalizedResource);
+    }
+    if (normalizedResource === 'invoices' && typeof window.Invoices?.previewInvoice === 'function') {
+      await window.Invoices.previewInvoice(id);
+      return this.isPreviewModalOpen(normalizedResource);
+    }
+    if (normalizedResource === 'receipts' && typeof window.Receipts?.previewReceipt === 'function') {
+      await window.Receipts.previewReceipt(id);
+      return this.isPreviewModalOpen(normalizedResource);
+    }
+    return false;
   },
   formatDiscountPercent(value) {
     const numeric = Number(value);
@@ -802,29 +847,26 @@ const Workflow = {
   },
   async openApprovalPreview(approvalRow = {}) {
     const normalized = this.normalizePendingApproval(approvalRow);
-    const resource = String(normalized.resource || '').trim().toLowerCase();
-    const previewId = String(normalized.previewRecordId || normalized.recordId || '').trim();
+    const context = this.buildApprovalContext(normalized);
+    const resource = String(context.resource || '').trim().toLowerCase();
+    const previewId = String(
+      context?.requested_changes?.proposal_id ||
+      context?.requested_changes?.agreement_id ||
+      context?.requested_changes?.invoice_id ||
+      context?.requested_changes?.receipt_id ||
+      context?.recordId ||
+      ''
+    ).trim();
+    this.state.activeApprovalPreview = context;
     try {
-      if (resource === 'proposals' && previewId && typeof window.Proposals?.previewProposalHtml === 'function') {
-        await window.Proposals.previewProposalHtml(previewId);
-        return;
-      }
-      if (resource === 'agreements' && previewId && typeof window.Agreements?.previewAgreementHtml === 'function') {
-        await window.Agreements.previewAgreementHtml(previewId);
-        return;
-      }
-      if (resource === 'invoices' && previewId && typeof window.Invoices?.previewInvoice === 'function') {
-        await window.Invoices.previewInvoice(previewId);
-        return;
-      }
-      if (resource === 'receipts' && previewId && typeof window.Receipts?.previewReceipt === 'function') {
-        await window.Receipts.previewReceipt(previewId);
+      const opened = await this.openResourcePreview(resource, previewId);
+      if (opened) {
         return;
       }
     } catch (error) {
       console.warn(`Unable to open ${resource} preview from workflow approval, falling back to generic preview.`, error);
     }
-    this.openGenericApprovalPreview(normalized);
+    this.openGenericApprovalPreview(context);
   },
   setMultiSelectValues(selectEl, values = []) {
     if (!selectEl) return;
