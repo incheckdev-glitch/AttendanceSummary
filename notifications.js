@@ -122,7 +122,9 @@ const Notifications = {
     cyclePermissionLogKey: '',
     seenHydrated: false,
     seenRealtimeNotificationIds: new Set(),
-    realtimeAutoCloseTimer: null
+    autoPopupTimer: null,
+    lastRealtimeNotificationId: '',
+    previewHovering: false
   },
   normalize(item = {}) {
     const source = item && typeof item === 'object' ? item : {};
@@ -653,57 +655,58 @@ const Notifications = {
     const beforePreviewLength = this.state.previewItems.length;
     this.state.items = this.state.items.filter(item => item.notification_id !== id);
     this.state.previewItems = this.state.previewItems.filter(item => item.notification_id !== id);
-    return this.state.items.length !== beforeItemsLength || this.state.previewItems.length !== beforePreviewLength;
+    const changed = this.state.items.length !== beforeItemsLength || this.state.previewItems.length !== beforePreviewLength;
+    if (changed) this.recalculateUnreadCount();
+    return changed;
   },
-  showRealtimeToast(item = {}) {
-    if (!window.UI?.toast) return;
-    const title = String(item.title || '').trim() || 'Notification';
-    const message = String(item.message || '').trim() || 'You have a new notification.';
-    UI.toast(`${title}: ${message}`);
-  },
-  maybeAutoOpenPreview(item = {}) {
-    if (this.state.panelOpen) return;
+  showInstantNotificationPopup(item = {}) {
+    const id = String(item.notification_id || '').trim();
+    if (!id) return;
+    this.state.lastRealtimeNotificationId = id;
+    this.renderBell();
+    this.renderPreview();
+    this.renderHub();
+    if (window.UI?.toast) {
+      UI.toast(`${item.title || 'Notification'}${item.message ? `: ${item.message}` : ''}`);
+    }
     if (E.notificationsView?.classList.contains('active')) return;
-    if (item.is_read) return;
     this.openPanel();
-    if (this.state.realtimeAutoCloseTimer) clearTimeout(this.state.realtimeAutoCloseTimer);
-    this.state.realtimeAutoCloseTimer = window.setTimeout(() => {
-      this.state.realtimeAutoCloseTimer = null;
+    if (this.state.autoPopupTimer) clearTimeout(this.state.autoPopupTimer);
+    this.state.autoPopupTimer = window.setTimeout(() => {
+      this.state.autoPopupTimer = null;
+      if (!this.state.panelOpen) return;
+      if (this.state.previewHovering) return;
+      if (E.notificationsView?.classList.contains('active')) return;
       this.closePanel();
     }, 5000);
   },
-  handleRealtimeInsert(item) {
-    const normalized = this.normalize(item);
+  handleRealtimeInsert(raw) {
+    const normalized = this.normalize(raw);
     const notificationId = String(normalized.notification_id || '').trim();
     if (!notificationId) return;
     if (this.state.seenRealtimeNotificationIds.has(notificationId)) return;
     this.state.seenRealtimeNotificationIds.add(notificationId);
-    if (this.state.items.some(row => row.notification_id === notificationId) || this.state.previewItems.some(row => row.notification_id === notificationId)) {
-      return;
-    }
     this.upsertNotification(normalized);
-    if (!normalized.is_read) this.state.unreadCount = (Number(this.state.unreadCount) || 0) + 1;
-    this.renderBell();
-    this.renderPreview();
-    this.renderHub();
-    if (!normalized.is_read) {
-      this.showRealtimeToast(normalized);
-      this.maybeAutoOpenPreview(normalized);
-    }
+    this.recalculateUnreadCount();
+    if (!normalized.is_read) this.showInstantNotificationPopup(normalized);
     this.handleIncomingNotifications([normalized], { source: 'realtime' });
+    this.refreshUnreadCount();
+    if (this.state.panelOpen) this.fetchPreview(true);
+    if (E.notificationsView?.classList.contains('active')) this.loadHub(true);
   },
-  handleRealtimeUpdate(item) {
-    const normalized = this.upsertNotification(item);
+  handleRealtimeUpdate(raw) {
+    const normalized = this.upsertNotification(raw);
     if (!normalized) return;
     this.recalculateUnreadCount();
     this.renderBell();
     this.renderPreview();
     this.renderHub();
   },
-  handleRealtimeDelete(notificationId) {
+  handleRealtimeDelete(raw) {
+    const notificationId = String(raw?.notification_id || raw?.id || '').trim();
+    if (!notificationId) return;
     const didRemove = this.removeNotification(notificationId);
     if (!didRemove) return;
-    this.recalculateUnreadCount();
     this.renderBell();
     this.renderPreview();
     this.renderHub();
@@ -831,9 +834,11 @@ const Notifications = {
   openPanel() {
     this.state.panelOpen = true;
     if (E.notificationPreviewPanel) E.notificationPreviewPanel.classList.add('open');
-    this.fetchPreview();
+    this.fetchPreview(true);
   },
-  closePanel() {
+  closePanel(options = {}) {
+    const force = Boolean(options?.force);
+    if (!force && this.state.previewHovering && this.state.autoPopupTimer) return;
     this.state.panelOpen = false;
     if (E.notificationPreviewPanel) E.notificationPreviewPanel.classList.remove('open');
   },
@@ -1049,20 +1054,26 @@ const Notifications = {
           table: 'notifications',
           filter: `recipient_user_id=eq.${userId}`
         }, payload => {
-          if (!payload?.eventType) return;
-          if (payload.eventType === 'INSERT' && payload.new) {
-            this.handleRealtimeInsert(payload.new);
+          try {
+            const eventType = String(payload?.eventType || '').toUpperCase();
+            if (eventType === 'INSERT') {
+              this.handleRealtimeInsert(payload?.new || {});
+              return;
+            }
+            if (eventType === 'UPDATE') {
+              this.handleRealtimeUpdate(payload?.new || {});
+              return;
+            }
+            if (eventType === 'DELETE') {
+              this.handleRealtimeDelete(payload?.old || {});
+              return;
+            }
+          } catch (error) {
+            console.warn('[notifications] realtime handler failed', error);
+            this.refreshUnreadCount();
+            if (this.state.panelOpen) this.fetchPreview(true);
+            if (E.notificationsView?.classList.contains('active')) this.loadHub(true);
           }
-          if (payload.eventType === 'UPDATE' && payload.new) {
-            this.handleRealtimeUpdate(payload.new);
-          }
-          if (payload.eventType === 'DELETE') {
-            const deletedId = String(payload?.old?.notification_id || payload?.old?.id || '').trim();
-            if (deletedId) this.handleRealtimeDelete(deletedId);
-          }
-          this.refreshUnreadCount();
-          if (E.notificationsView?.classList.contains('active')) this.loadHub(true);
-          if (this.state.panelOpen) this.fetchPreview(true);
         })
         .subscribe();
     } catch (error) {
@@ -1102,10 +1113,12 @@ const Notifications = {
     this.state.cyclePermissionLogKey = '';
     this.state.refreshCycleId = 0;
     this.state.seenHydrated = false;
-    this.state.seenRealtimeNotificationIds.clear();
-    if (this.state.realtimeAutoCloseTimer) {
-      clearTimeout(this.state.realtimeAutoCloseTimer);
-      this.state.realtimeAutoCloseTimer = null;
+    this.state.seenRealtimeNotificationIds = new Set();
+    this.state.lastRealtimeNotificationId = '';
+    this.state.previewHovering = false;
+    if (this.state.autoPopupTimer) {
+      clearTimeout(this.state.autoPopupTimer);
+      this.state.autoPopupTimer = null;
     }
     this.clearUnavailable();
     NotificationSound.seenNotificationIds.clear();
@@ -1141,6 +1154,14 @@ const Notifications = {
         if (this.state.unavailable) return;
         if (this.state.panelOpen) this.closePanel();
         else this.openPanel();
+      });
+    }
+    if (E.notificationPreviewPanel) {
+      E.notificationPreviewPanel.addEventListener('mouseenter', () => {
+        this.state.previewHovering = true;
+      });
+      E.notificationPreviewPanel.addEventListener('mouseleave', () => {
+        this.state.previewHovering = false;
       });
     }
     document.addEventListener('click', e => {
