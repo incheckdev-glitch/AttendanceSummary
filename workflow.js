@@ -97,25 +97,77 @@ const WorkflowEngine = {
     return null;
   },
   async validateWorkflowTransition(resource, record, requestedChanges = {}) {
-    return Api.validateWorkflowTransition({ resource, record, requested_changes: requestedChanges });
+    const normalizedResource = String(resource || '').trim().toLowerCase();
+    const safeRecord = record && typeof record === 'object' ? record : {};
+    const safeRequestedChanges = requestedChanges && typeof requestedChanges === 'object' ? requestedChanges : {};
+    const currentStatus = String(
+      safeRequestedChanges.current_status || safeRequestedChanges.from_status || safeRecord.current_status || safeRecord.status || ''
+    ).trim();
+    const nextStatus = String(
+      safeRequestedChanges.next_status || safeRequestedChanges.requested_status || safeRequestedChanges.to_status || ''
+    ).trim();
+    const parsedDiscount = Number(
+      safeRequestedChanges.discount_percent ?? safeRecord.discount_percent ?? 0
+    );
+    const discountPercent = Number.isFinite(parsedDiscount) ? parsedDiscount : 0;
+    const recordId = String(
+      safeRequestedChanges.record_id ||
+      safeRequestedChanges.id ||
+      safeRecord.id ||
+      safeRecord.proposal_id ||
+      safeRecord.agreement_id ||
+      safeRecord.invoice_id ||
+      safeRecord.receipt_id ||
+      ''
+    ).trim();
+
+    const payload = {
+      resource: normalizedResource,
+      current_status: currentStatus,
+      next_status: nextStatus,
+      discount_percent: discountPercent,
+      record_id: recordId,
+      record: safeRecord,
+      requested_changes: safeRequestedChanges
+    };
+    try { console.debug('[workflow] validation request', payload); } catch {}
+    return Api.validateWorkflowTransition(payload);
   },
   async enforceBeforeSave(resource, record, requestedChanges = {}) {
     this.beginRequestProcessing('Checking workflow approval request…');
     try {
       const validation = await this.validateWorkflowTransition(resource, record, requestedChanges);
+      try { console.debug('[workflow] validation result', validation); } catch {}
+
       const noActiveRuleMessage = /no active workflow rule found/i;
       const allowed = this.toBool(validation?.allowed ?? validation?.is_allowed ?? true);
       const approvalCreated = this.toBool(validation?.approval_created);
+      const pendingApproval = this.toBool(validation?.pending_approval);
+      const reason = String(validation?.reason || '').trim();
       const baseResult = {
         allowed,
         approvalCreated,
-        pendingApproval: this.toBool(validation?.pending_approval),
-        reason: String(validation?.reason || '').trim(),
+        pendingApproval,
+        reason,
         requestedDiscount: this.toNumber(validation?.requested_discount_percent ?? requestedChanges?.discount_percent),
         userDiscountLimit: validation?.user_discount_limit,
         hardStopDiscountLimit: validation?.hard_stop_discount_percent,
         response: validation
       };
+
+      if (!baseResult.allowed && pendingApproval && !baseResult.reason) {
+        baseResult.reason = 'Approval is required before this transition can continue.';
+      }
+      if (approvalCreated) {
+        try { console.debug('[workflow] approval creation', { approval_id: validation?.approval_id, pending_approval: pendingApproval }); } catch {}
+        return {
+          ...baseResult,
+          allowed: false,
+          pendingApproval: true,
+          reason: baseResult.reason || 'Approval request created and pending review.'
+        };
+      }
+
       if (!baseResult.allowed && noActiveRuleMessage.test(baseResult.reason || '')) {
         return {
           ...baseResult,
@@ -124,12 +176,14 @@ const WorkflowEngine = {
           reason: ''
         };
       }
-      if (baseResult.allowed && !baseResult.approvalCreated) {
+
+      if (baseResult.allowed) {
         const localRuleResult = this.evaluateLocalRule(resource, record, requestedChanges);
         if (localRuleResult && localRuleResult.allowed === false) {
           return { ...baseResult, ...localRuleResult };
         }
       }
+
       return baseResult;
     } catch (error) {
       const reason = String(error?.message || 'Workflow validation failed.').trim();
@@ -200,6 +254,16 @@ const Workflow = {
     agreements: ['status', 'customer_name', 'service_start_date', 'service_end_date', 'payment_term', 'grand_total', 'notes'],
     invoices: ['status', 'customer_name', 'issue_date', 'due_date', 'subtotal_locations', 'subtotal_one_time', 'invoice_total', 'received_amount', 'pending_amount', 'payment_state', 'amount_in_words', 'notes'],
     receipts: ['status', 'customer_name', 'receipt_date', 'payment_method', 'payment_reference', 'amount_received', 'invoice_total', 'pending_amount', 'payment_state', 'amount_in_words', 'notes']
+  },
+  currentRole() {
+    return String(Session?.role?.() || Session?.state?.role || '').trim().toLowerCase();
+  },
+  canManageWorkflowRules() {
+    if (typeof Permissions?.canManageWorkflow === 'function') return Boolean(Permissions.canManageWorkflow());
+    return ['admin', 'dev'].includes(this.currentRole());
+  },
+  canProcessApprovals() {
+    return ['admin', 'dev'].includes(this.currentRole());
   },
   normalizeRows(response) {
     const parseJsonIfNeeded = value => {
@@ -574,7 +638,9 @@ const Workflow = {
         <td>${U.escapeHtml(String(rule.max_discount_percent ?? '—'))}</td>
         <td>${U.escapeHtml(String(rule.hard_stop_discount_percent ?? '—'))}</td>
         <td>${WorkflowEngine.toBool(rule.is_active) ? 'Yes' : 'No'}</td>
-        <td><button class="chip-btn" data-rule-edit="${U.escapeHtml(rule.workflow_rule_id || '')}">Edit</button> <button class="chip-btn" data-rule-delete="${U.escapeHtml(rule.workflow_rule_id || '')}">Delete</button></td>
+        <td>${this.canManageWorkflowRules()
+          ? `<button class="chip-btn" data-rule-edit="${U.escapeHtml(rule.workflow_rule_id || '')}">Edit</button> <button class="chip-btn" data-rule-delete="${U.escapeHtml(rule.workflow_rule_id || '')}">Delete</button>`
+          : '<span class="muted">Read only</span>'}</td>
       </tr>`).join('');
   },
   renderDiscountPolicy() {
@@ -588,17 +654,27 @@ const Workflow = {
   },
   renderApprovals() {
     if (!E.workflowApprovalsTbody) return;
+    if (!this.canProcessApprovals()) {
+      E.workflowApprovalsTbody.innerHTML = '<tr><td colspan="10" class="muted" style="text-align:center;">Approvals are visible to admin/dev only.</td></tr>';
+      return;
+    }
     E.workflowApprovalsTbody.innerHTML = this.state.approvals.map(item => `
       <tr>
         <td>${U.escapeHtml(item.resource || '—')}</td><td>${U.escapeHtml(item.record_number || item.record_id || '—')}</td><td>${U.escapeHtml(item.company_name || '—')}</td><td>${U.escapeHtml(item.requested_by_name || '—')}</td>
         <td>${U.escapeHtml(item.current_status || '—')}</td><td>${U.escapeHtml(item.requested_status || '—')}</td><td>${U.escapeHtml(String(item.discount_percent ?? '0'))}%</td><td>${U.escapeHtml(item.approval_role || '—')}</td>
         <td>${WorkflowEngine.getWorkflowBadgeHtml(item.status || 'Pending Approval')}</td>
-        <td><button class="chip-btn" data-approval-action="approve" data-approval-id="${U.escapeHtml(item.approval_id || '')}">Approve</button> <button class="chip-btn" data-approval-action="reject" data-approval-id="${U.escapeHtml(item.approval_id || '')}">Reject</button></td>
+        <td>${this.canProcessApprovals()
+          ? `<button class="chip-btn" data-approval-action="approve" data-approval-id="${U.escapeHtml(item.approval_id || '')}">Approve</button> <button class="chip-btn" data-approval-action="reject" data-approval-id="${U.escapeHtml(item.approval_id || '')}">Reject</button>`
+          : '<span class="muted">No action</span>'}</td>
       </tr>
     `).join('') || '<tr><td colspan="10" class="muted" style="text-align:center;">No pending approvals.</td></tr>';
   },
   renderAudit() {
     if (!E.workflowAuditTbody) return;
+    if (!this.canProcessApprovals()) {
+      E.workflowAuditTbody.innerHTML = '<tr><td colspan="9" class="muted" style="text-align:center;">Audit log is visible to admin/dev only.</td></tr>';
+      return;
+    }
     const query = String(E.workflowAuditSearch?.value || '').trim().toLowerCase();
     const resource = String(E.workflowAuditResourceFilter?.value || '').trim().toLowerCase();
     const allowedFilter = String(E.workflowAuditAllowedFilter?.value || '').trim();
@@ -615,7 +691,13 @@ const Workflow = {
     if (!E.workflowMatrixContainer) return;
     const resource = String(E.workflowMatrixResource?.value || 'proposals').trim().toLowerCase();
     const rules = this.state.rules.filter(rule => String(rule.resource || '').toLowerCase() === resource);
-    const statuses = [...new Set(rules.flatMap(rule => [rule.current_status, rule.next_status]).filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b)));
+    const configuredStatuses = rules
+      .flatMap(rule => [rule.current_status, rule.next_status])
+      .map(status => String(status || '').trim())
+      .filter(Boolean);
+    const fallbackStatuses = this.getStatusesForResource(resource);
+    const statuses = [...new Set([...(configuredStatuses.length ? configuredStatuses : fallbackStatuses)])]
+      .sort((a, b) => String(a).localeCompare(String(b)));
     if (!statuses.length) {
       E.workflowMatrixContainer.innerHTML = '<div class="muted">No status transitions configured for this resource.</div>';
       return;
@@ -647,8 +729,7 @@ const Workflow = {
           console.warn('Workflow roles preload failed', error);
         }
       }
-      const role = String(Session?.role?.() || Session?.state?.role || '').trim().toLowerCase();
-      const canReadWorkflowAdminData = role === 'admin' || role === 'dev';
+      const canReadWorkflowAdminData = this.canProcessApprovals();
       const [rulesResult, approvalsResult, auditResult] = await Promise.allSettled([
         Api.listWorkflowRules({}, { forceRefresh: true }),
         canReadWorkflowAdminData ? Api.listPendingWorkflowApprovals() : Promise.resolve([]),
@@ -667,8 +748,6 @@ const Workflow = {
       if (auditResult.status !== 'fulfilled') {
         console.warn('Workflow audit load failed', auditResult.reason);
       }
-      console.log('[workflow] rules raw response', rulesResult.value);
-      console.log('[workflow] normalized rules count', normalizedRules.length);
       this.state.loadError = '';
       this.state.loaded = true;
       this.state.lastLoadedAt = Date.now();
@@ -691,6 +770,10 @@ const Workflow = {
     }
   },
   async saveRule() {
+    if (!this.canManageWorkflowRules()) {
+      UI.toast('Forbidden.');
+      return;
+    }
     const payload = this.getRulePayloadFromForm();
     if (!payload.resource || !payload.current_status || !payload.next_status || !payload.allowed_roles.length) {
       return UI.toast('resource, current status, next status, and allowed roles are required.');
@@ -720,6 +803,10 @@ const Workflow = {
     await this.loadAndRefresh(true);
   },
   async deleteRule(workflowRuleId) {
+    if (!this.canManageWorkflowRules()) {
+      UI.toast('Forbidden.');
+      return;
+    }
     const id = String(workflowRuleId || '').trim();
     if (!id) return;
     if (!window.confirm(`Delete workflow rule ${id}?`)) return;
@@ -730,6 +817,10 @@ const Workflow = {
     this.renderMatrix();
   },
   async actOnApproval(action, approvalId) {
+    if (!this.canProcessApprovals()) {
+      UI.toast('Forbidden.');
+      return;
+    }
     const id = String(approvalId || '').trim();
     if (!id) return;
     const reviewer_comment = window.prompt(`${action === 'approve' ? 'Approval' : 'Rejection'} comment`, '') || '';
@@ -742,7 +833,7 @@ const Workflow = {
     if (E.workflowRuleForm) {
       E.workflowRuleForm.addEventListener('submit', async e => {
         e.preventDefault();
-        if (!Permissions.canManageWorkflow()) return UI.toast('Forbidden.');
+        if (!this.canManageWorkflowRules()) return UI.toast('Forbidden.');
         try {
           await this.saveRule();
         } catch (error) {
