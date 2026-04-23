@@ -4509,8 +4509,11 @@ function wireDashboardGate() {
     const currentRole = Session.role();
     console.info('[permission self-test]', {
       role: currentRole,
+      isAuthenticated: Session.isAuthenticated(),
+      authContext: Session.authContext(),
       ticketsList: Permissions.canPerformAction('tickets', 'list', currentRole),
-      notificationsList: Permissions.canPerformAction('notifications', 'list', currentRole),
+      proposalsList: Permissions.canPerformAction('proposals', 'list', currentRole),
+      notificationsUnread: Permissions.canPerformAction('notifications', 'get_unread_count', currentRole),
       canLoadRuntimeMatrix: Permissions.canLoadRuntimeMatrix(currentRole)
     });
   };
@@ -6070,8 +6073,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     console.info('[permission self-test]', {
       role: Session.role(),
+      isAuthenticated: Session.isAuthenticated(),
+      authContext: Session.authContext(),
       ticketsList: Permissions.canPerformAction('tickets', 'list', Session.role()),
-      notificationsList: Permissions.canPerformAction('notifications', 'list', Session.role()),
+      proposalsList: Permissions.canPerformAction('proposals', 'list', Session.role()),
+      notificationsUnread: Permissions.canPerformAction('notifications', 'get_unread_count', Session.role()),
       canLoadRuntimeMatrix: Permissions.canLoadRuntimeMatrix(Session.role())
     });
     UI.applyRolePermissions();

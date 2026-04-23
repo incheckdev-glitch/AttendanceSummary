@@ -341,9 +341,9 @@
     return Array.isArray(list) ? list : null;
   }
   function isAllowed(resource, action) {
-    if (!global.Session?.isAuthenticated?.()) return false;
     const normalizedResource = String(resource || '').trim().toLowerCase();
     const normalizedAction = String(action || '').trim().toLowerCase();
+    if (!global.Session?.isAuthenticated?.()) return false;
     if (!normalizedResource || !normalizedAction) return false;
     if (global.Permissions?.canPerformAction) {
       return Boolean(global.Permissions.canPerformAction(normalizedResource, normalizedAction, role()));
@@ -353,18 +353,26 @@
     return rule.includes(role());
   }
   function assertAllowed(resource, action, reason = '') {
-    const finalDecision = isAllowed(resource, action);
-    if (finalDecision) return;
+    const normalizedResource = String(resource || '').trim().toLowerCase();
+    const normalizedAction = String(action || '').trim().toLowerCase();
+    const isAuthenticated = Boolean(global.Session?.isAuthenticated?.());
+    const finalDecision = Boolean(
+      global.Permissions?.canPerformAction?.(normalizedResource, normalizedAction, role())
+    );
+    const decisionWithAuth = isAuthenticated && finalDecision;
+    if (decisionWithAuth) return;
     console.debug('[supabase-data.permission-denied]', {
-      resource,
-      action,
+      resource: normalizedResource,
+      action: normalizedAction,
       role: role(),
-      baseAllowedRoles: global.Permissions?.getBaseAllowedRoles?.(resource, action) || [],
-      matrixEntry: global.Permissions?.getMatrixEntry?.(resource, action) || null,
-      finalDecision: global.Permissions?.canPerformAction?.(resource, action, role()) ?? false
+      isAuthenticated,
+      authContext: global.Session?.authContext?.(),
+      baseAllowedRoles: global.Permissions?.getBaseAllowedRoles?.(normalizedResource, normalizedAction),
+      matrixEntry: global.Permissions?.getMatrixEntry?.(normalizedResource, normalizedAction),
+      finalDecision
     });
     const suffix = reason ? ` (${reason})` : '';
-    throw new Error(`Forbidden: ${role() || 'unknown'} cannot ${action} ${resource}${suffix}.`);
+    throw new Error(`Forbidden: ${role() || 'unknown'} cannot ${normalizedAction} ${normalizedResource}${suffix}.`);
   }
 
   function friendlyError(prefix, error) {

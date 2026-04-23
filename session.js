@@ -60,11 +60,31 @@ const Session = {
   },
 
   applyState(nextState, { clearRoleCacheOnChange = true } = {}) {
-    const prevRole = this.state.role;
-    if (clearRoleCacheOnChange && prevRole && prevRole !== nextState.role) this.clearRoleScopedCache();
-    this.state = nextState;
+    const candidateState = nextState && typeof nextState === 'object'
+      ? {
+          role: this.normalizeRole(nextState.role) || null,
+          user_id: String(nextState.user_id || '').trim(),
+          name: String(nextState.name || '').trim(),
+          email: String(nextState.email || '').trim(),
+          username: String(nextState.username || '').trim(),
+          session: nextState.session || null,
+          user: nextState.user || null,
+          profile: nextState.profile || null
+        }
+      : this.buildState(null, null, null);
+    const hasSession = Boolean(candidateState.session && (candidateState.session?.user?.id || candidateState.session?.access_token));
+    const hasUser = Boolean(candidateState.user?.id);
+    const hasRole = Boolean(String(candidateState.role || '').trim());
+    const isCompleteAuthenticatedState = hasSession && hasUser && hasRole;
+    const normalizedState = isCompleteAuthenticatedState
+      ? candidateState
+      : this.buildState(null, null, null);
 
-    const currentRole = this.normalizeRole(nextState?.role);
+    const prevRole = this.state.role;
+    if (clearRoleCacheOnChange && prevRole && prevRole !== normalizedState.role) this.clearRoleScopedCache();
+    this.state = normalizedState;
+
+    const currentRole = this.normalizeRole(normalizedState?.role);
     if (currentRole) {
       try { localStorage.setItem(this.getLastKnownRoleStorageKey(), currentRole); } catch {}
     }
