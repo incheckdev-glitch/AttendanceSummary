@@ -139,7 +139,6 @@ const WorkflowEngine = {
       record: safeRecord,
       requested_changes: safeRequestedChanges
     };
-    try { console.debug('[workflow] validation request', payload); } catch {}
     return Api.validateWorkflowTransition(payload);
   },
   async enforceBeforeSave(resource, record, requestedChanges = {}) {
@@ -164,59 +163,28 @@ const WorkflowEngine = {
         response: validation
       };
       const normalizedResource = String(resource || '').trim().toLowerCase();
-      const normalizedRecordId = String(
-        requestedChanges?.id ||
-        record?.id ||
-        record?.proposal_id ||
-        ''
-      ).trim();
-
       if (!baseResult.allowed && pendingApproval && !baseResult.reason) {
         baseResult.reason = 'Approval is required before this transition can continue.';
       }
       if (!baseResult.allowed && baseResult.pendingApproval && !baseResult.approvalCreated) {
-        const existingPendingRows = await Api.listPendingWorkflowApprovals({
-          resource: normalizedResource,
-          record_id: normalizedRecordId
-        });
-        const existingApproval = (Array.isArray(existingPendingRows) ? existingPendingRows : [])
-          .find(item =>
-            String(item?.resource || '').trim().toLowerCase() === normalizedResource &&
-            String(item?.record_id || '').trim() === normalizedRecordId &&
-            String(item?.status || '').trim().toLowerCase() === 'pending'
-          );
-        if (existingApproval) {
-          return {
-            ...baseResult,
-            allowed: false,
-            pendingApproval: true,
-            approvalCreated: true,
-            approval_id: existingApproval?.approval_id || existingApproval?.id || '',
-            approval: existingApproval,
-            reason: 'Approval request already exists and is pending admin review.'
-          };
-        }
-
         const auth = window.Session?.authContext?.() || {};
-        const requesterUserId = auth?.user?.id || null;
-        const requesterRole = window.Session?.role?.() || '';
         const approvalPayload = {
           resource: normalizedResource,
           record_id: String(requestedChanges?.id || record?.id || record?.proposal_id || '').trim(),
-          workflow_rule_id: String(validation?.workflow_rule_id || validation?.response?.workflow_rule_id || '').trim() || null,
-          requester_user_id: requesterUserId,
-          requester_role: requesterRole,
-          approval_role: String(validation?.approval_role || validation?.response?.approval_role || 'admin').trim().toLowerCase(),
-          status: 'pending',
+          workflow_rule_id: String(validation?.workflow_rule_id || '').trim() || null,
+          requester_user_id: auth?.user?.id || null,
+          requester_role: window.Session?.role?.() || '',
+          approval_role: String(validation?.approval_role || 'admin').trim().toLowerCase(),
           old_status: String(requestedChanges?.current_status || record?.status || '').trim(),
           new_status: String(requestedChanges?.requested_status || requestedChanges?.next_status || record?.status || '').trim(),
           requested_changes: requestedChanges
         };
-        let createdApproval = null;
+        let approvalResult = null;
         try {
-          createdApproval = await Api.requestWorkflowApproval(approvalPayload);
+          approvalResult = await Api.createWorkflowApproval(approvalPayload);
+          try { console.debug('[workflow] approval creation result', approvalResult); } catch {}
         } catch (error) {
-          console.error('[workflow approval create failed]', error, approvalPayload);
+          console.error('[workflow approval create failed]', error);
           return {
             ...baseResult,
             allowed: false,
@@ -225,9 +193,7 @@ const WorkflowEngine = {
             reason: 'Approval is required, but the approval request could not be created yet. Please retry.'
           };
         }
-        if (!createdApproval || (!createdApproval?.approval_id && !createdApproval?.id)) {
-          const missingRowError = new Error('Approval request insert returned no row.');
-          console.error('[workflow approval create failed]', missingRowError, approvalPayload);
+        if (!approvalResult?.ok) {
           return {
             ...baseResult,
             allowed: false,
@@ -241,15 +207,20 @@ const WorkflowEngine = {
           allowed: false,
           pendingApproval: true,
           approvalCreated: true,
-          approval_id: createdApproval?.approval_id || createdApproval?.id || '',
-          approval: createdApproval,
+          approvalId: String(approvalResult?.approval_id || '').trim(),
+          approvalRole: String(approvalResult?.approval_role || '').trim(),
+          approval_id: String(approvalResult?.approval_id || '').trim(),
+          approval_role: String(approvalResult?.approval_role || '').trim(),
+          approval: approvalResult,
           response: {
             ...(baseResult.response || {}),
-            approval: createdApproval,
-            approval_id: createdApproval?.approval_id || createdApproval?.id || '',
+            approval: approvalResult,
+            approval_id: String(approvalResult?.approval_id || '').trim(),
             approval_created: true
           },
-          reason: 'Approval request created and sent to admin.'
+          reason: this.toBool(approvalResult?.reused)
+            ? 'Approval request already exists and is pending.'
+            : 'Approval request created successfully.'
         };
       }
       if (approvalCreated) {
