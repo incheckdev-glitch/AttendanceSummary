@@ -163,9 +163,69 @@ const WorkflowEngine = {
         hardStopDiscountLimit: validation?.hard_stop_discount_percent,
         response: validation
       };
+      const normalizedResource = String(resource || '').trim().toLowerCase();
+      const normalizedRecordId = String(
+        requestedChanges?.id ||
+        record?.id ||
+        record?.proposal_id ||
+        ''
+      ).trim();
 
       if (!baseResult.allowed && pendingApproval && !baseResult.reason) {
         baseResult.reason = 'Approval is required before this transition can continue.';
+      }
+      if (!baseResult.allowed && baseResult.pendingApproval && !baseResult.approvalCreated) {
+        const existingPendingRows = await Api.listPendingWorkflowApprovals({
+          resource: normalizedResource,
+          record_id: normalizedRecordId
+        });
+        const existingApproval = (Array.isArray(existingPendingRows) ? existingPendingRows : [])
+          .find(item =>
+            String(item?.resource || '').trim().toLowerCase() === normalizedResource &&
+            String(item?.record_id || '').trim() === normalizedRecordId &&
+            String(item?.status || '').trim().toLowerCase() === 'pending'
+          );
+        if (existingApproval) {
+          return {
+            ...baseResult,
+            allowed: false,
+            pendingApproval: true,
+            approvalCreated: true,
+            approval_id: existingApproval?.approval_id || existingApproval?.id || '',
+            approval: existingApproval,
+            reason: 'Approval request already exists and is pending admin review.'
+          };
+        }
+
+        const approvalPayload = {
+          resource: normalizedResource,
+          record_id: normalizedRecordId,
+          workflow_rule_id: validation?.workflow_rule_id || '',
+          requester_user_id: Session?.authContext?.()?.user?.id || null,
+          requester_role: Session?.role?.() || '',
+          approval_role: validation?.approval_role || 'admin',
+          status: 'pending',
+          old_status: requestedChanges?.current_status || record?.status || '',
+          new_status: requestedChanges?.requested_status || requestedChanges?.next_status || record?.status || '',
+          requested_changes: requestedChanges,
+          reviewer_comment: null
+        };
+        const createdApproval = await Api.requestWorkflowApproval(approvalPayload);
+        return {
+          ...baseResult,
+          allowed: false,
+          pendingApproval: true,
+          approvalCreated: true,
+          approval_id: createdApproval?.approval_id || createdApproval?.id || '',
+          approval: createdApproval,
+          response: {
+            ...(baseResult.response || {}),
+            approval: createdApproval,
+            approval_id: createdApproval?.approval_id || createdApproval?.id || '',
+            approval_created: true
+          },
+          reason: 'Approval request created and sent to admin.'
+        };
       }
       if (approvalCreated) {
         try { console.debug('[workflow] approval creation', { approval_id: validation?.approval_id, pending_approval: pendingApproval }); } catch {}
