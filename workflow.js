@@ -240,7 +240,8 @@ const Workflow = {
     loadError: '',
     loaded: false,
     lastLoadedAt: 0,
-    cacheTtlMs: 2 * 60 * 1000
+    cacheTtlMs: 2 * 60 * 1000,
+    editingRuleLegacyId: ''
   },
   resourceOptions: ['proposals', 'agreements', 'invoices', 'receipts'],
   resourceStatusOptions: {
@@ -380,6 +381,7 @@ const Workflow = {
       workflow_rule_id: String(
         pick(source.workflow_rule_id, source.rule_id, source.id, source.miorder, source.minorder)
       ).trim(),
+      id: String(pick(source.id)).trim(),
       resource: String(pick(source.resource)).trim().toLowerCase(),
       current_status: String(pick(source.current_status)).trim(),
       next_status: String(pick(source.next_status)).trim(),
@@ -416,8 +418,11 @@ const Workflow = {
   },
   getRulePayloadFromForm() {
     const get = id => String(E[id]?.value || '').trim();
+    const workflowRuleId = get('workflowRuleId');
+    const legacyId = String(this.state.editingRuleLegacyId || '').trim();
     return {
-      workflow_rule_id: get('workflowRuleId'),
+      workflow_rule_id: workflowRuleId,
+      id: legacyId,
       resource: get('workflowResource').toLowerCase(),
       current_status: get('workflowCurrentStatus'),
       next_status: get('workflowNextStatus'),
@@ -437,6 +442,7 @@ const Workflow = {
     const editableFields = Array.isArray(rule.editable_fields) ? rule.editable_fields : String(rule.editable_fields || '').split(',');
     const requiredFields = Array.isArray(rule.required_fields) ? rule.required_fields : String(rule.required_fields || '').split(',');
     if (E.workflowRuleId) E.workflowRuleId.value = rule.workflow_rule_id || '';
+    this.state.editingRuleLegacyId = String(rule.id || '').trim();
     if (E.workflowResource) E.workflowResource.value = rule.resource || '';
     if (E.workflowCurrentStatus) E.workflowCurrentStatus.value = rule.current_status || '';
     if (E.workflowNextStatus) E.workflowNextStatus.value = rule.next_status || '';
@@ -460,6 +466,7 @@ const Workflow = {
   resetRuleForm() {
     if (E.workflowRuleForm) E.workflowRuleForm.reset();
     if (E.workflowRuleId) E.workflowRuleId.value = '';
+    this.state.editingRuleLegacyId = '';
     this.populateRuleSelects();
   },
   setSelectOptions(selectEl, values = [], placeholder = '') {
@@ -787,6 +794,7 @@ const Workflow = {
       String(payload.workflow_rule_id || '').trim() ||
       `local-${Date.now()}`;
     savedRule.workflow_rule_id = resolvedRuleId;
+    savedRule.id = String(savedRule.id || payload.id || '').trim();
 
     const idx = this.state.rules.findIndex(rule => String(rule.workflow_rule_id || '') === resolvedRuleId);
     if (idx === -1) this.state.rules.unshift(savedRule);
@@ -802,16 +810,26 @@ const Workflow = {
     this.renderMatrix();
     await this.loadAndRefresh(true);
   },
-  async deleteRule(workflowRuleId) {
+  async deleteRule(ruleOrId) {
     if (!this.canManageWorkflowRules()) {
       UI.toast('Forbidden.');
       return;
     }
-    const id = String(workflowRuleId || '').trim();
+    const rule = ruleOrId && typeof ruleOrId === 'object'
+      ? ruleOrId
+      : this.state.rules.find(item => String(item.workflow_rule_id || '') === String(ruleOrId || '').trim()) || {};
+    const id = String(rule.workflow_rule_id || ruleOrId || '').trim();
+    const legacyId = String(rule.id || '').trim();
     if (!id) return;
     if (!window.confirm(`Delete workflow rule ${id}?`)) return;
-    await Api.deleteWorkflowRule(id);
-    this.state.rules = this.state.rules.filter(rule => String(rule.workflow_rule_id || '') !== id);
+    await Api.deleteWorkflowRule({ workflow_rule_id: id, id: legacyId });
+    this.state.rules = this.state.rules.filter(item => {
+      const itemWorkflowId = String(item.workflow_rule_id || '').trim();
+      const itemLegacyId = String(item.id || '').trim();
+      if (itemWorkflowId && itemWorkflowId === id) return false;
+      if (legacyId && itemLegacyId && itemLegacyId === legacyId) return false;
+      return true;
+    });
     UI.toast('Workflow rule deleted.');
     this.renderRules();
     this.renderMatrix();
@@ -862,7 +880,8 @@ const Workflow = {
         }
         if (deleteId) {
           try {
-            await this.deleteRule(deleteId);
+            const rule = this.state.rules.find(item => String(item.workflow_rule_id || '') === String(deleteId));
+            await this.deleteRule(rule || deleteId);
           } catch (error) {
             UI.toast(error?.message || 'Unable to delete workflow rule.');
           }
