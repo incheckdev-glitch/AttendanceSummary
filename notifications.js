@@ -631,82 +631,96 @@ const Notifications = {
     });
   },
   recalculateUnreadCount() {
-    this.state.unreadCount = this.state.items.reduce((count, item) => count + (item?.is_read ? 0 : 1), 0);
+    this.state.unreadCount = Array.isArray(this.state.items)
+      ? this.state.items.filter(item => !item?.is_read).length
+      : 0;
     return this.state.unreadCount;
   },
-  upsertNotification(item) {
-    const normalized = this.normalize(item);
-    const id = String(normalized.notification_id || '').trim();
+  upsertNotification(rawItem) {
+    const item = this.normalize(rawItem);
+    const id = String(item?.notification_id || '').trim();
     if (!id) return null;
-    const upsertList = (list, limit = null) => {
-      const existing = Array.isArray(list) ? list : [];
-      const withoutMatch = existing.filter(row => row.notification_id !== id);
-      const next = this.sortByNewest([normalized, ...withoutMatch]);
-      return typeof limit === 'number' ? next.slice(0, limit) : next;
+
+    const insertOrReplace = (arr, maxLength = null) => {
+      const next = Array.isArray(arr) ? [...arr] : [];
+      const index = next.findIndex(row => String(row?.notification_id || '').trim() === id);
+      if (index >= 0) next[index] = item;
+      else next.unshift(item);
+      next.sort((a, b) => {
+        const ad = new Date(a?.created_at || 0).getTime();
+        const bd = new Date(b?.created_at || 0).getTime();
+        return bd - ad;
+      });
+      return Number.isFinite(maxLength) ? next.slice(0, maxLength) : next;
     };
-    this.state.items = upsertList(this.state.items);
-    this.state.previewItems = upsertList(this.state.previewItems, 10);
-    return normalized;
+
+    this.state.items = insertOrReplace(this.state.items);
+    this.state.previewItems = insertOrReplace(this.state.previewItems, 10);
+    this.recalculateUnreadCount();
+    return item;
   },
   removeNotification(notificationId) {
     const id = String(notificationId || '').trim();
-    if (!id) return false;
-    const beforeItemsLength = this.state.items.length;
-    const beforePreviewLength = this.state.previewItems.length;
-    this.state.items = this.state.items.filter(item => item.notification_id !== id);
-    this.state.previewItems = this.state.previewItems.filter(item => item.notification_id !== id);
-    const changed = this.state.items.length !== beforeItemsLength || this.state.previewItems.length !== beforePreviewLength;
-    if (changed) this.recalculateUnreadCount();
-    return changed;
-  },
-  showInstantNotificationPopup(item = {}) {
-    const id = String(item.notification_id || '').trim();
     if (!id) return;
-    this.state.lastRealtimeNotificationId = id;
+    this.state.items = (this.state.items || []).filter(row => String(row?.notification_id || '').trim() !== id);
+    this.state.previewItems = (this.state.previewItems || []).filter(row => String(row?.notification_id || '').trim() !== id);
+    this.recalculateUnreadCount();
+  },
+  showInstantNotificationPopup(item) {
+    if (!item) return;
     this.renderBell();
     this.renderPreview();
     this.renderHub();
-    if (window.UI?.toast) {
-      UI.toast(`${item.title || 'Notification'}${item.message ? `: ${item.message}` : ''}`);
+
+    try {
+      if (window.UI?.toast) {
+        const title = String(item.title || 'Notification').trim();
+        const message = String(item.message || '').trim();
+        UI.toast(message ? `${title}: ${message}` : title);
+      }
+    } catch (error) {
+      console.warn('[notifications] toast failed', error);
     }
-    if (E.notificationsView?.classList.contains('active')) return;
-    this.openPanel();
-    if (this.state.autoPopupTimer) clearTimeout(this.state.autoPopupTimer);
-    this.state.autoPopupTimer = window.setTimeout(() => {
-      this.state.autoPopupTimer = null;
-      if (!this.state.panelOpen) return;
-      if (this.state.previewHovering) return;
-      if (E.notificationsView?.classList.contains('active')) return;
-      this.closePanel();
-    }, 5000);
+
+    if (!E.notificationsView?.classList.contains('active')) {
+      this.openPanel();
+      if (this.state.autoPopupTimer) clearTimeout(this.state.autoPopupTimer);
+      this.state.autoPopupTimer = window.setTimeout(() => {
+        if (!this.state.panelOpen) return;
+        if (this.state.previewHovering) return;
+        if (E.notificationsView?.classList.contains('active')) return;
+        this.closePanel();
+      }, 5000);
+    }
   },
   handleRealtimeInsert(raw) {
-    const normalized = this.normalize(raw);
-    const notificationId = String(normalized.notification_id || '').trim();
-    if (!notificationId) return;
-    if (this.state.seenRealtimeNotificationIds.has(notificationId)) return;
-    this.state.seenRealtimeNotificationIds.add(notificationId);
-    this.upsertNotification(normalized);
-    this.recalculateUnreadCount();
-    if (!normalized.is_read) this.showInstantNotificationPopup(normalized);
-    this.handleIncomingNotifications([normalized], { source: 'realtime' });
+    const item = this.upsertNotification(raw);
+    const id = String(item?.notification_id || '').trim();
+    if (!id) return;
+    if (this.state.seenRealtimeNotificationIds.has(id)) return;
+    this.state.seenRealtimeNotificationIds.add(id);
+
+    if (!item.is_read) {
+      this.showInstantNotificationPopup(item);
+    } else {
+      this.renderBell();
+      this.renderPreview();
+      this.renderHub();
+    }
+
     this.refreshUnreadCount();
-    if (this.state.panelOpen) this.fetchPreview(true);
-    if (E.notificationsView?.classList.contains('active')) this.loadHub(true);
   },
   handleRealtimeUpdate(raw) {
-    const normalized = this.upsertNotification(raw);
-    if (!normalized) return;
-    this.recalculateUnreadCount();
+    const item = this.upsertNotification(raw);
+    if (!item) return;
     this.renderBell();
     this.renderPreview();
     this.renderHub();
   },
   handleRealtimeDelete(raw) {
-    const notificationId = String(raw?.notification_id || raw?.id || '').trim();
-    if (!notificationId) return;
-    const didRemove = this.removeNotification(notificationId);
-    if (!didRemove) return;
+    const id = String(raw?.notification_id || raw?.id || '').trim();
+    if (!id) return;
+    this.removeNotification(id);
     this.renderBell();
     this.renderPreview();
     this.renderHub();
@@ -836,9 +850,7 @@ const Notifications = {
     if (E.notificationPreviewPanel) E.notificationPreviewPanel.classList.add('open');
     this.fetchPreview(true);
   },
-  closePanel(options = {}) {
-    const force = Boolean(options?.force);
-    if (!force && this.state.previewHovering && this.state.autoPopupTimer) return;
+  closePanel() {
     this.state.panelOpen = false;
     if (E.notificationPreviewPanel) E.notificationPreviewPanel.classList.remove('open');
   },
