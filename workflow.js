@@ -193,22 +193,74 @@ const WorkflowEngine = {
           '';
         const submittedByEmail = window.Session?.authContext?.()?.user?.email || '';
         const submittedByRole = window.Session?.role?.() || '';
+        const nestedRequestedChanges =
+          requestedChanges?.requested_changes && typeof requestedChanges.requested_changes === 'object'
+            ? requestedChanges.requested_changes
+            : {};
+        const proposalPayload =
+          nestedRequestedChanges?.proposal && typeof nestedRequestedChanges.proposal === 'object'
+            ? nestedRequestedChanges.proposal
+            : {};
+        const agreementPayload =
+          nestedRequestedChanges?.agreement && typeof nestedRequestedChanges.agreement === 'object'
+            ? nestedRequestedChanges.agreement
+            : {};
+        const invoicePayload =
+          nestedRequestedChanges?.invoice && typeof nestedRequestedChanges.invoice === 'object'
+            ? nestedRequestedChanges.invoice
+            : {};
+        const receiptPayload =
+          nestedRequestedChanges?.receipt && typeof nestedRequestedChanges.receipt === 'object'
+            ? nestedRequestedChanges.receipt
+            : {};
+        const approvalItems = Array.isArray(nestedRequestedChanges?.items)
+          ? nestedRequestedChanges.items
+          : Array.isArray(requestedChanges?.items)
+            ? requestedChanges.items
+            : [];
         const normalizedRequestedChanges = {
-          proposal_id: record?.proposal_id || requestedChanges?.id || record?.id || '',
+          proposal_uuid: proposalPayload?.id || requestedChanges?.id || record?.id || '',
+          proposal_id: proposalPayload?.proposal_id || record?.proposal_id || '',
           proposal_number:
+            proposalPayload?.proposal_id ||
             record?.proposal_number ||
             record?.proposal_reference ||
             requestedChanges?.proposal_number ||
             requestedChanges?.proposal_reference ||
             '',
-          client_id: record?.client_id || requestedChanges?.client_id || '',
+          agreement_uuid: agreementPayload?.id || requestedChanges?.agreement_uuid || record?.id || '',
+          agreement_id: agreementPayload?.agreement_id || record?.agreement_id || '',
+          agreement_number: agreementPayload?.agreement_number || requestedChanges?.agreement_number || '',
+          invoice_uuid: invoicePayload?.id || requestedChanges?.invoice_uuid || record?.id || '',
+          invoice_id: invoicePayload?.invoice_id || record?.invoice_id || '',
+          invoice_number: invoicePayload?.invoice_number || requestedChanges?.invoice_number || '',
+          receipt_uuid: receiptPayload?.id || requestedChanges?.receipt_uuid || record?.id || '',
+          receipt_id: receiptPayload?.receipt_id || record?.receipt_id || '',
+          receipt_number: receiptPayload?.receipt_number || requestedChanges?.receipt_number || '',
+          client_id:
+            proposalPayload?.client_id ||
+            agreementPayload?.client_id ||
+            invoicePayload?.client_id ||
+            receiptPayload?.client_id ||
+            record?.client_id ||
+            requestedChanges?.client_id ||
+            '',
           client_name:
+            proposalPayload?.client_name ||
+            agreementPayload?.client_name ||
+            invoicePayload?.client_name ||
+            receiptPayload?.client_name ||
             record?.client_name ||
+            record?.customer_name ||
             record?.company_name ||
             requestedChanges?.client_name ||
             requestedChanges?.company_name ||
             '',
           company_name:
+            proposalPayload?.customer_name ||
+            agreementPayload?.customer_name ||
+            invoicePayload?.customer_name ||
+            receiptPayload?.customer_name ||
             record?.company_name ||
             record?.client_name ||
             requestedChanges?.company_name ||
@@ -217,8 +269,23 @@ const WorkflowEngine = {
           current_status: requestedChanges?.current_status || record?.status || '',
           requested_status: requestedChanges?.requested_status || requestedChanges?.next_status || record?.status || '',
           discount_percent: Number(requestedChanges?.discount_percent ?? record?.discount_percent ?? 0),
-          total_amount: Number(requestedChanges?.total_amount ?? record?.total_amount ?? 0),
-          title: requestedChanges?.title || record?.title || '',
+          total_amount: Number(
+            requestedChanges?.total_amount ??
+            proposalPayload?.grand_total ??
+            agreementPayload?.grand_total ??
+            invoicePayload?.invoice_total ??
+            receiptPayload?.amount_received ??
+            record?.total_amount ??
+            0
+          ),
+          title:
+            proposalPayload?.proposal_title ||
+            agreementPayload?.agreement_title ||
+            invoicePayload?.invoice_number ||
+            receiptPayload?.receipt_number ||
+            requestedChanges?.title ||
+            record?.title ||
+            '',
           subject: requestedChanges?.subject || record?.subject || '',
           submitted_by_name: submittedByName,
           submitted_by_email: submittedByEmail,
@@ -226,7 +293,12 @@ const WorkflowEngine = {
           changed_fields: requestedChanges?.changed_fields || [],
           resource: normalizedResource,
           target_workflow_resource: normalizedResource,
-          record_snapshot: record || {}
+          record_snapshot: record || {},
+          proposal: proposalPayload,
+          agreement: agreementPayload,
+          invoice: invoicePayload,
+          receipt: receiptPayload,
+          items: approvalItems
         };
         const recordId = String(
           requestedChanges?.id ||
@@ -716,17 +788,29 @@ const Workflow = {
       }
     }) || 'unknown';
     const targetRecordId =
+      requestedChanges?.proposal_uuid ||
+      requestedChanges?.agreement_uuid ||
+      requestedChanges?.invoice_uuid ||
+      requestedChanges?.receipt_uuid ||
+      requestedChanges?.proposal?.id ||
+      requestedChanges?.agreement?.id ||
+      requestedChanges?.invoice?.id ||
+      requestedChanges?.receipt?.id ||
+      row?.record_id ||
       requestedChanges?.proposal_id ||
       requestedChanges?.agreement_id ||
       requestedChanges?.invoice_id ||
       requestedChanges?.receipt_id ||
-      row?.record_id ||
       '';
     const previewTitle =
       requestedChanges?.proposal_number ||
+      requestedChanges?.proposal_id ||
       requestedChanges?.agreement_number ||
+      requestedChanges?.agreement_id ||
       requestedChanges?.invoice_number ||
+      requestedChanges?.invoice_id ||
       requestedChanges?.receipt_number ||
+      requestedChanges?.receipt_id ||
       row?.record_id ||
       '';
     const requestedBy =
@@ -741,9 +825,13 @@ const Workflow = {
       workflowRuleId: String(row?.workflow_rule_id || '').trim(),
       approvalId: String(row?.approval_id || '').trim(),
       proposalId: String(requestedChanges?.proposal_id || '').trim(),
+      proposalUuid: String(requestedChanges?.proposal_uuid || requestedChanges?.proposal?.id || '').trim(),
       agreementId: String(requestedChanges?.agreement_id || '').trim(),
+      agreementUuid: String(requestedChanges?.agreement_uuid || requestedChanges?.agreement?.id || '').trim(),
       invoiceId: String(requestedChanges?.invoice_id || '').trim(),
+      invoiceUuid: String(requestedChanges?.invoice_uuid || requestedChanges?.invoice?.id || '').trim(),
       receiptId: String(requestedChanges?.receipt_id || '').trim(),
+      receiptUuid: String(requestedChanges?.receipt_uuid || requestedChanges?.receipt?.id || '').trim(),
       previewRecordId: String(targetRecordId || '').trim(),
       targetRecordId: String(targetRecordId || '').trim(),
       previewTitle: String(previewTitle || '').trim(),
@@ -880,11 +968,19 @@ const Workflow = {
     const context = this.buildApprovalContext(normalized);
     const resource = String(context.resource || '').trim().toLowerCase();
     const previewId = String(
+      context?.requested_changes?.proposal_uuid ||
+      context?.requested_changes?.agreement_uuid ||
+      context?.requested_changes?.invoice_uuid ||
+      context?.requested_changes?.receipt_uuid ||
+      context?.requested_changes?.proposal?.id ||
+      context?.requested_changes?.agreement?.id ||
+      context?.requested_changes?.invoice?.id ||
+      context?.requested_changes?.receipt?.id ||
+      context?.recordId ||
       context?.requested_changes?.proposal_id ||
       context?.requested_changes?.agreement_id ||
       context?.requested_changes?.invoice_id ||
       context?.requested_changes?.receipt_id ||
-      context?.recordId ||
       ''
     ).trim();
     this.state.activeApprovalPreview = context;

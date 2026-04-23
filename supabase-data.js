@@ -1557,7 +1557,22 @@
       const requestedWithoutHelpers = Object.fromEntries(
         Object.entries(requested).filter(([key]) => !WORKFLOW_HELPER_FIELDS.has(String(key || '').trim()))
       );
-      if (!Object.keys(requestedWithoutHelpers).length) {
+      const nestedResourcePayload =
+        resource === 'proposals' && requested.proposal && typeof requested.proposal === 'object'
+          ? requested.proposal
+          : resource === 'agreements' && requested.agreement && typeof requested.agreement === 'object'
+            ? requested.agreement
+            : resource === 'invoices' && requested.invoice && typeof requested.invoice === 'object'
+              ? requested.invoice
+              : resource === 'receipts' && requested.receipt && typeof requested.receipt === 'object'
+                ? requested.receipt
+                : {};
+      const approvedItems = Array.isArray(requested.items)
+        ? requested.items
+        : Array.isArray(nestedResourcePayload.items)
+          ? nestedResourcePayload.items
+          : [];
+      if (!Object.keys(requestedWithoutHelpers).length && !Object.keys(nestedResourcePayload).length && !approvedItems.length) {
         throw workflowError('Requested changes are empty. Approval cannot be applied.');
       }
       const { record } = await resolveWorkflowTargetRecord(resource, { record_id: recordId, requested_changes: requested });
@@ -1567,26 +1582,36 @@
       const fk = ITEM_FK[resource];
       let publicUpdates = {};
       if (resource === 'proposals') {
-        publicUpdates = compactObject({
-          discount_percent: numberOrNull(firstDefined(requested, ['discount_percent'])),
-          status: trimOrNull(firstDefined(requested, ['requested_status', 'status'])),
-          client_id: trimOrNull(firstDefined(requested, ['client_id', 'clientId'])),
-          proposal_date: trimOrNull(firstDefined(requested, ['proposal_date', 'proposalDate'])),
-          proposal_valid_until: trimOrNull(firstDefined(requested, ['proposal_valid_until', 'proposalValidUntil', 'valid_until'])),
-          notes: trimOrNull(firstDefined(requested, ['notes'])),
-          updated_by: reviewerUserId || undefined
-        });
+        if (Object.keys(nestedResourcePayload).length) {
+          publicUpdates = sanitizeWithReviewer(sanitizeProposalRecord, nestedResourcePayload);
+        } else {
+          publicUpdates = compactObject({
+            status: trimOrNull(firstDefined(requested, ['requested_status', 'status'])),
+            proposal_date: trimOrNull(firstDefined(requested, ['proposal_date', 'proposalDate'])),
+            proposal_valid_until: trimOrNull(firstDefined(requested, ['proposal_valid_until', 'proposalValidUntil', 'valid_until'])),
+            updated_by: reviewerUserId || undefined
+          });
+        }
       } else if (resource === 'agreements') {
-        publicUpdates = sanitizeWithReviewer(sanitizeAgreementRecord, requestedWithoutHelpers);
+        publicUpdates = sanitizeWithReviewer(
+          sanitizeAgreementRecord,
+          Object.keys(nestedResourcePayload).length ? nestedResourcePayload : requestedWithoutHelpers
+        );
       } else if (resource === 'invoices') {
-        publicUpdates = sanitizeWithReviewer(sanitizeInvoicesRecord, requestedWithoutHelpers);
+        publicUpdates = sanitizeWithReviewer(
+          sanitizeInvoicesRecord,
+          Object.keys(nestedResourcePayload).length ? nestedResourcePayload : requestedWithoutHelpers
+        );
       } else if (resource === 'receipts') {
-        publicUpdates = sanitizeWithReviewer(sanitizeReceiptsRecord, requestedWithoutHelpers);
+        publicUpdates = sanitizeWithReviewer(
+          sanitizeReceiptsRecord,
+          Object.keys(nestedResourcePayload).length ? nestedResourcePayload : requestedWithoutHelpers
+        );
       } else {
         throw workflowError(`Unsupported workflow resource: ${resource}`);
       }
       const updatePayload = compactObject(publicUpdates);
-      if (!Object.keys(updatePayload).length && !Array.isArray(requested.items)) {
+      if (!Object.keys(updatePayload).length && !approvedItems.length) {
         throw workflowError('Requested changes did not include any approved editable fields.');
       }
       const key = PK_BY_RESOURCE[resource] || 'id';
@@ -1595,18 +1620,18 @@
         const { data, error } = await client
           .from(TABLE_BY_RESOURCE[resource])
           .update(updatePayload)
-          .eq(key, record.id || recordId)
+          .eq(key, record?.[key] || record?.id || recordId)
           .select('*')
           .single();
         if (error) throw workflowError(`Unable to apply approved changes to ${resource}`, error);
         updatedRecord = data || record;
       }
-      if (itemTable && Array.isArray(requested.items)) {
+      if (itemTable && approvedItems.length) {
         const parentId = String(updatedRecord?.id || record?.id || recordId || '').trim();
         if (!parentId) throw workflowError(`Unable to apply ${resource} items because parent record id is missing.`);
         await client.from(itemTable).delete().eq(fk, parentId);
-        if (requested.items.length) {
-          const insertRows = requested.items.map(item =>
+        if (approvedItems.length) {
+          const insertRows = approvedItems.map(item =>
             resource === 'proposals'
               ? sanitizeProposalItemRecord(item, parentId)
               : resource === 'agreements'

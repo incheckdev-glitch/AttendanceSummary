@@ -521,18 +521,25 @@ const Proposals = {
     const client = window.SupabaseClient?.getClient?.();
     if (!client) throw new Error('Supabase client is not available.');
 
-    const [{ data: proposal, error: proposalError }, { data: items, error: itemsError }] = await Promise.all([
-      client.from('proposals').select('*').eq('id', id).maybeSingle(),
-      client
-        .from('proposal_items')
-        .select('*')
-        .eq('proposal_id', id)
-        .order('line_no', { ascending: true, nullsFirst: false })
-        .order('created_at', { ascending: true, nullsFirst: false })
-    ]);
-
+    let proposal = null;
+    let proposalError = null;
+    ({ data: proposal, error: proposalError } = await client.from('proposals').select('*').eq('id', id).maybeSingle());
+    if (proposalError) {
+      const fallback = await client.from('proposals').select('*').eq('proposal_id', id).maybeSingle();
+      proposal = fallback.data || null;
+      proposalError = fallback.error || null;
+    }
     if (proposalError) throw new Error(`Unable to load proposal: ${proposalError.message || 'Unknown error'}`);
     if (!proposal) throw new Error('Proposal was not found.');
+
+    const proposalRowId = String(proposal.id || id).trim();
+    const { data: items, error: itemsError } = await client
+      .from('proposal_items')
+      .select('*')
+      .eq('proposal_id', proposalRowId)
+      .order('line_no', { ascending: true, nullsFirst: false })
+      .order('created_at', { ascending: true, nullsFirst: false });
+
     if (itemsError) throw new Error(`Unable to load proposal items: ${itemsError.message || 'Unknown error'}`);
 
     return {
