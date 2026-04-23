@@ -197,20 +197,45 @@ const WorkflowEngine = {
           };
         }
 
+        const auth = window.Session?.authContext?.() || {};
+        const requesterUserId = auth?.user?.id || null;
+        const requesterRole = window.Session?.role?.() || '';
         const approvalPayload = {
           resource: normalizedResource,
-          record_id: normalizedRecordId,
-          workflow_rule_id: validation?.workflow_rule_id || '',
-          requester_user_id: Session?.authContext?.()?.user?.id || null,
-          requester_role: Session?.role?.() || '',
-          approval_role: validation?.approval_role || 'admin',
+          record_id: String(requestedChanges?.id || record?.id || record?.proposal_id || '').trim(),
+          workflow_rule_id: String(validation?.workflow_rule_id || validation?.response?.workflow_rule_id || '').trim() || null,
+          requester_user_id: requesterUserId,
+          requester_role: requesterRole,
+          approval_role: String(validation?.approval_role || validation?.response?.approval_role || 'admin').trim().toLowerCase(),
           status: 'pending',
-          old_status: requestedChanges?.current_status || record?.status || '',
-          new_status: requestedChanges?.requested_status || requestedChanges?.next_status || record?.status || '',
-          requested_changes: requestedChanges,
-          reviewer_comment: null
+          old_status: String(requestedChanges?.current_status || record?.status || '').trim(),
+          new_status: String(requestedChanges?.requested_status || requestedChanges?.next_status || record?.status || '').trim(),
+          requested_changes: requestedChanges
         };
-        const createdApproval = await Api.requestWorkflowApproval(approvalPayload);
+        let createdApproval = null;
+        try {
+          createdApproval = await Api.requestWorkflowApproval(approvalPayload);
+        } catch (error) {
+          console.error('[workflow approval create failed]', error, approvalPayload);
+          return {
+            ...baseResult,
+            allowed: false,
+            pendingApproval: true,
+            approvalCreated: false,
+            reason: 'Approval is required, but the approval request could not be created yet. Please retry.'
+          };
+        }
+        if (!createdApproval || (!createdApproval?.approval_id && !createdApproval?.id)) {
+          const missingRowError = new Error('Approval request insert returned no row.');
+          console.error('[workflow approval create failed]', missingRowError, approvalPayload);
+          return {
+            ...baseResult,
+            allowed: false,
+            pendingApproval: true,
+            approvalCreated: false,
+            reason: 'Approval is required, but the approval request could not be created yet. Please retry.'
+          };
+        }
         return {
           ...baseResult,
           allowed: false,
