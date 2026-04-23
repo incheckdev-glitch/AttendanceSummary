@@ -186,16 +186,55 @@ const WorkflowEngine = {
       }
 
       if (pendingApproval === true) {
+        const submittedByName =
+          window.Session?.authContext?.()?.profile?.name ||
+          window.Session?.authContext?.()?.profile?.full_name ||
+          '';
+        const submittedByEmail = window.Session?.authContext?.()?.user?.email || '';
+        const submittedByRole = window.Session?.role?.() || '';
+        const normalizedRequestedChanges = {
+          proposal_id: record?.proposal_id || requestedChanges?.id || record?.id || '',
+          proposal_number:
+            record?.proposal_number ||
+            record?.proposal_reference ||
+            requestedChanges?.proposal_number ||
+            requestedChanges?.proposal_reference ||
+            '',
+          client_id: record?.client_id || requestedChanges?.client_id || '',
+          client_name:
+            record?.client_name ||
+            record?.company_name ||
+            requestedChanges?.client_name ||
+            requestedChanges?.company_name ||
+            '',
+          company_name:
+            record?.company_name ||
+            record?.client_name ||
+            requestedChanges?.company_name ||
+            requestedChanges?.client_name ||
+            '',
+          current_status: requestedChanges?.current_status || record?.status || '',
+          requested_status: requestedChanges?.requested_status || requestedChanges?.next_status || record?.status || '',
+          discount_percent: Number(requestedChanges?.discount_percent ?? record?.discount_percent ?? 0),
+          total_amount: Number(requestedChanges?.total_amount ?? record?.total_amount ?? 0),
+          title: requestedChanges?.title || record?.title || '',
+          subject: requestedChanges?.subject || record?.subject || '',
+          submitted_by_name: submittedByName,
+          submitted_by_email: submittedByEmail,
+          submitted_by_role: submittedByRole,
+          changed_fields: requestedChanges?.changed_fields || [],
+          record_snapshot: record || {}
+        };
         const approvalPayload = {
           resource,
-          record_id: String(requestedChanges?.id || record?.id || record?.proposal_id || '').trim(),
+          record_id: String(requestedChanges?.id || record?.proposal_id || record?.id || '').trim(),
           workflow_rule_id: validationResult?.workflow_rule_id || null,
           requester_user_id: window.Session?.authContext?.()?.user?.id || null,
-          requester_role: window.Session?.role?.() || '',
+          requester_role: submittedByRole,
           approval_role: String(validationResult?.approval_role || 'admin').trim(),
           old_status: String(requestedChanges?.current_status || record?.status || '').trim(),
           new_status: String(requestedChanges?.requested_status || requestedChanges?.next_status || record?.status || '').trim(),
-          requested_changes: requestedChanges
+          requested_changes: normalizedRequestedChanges
         };
         try {
           const approvalResult = await Api.createWorkflowApproval(approvalPayload);
@@ -615,6 +654,86 @@ const Workflow = {
       .map(item => String(item || '').trim())
       .filter(Boolean);
   },
+  normalizePendingApproval(row = {}) {
+    let requestedChanges = row?.requested_changes;
+    if (typeof requestedChanges === 'string') {
+      try {
+        requestedChanges = JSON.parse(requestedChanges);
+      } catch (_error) {
+        requestedChanges = {};
+      }
+    }
+    if (!requestedChanges || typeof requestedChanges !== 'object') requestedChanges = {};
+    return {
+      ...row,
+      displayResource: row?.resource || '—',
+      displayRecordNumber:
+        requestedChanges?.proposal_number ||
+        requestedChanges?.proposal_reference ||
+        requestedChanges?.proposal_id ||
+        row?.record_id ||
+        '—',
+      displayCompany: requestedChanges?.client_name || requestedChanges?.company_name || '—',
+      displayRequestedBy:
+        requestedChanges?.submitted_by_name ||
+        requestedChanges?.submitted_by_email ||
+        row?.requester_role ||
+        '—',
+      displayCurrent: row?.old_status || requestedChanges?.current_status || '—',
+      displayRequested: row?.new_status || requestedChanges?.requested_status || '—',
+      displayDiscount: Number(requestedChanges?.discount_percent ?? 0),
+      displayApprovalRoles: row?.approval_role || '—'
+    };
+  },
+  formatDiscountPercent(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return '0%';
+    return `${numeric}%`;
+  },
+  async openApproval(item = {}) {
+    const normalized = this.normalizePendingApproval(item);
+    const normalizedResource = String(normalized.resource || '').trim().toLowerCase();
+    const requestedChanges = normalized.requested_changes && typeof normalized.requested_changes === 'object'
+      ? normalized.requested_changes
+      : {};
+    if (normalizedResource === 'proposals') {
+      const proposalId = String(
+        normalized.record_id ||
+        requestedChanges?.proposal_id ||
+        ''
+      ).trim();
+      if (proposalId && typeof window.Proposals?.openProposalFormById === 'function') {
+        try {
+          await window.Proposals.openProposalFormById(proposalId, { readOnly: true, trigger: 'workflow-approval-open' });
+          return;
+        } catch (error) {
+          console.warn('Unable to open proposal directly from approval row', error);
+        }
+      }
+    }
+    const action = window.prompt(
+      [
+        'Approval details',
+        `Proposal #: ${normalized.displayRecordNumber}`,
+        `Company: ${normalized.displayCompany}`,
+        `Current status: ${normalized.displayCurrent}`,
+        `Requested status: ${normalized.displayRequested}`,
+        `Discount: ${this.formatDiscountPercent(normalized.displayDiscount)}`,
+        `Requested by: ${normalized.displayRequestedBy}`,
+        `Approval role: ${normalized.displayApprovalRoles}`,
+        '',
+        'Submitted changes:',
+        JSON.stringify(requestedChanges, null, 2),
+        '',
+        'Type "approve" to approve, "reject" to reject, or leave empty to close.'
+      ].join('\n'),
+      ''
+    );
+    const normalizedAction = String(action || '').trim().toLowerCase();
+    if (normalizedAction === 'approve' || normalizedAction === 'reject') {
+      await this.actOnApproval(normalizedAction, normalized.approval_id);
+    }
+  },
   setMultiSelectValues(selectEl, values = []) {
     if (!selectEl) return;
     const normalized = new Set(
@@ -730,14 +849,15 @@ const Workflow = {
     if (!E.workflowApprovalsTbody) return;
     const currentRole = this.currentRole();
     E.workflowApprovalsTbody.innerHTML = this.state.approvals.map(item => {
-      const approvalRoles = this.parseRoleList(item.approval_roles, item.approval_roles_csv || item.approval_role).map(v => v.toLowerCase());
+      const normalized = this.normalizePendingApproval(item);
+      const approvalRoles = this.parseRoleList(item.approval_roles, item.approval_roles_csv || normalized.displayApprovalRoles).map(v => v.toLowerCase());
       return `
       <tr>
-        <td>${U.escapeHtml(item.resource || '—')}</td><td>${U.escapeHtml(item.record_number || item.record_id || '—')}</td><td>${U.escapeHtml(item.company_name || '—')}</td><td>${U.escapeHtml(item.requested_by_name || '—')}</td>
-        <td>${U.escapeHtml(item.current_status || '—')}</td><td>${U.escapeHtml(item.requested_status || '—')}</td><td>${U.escapeHtml(String(item.discount_percent ?? '0'))}%</td><td>${U.escapeHtml(approvalRoles.join(', ') || '—')}</td>
+        <td>${U.escapeHtml(normalized.displayResource)}</td><td>${U.escapeHtml(normalized.displayRecordNumber)}</td><td>${U.escapeHtml(normalized.displayCompany)}</td><td>${U.escapeHtml(normalized.displayRequestedBy)}</td>
+        <td>${WorkflowEngine.getWorkflowBadgeHtml(normalized.displayCurrent)}</td><td>${WorkflowEngine.getWorkflowBadgeHtml(normalized.displayRequested)}</td><td>${U.escapeHtml(this.formatDiscountPercent(normalized.displayDiscount))}</td><td>${U.escapeHtml(approvalRoles.join(', ') || normalized.displayApprovalRoles)}</td>
         <td>${WorkflowEngine.getWorkflowBadgeHtml(item.status || 'Pending Approval')}</td>
         <td>${this.canProcessApprovals() || approvalRoles.includes(currentRole)
-          ? `<button class="chip-btn" data-approval-action="approve" data-approval-id="${U.escapeHtml(item.approval_id || '')}">Approve</button> <button class="chip-btn" data-approval-action="reject" data-approval-id="${U.escapeHtml(item.approval_id || '')}">Reject</button>`
+          ? `<button class="chip-btn" data-approval-action="open" data-approval-id="${U.escapeHtml(item.approval_id || '')}">Open</button> <button class="chip-btn" data-approval-action="approve" data-approval-id="${U.escapeHtml(item.approval_id || '')}">Approve</button> <button class="chip-btn" data-approval-action="reject" data-approval-id="${U.escapeHtml(item.approval_id || '')}">Reject</button>`
           : '<span class="muted">No action</span>'}</td>
       </tr>
     `; }).join('') || '<tr><td colspan="10" class="muted" style="text-align:center;">No pending approvals.</td></tr>';
@@ -983,7 +1103,14 @@ const Workflow = {
         const button = event.target?.closest?.('[data-approval-action]');
         if (!button) return;
         try {
-          await this.actOnApproval(button.getAttribute('data-approval-action'), button.getAttribute('data-approval-id'));
+          const action = button.getAttribute('data-approval-action');
+          const approvalId = button.getAttribute('data-approval-id');
+          if (action === 'open') {
+            const approval = this.state.approvals.find(item => String(item?.approval_id || '').trim() === String(approvalId || '').trim());
+            await this.openApproval(approval || {});
+            return;
+          }
+          await this.actOnApproval(action, approvalId);
         } catch (error) {
           UI.toast(error?.message || 'Unable to process approval action.');
         }
