@@ -189,6 +189,9 @@ const WorkflowEngine = {
       if (baseResult.allowed) {
         const localRuleResult = this.evaluateLocalRule(resource, record, requestedChanges);
         if (localRuleResult && localRuleResult.allowed === false) {
+          try {
+            console.debug('[workflow] local fallback result', localRuleResult);
+          } catch {}
           return { ...baseResult, ...localRuleResult };
         }
       }
