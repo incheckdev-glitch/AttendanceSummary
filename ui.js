@@ -215,7 +215,7 @@ function cacheEls() {
     'workflowNextStatus',
     'workflowAllowedRoles',
     'workflowRequiresApproval',
-    'workflowApprovalRole',
+    'workflowApprovalRoles',
     'workflowMaxDiscount',
     'workflowHardStopDiscount',
     'workflowEditableFields',

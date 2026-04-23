@@ -1878,12 +1878,10 @@ Sample:
             <select id="workflowNextStatus" class="select" required>
               <option value="">Select next status</option>
             </select>
-            <select id="workflowAllowedRoles" class="select" required>
-              <option value="">Select allowed role</option>
+            <select id="workflowAllowedRoles" class="select" required multiple size="5" aria-label="Allowed Roles">
             </select>
             <select id="workflowRequiresApproval" class="select"><option value="false">No Approval</option><option value="true">Requires Approval</option></select>
-            <select id="workflowApprovalRole" class="select">
-              <option value="">Select approval role</option>
+            <select id="workflowApprovalRoles" class="select" multiple size="5" aria-label="Approval Roles">
             </select>
             <input id="workflowMaxDiscount" class="input" type="number" step="0.01" placeholder="Max discount %" />
             <input id="workflowHardStopDiscount" class="input" type="number" step="0.01" placeholder="Hard stop discount %" />
@@ -1897,7 +1895,7 @@ Sample:
               <button id="workflowRuleResetBtn" class="btn ghost sm" type="button">Reset</button>
             </div>
           </form>
-          <div id="workflowRulesDebug" class="muted" style="margin:6px 0 8px 0;">Loaded 0 workflow rule(s)</div><div class="table-wrap"><table><thead><tr><th>Resource</th><th>Current</th><th>Next</th><th>Allowed Roles</th><th>Approval</th><th>Discount Limit</th><th>Hard Stop</th><th>Active</th><th>Actions</th></tr></thead><tbody id="workflowRulesTbody"></tbody></table></div>
+          <div id="workflowRulesDebug" class="muted" style="margin:6px 0 8px 0;">Loaded 0 workflow rule(s)</div><div class="table-wrap"><table><thead><tr><th>Resource</th><th>Current</th><th>Next</th><th>Allowed Roles</th><th>Approval Roles</th><th>Discount Limit</th><th>Hard Stop</th><th>Active</th><th>Actions</th></tr></thead><tbody id="workflowRulesTbody"></tbody></table></div>
         </div>
 
         <div class="grid cols-2" style="margin-top:12px;gap:12px;">
@@ -1917,7 +1915,7 @@ Sample:
 
         <div class="card" style="margin-top:12px;">
           <strong>Pending Approvals</strong>
-          <div class="table-wrap" style="margin-top:8px;"><table><thead><tr><th>Resource</th><th>Record #</th><th>Company</th><th>Requested By</th><th>Current</th><th>Requested</th><th>Discount</th><th>Approval Role</th><th>Status</th><th>Actions</th></tr></thead><tbody id="workflowApprovalsTbody"></tbody></table></div>
+          <div class="table-wrap" style="margin-top:8px;"><table><thead><tr><th>Resource</th><th>Record #</th><th>Company</th><th>Requested By</th><th>Current</th><th>Requested</th><th>Discount</th><th>Approval Roles</th><th>Status</th><th>Actions</th></tr></thead><tbody id="workflowApprovalsTbody"></tbody></table></div>
         </div>
 
         <div class="card" style="margin-top:12px;">
