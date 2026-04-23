@@ -315,6 +315,7 @@ const Permissions = {
       let page = 1;
       let hasMore = true;
       let lastNormalized = null;
+      const denySummary = {};
       while (hasMore) {
         const response = await Api.listRolePermissions({
           limit: this.state.limit,
@@ -330,7 +331,6 @@ const Permissions = {
         if (page > 500) break;
       }
       const matrix = new Map();
-      console.info('[Permissions] raw role_permissions rows', rows);
       rows.forEach(row => {
         const resource = String(row.resource || '').trim().toLowerCase();
         const action = String(row.action || '').trim().toLowerCase();
@@ -342,16 +342,6 @@ const Permissions = {
         const isRowActive = this.toBoolean(row.is_active, true);
         const normalizedAllowedRoles = this.normalizeAllowedRoles(row);
         const normalizedRoleKey = this.normalizeRole(row.role_key);
-        console.info('[Permissions] normalized allowed roles per row', {
-          resource,
-          action,
-          role_key: row.role_key,
-          is_allowed: row.is_allowed,
-          is_active: row.is_active,
-          isRowAllowed,
-          isRowActive,
-          normalizedAllowedRoles
-        });
         if (!isRowActive) {
           matrix.set(key, existing);
           return;
@@ -363,6 +353,8 @@ const Permissions = {
           } else {
             existing.deniedRoles.add(normalizedRoleKey);
             existing.allowedRoles.delete(normalizedRoleKey);
+            const denyKey = `${normalizedRoleKey}::${resource}::${action}`;
+            denySummary[denyKey] = (denySummary[denyKey] || 0) + 1;
           }
         }
         if (isRowAllowed) normalizedAllowedRoles.forEach(roleValue => existing.allowedRoles.add(roleValue));
@@ -376,7 +368,15 @@ const Permissions = {
       this.state.limit = Number(lastNormalized?.limit || this.state.limit || 50);
       this.state.offset = 0;
       this.state.matrix = matrix;
-      console.info('[Permissions] final permission matrix keys', [...matrix.keys()]);
+      const groupedDenyRows = Object.entries(denySummary).map(([key, count]) => {
+        const [role_key, resource, action] = key.split('::');
+        return { role_key, resource, action, count };
+      });
+      console.info('[Permissions] matrix loaded', {
+        totalRowsLoaded: rows.length,
+        matrixKeyCount: matrix.size,
+        activeDenyRows: groupedDenyRows
+      });
       this.state.loaded = true;
       return rows;
     } catch (error) {

@@ -14,7 +14,9 @@ const Notifications = {
     },
     lastFetchedAt: '',
     pollTimer: null,
-    panelOpen: false
+    panelOpen: false,
+    unavailable: false,
+    unavailableReason: ''
   },
   normalize(item = {}) {
     const source = item && typeof item === 'object' ? item : {};
@@ -184,8 +186,81 @@ const Notifications = {
       action_label: String(firstValue(source.action_label, source.actionLabel)).trim()
     };
   },
+  messageFromError(error) {
+    const parts = [
+      error?.message,
+      error?.details,
+      error?.hint,
+      error?.error_description,
+      error?.code,
+      error?.status,
+      error?.statusCode,
+      error
+    ];
+    return parts
+      .map(part => String(part || '').toLowerCase())
+      .filter(Boolean)
+      .join(' ');
+  },
+  isNotificationsUnavailableError(error) {
+    const hay = this.messageFromError(error);
+    return (
+      hay.includes("could not find the table 'public.notifications' in the schema cache") ||
+      (hay.includes('schema cache') && hay.includes('notifications')) ||
+      (hay.includes('public.notifications') && hay.includes('not found')) ||
+      hay.includes('pgrst205') ||
+      (hay.includes('404') && hay.includes('notifications')) ||
+      (hay.includes('rest') && hay.includes('notifications') && hay.includes('not found'))
+    );
+  },
+  setUnavailable(reason = 'Notifications feature unavailable') {
+    if (this.state.unavailable) return;
+    this.state.unavailable = true;
+    this.state.unavailableReason = String(reason || 'Notifications feature unavailable');
+    this.state.items = [];
+    this.state.previewItems = [];
+    this.state.rawResponse = null;
+    this.state.rawRows = [];
+    this.state.unreadCount = 0;
+    this.state.loading = false;
+    this.state.previewLoading = false;
+    this.stopPolling();
+    if (E.notificationBellBtn) {
+      E.notificationBellBtn.disabled = true;
+      E.notificationBellBtn.setAttribute('aria-disabled', 'true');
+      E.notificationBellBtn.title = 'Notifications are unavailable in this environment.';
+    }
+    if (E.notificationsTab) {
+      E.notificationsTab.classList.add('disabled');
+      E.notificationsTab.setAttribute('aria-disabled', 'true');
+      E.notificationsTab.title = 'Notifications are unavailable in this environment.';
+    }
+    this.renderBell();
+    this.renderPreview();
+    this.renderHub();
+    console.warn('[notifications] notifications feature marked unavailable for this session', { reason: this.state.unavailableReason });
+  },
+  clearUnavailable() {
+    this.state.unavailable = false;
+    this.state.unavailableReason = '';
+    if (E.notificationBellBtn) {
+      E.notificationBellBtn.disabled = false;
+      E.notificationBellBtn.removeAttribute('aria-disabled');
+      E.notificationBellBtn.title = '';
+    }
+    if (E.notificationsTab) {
+      E.notificationsTab.classList.remove('disabled');
+      E.notificationsTab.removeAttribute('aria-disabled');
+      E.notificationsTab.title = '';
+    }
+  },
   async refreshUnreadCount() {
     if (!Session.isAuthenticated()) {
+      this.state.unreadCount = 0;
+      this.renderBell();
+      return 0;
+    }
+    if (this.state.unavailable) {
       this.state.unreadCount = 0;
       this.renderBell();
       return 0;
@@ -195,26 +270,17 @@ const Notifications = {
       this.renderBell();
       return this.state.unreadCount;
     }
-    const messageFromError = error => String(error?.message || error || '').toLowerCase();
     const isNotificationPermissionError = error => {
       if (typeof isPermissionError === 'function' && isPermissionError(error)) return true;
-      const message = messageFromError(error);
+      const message = this.messageFromError(error);
       return (
         (message.includes('forbidden') || message.includes('permission')) &&
         (message.includes('notification') || message.includes('get_unread_count'))
       );
     };
-    const isNotificationUnavailableError = error => {
-      const message = messageFromError(error);
-      return (
-        message.includes('unavailable') ||
-        message.includes('temporarily unavailable') ||
-        message.includes('service unavailable')
-      );
-    };
     const isSessionAuthError = error => {
       if (typeof isAuthError === 'function') return isAuthError(error);
-      const message = messageFromError(error);
+      const message = this.messageFromError(error);
       return message.includes('unauthorized') || message.includes('invalid session') || message.includes('expired session');
     };
     try {
@@ -229,10 +295,9 @@ const Notifications = {
         this.renderBell();
         return this.state.unreadCount;
       }
-      if (isNotificationUnavailableError(error)) {
-        console.warn('Notifications unread count is unavailable right now; continuing without unread count.', error);
-        this.renderBell();
-        return this.state.unreadCount;
+      if (this.isNotificationsUnavailableError(error)) {
+        this.setUnavailable(error?.message || 'Notifications feature unavailable');
+        return 0;
       }
       if (isSessionAuthError(error)) {
         console.warn('Notification unread count refresh detected a true session/auth error; expiring session.', error);
@@ -249,6 +314,11 @@ const Notifications = {
       this.renderPreview();
       return;
     }
+    if (this.state.unavailable) {
+      this.state.previewItems = [];
+      this.renderPreview();
+      return;
+    }
     this.state.previewLoading = true;
     this.renderPreview();
     try {
@@ -259,7 +329,10 @@ const Notifications = {
       const rows = this.extractRows(response).map(item => this.normalize(item));
       this.state.previewItems = rows.slice(0, 10);
     } catch (error) {
-      if (typeof isPermissionError === 'function' && isPermissionError(error)) {
+      if (this.isNotificationsUnavailableError(error)) {
+        this.setUnavailable(error?.message || 'Notifications feature unavailable');
+        this.state.previewItems = [];
+      } else if (typeof isPermissionError === 'function' && isPermissionError(error)) {
         console.log('[startup] permission error preserved session', error?.message);
         console.warn('Notification preview is not permitted for this role; keeping session active.', error);
         this.state.previewItems = [];
@@ -285,6 +358,11 @@ const Notifications = {
       }
     }
     if (!Session.isAuthenticated()) {
+      this.state.items = [];
+      this.renderHub();
+      return;
+    }
+    if (this.state.unavailable) {
       this.state.items = [];
       this.renderHub();
       return;
@@ -316,7 +394,9 @@ const Notifications = {
         this.state.rawRows = rows.slice();
       }
     } catch (error) {
-      if (typeof isPermissionError === 'function' && isPermissionError(error)) {
+      if (this.isNotificationsUnavailableError(error)) {
+        this.setUnavailable(error?.message || 'Notifications feature unavailable');
+      } else if (typeof isPermissionError === 'function' && isPermissionError(error)) {
         console.log('[startup] permission error preserved session', error?.message);
         console.warn('Unable to load notifications hub for this role; keeping session active.', error);
         this.state.items = [];
@@ -335,8 +415,16 @@ const Notifications = {
     }
   },
   async refreshAll(force = false) {
+    if (this.state.unavailable) {
+      this.renderBell();
+      this.renderPreview();
+      this.renderHub();
+      return;
+    }
     await this.refreshUnreadCount();
+    if (this.state.unavailable) return;
     await this.fetchPreview(force);
+    if (this.state.unavailable) return;
     await this.loadHub(force);
   },
   updateLocalRead(notificationId) {
@@ -354,7 +442,7 @@ const Notifications = {
     this.state.previewItems = update(this.state.previewItems);
   },
   async markRead(notificationId) {
-    if (!notificationId || !Session.isAuthenticated()) return;
+    if (!notificationId || !Session.isAuthenticated() || this.state.unavailable) return;
     this.updateLocalRead(notificationId);
     this.renderHub();
     this.renderPreview();
@@ -366,7 +454,7 @@ const Notifications = {
     await this.refreshUnreadCount();
   },
   async markAllRead() {
-    if (!Session.isAuthenticated()) return;
+    if (!Session.isAuthenticated() || this.state.unavailable) return;
     try {
       await Api.markAllNotificationsRead();
       this.state.items = this.state.items.map(item => ({ ...item, is_read: true, status: item.status || 'read' }));
@@ -491,6 +579,11 @@ const Notifications = {
   },
   renderPreview() {
     if (!E.notificationPreviewList || !E.notificationPreviewState) return;
+    if (this.state.unavailable) {
+      E.notificationPreviewState.textContent = 'Notifications are unavailable in this environment.';
+      E.notificationPreviewList.innerHTML = '';
+      return;
+    }
     if (this.state.previewLoading) {
       E.notificationPreviewState.textContent = 'Loading notifications…';
       E.notificationPreviewList.innerHTML = '';
@@ -547,6 +640,15 @@ const Notifications = {
   renderHub() {
     if (!E.notificationsState || !E.notificationsTbody) return;
     this.renderDebugInfo();
+    if (this.state.unavailable) {
+      E.notificationsState.textContent = 'Notifications are unavailable in this environment.';
+      E.notificationsTbody.innerHTML = '<tr><td colspan="8" class="muted">Notifications are unavailable in this environment.</td></tr>';
+      if (E.notificationsSummaryTotalUnread) E.notificationsSummaryTotalUnread.textContent = '0';
+      if (E.notificationsSummaryHighUnread) E.notificationsSummaryHighUnread.textContent = '0';
+      if (E.notificationsSummaryApprovalsUnread) E.notificationsSummaryApprovalsUnread.textContent = '0';
+      if (E.notificationsSummaryOperationsUnread) E.notificationsSummaryOperationsUnread.textContent = '0';
+      return;
+    }
     if (this.state.loading) {
       E.notificationsState.textContent = 'Loading notifications…';
       E.notificationsTbody.innerHTML = '';
@@ -658,7 +760,7 @@ const Notifications = {
   startPolling() {
     this.stopPolling();
     this.state.pollTimer = window.setInterval(() => {
-      if (!Session.isAuthenticated()) return;
+      if (!Session.isAuthenticated() || this.state.unavailable) return;
       this.refreshUnreadCount();
       if (this.state.panelOpen) this.fetchPreview();
     }, this.POLL_INTERVAL_MS);
@@ -681,6 +783,7 @@ const Notifications = {
     this.state.filters.mode = 'all';
     this.state.filters.search = '';
     this.state.lastFetchedAt = '';
+    this.clearUnavailable();
     if (E.notificationsSearchInput) E.notificationsSearchInput.value = '';
     if (E.notificationsFilterButtons) {
       E.notificationsFilterButtons.querySelectorAll('[data-filter]').forEach(btn => {
@@ -707,6 +810,7 @@ const Notifications = {
     if (E.notificationBellBtn) {
       E.notificationBellBtn.addEventListener('click', e => {
         e.stopPropagation();
+        if (this.state.unavailable) return;
         if (this.state.panelOpen) this.closePanel();
         else this.openPanel();
       });
@@ -719,6 +823,7 @@ const Notifications = {
     if (E.notificationOpenHubBtn) {
       E.notificationOpenHubBtn.addEventListener('click', () => {
         this.closePanel();
+        if (this.state.unavailable) return;
         setActiveView('notifications');
       });
     }
