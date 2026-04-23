@@ -1756,8 +1756,20 @@
           {}
       };
       const { data, error } = await client.rpc('create_workflow_approval', rpcPayload);
-      if (error) throw workflowError('Unable to create or reuse pending approval via create_workflow_approval RPC', error);
-      return data && typeof data === 'object' ? data : { ok: false, status: '', reason: 'Invalid approval RPC response.' };
+      if (error) throw workflowError('create_workflow_approval RPC failed while creating/reusing pending approval', error);
+      const normalizedApproval = data && typeof data === 'object'
+        ? data
+        : { ok: false, created: false, reused: false, approval_id: '', approval_role: '', status: '', resource: rpcPayload.p_resource, record_id: rpcPayload.p_record_id };
+      return {
+        ok: normalizedApproval.ok === true,
+        created: normalizedApproval.created === true,
+        reused: normalizedApproval.reused === true,
+        approval_id: String(normalizedApproval.approval_id || '').trim(),
+        approval_role: String(normalizedApproval.approval_role || '').trim(),
+        status: String(normalizedApproval.status || '').trim(),
+        resource: String(normalizedApproval.resource || rpcPayload.p_resource || '').trim(),
+        record_id: String(normalizedApproval.record_id || rpcPayload.p_record_id || '').trim()
+      };
     }
     if (requestedAction === 'request_approval' || requestedAction === 'approve' || requestedAction === 'reject' || requestedAction === 'list_pending_approvals') {
       assertAllowed('workflow', requestedAction);
