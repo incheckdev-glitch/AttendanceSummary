@@ -1497,9 +1497,19 @@
       if (error) throw workflowError('Unable to write workflow audit log', error);
     }
     function normalizeWorkflowResource(resourceValue = '', requestedChanges = {}) {
-      const direct = String(resourceValue || '').trim().toLowerCase();
-      if (direct) return direct;
-      return String(requestedChanges?.resource || requestedChanges?.target_workflow_resource || '').trim().toLowerCase();
+      const direct = String(
+        resourceValue ||
+        requestedChanges?.resource ||
+        requestedChanges?.target_workflow_resource ||
+        requestedChanges?.record_snapshot?.resource ||
+        ''
+      ).trim().toLowerCase();
+      if (direct && direct !== 'workflow') return direct;
+      if (requestedChanges?.proposal_id || requestedChanges?.proposal_number) return 'proposals';
+      if (requestedChanges?.agreement_id || requestedChanges?.agreement_number) return 'agreements';
+      if (requestedChanges?.invoice_id || requestedChanges?.invoice_number) return 'invoices';
+      if (requestedChanges?.receipt_id || requestedChanges?.receipt_number) return 'receipts';
+      return direct || '';
     }
     async function loadApprovalRowById(approvalId = '') {
       const id = String(approvalId || '').trim();
@@ -1883,7 +1893,13 @@
         ? safePayload.p_requested_changes
         : (Object.prototype.hasOwnProperty.call(safePayload, 'requested_changes') ? safePayload.requested_changes : {});
       const rpcPayload = {
-        p_resource: String(safePayload.p_resource ?? safePayload.resource ?? '').trim(),
+        p_resource: String(
+          safePayload.p_resource ??
+          safePayload.resource ??
+          safePayload.target_workflow_resource ??
+          safePayload.target_resource ??
+          ''
+        ).trim(),
         p_record_id: String(safePayload.p_record_id ?? safePayload.record_id ?? '').trim(),
         p_workflow_rule_id: safePayload.p_workflow_rule_id ?? safePayload.workflow_rule_id ?? null,
         p_requester_user_id: safePayload.p_requester_user_id ?? safePayload.requester_user_id ?? null,
@@ -1980,7 +1996,7 @@
         ? approval.requested_changes
         : {};
       const resource = normalizeWorkflowResource(approval?.resource, requestedChanges);
-      if (!resource) throw workflowError('Approval request is missing resource information.');
+      if (!resource || resource === 'workflow') throw workflowError('Workflow approval is missing a valid business resource.');
       if (requestedAction === 'reject') {
         const { data: rejected, error: rejectError } = await client
           .from('workflow_approvals')

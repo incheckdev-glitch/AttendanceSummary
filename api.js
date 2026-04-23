@@ -1154,8 +1154,11 @@ const Api = {
   },
   async createWorkflowApproval(payload = {}) {
     const source = payload && typeof payload === 'object' ? payload : {};
-    const response = await this.requestWithSession('workflow', 'create_workflow_approval', {
+    const approvalPayload = {
       resource: source.resource ?? source.p_resource ?? '',
+      p_resource: source.resource ?? source.p_resource ?? '',
+      target_workflow_resource: source.target_workflow_resource ?? source.target_resource ?? source.resource ?? source.p_resource ?? '',
+      target_resource: source.target_resource ?? source.target_workflow_resource ?? source.resource ?? source.p_resource ?? '',
       record_id: source.record_id ?? source.p_record_id ?? '',
       workflow_rule_id: source.workflow_rule_id ?? source.p_workflow_rule_id ?? null,
       requester_user_id: source.requester_user_id ?? source.p_requester_user_id ?? null,
@@ -1164,6 +1167,11 @@ const Api = {
       old_status: source.old_status ?? source.p_old_status ?? '',
       new_status: source.new_status ?? source.p_new_status ?? '',
       requested_changes: source.requested_changes ?? source.p_requested_changes ?? {}
+    };
+    const response = await apiPost({
+      ...approvalPayload,
+      resource: 'workflow',
+      action: 'create_workflow_approval'
     });
     return this.normalizeWorkflowApprovalResult(response);
   },
