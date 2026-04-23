@@ -1,3 +1,101 @@
+const NotificationSound = {
+  STORAGE_KEY: 'notifications:soundEnabled',
+  AUDIO_SRC: '/assets/notification.mp3',
+  audio: null,
+  audioUnlocked: false,
+  soundEnabled: true,
+  initialized: false,
+  seenNotificationIds: new Set(),
+  init() {
+    if (this.initialized) return;
+    this.initialized = true;
+    this.soundEnabled = this.readStoredPreference();
+    this.audio = new Audio(this.AUDIO_SRC);
+    this.audio.preload = 'auto';
+    this.audio.volume = 0.7;
+    const unlockHandler = () => this.unlock();
+    const options = { once: true, passive: true };
+    document.addEventListener('click', unlockHandler, options);
+    document.addEventListener('keydown', unlockHandler, options);
+    document.addEventListener('touchstart', unlockHandler, options);
+  },
+  readStoredPreference() {
+    try {
+      const raw = window.localStorage?.getItem(this.STORAGE_KEY);
+      if (raw === null) return true;
+      return raw === 'true';
+    } catch (error) {
+      console.debug('[notifications] unable to read sound preference', error);
+      return true;
+    }
+  },
+  unlock() {
+    if (this.audioUnlocked) return true;
+    if (!this.audio) this.audio = new Audio(this.AUDIO_SRC);
+    try {
+      const maybePromise = this.audio.play();
+      if (maybePromise && typeof maybePromise.then === 'function') {
+        maybePromise
+          .then(() => {
+            this.audio.pause();
+            this.audio.currentTime = 0;
+            this.audioUnlocked = true;
+          })
+          .catch(error => {
+            console.debug('[notifications] audio unlock blocked', error);
+          });
+      } else {
+        this.audio.pause();
+        this.audio.currentTime = 0;
+        this.audioUnlocked = true;
+      }
+    } catch (error) {
+      console.debug('[notifications] audio unlock failed', error);
+      return false;
+    }
+    return this.audioUnlocked;
+  },
+  hasSeen(notificationId) {
+    return this.seenNotificationIds.has(String(notificationId || ''));
+  },
+  markSeen(notificationId) {
+    const id = String(notificationId || '').trim();
+    if (!id) return false;
+    const alreadySeen = this.seenNotificationIds.has(id);
+    this.seenNotificationIds.add(id);
+    return !alreadySeen;
+  },
+  markSeenMany(items = []) {
+    items.forEach(item => this.markSeen(item?.notification_id));
+  },
+  isEnabled() {
+    return this.soundEnabled;
+  },
+  setEnabled(value) {
+    this.soundEnabled = Boolean(value);
+    try {
+      window.localStorage?.setItem(this.STORAGE_KEY, this.soundEnabled ? 'true' : 'false');
+    } catch (error) {
+      console.debug('[notifications] unable to persist sound preference', error);
+    }
+  },
+  play() {
+    if (!this.soundEnabled || !this.audioUnlocked) return;
+    if (!this.audio) this.audio = new Audio(this.AUDIO_SRC);
+    try {
+      this.audio.currentTime = 0;
+      const maybePromise = this.audio.play();
+      if (maybePromise && typeof maybePromise.catch === 'function') {
+        maybePromise.catch(error => {
+          console.debug('[notifications] audio play blocked', error);
+        });
+      }
+    } catch (error) {
+      console.debug('[notifications] audio play failed', error);
+    }
+  }
+};
+
 const Notifications = {
   POLL_INTERVAL_MS: 90000,
   state: {
@@ -21,7 +119,8 @@ const Notifications = {
     permissionDenied: false,
     permissionDeniedLogged: false,
     refreshCycleId: 0,
-    cyclePermissionLogKey: ''
+    cyclePermissionLogKey: '',
+    seenHydrated: false
   },
   normalize(item = {}) {
     const source = item && typeof item === 'object' ? item : {};
@@ -57,6 +156,7 @@ const Notifications = {
     const isRead = parseBoolean(firstValue(source.is_read, source.isRead, source.read)) || statusValue === 'read';
     return {
       notification_id: String(firstValue(source.notification_id, source.id)).trim(),
+      recipient_user_id: String(firstValue(source.recipient_user_id, source.user_id)).trim(),
       created_at: String(firstValue(source.created_at, source.createdAt, source.timestamp, source.date)).trim(),
       type: String(firstValue(source.type, source.notification_type)).trim().toLowerCase(),
       title: String(firstValue(source.title, source.notification_title, 'Untitled notification')).trim(),
@@ -363,6 +463,7 @@ const Notifications = {
       });
       const rows = this.extractRows(response).map(item => this.normalize(item));
       this.state.previewItems = rows.slice(0, 10);
+      this.handleIncomingNotifications(rows, { source: 'preview' });
     } catch (error) {
       if (this.isNotificationsUnavailableError(error)) {
         this.setUnavailable(error?.message || 'Notifications feature unavailable');
@@ -427,6 +528,7 @@ const Notifications = {
       console.debug('[notifications] normalized items', normalizedItems);
       console.debug('[notifications] active filters', this.state.filters);
       this.state.items = normalizedItems;
+      this.handleIncomingNotifications(normalizedItems, { source: 'hub' });
       this.state.lastFetchedAt = new Date().toISOString();
       if (rows.length > 0 && normalizedItems.length === 0) {
         this.state.rawRows = rows.slice();
@@ -467,6 +569,38 @@ const Notifications = {
     await this.fetchPreview(force);
     if (this.state.unavailable || this.state.permissionDenied) return;
     await this.loadHub(force);
+  },
+  handleIncomingNotifications(items = [], options = {}) {
+    const list = Array.isArray(items) ? items : [];
+    if (!list.length) return;
+    const userId = String(Session.userId?.() || '').trim();
+    if (!this.state.seenHydrated) {
+      NotificationSound.markSeenMany(list);
+      this.state.seenHydrated = true;
+      return;
+    }
+    list.forEach(item => {
+      const id = String(item?.notification_id || '').trim();
+      if (!id) return;
+      if (NotificationSound.hasSeen(id)) return;
+      NotificationSound.markSeen(id);
+      const recipientId = String(item?.recipient_user_id || '').trim();
+      const belongsToCurrentUser = !recipientId || !userId || recipientId === userId;
+      if (!belongsToCurrentUser) return;
+      if (item.is_read) return;
+      NotificationSound.play();
+      console.debug('[notifications] played notification sound', {
+        source: options.source || 'unknown',
+        notificationId: id
+      });
+    });
+  },
+  renderSoundToggle() {
+    if (!E.notificationSoundToggleBtn) return;
+    const enabled = NotificationSound.isEnabled();
+    E.notificationSoundToggleBtn.textContent = enabled ? '🔊 Sound on' : '🔇 Sound off';
+    E.notificationSoundToggleBtn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+    E.notificationSoundToggleBtn.title = enabled ? 'Mute notification sound' : 'Unmute notification sound';
   },
   updateLocalRead(notificationId) {
     if (!notificationId) return;
@@ -822,7 +956,10 @@ const Notifications = {
           schema: 'public',
           table: 'notifications',
           filter: `recipient_user_id=eq.${userId}`
-        }, () => {
+        }, payload => {
+          if (payload?.eventType === 'INSERT' && payload?.new) {
+            this.handleIncomingNotifications([this.normalize(payload.new)], { source: 'realtime' });
+          }
           this.refreshUnreadCount();
           if (this.state.panelOpen) this.fetchPreview(true);
           if (E.notificationsView?.classList.contains('active')) this.loadHub(true);
@@ -864,7 +1001,9 @@ const Notifications = {
     this.state.permissionDeniedLogged = false;
     this.state.cyclePermissionLogKey = '';
     this.state.refreshCycleId = 0;
+    this.state.seenHydrated = false;
     this.clearUnavailable();
+    NotificationSound.seenNotificationIds.clear();
     if (E.notificationsSearchInput) E.notificationsSearchInput.value = '';
     if (E.notificationsFilterButtons) {
       E.notificationsFilterButtons.querySelectorAll('[data-filter]').forEach(btn => {
@@ -875,6 +1014,7 @@ const Notifications = {
     this.renderBell();
     this.renderPreview();
     this.renderHub();
+    this.renderSoundToggle();
   },
   onAuthStateChanged() {
     if (!Session.isAuthenticated()) {
@@ -889,6 +1029,7 @@ const Notifications = {
     this.refreshAll(true);
   },
   wire() {
+    NotificationSound.init();
     if (E.notificationBellBtn) {
       E.notificationBellBtn.addEventListener('click', e => {
         e.stopPropagation();
@@ -907,6 +1048,13 @@ const Notifications = {
         this.closePanel();
         if (this.state.unavailable) return;
         setActiveView('notifications');
+      });
+    }
+    if (E.notificationSoundToggleBtn) {
+      E.notificationSoundToggleBtn.addEventListener('click', () => {
+        const nextValue = !NotificationSound.isEnabled();
+        NotificationSound.setEnabled(nextValue);
+        this.renderSoundToggle();
       });
     }
     if (E.notificationsMarkAllBtn) {
@@ -929,6 +1077,7 @@ const Notifications = {
     this.renderBell();
     this.renderPreview();
     this.renderHub();
+    this.renderSoundToggle();
   }
 };
 
