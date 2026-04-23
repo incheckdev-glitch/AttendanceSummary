@@ -1434,6 +1434,17 @@
     const normalizeWorkflowRows = value => asArray(value).map(row => normalizeRow('workflow', row));
     const normalizeWorkflowSingle = value => normalizeRow('workflow', value || {});
     const workflowError = (message, error) => friendlyError(`Workflow: ${message}`, error);
+    const normalizeRawId = value => String(value === undefined || value === null ? '' : value).trim();
+    async function findWorkflowRuleMatch(rawId) {
+      const normalizedId = normalizeRawId(rawId);
+      if (!normalizedId) return null;
+      const byWorkflowRuleId = await client.from('workflow_rules').select('*').eq('workflow_rule_id', normalizedId).maybeSingle();
+      if (byWorkflowRuleId.error) throw workflowError('Unable to match workflow rule by workflow_rule_id', byWorkflowRuleId.error);
+      if (byWorkflowRuleId.data) return byWorkflowRuleId.data;
+      const byLegacyId = await client.from('workflow_rules').select('*').eq('id', normalizedId).maybeSingle();
+      if (byLegacyId.error) throw workflowError('Unable to match workflow rule by id', byLegacyId.error);
+      return byLegacyId.data || null;
+    }
 
     const normalizedTransitionPayload = (() => {
       const record = safePayload.record && typeof safePayload.record === 'object' ? safePayload.record : {};
@@ -1514,25 +1525,76 @@
     if (requestedAction === 'get') {
       assertAllowed('workflow', 'get');
       const id = safePayload.workflow_rule_id || safePayload.id;
-      const { data, error } = await client.from('workflow_rules').select('*').eq('workflow_rule_id', id).single();
-      if (error) throw workflowError('Unable to load workflow rule', error);
-      return normalizeWorkflowSingle(data);
+      const matched = await findWorkflowRuleMatch(id);
+      if (!matched) throw workflowError('Unable to load workflow rule: rule not found');
+      return normalizeWorkflowSingle(matched);
     }
     if (requestedAction === 'save' || requestedAction === 'save_rule') {
       assertAllowed('workflow', 'save');
       const row = safePayload.rule || safePayload;
       const id = row.workflow_rule_id || row.id;
       const qb = client.from('workflow_rules');
-      const resp = id ? await qb.update(row).eq('workflow_rule_id', id).select('*').single() : await qb.insert(row).select('*').single();
+      if (id) {
+        const matched = await findWorkflowRuleMatch(id);
+        if (!matched) throw workflowError('Workflow rule could not be matched by workflow_rule_id or id.');
+        const updateColumn = normalizeRawId(matched.workflow_rule_id) ? 'workflow_rule_id' : 'id';
+        const updateId = normalizeRawId(matched[updateColumn]);
+        if (!updateId) throw workflowError('Workflow rule could not be matched by workflow_rule_id or id.');
+        const resp = await qb.update(row).eq(updateColumn, updateId).select('*').maybeSingle();
+        if (resp.error) throw workflowError('Unable to save workflow rule', resp.error);
+        if (resp.data) return normalizeWorkflowSingle(resp.data);
+        const refreshed = await findWorkflowRuleMatch(id);
+        if (!refreshed) throw workflowError('Workflow rule could not be matched by workflow_rule_id or id.');
+        return normalizeWorkflowSingle(refreshed);
+      }
+      const cleanRow = { ...row };
+      if (!normalizeRawId(cleanRow.id)) delete cleanRow.id;
+      if (!normalizeRawId(cleanRow.workflow_rule_id)) delete cleanRow.workflow_rule_id;
+      const resp = await qb.insert(cleanRow).select('*').maybeSingle();
       if (resp.error) throw workflowError('Unable to save workflow rule', resp.error);
-      return normalizeWorkflowSingle(resp.data);
+      if (resp.data) return normalizeWorkflowSingle(resp.data);
+      let fallback = null;
+      if (cleanRow.resource && cleanRow.current_status && cleanRow.next_status) {
+        const fallbackResp = await client
+          .from('workflow_rules')
+          .select('*')
+          .eq('resource', cleanRow.resource)
+          .eq('current_status', cleanRow.current_status)
+          .eq('next_status', cleanRow.next_status)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (fallbackResp.error) throw workflowError('Unable to load newly created workflow rule', fallbackResp.error);
+        fallback = fallbackResp.data || null;
+      }
+      if (!fallback) throw workflowError('Unable to save workflow rule: insert succeeded but no row was returned');
+      return normalizeWorkflowSingle(fallback);
     }
     if (requestedAction === 'delete' || requestedAction === 'delete_rule') {
       assertAllowed('workflow', 'delete');
       const id = safePayload.workflow_rule_id || safePayload.id;
-      const { error } = await client.from('workflow_rules').delete().eq('workflow_rule_id', id);
+      const matched = await findWorkflowRuleMatch(id);
+      if (!matched) throw workflowError('Workflow rule not found for delete');
+      const deleteColumn = normalizeRawId(matched.workflow_rule_id) ? 'workflow_rule_id' : 'id';
+      const deleteId = normalizeRawId(matched[deleteColumn]);
+      if (!deleteId) {
+        throw workflowError('Workflow rule was not deleted because no matching database row was found.');
+      }
+      const { data, error } = await client
+        .from('workflow_rules')
+        .delete()
+        .eq(deleteColumn, deleteId)
+        .select('workflow_rule_id,id')
+        .maybeSingle();
       if (error) throw workflowError('Unable to delete workflow rule', error);
-      return { ok: true, workflow_rule_id: String(id || '').trim() };
+      if (!data) {
+        throw workflowError('Workflow rule was not deleted because no matching database row was found.');
+      }
+      return {
+        ok: true,
+        workflow_rule_id: normalizeRawId(data.workflow_rule_id) || normalizeRawId(matched.workflow_rule_id) || deleteId,
+        id: normalizeRawId(data.id) || normalizeRawId(matched.id) || deleteId
+      };
     }
     if (requestedAction === 'validate_transition') {
       assertAllowed('workflow', 'get');

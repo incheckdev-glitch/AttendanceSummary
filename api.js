@@ -995,9 +995,13 @@ const Api = {
       return this.requestWithSession('workflow', 'save', body);
     }
   },
-  async deleteWorkflowRule(workflowRuleId) {
+  async deleteWorkflowRule(workflowRule) {
+    const source = workflowRule && typeof workflowRule === 'object'
+      ? workflowRule
+      : { workflow_rule_id: workflowRule };
     const body = {
-      workflow_rule_id: workflowRuleId,
+      workflow_rule_id: source.workflow_rule_id,
+      id: source.id,
       sheetName: CONFIG.WORKFLOW_RULES_SHEET_NAME
     };
     try {
