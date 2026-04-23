@@ -459,6 +459,15 @@ const Workflow = {
     if (workflowRuleId) payload.workflow_rule_id = workflowRuleId;
     return payload;
   },
+  sanitizeRuleSavePayload(payload = {}) {
+    const clean = payload && typeof payload === 'object' ? { ...payload } : {};
+    delete clean.allowed_roles_csv;
+    delete clean.approval_roles_csv;
+    delete clean.rule_id;
+    delete clean.miorder;
+    delete clean.minorder;
+    return clean;
+  },
   fillRuleForm(rule = {}) {
     const normalizedRule = this.normalizeWorkflowRule(rule);
     const editableFields = Array.isArray(rule.editable_fields) ? rule.editable_fields : String(rule.editable_fields || '').split(',');
@@ -811,7 +820,7 @@ const Workflow = {
       UI.toast('Forbidden.');
       return;
     }
-    const payload = this.getRulePayloadFromForm();
+    const payload = this.sanitizeRuleSavePayload(this.getRulePayloadFromForm());
     if (!payload.resource || !payload.current_status || !payload.next_status || !payload.allowed_roles.length) {
       return UI.toast('resource, current status, next status, and allowed roles are required.');
     }
