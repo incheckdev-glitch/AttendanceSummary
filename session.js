@@ -264,7 +264,6 @@ const Session = {
 
 function isAuthError(error) {
   const message = String(error?.message || error || '').trim().toLowerCase();
-  console.log('[auth-check] isAuthError input', error?.message || error);
   if (!message) return false;
   return (
     message.includes('unauthorized') ||
@@ -277,7 +276,8 @@ function isAuthError(error) {
 }
 
 function isPermissionError(error) {
-  const message = String(error?.message || error || '').toLowerCase();
+  const message = String(error?.message || error || '').trim().toLowerCase();
+  if (!message) return false;
   return (
     message.includes('forbidden') ||
     message.includes('not permitted') ||
