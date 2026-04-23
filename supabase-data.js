@@ -319,7 +319,8 @@
     ]),
     notifications: new Set([
       'notification_id','id','recipient_user_id','title','message','type','resource','resource_id',
-      'status','is_read','read_at','created_at','updated_at','priority'
+      'status','is_read','read_at','created_at','updated_at','priority',
+      'meta','meta_json','link_target','action_label','action_required','actor_user_id','actor_role'
     ])
   };
 
@@ -517,6 +518,20 @@
       out.request_message = out.request_message ?? out.request_details ?? out.technical_request_details ?? '';
       out.assigned_to = out.assigned_to ?? out.technical_admin_assigned_to ?? '';
       out.technical_admin_assigned_to = out.technical_admin_assigned_to ?? out.assigned_to ?? '';
+    }
+    if (resource === 'notifications') {
+      out.notification_id = out.notification_id ?? out.id ?? '';
+      out.id = out.id ?? out.notification_id ?? '';
+      out.status = out.status ?? (out.is_read ? 'read' : 'unread') ?? 'unread';
+      out.is_read = out.is_read === true || out.is_read === 1 || String(out.is_read || '').trim().toLowerCase() === 'true';
+      out.priority = String(out.priority || 'normal').trim().toLowerCase() || 'normal';
+      out.meta = out.meta ?? out.meta_json ?? {};
+      out.meta_json = out.meta_json ?? out.meta ?? {};
+      out.action_required = out.action_required === true || out.action_required === 1 || String(out.action_required || '').trim().toLowerCase() === 'true';
+      out.action_label = out.action_label ?? '';
+      out.link_target = out.link_target ?? '';
+      out.actor_user_id = out.actor_user_id ?? '';
+      out.actor_role = out.actor_role ?? '';
     }
     if (resource === 'users') {
       out.id = out.id ?? out.user_id ?? '';
@@ -1547,6 +1562,36 @@
       if (!data) throw workflowError('Approval request not found.');
       return normalizeWorkflowSingle(data);
     }
+    async function fireWorkflowNotificationRpc(fnName = '', args = {}) {
+      const rpcName = String(fnName || '').trim();
+      if (!rpcName) return null;
+      try {
+        const { data, error } = await client.rpc(rpcName, args || {});
+        if (error) {
+          console.warn(`[workflow notifications] ${rpcName} failed`, error);
+          return null;
+        }
+        return data ?? null;
+      } catch (error) {
+        console.warn(`[workflow notifications] ${rpcName} failed`, error);
+        return null;
+      }
+    }
+    async function notifyWorkflowApprovalCreated(approvalId = '') {
+      const normalizedId = String(approvalId || '').trim();
+      if (!normalizedId) return null;
+      return fireWorkflowNotificationRpc('notify_workflow_approval_request', { p_approval_id: normalizedId });
+    }
+    async function notifyWorkflowDecision(approvalId = '', decision = '', reviewerComment = '') {
+      const normalizedId = String(approvalId || '').trim();
+      const normalizedDecision = String(decision || '').trim().toLowerCase();
+      if (!normalizedId || !normalizedDecision) return null;
+      return fireWorkflowNotificationRpc('notify_workflow_decision', {
+        p_approval_id: normalizedId,
+        p_decision: normalizedDecision,
+        p_reviewer_comment: String(reviewerComment || '').trim() || null
+      });
+    }
     async function resolveWorkflowTargetRecord(resourceValue = '', approval = {}) {
       const resource = String(resourceValue || '').trim().toLowerCase();
       const table = TABLE_BY_RESOURCE[resource];
@@ -1965,6 +2010,9 @@
         ? data
         : { ok: false, created: false, reused: false, approval_id: '', approval_role: '', status: '', resource: rpcPayload.p_resource, record_id: rpcPayload.p_record_id };
       console.debug('[workflow] approval create RPC result', normalizedApproval);
+      if (normalizedApproval.ok === true && normalizedApproval.created === true && normalizedApproval.approval_id) {
+        await notifyWorkflowApprovalCreated(normalizedApproval.approval_id);
+      }
       return {
         ok: normalizedApproval.ok === true,
         created: normalizedApproval.created === true,
@@ -2073,6 +2121,7 @@
             }
           }
         });
+        await notifyWorkflowDecision(approval.approval_id, 'rejected', reviewerComment);
         return normalizeWorkflowSingle(rejected);
       }
       const { recordId: resolvedRecordId } = await resolveWorkflowTargetRecord(resource, approval);
@@ -2110,6 +2159,7 @@
           }
         }
       });
+      await notifyWorkflowDecision(approval.approval_id, 'approved', reviewerComment);
       return normalizeWorkflowSingle(approved);
     }
     if (requestedAction === 'list_audit') {
@@ -2476,7 +2526,21 @@
       const raw = payload[resource.slice(0, -1)] || payload.item || payload.activity || payload[resource] || payload;
       const record = raw && typeof raw === 'object' ? { ...raw } : {};
 
-      if (resource === 'users') {
+      if (resource === 'notifications') {
+      out.notification_id = out.notification_id ?? out.id ?? '';
+      out.id = out.id ?? out.notification_id ?? '';
+      out.status = out.status ?? (out.is_read ? 'read' : 'unread') ?? 'unread';
+      out.is_read = out.is_read === true || out.is_read === 1 || String(out.is_read || '').trim().toLowerCase() === 'true';
+      out.priority = String(out.priority || 'normal').trim().toLowerCase() || 'normal';
+      out.meta = out.meta ?? out.meta_json ?? {};
+      out.meta_json = out.meta_json ?? out.meta ?? {};
+      out.action_required = out.action_required === true || out.action_required === 1 || String(out.action_required || '').trim().toLowerCase() === 'true';
+      out.action_label = out.action_label ?? '';
+      out.link_target = out.link_target ?? '';
+      out.actor_user_id = out.actor_user_id ?? '';
+      out.actor_role = out.actor_role ?? '';
+    }
+    if (resource === 'users') {
         const email = String(firstDefined(record, ['email']) || '').trim().toLowerCase();
         const password = String(firstDefined(record, ['password', 'passcode', 'newPassword']) || '');
         const createProfileSeed = sanitizeUserProfileRecord(record);
@@ -2625,7 +2689,21 @@
       console.log('[CRUD] resource, pk, value', resource, key, id);
       const updates = payload.updates || payload.item || payload.activity || payload;
       const safeUpdates = { ...updates };
-      if (resource === 'users') {
+      if (resource === 'notifications') {
+      out.notification_id = out.notification_id ?? out.id ?? '';
+      out.id = out.id ?? out.notification_id ?? '';
+      out.status = out.status ?? (out.is_read ? 'read' : 'unread') ?? 'unread';
+      out.is_read = out.is_read === true || out.is_read === 1 || String(out.is_read || '').trim().toLowerCase() === 'true';
+      out.priority = String(out.priority || 'normal').trim().toLowerCase() || 'normal';
+      out.meta = out.meta ?? out.meta_json ?? {};
+      out.meta_json = out.meta_json ?? out.meta ?? {};
+      out.action_required = out.action_required === true || out.action_required === 1 || String(out.action_required || '').trim().toLowerCase() === 'true';
+      out.action_label = out.action_label ?? '';
+      out.link_target = out.link_target ?? '';
+      out.actor_user_id = out.actor_user_id ?? '';
+      out.actor_role = out.actor_role ?? '';
+    }
+    if (resource === 'users') {
         const userUpdates = sanitizeUserProfileRecord(safeUpdates, { includeId: false });
         delete userUpdates.id;
         if (!Object.keys(userUpdates).length) throw new Error('users update payload is empty after normalization.');

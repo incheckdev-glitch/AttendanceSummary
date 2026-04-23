@@ -14,6 +14,7 @@ const Notifications = {
     },
     lastFetchedAt: '',
     pollTimer: null,
+    realtimeChannel: null,
     panelOpen: false,
     unavailable: false,
     unavailableReason: '',
@@ -229,6 +230,7 @@ const Notifications = {
     this.state.loading = false;
     this.state.previewLoading = false;
     this.stopPolling();
+    this.stopRealtime();
     if (E.notificationBellBtn) {
       E.notificationBellBtn.disabled = true;
       E.notificationBellBtn.setAttribute('aria-disabled', 'true');
@@ -796,6 +798,41 @@ const Notifications = {
     }
     this.renderHub();
   },
+  stopRealtime() {
+    try {
+      const client = window.SupabaseClient?.getClient?.();
+      if (client && this.state.realtimeChannel) client.removeChannel(this.state.realtimeChannel);
+    } catch (error) {
+      console.warn('Unable to stop notifications realtime channel', error);
+    } finally {
+      this.state.realtimeChannel = null;
+    }
+  },
+  startRealtime() {
+    this.stopRealtime();
+    if (!Session.isAuthenticated() || this.state.unavailable || this.state.permissionDenied) return;
+    const client = window.SupabaseClient?.getClient?.();
+    const userId = String(Session.userId?.() || '').trim();
+    if (!client || !userId || typeof client.channel !== 'function') return;
+    try {
+      this.state.realtimeChannel = client
+        .channel(`notifications-${userId}`)
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'notifications',
+          filter: `recipient_user_id=eq.${userId}`
+        }, () => {
+          this.refreshUnreadCount();
+          if (this.state.panelOpen) this.fetchPreview(true);
+          if (E.notificationsView?.classList.contains('active')) this.loadHub(true);
+        })
+        .subscribe();
+    } catch (error) {
+      console.warn('Unable to start notifications realtime channel', error);
+      this.state.realtimeChannel = null;
+    }
+  },
   startPolling() {
     this.stopPolling();
     this.state.pollTimer = window.setInterval(() => {
@@ -812,6 +849,7 @@ const Notifications = {
   },
   reset() {
     this.stopPolling();
+    this.stopRealtime();
     this.state.items = [];
     this.state.rawResponse = null;
     this.state.rawRows = [];
@@ -847,6 +885,7 @@ const Notifications = {
     this.state.filters.mode = 'all';
     this.state.filters.search = '';
     this.startPolling();
+    this.startRealtime();
     this.refreshAll(true);
   },
   wire() {
