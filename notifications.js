@@ -123,7 +123,6 @@ const Notifications = {
     seenHydrated: false,
     seenRealtimeNotificationIds: new Set(),
     autoPopupTimer: null,
-    lastRealtimeNotificationId: '',
     previewHovering: false
   },
   normalize(item = {}) {
@@ -641,21 +640,21 @@ const Notifications = {
     const id = String(item?.notification_id || '').trim();
     if (!id) return null;
 
-    const insertOrReplace = (arr, maxLength = null) => {
+    const upsertInto = (arr, max = null) => {
       const next = Array.isArray(arr) ? [...arr] : [];
-      const index = next.findIndex(row => String(row?.notification_id || '').trim() === id);
-      if (index >= 0) next[index] = item;
+      const idx = next.findIndex(row => String(row?.notification_id || '').trim() === id);
+      if (idx >= 0) next[idx] = item;
       else next.unshift(item);
       next.sort((a, b) => {
         const ad = new Date(a?.created_at || 0).getTime();
         const bd = new Date(b?.created_at || 0).getTime();
         return bd - ad;
       });
-      return Number.isFinite(maxLength) ? next.slice(0, maxLength) : next;
+      return Number.isFinite(max) ? next.slice(0, max) : next;
     };
 
-    this.state.items = insertOrReplace(this.state.items);
-    this.state.previewItems = insertOrReplace(this.state.previewItems, 10);
+    this.state.items = upsertInto(this.state.items);
+    this.state.previewItems = upsertInto(this.state.previewItems, 10);
     this.recalculateUnreadCount();
     return item;
   },
@@ -694,14 +693,17 @@ const Notifications = {
     }
   },
   handleRealtimeInsert(raw) {
-    const item = this.upsertNotification(raw);
+    const item = this.normalize(raw);
     const id = String(item?.notification_id || '').trim();
     if (!id) return;
     if (this.state.seenRealtimeNotificationIds.has(id)) return;
     this.state.seenRealtimeNotificationIds.add(id);
 
-    if (!item.is_read) {
-      this.showInstantNotificationPopup(item);
+    const saved = this.upsertNotification(item);
+    if (!saved) return;
+
+    if (!saved.is_read) {
+      this.showInstantNotificationPopup(saved);
     } else {
       this.renderBell();
       this.renderPreview();
@@ -1080,14 +1082,16 @@ const Notifications = {
               this.handleRealtimeDelete(payload?.old || {});
               return;
             }
-          } catch (error) {
-            console.warn('[notifications] realtime handler failed', error);
-            this.refreshUnreadCount();
-            if (this.state.panelOpen) this.fetchPreview(true);
-            if (E.notificationsView?.classList.contains('active')) this.loadHub(true);
-          }
-        })
-        .subscribe();
+        } catch (error) {
+          console.warn('[notifications] realtime handler failed', error);
+          this.refreshUnreadCount();
+          if (this.state.panelOpen) this.fetchPreview(true);
+          if (E.notificationsView?.classList.contains('active')) this.loadHub(true);
+        }
+      })
+      .subscribe((status) => {
+        console.debug('[notifications] realtime status', status);
+      });
     } catch (error) {
       console.warn('Unable to start notifications realtime channel', error);
       this.state.realtimeChannel = null;
@@ -1125,13 +1129,12 @@ const Notifications = {
     this.state.cyclePermissionLogKey = '';
     this.state.refreshCycleId = 0;
     this.state.seenHydrated = false;
-    this.state.seenRealtimeNotificationIds = new Set();
-    this.state.lastRealtimeNotificationId = '';
-    this.state.previewHovering = false;
     if (this.state.autoPopupTimer) {
       clearTimeout(this.state.autoPopupTimer);
       this.state.autoPopupTimer = null;
     }
+    this.state.seenRealtimeNotificationIds = new Set();
+    this.state.previewHovering = false;
     this.clearUnavailable();
     NotificationSound.seenNotificationIds.clear();
     if (E.notificationsSearchInput) E.notificationsSearchInput.value = '';
