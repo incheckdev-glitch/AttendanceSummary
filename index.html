@@ -1931,6 +1931,23 @@ Sample:
         </div>
       </section>
 
+      <div id="workflowApprovalPreviewModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="workflowApprovalPreviewTitle" aria-hidden="true">
+        <div class="modal-content" style="max-width:980px;">
+          <div class="header">
+            <h2 id="workflowApprovalPreviewTitle" style="margin:0;font-size:20px;">Approval Preview</h2>
+            <div class="actions">
+              <button class="modal-close" id="workflowApprovalPreviewCloseBtn" aria-label="Close approval preview">✕</button>
+            </div>
+          </div>
+          <div id="workflowApprovalPreviewBody" class="muted" style="max-height:65vh;overflow:auto;"></div>
+          <div class="actions" style="justify-content:flex-end;gap:8px;margin-top:12px;">
+            <button id="workflowApprovalPreviewApproveBtn" class="btn sm" type="button">Approve</button>
+            <button id="workflowApprovalPreviewRejectBtn" class="btn ghost sm" type="button">Reject</button>
+            <button id="workflowApprovalPreviewFooterCloseBtn" class="btn ghost sm" type="button">Close</button>
+          </div>
+        </div>
+      </div>
+
       <section id="proposalCatalogView" class="view" role="tabpanel" aria-labelledby="proposalCatalogTab">
         <div class="grid cols-4" id="proposalCatalogSummary" aria-live="polite"></div>
         <div class="card" aria-label="Proposal catalog list">

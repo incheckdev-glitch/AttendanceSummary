@@ -316,7 +316,8 @@ const Workflow = {
     loaded: false,
     lastLoadedAt: 0,
     cacheTtlMs: 2 * 60 * 1000,
-    editingRuleLegacyId: ''
+    editingRuleLegacyId: '',
+    activeApprovalPreview: null
   },
   resourceOptions: ['proposals', 'agreements', 'invoices', 'receipts'],
   resourceStatusOptions: {
@@ -664,21 +665,68 @@ const Workflow = {
       }
     }
     if (!requestedChanges || typeof requestedChanges !== 'object') requestedChanges = {};
+    let recordSnapshot = requestedChanges?.record_snapshot;
+    if (typeof recordSnapshot === 'string') {
+      try {
+        recordSnapshot = JSON.parse(recordSnapshot);
+      } catch (_error) {
+        recordSnapshot = {};
+      }
+    }
+    if (!recordSnapshot || typeof recordSnapshot !== 'object') recordSnapshot = {};
+    const normalizedResource = String(row?.resource || requestedChanges?.resource || '').trim().toLowerCase();
+    const recoveredResource = normalizedResource === 'workflow'
+      ? String(
+          requestedChanges?.resource ||
+          requestedChanges?.target_workflow_resource ||
+          recordSnapshot?.resource ||
+          row?.target_workflow_resource ||
+          ''
+        ).trim().toLowerCase()
+      : normalizedResource;
+    const resource = recoveredResource || normalizedResource || 'unknown';
+    const previewRecordId =
+      requestedChanges?.proposal_id ||
+      requestedChanges?.agreement_id ||
+      requestedChanges?.invoice_id ||
+      requestedChanges?.receipt_id ||
+      row?.record_id ||
+      '';
+    const previewTitle =
+      requestedChanges?.proposal_number ||
+      requestedChanges?.agreement_number ||
+      requestedChanges?.invoice_number ||
+      requestedChanges?.receipt_number ||
+      row?.record_id ||
+      '';
+    const requestedBy =
+      requestedChanges?.submitted_by_name ||
+      requestedChanges?.submitted_by_email ||
+      row?.requester_role ||
+      '';
     return {
       ...row,
-      displayResource: row?.resource || '—',
-      displayRecordNumber:
-        requestedChanges?.proposal_number ||
-        requestedChanges?.proposal_reference ||
-        requestedChanges?.proposal_id ||
-        row?.record_id ||
-        '—',
+      resource,
+      recordId: String(row?.record_id || previewRecordId || '').trim(),
+      workflowRuleId: String(row?.workflow_rule_id || '').trim(),
+      approvalId: String(row?.approval_id || '').trim(),
+      proposalId: String(requestedChanges?.proposal_id || '').trim(),
+      agreementId: String(requestedChanges?.agreement_id || '').trim(),
+      invoiceId: String(requestedChanges?.invoice_id || '').trim(),
+      receiptId: String(requestedChanges?.receipt_id || '').trim(),
+      previewRecordId: String(previewRecordId || '').trim(),
+      previewTitle: String(previewTitle || '').trim(),
+      companyName: requestedChanges?.client_name || requestedChanges?.company_name || '',
+      currentStatus: row?.old_status || requestedChanges?.current_status || '',
+      requestedStatus: row?.new_status || requestedChanges?.requested_status || '',
+      discountPercent: Number(requestedChanges?.discount_percent ?? 0),
+      requestedBy,
+      recordSnapshot,
+      requestedChanges,
+      displayResource: resource || row?.resource || '—',
+      displayRecordNumber: String(previewTitle || requestedChanges?.proposal_reference || previewRecordId || row?.record_id || '—'),
       displayCompany: requestedChanges?.client_name || requestedChanges?.company_name || '—',
-      displayRequestedBy:
-        requestedChanges?.submitted_by_name ||
-        requestedChanges?.submitted_by_email ||
-        row?.requester_role ||
-        '—',
+      displayRequestedBy: requestedBy || '—',
       displayCurrent: row?.old_status || requestedChanges?.current_status || '—',
       displayRequested: row?.new_status || requestedChanges?.requested_status || '—',
       displayDiscount: Number(requestedChanges?.discount_percent ?? 0),
@@ -690,49 +738,93 @@ const Workflow = {
     if (!Number.isFinite(numeric)) return '0%';
     return `${numeric}%`;
   },
-  async openApproval(item = {}) {
-    const normalized = this.normalizePendingApproval(item);
-    const normalizedResource = String(normalized.resource || '').trim().toLowerCase();
-    const requestedChanges = normalized.requested_changes && typeof normalized.requested_changes === 'object'
-      ? normalized.requested_changes
-      : {};
-    if (normalizedResource === 'proposals') {
-      const proposalId = String(
-        normalized.record_id ||
-        requestedChanges?.proposal_id ||
-        ''
-      ).trim();
-      if (proposalId && typeof window.Proposals?.openProposalFormById === 'function') {
-        try {
-          await window.Proposals.openProposalFormById(proposalId, { readOnly: true, trigger: 'workflow-approval-open' });
-          return;
-        } catch (error) {
-          console.warn('Unable to open proposal directly from approval row', error);
-        }
+  toResourceLabel(resource) {
+    const value = String(resource || 'approval').trim().toLowerCase();
+    if (!value) return 'Approval';
+    return value.charAt(0).toUpperCase() + value.slice(1);
+  },
+  buildApprovalPreviewModalHtml(normalized = {}) {
+    const title = `${String(normalized.resource || 'approval').replace(/_/g, ' ')} · ${normalized.previewTitle || normalized.previewRecordId || 'Details'}`;
+    const changedFields = Array.isArray(normalized.requestedChanges?.changed_fields) ? normalized.requestedChanges.changed_fields : [];
+    const items = Array.isArray(normalized.requestedChanges?.items)
+      ? normalized.requestedChanges.items
+      : Array.isArray(normalized.recordSnapshot?.items) ? normalized.recordSnapshot.items : [];
+    return `
+      <div><strong>${U.escapeHtml(title)}</strong></div>
+      <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px;">
+        <div><span class="muted">Company / Client:</span> ${U.escapeHtml(normalized.companyName || '—')}</div>
+        <div><span class="muted">Record:</span> ${U.escapeHtml(normalized.previewRecordId || normalized.recordId || '—')}</div>
+        <div><span class="muted">Current status:</span> ${WorkflowEngine.getWorkflowBadgeHtml(normalized.currentStatus || '—')}</div>
+        <div><span class="muted">Requested status:</span> ${WorkflowEngine.getWorkflowBadgeHtml(normalized.requestedStatus || '—')}</div>
+        <div><span class="muted">Discount:</span> ${U.escapeHtml(this.formatDiscountPercent(normalized.discountPercent))}</div>
+        <div><span class="muted">Total amount:</span> ${U.escapeHtml(String(normalized.requestedChanges?.total_amount ?? normalized.recordSnapshot?.total_amount ?? '—'))}</div>
+        <div><span class="muted">Requested by:</span> ${U.escapeHtml(normalized.requestedBy || '—')}</div>
+        <div><span class="muted">Approval role:</span> ${U.escapeHtml(normalized.approval_role || '—')}</div>
+      </div>
+      <div style="margin-top:10px;">
+        <strong>Changed fields</strong>
+        <div class="muted" style="margin-top:4px;">${U.escapeHtml(changedFields.join(', ') || 'Not specified')}</div>
+      </div>
+      <div style="margin-top:10px;">
+        <strong>Items</strong>
+        <pre style="max-height:120px;overflow:auto;margin-top:4px;">${U.escapeHtml(JSON.stringify(items, null, 2) || '[]')}</pre>
+      </div>
+      <div style="margin-top:10px;">
+        <strong>Notes</strong>
+        <div class="muted" style="margin-top:4px;">${U.escapeHtml(normalized.requestedChanges?.notes || normalized.recordSnapshot?.notes || '—')}</div>
+      </div>
+      <div style="margin-top:10px;">
+        <strong>Requested Changes JSON</strong>
+        <pre style="max-height:180px;overflow:auto;margin-top:4px;">${U.escapeHtml(JSON.stringify(normalized.requestedChanges || {}, null, 2))}</pre>
+      </div>
+      <div style="margin-top:10px;">
+        <strong>Record Snapshot (read-only)</strong>
+        <pre style="max-height:180px;overflow:auto;margin-top:4px;">${U.escapeHtml(JSON.stringify(normalized.recordSnapshot || {}, null, 2))}</pre>
+      </div>
+    `;
+  },
+  openGenericApprovalPreview(normalizedApproval = {}) {
+    const normalized = this.normalizePendingApproval(normalizedApproval);
+    this.state.activeApprovalPreview = normalized;
+    if (E.workflowApprovalPreviewTitle) E.workflowApprovalPreviewTitle.textContent = `${this.toResourceLabel(normalized.resource)} Preview · ${normalized.previewTitle || normalized.previewRecordId || 'Details'}`;
+    if (E.workflowApprovalPreviewBody) E.workflowApprovalPreviewBody.innerHTML = this.buildApprovalPreviewModalHtml(normalized);
+    if (E.workflowApprovalPreviewModal) {
+      E.workflowApprovalPreviewModal.classList.add('open');
+      E.workflowApprovalPreviewModal.setAttribute('aria-hidden', 'false');
+    }
+  },
+  closeApprovalPreview() {
+    this.state.activeApprovalPreview = null;
+    if (!E.workflowApprovalPreviewModal) return;
+    E.workflowApprovalPreviewModal.classList.remove('open');
+    E.workflowApprovalPreviewModal.setAttribute('aria-hidden', 'true');
+    if (E.workflowApprovalPreviewBody) E.workflowApprovalPreviewBody.innerHTML = '';
+  },
+  async openApprovalPreview(approvalRow = {}) {
+    const normalized = this.normalizePendingApproval(approvalRow);
+    const resource = String(normalized.resource || '').trim().toLowerCase();
+    const previewId = String(normalized.previewRecordId || normalized.recordId || '').trim();
+    try {
+      if (resource === 'proposals' && previewId && typeof window.Proposals?.previewProposalHtml === 'function') {
+        await window.Proposals.previewProposalHtml(previewId);
+        return;
       }
+      if (resource === 'agreements' && previewId && typeof window.Agreements?.previewAgreementHtml === 'function') {
+        await window.Agreements.previewAgreementHtml(previewId);
+        return;
+      }
+      if (resource === 'invoices' && previewId && typeof window.Invoices?.previewInvoice === 'function') {
+        await window.Invoices.previewInvoice(previewId);
+        return;
+      }
+      if (resource === 'receipts' && previewId && typeof window.Receipts?.previewReceipt === 'function') {
+        await window.Receipts.previewReceipt(previewId);
+        return;
+      }
+    } catch (error) {
+      console.warn(`Unable to open ${resource} preview from workflow approval, falling back to generic preview.`, error);
     }
-    const action = window.prompt(
-      [
-        'Approval details',
-        `Proposal #: ${normalized.displayRecordNumber}`,
-        `Company: ${normalized.displayCompany}`,
-        `Current status: ${normalized.displayCurrent}`,
-        `Requested status: ${normalized.displayRequested}`,
-        `Discount: ${this.formatDiscountPercent(normalized.displayDiscount)}`,
-        `Requested by: ${normalized.displayRequestedBy}`,
-        `Approval role: ${normalized.displayApprovalRoles}`,
-        '',
-        'Submitted changes:',
-        JSON.stringify(requestedChanges, null, 2),
-        '',
-        'Type "approve" to approve, "reject" to reject, or leave empty to close.'
-      ].join('\n'),
-      ''
-    );
-    const normalizedAction = String(action || '').trim().toLowerCase();
-    if (normalizedAction === 'approve' || normalizedAction === 'reject') {
-      await this.actOnApproval(normalizedAction, normalized.approval_id);
-    }
+    this.openGenericApprovalPreview(normalized);
   },
   setMultiSelectValues(selectEl, values = []) {
     if (!selectEl) return;
@@ -853,7 +945,7 @@ const Workflow = {
       const approvalRoles = this.parseRoleList(item.approval_roles, item.approval_roles_csv || normalized.displayApprovalRoles).map(v => v.toLowerCase());
       return `
       <tr>
-        <td>${U.escapeHtml(normalized.displayResource)}</td><td>${U.escapeHtml(normalized.displayRecordNumber)}</td><td>${U.escapeHtml(normalized.displayCompany)}</td><td>${U.escapeHtml(normalized.displayRequestedBy)}</td>
+        <td>${U.escapeHtml(normalized.resource || normalized.displayResource)}</td><td>${U.escapeHtml(normalized.displayRecordNumber)}</td><td>${U.escapeHtml(normalized.displayCompany)}</td><td>${U.escapeHtml(normalized.displayRequestedBy)}</td>
         <td>${WorkflowEngine.getWorkflowBadgeHtml(normalized.displayCurrent)}</td><td>${WorkflowEngine.getWorkflowBadgeHtml(normalized.displayRequested)}</td><td>${U.escapeHtml(this.formatDiscountPercent(normalized.displayDiscount))}</td><td>${U.escapeHtml(approvalRoles.join(', ') || normalized.displayApprovalRoles)}</td>
         <td>${WorkflowEngine.getWorkflowBadgeHtml(item.status || 'Pending Approval')}</td>
         <td>${this.canProcessApprovals() || approvalRoles.includes(currentRole)
@@ -1034,17 +1126,20 @@ const Workflow = {
     this.renderRules();
     this.renderMatrix();
   },
-  async actOnApproval(action, approvalId) {
+  async actOnApproval(action, approvalId, { reviewerComment = null, closePreview = false } = {}) {
     if (!this.canProcessApprovals()) {
       UI.toast('Forbidden.');
       return;
     }
     const id = String(approvalId || '').trim();
     if (!id) return;
-    const reviewer_comment = window.prompt(`${action === 'approve' ? 'Approval' : 'Rejection'} comment`, '') || '';
+    const reviewer_comment = reviewerComment == null
+      ? (window.prompt(`${action === 'approve' ? 'Approval' : 'Rejection'} comment`, '') || '')
+      : String(reviewerComment || '');
     if (action === 'approve') await Api.approveWorkflowRequest({ approval_id: id, reviewer_comment });
     else await Api.rejectWorkflowRequest({ approval_id: id, reviewer_comment });
     UI.toast(`Approval ${action}d.`);
+    if (closePreview) this.closeApprovalPreview();
     await this.loadAndRefresh(true);
   },
   wire() {
@@ -1107,7 +1202,7 @@ const Workflow = {
           const approvalId = button.getAttribute('data-approval-id');
           if (action === 'open') {
             const approval = this.state.approvals.find(item => String(item?.approval_id || '').trim() === String(approvalId || '').trim());
-            await this.openApproval(approval || {});
+            await this.openApprovalPreview(approval || {});
             return;
           }
           await this.actOnApproval(action, approvalId);
@@ -1125,6 +1220,35 @@ const Workflow = {
         const resource = String(E.workflowMatrixResource?.value || '').trim();
         const rule = this.state.rules.find(item => String(item.resource || '').toLowerCase() === resource.toLowerCase() && String(item.current_status || '').toLowerCase() === String(from || '').toLowerCase() && String(item.next_status || '').toLowerCase() === String(to || '').toLowerCase());
         this.fillRuleForm(rule || { resource, current_status: from, next_status: to, is_active: true });
+      });
+    }
+    if (E.workflowApprovalPreviewCloseBtn) E.workflowApprovalPreviewCloseBtn.addEventListener('click', () => this.closeApprovalPreview());
+    if (E.workflowApprovalPreviewFooterCloseBtn) E.workflowApprovalPreviewFooterCloseBtn.addEventListener('click', () => this.closeApprovalPreview());
+    if (E.workflowApprovalPreviewModal) {
+      E.workflowApprovalPreviewModal.addEventListener('click', event => {
+        if (event.target === E.workflowApprovalPreviewModal) this.closeApprovalPreview();
+      });
+    }
+    if (E.workflowApprovalPreviewApproveBtn) {
+      E.workflowApprovalPreviewApproveBtn.addEventListener('click', async () => {
+        const active = this.state.activeApprovalPreview;
+        if (!active?.approvalId) return;
+        try {
+          await this.actOnApproval('approve', active.approvalId, { closePreview: true });
+        } catch (error) {
+          UI.toast(error?.message || 'Unable to approve request.');
+        }
+      });
+    }
+    if (E.workflowApprovalPreviewRejectBtn) {
+      E.workflowApprovalPreviewRejectBtn.addEventListener('click', async () => {
+        const active = this.state.activeApprovalPreview;
+        if (!active?.approvalId) return;
+        try {
+          await this.actOnApproval('reject', active.approvalId, { closePreview: true });
+        } catch (error) {
+          UI.toast(error?.message || 'Unable to reject request.');
+        }
       });
     }
   }
