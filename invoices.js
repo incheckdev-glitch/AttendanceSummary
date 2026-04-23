@@ -1960,6 +1960,10 @@ const Invoices = {
       requested_changes: { invoice: payloadInvoice, items }
     });
     if (workflowCheck && !workflowCheck.allowed) {
+      if (workflowCheck.pendingApproval === true && workflowCheck.approvalCreated === true) {
+        UI.toast('Approval request submitted successfully.');
+        return;
+      }
       UI.toast(window.WorkflowEngine.composeDeniedMessage(workflowCheck, 'Invoice save blocked.'));
       return;
     }
@@ -2036,6 +2040,10 @@ const Invoices = {
       requested_changes: { create_from_invoice: true }
     });
     if (workflowCheck && !workflowCheck.allowed) {
+      if (workflowCheck.pendingApproval === true && workflowCheck.approvalCreated === true) {
+        UI.toast('Approval request submitted successfully.');
+        return;
+      }
       UI.toast(window.WorkflowEngine.composeDeniedMessage(workflowCheck, 'Receipt creation blocked.'));
       return;
     }
