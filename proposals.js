@@ -1703,15 +1703,16 @@ const Proposals = {
         discount_percent: requestedDiscount,
         requested_changes: { proposal, items }
       });
-      if (workflowCheck?.allowed !== true) {
-        if (workflowCheck.pendingApproval === true && workflowCheck.approvalCreated === true) {
-          UI.toast('Approval request submitted successfully.');
-          return;
-        }
-        if (workflowCheck.pendingApproval === true && workflowCheck.approvalCreated !== true) {
-          UI.toast('Approval is required, but the approval request could not be created yet. Please retry.');
-          return;
-        }
+      try { console.info('[workflow] final decision', workflowCheck); } catch {}
+      if (workflowCheck?.allowed === true) {
+        // continue normal save
+      } else if (workflowCheck?.pendingApproval === true && workflowCheck?.approvalCreated === true) {
+        UI.toast('Approval request submitted successfully.');
+        return;
+      } else if (workflowCheck?.pendingApproval === true && workflowCheck?.approvalCreated !== true) {
+        UI.toast('Approval is required, but the approval request could not be created yet. Please retry.');
+        return;
+      } else {
         UI.toast(window.WorkflowEngine.composeDeniedMessage(workflowCheck, 'Proposal save blocked.'));
         return;
       }
