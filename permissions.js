@@ -151,7 +151,6 @@ const Permissions = {
     notifications: [{ resource: 'notifications', action: 'list' }],
     workflow: [{ resource: 'workflow', action: 'list' }],
     users: [{ resource: 'users', action: 'list' }],
-    roles: [{ resource: 'roles', action: 'list' }],
     rolePermissions: [{ resource: 'role_permissions', action: 'list' }]
   }),
   tabResourceMap: {
@@ -172,7 +171,6 @@ const Permissions = {
     proposalCatalog: 'proposal_catalog',
     notifications: 'notifications',
     users: 'users',
-    roles: 'roles',
     rolePermissions: 'role_permissions',
     workflow: 'workflow'
   },
