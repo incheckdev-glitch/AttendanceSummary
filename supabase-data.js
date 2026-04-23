@@ -1699,29 +1699,17 @@
           0
         ),
         p_user_role:
-          global.Session?.role?.() || '',
-        p_record_id: normalizedTransitionPayload.record_id || null,
-        p_record: normalizedTransitionPayload.record || {},
-        p_requested_changes: normalizedTransitionPayload.requested_changes || {}
+          global.Session?.role?.() || ''
       };
+      console.info('[workflow] validation rpc payload', rpcPayload);
       let data;
       let error;
       ({ data, error } = await client.rpc('validate_workflow_transition', rpcPayload));
       if (error) {
-        const message = String(error?.message || '').toLowerCase();
-        const signatureMismatch = message.includes('function') && (message.includes('does not exist') || message.includes('could not find'));
-        if (signatureMismatch) {
-          const fallbackPayload = {
-            p_resource: normalizedTransitionPayload.resource,
-            p_current_status: normalizedTransitionPayload.current_status,
-            p_next_status: normalizedTransitionPayload.next_status,
-            p_discount_percent: normalizedTransitionPayload.discount_percent
-          };
-          ({ data, error } = await client.rpc('validate_workflow_transition', fallbackPayload));
-        }
+        console.error('[workflow] validation unavailable', error);
+        throw workflowError('Validation failed', error);
       }
-      if (error) throw workflowError('Validation failed', error);
-      console.debug('[workflow] validation result', data);
+      console.info('[workflow] validation result', data);
       const normalizedValidation = normalizeWorkflowSingle(data || { allowed: true, reason: '' });
       if (!Array.isArray(normalizedValidation.approval_roles)) {
         normalizedValidation.approval_roles = normalizeRoleList(

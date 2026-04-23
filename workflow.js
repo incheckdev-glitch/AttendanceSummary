@@ -234,7 +234,7 @@ const WorkflowEngine = {
       try { console.info('[workflow] final decision', workflowCheck); } catch {}
       return workflowCheck;
     } catch (error) {
-      console.error('[workflow validation unavailable]', error);
+      console.error('[workflow] validation unavailable', error);
       try { console.info('[workflow] final decision', validationUnavailableResult); } catch {}
       return validationUnavailableResult;
     } finally {
