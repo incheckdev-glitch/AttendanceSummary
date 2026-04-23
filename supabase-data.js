@@ -343,36 +343,46 @@
   function isAllowed(resource, action) {
     const normalizedResource = String(resource || '').trim().toLowerCase();
     const normalizedAction = String(action || '').trim().toLowerCase();
-    if (!global.Session?.isAuthenticated?.()) return false;
+    const auth = global.Session?.authContext?.() || {};
+    const hasRole = Boolean(String(auth.role || '').trim());
+    const hasUser = Boolean(auth.user?.id);
+    const hasSession = Boolean(auth.session?.user?.id || auth.session?.access_token);
+    const authenticated = hasRole && hasUser && hasSession;
+    if (!authenticated) return false;
     if (!normalizedResource || !normalizedAction) return false;
     if (global.Permissions?.canPerformAction) {
-      return Boolean(global.Permissions.canPerformAction(normalizedResource, normalizedAction, role()));
+      return Boolean(global.Permissions.canPerformAction(normalizedResource, normalizedAction, auth.role));
     }
     const rule = allowedRoles(normalizedResource, normalizedAction);
-    if (!rule) return role() === 'admin';
-    return rule.includes(role());
+    const currentRole = String(auth.role || '').trim().toLowerCase();
+    if (!rule) return currentRole === 'admin';
+    return rule.includes(currentRole);
   }
   function assertAllowed(resource, action, reason = '') {
     const normalizedResource = String(resource || '').trim().toLowerCase();
     const normalizedAction = String(action || '').trim().toLowerCase();
-    const isAuthenticated = Boolean(global.Session?.isAuthenticated?.());
-    const finalDecision = Boolean(
-      global.Permissions?.canPerformAction?.(normalizedResource, normalizedAction, role())
-    );
-    const decisionWithAuth = isAuthenticated && finalDecision;
-    if (decisionWithAuth) return;
-    console.debug('[supabase-data.permission-denied]', {
+    const authContext = global.Session?.authContext?.() || {};
+    const role = String(authContext.role || '').trim().toLowerCase();
+    const hasRole = Boolean(role);
+    const hasUser = Boolean(authContext.user?.id);
+    const hasSession = Boolean(authContext.session?.user?.id || authContext.session?.access_token);
+    const authenticated = hasRole && hasUser && hasSession;
+    const baseAllowedRoles = global.Permissions?.getBaseAllowedRoles?.(normalizedResource, normalizedAction);
+    const matrixEntry = global.Permissions?.getMatrixEntry?.(normalizedResource, normalizedAction);
+    const finalDecision = isAllowed(normalizedResource, normalizedAction);
+    if (finalDecision) return;
+    console.warn('[supabase-data.assertAllowed]', {
       resource: normalizedResource,
       action: normalizedAction,
-      role: role(),
-      isAuthenticated,
-      authContext: global.Session?.authContext?.(),
-      baseAllowedRoles: global.Permissions?.getBaseAllowedRoles?.(normalizedResource, normalizedAction),
-      matrixEntry: global.Permissions?.getMatrixEntry?.(normalizedResource, normalizedAction),
+      role,
+      authenticated,
+      authContext,
+      baseAllowedRoles,
+      matrixEntry,
       finalDecision
     });
     const suffix = reason ? ` (${reason})` : '';
-    throw new Error(`Forbidden: ${role() || 'unknown'} cannot ${normalizedAction} ${normalizedResource}${suffix}.`);
+    throw new Error(`Forbidden: ${role || 'unknown'} cannot ${normalizedAction} ${normalizedResource}${suffix}.`);
   }
 
   function friendlyError(prefix, error) {

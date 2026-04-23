@@ -4506,15 +4506,15 @@ function wireDashboardGate() {
   };
   const logPermissionSelfTest = () => {
     if (!Session.isAuthenticated()) return;
-    const currentRole = Session.role();
     console.info('[permission self-test]', {
-      role: currentRole,
+      role: Session.role(),
       isAuthenticated: Session.isAuthenticated(),
       authContext: Session.authContext(),
-      ticketsList: Permissions.canPerformAction('tickets', 'list', currentRole),
-      proposalsList: Permissions.canPerformAction('proposals', 'list', currentRole),
-      notificationsUnread: Permissions.canPerformAction('notifications', 'get_unread_count', currentRole),
-      canLoadRuntimeMatrix: Permissions.canLoadRuntimeMatrix(currentRole)
+      ticketsList: Permissions.canPerformAction('tickets', 'list', Session.role()),
+      proposalsList: Permissions.canPerformAction('proposals', 'list', Session.role()),
+      notificationsList: Permissions.canPerformAction('notifications', 'list', Session.role()),
+      notificationsUnread: Permissions.canPerformAction('notifications', 'get_unread_count', Session.role()),
+      canLoadRuntimeMatrix: Permissions.canLoadRuntimeMatrix(Session.role())
     });
   };
 
@@ -6077,6 +6077,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       authContext: Session.authContext(),
       ticketsList: Permissions.canPerformAction('tickets', 'list', Session.role()),
       proposalsList: Permissions.canPerformAction('proposals', 'list', Session.role()),
+      notificationsList: Permissions.canPerformAction('notifications', 'list', Session.role()),
       notificationsUnread: Permissions.canPerformAction('notifications', 'get_unread_count', Session.role()),
       canLoadRuntimeMatrix: Permissions.canLoadRuntimeMatrix(Session.role())
     });
