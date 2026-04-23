@@ -1704,7 +1704,6 @@
         p_record: normalizedTransitionPayload.record || {},
         p_requested_changes: normalizedTransitionPayload.requested_changes || {}
       };
-      console.debug('[workflow] validation request', rpcPayload);
       let data;
       let error;
       ({ data, error } = await client.rpc('validate_workflow_transition', rpcPayload));
@@ -1760,6 +1759,7 @@
       const normalizedApproval = data && typeof data === 'object'
         ? data
         : { ok: false, created: false, reused: false, approval_id: '', approval_role: '', status: '', resource: rpcPayload.p_resource, record_id: rpcPayload.p_record_id };
+      console.debug('[workflow] approval create RPC result', normalizedApproval);
       return {
         ok: normalizedApproval.ok === true,
         created: normalizedApproval.created === true,

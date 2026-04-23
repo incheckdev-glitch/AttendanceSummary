@@ -1708,6 +1708,10 @@ const Proposals = {
           UI.toast('Approval request submitted successfully.');
           return;
         }
+        if (workflowCheck.pendingApproval === true && workflowCheck.approvalCreated !== true) {
+          UI.toast('Approval is required, but the approval request could not be created yet. Please retry.');
+          return;
+        }
         UI.toast(window.WorkflowEngine.composeDeniedMessage(workflowCheck, 'Proposal save blocked.'));
         return;
       }
