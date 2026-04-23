@@ -1750,8 +1750,9 @@
       }
       const row = safePayload;
       if (requestedAction === 'request_approval') {
-        const { data, error } = await client.from('workflow_approvals').insert(row).select('*').single();
-        if (error) throw workflowError('Unable to create approval request', error);
+        const { data, error } = await client.from('workflow_approvals').insert(row).select('*').maybeSingle();
+        if (error) throw workflowError('Unable to create approval request row in workflow_approvals', error);
+        if (!data) throw workflowError('Unable to create approval request row in workflow_approvals', new Error('No row returned from insert.'));
         console.debug('[workflow] approval creation', { approval_id: data?.approval_id || data?.id || '', status: data?.status || 'pending' });
         return normalizeWorkflowSingle(data);
       }
