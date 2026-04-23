@@ -1421,74 +1421,185 @@
 
   async function handleWorkflow(action, payload) {
     const client = getClient();
-    if (action === 'list' || action === 'list_rules') {
+    const requestedAction = String(action || '').trim().toLowerCase();
+    const safePayload = payload && typeof payload === 'object' ? payload : {};
+
+    const asArray = value => (Array.isArray(value) ? value : []);
+    const firstValue = (...values) => {
+      for (const value of values) {
+        if (value !== undefined && value !== null && String(value).trim() !== '') return value;
+      }
+      return '';
+    };
+    const normalizeWorkflowRows = value => asArray(value).map(row => normalizeRow('workflow', row));
+    const normalizeWorkflowSingle = value => normalizeRow('workflow', value || {});
+    const workflowError = (message, error) => friendlyError(`Workflow: ${message}`, error);
+
+    const normalizedTransitionPayload = (() => {
+      const record = safePayload.record && typeof safePayload.record === 'object' ? safePayload.record : {};
+      const requestedChanges = safePayload.requested_changes && typeof safePayload.requested_changes === 'object'
+        ? safePayload.requested_changes
+        : {};
+      const resource = String(
+        firstValue(
+          safePayload.resource,
+          safePayload.target_workflow_resource,
+          safePayload.target_resource,
+          safePayload.workflow_resource,
+          requestedChanges.resource,
+          record.resource
+        )
+      ).trim().toLowerCase();
+      const currentStatus = String(
+        firstValue(
+          safePayload.current_status,
+          safePayload.from_status,
+          requestedChanges.current_status,
+          requestedChanges.from_status,
+          record.current_status,
+          record.status
+        )
+      ).trim();
+      const nextStatus = String(
+        firstValue(
+          safePayload.next_status,
+          safePayload.to_status,
+          safePayload.requested_status,
+          requestedChanges.next_status,
+          requestedChanges.to_status,
+          requestedChanges.requested_status
+        )
+      ).trim();
+      const discountPercent = Number(
+        firstValue(
+          safePayload.discount_percent,
+          requestedChanges.discount_percent,
+          record.discount_percent,
+          0
+        )
+      );
+      const normalizedDiscountPercent = Number.isFinite(discountPercent) ? discountPercent : 0;
+      const recordId = String(
+        firstValue(
+          safePayload.record_id,
+          safePayload.id,
+          safePayload.proposal_id,
+          safePayload.agreement_id,
+          safePayload.invoice_id,
+          safePayload.receipt_id,
+          record.id,
+          record.proposal_id,
+          record.agreement_id,
+          record.invoice_id,
+          record.receipt_id
+        )
+      ).trim();
+      return {
+        resource,
+        current_status: currentStatus,
+        next_status: nextStatus,
+        discount_percent: normalizedDiscountPercent,
+        record_id: recordId,
+        record,
+        requested_changes: requestedChanges
+      };
+    })();
+
+    if (requestedAction === 'list' || requestedAction === 'list_rules') {
       assertAllowed('workflow', 'list');
-      const { data, error } = await applyFilters(client.from('workflow_rules').select('*'), payload).order('updated_at', { ascending: false });
-      if (error) throw friendlyError('Unable to load workflow rules', error);
-      return normalizeList('workflow', data);
+      const { data, error } = await applyFilters(client.from('workflow_rules').select('*'), safePayload).order('updated_at', { ascending: false });
+      if (error) throw workflowError('Unable to load workflow rules', error);
+      return normalizeList('workflow', normalizeWorkflowRows(data));
     }
-    if (action === 'get') {
+    if (requestedAction === 'get') {
       assertAllowed('workflow', 'get');
-      const id = payload.workflow_rule_id || payload.id;
+      const id = safePayload.workflow_rule_id || safePayload.id;
       const { data, error } = await client.from('workflow_rules').select('*').eq('workflow_rule_id', id).single();
-      if (error) throw friendlyError('Unable to load workflow rule', error);
-      return data;
+      if (error) throw workflowError('Unable to load workflow rule', error);
+      return normalizeWorkflowSingle(data);
     }
-    if (action === 'save' || action === 'save_rule') {
+    if (requestedAction === 'save' || requestedAction === 'save_rule') {
       assertAllowed('workflow', 'save');
-      const row = payload.rule || payload;
+      const row = safePayload.rule || safePayload;
       const id = row.workflow_rule_id || row.id;
       const qb = client.from('workflow_rules');
       const resp = id ? await qb.update(row).eq('workflow_rule_id', id).select('*').single() : await qb.insert(row).select('*').single();
-      if (resp.error) throw friendlyError('Unable to save workflow rule', resp.error);
-      return resp.data;
+      if (resp.error) throw workflowError('Unable to save workflow rule', resp.error);
+      return normalizeWorkflowSingle(resp.data);
     }
-    if (action === 'delete' || action === 'delete_rule') {
+    if (requestedAction === 'delete' || requestedAction === 'delete_rule') {
       assertAllowed('workflow', 'delete');
-      const id = payload.workflow_rule_id || payload.id;
+      const id = safePayload.workflow_rule_id || safePayload.id;
       const { error } = await client.from('workflow_rules').delete().eq('workflow_rule_id', id);
-      if (error) throw friendlyError('Unable to delete workflow rule', error);
-      return { ok: true };
+      if (error) throw workflowError('Unable to delete workflow rule', error);
+      return { ok: true, workflow_rule_id: String(id || '').trim() };
     }
-    if (action === 'validate_transition') {
+    if (requestedAction === 'validate_transition') {
       assertAllowed('workflow', 'get');
-      const rpcPayload = {
-        p_resource: payload.target_workflow_resource || payload.resource || payload.target_resource || '',
-        p_current_status: payload.from_status || payload.current_status || '',
-        p_next_status: payload.to_status || payload.next_status || '',
-        p_discount_percent: Number(payload.amount || payload.numeric || 0)
-      };
-      console.debug('[workflow] validate_workflow_transition payload', rpcPayload);
-      const { data, error } = await client.rpc('validate_workflow_transition', rpcPayload);
-      if (error) throw friendlyError('Workflow validation failed', error);
-      return data;
-    }
-    if (action === 'request_approval' || action === 'approve' || action === 'reject' || action === 'list_pending_approvals') {
-      assertAllowed('workflow', action);
-      if (action === 'list_pending_approvals') {
-        const { data, error } = await client.from('workflow_approvals').select('*').eq('status', 'pending').order('created_at', { ascending: false });
-        if (error) throw friendlyError('Unable to load workflow approvals', error);
-        return data;
+      if (!normalizedTransitionPayload.resource) {
+        throw new Error('Workflow validation requires a resource.');
       }
-      const row = payload;
-      if (action === 'request_approval') {
+      const rpcPayload = {
+        p_resource: normalizedTransitionPayload.resource,
+        p_current_status: normalizedTransitionPayload.current_status,
+        p_next_status: normalizedTransitionPayload.next_status,
+        p_discount_percent: normalizedTransitionPayload.discount_percent,
+        p_record_id: normalizedTransitionPayload.record_id || null,
+        p_record: normalizedTransitionPayload.record || {},
+        p_requested_changes: normalizedTransitionPayload.requested_changes || {}
+      };
+      console.debug('[workflow] validation request', rpcPayload);
+      let data;
+      let error;
+      ({ data, error } = await client.rpc('validate_workflow_transition', rpcPayload));
+      if (error) {
+        const message = String(error?.message || '').toLowerCase();
+        const signatureMismatch = message.includes('function') && (message.includes('does not exist') || message.includes('could not find'));
+        if (signatureMismatch) {
+          const fallbackPayload = {
+            p_resource: normalizedTransitionPayload.resource,
+            p_current_status: normalizedTransitionPayload.current_status,
+            p_next_status: normalizedTransitionPayload.next_status,
+            p_discount_percent: normalizedTransitionPayload.discount_percent
+          };
+          ({ data, error } = await client.rpc('validate_workflow_transition', fallbackPayload));
+        }
+      }
+      if (error) throw workflowError('Validation failed', error);
+      console.debug('[workflow] validation result', data);
+      return data || { allowed: true, reason: '' };
+    }
+    if (requestedAction === 'request_approval' || requestedAction === 'approve' || requestedAction === 'reject' || requestedAction === 'list_pending_approvals') {
+      assertAllowed('workflow', requestedAction);
+      if (requestedAction === 'list_pending_approvals') {
+        let query = client.from('workflow_approvals').select('*').order('created_at', { ascending: false });
+        query = query.eq('status', 'pending');
+        const { data, error } = await query;
+        if (error) throw workflowError('Unable to load pending approvals', error);
+        return normalizeList('workflow', normalizeWorkflowRows(data));
+      }
+      const row = safePayload;
+      if (requestedAction === 'request_approval') {
         const { data, error } = await client.from('workflow_approvals').insert(row).select('*').single();
-        if (error) throw friendlyError('Unable to request workflow approval', error);
-        return data;
+        if (error) throw workflowError('Unable to create approval request', error);
+        console.debug('[workflow] approval creation', { approval_id: data?.approval_id || data?.id || '', status: data?.status || 'pending' });
+        return normalizeWorkflowSingle(data);
       }
       const id = row.approval_id || row.workflow_approval_id || row.id;
-      const nextStatus = action === 'approve' ? 'approved' : 'rejected';
-      const { data, error } = await client.from('workflow_approvals').update({ ...row, status: nextStatus }).eq('approval_id', id).select('*').single();
-      if (error) throw friendlyError('Unable to update workflow approval', error);
-      return data;
+      const nextStatus = requestedAction === 'approve' ? 'approved' : 'rejected';
+      let updateQuery = client.from('workflow_approvals').update({ ...row, status: nextStatus }).select('*').single();
+      if (id) updateQuery = updateQuery.eq('approval_id', id);
+      const { data, error } = await updateQuery;
+      if (error) throw workflowError('Unable to update approval request', error);
+      return normalizeWorkflowSingle(data);
     }
-    if (action === 'list_audit') {
+    if (requestedAction === 'list_audit') {
       assertAllowed('workflow', 'list_audit');
       const { data, error } = await client.from('workflow_audit_log').select('*').order('created_at', { ascending: false });
-      if (error) throw friendlyError('Unable to load workflow audit log', error);
-      return data;
+      if (error) throw workflowError('Unable to load workflow audit log', error);
+      return normalizeList('workflow', normalizeWorkflowRows(data));
     }
-    throw new Error(`Unsupported workflow action: ${action}`);
+    throw new Error(`Unsupported workflow action: ${requestedAction || action}`);
   }
 
   async function handleRpcResource(resource, action, payload) {

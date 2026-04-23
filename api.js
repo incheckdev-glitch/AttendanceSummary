@@ -1009,22 +1009,92 @@ const Api = {
       return this.requestWithSession('workflow', 'delete', body);
     }
   },
-  async validateWorkflowTransition(payload = {}) {
-    const targetResource = String(
-      payload?.target_workflow_resource ||
-      payload?.target_resource ||
-      payload?.workflow_resource ||
-      payload?.resource ||
-      ''
+  buildWorkflowTransitionPayload(payload = {}) {
+    const source = payload && typeof payload === 'object' ? payload : {};
+    const record = source.record && typeof source.record === 'object' ? source.record : {};
+    const requestedChanges = source.requested_changes && typeof source.requested_changes === 'object'
+      ? source.requested_changes
+      : {};
+
+    const firstNonEmpty = (...values) => {
+      for (const value of values) {
+        if (value !== undefined && value !== null && String(value).trim() !== '') return value;
+      }
+      return '';
+    };
+
+    const normalizedResource = String(
+      firstNonEmpty(
+        source.resource,
+        source.target_workflow_resource,
+        source.target_resource,
+        source.workflow_resource,
+        requestedChanges.resource,
+        record.resource
+      )
+    ).trim().toLowerCase();
+
+    const currentStatus = String(
+      firstNonEmpty(
+        source.current_status,
+        source.from_status,
+        requestedChanges.current_status,
+        requestedChanges.from_status,
+        record.current_status,
+        record.status
+      )
     ).trim();
-    return this.requestWithSession('workflow', 'validate_transition', {
-      ...payload,
-      resource: undefined,
-      target_workflow_resource: targetResource,
-      target_resource: targetResource,
-      workflow_resource: targetResource,
+
+    const nextStatus = String(
+      firstNonEmpty(
+        source.next_status,
+        source.to_status,
+        source.requested_status,
+        requestedChanges.next_status,
+        requestedChanges.to_status,
+        requestedChanges.requested_status,
+        record.next_status
+      )
+    ).trim();
+
+    const discountCandidate = firstNonEmpty(
+      source.discount_percent,
+      requestedChanges.discount_percent,
+      record.discount_percent
+    );
+    const parsedDiscount = Number(discountCandidate);
+    const normalizedDiscount = Number.isFinite(parsedDiscount) ? parsedDiscount : 0;
+
+    const normalizedRecordId = String(
+      firstNonEmpty(
+        source.record_id,
+        source.id,
+        source.proposal_id,
+        source.agreement_id,
+        source.invoice_id,
+        source.receipt_id,
+        record.id,
+        record.proposal_id,
+        record.agreement_id,
+        record.invoice_id,
+        record.receipt_id
+      )
+    ).trim();
+
+    return {
+      resource: normalizedResource,
+      current_status: currentStatus,
+      next_status: nextStatus,
+      discount_percent: normalizedDiscount,
+      record_id: normalizedRecordId,
+      record,
+      requested_changes: requestedChanges,
       sheetName: CONFIG.WORKFLOW_RULES_SHEET_NAME
-    });
+    };
+  },
+  async validateWorkflowTransition(payload = {}) {
+    const body = this.buildWorkflowTransitionPayload(payload);
+    return this.requestWithSession('workflow', 'validate_transition', body);
   },
   async requestWorkflowApproval(payload = {}) {
     return this.requestWithSession('workflow', 'request_approval', {
