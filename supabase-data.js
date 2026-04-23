@@ -334,7 +334,7 @@
   function role() { return String(global.Session?.role?.() || '').toLowerCase(); }
   function isAdminDev() { return ['admin','dev'].includes(role()); }
   function allowedRoles(resource, action) {
-    const matrix = global.Permissions?.baseMatrix || {};
+    const matrix = global.AppPermissions?.baseMatrix || {};
     const rules = matrix?.[resource];
     if (!rules || typeof rules !== 'object') return null;
     const list = rules[action];
@@ -350,8 +350,8 @@
     const authenticated = hasRole && hasUser && hasSession;
     if (!authenticated) return false;
     if (!normalizedResource || !normalizedAction) return false;
-    if (global.Permissions?.canPerformAction) {
-      return Boolean(global.Permissions.canPerformAction(normalizedResource, normalizedAction, auth.role));
+    if (global.AppPermissions?.canPerformAction) {
+      return Boolean(global.AppPermissions.canPerformAction(normalizedResource, normalizedAction, auth.role));
     }
     const rule = allowedRoles(normalizedResource, normalizedAction);
     const currentRole = String(auth.role || '').trim().toLowerCase();
@@ -367,19 +367,18 @@
     const hasUser = Boolean(authContext.user?.id);
     const hasSession = Boolean(authContext.session?.user?.id || authContext.session?.access_token);
     const authenticated = hasRole && hasUser && hasSession;
-    const baseAllowedRoles = global.Permissions?.getBaseAllowedRoles?.(normalizedResource, normalizedAction);
-    const matrixEntry = global.Permissions?.getMatrixEntry?.(normalizedResource, normalizedAction);
     const finalDecision = isAllowed(normalizedResource, normalizedAction);
     if (finalDecision) return;
     console.warn('[supabase-data.assertAllowed]', {
       resource: normalizedResource,
       action: normalizedAction,
-      role,
-      authenticated,
+      role: global.Session?.role?.(),
+      authenticated: global.Session?.isAuthenticated?.(),
       authContext,
-      baseAllowedRoles,
-      matrixEntry,
-      finalDecision
+      hasAppPermissions: Boolean(global.AppPermissions),
+      baseAllowedRoles: global.AppPermissions?.getBaseAllowedRoles?.(normalizedResource, normalizedAction),
+      matrixEntry: global.AppPermissions?.getMatrixEntry?.(normalizedResource, normalizedAction),
+      finalDecision: global.AppPermissions?.canPerformAction?.(normalizedResource, normalizedAction, global.Session?.role?.())
     });
     const suffix = reason ? ` (${reason})` : '';
     throw new Error(`Forbidden: ${role || 'unknown'} cannot ${normalizedAction} ${normalizedResource}${suffix}.`);

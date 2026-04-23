@@ -723,3 +723,7 @@ async function handleExpiredSession(message = 'Session expired. Please log in ag
   } catch {}
   UI.toast(message);
 }
+
+window.AppPermissions = Permissions;
+window.requirePermission = requirePermission;
+window.handleExpiredSession = handleExpiredSession;
