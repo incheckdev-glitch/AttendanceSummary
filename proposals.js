@@ -1703,7 +1703,7 @@ const Proposals = {
         discount_percent: requestedDiscount,
         requested_changes: { proposal, items }
       });
-      if (workflowCheck && !workflowCheck.allowed) {
+      if (workflowCheck?.allowed !== true) {
         if (workflowCheck.pendingApproval === true && workflowCheck.approvalCreated === true) {
           UI.toast('Approval request submitted successfully.');
           return;
