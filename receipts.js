@@ -1052,6 +1052,10 @@ const Receipts = {
       requested_changes: { receipt: updates }
     });
     if (workflowCheck && !workflowCheck.allowed) {
+      if (workflowCheck.pendingApproval === true && workflowCheck.approvalCreated === true) {
+        UI.toast('Approval request submitted successfully.');
+        return;
+      }
       UI.toast(window.WorkflowEngine.composeDeniedMessage(workflowCheck, 'Receipt save blocked.'));
       return;
     }

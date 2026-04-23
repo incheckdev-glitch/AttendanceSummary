@@ -1704,12 +1704,8 @@ const Proposals = {
         requested_changes: { proposal, items }
       });
       if (workflowCheck && !workflowCheck.allowed) {
-        if (workflowCheck.pendingApproval && workflowCheck.approvalCreated) {
+        if (workflowCheck.pendingApproval === true && workflowCheck.approvalCreated === true) {
           UI.toast('Approval request submitted successfully.');
-          return;
-        }
-        if (workflowCheck.pendingApproval && !workflowCheck.approvalCreated) {
-          UI.toast('Approval is required, but the approval request could not be created yet. Please retry.');
           return;
         }
         UI.toast(window.WorkflowEngine.composeDeniedMessage(workflowCheck, 'Proposal save blocked.'));

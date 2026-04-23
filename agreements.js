@@ -1418,6 +1418,10 @@ const Agreements = {
         requested_changes: { agreement, items: preparedItems }
       });
       if (workflowCheck && !workflowCheck.allowed) {
+        if (workflowCheck.pendingApproval === true && workflowCheck.approvalCreated === true) {
+          UI.toast('Approval request submitted successfully.');
+          return;
+        }
         UI.toast(window.WorkflowEngine.composeDeniedMessage(workflowCheck, 'Agreement save blocked.'));
         return;
       }

@@ -149,8 +149,8 @@ const WorkflowEngine = {
 
       const noActiveRuleMessage = /no active workflow rule found/i;
       const allowed = this.toBool(validation?.allowed ?? validation?.is_allowed ?? true);
-      const approvalCreated = this.toBool(validation?.approval_created);
-      const pendingApproval = this.toBool(validation?.pending_approval);
+      const approvalCreated = this.toBool(validation?.approvalCreated ?? validation?.approval_created);
+      const pendingApproval = this.toBool(validation?.pendingApproval ?? validation?.pending_approval);
       const reason = String(validation?.reason || '').trim();
       const baseResult = {
         allowed,
