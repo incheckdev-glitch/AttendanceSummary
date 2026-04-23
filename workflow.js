@@ -131,9 +131,11 @@ const WorkflowEngine = {
     ).trim();
 
     const payload = {
-      resource: normalizedResource,
+      resource: 'workflow',
+      action: 'validate_transition',
+      target_workflow_resource: normalizedResource,
       current_status: currentStatus,
-      next_status: nextStatus,
+      requested_status: nextStatus,
       discount_percent: discountPercent,
       record_id: recordId,
       record: safeRecord,

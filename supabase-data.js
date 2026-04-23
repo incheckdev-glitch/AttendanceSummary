@@ -1496,10 +1496,9 @@
         : {};
       const resource = String(
         firstValue(
-          safePayload.resource,
           safePayload.target_workflow_resource,
-          safePayload.target_resource,
           safePayload.workflow_resource,
+          safePayload.target_resource,
           requestedChanges.resource,
           record.resource
         )
@@ -1677,9 +1676,8 @@
       const rpcPayload = {
         p_resource:
           safePayload.target_workflow_resource ||
-          safePayload.resource ||
-          safePayload.target_resource ||
           safePayload.workflow_resource ||
+          safePayload.target_resource ||
           '',
         p_current_status:
           safePayload.from_status ||
@@ -1694,8 +1692,6 @@
         p_discount_percent: Number(
           safePayload.discount_percent ??
           safePayload.requested_discount_percent ??
-          safePayload.amount ??
-          safePayload.numeric ??
           0
         ),
         p_user_role:
