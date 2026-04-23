@@ -535,11 +535,21 @@
           .map(value => String(value || '').trim().toLowerCase())
           .filter(Boolean);
       };
+      const meta = out.metadata && typeof out.metadata === 'object' ? out.metadata : {};
       out.allowed_roles = toRoleArray(out.allowed_roles, out.allowed_roles_csv);
       out.allowed_roles_csv = out.allowed_roles.join(',');
       out.approval_roles = toRoleArray(out.approval_roles, out.approval_roles_csv, out.approval_role);
       out.approval_roles_csv = out.approval_roles.join(',');
       out.approval_role = out.approval_role ?? out.approval_roles[0] ?? '';
+      out.user_role = out.user_role ?? meta.user_role ?? '';
+      out.user_name =
+        out.user_name ??
+        out.userName ??
+        meta.actor_display_name ??
+        meta.user_name ??
+        out.user_role ??
+        '';
+      out.userName = out.userName ?? out.user_name ?? '';
     }
     return out;
   }
@@ -1481,6 +1491,15 @@
         .filter(Boolean);
     };
     async function insertWorkflowAuditLog(entry = {}) {
+      const actorDisplayName = String(
+        entry.user_name ||
+        global.Session?.displayName?.() ||
+        global.Session?.username?.() ||
+        global.Session?.userId?.() ||
+        ''
+      ).trim();
+      const actorUserId = String(entry.user_id ?? global.Session?.userId?.() ?? '').trim();
+      const actorUserRole = String(entry.user_role || global.Session?.role?.() || '').trim().toLowerCase();
       const payloadRow = compactObject({
         resource: String(entry.resource || '').trim(),
         record_id: String(entry.record_id || '').trim(),
@@ -1489,9 +1508,14 @@
         new_status: entry.new_status ?? null,
         allowed: entry.allowed === true,
         reason: String(entry.reason || '').trim(),
-        user_id: entry.user_id ?? null,
-        user_role: String(entry.user_role || '').trim().toLowerCase(),
-        metadata: entry.metadata && typeof entry.metadata === 'object' ? entry.metadata : {}
+        user_id: actorUserId || null,
+        user_role: actorUserRole || null,
+        metadata: {
+          ...(entry.metadata && typeof entry.metadata === 'object' ? entry.metadata : {}),
+          user_name: actorDisplayName || undefined,
+          actor_display_name: actorDisplayName || undefined,
+          user_role: actorUserRole || undefined
+        }
       });
       const { error } = await client.from('workflow_audit_log').insert(payloadRow);
       if (error) throw workflowError('Unable to write workflow audit log', error);
