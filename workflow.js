@@ -150,124 +150,92 @@ const WorkflowEngine = {
     };
     this.beginRequestProcessing('Checking workflow approval request…');
     try {
-      const validation = await this.validateWorkflowTransition(resource, record, requestedChanges);
-      try { console.debug('[workflow] validation result', validation); } catch {}
+      const validationResult = await this.validateWorkflowTransition(resource, record, requestedChanges);
+      try { console.info('[workflow] validation result', validationResult); } catch {}
       const hasUsableValidation =
-        validation &&
-        typeof validation === 'object' &&
+        validationResult &&
+        typeof validationResult === 'object' &&
         (
-          Object.prototype.hasOwnProperty.call(validation, 'allowed') ||
-          Object.prototype.hasOwnProperty.call(validation, 'is_allowed') ||
-          Object.prototype.hasOwnProperty.call(validation, 'pendingApproval') ||
-          Object.prototype.hasOwnProperty.call(validation, 'pending_approval') ||
-          Object.prototype.hasOwnProperty.call(validation, 'approvalCreated') ||
-          Object.prototype.hasOwnProperty.call(validation, 'approval_created') ||
-          Object.prototype.hasOwnProperty.call(validation, 'reason')
+          Object.prototype.hasOwnProperty.call(validationResult, 'allowed') ||
+          Object.prototype.hasOwnProperty.call(validationResult, 'is_allowed') ||
+          Object.prototype.hasOwnProperty.call(validationResult, 'pendingApproval') ||
+          Object.prototype.hasOwnProperty.call(validationResult, 'pending_approval') ||
+          Object.prototype.hasOwnProperty.call(validationResult, 'approvalCreated') ||
+          Object.prototype.hasOwnProperty.call(validationResult, 'approval_created') ||
+          Object.prototype.hasOwnProperty.call(validationResult, 'reason')
         );
-      if (!hasUsableValidation) return validationUnavailableResult;
-
-      const noActiveRuleMessage = /no active workflow rule found/i;
-      const allowed = this.toBool(validation?.allowed ?? validation?.is_allowed);
-      const approvalCreated = this.toBool(validation?.approvalCreated ?? validation?.approval_created);
-      const pendingApproval = this.toBool(validation?.pendingApproval ?? validation?.pending_approval);
-      const reason = String(validation?.reason || '').trim();
-      const baseResult = {
-        allowed,
-        approvalCreated,
-        pendingApproval,
-        reason,
-        requestedDiscount: this.toNumber(validation?.requested_discount_percent ?? requestedChanges?.discount_percent),
-        userDiscountLimit: validation?.user_discount_limit,
-        hardStopDiscountLimit: validation?.hard_stop_discount_percent,
-        response: validation
-      };
-      if (!baseResult.allowed && pendingApproval && !baseResult.reason) {
-        baseResult.reason = 'Approval is required before this transition can continue.';
+      if (!hasUsableValidation) {
+        try { console.info('[workflow] final decision', validationUnavailableResult); } catch {}
+        return validationUnavailableResult;
       }
-      if (!baseResult.allowed && baseResult.pendingApproval && !baseResult.approvalCreated) {
+
+      const allowed = this.toBool(validationResult?.allowed ?? validationResult?.is_allowed);
+      const pendingApproval = this.toBool(validationResult?.pendingApproval ?? validationResult?.pending_approval);
+
+      if (allowed === true) {
+        const workflowCheck = {
+          allowed: true,
+          pendingApproval: false,
+          approvalCreated: false,
+          reason: validationResult?.reason || 'Allowed'
+        };
+        try { console.info('[workflow] final decision', workflowCheck); } catch {}
+        return workflowCheck;
+      }
+
+      if (pendingApproval === true) {
         const approvalPayload = {
           resource,
           record_id: String(requestedChanges?.id || record?.id || record?.proposal_id || '').trim(),
-          workflow_rule_id: validation?.workflow_rule_id || validation?.response?.workflow_rule_id || null,
+          workflow_rule_id: validationResult?.workflow_rule_id || null,
           requester_user_id: window.Session?.authContext?.()?.user?.id || null,
           requester_role: window.Session?.role?.() || '',
-          approval_role: String(validation?.approval_role || validation?.response?.approval_role || 'admin').trim(),
+          approval_role: String(validationResult?.approval_role || 'admin').trim(),
           old_status: String(requestedChanges?.current_status || record?.status || '').trim(),
           new_status: String(requestedChanges?.requested_status || requestedChanges?.next_status || record?.status || '').trim(),
           requested_changes: requestedChanges
         };
-        let approvalResult = null;
         try {
-          approvalResult = await Api.createWorkflowApproval(approvalPayload);
-          try { console.debug('[workflow] approval creation result', approvalResult); } catch {}
+          const approvalResult = await Api.createWorkflowApproval(approvalPayload);
+          try { console.info('[workflow] approval creation result', approvalResult); } catch {}
+          if (approvalResult?.ok === true) {
+            const workflowCheck = {
+              allowed: false,
+              pendingApproval: true,
+              approvalCreated: true,
+              approvalId: approvalResult?.approval_id,
+              approvalRole: approvalResult?.approval_role,
+              reason: approvalResult?.reused
+                ? 'Approval request already exists and is pending.'
+                : 'Approval request submitted successfully.'
+            };
+            try { console.info('[workflow] final decision', workflowCheck); } catch {}
+            return workflowCheck;
+          }
         } catch (error) {
           console.error('[workflow approval create failed]', error);
-          return {
-            ...baseResult,
-            allowed: false,
-            pendingApproval: true,
-            approvalCreated: false,
-            reason: 'Approval is required, but the approval request could not be created yet. Please retry.'
-          };
         }
-        if (!approvalResult?.ok) {
-          return {
-            ...baseResult,
-            allowed: false,
-            pendingApproval: true,
-            approvalCreated: false,
-            reason: 'Approval is required, but the approval request could not be created yet. Please retry.'
-          };
-        }
-        return {
-          ...baseResult,
+        const workflowCheck = {
           allowed: false,
           pendingApproval: true,
-          approvalCreated: true,
-          approvalId: String(approvalResult?.approval_id || '').trim(),
-          approvalRole: String(approvalResult?.approval_role || '').trim(),
-          approval_id: String(approvalResult?.approval_id || '').trim(),
-          approval_role: String(approvalResult?.approval_role || '').trim(),
-          approval: approvalResult,
-          response: {
-            ...(baseResult.response || {}),
-            approval: approvalResult,
-            approval_id: String(approvalResult?.approval_id || '').trim(),
-            approval_created: true
-          },
-          reason: this.toBool(approvalResult?.reused)
-            ? 'Approval request already exists and is pending.'
-            : 'Approval request submitted successfully.'
+          approvalCreated: false,
+          reason: 'Approval is required, but the approval request could not be created yet. Please retry.'
         };
-      }
-      if (approvalCreated) {
-        return {
-          ...baseResult,
-          allowed: false,
-          pendingApproval: true,
-          reason: baseResult.reason || 'Approval request created and pending review.'
-        };
+        try { console.info('[workflow] final decision', workflowCheck); } catch {}
+        return workflowCheck;
       }
 
-      if (!baseResult.allowed && noActiveRuleMessage.test(baseResult.reason || '')) {
-        return {
-          ...baseResult,
-          allowed: true,
-          skipped: true,
-          reason: ''
-        };
-      }
-
-      if (baseResult.allowed) {
-        const localRuleResult = this.evaluateLocalRule(resource, record, requestedChanges);
-        if (localRuleResult && localRuleResult.allowed === false) {
-          return { ...baseResult, ...localRuleResult };
-        }
-      }
-
-      return baseResult;
+      const workflowCheck = {
+        allowed: false,
+        pendingApproval: false,
+        approvalCreated: false,
+        reason: validationResult?.reason || 'Blocked by workflow rule.'
+      };
+      try { console.info('[workflow] final decision', workflowCheck); } catch {}
+      return workflowCheck;
     } catch (error) {
       console.error('[workflow validation unavailable]', error);
+      try { console.info('[workflow] final decision', validationUnavailableResult); } catch {}
       return validationUnavailableResult;
     } finally {
       this.endRequestProcessing();
