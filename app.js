@@ -2032,7 +2032,7 @@ function trapFocus(container, e) {
 
 function setActiveView(view) {
  if (!Permissions.canAccessTab(view)) view = 'issues';
- const names = ['issues', 'calendar', 'insights', 'csm', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'notifications', 'workflow', 'users', 'roles', 'rolePermissions'];
+ const names = ['issues', 'calendar', 'insights', 'csm', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'notifications', 'workflow', 'users', 'rolePermissions'];
   names.forEach(name => {
     const tab =
       name === 'issues'
@@ -2071,8 +2071,6 @@ function setActiveView(view) {
         ? E.workflowTab
         : name === 'users'
         ? E.usersTab
-        : name === 'roles'
-        ? E.rolesTab
         : E.rolePermissionsTab;
     const panel =
       name === 'issues'
@@ -2111,8 +2109,6 @@ function setActiveView(view) {
         ? E.workflowView
         : name === 'users'
         ? E.usersView
-        : name === 'roles'
-        ? E.rolesView
         : E.rolePermissionsView;
     const active = name === view;
     if (tab) {
@@ -2182,7 +2178,7 @@ function setActiveView(view) {
   if (view === 'notifications' && window.Notifications?.loadHub) runViewLoader('notifications', () => Notifications.loadHub(true));
   if (view === 'workflow' && window.Workflow?.loadAndRefresh) runViewLoader('workflow', () => Workflow.loadAndRefresh(true));
   if (view === 'users' && window.UserAdmin?.refresh) runViewLoader('users', () => UserAdmin.refresh());
-  if ((view === 'roles' || view === 'rolePermissions') && window.RolesAdmin?.loadAll) runViewLoader('roles and permissions', () => RolesAdmin.loadAll());
+  if (view === 'rolePermissions' && window.RolesAdmin?.loadAll) runViewLoader('roles and permissions', () => RolesAdmin.loadAll());
   updatePrimaryActionButton(view);
   if (E.app) {
     const appTop = E.app.getBoundingClientRect().top + window.scrollY - 10;
@@ -4059,7 +4055,7 @@ function syncFilterInputs() {
 
 
 function wireCore() {
-   [E.issuesTab, E.calendarTab, E.insightsTab, E.csmTab, E.leadsTab, E.dealsTab, E.proposalsTab, E.agreementsTab, E.operationsOnboardingTab, E.technicalAdminTab, E.invoicesTab, E.receiptsTab, E.lifecycleAnalyticsTab, E.clientsTab, E.proposalCatalogTab, E.notificationsTab, E.workflowTab, E.usersTab, E.rolesTab, E.rolePermissionsTab].forEach(btn => {
+   [E.issuesTab, E.calendarTab, E.insightsTab, E.csmTab, E.leadsTab, E.dealsTab, E.proposalsTab, E.agreementsTab, E.operationsOnboardingTab, E.technicalAdminTab, E.invoicesTab, E.receiptsTab, E.lifecycleAnalyticsTab, E.clientsTab, E.proposalCatalogTab, E.notificationsTab, E.workflowTab, E.usersTab, E.rolePermissionsTab].forEach(btn => {
     if (!btn) return;
     btn.addEventListener('click', () => setActiveView(btn.dataset.view));
   });
@@ -5995,8 +5991,8 @@ function wireKeyboardShortcuts() {
       setActiveView('clients');
     } else if (e.key === '-' && Permissions.canAccessTab('users')) {
       setActiveView('users');
-    } else if (e.key === '=' && Permissions.canAccessTab('roles')) {
-      setActiveView('roles');
+    } else if (e.key === '=' && Permissions.canAccessTab('rolePermissions')) {
+      setActiveView('rolePermissions');
     }
   });
 }
@@ -6105,7 +6101,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         view === 'notifications' ||
         view === 'workflow' ||
         view === 'users' ||
-        view === 'roles' ||
         view === 'rolePermissions'
         ? view
         : 'issues'

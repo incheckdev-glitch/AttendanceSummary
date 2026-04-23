@@ -202,11 +202,9 @@ function cacheEls() {
     'currentUserChip',
     'currentRoleChip',
     'usersTab',
-    'rolesTab',
     'rolePermissionsTab',
     'workflowTab',
     'usersView',
-    'rolesView',
     'rolePermissionsView',
     'workflowView',
     'workflowRulesTbody',
@@ -829,17 +827,6 @@ function cacheEls() {
     'userEditEmail',
     'userEditRole',
     'userEditSubmit',
-    'rolesRefreshBtn',
-    'rolesState',
-    'rolesTbody',
-    'rolesTotalCount',
-    'rolesActiveCount',
-    'rolesInactiveCount',
-    'roleCreateForm',
-    'roleCreateKey',
-    'roleCreateDisplayName',
-    'roleCreateDescription',
-    'roleCreateIsActive',
     'rolePermissionsRefreshBtn',
     'rolePermissionsFiltersForm',
     'rolePermissionsSearchResource',
@@ -944,7 +931,6 @@ const UI = {
       { key: 'notifications', tabEl: E.notificationsTab, viewEl: E.notificationsView },
       { key: 'workflow', tabEl: E.workflowTab, viewEl: E.workflowView },
       { key: 'users', tabEl: E.usersTab, viewEl: E.usersView },
-      { key: 'roles', tabEl: E.rolesTab, viewEl: E.rolesView },
       { key: 'rolePermissions', tabEl: E.rolePermissionsTab, viewEl: E.rolePermissionsView }
     ];
   },
@@ -1016,7 +1002,7 @@ const UI = {
             allowed = Permissions.canViewTechnicalAdmin();
           } else if (rule.key === 'users') {
             allowed = Permissions.canManageUsers();
-          } else if (rule.key === 'roles' || rule.key === 'rolePermissions') {
+          } else if (rule.key === 'rolePermissions') {
             allowed = Permissions.isAdmin();
           } else if (rule.key === 'workflow') {
             allowed = Permissions.canManageWorkflow();

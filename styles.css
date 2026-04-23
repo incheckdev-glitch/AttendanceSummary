@@ -687,7 +687,6 @@ body.auth-locked .login-hint{
 #usersTable th,#usersTable td{
   white-space:nowrap;
 }
-#rolesTable th,#rolesTable td,
 #rolePermissionsTable th,#rolePermissionsTable td{
   white-space:nowrap;
 }
