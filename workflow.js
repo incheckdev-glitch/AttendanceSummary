@@ -186,6 +186,7 @@ const WorkflowEngine = {
       }
 
       if (pendingApproval === true) {
+        const normalizedResource = String(resource || '').trim().toLowerCase();
         const submittedByName =
           window.Session?.authContext?.()?.profile?.name ||
           window.Session?.authContext?.()?.profile?.full_name ||
@@ -223,11 +224,26 @@ const WorkflowEngine = {
           submitted_by_email: submittedByEmail,
           submitted_by_role: submittedByRole,
           changed_fields: requestedChanges?.changed_fields || [],
+          resource: normalizedResource,
+          target_workflow_resource: normalizedResource,
           record_snapshot: record || {}
         };
+        const recordId = String(
+          requestedChanges?.id ||
+          requestedChanges?.proposal_id ||
+          requestedChanges?.agreement_id ||
+          requestedChanges?.invoice_id ||
+          requestedChanges?.receipt_id ||
+          record?.proposal_id ||
+          record?.agreement_id ||
+          record?.invoice_id ||
+          record?.receipt_id ||
+          record?.id ||
+          ''
+        ).trim();
         const approvalPayload = {
-          resource,
-          record_id: String(requestedChanges?.id || record?.proposal_id || record?.id || '').trim(),
+          resource: normalizedResource,
+          record_id: recordId,
           workflow_rule_id: validationResult?.workflow_rule_id || null,
           requester_user_id: window.Session?.authContext?.()?.user?.id || null,
           requester_role: submittedByRole,
@@ -674,17 +690,31 @@ const Workflow = {
       }
     }
     if (!recordSnapshot || typeof recordSnapshot !== 'object') recordSnapshot = {};
-    const normalizedResource = String(row?.resource || requestedChanges?.resource || '').trim().toLowerCase();
-    const recoveredResource = normalizedResource === 'workflow'
-      ? String(
-          requestedChanges?.resource ||
-          requestedChanges?.target_workflow_resource ||
-          recordSnapshot?.resource ||
-          row?.target_workflow_resource ||
-          ''
-        ).trim().toLowerCase()
-      : normalizedResource;
-    const resource = recoveredResource || normalizedResource || 'unknown';
+    const normalizeApprovalBusinessResource = approval => {
+      const actualResource = String(
+        approval?.resource ||
+        approval?.requested_changes?.resource ||
+        approval?.requested_changes?.target_workflow_resource ||
+        approval?.requested_changes?.record_snapshot?.resource ||
+        ''
+      ).trim().toLowerCase();
+      if (actualResource && actualResource !== 'workflow') return actualResource;
+      const requested = approval?.requested_changes && typeof approval.requested_changes === 'object'
+        ? approval.requested_changes
+        : {};
+      if (requested?.proposal_id || requested?.proposal_number) return 'proposals';
+      if (requested?.agreement_id || requested?.agreement_number) return 'agreements';
+      if (requested?.invoice_id || requested?.invoice_number) return 'invoices';
+      if (requested?.receipt_id || requested?.receipt_number) return 'receipts';
+      return actualResource || '';
+    };
+    const resource = normalizeApprovalBusinessResource({
+      resource: row?.resource,
+      requested_changes: {
+        ...requestedChanges,
+        record_snapshot: recordSnapshot
+      }
+    }) || 'unknown';
     const targetRecordId =
       requestedChanges?.proposal_id ||
       requestedChanges?.agreement_id ||
