@@ -114,7 +114,7 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
   }),
   users: Object.freeze({ list: ['admin'], get: ['admin'], create: ['admin'], update: ['admin'], delete: ['admin'], activate: ['admin'], deactivate: ['admin'] }),
   roles: Object.freeze({ list: ['admin'], get: ['admin'], create: ['admin'], update: ['admin'], delete: ['admin'] }),
-  role_permissions: Object.freeze({ list: ['admin'], get: ['admin'], create: ['admin'], update: ['admin'], delete: ['admin'] }),
+  role_permissions: Object.freeze({ list: ['admin', 'dev', 'viewer', 'hoo'], get: ['admin', 'dev', 'viewer', 'hoo'], create: ['admin'], update: ['admin'], delete: ['admin'] }),
   workflow: Object.freeze({
     list: ['admin', 'dev'],
     get: ['admin', 'dev'],
@@ -379,10 +379,16 @@ const Permissions = {
       console.info('[Permissions] final permission matrix keys', [...matrix.keys()]);
       this.state.loaded = true;
       return rows;
-    } catch (error) {
+   } catch (error) {
       this.state.rows = [];
       this.state.matrix = new Map();
-      this.state.loaded = false;
+      const isPermErr =
+        typeof window !== 'undefined' && typeof window.isPermissionError === 'function'
+          ? window.isPermissionError(error)
+          : String(error?.message || '').toLowerCase().includes('forbidden') ||
+            String(error?.message || '').toLowerCase().includes('cannot list');
+      this.state.loaded = isPermErr;
+      console.warn('[Permissions] loadMatrix error', { isPermErr, message: error?.message });
       return [];
     } finally {
       this.state.loading = false;
