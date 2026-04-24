@@ -249,6 +249,54 @@ const Leads = {
     if (error) throw this.toSupabaseError('Unable to convert lead', error);
     return data;
   },
+  currentConverterIdentity() {
+    return String(Session.displayName() || Session.username() || Session.user()?.email || '').trim();
+  },
+  async findDealByLeadBusinessId(leadBusinessId) {
+    const normalizedLeadId = String(leadBusinessId || '').trim();
+    if (!normalizedLeadId) return null;
+    const { data, error } = await this.getClient()
+      .from('deals')
+      .select('*')
+      .eq('lead_id', normalizedLeadId)
+      .order('created_at', { ascending: false })
+      .limit(1);
+    if (error) throw this.toSupabaseError('Unable to check existing deal', error);
+    return Array.isArray(data) && data.length ? data[0] : null;
+  },
+  buildDealFromLead(lead, leadUuid) {
+    const converter = this.currentConverterIdentity();
+    const convertedAt = new Date().toISOString();
+    const fallbackDealId =
+      typeof window.Deals?.generateDealId === 'function' ? window.Deals.generateDealId() : '';
+    const estimatedValueNumber =
+      lead.estimated_value === '' || lead.estimated_value === null || lead.estimated_value === undefined
+        ? null
+        : Number(lead.estimated_value);
+    return {
+      deal_id: fallbackDealId,
+      lead_id: String(lead.lead_id || '').trim(),
+      source_lead_uuid: String(leadUuid || '').trim() || undefined,
+      full_name: lead.full_name,
+      company_name: lead.company_name,
+      phone: lead.phone,
+      email: lead.email,
+      country: lead.country,
+      lead_source: lead.lead_source,
+      service_interest: lead.service_interest,
+      status: lead.status,
+      stage: 'new',
+      priority: lead.priority,
+      estimated_value: Number.isFinite(estimatedValueNumber) ? estimatedValueNumber : null,
+      currency: lead.currency,
+      assigned_to: lead.assigned_to,
+      proposal_needed: lead.proposal_needed,
+      agreement_needed: lead.agreement_needed,
+      notes: lead.notes,
+      converted_by: converter,
+      converted_at: convertedAt
+    };
+  },
   isConvertedLead(row = {}) {
     const status = this.normalizeText(row.status);
     if (status.includes('converted') || status === 'won' || status === 'closed won') return true;
@@ -1045,13 +1093,33 @@ const Leads = {
     }
     this.setFormBusy(true);
     try {
-      const response = await this.convertToDeal(leadUuid);
-      const dealId = this.getConvertedDealId(response);
+      const sourceLead = this.normalizeLead(await this.getLead(leadUuid));
+      if (!String(sourceLead.lead_id || '').trim()) {
+        UI.toast('Unable to convert lead: missing business Lead ID.');
+        return;
+      }
+      console.log('[deal conversion] source lead', sourceLead);
+      const existingDeal = await this.findDealByLeadBusinessId(sourceLead.lead_id);
+      const payload = this.buildDealFromLead(sourceLead, leadUuid);
+      console.log('[deal conversion] create payload', payload);
+      const savedDeal =
+        existingDeal ||
+        (window.Deals?.createDeal ? await window.Deals.createDeal(payload) : await this.getClient().from('deals').insert(payload).select('*').single().then(r => {
+          if (r.error) throw this.toSupabaseError('Unable to convert lead', r.error);
+          return r.data;
+        }));
+      console.log('[deal conversion] saved deal', savedDeal);
+      if (window.Deals?.upsertLocalRow && savedDeal) window.Deals.upsertLocalRow(savedDeal);
+      const normalizedSavedDeal = window.Deals?.normalizeDeal ? window.Deals.normalizeDeal(savedDeal) : savedDeal || {};
+      const leadUpdate = {
+        ...sourceLead,
+        converted_at: normalizedSavedDeal.converted_at || payload.converted_at,
+        deal_id: normalizedSavedDeal.deal_id || payload.deal_id || sourceLead.deal_id
+      };
+      const leadUpdateResult = await this.updateLeadWithVerification(leadUuid, leadUpdate);
+      this.upsertLocalRow(leadUpdateResult?.row || leadUpdate);
+      const dealId = this.getConvertedDealId(savedDeal || normalizedSavedDeal) || leadUpdate.deal_id;
       UI.toast(dealId ? `Lead converted to deal ${dealId}.` : 'Lead converted to deal.');
-      await Promise.all([
-        this.loadAndRefresh({ force: true }),
-        window.Deals?.loadAndRefresh ? Deals.loadAndRefresh({ force: true }) : Promise.resolve()
-      ]);
     } catch (error) {
       if (isAuthError(error)) {
         handleExpiredSession('Session expired. Please log in again.');

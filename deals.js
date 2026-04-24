@@ -120,23 +120,74 @@ const Deals = {
       notes: String(pick(source.notes, lead.notes)).trim()
     };
   },
-  backendDeal(deal) {
+  generateDealId() {
+    const now = new Date();
+    const yyyy = String(now.getFullYear());
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const rand = Math.random().toString(36).slice(2, 8).toUpperCase();
+    return `DEAL-${yyyy}${mm}${dd}-${rand}`;
+  },
+  backendDeal(deal, { ensureDealId = false } = {}) {
+    const hasOwn = key => Object.prototype.hasOwnProperty.call(deal || {}, key);
+    const toTextOrEmpty = keys => {
+      const hasAny = keys.some(hasOwn);
+      if (!hasAny) return undefined;
+      const value = keys.map(key => deal[key]).find(value => value !== undefined);
+      if (value === undefined || value === null) return '';
+      return String(value).trim();
+    };
+    const toNumberOrNull = keys => {
+      const hasAny = keys.some(hasOwn);
+      if (!hasAny) return undefined;
+      const value = keys.map(key => deal[key]).find(value => value !== undefined);
+      if (value === undefined || value === null || String(value).trim() === '') return null;
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+    const toDateOrNull = keys => {
+      const hasAny = keys.some(hasOwn);
+      if (!hasAny) return undefined;
+      const value = keys.map(key => deal[key]).find(value => value !== undefined);
+      if (value === undefined || value === null) return null;
+      const text = String(value).trim();
+      return text || null;
+    };
+    const toBoolOrNull = keys => {
+      const hasAny = keys.some(hasOwn);
+      if (!hasAny) return undefined;
+      return this.normalizeBool(keys.map(key => deal[key]).find(value => value !== undefined)) === 'yes'
+        ? true
+        : this.normalizeBool(keys.map(key => deal[key]).find(value => value !== undefined)) === 'no'
+          ? false
+          : null;
+    };
+    const mapped = {
+      deal_id: toTextOrEmpty(['deal_id', 'dealId']),
+      lead_id: toTextOrEmpty(['lead_id', 'leadId']),
+      source_lead_uuid: toTextOrEmpty(['source_lead_uuid', 'sourceLeadUuid', 'lead_uuid', 'leadUuid']),
+      full_name: toTextOrEmpty(['full_name', 'fullName']),
+      company_name: toTextOrEmpty(['company_name', 'companyName']),
+      phone: toTextOrEmpty(['phone']),
+      email: toTextOrEmpty(['email']),
+      country: toTextOrEmpty(['country']),
+      lead_source: toTextOrEmpty(['lead_source', 'leadSource']),
+      service_interest: toTextOrEmpty(['service_interest', 'serviceInterest']),
+      stage: toTextOrEmpty(['stage']),
+      status: toTextOrEmpty(['status']),
+      priority: toTextOrEmpty(['priority']),
+      estimated_value: toNumberOrNull(['estimated_value', 'estimatedValue']),
+      currency: toTextOrEmpty(['currency']),
+      assigned_to: toTextOrEmpty(['assigned_to', 'assignedTo']),
+      proposal_needed: toBoolOrNull(['proposal_needed', 'proposalNeeded']),
+      agreement_needed: toBoolOrNull(['agreement_needed', 'agreementNeeded']),
+      converted_by: toTextOrEmpty(['converted_by', 'convertedBy']),
+      converted_at: toDateOrNull(['converted_at', 'convertedAt']),
+      notes: toTextOrEmpty(['notes'])
+    };
     return {
-      deal_id: String(deal.deal_id || '').trim() || undefined,
-      lead_id: deal.lead_id,
-      full_name: deal.full_name,
-      company_name: deal.company_name,
-      phone: deal.phone,
-      email: deal.email,
-      country: deal.country,
-      lead_source: deal.lead_source,
-      service_interest: deal.service_interest,
-      stage: deal.stage,
-      status: deal.status,
-      assigned_to: deal.assigned_to,
-      proposal_needed: deal.proposal_needed === 'yes',
-      agreement_needed: deal.agreement_needed === 'yes',
-      notes: deal.notes
+      ...mapped,
+      ...(ensureDealId ? { deal_id: mapped.deal_id || this.generateDealId() } : {})
     };
   },
   extractRows(response) {
@@ -210,7 +261,7 @@ const Deals = {
   async createDeal(deal) {
     const userId = await this.getCurrentUserId();
     const payload = {
-      ...this.backendDeal(deal),
+      ...this.backendDeal(deal, { ensureDealId: true }),
       created_by: userId || undefined,
       updated_by: userId || undefined
     };
@@ -238,6 +289,12 @@ const Deals = {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return U.escapeHtml(String(value));
     return U.escapeHtml(U.fmtDisplayDate(value));
+  },
+  formatDateTime(value) {
+    if (!value) return '—';
+    const formatted = U.formatDateTimeMMDDYYYYHHMM(value);
+    if (formatted === '—') return U.escapeHtml(String(value));
+    return U.escapeHtml(formatted);
   },
   canCreate() {
     return Permissions.can('deals', 'create', { fallback: Permissions.isAdminLike() });
@@ -678,7 +735,7 @@ const Deals = {
     }
 
     const renderCell = (row, column) => {
-      if (column === 'converted_at') return this.formatDate(row[column]);
+      if (column === 'converted_at') return this.formatDateTime(row[column]);
       if (column === 'proposal_needed' || column === 'agreement_needed') return U.escapeHtml(this.boolLabel(row[column]));
       const value = row[column];
       return U.escapeHtml(value === '' || value == null ? '—' : String(value));
@@ -757,7 +814,10 @@ const Deals = {
     if (!E.dealForm) return;
     E.dealForm.reset();
     if (E.dealFormDealId) E.dealFormDealId.value = '';
-    if (E.dealFormConvertedAt) E.dealFormConvertedAt.value = '';
+    if (E.dealFormConvertedAt) {
+      E.dealFormConvertedAt.value = '';
+      E.dealFormConvertedAt.dataset.rawValue = '';
+    }
     if (E.dealFormProposalNeeded) E.dealFormProposalNeeded.value = '';
     if (E.dealFormAgreementNeeded) E.dealFormAgreementNeeded.value = '';
     this.syncDealFormDropdowns();
@@ -794,7 +854,11 @@ const Deals = {
       if (E.dealFormProposalNeeded) E.dealFormProposalNeeded.value = row.proposal_needed || '';
       if (E.dealFormAgreementNeeded) E.dealFormAgreementNeeded.value = row.agreement_needed || '';
       if (E.dealFormConvertedBy) E.dealFormConvertedBy.value = row.converted_by || '';
-      if (E.dealFormConvertedAt) E.dealFormConvertedAt.value = row.converted_at || '';
+      if (E.dealFormConvertedAt) {
+        const convertedAtRaw = row.converted_at || '';
+        E.dealFormConvertedAt.dataset.rawValue = convertedAtRaw;
+        E.dealFormConvertedAt.value = convertedAtRaw ? U.formatDateTimeMMDDYYYYHHMM(convertedAtRaw) : '';
+      }
       if (E.dealFormNotes) E.dealFormNotes.value = row.notes || '';
       this.syncDealFormDropdowns({
         lead_source: row.lead_source || '',
@@ -806,7 +870,10 @@ const Deals = {
       });
     } else {
       if (E.dealFormDealId) E.dealFormDealId.value = 'Auto-generated';
-      if (E.dealFormConvertedAt) E.dealFormConvertedAt.value = U.fmtDisplayDate(new Date());
+      if (E.dealFormConvertedAt) {
+        E.dealFormConvertedAt.dataset.rawValue = '';
+        E.dealFormConvertedAt.value = '';
+      }
       if (E.dealFormAssignedTo) E.dealFormAssignedTo.value = this.currentUserAssignee();
       this.syncDealFormDropdowns();
     }
@@ -823,6 +890,10 @@ const Deals = {
   },
   collectFormData() {
     return {
+      deal_id:
+        String(E.dealFormDealId?.value || '').trim() === 'Auto-generated'
+          ? ''
+          : String(E.dealFormDealId?.value || '').trim(),
       lead_id: String(E.dealFormLeadId?.value || '').trim(),
       full_name: String(E.dealFormFullName?.value || '').trim(),
       company_name: String(E.dealFormCompanyName?.value || '').trim(),
@@ -840,6 +911,7 @@ const Deals = {
       proposal_needed: this.normalizeBool(E.dealFormProposalNeeded?.value || ''),
       agreement_needed: this.normalizeBool(E.dealFormAgreementNeeded?.value || ''),
       converted_by: String(E.dealFormConvertedBy?.value || '').trim(),
+      converted_at: String(E.dealFormConvertedAt?.dataset?.rawValue || '').trim(),
       notes: String(E.dealFormNotes?.value || '').trim()
     };
   },
@@ -867,10 +939,12 @@ const Deals = {
     console.time('entity-save');
     try {
       if (mode === 'edit') {
+        console.log('[deal edit] save payload', deal);
         const response = await this.updateDeal(dealId, deal);
         this.upsertLocalRow(response || { ...deal, id: dealId });
         UI.toast('Deal updated.');
       } else {
+        console.log('[deal edit] save payload', deal);
         const response = await this.createDeal(deal);
         this.upsertLocalRow(response || deal);
         UI.toast('Deal created.');

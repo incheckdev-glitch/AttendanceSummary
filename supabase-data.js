@@ -159,6 +159,7 @@
   const DEAL_COLUMNS = new Set([
     'deal_id',
     'lead_id',
+    'source_lead_uuid',
     'full_name',
     'company_name',
     'phone',
@@ -170,7 +171,12 @@
     'agreement_needed',
     'stage',
     'status',
+    'priority',
+    'estimated_value',
+    'currency',
     'assigned_to',
+    'converted_by',
+    'converted_at',
     'notes',
     'created_by',
     'updated_by'
@@ -257,9 +263,7 @@
     'tabName',
     'resource',
     'action',
-    'proposal_id',
-    'converted_by',
-    'converted_at'
+    'proposal_id'
   ]);
   const LIST_CONTROL_PARAMS = new Set([
     'page', 'pageSize', 'perPage', 'limit', 'offset',
@@ -482,6 +486,26 @@
       out.dealId = out.dealId ?? out.deal_id ?? '';
       out.lead_id = out.lead_id ?? out.leadId ?? '';
       out.leadId = out.leadId ?? out.lead_id ?? '';
+      out.full_name = out.full_name ?? out.fullName ?? '';
+      out.fullName = out.fullName ?? out.full_name ?? '';
+      out.company_name = out.company_name ?? out.companyName ?? '';
+      out.companyName = out.companyName ?? out.company_name ?? '';
+      out.lead_source = out.lead_source ?? out.leadSource ?? '';
+      out.leadSource = out.leadSource ?? out.lead_source ?? '';
+      out.service_interest = out.service_interest ?? out.serviceInterest ?? '';
+      out.serviceInterest = out.serviceInterest ?? out.service_interest ?? '';
+      out.estimated_value = out.estimated_value ?? out.estimatedValue ?? null;
+      out.estimatedValue = out.estimatedValue ?? out.estimated_value ?? null;
+      out.assigned_to = out.assigned_to ?? out.assignedTo ?? '';
+      out.assignedTo = out.assignedTo ?? out.assigned_to ?? '';
+      out.converted_by = out.converted_by ?? out.convertedBy ?? '';
+      out.convertedBy = out.convertedBy ?? out.converted_by ?? '';
+      out.converted_at = out.converted_at ?? out.convertedAt ?? '';
+      out.convertedAt = out.convertedAt ?? out.converted_at ?? '';
+      out.proposal_needed = out.proposal_needed ?? out.proposalNeeded ?? null;
+      out.proposalNeeded = out.proposalNeeded ?? out.proposal_needed ?? null;
+      out.agreement_needed = out.agreement_needed ?? out.agreementNeeded ?? null;
+      out.agreementNeeded = out.agreementNeeded ?? out.agreement_needed ?? null;
     }
     if (resource === 'proposal_catalog') {
       out.id = out.id ?? '';
@@ -873,31 +897,61 @@
     if (resource === 'leads') {
       return sanitizeLeadRecord(record, { includeCreatedBy, userId });
     }
-    const mapped = compactObject({
-      deal_id: firstDefined(record, ['deal_id', 'dealId']),
-      lead_id: firstDefined(record, ['lead_id', 'leadId']),
-      full_name: firstDefined(record, ['full_name', 'fullName']),
-      company_name: firstDefined(record, ['company_name', 'companyName']),
-      phone: firstDefined(record, ['phone']),
-      email: firstDefined(record, ['email']),
-      country: firstDefined(record, ['country']),
-      lead_source: firstDefined(record, ['lead_source', 'leadSource']),
-      service_interest: firstDefined(record, ['service_interest', 'serviceInterest']),
-      proposal_needed: toDbBoolean(firstDefined(record, ['proposal_needed', 'proposalNeeded'])),
-      agreement_needed: toDbBoolean(firstDefined(record, ['agreement_needed', 'agreementNeeded'])),
-      status: firstDefined(record, ['status']),
-      stage: firstDefined(record, ['stage']),
-      assigned_to: firstDefined(record, ['assigned_to', 'assignedTo']),
-      notes: firstDefined(record, ['notes']),
-      created_by: includeCreatedBy
-        ? (firstDefined(record, ['created_by', 'createdBy']) || userId || undefined)
-        : undefined,
+    const hasAny = keys => keys.some(key => Object.prototype.hasOwnProperty.call(record, key));
+    const toTextOrEmpty = keys => {
+      if (!hasAny(keys)) return undefined;
+      const value = firstDefined(record, keys);
+      if (value === undefined || value === null) return '';
+      return String(value).trim();
+    };
+    const toDateOrNull = keys => {
+      if (!hasAny(keys)) return undefined;
+      const value = firstDefined(record, keys);
+      if (value === undefined || value === null) return null;
+      const text = String(value).trim();
+      return text || null;
+    };
+    const toNumberOrNull = keys => {
+      if (!hasAny(keys)) return undefined;
+      const value = firstDefined(record, keys);
+      if (value === undefined || value === null || value === '') return null;
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+    const toBooleanOrNull = keys => {
+      if (!hasAny(keys)) return undefined;
+      return toDbBoolean(firstDefined(record, keys));
+    };
+
+    const mapped = {
+      deal_id: toTextOrEmpty(['deal_id', 'dealId']),
+      lead_id: toTextOrEmpty(['lead_id', 'leadId']),
+      source_lead_uuid: toTextOrEmpty(['source_lead_uuid', 'sourceLeadUuid', 'lead_uuid', 'leadUuid']),
+      full_name: toTextOrEmpty(['full_name', 'fullName']),
+      company_name: toTextOrEmpty(['company_name', 'companyName']),
+      phone: toTextOrEmpty(['phone']),
+      email: toTextOrEmpty(['email']),
+      country: toTextOrEmpty(['country']),
+      lead_source: toTextOrEmpty(['lead_source', 'leadSource']),
+      service_interest: toTextOrEmpty(['service_interest', 'serviceInterest']),
+      proposal_needed: toBooleanOrNull(['proposal_needed', 'proposalNeeded']),
+      agreement_needed: toBooleanOrNull(['agreement_needed', 'agreementNeeded']),
+      status: toTextOrEmpty(['status']),
+      stage: toTextOrEmpty(['stage']),
+      priority: toTextOrEmpty(['priority']),
+      estimated_value: toNumberOrNull(['estimated_value', 'estimatedValue']),
+      currency: toTextOrEmpty(['currency']),
+      assigned_to: toTextOrEmpty(['assigned_to', 'assignedTo']),
+      converted_by: toTextOrEmpty(['converted_by', 'convertedBy']),
+      converted_at: toDateOrNull(['converted_at', 'convertedAt']),
+      notes: toTextOrEmpty(['notes']),
+      created_by: includeCreatedBy ? (firstDefined(record, ['created_by', 'createdBy']) || userId || undefined) : undefined,
       updated_by: firstDefined(record, ['updated_by', 'updatedBy']) || userId || undefined
-    });
+    };
     const sanitized = {};
     Object.entries(mapped).forEach(([key, value]) => {
       if (!DEAL_COLUMNS.has(key)) return;
-      if (value === undefined || value === null) return;
+      if (value === undefined) return;
       sanitized[key] = value;
     });
     LEADS_DEALS_LEGACY_FIELDS.forEach(key => {
