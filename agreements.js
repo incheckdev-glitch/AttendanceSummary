@@ -84,6 +84,14 @@ const Agreements = {
     const parsed = Number(String(value).replace(/,/g, '').trim());
     return Number.isFinite(parsed) ? parsed : 0;
   },
+  toDbBoolean(value, fallback = false) {
+    if (value === undefined || value === null || value === '') return fallback;
+    if (typeof value === 'boolean') return value;
+    const raw = String(value).trim().toLowerCase();
+    if (['true', '1', 'yes', 'y', 'signed'].includes(raw)) return true;
+    if (['false', '0', 'no', 'n', 'unsigned'].includes(raw)) return false;
+    return fallback;
+  },
   normalizeText(value) {
     return String(value ?? '').trim().toLowerCase();
   },
@@ -157,6 +165,11 @@ const Agreements = {
     normalized.one_time_total = this.toNumberSafe(source.subtotal_one_time ?? normalized.one_time_total);
     normalized.total_discount = this.toNumberSafe(source.total_discount ?? normalized.total_discount);
     normalized.grand_total = this.toNumberSafe(source.grand_total ?? normalized.grand_total);
+    normalized.gm_signed = this.toDbBoolean(source.gm_signed ?? source.gmSigned ?? normalized.gm_signed, false);
+    normalized.financial_controller_signed = this.toDbBoolean(
+      source.financial_controller_signed ?? source.financialControllerSigned ?? normalized.financial_controller_signed,
+      false
+    );
     normalized.customer_name = String(normalized.customer_name || '').trim();
     normalized.status = String(normalized.status || '').trim() || 'Draft';
     normalized.currency = String(normalized.currency || '').trim();
@@ -219,7 +232,7 @@ const Agreements = {
       terms_conditions: '', customer_signatory_name: '', customer_signatory_title: '',
       provider_signatory_name_primary: '', provider_signatory_title_primary: '',
       provider_signatory_name_secondary: '', provider_signatory_title_secondary: '', provider_sign_date: '',
-      customer_sign_date: '', gm_signed: '', financial_controller_signed: '', signed_date: '', total_discount: '',
+      customer_sign_date: '', gm_signed: false, financial_controller_signed: false, signed_date: '', total_discount: '',
       generated_by: '', notes: ''
     };
   },
@@ -334,6 +347,11 @@ const Agreements = {
       provider_signatory_title_secondary: String(source.provider_signatory_title_secondary || source.providerSignatoryTitleSecondary || '').trim(),
       provider_sign_date: String(source.provider_sign_date || source.providerSignDate || '').trim(),
       customer_sign_date: String(source.customer_sign_date || source.customerSignDate || '').trim(),
+      gm_signed: this.toDbBoolean(source.gm_signed ?? source.gmSigned, false),
+      financial_controller_signed: this.toDbBoolean(
+        source.financial_controller_signed ?? source.financialControllerSigned,
+        false
+      ),
       generated_by: String(source.generated_by || source.generatedBy || '').trim(),
       status: 'Draft'
     });

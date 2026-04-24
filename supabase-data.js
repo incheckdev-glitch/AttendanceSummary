@@ -892,14 +892,13 @@
     return normalized;
   }
 
-  function toDbBoolean(value) {
-    if (value === undefined || value === null) return null;
+  function toDbBoolean(value, fallback = false) {
+    if (value === undefined || value === null || value === '') return fallback;
     if (typeof value === 'boolean') return value;
-    const normalized = String(value).trim().toLowerCase();
-    if (!normalized) return null;
-    if (['true', '1', 'yes', 'y'].includes(normalized)) return true;
-    if (['false', '0', 'no', 'n'].includes(normalized)) return false;
-    return null;
+    const raw = String(value).trim().toLowerCase();
+    if (['true', '1', 'yes', 'y', 'signed'].includes(raw)) return true;
+    if (['false', '0', 'no', 'n', 'unsigned'].includes(raw)) return false;
+    return fallback;
   }
 
   function sanitizeLeadsOrDealsRecord(resource, record = {}, { includeCreatedBy = false, userId = '' } = {}) {
@@ -929,7 +928,7 @@
     };
     const toBooleanOrNull = keys => {
       if (!hasAny(keys)) return undefined;
-      return toDbBoolean(firstDefined(record, keys));
+      return toDbBoolean(firstDefined(record, keys), null);
     };
 
     const mapped = {
@@ -996,7 +995,7 @@
     };
     const toBooleanOrNull = keys => {
       if (!hasAny(keys)) return undefined;
-      return toDbBoolean(firstDefined(record, keys));
+      return toDbBoolean(firstDefined(record, keys), null);
     };
 
     const mapped = {
@@ -1041,8 +1040,8 @@
       role_key: firstDefined(record, ['role_key', 'roleKey']),
       resource: firstDefined(record, ['resource']),
       action: firstDefined(record, ['action']),
-      is_allowed: toDbBoolean(firstDefined(record, ['is_allowed', 'isAllowed'])),
-      is_active: toDbBoolean(firstDefined(record, ['is_active', 'isActive'])),
+      is_allowed: toDbBoolean(firstDefined(record, ['is_allowed', 'isAllowed']), null),
+      is_active: toDbBoolean(firstDefined(record, ['is_active', 'isActive']), null),
       allowed_roles: firstDefined(record, ['allowed_roles', 'allowedRoles'])
     });
 
@@ -1059,7 +1058,7 @@
   function sanitizeProposalCatalogRecord(record = {}, { includeCreatedBy = false, userId = '' } = {}) {
     const mapped = compactObject({
       catalog_item_id: firstDefined(record, ['catalog_item_id', 'catalogItemId']),
-      is_active: toDbBoolean(firstDefined(record, ['is_active', 'isActive'])),
+      is_active: toDbBoolean(firstDefined(record, ['is_active', 'isActive']), null),
       section: firstDefined(record, ['section']),
       category: firstDefined(record, ['category']),
       item_name: firstDefined(record, ['item_name', 'itemName', 'name']),
@@ -1196,6 +1195,14 @@
   }
 
   function sanitizeAgreementRecord(record = {}, { includeCreatedBy = false, userId = '' } = {}) {
+    const hasAny = keys => keys.some(key => Object.prototype.hasOwnProperty.call(record, key));
+    const gmSignedKeys = ['gm_signed', 'gmSigned', 'signed_by_gm', 'signedByGm'];
+    const financialControllerSignedKeys = [
+      'financial_controller_signed',
+      'financialControllerSigned',
+      'signed_by_financial_controller',
+      'signedByFinancialController'
+    ];
     const mapped = {
       agreement_id: firstDefined(record, ['agreement_id', 'agreementId']),
       proposal_id: normalizeNullableUuidValue(firstDefined(record, ['proposal_id', 'proposalId'])),
@@ -1230,8 +1237,16 @@
       provider_signatory_name_secondary: firstDefined(record, ['provider_signatory_name_secondary', 'providerSignatoryNameSecondary', 'provider_signatory_secondary', 'providerSignatorySecondary']),
       provider_signatory_title_secondary: firstDefined(record, ['provider_signatory_title_secondary', 'providerSignatoryTitleSecondary']),
       provider_sign_date: normalizeNullableDateValue(firstDefined(record, ['provider_sign_date', 'providerSignDate'])),
-      gm_signed: toDbBoolean(firstDefined(record, ['gm_signed', 'gmSigned'])),
-      financial_controller_signed: toDbBoolean(firstDefined(record, ['financial_controller_signed', 'financialControllerSigned'])),
+      gm_signed: hasAny(gmSignedKeys)
+        ? toDbBoolean(firstDefined(record, gmSignedKeys), false)
+        : includeCreatedBy
+          ? false
+          : undefined,
+      financial_controller_signed: hasAny(financialControllerSignedKeys)
+        ? toDbBoolean(firstDefined(record, financialControllerSignedKeys), false)
+        : includeCreatedBy
+          ? false
+          : undefined,
       signed_date: normalizeNullableDateValue(firstDefined(record, ['signed_date', 'signedDate'])),
       status: firstDefined(record, ['status']),
       subtotal_locations: normalizeNumericValue(firstDefined(record, ['subtotal_locations', 'subtotalLocations', 'saas_total']), 0),
