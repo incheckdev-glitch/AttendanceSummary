@@ -127,6 +127,146 @@ const Agreements = {
     const formatted = amount.toLocaleString(undefined, options);
     return normalizedCurrency ? `${normalizedCurrency} ${formatted}` : formatted;
   },
+  canExportAgreements() {
+    const canView = Permissions.canView('agreements');
+    const exportActions = ['export_csv', 'export', 'manage_export', 'manage'];
+    const hasExportAction = exportActions.some(action => Permissions.canPerformAction?.('agreements', action));
+    return hasExportAction || canView;
+  },
+  getFilteredAgreementRows() {
+    return Array.isArray(this.state.filteredRows) ? [...this.state.filteredRows] : [];
+  },
+  getAgreementCustomerName(agreement = {}) {
+    return String(
+      agreement.customer_name ||
+      agreement.customerName ||
+      agreement.company_name ||
+      agreement.companyName ||
+      agreement.client_name ||
+      agreement.clientName ||
+      agreement.full_name ||
+      agreement.fullName ||
+      ''
+    ).trim();
+  },
+  formatDateMMDDYYYY(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return '';
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const year = String(date.getFullYear());
+    return `${month}/${day}/${year}`;
+  },
+  formatDateTimeMMDDYYYYHHMM(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return '';
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const year = String(date.getFullYear());
+    const hour = String(date.getHours()).padStart(2, '0');
+    const minute = String(date.getMinutes()).padStart(2, '0');
+    return `${month}/${day}/${year} ${hour}:${minute}`;
+  },
+  csvEscape(value) {
+    const text = String(value ?? '');
+    if (/[",\n\r]/.test(text)) {
+      return `"${text.replace(/"/g, '""')}"`;
+    }
+    return text;
+  },
+  downloadCsv(filename, csvText) {
+    const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  },
+  exportAgreementsCsv() {
+    if (!this.canExportAgreements()) {
+      UI.toast('You do not have permission to export agreements.');
+      return;
+    }
+    const rows = this.getFilteredAgreementRows();
+    if (!rows.length) {
+      UI.toast('No agreements match the current filters.');
+      return;
+    }
+    const headers = [
+      'Agreement ID', 'Agreement Number', 'Proposal ID', 'Proposal Number', 'Customer / Company', 'Contact Name', 'Email', 'Phone', 'Status',
+      'Agreement Date', 'Effective Date', 'Service Start Date', 'Service End Date', 'Contract Length', 'Billing Cycle', 'Payment Terms',
+      'Subtotal Locations', 'Subtotal One Time', 'Discount Percent', 'Discount Amount', 'Agreement Total', 'Currency', 'GM Signed',
+      'Financial Controller Signed', 'Signed Date', 'Owner / Assigned To', 'Created At', 'Updated At', 'Notes'
+    ];
+    const pick = (row, keys = []) => {
+      for (const key of keys) {
+        if (row?.[key] !== undefined && row?.[key] !== null && String(row[key]).trim() !== '') return row[key];
+      }
+      return '';
+    };
+    const numericOrBlank = value => {
+      if (value === null || value === undefined || String(value).trim() === '') return '';
+      const numeric = Number(String(value).replace(/,/g, '').trim());
+      return Number.isFinite(numeric) ? String(numeric) : '';
+    };
+    const yesNo = value => {
+      const normalized = String(value ?? '').trim().toLowerCase();
+      if (['true', '1', 'yes', 'y', 'signed'].includes(normalized)) return 'Yes';
+      return 'No';
+    };
+    const bodyRows = rows.map(row => {
+      const record = {
+        agreementId: pick(row, ['agreement_id', 'agreementId']),
+        agreementNumber: pick(row, ['agreement_number', 'agreementNumber']),
+        proposalId: pick(row, ['proposal_id', 'proposalId']),
+        proposalNumber: pick(row, ['proposal_number', 'proposalNumber']),
+        customerName: this.getAgreementCustomerName(row),
+        contactName: pick(row, ['contact_name', 'contactName', 'customer_contact_name', 'customerContactName']),
+        email: pick(row, ['email', 'customer_contact_email', 'customerContactEmail']),
+        phone: pick(row, ['phone', 'customer_contact_mobile', 'customerContactMobile']),
+        status: pick(row, ['status']),
+        agreementDate: this.formatDateMMDDYYYY(pick(row, ['agreement_date', 'agreementDate'])),
+        effectiveDate: this.formatDateMMDDYYYY(pick(row, ['effective_date', 'effectiveDate'])),
+        serviceStartDate: this.formatDateMMDDYYYY(pick(row, ['service_start_date', 'serviceStartDate'])),
+        serviceEndDate: this.formatDateMMDDYYYY(pick(row, ['service_end_date', 'serviceEndDate'])),
+        contractLength: pick(row, ['contract_length', 'contractLength', 'agreement_length', 'agreementLength']),
+        billingCycle: pick(row, ['billing_cycle', 'billingCycle', 'billing_frequency', 'billingFrequency']),
+        paymentTerms: pick(row, ['payment_terms', 'paymentTerms', 'payment_term', 'paymentTerm']),
+        subtotalLocations: numericOrBlank(pick(row, ['subtotal_locations', 'subtotalLocations', 'saas_total', 'saasTotal'])),
+        subtotalOneTime: numericOrBlank(pick(row, ['subtotal_one_time', 'subtotalOneTime', 'one_time_total', 'oneTimeTotal'])),
+        discountPercent: numericOrBlank(pick(row, ['discount_percent', 'discountPercent', 'total_discount_percent', 'totalDiscountPercent'])),
+        discountAmount: numericOrBlank(pick(row, ['discount_amount', 'discountAmount', 'total_discount', 'totalDiscount'])),
+        agreementTotal: numericOrBlank(pick(row, ['agreement_total', 'agreementTotal', 'grand_total', 'total'])),
+        currency: pick(row, ['currency']),
+        gmSigned: yesNo(pick(row, ['gm_signed', 'gmSigned'])),
+        financialControllerSigned: yesNo(pick(row, ['financial_controller_signed', 'financialControllerSigned'])),
+        signedDate: this.formatDateMMDDYYYY(pick(row, ['signed_date', 'signedDate'])),
+        owner: pick(row, ['owner', 'assigned_to', 'assignedTo', 'generated_by', 'generatedBy']),
+        createdAt: this.formatDateTimeMMDDYYYYHHMM(pick(row, ['created_at', 'createdAt'])),
+        updatedAt: this.formatDateTimeMMDDYYYYHHMM(pick(row, ['updated_at', 'updatedAt'])),
+        notes: pick(row, ['notes'])
+      };
+      const values = [
+        record.agreementId, record.agreementNumber, record.proposalId, record.proposalNumber, record.customerName, record.contactName, record.email, record.phone,
+        record.status, record.agreementDate, record.effectiveDate, record.serviceStartDate, record.serviceEndDate, record.contractLength, record.billingCycle,
+        record.paymentTerms, record.subtotalLocations, record.subtotalOneTime, record.discountPercent, record.discountAmount, record.agreementTotal, record.currency,
+        record.gmSigned, record.financialControllerSigned, record.signedDate, record.owner, record.createdAt, record.updatedAt, record.notes
+      ];
+      return values.map(value => this.csvEscape(value)).join(',');
+    });
+    const now = new Date();
+    const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+    const csvText = `${headers.map(header => this.csvEscape(header)).join(',')}\n${bodyRows.join('\n')}`;
+    this.downloadCsv(`agreements-export-${stamp}.csv`, csvText);
+    UI.toast(`Exported ${rows.length} agreement${rows.length === 1 ? '' : 's'} to CSV.`);
+  },
   normalizeDateFieldsForSave(record = {}, dateFields = []) {
     const next = record && typeof record === 'object' ? { ...record } : {};
     (Array.isArray(dateFields) ? dateFields : []).forEach(field => {
@@ -570,13 +710,6 @@ const Agreements = {
       const formatted = U.fmtDisplayDate(raw);
       return formatted && formatted !== 'Invalid Date' ? formatted : U.escapeHtml(raw);
     };
-    const boolValue = value => {
-      const normalized = String(value ?? '').trim().toLowerCase();
-      if (!normalized) return '—';
-      if (['true', 'yes', 'y', '1', 'signed'].includes(normalized)) return 'Yes';
-      if (['false', 'no', 'n', '0', 'unsigned'].includes(normalized)) return 'No';
-      return U.escapeHtml(String(value));
-    };
     const sectionKey = value => String(value || '').trim().toLowerCase();
     const isSubscription = value => {
       const key = sectionKey(value);
@@ -694,8 +827,6 @@ const Agreements = {
       .signature-box { border: 1px solid #111827; min-height: 140px; }
       .signature-head { background: #f9fafb; border-bottom: 1px solid #d1d5db; padding: 8px 10px; font-size: 12px; font-weight: 700; }
       .signature-body { padding: 10px; font-size: 12px; line-height: 1.45; }
-      .approval-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
-      .approval-cell { border: 1px solid #111827; padding: 8px 10px; font-size: 12px; }
       .footer-note { margin-top: 14px; font-size: 11px; color: #4b5563; border-top: 1px solid #e5e7eb; padding-top: 8px; text-align: center; }
       @media print { body { margin: 0; padding: 0; background: #fff; } .doc-sheet { border: 0; max-width: none; } }
     </style>
@@ -856,12 +987,6 @@ const Agreements = {
             <div><strong>Sign Date:</strong> ${dateValue(agreementData.provider_sign_date)}</div>
           </div>
         </div>
-      </section>
-
-      <section class="approval-grid">
-        <div class="approval-cell"><strong>GM Signed:</strong> ${boolValue(agreementData.gm_signed)}</div>
-        <div class="approval-cell"><strong>Financial Controller Signed:</strong> ${boolValue(agreementData.financial_controller_signed)}</div>
-        <div class="approval-cell"><strong>Signed Date:</strong> ${dateValue(agreementData.signed_date)}</div>
       </section>
 
       <footer class="footer-note">Agreement preview is print-ready and aligned to invoice document style.</footer>
@@ -1152,6 +1277,7 @@ const Agreements = {
     }
     if (E.agreementsSearchInput) E.agreementsSearchInput.value = this.state.search;
     if (E.agreementsProposalDealFilter) E.agreementsProposalDealFilter.value = this.state.proposalOrDeal;
+    if (E.agreementsExportCsvBtn) E.agreementsExportCsvBtn.style.display = this.canExportAgreements() ? '' : 'none';
   },
   render() {
     if (!E.agreementsState || !E.agreementsTbody) return;
@@ -1719,6 +1845,7 @@ const Agreements = {
     bindState(E.agreementsSearchInput, 'search');
     bindState(E.agreementsStatusFilter, 'status');
     bindState(E.agreementsProposalDealFilter, 'proposalOrDeal');
+    if (E.agreementsExportCsvBtn) E.agreementsExportCsvBtn.addEventListener('click', () => this.exportAgreementsCsv());
 
     if (E.agreementsRefreshBtn) E.agreementsRefreshBtn.addEventListener('click', () => this.loadAndRefresh({ force: true }));
     if (E.agreementsCreateBtn) E.agreementsCreateBtn.addEventListener('click', () => {
