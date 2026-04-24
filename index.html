@@ -826,35 +826,22 @@ Sample:
       <section id="insightsView" class="view" role="tabpanel" aria-labelledby="insightsTab">
         <div class="card">
           <strong>AI Insights</strong>
-          <div class="muted" style="margin-top:4px;">Actionable intelligence across Tickets, Events, Workflow, CRM, Finance, and Operations.</div>
+          <div class="muted" style="margin-top:4px;">Actionable intelligence from Tickets and Events.</div>
           <div id="aiAnalyzing" class="skeleton" style="height:6px;border-radius:6px;margin-top:10px;display:none"></div>
         </div>
 
         <div class="card">
+          <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
+            <button id="aiInsightsRefresh" class="btn sm" type="button">Refresh Insights</button>
+          </div>
           <div class="decision-filters" id="aiInsightFilters"></div>
         </div>
 
         <div class="grid cols-4" id="aiExecutiveOverview"></div>
 
-        <div class="grid cols-4">
-          <div class="card" style="grid-column: span 3;">
-            <strong>Priority Insights Queue</strong>
-            <div id="aiInsightQueue" class="decision-queue"></div>
-          </div>
-          <div class="card">
-            <strong>Trend Signals</strong>
-            <ul id="aiTrendSignals" class="muted" style="font-size:13px;margin-top:8px;padding-left:18px;"></ul>
-          </div>
-        </div>
-
         <div class="card">
-          <strong>Module Risk Breakdown</strong>
-          <div class="table-wrap" role="region" aria-label="Module risk breakdown" style="max-height:360px;">
-            <table>
-              <thead><tr><th>Module</th><th>Risk Score</th><th>Insight Count</th></tr></thead>
-              <tbody id="aiModuleRiskBody"><tr><td colspan="3" class="muted" style="text-align:center;">Waiting for insights…</td></tr></tbody>
-            </table>
-          </div>
+          <strong>Priority Insights Queue</strong>
+          <div id="aiInsightQueue" class="decision-queue"></div>
         </div>
       </section>
 

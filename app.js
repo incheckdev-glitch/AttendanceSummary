@@ -819,17 +819,28 @@ const Analytics = {
     { key: 'high', label: 'High' },
     { key: 'tickets', label: 'Tickets' },
     { key: 'events', label: 'Events' },
-    { key: 'workflow', label: 'Workflow' },
-    { key: 'revenue', label: 'Revenue' },
-    { key: 'operations', label: 'Operations' },
-    { key: 'data quality', label: 'Data Quality' },
+    { key: 'linked_ticket_event_risk', label: 'Linked Risks' },
+    { key: 'data_quality', label: 'Data Quality' },
     { key: 'reviewed', label: 'Reviewed' },
-    { key: 'unreviewed', label: 'Unreviewed' }
+    { key: 'dismissed', label: 'Dismissed' }
   ],
   refresh() {
     clearTimeout(this._debounce);
     UI.setAnalyzing(true);
+    this.renderLoading();
     this._debounce = setTimeout(() => this._render(), 80);
+  },
+  renderLoading() {
+    if (E.aiExecutiveOverview) {
+      E.aiExecutiveOverview.innerHTML = Array.from({ length: 6 })
+        .map(() => '<div class="card"><div class="skeleton" style="height:14px;width:60%;"></div><div class="skeleton" style="height:30px;margin-top:10px;"></div></div>')
+        .join('');
+    }
+    if (E.aiInsightQueue) {
+      E.aiInsightQueue.innerHTML = Array.from({ length: 4 })
+        .map(() => '<article class="decision-card"><div class="skeleton" style="height:14px;width:30%;"></div><div class="skeleton" style="height:18px;margin-top:8px;width:70%;"></div><div class="skeleton" style="height:12px;margin-top:8px;"></div><div class="skeleton" style="height:12px;margin-top:6px;"></div></article>')
+        .join('');
+    }
   },
   async _render() {
     try {
@@ -838,8 +849,8 @@ const Analytics = {
       this.renderFilters();
       this.renderDashboard();
     } catch (error) {
-      console.error('AI Decision Center failed to render', error);
-      if (E.aiInsightQueue) E.aiInsightQueue.innerHTML = '<div class="muted">Unable to load AI Decision Center data.</div>';
+      console.error('AI Insights v2 failed to render', error);
+      if (E.aiInsightQueue) E.aiInsightQueue.innerHTML = '<div class="muted">Unable to load AI Insights data.</div>';
     } finally {
       UI.setAnalyzing(false);
     }
@@ -849,13 +860,18 @@ const Analytics = {
     const filter = this._state.activeFilter;
     if (filter === 'all') return insights;
     if (filter === 'critical' || filter === 'high') return insights.filter(i => i.severity === filter);
-    if (filter === 'reviewed') return insights.filter(i => i.status === 'reviewed');
-    if (filter === 'unreviewed') return insights.filter(i => i.status !== 'reviewed');
-    return insights.filter(i => String(i.category || '').toLowerCase() === filter || String(i.resource || '').toLowerCase() === filter);
+    if (filter === 'reviewed' || filter === 'dismissed') return insights.filter(i => i.status === filter);
+    if (filter === 'tickets' || filter === 'events') return insights.filter(i => i.resource === filter);
+    return insights.filter(i => String(i.category || '').toLowerCase() === filter);
   },
   renderFilters() {
     if (!E.aiInsightFilters) return;
-    E.aiInsightFilters.innerHTML = this.filters.map(f => `<button class="btn ghost sm ${this._state.activeFilter === f.key ? 'active' : ''}" type="button" data-ai-filter="${U.escapeAttr(f.key)}">${U.escapeHtml(f.label)}</button>`).join('');
+    E.aiInsightFilters.innerHTML = this.filters
+      .map(
+        f =>
+          `<button class="btn ghost sm ${this._state.activeFilter === f.key ? 'active' : ''}" type="button" data-ai-filter="${U.escapeAttr(f.key)}">${U.escapeHtml(f.label)}</button>`
+      )
+      .join('');
     E.aiInsightFilters.querySelectorAll('[data-ai-filter]').forEach(btn => {
       btn.addEventListener('click', () => {
         this._state.activeFilter = btn.getAttribute('data-ai-filter') || 'all';
@@ -864,102 +880,159 @@ const Analytics = {
       });
     });
   },
+  openTicketByRef(ticketRef) {
+    const ref = String(ticketRef || '').trim();
+    if (!ref) return;
+    if (typeof resolveTicketByIssueRef === 'function') {
+      const ticket = resolveTicketByIssueRef(ref);
+      if (ticket) {
+        UI.Modals.openIssue(ticket.id || ref);
+        return;
+      }
+    }
+    UI.toast(`Ticket ${ref} could not be resolved.`);
+  },
+  openEventByRef(eventRef) {
+    const ref = String(eventRef || '').trim().toLowerCase();
+    if (!ref) return;
+    const events = Array.isArray(DataStore?.events) ? DataStore.events : [];
+    const event = events.find(ev => {
+      const id = String(ev.id || '').trim().toLowerCase();
+      const code = String(ev.event_code || ev.eventCode || ev.displayId || '').trim().toLowerCase();
+      return ref === id || ref === code;
+    });
+    if (event) {
+      UI.Modals.openEvent(event);
+      return;
+    }
+    setActiveView('calendar');
+    UI.toast(`Open event ${eventRef}`);
+  },
+  evidenceListMarkup(evidence = []) {
+    if (!Array.isArray(evidence) || !evidence.length) return '<li>No evidence available.</li>';
+    return evidence
+      .map(item => {
+        if (item && typeof item === 'object') {
+          const pairs = Object.entries(item)
+            .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : String(value ?? '—')}`)
+            .join(' · ');
+          return `<li>${U.escapeHtml(pairs)}</li>`;
+        }
+        return `<li>${U.escapeHtml(String(item))}</li>`;
+      })
+      .join('');
+  },
   renderDashboard() {
     const dashboard = this._state.dashboard;
     if (!dashboard) return;
     const insights = this.getFilteredInsights();
     const summary = dashboard.summary || {};
-    const formatCurrency = value => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(Number(value || 0));
 
     if (E.aiExecutiveOverview) {
       const cards = [
-        ['Platform Health Score', `${Math.round(summary.platform_health_score || 0)}/100`],
+        ['Ticket Health Score', `${Math.round(summary.ticket_health_score || 0)}/100`],
+        ['Open Ticket Risk', String(summary.open_ticket_risk || 0)],
+        ['Events Risk', String(summary.events_risk || 0)],
+        ['Linked Ticket/Event Risk', String(summary.linked_ticket_event_risk || 0)],
         ['Critical Insights', String(summary.critical_insights || 0)],
-        ['High Risk Tickets', String(summary.high_risk_tickets || 0)],
-        ['Delayed Approvals', String(summary.delayed_approvals || 0)],
-        ['Revenue Risk', formatCurrency(summary.revenue_risk || 0)],
-        ['Operations Risk', String(summary.operations_risk || 0)]
+        ['High Priority Items', String(summary.high_priority_items || 0)]
       ];
-      E.aiExecutiveOverview.innerHTML = cards.map(([label, value]) => `<div class="card"><div class="muted" style="font-size:12px;">${U.escapeHtml(label)}</div><div style="font-size:24px;font-weight:700;margin-top:6px;">${U.escapeHtml(value)}</div></div>`).join('');
+      E.aiExecutiveOverview.innerHTML = cards
+        .map(
+          ([label, value]) =>
+            `<div class="card"><div class="muted" style="font-size:12px;">${U.escapeHtml(label)}</div><div style="font-size:24px;font-weight:700;margin-top:6px;">${U.escapeHtml(value)}</div></div>`
+        )
+        .join('');
     }
 
-    if (E.aiInsightQueue) {
-      if (!insights.length) {
-        E.aiInsightQueue.innerHTML = '<div class="muted">No insights match this filter.</div>';
-      } else {
-        E.aiInsightQueue.innerHTML = insights.map(insight => {
-          const sev = insight.severity || 'low';
-          return `<article class="decision-card">
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
-              <span class="chip decision-sev-${U.escapeAttr(sev)}">${U.escapeHtml(sev.toUpperCase())}</span>
-              <span class="chip">${U.escapeHtml(insight.category || 'general')}</span>
-              <span class="muted" style="margin-left:auto;">Confidence ${Math.round(insight.confidence_score || 0)}%</span>
-            </div>
-            <h4 style="margin:0 0 6px;">${U.escapeHtml(insight.title || 'Insight')}</h4>
-            <div class="muted">${U.escapeHtml(insight.summary || '')}</div>
-            <div style="margin-top:6px;"><strong>Why it matters:</strong> ${U.escapeHtml(insight.why_it_matters || '—')}</div>
-            <div style="margin-top:4px;"><strong>Recommended action:</strong> ${U.escapeHtml(insight.recommended_action || '—')}</div>
-            <div class="muted" style="margin-top:8px;">Evidence ${insight.evidence?.length || 0} · Affected ${insight.affected_count || 0} · Created ${U.fmtDisplayDate(insight.created_at)} · Status ${U.escapeHtml(insight.status || 'new')}</div>
-            <details style="margin-top:8px;"><summary>View evidence</summary><ul style="margin:6px 0 0 16px;">${(insight.evidence || []).map(item => `<li>${U.escapeHtml(item)}</li>`).join('') || '<li>No evidence available.</li>'}</ul></details>
-            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">
-              <button class="btn sm" data-ai-open="${U.escapeAttr(insight.insight_id)}">Open related record</button>
-              <button class="btn ghost sm" data-ai-followup="${U.escapeAttr(insight.insight_id)}">Create follow-up ticket</button>
-              <button class="btn ghost sm" data-ai-status="reviewed" data-ai-id="${U.escapeAttr(insight.insight_id)}">Mark reviewed</button>
-              <button class="btn ghost sm" data-ai-status="dismissed" data-ai-id="${U.escapeAttr(insight.insight_id)}">Dismiss</button>
-            </div>
-          </article>`;
-        }).join('');
-
-        E.aiInsightQueue.querySelectorAll('[data-ai-status]').forEach(btn => {
-          btn.addEventListener('click', () => {
-            const id = btn.getAttribute('data-ai-id');
-            const status = btn.getAttribute('data-ai-status');
-            window.AIDecisionService.updateStatus(id, status);
-            this.refresh();
-          });
-        });
-
-        E.aiInsightQueue.querySelectorAll('[data-ai-open]').forEach(btn => {
-          btn.addEventListener('click', () => {
-            const insightId = btn.getAttribute('data-ai-open');
-            const insight = (this._state.dashboard?.insights || []).find(x => x.insight_id === insightId);
-            if (!insight) return;
-            if (insight.resource === 'tickets' && insight.resource_id) {
-              UI.Modals.openIssue(insight.resource_id);
-              return;
-            }
-            if (insight.resource === 'events') {
-              setActiveView('calendar');
-              UI.toast(`Open event record ${insight.resource_id || ''}`);
-              return;
-            }
-            if (insight.resource === 'workflow') return setActiveView('workflow');
-            if (insight.resource === 'invoices') return setActiveView('invoices');
-            if (insight.resource === 'agreements') return setActiveView('agreements');
-            if (insight.resource === 'proposals') return setActiveView('proposals');
-            if (insight.resource === 'clients') return setActiveView('clients');
-            UI.toast(`Open ${insight.resource} ${insight.resource_id || ''}`);
-          });
-        });
-
-        E.aiInsightQueue.querySelectorAll('[data-ai-followup]').forEach(btn => {
-          btn.addEventListener('click', () => {
-            setActiveView('issues');
-            UI.toast('Create a follow-up ticket from Tickets module.');
-          });
-        });
-      }
+    if (!E.aiInsightQueue) return;
+    if (!insights.length) {
+      E.aiInsightQueue.innerHTML = '<div class="muted">No active ticket or event risks found.</div>';
+      return;
     }
 
-    if (E.aiModuleRiskBody) {
-      const rows = (summary.module_risk || []).sort((a, b) => b.score - a.score);
-      E.aiModuleRiskBody.innerHTML = rows.map(row => `<tr><td>${U.escapeHtml(String(row.module || '').replace(/_/g, ' '))}</td><td>${U.escapeHtml(String(row.score || 0))}</td><td>${U.escapeHtml(String(row.count || 0))}</td></tr>`).join('') || '<tr><td colspan="3" class="muted" style="text-align:center;">No module risks.</td></tr>';
-    }
+    E.aiInsightQueue.innerHTML = insights
+      .map(insight => {
+        const sev = insight.severity || 'low';
+        const isLinked = insight.category === 'linked_ticket_event_risk';
+        const isEvent = insight.resource === 'events' || isLinked;
+        const created = U.formatDateTimeMMDDYYYYHHMM(insight.created_at);
 
-    if (E.aiTrendSignals) {
-      const trends = summary.trends || [];
-      E.aiTrendSignals.innerHTML = trends.map(t => `<li><strong>${U.escapeHtml(t.label)}</strong> — ${U.escapeHtml(t.value)}</li>`).join('') || '<li>No trend signals.</li>';
-    }
+        const eventButton = isEvent
+          ? `<button class="btn sm" data-ai-open-event="${U.escapeAttr(insight.resource_id || '')}">Open Event</button>`
+          : '';
+        const ticketButton = isLinked
+          ? `<button class="btn sm" data-ai-open-tickets="${U.escapeAttr(insight.insight_id)}">Open Ticket(s)</button>`
+          : insight.resource === 'tickets'
+            ? `<button class="btn sm" data-ai-open-ticket="${U.escapeAttr(insight.resource_id || '')}">Open Ticket</button>`
+            : '';
+
+        return `<article class="decision-card">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
+            <span class="chip decision-sev-${U.escapeAttr(sev)}">${U.escapeHtml(sev.toUpperCase())}</span>
+            <span class="chip">${U.escapeHtml(insight.category || 'recommendation')}</span>
+            <span class="muted" style="margin-left:auto;">Confidence ${Math.round(insight.confidence_score || 0)}%</span>
+          </div>
+          <h4 style="margin:0 0 6px;">${U.escapeHtml(insight.title || 'Insight')}</h4>
+          <div class="muted">${U.escapeHtml(insight.summary || '')}</div>
+          <div style="margin-top:6px;"><strong>Why it matters:</strong> ${U.escapeHtml(insight.why_it_matters || '—')}</div>
+          <div style="margin-top:4px;"><strong>Recommended action:</strong> ${U.escapeHtml(insight.recommended_action || '—')}</div>
+          <div class="muted" style="margin-top:8px;">Affected ${insight.affected_count || 0} · Evidence records ${insight.evidence?.length || 0} · Created ${created} · Status ${U.escapeHtml(insight.status || 'new')}</div>
+          <details style="margin-top:8px;"><summary>View Evidence</summary><ul style="margin:6px 0 0 16px;">${this.evidenceListMarkup(insight.evidence)}</ul></details>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">
+            ${eventButton}
+            ${ticketButton}
+            <button class="btn ghost sm" data-ai-evidence="${U.escapeAttr(insight.insight_id)}">View Evidence</button>
+            <button class="btn ghost sm" data-ai-status="reviewed" data-ai-id="${U.escapeAttr(insight.insight_id)}">Mark Reviewed</button>
+            <button class="btn ghost sm" data-ai-status="dismissed" data-ai-id="${U.escapeAttr(insight.insight_id)}">Dismiss</button>
+          </div>
+        </article>`;
+      })
+      .join('');
+
+    E.aiInsightQueue.querySelectorAll('[data-ai-status]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-ai-id');
+        const status = btn.getAttribute('data-ai-status');
+        window.AIDecisionService.updateStatus(id, status);
+        this.refresh();
+      });
+    });
+
+    E.aiInsightQueue.querySelectorAll('[data-ai-open-ticket]').forEach(btn => {
+      btn.addEventListener('click', () => this.openTicketByRef(btn.getAttribute('data-ai-open-ticket')));
+    });
+
+    E.aiInsightQueue.querySelectorAll('[data-ai-open-event]').forEach(btn => {
+      btn.addEventListener('click', () => this.openEventByRef(btn.getAttribute('data-ai-open-event')));
+    });
+
+    E.aiInsightQueue.querySelectorAll('[data-ai-open-tickets]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const insightId = btn.getAttribute('data-ai-open-tickets');
+        const insight = (dashboard.insights || []).find(i => i.insight_id === insightId);
+        if (!insight) return;
+        const ids = (insight.evidence || [])
+          .map(ev => (ev && typeof ev === 'object' ? ev.ticket_id || ev.id : ''))
+          .filter(Boolean);
+        if (!ids.length) {
+          UI.toast('No linked ticket references found.');
+          return;
+        }
+        this.openTicketByRef(ids[0]);
+        if (ids.length > 1) UI.toast(`Opened 1 of ${ids.length} linked tickets.`);
+      });
+    });
+
+    E.aiInsightQueue.querySelectorAll('[data-ai-evidence]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const card = btn.closest('article');
+        const details = card?.querySelector('details');
+        if (!details) return;
+        details.open = true;
+        details.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+    });
   }
 };
 
@@ -4083,6 +4156,13 @@ function wireCore() {
     E.exportCsv.addEventListener('click', () => {
       exportFilteredExcel();
     });
+  if (E.aiInsightsRefresh) {
+    E.aiInsightsRefresh.addEventListener('click', () => {
+      loadIssues(true);
+      loadEvents(true);
+      Analytics.refresh();
+    });
+  }
   if (E.createTicketBtn)
     E.createTicketBtn.addEventListener('click', () => {
       if (!requirePermission(() => Permissions.canCreateTicket(), 'Login is required to create a ticket.'))

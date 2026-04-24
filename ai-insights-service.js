@@ -1,282 +1,645 @@
-(function initAIDecisionService(global){
-  const STORAGE_KEY = 'ai_decision_center_status_v1';
-  const MODULES = ['tickets','events','workflow','crm','proposals','agreements','invoices','receipts','operations_onboarding','clients','revenue','operations','data_quality'];
+(function initAIInsightsServiceV2(global) {
+  const STORAGE_KEY = 'ai_insights_v2_status';
   const SEVERITY_WEIGHT = { critical: 4, high: 3, medium: 2, low: 1 };
+  const ALLOWED_CATEGORIES = new Set([
+    'ticket_risk',
+    'event_risk',
+    'linked_ticket_event_risk',
+    'data_quality',
+    'trend',
+    'recommendation'
+  ]);
+  const ALLOWED_RESOURCES = new Set(['tickets', 'events']);
 
-  function getClient(){
+  const str = value => String(value ?? '').trim();
+  const low = value => str(value).toLowerCase();
+  const asArray = value => (Array.isArray(value) ? value : []);
+  const toDate = value => {
+    if (!value) return null;
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+  const now = () => Date.now();
+
+  function getClient() {
     return global.SupabaseClient?.getClient?.() || null;
   }
-  function safeArray(v){ return Array.isArray(v) ? v : []; }
-  function str(v){ return String(v ?? '').trim(); }
-  function low(v){ return str(v).toLowerCase(); }
-  function num(v){ const n = Number(v); return Number.isFinite(n) ? n : 0; }
-  function toDate(v){ const d = v ? new Date(v) : null; return d && !Number.isNaN(d.getTime()) ? d : null; }
-  function daysOld(v){ const d = toDate(v); return d ? (Date.now()-d.getTime())/86400000 : 0; }
-  function hoursOld(v){ const d = toDate(v); return d ? (Date.now()-d.getTime())/3600000 : 0; }
-  function isOpenStatus(status){
-    const s = low(status);
-    return !['closed','resolved','done','completed','cancelled','canceled','paid','approved','dismissed'].includes(s);
-  }
-  function money(v){ return num(v); }
-  function parseList(v){
-    if (Array.isArray(v)) return v.map(str).filter(Boolean);
-    return str(v).split(/[;,|,]/).map(str).filter(Boolean);
-  }
-  function getStatusMap(){
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}') || {}; } catch { return {}; }
-  }
-  function saveStatusMap(map){ localStorage.setItem(STORAGE_KEY, JSON.stringify(map || {})); }
 
-  async function fetchTable(client, table){
+  function getStatusMap() {
     try {
-      const { data, error } = await client.from(table).select('*').limit(1500);
+      return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}') || {};
+    } catch {
+      return {};
+    }
+  }
+
+  function saveStatusMap(map) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(map || {}));
+  }
+
+  function isOpenTicketStatus(status) {
+    const s = low(status);
+    return !['resolved', 'closed', 'done', 'completed', 'cancelled', 'canceled', 'rejected'].includes(s);
+  }
+
+  function ticketDisplayId(ticket = {}) {
+    return str(ticket.ticket_id || ticket.ticketId || ticket.id);
+  }
+
+  function eventDisplayId(event = {}) {
+    return str(event.event_code || event.eventCode || event.id);
+  }
+
+  function parseTicketRefs(value) {
+    if (Array.isArray(value)) {
+      return Array.from(new Set(value.map(v => str(v)).filter(Boolean)));
+    }
+    return Array.from(
+      new Set(
+        str(value)
+          .split(/[;,|,]/)
+          .map(v => str(v))
+          .filter(Boolean)
+      )
+    );
+  }
+
+  function linkedTicketIds(event = {}) {
+    return Array.from(
+      new Set(
+        [
+          ...parseTicketRefs(event.issue_id),
+          ...parseTicketRefs(event.issueId),
+          ...parseTicketRefs(event.ticketId),
+          ...parseTicketRefs(event.ticketIds)
+        ]
+      )
+    );
+  }
+
+  async function fetchTable(client, table) {
+    try {
+      const { data, error } = await client.from(table).select('*').limit(3000);
       if (error) throw error;
-      return safeArray(data);
-    } catch (error){
-      console.warn(`[AIDecisionService] unable to load table ${table}`, error?.message || error);
+      return asArray(data);
+    } catch (error) {
+      console.warn(`[AIInsightsServiceV2] unable to load ${table}`, error?.message || error);
       return [];
     }
   }
 
-  async function fetchData(){
+  async function fetchData() {
     const client = getClient();
     if (!client) throw new Error('Supabase client unavailable');
-    const [tickets, ticketInternal, events, workflowApprovals, workflowAudit, leads, deals, proposals, agreements, invoices, receipts, clients, onboarding] = await Promise.all([
-      fetchTable(client,'tickets'),
-      fetchTable(client,'ticket_internal'),
-      fetchTable(client,'events'),
-      fetchTable(client,'workflow_approvals'),
-      fetchTable(client,'workflow_audit_log'),
-      fetchTable(client,'leads'),
-      fetchTable(client,'deals'),
-      fetchTable(client,'proposals'),
-      fetchTable(client,'agreements'),
-      fetchTable(client,'invoices'),
-      fetchTable(client,'receipts'),
-      fetchTable(client,'clients'),
-      fetchTable(client,'operations_onboarding')
+
+    const [ticketsRaw, ticketInternalRaw, eventsRaw] = await Promise.all([
+      fetchTable(client, 'tickets'),
+      fetchTable(client, 'ticket_internal'),
+      fetchTable(client, 'events')
     ]);
-    return {tickets,ticketInternal,events,workflowApprovals,workflowAudit,leads,deals,proposals,agreements,invoices,receipts,clients,onboarding};
-  }
 
-  function mkInsight(partial, statusMap){
-    const base = {
-      insight_id: partial.insight_id || `ins-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
-      category: partial.category || 'operations',
-      severity: partial.severity || 'medium',
-      title: partial.title || 'Insight',
-      summary: partial.summary || '',
-      why_it_matters: partial.why_it_matters || '',
-      recommended_action: partial.recommended_action || 'Review affected records.',
-      confidence_score: Math.max(30, Math.min(99, num(partial.confidence_score || 70))),
-      resource: partial.resource || 'tickets',
-      resource_id: str(partial.resource_id || ''),
-      affected_count: Math.max(0, num(partial.affected_count || 0)),
-      evidence: safeArray(partial.evidence).slice(0,8),
-      created_at: partial.created_at || new Date().toISOString(),
-      status: 'new'
+    const fallbackTickets = asArray(global.DataStore?.rows);
+    const fallbackEvents = asArray(global.DataStore?.events);
+
+    return {
+      tickets: ticketsRaw.length ? ticketsRaw : fallbackTickets,
+      ticketInternal: ticketInternalRaw,
+      events: eventsRaw.length ? eventsRaw : fallbackEvents
     };
-    base.status = statusMap[base.insight_id] || partial.status || 'new';
-    return base;
   }
 
-  function buildInsights(data){
+  function daysBetween(fromDate, toDate = new Date()) {
+    const d = toDate instanceof Date ? toDate : new Date(toDate);
+    if (!fromDate || Number.isNaN(fromDate.getTime())) return 0;
+    return (d.getTime() - fromDate.getTime()) / 86400000;
+  }
+
+  function hoursUntil(dateValue) {
+    const d = toDate(dateValue);
+    if (!d) return Number.POSITIVE_INFINITY;
+    return (d.getTime() - now()) / 3600000;
+  }
+
+  function isHighImpactEvent(event = {}) {
+    const hay = [event.impact_type, event.impactType, event.impact, event.type, event.environment]
+      .map(v => low(v))
+      .join(' ');
+    return /(downtime|high|critical|major|outage|prod|production)/.test(hay);
+  }
+
+  function hasIncompleteReadiness(event = {}) {
+    const readiness = event.readiness || event.checklist || {};
+    if (!readiness || typeof readiness !== 'object') return false;
+    const values = Object.values(readiness);
+    if (!values.length) return false;
+    return values.some(v => v === false || v === null || v === '' || low(v) === 'false' || low(v) === 'incomplete');
+  }
+
+  function createInsightFactory(statusMap) {
+    return function createInsight(partial) {
+      const insight = {
+        insight_id: partial.insight_id,
+        category: ALLOWED_CATEGORIES.has(partial.category) ? partial.category : 'recommendation',
+        severity: ['critical', 'high', 'medium', 'low'].includes(partial.severity) ? partial.severity : 'medium',
+        title: str(partial.title) || 'Insight',
+        summary: str(partial.summary),
+        why_it_matters: str(partial.why_it_matters),
+        recommended_action: str(partial.recommended_action),
+        confidence_score: Math.max(70, Math.min(99, Number(partial.confidence_score || 70))),
+        resource: ALLOWED_RESOURCES.has(partial.resource) ? partial.resource : 'tickets',
+        resource_id: str(partial.resource_id),
+        affected_count: Math.max(0, Number(partial.affected_count || 0)),
+        evidence: asArray(partial.evidence).slice(0, 12),
+        created_at: partial.created_at || new Date().toISOString(),
+        status: statusMap[str(partial.insight_id)] || partial.status || 'new'
+      };
+      return insight;
+    };
+  }
+
+  function buildInsights(data) {
     const statusMap = getStatusMap();
+    const createInsight = createInsightFactory(statusMap);
     const insights = [];
-    const tickets = safeArray(data.tickets);
-    const ticketInternal = safeArray(data.ticketInternal);
-    const events = safeArray(data.events);
-    const workflowApprovals = safeArray(data.workflowApprovals);
-    const proposals = safeArray(data.proposals);
-    const deals = safeArray(data.deals);
-    const agreements = safeArray(data.agreements);
-    const invoices = safeArray(data.invoices);
-    const receipts = safeArray(data.receipts);
-    const clients = safeArray(data.clients);
-    const onboarding = safeArray(data.onboarding);
 
-    const openTickets = tickets.filter(t => isOpenStatus(t.status));
-    const highOldTickets = openTickets.filter(t => ['high','urgent','critical','p1','p0'].includes(low(t.priority)) && daysOld(t.created_at || t.updated_at || t.date) > 3);
-    if (highOldTickets.length) insights.push(mkInsight({
-      insight_id:'ticket-high-priority-aged', category:'tickets', severity: highOldTickets.length > 8 ? 'critical':'high',
-      title:'High-priority tickets are aging beyond SLA',
-      summary:`${highOldTickets.length} high-priority ticket(s) have been open for more than 3 days.`,
-      why_it_matters:'Extended aging on urgent issues raises customer-impact and escalates operational disruption.',
-      recommended_action:'Assign an owner and commit an ETA on each aged high-priority ticket within today.',
-      confidence_score:95, resource:'tickets', resource_id:str(highOldTickets[0]?.ticket_id || highOldTickets[0]?.id),
-      affected_count:highOldTickets.length, evidence:highOldTickets.slice(0,5).map(t=>`${t.ticket_id || t.id}: ${t.title || 'Untitled'} (${Math.round(daysOld(t.created_at||t.date))}d open)`)
-    }, statusMap));
+    const tickets = asArray(data.tickets);
+    const ticketInternal = asArray(data.ticketInternal);
+    const events = asArray(data.events);
 
-    const staleStatusTickets = openTickets.filter(t => daysOld(t.updated_at || t.created_at || t.date) > 7);
-    if (staleStatusTickets.length) insights.push(mkInsight({
-      insight_id:'ticket-stuck-status',category:'tickets',severity: staleStatusTickets.length > 12 ? 'high':'medium',
-      title:'Tickets appear stuck in the same status',
-      summary:`${staleStatusTickets.length} open ticket(s) have no status movement for over 7 days.`,
-      why_it_matters:'Stale workflows create hidden backlog and delay delivery commitments.',
-      recommended_action:'Run a status sweep and move blocked items to escalated owner queues.',
-      confidence_score:92,resource:'tickets',resource_id:str(staleStatusTickets[0]?.ticket_id || staleStatusTickets[0]?.id),
-      affected_count:staleStatusTickets.length,evidence:staleStatusTickets.slice(0,5).map(t=>`${t.ticket_id || t.id}: status ${t.status || 'n/a'}, updated ${t.updated_at || t.created_at || 'n/a'}`)
-    }, statusMap));
-
-    const incompleteTickets = tickets.filter(t => !str(t.module) || !str(t.priority) || !str(t.owner || t.assigned_to));
-    if (incompleteTickets.length) insights.push(mkInsight({
-      insight_id:'ticket-missing-fields',category:'data quality',severity:'medium',
-      title:'Ticket records missing required ownership fields',
-      summary:`${incompleteTickets.length} ticket(s) are missing module, priority, or owner.`,
-      why_it_matters:'Incomplete metadata prevents accurate triage and SLA enforcement.',
-      recommended_action:'Backfill required fields and enforce validation on ticket creation/editing.',
-      confidence_score:96,resource:'tickets',resource_id:str(incompleteTickets[0]?.ticket_id || incompleteTickets[0]?.id),
-      affected_count:incompleteTickets.length,evidence:incompleteTickets.slice(0,5).map(t=>`${t.ticket_id || t.id}: module=${t.module || '—'}, priority=${t.priority || '—'}, owner=${t.owner || t.assigned_to || '—'}`)
-    }, statusMap));
-
-    const missingDevStatus = openTickets.filter(t => low(t.status).includes('development') && !ticketInternal.find(i => str(i.ticket_id) === str(t.id || t.ticket_id) && str(i.dev_team_status)));
-    if (missingDevStatus.length) insights.push(mkInsight({
-      insight_id:'ticket-dev-without-dev-status',category:'tickets',severity:'high',
-      title:'Development tickets missing dev-team progress',
-      summary:`${missingDevStatus.length} in-development ticket(s) have no dev team status signal.`,
-      why_it_matters:'No dev status increases delivery risk and weakens stakeholder communication.',
-      recommended_action:'Require dev team status updates on every ticket in development.',
-      confidence_score:90,resource:'tickets',resource_id:str(missingDevStatus[0]?.ticket_id || missingDevStatus[0]?.id),affected_count:missingDevStatus.length,
-      evidence:missingDevStatus.slice(0,5).map(t=>`${t.ticket_id || t.id}: ${t.title || 'Untitled'}`)
-    }, statusMap));
-
-    const next72h = Date.now() + (72*3600000);
-    const highImpactSoon = events.filter(ev => {
-      const start = toDate(ev.start_at || ev.start);
-      return start && start.getTime() >= Date.now() && start.getTime() <= next72h && ['high','critical','major'].includes(low(ev.impact_type || ev.impact));
+    const ticketByAnyId = new Map();
+    tickets.forEach(t => {
+      const ids = [str(t.id), str(t.ticket_id), str(t.ticketId)].filter(Boolean);
+      ids.forEach(id => ticketByAnyId.set(low(id), t));
     });
-    if (highImpactSoon.length) insights.push(mkInsight({
-      insight_id:'event-high-impact-soon',category:'events',severity:'high',title:'High-impact events scheduled soon',
-      summary:`${highImpactSoon.length} high-impact event(s) are scheduled within the next 72 hours.`,
-      why_it_matters:'High-impact operational windows can trigger incidents without readiness checks.',
-      recommended_action:'Run readiness and rollback review for each high-impact event before execution.',
-      confidence_score:93,resource:'events',resource_id:str(highImpactSoon[0]?.id || highImpactSoon[0]?.event_code),affected_count:highImpactSoon.length,
-      evidence:highImpactSoon.slice(0,5).map(ev=>`${ev.event_code || ev.id}: ${ev.title || 'Untitled'} at ${ev.start_at || ev.start}`)
-    }, statusMap));
 
-    const pendingApprovals = workflowApprovals.filter(a => ['pending','requested','waiting'].includes(low(a.status)) && hoursOld(a.created_at || a.requested_at) > 24);
-    if (pendingApprovals.length) insights.push(mkInsight({
-      insight_id:'workflow-delayed-approvals',category:'workflow',severity: pendingApprovals.length > 10 ? 'critical':'high',title:'Workflow approvals are delayed',
-      summary:`${pendingApprovals.length} approval request(s) are pending for more than 24 hours.`,
-      why_it_matters:'Delayed approvals block changes, delay revenue actions, and increase operational lag.',
-      recommended_action:'Escalate pending approvals to backup approvers and apply SLA reminders.',
-      confidence_score:95,resource:'workflow',resource_id:str(pendingApprovals[0]?.id || pendingApprovals[0]?.request_id),affected_count:pendingApprovals.length,
-      evidence:pendingApprovals.slice(0,5).map(a=>`${a.id || a.request_id}: ${a.resource || 'resource'} waiting ${Math.round(hoursOld(a.created_at || a.requested_at))}h`)
-    }, statusMap));
+    const openTickets = tickets.filter(t => isOpenTicketStatus(t.status));
 
-    const unpaidInvoices = invoices.filter(i => {
-      const status = low(i.status || i.payment_state);
-      return ['unpaid','overdue','partially paid','sent','issued'].includes(status) || money(i.pending_amount) > 0;
+    const criticalPriorityOpen = openTickets.filter(t => ['critical', 'p0', 'urgent'].includes(low(t.priority)));
+    if (criticalPriorityOpen.length) {
+      insights.push(createInsight({
+        insight_id: 'ticket-open-critical-priority',
+        category: 'ticket_risk',
+        severity: 'critical',
+        title: 'Critical-priority tickets remain open',
+        summary: `${criticalPriorityOpen.length} critical/urgent ticket(s) are still unresolved.`,
+        why_it_matters: 'These tickets can directly impact service continuity and customer trust.',
+        recommended_action: 'Review and assign owner / move to development.',
+        confidence_score: 95,
+        resource: 'tickets',
+        resource_id: ticketDisplayId(criticalPriorityOpen[0]),
+        affected_count: criticalPriorityOpen.length,
+        evidence: criticalPriorityOpen.slice(0, 8).map(t => ({ id: ticketDisplayId(t), title: str(t.title) || 'Untitled ticket' }))
+      }));
+    }
+
+    const highPriorityOpen = openTickets.filter(t => ['high', 'p1'].includes(low(t.priority)));
+    if (highPriorityOpen.length) {
+      insights.push(createInsight({
+        insight_id: 'ticket-open-high-priority',
+        category: 'ticket_risk',
+        severity: 'high',
+        title: 'High-priority tickets remain open',
+        summary: `${highPriorityOpen.length} high-priority ticket(s) are open and require active ownership.`,
+        why_it_matters: 'Delays on high-priority issues often become escalations and SLA breaches.',
+        recommended_action: 'Review and assign owner / move to development.',
+        confidence_score: 95,
+        resource: 'tickets',
+        resource_id: ticketDisplayId(highPriorityOpen[0]),
+        affected_count: highPriorityOpen.length,
+        evidence: highPriorityOpen.slice(0, 8).map(t => ({ id: ticketDisplayId(t), title: str(t.title) || 'Untitled ticket' }))
+      }));
+    }
+
+    const ageBuckets = {
+      medium: openTickets.filter(t => {
+        const age = daysBetween(toDate(t.created_at || t.createdAt || t.date));
+        return age > 3 && age <= 7;
+      }),
+      high: openTickets.filter(t => {
+        const age = daysBetween(toDate(t.created_at || t.createdAt || t.date));
+        return age > 7 && age <= 14;
+      }),
+      critical: openTickets.filter(t => daysBetween(toDate(t.created_at || t.createdAt || t.date)) > 14)
+    };
+
+    Object.entries(ageBuckets).forEach(([severity, rows]) => {
+      if (!rows.length) return;
+      insights.push(createInsight({
+        insight_id: `ticket-aging-${severity}`,
+        category: 'ticket_risk',
+        severity,
+        title: `Open tickets aging at ${severity} level`,
+        summary: `${rows.length} open ticket(s) have aged into ${severity} risk thresholds.`,
+        why_it_matters: 'Aging backlog increases delivery uncertainty and escalations.',
+        recommended_action: 'Prioritize aging backlog and set owner + ETA updates today.',
+        confidence_score: 95,
+        resource: 'tickets',
+        resource_id: ticketDisplayId(rows[0]),
+        affected_count: rows.length,
+        evidence: rows.slice(0, 8).map(t => ({ id: ticketDisplayId(t), age_days: Math.floor(daysBetween(toDate(t.created_at || t.createdAt || t.date))) }))
+      }));
     });
-    const revenueRisk = unpaidInvoices.reduce((s, i) => s + money(i.pending_amount || (money(i.invoice_total)-money(i.received_amount))), 0);
-    if (unpaidInvoices.length) insights.push(mkInsight({
-      insight_id:'revenue-invoices-pending',category:'revenue',severity: revenueRisk > 100000 ? 'critical':'high',title:'Outstanding invoices expose revenue risk',
-      summary:`${unpaidInvoices.length} invoice(s) are still pending payment (${new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(revenueRisk)} at risk).`,
-      why_it_matters:'Open receivables weaken cash flow and increase collection effort.',
-      recommended_action:'Prioritize follow-up on oldest pending invoices and trigger collection workflow.',
-      confidence_score:97,resource:'invoices',resource_id:str(unpaidInvoices[0]?.invoice_id || unpaidInvoices[0]?.id),affected_count:unpaidInvoices.length,
-      evidence:unpaidInvoices.slice(0,5).map(i=>`${i.invoice_id || i.id}: pending ${money(i.pending_amount || (money(i.invoice_total)-money(i.received_amount))).toFixed(2)}`)
-    }, statusMap));
 
-    const signedNoOnboarding = agreements.filter(a => ['signed','active'].includes(low(a.status)) && !onboarding.find(o => str(o.agreement_id) && str(o.agreement_id) === str(a.agreement_id || a.id)));
-    if (signedNoOnboarding.length) insights.push(mkInsight({
-      insight_id:'operations-missing-onboarding',category:'operations',severity:'high',title:'Signed agreements missing onboarding requests',
-      summary:`${signedNoOnboarding.length} signed agreement(s) do not have operations onboarding records.`,
-      why_it_matters:'Missing onboarding creates delivery delays immediately after commercial closure.',
-      recommended_action:'Create onboarding records for each signed agreement and assign responsible CSM.',
-      confidence_score:88,resource:'agreements',resource_id:str(signedNoOnboarding[0]?.agreement_id || signedNoOnboarding[0]?.id),affected_count:signedNoOnboarding.length,
-      evidence:signedNoOnboarding.slice(0,5).map(a=>`${a.agreement_id || a.id}: ${a.customer_name || a.client_name || 'Unnamed client'}`)
-    }, statusMap));
+    const stuckTickets = openTickets.filter(t => daysBetween(toDate(t.updated_at || t.updatedAt || t.created_at || t.createdAt || t.date)) > 7);
+    if (stuckTickets.length) {
+      insights.push(createInsight({
+        insight_id: 'ticket-stuck-status-over-7-days',
+        category: 'ticket_risk',
+        severity: 'high',
+        title: 'Tickets appear stuck in the same status',
+        summary: `${stuckTickets.length} ticket(s) have no meaningful status movement for over 7 days.`,
+        why_it_matters: 'Stalled tickets indicate hidden blockers and weak execution flow.',
+        recommended_action: 'Escalate blockers and refresh status progression.',
+        confidence_score: 95,
+        resource: 'tickets',
+        resource_id: ticketDisplayId(stuckTickets[0]),
+        affected_count: stuckTickets.length,
+        evidence: stuckTickets.slice(0, 8).map(t => ({ id: ticketDisplayId(t), status: str(t.status), updated_at: t.updated_at || t.updatedAt || t.created_at || t.createdAt }))
+      }));
+    }
 
-    const proposalsStuck = proposals.filter(p => ['sent','review','negotiation'].includes(low(p.status)) && daysOld(p.updated_at || p.created_at) > 14);
-    if (proposalsStuck.length) insights.push(mkInsight({
-      insight_id:'revenue-proposals-stuck',category:'revenue',severity:'medium',title:'Commercial proposals are stuck in pipeline',
-      summary:`${proposalsStuck.length} proposal(s) have not moved for over 14 days.`,
-      why_it_matters:'Aging proposals reduce conversion probability and delay forecasted revenue.',
-      recommended_action:'Run commercial follow-ups and close-lost hygiene on aging proposals.',
-      confidence_score:91,resource:'proposals',resource_id:str(proposalsStuck[0]?.proposal_id || proposalsStuck[0]?.id),affected_count:proposalsStuck.length,
-      evidence:proposalsStuck.slice(0,5).map(p=>`${p.proposal_id || p.id}: ${p.status || 'n/a'} last update ${p.updated_at || p.created_at || 'n/a'}`)
-    }, statusMap));
+    const internalByTicket = new Map();
+    ticketInternal.forEach(row => {
+      const id = low(row.ticket_id || row.ticketId || row.id || '');
+      if (id) internalByTicket.set(id, row);
+    });
 
-    const clientsHighDue = clients.filter(c => money(c.total_due || c.due_amount || c.outstanding_amount) > 0);
-    if (clientsHighDue.length) insights.push(mkInsight({
-      insight_id:'clients-high-due-amounts',category:'clients',severity: clientsHighDue.length > 10 ? 'high':'medium',title:'Clients carry outstanding due balances',
-      summary:`${clientsHighDue.length} client account(s) show due amounts pending settlement.`,
-      why_it_matters:'Client arrears increase churn risk and impact renewals.',
-      recommended_action:'Prioritize account outreach for top due balances and align with finance collection.',
-      confidence_score:84,resource:'clients',resource_id:str(clientsHighDue[0]?.client_id || clientsHighDue[0]?.id),affected_count:clientsHighDue.length,
-      evidence:clientsHighDue.slice(0,5).map(c=>`${c.client_id || c.id}: due ${money(c.total_due || c.due_amount || c.outstanding_amount).toFixed(2)}`)
-    }, statusMap));
+    const underDevMissingStatus = openTickets.filter(t => {
+      if (low(t.status) !== 'under development') return false;
+      const key = low(ticketDisplayId(t));
+      const internal = internalByTicket.get(key);
+      return !str(internal?.dev_team_status || internal?.devTeamStatus);
+    });
+    if (underDevMissingStatus.length) {
+      insights.push(createInsight({
+        insight_id: 'ticket-under-dev-missing-dev-team-status',
+        category: 'ticket_risk',
+        severity: 'high',
+        title: 'Under Development tickets missing dev team status',
+        summary: `${underDevMissingStatus.length} in-development ticket(s) do not include dev team status.`,
+        why_it_matters: 'Missing execution signal reduces predictability for delivery and communication.',
+        recommended_action: 'Update dev team status.',
+        confidence_score: 95,
+        resource: 'tickets',
+        resource_id: ticketDisplayId(underDevMissingStatus[0]),
+        affected_count: underDevMissingStatus.length,
+        evidence: underDevMissingStatus.slice(0, 8).map(t => ({ id: ticketDisplayId(t), title: str(t.title) || 'Untitled ticket' }))
+      }));
+    }
 
-    const duplicatedTicketIds = (() => {
-      const seen = new Set(); const dup = [];
-      tickets.forEach(t => { const id = str(t.ticket_id || t.id); if (!id) return; if (seen.has(id)) dup.push(id); else seen.add(id); });
-      return Array.from(new Set(dup));
-    })();
-    if (duplicatedTicketIds.length) insights.push(mkInsight({
-      insight_id:'data-duplicate-ticket-ids',category:'data quality',severity:'high',title:'Duplicate ticket identifiers detected',
-      summary:`${duplicatedTicketIds.length} duplicate ticket ID value(s) found in dataset.`,
-      why_it_matters:'Duplicate identifiers break traceability and can corrupt reporting accuracy.',
-      recommended_action:'Resolve duplicate IDs and enforce uniqueness constraints in data source.',
-      confidence_score:98,resource:'tickets',resource_id:duplicatedTicketIds[0],affected_count:duplicatedTicketIds.length,
-      evidence:duplicatedTicketIds.slice(0,8).map(id=>`Duplicate ticket_id: ${id}`)
-    }, statusMap));
+    const missingFieldTickets = tickets.filter(t => {
+      const title = str(t.title || t.subject);
+      const emailAddressee = str(t.email_addressee || t.emailAddressee || t.email);
+      return !str(t.priority) || !str(t.module) || !str(t.department) || !title || !emailAddressee;
+    });
+    if (missingFieldTickets.length) {
+      insights.push(createInsight({
+        insight_id: 'ticket-data-quality-missing-important-fields',
+        category: 'data_quality',
+        severity: 'medium',
+        title: 'Tickets are missing important required fields',
+        summary: `${missingFieldTickets.length} ticket(s) are missing priority/module/department/title/email_addressee fields.`,
+        why_it_matters: 'Incomplete ticket metadata causes triage delays and poor reporting quality.',
+        recommended_action: 'Backfill missing fields and enforce validation on updates.',
+        confidence_score: 95,
+        resource: 'tickets',
+        resource_id: ticketDisplayId(missingFieldTickets[0]),
+        affected_count: missingFieldTickets.length,
+        evidence: missingFieldTickets.slice(0, 8).map(t => ({
+          id: ticketDisplayId(t),
+          missing: ['priority', 'module', 'department', 'title', 'email_addressee'].filter(field => {
+            if (field === 'title') return !str(t.title || t.subject);
+            if (field === 'email_addressee') return !str(t.email_addressee || t.emailAddressee || t.email);
+            return !str(t[field]);
+          })
+        }))
+      }));
+    }
 
-    const moduleCounts = {};
-    tickets.forEach(t => { const m = low(t.module || 'unspecified'); moduleCounts[m] = (moduleCounts[m] || 0) + 1; });
-    const topModules = Object.entries(moduleCounts).sort((a,b)=>b[1]-a[1]).slice(0,3);
-    if (topModules.length && topModules[0][1] >= 5) insights.push(mkInsight({
-      insight_id:'ticket-module-cluster-trend',category:'tickets',severity:'low',title:'Repeated issue concentration by module',
-      summary:`Top repeated module is ${topModules[0][0]} with ${topModules[0][1]} tickets in current dataset.`,
-      why_it_matters:'Recurring module concentration points to systemic defect patterns.',
-      recommended_action:'Run root-cause review for repeated modules and create preventive backlog items.',
-      confidence_score:75,resource:'tickets',resource_id:'',affected_count:topModules[0][1],
-      evidence:topModules.map(([m,c])=>`${m}: ${c} ticket(s)`)
-    }, statusMap));
+    const moduleOpenCounts = {};
+    openTickets.forEach(t => {
+      const module = str(t.module) || 'Unspecified';
+      moduleOpenCounts[module] = (moduleOpenCounts[module] || 0) + 1;
+    });
+    const repeatedModules = Object.entries(moduleOpenCounts).filter(([, count]) => count >= 4).sort((a, b) => b[1] - a[1]);
+    if (repeatedModules.length) {
+      const topCount = repeatedModules[0][1];
+      insights.push(createInsight({
+        insight_id: 'ticket-repeated-issue-modules',
+        category: 'trend',
+        severity: topCount >= 8 ? 'high' : 'medium',
+        title: 'Repeated issue concentration by module',
+        summary: `${repeatedModules.length} module(s) show clustered open ticket volume.`,
+        why_it_matters: 'Repeated module issues often represent systemic defects rather than isolated incidents.',
+        recommended_action: 'Review repeated module issues.',
+        confidence_score: 75,
+        resource: 'tickets',
+        resource_id: '',
+        affected_count: repeatedModules.reduce((sum, [, c]) => sum + c, 0),
+        evidence: repeatedModules.slice(0, 8).map(([module, count]) => ({ module, open_count: count }))
+      }));
+    }
 
-    const sorted = insights.sort((a,b)=> (SEVERITY_WEIGHT[b.severity]-SEVERITY_WEIGHT[a.severity]) || (b.confidence_score-a.confidence_score) || (new Date(b.created_at)-new Date(a.created_at)));
-    return sorted;
+    const sevenDaysMs = 7 * 24 * 3600000;
+    const nowTs = now();
+    const recent7 = tickets.filter(t => {
+      const created = toDate(t.created_at || t.createdAt || t.date);
+      return created && created.getTime() >= nowTs - sevenDaysMs;
+    }).length;
+    const previous7 = tickets.filter(t => {
+      const created = toDate(t.created_at || t.createdAt || t.date);
+      return created && created.getTime() >= nowTs - (14 * 24 * 3600000) && created.getTime() < nowTs - sevenDaysMs;
+    }).length;
+    const growthRate = previous7 > 0 ? (recent7 - previous7) / previous7 : recent7 > 0 ? 1 : 0;
+    if (recent7 >= 8 && growthRate >= 0.3) {
+      insights.push(createInsight({
+        insight_id: 'ticket-volume-trend-last7-vs-prev7',
+        category: 'trend',
+        severity: growthRate >= 0.6 ? 'high' : 'medium',
+        title: 'New ticket intake increased in the last 7 days',
+        summary: `Ticket volume moved from ${previous7} to ${recent7} across comparable 7-day windows.`,
+        why_it_matters: 'A sudden intake spike can overload triage and increase unresolved backlog risk.',
+        recommended_action: 'Review ticket intake spike.',
+        confidence_score: 75,
+        resource: 'tickets',
+        resource_id: '',
+        affected_count: recent7,
+        evidence: [{ previous_7_days: previous7, last_7_days: recent7, growth_percent: Math.round(growthRate * 100) }]
+      }));
+    }
+
+    const upcomingEvents7d = events.filter(ev => {
+      const hours = hoursUntil(ev.start_at || ev.start);
+      return hours >= 0 && hours <= 7 * 24;
+    });
+
+    const upcomingHighImpact = upcomingEvents7d.filter(isHighImpactEvent);
+    if (upcomingHighImpact.length) {
+      insights.push(createInsight({
+        insight_id: 'event-upcoming-high-impact-next-7-days',
+        category: 'event_risk',
+        severity: 'high',
+        title: 'Upcoming high-impact events in next 7 days',
+        summary: `${upcomingHighImpact.length} upcoming event(s) indicate downtime/high impact risk.`,
+        why_it_matters: 'High-impact change windows require strong readiness to avoid service disruption.',
+        recommended_action: 'Confirm readiness and communication.',
+        confidence_score: 95,
+        resource: 'events',
+        resource_id: eventDisplayId(upcomingHighImpact[0]),
+        affected_count: upcomingHighImpact.length,
+        evidence: upcomingHighImpact.slice(0, 8).map(ev => ({ id: eventDisplayId(ev), title: str(ev.title), start_at: ev.start_at || ev.start }))
+      }));
+    }
+
+    const missingOwnerEvents = events.filter(ev => !str(ev.owner));
+    if (missingOwnerEvents.length) {
+      insights.push(createInsight({
+        insight_id: 'event-data-quality-missing-owner',
+        category: 'data_quality',
+        severity: 'medium',
+        title: 'Events missing owner assignment',
+        summary: `${missingOwnerEvents.length} event(s) have no owner.`,
+        why_it_matters: 'Ownerless events increase planning gaps and delayed decisions.',
+        recommended_action: 'Assign an owner to each event.',
+        confidence_score: 95,
+        resource: 'events',
+        resource_id: eventDisplayId(missingOwnerEvents[0]),
+        affected_count: missingOwnerEvents.length,
+        evidence: missingOwnerEvents.slice(0, 8).map(ev => ({ id: eventDisplayId(ev), title: str(ev.title) }))
+      }));
+    }
+
+    const missingStartEndEvents = events.filter(ev => !toDate(ev.start_at || ev.start) || !toDate(ev.end_at || ev.end));
+    if (missingStartEndEvents.length) {
+      insights.push(createInsight({
+        insight_id: 'event-data-quality-missing-start-end',
+        category: 'data_quality',
+        severity: 'high',
+        title: 'Events missing start/end time',
+        summary: `${missingStartEndEvents.length} event(s) are missing start_at or end_at values.`,
+        why_it_matters: 'Scheduling without valid dates breaks readiness, collision checks, and stakeholder communication.',
+        recommended_action: 'Populate missing start/end values immediately.',
+        confidence_score: 95,
+        resource: 'events',
+        resource_id: eventDisplayId(missingStartEndEvents[0]),
+        affected_count: missingStartEndEvents.length,
+        evidence: missingStartEndEvents.slice(0, 8).map(ev => ({ id: eventDisplayId(ev), start_at: ev.start_at || ev.start || null, end_at: ev.end_at || ev.end || null }))
+      }));
+    }
+
+    const readinessIncompleteEvents = events.filter(hasIncompleteReadiness);
+    if (readinessIncompleteEvents.length) {
+      const hasUpcomingWithin7Days = readinessIncompleteEvents.some(ev => {
+        const h = hoursUntil(ev.start_at || ev.start);
+        return h >= 0 && h <= 7 * 24;
+      });
+      insights.push(createInsight({
+        insight_id: 'event-readiness-incomplete',
+        category: 'event_risk',
+        severity: hasUpcomingWithin7Days ? 'high' : 'medium',
+        title: 'Event readiness checklist is incomplete',
+        summary: `${readinessIncompleteEvents.length} event(s) have incomplete readiness checks.`,
+        why_it_matters: 'Unfinished readiness checklists elevate execution and rollback risk.',
+        recommended_action: 'Complete readiness checklist before execution.',
+        confidence_score: 95,
+        resource: 'events',
+        resource_id: eventDisplayId(readinessIncompleteEvents[0]),
+        affected_count: readinessIncompleteEvents.length,
+        evidence: readinessIncompleteEvents.slice(0, 8).map(ev => ({ id: eventDisplayId(ev), readiness: ev.readiness || ev.checklist || {} }))
+      }));
+    }
+
+    const recentlyChangedEvents = events.filter(ev => {
+      const updated = toDate(ev.updated_at || ev.updatedAt || ev.created_at || ev.createdAt);
+      return updated && nowTs - updated.getTime() <= 2 * 24 * 3600000;
+    });
+    if (recentlyChangedEvents.length) {
+      insights.push(createInsight({
+        insight_id: 'event-status-changed-recently',
+        category: 'recommendation',
+        severity: 'low',
+        title: 'Event statuses changed recently',
+        summary: `${recentlyChangedEvents.length} event(s) changed status in the last 48 hours.`,
+        why_it_matters: 'Recent status shifts can indicate planning drift that needs coordinated communication.',
+        recommended_action: 'Review recent event status changes with stakeholders.',
+        confidence_score: 95,
+        resource: 'events',
+        resource_id: eventDisplayId(recentlyChangedEvents[0]),
+        affected_count: recentlyChangedEvents.length,
+        evidence: recentlyChangedEvents.slice(0, 8).map(ev => ({ id: eventDisplayId(ev), status: str(ev.status), updated_at: ev.updated_at || ev.updatedAt }))
+      }));
+    }
+
+    const riskyEventsWithoutLinkedTickets = events.filter(ev => isHighImpactEvent(ev) && linkedTicketIds(ev).length === 0);
+    if (riskyEventsWithoutLinkedTickets.length) {
+      insights.push(createInsight({
+        insight_id: 'event-without-linked-ticket-traceability',
+        category: 'event_risk',
+        severity: 'medium',
+        title: 'Risky events with no linked ticket',
+        summary: `${riskyEventsWithoutLinkedTickets.length} event(s) suggest change risk but have no linked ticket(s).`,
+        why_it_matters: 'Missing traceability obscures impact analysis and release accountability.',
+        recommended_action: 'Link relevant tickets for traceability.',
+        confidence_score: 95,
+        resource: 'events',
+        resource_id: eventDisplayId(riskyEventsWithoutLinkedTickets[0]),
+        affected_count: riskyEventsWithoutLinkedTickets.length,
+        evidence: riskyEventsWithoutLinkedTickets.slice(0, 8).map(ev => ({ id: eventDisplayId(ev), impact_type: str(ev.impact_type || ev.impactType || ev.impact) }))
+      }));
+    }
+
+    const unresolvedLinkedUpcoming = [];
+    const highImpactLinkedHighPriority = [];
+    const missingLinkedTickets = [];
+    const pastEventTicketStillOpen = [];
+
+    events.forEach(ev => {
+      const ids = linkedTicketIds(ev);
+      if (!ids.length) return;
+
+      ids.forEach(id => {
+        const ticket = ticketByAnyId.get(low(id));
+        if (!ticket) {
+          missingLinkedTickets.push({ event_id: eventDisplayId(ev), ticket_ref: id });
+          return;
+        }
+
+        const eventHours = hoursUntil(ev.start_at || ev.start);
+        if (eventHours >= 0 && eventHours <= 7 * 24 && isOpenTicketStatus(ticket.status)) {
+          unresolvedLinkedUpcoming.push({ event_id: eventDisplayId(ev), ticket_id: ticketDisplayId(ticket), hours_until_event: Math.round(eventHours) });
+        }
+
+        if (isHighImpactEvent(ev) && ['critical', 'urgent', 'p0', 'high', 'p1'].includes(low(ticket.priority))) {
+          highImpactLinkedHighPriority.push({ event_id: eventDisplayId(ev), ticket_id: ticketDisplayId(ticket), priority: str(ticket.priority) });
+        }
+
+        const eventEnd = toDate(ev.end_at || ev.end);
+        if (eventEnd && eventEnd.getTime() < nowTs && isOpenTicketStatus(ticket.status)) {
+          pastEventTicketStillOpen.push({ event_id: eventDisplayId(ev), ticket_id: ticketDisplayId(ticket), ticket_status: str(ticket.status) });
+        }
+      });
+    });
+
+    if (unresolvedLinkedUpcoming.length) {
+      const within48h = unresolvedLinkedUpcoming.some(item => item.hours_until_event <= 48);
+      insights.push(createInsight({
+        insight_id: 'linked-upcoming-event-unresolved-tickets',
+        category: 'linked_ticket_event_risk',
+        severity: within48h ? 'critical' : 'high',
+        title: 'Upcoming events are linked to unresolved tickets',
+        summary: `${unresolvedLinkedUpcoming.length} linked ticket-event risk relation(s) remain unresolved before execution.`,
+        why_it_matters: 'Unresolved dependencies before an event increase outage probability and rollback pressure.',
+        recommended_action: 'Resolve linked tickets or delay event.',
+        confidence_score: 85,
+        resource: 'events',
+        resource_id: unresolvedLinkedUpcoming[0]?.event_id || '',
+        affected_count: unresolvedLinkedUpcoming.length,
+        evidence: unresolvedLinkedUpcoming.slice(0, 12)
+      }));
+    }
+
+    if (highImpactLinkedHighPriority.length) {
+      insights.push(createInsight({
+        insight_id: 'linked-high-impact-event-with-high-priority-ticket',
+        category: 'linked_ticket_event_risk',
+        severity: 'critical',
+        title: 'High-impact events linked to high-priority tickets',
+        summary: `${highImpactLinkedHighPriority.length} high-risk link(s) combine high-impact events and high-priority tickets.`,
+        why_it_matters: 'This combination compounds change risk and incident likelihood.',
+        recommended_action: 'Run escalation review and resolve high-priority dependencies first.',
+        confidence_score: 85,
+        resource: 'events',
+        resource_id: highImpactLinkedHighPriority[0]?.event_id || '',
+        affected_count: highImpactLinkedHighPriority.length,
+        evidence: highImpactLinkedHighPriority.slice(0, 12)
+      }));
+    }
+
+    if (missingLinkedTickets.length) {
+      insights.push(createInsight({
+        insight_id: 'linked-ticket-reference-not-found',
+        category: 'data_quality',
+        severity: 'medium',
+        title: 'Linked ticket references not found',
+        summary: `${missingLinkedTickets.length} event-linked ticket reference(s) do not match any existing ticket.`,
+        why_it_matters: 'Broken linkage makes incident traceability and auditability unreliable.',
+        recommended_action: 'Correct linked ticket ID.',
+        confidence_score: 85,
+        resource: 'events',
+        resource_id: missingLinkedTickets[0]?.event_id || '',
+        affected_count: missingLinkedTickets.length,
+        evidence: missingLinkedTickets.slice(0, 12)
+      }));
+    }
+
+    if (pastEventTicketStillOpen.length) {
+      insights.push(createInsight({
+        insight_id: 'linked-past-event-ticket-still-open',
+        category: 'linked_ticket_event_risk',
+        severity: 'high',
+        title: 'Tickets linked to past events are still open',
+        summary: `${pastEventTicketStillOpen.length} linked ticket(s) remain open after the event end time.`,
+        why_it_matters: 'Open post-event tickets can indicate unresolved fallout or incomplete closure flow.',
+        recommended_action: 'Review closure or follow-up.',
+        confidence_score: 85,
+        resource: 'events',
+        resource_id: pastEventTicketStillOpen[0]?.event_id || '',
+        affected_count: pastEventTicketStillOpen.length,
+        evidence: pastEventTicketStillOpen.slice(0, 12)
+      }));
+    }
+
+    return insights.sort((a, b) => {
+      const sevDiff = (SEVERITY_WEIGHT[b.severity] || 0) - (SEVERITY_WEIGHT[a.severity] || 0);
+      if (sevDiff) return sevDiff;
+      const confDiff = Number(b.confidence_score || 0) - Number(a.confidence_score || 0);
+      if (confDiff) return confDiff;
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
   }
 
-  function buildSummary(insights, data){
-    const critical = insights.filter(i => i.severity === 'critical' && i.status !== 'dismissed').length;
-    const high = insights.filter(i => i.severity === 'high' && i.status !== 'dismissed').length;
-    const delayedApprovals = insights.find(i => i.insight_id === 'workflow-delayed-approvals')?.affected_count || 0;
-    const highRiskTickets = insights.find(i => i.insight_id === 'ticket-high-priority-aged')?.affected_count || 0;
-    const revenueRisk = safeArray(data.invoices).reduce((sum, row) => sum + Math.max(0, money(row.pending_amount || (money(row.invoice_total) - money(row.received_amount)))), 0);
-    const operationsRisk = insights.filter(i => ['operations','workflow'].includes(low(i.category)) && ['critical','high'].includes(i.severity)).length;
-    const weighted = insights.reduce((sum, i) => sum + (SEVERITY_WEIGHT[i.severity] * Math.max(1, i.affected_count)), 0);
-    const health = Math.max(0, Math.min(100, 100 - weighted));
+  function buildSummary(insights) {
+    const visibleInsights = insights.filter(i => i.status !== 'dismissed');
+    const criticalInsights = visibleInsights.filter(i => i.severity === 'critical').length;
+    const highPriorityItems = visibleInsights.filter(i => ['critical', 'high'].includes(i.severity)).length;
 
-    const moduleRisk = MODULES.map(module => {
-      const moduleInsights = insights.filter(i => low(i.category) === module || low(i.resource) === module);
-      const score = moduleInsights.reduce((sum, item) => sum + (SEVERITY_WEIGHT[item.severity] * Math.max(1, item.affected_count)), 0);
-      return { module, score, count: moduleInsights.length };
-    });
+    const openTicketRisk = visibleInsights.filter(i => i.category === 'ticket_risk' && ['critical', 'high'].includes(i.severity)).length;
+    const eventsRisk = visibleInsights.filter(i => i.category === 'event_risk' && ['critical', 'high'].includes(i.severity)).length;
+    const linkedRisk = visibleInsights.filter(i => i.category === 'linked_ticket_event_risk' && ['critical', 'high'].includes(i.severity)).length;
 
-    const trends = [
-      { label: 'Increasing ticket volume', value: insights.some(i => i.insight_id === 'ticket-module-cluster-trend') ? 'Signal detected' : 'Stable', state: insights.some(i => i.insight_id === 'ticket-module-cluster-trend') ? 'high' : 'low' },
-      { label: 'Aging open tickets', value: `${highRiskTickets} high-risk aging`, state: highRiskTickets > 0 ? 'high' : 'low' },
-      { label: 'Delayed workflow approvals', value: `${delayedApprovals} pending >24h`, state: delayedApprovals > 0 ? 'high' : 'low' },
-      { label: 'Invoices pending receipts', value: `${safeArray(data.invoices).filter(i => money(i.pending_amount) > 0).length} invoices`, state: 'medium' },
-      { label: 'Events with high impact', value: `${safeArray(data.events).filter(e => ['high','critical','major'].includes(low(e.impact_type || e.impact))).length} upcoming/high-impact`, state: 'medium' }
-    ];
+    const weightedRisk = visibleInsights.reduce((sum, i) => sum + (SEVERITY_WEIGHT[i.severity] || 0), 0);
+    const ticketHealthScore = Math.max(0, Math.min(100, 100 - weightedRisk));
 
-    return { platform_health_score: health, critical_insights: critical, high_risk_tickets: highRiskTickets, delayed_approvals: delayedApprovals, revenue_risk: revenueRisk, operations_risk: operationsRisk, module_risk: moduleRisk, trends };
+    return {
+      ticket_health_score: ticketHealthScore,
+      open_ticket_risk: openTicketRisk,
+      events_risk: eventsRisk,
+      linked_ticket_event_risk: linkedRisk,
+      critical_insights: criticalInsights,
+      high_priority_items: highPriorityItems
+    };
   }
 
-  async function generateDashboard(){
+  async function generateDashboard() {
     const data = await fetchData();
     const insights = buildInsights(data);
-    const summary = buildSummary(insights, data);
-    return { summary, insights, generated_at: new Date().toISOString() };
+    const summary = buildSummary(insights);
+    return {
+      summary,
+      insights,
+      generated_at: new Date().toISOString()
+    };
   }
 
-  function updateStatus(insightId, status){
+  function updateStatus(insightId, status) {
     const map = getStatusMap();
     map[str(insightId)] = status;
     saveStatusMap(map);
   }
 
-  global.AIDecisionService = { generateDashboard, updateStatus, getStatusMap };
+  global.AIDecisionService = {
+    generateDashboard,
+    updateStatus,
+    getStatusMap
+  };
 })(window);
