@@ -6351,10 +6351,102 @@ function logApiStartupDiagnostics() {
   });
 }
 
+function isResetPasswordRoute() {
+  const normalizedPath = String(window.location.pathname || '/')
+    .replace(/\/+$/, '')
+    .toLowerCase();
+  return normalizedPath === '/reset-password';
+}
+
+async function mountResetPasswordView() {
+  if (!isResetPasswordRoute()) return false;
+  document.body.innerHTML = `
+    <main style="min-height:100vh;display:grid;place-items:center;padding:24px;">
+      <section class="card" style="width:min(520px,100%);padding:20px;">
+        <h1 style="margin:0 0 8px;">Reset Password</h1>
+        <p id="passwordRecoveryMessage" class="muted" style="margin:0 0 16px;">Verifying your password recovery session…</p>
+        <form id="passwordRecoveryForm" style="display:grid;gap:10px;">
+          <label for="newPasswordInput">New Password</label>
+          <input id="newPasswordInput" type="password" minlength="8" autocomplete="new-password" required />
+          <label for="confirmPasswordInput">Confirm Password</label>
+          <input id="confirmPasswordInput" type="password" minlength="8" autocomplete="new-password" required />
+          <button class="btn" type="submit">Update Password</button>
+        </form>
+      </section>
+    </main>
+  `;
+
+  const messageEl = document.getElementById('passwordRecoveryMessage');
+  const formEl = document.getElementById('passwordRecoveryForm');
+  const newPasswordEl = document.getElementById('newPasswordInput');
+  const confirmPasswordEl = document.getElementById('confirmPasswordInput');
+  const setMessage = (message = '') => {
+    if (messageEl) messageEl.textContent = message;
+  };
+  const client = window.SupabaseClient?.getClient?.();
+  if (!client) {
+    setMessage('Unable to initialize password recovery because Supabase client is not available.');
+    if (formEl) formEl.style.display = 'none';
+    return true;
+  }
+
+  let hasRecoverySession = false;
+  const hashParams = new URLSearchParams(String(window.location.hash || '').replace(/^#/, ''));
+  if (hashParams.get('type') === 'recovery') hasRecoverySession = true;
+
+  client.auth.onAuthStateChange((event, session) => {
+    if (event === 'PASSWORD_RECOVERY') hasRecoverySession = true;
+    if (session?.user && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) hasRecoverySession = true;
+  });
+
+  try {
+    const { data, error } = await client.auth.getSession();
+    if (!error && data?.session?.user) hasRecoverySession = true;
+  } catch (error) {
+    console.warn('[reset-password] Unable to read session', error);
+  }
+
+  if (!hasRecoverySession) {
+    setMessage('Password recovery session not found. Please open the latest reset link from your email.');
+  } else {
+    setMessage('Enter your new password below.');
+  }
+
+  formEl?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const newPassword = String(newPasswordEl?.value || '');
+    const confirmPassword = String(confirmPasswordEl?.value || '');
+    if (!newPassword || !confirmPassword) {
+      setMessage('Please enter and confirm your new password.');
+      return;
+    }
+    if (newPassword.length < 8) {
+      setMessage('Password should be at least 8 characters.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setMessage('New Password and Confirm Password must match.');
+      return;
+    }
+    try {
+      const { error } = await client.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      await client.auth.signOut();
+      setMessage('Password updated successfully. Please log in again.');
+      formEl.reset();
+    } catch (error) {
+      setMessage(`Unable to update password: ${String(error?.message || 'Unknown error')}`);
+    }
+  });
+  return true;
+}
+
 /* ---------- Bootstrapping ---------- */
 
 document.addEventListener('DOMContentLoaded', async () => {
   cacheEls();
+  const mountedRecoveryRoute = await mountResetPasswordView();
+  if (mountedRecoveryRoute) return;
   logApiStartupDiagnostics();
   if (typeof Api?.runAuthProxyHealthCheck === 'function') {
     Api.runAuthProxyHealthCheck().catch(error => {
