@@ -915,82 +915,132 @@ const Api = {
     const response = await this.requestCached('role_permissions', 'list', payload, {
       forceRefresh: options?.forceRefresh === true
     });
-    return this.normalizeListResponse(response);
+    const normalized = this.normalizeListResponse(response);
+    const normalizeRows = rows => this.dedupeRolePermissionRows(Array.isArray(rows) ? rows : []);
+    return Array.isArray(normalized)
+      ? normalizeRows(normalized)
+      : normalized && typeof normalized === 'object'
+        ? {
+            ...normalized,
+            rows: normalizeRows(normalized.rows),
+            items: normalizeRows(normalized.items),
+            data: normalizeRows(normalized.data)
+          }
+        : normalized;
   },
   async getRolePermission(permissionId) {
     return this.requestWithSession('role_permissions', 'get', {
       permission_id: permissionId
     });
   },
-  sanitizeRolePermissionPayload(payload = {}) {
-    const dbColumns = ['role_key', 'resource', 'action', 'is_allowed', 'is_active', 'allowed_roles', 'updated_at'];
-    const strippedFields = [
-      'id',
-      'description',
-      'permission',
-      'sheetName',
-      'sheet_name',
-      'roleName',
-      'roleLabel',
-      'selectedRoles'
-    ];
-    const sanitized = dbColumns.reduce((acc, key) => {
-      if (Object.prototype.hasOwnProperty.call(payload, key)) acc[key] = payload[key];
-      return acc;
-    }, {});
-    strippedFields.forEach(key => {
-      if (Object.prototype.hasOwnProperty.call(sanitized, key)) delete sanitized[key];
+  normalizePermissionKey(value) {
+    return String(value || '').trim().toLowerCase();
+  },
+  normalizeAllowedRolesText(value) {
+    if (Array.isArray(value)) {
+      return value
+        .map(role => String(role || '').trim().toLowerCase())
+        .filter(Boolean)
+        .join(',');
+    }
+    return String(value || '')
+      .split(',')
+      .map(role => String(role || '').trim().toLowerCase())
+      .filter(Boolean)
+      .join(',');
+  },
+  permissionKey(row = {}) {
+    return [
+      this.normalizePermissionKey(row.role_key || row.roleKey || ''),
+      this.normalizePermissionKey(row.resource || ''),
+      this.normalizePermissionKey(row.action || '')
+    ].join('|');
+  },
+  normalizeRolePermissionRow(row = {}) {
+    const allowedRoles = Array.isArray(row.allowed_roles)
+      ? row.allowed_roles
+      : String(row.allowed_roles || '')
+          .split(',')
+          .map(role => String(role || '').trim())
+          .filter(Boolean);
+    return {
+      ...row,
+      id: row.permission_id,
+      permission_id: row.permission_id,
+      role_key: row.role_key || '',
+      roleKey: row.role_key || '',
+      resource: row.resource || '',
+      action: row.action || '',
+      is_allowed: row.is_allowed === true,
+      isAllowed: row.is_allowed === true,
+      is_active: row.is_active !== false,
+      isActive: row.is_active !== false,
+      allowed_roles: allowedRoles,
+      allowedRoles,
+      created_at: row.created_at || '',
+      updated_at: row.updated_at || ''
+    };
+  },
+  dedupeRolePermissionRows(rows = []) {
+    const newestByKey = new Map();
+    rows.forEach(rawRow => {
+      const row = this.normalizeRolePermissionRow(rawRow);
+      const key = this.permissionKey(row);
+      if (!key || key === '||') return;
+      const existing = newestByKey.get(key);
+      if (!existing) {
+        newestByKey.set(key, row);
+        return;
+      }
+      const existingUpdated = new Date(existing.updated_at || existing.created_at || 0).getTime();
+      const rowUpdated = new Date(row.updated_at || row.created_at || 0).getTime();
+      if (rowUpdated >= existingUpdated) newestByKey.set(key, row);
     });
-    if (Object.prototype.hasOwnProperty.call(sanitized, 'role_key')) {
-      sanitized.role_key = String(sanitized.role_key || '').trim().toLowerCase();
+    return [...newestByKey.values()];
+  },
+  buildRolePermissionRpcPayload(input = {}) {
+    const roleKey = this.normalizePermissionKey(
+      input.role_key ||
+      input.roleKey ||
+      input.role ||
+      ''
+    );
+    const resource = this.normalizePermissionKey(input.resource || '');
+    const action = this.normalizePermissionKey(input.action || '');
+    if (!roleKey || !resource || !action) {
+      throw new Error('Role, resource, and action are required.');
     }
-    if (Object.prototype.hasOwnProperty.call(sanitized, 'resource')) {
-      sanitized.resource = String(sanitized.resource || '').trim().toLowerCase();
-    }
-    if (Object.prototype.hasOwnProperty.call(sanitized, 'action')) {
-      sanitized.action = String(sanitized.action || '').trim().toLowerCase();
-    }
-    if (Object.prototype.hasOwnProperty.call(sanitized, 'is_allowed')) {
-      sanitized.is_allowed = Boolean(sanitized.is_allowed);
-    }
-    sanitized.is_active = Object.prototype.hasOwnProperty.call(sanitized, 'is_active')
-      ? Boolean(sanitized.is_active)
-      : true;
-    sanitized.updated_at = new Date().toISOString();
-    if (!sanitized.role_key || !sanitized.resource || !sanitized.action) return {};
-    return sanitized;
+    return {
+      p_role_key: roleKey,
+      p_resource: resource,
+      p_action: action,
+      p_is_allowed: input.is_allowed ?? input.isAllowed ?? true,
+      p_is_active: input.is_active ?? input.isActive ?? true,
+      p_allowed_roles: this.normalizeAllowedRolesText(
+        input.allowed_roles ??
+        input.allowedRoles ??
+        roleKey
+      )
+    };
   },
   async createRolePermission(payload = {}) {
-    const permissionPayload = this.sanitizeRolePermissionPayload(payload);
-    if (!permissionPayload.role_key || !permissionPayload.resource || !permissionPayload.action) {
-      throw new Error('role_key, resource, and action are required.');
-    }
-    try { console.log('[RolesPermissions] final sanitized DB payload', permissionPayload); } catch {}
-    return this.requestWithSession('role_permissions', 'create', {
-      ...permissionPayload
-    });
+    return this.saveRolePermission(payload);
   },
   async updateRolePermission(permissionId, updates = {}) {
-    const permissionUpdates = this.sanitizeRolePermissionPayload(updates);
-    if (!permissionUpdates.role_key || !permissionUpdates.resource || !permissionUpdates.action) {
-      throw new Error('role_key, resource, and action are required.');
-    }
-    try { console.log('[RolesPermissions] update permission_id', permissionId); } catch {}
-    try { console.log('[RolesPermissions] final sanitized DB payload', { permission_id: permissionId, ...permissionUpdates }); } catch {}
-    return this.requestWithSession('role_permissions', 'update', {
-      permission_id: permissionId,
-      ...permissionUpdates
-    });
+    try { console.log('[RolesPermissions] update permission_id (unused with RPC)', permissionId); } catch {}
+    return this.saveRolePermission(updates);
   },
   async saveRolePermission(payload = {}) {
-    const permissionPayload = this.sanitizeRolePermissionPayload(payload);
-    if (!permissionPayload.role_key || !permissionPayload.resource || !permissionPayload.action) {
-      throw new Error('role_key, resource, and action are required.');
-    }
-    try { console.log('[RolesPermissions] final sanitized DB payload', permissionPayload); } catch {}
-    return this.requestWithSession('role_permissions', 'save', {
-      ...permissionPayload
-    });
+    try { console.log('[role permissions] form/input', payload); } catch {}
+    const rpcPayload = this.buildRolePermissionRpcPayload(payload);
+    try { console.log('[role permissions] rpc payload', rpcPayload); } catch {}
+    const result = await this.requestWithSession('role_permissions', 'save', rpcPayload);
+    try { console.log('[role permissions] rpc result', result); } catch {}
+    const data = result?.data ?? result?.item ?? result;
+    if (!data) throw new Error('Permission was not saved. Supabase returned no row.');
+    const savedRow = this.normalizeRolePermissionRow(data);
+    try { console.log('[role permissions] saved normalized row', savedRow); } catch {}
+    return savedRow;
   },
   async deleteRolePermission(permissionId) {
     return this.requestWithSession('role_permissions', 'delete', {
