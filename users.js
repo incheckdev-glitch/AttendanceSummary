@@ -410,24 +410,29 @@ const UserAdmin = {
     }
   },
   async resetPassword(user) {
-    const newPassword = window.prompt(`Enter a new password for ${user.username || user.email}`);
-    if (!newPassword) return;
-    if (String(newPassword).length < 8) {
-      UI.toast('Password should be at least 8 characters.');
+    const hasPermission = Permissions.can('users', 'manage') || Permissions.can('users', 'update');
+    if (!hasPermission) {
+      UI.toast('You do not have permission to reset user passwords.');
       return;
     }
-    const confirmed = window.confirm('Reset password now?');
-    if (!confirmed) return;
+    const email = String(user?.email || user?.profile?.email || user?.row?.email || '').trim();
+    if (!email) {
+      UI.toast('Cannot reset password because this user has no email address.');
+      return;
+    }
+    const client = window.SupabaseClient?.getClient?.();
+    if (!client) {
+      UI.toast('Unable to send reset password email: Supabase client is not available.');
+      return;
+    }
     try {
-      await Api.requestWithSession('users', 'reset_password', {
-        id: this.getUserId(user),
-        newPassword,
-        password: newPassword,
-        passcode: newPassword
+      const { error } = await client.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`
       });
-      UI.toast('Password reset successfully.');
+      if (error) throw error;
+      UI.toast(`Password reset email sent to ${email}.`);
     } catch (error) {
-      this.handleError(error, 'Unable to reset password.');
+      UI.toast(`Unable to send reset password email: ${String(error?.message || 'Unknown error')}`);
     }
   },
   handleError(error, fallbackMessage) {
