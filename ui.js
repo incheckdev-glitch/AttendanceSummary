@@ -195,6 +195,7 @@ function cacheEls() {
     'aiModuleRiskBody',
     'aiTrendSignals',
     'aiInsightFilters',
+    'aiInsightsRefresh',
     'syncIssuesText',
     'syncIssuesDot',
     'syncEventsText',
