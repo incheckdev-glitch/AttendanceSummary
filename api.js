@@ -1082,14 +1082,17 @@ const Api = {
     if (!payload.p_action) {
       throw new Error('Permission action is required.');
     }
+    if (payload.p_resource === 'role' || payload.p_resource === 'permission') {
+      throw new Error('Permission save was not verified in Supabase. Please check role/resource/action mapping.');
+    }
     if (!this.VALID_PERMISSION_RESOURCES.has(payload.p_resource)) {
       try { console.warn('[role permissions] custom resource not in known list', payload.p_resource); } catch {}
     }
     if (!this.VALID_PERMISSION_ACTIONS.has(payload.p_action)) {
       try { console.warn('[role permissions] custom action not in known list', payload.p_action); } catch {}
     }
-    try { console.log('[role permissions] selected fields', { selectedRoleKey, selectedResource, selectedAction }); } catch {}
-    try { console.log('[role permissions] final rpc payload', payload); } catch {}
+    try { console.log('[role permissions] selected fields', JSON.stringify({ selectedRoleKey, selectedResource, selectedAction }, null, 2)); } catch {}
+    try { console.log('[role permissions] final rpc payload', JSON.stringify(payload, null, 2)); } catch {}
     return payload;
   },
   async createRolePermission(payload = {}) {
@@ -1100,14 +1103,15 @@ const Api = {
     return this.saveRolePermission(updates);
   },
   async saveRolePermission(payload = {}) {
-    try { console.log('[role permissions] form/input', payload); } catch {}
+    try { console.log('[role permissions] form/input', JSON.stringify(payload, null, 2)); } catch {}
     const rpcPayload = this.buildRolePermissionRpcPayload(payload);
     const result = await this.requestWithSession('role_permissions', 'save', rpcPayload);
-    try { console.log('[role permissions] rpc result', result); } catch {}
-    const data = result?.data ?? result?.item ?? result;
-    if (!data) throw new Error('Permission was not saved. Supabase returned no row.');
+    try { console.log('[role permissions] rpc result', JSON.stringify(result, null, 2)); } catch {}
+    const unwrapped = result?.data ?? result?.item ?? result;
+    const data = unwrapped?.data ?? unwrapped?.item ?? unwrapped;
+    if (!data) throw new Error('Supabase returned no saved permission row.');
     const savedRow = this.normalizeRolePermissionRow(data);
-    try { console.log('[role permissions] saved normalized row', savedRow); } catch {}
+    try { console.log('[role permissions] saved normalized row', JSON.stringify(savedRow, null, 2)); } catch {}
     return savedRow;
   },
   async deleteRolePermission(permissionId) {
