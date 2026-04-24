@@ -645,7 +645,6 @@ function cacheEls() {
     'agreementsStatusFilter',
     'agreementsProposalDealFilter',
     'agreementsCreateFromProposalInput',
-    'agreementsCreateFromProposalBtn',
     'agreementsExportCsvBtn',
     'agreementsRefreshBtn',
     'agreementsCreateBtn',
