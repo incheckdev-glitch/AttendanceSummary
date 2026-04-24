@@ -2750,6 +2750,23 @@ async function loadIssues(force = false) {
     }
   }
 
+  const canListTickets =
+    Permissions.can('tickets', 'list') ||
+    Permissions.can('tickets', 'view') ||
+    Permissions.can('tickets', 'manage');
+  if (!canListTickets) {
+    console.info('[loadIssues] skipped tickets.list due to permission guard', {
+      role: Session.role(),
+      checks: {
+        list: Permissions.can('tickets', 'list'),
+        view: Permissions.can('tickets', 'view'),
+        manage: Permissions.can('tickets', 'manage')
+      }
+    });
+    UI.setSync('issues', !!DataStore.rows.length, null);
+    return;
+  }
+
   try {
     UI.spinner(true);
     UI.skeleton(true);
@@ -4638,7 +4655,15 @@ function wireDashboardGate() {
       E.loginPasscode.value = '';
       unlockApp();
       UI.toast(`Logged in as ${user.role}.`);
-      Promise.allSettled([loadIssues(false), loadEvents(false)]).then(results => {
+      const startupLoaders = [loadEvents(false)];
+      if (
+        Permissions.can('tickets', 'list') ||
+        Permissions.can('tickets', 'view') ||
+        Permissions.can('tickets', 'manage')
+      ) {
+        startupLoaders.unshift(loadIssues(false));
+      }
+      Promise.allSettled(startupLoaders).then(results => {
         const rejected = results.filter(result => result.status === 'rejected');
         if (rejected.length) {
           console.warn('Post-login data refresh failed', rejected);
@@ -6419,7 +6444,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   if (isAuthenticated && Session.isAuthenticated()) {
-    const startupResults = await Promise.allSettled([loadIssues(false), loadEvents(false)]);
+    const startupLoaders = [loadEvents(false)];
+    if (
+      Permissions.can('tickets', 'list') ||
+      Permissions.can('tickets', 'view') ||
+      Permissions.can('tickets', 'manage')
+    ) {
+      startupLoaders.unshift(loadIssues(false));
+    }
+    const startupResults = await Promise.allSettled(startupLoaders);
     const rejected = startupResults.filter(result => result.status === 'rejected');
     if (rejected.length) {
       console.warn('Startup data refresh had module failures; preserving active session.', rejected);

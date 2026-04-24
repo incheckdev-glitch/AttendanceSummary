@@ -82,9 +82,7 @@ const RolesAdmin = {
           UI.toast(hadExisting ? 'Permission updated.' : 'Permission rule created.');
           E.rolePermissionCreateForm.reset();
           this.togglePermissionCreate(false);
-          await this.refreshPermissions(true);
-          await Permissions.loadMatrix(true);
-          UI.applyRolePermissions();
+          await this.syncPermissionStateAfterSave();
         } catch (error) {
           UI.toast(String(error?.message || 'Unable to create permission rule.'));
         }
@@ -143,8 +141,13 @@ const RolesAdmin = {
   canonicalAction(action) {
     const normalized = String(action || '').trim().toLowerCase();
     if (!normalized) return '';
-    const map = { view: 'get', read: 'get', edit: 'update', manage: 'update' };
+    const map = { read: 'get', edit: 'update' };
     return map[normalized] || normalized;
+  },
+  async syncPermissionStateAfterSave() {
+    await this.refreshPermissions(true);
+    await Permissions.loadMatrix(true);
+    UI.applyRolePermissions();
   },
 
   parseResourceAction(resourceValue = '', actionValue = '', helperFields = {}) {
@@ -548,9 +551,7 @@ const RolesAdmin = {
         existingRows: rule.rows
       });
       UI.toast('Permission rule saved.');
-      await this.refreshPermissions(true);
-      await Permissions.loadMatrix(true);
-      UI.applyRolePermissions();
+      await this.syncPermissionStateAfterSave();
     } catch (error) {
       UI.toast(String(error?.message || 'Unable to save grouped permission rule.'));
     }
@@ -573,9 +574,7 @@ const RolesAdmin = {
         existingRows: []
       });
       UI.toast('Rule duplicated.');
-      await this.refreshPermissions(true);
-      await Permissions.loadMatrix(true);
-      UI.applyRolePermissions();
+      await this.syncPermissionStateAfterSave();
     } catch (error) {
       UI.toast(String(error?.message || 'Unable to duplicate rule.'));
     }
@@ -598,9 +597,7 @@ const RolesAdmin = {
         original_action: this.canonicalAction(row.action)
       })));
       UI.toast('Permission rule removed.');
-      await this.refreshPermissions(true);
-      await Permissions.loadMatrix(true);
-      UI.applyRolePermissions();
+      await this.syncPermissionStateAfterSave();
     } catch (error) {
       UI.toast(String(error?.message || 'Unable to remove permission rule.'));
     }
@@ -736,9 +733,7 @@ const RolesAdmin = {
     try {
       await Promise.all(requests);
       UI.toast(`Applied CRUD helper on ${baseValidation.resource} for ${normalizedRoleKeys.length} role(s).`);
-      await this.refreshPermissions(true);
-      await Permissions.loadMatrix(true);
-      UI.applyRolePermissions();
+      await this.syncPermissionStateAfterSave();
     } catch (error) {
       UI.toast(String(error?.message || 'Unable to apply CRUD helper changes.'));
     }
