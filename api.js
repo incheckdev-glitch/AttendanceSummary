@@ -923,7 +923,7 @@ const Api = {
     });
   },
   sanitizeRolePermissionPayload(payload = {}) {
-    const dbColumns = ['permission_id', 'role_key', 'resource', 'action', 'is_allowed', 'is_active', 'allowed_roles', 'updated_at'];
+    const dbColumns = ['role_key', 'resource', 'action', 'is_allowed', 'is_active', 'allowed_roles', 'updated_at'];
     const strippedFields = [
       'id',
       'description',
@@ -958,7 +958,6 @@ const Api = {
       : true;
     sanitized.updated_at = new Date().toISOString();
     if (!sanitized.role_key || !sanitized.resource || !sanitized.action) return {};
-    if (!sanitized.permission_id) delete sanitized.permission_id;
     return sanitized;
   },
   async createRolePermission(payload = {}) {
