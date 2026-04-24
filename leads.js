@@ -337,6 +337,122 @@ const Leads = {
       return searchTerms.every(term => hay.includes(term));
     });
   },
+  getFilteredLeadRows() {
+    return Array.isArray(this.state.filteredRows) ? this.state.filteredRows : [];
+  },
+  csvEscape(value) {
+    const text = String(value ?? '');
+    if (/[",\n\r]/.test(text)) {
+      return `"${text.replace(/"/g, '""')}"`;
+    }
+    return text;
+  },
+  downloadCsv(filename, csvText) {
+    const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  },
+  formatDateTimeMMDDYYYYHHMM(value) {
+    if (!value) return '';
+    const formatted = U.formatDateTimeMMDDYYYYHHMM(value);
+    return formatted === '—' ? '' : formatted;
+  },
+  formatDateMMDDYYYY(value) {
+    if (!value) return '';
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    const yyyy = String(date.getFullYear());
+    return `${mm}/${dd}/${yyyy}`;
+  },
+  getLeadValue(row, ...keys) {
+    if (!row || typeof row !== 'object') return '';
+    for (const key of keys) {
+      if (!key) continue;
+      if (row[key] !== undefined && row[key] !== null) return row[key];
+    }
+    return '';
+  },
+  exportLeadsCsv() {
+    if (!Permissions.canView('leads')) {
+      UI.toast('You do not have permission to view leads.');
+      return;
+    }
+    const filteredRows = this.getFilteredLeadRows();
+    if (!filteredRows.length) {
+      UI.toast('No leads match the current filters.');
+      return;
+    }
+
+    const headers = [
+      'Lead ID',
+      'Created At',
+      'Full Name',
+      'Company Name',
+      'Phone',
+      'Email',
+      'Country',
+      'Lead Source',
+      'Service Interest',
+      'Status',
+      'Priority',
+      'Estimated Value',
+      'Currency',
+      'Assigned To',
+      'Next Follow-up',
+      'Last Contact',
+      'Proposal Needed',
+      'Agreement Needed',
+      'Notes',
+      'Updated At'
+    ];
+
+    const csvLines = [
+      headers.map(value => this.csvEscape(value)).join(','),
+      ...filteredRows.map(row => {
+        const createdAt = this.getLeadValue(row, 'created_at', 'createdAt');
+        const updatedAt = this.getLeadValue(row, 'updated_at', 'updatedAt');
+        const nextFollowUp = this.getLeadValue(row, 'next_follow_up', 'nextFollowUp');
+        const lastContact = this.getLeadValue(row, 'last_contact', 'lastContact');
+        return [
+          this.getLeadValue(row, 'lead_id', 'leadId'),
+          this.formatDateTimeMMDDYYYYHHMM(createdAt),
+          this.getLeadValue(row, 'full_name', 'fullName'),
+          this.getLeadValue(row, 'company_name', 'companyName'),
+          this.getLeadValue(row, 'phone'),
+          this.getLeadValue(row, 'email'),
+          this.getLeadValue(row, 'country'),
+          this.getLeadValue(row, 'lead_source', 'leadSource'),
+          this.getLeadValue(row, 'service_interest', 'serviceInterest'),
+          this.getLeadValue(row, 'status'),
+          this.getLeadValue(row, 'priority'),
+          this.getLeadValue(row, 'estimated_value', 'estimatedValue'),
+          this.getLeadValue(row, 'currency'),
+          this.getLeadValue(row, 'assigned_to', 'assignedTo'),
+          this.formatDateMMDDYYYY(nextFollowUp),
+          this.formatDateMMDDYYYY(lastContact),
+          this.boolLabel(this.normalizeBool(this.getLeadValue(row, 'proposal_needed', 'proposalNeeded'))),
+          this.boolLabel(this.normalizeBool(this.getLeadValue(row, 'agreement_needed', 'agreementNeeded'))),
+          this.getLeadValue(row, 'notes'),
+          this.formatDateTimeMMDDYYYYHHMM(updatedAt)
+        ]
+          .map(value => this.csvEscape(value))
+          .join(',');
+      })
+    ];
+    const now = new Date();
+    const filename = `leads-export-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(
+      now.getDate()
+    ).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}.csv`;
+    this.downloadCsv(filename, csvLines.join('\n'));
+  },
   renderFilters() {
     const assign = (el, values, selected) => {
       if (!el) return;
@@ -582,6 +698,7 @@ const Leads = {
   render() {
     if (!E.leadsTbody || !E.leadsState) return;
     if (this.state.loading) {
+      if (E.leadsExportCsvBtn) E.leadsExportCsvBtn.disabled = true;
       E.leadsState.textContent = 'Loading leads…';
       this.renderLeadAnalytics(this.computeLeadAnalytics([]));
       E.leadsTbody.innerHTML = Array.from({ length: 6 })
@@ -595,6 +712,7 @@ const Leads = {
       return;
     }
     if (this.state.loadError) {
+      if (E.leadsExportCsvBtn) E.leadsExportCsvBtn.disabled = false;
       E.leadsState.textContent = this.state.loadError;
       this.renderLeadAnalytics(this.computeLeadAnalytics([]));
       E.leadsTbody.innerHTML = `<tr><td colspan="21" class="muted" style="text-align:center;color:#ffb4b4;">${U.escapeHtml(this.state.loadError)}</td></tr>`;
@@ -602,6 +720,7 @@ const Leads = {
     }
 
     const rows = this.state.filteredRows;
+    if (E.leadsExportCsvBtn) E.leadsExportCsvBtn.disabled = false;
     this.renderLeadAnalytics(this.computeLeadAnalytics(rows));
     E.leadsState.textContent = `${rows.length} lead${rows.length === 1 ? '' : 's'}`;
 
@@ -997,6 +1116,9 @@ const Leads = {
         }
         this.openForm();
       });
+    }
+    if (E.leadsExportCsvBtn) {
+      E.leadsExportCsvBtn.addEventListener('click', () => this.exportLeadsCsv());
     }
 
     if (E.leadsTbody) {
