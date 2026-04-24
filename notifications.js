@@ -201,10 +201,7 @@ const Notifications = {
     return [];
   },
   formatDate(value) {
-    if (!value) return '—';
-    const parsed = new Date(value);
-    if (Number.isNaN(parsed.getTime())) return '—';
-    return U.fmtDisplayDate(value);
+    return U.formatDateTimeMMDDYYYYHHMM(value);
   },
   iconForType(type = '') {
     const value = String(type || '').toLowerCase();
