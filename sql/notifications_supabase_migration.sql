@@ -212,7 +212,7 @@ begin
     false,
     true,
     'Review approval',
-    null,
+    'workflow',
     jsonb_build_object(
       'approval_id', v_approval.approval_id,
       'target_resource', v_target_resource,
@@ -347,7 +347,7 @@ begin
     false,
     false,
     'Open record',
-    null,
+    'workflow',
     jsonb_build_object(
       'approval_id', v_approval.approval_id,
       'decision', v_status_word,

@@ -1944,6 +1944,11 @@ background:var(--ai-table-row-even);
 .notification-item.unread { border-left: 4px solid var(--accent); background: color-mix(in oklab, var(--accent) 8%, transparent); }
 .notification-item-head { display: flex; justify-content: space-between; gap: 6px; font-size: 12px; margin-bottom: 6px; }
 .notification-item-body { font-size: 13px; }
+.notification-target-highlight {
+  outline: 2px solid var(--accent-color, #2563eb);
+  background: rgba(37, 99, 235, 0.08);
+  transition: background 0.3s ease;
+}
 .notification-filter-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .notification-filter-row .chip-btn.active { border-color: var(--accent); color: var(--accent); }
 .notification-row-unread td { font-weight: 600; }
