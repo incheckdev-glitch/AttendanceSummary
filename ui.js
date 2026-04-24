@@ -382,6 +382,7 @@ function cacheEls() {
     'usersState',
     'usersTbody',
     'leadsRefreshBtn',
+    'leadsExportCsvBtn',
     'leadsCreateBtn',
     'leadsSearchInput',
     'leadsStatusFilter',
