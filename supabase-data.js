@@ -1218,7 +1218,7 @@
       ticket_id: ticketRowId(row),
       youtrack_reference: row.youtrack_reference ?? row.youtrackReference ?? '',
       dev_team_status: row.dev_team_status ?? row.devTeamStatus ?? '',
-      issue_related: row.issue_related ?? row.issueRelated ?? '',
+      issue_related: toDbBoolean(row.issue_related ?? row.issueRelated),
       notes: row.notes ?? ''
     };
   }
