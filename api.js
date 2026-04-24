@@ -923,7 +923,7 @@ const Api = {
     });
   },
   sanitizeRolePermissionPayload(payload = {}) {
-    const dbColumns = ['permission_id', 'role_key', 'resource', 'action', 'is_allowed', 'is_active', 'allowed_roles'];
+    const dbColumns = ['permission_id', 'role_key', 'resource', 'action', 'is_allowed', 'is_active', 'allowed_roles', 'updated_at'];
     const strippedFields = [
       'id',
       'description',
@@ -941,10 +941,31 @@ const Api = {
     strippedFields.forEach(key => {
       if (Object.prototype.hasOwnProperty.call(sanitized, key)) delete sanitized[key];
     });
+    if (Object.prototype.hasOwnProperty.call(sanitized, 'role_key')) {
+      sanitized.role_key = String(sanitized.role_key || '').trim().toLowerCase();
+    }
+    if (Object.prototype.hasOwnProperty.call(sanitized, 'resource')) {
+      sanitized.resource = String(sanitized.resource || '').trim().toLowerCase();
+    }
+    if (Object.prototype.hasOwnProperty.call(sanitized, 'action')) {
+      sanitized.action = String(sanitized.action || '').trim().toLowerCase();
+    }
+    if (Object.prototype.hasOwnProperty.call(sanitized, 'is_allowed')) {
+      sanitized.is_allowed = Boolean(sanitized.is_allowed);
+    }
+    sanitized.is_active = Object.prototype.hasOwnProperty.call(sanitized, 'is_active')
+      ? Boolean(sanitized.is_active)
+      : true;
+    sanitized.updated_at = new Date().toISOString();
+    if (!sanitized.role_key || !sanitized.resource || !sanitized.action) return {};
+    if (!sanitized.permission_id) delete sanitized.permission_id;
     return sanitized;
   },
   async createRolePermission(payload = {}) {
     const permissionPayload = this.sanitizeRolePermissionPayload(payload);
+    if (!permissionPayload.role_key || !permissionPayload.resource || !permissionPayload.action) {
+      throw new Error('role_key, resource, and action are required.');
+    }
     try { console.log('[RolesPermissions] final sanitized DB payload', permissionPayload); } catch {}
     return this.requestWithSession('role_permissions', 'create', {
       ...permissionPayload
@@ -952,6 +973,9 @@ const Api = {
   },
   async updateRolePermission(permissionId, updates = {}) {
     const permissionUpdates = this.sanitizeRolePermissionPayload(updates);
+    if (!permissionUpdates.role_key || !permissionUpdates.resource || !permissionUpdates.action) {
+      throw new Error('role_key, resource, and action are required.');
+    }
     try { console.log('[RolesPermissions] update permission_id', permissionId); } catch {}
     try { console.log('[RolesPermissions] final sanitized DB payload', { permission_id: permissionId, ...permissionUpdates }); } catch {}
     return this.requestWithSession('role_permissions', 'update', {
@@ -961,6 +985,9 @@ const Api = {
   },
   async saveRolePermission(payload = {}) {
     const permissionPayload = this.sanitizeRolePermissionPayload(payload);
+    if (!permissionPayload.role_key || !permissionPayload.resource || !permissionPayload.action) {
+      throw new Error('role_key, resource, and action are required.');
+    }
     try { console.log('[RolesPermissions] final sanitized DB payload', permissionPayload); } catch {}
     return this.requestWithSession('role_permissions', 'save', {
       ...permissionPayload
