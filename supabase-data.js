@@ -2961,35 +2961,54 @@
         if (!email) throw new Error('User email is required.');
         if (!password) throw new Error('User password is required.');
 
-        const authAdmin = client?.auth?.admin;
-        if (!authAdmin?.createUser) {
-          throw new Error('Unable to create login account: auth.admin.createUser is unavailable in this environment.');
+        const { data: sessionData, error: sessionError } = await client.auth.getSession();
+        if (sessionError) throw friendlyError('Unable to validate session for user creation', sessionError);
+        if (!sessionData?.session?.access_token) {
+          throw new Error('You must be logged in to create users.');
         }
 
-        const { data: createdAuth, error: authError } = await authAdmin.createUser({
+        const createPayload = {
           email,
           password,
-          email_confirm: true,
-          user_metadata: {
-            full_name: createProfileSeed.name || '',
-            username: createProfileSeed.username || '',
-            role_key: createProfileSeed.role_key || ''
-          }
+          name: createProfileSeed.name || '',
+          username: createProfileSeed.username || '',
+          role_key: createProfileSeed.role_key || '',
+          is_active: createProfileSeed.is_active !== false
+        };
+        const { data: createResult, error: createError } = await client.functions.invoke('admin-create-user', {
+          body: createPayload
         });
-        if (authError) throw friendlyError('Unable to create auth user', authError);
 
-        const authUserId = String(createdAuth?.user?.id || '').trim();
-        if (!authUserId) throw new Error('Auth user was created without a user id.');
+        if (createError) {
+          const status = Number(createError?.context?.status || createError?.status || 0);
+          const edgeMessage = String(
+            createError?.context?.error?.message ||
+            createError?.context?.statusText ||
+            createError?.message ||
+            ''
+          ).trim();
+          if (status === 403) throw new Error('Only admins can create users.');
+          if (/already exists|duplicate|unique|email/i.test(edgeMessage)) {
+            throw new Error('A user with this email already exists.');
+          }
+          throw friendlyError('Unable to create user', createError);
+        }
 
-        const createUserRecord = sanitizeUserProfileRecord({ ...record, id: authUserId }, { includeId: true });
-        if (createUserRecord.is_active === undefined) createUserRecord.is_active = true;
-        const { data: createdProfile, error: profileError } = await client
-          .from('profiles')
-          .upsert(createUserRecord, { onConflict: 'id' })
-          .select('*')
-          .single();
-        if (profileError) throw friendlyError('Unable to create user profile', profileError);
-        return { handled: true, data: normalizeRow('users', createdProfile) };
+        const createOk = createResult?.ok === true;
+        if (!createOk) {
+          const rawMessage = String(createResult?.error || createResult?.message || '').trim();
+          const status = Number(createResult?.status || createResult?.code || 0);
+          if (status === 403 || /forbidden|only admins/i.test(rawMessage)) {
+            throw new Error('Only admins can create users.');
+          }
+          if (/already exists|duplicate|unique|email/i.test(rawMessage)) {
+            throw new Error('A user with this email already exists.');
+          }
+          throw new Error(rawMessage || 'Unable to create user.');
+        }
+
+        const profileRow = createResult?.profile || createResult?.data?.profile || createResult?.user || createResult?.data?.user || null;
+        return { handled: true, data: profileRow ? normalizeRow('users', profileRow) : createResult };
       }
      
       if (resource === 'tickets') devLog('[tickets/create] raw form data', record);

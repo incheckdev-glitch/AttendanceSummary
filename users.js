@@ -43,8 +43,11 @@ const UserAdmin = {
           });
           if (E.userCreateForm) E.userCreateForm.reset();
           this.applyRoleOptions(this.state.roles);
-          UI.toast('User created successfully.');
           await this.refresh();
+          if (window.ProfilesAdmin?.refresh) {
+            await window.ProfilesAdmin.refresh(true);
+          }
+          UI.toast('User created successfully.');
         } catch (error) {
           this.handleError(error, 'Unable to create user.');
         }
@@ -433,6 +436,14 @@ const UserAdmin = {
       return;
     }
     const message = String(error?.message || '').trim();
+    if (/only admins can create users/i.test(message)) {
+      UI.toast('Only admins can create users.');
+      return;
+    }
+    if (/user with this email already exists/i.test(message)) {
+      UI.toast('A user with this email already exists.');
+      return;
+    }
     if (/forbidden|permission|admin/i.test(message)) {
       UI.toast('Forbidden: admin access is required.');
       return;
