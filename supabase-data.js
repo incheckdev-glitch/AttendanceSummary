@@ -448,8 +448,8 @@
       out.youtrack_reference = out.youtrack_reference ?? out.youtrackReference ?? '';
       out.devTeamStatus = out.devTeamStatus ?? out.dev_team_status ?? '';
       out.dev_team_status = out.dev_team_status ?? out.devTeamStatus ?? '';
-      out.issueRelated = out.issueRelated ?? out.issue_related ?? '';
-      out.issue_related = out.issue_related ?? out.issueRelated ?? '';
+      out.issueRelated = toDbBoolean(out.issueRelated ?? out.issue_related ?? null);
+      out.issue_related = toDbBoolean(out.issue_related ?? out.issueRelated ?? null);
     }
     if (resource === 'events') {
       out.event_code = out.event_code ?? out.eventCode ?? '';
@@ -831,12 +831,13 @@
   }
 
   function toDbBoolean(value) {
-    if (value === undefined || value === null || value === '') return undefined;
+    if (value === undefined || value === null) return null;
     if (typeof value === 'boolean') return value;
     const normalized = String(value).trim().toLowerCase();
+    if (!normalized) return null;
     if (['true', '1', 'yes', 'y'].includes(normalized)) return true;
     if (['false', '0', 'no', 'n'].includes(normalized)) return false;
-    return undefined;
+    return null;
   }
 
   function sanitizeLeadsOrDealsRecord(resource, record = {}, { includeCreatedBy = false, userId = '' } = {}) {
@@ -1214,13 +1215,17 @@
   }
 
   function toTicketInternalRecord(row = {}) {
-    return {
+    const record = {
       ticket_id: ticketRowId(row),
       youtrack_reference: row.youtrack_reference ?? row.youtrackReference ?? '',
       dev_team_status: row.dev_team_status ?? row.devTeamStatus ?? '',
-      issue_related: toDbBoolean(row.issue_related ?? row.issueRelated),
+      issue_related: toDbBoolean(row.issue_related ?? row.issueRelated ?? null),
       notes: row.notes ?? ''
     };
+    if ('issue_related' in record && record.issue_related === '') {
+      record.issue_related = null;
+    }
+    return record;
   }
 
   function mergeTicketInternal(ticket = {}, internal = {}) {
@@ -1229,7 +1234,7 @@
       ...ticket,
       youtrack_reference: internal.youtrack_reference ?? internal.youtrackReference ?? '',
       dev_team_status: internal.dev_team_status ?? internal.devTeamStatus ?? '',
-      issue_related: internal.issue_related ?? internal.issueRelated ?? '',
+      issue_related: toDbBoolean(internal.issue_related ?? internal.issueRelated ?? null),
       notes: internal.notes ?? ''
     };
     return normalizeRow('tickets', merged);
@@ -2634,7 +2639,16 @@
       if (resource === 'tickets' && isAdminDev()) {
         const internalRecord = toTicketInternalRecord(raw || {});
         internalRecord.ticket_id = created.id;
+        if ('issue_related' in internalRecord && internalRecord.issue_related === '') {
+          internalRecord.issue_related = null;
+        }
         if (internalRecord.ticket_id) {
+          console.log('[ticket internal] outgoing payload', internalRecord);
+          console.log(
+            '[ticket internal] issue_related type/value',
+            typeof internalRecord.issue_related,
+            internalRecord.issue_related
+          );
           const { data: internalData, error: internalError } = await client
             .from('ticket_internal')
             .upsert(internalRecord, { onConflict: 'ticket_id' })
@@ -2774,6 +2788,15 @@
       if (resource === 'tickets' && isAdminDev()) {
         const internalUpdates = toTicketInternalRecord(safeUpdates);
         internalUpdates.ticket_id = ticketRowId({ id });
+        if ('issue_related' in internalUpdates && internalUpdates.issue_related === '') {
+          internalUpdates.issue_related = null;
+        }
+        console.log('[ticket internal] outgoing payload', internalUpdates);
+        console.log(
+          '[ticket internal] issue_related type/value',
+          typeof internalUpdates.issue_related,
+          internalUpdates.issue_related
+        );
         const { data: internalData, error: internalError } = await client
           .from('ticket_internal')
           .upsert(internalUpdates, { onConflict: 'ticket_id' })
