@@ -535,6 +535,7 @@ function cacheEls() {
     'proposalsSearchInput',
     'proposalsStatusFilter',
     'proposalsCustomerFilter',
+    'proposalsExportCsvBtn',
     'proposalsRefreshBtn',
     'proposalsCreateBtn',
     'proposalsAnalytics',
