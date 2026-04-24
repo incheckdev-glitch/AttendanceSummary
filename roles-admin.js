@@ -607,8 +607,7 @@ const RolesAdmin = {
         is_allowed: true,
         is_active: true
       };
-      try { console.log('[RolesPermissions] upsert payload', existing && this.permissionId(existing) ? { permission_id: this.permissionId(existing), ...payload } : payload); } catch {}
-      if (existing && this.permissionId(existing)) payload.permission_id = this.permissionId(existing);
+      try { console.log('[RolesPermissions] upsert payload', payload); } catch {}
       upserts.push(Api.saveRolePermission(payload));
     });
 
@@ -661,35 +660,21 @@ const RolesAdmin = {
 
     const actionSet = new Set(selectedActions);
     const existingRows = this.state.permissions.filter(row => String(row.resource || '').trim().toLowerCase() === baseValidation.resource && normalizedRoleKeys.includes(this.roleKey(row)));
-    const byRoleAction = new Map(existingRows.map(row => [`${this.roleKey(row)}:${this.canonicalAction(row.action)}`, row]));
 
     const requests = [];
     normalizedRoleKeys.forEach(roleKey => {
       selectedActions.forEach(action => {
         const actionValidation = this.validatePermissionPayload({ roleKeys: [roleKey], resource: baseValidation.resource, action });
         if (!actionValidation.valid) return;
-        const existing = byRoleAction.get(`${roleKey}:${actionValidation.action}`);
-        if (existing && this.permissionId(existing)) {
-          const payload = {
-            role_key: roleKey,
-            resource: actionValidation.resource,
-            action: actionValidation.action,
-            is_allowed: true,
-            is_active: true
-          };
-          try { console.log('[RolesPermissions] upsert payload', { permission_id: this.permissionId(existing), ...payload }); } catch {}
-          requests.push(Api.saveRolePermission({ permission_id: this.permissionId(existing), ...payload }));
-        } else {
-          const payload = {
-            role_key: roleKey,
-            resource: actionValidation.resource,
-            action: actionValidation.action,
-            is_allowed: true,
-            is_active: true
-          };
-          try { console.log('[RolesPermissions] upsert payload', payload); } catch {}
-          requests.push(Api.saveRolePermission(payload));
-        }
+        const payload = {
+          role_key: roleKey,
+          resource: actionValidation.resource,
+          action: actionValidation.action,
+          is_allowed: true,
+          is_active: true
+        };
+        try { console.log('[RolesPermissions] upsert payload', payload); } catch {}
+        requests.push(Api.saveRolePermission(payload));
       });
 
       existingRows

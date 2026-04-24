@@ -1053,7 +1053,6 @@
 
   function sanitizeRolePermissionRecord(record = {}) {
     const mapped = compactObject({
-      permission_id: firstDefined(record, ['permission_id', 'permissionId']),
       role_key: firstDefined(record, ['role_key', 'roleKey']),
       resource: firstDefined(record, ['resource']),
       action: firstDefined(record, ['action']),
@@ -1086,7 +1085,6 @@
       ? Boolean(sanitized.is_active)
       : true;
     sanitized.updated_at = String(sanitized.updated_at || new Date().toISOString());
-    if (!sanitized.permission_id) delete sanitized.permission_id;
     return sanitized;
   }
 
@@ -2900,7 +2898,6 @@
           is_active: createRecord.is_active !== undefined ? Boolean(createRecord.is_active) : true,
           updated_at: String(createRecord.updated_at || new Date().toISOString())
         };
-        if (createRecord.permission_id) upsertRecord.permission_id = createRecord.permission_id;
         if (createRecord.allowed_roles !== undefined) upsertRecord.allowed_roles = createRecord.allowed_roles;
         const { data, error } = await client
           .from(table)
