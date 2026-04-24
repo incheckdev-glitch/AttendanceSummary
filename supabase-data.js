@@ -1145,34 +1145,43 @@
     const actionSelect = input.actionSelect ?? input.rolePermissionAction ?? doc?.getElementById('rolePermissionAction');
 
     const selectedRoleKey =
+      input.p_role_key ??
       input.role_key ??
       input.roleKey ??
+      input.role ??
       form.role_key ??
       form.roleKey ??
       roleSelect?.value ??
-      input.p_role_key ??
       '';
 
     const selectedResource =
-      input.resource ??
+      input.p_resource ??
+      input.permission_resource ??
+      input.permissionResource ??
+      input.target_resource ??
+      input.targetResource ??
+      input.resource_key ??
       input.module ??
       input.module_key ??
-      input.resource_key ??
+      input.resource ??
       form.resource ??
       form.module ??
       resourceSelect?.value ??
-      input.p_resource ??
       '';
 
     const selectedAction =
-      input.action ??
+      input.p_action ??
+      input.permission_action ??
+      input.permissionAction ??
+      input.target_action ??
+      input.targetAction ??
+      input.action_key ??
       input.permission ??
       input.permission_key ??
-      input.action_key ??
+      input.action ??
       form.action ??
       form.permission ??
       actionSelect?.value ??
-      input.p_action ??
       '';
 
     const roleKey = normalizePermissionKey(selectedRoleKey);
@@ -3031,7 +3040,8 @@
         throw new Error(`${resource} create payload is empty after normalization.`);
       }
       if (resource === 'role_permissions') {
-        const rpcPayload = buildRolePermissionRpcPayload({ ...createRecord, ...payload });
+        const rawPermissionPayload = payload.permissionPayload || payload.rpcPayload || payload.permission || { ...createRecord, ...payload };
+        const rpcPayload = buildRolePermissionRpcPayload(rawPermissionPayload);
         devLog('[role permissions] rpc payload', JSON.stringify(rpcPayload, null, 2));
         const { data, error } = await client.rpc('upsert_role_permission', rpcPayload);
         devLog('[role permissions] rpc result', JSON.stringify({ data, error }, null, 2));
@@ -3156,7 +3166,8 @@
         return { handled: true, data: normalizeRow('users', data) };
       }
       if (resource === 'role_permissions') {
-        const rpcPayload = buildRolePermissionRpcPayload({ ...safeUpdates, ...payload });
+        const rawPermissionPayload = payload.permissionPayload || payload.rpcPayload || payload.permission || { ...safeUpdates, ...payload };
+        const rpcPayload = buildRolePermissionRpcPayload(rawPermissionPayload);
         devLog('[role permissions] rpc payload', JSON.stringify(rpcPayload, null, 2));
         const { data, error } = await client.rpc('upsert_role_permission', rpcPayload);
         devLog('[role permissions] rpc result', JSON.stringify({ data, error }, null, 2));

@@ -1034,26 +1034,37 @@ const Api = {
     const actionSelect = input.actionSelect ?? input.rolePermissionAction ?? document.getElementById('rolePermissionAction');
 
     const selectedRoleKey =
+      input.p_role_key ||
       input.role_key ||
       input.roleKey ||
+      input.role ||
       form.role_key ||
       form.roleKey ||
       roleSelect?.value;
 
     const selectedResource =
-      input.resource ||
+      input.p_resource ||
+      input.permission_resource ||
+      input.permissionResource ||
+      input.target_resource ||
+      input.targetResource ||
+      input.resource_key ||
       input.module ||
       input.module_key ||
-      input.resource_key ||
+      input.resource ||
       form.resource ||
       form.module ||
       resourceSelect?.value;
 
     const selectedAction =
-      input.action ||
-      input.permission ||
-      input.permission_key ||
+      input.p_action ||
+      input.permission_action ||
+      input.permissionAction ||
+      input.target_action ||
+      input.targetAction ||
       input.action_key ||
+      input.permission ||
+      input.action ||
       form.action ||
       form.permission ||
       actionSelect?.value;
@@ -1104,13 +1115,36 @@ const Api = {
   },
   async saveRolePermission(payload = {}) {
     try { console.log('[role permissions] form/input', JSON.stringify(payload, null, 2)); } catch {}
+    const client = window.SupabaseClient?.getClient?.();
+    if (!client) throw new Error('Supabase client is not available.');
     const rpcPayload = this.buildRolePermissionRpcPayload(payload);
-    const result = await this.requestWithSession('role_permissions', 'save', rpcPayload);
-    try { console.log('[role permissions] rpc result', JSON.stringify(result, null, 2)); } catch {}
-    const unwrapped = result?.data ?? result?.item ?? result;
-    const data = unwrapped?.data ?? unwrapped?.item ?? unwrapped;
-    if (!data) throw new Error('Supabase returned no saved permission row.');
-    const savedRow = this.normalizeRolePermissionRow(data);
+    if (
+      rpcPayload.p_resource === 'role_permissions' &&
+      rpcPayload.p_action === 'save' &&
+      payload.original_resource &&
+      payload.original_action
+    ) {
+      throw new Error('Role permission payload collision detected: routing resource/action overwrote permission resource/action.');
+    }
+    try { console.log('[role permissions] final direct rpc payload', JSON.stringify(rpcPayload, null, 2)); } catch {}
+    const { data, error } = await client.rpc('upsert_role_permission', rpcPayload);
+    try { console.log('[role permissions] direct rpc result', JSON.stringify({ data, error }, null, 2)); } catch {}
+    if (error) throw new Error(error.message || 'Unable to save role permission.');
+    if (!data) throw new Error('Permission was not saved. Supabase returned no row.');
+    const verify = await client
+      .from('role_permissions')
+      .select('permission_id, role_key, resource, action, is_allowed, is_active, allowed_roles, created_at, updated_at')
+      .eq('role_key', rpcPayload.p_role_key)
+      .eq('resource', rpcPayload.p_resource)
+      .eq('action', rpcPayload.p_action)
+      .order('updated_at', { ascending: false })
+      .limit(1);
+    if (verify.error) throw new Error(verify.error.message || 'Unable to verify saved permission.');
+    if (!Array.isArray(verify.data) || !verify.data.length) {
+      throw new Error(`Permission save was not verified: ${rpcPayload.p_role_key}/${rpcPayload.p_resource}/${rpcPayload.p_action}`);
+    }
+    const savedRow = this.normalizeRolePermissionRow(verify.data[0]);
+    try { console.log('[role permissions] verified direct rpc row', JSON.stringify(verify.data[0], null, 2)); } catch {}
     try { console.log('[role permissions] saved normalized row', JSON.stringify(savedRow, null, 2)); } catch {}
     return savedRow;
   },
