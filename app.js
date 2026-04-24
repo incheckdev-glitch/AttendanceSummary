@@ -5291,6 +5291,12 @@ const CSMActivity = {
     clientConcentration: null,
     workloadBalance: null
   },
+  normalizeClientKey(value) {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, ' ');
+  },
   backendToView(raw = {}) {
     const timestamp = String(raw.timestamp || raw.date || raw.created_at || '').trim();
     const parsedDate = timestamp ? new Date(timestamp) : null;
@@ -5317,23 +5323,19 @@ const CSMActivity = {
     };
   },
   viewToBackendActivity(row = {}) {
-    const clientName = String(row.clientName || row.client || '').trim();
+    const clientName = String(row.clientName || row.companyName || row.client || '').trim();
     return {
-      timestamp: String(row.timestamp || '').trim(),
       csm_name: String(row.csmName || '').trim(),
       csm_user_id: String(row.csmUserId || '').trim(),
       csm_email: String(row.csmEmail || '').trim(),
       client_id: String(row.clientId || '').trim(),
       client_name: clientName,
       company_name: String(row.companyName || clientName).trim(),
-      agreement_id: String(row.agreementId || '').trim(),
-      onboarding_id: String(row.onboardingId || '').trim(),
-      client: clientName,
       time_spent_minutes: Number(row.timeSpentMinutes) || 0,
       type_of_support: String(row.supportType || '').trim(),
       effort_requirement: String(row.effortRequirement || '').trim(),
       support_channel: String(row.supportChannel || '').trim(),
-      notes_optional: String(row.notes || '').trim()
+      notes: String(row.notes || '').trim()
     };
   },
   isAdminUser() {
@@ -5380,24 +5382,40 @@ const CSMActivity = {
     const normalizedSelected = String(selectedValue || '').trim();
     const results = this.getMatchingClientOptions(searchTerm);
     let options = results.slice();
-    if (normalizedSelected && !options.some(item => item.client_name === normalizedSelected)) {
-      const fromAll = this.clientOptions.find(item => item.client_name === normalizedSelected);
+    if (normalizedSelected && !options.some(item => item.value === normalizedSelected)) {
+      const fromAll = this.clientOptions.find(item => item.value === normalizedSelected);
       if (fromAll) options = [fromAll, ...options];
-      else {
-        options = [{ client_name: normalizedSelected, company_name: normalizedSelected, search_text: normalizedSelected.toLowerCase() }, ...options];
-      }
     }
     E.csmFormClient.innerHTML = [
       '<option value="">Select Client</option>',
-      ...options.map(option => `<option value="${U.escapeHtml(option.client_name)}">${U.escapeHtml(option.client_name)}</option>`)
+      ...options.map(option => `<option value="${U.escapeHtml(option.value || '')}">${U.escapeHtml(option.label || option.client_name || option.company_name || '')}</option>`)
     ].join('');
     if (normalizedSelected) E.csmFormClient.value = normalizedSelected;
   },
   applySelectedClientToForm(option = null) {
-    const selectedName = String(option?.client_name || E.csmFormClient?.value || '').trim();
-    if (E.csmFormClient && selectedName) E.csmFormClient.value = selectedName;
+    const selectedName = String(option?.client_name || option?.company_name || '').trim();
+    const selectedValue = String(option?.value || '').trim();
+    if (E.csmFormClient && selectedValue) E.csmFormClient.value = selectedValue;
     if (E.csmFormCompanyName) E.csmFormCompanyName.value = selectedName;
     if (E.csmFormClientSearch) E.csmFormClientSearch.value = selectedName;
+  },
+  findSelectedClientOption(rawValue = '') {
+    const value = String(rawValue || '').trim();
+    if (!value) return null;
+    return this.clientOptions.find(option => String(option.value || '').trim() === value) || null;
+  },
+  findClientOptionForRow(row = null) {
+    if (!row) return null;
+    const rowClientId = String(row.clientId || '').trim();
+    if (rowClientId) {
+      const byId = this.clientOptions.find(option => String(option.client_id || '').trim() === rowClientId);
+      if (byId) return byId;
+    }
+    const rowName = this.normalizeClientKey(row.clientName || row.companyName || row.client || '');
+    if (!rowName) return null;
+    return this.clientOptions.find(option =>
+      this.normalizeClientKey(option.client_name || option.company_name) === rowName
+    ) || null;
   },
   extractRows(payload) {
     if (Array.isArray(payload)) return payload;
@@ -5869,9 +5887,10 @@ const CSMActivity = {
     if (E.csmFormCsmName) E.csmFormCsmName.readOnly = !this.isAdminUser();
     E.csmForm.dataset.csmUserId = row?.csmUserId || identity.csmUserId;
     E.csmForm.dataset.csmEmail = row?.csmEmail || identity.csmEmail;
-    const selectedClientName = row?.clientName || row?.companyName || row?.client || '';
-    this.populateClientSelect(selectedClientName, selectedClientName);
-    const selectedOption = this.clientOptions.find(option => option.client_name === selectedClientName);
+    const selectedOption = this.findClientOptionForRow(row);
+    const selectedClientValue = selectedOption?.value || '';
+    const selectedClientName = selectedOption?.client_name || selectedOption?.company_name || row?.clientName || row?.companyName || row?.client || '';
+    this.populateClientSelect(selectedClientValue, selectedClientName);
     this.applySelectedClientToForm(selectedOption || (selectedClientName ? { client_name: selectedClientName } : null));
     if (E.csmFormCompanyName) E.csmFormCompanyName.readOnly = true;
     if (E.csmFormMinutes) E.csmFormMinutes.value = row ? String(Math.round(Number(row.timeSpentMinutes) || 0)) : '';
@@ -5890,8 +5909,11 @@ const CSMActivity = {
     E.csmFormModal.setAttribute('aria-hidden', 'true');
   },
   readFormValues() {
-    const selectedClientName = String(E.csmFormClient?.value || '').trim();
-    const selectedOption = this.clientOptions.find(option => option.client_name === selectedClientName) || {};
+    const selectedClientValue = String(E.csmFormClient?.value || '').trim();
+    const selectedOption = this.findSelectedClientOption(selectedClientValue) || {};
+    console.log('[csm activity] selected client option', selectedOption);
+    const selectedClientName = String(selectedOption.client_name || selectedOption.company_name || '').trim();
+    const syncedCompanyName = selectedClientName;
     return {
       csmName: String(E.csmFormCsmName?.value || '').trim(),
       csmUserId: String(E.csmForm?.dataset.csmUserId || '').trim(),
@@ -5899,9 +5921,7 @@ const CSMActivity = {
       client: selectedClientName,
       clientId: String(selectedOption.client_id || '').trim(),
       clientName: selectedClientName,
-      companyName: selectedClientName,
-      agreementId: String(selectedOption.agreement_id || '').trim(),
-      onboardingId: String(selectedOption.onboarding_id || '').trim(),
+      companyName: syncedCompanyName,
       timeSpentMinutes: Number(E.csmFormMinutes?.value || 0),
       supportType: String(E.csmFormSupportType?.value || '').trim(),
       effortRequirement: String(E.csmFormEffort?.value || '').trim(),
@@ -6097,8 +6117,8 @@ function wireCSMActivity() {
   }
   if (E.csmFormClient) {
     E.csmFormClient.addEventListener('change', () => {
-      const selected = CSMActivity.clientOptions.find(option => option.client_name === E.csmFormClient.value);
-      CSMActivity.applySelectedClientToForm(selected || { client_name: E.csmFormClient.value });
+      const selected = CSMActivity.findSelectedClientOption(E.csmFormClient.value);
+      CSMActivity.applySelectedClientToForm(selected);
     });
   }
   if (E.csmFormDeleteBtn) {
