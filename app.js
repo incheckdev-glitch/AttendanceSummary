@@ -5531,6 +5531,72 @@ const CSMActivity = {
       return true;
     });
   },
+  getFilteredCsmActivityRows() {
+    return this.applyFilters();
+  },
+  csvEscape(value) {
+    const text = String(value ?? '');
+    if (/[",\n\r]/.test(text)) {
+      return `"${text.replace(/"/g, '""')}"`;
+    }
+    return text;
+  },
+  downloadCsv(filename, csvText) {
+    const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  },
+  exportCsmActivityCsv() {
+    if (!Permissions.canViewCsmActivity()) {
+      UI.toast('You do not have permission to view CSM activity.');
+      return;
+    }
+    const filteredRows = this.getFilteredCsmActivityRows();
+    if (!filteredRows.length) {
+      UI.toast('No CSM activity rows match the current filters.');
+      return;
+    }
+    const headers = [
+      'Timestamp',
+      'CSM Name',
+      'Client',
+      'Time Spent (Minutes)',
+      'Type of Support',
+      'Effort Requirement',
+      'Support Channel',
+      'Notes'
+    ];
+    const csvLines = [
+      headers.map(value => this.csvEscape(value)).join(','),
+      ...filteredRows.map(row => {
+        const clientDisplay = row.client || row.clientName || row.companyName || '';
+        const timestampValue = row.parsedDate || row.timestamp || row.createdAt || '';
+        return [
+          U.formatDateTimeMMDDYYYYHHMM(timestampValue),
+          row.csmName || '',
+          clientDisplay,
+          Math.round(Number(row.timeSpentMinutes) || 0),
+          row.supportType || '',
+          row.effortRequirement || '',
+          row.supportChannel || '',
+          row.notes || ''
+        ]
+          .map(value => this.csvEscape(value))
+          .join(',');
+      })
+    ];
+    const now = new Date();
+    const filename = `csm-activity-export-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(
+      now.getDate()
+    ).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}.csv`;
+    this.downloadCsv(filename, csvLines.join('\n'));
+  },
   destroyChart(chart) {
     if (chart && typeof chart.destroy === 'function') chart.destroy();
   },
@@ -5870,12 +5936,17 @@ const CSMActivity = {
   },
   refresh() {
     const canCreate = this.canCreate();
+    const canView = Permissions.canViewCsmActivity();
     if (E.csmInlineSubmitBtn) {
       E.csmInlineSubmitBtn.style.display = canCreate ? '' : 'none';
     }
+    if (E.csmExportCsvBtn) {
+      E.csmExportCsvBtn.style.display = canView ? '' : 'none';
+      E.csmExportCsvBtn.disabled = this.isLoading || !canView;
+    }
     ['csmInlineTimestamp','csmInlineCsmName','csmInlineClient','csmInlineMinutes','csmInlineSupportType','csmInlineEffort','csmInlineChannel','csmInlineNotes']
       .forEach(id => { if (E[id]) E[id].disabled = !canCreate || this.isSaving; });
-    const filtered = this.applyFilters();
+    const filtered = this.getFilteredCsmActivityRows();
     this.renderKPIs(filtered);
     this.renderInsights(filtered);
     this.renderCharts(filtered);
@@ -6091,6 +6162,11 @@ function wireCSMActivity() {
         return;
       }
       CSMActivity.openForm();
+    });
+  }
+  if (E.csmExportCsvBtn) {
+    E.csmExportCsvBtn.addEventListener('click', () => {
+      CSMActivity.exportCsmActivityCsv();
     });
   }
 

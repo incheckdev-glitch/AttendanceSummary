@@ -298,6 +298,7 @@ function cacheEls() {
     'csmInsightList',
     'csmTopSnapshotBody',
     'csmAddActivityBtn',
+    'csmExportCsvBtn',
     'csmRowCount',
     'csmTableBody',
     'csmInlineCreateForm',
