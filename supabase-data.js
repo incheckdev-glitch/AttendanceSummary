@@ -159,6 +159,7 @@
   const DEAL_COLUMNS = new Set([
     'deal_id',
     'lead_id',
+    'lead_code',
     'source_lead_uuid',
     'full_name',
     'company_name',
@@ -178,6 +179,8 @@
     'converted_by',
     'converted_at',
     'notes',
+    'created_at',
+    'updated_at',
     'created_by',
     'updated_by'
   ]);
@@ -486,6 +489,8 @@
       out.dealId = out.dealId ?? out.deal_id ?? '';
       out.lead_id = out.lead_id ?? out.leadId ?? '';
       out.leadId = out.leadId ?? out.lead_id ?? '';
+      out.lead_code = out.lead_code ?? out.leadCode ?? '';
+      out.leadCode = out.leadCode ?? out.lead_code ?? '';
       out.full_name = out.full_name ?? out.fullName ?? '';
       out.fullName = out.fullName ?? out.full_name ?? '';
       out.company_name = out.company_name ?? out.companyName ?? '';
@@ -502,6 +507,10 @@
       out.convertedBy = out.convertedBy ?? out.converted_by ?? '';
       out.converted_at = out.converted_at ?? out.convertedAt ?? '';
       out.convertedAt = out.convertedAt ?? out.converted_at ?? '';
+      out.created_at = out.created_at ?? out.createdAt ?? '';
+      out.createdAt = out.createdAt ?? out.created_at ?? '';
+      out.updated_at = out.updated_at ?? out.updatedAt ?? '';
+      out.updatedAt = out.updatedAt ?? out.updated_at ?? '';
       out.proposal_needed = out.proposal_needed ?? out.proposalNeeded ?? null;
       out.proposalNeeded = out.proposalNeeded ?? out.proposal_needed ?? null;
       out.agreement_needed = out.agreement_needed ?? out.agreementNeeded ?? null;
@@ -926,6 +935,7 @@
     const mapped = {
       deal_id: toTextOrEmpty(['deal_id', 'dealId']),
       lead_id: toTextOrEmpty(['lead_id', 'leadId']),
+      lead_code: toTextOrEmpty(['lead_code', 'leadCode']),
       source_lead_uuid: toTextOrEmpty(['source_lead_uuid', 'sourceLeadUuid', 'lead_uuid', 'leadUuid']),
       full_name: toTextOrEmpty(['full_name', 'fullName']),
       company_name: toTextOrEmpty(['company_name', 'companyName']),
@@ -945,6 +955,8 @@
       converted_by: toTextOrEmpty(['converted_by', 'convertedBy']),
       converted_at: toDateOrNull(['converted_at', 'convertedAt']),
       notes: toTextOrEmpty(['notes']),
+      created_at: toDateOrNull(['created_at', 'createdAt']),
+      updated_at: toDateOrNull(['updated_at', 'updatedAt']),
       created_by: includeCreatedBy ? (firstDefined(record, ['created_by', 'createdBy']) || userId || undefined) : undefined,
       updated_by: firstDefined(record, ['updated_by', 'updatedBy']) || userId || undefined
     };

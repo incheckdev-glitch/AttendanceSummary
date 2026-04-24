@@ -252,31 +252,45 @@ const Leads = {
   currentConverterIdentity() {
     return String(Session.displayName() || Session.username() || Session.user()?.email || '').trim();
   },
-  async findDealByLeadBusinessId(leadBusinessId) {
-    const normalizedLeadId = String(leadBusinessId || '').trim();
-    if (!normalizedLeadId) return null;
+  isUuid(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      String(value || '').trim()
+    );
+  },
+  async resolveLeadUuid(leadUuidOrBusinessId) {
+    const candidate = String(leadUuidOrBusinessId || '').trim();
+    if (!candidate) return '';
+    if (this.isUuid(candidate)) return candidate;
+    const { data, error } = await this.getClient()
+      .from('leads')
+      .select('id')
+      .eq('lead_id', candidate)
+      .limit(1);
+    if (error) throw this.toSupabaseError('Unable to resolve lead UUID', error);
+    return String(Array.isArray(data) && data[0]?.id ? data[0].id : '').trim();
+  },
+  async findDealByLeadUuid(leadUuidOrBusinessId) {
+    const leadUuid = await this.resolveLeadUuid(leadUuidOrBusinessId);
+    if (!leadUuid) return null;
     const { data, error } = await this.getClient()
       .from('deals')
       .select('*')
-      .eq('lead_id', normalizedLeadId)
+      .eq('lead_id', leadUuid)
       .order('created_at', { ascending: false })
       .limit(1);
     if (error) throw this.toSupabaseError('Unable to check existing deal', error);
     return Array.isArray(data) && data.length ? data[0] : null;
   },
-  buildDealFromLead(lead, leadUuid) {
+  buildDealFromLead(lead) {
     const converter = this.currentConverterIdentity();
     const convertedAt = new Date().toISOString();
-    const fallbackDealId =
-      typeof window.Deals?.generateDealId === 'function' ? window.Deals.generateDealId() : '';
     const estimatedValueNumber =
       lead.estimated_value === '' || lead.estimated_value === null || lead.estimated_value === undefined
         ? null
         : Number(lead.estimated_value);
     return {
-      deal_id: fallbackDealId,
-      lead_id: String(lead.lead_id || '').trim(),
-      source_lead_uuid: String(leadUuid || '').trim() || undefined,
+      lead_id: String(lead.id || '').trim(),
+      lead_code: String(lead.lead_id || '').trim(),
       full_name: lead.full_name,
       company_name: lead.company_name,
       phone: lead.phone,
@@ -284,15 +298,15 @@ const Leads = {
       country: lead.country,
       lead_source: lead.lead_source,
       service_interest: lead.service_interest,
-      status: lead.status,
       stage: 'new',
-      priority: lead.priority,
+      status: lead.status || 'Contacted',
+      priority: lead.priority || '',
       estimated_value: Number.isFinite(estimatedValueNumber) ? estimatedValueNumber : null,
-      currency: lead.currency,
-      assigned_to: lead.assigned_to,
-      proposal_needed: lead.proposal_needed,
-      agreement_needed: lead.agreement_needed,
-      notes: lead.notes,
+      currency: lead.currency || '',
+      assigned_to: lead.assigned_to || '',
+      proposal_needed: lead.proposal_needed || '',
+      agreement_needed: lead.agreement_needed || '',
+      notes: lead.notes || '',
       converted_by: converter,
       converted_at: convertedAt
     };
@@ -1099,9 +1113,11 @@ const Leads = {
         return;
       }
       console.log('[deal conversion] source lead', sourceLead);
-      const existingDeal = await this.findDealByLeadBusinessId(sourceLead.lead_id);
-      const payload = this.buildDealFromLead(sourceLead, leadUuid);
-      console.log('[deal conversion] create payload', payload);
+      console.log('[deal conversion] existing deal check lead uuid', sourceLead.id);
+      console.log('[deal conversion] business lead code', sourceLead.lead_id);
+      const existingDeal = await this.findDealByLeadUuid(sourceLead.id);
+      const payload = this.buildDealFromLead(sourceLead);
+      console.log('[deal conversion] payload', payload);
       const savedDeal =
         existingDeal ||
         (window.Deals?.createDeal ? await window.Deals.createDeal(payload) : await this.getClient().from('deals').insert(payload).select('*').single().then(r => {

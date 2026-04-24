@@ -424,6 +424,7 @@ function cacheEls() {
     'dealsResetBtn',
     'dealsCreateBtn',
     'dealsRefreshBtn',
+    'dealsExportCsvBtn',
     'clientsRefreshBtn',
     'clientsCreateBtn',
     'clientsSearchInput',
