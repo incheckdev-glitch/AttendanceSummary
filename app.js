@@ -812,545 +812,157 @@ UI.Issues.renderSummary = function (list) {
 /** Analytics (AI tab) */
 const Analytics = {
   _debounce: null,
-  refresh(list) {
+  _state: { dashboard: null, activeFilter: 'all' },
+  filters: [
+    { key: 'all', label: 'All' },
+    { key: 'critical', label: 'Critical' },
+    { key: 'high', label: 'High' },
+    { key: 'tickets', label: 'Tickets' },
+    { key: 'events', label: 'Events' },
+    { key: 'workflow', label: 'Workflow' },
+    { key: 'revenue', label: 'Revenue' },
+    { key: 'operations', label: 'Operations' },
+    { key: 'data quality', label: 'Data Quality' },
+    { key: 'reviewed', label: 'Reviewed' },
+    { key: 'unreviewed', label: 'Unreviewed' }
+  ],
+  refresh() {
     clearTimeout(this._debounce);
     UI.setAnalyzing(true);
-    this._debounce = setTimeout(() => this._render(list), 80);
+    this._debounce = setTimeout(() => this._render(), 80);
   },
-  _render(list) {
-    // Top terms recent
-    const recentCut = CONFIG.TREND_DAYS_RECENT;
-    const recent = list.filter(r => U.isBetween(r.date, U.daysAgo(recentCut), null));
-    const termCounts = new Map();
-    recent.forEach(r => {
-      const t = DataStore.computed.get(r.id)?.tokens || new Set();
-      t.forEach(w => termCounts.set(w, (termCounts.get(w) || 0) + 1));
-    });
-    const topTerms = Array.from(termCounts.entries())
-      .filter(([, c]) => c >= 2)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 10);
-    if (E.aiPatternsList) {
-      E.aiPatternsList.innerHTML = topTerms.length
-        ? topTerms
-            .map(
-              ([t, c]) =>
-                `<li><strong>${U.escapeHtml(t)}</strong> – ${c}</li>`
-            )
-            .join('')
-        : '<li>No strong repeated terms recently.</li>';
+  async _render() {
+    try {
+      const dashboard = await window.AIDecisionService.generateDashboard();
+      this._state.dashboard = dashboard;
+      this.renderFilters();
+      this.renderDashboard();
+    } catch (error) {
+      console.error('AI Decision Center failed to render', error);
+      if (E.aiInsightQueue) E.aiInsightQueue.innerHTML = '<div class="muted">Unable to load AI Decision Center data.</div>';
+    } finally {
+      UI.setAnalyzing(false);
     }
-
-    // Suggested categories frequency
-    const catCount = new Map();
-    list.forEach(r => {
-      const cats = DataStore.computed.get(r.id)?.suggestions?.categories || [];
-      cats.forEach(c => catCount.set(c.label, (catCount.get(c.label) || 0) + 1));
-    });
-    const topCats = Array.from(catCount.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 8);
-    if (E.aiLabelsList) {
-      E.aiLabelsList.innerHTML = topCats.length
-        ? topCats
-            .map(
-              ([l, n]) =>
-                `<li class="ai-label-item">
-                  <div>
-                    <strong>${U.escapeHtml(l)}</strong>
-                    <span class="muted">· ${n} suggested</span>
-                  </div>
-                  <button class="btn ghost sm" type="button" data-apply-category="${U.escapeAttr(
-                    l
-                  )}">Apply</button>
-                </li>`
-            )
-            .join('')
-        : '<li>No clear category suggestions yet.</li>';
-    }
-
-    // Scope & signals
-    if (E.aiScopeText) {
-      E.aiScopeText.textContent = `Analyzing ${list.length} tickets (${recent.length} recent, ~last ${recentCut} days).`;
-    }
-    const signals = ['timeout', 'payments', 'billing', 'login', 'auth', 'error', 'crash'].filter(
-      t => termCounts.has(t)
-    );
-    if (E.aiSignalsText) {
-      E.aiSignalsText.textContent = signals.length
-        ? `Recent mentions: ${signals.join(', ')}.`
-        : 'No strong recurring signals.';
-    }
-
-    // Trends
-     const buildTermCounts = (items, startDate, endDate) => {
-      const counts = new Map();
-      items.forEach(r => {
-        if (!U.isBetween(r.date, startDate, endDate)) return;
-        const toks = DataStore.computed.get(r.id)?.tokens || new Set();
-        new Set(toks).forEach(t => counts.set(t, (counts.get(t) || 0) + 1));
+  },
+  getFilteredInsights() {
+    const insights = this._state.dashboard?.insights || [];
+    const filter = this._state.activeFilter;
+    if (filter === 'all') return insights;
+    if (filter === 'critical' || filter === 'high') return insights.filter(i => i.severity === filter);
+    if (filter === 'reviewed') return insights.filter(i => i.status === 'reviewed');
+    if (filter === 'unreviewed') return insights.filter(i => i.status !== 'reviewed');
+    return insights.filter(i => String(i.category || '').toLowerCase() === filter || String(i.resource || '').toLowerCase() === filter);
+  },
+  renderFilters() {
+    if (!E.aiInsightFilters) return;
+    E.aiInsightFilters.innerHTML = this.filters.map(f => `<button class="btn ghost sm ${this._state.activeFilter === f.key ? 'active' : ''}" type="button" data-ai-filter="${U.escapeAttr(f.key)}">${U.escapeHtml(f.label)}</button>`).join('');
+    E.aiInsightFilters.querySelectorAll('[data-ai-filter]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this._state.activeFilter = btn.getAttribute('data-ai-filter') || 'all';
+        this.renderFilters();
+        this.renderDashboard();
       });
-      return counts;
-    };
-
-    const oldStart = U.daysAgo(CONFIG.TREND_DAYS_WINDOW),
-      mid = U.daysAgo(CONFIG.TREND_DAYS_RECENT);
-    const oldCounts = new Map(),
-      newCounts = new Map();
-    const inHalf = r => {
-      const d = new Date(r.date);
-      if (isNaN(d)) return null;
-      if (d < mid && d >= oldStart) return 'old';
-      if (d >= mid) return 'new';
-      return null;
-    };
-    list.forEach(r => {
-      const half = inHalf(r);
-      if (!half) return;
-      const toks = DataStore.computed.get(r.id)?.tokens || new Set();
-      const tgt = half === 'old' ? oldCounts : newCounts;
-      new Set(toks).forEach(t => tgt.set(t, (tgt.get(t) || 0) + 1));
     });
-    const trendTerms = new Set([...oldCounts.keys(), ...newCounts.keys()]);
-    const trend = [];
-    trendTerms.forEach(t => {
-      const a = oldCounts.get(t) || 0,
-        b = newCounts.get(t) || 0;
-      const d = b - a;
-      const ratio = a === 0 ? (b >= 2 ? Infinity : 0) : b / a;
-      if ((b >= 2 && ratio >= 2) || d >= 2) trend.push({ t, old: a, new: b, delta: d, ratio });
-    });
-    trend.sort(
-      (x, y) =>
-        (y.ratio === Infinity) - (x.ratio === Infinity) ||
-        y.delta - x.delta ||
-        y.new - x.new
-    );
-    
-    const weekCurrentCounts = buildTermCounts(list, U.daysAgo(7), null);
-    const weekPrevCounts = buildTermCounts(list, U.daysAgo(14), U.daysAgo(7));
-    const monthCurrentCounts = buildTermCounts(list, U.daysAgo(30), null);
-    const monthPrevCounts = buildTermCounts(list, U.daysAgo(60), U.daysAgo(30));
-    const fmtDelta = value => (value >= 0 ? `+${value}` : `${value}`);
+  },
+  renderDashboard() {
+    const dashboard = this._state.dashboard;
+    if (!dashboard) return;
+    const insights = this.getFilteredInsights();
+    const summary = dashboard.summary || {};
+    const formatCurrency = value => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(Number(value || 0));
 
-    if (E.aiTrendsList) {
-      E.aiTrendsList.innerHTML = trend.length
-        ? trend
-            .slice(0, 8)
-            .map(
-             o => {
-                const wowNow = weekCurrentCounts.get(o.t) || 0;
-                const wowPrev = weekPrevCounts.get(o.t) || 0;
-                const wowDelta = wowNow - wowPrev;
-                const momNow = monthCurrentCounts.get(o.t) || 0;
-                const momPrev = monthPrevCounts.get(o.t) || 0;
-                const momDelta = momNow - momPrev;
-                return `<li><strong>${U.escapeHtml(o.t)}</strong> – ${o.new} vs ${
-                  o.old
-              } <span class="muted">(Δ ${fmtDelta(o.delta)} · WoW ${fmtDelta(
-                  wowDelta
-                )} · MoM ${fmtDelta(momDelta)})</span></li>`;
-              }
-            )
-            .join('')
-        : '<li>No strong increases.</li>';
+    if (E.aiExecutiveOverview) {
+      const cards = [
+        ['Platform Health Score', `${Math.round(summary.platform_health_score || 0)}/100`],
+        ['Critical Insights', String(summary.critical_insights || 0)],
+        ['High Risk Tickets', String(summary.high_risk_tickets || 0)],
+        ['Delayed Approvals', String(summary.delayed_approvals || 0)],
+        ['Revenue Risk', formatCurrency(summary.revenue_risk || 0)],
+        ['Operations Risk', String(summary.operations_risk || 0)]
+      ];
+      E.aiExecutiveOverview.innerHTML = cards.map(([label, value]) => `<div class="card"><div class="muted" style="font-size:12px;">${U.escapeHtml(label)}</div><div style="font-size:24px;font-weight:700;margin-top:6px;">${U.escapeHtml(value)}</div></div>`).join('');
     }
 
-    // Incidents
-    const incidentWords = ['incident', 'outage', 'p0', 'p1', 'major', 'sla'];
-    const incidents = list
-      .filter(r => {
-        const txt = [r.title, r.desc, r.log].filter(Boolean).join(' ').toLowerCase();
-        return incidentWords.some(w => txt.includes(w));
-      })
-      .slice(0, 10);
-    if (E.aiIncidentsList) {
-      E.aiIncidentsList.innerHTML = incidents.length
-        ? incidents
-            .map(
-              r => `
-      <li><button class="btn sm" data-open="${U.escapeAttr(
-        r.id
-      )}">${U.escapeHtml(issueDisplayId(r) || r.id)}</button> ${U.escapeHtml(r.title || '')}</li>
-    `
-            )
-            .join('')
-        : '<li>No incident-like tickets detected.</li>';
-    }
+    if (E.aiInsightQueue) {
+      if (!insights.length) {
+        E.aiInsightQueue.innerHTML = '<div class="muted">No insights match this filter.</div>';
+      } else {
+        E.aiInsightQueue.innerHTML = insights.map(insight => {
+          const sev = insight.severity || 'low';
+          return `<article class="decision-card">
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
+              <span class="chip decision-sev-${U.escapeAttr(sev)}">${U.escapeHtml(sev.toUpperCase())}</span>
+              <span class="chip">${U.escapeHtml(insight.category || 'general')}</span>
+              <span class="muted" style="margin-left:auto;">Confidence ${Math.round(insight.confidence_score || 0)}%</span>
+            </div>
+            <h4 style="margin:0 0 6px;">${U.escapeHtml(insight.title || 'Insight')}</h4>
+            <div class="muted">${U.escapeHtml(insight.summary || '')}</div>
+            <div style="margin-top:6px;"><strong>Why it matters:</strong> ${U.escapeHtml(insight.why_it_matters || '—')}</div>
+            <div style="margin-top:4px;"><strong>Recommended action:</strong> ${U.escapeHtml(insight.recommended_action || '—')}</div>
+            <div class="muted" style="margin-top:8px;">Evidence ${insight.evidence?.length || 0} · Affected ${insight.affected_count || 0} · Created ${U.fmtDisplayDate(insight.created_at)} · Status ${U.escapeHtml(insight.status || 'new')}</div>
+            <details style="margin-top:8px;"><summary>View evidence</summary><ul style="margin:6px 0 0 16px;">${(insight.evidence || []).map(item => `<li>${U.escapeHtml(item)}</li>`).join('') || '<li>No evidence available.</li>'}</ul></details>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">
+              <button class="btn sm" data-ai-open="${U.escapeAttr(insight.insight_id)}">Open related record</button>
+              <button class="btn ghost sm" data-ai-followup="${U.escapeAttr(insight.insight_id)}">Create follow-up ticket</button>
+              <button class="btn ghost sm" data-ai-status="reviewed" data-ai-id="${U.escapeAttr(insight.insight_id)}">Mark reviewed</button>
+              <button class="btn ghost sm" data-ai-status="dismissed" data-ai-id="${U.escapeAttr(insight.insight_id)}">Dismiss</button>
+            </div>
+          </article>`;
+        }).join('');
 
-    // Emerging vs stable
-    const emerg = trend.slice(0, 5).map(t => t.t);
-    const stable = topTerms
-      .filter(([t]) => !emerg.includes(t))
-      .slice(0, 5)
-      .map(([t]) => t);
-    if (E.aiEmergingStable) {
-      E.aiEmergingStable.innerHTML = `
-      <li><strong>Emerging:</strong> ${
-        emerg.length ? emerg.map(x => U.escapeHtml(x)).join(', ') : '—'
-      }</li>
-      <li><strong>Stable:</strong> ${
-        stable.length ? stable.map(x => U.escapeHtml(x)).join(', ') : '—'
-      }</li>
-    `;
-    }
+        E.aiInsightQueue.querySelectorAll('[data-ai-status]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-ai-id');
+            const status = btn.getAttribute('data-ai-status');
+            window.AIDecisionService.updateStatus(id, status);
+            this.refresh();
+          });
+        });
 
-    // Ops cockpit
-    const misaligned = list.filter(r => {
-      const meta = DataStore.computed.get(r.id);
-      if (!meta) return false;
-      const gap = prioGap(meta.suggestions?.priority, r.priority);
-      return gap >= CONFIG.RISK.misalignedDelta;
-    });
-    const missingPriority = list.filter(r => !r.priority);
-    const missingModule = list.filter(r => !r.module || r.module === 'Unspecified');
-    const staleHigh = list.filter(r => {
-      const meta = DataStore.computed.get(r.id);
-      if (!meta) return false;
-      const risk = meta.risk?.total || 0;
-      const old = U.daysAgo(CONFIG.RISK.staleDays);
-      const st = (r.status || '').toLowerCase();
-      return (
-        risk >= CONFIG.RISK.highRisk &&
-        U.isBetween(r.date, null, old) &&
-        !(st.startsWith('resolved') || st.startsWith('rejected'))
-      );
-    });
-    if (E.aiOpsCockpit) {
-      E.aiOpsCockpit.innerHTML = `
-      <li>Untagged tickets (missing category/type): ${
-        list.filter(r => !r.type).length
-      }</li>
-      <li>Missing priority: ${missingPriority.length}</li>
-      <li>Missing module: ${missingModule.length}</li>
-      <li>Misaligned priority: ${misaligned.length}</li>
-      <li>Stale high-risk (&gt;=${CONFIG.RISK.highRisk}) &gt; ${
-      CONFIG.RISK.staleDays
-    }d: ${staleHigh.length}</li>
-    `;
-    }
+        E.aiInsightQueue.querySelectorAll('[data-ai-open]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const insightId = btn.getAttribute('data-ai-open');
+            const insight = (this._state.dashboard?.insights || []).find(x => x.insight_id === insightId);
+            if (!insight) return;
+            if (insight.resource === 'tickets' && insight.resource_id) {
+              UI.Modals.openIssue(insight.resource_id);
+              return;
+            }
+            if (insight.resource === 'events') {
+              setActiveView('calendar');
+              UI.toast(`Open event record ${insight.resource_id || ''}`);
+              return;
+            }
+            if (insight.resource === 'workflow') return setActiveView('workflow');
+            if (insight.resource === 'invoices') return setActiveView('invoices');
+            if (insight.resource === 'agreements') return setActiveView('agreements');
+            if (insight.resource === 'proposals') return setActiveView('proposals');
+            if (insight.resource === 'clients') return setActiveView('clients');
+            UI.toast(`Open ${insight.resource} ${insight.resource_id || ''}`);
+          });
+        });
 
-    // Module insights
-    const modules = (() => {
-      const map = new Map();
-      list.forEach(r => {
-        let m = map.get(r.module);
-        if (!m) {
-          m = {
-            module: r.module,
-            total: 0,
-            open: 0,
-            high: 0,
-            risk: 0,
-            tokens: new Map()
-          };
-          map.set(r.module, m);
-        }
-        m.total++;
-        const st = (r.status || '').toLowerCase();
-        if (!st.startsWith('resolved') && !st.startsWith('rejected')) {
-          m.open++;
-          if (r.priority === 'High') m.high++;
-        }
-        const rs = DataStore.computed.get(r.id)?.risk?.total || 0;
-        m.risk += rs;
-        (DataStore.computed.get(r.id)?.tokens || new Set()).forEach(t =>
-          m.tokens.set(t, (m.tokens.get(t) || 0) + 1)
-        );
-      });
-      return Array.from(map.values())
-        .map(m => {
-          const tt = m.tokens.size
-            ? Array.from(m.tokens.entries()).sort((a, b) => b[1] - a[1])[0][0]
-            : '';
-          return {
-            module: m.module,
-            open: m.open,
-            high: m.high,
-            risk: m.risk,
-            topTerm: tt
-          };
-        })
-        .sort((a, b) => b.risk - a.risk || b.open - a.open)
-        .slice(0, 8);
-    })();
-
-    const maxModuleRisk = modules.reduce((max, m) => Math.max(max, m.risk), 0) || 1;
-
-    if (E.aiModulesTableBody) {
-      E.aiModulesTableBody.innerHTML = modules.length
-        ? modules
-            .map(m => {
-              const ratio = m.risk / maxModuleRisk;
-              return `
-        <tr>
-          <td>${U.escapeHtml(m.module)}</td>
-          <td>${m.open}</td>
-          <td>${m.high}</td>
-          <td>
-            ${m.risk}
-            <div class="risk-bar-wrap"><div class="risk-bar" style="transform:scaleX(${ratio.toFixed(
-              2
-            )});"></div></div>
-          </td>
-          <td>${U.escapeHtml(m.topTerm || '-')}</td>
-        </tr>
-      `;
-            })
-            .join('')
-        : '<tr><td colspan="5" style="text-align:center;color:var(--muted)">No modules.</td></tr>';
-    }
-
-    // Top risks
-    const topRisks = recent
-      .map(r => ({ r, score: DataStore.computed.get(r.id)?.risk?.total || 0 }))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 5)
-      .filter(x => x.score > 2);
-    if (E.aiRisksList) {
-      E.aiRisksList.innerHTML = topRisks.length
-        ? topRisks
-            .map(({ r, score }) => {
-              const badgeClass = CalendarLink.riskBadgeClass(score);
-              const meta = DataStore.computed.get(r.id)?.risk || {};
-              return `
-        <li style="margin-bottom:4px;">
-          <strong>[${U.escapeHtml(r.priority || '-')} ] ${U.escapeHtml(
-          issueDisplayId(r) || r.id || ''
-        )}</strong>
-          <span class="event-risk-badge ${badgeClass}">RISK ${score}</span>
-          <span class="muted"> · sev ${meta.severity ?? 0} · imp ${
-          meta.impact ?? 0
-        } · urg ${meta.urgency ?? 0}</span>
-          <br><span class="muted">Status ${U.escapeHtml(r.status || '-')}</span>
-          <br>${U.escapeHtml(r.title || '')}
-        </li>`;
-            })
-            .join('')
-        : '<li>No high-risk recent tickets.</li>';
-    }
-
-    // Clusters
-   const clusters = buildClustersWeighted(list).map(cluster => {
-      const moduleCounts = new Map();
-      let riskSum = 0;
-      cluster.issues.forEach(issue => {
-        moduleCounts.set(issue.module, (moduleCounts.get(issue.module) || 0) + 1);
-        const risk = DataStore.computed.get(issue.id)?.risk?.total || 0;
-        riskSum += risk;
-      });
-      const topModules = Array.from(moduleCounts.entries())
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 3);
-      const avgRisk = cluster.issues.length ? riskSum / cluster.issues.length : 0;
-      return { ...cluster, moduleCounts, topModules, avgRisk };
-    });
-
-    const renderClusterDetail = idx => {
-      if (!E.aiClustersDetail) return;
-      const cluster = clusters[idx];
-      if (!cluster) {
-        E.aiClustersDetail.innerHTML = 'Select a cluster to view details.';
-        return;
+        E.aiInsightQueue.querySelectorAll('[data-ai-followup]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            setActiveView('issues');
+            UI.toast('Create a follow-up ticket from Tickets module.');
+          });
+        });
       }
-      const modulesHtml = cluster.topModules.length
-        ? cluster.topModules
-            .map(([m, c]) => `${U.escapeHtml(m || 'Unspecified')} (${c})`)
-            .join(', ')
-        : 'No module data';
-      const issuesHtml = cluster.issues
-        .slice(0, 6)
-        .map(
-          issue => `
-            <li>
-              <button class="btn sm" data-open="${U.escapeAttr(issue.id)}">${U.escapeHtml(
-            issueDisplayId(issue) || issue.id
-          )}</button>
-              ${U.escapeHtml(issue.title || '')}
-            </li>`
-        )
-        .join('');
-
-      E.aiClustersDetail.innerHTML = `
-        <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">
-          Pattern: <strong>${U.escapeHtml(cluster.signature || '(no pattern)')}</strong>
-        </div>
-        <div style="font-size:13px;margin-bottom:4px;">
-          ${cluster.issues.length} tickets · Avg risk ${cluster.avgRisk.toFixed(1)}
-        </div>
-        <div class="muted" style="font-size:12px;margin-bottom:6px;">
-          Top modules: ${modulesHtml}
-        </div>
-        <ul style="margin:0;padding-left:18px;font-size:13px;">
-         ${issuesHtml || '<li class="muted">No tickets in this cluster.</li>'}
-          ${
-            cluster.issues.length > 6
-              ? `<li class="muted">+ ${cluster.issues.length - 6} more…</li>`
-              : ''
-          }
-        </ul>
-    <div class="cluster-detail-actions">
-          <button class="btn sm" type="button" data-cluster-apply="${U.escapeAttr(
-            cluster.signature || ''
-          )}">Apply to Tickets</button>
-        </div>
-      `;
-
-      E.aiClustersDetail.querySelectorAll('[data-open]').forEach(btn => {
-        btn.addEventListener('click', () =>
-          UI.Modals.openIssue(btn.getAttribute('data-open'))
-        );
-      });
-      E.aiClustersDetail.querySelectorAll('[data-cluster-apply]').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const sig = btn.getAttribute('data-cluster-apply') || '';
-          Filters.state.search = sig;
-          Filters.save();
-          syncFilterInputs();
-          setActiveView('issues');
-          UI.toast('Applied cluster filter to tickets');
-        });
-      });
-    };
-
-    if (E.aiClustersList) {
-      E.aiClustersList.innerHTML = clusters.length
-        ? clusters
-            .map(
-              (c, idx) => `
-              <button class="cluster-item ${idx === 0 ? 'active' : ''}" data-cluster-index="${idx}">
-                <div class="cluster-title">${U.escapeHtml(c.signature || '(no pattern)')}</div>
-                <div class="cluster-meta">${c.issues.length} tickets · Avg risk ${c.avgRisk.toFixed(
-                  1
-                )}</div>
-              </button>
-            `
-            )
-            .join('')
-        : '<div class="muted">No similar ticket groups ≥2.</div>';
-      
-      E.aiClustersList.querySelectorAll('[data-cluster-index]').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const idx = Number(btn.getAttribute('data-cluster-index'));
-          E.aiClustersList
-            .querySelectorAll('.cluster-item')
-            .forEach(el => el.classList.remove('active'));
-          btn.classList.add('active');
-          renderClusterDetail(Number.isNaN(idx) ? 0 : idx);
-        });
-      });
     }
 
-    renderClusterDetail(0);
-    
-    // Triage queue
-    const tri = list
-      .filter(r => {
-        const meta = DataStore.computed.get(r.id) || {};
-        const missing =
-          !r.priority || !r.module || r.module === 'Unspecified' || !r.type;
-        const gap = prioGap(meta.suggestions?.priority, r.priority);
-        return missing || gap >= CONFIG.RISK.misalignedDelta;
-      })
-      .sort(
-        (a, b) =>
-          (DataStore.computed.get(b.id)?.risk?.total || 0) -
-          (DataStore.computed.get(a.id)?.risk?.total || 0)
-      )
-      .slice(0, 15);
-    if (E.aiTriageList) {
-      E.aiTriageList.innerHTML = tri.length
-        ? tri
-            .map(i => {
-              const meta = DataStore.computed.get(i.id) || {};
-              const miss = [];
-              if (!i.priority) miss.push('priority');
-              if (!i.module || i.module === 'Unspecified') miss.push('module');
-              if (!i.type) miss.push('type');
-              const cats =
-                (meta.suggestions?.categories || [])
-                  .slice(0, 2)
-                  .map(c => c.label)
-                  .join(', ') || 'n/a';
-              const note = `Suggested priority: ${
-                meta.suggestions?.priority || '-'
-              }; categories: ${cats}`;
-              return `<li style="margin-bottom:6px;">
-        <strong>${U.escapeHtml(issueDisplayId(i) || i.id)}</strong> — ${U.escapeHtml(i.title || '')}
-        <div class="muted">Missing: ${
-          miss.join(', ') || '—'
-        } · ${U.escapeHtml(note)}</div>
-        <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
-          <button class="btn sm" data-open="${U.escapeAttr(i.id)}">Open</button>
-          <button class="btn ghost sm" data-copy="${U.escapeAttr(
-            i.id
-          )}">Copy suggestion</button>
-        </div>
-      </li>`;
-            })
-            .join('')
-        : '<li>No tickets requiring triage.</li>';
+    if (E.aiModuleRiskBody) {
+      const rows = (summary.module_risk || []).sort((a, b) => b.score - a.score);
+      E.aiModuleRiskBody.innerHTML = rows.map(row => `<tr><td>${U.escapeHtml(String(row.module || '').replace(/_/g, ' '))}</td><td>${U.escapeHtml(String(row.score || 0))}</td><td>${U.escapeHtml(String(row.count || 0))}</td></tr>`).join('') || '<tr><td colspan="3" class="muted" style="text-align:center;">No module risks.</td></tr>';
     }
 
-    // Upcoming risky events
-    const evs = computeEventsRisk(DataStore.rows, DataStore.events);
-    if (E.aiEventsList) {
-      E.aiEventsList.innerHTML = evs.length
-        ? evs
-            .map(r => {
-              const badge = CalendarLink.riskBadgeClass(r.risk);
-              const ev = r.event;
-              return `<li style="margin-bottom:6px;">
-        <strong>${U.escapeHtml(ev.title || '(no title)')}</strong>
-        <span class="event-risk-badge ${badge}">RISK ${r.risk}</span>
-        <div class="muted">${U.fmtTS(r.date)} · Env: ${U.escapeHtml(
-          ev.env || 'Prod'
-        )} · Modules: ${
-                r.modules.length
-                  ? r.modules.map(U.escapeHtml).join(', ')
-                  : 'n/a'
-              } · Related tickets: ${r.issues.length}</div>
-      </li>`;
-            })
-            .join('')
-        : '<li>No notable risk in next 7 days.</li>';
+    if (E.aiTrendSignals) {
+      const trends = summary.trends || [];
+      E.aiTrendSignals.innerHTML = trends.map(t => `<li><strong>${U.escapeHtml(t.label)}</strong> — ${U.escapeHtml(t.value)}</li>`).join('') || '<li>No trend signals.</li>';
     }
-
-    // Wire AI buttons
-    U.qAll('[data-open]').forEach(b =>
-      b.addEventListener('click', () =>
-        UI.Modals.openIssue(b.getAttribute('data-open'))
-      )
-    );
-    U.qAll('[data-copy]').forEach(b =>
-      b.addEventListener('click', () => {
-        const id = b.getAttribute('data-copy');
-        const r = DataStore.byId.get(id);
-        const meta = DataStore.computed.get(id) || {};
-        const text = `Ticket ${issueDisplayId(r) || r.id}
-Title: ${r.title}
-Suggested Priority: ${meta.suggestions?.priority}
-Suggested Categories: ${(meta.suggestions?.categories || [])
-          .map(c => c.label)
-          .join(', ')}
-Reasons: ${(meta.risk?.reasons || []).join(', ')}`;
-        navigator.clipboard
-          .writeText(text)
-          .then(() => UI.toast('Suggestion copied'))
-          .catch(() => UI.toast('Clipboard blocked'));
-      })
-    );
-
-     U.qAll('[data-apply-category]').forEach(b =>
-      b.addEventListener('click', () => {
-        const label = b.getAttribute('data-apply-category');
-        if (label) applySuggestedCategory(label);
-      })
-    );
-    
-    UI.setAnalyzing(false);
   }
 };
+
 
 async function applySuggestedCategory(label) {
   if (!requirePermission(() => Permissions.canEditTicket(), 'Only admin can apply ticket category suggestions.'))
