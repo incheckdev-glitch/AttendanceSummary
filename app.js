@@ -38,6 +38,140 @@ function issueDisplayId(issue) {
   return String(issue?.ticket_id || issue?.id || '').trim();
 }
 
+let EVENT_TICKET_PICKER_SHOW_ALL = false;
+let EVENT_TICKET_PICKER_ALL_ROWS = null;
+
+function hasActiveTicketFilters() {
+  const state = Filters?.state || {};
+  return !!(
+    (state.search && String(state.search).trim()) ||
+    (state.module && state.module !== 'All') ||
+    (state.category && state.category !== 'All') ||
+    (state.priority && state.priority !== 'All') ||
+    (state.status && state.status !== 'All') ||
+    (state.start && String(state.start).trim()) ||
+    (state.end && String(state.end).trim()) ||
+    (Permissions.canUseInternalIssueFilters() &&
+      ((state.devTeamStatus && state.devTeamStatus !== 'All') ||
+        (state.issueRelated && state.issueRelated !== 'All')))
+  );
+}
+
+function isRelevantOpenTicket(ticket = {}) {
+  const status = String(ticket.status || '')
+    .trim()
+    .toLowerCase();
+  if (!status) return true;
+  return !['closed', 'resolved', 'done', 'completed', 'cancelled', 'canceled'].includes(status);
+}
+
+function ticketSortNewestFirst(a = {}, b = {}) {
+  const parseTs = row => {
+    const candidate = row.updated_at || row.updatedAt || row.date || row.created_at || row.createdAt;
+    const ts = candidate ? new Date(candidate).getTime() : 0;
+    return Number.isFinite(ts) ? ts : 0;
+  };
+  return parseTs(b) - parseTs(a);
+}
+
+function resolveTicketByIssueRef(ref = '') {
+  const value = String(ref || '').trim();
+  if (!value) return null;
+  const lc = value.toLowerCase();
+  return (
+    (DataStore.rows || []).find(row => String(row.id || '').trim().toLowerCase() === lc) ||
+    (DataStore.rows || []).find(row => String(issueDisplayId(row) || '').trim().toLowerCase() === lc) ||
+    null
+  );
+}
+
+function ticketOptionLabel(ticket = {}) {
+  const displayId = issueDisplayId(ticket) || ticket.id || '';
+  const title = String(ticket.title || '').trim();
+  return title ? `${displayId} — ${title}` : displayId;
+}
+
+async function ensureTicketsForEventPicker() {
+  if ((DataStore.rows || []).length) return DataStore.rows;
+  const filtersPayload = hasActiveTicketFilters() ? buildTicketListFiltersPayload() : {};
+  const response = await Api.requestWithSession(
+    'tickets',
+    'list',
+    { filters: filtersPayload },
+    { requireAuth: true }
+  );
+  const rawRows = extractEventsPayload(response);
+  const rows = (rawRows || []).map(raw => DataStore.normalizeRow(raw));
+  DataStore.hydrateFromRows(rows.filter(r => r.id && String(r.id).trim() !== ''));
+  return DataStore.rows;
+}
+
+function refreshEventTicketSelect(selectedIssueId = '') {
+  if (!E.eventIssueId) return;
+  const searchTerm = String(E.eventIssueSearch?.value || '')
+    .trim()
+    .toLowerCase();
+  const sourceRows =
+    EVENT_TICKET_PICKER_SHOW_ALL && Array.isArray(EVENT_TICKET_PICKER_ALL_ROWS)
+      ? EVENT_TICKET_PICKER_ALL_ROWS
+      : DataStore.rows || [];
+  const hasFilters = hasActiveTicketFilters();
+  const baseList = EVENT_TICKET_PICKER_SHOW_ALL
+    ? [...sourceRows]
+    : hasFilters
+      ? UI.Issues.applyFilters()
+      : sourceRows.filter(isRelevantOpenTicket);
+  const sortedBase = [...baseList].sort(ticketSortNewestFirst);
+  const filteredList = searchTerm
+    ? sortedBase.filter(ticket => {
+        const hay = [
+          issueDisplayId(ticket),
+          ticket.title,
+          ticket.status,
+          ticket.module
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return hay.includes(searchTerm);
+      })
+    : sortedBase;
+
+  const selectedValue = String(selectedIssueId || E.eventIssueId.value || '').trim();
+  const selectedTicket = resolveTicketByIssueRef(selectedValue);
+
+  const options = ['<option value="">Select a ticket</option>'];
+  filteredList.forEach(ticket => {
+    const value = issueDisplayId(ticket) || ticket.id || '';
+    if (!value) return;
+    options.push(
+      `<option value="${U.escapeAttr(value)}">${U.escapeHtml(ticketOptionLabel(ticket))}</option>`
+    );
+  });
+
+  if (selectedValue && !filteredList.some(t => {
+    const v = String(issueDisplayId(t) || t.id || '').trim().toLowerCase();
+    return v === selectedValue.toLowerCase();
+  })) {
+    const fallbackLabel = selectedTicket
+      ? `${ticketOptionLabel(selectedTicket)} (outside current filters)`
+      : `${selectedValue} (outside current filters)`;
+    options.push(`<option value="${U.escapeAttr(selectedValue)}">${U.escapeHtml(fallbackLabel)}</option>`);
+  }
+
+  E.eventIssueId.innerHTML = options.join('');
+  E.eventIssueId.value = selectedValue;
+
+  const noMatches = !filteredList.length;
+  if (E.eventIssueEmptyState) {
+    E.eventIssueEmptyState.style.display = noMatches ? 'block' : 'none';
+  }
+  if (E.eventIssueShowAllBtn) {
+    const allowShowAll = noMatches && (hasFilters || !EVENT_TICKET_PICKER_SHOW_ALL);
+    E.eventIssueShowAllBtn.style.display = allowShowAll ? 'inline-flex' : 'none';
+  }
+}
+
 /** Issues UI */
 UI.Issues = {
   getFilteredList() {
@@ -1405,7 +1539,7 @@ UI.Modals = {
     IssueEditor.close();
     if (this.lastFocus?.focus) this.lastFocus.focus();
   },
-  openEvent(ev) {
+  async openEvent(ev) {
     this.lastEventFocus = document.activeElement;
     const isEdit = !!(ev && ev.id);
     const canManageEvents = Permissions.canManageEvents();
@@ -1434,7 +1568,15 @@ UI.Modals = {
     }
     if (E.eventImpactType)
       E.eventImpactType.value = ev.impactType || 'No downtime expected';
+    if (E.eventIssueSearch) E.eventIssueSearch.value = '';
+    EVENT_TICKET_PICKER_SHOW_ALL = false;
     if (E.eventIssueId) E.eventIssueId.value = ev.issueId || '';
+    try {
+      await ensureTicketsForEventPicker();
+    } catch (error) {
+      console.warn('[event-ticket-picker] unable to load tickets', error);
+    }
+    refreshEventTicketSelect(ev.issueId || '');
 
     if (E.eventStart) {
       E.eventStart.type = allDay ? 'date' : 'datetime-local';
@@ -1556,7 +1698,7 @@ UI.Modals = {
           el.disabled = false;
         });
       }
-      E.eventTitle?.focus();
+      (E.eventIssueSearch || E.eventTitle)?.focus();
     }
   },
   closeEvent() {
@@ -5000,6 +5142,38 @@ function wireModals() {
       }
     });
   }
+  if (E.eventIssueSearch) {
+    E.eventIssueSearch.addEventListener('input', () => {
+      refreshEventTicketSelect();
+    });
+  }
+  if (E.eventIssueId) {
+    E.eventIssueId.addEventListener('change', () => {
+      if (E.eventIssueLinkedInfo && !String(E.eventIssueId.value || '').trim()) {
+        E.eventIssueLinkedInfo.style.display = 'none';
+        E.eventIssueLinkedInfo.textContent = '';
+      }
+    });
+  }
+  if (E.eventIssueShowAllBtn) {
+    E.eventIssueShowAllBtn.addEventListener('click', () => {
+      EVENT_TICKET_PICKER_SHOW_ALL = true;
+      if (EVENT_TICKET_PICKER_ALL_ROWS) {
+        refreshEventTicketSelect();
+        return;
+      }
+      Api.requestWithSession('tickets', 'list', { filters: {} }, { requireAuth: true })
+        .then(response => {
+          const rawRows = extractEventsPayload(response);
+          EVENT_TICKET_PICKER_ALL_ROWS = (rawRows || []).map(raw => DataStore.normalizeRow(raw));
+          refreshEventTicketSelect();
+        })
+        .catch(error => {
+          console.warn('[event-ticket-picker] unable to load all tickets', error);
+          refreshEventTicketSelect();
+        });
+    });
+  }
 
   if (E.eventAllDay) {
     E.eventAllDay.addEventListener('change', () => {
@@ -5066,7 +5240,7 @@ function wireModals() {
         status: E.eventStatus?.value || 'Planned',
         owner: (E.eventOwner?.value || '').trim(),
         modules: E.eventModules?.value || '',
-       impactType,
+        impactType,
         issueId: (E.eventIssueId?.value || '').trim(),
         start: E.eventStart?.value || '',
         end: E.eventEnd?.value || '',
