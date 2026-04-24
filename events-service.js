@@ -84,6 +84,26 @@
     return code || id;
   }
 
+  function parseTicketIds(value) {
+    if (Array.isArray(value)) {
+      return Array.from(
+        new Set(
+          value
+            .map(v => String(v || '').trim())
+            .filter(Boolean)
+        )
+      );
+    }
+    return Array.from(
+      new Set(
+        String(value || '')
+          .split(',')
+          .map(v => v.trim())
+          .filter(Boolean)
+      )
+    );
+  }
+
   function normalizeEventRow(row = {}) {
     const raw = row && typeof row === 'object' ? row : {};
     const id = String(raw.id || raw.event_id || '').trim();
@@ -113,7 +133,9 @@
       owner: String(raw.owner || '').trim(),
       modules: String(raw.modules || '').trim(),
       impactType: String(raw.impact_type || raw.impactType || raw.impact || 'No downtime expected').trim() || 'No downtime expected',
-      issueId: String(raw.issue_id || raw.issueId || raw.ticketId || '').trim(),
+      ticketIds: parseTicketIds(raw.issue_id || raw.issueId || raw.ticketId || raw.ticketIds),
+      issueId: String(raw.issue_id || raw.issueId || '').trim(),
+      ticketId: String(raw.ticketId || '').trim(),
       allDay: Boolean(raw.all_day || raw.allDay),
       notificationStatus: String(raw.notificationStatus || raw.notification_status || '').trim(),
       readiness,
@@ -158,7 +180,9 @@
       owner: input.owner || '',
       modules: Array.isArray(input.modules) ? input.modules.join(', ') : String(input.modules || '').trim(),
       impact_type: input.impact_type || input.impactType || input.impact || 'No downtime expected',
-      issue_id: input.issue_id || input.issueId || input.ticketId || '',
+      issue_id: Array.isArray(input.ticketIds)
+        ? input.ticketIds.filter(Boolean).join(', ')
+        : String(input.issue_id || input.issueId || input.ticketId || '').trim(),
       all_day: !!(input.all_day ?? input.allDay),
       readiness: input.readiness ?? input.checklist ?? {},
       created_by: input.created_by || input.createdBy || userId || undefined,
@@ -194,7 +218,12 @@
         ? (Array.isArray(input.modules) ? input.modules.join(', ') : String(input.modules || '').trim())
         : undefined,
       impact_type: input.impact_type ?? input.impactType ?? input.impact,
-      issue_id: input.issue_id ?? input.issueId ?? input.ticketId,
+      issue_id:
+        input.ticketIds !== undefined
+          ? (Array.isArray(input.ticketIds)
+              ? input.ticketIds.filter(Boolean).join(', ')
+              : String(input.ticketIds || '').trim())
+          : (input.issue_id ?? input.issueId ?? input.ticketId),
       all_day: input.all_day !== undefined || input.allDay !== undefined
         ? !!(input.all_day ?? input.allDay)
         : undefined,

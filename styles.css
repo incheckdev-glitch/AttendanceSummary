@@ -1388,6 +1388,30 @@ th.sorted-desc::after{
 }
 .chip-btn[disabled]{opacity:.45;cursor:not-allowed}
 .chip-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.event-issue-chip-list{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+}
+.event-issue-chip{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:4px 8px;
+  border-radius:999px;
+  border:1px solid var(--line);
+  background:var(--bg);
+  font-size:12px;
+}
+.event-issue-chip button{
+  border:0;
+  background:transparent;
+  color:var(--muted);
+  cursor:pointer;
+  font-size:12px;
+  padding:0;
+  line-height:1;
+}
 .select.sm,.input.sm{padding:5px 8px;border-radius:999px;font-size:12px}
 
 /* Drawer */

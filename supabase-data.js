@@ -811,6 +811,10 @@
         ? undefined
         : String(rawEventCode).trim() || undefined;
 
+    const issueIdValue = Array.isArray(record.ticketIds)
+      ? record.ticketIds.filter(Boolean).join(', ')
+      : firstDefined(record, ['issue_id', 'issueId', 'ticketId']);
+
     const mapped = compactObject({
       event_code: normalizedEventCode,
       title: firstDefined(record, ['title', 'eventTitle', 'name']),
@@ -826,7 +830,7 @@
         ? firstDefined(record, ['modules']).join(', ')
         : firstDefined(record, ['modules']),
       impact_type: firstDefined(record, ['impact_type', 'impactType', 'impact']),
-      issue_id: firstDefined(record, ['issue_id', 'issueId', 'ticketId']),
+      issue_id: issueIdValue,
       all_day: firstDefined(record, ['all_day', 'allDay']),
       readiness: firstDefined(record, ['readiness', 'checklist']),
       created_by: includeCreatedBy

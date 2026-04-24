@@ -2380,14 +2380,19 @@ Sample:
               </select>
             </div>
             <div class="filter-row">
-              <label class="muted" for="eventIssueId">Ticket ID (optional)</label>
+              <label class="muted" for="eventIssueId">Ticket ID(s) (optional)</label>
               <input id="eventIssueSearch" class="input" type="search"
                      placeholder="Search by ticket ID, title, status, module"
                      aria-label="Search tickets for event link"
                      style="margin-bottom:8px;" />
-              <select id="eventIssueId" class="select" aria-label="Select ticket for event">
-                <option value="">Select a ticket</option>
+              <select id="eventIssueId" class="select" multiple size="6"
+                      aria-label="Select one or more tickets for event">
               </select>
+              <div id="eventIssueSelectedChips" class="event-issue-chip-list" style="margin-top:8px;"></div>
+              <button id="eventIssueClearBtn" type="button" class="btn sm ghost"
+                      style="display:none;margin-top:6px;">
+                Clear selected tickets
+              </button>
               <div id="eventIssueEmptyState" class="muted"
                    style="display:none;font-size:12px;margin-top:6px;">
                 No tickets match the current filters
