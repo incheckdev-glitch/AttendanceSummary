@@ -2381,44 +2381,22 @@ Sample:
           </div>
           <div class="filter-row">
             <label class="muted" for="csmFormCsmName">CSM Name *</label>
-            <select id="csmFormCsmName" class="select" required>
-              <option value="">Select CSM Name</option>
-              <option value="Omar Chatila">Omar Chatila</option>
-              <option value="Thomas Moujaly">Thomas Moujaly</option>
-              <option value="Dina Makouyan">Dina Makouyan</option>
-            </select>
+            <input id="csmFormCsmName" class="input" type="text" required readonly />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="csmFormClientSearch">Search Client</label>
+            <input id="csmFormClientSearch" class="input" type="text" placeholder="Search by client, company, ID, agreement" autocomplete="off" />
           </div>
           <div class="filter-row">
             <label class="muted" for="csmFormClient">Client *</label>
             <select id="csmFormClient" class="select" required>
               <option value="">Select Client</option>
-              <option value="ALL">ALL</option>
-              <option value="Global Catering Solution">Global Catering Solution</option>
-              <option value="Dekerco Foods and Processing SAL">Dekerco Foods and Processing SAL</option>
-              <option value="The Chain SA">The Chain SA</option>
-              <option value="IEX Recreational Playground LLC">IEX Recreational Playground LLC</option>
-              <option value="Al Naif Icecream Industry">Al Naif Icecream Industry</option>
-              <option value="Kareem Trading LLC">Kareem Trading LLC</option>
-              <option value="NAST">NAST</option>
-              <option value="Bachir Trading SARL">Bachir Trading SARL</option>
-              <option value="Shawarmer Foods Company LTD">Shawarmer Foods Company LTD</option>
-              <option value="Advanced Foods">Advanced Foods</option>
-              <option value="KCal Management DMMC">KCal Management DMMC</option>
-              <option value="Independent Restaurant Management LLC">Independent Restaurant Management LLC</option>
-              <option value="Mamaesh Pastry L.L.C">Mamaesh Pastry L.L.C</option>
-              <option value="Blackspoon Management FZ-LLC">Blackspoon Management FZ-LLC</option>
-              <option value="Shababik">Shababik</option>
-              <option value="Fig Tree Ventures">Fig Tree Ventures</option>
-              <option value="Boubess Group">Boubess Group</option>
-              <option value="WHIZLINK SPORTS &amp; RECREATIONAL CLUB L.L.C">WHIZLINK SPORTS &amp; RECREATIONAL CLUB L.L.C</option>
-              <option value="Brosco Restaurant L.L.C. Company">Brosco Restaurant L.L.C. Company</option>
-              <option value="The Bros S.A.R.L">The Bros S.A.R.L</option>
-              <option value="Yummy Junction International Investment LLC">Yummy Junction International Investment LLC</option>
-              <option value="Incheck Sales Demo Account">Incheck Sales Demo Account</option>
-              <option value="Uni S.A.L">Uni S.A.L</option>
-              <option value="Mint &amp; Spice SARL">Mint &amp; Spice SARL</option>
-              <option value="Sibon">Sibon</option>
             </select>
+            <div id="csmFormClientState" class="muted" style="font-size:12px;margin-top:4px;"></div>
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="csmFormCompanyName">Company Name *</label>
+            <input id="csmFormCompanyName" class="input" type="text" readonly required />
           </div>
           <div class="filter-row">
             <label class="muted" for="csmFormSupportType">Type of Support *</label>

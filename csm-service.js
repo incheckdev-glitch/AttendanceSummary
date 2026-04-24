@@ -4,7 +4,14 @@
   const CSM_COLUMNS = new Set([
     'activity_code',
     'timestamp',
+    'csm_user_id',
+    'csm_email',
     'csm_name',
+    'client_id',
+    'client_name',
+    'company_name',
+    'agreement_id',
+    'onboarding_id',
     'client',
     'time_spent_minutes',
     'type_of_support',
@@ -15,35 +22,6 @@
     'updated_by'
   ]);
 
-  const CSM_NAME_OPTIONS = ['Omar Chatila', 'Thomas Moujaly', 'Dina Makouyan'];
-  const CLIENT_OPTIONS = [
-    'ALL',
-    'Global Catering Solution',
-    'Dekerco Foods and Processing SAL',
-    'The Chain SA',
-    'IEX Recreational Playground LLC',
-    'Al Naif Icecream Industry',
-    'Kareem Trading LLC',
-    'NAST',
-    'Bachir Trading SARL',
-    'Shawarmer Foods Company LTD',
-    'Advanced Foods',
-    'KCal Management DMMC',
-    'Independent Restaurant Management LLC',
-    'Mamaesh Pastry L.L.C',
-    'Blackspoon Management FZ-LLC',
-    'Shababik',
-    'Fig Tree Ventures',
-    'Boubess Group',
-    'WHIZLINK SPORTS & RECREATIONAL CLUB L.L.C',
-    'Brosco Restaurant L.L.C. Company',
-    'The Bros S.A.R.L',
-    'Yummy Junction International Investment LLC',
-    'Incheck Sales Demo Account',
-    'Uni S.A.L',
-    'Mint & Spice SARL',
-    'Sibon'
-  ];
   const SUPPORT_TYPE_OPTIONS = [
     'Onboarding Setup',
     'Onboarding Meeting',
@@ -77,6 +55,26 @@
     return String(value).trim();
   }
 
+  function normalizeNameKey(value) {
+    return cleanString(value)
+      .toLowerCase()
+      .replace(/[\s\-_]+/g, ' ')
+      .replace(/[^\w\s]/g, '')
+      .trim();
+  }
+
+  function deriveNameFromEmail(email) {
+    const localPart = cleanString(email).split('@')[0] || '';
+    return localPart
+      .replace(/[._-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function toReadableClientName(value) {
+    return cleanString(value).replace(/\s+/g, ' ').trim();
+  }
+
   function parseDateValue(value) {
     const raw = cleanString(value);
     if (!raw) return '';
@@ -108,9 +106,23 @@
       activityCode,
       displayCode,
       timestamp,
+      csm_user_id: cleanString(raw.csm_user_id || raw.csmUserId),
+      csmUserId: cleanString(raw.csm_user_id || raw.csmUserId),
+      csm_email: cleanString(raw.csm_email || raw.csmEmail),
+      csmEmail: cleanString(raw.csm_email || raw.csmEmail),
       csm_name: cleanString(raw.csm_name || raw.csmName),
       csmName: cleanString(raw.csm_name || raw.csmName),
-      client: cleanString(raw.client),
+      client_id: cleanString(raw.client_id || raw.clientId),
+      clientId: cleanString(raw.client_id || raw.clientId),
+      client_name: cleanString(raw.client_name || raw.clientName || raw.client),
+      clientName: cleanString(raw.client_name || raw.clientName || raw.client),
+      company_name: cleanString(raw.company_name || raw.companyName || raw.client_name || raw.client),
+      companyName: cleanString(raw.company_name || raw.companyName || raw.client_name || raw.client),
+      agreement_id: cleanString(raw.agreement_id || raw.agreementId),
+      agreementId: cleanString(raw.agreement_id || raw.agreementId),
+      onboarding_id: cleanString(raw.onboarding_id || raw.onboardingId),
+      onboardingId: cleanString(raw.onboarding_id || raw.onboardingId),
+      client: cleanString(raw.client || raw.client_name || raw.clientName),
       time_spent_minutes: Number.parseFloat(raw.time_spent_minutes ?? raw.timeSpentMinutes ?? 0) || 0,
       timeSpentMinutes: Number.parseFloat(raw.time_spent_minutes ?? raw.timeSpentMinutes ?? 0) || 0,
       type_of_support: cleanString(raw.type_of_support || raw.supportType),
@@ -138,14 +150,40 @@
     }
   }
 
+  function getCurrentUserIdentity() {
+    const current = global.Session?.user?.() || {};
+    const profile = current.profile || {};
+    const user = current.user || {};
+    const csmUserId = cleanString(current.user_id || user.id || profile.id);
+    const csmEmail = cleanString(current.email || profile.email || user.email).toLowerCase();
+    const profileName = cleanString(profile.full_name || profile.name || current.name || user?.user_metadata?.full_name);
+    const username = cleanString(current.username || profile.username || user?.user_metadata?.username);
+    const fallbackFromEmail = deriveNameFromEmail(csmEmail);
+    const csmName = profileName || username || fallbackFromEmail;
+    return {
+      csm_user_id: csmUserId,
+      csm_email: csmEmail,
+      csm_name: cleanString(csmName)
+    };
+  }
+
   async function toInsertPayload(input = {}) {
     const client = getClient();
     const userId = await getCurrentUserId(client);
+    const identity = getCurrentUserIdentity();
+    const selectedClientName = cleanString(input.client_name ?? input.clientName ?? input.client);
     const mapped = {
       activity_code: input.activity_code || input.activityCode,
       timestamp: parseDateValue(input.timestamp) || new Date().toISOString(),
-      csm_name: input.csm_name ?? input.csmName,
-      client: input.client,
+      csm_user_id: (input.csm_user_id ?? input.csmUserId ?? identity.csm_user_id) || undefined,
+      csm_email: (input.csm_email ?? input.csmEmail ?? identity.csm_email) || undefined,
+      csm_name: input.csm_name ?? input.csmName ?? identity.csm_name,
+      client_id: input.client_id ?? input.clientId,
+      client_name: selectedClientName,
+      company_name: input.company_name ?? input.companyName ?? selectedClientName,
+      agreement_id: input.agreement_id ?? input.agreementId,
+      onboarding_id: input.onboarding_id ?? input.onboardingId,
+      client: input.client ?? selectedClientName,
       time_spent_minutes: input.time_spent_minutes ?? input.timeSpentMinutes,
       type_of_support: input.type_of_support ?? input.supportType,
       effort_requirement: input.effort_requirement ?? input.effortRequirement,
@@ -160,11 +198,20 @@
   async function toUpdatePayload(input = {}) {
     const client = getClient();
     const userId = await getCurrentUserId(client);
+    const identity = getCurrentUserIdentity();
+    const selectedClientName = cleanString(input.client_name ?? input.clientName ?? input.client);
     const mapped = {
       activity_code: input.activity_code ?? input.activityCode,
       timestamp: input.timestamp !== undefined ? parseDateValue(input.timestamp) : undefined,
-      csm_name: input.csm_name ?? input.csmName,
-      client: input.client,
+      csm_user_id: (input.csm_user_id ?? input.csmUserId ?? identity.csm_user_id) || undefined,
+      csm_email: (input.csm_email ?? input.csmEmail ?? identity.csm_email) || undefined,
+      csm_name: input.csm_name ?? input.csmName ?? identity.csm_name,
+      client_id: input.client_id ?? input.clientId,
+      client_name: selectedClientName || undefined,
+      company_name: (input.company_name ?? input.companyName ?? selectedClientName) || undefined,
+      agreement_id: input.agreement_id ?? input.agreementId,
+      onboarding_id: input.onboarding_id ?? input.onboardingId,
+      client: input.client ?? selectedClientName,
       time_spent_minutes: input.time_spent_minutes ?? input.timeSpentMinutes,
       type_of_support: input.type_of_support ?? input.supportType,
       effort_requirement: input.effort_requirement ?? input.effortRequirement,
@@ -173,6 +220,119 @@
       updated_by: input.updated_by || input.updatedBy || userId || undefined
     };
     return sanitizeColumns(mapped);
+  }
+
+  function getUnsupportedColumn(message = '') {
+    const text = cleanString(message);
+    if (!text) return '';
+    const patterns = [
+      /column\s+"([^"]+)"/i,
+      /column\s+'([^']+)'/i,
+      /Could not find the ['"]?([^'"\s]+)['"]?\s+column/i
+    ];
+    for (const pattern of patterns) {
+      const matched = text.match(pattern);
+      if (matched?.[1]) return cleanString(matched[1]);
+    }
+    return '';
+  }
+
+  async function withColumnFallback(operation, payload = {}) {
+    const working = { ...payload };
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const result = await operation(working);
+      const unsupportedColumn = getUnsupportedColumn(result?.error?.message || '');
+      if (!unsupportedColumn || !(unsupportedColumn in working)) return result;
+      delete working[unsupportedColumn];
+    }
+    return operation(working);
+  }
+
+  function mergeClientOption(targetMap, incoming = {}) {
+    const clientId = cleanString(incoming.client_id || incoming.clientId);
+    const clientName = toReadableClientName(incoming.client_name || incoming.clientName || incoming.company_name || incoming.companyName);
+    if (!clientId && !clientName) return;
+    const normalizedName = normalizeNameKey(clientName);
+    const key = clientId ? `id:${clientId}` : `name:${normalizedName}`;
+    const existing = targetMap.get(key) || {};
+    const merged = {
+      client_id: clientId || existing.client_id || '',
+      client_name: clientName || existing.client_name || '',
+      company_name: toReadableClientName(incoming.company_name || incoming.companyName || clientName || existing.company_name || existing.client_name),
+      agreement_id: cleanString(incoming.agreement_id || incoming.agreementId || existing.agreement_id),
+      onboarding_id: cleanString(incoming.onboarding_id || incoming.onboardingId || existing.onboarding_id)
+    };
+    merged.search_text = [merged.client_name, merged.company_name, merged.client_id, merged.agreement_id]
+      .map(value => cleanString(value).toLowerCase())
+      .filter(Boolean)
+      .join(' ');
+    targetMap.set(key, merged);
+    if (!clientId && normalizedName) targetMap.set(`name:${normalizedName}`, merged);
+  }
+
+  async function loadClientOptionsForCsmActivity() {
+    const client = getClient();
+    const optionMap = new Map();
+    const clientsModuleRows = Array.isArray(global.Clients?.state?.rows) ? global.Clients.state.rows : [];
+    clientsModuleRows.forEach(row => {
+      mergeClientOption(optionMap, {
+        client_id: row.client_id || row.clientId,
+        client_name: row.client_name || row.clientName,
+        company_name: row.company_name || row.companyName,
+        agreement_id: row.source_agreement_id || row.agreement_id || row.agreementId
+      });
+    });
+    try {
+      const { data } = await client
+        .from('clients')
+        .select('id,client_id,client_name,company_name,source_agreement_id')
+        .order('client_name', { ascending: true });
+      (Array.isArray(data) ? data : []).forEach(row => {
+        mergeClientOption(optionMap, {
+          client_id: row.client_id || row.id,
+          client_name: row.client_name || row.company_name,
+          company_name: row.company_name || row.client_name,
+          agreement_id: row.source_agreement_id
+        });
+      });
+    } catch {}
+    try {
+      const { data } = await client
+        .from('operations_onboarding')
+        .select('onboarding_id,agreement_id,client_name,company_name')
+        .order('client_name', { ascending: true });
+      (Array.isArray(data) ? data : []).forEach(row => {
+        mergeClientOption(optionMap, {
+          client_name: row.client_name || row.company_name,
+          company_name: row.company_name || row.client_name,
+          agreement_id: row.agreement_id,
+          onboarding_id: row.onboarding_id
+        });
+      });
+    } catch {}
+    try {
+      const { data } = await client.from(TABLE).select('client,client_name,company_name,client_id').limit(3000);
+      (Array.isArray(data) ? data : []).forEach(row => {
+        mergeClientOption(optionMap, {
+          client_id: row.client_id,
+          client_name: row.client_name || row.company_name || row.client,
+          company_name: row.company_name || row.client_name || row.client
+        });
+      });
+    } catch {}
+    try {
+      const { data } = await client.from('agreements').select('agreement_id,customer_name,customer_legal_name').limit(3000);
+      (Array.isArray(data) ? data : []).forEach(row => {
+        mergeClientOption(optionMap, {
+          client_name: row.customer_name || row.customer_legal_name,
+          company_name: row.customer_legal_name || row.customer_name,
+          agreement_id: row.agreement_id
+        });
+      });
+    } catch {}
+    return [...optionMap.values()]
+      .filter(option => cleanString(option.client_name))
+      .sort((a, b) => cleanString(a.client_name).localeCompare(cleanString(b.client_name)));
   }
 
   async function listActivities() {
@@ -195,7 +355,10 @@
     if (!canMutate()) throw new Error('Only admin/hoo can create CSM activities.');
     const payload = await toInsertPayload(input);
     const client = getClient();
-    const { data, error } = await client.from(TABLE).insert(payload).select('*').single();
+    const { data, error } = await withColumnFallback(
+      nextPayload => client.from(TABLE).insert(nextPayload).select('*').single(),
+      payload
+    );
     if (error) throw readableError('Unable to create CSM activity', error);
     return normalizeCsmRow(data);
   }
@@ -206,7 +369,10 @@
     if (!activityId) throw new Error('CSM activity id is required.');
     const payload = await toUpdatePayload(updates);
     const client = getClient();
-    const { data, error } = await client.from(TABLE).update(payload).eq('id', activityId).select('*').single();
+    const { data, error } = await withColumnFallback(
+      nextPayload => client.from(TABLE).update(nextPayload).eq('id', activityId).select('*').single(),
+      payload
+    );
     if (error) throw readableError('Unable to update CSM activity', error);
     return normalizeCsmRow(data);
   }
@@ -222,12 +388,12 @@
   }
 
   global.CsmActivityService = {
-    CSM_NAME_OPTIONS,
-    CLIENT_OPTIONS,
     SUPPORT_TYPE_OPTIONS,
     EFFORT_OPTIONS,
     CHANNEL_OPTIONS,
     canMutate,
+    getCurrentUserIdentity,
+    loadClientOptionsForCsmActivity,
     normalizeCsmRow,
     toInsertPayload,
     toUpdatePayload,
