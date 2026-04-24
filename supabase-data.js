@@ -142,6 +142,11 @@
     'country',
     'lead_source',
     'service_interest',
+    'priority',
+    'estimated_value',
+    'currency',
+    'next_follow_up',
+    'last_contact',
     'proposal_needed',
     'agreement_needed',
     'status',
@@ -252,14 +257,6 @@
     'tabName',
     'resource',
     'action',
-    'priority',
-    'estimated_value',
-    'estimatedValue',
-    'currency',
-    'next_followup_date',
-    'nextFollowupDate',
-    'last_contact_date',
-    'lastContactDate',
     'proposal_id',
     'converted_by',
     'converted_at'
@@ -472,6 +469,10 @@
       out.id = out.id ?? '';
       out.lead_id = out.lead_id ?? out.leadId ?? '';
       out.leadId = out.leadId ?? out.lead_id ?? '';
+      out.next_follow_up = out.next_follow_up ?? out.nextFollowUp ?? out.next_followup_date ?? out.nextFollowupDate ?? '';
+      out.last_contact = out.last_contact ?? out.lastContact ?? out.last_contact_date ?? out.lastContactDate ?? '';
+      out.next_followup_date = out.next_followup_date ?? out.next_follow_up ?? '';
+      out.last_contact_date = out.last_contact_date ?? out.last_contact ?? '';
       out.converted_to_deal_id = out.converted_to_deal_id ?? out.convertedDealId ?? out.deal_id ?? '';
       out.deal_id = out.deal_id ?? out.converted_to_deal_id ?? '';
     }
@@ -869,10 +870,12 @@
   }
 
   function sanitizeLeadsOrDealsRecord(resource, record = {}, { includeCreatedBy = false, userId = '' } = {}) {
-    const allowedColumns = resource === 'leads' ? LEAD_COLUMNS : DEAL_COLUMNS;
+    if (resource === 'leads') {
+      return sanitizeLeadRecord(record, { includeCreatedBy, userId });
+    }
     const mapped = compactObject({
-      lead_id: firstDefined(record, ['lead_id', 'leadId']),
       deal_id: firstDefined(record, ['deal_id', 'dealId']),
+      lead_id: firstDefined(record, ['lead_id', 'leadId']),
       full_name: firstDefined(record, ['full_name', 'fullName']),
       company_name: firstDefined(record, ['company_name', 'companyName']),
       phone: firstDefined(record, ['phone']),
@@ -886,7 +889,6 @@
       stage: firstDefined(record, ['stage']),
       assigned_to: firstDefined(record, ['assigned_to', 'assignedTo']),
       notes: firstDefined(record, ['notes']),
-      converted_to_deal_id: firstDefined(record, ['converted_to_deal_id', 'convertedDealId', 'deal_id', 'dealId']),
       created_by: includeCreatedBy
         ? (firstDefined(record, ['created_by', 'createdBy']) || userId || undefined)
         : undefined,
@@ -894,8 +896,71 @@
     });
     const sanitized = {};
     Object.entries(mapped).forEach(([key, value]) => {
-      if (!allowedColumns.has(key)) return;
+      if (!DEAL_COLUMNS.has(key)) return;
       if (value === undefined || value === null) return;
+      sanitized[key] = value;
+    });
+    LEADS_DEALS_LEGACY_FIELDS.forEach(key => {
+      delete sanitized[key];
+    });
+    return sanitized;
+  }
+
+  function sanitizeLeadRecord(record = {}, { includeCreatedBy = false, userId = '' } = {}) {
+    const hasAny = keys => keys.some(key => Object.prototype.hasOwnProperty.call(record, key));
+    const toTextOrEmpty = keys => {
+      if (!hasAny(keys)) return undefined;
+      const value = firstDefined(record, keys);
+      if (value === undefined || value === null) return '';
+      return String(value).trim();
+    };
+    const toDateOrNull = keys => {
+      if (!hasAny(keys)) return undefined;
+      const value = firstDefined(record, keys);
+      if (value === undefined || value === null) return null;
+      const text = String(value).trim();
+      return text || null;
+    };
+    const toNumberOrNull = keys => {
+      if (!hasAny(keys)) return undefined;
+      const value = firstDefined(record, keys);
+      if (value === undefined || value === null || value === '') return null;
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+    const toBooleanOrNull = keys => {
+      if (!hasAny(keys)) return undefined;
+      return toDbBoolean(firstDefined(record, keys));
+    };
+
+    const mapped = {
+      lead_id: toTextOrEmpty(['lead_id', 'leadId']),
+      full_name: toTextOrEmpty(['full_name', 'fullName']),
+      company_name: toTextOrEmpty(['company_name', 'companyName']),
+      phone: toTextOrEmpty(['phone']),
+      email: toTextOrEmpty(['email']),
+      country: toTextOrEmpty(['country']),
+      lead_source: toTextOrEmpty(['lead_source', 'leadSource']),
+      service_interest: toTextOrEmpty(['service_interest', 'serviceInterest']),
+      status: toTextOrEmpty(['status']),
+      priority: toTextOrEmpty(['priority']),
+      estimated_value: toNumberOrNull(['estimated_value', 'estimatedValue']),
+      currency: toTextOrEmpty(['currency']),
+      assigned_to: toTextOrEmpty(['assigned_to', 'assignedTo']),
+      next_follow_up: toDateOrNull(['next_follow_up', 'nextFollowUp', 'next_followup_date', 'nextFollowupDate']),
+      last_contact: toDateOrNull(['last_contact', 'lastContact', 'last_contact_date', 'lastContactDate']),
+      proposal_needed: toBooleanOrNull(['proposal_needed', 'proposalNeeded']),
+      agreement_needed: toBooleanOrNull(['agreement_needed', 'agreementNeeded']),
+      notes: toTextOrEmpty(['notes']),
+      converted_to_deal_id: toTextOrEmpty(['converted_to_deal_id', 'convertedDealId', 'deal_id', 'dealId']),
+      created_by: includeCreatedBy ? (firstDefined(record, ['created_by', 'createdBy']) || userId || undefined) : undefined,
+      updated_by: firstDefined(record, ['updated_by', 'updatedBy']) || userId || undefined
+    };
+
+    const sanitized = {};
+    Object.entries(mapped).forEach(([key, value]) => {
+      if (!LEAD_COLUMNS.has(key)) return;
+      if (value === undefined) return;
       sanitized[key] = value;
     });
     LEADS_DEALS_LEGACY_FIELDS.forEach(key => {

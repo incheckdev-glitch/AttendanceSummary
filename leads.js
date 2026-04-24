@@ -54,8 +54,18 @@ const Leads = {
       estimated_value: raw.estimated_value ?? raw.estimatedValue ?? '',
       currency: String(raw.currency || '').trim(),
       assigned_to: String(raw.assigned_to || raw.assignedTo || '').trim(),
-      next_followup_date: raw.next_followup_date || raw.nextFollowupDate || '',
-      last_contact_date: raw.last_contact_date || raw.lastContactDate || '',
+      next_follow_up:
+        raw.next_follow_up ||
+        raw.nextFollowUp ||
+        raw.next_followup_date ||
+        raw.nextFollowupDate ||
+        '',
+      last_contact:
+        raw.last_contact ||
+        raw.lastContact ||
+        raw.last_contact_date ||
+        raw.lastContactDate ||
+        '',
       proposal_needed: this.normalizeBool(raw.proposal_needed),
       agreement_needed: this.normalizeBool(raw.agreement_needed),
       notes: String(raw.notes || '').trim(),
@@ -64,21 +74,40 @@ const Leads = {
       deal_id: String(raw.deal_id || raw.converted_to_deal_id || raw.deal_id_ref || raw.converted_deal_id || '').trim()
     };
   },
-  backendLead(lead) {
+  generateLeadId() {
+    const now = new Date();
+    const yyyy = String(now.getFullYear());
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
+    return `LEAD-${yyyy}${mm}${dd}-${Date.now()}-${rand}`;
+  },
+  backendLead(lead, { includeLeadId = true } = {}) {
+    const leadIdValue = String(lead.lead_id || '').trim();
+    const estimatedValueRaw = lead.estimated_value;
+    const estimatedValueParsed =
+      estimatedValueRaw === '' || estimatedValueRaw === null || estimatedValueRaw === undefined
+        ? null
+        : Number(estimatedValueRaw);
     return {
-      lead_id: String(lead.lead_id || '').trim() || undefined,
-      full_name: lead.full_name,
-      company_name: lead.company_name,
-      phone: lead.phone,
-      email: lead.email,
-      country: lead.country,
-      lead_source: lead.lead_source,
-      service_interest: lead.service_interest,
-      status: lead.status,
-      assigned_to: lead.assigned_to,
-      proposal_needed: lead.proposal_needed === 'yes',
-      agreement_needed: lead.agreement_needed === 'yes',
-      notes: lead.notes
+      ...(includeLeadId ? { lead_id: leadIdValue || null } : {}),
+      full_name: String(lead.full_name || ''),
+      company_name: String(lead.company_name || ''),
+      phone: String(lead.phone || ''),
+      email: String(lead.email || ''),
+      country: String(lead.country || ''),
+      lead_source: String(lead.lead_source || ''),
+      service_interest: String(lead.service_interest || ''),
+      status: String(lead.status || ''),
+      priority: String(lead.priority || ''),
+      estimated_value: Number.isFinite(estimatedValueParsed) ? estimatedValueParsed : null,
+      currency: String(lead.currency || ''),
+      assigned_to: String(lead.assigned_to || ''),
+      next_follow_up: lead.next_follow_up || null,
+      last_contact: lead.last_contact || null,
+      proposal_needed: lead.proposal_needed ? lead.proposal_needed === 'yes' : null,
+      agreement_needed: lead.agreement_needed ? lead.agreement_needed === 'yes' : null,
+      notes: String(lead.notes || '')
     };
   },
   extractRows(response) {
@@ -178,8 +207,10 @@ const Leads = {
       created_by: userId || undefined,
       updated_by: userId || undefined
     };
+    console.log('[leads] create payload', payload);
     const { data, error } = await this.getClient().from('leads').insert(payload).select('*').single();
     if (error) throw this.toSupabaseError('Unable to create lead', error);
+    console.log('[leads] saved row', data);
     return data;
   },
   async updateLead(leadId, updates) {
@@ -188,8 +219,10 @@ const Leads = {
       ...this.backendLead(updates),
       updated_by: userId || undefined
     };
+    console.log('[leads] update payload', payload);
     const { data, error } = await this.getClient().from('leads').update(payload).eq('id', leadId).select('*').single();
     if (error) throw this.toSupabaseError('Unable to update lead', error);
+    console.log('[leads] saved row', data);
     return data;
   },
   async deleteLead(leadId) {
@@ -377,7 +410,7 @@ const Leads = {
     if (!value) return '—';
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return U.escapeHtml(String(value));
-    return U.escapeHtml(U.fmtDisplayDate(value));
+    return U.escapeHtml(U.formatDateTimeMMDDYYYYHHMM(value));
   },
   boolLabel(value) {
     if (value === 'yes') return 'Yes';
@@ -609,8 +642,8 @@ const Leads = {
           <td>${U.escapeHtml(row.estimated_value === '' ? '—' : String(row.estimated_value))}</td>
           <td>${U.escapeHtml(row.currency || '—')}</td>
           <td>${U.escapeHtml(row.assigned_to || '—')}</td>
-          <td>${U.escapeHtml(row.next_followup_date || '—')}</td>
-          <td>${U.escapeHtml(row.last_contact_date || '—')}</td>
+          <td>${U.escapeHtml(this.normalizeComparableLeadDate(row.next_follow_up) || '—')}</td>
+          <td>${U.escapeHtml(this.normalizeComparableLeadDate(row.last_contact) || '—')}</td>
           <td>${U.escapeHtml(this.boolLabel(row.proposal_needed))}</td>
           <td>${U.escapeHtml(this.boolLabel(row.agreement_needed))}</td>
           <td>${U.escapeHtml(row.notes || '—')}</td>
@@ -687,7 +720,7 @@ const Leads = {
 
     if (row) {
       if (E.leadFormLeadId) E.leadFormLeadId.value = row.lead_id || '';
-      if (E.leadFormCreatedAt) E.leadFormCreatedAt.value = row.created_at || '';
+      if (E.leadFormCreatedAt) E.leadFormCreatedAt.value = row.created_at ? U.formatDateTimeMMDDYYYYHHMM(row.created_at) : '';
       if (E.leadFormFullName) E.leadFormFullName.value = row.full_name || '';
       if (E.leadFormCompanyName) E.leadFormCompanyName.value = row.company_name || '';
       if (E.leadFormPhone) E.leadFormPhone.value = row.phone || '';
@@ -700,12 +733,12 @@ const Leads = {
       if (E.leadFormEstimatedValue) E.leadFormEstimatedValue.value = row.estimated_value === '' ? '' : String(row.estimated_value);
       if (E.leadFormCurrency) E.leadFormCurrency.value = row.currency || '';
       if (E.leadFormAssignedTo) E.leadFormAssignedTo.value = row.assigned_to || '';
-      if (E.leadFormNextFollowupDate) E.leadFormNextFollowupDate.value = String(row.next_followup_date || '').slice(0, 10);
-      if (E.leadFormLastContactDate) E.leadFormLastContactDate.value = String(row.last_contact_date || '').slice(0, 10);
+      if (E.leadFormNextFollowupDate) E.leadFormNextFollowupDate.value = String(row.next_follow_up || '').slice(0, 10);
+      if (E.leadFormLastContactDate) E.leadFormLastContactDate.value = String(row.last_contact || '').slice(0, 10);
       if (E.leadFormProposalNeeded) E.leadFormProposalNeeded.value = row.proposal_needed || '';
       if (E.leadFormAgreementNeeded) E.leadFormAgreementNeeded.value = row.agreement_needed || '';
       if (E.leadFormNotes) E.leadFormNotes.value = row.notes || '';
-      if (E.leadFormUpdatedAt) E.leadFormUpdatedAt.value = row.updated_at || '';
+      if (E.leadFormUpdatedAt) E.leadFormUpdatedAt.value = row.updated_at ? U.formatDateTimeMMDDYYYYHHMM(row.updated_at) : '';
       this.syncLeadFormDropdowns({
         lead_source: row.lead_source || '',
         service_interest: row.service_interest || '',
@@ -715,7 +748,7 @@ const Leads = {
       });
     } else {
       if (E.leadFormLeadId) E.leadFormLeadId.value = 'Auto-generated';
-      if (E.leadFormCreatedAt) E.leadFormCreatedAt.value = U.fmtDisplayDate(new Date());
+      if (E.leadFormCreatedAt) E.leadFormCreatedAt.value = U.formatDateTimeMMDDYYYYHHMM(new Date());
       if (E.leadFormAssignedTo) E.leadFormAssignedTo.value = this.currentUserAssignee();
       this.syncLeadFormDropdowns();
     }
@@ -731,7 +764,9 @@ const Leads = {
     E.leadFormModal.setAttribute('aria-hidden', 'true');
   },
   collectFormData() {
+    const estimatedValueRaw = String(E.leadFormEstimatedValue?.value || '').trim();
     return {
+      lead_id: String(E.leadFormLeadId?.value || '').trim() === 'Auto-generated' ? '' : String(E.leadFormLeadId?.value || '').trim(),
       full_name: String(E.leadFormFullName?.value || '').trim(),
       company_name: String(E.leadFormCompanyName?.value || '').trim(),
       phone: String(E.leadFormPhone?.value || '').trim(),
@@ -741,11 +776,11 @@ const Leads = {
       service_interest: String(E.leadFormServiceInterest?.value || '').trim(),
       status: String(E.leadFormStatus?.value || '').trim(),
       priority: String(E.leadFormPriority?.value || '').trim(),
-      estimated_value: String(E.leadFormEstimatedValue?.value || '').trim(),
+      estimated_value: estimatedValueRaw === '' ? '' : Number(estimatedValueRaw),
       currency: String(E.leadFormCurrency?.value || '').trim(),
       assigned_to: String(E.leadFormAssignedTo?.value || '').trim(),
-      next_followup_date: String(E.leadFormNextFollowupDate?.value || '').trim(),
-      last_contact_date: String(E.leadFormLastContactDate?.value || '').trim(),
+      next_follow_up: String(E.leadFormNextFollowupDate?.value || '').trim(),
+      last_contact: String(E.leadFormLastContactDate?.value || '').trim(),
       proposal_needed: this.normalizeBool(E.leadFormProposalNeeded?.value || ''),
       agreement_needed: this.normalizeBool(E.leadFormAgreementNeeded?.value || ''),
       notes: String(E.leadFormNotes?.value || '').trim()
@@ -772,8 +807,8 @@ const Leads = {
       estimated_value: String(lead.estimated_value ?? '').trim(),
       currency: String(lead.currency || '').trim(),
       assigned_to: String(lead.assigned_to || '').trim(),
-      next_followup_date: this.normalizeComparableLeadDate(lead.next_followup_date),
-      last_contact_date: this.normalizeComparableLeadDate(lead.last_contact_date),
+      next_follow_up: this.normalizeComparableLeadDate(lead.next_follow_up),
+      last_contact: this.normalizeComparableLeadDate(lead.last_contact),
       proposal_needed: this.normalizeBool(lead.proposal_needed),
       agreement_needed: this.normalizeBool(lead.agreement_needed),
       notes: String(lead.notes || '').trim()
@@ -832,6 +867,8 @@ const Leads = {
         this.upsertLocalRow(resolvedRow);
         UI.toast(result?.verifiedAfterError ? 'Lead updated (verified).' : 'Lead updated.');
       } else {
+        const tempLeadId = this.generateLeadId();
+        if (E.leadFormLeadId) E.leadFormLeadId.value = tempLeadId;
         const created = await this.createLead(lead);
         this.upsertLocalRow(created);
         UI.toast('Lead created.');
