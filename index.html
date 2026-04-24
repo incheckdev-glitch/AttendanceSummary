@@ -3222,9 +3222,11 @@ Sample:
         <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
           <div class="filter-row"><label class="muted" for="invoiceFormSubtotalSubscription">Subtotal Subscription</label><input id="invoiceFormSubtotalSubscription" class="input" type="number" step="0.01" /></div>
           <div class="filter-row"><label class="muted" for="invoiceFormSubtotalOneTime">Subtotal One Time</label><input id="invoiceFormSubtotalOneTime" class="input" type="number" step="0.01" /></div>
-          <div class="filter-row"><label class="muted" for="invoiceFormGrandTotal">Grand Total</label><input id="invoiceFormGrandTotal" class="input" type="number" step="0.01" /></div>
-          <div id="invoiceFormAmountPaidWrap" class="filter-row" style="display:none;"><label class="muted" for="invoiceFormAmountPaid">Amount Paid</label><input id="invoiceFormAmountPaid" class="input" type="number" step="0.01" min="0" /></div>
-          <div id="invoiceFormPendingAmountWrap" class="filter-row" style="display:none;"><label class="muted" for="invoiceFormPendingAmount">Pending Amount</label><input id="invoiceFormPendingAmount" class="input" type="number" step="0.01" readonly /></div>
+          <div class="filter-row"><label class="muted" for="invoiceFormGrandTotal">Grand Total</label><input id="invoiceFormGrandTotal" class="input" type="number" step="0.01" readonly /></div>
+          <div class="filter-row"><label class="muted" for="invoiceFormOldPaidTotal">Old Paid Total</label><input id="invoiceFormOldPaidTotal" class="input" type="number" step="0.01" min="0" readonly /></div>
+          <div class="filter-row"><label class="muted" for="invoiceFormPaidNow">Paid Now</label><input id="invoiceFormPaidNow" class="input" type="number" step="0.01" min="0" /></div>
+          <div id="invoiceFormAmountPaidWrap" class="filter-row"><label class="muted" for="invoiceFormAmountPaid">Amount Paid (Cumulative)</label><input id="invoiceFormAmountPaid" class="input" type="number" step="0.01" min="0" readonly /></div>
+          <div id="invoiceFormPendingAmountWrap" class="filter-row"><label class="muted" for="invoiceFormPendingAmount">Pending Amount</label><input id="invoiceFormPendingAmount" class="input" type="number" step="0.01" readonly /></div>
           <div class="filter-row"><label class="muted" for="invoiceFormPaymentState">Payment State</label><input id="invoiceFormPaymentState" class="input" type="text" readonly /></div>
           <div class="filter-row"><label class="muted">Payment Conclusion</label><div id="invoicePaymentConclusion" class="input" style="display:flex;align-items:center;">Pending Settlement</div></div>
           <div class="filter-row"><label class="muted" for="invoiceFormAmountInWords">Amount in Words</label><input id="invoiceFormAmountInWords" class="input" type="text" /></div>
@@ -3278,11 +3280,11 @@ Sample:
           <div class="filter-row"><label class="muted" for="receiptFormCustomerLegalName">Customer Legal Name</label><input id="receiptFormCustomerLegalName" class="input" type="text" /></div>
           <div class="filter-row" style="grid-column:1 / -1;"><label class="muted" for="receiptFormCustomerAddress">Customer Address</label><input id="receiptFormCustomerAddress" class="input" type="text" /></div>
           <div class="filter-row"><label class="muted" for="receiptFormAmountInWords">Amount in Words</label><input id="receiptFormAmountInWords" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="receiptFormInvoiceGrandTotal">Invoice Total</label><input id="receiptFormInvoiceGrandTotal" class="input" type="number" step="0.01" /></div>
-          <div class="filter-row"><label class="muted" for="receiptFormOldPaidTotal">Old Paid Total</label><input id="receiptFormOldPaidTotal" class="input" type="number" step="0.01" /></div>
+          <div class="filter-row"><label class="muted" for="receiptFormInvoiceGrandTotal">Invoice Total</label><input id="receiptFormInvoiceGrandTotal" class="input" type="number" step="0.01" readonly /></div>
+          <div class="filter-row"><label class="muted" for="receiptFormOldPaidTotal">Old Paid Total</label><input id="receiptFormOldPaidTotal" class="input" type="number" step="0.01" readonly /></div>
           <div class="filter-row"><label class="muted" for="receiptFormPaidNow">Paid Now</label><input id="receiptFormPaidNow" class="input" type="number" step="0.01" /></div>
-          <div class="filter-row"><label class="muted" for="receiptFormNewPaidTotal">New Paid Total</label><input id="receiptFormNewPaidTotal" class="input" type="number" step="0.01" /></div>
-          <div class="filter-row"><label class="muted" for="receiptFormReceivedAmount">Received Amount</label><input id="receiptFormReceivedAmount" class="input" type="number" step="0.01" /></div>
+          <div class="filter-row"><label class="muted" for="receiptFormNewPaidTotal">New Paid Total</label><input id="receiptFormNewPaidTotal" class="input" type="number" step="0.01" readonly /></div>
+          <div class="filter-row"><label class="muted" for="receiptFormReceivedAmount">Received Amount</label><input id="receiptFormReceivedAmount" class="input" type="number" step="0.01" readonly /></div>
           <div class="filter-row"><label class="muted" for="receiptFormPendingAmount">Pending Amount</label><input id="receiptFormPendingAmount" class="input" type="number" step="0.01" /></div>
           <div class="filter-row"><label class="muted" for="receiptFormPaymentState">Payment State</label><input id="receiptFormPaymentState" class="input" type="text" /></div>
           <div class="filter-row"><label class="muted" for="receiptFormPaymentConclusion">Payment Conclusion</label><input id="receiptFormPaymentConclusion" class="input" type="text" /></div>
