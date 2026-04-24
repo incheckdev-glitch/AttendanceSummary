@@ -21,6 +21,9 @@ const Invoices = {
     'subtotal_locations',
     'subtotal_one_time',
     'invoice_total',
+    'old_paid_total',
+    'paid_now',
+    'amount_paid',
     'received_amount',
     'pending_amount',
     'payment_state',
@@ -119,7 +122,7 @@ const Invoices = {
     const receivedAmount = normalized.reduce((sum, receipt) => sum + this.toNumberSafe(receipt.amount_received), 0);
     const pendingAmount = Math.max(0, this.toNumberSafe(invoiceTotal) - receivedAmount);
     const paymentState = receivedAmount <= 0 ? 'Unpaid' : pendingAmount > 0 ? 'Partially Paid' : 'Paid';
-    const paymentConclusion = pendingAmount <= 0 ? 'Settlement Completed' : 'Pending Settlement';
+    const paymentConclusion = pendingAmount <= 0 ? 'Settled' : 'Pending Settlement';
     return {
       normalizedReceipts: normalized,
       received_amount: receivedAmount,
@@ -230,7 +233,7 @@ const Invoices = {
   syncPaymentConclusion(invoice = this.state.selectedInvoice) {
     if (!E.invoicePaymentConclusion) return;
     const pending = this.toNumberSafe(invoice?.pending_amount);
-    E.invoicePaymentConclusion.textContent = pending <= 0 ? 'Settlement Completed' : 'Pending Settlement';
+    E.invoicePaymentConclusion.textContent = pending <= 0 ? 'Settled' : 'Pending Settlement';
   },
   buildInvoiceSavePayload(invoice = {}) {
     const source = this.normalizeInvoice(invoice);
@@ -257,6 +260,9 @@ const Invoices = {
       subtotal_locations: this.toNumberSafe(pickDefined(source.subtotal_locations, source.subtotal_subscription)),
       subtotal_one_time: this.toNumberSafe(source.subtotal_one_time),
       invoice_total: this.toNumberSafe(pickDefined(source.invoice_total, source.grand_total)),
+      old_paid_total: this.toNumberSafe(source.old_paid_total),
+      paid_now: this.toNumberSafe(source.paid_now),
+      amount_paid: this.toNumberSafe(pickDefined(source.amount_paid, source.received_amount)),
       received_amount: this.toNumberSafe(pickDefined(source.received_amount, source.amount_paid)),
       pending_amount: this.toNumberSafe(source.pending_amount),
       payment_state: String(source.payment_state || '').trim() || 'Unpaid',
@@ -335,12 +341,23 @@ const Invoices = {
       source.grand_total,
       source.grandTotal
     );
-    const receivedAmount = pickDefined(
+    const oldPaidTotal = pickDefined(
+      normalized.old_paid_total,
+      source.old_paid_total,
+      source.oldPaidTotal
+    );
+    const paidNow = pickDefined(
+      normalized.paid_now,
+      source.paid_now,
+      source.paidNow
+    );
+    const amountPaid = pickDefined(
+      normalized.amount_paid,
+      source.amount_paid,
+      source.amountPaid,
       normalized.received_amount,
       source.received_amount,
-      source.receivedAmount,
-      source.amount_paid,
-      source.amountPaid
+      source.receivedAmount
     );
     const pendingAmount = pickDefined(
       normalized.pending_amount,
@@ -352,10 +369,29 @@ const Invoices = {
     normalized.subtotal_locations = this.toNumberSafe(subtotalLocations);
     normalized.subtotal_one_time = this.toNumberSafe(subtotalOneTime);
     normalized.invoice_total = this.toNumberSafe(invoiceTotal);
-    normalized.received_amount = this.toNumberSafe(receivedAmount);
-    normalized.pending_amount = this.toNumberSafe(pendingAmount);
-    normalized.payment_state = String(normalized.payment_state || source.paymentStatus || '').trim();
-    normalized.payment_conclusion = String(normalized.payment_conclusion || source.settlement_status || source.settlementStatus || '').trim();
+    const hasOldPaid = oldPaidTotal !== undefined && oldPaidTotal !== null && String(oldPaidTotal).trim?.() !== '';
+    const hasPaidNow = paidNow !== undefined && paidNow !== null && String(paidNow).trim?.() !== '';
+    const hasAmountPaid = amountPaid !== undefined && amountPaid !== null && String(amountPaid).trim?.() !== '';
+    const normalizedOldPaid = hasOldPaid ? this.toNumberSafe(oldPaidTotal) : null;
+    const normalizedPaidNow = hasPaidNow ? this.toNumberSafe(paidNow) : null;
+    const normalizedAmountPaid = hasAmountPaid ? this.toNumberSafe(amountPaid) : null;
+    const derivedOldPaid = normalizedOldPaid ?? Math.max(0, this.toNumberSafe(normalizedAmountPaid) - this.toNumberSafe(normalizedPaidNow));
+    const derivedPaidNow = normalizedPaidNow ?? 0;
+    const snapshot = this.calculatePaymentSnapshot({
+      invoiceTotal: normalized.invoice_total,
+      oldPaidTotal: derivedOldPaid,
+      paidNow: derivedPaidNow
+    });
+    const finalAmountPaid = normalizedAmountPaid ?? snapshot.amount_paid;
+    normalized.old_paid_total = derivedOldPaid;
+    normalized.paid_now = derivedPaidNow;
+    normalized.amount_paid = finalAmountPaid;
+    normalized.received_amount = finalAmountPaid;
+    normalized.pending_amount = pendingAmount === undefined || pendingAmount === null || String(pendingAmount).trim?.() === ''
+      ? snapshot.pending_amount
+      : this.toNumberSafe(pendingAmount);
+    normalized.payment_state = String(normalized.payment_state || source.paymentStatus || '').trim() || U.calculatePaymentState(normalized.invoice_total, finalAmountPaid);
+    normalized.payment_conclusion = String(normalized.payment_conclusion || source.settlement_status || source.settlementStatus || '').trim() || U.calculatePaymentConclusion(normalized.invoice_total, finalAmountPaid);
     if (!normalized.amount_in_words && normalized.invoice_total > 0) {
       normalized.amount_in_words = this.amountToWords(normalized.invoice_total, normalized.currency);
     }
@@ -450,6 +486,8 @@ const Invoices = {
     const invoiceTotal = this.toNumberSafe(invoiceData.invoice_total ?? invoiceData.grand_total ?? itemTotals.invoice_total);
     const receiptSummary = this.summarizeReceiptPayments(invoiceTotal, receipts);
     const paidAmount = this.toNumberSafe(receiptSummary.amount_paid);
+    const paidNow = this.toNumberSafe(invoiceData.paid_now);
+    const oldPaidTotal = Math.max(0, paidAmount - paidNow);
     const pendingAmount = this.toNumberSafe(receiptSummary.pending_amount);
     const paymentState = String(receiptSummary.payment_state || invoiceData.payment_state || 'Unpaid').trim();
     const amountInWords = String(invoiceData.amount_in_words || '').trim() || this.amountToWords(invoiceTotal, currency);
@@ -666,9 +704,12 @@ const Invoices = {
           <div class="totals-row"><span>One Time Fees</span><strong>${money(subtotalOneTime)}</strong></div>
           <div class="totals-row"><span>Subscription Fees</span><strong>${money(subtotalLocations)}</strong></div>
           <div class="totals-row grand"><span>Grand Total</span><strong>${money(invoiceTotal)}</strong></div>
-          <div class="totals-row"><span>Received Amount</span><strong>${money(paidAmount)}</strong></div>
+          <div class="totals-row"><span>Old Paid Total</span><strong>${money(oldPaidTotal)}</strong></div>
+          <div class="totals-row"><span>Paid Now</span><strong>${money(paidNow)}</strong></div>
+          <div class="totals-row"><span>Amount Paid (Cumulative)</span><strong>${money(paidAmount)}</strong></div>
           <div class="totals-row"><span>Pending Amount</span><strong>${money(pendingAmount)}</strong></div>
           <div class="totals-row"><span>Payment State</span><strong>${textValue(paymentState)}</strong></div>
+          <div class="totals-row"><span>Payment Conclusion</span><strong>${textValue(paymentConclusion)}</strong></div>
         </div>
       </section>
 
@@ -987,7 +1028,10 @@ const Invoices = {
   },
   derivePaymentConclusion(invoice = {}) {
     const pending = this.toNumberSafe(invoice.pending_amount);
-    return pending <= 0 ? 'Settlement Completed' : 'Pending Settlement';
+    return pending <= 0 ? 'Settled' : 'Pending Settlement';
+  },
+  calculatePaymentSnapshot({ invoiceTotal = 0, oldPaidTotal = 0, paidNow = 0 } = {}) {
+    return U.calculateInvoicePaymentSnapshot({ invoiceTotal, oldPaidTotal, paidNow });
   },
   deriveCalculatedSummary(invoice = {}, items = [], { preferInvoiceValues = false } = {}) {
     const pickDefined = (...values) => values.find(value => value !== undefined && value !== null && !(typeof value === 'string' && value.trim() === ''));
@@ -1009,32 +1053,34 @@ const Invoices = {
     totals.invoice_total = this.toNumberSafe(totals.subtotal_locations) + this.toNumberSafe(totals.subtotal_one_time);
     const invoiceId = String(invoice?.id || '').trim();
     const linkedReceipts = invoiceId ? this.getInvoiceReceipts(invoiceId) : [];
-    const formReceivedAmount = Math.max(
-      0,
-      this.toNumberSafe(
-        pickDefined(invoice.received_amount, invoice.amount_paid, invoice.amount_received)
-      )
-    );
+    const fallbackAmountPaid = this.toNumberSafe(pickDefined(invoice.amount_paid, invoice.received_amount, invoice.amount_received));
+    const oldPaidInput = pickDefined(invoice.old_paid_total, fallbackAmountPaid - this.toNumberSafe(invoice.paid_now));
+    const paidNowInput = pickDefined(invoice.paid_now, 0);
+    const snapshot = this.calculatePaymentSnapshot({
+      invoiceTotal: totals.invoice_total,
+      oldPaidTotal: oldPaidInput,
+      paidNow: paidNowInput
+    });
     const receiptPaymentSummary = this.summarizeReceiptPayments(totals.invoice_total, linkedReceipts);
-    const receivedAmount = linkedReceipts.length ? receiptPaymentSummary.received_amount : formReceivedAmount;
-    const pendingAmount = Math.max(0, totals.invoice_total - receivedAmount);
-    const paymentState = receivedAmount <= 0 ? 'Unpaid' : pendingAmount > 0 ? 'Partially Paid' : 'Paid';
-    const derivedPayment = {
-      received_amount: receivedAmount,
-      amount_paid: receivedAmount,
-      pending_amount: pendingAmount,
-      payment_state: paymentState
-    };
+    const derivedPayment = linkedReceipts.length
+      ? {
+          old_paid_total: this.toNumberSafe(receiptPaymentSummary.amount_paid) - this.toNumberSafe(invoice.paid_now),
+          paid_now: this.toNumberSafe(invoice.paid_now),
+          amount_paid: this.toNumberSafe(receiptPaymentSummary.amount_paid),
+          received_amount: this.toNumberSafe(receiptPaymentSummary.amount_paid),
+          pending_amount: this.toNumberSafe(receiptPaymentSummary.pending_amount),
+          payment_state: String(receiptPaymentSummary.payment_state || '').trim() || U.calculatePaymentState(totals.invoice_total, receiptPaymentSummary.amount_paid),
+          payment_conclusion: String(receiptPaymentSummary.payment_conclusion || '').trim() || U.calculatePaymentConclusion(totals.invoice_total, receiptPaymentSummary.amount_paid)
+        }
+      : snapshot;
     const amountInWords = this.amountToWords(totals.invoice_total, invoice.currency);
-    const paymentConclusion = this.derivePaymentConclusion(derivedPayment);
     return {
       ...totals,
       subtotal_subscription: totals.subtotal_locations,
       grand_total: totals.invoice_total,
       ...derivedPayment,
-      received_amount: derivedPayment.received_amount,
       amount_in_words: amountInWords,
-      payment_conclusion: paymentConclusion
+      payment_conclusion: derivedPayment.payment_conclusion || this.derivePaymentConclusion(derivedPayment)
     };
   },
   applyTotalsToForm(summary = {}) {
@@ -1045,6 +1091,8 @@ const Invoices = {
     set('invoiceFormSubtotalSubscription', summary.subtotal_locations);
     set('invoiceFormSubtotalOneTime', summary.subtotal_one_time);
     set('invoiceFormGrandTotal', summary.invoice_total);
+    set('invoiceFormOldPaidTotal', summary.old_paid_total);
+    set('invoiceFormPaidNow', summary.paid_now);
     set('invoiceFormAmountPaid', summary.received_amount ?? summary.amount_paid);
     set('invoiceFormPendingAmount', summary.pending_amount);
     if (E.invoiceFormPaymentState) E.invoiceFormPaymentState.value = String(summary.payment_state || 'Unpaid');
@@ -1277,30 +1325,19 @@ const Invoices = {
   },
   syncPaymentFieldsInForm() {
     const grandTotal = this.toNumberSafe(E.invoiceFormGrandTotal?.value);
-    const amountPaidInput = E.invoiceFormAmountPaid;
-    const wrap = E.invoiceFormAmountPaidWrap;
-    const pendingWrap = E.invoiceFormPendingAmountWrap;
-    const pendingInput = E.invoiceFormPendingAmount;
-
-    let amountPaid = this.toNumberSafe(amountPaidInput?.value);
-    amountPaid = Math.max(0, amountPaid);
-
-    const showAmountPaid = true;
-    if (wrap) wrap.style.display = '';
-    if (amountPaidInput) {
-      amountPaidInput.value = amountPaid;
-      amountPaidInput.readOnly = false;
-      amountPaidInput.required = false;
+    const oldPaidTotal = Math.max(0, this.toNumberSafe(E.invoiceFormOldPaidTotal?.value));
+    const paidNow = Math.max(0, this.toNumberSafe(E.invoiceFormPaidNow?.value));
+    const snapshot = this.calculatePaymentSnapshot({ invoiceTotal: grandTotal, oldPaidTotal, paidNow });
+    if (E.invoiceFormAmountPaidWrap) E.invoiceFormAmountPaidWrap.style.display = '';
+    if (E.invoiceFormPendingAmountWrap) E.invoiceFormPendingAmountWrap.style.display = '';
+    if (E.invoiceFormAmountPaid) {
+      E.invoiceFormAmountPaid.value = snapshot.amount_paid;
+      E.invoiceFormAmountPaid.readOnly = true;
     }
-
-    const pendingAmount = Math.max(0, grandTotal - amountPaid);
-    if (pendingInput) pendingInput.value = pendingAmount;
-    if (pendingWrap) pendingWrap.style.display = '';
-
-    const paymentState = amountPaid <= 0 ? 'Unpaid' : grandTotal - amountPaid > 0 ? 'Partially Paid' : 'Paid';
-    if (E.invoiceFormPaymentState) E.invoiceFormPaymentState.value = paymentState;
+    if (E.invoiceFormPendingAmount) E.invoiceFormPendingAmount.value = snapshot.pending_amount;
+    if (E.invoiceFormPaymentState) E.invoiceFormPaymentState.value = snapshot.payment_state;
     if (E.invoiceFormAmountInWords) E.invoiceFormAmountInWords.value = this.amountToWords(grandTotal, E.invoiceFormCurrency?.value || 'USD');
-    this.syncPaymentConclusion({ pending_amount: pendingAmount });
+    this.syncPaymentConclusion(snapshot);
   },
   applyFilters() {
     const terms = String(this.state.search || '').toLowerCase().trim().split(/\s+/).filter(Boolean);
@@ -1628,10 +1665,18 @@ const Invoices = {
     });
     invoice.issue_date = String(invoice.issue_date || invoice.invoice_date || '').trim();
     const items = this.collectItems();
-    invoice.received_amount = this.toNumberSafe(E.invoiceFormAmountPaid?.value);
-    invoice.pending_amount = this.toNumberSafe(E.invoiceFormPendingAmount?.value);
-    invoice.payment_state = String(E.invoiceFormPaymentState?.value || '').trim();
-    invoice.payment_conclusion = this.derivePaymentConclusion(invoice);
+    invoice.old_paid_total = this.toNumberSafe(E.invoiceFormOldPaidTotal?.value);
+    invoice.paid_now = this.toNumberSafe(E.invoiceFormPaidNow?.value);
+    const paymentSnapshot = this.calculatePaymentSnapshot({
+      invoiceTotal: this.toNumberSafe(invoice.invoice_total),
+      oldPaidTotal: invoice.old_paid_total,
+      paidNow: invoice.paid_now
+    });
+    invoice.amount_paid = paymentSnapshot.amount_paid;
+    invoice.received_amount = paymentSnapshot.amount_paid;
+    invoice.pending_amount = paymentSnapshot.pending_amount;
+    invoice.payment_state = paymentSnapshot.payment_state;
+    invoice.payment_conclusion = paymentSnapshot.payment_conclusion;
     invoice.subtotal_locations = this.toNumberSafe(invoice.subtotal_locations);
     invoice.subtotal_one_time = this.toNumberSafe(invoice.subtotal_one_time);
     invoice.invoice_total = this.toNumberSafe(invoice.invoice_total);
@@ -1657,9 +1702,20 @@ const Invoices = {
     const status = String(invoice?.status || '').trim();
     const grandTotal = this.toNumberSafe(invoice?.invoice_total || invoice?.grand_total);
     const amountPaid = this.toNumberSafe(invoice?.received_amount || invoice?.amount_paid);
+    const paidNow = this.toNumberSafe(invoice?.paid_now);
+    if (paidNow < 0) {
+      UI.toast('Paid Now cannot be negative.');
+      E.invoiceFormPaidNow?.focus();
+      return false;
+    }
+    if (amountPaid > grandTotal) {
+      UI.toast('Amount Paid cannot exceed Invoice Total.');
+      E.invoiceFormPaidNow?.focus();
+      return false;
+    }
     if (status === 'Partially Paid' && !(amountPaid > 0 && amountPaid < grandTotal)) {
       UI.toast('For Partially Paid invoices, Amount Paid must be greater than 0 and less than Grand Total.');
-      E.invoiceFormAmountPaid?.focus();
+      E.invoiceFormPaidNow?.focus();
       return false;
     }
     return true;
@@ -1700,6 +1756,10 @@ const Invoices = {
       }
       el.disabled = readOnly;
     });
+    if (E.invoiceFormOldPaidTotal) E.invoiceFormOldPaidTotal.readOnly = true;
+    if (E.invoiceFormAmountPaid) E.invoiceFormAmountPaid.readOnly = true;
+    if (E.invoiceFormPendingAmount) E.invoiceFormPendingAmount.readOnly = true;
+    if (E.invoiceFormPaymentState) E.invoiceFormPaymentState.readOnly = true;
     if (E.invoiceAddAnnualRowBtn) E.invoiceAddAnnualRowBtn.style.display = readOnly ? 'none' : '';
     if (E.invoiceAddOneTimeRowBtn) E.invoiceAddOneTimeRowBtn.style.display = readOnly ? 'none' : '';
     if (E.invoiceAddCapabilityRowBtn) E.invoiceAddCapabilityRowBtn.style.display = readOnly ? 'none' : '';
@@ -2065,6 +2125,7 @@ const Invoices = {
       customer_address: invoice?.customer_address || '',
       currency: invoice?.currency || 'USD',
       invoice_total: invoice?.invoice_total ?? invoice?.grand_total ?? 0,
+      old_paid_total: invoice?.amount_paid ?? invoice?.received_amount ?? 0,
       pending_amount: invoice?.pending_amount ?? 0,
       payment_state: invoice?.payment_state || ''
     });
@@ -2289,7 +2350,7 @@ const Invoices = {
         this.applyTotalsToForm(this.deriveCalculatedSummary(this.collectFormValues().invoice, items));
       });
       E.invoiceForm.addEventListener('input', event => {
-        if (['invoiceFormStatus', 'invoiceFormAmountPaid', 'invoiceFormGrandTotal'].includes(event.target?.id)) {
+        if (['invoiceFormStatus', 'invoiceFormPaidNow', 'invoiceFormGrandTotal'].includes(event.target?.id)) {
           this.syncPaymentFieldsInForm();
         }
         const field = event.target?.getAttribute('data-item-field');
@@ -2316,7 +2377,7 @@ const Invoices = {
         this.syncPaymentFieldsInForm();
       });
       E.invoiceForm.addEventListener('change', event => {
-        if (['invoiceFormStatus','invoiceFormAmountPaid','invoiceFormGrandTotal'].includes(event.target?.id)) {
+        if (['invoiceFormStatus','invoiceFormPaidNow','invoiceFormGrandTotal'].includes(event.target?.id)) {
           this.syncPaymentFieldsInForm();
         }
         const field = event.target?.getAttribute('data-item-field');
