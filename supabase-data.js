@@ -1088,6 +1088,52 @@
     return sanitized;
   }
 
+  function normalizePermissionKey(value) {
+    return String(value || '').trim().toLowerCase();
+  }
+
+  function normalizeAllowedRolesText(value) {
+    if (Array.isArray(value)) {
+      return value
+        .map(role => normalizePermissionKey(role))
+        .filter(Boolean)
+        .join(',');
+    }
+    return String(value || '')
+      .split(',')
+      .map(role => normalizePermissionKey(role))
+      .filter(Boolean)
+      .join(',');
+  }
+
+  function buildRolePermissionRpcPayload(input = {}) {
+    const roleKey = normalizePermissionKey(
+      input.role_key ??
+      input.roleKey ??
+      input.role ??
+      input.p_role_key ??
+      ''
+    );
+    const resource = normalizePermissionKey(input.resource ?? input.p_resource ?? '');
+    const action = normalizePermissionKey(input.action ?? input.p_action ?? '');
+    if (!roleKey || !resource || !action) {
+      throw new Error('Role, resource, and action are required.');
+    }
+    return {
+      p_role_key: roleKey,
+      p_resource: resource,
+      p_action: action,
+      p_is_allowed: input.p_is_allowed ?? input.is_allowed ?? input.isAllowed ?? true,
+      p_is_active: input.p_is_active ?? input.is_active ?? input.isActive ?? true,
+      p_allowed_roles: normalizeAllowedRolesText(
+        input.p_allowed_roles ??
+        input.allowed_roles ??
+        input.allowedRoles ??
+        roleKey
+      )
+    };
+  }
+
   function sanitizeProposalCatalogRecord(record = {}, { includeCreatedBy = false, userId = '' } = {}) {
     const mapped = compactObject({
       catalog_item_id: firstDefined(record, ['catalog_item_id', 'catalogItemId']),
@@ -2887,25 +2933,17 @@
         throw new Error(`${resource} create payload is empty after normalization.`);
       }
       if (resource === 'role_permissions') {
-        if (!createRecord.role_key || !createRecord.resource || !createRecord.action) {
-          throw new Error('role_key, resource, and action are required for role_permissions.');
-        }
-        const upsertRecord = {
-          role_key: createRecord.role_key,
-          resource: createRecord.resource,
-          action: createRecord.action,
-          is_allowed: Boolean(createRecord.is_allowed),
-          is_active: createRecord.is_active !== undefined ? Boolean(createRecord.is_active) : true,
-          updated_at: String(createRecord.updated_at || new Date().toISOString())
-        };
-        if (createRecord.allowed_roles !== undefined) upsertRecord.allowed_roles = createRecord.allowed_roles;
-        const { data, error } = await client
-          .from(table)
-          .upsert(upsertRecord, { onConflict: 'role_key,resource,action' })
-          .select('*')
-          .single();
-        if (error) throw friendlyError(`Unable to create ${resource} record`, error);
-        return { handled: true, data: await withItems(resource, normalizeRow(resource, data)) };
+        const rpcPayload = buildRolePermissionRpcPayload({ ...createRecord, ...payload });
+        devLog('[role permissions] rpc payload', rpcPayload);
+        const { data, error } = await client.rpc('upsert_role_permission', rpcPayload);
+        devLog('[role permissions] rpc result', { data, error });
+        if (error) throw friendlyError(`Unable to save ${resource} record`, error);
+        if (!data) throw new Error('Permission was not saved. Supabase returned no row.');
+        const row = Array.isArray(data) ? data[0] : data;
+        if (!row) throw new Error('Permission was not saved. Supabase returned no row.');
+        const normalizedRow = normalizeRow(resource, row);
+        devLog('[role permissions] saved normalized row', normalizedRow);
+        return { handled: true, data: await withItems(resource, normalizedRow) };
       }
       const { data, error } = await client.from(table).insert(createRecord).select('*').single();
       if (error) throw friendlyError(`Unable to create ${resource} record`, error);
@@ -3019,6 +3057,19 @@
           .single();
         if (error) throw friendlyError('Unable to update users record', error);
         return { handled: true, data: normalizeRow('users', data) };
+      }
+      if (resource === 'role_permissions') {
+        const rpcPayload = buildRolePermissionRpcPayload({ ...safeUpdates, ...payload });
+        devLog('[role permissions] rpc payload', rpcPayload);
+        const { data, error } = await client.rpc('upsert_role_permission', rpcPayload);
+        devLog('[role permissions] rpc result', { data, error });
+        if (error) throw friendlyError(`Unable to save ${resource} record`, error);
+        if (!data) throw new Error('Permission was not saved. Supabase returned no row.');
+        const row = Array.isArray(data) ? data[0] : data;
+        if (!row) throw new Error('Permission was not saved. Supabase returned no row.');
+        const normalizedRow = normalizeRow(resource, row);
+        devLog('[role permissions] saved normalized row', normalizedRow);
+        return { handled: true, data: await withItems(resource, normalizedRow) };
       }
      
       const publicUpdates =
