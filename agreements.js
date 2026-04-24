@@ -1852,9 +1852,6 @@ const Agreements = {
       if (!Permissions.canCreateAgreement()) return UI.toast('Login is required to save agreements.');
       this.openAgreementForm();
     });
-    if (E.agreementsCreateFromProposalBtn) E.agreementsCreateFromProposalBtn.addEventListener('click', () => {
-      this.createFromProposalFlow(E.agreementsCreateFromProposalInput?.value || '');
-    });
     if (E.agreementsTbody) E.agreementsTbody.addEventListener('click', event => {
       const trigger = event.target?.closest?.('button[data-agreement-view], button[data-agreement-edit], button[data-agreement-request-technical], button[data-agreement-preview], button[data-agreement-create-invoice], button[data-agreement-delete]');
       if (!trigger) return;
