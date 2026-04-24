@@ -949,6 +949,14 @@ const Api = {
       .filter(Boolean)
       .join(',');
   },
+  VALID_PERMISSION_RESOURCES: new Set([
+    'tickets', 'events', 'leads', 'deals', 'proposals', 'agreements', 'invoices', 'receipts', 'clients',
+    'csm_activities', 'operations_onboarding', 'technical_admin', 'workflow', 'notifications', 'ai_insights',
+    'users', 'roles', 'role_permissions', 'analytics'
+  ]),
+  VALID_PERMISSION_ACTIONS: new Set([
+    'view', 'list', 'create', 'update', 'edit', 'delete', 'manage', 'export', 'approve', 'reject', 'request', 'assign'
+  ]),
   permissionKey(row = {}) {
     return [
       this.normalizePermissionKey(row.role_key || row.roleKey || ''),
@@ -999,18 +1007,43 @@ const Api = {
     return [...newestByKey.values()];
   },
   buildRolePermissionRpcPayload(input = {}) {
-    const roleKey = this.normalizePermissionKey(
+    const form = input.form && typeof input.form === 'object' ? input.form : {};
+    const roleSelect = input.roleSelect ?? input.rolePermissionRole ?? document.getElementById('rolePermissionRole');
+    const resourceSelect = input.resourceSelect ?? input.rolePermissionResource ?? document.getElementById('rolePermissionResource');
+    const actionSelect = input.actionSelect ?? input.rolePermissionAction ?? document.getElementById('rolePermissionAction');
+
+    const selectedRoleKey =
       input.role_key ||
       input.roleKey ||
-      input.role ||
-      ''
-    );
-    const resource = this.normalizePermissionKey(input.resource || '');
-    const action = this.normalizePermissionKey(input.action || '');
+      form.role_key ||
+      form.roleKey ||
+      roleSelect?.value;
+
+    const selectedResource =
+      input.resource ||
+      input.module ||
+      input.module_key ||
+      input.resource_key ||
+      form.resource ||
+      form.module ||
+      resourceSelect?.value;
+
+    const selectedAction =
+      input.action ||
+      input.permission ||
+      input.permission_key ||
+      input.action_key ||
+      form.action ||
+      form.permission ||
+      actionSelect?.value;
+
+    const roleKey = this.normalizePermissionKey(selectedRoleKey);
+    const resource = this.normalizePermissionKey(selectedResource);
+    const action = this.normalizePermissionKey(selectedAction);
     if (!roleKey || !resource || !action) {
       throw new Error('Role, resource, and action are required.');
     }
-    return {
+    const payload = {
       p_role_key: roleKey,
       p_resource: resource,
       p_action: action,
@@ -1022,6 +1055,15 @@ const Api = {
         roleKey
       )
     };
+    if (!this.VALID_PERMISSION_RESOURCES.has(payload.p_resource)) {
+      throw new Error(`Invalid permission resource: ${payload.p_resource}. Please select a module/resource, not Role or Permission.`);
+    }
+    if (!this.VALID_PERMISSION_ACTIONS.has(payload.p_action)) {
+      throw new Error(`Invalid permission action: ${payload.p_action}. Please select an action like view/create/update/delete/manage.`);
+    }
+    try { console.log('[role permissions] selected fields', { selectedRoleKey, selectedResource, selectedAction }); } catch {}
+    try { console.log('[role permissions] final rpc payload', payload); } catch {}
+    return payload;
   },
   async createRolePermission(payload = {}) {
     return this.saveRolePermission(payload);
@@ -1033,7 +1075,6 @@ const Api = {
   async saveRolePermission(payload = {}) {
     try { console.log('[role permissions] form/input', payload); } catch {}
     const rpcPayload = this.buildRolePermissionRpcPayload(payload);
-    try { console.log('[role permissions] rpc payload', rpcPayload); } catch {}
     const result = await this.requestWithSession('role_permissions', 'save', rpcPayload);
     try { console.log('[role permissions] rpc result', result); } catch {}
     const data = result?.data ?? result?.item ?? result;

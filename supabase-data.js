@@ -1106,20 +1106,61 @@
       .join(',');
   }
 
+  const VALID_PERMISSION_RESOURCES = new Set([
+    'tickets', 'events', 'leads', 'deals', 'proposals', 'agreements', 'invoices', 'receipts', 'clients',
+    'csm_activities', 'operations_onboarding', 'technical_admin', 'workflow', 'notifications', 'ai_insights',
+    'users', 'roles', 'role_permissions', 'analytics'
+  ]);
+
+  const VALID_PERMISSION_ACTIONS = new Set([
+    'view', 'list', 'create', 'update', 'edit', 'delete', 'manage', 'export', 'approve', 'reject', 'request', 'assign'
+  ]);
+
   function buildRolePermissionRpcPayload(input = {}) {
-    const roleKey = normalizePermissionKey(
+    const form = input.form && typeof input.form === 'object' ? input.form : {};
+    const doc = typeof document !== 'undefined' ? document : null;
+    const roleSelect = input.roleSelect ?? input.rolePermissionRole ?? doc?.getElementById('rolePermissionRole');
+    const resourceSelect = input.resourceSelect ?? input.rolePermissionResource ?? doc?.getElementById('rolePermissionResource');
+    const actionSelect = input.actionSelect ?? input.rolePermissionAction ?? doc?.getElementById('rolePermissionAction');
+
+    const selectedRoleKey =
       input.role_key ??
       input.roleKey ??
-      input.role ??
+      form.role_key ??
+      form.roleKey ??
+      roleSelect?.value ??
       input.p_role_key ??
-      ''
-    );
-    const resource = normalizePermissionKey(input.resource ?? input.p_resource ?? '');
-    const action = normalizePermissionKey(input.action ?? input.p_action ?? '');
+      '';
+
+    const selectedResource =
+      input.resource ??
+      input.module ??
+      input.module_key ??
+      input.resource_key ??
+      form.resource ??
+      form.module ??
+      resourceSelect?.value ??
+      input.p_resource ??
+      '';
+
+    const selectedAction =
+      input.action ??
+      input.permission ??
+      input.permission_key ??
+      input.action_key ??
+      form.action ??
+      form.permission ??
+      actionSelect?.value ??
+      input.p_action ??
+      '';
+
+    const roleKey = normalizePermissionKey(selectedRoleKey);
+    const resource = normalizePermissionKey(selectedResource);
+    const action = normalizePermissionKey(selectedAction);
     if (!roleKey || !resource || !action) {
       throw new Error('Role, resource, and action are required.');
     }
-    return {
+    const payload = {
       p_role_key: roleKey,
       p_resource: resource,
       p_action: action,
@@ -1132,6 +1173,15 @@
         roleKey
       )
     };
+    if (!VALID_PERMISSION_RESOURCES.has(payload.p_resource)) {
+      throw new Error(`Invalid permission resource: ${payload.p_resource}. Please select a module/resource, not Role or Permission.`);
+    }
+    if (!VALID_PERMISSION_ACTIONS.has(payload.p_action)) {
+      throw new Error(`Invalid permission action: ${payload.p_action}. Please select an action like view/create/update/delete/manage.`);
+    }
+    try { console.log('[role permissions] selected fields', { selectedRoleKey, selectedResource, selectedAction }); } catch {}
+    try { console.log('[role permissions] final rpc payload', payload); } catch {}
+    return payload;
   }
 
   function sanitizeProposalCatalogRecord(record = {}, { includeCreatedBy = false, userId = '' } = {}) {
