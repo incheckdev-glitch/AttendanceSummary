@@ -2,6 +2,7 @@ const Deals = {
   columns: [
     'deal_id',
     'lead_id',
+    'lead_code',
     'full_name',
     'company_name',
     'phone',
@@ -19,7 +20,9 @@ const Deals = {
     'agreement_needed',
     'converted_at',
     'converted_by',
-    'notes'
+    'notes',
+    'created_at',
+    'updated_at'
   ],
   formDropdownDefaults: {
     lead_source: ['Website', 'Referral', 'LinkedIn', 'Email', 'Call', 'WhatsApp', 'Event', 'Other'],
@@ -81,6 +84,7 @@ const Deals = {
     return {
       id,
       deal_id: dealId,
+      lead_code: String(pick(source.lead_code, source.leadCode, lead.lead_id, lead.leadId)).trim(),
       lead_id: String(pick(source.lead_id, source.leadId, lead.lead_id, lead.leadId)).trim(),
       full_name: String(pick(source.full_name, source.fullName, lead.full_name, lead.fullName)).trim(),
       company_name: String(
@@ -117,7 +121,9 @@ const Deals = {
       converted_by: String(
         pick(source.converted_by, source.convertedBy, lead.converted_by, lead.convertedBy)
       ).trim(),
-      notes: String(pick(source.notes, lead.notes)).trim()
+      notes: String(pick(source.notes, lead.notes)).trim(),
+      created_at: pick(source.created_at, source.createdAt, lead.created_at, lead.createdAt),
+      updated_at: pick(source.updated_at, source.updatedAt, lead.updated_at, lead.updatedAt)
     };
   },
   generateDealId() {
@@ -165,6 +171,7 @@ const Deals = {
     const mapped = {
       deal_id: toTextOrEmpty(['deal_id', 'dealId']),
       lead_id: toTextOrEmpty(['lead_id', 'leadId']),
+      lead_code: toTextOrEmpty(['lead_code', 'leadCode']),
       source_lead_uuid: toTextOrEmpty(['source_lead_uuid', 'sourceLeadUuid', 'lead_uuid', 'leadUuid']),
       full_name: toTextOrEmpty(['full_name', 'fullName']),
       company_name: toTextOrEmpty(['company_name', 'companyName']),
@@ -183,7 +190,9 @@ const Deals = {
       agreement_needed: toBoolOrNull(['agreement_needed', 'agreementNeeded']),
       converted_by: toTextOrEmpty(['converted_by', 'convertedBy']),
       converted_at: toDateOrNull(['converted_at', 'convertedAt']),
-      notes: toTextOrEmpty(['notes'])
+      notes: toTextOrEmpty(['notes']),
+      created_at: toDateOrNull(['created_at', 'createdAt']),
+      updated_at: toDateOrNull(['updated_at', 'updatedAt'])
     };
     return {
       ...mapped,
@@ -230,7 +239,7 @@ const Deals = {
     const term = String(this.state.search || '').replace(/[%_]/g, ' ').trim();
     if (term) {
       query = query.or(
-        `deal_id.ilike.%${term}%,lead_id.ilike.%${term}%,full_name.ilike.%${term}%,company_name.ilike.%${term}%,email.ilike.%${term}%,phone.ilike.%${term}%,country.ilike.%${term}%,lead_source.ilike.%${term}%,service_interest.ilike.%${term}%,assigned_to.ilike.%${term}%,notes.ilike.%${term}%`
+        `deal_id.ilike.%${term}%,lead_id.ilike.%${term}%,lead_code.ilike.%${term}%,full_name.ilike.%${term}%,company_name.ilike.%${term}%,email.ilike.%${term}%,phone.ilike.%${term}%,country.ilike.%${term}%,lead_source.ilike.%${term}%,service_interest.ilike.%${term}%,assigned_to.ilike.%${term}%,notes.ilike.%${term}%`
       );
     }
     const { data, error } = await query;
@@ -295,6 +304,144 @@ const Deals = {
     const formatted = U.formatDateTimeMMDDYYYYHHMM(value);
     if (formatted === '—') return U.escapeHtml(String(value));
     return U.escapeHtml(formatted);
+  },
+  formatDateTimeMMDDYYYYHHMM(value) {
+    if (!value) return '';
+    const formatted = U.formatDateTimeMMDDYYYYHHMM(value);
+    return formatted === '—' ? '' : formatted;
+  },
+  getDealValue(row, ...keys) {
+    if (!row || typeof row !== 'object') return '';
+    for (const key of keys) {
+      if (!key) continue;
+      if (row[key] !== undefined && row[key] !== null) return row[key];
+    }
+    return '';
+  },
+  displayLeadId(row = {}, relatedLead = null) {
+    return String(
+      this.getDealValue(row, 'lead_code', 'leadCode') ||
+        this.getDealValue(relatedLead, 'lead_id', 'leadId') ||
+        this.getDealValue(row, 'lead_id', 'leadId')
+    ).trim();
+  },
+  csvEscape(value) {
+    const text = String(value ?? '');
+    if (/[",\n\r]/.test(text)) {
+      return `"${text.replace(/"/g, '""')}"`;
+    }
+    return text;
+  },
+  downloadCsv(filename, csvText) {
+    const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  },
+  exportDealsCsv() {
+    if (!Permissions.canView('deals')) {
+      UI.toast('You do not have permission to view deals.');
+      return;
+    }
+    const rows = Array.isArray(this.state.filteredRows) ? this.state.filteredRows : [];
+    if (!rows.length) {
+      UI.toast('No deals match the current filters.');
+      return;
+    }
+    const headers = [
+      'Deal ID',
+      'Lead ID',
+      'Full Name',
+      'Company Name',
+      'Phone',
+      'Email',
+      'Country',
+      'Lead Source',
+      'Service Interest',
+      'Stage',
+      'Status',
+      'Priority',
+      'Estimated Value',
+      'Currency',
+      'Assigned To',
+      'Converted By',
+      'Converted At',
+      'Proposal Needed',
+      'Agreement Needed',
+      'Notes',
+      'Created At',
+      'Updated At'
+    ];
+    const lines = [
+      headers.map(value => this.csvEscape(value)).join(','),
+      ...rows.map(row =>
+        [
+          this.getDealValue(row, 'deal_id', 'dealId'),
+          this.getDealValue(row, 'lead_code', 'leadCode') ||
+            this.getDealValue(row, 'leadId', 'lead_id'),
+          this.getDealValue(row, 'full_name', 'fullName'),
+          this.getDealValue(row, 'company_name', 'companyName'),
+          this.getDealValue(row, 'phone'),
+          this.getDealValue(row, 'email'),
+          this.getDealValue(row, 'country'),
+          this.getDealValue(row, 'lead_source', 'leadSource'),
+          this.getDealValue(row, 'service_interest', 'serviceInterest'),
+          this.getDealValue(row, 'stage'),
+          this.getDealValue(row, 'status'),
+          this.getDealValue(row, 'priority'),
+          this.getDealValue(row, 'estimated_value', 'estimatedValue'),
+          this.getDealValue(row, 'currency'),
+          this.getDealValue(row, 'assigned_to', 'assignedTo'),
+          this.getDealValue(row, 'converted_by', 'convertedBy'),
+          this.formatDateTimeMMDDYYYYHHMM(this.getDealValue(row, 'converted_at', 'convertedAt')),
+          this.boolLabel(this.normalizeBool(this.getDealValue(row, 'proposal_needed', 'proposalNeeded'))),
+          this.boolLabel(this.normalizeBool(this.getDealValue(row, 'agreement_needed', 'agreementNeeded'))),
+          this.getDealValue(row, 'notes'),
+          this.formatDateTimeMMDDYYYYHHMM(this.getDealValue(row, 'created_at', 'createdAt')),
+          this.formatDateTimeMMDDYYYYHHMM(this.getDealValue(row, 'updated_at', 'updatedAt'))
+        ]
+          .map(value => this.csvEscape(value))
+          .join(',')
+      )
+    ];
+    const now = new Date();
+    const filename = `deals-export-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(
+      now.getDate()
+    ).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}.csv`;
+    this.downloadCsv(filename, lines.join('\n'));
+  },
+  isUuid(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      String(value || '').trim()
+    );
+  },
+  async hydrateLeadCodeFromLeadUuid(row = {}) {
+    if (!row?.id || !E.dealFormLeadId || !this.isUuid(row.lead_id)) return;
+    if (String(row.lead_code || '').trim()) return;
+    try {
+      const { data, error } = await this.getClient()
+        .from('leads')
+        .select('lead_id')
+        .eq('id', row.lead_id)
+        .limit(1);
+      if (error) return;
+      const relatedLead = Array.isArray(data) ? data[0] : null;
+      const displayLeadId = this.displayLeadId(row, relatedLead);
+      if (displayLeadId) E.dealFormLeadId.value = displayLeadId;
+      const leadCode = String(relatedLead?.lead_id || '').trim();
+      if (leadCode) {
+        E.dealFormLeadId.dataset.leadCode = leadCode;
+        const existing = this.state.rows.find(item => item.id === row.id);
+        if (existing) existing.lead_code = leadCode;
+      }
+    } catch {
+      // best-effort for display only
+    }
   },
   canCreate() {
     return Permissions.can('deals', 'create', { fallback: Permissions.isAdminLike() });
@@ -711,7 +858,7 @@ const Deals = {
       E.dealsState.textContent = 'Loading deals…';
       this.renderDealAnalytics(this.computeDealAnalytics([]));
       E.dealsTbody.innerHTML = Array.from({ length: 6 })
-        .map(() => '<tr class="skeleton-row"><td colspan="21"><div class="skeleton-line" style="height:12px;margin:6px 0;"></div></td></tr>')
+        .map(() => '<tr class="skeleton-row"><td colspan="23"><div class="skeleton-line" style="height:12px;margin:6px 0;"></div></td></tr>')
         .join('');
       return;
     }
@@ -719,7 +866,7 @@ const Deals = {
     if (this.state.loadError) {
       E.dealsState.textContent = this.state.loadError;
       this.renderDealAnalytics(this.computeDealAnalytics([]));
-      E.dealsTbody.innerHTML = `<tr><td colspan="21" class="muted" style="text-align:center;color:#ffb4b4;">${U.escapeHtml(
+      E.dealsTbody.innerHTML = `<tr><td colspan="23" class="muted" style="text-align:center;color:#ffb4b4;">${U.escapeHtml(
         this.state.loadError
       )}</td></tr>`;
       return;
@@ -730,12 +877,14 @@ const Deals = {
     E.dealsState.textContent = `${rows.length} deal${rows.length === 1 ? '' : 's'}`;
 
     if (!rows.length) {
-      E.dealsTbody.innerHTML = '<tr><td colspan="21" class="muted" style="text-align:center;">No deals found.</td></tr>';
+      E.dealsTbody.innerHTML = '<tr><td colspan="23" class="muted" style="text-align:center;">No deals found.</td></tr>';
       return;
     }
 
     const renderCell = (row, column) => {
-      if (column === 'converted_at') return this.formatDateTime(row[column]);
+      if (column === 'lead_id') return U.escapeHtml(this.displayLeadId(row) || '—');
+      if (column === 'lead_code') return undefined;
+      if (['converted_at', 'created_at', 'updated_at'].includes(column)) return this.formatDateTime(row[column]);
       if (column === 'proposal_needed' || column === 'agreement_needed') return U.escapeHtml(this.boolLabel(row[column]));
       const value = row[column];
       return U.escapeHtml(value === '' || value == null ? '—' : String(value));
@@ -762,6 +911,7 @@ const Deals = {
         }
         const actions = actionButtons.length ? actionButtons.join(' ') : '<span class="muted">—</span>';
         return `<tr>${this.columns
+          .filter(column => column !== 'lead_code')
           .map(column => `<td>${renderCell(row, column)}</td>`)
           .join('')}<td>${actions}</td></tr>`;
       })
@@ -835,7 +985,11 @@ const Deals = {
 
     if (row) {
       if (E.dealFormDealId) E.dealFormDealId.value = row.deal_id || '';
-      if (E.dealFormLeadId) E.dealFormLeadId.value = row.lead_id || '';
+      if (E.dealFormLeadId) {
+        E.dealFormLeadId.dataset.leadUuid = row.lead_id || '';
+        E.dealFormLeadId.dataset.leadCode = row.lead_code || '';
+        E.dealFormLeadId.value = this.displayLeadId(row);
+      }
       if (E.dealFormFullName) E.dealFormFullName.value = row.full_name || '';
       if (E.dealFormCompanyName) E.dealFormCompanyName.value = row.company_name || '';
       if (E.dealFormPhone) E.dealFormPhone.value = row.phone || '';
@@ -860,6 +1014,7 @@ const Deals = {
         E.dealFormConvertedAt.value = convertedAtRaw ? U.formatDateTimeMMDDYYYYHHMM(convertedAtRaw) : '';
       }
       if (E.dealFormNotes) E.dealFormNotes.value = row.notes || '';
+      this.hydrateLeadCodeFromLeadUuid(row);
       this.syncDealFormDropdowns({
         lead_source: row.lead_source || '',
         service_interest: row.service_interest || '',
@@ -870,6 +1025,10 @@ const Deals = {
       });
     } else {
       if (E.dealFormDealId) E.dealFormDealId.value = 'Auto-generated';
+      if (E.dealFormLeadId) {
+        E.dealFormLeadId.dataset.leadUuid = '';
+        E.dealFormLeadId.dataset.leadCode = '';
+      }
       if (E.dealFormConvertedAt) {
         E.dealFormConvertedAt.dataset.rawValue = '';
         E.dealFormConvertedAt.value = '';
@@ -889,12 +1048,17 @@ const Deals = {
     E.dealFormModal.setAttribute('aria-hidden', 'true');
   },
   collectFormData() {
+    const mode = E.dealForm?.dataset.mode === 'edit' ? 'edit' : 'create';
+    const leadField = E.dealFormLeadId;
+    const editLeadUuid = String(leadField?.dataset?.leadUuid || '').trim();
+    const editLeadCode = String(leadField?.dataset?.leadCode || '').trim();
     return {
       deal_id:
         String(E.dealFormDealId?.value || '').trim() === 'Auto-generated'
           ? ''
           : String(E.dealFormDealId?.value || '').trim(),
-      lead_id: String(E.dealFormLeadId?.value || '').trim(),
+      lead_id: mode === 'edit' ? editLeadUuid : String(E.dealFormLeadId?.value || '').trim(),
+      lead_code: mode === 'edit' ? editLeadCode : '',
       full_name: String(E.dealFormFullName?.value || '').trim(),
       company_name: String(E.dealFormCompanyName?.value || '').trim(),
       phone: String(E.dealFormPhone?.value || '').trim(),
@@ -1043,6 +1207,9 @@ const Deals = {
 
     if (E.dealsRefreshBtn) {
       E.dealsRefreshBtn.addEventListener('click', () => this.loadAndRefresh({ force: true }));
+    }
+    if (E.dealsExportCsvBtn) {
+      E.dealsExportCsvBtn.addEventListener('click', () => this.exportDealsCsv());
     }
 
     if (E.dealsCreateBtn) {
