@@ -302,6 +302,15 @@ UI.Issues = {
       if (col.key === 'status') return badgeStatus(row.status || '-');
       if (col.key === 'devTeamStatus') return badgeDevTeamStatus(row.devTeamStatus || '-');
       if (col.key === 'issueRelated') return badgeIssueRelatedGroup(row.issueRelated || '');
+      if (
+        col.key === 'date' ||
+        col.key === 'notificationSent' ||
+        col.key === 'notificationUnderReview' ||
+        col.key === 'createdAt' ||
+        col.key === 'updatedAt'
+      ) {
+        return U.escapeHtml(U.formatDateTimeMMDDYYYYHHMM(row[col.key]));
+      }
       if (col.key === 'file') {
         const safeUrl = U.safeExternalUrl(row.file);
         return row.file
@@ -1289,7 +1298,7 @@ UI.Modals = {
     const priority = U.escapeHtml(r.priority || '-');
     const moduleName = U.escapeHtml(r.module || '-');
     const department = U.escapeHtml(r.department || '-');
-    const dateValue = U.escapeHtml(r.date || '-');
+    const dateValue = U.escapeHtml(U.formatDateTimeMMDDYYYYHHMM(r.date));
     const requesterEmail = U.escapeHtml(r.email || r.emailAddressee || '-');
     const category = U.escapeHtml(r.type || '-');
     const logValue = U.escapeHtml(r.log || '—');

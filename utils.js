@@ -76,13 +76,31 @@ const STOPWORDS = new Set([
 ]);
 
 const U = {
+  _didLogDateTimeFormatDebug: false,
   q: (s, r = document) => r.querySelector(s),
   qAll: (s, r = document) => Array.from(r.querySelectorAll(s)),
   now: () => Date.now(),
-  fmtTS: d => {
-    const x = d instanceof Date ? d : new Date(d);
-    if (isNaN(x)) return '—';
-    return x.toISOString().replace('T', ' ').slice(0, 16);
+  formatDateTimeMMDDYYYYHHMM: value => {
+    if (!value) return '—';
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    const yyyy = String(date.getFullYear());
+    const hh = String(date.getHours()).padStart(2, '0');
+    const min = String(date.getMinutes()).padStart(2, '0');
+    const formatted = `${mm}/${dd}/${yyyy} ${hh}:${min}`;
+    if (!U._didLogDateTimeFormatDebug) {
+      const host = String(window.location?.hostname || '').toLowerCase();
+      if (window.RUNTIME_CONFIG?.DEBUG_API || host === 'localhost' || host === '127.0.0.1') {
+        console.log('[datetime format test]', value, formatted);
+        U._didLogDateTimeFormatDebug = true;
+      }
+    }
+    return formatted;
+  },
+  fmtTS: value => {
+    return U.formatDateTimeMMDDYYYYHHMM(value);
   },
   fmtDate: d => {
     if (!d) return '—';
@@ -128,7 +146,10 @@ const U = {
       const parentTag = String(node.parentElement?.tagName || '').toLowerCase();
       if (parentTag !== 'script' && parentTag !== 'style') {
         node.nodeValue = String(node.nodeValue || '').replace(datePattern, match => {
-          const formatted = U.fmtDisplayDate(match);
+          const hasTimeComponent = /t\d{2}:\d{2}|\s\d{2}:\d{2}/i.test(match);
+          const formatted = hasTimeComponent
+            ? U.formatDateTimeMMDDYYYYHHMM(match)
+            : U.fmtDisplayDate(match);
           return formatted === '—' ? match : formatted;
         });
       }
