@@ -590,6 +590,16 @@
       out.is_active = out.is_active ?? out.active ?? true;
       out.active = out.active ?? out.is_active;
     }
+    if (resource === 'role_permissions') {
+      out.permission_id = out.permission_id ?? out.id ?? '';
+      out.id = out.id ?? out.permission_id ?? '';
+      out.role_key = String(out.role_key || out.role || '').trim().toLowerCase();
+      out.resource = String(out.resource || '').trim().toLowerCase();
+      out.action = String(out.action || '').trim().toLowerCase();
+      out.is_allowed = Boolean(out.is_allowed);
+      out.is_active = out.is_active !== undefined ? Boolean(out.is_active) : true;
+      out.allowed_roles = Array.isArray(out.allowed_roles) ? out.allowed_roles : out.allowed_roles;
+    }
     if (resource === 'workflow') {
       const toRoleArray = (...values) => {
         const found = values.find(value => value !== undefined && value !== null && (Array.isArray(value) || String(value).trim() !== ''));
@@ -1049,7 +1059,8 @@
       action: firstDefined(record, ['action']),
       is_allowed: toDbBoolean(firstDefined(record, ['is_allowed', 'isAllowed']), null),
       is_active: toDbBoolean(firstDefined(record, ['is_active', 'isActive']), null),
-      allowed_roles: firstDefined(record, ['allowed_roles', 'allowedRoles'])
+      allowed_roles: firstDefined(record, ['allowed_roles', 'allowedRoles']),
+      updated_at: firstDefined(record, ['updated_at', 'updatedAt'])
     });
 
     const sanitized = {};
@@ -1059,6 +1070,23 @@
       sanitized[key] = value;
     });
     ROLE_PERMISSION_LEGACY_FIELDS.forEach(key => delete sanitized[key]);
+    if (Object.prototype.hasOwnProperty.call(sanitized, 'role_key')) {
+      sanitized.role_key = String(sanitized.role_key || '').trim().toLowerCase();
+    }
+    if (Object.prototype.hasOwnProperty.call(sanitized, 'resource')) {
+      sanitized.resource = String(sanitized.resource || '').trim().toLowerCase();
+    }
+    if (Object.prototype.hasOwnProperty.call(sanitized, 'action')) {
+      sanitized.action = String(sanitized.action || '').trim().toLowerCase();
+    }
+    if (Object.prototype.hasOwnProperty.call(sanitized, 'is_allowed')) {
+      sanitized.is_allowed = Boolean(sanitized.is_allowed);
+    }
+    sanitized.is_active = Object.prototype.hasOwnProperty.call(sanitized, 'is_active')
+      ? Boolean(sanitized.is_active)
+      : true;
+    sanitized.updated_at = String(sanitized.updated_at || new Date().toISOString());
+    if (!sanitized.permission_id) delete sanitized.permission_id;
     return sanitized;
   }
 
@@ -2859,6 +2887,28 @@
       }
       if (['proposal_catalog', 'proposals', 'agreements', 'clients', 'invoices', 'receipts'].includes(resource) && !Object.keys(createRecord).length) {
         throw new Error(`${resource} create payload is empty after normalization.`);
+      }
+      if (resource === 'role_permissions') {
+        if (!createRecord.role_key || !createRecord.resource || !createRecord.action) {
+          throw new Error('role_key, resource, and action are required for role_permissions.');
+        }
+        const upsertRecord = {
+          role_key: createRecord.role_key,
+          resource: createRecord.resource,
+          action: createRecord.action,
+          is_allowed: Boolean(createRecord.is_allowed),
+          is_active: createRecord.is_active !== undefined ? Boolean(createRecord.is_active) : true,
+          updated_at: String(createRecord.updated_at || new Date().toISOString())
+        };
+        if (createRecord.permission_id) upsertRecord.permission_id = createRecord.permission_id;
+        if (createRecord.allowed_roles !== undefined) upsertRecord.allowed_roles = createRecord.allowed_roles;
+        const { data, error } = await client
+          .from(table)
+          .upsert(upsertRecord, { onConflict: 'role_key,resource,action' })
+          .select('*')
+          .single();
+        if (error) throw friendlyError(`Unable to create ${resource} record`, error);
+        return { handled: true, data: await withItems(resource, normalizeRow(resource, data)) };
       }
       const { data, error } = await client.from(table).insert(createRecord).select('*').single();
       if (error) throw friendlyError(`Unable to create ${resource} record`, error);

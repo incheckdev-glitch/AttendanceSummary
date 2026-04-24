@@ -67,14 +67,19 @@ const RolesAdmin = {
         const selectedRoles = this.readMultiSelectValues(E.rolePermissionCreateAllowedRoles);
         const validation = this.validatePermissionPayload({ roleKeys: selectedRoles, resource, action });
         if (!validation.valid) return UI.toast(validation.message);
+        const existingRows = this.state.permissions.filter(row =>
+          String(row.resource || '').trim().toLowerCase() === validation.resource &&
+          this.canonicalAction(row.action) === validation.action
+        );
+        const hadExisting = existingRows.some(row => validation.roleKeys.includes(this.roleKey(row)));
         try {
           await this.upsertPermissionGroup({
             resource: validation.resource,
             action: validation.action,
             roleKeys: validation.roleKeys,
-            existingRows: []
+            existingRows
           });
-          UI.toast('Permission rule created.');
+          UI.toast(hadExisting ? 'Permission updated.' : 'Permission rule created.');
           E.rolePermissionCreateForm.reset();
           this.togglePermissionCreate(false);
           await this.refreshPermissions(true);
@@ -190,6 +195,39 @@ const RolesAdmin = {
     return permission?.is_active !== false && permission?.is_allowed !== false;
   },
 
+  normalizePermissionRow(row = {}) {
+    const permissionId = String(row.permission_id || row.id || '').trim();
+    return {
+      ...row,
+      id: permissionId,
+      permission_id: permissionId,
+      role_key: String(row.role_key || row.role || '').trim().toLowerCase(),
+      resource: String(row.resource || '').trim().toLowerCase(),
+      action: this.canonicalAction(row.action),
+      is_allowed: Boolean(row.is_allowed),
+      is_active: row.is_active !== undefined ? Boolean(row.is_active) : true,
+      allowed_roles: Array.isArray(row.allowed_roles) ? row.allowed_roles : row.allowed_roles
+    };
+  },
+
+  dedupePermissionRows(rows = []) {
+    const newestByKey = new Map();
+    rows.forEach(sourceRow => {
+      const row = this.normalizePermissionRow(sourceRow);
+      if (!row.role_key || !row.resource || !row.action) return;
+      const dedupeKey = `${row.role_key}|${row.resource}|${row.action}`;
+      const existing = newestByKey.get(dedupeKey);
+      if (!existing) {
+        newestByKey.set(dedupeKey, row);
+        return;
+      }
+      const existingUpdated = new Date(existing.updated_at || existing.created_at || 0).getTime();
+      const rowUpdated = new Date(row.updated_at || row.created_at || 0).getTime();
+      if (rowUpdated >= existingUpdated) newestByKey.set(dedupeKey, row);
+    });
+    return [...newestByKey.values()];
+  },
+
   groupPermissions(rows = []) {
     const grouped = new Map();
     rows.forEach(row => {
@@ -259,7 +297,7 @@ const RolesAdmin = {
     if (E.rolePermissionsState) E.rolePermissionsState.textContent = 'Loading permission rules…';
     try {
       const response = await Api.listRolePermissions({ limit: this.state.limit, page: this.state.page, summary_only: true, forceRefresh: force });
-      this.state.permissions = this.extractRows(response);
+      this.state.permissions = this.dedupePermissionRows(this.extractRows(response));
       this.state.groupedPermissions = this.groupPermissions(this.state.permissions);
       this.renderPermissionsTable();
       this.renderKpis();
@@ -562,27 +600,16 @@ const RolesAdmin = {
     const upserts = [];
     targetRoles.forEach(roleKey => {
       const existing = rowsByRole.get(roleKey);
-      if (existing && this.permissionId(existing)) {
-        const payload = {
-          role_key: roleKey,
-          resource: validation.resource,
-          action: validation.action,
-          is_allowed: true,
-          is_active: true
-        };
-        try { console.log('[RolesPermissions] final payload before save', { permission_id: this.permissionId(existing), ...payload }); } catch {}
-        upserts.push(Api.updateRolePermission(this.permissionId(existing), payload));
-      } else {
-        const payload = {
-          role_key: roleKey,
-          resource: validation.resource,
-          action: validation.action,
-          is_allowed: true,
-          is_active: true
-        };
-        try { console.log('[RolesPermissions] create payload', payload); } catch {}
-        upserts.push(Api.createRolePermission(payload));
-      }
+      const payload = {
+        role_key: roleKey,
+        resource: validation.resource,
+        action: validation.action,
+        is_allowed: true,
+        is_active: true
+      };
+      try { console.log('[RolesPermissions] upsert payload', existing && this.permissionId(existing) ? { permission_id: this.permissionId(existing), ...payload } : payload); } catch {}
+      if (existing && this.permissionId(existing)) payload.permission_id = this.permissionId(existing);
+      upserts.push(Api.saveRolePermission(payload));
     });
 
     const deactivations = existingRows
@@ -650,8 +677,8 @@ const RolesAdmin = {
             is_allowed: true,
             is_active: true
           };
-          try { console.log('[RolesPermissions] final payload before save', { permission_id: this.permissionId(existing), ...payload }); } catch {}
-          requests.push(Api.updateRolePermission(this.permissionId(existing), payload));
+          try { console.log('[RolesPermissions] upsert payload', { permission_id: this.permissionId(existing), ...payload }); } catch {}
+          requests.push(Api.saveRolePermission({ permission_id: this.permissionId(existing), ...payload }));
         } else {
           const payload = {
             role_key: roleKey,
@@ -660,8 +687,8 @@ const RolesAdmin = {
             is_allowed: true,
             is_active: true
           };
-          try { console.log('[RolesPermissions] create payload', payload); } catch {}
-          requests.push(Api.createRolePermission(payload));
+          try { console.log('[RolesPermissions] upsert payload', payload); } catch {}
+          requests.push(Api.saveRolePermission(payload));
         }
       });
 
