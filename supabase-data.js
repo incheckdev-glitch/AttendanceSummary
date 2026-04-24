@@ -1200,15 +1200,36 @@
     if (!payload.p_action) {
       throw new Error('Permission action is required.');
     }
+    if (payload.p_resource === 'role' || payload.p_resource === 'permission') {
+      throw new Error('Permission save was not verified in Supabase. Please check role/resource/action mapping.');
+    }
     if (!VALID_PERMISSION_RESOURCES.has(payload.p_resource)) {
       try { console.warn('[role permissions] custom resource not in known list', payload.p_resource); } catch {}
     }
     if (!VALID_PERMISSION_ACTIONS.has(payload.p_action)) {
       try { console.warn('[role permissions] custom action not in known list', payload.p_action); } catch {}
     }
-    try { console.log('[role permissions] selected fields', { selectedRoleKey, selectedResource, selectedAction }); } catch {}
-    try { console.log('[role permissions] final rpc payload', payload); } catch {}
+    try { console.log('[role permissions] selected fields', JSON.stringify({ selectedRoleKey, selectedResource, selectedAction }, null, 2)); } catch {}
+    try { console.log('[role permissions] final rpc payload', JSON.stringify(payload, null, 2)); } catch {}
     return payload;
+  }
+
+  async function verifyRolePermissionPersistence(client, rpcPayload = {}) {
+    const { data: verifyRows, error: verifyError } = await client
+      .from('role_permissions')
+      .select('permission_id, role_key, resource, action, is_allowed, is_active, allowed_roles, created_at, updated_at')
+      .eq('role_key', rpcPayload.p_role_key)
+      .eq('resource', rpcPayload.p_resource)
+      .eq('action', rpcPayload.p_action)
+      .order('updated_at', { ascending: false })
+      .limit(1);
+    if (verifyError) throw verifyError;
+    if (!Array.isArray(verifyRows) || !verifyRows.length) {
+      throw new Error('Permission save was not verified in Supabase. Please check role/resource/action mapping.');
+    }
+    const savedRow = verifyRows[0];
+    try { console.log('[role permissions] verified row', JSON.stringify(savedRow, null, 2)); } catch {}
+    return savedRow;
   }
 
   function sanitizeProposalCatalogRecord(record = {}, { includeCreatedBy = false, userId = '' } = {}) {
@@ -3011,15 +3032,14 @@
       }
       if (resource === 'role_permissions') {
         const rpcPayload = buildRolePermissionRpcPayload({ ...createRecord, ...payload });
-        devLog('[role permissions] rpc payload', rpcPayload);
+        devLog('[role permissions] rpc payload', JSON.stringify(rpcPayload, null, 2));
         const { data, error } = await client.rpc('upsert_role_permission', rpcPayload);
-        devLog('[role permissions] rpc result', { data, error });
+        devLog('[role permissions] rpc result', JSON.stringify({ data, error }, null, 2));
         if (error) throw friendlyError(`Unable to save ${resource} record`, error);
-        if (!data) throw new Error('Permission was not saved. Supabase returned no row.');
-        const row = Array.isArray(data) ? data[0] : data;
-        if (!row) throw new Error('Permission was not saved. Supabase returned no row.');
+        if (!data) throw new Error('Supabase returned no saved permission row.');
+        const row = await verifyRolePermissionPersistence(client, rpcPayload);
         const normalizedRow = normalizeRow(resource, row);
-        devLog('[role permissions] saved normalized row', normalizedRow);
+        devLog('[role permissions] saved normalized row', JSON.stringify(normalizedRow, null, 2));
         return { handled: true, data: await withItems(resource, normalizedRow) };
       }
       const { data, error } = await client.from(table).insert(createRecord).select('*').single();
@@ -3137,15 +3157,14 @@
       }
       if (resource === 'role_permissions') {
         const rpcPayload = buildRolePermissionRpcPayload({ ...safeUpdates, ...payload });
-        devLog('[role permissions] rpc payload', rpcPayload);
+        devLog('[role permissions] rpc payload', JSON.stringify(rpcPayload, null, 2));
         const { data, error } = await client.rpc('upsert_role_permission', rpcPayload);
-        devLog('[role permissions] rpc result', { data, error });
+        devLog('[role permissions] rpc result', JSON.stringify({ data, error }, null, 2));
         if (error) throw friendlyError(`Unable to save ${resource} record`, error);
-        if (!data) throw new Error('Permission was not saved. Supabase returned no row.');
-        const row = Array.isArray(data) ? data[0] : data;
-        if (!row) throw new Error('Permission was not saved. Supabase returned no row.');
+        if (!data) throw new Error('Supabase returned no saved permission row.');
+        const row = await verifyRolePermissionPersistence(client, rpcPayload);
         const normalizedRow = normalizeRow(resource, row);
-        devLog('[role permissions] saved normalized row', normalizedRow);
+        devLog('[role permissions] saved normalized row', JSON.stringify(normalizedRow, null, 2));
         return { handled: true, data: await withItems(resource, normalizedRow) };
       }
      
