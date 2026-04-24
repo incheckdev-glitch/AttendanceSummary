@@ -118,7 +118,21 @@ const RolesAdmin = {
 
   normalizeRoleKeys(values) {
     const source = Array.isArray(values) ? values : String(values || '').split(',');
-    return [...new Set(source.map(v => this.normalizeRoleKey(v)).filter(Boolean))];
+    const roleLookup = new Map();
+    this.state.roles.forEach(role => {
+      const roleKey = this.roleKey(role);
+      if (!roleKey) return;
+      roleLookup.set(roleKey, roleKey);
+      roleLookup.set(this.normalizeRoleKey(this.displayName(role)), roleKey);
+      roleLookup.set(this.normalizeRoleKey(String(role.role_name || '')), roleKey);
+      roleLookup.set(this.normalizeRoleKey(String(role.name || '')), roleKey);
+    });
+    return [...new Set(source
+      .map(value => {
+        const normalized = this.normalizeRoleKey(value);
+        return roleLookup.get(normalized) || normalized;
+      })
+      .filter(Boolean))];
   },
 
   readMultiSelectValues(selectEl) {

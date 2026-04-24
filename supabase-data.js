@@ -1113,7 +1113,28 @@
   ]);
 
   const VALID_PERMISSION_ACTIONS = new Set([
-    'view', 'list', 'create', 'update', 'edit', 'delete', 'manage', 'export', 'approve', 'reject', 'request', 'assign'
+    'view',
+    'get',
+    'list',
+    'create',
+    'save',
+    'update',
+    'edit',
+    'delete',
+    'manage',
+    'export',
+    'approve',
+    'reject',
+    'request',
+    'assign',
+    'internal_filters',
+    'bulk_update',
+    'convert',
+    'preview',
+    'download',
+    'send',
+    'mark_read',
+    'mark_unread'
   ]);
 
   function buildRolePermissionRpcPayload(input = {}) {
@@ -1173,11 +1194,17 @@
         roleKey
       )
     };
+    if (!payload.p_resource) {
+      throw new Error('Permission resource is required.');
+    }
+    if (!payload.p_action) {
+      throw new Error('Permission action is required.');
+    }
     if (!VALID_PERMISSION_RESOURCES.has(payload.p_resource)) {
-      throw new Error(`Invalid permission resource: ${payload.p_resource}. Please select a module/resource, not Role or Permission.`);
+      try { console.warn('[role permissions] custom resource not in known list', payload.p_resource); } catch {}
     }
     if (!VALID_PERMISSION_ACTIONS.has(payload.p_action)) {
-      throw new Error(`Invalid permission action: ${payload.p_action}. Please select an action like view/create/update/delete/manage.`);
+      try { console.warn('[role permissions] custom action not in known list', payload.p_action); } catch {}
     }
     try { console.log('[role permissions] selected fields', { selectedRoleKey, selectedResource, selectedAction }); } catch {}
     try { console.log('[role permissions] final rpc payload', payload); } catch {}
