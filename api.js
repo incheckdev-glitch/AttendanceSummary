@@ -626,10 +626,12 @@ const Api = {
   },
 
 
-  async listOperationsOnboarding(filters = {}) {
+  async listOperationsOnboarding(filters = {}, options = {}) {
     return this.requestCached('operations_onboarding', 'list', {
       filters,
       sheetName: CONFIG.OPERATIONS_ONBOARDING_SHEET_NAME
+    }, {
+      forceRefresh: options?.forceRefresh === true
     });
   },
   async getOperationsOnboarding(payload = {}) {

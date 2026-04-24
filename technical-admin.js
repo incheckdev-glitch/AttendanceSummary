@@ -118,19 +118,22 @@ const TechnicalAdmin = {
     );
     const derivedLocationCount = agreementItems.length ? this.deriveAgreementLocationCount(agreementItems) : null;
     const resolvedLocationCount = requestLocationCount ?? agreementLocationCount ?? derivedLocationCount ?? 0;
+    const sourceId = String(source.id || '').trim();
+    const onboardingId = String(this.pick(source.onboarding_id, source.onboardingId)).trim();
     return {
-      id: String(this.pick(source.id, source.request_id, source.technical_request_id, source.technicalRequestId)).trim(),
-      technical_request_id: String(this.pick(source.request_id, source.technical_request_id, source.technicalRequestId, source.id)).trim(),
+      id: sourceId,
+      db_id: sourceId,
+      technical_request_id: onboardingId || sourceId,
       agreement_id: String(this.pick(source.agreement_id, source.agreementId)).trim(),
       agreement_number: String(this.pick(source.agreement_number, source.agreementNumber)).trim(),
-      onboarding_id: String(this.pick(source.onboarding_id, source.onboardingId)).trim(),
+      onboarding_id: onboardingId,
       client_id: String(this.pick(source.client_id, source.clientId)).trim(),
       client_name: String(this.pick(source.client_name, source.clientName, source.customer_name, source.customerName)).trim(),
-      request_type: String(this.pick(source.request_type, source.requestType)).trim(),
-      request_title: String(this.pick(source.request_title, source.requestTitle)).trim(),
-      request_message: String(this.pick(source.request_message, source.requestMessage)).trim(),
-      request_details: String(this.pick(source.request_details, source.requestDetails)).trim(),
-      request_status: String(this.pick(source.request_status, source.requestStatus)).trim() || 'Requested',
+      request_type: String(this.pick(source.technical_request_type, source.request_type, source.requestType, 'Technical Admin')).trim(),
+      request_title: 'Technical Admin Request',
+      request_message: String(this.pick(source.technical_request_details, source.request_message, source.requestMessage)).trim(),
+      request_details: String(this.pick(source.technical_request_details, source.request_details, source.requestDetails)).trim(),
+      request_status: String(this.pick(source.technical_request_status, source.request_status, source.requestStatus)).trim() || 'Requested',
       priority: String(this.pick(source.priority)).trim(),
       location_count: Number(resolvedLocationCount) || 0,
       service_start_date: String(this.pick(source.service_start_date, source.serviceStartDate, agreement.service_start_date, agreement.serviceStartDate)).trim(),
@@ -141,7 +144,7 @@ const TechnicalAdmin = {
       agreement_status: String(this.pick(source.agreement_status, source.agreementStatus)).trim(),
       requested_by: String(this.pick(source.requested_by, source.requestedBy)).trim(),
       requested_at: String(this.pick(source.requested_at, source.requestedAt)).trim(),
-      assigned_to: String(this.pick(source.assigned_to, source.assignedTo, source.technical_admin_assigned_to, source.technicalAdminAssignedTo)).trim(),
+      assigned_to: String(this.pick(source.technical_admin_assigned_to, source.technicalAdminAssignedTo, source.assigned_to, source.assignedTo)).trim(),
       completed_at: String(this.pick(source.completed_at, source.completedAt)).trim(),
       updated_by: String(this.pick(source.updated_by, source.updatedBy)).trim(),
       updated_at: String(this.pick(source.updated_at, source.updatedAt)).trim(),
@@ -309,9 +312,12 @@ const TechnicalAdmin = {
     this.state.loadError = '';
     this.render();
     try {
-      const response = await Api.listTechnicalAdminRequests({}, { forceRefresh: !!options.force });
-      const rows = response?.rows || [];
-      this.state.rows = rows.map(row => this.normalizeRow(row)).filter(row => row.id || row.technical_request_id);
+      const response = await Api.listOperationsOnboarding({}, { forceRefresh: !!options.force });
+      const rows = Api.normalizeListResponse(response)?.rows || [];
+      this.state.rows = rows
+        .filter(row => row?.technical_request_type || row?.technical_request_status || row?.technical_request_details || row?.requested_at)
+        .map(row => this.normalizeRow(row))
+        .filter(row => row.id || row.technical_request_id);
       this.state.loaded = true;
     } catch (error) {
       this.state.rows = [];
@@ -350,9 +356,9 @@ const TechnicalAdmin = {
     let row = this.getRowById(id);
     this.state.activeRequestId = String(row?.id || id).trim();
     try {
-      const response = await Api.getTechnicalAdminRequest(this.state.activeRequestId);
+      const response = await Api.getOperationsOnboarding({ id: this.state.activeRequestId });
       const detail = Api.unwrapApiPayload(response);
-      const detailRow = this.normalizeRow(detail || response || {});
+      const detailRow = this.normalizeRow(detail?.onboarding || detail || response || {});
       if (detailRow.technical_request_id) {
         this.upsertLocalRow(detailRow);
         row = detailRow;
@@ -411,22 +417,32 @@ const TechnicalAdmin = {
     }
   },
   async updateStatus(status, extra = {}) {
-    const id = String(this.state.activeRequestId || '').trim();
-    if (!id) return;
+    const activeId = String(this.state.activeRequestId || '').trim();
+    if (!activeId) return;
+    const row = this.getRowById(activeId);
+    const rowId = String(row?.id || activeId).trim();
+    if (!rowId) return;
+    const nowIso = new Date().toISOString();
+    const nextStatus = String(status || '').trim() || 'Requested';
     try {
-      const response = await Api.updateTechnicalAdminRequestStatus(id, status, extra);
+      const response = await Api.updateOperationsOnboardingAction({
+        onboardingId: rowId,
+        agreementId: String(row?.agreement_id || '').trim(),
+        updates: {
+          technical_request_status: nextStatus,
+          updated_at: nowIso,
+          completed_at: nextStatus === 'Completed' ? nowIso : null,
+          ...(extra && typeof extra === 'object' ? extra : {})
+        }
+      });
       const payload = Api.unwrapApiPayload(response);
-      const returned = payload?.technical_request || payload?.request || payload;
-      if (returned && typeof returned === 'object' && returned.technical_request_id) {
-        this.upsertLocalRow(returned);
-      } else {
-        const existing = this.getRowById(id) || { technical_request_id: id };
-        this.upsertLocalRow({ ...existing, request_status: status, ...extra });
-      }
-      const labelId = String(this.getRowById(id)?.technical_request_id || id).trim();
-      UI.toast(`Technical request ${labelId} updated to ${status}.`);
+      const returned = payload?.operations_onboarding || payload?.onboarding || payload;
+      const existing = this.getRowById(rowId) || { id: rowId, technical_request_id: rowId };
+      this.upsertLocalRow({ ...existing, ...(returned && typeof returned === 'object' ? returned : {}), technical_request_status: nextStatus });
+      const labelId = String(this.getRowById(rowId)?.technical_request_id || rowId).trim();
+      UI.toast(`Technical request ${labelId} updated to ${nextStatus}.`);
       await this.loadAndRefresh({ force: true });
-      await this.openDetails(id);
+      await this.openDetails(rowId);
     } catch (error) {
       UI.toast('Unable to update technical admin request status: ' + (error?.message || 'Unknown error'));
     }
@@ -434,9 +450,27 @@ const TechnicalAdmin = {
   async assignToFlow() {
     const assignee = window.prompt('Assign Technical Admin to:');
     if (assignee == null) return;
-    await this.updateStatus((this.getRowById(this.state.activeRequestId)?.request_status || 'Requested'), {
-      assigned_to: String(assignee || '').trim()
-    });
+    const activeId = String(this.state.activeRequestId || '').trim();
+    const row = this.getRowById(activeId);
+    const rowId = String(row?.id || activeId).trim();
+    if (!rowId) return;
+    const nowIso = new Date().toISOString();
+    try {
+      await Api.updateOperationsOnboardingAction({
+        onboardingId: rowId,
+        agreementId: String(row?.agreement_id || '').trim(),
+        updates: {
+          technical_admin_assigned_to: String(assignee || '').trim(),
+          updated_at: nowIso
+        }
+      });
+      this.upsertLocalRow({ ...(row || { id: rowId }), technical_admin_assigned_to: String(assignee || '').trim(), updated_at: nowIso });
+      UI.toast('Technical admin assignee updated.');
+      await this.loadAndRefresh({ force: true });
+      await this.openDetails(rowId);
+    } catch (error) {
+      UI.toast('Unable to assign technical admin: ' + (error?.message || 'Unknown error'));
+    }
   },
   wire() {
     if (this.state.initialized) return;
@@ -469,10 +503,7 @@ const TechnicalAdmin = {
         const statusBtn = event.target?.closest?.('button[data-technical-status]');
         if (statusBtn) {
           const nextStatus = statusBtn.getAttribute('data-technical-status') || 'Requested';
-          const statusUpdates = {};
-          if (nextStatus === 'Completed') statusUpdates.completed_at = new Date().toISOString();
-          if (nextStatus === 'Requested') statusUpdates.completed_at = null;
-          return this.updateStatus(nextStatus, statusUpdates);
+          return this.updateStatus(nextStatus);
         }
         const assignBtn = event.target?.closest?.('button[data-technical-assign]');
         if (assignBtn) return this.assignToFlow();
