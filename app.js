@@ -3342,6 +3342,10 @@ function exportIssuesToExcel(rows, suffix) {
 }
 
 function exportFilteredExcel() {
+  if (!Permissions.canExport('tickets')) {
+    UI.toast('You do not have permission to export tickets.');
+    return;
+  }
   const rows = UI.Issues.applyFilters();
  exportIssuesToExcel(rows, 'filtered');
 }
@@ -5579,8 +5583,8 @@ const CSMActivity = {
     URL.revokeObjectURL(url);
   },
   exportCsmActivityCsv() {
-    if (!Permissions.canViewCsmActivity()) {
-      UI.toast('You do not have permission to view CSM activity.');
+    if (!Permissions.canExportCsmActivity()) {
+      UI.toast('You do not have permission to export CSM activity.');
       return;
     }
     const filteredRows = this.getFilteredCsmActivityRows();
@@ -5963,12 +5967,18 @@ const CSMActivity = {
   refresh() {
     const canCreate = this.canCreate();
     const canView = Permissions.canViewCsmActivity();
+    const canExport = Permissions.canExportCsmActivity();
     if (E.csmInlineSubmitBtn) {
       E.csmInlineSubmitBtn.style.display = canCreate ? '' : 'none';
     }
     if (E.csmExportCsvBtn) {
-      E.csmExportCsvBtn.style.display = canView ? '' : 'none';
-      E.csmExportCsvBtn.disabled = this.isLoading || !canView;
+      E.csmExportCsvBtn.style.display = canExport ? '' : 'none';
+      E.csmExportCsvBtn.disabled = this.isLoading || !canExport;
+      if (!canExport) {
+        E.csmExportCsvBtn.title = 'You do not have permission to export this data.';
+      } else {
+        E.csmExportCsvBtn.removeAttribute('title');
+      }
     }
     ['csmInlineTimestamp','csmInlineCsmName','csmInlineClient','csmInlineMinutes','csmInlineSupportType','csmInlineEffort','csmInlineChannel','csmInlineNotes']
       .forEach(id => { if (E[id]) E[id].disabled = !canCreate || this.isSaving; });

@@ -596,6 +596,9 @@ const Permissions = {
   canDelete(resource, role = Session.role()) {
     return this.canPerformAction(resource, 'delete', role);
   },
+  canExport(resource, role = Session.role()) {
+    return this.canPerformAction(resource, 'export', role);
+  },
   isAdmin() {
     return this.normalizeRole(Session.role()) === ROLES.ADMIN;
   },
@@ -619,6 +622,9 @@ const Permissions = {
   },
   canViewCsmActivity() {
     return this.canView('csm');
+  },
+  canExportCsmActivity() {
+    return this.canExport('csm_activities');
   },
   canCreateCsmActivity() {
     return this.canCreate('csm');

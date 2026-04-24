@@ -343,9 +343,20 @@ const Deals = {
     document.body.removeChild(anchor);
     URL.revokeObjectURL(url);
   },
+  updateExportButtonState() {
+    if (!E.dealsExportCsvBtn) return;
+    const canExport = Permissions.canExport('deals');
+    E.dealsExportCsvBtn.style.display = canExport ? '' : 'none';
+    E.dealsExportCsvBtn.disabled = this.state.loading || !canExport;
+    if (!canExport) {
+      E.dealsExportCsvBtn.title = 'You do not have permission to export this data.';
+    } else {
+      E.dealsExportCsvBtn.removeAttribute('title');
+    }
+  },
   exportDealsCsv() {
-    if (!Permissions.canView('deals')) {
-      UI.toast('You do not have permission to view deals.');
+    if (!Permissions.canExport('deals')) {
+      UI.toast('You do not have permission to export deals.');
       return;
     }
     const rows = Array.isArray(this.state.filteredRows) ? this.state.filteredRows : [];
@@ -853,6 +864,7 @@ const Deals = {
   },
   render() {
     if (!E.dealsState || !E.dealsTbody) return;
+    this.updateExportButtonState();
 
     if (this.state.loading) {
       E.dealsState.textContent = 'Loading deals…';
