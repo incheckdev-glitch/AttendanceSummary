@@ -586,11 +586,16 @@ const RolesAdmin = {
     if (!window.confirm(`Remove permission rule ${rule.resource}:${rule.action}?`)) return;
     try {
       await Promise.all(rule.rows.map(row => Api.updateRolePermission(this.permissionId(row), {
+        p_role_key: this.roleKey(row),
         role_key: this.roleKey(row),
+        p_resource: String(row.resource || '').trim().toLowerCase(),
         resource: String(row.resource || '').trim().toLowerCase(),
+        p_action: this.canonicalAction(row.action),
         action: this.canonicalAction(row.action),
         is_allowed: false,
         is_active: false,
+        original_resource: String(row.resource || '').trim().toLowerCase(),
+        original_action: this.canonicalAction(row.action)
       })));
       UI.toast('Permission rule removed.');
       await this.refreshPermissions(true);
@@ -615,11 +620,16 @@ const RolesAdmin = {
     targetRoles.forEach(roleKey => {
       const existing = rowsByRole.get(roleKey);
       const payload = {
+        p_role_key: roleKey,
         role_key: roleKey,
+        p_resource: validation.resource,
         resource: validation.resource,
+        p_action: validation.action,
         action: validation.action,
         is_allowed: true,
-        is_active: true
+        is_active: true,
+        original_resource: validation.resource,
+        original_action: validation.action
       };
       try { console.log('[RolesPermissions] upsert payload', payload); } catch {}
       upserts.push(Api.saveRolePermission(payload));
@@ -632,11 +642,16 @@ const RolesAdmin = {
       })
       .map(row => {
         const payload = {
+          p_role_key: this.roleKey(row),
           role_key: this.roleKey(row),
+          p_resource: validation.resource,
           resource: validation.resource,
+          p_action: validation.action,
           action: validation.action,
           is_allowed: false,
-          is_active: false
+          is_active: false,
+          original_resource: validation.resource,
+          original_action: validation.action
         };
         try { console.log('[RolesPermissions] final payload before save', { permission_id: this.permissionId(row), ...payload }); } catch {}
         return Api.updateRolePermission(this.permissionId(row), payload);
@@ -681,11 +696,16 @@ const RolesAdmin = {
         const actionValidation = this.validatePermissionPayload({ roleKeys: [roleKey], resource: baseValidation.resource, action });
         if (!actionValidation.valid) return;
         const payload = {
+          p_role_key: roleKey,
           role_key: roleKey,
+          p_resource: actionValidation.resource,
           resource: actionValidation.resource,
+          p_action: actionValidation.action,
           action: actionValidation.action,
           is_allowed: true,
-          is_active: true
+          is_active: true,
+          original_resource: actionValidation.resource,
+          original_action: actionValidation.action
         };
         try { console.log('[RolesPermissions] upsert payload', payload); } catch {}
         requests.push(Api.saveRolePermission(payload));
@@ -695,11 +715,16 @@ const RolesAdmin = {
         .filter(row => this.roleKey(row) === roleKey && !actionSet.has(this.canonicalAction(row.action)) && this.permissionId(row))
         .forEach(row => {
           const payload = {
+            p_role_key: roleKey,
             role_key: roleKey,
+            p_resource: baseValidation.resource,
             resource: baseValidation.resource,
+            p_action: this.canonicalAction(row.action),
             action: this.canonicalAction(row.action),
             is_allowed: false,
-            is_active: false
+            is_active: false,
+            original_resource: baseValidation.resource,
+            original_action: this.canonicalAction(row.action)
           };
           try { console.log('[RolesPermissions] final payload before save', { permission_id: this.permissionId(row), ...payload }); } catch {}
           requests.push(Api.updateRolePermission(this.permissionId(row), payload));
