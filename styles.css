@@ -1654,6 +1654,15 @@ background:var(--ai-table-row-even);
   margin-bottom:6px;
 }
 
+
+.decision-filters{display:flex;gap:8px;flex-wrap:wrap}
+.decision-queue{display:grid;gap:10px;margin-top:10px}
+.decision-card{border:1px solid var(--border);border-radius:12px;padding:12px;background:var(--card)}
+.chip.decision-sev-critical{background:rgba(220,38,38,.2);color:#b91c1c;border-color:rgba(220,38,38,.35)}
+.chip.decision-sev-high{background:rgba(245,158,11,.2);color:#b45309;border-color:rgba(245,158,11,.35)}
+.chip.decision-sev-medium{background:rgba(59,130,246,.2);color:#1d4ed8;border-color:rgba(59,130,246,.35)}
+.chip.decision-sev-low{background:rgba(16,185,129,.2);color:#047857;border-color:rgba(16,185,129,.35)}
+
 /* =========================================================
    Freeze windows UI
    ========================================================= */
