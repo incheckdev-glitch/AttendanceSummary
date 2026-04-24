@@ -7,6 +7,7 @@
     'csm_user_id',
     'csm_email',
     'csm_name',
+    'client',
     'client_id',
     'client_name',
     'company_name',
@@ -109,15 +110,15 @@
       csmName: cleanString(raw.csm_name || raw.csmName),
       client_id: cleanString(raw.client_id || raw.clientId),
       clientId: cleanString(raw.client_id || raw.clientId),
-      client_name: cleanString(raw.client_name || raw.clientName || raw.client),
-      clientName: cleanString(raw.client_name || raw.clientName || raw.client),
-      company_name: cleanString(raw.company_name || raw.companyName || raw.client_name || raw.client),
-      companyName: cleanString(raw.company_name || raw.companyName || raw.client_name || raw.client),
+      client: cleanString(raw.client || raw.client_name || raw.clientName || raw.company_name || raw.companyName),
+      client_name: cleanString(raw.client_name || raw.clientName || raw.client || raw.company_name || raw.companyName),
+      clientName: cleanString(raw.client_name || raw.clientName || raw.client || raw.company_name || raw.companyName),
+      company_name: cleanString(raw.company_name || raw.companyName || raw.client_name || raw.client || raw.clientName),
+      companyName: cleanString(raw.company_name || raw.companyName || raw.client_name || raw.client || raw.clientName),
       agreement_id: cleanString(raw.agreement_id || raw.agreementId),
       agreementId: cleanString(raw.agreement_id || raw.agreementId),
       onboarding_id: cleanString(raw.onboarding_id || raw.onboardingId),
       onboardingId: cleanString(raw.onboarding_id || raw.onboardingId),
-      client: cleanString(raw.client || raw.client_name || raw.clientName),
       time_spent_minutes: Number.parseFloat(raw.time_spent_minutes ?? raw.timeSpentMinutes ?? 0) || 0,
       timeSpentMinutes: Number.parseFloat(raw.time_spent_minutes ?? raw.timeSpentMinutes ?? 0) || 0,
       type_of_support: cleanString(raw.type_of_support || raw.supportType),
@@ -165,11 +166,14 @@
     const client = getClient();
     const userId = await getCurrentUserId(client);
     const identity = getCurrentUserIdentity();
-    const selectedClientName = cleanString(input.client_name ?? input.clientName ?? input.client);
+    const selectedClientName = cleanString(
+      input.client_name ?? input.clientName ?? input.company_name ?? input.companyName ?? input.client
+    );
     const mapped = {
       csm_user_id: (input.csm_user_id ?? input.csmUserId ?? identity.csm_user_id) || undefined,
       csm_email: (input.csm_email ?? input.csmEmail ?? identity.csm_email) || undefined,
       csm_name: input.csm_name ?? input.csmName ?? identity.csm_name,
+      client: selectedClientName,
       client_id: input.client_id ?? input.clientId,
       client_name: selectedClientName,
       company_name: input.company_name ?? input.companyName ?? selectedClientName,
@@ -188,11 +192,14 @@
     const client = getClient();
     const userId = await getCurrentUserId(client);
     const identity = getCurrentUserIdentity();
-    const selectedClientName = cleanString(input.client_name ?? input.clientName ?? input.client);
+    const selectedClientName = cleanString(
+      input.client_name ?? input.clientName ?? input.company_name ?? input.companyName ?? input.client
+    );
     const mapped = {
       csm_user_id: (input.csm_user_id ?? input.csmUserId ?? identity.csm_user_id) || undefined,
       csm_email: (input.csm_email ?? input.csmEmail ?? identity.csm_email) || undefined,
       csm_name: input.csm_name ?? input.csmName ?? identity.csm_name,
+      client: selectedClientName || undefined,
       client_id: input.client_id ?? input.clientId,
       client_name: selectedClientName || undefined,
       company_name: (input.company_name ?? input.companyName ?? selectedClientName) || undefined,
@@ -232,7 +239,7 @@
     return operation(working);
   }
 
-  function normalizeClientKey(value) {
+  function normalizeClientName(value) {
     return String(value || '')
       .trim()
       .toLowerCase()
@@ -251,50 +258,43 @@
     return list.includes(normalized) ? list : [...list, normalized];
   }
 
-  function combineSourceLabels(left = '', right = '') {
-    const labels = new Set([cleanString(left), cleanString(right)].filter(Boolean));
-    if (!labels.size) return '';
-    return [...labels].sort().join('+');
-  }
-
   function mergeClientOption(targetMap, incoming = {}) {
     const clientId = cleanString(incoming.client_id || incoming.clientId);
-    const clientName = toReadableClientName(incoming.client_name || incoming.clientName || incoming.company_name || incoming.companyName);
-    if (!clientId && !clientName) return;
-    const normalizedName = normalizeClientKey(clientName || incoming.company_name || incoming.companyName);
-    const idKey = clientId ? `id:${clientId}` : '';
-    const nameKey = normalizedName ? `name:${normalizedName}` : '';
-    const key = idKey || nameKey;
-    if (!key) return;
-    const existingById = idKey ? targetMap.get(idKey) : null;
-    const existingByName = nameKey ? targetMap.get(nameKey) : null;
-    const existing = existingById || existingByName || {};
+    const displayName = toReadableClientName(
+      incoming.client_name || incoming.clientName || incoming.company_name || incoming.companyName || incoming.client || incoming.name
+    );
+    const normalizedKey = normalizeClientName(displayName);
+    if (!normalizedKey) return;
+    const existing = targetMap.get(normalizedKey) || {};
     const incomingOnboardingId = cleanString(incoming.onboarding_id || incoming.onboardingId);
     const incomingAgreementId = cleanString(incoming.agreement_id || incoming.agreementId);
+    const existingSources = Array.isArray(existing.metadata?.sources) ? existing.metadata.sources : [];
+    const nextSource = cleanString(incoming.source || '');
     const merged = {
       client_id: clientId || existing.client_id || '',
-      client_name: chooseRicherText(existing.client_name, clientName),
+      client_name: chooseRicherText(existing.client_name, displayName),
       company_name: chooseRicherText(
         existing.company_name || existing.client_name,
-        toReadableClientName(incoming.company_name || incoming.companyName || clientName)
+        toReadableClientName(incoming.company_name || incoming.companyName || displayName)
       ),
-      source: combineSourceLabels(existing.source, incoming.source || ''),
+      client: chooseRicherText(existing.client || existing.client_name || existing.company_name, displayName),
       metadata: {
+        sources: mergeUnique(existingSources, nextSource),
         onboarding_ids: mergeUnique(existing.metadata?.onboarding_ids || [], incomingOnboardingId),
         agreement_ids: mergeUnique(existing.metadata?.agreement_ids || [], incomingAgreementId)
       }
     };
-    merged.onboarding_id = merged.metadata.onboarding_ids[0] || '';
-    merged.agreement_id = merged.metadata.agreement_ids[0] || '';
-    const displayName = merged.client_name || merged.company_name;
-    merged.label = displayName;
-    merged.value = merged.client_id ? `id:${merged.client_id}` : `name:${normalizeClientKey(displayName)}`;
+    const mergedDisplayName = merged.client_name || merged.company_name || merged.client || displayName;
+    merged.client_name = mergedDisplayName;
+    merged.company_name = mergedDisplayName;
+    merged.client = mergedDisplayName;
+    merged.label = mergedDisplayName;
+    merged.value = merged.client_id || normalizedKey;
     merged.search_text = [merged.client_name, merged.company_name, merged.client_id, ...merged.metadata.agreement_ids]
       .map(value => cleanString(value).toLowerCase())
       .filter(Boolean)
       .join(' ');
-    if (idKey) targetMap.set(idKey, merged);
-    if (nameKey) targetMap.set(nameKey, merged);
+    targetMap.set(normalizedKey, merged);
   }
 
   async function loadClientOptionsForCsmActivity() {
@@ -363,11 +363,11 @@
       });
     } catch {}
     const beforeCount = optionMap.size;
-    const deduped = [...new Set(optionMap.values())]
-      .filter(option => cleanString(option.client_name))
-      .sort((a, b) => cleanString(a.client_name).localeCompare(cleanString(b.client_name)));
-    console.log('[csm activity] client options count before/after dedupe', beforeCount, deduped.length);
-    return deduped;
+    const uniqueOptions = Array.from(optionMap.values())
+      .filter(option => cleanString(option.label || option.client_name || option.company_name))
+      .sort((a, b) => cleanString(a.label || a.client_name).localeCompare(cleanString(b.label || b.client_name)));
+    console.log('[csm clients] options before/after dedupe', beforeCount, uniqueOptions.length);
+    return uniqueOptions;
   }
 
   async function listActivities() {
@@ -389,7 +389,7 @@
   async function createActivity(input = {}) {
     if (!canMutate()) throw new Error('Only admin/hoo can create CSM activities.');
     const payload = await toInsertPayload(input);
-    console.log('[csm activity] filtered save payload', payload);
+    console.log('[csm activity] save payload', payload);
     const client = getClient();
     const { data, error } = await withColumnFallback(
       nextPayload => client.from(TABLE).insert(nextPayload).select('*').single(),
@@ -404,7 +404,7 @@
     const activityId = cleanString(id || updates.id);
     if (!activityId) throw new Error('CSM activity id is required.');
     const payload = await toUpdatePayload(updates);
-    console.log('[csm activity] filtered save payload', payload);
+    console.log('[csm activity] save payload', payload);
     const client = getClient();
     const { data, error } = await withColumnFallback(
       nextPayload => client.from(TABLE).update(nextPayload).eq('id', activityId).select('*').single(),
