@@ -12,6 +12,7 @@ const UserAdmin = {
     loadingRoles: false,
     error: '',
     editingUserId: '',
+    resettingUser: null,
     didAttemptProfileRepair: false
   },
   wire() {
@@ -59,6 +60,14 @@ const UserAdmin = {
       E.userEditForm.addEventListener('submit', async e => {
         e.preventDefault();
         await this.submitEdit();
+      });
+    }
+    if (E.userResetPwdClose) E.userResetPwdClose.addEventListener('click', () => this.closeResetPasswordModal());
+    if (E.userResetPwdCancel) E.userResetPwdCancel.addEventListener('click', () => this.closeResetPasswordModal());
+    if (E.userResetPwdForm) {
+      E.userResetPwdForm.addEventListener('submit', async e => {
+        e.preventDefault();
+        await this.submitResetPassword();
       });
     }
     this.loadRoles();
@@ -289,6 +298,10 @@ const UserAdmin = {
         const created = this.formatDate(this.getCreatedAt(user));
         const updated = this.formatDate(this.getUpdatedAt(user));
         const lastLogin = this.formatDate(this.getLastLoginAt(user));
+        const canResetPassword = Permissions.can('users', 'manage') || Permissions.can('users', 'update');
+        const resetButton = canResetPassword
+          ? '<button class="chip-btn" data-user-action="reset">Reset pwd</button>'
+          : '';
         return `<tr data-user-id="${U.escapeHtml(userId)}">
           <td>${U.escapeHtml(user.name || '—')}</td>
           <td>${U.escapeHtml(user.email || '—')}</td>
@@ -301,7 +314,7 @@ const UserAdmin = {
           <td>
             <div style="display:flex;gap:6px;flex-wrap:wrap;">
               <button class="chip-btn" data-user-action="edit">Edit</button>
-              <button class="chip-btn" data-user-action="reset">Reset pwd</button>
+              ${resetButton}
               <button class="chip-btn" data-user-action="toggle">${active ? 'Deactivate' : 'Activate'}</button>
               ${isSelf ? '<span class="muted" style="font-size:11px;">(You)</span>' : ''}
             </div>
@@ -415,24 +428,74 @@ const UserAdmin = {
       UI.toast('You do not have permission to reset user passwords.');
       return;
     }
-    const email = String(user?.email || user?.profile?.email || user?.row?.email || '').trim();
-    if (!email) {
-      UI.toast('Cannot reset password because this user has no email address.');
+    const userId = String(user?.id || user?.user_id || user?.profile_id || '').trim();
+    if (!userId) {
+      UI.toast('Cannot reset password because this user has no id.');
+      return;
+    }
+    this.state.resettingUser = user;
+    if (E.userResetPwdPassword) E.userResetPwdPassword.value = '';
+    if (E.userResetPwdConfirmPassword) E.userResetPwdConfirmPassword.value = '';
+    if (E.userResetPwdModal) {
+      E.userResetPwdModal.classList.add('open');
+      E.userResetPwdModal.setAttribute('aria-hidden', 'false');
+    }
+  },
+  closeResetPasswordModal() {
+    this.state.resettingUser = null;
+    if (E.userResetPwdForm) E.userResetPwdForm.reset();
+    if (E.userResetPwdModal) {
+      E.userResetPwdModal.classList.remove('open');
+      E.userResetPwdModal.setAttribute('aria-hidden', 'true');
+    }
+  },
+  async submitResetPassword() {
+    const hasPermission = Permissions.can('users', 'manage') || Permissions.can('users', 'update');
+    if (!hasPermission) {
+      UI.toast('You do not have permission to reset user passwords.');
+      return;
+    }
+    const selectedUser = this.state.resettingUser;
+    if (!selectedUser) return;
+    const password = String(E.userResetPwdPassword?.value || '');
+    const confirmPassword = String(E.userResetPwdConfirmPassword?.value || '');
+    if (!password) {
+      UI.toast('Temporary password is required.');
+      return;
+    }
+    if (password.length < 8) {
+      UI.toast('Temporary password must be at least 8 characters.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      UI.toast('Temporary password confirmation does not match.');
       return;
     }
     const client = window.SupabaseClient?.getClient?.();
     if (!client) {
-      UI.toast('Unable to send reset password email: Supabase client is not available.');
+      UI.toast('Unable to set temporary password: Supabase client is not available.');
       return;
     }
     try {
-      const { error } = await client.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`
-      });
+      const { data, error } = await client.functions.invoke(
+        'admin-set-temporary-password',
+        {
+          body: {
+            user_id: selectedUser.id || selectedUser.user_id || selectedUser.profile_id,
+            email: selectedUser.email,
+            temporary_password: password
+          }
+        }
+      );
       if (error) throw error;
-      UI.toast(`Password reset email sent to ${email}.`);
+      if (!data?.ok) {
+        throw new Error(String(data?.message || 'Unknown error'));
+      }
+      UI.toast('Temporary password set successfully.');
+      this.closeResetPasswordModal();
+      await this.refresh(true);
     } catch (error) {
-      UI.toast(`Unable to send reset password email: ${String(error?.message || 'Unknown error')}`);
+      UI.toast(`Unable to set temporary password: ${String(error?.message || 'Unknown error')}`);
     }
   },
   handleError(error, fallbackMessage) {

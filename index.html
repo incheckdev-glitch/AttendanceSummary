@@ -1095,6 +1095,39 @@ Sample:
         </div>
       </div>
 
+      <div id="userResetPwdModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="userResetPwdTitle" aria-hidden="true">
+        <div class="modal-content" style="max-width:520px;">
+          <div class="header">
+            <h2 id="userResetPwdTitle" style="margin:0;font-size:20px">Set Temporary Password</h2>
+            <button class="modal-close" id="userResetPwdClose" aria-label="Close temporary password modal">✕</button>
+          </div>
+          <form id="userResetPwdForm" class="user-form-grid">
+            <input
+              id="userResetPwdPassword"
+              class="input"
+              type="password"
+              placeholder="Temporary Password *"
+              minlength="8"
+              autocomplete="new-password"
+              required
+            />
+            <input
+              id="userResetPwdConfirmPassword"
+              class="input"
+              type="password"
+              placeholder="Confirm Temporary Password *"
+              minlength="8"
+              autocomplete="new-password"
+              required
+            />
+            <div style="grid-column:1 / -1;display:flex;justify-content:flex-end;gap:8px;">
+              <button id="userResetPwdCancel" class="btn ghost" type="button">Cancel</button>
+              <button id="userResetPwdSubmit" class="btn primary" type="submit">Set Temporary Password</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
       <section id="leadsView" class="view" role="tabpanel" aria-labelledby="leadsTab">
         <div class="card" aria-label="Leads list">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
