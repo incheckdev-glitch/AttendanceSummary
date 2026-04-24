@@ -1033,6 +1033,17 @@ const Invoices = {
   calculatePaymentSnapshot({ invoiceTotal = 0, oldPaidTotal = 0, paidNow = 0 } = {}) {
     return U.calculateInvoicePaymentSnapshot({ invoiceTotal, oldPaidTotal, paidNow });
   },
+  normalizeInvoicePaymentForForm(invoice = {}, { resetForNew = false } = {}) {
+    const total = this.toNumberSafe(invoice.invoice_total ?? invoice.grand_total);
+    if (resetForNew) {
+      return this.calculatePaymentSnapshot({ invoiceTotal: total, oldPaidTotal: 0, paidNow: 0 });
+    }
+    const rawAmountPaid = this.toNumberSafe(invoice.amount_paid ?? invoice.received_amount ?? invoice.amount_received);
+    const rawPaidNow = this.toNumberSafe(invoice.paid_now);
+    const hasLegacyPaidNow = rawPaidNow > 0 && rawAmountPaid <= 0;
+    const cumulativePaid = hasLegacyPaidNow ? rawPaidNow : rawAmountPaid;
+    return this.calculatePaymentSnapshot({ invoiceTotal: total, oldPaidTotal: cumulativePaid, paidNow: 0 });
+  },
   deriveCalculatedSummary(invoice = {}, items = [], { preferInvoiceValues = false } = {}) {
     const pickDefined = (...values) => values.find(value => value !== undefined && value !== null && !(typeof value === 'string' && value.trim() === ''));
     const hasItems = Array.isArray(items) && items.length > 0;
@@ -1723,6 +1734,20 @@ const Invoices = {
   openInvoice(invoice = this.emptyInvoice(), items = [], { readOnly = false } = {}) {
     if (!E.invoiceFormModal || !E.invoiceForm) return;
     this.state.selectedInvoice = this.normalizeInvoice(invoice);
+    const isExistingInvoice = !!String(this.state.selectedInvoice?.id || '').trim();
+    const normalizedFormPayment = this.normalizeInvoicePaymentForForm(this.state.selectedInvoice, {
+      resetForNew: !isExistingInvoice
+    });
+    this.state.selectedInvoice = {
+      ...this.state.selectedInvoice,
+      old_paid_total: normalizedFormPayment.old_paid_total,
+      paid_now: normalizedFormPayment.paid_now,
+      amount_paid: normalizedFormPayment.amount_paid,
+      received_amount: normalizedFormPayment.amount_paid,
+      pending_amount: normalizedFormPayment.pending_amount,
+      payment_state: normalizedFormPayment.payment_state,
+      payment_conclusion: normalizedFormPayment.payment_conclusion
+    };
     this.state.selectedInvoice.invoice_number = this.ensureInvoiceNumber(this.state.selectedInvoice.invoice_number);
     if (!this.state.selectedInvoice.issue_date) this.state.selectedInvoice.issue_date = this.todayIso();
     this.state.selectedInvoice.invoice_date = this.state.selectedInvoice.issue_date;
@@ -2350,7 +2375,7 @@ const Invoices = {
         this.applyTotalsToForm(this.deriveCalculatedSummary(this.collectFormValues().invoice, items));
       });
       E.invoiceForm.addEventListener('input', event => {
-        if (['invoiceFormStatus', 'invoiceFormPaidNow', 'invoiceFormGrandTotal'].includes(event.target?.id)) {
+        if (['invoiceFormStatus', 'invoiceFormPaidNow', 'invoiceFormGrandTotal', 'invoiceFormOldPaidTotal', 'invoiceFormSubtotalSubscription', 'invoiceFormSubtotalOneTime'].includes(event.target?.id)) {
           this.syncPaymentFieldsInForm();
         }
         const field = event.target?.getAttribute('data-item-field');
@@ -2377,7 +2402,7 @@ const Invoices = {
         this.syncPaymentFieldsInForm();
       });
       E.invoiceForm.addEventListener('change', event => {
-        if (['invoiceFormStatus','invoiceFormPaidNow','invoiceFormGrandTotal'].includes(event.target?.id)) {
+        if (['invoiceFormStatus', 'invoiceFormPaidNow', 'invoiceFormGrandTotal', 'invoiceFormOldPaidTotal', 'invoiceFormSubtotalSubscription', 'invoiceFormSubtotalOneTime'].includes(event.target?.id)) {
           this.syncPaymentFieldsInForm();
         }
         const field = event.target?.getAttribute('data-item-field');

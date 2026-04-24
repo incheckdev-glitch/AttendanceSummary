@@ -750,7 +750,7 @@ const Receipts = {
     const invoiceTotal = this.toNumberSafe(sourceInvoice?.invoice_total ?? sourceInvoice?.grand_total);
     const oldPaidTotal = this.toNumberSafe(sourceInvoice?.amount_paid ?? sourceInvoice?.received_amount ?? sourceInvoice?.amount_received);
     const pendingAmount = Math.max(0, this.toNumberSafe(sourceInvoice?.pending_amount || (invoiceTotal - oldPaidTotal)));
-    const paidNow = pendingAmount;
+    const paidNow = pendingAmount > 0 ? pendingAmount : 0;
     const snapshot = this.calculatePaymentSnapshot({ invoiceTotal, oldPaidTotal, paidNow });
     const draft = {
       receipt_id: '',

@@ -273,24 +273,33 @@ const U = {
     const pendingAmount = U.calculatePendingAmount(total, paid);
     return pendingAmount > 0 ? 'Pending Settlement' : 'Settled';
   },
-  calculateInvoicePaymentSnapshot: ({ invoiceTotal = 0, oldPaidTotal = 0, paidNow = 0 } = {}) => {
-    const total = U.toMoneyNumber(invoiceTotal);
+  calculateInvoicePaymentFields: ({ grandTotal = 0, oldPaidTotal = 0, paidNow = 0 } = {}) => {
+    const total = Math.max(0, U.toMoneyNumber(grandTotal));
     const previousPaid = Math.max(0, U.toMoneyNumber(oldPaidTotal));
     const currentPaid = Math.max(0, U.toMoneyNumber(paidNow));
-    const newPaidTotal = previousPaid + currentPaid;
-    const pendingAmount = U.calculatePendingAmount(total, newPaidTotal);
-    const paymentState = U.calculatePaymentState(total, newPaidTotal);
-    const paymentConclusion = U.calculatePaymentConclusion(total, newPaidTotal);
+    const amountPaid = Math.min(previousPaid + currentPaid, total);
+    const pendingAmount = Math.max(total - amountPaid, 0);
+    let paymentState = 'Unpaid';
+    if (amountPaid > 0 && amountPaid < total) paymentState = 'Partially Paid';
+    if (amountPaid >= total && total > 0) paymentState = 'Paid';
+    const paymentConclusion = pendingAmount > 0 ? 'Pending Settlement' : 'Settled';
     return {
-      invoice_total: total,
       old_paid_total: previousPaid,
       paid_now: currentPaid,
-      received_amount: currentPaid,
-      new_paid_total: newPaidTotal,
-      amount_paid: newPaidTotal,
+      amount_paid: amountPaid,
       pending_amount: pendingAmount,
       payment_state: paymentState,
       payment_conclusion: paymentConclusion
+    };
+  },
+  calculateInvoicePaymentSnapshot: ({ invoiceTotal = 0, oldPaidTotal = 0, paidNow = 0 } = {}) => {
+    const total = Math.max(0, U.toMoneyNumber(invoiceTotal));
+    const fields = U.calculateInvoicePaymentFields({ grandTotal: total, oldPaidTotal, paidNow });
+    return {
+      invoice_total: total,
+      ...fields,
+      received_amount: fields.paid_now,
+      new_paid_total: fields.amount_paid
     };
   }
 };
