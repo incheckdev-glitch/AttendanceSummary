@@ -42,7 +42,7 @@
     <div class="toolbar">
       <input id="searchInput" class="input" type="search"
              placeholder="Search ID, title, description, log…  ( / to focus )"
-             aria-label="Search issues" />
+             aria-label="Search tickets" />
 
       <select id="themeSelect" class="select" aria-label="Theme">
         <option value="system">System</option>
@@ -53,7 +53,7 @@
       <button id="refreshNow" class="btn" aria-label="Refresh from source">
         <span class="icon" aria-hidden="true">🔄</span> Refresh
       </button>
-      <button id="exportCsv" class="btn" aria-label="Export filtered issues as Excel">
+      <button id="exportCsv" class="btn" aria-label="Export filtered tickets as Excel">
         <span class="icon" aria-hidden="true">📥</span> Export
       </button>
       <button id="shortcutsHelp" class="btn ghost sm" type="button" title="Keyboard shortcuts">
@@ -96,12 +96,12 @@
         <div class="hero-eyebrow">Internal operations workspace</div>
         <h1>Keep ticketing ops aligned, visible, and ready for every release.</h1>
         <p>
-         InCheck360 MonitorCore is our internal hub for issue tracking, deployment calendars, and AI signals—built to drive confident prioritization and faster execution.
+         InCheck360 MonitorCore is our internal hub for ticket tracking, deployment calendars, and AI signals—built to drive confident prioritization and faster execution.
         </p>
         <div class="hero-actions">
           <a class="btn ghost cta" href="#app">Explore dashboard</a>
         </div>
-        <small class="muted">Internal-only access · Works with our existing issue sheet</small>
+        <small class="muted">Internal-only access · Works with our existing ticket sheet</small>
       </div>
       <aside class="hero-card login-card" aria-label="Login panel">
         <img src="assets/incheck-logo.svg" class="login-logo" alt="InCheck360 MonitorCore" width="168" height="44" />
@@ -149,8 +149,8 @@
           <select id="devTeamStatusFilter" class="select" aria-label="Filter by dev team status"></select>
         </div>
         <div class="filter-row" id="issueRelatedFilterRow">
-          <label class="muted" for="issueRelatedFilter">Issue Related</label>
-          <select id="issueRelatedFilter" class="select" aria-label="Filter by issue related"></select>
+          <label class="muted" for="issueRelatedFilter">Ticket Related</label>
+          <select id="issueRelatedFilter" class="select" aria-label="Filter by ticket related"></select>
         </div>
       </div>
 
@@ -172,7 +172,7 @@
       <div class="filter-group">
         <button id="resetBtn" class="btn ghost" aria-label="Reset all filters">Reset</button>
         <span class="muted">
-          Tip: click any KPI to filter by that status. “Total Issues” resets everything.
+          Tip: click any KPI to filter by that status. “Total Tickets” resets everything.
         </span>
       </div>
       </div>
@@ -303,7 +303,7 @@
           <div class="view-tabs" role="tablist" aria-orientation="vertical">
             <button id="issuesTab" class="view-tab active" data-view="issues"
                     role="tab" aria-selected="true" aria-controls="issuesView">
-              <span class="icon" aria-hidden="true">📋</span> Issues
+              <span class="icon" aria-hidden="true">📋</span> Tickets
             </button>
             <button id="calendarTab" class="view-tab" data-view="calendar"
                     role="tab" aria-selected="false" aria-controls="calendarView">
@@ -381,7 +381,7 @@
         </aside>
         <div class="content-panels">
 
-      <!-- Issues view -->
+      <!-- Tickets view -->
       <section id="issuesView" class="view active" role="tabpanel" aria-labelledby="issuesTab">
         <div class="card summary-bar" id="issuesSummaryCard">
           <span id="issuesSummaryText" aria-live="polite">Loading summary…</span>
@@ -392,17 +392,17 @@
         <div class="grid cols-4" id="kpis" aria-live="polite"></div>
 
         <div class="charts" aria-label="Charts">
-          <div class="card"><canvas id="byModule" height="140" aria-label="Issues by module" role="img"></canvas></div>
-          <div class="card"><canvas id="byPriority" height="140" aria-label="Issues by priority" role="img"></canvas></div>
-          <div class="card"><canvas id="byStatus" height="140" aria-label="Issues by status" role="img"></canvas></div>
-          <div class="card"><canvas id="byType" height="140" aria-label="Issues by type" role="img"></canvas></div>
+          <div class="card"><canvas id="byModule" height="140" aria-label="Tickets by module" role="img"></canvas></div>
+          <div class="card"><canvas id="byPriority" height="140" aria-label="Tickets by priority" role="img"></canvas></div>
+          <div class="card"><canvas id="byStatus" height="140" aria-label="Tickets by status" role="img"></canvas></div>
+          <div class="card"><canvas id="byType" height="140" aria-label="Tickets by type" role="img"></canvas></div>
         </div>
 
-        <div class="card" aria-label="Issues table">
+        <div class="card" aria-label="Tickets table">
            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
             <div>
-              <strong>Issues</strong>
-              <div class="muted">Live feed from InCheck issues sheet.</div>
+              <strong>Tickets</strong>
+              <div class="muted">Live feed from InCheck tickets sheet.</div>
             </div>
           <div class="table-tools">
               <button id="createTicketBtn" class="btn primary" aria-label="Create new ticket" type="button">
@@ -424,7 +424,7 @@
 
           <div id="activeFiltersChips" class="filter-chips" aria-live="polite"></div>
 
-          <div class="table-wrap" role="region" aria-label="Scrollable issues table">
+          <div class="table-wrap" role="region" aria-label="Scrollable tickets table">
             <table id="issuesTable">
               <thead>
                 <tr>
@@ -443,7 +443,7 @@
                   <th data-col="notificationSent" data-key="notificationSent" class="sortable" scope="col" aria-sort="none">Notification Sent</th>
                   <th data-col="youtrackReference" data-key="youtrackReference" class="sortable" scope="col" aria-sort="none">YouTrack Reference</th>
                   <th data-col="devTeamStatus" data-key="devTeamStatus" class="sortable" scope="col" aria-sort="none">Dev Team Status</th>
-                  <th data-col="issueRelated" data-key="issueRelated" class="sortable" scope="col" aria-sort="none">Issue Related</th>
+                  <th data-col="issueRelated" data-key="issueRelated" class="sortable" scope="col" aria-sort="none">Ticket Related</th>
                   <th data-col="notes" data-key="notes" class="sortable" scope="col" aria-sort="none">Notes</th>
                   <th data-col="log" data-key="log" class="sortable" scope="col" aria-sort="none">Log</th>
                   <th data-col="notificationUnderReview" data-key="notificationUnderReview" class="sortable" scope="col" aria-sort="none">Notification Sent Under Review</th>
@@ -702,7 +702,7 @@ Sample:
             <div>
               <strong>Release Planner — F&amp;B Middle East</strong>
               <div class="muted" style="margin-top:4px;font-size:12px;">
-                Suggests safer deployment windows based on rush hours, open high-risk issues and similar past bugs.
+                Suggests safer deployment windows based on rush hours, open high-risk tickets and similar past bugs.
                 Lower score = safer window.
               </div>
             </div>
@@ -805,10 +805,10 @@ Sample:
               <div class="filter-row">
                 <label class="muted" for="plannerTickets">Tickets (from current filters)</label>
                 <select id="plannerTickets" class="select" multiple size="5">
-                  <!-- Populated by JS with currently filtered issues -->
+                  <!-- Populated by JS with currently filtered tickets -->
                 </select>
                 <div class="muted" style="margin-top:4px;">
-                  Uses the same filters as the Issues tab (module, status, dates, etc.).
+                  Uses the same filters as the Tickets tab (module, status, dates, etc.).
                 </div>
               </div>
 
@@ -827,7 +827,7 @@ Sample:
         <div class="card">
           <strong>AI Insights / Copilot</strong>
           <div class="muted" style="margin-top:4px;">
-            Heuristic, explainable analytics on issues text (no external AI). Risk breakdown, clustering,
+            Heuristic, explainable analytics on tickets text (no external AI). Risk breakdown, clustering,
             trends, triage & calendar risk.
           </div>
           <div id="aiAnalyzing" class="skeleton" style="height:6px;border-radius:6px;margin-top:10px;display:none"></div>
@@ -864,7 +864,7 @@ Sample:
             <ul id="aiTrendsList" class="muted" style="font-size:13px;margin-top:6px;padding-left:18px;"></ul>
           </div>
           <div class="card">
-            <strong>Incident-like issues</strong>
+            <strong>Incident-like tickets</strong>
             <ul id="aiIncidentsList" class="muted" style="font-size:13px;margin-top:6px;padding-left:18px;"></ul>
           </div>
           <div class="card">
@@ -901,7 +901,7 @@ Sample:
         <div class="card">
            <strong>Root cause clustering dashboard</strong>
           <div class="muted" style="font-size:12px;margin-top:4px;">
-            Group related issues, inspect top modules, and apply a cluster filter.
+            Group related tickets, inspect top modules, and apply a cluster filter.
           </div>
           <div class="cluster-dashboard">
             <div id="aiClustersList" class="cluster-list"></div>
@@ -910,7 +910,7 @@ Sample:
         </div>
 
         <div class="card">
-          <strong>Triage queue (issues needing attention)</strong>
+          <strong>Triage queue (tickets needing attention)</strong>
           <div class="muted" style="font-size:12px;margin-top:4px;">
             Missing fields, misaligned priority, ordered by risk. Suggestions are heuristic.
           </div>
@@ -920,7 +920,7 @@ Sample:
         <div class="card">
           <strong>Upcoming risky events (next 7 days)</strong>
           <div class="muted" style="font-size:12px;margin-top:4px;">
-            Combines calendar events with open, high-risk issues in related modules and change collision signals.
+            Combines calendar events with open, high-risk tickets in related modules and change collision signals.
           </div>
           <ul id="aiEventsList" class="muted" style="font-size:13px;margin-top:6px;padding-left:18px;"></ul>
         </div>
@@ -939,7 +939,7 @@ Sample:
                    placeholder="Ask or query…  ( Ctrl + K )"
                    style="flex:1;min-width:260px;">
             <button id="aiQueryRun" class="btn sm" type="button">Run</button>
-            <button id="aiQueryApplyFilters" class="btn ghost sm" type="button" title="Apply to Issues">Apply to Issues</button>
+            <button id="aiQueryApplyFilters" class="btn ghost sm" type="button" title="Apply to Tickets">Apply to Tickets</button>
             <button id="aiQueryExport" class="btn ghost sm" type="button" title="Export query results as CSV">Export CSV</button>
           </div>
           <div id="aiQueryResults" class="muted" style="font-size:13px;margin-top:8px;"></div>
@@ -2156,27 +2156,27 @@ Sample:
     </div>
   </div>
 
-  <!-- Issue Modal -->
+  <!-- Ticket Modal -->
   <div id="issueModal" class="modal" role="dialog" aria-modal="true"
        aria-labelledby="modalTitle" aria-describedby="modalBody">
     <div class="modal-content">
       <div class="header">
-        <h2 id="modalTitle" style="margin:0;font-size:20px">Issue</h2>
+        <h2 id="modalTitle" style="margin:0;font-size:20px">Ticket</h2>
         <div class="actions">
           <span id="replyRecipientLabel" class="muted" style="font-size:12px;" hidden>To: khaled.yakan@incheck360.nl</span>
           <button id="replyEmailBtn" class="btn sm" type="button" aria-label="Reply via email">
             <span class="icon" aria-hidden="true">📧</span> Reply via Email
           </button>
-          <button id="editIssueBtn" class="btn sm primary" type="button" aria-label="Edit issue">
+          <button id="editIssueBtn" class="btn sm primary" type="button" aria-label="Edit ticket">
             <span class="icon" aria-hidden="true">✏️</span> Edit
           </button>
-          <button id="exportIssuePdf" class="btn sm" type="button" aria-label="Export issue as PDF">
+          <button id="exportIssuePdf" class="btn sm" type="button" aria-label="Export ticket as PDF">
             <span class="icon" aria-hidden="true">📄</span> Export PDF
           </button>
-          <button id="exportIssueExcel" class="btn sm" type="button" aria-label="Export issue as Excel">
+          <button id="exportIssueExcel" class="btn sm" type="button" aria-label="Export ticket as Excel">
             <span class="icon" aria-hidden="true">📊</span> Export Excel
           </button>
-          <button id="copyLink" class="btn sm" type="button" aria-label="Copy issue link">
+          <button id="copyLink" class="btn sm" type="button" aria-label="Copy ticket link">
             <span class="icon" aria-hidden="true">🔗</span> Copy Link
           </button>
           <button class="modal-close" id="modalClose" aria-label="Close">✕</button>
@@ -2186,7 +2186,7 @@ Sample:
     </div>
   </div>
 
-  <!-- Edit Issue Modal -->
+  <!-- Edit Ticket Modal -->
   <div id="editIssueModal" class="modal" role="dialog" aria-modal="true"
        aria-labelledby="editIssueTitle" aria-describedby="editIssueBody">
     <div class="modal-content">
@@ -2282,9 +2282,9 @@ Sample:
             </div>
 
             <div class="filter-row">
-              <label class="muted" for="editIssueRelated">Issue Related</label>
+              <label class="muted" for="editIssueRelated">Ticket Related</label>
               <select id="editIssueRelated" class="select" multiple size="4"
-                      aria-label="Select one or more issue related options">
+                      aria-label="Select one or more ticket related options">
                 <option value="Backend">Backend</option>
                 <option value="Frontend">Frontend</option>
                 <option value="Mobile App">Mobile App</option>
@@ -2380,7 +2380,7 @@ Sample:
               </select>
             </div>
             <div class="filter-row">
-              <label class="muted" for="eventIssueId">Issue ID (optional)</label>
+              <label class="muted" for="eventIssueId">Ticket ID (optional)</label>
               <input id="eventIssueId" class="input" type="text"
                      placeholder="e.g. INC-123 or ticket ID(s)" />
             </div>
@@ -3388,7 +3388,7 @@ Sample:
           </div>
         </div>
         <p class="muted" style="margin-top:12px;">
-          A unified workspace for tracking issues, planning releases, and staying ahead of risk.
+          A unified workspace for tracking tickets, planning releases, and staying ahead of risk.
         </p>
       </div>
       <div>

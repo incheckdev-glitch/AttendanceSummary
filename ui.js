@@ -965,7 +965,7 @@ const UI = {
     const rawTimestamp = when == null ? '' : String(when).replace(/\s*\n\s*/g, ' ').trim();
     const formattedTimestamp = rawTimestamp ? U.fmtTS(rawTimestamp) : '';
     const syncTimestamp = formattedTimestamp && formattedTimestamp !== '—' ? formattedTimestamp : 'never';
-    txt.textContent = `${which === 'issues' ? 'Issues' : 'Events'}: ${syncTimestamp}`;
+    txt.textContent = `${which === 'issues' ? 'Tickets' : 'Events'}: ${syncTimestamp}`;
     dot.className = 'dot ' + (ok ? 'ok' : 'err');
   },
   setAnalyzing(v) {

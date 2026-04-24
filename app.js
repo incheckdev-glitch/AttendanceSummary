@@ -197,7 +197,7 @@ UI.Issues = {
       d.setAttribute('aria-label', `${label}: ${val} (${pct} percent)`);
       d.innerHTML = `<div class="label">${label}</div><div class="value">${val}</div><div class="sub">${pct}%</div>`;
       d.onclick = () => {
-        if (label === 'Total Issues') {
+        if (label === 'Total Tickets') {
           Filters.state = {
             search: '',
             module: 'All',
@@ -225,7 +225,7 @@ UI.Issues = {
       });
       E.kpis.appendChild(d);
     };
-    add('Total Issues', total);
+    add('Total Tickets', total);
     Object.entries(counts).forEach(([s, v]) => add(s, v));
   },
   renderTable(list) {
@@ -333,7 +333,7 @@ UI.Issues = {
               col => `<td data-col="${col.key}">${renderCell(r, col)}</td>`
             )
             .join('');
-        return `<tr role="button" tabindex="0" aria-label="Open issue ${U.escapeHtml(
+        return `<tr role="button" tabindex="0" aria-label="Open ticket ${U.escapeHtml(
             issueDisplayId(r) || r.id || ''
           )}" data-id="${U.escapeAttr(r.id)}">
             ${cells}
@@ -354,14 +354,14 @@ UI.Issues = {
       if (Filters.state.devTeamStatus && Filters.state.devTeamStatus !== 'All')
         parts.push(`dev team status = ${Filters.state.devTeamStatus}`);
       if (Filters.state.issueRelated && Filters.state.issueRelated !== 'All')
-        parts.push(`issue related = ${Filters.state.issueRelated}`);
+        parts.push(`ticket related = ${Filters.state.issueRelated}`);
       if (Filters.state.start) parts.push(`from ${Filters.state.start}`);
       if (Filters.state.end) parts.push(`to ${Filters.state.end}`);
       const desc = parts.length ? parts.join(', ') : 'no filters';
       E.issuesTbody.innerHTML = `
         <tr>
           <td colspan="${ColumnManager.getVisibleColumnCount()}" style="text-align:center;color:var(--muted)">
-            No issues found for ${U.escapeHtml(desc)}.
+            No tickets found for ${U.escapeHtml(desc)}.
             <button type="button" class="btn sm" id="clearFiltersBtn" style="margin-left:8px">Clear filters</button>
           </td>
         </tr>`;
@@ -542,7 +542,7 @@ UI.Issues.renderFilterChips = function () {
   if (s.devTeamStatus && s.devTeamStatus !== 'All')
     addChip('Dev Team Status', s.devTeamStatus, 'devTeamStatus');
   if (s.issueRelated && s.issueRelated !== 'All')
-    addChip('Issue Related', s.issueRelated, 'issueRelated');
+    addChip('Ticket Related', s.issueRelated, 'issueRelated');
   if (s.start) addChip('From', s.start, 'start');
   if (s.end) addChip('To', s.end, 'end');
 
@@ -596,7 +596,7 @@ UI.Issues.renderSummary = function (list) {
     if (risk >= CONFIG.RISK.highRisk) highRisk++;
   });
   E.issuesSummaryText.textContent =
-     `${total} issue${total === 1 ? '' : 's'} · ${open} open · ${highRisk} high-risk`;
+     `${total} ticket${total === 1 ? '' : 's'} · ${open} open · ${highRisk} high-risk`;
 
   if (E.issuesLastUpdated) {
     const lastUpdated = IssuesCache.lastUpdated();
@@ -677,7 +677,7 @@ const Analytics = {
 
     // Scope & signals
     if (E.aiScopeText) {
-      E.aiScopeText.textContent = `Analyzing ${list.length} issues (${recent.length} recent, ~last ${recentCut} days).`;
+      E.aiScopeText.textContent = `Analyzing ${list.length} tickets (${recent.length} recent, ~last ${recentCut} days).`;
     }
     const signals = ['timeout', 'payments', 'billing', 'login', 'auth', 'error', 'crash'].filter(
       t => termCounts.has(t)
@@ -781,7 +781,7 @@ const Analytics = {
     `
             )
             .join('')
-        : '<li>No incident-like issues detected.</li>';
+        : '<li>No incident-like tickets detected.</li>';
     }
 
     // Emerging vs stable
@@ -824,7 +824,7 @@ const Analytics = {
     });
     if (E.aiOpsCockpit) {
       E.aiOpsCockpit.innerHTML = `
-      <li>Untagged issues (missing category/type): ${
+      <li>Untagged tickets (missing category/type): ${
         list.filter(r => !r.type).length
       }</li>
       <li>Missing priority: ${missingPriority.length}</li>
@@ -933,7 +933,7 @@ const Analytics = {
         </li>`;
             })
             .join('')
-        : '<li>No high-risk recent issues.</li>';
+        : '<li>No high-risk recent tickets.</li>';
     }
 
     // Clusters
@@ -982,13 +982,13 @@ const Analytics = {
           Pattern: <strong>${U.escapeHtml(cluster.signature || '(no pattern)')}</strong>
         </div>
         <div style="font-size:13px;margin-bottom:4px;">
-          ${cluster.issues.length} issues · Avg risk ${cluster.avgRisk.toFixed(1)}
+          ${cluster.issues.length} tickets · Avg risk ${cluster.avgRisk.toFixed(1)}
         </div>
         <div class="muted" style="font-size:12px;margin-bottom:6px;">
           Top modules: ${modulesHtml}
         </div>
         <ul style="margin:0;padding-left:18px;font-size:13px;">
-         ${issuesHtml || '<li class="muted">No issues in this cluster.</li>'}
+         ${issuesHtml || '<li class="muted">No tickets in this cluster.</li>'}
           ${
             cluster.issues.length > 6
               ? `<li class="muted">+ ${cluster.issues.length - 6} more…</li>`
@@ -998,7 +998,7 @@ const Analytics = {
     <div class="cluster-detail-actions">
           <button class="btn sm" type="button" data-cluster-apply="${U.escapeAttr(
             cluster.signature || ''
-          )}">Apply to Issues</button>
+          )}">Apply to Tickets</button>
         </div>
       `;
 
@@ -1014,7 +1014,7 @@ const Analytics = {
           Filters.save();
           syncFilterInputs();
           setActiveView('issues');
-          UI.toast('Applied cluster filter to issues');
+          UI.toast('Applied cluster filter to tickets');
         });
       });
     };
@@ -1026,14 +1026,14 @@ const Analytics = {
               (c, idx) => `
               <button class="cluster-item ${idx === 0 ? 'active' : ''}" data-cluster-index="${idx}">
                 <div class="cluster-title">${U.escapeHtml(c.signature || '(no pattern)')}</div>
-                <div class="cluster-meta">${c.issues.length} issues · Avg risk ${c.avgRisk.toFixed(
+                <div class="cluster-meta">${c.issues.length} tickets · Avg risk ${c.avgRisk.toFixed(
                   1
                 )}</div>
               </button>
             `
             )
             .join('')
-        : '<div class="muted">No similar issue groups ≥2.</div>';
+        : '<div class="muted">No similar ticket groups ≥2.</div>';
       
       E.aiClustersList.querySelectorAll('[data-cluster-index]').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -1095,7 +1095,7 @@ const Analytics = {
       </li>`;
             })
             .join('')
-        : '<li>No issues requiring triage.</li>';
+        : '<li>No tickets requiring triage.</li>';
     }
 
     // Upcoming risky events
@@ -1115,7 +1115,7 @@ const Analytics = {
                 r.modules.length
                   ? r.modules.map(U.escapeHtml).join(', ')
                   : 'n/a'
-              } · Related issues: ${r.issues.length}</div>
+              } · Related tickets: ${r.issues.length}</div>
       </li>`;
             })
             .join('')
@@ -1133,7 +1133,7 @@ const Analytics = {
         const id = b.getAttribute('data-copy');
         const r = DataStore.byId.get(id);
         const meta = DataStore.computed.get(id) || {};
-        const text = `Issue ${issueDisplayId(r) || r.id}
+        const text = `Ticket ${issueDisplayId(r) || r.id}
 Title: ${r.title}
 Suggested Priority: ${meta.suggestions?.priority}
 Suggested Categories: ${(meta.suggestions?.categories || [])
@@ -1328,7 +1328,7 @@ UI.Modals = {
     const internalSectionsHtml = ColumnManager.isColumnAllowed('issueRelated')
       ? `
         <section class="ticket-description">
-          <h5>Issue Related</h5>
+          <h5>Ticket Related</h5>
           <p>${issueRelatedBadges || issueRelated}</p>
         </section>
       `
@@ -2040,7 +2040,7 @@ const issueUpdate = {
   try {
     const updatedIssue = await saveIssueToSheet(issueUpdate, Session.authContext());
     if (!updatedIssue) {
-      throw new Error('Issue update did not return a response.');
+      throw new Error('Ticket update did not return a response.');
     }
 
     applyIssueUpdate(updatedIssue);
@@ -2619,7 +2619,7 @@ const readiness = ext.readiness || ext.checklist || {};
         tooltip += `\n⚠️ Change risk signals:`;
         if (ext.collision) tooltip += ` overlaps with other change(s)`;
         if (ext.freeze) tooltip += ` · in freeze window`;
-        if (ext.hotIssues) tooltip += ` · high-risk open issues`;
+        if (ext.hotIssues) tooltip += ` · high-risk open tickets`;
       }
 
       if (tooltip.trim()) info.el.setAttribute('title', tooltip);
@@ -2891,7 +2891,7 @@ async function loadIssues(force = false) {
   } catch (e) {
     if (isPermissionErrorSafe(e)) {
       console.log('[startup] permission error preserved session', e?.message);
-      UI.toast('Some issues are unavailable for your role. Your session is still active.');
+      UI.toast('Some tickets are unavailable for your role. Your session is still active.');
       UI.setSync('issues', !!DataStore.rows.length, null);
       return;
     }
@@ -2910,7 +2910,7 @@ async function loadIssues(force = false) {
       const retryBtn = document.getElementById('retryLoad');
       if (retryBtn) retryBtn.addEventListener('click', () => loadIssues(true));
     }
-    UI.toast('Error loading issues: ' + e.message);
+    UI.toast('Error loading tickets: ' + e.message);
     UI.setSync('issues', !!DataStore.rows.length, null);
   } finally {
     UI.spinner(false);
@@ -3256,7 +3256,7 @@ async function saveIssueToSheet(issue, auth = {}, options = {}) {
       }
     }
 
-    UI.toast('Issue updated');
+    UI.toast('Ticket updated');
     return normalizeIssueForStore({
       ...mergedTicket,
       id: mergedTicket?.id ?? issueRowId,
@@ -3279,7 +3279,7 @@ async function saveIssueToSheet(issue, auth = {}, options = {}) {
       await handleExpiredSession('Session expired while updating ticket.');
       return null;
     }
-    UI.toast('Error updating issue: ' + e.message);
+    UI.toast('Error updating ticket: ' + e.message);
    throw e;
   } finally {
     if (useSpinner) UI.spinner(false);
@@ -3349,7 +3349,7 @@ function buildIssueExportRow(issue) {
   if (Permissions.isAdminLike()) {
     row['YouTrack Reference'] = issue.youtrackReference;
     row['Dev Team Status'] = issue.devTeamStatus;
-    row['Issue Related'] = issue.issueRelated;
+    row['Ticket Related'] = issue.issueRelated;
     row.Notes = issue.notes;
   }
   return row;
@@ -3376,7 +3376,7 @@ const ISSUE_EXPORT_HEADERS = [
 const ISSUE_EXPORT_HEADERS_ADMIN_ONLY = [
   'YouTrack Reference',
   'Dev Team Status',
-  'Issue Related',
+  'Ticket Related',
   'Notes'
 ];
 
@@ -3415,8 +3415,8 @@ function exportIssuesToExcel(rows, suffix) {
     ['Filter - Status', Filters.state.status || 'All'],
     ['Filter - Start Date', Filters.state.start || ''],
     ['Filter - End Date', Filters.state.end || ''],
-    ['Total issues (all)', DataStore.rows.length],
-    ['Total issues (filtered)', rows.length],
+    ['Total tickets (all)', DataStore.rows.length],
+    ['Total tickets (filtered)', rows.length],
     [],
     ['Status breakdown', 'Count']
   ];
@@ -3428,10 +3428,10 @@ function exportIssuesToExcel(rows, suffix) {
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, wsSummary, 'Summary');
-  XLSX.utils.book_append_sheet(wb, wsIssues, 'Issues');
+  XLSX.utils.book_append_sheet(wb, wsIssues, 'Tickets');
 
   const ts = new Date().toISOString().slice(0, 10);
- const filename = `incheck_issues_${suffix || 'filtered'}_${ts}.xlsx`;
+ const filename = `incheck_tickets_${suffix || 'filtered'}_${ts}.xlsx`;
   XLSX.writeFile(wb, filename);
   UI.toast('Exported Excel workbook');
 }
@@ -3476,7 +3476,7 @@ function buildIssueDetailExportRows(issue, risk = {}, meta = {}) {
       0,
       ['YouTrack Reference', issue.youtrackReference || '—'],
       ['Dev Team Status', issue.devTeamStatus || '—'],
-      ['Issue Related', issue.issueRelated || '—'],
+      ['Ticket Related', issue.issueRelated || '—'],
       ['Notes', issue.notes || '—']
     );
   }
@@ -3628,7 +3628,7 @@ function renderPlannerResults(result, context) {
   const maxTicketRisk = ticketContext?.maxRisk || 0;
   const avgTicketRisk = ticketContext?.avgRisk || 0;
   const ticketsLine = ticketsCount
-    ? `Tickets in scope: ${ticketsCount} issue(s), max risk ${maxTicketRisk.toFixed(
+    ? `Tickets in scope: ${ticketsCount} ticket(s), max risk ${maxTicketRisk.toFixed(
         1
       )}, avg risk ${avgTicketRisk.toFixed(1)}.`
     : 'No specific tickets selected – using module + description only.';
@@ -3958,7 +3958,7 @@ function wirePlanner() {
 
   E.plannerRun.addEventListener('click', () => {
     if (!DataStore.rows.length) {
-      UI.toast('Issues are still loading. Try again in a few seconds.');
+      UI.toast('Tickets are still loading. Try again in a few seconds.');
       return;
     }
 
@@ -4886,7 +4886,7 @@ function wireModals() {
       const link = url.toString();
       navigator.clipboard
         .writeText(link)
-        .then(() => UI.toast('Issue link copied'))
+        .then(() => UI.toast('Ticket link copied'))
         .catch(() => UI.toast('Clipboard blocked'));
     });
   }
@@ -5191,7 +5191,7 @@ function wireAIQuery() {
       return;
     }
     if (!DataStore.rows.length) {
-      UI.toast('Issues are still loading; try again in a moment.');
+      UI.toast('Tickets are still loading; try again in a moment.');
       return;
     }
 
@@ -5224,7 +5224,7 @@ function wireAIQuery() {
     LAST_AI_QUERY = { text: raw, q, rows };
 
     if (!rows.length) {
-      E.aiQueryResults.innerHTML = `<div>No issues matched this query.</div>`;
+      E.aiQueryResults.innerHTML = `<div>No tickets matched this query.</div>`;
       return;
     }
 
@@ -5233,7 +5233,7 @@ function wireAIQuery() {
 
     const summary = `
       <div style="margin-bottom:4px;">
-        Found <strong>${slice.length}</strong> of ${rows.length} matching issue${
+        Found <strong>${slice.length}</strong> of ${rows.length} matching ticket${
       rows.length === 1 ? '' : 's'
     } for query <code>${U.escapeHtml(raw)}</code>.
       </div>`;
@@ -5301,7 +5301,7 @@ function wireAIQuery() {
       }
       applyDSLToFilters(LAST_AI_QUERY.q);
       setActiveView('issues');
-      UI.toast('Applied AI query filters to issues table');
+      UI.toast('Applied AI query filters to tickets table');
     });
   }
 
