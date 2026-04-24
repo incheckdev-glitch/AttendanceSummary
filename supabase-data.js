@@ -448,8 +448,8 @@
       out.youtrack_reference = out.youtrack_reference ?? out.youtrackReference ?? '';
       out.devTeamStatus = out.devTeamStatus ?? out.dev_team_status ?? '';
       out.dev_team_status = out.dev_team_status ?? out.devTeamStatus ?? '';
-      out.issueRelated = toDbBoolean(out.issueRelated ?? out.issue_related ?? null);
-      out.issue_related = toDbBoolean(out.issue_related ?? out.issueRelated ?? null);
+      out.issueRelated = out.issueRelated ?? out.issue_related ?? '';
+      out.issue_related = out.issue_related ?? out.issueRelated ?? '';
     }
     if (resource === 'events') {
       out.event_code = out.event_code ?? out.eventCode ?? '';
@@ -1219,12 +1219,9 @@
       ticket_id: ticketRowId(row),
       youtrack_reference: row.youtrack_reference ?? row.youtrackReference ?? '',
       dev_team_status: row.dev_team_status ?? row.devTeamStatus ?? '',
-      issue_related: toDbBoolean(row.issue_related ?? row.issueRelated ?? null),
+      issue_related: row.issue_related ?? row.issueRelated ?? '',
       notes: row.notes ?? ''
     };
-    if ('issue_related' in record && record.issue_related === '') {
-      record.issue_related = null;
-    }
     return record;
   }
 
@@ -1234,7 +1231,7 @@
       ...ticket,
       youtrack_reference: internal.youtrack_reference ?? internal.youtrackReference ?? '',
       dev_team_status: internal.dev_team_status ?? internal.devTeamStatus ?? '',
-      issue_related: toDbBoolean(internal.issue_related ?? internal.issueRelated ?? null),
+      issue_related: internal.issue_related ?? internal.issueRelated ?? '',
       notes: internal.notes ?? ''
     };
     return normalizeRow('tickets', merged);
@@ -2639,16 +2636,10 @@
       if (resource === 'tickets' && isAdminDev()) {
         const internalRecord = toTicketInternalRecord(raw || {});
         internalRecord.ticket_id = created.id;
-        if ('issue_related' in internalRecord && internalRecord.issue_related === '') {
-          internalRecord.issue_related = null;
-        }
         if (internalRecord.ticket_id) {
+          const record = internalRecord;
+          console.log('[ticket_internal] outgoing issue_related', record.issue_related);
           console.log('[ticket internal] outgoing payload', internalRecord);
-          console.log(
-            '[ticket internal] issue_related type/value',
-            typeof internalRecord.issue_related,
-            internalRecord.issue_related
-          );
           const { data: internalData, error: internalError } = await client
             .from('ticket_internal')
             .upsert(internalRecord, { onConflict: 'ticket_id' })
@@ -2788,15 +2779,9 @@
       if (resource === 'tickets' && isAdminDev()) {
         const internalUpdates = toTicketInternalRecord(safeUpdates);
         internalUpdates.ticket_id = ticketRowId({ id });
-        if ('issue_related' in internalUpdates && internalUpdates.issue_related === '') {
-          internalUpdates.issue_related = null;
-        }
+        const record = internalUpdates;
+        console.log('[ticket_internal] outgoing issue_related', record.issue_related);
         console.log('[ticket internal] outgoing payload', internalUpdates);
-        console.log(
-          '[ticket internal] issue_related type/value',
-          typeof internalUpdates.issue_related,
-          internalUpdates.issue_related
-        );
         const { data: internalData, error: internalError } = await client
           .from('ticket_internal')
           .upsert(internalUpdates, { onConflict: 'ticket_id' })
