@@ -382,6 +382,11 @@ const Notifications = {
     this.renderPreview();
     this.renderHub();
   },
+  hasPermission(action) {
+    if (!Session.isAuthenticated()) return false;
+    if (!Permissions.state?.loaded) return true;
+    return Permissions.canPerformAction('notifications', action, Session.role());
+  },
   async refreshUnreadCount() {
     if (!Session.isAuthenticated()) {
       this.state.unreadCount = 0;
@@ -398,7 +403,7 @@ const Notifications = {
       this.renderBell();
       return 0;
     }
-    if (Permissions.state?.loaded && !Permissions.hasMatrixPermission('notifications', 'get_unread_count')) {
+    if (!this.hasPermission('get_unread_count')) {
       this.setPermissionDenied('get_unread_count');
       return 0;
     }
@@ -454,6 +459,10 @@ const Notifications = {
       this.renderPreview();
       return;
     }
+    if (!this.hasPermission('list')) {
+      this.setPermissionDenied('list_preview');
+      return;
+    }
     this.state.previewLoading = true;
     this.renderPreview();
     try {
@@ -504,6 +513,10 @@ const Notifications = {
     if (this.state.permissionDenied) {
       this.state.items = [];
       this.renderHub();
+      return;
+    }
+    if (!this.hasPermission('list')) {
+      this.setPermissionDenied('list_hub');
       return;
     }
     this.state.loading = true;
@@ -726,6 +739,10 @@ const Notifications = {
   },
   async markRead(notificationId) {
     if (!notificationId || !Session.isAuthenticated() || this.state.unavailable) return;
+    if (!this.hasPermission('mark_read')) {
+      this.setPermissionDenied('mark_read');
+      return;
+    }
     this.updateLocalRead(notificationId);
     this.renderHub();
     this.renderPreview();
@@ -738,6 +755,10 @@ const Notifications = {
   },
   async markAllRead() {
     if (!Session.isAuthenticated() || this.state.unavailable) return;
+    if (!this.hasPermission('mark_all_read')) {
+      this.setPermissionDenied('mark_all_read');
+      return;
+    }
     try {
       await Api.markAllNotificationsRead();
       this.state.items = this.state.items.map(item => ({ ...item, is_read: true, status: item.status || 'read' }));
@@ -1083,6 +1104,7 @@ const Notifications = {
   startRealtime() {
     this.stopRealtime();
     if (!Session.isAuthenticated() || this.state.unavailable || this.state.permissionDenied) return;
+    if (!this.hasPermission('list') || !this.hasPermission('get_unread_count')) return;
     const client = window.SupabaseClient?.getClient?.();
     const userId = String(Session.userId?.() || '').trim();
     if (!client || !userId || typeof client.channel !== 'function') return;
@@ -1128,8 +1150,9 @@ const Notifications = {
     this.stopPolling();
     this.state.pollTimer = window.setInterval(() => {
       if (!Session.isAuthenticated() || this.state.unavailable || this.state.permissionDenied) return;
+      if (!this.hasPermission('get_unread_count')) return;
       this.refreshUnreadCount();
-      if (this.state.panelOpen) this.fetchPreview();
+      if (this.state.panelOpen && this.hasPermission('list')) this.fetchPreview();
     }, this.POLL_INTERVAL_MS);
   },
   stopPolling() {
