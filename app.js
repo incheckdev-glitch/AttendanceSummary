@@ -85,6 +85,33 @@ function resolveTicketByIssueRef(ref = '') {
   );
 }
 
+function parseTicketIds(value) {
+  if (Array.isArray(value)) {
+    return Array.from(
+      new Set(
+        value
+          .map(v => String(v || '').trim())
+          .filter(Boolean)
+      )
+    );
+  }
+  return Array.from(
+    new Set(
+      String(value || '')
+        .split(',')
+        .map(v => v.trim())
+        .filter(Boolean)
+    )
+  );
+}
+
+function getEventTicketSelection() {
+  if (!E.eventIssueId) return [];
+  return Array.from(E.eventIssueId.selectedOptions || [])
+    .map(option => String(option.value || '').trim())
+    .filter(Boolean);
+}
+
 function ticketOptionLabel(ticket = {}) {
   const displayId = issueDisplayId(ticket) || ticket.id || '';
   const title = String(ticket.title || '').trim();
@@ -106,11 +133,41 @@ async function ensureTicketsForEventPicker() {
   return DataStore.rows;
 }
 
-function refreshEventTicketSelect(selectedIssueId = '') {
+function renderEventIssueChips(selectedIds = []) {
+  if (!E.eventIssueSelectedChips) return;
+  if (!selectedIds.length) {
+    E.eventIssueSelectedChips.innerHTML = '';
+    if (E.eventIssueClearBtn) E.eventIssueClearBtn.style.display = 'none';
+    return;
+  }
+  const chipHtml = selectedIds
+    .map(id => {
+      const ticket = resolveTicketByIssueRef(id);
+      const label = ticket ? ticketOptionLabel(ticket) : id;
+      return `<span class="event-issue-chip">${U.escapeHtml(label)}<button type="button" data-remove-event-ticket="${U.escapeAttr(
+        id
+      )}" aria-label="Remove ${U.escapeAttr(id)}">✕</button></span>`;
+    })
+    .join('');
+  E.eventIssueSelectedChips.innerHTML = chipHtml;
+  E.eventIssueSelectedChips.querySelectorAll('[data-remove-event-ticket]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const targetId = String(btn.getAttribute('data-remove-event-ticket') || '').trim();
+      const nextSelection = selectedIds.filter(id => id !== targetId);
+      refreshEventTicketSelect(nextSelection);
+    });
+  });
+  if (E.eventIssueClearBtn) E.eventIssueClearBtn.style.display = 'inline-flex';
+}
+
+function refreshEventTicketSelect(selectedIssueIds = null) {
   if (!E.eventIssueId) return;
   const searchTerm = String(E.eventIssueSearch?.value || '')
     .trim()
     .toLowerCase();
+  const selectedValues = Array.isArray(selectedIssueIds)
+    ? parseTicketIds(selectedIssueIds)
+    : parseTicketIds(getEventTicketSelection());
   const sourceRows =
     EVENT_TICKET_PICKER_SHOW_ALL && Array.isArray(EVENT_TICKET_PICKER_ALL_ROWS)
       ? EVENT_TICKET_PICKER_ALL_ROWS
@@ -137,10 +194,7 @@ function refreshEventTicketSelect(selectedIssueId = '') {
       })
     : sortedBase;
 
-  const selectedValue = String(selectedIssueId || E.eventIssueId.value || '').trim();
-  const selectedTicket = resolveTicketByIssueRef(selectedValue);
-
-  const options = ['<option value="">Select a ticket</option>'];
+  const options = ['<option value="" disabled>Select one or more tickets</option>'];
   filteredList.forEach(ticket => {
     const value = issueDisplayId(ticket) || ticket.id || '';
     if (!value) return;
@@ -149,18 +203,24 @@ function refreshEventTicketSelect(selectedIssueId = '') {
     );
   });
 
-  if (selectedValue && !filteredList.some(t => {
-    const v = String(issueDisplayId(t) || t.id || '').trim().toLowerCase();
-    return v === selectedValue.toLowerCase();
-  })) {
+  selectedValues.forEach(selectedValue => {
+    const exists = filteredList.some(t => {
+      const v = String(issueDisplayId(t) || t.id || '').trim().toLowerCase();
+      return v === selectedValue.toLowerCase();
+    });
+    if (exists) return;
+    const selectedTicket = resolveTicketByIssueRef(selectedValue);
     const fallbackLabel = selectedTicket
       ? `${ticketOptionLabel(selectedTicket)} (outside current filters)`
       : `${selectedValue} (outside current filters)`;
     options.push(`<option value="${U.escapeAttr(selectedValue)}">${U.escapeHtml(fallbackLabel)}</option>`);
-  }
+  });
 
   E.eventIssueId.innerHTML = options.join('');
-  E.eventIssueId.value = selectedValue;
+  Array.from(E.eventIssueId.options || []).forEach(option => {
+    option.selected = selectedValues.includes(String(option.value || '').trim());
+  });
+  renderEventIssueChips(selectedValues);
 
   const noMatches = !filteredList.length;
   if (E.eventIssueEmptyState) {
@@ -1570,13 +1630,13 @@ UI.Modals = {
       E.eventImpactType.value = ev.impactType || 'No downtime expected';
     if (E.eventIssueSearch) E.eventIssueSearch.value = '';
     EVENT_TICKET_PICKER_SHOW_ALL = false;
-    if (E.eventIssueId) E.eventIssueId.value = ev.issueId || '';
+    const selectedTicketIds = parseTicketIds(ev.ticketIds || ev.issueId || ev.ticketId);
     try {
       await ensureTicketsForEventPicker();
     } catch (error) {
       console.warn('[event-ticket-picker] unable to load tickets', error);
     }
-    refreshEventTicketSelect(ev.issueId || '');
+    refreshEventTicketSelect(selectedTicketIds);
 
     if (E.eventStart) {
       E.eventStart.type = allDay ? 'date' : 'datetime-local';
@@ -1599,7 +1659,7 @@ UI.Modals = {
     setReadinessChecklistState(ev.readiness || ev.checklist || {});
     
     if (E.eventIssueLinkedInfo) {
-      const issueIdStr = ev.issueId || '';
+      const issueIdStr = (selectedTicketIds || []).join(', ');
       if (issueIdStr) {
         const ids = issueIdStr
           .split(',')
@@ -5149,7 +5209,18 @@ function wireModals() {
   }
   if (E.eventIssueId) {
     E.eventIssueId.addEventListener('change', () => {
-      if (E.eventIssueLinkedInfo && !String(E.eventIssueId.value || '').trim()) {
+      const selected = getEventTicketSelection();
+      renderEventIssueChips(selected);
+      if (E.eventIssueLinkedInfo && !selected.length) {
+        E.eventIssueLinkedInfo.style.display = 'none';
+        E.eventIssueLinkedInfo.textContent = '';
+      }
+    });
+  }
+  if (E.eventIssueClearBtn) {
+    E.eventIssueClearBtn.addEventListener('click', () => {
+      refreshEventTicketSelect([]);
+      if (E.eventIssueLinkedInfo) {
         E.eventIssueLinkedInfo.style.display = 'none';
         E.eventIssueLinkedInfo.textContent = '';
       }
@@ -5232,6 +5303,9 @@ function wireModals() {
         if (!proceed) return;
       }
       
+      const ticketIds = getEventTicketSelection();
+      const issueIdValue = ticketIds.join(', ');
+
       const ev = {
         id,
         title,
@@ -5241,7 +5315,9 @@ function wireModals() {
         owner: (E.eventOwner?.value || '').trim(),
         modules: E.eventModules?.value || '',
         impactType,
-        issueId: (E.eventIssueId?.value || '').trim(),
+        issueId: issueIdValue,
+        ticketId: ticketIds[0] || '',
+        ticketIds,
         start: E.eventStart?.value || '',
         end: E.eventEnd?.value || '',
         description: (E.eventDescription?.value || '').trim(),

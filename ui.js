@@ -160,6 +160,8 @@ function cacheEls() {
     'eventType',
     'eventIssueSearch',
     'eventIssueId',
+    'eventIssueSelectedChips',
+    'eventIssueClearBtn',
     'eventIssueEmptyState',
     'eventIssueShowAllBtn',
     'eventStart',
