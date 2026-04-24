@@ -1949,3 +1949,15 @@ background:var(--ai-table-row-even);
 .notification-row-unread td { font-weight: 600; }
 .notification-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .chip.high-priority { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
+.row-highlight-pulse {
+  animation: row-highlight-pulse 2.2s ease-out 1;
+}
+
+@keyframes row-highlight-pulse {
+  0% {
+    background-color: rgba(72, 187, 120, 0.42);
+  }
+  100% {
+    background-color: transparent;
+  }
+}

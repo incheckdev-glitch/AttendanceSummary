@@ -766,10 +766,35 @@ const Notifications = {
   resolveOperationsAgreementId(item = {}) {
     return String(item.meta?.agreement_id || item.resource_id || '').trim();
   },
+  resolveTechnicalAdminTargetId(item = {}) {
+    return String(item.meta?.onboarding_uuid || item.resource_id || item.meta?.id || '').trim();
+  },
+  isTechnicalAdminNotification(item = {}) {
+    const type = String(item.type || '').trim().toLowerCase();
+    const resource = String(item.resource || '').trim().toLowerCase();
+    const linkTarget = String(item.link_target || '').trim().toLowerCase();
+    const meta = item.meta && typeof item.meta === 'object' ? item.meta : {};
+    if (linkTarget === 'technical_admin' || linkTarget === 'technical_admin_requests') return true;
+    if (type === 'technical_admin_request_created' || type === 'technical_request_status_changed') return true;
+    return resource === 'operations_onboarding' && !!meta.technical_request_status;
+  },
+  openTechnicalAdminFromNotification(item = {}) {
+    this.closePanel();
+    setActiveView('technicalAdmin');
+    const highlightRequestId = this.resolveTechnicalAdminTargetId(item);
+    if (window.TechnicalAdmin?.loadAndRefresh) {
+      TechnicalAdmin.loadAndRefresh({ force: true, highlightRequestId });
+    }
+  },
   navigateFromNotification(item = {}) {
     try {
       const linkTarget = String(item.link_target || '').trim();
       if (linkTarget) {
+        const normalizedLinkTarget = linkTarget.toLowerCase();
+        if (normalizedLinkTarget === 'technical_admin' || normalizedLinkTarget === 'technical_admin_requests') {
+          this.openTechnicalAdminFromNotification(item);
+          return;
+        }
         if (linkTarget.startsWith('http://') || linkTarget.startsWith('https://')) {
           window.open(linkTarget, '_blank', 'noopener,noreferrer');
           return;
@@ -778,6 +803,11 @@ const Notifications = {
           window.location.hash = linkTarget;
           return;
         }
+      }
+
+      if (this.isTechnicalAdminNotification(item)) {
+        this.openTechnicalAdminFromNotification(item);
+        return;
       }
 
       const resource = String(item.resource || '').toLowerCase();

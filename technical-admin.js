@@ -10,7 +10,8 @@ const TechnicalAdmin = {
     status: 'All',
     activeRequestId: '',
     rowActionInFlight: new Set(),
-    detailPreviewLoading: false
+    detailPreviewLoading: false,
+    pendingHighlightId: ''
   },
   pick(...values) {
     for (const value of values) {
@@ -28,6 +29,27 @@ const TechnicalAdmin = {
       if (Number.isFinite(parsed)) return parsed;
     }
     return null;
+  },
+  isUuid(value = '') {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+  },
+  toDisplayDate(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '—';
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return '—';
+    return `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}/${date.getFullYear()}`;
+  },
+  toDisplayDateTime(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '—';
+    return U.formatDateTimeMMDDYYYYHHMM(raw);
+  },
+  profileDisplay(profile = null, fallback = '') {
+    if (!profile || typeof profile !== 'object') return String(fallback || '').trim();
+    const name = String(profile.name || profile.full_name || profile.username || '').trim();
+    const email = String(profile.email || '').trim();
+    return name || email || String(fallback || '').trim();
   },
   parseAgreementPayload(value) {
     if (typeof value !== 'string') return value;
@@ -117,7 +139,7 @@ const TechnicalAdmin = {
       agreement.numberOfLocations
     );
     const derivedLocationCount = agreementItems.length ? this.deriveAgreementLocationCount(agreementItems) : null;
-    const resolvedLocationCount = requestLocationCount ?? agreementLocationCount ?? derivedLocationCount ?? 0;
+    const resolvedLocationCount = requestLocationCount ?? agreementLocationCount ?? derivedLocationCount;
     const sourceId = String(source.id || '').trim();
     const onboardingId = String(this.pick(source.onboarding_id, source.onboardingId)).trim();
     return {
@@ -135,7 +157,8 @@ const TechnicalAdmin = {
       request_details: String(this.pick(source.technical_request_details, source.request_details, source.requestDetails)).trim(),
       request_status: String(this.pick(source.technical_request_status, source.request_status, source.requestStatus)).trim() || 'Requested',
       priority: String(this.pick(source.priority)).trim(),
-      location_count: Number(resolvedLocationCount) || 0,
+      location_count: Number.isFinite(Number(resolvedLocationCount)) ? Number(resolvedLocationCount) : null,
+      number_of_locations: Number.isFinite(Number(resolvedLocationCount)) ? Number(resolvedLocationCount) : null,
       service_start_date: String(this.pick(source.service_start_date, source.serviceStartDate, agreement.service_start_date, agreement.serviceStartDate)).trim(),
       service_end_date: String(this.pick(source.service_end_date, source.serviceEndDate, agreement.service_end_date, agreement.serviceEndDate)).trim(),
       billing_frequency: String(this.pick(source.billing_frequency, source.billingFrequency, agreement.billing_frequency, agreement.billingFrequency, agreement.frequency)).trim(),
@@ -145,11 +168,120 @@ const TechnicalAdmin = {
       requested_by: String(this.pick(source.requested_by, source.requestedBy)).trim(),
       requested_at: String(this.pick(source.requested_at, source.requestedAt)).trim(),
       assigned_to: String(this.pick(source.technical_admin_assigned_to, source.technicalAdminAssignedTo, source.assigned_to, source.assignedTo)).trim(),
+      requested_by_display: String(this.pick(source.requested_by_display, source.requested_by, source.requestedBy)).trim(),
+      assigned_to_display: String(this.pick(source.assigned_to_display, source.technical_admin_assigned_to, source.assigned_to, source.assignedTo)).trim(),
       completed_at: String(this.pick(source.completed_at, source.completedAt)).trim(),
       updated_by: String(this.pick(source.updated_by, source.updatedBy)).trim(),
       updated_at: String(this.pick(source.updated_at, source.updatedAt)).trim(),
       notes: String(this.pick(source.notes)).trim()
     };
+  },
+  async enrichRows(rows = []) {
+    const rawRows = Array.isArray(rows) ? rows : [];
+    const client = window.SupabaseClient?.getClient?.();
+    if (!client || !rawRows.length) return rawRows.map(row => this.normalizeRow(row));
+
+    const agreementIds = [...new Set(rawRows.map(row => String(this.pick(row?.agreement_id, row?.agreementId)).trim()).filter(Boolean))];
+    console.log('[technical admin] agreement ids', agreementIds);
+    const profileIds = [
+      ...new Set(
+        rawRows
+          .flatMap(row => [row?.requested_by, row?.requestedBy, row?.technical_admin_assigned_to, row?.assigned_to, row?.assignedTo])
+          .map(value => String(value || '').trim())
+          .filter(value => this.isUuid(value))
+      )
+    ];
+
+    const agreementsPromise = agreementIds.length
+      ? client.from('agreements').select('*').in('id', agreementIds)
+      : Promise.resolve({ data: [], error: null });
+    const itemsPromise = agreementIds.length
+      ? client.from('agreement_items').select('*').in('agreement_id', agreementIds)
+      : Promise.resolve({ data: [], error: null });
+    const profilesPromise = profileIds.length
+      ? client.from('profiles').select('id, name, full_name, username, email').in('id', profileIds)
+      : Promise.resolve({ data: [], error: null });
+
+    const [agreementsRes, itemsRes, profilesRes] = await Promise.all([agreementsPromise, itemsPromise, profilesPromise]);
+    if (agreementsRes?.error) console.warn('[technical admin] agreements enrichment failed', agreementsRes.error);
+    if (itemsRes?.error) console.warn('[technical admin] agreement_items enrichment failed', itemsRes.error);
+    if (profilesRes?.error) console.warn('[technical admin] profiles enrichment failed', profilesRes.error);
+
+    const agreementById = new Map((agreementsRes?.data || []).map(row => [String(row?.id || '').trim(), row]));
+    const itemsByAgreementId = new Map();
+    (itemsRes?.data || []).forEach(item => {
+      const key = String(item?.agreement_id || '').trim();
+      if (!key) return;
+      if (!itemsByAgreementId.has(key)) itemsByAgreementId.set(key, []);
+      itemsByAgreementId.get(key).push(item);
+    });
+    const profileById = new Map((profilesRes?.data || []).map(row => [String(row?.id || '').trim(), row]));
+
+    const enrichedRows = rawRows.map(raw => {
+      const row = this.normalizeRow(raw);
+      const agreementId = String(row.agreement_id || '').trim();
+      const agreement = agreementById.get(agreementId) || {};
+      const agreementItems = itemsByAgreementId.get(agreementId) || [];
+      const itemLocationCount = agreementItems.length ? this.deriveAgreementLocationCount(agreementItems) : null;
+      const earliestItemStart = agreementItems
+        .map(item => String(item?.service_start_date || '').trim())
+        .filter(Boolean)
+        .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0] || '';
+      const latestItemEnd = agreementItems
+        .map(item => String(item?.service_end_date || '').trim())
+        .filter(Boolean)
+        .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] || '';
+      const firstItem = agreementItems[0] || {};
+      const requestedByProfile = this.isUuid(row.requested_by) ? profileById.get(row.requested_by) : null;
+      const assignedToValue = String(this.pick(raw.technical_admin_assigned_to, raw.assigned_to, raw.assignedTo, row.assigned_to)).trim();
+      const assignedToProfile = this.isUuid(assignedToValue) ? profileById.get(assignedToValue) : null;
+
+      const locationCount = this.parseOptionalNumber(
+        itemLocationCount,
+        agreement.number_of_locations,
+        agreement.location_count,
+        row.number_of_locations,
+        row.location_count
+      );
+      return {
+        ...row,
+        agreement_number: String(this.pick(row.agreement_number, agreement.agreement_number, agreement.agreementNumber)).trim(),
+        client_name: String(this.pick(row.client_name, agreement.client_name, agreement.company_name, agreement.customer_name)).trim(),
+        location_count: Number.isFinite(Number(locationCount)) ? Number(locationCount) : null,
+        number_of_locations: Number.isFinite(Number(locationCount)) ? Number(locationCount) : null,
+        service_start_date: String(this.pick(agreement.service_start_date, earliestItemStart, row.service_start_date)).trim(),
+        service_end_date: String(this.pick(agreement.service_end_date, latestItemEnd, row.service_end_date)).trim(),
+        billing_frequency: String(
+          this.pick(
+            agreement.billing_cycle,
+            agreement.billing_frequency,
+            firstItem.billing_cycle,
+            firstItem.billing_frequency,
+            raw.billing_cycle,
+            raw.billing_frequency,
+            row.billing_frequency
+          )
+        ).trim(),
+        payment_term: String(this.pick(agreement.payment_terms, agreement.payment_term, raw.payment_terms, raw.payment_term, row.payment_term)).trim(),
+        requested_by_display: this.profileDisplay(requestedByProfile, row.requested_by),
+        assigned_to: assignedToValue,
+        assigned_to_display: this.profileDisplay(assignedToProfile, assignedToValue)
+      };
+    });
+    console.log('[technical admin] enriched rows', enrichedRows);
+    return enrichedRows;
+  },
+  highlightRow(requestId = '') {
+    const targetId = String(requestId || '').trim();
+    if (!targetId || !E.technicalAdminTbody) return;
+    const rowEl =
+      E.technicalAdminTbody.querySelector(`tr[data-technical-request-id="${targetId}"]`) ||
+      E.technicalAdminTbody.querySelector(`tr[data-technical-onboarding-id="${targetId}"]`) ||
+      E.technicalAdminTbody.querySelector(`tr[data-technical-request-key="${targetId}"]`);
+    if (!rowEl) return;
+    rowEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    rowEl.classList.add('row-highlight-pulse');
+    window.setTimeout(() => rowEl.classList.remove('row-highlight-pulse'), 2200);
   },
   statusBucket(status = '') {
     const normalized = String(status || '').trim().toLowerCase();
@@ -279,23 +411,24 @@ const TechnicalAdmin = {
       .map(row => {
         const requestId = U.escapeAttr(row.technical_request_id || '');
         const requestDbId = U.escapeAttr(row.id || row.technical_request_id || '');
+        const onboardingId = U.escapeAttr(row.onboarding_id || '');
         const agreementId = String(row.agreement_id || '').trim();
         const agreementAction = agreementId
           ? `<button class="btn ghost sm" type="button" data-technical-preview="${U.escapeAttr(agreementId)}" data-technical-request-preview="${requestId}">Preview Agreement</button>`
           : '';
-        return `<tr data-technical-request-id="${requestDbId}">
+        return `<tr data-technical-request-id="${requestDbId}" data-technical-onboarding-id="${onboardingId}" data-technical-request-key="${requestId}">
           <td>${text(row.technical_request_id)}</td>
           <td>${text(row.agreement_number)}</td>
           <td>${text(row.client_name)}</td>
-          <td>${text(row.location_count)}</td>
-          <td>${U.escapeHtml(U.fmtDisplayDate(row.service_start_date))}</td>
-          <td>${U.escapeHtml(U.fmtDisplayDate(row.service_end_date))}</td>
+          <td>${text(row.number_of_locations)}</td>
+          <td>${U.escapeHtml(this.toDisplayDate(row.service_start_date))}</td>
+          <td>${U.escapeHtml(this.toDisplayDate(row.service_end_date))}</td>
           <td>${text(row.billing_frequency)}</td>
           <td>${text(row.payment_term)}</td>
           <td>${this.statusBadge(row.request_status)}</td>
-          <td>${text(row.requested_by)}</td>
-          <td>${U.escapeHtml(U.fmtDisplayDate(row.requested_at))}</td>
-          <td>${text(row.assigned_to)}</td>
+          <td>${text(row.requested_by_display || row.requested_by)}</td>
+          <td>${U.escapeHtml(this.toDisplayDateTime(row.requested_at))}</td>
+          <td>${text(row.assigned_to_display || row.assigned_to)}</td>
           <td>
             <div style="display:flex;gap:6px;flex-wrap:wrap;">
               <button class="btn ghost sm" type="button" data-technical-open="${requestDbId}">Open</button>
@@ -305,6 +438,11 @@ const TechnicalAdmin = {
         </tr>`;
       })
       .join('');
+    if (this.state.pendingHighlightId) {
+      const pendingId = this.state.pendingHighlightId;
+      this.state.pendingHighlightId = '';
+      window.requestAnimationFrame(() => this.highlightRow(pendingId));
+    }
   },
   async loadAndRefresh(options = {}) {
     if (!Permissions.canViewTechnicalAdmin()) return;
@@ -314,10 +452,12 @@ const TechnicalAdmin = {
     try {
       const response = await Api.listOperationsOnboarding({}, { forceRefresh: !!options.force });
       const rows = Api.normalizeListResponse(response)?.rows || [];
-      this.state.rows = rows
-        .filter(row => row?.technical_request_type || row?.technical_request_status || row?.technical_request_details || row?.requested_at)
-        .map(row => this.normalizeRow(row))
-        .filter(row => row.id || row.technical_request_id);
+      console.log('[technical admin] raw onboarding rows', rows);
+      const filteredRows = rows.filter(
+        row => row?.technical_request_type || row?.technical_request_status || row?.requested_at || row?.technical_request_details
+      );
+      this.state.rows = (await this.enrichRows(filteredRows)).filter(row => row.id || row.technical_request_id);
+      if (options?.highlightRequestId) this.state.pendingHighlightId = String(options.highlightRequestId || '').trim();
       this.state.loaded = true;
     } catch (error) {
       this.state.rows = [];
@@ -389,9 +529,9 @@ const TechnicalAdmin = {
           <div><span class="muted">Client Name:</span> ${U.escapeHtml(row.client_name || '—')}</div>
           <div><span class="muted">Request Type:</span> ${U.escapeHtml(row.request_type || '—')}</div>
           <div><span class="muted">Status:</span> ${this.statusBadge(row.request_status)}</div>
-          <div><span class="muted">Requested By:</span> ${U.escapeHtml(row.requested_by || '—')}</div>
-          <div><span class="muted">Requested At:</span> ${U.escapeHtml(U.fmtDisplayDate(row.requested_at))}</div>
-          <div><span class="muted">Assigned To:</span> ${U.escapeHtml(row.assigned_to || '—')}</div>
+          <div><span class="muted">Requested By:</span> ${U.escapeHtml(row.requested_by_display || row.requested_by || '—')}</div>
+          <div><span class="muted">Requested At:</span> ${U.escapeHtml(this.toDisplayDateTime(row.requested_at))}</div>
+          <div><span class="muted">Assigned To:</span> ${U.escapeHtml(row.assigned_to_display || row.assigned_to || '—')}</div>
           <div><span class="muted">Updated At:</span> ${U.escapeHtml(U.fmtDisplayDate(row.updated_at))}</div>
           <div style="grid-column:1/-1;"><span class="muted">Request Title:</span> ${U.escapeHtml(row.request_title || '—')}</div>
           <div style="grid-column:1/-1;"><span class="muted">Request Message:</span> ${U.escapeHtml(row.request_message || '—')}</div>
