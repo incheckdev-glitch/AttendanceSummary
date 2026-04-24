@@ -38,6 +38,15 @@
     return raw;
   }
 
+  function generateEventCode() {
+    const now = new Date();
+    const yyyy = String(now.getFullYear());
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
+    return `EV-${yyyy}${mm}${dd}-${Date.now()}-${rand}`;
+  }
+
   function parseModules(value) {
     if (Array.isArray(value)) return value.map(v => String(v || '').trim()).filter(Boolean);
     if (typeof value !== 'string') return [];
@@ -126,8 +135,10 @@
 
   async function toCreatePayload(input = {}) {
     const userId = await getCurrentUserId(getClient());
+    const providedEventCode = String(input.event_code ?? input.eventCode ?? '').trim();
+
     const mapped = {
-      event_code: input.event_code || input.eventCode || '',
+      event_code: providedEventCode || generateEventCode(),
       title: input.title || input.eventTitle || '',
       description: input.description || input.notes || '',
       start_at: parseDateValue(input.start_at ?? input.start ?? input.startDate ?? input.date),
@@ -142,8 +153,14 @@
 
   async function toUpdatePayload(input = {}) {
     const userId = await getCurrentUserId(getClient());
+    const providedEventCode = input.event_code ?? input.eventCode;
+    const normalizedEventCode =
+      providedEventCode === undefined || providedEventCode === null
+        ? undefined
+        : String(providedEventCode).trim() || undefined;
+
     const mapped = {
-      event_code: input.event_code ?? input.eventCode,
+      event_code: normalizedEventCode,
       title: input.title ?? input.eventTitle,
       description: input.description ?? input.notes,
       start_at: input.start_at !== undefined || input.start !== undefined || input.startDate !== undefined || input.date !== undefined
@@ -178,6 +195,7 @@
   async function createEvent(input = {}) {
     if (!canWrite()) throw new Error('Only admin/dev can create events.');
     const payload = await toCreatePayload(input);
+    console.log('[events] create payload', payload);
     const client = getClient();
     const { data, error } = await client.from(TABLE).insert(payload).select('*').single();
     if (error) throw readableError('Unable to create event', error);

@@ -797,8 +797,14 @@
   }
 
   function sanitizeEventRecord(record = {}, { includeCreatedBy = false, userId = '' } = {}) {
+    const rawEventCode = firstDefined(record, ['event_code', 'eventCode']);
+    const normalizedEventCode =
+      rawEventCode === undefined || rawEventCode === null
+        ? undefined
+        : String(rawEventCode).trim() || undefined;
+
     const mapped = compactObject({
-      event_code: firstDefined(record, ['event_code', 'eventCode']),
+      event_code: normalizedEventCode,
       title: firstDefined(record, ['title', 'eventTitle', 'name']),
       description: firstDefined(record, ['description', 'notes']),
       start_at: parseEventDateValue(firstDefined(record, ['start_at', 'start', 'startDate', 'date'])),
