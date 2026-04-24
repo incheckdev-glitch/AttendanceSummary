@@ -9,6 +9,14 @@
     'end_at',
     'location',
     'status',
+    'type',
+    'environment',
+    'owner',
+    'modules',
+    'impact_type',
+    'issue_id',
+    'all_day',
+    'readiness',
     'created_by',
     'updated_by'
   ]);
@@ -101,12 +109,12 @@
       status: String(raw.status || 'Planned').trim() || 'Planned',
       // Legacy UI fields kept for compatibility, defaulted when not present in public.events.
       type: String(raw.type || raw.eventType || 'Other').trim() || 'Other',
-      allDay: Boolean(raw.allDay || raw.all_day),
-      issueId: String(raw.issueId || raw.issue_id || raw.ticketId || '').trim(),
-      env: String(raw.env || raw.environment || 'Prod').trim() || 'Prod',
+      env: String(raw.environment || raw.env || 'Prod').trim() || 'Prod',
       owner: String(raw.owner || '').trim(),
-      modules: parseModules(raw.modules),
-      impactType: String(raw.impactType || raw.impact || 'No downtime expected').trim() || 'No downtime expected',
+      modules: String(raw.modules || '').trim(),
+      impactType: String(raw.impact_type || raw.impactType || raw.impact || 'No downtime expected').trim() || 'No downtime expected',
+      issueId: String(raw.issue_id || raw.issueId || raw.ticketId || '').trim(),
+      allDay: Boolean(raw.all_day || raw.allDay),
       notificationStatus: String(raw.notificationStatus || raw.notification_status || '').trim(),
       readiness,
       checklist: readiness
@@ -145,6 +153,14 @@
       end_at: parseDateValue(input.end_at ?? input.end ?? input.endDate ?? input.finish),
       location: input.location || '',
       status: input.status || 'Planned',
+      type: input.type || input.eventType || 'Other',
+      environment: input.environment || input.env || 'Prod',
+      owner: input.owner || '',
+      modules: Array.isArray(input.modules) ? input.modules.join(', ') : String(input.modules || '').trim(),
+      impact_type: input.impact_type || input.impactType || input.impact || 'No downtime expected',
+      issue_id: input.issue_id || input.issueId || input.ticketId || '',
+      all_day: !!(input.all_day ?? input.allDay),
+      readiness: input.readiness ?? input.checklist ?? {},
       created_by: input.created_by || input.createdBy || userId || undefined,
       updated_by: input.updated_by || input.updatedBy || userId || undefined
     };
@@ -171,6 +187,18 @@
         : undefined,
       location: input.location,
       status: input.status,
+      type: input.type ?? input.eventType,
+      environment: input.environment ?? input.env,
+      owner: input.owner,
+      modules: input.modules !== undefined
+        ? (Array.isArray(input.modules) ? input.modules.join(', ') : String(input.modules || '').trim())
+        : undefined,
+      impact_type: input.impact_type ?? input.impactType ?? input.impact,
+      issue_id: input.issue_id ?? input.issueId ?? input.ticketId,
+      all_day: input.all_day !== undefined || input.allDay !== undefined
+        ? !!(input.all_day ?? input.allDay)
+        : undefined,
+      readiness: input.readiness ?? input.checklist,
       updated_by: input.updated_by || input.updatedBy || userId || undefined
     };
     return stripUnknownColumns(mapped);

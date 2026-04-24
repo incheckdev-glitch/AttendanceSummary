@@ -82,6 +82,14 @@
     'end_at',
     'location',
     'status',
+    'type',
+    'environment',
+    'owner',
+    'modules',
+    'impact_type',
+    'issue_id',
+    'all_day',
+    'readiness',
     'created_by',
     'updated_by'
   ]);
@@ -811,6 +819,16 @@
       end_at: parseEventDateValue(firstDefined(record, ['end_at', 'end', 'endDate', 'finish'])),
       location: firstDefined(record, ['location']),
       status: firstDefined(record, ['status']) || 'Planned',
+      type: firstDefined(record, ['type', 'eventType']),
+      environment: firstDefined(record, ['environment', 'env']),
+      owner: firstDefined(record, ['owner']),
+      modules: Array.isArray(firstDefined(record, ['modules']))
+        ? firstDefined(record, ['modules']).join(', ')
+        : firstDefined(record, ['modules']),
+      impact_type: firstDefined(record, ['impact_type', 'impactType', 'impact']),
+      issue_id: firstDefined(record, ['issue_id', 'issueId', 'ticketId']),
+      all_day: firstDefined(record, ['all_day', 'allDay']),
+      readiness: firstDefined(record, ['readiness', 'checklist']),
       created_by: includeCreatedBy
         ? (firstDefined(record, ['created_by', 'createdBy']) || userId || undefined)
         : undefined,
