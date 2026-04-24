@@ -6,7 +6,7 @@
  *  - DataStore (issues + text analytics)
  *  - Risk engine (technical + biz + ops + severity/impact/urgency)
  *  - DSL query parser & matcher
- *  - Calendar risk (events + collisions + freezes + hot issues)
+ *  - Event risk (events + collisions + freezes + hot issues)
  *  - Release planner (F&B / Middle East)
  */
 
@@ -1414,8 +1414,8 @@ UI.Modals = {
       E.eventModalTitle.textContent = canManageEvents
         ? isEdit
           ? 'Edit Event'
-          : 'Add Event'
-        : 'Event';
+          : 'New Event'
+        : 'Event Details';
     if (E.eventDelete) E.eventDelete.style.display = canManageEvents && isEdit ? 'inline-flex' : 'none';
 
     const allDay = !!ev.allDay;
@@ -2492,7 +2492,7 @@ function ensureCalendar() {
   if (calendarReady) return;
   const el = document.getElementById('calendar');
   if (!el || typeof FullCalendar === 'undefined') {
-    UI.toast('Calendar library failed to load');
+    UI.toast('Events library failed to load');
     return;
   }
   calendar = new FullCalendar.Calendar(el, {
@@ -2949,11 +2949,11 @@ async function loadEvents(force = false, options = {}) {
       renderCalendarEvents();
       refreshPlannerReleasePlans();
       UI.setSync('events', !!DataStore.events.length, null);
-      UI.toast('Calendar events are restricted for your role. Your session is still active.');
+      UI.toast('Events are restricted for your role. Your session is still active.');
       return;
     }
     if (isAuthError(e)) {
-      await handleExpiredSession('Session expired while loading calendar events.');
+      await handleExpiredSession('Session expired while loading events.');
       return;
     }
 
@@ -2965,7 +2965,7 @@ async function loadEvents(force = false, options = {}) {
     UI.toast(
       DataStore.events.length
         ? 'Using cached events (Supabase error)'
-        : 'Unable to load calendar events: ' + errMsg
+        : 'Unable to load events: ' + errMsg
     );
   } finally {
     UI.spinner(false);
@@ -3718,7 +3718,7 @@ function renderPlannerResults(result, context) {
         bugLabelPerSlot
       )} · Bomb-bug: ${U.escapeHtml(
         bombLabelPerSlot
-      )}<br/>Calendar: ${U.escapeHtml(
+      )}<br/>Events: ${U.escapeHtml(
         eventsLabel
       )}<br/>Safety index: ${safetyIndex.toFixed(0)}%
         </div>
@@ -3787,7 +3787,7 @@ function renderPlannerResults(result, context) {
         description:
           `Auto-scheduled by Release Planner. Region profile: ${regionLabel}. Modules: ${modulesLabelLocal}.` +
           (releaseDescription ? `\nRelease notes: ${releaseDescription}` : '') +
-          `\nHeuristic risk index computed from F&B rush hours, bug history, holidays and existing calendar events.` +
+          `\nHeuristic risk index computed from F&B rush hours, bug history, holidays and existing events.` +
           `\nTickets in scope at scheduling time: ${
             ticketIds.length ? ticketIds.join(', ') : 'none explicitly selected.'
           }`,
@@ -4060,7 +4060,7 @@ function wirePlanner() {
         description:
           `Auto-scheduled by Release Planner (top suggestion). Region profile: ${regionLabel}. Modules: ${modulesLabelLocal}.` +
           (releaseDescription ? `\nRelease notes: ${releaseDescription}` : '') +
-          `\nHeuristic risk index computed from F&B rush hours, bug history, holidays and existing calendar events.` +
+          `\nHeuristic risk index computed from F&B rush hours, bug history, holidays and existing events.` +
           `\nTickets in scope at scheduling time: ${
             ticketIds.length ? ticketIds.join(', ') : 'none explicitly selected.'
           }`,
@@ -5101,7 +5101,7 @@ function wireModals() {
         UI.Modals.closeEvent();
         return;
       }
-      if (!window.confirm('Delete this event from the calendar?')) return;
+      if (!window.confirm('Delete this event from events?')) return;
       const ok = await deleteEventRecord(id);
       if (!ok) return;
       const idx = DataStore.events.findIndex(ev => ev.id === id);

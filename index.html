@@ -96,7 +96,7 @@
         <div class="hero-eyebrow">Internal operations workspace</div>
         <h1>Keep ticketing ops aligned, visible, and ready for every release.</h1>
         <p>
-         InCheck360 MonitorCore is our internal hub for ticket tracking, deployment calendars, and AI signals—built to drive confident prioritization and faster execution.
+         InCheck360 MonitorCore is our internal hub for ticket tracking, deployment events, and AI signals—built to drive confident prioritization and faster execution.
         </p>
         <div class="hero-actions">
           <a class="btn ghost cta" href="#app">Explore dashboard</a>
@@ -307,7 +307,7 @@
             </button>
             <button id="calendarTab" class="view-tab" data-view="calendar"
                     role="tab" aria-selected="false" aria-controls="calendarView">
-              <span class="icon" aria-hidden="true">📅</span> Calendar
+              <span class="icon" aria-hidden="true">📅</span> Events
             </button>
             <button id="insightsTab" class="view-tab" data-view="insights"
                     role="tab" aria-selected="false" aria-controls="insightsView">
@@ -644,12 +644,12 @@ Sample:
         </div>
       </section>
 
-      <!-- Calendar view -->
+      <!-- Events view -->
       <section id="calendarView" class="view" role="tabpanel" aria-labelledby="calendarTab">
-        <div class="card" aria-label="Calendar">
+        <div class="card" aria-label="Events">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
             <div>
-              <strong>Deployments & Maintenance Calendar</strong>
+              <strong>Deployments &amp; Maintenance Events</strong>
               <div class="muted">
                 Plan deployments, maintenance windows, releases, and other operational events.
               </div>
@@ -674,11 +674,11 @@ Sample:
                 ❄️ Freeze windows
               </button>
               <button id="addEventBtn" class="btn primary sm" type="button">
-                <span class="icon" aria-hidden="true">➕</span> Add Event
+                <span class="icon" aria-hidden="true">➕</span> New Event
               </button>
             </div>
           </div>
-          <div id="calendar" aria-label="Deployment & maintenance calendar"></div>
+          <div id="calendar" aria-label="Deployment &amp; maintenance events"></div>
         </div>
 
          <div class="card" id="freezeWindowsCard" aria-label="Change freeze windows">
@@ -686,7 +686,7 @@ Sample:
             <div>
               <strong>Change freeze windows</strong>
               <div class="muted" style="margin-top:4px;font-size:12px;">
-                Highlight calendar events during freeze periods and reduce collision risk.
+                Highlight events during freeze periods and reduce collision risk.
               </div>
             </div>
             <button id="freezeManageBtnSecondary" class="btn sm ghost" type="button">
@@ -775,8 +775,8 @@ Sample:
               <span class="icon" aria-hidden="true">✨</span> Suggest windows
             </button>
             <button id="plannerAddEvent" class="btn ghost sm" type="button" disabled
-                    title="Convert top suggestion to calendar event">
-              ➕ Add top suggestion to calendar…
+                    title="Convert top suggestion to event">
+              ➕ Add top suggestion to events…
             </button>
             <button id="plannerExportScorecard" class="btn ghost sm" type="button">
               📤 Export scorecard
@@ -828,7 +828,7 @@ Sample:
           <strong>AI Insights / Copilot</strong>
           <div class="muted" style="margin-top:4px;">
             Heuristic, explainable analytics on tickets text (no external AI). Risk breakdown, clustering,
-            trends, triage & calendar risk.
+            trends, triage & event risk.
           </div>
           <div id="aiAnalyzing" class="skeleton" style="height:6px;border-radius:6px;margin-top:10px;display:none"></div>
         </div>
@@ -920,7 +920,7 @@ Sample:
         <div class="card">
           <strong>Upcoming risky events (next 7 days)</strong>
           <div class="muted" style="font-size:12px;margin-top:4px;">
-            Combines calendar events with open, high-risk tickets in related modules and change collision signals.
+            Combines events with open, high-risk tickets in related modules and change collision signals.
           </div>
           <ul id="aiEventsList" class="muted" style="font-size:13px;margin-top:6px;padding-left:18px;"></ul>
         </div>
@@ -2316,7 +2316,7 @@ Sample:
        aria-labelledby="eventModalTitle" aria-describedby="eventModalBody">
     <div class="modal-content">
       <div class="header">
-        <h2 id="eventModalTitle" style="margin:0;font-size:20px">Event</h2>
+        <h2 id="eventModalTitle" style="margin:0;font-size:20px">Event Details</h2>
         <div class="actions">
           <button class="modal-close" id="eventModalClose" aria-label="Close event dialog">✕</button>
         </div>
@@ -2797,7 +2797,7 @@ Sample:
 
       <div id="freezeModalBody">
         <div class="muted" style="font-size:12px;margin-bottom:8px;">
-          Freeze windows highlight risky deployment times in the calendar.
+          Freeze windows highlight risky deployment times in events.
         </div>
         <div id="freezeModalList" class="freeze-window-list"></div>
 
