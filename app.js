@@ -3158,27 +3158,14 @@ function buildPublicTicketUpdatePayload(payload = {}) {
   return publicPayload;
 }
 
-function toNullableBoolean(value) {
-  if (value === undefined || value === null) return null;
-  if (typeof value === 'boolean') return value;
-  const raw = String(value).trim().toLowerCase();
-  if (!raw) return null;
-  if (['true', '1', 'yes', 'y'].includes(raw)) return true;
-  if (['false', '0', 'no', 'n'].includes(raw)) return false;
-  return null;
-}
-
 function buildTicketInternalUpdatePayload(payload = {}, ticketId = '') {
   const internalPayload = {
     ticket_id: String(ticketId || '').trim(),
     youtrack_reference: payload.youtrackReference ?? '',
     dev_team_status: payload.devTeamStatus ?? '',
-    issue_related: toNullableBoolean(payload.issueRelated),
+    issue_related: payload.issueRelated ?? '',
     notes: payload.notes ?? ''
   };
-  if ('issue_related' in internalPayload && internalPayload.issue_related === '') {
-    internalPayload.issue_related = null;
-  }
   return internalPayload.ticket_id ? internalPayload : null;
 }
 
@@ -3215,15 +3202,9 @@ async function saveIssueToSheet(issue, auth = {}, options = {}) {
     if (['admin', 'dev'].includes(currentRole)) {
       const internalUpdates = buildTicketInternalUpdatePayload(payload, issueRowId);
       if (internalUpdates) {
-        if ('issue_related' in internalUpdates && internalUpdates.issue_related === '') {
-          internalUpdates.issue_related = null;
-        }
+        const record = internalUpdates;
+        console.log('[ticket_internal] outgoing issue_related', record.issue_related);
         console.log('[ticket internal] outgoing payload', internalUpdates);
-        console.log(
-          '[ticket internal] issue_related type/value',
-          typeof internalUpdates.issue_related,
-          internalUpdates.issue_related
-        );
         const { data: internalRow, error: internalError } = await client
           .from('ticket_internal')
           .upsert(internalUpdates, { onConflict: 'ticket_id' })
@@ -3234,7 +3215,7 @@ async function saveIssueToSheet(issue, auth = {}, options = {}) {
           ...mergedTicket,
           youtrack_reference: internalRow?.youtrack_reference ?? '',
           dev_team_status: internalRow?.dev_team_status ?? '',
-          issue_related: toNullableBoolean(internalRow?.issue_related),
+          issue_related: internalRow?.issue_related ?? '',
           notes: internalRow?.notes ?? ''
         };
       }
