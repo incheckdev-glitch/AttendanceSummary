@@ -1640,6 +1640,8 @@ const IssueEditor = {
   open(issue) {
     if (!issue || !E.editIssueModal) return;
     this.issue = issue;
+    const identity = TicketCreator.resolveCurrentIdentity();
+    console.info('[IssueEditor] ticket form opened', { mode: 'edit', ticketId: issue.id || issue.ticket_id || '' });
 
     const setVal = (el, val = '') => {
       if (el) el.value = val || '';
@@ -1651,9 +1653,9 @@ const IssueEditor = {
     setVal(E.editIssuePriority, issue.priority || '');
     setVal(E.editIssueStatus, issue.status || '');
     this.syncCategoryOptions(issue.type || '');
-    setVal(E.editIssueDepartment, issue.department || '');
-    setVal(E.editIssueName, issue.name || '');
-    setVal(E.editIssueEmail, issue.emailAddressee || '');
+    setVal(E.editIssueDepartment, issue.department || identity.department || '');
+    setVal(E.editIssueName, issue.name || identity.name || '');
+    setVal(E.editIssueEmail, issue.emailAddressee || identity.email || '');
     setVal(E.editIssueYoutrackReference, issue.youtrackReference || '');
     this.syncSheetDropdowns(issue.devTeamStatus || '', issue.issueRelated || '');
     setVal(E.editIssueFile, issue.file || '');
@@ -1699,13 +1701,92 @@ const IssueEditor = {
 
 const TicketCreator = {
   isSubmitting: false,
+  getCurrentUserDisplayName() {
+    const authUser = Session.user?.() || {};
+    const profile = authUser.profile || {};
+    const sessionUser = authUser.user || {};
+    const rawName =
+      String(profile.name || profile.full_name || authUser.name || sessionUser?.user_metadata?.full_name || '').trim();
+    if (rawName) return rawName;
+    const username = String(profile.username || authUser.username || sessionUser?.user_metadata?.username || '').trim();
+    if (username) return username;
+    const email = String(profile.email || authUser.email || sessionUser.email || '').trim();
+    return email.includes('@') ? email.split('@')[0] : '';
+  },
+  getCurrentUserEmail() {
+    const authUser = Session.user?.() || {};
+    const profile = authUser.profile || {};
+    const sessionUser = authUser.user || {};
+    return String(profile.email || authUser.email || sessionUser.email || '').trim();
+  },
+  getCurrentUserRole() {
+    const authUser = Session.user?.() || {};
+    const profile = authUser.profile || {};
+    return String(profile.role_key || authUser.role || Session.role?.() || '').trim().toLowerCase();
+  },
+  formatRoleLabel(role = '') {
+    return String(role || '')
+      .trim()
+      .replace(/[_-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .replace(/\b\w/g, c => c.toUpperCase());
+  },
+  roleToDepartment(role = '') {
+    const key = String(role || '').trim().toLowerCase();
+    const map = {
+      admin: 'Administration',
+      viewer: 'Operations',
+      hoo: 'Operations',
+      dev: 'Development',
+      sales_executive: 'Sales',
+      financial_controller: 'Finance',
+      gm: 'Management',
+      accountant: 'Finance',
+      csm: 'Customer Success'
+    };
+    if (map[key]) return map[key];
+    const fallbackLabel = this.formatRoleLabel(key);
+    return fallbackLabel || 'General';
+  },
+  resolveCurrentIdentity() {
+    const name = this.getCurrentUserDisplayName();
+    const email = this.getCurrentUserEmail();
+    const role = this.getCurrentUserRole();
+    const department = this.roleToDepartment(role);
+    console.info('[TicketCreator] resolved current user name/email/role', { name, email, role });
+    console.info('[TicketCreator] resolved department', { role, department });
+    return { name, email, role, department };
+  },
+  applyIdentityFieldAccess() {
+    const isAdmin = Boolean(Session.isAdmin?.());
+    [E.createTicketName, E.createTicketEmail, E.createTicketDepartment].forEach(el => {
+      if (!el) return;
+      el.readOnly = !isAdmin;
+      el.setAttribute('aria-readonly', !isAdmin ? 'true' : 'false');
+    });
+  },
+  prefillIdentityFields({ preserveExisting = false } = {}) {
+    const identity = this.resolveCurrentIdentity();
+    const apply = (el, value) => {
+      if (!el) return;
+      if (preserveExisting && String(el.value || '').trim()) return;
+      el.value = value || '';
+    };
+    apply(E.createTicketName, identity.name);
+    apply(E.createTicketEmail, identity.email);
+    apply(E.createTicketDepartment, identity.department);
+    return identity;
+  },
   open() {
     if (!E.createTicketModal) return;
+    console.info('[TicketCreator] ticket form opened', { mode: 'create' });
     this.syncCategoryOptions();
     if (E.createTicketForm) E.createTicketForm.reset();
+    this.applyIdentityFieldAccess();
+    this.prefillIdentityFields();
     if (E.createTicketPriority) E.createTicketPriority.value = 'Medium';
     E.createTicketModal.style.display = 'flex';
-    E.createTicketName?.focus?.();
+    E.createTicketSubject?.focus?.();
   },
   close() {
     if (E.createTicketModal) E.createTicketModal.style.display = 'none';
@@ -1721,11 +1802,12 @@ const TicketCreator = {
   buildPayload() {
     const now = new Date().toISOString();
     const generatedId = `TK-${Date.now()}`;
+    const identity = this.prefillIdentityFields({ preserveExisting: true });
     return {
       id: generatedId,
       ticket_id: generatedId,
-      name: (E.createTicketName?.value || '').trim(),
-      department: (E.createTicketDepartment?.value || '').trim(),
+      name: (E.createTicketName?.value || '').trim() || identity.name,
+      department: (E.createTicketDepartment?.value || '').trim() || identity.department,
       module: (E.createTicketModule?.value || '').trim() || 'Unspecified',
       impactedModule: (E.createTicketModule?.value || '').trim() || 'Unspecified',
       title: (E.createTicketSubject?.value || '').trim(),
@@ -1734,8 +1816,8 @@ const TicketCreator = {
       category: (E.createTicketType?.value || '').trim(),
       type: (E.createTicketType?.value || '').trim(),
       priority: (E.createTicketPriority?.value || '').trim(),
-      emailAddressee: (E.createTicketEmail?.value || '').trim(),
-      email: (E.createTicketEmail?.value || '').trim(),
+      emailAddressee: (E.createTicketEmail?.value || '').trim() || identity.email,
+      email: (E.createTicketEmail?.value || '').trim() || identity.email,
       file: (E.createTicketFile?.value || '').trim(),
       link: (E.createTicketFile?.value || '').trim(),
       status: 'new',
@@ -4718,6 +4800,11 @@ function wireModals() {
       try {
         const payload = TicketCreator.buildPayload();
         debugTicketCreateLog('raw form payload', payload);
+        console.info('[TicketCreator] final create ticket payload identity fields', {
+          name: payload.name || '',
+          email_addressee: payload.emailAddressee || '',
+          department: payload.department || ''
+        });
         await createTicketInDatabase(payload);
         UI.toast('Ticket created successfully.');
         TicketCreator.close();
