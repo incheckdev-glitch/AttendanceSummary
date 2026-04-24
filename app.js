@@ -2035,8 +2035,9 @@ function trapFocus(container, e) {
 }
 
 function setActiveView(view) {
- if (!Permissions.canAccessTab(view)) view = 'issues';
  const names = ['issues', 'calendar', 'insights', 'csm', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'notifications', 'workflow', 'users', 'rolePermissions'];
+ const firstAllowedView = names.find(name => Permissions.canAccessTab(name)) || 'issues';
+ if (!Permissions.canAccessTab(view)) view = firstAllowedView;
   names.forEach(name => {
     const tab =
       name === 'issues'
@@ -4495,6 +4496,12 @@ function wireDashboardGate() {
     if (role === ROLES.VIEWER) return 'calendar';
     return 'issues';
   };
+  const getFirstAllowedView = preferredView => {
+    const names = ['issues', 'calendar', 'insights', 'csm', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'notifications', 'workflow', 'users', 'rolePermissions'];
+    const preferred = String(preferredView || '').trim();
+    if (preferred && Permissions.canAccessTab(preferred)) return preferred;
+    return names.find(name => Permissions.canAccessTab(name)) || 'issues';
+  };
 
   const unlockApp = () => {
     console.info('[wireDashboardGate.unlockApp] unlocking app UI');
@@ -4503,7 +4510,8 @@ function wireDashboardGate() {
     E.app.setAttribute('aria-hidden', 'false');
     if (E.logoutBtn) E.logoutBtn.hidden = false;
     const role = Session.role();
-    setActiveView(getDefaultViewForRole(role));
+    const defaultView = getDefaultViewForRole(role);
+    setActiveView(getFirstAllowedView(defaultView));
     if (window.Notifications?.onAuthStateChanged) Notifications.onAuthStateChanged();
     // Avoid forcing a jump to #app after login (caused unwanted auto-scrolling).
     if (window.location.hash) {
@@ -4522,13 +4530,6 @@ function wireDashboardGate() {
   };
 
   const refreshPermissionsForCurrentRole = async (force = false) => {
-    const role = Session.role();
-    if (!Permissions.canLoadRuntimeMatrix(role)) {
-      // Non-admin roles should use base permissions and skip runtime matrix fetches.
-      Permissions.reset();
-      Permissions.state.loaded = true;
-      return;
-    }
     await Permissions.loadMatrix(force);
   };
   const logPermissionSelfTest = () => {

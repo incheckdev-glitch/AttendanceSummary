@@ -309,6 +309,47 @@ const Permissions = {
     const normalizedRole = this.normalizeRole(role);
     return normalizedRole === ROLES.ADMIN || normalizedRole === ROLES.DEV;
   },
+  resourceAliases(resource) {
+    const normalizedResource = String(resource || '').trim().toLowerCase();
+    if (normalizedResource === 'csm') return ['csm', 'csm_activities'];
+    if (normalizedResource === 'csm_activities') return ['csm_activities', 'csm'];
+    return [normalizedResource];
+  },
+  buildMatrixFromRows(rows = []) {
+    const matrix = new Map();
+    let totalActiveRows = 0;
+    let totalDeniedRows = 0;
+    rows.forEach(row => {
+      const resource = String(row.resource || '').trim().toLowerCase();
+      const action = String(row.action || '').trim().toLowerCase();
+      if (!resource || !action) return;
+      const key = `${resource}:${action}`;
+      const existing = matrix.get(key) || this.createMatrixEntry();
+      existing.hasAnyRow = true;
+      const isRowAllowed = this.toBoolean(row.is_allowed, true);
+      const isRowActive = this.toBoolean(row.is_active, true);
+      const normalizedAllowedRoles = this.normalizeAllowedRoles(row);
+      const normalizedRoleKey = this.normalizeRole(row.role_key);
+      if (!isRowActive) {
+        matrix.set(key, existing);
+        return;
+      }
+      totalActiveRows += 1;
+      if (normalizedRoleKey) {
+        if (isRowAllowed) {
+          existing.allowedRoles.add(normalizedRoleKey);
+          existing.deniedRoles.delete(normalizedRoleKey);
+        } else {
+          existing.deniedRoles.add(normalizedRoleKey);
+          existing.allowedRoles.delete(normalizedRoleKey);
+          totalDeniedRows += 1;
+        }
+      }
+      if (isRowAllowed) normalizedAllowedRoles.forEach(roleValue => existing.allowedRoles.add(roleValue));
+      matrix.set(key, existing);
+    });
+    return { matrix, totalActiveRows, totalDeniedRows };
+  },
   async loadMatrix(force = false) {
     if (!Session.isAuthenticated()) {
       this.reset();
@@ -316,78 +357,61 @@ const Permissions = {
     }
     if (this.state.loading && !force) return this.state.rows;
     const currentRole = this.normalizeRole(Session.role());
-    if (!this.canLoadRuntimeMatrix(currentRole)) {
-      // Non-admin-like roles rely on BASE_PERMISSION_MATRIX to avoid startup failures
-      // when role_permissions is protected by backend policies.
-      this.reset();
-      this.state.loaded = true;
-      return [];
-    }
     this.state.loading = true;
     try {
-      const rows = [];
-      let page = 1;
-      let hasMore = true;
-      let lastNormalized = null;
-      let totalActiveRows = 0;
-      let totalDeniedRows = 0;
-      while (hasMore) {
-        const response = await Api.listRolePermissions({
-          limit: this.state.limit,
-          page,
-          summary_only: true,
-          forceRefresh: force
-        });
-        const normalized = this.extractListResult(response);
-        rows.push(...normalized.rows);
-        hasMore = Boolean(normalized.hasMore);
-        lastNormalized = normalized;
-        page += 1;
-        if (page > 500) break;
+      let rows = [];
+      let total = 0;
+      let limit = Number(this.state.limit || 50);
+      if (this.canLoadRuntimeMatrix(currentRole)) {
+        let page = 1;
+        let hasMore = true;
+        let lastNormalized = null;
+        while (hasMore) {
+          const response = await Api.listRolePermissions({
+            limit: this.state.limit,
+            page,
+            summary_only: true,
+            forceRefresh: force
+          });
+          const normalized = this.extractListResult(response);
+          rows.push(...normalized.rows);
+          hasMore = Boolean(normalized.hasMore);
+          lastNormalized = normalized;
+          page += 1;
+          if (page > 500) break;
+        }
+        total = Number(lastNormalized?.total ?? rows.length) || rows.length;
+        limit = Number(lastNormalized?.limit || this.state.limit || 50);
+      } else {
+        const client = window.SupabaseClient?.getClient?.();
+        if (!client || typeof client.rpc !== 'function') {
+          throw new Error('Supabase RPC client is unavailable for get_my_role_permissions');
+        }
+        const { data, error } = await client.rpc('get_my_role_permissions');
+        if (error) throw error;
+        rows = this.extractRows(data);
+        total = rows.length;
       }
-      const matrix = new Map();
-      rows.forEach(row => {
-        const resource = String(row.resource || '').trim().toLowerCase();
-        const action = String(row.action || '').trim().toLowerCase();
-        if (!resource || !action) return;
-        const key = `${resource}:${action}`;
-        const existing = matrix.get(key) || this.createMatrixEntry();
-        existing.hasAnyRow = true;
-        const isRowAllowed = this.toBoolean(row.is_allowed, true);
-        const isRowActive = this.toBoolean(row.is_active, true);
-        const normalizedAllowedRoles = this.normalizeAllowedRoles(row);
-        const normalizedRoleKey = this.normalizeRole(row.role_key);
-        if (!isRowActive) {
-          matrix.set(key, existing);
-          return;
-        }
-        totalActiveRows += 1;
-        if (normalizedRoleKey) {
-          if (isRowAllowed) {
-            existing.allowedRoles.add(normalizedRoleKey);
-            existing.deniedRoles.delete(normalizedRoleKey);
-          } else {
-            existing.deniedRoles.add(normalizedRoleKey);
-            existing.allowedRoles.delete(normalizedRoleKey);
-            totalDeniedRows += 1;
-          }
-        }
-        if (isRowAllowed) normalizedAllowedRoles.forEach(roleValue => existing.allowedRoles.add(roleValue));
-        matrix.set(key, existing);
-      });
+      const { matrix, totalActiveRows, totalDeniedRows } = this.buildMatrixFromRows(rows);
       this.state.rows = rows;
-      this.state.total = Number(lastNormalized?.total ?? rows.length) || rows.length;
+      this.state.total = total;
       this.state.returned = rows.length;
       this.state.hasMore = false;
       this.state.page = 1;
-      this.state.limit = Number(lastNormalized?.limit || this.state.limit || 50);
+      this.state.limit = limit;
       this.state.offset = 0;
       this.state.matrix = matrix;
-      console.info('[Permissions] matrix loaded', {
+      console.log('[Permissions] matrix loaded', JSON.stringify({
+        role: currentRole,
         totalRowsLoaded: rows.length,
         totalActiveRows,
         totalDeniedRows,
-        matrixKeyCount: matrix.size
+        matrixKeyCount: matrix.size,
+        sampleRows: rows.slice(0, 10)
+      }, null, 2));
+      console.info('[Permissions] matrix loaded stats', {
+        totalActiveRows,
+        totalDeniedRows
       });
       this.state.loaded = true;
       return rows;
@@ -430,16 +454,18 @@ const Permissions = {
     return this.canPerformAction(resource, action, role);
   },
   getBaseAllowedRoles(resource, action) {
-    const normalizedResource = String(resource || '').trim().toLowerCase();
+    const resourceAliases = this.resourceAliases(resource);
     const candidateActions = this.getActionCandidates(action);
     const allowedRoles = new Set();
-    candidateActions.forEach(candidateAction => {
-      const allowedByBase = this.baseMatrix?.[normalizedResource]?.[candidateAction];
-      if (!Array.isArray(allowedByBase)) return;
-      allowedByBase
-        .map(value => this.normalizeRole(value))
-        .filter(Boolean)
-        .forEach(roleValue => allowedRoles.add(roleValue));
+    resourceAliases.forEach(candidateResource => {
+      candidateActions.forEach(candidateAction => {
+        const allowedByBase = this.baseMatrix?.[candidateResource]?.[candidateAction];
+        if (!Array.isArray(allowedByBase)) return;
+        allowedByBase
+          .map(value => this.normalizeRole(value))
+          .filter(Boolean)
+          .forEach(roleValue => allowedRoles.add(roleValue));
+      });
     });
     return [...allowedRoles];
   },
@@ -462,6 +488,7 @@ const Permissions = {
   },
   getMatchedRows(resource, action, role = Session.role(), options = {}) {
     const normalizedResource = String(resource || '').trim().toLowerCase();
+    const resourceAliases = this.resourceAliases(normalizedResource);
     const normalizedRole = this.normalizeRole(role);
     const candidateActions = this.getActionCandidates(action);
     if (!normalizedResource || !candidateActions.length || !normalizedRole) return [];
@@ -470,7 +497,7 @@ const Permissions = {
       .filter(row => {
         const rowResource = String(row.resource || '').trim().toLowerCase();
         const rowAction = String(row.action || '').trim().toLowerCase();
-        if (rowResource !== normalizedResource || !candidateActions.includes(rowAction)) return false;
+        if (!resourceAliases.includes(rowResource) || !candidateActions.includes(rowAction)) return false;
         if (this.toBoolean(row.is_active, true) === false) return false;
         const isAllowed = this.toBoolean(row.is_allowed, true);
         if (!isAllowed && !includeDenied) return false;
@@ -488,15 +515,23 @@ const Permissions = {
   getMatrixEntry(resource, action) {
     const normalizedResource = String(resource || '').trim().toLowerCase();
     const normalizedAction = String(action || '').trim().toLowerCase();
-    const existing = this.state.matrix.get(`${normalizedResource}:${normalizedAction}`);
-    if (!existing) return null;
-    if (Array.isArray(existing)) {
-      const migrated = this.createMatrixEntry();
-      existing.forEach(roleValue => migrated.allowedRoles.add(this.normalizeRole(roleValue)));
-      migrated.hasAnyRow = existing.length > 0;
-      return migrated;
-    }
-    return existing;
+    const aliases = this.resourceAliases(normalizedResource);
+    const merged = this.createMatrixEntry();
+    let hasAny = false;
+    aliases.forEach(alias => {
+      const existing = this.state.matrix.get(`${alias}:${normalizedAction}`);
+      if (!existing) return;
+      hasAny = true;
+      if (Array.isArray(existing)) {
+        existing.forEach(roleValue => merged.allowedRoles.add(this.normalizeRole(roleValue)));
+        merged.hasAnyRow = merged.hasAnyRow || existing.length > 0;
+        return;
+      }
+      merged.hasAnyRow = merged.hasAnyRow || Boolean(existing.hasAnyRow);
+      existing.allowedRoles?.forEach(roleValue => merged.allowedRoles.add(this.normalizeRole(roleValue)));
+      existing.deniedRoles?.forEach(roleValue => merged.deniedRoles.add(this.normalizeRole(roleValue)));
+    });
+    return hasAny ? merged : null;
   },
   decidePermission(resource, action, role = Session.role(), options = {}) {
     const currentRole = this.normalizeRole(role);
@@ -527,12 +562,14 @@ const Permissions = {
       decision = currentRole === ROLES.ADMIN;
     }
 
-    console.log('[permissions check]', {
+    console.log('[permissions check]', JSON.stringify({
       role: currentRole,
       resource: normalizedResource,
       action: normalizedAction,
-      matchedRows
-    });
+      aliases: this.resourceAliases(normalizedResource),
+      matchedRows,
+      result: decision
+    }, null, 2));
     return decision;
   },
   getTabPermissionRequirements(viewKey) {
