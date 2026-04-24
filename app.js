@@ -1935,13 +1935,33 @@ function openReplyComposerForIssue(issue) {
 
 function applyIssueUpdate(savedIssue) {
   if (!savedIssue) return;
-  const normalized = normalizeIssueForStore(savedIssue);
+
+  const normalized = normalizeIssueForStore(savedIssue, {
+    includeRestrictedFields: Permissions.isAdminLike()
+  });
+
   const rows = DataStore.rows.slice();
   const idx = rows.findIndex(r => r.id === normalized.id);
+
   if (idx === -1) rows.push(normalized);
   else rows[idx] = { ...rows[idx], ...normalized };
+
   DataStore.hydrateFromRows(rows);
   IssuesCache.save(DataStore.rows);
+
+  const fresh = DataStore.byId.get(normalized.id) || normalized;
+
+  if (UI.Modals?.selectedIssue?.id === fresh.id) {
+    UI.Modals.selectedIssue = fresh;
+  }
+
+  if (IssueEditor?.issue?.id === fresh.id) {
+    IssueEditor.issue = fresh;
+  }
+
+  if (E.editIssueBtn && String(E.editIssueBtn.dataset.id || '') === String(fresh.id || '')) {
+    E.editIssueBtn.dataset.id = fresh.id || '';
+  }
 }
 
 async function onEditIssueSubmit(event) {
@@ -2015,6 +2035,12 @@ const issueUpdate = {
     }
 
     applyIssueUpdate(updatedIssue);
+    console.log('[ticket update] applied fresh issue', DataStore.byId.get(updatedIssue.id));
+
+    const freshUpdatedIssue = DataStore.byId.get(updatedIssue.id) || updatedIssue;
+    UI.Modals.selectedIssue = freshUpdatedIssue;
+    IssueEditor.issue = freshUpdatedIssue;
+
     IssueEditor.close();
     UI.Modals.closeIssue();
     UI.refreshAll();
@@ -4871,8 +4897,12 @@ function wireModals() {
       IssueEditor.isOpening = true;
       setButtonPendingState(E.editIssueBtn, true, 'Opening...');
       const selectedIssue =
-        UI.Modals.selectedIssue ||
-        DataStore.byId.get(E.editIssueBtn?.dataset?.id || '');
+        DataStore.byId.get(E.editIssueBtn?.dataset?.id || '') ||
+        UI.Modals.selectedIssue;
+      console.log('[ticket edit] selected issue source', {
+        fromStore: DataStore.byId.get(E.editIssueBtn?.dataset?.id || ''),
+        fromModal: UI.Modals.selectedIssue
+      });
       if (!selectedIssue) {
         UI.toast('Open a ticket before editing.');
         IssueEditor.isOpening = false;
