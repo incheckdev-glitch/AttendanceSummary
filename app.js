@@ -5269,6 +5269,8 @@ const CSMActivity = {
   lastLoadedAt: 0,
   isLoading: false,
   isSaving: false,
+  isLoadingClientOptions: false,
+  clientOptions: [],
   loadError: '',
   state: {
     search: '',
@@ -5297,7 +5299,14 @@ const CSMActivity = {
       timestamp,
       parsedDate: parsedDate && !isNaN(parsedDate) ? parsedDate : null,
       csmName: String(raw.csm_name || raw.csmName || '').trim(),
-      client: String(raw.client || '').trim(),
+      csmUserId: String(raw.csm_user_id || raw.csmUserId || '').trim(),
+      csmEmail: String(raw.csm_email || raw.csmEmail || '').trim(),
+      clientId: String(raw.client_id || raw.clientId || '').trim(),
+      clientName: String(raw.client_name || raw.clientName || raw.client || '').trim(),
+      companyName: String(raw.company_name || raw.companyName || raw.client_name || raw.client || '').trim(),
+      agreementId: String(raw.agreement_id || raw.agreementId || '').trim(),
+      onboardingId: String(raw.onboarding_id || raw.onboardingId || '').trim(),
+      client: String(raw.client || raw.client_name || raw.clientName || '').trim(),
       timeSpentMinutes: Number.parseFloat(raw.time_spent_minutes ?? raw.timeSpentMinutes ?? 0) || 0,
       supportType: String(raw.type_of_support || raw.supportType || '').trim(),
       effortRequirement: String(raw.effort_requirement || raw.effortRequirement || '').trim(),
@@ -5308,16 +5317,87 @@ const CSMActivity = {
     };
   },
   viewToBackendActivity(row = {}) {
+    const clientName = String(row.clientName || row.client || '').trim();
     return {
       timestamp: String(row.timestamp || '').trim(),
       csm_name: String(row.csmName || '').trim(),
-      client: String(row.client || '').trim(),
+      csm_user_id: String(row.csmUserId || '').trim(),
+      csm_email: String(row.csmEmail || '').trim(),
+      client_id: String(row.clientId || '').trim(),
+      client_name: clientName,
+      company_name: String(row.companyName || clientName).trim(),
+      agreement_id: String(row.agreementId || '').trim(),
+      onboarding_id: String(row.onboardingId || '').trim(),
+      client: clientName,
       time_spent_minutes: Number(row.timeSpentMinutes) || 0,
       type_of_support: String(row.supportType || '').trim(),
       effort_requirement: String(row.effortRequirement || '').trim(),
       support_channel: String(row.supportChannel || '').trim(),
       notes_optional: String(row.notes || '').trim()
     };
+  },
+  isAdminUser() {
+    return String(Session.role() || '').trim().toLowerCase() === 'admin';
+  },
+  getCurrentCsmIdentity() {
+    const identity = window.CsmActivityService?.getCurrentUserIdentity?.() || {};
+    return {
+      csmName: String(identity.csm_name || '').trim(),
+      csmUserId: String(identity.csm_user_id || '').trim(),
+      csmEmail: String(identity.csm_email || '').trim()
+    };
+  },
+  async ensureClientOptions() {
+    if (this.clientOptions.length) return this.clientOptions;
+    this.isLoadingClientOptions = true;
+    this.renderClientOptionsState();
+    try {
+      const options = await window.CsmActivityService.loadClientOptionsForCsmActivity();
+      this.clientOptions = Array.isArray(options) ? options : [];
+      return this.clientOptions;
+    } finally {
+      this.isLoadingClientOptions = false;
+      this.renderClientOptionsState();
+    }
+  },
+  renderClientOptionsState() {
+    if (!E.csmFormClientState) return;
+    if (this.isLoadingClientOptions) {
+      E.csmFormClientState.textContent = 'Loading clients…';
+      return;
+    }
+    E.csmFormClientState.textContent = this.clientOptions.length
+      ? ''
+      : 'No clients found. Please add the client first or check Operations Onboarding.';
+  },
+  getMatchingClientOptions(term = '') {
+    const q = String(term || '').trim().toLowerCase();
+    if (!q) return this.clientOptions.slice();
+    return this.clientOptions.filter(option => String(option.search_text || '').includes(q));
+  },
+  populateClientSelect(selectedValue = '', searchTerm = '') {
+    if (!E.csmFormClient) return;
+    const normalizedSelected = String(selectedValue || '').trim();
+    const results = this.getMatchingClientOptions(searchTerm);
+    let options = results.slice();
+    if (normalizedSelected && !options.some(item => item.client_name === normalizedSelected)) {
+      const fromAll = this.clientOptions.find(item => item.client_name === normalizedSelected);
+      if (fromAll) options = [fromAll, ...options];
+      else {
+        options = [{ client_name: normalizedSelected, company_name: normalizedSelected, search_text: normalizedSelected.toLowerCase() }, ...options];
+      }
+    }
+    E.csmFormClient.innerHTML = [
+      '<option value="">Select Client</option>',
+      ...options.map(option => `<option value="${U.escapeHtml(option.client_name)}">${U.escapeHtml(option.client_name)}</option>`)
+    ].join('');
+    if (normalizedSelected) E.csmFormClient.value = normalizedSelected;
+  },
+  applySelectedClientToForm(option = null) {
+    const selectedName = String(option?.client_name || E.csmFormClient?.value || '').trim();
+    if (E.csmFormClient && selectedName) E.csmFormClient.value = selectedName;
+    if (E.csmFormCompanyName) E.csmFormCompanyName.value = selectedName;
+    if (E.csmFormClientSearch) E.csmFormClientSearch.value = selectedName;
   },
   extractRows(payload) {
     if (Array.isArray(payload)) return payload;
@@ -5338,7 +5418,7 @@ const CSMActivity = {
       inlineSubmitBtn.disabled = !!v;
       inlineSubmitBtn.textContent = v ? 'Saving…' : 'Create Activity';
     }
-    ['csmFormCsmName','csmFormClient','csmFormMinutes','csmFormSupportType','csmFormEffort','csmFormChannel','csmFormNotes']
+    ['csmFormCsmName','csmFormClientSearch','csmFormClient','csmFormCompanyName','csmFormMinutes','csmFormSupportType','csmFormEffort','csmFormChannel','csmFormNotes']
       .forEach(id => { if (E[id]) E[id].disabled = !!v; });
     ['csmInlineTimestamp','csmInlineCsmName','csmInlineClient','csmInlineMinutes','csmInlineSupportType','csmInlineEffort','csmInlineChannel','csmInlineNotes']
       .forEach(id => { if (E[id]) E[id].disabled = !!v; });
@@ -5776,14 +5856,24 @@ const CSMActivity = {
     this.renderCharts(filtered);
     this.renderTable(filtered);
   },
-  openForm(row = null) {
+  async openForm(row = null) {
     if (!E.csmFormModal || !E.csmForm) return;
+    const identity = this.getCurrentCsmIdentity();
+    await this.ensureClientOptions();
     E.csmForm.dataset.mode = row ? 'edit' : 'create';
     E.csmForm.dataset.id = row?.id || '';
     E.csmForm.dataset.timestamp = row?.timestamp || '';
     if (E.csmFormTitle) E.csmFormTitle.textContent = row ? 'Edit CSM Daily Activity Tracker' : 'CSM Daily Activity Tracker';
-    if (E.csmFormCsmName) E.csmFormCsmName.value = row?.csmName || '';
-    if (E.csmFormClient) E.csmFormClient.value = row?.client || '';
+    const shouldKeepRowCsm = row?.csmName && row.csmName.trim();
+    if (E.csmFormCsmName) E.csmFormCsmName.value = shouldKeepRowCsm ? row.csmName : identity.csmName;
+    if (E.csmFormCsmName) E.csmFormCsmName.readOnly = !this.isAdminUser();
+    E.csmForm.dataset.csmUserId = row?.csmUserId || identity.csmUserId;
+    E.csmForm.dataset.csmEmail = row?.csmEmail || identity.csmEmail;
+    const selectedClientName = row?.clientName || row?.companyName || row?.client || '';
+    this.populateClientSelect(selectedClientName, selectedClientName);
+    const selectedOption = this.clientOptions.find(option => option.client_name === selectedClientName);
+    this.applySelectedClientToForm(selectedOption || (selectedClientName ? { client_name: selectedClientName } : null));
+    if (E.csmFormCompanyName) E.csmFormCompanyName.readOnly = true;
     if (E.csmFormMinutes) E.csmFormMinutes.value = row ? String(Math.round(Number(row.timeSpentMinutes) || 0)) : '';
     if (E.csmFormSupportType) E.csmFormSupportType.value = row?.supportType || '';
     if (E.csmFormEffort) E.csmFormEffort.value = row?.effortRequirement || '';
@@ -5800,9 +5890,18 @@ const CSMActivity = {
     E.csmFormModal.setAttribute('aria-hidden', 'true');
   },
   readFormValues() {
+    const selectedClientName = String(E.csmFormClient?.value || '').trim();
+    const selectedOption = this.clientOptions.find(option => option.client_name === selectedClientName) || {};
     return {
       csmName: String(E.csmFormCsmName?.value || '').trim(),
-      client: String(E.csmFormClient?.value || '').trim(),
+      csmUserId: String(E.csmForm?.dataset.csmUserId || '').trim(),
+      csmEmail: String(E.csmForm?.dataset.csmEmail || '').trim(),
+      client: selectedClientName,
+      clientId: String(selectedOption.client_id || '').trim(),
+      clientName: selectedClientName,
+      companyName: selectedClientName,
+      agreementId: String(selectedOption.agreement_id || '').trim(),
+      onboardingId: String(selectedOption.onboarding_id || '').trim(),
       timeSpentMinutes: Number(E.csmFormMinutes?.value || 0),
       supportType: String(E.csmFormSupportType?.value || '').trim(),
       effortRequirement: String(E.csmFormEffort?.value || '').trim(),
@@ -5989,6 +6088,17 @@ function wireCSMActivity() {
     E.csmForm.addEventListener('submit', event => {
       event.preventDefault();
       CSMActivity.submitForm();
+    });
+  }
+  if (E.csmFormClientSearch) {
+    E.csmFormClientSearch.addEventListener('input', () => {
+      CSMActivity.populateClientSelect(E.csmFormClient?.value || '', E.csmFormClientSearch.value);
+    });
+  }
+  if (E.csmFormClient) {
+    E.csmFormClient.addEventListener('change', () => {
+      const selected = CSMActivity.clientOptions.find(option => option.client_name === E.csmFormClient.value);
+      CSMActivity.applySelectedClientToForm(selected || { client_name: E.csmFormClient.value });
     });
   }
   if (E.csmFormDeleteBtn) {
