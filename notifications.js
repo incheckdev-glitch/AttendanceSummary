@@ -775,121 +775,307 @@ const Notifications = {
   },
   async handleNotificationClick(item) {
     if (!item) return;
-    if (!item.is_read) await this.markRead(item.notification_id);
-    this.navigateFromNotification(item);
+    await this.routeNotification(item);
   },
-  resolveTicketId(item = {}) {
-    return String(item.resource_id || item.meta?.ticket_id || item.meta?.id || '').trim();
+  waitForNextFrame() {
+    return new Promise(resolve => {
+      window.requestAnimationFrame(() => resolve());
+    });
   },
-  resolveAgreementId(item = {}) {
-    return String(item.resource_id || item.meta?.agreement_id || item.meta?.id || '').trim();
+  normalizeNotificationToken(value = '') {
+    return String(value || '')
+      .trim()
+      .toLowerCase();
   },
-  resolveOperationsAgreementId(item = {}) {
-    return String(item.meta?.agreement_id || item.resource_id || '').trim();
+  resolveNotificationResource(notification = {}) {
+    const meta = notification?.meta && typeof notification.meta === 'object' ? notification.meta : {};
+    const candidates = [
+      notification?.link_target,
+      notification?.resource,
+      notification?.type,
+      meta?.resource,
+      meta?.module
+    ];
+    const raw = candidates
+      .map(value => this.normalizeNotificationToken(value))
+      .find(Boolean);
+    if (!raw) return '';
+    const map = {
+      issues: 'tickets',
+      issue: 'tickets',
+      ticket: 'tickets',
+      tickets: 'tickets',
+      event: 'events',
+      events: 'events',
+      workflow: 'workflow',
+      workflow_approvals: 'workflow_approvals',
+      approval_required: 'workflow',
+      approved: 'workflow',
+      rejected: 'workflow',
+      workflow_approval_request: 'workflow',
+      workflow_decision: 'workflow',
+      proposals: 'proposals',
+      proposal: 'proposals',
+      agreements: 'agreements',
+      agreement: 'agreements',
+      invoices: 'invoices',
+      invoice: 'invoices',
+      receipts: 'receipts',
+      receipt: 'receipts',
+      operations_onboarding: 'operations_onboarding',
+      onboarding: 'operations_onboarding',
+      technical_admin: 'technical_admin',
+      technical_admin_requests: 'technical_admin',
+      clients: 'clients',
+      client: 'clients',
+      leads: 'leads',
+      lead: 'leads',
+      deals: 'deals',
+      deal: 'deals',
+      csm_activity: 'csm_activities',
+      csm_activities: 'csm_activities',
+      csm: 'csm_activities',
+      ai_insights: 'ai_insights',
+      ai_insight: 'ai_insights'
+    };
+    if (map[raw]) return map[raw];
+    if (raw.includes('ticket') || raw.includes('issue')) return 'tickets';
+    if (raw.includes('event')) return 'events';
+    if (raw.includes('workflow') || raw.includes('approval')) return 'workflow';
+    if (raw.includes('proposal')) return 'proposals';
+    if (raw.includes('agreement')) return 'agreements';
+    if (raw.includes('invoice')) return 'invoices';
+    if (raw.includes('receipt')) return 'receipts';
+    if (raw.includes('onboarding')) return 'operations_onboarding';
+    if (raw.includes('technical_admin')) return 'technical_admin';
+    if (raw.includes('client')) return 'clients';
+    if (raw.includes('lead')) return 'leads';
+    if (raw.includes('deal')) return 'deals';
+    if (raw.includes('csm')) return 'csm_activities';
+    if (raw.includes('insight')) return 'ai_insights';
+    return raw;
   },
-  resolveTechnicalAdminTargetId(item = {}) {
-    return String(item.meta?.onboarding_uuid || item.resource_id || item.meta?.id || '').trim();
+  resolveNotificationTargetId(notification = {}) {
+    const meta = notification?.meta && typeof notification.meta === 'object' ? notification.meta : {};
+    return String(
+      notification?.resource_id ||
+      meta?.record_id ||
+      meta?.id ||
+      meta?.ticket_uuid ||
+      meta?.ticket_id ||
+      meta?.event_id ||
+      meta?.proposal_id ||
+      meta?.agreement_id ||
+      meta?.invoice_id ||
+      meta?.receipt_id ||
+      meta?.onboarding_uuid ||
+      meta?.onboarding_id ||
+      meta?.client_id ||
+      meta?.lead_id ||
+      meta?.deal_id ||
+      ''
+    ).trim();
   },
-  isTechnicalAdminNotification(item = {}) {
-    const type = String(item.type || '').trim().toLowerCase();
-    const resource = String(item.resource || '').trim().toLowerCase();
-    const linkTarget = String(item.link_target || '').trim().toLowerCase();
-    const meta = item.meta && typeof item.meta === 'object' ? item.meta : {};
-    if (linkTarget === 'technical_admin' || linkTarget === 'technical_admin_requests') return true;
-    if (type === 'technical_admin_request_created' || type === 'technical_request_status_changed') return true;
-    return resource === 'operations_onboarding' && !!meta.technical_request_status;
-  },
-  openTechnicalAdminFromNotification(item = {}) {
-    this.closePanel();
-    setActiveView('technicalAdmin');
-    const highlightRequestId = this.resolveTechnicalAdminTargetId(item);
-    if (window.TechnicalAdmin?.loadAndRefresh) {
-      TechnicalAdmin.loadAndRefresh({ force: true, highlightRequestId });
+  async markNotificationRead(notification = {}) {
+    const notificationId = String(notification?.notification_id || '').trim();
+    if (!notificationId || notification?.is_read) return true;
+    if (!Session.isAuthenticated() || this.state.unavailable) return false;
+    if (!this.hasPermission('mark_read')) {
+      this.setPermissionDenied('mark_read');
+      return false;
+    }
+    this.updateLocalRead(notificationId);
+    this.recalculateUnreadCount();
+    this.renderBell();
+    this.renderPreview();
+    this.renderHub();
+    try {
+      await Api.markNotificationRead(notificationId);
+      await this.refreshUnreadCount();
+      return true;
+    } catch (error) {
+      console.warn('Unable to mark notification as read', error);
+      return false;
     }
   },
-  navigateFromNotification(item = {}) {
+  openNotificationsHub() {
+    setActiveView('notifications');
+  },
+  async openModuleTab(tabKey = '') {
+    const viewMap = {
+      tickets: 'issues',
+      events: 'calendar',
+      workflow: 'workflow',
+      workflow_approvals: 'workflow',
+      proposals: 'proposals',
+      agreements: 'agreements',
+      invoices: 'invoices',
+      receipts: 'receipts',
+      operations_onboarding: 'operationsOnboarding',
+      technical_admin: 'technicalAdmin',
+      clients: 'clients',
+      leads: 'leads',
+      deals: 'deals',
+      csm_activities: 'csm',
+      ai_insights: 'insights'
+    };
+    const viewKey = viewMap[tabKey] || '';
+    if (!viewKey || !Permissions.canAccessTab(viewKey)) {
+      UI.toast('You do not have permission to open this item.');
+      return false;
+    }
+    setActiveView(viewKey);
+    await this.waitForNextFrame();
+    console.log('[notifications route] opened module', tabKey);
+
+    if (tabKey === 'tickets' && typeof loadIssues === 'function') await loadIssues(true);
+    if (tabKey === 'events' && typeof ensureCalendar === 'function') ensureCalendar();
+    if (tabKey === 'workflow' && window.Workflow?.loadAndRefresh) await Workflow.loadAndRefresh(true);
+    if (tabKey === 'proposals' && window.Proposals?.loadAndRefresh) await Proposals.loadAndRefresh({ force: true });
+    if (tabKey === 'agreements' && window.Agreements?.loadAndRefresh) await Agreements.loadAndRefresh({ force: true });
+    if (tabKey === 'invoices' && window.Invoices?.refresh) await Invoices.refresh({ force: true });
+    if (tabKey === 'receipts' && window.Receipts?.refresh) await Receipts.refresh({ force: true });
+    if (tabKey === 'operations_onboarding' && window.OperationsOnboarding?.loadAndRefresh) await OperationsOnboarding.loadAndRefresh({ force: true });
+    if (tabKey === 'technical_admin' && window.TechnicalAdmin?.loadAndRefresh) await TechnicalAdmin.loadAndRefresh({ force: true });
+    if (tabKey === 'clients' && window.Clients?.loadAndRefresh) await Clients.loadAndRefresh({ force: true });
+    if (tabKey === 'leads' && window.Leads?.loadAndRefresh) await Leads.loadAndRefresh({ force: true });
+    if (tabKey === 'deals' && window.Deals?.loadAndRefresh) await Deals.loadAndRefresh({ force: true });
+    if (tabKey === 'csm_activities' && window.CSMActivity?.loadAndRefresh) await CSMActivity.loadAndRefresh({ force: true });
+    if (tabKey === 'ai_insights' && window.AIInsights?.refresh) await AIInsights.refresh({ force: true });
+    return true;
+  },
+  highlightRowById(id) {
+    const target = String(id || '').trim();
+    if (!target) return false;
+    const escapedId = typeof CSS?.escape === 'function' ? CSS.escape(target) : target.replace(/"/g, '\\"');
+    const selectors = [
+      `[data-id="${escapedId}"]`,
+      `[data-record-id="${escapedId}"]`,
+      `[data-resource-id="${escapedId}"]`,
+      `[data-row-id="${escapedId}"]`
+    ];
+    const el = selectors.map(sel => document.querySelector(sel)).find(Boolean);
+    if (!el) return false;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('notification-target-highlight');
+    window.setTimeout(() => el.classList.remove('notification-target-highlight'), 3000);
+    return true;
+  },
+  async routeToResourceTarget(resource, targetId, notification) {
+    if (resource === 'tickets') {
+      const opened = await this.openModuleTab('tickets');
+      if (!opened) return false;
+      if (targetId && window.UI?.Modals?.openIssue) UI.Modals.openIssue(targetId);
+      return targetId ? this.highlightRowById(targetId) || true : true;
+    }
+    if (resource === 'events') {
+      const opened = await this.openModuleTab('events');
+      if (!opened) return false;
+      const eventId = String(targetId || notification?.meta?.event_code || '').trim();
+      if (eventId && window.AIInsights?.openEventByRef) window.AIInsights.openEventByRef(eventId);
+      return eventId ? this.highlightRowById(eventId) || true : true;
+    }
+    if (resource === 'workflow' || resource === 'workflow_approvals') {
+      const opened = await this.openModuleTab('workflow');
+      if (!opened) return false;
+      const approvalId = String(targetId || notification?.meta?.approval_id || '').trim();
+      const row = (window.Workflow?.state?.approvals || []).find(item => String(item?.approval_id || '').trim() === approvalId);
+      if (row && window.Workflow?.openApprovalPreview) await Workflow.openApprovalPreview(row);
+      return approvalId ? this.highlightRowById(approvalId) || !!row : true;
+    }
+    if (resource === 'proposals') {
+      const opened = await this.openModuleTab('proposals');
+      if (!opened) return false;
+      if (targetId && window.Proposals?.openProposalFormById) await Proposals.openProposalFormById(targetId, { readOnly: true });
+      return targetId ? this.highlightRowById(targetId) || true : true;
+    }
+    if (resource === 'agreements') {
+      const opened = await this.openModuleTab('agreements');
+      if (!opened) return false;
+      if (targetId && window.Agreements?.openAgreementFormById) await Agreements.openAgreementFormById(targetId, { readOnly: true });
+      return targetId ? this.highlightRowById(targetId) || true : true;
+    }
+    if (resource === 'invoices') {
+      const opened = await this.openModuleTab('invoices');
+      if (!opened) return false;
+      if (targetId && window.Invoices?.openInvoiceById) await Invoices.openInvoiceById(targetId, { readOnly: true });
+      return targetId ? this.highlightRowById(targetId) || true : true;
+    }
+    if (resource === 'receipts') {
+      const opened = await this.openModuleTab('receipts');
+      if (!opened) return false;
+      if (targetId && window.Receipts?.openReceiptById) await Receipts.openReceiptById(targetId, { readOnly: true });
+      return targetId ? this.highlightRowById(targetId) || true : true;
+    }
+    if (resource === 'operations_onboarding') {
+      const opened = await this.openModuleTab('operations_onboarding');
+      if (!opened) return false;
+      if (targetId && window.OperationsOnboarding?.openOnboardingDetails) {
+        await OperationsOnboarding.openOnboardingDetails(targetId, String(notification?.meta?.agreement_id || '').trim());
+      }
+      return targetId ? this.highlightRowById(targetId) || true : true;
+    }
+    if (resource === 'technical_admin') {
+      const opened = await this.openModuleTab('technical_admin');
+      if (!opened) return false;
+      if (targetId && window.TechnicalAdmin?.openDetails) await TechnicalAdmin.openDetails(targetId);
+      else if (targetId && window.TechnicalAdmin?.highlightRow) window.TechnicalAdmin.highlightRow(targetId);
+      return targetId ? this.highlightRowById(targetId) || true : true;
+    }
+    if (resource === 'clients') {
+      const opened = await this.openModuleTab('clients');
+      if (!opened) return false;
+      if (targetId && window.Clients?.selectClient) await Clients.selectClient(targetId, { force: true });
+      return targetId ? this.highlightRowById(targetId) || true : true;
+    }
+    if (resource === 'leads') {
+      const opened = await this.openModuleTab('leads');
+      if (!opened) return false;
+      const row = (window.Leads?.state?.rows || []).find(item => String(item?.id || item?.lead_id || '').trim() === targetId);
+      if (row && window.Leads?.openForm) Leads.openForm(row);
+      return targetId ? this.highlightRowById(targetId) || !!row : true;
+    }
+    if (resource === 'deals') {
+      const opened = await this.openModuleTab('deals');
+      if (!opened) return false;
+      const row = (window.Deals?.state?.rows || []).find(item => String(item?.id || item?.deal_id || '').trim() === targetId);
+      if (row && window.Deals?.openForm) Deals.openForm(row);
+      return targetId ? this.highlightRowById(targetId) || !!row : true;
+    }
+    if (resource === 'csm_activities') {
+      const opened = await this.openModuleTab('csm_activities');
+      if (!opened) return false;
+      return targetId ? this.highlightRowById(targetId) : true;
+    }
+    if (resource === 'ai_insights') {
+      const opened = await this.openModuleTab('ai_insights');
+      if (!opened) return false;
+      return targetId ? this.highlightRowById(targetId) : true;
+    }
+    this.openNotificationsHub();
+    return true;
+  },
+  async routeNotification(notification = {}) {
+    const resource = this.resolveNotificationResource(notification);
+    const targetId = this.resolveNotificationTargetId(notification);
+    console.log('[notifications route]', {
+      notification_id: notification.notification_id,
+      type: notification.type,
+      resource: notification.resource,
+      link_target: notification.link_target,
+      resolvedResource: resource,
+      targetId
+    });
+    const readMarked = await this.markNotificationRead(notification);
+    if (!readMarked && !notification?.is_read) return;
+    this.closePanel();
     try {
-      const linkTarget = String(item.link_target || '').trim();
-      if (linkTarget) {
-        const normalizedLinkTarget = linkTarget.toLowerCase();
-        if (normalizedLinkTarget === 'technical_admin' || normalizedLinkTarget === 'technical_admin_requests') {
-          this.openTechnicalAdminFromNotification(item);
-          return;
-        }
-        if (linkTarget.startsWith('http://') || linkTarget.startsWith('https://')) {
-          window.open(linkTarget, '_blank', 'noopener,noreferrer');
-          return;
-        }
-        if (linkTarget.startsWith('#')) {
-          window.location.hash = linkTarget;
-          return;
-        }
+      const opened = await this.routeToResourceTarget(resource, targetId, notification);
+      if (!opened) return;
+      console.log('[notifications route] opened/highlighted target', targetId);
+      if (targetId && !this.highlightRowById(targetId)) {
+        UI.toast('The related record could not be found or may have been deleted.');
       }
-
-      if (this.isTechnicalAdminNotification(item)) {
-        this.openTechnicalAdminFromNotification(item);
-        return;
-      }
-
-      const resource = String(item.resource || '').toLowerCase();
-      if (resource.includes('ticket') || resource.includes('issues')) {
-        setActiveView('issues');
-        const ticketId = this.resolveTicketId(item);
-        if (ticketId && window.UI?.Modals?.openIssue) {
-          UI.Modals.openIssue(ticketId);
-        }
-        return;
-      }
-      if (resource.includes('agreement')) {
-        setActiveView('agreements');
-        const agreementId = this.resolveAgreementId(item);
-        if (agreementId && window.Agreements?.openAgreementFormById) {
-          Agreements.openAgreementFormById(agreementId, { readOnly: true });
-        }
-        return;
-      }
-      if (resource.includes('operations_onboarding')) {
-        setActiveView('operationsOnboarding');
-        const agreementId = this.resolveOperationsAgreementId(item);
-        if (agreementId && window.OperationsOnboarding?.state) {
-          OperationsOnboarding.state.search = agreementId;
-          if (E.operationsOnboardingSearchInput) E.operationsOnboardingSearchInput.value = agreementId;
-        }
-        if (window.OperationsOnboarding?.loadAndRefresh) {
-          OperationsOnboarding.loadAndRefresh({ force: true });
-        }
-        return;
-      }
-      if (resource.includes('workflow') || resource.includes('approval')) {
-        if (Permissions.canAccessTab('workflow')) {
-          setActiveView('workflow');
-        } else {
-          setActiveView('notifications');
-        }
-        return;
-      }
-      if (resource.includes('proposal')) {
-        setActiveView('proposals');
-        return;
-      }
-      if (resource.includes('deal')) {
-        setActiveView('deals');
-        return;
-      }
-      if (resource.includes('lead')) {
-        setActiveView('leads');
-        return;
-      }
-      if (resource.includes('invoice')) {
-        setActiveView('invoices');
-        return;
-      }
-      if (resource.includes('receipt')) {
-        setActiveView('receipts');
-        return;
-      }
-      setActiveView('notifications');
-      UI.toast('Notification opened, but no direct route was available.');
     } catch (error) {
       console.warn('Notification navigation failed', error);
       UI.toast('Notification opened, but route was unavailable.');
