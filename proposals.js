@@ -93,6 +93,166 @@ const Proposals = {
   normalizeText(value) {
     return String(value ?? '').trim().toLowerCase();
   },
+  getProposalCustomerName(proposal = {}) {
+    return (
+      String(
+        proposal.company_name ||
+          proposal.client_name ||
+          proposal.customer_name ||
+          proposal.lead_company_name ||
+          proposal.deal_company_name ||
+          proposal.companyName ||
+          proposal.clientName ||
+          proposal.customerName ||
+          proposal.full_name ||
+          proposal.fullName ||
+          'Customer'
+      ).trim() || 'Customer'
+    );
+  },
+  getProposalValue(proposal = {}, ...keys) {
+    if (!proposal || typeof proposal !== 'object') return '';
+    for (const key of keys) {
+      if (!key) continue;
+      if (proposal[key] !== undefined && proposal[key] !== null && String(proposal[key]).trim() !== '') {
+        return proposal[key];
+      }
+    }
+    return '';
+  },
+  formatDateMMDDYYYY(value) {
+    if (!value) return '';
+    const raw = String(value).trim();
+    if (!raw) return '';
+    const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) return `${match[2]}/${match[3]}/${match[1]}`;
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return '';
+    return `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}/${date.getFullYear()}`;
+  },
+  formatDateTimeMMDDYYYYHHMM(value) {
+    if (!value) return '';
+    const formatted = U.formatDateTimeMMDDYYYYHHMM(value);
+    if (!formatted || formatted === '—' || formatted === 'Invalid Date') return '';
+    return formatted;
+  },
+  csvEscape(value) {
+    const text = String(value ?? '');
+    if (/[",\n\r]/.test(text)) {
+      return `"${text.replace(/"/g, '""')}"`;
+    }
+    return text;
+  },
+  downloadCsv(filename, csvText) {
+    const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  },
+  getFilteredProposalRows() {
+    return Array.isArray(this.state.filteredRows) ? this.state.filteredRows : [];
+  },
+  exportProposalsCsv() {
+    if (!Permissions.canPreviewProposal()) {
+      UI.toast('You do not have permission to view proposals.');
+      return;
+    }
+    const rows = this.getFilteredProposalRows();
+    if (!rows.length) {
+      UI.toast('No proposals match the current filters.');
+      return;
+    }
+    const headers = [
+      'Proposal ID',
+      'Proposal Number',
+      'Customer / Company',
+      'Contact Name',
+      'Email',
+      'Phone',
+      'Status',
+      'Proposal Date',
+      'Valid Until',
+      'Subtotal Locations',
+      'Subtotal One Time',
+      'Discount Percent',
+      'Discount Amount',
+      'Proposal Total',
+      'Currency',
+      'Owner / Assigned To',
+      'Approval Status',
+      'Created At',
+      'Updated At',
+      'Notes'
+    ];
+    const lines = [
+      headers.map(value => this.csvEscape(value)).join(','),
+      ...rows.map(proposal => {
+        const discountPercent = this.getProposalValue(proposal, 'discount_percent', 'discountPercent');
+        const discountAmount = this.getProposalValue(
+          proposal,
+          'discount_amount',
+          'discountAmount',
+          'total_discount',
+          'totalDiscount'
+        );
+        const subtotalLocations = this.getProposalValue(
+          proposal,
+          'subtotal_locations',
+          'subtotalLocations',
+          'saas_total',
+          'saasTotal'
+        );
+        const subtotalOneTime = this.getProposalValue(
+          proposal,
+          'subtotal_one_time',
+          'subtotalOneTime',
+          'one_time_total',
+          'oneTimeTotal'
+        );
+        const values = [
+          this.getProposalValue(proposal, 'proposal_id', 'proposalId', 'id'),
+          this.getProposalValue(proposal, 'proposal_number', 'proposalNumber', 'ref_number', 'refNumber'),
+          this.getProposalCustomerName(proposal),
+          this.getProposalValue(proposal, 'contact_name', 'contactName', 'customer_contact_name', 'customerContactName'),
+          this.getProposalValue(proposal, 'email', 'customer_contact_email', 'customerContactEmail'),
+          this.getProposalValue(proposal, 'phone', 'customer_contact_mobile', 'customerContactMobile'),
+          this.getProposalValue(proposal, 'status'),
+          this.formatDateMMDDYYYY(this.getProposalValue(proposal, 'proposal_date', 'proposalDate')),
+          this.formatDateMMDDYYYY(
+            this.getProposalValue(
+              proposal,
+              'proposal_valid_until',
+              'proposalValidUntil',
+              'valid_until',
+              'validUntil'
+            )
+          ),
+          subtotalLocations,
+          subtotalOneTime,
+          discountPercent,
+          discountAmount,
+          this.getProposalValue(proposal, 'proposal_total', 'proposalTotal', 'total', 'grand_total', 'grandTotal'),
+          this.getProposalValue(proposal, 'currency'),
+          this.getProposalValue(proposal, 'owner', 'assigned_to', 'assignedTo', 'generated_by', 'generatedBy'),
+          this.getProposalValue(proposal, 'approval_status', 'approvalStatus'),
+          this.formatDateTimeMMDDYYYYHHMM(this.getProposalValue(proposal, 'created_at', 'createdAt')),
+          this.formatDateTimeMMDDYYYYHHMM(this.getProposalValue(proposal, 'updated_at', 'updatedAt')),
+          this.getProposalValue(proposal, 'notes')
+        ];
+        return values.map(value => this.csvEscape(value)).join(',');
+      })
+    ];
+    const now = new Date();
+    const filename = `proposals-export-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(
+      now.getDate()
+    ).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}.csv`;
+    this.downloadCsv(filename, lines.join('\n'));
+  },
   generateRefNumber() {
     return `${Date.now()}${Math.floor(Math.random() * 1000)
       .toString()
@@ -690,7 +850,7 @@ const Proposals = {
   <body>
     <div class="doc-sheet">
       <header class="header-top">
-        <h1 class="logo-title">${textValue(proposalData.provider_name || proposalData.provider_legal_name || 'COMPANY NAME')}</h1>
+        <h1 class="logo-title">${textValue(this.getProposalCustomerName(proposalData))}</h1>
         <div class="logo-subtitle">${textValue(proposalData.provider_address || proposalData.provider_contact_email || 'Commercial Services')}</div>
       </header>
 
@@ -1082,6 +1242,11 @@ const Proposals = {
     }
     if (E.proposalsSearchInput) E.proposalsSearchInput.value = this.state.search;
     if (E.proposalsCustomerFilter) E.proposalsCustomerFilter.value = this.state.customer;
+    if (E.proposalsExportCsvBtn) {
+      const canView = Permissions.canPreviewProposal();
+      E.proposalsExportCsvBtn.style.display = canView ? '' : 'none';
+      E.proposalsExportCsvBtn.disabled = this.state.loading || !canView;
+    }
   },
   render() {
     if (!E.proposalsState || !E.proposalsTbody) return;
@@ -2047,6 +2212,9 @@ const Proposals = {
 
     if (E.proposalsRefreshBtn) {
       E.proposalsRefreshBtn.addEventListener('click', () => this.loadAndRefresh({ force: true }));
+    }
+    if (E.proposalsExportCsvBtn) {
+      E.proposalsExportCsvBtn.addEventListener('click', () => this.exportProposalsCsv());
     }
     if (E.proposalsCreateBtn) {
       E.proposalsCreateBtn.addEventListener('click', () => {
