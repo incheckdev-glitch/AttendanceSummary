@@ -1,25 +1,24 @@
 (function initCsmService(global) {
   const TABLE = 'csm_activities';
   const MUTATION_ROLES = new Set(['admin', 'hoo']);
-  const CSM_COLUMNS = new Set([
-    'activity_code',
-    'timestamp',
+  const CSM_ACTIVITY_COLUMNS = new Set([
+    'id',
+    'activity_id',
     'csm_user_id',
     'csm_email',
     'csm_name',
     'client_id',
     'client_name',
     'company_name',
-    'agreement_id',
-    'onboarding_id',
-    'client',
     'time_spent_minutes',
     'type_of_support',
     'effort_requirement',
     'support_channel',
-    'notes_optional',
+    'notes',
     'created_by',
-    'updated_by'
+    'updated_by',
+    'created_at',
+    'updated_at'
   ]);
 
   const SUPPORT_TYPE_OPTIONS = [
@@ -82,14 +81,10 @@
     return raw;
   }
 
-  function sanitizeColumns(record = {}) {
-    const sanitized = {};
-    Object.entries(record).forEach(([key, value]) => {
-      if (!CSM_COLUMNS.has(key)) return;
-      if (value === undefined || value === null) return;
-      sanitized[key] = value;
-    });
-    return sanitized;
+  function filterCsmActivityRecord(record = {}) {
+    return Object.fromEntries(
+      Object.entries(record).filter(([key, value]) => CSM_ACTIVITY_COLUMNS.has(key) && value !== undefined)
+    );
   }
 
   function normalizeCsmRow(row = {}) {
@@ -131,8 +126,7 @@
       effortRequirement: cleanString(raw.effort_requirement || raw.effortRequirement),
       support_channel: cleanString(raw.support_channel || raw.supportChannel),
       supportChannel: cleanString(raw.support_channel || raw.supportChannel),
-      notes_optional: cleanString(raw.notes_optional || raw.notes),
-      notes: cleanString(raw.notes_optional || raw.notes),
+      notes: cleanString(raw.notes || raw.notes_optional),
       created_by: cleanString(raw.created_by || raw.createdBy),
       updated_by: cleanString(raw.updated_by || raw.updatedBy),
       created_at: cleanString(raw.created_at),
@@ -173,26 +167,21 @@
     const identity = getCurrentUserIdentity();
     const selectedClientName = cleanString(input.client_name ?? input.clientName ?? input.client);
     const mapped = {
-      activity_code: input.activity_code || input.activityCode,
-      timestamp: parseDateValue(input.timestamp) || new Date().toISOString(),
       csm_user_id: (input.csm_user_id ?? input.csmUserId ?? identity.csm_user_id) || undefined,
       csm_email: (input.csm_email ?? input.csmEmail ?? identity.csm_email) || undefined,
       csm_name: input.csm_name ?? input.csmName ?? identity.csm_name,
       client_id: input.client_id ?? input.clientId,
       client_name: selectedClientName,
       company_name: input.company_name ?? input.companyName ?? selectedClientName,
-      agreement_id: input.agreement_id ?? input.agreementId,
-      onboarding_id: input.onboarding_id ?? input.onboardingId,
-      client: input.client ?? selectedClientName,
       time_spent_minutes: input.time_spent_minutes ?? input.timeSpentMinutes,
       type_of_support: input.type_of_support ?? input.supportType,
       effort_requirement: input.effort_requirement ?? input.effortRequirement,
       support_channel: input.support_channel ?? input.supportChannel,
-      notes_optional: input.notes_optional ?? input.notes,
+      notes: input.notes ?? input.notes_optional,
       created_by: input.created_by || input.createdBy || userId || undefined,
       updated_by: input.updated_by || input.updatedBy || userId || undefined
     };
-    return sanitizeColumns(mapped);
+    return filterCsmActivityRecord(mapped);
   }
 
   async function toUpdatePayload(input = {}) {
@@ -201,25 +190,20 @@
     const identity = getCurrentUserIdentity();
     const selectedClientName = cleanString(input.client_name ?? input.clientName ?? input.client);
     const mapped = {
-      activity_code: input.activity_code ?? input.activityCode,
-      timestamp: input.timestamp !== undefined ? parseDateValue(input.timestamp) : undefined,
       csm_user_id: (input.csm_user_id ?? input.csmUserId ?? identity.csm_user_id) || undefined,
       csm_email: (input.csm_email ?? input.csmEmail ?? identity.csm_email) || undefined,
       csm_name: input.csm_name ?? input.csmName ?? identity.csm_name,
       client_id: input.client_id ?? input.clientId,
       client_name: selectedClientName || undefined,
       company_name: (input.company_name ?? input.companyName ?? selectedClientName) || undefined,
-      agreement_id: input.agreement_id ?? input.agreementId,
-      onboarding_id: input.onboarding_id ?? input.onboardingId,
-      client: input.client ?? selectedClientName,
       time_spent_minutes: input.time_spent_minutes ?? input.timeSpentMinutes,
       type_of_support: input.type_of_support ?? input.supportType,
       effort_requirement: input.effort_requirement ?? input.effortRequirement,
       support_channel: input.support_channel ?? input.supportChannel,
-      notes_optional: input.notes_optional ?? input.notes,
+      notes: input.notes ?? input.notes_optional,
       updated_by: input.updated_by || input.updatedBy || userId || undefined
     };
-    return sanitizeColumns(mapped);
+    return filterCsmActivityRecord(mapped);
   }
 
   function getUnsupportedColumn(message = '') {
@@ -248,26 +232,69 @@
     return operation(working);
   }
 
+  function normalizeClientKey(value) {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, ' ');
+  }
+
+  function chooseRicherText(a = '', b = '') {
+    const left = cleanString(a);
+    const right = cleanString(b);
+    return right.length > left.length ? right : left;
+  }
+
+  function mergeUnique(list = [], value) {
+    const normalized = cleanString(value);
+    if (!normalized) return list;
+    return list.includes(normalized) ? list : [...list, normalized];
+  }
+
+  function combineSourceLabels(left = '', right = '') {
+    const labels = new Set([cleanString(left), cleanString(right)].filter(Boolean));
+    if (!labels.size) return '';
+    return [...labels].sort().join('+');
+  }
+
   function mergeClientOption(targetMap, incoming = {}) {
     const clientId = cleanString(incoming.client_id || incoming.clientId);
     const clientName = toReadableClientName(incoming.client_name || incoming.clientName || incoming.company_name || incoming.companyName);
     if (!clientId && !clientName) return;
-    const normalizedName = normalizeNameKey(clientName);
-    const key = clientId ? `id:${clientId}` : `name:${normalizedName}`;
-    const existing = targetMap.get(key) || {};
+    const normalizedName = normalizeClientKey(clientName || incoming.company_name || incoming.companyName);
+    const idKey = clientId ? `id:${clientId}` : '';
+    const nameKey = normalizedName ? `name:${normalizedName}` : '';
+    const key = idKey || nameKey;
+    if (!key) return;
+    const existingById = idKey ? targetMap.get(idKey) : null;
+    const existingByName = nameKey ? targetMap.get(nameKey) : null;
+    const existing = existingById || existingByName || {};
+    const incomingOnboardingId = cleanString(incoming.onboarding_id || incoming.onboardingId);
+    const incomingAgreementId = cleanString(incoming.agreement_id || incoming.agreementId);
     const merged = {
       client_id: clientId || existing.client_id || '',
-      client_name: clientName || existing.client_name || '',
-      company_name: toReadableClientName(incoming.company_name || incoming.companyName || clientName || existing.company_name || existing.client_name),
-      agreement_id: cleanString(incoming.agreement_id || incoming.agreementId || existing.agreement_id),
-      onboarding_id: cleanString(incoming.onboarding_id || incoming.onboardingId || existing.onboarding_id)
+      client_name: chooseRicherText(existing.client_name, clientName),
+      company_name: chooseRicherText(
+        existing.company_name || existing.client_name,
+        toReadableClientName(incoming.company_name || incoming.companyName || clientName)
+      ),
+      source: combineSourceLabels(existing.source, incoming.source || ''),
+      metadata: {
+        onboarding_ids: mergeUnique(existing.metadata?.onboarding_ids || [], incomingOnboardingId),
+        agreement_ids: mergeUnique(existing.metadata?.agreement_ids || [], incomingAgreementId)
+      }
     };
-    merged.search_text = [merged.client_name, merged.company_name, merged.client_id, merged.agreement_id]
+    merged.onboarding_id = merged.metadata.onboarding_ids[0] || '';
+    merged.agreement_id = merged.metadata.agreement_ids[0] || '';
+    const displayName = merged.client_name || merged.company_name;
+    merged.label = displayName;
+    merged.value = merged.client_id ? `id:${merged.client_id}` : `name:${normalizeClientKey(displayName)}`;
+    merged.search_text = [merged.client_name, merged.company_name, merged.client_id, ...merged.metadata.agreement_ids]
       .map(value => cleanString(value).toLowerCase())
       .filter(Boolean)
       .join(' ');
-    targetMap.set(key, merged);
-    if (!clientId && normalizedName) targetMap.set(`name:${normalizedName}`, merged);
+    if (idKey) targetMap.set(idKey, merged);
+    if (nameKey) targetMap.set(nameKey, merged);
   }
 
   async function loadClientOptionsForCsmActivity() {
@@ -279,7 +306,8 @@
         client_id: row.client_id || row.clientId,
         client_name: row.client_name || row.clientName,
         company_name: row.company_name || row.companyName,
-        agreement_id: row.source_agreement_id || row.agreement_id || row.agreementId
+        agreement_id: row.source_agreement_id || row.agreement_id || row.agreementId,
+        source: 'clients'
       });
     });
     try {
@@ -292,7 +320,8 @@
           client_id: row.client_id || row.id,
           client_name: row.client_name || row.company_name,
           company_name: row.company_name || row.client_name,
-          agreement_id: row.source_agreement_id
+          agreement_id: row.source_agreement_id,
+          source: 'clients'
         });
       });
     } catch {}
@@ -306,7 +335,8 @@
           client_name: row.client_name || row.company_name,
           company_name: row.company_name || row.client_name,
           agreement_id: row.agreement_id,
-          onboarding_id: row.onboarding_id
+          onboarding_id: row.onboarding_id,
+          source: 'operations'
         });
       });
     } catch {}
@@ -316,7 +346,8 @@
         mergeClientOption(optionMap, {
           client_id: row.client_id,
           client_name: row.client_name || row.company_name || row.client,
-          company_name: row.company_name || row.client_name || row.client
+          company_name: row.company_name || row.client_name || row.client,
+          source: 'csm_activities'
         });
       });
     } catch {}
@@ -326,13 +357,17 @@
         mergeClientOption(optionMap, {
           client_name: row.customer_name || row.customer_legal_name,
           company_name: row.customer_legal_name || row.customer_name,
-          agreement_id: row.agreement_id
+          agreement_id: row.agreement_id,
+          source: 'agreements'
         });
       });
     } catch {}
-    return [...optionMap.values()]
+    const beforeCount = optionMap.size;
+    const deduped = [...new Set(optionMap.values())]
       .filter(option => cleanString(option.client_name))
       .sort((a, b) => cleanString(a.client_name).localeCompare(cleanString(b.client_name)));
+    console.log('[csm activity] client options count before/after dedupe', beforeCount, deduped.length);
+    return deduped;
   }
 
   async function listActivities() {
@@ -354,6 +389,7 @@
   async function createActivity(input = {}) {
     if (!canMutate()) throw new Error('Only admin/hoo can create CSM activities.');
     const payload = await toInsertPayload(input);
+    console.log('[csm activity] filtered save payload', payload);
     const client = getClient();
     const { data, error } = await withColumnFallback(
       nextPayload => client.from(TABLE).insert(nextPayload).select('*').single(),
@@ -368,6 +404,7 @@
     const activityId = cleanString(id || updates.id);
     if (!activityId) throw new Error('CSM activity id is required.');
     const payload = await toUpdatePayload(updates);
+    console.log('[csm activity] filtered save payload', payload);
     const client = getClient();
     const { data, error } = await withColumnFallback(
       nextPayload => client.from(TABLE).update(nextPayload).eq('id', activityId).select('*').single(),
