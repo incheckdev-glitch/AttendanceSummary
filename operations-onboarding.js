@@ -1095,12 +1095,18 @@ const OperationsOnboarding = {
     const message = `Please proceed with the following agreement ${agreementLabel}.`;
     try {
       await Api.requestAgreementTechnicalAdmin(id, message);
+      Api.clearApiCache('operations_onboarding:list');
       this.upsertByAgreement(id, {
         request_type: 'Technical Admin',
         technical_admin_request: 'Requested',
         technical_admin_request_message: message
       });
       await this.loadAndRefresh({ force: true });
+      if (window.TechnicalAdmin?.loadAndRefresh) {
+        await window.TechnicalAdmin.loadAndRefresh({ force: true });
+      } else {
+        Api.clearApiCache('technical_admin_requests:list');
+      }
       UI.toast(`Technical Admin requested for agreement ${agreementLabel}.`);
     } catch (error) {
       UI.toast('Unable to request Technical Admin: ' + (error?.message || 'Unknown error'));
