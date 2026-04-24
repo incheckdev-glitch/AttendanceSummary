@@ -3,7 +3,7 @@ const RESOURCE_PRIMARY_KEY = {
   roles: 'role_key',
   role_permissions: 'permission_id',
   technical_admin_requests: 'id',
-  operations_onboarding: 'onboarding_id',
+  operations_onboarding: 'id',
   clients: 'id',
   invoices: 'id',
   receipts: 'id',
@@ -478,6 +478,7 @@ const Api = {
   async requestAgreementTechnicalAdmin(agreementId, message = '') {
     const normalizedAgreementId = String(agreementId || '').trim();
     if (!normalizedAgreementId) throw new Error('Agreement ID is required.');
+    console.log('[operations onboarding] technical admin agreement', normalizedAgreementId);
 
     const technicalRequestDetails = String(message || '').trim() || `Please proceed with the following agreement ${normalizedAgreementId}.`;
     const currentUser = (window.Session?.currentUser && typeof window.Session.currentUser === 'object')
@@ -503,13 +504,24 @@ const Api = {
 
     const onboardingListResponse = await this.listOperationsOnboarding({ agreement_id: normalizedAgreementId });
     const onboardingRows = this.normalizeListResponse(onboardingListResponse).rows || [];
-    const existingOnboarding = onboardingRows.find(row => String(row?.agreement_id || '').trim() === normalizedAgreementId) || onboardingRows[0] || null;
+    const matchingRows = onboardingRows.filter(row => String(row?.agreement_id || '').trim() === normalizedAgreementId);
+    const sortableRows = matchingRows.length ? matchingRows : onboardingRows;
+    const sortedRows = sortableRows.slice().sort((a, b) => {
+      const aTime = new Date(a?.updated_at || a?.created_at || 0).getTime();
+      const bTime = new Date(b?.updated_at || b?.created_at || 0).getTime();
+      return bTime - aTime;
+    });
+    if (sortedRows.length > 1) {
+      console.warn('[operations onboarding] duplicate rows found for agreement_id', normalizedAgreementId, sortedRows);
+    }
+    const existingOnboarding = sortedRows[0] || null;
+    console.log('[operations onboarding] resolved existing onboarding', existingOnboarding);
 
     let onboardingRecord;
     if (existingOnboarding) {
-      const onboardingId = String(existingOnboarding.onboarding_id || existingOnboarding.id || '').trim();
-      if (!onboardingId) throw new Error(`Operations onboarding row is missing onboarding_id for agreement ${normalizedAgreementId}.`);
-      onboardingRecord = await this.updateOperationsOnboarding(onboardingId, requestFields);
+      const rowId = String(existingOnboarding.id || existingOnboarding.db_id || '').trim();
+      if (!rowId) throw new Error(`Operations onboarding row is missing id for agreement ${normalizedAgreementId}.`);
+      onboardingRecord = await this.updateOperationsOnboarding(rowId, requestFields);
     } else {
       onboardingRecord = await this.saveOperationsOnboarding(requestFields);
     }
@@ -571,8 +583,12 @@ const Api = {
   async updateOperationsOnboardingAction({ onboardingId = '', agreementId = '', updates = {}, syncTechnicalStatus = '' } = {}) {
     const normalizedOnboardingId = String(onboardingId || '').trim();
     const normalizedAgreementId = String(agreementId || '').trim();
-    if (!normalizedOnboardingId) throw new Error('operations_onboarding onboarding_id is required.');
+    if (!normalizedOnboardingId) throw new Error('operations_onboarding id is required.');
     const payload = updates && typeof updates === 'object' ? { ...updates } : {};
+    delete payload.id;
+    delete payload.db_id;
+    delete payload.record_id;
+    console.log('[operations onboarding] update id', normalizedOnboardingId, payload);
     const response = await this.updateOperationsOnboarding(normalizedOnboardingId, payload);
     const updatedOnboarding = this.unwrapApiPayload(response) || response || null;
 
@@ -595,7 +611,7 @@ const Api = {
         }
       } catch (syncError) {
         console.warn('[Api.updateOperationsOnboardingAction] Unable to sync technical_admin_requests status', {
-          onboarding_id: normalizedOnboardingId,
+          id: normalizedOnboardingId,
           agreement_id: normalizedAgreementId,
           status: syncTechnicalStatus,
           error: String(syncError?.message || syncError)
@@ -629,9 +645,13 @@ const Api = {
     });
   },
   async updateOperationsOnboarding(onboardingId, updates = {}) {
+    const safeUpdates = updates && typeof updates === 'object' ? { ...updates } : {};
+    delete safeUpdates.id;
+    delete safeUpdates.db_id;
+    delete safeUpdates.record_id;
     return this.requestWithSession('operations_onboarding', 'update', {
-      onboarding_id: onboardingId,
-      updates,
+      id: onboardingId,
+      updates: safeUpdates,
       sheetName: CONFIG.OPERATIONS_ONBOARDING_SHEET_NAME
     });
   },

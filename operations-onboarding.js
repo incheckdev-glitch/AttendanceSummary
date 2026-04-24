@@ -42,7 +42,9 @@ const OperationsOnboarding = {
       source.agreement?.location_count
     );
     return {
-      onboarding_id: String(this.pick(source.onboarding_id, source.onboardingId, source.id)).trim(),
+      id: String(this.pick(source.id, source.db_id, source.record_id)).trim(),
+      db_id: String(this.pick(source.id, source.db_id, source.record_id)).trim(),
+      onboarding_id: String(this.pick(source.onboarding_id, source.onboardingId)).trim(),
       agreement_id: String(this.pick(source.agreement_id, source.agreementId, source.agreement_uuid, source.agreementUuid, nestedAgreement.agreement_id, nestedAgreement.agreementId, nestedAgreement.id)).trim(),
       agreement_number: String(this.pick(source.agreement_number, source.agreementNumber, nestedAgreement.agreement_number, nestedAgreement.agreementNumber)).trim(),
       client_id: String(this.pick(source.client_id, source.clientId, source.customer_id, source.customerId, nestedAgreement.client_id, nestedAgreement.clientId)).trim(),
@@ -861,8 +863,10 @@ const OperationsOnboarding = {
     const canWrite = this.canWrite();
     E.operationsOnboardingTbody.innerHTML = rows.map(row => {
       const agreementId = U.escapeAttr(row.agreement_id);
-      const onboardingId = U.escapeAttr(row.onboarding_id);
+      const rowDbId = U.escapeAttr(row.id || row.db_id || '');
+      const onboardingLabel = U.escapeHtml(row.onboarding_id || row.id || '—');
       const hasAgreementId = Boolean(String(row.agreement_id || '').trim());
+      const hasRowDbId = Boolean(String(row.id || row.db_id || '').trim());
       const agreement = this.state.agreementMap.get(row.agreement_id) || {};
       const agreementItems = this.state.agreementItemsMap.get(row.agreement_id) || [];
       const locationCount = this.deriveAgreementLocationCount(agreement, agreementItems, row);
@@ -871,15 +875,15 @@ const OperationsOnboarding = {
       const billingFrequency = row.billing_frequency || agreement.billing_frequency;
       const paymentTerm = row.payment_term || agreement.payment_term;
       return `<tr>
-          <td>${text(row.onboarding_id)}</td><td>${text(row.agreement_id)}</td><td>${text(row.agreement_number)}</td><td>${text(row.client_name)}</td><td>${text(this.formatDate(row.signed_date))}</td><td>${text(row.onboarding_status)}</td>
+          <td>${onboardingLabel}</td><td>${text(row.agreement_id)}</td><td>${text(row.agreement_number)}</td><td>${text(row.client_name)}</td><td>${text(this.formatDate(row.signed_date))}</td><td>${text(row.onboarding_status)}</td>
           <td>${text(row.request_type || row.technical_request_type)}</td><td>${text(row.requested_by)}</td><td>${text(this.formatDate(row.requested_at))}</td><td>${text(row.technical_request_status || row.technical_admin_request)}</td><td>${text(row.request_message || row.technical_request_details || row.technical_admin_request_message)}</td><td>${text(row.csm_assigned_to)}</td><td>${text(locationCount)}</td><td>${text(this.formatDate(serviceStart))}</td><td>${text(this.formatDate(serviceEnd))}</td><td>${text(billingFrequency)}</td><td>${text(paymentTerm)}</td><td>${text(this.formatDate(row.updated_at))}</td>
           <td><div style="display:flex;gap:6px;flex-wrap:wrap;">
             <button class="btn ghost sm" type="button" data-op-open-agreement="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Open Agreement</button>
-            <button class="btn ghost sm" type="button" data-op-open-details="${onboardingId}">Open Onboarding Details</button>
+            <button class="btn ghost sm" type="button" data-op-open-details="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Open Onboarding Details</button>
             ${canWrite ? `<button class="btn ghost sm" type="button" data-op-technical-admin="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Technical Admin Request</button>
-            <button class="btn ghost sm" type="button" data-op-assign-csm="${onboardingId}" data-op-agreement-id="${agreementId}" ${onboardingId ? '' : 'disabled title="Onboarding ID not available"'}>Assign CSM</button>
-            <button class="btn ghost sm" type="button" data-op-mark-progress="${onboardingId}" data-op-agreement-id="${agreementId}" ${onboardingId ? '' : 'disabled title="Onboarding ID not available"'}>Mark In Progress</button>
-            <button class="btn ghost sm" type="button" data-op-mark-completed="${onboardingId}" data-op-agreement-id="${agreementId}" ${onboardingId ? '' : 'disabled title="Onboarding ID not available"'}>Mark Completed</button>` : ''}
+            <button class="btn ghost sm" type="button" data-op-assign-csm="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Assign CSM</button>
+            <button class="btn ghost sm" type="button" data-op-mark-progress="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Mark In Progress</button>
+            <button class="btn ghost sm" type="button" data-op-mark-completed="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Mark Completed</button>` : ''}
           </div></td>
         </tr>`;
     }).join('');
@@ -920,7 +924,9 @@ const OperationsOnboarding = {
   },
   async openOnboardingDetails(onboardingId = '', agreementId = '') {
     try {
-      const response = await Api.getOperationsOnboarding(onboardingId ? { onboarding_id: onboardingId } : { agreement_id: agreementId });
+      const rowDbId = String(onboardingId || '').trim();
+      console.log('[operations onboarding] open details id', rowDbId);
+      const response = await Api.getOperationsOnboarding(rowDbId ? { id: rowDbId } : { agreement_id: agreementId });
       const detail = this.normalizeRow(response?.onboarding || response?.item || response?.data || response);
       const agreement = this.state.agreementMap.get(detail.agreement_id) || {};
       const agreementItems = this.state.agreementItemsMap.get(detail.agreement_id) || [];
@@ -968,7 +974,7 @@ const OperationsOnboarding = {
     if (!this.canWrite()) return UI.toast('Insufficient permissions.');
     this.state.pendingOnboardingId = String(onboardingId || '').trim();
     this.state.pendingAgreementId = String(agreementId || '').trim();
-    if (!this.state.pendingOnboardingId) return UI.toast('Unable to assign CSM for this onboarding row because no Onboarding ID is available.');
+    if (!this.state.pendingOnboardingId) return UI.toast('Unable to assign CSM for this onboarding row because no onboarding row ID is available.');
     this.state.postSubmitHook = typeof onDone === 'function' ? onDone : null;
     if (E.operationsAssignCsmForm) E.operationsAssignCsmForm.reset();
     if (E.operationsAssignCsmModal) {
@@ -980,7 +986,7 @@ const OperationsOnboarding = {
     if (!this.canWrite()) return UI.toast('Insufficient permissions.');
     this.state.pendingOnboardingId = String(onboardingId || '').trim();
     this.state.pendingAgreementId = String(agreementId || '').trim();
-    if (!this.state.pendingOnboardingId) return UI.toast('Unable to update onboarding status for this row because no Onboarding ID is available.');
+    if (!this.state.pendingOnboardingId) return UI.toast('Unable to update onboarding status for this row because no onboarding row ID is available.');
     this.state.postSubmitHook = typeof onDone === 'function' ? onDone : null;
     if (E.operationsUpdateStatusForm) E.operationsUpdateStatusForm.reset();
     if (E.operationsUpdateStatusModal) {
@@ -991,7 +997,7 @@ const OperationsOnboarding = {
   async submitAssignCsm() {
     const onboardingId = this.state.pendingOnboardingId;
     const agreementId = this.state.pendingAgreementId;
-    if (!onboardingId) return UI.toast('Onboarding ID is required.');
+    if (!onboardingId) return UI.toast('Onboarding row ID is required.');
     const nowIso = new Date().toISOString();
     const payload = {
       csm_assigned_to: E.operationsAssignCsmName?.value || '',
@@ -1020,7 +1026,7 @@ const OperationsOnboarding = {
   async submitUpdateStatus() {
     const onboardingId = this.state.pendingOnboardingId;
     const agreementId = this.state.pendingAgreementId;
-    if (!onboardingId) return UI.toast('Onboarding ID is required.');
+    if (!onboardingId) return UI.toast('Onboarding row ID is required.');
     const nextStatus = String(E.operationsUpdateStatusValue?.value || '').trim();
     const nowIso = new Date().toISOString();
     const payload = {
@@ -1054,7 +1060,7 @@ const OperationsOnboarding = {
     const normalizedOnboardingId = String(onboardingId || '').trim();
     const normalizedAgreementId = String(agreementId || '').trim();
     const normalizedStatus = String(status || '').trim();
-    if (!normalizedOnboardingId) return UI.toast('Onboarding ID is required.');
+    if (!normalizedOnboardingId) return UI.toast('Onboarding row ID is required.');
     if (!normalizedStatus) return UI.toast('Status is required.');
     const nowIso = new Date().toISOString();
     const payload = {

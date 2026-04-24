@@ -27,7 +27,7 @@
     clients: 'id',
     invoices: 'id',
     receipts: 'id',
-    operations_onboarding: 'onboarding_id',
+    operations_onboarding: 'id',
     technical_admin_requests: 'id'
     ,notifications: 'notification_id'
   };
@@ -46,7 +46,7 @@
     clients: ['client_id'],
     invoices: ['invoice_id'],
     receipts: ['receipt_id'],
-    operations_onboarding: ['id'],
+    operations_onboarding: ['onboarding_id', 'agreement_id'],
     technical_admin_requests: ['request_id', 'technical_request_id']
     ,notifications: ['id']
   };
@@ -546,6 +546,13 @@
       out.saas_total = out.saas_total ?? out.subtotal_locations ?? 0;
       out.subtotal_one_time = out.subtotal_one_time ?? out.one_time_total ?? 0;
       out.one_time_total = out.one_time_total ?? out.subtotal_one_time ?? 0;
+    }
+    if (resource === 'operations_onboarding') {
+      out.id = out.id ?? '';
+      out.db_id = out.db_id ?? out.id ?? '';
+      out.record_id = out.record_id ?? out.id ?? '';
+      out.onboarding_id = out.onboarding_id ?? '';
+      out.onboardingId = out.onboardingId ?? out.onboarding_id ?? '';
     }
     if (resource === 'technical_admin_requests') {
       out.id = out.id ?? '';
@@ -1550,6 +1557,52 @@
     ({ data, error } = await query.maybeSingle());
     if (error) throw friendlyError('Unable to resolve technical admin request identifier', error);
     return String(data?.id || '').trim();
+  }
+
+  async function resolveOperationsOnboardingId(payload = {}, client) {
+    const directId = String(
+      firstDefined(payload, ['id', 'db_id', 'record_id']) ??
+      firstDefined(payload.item || {}, ['id', 'db_id', 'record_id']) ??
+      firstDefined(payload.updates || {}, ['id', 'db_id', 'record_id']) ??
+      ''
+    ).trim();
+    if (directId) return directId;
+
+    const onboardingId = String(
+      firstDefined(payload, ['onboarding_id', 'onboardingId']) ??
+      firstDefined(payload.item || {}, ['onboarding_id', 'onboardingId']) ??
+      firstDefined(payload.updates || {}, ['onboarding_id', 'onboardingId']) ??
+      ''
+    ).trim();
+    if (onboardingId) {
+      const { data, error } = await client
+        .from('operations_onboarding')
+        .select('id')
+        .eq('onboarding_id', onboardingId)
+        .order('updated_at', { ascending: false })
+        .limit(1);
+      if (error) throw friendlyError('Unable to resolve operations onboarding identifier', error);
+      if (data && data.length) return String(data[0].id || '').trim();
+    }
+
+    const agreementId = String(
+      firstDefined(payload, ['agreement_id', 'agreementId']) ??
+      firstDefined(payload.item || {}, ['agreement_id', 'agreementId']) ??
+      firstDefined(payload.updates || {}, ['agreement_id', 'agreementId']) ??
+      ''
+    ).trim();
+    if (agreementId) {
+      const { data, error } = await client
+        .from('operations_onboarding')
+        .select('id')
+        .eq('agreement_id', agreementId)
+        .order('updated_at', { ascending: false })
+        .limit(1);
+      if (error) throw friendlyError('Unable to resolve operations onboarding by agreement', error);
+      if (data && data.length) return String(data[0].id || '').trim();
+    }
+
+    return '';
   }
 
   function splitListPayload(payload = {}) {
@@ -2675,12 +2728,15 @@
 
     if (action === 'get') {
       assertAllowed(resource, 'get');
-      const id = resource === 'technical_admin_requests'
+      const id = resource === 'operations_onboarding'
+        ? await resolveOperationsOnboardingId(payload, client)
+        : resource === 'technical_admin_requests'
         ? await resolveTechnicalAdminRequestUuid(payload, client)
         : ['clients', 'invoices', 'receipts'].includes(resource)
         ? await resolveResourceUuid(resource, payload, client)
         : requireResourceIdentifier(resource, payload, 'get');
-      const key = getPrimaryKeyForResource(resource);
+      const key = resource === 'operations_onboarding' ? 'id' : getPrimaryKeyForResource(resource);
+      if (!id) throw new Error(`Missing ${key} for ${resource} get`);
       console.log('[CRUD] resource, pk, value', resource, key, id);
       const userGetColumns = 'id, name, email, username, role_key, is_active, created_at, updated_at';
       const { data, error } = await client
@@ -2847,7 +2903,9 @@
 
     if (action === 'update') {
       assertAllowed(resource, 'update');
-      const pickedId = resource === 'technical_admin_requests'
+      const pickedId = resource === 'operations_onboarding'
+        ? await resolveOperationsOnboardingId(payload, client)
+        : resource === 'technical_admin_requests'
         ? await resolveTechnicalAdminRequestUuid(payload, client)
         : ['clients', 'invoices', 'receipts'].includes(resource)
         ? await resolveResourceUuid(resource, payload, client)
@@ -2863,11 +2921,16 @@
         : resource === 'proposal_catalog'
           ? pickProposalCatalogMutationId(payload)
         : pickedId;
-      const key = getPrimaryKeyForResource(resource);
+      const key = resource === 'operations_onboarding' ? 'id' : getPrimaryKeyForResource(resource);
       if (!id) throw new Error(`Missing ${key} for ${resource} update`);
       console.log('[CRUD] resource, pk, value', resource, key, id);
       const updates = payload.updates || payload.item || payload.activity || payload;
       const safeUpdates = { ...updates };
+      if (resource === 'operations_onboarding') {
+        delete safeUpdates.id;
+        delete safeUpdates.db_id;
+        delete safeUpdates.record_id;
+      }
       if (resource === 'notifications') {
       out.notification_id = out.notification_id ?? out.id ?? '';
       out.id = out.id ?? out.notification_id ?? '';
@@ -3022,7 +3085,9 @@
 
     if (action === 'delete') {
       assertAllowed(resource, 'delete');
-      const pickedId = ['clients', 'invoices', 'receipts'].includes(resource)
+      const pickedId = resource === 'operations_onboarding'
+        ? await resolveOperationsOnboardingId(payload, client)
+        : ['clients', 'invoices', 'receipts'].includes(resource)
         ? await resolveResourceUuid(resource, payload, client)
         : requireResourceIdentifier(resource, payload, 'delete');
       const id = resource === 'tickets'
@@ -3030,7 +3095,7 @@
         : resource === 'proposal_catalog'
           ? pickProposalCatalogMutationId(payload)
         : pickedId;
-      const key = getPrimaryKeyForResource(resource);
+      const key = resource === 'operations_onboarding' ? 'id' : getPrimaryKeyForResource(resource);
       if (!id) throw new Error(`Missing ${key} for ${resource} delete`);
       console.log('[CRUD] resource, pk, value', resource, key, id);
       if (resource === 'tickets' && isAdminDev()) {
