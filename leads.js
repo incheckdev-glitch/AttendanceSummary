@@ -442,9 +442,20 @@ const Leads = {
     }
     return '';
   },
+  updateExportButtonState() {
+    if (!E.leadsExportCsvBtn) return;
+    const canExport = Permissions.canExport('leads');
+    E.leadsExportCsvBtn.style.display = canExport ? '' : 'none';
+    E.leadsExportCsvBtn.disabled = this.state.loading || !canExport;
+    if (!canExport) {
+      E.leadsExportCsvBtn.title = 'You do not have permission to export this data.';
+    } else {
+      E.leadsExportCsvBtn.removeAttribute('title');
+    }
+  },
   exportLeadsCsv() {
-    if (!Permissions.canView('leads')) {
-      UI.toast('You do not have permission to view leads.');
+    if (!Permissions.canExport('leads')) {
+      UI.toast('You do not have permission to export leads.');
       return;
     }
     const filteredRows = this.getFilteredLeadRows();
@@ -759,8 +770,8 @@ const Leads = {
   },
   render() {
     if (!E.leadsTbody || !E.leadsState) return;
+    this.updateExportButtonState();
     if (this.state.loading) {
-      if (E.leadsExportCsvBtn) E.leadsExportCsvBtn.disabled = true;
       E.leadsState.textContent = 'Loading leads…';
       this.renderLeadAnalytics(this.computeLeadAnalytics([]));
       E.leadsTbody.innerHTML = Array.from({ length: 6 })
@@ -774,7 +785,6 @@ const Leads = {
       return;
     }
     if (this.state.loadError) {
-      if (E.leadsExportCsvBtn) E.leadsExportCsvBtn.disabled = false;
       E.leadsState.textContent = this.state.loadError;
       this.renderLeadAnalytics(this.computeLeadAnalytics([]));
       E.leadsTbody.innerHTML = `<tr><td colspan="21" class="muted" style="text-align:center;color:#ffb4b4;">${U.escapeHtml(this.state.loadError)}</td></tr>`;
@@ -782,7 +792,6 @@ const Leads = {
     }
 
     const rows = this.state.filteredRows;
-    if (E.leadsExportCsvBtn) E.leadsExportCsvBtn.disabled = false;
     this.renderLeadAnalytics(this.computeLeadAnalytics(rows));
     E.leadsState.textContent = `${rows.length} lead${rows.length === 1 ? '' : 's'}`;
 

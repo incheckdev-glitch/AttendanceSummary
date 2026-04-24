@@ -1054,6 +1054,16 @@ const UI = {
     if (E.releasePlannerCard) E.releasePlannerCard.style.display = canChangePlanner ? '' : 'none';
     if (E.editIssueBtn) E.editIssueBtn.style.display = Permissions.canEditTicket() ? '' : 'none';
     if (E.bulkEditBtn) E.bulkEditBtn.style.display = Permissions.canEditTicket() ? '' : 'none';
+    if (E.exportCsv) {
+      const canExportTickets = Permissions.canExport('tickets');
+      E.exportCsv.style.display = canExportTickets ? '' : 'none';
+      E.exportCsv.disabled = !canExportTickets;
+      if (!canExportTickets) {
+        E.exportCsv.title = 'You do not have permission to export this data.';
+      } else {
+        E.exportCsv.removeAttribute('title');
+      }
+    }
     if (E.devTeamStatusFilterRow)
       E.devTeamStatusFilterRow.style.display = canUseInternalIssueFilters ? '' : 'none';
     if (E.issueRelatedFilterRow)

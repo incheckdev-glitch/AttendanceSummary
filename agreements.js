@@ -128,10 +128,7 @@ const Agreements = {
     return normalizedCurrency ? `${normalizedCurrency} ${formatted}` : formatted;
   },
   canExportAgreements() {
-    const canView = Permissions.canView('agreements');
-    const exportActions = ['export_csv', 'export', 'manage_export', 'manage'];
-    const hasExportAction = exportActions.some(action => Permissions.canPerformAction?.('agreements', action));
-    return hasExportAction || canView;
+    return Permissions.canExport('agreements');
   },
   getFilteredAgreementRows() {
     return Array.isArray(this.state.filteredRows) ? [...this.state.filteredRows] : [];
@@ -1277,7 +1274,16 @@ const Agreements = {
     }
     if (E.agreementsSearchInput) E.agreementsSearchInput.value = this.state.search;
     if (E.agreementsProposalDealFilter) E.agreementsProposalDealFilter.value = this.state.proposalOrDeal;
-    if (E.agreementsExportCsvBtn) E.agreementsExportCsvBtn.style.display = this.canExportAgreements() ? '' : 'none';
+    if (E.agreementsExportCsvBtn) {
+      const canExport = this.canExportAgreements();
+      E.agreementsExportCsvBtn.style.display = canExport ? '' : 'none';
+      E.agreementsExportCsvBtn.disabled = this.state.loading || !canExport;
+      if (!canExport) {
+        E.agreementsExportCsvBtn.title = 'You do not have permission to export this data.';
+      } else {
+        E.agreementsExportCsvBtn.removeAttribute('title');
+      }
+    }
   },
   render() {
     if (!E.agreementsState || !E.agreementsTbody) return;
