@@ -2248,10 +2248,20 @@ input[style*="min-width"]{
 
   .toolbar{
     justify-content:flex-start;
+    flex-wrap:wrap;
+    align-items:stretch;
   }
   #searchInput{
     min-width:min(420px,100%);
     flex:1 1 280px;
+  }
+  .toolbar .input,
+  .toolbar .select{
+    flex:1 1 220px;
+    min-width:min(220px,100%);
+  }
+  .toolbar .btn{
+    flex:0 1 auto;
   }
 
   .grid.cols-4{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -2261,44 +2271,6 @@ input[style*="min-width"]{
 
   .table-wrap > table{
     width:max(100%,760px);
-  }
-
-  /* Sticky first column for wide business tables. */
-  #issuesTable th:first-child, #issuesTable td:first-child,
-  #leadsTable th:first-child, #leadsTable td:first-child,
-  #dealsTable th:first-child, #dealsTable td:first-child,
-  #proposalsTable th:first-child, #proposalsTable td:first-child,
-  #agreementsTable th:first-child, #agreementsTable td:first-child,
-  #invoicesTable th:first-child, #invoicesTable td:first-child,
-  #receiptsTable th:first-child, #receiptsTable td:first-child,
-  #clientsTable th:first-child, #clientsTable td:first-child,
-  #proposalCatalogTable th:first-child, #proposalCatalogTable td:first-child,
-  #csmTable th:first-child, #csmTable td:first-child,
-  #technicalAdminTable th:first-child, #technicalAdminTable td:first-child,
-  #usersTable th:first-child, #usersTable td:first-child,
-  #rolePermissionsTable th:first-child, #rolePermissionsTable td:first-child{
-    position:sticky;
-    left:0;
-    z-index:4;
-    background:var(--card);
-    box-shadow:1px 0 0 var(--border);
-  }
-
-  /* Sticky action column where action buttons are usually at the end. */
-  #leadsTable th:last-child, #leadsTable td:last-child,
-  #dealsTable th:last-child, #dealsTable td:last-child,
-  #proposalsTable th:last-child, #proposalsTable td:last-child,
-  #agreementsTable th:last-child, #agreementsTable td:last-child,
-  #invoicesTable th:last-child, #invoicesTable td:last-child,
-  #receiptsTable th:last-child, #receiptsTable td:last-child,
-  #clientsTable th:last-child, #clientsTable td:last-child,
-  #proposalCatalogTable th:last-child, #proposalCatalogTable td:last-child,
-  #technicalAdminTable th:last-child, #technicalAdminTable td:last-child{
-    position:sticky;
-    right:0;
-    z-index:4;
-    background:var(--card);
-    box-shadow:-1px 0 0 var(--border);
   }
 
   .pagination{
@@ -2312,12 +2284,18 @@ input[style*="min-width"]{
   .toolbar{
     width:100%;
     gap:8px;
+    flex-wrap:wrap;
+    align-items:stretch;
   }
   #searchInput,
   .toolbar .input,
   .toolbar .select{
     width:100%;
     min-width:0;
+    flex:1 1 100%;
+  }
+  .toolbar .btn{
+    flex:1 1 auto;
   }
 
   .responsive-grid,
@@ -2328,6 +2306,11 @@ input[style*="min-width"]{
     grid-template-columns:1fr;
   }
 
+  .table-wrap{
+    max-width:100%;
+    overflow-x:auto;
+    overflow-y:auto;
+  }
   .table-wrap > table{
     width:max(100%,820px);
   }
@@ -2342,14 +2325,28 @@ input[style*="min-width"]{
 
   .table-actions,
   .table-tools,
+  td .actions,
   .pagination,
   .notification-filter-row,
   .notification-actions{
     width:100%;
+    display:flex;
+    flex-wrap:wrap;
+    align-items:center;
+    gap:6px;
   }
   .table-actions > *,
-  .pagination > *{
+  .table-tools > *,
+  td .actions > *,
+  .pagination > *,
+  .notification-filter-row > *,
+  .notification-actions > *{
     flex:1 1 auto;
+  }
+  td .actions .btn,
+  .notification-actions .btn{
+    white-space:normal;
+    min-height:36px;
   }
 
   .sidebar{
@@ -2366,6 +2363,8 @@ input[style*="min-width"]{
     max-width:100%;
     max-height:calc(100vh - 12px);
     border-radius:12px;
+    overflow:auto;
+    overscroll-behavior:contain;
   }
   .modal .header{
     position:sticky;
@@ -2383,6 +2382,7 @@ input[style*="min-width"]{
     z-index:2;
     background:var(--card);
     padding-top:8px;
+    padding-bottom:calc(8px + env(safe-area-inset-bottom));
   }
 
   form .input,
