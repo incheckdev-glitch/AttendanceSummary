@@ -7,7 +7,7 @@ const RolesAdmin = {
     filters: { resource: '', action: '', role: '', text: '' },
     loadingRoles: false,
     loadingPermissions: false,
-    limit: 500,
+    limit: 50,
     page: 1
   },
 

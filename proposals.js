@@ -50,6 +50,12 @@ const Proposals = {
     customer: '',
     status: 'All',
     kpiFilter: 'total',
+    page: 1,
+    limit: 50,
+    offset: 0,
+    total: 0,
+    returned: 0,
+    hasMore: false,
     formMode: 'create',
     formReadOnly: false,
     currentProposalId: '',
@@ -469,6 +475,25 @@ const Proposals = {
       if (Array.isArray(candidate)) return candidate;
     }
     return [];
+  },
+  extractListResult(response) {
+    const rows = this.extractRows(response);
+    if (response && typeof response === 'object' && Array.isArray(response.rows)) {
+      const total = Number(response.total ?? rows.length) || rows.length;
+      const returned = Number(response.returned ?? rows.length) || rows.length;
+      const limit = Number(response.limit || this.state.limit || 50);
+      const page = Number(response.page || this.state.page || 1);
+      const offset = Number(response.offset ?? Math.max(0, (page - 1) * limit));
+      const hasMore = response.hasMore !== undefined
+        ? Boolean(response.hasMore)
+        : offset + returned < total;
+      return { rows: response.rows, total, returned, hasMore, page, limit, offset };
+    }
+    const limit = Number(this.state.limit || 50);
+    const page = Number(this.state.page || 1);
+    const returned = rows.length;
+    const offset = Math.max(0, (page - 1) * limit);
+    return { rows, total: offset + returned, returned, hasMore: false, page, limit, offset };
   },
   extractProposalAndItems(response, fallbackId = '') {
     const parseJsonIfNeeded = value => {
@@ -1269,7 +1294,26 @@ const Proposals = {
 
     const rows = this.state.filteredRows;
     this.renderProposalAnalytics(this.computeProposalAnalytics(rows));
-    E.proposalsState.textContent = `${rows.length} proposal${rows.length === 1 ? '' : 's'}`;
+    E.proposalsState.textContent = `${rows.length} proposal${rows.length === 1 ? '' : 's'} · page ${this.state.page}`;
+    const paginationHost = U.ensurePaginationHost({ hostId: 'proposalsPaginationControls', anchor: E.proposalsState });
+    U.renderPaginationControls({
+      host: paginationHost,
+      moduleKey: 'proposals',
+      page: this.state.page,
+      pageSize: this.state.limit,
+      hasMore: this.state.hasMore,
+      returned: this.state.returned,
+      loading: this.state.loading,
+      onPageChange: nextPage => {
+        this.state.page = Math.max(1, nextPage);
+        this.loadAndRefresh({ force: true });
+      },
+      onPageSizeChange: nextSize => {
+        this.state.limit = Math.max(1, Math.min(200, Number(nextSize) || 50));
+        this.state.page = 1;
+        this.loadAndRefresh({ force: true });
+      }
+    });
     if (!rows.length) {
       E.proposalsTbody.innerHTML =
         '<tr><td colspan="14" class="muted" style="text-align:center;">No proposals found.</td></tr>';
@@ -1321,8 +1365,15 @@ const Proposals = {
     this.render();
 
     try {
-      const response = await this.listProposals({ forceRefresh: force, page: 1, limit: 50 });
-      this.state.rows = this.extractRows(response).map(raw => this.normalizeProposal(raw));
+      const response = await this.listProposals({ forceRefresh: force, page: this.state.page, limit: this.state.limit });
+      const normalizedList = this.extractListResult(response);
+      this.state.rows = normalizedList.rows.map(raw => this.normalizeProposal(raw));
+      this.state.total = normalizedList.total;
+      this.state.returned = normalizedList.returned;
+      this.state.hasMore = normalizedList.hasMore;
+      this.state.page = normalizedList.page;
+      this.state.limit = normalizedList.limit;
+      this.state.offset = normalizedList.offset;
       this.state.loaded = true;
       this.state.lastLoadedAt = Date.now();
       this.renderFilters();
@@ -2199,8 +2250,8 @@ const Proposals = {
       if (!el) return;
       const sync = () => {
         this.state[key] = String(el.value || '').trim();
-        this.applyFilters();
-        this.render();
+        this.state.page = 1;
+        this.loadAndRefresh({ force: true });
       };
       el.addEventListener('input', sync);
       el.addEventListener('change', sync);

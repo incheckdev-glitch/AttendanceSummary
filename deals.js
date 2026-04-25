@@ -54,7 +54,13 @@ const Deals = {
     convertedTo: '',
     kpiFilter: 'total',
     saveInFlight: false,
-    rowActionInFlight: new Set()
+    rowActionInFlight: new Set(),
+    page: 1,
+    limit: 50,
+    offset: 0,
+    total: 0,
+    returned: 0,
+    hasMore: false
   },
   normalizeBool(value) {
     const normalized = String(value ?? '')
@@ -238,7 +244,7 @@ const Deals = {
     const page = Math.max(1, Number(options.page) || 1);
     const pageSize = Math.max(1, Math.min(200, Number(options.limit || options.pageSize) || 50));
     const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
+    const to = from + pageSize;
     let query = client.from('deals').select('*').order('updated_at', { ascending: false });
     const term = String(this.state.search || '').replace(/[%_]/g, ' ').trim();
     if (term) {
@@ -249,7 +255,18 @@ const Deals = {
     query = query.range(from, to);
     const { data, error } = await query;
     if (error) throw this.toSupabaseError('Unable to load deals', error);
-    return data || [];
+    const fetched = Array.isArray(data) ? data : [];
+    const hasMore = fetched.length > pageSize;
+    const rows = hasMore ? fetched.slice(0, pageSize) : fetched;
+    return {
+      rows,
+      total: from + rows.length + (hasMore ? 1 : 0),
+      returned: rows.length,
+      hasMore,
+      page,
+      limit: pageSize,
+      offset: from
+    };
   },
   upsertLocalRow(row) {
     const normalized = this.normalizeDeal(row);
@@ -891,7 +908,26 @@ const Deals = {
 
     const rows = this.state.filteredRows;
     this.renderDealAnalytics(this.computeDealAnalytics(rows));
-    E.dealsState.textContent = `${rows.length} deal${rows.length === 1 ? '' : 's'}`;
+    E.dealsState.textContent = `${rows.length} deal${rows.length === 1 ? '' : 's'} · page ${this.state.page}`;
+    const paginationHost = U.ensurePaginationHost({ hostId: 'dealsPaginationControls', anchor: E.dealsState });
+    U.renderPaginationControls({
+      host: paginationHost,
+      moduleKey: 'deals',
+      page: this.state.page,
+      pageSize: this.state.limit,
+      hasMore: this.state.hasMore,
+      returned: this.state.returned,
+      loading: this.state.loading,
+      onPageChange: nextPage => {
+        this.state.page = Math.max(1, nextPage);
+        this.loadAndRefresh({ force: true });
+      },
+      onPageSizeChange: nextSize => {
+        this.state.limit = Math.max(1, Math.min(200, Number(nextSize) || 50));
+        this.state.page = 1;
+        this.loadAndRefresh({ force: true });
+      }
+    });
 
     if (!rows.length) {
       E.dealsTbody.innerHTML = '<tr><td colspan="23" class="muted" style="text-align:center;">No deals found.</td></tr>';
@@ -947,8 +983,15 @@ const Deals = {
     this.render();
 
     try {
-      const response = await this.listDeals({ forceRefresh: force, page: 1, limit: 50 });
-      this.state.rows = this.extractRows(response).map(item => this.normalizeDeal(item));
+      const response = await this.listDeals({ forceRefresh: force, page: this.state.page, limit: this.state.limit });
+      const responseRows = Array.isArray(response?.rows) ? response.rows : this.extractRows(response);
+      this.state.rows = responseRows.map(item => this.normalizeDeal(item));
+      this.state.returned = Number(response?.returned ?? this.state.rows.length) || this.state.rows.length;
+      this.state.hasMore = Boolean(response?.hasMore);
+      this.state.page = Number(response?.page || this.state.page || 1);
+      this.state.limit = Number(response?.limit || this.state.limit || 50);
+      this.state.offset = Number(response?.offset ?? Math.max(0, (this.state.page - 1) * this.state.limit));
+      this.state.total = Number(response?.total ?? (this.state.offset + this.state.returned + (this.state.hasMore ? 1 : 0)));
       this.state.loaded = true;
       this.state.lastLoadedAt = Date.now();
       this.syncDealFormDropdowns();
@@ -1183,7 +1226,8 @@ const Deals = {
             E.dealsSidebarSearchInput.value = this.state.search;
           if (E.dealsSearchInput && el !== E.dealsSearchInput) E.dealsSearchInput.value = this.state.search;
         }
-        this.handleFilterChange();
+        this.state.page = 1;
+        this.loadAndRefresh({ force: true });
       };
       el.addEventListener('input', sync);
       el.addEventListener('change', sync);
@@ -1216,9 +1260,8 @@ const Deals = {
         this.state.convertedFrom = '';
         this.state.convertedTo = '';
         this.state.kpiFilter = 'total';
-        this.applyFilters();
-        this.renderFilters();
-        this.render();
+        this.state.page = 1;
+        this.loadAndRefresh({ force: true });
       });
     }
 

@@ -40,6 +40,13 @@ function issueDisplayId(issue) {
 
 let EVENT_TICKET_PICKER_SHOW_ALL = false;
 let EVENT_TICKET_PICKER_ALL_ROWS = null;
+const TicketPaginationState = {
+  page: 1,
+  limit: 50,
+  offset: 0,
+  returned: 0,
+  hasMore: false
+};
 
 function hasActiveTicketFilters() {
   const state = Filters?.state || {};
@@ -409,7 +416,8 @@ UI.Issues = {
         }
         Filters.save();
         GridState.page = 1;
-        UI.refreshTableAndSummary();
+        TicketPaginationState.page = 1;
+        loadIssues(true);
       };
       d.addEventListener('keydown', e => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -445,28 +453,18 @@ UI.Issues = {
       : list;
     const rows = sortAsc ? sorted : sorted.reverse();
 
-    const total = rows.length,
-      size = GridState.pageSize,
-      page = GridState.page;
-    const pages = Math.max(1, Math.ceil(total / size));
-    if (GridState.page > pages) GridState.page = pages;
-    const start = (GridState.page - 1) * size;
-    const pageData = rows.slice(start, start + size);
-
-    const firstRow = total ? start + 1 : 0;
-    const lastRow = total ? Math.min(total, start + pageData.length) : 0;
+    const total = rows.length;
+    const pageData = rows;
 
     if (E.rowCount) {
-      E.rowCount.textContent = total
-        ? `Showing ${firstRow}-${lastRow} of ${total}`
-        : 'No rows';
+      E.rowCount.textContent = total ? `Showing ${total} records` : 'No rows';
     }
-    if (E.pageInfo) E.pageInfo.textContent = `Page ${GridState.page} / ${pages}`;
+    if (E.pageInfo) E.pageInfo.textContent = `Page ${TicketPaginationState.page}`;
     ['firstPage', 'prevPage', 'nextPage', 'lastPage'].forEach(id => {
       const btn = E[id];
       if (!btn) return;
-      const atFirst = GridState.page <= 1,
-        atLast = GridState.page >= pages;
+      const atFirst = TicketPaginationState.page <= 1,
+        atLast = !TicketPaginationState.hasMore;
       if (id === 'firstPage' || id === 'prevPage') btn.disabled = atFirst;
       else btn.disabled = atLast;
       if (btn.disabled) btn.setAttribute('disabled', 'true');
@@ -580,7 +578,8 @@ UI.Issues = {
           if (E.endDateFilter) E.endDateFilter.value = '';
           UI.Issues.renderFilters();
           GridState.page = 1;
-          UI.refreshTableAndSummary();
+          TicketPaginationState.page = 1;
+          loadIssues(true);
         });
     }
 ColumnManager.apply();
@@ -772,7 +771,8 @@ UI.Issues.renderFilterChips = function () {
       if (E.startDateFilter && key === 'start') E.startDateFilter.value = '';
       if (E.endDateFilter && key === 'end') E.endDateFilter.value = '';
 
-      UI.refreshTableAndSummary();
+      TicketPaginationState.page = 1;
+      loadIssues(true);
     });
   });
 };
@@ -2771,7 +2771,12 @@ async function loadIssues(force = false) {
   try {
     UI.spinner(true);
     UI.skeleton(true);
-    const ticketListPayload = { filters: buildTicketListFiltersPayload() };
+    const ticketListPayload = {
+      filters: buildTicketListFiltersPayload(),
+      page: TicketPaginationState.page,
+      limit: TicketPaginationState.limit,
+      offset: (TicketPaginationState.page - 1) * TicketPaginationState.limit
+    };
     console.info('[loadIssues] tickets.list payload', ticketListPayload);
     const response = await Api.requestWithSession(
       'tickets',
@@ -2779,6 +2784,12 @@ async function loadIssues(force = false) {
       ticketListPayload,
       { requireAuth: true }
     );
+    const paginationMeta = extractPagedListMeta(response, TicketPaginationState);
+    TicketPaginationState.page = paginationMeta.page;
+    TicketPaginationState.limit = paginationMeta.limit;
+    TicketPaginationState.offset = paginationMeta.offset;
+    TicketPaginationState.returned = paginationMeta.returned;
+    TicketPaginationState.hasMore = paginationMeta.hasMore;
     const rawRows = extractEventsPayload(response);
     const rows = rawRows.map(raw => DataStore.normalizeRow(raw));
     DataStore.hydrateFromRows(rows.filter(r => r.id && String(r.id).trim() !== ''));
@@ -2976,6 +2987,16 @@ function extractEventsPayload(data) {
   }
 
   return [];
+}
+
+function extractPagedListMeta(data, fallback = {}) {
+  if (!data || typeof data !== 'object') return { ...fallback };
+  const page = Number(data.page ?? fallback.page ?? 1) || 1;
+  const limit = Number(data.limit ?? data.pageSize ?? fallback.limit ?? 50) || 50;
+  const returned = Number(data.returned ?? fallback.returned ?? 0) || 0;
+  const offset = Number(data.offset ?? Math.max(0, (page - 1) * limit));
+  const hasMore = data.hasMore !== undefined ? Boolean(data.hasMore) : Boolean(fallback.hasMore);
+  return { page, limit, returned, offset, hasMore };
 }
 
 function normalizeEventDate(value) {
@@ -4103,7 +4124,8 @@ function wireCore() {
         Filters.state.search = E.searchInput.value || '';
         Filters.save();
         GridState.page = 1;
-        UI.refreshTableAndSummary();
+        TicketPaginationState.page = 1;
+        loadIssues(true);
       }, 250)
     );
 
@@ -4304,45 +4326,49 @@ function wirePaging() {
   if (E.pageSize)
     E.pageSize.addEventListener('change', () => {
       GridState.pageSize = +E.pageSize.value;
-      localStorage.setItem(LS_KEYS.pageSize, GridState.pageSize);
-      GridState.page = 1;
-      UI.refreshTableAndSummary();
+      TicketPaginationState.limit = U.normalizePageSize(GridState.pageSize, 50, 200);
+      localStorage.setItem(LS_KEYS.pageSize, TicketPaginationState.limit);
+      TicketPaginationState.page = 1;
+      loadIssues(true);
     });
   if (E.firstPage)
     E.firstPage.addEventListener('click', () => {
-      GridState.page = 1;
-      UI.refreshTableAndSummary();
+      TicketPaginationState.page = 1;
+      loadIssues(true);
     });
   if (E.prevPage)
     E.prevPage.addEventListener('click', () => {
-      if (GridState.page > 1) {
-        GridState.page--;
-        UI.refreshTableAndSummary();
+      if (TicketPaginationState.page > 1) {
+        TicketPaginationState.page--;
+        loadIssues(true);
       }
     });
   if (E.nextPage)
     E.nextPage.addEventListener('click', () => {
-      const list = UI.Issues.applyFilters();
-      const pages = Math.max(1, Math.ceil(list.length / GridState.pageSize));
-      if (GridState.page < pages) {
-        GridState.page++;
-        UI.refreshTableAndSummary();
+      if (TicketPaginationState.hasMore) {
+        TicketPaginationState.page++;
+        loadIssues(true);
       }
     });
   if (E.lastPage)
     E.lastPage.addEventListener('click', () => {
-      const list = UI.Issues.applyFilters();
-      GridState.page = Math.max(1, Math.ceil(list.length / GridState.pageSize));
-      UI.refreshTableAndSummary();
+      if (TicketPaginationState.hasMore) {
+        TicketPaginationState.page++;
+        loadIssues(true);
+      }
     });
 }
 
 function wireFilters() {
+  const reloadWithPageReset = () => {
+    TicketPaginationState.page = 1;
+    loadIssues(true);
+  };
   if (E.moduleFilter) {
     E.moduleFilter.addEventListener('change', () => {
       Filters.state.module = E.moduleFilter.value;
       Filters.save();
-      UI.refreshTableAndSummary();
+      reloadWithPageReset();
     });
     setIfOptionExists(E.moduleFilter, Filters.state.module);
   }
@@ -4350,7 +4376,7 @@ function wireFilters() {
     E.categoryFilter.addEventListener('change', () => {
       Filters.state.category = E.categoryFilter.value;
       Filters.save();
-      UI.refreshTableAndSummary();
+      reloadWithPageReset();
     });
     setIfOptionExists(E.categoryFilter, Filters.state.category);
   }
@@ -4358,7 +4384,7 @@ function wireFilters() {
     E.priorityFilter.addEventListener('change', () => {
       Filters.state.priority = E.priorityFilter.value;
       Filters.save();
-      UI.refreshTableAndSummary();
+      reloadWithPageReset();
     });
      setIfOptionExists(E.priorityFilter, Filters.state.priority);
   }
@@ -4366,7 +4392,7 @@ function wireFilters() {
     E.statusFilter.addEventListener('change', () => {
       Filters.state.status = E.statusFilter.value;
       Filters.save();
-      UI.refreshTableAndSummary();
+      reloadWithPageReset();
     });
     setIfOptionExists(E.statusFilter, Filters.state.status);
   }
@@ -4374,7 +4400,7 @@ function wireFilters() {
     E.devTeamStatusFilter.addEventListener('change', () => {
       Filters.state.devTeamStatus = E.devTeamStatusFilter.value;
       Filters.save();
-      UI.refreshTableAndSummary();
+      reloadWithPageReset();
     });
     setIfOptionExists(E.devTeamStatusFilter, Filters.state.devTeamStatus);
   }
@@ -4382,7 +4408,7 @@ function wireFilters() {
     E.issueRelatedFilter.addEventListener('change', () => {
       Filters.state.issueRelated = E.issueRelatedFilter.value;
       Filters.save();
-      UI.refreshTableAndSummary();
+      reloadWithPageReset();
     });
     setIfOptionExists(E.issueRelatedFilter, Filters.state.issueRelated);
   }
@@ -4391,7 +4417,7 @@ function wireFilters() {
     E.startDateFilter.addEventListener('change', () => {
       Filters.state.start = E.startDateFilter.value;
       Filters.save();
-      UI.refreshTableAndSummary();
+      reloadWithPageReset();
     });
   }
   if (E.endDateFilter) {
@@ -4399,7 +4425,7 @@ function wireFilters() {
     E.endDateFilter.addEventListener('change', () => {
       Filters.state.end = E.endDateFilter.value;
       Filters.save();
-      UI.refreshTableAndSummary();
+      reloadWithPageReset();
     });
   }
   if (E.searchInput) E.searchInput.value = Filters.state.search || '';
@@ -4424,7 +4450,7 @@ function wireFilters() {
       if (E.endDateFilter) E.endDateFilter.value = '';
       UI.Issues.renderFilters();
       GridState.page = 1;
-      UI.refreshTableAndSummary();
+      reloadWithPageReset();
     });
 }
 
@@ -6466,6 +6492,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (E.pageSize) {
     E.pageSize.value = String(GridState.pageSize);
   }
+  TicketPaginationState.limit = U.normalizePageSize(GridState.pageSize, 50, 200);
+  GridState.pageSize = TicketPaginationState.limit;
 
   wireDashboardGate();
   wireCore();

@@ -1148,7 +1148,7 @@ const GridState = {
   sortKey: 'date',
   sortAsc: false,
   page: 1,
-  pageSize: +(localStorage.getItem(LS_KEYS.pageSize) || 20)
+  pageSize: +(localStorage.getItem(LS_KEYS.pageSize) || 50)
 };
 
 function buildIssueCategoryOptions(extra = []) {
