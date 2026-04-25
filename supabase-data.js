@@ -1642,7 +1642,7 @@
 
   function normalizePagedList(resource, rows, controls = {}, total = 0) {
     const normalizedRows = Array.isArray(rows) ? rows.map(r => sanitizeReadByRole(resource, r)) : [];
-    const limit = Math.max(1, Number(controls.limit || normalizedRows.length || 50));
+    const limit = Math.max(1, Math.min(200, Number(controls.limit || normalizedRows.length || 50)));
     const page = Math.max(1, Number(controls.page || 1));
     const offset = Math.max(0, Number(controls.offset ?? (page - 1) * limit));
     const returned = normalizedRows.length;
@@ -1652,6 +1652,7 @@
       total: safeTotal,
       returned,
       hasMore: offset + returned < safeTotal,
+      hasPreviousPage: page > 1,
       page,
       limit,
       offset
@@ -1819,7 +1820,7 @@
       return Number.isFinite(parsed) ? parsed : fallback;
     };
     const page = Math.max(1, numberOr(controls.page, 1));
-    const limit = Math.max(1, numberOr(controls.pageSize ?? controls.perPage ?? controls.limit, 50));
+    const limit = Math.max(1, Math.min(200, numberOr(controls.pageSize ?? controls.perPage ?? controls.limit, 50)));
     const rawOffset = controls.offset;
     const offset = rawOffset === undefined || rawOffset === null || rawOffset === ''
       ? Math.max(0, (page - 1) * limit)
@@ -2836,17 +2837,20 @@
 
     if (resource === 'tickets' && action === 'list') {
       assertAllowed('tickets', 'list');
+      const { controls } = splitListPayload(payload);
+      const listControls = normalizeListControls(controls, 'tickets');
       let query = applyFilters(client.from('tickets').select('*'), payload).order('updated_at', { ascending: false });
+      query = query.range(listControls.from, listControls.to);
       const { data: tickets, error } = await query;
       if (error) throw friendlyError('Unable to load tickets', error);
       const normalized = (tickets || []).map(row => normalizeRow(resource, row));
-      if (!isAdminDev()) return { handled: true, data: normalizeList(resource, normalized) };
+      if (!isAdminDev()) return { handled: true, data: normalizePagedList(resource, normalized, listControls, null) };
       const ids = normalized.map(row => String(ticketRowId(row) || '')).filter(Boolean);
       const internalById = await loadTicketInternalByIds(ids);
       const withInternal = normalized.map(row =>
         mergeTicketInternal(row, internalById.get(String(ticketRowId(row) || '')))
       );
-      return { handled: true, data: normalizeList(resource, withInternal) };
+      return { handled: true, data: normalizePagedList(resource, withInternal, listControls, null) };
     }
     if (resource === 'notifications' && action === 'list') {
       assertAllowed('notifications', 'list');
@@ -2856,7 +2860,7 @@
       const listControls = normalizeListControls(controls, 'notifications');
       let query = client
         .from('notifications')
-        .select('*', { count: 'exact' })
+        .select('*', { count: 'planned' })
         .eq('recipient_user_id', currentUserId);
       query = applyFilters(query, payload, { resource: 'notifications' });
       query = query.order(listControls.sortBy, { ascending: listControls.sortDir === 'asc' });
@@ -2910,8 +2914,8 @@
       const { controls } = splitListPayload(payload);
       const listControls = normalizeListControls(controls, resource);
       let query = resource === 'users'
-        ? client.from('profiles').select('id, name, email, username, role_key, is_active, created_at, updated_at', { count: 'exact' })
-        : client.from(table).select('*', { count: 'exact' });
+        ? client.from('profiles').select('id, name, email, username, role_key, is_active, created_at, updated_at', { count: 'planned' })
+        : client.from(table).select('*', { count: 'planned' });
       query = applyFilters(query, payload, { resource });
       query = query.order(listControls.sortBy, { ascending: listControls.sortDir === 'asc' });
       query = query.range(listControls.from, listControls.to);

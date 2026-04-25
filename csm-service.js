@@ -341,7 +341,7 @@
       });
     } catch {}
     try {
-      const { data } = await client.from(TABLE).select('client,client_name,company_name,client_id').limit(3000);
+      const { data } = await client.from(TABLE).select('client,client_name,company_name,client_id').order('updated_at', { ascending: false }).limit(500);
       (Array.isArray(data) ? data : []).forEach(row => {
         mergeClientOption(optionMap, {
           client_id: row.client_id,
@@ -352,7 +352,7 @@
       });
     } catch {}
     try {
-      const { data } = await client.from('agreements').select('agreement_id,customer_name,customer_legal_name').limit(3000);
+      const { data } = await client.from('agreements').select('agreement_id,customer_name,customer_legal_name').order('updated_at', { ascending: false }).limit(500);
       (Array.isArray(data) ? data : []).forEach(row => {
         mergeClientOption(optionMap, {
           client_name: row.customer_name || row.customer_legal_name,
@@ -370,11 +370,16 @@
     return uniqueOptions;
   }
 
-  async function listActivities() {
+  async function listActivities(options = {}) {
+    const page = Math.max(1, Number(options.page) || 1);
+    const pageSize = Math.max(1, Math.min(200, Number(options.limit || options.pageSize) || 50));
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize;
     const client = getClient();
-    const { data, error } = await client.from(TABLE).select('*').order('updated_at', { ascending: false });
+    const { data, error } = await client.from(TABLE).select('*').order('updated_at', { ascending: false }).range(from, to);
     if (error) throw readableError('Unable to load CSM activities', error);
-    return Array.isArray(data) ? data.map(normalizeCsmRow) : [];
+    const rows = Array.isArray(data) ? data : [];
+    return rows.slice(0, pageSize).map(normalizeCsmRow);
   }
 
   async function getActivityDetails(id) {

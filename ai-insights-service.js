@@ -79,9 +79,22 @@
 
   async function fetchTable(client, table) {
     try {
-      const { data, error } = await client.from(table).select('*').limit(3000);
-      if (error) throw error;
-      return asArray(data);
+      const pageSize = 200;
+      const maxRows = 1000;
+      const rows = [];
+      let page = 0;
+      // temporary analytics fallback - replace with SQL view/RPC aggregation
+      while (rows.length < maxRows) {
+        const from = page * pageSize;
+        const to = from + pageSize;
+        const { data, error } = await client.from(table).select('*').range(from, to);
+        if (error) throw error;
+        const batch = asArray(data).slice(0, pageSize);
+        rows.push(...batch);
+        if (batch.length < pageSize) break;
+        page += 1;
+      }
+      return rows.slice(0, maxRows);
     } catch (error) {
       console.warn(`[AIInsightsServiceV2] unable to load ${table}`, error?.message || error);
       return [];

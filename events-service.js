@@ -233,9 +233,13 @@
     return stripUnknownColumns(mapped);
   }
 
-  async function listEvents() {
+  async function listEvents(options = {}) {
+    const page = Math.max(1, Number(options.page) || 1);
+    const pageSize = Math.max(1, Math.min(200, Number(options.limit || options.pageSize) || 200));
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
     const client = getClient();
-    const { data, error } = await client.from(TABLE).select('*').order('updated_at', { ascending: false });
+    const { data, error } = await client.from(TABLE).select('*').order('updated_at', { ascending: false }).range(from, to);
     if (error) throw readableError('Unable to load events', error);
     return Array.isArray(data) ? data.map(normalizeEventRow) : [];
   }

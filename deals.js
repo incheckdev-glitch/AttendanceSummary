@@ -235,6 +235,10 @@ const Deals = {
   },
   async listDeals(options = {}) {
     const client = this.getClient();
+    const page = Math.max(1, Number(options.page) || 1);
+    const pageSize = Math.max(1, Math.min(200, Number(options.limit || options.pageSize) || 50));
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
     let query = client.from('deals').select('*').order('updated_at', { ascending: false });
     const term = String(this.state.search || '').replace(/[%_]/g, ' ').trim();
     if (term) {
@@ -242,6 +246,7 @@ const Deals = {
         `deal_id.ilike.%${term}%,lead_id.ilike.%${term}%,lead_code.ilike.%${term}%,full_name.ilike.%${term}%,company_name.ilike.%${term}%,email.ilike.%${term}%,phone.ilike.%${term}%,country.ilike.%${term}%,lead_source.ilike.%${term}%,service_interest.ilike.%${term}%,assigned_to.ilike.%${term}%,notes.ilike.%${term}%`
       );
     }
+    query = query.range(from, to);
     const { data, error } = await query;
     if (error) throw this.toSupabaseError('Unable to load deals', error);
     return data || [];

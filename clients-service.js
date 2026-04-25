@@ -242,10 +242,11 @@ const ClientsService = {
     return today <= endDate;
   },
   async fetchAgreementItemsForClients_(db) {
+    // temporary analytics fallback - replace with SQL view/RPC aggregation
     return db
       .from('agreement_items')
       .select('id,agreement_id,location_name,section,item_name,line_total,service_start_date,service_end_date,created_at')
-      .limit(5000);
+      .limit(1000);
   },
   coerceLinkedRows_(res, label) {
     if (!res) return [];
@@ -312,15 +313,19 @@ const ClientsService = {
   },
   async listClients({ page = 1, limit = 50, search = '', status = '' } = {}) {
     const db = this.getDb();
-    const from = Math.max(0, (Number(page) - 1) * Number(limit));
-    const to = from + Number(limit) - 1;
-    let query = db.from('clients').select('*', { count: 'exact' }).order('updated_at', { ascending: false }).range(from, to);
+    const safeLimit = Math.max(1, Math.min(200, Number(limit) || 50));
+    const safePage = Math.max(1, Number(page) || 1);
+    const from = Math.max(0, (safePage - 1) * safeLimit);
+    const to = from + safeLimit;
+    let query = db.from('clients').select('*').order('updated_at', { ascending: false }).range(from, to);
     if (search) query = query.or(`client_id.ilike.%${search}%,client_name.ilike.%${search}%,company_name.ilike.%${search}%,primary_email.ilike.%${search}%`);
     if (status && status !== 'All') query = query.eq('status', status);
-    const { data, error, count } = await query;
+    const { data, error } = await query;
     if (error) throw this.friendlyError('Unable to load clients', error);
-    const rows = Array.isArray(data) ? data.map(row => this.mapDbClientToUi(row)) : [];
-    return { rows, total: Number(count ?? rows.length), returned: rows.length, page: Number(page), limit: Number(limit), offset: from, hasMore: from + rows.length < Number(count ?? rows.length) };
+    const fetchedRows = Array.isArray(data) ? data : [];
+    const hasMore = fetchedRows.length > safeLimit;
+    const rows = fetchedRows.slice(0, safeLimit).map(row => this.mapDbClientToUi(row));
+    return { rows, total: from + rows.length + (hasMore ? 1 : 0), returned: rows.length, page: safePage, limit: safeLimit, offset: from, hasMore };
   },
   async getClient(clientIdOrUuid) {
     const id = String(clientIdOrUuid || '').trim();
@@ -358,11 +363,13 @@ const ClientsService = {
   },
   async getDashboardData(options = {}) {
     const db = this.getDb();
+    const analyticsLimit = Math.max(100, Math.min(1000, Number(options.analyticsLimit) || 500));
+    // temporary analytics fallback - replace with SQL view/RPC aggregation
     const [agreementsRes, itemsRes, invoicesRes, receiptsRes] = await Promise.all([
       db.from('agreements').select(this.AGREEMENT_SELECT_COLUMNS).order('updated_at', { ascending: false }).limit(500),
       this.fetchAgreementItemsForClients_(db),
-      db.from('invoices').select('id,invoice_id,invoice_number,client_id,agreement_id,proposal_id,issue_date,due_date,invoice_total,received_amount,pending_amount,payment_state,status,currency,notes,updated_at,created_at').order('updated_at', { ascending: false }).limit(2000),
-      db.from('receipts').select('id,receipt_id,receipt_number,invoice_id,client_id,customer_name,customer_legal_name,status,payment_state,amount_received,pending_amount,currency,updated_at,created_at,receipt_date,payment_reference,notes').order('updated_at', { ascending: false }).limit(2000)
+      db.from('invoices').select('id,invoice_id,invoice_number,client_id,agreement_id,proposal_id,issue_date,due_date,invoice_total,received_amount,pending_amount,payment_state,status,currency,notes,updated_at,created_at').order('updated_at', { ascending: false }).limit(analyticsLimit),
+      db.from('receipts').select('id,receipt_id,receipt_number,invoice_id,client_id,customer_name,customer_legal_name,status,payment_state,amount_received,pending_amount,currency,updated_at,created_at,receipt_date,payment_reference,notes').order('updated_at', { ascending: false }).limit(analyticsLimit)
     ]);
     if (agreementsRes.error) throw this.friendlyError('Unable to load agreements for clients', agreementsRes.error);
 
