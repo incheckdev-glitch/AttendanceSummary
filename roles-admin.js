@@ -60,7 +60,7 @@ const RolesAdmin = {
           E.rolePermissionCreateAction?.value,
           {
             permission: E.rolePermissionCreateResource?.value,
-            sheetName: E.rolePermissionCreateResource?.value,
+            resourceKey: E.rolePermissionCreateResource?.value,
             label: E.rolePermissionCreateResource?.value
           }
         );
@@ -151,8 +151,9 @@ const RolesAdmin = {
   },
 
   parseResourceAction(resourceValue = '', actionValue = '', helperFields = {}) {
+    // legacy compatibility - remove after migration closure
     const helper = helperFields && typeof helperFields === 'object' ? helperFields : {};
-    let resource = String(resourceValue || helper.resource || helper.sheetName || helper.sheet_name || helper.tabName || helper.tab_name || '').trim().toLowerCase();
+    let resource = String(resourceValue || helper.resource || helper.resourceKey || helper.table || helper.entity || helper.sheetName || helper.sheet_name || helper.tabName || helper.tab_name || '').trim().toLowerCase();
     let action = this.canonicalAction(actionValue || helper.action || '');
 
     const splitCombined = value => {

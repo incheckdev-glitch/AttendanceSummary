@@ -84,24 +84,58 @@ window.CONFIG = {
   DATA_VERSION: '5',
   DATA_STALE_HOURS: 6,
 
-  SHEET_URL:
+  LEGACY_TICKETS_CSV_URL:
     'https://docs.google.com/spreadsheets/d/e/2PACX-1vTRwAjNAQxiPP8uR15t_vx03JkjgEBjgUwp2bpx8rsHx-JJxVDBZyf5ap77rAKrYHfgkVMwLJVm6pGn/pub?output=csv',
 
   CALENDAR_API_URL: runtimeConfig.CALENDAR_API_URL || '',
-  CALENDAR_SHEET_NAME: 'CalendarEvents',
-  DEALS_SHEET_NAME: 'Deals',
-  PROPOSAL_CATALOG_SHEET_NAME: runtimeConfig.PROPOSAL_CATALOG_SHEET_NAME || 'Proposal Catalog',
-  ROLES_SHEET_NAME: runtimeConfig.ROLES_SHEET_NAME || 'Roles',
-  ROLE_PERMISSIONS_SHEET_NAME: runtimeConfig.ROLE_PERMISSIONS_SHEET_NAME || 'Role Permissions',
-  RECEIPTS_SHEET_NAME: runtimeConfig.RECEIPTS_SHEET_NAME || 'Receipts',
-  RECEIPT_ITEMS_SHEET_NAME: runtimeConfig.RECEIPT_ITEMS_SHEET_NAME || 'Receipt Items',
+  CALENDAR_TABLE: 'events',
+  DEALS_TABLE: 'deals',
+  PROPOSAL_CATALOG_TABLE: runtimeConfig.PROPOSAL_CATALOG_TABLE || 'proposal_catalog_items',
+  ROLES_TABLE: runtimeConfig.ROLES_TABLE || 'roles',
+  ROLE_PERMISSIONS_TABLE: runtimeConfig.ROLE_PERMISSIONS_TABLE || 'role_permissions',
+  RECEIPTS_TABLE: runtimeConfig.RECEIPTS_TABLE || 'receipts',
+  RECEIPT_ITEMS_TABLE: runtimeConfig.RECEIPT_ITEMS_TABLE || 'receipt_items',
 
-  WORKFLOWS_SHEET_NAME: runtimeConfig.WORKFLOWS_SHEET_NAME || 'Workflows',
-  WORKFLOW_RULES_SHEET_NAME: runtimeConfig.WORKFLOW_RULES_SHEET_NAME || 'Workflow Rules',
-  WORKFLOW_APPROVALS_SHEET_NAME: runtimeConfig.WORKFLOW_APPROVALS_SHEET_NAME || 'Workflow Approvals',
-  WORKFLOW_AUDIT_LOG_SHEET_NAME: runtimeConfig.WORKFLOW_AUDIT_LOG_SHEET_NAME || 'Workflow Audit Log',
+  WORKFLOWS_TABLE: runtimeConfig.WORKFLOWS_TABLE || 'workflow_rules',
+  WORKFLOW_RULES_TABLE: runtimeConfig.WORKFLOW_RULES_TABLE || 'workflow_rules',
+  WORKFLOW_APPROVALS_TABLE: runtimeConfig.WORKFLOW_APPROVALS_TABLE || 'workflow_approvals',
+  WORKFLOW_AUDIT_LOG_TABLE: runtimeConfig.WORKFLOW_AUDIT_LOG_TABLE || 'workflow_audit_log',
+  OPERATIONS_ONBOARDING_TABLE:
+    runtimeConfig.OPERATIONS_ONBOARDING_TABLE || 'operations_onboarding',
+
+  // legacy compatibility - remove after migration closure
+  SHEET_URL: runtimeConfig.SHEET_URL || 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTRwAjNAQxiPP8uR15t_vx03JkjgEBjgUwp2bpx8rsHx-JJxVDBZyf5ap77rAKrYHfgkVMwLJVm6pGn/pub?output=csv',
+  // legacy compatibility - remove after migration closure
+  CALENDAR_SHEET_NAME: runtimeConfig.CALENDAR_SHEET_NAME || runtimeConfig.CALENDAR_TABLE || 'events',
+  // legacy compatibility - remove after migration closure
+  DEALS_SHEET_NAME: runtimeConfig.DEALS_SHEET_NAME || runtimeConfig.DEALS_TABLE || 'deals',
+  // legacy compatibility - remove after migration closure
+  PROPOSAL_CATALOG_SHEET_NAME:
+    runtimeConfig.PROPOSAL_CATALOG_SHEET_NAME || runtimeConfig.PROPOSAL_CATALOG_TABLE || 'proposal_catalog_items',
+  // legacy compatibility - remove after migration closure
+  ROLES_SHEET_NAME: runtimeConfig.ROLES_SHEET_NAME || runtimeConfig.ROLES_TABLE || 'roles',
+  // legacy compatibility - remove after migration closure
+  ROLE_PERMISSIONS_SHEET_NAME:
+    runtimeConfig.ROLE_PERMISSIONS_SHEET_NAME || runtimeConfig.ROLE_PERMISSIONS_TABLE || 'role_permissions',
+  // legacy compatibility - remove after migration closure
+  RECEIPTS_SHEET_NAME: runtimeConfig.RECEIPTS_SHEET_NAME || runtimeConfig.RECEIPTS_TABLE || 'receipts',
+  // legacy compatibility - remove after migration closure
+  RECEIPT_ITEMS_SHEET_NAME:
+    runtimeConfig.RECEIPT_ITEMS_SHEET_NAME || runtimeConfig.RECEIPT_ITEMS_TABLE || 'receipt_items',
+  // legacy compatibility - remove after migration closure
+  WORKFLOWS_SHEET_NAME: runtimeConfig.WORKFLOWS_SHEET_NAME || runtimeConfig.WORKFLOWS_TABLE || 'workflow_rules',
+  // legacy compatibility - remove after migration closure
+  WORKFLOW_RULES_SHEET_NAME:
+    runtimeConfig.WORKFLOW_RULES_SHEET_NAME || runtimeConfig.WORKFLOW_RULES_TABLE || 'workflow_rules',
+  // legacy compatibility - remove after migration closure
+  WORKFLOW_APPROVALS_SHEET_NAME:
+    runtimeConfig.WORKFLOW_APPROVALS_SHEET_NAME || runtimeConfig.WORKFLOW_APPROVALS_TABLE || 'workflow_approvals',
+  // legacy compatibility - remove after migration closure
+  WORKFLOW_AUDIT_LOG_SHEET_NAME:
+    runtimeConfig.WORKFLOW_AUDIT_LOG_SHEET_NAME || runtimeConfig.WORKFLOW_AUDIT_LOG_TABLE || 'workflow_audit_log',
+  // legacy compatibility - remove after migration closure
   OPERATIONS_ONBOARDING_SHEET_NAME:
-    runtimeConfig.OPERATIONS_ONBOARDING_SHEET_NAME || 'Operations Onboarding',
+    runtimeConfig.OPERATIONS_ONBOARDING_SHEET_NAME || runtimeConfig.OPERATIONS_ONBOARDING_TABLE || 'operations_onboarding',
 
   ISSUE_API_URL: runtimeConfig.ISSUE_API_URL || '',
 

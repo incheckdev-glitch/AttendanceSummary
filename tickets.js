@@ -55,8 +55,8 @@ const DataStore = {
     };
     const pickByIndex = idx => (idx >= 0 && idx < values.length ? values[idx] : '');
 
-    // Column K in the source sheet holds the category dropdown values.
-    // Keep a positional fallback because sheet header names can drift.
+    // Column K in the legacy CSV export holds the category dropdown values.
+    // Keep a positional fallback because exported header names can drift.
     const columnKCategory = pickByIndex(10);
     const resolvedType =
       pick(
@@ -92,7 +92,7 @@ const DataStore = {
         pick('issue related', 'related issue', 'related issues', 'issue relation', 'issue_related') ||
         String(raw.__col_18 ?? '').trim(),
       notes: pick('notes'),
-       // Always prefer Google Sheet column L (index 11) for priority when duplicate
+       // Always prefer exported column L (index 11) for priority when duplicate
       // "Priority" headers exist.
       priority: DataStore.normalizePriority(String(raw.__col_11 ?? '').trim() || pick('priority')),
       status: DataStore.normalizeStatus(pick('status') || 'Not Started Yet'),
