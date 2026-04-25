@@ -60,8 +60,7 @@ export default async function handler(req, res) {
   const targetUrl = String(
     process.env.API_PROXY_TARGET_URL ||
     process.env.SUPABASE_SERVICE_PROXY_URL ||
-    process.env.BACKEND_API_URL ||
-    process.env.APPS_SCRIPT_WEBAPP_URL || '' // legacy compatibility - remove after migration closure
+    process.env.BACKEND_API_URL || ''
   ).trim();
 
   if (!targetUrl) {
