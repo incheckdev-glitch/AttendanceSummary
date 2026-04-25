@@ -97,6 +97,7 @@ const Receipts = {
   },
   normalizeReceipt(raw = {}) {
     const source = raw && typeof raw === 'object' ? raw : {};
+    const pickDefined = (...values) => values.find(value => value !== undefined && value !== null && !(typeof value === 'string' && value.trim() === ''));
     const normalized = {};
     this.receiptFields.forEach(field => {
       const camel = field.replace(/_([a-z])/g, (_, ch) => ch.toUpperCase());
@@ -108,6 +109,11 @@ const Receipts = {
     normalized.receipt_number = String(normalized.receipt_number || '').trim();
     normalized.currency = String(normalized.currency || '').trim() || 'USD';
     normalized.status = String(normalized.status || '').trim() || 'Issued';
+    const normalizedReceiptDate = this.normalizeDateValue(
+      pickDefined(source.receipt_date, source.receiptDate, source.date, source.created_at, source.createdAt)
+    );
+    normalized.receipt_date = normalizedReceiptDate || String(normalized.receipt_date || '').trim();
+    normalized.receiptDate = normalized.receipt_date;
     normalized.invoice_total = this.toNumberSafe(normalized.invoice_total ?? source.invoice_grand_total ?? source.grand_total);
     const amountReceived = this.toNumberSafe(
       normalized.amount_received !== '' && normalized.amount_received !== null && normalized.amount_received !== undefined
@@ -705,12 +711,12 @@ const Receipts = {
     return Number.isNaN(parsed) ? Number.NaN : parsed;
   },
   getReceiptOrderMeta(receipt = {}) {
-    const paymentDateTs = this.parseOrderTimestamp(receipt?.payment_date);
     const receiptDateTs = this.parseOrderTimestamp(receipt?.receipt_date);
+    const dateTs = this.parseOrderTimestamp(receipt?.date);
     const createdAtTs = this.parseOrderTimestamp(receipt?.created_at);
     const idRaw = String(receipt?.id || receipt?.receipt_id || '').trim();
     const idNum = Number(idRaw);
-    return { paymentDateTs, receiptDateTs, createdAtTs, idRaw, idNum: Number.isFinite(idNum) ? idNum : Number.NaN };
+    return { receiptDateTs, dateTs, createdAtTs, idRaw, idNum: Number.isFinite(idNum) ? idNum : Number.NaN };
   },
   compareReceiptOrder(left = {}, right = {}) {
     const a = this.getReceiptOrderMeta(left);
@@ -723,10 +729,10 @@ const Receipts = {
       if (!xValid && yValid) return 1;
       return 0;
     };
-    const paymentCmp = compareTs(a.paymentDateTs, b.paymentDateTs);
-    if (paymentCmp !== 0) return paymentCmp;
     const receiptCmp = compareTs(a.receiptDateTs, b.receiptDateTs);
     if (receiptCmp !== 0) return receiptCmp;
+    const dateCmp = compareTs(a.dateTs, b.dateTs);
+    if (dateCmp !== 0) return dateCmp;
     const createdCmp = compareTs(a.createdAtTs, b.createdAtTs);
     if (createdCmp !== 0) return createdCmp;
     if (Number.isFinite(a.idNum) && Number.isFinite(b.idNum) && a.idNum !== b.idNum) return a.idNum - b.idNum;
@@ -822,7 +828,7 @@ const Receipts = {
         .maybeSingle(),
       client
         .from('receipts')
-        .select('id,receipt_id,invoice_id,invoice_number,payment_date,receipt_date,created_at,amount_received,received_amount,receipt_amount,paid_now,payment_amount,amount')
+        .select('id,receipt_id,invoice_id,invoice_number,receipt_date,date,created_at,amount_received,received_amount,receipt_amount,paid_now,payment_amount,amount')
         .eq('invoice_id', invoiceId)
     ]);
     if (invoiceError) throw new Error(invoiceError.message || 'Unable to load invoice before creating receipt.');
@@ -836,7 +842,6 @@ const Receipts = {
       receipt_id: '',
       invoice_id: invoiceId,
       receipt_date: this.todayInputValue(),
-      payment_date: this.todayInputValue(),
       created_at: new Date().toISOString(),
       paid_now: paidNow,
       received_amount: paidNow,
@@ -850,7 +855,7 @@ const Receipts = {
     if (!client) return [];
     const { data, error } = await client
       .from('receipts')
-      .select('id,receipt_id,invoice_id,invoice_number,payment_date,receipt_date,created_at,amount_received,received_amount,receipt_amount,paid_now,payment_amount,amount')
+      .select('id,receipt_id,invoice_id,invoice_number,receipt_date,date,created_at,amount_received,received_amount,receipt_amount,paid_now,payment_amount,amount')
       .eq('invoice_id', invoiceId);
     if (error) throw new Error(error.message || 'Unable to load invoice receipts.');
     return Array.isArray(data) ? data : [];
@@ -936,7 +941,6 @@ const Receipts = {
       receipt_id: '',
       invoice_id: invoiceUuid,
       receipt_date: this.todayInputValue(),
-      payment_date: this.todayInputValue(),
       created_at: new Date().toISOString(),
       paid_now: paidNow,
       received_amount: paidNow,
