@@ -96,6 +96,9 @@ body{
   text-rendering:optimizeLegibility;
   -webkit-font-smoothing:antialiased;
 }
+body.drawer-open{
+  overflow:hidden;
+}
 
 body.auth-locked #appHeader,
 body.auth-locked #features,
@@ -2159,6 +2162,252 @@ input[style*="min-width"]{
 .chip.high-priority { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
 .row-highlight-pulse {
   animation: row-highlight-pulse 2.2s ease-out 1;
+}
+
+/* =========================================================
+   Advanced responsive utilities (layout-only)
+   ========================================================= */
+
+.responsive-grid{
+  display:grid;
+  gap:12px;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+}
+.responsive-form-grid{
+  display:grid;
+  gap:10px;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+}
+.responsive-table-wrap,
+.mobile-scroll{
+  width:100%;
+  max-width:100%;
+  overflow:auto;
+}
+.mobile-stack{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+.mobile-action-bar{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  align-items:center;
+}
+.modal-responsive{
+  width:min(100%,1120px);
+  max-height:90vh;
+  overflow:auto;
+}
+
+/* Baseline hardening */
+#appHeader,
+#app,
+.wrap,
+.content-layout,
+.content,
+.content-panels,
+.view,
+.card{
+  max-width:100%;
+}
+
+/* Keep row actions/critical controls touch-friendly across modules. */
+.btn,
+.chip-btn,
+.view-tab,
+.table-actions .btn,
+.modal .actions .btn{
+  min-height:40px;
+}
+
+/* Generic table hygiene; keep horizontal scroll local to table wrappers. */
+.table-wrap{
+  overflow:auto;
+  overscroll-behavior:contain;
+}
+.table-wrap > table{
+  min-width:100%;
+}
+
+/* Preserve readability for matrix + dense admin tables. */
+#rolePermissionsTable,
+#workflowMatrixContainer table,
+#workflowRulesTbody,
+#workflowApprovalsTbody{
+  font-size:12.5px;
+}
+
+/* Tablet layout (desktop-like, denser spacing). */
+@media (max-width:1024px){
+  .wrap{
+    width:100%;
+    padding:12px;
+  }
+
+  .toolbar{
+    justify-content:flex-start;
+  }
+  #searchInput{
+    min-width:min(420px,100%);
+    flex:1 1 280px;
+  }
+
+  .grid.cols-4{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .grid.cols-3{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .responsive-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .responsive-form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+
+  .table-wrap > table{
+    width:max(100%,760px);
+  }
+
+  /* Sticky first column for wide business tables. */
+  #issuesTable th:first-child, #issuesTable td:first-child,
+  #leadsTable th:first-child, #leadsTable td:first-child,
+  #dealsTable th:first-child, #dealsTable td:first-child,
+  #proposalsTable th:first-child, #proposalsTable td:first-child,
+  #agreementsTable th:first-child, #agreementsTable td:first-child,
+  #invoicesTable th:first-child, #invoicesTable td:first-child,
+  #receiptsTable th:first-child, #receiptsTable td:first-child,
+  #clientsTable th:first-child, #clientsTable td:first-child,
+  #proposalCatalogTable th:first-child, #proposalCatalogTable td:first-child,
+  #csmTable th:first-child, #csmTable td:first-child,
+  #technicalAdminTable th:first-child, #technicalAdminTable td:first-child,
+  #usersTable th:first-child, #usersTable td:first-child,
+  #rolePermissionsTable th:first-child, #rolePermissionsTable td:first-child{
+    position:sticky;
+    left:0;
+    z-index:4;
+    background:var(--card);
+    box-shadow:1px 0 0 var(--border);
+  }
+
+  /* Sticky action column where action buttons are usually at the end. */
+  #leadsTable th:last-child, #leadsTable td:last-child,
+  #dealsTable th:last-child, #dealsTable td:last-child,
+  #proposalsTable th:last-child, #proposalsTable td:last-child,
+  #agreementsTable th:last-child, #agreementsTable td:last-child,
+  #invoicesTable th:last-child, #invoicesTable td:last-child,
+  #receiptsTable th:last-child, #receiptsTable td:last-child,
+  #clientsTable th:last-child, #clientsTable td:last-child,
+  #proposalCatalogTable th:last-child, #proposalCatalogTable td:last-child,
+  #technicalAdminTable th:last-child, #technicalAdminTable td:last-child{
+    position:sticky;
+    right:0;
+    z-index:4;
+    background:var(--card);
+    box-shadow:-1px 0 0 var(--border);
+  }
+
+  .pagination{
+    flex-wrap:wrap;
+    gap:8px;
+  }
+}
+
+/* Mobile layout (stack while preserving modules/actions). */
+@media (max-width:768px){
+  .toolbar{
+    width:100%;
+    gap:8px;
+  }
+  #searchInput,
+  .toolbar .input,
+  .toolbar .select{
+    width:100%;
+    min-width:0;
+  }
+
+  .responsive-grid,
+  .responsive-form-grid,
+  .grid.cols-2,
+  .grid.cols-3,
+  .grid.cols-4{
+    grid-template-columns:1fr;
+  }
+
+  .table-wrap > table{
+    width:max(100%,820px);
+  }
+  th, td{
+    white-space:nowrap;
+    padding:7px 8px;
+  }
+  td .pill,
+  td .chip{
+    white-space:nowrap;
+  }
+
+  .table-actions,
+  .table-tools,
+  .pagination,
+  .notification-filter-row,
+  .notification-actions{
+    width:100%;
+  }
+  .table-actions > *,
+  .pagination > *{
+    flex:1 1 auto;
+  }
+
+  .sidebar{
+    inset:72px 0 0 auto;
+    width:min(94vw,360px);
+    max-height:calc(100vh - 80px);
+  }
+
+  .modal{
+    padding:6px;
+  }
+  .modal-content{
+    width:100%;
+    max-width:100%;
+    max-height:calc(100vh - 12px);
+    border-radius:12px;
+  }
+  .modal .header{
+    position:sticky;
+    top:0;
+    z-index:3;
+    background:var(--card);
+  }
+  .modal-content iframe{
+    width:100%;
+    min-height:62vh !important;
+  }
+  .modal-content .actions{
+    position:sticky;
+    bottom:0;
+    z-index:2;
+    background:var(--card);
+    padding-top:8px;
+  }
+
+  form .input,
+  form .select,
+  form textarea{
+    width:100%;
+    min-width:0;
+    max-width:100%;
+  }
+}
+
+/* Small mobile density tuning (360-430 baseline). */
+@media (max-width:480px){
+  .wrap{padding:8px}
+  .card{padding:10px}
+  .toolbar .btn,
+  .table-actions .btn,
+  .modal .actions .btn{
+    width:100%;
+  }
+  .notification-preview-panel{
+    right:auto;
+    left:0;
+    width:min(96vw,420px);
+  }
 }
 
 @keyframes row-highlight-pulse {

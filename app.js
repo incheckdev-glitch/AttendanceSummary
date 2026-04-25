@@ -4115,7 +4115,30 @@ function wireCore() {
       const open = !E.sidebar.classList.contains('open');
       E.sidebar.classList.toggle('open');
       E.drawerBtn.setAttribute('aria-expanded', String(open));
+      document.body.classList.toggle('drawer-open', open);
     });
+
+  document.addEventListener('click', e => {
+    if (!E.sidebar || !E.drawerBtn) return;
+    if (window.innerWidth > 980) return;
+    if (!E.sidebar.classList.contains('open')) return;
+    const target = e.target;
+    const insideSidebar = E.sidebar.contains(target);
+    const onToggle = E.drawerBtn.contains(target);
+    if (insideSidebar || onToggle) return;
+    E.sidebar.classList.remove('open');
+    E.drawerBtn.setAttribute('aria-expanded', 'false');
+    document.body.classList.remove('drawer-open');
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if (!E.sidebar || !E.drawerBtn) return;
+    if (!E.sidebar.classList.contains('open')) return;
+    E.sidebar.classList.remove('open');
+    E.drawerBtn.setAttribute('aria-expanded', 'false');
+    document.body.classList.remove('drawer-open');
+  });
 
   if (E.searchInput)
     E.searchInput.addEventListener(
