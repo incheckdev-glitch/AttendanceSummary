@@ -588,8 +588,8 @@ const Receipts = {
     const effectiveReceivedAmount = paymentSnapshot.received_amount;
     const effectiveNewPaidTotal = paymentSnapshot.new_paid_total;
     const effectivePendingAmount = paymentSnapshot.pending_amount;
-    const effectivePaymentState = String(receipt.payment_state || invoiceSource.payment_state || '').trim() || paymentSnapshot.payment_state;
-    const effectivePaymentConclusion = String(receipt.payment_conclusion || '').trim() || paymentSnapshot.payment_conclusion;
+    const effectivePaymentState = String(paymentSnapshot.payment_state || receipt.payment_state || invoiceSource.payment_state || '').trim() || 'Unpaid';
+    const effectivePaymentConclusion = String(paymentSnapshot.payment_conclusion || receipt.payment_conclusion || '').trim() || 'Pending Settlement';
     set('receiptFormReceiptId', receipt.receipt_id);
     set('receiptFormReceiptNumber', receipt.receipt_number);
     set('receiptFormInvoiceId', receipt.invoice_id);
@@ -783,13 +783,13 @@ const Receipts = {
     return deduped;
   },
   parseOrderTimestamp(value) {
-    const normalized = this.normalizeDateValue(value);
-    if (normalized) {
-      const time = Date.parse(normalized);
-      if (!Number.isNaN(time)) return time;
-    }
-    const parsed = Date.parse(String(value || '').trim());
-    return Number.isNaN(parsed) ? Number.NaN : parsed;
+    const raw = String(value ?? '').trim();
+    if (!raw) return Number.NaN;
+    const parsed = Date.parse(raw);
+    if (!Number.isNaN(parsed)) return parsed;
+    const normalizedDate = this.normalizeDateValue(raw);
+    const fallback = normalizedDate ? Date.parse(normalizedDate) : Number.NaN;
+    return Number.isNaN(fallback) ? Number.NaN : fallback;
   },
   getReceiptOrderMeta(receipt = {}) {
     const receiptDateTs = this.parseOrderTimestamp(receipt?.receipt_date);
@@ -837,17 +837,13 @@ const Receipts = {
       const normalizedRows = allReceiptsForInvoice
         .map(row => this.normalizeReceipt(row))
         .filter(row => this.receiptMatchesInvoice(row, currentInvoiceId, currentInvoiceNumber))
-        .filter(row => {
-          const rowKey = this.getReceiptUniqueKey(row);
-          if (!rowKey || !currentUniqueKey) return true;
-          return rowKey !== currentUniqueKey;
-        });
+        .filter(row => !this.isReceiptVoided(row));
       if (normalizedRows.length) {
         const sorted = [...normalizedRows].sort((a, b) => this.compareReceiptOrder(a, b));
-        const currentIndex = sorted.findIndex(row => this.getReceiptUniqueKey(row) === currentUniqueKey);
-        const previousRows = currentIndex >= 0
-          ? sorted.slice(0, currentIndex)
-          : sorted.filter(row => this.compareReceiptOrder(row, receipt) < 0);
+        const currentIndex = currentUniqueKey
+          ? sorted.findIndex(row => this.getReceiptUniqueKey(row) === currentUniqueKey)
+          : -1;
+        const previousRows = currentIndex >= 0 ? sorted.slice(0, currentIndex) : sorted;
         oldPaidBeforeReceipt = previousRows.reduce((sum, row) => sum + this.getReceiptAmountValue(row), 0);
       } else {
         oldPaidBeforeReceipt = 0;
