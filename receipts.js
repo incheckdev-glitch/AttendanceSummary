@@ -95,6 +95,9 @@ const Receipts = {
   toNumberSafe(value) {
     return U.toMoneyNumber(value);
   },
+  normalizeMoney(value) {
+    return this.toNumberSafe(value);
+  },
   formatMoney(value) {
     return this.toNumberSafe(value).toLocaleString(undefined, { maximumFractionDigits: 2 });
   },
@@ -151,8 +154,7 @@ const Receipts = {
     const amountReceived = this.getReceiptAmountValue({
       amount_received: normalized.amount_received,
       received_amount: normalized.received_amount,
-      paid_now: normalized.paid_now,
-      payment_amount: source.payment_amount ?? source.paymentAmount
+      paid_now: normalized.paid_now
     });
     normalized.old_paid_total = this.toNumberSafe(normalized.old_paid_total);
     normalized.paid_now = this.toNumberSafe(
@@ -173,8 +175,7 @@ const Receipts = {
     const receivedAmountValue = this.getReceiptAmountValue({
       amount_received: normalized.amount_received,
       received_amount: normalized.received_amount,
-      paid_now: normalized.paid_now,
-      payment_amount: source.payment_amount ?? source.paymentAmount
+      paid_now: normalized.paid_now
     });
     normalized.amount_received = this.toNumberSafe(receivedAmountValue || normalized.paid_now);
     normalized.received_amount = normalized.amount_received;
@@ -730,16 +731,13 @@ const Receipts = {
     return String(receipt?.id || '').trim() || String(receipt?.receipt_id || '').trim();
   },
   getReceiptAmountValue(receipt = {}) {
-    const pickDefined = (...values) => values.find(value => value !== undefined && value !== null && !(typeof value === 'string' && value.trim() === ''));
-    return this.toNumberSafe(
-      pickDefined(
-        receipt.received_amount,
-        receipt.amount_received,
-        receipt.paid_now,
-        receipt.payment_amount,
-        0
-      )
+    const receiptAmount = this.normalizeMoney(
+      receipt.received_amount ??
+      receipt.amount_received ??
+      receipt.paid_now ??
+      0
     );
+    return receiptAmount;
   },
   parseOrderTimestamp(value) {
     const normalized = this.normalizeDateValue(value);
@@ -877,7 +875,7 @@ const Receipts = {
     const receiptQuery = this.applyReceiptSort(
       client
         .from('receipts')
-        .select('id,receipt_id,invoice_id,invoice_number,receipt_date,created_at,amount_received,received_amount,receipt_amount,paid_now,payment_amount,amount')
+        .select('id,receipt_id,invoice_id,invoice_number,receipt_date,created_at,amount_received,received_amount,paid_now,old_paid_total,new_paid_total,pending_amount,invoice_total')
         .eq('invoice_id', invoiceId),
       { ascending: true }
     );
@@ -914,7 +912,7 @@ const Receipts = {
     const { data, error } = await this.applyReceiptSort(
       client
         .from('receipts')
-        .select('id,receipt_id,invoice_id,invoice_number,receipt_date,created_at,amount_received,received_amount,receipt_amount,paid_now,payment_amount,amount')
+        .select('id,receipt_id,invoice_id,invoice_number,receipt_date,created_at,amount_received,received_amount,paid_now,old_paid_total,new_paid_total,pending_amount,invoice_total')
         .eq('invoice_id', invoiceId),
       { ascending: true }
     );
@@ -1172,8 +1170,7 @@ const Receipts = {
     const normalizedPaidNow = this.getReceiptAmountValue({
       received_amount: formValues.received_amount,
       amount_received: formValues.amount_received,
-      paid_now: formValues.paid_now,
-      payment_amount: formValues.payment_amount
+      paid_now: formValues.paid_now
     });
     const mergedReceipt = {
       ...existing,
@@ -1568,6 +1565,7 @@ const Receipts = {
         <div class="row"><span>Invoice Total</span><span>${this.money(currency, invoiceTotal)}</span></div>
         <div class="row"><span>Old Paid Total</span><span>${this.money(currency, oldPaidTotal)}</span></div>
         <div class="row"><span>Paid Now</span><span>${this.money(currency, paidNow)}</span></div>
+        <div class="row"><span>Received Amount</span><span>${this.money(currency, receivedAmount)}</span></div>
         <div class="row"><span>New Paid Total</span><span>${this.money(currency, newPaidTotal)}</span></div>
         <div class="row"><span>Pending Amount</span><span>${this.money(currency, pendingAmount)}</span></div>
         <div class="row"><span>Payment State</span><span>${text(paymentState || r.status)}</span></div>
