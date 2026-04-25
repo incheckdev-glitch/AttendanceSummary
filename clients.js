@@ -45,6 +45,7 @@ const Clients = {
     detailCacheTtlMs: 90 * 1000,
     detailLoading: false,
     activeDetailTab: 'overview',
+    sectionLoadStates: {},
     statementFilters: { status: 'all', dateFrom: '', dateTo: '', searchDoc: '' },
     renewalsFilters: { dateFrom: '', dateTo: '' }
   },
@@ -377,35 +378,39 @@ const Clients = {
     }
     return this.matchesClient_(agreement, client);
   },
-  listClientRelatedAgreements_(clientId) {
-    const client = this.state.rows.find(row => row.client_id === clientId);
+  listClientRelatedAgreements_(clientId, source = null) {
+    const client = source?.client || this.state.rows.find(row => row.client_id === clientId);
     if (!client) return [];
-    return this.state.agreements.filter(item => this.matchesClientAgreement_(item, client));
+    const agreements = Array.isArray(source?.agreements) ? source.agreements : this.state.agreements;
+    return agreements.filter(item => this.matchesClientAgreement_(item, client));
   },
-  listClientAgreementLocationItems_(clientId) {
-    const linkedAgreements = this.listClientRelatedAgreements_(clientId);
+  listClientAgreementLocationItems_(clientId, source = null) {
+    const linkedAgreements = this.listClientRelatedAgreements_(clientId, source);
     const linkedAgreementUuidSet = new Set(linkedAgreements.map(item => String(item.id || '').trim()).filter(Boolean));
-    return this.state.agreementItems
+    const agreementItems = Array.isArray(source?.agreementItems) ? source.agreementItems : this.state.agreementItems;
+    return agreementItems
       .filter(item => linkedAgreementUuidSet.has(String(item.agreement_id || '').trim()))
       .filter(item => this.isAnnualSaasClientLocationItem(item));
   },
-  listClientRelatedInvoices_(clientId) {
-    const client = this.state.rows.find(row => row.client_id === clientId);
+  listClientRelatedInvoices_(clientId, source = null) {
+    const client = source?.client || this.state.rows.find(row => row.client_id === clientId);
     if (!client) return [];
-    const linkedAgreements = this.listClientRelatedAgreements_(clientId);
+    const linkedAgreements = this.listClientRelatedAgreements_(clientId, source);
     const linkedAgreementUuids = new Set(linkedAgreements.map(item => String(item.id || '').trim()).filter(Boolean));
-    return this.state.invoices.filter(item => {
+    const invoices = Array.isArray(source?.invoices) ? source.invoices : this.state.invoices;
+    return invoices.filter(item => {
       if (this.matchesClient_(item, client)) return true;
       const invoiceAgreementUuid = String(item.agreement_id || '').trim();
       return Boolean(invoiceAgreementUuid && linkedAgreementUuids.has(invoiceAgreementUuid));
     });
   },
-  listClientRelatedReceipts_(clientId) {
-    const client = this.state.rows.find(row => row.client_id === clientId);
+  listClientRelatedReceipts_(clientId, source = null) {
+    const client = source?.client || this.state.rows.find(row => row.client_id === clientId);
     if (!client) return [];
-    const linkedInvoices = this.listClientRelatedInvoices_(clientId);
+    const linkedInvoices = this.listClientRelatedInvoices_(clientId, source);
     const linkedInvoiceUuids = new Set(linkedInvoices.map(item => String(item.id || '').trim()).filter(Boolean));
-    return this.state.receipts.filter(item => {
+    const receipts = Array.isArray(source?.receipts) ? source.receipts : this.state.receipts;
+    return receipts.filter(item => {
       if (this.matchesClient_(item, client)) return true;
       const invoiceUuid = String(item.invoice_id || '').trim();
       return Boolean(invoiceUuid && linkedInvoiceUuids.has(invoiceUuid));
@@ -524,18 +529,18 @@ const Clients = {
           : [];
     return items.filter(item => this.isAnnualSaasClientLocationItem(item)).length;
   },
-  computeClientAnalytics_(client) {
+  computeClientAnalytics_(client, source = null) {
     const clientId = String(client?.client_id || '').trim();
-    const agreements = this.listClientRelatedAgreements_(clientId);
-    const invoices = this.listClientRelatedInvoices_(clientId);
+    const agreements = this.listClientRelatedAgreements_(clientId, source);
+    const invoices = this.listClientRelatedInvoices_(clientId, source);
     const invoiceUuidSet = new Set(invoices.map(item => String(item.id || '').trim()).filter(Boolean));
-    const receipts = this.listClientRelatedReceipts_(clientId).filter(receipt => {
+    const receipts = this.listClientRelatedReceipts_(clientId, source).filter(receipt => {
       const invoiceUuid = String(receipt.invoice_id || '').trim();
       if (invoiceUuid && invoiceUuidSet.has(invoiceUuid)) return true;
       return !invoiceUuid;
     });
     const signedAgreements = agreements.filter(item => this.isSignedAgreement(item));
-    const locationItems = this.listClientAgreementLocationItems_(clientId);
+    const locationItems = this.listClientAgreementLocationItems_(clientId, source);
     const activeLocationItems = locationItems.filter(item => this.isActiveAnnualSaasLocationItem(item));
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -594,16 +599,16 @@ const Clients = {
       currency: this.getClientCurrency_(clientId)
     };
   },
-  buildTimeline_(clientId) {
+  buildTimeline_(clientId, source = null) {
     const events = [];
-    this.buildClientRenewalRows({ client_id: clientId }).forEach(item => {
+    this.buildClientRenewalRows({ client_id: clientId }, source).forEach(item => {
       events.push({
         type: 'renewal_item',
         date: item.renewal_date || item.service_end_date,
         label: `${item.location_name || 'Location'} · ${item.module_name || 'Annual SaaS'} renewal`
       });
     });
-    this.listClientRelatedAgreements_(clientId).forEach(item => {
+    this.listClientRelatedAgreements_(clientId, source).forEach(item => {
       const labelId = item.agreement_number || item.agreement_id || '—';
       events.push({
         type: 'agreement_signed',
@@ -611,7 +616,7 @@ const Clients = {
         label: `Agreement ${labelId} Signed`
       });
     });
-    this.listClientRelatedInvoices_(clientId).forEach(item => {
+    this.listClientRelatedInvoices_(clientId, source).forEach(item => {
       const labelId = item.invoice_number || item.invoice_id || '—';
       events.push({
         type: 'invoice_issued',
@@ -619,7 +624,7 @@ const Clients = {
         label: `Invoice ${labelId} Issued`
       });
     });
-    this.listClientRelatedReceipts_(clientId).forEach(item => {
+    this.listClientRelatedReceipts_(clientId, source).forEach(item => {
       const amount = this.toNumberSafe(item.received_amount);
       const pending = this.toNumberSafe(item.pending_amount);
       const paymentLabel = pending <= 0 && amount > 0 ? 'Paid' : amount > 0 ? 'Partially Paid' : 'Payment Received';
@@ -807,10 +812,10 @@ const Clients = {
         return { ...row, debit, credit, running_balance: running };
       });
   },
-  buildClientStatementRows(client) {
+  buildClientStatementRows(client, source = null) {
     const clientId = String(client?.client_id || '').trim();
-    const invoices = this.listClientRelatedInvoices_(clientId);
-    const receipts = this.listClientRelatedReceipts_(clientId);
+    const invoices = this.listClientRelatedInvoices_(clientId, source);
+    const receipts = this.listClientRelatedReceipts_(clientId, source);
     const invoiceRows = invoices.map(item => ({
       date: item.issued_date || item.updated_at,
       type: 'Invoice',
@@ -839,12 +844,12 @@ const Clients = {
     }));
     return this.computeRunningBalance([...invoiceRows, ...receiptRows]).sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
   },
-  buildClientRenewalRows(client) {
+  buildClientRenewalRows(client, source = null) {
     const clientId = String(client?.client_id || '').trim();
-    const agreements = this.listClientRelatedAgreements_(clientId);
+    const agreements = this.listClientRelatedAgreements_(clientId, source);
     const agreementByUuid = new Map(agreements.map(agreement => [String(agreement.id || '').trim(), agreement]));
     const rows = [];
-    this.listClientAgreementLocationItems_(clientId).forEach(item => {
+    this.listClientAgreementLocationItems_(clientId, source).forEach(item => {
       const agreement = agreementByUuid.get(String(item.agreement_id || '').trim()) || {};
       const normalized = this.normalizeRenewalRow({
         ...item,
@@ -944,21 +949,67 @@ const Clients = {
         btn.classList.toggle('ghost', !selected);
       });
     }
+    this.ensureSectionLoaded_(this.state.activeDetailTab).catch(() => {});
+  },
+  getSectionState_(clientId = '', section = 'overview') {
+    const key = `${String(clientId || '').trim()}:${section}`;
+    return this.state.sectionLoadStates[key] || 'not_loaded';
+  },
+  setSectionState_(clientId = '', section = 'overview', status = 'not_loaded') {
+    const key = `${String(clientId || '').trim()}:${section}`;
+    this.state.sectionLoadStates[key] = status;
+  },
+  clearClientDetailState_(clientId = '') {
+    const cid = String(clientId || '').trim();
+    if (!cid) return;
+    Object.keys(this.state.sectionLoadStates).forEach(key => {
+      if (key.startsWith(`${cid}:`)) delete this.state.sectionLoadStates[key];
+    });
+    delete this.state.detailCache[cid];
+  },
+  async ensureSectionLoaded_(section = 'overview', options = {}) {
+    const clientId = String(this.state.selectedClientId || '').trim();
+    if (!clientId) return null;
+    const currentState = this.getSectionState_(clientId, section);
+    if (!options.force && currentState === 'loaded') return this.state.detailCache[clientId] || null;
+    this.setSectionState_(clientId, section, 'loading');
+    try {
+      const detail = await this.loadClientDetailData_(clientId, options);
+      this.setSectionState_(clientId, section, 'loaded');
+      this.render();
+      return detail;
+    } catch (error) {
+      this.setSectionState_(clientId, section, 'error');
+      this.render();
+      throw error;
+    }
   },
   async loadClientDetailData_(clientId, { force = false } = {}) {
     const cache = this.state.detailCache[clientId];
     if (!force && cache && Date.now() - cache.loadedAt <= this.state.detailCacheTtlMs) return cache;
     const client = this.state.rows.find(row => row.client_id === clientId);
+    const bundle = await window.ClientsService.getClientAnalyticsBundle(clientId, { limit: 150 });
+    const scoped = {
+      client,
+      agreements: this.extractListResult(bundle.agreements || []).rows.map(item => this.normalizeAgreement(item)),
+      agreementItems: this.extractListResult(bundle.agreement_items || []).rows.map(item => this.normalizeAgreementItem(item)),
+      invoices: this.extractListResult(bundle.invoices || []).rows.map(item => this.normalizeInvoice(item)),
+      receipts: this.extractListResult(bundle.receipts || []).rows.map(item => this.normalizeReceipt(item))
+    };
+    this.state.agreements = scoped.agreements;
+    this.state.agreementItems = scoped.agreementItems;
+    this.state.invoices = scoped.invoices;
+    this.state.receipts = scoped.receipts;
     const normalizedStatement = [];
     const normalizedRenewals = [];
     const normalizedTimeline = [];
-    const fallbackTimeline = this.buildTimeline_(clientId);
+    const fallbackTimeline = this.buildTimeline_(clientId, scoped);
     const detailBundle = {
       detail: client || {},
-      analytics: client?.analytics || this.computeClientAnalytics_(client || {}),
+      analytics: this.computeClientAnalytics_(client || {}, scoped),
       timeline: normalizedTimeline.length ? normalizedTimeline : fallbackTimeline,
-      statementRows: normalizedStatement.length ? this.computeRunningBalance(normalizedStatement) : this.buildClientStatementRows(client),
-      renewalRows: normalizedRenewals.length ? normalizedRenewals : this.buildClientRenewalRows(client),
+      statementRows: normalizedStatement.length ? this.computeRunningBalance(normalizedStatement) : this.buildClientStatementRows(client, scoped),
+      renewalRows: normalizedRenewals.length ? normalizedRenewals : this.buildClientRenewalRows(client, scoped),
       loadedAt: Date.now()
     };
     console.debug('[Clients] detail timeline source', {
@@ -1340,7 +1391,9 @@ const Clients = {
     this.renderList();
     this.renderDetail();
     if (E.clientsState) {
-      E.clientsState.textContent = this.state.loadError || `Loaded ${this.state.filteredRows.length} of ${this.state.rows.length} clients.`;
+      E.clientsState.textContent = this.state.loadError || (this.state.selectedClientId
+        ? `Loaded ${this.state.filteredRows.length} of ${this.state.rows.length} clients.`
+        : 'Select a client or search to load client analytics.');
     }
     if (E.clientsStatusFilter) {
       const statuses = ['All', ...new Set(this.state.rows.map(item => item.status).filter(Boolean))];
@@ -1367,13 +1420,18 @@ const Clients = {
     }
   },
   async selectClient(clientId, options = {}) {
-    this.state.selectedClientId = String(clientId || '').trim();
+    const nextClientId = String(clientId || '').trim();
+    const previousClientId = String(this.state.selectedClientId || '').trim();
+    if (previousClientId && nextClientId && previousClientId !== nextClientId) {
+      this.clearClientDetailState_(previousClientId);
+    }
+    this.state.selectedClientId = nextClientId;
     this.render();
     if (!this.state.selectedClientId) return;
     this.state.detailLoading = true;
     this.renderDetailSkeletons_();
     try {
-      await this.loadClientDetailData_(this.state.selectedClientId, options);
+      await this.ensureSectionLoaded_('overview', options);
     } finally {
       this.state.detailLoading = false;
       this.render();
@@ -1391,7 +1449,7 @@ const Clients = {
     this.state.loadError = '';
     if (E.clientsState) E.clientsState.textContent = 'Loading client intelligence…';
     try {
-      const clientsRes = await window.ClientsService.getDashboardData({
+      const clientsRes = await window.ClientsService.listClients({
         limit: this.state.limit,
         page: this.state.page,
         search: this.state.search || '',
@@ -1409,22 +1467,18 @@ const Clients = {
       this.state.page = clientsList.page;
       this.state.limit = clientsList.limit;
       this.state.offset = clientsList.offset;
-      this.state.agreements = this.extractListResult(clientsRes.agreements || []).rows.map(item => this.normalizeAgreement(item));
-      this.state.agreementItems = this.extractListResult(clientsRes.agreement_items || []).rows.map(item => this.normalizeAgreementItem(item));
-      this.state.invoices = this.extractListResult(clientsRes.invoices || []).rows.map(item => this.normalizeInvoice(item));
-      this.state.receipts = this.extractListResult(clientsRes.receipts || []).rows.map(item => this.normalizeReceipt(item));
-
-      this.state.agreements.forEach(agreement => {
-        this.findOrCreateClientFromSignedAgreement_(agreement);
-      });
-      this.state.rows.forEach(client => {
-        client.analytics = this.computeClientAnalytics_(client);
-      });
-      if (!this.state.selectedClientId && this.state.rows[0]?.client_id) this.state.selectedClientId = this.state.rows[0].client_id;
+      this.state.agreements = [];
+      this.state.agreementItems = [];
+      this.state.invoices = [];
+      this.state.receipts = [];
+      this.state.detailCache = {};
+      this.state.sectionLoadStates = {};
+      if (this.state.selectedClientId && !this.state.rows.some(row => row.client_id === this.state.selectedClientId)) {
+        this.state.selectedClientId = '';
+      }
       this.state.loaded = true;
       this.state.lastLoadedAt = Date.now();
       this.render();
-      if (this.state.selectedClientId) await this.selectClient(this.state.selectedClientId, { force: options.force });
     } catch (error) {
       this.state.rows = [];
       this.state.loadError = error?.message || 'Failed to load clients.';
@@ -1562,7 +1616,7 @@ const Clients = {
           dateTo: E.clientStatementDateTo?.value || '',
           searchDoc: E.clientStatementSearchDoc?.value || ''
         };
-        if (this.state.selectedClientId) await this.loadClientDetailData_(this.state.selectedClientId, { force: true });
+        if (this.state.selectedClientId) await this.ensureSectionLoaded_('statement', { force: true });
         this.render();
       });
     }
@@ -1573,7 +1627,7 @@ const Clients = {
         if (E.clientStatementDateFrom) E.clientStatementDateFrom.value = '';
         if (E.clientStatementDateTo) E.clientStatementDateTo.value = '';
         if (E.clientStatementSearchDoc) E.clientStatementSearchDoc.value = '';
-        if (this.state.selectedClientId) await this.loadClientDetailData_(this.state.selectedClientId, { force: true });
+        if (this.state.selectedClientId) await this.ensureSectionLoaded_('statement', { force: true });
         this.render();
       });
     }
@@ -1594,7 +1648,7 @@ const Clients = {
     if (E.clientRenewalsApplyFiltersBtn) {
       E.clientRenewalsApplyFiltersBtn.addEventListener('click', async () => {
         this.state.renewalsFilters = { dateFrom: E.clientRenewalsDateFrom?.value || '', dateTo: E.clientRenewalsDateTo?.value || '' };
-        if (this.state.selectedClientId) await this.loadClientDetailData_(this.state.selectedClientId, { force: true });
+        if (this.state.selectedClientId) await this.ensureSectionLoaded_('renewals', { force: true });
         this.render();
       });
     }
@@ -1603,7 +1657,7 @@ const Clients = {
         this.state.renewalsFilters = { dateFrom: '', dateTo: '' };
         if (E.clientRenewalsDateFrom) E.clientRenewalsDateFrom.value = '';
         if (E.clientRenewalsDateTo) E.clientRenewalsDateTo.value = '';
-        if (this.state.selectedClientId) await this.loadClientDetailData_(this.state.selectedClientId, { force: true });
+        if (this.state.selectedClientId) await this.ensureSectionLoaded_('renewals', { force: true });
         this.render();
       });
     }
