@@ -84,9 +84,6 @@ window.CONFIG = {
   DATA_VERSION: '5',
   DATA_STALE_HOURS: 6,
 
-  LEGACY_TICKETS_CSV_URL:
-    'https://docs.google.com/spreadsheets/d/e/2PACX-1vTRwAjNAQxiPP8uR15t_vx03JkjgEBjgUwp2bpx8rsHx-JJxVDBZyf5ap77rAKrYHfgkVMwLJVm6pGn/pub?output=csv',
-
   CALENDAR_API_URL: runtimeConfig.CALENDAR_API_URL || '',
   CALENDAR_TABLE: 'events',
   DEALS_TABLE: 'deals',
@@ -102,40 +99,6 @@ window.CONFIG = {
   WORKFLOW_AUDIT_LOG_TABLE: runtimeConfig.WORKFLOW_AUDIT_LOG_TABLE || 'workflow_audit_log',
   OPERATIONS_ONBOARDING_TABLE:
     runtimeConfig.OPERATIONS_ONBOARDING_TABLE || 'operations_onboarding',
-
-  // legacy compatibility - remove after migration closure
-  SHEET_URL: runtimeConfig.SHEET_URL || 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTRwAjNAQxiPP8uR15t_vx03JkjgEBjgUwp2bpx8rsHx-JJxVDBZyf5ap77rAKrYHfgkVMwLJVm6pGn/pub?output=csv',
-  // legacy compatibility - remove after migration closure
-  CALENDAR_SHEET_NAME: runtimeConfig.CALENDAR_SHEET_NAME || runtimeConfig.CALENDAR_TABLE || 'events',
-  // legacy compatibility - remove after migration closure
-  DEALS_SHEET_NAME: runtimeConfig.DEALS_SHEET_NAME || runtimeConfig.DEALS_TABLE || 'deals',
-  // legacy compatibility - remove after migration closure
-  PROPOSAL_CATALOG_SHEET_NAME:
-    runtimeConfig.PROPOSAL_CATALOG_SHEET_NAME || runtimeConfig.PROPOSAL_CATALOG_TABLE || 'proposal_catalog_items',
-  // legacy compatibility - remove after migration closure
-  ROLES_SHEET_NAME: runtimeConfig.ROLES_SHEET_NAME || runtimeConfig.ROLES_TABLE || 'roles',
-  // legacy compatibility - remove after migration closure
-  ROLE_PERMISSIONS_SHEET_NAME:
-    runtimeConfig.ROLE_PERMISSIONS_SHEET_NAME || runtimeConfig.ROLE_PERMISSIONS_TABLE || 'role_permissions',
-  // legacy compatibility - remove after migration closure
-  RECEIPTS_SHEET_NAME: runtimeConfig.RECEIPTS_SHEET_NAME || runtimeConfig.RECEIPTS_TABLE || 'receipts',
-  // legacy compatibility - remove after migration closure
-  RECEIPT_ITEMS_SHEET_NAME:
-    runtimeConfig.RECEIPT_ITEMS_SHEET_NAME || runtimeConfig.RECEIPT_ITEMS_TABLE || 'receipt_items',
-  // legacy compatibility - remove after migration closure
-  WORKFLOWS_SHEET_NAME: runtimeConfig.WORKFLOWS_SHEET_NAME || runtimeConfig.WORKFLOWS_TABLE || 'workflow_rules',
-  // legacy compatibility - remove after migration closure
-  WORKFLOW_RULES_SHEET_NAME:
-    runtimeConfig.WORKFLOW_RULES_SHEET_NAME || runtimeConfig.WORKFLOW_RULES_TABLE || 'workflow_rules',
-  // legacy compatibility - remove after migration closure
-  WORKFLOW_APPROVALS_SHEET_NAME:
-    runtimeConfig.WORKFLOW_APPROVALS_SHEET_NAME || runtimeConfig.WORKFLOW_APPROVALS_TABLE || 'workflow_approvals',
-  // legacy compatibility - remove after migration closure
-  WORKFLOW_AUDIT_LOG_SHEET_NAME:
-    runtimeConfig.WORKFLOW_AUDIT_LOG_SHEET_NAME || runtimeConfig.WORKFLOW_AUDIT_LOG_TABLE || 'workflow_audit_log',
-  // legacy compatibility - remove after migration closure
-  OPERATIONS_ONBOARDING_SHEET_NAME:
-    runtimeConfig.OPERATIONS_ONBOARDING_SHEET_NAME || runtimeConfig.OPERATIONS_ONBOARDING_TABLE || 'operations_onboarding',
 
   ISSUE_API_URL: runtimeConfig.ISSUE_API_URL || '',
 

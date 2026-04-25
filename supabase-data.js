@@ -53,6 +53,17 @@
 
   const ITEM_TABLES = { proposals: 'proposal_items', agreements: 'agreement_items', invoices: 'invoice_items', receipts: 'receipt_items' };
   const ITEM_FK = { proposals: 'proposal_id', agreements: 'agreement_id', invoices: 'invoice_id', receipts: 'receipt_id' };
+  const LEGACY_COMPAT = global.LegacyCompat || {};
+  const LEGACY_REQUEST_META_FIELDS = new Set(
+    Array.isArray(LEGACY_COMPAT.LEGACY_REQUEST_META_FIELDS)
+      ? LEGACY_COMPAT.LEGACY_REQUEST_META_FIELDS
+      : []
+  );
+  const LEGACY_RESOURCE_FIELD_KEYS = new Set(
+    Array.isArray(LEGACY_COMPAT.LEGACY_RESOURCE_KEYS)
+      ? LEGACY_COMPAT.LEGACY_RESOURCE_KEYS
+      : ['resource', 'resourceKey', 'table', 'entity', 'sheetName', 'sheet_name', 'tabName', 'tab_name']
+  );
   const TICKET_INTERNAL_FIELDS = ['youtrack_reference', 'dev_team_status', 'issue_related', 'notes'];
   const TICKET_PUBLIC_COLUMNS = new Set([
     'ticket_id',
@@ -104,12 +115,9 @@
     'endDate',
     'date',
     'finish',
-        'backendToken',
+    'backendToken',
     'backendUrl',
-    'sheetName',
-    'tabName',
-    'table',
-    'entity',
+    ...LEGACY_REQUEST_META_FIELDS,
     'resource',
     'action'
   ]);
@@ -123,13 +131,9 @@
     'allowed_roles'
   ]);
   const ROLE_PERMISSION_LEGACY_FIELDS = new Set([
-        'backendToken',
+    'backendToken',
     'backendUrl',
-    'sheetName',
-    'tabName',
-    'sheet_name',
-    'table',
-    'entity',
+    ...LEGACY_REQUEST_META_FIELDS,
     'id',
     'permission',
     'description',
@@ -249,27 +253,24 @@
     'capability_name','capability_value','notes','service_start_date','service_end_date','currency'
   ]);
   const AGREEMENT_LEGACY_FIELDS = new Set([
-    'backendToken','backendUrl','sheetName','tabName','table','entity','resource','action',
+    'backendToken','backendUrl', ...LEGACY_REQUEST_META_FIELDS, 'resource','action',
     'agreement_length','lead_id','deal_id',
     'provider_address','provider_signatory_name_primary','provider_signatory_title_primary',
     'saas_total','one_time_total',
     'agreement_items','items'
   ]);
   const PROPOSAL_LEGACY_FIELDS = new Set([
-    'backendToken','backendUrl','sheetName','tabName','table','entity','resource','action','lead_id','agreement_id','saas_total','one_time_total',
+    'backendToken','backendUrl', ...LEGACY_REQUEST_META_FIELDS, 'resource','action','lead_id','agreement_id','saas_total','one_time_total',
     'valid_until','customer_sign_date','proposal_items','items'
   ]);
   const PROPOSAL_CATALOG_LEGACY_FIELDS = new Set([
-    'backendToken','backendUrl','sheetName','tabName','table','entity','resource','action','item_section','itemName','defaultLocationName','unitPrice',
+    'backendToken','backendUrl', ...LEGACY_REQUEST_META_FIELDS, 'resource','action','item_section','itemName','defaultLocationName','unitPrice',
     'discountPercent','sortOrder'
   ]);
   const LEADS_DEALS_LEGACY_FIELDS = new Set([
-        'backendToken',
+    'backendToken',
     'backendUrl',
-    'sheetName',
-    'tabName',
-    'table',
-    'entity',
+    ...LEGACY_REQUEST_META_FIELDS,
     'resource',
     'action',
     'proposal_id'
@@ -279,7 +280,7 @@
     'sort', 'sortBy', 'sortDir', 'sort_by', 'sort_dir',
     'search', 'q', 'mode', 'tab', 'view',
     'summary_only', 'fields',
-    'resource', 'action', 'table', 'entity', 'sheetName', 'tabName', 'updates', 'item'
+    ...LEGACY_RESOURCE_FIELD_KEYS, 'updates', 'item'
   ]);
   const USER_PROFILE_COLUMNS = new Set([
     'id',
