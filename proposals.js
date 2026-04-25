@@ -85,15 +85,21 @@ const Proposals = {
     }
     return 0;
   },
+  getNormalizedItemDiscountPercent(item = {}) {
+    const safe = item && typeof item === 'object' ? item : {};
+    return this.normalizeDiscountPercentValue(
+      safe.discount_percent,
+      safe.discountPercent,
+      safe.discount,
+      safe.item_discount,
+      safe.itemDiscount
+    );
+  },
   normalizeProposalItemForSave(item = {}) {
     const safe = item && typeof item === 'object' ? item : {};
     const unitPrice = this.toNumberSafe(safe.unit_price ?? safe.unitPrice);
     const quantity = Math.max(0, this.toNumberSafe(safe.quantity ?? safe.qty) || (safe.quantity === 0 ? 0 : 1));
-    const discountPercent = this.normalizeDiscountPercentValue(
-      safe.discount_percent,
-      safe.discountPercent,
-      safe.discount
-    );
+    const discountPercent = this.getNormalizedItemDiscountPercent(safe);
     const computed = this.computeCommercialRow({
       unit_price: unitPrice,
       discount_percent: discountPercent,
@@ -102,6 +108,7 @@ const Proposals = {
     return {
       ...safe,
       discount_percent: discountPercent,
+      discountPercent,
       unit_price: unitPrice,
       quantity,
       discounted_unit_price: this.toNumberSafe(
@@ -206,11 +213,7 @@ const Proposals = {
         this.toNumberSafe(safe.quantity ?? safe.qty) || (safe.quantity === 0 ? 0 : 1)
       );
       const unitPrice = this.toNumberSafe(safe.unit_price ?? safe.unitPrice);
-      const discountPercent = this.normalizeDiscountPercentValue(
-        safe.discount_percent,
-        safe.discountPercent,
-        safe.discount
-      );
+      const discountPercent = this.getNormalizedItemDiscountPercent(safe);
       const base = quantity * unitPrice;
       const discountAmount = (base * discountPercent) / 100;
       const lineTotal = Math.max(0, base - discountAmount);
@@ -632,7 +635,13 @@ const Proposals = {
       item_name: String(pick(source.item_name, source.itemName, source.name)).trim(),
       unit_price: this.toNumberSafe(pick(source.unit_price, source.unitPrice)),
       discount_percent: this.normalizeDiscountPercentValue(
-        pick(source.discount_percent, source.discountPercent, source.discount)
+        pick(
+          source.discount_percent,
+          source.discountPercent,
+          source.discount,
+          source.item_discount,
+          source.itemDiscount
+        )
       ),
       discounted_unit_price: this.toNumberSafe(
         pick(source.discounted_unit_price, source.discountedUnitPrice)
@@ -644,6 +653,7 @@ const Proposals = {
       notes: String(pick(source.notes)).trim(),
       updated_at: pick(source.updated_at, source.updatedAt)
     };
+    normalized.discountPercent = normalized.discount_percent;
 
     if (section === 'annual_saas' || section === 'one_time_fee') {
       const discountRatio = this.normalizeDiscount(normalized.discount_percent);
@@ -1835,15 +1845,12 @@ const Proposals = {
     if (selected.unit_price !== null && selected.unit_price !== undefined) {
       unitPriceInput.value = String(selected.unit_price);
     }
-    const hasCatalogDiscount = ['discount_percent', 'discountPercent', 'discount'].some(
+    const hasCatalogDiscount = ['discount_percent', 'discountPercent', 'discount', 'item_discount', 'itemDiscount'].some(
       key => selected[key] !== undefined && selected[key] !== null && String(selected[key]).trim() !== ''
     );
-    const selectedDiscountPercent = this.normalizeDiscountPercentValue(
-      selected.discount_percent,
-      selected.discountPercent,
-      selected.discount
-    );
-    if (discountPercentInput && hasCatalogDiscount) {
+    const selectedDiscountPercent = this.getNormalizedItemDiscountPercent(selected);
+    const hasExistingDiscount = discountPercentInput && String(discountPercentInput.value ?? '').trim() !== '';
+    if (discountPercentInput && hasCatalogDiscount && (fromUserInput || !hasExistingDiscount)) {
       discountPercentInput.value = String(selectedDiscountPercent);
     }
     if (quantityInput && selected.quantity !== null && selected.quantity !== undefined) {
