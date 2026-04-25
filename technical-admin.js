@@ -8,6 +8,11 @@ const TechnicalAdmin = {
     initialized: false,
     search: '',
     status: 'All',
+    page: 1,
+    limit: 50,
+    offset: 0,
+    returned: 0,
+    hasMore: false,
     activeRequestId: '',
     rowActionInFlight: new Set(),
     detailPreviewLoading: false,
@@ -400,7 +405,7 @@ const TechnicalAdmin = {
       return;
     }
     const rows = this.state.filteredRows;
-    E.technicalAdminState.textContent = `${rows.length} request${rows.length === 1 ? '' : 's'}`;
+    E.technicalAdminState.textContent = `${rows.length} request${rows.length === 1 ? '' : 's'} · page ${this.state.page}`;
     this.renderSummary();
     if (!rows.length) {
       E.technicalAdminTbody.innerHTML = '<tr><td colspan="13" class="muted" style="text-align:center;">No technical admin requests found.</td></tr>';
@@ -438,6 +443,29 @@ const TechnicalAdmin = {
         </tr>`;
       })
       .join('');
+    const paginationHost = U.ensurePaginationHost({
+      hostId: 'technicalAdminPagination',
+      anchor: E.technicalAdminTbody?.closest?.('.table-wrap')
+    });
+    U.renderPaginationControls({
+      host: paginationHost,
+      moduleKey: 'technical-admin',
+      page: this.state.page,
+      pageSize: this.state.limit,
+      hasMore: this.state.hasMore,
+      returned: this.state.returned,
+      loading: this.state.loading,
+      pageSizeOptions: [25, 50, 100],
+      onPageChange: nextPage => {
+        this.state.page = U.normalizePageNumber(nextPage, 1);
+        this.loadAndRefresh({ force: true });
+      },
+      onPageSizeChange: nextSize => {
+        this.state.limit = U.normalizePageSize(nextSize, 50, 200);
+        this.state.page = 1;
+        this.loadAndRefresh({ force: true });
+      }
+    });
     if (this.state.pendingHighlightId) {
       const pendingId = this.state.pendingHighlightId;
       this.state.pendingHighlightId = '';
@@ -450,13 +478,22 @@ const TechnicalAdmin = {
     this.state.loadError = '';
     this.render();
     try {
-      const response = await Api.listOperationsOnboarding({}, { forceRefresh: !!options.force });
+      const response = await Api.listTechnicalAdminRequests({
+        search: this.state.search,
+        request_status: this.state.status !== 'All' ? this.state.status : '',
+        page: this.state.page,
+        limit: this.state.limit,
+        sort_by: 'updated_at',
+        sort_dir: 'desc'
+      }, { forceRefresh: !!options.force });
       const rows = Api.normalizeListResponse(response)?.rows || [];
-      console.log('[technical admin] raw onboarding rows', rows);
-      const filteredRows = rows.filter(
-        row => row?.technical_request_type || row?.technical_request_status || row?.requested_at || row?.technical_request_details
-      );
-      this.state.rows = (await this.enrichRows(filteredRows)).filter(row => row.id || row.technical_request_id);
+      this.state.rows = (await this.enrichRows(rows)).filter(row => row.id || row.technical_request_id);
+      const normalized = Api.normalizeListResponse(response);
+      this.state.page = Number(normalized.page || this.state.page || 1);
+      this.state.limit = U.normalizePageSize(normalized.limit ?? this.state.limit, 50, 200);
+      this.state.offset = Number(normalized.offset ?? Math.max(0, (this.state.page - 1) * this.state.limit));
+      this.state.returned = Number(normalized.returned ?? this.state.rows.length);
+      this.state.hasMore = Boolean(normalized.hasMore);
       if (options?.highlightRequestId) this.state.pendingHighlightId = String(options.highlightRequestId || '').trim();
       this.state.loaded = true;
     } catch (error) {
@@ -618,8 +655,8 @@ const TechnicalAdmin = {
       if (!el) return;
       const sync = () => {
         this.state[key] = String(el.value || '').trim();
-        this.applyFilters();
-        this.render();
+        this.state.page = 1;
+        this.loadAndRefresh({ force: true });
       };
       el.addEventListener('input', sync);
       el.addEventListener('change', sync);

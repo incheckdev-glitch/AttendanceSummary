@@ -376,10 +376,44 @@
     const from = (page - 1) * pageSize;
     const to = from + pageSize;
     const client = getClient();
-    const { data, error } = await client.from(TABLE).select('*').order('updated_at', { ascending: false }).range(from, to);
+    let query = client.from(TABLE).select('*').order('updated_at', { ascending: false });
+    const search = cleanString(options.search).replace(/[%]/g, '').replace(/,/g, ' ');
+    if (search) {
+      query = query.or([
+        `client.ilike.%${search}%`,
+        `client_name.ilike.%${search}%`,
+        `company_name.ilike.%${search}%`,
+        `csm_name.ilike.%${search}%`,
+        `notes.ilike.%${search}%`
+      ].join(','));
+    }
+    const csmName = cleanString(options.csmName);
+    if (csmName && csmName !== 'All') query = query.eq('csm_name', csmName);
+    const clientName = cleanString(options.client);
+    if (clientName && clientName !== 'All') query = query.eq('client', clientName);
+    const supportType = cleanString(options.supportType);
+    if (supportType && supportType !== 'All') query = query.eq('type_of_support', supportType);
+    const effort = cleanString(options.effort);
+    if (effort && effort !== 'All') query = query.eq('effort_requirement', effort);
+    const channel = cleanString(options.channel);
+    if (channel && channel !== 'All') query = query.eq('support_channel', channel);
+    const startDate = cleanString(options.startDate);
+    if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
+    const endDate = cleanString(options.endDate);
+    if (endDate) query = query.lte('created_at', `${endDate}T23:59:59.999`);
+    query = query.range(from, to);
+    const { data, error } = await query;
     if (error) throw readableError('Unable to load CSM activities', error);
     const rows = Array.isArray(data) ? data : [];
-    return rows.slice(0, pageSize).map(normalizeCsmRow);
+    const limitedRows = rows.slice(0, pageSize).map(normalizeCsmRow);
+    return {
+      rows: limitedRows,
+      page,
+      limit: pageSize,
+      offset: from,
+      returned: limitedRows.length,
+      hasMore: rows.length > pageSize
+    };
   }
 
   async function getActivityDetails(id) {

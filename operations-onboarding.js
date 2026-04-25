@@ -11,6 +11,11 @@ const OperationsOnboarding = {
     onboardingStatus: 'All',
     requestType: 'All',
     assignedCsm: 'All',
+    page: 1,
+    limit: 50,
+    offset: 0,
+    returned: 0,
+    hasMore: false,
     pendingOnboardingId: '',
     pendingAgreementId: '',
     postSubmitHook: null,
@@ -854,7 +859,7 @@ const OperationsOnboarding = {
     const rows = this.state.filteredRows;
     this.renderSummary();
     this.renderAnalyticsPanels();
-    E.operationsOnboardingState.textContent = `${rows.length} onboarding row${rows.length === 1 ? '' : 's'}`;
+    E.operationsOnboardingState.textContent = `${rows.length} onboarding row${rows.length === 1 ? '' : 's'} · page ${this.state.page}`;
     if (!rows.length) {
       E.operationsOnboardingTbody.innerHTML = '<tr><td colspan="19" class="muted" style="text-align:center;">No onboarding rows found.</td></tr>';
       return;
@@ -887,6 +892,29 @@ const OperationsOnboarding = {
           </div></td>
         </tr>`;
     }).join('');
+    const paginationHost = U.ensurePaginationHost({
+      hostId: 'operationsOnboardingPagination',
+      anchor: E.operationsOnboardingTbody?.closest?.('.table-wrap')
+    });
+    U.renderPaginationControls({
+      host: paginationHost,
+      moduleKey: 'operations-onboarding',
+      page: this.state.page,
+      pageSize: this.state.limit,
+      hasMore: this.state.hasMore,
+      returned: this.state.returned,
+      loading: this.state.loading,
+      pageSizeOptions: [25, 50, 100],
+      onPageChange: nextPage => {
+        this.state.page = U.normalizePageNumber(nextPage, 1);
+        this.loadAndRefresh({ force: true });
+      },
+      onPageSizeChange: nextSize => {
+        this.state.limit = U.normalizePageSize(nextSize, 50, 200);
+        this.state.page = 1;
+        this.loadAndRefresh({ force: true });
+      }
+    });
   },
   async loadAndRefresh({ force = false } = {}) {
     if (this.state.loading && !force) return;
@@ -898,9 +926,19 @@ const OperationsOnboarding = {
         onboarding_status: this.state.onboardingStatus !== 'All' ? this.state.onboardingStatus : '',
         request_type: this.state.requestType !== 'All' ? this.state.requestType : '',
         csm_assigned_to: this.state.assignedCsm !== 'All' ? this.state.assignedCsm : '',
-        search: this.state.search
+        search: this.state.search,
+        page: this.state.page,
+        limit: this.state.limit,
+        sort_by: 'updated_at',
+        sort_dir: 'desc'
       });
-      this.state.rows = this.extractRows(response).map(row => this.normalizeRow(row));
+      const normalizedResponse = Api.normalizeListResponse(response);
+      this.state.rows = this.extractRows(normalizedResponse).map(row => this.normalizeRow(row));
+      this.state.page = Number(normalizedResponse.page || this.state.page || 1);
+      this.state.limit = U.normalizePageSize(normalizedResponse.limit ?? this.state.limit, 50, 200);
+      this.state.offset = Number(normalizedResponse.offset ?? Math.max(0, (this.state.page - 1) * this.state.limit));
+      this.state.returned = Number(normalizedResponse.returned ?? this.state.rows.length);
+      this.state.hasMore = Boolean(normalizedResponse.hasMore);
       await this.hydrateAgreementData(this.state.rows);
       this.state.loaded = true;
     } catch (error) {
@@ -1128,8 +1166,8 @@ const OperationsOnboarding = {
       const update = () => {
         this.state[stateKey] = String(el.value || '').trim() || 'All';
         if (stateKey === 'search') this.state[stateKey] = String(el.value || '').trim();
-        this.applyFilters();
-        this.render();
+        this.state.page = 1;
+        this.loadAndRefresh({ force: true });
       };
       el.addEventListener('input', update);
       el.addEventListener('change', update);
