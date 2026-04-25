@@ -110,6 +110,12 @@ const Notifications = {
       mode: 'all',
       search: ''
     },
+    page: 1,
+    limit: 50,
+    offset: 0,
+    returned: 0,
+    hasMore: false,
+    total: 0,
     lastFetchedAt: '',
     pollTimer: null,
     realtimeChannel: null,
@@ -199,6 +205,27 @@ const Notifications = {
       if (Array.isArray(candidate)) return candidate;
     }
     return [];
+  },
+  extractListResult(response) {
+    if (response && typeof response === 'object' && Array.isArray(response.rows)) {
+      const total = Number(response.total ?? response.rows.length) || response.rows.length;
+      const returned = Number(response.returned ?? response.rows.length) || response.rows.length;
+      const limit = Number(response.limit || this.state.limit || 50);
+      const page = Number(response.page || this.state.page || 1);
+      const offset = Number(response.offset ?? Math.max(0, (page - 1) * limit));
+      const hasMore = response.hasMore !== undefined
+        ? Boolean(response.hasMore)
+        : response.has_more !== undefined
+          ? Boolean(response.has_more)
+          : offset + returned < total;
+      return { rows: response.rows, total, returned, hasMore, page, limit, offset };
+    }
+    const rows = this.extractRows(response);
+    const limit = Number(this.state.limit || 50);
+    const page = Number(this.state.page || 1);
+    const returned = rows.length;
+    const offset = Math.max(0, (page - 1) * limit);
+    return { rows, total: rows.length, returned, hasMore: false, page, limit, offset };
   },
   formatDate(value) {
     return U.formatDateTimeMMDDYYYYHHMM(value);
@@ -493,6 +520,7 @@ const Notifications = {
     if (force && E.notificationsView?.classList.contains('active') && !this.state.lastFetchedAt) {
       this.state.filters.mode = 'all';
       this.state.filters.search = '';
+      this.state.page = 1;
       if (E.notificationsSearchInput) E.notificationsSearchInput.value = '';
       if (E.notificationsFilterButtons) {
         E.notificationsFilterButtons.querySelectorAll('[data-filter]').forEach(btn => {
@@ -525,22 +553,33 @@ const Notifications = {
       const mode = this.state.filters.mode || 'all';
       const search = this.state.filters.search || '';
       const payload = {
-        limit: 200,
+        limit: this.state.limit,
+        page: this.state.page,
+        mode,
         unread_only: mode === 'unread',
         search,
-        priority: mode === 'high' ? 'high' : ''
+        priority: mode === 'high' ? 'high' : '',
+        sort_by: 'created_at',
+        sort_dir: 'desc'
       };
 
       const response = await Api.listNotifications(payload);
       this.state.rawResponse = response;
       console.debug('[notifications] raw response', response);
-      const rows = this.extractRows(response);
+      const normalizedList = this.extractListResult(response);
+      const rows = normalizedList.rows;
       this.state.rawRows = Array.isArray(rows) ? rows.slice() : [];
       console.debug('[notifications] extracted rows', rows);
       const normalizedItems = rows.map(item => this.normalize(item));
       console.debug('[notifications] normalized items', normalizedItems);
       console.debug('[notifications] active filters', this.state.filters);
       this.state.items = normalizedItems;
+      this.state.total = normalizedList.total;
+      this.state.returned = normalizedList.returned;
+      this.state.hasMore = normalizedList.hasMore;
+      this.state.page = normalizedList.page;
+      this.state.limit = normalizedList.limit;
+      this.state.offset = normalizedList.offset;
       this.handleIncomingNotifications(normalizedItems, { source: 'hub' });
       this.state.lastFetchedAt = new Date().toISOString();
       if (rows.length > 0 && normalizedItems.length === 0) {
@@ -752,6 +791,7 @@ const Notifications = {
       console.warn('Unable to mark notification as read', error);
     }
     await this.refreshUnreadCount();
+    if (this.state.filters.mode === 'unread') await this.loadHub(true);
   },
   async markAllRead() {
     if (!Session.isAuthenticated() || this.state.unavailable) return;
@@ -768,6 +808,7 @@ const Notifications = {
       this.renderPreview();
       this.renderHub();
       UI.toast('All notifications marked as read.');
+      await this.loadHub(true);
     } catch (error) {
       console.warn('Unable to mark all notifications as read', error);
       UI.toast('Unable to mark all notifications as read.');
@@ -1161,6 +1202,7 @@ const Notifications = {
     if (!E.notificationsState || !E.notificationsTbody) return;
     this.renderDebugInfo();
     if (this.state.unavailable) {
+      this.renderPagination();
       E.notificationsState.textContent = 'Notifications are unavailable in this environment.';
       E.notificationsTbody.innerHTML = '<tr><td colspan="8" class="muted">Notifications are unavailable in this environment.</td></tr>';
       if (E.notificationsSummaryTotalUnread) E.notificationsSummaryTotalUnread.textContent = '0';
@@ -1170,11 +1212,13 @@ const Notifications = {
       return;
     }
     if (this.state.loading) {
+      this.renderPagination();
       E.notificationsState.textContent = 'Loading notifications…';
       E.notificationsTbody.innerHTML = '';
       return;
     }
-    const list = this.getFilteredItems();
+    this.renderPagination();
+    const list = Array.isArray(this.state.items) ? this.state.items.slice() : [];
     const unread = this.state.items.filter(item => !item.is_read);
     const highUnread = unread.filter(item => this.isHighPriority(item)).length;
     const approvalsUnread = unread.filter(item => this.isApproval(item)).length;
@@ -1186,7 +1230,7 @@ const Notifications = {
     if (E.notificationsSummaryOperationsUnread) E.notificationsSummaryOperationsUnread.textContent = String(operationsUnread);
 
     const lastFetched = this.state.lastFetchedAt ? this.formatDate(this.state.lastFetchedAt) : '—';
-    E.notificationsState.textContent = `${list.length} item(s) • Last refreshed: ${lastFetched}`;
+    E.notificationsState.textContent = `${list.length} item(s) • Page ${this.state.page}${this.state.total ? ` • ${this.state.total} total` : ''} • Last refreshed: ${lastFetched}`;
 
     if (!list.length) {
       if (this.state.items.length) {
@@ -1268,14 +1312,41 @@ const Notifications = {
       });
     });
   },
+  renderPagination() {
+    const host = U.ensurePaginationHost({
+      hostId: 'notificationsPagination',
+      anchor: E.notificationsState?.closest?.('.card')
+    });
+    U.renderPaginationControls({
+      host,
+      moduleKey: 'notifications',
+      page: this.state.page,
+      pageSize: this.state.limit,
+      hasMore: this.state.hasMore,
+      returned: this.state.returned,
+      loading: this.state.loading,
+      pageSizeOptions: [25, 50, 100],
+      countText: this.state.total ? `${this.state.total} total` : '',
+      onPageChange: nextPage => {
+        this.state.page = U.normalizePageNumber(nextPage, this.state.page);
+        this.loadHub(true);
+      },
+      onPageSizeChange: nextSize => {
+        this.state.limit = U.normalizePageSize(nextSize, 50, 200);
+        this.state.page = 1;
+        this.loadHub(true);
+      }
+    });
+  },
   handleFilterChange(mode) {
     this.state.filters.mode = mode;
+    this.state.page = 1;
     if (E.notificationsFilterButtons) {
       E.notificationsFilterButtons.querySelectorAll('[data-filter]').forEach(btn => {
         btn.classList.toggle('active', btn.getAttribute('data-filter') === mode);
       });
     }
-    this.renderHub();
+    this.loadHub(true);
   },
   stopRealtime() {
     try {
@@ -1359,6 +1430,12 @@ const Notifications = {
     this.state.previewLoading = false;
     this.state.filters.mode = 'all';
     this.state.filters.search = '';
+    this.state.page = 1;
+    this.state.limit = 50;
+    this.state.offset = 0;
+    this.state.returned = 0;
+    this.state.hasMore = false;
+    this.state.total = 0;
     this.state.lastFetchedAt = '';
     this.state.permissionDenied = false;
     this.state.permissionDeniedLogged = false;
@@ -1393,6 +1470,7 @@ const Notifications = {
     this.reset();
     this.state.filters.mode = 'all';
     this.state.filters.search = '';
+    this.state.page = 1;
     this.startPolling();
     this.startRealtime();
     this.refreshAll(true);
@@ -1443,7 +1521,8 @@ const Notifications = {
     if (E.notificationsSearchInput) {
       E.notificationsSearchInput.addEventListener('input', debounce(() => {
         this.state.filters.search = String(E.notificationsSearchInput.value || '').trim();
-        this.renderHub();
+        this.state.page = 1;
+        this.loadHub(true);
       }, 250));
     }
     if (E.notificationsFilterButtons) {

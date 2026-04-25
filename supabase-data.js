@@ -2887,11 +2887,19 @@
       if (!currentUserId) return { handled: true, data: normalizePagedList('notifications', [], normalizeListControls({}, 'notifications'), 0) };
       const { controls } = splitListPayload(payload);
       const listControls = normalizeListControls(controls, 'notifications');
+      const mode = String(controls.mode || payload.mode || '').trim().toLowerCase();
       let query = client
         .from('notifications')
         .select('*', { count: 'planned' })
         .eq('recipient_user_id', currentUserId);
       query = applyFilters(query, payload, { resource: 'notifications' });
+      if (mode === 'unread') query = query.eq('is_read', false);
+      if (mode === 'read') query = query.eq('is_read', true);
+      if (mode === 'high') query = query.eq('priority', 'high');
+      if (mode === 'approvals') query = query.or('type.ilike.%approval%,resource.ilike.%workflow%');
+      if (mode === 'operations') query = query.or('type.ilike.%operation%,resource.ilike.%operations_onboarding%');
+      if (mode === 'tickets') query = query.or('type.ilike.%ticket%,resource.ilike.%ticket%,resource.ilike.%issues%');
+      if (mode === 'assignments') query = query.or('type.ilike.%assign%');
       query = query.order(listControls.sortBy, { ascending: listControls.sortDir === 'asc' });
       query = query.range(listControls.from, listControls.to);
       const { data, error, count } = await query;

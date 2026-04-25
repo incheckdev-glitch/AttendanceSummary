@@ -336,15 +336,8 @@ const Receipts = {
     }
   },
   applyFilters() {
-    const q = this.normalizeText(this.state.search);
-    const invoiceQ = this.normalizeText(this.state.invoiceNumber);
-    const customerQ = this.normalizeText(this.state.customerName);
     this.state.filteredRows = this.state.rows.filter(row => {
-      if (this.state.status !== 'All' && String(row.status || '').trim() !== this.state.status) return false;
       if (!this.matchesKpiFilter(row)) return false;
-      if (q && !this.normalizeText(row.receipt_number).includes(q)) return false;
-      if (invoiceQ && !this.normalizeText(row.invoice_number).includes(invoiceQ)) return false;
-      if (customerQ && !this.normalizeText(row.customer_name).includes(customerQ)) return false;
       return true;
     });
   },
@@ -414,18 +407,21 @@ const Receipts = {
   render() {
     if (!E.receiptsTbody || !E.receiptsState) return;
     if (this.state.loading) {
+      this.renderPagination();
       E.receiptsState.textContent = 'Loading receipts…';
       E.receiptsTbody.innerHTML = '<tr><td colspan="10" class="muted" style="text-align:center;">Loading receipts…</td></tr>';
       return;
     }
     if (this.state.loadError) {
+      this.renderPagination();
       E.receiptsState.textContent = this.state.loadError;
       E.receiptsTbody.innerHTML = `<tr><td colspan="10" class="muted" style="text-align:center;color:#ffb4b4;">${U.escapeHtml(this.state.loadError)}</td></tr>`;
       return;
     }
     this.renderSummary();
+    this.renderPagination();
     const rows = this.state.filteredRows;
-    E.receiptsState.textContent = `${rows.length} of ${this.state.rows.length} receipts`;
+    E.receiptsState.textContent = `${rows.length} item(s) • Page ${this.state.page}${this.state.total ? ` • ${this.state.total} total` : ''}`;
     if (!rows.length) {
       E.receiptsTbody.innerHTML = '<tr><td colspan="10" class="muted" style="text-align:center;">No receipts found.</td></tr>';
       return;
@@ -454,6 +450,32 @@ const Receipts = {
         </tr>`;
       })
       .join('');
+  },
+  renderPagination() {
+    const host = U.ensurePaginationHost({
+      hostId: 'receiptsPagination',
+      anchor: E.receiptsState?.closest?.('.card')
+    });
+    U.renderPaginationControls({
+      host,
+      moduleKey: 'receipts',
+      page: this.state.page,
+      pageSize: this.state.limit,
+      hasMore: this.state.hasMore,
+      returned: this.state.returned,
+      loading: this.state.loading,
+      pageSizeOptions: [25, 50, 100],
+      countText: this.state.total ? `${this.state.total} total` : '',
+      onPageChange: nextPage => {
+        this.state.page = U.normalizePageNumber(nextPage, this.state.page);
+        this.refresh(true);
+      },
+      onPageSizeChange: nextSize => {
+        this.state.limit = U.normalizePageSize(nextSize, 50, 200);
+        this.state.page = 1;
+        this.refresh(true);
+      }
+    });
   },
   renderItems(items = []) {
     const locations = items.filter(item => item.section === 'location_details');
@@ -1378,10 +1400,10 @@ const Receipts = {
       if (!el) return;
       const sync = () => {
         this.state[key] = String(el.value || '').trim();
-        this.applyFilters();
-        this.render();
+        this.state.page = 1;
+        this.refresh(true);
       };
-      el.addEventListener('input', sync);
+      if (el.tagName === 'INPUT') el.addEventListener('input', debounce(sync, 250));
       el.addEventListener('change', sync);
     };
     bind(E.receiptsSearchInput, 'search');

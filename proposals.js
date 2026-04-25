@@ -1522,9 +1522,11 @@ const Proposals = {
     };
   },
   getCatalogRowsForSection(section) {
-    const rows = Array.isArray(window.ProposalCatalog?.state?.rows)
-      ? window.ProposalCatalog.state.rows
-      : [];
+    const rows = typeof window.ProposalCatalog?.getActiveCatalogItems === 'function'
+      ? window.ProposalCatalog.getActiveCatalogItems(section)
+      : Array.isArray(window.ProposalCatalog?.state?.rows)
+        ? window.ProposalCatalog.state.rows
+        : [];
     return rows
       .filter(row => row?.is_active !== false && String(row?.section || '').trim().toLowerCase() === section)
       .sort((a, b) => {
@@ -1598,11 +1600,11 @@ const Proposals = {
     this.renderCatalogOptionLists();
     const hasRows = this.getCatalogRowsForSection('annual_saas').length || this.getCatalogRowsForSection('one_time_fee').length;
     if (hasRows) return;
-    if (this.state.catalogLoading || typeof window.ProposalCatalog?.loadAndRefresh !== 'function') return;
+    if (this.state.catalogLoading || typeof window.ProposalCatalog?.ensureLookupLoaded !== 'function') return;
 
     this.state.catalogLoading = true;
     try {
-      await window.ProposalCatalog.loadAndRefresh();
+      await window.ProposalCatalog.ensureLookupLoaded();
       this.renderCatalogOptionLists();
     } catch (_) {
       // Non-blocking: proposal form still allows manual item entry when catalog load fails.
