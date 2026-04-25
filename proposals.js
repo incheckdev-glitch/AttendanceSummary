@@ -73,6 +73,43 @@ const Proposals = {
     const parsed = Number(String(value).replace(/,/g, '').trim());
     return Number.isFinite(parsed) ? parsed : 0;
   },
+  normalizeDiscountPercentValue(...values) {
+    for (const value of values) {
+      if (value === undefined || value === null) continue;
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) continue;
+        return this.toNumberSafe(trimmed.replace(/%/g, ''));
+      }
+      return this.toNumberSafe(value);
+    }
+    return 0;
+  },
+  normalizeProposalItemForSave(item = {}) {
+    const safe = item && typeof item === 'object' ? item : {};
+    const unitPrice = this.toNumberSafe(safe.unit_price ?? safe.unitPrice);
+    const quantity = this.toNumberSafe(safe.quantity ?? safe.qty);
+    const discountPercent = this.normalizeDiscountPercentValue(
+      safe.discount_percent,
+      safe.discountPercent,
+      safe.discount
+    );
+    const computed = this.computeCommercialRow({
+      unit_price: unitPrice,
+      discount_percent: discountPercent,
+      quantity
+    });
+    return {
+      ...safe,
+      discount_percent: discountPercent,
+      unit_price: unitPrice,
+      quantity,
+      discounted_unit_price: this.toNumberSafe(
+        safe.discounted_unit_price ?? safe.discountedUnitPrice ?? computed.discounted_unit_price
+      ),
+      line_total: this.toNumberSafe(safe.line_total ?? safe.lineTotal ?? computed.line_total)
+    };
+  },
   normalizeDiscount(value) {
     const raw = this.toNumberSafe(value);
     if (raw > 1) return raw / 100;
@@ -434,7 +471,9 @@ const Proposals = {
       location_name: String(pick(source.location_name, source.locationName)).trim(),
       item_name: String(pick(source.item_name, source.itemName, source.name)).trim(),
       unit_price: this.toNumberSafe(pick(source.unit_price, source.unitPrice)),
-      discount_percent: this.toNumberSafe(pick(source.discount_percent, source.discountPercent)),
+      discount_percent: this.normalizeDiscountPercentValue(
+        pick(source.discount_percent, source.discountPercent, source.discount)
+      ),
       discounted_unit_price: this.toNumberSafe(
         pick(source.discounted_unit_price, source.discountedUnitPrice)
       ),
@@ -634,24 +673,27 @@ const Proposals = {
   },
   async createProposal(proposal, items) {
     const preparedProposal = this.buildProposalForPersist(proposal, items, { ensureBusinessProposalId: true });
+    const preparedItems = (Array.isArray(items) ? items : []).map(item => this.normalizeProposalItemForSave(item));
     return Api.requestWithSession('proposals', 'create', {
       proposal: this.prepareProposalForSave(preparedProposal),
-      items
+      items: preparedItems
     });
   },
   async saveProposal(proposal, items) {
     const preparedProposal = this.buildProposalForPersist(proposal, items, { ensureBusinessProposalId: true });
+    const preparedItems = (Array.isArray(items) ? items : []).map(item => this.normalizeProposalItemForSave(item));
     return Api.requestWithSession('proposals', 'save', {
       proposal: this.prepareProposalForSave(preparedProposal),
-      items
+      items: preparedItems
     });
   },
   async updateProposal(proposalId, updates, items) {
     const preparedUpdates = this.buildProposalForPersist(updates, items, { ensureBusinessProposalId: false });
+    const preparedItems = (Array.isArray(items) ? items : []).map(item => this.normalizeProposalItemForSave(item));
     return Api.requestWithSession('proposals', 'update', {
       id: proposalId,
       updates: this.prepareProposalForSave(preparedUpdates),
-      items
+      items: preparedItems
     });
   },
   normalizeDateForSave(value) {
@@ -1618,8 +1660,16 @@ const Proposals = {
     if (selected.unit_price !== null && selected.unit_price !== undefined) {
       unitPriceInput.value = String(selected.unit_price);
     }
-    if (discountPercentInput && selected.discount_percent !== null && selected.discount_percent !== undefined) {
-      discountPercentInput.value = String(selected.discount_percent);
+    const hasCatalogDiscount = ['discount_percent', 'discountPercent', 'discount'].some(
+      key => selected[key] !== undefined && selected[key] !== null && String(selected[key]).trim() !== ''
+    );
+    const selectedDiscountPercent = this.normalizeDiscountPercentValue(
+      selected.discount_percent,
+      selected.discountPercent,
+      selected.discount
+    );
+    if (discountPercentInput && hasCatalogDiscount) {
+      discountPercentInput.value = String(selectedDiscountPercent);
     }
     if (quantityInput && selected.quantity !== null && selected.quantity !== undefined) {
       quantityInput.value = String(selected.quantity);

@@ -1374,6 +1374,10 @@
   }
 
   function sanitizeProposalItemRecord(record = {}, proposalUuid = '') {
+    const normalizedDiscountPercent = normalizeNumericValue(
+      firstDefined(record, ['discount_percent', 'discountPercent', 'discount']),
+      0
+    );
     const mapped = compactObject({
       item_id: firstDefined(record, ['item_id', 'itemId']),
       proposal_id: normalizeNullableUuidValue(proposalUuid || firstDefined(record, ['proposal_id', 'proposalId'])),
@@ -1382,7 +1386,7 @@
       location_name: firstDefined(record, ['location_name', 'locationName']),
       item_name: firstDefined(record, ['item_name', 'itemName', 'name']),
       unit_price: firstDefined(record, ['unit_price', 'unitPrice']),
-      discount_percent: firstDefined(record, ['discount_percent', 'discountPercent']),
+      discount_percent: normalizedDiscountPercent,
       discounted_unit_price: firstDefined(record, ['discounted_unit_price', 'discountedUnitPrice']),
       quantity: firstDefined(record, ['quantity']),
       line_total: firstDefined(record, ['line_total', 'lineTotal']),
