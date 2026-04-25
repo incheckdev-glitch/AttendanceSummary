@@ -527,25 +527,15 @@ const Receipts = {
     }
   },
   populateForm(receipt, items, readOnly = false, linkedInvoice = null) {
-    const pickDefined = (...values) => values.find(value => value !== undefined && value !== null && !(typeof value === 'string' && value.trim() === ''));
     const set = (id, value) => {
       const el = E[id];
       if (el) el.value = value ?? '';
     };
     const invoiceSource = linkedInvoice && typeof linkedInvoice === 'object' ? linkedInvoice : {};
-    const effectiveInvoiceTotal = this.normalizeAmountInput(
-      pickDefined(invoiceSource.invoice_total, receipt.invoice_total, receipt.invoice_grand_total, receipt.grand_total)
-    ) ?? 0;
-    const invoiceAmountPaid = this.normalizeAmountInput(invoiceSource.amount_paid ?? invoiceSource.received_amount ?? invoiceSource.amount_received) ?? 0;
-    const effectiveOldPaidTotal = this.normalizeAmountInput(receipt.old_paid_total) ?? invoiceAmountPaid;
-    const effectivePaidNow = this.normalizeAmountInput(
-      pickDefined(receipt.paid_now, receipt.amount_received, receipt.received_amount)
-    ) ?? 0;
-    const paymentSnapshot = this.calculatePaymentSnapshot({
-      invoiceTotal: effectiveInvoiceTotal,
-      oldPaidTotal: effectiveOldPaidTotal,
-      paidNow: effectivePaidNow
-    });
+    const paymentSnapshot = this.resolveReceiptPaymentSnapshot(receipt, invoiceSource);
+    const effectiveInvoiceTotal = paymentSnapshot.invoice_total;
+    const effectiveOldPaidTotal = paymentSnapshot.old_paid_total;
+    const effectivePaidNow = paymentSnapshot.paid_now;
     const effectiveReceivedAmount = paymentSnapshot.received_amount;
     const effectiveNewPaidTotal = paymentSnapshot.new_paid_total;
     const effectivePendingAmount = paymentSnapshot.pending_amount;
@@ -684,6 +674,54 @@ const Receipts = {
   },
   calculatePaymentSnapshot({ invoiceTotal = 0, oldPaidTotal = 0, paidNow = 0 } = {}) {
     return U.calculateInvoicePaymentSnapshot({ invoiceTotal, oldPaidTotal, paidNow });
+  },
+  resolveReceiptPaymentSnapshot(receipt = {}, invoice = {}) {
+    const pickDefined = (...values) => values.find(value => value !== undefined && value !== null && !(typeof value === 'string' && value.trim() === ''));
+    const invoiceTotal = this.toNumberSafe(
+      pickDefined(
+        invoice.invoice_total,
+        invoice.grand_total,
+        invoice.total_amount,
+        receipt.invoice_total,
+        receipt.invoice_grand_total,
+        receipt.grand_total
+      )
+    );
+    const receiptAmount = this.toNumberSafe(
+      pickDefined(
+        receipt.received_amount,
+        receipt.amount_received,
+        receipt.receipt_amount,
+        receipt.paid_now,
+        receipt.payment_amount
+      )
+    );
+    const explicitOldPaidTotal = this.normalizeAmountInput(receipt.old_paid_total);
+    const explicitNewPaidTotal = this.normalizeAmountInput(receipt.new_paid_total);
+    const invoiceAmountPaid = this.normalizeAmountInput(
+      pickDefined(invoice.amount_paid, invoice.received_amount, invoice.amount_received)
+    );
+    let oldPaidBeforeReceipt = 0;
+    if (explicitOldPaidTotal !== null) oldPaidBeforeReceipt = explicitOldPaidTotal;
+    else if (explicitNewPaidTotal !== null) oldPaidBeforeReceipt = explicitNewPaidTotal - receiptAmount;
+    else if (invoiceAmountPaid !== null) oldPaidBeforeReceipt = invoiceAmountPaid - receiptAmount;
+    oldPaidBeforeReceipt = Math.max(0, this.toNumberSafe(oldPaidBeforeReceipt));
+    const paidNow = Math.max(0, receiptAmount);
+    const newPaidTotal = this.toNumberSafe(oldPaidBeforeReceipt + paidNow);
+    const pendingAmount = this.toNumberSafe(Math.max(invoiceTotal - newPaidTotal, 0));
+    let paymentState = 'Unpaid';
+    if (newPaidTotal > 0 && newPaidTotal < invoiceTotal) paymentState = 'Partially Paid';
+    if (newPaidTotal >= invoiceTotal) paymentState = 'Paid';
+    return {
+      invoice_total: invoiceTotal,
+      old_paid_total: oldPaidBeforeReceipt,
+      paid_now: paidNow,
+      received_amount: paidNow,
+      new_paid_total: newPaidTotal,
+      pending_amount: pendingAmount,
+      payment_state: paymentState,
+      payment_conclusion: pendingAmount > 0 ? 'Pending Settlement' : 'Settled'
+    };
   },
   recalculatePaymentFields() {
     const invoiceTotal = this.toNumberSafe(E.receiptFormInvoiceGrandTotal?.value);
@@ -1281,15 +1319,14 @@ const Receipts = {
       pickDefined(hasOneTimeRows ? calculatedSubtotalOneTime : undefined, r.subtotal_one_time, invoice?.subtotal_one_time, 0)
     );
     const invoiceTotal = subtotalLocations + subtotalOneTime;
-    const oldPaidTotal = this.toNumberSafe(r.old_paid_total);
-    const paidNow = this.toNumberSafe(pickDefined(r.paid_now, r.amount_received, r.received_amount));
-    const newPaidTotal = this.toNumberSafe(r.new_paid_total || (oldPaidTotal + paidNow));
-    const pendingAmount = r.pending_amount === null || r.pending_amount === undefined || r.pending_amount === ''
-      ? Math.max(0, invoiceTotal - newPaidTotal)
-      : this.toNumberSafe(r.pending_amount);
-    const paymentState = String(r.payment_state || '').trim() || (newPaidTotal <= 0 ? 'Unpaid' : pendingAmount > 0 ? 'Partially Paid' : 'Paid');
-    const paymentConclusion = String(r.payment_conclusion || '').trim() || this.derivePaymentConclusion({ pending_amount: pendingAmount });
-    const receivedAmount = paidNow;
+    const resolvedSnapshot = this.resolveReceiptPaymentSnapshot(r, { ...invoice, invoice_total: invoiceTotal });
+    const oldPaidTotal = resolvedSnapshot.old_paid_total;
+    const paidNow = resolvedSnapshot.paid_now;
+    const newPaidTotal = resolvedSnapshot.new_paid_total;
+    const pendingAmount = resolvedSnapshot.pending_amount;
+    const paymentState = String(r.payment_state || '').trim() || resolvedSnapshot.payment_state;
+    const paymentConclusion = String(r.payment_conclusion || '').trim() || resolvedSnapshot.payment_conclusion;
+    const receivedAmount = resolvedSnapshot.received_amount;
     const amountInWords = this.receiptAmountInWords(r.amount_in_words, currency, receivedAmount);
     return `<!doctype html><html><head><meta charset="utf-8" /><title>Receipt Preview</title><style>
       :root{color-scheme:light;}*{box-sizing:border-box;}body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:16px;background:#f3f4f6;color:#111827;}
