@@ -739,6 +739,39 @@ const Receipts = {
     );
     return receiptAmount;
   },
+  isReceiptVoided(receipt = {}) {
+    const status = this.normalizeText(receipt?.status);
+    if (!status) return false;
+    return status.includes('cancel') || status.includes('void') || status.includes('delete');
+  },
+  async fetchInvoiceReceiptsLedger({ invoiceId = '', invoiceNumber = '' } = {}) {
+    const id = String(invoiceId || '').trim();
+    const number = String(invoiceNumber || '').trim();
+    if (!id && !number) return [];
+    const client = this.getSupabaseClient();
+    if (!client) return [];
+    const baseQuery = () => client
+      .from('receipts')
+      .select('id,receipt_id,invoice_id,invoice_number,receipt_date,created_at,status,amount_received,received_amount,paid_now,old_paid_total,new_paid_total,pending_amount,invoice_total')
+      .order('receipt_date', { ascending: true, nullsFirst: false })
+      .order('created_at', { ascending: true, nullsFirst: false });
+    const [byId, byNumber] = await Promise.all([
+      id ? baseQuery().eq('invoice_id', id) : Promise.resolve({ data: [], error: null }),
+      number ? baseQuery().eq('invoice_number', number) : Promise.resolve({ data: [], error: null })
+    ]);
+    const error = byId?.error || byNumber?.error;
+    if (error) throw new Error(error.message || 'Unable to load invoice receipts.');
+    const merged = [...(Array.isArray(byId?.data) ? byId.data : []), ...(Array.isArray(byNumber?.data) ? byNumber.data : [])];
+    const deduped = [];
+    const seen = new Set();
+    merged.forEach(row => {
+      const key = this.getReceiptUniqueKey(row) || JSON.stringify([row?.invoice_id || '', row?.invoice_number || '', row?.receipt_date || '', row?.created_at || '']);
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      if (!this.isReceiptVoided(row)) deduped.push(row);
+    });
+    return deduped;
+  },
   parseOrderTimestamp(value) {
     const normalized = this.normalizeDateValue(value);
     if (normalized) {
@@ -872,24 +905,19 @@ const Receipts = {
     const invoiceId = String(invoiceUuid || '').trim();
     if (!invoiceId) throw new Error('Invoice UUID is required to compute receipt settlement snapshot.');
     const client = this.requireSupabaseClient();
-    const receiptQuery = this.applyReceiptSort(
-      client
-        .from('receipts')
-        .select('id,receipt_id,invoice_id,invoice_number,receipt_date,created_at,amount_received,received_amount,paid_now,old_paid_total,new_paid_total,pending_amount,invoice_total')
-        .eq('invoice_id', invoiceId),
-      { ascending: true }
-    );
-    const [{ data: invoiceRow, error: invoiceError }, { data: receiptRows, error: receiptsError }] = await Promise.all([
+    const [{ data: invoiceRow, error: invoiceError }] = await Promise.all([
       client
         .from('invoices')
-        .select('id,subtotal_locations,subtotal_one_time,invoice_total,amount_paid,received_amount,paid_now,pending_amount,payment_state')
+        .select('id,invoice_id,invoice_number,subtotal_locations,subtotal_one_time,invoice_total,amount_paid,received_amount,paid_now,pending_amount,payment_state')
         .eq('id', invoiceId)
-        .maybeSingle(),
-      receiptQuery
+        .maybeSingle()
     ]);
     if (invoiceError) throw new Error(invoiceError.message || 'Unable to load invoice before creating receipt.');
     if (!invoiceRow) throw new Error('Linked invoice was not found before creating receipt.');
-    if (receiptsError) throw new Error(receiptsError.message || 'Unable to load previous receipts before creating receipt.');
+    const receiptRows = await this.fetchInvoiceReceiptsLedger({
+      invoiceId,
+      invoiceNumber: invoiceRow?.invoice_number
+    });
     const normalizedInvoice = this.normalizeInvoiceFinancials(invoiceRow);
     const invoiceTotal = this.toNumberSafe(normalizedInvoice.invoice_total);
     const paidNow = this.toNumberSafe(paidNowInput);
@@ -906,18 +934,8 @@ const Receipts = {
   },
   async fetchReceiptsForInvoice(invoice = {}) {
     const invoiceId = String(invoice?.id || invoice?.invoice_id || '').trim();
-    if (!invoiceId) return [];
-    const client = this.getSupabaseClient();
-    if (!client) return [];
-    const { data, error } = await this.applyReceiptSort(
-      client
-        .from('receipts')
-        .select('id,receipt_id,invoice_id,invoice_number,receipt_date,created_at,amount_received,received_amount,paid_now,old_paid_total,new_paid_total,pending_amount,invoice_total')
-        .eq('invoice_id', invoiceId),
-      { ascending: true }
-    );
-    if (error) throw new Error(error.message || 'Unable to load invoice receipts.');
-    return Array.isArray(data) ? data : [];
+    const invoiceNumber = String(invoice?.invoice_number || '').trim();
+    return this.fetchInvoiceReceiptsLedger({ invoiceId, invoiceNumber });
   },
   normalizeReceiptWithLedger(receipt = {}, invoice = {}, invoiceReceipts = null) {
     const normalizedReceipt = this.normalizeReceipt(receipt);
@@ -1223,15 +1241,34 @@ const Receipts = {
   async applyReceiptToInvoice({ invoiceId = '', oldPaidTotal = 0, paidNow = 0, invoiceTotal = 0 } = {}) {
     const targetInvoiceId = String(invoiceId || '').trim();
     if (!targetInvoiceId) return;
-    const snapshot = this.calculatePaymentSnapshot({ invoiceTotal, oldPaidTotal, paidNow });
+    const linkedInvoice = await this.hydrateInvoiceReceiptDraft({ id: targetInvoiceId }).then(result => result?.invoice || {}).catch(() => ({}));
+    const ledgerReceipts = await this.fetchInvoiceReceiptsLedger({
+      invoiceId: targetInvoiceId,
+      invoiceNumber: linkedInvoice?.invoice_number
+    }).catch(() => []);
+    const normalizedInvoiceTotal = this.normalizeMoney(
+      linkedInvoice?.grand_total ??
+      linkedInvoice?.invoice_total ??
+      linkedInvoice?.total_amount ??
+      invoiceTotal ??
+      0
+    );
+    const cumulativePaid = this.normalizeMoney(
+      ledgerReceipts.reduce((sum, receipt) => sum + this.getReceiptAmountValue(receipt), 0)
+    );
+    const fallbackSnapshot = this.calculatePaymentSnapshot({ invoiceTotal: normalizedInvoiceTotal, oldPaidTotal, paidNow });
+    const paidAmount = cumulativePaid > 0 ? cumulativePaid : this.normalizeMoney(fallbackSnapshot.amount_paid);
+    const pendingAmount = Math.max(0, this.normalizeMoney(normalizedInvoiceTotal - paidAmount));
+    const paymentState = paidAmount <= 0 ? 'Unpaid' : pendingAmount > 0 ? 'Partially Paid' : 'Paid';
+    const paymentConclusion = pendingAmount <= 0 ? 'Settled' : 'Pending Settlement';
     const invoicePayload = {
-      old_paid_total: snapshot.old_paid_total,
-      paid_now: snapshot.paid_now,
-      amount_paid: snapshot.amount_paid,
-      received_amount: snapshot.amount_paid,
-      pending_amount: snapshot.pending_amount,
-      payment_state: snapshot.payment_state,
-      payment_conclusion: snapshot.payment_conclusion
+      old_paid_total: this.normalizeMoney(Math.max(0, paidAmount - this.normalizeMoney(paidNow))),
+      paid_now: this.normalizeMoney(paidNow),
+      amount_paid: paidAmount,
+      received_amount: paidAmount,
+      pending_amount: pendingAmount,
+      payment_state: paymentState,
+      payment_conclusion: paymentConclusion
     };
     await Api.updateInvoice(targetInvoiceId, invoicePayload);
   },
