@@ -1,7 +1,6 @@
 const LifecycleAnalytics = {
   state: {
     initialized: false,
-    hasSearched: false,
     loading: false,
     loadError: '',
     rows: [],
@@ -19,8 +18,7 @@ const LifecycleAnalytics = {
       client: 'All',
       dateFrom: '',
       dateTo: ''
-    },
-    searchCache: {}
+    }
   },
   text(value) {
     return String(value ?? '').trim();
@@ -262,23 +260,26 @@ const LifecycleAnalytics = {
     return `<span class="pill status-${U.toStatusClass(label)}">${this.escape(label)}</span>`;
   },
   async fetchTable(db, table, columns, options = {}) {
-    const maxRows = Math.max(20, Math.min(300, Number(options.maxRows) || 200));
-    let query = db.from(table).select(columns).limit(maxRows);
-    if (options.searchClause) query = query.or(options.searchClause);
-    if (options.orderBy) query = query.order(options.orderBy, { ascending: false });
-    const { data, error } = await query;
-    if (error) throw new Error(`Unable to load ${table}: ${error.message || 'Unknown error'}`);
-    return Array.isArray(data) ? data : [];
+    const pageSize = Math.max(50, Math.min(200, Number(options.pageSize) || 200));
+    const maxRows = Math.max(pageSize, Math.min(1000, Number(options.maxRows) || 1000));
+    const rows = [];
+    let page = 0;
+    // temporary analytics fallback - replace with SQL view/RPC aggregation
+    while (rows.length < maxRows) {
+      const from = page * pageSize;
+      const to = from + pageSize;
+      const { data, error } = await db.from(table).select(columns).range(from, to);
+      if (error) throw new Error(`Unable to load ${table}: ${error.message || 'Unknown error'}`);
+      const batch = Array.isArray(data) ? data.slice(0, pageSize) : [];
+      rows.push(...batch);
+      if (batch.length < pageSize) break;
+      page += 1;
+    }
+    return rows.slice(0, maxRows);
   },
-  async loadData(searchTerm = '') {
+  async loadData() {
     const db = window.SupabaseClient?.getClient?.();
     if (!db || typeof db.from !== 'function') throw new Error('Supabase client is not available.');
-    const term = this.text(searchTerm);
-    if (!term) return { leads: [], deals: [], proposals: [], agreements: [], agreementItems: [], invoices: [], receipts: [], clients: [], onboarding: [], technical: [] };
-    const cacheKey = this.norm(term);
-    const cached = this.state.searchCache[cacheKey];
-    if (cached) return cached;
-    const searchTermEscaped = term.replace(/[%_,]/g, ' ').trim();
 
     const [
       leads,
@@ -292,21 +293,19 @@ const LifecycleAnalytics = {
       onboarding,
       technical
     ] = await Promise.all([
-      this.fetchTable(db, 'leads', 'id,lead_id,company_name,full_name,email,phone,status,assigned_to,created_at,updated_at', { searchClause: `lead_id.ilike.%${searchTermEscaped}%,company_name.ilike.%${searchTermEscaped}%,full_name.ilike.%${searchTermEscaped}%,email.ilike.%${searchTermEscaped}%,phone.ilike.%${searchTermEscaped}%`, orderBy: 'updated_at' }),
-      this.fetchTable(db, 'deals', 'id,deal_id,lead_id,company_name,full_name,email,status,stage,assigned_to,created_at,updated_at', { searchClause: `deal_id.ilike.%${searchTermEscaped}%,company_name.ilike.%${searchTermEscaped}%,full_name.ilike.%${searchTermEscaped}%,email.ilike.%${searchTermEscaped}%`, orderBy: 'updated_at' }),
-      this.fetchTable(db, 'proposals', 'id,proposal_id,ref_number,deal_id,customer_name,proposal_title,proposal_date,proposal_valid_until,service_start_date,service_end_date,contract_term,billing_frequency,payment_term,subtotal_locations,subtotal_one_time,total_discount,grand_total,status,currency,created_at,updated_at', { searchClause: `proposal_id.ilike.%${searchTermEscaped}%,ref_number.ilike.%${searchTermEscaped}%,customer_name.ilike.%${searchTermEscaped}%`, orderBy: 'updated_at' }),
-      this.fetchTable(db, 'agreements', 'id,agreement_id,agreement_number,proposal_id,customer_name,service_start_date,service_end_date,signed_date,status,grand_total,billing_frequency,payment_term,currency,created_at,updated_at', { searchClause: `agreement_id.ilike.%${searchTermEscaped}%,agreement_number.ilike.%${searchTermEscaped}%,customer_name.ilike.%${searchTermEscaped}%`, orderBy: 'updated_at' }),
-      this.fetchTable(db, 'agreement_items', 'agreement_id,section,location_name,item_name,quantity,line_total,service_start_date,service_end_date', { maxRows: 300 }),
-      this.fetchTable(db, 'invoices', 'id,invoice_id,invoice_number,client_id,agreement_id,proposal_id,issue_date,due_date,billing_frequency,payment_term,subtotal_locations,subtotal_one_time,invoice_total,received_amount,pending_amount,payment_state,payment_conclusion,status,currency,created_at,updated_at', { searchClause: `invoice_id.ilike.%${searchTermEscaped}%,invoice_number.ilike.%${searchTermEscaped}%`, orderBy: 'updated_at' }),
-      this.fetchTable(db, 'receipts', 'id,receipt_id,receipt_number,invoice_id,client_id,receipt_date,amount_received,invoice_total,pending_amount,payment_state,payment_conclusion,old_paid_total,paid_now,new_paid_total,created_at,updated_at', { searchClause: `receipt_id.ilike.%${searchTermEscaped}%,receipt_number.ilike.%${searchTermEscaped}%`, orderBy: 'updated_at' }),
-      this.fetchTable(db, 'clients', 'id,client_id,client_name,company_name,source_agreement_id,total_agreements,total_locations,total_value,total_paid,total_due', { searchClause: `client_id.ilike.%${searchTermEscaped}%,client_name.ilike.%${searchTermEscaped}%,company_name.ilike.%${searchTermEscaped}%`, orderBy: 'updated_at' }),
-      this.fetchTable(db, 'operations_onboarding', 'agreement_id,onboarding_status,technical_request_status,csm_assigned_to,go_live_target_date,updated_at', { maxRows: 300, orderBy: 'updated_at' }),
-      this.fetchTable(db, 'technical_admin_requests', 'agreement_id,request_status,assigned_to,requested_at,completed_at,location_count', { maxRows: 300, orderBy: 'requested_at' })
+      this.fetchTable(db, 'leads', 'id,lead_id,company_name,full_name,email,phone,status,assigned_to,created_at,updated_at'),
+      this.fetchTable(db, 'deals', 'id,deal_id,lead_id,company_name,full_name,email,status,stage,assigned_to,created_at,updated_at'),
+      this.fetchTable(db, 'proposals', 'id,proposal_id,ref_number,deal_id,customer_name,proposal_title,proposal_date,proposal_valid_until,service_start_date,service_end_date,contract_term,billing_frequency,payment_term,subtotal_locations,subtotal_one_time,total_discount,grand_total,status,currency,created_at,updated_at'),
+      this.fetchTable(db, 'agreements', 'id,agreement_id,agreement_number,proposal_id,customer_name,service_start_date,service_end_date,signed_date,status,grand_total,billing_frequency,payment_term,currency,created_at,updated_at'),
+      this.fetchTable(db, 'agreement_items', 'agreement_id,section,location_name,item_name,quantity,line_total,service_start_date,service_end_date'),
+      this.fetchTable(db, 'invoices', 'id,invoice_id,invoice_number,client_id,agreement_id,proposal_id,issue_date,due_date,billing_frequency,payment_term,subtotal_locations,subtotal_one_time,invoice_total,received_amount,pending_amount,payment_state,payment_conclusion,status,currency,created_at,updated_at'),
+      this.fetchTable(db, 'receipts', 'id,receipt_id,receipt_number,invoice_id,client_id,receipt_date,amount_received,invoice_total,pending_amount,payment_state,payment_conclusion,old_paid_total,paid_now,new_paid_total,created_at,updated_at'),
+      this.fetchTable(db, 'clients', 'id,client_id,client_name,company_name,source_agreement_id,total_agreements,total_locations,total_value,total_paid,total_due'),
+      this.fetchTable(db, 'operations_onboarding', 'agreement_id,onboarding_status,technical_request_status,csm_assigned_to,go_live_target_date,updated_at'),
+      this.fetchTable(db, 'technical_admin_requests', 'agreement_id,request_status,assigned_to,requested_at,completed_at,location_count')
     ]);
 
-    const result = { leads, deals, proposals, agreements, agreementItems, invoices, receipts, clients, onboarding, technical };
-    this.state.searchCache = { [cacheKey]: result };
-    return result;
+    return { leads, deals, proposals, agreements, agreementItems, invoices, receipts, clients, onboarding, technical };
   },
   buildAccountMap(data) {
     const today = new Date();
@@ -811,16 +810,6 @@ const LifecycleAnalytics = {
     const detailRoot = document.getElementById('lifecycleDetailPanel');
     if (detailRoot) detailRoot.innerHTML = '<div class="muted">Loading account-level analytics…</div>';
   },
-  renderInitialState() {
-    const state = document.getElementById('lifecycleState');
-    const tbody = document.getElementById('lifecycleRecordsTbody');
-    const cards = document.getElementById('lifecycleSummaryCards');
-    const detailRoot = document.getElementById('lifecycleDetailPanel');
-    if (state) state.textContent = 'Search for a lead, deal, proposal, agreement, invoice, receipt, client, email, phone, or company to load lifecycle analytics.';
-    if (tbody) tbody.innerHTML = '<tr><td colspan="14" class="muted" style="text-align:center;">No lifecycle analytics loaded yet. Use search to load account 360 data.</td></tr>';
-    if (cards) cards.innerHTML = '';
-    if (detailRoot) detailRoot.innerHTML = '<div class="muted">Select an account after running a search to view full lifecycle, financial, and operations details.</div>';
-  },
   renderError(message) {
     const state = document.getElementById('lifecycleState');
     if (state) state.textContent = message;
@@ -834,20 +823,10 @@ const LifecycleAnalytics = {
   },
   async refresh({ force = false } = {}) {
     if (this.state.loading && !force) return;
-    const searchTerm = this.text(this.state.filters.search);
-    if (!searchTerm) {
-      this.state.hasSearched = false;
-      this.state.rows = [];
-      this.state.filteredRows = [];
-      this.state.selectedAccountKey = '';
-      this.renderInitialState();
-      return;
-    }
     this.state.loading = true;
-    this.state.hasSearched = true;
     this.renderLoading();
     try {
-      const raw = await this.loadData(searchTerm);
+      const raw = await this.loadData();
       const { accounts, today } = this.buildAccountMap(raw);
       const rows = accounts
         .map(account => this.buildAccountAnalytics(account, today))
@@ -887,9 +866,8 @@ const LifecycleAnalytics = {
     if (search) {
       search.addEventListener('input', () => {
         this.state.filters.search = this.text(search.value);
-      });
-      search.addEventListener('keydown', event => {
-        if (event.key === 'Enter') this.refresh({ force: true });
+        this.applyFilters();
+        this.renderTable();
       });
     }
 
@@ -923,7 +901,7 @@ const LifecycleAnalytics = {
     if (this.state.initialized) return;
     this.state.initialized = true;
     this.wire();
-    this.renderInitialState();
+    this.refresh({ force: true });
   }
 };
 
