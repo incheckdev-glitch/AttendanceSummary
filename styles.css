@@ -1819,6 +1819,209 @@ background:var(--ai-table-row-even);
   transform: translateX(-100%);
   animation: shimmer 1.2s infinite;
 }
+
+/* =========================================================
+   Mobile & tablet responsiveness hardening
+   ========================================================= */
+
+#app,
+.content,
+.content-panels,
+.card,
+.table-wrap{
+  min-width:0;
+  max-width:100%;
+}
+
+/* Prevent page-level horizontal overflow while preserving local table scroll. */
+body{
+  overflow-x:hidden;
+}
+
+.table-wrap{
+  width:100%;
+}
+
+.table-wrap > table{
+  width:100%;
+}
+
+/* Keep action bars and controls touch-friendly and wrappable. */
+.table-actions,
+.table-tools,
+.pagination,
+.modal .actions{
+  flex-wrap:wrap;
+  row-gap:8px;
+}
+
+.pagination{
+  align-items:center;
+}
+
+.btn,
+.chip-btn{
+  min-height:34px;
+}
+
+/* Constrain long inline controls used in analytics/search bars. */
+input[style*="min-width"]{
+  max-width:100%;
+}
+
+/* Tablet: keep layout usable while preserving desktop density. */
+@media (max-width:1024px){
+  .table-wrap > table{
+    width:max(100%, 680px);
+  }
+  .content-layout{
+    grid-template-columns:1fr;
+    gap:12px;
+  }
+  .view-menu{
+    position:static;
+    top:auto;
+    padding:10px 0;
+  }
+  .view-tabs{
+    flex-direction:row;
+    overflow:auto;
+    padding-bottom:2px;
+    scrollbar-width:thin;
+  }
+  .view-tab{
+    width:auto;
+    flex:0 0 auto;
+    min-height:38px;
+    white-space:nowrap;
+  }
+  .grid.cols-4{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+}
+
+/* Mobile large/small */
+@media (max-width:767px){
+  header{
+    justify-content:flex-start;
+  }
+  .brand{
+    width:100%;
+    justify-content:center;
+  }
+  .toolbar{
+    width:100%;
+    justify-content:flex-start;
+    gap:8px;
+  }
+  .toolbar .input,
+  .toolbar .select{
+    width:100%;
+  }
+  .toolbar .btn{
+    min-height:38px;
+  }
+  .wrap{
+    padding:10px;
+    gap:12px;
+  }
+  .card{
+    padding:12px;
+  }
+  .sidebar{
+    width:min(92vw,360px);
+    max-height:calc(100vh - 90px);
+    border-radius:12px 0 0 12px;
+    z-index:95;
+  }
+  .filter-row .input,
+  .filter-row .select,
+  .filter-row textarea,
+  .filter-row .btn{
+    width:100%;
+    max-width:100%;
+    min-width:0;
+  }
+  .grid.cols-3,
+  .grid.cols-4{
+    grid-template-columns:1fr;
+  }
+  .table-wrap{
+    max-width:100%;
+  }
+  .table-wrap > table{
+    width:max(100%, 740px);
+  }
+  .pagination{
+    width:100%;
+    justify-content:flex-start;
+  }
+  .table-actions{
+    align-items:stretch;
+  }
+  .table-actions > *{
+    width:100%;
+  }
+  .modal{
+    align-items:flex-start;
+    padding:8px;
+  }
+  .modal-content{
+    width:100%;
+    max-width:100%;
+    max-height:calc(100vh - 16px);
+    margin:0;
+    border-radius:14px;
+    padding:12px;
+  }
+  .modal .header{
+    position:sticky;
+    top:0;
+    z-index:2;
+    background:var(--card);
+    padding-bottom:6px;
+  }
+  .modal iframe{
+    min-height:58vh !important;
+  }
+  .modal-content .grid[style*="repeat(2"],
+  .modal-content .grid[style*="repeat(3"]{
+    grid-template-columns:1fr !important;
+  }
+  .modal-content .actions[style*="justify-content:space-between"]{
+    justify-content:flex-start !important;
+  }
+  .modal-content .actions[style*="justify-content:space-between"] > div{
+    width:100%;
+    display:flex;
+    flex-wrap:wrap;
+  }
+  .hero-grid{
+    grid-template-columns:1fr;
+  }
+  .login-card{
+    width:100%;
+  }
+  body.auth-locked #loginSection .hero-grid{
+    grid-template-columns:minmax(0,1fr);
+  }
+}
+
+@media (max-width:430px){
+  .btn,
+  .input,
+  .select{
+    font-size:14px;
+  }
+  .view-tab{
+    padding:9px 11px;
+  }
+  .ticket-hero,
+  .ticket-title-row,
+  .ticket-col{
+    padding:14px 12px;
+  }
+}
 @keyframes shimmer {
   100% {
     transform: translateX(100%);
