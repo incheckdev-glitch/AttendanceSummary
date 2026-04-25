@@ -1536,6 +1536,13 @@ const Proposals = {
         return String(a?.item_name || '').localeCompare(String(b?.item_name || ''));
       });
   },
+  getCatalogItemById(section, catalogItemId) {
+    const targetId = String(catalogItemId || '').trim();
+    if (!targetId) return null;
+    return (
+      this.getCatalogRowsForSection(section).find(row => String(row?.id || '').trim() === targetId) || null
+    );
+  },
   renderCatalogOptionList(section) {
     const listEl = document.getElementById(`proposalCatalogOptions-${section}`);
     if (!listEl) return;
@@ -1570,23 +1577,52 @@ const Proposals = {
       ) || null
     );
   },
-  applyCatalogSelectionToRow(tr, section) {
-    if (!tr || section === 'capability') return;
+  resolveCatalogSelectionForRow(tr, section) {
+    if (!tr || section === 'capability') return { selected: null, matchedBy: '' };
     const itemInput = tr.querySelector('[data-item-field="item_name"]');
+    const catalogIdInput = tr.querySelector('[data-item-field="catalog_item_id"]');
+    const catalogItemId = String(catalogIdInput?.value || '').trim();
+    const byId = this.getCatalogItemById(section, catalogItemId);
+    if (byId) return { selected: byId, matchedBy: 'id' };
+    const byName = this.getCatalogItemByName(section, itemInput?.value || '');
+    if (byName) return { selected: byName, matchedBy: 'name' };
+    return { selected: null, matchedBy: '' };
+  },
+  applyCatalogSelectionToRow(tr, section, options = {}) {
+    if (!tr || section === 'capability') return;
+    const { fromUserInput = false } = options;
+    const itemInput = tr.querySelector('[data-item-field="item_name"]');
+    const catalogIdInput = tr.querySelector('[data-item-field="catalog_item_id"]');
     const unitPriceInput = tr.querySelector('[data-item-field="unit_price"]');
+    const discountPercentInput = tr.querySelector('[data-item-field="discount_percent"]');
+    const quantityInput = tr.querySelector('[data-item-field="quantity"]');
     const locationInput = tr.querySelector('[data-item-field="location_name"]');
-    if (!itemInput || !unitPriceInput) return;
+    if (!itemInput || !unitPriceInput || !catalogIdInput) return;
 
-    const selected = this.getCatalogItemByName(section, itemInput.value);
+    const { selected, matchedBy } = this.resolveCatalogSelectionForRow(tr, section);
     if (!selected) {
+      if (fromUserInput) catalogIdInput.value = '';
       unitPriceInput.readOnly = false;
       unitPriceInput.removeAttribute('title');
       tr.dataset.priceLocked = 'false';
       return;
     }
 
+    catalogIdInput.value = String(selected.id || '');
+    if (matchedBy === 'id' && !String(itemInput.value || '').trim() && selected.item_name) {
+      itemInput.value = String(selected.item_name);
+    } else if (matchedBy === 'name' && selected.item_name) {
+      itemInput.value = String(selected.item_name);
+    }
+
     if (selected.unit_price !== null && selected.unit_price !== undefined) {
       unitPriceInput.value = String(selected.unit_price);
+    }
+    if (discountPercentInput && selected.discount_percent !== null && selected.discount_percent !== undefined) {
+      discountPercentInput.value = String(selected.discount_percent);
+    }
+    if (quantityInput && selected.quantity !== null && selected.quantity !== undefined) {
+      quantityInput.value = String(selected.quantity);
     }
     unitPriceInput.readOnly = true;
     unitPriceInput.title = 'Unit price is set from the proposal catalog.';
@@ -1606,6 +1642,14 @@ const Proposals = {
     try {
       await window.ProposalCatalog.ensureLookupLoaded();
       this.renderCatalogOptionLists();
+      [E.proposalAnnualItemsTbody, E.proposalOneTimeItemsTbody].forEach(tbody => {
+        if (!tbody) return;
+        [...tbody.querySelectorAll('tr[data-item-row]')].forEach(tr => {
+          const section = String(tr.getAttribute('data-item-row') || '').trim();
+          this.applyCatalogSelectionToRow(tr, section);
+        });
+      });
+      this.renderTotalsPreview();
     } catch (_) {
       // Non-blocking: proposal form still allows manual item entry when catalog load fails.
     } finally {
@@ -1661,7 +1705,7 @@ const Proposals = {
       .map((row, index) => {
         const computed = this.computeCommercialRow(row);
         return `<tr data-item-row="${section}">
-          <td><input class="input" data-item-field="location_name" value="${U.escapeAttr(computed.location_name || '')}" /></td>
+          <td><input type="hidden" data-item-field="catalog_item_id" value="${U.escapeAttr(computed.catalog_item_id || '')}" /><input class="input" data-item-field="location_name" value="${U.escapeAttr(computed.location_name || '')}" /></td>
           <td><input class="input" data-item-field="item_name" list="proposalCatalogOptions-${section}" value="${U.escapeAttr(computed.item_name || '')}" /></td>
           <td><input class="input" type="number" step="0.01" data-item-field="unit_price" value="${U.escapeAttr(computed.unit_price ?? '')}" /></td>
           <td><input class="input" type="number" step="0.01" data-item-field="discount_percent" value="${U.escapeAttr(computed.discount_percent ?? '')}" /></td>
@@ -1716,6 +1760,7 @@ const Proposals = {
         return {
           section,
           line_no: idx + 1,
+          catalog_item_id: String(get('catalog_item_id')).trim(),
           location_name: String(get('location_name')).trim(),
           item_name: String(get('item_name')).trim(),
           unit_price: unitPrice,
@@ -2355,7 +2400,7 @@ const Proposals = {
           if (tr) {
             const section = tr.getAttribute('data-item-row');
             if (section !== 'capability') {
-              if (field === 'item_name') this.applyCatalogSelectionToRow(tr, section);
+              if (field === 'item_name') this.applyCatalogSelectionToRow(tr, section, { fromUserInput: true });
               const get = key => tr.querySelector(`[data-item-field="${key}"]`)?.value ?? '';
               const computed = this.computeCommercialRow({
                 unit_price: get('unit_price'),
@@ -2377,7 +2422,7 @@ const Proposals = {
         const tr = event.target.closest('tr[data-item-row]');
         const section = tr?.getAttribute('data-item-row');
         if (!tr || !section || section === 'capability') return;
-        this.applyCatalogSelectionToRow(tr, section);
+        this.applyCatalogSelectionToRow(tr, section, { fromUserInput: true });
         const get = key => tr.querySelector(`[data-item-field="${key}"]`)?.value ?? '';
         const computed = this.computeCommercialRow({
           unit_price: get('unit_price'),
@@ -2422,6 +2467,10 @@ const Proposals = {
       E.proposalAddOneTimeRowBtn.addEventListener('click', () => this.addRow('one_time_fee'));
     if (E.proposalAddCapabilityRowBtn)
       E.proposalAddCapabilityRowBtn.addEventListener('click', () => this.addRow('capability'));
+
+    window.addEventListener('proposal-catalog-lookup-invalidated', () => {
+      if (E.proposalFormModal?.style?.display === 'flex') this.ensureCatalogLoaded();
+    });
 
     if (E.proposalPreviewCloseBtn) E.proposalPreviewCloseBtn.addEventListener('click', () => this.closePreviewModal());
     if (E.proposalPreviewExportPdfBtn) {
