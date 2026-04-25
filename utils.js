@@ -286,11 +286,11 @@ const U = {
     const total = Math.max(0, U.toMoneyNumber(grandTotal));
     const previousPaid = Math.max(0, U.toMoneyNumber(oldPaidTotal));
     const currentPaid = Math.max(0, U.toMoneyNumber(paidNow));
-    const amountPaid = Math.min(previousPaid + currentPaid, total);
-    const pendingAmount = Math.max(total - amountPaid, 0);
+    const amountPaid = U.toMoneyNumber(previousPaid + currentPaid);
+    const pendingAmount = U.toMoneyNumber(Math.max(total - amountPaid, 0));
     let paymentState = 'Unpaid';
     if (amountPaid > 0 && amountPaid < total) paymentState = 'Partially Paid';
-    if (amountPaid >= total && total > 0) paymentState = 'Paid';
+    if (amountPaid >= total) paymentState = 'Paid';
     const paymentConclusion = pendingAmount > 0 ? 'Pending Settlement' : 'Settled';
     return {
       old_paid_total: previousPaid,
