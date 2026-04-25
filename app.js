@@ -5328,6 +5328,11 @@ const CSMActivity = {
   isLoadingClientOptions: false,
   clientOptions: [],
   loadError: '',
+  page: 1,
+  limit: 50,
+  offset: 0,
+  returned: 0,
+  hasMore: false,
   state: {
     search: '',
     csmName: 'All',
@@ -5522,8 +5527,25 @@ const CSMActivity = {
     this.loadError = '';
     this.refresh();
     try {
-      const rows = await window.CsmActivityService.listActivities();
+      const response = await window.CsmActivityService.listActivities({
+        page: this.page,
+        limit: this.limit,
+        search: this.state.search,
+        csmName: this.state.csmName,
+        client: this.state.client,
+        supportType: this.state.supportType,
+        effort: this.state.effort,
+        channel: this.state.channel,
+        startDate: this.state.startDate,
+        endDate: this.state.endDate
+      });
+      const rows = Array.isArray(response?.rows) ? response.rows : [];
       this.rows = rows.filter(row => row.id || row.csmName || row.client || row.timestamp);
+      this.page = Number(response?.page || this.page || 1);
+      this.limit = U.normalizePageSize(response?.limit ?? this.limit, 50, 200);
+      this.offset = Number(response?.offset ?? Math.max(0, (this.page - 1) * this.limit));
+      this.returned = Number(response?.returned ?? this.rows.length);
+      this.hasMore = Boolean(response?.hasMore);
       this.loaded = true;
       this.lastLoadedAt = Date.now();
       this.hydrateOptions();
@@ -6013,6 +6035,26 @@ const CSMActivity = {
     this.renderInsights(filtered);
     this.renderCharts(filtered);
     this.renderTable(filtered);
+    const paginationHost = U.ensurePaginationHost({ hostId: 'csmPagination', anchor: E.csmTableBody?.closest?.('.table-wrap') });
+    U.renderPaginationControls({
+      host: paginationHost,
+      moduleKey: 'csm',
+      page: this.page,
+      pageSize: this.limit,
+      hasMore: this.hasMore,
+      returned: this.returned,
+      loading: this.isLoading,
+      pageSizeOptions: [25, 50, 100],
+      onPageChange: nextPage => {
+        this.page = U.normalizePageNumber(nextPage, 1);
+        this.loadAndRefresh({ force: true });
+      },
+      onPageSizeChange: nextSize => {
+        this.limit = U.normalizePageSize(nextSize, 50, 200);
+        this.page = 1;
+        this.loadAndRefresh({ force: true });
+      }
+    });
   },
   async openForm(row = null) {
     if (!E.csmFormModal || !E.csmForm) return;
@@ -6232,27 +6274,32 @@ function wireCSMActivity() {
     });
   }
 
-  const bindState = (element, key, type = 'value') => {
+  const bindState = (element, key, type = 'value', { reload = false } = {}) => {
     if (!element) return;
     const sync = () => {
       CSMActivity.state[key] = type === 'valueAsNumber' ? element.valueAsNumber : element.value;
       if (type === 'valueAsNumber' && Number.isNaN(CSMActivity.state[key])) CSMActivity.state[key] = '';
-      CSMActivity.refresh();
+      if (reload) {
+        CSMActivity.page = 1;
+        CSMActivity.loadAndRefresh({ force: true });
+      } else {
+        CSMActivity.refresh();
+      }
     };
     element.addEventListener('input', sync);
     element.addEventListener('change', sync);
   };
 
-  bindState(E.csmSearchInput, 'search');
-  bindState(E.csmNameFilter, 'csmName');
-  bindState(E.csmClientFilter, 'client');
-  bindState(E.csmSupportTypeFilter, 'supportType');
-  bindState(E.csmEffortFilter, 'effort');
-  bindState(E.csmChannelFilter, 'channel');
+  bindState(E.csmSearchInput, 'search', 'value', { reload: true });
+  bindState(E.csmNameFilter, 'csmName', 'value', { reload: true });
+  bindState(E.csmClientFilter, 'client', 'value', { reload: true });
+  bindState(E.csmSupportTypeFilter, 'supportType', 'value', { reload: true });
+  bindState(E.csmEffortFilter, 'effort', 'value', { reload: true });
+  bindState(E.csmChannelFilter, 'channel', 'value', { reload: true });
   bindState(E.csmMinMinutesFilter, 'minMinutes');
   bindState(E.csmMaxMinutesFilter, 'maxMinutes');
-  bindState(E.csmStartDateFilter, 'startDate');
-  bindState(E.csmEndDateFilter, 'endDate');
+  bindState(E.csmStartDateFilter, 'startDate', 'value', { reload: true });
+  bindState(E.csmEndDateFilter, 'endDate', 'value', { reload: true });
 
   if (E.csmTableBody) {
     E.csmTableBody.addEventListener('click', event => {

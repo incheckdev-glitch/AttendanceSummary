@@ -1299,7 +1299,7 @@ const Agreements = {
       return;
     }
     const rows = this.state.filteredRows;
-    E.agreementsState.textContent = `${rows.length} agreement${rows.length === 1 ? '' : 's'}`;
+    E.agreementsState.textContent = `${rows.length} agreement${rows.length === 1 ? '' : 's'} · page ${this.state.page}`;
     this.renderSummary();
     if (!rows.length) {
       E.agreementsTbody.innerHTML = '<tr><td colspan="15" class="muted" style="text-align:center;">No agreements found.</td></tr>';
@@ -1323,6 +1323,29 @@ const Agreements = {
         ${Permissions.canDeleteAgreement() ? `<button class=\"btn ghost sm\" type=\"button\" data-agreement-delete=\"${id}\">Delete</button>` : ''}
         </div></td></tr>`;
     }).join('');
+    const paginationHost = U.ensurePaginationHost({
+      hostId: 'agreementsPagination',
+      anchor: E.agreementsTbody?.closest?.('.table-wrap')
+    });
+    U.renderPaginationControls({
+      host: paginationHost,
+      moduleKey: 'agreements',
+      page: this.state.page,
+      pageSize: this.state.limit,
+      hasMore: this.state.hasMore,
+      returned: this.state.returned,
+      loading: this.state.loading,
+      pageSizeOptions: [25, 50, 100],
+      onPageChange: nextPage => {
+        this.state.page = U.normalizePageNumber(nextPage, 1);
+        this.loadAndRefresh({ force: true });
+      },
+      onPageSizeChange: nextSize => {
+        this.state.limit = U.normalizePageSize(nextSize, 50, 200);
+        this.state.page = 1;
+        this.loadAndRefresh({ force: true });
+      }
+    });
   },
   collectFormValues() {
     const v = id => String(document.getElementById(id)?.value || '').trim();
@@ -1825,8 +1848,8 @@ const Agreements = {
       if (!el) return;
       const sync = () => {
         this.state[key] = String(el.value || '').trim();
-        this.applyFilters();
-        this.render();
+        this.state.page = 1;
+        this.loadAndRefresh({ force: true });
       };
       el.addEventListener('input', sync);
       el.addEventListener('change', sync);

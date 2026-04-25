@@ -280,6 +280,7 @@
     'sort', 'sortBy', 'sortDir', 'sort_by', 'sort_dir',
     'search', 'q', 'mode', 'tab', 'view',
     'summary_only', 'fields',
+    'resource', 'action', 'authToken', 'token', 'session', 'from', 'to', 'filters', 'order',
     ...LEGACY_RESOURCE_FIELD_KEYS, 'updates', 'item'
   ]);
   const USER_PROFILE_COLUMNS = new Set([
@@ -291,6 +292,22 @@
     'is_active'
   ]);
   const LIST_COLUMNS_BY_RESOURCE = {
+    agreements: new Set([
+      'id', 'agreement_id', 'agreement_number', 'agreement_title', 'proposal_id', 'deal_id', 'lead_id',
+      'agreement_date', 'effective_date', 'service_start_date', 'service_end_date', 'agreement_length',
+      'billing_frequency', 'payment_term', 'currency', 'customer_name', 'customer_legal_name',
+      'customer_contact_name', 'customer_contact_email', 'status', 'grand_total', 'updated_at', 'created_at'
+    ]),
+    csm: new Set([
+      'id', 'activity_id', 'csm_user_id', 'csm_email', 'csm_name', 'client', 'client_id', 'client_name',
+      'company_name', 'time_spent_minutes', 'type_of_support', 'effort_requirement', 'support_channel',
+      'notes', 'updated_at', 'created_at'
+    ]),
+    operations_onboarding: new Set([
+      'id', 'onboarding_id', 'agreement_id', 'agreement_number', 'client_id', 'client_name',
+      'onboarding_status', 'request_type', 'technical_request_type', 'technical_request_status',
+      'requested_by', 'requested_at', 'csm_assigned_to', 'updated_at', 'created_at'
+    ]),
     proposal_catalog: new Set([
       'id', 'catalog_item_id', 'is_active', 'section', 'category', 'item_name', 'default_location_name',
       'unit_price', 'discount_percent', 'quantity', 'capability_name', 'capability_value', 'notes',
@@ -341,6 +358,11 @@
       'status','is_read','read_at','created_at','updated_at','priority',
       'meta','meta_json','link_target','action_label','action_required','actor_user_id','actor_role'
     ])
+  };
+  const LIST_SEARCH_COLUMNS_BY_RESOURCE = {
+    agreements: ['agreement_id', 'agreement_number', 'agreement_title', 'customer_name', 'customer_legal_name', 'customer_contact_name', 'status'],
+    operations_onboarding: ['onboarding_id', 'agreement_id', 'agreement_number', 'client_name', 'request_type', 'technical_request_status', 'csm_assigned_to'],
+    technical_admin_requests: ['request_id', 'technical_request_id', 'agreement_id', 'agreement_number', 'client_name', 'request_status', 'request_message', 'request_details']
   };
 
   const devLog = (...args) => {
@@ -1836,13 +1858,20 @@
   }
 
   function applyFilters(query, payload = {}, { resource = '' } = {}) {
-    const { dbFilters } = splitListPayload(payload);
+    const { controls, dbFilters } = splitListPayload(payload);
     const allowedColumns = LIST_COLUMNS_BY_RESOURCE[resource];
     Object.entries(dbFilters || {}).forEach(([key, value]) => {
       if (value === undefined || value === null || value === '') return;
       if (allowedColumns && !allowedColumns.has(key)) return;
       query = query.eq(key, value);
     });
+    const searchTerm = String(controls.search ?? controls.q ?? '').trim();
+    const searchColumns = LIST_SEARCH_COLUMNS_BY_RESOURCE[resource];
+    if (searchTerm && Array.isArray(searchColumns) && searchColumns.length) {
+      const safeSearch = searchTerm.replace(/[%]/g, '').replace(/[,]/g, ' ');
+      const clauses = searchColumns.map(column => `${column}.ilike.%${safeSearch}%`);
+      query = query.or(clauses.join(','));
+    }
     return query;
   }
 
