@@ -88,7 +88,7 @@ const Proposals = {
   normalizeProposalItemForSave(item = {}) {
     const safe = item && typeof item === 'object' ? item : {};
     const unitPrice = this.toNumberSafe(safe.unit_price ?? safe.unitPrice);
-    const quantity = this.toNumberSafe(safe.quantity ?? safe.qty);
+    const quantity = Math.max(0, this.toNumberSafe(safe.quantity ?? safe.qty) || (safe.quantity === 0 ? 0 : 1));
     const discountPercent = this.normalizeDiscountPercentValue(
       safe.discount_percent,
       safe.discountPercent,
@@ -107,7 +107,14 @@ const Proposals = {
       discounted_unit_price: this.toNumberSafe(
         safe.discounted_unit_price ?? safe.discountedUnitPrice ?? computed.discounted_unit_price
       ),
-      line_total: this.toNumberSafe(safe.line_total ?? safe.lineTotal ?? computed.line_total)
+      line_total: this.toNumberSafe(safe.line_total ?? safe.lineTotal ?? computed.line_total),
+      section: String(safe.section || safe.item_section || safe.type || '').trim().toLowerCase(),
+      category: String(safe.category || '').trim(),
+      type: String(safe.type || '').trim(),
+      billing_frequency: String(safe.billing_frequency || safe.billingFrequency || '').trim(),
+      is_recurring: this.normalizeTruthy(safe.is_recurring),
+      is_saas: this.normalizeTruthy(safe.is_saas),
+      one_time: this.normalizeTruthy(safe.one_time)
     };
   },
   normalizeDiscount(value) {
@@ -115,6 +122,140 @@ const Proposals = {
     if (raw > 1) return raw / 100;
     if (raw < 0) return 0;
     return raw;
+  },
+  normalizeTruthy(value) {
+    if (typeof value === 'boolean') return value;
+    const normalized = this.normalizeText(value);
+    return ['1', 'true', 'yes', 'y', 'on'].includes(normalized);
+  },
+  normalizeSectionLabel(...values) {
+    for (const value of values) {
+      const normalized = this.normalizeText(value).replace(/[\s-]+/g, '_');
+      if (normalized) return normalized;
+    }
+    return '';
+  },
+  classifyProposalItemBilling(item = {}) {
+    const safe = item && typeof item === 'object' ? item : {};
+    const section = this.normalizeSectionLabel(safe.section, safe.item_section);
+    const category = this.normalizeSectionLabel(safe.category);
+    const billingFrequency = this.normalizeSectionLabel(safe.billing_frequency, safe.billingFrequency);
+    const type = this.normalizeSectionLabel(safe.type);
+    const textHaystack = [
+      section,
+      category,
+      billingFrequency,
+      type,
+      this.normalizeText(safe.item_name),
+      this.normalizeText(safe.capability_name),
+      this.normalizeText(safe.notes)
+    ]
+      .filter(Boolean)
+      .join(' ');
+
+    if (this.normalizeTruthy(safe.one_time)) return 'one_time';
+    if (this.normalizeTruthy(safe.is_saas) || this.normalizeTruthy(safe.is_recurring)) return 'saas';
+
+    const oneTimeTokens = [
+      'one_time',
+      'one_time_fee',
+      'one_time_fees',
+      'one_time_cost',
+      'one_time_costs',
+      'setup',
+      'implementation',
+      'hardware',
+      'training',
+      'professional_service',
+      'service_fee'
+    ];
+    const recurringTokens = [
+      'annual_saas',
+      'saas',
+      'subscription',
+      'recurring',
+      'annual',
+      'monthly',
+      'yearly'
+    ];
+    const hasToken = tokens => tokens.some(token => textHaystack.includes(token));
+    if (hasToken(oneTimeTokens)) return 'one_time';
+    if (hasToken(recurringTokens)) return 'saas';
+    if (section === 'capability' || type === 'capability') return 'capability';
+    return 'unclassified';
+  },
+  calculateProposalTotals(items = []) {
+    const safeItems = Array.isArray(items) ? items : [];
+    const totals = {
+      subtotal: 0,
+      subtotal_locations: 0,
+      subtotal_one_time: 0,
+      discount_total: 0,
+      total_discount: 0,
+      saas_total: 0,
+      one_time_total: 0,
+      grand_total: 0
+    };
+    safeItems.forEach(item => {
+      const safe = item && typeof item === 'object' ? item : {};
+      const sectionType = this.classifyProposalItemBilling(safe);
+      if (sectionType === 'capability') return;
+
+      const quantity = Math.max(
+        0,
+        this.toNumberSafe(safe.quantity ?? safe.qty) || (safe.quantity === 0 ? 0 : 1)
+      );
+      const unitPrice = this.toNumberSafe(safe.unit_price ?? safe.unitPrice);
+      const discountPercent = this.normalizeDiscountPercentValue(
+        safe.discount_percent,
+        safe.discountPercent,
+        safe.discount
+      );
+      const base = quantity * unitPrice;
+      const discountAmount = (base * discountPercent) / 100;
+      const lineTotal = Math.max(0, base - discountAmount);
+
+      totals.subtotal += base;
+      totals.discount_total += discountAmount;
+      totals.total_discount += discountAmount;
+      totals.grand_total += lineTotal;
+
+      if (sectionType === 'saas') {
+        totals.saas_total += lineTotal;
+        totals.subtotal_locations += lineTotal;
+      } else {
+        totals.one_time_total += lineTotal;
+        totals.subtotal_one_time += lineTotal;
+      }
+    });
+    return totals;
+  },
+  withCalculatedTotalsFallback(proposal = {}, items = []) {
+    const normalizedProposal = this.normalizeProposal(proposal);
+    const calculated = this.calculateProposalTotals(items);
+    const headerSaas = this.toNumberSafe(
+      normalizedProposal.saas_total ?? normalizedProposal.subtotal_locations
+    );
+    const headerOneTime = this.toNumberSafe(
+      normalizedProposal.one_time_total ?? normalizedProposal.subtotal_one_time
+    );
+    const headerGrand = this.toNumberSafe(normalizedProposal.grand_total);
+    const shouldFallback =
+      calculated.grand_total > 0 &&
+      headerGrand <= 0 &&
+      headerSaas <= 0 &&
+      headerOneTime <= 0;
+    if (!shouldFallback) return normalizedProposal;
+
+    return {
+      ...normalizedProposal,
+      saas_total: calculated.saas_total,
+      one_time_total: calculated.one_time_total,
+      subtotal_locations: calculated.saas_total,
+      subtotal_one_time: calculated.one_time_total,
+      total_discount: calculated.total_discount,
+      grand_total: calculated.grand_total
+    };
   },
   formatMoney(value) {
     const num = this.toNumberSafe(value);
@@ -467,6 +608,12 @@ const Proposals = {
       proposal_id: String(pick(source.proposal_id, source.proposalId)).trim(),
       catalog_item_id: String(pick(source.catalog_item_id, source.catalogItemId)).trim(),
       section,
+      category: String(pick(source.category)).trim(),
+      type: String(pick(source.type)).trim(),
+      billing_frequency: String(pick(source.billing_frequency, source.billingFrequency)).trim(),
+      is_recurring: this.normalizeTruthy(pick(source.is_recurring, source.isRecurring)),
+      is_saas: this.normalizeTruthy(pick(source.is_saas, source.isSaas)),
+      one_time: this.normalizeTruthy(pick(source.one_time, source.oneTime)),
       line_no: this.toNumberSafe(pick(source.line_no, source.lineNo, source.line)) || 0,
       location_name: String(pick(source.location_name, source.locationName)).trim(),
       item_name: String(pick(source.item_name, source.itemName, source.name)).trim(),
@@ -589,9 +736,11 @@ const Proposals = {
       }
     }
 
+    const normalizedItems = Array.isArray(items) ? items.map(item => this.normalizeItem(item)) : [];
+    const normalizedProposal = this.withCalculatedTotalsFallback(proposal || { id: fallbackId }, normalizedItems);
     return {
-      proposal: this.normalizeProposal(proposal || { id: fallbackId }),
-      items: Array.isArray(items) ? items.map(item => this.normalizeItem(item)) : []
+      proposal: normalizedProposal,
+      items: normalizedItems
     };
   },
   getCachedDetail(id) {
@@ -605,9 +754,11 @@ const Proposals = {
   setCachedDetail(id, proposal, items) {
     const cacheKey = String(id || '').trim();
     if (!cacheKey) return;
+    const normalizedItems = Array.isArray(items) ? items.map(item => this.normalizeItem(item)) : [];
+    const normalizedProposal = this.withCalculatedTotalsFallback(proposal || { id: cacheKey }, normalizedItems);
     this.state.detailCacheById[cacheKey] = {
-      proposal: this.normalizeProposal(proposal || { id: cacheKey }),
-      items: Array.isArray(items) ? items.map(item => this.normalizeItem(item)) : [],
+      proposal: normalizedProposal,
+      items: normalizedItems,
       cachedAt: Date.now()
     };
   },
@@ -769,9 +920,10 @@ const Proposals = {
 
     if (itemsError) throw new Error(`Unable to load proposal items: ${itemsError.message || 'Unknown error'}`);
 
+    const normalizedItems = Array.isArray(items) ? items.map(item => this.normalizeItem(item)) : [];
     return {
-      proposal: this.normalizeProposal(proposal),
-      items: Array.isArray(items) ? items.map(item => this.normalizeItem(item)) : []
+      proposal: this.withCalculatedTotalsFallback(proposal, normalizedItems),
+      items: normalizedItems
     };
   },
   buildProposalPreviewHtml(proposal = {}, items = []) {
@@ -793,15 +945,6 @@ const Proposals = {
       const formatted = U.fmtDisplayDate(raw);
       return formatted && formatted !== 'Invalid Date' ? formatted : U.escapeHtml(raw);
     };
-    const sectionKey = value => String(value || '').trim().toLowerCase();
-    const isSubscription = value => {
-      const key = sectionKey(value);
-      return key === 'annual_saas' || key === 'subscription' || key === 'saas';
-    };
-    const isOneTime = value => {
-      const key = sectionKey(value);
-      return key === 'one_time_fee' || key === 'one-time-fee' || key === 'one_time';
-    };
     const computeRow = item => {
       const quantity = this.toNumberSafe(item.quantity);
       const unitPrice = this.toNumberSafe(item.unit_price);
@@ -818,9 +961,12 @@ const Proposals = {
       };
     };
 
-    const subscriptionItems = normalizedItems.filter(item => isSubscription(item.section));
-    const oneTimeItems = normalizedItems.filter(item => isOneTime(item.section));
-    const otherItems = normalizedItems.filter(item => !isSubscription(item.section) && !isOneTime(item.section));
+    const subscriptionItems = normalizedItems.filter(item => this.classifyProposalItemBilling(item) === 'saas');
+    const oneTimeItems = normalizedItems.filter(item => this.classifyProposalItemBilling(item) === 'one_time');
+    const otherItems = normalizedItems.filter(item => {
+      const type = this.classifyProposalItemBilling(item);
+      return type !== 'saas' && type !== 'one_time' && type !== 'capability';
+    });
 
     const renderSubscriptionRows = rows => (rows.length
       ? rows
@@ -862,9 +1008,16 @@ const Proposals = {
           .join('')
       : '<tr><td colspan="10" class="cell-center muted">No one-time fee items found.</td></tr>');
 
-    const subtotalLocations = this.toNumberSafe(proposalData.subtotal_locations || proposalData.saas_total);
-    const subtotalOneTime = this.toNumberSafe(proposalData.subtotal_one_time || proposalData.one_time_total);
-    const grandTotal = this.toNumberSafe(proposalData.grand_total || subtotalLocations + subtotalOneTime);
+    const calculatedTotals = this.calculateProposalTotals(normalizedItems);
+    const headerSaas = this.toNumberSafe(proposalData.subtotal_locations ?? proposalData.saas_total);
+    const headerOneTime = this.toNumberSafe(proposalData.subtotal_one_time ?? proposalData.one_time_total);
+    const headerGrand = this.toNumberSafe(proposalData.grand_total);
+    const hasCalculatedTotals = calculatedTotals.grand_total > 0;
+    const subtotalLocations = hasCalculatedTotals ? calculatedTotals.saas_total : headerSaas;
+    const subtotalOneTime = hasCalculatedTotals ? calculatedTotals.one_time_total : headerOneTime;
+    const grandTotal = hasCalculatedTotals
+      ? calculatedTotals.grand_total
+      : this.toNumberSafe(headerGrand || subtotalLocations + subtotalOneTime);
 
     return `<!doctype html>
 <html>
@@ -1803,8 +1956,8 @@ const Proposals = {
           };
         }
         const unitPrice = this.toNumberSafe(get('unit_price'));
-        const discountPercent = this.toNumberSafe(get('discount_percent'));
-        const quantity = this.toNumberSafe(get('quantity'));
+        const discountPercent = this.normalizeDiscountPercentValue(get('discount_percent'));
+        const quantity = Math.max(0, this.toNumberSafe(get('quantity')) || 1);
         const computed = this.computeCommercialRow({ unit_price: unitPrice, discount_percent: discountPercent, quantity });
         if (!get('item_name') && !get('location_name') && !unitPrice && !quantity) return null;
         return {
@@ -1864,31 +2017,7 @@ const Proposals = {
     };
   },
   calculateTotalsFromItems(items = []) {
-    const safeItems = Array.isArray(items) ? items : [];
-    const subtotalLocations = safeItems
-      .filter(item => item.section === 'annual_saas')
-      .reduce((sum, item) => sum + this.toNumberSafe(item.line_total), 0);
-    const subtotalOneTime = safeItems
-      .filter(item => item.section === 'one_time_fee')
-      .reduce((sum, item) => sum + this.toNumberSafe(item.line_total), 0);
-    const totalDiscount = safeItems
-      .filter(item => item.section === 'annual_saas' || item.section === 'one_time_fee')
-      .reduce((sum, item) => {
-        const unit = this.toNumberSafe(item.unit_price);
-        const qty = this.toNumberSafe(item.quantity);
-        const discounted = this.toNumberSafe(item.discounted_unit_price);
-        const lineDiscount = Math.max(0, unit - discounted) * qty;
-        return sum + lineDiscount;
-      }, 0);
-    const grandTotal = subtotalLocations + subtotalOneTime;
-    return {
-      subtotal_locations: subtotalLocations,
-      subtotal_one_time: subtotalOneTime,
-      total_discount: totalDiscount,
-      grand_total: grandTotal,
-      saas_total: subtotalLocations,
-      one_time_total: subtotalOneTime
-    };
+    return this.calculateProposalTotals(items);
   },
   renderTotalsPreview() {
     const items = this.collectProposalItems();
