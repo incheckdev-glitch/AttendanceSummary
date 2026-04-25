@@ -1182,6 +1182,7 @@ const Agreements = {
   async syncSignedAgreementToClient(agreement = {}, agreementId = '') {
     if (!this.isSignedStatus(agreement.status)) return;
     const signedClient = this.buildClientFromAgreement(agreement, agreementId);
+    // temporary lookup fallback - keep wider client fetch for selector hydration; replace with dedicated searchable lookup endpoint
     const response = await window.ClientsService.listClients({ page: 1, limit: 500 });
     const rows = this.extractClientRows(response);
     const targetEmail = this.normalizeText(agreement.customer_contact_email);

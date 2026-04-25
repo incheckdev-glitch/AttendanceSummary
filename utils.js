@@ -333,6 +333,62 @@ const U = {
       hasNextPage,
       total: safeTotal
     };
+  },
+  ensurePaginationHost: ({ hostId, anchor, className = 'pagination' } = {}) => {
+    if (!hostId) return null;
+    let host = document.getElementById(hostId);
+    if (!host && anchor && anchor.parentElement) {
+      host = document.createElement('div');
+      host.id = hostId;
+      host.className = className;
+      anchor.insertAdjacentElement('afterend', host);
+    }
+    return host;
+  },
+  renderPaginationControls: ({
+    host,
+    moduleKey = 'list',
+    page = 1,
+    pageSize = 50,
+    hasMore = false,
+    returned = 0,
+    loading = false,
+    pageSizeOptions = [25, 50, 100],
+    onPageChange = null,
+    onPageSizeChange = null
+  } = {}) => {
+    if (!host) return;
+    const safePage = U.normalizePageNumber(page, 1);
+    const safeSize = U.normalizePageSize(pageSize, 50, 200);
+    const safeReturned = Math.max(0, Number(returned) || 0);
+    const safeHasMore = Boolean(hasMore);
+    const prevDisabled = loading || safePage <= 1;
+    const nextDisabled = loading || !safeHasMore;
+    const sizeOptions = [...new Set(pageSizeOptions.map(v => U.normalizePageSize(v, 50, 200)))];
+
+    host.innerHTML = `
+      <div class="pagination" role="group" aria-label="${U.escapeAttr(moduleKey)} pagination">
+        <button type="button" class="chip-btn" data-pagination-prev="${U.escapeAttr(moduleKey)}" ${prevDisabled ? 'disabled' : ''}>‹ Prev</button>
+        <span class="muted" aria-live="polite">Page ${safePage} · Showing ${safeReturned}</span>
+        <button type="button" class="chip-btn" data-pagination-next="${U.escapeAttr(moduleKey)}" ${nextDisabled ? 'disabled' : ''}>Next ›</button>
+        <label class="muted" style="display:inline-flex;align-items:center;gap:6px;">
+          Size
+          <select class="input" style="width:auto;min-width:78px;" data-pagination-size="${U.escapeAttr(moduleKey)}" ${loading ? 'disabled' : ''}>
+            ${sizeOptions
+              .map(size => `<option value="${size}" ${size === safeSize ? 'selected' : ''}>${size}</option>`)
+              .join('')}
+          </select>
+        </label>
+      </div>`;
+
+    const prevBtn = host.querySelector(`[data-pagination-prev="${moduleKey}"]`);
+    const nextBtn = host.querySelector(`[data-pagination-next="${moduleKey}"]`);
+    const sizeSelect = host.querySelector(`[data-pagination-size="${moduleKey}"]`);
+    if (prevBtn && typeof onPageChange === 'function') prevBtn.addEventListener('click', () => onPageChange(safePage - 1));
+    if (nextBtn && typeof onPageChange === 'function') nextBtn.addEventListener('click', () => onPageChange(safePage + 1));
+    if (sizeSelect && typeof onPageSizeChange === 'function') {
+      sizeSelect.addEventListener('change', () => onPageSizeChange(Number(sizeSelect.value) || safeSize));
+    }
   }
 };
 
