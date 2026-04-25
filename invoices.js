@@ -134,16 +134,17 @@ const Invoices = {
       created_at: String(source?.created_at || '').trim()
     };
   },
-  summarizeReceiptPayments(invoiceTotal, receipts = []) {
+  summarizeReceiptPayments(invoiceTotal, receipts = [], { baselinePaid = 0 } = {}) {
     const normalized = (Array.isArray(receipts) ? receipts : []).map(receipt => this.normalizeLinkedReceipt(receipt));
-    const receivedAmount = normalized.reduce((sum, receipt) => sum + this.toNumberSafe(receipt.amount_received), 0);
-    const pendingAmount = Math.max(0, this.toNumberSafe(invoiceTotal) - receivedAmount);
-    const paymentState = receivedAmount <= 0 ? 'Unpaid' : pendingAmount > 0 ? 'Partially Paid' : 'Paid';
+    const receiptsPaidAmount = normalized.reduce((sum, receipt) => sum + this.toNumberSafe(receipt.amount_received), 0);
+    const cumulativePaidAmount = Math.max(this.toNumberSafe(baselinePaid), this.toNumberSafe(receiptsPaidAmount));
+    const pendingAmount = Math.max(0, this.toNumberSafe(invoiceTotal) - cumulativePaidAmount);
+    const paymentState = cumulativePaidAmount <= 0 ? 'Unpaid' : pendingAmount > 0 ? 'Partially Paid' : 'Paid';
     const paymentConclusion = pendingAmount <= 0 ? 'Settled' : 'Pending Settlement';
     return {
       normalizedReceipts: normalized,
-      received_amount: receivedAmount,
-      amount_paid: receivedAmount,
+      received_amount: cumulativePaidAmount,
+      amount_paid: cumulativePaidAmount,
       pending_amount: pendingAmount,
       payment_state: paymentState,
       payment_conclusion: paymentConclusion
@@ -229,7 +230,8 @@ const Invoices = {
     const invoiceId = String(invoice?.id || '').trim();
     const receipts = invoiceId ? this.getInvoiceReceipts(invoiceId) : [];
     const invoiceTotal = this.toNumberSafe(invoice?.invoice_total || invoice?.grand_total);
-    const paymentSummary = this.summarizeReceiptPayments(invoiceTotal, receipts);
+    const baselinePaid = this.toNumberSafe(invoice?.amount_paid ?? invoice?.received_amount ?? invoice?.old_paid_total);
+    const paymentSummary = this.summarizeReceiptPayments(invoiceTotal, receipts, { baselinePaid });
     const merged = this.normalizeInvoice({
       ...invoice,
       ...paymentSummary,
@@ -465,7 +467,9 @@ const Invoices = {
     if (itemsError) throw new Error(`Unable to load invoice items: ${itemsError.message || 'Unknown error'}`);
     if (receiptsError) throw new Error(`Unable to load linked receipts: ${receiptsError.message || 'Unknown error'}`);
     const normalizedInvoice = this.normalizeInvoice(invoiceRow);
-    const paymentSummary = this.summarizeReceiptPayments(normalizedInvoice.invoice_total || normalizedInvoice.grand_total, receiptRows || []);
+    const paymentSummary = this.summarizeReceiptPayments(normalizedInvoice.invoice_total || normalizedInvoice.grand_total, receiptRows || [], {
+      baselinePaid: normalizedInvoice.amount_paid ?? normalizedInvoice.received_amount ?? normalizedInvoice.old_paid_total
+    });
     return {
       invoiceUuid,
       invoice: this.normalizeInvoice({ ...normalizedInvoice, ...paymentSummary }),
@@ -506,7 +510,8 @@ const Invoices = {
     );
     const subtotalOneTime = this.toNumberSafe(invoiceData.subtotal_one_time ?? itemTotals.subtotal_one_time);
     const invoiceTotal = this.toNumberSafe(invoiceData.invoice_total ?? invoiceData.grand_total ?? itemTotals.invoice_total);
-    const receiptSummary = this.summarizeReceiptPayments(invoiceTotal, receipts);
+    const baselinePaid = this.toNumberSafe(invoiceData.amount_paid ?? invoiceData.received_amount ?? invoiceData.old_paid_total);
+    const receiptSummary = this.summarizeReceiptPayments(invoiceTotal, receipts, { baselinePaid });
     const paidAmount = this.toNumberSafe(receiptSummary.amount_paid);
     const paidNow = this.toNumberSafe(invoiceData.paid_now);
     const oldPaidTotal = Math.max(0, paidAmount - paidNow);
@@ -1099,7 +1104,7 @@ const Invoices = {
       oldPaidTotal: oldPaidInput,
       paidNow: paidNowInput
     });
-    const receiptPaymentSummary = this.summarizeReceiptPayments(totals.invoice_total, linkedReceipts);
+    const receiptPaymentSummary = this.summarizeReceiptPayments(totals.invoice_total, linkedReceipts, { baselinePaid: snapshot.amount_paid });
     const derivedPayment = linkedReceipts.length
       ? {
           old_paid_total: this.toNumberSafe(receiptPaymentSummary.amount_paid) - this.toNumberSafe(invoice.paid_now),
