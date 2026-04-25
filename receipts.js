@@ -148,13 +148,18 @@ const Receipts = {
     normalized.receipt_date = normalizedReceiptDate || String(normalized.receipt_date || '').trim();
     normalized.receiptDate = normalized.receipt_date;
     normalized.invoice_total = this.toNumberSafe(normalized.invoice_total ?? source.invoice_grand_total ?? source.grand_total);
-    const amountReceived = this.toNumberSafe(
-      normalized.amount_received !== '' && normalized.amount_received !== null && normalized.amount_received !== undefined
-        ? normalized.amount_received
-        : normalized.received_amount
-    );
+    const amountReceived = this.getReceiptAmountValue({
+      amount_received: normalized.amount_received,
+      received_amount: normalized.received_amount,
+      paid_now: normalized.paid_now,
+      payment_amount: source.payment_amount ?? source.paymentAmount
+    });
     normalized.old_paid_total = this.toNumberSafe(normalized.old_paid_total);
-    normalized.paid_now = this.toNumberSafe(normalized.paid_now || amountReceived);
+    normalized.paid_now = this.toNumberSafe(
+      normalized.paid_now !== '' && normalized.paid_now !== null && normalized.paid_now !== undefined
+        ? normalized.paid_now
+        : amountReceived
+    );
     const snapshot = this.calculatePaymentSnapshot({
       invoiceTotal: normalized.invoice_total,
       oldPaidTotal: normalized.old_paid_total,
@@ -165,11 +170,14 @@ const Receipts = {
         ? normalized.new_paid_total
         : snapshot.new_paid_total
     );
-    const receivedAmountValue =
-      normalized.amount_received !== '' && normalized.amount_received !== null && normalized.amount_received !== undefined
-        ? normalized.amount_received
-        : normalized.received_amount;
+    const receivedAmountValue = this.getReceiptAmountValue({
+      amount_received: normalized.amount_received,
+      received_amount: normalized.received_amount,
+      paid_now: normalized.paid_now,
+      payment_amount: source.payment_amount ?? source.paymentAmount
+    });
     normalized.amount_received = this.toNumberSafe(receivedAmountValue || normalized.paid_now);
+    normalized.received_amount = normalized.amount_received;
     const pendingAmountValue =
       normalized.pending_amount !== '' && normalized.pending_amount !== null && normalized.pending_amount !== undefined
         ? normalized.pending_amount
@@ -727,10 +735,9 @@ const Receipts = {
       pickDefined(
         receipt.received_amount,
         receipt.amount_received,
-        receipt.receipt_amount,
         receipt.paid_now,
         receipt.payment_amount,
-        receipt.amount
+        0
       )
     );
   },
@@ -1162,14 +1169,20 @@ const Receipts = {
       formValues.client_id ||
       ''
     ).trim();
-    const normalizedPaidNow = this.normalizeAmountInput(formValues.paid_now ?? formValues.amount_received ?? formValues.received_amount);
+    const normalizedPaidNow = this.getReceiptAmountValue({
+      received_amount: formValues.received_amount,
+      amount_received: formValues.amount_received,
+      paid_now: formValues.paid_now,
+      payment_amount: formValues.payment_amount
+    });
     const mergedReceipt = {
       ...existing,
       ...formValues,
       id: String(existing.id || formValues.id || '').trim(),
       invoice_id: invoiceId || null,
-      paid_now: normalizedPaidNow ?? this.toNumberSafe(existing.paid_now),
-      received_amount: normalizedPaidNow ?? this.toNumberSafe(existing.paid_now)
+      paid_now: normalizedPaidNow ?? this.getReceiptAmountValue(existing),
+      received_amount: normalizedPaidNow ?? this.getReceiptAmountValue(existing),
+      amount_received: normalizedPaidNow ?? this.getReceiptAmountValue(existing)
     };
     const paymentSnapshot = this.resolveReceiptPaymentSnapshot(mergedReceipt, linkedInvoice || {}, invoiceReceipts);
     const normalizedNewPaidTotal = paymentSnapshot.new_paid_total;
@@ -1183,6 +1196,7 @@ const Receipts = {
       client_id: clientId || null,
       receipt_date: String(formValues.receipt_date || existing.receipt_date || '').trim() || null,
       amount_received: paymentSnapshot.received_amount,
+      received_amount: paymentSnapshot.received_amount,
       payment_method: String(E.receiptForm?.dataset.paymentMethod || existing.payment_method || '').trim() || null,
       payment_reference: String(E.receiptForm?.dataset.paymentReference || existing.payment_reference || '').trim() || null,
       is_settlement: this.isSettlementReceipt({
