@@ -1,4 +1,37 @@
 const Receipts = {
+  RECEIPT_ALLOWED_COLUMNS: new Set([
+    'id',
+    'receipt_id',
+    'receipt_number',
+    'invoice_id',
+    'invoice_number',
+    'client_id',
+    'client_name',
+    'invoice_total',
+    'old_paid_total',
+    'paid_now',
+    'received_amount',
+    'amount_received',
+    'new_paid_total',
+    'pending_amount',
+    'payment_state',
+    'payment_conclusion',
+    'payment_method',
+    'payment_reference',
+    'payment_notes',
+    'status',
+    'notes',
+    'currency',
+    'support_email',
+    'customer_name',
+    'customer_legal_name',
+    'customer_address',
+    'amount_in_words',
+    'is_settlement',
+    'created_at',
+    'updated_at',
+    'receipt_date'
+  ]),
   receiptFields: [
     'id',
     'receipt_id',
@@ -110,7 +143,7 @@ const Receipts = {
     normalized.currency = String(normalized.currency || '').trim() || 'USD';
     normalized.status = String(normalized.status || '').trim() || 'Issued';
     const normalizedReceiptDate = this.normalizeDateValue(
-      pickDefined(source.receipt_date, source.receiptDate, source.date, source.created_at, source.createdAt)
+      pickDefined(source.receipt_date, source.receiptDate, source.created_at, source.createdAt)
     );
     normalized.receipt_date = normalizedReceiptDate || String(normalized.receipt_date || '').trim();
     normalized.receiptDate = normalized.receipt_date;
@@ -712,11 +745,10 @@ const Receipts = {
   },
   getReceiptOrderMeta(receipt = {}) {
     const receiptDateTs = this.parseOrderTimestamp(receipt?.receipt_date);
-    const dateTs = this.parseOrderTimestamp(receipt?.date);
     const createdAtTs = this.parseOrderTimestamp(receipt?.created_at);
     const idRaw = String(receipt?.id || receipt?.receipt_id || '').trim();
     const idNum = Number(idRaw);
-    return { receiptDateTs, dateTs, createdAtTs, idRaw, idNum: Number.isFinite(idNum) ? idNum : Number.NaN };
+    return { receiptDateTs, createdAtTs, idRaw, idNum: Number.isFinite(idNum) ? idNum : Number.NaN };
   },
   compareReceiptOrder(left = {}, right = {}) {
     const a = this.getReceiptOrderMeta(left);
@@ -731,8 +763,6 @@ const Receipts = {
     };
     const receiptCmp = compareTs(a.receiptDateTs, b.receiptDateTs);
     if (receiptCmp !== 0) return receiptCmp;
-    const dateCmp = compareTs(a.dateTs, b.dateTs);
-    if (dateCmp !== 0) return dateCmp;
     const createdCmp = compareTs(a.createdAtTs, b.createdAtTs);
     if (createdCmp !== 0) return createdCmp;
     if (Number.isFinite(a.idNum) && Number.isFinite(b.idNum) && a.idNum !== b.idNum) return a.idNum - b.idNum;
@@ -800,6 +830,23 @@ const Receipts = {
   resolveReceiptPaymentSnapshot(receipt = {}, invoice = {}, allReceiptsForInvoice = null) {
     return this.calculateReceiptSnapshot(receipt, invoice, allReceiptsForInvoice);
   },
+  getReceiptSortColumn() {
+    return this.RECEIPT_ALLOWED_COLUMNS.has('receipt_date') ? 'receipt_date' : 'created_at';
+  },
+  applyReceiptSort(query, { ascending = true } = {}) {
+    const safePrimarySort = this.getReceiptSortColumn();
+    let sortedQuery = query.order(safePrimarySort, { ascending, nullsFirst: false });
+    if (safePrimarySort !== 'created_at' && this.RECEIPT_ALLOWED_COLUMNS.has('created_at')) {
+      sortedQuery = sortedQuery.order('created_at', { ascending, nullsFirst: false });
+    }
+    return sortedQuery;
+  },
+  filterReceiptColumns(record = {}) {
+    if (!record || typeof record !== 'object') return {};
+    return Object.fromEntries(
+      Object.entries(record).filter(([key]) => this.RECEIPT_ALLOWED_COLUMNS.has(String(key || '').trim()))
+    );
+  },
   recalculatePaymentFields() {
     const invoiceTotal = this.toNumberSafe(E.receiptFormInvoiceGrandTotal?.value);
     const oldPaidTotal = this.toNumberSafe(E.receiptFormOldPaidTotal?.value);
@@ -820,16 +867,20 @@ const Receipts = {
     const invoiceId = String(invoiceUuid || '').trim();
     if (!invoiceId) throw new Error('Invoice UUID is required to compute receipt settlement snapshot.');
     const client = this.requireSupabaseClient();
+    const receiptQuery = this.applyReceiptSort(
+      client
+        .from('receipts')
+        .select('id,receipt_id,invoice_id,invoice_number,receipt_date,created_at,amount_received,received_amount,receipt_amount,paid_now,payment_amount,amount')
+        .eq('invoice_id', invoiceId),
+      { ascending: true }
+    );
     const [{ data: invoiceRow, error: invoiceError }, { data: receiptRows, error: receiptsError }] = await Promise.all([
       client
         .from('invoices')
         .select('id,subtotal_locations,subtotal_one_time,invoice_total,amount_paid,received_amount,paid_now,pending_amount,payment_state')
         .eq('id', invoiceId)
         .maybeSingle(),
-      client
-        .from('receipts')
-        .select('id,receipt_id,invoice_id,invoice_number,receipt_date,date,created_at,amount_received,received_amount,receipt_amount,paid_now,payment_amount,amount')
-        .eq('invoice_id', invoiceId)
+      receiptQuery
     ]);
     if (invoiceError) throw new Error(invoiceError.message || 'Unable to load invoice before creating receipt.');
     if (!invoiceRow) throw new Error('Linked invoice was not found before creating receipt.');
@@ -853,10 +904,13 @@ const Receipts = {
     if (!invoiceId) return [];
     const client = this.getSupabaseClient();
     if (!client) return [];
-    const { data, error } = await client
-      .from('receipts')
-      .select('id,receipt_id,invoice_id,invoice_number,receipt_date,date,created_at,amount_received,received_amount,receipt_amount,paid_now,payment_amount,amount')
-      .eq('invoice_id', invoiceId);
+    const { data, error } = await this.applyReceiptSort(
+      client
+        .from('receipts')
+        .select('id,receipt_id,invoice_id,invoice_number,receipt_date,created_at,amount_received,received_amount,receipt_amount,paid_now,payment_amount,amount')
+        .eq('invoice_id', invoiceId),
+      { ascending: true }
+    );
     if (error) throw new Error(error.message || 'Unable to load invoice receipts.');
     return Array.isArray(data) ? data : [];
   },
@@ -1238,7 +1292,7 @@ const Receipts = {
             linkedInvoice,
             invoiceReceipts
           });
-          await Api.updateReceipt(receiptUuid, headerPayload);
+          await Api.updateReceipt(receiptUuid, this.filterReceiptColumns(headerPayload));
           await this.applyReceiptToInvoice({
             invoiceId: invoiceUuid,
             oldPaidTotal: snapshot.old_paid_total,
@@ -1325,7 +1379,7 @@ const Receipts = {
         invoiceReceipts
       });
       const receiptItemsPayload = this.buildReceiptItemSavePayload(this.state.items);
-      const response = await Api.updateReceipt(id, headerPayload, receiptItemsPayload);
+      const response = await Api.updateReceipt(id, this.filterReceiptColumns(headerPayload), receiptItemsPayload);
       await this.applyReceiptToInvoice({
         invoiceId: headerPayload.invoice_id || currentRecord.invoice_id,
         oldPaidTotal: headerPayload.old_paid_total,
