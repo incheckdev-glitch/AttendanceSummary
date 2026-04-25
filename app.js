@@ -1058,7 +1058,7 @@ async function applySuggestedCategory(label) {
   let updated = 0;
   for (const issue of candidates) {
     const updatedIssue = { ...issue, type: label };
-    const saved = await saveIssueToSheet(updatedIssue, Session.authContext(), { silent: true });
+    const saved = await saveTicketRecord(updatedIssue, Session.authContext(), { silent: true });
     if (saved) {
       applyIssueUpdate({ ...updatedIssue, ...saved });
       updated++;
@@ -1504,7 +1504,7 @@ const IssueEditor = {
       .map(option => String(option.value || '').trim())
       .filter(Boolean);
   },
-  syncSheetDropdowns(selectedDevTeamStatus = '', selectedIssueRelated = '') {
+  syncIssueDropdowns(selectedDevTeamStatus = '', selectedIssueRelated = '') {
     const rows = Array.isArray(DataStore.rows) ? DataStore.rows : [];
     const devTeamStatusValues = this.DEV_TEAM_STATUS_OPTIONS.concat(
       rows.map(r => r.devTeamStatus)
@@ -1553,7 +1553,7 @@ const IssueEditor = {
     setVal(E.editIssueName, issue.name || identity.name || '');
     setVal(E.editIssueEmail, issue.emailAddressee || identity.email || '');
     setVal(E.editIssueYoutrackReference, issue.youtrackReference || '');
-    this.syncSheetDropdowns(issue.devTeamStatus || '', issue.issueRelated || '');
+    this.syncIssueDropdowns(issue.devTeamStatus || '', issue.issueRelated || '');
     setVal(E.editIssueFile, issue.file || '');
 
     if (E.editIssueDate) {
@@ -1925,7 +1925,7 @@ const issueUpdate = {
   const saveButton = event.target?.querySelector('button[type="submit"]');
   setButtonPendingState(saveButton, true, 'Saving...');
   try {
-    const updatedIssue = await saveIssueToSheet(issueUpdate, Session.authContext());
+    const updatedIssue = await saveTicketRecord(issueUpdate, Session.authContext());
     if (!updatedIssue) {
       throw new Error('Ticket update did not return a response.');
     }
@@ -1987,7 +1987,7 @@ async function onBulkEditSubmit(event) {
         id
       };
       try {
-        const updated = await saveIssueToSheet(payload, Session.authContext(), { silent: true });
+        const updated = await saveTicketRecord(payload, Session.authContext(), { silent: true });
         if (!updated) throw new Error('No response');
         applyIssueUpdate(updated);
         success += 1;
@@ -3109,7 +3109,7 @@ function buildTicketInternalUpdatePayload(payload = {}, ticketId = '') {
   return internalPayload.ticket_id ? internalPayload : null;
 }
 
-async function saveIssueToSheet(issue, auth = {}, options = {}) {
+async function saveTicketRecord(issue, auth = {}, options = {}) {
  const useSpinner = !options.silent;
   if (useSpinner) UI.spinner(true);
   try {

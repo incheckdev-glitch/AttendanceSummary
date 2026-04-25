@@ -629,7 +629,7 @@ const Api = {
   async listOperationsOnboarding(filters = {}, options = {}) {
     return this.requestCached('operations_onboarding', 'list', {
       filters,
-      sheetName: CONFIG.OPERATIONS_ONBOARDING_SHEET_NAME
+      table: CONFIG.OPERATIONS_ONBOARDING_TABLE
     }, {
       forceRefresh: options?.forceRefresh === true
     });
@@ -637,13 +637,13 @@ const Api = {
   async getOperationsOnboarding(payload = {}) {
     return this.requestWithSession('operations_onboarding', 'get', {
       ...payload,
-      sheetName: CONFIG.OPERATIONS_ONBOARDING_SHEET_NAME
+      table: CONFIG.OPERATIONS_ONBOARDING_TABLE
     });
   },
   async saveOperationsOnboarding(onboarding = {}) {
     return this.requestWithSession('operations_onboarding', 'save', {
       onboarding,
-      sheetName: CONFIG.OPERATIONS_ONBOARDING_SHEET_NAME
+      table: CONFIG.OPERATIONS_ONBOARDING_TABLE
     });
   },
   async updateOperationsOnboarding(onboardingId, updates = {}) {
@@ -654,7 +654,7 @@ const Api = {
     return this.requestWithSession('operations_onboarding', 'update', {
       id: onboardingId,
       updates: safeUpdates,
-      sheetName: CONFIG.OPERATIONS_ONBOARDING_SHEET_NAME
+      table: CONFIG.OPERATIONS_ONBOARDING_TABLE
     });
   },
   async listTechnicalAdminRequests(filters = {}, options = {}) {
@@ -874,7 +874,7 @@ const Api = {
   async listRoles(options = {}) {
     const payload = {
       ...this.buildSummaryListPayload(options),
-      sheetName: CONFIG.ROLES_SHEET_NAME
+      table: CONFIG.ROLES_TABLE
     };
     const response = await this.requestCached('roles', 'list', payload, {
       forceRefresh: options?.forceRefresh === true
@@ -884,14 +884,14 @@ const Api = {
   async getRole(roleKey) {
     return this.requestWithSession('roles', 'get', {
       role_key: roleKey,
-      sheetName: CONFIG.ROLES_SHEET_NAME
+      table: CONFIG.ROLES_TABLE
     });
   },
   async createRole(payload = {}) {
     return this.requestWithSession('roles', 'create', {
       role: payload,
       ...payload,
-      sheetName: CONFIG.ROLES_SHEET_NAME
+      table: CONFIG.ROLES_TABLE
     });
   },
   async updateRole(roleKey, updates = {}) {
@@ -899,13 +899,13 @@ const Api = {
       role_key: roleKey,
       updates,
       role: { role_key: roleKey, ...updates },
-      sheetName: CONFIG.ROLES_SHEET_NAME
+      table: CONFIG.ROLES_TABLE
     });
   },
   async deleteRole(roleKey) {
     return this.requestWithSession('roles', 'delete', {
       role_key: roleKey,
-      sheetName: CONFIG.ROLES_SHEET_NAME
+      table: CONFIG.ROLES_TABLE
     });
   },
   async listRolePermissions(options = {}) {
@@ -1196,7 +1196,7 @@ const Api = {
   async listWorkflowRules(filters = {}, options = {}) {
     const response = await this.requestWithSession('workflow', 'list', {
       filters,
-      sheetName: CONFIG.WORKFLOW_RULES_SHEET_NAME
+      table: CONFIG.WORKFLOW_RULES_TABLE
     }, options);
     const normalizeRows = rows => Array.isArray(rows) ? rows.map(row => this.normalizeWorkflowRulePayload(row)) : rows;
     const normalized = Array.isArray(response)
@@ -1215,7 +1215,7 @@ const Api = {
   async getWorkflowRule(workflowRuleId) {
     const response = await this.requestWithSession('workflow', 'get', {
       workflow_rule_id: workflowRuleId,
-      sheetName: CONFIG.WORKFLOW_RULES_SHEET_NAME
+      table: CONFIG.WORKFLOW_RULES_TABLE
     });
     return this.normalizeWorkflowRulePayload(response);
   },
@@ -1224,7 +1224,7 @@ const Api = {
     const body = {
       rule: normalizedRule,
       ...normalizedRule,
-      sheetName: CONFIG.WORKFLOW_RULES_SHEET_NAME
+      table: CONFIG.WORKFLOW_RULES_TABLE
     };
     try {
       return await this.requestWithSession('workflow', 'save_rule', body);
@@ -1242,7 +1242,7 @@ const Api = {
     const body = {
       workflow_rule_id: source.workflow_rule_id,
       id: source.id,
-      sheetName: CONFIG.WORKFLOW_RULES_SHEET_NAME
+      table: CONFIG.WORKFLOW_RULES_TABLE
     };
     try {
       return await this.requestWithSession('workflow', 'delete_rule', body);
@@ -1336,7 +1336,7 @@ const Api = {
       record_id: normalizedRecordId,
       record,
       requested_changes: requestedChanges,
-      sheetName: CONFIG.WORKFLOW_RULES_SHEET_NAME
+      table: CONFIG.WORKFLOW_RULES_TABLE
     };
   },
   async validateWorkflowTransition(payload = {}) {
@@ -1382,31 +1382,31 @@ const Api = {
   async requestWorkflowApproval(payload = {}) {
     return this.requestWithSession('workflow', 'request_approval', {
       ...payload,
-      sheetName: CONFIG.WORKFLOW_APPROVALS_SHEET_NAME
+      table: CONFIG.WORKFLOW_APPROVALS_TABLE
     });
   },
   async approveWorkflowRequest(payload = {}) {
     return this.requestWithSession('workflow', 'approve', {
       ...payload,
-      sheetName: CONFIG.WORKFLOW_APPROVALS_SHEET_NAME
+      table: CONFIG.WORKFLOW_APPROVALS_TABLE
     });
   },
   async rejectWorkflowRequest(payload = {}) {
     return this.requestWithSession('workflow', 'reject', {
       ...payload,
-      sheetName: CONFIG.WORKFLOW_APPROVALS_SHEET_NAME
+      table: CONFIG.WORKFLOW_APPROVALS_TABLE
     });
   },
   async listPendingWorkflowApprovals(filters = {}) {
     return this.requestWithSession('workflow', 'list_pending_approvals', {
       filters,
-      sheetName: CONFIG.WORKFLOW_APPROVALS_SHEET_NAME
+      table: CONFIG.WORKFLOW_APPROVALS_TABLE
     });
   },
   async listWorkflowAudit(filters = {}) {
     return this.requestWithSession('workflow', 'list_audit', {
       filters,
-      sheetName: CONFIG.WORKFLOW_AUDIT_LOG_SHEET_NAME
+      table: CONFIG.WORKFLOW_AUDIT_LOG_TABLE
     });
   },
 };

@@ -57,13 +57,17 @@ export default async function handler(req, res) {
     return res.status(405).json({ ok: false, error: 'Method Not Allowed. Use POST.' });
   }
 
-  // Keep APPS_SCRIPT_WEBAPP_URL pointed to the latest Apps Script Web App /exec deployment URL.
-  // This proxy is only used when frontend API_BASE_URL resolves to /api/proxy.
-  const targetUrl = String(process.env.APPS_SCRIPT_WEBAPP_URL || '').trim();
+  const targetUrl = String(
+    process.env.API_PROXY_TARGET_URL ||
+    process.env.SUPABASE_SERVICE_PROXY_URL ||
+    process.env.BACKEND_API_URL ||
+    process.env.APPS_SCRIPT_WEBAPP_URL || '' // legacy compatibility - remove after migration closure
+  ).trim();
+
   if (!targetUrl) {
     return res.status(500).json({
       ok: false,
-      error: 'Server is missing APPS_SCRIPT_WEBAPP_URL.',
+      error: 'Server is missing API_PROXY_TARGET_URL.',
       targetUrl
     });
   }
@@ -71,7 +75,7 @@ export default async function handler(req, res) {
   const payload = parseRequestBody(req.body);
   const resource = String(payload?.resource || '').trim();
   const action = String(payload?.action || '').trim();
-  res.setHeader('X-Upstream-Apps-Script', targetUrl);
+  res.setHeader('X-Upstream-Target', targetUrl);
 
   console.log('[proxy] forwarding request', {
     targetUrl,
@@ -91,7 +95,7 @@ export default async function handler(req, res) {
     });
     return res.status(502).json({
       ok: false,
-      error: 'Failed to reach Apps Script backend',
+      error: 'Failed to reach upstream backend',
       upstreamStatus: 502,
       targetUrl,
       details: String(error?.message || error)
@@ -140,7 +144,7 @@ export default async function handler(req, res) {
   if (!upstreamResult.parsedJson) {
     return res.status(upstreamResult.upstream.status || 502).json({
       ok: false,
-      error: 'Apps Script returned invalid JSON',
+      error: 'Upstream backend returned invalid JSON',
       upstreamStatus: upstreamResult.upstream.status || 502,
       targetUrl,
       contentType: upstreamResult.contentType,

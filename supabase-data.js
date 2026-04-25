@@ -93,8 +93,8 @@
     'created_by',
     'updated_by'
   ]);
-  // TEMPORARY compatibility sanitizer for stale payload keys from older frontend builds.
-  // Do not add new dependencies here; remove this block after all deployed clients are Supabase-only.
+  // legacy compatibility - remove after migration closure
+  // Compatibility sanitizer for stale payload keys from older frontend builds.
   const EVENT_LEGACY_FIELDS = new Set([
     'allDay',
     'all_day',
@@ -108,6 +108,8 @@
     'backendUrl',
     'sheetName',
     'tabName',
+    'table',
+    'entity',
     'resource',
     'action'
   ]);
@@ -126,6 +128,8 @@
     'sheetName',
     'tabName',
     'sheet_name',
+    'table',
+    'entity',
     'id',
     'permission',
     'description',
@@ -245,18 +249,18 @@
     'capability_name','capability_value','notes','service_start_date','service_end_date','currency'
   ]);
   const AGREEMENT_LEGACY_FIELDS = new Set([
-    'backendToken','backendUrl','sheetName','tabName','resource','action',
+    'backendToken','backendUrl','sheetName','tabName','table','entity','resource','action',
     'agreement_length','lead_id','deal_id',
     'provider_address','provider_signatory_name_primary','provider_signatory_title_primary',
     'saas_total','one_time_total',
     'agreement_items','items'
   ]);
   const PROPOSAL_LEGACY_FIELDS = new Set([
-    'backendToken','backendUrl','sheetName','tabName','resource','action','lead_id','agreement_id','saas_total','one_time_total',
+    'backendToken','backendUrl','sheetName','tabName','table','entity','resource','action','lead_id','agreement_id','saas_total','one_time_total',
     'valid_until','customer_sign_date','proposal_items','items'
   ]);
   const PROPOSAL_CATALOG_LEGACY_FIELDS = new Set([
-    'backendToken','backendUrl','sheetName','tabName','resource','action','item_section','itemName','defaultLocationName','unitPrice',
+    'backendToken','backendUrl','sheetName','tabName','table','entity','resource','action','item_section','itemName','defaultLocationName','unitPrice',
     'discountPercent','sortOrder'
   ]);
   const LEADS_DEALS_LEGACY_FIELDS = new Set([
@@ -264,6 +268,8 @@
     'backendUrl',
     'sheetName',
     'tabName',
+    'table',
+    'entity',
     'resource',
     'action',
     'proposal_id'
@@ -273,7 +279,7 @@
     'sort', 'sortBy', 'sortDir', 'sort_by', 'sort_dir',
     'search', 'q', 'mode', 'tab', 'view',
     'summary_only', 'fields',
-    'resource', 'action',  'sheetName', 'tabName', 'updates', 'item'
+    'resource', 'action', 'table', 'entity', 'sheetName', 'tabName', 'updates', 'item'
   ]);
   const USER_PROFILE_COLUMNS = new Set([
     'id',

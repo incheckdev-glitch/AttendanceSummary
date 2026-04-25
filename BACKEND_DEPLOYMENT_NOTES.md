@@ -1,16 +1,31 @@
-# Backend deployment and patch-risk note
+# Backend deployment notes (Supabase-first)
 
-This project currently relies on a Google Apps Script backend behind a Vercel proxy (`/api/proxy`).
+This platform now runs on Supabase as the active backend. The frontend data layer (`supabase-data.js`) is the primary request dispatcher, and `/api/proxy` is an optional generic relay for controlled upstream forwarding when needed by deployment topology.
 
-## Known risks (no behavior change in this patch)
+## Current architecture
 
-- **Patch-heavy backend growth risk**: repeated route aliases and fallback actions (for example, multiple `workflow` action names) can mask contract drift over time.
-- **Layered override risk**: when behavior is spread between Apps Script aliases, frontend fallback logic, and proxy-level parsing, a hotfix in one layer may accidentally conflict with another.
-- **Deployment mismatch risk**: Vercel can point at one Apps Script deployment URL while manual Apps Script edits are published to a different deployment/version.
+- **Data backend**: Supabase tables + RPCs.
+- **Auth**: Supabase Auth session + role-based checks in the client.
+- **API routing**: frontend routes requests to migrated resources through `SupabaseData.dispatch`.
+- **Proxy usage**: optional Vercel proxy (`/api/proxy`) with neutral upstream forwarding (`API_PROXY_TARGET_URL`) and backward-compatible env alias support.
 
-## Operational guidance
+## Environment variables
 
-- Keep `APPS_SCRIPT_WEBAPP_URL` in Vercel env synced to the intended active Apps Script deployment URL.
-- Prefer updating backend route/action compatibility in one place and removing stale aliases once clients are migrated.
-- When debugging failures, capture proxy error payload fields (`upstreamStatus`, `contentType`, `upstreamBodySample`, `resource`, `action`) before changing business logic.
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+- `API_PROXY_TARGET_URL` (optional, only when `/api/proxy` is intentionally used)
+- `SUPABASE_SERVICE_PROXY_URL` / `BACKEND_API_URL` (optional aliases for proxy target resolution)
+- `APPS_SCRIPT_WEBAPP_URL` is accepted only as a temporary compatibility alias.
 
+## Database migration workflow
+
+- Keep SQL schema changes in `sql/migrations/`.
+- Apply migrations in order and verify affected resources in the UI.
+- For role/permission changes, validate both table rows and RPC behavior.
+- After each migration, test create/list/update/delete paths for touched resources.
+
+## Compatibility notes
+
+- Some request sanitizers still accept legacy payload keys (`sheetName`, `tabName`) to avoid breaking stale clients.
+- Compatibility aliases are explicitly marked in code with:
+  `legacy compatibility - remove after migration closure`.
