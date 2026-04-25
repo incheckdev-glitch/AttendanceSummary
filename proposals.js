@@ -483,8 +483,21 @@ const Proposals = {
       normalized[field] = typeof value === 'string' ? value.trim() : value;
     });
     normalized.id = String(source.id || normalized.id || '').trim();
-    normalized.proposal_id = String(normalized.proposal_id || source.proposalId || '').trim();
-    normalized.ref_number = this.ensureRefNumber(normalized.ref_number || '');
+    normalized.proposal_id = String(
+      normalized.proposal_id ||
+      source.proposalId ||
+      source.proposal_number ||
+      source.proposalNumber ||
+      ''
+    ).trim();
+    normalized.proposal_number = String(
+      source.proposal_number ||
+      source.proposalNumber ||
+      normalized.ref_number ||
+      source.refNumber ||
+      ''
+    ).trim();
+    normalized.ref_number = this.ensureRefNumber(normalized.ref_number || normalized.proposal_number || '');
     normalized.proposal_title = String(normalized.proposal_title || '').trim();
     normalized.customer_name = String(normalized.customer_name || '').trim();
     normalized.status = String(normalized.status || '').trim();
@@ -723,7 +736,12 @@ const Proposals = {
         else if (candidate.proposal && typeof candidate.proposal === 'object') proposal = candidate.proposal;
         else if (Array.isArray(candidate.data) && candidate.data[0] && typeof candidate.data[0] === 'object') proposal = candidate.data[0];
         else if (candidate.data && typeof candidate.data === 'object' && !Array.isArray(candidate.data)) proposal = candidate.data;
-        else if (candidate.proposal_id || candidate.ref_number || candidate.proposal_title) proposal = candidate;
+        else if (
+          candidate.proposal_id ||
+          candidate.proposal_number ||
+          candidate.ref_number ||
+          candidate.proposal_title
+        ) proposal = candidate;
       }
 
       if (!items.length) {
@@ -1080,7 +1098,7 @@ const Proposals = {
           <div class="muted" style="margin-top:6px;font-size:13px;">${textValue(proposalData.proposal_title || proposalData.proposal_id || proposalData.ref_number)}</div>
         </div>
         <div class="meta-box">
-          <div class="meta-row"><div class="meta-key">Proposal ID</div><div>${textValue(proposalData.proposal_id)}</div></div>
+          <div class="meta-row"><div class="meta-key">Proposal ID</div><div>${textValue(proposalData.proposal_id || 'Missing ID')}</div></div>
           <div class="meta-row"><div class="meta-key">Reference #</div><div>${textValue(proposalData.ref_number)}</div></div>
           <div class="meta-row"><div class="meta-key">Proposal Date</div><div>${dateValue(proposalData.proposal_date)}</div></div>
           <div class="meta-row"><div class="meta-key">Valid Until</div><div>${dateValue(proposalData.proposal_valid_until || proposalData.valid_until)}</div></div>
@@ -1516,12 +1534,16 @@ const Proposals = {
     }
 
     const textCell = value => U.escapeHtml(String(value ?? '').trim() || '—');
+    const proposalIdCell = row => {
+      const displayValue = String(row?.proposal_id || row?.proposalId || '').trim();
+      return U.escapeHtml(displayValue || 'Missing ID');
+    };
 
     E.proposalsTbody.innerHTML = rows
       .map(row => {
         const id = U.escapeAttr(row.id || '');
         return `<tr>
-          <td>${textCell(row.proposal_id)}</td>
+          <td>${proposalIdCell(row)}</td>
           <td>${textCell(row.ref_number)}</td>
           <td>${textCell(row.proposal_title)}</td>
           <td>${textCell(row.customer_name)}</td>
@@ -2134,6 +2156,14 @@ const Proposals = {
     }
     const proposalId = String(E.proposalForm?.dataset.id || '').trim();
     const proposal = this.collectProposalFormData();
+    if (mode !== 'edit') {
+      proposal.proposal_id = this.ensureProposalId(proposal.proposal_id);
+      if (!proposal.proposal_id) {
+        UI.toast('Unable to generate proposal ID. Please retry.');
+        return;
+      }
+      if (E.proposalFormProposalId) E.proposalFormProposalId.value = proposal.proposal_id;
+    }
     const items = this.collectProposalItems();
     const currentRecord = this.state.rows.find(row => String(row.id || '') === proposalId) || {};
     const requestedDiscount = items.reduce((max, item) => Math.max(max, this.toNumberSafe(item.discount_percent)), 0);
@@ -2184,6 +2214,17 @@ const Proposals = {
       }
 
       const parsed = this.extractProposalAndItems(response, proposalId);
+      const savedProposal = parsed?.proposal && typeof parsed.proposal === 'object' ? parsed.proposal : null;
+      if (!savedProposal) throw new Error('Proposal save returned no proposal record.');
+      const savedBusinessId = String(savedProposal.proposal_id || '').trim();
+      const savedProposalNumber = String(savedProposal.ref_number || savedProposal.proposal_number || '').trim();
+      const savedUuid = String(savedProposal.id || '').trim();
+      if (!savedBusinessId || !savedProposalNumber) {
+        throw new Error('Proposal save failed because no proposal ID/number was returned.');
+      }
+      if (!savedUuid) {
+        throw new Error('Proposal save failed because no internal proposal ID was returned.');
+      }
       if (parsed?.proposal) {
         this.upsertLocalRow(parsed.proposal);
         this.setCachedDetail(parsed.proposal.id || proposalId, parsed.proposal, parsed.items);
