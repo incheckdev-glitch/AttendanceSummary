@@ -24,7 +24,8 @@ const ProposalCatalog = {
     lookupRows: [],
     lookupLoadedAt: 0,
     lookupTtlMs: 5 * 60 * 1000,
-    lookupLoadingPromise: null
+    lookupLoadingPromise: null,
+    lookupLimit: 500
   },
   normalizeText(value) {
     return String(value ?? '').trim();
@@ -355,25 +356,33 @@ const ProposalCatalog = {
     if (!force && hasWarmCache) return this.state.lookupRows;
     if (this.state.lookupLoadingPromise && !force) return this.state.lookupLoadingPromise;
     const loadPromise = (async () => {
-      const rows = [];
-      let page = 1;
-      let hasMore = true;
-      while (hasMore && page <= 20) {
-        const response = await Api.listProposalCatalogItems({
-          limit: 200,
-          page,
-          summary_only: true,
-          sort_by: 'sort_order',
-          sort_dir: 'asc'
-        });
-        const normalized = this.extractListResult(response);
-        rows.push(...normalized.rows.map(item => this.normalizeItem(item)));
-        hasMore = Boolean(normalized.hasMore);
-        page += 1;
-      }
-      this.state.lookupRows = rows;
+      const response = await Api.listProposalCatalogItems({
+        limit: Number(this.state.lookupLimit || 500),
+        page: 1,
+        is_active: true,
+        summary_only: true,
+        sort_by: 'sort_order',
+        sort_dir: 'asc',
+        fields: [
+          'id',
+          'catalog_item_id',
+          'is_active',
+          'section',
+          'category',
+          'item_name',
+          'default_location_name',
+          'unit_price',
+          'discount_percent',
+          'quantity',
+          'capability_name',
+          'capability_value',
+          'notes',
+          'sort_order'
+        ]
+      });
+      this.state.lookupRows = this.extractListResult(response).rows.map(item => this.normalizeItem(item));
       this.state.lookupLoadedAt = Date.now();
-      return rows;
+      return this.state.lookupRows;
     })();
     this.state.lookupLoadingPromise = loadPromise;
     try {
@@ -381,6 +390,12 @@ const ProposalCatalog = {
     } finally {
       this.state.lookupLoadingPromise = null;
     }
+  },
+  invalidateLookupCache() {
+    this.state.lookupRows = [];
+    this.state.lookupLoadedAt = 0;
+    this.state.lookupLoadingPromise = null;
+    window.dispatchEvent(new CustomEvent('proposal-catalog-lookup-invalidated'));
   },
   getValue(el) {
     return String(el?.value || '').trim();
@@ -486,10 +501,12 @@ const ProposalCatalog = {
       if (mode === 'edit' && recordId) {
         const response = await this.updateProposalCatalogItem(recordId, payload);
         this.upsertLocalRow(response?.item || response?.data?.item || response || { ...payload, id: recordId });
+        this.invalidateLookupCache();
         UI.toast('Catalog item updated.');
       } else {
         const response = await this.createProposalCatalogItem(payload);
         this.upsertLocalRow(response?.item || response?.data?.item || response || payload);
+        this.invalidateLookupCache();
         UI.toast('Catalog item created.');
       }
       this.closeForm();
@@ -536,6 +553,7 @@ const ProposalCatalog = {
     try {
       await this.deleteProposalCatalogItem(catalogItemUuid);
       this.removeLocalRow(catalogItemUuid);
+      this.invalidateLookupCache();
       UI.toast('Catalog item deleted.');
       this.closeForm();
     } catch (error) {
@@ -548,8 +566,7 @@ const ProposalCatalog = {
   },
   getActiveCatalogItems(section = '') {
     const normalizedSection = String(section || '').trim().toLowerCase();
-    const sourceRows = this.state.lookupRows.length ? this.state.lookupRows : this.state.rows;
-    return sourceRows.filter(item => {
+    return this.state.lookupRows.filter(item => {
       if (!item.is_active) return false;
       if (!normalizedSection) return true;
       return item.section === normalizedSection;
