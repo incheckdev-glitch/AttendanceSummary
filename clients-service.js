@@ -423,6 +423,84 @@ const ClientsService = {
     }
 
     return { ...clientsList, rows: clients, agreements, agreement_items: itemRows, invoices, receipts };
+  },
+  async getClientAnalyticsBundle(clientIdOrUuid, options = {}) {
+    const raw = String(clientIdOrUuid || '').trim();
+    if (!raw) throw new Error('Client id is required.');
+    const db = this.getDb();
+    const safeLimit = Math.max(20, Math.min(300, Number(options.limit) || 150));
+    const client = await this.getClient(raw);
+    const companyName = String(client.company_name || client.client_name || '').trim();
+    const escapedCompany = companyName.replace(/[%_,]/g, ' ').trim();
+    const clientUuid = String(client.id || '').trim();
+    const clientBusinessId = String(client.client_id || '').trim();
+
+    // temporary analytics fallback - replace with SQL view/RPC aggregation
+    const agreementClauses = [];
+    if (escapedCompany) agreementClauses.push(`customer_name.ilike.%${escapedCompany}%`);
+    if (clientBusinessId) agreementClauses.push(`client_id.eq.${clientBusinessId}`);
+    if (!agreementClauses.length && clientUuid) agreementClauses.push(`client_id.eq.${clientUuid}`);
+
+    const invoiceClauses = [`client_id.eq.${clientUuid}`];
+    if (clientBusinessId) invoiceClauses.push(`client_id.eq.${clientBusinessId}`);
+    if (escapedCompany) {
+      invoiceClauses.push(`customer_name.ilike.%${escapedCompany}%`);
+      invoiceClauses.push(`customer_legal_name.ilike.%${escapedCompany}%`);
+    }
+
+    const [agreementsRes, invoicesRes, receiptsRes] = await Promise.all([
+      db
+        .from('agreements')
+        .select(this.AGREEMENT_SELECT_COLUMNS)
+        .or(agreementClauses.join(','))
+        .order('updated_at', { ascending: false })
+        .limit(safeLimit),
+      db
+        .from('invoices')
+        .select('id,invoice_id,invoice_number,client_id,agreement_id,proposal_id,customer_name,customer_legal_name,issue_date,due_date,invoice_total,received_amount,pending_amount,payment_state,status,currency,notes,updated_at,created_at')
+        .or(invoiceClauses.join(','))
+        .order('updated_at', { ascending: false })
+        .limit(safeLimit),
+      db
+        .from('receipts')
+        .select('id,receipt_id,receipt_number,invoice_id,client_id,customer_name,customer_legal_name,status,payment_state,amount_received,pending_amount,currency,updated_at,created_at,receipt_date,payment_reference,notes')
+        .or(invoiceClauses.join(','))
+        .order('updated_at', { ascending: false })
+        .limit(safeLimit)
+    ]);
+    if (agreementsRes.error) throw this.friendlyError('Unable to load client agreements', agreementsRes.error);
+    if (invoicesRes.error) throw this.friendlyError('Unable to load client invoices', invoicesRes.error);
+    if (receiptsRes.error) throw this.friendlyError('Unable to load client receipts', receiptsRes.error);
+
+    const agreementRows = this.coerceLinkedRows_(agreementsRes, 'agreements');
+    const agreementIds = agreementRows.map(row => String(row.id || '').trim()).filter(Boolean);
+    const itemsRows = agreementIds.length
+      ? await this.fetchAgreementItemsForClientAgreementIds_(db, agreementIds)
+      : [];
+
+    return {
+      client,
+      agreements: this.attachAgreementItems(agreementRows.map(row => this.mapAgreementRow(row)), itemsRows),
+      agreement_items: itemsRows,
+      invoices: this.coerceLinkedRows_(invoicesRes, 'invoices'),
+      receipts: this.coerceLinkedRows_(receiptsRes, 'receipts')
+    };
+  },
+  async fetchAgreementItemsForClientAgreementIds_(db, agreementIds = []) {
+    const ids = Array.isArray(agreementIds) ? agreementIds.map(id => String(id || '').trim()).filter(Boolean) : [];
+    if (!ids.length) return [];
+    const rows = [];
+    const chunkSize = 40;
+    for (let index = 0; index < ids.length; index += chunkSize) {
+      const chunk = ids.slice(index, index + chunkSize);
+      const { data, error } = await db
+        .from('agreement_items')
+        .select('agreement_id,section,location_name,item_name,quantity,line_total,service_start_date,service_end_date,billing_frequency,currency,updated_at,created_at')
+        .in('agreement_id', chunk);
+      if (error) throw this.friendlyError('Unable to load agreement items for client', error);
+      if (Array.isArray(data)) rows.push(...data);
+    }
+    return rows;
   }
 };
 
