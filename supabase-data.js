@@ -1783,12 +1783,21 @@
       firstDefined(payload.updates || {}, ['id', 'db_id', 'record_id']) ??
       ''
     ).trim();
-    if (directId) return directId;
+    if (directId) {
+      const { data, error } = await client
+        .from('operations_onboarding')
+        .select('id')
+        .eq('id', directId)
+        .maybeSingle();
+      if (error) throw friendlyError('Unable to resolve operations onboarding identifier', error);
+      if (data?.id) return String(data.id || '').trim();
+    }
 
     const onboardingId = String(
       firstDefined(payload, ['onboarding_id', 'onboardingId']) ??
       firstDefined(payload.item || {}, ['onboarding_id', 'onboardingId']) ??
       firstDefined(payload.updates || {}, ['onboarding_id', 'onboardingId']) ??
+      directId ??
       ''
     ).trim();
     if (onboardingId) {
@@ -2906,6 +2915,61 @@
       if (error) throw friendlyError('Unable to load notifications', error);
       return { handled: true, data: normalizePagedList('notifications', data, listControls, count) };
     }
+    if (resource === 'technical_admin_requests' && action === 'list') {
+      assertAllowed('technical_admin_requests', 'list');
+      const { controls, dbFilters } = splitListPayload(payload);
+      const listControls = normalizeListControls(controls, 'technical_admin_requests');
+      const statusValue = String(
+        dbFilters.request_status ??
+        dbFilters.technical_request_status ??
+        controls.request_status ??
+        controls.technical_request_status ??
+        ''
+      ).trim();
+      const agreementId = String(dbFilters.agreement_id ?? controls.agreement_id ?? '').trim();
+
+      let query = client
+        .from('operations_onboarding')
+        .select('*', { count: 'planned' })
+        .or('technical_request_type.not.is.null,technical_request_status.not.is.null');
+
+      if (agreementId) query = query.eq('agreement_id', agreementId);
+      if (statusValue) {
+        const normalizedStatus = statusValue.toLowerCase().replace(/[\s-]+/g, '_');
+        const statusMap = {
+          requested: ['Requested', 'requested', 'Pending', 'pending'],
+          pending: ['Pending', 'pending', 'Requested', 'requested'],
+          in_progress: ['In Progress', 'in_progress', 'In progress', 'in progress'],
+          completed: ['Completed', 'completed'],
+          cancelled: ['Cancelled', 'cancelled', 'Canceled', 'canceled']
+        };
+        const allowedStatuses = statusMap[normalizedStatus];
+        if (allowedStatuses) query = query.in('technical_request_status', allowedStatuses);
+        else query = query.eq('technical_request_status', statusValue);
+      }
+
+      const searchTerm = String(controls.search ?? controls.q ?? '').trim();
+      if (searchTerm) {
+        const safeSearch = searchTerm.replace(/[%]/g, '').replace(/[,]/g, ' ');
+        query = query.or([
+          `onboarding_id.ilike.%${safeSearch}%`,
+          `agreement_id.ilike.%${safeSearch}%`,
+          `agreement_number.ilike.%${safeSearch}%`,
+          `client_name.ilike.%${safeSearch}%`,
+          `technical_request_type.ilike.%${safeSearch}%`,
+          `technical_request_status.ilike.%${safeSearch}%`,
+          `technical_request_details.ilike.%${safeSearch}%`
+        ].join(','));
+      }
+
+      query = query
+        .order('requested_at', { ascending: false, nullsFirst: false })
+        .order('updated_at', { ascending: false, nullsFirst: false })
+        .range(listControls.from, listControls.to);
+      const { data, error, count } = await query;
+      if (error) throw friendlyError('Unable to load technical_admin_requests', error);
+      return { handled: true, data: normalizePagedList('technical_admin_requests', data, listControls, count) };
+    }
     if (resource === 'notifications' && action === 'get_unread_count') {
       assertAllowed('notifications', 'get_unread_count');
       const currentUserId = await getCurrentUserId(client);
@@ -3291,8 +3355,19 @@
       if (['proposal_catalog', 'proposals', 'agreements', 'clients', 'invoices', 'receipts'].includes(resource) && !Object.keys(publicUpdates).length) {
         throw new Error(`${resource} update payload is empty after normalization.`);
       }
-      const { data, error } = await client.from(table).update(publicUpdates).eq(key, id).select('*').single();
-      if (error) throw friendlyError(`Unable to update ${resource} record`, error);
+      let data;
+      if (resource === 'operations_onboarding') {
+        const { data: rows, error } = await client.from(table).update(publicUpdates).eq(key, id).select('*');
+        if (error) throw friendlyError(`Unable to update ${resource} record`, error);
+        const updatedRows = Array.isArray(rows) ? rows : [];
+        if (!updatedRows.length) throw new Error('Technical admin request was not found or is no longer available.');
+        if (updatedRows.length > 1) throw new Error('Unable to update operations_onboarding record: matched multiple rows.');
+        data = updatedRows[0];
+      } else {
+        const { data: singleRow, error } = await client.from(table).update(publicUpdates).eq(key, id).select('*').single();
+        if (error) throw friendlyError(`Unable to update ${resource} record`, error);
+        data = singleRow;
+      }
       if (resource === 'tickets' && isAdminDev()) {
         const internalUpdates = toTicketInternalRecord(safeUpdates);
         internalUpdates.ticket_id = ticketRowId({ id });

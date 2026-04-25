@@ -147,6 +147,9 @@ const TechnicalAdmin = {
     const resolvedLocationCount = requestLocationCount ?? agreementLocationCount ?? derivedLocationCount;
     const sourceId = String(source.id || '').trim();
     const onboardingId = String(this.pick(source.onboarding_id, source.onboardingId)).trim();
+    const technicalRequestType = String(this.pick(source.technical_request_type, source.request_type, source.requestType, 'Technical Admin')).trim();
+    const technicalRequestDetails = String(this.pick(source.technical_request_details, source.request_details, source.request_message, source.requestMessage)).trim();
+    const technicalRequestStatus = String(this.pick(source.technical_request_status, source.request_status, source.requestStatus)).trim() || 'Requested';
     return {
       id: sourceId,
       db_id: sourceId,
@@ -156,11 +159,14 @@ const TechnicalAdmin = {
       onboarding_id: onboardingId,
       client_id: String(this.pick(source.client_id, source.clientId)).trim(),
       client_name: String(this.pick(source.client_name, source.clientName, source.customer_name, source.customerName)).trim(),
-      request_type: String(this.pick(source.technical_request_type, source.request_type, source.requestType, 'Technical Admin')).trim(),
+      request_type: technicalRequestType,
+      technical_request_type: technicalRequestType,
       request_title: 'Technical Admin Request',
-      request_message: String(this.pick(source.technical_request_details, source.request_message, source.requestMessage)).trim(),
-      request_details: String(this.pick(source.technical_request_details, source.request_details, source.requestDetails)).trim(),
-      request_status: String(this.pick(source.technical_request_status, source.request_status, source.requestStatus)).trim() || 'Requested',
+      request_message: technicalRequestDetails,
+      request_details: technicalRequestDetails,
+      technical_request_details: technicalRequestDetails,
+      request_status: technicalRequestStatus,
+      technical_request_status: technicalRequestStatus,
       priority: String(this.pick(source.priority)).trim(),
       location_count: Number.isFinite(Number(resolvedLocationCount)) ? Number(resolvedLocationCount) : null,
       number_of_locations: Number.isFinite(Number(resolvedLocationCount)) ? Number(resolvedLocationCount) : null,
@@ -172,6 +178,7 @@ const TechnicalAdmin = {
       agreement_status: String(this.pick(source.agreement_status, source.agreementStatus)).trim(),
       requested_by: String(this.pick(source.requested_by, source.requestedBy)).trim(),
       requested_at: String(this.pick(source.requested_at, source.requestedAt)).trim(),
+      csm_assigned_to: String(this.pick(source.csm_assigned_to, source.csmAssignedTo)).trim(),
       assigned_to: String(this.pick(source.technical_admin_assigned_to, source.technicalAdminAssignedTo, source.assigned_to, source.assignedTo)).trim(),
       requested_by_display: String(this.pick(source.requested_by_display, source.requested_by, source.requestedBy)).trim(),
       assigned_to_display: String(this.pick(source.assigned_to_display, source.technical_admin_assigned_to, source.assigned_to, source.assignedTo)).trim(),
@@ -619,9 +626,16 @@ const TechnicalAdmin = {
       const labelId = String(this.getRowById(rowId)?.technical_request_id || rowId).trim();
       UI.toast(`Technical request ${labelId} updated to ${nextStatus}.`);
       await this.loadAndRefresh({ force: true });
+      if (window.OperationsOnboarding?.loadAndRefresh) {
+        await window.OperationsOnboarding.loadAndRefresh({ force: true });
+      }
       await this.openDetails(rowId);
     } catch (error) {
-      UI.toast('Unable to update technical admin request status: ' + (error?.message || 'Unknown error'));
+      const rawMessage = String(error?.message || 'Unknown error');
+      const safeMessage = /coerce the result to a single json object|not found|no rows|matched multiple rows/i.test(rawMessage)
+        ? 'Technical admin request was not found or is no longer available.'
+        : rawMessage;
+      UI.toast('Unable to update technical admin request status: ' + safeMessage);
     }
   },
   async assignToFlow() {
