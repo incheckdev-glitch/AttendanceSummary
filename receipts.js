@@ -727,6 +727,16 @@ const Receipts = {
   getReceiptInvoiceKey(receipt = {}) {
     return String(receipt?.invoice_id || '').trim() || String(receipt?.invoice_number || '').trim();
   },
+  receiptMatchesInvoice(receipt = {}, invoiceId = '', invoiceNumber = '') {
+    const receiptInvoiceId = String(receipt?.invoice_id || '').trim();
+    const receiptInvoiceNumber = String(receipt?.invoice_number || '').trim();
+    if (invoiceId && receiptInvoiceId && receiptInvoiceId === invoiceId) return true;
+    if (invoiceNumber && receiptInvoiceNumber && receiptInvoiceNumber === invoiceNumber) return true;
+    if (invoiceId && receiptInvoiceNumber && receiptInvoiceNumber === invoiceId) return true;
+    if (invoiceNumber && receiptInvoiceId && receiptInvoiceId === invoiceNumber) return true;
+    if (!invoiceId && !invoiceNumber) return !!(receiptInvoiceId || receiptInvoiceNumber);
+    return false;
+  },
   getReceiptUniqueKey(receipt = {}) {
     return String(receipt?.id || '').trim() || String(receipt?.receipt_id || '').trim();
   },
@@ -784,7 +794,7 @@ const Receipts = {
   getReceiptOrderMeta(receipt = {}) {
     const receiptDateTs = this.parseOrderTimestamp(receipt?.receipt_date);
     const createdAtTs = this.parseOrderTimestamp(receipt?.created_at);
-    const idRaw = String(receipt?.id || receipt?.receipt_id || '').trim();
+    const idRaw = String(receipt?.id || receipt?.receipt_id || receipt?.receipt_number || '').trim();
     const idNum = Number(idRaw);
     return { receiptDateTs, createdAtTs, idRaw, idNum: Number.isFinite(idNum) ? idNum : Number.NaN };
   },
@@ -819,13 +829,19 @@ const Receipts = {
       )
     );
     const paidNow = Math.max(0, this.getReceiptAmountValue(receipt));
-    const currentInvoiceKey = this.getReceiptInvoiceKey({ ...invoice, ...receipt });
+    const currentInvoiceId = String(receipt?.invoice_id || invoice?.id || invoice?.invoice_id || '').trim();
+    const currentInvoiceNumber = String(receipt?.invoice_number || invoice?.invoice_number || '').trim();
     const currentUniqueKey = this.getReceiptUniqueKey(receipt);
     let oldPaidBeforeReceipt = null;
     if (Array.isArray(allReceiptsForInvoice)) {
       const normalizedRows = allReceiptsForInvoice
         .map(row => this.normalizeReceipt(row))
-        .filter(row => this.getReceiptInvoiceKey(row) === currentInvoiceKey);
+        .filter(row => this.receiptMatchesInvoice(row, currentInvoiceId, currentInvoiceNumber))
+        .filter(row => {
+          const rowKey = this.getReceiptUniqueKey(row);
+          if (!rowKey || !currentUniqueKey) return true;
+          return rowKey !== currentUniqueKey;
+        });
       if (normalizedRows.length) {
         const sorted = [...normalizedRows].sort((a, b) => this.compareReceiptOrder(a, b));
         const currentIndex = sorted.findIndex(row => this.getReceiptUniqueKey(row) === currentUniqueKey);
@@ -859,6 +875,7 @@ const Receipts = {
       old_paid_total: oldPaidBeforeReceipt,
       paid_now: paidNow,
       received_amount: paidNow,
+      amount_received: paidNow,
       new_paid_total: newPaidTotal,
       pending_amount: pendingAmount,
       payment_state: paymentState,
@@ -1202,8 +1219,8 @@ const Receipts = {
     const paymentSnapshot = this.resolveReceiptPaymentSnapshot(mergedReceipt, linkedInvoice || {}, invoiceReceipts);
     const normalizedNewPaidTotal = paymentSnapshot.new_paid_total;
     const normalizedPendingAmount = paymentSnapshot.pending_amount;
-    const normalizedPaymentState = String(formValues.payment_state || existing.payment_state || '').trim() || paymentSnapshot.payment_state;
-    const normalizedPaymentConclusion = String(formValues.payment_conclusion || existing.payment_conclusion || '').trim() || paymentSnapshot.payment_conclusion;
+    const normalizedPaymentState = String(paymentSnapshot.payment_state || '').trim() || 'Unpaid';
+    const normalizedPaymentConclusion = String(paymentSnapshot.payment_conclusion || '').trim() || 'Pending Settlement';
     return {
       receipt_id: String(formValues.receipt_id || existing.receipt_id || '').trim() || null,
       receipt_number: String(formValues.receipt_number || existing.receipt_number || '').trim() || null,
