@@ -812,7 +812,7 @@
       invoice_id: trimOrNull(firstDefined(record, ['invoice_id', 'invoiceId'])),
       client_id: trimOrNull(firstDefined(record, ['client_id', 'clientId'])),
       receipt_date: trimOrNull(firstDefined(record, ['receipt_date', 'receiptDate', 'received_date'])),
-      amount_received: numberOrNull(firstDefined(record, ['amount_received', 'amountReceived', 'received_amount', 'grand_total'])),
+      amount_received: numberOrNull(firstDefined(record, ['amount_received', 'amountReceived', 'received_amount'])),
       payment_method: trimOrNull(firstDefined(record, ['payment_method', 'paymentMethod'])),
       payment_reference: trimOrNull(firstDefined(record, ['payment_reference', 'paymentReference', 'reference'])),
       is_settlement: firstDefined(record, ['is_settlement', 'isSettlement']) === true,
