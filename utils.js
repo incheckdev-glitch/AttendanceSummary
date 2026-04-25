@@ -251,12 +251,21 @@ const U = {
     }
     return output;
   },
-  toMoneyNumber: value => {
+  normalizeMoney: value => {
     if (value === null || value === undefined || value === '') return 0;
-    if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
-    const parsed = Number(String(value).replace(/,/g, '').trim());
-    return Number.isFinite(parsed) ? parsed : 0;
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value)) return 0;
+      return Math.round(value * 100) / 100;
+    }
+    const normalized = String(value)
+      .replace(/[^0-9.\-]/g, '')
+      .trim();
+    if (!normalized) return 0;
+    const parsed = Number(normalized);
+    if (!Number.isFinite(parsed)) return 0;
+    return Math.round(parsed * 100) / 100;
   },
+  toMoneyNumber: value => U.normalizeMoney(value),
   calculatePendingAmount: (total, paid) => {
     const normalizedTotal = U.toMoneyNumber(total);
     const normalizedPaid = U.toMoneyNumber(paid);

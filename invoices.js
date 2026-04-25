@@ -60,16 +60,33 @@ const Invoices = {
   },
   statusOptions: ['Draft', 'Issued', 'Sent', 'Unpaid', 'Partially Paid', 'Paid', 'Overdue', 'Cancelled'],
   toNumberSafe(value) {
-    if (value === null || value === undefined || value === '') return 0;
-    if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
-    const parsed = Number(String(value).replace(/,/g, '').trim());
-    return Number.isFinite(parsed) ? parsed : 0;
+    return U.toMoneyNumber(value);
   },
   formatMoney(value) {
     return this.toNumberSafe(value).toLocaleString(undefined, { maximumFractionDigits: 2 });
   },
   normalizeText(value) {
     return String(value ?? '').trim().toLowerCase();
+  },
+  normalizeInvoiceFinancials(invoice = {}) {
+    const pickDefined = (...values) => values.find(value => value !== undefined && value !== null && !(typeof value === 'string' && value.trim() === ''));
+    const invoiceTotal = this.toNumberSafe(
+      pickDefined(invoice.invoice_total, invoice.grand_total, invoice.total_amount)
+    );
+    const amountPaid = this.toNumberSafe(
+      pickDefined(invoice.amount_paid, invoice.received_amount, invoice.paid_amount)
+    );
+    const pendingInput = pickDefined(invoice.pending_amount, invoice.amount_due, invoice.balance_due);
+    const pendingAmount = pendingInput === undefined
+      ? Math.max(0, invoiceTotal - amountPaid)
+      : this.toNumberSafe(pendingInput);
+    return {
+      invoice_total: invoiceTotal,
+      amount_paid: amountPaid,
+      pending_amount: pendingAmount,
+      payment_state: U.calculatePaymentState(invoiceTotal, amountPaid),
+      payment_conclusion: U.calculatePaymentConclusion(invoiceTotal, amountPaid)
+    };
   },
   canCreateReceiptFromInvoice(invoice = {}) {
     const status = this.normalizeText(invoice?.status || '');
@@ -382,16 +399,21 @@ const Invoices = {
       oldPaidTotal: derivedOldPaid,
       paidNow: derivedPaidNow
     });
-    const finalAmountPaid = normalizedAmountPaid ?? snapshot.amount_paid;
+    const normalizedFinancials = this.normalizeInvoiceFinancials({
+      invoice_total: normalized.invoice_total,
+      amount_paid: normalizedAmountPaid ?? snapshot.amount_paid,
+      pending_amount: pendingAmount
+    });
+    const finalAmountPaid = normalizedFinancials.amount_paid;
     normalized.old_paid_total = derivedOldPaid;
     normalized.paid_now = derivedPaidNow;
     normalized.amount_paid = finalAmountPaid;
     normalized.received_amount = finalAmountPaid;
     normalized.pending_amount = pendingAmount === undefined || pendingAmount === null || String(pendingAmount).trim?.() === ''
       ? snapshot.pending_amount
-      : this.toNumberSafe(pendingAmount);
-    normalized.payment_state = String(normalized.payment_state || source.paymentStatus || '').trim() || U.calculatePaymentState(normalized.invoice_total, finalAmountPaid);
-    normalized.payment_conclusion = String(normalized.payment_conclusion || source.settlement_status || source.settlementStatus || '').trim() || U.calculatePaymentConclusion(normalized.invoice_total, finalAmountPaid);
+      : normalizedFinancials.pending_amount;
+    normalized.payment_state = String(normalized.payment_state || source.paymentStatus || '').trim() || normalizedFinancials.payment_state;
+    normalized.payment_conclusion = String(normalized.payment_conclusion || source.settlement_status || source.settlementStatus || '').trim() || normalizedFinancials.payment_conclusion;
     if (!normalized.amount_in_words && normalized.invoice_total > 0) {
       normalized.amount_in_words = this.amountToWords(normalized.invoice_total, normalized.currency);
     }
@@ -1324,21 +1346,11 @@ const Invoices = {
   },
 
   derivePaymentFields(invoice = {}) {
-    const invoiceTotal = this.toNumberSafe(invoice.invoice_total ?? invoice.grand_total);
-    const amountPaidCandidate =
-      invoice.received_amount !== undefined && invoice.received_amount !== null && invoice.received_amount !== ''
-        ? invoice.received_amount
-        : invoice.amount_paid;
-    let amountPaid = this.toNumberSafe(amountPaidCandidate);
-    amountPaid = Math.max(0, amountPaid);
-
-    const pendingAmount = Math.max(0, invoiceTotal - amountPaid);
-    const paymentState = amountPaid <= 0 ? 'Unpaid' : pendingAmount > 0 ? 'Partially Paid' : 'Paid';
-
+    const normalized = this.normalizeInvoiceFinancials(invoice);
     return {
-      amount_paid: amountPaid,
-      pending_amount: pendingAmount,
-      payment_state: paymentState
+      amount_paid: normalized.amount_paid,
+      pending_amount: normalized.pending_amount,
+      payment_state: normalized.payment_state
     };
   },
   syncPaymentFieldsInForm() {

@@ -60,8 +60,7 @@ const Receipts = {
     rowActionInFlight: new Set()
   },
   toNumberSafe(value) {
-    const parsed = Number(String(value ?? '').replace(/,/g, '').trim());
-    return Number.isFinite(parsed) ? parsed : 0;
+    return U.toMoneyNumber(value);
   },
   formatMoney(value) {
     return this.toNumberSafe(value).toLocaleString(undefined, { maximumFractionDigits: 2 });
@@ -75,6 +74,19 @@ const Receipts = {
     const lower = normalized.toLowerCase();
     if (lower === 'undefined' || lower === 'null' || lower === 'n/a') return '';
     return normalized;
+  },
+  normalizeInvoiceFinancials(invoice = {}) {
+    const pickDefined = (...values) => values.find(value => value !== undefined && value !== null && !(typeof value === 'string' && value.trim() === ''));
+    const invoiceTotal = this.toNumberSafe(pickDefined(invoice.invoice_total, invoice.grand_total, invoice.total_amount));
+    const amountPaid = this.toNumberSafe(pickDefined(invoice.amount_paid, invoice.received_amount, invoice.paid_amount));
+    const pendingInput = pickDefined(invoice.pending_amount, invoice.amount_due, invoice.balance_due, invoice.balance_after);
+    const pendingAmount = pendingInput === undefined ? Math.max(0, invoiceTotal - amountPaid) : this.toNumberSafe(pendingInput);
+    return {
+      invoice_total: invoiceTotal,
+      amount_paid: amountPaid,
+      pending_amount: pendingAmount,
+      payment_state: U.calculatePaymentState(invoiceTotal, amountPaid)
+    };
   },
   receiptAmountInWords(value, currency = 'USD', fallbackAmount = 0) {
     const explicit = this.sanitizeText(value);
@@ -696,7 +708,7 @@ const Receipts = {
     const [{ data: invoiceRow, error: invoiceError }, { data: receiptRows, error: receiptsError }] = await Promise.all([
       client
         .from('invoices')
-        .select('id,subtotal_locations,subtotal_one_time,invoice_total,amount_paid,received_amount,pending_amount,payment_state')
+        .select('id,subtotal_locations,subtotal_one_time,invoice_total,amount_paid,received_amount,paid_now,pending_amount,payment_state')
         .eq('id', invoiceId)
         .maybeSingle(),
       client.from('receipts').select('id,invoice_id,amount_received').eq('invoice_id', invoiceId)
@@ -704,11 +716,17 @@ const Receipts = {
     if (invoiceError) throw new Error(invoiceError.message || 'Unable to load invoice before creating receipt.');
     if (!invoiceRow) throw new Error('Linked invoice was not found before creating receipt.');
     if (receiptsError) throw new Error(receiptsError.message || 'Unable to load previous receipts before creating receipt.');
-    const invoiceTotal = this.toNumberSafe(invoiceRow.invoice_total);
+    const normalizedInvoice = this.normalizeInvoiceFinancials(invoiceRow);
+    const invoiceTotal = this.toNumberSafe(normalizedInvoice.invoice_total);
     const paidNow = this.toNumberSafe(paidNowInput);
     const sumPreviousReceipts = (Array.isArray(receiptRows) ? receiptRows : []).reduce((sum, row) => sum + this.toNumberSafe(row?.amount_received), 0);
-    const invoiceAmountPaid = this.toNumberSafe(invoiceRow.amount_paid ?? invoiceRow.received_amount);
-    const oldPaidTotal = sumPreviousReceipts > 0 ? sumPreviousReceipts : invoiceAmountPaid;
+    const invoiceAmountPaid = this.toNumberSafe(normalizedInvoice.amount_paid);
+    const invoicePendingAmount = this.toNumberSafe(normalizedInvoice.pending_amount);
+    const oldPaidTotal = sumPreviousReceipts > 0
+      ? sumPreviousReceipts
+      : Math.abs(paidNow - invoicePendingAmount) < 0.01
+        ? invoiceAmountPaid
+        : Math.max(0, invoiceAmountPaid - paidNow);
     return this.calculatePaymentSnapshot({
       invoiceTotal,
       oldPaidTotal,
@@ -769,10 +787,12 @@ const Receipts = {
     }
     const hydrated = await this.hydrateInvoiceReceiptDraft(invoice);
     const sourceInvoice = { ...(invoice || {}), ...(hydrated.invoice || {}) };
-    const invoiceTotal = this.toNumberSafe(sourceInvoice?.invoice_total ?? sourceInvoice?.grand_total);
-    const oldPaidTotal = this.toNumberSafe(sourceInvoice?.amount_paid ?? sourceInvoice?.received_amount ?? sourceInvoice?.amount_received);
-    const pendingAmount = Math.max(0, this.toNumberSafe(sourceInvoice?.pending_amount || (invoiceTotal - oldPaidTotal)));
-    const paidNow = pendingAmount > 0 ? pendingAmount : 0;
+    const financials = this.normalizeInvoiceFinancials(sourceInvoice);
+    const invoiceTotal = this.toNumberSafe(financials.invoice_total);
+    const oldPaidTotal = this.toNumberSafe(financials.amount_paid);
+    const pendingAmount = this.toNumberSafe(financials.pending_amount);
+    const suggestedPaidNow = this.toNumberSafe(sourceInvoice?.paid_now);
+    const paidNow = suggestedPaidNow > 0 ? Math.min(suggestedPaidNow, pendingAmount || suggestedPaidNow) : (pendingAmount > 0 ? pendingAmount : 0);
     const snapshot = this.calculatePaymentSnapshot({ invoiceTotal, oldPaidTotal, paidNow });
     const draft = {
       receipt_id: '',
