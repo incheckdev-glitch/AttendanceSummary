@@ -1141,7 +1141,13 @@ const OperationsOnboarding = {
       });
       await this.loadAndRefresh({ force: true });
       if (window.TechnicalAdmin?.loadAndRefresh) {
+        if (window.TechnicalAdmin.state) window.TechnicalAdmin.state.page = 1;
         await window.TechnicalAdmin.loadAndRefresh({ force: true });
+        const activeSearch = String(window.TechnicalAdmin.state?.search || '').trim();
+        const activeStatus = String(window.TechnicalAdmin.state?.status || 'All').trim();
+        if (activeSearch || activeStatus !== 'All') {
+          UI.toast('Technical Admin list refreshed. Active filters may hide the new request.');
+        }
       } else {
         Api.clearApiCache('technical_admin_requests:list');
       }
