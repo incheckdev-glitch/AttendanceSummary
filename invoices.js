@@ -118,7 +118,11 @@ const Invoices = {
   },
   normalizeLinkedReceipt(raw = {}) {
     const source = window.Receipts?.normalizeReceipt ? window.Receipts.normalizeReceipt(raw) : { ...(raw || {}) };
-    const amountReceived = this.toNumberSafe(source?.amount_received);
+    const amountReceived = this.toNumberSafe(
+      source?.amount_received ??
+      source?.received_amount ??
+      source?.paid_now
+    );
     return {
       id: String(source?.id || '').trim(),
       receipt_id: String(source?.receipt_id || '').trim(),
@@ -135,7 +139,14 @@ const Invoices = {
     };
   },
   summarizeReceiptPayments(invoiceTotal, receipts = [], { baselinePaid = 0 } = {}) {
-    const normalized = (Array.isArray(receipts) ? receipts : []).map(receipt => this.normalizeLinkedReceipt(receipt));
+    const isVoided = receipt => {
+      const status = this.normalizeText(receipt?.status);
+      if (!status) return false;
+      return status.includes('cancel') || status.includes('void') || status.includes('delete');
+    };
+    const normalized = (Array.isArray(receipts) ? receipts : [])
+      .filter(receipt => !isVoided(receipt))
+      .map(receipt => this.normalizeLinkedReceipt(receipt));
     const receiptsPaidAmount = normalized.reduce((sum, receipt) => sum + this.toNumberSafe(receipt.amount_received), 0);
     const cumulativePaidAmount = Math.max(this.toNumberSafe(baselinePaid), this.toNumberSafe(receiptsPaidAmount));
     const pendingAmount = Math.max(0, this.toNumberSafe(invoiceTotal) - cumulativePaidAmount);
@@ -299,20 +310,30 @@ const Invoices = {
     try {
       const client = this.getSupabaseClient();
       let rows = [];
+      const selected = this.state.rows.find(row => this.invoiceDbId(row.id) === id) || this.state.selectedInvoice || {};
+      const invoiceNumber = String(selected?.invoice_number || '').trim();
       if (client) {
-        const { data, error } = await client
+        const query = filter => client
           .from('receipts')
-          .select('id,receipt_id,receipt_number,receipt_date,amount_received,payment_method,payment_reference,payment_state,status,notes,created_at,invoice_id')
-          .eq('invoice_id', id)
+          .select('id,receipt_id,receipt_number,receipt_date,amount_received,received_amount,paid_now,payment_method,payment_reference,payment_state,status,notes,created_at,invoice_id,invoice_number')
+          .match(filter)
           .order('receipt_date', { ascending: true, nullsFirst: false })
           .order('created_at', { ascending: true, nullsFirst: false });
+        const [byId, byNumber] = await Promise.all([
+          query({ invoice_id: id }),
+          invoiceNumber ? query({ invoice_number: invoiceNumber }) : Promise.resolve({ data: [], error: null })
+        ]);
+        const error = byId?.error || byNumber?.error;
         if (error) throw new Error(error.message || 'Unable to load receipts');
-        rows = Array.isArray(data) ? data : [];
+        rows = [...(Array.isArray(byId?.data) ? byId.data : []), ...(Array.isArray(byNumber?.data) ? byNumber.data : [])];
       } else {
-        const response = await Api.listReceipts({ invoice_id: id }, { page: 1, limit: 100, summary_only: true, forceRefresh: force });
-        rows = window.Receipts?.extractRows ? window.Receipts.extractRows(response) : [];
+        const responses = await Promise.all([
+          Api.listReceipts({ invoice_id: id }, { page: 1, limit: 100, summary_only: true, forceRefresh: force }),
+          invoiceNumber ? Api.listReceipts({ invoice_number: invoiceNumber }, { page: 1, limit: 100, summary_only: true, forceRefresh: force }) : Promise.resolve([])
+        ]);
+        rows = responses.flatMap(response => (window.Receipts?.extractRows ? window.Receipts.extractRows(response) : []));
       }
-      this.setInvoiceReceipts(id, rows.filter(row => String(row?.invoice_id || '').trim() === id));
+      this.setInvoiceReceipts(id, rows);
       this.applyReceiptPaymentSummary(this.state.selectedInvoice, { applyToForm: true });
     } catch (_error) {
       // Keep existing linked receipts visible.
@@ -447,25 +468,32 @@ const Invoices = {
   async loadInvoicePreviewData(invoiceRef) {
     const invoiceUuid = this.resolveInvoiceUuidForPreview(invoiceRef);
     const client = this.requireSupabaseClient();
-    const [{ data: invoiceRow, error: invoiceError }, { data: itemRows, error: itemsError }, { data: receiptRows, error: receiptsError }] = await Promise.all([
+    const [{ data: invoiceRow, error: invoiceError }, { data: itemRows, error: itemsError }] = await Promise.all([
       client.from('invoices').select('*').eq('id', invoiceUuid).maybeSingle(),
       client
         .from('invoice_items')
         .select('*')
         .eq('invoice_id', invoiceUuid)
         .order('line_no', { ascending: true, nullsFirst: false })
-        .order('created_at', { ascending: true, nullsFirst: false }),
-      client
-        .from('receipts')
-        .select('id,receipt_id,receipt_number,receipt_date,amount_received,payment_method,payment_reference,payment_state,status,notes,created_at,invoice_id')
-        .eq('invoice_id', invoiceUuid)
-        .order('receipt_date', { ascending: true, nullsFirst: false })
         .order('created_at', { ascending: true, nullsFirst: false })
     ]);
     if (invoiceError) throw new Error(`Unable to load invoice: ${invoiceError.message || 'Unknown error'}`);
     if (!invoiceRow) throw new Error('Invoice was not found.');
     if (itemsError) throw new Error(`Unable to load invoice items: ${itemsError.message || 'Unknown error'}`);
+    const invoiceNumber = String(invoiceRow?.invoice_number || '').trim();
+    const receiptQuery = filter => client
+      .from('receipts')
+      .select('id,receipt_id,receipt_number,receipt_date,amount_received,received_amount,paid_now,payment_method,payment_reference,payment_state,status,notes,created_at,invoice_id,invoice_number')
+      .match(filter)
+      .order('receipt_date', { ascending: true, nullsFirst: false })
+      .order('created_at', { ascending: true, nullsFirst: false });
+    const [byId, byNumber] = await Promise.all([
+      receiptQuery({ invoice_id: invoiceUuid }),
+      invoiceNumber ? receiptQuery({ invoice_number: invoiceNumber }) : Promise.resolve({ data: [], error: null })
+    ]);
+    const receiptsError = byId?.error || byNumber?.error;
     if (receiptsError) throw new Error(`Unable to load linked receipts: ${receiptsError.message || 'Unknown error'}`);
+    const receiptRows = [...(Array.isArray(byId?.data) ? byId.data : []), ...(Array.isArray(byNumber?.data) ? byNumber.data : [])];
     const normalizedInvoice = this.normalizeInvoice(invoiceRow);
     const paymentSummary = this.summarizeReceiptPayments(normalizedInvoice.invoice_total || normalizedInvoice.grand_total, receiptRows || [], {
       baselinePaid: normalizedInvoice.amount_paid ?? normalizedInvoice.received_amount ?? normalizedInvoice.old_paid_total
