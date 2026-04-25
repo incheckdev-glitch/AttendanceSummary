@@ -20,7 +20,11 @@ const ProposalCatalog = {
     total: 0,
     sort: 'updated_desc',
     formMode: 'create',
-    currentId: ''
+    currentId: '',
+    lookupRows: [],
+    lookupLoadedAt: 0,
+    lookupTtlMs: 5 * 60 * 1000,
+    lookupLoadingPromise: null
   },
   normalizeText(value) {
     return String(value ?? '').trim();
@@ -119,12 +123,26 @@ const ProposalCatalog = {
     };
   },
   async listProposalCatalogItems(options = {}) {
+    const sortMode = String(options.sortMode || this.state.sort || 'updated_desc').trim();
+    const sortMap = {
+      updated_desc: { sort_by: 'updated_at', sort_dir: 'desc' },
+      created_desc: { sort_by: 'created_at', sort_dir: 'desc' },
+      sort_order_asc: { sort_by: 'sort_order', sort_dir: 'asc' }
+    };
+    const sort = sortMap[sortMode] || sortMap.updated_desc;
+    const sectionFilter = String(options.section ?? this.state.section ?? 'All').trim();
+    const activeFilter = String(options.active ?? this.state.active ?? 'All').trim().toLowerCase();
+    const filters = {};
+    if (sectionFilter && sectionFilter !== 'All') filters.section = sectionFilter;
+    if (activeFilter === 'active') filters.is_active = true;
+    if (activeFilter === 'inactive') filters.is_active = false;
     return Api.listProposalCatalogItems({
       limit: Number(options.limit || this.state.limit || 50),
       page: Number(options.page || this.state.page || 1),
-      sort_by: options.sort_by || options.sortBy || 'updated_at',
-      sort_dir: options.sort_dir || options.sortDir || 'desc',
+      sort_by: options.sort_by || options.sortBy || sort.sort_by,
+      sort_dir: options.sort_dir || options.sortDir || sort.sort_dir,
       search: options.search !== undefined ? options.search : this.state.search || '',
+      ...filters,
       summary_only: options.summary_only !== false,
       forceRefresh: options.forceRefresh === true
     });
@@ -157,48 +175,7 @@ const ProposalCatalog = {
     return Api.deleteProposalCatalogItem(catalogItemUuid);
   },
   applyFilters() {
-    const terms = String(this.state.search || '')
-      .toLowerCase()
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean);
-    const sectionFilter = String(this.state.section || 'All').trim();
-    const activeFilter = String(this.state.active || 'All').trim();
-    const sortMode = String(this.state.sort || 'updated_desc').trim();
-
-    const filtered = this.state.rows.filter(item => {
-      if (sectionFilter !== 'All' && item.section !== sectionFilter) return false;
-      if (activeFilter === 'active' && !item.is_active) return false;
-      if (activeFilter === 'inactive' && item.is_active) return false;
-
-      const hay = [item.item_name, item.category, item.notes].join(' ').toLowerCase();
-      if (terms.length && !terms.every(term => hay.includes(term))) return false;
-      return true;
-    });
-
-    const byDateDesc = key => (a, b) => {
-      const da = new Date(String(a?.[key] || ''));
-      const db = new Date(String(b?.[key] || ''));
-      if (isNaN(da) && isNaN(db)) return 0;
-      if (isNaN(da)) return 1;
-      if (isNaN(db)) return -1;
-      return db - da;
-    };
-
-    if (sortMode === 'sort_order_asc') {
-      filtered.sort((a, b) => {
-        const av = a.sort_order ?? Number.MAX_SAFE_INTEGER;
-        const bv = b.sort_order ?? Number.MAX_SAFE_INTEGER;
-        if (av !== bv) return av - bv;
-        return String(a.catalog_item_id || '').localeCompare(String(b.catalog_item_id || ''));
-      });
-    } else if (sortMode === 'created_desc') {
-      filtered.sort(byDateDesc('created_at'));
-    } else {
-      filtered.sort(byDateDesc('updated_at'));
-    }
-
-    this.state.filteredRows = filtered;
+    this.state.filteredRows = Array.isArray(this.state.rows) ? this.state.rows.slice() : [];
   },
   renderSummary() {
     if (!E.proposalCatalogSummary) return;
@@ -229,6 +206,7 @@ const ProposalCatalog = {
   },
   render() {
     if (!E.proposalCatalogState || !E.proposalCatalogTbody) return;
+    this.renderPagination();
 
     if (this.state.loading) {
       E.proposalCatalogState.textContent = 'Loading proposal catalog items…';
@@ -246,7 +224,7 @@ const ProposalCatalog = {
     }
 
     const rows = this.state.filteredRows;
-    E.proposalCatalogState.textContent = `${rows.length} catalog item${rows.length === 1 ? '' : 's'}`;
+    E.proposalCatalogState.textContent = `${rows.length} item(s) • Page ${this.state.page}`;
     if (!rows.length) {
       E.proposalCatalogTbody.innerHTML =
         '<tr><td colspan="14" class="muted" style="text-align:center;">No catalog items found.</td></tr>';
@@ -298,6 +276,7 @@ const ProposalCatalog = {
       this.applyFilters();
       this.renderSummary();
       this.renderFilters();
+      this.renderPagination();
       this.render();
       return;
     }
@@ -325,6 +304,7 @@ const ProposalCatalog = {
       this.applyFilters();
       this.renderSummary();
       this.renderFilters();
+      this.renderPagination();
       this.render();
     } catch (error) {
       if (typeof isAuthError === 'function' && isAuthError(error)) {
@@ -335,11 +315,71 @@ const ProposalCatalog = {
       this.state.filteredRows = [];
       this.state.loadError = String(error?.message || '').trim() || 'Unable to load proposal catalog.';
       this.renderSummary();
+      this.renderPagination();
       this.render();
       UI.toast(this.state.loadError);
     } finally {
       this.state.loading = false;
+      this.renderPagination();
       this.render();
+    }
+  },
+  renderPagination() {
+    const host = U.ensurePaginationHost({
+      hostId: 'proposalCatalogPagination',
+      anchor: E.proposalCatalogState?.closest?.('.card')
+    });
+    U.renderPaginationControls({
+      host,
+      moduleKey: 'proposal-catalog',
+      page: this.state.page,
+      pageSize: this.state.limit,
+      hasMore: this.state.hasMore,
+      returned: this.state.returned,
+      loading: this.state.loading,
+      pageSizeOptions: [25, 50, 100],
+      countText: this.state.total ? `${this.state.total} total` : '',
+      onPageChange: nextPage => {
+        this.state.page = U.normalizePageNumber(nextPage, this.state.page);
+        this.loadAndRefresh({ force: true });
+      },
+      onPageSizeChange: nextSize => {
+        this.state.limit = U.normalizePageSize(nextSize, 50, 200);
+        this.state.page = 1;
+        this.loadAndRefresh({ force: true });
+      }
+    });
+  },
+  async ensureLookupLoaded({ force = false } = {}) {
+    const hasWarmCache = this.state.lookupRows.length && Date.now() - this.state.lookupLoadedAt <= this.state.lookupTtlMs;
+    if (!force && hasWarmCache) return this.state.lookupRows;
+    if (this.state.lookupLoadingPromise && !force) return this.state.lookupLoadingPromise;
+    const loadPromise = (async () => {
+      const rows = [];
+      let page = 1;
+      let hasMore = true;
+      while (hasMore && page <= 20) {
+        const response = await Api.listProposalCatalogItems({
+          limit: 200,
+          page,
+          summary_only: true,
+          sort_by: 'sort_order',
+          sort_dir: 'asc'
+        });
+        const normalized = this.extractListResult(response);
+        rows.push(...normalized.rows.map(item => this.normalizeItem(item)));
+        hasMore = Boolean(normalized.hasMore);
+        page += 1;
+      }
+      this.state.lookupRows = rows;
+      this.state.lookupLoadedAt = Date.now();
+      return rows;
+    })();
+    this.state.lookupLoadingPromise = loadPromise;
+    try {
+      return await loadPromise;
+    } finally {
+      this.state.lookupLoadingPromise = null;
     }
   },
   getValue(el) {
@@ -508,7 +548,8 @@ const ProposalCatalog = {
   },
   getActiveCatalogItems(section = '') {
     const normalizedSection = String(section || '').trim().toLowerCase();
-    return this.state.rows.filter(item => {
+    const sourceRows = this.state.lookupRows.length ? this.state.lookupRows : this.state.rows;
+    return sourceRows.filter(item => {
       if (!item.is_active) return false;
       if (!normalizedSection) return true;
       return item.section === normalizedSection;
@@ -521,11 +562,10 @@ const ProposalCatalog = {
       if (!el) return;
       const sync = () => {
         this.state[key] = String(el.value || '').trim();
-        this.applyFilters();
-        this.renderSummary();
-        this.render();
+        this.state.page = 1;
+        this.loadAndRefresh({ force: true });
       };
-      el.addEventListener('input', sync);
+      if (el.tagName === 'INPUT') el.addEventListener('input', debounce(sync, 250));
       el.addEventListener('change', sync);
     };
 

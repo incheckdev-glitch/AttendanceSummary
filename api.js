@@ -380,9 +380,11 @@ const Api = {
     }
   },
   async listProposalCatalogItems(options = {}) {
-    const payload = {
-      ...this.buildSummaryListPayload(options)
-    };
+    const payload = this.buildSummaryListPayload(options);
+    ['section', 'is_active', 'category'].forEach(key => {
+      const value = options?.[key];
+      if (value !== undefined && value !== null && value !== '') payload[key] = value;
+    });
     const response = await this.requestCached('proposal_catalog', 'list', payload, {
       forceRefresh: options?.forceRefresh === true
     });
@@ -841,14 +843,21 @@ const Api = {
   },
 
   async listNotifications(options = {}) {
+    const safePage = U.normalizePageNumber(options.page ?? 1, 1);
+    const safeLimit = U.normalizePageSize(options.limit ?? 50, 50, 200);
     const payload = {
-      limit: Number(options.limit || 50),
+      page: safePage,
+      limit: safeLimit,
+      sort_by: options.sort_by || options.sortBy || 'created_at',
+      sort_dir: options.sort_dir || options.sortDir || 'desc',
+      mode: options.mode || '',
       unread_only: options.unread_only === true,
       priority: options.priority || '',
       search: options.search || ''
     };
     if (options.filters && typeof options.filters === 'object') payload.filters = options.filters;
-    return this.requestWithSession('notifications', 'list', payload);
+    const response = await this.requestWithSession('notifications', 'list', payload);
+    return this.normalizeListResponse(response);
   },
   async getNotificationUnreadCount() {
     const response = await this.requestWithSession('notifications', 'get_unread_count', {});

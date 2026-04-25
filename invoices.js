@@ -825,9 +825,14 @@ const Invoices = {
   },
   async getProposalCatalogLookup() {
     try {
-      const response = await Api.listProposalCatalogItems({ limit: 200, page: 1, summary_only: true });
-      const rows = Array.isArray(response) ? response : response?.rows || response?.items || response?.data || response?.result || [];
-      const normalized = (Array.isArray(rows) ? rows : []).map(item => this.normalizeCatalogItem(item));
+      let sourceRows = [];
+      if (typeof window.ProposalCatalog?.ensureLookupLoaded === 'function') {
+        sourceRows = await window.ProposalCatalog.ensureLookupLoaded();
+      } else {
+        const response = await Api.listProposalCatalogItems({ limit: 200, page: 1, summary_only: true });
+        sourceRows = Array.isArray(response) ? response : response?.rows || response?.items || response?.data || response?.result || [];
+      }
+      const normalized = (Array.isArray(sourceRows) ? sourceRows : []).map(item => this.normalizeCatalogItem(item));
       const byId = new Map();
       const byName = new Map();
       normalized.forEach(item => {
@@ -1124,9 +1129,11 @@ const Invoices = {
     return existing || this.generateInvoiceNumber();
   },
   getCatalogRowsForSection(section) {
-    const rows = Array.isArray(window.ProposalCatalog?.state?.rows)
-      ? window.ProposalCatalog.state.rows
-      : [];
+    const rows = typeof window.ProposalCatalog?.getActiveCatalogItems === 'function'
+      ? window.ProposalCatalog.getActiveCatalogItems(section)
+      : Array.isArray(window.ProposalCatalog?.state?.rows)
+        ? window.ProposalCatalog.state.rows
+        : [];
     return rows
       .filter(row => row?.is_active !== false && String(row?.section || '').trim().toLowerCase() === section)
       .sort((a, b) => {
@@ -1159,10 +1166,10 @@ const Invoices = {
     const hasRows =
       this.getCatalogRowsForSection('annual_saas').length || this.getCatalogRowsForSection('one_time_fee').length;
     if (hasRows) return;
-    if (this.state.catalogLoading || typeof window.ProposalCatalog?.loadAndRefresh !== 'function') return;
+    if (this.state.catalogLoading || typeof window.ProposalCatalog?.ensureLookupLoaded !== 'function') return;
     this.state.catalogLoading = true;
     try {
-      await window.ProposalCatalog.loadAndRefresh();
+      await window.ProposalCatalog.ensureLookupLoaded();
       this.renderCatalogOptionLists();
     } catch (_) {
       // Non-blocking: invoice form still allows manual item entry when catalog load fails.
@@ -1351,15 +1358,8 @@ const Invoices = {
     this.syncPaymentConclusion(snapshot);
   },
   applyFilters() {
-    const terms = String(this.state.search || '').toLowerCase().trim().split(/\s+/).filter(Boolean);
     this.state.filteredRows = this.state.rows.filter(row => {
-      if (this.state.status !== 'All' && String(row.status || '').trim() !== this.state.status) return false;
       if (!this.matchesKpiFilter(row)) return false;
-      const hay = [row.invoice_id, row.invoice_number, row.customer_name, row.agreement_id, row.status, row.currency]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      if (terms.length && !terms.every(term => hay.includes(term))) return false;
       return true;
     });
   },
@@ -1432,19 +1432,22 @@ const Invoices = {
   render() {
     if (!E.invoicesState || !E.invoicesTbody) return;
     if (this.state.loading) {
+      this.renderPagination();
       E.invoicesState.textContent = 'Loading invoices…';
       E.invoicesTbody.innerHTML = '<tr><td colspan="10" class="muted" style="text-align:center;">Loading invoices…</td></tr>';
       return;
     }
     if (this.state.loadError) {
+      this.renderPagination();
       E.invoicesState.textContent = this.state.loadError;
       E.invoicesTbody.innerHTML = `<tr><td colspan="10" class="muted" style="text-align:center;color:#ffb4b4;">${U.escapeHtml(this.state.loadError)}</td></tr>`;
       return;
     }
     this.renderSummary();
+    this.renderPagination();
     const rows = this.state.filteredRows;
-    const totalRows = this.state.rows.length;
-    E.invoicesState.textContent = `${rows.length} of ${totalRows} invoice${totalRows === 1 ? '' : 's'}`;
+    const totalRows = Number(this.state.total || 0);
+    E.invoicesState.textContent = `${rows.length} item(s) • Page ${this.state.page}${totalRows ? ` • ${totalRows} total` : ''}`;
     if (!rows.length) {
       const emptyMessage = totalRows
         ? 'No invoices match the current search or filters.'
@@ -1476,6 +1479,32 @@ const Invoices = {
         </tr>`;
       })
       .join('');
+  },
+  renderPagination() {
+    const host = U.ensurePaginationHost({
+      hostId: 'invoicesPagination',
+      anchor: E.invoicesState?.closest?.('.card')
+    });
+    U.renderPaginationControls({
+      host,
+      moduleKey: 'invoices',
+      page: this.state.page,
+      pageSize: this.state.limit,
+      hasMore: this.state.hasMore,
+      returned: this.state.returned,
+      loading: this.state.loading,
+      pageSizeOptions: [25, 50, 100],
+      countText: this.state.total ? `${this.state.total} total` : '',
+      onPageChange: nextPage => {
+        this.state.page = U.normalizePageNumber(nextPage, this.state.page);
+        this.refresh(true);
+      },
+      onPageSizeChange: nextSize => {
+        this.state.limit = U.normalizePageSize(nextSize, 50, 200);
+        this.state.page = 1;
+        this.refresh(true);
+      }
+    });
   },
   computeCommercialRow(item = {}) {
     const unit = this.toNumberSafe(item.unit_price);
@@ -2306,10 +2335,10 @@ const Invoices = {
       if (!el) return;
       const sync = () => {
         this.state[key] = String(el.value || '').trim();
-        this.applyFilters();
-        this.render();
+        this.state.page = 1;
+        this.refresh(true);
       };
-      el.addEventListener('input', sync);
+      if (el.tagName === 'INPUT') el.addEventListener('input', debounce(sync, 250));
       el.addEventListener('change', sync);
     };
     bindState(E.invoicesSearchInput, 'search');

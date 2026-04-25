@@ -352,6 +352,7 @@ const U = {
     pageSize = 50,
     hasMore = false,
     returned = 0,
+    countText = '',
     loading = false,
     pageSizeOptions = [25, 50, 100],
     onPageChange = null,
@@ -369,7 +370,7 @@ const U = {
     host.innerHTML = `
       <div class="pagination" role="group" aria-label="${U.escapeAttr(moduleKey)} pagination">
         <button type="button" class="chip-btn" data-pagination-prev="${U.escapeAttr(moduleKey)}" ${prevDisabled ? 'disabled' : ''}>‹ Prev</button>
-        <span class="muted" aria-live="polite">Page ${safePage} · Showing ${safeReturned}</span>
+        <span class="muted" aria-live="polite">Page ${safePage} · ${loading ? 'Loading…' : `Showing ${safeReturned}`}${countText ? ` · ${U.escapeHtml(String(countText))}` : ''}</span>
         <button type="button" class="chip-btn" data-pagination-next="${U.escapeAttr(moduleKey)}" ${nextDisabled ? 'disabled' : ''}>Next ›</button>
         <label class="muted" style="display:inline-flex;align-items:center;gap:6px;">
           Size
