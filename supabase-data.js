@@ -1575,6 +1575,66 @@
     return sanitized || generateProposalRefNumber();
   }
 
+  async function proposalBusinessValueExists(client, column, value, { excludeUuid = '' } = {}) {
+    const normalizedColumn = String(column || '').trim();
+    const normalizedValue = String(value || '').trim();
+    if (!normalizedColumn || !normalizedValue) return false;
+    let query = client.from('proposals').select('id').eq(normalizedColumn, normalizedValue).limit(1);
+    const excluded = String(excludeUuid || '').trim();
+    if (excluded) query = query.neq('id', excluded);
+    const { data, error } = await query;
+    if (error) throw friendlyError(`Unable to validate unique proposal ${normalizedColumn}`, error);
+    return Array.isArray(data) && data.length > 0;
+  }
+
+  async function allocateUniqueProposalIdentifiers(
+    client,
+    { proposalId = '', refNumber = '', excludeUuid = '' } = {}
+  ) {
+    const excludedUuid = String(excludeUuid || '').trim();
+    let nextProposalId = String(proposalId || '').trim();
+    let nextRefNumber = sanitizeProposalRefNumber(refNumber);
+
+    if (nextProposalId) {
+      const idTaken = await proposalBusinessValueExists(client, 'proposal_id', nextProposalId, { excludeUuid: excludedUuid });
+      if (idTaken) throw new Error(`Proposal ID already exists: ${nextProposalId}`);
+    } else {
+      let allocated = '';
+      for (let attempt = 0; attempt < 25; attempt += 1) {
+        const candidate = ensureBusinessProposalId('');
+        const exists = await proposalBusinessValueExists(client, 'proposal_id', candidate, { excludeUuid: excludedUuid });
+        if (!exists) {
+          allocated = candidate;
+          break;
+        }
+      }
+      if (!allocated) throw new Error('Unable to generate a unique proposal ID. Please retry.');
+      nextProposalId = allocated;
+    }
+
+    if (nextRefNumber) {
+      const refTaken = await proposalBusinessValueExists(client, 'ref_number', nextRefNumber, { excludeUuid: excludedUuid });
+      if (refTaken) throw new Error(`Proposal number already exists: ${nextRefNumber}`);
+    } else {
+      let allocated = '';
+      for (let attempt = 0; attempt < 25; attempt += 1) {
+        const candidate = ensureProposalRefNumber('');
+        const exists = await proposalBusinessValueExists(client, 'ref_number', candidate, { excludeUuid: excludedUuid });
+        if (!exists) {
+          allocated = candidate;
+          break;
+        }
+      }
+      if (!allocated) throw new Error('Unable to generate a unique proposal number. Please retry.');
+      nextRefNumber = allocated;
+    }
+
+    return {
+      proposal_id: nextProposalId,
+      ref_number: nextRefNumber
+    };
+  }
+
   function toTicketPublicRecord(row = {}, { includeTicketId = true, userId = '' } = {}) {
     const candidateTicketId = firstDefined(row, ['ticket_id', 'ticketCode', 'ticket_code']);
     const nowIso = new Date().toISOString();
@@ -3164,6 +3224,14 @@
             : resource === 'receipts'
               ? sanitizeReceiptsRecord(record, { includeCreatedBy: true, userId: currentUserId })
             : record;
+      if (resource === 'proposals') {
+        const identifiers = await allocateUniqueProposalIdentifiers(client, {
+          proposalId: firstDefined(createRecord, ['proposal_id', 'proposalId']),
+          refNumber: firstDefined(createRecord, ['ref_number', 'refNumber'])
+        });
+        createRecord.proposal_id = identifiers.proposal_id;
+        createRecord.ref_number = identifiers.ref_number;
+      }
       if (resource === 'events') {
         EVENT_LEGACY_FIELDS.forEach(field => { delete createRecord[field]; });
       }
@@ -3198,6 +3266,16 @@
       const { data, error } = await client.from(table).insert(createRecord).select('*').single();
       if (error) throw friendlyError(`Unable to create ${resource} record`, error);
       const created = normalizeRow(resource, data);
+      if (resource === 'proposals') {
+        const createdBusinessId = String(created.proposal_id || '').trim();
+        const createdRefNumber = String(created.ref_number || '').trim();
+        if (!createdBusinessId || !createdRefNumber) {
+          throw new Error('Proposal was created without a proposal ID/number. Save was cancelled.');
+        }
+        if (!isUuid(created.id)) {
+          throw new Error('Proposal was created without a valid internal ID. Save was cancelled.');
+        }
+      }
       if (resource === 'tickets' && isAdminDev()) {
         const internalRecord = toTicketInternalRecord(raw || {});
         internalRecord.ticket_id = created.id;
@@ -3218,7 +3296,12 @@
       const itemTable = ITEM_TABLES[resource];
       const fk = ITEM_FK[resource];
       if (itemTable && items.length && (created[fk] || created.id)) {
-        const parentId = created.id || created[fk];
+        const parentId = resource === 'proposals'
+          ? String(created.id || '').trim()
+          : created.id || created[fk];
+        if (resource === 'proposals' && !isUuid(parentId)) {
+          throw new Error('Proposal items were not saved because the proposal UUID is missing.');
+        }
         const insertRows = items.map(item =>
           resource === 'proposals'
             ? sanitizeProposalItemRecord(item, parentId)
@@ -3230,6 +3313,9 @@
               ? sanitizeReceiptItemRecord(item, parentId)
             : ({ ...item, [fk]: parentId })
         );
+        if (resource === 'proposals' && insertRows.some(row => !isUuid(row.proposal_id))) {
+          throw new Error('Proposal items were not saved because the proposal reference is invalid.');
+        }
         const childResp = await client.from(itemTable).insert(insertRows).select('*');
         if (childResp.error) throw friendlyError(`Unable to create ${itemTable}`, childResp.error);
       }
@@ -3347,6 +3433,24 @@
             : resource === 'receipts'
               ? sanitizeReceiptsRecord(safeUpdates, { includeCreatedBy: false, userId: await getCurrentUserId(client) })
             : safeUpdates;
+      if (resource === 'proposals') {
+        const { data: existingProposal, error: existingProposalError } = await client
+          .from('proposals')
+          .select('id, proposal_id, ref_number')
+          .eq('id', id)
+          .maybeSingle();
+        if (existingProposalError) throw friendlyError('Unable to load proposal before update', existingProposalError);
+        if (!existingProposal) throw new Error('Proposal was not found for update.');
+        const hasIncomingProposalId = Object.prototype.hasOwnProperty.call(publicUpdates, 'proposal_id');
+        const hasIncomingRefNumber = Object.prototype.hasOwnProperty.call(publicUpdates, 'ref_number');
+        const identifiers = await allocateUniqueProposalIdentifiers(client, {
+          proposalId: hasIncomingProposalId ? publicUpdates.proposal_id : existingProposal.proposal_id,
+          refNumber: hasIncomingRefNumber ? publicUpdates.ref_number : existingProposal.ref_number,
+          excludeUuid: id
+        });
+        publicUpdates.proposal_id = identifiers.proposal_id;
+        publicUpdates.ref_number = identifiers.ref_number;
+      }
       if (resource === 'events') {
         EVENT_LEGACY_FIELDS.forEach(field => { delete publicUpdates[field]; });
       }
@@ -3393,6 +3497,9 @@
         const parentId = resource === 'proposals'
           ? String(id || data?.id || '').trim()
           : id;
+        if (resource === 'proposals' && !isUuid(parentId)) {
+          throw new Error('Proposal items were not saved because the proposal UUID is missing.');
+        }
         await client.from(itemTable).delete().eq(fk, parentId);
         if (payload.items.length) {
           const insertRows = payload.items.map(item =>
@@ -3406,6 +3513,9 @@
                 ? sanitizeReceiptItemRecord(item, parentId)
               : ({ ...item, [fk]: parentId })
           );
+          if (resource === 'proposals' && insertRows.some(row => !isUuid(row.proposal_id))) {
+            throw new Error('Proposal items were not saved because the proposal reference is invalid.');
+          }
           const childResp = await client.from(itemTable).insert(insertRows).select('*');
           if (childResp.error) throw friendlyError(`Unable to update ${itemTable}`, childResp.error);
         }
