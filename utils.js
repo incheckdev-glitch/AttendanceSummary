@@ -301,6 +301,38 @@ const U = {
       received_amount: fields.paid_now,
       new_paid_total: fields.amount_paid
     };
+  },
+  normalizePageSize: (value, fallback = 50, max = 200) => {
+    const parsed = Number(value);
+    const normalized = Number.isFinite(parsed) ? parsed : fallback;
+    return Math.max(1, Math.min(Number(max) || 200, normalized));
+  },
+  normalizePageNumber: (value, fallback = 1) => {
+    const parsed = Number(value);
+    return Math.max(1, Number.isFinite(parsed) ? parsed : fallback);
+  },
+  buildPagination: ({ page = 1, pageSize = 50, maxPageSize = 200, total = null, returned = 0 } = {}) => {
+    const safePage = U.normalizePageNumber(page, 1);
+    const safePageSize = U.normalizePageSize(pageSize, 50, maxPageSize);
+    const offset = (safePage - 1) * safePageSize;
+    const from = offset;
+    const to = offset + safePageSize - 1;
+    const safeReturned = Math.max(0, Number(returned) || 0);
+    const hasPreviousPage = safePage > 1;
+    const hasTotal = total !== null && total !== undefined && Number.isFinite(Number(total));
+    const safeTotal = hasTotal ? Math.max(0, Number(total)) : null;
+    const hasNextPage = hasTotal ? (offset + safeReturned < safeTotal) : safeReturned >= safePageSize;
+    return {
+      page: safePage,
+      pageSize: safePageSize,
+      limit: safePageSize,
+      offset,
+      from,
+      to,
+      hasPreviousPage,
+      hasNextPage,
+      total: safeTotal
+    };
   }
 };
 

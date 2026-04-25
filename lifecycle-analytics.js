@@ -259,10 +259,23 @@ const LifecycleAnalytics = {
     const label = this.text(status) || '—';
     return `<span class="pill status-${U.toStatusClass(label)}">${this.escape(label)}</span>`;
   },
-  async fetchTable(db, table, columns) {
-    const { data, error } = await db.from(table).select(columns).limit(5000);
-    if (error) throw new Error(`Unable to load ${table}: ${error.message || 'Unknown error'}`);
-    return Array.isArray(data) ? data : [];
+  async fetchTable(db, table, columns, options = {}) {
+    const pageSize = Math.max(50, Math.min(200, Number(options.pageSize) || 200));
+    const maxRows = Math.max(pageSize, Math.min(1000, Number(options.maxRows) || 1000));
+    const rows = [];
+    let page = 0;
+    // temporary analytics fallback - replace with SQL view/RPC aggregation
+    while (rows.length < maxRows) {
+      const from = page * pageSize;
+      const to = from + pageSize;
+      const { data, error } = await db.from(table).select(columns).range(from, to);
+      if (error) throw new Error(`Unable to load ${table}: ${error.message || 'Unknown error'}`);
+      const batch = Array.isArray(data) ? data.slice(0, pageSize) : [];
+      rows.push(...batch);
+      if (batch.length < pageSize) break;
+      page += 1;
+    }
+    return rows.slice(0, maxRows);
   },
   async loadData() {
     const db = window.SupabaseClient?.getClient?.();

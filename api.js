@@ -78,11 +78,13 @@ const Api = {
   buildPagedListPayload(resource = '', action = 'list', state = {}, filters = {}) {
     const safeState = state && typeof state === 'object' ? state : {};
     const safeFilters = filters && typeof filters === 'object' ? filters : {};
+    const page = U.normalizePageNumber(safeState.currentPage || safeState.page || 1, 1);
+    const limit = U.normalizePageSize(safeState.pageSize || safeState.limit || 50, 50, 200);
     const payload = {
       resource,
       action: action || 'list',
-      page: Number(safeState.currentPage || safeState.page || 1),
-      limit: Number(safeState.pageSize || safeState.limit || 50),
+      page,
+      limit,
       summary_only: safeState.summary_only !== false
     };
 
@@ -158,8 +160,8 @@ const Api = {
       return Number.isFinite(parsed) ? parsed : fallback;
     };
 
-    const limit = numberOr(payload?.limit ?? payload?.page_size ?? payload?.meta?.limit, 50);
-    const page = numberOr(payload?.page ?? payload?.current_page ?? payload?.meta?.page, 1);
+    const limit = U.normalizePageSize(payload?.limit ?? payload?.page_size ?? payload?.meta?.limit, 50, 200);
+    const page = U.normalizePageNumber(payload?.page ?? payload?.current_page ?? payload?.meta?.page, 1);
     const offset = numberOr(payload?.offset ?? payload?.meta?.offset, Math.max(0, (page - 1) * limit));
     const total = numberOr(payload?.total ?? payload?.total_count ?? payload?.meta?.total, rows.length);
     const returned = numberOr(payload?.returned ?? payload?.count ?? payload?.meta?.returned, rows.length);
@@ -175,6 +177,7 @@ const Api = {
       returned,
       hasMore,
       has_more: hasMore,
+      hasPreviousPage: page > 1,
       page,
       limit,
       offset
