@@ -44,11 +44,13 @@
              placeholder="Search ID, title, description, log…  ( / to focus )"
              aria-label="Search tickets" />
 
-      <select id="themeSelect" class="select" aria-label="Theme">
-        <option value="system">System</option>
-        <option value="dark">Dark</option>
-        <option value="light">Light</option>
-      </select>
+      <button
+        id="themeSelect"
+        class="btn theme-toggle-btn"
+        type="button"
+        aria-label="Switch to dark mode"
+        title="Switch to dark mode"
+      >🌙</button>
 
       <button id="refreshNow" class="btn" aria-label="Refresh from source">
         <span class="icon" aria-hidden="true">🔄</span> Refresh

@@ -53,8 +53,21 @@ const TicketSummaryState = {
   total: 0,
   open: 0,
   highRisk: 0,
-  statusCounts: {}
+  statusCounts: {},
+  filterKey: '',
+  loaded: false
 };
+
+function buildTicketSummaryFilterKey(filters = {}) {
+  const source = filters && typeof filters === 'object' ? filters : {};
+  const ordered = Object.keys(source)
+    .sort()
+    .reduce((acc, key) => {
+      acc[key] = source[key];
+      return acc;
+    }, {});
+  return JSON.stringify(ordered);
+}
 
 function hasActiveTicketFilters() {
   const state = Filters?.state || {};
@@ -2808,8 +2821,10 @@ async function loadIssues(force = false) {
     UI.skeleton(true);
     const sortBy = GridState.sortKey || 'updated_at';
     const sortDir = GridState.sortAsc ? 'asc' : 'desc';
+    const filtersPayload = buildTicketListFiltersPayload();
+    const summaryFilterKey = buildTicketSummaryFilterKey(filtersPayload);
     const ticketListPayload = {
-      filters: buildTicketListFiltersPayload(),
+      filters: filtersPayload,
       page: TicketPaginationState.page,
       limit: TicketPaginationState.limit,
       offset: (TicketPaginationState.page - 1) * TicketPaginationState.limit,
@@ -2817,20 +2832,23 @@ async function loadIssues(force = false) {
       sort_dir: sortDir
     };
     console.info('[loadIssues] tickets.list payload', ticketListPayload);
-    const [response, summaryResponse] = await Promise.all([
-      Api.requestWithSession(
-        'tickets',
-        'list',
-        ticketListPayload,
-        { requireAuth: true }
-      ),
-      Api.requestWithSession(
+    const shouldReloadSummary =
+      !TicketSummaryState.loaded || TicketSummaryState.filterKey !== summaryFilterKey;
+    const response = await Api.requestWithSession(
+      'tickets',
+      'list',
+      ticketListPayload,
+      { requireAuth: true }
+    );
+    let summaryResponse = null;
+    if (shouldReloadSummary) {
+      summaryResponse = await Api.requestWithSession(
         'tickets',
         'summary',
-        { filters: buildTicketListFiltersPayload() },
+        { filters: filtersPayload },
         { requireAuth: true }
-      ).catch(() => null)
-    ]);
+      ).catch(() => null);
+    }
     const paginationMeta = extractPagedListMeta(response, TicketPaginationState);
     TicketPaginationState.page = paginationMeta.page;
     TicketPaginationState.limit = paginationMeta.limit;
@@ -2839,13 +2857,23 @@ async function loadIssues(force = false) {
     TicketPaginationState.total = paginationMeta.total;
     TicketPaginationState.totalPages = paginationMeta.totalPages;
     TicketPaginationState.hasMore = paginationMeta.hasMore;
-    TicketSummaryState.total = Number(summaryResponse?.total ?? paginationMeta.total ?? 0);
-    TicketSummaryState.open = Number(summaryResponse?.open ?? 0);
-    TicketSummaryState.highRisk = Number(summaryResponse?.highRisk ?? 0);
-    TicketSummaryState.statusCounts =
-      summaryResponse && typeof summaryResponse.statusCounts === 'object'
-        ? { ...summaryResponse.statusCounts }
-        : {};
+    if (summaryResponse) {
+      TicketSummaryState.total = Number(summaryResponse?.total ?? paginationMeta.total ?? 0);
+      TicketSummaryState.open = Number(summaryResponse?.open ?? 0);
+      TicketSummaryState.highRisk = Number(summaryResponse?.highRisk ?? 0);
+      TicketSummaryState.statusCounts =
+        summaryResponse && typeof summaryResponse.statusCounts === 'object'
+          ? { ...summaryResponse.statusCounts }
+          : {};
+      TicketSummaryState.filterKey = summaryFilterKey;
+      TicketSummaryState.loaded = true;
+    } else if (!TicketSummaryState.loaded) {
+      TicketSummaryState.total = Number(paginationMeta.total ?? 0);
+      TicketSummaryState.open = 0;
+      TicketSummaryState.highRisk = 0;
+      TicketSummaryState.statusCounts = {};
+      TicketSummaryState.filterKey = summaryFilterKey;
+    }
     const rawRows = extractEventsPayload(response);
     const rows = rawRows.map(raw => DataStore.normalizeRow(raw));
     DataStore.hydrateFromRows(rows.filter(r => r.id && String(r.id).trim() !== ''));
@@ -4548,15 +4576,24 @@ function wireTheme() {
   const media = window.matchMedia
     ? window.matchMedia('(prefers-color-scheme: dark)')
     : null;
+  const isDarkModeActive = () => document.documentElement.getAttribute('data-theme') !== 'light';
+  const updateThemeToggleUi = () => {
+    if (!E.themeSelect) return;
+    const darkMode = isDarkModeActive();
+    E.themeSelect.innerHTML = darkMode ? '☀️' : '🌙';
+    E.themeSelect.setAttribute('aria-label', darkMode ? 'Switch to light mode' : 'Switch to dark mode');
+    E.themeSelect.setAttribute('title', darkMode ? 'Switch to light mode' : 'Switch to dark mode');
+  };
   const applySystem = () => {
     if (media?.matches) document.documentElement.removeAttribute('data-theme');
     else document.documentElement.setAttribute('data-theme', 'light');
+    updateThemeToggleUi();
   };
   const saved = localStorage.getItem(LS_KEYS.theme) || 'system';
-  if (E.themeSelect) E.themeSelect.value = saved;
   if (saved === 'system') applySystem();
   else if (saved === 'dark') document.documentElement.removeAttribute('data-theme');
   else document.documentElement.setAttribute('data-theme', 'light');
+  updateThemeToggleUi();
 
   media?.addEventListener('change', () => {
     if ((localStorage.getItem(LS_KEYS.theme) || 'system') === 'system')
@@ -4564,12 +4601,12 @@ function wireTheme() {
   });
 
   if (E.themeSelect)
-    E.themeSelect.addEventListener('change', () => {
-      const v = E.themeSelect.value;
-      localStorage.setItem(LS_KEYS.theme, v);
-      if (v === 'system') applySystem();
-      else if (v === 'dark') document.documentElement.removeAttribute('data-theme');
+    E.themeSelect.addEventListener('click', () => {
+      const nextTheme = isDarkModeActive() ? 'light' : 'dark';
+      localStorage.setItem(LS_KEYS.theme, nextTheme);
+      if (nextTheme === 'dark') document.documentElement.removeAttribute('data-theme');
       else document.documentElement.setAttribute('data-theme', 'light');
+      updateThemeToggleUi();
     });
 
   if (E.accentColor) {
