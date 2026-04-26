@@ -781,7 +781,6 @@ body.auth-locked .login-hint{
 .summary-meta.stale{
   color:var(--warn);
 }
-.shortcut-chip{font-size:11px;color:var(--muted)}
 
 /* KPIs */
 .kpi{

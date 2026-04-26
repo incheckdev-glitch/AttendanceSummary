@@ -53,6 +53,23 @@
 
   const ITEM_TABLES = { proposals: 'proposal_items', agreements: 'agreement_items', invoices: 'invoice_items', receipts: 'receipt_items' };
   const ITEM_FK = { proposals: 'proposal_id', agreements: 'agreement_id', invoices: 'invoice_id', receipts: 'receipt_id' };
+  const normalizeTicketStatus = typeof global.normalizeTicketStatus === 'function'
+    ? global.normalizeTicketStatus
+    : value => {
+      const raw = value == null ? '' : String(value).trim();
+      if (!raw) return 'New';
+      const map = {
+        new: 'New',
+        'under development': 'Under Development',
+        'not started yet': 'Not Started Yet',
+        'on hold': 'On Hold',
+        'on stage': 'On Stage',
+        sent: 'Sent',
+        resolved: 'Resolved',
+        rejected: 'Rejected'
+      };
+      return map[raw.toLowerCase()] || raw;
+    };
   const LEGACY_COMPAT = global.LegacyCompat || {};
   const LEGACY_REQUEST_META_FIELDS = new Set(
     Array.isArray(LEGACY_COMPAT.LEGACY_REQUEST_META_FIELDS)
@@ -491,6 +508,7 @@
       out.dev_team_status = out.dev_team_status ?? out.devTeamStatus ?? '';
       out.issueRelated = out.issueRelated ?? out.issue_related ?? '';
       out.issue_related = out.issue_related ?? out.issueRelated ?? '';
+      out.status = normalizeTicketStatus(out.status);
     }
     if (resource === 'events') {
       out.event_code = out.event_code ?? out.eventCode ?? '';
@@ -2964,37 +2982,47 @@
     }
     if (resource === 'tickets' && action === 'summary') {
       assertAllowed('tickets', 'list');
-      const countExact = async builder => {
-        const { count, error } = await builder.select('id', { count: 'exact', head: true });
-        if (error) throw friendlyError('Unable to load ticket summary', error);
-        return Number(count || 0);
-      };
       const base = () => applyFilters(client.from('tickets'), payload, { resource: 'tickets' });
-      const [total, resolved, rejected, underDevelopment, onHold, notStarted, sent, onStage] = await Promise.all([
-        countExact(base()),
-        countExact(base().ilike('status', 'Resolved%')),
-        countExact(base().ilike('status', 'Rejected%')),
-        countExact(base().ilike('status', 'Under Development%')),
-        countExact(base().ilike('status', 'On Hold%')),
-        countExact(base().ilike('status', 'Not Started Yet%')),
-        countExact(base().ilike('status', 'Sent%')),
-        countExact(base().ilike('status', 'On Stage%'))
-      ]);
-      const open = Math.max(0, total - resolved - rejected);
+      const { count: totalCount, error: totalError } = await base().select('id', { count: 'exact', head: true });
+      if (totalError) throw friendlyError('Unable to load ticket summary', totalError);
+      const total = Number(totalCount || 0);
+      const statusCounts = {};
+      let open = 0;
+      let highRisk = 0;
+      const pageSize = 1000;
+      const maxPages = 100;
+      let from = 0;
+      for (let page = 0; page < maxPages; page++) {
+        const to = from + pageSize - 1;
+        const { data: chunk, error: chunkError } = await base()
+          .select('id,status,priority,title,description,log,date,date_submitted')
+          .order('id', { ascending: true })
+          .range(from, to);
+        if (chunkError) throw friendlyError('Unable to load ticket summary', chunkError);
+        const rows = Array.isArray(chunk) ? chunk : [];
+        rows.forEach(row => {
+          const normalizedStatus = normalizeTicketStatus(row?.status);
+          statusCounts[normalizedStatus] = (statusCounts[normalizedStatus] || 0) + 1;
+          const statusLc = normalizedStatus.toLowerCase();
+          const isOpen = !(statusLc.startsWith('resolved') || statusLc.startsWith('rejected'));
+          if (isOpen) open += 1;
+          const priority = String(row?.priority || '').trim().toLowerCase();
+          const priorityWeight = priority.startsWith('h') ? 3 : priority.startsWith('m') ? 2 : priority.startsWith('l') ? 1 : 1;
+          let riskScore = priorityWeight;
+          if (statusLc.startsWith('on stage')) riskScore += 2;
+          if (statusLc.startsWith('under development')) riskScore += 1;
+          if (isOpen && riskScore >= 3) highRisk += 1;
+        });
+        if (rows.length < pageSize) break;
+        from += pageSize;
+      }
       return {
         handled: true,
         data: {
           total,
           open,
-          statusCounts: {
-            Resolved: resolved,
-            Rejected: rejected,
-            'Under Development': underDevelopment,
-            'On Hold': onHold,
-            'Not Started Yet': notStarted,
-            Sent: sent,
-            'On Stage': onStage
-          }
+          highRisk,
+          statusCounts
         }
       };
     }
