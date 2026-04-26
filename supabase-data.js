@@ -1896,7 +1896,14 @@
   }
 
   function splitListPayload(payload = {}) {
-    const rawFilters = payload.filters && typeof payload.filters === 'object' ? payload.filters : payload;
+    const root = payload && typeof payload === 'object' ? payload : {};
+    const nestedFilters = root.filters && typeof root.filters === 'object' ? root.filters : null;
+    const rawFilters = {
+      ...(nestedFilters || {}),
+      ...Object.fromEntries(
+        Object.entries(root).filter(([key]) => key !== 'filters')
+      )
+    };
     const controls = {};
     const dbFilters = {};
     Object.entries(rawFilters || {}).forEach(([key, value]) => {
@@ -2941,7 +2948,8 @@
       assertAllowed('tickets', 'list');
       const { controls } = splitListPayload(payload);
       const listControls = normalizeListControls(controls, 'tickets');
-      let query = applyFilters(client.from('tickets').select('*', { count: 'planned' }), payload).order('updated_at', { ascending: false });
+      let query = applyFilters(client.from('tickets').select('*', { count: 'exact' }), payload, { resource: 'tickets' });
+      query = query.order(listControls.sortBy, { ascending: listControls.sortDir === 'asc' });
       query = query.range(listControls.from, listControls.to);
       const { data: tickets, error, count } = await query;
       if (error) throw friendlyError('Unable to load tickets', error);
@@ -2954,6 +2962,42 @@
       );
       return { handled: true, data: normalizePagedList(resource, withInternal, listControls, count) };
     }
+    if (resource === 'tickets' && action === 'summary') {
+      assertAllowed('tickets', 'list');
+      const countExact = async builder => {
+        const { count, error } = await builder.select('id', { count: 'exact', head: true });
+        if (error) throw friendlyError('Unable to load ticket summary', error);
+        return Number(count || 0);
+      };
+      const base = () => applyFilters(client.from('tickets'), payload, { resource: 'tickets' });
+      const [total, resolved, rejected, underDevelopment, onHold, notStarted, sent, onStage] = await Promise.all([
+        countExact(base()),
+        countExact(base().ilike('status', 'Resolved%')),
+        countExact(base().ilike('status', 'Rejected%')),
+        countExact(base().ilike('status', 'Under Development%')),
+        countExact(base().ilike('status', 'On Hold%')),
+        countExact(base().ilike('status', 'Not Started Yet%')),
+        countExact(base().ilike('status', 'Sent%')),
+        countExact(base().ilike('status', 'On Stage%'))
+      ]);
+      const open = Math.max(0, total - resolved - rejected);
+      return {
+        handled: true,
+        data: {
+          total,
+          open,
+          statusCounts: {
+            Resolved: resolved,
+            Rejected: rejected,
+            'Under Development': underDevelopment,
+            'On Hold': onHold,
+            'Not Started Yet': notStarted,
+            Sent: sent,
+            'On Stage': onStage
+          }
+        }
+      };
+    }
     if (resource === 'notifications' && action === 'list') {
       assertAllowed('notifications', 'list');
       const currentUserId = await getCurrentUserId(client);
@@ -2963,7 +3007,7 @@
       const mode = String(controls.mode || payload.mode || '').trim().toLowerCase();
       let query = client
         .from('notifications')
-        .select('*', { count: 'planned' })
+        .select('*', { count: 'exact' })
         .eq('recipient_user_id', currentUserId);
       query = applyFilters(query, payload, { resource: 'notifications' });
       if (mode === 'unread') query = query.eq('is_read', false);
@@ -2994,7 +3038,7 @@
 
       let query = client
         .from('operations_onboarding')
-        .select('*', { count: 'planned' })
+        .select('*', { count: 'exact' })
         .or('technical_request_type.not.is.null,technical_request_status.not.is.null');
 
       if (agreementId) query = query.eq('agreement_id', agreementId);
@@ -3079,8 +3123,8 @@
       const { controls } = splitListPayload(payload);
       const listControls = normalizeListControls(controls, resource);
       let query = resource === 'users'
-        ? client.from('profiles').select('id, name, email, username, role_key, is_active, created_at, updated_at', { count: 'planned' })
-        : client.from(table).select('*', { count: 'planned' });
+        ? client.from('profiles').select('id, name, email, username, role_key, is_active, created_at, updated_at', { count: 'exact' })
+        : client.from(table).select('*', { count: 'exact' });
       query = applyFilters(query, payload, { resource });
       query = query.order(listControls.sortBy, { ascending: listControls.sortDir === 'asc' });
       query = query.range(listControls.from, listControls.to);
