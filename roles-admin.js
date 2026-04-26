@@ -7,6 +7,12 @@ const RolesAdmin = {
     filters: { resource: '', action: '', role: '', text: '' },
     loadingRoles: false,
     loadingPermissions: false,
+    rolesPage: 1,
+    rolesLimit: 50,
+    rolesTotal: 0,
+    permissionsPage: 1,
+    permissionsLimit: 50,
+    permissionsTotal: 0,
     limit: 50,
     page: 1
   },
@@ -24,6 +30,7 @@ const RolesAdmin = {
         this.state.filters.action = String(E.rolePermissionsSearchAction?.value || '').trim().toLowerCase();
         this.state.filters.role = String(E.rolePermissionsSearchAllowedRoles?.value || '').trim().toLowerCase();
         this.state.filters.text = String(E.rolePermissionsSearchText?.value || '').trim().toLowerCase();
+        this.state.permissionsPage = 1;
         this.renderPermissionsTable();
       });
     }
@@ -199,6 +206,112 @@ const RolesAdmin = {
     return [];
   },
 
+  extractListMeta(response, fallback = {}) {
+    const rows = this.extractRows(response);
+    const fallbackLimit = U.normalizePageSize(fallback.limit || this.state.limit || 50, 50, 200);
+    const fallbackPage = U.normalizePageNumber(fallback.page || 1, 1);
+    const page = U.normalizePageNumber(response?.page || fallbackPage, fallbackPage);
+    const limit = U.normalizePageSize(response?.limit || fallbackLimit, 50, 200);
+    const returned = Math.max(0, Number(response?.returned ?? response?.count ?? rows.length) || rows.length);
+    const offset = Math.max(0, Number(response?.offset ?? ((page - 1) * limit)) || 0);
+    const totalCandidate = Number(response?.total ?? response?.total_count ?? response?.meta?.total);
+    const total = Number.isFinite(totalCandidate) ? totalCandidate : rows.length;
+    const hasMore = response?.hasMore !== undefined
+      ? Boolean(response.hasMore)
+      : response?.has_more !== undefined
+        ? Boolean(response.has_more)
+        : offset + returned < total;
+    return { rows, page, limit, returned, offset, total, hasMore };
+  },
+
+  async fetchAllPages(fetchPage, options = {}) {
+    const limit = U.normalizePageSize(options.limit || this.state.limit || 50, 50, 200);
+    const maxPages = Math.max(1, Number(options.maxPages || 500) || 500);
+    const rows = [];
+    const seenPageSignatures = new Set();
+    let page = 1;
+    let lastMeta = { total: 0, returned: 0, hasMore: false, limit, page: 1, offset: 0 };
+
+    while (page <= maxPages) {
+      const response = await fetchPage({ page, limit });
+      const meta = this.extractListMeta(response, { page, limit });
+      lastMeta = meta;
+      const pageSignature = meta.rows
+        .map(row => String(row?.permission_id || row?.id || row?.role_key || `${row?.resource || ''}:${row?.action || ''}:${row?.role || ''}`))
+        .join('|');
+      if (pageSignature && seenPageSignatures.has(pageSignature)) break;
+      if (pageSignature) seenPageSignatures.add(pageSignature);
+      rows.push(...meta.rows);
+      const fullPageReturned = meta.rows.length >= limit || meta.returned >= limit;
+      const hasMore = (Boolean(meta.hasMore) || fullPageReturned) && meta.returned > 0;
+      if (!hasMore) break;
+      page += 1;
+    }
+
+    return {
+      rows,
+      total: Number.isFinite(Number(lastMeta.total)) ? Math.max(Number(lastMeta.total), rows.length) : rows.length,
+      returned: rows.length,
+      limit,
+      pagesLoaded: page,
+      truncated: page > maxPages && Boolean(lastMeta.hasMore)
+    };
+  },
+
+  paginateClientRows(rows = [], pageKey = 'rolesPage', limitKey = 'rolesLimit') {
+    const safeRows = Array.isArray(rows) ? rows : [];
+    const safeLimit = U.normalizePageSize(this.state[limitKey] || 50, 50, 200);
+    const maxPage = Math.max(1, Math.ceil(safeRows.length / safeLimit));
+    const safePage = Math.min(U.normalizePageNumber(this.state[pageKey] || 1, 1), maxPage);
+    this.state[pageKey] = safePage;
+    this.state[limitKey] = safeLimit;
+    const from = Math.max(0, (safePage - 1) * safeLimit);
+    const to = Math.min(safeRows.length, from + safeLimit);
+    return {
+      rows: safeRows.slice(from, to),
+      total: safeRows.length,
+      page: safePage,
+      limit: safeLimit,
+      from,
+      to,
+      hasMore: to < safeRows.length
+    };
+  },
+
+  renderPagination({ hostId, anchor, moduleKey, pageKey, limitKey, totalRows, returnedRows }) {
+    const host = U.ensurePaginationHost({ hostId, anchor });
+    if (!host) return;
+    const safeTotal = Math.max(0, Number(totalRows) || 0);
+    const safeReturned = Math.max(0, Number(returnedRows) || 0);
+    const safePage = U.normalizePageNumber(this.state[pageKey] || 1, 1);
+    const safeLimit = U.normalizePageSize(this.state[limitKey] || 50, 50, 200);
+    const from = safeTotal ? ((safePage - 1) * safeLimit) + 1 : 0;
+    const to = Math.min(safeTotal, ((safePage - 1) * safeLimit) + safeReturned);
+    const isLoading = moduleKey === 'roles-admin-roles' ? this.state.loadingRoles : this.state.loadingPermissions;
+    U.renderPaginationControls({
+      host,
+      moduleKey,
+      page: safePage,
+      pageSize: safeLimit,
+      hasMore: safePage * safeLimit < safeTotal,
+      returned: safeReturned,
+      countText: safeTotal ? `${from}-${to} of ${safeTotal}` : '0 rows',
+      loading: isLoading,
+      pageSizeOptions: [25, 50, 100, 200],
+      onPageChange: nextPage => {
+        this.state[pageKey] = U.normalizePageNumber(nextPage, 1);
+        if (moduleKey === 'roles-admin-roles') this.renderRolesTable();
+        else this.renderPermissionsTable();
+      },
+      onPageSizeChange: nextSize => {
+        this.state[limitKey] = U.normalizePageSize(nextSize, 50, 200);
+        this.state[pageKey] = 1;
+        if (moduleKey === 'roles-admin-roles') this.renderRolesTable();
+        else this.renderPermissionsTable();
+      }
+    });
+  },
+
   roleKey(role = {}) {
     return this.normalizeRoleKey(role.role_key || role.key || role.role || role.id);
   },
@@ -296,13 +409,20 @@ const RolesAdmin = {
     this.state.loadingRoles = true;
     if (E.rpRolesState) E.rpRolesState.textContent = 'Loading roles…';
     try {
-      const response = await Api.listRoles({ limit: this.state.limit, page: this.state.page, summary_only: true, forceRefresh: force });
-      this.state.roles = this.extractRows(response);
+      const result = await this.fetchAllPages(
+        ({ page, limit }) => Api.listRoles({ limit, page, summary_only: true, forceRefresh: force }),
+        { limit: this.state.rolesLimit }
+      );
+      this.state.roles = result.rows;
+      this.state.rolesTotal = result.total;
+      this.state.loadingRoles = false;
       this.renderRolesTable();
       this.renderRoleSelects();
       this.renderKpis();
     } catch (error) {
       this.state.roles = [];
+      this.state.rolesTotal = 0;
+      this.state.loadingRoles = false;
       this.renderRolesTable(String(error?.message || 'Unable to load roles.'));
       this.renderRoleSelects();
       this.renderKpis();
@@ -316,14 +436,21 @@ const RolesAdmin = {
     this.state.loadingPermissions = true;
     if (E.rolePermissionsState) E.rolePermissionsState.textContent = 'Loading permission rules…';
     try {
-      const response = await Api.listRolePermissions({ limit: this.state.limit, page: this.state.page, summary_only: true, forceRefresh: force });
-      this.state.permissions = this.dedupePermissionRows(this.extractRows(response));
+      const result = await this.fetchAllPages(
+        ({ page, limit }) => Api.listRolePermissions({ limit, page, summary_only: true, forceRefresh: force }),
+        { limit: this.state.permissionsLimit }
+      );
+      this.state.permissions = this.dedupePermissionRows(result.rows);
+      this.state.permissionsTotal = this.state.permissions.length;
       this.state.groupedPermissions = this.groupPermissions(this.state.permissions);
+      this.state.loadingPermissions = false;
       this.renderPermissionsTable();
       this.renderKpis();
     } catch (error) {
       this.state.permissions = [];
+      this.state.permissionsTotal = 0;
       this.state.groupedPermissions = [];
+      this.state.loadingPermissions = false;
       this.renderPermissionsTable(String(error?.message || 'Unable to load permission matrix.'));
       this.renderKpis();
     } finally {
@@ -362,18 +489,38 @@ const RolesAdmin = {
 
   renderRolesTable(error = '') {
     if (!E.rpRolesTbody || !E.rpRolesState) return;
+    const paginationAnchor = E.rpRolesTbody.closest?.('.table-wrap');
     if (error) {
       E.rpRolesState.textContent = error;
       E.rpRolesTbody.innerHTML = '';
+      this.renderPagination({
+        hostId: 'rpRolesPagination',
+        anchor: paginationAnchor,
+        moduleKey: 'roles-admin-roles',
+        pageKey: 'rolesPage',
+        limitKey: 'rolesLimit',
+        totalRows: 0,
+        returnedRows: 0
+      });
       return;
     }
     if (!this.state.roles.length) {
       E.rpRolesState.textContent = 'No roles found.';
       E.rpRolesTbody.innerHTML = '';
+      this.renderPagination({
+        hostId: 'rpRolesPagination',
+        anchor: paginationAnchor,
+        moduleKey: 'roles-admin-roles',
+        pageKey: 'rolesPage',
+        limitKey: 'rolesLimit',
+        totalRows: 0,
+        returnedRows: 0
+      });
       return;
     }
-    E.rpRolesState.textContent = `${this.state.roles.length} role(s)`;
-    E.rpRolesTbody.innerHTML = this.state.roles.map(role => {
+    const pageResult = this.paginateClientRows(this.state.roles, 'rolesPage', 'rolesLimit');
+    E.rpRolesState.textContent = `${this.state.roles.length} role(s) loaded · showing ${pageResult.from + 1}-${pageResult.to}`;
+    E.rpRolesTbody.innerHTML = pageResult.rows.map(role => {
       const key = this.roleKey(role);
       return `<tr data-role-key="${U.escapeAttr(key)}">
         <td>${U.escapeHtml(key || '—')}</td>
@@ -401,12 +548,23 @@ const RolesAdmin = {
         if (action === 'manage') {
           if (E.rolePermissionsSearchAllowedRoles) E.rolePermissionsSearchAllowedRoles.value = roleKey;
           this.state.filters.role = roleKey;
+          this.state.permissionsPage = 1;
           this.renderPermissionsTable();
           return;
         }
         if (action === 'edit') await this.editRole(role);
         if (action === 'delete') await this.deleteRole(role);
       });
+    });
+
+    this.renderPagination({
+      hostId: 'rpRolesPagination',
+      anchor: paginationAnchor,
+      moduleKey: 'roles-admin-roles',
+      pageKey: 'rolesPage',
+      limitKey: 'rolesLimit',
+      totalRows: pageResult.total,
+      returnedRows: pageResult.rows.length
     });
   },
 
@@ -468,9 +626,19 @@ const RolesAdmin = {
 
   renderPermissionsTable(error = '') {
     if (!E.rolePermissionsTbody || !E.rolePermissionsState) return;
+    const paginationAnchor = E.rolePermissionsTbody.closest?.('.table-wrap');
     if (error) {
       E.rolePermissionsState.textContent = error;
       E.rolePermissionsTbody.innerHTML = '';
+      this.renderPagination({
+        hostId: 'rolePermissionsPagination',
+        anchor: paginationAnchor,
+        moduleKey: 'roles-admin-permissions',
+        pageKey: 'permissionsPage',
+        limitKey: 'permissionsLimit',
+        totalRows: 0,
+        returnedRows: 0
+      });
       return;
     }
     const rules = this.filteredPermissionRows();
@@ -478,10 +646,20 @@ const RolesAdmin = {
     if (!rules.length) {
       E.rolePermissionsState.textContent = this.state.groupedPermissions.length ? 'No grouped rules match current filters.' : 'No permission rules found.';
       E.rolePermissionsTbody.innerHTML = '';
+      this.renderPagination({
+        hostId: 'rolePermissionsPagination',
+        anchor: paginationAnchor,
+        moduleKey: 'roles-admin-permissions',
+        pageKey: 'permissionsPage',
+        limitKey: 'permissionsLimit',
+        totalRows: 0,
+        returnedRows: 0
+      });
       return;
     }
-    E.rolePermissionsState.textContent = `${rules.length} grouped rule(s)`;
-    E.rolePermissionsTbody.innerHTML = rules.map(rule => `
+    const pageResult = this.paginateClientRows(rules, 'permissionsPage', 'permissionsLimit');
+    E.rolePermissionsState.textContent = `${rules.length} grouped rule(s) · ${this.state.permissions.length} permission row(s) loaded · showing ${pageResult.from + 1}-${pageResult.to}`;
+    E.rolePermissionsTbody.innerHTML = pageResult.rows.map(rule => `
       <tr data-rule-key="${U.escapeAttr(rule.key)}">
         <td><input class="input sm" data-rule-field="resource" type="text" value="${U.escapeAttr(rule.resource)}" disabled /></td>
         <td><input class="input sm" data-rule-field="action" type="text" value="${U.escapeAttr(rule.action)}" disabled /></td>
@@ -519,6 +697,16 @@ const RolesAdmin = {
         if (actionName === 'delete') return this.deleteRule(rule);
         if (actionName === 'duplicate') return this.duplicateRule(rule);
       });
+    });
+
+    this.renderPagination({
+      hostId: 'rolePermissionsPagination',
+      anchor: paginationAnchor,
+      moduleKey: 'roles-admin-permissions',
+      pageKey: 'permissionsPage',
+      limitKey: 'permissionsLimit',
+      totalRows: pageResult.total,
+      returnedRows: pageResult.rows.length
     });
   },
 
