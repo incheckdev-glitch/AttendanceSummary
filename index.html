@@ -41,12 +41,14 @@
 
     <div class="toolbar">
       <input id="searchInput" class="input" type="search"
-             placeholder="Search ID, title, description, log…"
+             placeholder="Search ID, title, description, log…  ( / to focus )"
              aria-label="Search tickets" />
 
-      <button id="themeToggle" class="btn theme-toggle" type="button" aria-label="Switch to dark mode" title="Switch to dark mode">
-        <span id="themeToggleIcon" class="theme-toggle-icon" aria-hidden="true"></span>
-      </button>
+      <select id="themeSelect" class="select" aria-label="Theme">
+        <option value="system">System</option>
+        <option value="dark">Dark</option>
+        <option value="light">Light</option>
+      </select>
 
       <button id="refreshNow" class="btn" aria-label="Refresh from source">
         <span class="icon" aria-hidden="true">🔄</span> Refresh
@@ -54,6 +56,10 @@
       <button id="exportCsv" class="btn" aria-label="Export filtered tickets as Excel">
         <span class="icon" aria-hidden="true">📥</span> Export
       </button>
+      <button id="shortcutsHelp" class="btn ghost sm" type="button" title="Keyboard shortcuts">
+        <span class="icon" aria-hidden="true">⌨️</span>
+      </button>
+
       <div class="notification-shell">
         <button id="notificationBellBtn" class="btn ghost sm notification-bell" type="button" aria-label="Notifications (0 unread)">
           <span class="icon" aria-hidden="true">🔔</span>
@@ -380,6 +386,7 @@
         <div class="card summary-bar" id="issuesSummaryCard">
           <span id="issuesSummaryText" aria-live="polite">Loading summary…</span>
           <span id="issuesLastUpdated" class="summary-meta" aria-live="polite">Last updated: --</span>
+         <span class="shortcut-chip">Shortcuts: 1/2/3/4/5/6 tabs · / search · Ctrl+K AI</span>
         </div>
 
         <div class="grid cols-4" id="kpis" aria-live="polite"></div>
@@ -467,7 +474,7 @@
             <div style="display:flex;gap:8px;align-items:center">
               <label for="pageSize" class="muted">Rows</label>
               <select id="pageSize" class="select sm" aria-label="Rows per page">
-                <option>25</option><option selected>50</option><option>100</option>
+                <option>25</option><option selected>50</option><option>100</option><option>200</option>
               </select>
             </div>
           </div>

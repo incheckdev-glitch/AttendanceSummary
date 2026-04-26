@@ -2941,18 +2941,18 @@
       assertAllowed('tickets', 'list');
       const { controls } = splitListPayload(payload);
       const listControls = normalizeListControls(controls, 'tickets');
-      let query = applyFilters(client.from('tickets').select('*'), payload).order('updated_at', { ascending: false });
+      let query = applyFilters(client.from('tickets').select('*', { count: 'planned' }), payload).order('updated_at', { ascending: false });
       query = query.range(listControls.from, listControls.to);
-      const { data: tickets, error } = await query;
+      const { data: tickets, error, count } = await query;
       if (error) throw friendlyError('Unable to load tickets', error);
       const normalized = (tickets || []).map(row => normalizeRow(resource, row));
-      if (!isAdminDev()) return { handled: true, data: normalizePagedList(resource, normalized, listControls, null) };
+      if (!isAdminDev()) return { handled: true, data: normalizePagedList(resource, normalized, listControls, count) };
       const ids = normalized.map(row => String(ticketRowId(row) || '')).filter(Boolean);
       const internalById = await loadTicketInternalByIds(ids);
       const withInternal = normalized.map(row =>
         mergeTicketInternal(row, internalById.get(String(ticketRowId(row) || '')))
       );
-      return { handled: true, data: normalizePagedList(resource, withInternal, listControls, null) };
+      return { handled: true, data: normalizePagedList(resource, withInternal, listControls, count) };
     }
     if (resource === 'notifications' && action === 'list') {
       assertAllowed('notifications', 'list');

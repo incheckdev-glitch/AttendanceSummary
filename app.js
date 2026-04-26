@@ -45,6 +45,8 @@ const TicketPaginationState = {
   limit: 50,
   offset: 0,
   returned: 0,
+  total: 0,
+  totalPages: 1,
   hasMore: false
 };
 
@@ -457,14 +459,25 @@ UI.Issues = {
     const pageData = rows;
 
     if (E.rowCount) {
-      E.rowCount.textContent = total ? `Showing ${total} records` : 'No rows';
+      const serverTotal = Number(TicketPaginationState.total || 0);
+      E.rowCount.textContent = total
+        ? serverTotal > total
+          ? `Showing ${total} of ${serverTotal} records`
+          : `Showing ${total} records`
+        : 'No rows';
     }
-    if (E.pageInfo) E.pageInfo.textContent = `Page ${TicketPaginationState.page}`;
+    if (E.pageInfo) {
+      const totalPages = Number(TicketPaginationState.totalPages || 1);
+      E.pageInfo.textContent = totalPages > 1
+        ? `Page ${TicketPaginationState.page} of ${totalPages}`
+        : `Page ${TicketPaginationState.page}`;
+    }
     ['firstPage', 'prevPage', 'nextPage', 'lastPage'].forEach(id => {
       const btn = E[id];
       if (!btn) return;
+      const totalPages = Number(TicketPaginationState.totalPages || 1);
       const atFirst = TicketPaginationState.page <= 1,
-        atLast = !TicketPaginationState.hasMore;
+        atLast = !TicketPaginationState.hasMore || TicketPaginationState.page >= totalPages;
       if (id === 'firstPage' || id === 'prevPage') btn.disabled = atFirst;
       else btn.disabled = atLast;
       if (btn.disabled) btn.setAttribute('disabled', 'true');
@@ -2789,6 +2802,8 @@ async function loadIssues(force = false) {
     TicketPaginationState.limit = paginationMeta.limit;
     TicketPaginationState.offset = paginationMeta.offset;
     TicketPaginationState.returned = paginationMeta.returned;
+    TicketPaginationState.total = paginationMeta.total;
+    TicketPaginationState.totalPages = paginationMeta.totalPages;
     TicketPaginationState.hasMore = paginationMeta.hasMore;
     const rawRows = extractEventsPayload(response);
     const rows = rawRows.map(raw => DataStore.normalizeRow(raw));
@@ -2995,8 +3010,13 @@ function extractPagedListMeta(data, fallback = {}) {
   const limit = Number(data.limit ?? data.pageSize ?? fallback.limit ?? 50) || 50;
   const returned = Number(data.returned ?? fallback.returned ?? 0) || 0;
   const offset = Number(data.offset ?? Math.max(0, (page - 1) * limit));
-  const hasMore = data.hasMore !== undefined ? Boolean(data.hasMore) : Boolean(fallback.hasMore);
-  return { page, limit, returned, offset, hasMore };
+  const totalRaw = Number(data.total ?? fallback.total ?? offset + returned);
+  const total = Number.isFinite(totalRaw) && totalRaw >= 0 ? totalRaw : offset + returned;
+  const totalPages = limit > 0 ? Math.max(1, Math.ceil(total / limit)) : Math.max(1, page);
+  const hasMore = data.hasMore !== undefined
+    ? Boolean(data.hasMore)
+    : page < totalPages || (returned >= limit && total <= offset + returned);
+  return { page, limit, returned, offset, total, totalPages, hasMore };
 }
 
 function normalizeEventDate(value) {
@@ -4273,6 +4293,12 @@ function wireCore() {
       TicketCreator.open();
     });
 
+  if (E.shortcutsHelp) {
+    E.shortcutsHelp.addEventListener('click', () => {
+     UI.toast('Shortcuts: 1/2/3/4/5/6/7/8/9/0 switch tabs · / focus search · Ctrl+K AI query');
+    });
+  }
+
 
   if (E.columnToggleBtn && E.columnPanel) {
     const setPanel = open => {
@@ -4369,7 +4395,11 @@ function wirePaging() {
     });
   if (E.lastPage)
     E.lastPage.addEventListener('click', () => {
-      if (TicketPaginationState.hasMore) {
+      const totalPages = Number(TicketPaginationState.totalPages || 1);
+      if (totalPages > TicketPaginationState.page) {
+        TicketPaginationState.page = totalPages;
+        loadIssues(true);
+      } else if (TicketPaginationState.hasMore) {
         TicketPaginationState.page++;
         loadIssues(true);
       }
@@ -4475,52 +4505,29 @@ function wireTheme() {
   const media = window.matchMedia
     ? window.matchMedia('(prefers-color-scheme: dark)')
     : null;
-
-  const isDarkActive = () => document.documentElement.getAttribute('data-theme') !== 'light';
-
-  const renderThemeToggle = () => {
-    if (!E.themeToggle || !E.themeToggleIcon) return;
-    const darkMode = isDarkActive();
-    E.themeToggleIcon.innerHTML = darkMode
-      ? '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.8"/><path d="M12 2.5V5.2M12 18.8V21.5M4.9 4.9L6.8 6.8M17.2 17.2L19.1 19.1M2.5 12H5.2M18.8 12H21.5M4.9 19.1L6.8 17.2M17.2 6.8L19.1 4.9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>'
-      : '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20.2 14.7A8.3 8.3 0 1 1 9.3 3.8a7 7 0 1 0 10.9 10.9Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>';
-    const label = darkMode ? 'Switch to light mode' : 'Switch to dark mode';
-    E.themeToggle.setAttribute('aria-label', label);
-    E.themeToggle.setAttribute('title', label);
-  };
-
   const applySystem = () => {
     if (media?.matches) document.documentElement.removeAttribute('data-theme');
     else document.documentElement.setAttribute('data-theme', 'light');
-    renderThemeToggle();
   };
-
-  const applyMode = mode => {
-    if (mode === 'system') {
-      applySystem();
-      return;
-    }
-    if (mode === 'dark') document.documentElement.removeAttribute('data-theme');
-    else document.documentElement.setAttribute('data-theme', 'light');
-    renderThemeToggle();
-  };
-
   const saved = localStorage.getItem(LS_KEYS.theme) || 'system';
-  applyMode(saved);
+  if (E.themeSelect) E.themeSelect.value = saved;
+  if (saved === 'system') applySystem();
+  else if (saved === 'dark') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', 'light');
 
   media?.addEventListener('change', () => {
-    if ((localStorage.getItem(LS_KEYS.theme) || 'system') === 'system') {
+    if ((localStorage.getItem(LS_KEYS.theme) || 'system') === 'system')
       applySystem();
-    }
   });
 
-  if (E.themeToggle) {
-    E.themeToggle.addEventListener('click', () => {
-      const nextMode = isDarkActive() ? 'light' : 'dark';
-      localStorage.setItem(LS_KEYS.theme, nextMode);
-      applyMode(nextMode);
+  if (E.themeSelect)
+    E.themeSelect.addEventListener('change', () => {
+      const v = E.themeSelect.value;
+      localStorage.setItem(LS_KEYS.theme, v);
+      if (v === 'system') applySystem();
+      else if (v === 'dark') document.documentElement.removeAttribute('data-theme');
+      else document.documentElement.setAttribute('data-theme', 'light');
     });
-  }
 
   if (E.accentColor) {
     const rootStyle = getComputedStyle(document.documentElement);
@@ -6394,6 +6401,69 @@ function wireCSMActivity() {
   }
 }
 
+/* ---------- Keyboard shortcuts ---------- */
+
+function wireKeyboardShortcuts() {
+  document.addEventListener('keydown', e => {
+    const tag = (e.target && e.target.tagName) || '';
+    const isInputLike =
+      tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable;
+
+    // Ctrl/Cmd + K → AI query box (Insights tab)
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      setActiveView('insights');
+      if (E.aiQueryInput) {
+        E.aiQueryInput.focus();
+        if (E.aiQueryInput.select) E.aiQueryInput.select();
+      }
+      return;
+    }
+
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+    // "/" → focus search (when not already in an input)
+    if (e.key === '/' && !isInputLike) {
+      e.preventDefault();
+      setActiveView('issues');
+      if (E.searchInput) {
+        E.searchInput.focus();
+        if (E.searchInput.select) E.searchInput.select();
+      }
+      return;
+    }
+
+    if (isInputLike) return;
+
+    // 1/2/3/4/5/6/7/8/9 → switch tabs
+    if (e.key === '1') {
+      setActiveView('issues');
+    } else if (e.key === '2') {
+      setActiveView('calendar');
+    } else if (e.key === '3') {
+      setActiveView('insights');
+    } else if (e.key === '4') {
+      setActiveView('csm');
+    } else if (e.key === '5') {
+      setActiveView('leads');
+    } else if (e.key === '6') {
+      setActiveView('deals');
+    } else if (e.key === '7') {
+      setActiveView('proposals');
+    } else if (e.key === '8') {
+      setActiveView('proposalCatalog');
+    } else if (e.key === '9') {
+      setActiveView('agreements');
+    } else if (e.key === '0') {
+      setActiveView('clients');
+    } else if (e.key === '-' && Permissions.canAccessTab('users')) {
+      setActiveView('users');
+    } else if (e.key === '=' && Permissions.canAccessTab('rolePermissions')) {
+      setActiveView('rolePermissions');
+    }
+  });
+}
+
 function logApiStartupDiagnostics() {
   console.info('[startup/auth] Supabase mode enabled', {
     hasSupabaseConfig: window.SupabaseClient?.hasConfig?.(),
@@ -6545,6 +6615,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (window.Clients?.wire) Clients.wire();
   if (window.ProposalCatalog?.wire) ProposalCatalog.wire();
   if (window.Workflow?.wire) Workflow.wire();
+  wireKeyboardShortcuts();
   if (window.Notifications?.wire) Notifications.wire();
 
   const isAuthenticated = Session.isAuthenticated();
