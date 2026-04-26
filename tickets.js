@@ -13,16 +13,9 @@ const DataStore = {
   etag: null,
 
   normalizeStatus(s) {
-    const i = (s || '').trim().toLowerCase();
-    if (!i) return 'Not Started Yet';
-    if (i.startsWith('resolved')) return 'Resolved';
-    if (i.startsWith('under')) return 'Under Development';
-    if (i.startsWith('rejected')) return 'Rejected';
-    if (i.startsWith('on hold')) return 'On Hold';
-    if (i.startsWith('not started')) return 'Not Started Yet';
-    if (i.startsWith('sent')) return 'Sent';
-    if (i.startsWith('on stage')) return 'On Stage';
-    return s || 'Not Started Yet';
+    if (typeof window.normalizeTicketStatus === 'function') return window.normalizeTicketStatus(s);
+    const i = (s || '').trim();
+    return i || 'New';
   },
   normalizePriority(p) {
     const i = (p || '').trim().toLowerCase();
@@ -95,7 +88,7 @@ const DataStore = {
        // Always prefer exported column L (index 11) for priority when duplicate
       // "Priority" headers exist.
       priority: DataStore.normalizePriority(String(raw.__col_11 ?? '').trim() || pick('priority')),
-      status: DataStore.normalizeStatus(pick('status') || 'Not Started Yet'),
+      status: DataStore.normalizeStatus(pick('status') || 'New'),
       type: resolvedType,
       date: pick('timestamp', 'date', 'created at'),
       log: pick('log', 'logs', 'comment')

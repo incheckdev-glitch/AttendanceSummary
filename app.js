@@ -52,6 +52,7 @@ const TicketPaginationState = {
 const TicketSummaryState = {
   total: 0,
   open: 0,
+  highRisk: 0,
   statusCounts: {}
 };
 
@@ -374,7 +375,9 @@ UI.Issues = {
         (!s.module || s.module === 'All' || r.module === s.module) &&
          matchesCategory(r) &&
         (!s.priority || s.priority === 'All' || r.priority === s.priority) &&
-        (!s.status || s.status === 'All' || r.status === s.status) &&
+        (!s.status ||
+          s.status === 'All' ||
+          DataStore.normalizeStatus(r.status) === DataStore.normalizeStatus(s.status)) &&
         (!allowInternalFilters ||
           (!s.devTeamStatus ||
             s.devTeamStatus === 'All' ||
@@ -393,11 +396,23 @@ UI.Issues = {
   renderKPIs(list) {
     if (!E.kpis) return;
     const fallbackCounts = {};
-    list.forEach(r => (fallbackCounts[r.status] = (fallbackCounts[r.status] || 0) + 1));
-    const counts = Object.keys(TicketSummaryState.statusCounts || {}).length
-      ? TicketSummaryState.statusCounts
-      : fallbackCounts;
+    list.forEach(r => {
+      const normalizedStatus = DataStore.normalizeStatus(r.status);
+      fallbackCounts[normalizedStatus] = (fallbackCounts[normalizedStatus] || 0) + 1;
+    });
+    const hasSummaryCounts = Object.keys(TicketSummaryState.statusCounts || {}).length > 0;
+    const counts = hasSummaryCounts ? TicketSummaryState.statusCounts : fallbackCounts;
     const total = Number(TicketSummaryState.total || 0) || list.length;
+    const preferredOrder = [
+      'New',
+      'Not Started Yet',
+      'Under Development',
+      'On Stage',
+      'On Hold',
+      'Sent',
+      'Resolved',
+      'Rejected'
+    ];
     E.kpis.innerHTML = '';
     const add = (label, val) => {
       const pct = total ? Math.round((val * 100) / total) : 0;
@@ -438,7 +453,18 @@ UI.Issues = {
       E.kpis.appendChild(d);
     };
     add('Total Tickets', total);
-    Object.entries(counts).forEach(([s, v]) => add(s, v));
+    const seen = new Set();
+    preferredOrder.forEach(status => {
+      const value = Number(counts[status] || 0);
+      if (value > 0) {
+        add(status, value);
+        seen.add(status);
+      }
+    });
+    Object.entries(counts)
+      .filter(([status, value]) => !seen.has(status) && Number(value || 0) > 0)
+      .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+      .forEach(([status, value]) => add(status, Number(value || 0)));
   },
   renderTable(list) {
     if (!E.issuesTbody) return;
@@ -785,16 +811,18 @@ UI.Issues.renderSummary = function (list) {
   const fallbackTotal = list.length;
   const total = Number(TicketSummaryState.total || 0) || fallbackTotal;
   let open = Number(TicketSummaryState.open || 0);
-  let highRisk = 0;
-  list.forEach(r => {
-    const risk = DataStore.computed.get(r.id)?.risk?.total || 0;
-    if (risk >= CONFIG.RISK.highRisk) highRisk++;
-  });
+  let highRisk = Number(TicketSummaryState.highRisk || 0);
   if (!open && total === fallbackTotal) {
     open = list.filter(r => {
       const st = String(r.status || '').toLowerCase();
       return !(st.startsWith('resolved') || st.startsWith('rejected'));
     }).length;
+  }
+  if (!highRisk && total === fallbackTotal) {
+    list.forEach(r => {
+      const risk = DataStore.computed.get(r.id)?.risk?.total || 0;
+      if (risk >= CONFIG.RISK.highRisk) highRisk++;
+    });
   }
   E.issuesSummaryText.textContent =
      `${total} ticket${total === 1 ? '' : 's'} · ${open} open · ${highRisk} high-risk`;
@@ -2813,6 +2841,7 @@ async function loadIssues(force = false) {
     TicketPaginationState.hasMore = paginationMeta.hasMore;
     TicketSummaryState.total = Number(summaryResponse?.total ?? paginationMeta.total ?? 0);
     TicketSummaryState.open = Number(summaryResponse?.open ?? 0);
+    TicketSummaryState.highRisk = Number(summaryResponse?.highRisk ?? 0);
     TicketSummaryState.statusCounts =
       summaryResponse && typeof summaryResponse.statusCounts === 'object'
         ? { ...summaryResponse.statusCounts }
@@ -3366,7 +3395,8 @@ function exportIssuesToExcel(rows, suffix) {
    wsIssues['!cols'] = headers.map(h => ({ wch: Math.max(12, h.length + 4) }));
 
   const statusCounts = rows.reduce((acc, r) => {
-    acc[r.status] = (acc[r.status] || 0) + 1;
+    const normalizedStatus = DataStore.normalizeStatus(r.status);
+    acc[normalizedStatus] = (acc[normalizedStatus] || 0) + 1;
     return acc;
   }, {});
   const summaryRows = [
@@ -4310,11 +4340,6 @@ function wireCore() {
       TicketCreator.open();
     });
 
-  if (E.shortcutsHelp) {
-    E.shortcutsHelp.addEventListener('click', () => {
-     UI.toast('Shortcuts: 1/2/3/4/5/6/7/8/9/0 switch tabs · / focus search · Ctrl+K AI query');
-    });
-  }
 
 
   if (E.columnToggleBtn && E.columnPanel) {
