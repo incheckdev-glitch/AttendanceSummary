@@ -2982,6 +2982,24 @@
     }
     if (resource === 'tickets' && action === 'summary') {
       assertAllowed('tickets', 'list');
+      // Dev SQL check helper (run manually in SQL editor; do not execute in frontend runtime):
+      // select
+      //   case
+      //     when status is null or trim(status) = '' then 'New'
+      //     when lower(trim(status)) = 'new' then 'New'
+      //     when lower(trim(status)) = 'under development' then 'Under Development'
+      //     when lower(trim(status)) = 'not started yet' then 'Not Started Yet'
+      //     when lower(trim(status)) = 'on hold' then 'On Hold'
+      //     when lower(trim(status)) = 'on stage' then 'On Stage'
+      //     when lower(trim(status)) = 'sent' then 'Sent'
+      //     when lower(trim(status)) = 'resolved' then 'Resolved'
+      //     when lower(trim(status)) = 'rejected' then 'Rejected'
+      //     else trim(status)
+      //   end as normalized_status,
+      //   count(*) as count
+      // from public.tickets
+      // group by normalized_status
+      // order by count desc, normalized_status asc;
       const base = () => applyFilters(client.from('tickets'), payload, { resource: 'tickets' });
       const { count: totalCount, error: totalError } = await base().select('id', { count: 'exact', head: true });
       if (totalError) throw friendlyError('Unable to load ticket summary', totalError);
@@ -2992,14 +3010,20 @@
       const pageSize = 1000;
       const maxPages = 100;
       let from = 0;
+      let lastPageBoundary = '';
       for (let page = 0; page < maxPages; page++) {
         const to = from + pageSize - 1;
         const { data: chunk, error: chunkError } = await base()
-          .select('id,status,priority,title,description,log,date,date_submitted')
+          .select('id,status,priority')
           .order('id', { ascending: true })
           .range(from, to);
         if (chunkError) throw friendlyError('Unable to load ticket summary', chunkError);
         const rows = Array.isArray(chunk) ? chunk : [];
+        const firstId = String(rows[0]?.id || '');
+        const lastId = String(rows[rows.length - 1]?.id || '');
+        const pageBoundary = `${firstId}:${lastId}:${rows.length}`;
+        if (rows.length && lastPageBoundary && pageBoundary === lastPageBoundary) break;
+        lastPageBoundary = pageBoundary;
         rows.forEach(row => {
           const normalizedStatus = normalizeTicketStatus(row?.status);
           statusCounts[normalizedStatus] = (statusCounts[normalizedStatus] || 0) + 1;
