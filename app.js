@@ -49,6 +49,11 @@ const TicketPaginationState = {
   totalPages: 1,
   hasMore: false
 };
+const TicketSummaryState = {
+  total: 0,
+  open: 0,
+  statusCounts: {}
+};
 
 function hasActiveTicketFilters() {
   const state = Filters?.state || {};
@@ -387,9 +392,12 @@ UI.Issues = {
   },
   renderKPIs(list) {
     if (!E.kpis) return;
-    const total = list.length,
-      counts = {};
-    list.forEach(r => (counts[r.status] = (counts[r.status] || 0) + 1));
+    const fallbackCounts = {};
+    list.forEach(r => (fallbackCounts[r.status] = (fallbackCounts[r.status] || 0) + 1));
+    const counts = Object.keys(TicketSummaryState.statusCounts || {}).length
+      ? TicketSummaryState.statusCounts
+      : fallbackCounts;
+    const total = Number(TicketSummaryState.total || 0) || list.length;
     E.kpis.innerHTML = '';
     const add = (label, val) => {
       const pct = total ? Math.round((val * 100) / total) : 0;
@@ -434,37 +442,19 @@ UI.Issues = {
   },
   renderTable(list) {
     if (!E.issuesTbody) return;
-    const { sortKey, sortAsc } = GridState;
-    const sorted = sortKey
-      ? [...list].sort((a, b) => {
-          const va = a[sortKey] || '',
-            vb = b[sortKey] || '';
-          if (sortKey === 'date') {
-            const da = new Date(va),
-              db = new Date(vb);
-            if (isNaN(da) && isNaN(db)) return 0;
-            if (isNaN(da)) return 1;
-            if (isNaN(db)) return -1;
-            return da - db;
-          }
-          return String(va).localeCompare(String(vb), undefined, {
-            numeric: true,
-            sensitivity: 'base'
-          });
-        })
-      : list;
-    const rows = sortAsc ? sorted : sorted.reverse();
+    const rows = Array.isArray(list) ? list : [];
 
     const total = rows.length;
     const pageData = rows;
 
     if (E.rowCount) {
       const serverTotal = Number(TicketPaginationState.total || 0);
-      E.rowCount.textContent = total
-        ? serverTotal > total
-          ? `Showing ${total} of ${serverTotal} records`
-          : `Showing ${total} records`
-        : 'No rows';
+      if (!total) E.rowCount.textContent = 'No rows';
+      else {
+        const start = TicketPaginationState.offset + 1;
+        const end = TicketPaginationState.offset + total;
+        E.rowCount.textContent = `Showing ${start}-${end} of ${serverTotal || end} records`;
+      }
     }
     if (E.pageInfo) {
       const totalPages = Number(TicketPaginationState.totalPages || 1);
@@ -792,16 +782,20 @@ UI.Issues.renderFilterChips = function () {
 
 UI.Issues.renderSummary = function (list) {
   if (!E.issuesSummaryText) return;
-  const total = list.length;
-  let open = 0;
+  const fallbackTotal = list.length;
+  const total = Number(TicketSummaryState.total || 0) || fallbackTotal;
+  let open = Number(TicketSummaryState.open || 0);
   let highRisk = 0;
   list.forEach(r => {
-    const st = (r.status || '').toLowerCase();
-    const isClosed = st.startsWith('resolved') || st.startsWith('rejected');
-    if (!isClosed) open++;
     const risk = DataStore.computed.get(r.id)?.risk?.total || 0;
     if (risk >= CONFIG.RISK.highRisk) highRisk++;
   });
+  if (!open && total === fallbackTotal) {
+    open = list.filter(r => {
+      const st = String(r.status || '').toLowerCase();
+      return !(st.startsWith('resolved') || st.startsWith('rejected'));
+    }).length;
+  }
   E.issuesSummaryText.textContent =
      `${total} ticket${total === 1 ? '' : 's'} · ${open} open · ${highRisk} high-risk`;
 
@@ -2784,19 +2778,31 @@ async function loadIssues(force = false) {
   try {
     UI.spinner(true);
     UI.skeleton(true);
+    const sortBy = GridState.sortKey || 'updated_at';
+    const sortDir = GridState.sortAsc ? 'asc' : 'desc';
     const ticketListPayload = {
       filters: buildTicketListFiltersPayload(),
       page: TicketPaginationState.page,
       limit: TicketPaginationState.limit,
-      offset: (TicketPaginationState.page - 1) * TicketPaginationState.limit
+      offset: (TicketPaginationState.page - 1) * TicketPaginationState.limit,
+      sort_by: sortBy,
+      sort_dir: sortDir
     };
     console.info('[loadIssues] tickets.list payload', ticketListPayload);
-    const response = await Api.requestWithSession(
-      'tickets',
-      'list',
-      ticketListPayload,
-      { requireAuth: true }
-    );
+    const [response, summaryResponse] = await Promise.all([
+      Api.requestWithSession(
+        'tickets',
+        'list',
+        ticketListPayload,
+        { requireAuth: true }
+      ),
+      Api.requestWithSession(
+        'tickets',
+        'summary',
+        { filters: buildTicketListFiltersPayload() },
+        { requireAuth: true }
+      ).catch(() => null)
+    ]);
     const paginationMeta = extractPagedListMeta(response, TicketPaginationState);
     TicketPaginationState.page = paginationMeta.page;
     TicketPaginationState.limit = paginationMeta.limit;
@@ -2805,10 +2811,21 @@ async function loadIssues(force = false) {
     TicketPaginationState.total = paginationMeta.total;
     TicketPaginationState.totalPages = paginationMeta.totalPages;
     TicketPaginationState.hasMore = paginationMeta.hasMore;
+    TicketSummaryState.total = Number(summaryResponse?.total ?? paginationMeta.total ?? 0);
+    TicketSummaryState.open = Number(summaryResponse?.open ?? 0);
+    TicketSummaryState.statusCounts =
+      summaryResponse && typeof summaryResponse.statusCounts === 'object'
+        ? { ...summaryResponse.statusCounts }
+        : {};
     const rawRows = extractEventsPayload(response);
     const rows = rawRows.map(raw => DataStore.normalizeRow(raw));
     DataStore.hydrateFromRows(rows.filter(r => r.id && String(r.id).trim() !== ''));
-    IssuesCache.save(rawRows);
+    const canCachePage =
+      TicketPaginationState.page === 1 &&
+      !hasActiveTicketFilters() &&
+      sortBy === 'updated_at' &&
+      sortDir === 'desc';
+    if (canCachePage) IssuesCache.save(rawRows);
     UI.Issues.renderFilters();
     setIfOptionExists(E.moduleFilter, Filters.state.module);
     setIfOptionExists(E.categoryFilter, Filters.state.category);
@@ -4351,7 +4368,8 @@ function wireSorting() {
         GridState.sortKey = key;
         GridState.sortAsc = true;
       }
-      UI.refreshTableAndSummary();
+      TicketPaginationState.page = 1;
+      loadIssues(true);
     });
     th.addEventListener('keydown', e => {
       if (e.key === 'Enter' || e.key === ' ') {
