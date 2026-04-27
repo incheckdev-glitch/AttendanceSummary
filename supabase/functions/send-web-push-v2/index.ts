@@ -107,6 +107,29 @@ function buildPushPayload(input: Record<string, unknown>) {
   };
 }
 
+function getPayloadResource(input: Record<string, unknown>) {
+  const data = input.data && typeof input.data === 'object' ? input.data as Record<string, unknown> : {};
+  return normalizeString(input.resource || data.resource).toLowerCase();
+}
+
+function isAllowedSystemRolePush(input: Record<string, unknown>) {
+  const resource = getPayloadResource(input);
+  const allowedResources = new Set([
+    'tickets',
+    'operations_onboarding',
+    'technical_admin_requests',
+    'leads',
+    'deals',
+    'proposals',
+    'agreements',
+    'invoices',
+    'receipts',
+    'workflow',
+    'notifications'
+  ]);
+  return allowedResources.has(resource);
+}
+
 Deno.serve(async req => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', {
@@ -147,6 +170,7 @@ Deno.serve(async req => {
     if (legacySubscriptionId && !targetSubscriptionIds.includes(legacySubscriptionId)) targetSubscriptionIds.push(legacySubscriptionId);
     const targetRoles = uniqueList(body.roles).map(item => item.toLowerCase());
     const allowBroadcast = body.allow_broadcast === true;
+    const resource = getPayloadResource(body);
 
     if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
       return new Response(
@@ -182,16 +206,26 @@ Deno.serve(async req => {
         );
       }
       if (!auth.isPrivileged) {
-        const hasRestrictedFields = allowBroadcast || targetRoles.length > 0;
-        if (hasRestrictedFields) {
+        if (allowBroadcast) {
           return new Response(
             JSON.stringify({
-              error: 'Not authorized. Only admin/dev/webhook may target roles or broadcast.',
+              error: 'Not authorized. Only admin/dev/webhook may broadcast push notifications.',
+              code: 'forbidden_broadcast'
+            }),
+            { status: 403, headers: CORS_HEADERS }
+          );
+        }
+
+        if (targetRoles.length > 0 && !isAllowedSystemRolePush(body)) {
+          return new Response(
+            JSON.stringify({
+              error: 'Not authorized. Role push is only allowed for approved system notification resources.',
               code: 'forbidden_targeting'
             }),
             { status: 403, headers: CORS_HEADERS }
           );
         }
+
         const targetsOwnUserOnly = targetUserIds.length === 1 && targetUserIds[0] === auth.userId;
         let targetsOwnSubscriptionsOnly = false;
         if (targetSubscriptionIds.length > 0) {
@@ -211,10 +245,11 @@ Deno.serve(async req => {
             ownedIds.length === targetSubscriptionIds.length &&
             (ownedRows || []).every(row => normalizeString(row.user_id) === auth.userId);
         }
-        if (!targetsOwnUserOnly && !targetsOwnSubscriptionsOnly) {
+        const isAllowedRoleSystemPush = targetRoles.length > 0 && isAllowedSystemRolePush(body);
+        if (!targetsOwnUserOnly && !targetsOwnSubscriptionsOnly && !isAllowedRoleSystemPush) {
           return new Response(
             JSON.stringify({
-              error: 'Not authorized. Authenticated users may only send test pushes to their own user_id/subscription_id.',
+              error: 'Not authorized. Authenticated users may only send test pushes to their own user/subscription or approved system role pushes.',
               code: 'forbidden_self_target_only'
             }),
             { status: 403, headers: CORS_HEADERS }
@@ -222,17 +257,83 @@ Deno.serve(async req => {
         }
       }
 
-      let query = adminClient
-        .from('push_subscriptions')
-        .select('id, user_id, role, endpoint, p256dh, auth')
-        .eq('is_active', true);
-      if (targetSubscriptionIds.length > 0) query = query.in('id', targetSubscriptionIds);
-      if (targetUserIds.length > 0) query = query.in('user_id', targetUserIds);
-      if (targetRoles.length > 0) query = query.in('role', targetRoles);
+      console.info('[send-web-push-v2] resolving subscriptions', {
+        targetUserIds,
+        targetRoles,
+        targetSubscriptionIds,
+        resource,
+        isPrivileged: auth.isPrivileged,
+        authUserId: auth.userId
+      });
 
-      const { data: rows, error: fetchError } = await query.limit(50);
-      if (fetchError) throw new Error(fetchError.message || 'Unable to load push subscriptions.');
-      subscriptions = (rows || [])
+      const roleProfileIds: string[] = [];
+      if (targetRoles.length > 0) {
+        const { data: profileRows, error: profileError } = await adminClient
+          .from('profiles')
+          .select('id, role_key')
+          .in('role_key', targetRoles)
+          .eq('is_active', true)
+          .limit(200);
+        if (profileError) throw new Error(profileError.message || 'Unable to load role profiles.');
+        (profileRows || []).forEach(row => {
+          const id = normalizeString(row.id);
+          if (id && !roleProfileIds.includes(id)) roleProfileIds.push(id);
+        });
+      }
+
+      const combinedUserIds = uniqueList([...targetUserIds, ...roleProfileIds]);
+      const fetchedRows: Array<Record<string, unknown>> = [];
+      const seenSubscriptionIds = new Set<string>();
+
+      if (targetSubscriptionIds.length > 0) {
+        const { data: subscriptionRows, error: subscriptionError } = await adminClient
+          .from('push_subscriptions')
+          .select('id, user_id, role, endpoint, p256dh, auth')
+          .eq('is_active', true)
+          .in('id', targetSubscriptionIds)
+          .limit(200);
+        if (subscriptionError) throw new Error(subscriptionError.message || 'Unable to load target subscriptions.');
+        (subscriptionRows || []).forEach(row => {
+          const id = normalizeString(row.id);
+          if (!id || seenSubscriptionIds.has(id)) return;
+          seenSubscriptionIds.add(id);
+          fetchedRows.push(row as Record<string, unknown>);
+        });
+      }
+
+      if (combinedUserIds.length > 0) {
+        const { data: userRows, error: userError } = await adminClient
+          .from('push_subscriptions')
+          .select('id, user_id, role, endpoint, p256dh, auth')
+          .eq('is_active', true)
+          .in('user_id', combinedUserIds)
+          .limit(200);
+        if (userError) throw new Error(userError.message || 'Unable to load user push subscriptions.');
+        (userRows || []).forEach(row => {
+          const id = normalizeString(row.id);
+          if (!id || seenSubscriptionIds.has(id)) return;
+          seenSubscriptionIds.add(id);
+          fetchedRows.push(row as Record<string, unknown>);
+        });
+      }
+
+      if (targetRoles.length > 0) {
+        const { data: roleRows, error: roleError } = await adminClient
+          .from('push_subscriptions')
+          .select('id, user_id, role, endpoint, p256dh, auth')
+          .eq('is_active', true)
+          .in('role', targetRoles)
+          .limit(200);
+        if (roleError) throw new Error(roleError.message || 'Unable to load role push subscriptions.');
+        (roleRows || []).forEach(row => {
+          const id = normalizeString(row.id);
+          if (!id || seenSubscriptionIds.has(id)) return;
+          seenSubscriptionIds.add(id);
+          fetchedRows.push(row as Record<string, unknown>);
+        });
+      }
+
+      subscriptions = fetchedRows
         .map(row => ({
           endpoint: String(row.endpoint || '').trim(),
           keys: {
@@ -263,6 +364,12 @@ Deno.serve(async req => {
     const attempted = results.length;
     const sent = results.filter(result => result.status === 'fulfilled').length;
     const failed = attempted - sent;
+    console.info('[send-web-push-v2] delivery result', {
+      rows: subscriptions.length,
+      attempted,
+      sent,
+      failed
+    });
 
     if (adminClient) {
       await adminClient.from('push_notification_log').insert({
