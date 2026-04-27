@@ -217,6 +217,76 @@
       this.els.serverTestResult.textContent = String(message || '').trim() || 'Server push test: not run yet.';
     },
 
+    getFunctionsUrl(functionName = '') {
+      const baseUrl = String(global.SupabaseClient?.getUrl?.() || '').trim().replace(/\/+$/g, '');
+      const normalizedName = String(functionName || '').trim().replace(/^\/+/g, '');
+      if (!baseUrl || !normalizedName) return '';
+      return `${baseUrl}/functions/v1/${normalizedName}`;
+    },
+
+    async findCurrentUserSubscriptionTarget(userId = '') {
+      const value = String(userId || '').trim();
+      const client = global.SupabaseClient?.getClient?.();
+      if (!client || !value) return null;
+      const registration = await this.getRegistration().catch(() => null);
+      const activeSubscription = registration?.pushManager
+        ? await registration.pushManager.getSubscription().catch(() => null)
+        : null;
+      const endpoint = String(activeSubscription?.endpoint || '').trim();
+
+      let query = client
+        .from('push_subscriptions')
+        .select('id,user_id,endpoint,is_active,last_seen_at,updated_at,created_at')
+        .eq('user_id', value)
+        .eq('is_active', true)
+        .order('last_seen_at', { ascending: false })
+        .limit(1);
+
+      if (endpoint) query = query.eq('endpoint', endpoint);
+      const { data } = await query.maybeSingle();
+      if (data?.id) return data;
+
+      if (endpoint) {
+        const { data: byEndpoint } = await client
+          .from('push_subscriptions')
+          .select('id,user_id,endpoint,is_active,last_seen_at,updated_at,created_at')
+          .eq('endpoint', endpoint)
+          .eq('is_active', true)
+          .limit(1)
+          .maybeSingle();
+        if (byEndpoint?.id) return byEndpoint;
+      }
+
+      const { data: fallback } = await client
+        .from('push_subscriptions')
+        .select('id,user_id,endpoint,is_active,last_seen_at,updated_at,created_at')
+        .eq('user_id', value)
+        .eq('is_active', true)
+        .order('last_seen_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return fallback?.id ? fallback : null;
+    },
+
+    formatServerPushFailureMessage({
+      status = 'unknown',
+      message = 'Unknown error',
+      responseBody = '',
+      functionUrl = '',
+      hasToken = false,
+      targetLabel = ''
+    } = {}) {
+      return [
+        'Server push failed:',
+        `Status: ${status}`,
+        `Message: ${message}`,
+        `Response body: ${responseBody || '—'}`,
+        `URL: ${functionUrl || '—'}`,
+        `Has token: ${hasToken ? 'yes' : 'no'}`,
+        `Target: ${targetLabel || 'none'}`
+      ].join('\n');
+    },
+
     async getRegistration() {
       const existing = await navigator.serviceWorker.getRegistration();
       if (existing) return existing;
@@ -468,22 +538,84 @@
         if (!client) throw new Error('Supabase client unavailable.');
         const userId = String(global.Session?.userId?.() || '').trim();
         if (!userId) throw new Error('Missing current user id.');
-        const { data, error } = await client.functions.invoke('send-web-push', {
-          body: {
-            user_id: userId,
-            title: 'InCheck360 Server Push Test',
-            body: 'Server push test sent to current user subscription.',
-            url: '/?pushTest=1',
-            tag: `incheck360-test-${Date.now()}`,
-            data: { source: 'push-settings-test' }
-          }
+        const functionUrl = this.getFunctionsUrl('send-web-push');
+        const anonKey = String(global.RUNTIME_CONFIG?.SUPABASE_ANON_KEY || global.SUPABASE_ANON_KEY || '').trim();
+        const sessionResult = await client.auth.getSession();
+        const accessToken = String(sessionResult?.data?.session?.access_token || '').trim();
+        const subscriptionRow = await this.findCurrentUserSubscriptionTarget(userId);
+        const targetPayload = subscriptionRow?.id
+          ? { subscription_ids: [String(subscriptionRow.id)] }
+          : { user_ids: [userId] };
+        const targetLabel = subscriptionRow?.id
+          ? `subscription_id ${String(subscriptionRow.id)}`
+          : `user_id ${userId}`;
+        const payload = {
+          ...targetPayload,
+          title: 'InCheck360 Server Test',
+          body: 'Server push is working.',
+          url: '/?pushTest=1',
+          tag: 'server-test-push',
+          data: { test: true, source: 'push-settings-test' }
+        };
+
+        this.debugLog('server push test request', {
+          functionUrl,
+          hasSupabaseUrl: Boolean(global.SupabaseClient?.getUrl?.()),
+          hasAnonKey: Boolean(anonKey),
+          hasAccessToken: Boolean(accessToken),
+          currentUserId: userId,
+          subscriptionRowId: subscriptionRow?.id || null,
+          payload
         });
-        if (error) throw error;
+
+        const { data, error } = await client.functions.invoke('send-web-push', { body: payload });
+        if (error) {
+          const status = Number(error?.context?.status || error?.status || 0) || 'unknown';
+          const errorMessage = String(error?.message || error?.name || 'Unknown invoke error');
+          let responseBodyText = '';
+          let responseJson = null;
+          if (error?.context) {
+            try {
+              responseBodyText = await error.context.clone().text();
+              responseJson = responseBodyText ? JSON.parse(responseBodyText) : null;
+            } catch (_) {
+              responseJson = null;
+            }
+          }
+          const messageDetail = String(responseJson?.error || responseJson?.message || errorMessage).trim() || errorMessage;
+          this.debugLog('server push test response', {
+            status,
+            responseBodyText: responseBodyText || null,
+            responseJson
+          });
+          if (status === 404) {
+            throw new Error(
+              `send-web-push Edge Function was not found. Confirm it is deployed in Supabase.\nURL: ${functionUrl}\nHas token: ${accessToken ? 'yes' : 'no'}\nTarget: ${targetLabel}`
+            );
+          }
+          throw new Error(
+            this.formatServerPushFailureMessage({
+              status,
+              message: messageDetail,
+              responseBody: responseBodyText,
+              functionUrl,
+              hasToken: Boolean(accessToken),
+              targetLabel
+            })
+          );
+        }
+
+        this.debugLog('server push test response', {
+          status: 200,
+          responseBody: data || null
+        });
         this.state.latestServerTestResult = data || null;
         const attempted = Number(data?.attempted || 0);
         const sent = Number(data?.sent || 0);
         const failed = Number(data?.failed || 0);
-        this.setServerTestResultMessage(`Server push test result: attempted=${attempted}, sent=${sent}, failed=${failed}.`);
+        this.setServerTestResultMessage(
+          `Server push test result: attempted=${attempted}, sent=${sent}, failed=${failed}. Target: ${targetLabel}.`
+        );
         this.setMessage('Server push test completed. If no banner appears while closed, check OS settings, iOS Home Screen requirement, and active service worker version.');
         await this.renderDiagnostics({ source: 'testServerPush' });
       } catch (error) {
