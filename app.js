@@ -3498,6 +3498,55 @@ function buildTicketInternalUpdatePayload(payload = {}, ticketId = '') {
   return internalPayload.ticket_id ? internalPayload : null;
 }
 
+async function sendDirectTicketPwaPush({
+  ticketId = '',
+  ticketUuid = '',
+  action = 'ticket_updated',
+  title = 'Ticket updated',
+  body = '',
+  roles = ['admin', 'hoo'],
+  changedFields = []
+} = {}) {
+  const normalizedTicketId = String(ticketId || ticketUuid || '').trim();
+  if (!normalizedTicketId) {
+    console.warn('[tickets:pwa] skipped direct push: missing ticket id');
+    return null;
+  }
+
+  const ticketUrl = `/#tickets?ticket_id=${encodeURIComponent(normalizedTicketId)}`;
+  const payload = {
+    title,
+    body: body || `Ticket ${normalizedTicketId} was updated.`,
+    resource: 'tickets',
+    action,
+    record_id: normalizedTicketId,
+    roles,
+    url: ticketUrl,
+    tag: `tickets-${action}-${normalizedTicketId}-${Date.now()}`,
+    data: {
+      resource: 'tickets',
+      action,
+      record_id: normalizedTicketId,
+      url: ticketUrl,
+      changed_fields: changedFields
+    }
+  };
+
+  console.info('[tickets:pwa] sending direct PWA push', payload);
+
+  const result = await Api.sendWebPush(payload, {
+    context: `tickets:${action}:direct`
+  });
+
+  console.info('[tickets:pwa] direct PWA push result', {
+    ticketId: normalizedTicketId,
+    action,
+    result
+  });
+
+  return result;
+}
+
 async function saveTicketRecord(issue, auth = {}, options = {}) {
  const useSpinner = !options.silent;
   if (useSpinner) UI.spinner(true);
@@ -3513,20 +3562,24 @@ async function saveTicketRecord(issue, auth = {}, options = {}) {
       throw new Error('Only admin/dev can update tickets.');
     }
 
-    /*
-      IMPORTANT:
-      Do NOT write tickets directly with SupabaseClient here.
+    const client = SupabaseClient.getClient();
+    const { data: previousTicketRow } = await client
+      .from('tickets')
+      .select('id,ticket_id,status,title,priority,module,category')
+      .eq('id', issueRowId)
+      .maybeSingle();
 
-      Direct writes bypass SupabaseData.dispatch(), which is where:
-      - notifyTicketUpdated()
-      - createNotificationAndPush()
-      - sendPwaPushForNotification()
-      - send-web-push-v2
+    let previousInternalRow = null;
 
-      are called.
+    if (['admin', 'dev'].includes(currentRole)) {
+      const { data: internalBefore } = await client
+        .from('ticket_internal')
+        .select('ticket_id,youtrack_reference,dev_team_status,issue_related,notes')
+        .eq('ticket_id', issueRowId)
+        .maybeSingle();
 
-      All ticket updates must go through Api.requestWithSession('tickets', 'update', ...).
-    */
+      previousInternalRow = internalBefore || null;
+    }
 
     const publicUpdates = buildPublicTicketUpdatePayload(payload);
     const internalUpdates = buildTicketInternalUpdatePayload(payload, issueRowId);
@@ -3548,7 +3601,7 @@ async function saveTicketRecord(issue, auth = {}, options = {}) {
       throw new Error('Ticket update payload is empty after schema mapping.');
     }
 
-    console.info('[tickets:update] routing through SupabaseData so PWA notifications fire', {
+    console.info('[tickets:update] routing through SupabaseData ticket update', {
       ticket_id: payload.ticket_id || issue.ticket_id || '',
       id: issueRowId,
       changedKeys
@@ -3560,6 +3613,76 @@ async function saveTicketRecord(issue, auth = {}, options = {}) {
     }, { requireAuth: true });
 
     const mergedTicket = savedTicket || {};
+
+    const finalTicketId = String(
+      mergedTicket?.ticket_id ||
+      previousTicketRow?.ticket_id ||
+      payload.ticket_id ||
+      issue.ticket_id ||
+      issueRowId ||
+      ''
+    ).trim();
+
+    const previousStatus = String(previousTicketRow?.status || '').trim();
+    const nextStatus = String(mergedTicket?.status || payload.status || '').trim();
+
+    const previousDevStatus = String(previousInternalRow?.dev_team_status || '').trim();
+    const nextDevStatus = String(mergedTicket?.dev_team_status || payload.devTeamStatus || '').trim();
+
+    const previousIssueRelated = String(previousInternalRow?.issue_related || '').trim();
+    const nextIssueRelated = String(mergedTicket?.issue_related || payload.issueRelated || '').trim();
+
+    const previousYoutrack = String(previousInternalRow?.youtrack_reference || '').trim();
+    const nextYoutrack = String(mergedTicket?.youtrack_reference || payload.youtrackReference || '').trim();
+
+    let pwaAction = 'ticket_updated';
+    let pwaTitle = 'Ticket updated';
+    let pwaBody = `Ticket ${finalTicketId} was updated.`;
+    const changedFields = [];
+
+    if (previousStatus && nextStatus && previousStatus.toLowerCase() !== nextStatus.toLowerCase()) {
+      pwaAction = 'ticket_status_changed';
+      pwaTitle = 'Ticket status changed';
+      pwaBody = `Ticket ${finalTicketId} status changed from ${previousStatus} to ${nextStatus}.`;
+      changedFields.push('status');
+    } else if (
+      previousDevStatus &&
+      nextDevStatus &&
+      previousDevStatus.toLowerCase() !== nextDevStatus.toLowerCase()
+    ) {
+      pwaAction = 'ticket_dev_team_status_changed';
+      pwaTitle = 'Dev team status changed';
+      pwaBody = `Ticket ${finalTicketId} dev team status changed from ${previousDevStatus} to ${nextDevStatus}.`;
+      changedFields.push('dev_team_status');
+    } else if (
+      previousIssueRelated &&
+      nextIssueRelated &&
+      previousIssueRelated.toLowerCase() !== nextIssueRelated.toLowerCase()
+    ) {
+      pwaAction = 'ticket_issue_related_changed';
+      pwaTitle = 'Ticket issue relation changed';
+      pwaBody = `Ticket ${finalTicketId} issue relation changed from ${previousIssueRelated} to ${nextIssueRelated}.`;
+      changedFields.push('issue_related');
+    } else if (previousYoutrack !== nextYoutrack) {
+      pwaAction = 'ticket_youtrack_changed';
+      pwaTitle = 'Ticket YouTrack reference changed';
+      pwaBody = `Ticket ${finalTicketId} YouTrack reference was updated.`;
+      changedFields.push('youtrack_reference');
+    } else {
+      Object.keys(publicUpdates || {}).forEach(key => changedFields.push(key));
+    }
+
+    await sendDirectTicketPwaPush({
+      ticketId: finalTicketId,
+      ticketUuid: issueRowId,
+      action: pwaAction,
+      title: pwaTitle,
+      body: pwaBody,
+      roles: ['admin', 'hoo'],
+      changedFields
+    }).catch(error => {
+      console.warn('[tickets:pwa] direct ticket PWA push failed', error);
+    });
 
     UI.toast('Ticket updated');
 
