@@ -64,10 +64,6 @@
       <button id="refreshNow" class="btn" aria-label="Refresh from source">
         <span class="icon" aria-hidden="true">🔄</span> Refresh
       </button>
-      <button id="exportCsv" class="btn" aria-label="Export filtered tickets as Excel">
-        <span class="icon" aria-hidden="true">📥</span> Export
-      </button>
-
       <div class="notification-shell">
         <button id="notificationBellBtn" class="btn ghost sm notification-bell" type="button" aria-label="Notifications (0 unread)">
           <span class="icon" aria-hidden="true">🔔</span>
@@ -414,6 +410,9 @@
           <div class="table-tools">
               <button id="createTicketBtn" class="btn primary" aria-label="Create new ticket" type="button">
                 <span class="icon" aria-hidden="true">➕</span> Create Ticket
+              </button>
+              <button id="exportCsv" class="btn" aria-label="Export filtered tickets as Excel" type="button">
+                <span class="icon" aria-hidden="true">📥</span> Export
               </button>
               <span id="rowCount" class="muted" aria-live="polite"></span>
               <button id="bulkEditBtn" class="btn ghost sm" type="button">
