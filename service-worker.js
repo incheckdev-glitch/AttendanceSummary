@@ -2,10 +2,8 @@ const STATIC_CACHE_NAME = 'incheck360-monitorcore-static-v1';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
-  '/styles.css',
   '/offline.html',
   '/manifest.webmanifest',
-  '/assets/incheck-logo.svg',
   '/icons/icon.svg',
   '/icons/maskable-icon.svg'
 ];
