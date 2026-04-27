@@ -347,26 +347,44 @@ Deno.serve(async req => {
     }
 
     if (!subscriptions.length) {
-      return new Response(
-        JSON.stringify({
-          ok: false,
+      const noSubscriptionResult = {
+        ok: false,
+        attempted: 0,
+        sent: 0,
+        failed: 0,
+        error: 'No active push subscriptions found',
+        debug: {
+          targetUserIds,
+          targetRoles,
+          targetSubscriptionIds,
+          roleProfileIds,
+          resource,
+          isPrivileged: auth.isPrivileged,
+          authUserId: auth.userId
+        },
+        payload
+      };
+
+      console.warn('[send-web-push-v2] no active subscriptions found', noSubscriptionResult.debug);
+
+      if (adminClient) {
+        await adminClient.from('push_notification_log').insert({
+          sent_by: auth.userId || null,
+          target_user_ids: targetUserIds,
+          target_subscription_ids: targetSubscriptionIds,
+          target_roles: targetRoles,
+          allow_broadcast: allowBroadcast,
           attempted: 0,
           sent: 0,
           failed: 0,
-          error: 'No active push subscriptions found',
-          debug: {
-            targetUserIds,
-            targetRoles,
-            targetSubscriptionIds,
-            roleProfileIds,
-            resource,
-            isPrivileged: auth.isPrivileged,
-            authUserId: auth.userId
-          },
           payload
-        }),
-        { status: 404, headers: CORS_HEADERS }
-      );
+        });
+      }
+
+      return new Response(JSON.stringify(noSubscriptionResult), {
+        status: 404,
+        headers: CORS_HEADERS
+      });
     }
 
     const results = await Promise.allSettled(

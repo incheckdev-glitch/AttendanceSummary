@@ -3513,44 +3513,56 @@ async function saveTicketRecord(issue, auth = {}, options = {}) {
       throw new Error('Only admin/dev can update tickets.');
     }
 
-    const client = SupabaseClient.getClient();
+    /*
+      IMPORTANT:
+      Do NOT write tickets directly with SupabaseClient here.
+
+      Direct writes bypass SupabaseData.dispatch(), which is where:
+      - notifyTicketUpdated()
+      - createNotificationAndPush()
+      - sendPwaPushForNotification()
+      - send-web-push-v2
+
+      are called.
+
+      All ticket updates must go through Api.requestWithSession('tickets', 'update', ...).
+    */
+
     const publicUpdates = buildPublicTicketUpdatePayload(payload);
-    if (!Object.keys(publicUpdates).length) {
+    const internalUpdates = buildTicketInternalUpdatePayload(payload, issueRowId);
+
+    const updates = {
+      ...publicUpdates,
+      id: issueRowId
+    };
+
+    if (internalUpdates) {
+      updates.youtrackReference = payload.youtrackReference ?? internalUpdates.youtrack_reference ?? '';
+      updates.devTeamStatus = payload.devTeamStatus ?? internalUpdates.dev_team_status ?? '';
+      updates.issueRelated = payload.issueRelated ?? internalUpdates.issue_related ?? '';
+      updates.notes = payload.notes ?? internalUpdates.notes ?? '';
+    }
+
+    const changedKeys = Object.keys(updates).filter(key => key !== 'id');
+    if (!changedKeys.length) {
       throw new Error('Ticket update payload is empty after schema mapping.');
     }
 
-    const { data: updatedTicket, error: publicError } = await client
-      .from('tickets')
-      .update(publicUpdates)
-      .eq('id', issueRowId)
-      .select('*')
-      .single();
-    if (publicError) throw publicError;
+    console.info('[tickets:update] routing through SupabaseData so PWA notifications fire', {
+      ticket_id: payload.ticket_id || issue.ticket_id || '',
+      id: issueRowId,
+      changedKeys
+    });
 
-    let mergedTicket = updatedTicket || {};
-    if (['admin', 'dev'].includes(currentRole)) {
-      const internalUpdates = buildTicketInternalUpdatePayload(payload, issueRowId);
-      if (internalUpdates) {
-        const record = internalUpdates;
-        console.log('[ticket_internal] outgoing issue_related', record.issue_related);
-        console.log('[ticket internal] outgoing payload', internalUpdates);
-        const { data: internalRow, error: internalError } = await client
-          .from('ticket_internal')
-          .upsert(internalUpdates, { onConflict: 'ticket_id' })
-          .select('*')
-          .single();
-        if (internalError) throw internalError;
-        mergedTicket = {
-          ...mergedTicket,
-          youtrack_reference: internalRow?.youtrack_reference ?? '',
-          dev_team_status: internalRow?.dev_team_status ?? '',
-          issue_related: internalRow?.issue_related ?? '',
-          notes: internalRow?.notes ?? ''
-        };
-      }
-    }
+    const savedTicket = await Api.requestWithSession('tickets', 'update', {
+      id: issueRowId,
+      updates
+    }, { requireAuth: true });
+
+    const mergedTicket = savedTicket || {};
 
     UI.toast('Ticket updated');
+
     return normalizeIssueForStore({
       ...mergedTicket,
       id: mergedTicket?.id ?? issueRowId,
@@ -3564,9 +3576,19 @@ async function saveTicketRecord(issue, auth = {}, options = {}) {
       notificationSent: mergedTicket?.notification_sent ?? payload.notificationSent,
       notificationUnderReview:
         mergedTicket?.notification_sent_under_review ?? payload.notificationUnderReview,
-      youtrackReference: mergedTicket?.youtrack_reference ?? payload.youtrackReference,
-      devTeamStatus: mergedTicket?.dev_team_status ?? payload.devTeamStatus,
-      issueRelated: mergedTicket?.issue_related ?? payload.issueRelated
+      youtrackReference:
+        mergedTicket?.youtrack_reference ??
+        mergedTicket?.youtrackReference ??
+        payload.youtrackReference,
+      devTeamStatus:
+        mergedTicket?.dev_team_status ??
+        mergedTicket?.devTeamStatus ??
+        payload.devTeamStatus,
+      issueRelated:
+        mergedTicket?.issue_related ??
+        mergedTicket?.issueRelated ??
+        payload.issueRelated,
+      notes: mergedTicket?.notes ?? payload.notes
     });
   } catch (e) {
     if (isAuthError(e)) {
@@ -3579,6 +3601,7 @@ async function saveTicketRecord(issue, auth = {}, options = {}) {
     if (useSpinner) UI.spinner(false);
   }
  }
+
 
 async function saveEventRecord(event) {
   UI.spinner(true);

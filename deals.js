@@ -296,9 +296,7 @@ const Deals = {
       created_by: userId || undefined,
       updated_by: userId || undefined
     };
-    const { data, error } = await this.getClient().from('deals').insert(payload).select('*').single();
-    if (error) throw this.toSupabaseError('Unable to create deal', error);
-    return data;
+    return Api.requestWithSession('deals', 'create', payload, { requireAuth: true });
   },
   async updateDeal(dealId, updates) {
     const userId = await this.getCurrentUserId();
@@ -306,9 +304,10 @@ const Deals = {
       ...this.backendDeal(updates),
       updated_by: userId || undefined
     };
-    const { data, error } = await this.getClient().from('deals').update(payload).eq('id', dealId).select('*').single();
-    if (error) throw this.toSupabaseError('Unable to update deal', error);
-    return data;
+    return Api.requestWithSession('deals', 'update', {
+      id: dealId,
+      updates: payload
+    }, { requireAuth: true });
   },
   async deleteDeal(dealId) {
     const { error } = await this.getClient().from('deals').delete().eq('id', dealId);
