@@ -758,11 +758,25 @@
     async forceServiceWorkerUpdate() {
       if (!this.state.supported) return;
       try {
+        const isFormBeingEdited = () => {
+          const activeElement = document.activeElement;
+          return Boolean(
+            activeElement &&
+              (activeElement.tagName === 'INPUT' ||
+                activeElement.tagName === 'TEXTAREA' ||
+                activeElement.tagName === 'SELECT' ||
+                activeElement.isContentEditable)
+          );
+        };
         const registration = await this.getRegistration();
         let reloadTriggered = false;
         const onControllerChange = () => {
           if (reloadTriggered) return;
           reloadTriggered = true;
+          if (isFormBeingEdited()) {
+            this.setMessage('Service worker updated. Reopen the app if push banners still do not appear.');
+            return;
+          }
           global.location.reload();
         };
         navigator.serviceWorker.addEventListener('controllerchange', onControllerChange, { once: true });
@@ -777,10 +791,14 @@
             }
           });
         } else if (!navigator.serviceWorker.controller) {
-          global.location.reload();
+          if (!isFormBeingEdited()) {
+            global.location.reload();
+            return;
+          }
+          this.setMessage('Service worker updated. Reopen the app if push banners still do not appear.');
           return;
         }
-        this.setMessage('Requested service worker update. Reloading when new worker takes control.');
+        this.setMessage('Service worker updated. Reopen the app if push banners still do not appear.');
       } catch (error) {
         this.setMessage(`Service worker update failed: ${String(error?.message || 'Unknown error')}`);
       }
@@ -1013,9 +1031,12 @@
           `pushManager supported: ${pushManagerSupported ? 'yes' : 'no'}`,
           `Current subscription exists: ${subscription ? 'yes' : 'no'}`,
           `push_subscriptions row saved: ${rowSaved ? 'yes' : 'no'}`,
+          (!controller && registration?.active)
+            ? 'Warning: Your service worker is active, but this page is not currently controlled by it. Close all app tabs/windows and reopen the installed PWA, or click Force service worker update.'
+            : '',
           'If server push returns sent=1 but lastPushReceivedAt stays empty after reopening mobile, the mobile OS/browser did not deliver the background push to the service worker. Reinstall the PWA and check OS notification settings.',
           'iOS push note: requires iOS 16.4+ and launching from installed Home Screen app.'
-        ];
+        ].filter(Boolean);
         this.els.diagnosticsText.textContent = lines.join('\n');
       } catch (error) {
         this.els.diagnosticsText.textContent = `Diagnostics unavailable: ${String(error?.message || 'Unknown error')}`;
