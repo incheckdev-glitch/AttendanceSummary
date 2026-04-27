@@ -21,6 +21,7 @@
       wired: false,
       messageListenerWired: false,
       lastPushReceivedAt: '',
+      lastNotificationShownAt: '',
       latestServerTestResult: null
     },
 
@@ -802,7 +803,21 @@
 
     handleServiceWorkerMessage(event) {
       const data = event?.data;
-      if (!data || data.type !== 'INCHECK360_PUSH_RECEIVED') return;
+      if (!data) return;
+
+      if (data.type === 'INCHECK360_NOTIFICATION_SHOWN') {
+        const shownPayload = data.payload || {};
+        this.state.lastNotificationShownAt =
+          String(shownPayload.timestamp || '').trim() || new Date().toISOString();
+        this.debugLog('notification shown by service worker', {
+          title: shownPayload.title || 'InCheck360 MonitorCore',
+          timestamp: this.state.lastNotificationShownAt
+        });
+        this.renderDiagnostics({ source: 'serviceWorkerNotificationShown' });
+        return;
+      }
+
+      if (data.type !== 'INCHECK360_PUSH_RECEIVED') return;
 
       const payload = data.payload || {};
       const title = String(payload.title || 'InCheck360 MonitorCore').trim() || 'InCheck360 MonitorCore';
@@ -810,7 +825,7 @@
       const url = payload.url || payload?.data?.url || '/';
 
       this.debugLog('foreground push message received', { title, url });
-      this.state.lastPushReceivedAt = new Date().toISOString();
+      this.state.lastPushReceivedAt = String(payload.timestamp || '').trim() || new Date().toISOString();
       this.showForegroundBanner({ title, body, url });
       this.renderDiagnostics({ source: 'serviceWorkerMessage' });
     },
@@ -847,21 +862,35 @@
         const pushManagerSupported = 'PushManager' in global;
         const controller = navigator.serviceWorker?.controller || null;
         const registration = swSupported ? await this.getRegistration().catch(() => null) : null;
+        const swRegistered = Boolean(registration);
         const subscription = registration?.pushManager ? await registration.pushManager.getSubscription() : null;
         const endpoint = String(subscription?.endpoint || '').trim();
         const rowSaved = await this.getPushDbStatusByEndpoint(endpoint);
+        const platformHint = this.isIosSafari()
+          ? 'iOS'
+          : /android/i.test(String(navigator.userAgent || ''))
+            ? 'Android'
+            : 'Desktop/Other';
+        const latestServerResult = this.state.latestServerTestResult;
+        const serverResultText = latestServerResult
+          ? `attempted=${Number(latestServerResult?.attempted || 0)}, sent=${Number(latestServerResult?.sent || 0)}, failed=${Number(latestServerResult?.failed || 0)}`
+          : 'not run yet';
         const lines = [
           `Source: ${source}`,
           `Notification.permission: ${global.Notification?.permission || 'default'}`,
           `Service worker supported: ${swSupported ? 'yes' : 'no'}`,
+          `Service worker registered: ${swRegistered ? 'yes' : 'no'}`,
           `Service worker controller: ${controller ? 'yes' : 'no'}`,
           `Active service worker script URL: ${registration?.active?.scriptURL || '—'}`,
           `pushManager supported: ${pushManagerSupported ? 'yes' : 'no'}`,
           `Current subscription exists: ${subscription ? 'yes' : 'no'}`,
           `Subscription endpoint preview: ${this.getEndpointPreview(endpoint)}`,
           `push_subscriptions row saved: ${rowSaved ? 'yes' : 'no'}`,
+          `Last server push result: ${serverResultText}`,
           `Last push received timestamp: ${this.state.lastPushReceivedAt || '—'}`,
-          'Platform hints: iOS push requires iOS 16.4+ and launching installed Home Screen app.'
+          `Last notification shown timestamp: ${this.state.lastNotificationShownAt || '—'}`,
+          `Platform hint: ${platformHint}`,
+          'iOS push note: requires iOS 16.4+ and launching from installed Home Screen app.'
         ];
         this.els.diagnosticsText.textContent = lines.join('\n');
       } catch (error) {

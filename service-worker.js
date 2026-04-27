@@ -1,4 +1,4 @@
-const STATIC_CACHE_NAME = 'incheck360-monitorcore-static-v4';
+const STATIC_CACHE_NAME = 'incheck360-monitorcore-static-v5';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -154,16 +154,19 @@ self.addEventListener('push', (event) => {
   };
 
   event.waitUntil((async () => {
+    const pushReceivedAt = new Date().toISOString();
     pushDebugLog('push received', {
       hasEventData: Boolean(event.data),
       permission: self.Notification?.permission || 'unknown',
       title,
       tag,
-      url
+      url,
+      pushReceivedAt
     });
 
     await self.registration.showNotification(title, options);
-    pushDebugLog('showNotification called', { title, tag });
+    const notificationShownAt = new Date().toISOString();
+    pushDebugLog('showNotification called', { title, tag, notificationShownAt });
 
     const allClients = await self.clients.matchAll({
       type: 'window',
@@ -174,6 +177,17 @@ self.addEventListener('push', (event) => {
       client.postMessage({
         type: 'INCHECK360_PUSH_RECEIVED',
         payload: {
+          timestamp: pushReceivedAt,
+          title,
+          body: options.body,
+          url,
+          data: options.data
+        }
+      });
+      client.postMessage({
+        type: 'INCHECK360_NOTIFICATION_SHOWN',
+        payload: {
+          timestamp: notificationShownAt,
           title,
           body: options.body,
           url,
