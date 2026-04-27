@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/((?!api/|_vercel/|assets/|icons/|manifest.webmanifest|service-worker.js|offline.html|favicon.ico).*)",
+      "destination": "/index.html"
+    }
+  ]
+}
