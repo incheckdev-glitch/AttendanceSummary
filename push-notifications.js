@@ -274,15 +274,25 @@
       status = 'unknown',
       message = 'Unknown error',
       responseBody = '',
+      responseData = null,
       functionUrl = '',
+      functionName = WEB_PUSH_FUNCTION_NAME,
       hasToken = false,
       targetLabel = ''
     } = {}) {
+      const serializedData =
+        responseData == null
+          ? '—'
+          : typeof responseData === 'string'
+            ? responseData
+            : JSON.stringify(responseData);
       return [
         'Server push failed:',
         `Status: ${status}`,
         `Message: ${message}`,
         `Response body: ${responseBody || '—'}`,
+        `Data: ${serializedData || '—'}`,
+        `Function: ${functionName || WEB_PUSH_FUNCTION_NAME}`,
         `URL: ${functionUrl || '—'}`,
         `Has token: ${hasToken ? 'yes' : 'no'}`,
         `Target: ${targetLabel || 'none'}`
@@ -576,23 +586,47 @@
           const errorMessage = String(error?.message || error?.name || 'Unknown invoke error');
           let responseBodyText = '';
           let responseJson = null;
-          if (error?.context) {
+          const context = error?.context || null;
+          if (context) {
             try {
-              responseBodyText = await error.context.clone().text();
-              responseJson = responseBodyText ? JSON.parse(responseBodyText) : null;
+              if (typeof context.text === 'function') {
+                responseBodyText = await context.clone().text();
+              } else if (typeof context.response?.text === 'function') {
+                responseBodyText = await context.response.clone().text();
+              } else if (typeof context.body === 'string') {
+                responseBodyText = context.body;
+              } else if (typeof context.responseBody === 'string') {
+                responseBodyText = context.responseBody;
+              }
+            } catch (_) {
+              responseBodyText = '';
+            }
+            try {
+              if (responseBodyText) {
+                responseJson = JSON.parse(responseBodyText);
+              } else if (context.data && typeof context.data === 'object') {
+                responseJson = context.data;
+              } else if (context.error && typeof context.error === 'object') {
+                responseJson = context.error;
+              }
             } catch (_) {
               responseJson = null;
             }
           }
+          const responseData = data ?? responseJson ?? null;
           const messageDetail = String(responseJson?.error || responseJson?.message || errorMessage).trim() || errorMessage;
           this.debugLog('server push test response', {
+            functionName: WEB_PUSH_FUNCTION_NAME,
+            errorMessage,
             status,
+            errorContextStatus: error?.context?.status || null,
             responseBodyText: responseBodyText || null,
-            responseJson
+            responseJson,
+            data: data ?? null
           });
           if (status === 404) {
             throw new Error(
-              `${WEB_PUSH_FUNCTION_NAME} Edge Function was not found. Confirm it is deployed in Supabase.\nURL: ${functionUrl}\nHas token: ${accessToken ? 'yes' : 'no'}\nTarget: ${targetLabel}`
+              `${WEB_PUSH_FUNCTION_NAME} Edge Function was not found. Confirm it is deployed in Supabase.\nStatus: ${status}\nResponse body: ${responseBodyText || '—'}\nURL: ${functionUrl}\nTarget: ${targetLabel}\nHas token: ${accessToken ? 'yes' : 'no'}`
             );
           }
           throw new Error(
@@ -600,7 +634,9 @@
               status,
               message: messageDetail,
               responseBody: responseBodyText,
+              responseData,
               functionUrl,
+              functionName: WEB_PUSH_FUNCTION_NAME,
               hasToken: Boolean(accessToken),
               targetLabel
             })
