@@ -1555,8 +1555,53 @@
     }
   }
 
-  function generateTicketId() {
-    return `TK-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+  function isTicketIdCollisionError(error) {
+    const code = String(error?.code || '').trim();
+    const details = [
+      error?.message,
+      error?.details,
+      error?.hint,
+      error?.constraint
+    ]
+      .filter(Boolean)
+      .join(' ');
+    return code === '23505' && /tickets_ticket_id_key/i.test(details);
+  }
+
+  async function getNextTicketId(client) {
+    const { data, error } = await client.rpc('next_ticket_id');
+    if (error) throw friendlyError('Unable to generate ticket ID', error);
+    const candidate =
+      typeof data === 'string'
+        ? data
+        : Array.isArray(data)
+          ? firstDefined(data[0], ['next_ticket_id']) || data[0]
+          : firstDefined(data, ['next_ticket_id', 'ticket_id']) || data;
+    const ticketId = String(candidate || '').trim();
+    if (!ticketId) throw new Error('Unable to generate ticket ID.');
+    return ticketId;
+  }
+
+  async function insertTicketWithRetry(client, table, createRecord = {}) {
+    const payload = { ...createRecord };
+    if (isBlankValue(payload.ticket_id)) {
+      payload.ticket_id = await getNextTicketId(client);
+    }
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const { data, error } = await client.from(table).insert(payload).select('*').single();
+      if (!error) return data;
+      if (isTicketIdCollisionError(error) && attempt === 0) {
+        payload.ticket_id = await getNextTicketId(client);
+        continue;
+      }
+      if (isTicketIdCollisionError(error)) {
+        throw new Error('Ticket ID collision detected. Please retry.');
+      }
+      throw friendlyError('Unable to create tickets record', error);
+    }
+
+    throw new Error('Ticket ID collision detected. Please retry.');
   }
 
   function generateBusinessProposalId() {
@@ -1657,7 +1702,7 @@
     const candidateTicketId = firstDefined(row, ['ticket_id', 'ticketCode', 'ticket_code']);
     const nowIso = new Date().toISOString();
     const mapped = compactObject({
-      ticket_id: includeTicketId ? (isBlankValue(candidateTicketId) ? generateTicketId() : candidateTicketId) : undefined,
+      ticket_id: includeTicketId && !isBlankValue(candidateTicketId) ? candidateTicketId : undefined,
       date_submitted: firstDefined(row, ['date_submitted', 'date', 'timestamp', 'created_at']) || nowIso,
       name: firstDefined(row, ['name']),
       department: firstDefined(row, ['department']),
@@ -3438,8 +3483,15 @@
         devLog('[role permissions] saved normalized row', JSON.stringify(normalizedRow, null, 2));
         return { handled: true, data: await withItems(resource, normalizedRow) };
       }
-      const { data, error } = await client.from(table).insert(createRecord).select('*').single();
-      if (error) throw friendlyError(`Unable to create ${resource} record`, error);
+      let data;
+      if (resource === 'tickets') {
+        data = await insertTicketWithRetry(client, table, createRecord);
+      } else {
+        const { data: inserted, error } = await client.from(table).insert(createRecord).select('*').single();
+        if (error) throw friendlyError(`Unable to create ${resource} record`, error);
+        data = inserted;
+      }
+      if (!data) throw new Error(`Unable to create ${resource} record: Supabase returned no row.`);
       const created = normalizeRow(resource, data);
       if (resource === 'tickets') {
         void sendRolePushForTicketEvent({

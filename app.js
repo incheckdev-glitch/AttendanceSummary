@@ -2022,11 +2022,8 @@ const TicketCreator = {
   },
   buildPayload() {
     const now = new Date().toISOString();
-    const generatedId = `TK-${Date.now()}`;
     const identity = this.prefillIdentityFields({ preserveExisting: true });
     return {
-      id: generatedId,
-      ticket_id: generatedId,
       name: (E.createTicketName?.value || '').trim() || identity.name,
       department: (E.createTicketDepartment?.value || '').trim() || identity.department,
       module: (E.createTicketModule?.value || '').trim() || 'Unspecified',
