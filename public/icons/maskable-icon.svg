@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">InCheck360 MonitorCore Maskable App Icon</title>
+  <desc id="desc">Maskable icon with safe padding and MonitorCore initials.</desc>
+  <rect width="512" height="512" fill="#020617"/>
+  <rect x="72" y="72" width="368" height="368" rx="72" fill="#2563eb"/>
+  <text x="256" y="298" text-anchor="middle" fill="#e5e7eb" font-size="148" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="700">MC</text>
+</svg>

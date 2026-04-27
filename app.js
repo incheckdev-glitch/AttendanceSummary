@@ -146,6 +146,77 @@ function ticketOptionLabel(ticket = {}) {
   return title ? `${displayId} — ${title}` : displayId;
 }
 
+function showServiceWorkerUpdateNotice() {
+  const noticeId = 'swUpdateNotice';
+  if (document.getElementById(noticeId)) return;
+
+  const notice = document.createElement('div');
+  notice.id = noticeId;
+  notice.setAttribute('role', 'status');
+  notice.style.position = 'fixed';
+  notice.style.right = '16px';
+  notice.style.bottom = '16px';
+  notice.style.zIndex = '9999';
+  notice.style.display = 'flex';
+  notice.style.gap = '10px';
+  notice.style.alignItems = 'center';
+  notice.style.padding = '10px 14px';
+  notice.style.borderRadius = '10px';
+  notice.style.background = 'rgba(2, 6, 23, 0.94)';
+  notice.style.color = '#e5e7eb';
+  notice.style.border = '1px solid rgba(148, 163, 184, 0.35)';
+  notice.style.boxShadow = '0 12px 28px rgba(2, 6, 23, 0.4)';
+  notice.innerHTML = `
+    <span>New version available. Refresh to update.</span>
+    <button type="button" class="btn ghost sm" id="swUpdateRefreshBtn" style="padding:6px 10px;">Refresh</button>
+    <button type="button" class="btn ghost sm" id="swUpdateDismissBtn" style="padding:6px 10px;">Dismiss</button>
+  `;
+
+  document.body.appendChild(notice);
+  notice.querySelector('#swUpdateRefreshBtn')?.addEventListener('click', () => {
+    window.location.reload();
+  });
+  notice.querySelector('#swUpdateDismissBtn')?.addEventListener('click', () => {
+    notice.remove();
+  });
+}
+
+function registerServiceWorkerSafely() {
+  if (!('serviceWorker' in navigator)) return;
+
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .register('/service-worker.js')
+      .then(registration => {
+        const announceUpdate = () => {
+          const waitingWorker = registration.waiting;
+          if (!waitingWorker) return;
+          showServiceWorkerUpdateNotice();
+        };
+
+        if (registration.waiting) {
+          announceUpdate();
+        }
+
+        registration.addEventListener('updatefound', () => {
+          const installingWorker = registration.installing;
+          if (!installingWorker) return;
+          installingWorker.addEventListener('statechange', () => {
+            if (
+              installingWorker.state === 'installed' &&
+              navigator.serviceWorker.controller
+            ) {
+              announceUpdate();
+            }
+          });
+        });
+      })
+      .catch(error => {
+        console.warn('[pwa] Service worker registration failed', error);
+      });
+  });
+}
+
 async function ensureTicketsForEventPicker() {
   if ((DataStore.rows || []).length) return DataStore.rows;
   const filtersPayload = hasActiveTicketFilters() ? buildTicketListFiltersPayload() : {};
@@ -6645,6 +6716,7 @@ async function mountResetPasswordView() {
 
 document.addEventListener('DOMContentLoaded', async () => {
   cacheEls();
+  registerServiceWorkerSafely();
   const mountedRecoveryRoute = await mountResetPasswordView();
   if (mountedRecoveryRoute) return;
   logApiStartupDiagnostics();
