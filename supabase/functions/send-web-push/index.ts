@@ -1,13 +1,15 @@
-import webpush from 'npm:web-push@3.6.7';
 import { createClient } from 'npm:@supabase/supabase-js@2';
+
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-incheck360-webhook-secret',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Content-Type': 'application/json'
+};
 
 const VAPID_SUBJECT = Deno.env.get('VAPID_SUBJECT') || 'mailto:support@incheck360.com';
 const VAPID_PUBLIC_KEY = Deno.env.get('VAPID_PUBLIC_KEY') || '';
 const VAPID_PRIVATE_KEY = Deno.env.get('VAPID_PRIVATE_KEY') || '';
-
-if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
-  webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
-}
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
@@ -44,7 +46,7 @@ function hasRole(payload: Record<string, unknown>, role: string) {
 
 async function resolveAuthContext(req: Request) {
   const authorization = req.headers.get('authorization') || req.headers.get('Authorization') || '';
-  const webhookHeader = req.headers.get('x-webhook-secret') || '';
+  const webhookHeader = req.headers.get('x-incheck360-webhook-secret') || '';
   const webhookSecretProvided = webhookHeader && PUSH_WEBHOOK_SECRET && webhookHeader === PUSH_WEBHOOK_SECRET;
   const jwt = authorization.toLowerCase().startsWith('bearer ') ? authorization.slice(7).trim() : '';
 
@@ -106,8 +108,20 @@ function buildPushPayload(input: Record<string, unknown>) {
 }
 
 Deno.serve(async req => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', {
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-incheck360-webhook-secret',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Max-Age': '86400'
+      }
+    });
+  }
+
   if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: CORS_HEADERS });
   }
 
   try {
@@ -119,12 +133,12 @@ Deno.serve(async req => {
           error: auth.authError || 'Not authorized. Sign in first.',
           code: 'not_authorized'
         }),
-        { status: 401, headers: { 'content-type': 'application/json' } }
+        { status: 401, headers: CORS_HEADERS }
       );
     }
 
     const payload = buildPushPayload(body);
-    const bodySubscription = body.subscription as webpush.PushSubscription | undefined;
+    const bodySubscription = body.subscription as Record<string, unknown> | undefined;
     const targetUserIds = uniqueList(body.user_ids);
     const targetSubscriptionIds = uniqueList(body.subscription_ids);
     const legacyUserId = normalizeString(body.user_id);
@@ -140,19 +154,31 @@ Deno.serve(async req => {
           error: 'VAPID keys are not configured',
           payload
         }),
-        { status: 500 }
+        { status: 500, headers: CORS_HEADERS }
       );
     }
 
-    let subscriptions: webpush.PushSubscription[] = [];
+    const webPushModule = await import('npm:web-push@3.15.0');
+    const webPush = webPushModule.default || webPushModule;
+    webPush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
-    if (bodySubscription?.endpoint) {
-      subscriptions = [bodySubscription];
+    let subscriptions: Array<{ endpoint: string; keys: { p256dh: string; auth: string } }> = [];
+
+    if (normalizeString(bodySubscription?.endpoint)) {
+      subscriptions = [
+        {
+          endpoint: normalizeString(bodySubscription?.endpoint),
+          keys: {
+            p256dh: normalizeString((bodySubscription?.keys as Record<string, unknown> | undefined)?.p256dh),
+            auth: normalizeString((bodySubscription?.keys as Record<string, unknown> | undefined)?.auth)
+          }
+        }
+      ].filter(item => item.endpoint && item.keys.p256dh && item.keys.auth);
     } else {
       if (!adminClient) {
         return new Response(
           JSON.stringify({ error: 'Server missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY' }),
-          { status: 500, headers: { 'content-type': 'application/json' } }
+          { status: 500, headers: CORS_HEADERS }
         );
       }
       if (!auth.isPrivileged) {
@@ -163,7 +189,7 @@ Deno.serve(async req => {
               error: 'Not authorized. Only admin/dev/webhook may target roles or broadcast.',
               code: 'forbidden_targeting'
             }),
-            { status: 403, headers: { 'content-type': 'application/json' } }
+            { status: 403, headers: CORS_HEADERS }
           );
         }
         const targetsOwnUserOnly = targetUserIds.length === 1 && targetUserIds[0] === auth.userId;
@@ -177,7 +203,7 @@ Deno.serve(async req => {
           if (ownedError) {
             return new Response(
               JSON.stringify({ error: ownedError.message || 'Unable to validate subscription ownership.' }),
-              { status: 500, headers: { 'content-type': 'application/json' } }
+              { status: 500, headers: CORS_HEADERS }
             );
           }
           const ownedIds = (ownedRows || []).map(row => normalizeString(row.id));
@@ -191,7 +217,7 @@ Deno.serve(async req => {
               error: 'Not authorized. Authenticated users may only send test pushes to their own user_id/subscription_id.',
               code: 'forbidden_self_target_only'
             }),
-            { status: 403, headers: { 'content-type': 'application/json' } }
+            { status: 403, headers: CORS_HEADERS }
           );
         }
       }
@@ -227,24 +253,38 @@ Deno.serve(async req => {
           error: 'No active push subscriptions found',
           payload
         }),
-        { status: 404, headers: { 'content-type': 'application/json' } }
+        { status: 404, headers: CORS_HEADERS }
       );
     }
 
     const results = await Promise.allSettled(
-      subscriptions.map(subscription => webpush.sendNotification(subscription, JSON.stringify(payload)))
+      subscriptions.map(subscription => webPush.sendNotification(subscription, JSON.stringify(payload)))
     );
     const attempted = results.length;
     const sent = results.filter(result => result.status === 'fulfilled').length;
     const failed = attempted - sent;
 
+    if (adminClient) {
+      await adminClient.from('push_notification_log').insert({
+        sent_by: auth.userId || null,
+        target_user_ids: targetUserIds,
+        target_subscription_ids: targetSubscriptionIds,
+        target_roles: targetRoles,
+        allow_broadcast: allowBroadcast,
+        attempted,
+        sent,
+        failed,
+        payload
+      });
+    }
+
     return new Response(JSON.stringify({ ok: failed === 0, attempted, sent, failed, payload }), {
-      headers: { 'content-type': 'application/json' }
+      headers: CORS_HEADERS
     });
   } catch (error) {
     return new Response(
       JSON.stringify({ error: String((error as Error)?.message || error || 'Unknown error') }),
-      { status: 500, headers: { 'content-type': 'application/json' } }
+      { status: 500, headers: CORS_HEADERS }
     );
   }
 });
