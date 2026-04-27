@@ -234,6 +234,52 @@ const Api = {
       .then(() => this.sendWebPush(payload, options))
       .catch(error => console.warn('[push] fireAndForgetWebPush failed', error));
   },
+  extractBusinessRecordId(response, fallback = '') {
+    const payload = this.unwrapApiPayload(response) || response || {};
+    const nested = payload && typeof payload === 'object' ? (payload.data || payload.result || payload.item || payload.record || payload.row || payload.operations_onboarding || payload.technical_request || payload.invoice || payload.receipt || payload.agreement || payload.proposal || payload.deal || payload.lead || null) : null;
+    const source = nested && typeof nested === 'object' ? { ...payload, ...nested } : payload;
+    const candidates = [
+      source?.id, source?.uuid, source?.record_id, source?.ticket_id, source?.lead_id, source?.deal_id, source?.proposal_id, source?.agreement_id, source?.invoice_id, source?.receipt_id, source?.onboarding_id, source?.technical_request_id, fallback
+    ];
+    return String(candidates.find(value => value !== undefined && value !== null && String(value).trim()) || '').trim();
+  },
+  async sendBusinessPwaPush({ resource = '', action = '', recordId = '', title = '', body = '', roles = ['admin'], userIds = [], url = '', data = {} } = {}) {
+    const normalizedResource = String(resource || '').trim();
+    const normalizedAction = String(action || '').trim();
+    const normalizedRecordId = String(recordId || '').trim();
+    if (!normalizedResource || !normalizedAction) {
+      console.warn('[business:pwa] skipped push: missing resource/action', { resource, action, recordId });
+      return null;
+    }
+    const finalUrl = url || (normalizedRecordId ? ('/#' + encodeURIComponent(normalizedResource) + '?id=' + encodeURIComponent(normalizedRecordId)) : ('/#' + encodeURIComponent(normalizedResource)));
+    const payload = {
+      title: title || 'InCheck360 notification',
+      body: body || 'A record was updated.',
+      resource: normalizedResource,
+      action: normalizedAction,
+      record_id: normalizedRecordId || undefined,
+      url: finalUrl,
+      tag: normalizedResource + '-' + normalizedAction + '-' + (normalizedRecordId || 'record') + '-' + Date.now(),
+      data: { resource: normalizedResource, action: normalizedAction, record_id: normalizedRecordId || undefined, url: finalUrl, ...(data && typeof data === 'object' ? data : {}) }
+    };
+    const normalizedUserIds = Array.isArray(userIds) ? userIds.map(id => String(id || '').trim()).filter(Boolean) : [];
+    if (normalizedUserIds.length) payload.user_ids = normalizedUserIds;
+    else {
+      payload.roles = (Array.isArray(roles) ? roles : ['admin']).map(role => String(role || '').trim().toLowerCase()).filter(Boolean);
+      if (!payload.roles.length) payload.roles = ['admin'];
+    }
+    console.info('[business:pwa] sending direct PWA push', payload);
+    const result = await this.sendWebPush(payload, { context: normalizedResource + ':' + normalizedAction + ':direct' });
+    console.info('[business:pwa] direct PWA push result', { resource: normalizedResource, action: normalizedAction, recordId: normalizedRecordId, result });
+    return result;
+  },
+  async safeSendBusinessPwaPush(args = {}) {
+    try { return await this.sendBusinessPwaPush(args); }
+    catch (error) {
+      console.warn('[business:pwa] direct PWA push failed but save will continue', { args, error });
+      return { attempted: true, sent: false, error: String(error?.message || error) };
+    }
+  },
 
   getCacheConfig() {
     return {
@@ -445,20 +491,54 @@ const Api = {
     return this.requestWithSession('agreements', 'get', { id: agreementId });
   },
   async createAgreement(agreement, items = []) {
-    return this.requestWithSession('agreements', 'create', { agreement, items });
+    const response = await this.requestWithSession('agreements', 'create', { agreement, items });
+    const recordId = this.extractBusinessRecordId(response, agreement?.agreement_id || agreement?.agreement_number || '');
+    await this.safeSendBusinessPwaPush({
+      resource: 'agreements',
+      action: 'agreement_created',
+      recordId,
+      title: 'Agreement created',
+      body: 'Agreement ' + (agreement?.agreement_number || recordId || '') + ' was created.',
+      roles: ['admin', 'hoo'],
+      url: recordId ? '/#agreements?id=' + encodeURIComponent(recordId) : '/#agreements'
+    });
+    return response;
   },
   async updateAgreement(agreementId, updates, items = []) {
-    return this.requestWithSession('agreements', 'update', {
+    const response = await this.requestWithSession('agreements', 'update', {
       id: agreementId,
       updates,
       items
     });
+    const status = String(updates?.status || updates?.agreement_status || '').trim().toLowerCase();
+    const action = status.includes('signed') ? 'agreement_signed' : 'agreement_updated';
+    await this.safeSendBusinessPwaPush({
+      resource: 'agreements',
+      action,
+      recordId: this.extractBusinessRecordId(response, agreementId),
+      title: action === 'agreement_signed' ? 'Agreement signed' : 'Agreement updated',
+      body: 'Agreement ' + (agreementId || '') + ' was updated.',
+      roles: action === 'agreement_signed' ? ['admin', 'hoo', 'accounting'] : ['admin', 'hoo'],
+      url: agreementId ? '/#agreements?id=' + encodeURIComponent(agreementId) : '/#agreements'
+    });
+    return response;
   },
   async deleteAgreement(agreementId) {
     return this.requestWithSession('agreements', 'delete', { id: agreementId });
   },
   async createAgreementFromProposal(proposalId) {
-    return this.requestWithSession('agreements', 'create_from_proposal', { proposal_uuid: proposalId });
+    const response = await this.requestWithSession('agreements', 'create_from_proposal', { proposal_uuid: proposalId });
+    const recordId = this.extractBusinessRecordId(response, proposalId);
+    await this.safeSendBusinessPwaPush({
+      resource: 'agreements',
+      action: 'agreement_created_from_proposal',
+      recordId,
+      title: 'Agreement created from proposal',
+      body: 'Agreement was created from proposal ' + (proposalId || '') + '.',
+      roles: ['admin', 'hoo'],
+      url: recordId ? '/#agreements?id=' + encodeURIComponent(recordId) : '/#agreements'
+    });
+    return response;
   },
   async generateAgreementHtml(agreementId) {
     return this.requestWithSession('agreements', 'generate_agreement_html', {
@@ -481,14 +561,16 @@ const Api = {
     };
     try {
       const response = await this.requestWithSession('agreements', 'request_incheck_lite', payload);
-      this.fireAndForgetWebPush({
+      await this.safeSendBusinessPwaPush({
+        resource: 'operations_onboarding',
+        action: 'onboarding_request_submitted',
+        recordId: agreementId,
         title: 'InCheck360 Operations Request',
-        body: `Operations onboarding request submitted for agreement ${agreementId}.`,
-        url: '/',
+        body: 'Operations onboarding request submitted for agreement ' + agreementId + '.',
         roles: ['admin', 'hoo'],
-        tag: 'operations-onboarding-request',
-        data: { event: 'operations_onboarding_request', agreement_id: agreementId, type: 'incheck_lite' }
-      }, { context: 'requestAgreementIncheckLite' });
+        url: agreementId ? '/#operations_onboarding?id=' + encodeURIComponent(agreementId) : '/#operations_onboarding',
+        data: { agreement_id: agreementId, type: 'incheck_lite' }
+      });
       return response;
     } catch (error) {
       if (!isOperationsOnboardingRowMissingError(error)) throw error;
@@ -496,14 +578,16 @@ const Api = {
         agreement_id: agreementId
       });
       const response = await this.requestWithSession('agreements', 'request_incheck_lite', payload);
-      this.fireAndForgetWebPush({
+      await this.safeSendBusinessPwaPush({
+        resource: 'operations_onboarding',
+        action: 'onboarding_request_submitted',
+        recordId: agreementId,
         title: 'InCheck360 Operations Request',
-        body: `Operations onboarding request submitted for agreement ${agreementId}.`,
-        url: '/',
+        body: 'Operations onboarding request submitted for agreement ' + agreementId + '.',
         roles: ['admin', 'hoo'],
-        tag: 'operations-onboarding-request',
-        data: { event: 'operations_onboarding_request', agreement_id: agreementId, type: 'incheck_lite' }
-      }, { context: 'requestAgreementIncheckLite-retry' });
+        url: agreementId ? '/#operations_onboarding?id=' + encodeURIComponent(agreementId) : '/#operations_onboarding',
+        data: { agreement_id: agreementId, type: 'incheck_lite' }
+      });
       return response;
     }
   },
@@ -513,14 +597,16 @@ const Api = {
     };
     try {
       const response = await this.requestWithSession('agreements', 'request_incheck_full', payload);
-      this.fireAndForgetWebPush({
+      await this.safeSendBusinessPwaPush({
+        resource: 'operations_onboarding',
+        action: 'onboarding_request_submitted',
+        recordId: agreementId,
         title: 'InCheck360 Operations Request',
-        body: `Operations onboarding request submitted for agreement ${agreementId}.`,
-        url: '/',
+        body: 'Operations onboarding request submitted for agreement ' + agreementId + '.',
         roles: ['admin', 'hoo'],
-        tag: 'operations-onboarding-request',
-        data: { event: 'operations_onboarding_request', agreement_id: agreementId, type: 'incheck_full' }
-      }, { context: 'requestAgreementIncheckFull' });
+        url: agreementId ? '/#operations_onboarding?id=' + encodeURIComponent(agreementId) : '/#operations_onboarding',
+        data: { agreement_id: agreementId, type: 'incheck_full' }
+      });
       return response;
     } catch (error) {
       if (!isOperationsOnboardingRowMissingError(error)) throw error;
@@ -528,14 +614,16 @@ const Api = {
         agreement_id: agreementId
       });
       const response = await this.requestWithSession('agreements', 'request_incheck_full', payload);
-      this.fireAndForgetWebPush({
+      await this.safeSendBusinessPwaPush({
+        resource: 'operations_onboarding',
+        action: 'onboarding_request_submitted',
+        recordId: agreementId,
         title: 'InCheck360 Operations Request',
-        body: `Operations onboarding request submitted for agreement ${agreementId}.`,
-        url: '/',
+        body: 'Operations onboarding request submitted for agreement ' + agreementId + '.',
         roles: ['admin', 'hoo'],
-        tag: 'operations-onboarding-request',
-        data: { event: 'operations_onboarding_request', agreement_id: agreementId, type: 'incheck_full' }
-      }, { context: 'requestAgreementIncheckFull-retry' });
+        url: agreementId ? '/#operations_onboarding?id=' + encodeURIComponent(agreementId) : '/#operations_onboarding',
+        data: { agreement_id: agreementId, type: 'incheck_full' }
+      });
       return response;
     }
   },
@@ -624,14 +712,16 @@ const Api = {
       }
     }
 
-    this.fireAndForgetWebPush({
+    await this.safeSendBusinessPwaPush({
+      resource: 'technical_admin_requests',
+      action: 'technical_request_submitted',
+      recordId: normalizedAgreementId,
       title: 'InCheck360 Technical Admin Request',
-      body: `Technical admin request submitted for agreement ${normalizedAgreementId}.`,
-      url: '/',
-      roles: ['admin', 'hoo'],
-      tag: 'technical-admin-request',
-      data: { event: 'technical_admin_request_submitted', agreement_id: normalizedAgreementId }
-    }, { context: 'requestAgreementTechnicalAdmin' });
+      body: 'Technical admin request submitted for agreement ' + normalizedAgreementId + '.',
+      roles: ['admin', 'dev', 'hoo'],
+      url: normalizedAgreementId ? '/#technical_admin_requests?id=' + encodeURIComponent(normalizedAgreementId) : '/#technical_admin_requests',
+      data: { agreement_id: normalizedAgreementId }
+    });
 
     return {
       agreement_id: normalizedAgreementId,
@@ -714,21 +804,43 @@ const Api = {
     });
   },
   async saveOperationsOnboarding(onboarding = {}) {
-    return this.requestWithSession('operations_onboarding', 'save', {
+    const response = await this.requestWithSession('operations_onboarding', 'save', {
       onboarding,
       table: CONFIG.OPERATIONS_ONBOARDING_TABLE
     });
+    const recordId = this.extractBusinessRecordId(response, onboarding?.onboarding_id || onboarding?.agreement_id || '');
+    await this.safeSendBusinessPwaPush({
+      resource: 'operations_onboarding',
+      action: 'onboarding_created',
+      recordId,
+      title: 'Operations onboarding created',
+      body: 'Operations onboarding was created.',
+      roles: ['admin', 'hoo'],
+      url: recordId ? '/#operations_onboarding?id=' + encodeURIComponent(recordId) : '/#operations_onboarding'
+    });
+    return response;
   },
   async updateOperationsOnboarding(onboardingId, updates = {}) {
     const safeUpdates = updates && typeof updates === 'object' ? { ...updates } : {};
     delete safeUpdates.id;
     delete safeUpdates.db_id;
     delete safeUpdates.record_id;
-    return this.requestWithSession('operations_onboarding', 'update', {
+    const response = await this.requestWithSession('operations_onboarding', 'update', {
       id: onboardingId,
       updates: safeUpdates,
       table: CONFIG.OPERATIONS_ONBOARDING_TABLE
     });
+    const hasStatus = Object.prototype.hasOwnProperty.call(safeUpdates, 'onboarding_status') || Object.prototype.hasOwnProperty.call(safeUpdates, 'status');
+    await this.safeSendBusinessPwaPush({
+      resource: 'operations_onboarding',
+      action: hasStatus ? 'onboarding_status_changed' : 'onboarding_updated',
+      recordId: this.extractBusinessRecordId(response, onboardingId),
+      title: hasStatus ? 'Onboarding status changed' : 'Onboarding updated',
+      body: 'Operations onboarding ' + (onboardingId || '') + ' was updated.',
+      roles: ['admin', 'hoo'],
+      url: onboardingId ? '/#operations_onboarding?id=' + encodeURIComponent(onboardingId) : '/#operations_onboarding'
+    });
+    return response;
   },
   async listTechnicalAdminRequests(filters = {}, options = {}) {
     const payload = {
@@ -749,12 +861,22 @@ const Api = {
     });
   },
   async updateTechnicalAdminRequestStatus(technicalRequestId, status, extra = {}) {
-    return this.requestWithSession('technical_admin_requests', 'update_status', {
+    const response = await this.requestWithSession('technical_admin_requests', 'update_status', {
       id: technicalRequestId,
       technical_request_id: technicalRequestId,
       request_status: status,
       ...(extra && typeof extra === 'object' ? extra : {})
     });
+    await this.safeSendBusinessPwaPush({
+      resource: 'technical_admin_requests',
+      action: 'technical_request_status_changed',
+      recordId: this.extractBusinessRecordId(response, technicalRequestId),
+      title: 'Technical request status changed',
+      body: 'Technical request ' + (technicalRequestId || '') + ' status changed to ' + (status || 'updated') + '.',
+      roles: ['admin', 'dev', 'hoo'],
+      url: technicalRequestId ? '/#technical_admin_requests?id=' + encodeURIComponent(technicalRequestId) : '/#technical_admin_requests'
+    });
+    return response;
   },
 
   async listInvoices(filters = {}, options = {}) {
@@ -774,7 +896,18 @@ const Api = {
     return this.requestWithSession('invoices', 'get', { id: invoiceId, invoice_id: invoiceId });
   },
   async createInvoice(invoice, items = []) {
-    return this.requestWithSession('invoices', 'create', { invoice, items });
+    const response = await this.requestWithSession('invoices', 'create', { invoice, items });
+    const recordId = this.extractBusinessRecordId(response, invoice?.invoice_id || invoice?.invoice_number || '');
+    await this.safeSendBusinessPwaPush({
+      resource: 'invoices',
+      action: 'invoice_created',
+      recordId,
+      title: 'Invoice created',
+      body: 'Invoice ' + (invoice?.invoice_number || recordId || '') + ' was created.',
+      roles: ['admin', 'accounting'],
+      url: recordId ? '/#invoices?id=' + encodeURIComponent(recordId) : '/#invoices'
+    });
+    return response;
   },
   async updateInvoice(invoiceId, updates = {}, items) {
     const payload = {
@@ -783,13 +916,36 @@ const Api = {
       updates
     };
     if (items !== undefined) payload.items = items;
-    return this.requestWithSession('invoices', 'update', payload);
+    const response = await this.requestWithSession('invoices', 'update', payload);
+    const paymentKeys = ['amount_paid', 'paid_amount', 'payment_status', 'payment_state', 'pending_amount', 'balance_due'];
+    const isPaymentUpdate = paymentKeys.some(key => Object.prototype.hasOwnProperty.call(updates || {}, key));
+    await this.safeSendBusinessPwaPush({
+      resource: 'invoices',
+      action: isPaymentUpdate ? 'invoice_payment_updated' : 'invoice_updated',
+      recordId: this.extractBusinessRecordId(response, invoiceId),
+      title: isPaymentUpdate ? 'Invoice payment updated' : 'Invoice updated',
+      body: 'Invoice ' + (invoiceId || '') + ' was updated.',
+      roles: ['admin', 'accounting'],
+      url: invoiceId ? '/#invoices?id=' + encodeURIComponent(invoiceId) : '/#invoices'
+    });
+    return response;
   },
   async deleteInvoice(invoiceId) {
     return this.requestWithSession('invoices', 'delete', { id: invoiceId, invoice_id: invoiceId });
   },
   async createInvoiceFromAgreement(agreementId) {
-    return this.requestWithSession('invoices', 'create_from_agreement', { id: agreementId, agreement_id: agreementId });
+    const response = await this.requestWithSession('invoices', 'create_from_agreement', { id: agreementId, agreement_id: agreementId });
+    const recordId = this.extractBusinessRecordId(response, agreementId);
+    await this.safeSendBusinessPwaPush({
+      resource: 'invoices',
+      action: 'invoice_created_from_agreement',
+      recordId,
+      title: 'Invoice created from agreement',
+      body: 'Invoice was created from agreement ' + (agreementId || '') + '.',
+      roles: ['admin', 'accounting'],
+      url: recordId ? '/#invoices?id=' + encodeURIComponent(recordId) : '/#invoices'
+    });
+    return response;
   },
   async generateInvoiceHtml(invoiceId) {
     return this.requestWithSession('invoices', 'generate_invoice_html', { invoice_id: invoiceId });
@@ -811,7 +967,18 @@ const Api = {
     return this.requestWithSession('receipts', 'get', { id: receiptId, receipt_id: receiptId });
   },
   async createReceipt(receipt, items = []) {
-    return this.requestWithSession('receipts', 'create', { receipt, items });
+    const response = await this.requestWithSession('receipts', 'create', { receipt, items });
+    const recordId = this.extractBusinessRecordId(response, receipt?.receipt_id || receipt?.receipt_number || '');
+    await this.safeSendBusinessPwaPush({
+      resource: 'receipts',
+      action: 'receipt_created',
+      recordId,
+      title: 'Receipt created',
+      body: 'Receipt ' + (receipt?.receipt_number || recordId || '') + ' was created.',
+      roles: ['admin', 'accounting'],
+      url: recordId ? '/#receipts?id=' + encodeURIComponent(recordId) : '/#receipts'
+    });
+    return response;
   },
   async updateReceipt(receiptId, updates = {}, items) {
     const payload = {
@@ -820,7 +987,17 @@ const Api = {
       updates
     };
     if (items !== undefined) payload.items = items;
-    return this.requestWithSession('receipts', 'update', payload);
+    const response = await this.requestWithSession('receipts', 'update', payload);
+    await this.safeSendBusinessPwaPush({
+      resource: 'receipts',
+      action: 'receipt_updated',
+      recordId: this.extractBusinessRecordId(response, receiptId),
+      title: 'Receipt updated',
+      body: 'Receipt ' + (receiptId || '') + ' was updated.',
+      roles: ['admin', 'accounting'],
+      url: receiptId ? '/#receipts?id=' + encodeURIComponent(receiptId) : '/#receipts'
+    });
+    return response;
   },
   async deleteReceipt(receiptId) {
     return this.requestWithSession('receipts', 'delete', { id: receiptId, receipt_id: receiptId });
@@ -835,7 +1012,18 @@ const Api = {
       if (options.payment_method !== undefined) payload.payment_method = options.payment_method;
       if (options.payment_reference !== undefined) payload.payment_reference = options.payment_reference;
     }
-    return this.requestWithSession('receipts', 'create_from_invoice', payload);
+    const response = await this.requestWithSession('receipts', 'create_from_invoice', payload);
+    const recordId = this.extractBusinessRecordId(response, invoiceId);
+    await this.safeSendBusinessPwaPush({
+      resource: 'receipts',
+      action: 'receipt_created_from_invoice',
+      recordId,
+      title: 'Receipt created from invoice',
+      body: 'Receipt was created from invoice ' + (invoiceId || '') + '.',
+      roles: ['admin', 'accounting'],
+      url: recordId ? '/#receipts?id=' + encodeURIComponent(recordId) : '/#receipts'
+    });
+    return response;
   },
   async previewReceipt(receiptId) {
     return this.requestWithSession('receipts', 'generate_receipt_html', { receipt_id: receiptId });
@@ -1490,6 +1678,8 @@ const Api = {
     });
   },
 };
+
+if (typeof window !== 'undefined') window.Api = Api;
 
 async function apiPost(payload = {}) {
   const requestBody = payload && typeof payload === 'object' ? payload : {};

@@ -206,7 +206,6 @@ function registerServiceWorkerSafely() {
     navigator.serviceWorker
       .register('/service-worker.js', { scope: '/', updateViaCache: 'none' })
       .then(registration => {
-        try { registration.update?.(); } catch (error) { console.warn('[pwa] Service worker update check failed', error); }
         const announceUpdate = () => {
           const waitingWorker = registration.waiting;
           if (!waitingWorker) return;

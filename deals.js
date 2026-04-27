@@ -296,7 +296,17 @@ const Deals = {
       created_by: userId || undefined,
       updated_by: userId || undefined
     };
-    return Api.requestWithSession('deals', 'create', payload, { requireAuth: true });
+    const data = await Api.requestWithSession('deals', 'create', payload, { requireAuth: true });
+    await Api.safeSendBusinessPwaPush({
+      resource: 'deals',
+      action: 'deal_created',
+      recordId: Api.extractBusinessRecordId(data, payload.deal_id || deal?.deal_id || ''),
+      title: 'New deal created',
+      body: 'New deal created for ' + (payload.company_name || payload.company || payload.client_name || payload.name || 'a customer') + '.',
+      roles: ['admin', 'hoo'],
+      url: '/#deals'
+    });
+    return data;
   },
   async updateDeal(dealId, updates) {
     const userId = await this.getCurrentUserId();
@@ -304,10 +314,22 @@ const Deals = {
       ...this.backendDeal(updates),
       updated_by: userId || undefined
     };
-    return Api.requestWithSession('deals', 'update', {
+    const data = await Api.requestWithSession('deals', 'update', {
       id: dealId,
       updates: payload
     }, { requireAuth: true });
+    const stageKeys = ['stage', 'deal_stage', 'status'];
+    const isStageUpdate = stageKeys.some(key => Object.prototype.hasOwnProperty.call(payload || {}, key));
+    await Api.safeSendBusinessPwaPush({
+      resource: 'deals',
+      action: isStageUpdate ? 'deal_stage_changed' : 'deal_updated',
+      recordId: Api.extractBusinessRecordId(data, dealId),
+      title: isStageUpdate ? 'Deal stage changed' : 'Deal updated',
+      body: 'Deal ' + (dealId || '') + ' was updated.',
+      roles: ['admin', 'hoo'],
+      url: dealId ? '/#deals?id=' + encodeURIComponent(dealId) : '/#deals'
+    });
+    return data;
   },
   async deleteDeal(dealId) {
     const { error } = await this.getClient().from('deals').delete().eq('id', dealId);

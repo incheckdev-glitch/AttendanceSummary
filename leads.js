@@ -232,6 +232,15 @@ const Leads = {
     console.log('[leads] create payload', payload);
     const data = await Api.requestWithSession('leads', 'create', payload, { requireAuth: true });
     console.log('[leads] saved row', data);
+    await Api.safeSendBusinessPwaPush({
+      resource: 'leads',
+      action: 'lead_created',
+      recordId: Api.extractBusinessRecordId(data, payload.lead_id || lead?.lead_id || ''),
+      title: 'New lead created',
+      body: 'New lead created for ' + (payload.company_name || payload.company || payload.client_name || payload.name || 'a customer') + '.',
+      roles: ['admin', 'hoo'],
+      url: '/#leads'
+    });
     return data;
   },
   async updateLead(leadId, updates) {
@@ -246,6 +255,15 @@ const Leads = {
       updates: payload
     }, { requireAuth: true });
     console.log('[leads] saved row', data);
+    await Api.safeSendBusinessPwaPush({
+      resource: 'leads',
+      action: 'lead_updated',
+      recordId: Api.extractBusinessRecordId(data, leadId),
+      title: 'Lead updated',
+      body: 'Lead ' + (leadId || '') + ' was updated.',
+      roles: ['admin', 'hoo'],
+      url: leadId ? '/#leads?id=' + encodeURIComponent(leadId) : '/#leads'
+    });
     return data;
   },
   async deleteLead(leadId) {
@@ -270,6 +288,15 @@ const Leads = {
   async convertToDeal(leadId) {
     const { data, error } = await this.getClient().rpc('convert_lead_to_deal', { p_lead_uuid: leadId });
     if (error) throw this.toSupabaseError('Unable to convert lead', error);
+    await Api.safeSendBusinessPwaPush({
+      resource: 'deals',
+      action: 'deal_created_from_lead',
+      recordId: Api.extractBusinessRecordId(data, leadId),
+      title: 'Deal created from lead',
+      body: 'A deal was created from lead ' + (leadId || '') + '.',
+      roles: ['admin', 'hoo'],
+      url: '/#deals'
+    });
     return data;
   },
   currentConverterIdentity() {

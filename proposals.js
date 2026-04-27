@@ -853,27 +853,62 @@ const Proposals = {
   async createProposal(proposal, items) {
     const preparedProposal = this.buildProposalForPersist(proposal, items, { ensureBusinessProposalId: true });
     const preparedItems = (Array.isArray(items) ? items : []).map(item => this.normalizeProposalItemForSave(item));
-    return Api.requestWithSession('proposals', 'create', {
+    const response = await Api.requestWithSession('proposals', 'create', {
       proposal: this.prepareProposalForSave(preparedProposal),
       items: preparedItems
     });
+    const recordId = Api.extractBusinessRecordId(response, preparedProposal.proposal_id || preparedProposal.ref_number || '');
+    await Api.safeSendBusinessPwaPush({
+      resource: 'proposals',
+      action: 'proposal_created',
+      recordId,
+      title: 'Proposal created',
+      body: 'Proposal ' + (preparedProposal.ref_number || preparedProposal.proposal_id || recordId || '') + ' was created.',
+      roles: ['admin', 'hoo'],
+      url: recordId ? '/#proposals?id=' + encodeURIComponent(recordId) : '/#proposals'
+    });
+    return response;
   },
   async saveProposal(proposal, items) {
     const preparedProposal = this.buildProposalForPersist(proposal, items, { ensureBusinessProposalId: true });
     const preparedItems = (Array.isArray(items) ? items : []).map(item => this.normalizeProposalItemForSave(item));
-    return Api.requestWithSession('proposals', 'save', {
+    const response = await Api.requestWithSession('proposals', 'save', {
       proposal: this.prepareProposalForSave(preparedProposal),
       items: preparedItems
     });
+    const recordId = Api.extractBusinessRecordId(response, preparedProposal.id || preparedProposal.proposal_id || preparedProposal.ref_number || '');
+    await Api.safeSendBusinessPwaPush({
+      resource: 'proposals',
+      action: preparedProposal.id ? 'proposal_updated' : 'proposal_created',
+      recordId,
+      title: preparedProposal.id ? 'Proposal updated' : 'Proposal created',
+      body: 'Proposal ' + (preparedProposal.ref_number || preparedProposal.proposal_id || recordId || '') + ' was saved.',
+      roles: ['admin', 'hoo'],
+      url: recordId ? '/#proposals?id=' + encodeURIComponent(recordId) : '/#proposals'
+    });
+    return response;
   },
   async updateProposal(proposalId, updates, items) {
     const preparedUpdates = this.buildProposalForPersist(updates, items, { ensureBusinessProposalId: false });
     const preparedItems = (Array.isArray(items) ? items : []).map(item => this.normalizeProposalItemForSave(item));
-    return Api.requestWithSession('proposals', 'update', {
+    const preparedForSave = this.prepareProposalForSave(preparedUpdates);
+    const response = await Api.requestWithSession('proposals', 'update', {
       id: proposalId,
-      updates: this.prepareProposalForSave(preparedUpdates),
+      updates: preparedForSave,
       items: preparedItems
     });
+    const statusKeys = ['status', 'proposal_status'];
+    const isStatusUpdate = statusKeys.some(key => Object.prototype.hasOwnProperty.call(preparedForSave || {}, key));
+    await Api.safeSendBusinessPwaPush({
+      resource: 'proposals',
+      action: isStatusUpdate ? 'proposal_status_changed' : 'proposal_updated',
+      recordId: Api.extractBusinessRecordId(response, proposalId),
+      title: isStatusUpdate ? 'Proposal status changed' : 'Proposal updated',
+      body: 'Proposal ' + (proposalId || '') + ' was updated.',
+      roles: ['admin', 'hoo'],
+      url: proposalId ? '/#proposals?id=' + encodeURIComponent(proposalId) : '/#proposals'
+    });
+    return response;
   },
   normalizeDateForSave(value) {
     const trimmed = String(value ?? '').trim();
@@ -919,7 +954,18 @@ const Proposals = {
     return Api.requestWithSession('proposals', 'delete', { id: proposalId });
   },
   async createFromDeal(dealId) {
-    return Api.requestWithSession('proposals', 'create_from_deal', { id: dealId });
+    const response = await Api.requestWithSession('proposals', 'create_from_deal', { id: dealId });
+    const recordId = Api.extractBusinessRecordId(response, dealId);
+    await Api.safeSendBusinessPwaPush({
+      resource: 'proposals',
+      action: 'proposal_created_from_deal',
+      recordId,
+      title: 'Proposal created from deal',
+      body: 'Proposal was created from deal ' + (dealId || '') + '.',
+      roles: ['admin', 'hoo'],
+      url: recordId ? '/#proposals?id=' + encodeURIComponent(recordId) : '/#proposals'
+    });
+    return response;
   },
   async loadProposalPreviewData(proposalUuid) {
     const id = String(proposalUuid || '').trim();

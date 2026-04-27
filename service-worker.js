@@ -1,4 +1,4 @@
-const STATIC_CACHE_NAME = 'incheck360-monitorcore-static-v27-pwa-final';
+const STATIC_CACHE_NAME = 'incheck360-monitorcore-static-v7-all-pwa';
 const PUSH_DIAGNOSTICS_CACHE_NAME = 'incheck360-monitorcore-push-diagnostics-v1';
 const PUSH_DIAGNOSTICS_PREFIX = '/__incheck360_push_diagnostics__/';
 const STATIC_ASSETS = [
@@ -39,7 +39,7 @@ self.addEventListener('activate', event => {
       .then(keys =>
         Promise.all(
           keys
-            .filter(key => key !== STATIC_CACHE_NAME && key !== PUSH_DIAGNOSTICS_CACHE_NAME)
+            .filter(key => key !== STATIC_CACHE_NAME)
             .map(key => caches.delete(key))
         )
       )
@@ -119,35 +119,6 @@ function isBlockedRequest(requestUrl, requestMethod) {
   return false;
 }
 
-function isFreshCodeRequest(requestUrl, request) {
-  if (requestUrl.origin !== self.location.origin) return false;
-  const pathname = requestUrl.pathname || '';
-  const destination = request.destination || '';
-  return (
-    destination === 'script' ||
-    destination === 'style' ||
-    destination === 'worker' ||
-    pathname.endsWith('.js') ||
-    pathname.endsWith('.css') ||
-    pathname.endsWith('.webmanifest')
-  );
-}
-
-async function networkFirstWithCache(request) {
-  const cache = await caches.open(STATIC_CACHE_NAME);
-  try {
-    const networkResponse = await fetch(request, { cache: 'no-store' });
-    if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
-      await cache.put(request, networkResponse.clone());
-    }
-    return networkResponse;
-  } catch (error) {
-    const cached = await cache.match(request);
-    if (cached) return cached;
-    throw error;
-  }
-}
-
 self.addEventListener('fetch', event => {
   const { request } = event;
   const requestUrl = new URL(request.url);
@@ -156,42 +127,25 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  if (request.mode === 'navigate') {
-    event.respondWith(
-      fetch(request, { cache: 'no-store' }).catch(() => caches.match('/offline.html'))
-    );
-    return;
-  }
-
   if (requestUrl.origin !== self.location.origin) {
     return;
   }
 
-  if (isFreshCodeRequest(requestUrl, request)) {
-    event.respondWith(networkFirstWithCache(request).catch(() => caches.match('/offline.html')));
-    return;
-  }
-
-  event.respondWith(
-    caches.match(request).then(cached => {
+  event.respondWith((async () => {
+    try {
+      const networkResponse = await fetch(request);
+      if (request.method === 'GET' && networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+        const cache = await caches.open(STATIC_CACHE_NAME);
+        await cache.put(request, networkResponse.clone());
+      }
+      return networkResponse;
+    } catch (error) {
+      const cached = await caches.match(request);
       if (cached) return cached;
-
-      return fetch(request)
-        .then(networkResponse => {
-          if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
-            return networkResponse;
-          }
-
-          const responseToCache = networkResponse.clone();
-          caches.open(STATIC_CACHE_NAME).then(cache => {
-            cache.put(request, responseToCache);
-          });
-
-          return networkResponse;
-        })
-        .catch(() => caches.match('/offline.html'));
-    })
-  );
+      if (request.mode === 'navigate') return caches.match('/offline.html');
+      throw error;
+    }
+  })());
 });
 
 self.addEventListener('push', (event) => {
