@@ -143,6 +143,107 @@
     };
   }
 
+
+
+  function eventPwaRecordId(event = {}, fallback = '') {
+    return String(
+      event?.event_code ||
+      event?.eventCode ||
+      event?.displayId ||
+      event?.id ||
+      fallback ||
+      ''
+    ).trim();
+  }
+
+  function eventPwaUrl(recordId = '') {
+    const normalizedId = String(recordId || '').trim();
+    return normalizedId ? `/#events?id=${encodeURIComponent(normalizedId)}` : '/#events';
+  }
+
+  function eventPwaBody(event = {}, fallbackRecordId = '', suffix = 'was updated') {
+    const label = String(event?.title || eventPwaRecordId(event, fallbackRecordId) || 'Event').trim();
+    return `Event ${label} ${suffix}.`;
+  }
+
+  async function safeSendEventPwaPush(args = {}) {
+    const api = global.Api;
+    if (!api || typeof api.safeSendBusinessPwaPush !== 'function') {
+      console.warn('[events:pwa] skipped direct PWA push: Api.safeSendBusinessPwaPush is unavailable', args);
+      return null;
+    }
+    try {
+      console.info('[events:pwa] sending direct PWA push', args);
+      const result = await api.safeSendBusinessPwaPush(args);
+      console.info('[events:pwa] direct PWA push result', {
+        resource: args?.resource,
+        action: args?.action,
+        recordId: args?.recordId,
+        result
+      });
+      return result;
+    } catch (error) {
+      console.warn('[events:pwa] direct PWA push failed but event save will continue', { args, error });
+      return {
+        attempted: true,
+        sent: false,
+        error: String(error?.message || error)
+      };
+    }
+  }
+
+  function changedEventFields(previous = {}, next = {}, submittedUpdates = {}) {
+    const fields = [
+      'title',
+      'description',
+      'start',
+      'end',
+      'location',
+      'status',
+      'type',
+      'env',
+      'owner',
+      'modules',
+      'impactType',
+      'issueId',
+      'allDay'
+    ];
+    const changed = [];
+    fields.forEach(field => {
+      if (Object.prototype.hasOwnProperty.call(submittedUpdates || {}, field)) {
+        changed.push(field);
+        return;
+      }
+      const before = JSON.stringify(previous?.[field] ?? '');
+      const after = JSON.stringify(next?.[field] ?? '');
+      if (before !== after) changed.push(field);
+    });
+    return Array.from(new Set(changed));
+  }
+
+  function chooseEventUpdateAction(previous = {}, next = {}, submittedUpdates = {}) {
+    const previousStatus = String(previous?.status || '').trim().toLowerCase();
+    const nextStatus = String(next?.status || '').trim().toLowerCase();
+    const previousStart = String(previous?.start || previous?.start_at || '').trim();
+    const nextStart = String(next?.start || next?.start_at || '').trim();
+    const previousEnd = String(previous?.end || previous?.end_at || '').trim();
+    const nextEnd = String(next?.end || next?.end_at || '').trim();
+
+    if ((previousStart && nextStart && previousStart !== nextStart) || (previousEnd && nextEnd && previousEnd !== nextEnd)) {
+      return 'event_schedule_changed';
+    }
+    if (previousStatus && nextStatus && previousStatus !== nextStatus) {
+      return 'event_status_changed';
+    }
+    if (Object.prototype.hasOwnProperty.call(submittedUpdates || {}, 'start') || Object.prototype.hasOwnProperty.call(submittedUpdates || {}, 'end')) {
+      return 'event_schedule_changed';
+    }
+    if (Object.prototype.hasOwnProperty.call(submittedUpdates || {}, 'status')) {
+      return 'event_status_changed';
+    }
+    return 'event_updated';
+  }
+
   function stripUnknownColumns(record = {}) {
     const sanitized = {};
     Object.entries(record || {}).forEach(([key, value]) => {
@@ -260,7 +361,28 @@
     const client = getClient();
     const { data, error } = await client.from(TABLE).insert(payload).select('*').single();
     if (error) throw readableError('Unable to create event', error);
-    return normalizeEventRow(data);
+
+    const savedEvent = normalizeEventRow(data);
+    const recordId = eventPwaRecordId(savedEvent);
+    await safeSendEventPwaPush({
+      resource: 'events',
+      action: 'event_created',
+      recordId,
+      title: 'Event created',
+      body: eventPwaBody(savedEvent, recordId, 'was created'),
+      roles: ['admin', 'dev'],
+      url: eventPwaUrl(recordId),
+      data: {
+        event_id: savedEvent.id || undefined,
+        event_code: savedEvent.event_code || savedEvent.eventCode || undefined,
+        status: savedEvent.status || undefined,
+        type: savedEvent.type || undefined,
+        start: savedEvent.start || undefined,
+        end: savedEvent.end || undefined
+      }
+    });
+
+    return savedEvent;
   }
 
   async function updateEvent(id, updates = {}) {
@@ -269,9 +391,49 @@
     if (!eventId) throw new Error('Event id is required.');
     const payload = await toUpdatePayload(updates);
     const client = getClient();
+
+    let previousEvent = null;
+    try {
+      const { data: previousRow, error: previousError } = await client.from(TABLE).select('*').eq('id', eventId).maybeSingle();
+      if (previousError) console.warn('[events:pwa] unable to load previous event before update', previousError);
+      previousEvent = previousRow ? normalizeEventRow(previousRow) : null;
+    } catch (previousLoadError) {
+      console.warn('[events:pwa] unable to load previous event before update', previousLoadError);
+    }
+
     const { data, error } = await client.from(TABLE).update(payload).eq('id', eventId).select('*').single();
     if (error) throw readableError('Unable to update event', error);
-    return normalizeEventRow(data);
+
+    const savedEvent = normalizeEventRow(data);
+    const recordId = eventPwaRecordId(savedEvent, eventId);
+    const action = chooseEventUpdateAction(previousEvent || {}, savedEvent, updates || {});
+    const changedFields = changedEventFields(previousEvent || {}, savedEvent, updates || {});
+    const title = action === 'event_schedule_changed'
+      ? 'Event schedule changed'
+      : action === 'event_status_changed'
+        ? 'Event status changed'
+        : 'Event updated';
+
+    await safeSendEventPwaPush({
+      resource: 'events',
+      action,
+      recordId,
+      title,
+      body: eventPwaBody(savedEvent, recordId, 'was updated'),
+      roles: ['admin', 'dev'],
+      url: eventPwaUrl(recordId),
+      data: {
+        event_id: savedEvent.id || eventId,
+        event_code: savedEvent.event_code || savedEvent.eventCode || undefined,
+        status: savedEvent.status || undefined,
+        type: savedEvent.type || undefined,
+        start: savedEvent.start || undefined,
+        end: savedEvent.end || undefined,
+        changed_fields: changedFields
+      }
+    });
+
+    return savedEvent;
   }
 
   async function deleteEvent(id) {
@@ -279,8 +441,36 @@
     const eventId = String(id || '').trim();
     if (!eventId) throw new Error('Event id is required.');
     const client = getClient();
+
+    let previousEvent = null;
+    try {
+      const { data: previousRow, error: previousError } = await client.from(TABLE).select('*').eq('id', eventId).maybeSingle();
+      if (previousError) console.warn('[events:pwa] unable to load previous event before delete', previousError);
+      previousEvent = previousRow ? normalizeEventRow(previousRow) : null;
+    } catch (previousLoadError) {
+      console.warn('[events:pwa] unable to load previous event before delete', previousLoadError);
+    }
+
     const { error } = await client.from(TABLE).delete().eq('id', eventId);
     if (error) throw readableError('Unable to delete event', error);
+
+    const recordId = eventPwaRecordId(previousEvent || {}, eventId);
+    await safeSendEventPwaPush({
+      resource: 'events',
+      action: 'event_deleted',
+      recordId,
+      title: 'Event deleted',
+      body: eventPwaBody(previousEvent || {}, recordId, 'was deleted'),
+      roles: ['admin', 'dev'],
+      url: '/#events',
+      data: {
+        event_id: previousEvent?.id || eventId,
+        event_code: previousEvent?.event_code || previousEvent?.eventCode || undefined,
+        status: previousEvent?.status || undefined,
+        type: previousEvent?.type || undefined
+      }
+    });
+
     return true;
   }
 
