@@ -1,4 +1,6 @@
 (function initPushNotifications(global) {
+  const WEB_PUSH_FUNCTION_NAME = 'send-web-push-v2';
+
   const PushNotifications = {
     state: {
       supported: false,
@@ -538,7 +540,7 @@
         if (!client) throw new Error('Supabase client unavailable.');
         const userId = String(global.Session?.userId?.() || '').trim();
         if (!userId) throw new Error('Missing current user id.');
-        const functionUrl = this.getFunctionsUrl('send-web-push-v2');
+        const functionUrl = this.getFunctionsUrl(WEB_PUSH_FUNCTION_NAME);
         const anonKey = String(global.RUNTIME_CONFIG?.SUPABASE_ANON_KEY || global.SUPABASE_ANON_KEY || '').trim();
         const sessionResult = await client.auth.getSession();
         const accessToken = String(sessionResult?.data?.session?.access_token || '').trim();
@@ -568,7 +570,7 @@
           payload
         });
 
-        const { data, error } = await client.functions.invoke('send-web-push-v2', { body: payload });
+        const { data, error } = await client.functions.invoke(WEB_PUSH_FUNCTION_NAME, { body: payload });
         if (error) {
           const status = Number(error?.context?.status || error?.status || 0) || 'unknown';
           const errorMessage = String(error?.message || error?.name || 'Unknown invoke error');
@@ -590,7 +592,7 @@
           });
           if (status === 404) {
             throw new Error(
-              `send-web-push-v2 Edge Function was not found. Confirm it is deployed in Supabase.\nURL: ${functionUrl}\nHas token: ${accessToken ? 'yes' : 'no'}\nTarget: ${targetLabel}`
+              `${WEB_PUSH_FUNCTION_NAME} Edge Function was not found. Confirm it is deployed in Supabase.\nURL: ${functionUrl}\nHas token: ${accessToken ? 'yes' : 'no'}\nTarget: ${targetLabel}`
             );
           }
           throw new Error(
