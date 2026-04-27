@@ -2128,20 +2128,66 @@
         return null;
       }
     }
+    async function sendWorkflowWebPush(payload = {}, context = '') {
+      try {
+        const { error } = await client.functions.invoke('send-web-push-v2', {
+          body: payload && typeof payload === 'object' ? payload : {}
+        });
+        if (error) {
+          console.warn(`[workflow push] ${context} failed`, error);
+        }
+      } catch (error) {
+        console.warn(`[workflow push] ${context} failed`, error);
+      }
+    }
     async function notifyWorkflowApprovalCreated(approvalId = '') {
       const normalizedId = String(approvalId || '').trim();
       if (!normalizedId) return null;
-      return fireWorkflowNotificationRpc('notify_workflow_approval_request', { p_approval_id: normalizedId });
+      const result = await fireWorkflowNotificationRpc('notify_workflow_approval_request', { p_approval_id: normalizedId });
+      const approvalRow = await loadApprovalRowById(normalizedId).catch(() => null);
+      const approvalRole = String(approvalRow?.approval_role || '').trim().toLowerCase();
+      void sendWorkflowWebPush({
+        title: 'InCheck360 Workflow Approval Request',
+        body: 'A new workflow approval request needs review.',
+        url: '/',
+        roles: approvalRole ? [approvalRole] : ['admin'],
+        tag: 'workflow-approval-request',
+        data: { event: 'workflow_approval_request', approval_id: normalizedId }
+      }, 'notifyWorkflowApprovalCreated');
+      return result;
     }
     async function notifyWorkflowDecision(approvalId = '', decision = '', reviewerComment = '') {
       const normalizedId = String(approvalId || '').trim();
       const normalizedDecision = String(decision || '').trim().toLowerCase();
       if (!normalizedId || !normalizedDecision) return null;
-      return fireWorkflowNotificationRpc('notify_workflow_decision', {
+      const result = await fireWorkflowNotificationRpc('notify_workflow_decision', {
         p_approval_id: normalizedId,
         p_decision: normalizedDecision,
         p_reviewer_comment: String(reviewerComment || '').trim() || null
       });
+      const approvalRow = await loadApprovalRowById(normalizedId).catch(() => null);
+      const requesterUserId = String(approvalRow?.requester_user_id || '').trim();
+      if (requesterUserId) {
+        void sendWorkflowWebPush({
+          title: `InCheck360 Workflow ${normalizedDecision === 'approved' ? 'Approved' : 'Rejected'}`,
+          body: `Your workflow request was ${normalizedDecision}.`,
+          url: '/',
+          user_ids: [requesterUserId],
+          tag: 'workflow-decision',
+          data: { event: 'workflow_decision', approval_id: normalizedId, decision: normalizedDecision }
+        }, 'notifyWorkflowDecision');
+      }
+      return result;
+    }
+    async function sendRolePushForTicketEvent({ title = '', body = '', data = {}, tag = '' } = {}) {
+      void sendWorkflowWebPush({
+        title: String(title || '').trim() || 'InCheck360 Ticket Update',
+        body: String(body || '').trim() || 'A ticket notification was created.',
+        url: '/',
+        roles: ['admin', 'hoo'],
+        tag: String(tag || '').trim() || 'ticket-notification',
+        data: data && typeof data === 'object' ? data : {}
+      }, 'ticket-notification');
     }
     async function resolveWorkflowTargetRecord(resourceValue = '', approval = {}) {
       const resource = String(resourceValue || '').trim().toLowerCase();
@@ -3362,6 +3408,17 @@
       const { data, error } = await client.from(table).insert(createRecord).select('*').single();
       if (error) throw friendlyError(`Unable to create ${resource} record`, error);
       const created = normalizeRow(resource, data);
+      if (resource === 'tickets') {
+        void sendRolePushForTicketEvent({
+          title: 'InCheck360 New Ticket Submitted',
+          body: `New ticket submitted: ${String(created.title || created.ticket_id || created.id || 'Ticket').trim()}.`,
+          tag: 'ticket-submitted',
+          data: {
+            event: 'ticket_submitted',
+            ticket_id: String(created.ticket_id || created.id || '').trim()
+          }
+        });
+      }
       if (resource === 'proposals') {
         const createdBusinessId = String(created.proposal_id || '').trim();
         const createdRefNumber = String(created.ref_number || '').trim();
@@ -3504,6 +3561,16 @@
         return { handled: true, data: await withItems(resource, normalizedRow) };
       }
      
+      let previousTicketStatus = '';
+      if (resource === 'tickets') {
+        const { data: existingTicket } = await client
+          .from('tickets')
+          .select('status')
+          .eq(key, id)
+          .maybeSingle();
+        previousTicketStatus = String(existingTicket?.status || '').trim();
+      }
+
       const publicUpdates =
         resource === 'tickets'
           ? toTicketPublicRecord(stripTicketInternalFields(safeUpdates), { includeTicketId: false })
@@ -3584,7 +3651,37 @@
           .select('*')
           .single();
         if (internalError) throw friendlyError('Unable to save internal ticket fields', internalError);
+        const nextTicketStatus = String(data?.status || '').trim();
+        if (previousTicketStatus && nextTicketStatus && previousTicketStatus.toLowerCase() !== nextTicketStatus.toLowerCase()) {
+          void sendRolePushForTicketEvent({
+            title: 'InCheck360 Ticket Status Changed',
+            body: `Ticket ${String(data?.ticket_id || id || '').trim()} changed from ${previousTicketStatus} to ${nextTicketStatus}.`,
+            tag: 'ticket-status-changed',
+            data: {
+              event: 'ticket_status_changed',
+              ticket_id: String(data?.ticket_id || id || '').trim(),
+              old_status: previousTicketStatus,
+              new_status: nextTicketStatus
+            }
+          });
+        }
         return { handled: true, data: mergeTicketInternal(data, internalData) };
+      }
+      if (resource === 'tickets') {
+        const nextTicketStatus = String(data?.status || '').trim();
+        if (previousTicketStatus && nextTicketStatus && previousTicketStatus.toLowerCase() !== nextTicketStatus.toLowerCase()) {
+          void sendRolePushForTicketEvent({
+            title: 'InCheck360 Ticket Status Changed',
+            body: `Ticket ${String(data?.ticket_id || id || '').trim()} changed from ${previousTicketStatus} to ${nextTicketStatus}.`,
+            tag: 'ticket-status-changed',
+            data: {
+              event: 'ticket_status_changed',
+              ticket_id: String(data?.ticket_id || id || '').trim(),
+              old_status: previousTicketStatus,
+              new_status: nextTicketStatus
+            }
+          });
+        }
       }
 
       const itemTable = ITEM_TABLES[resource];
