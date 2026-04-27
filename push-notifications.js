@@ -24,7 +24,8 @@
       lastShowNotificationAt: '',
       lastShowNotificationError: '',
       lastPushPayload: null,
-      latestServerTestResult: null
+      latestServerTestResult: null,
+      pwaInstallCheck: null
     },
 
     els: {
@@ -36,9 +37,12 @@
       serverTestBtn: null,
       serverTestResult: null,
       readDiagnosticsBtn: null,
+      pwaInstallCheckBtn: null,
       forceSwUpdateBtn: null,
       diagnosticsPanel: null,
-      diagnosticsText: null
+      diagnosticsText: null,
+      pwaInstallStatusMessage: null,
+      pwaInstallCheckResult: null
     },
 
     normalizeKey(value) {
@@ -165,10 +169,13 @@
       this.els.serverTestBtn = document.getElementById('pushServerTestBtn');
       this.els.serverTestResult = document.getElementById('pushServerTestResult');
       this.els.readDiagnosticsBtn = document.getElementById('pushReadDiagnosticsBtn');
+      this.els.pwaInstallCheckBtn = document.getElementById('pwaInstallCheckBtn');
       this.els.copyDiagnosticsBtn = document.getElementById('pushCopyDiagnosticsBtn');
       this.els.forceSwUpdateBtn = document.getElementById('pushForceSwUpdateBtn');
       this.els.diagnosticsPanel = document.getElementById('pushDiagnosticsPanel');
       this.els.diagnosticsText = document.getElementById('pushDiagnosticsText');
+      this.els.pwaInstallStatusMessage = document.getElementById('pwaInstallStatusMessage');
+      this.els.pwaInstallCheckResult = document.getElementById('pwaInstallCheckResult');
     },
 
     setMessage(message = '') {
@@ -184,10 +191,88 @@
       if (this.els.localTestBtn) this.els.localTestBtn.disabled = this.state.busy || !this.state.supported;
       if (this.els.serverTestBtn) this.els.serverTestBtn.disabled = this.state.busy || !this.state.supported;
       if (this.els.readDiagnosticsBtn) this.els.readDiagnosticsBtn.disabled = this.state.busy || !this.state.supported;
+      if (this.els.pwaInstallCheckBtn) this.els.pwaInstallCheckBtn.disabled = this.state.busy;
       if (this.els.copyDiagnosticsBtn) this.els.copyDiagnosticsBtn.disabled = this.state.busy || !this.state.supported;
       if (this.els.forceSwUpdateBtn) this.els.forceSwUpdateBtn.disabled = this.state.busy || !this.state.supported;
       this.els.toggleBtn.setAttribute('aria-busy', this.state.busy ? 'true' : 'false');
       this.renderButtonLabel();
+    },
+
+    getPwaInstallRuntimeState() {
+      const state = global.__INCHECK360_PWA_INSTALL_STATE || {};
+      return {
+        beforeInstallPromptFired: state.beforeInstallPromptFired === true,
+        appInstalledFired: state.appInstalledFired === true
+      };
+    },
+
+    getDisplayModeLabel() {
+      const standalone = Boolean(global.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true);
+      return standalone ? 'standalone' : 'browser';
+    },
+
+    async fetchPathStatus(path = '') {
+      const target = String(path || '').trim();
+      if (!target) return 'n/a';
+      try {
+        const response = await fetch(target, { method: 'GET', cache: 'no-store' });
+        return `${response.status} ${response.ok ? 'OK' : 'ERROR'}`;
+      } catch (error) {
+        return `fetch failed: ${String(error?.message || 'unknown error')}`;
+      }
+    },
+
+    async runPwaInstallCheck({ source = 'manual' } = {}) {
+      const swSupported = 'serviceWorker' in navigator;
+      const registration = swSupported ? await this.getRegistration().catch(() => null) : null;
+      const runtimeState = this.getPwaInstallRuntimeState();
+      const manifestStatus = await this.fetchPathStatus('/manifest.webmanifest');
+      const swStatus = await this.fetchPathStatus('/service-worker.js');
+      const icon192Status = await this.fetchPathStatus('/icons/icon-192.png');
+      const icon512Status = await this.fetchPathStatus('/icons/icon-512.png');
+      const maskableStatus = await this.fetchPathStatus('/icons/maskable-icon-512.png');
+      const manifestLink = document.querySelector('link[rel="manifest"]');
+
+      const result = {
+        source,
+        swSupported,
+        swRegistered: Boolean(registration),
+        swController: Boolean(navigator.serviceWorker?.controller),
+        activeWorkerUrl: registration?.active?.scriptURL || '—',
+        manifestLinkExists: Boolean(manifestLink),
+        displayMode: this.getDisplayModeLabel(),
+        beforeInstallPromptFired: runtimeState.beforeInstallPromptFired,
+        appInstalledFired: runtimeState.appInstalledFired,
+        manifestStatus,
+        swStatus,
+        icon192Status,
+        icon512Status,
+        maskableStatus
+      };
+      this.state.pwaInstallCheck = result;
+
+      if (this.els.pwaInstallCheckResult) {
+        const lines = [
+          `PWA install check source: ${source}`,
+          `/manifest.webmanifest: ${manifestStatus}`,
+          `/service-worker.js: ${swStatus}`,
+          `/icons/icon-192.png: ${icon192Status}`,
+          `/icons/icon-512.png: ${icon512Status}`,
+          `/icons/maskable-icon-512.png: ${maskableStatus}`,
+          `display mode: ${result.displayMode}`,
+          `service worker registration exists: ${result.swRegistered ? 'yes' : 'no'}`,
+          `beforeinstallprompt fired: ${result.beforeInstallPromptFired ? 'yes' : 'no'}`
+        ];
+        this.els.pwaInstallCheckResult.textContent = lines.join('\n');
+      }
+
+      if (this.els.pwaInstallStatusMessage) {
+        this.els.pwaInstallStatusMessage.textContent = result.beforeInstallPromptFired
+          ? 'Install prompt is available when Chrome marks this app installable.'
+          : 'Install prompt is not available yet. Chrome does not currently consider this app installable. Check manifest, icons, service worker, and HTTPS.';
+      }
+
+      return result;
     },
 
     renderButtonLabel() {
@@ -1012,6 +1097,7 @@
           return 'Unknown browser';
         })();
         const latestServerResult = this.state.latestServerTestResult;
+        const pwaCheck = this.state.pwaInstallCheck || (await this.runPwaInstallCheck({ source: 'renderDiagnostics' }));
         const serverResultText = latestServerResult
           ? `attempted=${Number(latestServerResult?.attempted || 0)}, sent=${Number(latestServerResult?.sent || 0)}, failed=${Number(latestServerResult?.failed || 0)}`
           : 'not run yet';
@@ -1020,6 +1106,12 @@
           `Notification.permission: ${global.Notification?.permission || 'default'}`,
           `serviceWorker.controller: ${controller ? 'yes' : 'no'}`,
           `Active service worker URL: ${registration?.active?.scriptURL || '—'}`,
+          `Manifest link exists: ${pwaCheck?.manifestLinkExists ? 'yes' : 'no'}`,
+          `Manifest fetch status: ${pwaCheck?.manifestStatus || 'not checked'}`,
+          `Icon fetch status (192/512/maskable): ${pwaCheck?.icon192Status || 'not checked'} / ${pwaCheck?.icon512Status || 'not checked'} / ${pwaCheck?.maskableStatus || 'not checked'}`,
+          `Display mode: ${pwaCheck?.displayMode || this.getDisplayModeLabel()}`,
+          `beforeinstallprompt fired: ${pwaCheck?.beforeInstallPromptFired ? 'yes' : 'no'}`,
+          `appinstalled fired: ${pwaCheck?.appInstalledFired ? 'yes' : 'no'}`,
           `Current subscription endpoint preview: ${this.getEndpointPreview(endpoint)}`,
           `lastPushReceivedAt: ${this.state.lastPushReceivedAt || '—'}`,
           `lastShowNotificationAt: ${this.state.lastShowNotificationAt || '—'}`,
@@ -1061,12 +1153,14 @@
         if (this.els.localTestBtn) this.els.localTestBtn.disabled = true;
         if (this.els.serverTestBtn) this.els.serverTestBtn.disabled = true;
         if (this.els.copyDiagnosticsBtn) this.els.copyDiagnosticsBtn.disabled = true;
+        if (this.els.pwaInstallCheckBtn) this.els.pwaInstallCheckBtn.disabled = false;
         return;
       }
 
       this.els.toggleBtn.disabled = false;
       this.renderButtonLabel();
       await this.onAuthStateChanged();
+      await this.runPwaInstallCheck({ source: 'init' });
       await this.readServiceWorkerDiagnostics();
       await this.renderDiagnostics({ source: 'init' });
       await this.logDiagnostics({ source: 'init' });
@@ -1091,7 +1185,12 @@
       });
       this.els.readDiagnosticsBtn?.addEventListener('click', async () => {
         await this.readServiceWorkerDiagnostics();
+        await this.runPwaInstallCheck({ source: 'readServiceWorkerDiagnosticsButton' });
         await this.renderDiagnostics({ source: 'readServiceWorkerDiagnosticsButton' });
+      });
+      this.els.pwaInstallCheckBtn?.addEventListener('click', async () => {
+        await this.runPwaInstallCheck({ source: 'pwaInstallCheckButton' });
+        await this.renderDiagnostics({ source: 'pwaInstallCheckButton' });
       });
       this.els.copyDiagnosticsBtn?.addEventListener('click', () => {
         this.copyPushDiagnostics();

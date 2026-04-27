@@ -238,6 +238,11 @@ function registerServiceWorkerSafely() {
 let deferredInstallPrompt = null;
 let pwaInstallBannerEl = null;
 let pwaInstallDelayTimer = null;
+const PWA_INSTALL_RUNTIME_STATE = {
+  beforeInstallPromptFired: false,
+  appInstalledFired: false
+};
+window.__INCHECK360_PWA_INSTALL_STATE = { ...PWA_INSTALL_RUNTIME_STATE };
 
 const PWA_INSTALL_STORAGE_KEYS = {
   snoozedUntil: 'incheck360_pwa_install_snoozed_until',
@@ -388,11 +393,21 @@ function wirePwaInstallBanner() {
 
   window.addEventListener('beforeinstallprompt', event => {
     event.preventDefault();
+    PWA_INSTALL_RUNTIME_STATE.beforeInstallPromptFired = true;
+    window.__INCHECK360_PWA_INSTALL_STATE = { ...PWA_INSTALL_RUNTIME_STATE };
+    if (getPwaInstallDebugEnabled()) {
+      console.log('[PWA Install] beforeinstallprompt fired');
+    }
     deferredInstallPrompt = event;
     maybeScheduleInstallBanner();
   });
 
   window.addEventListener('appinstalled', () => {
+    PWA_INSTALL_RUNTIME_STATE.appInstalledFired = true;
+    window.__INCHECK360_PWA_INSTALL_STATE = { ...PWA_INSTALL_RUNTIME_STATE };
+    if (getPwaInstallDebugEnabled()) {
+      console.log('[PWA Install] appinstalled fired');
+    }
     hideInstallAppBanner();
     localStorage.setItem(PWA_INSTALL_STORAGE_KEYS.installed, 'true');
     deferredInstallPrompt = null;
