@@ -3,7 +3,7 @@ window.RUNTIME_CONFIG.PUSH_VAPID_PUBLIC_KEY =
   window.RUNTIME_CONFIG.PUSH_VAPID_PUBLIC_KEY ||
   window.RUNTIME_CONFIG.VAPID_PUBLIC_KEY ||
   window.INCHECK360_PUSH_CONFIG?.vapidPublicKey ||
-  '';
+  'BE05Jupi78_afyyzpH8VVIX0LWMBPguOohOJkmufUqKm3x2m5hO-0MKnzyRLBP-MwauW4FHKoJWV74eZ5rAsAYU';
 const runtimeConfig = window.RUNTIME_CONFIG;
 const DEFAULT_PUSH_VAPID_PUBLIC_KEY =
   String(runtimeConfig.PUSH_VAPID_PUBLIC_KEY || runtimeConfig.VAPID_PUBLIC_KEY || '').trim();
