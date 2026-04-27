@@ -529,12 +529,16 @@
             <button id="pushLocalTestBtn" class="btn ghost sm" type="button">Test local notification</button>
             <button id="pushServerTestBtn" class="btn ghost sm" type="button">Test server push</button>
             <button id="pushReadDiagnosticsBtn" class="btn ghost sm" type="button">Read service worker diagnostics</button>
+            <button id="pushCopyDiagnosticsBtn" class="btn ghost sm" type="button">Copy push diagnostics</button>
             <button id="pushForceSwUpdateBtn" class="btn ghost sm" type="button">Force service worker update</button>
           </div>
           <div id="pushServerTestResult" class="muted" style="margin-top:8px;font-size:12px;">Server push test: not run yet.</div>
           <div id="pushDiagnosticsPanel" class="muted" style="display:none;margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:10px;background:rgba(127,127,127,0.06);font-size:12px;line-height:1.5;">
             <strong>Push diagnostics (admin/dev)</strong>
             <pre id="pushDiagnosticsText" style="margin:6px 0 0;white-space:pre-wrap;">Loading push diagnostics…</pre>
+            <div id="pushDeliveryWarning" style="margin-top:8px;">
+              If server push returns sent=1 but lastPushReceivedAt stays empty after reopening mobile, the mobile OS/browser did not deliver the background push to the service worker. Reinstall the PWA and check OS notification settings.
+            </div>
           </div>
           <div class="muted" style="margin-top:10px;font-size:12px;line-height:1.45;">
             <strong>Mobile checklist</strong>

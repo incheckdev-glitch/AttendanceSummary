@@ -165,6 +165,7 @@
       this.els.serverTestBtn = document.getElementById('pushServerTestBtn');
       this.els.serverTestResult = document.getElementById('pushServerTestResult');
       this.els.readDiagnosticsBtn = document.getElementById('pushReadDiagnosticsBtn');
+      this.els.copyDiagnosticsBtn = document.getElementById('pushCopyDiagnosticsBtn');
       this.els.forceSwUpdateBtn = document.getElementById('pushForceSwUpdateBtn');
       this.els.diagnosticsPanel = document.getElementById('pushDiagnosticsPanel');
       this.els.diagnosticsText = document.getElementById('pushDiagnosticsText');
@@ -183,6 +184,7 @@
       if (this.els.localTestBtn) this.els.localTestBtn.disabled = this.state.busy || !this.state.supported;
       if (this.els.serverTestBtn) this.els.serverTestBtn.disabled = this.state.busy || !this.state.supported;
       if (this.els.readDiagnosticsBtn) this.els.readDiagnosticsBtn.disabled = this.state.busy || !this.state.supported;
+      if (this.els.copyDiagnosticsBtn) this.els.copyDiagnosticsBtn.disabled = this.state.busy || !this.state.supported;
       if (this.els.forceSwUpdateBtn) this.els.forceSwUpdateBtn.disabled = this.state.busy || !this.state.supported;
       this.els.toggleBtn.setAttribute('aria-busy', this.state.busy ? 'true' : 'false');
       this.renderButtonLabel();
@@ -784,6 +786,32 @@
       }
     },
 
+    async copyPushDiagnostics() {
+      const diagnosticsText = String(this.els.diagnosticsText?.textContent || '').trim();
+      if (!diagnosticsText) {
+        this.setMessage('No diagnostics text is available yet. Read diagnostics first.');
+        return;
+      }
+      try {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(diagnosticsText);
+        } else {
+          const textArea = document.createElement('textarea');
+          textArea.value = diagnosticsText;
+          textArea.setAttribute('readonly', 'readonly');
+          textArea.style.position = 'fixed';
+          textArea.style.left = '-9999px';
+          document.body.appendChild(textArea);
+          textArea.select();
+          document.execCommand('copy');
+          document.body.removeChild(textArea);
+        }
+        this.setMessage('Push diagnostics copied to clipboard.');
+      } catch (error) {
+        this.setMessage(`Unable to copy diagnostics: ${String(error?.message || 'Unknown error')}`);
+      }
+    },
+
 
     ensureForegroundBannerContainer() {
       let container = document.getElementById('pushForegroundBanner');
@@ -957,6 +985,14 @@
           : /android/i.test(String(navigator.userAgent || ''))
             ? 'Android'
             : 'Desktop/Other';
+        const browserHint = (() => {
+          const ua = String(navigator.userAgent || '');
+          if (/Edg\//i.test(ua)) return 'Edge';
+          if (/CriOS|Chrome\//i.test(ua)) return 'Chrome';
+          if (/FxiOS|Firefox\//i.test(ua)) return 'Firefox';
+          if (/Version\/.*Safari\//i.test(ua)) return 'Safari';
+          return 'Unknown browser';
+        })();
         const latestServerResult = this.state.latestServerTestResult;
         const serverResultText = latestServerResult
           ? `attempted=${Number(latestServerResult?.attempted || 0)}, sent=${Number(latestServerResult?.sent || 0)}, failed=${Number(latestServerResult?.failed || 0)}`
@@ -964,19 +1000,20 @@
         const lines = [
           `Source: ${source}`,
           `Notification.permission: ${global.Notification?.permission || 'default'}`,
+          `serviceWorker.controller: ${controller ? 'yes' : 'no'}`,
+          `Active service worker URL: ${registration?.active?.scriptURL || '—'}`,
+          `Current subscription endpoint preview: ${this.getEndpointPreview(endpoint)}`,
+          `lastPushReceivedAt: ${this.state.lastPushReceivedAt || '—'}`,
+          `lastShowNotificationAt: ${this.state.lastShowNotificationAt || '—'}`,
+          `lastShowNotificationError: ${this.state.lastShowNotificationError || '—'}`,
+          `Last server push result: ${serverResultText}`,
+          `Platform/browser hint: ${platformHint} / ${browserHint}`,
           `Service worker supported: ${swSupported ? 'yes' : 'no'}`,
           `Service worker registered: ${swRegistered ? 'yes' : 'no'}`,
-          `Service worker controller: ${controller ? 'yes' : 'no'}`,
-          `Active service worker script URL: ${registration?.active?.scriptURL || '—'}`,
           `pushManager supported: ${pushManagerSupported ? 'yes' : 'no'}`,
           `Current subscription exists: ${subscription ? 'yes' : 'no'}`,
-          `Subscription endpoint preview: ${this.getEndpointPreview(endpoint)}`,
           `push_subscriptions row saved: ${rowSaved ? 'yes' : 'no'}`,
-          `Last server push result: ${serverResultText}`,
-          `Last push received timestamp: ${this.state.lastPushReceivedAt || '—'}`,
-          `Last showNotification timestamp: ${this.state.lastShowNotificationAt || '—'}`,
-          `Last showNotification error: ${this.state.lastShowNotificationError || '—'}`,
-          `Platform hint: ${platformHint}`,
+          'If server push returns sent=1 but lastPushReceivedAt stays empty after reopening mobile, the mobile OS/browser did not deliver the background push to the service worker. Reinstall the PWA and check OS notification settings.',
           'iOS push note: requires iOS 16.4+ and launching from installed Home Screen app.'
         ];
         this.els.diagnosticsText.textContent = lines.join('\n');
@@ -1002,6 +1039,7 @@
         if (this.els.refreshSubscriptionBtn) this.els.refreshSubscriptionBtn.disabled = true;
         if (this.els.localTestBtn) this.els.localTestBtn.disabled = true;
         if (this.els.serverTestBtn) this.els.serverTestBtn.disabled = true;
+        if (this.els.copyDiagnosticsBtn) this.els.copyDiagnosticsBtn.disabled = true;
         return;
       }
 
@@ -1033,6 +1071,9 @@
       this.els.readDiagnosticsBtn?.addEventListener('click', async () => {
         await this.readServiceWorkerDiagnostics();
         await this.renderDiagnostics({ source: 'readServiceWorkerDiagnosticsButton' });
+      });
+      this.els.copyDiagnosticsBtn?.addEventListener('click', () => {
+        this.copyPushDiagnostics();
       });
       this.els.forceSwUpdateBtn?.addEventListener('click', () => {
         this.forceServiceWorkerUpdate();
