@@ -1,5 +1,14 @@
 (function initPushNotifications(global) {
   const WEB_PUSH_FUNCTION_NAME = 'send-web-push-v2';
+  function getPushVapidPublicKey() {
+    return String(
+      global.RUNTIME_CONFIG?.PUSH_VAPID_PUBLIC_KEY ||
+        global.RUNTIME_CONFIG?.VAPID_PUBLIC_KEY ||
+        global.INCHECK360_PUSH_CONFIG?.vapidPublicKey ||
+        global.APP_CONFIG?.PUSH_VAPID_PUBLIC_KEY ||
+        ''
+    ).trim();
+  }
 
   const PushNotifications = {
     state: {
@@ -25,16 +34,6 @@
       serverTestResult: null,
       diagnosticsPanel: null,
       diagnosticsText: null
-    },
-
-    getViteEnvVapidPublicKey() {
-      try {
-        return Function(
-          'try { return import.meta?.env?.VITE_PUSH_VAPID_PUBLIC_KEY || ""; } catch (_) { return ""; }'
-        )();
-      } catch (_) {
-        return '';
-      }
     },
 
     normalizeKey(value) {
@@ -68,16 +67,7 @@
     },
 
     getVapidPublicKey() {
-      const candidateKeys = [
-        global.RUNTIME_CONFIG?.PUSH_VAPID_PUBLIC_KEY,
-        global.RUNTIME_CONFIG?.VAPID_PUBLIC_KEY,
-        global.INCHECK360_PUSH_CONFIG?.vapidPublicKey,
-        global.APP_CONFIG?.PUSH_VAPID_PUBLIC_KEY,
-        global.CONFIG?.PUSH_VAPID_PUBLIC_KEY,
-        global.CONFIG?.VAPID_PUBLIC_KEY,
-        this.getViteEnvVapidPublicKey()
-      ];
-      return candidateKeys.map((value) => this.normalizeKey(value)).find(Boolean) || '';
+      return this.normalizeKey(getPushVapidPublicKey());
     },
 
 
@@ -390,6 +380,7 @@
         const registration = await this.getRegistration();
         const subscription = await registration.pushManager.getSubscription();
         const vapidPublicKey = this.getVapidPublicKey();
+        const hasVapidPublicKey = Boolean(vapidPublicKey);
         this.updatePermissionState();
         if (subscription) {
           const storedVapidPublicKey = this.getStoredVapidPublicKey();
@@ -409,10 +400,12 @@
         this.state.enabled = false;
         this.renderButtonLabel();
         if (!silent) {
-          if (this.state.permission === 'denied') {
+          if (!hasVapidPublicKey) {
+            this.setMessage('Push notifications are not configured yet. Contact your administrator.');
+          } else if (this.state.permission === 'denied') {
             this.setMessage('Notifications are blocked in browser settings.');
           } else {
-            this.setMessage('Push notifications are not enabled on this device.');
+            this.setMessage('Push notifications disabled on this device.');
           }
         }
       } catch (error) {
@@ -492,7 +485,6 @@
           await subscription.unsubscribe();
           await this.markSubscriptionInactive(endpoint);
         }
-        this.setStoredVapidPublicKey('');
         await this.logDiagnostics({ source: 'disablePush', registration, subscription: null });
         this.state.enabled = false;
         this.setMessage('Push notifications disabled on this device.');
@@ -692,7 +684,11 @@
         this.setServerTestResultMessage(
           `Server push test result: attempted=${attempted}, sent=${sent}, failed=${failed}. Target: ${targetLabel}.`
         );
-        this.setMessage('Server push test completed. If no banner appears while closed, check OS settings, iOS Home Screen requirement, and active service worker version.');
+        if (attempted > 0 && sent === 0 && failed > 0) {
+          this.setMessage('The saved device subscription may be stale. Refresh your push subscription.');
+        } else {
+          this.setMessage('Server push test completed. If no banner appears while closed, check OS settings, iOS Home Screen requirement, and active service worker version.');
+        }
         await this.renderDiagnostics({ source: 'testServerPush' });
       } catch (error) {
         this.setServerTestResultMessage(`Server push test failed: ${String(error?.message || 'Unknown error')}`);
