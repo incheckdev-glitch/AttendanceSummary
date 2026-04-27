@@ -53,6 +53,8 @@
 
   const ITEM_TABLES = { proposals: 'proposal_items', agreements: 'agreement_items', invoices: 'invoice_items', receipts: 'receipt_items' };
   const ITEM_FK = { proposals: 'proposal_id', agreements: 'agreement_id', invoices: 'invoice_id', receipts: 'receipt_id' };
+  const IMPORTANT_DEAL_STAGES = new Set(['proposal', 'negotiation', 'won', 'closed won', 'contract sent']);
+  const IMPORTANT_PROPOSAL_STATUSES = new Set(['pending approval', 'requires approval', 'sent', 'accepted', 'rejected']);
   const normalizeTicketStatus = typeof global.normalizeTicketStatus === 'function'
     ? global.normalizeTicketStatus
     : value => {
@@ -2185,6 +2187,130 @@
         console.warn(`[workflow push] ${context} failed`, error);
       }
     }
+    function buildNotificationTag({
+      resource = '',
+      action = '',
+      recordId = '',
+      notificationId = ''
+    } = {}) {
+      const normalizedNotificationId = String(notificationId || '').trim();
+      if (normalizedNotificationId) return `notification-${normalizedNotificationId}`;
+      const normalizedResource = String(resource || 'notifications').trim().toLowerCase();
+      const normalizedAction = String(action || 'event').trim().toLowerCase();
+      const normalizedRecordId = String(recordId || 'unknown').trim().toLowerCase();
+      return `${normalizedResource}-${normalizedAction}-${normalizedRecordId}`;
+    }
+    function resolveNotificationUrl(resource = '', action = '', recordId = '', fallback = '') {
+      const normalizedResource = String(resource || '').trim().toLowerCase();
+      const normalizedAction = String(action || '').trim().toLowerCase();
+      const id = String(recordId || '').trim();
+      if (normalizedResource === 'tickets' && id) return `/#tickets?ticket_id=${encodeURIComponent(id)}`;
+      if (normalizedResource === 'workflow' && id) return `/#workflow?approval_id=${encodeURIComponent(id)}`;
+      if (['operations_onboarding', 'technical_admin_requests'].includes(normalizedResource) && id) return `/#operations-onboarding?onboarding_id=${encodeURIComponent(id)}`;
+      if (normalizedResource === 'leads' && id) return `/#crm?tab=leads&id=${encodeURIComponent(id)}`;
+      if (normalizedResource === 'deals' && id) return `/#crm?tab=deals&id=${encodeURIComponent(id)}`;
+      if (normalizedResource === 'proposals' && id) return `/#crm?tab=proposals&id=${encodeURIComponent(id)}`;
+      if (normalizedResource === 'agreements' && id) return `/#crm?tab=agreements&id=${encodeURIComponent(id)}`;
+      if (normalizedResource === 'invoices' && id) return `/#finance?tab=invoices&id=${encodeURIComponent(id)}`;
+      if (normalizedResource === 'receipts' && id) return `/#finance?tab=receipts&id=${encodeURIComponent(id)}`;
+      return String(fallback || '').trim() || '/#notifications';
+    }
+    async function sendPwaPushForNotification(payload = {}, context = '') {
+      const title = String(payload?.title || '').trim();
+      const body = String(payload?.body || payload?.message || '').trim();
+      if (!title || !body) return { attempted: false, reason: 'missing-title-or-body' };
+      const targetUserId = String(payload?.target_user_id || '').trim();
+      const targetRole = String(payload?.target_role || '').trim().toLowerCase();
+      const targetRoles = Array.isArray(payload?.target_roles)
+        ? payload.target_roles.map(role => String(role || '').trim().toLowerCase()).filter(Boolean)
+        : [];
+      const roles = [...new Set([targetRole, ...targetRoles].filter(Boolean))];
+      const userIds = targetUserId ? [targetUserId] : [];
+      if (!userIds.length && !roles.length) return { attempted: false, reason: 'no-target' };
+      const resource = String(payload?.resource || 'notifications').trim().toLowerCase();
+      const action = String(payload?.action || payload?.event_type || 'general').trim().toLowerCase();
+      const recordId = String(payload?.record_id || '').trim();
+      const notificationId = String(payload?.notification_id || '').trim();
+      const url = resolveNotificationUrl(resource, action, recordId, payload?.url || payload?.deep_link);
+      const tag = buildNotificationTag({ resource, action, recordId, notificationId });
+      const requestPayload = {
+        title,
+        body,
+        url,
+        tag,
+        data: {
+          notification_id: notificationId || undefined,
+          resource,
+          action,
+          record_id: recordId || undefined,
+          url
+        }
+      };
+      if (userIds.length) requestPayload.user_ids = userIds;
+      else requestPayload.roles = roles;
+      console.info('[notifications:pwa] sending push', { context, tag, user_ids: userIds, roles, url });
+      try {
+        const { data, error } = await client.functions.invoke('send-web-push-v2', { body: requestPayload });
+        if (error) {
+          console.warn('[notifications:pwa] push failed', { context, error });
+          return { attempted: true, sent: false, error: String(error?.message || error || 'send-web-push-v2 failed') };
+        }
+        return { attempted: true, sent: true, response: data || null };
+      } catch (error) {
+        console.warn('[notifications:pwa] push failed', { context, error });
+        return { attempted: true, sent: false, error: String(error?.message || error || 'send-web-push-v2 failed') };
+      }
+    }
+    async function createNotificationHubEvent(payload = {}, context = '') {
+      try {
+        const { data, error } = await client.rpc('create_notification_event', {
+          p_title: String(payload?.title || '').trim(),
+          p_message: String(payload?.message || payload?.body || '').trim(),
+          p_type: String(payload?.action || payload?.event_type || 'general').trim().toLowerCase(),
+          p_resource: String(payload?.resource || 'notifications').trim().toLowerCase(),
+          p_resource_id: String(payload?.record_id || '').trim() || null,
+          p_priority: String(payload?.priority || 'normal').trim().toLowerCase(),
+          p_link_target: resolveNotificationUrl(payload?.resource, payload?.action || payload?.event_type, payload?.record_id, payload?.url || payload?.deep_link),
+          p_meta: payload?.meta && typeof payload.meta === 'object' ? payload.meta : {},
+          p_target_user_id: String(payload?.target_user_id || '').trim() || null,
+          p_target_role: String(payload?.target_role || '').trim().toLowerCase() || null,
+          p_target_roles: Array.isArray(payload?.target_roles)
+            ? payload.target_roles.map(role => String(role || '').trim().toLowerCase()).filter(Boolean)
+            : null,
+          p_dedupe_key: String(payload?.dedupe_key || '').trim() || null
+        });
+        if (error) {
+          console.warn('[notifications:hub] create_notification_event failed', { context, error });
+          return [];
+        }
+        return Array.isArray(data) ? data : [];
+      } catch (error) {
+        console.warn('[notifications:hub] create_notification_event failed', { context, error });
+        return [];
+      }
+    }
+    async function createNotificationAndPush(payload = {}, context = '') {
+      const insertedRows = await createNotificationHubEvent(payload, context);
+      const notificationId = String(insertedRows?.[0]?.notification_id || '').trim();
+      if (!insertedRows.length) return { created: 0, push: { attempted: false, reason: 'no-insert' } };
+      const pushResult = await sendPwaPushForNotification({
+        ...payload,
+        notification_id: notificationId
+      }, context);
+      const ids = insertedRows
+        .map(row => String(row?.notification_id || '').trim())
+        .filter(Boolean);
+      if (ids.length) {
+        void client.rpc('update_notification_push_status', {
+          p_notification_ids: ids,
+          p_status: pushResult?.sent ? 'sent' : 'failed',
+          p_error: pushResult?.sent ? null : String(pushResult?.error || '').trim() || null
+        }).catch(error => {
+          console.warn('[notifications:pwa] unable to persist push status', { context, error });
+        });
+      }
+      return { created: insertedRows.length, push: pushResult, notification_id: notificationId || null };
+    }
     async function sendWorkflowApprovalEmailNotification(eventType = '', payload = {}, context = '') {
       const normalizedEventType = String(eventType || '').trim().toLowerCase();
       if (!normalizedEventType) return null;
@@ -2211,13 +2337,14 @@
       const result = await fireWorkflowNotificationRpc('notify_workflow_approval_request', { p_approval_id: normalizedId });
       const approvalRow = await loadApprovalRowById(normalizedId).catch(() => null);
       const approvalRole = String(approvalRow?.approval_role || '').trim().toLowerCase();
-      void sendWorkflowWebPush({
-        title: 'InCheck360 Workflow Approval Request',
+      void sendPwaPushForNotification({
+        title: 'Approval request',
         body: 'A new workflow approval request needs review.',
-        url: '/',
-        roles: approvalRole ? [approvalRole] : ['admin'],
-        tag: 'workflow-approval-request',
-        data: { event: 'workflow_approval_request', approval_id: normalizedId }
+        resource: 'workflow',
+        action: 'approval_request_created',
+        record_id: normalizedId,
+        target_roles: approvalRole ? [approvalRole] : ['admin'],
+        url: `/#workflow?approval_id=${encodeURIComponent(normalizedId)}`
       }, 'notifyWorkflowApprovalCreated');
       void sendWorkflowApprovalEmailNotification('approval_requested', {
         approval_id: normalizedId
@@ -2236,13 +2363,14 @@
       const approvalRow = await loadApprovalRowById(normalizedId).catch(() => null);
       const requesterUserId = String(approvalRow?.requester_user_id || '').trim();
       if (requesterUserId) {
-        void sendWorkflowWebPush({
-          title: `InCheck360 Workflow ${normalizedDecision === 'approved' ? 'Approved' : 'Rejected'}`,
+        void sendPwaPushForNotification({
+          title: `Approval ${normalizedDecision}`,
           body: `Your workflow request was ${normalizedDecision}.`,
-          url: '/',
-          user_ids: [requesterUserId],
-          tag: 'workflow-decision',
-          data: { event: 'workflow_decision', approval_id: normalizedId, decision: normalizedDecision }
+          resource: 'workflow',
+          action: normalizedDecision === 'approved' ? 'approval_approved' : 'approval_rejected',
+          record_id: normalizedId,
+          target_user_id: requesterUserId,
+          url: `/#workflow?approval_id=${encodeURIComponent(normalizedId)}`
         }, 'notifyWorkflowDecision');
       }
       if (normalizedDecision === 'approved' || normalizedDecision === 'rejected') {
@@ -2257,14 +2385,15 @@
       }
       return result;
     }
-    async function sendRolePushForTicketEvent({ title = '', body = '', data = {}, tag = '' } = {}) {
-      void sendWorkflowWebPush({
-        title: String(title || '').trim() || 'InCheck360 Ticket Update',
+    async function sendRolePushForTicketEvent({ title = '', body = '', data = {}, tag = '', ticketId = '' } = {}) {
+      void sendPwaPushForNotification({
+        title: String(title || '').trim() || 'Ticket update',
         body: String(body || '').trim() || 'A ticket notification was created.',
-        url: '/',
-        roles: ['admin', 'hoo'],
-        tag: String(tag || '').trim() || 'ticket-notification',
-        data: data && typeof data === 'object' ? data : {}
+        resource: 'tickets',
+        action: String(data?.event || tag || 'ticket_notification').trim().toLowerCase(),
+        record_id: String(ticketId || data?.ticket_id || '').trim(),
+        target_roles: ['admin', 'hoo'],
+        url: resolveNotificationUrl('tickets', '', String(ticketId || data?.ticket_id || '').trim(), '/#tickets')
       }, 'ticket-notification');
     }
     async function resolveWorkflowTargetRecord(resourceValue = '', approval = {}) {
@@ -3498,11 +3627,115 @@
           title: 'InCheck360 New Ticket Submitted',
           body: `New ticket submitted: ${String(created.title || created.ticket_id || created.id || 'Ticket').trim()}.`,
           tag: 'ticket-submitted',
+          ticketId: String(created.ticket_id || created.id || '').trim(),
           data: {
             event: 'ticket_submitted',
             ticket_id: String(created.ticket_id || created.id || '').trim()
           }
         });
+        void createNotificationAndPush({
+          title: 'New ticket submitted',
+          message: `${String(created.ticket_id || '').trim() || 'Ticket'}: ${String(created.title || '').trim() || 'New support ticket'}`,
+          resource: 'tickets',
+          action: 'ticket_created',
+          record_id: String(created.ticket_id || created.id || '').trim(),
+          target_roles: ['admin', 'hoo'],
+          priority: String(created.priority || '').trim().toLowerCase() === 'high' ? 'high' : 'normal',
+          dedupe_key: `tickets-ticket_created-${String(created.ticket_id || created.id || '').trim()}`
+        }, 'tickets:create');
+        if (String(created.priority || '').trim().toLowerCase() === 'high') {
+          void createNotificationAndPush({
+            title: 'High priority ticket',
+            message: `${String(created.ticket_id || '').trim() || 'Ticket'} requires immediate attention.`,
+            resource: 'tickets',
+            action: 'ticket_high_priority',
+            record_id: String(created.ticket_id || created.id || '').trim(),
+            target_roles: ['admin', 'hoo'],
+            priority: 'high',
+            dedupe_key: `tickets-ticket_high_priority-${String(created.ticket_id || created.id || '').trim()}`
+          }, 'tickets:create:high-priority');
+        }
+      }
+      if (resource === 'operations_onboarding') {
+        void createNotificationAndPush({
+          title: 'Operations onboarding created',
+          message: `${String(created.onboarding_id || created.id || '').trim() || 'Onboarding'} was created.`,
+          resource: 'operations_onboarding',
+          action: 'operations_onboarding_created',
+          record_id: String(created.onboarding_id || created.id || '').trim(),
+          target_roles: ['hoo', 'admin'],
+          dedupe_key: `operations_onboarding-created-${String(created.onboarding_id || created.id || '').trim()}`
+        }, 'operations_onboarding:create');
+      }
+      if (resource === 'technical_admin_requests') {
+        void createNotificationAndPush({
+          title: 'Technical admin request submitted',
+          message: String(created.request_message || created.request_details || 'A technical admin request was submitted.').trim(),
+          resource: 'technical_admin_requests',
+          action: 'technical_request_submitted',
+          record_id: String(created.onboarding_id || created.request_id || created.technical_request_id || created.id || '').trim(),
+          target_roles: ['admin', 'dev'],
+          priority: 'high',
+          dedupe_key: `technical_admin_requests-submitted-${String(created.id || created.request_id || '').trim()}`
+        }, 'technical_admin_requests:create');
+      }
+      if (resource === 'leads') {
+        void createNotificationAndPush({
+          title: 'New lead created',
+          message: `${String(created.lead_id || created.id || '').trim() || 'Lead'}: ${String(created.company_name || created.full_name || '').trim() || 'New lead'}`,
+          resource: 'leads',
+          action: 'lead_created',
+          record_id: String(created.lead_id || created.id || '').trim(),
+          target_roles: ['admin', 'hoo'],
+          dedupe_key: `leads-created-${String(created.lead_id || created.id || '').trim()}`
+        }, 'leads:create');
+      }
+      if (resource === 'deals') {
+        const stage = String(created.stage || '').trim().toLowerCase();
+        if (IMPORTANT_DEAL_STAGES.has(stage)) {
+          void createNotificationAndPush({
+            title: 'Deal updated',
+            message: `${String(created.deal_id || created.id || '').trim() || 'Deal'} moved to ${String(created.stage || 'important stage').trim()}.`,
+            resource: 'deals',
+            action: 'deal_important_stage',
+            record_id: String(created.deal_id || created.id || '').trim(),
+            target_roles: ['admin', 'hoo'],
+            dedupe_key: `deals-stage-${String(created.deal_id || created.id || '').trim()}-${stage}`
+          }, 'deals:create');
+        }
+      }
+      if (resource === 'proposals') {
+        void createNotificationAndPush({
+          title: 'Proposal requires review',
+          message: `Proposal ${String(created.proposal_id || created.ref_number || created.id || '').trim()} requires approval.`,
+          resource: 'proposals',
+          action: 'proposal_requires_approval',
+          record_id: String(created.proposal_id || created.id || '').trim(),
+          target_roles: ['admin', 'hoo'],
+          dedupe_key: `proposals-requires-approval-${String(created.proposal_id || created.id || '').trim()}`
+        }, 'proposals:create');
+      }
+      if (resource === 'invoices') {
+        void createNotificationAndPush({
+          title: 'Invoice created',
+          message: `${String(created.invoice_number || created.invoice_id || created.id || '').trim() || 'Invoice'} was created.`,
+          resource: 'invoices',
+          action: 'invoice_created',
+          record_id: String(created.invoice_id || created.id || '').trim(),
+          target_roles: ['accounting', 'admin'],
+          dedupe_key: `invoices-created-${String(created.invoice_id || created.id || '').trim()}`
+        }, 'invoices:create');
+      }
+      if (resource === 'receipts') {
+        void createNotificationAndPush({
+          title: 'Receipt created',
+          message: `${String(created.receipt_number || created.receipt_id || created.id || '').trim() || 'Receipt'} was recorded.`,
+          resource: 'receipts',
+          action: 'receipt_created',
+          record_id: String(created.receipt_id || created.id || '').trim(),
+          target_roles: ['accounting', 'admin'],
+          dedupe_key: `receipts-created-${String(created.receipt_id || created.id || '').trim()}`
+        }, 'receipts:create');
       }
       if (resource === 'proposals') {
         const createdBusinessId = String(created.proposal_id || '').trim();
@@ -3647,6 +3880,12 @@
       }
      
       let previousTicketStatus = '';
+      let previousDealStage = '';
+      let previousProposalStatus = '';
+      let previousAgreementStatus = '';
+      let previousInvoicePaymentState = '';
+      let previousOperationsOnboardingStatus = '';
+      let previousTechnicalRequestStatus = '';
       if (resource === 'tickets') {
         const { data: existingTicket } = await client
           .from('tickets')
@@ -3654,6 +3893,30 @@
           .eq(key, id)
           .maybeSingle();
         previousTicketStatus = String(existingTicket?.status || '').trim();
+      }
+      if (resource === 'deals') {
+        const { data: existingDeal } = await client.from('deals').select('stage').eq(key, id).maybeSingle();
+        previousDealStage = String(existingDeal?.stage || '').trim();
+      }
+      if (resource === 'proposals') {
+        const { data: existingProposalStatus } = await client.from('proposals').select('status').eq(key, id).maybeSingle();
+        previousProposalStatus = String(existingProposalStatus?.status || '').trim();
+      }
+      if (resource === 'agreements') {
+        const { data: existingAgreement } = await client.from('agreements').select('status').eq(key, id).maybeSingle();
+        previousAgreementStatus = String(existingAgreement?.status || '').trim();
+      }
+      if (resource === 'invoices') {
+        const { data: existingInvoice } = await client.from('invoices').select('payment_state').eq(key, id).maybeSingle();
+        previousInvoicePaymentState = String(existingInvoice?.payment_state || '').trim();
+      }
+      if (resource === 'operations_onboarding') {
+        const { data: existingOnboarding } = await client.from('operations_onboarding').select('onboarding_status').eq(key, id).maybeSingle();
+        previousOperationsOnboardingStatus = String(existingOnboarding?.onboarding_status || '').trim();
+      }
+      if (resource === 'technical_admin_requests') {
+        const { data: existingTechnical } = await client.from('technical_admin_requests').select('request_status').eq(key, id).maybeSingle();
+        previousTechnicalRequestStatus = String(existingTechnical?.request_status || '').trim();
       }
 
       const publicUpdates =
@@ -3742,6 +4005,7 @@
             title: 'InCheck360 Ticket Status Changed',
             body: `Ticket ${String(data?.ticket_id || id || '').trim()} changed from ${previousTicketStatus} to ${nextTicketStatus}.`,
             tag: 'ticket-status-changed',
+            ticketId: String(data?.ticket_id || id || '').trim(),
             data: {
               event: 'ticket_status_changed',
               ticket_id: String(data?.ticket_id || id || '').trim(),
@@ -3749,6 +4013,15 @@
               new_status: nextTicketStatus
             }
           });
+          void createNotificationAndPush({
+            title: 'Ticket status changed',
+            message: `Ticket ${String(data?.ticket_id || id || '').trim()} changed from ${previousTicketStatus} to ${nextTicketStatus}.`,
+            resource: 'tickets',
+            action: 'ticket_status_changed',
+            record_id: String(data?.ticket_id || id || '').trim(),
+            target_roles: ['admin', 'hoo'],
+            dedupe_key: `tickets-ticket_status_changed-${String(data?.ticket_id || id || '').trim()}-${nextTicketStatus}`
+          }, 'tickets:update:status');
         }
         return { handled: true, data: mergeTicketInternal(data, internalData) };
       }
@@ -3759,6 +4032,7 @@
             title: 'InCheck360 Ticket Status Changed',
             body: `Ticket ${String(data?.ticket_id || id || '').trim()} changed from ${previousTicketStatus} to ${nextTicketStatus}.`,
             tag: 'ticket-status-changed',
+            ticketId: String(data?.ticket_id || id || '').trim(),
             data: {
               event: 'ticket_status_changed',
               ticket_id: String(data?.ticket_id || id || '').trim(),
@@ -3766,6 +4040,111 @@
               new_status: nextTicketStatus
             }
           });
+          void createNotificationAndPush({
+            title: 'Ticket status changed',
+            message: `Ticket ${String(data?.ticket_id || id || '').trim()} changed from ${previousTicketStatus} to ${nextTicketStatus}.`,
+            resource: 'tickets',
+            action: 'ticket_status_changed',
+            record_id: String(data?.ticket_id || id || '').trim(),
+            target_roles: ['admin', 'hoo'],
+            dedupe_key: `tickets-ticket_status_changed-${String(data?.ticket_id || id || '').trim()}-${nextTicketStatus}`
+          }, 'tickets:update:status');
+        }
+        const assignedTo = String(data?.assigned_to || safeUpdates?.assigned_to || '').trim();
+        if (assignedTo) {
+          void createNotificationAndPush({
+            title: 'Ticket assigned',
+            message: `Ticket ${String(data?.ticket_id || id || '').trim()} assigned to ${assignedTo}.`,
+            resource: 'tickets',
+            action: 'ticket_assigned',
+            record_id: String(data?.ticket_id || id || '').trim(),
+            target_roles: ['admin', 'hoo'],
+            dedupe_key: `tickets-ticket_assigned-${String(data?.ticket_id || id || '').trim()}-${assignedTo}`
+          }, 'tickets:update:assigned');
+        }
+      }
+      if (resource === 'operations_onboarding') {
+        const nextStatus = String(data?.onboarding_status || '').trim();
+        if (nextStatus && previousOperationsOnboardingStatus.toLowerCase() !== nextStatus.toLowerCase()) {
+          void createNotificationAndPush({
+            title: 'Client onboarding updated',
+            message: `${String(data?.onboarding_id || data?.id || id || '').trim()} is now ${nextStatus}.`,
+            resource: 'operations_onboarding',
+            action: 'onboarding_status_changed',
+            record_id: String(data?.onboarding_id || data?.id || id || '').trim(),
+            target_roles: ['hoo', 'admin'],
+            dedupe_key: `operations_onboarding-status-${String(data?.onboarding_id || data?.id || id || '').trim()}-${nextStatus}`
+          }, 'operations_onboarding:update:status');
+        }
+      }
+      if (resource === 'technical_admin_requests') {
+        const nextStatus = String(data?.request_status || data?.technical_request_status || '').trim();
+        if (nextStatus && previousTechnicalRequestStatus.toLowerCase() !== nextStatus.toLowerCase()) {
+          void createNotificationAndPush({
+            title: 'Technical request status changed',
+            message: `${String(data?.request_id || data?.technical_request_id || id || '').trim()} is now ${nextStatus}.`,
+            resource: 'technical_admin_requests',
+            action: 'technical_request_status_changed',
+            record_id: String(data?.onboarding_id || data?.request_id || data?.technical_request_id || id || '').trim(),
+            target_roles: ['admin', 'dev'],
+            dedupe_key: `technical_admin_requests-status-${String(data?.id || id || '').trim()}-${nextStatus}`
+          }, 'technical_admin_requests:update:status');
+        }
+      }
+      if (resource === 'deals') {
+        const nextStage = String(data?.stage || '').trim().toLowerCase();
+        if (IMPORTANT_DEAL_STAGES.has(nextStage) && previousDealStage.trim().toLowerCase() !== nextStage) {
+          void createNotificationAndPush({
+            title: 'Deal stage updated',
+            message: `${String(data?.deal_id || data?.id || id || '').trim()} moved to ${String(data?.stage || '').trim()}.`,
+            resource: 'deals',
+            action: 'deal_important_stage',
+            record_id: String(data?.deal_id || data?.id || id || '').trim(),
+            target_roles: ['admin', 'hoo'],
+            dedupe_key: `deals-stage-${String(data?.deal_id || data?.id || id || '').trim()}-${nextStage}`
+          }, 'deals:update:stage');
+        }
+      }
+      if (resource === 'proposals') {
+        const nextStatus = String(data?.status || '').trim().toLowerCase();
+        if (nextStatus && IMPORTANT_PROPOSAL_STATUSES.has(nextStatus) && previousProposalStatus.trim().toLowerCase() !== nextStatus) {
+          void createNotificationAndPush({
+            title: 'Proposal updated',
+            message: `Proposal ${String(data?.proposal_id || data?.ref_number || data?.id || id || '').trim()} is ${nextStatus}.`,
+            resource: 'proposals',
+            action: `proposal_${nextStatus.replace(/\s+/g, '_')}`,
+            record_id: String(data?.proposal_id || data?.id || id || '').trim(),
+            target_roles: ['admin', 'hoo'],
+            dedupe_key: `proposals-status-${String(data?.proposal_id || data?.id || id || '').trim()}-${nextStatus}`
+          }, 'proposals:update:status');
+        }
+      }
+      if (resource === 'agreements') {
+        const nextStatus = String(data?.status || '').trim().toLowerCase();
+        if (nextStatus.includes('signed') && previousAgreementStatus.trim().toLowerCase() !== nextStatus) {
+          void createNotificationAndPush({
+            title: 'Agreement signed',
+            message: `Agreement ${String(data?.agreement_id || data?.agreement_number || data?.id || id || '').trim()} has been signed.`,
+            resource: 'agreements',
+            action: 'agreement_signed',
+            record_id: String(data?.agreement_id || data?.id || id || '').trim(),
+            target_roles: ['admin', 'hoo'],
+            dedupe_key: `agreements-signed-${String(data?.agreement_id || data?.id || id || '').trim()}`
+          }, 'agreements:update:signed');
+        }
+      }
+      if (resource === 'invoices') {
+        const nextPaymentState = String(data?.payment_state || '').trim().toLowerCase();
+        if (nextPaymentState && previousInvoicePaymentState.trim().toLowerCase() !== nextPaymentState) {
+          void createNotificationAndPush({
+            title: 'Invoice payment updated',
+            message: `${String(data?.invoice_number || data?.invoice_id || data?.id || id || '').trim()} is ${nextPaymentState}.`,
+            resource: 'invoices',
+            action: 'invoice_payment_state_changed',
+            record_id: String(data?.invoice_id || data?.id || id || '').trim(),
+            target_roles: ['accounting', 'admin'],
+            dedupe_key: `invoices-payment-${String(data?.invoice_id || data?.id || id || '').trim()}-${nextPaymentState}`
+          }, 'invoices:update:payment');
         }
       }
 
@@ -3827,6 +4206,15 @@
         .single();
       if (error) throw friendlyError('Unable to update technical admin request status', error);
       const technicalRequest = normalizeRow('technical_admin_requests', data);
+      void createNotificationAndPush({
+        title: 'Technical request status changed',
+        message: `${String(technicalRequest.request_id || technicalRequest.technical_request_id || id || '').trim()} is now ${status}.`,
+        resource: 'technical_admin_requests',
+        action: 'technical_request_status_changed',
+        record_id: String(technicalRequest.onboarding_id || technicalRequest.request_id || technicalRequest.technical_request_id || id || '').trim(),
+        target_roles: ['admin', 'dev'],
+        dedupe_key: `technical_admin_requests-status-${String(technicalRequest.id || id || '').trim()}-${String(status || '').trim().toLowerCase()}`
+      }, 'technical_admin_requests:update_status');
       return { handled: true, data: { ok: true, technical_request: technicalRequest, request: technicalRequest } };
     }
 
