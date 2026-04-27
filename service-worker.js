@@ -1,4 +1,4 @@
-const STATIC_CACHE_NAME = 'incheck360-monitorcore-static-v3';
+const STATIC_CACHE_NAME = 'incheck360-monitorcore-static-v4';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -114,50 +114,46 @@ self.addEventListener('fetch', event => {
   );
 });
 
-self.addEventListener('push', event => {
-  event.waitUntil((async () => {
-    let payload = {};
+self.addEventListener('push', (event) => {
+  let payload = {};
 
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch (jsonError) {
     try {
-      payload = event.data ? event.data.json() : {};
-    } catch (jsonError) {
-      try {
-        payload = {
-          title: 'InCheck360 MonitorCore',
-          body: event.data ? event.data.text() : 'You have a new notification.'
-        };
-      } catch {
-        payload = {
-          title: 'InCheck360 MonitorCore',
-          body: 'You have a new notification.'
-        };
-      }
+      payload = {
+        title: 'InCheck360 MonitorCore',
+        body: event.data ? event.data.text() : 'You have a new notification.'
+      };
+    } catch {
+      payload = {
+        title: 'InCheck360 MonitorCore',
+        body: 'You have a new notification.'
+      };
     }
+  }
 
-    const normalizedPayload = payload && typeof payload === 'object' ? payload : {};
-    const title = normalizedPayload.title || 'InCheck360 MonitorCore';
-    const url = normalizedPayload.url || normalizedPayload?.data?.url || '/';
-    const tag =
-      normalizedPayload.tag ||
-      normalizedPayload?.data?.tag ||
-      `incheck360-${Date.now()}`;
+  const title = payload.title || 'InCheck360 MonitorCore';
+  const url = payload.url || payload?.data?.url || '/';
+  const tag = payload.tag || payload?.data?.tag || `incheck360-${Date.now()}`;
 
-    const options = {
-      body: normalizedPayload.body || 'You have a new notification.',
-      icon: normalizedPayload.icon || '/icons/icon-192.png',
-      badge: normalizedPayload.badge || '/icons/icon-192.png',
-      tag,
-      renotify: true,
-      requireInteraction: true,
-      silent: false,
-      vibrate: [200, 100, 200],
-      timestamp: Date.now(),
-      data: {
-        ...(normalizedPayload.data && typeof normalizedPayload.data === 'object' ? normalizedPayload.data : {}),
-        url
-      }
-    };
+  const options = {
+    body: payload.body || 'You have a new notification.',
+    icon: payload.icon || '/icons/icon-192.png',
+    badge: payload.badge || '/icons/icon-192.png',
+    tag,
+    renotify: true,
+    requireInteraction: true,
+    silent: false,
+    vibrate: [200, 100, 200],
+    timestamp: Date.now(),
+    data: {
+      ...(payload.data || {}),
+      url
+    }
+  };
 
+  event.waitUntil((async () => {
     pushDebugLog('push received', {
       hasEventData: Boolean(event.data),
       permission: self.Notification?.permission || 'unknown',
@@ -188,30 +184,28 @@ self.addEventListener('push', event => {
   })());
 });
 
-self.addEventListener('notificationclick', event => {
+self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
   const targetUrl = event.notification?.data?.url || '/';
 
   event.waitUntil((async () => {
+    const absoluteUrl = new URL(targetUrl, self.location.origin).href;
+
     const allClients = await self.clients.matchAll({
       type: 'window',
       includeUncontrolled: true
     });
 
-    const absoluteUrl = new URL(targetUrl, self.location.origin).href;
-
     for (const client of allClients) {
-      if ('focus' in client) {
-        try {
-          await client.focus();
-          if ('navigate' in client) {
-            await client.navigate(absoluteUrl);
-          }
-          return;
-        } catch {
-          // continue to openWindow fallback
+      try {
+        await client.focus();
+        if ('navigate' in client) {
+          await client.navigate(absoluteUrl);
         }
+        return;
+      } catch {
+        // continue to fallback
       }
     }
 

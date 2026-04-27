@@ -167,7 +167,7 @@ function showServiceWorkerUpdateNotice() {
   notice.style.border = '1px solid rgba(148, 163, 184, 0.35)';
   notice.style.boxShadow = '0 12px 28px rgba(2, 6, 23, 0.4)';
   notice.innerHTML = `
-    <span>New version available. Refresh to update.</span>
+    <span>New version available. Refresh to activate push notifications.</span>
     <button type="button" class="btn ghost sm" id="swUpdateRefreshBtn" style="padding:6px 10px;">Refresh</button>
     <button type="button" class="btn ghost sm" id="swUpdateDismissBtn" style="padding:6px 10px;">Dismiss</button>
   `;
@@ -185,8 +185,26 @@ function registerServiceWorkerSafely() {
   if (!('serviceWorker' in navigator)) return;
 
   window.addEventListener('load', () => {
+    let hasSafeControllerReloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (hasSafeControllerReloaded) return;
+      hasSafeControllerReloaded = true;
+      const activeElement = document.activeElement;
+      const isEditing =
+        activeElement &&
+        (activeElement.tagName === 'INPUT' ||
+          activeElement.tagName === 'TEXTAREA' ||
+          activeElement.tagName === 'SELECT' ||
+          activeElement.isContentEditable);
+      if (isEditing) {
+        showServiceWorkerUpdateNotice();
+        return;
+      }
+      window.location.reload();
+    });
+
     navigator.serviceWorker
-      .register('/service-worker.js')
+      .register('/service-worker.js', { scope: '/' })
       .then(registration => {
         const announceUpdate = () => {
           const waitingWorker = registration.waiting;

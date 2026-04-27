@@ -8,13 +8,21 @@
       message: '',
       initialized: false,
       wired: false,
-      messageListenerWired: false
+      messageListenerWired: false,
+      lastPushReceivedAt: '',
+      latestServerTestResult: null
     },
 
     els: {
       toggleBtn: null,
       statusText: null,
-      iosHint: null
+      iosHint: null,
+      refreshSubscriptionBtn: null,
+      localTestBtn: null,
+      serverTestBtn: null,
+      serverTestResult: null,
+      diagnosticsPanel: null,
+      diagnosticsText: null
     },
 
     getViteEnvVapidPublicKey() {
@@ -128,6 +136,12 @@
       this.els.toggleBtn = document.getElementById('pushToggleBtn');
       this.els.statusText = document.getElementById('pushStatusText');
       this.els.iosHint = document.getElementById('pushIosHint');
+      this.els.refreshSubscriptionBtn = document.getElementById('pushRefreshSubscriptionBtn');
+      this.els.localTestBtn = document.getElementById('pushLocalTestBtn');
+      this.els.serverTestBtn = document.getElementById('pushServerTestBtn');
+      this.els.serverTestResult = document.getElementById('pushServerTestResult');
+      this.els.diagnosticsPanel = document.getElementById('pushDiagnosticsPanel');
+      this.els.diagnosticsText = document.getElementById('pushDiagnosticsText');
     },
 
     setMessage(message = '') {
@@ -139,6 +153,9 @@
       this.state.busy = Boolean(isBusy);
       if (!this.els.toggleBtn) return;
       this.els.toggleBtn.disabled = this.state.busy || !this.state.supported;
+      if (this.els.refreshSubscriptionBtn) this.els.refreshSubscriptionBtn.disabled = this.state.busy || !this.state.supported;
+      if (this.els.localTestBtn) this.els.localTestBtn.disabled = this.state.busy || !this.state.supported;
+      if (this.els.serverTestBtn) this.els.serverTestBtn.disabled = this.state.busy || !this.state.supported;
       this.els.toggleBtn.setAttribute('aria-busy', this.state.busy ? 'true' : 'false');
       this.renderButtonLabel();
     },
@@ -166,6 +183,38 @@
 
     updatePermissionState() {
       this.state.permission = String(global.Notification?.permission || 'default').toLowerCase();
+    },
+
+    canViewDiagnostics() {
+      const role = String(global.Session?.role?.() || '').trim().toLowerCase();
+      return role === 'admin' || role === 'dev';
+    },
+
+    getEndpointPreview(endpoint = '') {
+      const value = String(endpoint || '').trim();
+      if (!value) return '—';
+      if (value.length <= 26) return value;
+      return `${value.slice(0, 12)}…${value.slice(-12)}`;
+    },
+
+    async getPushDbStatusByEndpoint(endpoint = '') {
+      const value = String(endpoint || '').trim();
+      if (!value) return false;
+      const client = global.SupabaseClient?.getClient?.();
+      if (!client) return false;
+      const { data } = await client
+        .from('push_subscriptions')
+        .select('endpoint,is_active')
+        .eq('endpoint', value)
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle();
+      return Boolean(data?.endpoint);
+    },
+
+    setServerTestResultMessage(message = '') {
+      if (!this.els.serverTestResult) return;
+      this.els.serverTestResult.textContent = String(message || '').trim() || 'Server push test: not run yet.';
     },
 
     async getRegistration() {
@@ -208,6 +257,17 @@
         .update({ is_active: false, last_seen_at: new Date().toISOString() })
         .eq('endpoint', value);
       if (error) throw new Error(error.message || 'Unable to disable push subscription.');
+    },
+
+    async markSubscriptionInactiveByUser() {
+      const client = global.SupabaseClient?.getClient?.();
+      const userId = String(global.Session?.userId?.() || '').trim();
+      if (!client || !userId) return;
+      await client
+        .from('push_subscriptions')
+        .update({ is_active: false, last_seen_at: new Date().toISOString() })
+        .eq('user_id', userId)
+        .eq('is_active', true);
     },
 
     async syncExistingSubscription({ silent = false } = {}) {
@@ -325,6 +385,115 @@
       }
     },
 
+    async refreshPushSubscription() {
+      if (!this.state.supported) {
+        this.setMessage('Push notifications are not supported on this browser/device.');
+        return;
+      }
+      const vapidPublicKey = this.getVapidPublicKey();
+      const applicationServerKey = this.getApplicationServerKey(vapidPublicKey);
+      if (!applicationServerKey) {
+        this.setMessage('Push notifications are not configured yet. Contact your administrator.');
+        return;
+      }
+
+      this.setBusy(true);
+      try {
+        const registration = await this.getRegistration();
+        const oldSubscription = await registration.pushManager.getSubscription();
+        const oldEndpoint = String(oldSubscription?.endpoint || '').trim();
+        if (oldSubscription) {
+          await oldSubscription.unsubscribe();
+        }
+        if (oldEndpoint) {
+          await this.markSubscriptionInactive(oldEndpoint);
+        } else {
+          await this.markSubscriptionInactiveByUser();
+        }
+
+        const permission = await Notification.requestPermission();
+        this.state.permission = String(permission || 'default').toLowerCase();
+        if (this.state.permission !== 'granted') {
+          this.setMessage('Notification permission is required to refresh push subscription.');
+          this.state.enabled = false;
+          this.renderButtonLabel();
+          return;
+        }
+
+        const newSubscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey
+        });
+        await this.upsertSubscription(newSubscription, { isActive: true });
+        this.state.enabled = true;
+        this.setMessage('Push subscription refreshed successfully.');
+        await this.renderDiagnostics({ source: 'refreshPushSubscription' });
+      } catch (error) {
+        this.setMessage(`Unable to refresh subscription: ${String(error?.message || 'Unknown error')}`);
+      } finally {
+        this.setBusy(false);
+      }
+    },
+
+    async testLocalNotification() {
+      if (!this.state.supported) {
+        this.setMessage('Push notifications are not supported on this browser/device.');
+        return;
+      }
+      try {
+        const registration = await navigator.serviceWorker.ready;
+        await registration.showNotification('InCheck360 Local Test', {
+          body: 'Local notification works on this device.',
+          icon: '/icons/icon-192.png',
+          badge: '/icons/icon-192.png',
+          silent: false,
+          vibrate: [200, 100, 200],
+          data: { url: '/' }
+        });
+        this.setMessage('Local notification test dispatched. A system banner should appear if OS/browser allows it.');
+      } catch (error) {
+        this.setMessage(`Local notification test failed: ${String(error?.message || 'Unknown error')}`);
+      }
+    },
+
+    async testServerPush() {
+      if (!global.Session?.isAuthenticated?.()) {
+        this.setMessage('Please log in first to run server push test.');
+        return;
+      }
+      this.setBusy(true);
+      this.setServerTestResultMessage('Server push test: sending…');
+      try {
+        const client = global.SupabaseClient?.getClient?.();
+        if (!client) throw new Error('Supabase client unavailable.');
+        const userId = String(global.Session?.userId?.() || '').trim();
+        if (!userId) throw new Error('Missing current user id.');
+        const { data, error } = await client.functions.invoke('send-web-push', {
+          body: {
+            user_id: userId,
+            title: 'InCheck360 Server Push Test',
+            body: 'Server push test sent to current user subscription.',
+            url: '/?pushTest=1',
+            tag: `incheck360-test-${Date.now()}`,
+            data: { source: 'push-settings-test' }
+          }
+        });
+        if (error) throw error;
+        this.state.latestServerTestResult = data || null;
+        const attempted = Number(data?.attempted || 0);
+        const sent = Number(data?.sent || 0);
+        const failed = Number(data?.failed || 0);
+        this.setServerTestResultMessage(`Server push test result: attempted=${attempted}, sent=${sent}, failed=${failed}.`);
+        this.setMessage('Server push test completed. If no banner appears while closed, check OS settings, iOS Home Screen requirement, and active service worker version.');
+        await this.renderDiagnostics({ source: 'testServerPush' });
+      } catch (error) {
+        this.setServerTestResultMessage(`Server push test failed: ${String(error?.message || 'Unknown error')}`);
+        this.setMessage(`Server push test failed: ${String(error?.message || 'Unknown error')}`);
+      } finally {
+        this.setBusy(false);
+      }
+    },
+
     async handleToggleClick() {
       if (this.state.busy) return;
       if (this.state.enabled) {
@@ -437,7 +606,9 @@
       const url = payload.url || payload?.data?.url || '/';
 
       this.debugLog('foreground push message received', { title, url });
+      this.state.lastPushReceivedAt = new Date().toISOString();
       this.showForegroundBanner({ title, body, url });
+      this.renderDiagnostics({ source: 'serviceWorkerMessage' });
     },
 
     wireMessageListener() {
@@ -458,6 +629,40 @@
         return;
       }
       await this.syncExistingSubscription();
+      await this.renderDiagnostics({ source: 'onAuthStateChanged' });
+    },
+
+    async renderDiagnostics({ source = 'unknown' } = {}) {
+      if (!this.els.diagnosticsPanel || !this.els.diagnosticsText) return;
+      const canView = this.canViewDiagnostics();
+      this.els.diagnosticsPanel.style.display = canView ? '' : 'none';
+      if (!canView) return;
+
+      try {
+        const swSupported = 'serviceWorker' in navigator;
+        const pushManagerSupported = 'PushManager' in global;
+        const controller = navigator.serviceWorker?.controller || null;
+        const registration = swSupported ? await this.getRegistration().catch(() => null) : null;
+        const subscription = registration?.pushManager ? await registration.pushManager.getSubscription() : null;
+        const endpoint = String(subscription?.endpoint || '').trim();
+        const rowSaved = await this.getPushDbStatusByEndpoint(endpoint);
+        const lines = [
+          `Source: ${source}`,
+          `Notification.permission: ${global.Notification?.permission || 'default'}`,
+          `Service worker supported: ${swSupported ? 'yes' : 'no'}`,
+          `Service worker controller: ${controller ? 'yes' : 'no'}`,
+          `Active service worker script URL: ${registration?.active?.scriptURL || '—'}`,
+          `pushManager supported: ${pushManagerSupported ? 'yes' : 'no'}`,
+          `Current subscription exists: ${subscription ? 'yes' : 'no'}`,
+          `Subscription endpoint preview: ${this.getEndpointPreview(endpoint)}`,
+          `push_subscriptions row saved: ${rowSaved ? 'yes' : 'no'}`,
+          `Last push received timestamp: ${this.state.lastPushReceivedAt || '—'}`,
+          'Platform hints: iOS push requires iOS 16.4+ and launching installed Home Screen app.'
+        ];
+        this.els.diagnosticsText.textContent = lines.join('\n');
+      } catch (error) {
+        this.els.diagnosticsText.textContent = `Diagnostics unavailable: ${String(error?.message || 'Unknown error')}`;
+      }
     },
 
     async init() {
@@ -474,12 +679,16 @@
         this.renderButtonLabel();
         this.setMessage('Push notifications are not supported on this browser/device.');
         this.els.toggleBtn.disabled = true;
+        if (this.els.refreshSubscriptionBtn) this.els.refreshSubscriptionBtn.disabled = true;
+        if (this.els.localTestBtn) this.els.localTestBtn.disabled = true;
+        if (this.els.serverTestBtn) this.els.serverTestBtn.disabled = true;
         return;
       }
 
       this.els.toggleBtn.disabled = false;
       this.renderButtonLabel();
       await this.onAuthStateChanged();
+      await this.renderDiagnostics({ source: 'init' });
       await this.logDiagnostics({ source: 'init' });
     },
 
@@ -490,6 +699,15 @@
       if (!this.els.toggleBtn) return;
       this.els.toggleBtn.addEventListener('click', () => {
         this.handleToggleClick();
+      });
+      this.els.refreshSubscriptionBtn?.addEventListener('click', () => {
+        this.refreshPushSubscription();
+      });
+      this.els.localTestBtn?.addEventListener('click', () => {
+        this.testLocalNotification();
+      });
+      this.els.serverTestBtn?.addEventListener('click', () => {
+        this.testServerPush();
       });
     }
   };
