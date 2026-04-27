@@ -25,7 +25,8 @@
       lastShowNotificationError: '',
       lastPushPayload: null,
       latestServerTestResult: null,
-      pwaInstallCheck: null
+      pwaInstallCheck: null,
+      activeDeviceRows: []
     },
 
     els: {
@@ -42,7 +43,12 @@
       diagnosticsPanel: null,
       diagnosticsText: null,
       pwaInstallStatusMessage: null,
-      pwaInstallCheckResult: null
+      pwaInstallCheckResult: null,
+      activeDevicesPanel: null,
+      activeDevicesState: null,
+      activeDevicesTbody: null,
+      testAllDevicesBtn: null,
+      deviceTestResult: null
     },
 
     normalizeKey(value) {
@@ -176,6 +182,11 @@
       this.els.diagnosticsText = document.getElementById('pushDiagnosticsText');
       this.els.pwaInstallStatusMessage = document.getElementById('pwaInstallStatusMessage');
       this.els.pwaInstallCheckResult = document.getElementById('pwaInstallCheckResult');
+      this.els.activeDevicesPanel = document.getElementById('pushActiveDevicesPanel');
+      this.els.activeDevicesState = document.getElementById('pushActiveDevicesState');
+      this.els.activeDevicesTbody = document.getElementById('pushActiveDevicesTbody');
+      this.els.testAllDevicesBtn = document.getElementById('pushTestAllDevicesBtn');
+      this.els.deviceTestResult = document.getElementById('pushDeviceTestResult');
     },
 
     setMessage(message = '') {
@@ -192,6 +203,7 @@
       if (this.els.serverTestBtn) this.els.serverTestBtn.disabled = this.state.busy || !this.state.supported;
       if (this.els.readDiagnosticsBtn) this.els.readDiagnosticsBtn.disabled = this.state.busy || !this.state.supported;
       if (this.els.pwaInstallCheckBtn) this.els.pwaInstallCheckBtn.disabled = this.state.busy;
+      if (this.els.testAllDevicesBtn) this.els.testAllDevicesBtn.disabled = this.state.busy || !global.Session?.isAuthenticated?.();
       if (this.els.copyDiagnosticsBtn) this.els.copyDiagnosticsBtn.disabled = this.state.busy || !this.state.supported;
       if (this.els.forceSwUpdateBtn) this.els.forceSwUpdateBtn.disabled = this.state.busy || !this.state.supported;
       this.els.toggleBtn.setAttribute('aria-busy', this.state.busy ? 'true' : 'false');
@@ -310,6 +322,33 @@
       if (!value) return '—';
       if (value.length <= 26) return value;
       return `${value.slice(0, 12)}…${value.slice(-12)}`;
+    },
+
+    guessPlatform(device = {}) {
+      const ua = String(device?.user_agent || '').toLowerCase();
+      const label = String(device?.device_label || '').toLowerCase();
+      if (/\bandroid\b/.test(ua) || /\bandroid\b/.test(label)) return 'Android';
+      if (/\biphone\b|\bipad\b|\bios\b/.test(ua) || /\bios\b/.test(label)) return 'iOS';
+      if (/windows|macintosh|linux|x11|cros/.test(ua) || /\bdesktop\b/.test(label)) return 'Desktop';
+      return 'Unknown';
+    },
+
+    deriveDeviceLabel() {
+      const ua = String(navigator.userAgent || '').toLowerCase();
+      const standalone = this.isStandalonePwa();
+      if (/android/.test(ua) && /chrome|crios/.test(ua)) return 'Android Chrome';
+      if (/(iphone|ipad|ipod)/.test(ua) && standalone) return 'iOS PWA';
+      if (/edg\//.test(ua) && /(windows|macintosh|linux|x11|cros)/.test(ua)) return 'Desktop Edge';
+      if (/chrome|crios/.test(ua) && /(windows|macintosh|linux|x11|cros)/.test(ua)) return 'Desktop Chrome';
+      return 'Unknown Device';
+    },
+
+    formatDateTime(value = '') {
+      const text = String(value || '').trim();
+      if (!text) return '—';
+      const dt = new Date(text);
+      if (Number.isNaN(dt.getTime())) return text;
+      return dt.toLocaleString();
     },
 
     async getPushDbStatusByEndpoint(endpoint = '') {
@@ -432,7 +471,7 @@
         p256dh: p256dh ? global.btoa(String.fromCharCode(...new Uint8Array(p256dh))) : null,
         auth: auth ? global.btoa(String.fromCharCode(...new Uint8Array(auth))) : null,
         user_agent: String(navigator.userAgent || '').trim() || null,
-        device_label: String(navigator.platform || navigator.userAgent || '').trim() || null,
+        device_label: this.deriveDeviceLabel(),
         is_active: Boolean(isActive),
         last_seen_at: nowIso
       };
@@ -794,6 +833,150 @@
       }
     },
 
+    setDeviceTestResult(details = {}) {
+      if (!this.els.deviceTestResult) return;
+      const attempted = Number(details?.attempted || 0);
+      const sent = Number(details?.sent || 0);
+      const failed = Number(details?.failed || 0);
+      const targetSubscriptionId = String(details?.targetSubscriptionId || '').trim() || '—';
+      const errors = Array.isArray(details?.errors) ? details.errors : (details?.errors ? [details.errors] : []);
+      const lines = [
+        `target subscription_id: ${targetSubscriptionId}`,
+        `attempted: ${attempted}`,
+        `sent: ${sent}`,
+        `failed: ${failed}`,
+        `errors: ${errors.length ? JSON.stringify(errors, null, 2) : '[]'}`
+      ];
+      this.els.deviceTestResult.textContent = lines.join('\n');
+    },
+
+    async listActiveDeviceSubscriptions() {
+      const canView = this.canViewDiagnostics();
+      if (!canView || !this.els.activeDevicesPanel) return [];
+      this.els.activeDevicesPanel.style.display = '';
+      const userId = String(global.Session?.userId?.() || '').trim();
+      if (!userId || !global.Session?.isAuthenticated?.()) {
+        if (this.els.activeDevicesState) this.els.activeDevicesState.textContent = 'Log in to view active subscriptions.';
+        if (this.els.activeDevicesTbody) this.els.activeDevicesTbody.innerHTML = '';
+        return [];
+      }
+      const client = global.SupabaseClient?.getClient?.();
+      if (!client) return [];
+      const { data, error } = await client
+        .from('push_subscriptions')
+        .select('id,device_label,user_agent,endpoint,is_active,last_seen_at,created_at,updated_at')
+        .eq('user_id', userId)
+        .eq('is_active', true)
+        .order('last_seen_at', { ascending: false });
+      if (error) {
+        if (this.els.activeDevicesState) this.els.activeDevicesState.textContent = `Unable to load active push devices: ${error.message || 'Unknown error'}`;
+        if (this.els.activeDevicesTbody) this.els.activeDevicesTbody.innerHTML = '';
+        return [];
+      }
+      const rows = Array.isArray(data) ? data : [];
+      this.state.activeDeviceRows = rows;
+      if (this.els.activeDevicesState) {
+        this.els.activeDevicesState.textContent = `${rows.length} active device subscription${rows.length === 1 ? '' : 's'} for current user.`;
+      }
+      if (this.els.activeDevicesTbody) {
+        this.els.activeDevicesTbody.innerHTML = rows.length
+          ? rows.map(row => `
+            <tr>
+              <td>${this.escapeHtml(String(row.id || '—'))}</td>
+              <td>${this.escapeHtml(String(row.device_label || '—'))}</td>
+              <td title="${this.escapeHtml(String(row.user_agent || ''))}">${this.escapeHtml(String(row.user_agent || '—').slice(0, 52))}</td>
+              <td title="${this.escapeHtml(String(row.endpoint || ''))}">${this.escapeHtml(this.getEndpointPreview(row.endpoint))}</td>
+              <td>${this.escapeHtml(this.guessPlatform(row))}</td>
+              <td>${row.is_active === true ? 'true' : 'false'}</td>
+              <td>${this.escapeHtml(this.formatDateTime(row.last_seen_at))}</td>
+              <td>${this.escapeHtml(this.formatDateTime(row.created_at))}</td>
+              <td>${this.escapeHtml(this.formatDateTime(row.updated_at))}</td>
+              <td><button class="btn ghost sm" type="button" data-push-test-subscription-id="${this.escapeHtml(String(row.id || ''))}">Test this device</button></td>
+            </tr>
+          `).join('')
+          : '<tr><td colspan="10" class="muted" style="text-align:center;">No active subscriptions for this user.</td></tr>';
+      }
+      return rows;
+    },
+
+    async testSingleDevice(subscriptionId = '') {
+      const normalizedId = String(subscriptionId || '').trim();
+      if (!normalizedId) return;
+      const client = global.SupabaseClient?.getClient?.();
+      if (!client) return;
+      this.setBusy(true);
+      try {
+        const payload = {
+          title: 'InCheck360 Device Test',
+          body: 'Testing push to this device.',
+          url: '/',
+          subscription_ids: [normalizedId],
+          tag: 'device-test-push',
+          data: { test: true, subscription_id: normalizedId }
+        };
+        const { data, error } = await client.functions.invoke(WEB_PUSH_FUNCTION_NAME, { body: payload });
+        if (error) throw error;
+        this.setDeviceTestResult({
+          targetSubscriptionId: normalizedId,
+          attempted: data?.attempted,
+          sent: data?.sent,
+          failed: data?.failed,
+          errors: data?.errors
+        });
+        await this.renderDiagnostics({ source: 'testSingleDevice' });
+      } catch (error) {
+        this.setDeviceTestResult({
+          targetSubscriptionId: normalizedId,
+          attempted: 0,
+          sent: 0,
+          failed: 1,
+          errors: [String(error?.message || 'Unknown error')]
+        });
+      } finally {
+        this.setBusy(false);
+      }
+    },
+
+    async testAllMyDevices() {
+      if (!global.Session?.isAuthenticated?.()) return;
+      const userId = String(global.Session?.userId?.() || '').trim();
+      if (!userId) return;
+      const client = global.SupabaseClient?.getClient?.();
+      if (!client) return;
+      this.setBusy(true);
+      try {
+        const payload = {
+          title: 'InCheck360 Multi-device Test',
+          body: 'Testing push to all active devices.',
+          url: '/',
+          user_ids: [userId],
+          tag: 'multi-device-test',
+          data: { test: true }
+        };
+        const { data, error } = await client.functions.invoke(WEB_PUSH_FUNCTION_NAME, { body: payload });
+        if (error) throw error;
+        this.setDeviceTestResult({
+          targetSubscriptionId: `all for user_id ${userId}`,
+          attempted: data?.attempted,
+          sent: data?.sent,
+          failed: data?.failed,
+          errors: data?.errors
+        });
+        await this.listActiveDeviceSubscriptions();
+        await this.renderDiagnostics({ source: 'testAllMyDevices' });
+      } catch (error) {
+        this.setDeviceTestResult({
+          targetSubscriptionId: `all for user_id ${userId}`,
+          attempted: 0,
+          sent: 0,
+          failed: 1,
+          errors: [String(error?.message || 'Unknown error')]
+        });
+      } finally {
+        this.setBusy(false);
+      }
+    },
+
     async handleToggleClick() {
       if (this.state.busy) return;
       if (this.state.enabled) {
@@ -1072,6 +1255,7 @@
       if (!this.els.diagnosticsPanel || !this.els.diagnosticsText) return;
       const canView = this.canViewDiagnostics();
       this.els.diagnosticsPanel.style.display = canView ? '' : 'none';
+      if (this.els.activeDevicesPanel) this.els.activeDevicesPanel.style.display = canView ? '' : 'none';
       if (!canView) return;
 
       try {
@@ -1130,6 +1314,7 @@
           'iOS push note: requires iOS 16.4+ and launching from installed Home Screen app.'
         ].filter(Boolean);
         this.els.diagnosticsText.textContent = lines.join('\n');
+        await this.listActiveDeviceSubscriptions();
       } catch (error) {
         this.els.diagnosticsText.textContent = `Diagnostics unavailable: ${String(error?.message || 'Unknown error')}`;
       }
@@ -1197,6 +1382,16 @@
       });
       this.els.forceSwUpdateBtn?.addEventListener('click', () => {
         this.forceServiceWorkerUpdate();
+      });
+      this.els.testAllDevicesBtn?.addEventListener('click', () => {
+        this.testAllMyDevices();
+      });
+      this.els.activeDevicesTbody?.addEventListener('click', event => {
+        const button = event.target?.closest?.('[data-push-test-subscription-id]');
+        if (!button) return;
+        const subscriptionId = String(button.getAttribute('data-push-test-subscription-id') || '').trim();
+        if (!subscriptionId) return;
+        this.testSingleDevice(subscriptionId);
       });
     }
   };

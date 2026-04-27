@@ -14,6 +14,7 @@ const RESOURCE_PRIMARY_KEY = {
   events: 'id',
   csm: 'id'
 };
+const WEB_PUSH_FUNCTION_NAME = 'send-web-push-v2';
 
 const Api = {
   getPrimaryKeyForResource(resource = '') {
@@ -210,6 +211,28 @@ const Api = {
   async requestWithSession(resource, action, payload = {}, options = {}) {
     void options;
     return this.request(resource, action, { ...payload });
+  },
+  async sendWebPush(payload = {}, { context = 'unspecified' } = {}) {
+    const client = window.SupabaseClient?.getClient?.();
+    if (!client) return null;
+    try {
+      const { data, error } = await client.functions.invoke(WEB_PUSH_FUNCTION_NAME, {
+        body: payload && typeof payload === 'object' ? payload : {}
+      });
+      if (error) {
+        console.warn(`[push] ${context} failed`, error);
+        return null;
+      }
+      return data || null;
+    } catch (error) {
+      console.warn(`[push] ${context} failed`, error);
+      return null;
+    }
+  },
+  fireAndForgetWebPush(payload = {}, options = {}) {
+    Promise.resolve()
+      .then(() => this.sendWebPush(payload, options))
+      .catch(error => console.warn('[push] fireAndForgetWebPush failed', error));
   },
 
   getCacheConfig() {
@@ -457,13 +480,31 @@ const Api = {
       agreement_id: agreementId
     };
     try {
-      return await this.requestWithSession('agreements', 'request_incheck_lite', payload);
+      const response = await this.requestWithSession('agreements', 'request_incheck_lite', payload);
+      this.fireAndForgetWebPush({
+        title: 'InCheck360 Operations Request',
+        body: `Operations onboarding request submitted for agreement ${agreementId}.`,
+        url: '/',
+        roles: ['admin', 'hoo'],
+        tag: 'operations-onboarding-request',
+        data: { event: 'operations_onboarding_request', agreement_id: agreementId, type: 'incheck_lite' }
+      }, { context: 'requestAgreementIncheckLite' });
+      return response;
     } catch (error) {
       if (!isOperationsOnboardingRowMissingError(error)) throw error;
       await this.saveOperationsOnboarding({
         agreement_id: agreementId
       });
-      return this.requestWithSession('agreements', 'request_incheck_lite', payload);
+      const response = await this.requestWithSession('agreements', 'request_incheck_lite', payload);
+      this.fireAndForgetWebPush({
+        title: 'InCheck360 Operations Request',
+        body: `Operations onboarding request submitted for agreement ${agreementId}.`,
+        url: '/',
+        roles: ['admin', 'hoo'],
+        tag: 'operations-onboarding-request',
+        data: { event: 'operations_onboarding_request', agreement_id: agreementId, type: 'incheck_lite' }
+      }, { context: 'requestAgreementIncheckLite-retry' });
+      return response;
     }
   },
   async requestAgreementIncheckFull(agreementId) {
@@ -471,13 +512,31 @@ const Api = {
       agreement_id: agreementId
     };
     try {
-      return await this.requestWithSession('agreements', 'request_incheck_full', payload);
+      const response = await this.requestWithSession('agreements', 'request_incheck_full', payload);
+      this.fireAndForgetWebPush({
+        title: 'InCheck360 Operations Request',
+        body: `Operations onboarding request submitted for agreement ${agreementId}.`,
+        url: '/',
+        roles: ['admin', 'hoo'],
+        tag: 'operations-onboarding-request',
+        data: { event: 'operations_onboarding_request', agreement_id: agreementId, type: 'incheck_full' }
+      }, { context: 'requestAgreementIncheckFull' });
+      return response;
     } catch (error) {
       if (!isOperationsOnboardingRowMissingError(error)) throw error;
       await this.saveOperationsOnboarding({
         agreement_id: agreementId
       });
-      return this.requestWithSession('agreements', 'request_incheck_full', payload);
+      const response = await this.requestWithSession('agreements', 'request_incheck_full', payload);
+      this.fireAndForgetWebPush({
+        title: 'InCheck360 Operations Request',
+        body: `Operations onboarding request submitted for agreement ${agreementId}.`,
+        url: '/',
+        roles: ['admin', 'hoo'],
+        tag: 'operations-onboarding-request',
+        data: { event: 'operations_onboarding_request', agreement_id: agreementId, type: 'incheck_full' }
+      }, { context: 'requestAgreementIncheckFull-retry' });
+      return response;
     }
   },
   async requestAgreementTechnicalAdmin(agreementId, message = '') {
@@ -564,6 +623,15 @@ const Api = {
         console.warn('Unable to upsert technical_admin_requests row for agreement', normalizedAgreementId, error);
       }
     }
+
+    this.fireAndForgetWebPush({
+      title: 'InCheck360 Technical Admin Request',
+      body: `Technical admin request submitted for agreement ${normalizedAgreementId}.`,
+      url: '/',
+      roles: ['admin', 'hoo'],
+      tag: 'technical-admin-request',
+      data: { event: 'technical_admin_request_submitted', agreement_id: normalizedAgreementId }
+    }, { context: 'requestAgreementTechnicalAdmin' });
 
     return {
       agreement_id: normalizedAgreementId,
