@@ -1,5 +1,12 @@
 window.RUNTIME_CONFIG = window.RUNTIME_CONFIG || {};
 const runtimeConfig = window.RUNTIME_CONFIG;
+const DEFAULT_PUSH_VAPID_PUBLIC_KEY =
+  'BE05Jupi78_afyyzpH8VVIX0LWMBPguOohOJkmufUqKm3x2m5hO-0MKnzyRLBP-MwauW4FHKoJWV74eZ5rAsAYU';
+
+window.INCHECK360_PUSH_CONFIG = Object.assign(
+  { vapidPublicKey: DEFAULT_PUSH_VAPID_PUBLIC_KEY },
+  window.INCHECK360_PUSH_CONFIG || {}
+);
 
 function normalizeEndpointPathname(pathname = '/') {
   const withLeadingSlash = String(pathname || '/').startsWith('/')
@@ -101,7 +108,11 @@ window.CONFIG = {
     runtimeConfig.OPERATIONS_ONBOARDING_TABLE || 'operations_onboarding',
 
   ISSUE_API_URL: runtimeConfig.ISSUE_API_URL || '',
-  PUSH_VAPID_PUBLIC_KEY: runtimeConfig.PUSH_VAPID_PUBLIC_KEY || runtimeConfig.VAPID_PUBLIC_KEY || '',
+  PUSH_VAPID_PUBLIC_KEY:
+    runtimeConfig.PUSH_VAPID_PUBLIC_KEY ||
+    runtimeConfig.VAPID_PUBLIC_KEY ||
+    window.INCHECK360_PUSH_CONFIG?.vapidPublicKey ||
+    DEFAULT_PUSH_VAPID_PUBLIC_KEY,
 
   TREND_DAYS_RECENT: 7,
   TREND_DAYS_WINDOW: 14,

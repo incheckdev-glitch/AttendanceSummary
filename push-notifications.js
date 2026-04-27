@@ -16,14 +16,42 @@
       iosHint: null
     },
 
+    getViteEnvVapidPublicKey() {
+      try {
+        return Function(
+          'try { return import.meta?.env?.VITE_PUSH_VAPID_PUBLIC_KEY || ""; } catch (_) { return ""; }'
+        )();
+      } catch (_) {
+        return '';
+      }
+    },
+
+    normalizeKey(value) {
+      return typeof value === 'string' ? value.trim() : '';
+    },
+
     getVapidPublicKey() {
-      return String(
-        global.RUNTIME_CONFIG?.PUSH_VAPID_PUBLIC_KEY ||
-          global.RUNTIME_CONFIG?.VAPID_PUBLIC_KEY ||
-          global.CONFIG?.PUSH_VAPID_PUBLIC_KEY ||
-          global.CONFIG?.VAPID_PUBLIC_KEY ||
-          ''
-      ).trim();
+      const candidateKeys = [
+        global.RUNTIME_CONFIG?.PUSH_VAPID_PUBLIC_KEY,
+        global.RUNTIME_CONFIG?.VAPID_PUBLIC_KEY,
+        global.INCHECK360_PUSH_CONFIG?.vapidPublicKey,
+        global.APP_CONFIG?.PUSH_VAPID_PUBLIC_KEY,
+        global.CONFIG?.PUSH_VAPID_PUBLIC_KEY,
+        global.CONFIG?.VAPID_PUBLIC_KEY,
+        this.getViteEnvVapidPublicKey()
+      ];
+      return candidateKeys.map((value) => this.normalizeKey(value)).find(Boolean) || '';
+    },
+
+    getApplicationServerKey(vapidPublicKey = '') {
+      const normalized = this.normalizeKey(vapidPublicKey);
+      if (!normalized) return null;
+      try {
+        return this.urlBase64ToUint8Array(normalized);
+      } catch (error) {
+        console.warn('[push] Invalid VAPID public key', error);
+        return null;
+      }
     },
 
     isLocalhost(hostname = '') {
@@ -202,7 +230,8 @@
       }
 
       const vapidPublicKey = this.getVapidPublicKey();
-      if (!vapidPublicKey) {
+      const applicationServerKey = this.getApplicationServerKey(vapidPublicKey);
+      if (!applicationServerKey) {
         this.setMessage('Push notifications are not configured yet. Contact your administrator.');
         return;
       }
@@ -227,7 +256,7 @@
         if (!subscription) {
           subscription = await registration.pushManager.subscribe({
             userVisibleOnly: true,
-            applicationServerKey: this.urlBase64ToUint8Array(vapidPublicKey)
+            applicationServerKey
           });
         }
 
