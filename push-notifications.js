@@ -21,7 +21,9 @@
       wired: false,
       messageListenerWired: false,
       lastPushReceivedAt: '',
-      lastNotificationShownAt: '',
+      lastShowNotificationAt: '',
+      lastShowNotificationError: '',
+      lastPushPayload: null,
       latestServerTestResult: null
     },
 
@@ -33,6 +35,8 @@
       localTestBtn: null,
       serverTestBtn: null,
       serverTestResult: null,
+      readDiagnosticsBtn: null,
+      forceSwUpdateBtn: null,
       diagnosticsPanel: null,
       diagnosticsText: null
     },
@@ -160,6 +164,8 @@
       this.els.localTestBtn = document.getElementById('pushLocalTestBtn');
       this.els.serverTestBtn = document.getElementById('pushServerTestBtn');
       this.els.serverTestResult = document.getElementById('pushServerTestResult');
+      this.els.readDiagnosticsBtn = document.getElementById('pushReadDiagnosticsBtn');
+      this.els.forceSwUpdateBtn = document.getElementById('pushForceSwUpdateBtn');
       this.els.diagnosticsPanel = document.getElementById('pushDiagnosticsPanel');
       this.els.diagnosticsText = document.getElementById('pushDiagnosticsText');
     },
@@ -176,6 +182,8 @@
       if (this.els.refreshSubscriptionBtn) this.els.refreshSubscriptionBtn.disabled = this.state.busy || !this.state.supported;
       if (this.els.localTestBtn) this.els.localTestBtn.disabled = this.state.busy || !this.state.supported;
       if (this.els.serverTestBtn) this.els.serverTestBtn.disabled = this.state.busy || !this.state.supported;
+      if (this.els.readDiagnosticsBtn) this.els.readDiagnosticsBtn.disabled = this.state.busy || !this.state.supported;
+      if (this.els.forceSwUpdateBtn) this.els.forceSwUpdateBtn.disabled = this.state.busy || !this.state.supported;
       this.els.toggleBtn.setAttribute('aria-busy', this.state.busy ? 'true' : 'false');
       this.renderButtonLabel();
     },
@@ -708,6 +716,74 @@
       await this.enablePush();
     },
 
+    async readServiceWorkerDiagnostics() {
+      if (!this.state.supported) return null;
+      try {
+        const registration = await this.getRegistration();
+        const activeWorker = registration?.active || navigator.serviceWorker?.controller || null;
+        if (!activeWorker) {
+          throw new Error('No active service worker is available.');
+        }
+
+        const diagnostics = await new Promise((resolve, reject) => {
+          const timeout = global.setTimeout(() => {
+            reject(new Error('Timed out waiting for service worker diagnostics.'));
+          }, 5000);
+
+          const onMessage = event => {
+            const data = event?.data || {};
+            if (data.type !== 'INCHECK360_PUSH_DIAGNOSTICS') return;
+            global.clearTimeout(timeout);
+            navigator.serviceWorker.removeEventListener('message', onMessage);
+            resolve(data.payload || {});
+          };
+
+          navigator.serviceWorker.addEventListener('message', onMessage);
+          activeWorker.postMessage({ type: 'INCHECK360_READ_PUSH_DIAGNOSTICS' });
+        });
+
+        this.state.lastPushReceivedAt = String(diagnostics?.lastPushReceivedAt || '').trim();
+        this.state.lastShowNotificationAt = String(diagnostics?.lastShowNotificationAt || '').trim();
+        this.state.lastShowNotificationError = String(diagnostics?.lastShowNotificationError || '').trim();
+        this.state.lastPushPayload = diagnostics?.lastPushPayload || null;
+        return diagnostics;
+      } catch (error) {
+        this.state.lastShowNotificationError = String(error?.message || error || 'Unknown error');
+        return null;
+      }
+    },
+
+    async forceServiceWorkerUpdate() {
+      if (!this.state.supported) return;
+      try {
+        const registration = await this.getRegistration();
+        let reloadTriggered = false;
+        const onControllerChange = () => {
+          if (reloadTriggered) return;
+          reloadTriggered = true;
+          global.location.reload();
+        };
+        navigator.serviceWorker.addEventListener('controllerchange', onControllerChange, { once: true });
+
+        await registration.update();
+        if (registration.waiting) {
+          registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+        } else if (registration.installing) {
+          registration.installing.addEventListener('statechange', () => {
+            if (registration.waiting) {
+              registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+            }
+          });
+        } else if (!navigator.serviceWorker.controller) {
+          global.location.reload();
+          return;
+        }
+        this.setMessage('Requested service worker update. Reloading when new worker takes control.');
+      } catch (error) {
+        this.setMessage(`Service worker update failed: ${String(error?.message || 'Unknown error')}`);
+      }
+    },
+
 
     ensureForegroundBannerContainer() {
       let container = document.getElementById('pushForegroundBanner');
@@ -807,13 +883,23 @@
 
       if (data.type === 'INCHECK360_NOTIFICATION_SHOWN') {
         const shownPayload = data.payload || {};
-        this.state.lastNotificationShownAt =
+        this.state.lastShowNotificationAt =
           String(shownPayload.timestamp || '').trim() || new Date().toISOString();
         this.debugLog('notification shown by service worker', {
           title: shownPayload.title || 'InCheck360 MonitorCore',
-          timestamp: this.state.lastNotificationShownAt
+          timestamp: this.state.lastShowNotificationAt
         });
         this.renderDiagnostics({ source: 'serviceWorkerNotificationShown' });
+        return;
+      }
+
+      if (data.type === 'INCHECK360_PUSH_DIAGNOSTICS') {
+        const payload = data.payload || {};
+        this.state.lastPushReceivedAt = String(payload.lastPushReceivedAt || '').trim();
+        this.state.lastShowNotificationAt = String(payload.lastShowNotificationAt || '').trim();
+        this.state.lastShowNotificationError = String(payload.lastShowNotificationError || '').trim();
+        this.state.lastPushPayload = payload.lastPushPayload || null;
+        this.renderDiagnostics({ source: 'serviceWorkerDiagnosticsMessage' });
         return;
       }
 
@@ -825,7 +911,7 @@
       const url = payload.url || payload?.data?.url || '/';
 
       this.debugLog('foreground push message received', { title, url });
-      this.state.lastPushReceivedAt = String(payload.timestamp || '').trim() || new Date().toISOString();
+      this.state.lastPushReceivedAt = String(payload.timestamp || '').trim() || this.state.lastPushReceivedAt || new Date().toISOString();
       this.showForegroundBanner({ title, body, url });
       this.renderDiagnostics({ source: 'serviceWorkerMessage' });
     },
@@ -888,7 +974,8 @@
           `push_subscriptions row saved: ${rowSaved ? 'yes' : 'no'}`,
           `Last server push result: ${serverResultText}`,
           `Last push received timestamp: ${this.state.lastPushReceivedAt || '—'}`,
-          `Last notification shown timestamp: ${this.state.lastNotificationShownAt || '—'}`,
+          `Last showNotification timestamp: ${this.state.lastShowNotificationAt || '—'}`,
+          `Last showNotification error: ${this.state.lastShowNotificationError || '—'}`,
           `Platform hint: ${platformHint}`,
           'iOS push note: requires iOS 16.4+ and launching from installed Home Screen app.'
         ];
@@ -921,6 +1008,7 @@
       this.els.toggleBtn.disabled = false;
       this.renderButtonLabel();
       await this.onAuthStateChanged();
+      await this.readServiceWorkerDiagnostics();
       await this.renderDiagnostics({ source: 'init' });
       await this.logDiagnostics({ source: 'init' });
     },
@@ -941,6 +1029,13 @@
       });
       this.els.serverTestBtn?.addEventListener('click', () => {
         this.testServerPush();
+      });
+      this.els.readDiagnosticsBtn?.addEventListener('click', async () => {
+        await this.readServiceWorkerDiagnostics();
+        await this.renderDiagnostics({ source: 'readServiceWorkerDiagnosticsButton' });
+      });
+      this.els.forceSwUpdateBtn?.addEventListener('click', () => {
+        this.forceServiceWorkerUpdate();
       });
     }
   };

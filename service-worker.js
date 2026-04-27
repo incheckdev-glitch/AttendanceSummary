@@ -1,4 +1,6 @@
-const STATIC_CACHE_NAME = 'incheck360-monitorcore-static-v5';
+const STATIC_CACHE_NAME = 'incheck360-monitorcore-static-v6';
+const PUSH_DIAGNOSTICS_CACHE_NAME = 'incheck360-monitorcore-push-diagnostics-v1';
+const PUSH_DIAGNOSTICS_PREFIX = '/__incheck360_push_diagnostics__/';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -44,6 +46,50 @@ self.addEventListener('activate', event => {
       .then(() => self.clients.claim())
   );
 });
+
+function pushDiagnosticRequestUrl(key = '') {
+  return new URL(`${PUSH_DIAGNOSTICS_PREFIX}${encodeURIComponent(String(key || '').trim())}`, self.location.origin).toString();
+}
+
+async function savePushDiagnostic(key, value) {
+  const normalizedKey = String(key || '').trim();
+  if (!normalizedKey) return;
+  const cache = await caches.open(PUSH_DIAGNOSTICS_CACHE_NAME);
+  const payload = {
+    key: normalizedKey,
+    value: value ?? null,
+    savedAt: new Date().toISOString()
+  };
+  await cache.put(
+    pushDiagnosticRequestUrl(normalizedKey),
+    new Response(JSON.stringify(payload), {
+      headers: { 'content-type': 'application/json' }
+    })
+  );
+}
+
+async function readPushDiagnostic(key) {
+  const normalizedKey = String(key || '').trim();
+  if (!normalizedKey) return null;
+  const cache = await caches.open(PUSH_DIAGNOSTICS_CACHE_NAME);
+  const response = await cache.match(pushDiagnosticRequestUrl(normalizedKey));
+  if (!response) return null;
+  try {
+    const payload = await response.json();
+    return payload?.value ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function readAllPushDiagnostics() {
+  return {
+    lastPushReceivedAt: await readPushDiagnostic('lastPushReceivedAt'),
+    lastPushPayload: await readPushDiagnostic('lastPushPayload'),
+    lastShowNotificationAt: await readPushDiagnostic('lastShowNotificationAt'),
+    lastShowNotificationError: await readPushDiagnostic('lastShowNotificationError')
+  };
+}
 
 function isBlockedRequest(requestUrl, requestMethod) {
   if (requestMethod !== 'GET') return true;
@@ -115,58 +161,59 @@ self.addEventListener('fetch', event => {
 });
 
 self.addEventListener('push', (event) => {
-  let payload = {};
+  event.waitUntil((async () => {
+    let payload = {};
 
-  try {
-    payload = event.data ? event.data.json() : {};
-  } catch (jsonError) {
     try {
+      payload = event.data ? event.data.json() : {};
+    } catch {
       payload = {
         title: 'InCheck360 MonitorCore',
         body: event.data ? event.data.text() : 'You have a new notification.'
       };
-    } catch {
-      payload = {
-        title: 'InCheck360 MonitorCore',
-        body: 'You have a new notification.'
-      };
     }
-  }
 
-  const title = payload.title || 'InCheck360 MonitorCore';
-  const url = payload.url || payload?.data?.url || '/';
-  const tag = payload.tag || payload?.data?.tag || `incheck360-${Date.now()}`;
+    const title = payload.title || 'InCheck360 MonitorCore';
+    const url = payload.url || payload?.data?.url || '/';
+    const tag = payload.tag || `incheck360-${Date.now()}`;
 
-  const options = {
-    body: payload.body || 'You have a new notification.',
-    icon: payload.icon || '/icons/icon-192.png',
-    badge: payload.badge || '/icons/icon-192.png',
-    tag,
-    renotify: true,
-    requireInteraction: true,
-    silent: false,
-    vibrate: [200, 100, 200],
-    timestamp: Date.now(),
-    data: {
-      ...(payload.data || {}),
-      url
+    const options = {
+      body: payload.body || 'You have a new notification.',
+      icon: payload.icon || '/icons/icon-192.png',
+      badge: payload.badge || '/icons/icon-192.png',
+      tag,
+      renotify: true,
+      requireInteraction: true,
+      silent: false,
+      vibrate: [200, 100, 200],
+      timestamp: Date.now(),
+      data: {
+        ...(payload.data || {}),
+        url
+      }
+    };
+
+    await savePushDiagnostic('lastPushReceivedAt', new Date().toISOString());
+    await savePushDiagnostic('lastPushPayload', payload);
+
+    try {
+      await self.registration.showNotification(title, options);
+      await savePushDiagnostic('lastShowNotificationAt', new Date().toISOString());
+      await savePushDiagnostic('lastShowNotificationError', null);
+    } catch (error) {
+      await savePushDiagnostic(
+        'lastShowNotificationError',
+        error && error.message ? error.message : String(error)
+      );
     }
-  };
 
-  event.waitUntil((async () => {
-    const pushReceivedAt = new Date().toISOString();
     pushDebugLog('push received', {
       hasEventData: Boolean(event.data),
       permission: self.Notification?.permission || 'unknown',
       title,
       tag,
-      url,
-      pushReceivedAt
+      url
     });
-
-    await self.registration.showNotification(title, options);
-    const notificationShownAt = new Date().toISOString();
-    pushDebugLog('showNotification called', { title, tag, notificationShownAt });
 
     const allClients = await self.clients.matchAll({
       type: 'window',
@@ -177,17 +224,6 @@ self.addEventListener('push', (event) => {
       client.postMessage({
         type: 'INCHECK360_PUSH_RECEIVED',
         payload: {
-          timestamp: pushReceivedAt,
-          title,
-          body: options.body,
-          url,
-          data: options.data
-        }
-      });
-      client.postMessage({
-        type: 'INCHECK360_NOTIFICATION_SHOWN',
-        payload: {
-          timestamp: notificationShownAt,
           title,
           body: options.body,
           url,
@@ -196,6 +232,24 @@ self.addEventListener('push', (event) => {
       });
     }
   })());
+});
+
+self.addEventListener('message', event => {
+  const data = event?.data || {};
+  if (data?.type === 'INCHECK360_READ_PUSH_DIAGNOSTICS') {
+    event.waitUntil((async () => {
+      const diagnostics = await readAllPushDiagnostics();
+      event.source?.postMessage({
+        type: 'INCHECK360_PUSH_DIAGNOSTICS',
+        payload: diagnostics
+      });
+    })());
+    return;
+  }
+
+  if (data?.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('notificationclick', (event) => {
