@@ -7,7 +7,8 @@
       permission: 'default',
       message: '',
       initialized: false,
-      wired: false
+      wired: false,
+      messageListenerWired: false
     },
 
     els: {
@@ -28,6 +29,32 @@
 
     normalizeKey(value) {
       return typeof value === 'string' ? value.trim() : '';
+    },
+
+    isDebugEnabled() {
+      try {
+        return (
+          Boolean(global.RUNTIME_CONFIG?.DEBUG_PUSH || global.RUNTIME_CONFIG?.DEBUG) ||
+          global.localStorage?.getItem('INCHECK360_DEBUG_PUSH') === '1'
+        );
+      } catch (_) {
+        return Boolean(global.RUNTIME_CONFIG?.DEBUG_PUSH || global.RUNTIME_CONFIG?.DEBUG);
+      }
+    },
+
+    debugLog(...args) {
+      if (!this.isDebugEnabled()) return;
+      console.log('[push:debug]', ...args);
+    },
+
+
+    escapeHtml(value = '') {
+      return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     },
 
     getVapidPublicKey() {
@@ -196,6 +223,7 @@
         this.updatePermissionState();
         if (subscription) {
           await this.upsertSubscription(subscription, { isActive: true });
+          await this.logDiagnostics({ source: 'syncExistingSubscription', registration, subscription });
           this.state.enabled = true;
           this.renderButtonLabel();
           if (!silent) this.setMessage('Push notifications enabled on this device.');
@@ -261,6 +289,7 @@
         }
 
         await this.upsertSubscription(subscription, { isActive: true });
+        await this.logDiagnostics({ source: 'enablePush', registration, subscription });
         this.state.enabled = true;
         this.setMessage('Push notifications enabled on this device.');
       } catch (error) {
@@ -285,6 +314,7 @@
           await subscription.unsubscribe();
           await this.markSubscriptionInactive(endpoint);
         }
+        await this.logDiagnostics({ source: 'disablePush', registration, subscription: null });
         this.state.enabled = false;
         this.setMessage('Push notifications disabled on this device.');
       } catch (error) {
@@ -304,6 +334,121 @@
       await this.enablePush();
     },
 
+
+    ensureForegroundBannerContainer() {
+      let container = document.getElementById('pushForegroundBanner');
+      if (container) return container;
+      container = document.createElement('div');
+      container.id = 'pushForegroundBanner';
+      container.style.cssText = [
+        'position:fixed',
+        'right:12px',
+        'bottom:12px',
+        'z-index:3000',
+        'max-width:min(92vw,360px)',
+        'padding:12px',
+        'border-radius:12px',
+        'border:1px solid var(--line)',
+        'background:var(--card)',
+        'box-shadow:0 6px 20px rgba(0,0,0,0.25)',
+        'display:none'
+      ].join(';');
+      document.body.appendChild(container);
+      return container;
+    },
+
+    showForegroundBanner({ title = 'Notification', body = '', url = '/' } = {}) {
+      const container = this.ensureForegroundBannerContainer();
+      const absoluteUrl = new URL(String(url || '/'), global.location.origin).toString();
+      container.innerHTML = `
+        <div style="font-weight:700;margin-bottom:4px;">${this.escapeHtml(title || 'Notification')}</div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:10px;">${this.escapeHtml(body || '')}</div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button id="pushBannerDismissBtn" class="btn ghost sm" type="button">Dismiss</button>
+          <button id="pushBannerOpenBtn" class="btn sm" type="button">Open</button>
+        </div>
+      `;
+      container.style.display = 'block';
+
+      const dismissBtn = document.getElementById('pushBannerDismissBtn');
+      const openBtn = document.getElementById('pushBannerOpenBtn');
+
+      if (dismissBtn) {
+        dismissBtn.onclick = () => {
+          container.style.display = 'none';
+        };
+      }
+
+      if (openBtn) {
+        openBtn.onclick = () => {
+          container.style.display = 'none';
+          global.location.assign(absoluteUrl);
+        };
+      }
+
+      global.setTimeout(() => {
+        if (container) container.style.display = 'none';
+      }, 9000);
+    },
+
+    async logDiagnostics({ source = 'unknown', registration = null, subscription = null } = {}) {
+      if (!this.isDebugEnabled()) return;
+      try {
+        const resolvedRegistration = registration || (await this.getRegistration());
+        const resolvedSubscription =
+          subscription || (await resolvedRegistration?.pushManager?.getSubscription?.()) || null;
+        const endpoint = String(resolvedSubscription?.endpoint || '').trim();
+        const client = global.SupabaseClient?.getClient?.();
+
+        let dbRow = null;
+        if (endpoint && client) {
+          const { data } = await client
+            .from('push_subscriptions')
+            .select('endpoint,last_seen_at,saved_at,updated_at,created_at')
+            .eq('endpoint', endpoint)
+            .order('last_seen_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          dbRow = data || null;
+        }
+
+        this.debugLog('diagnostics', {
+          source,
+          permission: global.Notification?.permission || 'default',
+          swController: Boolean(navigator.serviceWorker?.controller),
+          hasRegistration: Boolean(resolvedRegistration),
+          hasSubscription: Boolean(endpoint),
+          subscriptionEndpoint: endpoint || null,
+          last_seen_at: dbRow?.last_seen_at || null,
+          saved_at: dbRow?.saved_at || dbRow?.updated_at || dbRow?.created_at || null
+        });
+      } catch (error) {
+        this.debugLog('diagnostics failed', error?.message || error);
+      }
+    },
+
+    handleServiceWorkerMessage(event) {
+      const data = event?.data;
+      if (!data || data.type !== 'INCHECK360_PUSH_RECEIVED') return;
+
+      const payload = data.payload || {};
+      const title = String(payload.title || 'InCheck360 MonitorCore').trim() || 'InCheck360 MonitorCore';
+      const body = String(payload.body || 'You have a new notification.').trim();
+      const url = payload.url || payload?.data?.url || '/';
+
+      this.debugLog('foreground push message received', { title, url });
+      this.showForegroundBanner({ title, body, url });
+    },
+
+    wireMessageListener() {
+      if (this.state.messageListenerWired) return;
+      this.state.messageListenerWired = true;
+      if (!navigator.serviceWorker?.addEventListener) return;
+      navigator.serviceWorker.addEventListener('message', event => {
+        this.handleServiceWorkerMessage(event);
+      });
+    },
+
     async onAuthStateChanged() {
       this.renderIosHint();
       if (!global.Session?.isAuthenticated?.()) {
@@ -321,6 +466,7 @@
       this.getElements();
       this.state.supported = this.isSupported();
       this.renderIosHint();
+      this.wireMessageListener();
 
       if (!this.els.toggleBtn || !this.els.statusText) return;
 
@@ -334,6 +480,7 @@
       this.els.toggleBtn.disabled = false;
       this.renderButtonLabel();
       await this.onAuthStateChanged();
+      await this.logDiagnostics({ source: 'init' });
     },
 
     wire() {
