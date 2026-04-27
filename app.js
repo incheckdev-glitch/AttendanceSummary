@@ -4741,6 +4741,7 @@ function wireDashboardGate() {
     const defaultView = getDefaultViewForRole(role);
     setActiveView(getFirstAllowedView(defaultView));
     if (window.Notifications?.onAuthStateChanged) Notifications.onAuthStateChanged();
+    if (window.PushNotifications?.onAuthStateChanged) PushNotifications.onAuthStateChanged();
     // Avoid forcing a jump to #app after login (caused unwanted auto-scrolling).
     if (window.location.hash) {
       history.replaceState(null, '', window.location.pathname + window.location.search);
@@ -4754,6 +4755,7 @@ function wireDashboardGate() {
     E.app.setAttribute('aria-hidden', 'true');
     if (E.logoutBtn) E.logoutBtn.hidden = true;
     if (window.Notifications?.reset) Notifications.reset();
+    if (window.PushNotifications?.onAuthStateChanged) PushNotifications.onAuthStateChanged();
     window.location.hash = '#loginSection';
   };
 
@@ -6769,6 +6771,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (window.Workflow?.wire) Workflow.wire();
   wireKeyboardShortcuts();
   if (window.Notifications?.wire) Notifications.wire();
+  if (window.PushNotifications?.wire) PushNotifications.wire();
+  if (window.PushNotifications?.init) await PushNotifications.init();
 
   const isAuthenticated = Session.isAuthenticated();
   if (isAuthenticated) {

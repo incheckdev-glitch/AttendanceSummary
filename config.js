@@ -101,6 +101,7 @@ window.CONFIG = {
     runtimeConfig.OPERATIONS_ONBOARDING_TABLE || 'operations_onboarding',
 
   ISSUE_API_URL: runtimeConfig.ISSUE_API_URL || '',
+  PUSH_VAPID_PUBLIC_KEY: runtimeConfig.PUSH_VAPID_PUBLIC_KEY || runtimeConfig.VAPID_PUBLIC_KEY || '',
 
   TREND_DAYS_RECENT: 7,
   TREND_DAYS_WINDOW: 14,
