@@ -2409,6 +2409,129 @@
         notification_id: notificationId || null
       };
     }
+    async function notifyTicketUpdated({ data, id, safeUpdates, previousTicketStatus, contextSuffix = '' } = {}) {
+      const ticketId = String(data?.ticket_id || id || '').trim();
+      const nextTicketStatus = String(data?.status || '').trim();
+      const assignedTo = String(data?.assigned_to || safeUpdates?.assigned_to || '').trim();
+
+      if (!ticketId) {
+        console.warn('[notifications:pwa] ticket update skipped because ticket id is missing', {
+          id,
+          data,
+          safeUpdates
+        });
+        return { attempted: false, reason: 'missing-ticket-id' };
+      }
+
+      const statusChanged =
+        previousTicketStatus &&
+        nextTicketStatus &&
+        previousTicketStatus.toLowerCase() !== nextTicketStatus.toLowerCase();
+      const meaningfulFields = [
+        'title',
+        'description',
+        'priority',
+        'module',
+        'category',
+        'status',
+        'assigned_to',
+        'notes',
+        'issue_related',
+        'dev_team_status',
+        'youtrack_reference',
+        'issueRelated',
+        'devTeamStatus',
+        'youtrackReference'
+      ];
+      const changedKeys = Object.keys(safeUpdates || {}).filter(key => meaningfulFields.includes(key));
+
+      if (statusChanged) {
+        const action = 'ticket_status_changed';
+        console.info('[notifications:pwa] ticket update notification selected', {
+          ticketId,
+          previousTicketStatus,
+          nextTicketStatus,
+          assignedTo,
+          changedKeys,
+          action
+        });
+        const result = await createNotificationAndPush({
+          title: 'Ticket status changed',
+          message: `Ticket ${ticketId} changed from ${previousTicketStatus} to ${nextTicketStatus}.`,
+          resource: 'tickets',
+          action,
+          record_id: ticketId,
+          target_roles: ['admin', 'hoo'],
+          dedupe_key: `tickets-ticket_status_changed-${ticketId}-${nextTicketStatus}-${Date.now()}`
+        }, `tickets:update:status${contextSuffix}`).catch(error => {
+          console.warn('[notifications:pwa] tickets:update:status failed', error);
+          return { attempted: true, sent: false, error: String(error?.message || error) };
+        });
+        console.info('[notifications:pwa] ticket update notification completed', { ticketId, action, result });
+        return result;
+      }
+
+      if (assignedTo) {
+        const action = 'ticket_assigned';
+        console.info('[notifications:pwa] ticket update notification selected', {
+          ticketId,
+          previousTicketStatus,
+          nextTicketStatus,
+          assignedTo,
+          changedKeys,
+          action
+        });
+        const result = await createNotificationAndPush({
+          title: 'Ticket assigned',
+          message: `Ticket ${ticketId} assigned to ${assignedTo}.`,
+          resource: 'tickets',
+          action,
+          record_id: ticketId,
+          target_roles: ['admin', 'hoo'],
+          dedupe_key: `tickets-ticket_assigned-${ticketId}-${assignedTo}-${Date.now()}`
+        }, `tickets:update:assigned${contextSuffix}`).catch(error => {
+          console.warn('[notifications:pwa] tickets:update:assigned failed', error);
+          return { attempted: true, sent: false, error: String(error?.message || error) };
+        });
+        console.info('[notifications:pwa] ticket update notification completed', { ticketId, action, result });
+        return result;
+      }
+
+      if (!changedKeys.length) {
+        console.info('[notifications:pwa] ticket update skipped because no meaningful notification field changed', {
+          ticketId,
+          safeUpdates
+        });
+        return { attempted: false, reason: 'no-meaningful-ticket-change' };
+      }
+
+      const action = 'ticket_updated';
+      console.info('[notifications:pwa] ticket update notification selected', {
+        ticketId,
+        previousTicketStatus,
+        nextTicketStatus,
+        assignedTo,
+        changedKeys,
+        action
+      });
+      const result = await createNotificationAndPush({
+        title: 'Ticket updated',
+        message: `Ticket ${ticketId} was updated.`,
+        resource: 'tickets',
+        action,
+        record_id: ticketId,
+        target_roles: ['admin', 'hoo'],
+        meta: {
+          changed_fields: changedKeys
+        },
+        dedupe_key: `tickets-ticket_updated-${ticketId}-${Date.now()}`
+      }, `tickets:update:generic${contextSuffix}`).catch(error => {
+        console.warn('[notifications:pwa] tickets:update:generic failed', error);
+        return { attempted: true, sent: false, error: String(error?.message || error) };
+      });
+      console.info('[notifications:pwa] ticket update notification completed', { ticketId, action, result });
+      return result;
+    }
     async function sendWorkflowApprovalEmailNotification(eventType = '', payload = {}, context = '') {
       const normalizedEventType = String(eventType || '').trim().toLowerCase();
       if (!normalizedEventType) return null;
@@ -4174,51 +4297,23 @@
           .select('*')
           .single();
         if (internalError) throw friendlyError('Unable to save internal ticket fields', internalError);
-        const nextTicketStatus = String(data?.status || '').trim();
-        if (previousTicketStatus && nextTicketStatus && previousTicketStatus.toLowerCase() !== nextTicketStatus.toLowerCase()) {
-          await createNotificationAndPush({
-            title: 'Ticket status changed',
-            message: `Ticket ${String(data?.ticket_id || id || '').trim()} changed from ${previousTicketStatus} to ${nextTicketStatus}.`,
-            resource: 'tickets',
-            action: 'ticket_status_changed',
-            record_id: String(data?.ticket_id || id || '').trim(),
-            target_roles: ['admin', 'hoo'],
-            dedupe_key: `tickets-ticket_status_changed-${String(data?.ticket_id || id || '').trim()}-${nextTicketStatus}`
-          }, 'tickets:update:status').catch(error => {
-            console.warn('[notifications:pwa] tickets:update:status failed', error);
-          });
-        }
+        await notifyTicketUpdated({
+          data,
+          id,
+          safeUpdates,
+          previousTicketStatus,
+          contextSuffix: ':admin-dev'
+        });
         return { handled: true, data: mergeTicketInternal(data, internalData) };
       }
       if (resource === 'tickets') {
-        const nextTicketStatus = String(data?.status || '').trim();
-        if (previousTicketStatus && nextTicketStatus && previousTicketStatus.toLowerCase() !== nextTicketStatus.toLowerCase()) {
-          await createNotificationAndPush({
-            title: 'Ticket status changed',
-            message: `Ticket ${String(data?.ticket_id || id || '').trim()} changed from ${previousTicketStatus} to ${nextTicketStatus}.`,
-            resource: 'tickets',
-            action: 'ticket_status_changed',
-            record_id: String(data?.ticket_id || id || '').trim(),
-            target_roles: ['admin', 'hoo'],
-            dedupe_key: `tickets-ticket_status_changed-${String(data?.ticket_id || id || '').trim()}-${nextTicketStatus}`
-          }, 'tickets:update:status').catch(error => {
-            console.warn('[notifications:pwa] tickets:update:status failed', error);
-          });
-        }
-        const assignedTo = String(data?.assigned_to || safeUpdates?.assigned_to || '').trim();
-        if (assignedTo) {
-          await createNotificationAndPush({
-            title: 'Ticket assigned',
-            message: `Ticket ${String(data?.ticket_id || id || '').trim()} assigned to ${assignedTo}.`,
-            resource: 'tickets',
-            action: 'ticket_assigned',
-            record_id: String(data?.ticket_id || id || '').trim(),
-            target_roles: ['admin', 'hoo'],
-            dedupe_key: `tickets-ticket_assigned-${String(data?.ticket_id || id || '').trim()}-${assignedTo}`
-          }, 'tickets:update:assigned').catch(error => {
-            console.warn('[notifications:pwa] tickets:update:assigned failed', error);
-          });
-        }
+        await notifyTicketUpdated({
+          data,
+          id,
+          safeUpdates,
+          previousTicketStatus,
+          contextSuffix: ':standard'
+        });
       }
       if (resource === 'operations_onboarding') {
         const nextStatus = String(data?.onboarding_status || '').trim();
