@@ -2409,9 +2409,6 @@
         notification_id: notificationId || null
       };
     }
-    // Ticket-update PWA push is intentionally sent directly from app.js after
-    // Api.requestWithSession('tickets', 'update', ...) succeeds. This avoids
-    // the previous ticket-update notification runtime crash and duplicate push calls.
     async function sendWorkflowApprovalEmailNotification(eventType = '', payload = {}, context = '') {
       const normalizedEventType = String(eventType || '').trim().toLowerCase();
       if (!normalizedEventType) return null;
@@ -4186,11 +4183,9 @@
           .select('*')
           .single();
         if (internalError) throw friendlyError('Unable to save internal ticket fields', internalError);
-        console.info('[tickets:update] saved ticket fields; direct PWA push is handled by app.js after the update response.');
         return { handled: true, data: mergeTicketInternal(data, internalData) };
       }
       if (resource === 'tickets') {
-        console.info('[tickets:update] saved ticket fields; direct PWA push is handled by app.js after the update response.');
       }
       if (resource === 'operations_onboarding') {
         const nextStatus = String(data?.onboarding_status || '').trim();
