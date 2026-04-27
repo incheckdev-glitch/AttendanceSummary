@@ -2262,6 +2262,9 @@
         body,
         url,
         tag,
+        resource,
+        action,
+        record_id: recordId || undefined,
         data: {
           notification_id: notificationId || undefined,
           resource,
@@ -2272,7 +2275,16 @@
       };
       if (userIds.length) requestPayload.user_ids = userIds;
       else requestPayload.roles = roles;
-      console.info('[notifications:pwa] sending push', { ...debugContext, tag, user_ids: userIds, roles, url });
+      console.info('[notifications:pwa] sending push', {
+        context,
+        resource,
+        action,
+        record_id: recordId,
+        user_ids: userIds,
+        roles,
+        url,
+        requestPayload
+      });
       try {
         const { data, error } = await client.functions.invoke('send-web-push-v2', { body: requestPayload });
         console.info('[notifications:pwa] push result', {
@@ -2282,7 +2294,8 @@
           record_id: recordId,
           user_ids: userIds,
           roles,
-          response: data || null
+          response: data || null,
+          error: error || null
         });
         if (error) {
           console.warn('[notifications:pwa] push failed', {
@@ -2334,55 +2347,67 @@
       }
     }
     async function createNotificationAndPush(payload = {}, context = '') {
-      const insertedRows = await createNotificationHubEvent(payload, context);
-      const notificationId = String(insertedRows?.[0]?.notification_id || '').trim();
-      const targetUserId = String(payload?.target_user_id || '').trim();
-      const targetRole = String(payload?.target_role || '').trim().toLowerCase();
-      const targetRoles = Array.isArray(payload?.target_roles)
-        ? payload.target_roles.map(role => String(role || '').trim().toLowerCase()).filter(Boolean)
+      const normalizedPayload = payload && typeof payload === 'object' ? payload : {};
+      const targetUserId = String(normalizedPayload?.target_user_id || '').trim();
+      const targetRole = String(normalizedPayload?.target_role || '').trim().toLowerCase();
+      const targetRoles = Array.isArray(normalizedPayload?.target_roles)
+        ? normalizedPayload.target_roles.map(role => String(role || '').trim().toLowerCase()).filter(Boolean)
         : [];
-
       const shouldAttemptPush = Boolean(targetUserId || targetRole || targetRoles.length);
-
-      let pushResult = { attempted: false, reason: 'no-target' };
-
-      if (shouldAttemptPush) {
-        pushResult = await sendPwaPushForNotification({
-          ...payload,
+      console.info('[notifications:pwa] createNotificationAndPush started', {
+        context,
+        resource: normalizedPayload?.resource || '',
+        action: normalizedPayload?.action || normalizedPayload?.event_type || '',
+        record_id: normalizedPayload?.record_id || '',
+        target_user_id: targetUserId || '',
+        target_role: targetRole || '',
+        target_roles: targetRoles
+      });
+      const hubPromise = createNotificationHubEvent(normalizedPayload, context)
+        .catch(error => {
+          console.warn('[notifications:hub] create failed but PWA should continue', {
+            context,
+            error
+          });
+          return [];
+        });
+      const pushPromise = shouldAttemptPush
+        ? sendPwaPushForNotification({
+          ...normalizedPayload,
           target_role: targetRole || undefined,
-          target_roles: targetRoles.length ? targetRoles : undefined,
-          notification_id: notificationId || undefined
-        }, context);
-      }
-
-      const ids = insertedRows
-        .map(row => String(row?.notification_id || '').trim())
-        .filter(Boolean);
-
-      if (ids.length) {
-        void client.rpc('update_notification_push_status', {
-          p_notification_ids: ids,
-          p_status: pushResult?.sent ? 'sent' : 'failed',
-          p_error: pushResult?.sent ? null : String(pushResult?.error || pushResult?.reason || '').trim() || null
-        }).catch(error => {
-          console.warn('[notifications:pwa] unable to persist push status', { context, error });
-        });
-      }
-
-      if (!insertedRows.length && shouldAttemptPush) {
-        console.warn('[notifications:pwa] hub insert returned no rows but PWA push was still attempted', {
-          context,
-          resource: payload?.resource || '',
-          action: payload?.action || payload?.event_type || '',
-          record_id: payload?.record_id || '',
-          target_user_id: targetUserId || '',
-          target_role: targetRole || '',
-          target_roles: targetRoles,
-          pushResult
-        });
-      }
-
-      return { created: insertedRows.length, push: pushResult, notification_id: notificationId || null };
+          target_roles: targetRoles.length ? targetRoles : undefined
+        }, context)
+        : Promise.resolve({ attempted: false, reason: 'no-target' });
+      const [hubSettled, pushSettled] = await Promise.allSettled([hubPromise, pushPromise]);
+      const insertedRows =
+        hubSettled.status === 'fulfilled' && Array.isArray(hubSettled.value)
+          ? hubSettled.value
+          : [];
+      const pushResult =
+        pushSettled.status === 'fulfilled'
+          ? pushSettled.value
+          : {
+            attempted: shouldAttemptPush,
+            sent: false,
+            error: String(pushSettled.reason?.message || pushSettled.reason || 'PWA push failed')
+          };
+      const notificationId = String(insertedRows?.[0]?.notification_id || '').trim();
+      console.info('[notifications:pwa] createNotificationAndPush completed', {
+        context,
+        resource: normalizedPayload?.resource || '',
+        action: normalizedPayload?.action || normalizedPayload?.event_type || '',
+        record_id: normalizedPayload?.record_id || '',
+        target_user_id: targetUserId || '',
+        target_role: targetRole || '',
+        target_roles: targetRoles,
+        hub_created: insertedRows.length,
+        push: pushResult
+      });
+      return {
+        created: insertedRows.length,
+        push: pushResult,
+        notification_id: notificationId || null
+      };
     }
     async function sendWorkflowApprovalEmailNotification(eventType = '', payload = {}, context = '') {
       const normalizedEventType = String(eventType || '').trim().toLowerCase();
@@ -2457,17 +2482,6 @@
         );
       }
       return result;
-    }
-    async function sendRolePushForTicketEvent({ title = '', body = '', data = {}, tag = '', ticketId = '' } = {}) {
-      void sendPwaPushForNotification({
-        title: String(title || '').trim() || 'Ticket update',
-        body: String(body || '').trim() || 'A ticket notification was created.',
-        resource: 'tickets',
-        action: String(data?.event || tag || 'ticket_notification').trim().toLowerCase(),
-        record_id: String(ticketId || data?.ticket_id || '').trim(),
-        target_roles: ['admin', 'hoo'],
-        url: resolveNotificationUrl('tickets', '', String(ticketId || data?.ticket_id || '').trim(), '/#tickets')
-      }, 'ticket-notification');
     }
     async function resolveWorkflowTargetRecord(resourceValue = '', approval = {}) {
       const resource = String(resourceValue || '').trim().toLowerCase();
@@ -3055,6 +3069,25 @@
       const leadUuid = String(payload.id || payload.lead_id || '').trim();
       const { data, error } = await client.rpc('convert_lead_to_deal', { p_lead_uuid: leadUuid });
       if (error) throw friendlyError('Lead conversion failed', error);
+      const recordId = String(
+        data?.deal_id ||
+        data?.created_deal_id ||
+        data?.id ||
+        data?.deal_uuid ||
+        data?.created_deal_uuid ||
+        ''
+      ).trim();
+      await createNotificationAndPush({
+        title: 'Deal created from lead',
+        message: `Lead ${leadUuid || 'record'} was converted to a deal.`,
+        resource: 'deals',
+        action: 'deal_created_from_lead',
+        record_id: recordId || undefined,
+        target_roles: ['admin', 'hoo'],
+        dedupe_key: `deals-deal_created_from_lead-${recordId || leadUuid || 'unknown'}`
+      }, 'leads:convert_to_deal').catch(pushError => {
+        console.warn('[notifications:pwa] leads:convert_to_deal failed', pushError);
+      });
       return data;
     }
     if (resource === 'proposals' && action === 'create_from_deal') {
@@ -3069,6 +3102,20 @@
       if (!dealUuid) throw new Error('Deal UUID is required to create proposal from deal.');
       const { data, error } = await client.rpc('create_proposal_from_deal', { p_deal_uuid: dealUuid });
       if (error) throw friendlyError('Proposal creation from deal failed', error);
+      const notifyProposalCreatedFromDeal = async candidate => {
+        const recordId = String(candidate?.proposal_id || candidate?.id || candidateUuid || '').trim();
+        await createNotificationAndPush({
+          title: 'Proposal created from deal',
+          message: `Proposal ${String(candidate?.proposal_id || candidate?.ref_number || '').trim() || 'record'} was created from a deal.`,
+          resource: 'proposals',
+          action: 'proposal_created_from_deal',
+          record_id: recordId || undefined,
+          target_roles: ['admin', 'hoo'],
+          dedupe_key: `proposals-proposal_created_from_deal-${recordId || dealUuid || 'unknown'}`
+        }, 'proposals:create_from_deal').catch(pushError => {
+          console.warn('[notifications:pwa] proposals:create_from_deal failed', pushError);
+        });
+      };
       const candidateUuid = String(
         data?.id ||
         data?.proposal_uuid ||
@@ -3077,20 +3124,29 @@
         data?.created_uuid ||
         ''
       ).trim();
-      if (!isUuid(candidateUuid)) return data;
+      if (!isUuid(candidateUuid)) {
+        await notifyProposalCreatedFromDeal(data);
+        return data;
+      }
 
       const { data: createdProposal, error: getProposalError } = await client
         .from('proposals')
         .select('*')
         .eq('id', candidateUuid)
         .maybeSingle();
-      if (getProposalError || !createdProposal) return data;
+      if (getProposalError || !createdProposal) {
+        await notifyProposalCreatedFromDeal(data);
+        return data;
+      }
 
       const ensuredProposalId = ensureBusinessProposalId(createdProposal.proposal_id);
       const ensuredRefNumber = ensureProposalRefNumber(createdProposal.ref_number);
       const hasProposalId = String(createdProposal.proposal_id || '').trim();
       const hasRefNumber = String(createdProposal.ref_number || '').trim();
-      if (hasProposalId && hasRefNumber) return createdProposal;
+      if (hasProposalId && hasRefNumber) {
+        await notifyProposalCreatedFromDeal(createdProposal);
+        return createdProposal;
+      }
 
       const { data: updatedProposal, error: updateError } = await client
         .from('proposals')
@@ -3099,7 +3155,9 @@
         .select('*')
         .maybeSingle();
       if (updateError) throw friendlyError('Unable to finalize proposal business identifiers', updateError);
-      return updatedProposal || createdProposal;
+      const proposalRow = updatedProposal || createdProposal;
+      await notifyProposalCreatedFromDeal(proposalRow);
+      return proposalRow;
     }
     if (resource === 'agreements' && action === 'create_from_proposal') {
       assertAllowed('agreements', 'create_from_proposal');
@@ -3107,6 +3165,18 @@
       if (!isUuid(proposalUuid)) throw new Error('Proposal UUID is required to create agreement from proposal.');
       const { data, error } = await client.rpc('create_agreement_from_proposal', { p_proposal_uuid: proposalUuid });
       if (error) throw friendlyError('Agreement creation from proposal failed', error);
+      const recordId = String(data?.agreement_id || data?.id || data?.agreement_uuid || data?.created_agreement_uuid || '').trim();
+      await createNotificationAndPush({
+        title: 'Agreement created from proposal',
+        message: `Proposal ${proposalUuid} generated a new agreement.`,
+        resource: 'agreements',
+        action: 'agreement_created_from_proposal',
+        record_id: recordId || undefined,
+        target_roles: ['admin', 'hoo'],
+        dedupe_key: `agreements-agreement_created_from_proposal-${recordId || proposalUuid || 'unknown'}`
+      }, 'agreements:create_from_proposal').catch(pushError => {
+        console.warn('[notifications:pwa] agreements:create_from_proposal failed', pushError);
+      });
       return data;
     }
     if (resource === 'invoices' && action === 'create_from_agreement') {
@@ -3115,6 +3185,18 @@
       if (!isUuid(agreementUuid)) throw new Error('Agreement UUID is required to create invoice from agreement.');
       const { data, error } = await client.rpc('create_invoice_from_agreement', { p_agreement_uuid: agreementUuid });
       if (error) throw friendlyError('Invoice creation from agreement failed', error);
+      const recordId = String(data?.invoice_id || data?.id || data?.invoice_uuid || data?.created_invoice_uuid || '').trim();
+      await createNotificationAndPush({
+        title: 'Invoice created from agreement',
+        message: `Agreement ${agreementUuid} generated a new invoice.`,
+        resource: 'invoices',
+        action: 'invoice_created_from_agreement',
+        record_id: recordId || undefined,
+        target_roles: ['accounting', 'admin'],
+        dedupe_key: `invoices-invoice_created_from_agreement-${recordId || agreementUuid || 'unknown'}`
+      }, 'invoices:create_from_agreement').catch(pushError => {
+        console.warn('[notifications:pwa] invoices:create_from_agreement failed', pushError);
+      });
       return data;
     }
     if (resource === 'receipts' && action === 'create_from_invoice') {
@@ -3268,7 +3350,19 @@
           throw friendlyError(`Unable to create receipt_items from invoice_items (count=${receiptItemRows.length})`, receiptItemsInsertError);
         }
       }
-      return withItems(resource, createdReceiptRow);
+      const receiptWithItems = withItems(resource, createdReceiptRow);
+      await createNotificationAndPush({
+        title: 'Receipt created from invoice',
+        message: `Invoice ${invoiceUuid} generated a new receipt.`,
+        resource: 'receipts',
+        action: 'receipt_created_from_invoice',
+        record_id: String(createdReceiptRow?.receipt_id || createdReceiptRow?.id || createdReceiptUuid || '').trim(),
+        target_roles: ['accounting', 'admin'],
+        dedupe_key: `receipts-receipt_created_from_invoice-${String(createdReceiptRow?.receipt_id || createdReceiptRow?.id || createdReceiptUuid || '').trim()}`
+      }, 'receipts:create_from_invoice').catch(pushError => {
+        console.warn('[notifications:pwa] receipts:create_from_invoice failed', pushError);
+      });
+      return receiptWithItems;
     }
     return null;
   }
@@ -3696,17 +3790,7 @@
       if (!data) throw new Error(`Unable to create ${resource} record: Supabase returned no row.`);
       const created = normalizeRow(resource, data);
       if (resource === 'tickets') {
-        void sendRolePushForTicketEvent({
-          title: 'InCheck360 New Ticket Submitted',
-          body: `New ticket submitted: ${String(created.title || created.ticket_id || created.id || 'Ticket').trim()}.`,
-          tag: 'ticket-submitted',
-          ticketId: String(created.ticket_id || created.id || '').trim(),
-          data: {
-            event: 'ticket_submitted',
-            ticket_id: String(created.ticket_id || created.id || '').trim()
-          }
-        });
-        void createNotificationAndPush({
+        await createNotificationAndPush({
           title: 'New ticket submitted',
           message: `${String(created.ticket_id || '').trim() || 'Ticket'}: ${String(created.title || '').trim() || 'New support ticket'}`,
           resource: 'tickets',
@@ -3715,9 +3799,11 @@
           target_roles: ['admin', 'hoo'],
           priority: String(created.priority || '').trim().toLowerCase() === 'high' ? 'high' : 'normal',
           dedupe_key: `tickets-ticket_created-${String(created.ticket_id || created.id || '').trim()}`
-        }, 'tickets:create');
+        }, 'tickets:create').catch(error => {
+          console.warn('[notifications:pwa] tickets:create failed', error);
+        });
         if (String(created.priority || '').trim().toLowerCase() === 'high') {
-          void createNotificationAndPush({
+          await createNotificationAndPush({
             title: 'High priority ticket',
             message: `${String(created.ticket_id || '').trim() || 'Ticket'} requires immediate attention.`,
             resource: 'tickets',
@@ -3726,11 +3812,13 @@
             target_roles: ['admin', 'hoo'],
             priority: 'high',
             dedupe_key: `tickets-ticket_high_priority-${String(created.ticket_id || created.id || '').trim()}`
-          }, 'tickets:create:high-priority');
+          }, 'tickets:create:high-priority').catch(error => {
+            console.warn('[notifications:pwa] tickets:create failed', error);
+          });
         }
       }
       if (resource === 'operations_onboarding') {
-        void createNotificationAndPush({
+        await createNotificationAndPush({
           title: 'Operations onboarding created',
           message: `${String(created.onboarding_id || created.id || '').trim() || 'Onboarding'} was created.`,
           resource: 'operations_onboarding',
@@ -3738,10 +3826,12 @@
           record_id: String(created.onboarding_id || created.id || '').trim(),
           target_roles: ['hoo', 'admin'],
           dedupe_key: `operations_onboarding-created-${String(created.onboarding_id || created.id || '').trim()}`
-        }, 'operations_onboarding:create');
+        }, 'operations_onboarding:create').catch(error => {
+          console.warn('[notifications:pwa] operations_onboarding:create failed', error);
+        });
       }
       if (resource === 'technical_admin_requests') {
-        void createNotificationAndPush({
+        await createNotificationAndPush({
           title: 'Technical admin request submitted',
           message: String(created.request_message || created.request_details || 'A technical admin request was submitted.').trim(),
           resource: 'technical_admin_requests',
@@ -3750,10 +3840,12 @@
           target_roles: ['admin', 'dev'],
           priority: 'high',
           dedupe_key: `technical_admin_requests-submitted-${String(created.id || created.request_id || '').trim()}`
-        }, 'technical_admin_requests:create');
+        }, 'technical_admin_requests:create').catch(error => {
+          console.warn('[notifications:pwa] technical_admin_requests:create failed', error);
+        });
       }
       if (resource === 'leads') {
-        void createNotificationAndPush({
+        await createNotificationAndPush({
           title: 'New lead created',
           message: `${String(created.lead_id || created.id || '').trim() || 'Lead'}: ${String(created.company_name || created.full_name || '').trim() || 'New lead'}`,
           resource: 'leads',
@@ -3761,12 +3853,14 @@
           record_id: String(created.lead_id || created.id || '').trim(),
           target_roles: ['admin', 'hoo'],
           dedupe_key: `leads-created-${String(created.lead_id || created.id || '').trim()}`
-        }, 'leads:create');
+        }, 'leads:create').catch(error => {
+          console.warn('[notifications:pwa] leads:create failed', error);
+        });
       }
       if (resource === 'deals') {
         const stage = String(created.stage || '').trim().toLowerCase();
         if (IMPORTANT_DEAL_STAGES.has(stage)) {
-          void createNotificationAndPush({
+          await createNotificationAndPush({
             title: 'Deal updated',
             message: `${String(created.deal_id || created.id || '').trim() || 'Deal'} moved to ${String(created.stage || 'important stage').trim()}.`,
             resource: 'deals',
@@ -3774,11 +3868,13 @@
             record_id: String(created.deal_id || created.id || '').trim(),
             target_roles: ['admin', 'hoo'],
             dedupe_key: `deals-stage-${String(created.deal_id || created.id || '').trim()}-${stage}`
-          }, 'deals:create');
+          }, 'deals:create').catch(error => {
+            console.warn('[notifications:pwa] deals:create failed', error);
+          });
         }
       }
       if (resource === 'proposals') {
-        void createNotificationAndPush({
+        await createNotificationAndPush({
           title: 'Proposal requires review',
           message: `Proposal ${String(created.proposal_id || created.ref_number || created.id || '').trim()} requires approval.`,
           resource: 'proposals',
@@ -3786,10 +3882,12 @@
           record_id: String(created.proposal_id || created.id || '').trim(),
           target_roles: ['admin', 'hoo'],
           dedupe_key: `proposals-requires-approval-${String(created.proposal_id || created.id || '').trim()}`
-        }, 'proposals:create');
+        }, 'proposals:create').catch(error => {
+          console.warn('[notifications:pwa] proposals:create failed', error);
+        });
       }
       if (resource === 'invoices') {
-        void createNotificationAndPush({
+        await createNotificationAndPush({
           title: 'Invoice created',
           message: `${String(created.invoice_number || created.invoice_id || created.id || '').trim() || 'Invoice'} was created.`,
           resource: 'invoices',
@@ -3797,10 +3895,12 @@
           record_id: String(created.invoice_id || created.id || '').trim(),
           target_roles: ['accounting', 'admin'],
           dedupe_key: `invoices-created-${String(created.invoice_id || created.id || '').trim()}`
-        }, 'invoices:create');
+        }, 'invoices:create').catch(error => {
+          console.warn('[notifications:pwa] invoices:create failed', error);
+        });
       }
       if (resource === 'receipts') {
-        void createNotificationAndPush({
+        await createNotificationAndPush({
           title: 'Receipt created',
           message: `${String(created.receipt_number || created.receipt_id || created.id || '').trim() || 'Receipt'} was recorded.`,
           resource: 'receipts',
@@ -3808,7 +3908,9 @@
           record_id: String(created.receipt_id || created.id || '').trim(),
           target_roles: ['accounting', 'admin'],
           dedupe_key: `receipts-created-${String(created.receipt_id || created.id || '').trim()}`
-        }, 'receipts:create');
+        }, 'receipts:create').catch(error => {
+          console.warn('[notifications:pwa] receipts:create failed', error);
+        });
       }
       if (resource === 'proposals') {
         const createdBusinessId = String(created.proposal_id || '').trim();
@@ -4074,19 +4176,7 @@
         if (internalError) throw friendlyError('Unable to save internal ticket fields', internalError);
         const nextTicketStatus = String(data?.status || '').trim();
         if (previousTicketStatus && nextTicketStatus && previousTicketStatus.toLowerCase() !== nextTicketStatus.toLowerCase()) {
-          void sendRolePushForTicketEvent({
-            title: 'InCheck360 Ticket Status Changed',
-            body: `Ticket ${String(data?.ticket_id || id || '').trim()} changed from ${previousTicketStatus} to ${nextTicketStatus}.`,
-            tag: 'ticket-status-changed',
-            ticketId: String(data?.ticket_id || id || '').trim(),
-            data: {
-              event: 'ticket_status_changed',
-              ticket_id: String(data?.ticket_id || id || '').trim(),
-              old_status: previousTicketStatus,
-              new_status: nextTicketStatus
-            }
-          });
-          void createNotificationAndPush({
+          await createNotificationAndPush({
             title: 'Ticket status changed',
             message: `Ticket ${String(data?.ticket_id || id || '').trim()} changed from ${previousTicketStatus} to ${nextTicketStatus}.`,
             resource: 'tickets',
@@ -4094,26 +4184,16 @@
             record_id: String(data?.ticket_id || id || '').trim(),
             target_roles: ['admin', 'hoo'],
             dedupe_key: `tickets-ticket_status_changed-${String(data?.ticket_id || id || '').trim()}-${nextTicketStatus}`
-          }, 'tickets:update:status');
+          }, 'tickets:update:status').catch(error => {
+            console.warn('[notifications:pwa] tickets:update:status failed', error);
+          });
         }
         return { handled: true, data: mergeTicketInternal(data, internalData) };
       }
       if (resource === 'tickets') {
         const nextTicketStatus = String(data?.status || '').trim();
         if (previousTicketStatus && nextTicketStatus && previousTicketStatus.toLowerCase() !== nextTicketStatus.toLowerCase()) {
-          void sendRolePushForTicketEvent({
-            title: 'InCheck360 Ticket Status Changed',
-            body: `Ticket ${String(data?.ticket_id || id || '').trim()} changed from ${previousTicketStatus} to ${nextTicketStatus}.`,
-            tag: 'ticket-status-changed',
-            ticketId: String(data?.ticket_id || id || '').trim(),
-            data: {
-              event: 'ticket_status_changed',
-              ticket_id: String(data?.ticket_id || id || '').trim(),
-              old_status: previousTicketStatus,
-              new_status: nextTicketStatus
-            }
-          });
-          void createNotificationAndPush({
+          await createNotificationAndPush({
             title: 'Ticket status changed',
             message: `Ticket ${String(data?.ticket_id || id || '').trim()} changed from ${previousTicketStatus} to ${nextTicketStatus}.`,
             resource: 'tickets',
@@ -4121,11 +4201,13 @@
             record_id: String(data?.ticket_id || id || '').trim(),
             target_roles: ['admin', 'hoo'],
             dedupe_key: `tickets-ticket_status_changed-${String(data?.ticket_id || id || '').trim()}-${nextTicketStatus}`
-          }, 'tickets:update:status');
+          }, 'tickets:update:status').catch(error => {
+            console.warn('[notifications:pwa] tickets:update:status failed', error);
+          });
         }
         const assignedTo = String(data?.assigned_to || safeUpdates?.assigned_to || '').trim();
         if (assignedTo) {
-          void createNotificationAndPush({
+          await createNotificationAndPush({
             title: 'Ticket assigned',
             message: `Ticket ${String(data?.ticket_id || id || '').trim()} assigned to ${assignedTo}.`,
             resource: 'tickets',
@@ -4133,13 +4215,15 @@
             record_id: String(data?.ticket_id || id || '').trim(),
             target_roles: ['admin', 'hoo'],
             dedupe_key: `tickets-ticket_assigned-${String(data?.ticket_id || id || '').trim()}-${assignedTo}`
-          }, 'tickets:update:assigned');
+          }, 'tickets:update:assigned').catch(error => {
+            console.warn('[notifications:pwa] tickets:update:assigned failed', error);
+          });
         }
       }
       if (resource === 'operations_onboarding') {
         const nextStatus = String(data?.onboarding_status || '').trim();
         if (nextStatus && previousOperationsOnboardingStatus.toLowerCase() !== nextStatus.toLowerCase()) {
-          void createNotificationAndPush({
+          await createNotificationAndPush({
             title: 'Client onboarding updated',
             message: `${String(data?.onboarding_id || data?.id || id || '').trim()} is now ${nextStatus}.`,
             resource: 'operations_onboarding',
@@ -4147,13 +4231,15 @@
             record_id: String(data?.onboarding_id || data?.id || id || '').trim(),
             target_roles: ['hoo', 'admin'],
             dedupe_key: `operations_onboarding-status-${String(data?.onboarding_id || data?.id || id || '').trim()}-${nextStatus}`
-          }, 'operations_onboarding:update:status');
+          }, 'operations_onboarding:update:status').catch(error => {
+            console.warn('[notifications:pwa] operations_onboarding:update:status failed', error);
+          });
         }
       }
       if (resource === 'technical_admin_requests') {
         const nextStatus = String(data?.request_status || data?.technical_request_status || '').trim();
         if (nextStatus && previousTechnicalRequestStatus.toLowerCase() !== nextStatus.toLowerCase()) {
-          void createNotificationAndPush({
+          await createNotificationAndPush({
             title: 'Technical request status changed',
             message: `${String(data?.request_id || data?.technical_request_id || id || '').trim()} is now ${nextStatus}.`,
             resource: 'technical_admin_requests',
@@ -4161,13 +4247,15 @@
             record_id: String(data?.onboarding_id || data?.request_id || data?.technical_request_id || id || '').trim(),
             target_roles: ['admin', 'dev'],
             dedupe_key: `technical_admin_requests-status-${String(data?.id || id || '').trim()}-${nextStatus}`
-          }, 'technical_admin_requests:update:status');
+          }, 'technical_admin_requests:update:status').catch(error => {
+            console.warn('[notifications:pwa] technical_admin_requests:update:status failed', error);
+          });
         }
       }
       if (resource === 'deals') {
         const nextStage = String(data?.stage || '').trim().toLowerCase();
         if (IMPORTANT_DEAL_STAGES.has(nextStage) && previousDealStage.trim().toLowerCase() !== nextStage) {
-          void createNotificationAndPush({
+          await createNotificationAndPush({
             title: 'Deal stage updated',
             message: `${String(data?.deal_id || data?.id || id || '').trim()} moved to ${String(data?.stage || '').trim()}.`,
             resource: 'deals',
@@ -4175,13 +4263,15 @@
             record_id: String(data?.deal_id || data?.id || id || '').trim(),
             target_roles: ['admin', 'hoo'],
             dedupe_key: `deals-stage-${String(data?.deal_id || data?.id || id || '').trim()}-${nextStage}`
-          }, 'deals:update:stage');
+          }, 'deals:update:stage').catch(error => {
+            console.warn('[notifications:pwa] deals:update:stage failed', error);
+          });
         }
       }
       if (resource === 'proposals') {
         const nextStatus = String(data?.status || '').trim().toLowerCase();
         if (nextStatus && IMPORTANT_PROPOSAL_STATUSES.has(nextStatus) && previousProposalStatus.trim().toLowerCase() !== nextStatus) {
-          void createNotificationAndPush({
+          await createNotificationAndPush({
             title: 'Proposal updated',
             message: `Proposal ${String(data?.proposal_id || data?.ref_number || data?.id || id || '').trim()} is ${nextStatus}.`,
             resource: 'proposals',
@@ -4189,13 +4279,15 @@
             record_id: String(data?.proposal_id || data?.id || id || '').trim(),
             target_roles: ['admin', 'hoo'],
             dedupe_key: `proposals-status-${String(data?.proposal_id || data?.id || id || '').trim()}-${nextStatus}`
-          }, 'proposals:update:status');
+          }, 'proposals:update:status').catch(error => {
+            console.warn('[notifications:pwa] proposals:update:status failed', error);
+          });
         }
       }
       if (resource === 'agreements') {
         const nextStatus = String(data?.status || '').trim().toLowerCase();
         if (nextStatus.includes('signed') && previousAgreementStatus.trim().toLowerCase() !== nextStatus) {
-          void createNotificationAndPush({
+          await createNotificationAndPush({
             title: 'Agreement signed',
             message: `Agreement ${String(data?.agreement_id || data?.agreement_number || data?.id || id || '').trim()} has been signed.`,
             resource: 'agreements',
@@ -4203,13 +4295,15 @@
             record_id: String(data?.agreement_id || data?.id || id || '').trim(),
             target_roles: ['admin', 'hoo'],
             dedupe_key: `agreements-signed-${String(data?.agreement_id || data?.id || id || '').trim()}`
-          }, 'agreements:update:signed');
+          }, 'agreements:update:signed').catch(error => {
+            console.warn('[notifications:pwa] agreements:update:signed failed', error);
+          });
         }
       }
       if (resource === 'invoices') {
         const nextPaymentState = String(data?.payment_state || '').trim().toLowerCase();
         if (nextPaymentState && previousInvoicePaymentState.trim().toLowerCase() !== nextPaymentState) {
-          void createNotificationAndPush({
+          await createNotificationAndPush({
             title: 'Invoice payment updated',
             message: `${String(data?.invoice_number || data?.invoice_id || data?.id || id || '').trim()} is ${nextPaymentState}.`,
             resource: 'invoices',
@@ -4217,7 +4311,9 @@
             record_id: String(data?.invoice_id || data?.id || id || '').trim(),
             target_roles: ['accounting', 'admin'],
             dedupe_key: `invoices-payment-${String(data?.invoice_id || data?.id || id || '').trim()}-${nextPaymentState}`
-          }, 'invoices:update:payment');
+          }, 'invoices:update:payment').catch(error => {
+            console.warn('[notifications:pwa] invoices:update:payment failed', error);
+          });
         }
       }
 
@@ -4279,7 +4375,7 @@
         .single();
       if (error) throw friendlyError('Unable to update technical admin request status', error);
       const technicalRequest = normalizeRow('technical_admin_requests', data);
-      void createNotificationAndPush({
+      await createNotificationAndPush({
         title: 'Technical request status changed',
         message: `${String(technicalRequest.request_id || technicalRequest.technical_request_id || id || '').trim()} is now ${status}.`,
         resource: 'technical_admin_requests',
@@ -4287,7 +4383,9 @@
         record_id: String(technicalRequest.onboarding_id || technicalRequest.request_id || technicalRequest.technical_request_id || id || '').trim(),
         target_roles: ['admin', 'dev'],
         dedupe_key: `technical_admin_requests-status-${String(technicalRequest.id || id || '').trim()}-${String(status || '').trim().toLowerCase()}`
-      }, 'technical_admin_requests:update_status');
+      }, 'technical_admin_requests:update_status').catch(pushError => {
+        console.warn('[notifications:pwa] technical_admin_requests:update:status failed', pushError);
+      });
       return { handled: true, data: { ok: true, technical_request: technicalRequest, request: technicalRequest } };
     }
 
@@ -4386,4 +4484,15 @@
   }
 
   global.SupabaseData = { dispatch, isMigratedResource: resource => MIGRATED_RESOURCES.has(String(resource || '').trim()) };
+  global.testNonWorkflowPwaPush = async function testNonWorkflowPwaPush() {
+    return createNotificationAndPush({
+      title: 'Ticket PWA Test',
+      message: 'Testing non-workflow PWA push path.',
+      resource: 'tickets',
+      action: 'ticket_created',
+      record_id: 'TEST-PWA',
+      target_roles: ['admin'],
+      dedupe_key: `manual-ticket-pwa-test-${Date.now()}`
+    }, 'manual:test:tickets');
+  };
 })(window);
