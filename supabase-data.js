@@ -2215,22 +2215,46 @@
       if (normalizedResource === 'receipts' && id) return `/#finance?tab=receipts&id=${encodeURIComponent(id)}`;
       return String(fallback || '').trim() || '/#notifications';
     }
+    function normalizeNotificationRoles(...roleSources) {
+      return [...new Set(
+        roleSources
+          .flatMap(source => (Array.isArray(source) ? source : [source]))
+          .map(role => String(role || '').trim().toLowerCase())
+          .filter(Boolean)
+      )];
+    }
     async function sendPwaPushForNotification(payload = {}, context = '') {
       const title = String(payload?.title || '').trim();
       const body = String(payload?.body || payload?.message || '').trim();
-      if (!title || !body) return { attempted: false, reason: 'missing-title-or-body' };
       const targetUserId = String(payload?.target_user_id || '').trim();
-      const targetRole = String(payload?.target_role || '').trim().toLowerCase();
-      const targetRoles = Array.isArray(payload?.target_roles)
-        ? payload.target_roles.map(role => String(role || '').trim().toLowerCase()).filter(Boolean)
-        : [];
-      const roles = [...new Set([targetRole, ...targetRoles].filter(Boolean))];
+      const roles = normalizeNotificationRoles(payload?.target_role, payload?.target_roles);
       const userIds = targetUserId ? [targetUserId] : [];
-      if (!userIds.length && !roles.length) return { attempted: false, reason: 'no-target' };
       const resource = String(payload?.resource || 'notifications').trim().toLowerCase();
       const action = String(payload?.action || payload?.event_type || 'general').trim().toLowerCase();
       const recordId = String(payload?.record_id || '').trim();
       const notificationId = String(payload?.notification_id || '').trim();
+      const debugContext = {
+        context,
+        resource,
+        action,
+        record_id: recordId || null,
+        target_user_id: targetUserId || null,
+        target_roles: roles
+      };
+      if (!title || !body) {
+        console.warn('[notifications:pwa] push skipped', {
+          ...debugContext,
+          reason: 'missing-title-or-body'
+        });
+        return { attempted: false, reason: 'missing-title-or-body' };
+      }
+      if (!userIds.length && !roles.length) {
+        console.warn('[notifications:pwa] push skipped', {
+          ...debugContext,
+          reason: 'no-target'
+        });
+        return { attempted: false, reason: 'no-target' };
+      }
       const url = resolveNotificationUrl(resource, action, recordId, payload?.url || payload?.deep_link);
       const tag = buildNotificationTag({ resource, action, recordId, notificationId });
       const requestPayload = {
@@ -2248,16 +2272,31 @@
       };
       if (userIds.length) requestPayload.user_ids = userIds;
       else requestPayload.roles = roles;
-      console.info('[notifications:pwa] sending push', { context, tag, user_ids: userIds, roles, url });
+      console.info('[notifications:pwa] sending push', { ...debugContext, tag, user_ids: userIds, roles, url });
       try {
         const { data, error } = await client.functions.invoke('send-web-push-v2', { body: requestPayload });
+        console.info('[notifications:pwa] push result', {
+          ...debugContext,
+          response: data || null,
+          error: error || null
+        });
         if (error) {
-          console.warn('[notifications:pwa] push failed', { context, error });
+          console.warn('[notifications:pwa] push failed', {
+            ...debugContext,
+            reason: String(error?.message || error || 'send-web-push-v2 failed'),
+            response: data || null,
+            error
+          });
           return { attempted: true, sent: false, error: String(error?.message || error || 'send-web-push-v2 failed') };
         }
         return { attempted: true, sent: true, response: data || null };
       } catch (error) {
-        console.warn('[notifications:pwa] push failed', { context, error });
+        console.warn('[notifications:pwa] push failed', {
+          ...debugContext,
+          reason: String(error?.message || error || 'send-web-push-v2 failed'),
+          response: null,
+          error
+        });
         return { attempted: true, sent: false, error: String(error?.message || error || 'send-web-push-v2 failed') };
       }
     }
@@ -2273,10 +2312,8 @@
           p_link_target: resolveNotificationUrl(payload?.resource, payload?.action || payload?.event_type, payload?.record_id, payload?.url || payload?.deep_link),
           p_meta: payload?.meta && typeof payload.meta === 'object' ? payload.meta : {},
           p_target_user_id: String(payload?.target_user_id || '').trim() || null,
-          p_target_role: String(payload?.target_role || '').trim().toLowerCase() || null,
-          p_target_roles: Array.isArray(payload?.target_roles)
-            ? payload.target_roles.map(role => String(role || '').trim().toLowerCase()).filter(Boolean)
-            : null,
+          p_target_role: normalizeNotificationRoles(payload?.target_role)?.[0] || null,
+          p_target_roles: normalizeNotificationRoles(payload?.target_role, payload?.target_roles) || null,
           p_dedupe_key: String(payload?.dedupe_key || '').trim() || null
         });
         if (error) {
@@ -2291,12 +2328,38 @@
     }
     async function createNotificationAndPush(payload = {}, context = '') {
       const insertedRows = await createNotificationHubEvent(payload, context);
+      console.info('[notifications:pwa] hub insert result', {
+        context,
+        created: insertedRows.length,
+        resource: String(payload?.resource || 'notifications').trim().toLowerCase(),
+        action: String(payload?.action || payload?.event_type || 'general').trim().toLowerCase(),
+        record_id: String(payload?.record_id || '').trim() || null,
+        target_user_id: String(payload?.target_user_id || '').trim() || null,
+        target_roles: normalizeNotificationRoles(payload?.target_role, payload?.target_roles)
+      });
       const notificationId = String(insertedRows?.[0]?.notification_id || '').trim();
-      if (!insertedRows.length) return { created: 0, push: { attempted: false, reason: 'no-insert' } };
-      const pushResult = await sendPwaPushForNotification({
-        ...payload,
-        notification_id: notificationId
-      }, context);
+      const shouldAttemptPush =
+        Boolean(String(payload?.target_user_id || '').trim()) ||
+        normalizeNotificationRoles(payload?.target_role, payload?.target_roles).length > 0;
+      let pushResult = { attempted: false, reason: 'no-target' };
+      if (shouldAttemptPush) {
+        pushResult = await sendPwaPushForNotification({
+          ...payload,
+          notification_id: notificationId || undefined,
+          target_role: normalizeNotificationRoles(payload?.target_role)?.[0] || payload?.target_role,
+          target_roles: normalizeNotificationRoles(payload?.target_role, payload?.target_roles)
+        }, context);
+      } else {
+        console.warn('[notifications:pwa] push skipped', {
+          context,
+          resource: String(payload?.resource || 'notifications').trim().toLowerCase(),
+          action: String(payload?.action || payload?.event_type || 'general').trim().toLowerCase(),
+          record_id: String(payload?.record_id || '').trim() || null,
+          target_user_id: String(payload?.target_user_id || '').trim() || null,
+          target_roles: normalizeNotificationRoles(payload?.target_role, payload?.target_roles),
+          reason: 'no-target'
+        });
+      }
       const ids = insertedRows
         .map(row => String(row?.notification_id || '').trim())
         .filter(Boolean);
@@ -2304,9 +2367,20 @@
         void client.rpc('update_notification_push_status', {
           p_notification_ids: ids,
           p_status: pushResult?.sent ? 'sent' : 'failed',
-          p_error: pushResult?.sent ? null : String(pushResult?.error || '').trim() || null
+          p_error: pushResult?.sent ? null : String(pushResult?.error || pushResult?.reason || '').trim() || null
         }).catch(error => {
           console.warn('[notifications:pwa] unable to persist push status', { context, error });
+        });
+      }
+      if (!insertedRows.length) {
+        console.warn('[notifications:pwa] hub insert returned no rows but push was still attempted when possible', {
+          context,
+          resource: String(payload?.resource || 'notifications').trim().toLowerCase(),
+          action: String(payload?.action || payload?.event_type || 'general').trim().toLowerCase(),
+          record_id: String(payload?.record_id || '').trim() || null,
+          target_user_id: String(payload?.target_user_id || '').trim() || null,
+          target_roles: normalizeNotificationRoles(payload?.target_role, payload?.target_roles),
+          pushResult
         });
       }
       return { created: insertedRows.length, push: pushResult, notification_id: notificationId || null };
