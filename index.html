@@ -528,6 +528,8 @@
             <button id="pushRefreshSubscriptionBtn" class="btn ghost sm" type="button">Refresh subscription</button>
             <button id="pushLocalTestBtn" class="btn ghost sm" type="button">Test local notification</button>
             <button id="pushServerTestBtn" class="btn ghost sm" type="button">Test server push</button>
+            <button id="pushReadDiagnosticsBtn" class="btn ghost sm" type="button">Read service worker diagnostics</button>
+            <button id="pushForceSwUpdateBtn" class="btn ghost sm" type="button">Force service worker update</button>
           </div>
           <div id="pushServerTestResult" class="muted" style="margin-top:8px;font-size:12px;">Server push test: not run yet.</div>
           <div id="pushDiagnosticsPanel" class="muted" style="display:none;margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:10px;background:rgba(127,127,127,0.06);font-size:12px;line-height:1.5;">
@@ -540,15 +542,13 @@
               <li><strong>Android:</strong> Open Chrome site settings and allow notifications.</li>
               <li><strong>Android:</strong> Android Settings → Apps → Chrome or InCheck360 MonitorCore → Notifications → Allow.</li>
               <li><strong>Android:</strong> Turn off Do Not Disturb / Focus mode.</li>
-              <li><strong>Android:</strong> Battery saver may delay background notifications.</li>
-              <li><strong>Android:</strong> Notification sound/volume is controlled by Android/browser.</li>
-              <li><strong>Android:</strong> If the installed PWA is stale after updates, remove and reinstall it.</li>
+              <li><strong>Android:</strong> Turn off Battery Saver for testing.</li>
+              <li><strong>Android:</strong> Allow background data for Chrome/InCheck360 app.</li>
               <li><strong>iPhone:</strong> iOS 16.4+ required.</li>
               <li><strong>iPhone:</strong> Install app from Safari using Add to Home Screen.</li>
               <li><strong>iPhone:</strong> Open app from Home Screen icon, not Safari tab.</li>
-              <li><strong>iPhone:</strong> Enable notifications from inside installed PWA.</li>
               <li><strong>iPhone:</strong> iOS Settings → Notifications → InCheck360 MonitorCore → Allow Notifications.</li>
-              <li><strong>iPhone:</strong> Sound is controlled by iOS and cannot be forced by web push.</li>
+              <li><strong>iPhone:</strong> Push will not work from a normal Safari tab like installed PWA push.</li>
             </ul>
           </div>
         </div>
