@@ -235,6 +235,179 @@ function registerServiceWorkerSafely() {
   });
 }
 
+let deferredInstallPrompt = null;
+let pwaInstallBannerEl = null;
+let pwaInstallDelayTimer = null;
+
+const PWA_INSTALL_STORAGE_KEYS = {
+  snoozedUntil: 'incheck360_pwa_install_snoozed_until',
+  installed: 'incheck360_pwa_installed'
+};
+
+function getPwaInstallDebugEnabled() {
+  const host = String(window.location.hostname || '').toLowerCase();
+  return Boolean(
+    window.RUNTIME_CONFIG?.DEBUG ||
+      window.RUNTIME_CONFIG?.DEBUG_PUSH ||
+      host === 'localhost' ||
+      host === '127.0.0.1'
+  );
+}
+
+function isAndroidChromeFamily() {
+  const ua = String(navigator.userAgent || '').toLowerCase();
+  if (!ua.includes('android')) return false;
+  if (ua.includes('firefox') || ua.includes('fxios')) return false;
+  return ua.includes('chrome') || ua.includes('chromium');
+}
+
+function isIosDevice() {
+  const ua = String(navigator.userAgent || '').toLowerCase();
+  return /iphone|ipad|ipod/.test(ua);
+}
+
+function isPwaAlreadyInstalled() {
+  const inStandaloneDisplayMode = window.matchMedia?.('(display-mode: standalone)')?.matches === true;
+  const iosStandalone = window.navigator?.standalone === true;
+  const installedFlag = localStorage.getItem(PWA_INSTALL_STORAGE_KEYS.installed) === 'true';
+  return inStandaloneDisplayMode || iosStandalone || installedFlag;
+}
+
+function isInstallBannerSnoozed() {
+  const untilRaw = localStorage.getItem(PWA_INSTALL_STORAGE_KEYS.snoozedUntil);
+  const until = Number(untilRaw || 0);
+  return Number.isFinite(until) && until > Date.now();
+}
+
+function hideInstallAppBanner() {
+  if (!pwaInstallBannerEl) return;
+  pwaInstallBannerEl.classList.remove('show');
+  pwaInstallBannerEl.setAttribute('aria-hidden', 'true');
+}
+
+function showInstallAppBanner() {
+  if (!pwaInstallBannerEl) return;
+  if (!deferredInstallPrompt) return;
+  if (!isAndroidChromeFamily()) return;
+  if (isPwaAlreadyInstalled()) return;
+  if (isInstallBannerSnoozed()) return;
+
+  pwaInstallBannerEl.classList.add('show');
+  pwaInstallBannerEl.setAttribute('aria-hidden', 'false');
+}
+
+function snoozeInstallBannerForDays(days = 7) {
+  const daysToUse = Number(days);
+  const safeDays = Number.isFinite(daysToUse) && daysToUse > 0 ? daysToUse : 7;
+  const snoozedUntil = Date.now() + safeDays * 24 * 60 * 60 * 1000;
+  localStorage.setItem(PWA_INSTALL_STORAGE_KEYS.snoozedUntil, String(snoozedUntil));
+}
+
+function maybeScheduleInstallBanner() {
+  if (!deferredInstallPrompt) return;
+  if (!isAndroidChromeFamily()) return;
+  if (isPwaAlreadyInstalled()) return;
+  if (isInstallBannerSnoozed()) return;
+
+  window.clearTimeout(pwaInstallDelayTimer);
+  const isOnLogin = document.body.classList.contains('auth-locked');
+  const delayMs = isOnLogin ? 2600 : 350;
+  pwaInstallDelayTimer = window.setTimeout(() => {
+    showInstallAppBanner();
+  }, delayMs);
+}
+
+function wirePwaInstallBanner() {
+  if (!document.body) return;
+
+  if (!isAndroidChromeFamily()) {
+    if (isIosDevice()) {
+      // iOS Safari does not support beforeinstallprompt. Keep the UX non-intrusive.
+      console.info('[pwa] iOS device detected; skipping install prompt banner.');
+    }
+    return;
+  }
+
+  const banner = document.createElement('section');
+  banner.id = 'pwaInstallBanner';
+  banner.className = 'pwa-install-banner';
+  banner.setAttribute('role', 'dialog');
+  banner.setAttribute('aria-label', 'Install InCheck360 MonitorCore');
+  banner.setAttribute('aria-live', 'polite');
+  banner.setAttribute('aria-hidden', 'true');
+  banner.innerHTML = `
+    <div class="pwa-install-banner__surface">
+      <img src="/icons/icon-192.png" alt="" width="40" height="40" class="pwa-install-banner__icon" />
+      <div class="pwa-install-banner__content">
+        <h3 class="pwa-install-banner__title">Install InCheck360 MonitorCore</h3>
+        <p class="pwa-install-banner__body">Install the app on your device for faster access, full-screen mode, and better notification support.</p>
+      </div>
+      <div class="pwa-install-banner__actions">
+        <button type="button" id="pwaInstallBtn" class="btn primary">Install App</button>
+        <button type="button" id="pwaInstallNotNowBtn" class="btn ghost">Not now</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(banner);
+  pwaInstallBannerEl = banner;
+
+  const installBtn = banner.querySelector('#pwaInstallBtn');
+  const notNowBtn = banner.querySelector('#pwaInstallNotNowBtn');
+
+  installBtn?.addEventListener('click', async () => {
+    if (!deferredInstallPrompt) {
+      hideInstallAppBanner();
+      return;
+    }
+    try {
+      deferredInstallPrompt.prompt();
+      const choiceResult = await deferredInstallPrompt.userChoice;
+      if (choiceResult?.outcome === 'accepted') {
+        localStorage.setItem(PWA_INSTALL_STORAGE_KEYS.installed, 'true');
+      } else {
+        snoozeInstallBannerForDays(7);
+      }
+    } catch (error) {
+      console.warn('[pwa] Install prompt flow failed', error);
+    } finally {
+      hideInstallAppBanner();
+      deferredInstallPrompt = null;
+    }
+  });
+
+  notNowBtn?.addEventListener('click', () => {
+    snoozeInstallBannerForDays(7);
+    hideInstallAppBanner();
+  });
+
+  window.addEventListener('keydown', event => {
+    if (event.key !== 'Escape') return;
+    if (!pwaInstallBannerEl || !pwaInstallBannerEl.classList.contains('show')) return;
+    hideInstallAppBanner();
+  });
+
+  window.addEventListener('beforeinstallprompt', event => {
+    event.preventDefault();
+    deferredInstallPrompt = event;
+    maybeScheduleInstallBanner();
+  });
+
+  window.addEventListener('appinstalled', () => {
+    hideInstallAppBanner();
+    localStorage.setItem(PWA_INSTALL_STORAGE_KEYS.installed, 'true');
+    deferredInstallPrompt = null;
+  });
+
+  if (getPwaInstallDebugEnabled()) {
+    window.InCheck360PWAInstallDebug = {
+      resetInstallPromptSnooze() {
+        localStorage.removeItem(PWA_INSTALL_STORAGE_KEYS.snoozedUntil);
+        localStorage.removeItem(PWA_INSTALL_STORAGE_KEYS.installed);
+      }
+    };
+  }
+}
+
 async function ensureTicketsForEventPicker() {
   if ((DataStore.rows || []).length) return DataStore.rows;
   const filtersPayload = hasActiveTicketFilters() ? buildTicketListFiltersPayload() : {};
@@ -6737,6 +6910,7 @@ async function mountResetPasswordView() {
 document.addEventListener('DOMContentLoaded', async () => {
   cacheEls();
   registerServiceWorkerSafely();
+  wirePwaInstallBanner();
   const mountedRecoveryRoute = await mountResetPasswordView();
   if (mountedRecoveryRoute) return;
   logApiStartupDiagnostics();
