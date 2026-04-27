@@ -1,11 +1,14 @@
-const STATIC_CACHE_NAME = 'incheck360-monitorcore-static-v1';
+const STATIC_CACHE_NAME = 'incheck360-monitorcore-static-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/offline.html',
   '/manifest.webmanifest',
-  '/icons/icon.svg',
-  '/icons/maskable-icon.svg'
+  '/icons/icon-192.png',
+  '/icons/icon-512.png',
+  '/icons/maskable-icon-512.png',
+  '/icons/apple-touch-icon.png',
+  '/favicon.ico'
 ];
 
 self.addEventListener('install', event => {
