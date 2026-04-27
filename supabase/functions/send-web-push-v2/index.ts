@@ -187,6 +187,7 @@ Deno.serve(async req => {
     webPush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
     let subscriptions: Array<{ endpoint: string; keys: { p256dh: string; auth: string } }> = [];
+    let roleProfileIds: string[] = [];
 
     if (normalizeString(bodySubscription?.endpoint)) {
       subscriptions = [
@@ -266,18 +267,18 @@ Deno.serve(async req => {
         authUserId: auth.userId
       });
 
-      const roleProfileIds: string[] = [];
+      roleProfileIds = [];
       if (targetRoles.length > 0) {
         const { data: profileRows, error: profileError } = await adminClient
           .from('profiles')
           .select('id, role_key')
-          .in('role_key', targetRoles)
           .eq('is_active', true)
-          .limit(200);
+          .limit(1000);
         if (profileError) throw new Error(profileError.message || 'Unable to load role profiles.');
         (profileRows || []).forEach(row => {
+          const roleKey = normalizeString(row.role_key).toLowerCase();
           const id = normalizeString(row.id);
-          if (id && !roleProfileIds.includes(id)) roleProfileIds.push(id);
+          if (id && targetRoles.includes(roleKey) && !roleProfileIds.includes(id)) roleProfileIds.push(id);
         });
       }
 
@@ -322,11 +323,12 @@ Deno.serve(async req => {
           .from('push_subscriptions')
           .select('id, user_id, role, endpoint, p256dh, auth')
           .eq('is_active', true)
-          .in('role', targetRoles)
-          .limit(200);
+          .limit(1000);
         if (roleError) throw new Error(roleError.message || 'Unable to load role push subscriptions.');
         (roleRows || []).forEach(row => {
           const id = normalizeString(row.id);
+          const role = normalizeString(row.role).toLowerCase();
+          if (!targetRoles.includes(role)) return;
           if (!id || seenSubscriptionIds.has(id)) return;
           seenSubscriptionIds.add(id);
           fetchedRows.push(row as Record<string, unknown>);
@@ -352,6 +354,15 @@ Deno.serve(async req => {
           sent: 0,
           failed: 0,
           error: 'No active push subscriptions found',
+          debug: {
+            targetUserIds,
+            targetRoles,
+            targetSubscriptionIds,
+            roleProfileIds,
+            resource,
+            isPrivileged: auth.isPrivileged,
+            authUserId: auth.userId
+          },
           payload
         }),
         { status: 404, headers: CORS_HEADERS }
