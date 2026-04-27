@@ -1,5 +1,8 @@
 (function initPushNotifications(global) {
   const WEB_PUSH_FUNCTION_NAME = 'send-web-push-v2';
+  const IN_APP_SOUND_STORAGE_KEY = 'incheck360_in_app_notification_sound_enabled';
+  const FOREGROUND_PUSH_BANNER_DEDUPE_WINDOW_MS = 15000;
+  const FOREGROUND_PUSH_BANNER_AUTO_DISMISS_MS = 10000;
   function getPushVapidPublicKey() {
     return String(
       global.RUNTIME_CONFIG?.PUSH_VAPID_PUBLIC_KEY ||
@@ -26,7 +29,12 @@
       lastPushPayload: null,
       latestServerTestResult: null,
       pwaInstallCheck: null,
-      activeDeviceRows: []
+      activeDeviceRows: [],
+      foregroundBannerTimers: new Map(),
+      foregroundBannerDedup: new Map(),
+      inAppSoundEnabled: false,
+      inAppSoundUnlocked: false,
+      inAppSoundAudio: null
     },
 
     els: {
@@ -34,6 +42,7 @@
       statusText: null,
       iosHint: null,
       refreshSubscriptionBtn: null,
+      inAppSoundToggleBtn: null,
       localTestBtn: null,
       serverTestBtn: null,
       serverTestResult: null,
@@ -171,6 +180,7 @@
       this.els.statusText = document.getElementById('pushStatusText');
       this.els.iosHint = document.getElementById('pushIosHint');
       this.els.refreshSubscriptionBtn = document.getElementById('pushRefreshSubscriptionBtn');
+      this.els.inAppSoundToggleBtn = document.getElementById('pushInAppSoundToggleBtn');
       this.els.localTestBtn = document.getElementById('pushLocalTestBtn');
       this.els.serverTestBtn = document.getElementById('pushServerTestBtn');
       this.els.serverTestResult = document.getElementById('pushServerTestResult');
@@ -199,6 +209,7 @@
       if (!this.els.toggleBtn) return;
       this.els.toggleBtn.disabled = this.state.busy || !this.state.supported;
       if (this.els.refreshSubscriptionBtn) this.els.refreshSubscriptionBtn.disabled = this.state.busy || !this.state.supported;
+      if (this.els.inAppSoundToggleBtn) this.els.inAppSoundToggleBtn.disabled = this.state.busy;
       if (this.els.localTestBtn) this.els.localTestBtn.disabled = this.state.busy || !this.state.supported;
       if (this.els.serverTestBtn) this.els.serverTestBtn.disabled = this.state.busy || !this.state.supported;
       if (this.els.readDiagnosticsBtn) this.els.readDiagnosticsBtn.disabled = this.state.busy || !this.state.supported;
@@ -673,8 +684,9 @@
         await this.upsertSubscription(newSubscription, { isActive: true });
         this.setStoredVapidPublicKey(vapidPublicKey);
         this.state.enabled = true;
-        this.setMessage('Push subscription refreshed successfully.');
+        this.setMessage('Push subscription refreshed successfully. Running server push test…');
         await this.renderDiagnostics({ source: 'refreshPushSubscription' });
+        await this.testServerPush();
       } catch (error) {
         this.setMessage(`Unable to refresh subscription: ${String(error?.message || 'Unknown error')}`);
       } finally {
@@ -1100,59 +1112,167 @@
 
 
     ensureForegroundBannerContainer() {
-      let container = document.getElementById('pushForegroundBanner');
+      let container = document.getElementById('pushForegroundBannerStack');
       if (container) return container;
       container = document.createElement('div');
-      container.id = 'pushForegroundBanner';
-      container.style.cssText = [
-        'position:fixed',
-        'right:12px',
-        'bottom:12px',
-        'z-index:3000',
-        'max-width:min(92vw,360px)',
-        'padding:12px',
-        'border-radius:12px',
-        'border:1px solid var(--line)',
-        'background:var(--card)',
-        'box-shadow:0 6px 20px rgba(0,0,0,0.25)',
-        'display:none'
-      ].join(';');
+      container.id = 'pushForegroundBannerStack';
+      container.className = 'push-foreground-banner-stack';
       document.body.appendChild(container);
       return container;
     },
 
-    showForegroundBanner({ title = 'Notification', body = '', url = '/' } = {}) {
+    getForegroundPushDedupKey(payload = {}) {
+      const data = payload?.data && typeof payload.data === 'object' ? payload.data : {};
+      return String(
+        payload?.tag ||
+        data?.tag ||
+        data?.id ||
+        data?.notification_id ||
+        payload?.id ||
+        `${payload?.title || ''}|${payload?.body || ''}|${payload?.url || data?.url || ''}`
+      ).trim();
+    },
+
+    isDuplicateForegroundPush(payload = {}) {
+      const key = this.getForegroundPushDedupKey(payload);
+      if (!key) return false;
+      const now = Date.now();
+      const lastSeenAt = Number(this.state.foregroundBannerDedup.get(key) || 0);
+      this.state.foregroundBannerDedup.set(key, now);
+      for (const [entryKey, ts] of this.state.foregroundBannerDedup.entries()) {
+        if (now - Number(ts || 0) > FOREGROUND_PUSH_BANNER_DEDUPE_WINDOW_MS) {
+          this.state.foregroundBannerDedup.delete(entryKey);
+        }
+      }
+      return now - lastSeenAt < FOREGROUND_PUSH_BANNER_DEDUPE_WINDOW_MS;
+    },
+
+    removeForegroundBanner(bannerId = '') {
+      const normalizedId = String(bannerId || '').trim();
+      if (!normalizedId) return;
+      const timer = this.state.foregroundBannerTimers.get(normalizedId);
+      if (timer) {
+        clearTimeout(timer);
+        this.state.foregroundBannerTimers.delete(normalizedId);
+      }
+      const banner = document.getElementById(normalizedId);
+      if (banner?.parentNode) banner.parentNode.removeChild(banner);
+    },
+
+    readInAppSoundPreference() {
+      try {
+        return global.localStorage?.getItem(IN_APP_SOUND_STORAGE_KEY) === 'true';
+      } catch (_) {
+        return false;
+      }
+    },
+
+    setInAppSoundPreference(enabled) {
+      this.state.inAppSoundEnabled = Boolean(enabled);
+      try {
+        global.localStorage?.setItem(IN_APP_SOUND_STORAGE_KEY, this.state.inAppSoundEnabled ? 'true' : 'false');
+      } catch (_) {
+        // Ignore storage errors.
+      }
+      if (this.els.inAppSoundToggleBtn) {
+        this.els.inAppSoundToggleBtn.textContent = this.state.inAppSoundEnabled
+          ? 'Disable in-app notification sound'
+          : 'Enable in-app notification sound';
+        this.els.inAppSoundToggleBtn.setAttribute('aria-pressed', this.state.inAppSoundEnabled ? 'true' : 'false');
+      }
+    },
+
+    async unlockInAppSound() {
+      if (this.state.inAppSoundUnlocked) return true;
+      try {
+        if (!this.state.inAppSoundAudio) {
+          this.state.inAppSoundAudio = new Audio('/assets/notification.mp3');
+          this.state.inAppSoundAudio.preload = 'auto';
+          this.state.inAppSoundAudio.volume = 0.75;
+        }
+        const maybePromise = this.state.inAppSoundAudio.play();
+        if (maybePromise && typeof maybePromise.then === 'function') {
+          await maybePromise;
+        }
+        this.state.inAppSoundAudio.pause();
+        this.state.inAppSoundAudio.currentTime = 0;
+        this.state.inAppSoundUnlocked = true;
+      } catch (_) {
+        this.state.inAppSoundUnlocked = false;
+      }
+      return this.state.inAppSoundUnlocked;
+    },
+
+    playInAppSoundIfEnabled() {
+      if (!this.state.inAppSoundEnabled || !this.state.inAppSoundUnlocked) return;
+      try {
+        if (!this.state.inAppSoundAudio) {
+          this.state.inAppSoundAudio = new Audio('/assets/notification.mp3');
+          this.state.inAppSoundAudio.preload = 'auto';
+          this.state.inAppSoundAudio.volume = 0.75;
+        }
+        this.state.inAppSoundAudio.currentTime = 0;
+        const maybePromise = this.state.inAppSoundAudio.play();
+        if (maybePromise && typeof maybePromise.catch === 'function') maybePromise.catch(() => {});
+      } catch (_) {
+        // Ignore audio playback errors.
+      }
+    },
+
+    async openPushTarget(payload = {}) {
+      const data = payload?.data && typeof payload.data === 'object' ? payload.data : {};
+      const url = payload?.url || data?.url || '';
+      const ticketId = String(data.ticket_id || data.ticketId || payload.ticket_id || '').trim();
+      const approvalId = String(data.approval_id || data.workflow_approval_id || payload.approval_id || '').trim();
+      const onboardingId = String(data.onboarding_id || data.operations_onboarding_id || payload.onboarding_id || '').trim();
+
+      if (ticketId && global.Notifications?.routeToResourceTarget) {
+        await global.Notifications.routeToResourceTarget('issues', ticketId, { meta: data, resource_id: ticketId });
+        return;
+      }
+      if (approvalId && global.Notifications?.routeToResourceTarget) {
+        await global.Notifications.routeToResourceTarget('workflow', approvalId, { meta: data, resource_id: approvalId });
+        return;
+      }
+      if (onboardingId && global.Notifications?.routeToResourceTarget) {
+        await global.Notifications.routeToResourceTarget('operations_onboarding', onboardingId, { meta: data, resource_id: onboardingId });
+        return;
+      }
+      if (url) {
+        global.location.assign(new URL(String(url), global.location.origin).toString());
+        return;
+      }
+      if (typeof global.setActiveView === 'function') global.setActiveView('notifications');
+    },
+
+    showForegroundPushBanner(payload = {}) {
+      if (this.isDuplicateForegroundPush(payload)) return;
       const container = this.ensureForegroundBannerContainer();
-      const absoluteUrl = new URL(String(url || '/'), global.location.origin).toString();
-      container.innerHTML = `
-        <div style="font-weight:700;margin-bottom:4px;">${this.escapeHtml(title || 'Notification')}</div>
-        <div style="font-size:13px;color:var(--muted);margin-bottom:10px;">${this.escapeHtml(body || '')}</div>
-        <div style="display:flex;gap:8px;justify-content:flex-end;">
-          <button id="pushBannerDismissBtn" class="btn ghost sm" type="button">Dismiss</button>
-          <button id="pushBannerOpenBtn" class="btn sm" type="button">Open</button>
+      const title = String(payload?.title || 'InCheck360 MonitorCore').trim() || 'InCheck360 MonitorCore';
+      const body = String(payload?.body || 'You have a new notification.').trim();
+      const bannerId = `pushBanner-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const banner = document.createElement('article');
+      banner.id = bannerId;
+      banner.className = 'push-foreground-banner';
+      banner.innerHTML = `
+        <div class="push-foreground-banner__title">${this.escapeHtml(title)}</div>
+        <div class="push-foreground-banner__body">${this.escapeHtml(body)}</div>
+        <div class="push-foreground-banner__actions">
+          <button class="btn ghost sm" type="button" data-banner-dismiss="${this.escapeHtml(bannerId)}">Dismiss</button>
+          <button class="btn sm" type="button" data-banner-open="${this.escapeHtml(bannerId)}">Open</button>
         </div>
       `;
-      container.style.display = 'block';
-
-      const dismissBtn = document.getElementById('pushBannerDismissBtn');
-      const openBtn = document.getElementById('pushBannerOpenBtn');
-
-      if (dismissBtn) {
-        dismissBtn.onclick = () => {
-          container.style.display = 'none';
-        };
-      }
-
-      if (openBtn) {
-        openBtn.onclick = () => {
-          container.style.display = 'none';
-          global.location.assign(absoluteUrl);
-        };
-      }
-
-      global.setTimeout(() => {
-        if (container) container.style.display = 'none';
-      }, 9000);
+      container.prepend(banner);
+      const dismissBtn = banner.querySelector(`[data-banner-dismiss="${bannerId}"]`);
+      const openBtn = banner.querySelector(`[data-banner-open="${bannerId}"]`);
+      dismissBtn?.addEventListener('click', () => this.removeForegroundBanner(bannerId));
+      openBtn?.addEventListener('click', async () => {
+        this.removeForegroundBanner(bannerId);
+        await this.openPushTarget(payload);
+      });
+      const timer = global.setTimeout(() => this.removeForegroundBanner(bannerId), FOREGROUND_PUSH_BANNER_AUTO_DISMISS_MS);
+      this.state.foregroundBannerTimers.set(bannerId, timer);
+      this.playInAppSoundIfEnabled();
     },
 
     async logDiagnostics({ source = 'unknown', registration = null, subscription = null } = {}) {
@@ -1226,7 +1346,19 @@
 
       this.debugLog('foreground push message received', { title, url });
       this.state.lastPushReceivedAt = String(payload.timestamp || '').trim() || this.state.lastPushReceivedAt || new Date().toISOString();
-      this.showForegroundBanner({ title, body, url });
+      this.showForegroundPushBanner({ ...payload, title, body, url });
+      if (global.Notifications?.upsertForegroundPushPayload) {
+        global.Notifications.upsertForegroundPushPayload({ ...payload, title, body, url });
+      }
+      if (global.Notifications?.refreshUnreadCount) {
+        global.Notifications.refreshUnreadCount();
+      }
+      if (global.Notifications?.fetchPreview) {
+        global.Notifications.fetchPreview(true);
+      }
+      if (global.Notifications?.loadHub && document.getElementById('notificationsView')?.classList.contains('active')) {
+        global.Notifications.loadHub(true);
+      }
       this.renderDiagnostics({ source: 'serviceWorkerMessage' });
     },
 
@@ -1285,6 +1417,20 @@
         const serverResultText = latestServerResult
           ? `attempted=${Number(latestServerResult?.attempted || 0)}, sent=${Number(latestServerResult?.sent || 0)}, failed=${Number(latestServerResult?.failed || 0)}`
           : 'not run yet';
+        const attempted = Number(latestServerResult?.attempted || 0);
+        const sent = Number(latestServerResult?.sent || 0);
+        const failed = Number(latestServerResult?.failed || 0);
+        const pushReceived = Boolean(this.state.lastPushReceivedAt);
+        const showNotificationLogged = Boolean(this.state.lastShowNotificationAt);
+        const showNotificationErrored = Boolean(this.state.lastShowNotificationError);
+        let interpretation = '';
+        if (sent >= 1 && pushReceived && showNotificationLogged && !showNotificationErrored) {
+          interpretation = 'Push was received and displayed by the service worker. If no system banner appeared, the OS/browser suppressed the visible banner. Use in-app banner/sound or check OS notification channel.';
+        } else if (sent >= 1 && !pushReceived) {
+          interpretation = 'Push was accepted by push provider but this device did not receive it. Refresh subscription or reinstall PWA.';
+        } else if (attempted >= 1 && failed >= 1) {
+          interpretation = 'Push provider rejected this subscription. Refresh subscription.';
+        }
         const lines = [
           `Source: ${source}`,
           `Notification.permission: ${global.Notification?.permission || 'default'}`,
@@ -1310,8 +1456,10 @@
           (!controller && registration?.active)
             ? 'Warning: Your service worker is active, but this page is not currently controlled by it. Close all app tabs/windows and reopen the installed PWA, or click Force service worker update.'
             : '',
-          'If server push returns sent=1 but lastPushReceivedAt stays empty after reopening mobile, the mobile OS/browser did not deliver the background push to the service worker. Reinstall the PWA and check OS notification settings.',
-          'iOS push note: requires iOS 16.4+ and launching from installed Home Screen app.'
+          interpretation,
+          'Background system banners and sounds are controlled by Android/iOS/browser settings. InCheck360 sends the push and the service worker displays the notification, but the OS may still suppress banners or sounds due to notification channel, focus mode, battery rules, or PWA/browser limitations. In-app banners and sound work while the app is open.',
+          'Android note: install from Chrome, open from app icon, use Alerting notification channel, and disable battery optimization for reliable background delivery.',
+          'iOS note: requires iOS 16.4+ and launching from installed Home Screen app.'
         ].filter(Boolean);
         this.els.diagnosticsText.textContent = lines.join('\n');
         await this.listActiveDeviceSubscriptions();
@@ -1325,6 +1473,7 @@
       this.state.initialized = true;
       this.getElements();
       this.state.supported = this.isSupported();
+      this.setInAppSoundPreference(this.readInAppSoundPreference());
       this.renderIosHint();
       this.wireMessageListener();
 
@@ -1344,6 +1493,7 @@
 
       this.els.toggleBtn.disabled = false;
       this.renderButtonLabel();
+      this.setInAppSoundPreference(this.state.inAppSoundEnabled);
       await this.onAuthStateChanged();
       await this.runPwaInstallCheck({ source: 'init' });
       await this.readServiceWorkerDiagnostics();
@@ -1361,6 +1511,12 @@
       });
       this.els.refreshSubscriptionBtn?.addEventListener('click', () => {
         this.refreshPushSubscription();
+      });
+      this.els.inAppSoundToggleBtn?.addEventListener('click', async () => {
+        if (!this.state.inAppSoundEnabled) {
+          await this.unlockInAppSound();
+        }
+        this.setInAppSoundPreference(!this.state.inAppSoundEnabled);
       });
       this.els.localTestBtn?.addEventListener('click', () => {
         this.testLocalNotification();

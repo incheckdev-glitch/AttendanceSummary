@@ -741,6 +741,42 @@ const Notifications = {
       }, 5000);
     }
   },
+  async setAppBadgeCount(count = 0) {
+    const unread = Math.max(0, Number(count) || 0);
+    try {
+      if (!('setAppBadge' in navigator) || !('clearAppBadge' in navigator)) return;
+      if (unread > 0) await navigator.setAppBadge(unread);
+      else await navigator.clearAppBadge();
+    } catch (_) {
+      // Badge API unavailable or blocked; ignore.
+    }
+  },
+  upsertForegroundPushPayload(payload = {}) {
+    const source = payload && typeof payload === 'object' ? payload : {};
+    const meta = source?.data && typeof source.data === 'object' ? source.data : {};
+    const notificationId = String(
+      meta.notification_id || source.notification_id || source.id || `push-${Date.now()}`
+    ).trim();
+    const createdAt = String(source.timestamp || new Date().toISOString()).trim();
+    const normalized = this.normalize({
+      notification_id: notificationId,
+      recipient_user_id: String(Session.userId?.() || '').trim(),
+      title: source.title || 'InCheck360 MonitorCore',
+      message: source.body || 'You have a new notification.',
+      type: meta.type || 'push',
+      resource: meta.resource || '',
+      resource_id: meta.resource_id || meta.ticket_id || meta.approval_id || meta.onboarding_id || '',
+      link_target: source.url || meta.url || '',
+      created_at: createdAt,
+      is_read: false,
+      status: 'unread',
+      meta
+    });
+    this.upsertNotification(normalized);
+    this.renderBell();
+    this.renderPreview();
+    if (E.notificationsView?.classList.contains('active')) this.renderHub();
+  },
   handleRealtimeInsert(raw) {
     const item = this.normalize(raw);
     const id = String(item?.notification_id || '').trim();
@@ -1137,6 +1173,7 @@ const Notifications = {
     E.notificationUnreadBadge.textContent = count > 99 ? '99+' : String(count);
     E.notificationUnreadBadge.style.display = count > 0 ? 'inline-flex' : 'none';
     if (E.notificationBellBtn) E.notificationBellBtn.setAttribute('aria-label', `Notifications (${count} unread)`);
+    this.setAppBadgeCount(count);
   },
   renderPreview() {
     if (!E.notificationPreviewList || !E.notificationPreviewState) return;

@@ -525,7 +525,8 @@
             <button id="pushToggleBtn" class="btn sm" type="button">Enable push notifications</button>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
-            <button id="pushRefreshSubscriptionBtn" class="btn ghost sm" type="button">Refresh subscription</button>
+            <button id="pushRefreshSubscriptionBtn" class="btn ghost sm" type="button">Refresh Push Subscription</button>
+            <button id="pushInAppSoundToggleBtn" class="btn ghost sm" type="button" aria-pressed="false">Enable in-app notification sound</button>
             <button id="pushLocalTestBtn" class="btn ghost sm" type="button">Test local notification</button>
             <button id="pushServerTestBtn" class="btn ghost sm" type="button">Test server push</button>
             <button id="pushReadDiagnosticsBtn" class="btn ghost sm" type="button">Read service worker diagnostics</button>
@@ -541,7 +542,7 @@
             <div style="margin-top:6px;">Current device only (this browser/PWA instance):</div>
             <pre id="pushDiagnosticsText" style="margin:6px 0 0;white-space:pre-wrap;">Loading push diagnostics…</pre>
             <div id="pushDeliveryWarning" style="margin-top:8px;">
-              If server push returns sent=1 but lastPushReceivedAt stays empty after reopening mobile, the mobile OS/browser did not deliver the background push to the service worker. Reinstall the PWA and check OS notification settings.
+              Background system banners and sounds are controlled by Android/iOS/browser settings. InCheck360 sends the push and the service worker displays the notification, but the OS may still suppress banners or sounds due to notification channel, focus mode, battery rules, or PWA/browser limitations. In-app banners and sound work while the app is open.
             </div>
           </div>
           <div id="pushActiveDevicesPanel" class="muted" style="display:none;margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:10px;background:rgba(127,127,127,0.06);font-size:12px;line-height:1.5;">
@@ -575,16 +576,21 @@
             <strong>Mobile checklist</strong>
             <ul style="margin:6px 0 0 18px;padding:0;display:grid;gap:4px;">
               <li><strong>Android:</strong> Open installed PWA (not a regular browser tab).</li>
+              <li><strong>Android:</strong> For best background delivery, install from Chrome and open from the app icon.</li>
+              <li><strong>Android:</strong> Notification channel must be <em>Alerting</em>, not Silent.</li>
               <li><strong>Android:</strong> Open Chrome site settings and allow notifications.</li>
               <li><strong>Android:</strong> Android Settings → Apps → Chrome or InCheck360 MonitorCore → Notifications → Allow.</li>
               <li><strong>Android:</strong> Set battery to Unrestricted / not optimized.</li>
               <li><strong>Android:</strong> Turn off Do Not Disturb / Focus mode.</li>
               <li><strong>Android:</strong> Allow background data for Chrome/InCheck360 app.</li>
+              <li><strong>Android:</strong> In-app sound works only while the app is open and after you enable it.</li>
               <li><strong>Android:</strong> Use <em>Test this device</em> on the Android subscription row.</li>
               <li><strong>Android Chrome install steps:</strong> 1) Open the site directly in Chrome. 2) Tap ⋮. 3) Tap Save and share. 4) Tap Add to Home screen or Install app.</li>
               <li><strong>iPhone:</strong> iOS 16.4+ required.</li>
               <li><strong>iPhone:</strong> Install app from Safari using Add to Home Screen.</li>
               <li><strong>iPhone:</strong> Open app from Home Screen icon, not Safari tab.</li>
+              <li><strong>iPhone:</strong> iOS controls banner/sound behavior for background pushes.</li>
+              <li><strong>iPhone:</strong> In-app sound works only while the app is open and after you enable it.</li>
               <li><strong>iPhone:</strong> iOS Settings → Notifications → InCheck360 MonitorCore → Allow Notifications.</li>
               <li><strong>iPhone:</strong> Use <em>Test this device</em> on the iOS PWA subscription row.</li>
               <li><strong>iPhone:</strong> Push will not work from a normal Safari tab like installed PWA push.</li>
