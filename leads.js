@@ -230,8 +230,7 @@ const Leads = {
       updated_by: userId || undefined
     };
     console.log('[leads] create payload', payload);
-    const { data, error } = await this.getClient().from('leads').insert(payload).select('*').single();
-    if (error) throw this.toSupabaseError('Unable to create lead', error);
+    const data = await Api.requestWithSession('leads', 'create', payload, { requireAuth: true });
     console.log('[leads] saved row', data);
     return data;
   },
@@ -242,8 +241,10 @@ const Leads = {
       updated_by: userId || undefined
     };
     console.log('[leads] update payload', payload);
-    const { data, error } = await this.getClient().from('leads').update(payload).eq('id', leadId).select('*').single();
-    if (error) throw this.toSupabaseError('Unable to update lead', error);
+    const data = await Api.requestWithSession('leads', 'update', {
+      id: leadId,
+      updates: payload
+    }, { requireAuth: true });
     console.log('[leads] saved row', data);
     return data;
   },
@@ -1177,10 +1178,9 @@ const Leads = {
       console.log('[deal conversion] payload', payload);
       const savedDeal =
         existingDeal ||
-        (window.Deals?.createDeal ? await window.Deals.createDeal(payload) : await this.getClient().from('deals').insert(payload).select('*').single().then(r => {
-          if (r.error) throw this.toSupabaseError('Unable to convert lead', r.error);
-          return r.data;
-        }));
+        (window.Deals?.createDeal
+          ? await window.Deals.createDeal(payload)
+          : await Api.requestWithSession('deals', 'create', payload, { requireAuth: true }));
       console.log('[deal conversion] saved deal', savedDeal);
       if (window.Deals?.upsertLocalRow && savedDeal) window.Deals.upsertLocalRow(savedDeal);
       const normalizedSavedDeal = window.Deals?.normalizeDeal ? window.Deals.normalizeDeal(savedDeal) : savedDeal || {};
