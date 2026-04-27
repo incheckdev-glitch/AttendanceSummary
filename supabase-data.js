@@ -2409,160 +2409,9 @@
         notification_id: notificationId || null
       };
     }
-    async function notifyTicketUpdated({
-      data = {},
-      id = '',
-      safeUpdates = {},
-      previousTicketStatus = '',
-      previousInternal = null,
-      contextSuffix = ''
-    } = {}) {
-      const ticketId = String(
-        data?.ticket_id ||
-        data?.ticketId ||
-        safeUpdates?.ticket_id ||
-        safeUpdates?.ticketId ||
-        id ||
-        ''
-      ).trim();
-
-      if (!ticketId) {
-        console.warn('[notifications:pwa] ticket update skipped: missing ticket id', {
-          id,
-          data,
-          safeUpdates
-        });
-        return { attempted: false, reason: 'missing-ticket-id' };
-      }
-
-      const nextStatus = String(
-        data?.status ||
-        safeUpdates?.status ||
-        ''
-      ).trim();
-
-      const previousDevStatus = String(
-        previousInternal?.dev_team_status ||
-        previousInternal?.devTeamStatus ||
-        ''
-      ).trim();
-
-      const nextDevStatus = String(
-        data?.dev_team_status ||
-        data?.devTeamStatus ||
-        safeUpdates?.dev_team_status ||
-        safeUpdates?.devTeamStatus ||
-        ''
-      ).trim();
-
-      const previousIssueRelated = String(
-        previousInternal?.issue_related ||
-        previousInternal?.issueRelated ||
-        ''
-      ).trim();
-
-      const nextIssueRelated = String(
-        data?.issue_related ||
-        data?.issueRelated ||
-        safeUpdates?.issue_related ||
-        safeUpdates?.issueRelated ||
-        ''
-      ).trim();
-
-      const previousYoutrack = String(
-        previousInternal?.youtrack_reference ||
-        previousInternal?.youtrackReference ||
-        ''
-      ).trim();
-
-      const nextYoutrack = String(
-        data?.youtrack_reference ||
-        data?.youtrackReference ||
-        safeUpdates?.youtrack_reference ||
-        safeUpdates?.youtrackReference ||
-        ''
-      ).trim();
-
-      let action = 'ticket_updated';
-      let title = 'Ticket updated';
-      let message = `Ticket ${ticketId} was updated.`;
-      const changedFields = [];
-
-      if (
-        previousTicketStatus &&
-        nextStatus &&
-        previousTicketStatus.toLowerCase() !== nextStatus.toLowerCase()
-      ) {
-        action = 'ticket_status_changed';
-        title = 'Ticket status changed';
-        message = `Ticket ${ticketId} status changed from ${previousTicketStatus} to ${nextStatus}.`;
-        changedFields.push('status');
-      } else if (
-        previousDevStatus &&
-        nextDevStatus &&
-        previousDevStatus.toLowerCase() !== nextDevStatus.toLowerCase()
-      ) {
-        action = 'ticket_dev_team_status_changed';
-        title = 'Dev team status changed';
-        message = `Ticket ${ticketId} dev team status changed from ${previousDevStatus} to ${nextDevStatus}.`;
-        changedFields.push('dev_team_status');
-      } else if (
-        previousIssueRelated &&
-        nextIssueRelated &&
-        previousIssueRelated.toLowerCase() !== nextIssueRelated.toLowerCase()
-      ) {
-        action = 'ticket_issue_related_changed';
-        title = 'Ticket issue relation changed';
-        message = `Ticket ${ticketId} issue relation changed from ${previousIssueRelated} to ${nextIssueRelated}.`;
-        changedFields.push('issue_related');
-      } else if (previousYoutrack !== nextYoutrack) {
-        action = 'ticket_youtrack_changed';
-        title = 'Ticket YouTrack reference changed';
-        message = `Ticket ${ticketId} YouTrack reference was updated.`;
-        changedFields.push('youtrack_reference');
-      } else {
-        Object.keys(safeUpdates || {})
-          .filter(key => key !== 'id')
-          .forEach(key => changedFields.push(key));
-      }
-
-      console.info('[notifications:pwa] ticket update notification selected', {
-        ticketId,
-        action,
-        title,
-        changedFields,
-        previousTicketStatus,
-        nextStatus,
-        previousDevStatus,
-        nextDevStatus
-      });
-
-      return await createNotificationAndPush({
-        title,
-        message,
-        body: message,
-        resource: 'tickets',
-        action,
-        record_id: ticketId,
-        target_roles: ['admin', 'hoo'],
-        url: `/#tickets?ticket_id=${encodeURIComponent(ticketId)}`,
-        meta: {
-          changed_fields: changedFields
-        },
-        dedupe_key: `tickets-${action}-${ticketId}-${Date.now()}`
-      }, `tickets:update${contextSuffix}`).catch(error => {
-        console.warn('[notifications:pwa] ticket update push failed but ticket save should continue', {
-          ticketId,
-          action,
-          error
-        });
-        return {
-          attempted: true,
-          sent: false,
-          error: String(error?.message || error)
-        };
-      });
-    }
+    // Ticket-update PWA push is intentionally sent directly from app.js after
+    // Api.requestWithSession('tickets', 'update', ...) succeeds. This avoids
+    // the previous ticket-update notification runtime crash and duplicate push calls.
     async function sendWorkflowApprovalEmailNotification(eventType = '', payload = {}, context = '') {
       const normalizedEventType = String(eventType || '').trim().toLowerCase();
       if (!normalizedEventType) return null;
@@ -4337,29 +4186,11 @@
           .select('*')
           .single();
         if (internalError) throw friendlyError('Unable to save internal ticket fields', internalError);
-        await notifyTicketUpdated({
-          data,
-          id,
-          safeUpdates,
-          previousTicketStatus,
-          previousInternal,
-          contextSuffix: ':dispatch'
-        }).catch(error => {
-          console.warn('[notifications:pwa] notifyTicketUpdated failed but update will continue', error);
-        });
+        console.info('[tickets:update] saved ticket fields; direct PWA push is handled by app.js after the update response.');
         return { handled: true, data: mergeTicketInternal(data, internalData) };
       }
       if (resource === 'tickets') {
-        await notifyTicketUpdated({
-          data,
-          id,
-          safeUpdates,
-          previousTicketStatus,
-          previousInternal,
-          contextSuffix: ':dispatch'
-        }).catch(error => {
-          console.warn('[notifications:pwa] notifyTicketUpdated failed but update will continue', error);
-        });
+        console.info('[tickets:update] saved ticket fields; direct PWA push is handled by app.js after the update response.');
       }
       if (resource === 'operations_onboarding') {
         const nextStatus = String(data?.onboarding_status || '').trim();
