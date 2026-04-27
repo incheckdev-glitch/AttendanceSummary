@@ -17,7 +17,7 @@
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
 
   <link rel="manifest" href="/manifest.webmanifest" />
-  <meta name="theme-color" content="#020617" />
+  <meta name="theme-color" content="#ffffff" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="InCheck360 MonitorCore" />
@@ -529,10 +529,13 @@
             <button id="pushLocalTestBtn" class="btn ghost sm" type="button">Test local notification</button>
             <button id="pushServerTestBtn" class="btn ghost sm" type="button">Test server push</button>
             <button id="pushReadDiagnosticsBtn" class="btn ghost sm" type="button">Read service worker diagnostics</button>
+            <button id="pwaInstallCheckBtn" class="btn ghost sm" type="button">Run PWA install check</button>
             <button id="pushCopyDiagnosticsBtn" class="btn ghost sm" type="button">Copy push diagnostics</button>
             <button id="pushForceSwUpdateBtn" class="btn ghost sm" type="button">Force service worker update</button>
           </div>
           <div id="pushServerTestResult" class="muted" style="margin-top:8px;font-size:12px;">Server push test: not run yet.</div>
+          <div id="pwaInstallStatusMessage" class="muted" style="margin-top:8px;font-size:12px;"></div>
+          <div id="pwaInstallCheckResult" class="muted" style="margin-top:8px;font-size:12px;white-space:pre-wrap;">PWA install check: not run yet.</div>
           <div id="pushDiagnosticsPanel" class="muted" style="display:none;margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:10px;background:rgba(127,127,127,0.06);font-size:12px;line-height:1.5;">
             <strong>Push diagnostics (admin/dev)</strong>
             <pre id="pushDiagnosticsText" style="margin:6px 0 0;white-space:pre-wrap;">Loading push diagnostics…</pre>
@@ -548,6 +551,7 @@
               <li><strong>Android:</strong> Turn off Do Not Disturb / Focus mode.</li>
               <li><strong>Android:</strong> Turn off Battery Saver for testing.</li>
               <li><strong>Android:</strong> Allow background data for Chrome/InCheck360 app.</li>
+              <li><strong>Android Chrome install steps:</strong> 1) Open the site directly in Chrome. 2) Tap ⋮. 3) Tap Save and share. 4) Tap Add to Home screen or Install app.</li>
               <li><strong>iPhone:</strong> iOS 16.4+ required.</li>
               <li><strong>iPhone:</strong> Install app from Safari using Add to Home Screen.</li>
               <li><strong>iPhone:</strong> Open app from Home Screen icon, not Safari tab.</li>
