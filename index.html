@@ -524,12 +524,31 @@
             </div>
             <button id="pushToggleBtn" class="btn sm" type="button">Enable push notifications</button>
           </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+            <button id="pushRefreshSubscriptionBtn" class="btn ghost sm" type="button">Refresh push subscription</button>
+            <button id="pushLocalTestBtn" class="btn ghost sm" type="button">Test local notification</button>
+            <button id="pushServerTestBtn" class="btn ghost sm" type="button">Test server push</button>
+          </div>
+          <div id="pushServerTestResult" class="muted" style="margin-top:8px;font-size:12px;">Server push test: not run yet.</div>
+          <div id="pushDiagnosticsPanel" class="muted" style="display:none;margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:10px;background:rgba(127,127,127,0.06);font-size:12px;line-height:1.5;">
+            <strong>Push diagnostics (admin/dev)</strong>
+            <pre id="pushDiagnosticsText" style="margin:6px 0 0;white-space:pre-wrap;">Loading push diagnostics…</pre>
+          </div>
           <div class="muted" style="margin-top:10px;font-size:12px;line-height:1.45;">
             <strong>Mobile checklist</strong>
             <ul style="margin:6px 0 0 18px;padding:0;display:grid;gap:4px;">
-              <li><strong>Android Chrome:</strong> Allow site notifications, disable battery restrictions, verify app/site is not muted, and allow browser notifications in Android settings.</li>
-              <li><strong>iPhone:</strong> Install this PWA from Safari to Home Screen, open from Home Screen, enable notifications in-app and iOS prompts, then verify iOS Settings → Notifications → InCheck360 MonitorCore.</li>
-              <li>Web Push sound is controlled by OS/browser. Custom sounds are not guaranteed on iOS.</li>
+              <li><strong>Android:</strong> Open Chrome site settings and allow notifications.</li>
+              <li><strong>Android:</strong> Android Settings → Apps → Chrome or InCheck360 → Notifications → Allow.</li>
+              <li><strong>Android:</strong> Turn off Do Not Disturb / Focus mode.</li>
+              <li><strong>Android:</strong> Battery saver may delay background notifications.</li>
+              <li><strong>Android:</strong> Make sure notification volume is on.</li>
+              <li><strong>Android:</strong> Sound is OS/browser controlled.</li>
+              <li><strong>iPhone:</strong> iOS 16.4+ required.</li>
+              <li><strong>iPhone:</strong> Install app from Safari using Add to Home Screen.</li>
+              <li><strong>iPhone:</strong> Open app from Home Screen icon, not Safari tab.</li>
+              <li><strong>iPhone:</strong> Enable notifications from inside installed PWA.</li>
+              <li><strong>iPhone:</strong> iOS Settings → Notifications → InCheck360 MonitorCore → Allow Notifications.</li>
+              <li><strong>iPhone:</strong> Sound is controlled by iOS settings and may not be customizable by web push.</li>
             </ul>
           </div>
         </div>
