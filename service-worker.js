@@ -11,6 +11,16 @@ const STATIC_ASSETS = [
   '/favicon.ico'
 ];
 
+const DEBUG_PUSH =
+  self.location.hostname === 'localhost' ||
+  self.location.hostname === '127.0.0.1' ||
+  self.location.search.includes('debugPush=1');
+
+function pushDebugLog(...args) {
+  if (!DEBUG_PUSH) return;
+  console.log('[sw:push]', ...args);
+}
+
 self.addEventListener('install', event => {
   event.waitUntil(
     caches
@@ -104,56 +114,109 @@ self.addEventListener('fetch', event => {
   );
 });
 
-
 self.addEventListener('push', event => {
-  let payload = {};
-  try {
-    payload = event.data ? event.data.json() : {};
-  } catch (error) {
-    payload = { body: event.data ? event.data.text() : '' };
-  }
+  event.waitUntil((async () => {
+    let payload = {};
 
-  const title = payload.title || 'InCheck360 MonitorCore';
-  const options = {
-    body: payload.body || 'You have a new notification.',
-    icon: payload.icon || '/icons/icon-192.png',
-    badge: payload.badge || '/icons/icon-192.png',
-    tag: payload.tag || 'monitorcore-notification',
-    data: {
-      ...(payload.data && typeof payload.data === 'object' ? payload.data : {}),
-      url: payload.url || payload?.data?.url || '/'
+    try {
+      payload = event.data ? event.data.json() : {};
+    } catch (jsonError) {
+      try {
+        payload = {
+          title: 'InCheck360 MonitorCore',
+          body: event.data ? event.data.text() : 'You have a new notification.'
+        };
+      } catch {
+        payload = {
+          title: 'InCheck360 MonitorCore',
+          body: 'You have a new notification.'
+        };
+      }
     }
-  };
 
-  event.waitUntil(self.registration.showNotification(title, options));
+    const normalizedPayload = payload && typeof payload === 'object' ? payload : {};
+    const title = normalizedPayload.title || 'InCheck360 MonitorCore';
+    const url = normalizedPayload.url || normalizedPayload?.data?.url || '/';
+    const tag =
+      normalizedPayload.tag ||
+      normalizedPayload?.data?.tag ||
+      `incheck360-${Date.now()}`;
+
+    const options = {
+      body: normalizedPayload.body || 'You have a new notification.',
+      icon: normalizedPayload.icon || '/icons/icon-192.png',
+      badge: normalizedPayload.badge || '/icons/icon-192.png',
+      tag,
+      renotify: true,
+      requireInteraction: true,
+      silent: false,
+      vibrate: [200, 100, 200],
+      timestamp: Date.now(),
+      data: {
+        ...(normalizedPayload.data && typeof normalizedPayload.data === 'object' ? normalizedPayload.data : {}),
+        url
+      }
+    };
+
+    pushDebugLog('push received', {
+      hasEventData: Boolean(event.data),
+      permission: self.Notification?.permission || 'unknown',
+      title,
+      tag,
+      url
+    });
+
+    await self.registration.showNotification(title, options);
+    pushDebugLog('showNotification called', { title, tag });
+
+    const allClients = await self.clients.matchAll({
+      type: 'window',
+      includeUncontrolled: true
+    });
+
+    for (const client of allClients) {
+      client.postMessage({
+        type: 'INCHECK360_PUSH_RECEIVED',
+        payload: {
+          title,
+          body: options.body,
+          url,
+          data: options.data
+        }
+      });
+    }
+  })());
 });
 
 self.addEventListener('notificationclick', event => {
   event.notification.close();
-  const targetUrl = String(event.notification?.data?.url || '/').trim() || '/';
 
-  event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
-      for (const client of clientList) {
-        if ('focus' in client) {
-          const clientUrl = new URL(client.url);
-          const sameOrigin = clientUrl.origin === self.location.origin;
-          if (sameOrigin) {
-            return client.focus().then(() => {
-              if ('navigate' in client) {
-                const destination = new URL(targetUrl, self.location.origin).toString();
-                return client.navigate(destination);
-              }
-              return null;
-            });
+  const targetUrl = event.notification?.data?.url || '/';
+
+  event.waitUntil((async () => {
+    const allClients = await self.clients.matchAll({
+      type: 'window',
+      includeUncontrolled: true
+    });
+
+    const absoluteUrl = new URL(targetUrl, self.location.origin).href;
+
+    for (const client of allClients) {
+      if ('focus' in client) {
+        try {
+          await client.focus();
+          if ('navigate' in client) {
+            await client.navigate(absoluteUrl);
           }
+          return;
+        } catch {
+          // continue to openWindow fallback
         }
       }
+    }
 
-      if (self.clients.openWindow) {
-        return self.clients.openWindow(new URL(targetUrl, self.location.origin).toString());
-      }
-      return null;
-    })
-  );
+    if (self.clients.openWindow) {
+      await self.clients.openWindow(absoluteUrl);
+    }
+  })());
 });
