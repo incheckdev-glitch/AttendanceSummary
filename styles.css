@@ -451,11 +451,23 @@ body.auth-locked .login-card{
   gap:22px;
 }
 
-body.auth-locked .login-logo{
-  width:170px;
-  height:auto;
-  margin:0 auto 10px;
+body.auth-locked .login-logo,
+.login-brand-logo,
+.auth-brand-logo{
   display:block;
+  width:min(220px,70vw);
+  max-width:220px;
+  height:auto;
+  max-height:90px;
+  object-fit:contain;
+  object-position:center;
+  margin:0 auto 1rem;
+  background:transparent;
+  border:0;
+  box-shadow:none;
+}
+
+body.auth-locked .login-logo{
   filter:brightness(0) invert(1);
 }
 
