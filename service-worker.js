@@ -1,4 +1,4 @@
-const STATIC_CACHE_NAME = 'incheck360-monitorcore-static-v2';
+const STATIC_CACHE_NAME = 'incheck360-monitorcore-static-v3';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -51,7 +51,11 @@ function isBlockedRequest(requestUrl, requestMethod) {
     lowerPath.includes('/clients') ||
     lowerPath.includes('/invoices') ||
     lowerPath.includes('/receipts') ||
-    lowerPath.includes('/workflow')
+    lowerPath.includes('/workflow') ||
+    lowerPath.includes('/leads') ||
+    lowerPath.includes('/deals') ||
+    lowerPath.includes('/proposals') ||
+    lowerPath.includes('/agreements')
   ) {
     return true;
   }
@@ -96,6 +100,60 @@ self.addEventListener('fetch', event => {
           return networkResponse;
         })
         .catch(() => caches.match('/offline.html'));
+    })
+  );
+});
+
+
+self.addEventListener('push', event => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch (error) {
+    payload = { body: event.data ? event.data.text() : '' };
+  }
+
+  const title = payload.title || 'InCheck360 MonitorCore';
+  const options = {
+    body: payload.body || 'You have a new notification.',
+    icon: payload.icon || '/icons/icon-192.png',
+    badge: payload.badge || '/icons/icon-192.png',
+    tag: payload.tag || 'monitorcore-notification',
+    data: {
+      ...(payload.data && typeof payload.data === 'object' ? payload.data : {}),
+      url: payload.url || payload?.data?.url || '/'
+    }
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const targetUrl = String(event.notification?.data?.url || '/').trim() || '/';
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
+      for (const client of clientList) {
+        if ('focus' in client) {
+          const clientUrl = new URL(client.url);
+          const sameOrigin = clientUrl.origin === self.location.origin;
+          if (sameOrigin) {
+            return client.focus().then(() => {
+              if ('navigate' in client) {
+                const destination = new URL(targetUrl, self.location.origin).toString();
+                return client.navigate(destination);
+              }
+              return null;
+            });
+          }
+        }
+      }
+
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(new URL(targetUrl, self.location.origin).toString());
+      }
+      return null;
     })
   );
 });
