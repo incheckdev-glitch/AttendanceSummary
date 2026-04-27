@@ -2140,6 +2140,26 @@
         console.warn(`[workflow push] ${context} failed`, error);
       }
     }
+    async function sendWorkflowApprovalEmailNotification(eventType = '', payload = {}, context = '') {
+      const normalizedEventType = String(eventType || '').trim().toLowerCase();
+      if (!normalizedEventType) return null;
+      try {
+        const { data, error } = await client.functions.invoke('send-workflow-approval-email', {
+          body: {
+            event_type: normalizedEventType,
+            ...(payload && typeof payload === 'object' ? payload : {})
+          }
+        });
+        if (error) {
+          console.warn(`[workflow email] ${context || normalizedEventType} failed`, error);
+          return null;
+        }
+        return data ?? null;
+      } catch (error) {
+        console.warn(`[workflow email] ${context || normalizedEventType} failed`, error);
+        return null;
+      }
+    }
     async function notifyWorkflowApprovalCreated(approvalId = '') {
       const normalizedId = String(approvalId || '').trim();
       if (!normalizedId) return null;
@@ -2153,6 +2173,9 @@
         roles: approvalRole ? [approvalRole] : ['admin'],
         tag: 'workflow-approval-request',
         data: { event: 'workflow_approval_request', approval_id: normalizedId }
+      }, 'notifyWorkflowApprovalCreated');
+      void sendWorkflowApprovalEmailNotification('approval_requested', {
+        approval_id: normalizedId
       }, 'notifyWorkflowApprovalCreated');
       return result;
     }
@@ -2176,6 +2199,16 @@
           tag: 'workflow-decision',
           data: { event: 'workflow_decision', approval_id: normalizedId, decision: normalizedDecision }
         }, 'notifyWorkflowDecision');
+      }
+      if (normalizedDecision === 'approved' || normalizedDecision === 'rejected') {
+        void sendWorkflowApprovalEmailNotification(
+          normalizedDecision === 'approved' ? 'approval_approved' : 'approval_rejected',
+          {
+            approval_id: normalizedId,
+            reviewer_comment: String(reviewerComment || '').trim() || null
+          },
+          'notifyWorkflowDecision'
+        );
       }
       return result;
     }
