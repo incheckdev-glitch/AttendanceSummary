@@ -1,7 +1,7 @@
 window.RUNTIME_CONFIG = window.RUNTIME_CONFIG || {};
 const runtimeConfig = window.RUNTIME_CONFIG;
 const DEFAULT_PUSH_VAPID_PUBLIC_KEY =
-  'BE05Jupi78_afyyzpH8VVIX0LWMBPguOohOJkmufUqKm3x2m5hO-0MKnzyRLBP-MwauW4FHKoJWV74eZ5rAsAYU';
+  String(runtimeConfig.PUSH_VAPID_PUBLIC_KEY || runtimeConfig.VAPID_PUBLIC_KEY || '').trim();
 
 window.INCHECK360_PUSH_CONFIG = Object.assign(
   { vapidPublicKey: DEFAULT_PUSH_VAPID_PUBLIC_KEY },

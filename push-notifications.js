@@ -80,6 +80,33 @@
       return candidateKeys.map((value) => this.normalizeKey(value)).find(Boolean) || '';
     },
 
+
+
+    getVapidKeyStorageKey() {
+      return 'INCHECK360_PUSH_VAPID_PUBLIC_KEY_LAST_USED';
+    },
+
+    getStoredVapidPublicKey() {
+      try {
+        return this.normalizeKey(global.localStorage?.getItem(this.getVapidKeyStorageKey()) || '');
+      } catch (_) {
+        return '';
+      }
+    },
+
+    setStoredVapidPublicKey(vapidPublicKey = '') {
+      const value = this.normalizeKey(vapidPublicKey);
+      try {
+        if (!value) {
+          global.localStorage?.removeItem(this.getVapidKeyStorageKey());
+          return;
+        }
+        global.localStorage?.setItem(this.getVapidKeyStorageKey(), value);
+      } catch (_) {
+        // Ignore storage errors.
+      }
+    },
+
     getApplicationServerKey(vapidPublicKey = '') {
       const normalized = this.normalizeKey(vapidPublicKey);
       if (!normalized) return null;
@@ -362,9 +389,17 @@
       try {
         const registration = await this.getRegistration();
         const subscription = await registration.pushManager.getSubscription();
+        const vapidPublicKey = this.getVapidPublicKey();
         this.updatePermissionState();
         if (subscription) {
+          const storedVapidPublicKey = this.getStoredVapidPublicKey();
+          if (vapidPublicKey && storedVapidPublicKey !== vapidPublicKey) {
+            await this.refreshPushSubscription({ skipBusyState: true, reason: 'vapid_public_key_changed' });
+            return true;
+          }
+
           await this.upsertSubscription(subscription, { isActive: true });
+          this.setStoredVapidPublicKey(vapidPublicKey);
           await this.logDiagnostics({ source: 'syncExistingSubscription', registration, subscription });
           this.state.enabled = true;
           this.renderButtonLabel();
@@ -431,6 +466,7 @@
         }
 
         await this.upsertSubscription(subscription, { isActive: true });
+        this.setStoredVapidPublicKey(vapidPublicKey);
         await this.logDiagnostics({ source: 'enablePush', registration, subscription });
         this.state.enabled = true;
         this.setMessage('Push notifications enabled on this device.');
@@ -456,6 +492,7 @@
           await subscription.unsubscribe();
           await this.markSubscriptionInactive(endpoint);
         }
+        this.setStoredVapidPublicKey('');
         await this.logDiagnostics({ source: 'disablePush', registration, subscription: null });
         this.state.enabled = false;
         this.setMessage('Push notifications disabled on this device.');
@@ -467,7 +504,7 @@
       }
     },
 
-    async refreshPushSubscription() {
+    async refreshPushSubscription({ skipBusyState = false } = {}) {
       if (!this.state.supported) {
         this.setMessage('Push notifications are not supported on this browser/device.');
         return;
@@ -479,7 +516,7 @@
         return;
       }
 
-      this.setBusy(true);
+      if (!skipBusyState) this.setBusy(true);
       try {
         const registration = await this.getRegistration();
         const oldSubscription = await registration.pushManager.getSubscription();
@@ -507,13 +544,14 @@
           applicationServerKey
         });
         await this.upsertSubscription(newSubscription, { isActive: true });
+        this.setStoredVapidPublicKey(vapidPublicKey);
         this.state.enabled = true;
         this.setMessage('Push subscription refreshed successfully.');
         await this.renderDiagnostics({ source: 'refreshPushSubscription' });
       } catch (error) {
         this.setMessage(`Unable to refresh subscription: ${String(error?.message || 'Unknown error')}`);
       } finally {
-        this.setBusy(false);
+        if (!skipBusyState) this.setBusy(false);
       }
     },
 
