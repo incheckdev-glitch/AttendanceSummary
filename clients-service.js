@@ -20,6 +20,9 @@ const ClientsService = {
     return Number.isFinite(parsed) ? parsed : 0;
   },
   normalizeText(value) { return String(value || '').trim().toLowerCase(); },
+  isUuid(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(String(value || '').trim());
+  },
   normalizeCompanyKey(value = '') {
     return String(value || '')
       .trim()
@@ -102,6 +105,12 @@ const ClientsService = {
     const userId = this.getCurrentUserId();
     if (includeCreatedBy && userId) cleaned.created_by = userId;
     if (userId) cleaned.updated_by = userId;
+    ['source_agreement_id', 'created_by', 'updated_by'].forEach(key => {
+      if (!Object.prototype.hasOwnProperty.call(cleaned, key)) return;
+      const normalized = String(cleaned[key] || '').trim();
+      if (!normalized || !this.isUuid(normalized)) delete cleaned[key];
+      else cleaned[key] = normalized;
+    });
     return cleaned;
   },
   attachAgreementItems(agreements = [], agreementItems = []) {

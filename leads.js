@@ -286,8 +286,7 @@ const Leads = {
     );
   },
   async convertToDeal(leadId) {
-    const { data, error } = await this.getClient().rpc('convert_lead_to_deal', { p_lead_uuid: leadId });
-    if (error) throw this.toSupabaseError('Unable to convert lead', error);
+    const data = await Api.requestWithSession('leads', 'convert_to_deal', { id: leadId, lead_id: leadId }, { requireAuth: true });
     await Api.safeSendBusinessPwaPush({
       resource: 'deals',
       action: 'deal_created_from_lead',

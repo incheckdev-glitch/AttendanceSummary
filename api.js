@@ -15,6 +15,31 @@ const RESOURCE_PRIMARY_KEY = {
   csm: 'id'
 };
 const WEB_PUSH_FUNCTION_NAME = 'send-web-push-v2';
+const BACKEND_MANAGED_PWA_ACTIONS = new Set([
+  'leads:lead_created',
+  'deals:deal_created',
+  'deals:deal_created_from_lead',
+  'deals:deal_important_stage',
+  'deals:deal_stage_changed',
+  'proposals:proposal_created',
+  'proposals:proposal_created_from_deal',
+  'proposals:proposal_requires_approval',
+  'proposals:proposal_status_changed',
+  'agreements:agreement_created',
+  'agreements:agreement_created_from_proposal',
+  'agreements:agreement_signed',
+  'invoices:invoice_created',
+  'invoices:invoice_created_from_agreement',
+  'invoices:invoice_payment_updated',
+  'invoices:invoice_payment_state_changed',
+  'receipts:receipt_created',
+  'receipts:receipt_created_from_invoice',
+  'operations_onboarding:onboarding_created',
+  'operations_onboarding:onboarding_status_changed',
+  'operations_onboarding:operations_onboarding_created',
+  'technical_admin_requests:technical_request_submitted',
+  'technical_admin_requests:technical_request_status_changed'
+]);
 
 const Api = {
   getPrimaryKeyForResource(resource = '') {
@@ -273,7 +298,22 @@ const Api = {
     console.info('[business:pwa] direct PWA push result', { resource: normalizedResource, action: normalizedAction, recordId: normalizedRecordId, result });
     return result;
   },
+  shouldSkipDirectBusinessPwaPush(args = {}) {
+    const resource = String(args?.resource || '').trim().toLowerCase();
+    const action = String(args?.action || '').trim().toLowerCase();
+    if (!resource || !action) return false;
+    if (resource === 'events') return false;
+    return BACKEND_MANAGED_PWA_ACTIONS.has(`${resource}:${action}`);
+  },
   async safeSendBusinessPwaPush(args = {}) {
+    if (this.shouldSkipDirectBusinessPwaPush(args)) {
+      console.info('[business:pwa] skipped duplicate direct PWA push; backend notification already handles it', {
+        resource: args?.resource,
+        action: args?.action,
+        recordId: args?.recordId
+      });
+      return { attempted: false, skipped: true, reason: 'backend-managed-notification' };
+    }
     try { return await this.sendBusinessPwaPush(args); }
     catch (error) {
       console.warn('[business:pwa] direct PWA push failed but save will continue', { args, error });

@@ -382,6 +382,54 @@
     operations_onboarding: ['onboarding_id', 'agreement_id', 'agreement_number', 'client_name', 'request_type', 'technical_request_status', 'csm_assigned_to'],
     technical_admin_requests: ['request_id', 'technical_request_id', 'agreement_id', 'agreement_number', 'client_name', 'request_status', 'request_message', 'request_details']
   };
+  const UUID_COLUMNS_BY_TABLE = {
+    deals: new Set(['lead_id', 'source_lead_uuid', 'created_by', 'updated_by']),
+    proposals: new Set(['deal_id', 'created_by', 'updated_by']),
+    proposal_items: new Set(['proposal_id']),
+    agreements: new Set(['proposal_id', 'created_by', 'updated_by']),
+    agreement_items: new Set(['agreement_id']),
+    clients: new Set(['source_agreement_id', 'created_by', 'updated_by']),
+    invoices: new Set(['client_id', 'agreement_id', 'proposal_id', 'created_by', 'updated_by']),
+    invoice_items: new Set(['invoice_id']),
+    receipts: new Set(['invoice_id', 'client_id', 'created_by', 'updated_by']),
+    receipt_items: new Set(['receipt_id', 'invoice_item_id']),
+    operations_onboarding: new Set(['agreement_id', 'client_id', 'created_by', 'updated_by']),
+    technical_admin_requests: new Set(['agreement_id', 'onboarding_id', 'client_id', 'requested_by', 'updated_by']),
+    notifications: new Set(['recipient_user_id', 'actor_user_id'])
+  };
+
+  function isBlankText(value) {
+    return value === undefined || value === null || (typeof value === 'string' && value.trim() === '');
+  }
+
+  function shouldTreatColumnAsUuid(table = '', column = '') {
+    const normalizedTable = String(table || '').trim().toLowerCase();
+    const normalizedColumn = String(column || '').trim().toLowerCase();
+    if (!normalizedColumn) return false;
+    if (UUID_COLUMNS_BY_TABLE[normalizedTable]?.has(normalizedColumn)) return true;
+    return normalizedColumn.endsWith('_uuid') || normalizedColumn === 'uuid';
+  }
+
+  function sanitizeUuidColumnsForMutation(table = '', payload = {}) {
+    if (Array.isArray(payload)) return payload.map(row => sanitizeUuidColumnsForMutation(table, row));
+    if (!payload || typeof payload !== 'object') return payload;
+    const cleaned = { ...payload };
+    Object.entries(cleaned).forEach(([column, value]) => {
+      if (!shouldTreatColumnAsUuid(table, column)) return;
+      if (isBlankText(value)) {
+        delete cleaned[column];
+        return;
+      }
+      const normalized = String(value || '').trim();
+      if (!isUuid(normalized)) {
+        delete cleaned[column];
+        console.warn('[supabase uuid sanitizer] dropped non-UUID value before save', { table, column, value: normalized });
+        return;
+      }
+      cleaned[column] = normalized;
+    });
+    return cleaned;
+  }
 
   const devLog = (...args) => {
     try {
@@ -500,7 +548,7 @@
     maxRetries = 8
   } = {}) {
     if (typeof execute !== 'function') throw new Error('Mutation execute function is required.');
-    let workingPayload = cloneMutationPayload(payload);
+    let workingPayload = sanitizeUuidColumnsForMutation(table, cloneMutationPayload(payload));
     const removedColumns = [];
     for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
       const response = await execute(workingPayload);
@@ -1128,9 +1176,9 @@
 
     const mapped = {
       deal_id: toTextOrEmpty(['deal_id', 'dealId']),
-      lead_id: toTextOrEmpty(['lead_id', 'leadId']),
+      lead_id: normalizeNullableUuidValue(firstDefined(record, ['lead_id', 'leadId', 'lead_uuid', 'leadUuid'])),
       lead_code: toTextOrEmpty(['lead_code', 'leadCode']),
-      source_lead_uuid: toTextOrEmpty(['source_lead_uuid', 'sourceLeadUuid', 'lead_uuid', 'leadUuid']),
+      source_lead_uuid: normalizeNullableUuidValue(firstDefined(record, ['source_lead_uuid', 'sourceLeadUuid', 'lead_uuid', 'leadUuid'])),
       full_name: toTextOrEmpty(['full_name', 'fullName']),
       company_name: toTextOrEmpty(['company_name', 'companyName']),
       phone: toTextOrEmpty(['phone']),
@@ -1971,26 +2019,48 @@
   }
 
   async function resolveResourceUuid(resource, payload = {}, client) {
-    const directId = String(
-      firstDefined(payload, ['id']) ??
-      firstDefined(payload.item || {}, ['id']) ??
-      firstDefined(payload.updates || {}, ['id']) ??
-      ''
-    ).trim();
-    if (isUuid(directId)) return directId;
-    if (!['clients', 'invoices', 'receipts'].includes(resource)) return getResourceIdentifier(resource, payload, { action: 'resolve uuid' });
-    const businessId = String(
-      firstDefined(payload, [resource === 'clients' ? 'client_id' : resource === 'invoices' ? 'invoice_id' : 'receipt_id']) ??
-      firstDefined(payload.item || {}, [resource === 'clients' ? 'client_id' : resource === 'invoices' ? 'invoice_id' : 'receipt_id']) ??
-      firstDefined(payload.updates || {}, [resource === 'clients' ? 'client_id' : resource === 'invoices' ? 'invoice_id' : 'receipt_id']) ??
-      ''
-    ).trim();
-    if (!businessId) return '';
-    const businessKey = resource === 'clients' ? 'client_id' : resource === 'invoices' ? 'invoice_id' : 'receipt_id';
-    const table = TABLE_BY_RESOURCE[resource];
-    const { data, error } = await client.from(table).select('id').eq(businessKey, businessId).maybeSingle();
-    if (error) throw friendlyError(`Unable to resolve ${resource} identifier`, error);
-    return String(data?.id || '').trim();
+    const normalizedResource = String(resource || '').trim();
+    const table = TABLE_BY_RESOURCE[normalizedResource];
+    const businessKeyByResource = {
+      leads: 'lead_id',
+      deals: 'deal_id',
+      proposals: 'proposal_id',
+      agreements: 'agreement_id',
+      clients: 'client_id',
+      invoices: 'invoice_id',
+      receipts: 'receipt_id',
+      operations_onboarding: 'onboarding_id',
+      technical_admin_requests: 'request_id'
+    };
+    const businessKey = businessKeyByResource[normalizedResource] || '';
+    const singular = normalizedResource.endsWith('s') ? normalizedResource.slice(0, -1) : normalizedResource;
+    const containers = [
+      payload,
+      payload.item,
+      payload.updates,
+      payload[normalizedResource],
+      payload[singular]
+    ].filter(Boolean);
+    for (const source of containers) {
+      const directId = String(firstDefined(source, ['id', 'uuid']) || '').trim();
+      if (isUuid(directId)) return directId;
+    }
+    if (!table || !businessKey) return getResourceIdentifier(normalizedResource, payload, { action: 'resolve uuid' });
+    const candidates = [];
+    for (const source of containers) {
+      const directId = String(firstDefined(source, ['id']) || '').trim();
+      const businessId = String(firstDefined(source, [businessKey]) || '').trim();
+      if (businessId) candidates.push(businessId);
+      if (directId && !isUuid(directId)) candidates.push(directId);
+    }
+    const uniqueCandidates = [...new Set(candidates.map(value => String(value || '').trim()).filter(Boolean))];
+    for (const businessId of uniqueCandidates) {
+      const { data, error } = await client.from(table).select('id').eq(businessKey, businessId).maybeSingle();
+      if (error) throw friendlyError(`Unable to resolve ${normalizedResource} identifier`, error);
+      const resolved = String(data?.id || '').trim();
+      if (isUuid(resolved)) return resolved;
+    }
+    return '';
   }
 
   async function resolveTechnicalAdminRequestUuid(payload = {}, client) {
@@ -3345,7 +3415,8 @@
     const client = getClient();
     if (resource === 'leads' && ['convert_to_deal','convert'].includes(action)) {
       assertAllowed('leads', 'convert_to_deal');
-      const leadUuid = String(payload.id || payload.lead_id || '').trim();
+      const leadUuid = await resolveResourceUuid('leads', payload, client);
+      if (!isUuid(leadUuid)) throw new Error('Lead UUID is required to convert lead to deal.');
       const { data, error } = await client.rpc('convert_lead_to_deal', { p_lead_uuid: leadUuid });
       if (error) throw friendlyError('Lead conversion failed', error);
       const recordId = String(
@@ -3371,14 +3442,8 @@
     }
     if (resource === 'proposals' && action === 'create_from_deal') {
       assertAllowed('proposals', 'create_from_deal');
-      const idCandidate = String(payload.id || '').trim();
-      const fallbackCandidate = String(payload.deal_id || '').trim();
-      const dealUuid = isUuid(idCandidate)
-        ? idCandidate
-        : isUuid(fallbackCandidate)
-        ? fallbackCandidate
-        : '';
-      if (!dealUuid) throw new Error('Deal UUID is required to create proposal from deal.');
+      const dealUuid = await resolveResourceUuid('deals', payload, client);
+      if (!isUuid(dealUuid)) throw new Error('Deal UUID is required to create proposal from deal.');
       const { data, error } = await client.rpc('create_proposal_from_deal', { p_deal_uuid: dealUuid });
       if (error) throw friendlyError('Proposal creation from deal failed', error);
       const notifyProposalCreatedFromDeal = async candidate => {
@@ -3440,7 +3505,7 @@
     }
     if (resource === 'agreements' && action === 'create_from_proposal') {
       assertAllowed('agreements', 'create_from_proposal');
-      const proposalUuid = String(payload.proposal_uuid || payload.id || payload.proposal_id || '').trim();
+      const proposalUuid = await resolveResourceUuid('proposals', { ...payload, id: payload.proposal_uuid || payload.id, proposal_id: payload.proposal_id }, client);
       if (!isUuid(proposalUuid)) throw new Error('Proposal UUID is required to create agreement from proposal.');
       const { data, error } = await client.rpc('create_agreement_from_proposal', { p_proposal_uuid: proposalUuid });
       if (error) throw friendlyError('Agreement creation from proposal failed', error);
@@ -3460,7 +3525,7 @@
     }
     if (resource === 'invoices' && action === 'create_from_agreement') {
       assertAllowed('invoices', 'create_from_agreement');
-      const agreementUuid = String(payload.id || payload.agreement_uuid || payload.agreement_id || '').trim();
+      const agreementUuid = await resolveResourceUuid('agreements', { ...payload, id: payload.agreement_uuid || payload.id, agreement_id: payload.agreement_id }, client);
       if (!isUuid(agreementUuid)) throw new Error('Agreement UUID is required to create invoice from agreement.');
       const { data, error } = await client.rpc('create_invoice_from_agreement', { p_agreement_uuid: agreementUuid });
       if (error) throw friendlyError('Invoice creation from agreement failed', error);
@@ -3480,7 +3545,7 @@
     }
     if (resource === 'receipts' && action === 'create_from_invoice') {
       assertAllowed('receipts', 'create_from_invoice');
-      const invoiceUuid = String(payload.id || payload.invoice_uuid || payload.invoice_id || '').trim();
+      const invoiceUuid = await resolveResourceUuid('invoices', { ...payload, id: payload.invoice_uuid || payload.id, invoice_id: payload.invoice_id }, client);
       if (!isUuid(invoiceUuid)) throw new Error('Invoice UUID is required to create receipt from invoice.');
       const logPrefix = '[supabase][receipts.create_from_invoice]';
       const normalizeOptionalText = value => {
@@ -4143,19 +4208,22 @@
       }
       if (resource === 'deals') {
         const stage = String(created.stage || '').trim().toLowerCase();
-        if (IMPORTANT_DEAL_STAGES.has(stage)) {
-          await createNotificationAndPush({
-            title: 'Deal updated',
-            message: `${String(created.deal_id || created.id || '').trim() || 'Deal'} moved to ${String(created.stage || 'important stage').trim()}.`,
-            resource: 'deals',
-            action: 'deal_important_stage',
-            record_id: String(created.deal_id || created.id || '').trim(),
-            target_roles: ['admin', 'hoo'],
-            dedupe_key: `deals-stage-${String(created.deal_id || created.id || '').trim()}-${stage}`
-          }, 'deals:create').catch(error => {
-            console.warn('[notifications:pwa] deals:create failed', error);
-          });
-        }
+        const isImportantStage = IMPORTANT_DEAL_STAGES.has(stage);
+        await createNotificationAndPush({
+          title: isImportantStage ? 'Deal moved to important stage' : 'New deal created',
+          message: isImportantStage
+            ? `${String(created.deal_id || created.id || '').trim() || 'Deal'} moved to ${String(created.stage || 'important stage').trim()}.`
+            : `${String(created.deal_id || created.id || '').trim() || 'Deal'} was created.`,
+          resource: 'deals',
+          action: isImportantStage ? 'deal_important_stage' : 'deal_created',
+          record_id: String(created.deal_id || created.id || '').trim(),
+          target_roles: ['admin', 'hoo'],
+          dedupe_key: isImportantStage
+            ? `deals-stage-${String(created.deal_id || created.id || '').trim()}-${stage}`
+            : `deals-created-${String(created.deal_id || created.id || '').trim()}`
+        }, 'deals:create').catch(error => {
+          console.warn('[notifications:pwa] deals:create failed', error);
+        });
       }
       if (resource === 'proposals') {
         await createNotificationAndPush({
@@ -4168,6 +4236,19 @@
           dedupe_key: `proposals-requires-approval-${String(created.proposal_id || created.id || '').trim()}`
         }, 'proposals:create').catch(error => {
           console.warn('[notifications:pwa] proposals:create failed', error);
+        });
+      }
+      if (resource === 'agreements') {
+        await createNotificationAndPush({
+          title: 'Agreement created',
+          message: `${String(created.agreement_number || created.agreement_id || created.id || '').trim() || 'Agreement'} was created.`,
+          resource: 'agreements',
+          action: 'agreement_created',
+          record_id: String(created.agreement_id || created.id || '').trim(),
+          target_roles: ['admin', 'hoo'],
+          dedupe_key: `agreements-created-${String(created.agreement_id || created.id || '').trim()}`
+        }, 'agreements:create').catch(error => {
+          console.warn('[notifications:pwa] agreements:create failed', error);
         });
       }
       if (resource === 'invoices') {
