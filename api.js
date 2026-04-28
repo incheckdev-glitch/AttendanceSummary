@@ -1179,6 +1179,21 @@ const Api = {
   async markAllNotificationsRead() {
     return this.requestWithSession('notifications', 'mark_all_read', {});
   },
+  async listNotificationSettings() {
+    return this.requestWithSession('notification_settings', 'list', {});
+  },
+  async upsertNotificationSetting(rule = {}) {
+    return this.requestWithSession('notification_settings', 'upsert', { rule });
+  },
+  async bulkUpsertNotificationSettings(rules = []) {
+    return this.requestWithSession('notification_settings', 'bulk_upsert', { rules });
+  },
+  async resetNotificationSettingsDefaults() {
+    return this.requestWithSession('notification_settings', 'reset_defaults', {});
+  },
+  async testNotificationSetting(rule = {}) {
+    return this.requestWithSession('notification_settings', 'test_notification', { rule });
+  },
   async listRoles(options = {}) {
     const payload = {
       ...this.buildSummaryListPayload(options),
@@ -1261,6 +1276,7 @@ const Api = {
     'tickets', 'events', 'leads', 'deals', 'proposals', 'agreements', 'invoices', 'receipts', 'clients',
     'csm_activities', 'operations_onboarding', 'technical_admin', 'workflow', 'notifications', 'ai_insights',
     'users', 'roles', 'role_permissions', 'analytics'
+    , 'notification_settings'
   ]),
   VALID_PERMISSION_ACTIONS: new Set([
     'view',

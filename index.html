@@ -648,6 +648,54 @@ Sample:
           </div>
         </div>
 
+        <div class="card" id="notificationSetupCard" aria-label="Notification setup" style="display:none;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+            <div>
+              <strong>Notification Setup</strong>
+              <div class="muted">Admin-controlled notification rules. No recipient means safely skipped.</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button id="notificationSetupSaveAllBtn" class="btn primary sm" type="button">Save all</button>
+              <button id="notificationSetupResetDefaultsBtn" class="btn ghost sm" type="button">Reset defaults</button>
+              <button id="notificationSetupRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
+            </div>
+          </div>
+          <div class="user-form-grid" style="margin-bottom:10px;">
+            <select id="notificationSetupModuleFilter" class="select">
+              <option value="">All modules</option>
+              <option value="tickets">Tickets</option>
+              <option value="leads">Leads</option>
+              <option value="deals">Deals</option>
+              <option value="proposals">Proposals</option>
+              <option value="agreements">Agreements</option>
+              <option value="invoices">Invoices</option>
+              <option value="receipts">Receipts</option>
+              <option value="operations_onboarding">Operations Onboarding</option>
+              <option value="technical_admin_requests">Technical Admin Requests</option>
+              <option value="events">Events</option>
+              <option value="workflow">Workflow</option>
+            </select>
+            <input id="notificationSetupSearchInput" class="input" type="search" placeholder="Search by action" />
+            <select id="notificationSetupStatusFilter" class="select">
+              <option value="all">All statuses</option>
+              <option value="enabled">Enabled</option>
+              <option value="disabled">Disabled</option>
+            </select>
+          </div>
+          <div id="notificationSetupState" class="muted" style="margin-bottom:8px;">No rules loaded.</div>
+          <div class="table-wrap" role="region" aria-label="Notification setup table">
+            <table>
+              <thead>
+                <tr>
+                  <th>Module</th><th>Action</th><th>Description</th><th>Enabled</th><th>In-app</th><th>PWA</th><th>Email</th>
+                  <th>Recipient roles</th><th>Recipient emails</th><th>users_from_record</th><th>Exclude actor</th><th>Dedupe seconds</th><th>Save/Test</th>
+                </tr>
+              </thead>
+              <tbody id="notificationSetupTbody"></tbody>
+            </table>
+          </div>
+        </div>
+
         <div class="card" aria-label="Roles management">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
             <strong>Section 2: Roles management</strong>
@@ -3470,6 +3518,7 @@ Sample:
   <script src="push-notifications.js?v=20260427-allpwa1"></script>
   <script src="workflow.js?v=20260427-allpwa1"></script>
   <script src="roles-admin.js?v=20260427-allpwa1"></script>
+  <script src="notification-settings.js?v=20260428-notification-setup1"></script>
   <script src="users.js?v=20260427-allpwa1"></script>
   <script src="events-service.js?v=20260427-events-pwa1"></script>
   <script src="csm-service.js?v=20260427-allpwa1"></script>

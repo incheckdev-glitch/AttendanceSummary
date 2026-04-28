@@ -112,6 +112,13 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
     mark_read: ['admin', 'dev', 'viewer', 'hoo'],
     mark_all_read: ['admin', 'dev', 'viewer', 'hoo']
   }),
+  notification_settings: Object.freeze({
+    list: ['admin'],
+    upsert: ['admin'],
+    bulk_upsert: ['admin'],
+    reset_defaults: ['admin'],
+    test_notification: ['admin']
+  }),
   users: Object.freeze({ list: ['admin'], get: ['admin'], create: ['admin'], update: ['admin'], delete: ['admin'], activate: ['admin'], deactivate: ['admin'] }),
   roles: Object.freeze({ list: ['admin'], get: ['admin'], create: ['admin'], update: ['admin'], delete: ['admin'] }),
   role_permissions: Object.freeze({ list: ['admin', 'dev'], get: ['admin', 'dev'], create: ['admin'], update: ['admin'], delete: ['admin'] }),
@@ -662,6 +669,9 @@ const Permissions = {
   },
   canManageRolesPermissions() {
     return this.isAdmin();
+  },
+  canManageNotificationSettings() {
+    return this.canPerformAction('notification_settings', 'list');
   },
   canManageWorkflow() {
     return this.canView('workflow');
