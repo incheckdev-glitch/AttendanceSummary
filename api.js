@@ -42,12 +42,6 @@ const BACKEND_MANAGED_PWA_ACTIONS = new Set([
 ]);
 
 const Api = {
-  async post(payload = {}) {
-    const body = payload && typeof payload === 'object' ? payload : {};
-    const resource = String(body.resource || '').trim();
-    const action = String(body.action || '').trim();
-    return this.request(resource, action, body);
-  },
   getPrimaryKeyForResource(resource = '') {
     return RESOURCE_PRIMARY_KEY[String(resource || '').trim()] || 'id';
   },
@@ -1746,39 +1740,7 @@ if (typeof window !== 'undefined') window.Api = Api;
 async function apiPost(payload = {}) {
   const requestBody = payload && typeof payload === 'object' ? payload : {};
   const resource = String(requestBody?.resource || '').trim();
-  if (resource === 'notification_settings') {
-    const authContext = window.Session?.authContext?.() || {};
-    const accessToken = String(authContext?.session?.access_token || '').trim();
-    const response = await fetch('/api/proxy', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
-      },
-      body: JSON.stringify(requestBody)
-    });
-    const raw = await response.text();
-    let data = {};
-    try {
-      data = raw ? JSON.parse(raw) : {};
-    } catch (error) {
-      console.error('[NotificationSetup] invalid JSON response', {
-        status: response.status,
-        statusText: response.statusText,
-        rawText: String(raw || '').slice(0, 1000)
-      });
-      throw new Error('Notification settings backend returned invalid JSON.');
-    }
-    if (!response.ok || data?.ok === false) {
-      const message = String(data?.error || data?.message || `Notification settings request failed (${response.status}).`);
-      const error = new Error(message);
-      error.result = data;
-      error.status = response.status;
-      error.code = data?.code || '';
-      throw error;
-    }
-    return data;
-  }
+  const action = String(requestBody?.action || '').trim();
   if (window.SupabaseData?.isMigratedResource?.(resource)) {
     const dispatched = await window.SupabaseData.dispatch(requestBody);
     if (dispatched?.handled) return dispatched.data;

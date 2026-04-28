@@ -30,15 +30,7 @@ const NotificationSetup = {
     if (!Permissions.canManageNotificationSettings()) return;
     try {
       const [rulesRes, rolesRes] = await Promise.all([Api.listNotificationSettings(), Api.listRoles({ forceRefresh: force })]);
-      const rawRules = Array.isArray(rulesRes?.rows)
-        ? rulesRes.rows
-        : Array.isArray(rulesRes?.data)
-          ? rulesRes.data
-          : Array.isArray(rulesRes?.items)
-            ? rulesRes.items
-            : Array.isArray(rulesRes)
-              ? rulesRes
-              : [];
+      const rawRules = Array.isArray(rulesRes?.rows) ? rulesRes.rows : Array.isArray(rulesRes) ? rulesRes : [];
       this.state.rules = rawRules.map(rule => ({
         ...rule,
         is_enabled: (rule?.is_enabled ?? rule?.enabled) !== false,
@@ -88,49 +80,10 @@ const NotificationSetup = {
     };
   },
 
-  sanitizeRuleInput(rule = {}) {
-    const input = rule && typeof rule === 'object' ? { ...rule } : {};
-    if ('enabled' in input && !('is_enabled' in input)) input.is_enabled = input.enabled;
-    delete input.enabled;
-    const splitTrim = value => String(value || '').split(',').map(v => v.trim()).filter(Boolean);
-    const isUuid = value => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
-    const isEmail = value => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
-    const asArray = value => Array.isArray(value) ? value : splitTrim(value);
-    return {
-      id: input?.id || undefined,
-      resource: String(input?.resource || '').trim().toLowerCase(),
-      action: String(input?.action || '').trim().toLowerCase(),
-      description: String(input?.description || '').trim(),
-      is_enabled: input?.is_enabled !== false,
-      in_app_enabled: input?.in_app_enabled !== false,
-      pwa_enabled: input?.pwa_enabled !== false,
-      email_enabled: input?.email_enabled === true,
-      recipient_roles: asArray(input?.recipient_roles).map(v => String(v || '').trim().toLowerCase()).filter(Boolean),
-      recipient_user_ids: asArray(input?.recipient_user_ids).map(v => String(v || '').trim()).filter(isUuid),
-      recipient_emails: asArray(input?.recipient_emails).map(v => String(v || '').trim().toLowerCase()).filter(isEmail),
-      users_from_record: asArray(input?.users_from_record).map(v => String(v || '').trim()).filter(Boolean),
-      exclude_actor: input?.exclude_actor !== false,
-      dedupe_window_seconds: Math.max(1, Number(input?.dedupe_window_seconds || 60) || 60)
-    };
-  },
-
-  isForbiddenError(error) {
-    const message = String(error?.message || '').toLowerCase();
-    const code = String(error?.code || error?.result?.code || '').trim().toUpperCase();
-    return code === 'FORBIDDEN' || message.includes('forbidden') || message.includes('row-level security') || message.includes('rls');
-  },
-
   async saveOne(resource, action) {
     const rule = this.collect(resource, action);
     if (!rule) return;
-    const cleanRule = this.sanitizeRuleInput(rule);
-    console.log('[NotificationSetup] save payload', cleanRule);
-    const result = await Api.post({
-      resource: 'notification_settings',
-      action: 'upsert',
-      rule: cleanRule
-    });
-    console.log('[NotificationSetup] save result', result);
+    await Api.upsertNotificationSetting(rule);
     this.state.dirty.delete(`${resource}:${action}`);
   },
 
@@ -143,33 +96,18 @@ const NotificationSetup = {
       if (rule) rules.push(rule);
     });
     try {
-      const sanitizedRules = rules.map(rule => this.sanitizeRuleInput(rule));
-      console.log('[NotificationSetup] save payload', sanitizedRules);
-      const result = await Api.post({
-        resource: 'notification_settings',
-        action: 'bulk_upsert',
-        rules: sanitizedRules
-      });
-      console.log('[NotificationSetup] save result', result);
-      UI.toast('Notification setting saved.');
+      await Api.bulkUpsertNotificationSettings(rules);
+      UI.toast('Notification settings saved.');
       this.state.dirty.clear();
       await this.load(true);
     } catch (error) {
-      if (this.isForbiddenError(error)) {
-        console.warn('[NotificationSetup] forbidden details', error?.result || error);
-        UI.toast('Unable to save notification setting. Admin access is required.');
-      } else {
-        UI.toast(String(error?.message || 'Unable to save settings.'));
-      }
+      UI.toast(String(error?.message || 'Unable to save settings.'));
     }
   },
 
   async resetDefaults() {
     try {
-      await Api.post({
-        resource: 'notification_settings',
-        action: 'reset_defaults'
-      });
+      await Api.resetNotificationSettingsDefaults();
       UI.toast('Defaults restored.');
       await this.load(true);
     } catch (error) {
@@ -239,17 +177,7 @@ const NotificationSetup = {
     }));
     tbody.querySelectorAll('[data-save]').forEach(btn => btn.addEventListener('click', async e => {
       const tr = e.target.closest('tr');
-      try {
-        await this.saveOne(tr.dataset.resource, tr.dataset.action);
-        UI.toast('Notification setting saved.');
-      } catch (error) {
-        if (this.isForbiddenError(error)) {
-          console.warn('[NotificationSetup] forbidden details', error?.result || error);
-          UI.toast('Unable to save notification setting. Admin access is required.');
-        } else {
-          UI.toast(String(error?.message || 'Unable to save rule.'));
-        }
-      }
+      try { await this.saveOne(tr.dataset.resource, tr.dataset.action); UI.toast('Rule saved.'); } catch (error) { UI.toast(String(error?.message || 'Unable to save rule.')); }
     }));
     tbody.querySelectorAll('[data-test]').forEach(btn => btn.addEventListener('click', async e => {
       const tr = e.target.closest('tr');
