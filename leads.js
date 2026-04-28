@@ -360,6 +360,27 @@ const Leads = {
       converted_at: convertedAt
     };
   },
+  sanitizeDealCreatePayloadForConversion(payload = {}) {
+    const sanitized = { ...(payload && typeof payload === 'object' ? payload : {}) };
+    const nowIso = new Date().toISOString();
+    const normalizeTs = value => {
+      const raw = String(value || '').trim();
+      if (!raw) return '';
+      const parsed = Date.parse(raw);
+      return Number.isFinite(parsed) ? new Date(parsed).toISOString() : raw;
+    };
+    const dropIfEmpty = key => {
+      if (!Object.prototype.hasOwnProperty.call(sanitized, key)) return;
+      const value = sanitized[key];
+      if (value === undefined || value === null || String(value).trim() === '') delete sanitized[key];
+    };
+    dropIfEmpty('source_lead_uuid');
+    dropIfEmpty('lead_id');
+
+    sanitized.created_at = normalizeTs(sanitized.created_at) || nowIso;
+    sanitized.updated_at = normalizeTs(sanitized.updated_at) || nowIso;
+    return sanitized;
+  },
   isConvertedLead(row = {}) {
     const status = this.normalizeText(row.status);
     if (status.includes('converted') || status === 'won' || status === 'closed won') return true;
@@ -1200,8 +1221,8 @@ const Leads = {
       console.log('[deal conversion] existing deal check lead uuid', sourceLead.id);
       console.log('[deal conversion] business lead code', sourceLead.lead_id);
       const existingDeal = await this.findDealByLeadUuid(sourceLead.id);
-      const payload = this.buildDealFromLead(sourceLead);
-      console.log('[deal conversion] payload', payload);
+      const payload = this.sanitizeDealCreatePayloadForConversion(this.buildDealFromLead(sourceLead));
+      console.log('[lead->deal] sanitized deal payload', payload);
       const savedDeal =
         existingDeal ||
         (window.Deals?.createDeal
