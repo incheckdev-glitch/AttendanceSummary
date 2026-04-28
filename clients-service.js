@@ -3,7 +3,7 @@ const ClientsService = {
     'client_id','client_name','company_name','primary_email','primary_phone','billing_frequency','payment_term',
     'status','source_agreement_id','total_agreements','total_locations','total_value','total_paid','total_due','created_by','updated_by'
   ]),
-  AGREEMENT_SELECT_COLUMNS: 'id,agreement_id,agreement_number,customer_name,customer_legal_name,customer_contact_email,customer_contact_mobile,status,grand_total,currency,updated_at,signed_date,service_start_date,service_end_date,agreement_date,customer_sign_date,billing_frequency,payment_term',
+  AGREEMENT_SELECT_COLUMNS: 'id,agreement_id,agreement_number,client_id,client_uuid,customer_id,company_id,client_name,company_name,customer_name,customer_legal_name,email,client_email,phone,client_phone,customer_contact_email,customer_contact_mobile,status,grand_total,currency,updated_at,created_at,signed_date,service_start_date,service_end_date,agreement_date,customer_sign_date,billing_frequency,payment_term,contract_start_date,contract_end_date,valid_until,end_date,renewal_date',
   getDb() {
     const db = window.SupabaseClient?.getClient?.();
     if (!db || typeof db.from !== 'function') {
@@ -20,6 +20,34 @@ const ClientsService = {
     return Number.isFinite(parsed) ? parsed : 0;
   },
   normalizeText(value) { return String(value || '').trim().toLowerCase(); },
+  normalizeMatchValue(value) {
+    return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  },
+  valuesMatch(a, b) {
+    const left = this.normalizeMatchValue(a);
+    const right = this.normalizeMatchValue(b);
+    return Boolean(left && right && left === right);
+  },
+  collectClientValues(client = {}) {
+    return [
+      client.id, client.client_id, client.client_uuid, client.client_name, client.company_name, client.name,
+      client.customer_name, client.customer_legal_name, client.primary_email, client.email, client.phone, client.primary_phone
+    ].filter(Boolean);
+  },
+  collectRecordValues(record = {}) {
+    return [
+      record.id, record.client_id, record.client_uuid, record.customer_id, record.company_id,
+      record.client_name, record.company_name, record.customer_name, record.customer_legal_name,
+      record.email, record.client_email, record.phone, record.client_phone,
+      record.agreement_id, record.agreement_number, record.invoice_id, record.invoice_number,
+      record.receipt_id, record.receipt_number
+    ].filter(Boolean);
+  },
+  recordBelongsToClient(record = {}, client = {}) {
+    const clientValues = this.collectClientValues(client);
+    const recordValues = this.collectRecordValues(record);
+    return recordValues.some(rv => clientValues.some(cv => this.valuesMatch(rv, cv)));
+  },
   isUuid(value) {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(String(value || '').trim());
   },
@@ -273,35 +301,29 @@ const ClientsService = {
       if (agreementUuid && agreementUuid === sourceAgreement) return true;
       if (agreementBusinessId && agreementBusinessId === sourceAgreement) return true;
     }
-    const c1 = this.normalizeCompanyKey(client.company_name || client.customer_legal_name);
-    const c2 = this.normalizeCompanyKey(client.client_name || client.customer_name);
-    const a1 = this.normalizeCompanyKey(agreement.customer_legal_name);
-    const a2 = this.normalizeCompanyKey(agreement.customer_name);
-    return Boolean((c1 && (c1 === a1 || c1 === a2)) || (c2 && (c2 === a1 || c2 === a2)));
+    return this.recordBelongsToClient(agreement, client);
   },
   matchRecordClient(record = {}, client = {}) {
-    const clientUuid = String(client.id || '').trim();
-    if (clientUuid) {
-      const recordClientUuid = String(record.client_id || record.client_uuid || '').trim();
-      if (recordClientUuid && recordClientUuid === clientUuid) return true;
-    }
-    const clientBusinessId = String(client.client_id || '').trim();
-    if (clientBusinessId && String(record.client_id || '').trim() === clientBusinessId) return true;
-    const c1 = this.normalizeCompanyKey(client.company_name || client.customer_legal_name);
-    const c2 = this.normalizeCompanyKey(client.client_name || client.customer_name);
-    const r1 = this.normalizeCompanyKey(record.customer_legal_name);
-    const r2 = this.normalizeCompanyKey(record.customer_name);
-    return Boolean((c1 && (c1 === r1 || c1 === r2)) || (c2 && (c2 === r1 || c2 === r2)));
+    return this.recordBelongsToClient(record, client);
   },
   computeTotalsForClient(client = {}, agreements = [], invoices = [], receipts = [], agreementItems = []) {
     const linkedAgreements = agreements.filter(row => this.matchAgreementClient(row, client));
     const linkedAgreementUuids = new Set(linkedAgreements.map(row => String(row.id || '').trim()).filter(Boolean));
     const linkedAgreementItems = agreementItems.filter(item => linkedAgreementUuids.has(String(item.agreement_id || '').trim()));
-    const linkedInvoices = invoices.filter(row => this.matchRecordClient(row, client));
-    const invoiceIdSet = new Set(linkedInvoices.map(row => String(row.id || '').trim()).filter(Boolean));
+    const agreementIds = new Set(linkedAgreements.flatMap(row => [row.id, row.agreement_id]).map(v => String(v || '').trim()).filter(Boolean));
+    const agreementNumbers = new Set(linkedAgreements.map(row => String(row.agreement_number || '').trim()).filter(Boolean));
+    const linkedInvoices = invoices.filter(row => {
+      if (this.matchRecordClient(row, client)) return true;
+      const agreementId = String(row.agreement_id || '').trim();
+      const agreementNumber = String(row.agreement_number || '').trim();
+      return Boolean((agreementId && agreementIds.has(agreementId)) || (agreementNumber && agreementNumbers.has(agreementNumber)));
+    });
+    const invoiceIdSet = new Set(linkedInvoices.flatMap(row => [row.id, row.invoice_id]).map(v => String(v || '').trim()).filter(Boolean));
+    const invoiceNumberSet = new Set(linkedInvoices.map(row => String(row.invoice_number || '').trim()).filter(Boolean));
     const linkedReceipts = receipts.filter(row => {
       const invoiceUuid = String(row.invoice_id || '').trim();
-      if (invoiceUuid && invoiceIdSet.has(invoiceUuid)) return true;
+      const invoiceNumber = String(row.invoice_number || '').trim();
+      if ((invoiceUuid && invoiceIdSet.has(invoiceUuid)) || (invoiceNumber && invoiceNumberSet.has(invoiceNumber))) return true;
       return this.matchRecordClient(row, client);
     });
 
@@ -372,13 +394,15 @@ const ClientsService = {
   },
   async getDashboardData(options = {}) {
     const db = this.getDb();
-    const analyticsLimit = Math.max(100, Math.min(1000, Number(options.analyticsLimit) || 500));
+    const analyticsLimit = Math.max(1000, Math.min(5000, Number(options.analyticsLimit) || 5000));
     // temporary analytics fallback - replace with SQL view/RPC aggregation
-    const [agreementsRes, itemsRes, invoicesRes, receiptsRes] = await Promise.all([
-      db.from('agreements').select(this.AGREEMENT_SELECT_COLUMNS).order('updated_at', { ascending: false }).limit(500),
+    const [agreementsRes, itemsRes, invoicesRes, invoiceItemsRes, receiptsRes, receiptItemsRes] = await Promise.all([
+      db.from('agreements').select(this.AGREEMENT_SELECT_COLUMNS).order('updated_at', { ascending: false }).limit(analyticsLimit),
       this.fetchAgreementItemsForClients_(db),
-      db.from('invoices').select('id,invoice_id,invoice_number,client_id,agreement_id,proposal_id,issue_date,due_date,invoice_total,received_amount,pending_amount,payment_state,status,currency,notes,updated_at,created_at').order('updated_at', { ascending: false }).limit(analyticsLimit),
-      db.from('receipts').select('id,receipt_id,receipt_number,invoice_id,client_id,customer_name,customer_legal_name,status,payment_state,amount_received,pending_amount,currency,updated_at,created_at,receipt_date,payment_reference,notes').order('updated_at', { ascending: false }).limit(analyticsLimit)
+      db.from('invoices').select('id,invoice_id,invoice_number,agreement_id,agreement_number,client_id,client_uuid,customer_id,company_id,client_name,company_name,customer_name,customer_legal_name,email,client_email,proposal_id,issue_date,due_date,invoice_total,grand_total,total_amount,received_amount,pending_amount,payment_state,status,currency,notes,updated_at,created_at').order('updated_at', { ascending: false }).limit(analyticsLimit),
+      db.from('invoice_items').select('*').limit(analyticsLimit),
+      db.from('receipts').select('id,receipt_id,receipt_number,invoice_id,invoice_number,agreement_id,agreement_number,client_id,client_uuid,customer_id,company_id,client_name,company_name,customer_name,customer_legal_name,email,client_email,status,payment_state,amount_received,amount_paid,paid_amount,pending_amount,currency,updated_at,created_at,receipt_date,payment_reference,notes').order('updated_at', { ascending: false }).limit(analyticsLimit),
+      db.from('receipt_items').select('*').limit(analyticsLimit)
     ]);
     if (agreementsRes.error) throw this.friendlyError('Unable to load agreements for clients', agreementsRes.error);
 
@@ -386,7 +410,9 @@ const ClientsService = {
     const itemRows = this.coerceLinkedRows_(itemsRes, 'agreement_items');
     console.log('[ClientsService] agreement_items count', itemRows.length, itemRows.slice(0, 5));
     const invoiceRows = this.coerceLinkedRows_(invoicesRes, 'invoices');
+    const invoiceItemRows = this.coerceLinkedRows_(invoiceItemsRes, 'invoice_items');
     const receiptRows = this.coerceLinkedRows_(receiptsRes, 'receipts');
+    const receiptItemRows = this.coerceLinkedRows_(receiptItemsRes, 'receipt_items');
 
     const agreements = this.attachAgreementItems(agreementRows.map(row => this.mapAgreementRow(row)), itemRows);
     const invoices = invoiceRows;
@@ -431,7 +457,7 @@ const ClientsService = {
       if (failedUpdate?.error) throw this.friendlyError('Unable to refresh client totals', failedUpdate.error);
     }
 
-    return { ...clientsList, rows: clients, agreements, agreement_items: itemRows, invoices, receipts };
+    return { ...clientsList, rows: clients, agreements, agreement_items: itemRows, invoices, invoice_items: invoiceItemRows, receipts, receipt_items: receiptItemRows };
   }
 };
 
