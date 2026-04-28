@@ -26,7 +26,9 @@ const Clients = {
     agreements: [],
     agreementItems: [],
     invoices: [],
+    invoiceItems: [],
     receipts: [],
+    receiptItems: [],
     loading: false,
     loadError: '',
     loaded: false,
@@ -54,6 +56,60 @@ const Clients = {
   },
   normalizeText(value) {
     return String(value || '').trim().toLowerCase();
+  },
+  normalizeMatchValue(value) {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, ' ');
+  },
+  valuesMatch(left, right) {
+    const l = this.normalizeMatchValue(left);
+    const r = this.normalizeMatchValue(right);
+    return Boolean(l && r && l === r);
+  },
+  collectClientMatchValues_(client = {}) {
+    return [
+      client.id,
+      client.client_id,
+      client.client_uuid,
+      client.client_name,
+      client.company_name,
+      client.name,
+      client.customer_name,
+      client.customer_legal_name,
+      client.primary_contact_email,
+      client.email,
+      client.phone
+    ].filter(Boolean);
+  },
+  collectRecordMatchValues_(record = {}) {
+    return [
+      record.id,
+      record.client_id,
+      record.client_uuid,
+      record.customer_id,
+      record.company_id,
+      record.client_name,
+      record.company_name,
+      record.customer_name,
+      record.customer_legal_name,
+      record.email,
+      record.client_email,
+      record.phone,
+      record.client_phone,
+      record.agreement_id,
+      record.agreement_number,
+      record.invoice_id,
+      record.invoice_number,
+      record.receipt_id,
+      record.receipt_number
+    ].filter(Boolean);
+  },
+  recordBelongsToClient(record = {}, client = {}) {
+    const clientValues = this.collectClientMatchValues_(client);
+    const recordValues = this.collectRecordMatchValues_(record);
+    return recordValues.some(rv => clientValues.some(cv => this.valuesMatch(rv, cv)));
   },
   toNumberSafe(value) {
     if (value === null || value === undefined || value === '') return 0;
@@ -155,8 +211,18 @@ const Clients = {
       id: String(raw.id || '').trim(),
       agreement_id: String(raw.agreement_id || raw.agreementId || raw.id || '').trim(),
       agreement_number: String(raw.agreement_number || raw.agreementNumber || '').trim(),
+      client_id: String(raw.client_id || raw.clientId || '').trim(),
+      client_uuid: String(raw.client_uuid || raw.clientUuid || '').trim(),
+      customer_id: String(raw.customer_id || raw.customerId || '').trim(),
+      company_id: String(raw.company_id || raw.companyId || '').trim(),
+      client_name: String(raw.client_name || raw.clientName || '').trim(),
+      company_name: String(raw.company_name || raw.companyName || '').trim(),
       customer_name: String(raw.customer_name || raw.customerName || '').trim(),
       customer_legal_name: String(raw.customer_legal_name || raw.customerLegalName || '').trim(),
+      email: String(raw.email || '').trim(),
+      client_email: String(raw.client_email || raw.clientEmail || raw.customer_contact_email || '').trim(),
+      phone: String(raw.phone || '').trim(),
+      client_phone: String(raw.client_phone || raw.clientPhone || raw.customer_contact_mobile || '').trim(),
       status: String(raw.status || '').trim(),
       grand_total: this.toNumberSafe(raw.grand_total ?? raw.grandTotal),
       currency: String(raw.currency || raw.currency_code || raw.currencyCode || '').trim() || 'USD',
@@ -197,9 +263,17 @@ const Clients = {
       invoice_id: String(raw.invoice_id || raw.invoiceId || '').trim(),
       invoice_number: String(raw.invoice_number || raw.invoiceNumber || '').trim(),
       agreement_id: String(raw.agreement_id || raw.agreementId || '').trim(),
+      agreement_number: String(raw.agreement_number || raw.agreementNumber || '').trim(),
       client_id: String(raw.client_id || raw.clientId || '').trim(),
+      client_uuid: String(raw.client_uuid || raw.clientUuid || '').trim(),
+      customer_id: String(raw.customer_id || raw.customerId || '').trim(),
+      company_id: String(raw.company_id || raw.companyId || '').trim(),
+      client_name: String(raw.client_name || raw.clientName || '').trim(),
+      company_name: String(raw.company_name || raw.companyName || '').trim(),
       customer_name: String(raw.customer_name || raw.customerName || '').trim(),
       customer_legal_name: String(raw.customer_legal_name || raw.customerLegalName || '').trim(),
+      email: String(raw.email || '').trim(),
+      client_email: String(raw.client_email || raw.clientEmail || '').trim(),
       status: String(raw.status || raw.payment_state || '').trim(),
       grand_total: this.toNumberSafe(raw.invoice_total ?? raw.invoiceTotal ?? raw.grand_total ?? raw.grandTotal),
       currency: String(raw.currency || raw.currency_code || raw.currencyCode || '').trim() || 'USD',
@@ -220,9 +294,19 @@ const Clients = {
       receipt_id: String(raw.receipt_id || raw.receiptId || '').trim(),
       receipt_number: String(raw.receipt_number || raw.receiptNumber || '').trim(),
       invoice_id: String(raw.invoice_id || raw.invoiceId || '').trim(),
+      invoice_number: String(raw.invoice_number || raw.invoiceNumber || '').trim(),
+      agreement_id: String(raw.agreement_id || raw.agreementId || '').trim(),
+      agreement_number: String(raw.agreement_number || raw.agreementNumber || '').trim(),
       client_id: String(raw.client_id || raw.clientId || '').trim(),
+      client_uuid: String(raw.client_uuid || raw.clientUuid || '').trim(),
+      customer_id: String(raw.customer_id || raw.customerId || '').trim(),
+      company_id: String(raw.company_id || raw.companyId || '').trim(),
+      client_name: String(raw.client_name || raw.clientName || '').trim(),
+      company_name: String(raw.company_name || raw.companyName || '').trim(),
       customer_name: String(raw.customer_name || raw.customerName || '').trim(),
       customer_legal_name: String(raw.customer_legal_name || raw.customerLegalName || '').trim(),
+      email: String(raw.email || '').trim(),
+      client_email: String(raw.client_email || raw.clientEmail || '').trim(),
       payment_state: String(raw.payment_state || raw.status || '').trim(),
       received_amount: this.toNumberSafe(raw.amount_received ?? raw.amountReceived ?? raw.received_amount ?? raw.receivedAmount ?? raw.amount_paid),
       pending_amount: this.toNumberSafe(raw.pending_amount ?? raw.pendingAmount),
@@ -354,18 +438,7 @@ const Clients = {
     }
   },
   matchesClient_(record = {}, client = {}) {
-    const clientUuid = String(client.id || '').trim();
-    if (clientUuid) {
-      const recordClientUuid = String(record.client_id || record.client_uuid || '').trim();
-      if (recordClientUuid && recordClientUuid === clientUuid) return true;
-    }
-    const clientId = String(client.client_id || '').trim();
-    if (clientId && String(record.client_id || '').trim() === clientId) return true;
-    const recordLegal = this.normalizeCompanyKey(record.customer_legal_name);
-    const recordCompany = this.normalizeCompanyKey(record.customer_name);
-    const clientLegal = this.normalizeCompanyKey(client.customer_legal_name);
-    const clientCompany = this.normalizeCompanyKey(client.customer_name);
-    return Boolean((recordLegal && (recordLegal === clientLegal || recordLegal === clientCompany)) || (recordCompany && (recordCompany === clientLegal || recordCompany === clientCompany)));
+    return this.recordBelongsToClient(record, client);
   },
   matchesClientAgreement_(agreement = {}, client = {}) {
     const sourceAgreementId = String(client.source_agreement_id || '').trim();
@@ -393,23 +466,74 @@ const Clients = {
     const client = this.state.rows.find(row => row.client_id === clientId);
     if (!client) return [];
     const linkedAgreements = this.listClientRelatedAgreements_(clientId);
-    const linkedAgreementUuids = new Set(linkedAgreements.map(item => String(item.id || '').trim()).filter(Boolean));
+    const linkedAgreementUuids = new Set(linkedAgreements.flatMap(item => [item.id, item.agreement_id]).map(v => String(v || '').trim()).filter(Boolean));
+    const linkedAgreementNumbers = new Set(linkedAgreements.map(item => String(item.agreement_number || '').trim()).filter(Boolean));
     return this.state.invoices.filter(item => {
       if (this.matchesClient_(item, client)) return true;
       const invoiceAgreementUuid = String(item.agreement_id || '').trim();
-      return Boolean(invoiceAgreementUuid && linkedAgreementUuids.has(invoiceAgreementUuid));
+      const invoiceAgreementNumber = String(item.agreement_number || '').trim();
+      return Boolean(
+        (invoiceAgreementUuid && linkedAgreementUuids.has(invoiceAgreementUuid)) ||
+        (invoiceAgreementNumber && linkedAgreementNumbers.has(invoiceAgreementNumber))
+      );
     });
   },
   listClientRelatedReceipts_(clientId) {
     const client = this.state.rows.find(row => row.client_id === clientId);
     if (!client) return [];
     const linkedInvoices = this.listClientRelatedInvoices_(clientId);
-    const linkedInvoiceUuids = new Set(linkedInvoices.map(item => String(item.id || '').trim()).filter(Boolean));
+    const linkedInvoiceUuids = new Set(linkedInvoices.flatMap(item => [item.id, item.invoice_id]).map(v => String(v || '').trim()).filter(Boolean));
+    const linkedInvoiceNumbers = new Set(linkedInvoices.map(item => String(item.invoice_number || '').trim()).filter(Boolean));
     return this.state.receipts.filter(item => {
       if (this.matchesClient_(item, client)) return true;
       const invoiceUuid = String(item.invoice_id || '').trim();
-      return Boolean(invoiceUuid && linkedInvoiceUuids.has(invoiceUuid));
+      const invoiceNumber = String(item.invoice_number || '').trim();
+      return Boolean(
+        (invoiceUuid && linkedInvoiceUuids.has(invoiceUuid)) ||
+        (invoiceNumber && linkedInvoiceNumbers.has(invoiceNumber))
+      );
     });
+  },
+  listClientRelatedInvoiceItems_(clientId) {
+    const invoices = this.listClientRelatedInvoices_(clientId);
+    const invoiceIds = new Set(invoices.flatMap(item => [item.id, item.invoice_id, item.invoice_number]).map(v => String(v || '').trim()).filter(Boolean));
+    return this.state.invoiceItems.filter(item => {
+      const links = [item.invoice_id, item.invoice_number, item.parent_invoice_id].map(v => String(v || '').trim()).filter(Boolean);
+      return links.some(link => invoiceIds.has(link));
+    });
+  },
+  listClientRelatedReceiptItems_(clientId) {
+    const receipts = this.listClientRelatedReceipts_(clientId);
+    const receiptIds = new Set(receipts.flatMap(item => [item.id, item.receipt_id, item.receipt_number]).map(v => String(v || '').trim()).filter(Boolean));
+    return this.state.receiptItems.filter(item => {
+      const links = [item.receipt_id, item.receipt_number, item.parent_receipt_id].map(v => String(v || '').trim()).filter(Boolean);
+      return links.some(link => receiptIds.has(link));
+    });
+  },
+  parseFlexibleDate_(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const direct = new Date(raw);
+    if (!Number.isNaN(direct.getTime())) return direct.toISOString();
+    const dmy = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (dmy) {
+      const day = Number(dmy[1]);
+      const month = Number(dmy[2]);
+      const year = Number(dmy[3]);
+      const assumeDmy = day > 12;
+      const first = assumeDmy ? month : day;
+      const second = assumeDmy ? day : month;
+      const parsed = new Date(Date.UTC(year, first - 1, second));
+      if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+    }
+    return '';
+  },
+  dateValueForSort_(row = {}) {
+    return this.parseFlexibleDate_(row.date || row.renewal_date || row.service_end_date || row.created_at || row.updated_at || '');
+  },
+  pickAmount_(raw = {}, fields = []) {
+    const found = fields.find(key => raw[key] !== undefined && raw[key] !== null && raw[key] !== '');
+    return this.toNumberSafe(found ? raw[found] : 0);
   },
   isSignedAgreement(agreement = {}) {
     return this.normalizeText(agreement.status).includes('signed') || Boolean(String(agreement.signed_date || agreement.customer_sign_date || '').trim());
@@ -799,7 +923,14 @@ const Clients = {
     let running = 0;
     return rows
       .slice()
-      .sort((a, b) => new Date(a.date || 0).getTime() - new Date(b.date || 0).getTime())
+      .sort((a, b) => {
+        const ad = this.dateValueForSort_(a);
+        const bd = this.dateValueForSort_(b);
+        if (!ad && !bd) return 0;
+        if (!ad) return 1;
+        if (!bd) return -1;
+        return new Date(ad).getTime() - new Date(bd).getTime();
+      })
       .map(row => {
         const debit = this.toNumberSafe(row.debit);
         const credit = this.toNumberSafe(row.credit);
@@ -809,35 +940,56 @@ const Clients = {
   },
   buildClientStatementRows(client) {
     const clientId = String(client?.client_id || '').trim();
+    const agreements = this.listClientRelatedAgreements_(clientId);
     const invoices = this.listClientRelatedInvoices_(clientId);
     const receipts = this.listClientRelatedReceipts_(clientId);
+    const agreementRows = agreements.map(item => ({
+      date: item.signed_date || item.agreement_date || item.created_at || item.updated_at,
+      type: 'Agreement',
+      document_no: item.agreement_number || item.agreement_id || item.id || '—',
+      document_id: item.agreement_id || item.id,
+      reference: item.client_name || item.company_name || item.customer_name || '',
+      debit: this.pickAmount_(item, ['total', 'grand_total', 'total_amount', 'amount', 'value', 'estimated_value']),
+      credit: 0,
+      due_date: item.service_end_date || '',
+      status: item.status || '',
+      notes: [item.customer_name || item.customer_legal_name, item.status].filter(Boolean).join(' • '),
+      currency: String(item.currency || '').trim() || 'USD'
+    }));
     const invoiceRows = invoices.map(item => ({
-      date: item.issued_date || item.updated_at,
+      date: item.issued_date || item.created_at || item.updated_at,
       type: 'Invoice',
       document_no: item.invoice_number || item.invoice_id || '—',
       document_id: item.invoice_id,
-      reference: item.reference || item.agreement_id || '',
-      debit: this.toNumberSafe(item.grand_total),
+      reference: item.reference || item.agreement_number || item.agreement_id || '',
+      debit: this.pickAmount_(item, ['grand_total', 'total_amount', 'invoice_total', 'total', 'amount_due', 'value']),
       credit: 0,
       due_date: item.due_date || '',
       status: this.getPaymentStatus(item),
-      notes: item.notes || '',
+      notes: item.notes || item.status || '',
       currency: String(item.currency || '').trim() || 'USD'
     }));
     const receiptRows = receipts.map(item => ({
-      date: item.receipt_date || item.updated_at,
+      date: item.payment_date || item.receipt_date || item.created_at || item.updated_at,
       type: 'Receipt',
       document_no: item.receipt_number || item.receipt_id || '—',
       document_id: item.receipt_id,
       reference: item.reference || item.payment_reference || item.invoice_id || '',
       debit: 0,
-      credit: this.toNumberSafe(item.received_amount),
+      credit: this.pickAmount_(item, ['amount_paid', 'paid_amount', 'received_amount', 'receipt_total', 'amount', 'total_amount']),
       due_date: '',
       status: item.payment_state || 'Received',
-      notes: item.notes || '',
+      notes: item.notes || item.payment_method || '',
       currency: String(item.currency || '').trim() || 'USD'
     }));
-    return this.computeRunningBalance([...invoiceRows, ...receiptRows]).sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+    return this.computeRunningBalance([...agreementRows, ...invoiceRows, ...receiptRows]).sort((a, b) => {
+      const ad = this.dateValueForSort_(a);
+      const bd = this.dateValueForSort_(b);
+      if (!ad && !bd) return 0;
+      if (!ad) return 1;
+      if (!bd) return -1;
+      return new Date(bd).getTime() - new Date(ad).getTime();
+    });
   },
   buildClientRenewalRows(client) {
     const clientId = String(client?.client_id || '').trim();
@@ -863,7 +1015,58 @@ const Clients = {
         rows.push(normalized);
       }
     });
-    return rows.sort((a, b) => new Date(a.renewal_date || a.service_end_date || 0).getTime() - new Date(b.renewal_date || b.service_end_date || 0).getTime());
+    agreements.forEach(agreement => {
+      rows.push(this.normalizeRenewalRow({
+        agreement_id: agreement.agreement_id || agreement.id,
+        agreement_number: agreement.agreement_number,
+        client_name: agreement.customer_name || agreement.customer_legal_name || client.customer_name,
+        service_start_date: agreement.service_start_date || agreement.contract_start_date,
+        service_end_date: agreement.service_end_date || agreement.contract_end_date || agreement.valid_until || agreement.end_date,
+        renewal_date: agreement.renewal_date || agreement.service_end_date || agreement.contract_end_date || agreement.valid_until || agreement.end_date,
+        billing_frequency: agreement.billing_frequency,
+        status: agreement.status,
+        due_date: '',
+        currency: agreement.currency || this.getClientCurrency_(clientId)
+      }));
+    });
+    this.listClientRelatedInvoices_(clientId).forEach(invoice => {
+      rows.push(this.normalizeRenewalRow({
+        agreement_id: invoice.agreement_id,
+        agreement_number: invoice.agreement_number,
+        invoice_id: invoice.invoice_id || invoice.id,
+        invoice_number: invoice.invoice_number,
+        client_name: invoice.customer_name || client.customer_name,
+        due_date: invoice.due_date,
+        renewal_date: invoice.due_date || invoice.issued_date || invoice.created_at,
+        amount_due: this.pickAmount_(invoice, ['amount_due', 'pending_amount', 'balance_due', 'grand_total']),
+        payment_status: this.getPaymentStatus(invoice),
+        status: invoice.status,
+        currency: invoice.currency || this.getClientCurrency_(clientId)
+      }));
+    });
+    this.listClientRelatedReceipts_(clientId).forEach(receipt => {
+      rows.push(this.normalizeRenewalRow({
+        agreement_id: receipt.agreement_id,
+        agreement_number: receipt.agreement_number,
+        invoice_id: receipt.invoice_id,
+        invoice_number: receipt.invoice_number,
+        client_name: receipt.customer_name || client.customer_name,
+        due_date: receipt.receipt_date || receipt.created_at,
+        renewal_date: receipt.payment_date || receipt.receipt_date || receipt.created_at,
+        amount_due: this.pickAmount_(receipt, ['amount_due', 'pending_amount', 'balance_due']),
+        payment_status: receipt.payment_state || 'Paid',
+        status: receipt.payment_state || receipt.status,
+        currency: receipt.currency || this.getClientCurrency_(clientId)
+      }));
+    });
+    return rows.sort((a, b) => {
+      const ad = this.dateValueForSort_(a);
+      const bd = this.dateValueForSort_(b);
+      if (!ad && !bd) return 0;
+      if (!ad) return 1;
+      if (!bd) return -1;
+      return new Date(ad).getTime() - new Date(bd).getTime();
+    });
   },
   normalizeStatementRow(raw = {}) {
     return {
@@ -949,16 +1152,52 @@ const Clients = {
     const cache = this.state.detailCache[clientId];
     if (!force && cache && Date.now() - cache.loadedAt <= this.state.detailCacheTtlMs) return cache;
     const client = this.state.rows.find(row => row.client_id === clientId);
+    console.log('[ClientStatement] selected client', {
+      client_id: client?.client_id,
+      id: client?.id,
+      client_name: client?.client_name || client?.customer_name,
+      company_name: client?.company_name || client?.customer_legal_name,
+      email: client?.primary_contact_email || client?.email,
+      phone: client?.phone
+    });
+    const agreements = this.listClientRelatedAgreements_(clientId);
+    const invoices = this.listClientRelatedInvoices_(clientId);
+    const receipts = this.listClientRelatedReceipts_(clientId);
+    const agreementItems = this.listClientAgreementLocationItems_(clientId);
+    const invoiceItems = this.listClientRelatedInvoiceItems_(clientId);
+    const receiptItems = this.listClientRelatedReceiptItems_(clientId);
+    console.log('[ClientStatement] source counts', {
+      agreements: this.state.agreements.length,
+      invoices: this.state.invoices.length,
+      receipts: this.state.receipts.length,
+      agreementItems: this.state.agreementItems.length,
+      invoiceItems: this.state.invoiceItems.length,
+      receiptItems: this.state.receiptItems.length
+    });
     const normalizedStatement = [];
     const normalizedRenewals = [];
     const normalizedTimeline = [];
     const fallbackTimeline = this.buildTimeline_(clientId);
+    const statementRows = normalizedStatement.length ? this.computeRunningBalance(normalizedStatement) : this.buildClientStatementRows(client);
+    const renewalRows = normalizedRenewals.length ? normalizedRenewals : this.buildClientRenewalRows(client);
+    console.log('[ClientStatement] matched counts', {
+      matchedAgreements: agreements.length,
+      matchedInvoices: invoices.length,
+      matchedReceipts: receipts.length,
+      statementRows: statementRows.length,
+      timelineRows: renewalRows.length
+    });
+    const relationAttempts = Boolean(client && (this.state.agreements.length || this.state.invoices.length || this.state.receipts.length));
+    const loadSuccess = !this.state.loadError;
+    const noLinkedRows = relationAttempts && loadSuccess && !agreements.length && !invoices.length && !receipts.length;
     const detailBundle = {
       detail: client || {},
       analytics: client?.analytics || this.computeClientAnalytics_(client || {}),
       timeline: normalizedTimeline.length ? normalizedTimeline : fallbackTimeline,
-      statementRows: normalizedStatement.length ? this.computeRunningBalance(normalizedStatement) : this.buildClientStatementRows(client),
-      renewalRows: normalizedRenewals.length ? normalizedRenewals : this.buildClientRenewalRows(client),
+      statementRows,
+      renewalRows,
+      statementError: loadSuccess ? '' : 'Unable to load statement data.',
+      noLinkedRows,
       loadedAt: Date.now()
     };
     console.debug('[Clients] detail timeline source', {
@@ -976,8 +1215,9 @@ const Clients = {
       if (status === 'open' && !rowStatus.includes('open') && !rowStatus.includes('partial')) return false;
       if (status === 'overdue' && !rowStatus.includes('overdue')) return false;
       const rowDate = String(row.date || '').trim();
-      if (dateFrom && rowDate && new Date(rowDate).getTime() < new Date(dateFrom).getTime()) return false;
-      if (dateTo && rowDate && new Date(rowDate).getTime() > new Date(dateTo).getTime()) return false;
+      const parsedDate = this.parseFlexibleDate_(rowDate);
+      if (dateFrom && parsedDate && new Date(parsedDate).getTime() < new Date(dateFrom).getTime()) return false;
+      if (dateTo && parsedDate && new Date(parsedDate).getTime() > new Date(dateTo).getTime()) return false;
       if (searchDoc && !String(row.document_no || '').toLowerCase().includes(String(searchDoc).toLowerCase())) return false;
       return true;
     });
@@ -987,8 +1227,9 @@ const Clients = {
     return rows.filter(row => {
       const dateValue = String(row.renewal_date || '').trim();
       if (!dateValue) return true;
-      if (dateFrom && new Date(dateValue).getTime() < new Date(dateFrom).getTime()) return false;
-      if (dateTo && new Date(dateValue).getTime() > new Date(dateTo).getTime()) return false;
+      const parsedDate = this.parseFlexibleDate_(dateValue);
+      if (dateFrom && parsedDate && new Date(parsedDate).getTime() < new Date(dateFrom).getTime()) return false;
+      if (dateTo && parsedDate && new Date(parsedDate).getTime() > new Date(dateTo).getTime()) return false;
       return true;
     });
   },
@@ -1015,6 +1256,11 @@ const Clients = {
         .join('');
     }
     if (E.clientStatementTbody) {
+      const emptyMessage = detailData.statementError
+        ? 'Unable to load statement data.'
+        : detailData.noLinkedRows
+          ? 'No linked rows found. Check client ID/name mapping.'
+          : 'No statement rows found.';
       E.clientStatementTbody.innerHTML = rows.length
         ? rows
             .map(row => `<tr>
@@ -1031,7 +1277,7 @@ const Clients = {
               <td>${U.escapeHtml(row.notes || '—')}</td>
             </tr>`)
             .join('')
-        : '<tr><td colspan="11" class="muted" style="text-align:center;">No statement rows found.</td></tr>';
+        : `<tr><td colspan="11" class="muted" style="text-align:center;">${U.escapeHtml(emptyMessage)}</td></tr>`;
     }
   },
   buildStatementExportHtml_(client = {}, rows = []) {
@@ -1176,12 +1422,12 @@ const Clients = {
               <td>${U.escapeHtml(row.module_name || '—')}</td>
               <td>${U.escapeHtml(U.fmtDisplayDate(row.service_start_date) || '—')}</td>
               <td>${U.escapeHtml(U.fmtDisplayDate(row.service_end_date) || '—')}</td>
-              <td>${U.escapeHtml(U.fmtDisplayDate(row.renewal_date) || '—')}</td>
+              <td>${U.escapeHtml(U.fmtDisplayDate(row.renewal_date) || (this.dateValueForSort_(row) ? '—' : 'Date not set'))}</td>
               <td>${U.escapeHtml(row.billing_frequency || '—')}</td>
               <td>${U.escapeHtml(row.payment_status || this.getPaymentStatus(row) || '—')}</td>
             </tr>`)
             .join('')
-        : '<tr><td colspan="7" class="muted" style="text-align:center;">No renewals or payments timeline rows.</td></tr>';
+        : `<tr><td colspan="7" class="muted" style="text-align:center;">${U.escapeHtml(detailData.statementError ? 'Unable to load statement data.' : detailData.noLinkedRows ? 'No linked rows found. Check client ID/name mapping.' : 'No renewals or payments timeline rows.')}</td></tr>`;
     }
     if (E.clientRenewalEvents) {
       const milestones = this.getMilestoneValues_(detailData, client);
@@ -1412,7 +1658,9 @@ const Clients = {
       this.state.agreements = this.extractListResult(clientsRes.agreements || []).rows.map(item => this.normalizeAgreement(item));
       this.state.agreementItems = this.extractListResult(clientsRes.agreement_items || []).rows.map(item => this.normalizeAgreementItem(item));
       this.state.invoices = this.extractListResult(clientsRes.invoices || []).rows.map(item => this.normalizeInvoice(item));
+      this.state.invoiceItems = this.extractListResult(clientsRes.invoice_items || []).rows;
       this.state.receipts = this.extractListResult(clientsRes.receipts || []).rows.map(item => this.normalizeReceipt(item));
+      this.state.receiptItems = this.extractListResult(clientsRes.receipt_items || []).rows;
 
       this.state.agreements.forEach(agreement => {
         this.findOrCreateClientFromSignedAgreement_(agreement);
