@@ -3,7 +3,7 @@ const ClientsService = {
     'client_id','client_name','company_name','primary_email','primary_phone','billing_frequency','payment_term',
     'status','source_agreement_id','total_agreements','total_locations','total_value','total_paid','total_due','created_by','updated_by'
   ]),
-  AGREEMENT_SELECT_COLUMNS: 'id,agreement_id,agreement_number,client_id,client_uuid,customer_id,company_id,client_name,company_name,customer_name,customer_legal_name,email,client_email,phone,client_phone,customer_contact_email,customer_contact_mobile,status,grand_total,currency,updated_at,created_at,signed_date,service_start_date,service_end_date,agreement_date,customer_sign_date,billing_frequency,payment_term,contract_start_date,contract_end_date,valid_until,end_date,renewal_date',
+  AGREEMENT_SELECT_COLUMNS: '*',
   getDb() {
     const db = window.SupabaseClient?.getClient?.();
     if (!db || typeof db.from !== 'function') {
@@ -27,6 +27,76 @@ const ClientsService = {
     const left = this.normalizeMatchValue(a);
     const right = this.normalizeMatchValue(b);
     return Boolean(left && right && left === right);
+  },
+  normalizeAgreementForClient(agreement = {}) {
+    const normalized = {
+      ...agreement,
+      client_name:
+        agreement.client_name ||
+        agreement.customer_name ||
+        agreement.customer_legal_name ||
+        agreement.provider_name ||
+        '',
+      client_email:
+        agreement.client_email ||
+        agreement.customer_contact_email ||
+        '',
+      client_phone:
+        agreement.client_phone ||
+        agreement.customer_contact_mobile ||
+        '',
+      number_of_locations:
+        agreement.number_of_locations ||
+        agreement.locations_count ||
+        agreement.location_count ||
+        agreement.subtotal_locations ||
+        '',
+      payment_terms:
+        agreement.payment_terms ||
+        agreement.payment_term ||
+        '',
+      payment_term:
+        agreement.payment_term ||
+        agreement.payment_terms ||
+        '',
+      service_start_date:
+        agreement.service_start_date ||
+        agreement.effective_date ||
+        agreement.agreement_date ||
+        '',
+      service_end_date:
+        agreement.service_end_date ||
+        '',
+      total_value:
+        agreement.total_value ||
+        agreement.grand_total ||
+        agreement.subtotal_locations ||
+        0
+    };
+    return normalized;
+  },
+  agreementBelongsToClient(agreement = {}, client = {}) {
+    const normalized = this.normalizeAgreementForClient(agreement);
+    const agreementKeys = [
+      normalized.client_name,
+      normalized.client_email,
+      normalized.client_phone,
+      agreement.customer_name,
+      agreement.customer_contact_email,
+      agreement.customer_contact_mobile
+    ].filter(Boolean);
+    const clientKeys = [
+      client.client_name,
+      client.company_name,
+      client.customer_name,
+      client.name,
+      client.email,
+      client.phone,
+      client.mobile,
+      client.primary_email,
+      client.primary_phone
+    ].filter(Boolean);
+    return agreementKeys.some(agreementKey => clientKeys.some(clientKey => this.valuesMatch(agreementKey, clientKey)));
   },
   collectClientValues(client = {}) {
     return [
@@ -92,6 +162,9 @@ const ClientsService = {
       id: String(row.id || '').trim(),
       agreement_id: String(row.agreement_id || '').trim(),
       agreement_number: String(row.agreement_number || '').trim(),
+      client_name: String(row.client_name || row.customer_name || row.customer_legal_name || '').trim(),
+      client_email: String(row.client_email || row.customer_contact_email || '').trim(),
+      client_phone: String(row.client_phone || row.customer_contact_mobile || '').trim(),
       customer_name: String(row.customer_name || '').trim(),
       customer_legal_name: String(row.customer_legal_name || '').trim(),
       customer_contact_email: String(row.customer_contact_email || '').trim(),
@@ -105,7 +178,10 @@ const ClientsService = {
       agreement_date: String(row.agreement_date || '').trim(),
       customer_sign_date: String(row.customer_sign_date || '').trim(),
       billing_frequency: String(row.billing_frequency || '').trim(),
-      payment_term: String(row.payment_term || '').trim()
+      payment_term: String(row.payment_term || '').trim(),
+      subtotal_locations: this.toNumber(row.subtotal_locations),
+      contract_term: String(row.contract_term || '').trim(),
+      effective_date: String(row.effective_date || '').trim()
     };
   },
   sanitizeClientPayload(input = {}, { includeCreatedBy = false } = {}) {
@@ -301,7 +377,7 @@ const ClientsService = {
       if (agreementUuid && agreementUuid === sourceAgreement) return true;
       if (agreementBusinessId && agreementBusinessId === sourceAgreement) return true;
     }
-    return this.recordBelongsToClient(agreement, client);
+    return this.agreementBelongsToClient(agreement, client) || this.recordBelongsToClient(agreement, client);
   },
   matchRecordClient(record = {}, client = {}) {
     return this.recordBelongsToClient(record, client);
@@ -407,6 +483,7 @@ const ClientsService = {
     if (agreementsRes.error) throw this.friendlyError('Unable to load agreements for clients', agreementsRes.error);
 
     const agreementRows = this.coerceLinkedRows_(agreementsRes, 'agreements');
+    console.log('[AgreementMapping] loaded agreements', agreementRows.length);
     const itemRows = this.coerceLinkedRows_(itemsRes, 'agreement_items');
     console.log('[ClientsService] agreement_items count', itemRows.length, itemRows.slice(0, 5));
     const invoiceRows = this.coerceLinkedRows_(invoicesRes, 'invoices');

@@ -187,6 +187,7 @@ const TechnicalAdmin = {
       source.locationsCount
     );
     const agreementLocationCount = this.parseOptionalNumber(
+      agreement.subtotal_locations,
       agreement.location_count,
       agreement.locations_count,
       agreement.number_of_locations,
@@ -195,7 +196,7 @@ const TechnicalAdmin = {
       agreement.numberOfLocations
     );
     const derivedLocationCount = agreementItems.length ? this.deriveAgreementLocationCount(agreementItems) : null;
-    const resolvedLocationCount = requestLocationCount ?? agreementLocationCount ?? derivedLocationCount;
+    const resolvedLocationCount = requestLocationCount ?? agreementLocationCount ?? derivedLocationCount ?? (agreementItems.length || null);
     const sourceId = String(source.id || '').trim();
     const onboardingId = String(this.pick(source.onboarding_id, source.onboardingId)).trim();
     const technicalRequestType = String(this.pick(source.technical_request_type, source.request_type, source.requestType, 'Technical Admin')).trim();

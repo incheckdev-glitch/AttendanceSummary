@@ -68,6 +68,75 @@ const Clients = {
     const r = this.normalizeMatchValue(right);
     return Boolean(l && r && l === r);
   },
+  normalizeAgreementForClient(agreement = {}) {
+    return {
+      ...agreement,
+      client_name:
+        agreement.client_name ||
+        agreement.customer_name ||
+        agreement.customer_legal_name ||
+        agreement.provider_name ||
+        '',
+      client_email:
+        agreement.client_email ||
+        agreement.customer_contact_email ||
+        '',
+      client_phone:
+        agreement.client_phone ||
+        agreement.customer_contact_mobile ||
+        '',
+      number_of_locations:
+        agreement.number_of_locations ||
+        agreement.locations_count ||
+        agreement.location_count ||
+        agreement.subtotal_locations ||
+        '',
+      payment_terms:
+        agreement.payment_terms ||
+        agreement.payment_term ||
+        '',
+      payment_term:
+        agreement.payment_term ||
+        agreement.payment_terms ||
+        '',
+      service_start_date:
+        agreement.service_start_date ||
+        agreement.effective_date ||
+        agreement.agreement_date ||
+        '',
+      service_end_date:
+        agreement.service_end_date ||
+        '',
+      total_value:
+        agreement.total_value ||
+        agreement.grand_total ||
+        agreement.subtotal_locations ||
+        0
+    };
+  },
+  agreementBelongsToClient(agreement = {}, client = {}) {
+    const normalizedAgreement = this.normalizeAgreementForClient(agreement);
+    const agreementKeys = [
+      normalizedAgreement.client_name,
+      normalizedAgreement.client_email,
+      normalizedAgreement.client_phone,
+      agreement.customer_name,
+      agreement.customer_contact_email,
+      agreement.customer_contact_mobile
+    ].filter(Boolean);
+    const clientKeys = [
+      client.client_name,
+      client.company_name,
+      client.customer_name,
+      client.name,
+      client.email,
+      client.phone,
+      client.mobile,
+      client.primary_contact_email,
+      client.primary_email
+    ].filter(Boolean);
+    return agreementKeys.some(agreementKey => clientKeys.some(clientKey => this.valuesMatch(agreementKey, clientKey)));
+  },
   collectClientMatchValues_(client = {}) {
     return [
       client.id,
@@ -207,7 +276,7 @@ const Clients = {
     return normalized;
   },
   normalizeAgreement(raw = {}) {
-    return {
+    return this.normalizeAgreementForClient({
       id: String(raw.id || '').trim(),
       agreement_id: String(raw.agreement_id || raw.agreementId || raw.id || '').trim(),
       agreement_number: String(raw.agreement_number || raw.agreementNumber || '').trim(),
@@ -241,7 +310,7 @@ const Clients = {
           : Array.isArray(raw.line_items)
             ? raw.line_items
             : []
-    };
+    });
   },
   normalizeAgreementItem(raw = {}) {
     return {
@@ -448,12 +517,17 @@ const Clients = {
       if (agreementUuid && agreementUuid === sourceAgreementId) return true;
       if (agreementBusinessId && agreementBusinessId === sourceAgreementId) return true;
     }
-    return this.matchesClient_(agreement, client);
+    return this.agreementBelongsToClient(agreement, client) || this.matchesClient_(agreement, client);
   },
   listClientRelatedAgreements_(clientId) {
     const client = this.state.rows.find(row => row.client_id === clientId);
     if (!client) return [];
-    return this.state.agreements.filter(item => this.matchesClientAgreement_(item, client));
+    const matchedAgreements = this.state.agreements.filter(item => this.matchesClientAgreement_(item, client));
+    console.log('[AgreementMapping] matched agreements for client', {
+      clientName: client?.client_name || client?.company_name || client?.name || client?.customer_name,
+      matched: matchedAgreements.length
+    });
+    return matchedAgreements;
   },
   listClientAgreementLocationItems_(clientId) {
     const linkedAgreements = this.listClientRelatedAgreements_(clientId);
@@ -944,16 +1018,16 @@ const Clients = {
     const invoices = this.listClientRelatedInvoices_(clientId);
     const receipts = this.listClientRelatedReceipts_(clientId);
     const agreementRows = agreements.map(item => ({
-      date: item.signed_date || item.agreement_date || item.created_at || item.updated_at,
+      date: item.signed_date || item.agreement_date || item.effective_date || item.created_at,
       type: 'Agreement',
       document_no: item.agreement_number || item.agreement_id || item.id || '—',
       document_id: item.agreement_id || item.id,
-      reference: item.client_name || item.company_name || item.customer_name || '',
-      debit: this.pickAmount_(item, ['total', 'grand_total', 'total_amount', 'amount', 'value', 'estimated_value']),
+      reference: item.agreement_number || item.agreement_id || '',
+      debit: this.pickAmount_(item, ['grand_total', 'total', 'total_amount', 'amount', 'value', 'estimated_value']),
       credit: 0,
       due_date: item.service_end_date || '',
       status: item.status || '',
-      notes: [item.customer_name || item.customer_legal_name, item.status].filter(Boolean).join(' • '),
+      notes: [item.agreement_title || item.customer_name || item.status, item.customer_name].filter(Boolean).join(' • '),
       currency: String(item.currency || '').trim() || 'USD'
     }));
     const invoiceRows = invoices.map(item => ({
@@ -1020,10 +1094,12 @@ const Clients = {
         agreement_id: agreement.agreement_id || agreement.id,
         agreement_number: agreement.agreement_number,
         client_name: agreement.customer_name || agreement.customer_legal_name || client.customer_name,
-        service_start_date: agreement.service_start_date || agreement.contract_start_date,
-        service_end_date: agreement.service_end_date || agreement.contract_end_date || agreement.valid_until || agreement.end_date,
-        renewal_date: agreement.renewal_date || agreement.service_end_date || agreement.contract_end_date || agreement.valid_until || agreement.end_date,
+        service_start_date: agreement.service_start_date || agreement.effective_date || agreement.agreement_date,
+        service_end_date: agreement.service_end_date,
+        renewal_date: agreement.service_end_date,
         billing_frequency: agreement.billing_frequency,
+        payment_term: agreement.payment_term,
+        contract_term: agreement.contract_term,
         status: agreement.status,
         due_date: '',
         currency: agreement.currency || this.getClientCurrency_(clientId)
@@ -1099,6 +1175,8 @@ const Clients = {
       due_date: String(this.getField(raw, 'due_date', 'dueDate') || '').trim(),
       renewal_date: renewalDate,
       billing_frequency: String(this.getField(raw, 'billing_frequency', 'billingFrequency') || '').trim(),
+      payment_term: String(this.getField(raw, 'payment_term', 'paymentTerm', 'payment_terms') || '').trim(),
+      contract_term: String(this.getField(raw, 'contract_term', 'contractTerm') || '').trim(),
       days_left: this.getDaysLeft(renewalDate),
       amount_due: this.toNumberSafe(this.getField(raw, 'amount_due', 'pending_amount', 'pendingAmount')),
       status: String(this.getField(raw, 'status') || '').trim(),
