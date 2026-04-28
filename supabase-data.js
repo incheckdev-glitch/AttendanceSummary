@@ -3533,7 +3533,7 @@
       console.warn('[notifications:rules] no rule found; notification skipped', { context, resource, action });
       return { created: 0, push: { attempted: false, skipped: true, reason: 'no-rule' }, notification_id: null };
     }
-    if (rule.enabled === false) {
+    if ((rule?.is_enabled ?? rule?.enabled) === false) {
       return { created: 0, push: { attempted: false, skipped: true, reason: 'rule-disabled' }, notification_id: null };
     }
     const normalizedRoles = normalizeNotificationRoles(...(rule.recipient_roles || []), ...(normalizedPayload?.target_roles || []))
@@ -4122,21 +4122,26 @@
     if (resource === 'notification_settings' && action === 'upsert') {
       assertAllowed('notification_settings', 'upsert');
       const input = payload?.rule && typeof payload.rule === 'object' ? payload.rule : payload;
+      const normalizedInput = { ...(input && typeof input === 'object' ? input : {}) };
+      if ('enabled' in normalizedInput && !('is_enabled' in normalizedInput)) normalizedInput.is_enabled = normalizedInput.enabled;
+      delete normalizedInput.enabled;
       const rule = {
-        resource: String(input?.resource || '').trim().toLowerCase(),
-        action: String(input?.action || '').trim().toLowerCase(),
-        description: String(input?.description || '').trim(),
-        enabled: input?.enabled !== false,
-        in_app_enabled: input?.in_app_enabled !== false,
-        pwa_enabled: input?.pwa_enabled !== false,
-        email_enabled: input?.email_enabled === true,
-        recipient_roles: (Array.isArray(input?.recipient_roles) ? input.recipient_roles : []).map(normalizeNotificationRoleKey).filter(Boolean),
-        recipient_user_ids: Array.isArray(input?.recipient_user_ids) ? input.recipient_user_ids : [],
-        recipient_emails: Array.isArray(input?.recipient_emails) ? input.recipient_emails.map(v => String(v || '').trim().toLowerCase()).filter(Boolean) : [],
-        users_from_record: Array.isArray(input?.users_from_record) ? input.users_from_record.map(v => String(v || '').trim()).filter(Boolean) : [],
-        exclude_actor: input?.exclude_actor !== false,
-        dedupe_window_seconds: Math.max(1, Number(input?.dedupe_window_seconds || 60) || 60)
+        id: normalizedInput?.id || undefined,
+        resource: String(normalizedInput?.resource || '').trim().toLowerCase(),
+        action: String(normalizedInput?.action || '').trim().toLowerCase(),
+        description: String(normalizedInput?.description || '').trim(),
+        is_enabled: normalizedInput?.is_enabled !== false,
+        in_app_enabled: normalizedInput?.in_app_enabled !== false,
+        pwa_enabled: normalizedInput?.pwa_enabled !== false,
+        email_enabled: normalizedInput?.email_enabled === true,
+        recipient_roles: (Array.isArray(normalizedInput?.recipient_roles) ? normalizedInput.recipient_roles : []).map(normalizeNotificationRoleKey).filter(Boolean),
+        recipient_user_ids: Array.isArray(normalizedInput?.recipient_user_ids) ? normalizedInput.recipient_user_ids : [],
+        recipient_emails: Array.isArray(normalizedInput?.recipient_emails) ? normalizedInput.recipient_emails.map(v => String(v || '').trim().toLowerCase()).filter(Boolean) : [],
+        users_from_record: Array.isArray(normalizedInput?.users_from_record) ? normalizedInput.users_from_record.map(v => String(v || '').trim()).filter(Boolean) : [],
+        exclude_actor: normalizedInput?.exclude_actor !== false,
+        dedupe_window_seconds: Math.max(1, Number(normalizedInput?.dedupe_window_seconds || 60) || 60)
       };
+      if (!rule.id) delete rule.id;
       if (!rule.resource || !rule.action) throw new Error('resource and action are required.');
       const { data, error } = await client.from('notification_rules').upsert(rule, { onConflict: 'resource,action' }).select('*').single();
       if (error) throw friendlyError('Unable to save notification setting', error);
@@ -4146,21 +4151,26 @@
       assertAllowed('notification_settings', 'bulk_upsert');
       const rules = Array.isArray(payload?.rules) ? payload.rules : [];
       for (const rule of rules) {
+        const normalizedRuleInput = { ...(rule && typeof rule === 'object' ? rule : {}) };
+        if ('enabled' in normalizedRuleInput && !('is_enabled' in normalizedRuleInput)) normalizedRuleInput.is_enabled = normalizedRuleInput.enabled;
+        delete normalizedRuleInput.enabled;
         const upsertRule = {
-          resource: String(rule?.resource || '').trim().toLowerCase(),
-          action: String(rule?.action || '').trim().toLowerCase(),
-          description: String(rule?.description || '').trim(),
-          enabled: rule?.enabled !== false,
-          in_app_enabled: rule?.in_app_enabled !== false,
-          pwa_enabled: rule?.pwa_enabled !== false,
-          email_enabled: rule?.email_enabled === true,
-          recipient_roles: (Array.isArray(rule?.recipient_roles) ? rule.recipient_roles : []).map(normalizeNotificationRoleKey).filter(Boolean),
-          recipient_user_ids: Array.isArray(rule?.recipient_user_ids) ? rule.recipient_user_ids : [],
-          recipient_emails: Array.isArray(rule?.recipient_emails) ? rule.recipient_emails.map(v => String(v || '').trim().toLowerCase()).filter(Boolean) : [],
-          users_from_record: Array.isArray(rule?.users_from_record) ? rule.users_from_record.map(v => String(v || '').trim()).filter(Boolean) : [],
-          exclude_actor: rule?.exclude_actor !== false,
-          dedupe_window_seconds: Math.max(1, Number(rule?.dedupe_window_seconds || 60) || 60)
+          id: normalizedRuleInput?.id || undefined,
+          resource: String(normalizedRuleInput?.resource || '').trim().toLowerCase(),
+          action: String(normalizedRuleInput?.action || '').trim().toLowerCase(),
+          description: String(normalizedRuleInput?.description || '').trim(),
+          is_enabled: normalizedRuleInput?.is_enabled !== false,
+          in_app_enabled: normalizedRuleInput?.in_app_enabled !== false,
+          pwa_enabled: normalizedRuleInput?.pwa_enabled !== false,
+          email_enabled: normalizedRuleInput?.email_enabled === true,
+          recipient_roles: (Array.isArray(normalizedRuleInput?.recipient_roles) ? normalizedRuleInput.recipient_roles : []).map(normalizeNotificationRoleKey).filter(Boolean),
+          recipient_user_ids: Array.isArray(normalizedRuleInput?.recipient_user_ids) ? normalizedRuleInput.recipient_user_ids : [],
+          recipient_emails: Array.isArray(normalizedRuleInput?.recipient_emails) ? normalizedRuleInput.recipient_emails.map(v => String(v || '').trim().toLowerCase()).filter(Boolean) : [],
+          users_from_record: Array.isArray(normalizedRuleInput?.users_from_record) ? normalizedRuleInput.users_from_record.map(v => String(v || '').trim()).filter(Boolean) : [],
+          exclude_actor: normalizedRuleInput?.exclude_actor !== false,
+          dedupe_window_seconds: Math.max(1, Number(normalizedRuleInput?.dedupe_window_seconds || 60) || 60)
         };
+        if (!upsertRule.id) delete upsertRule.id;
         if (!upsertRule.resource || !upsertRule.action) continue;
         const { error } = await client.from('notification_rules').upsert(upsertRule, { onConflict: 'resource,action' });
         if (error) throw friendlyError('Unable to save notification setting', error);
@@ -4172,7 +4182,7 @@
       for (const rule of NOTIFICATION_RULE_DEFAULTS) {
         const { error } = await client.from('notification_rules').upsert({
           ...rule,
-          enabled: true,
+          is_enabled: true,
           in_app_enabled: true,
           pwa_enabled: true,
           email_enabled: false,
