@@ -3,7 +3,7 @@ create table if not exists public.notification_rules (
   resource text not null,
   action text not null,
   description text not null default '',
-  enabled boolean not null default true,
+  is_enabled boolean not null default true,
   in_app_enabled boolean not null default true,
   pwa_enabled boolean not null default true,
   email_enabled boolean not null default false,

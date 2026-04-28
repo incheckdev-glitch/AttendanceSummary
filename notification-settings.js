@@ -30,7 +30,20 @@ const NotificationSetup = {
     if (!Permissions.canManageNotificationSettings()) return;
     try {
       const [rulesRes, rolesRes] = await Promise.all([Api.listNotificationSettings(), Api.listRoles({ forceRefresh: force })]);
-      this.state.rules = Array.isArray(rulesRes?.rows) ? rulesRes.rows : Array.isArray(rulesRes) ? rulesRes : [];
+      const rawRules = Array.isArray(rulesRes?.rows) ? rulesRes.rows : Array.isArray(rulesRes) ? rulesRes : [];
+      this.state.rules = rawRules.map(rule => ({
+        ...rule,
+        is_enabled: (rule?.is_enabled ?? rule?.enabled) !== false,
+        in_app_enabled: rule?.in_app_enabled !== false,
+        pwa_enabled: rule?.pwa_enabled !== false,
+        email_enabled: rule?.email_enabled === true,
+        recipient_roles: Array.isArray(rule?.recipient_roles) ? rule.recipient_roles : [],
+        recipient_user_ids: Array.isArray(rule?.recipient_user_ids) ? rule.recipient_user_ids : [],
+        recipient_emails: Array.isArray(rule?.recipient_emails) ? rule.recipient_emails : [],
+        users_from_record: Array.isArray(rule?.users_from_record) ? rule.users_from_record : [],
+        exclude_actor: rule?.exclude_actor !== false,
+        dedupe_window_seconds: Number(rule?.dedupe_window_seconds || 60)
+      }));
       this.state.roles = Array.isArray(rolesRes?.rows) ? rolesRes.rows : Array.isArray(rolesRes) ? rolesRes : [];
       this.render();
     } catch (error) {
@@ -48,16 +61,20 @@ const NotificationSetup = {
     const val = sel => row.querySelector(sel)?.value;
     const checked = sel => row.querySelector(sel)?.checked === true;
     const split = v => String(v || '').split(',').map(s => s.trim()).filter(Boolean);
+    const existingRule = this.getRule(resource, action) || {};
     return {
+      id: existingRule.id,
       resource,
       action,
-      enabled: checked('[data-k="enabled"]'),
+      description: String(existingRule.description || '').trim(),
+      is_enabled: checked('[data-k="enabled"]'),
       in_app_enabled: checked('[data-k="inapp"]'),
       pwa_enabled: checked('[data-k="pwa"]'),
       email_enabled: checked('[data-k="email"]'),
       exclude_actor: checked('[data-k="exclude"]'),
       dedupe_window_seconds: Math.max(0, Number(val('[data-k="dedupe"]') || 60) || 60),
       recipient_roles: [...row.querySelectorAll('[data-k="roles"] option:checked')].map(o => o.value),
+      recipient_user_ids: Array.isArray(existingRule.recipient_user_ids) ? existingRule.recipient_user_ids : [],
       recipient_emails: split(val('[data-k="emails"]')),
       users_from_record: split(val('[data-k="record"]'))
     };
@@ -126,12 +143,12 @@ const NotificationSetup = {
     this.moduleActions.forEach(([resource, actions]) => {
       actions.forEach(action => {
         const rule = this.getRule(resource, action) || {};
-        const enabled = rule.enabled !== false;
-        if (!matches(resource, action, enabled)) return;
+        const isEnabled = rule.is_enabled !== false;
+        if (!matches(resource, action, isEnabled)) return;
         const noRecipients = !(rule.recipient_roles?.length || rule.recipient_user_ids?.length || rule.recipient_emails?.length || rule.users_from_record?.length);
         rows.push(`<tr data-resource="${resource}" data-action="${action}">
           <td>${resource}</td><td>${action}</td><td class="muted">${action.replaceAll('_',' ')}</td>
-          <td><input type="checkbox" data-k="enabled" ${enabled ? 'checked' : ''}></td>
+          <td><input type="checkbox" data-k="enabled" ${isEnabled ? 'checked' : ''}></td>
           <td><input type="checkbox" data-k="inapp" ${(rule.in_app_enabled !== false) ? 'checked' : ''}></td>
           <td><input type="checkbox" data-k="pwa" ${(rule.pwa_enabled !== false) ? 'checked' : ''}></td>
           <td><input type="checkbox" data-k="email" ${(rule.email_enabled === true) ? 'checked' : ''}></td>
