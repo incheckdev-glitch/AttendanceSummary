@@ -1,6 +1,6 @@
 (function initSupabaseData(global) {
   const MIGRATED_RESOURCES = new Set([
-    'auth','users','roles','role_permissions','tickets','events','csm','leads','deals','proposal_catalog','proposals','agreements','workflow','clients','invoices','receipts','operations_onboarding','technical_admin_requests','notifications'
+    'auth','users','roles','role_permissions','tickets','events','csm','leads','deals','proposal_catalog','proposals','agreements','workflow','clients','invoices','receipts','operations_onboarding','technical_admin_requests','notifications','notification_settings'
   ]);
 
   const TABLE_BY_RESOURCE = {
@@ -10,6 +10,7 @@
     clients: 'clients', invoices: 'invoices', receipts: 'receipts', operations_onboarding: 'operations_onboarding',
     technical_admin_requests: 'technical_admin_requests'
     ,notifications: 'notifications'
+    ,notification_settings: 'notification_rules'
   };
 
   const PK_BY_RESOURCE = {
@@ -30,6 +31,7 @@
     operations_onboarding: 'id',
     technical_admin_requests: 'id'
     ,notifications: 'notification_id'
+    ,notification_settings: 'id'
   };
   const LEGACY_IDENTIFIER_KEYS = {
     users: [],
@@ -49,6 +51,7 @@
     operations_onboarding: ['onboarding_id', 'agreement_id'],
     technical_admin_requests: ['request_id', 'technical_request_id']
     ,notifications: ['id']
+    ,notification_settings: []
   };
 
   const ITEM_TABLES = { proposals: 'proposal_items', agreements: 'agreement_items', invoices: 'invoice_items', receipts: 'receipt_items' };
@@ -3366,6 +3369,46 @@
     return `${normalizedResource}-${normalizedAction}-${normalizedRecordId}`;
   }
 
+  const NOTIFICATION_RULE_DEFAULTS = [
+    { resource: 'tickets', action: 'ticket_created', recipient_roles: ['admin', 'dev'] },
+    { resource: 'tickets', action: 'ticket_high_priority', recipient_roles: ['admin', 'dev'] },
+    { resource: 'tickets', action: 'ticket_status_changed', recipient_roles: ['admin'], users_from_record: ['requester_email'] },
+    { resource: 'tickets', action: 'ticket_dev_team_status_changed', recipient_roles: ['admin'], users_from_record: ['requester_email'] },
+    { resource: 'tickets', action: 'ticket_under_development', recipient_roles: ['dev'] },
+    { resource: 'leads', action: 'lead_created', recipient_roles: ['admin', 'sales_executive'] },
+    { resource: 'leads', action: 'lead_updated', recipient_roles: ['admin'], users_from_record: ['owner_email', 'created_by_email'] },
+    { resource: 'leads', action: 'lead_converted_to_deal', recipient_roles: ['admin'], users_from_record: ['owner_email', 'created_by_email'] },
+    { resource: 'deals', action: 'deal_created', recipient_roles: ['admin'], users_from_record: ['owner_email', 'created_by_email'] },
+    { resource: 'deals', action: 'deal_updated', recipient_roles: ['admin'], users_from_record: ['owner_email', 'created_by_email'] },
+    { resource: 'deals', action: 'deal_created_from_lead', recipient_roles: ['admin'], users_from_record: ['owner_email', 'created_by_email'] },
+    { resource: 'deals', action: 'deal_important_stage', recipient_roles: ['admin'], users_from_record: ['owner_email'] },
+    { resource: 'proposals', action: 'proposal_requires_approval', recipient_roles: ['financial_controller', 'gm'] },
+    { resource: 'agreements', action: 'agreement_signed', recipient_roles: ['admin', 'accounting', 'hoo'] },
+    { resource: 'technical_admin_requests', action: 'technical_request_submitted', recipient_roles: ['admin', 'dev', 'hoo'] },
+    { resource: 'workflow', action: 'workflow_approval_requested', recipient_roles: ['financial_controller', 'gm'] }
+  ];
+
+  function normalizeNotificationRoleKey(value = '') {
+    const normalized = String(value || '').trim().toLowerCase();
+    const roleMap = {
+      hoo: 'hoo',
+      'head of operations': 'hoo',
+      gm: 'gm',
+      'financial controller': 'financial_controller',
+      'sales executive': 'sales_executive',
+      accounting: 'accounting',
+      dev: 'dev',
+      admin: 'admin'
+    };
+    return roleMap[normalized] || normalized.replace(/\s+/g, '_');
+  }
+
+  async function listNotificationRules(client) {
+    const { data, error } = await client.from('notification_rules').select('*').order('resource', { ascending: true }).order('action', { ascending: true });
+    if (error) throw friendlyError('Unable to load notification settings', error);
+    return Array.isArray(data) ? data : [];
+  }
+
   function resolveNotificationUrl(resource = '', action = '', recordId = '', fallback = '') {
     const normalizedResource = String(resource || '').trim().toLowerCase();
     const id = String(recordId || '').trim();
@@ -3395,8 +3438,10 @@
     const title = String(payload?.title || '').trim();
     const body = String(payload?.body || payload?.message || '').trim();
     const targetUserId = String(payload?.target_user_id || '').trim();
+    const targetUserIds = Array.isArray(payload?.target_user_ids) ? payload.target_user_ids.map(v => String(v || '').trim()).filter(Boolean) : [];
+    const targetEmails = Array.isArray(payload?.target_emails) ? payload.target_emails.map(v => String(v || '').trim()).filter(Boolean) : [];
     const roles = normalizeNotificationRoles(payload?.target_role, payload?.target_roles);
-    const userIds = targetUserId ? [targetUserId] : [];
+    const userIds = [...new Set([...(targetUserId ? [targetUserId] : []), ...targetUserIds])];
     const resource = String(payload?.resource || 'notifications').trim().toLowerCase();
     const action = String(payload?.action || payload?.event_type || 'general').trim().toLowerCase();
     const recordId = String(payload?.record_id || '').trim();
@@ -3406,7 +3451,7 @@
       console.warn('[notifications:pwa] push skipped', { ...debugContext, reason: 'missing-title-or-body' });
       return { attempted: false, reason: 'missing-title-or-body' };
     }
-    if (!userIds.length && !roles.length) {
+    if (!userIds.length && !roles.length && !targetEmails.length) {
       console.warn('[notifications:pwa] push skipped', { ...debugContext, reason: 'no-target' });
       return { attempted: false, reason: 'no-target' };
     }
@@ -3429,7 +3474,8 @@
       }
     };
     if (userIds.length) requestPayload.user_ids = userIds;
-    else requestPayload.roles = roles;
+    if (roles.length) requestPayload.roles = roles;
+    if (targetEmails.length) requestPayload.emails = targetEmails;
     try {
       const { data, error } = await client.functions.invoke('send-web-push-v2', { body: requestPayload });
       if (error) {
@@ -3473,12 +3519,53 @@
 
   async function createNotificationAndPush(payload = {}, context = '') {
     const normalizedPayload = payload && typeof payload === 'object' ? payload : {};
-    const targetUserId = String(normalizedPayload?.target_user_id || '').trim();
-    const targetRole = String(normalizedPayload?.target_role || '').trim().toLowerCase();
-    const targetRoles = Array.isArray(normalizedPayload?.target_roles)
-      ? normalizedPayload.target_roles.map(role => String(role || '').trim().toLowerCase()).filter(Boolean)
-      : [];
-    const shouldAttemptPush = Boolean(targetUserId || targetRole || targetRoles.length);
+    const resource = String(normalizedPayload?.resource || '').trim().toLowerCase();
+    const action = String(normalizedPayload?.action || normalizedPayload?.event_type || '').trim().toLowerCase();
+    const actorUserId = String(normalizedPayload?.actor_user_id || normalizedPayload?.created_by || '').trim();
+    const { data: rule, error: ruleError } = await getClient()
+      .from('notification_rules')
+      .select('*')
+      .eq('resource', resource)
+      .eq('action', action)
+      .maybeSingle();
+    if (ruleError) console.warn('[notifications:rules] unable to load rule', { context, resource, action, ruleError });
+    if (!rule) {
+      console.warn('[notifications:rules] no rule found; notification skipped', { context, resource, action });
+      return { created: 0, push: { attempted: false, skipped: true, reason: 'no-rule' }, notification_id: null };
+    }
+    if (rule.enabled === false) {
+      return { created: 0, push: { attempted: false, skipped: true, reason: 'rule-disabled' }, notification_id: null };
+    }
+    const normalizedRoles = normalizeNotificationRoles(...(rule.recipient_roles || []), ...(normalizedPayload?.target_roles || []))
+      .map(normalizeNotificationRoleKey);
+    const { data: activeProfiles } = await getClient().from('profiles').select('id,email,role_key,is_active').eq('is_active', true).limit(2000);
+    const profileRows = Array.isArray(activeProfiles) ? activeProfiles : [];
+    const recipientUserIds = new Set([...(rule.recipient_user_ids || []), ...(normalizedPayload?.target_user_ids || [])].map(v => String(v || '').trim()).filter(Boolean));
+    const recipientEmails = new Set([...(rule.recipient_emails || []), ...(normalizedPayload?.target_emails || [])].map(v => String(v || '').trim().toLowerCase()).filter(Boolean));
+    const record = normalizedPayload?.record && typeof normalizedPayload.record === 'object' ? normalizedPayload.record : normalizedPayload;
+    (rule.users_from_record || []).forEach(key => {
+      const value = String(record?.[key] || '').trim().toLowerCase();
+      if (value) recipientEmails.add(value);
+    });
+    profileRows.forEach(row => {
+      const id = String(row.id || '').trim();
+      const email = String(row.email || '').trim().toLowerCase();
+      const roleKey = normalizeNotificationRoleKey(row.role_key);
+      if (!id) return;
+      if (normalizedRoles.includes(roleKey)) recipientUserIds.add(id);
+      if (email && recipientEmails.has(email)) recipientUserIds.add(id);
+    });
+    if (rule.exclude_actor !== false && actorUserId) recipientUserIds.delete(actorUserId);
+    if (!recipientUserIds.size && !recipientEmails.size && !normalizedRoles.length) {
+      console.warn('[notifications:rules] no recipients resolved; notification skipped', { context, resource, action });
+      return { created: 0, push: { attempted: false, skipped: true, reason: 'no-recipient' }, notification_id: null };
+    }
+    const targetUserIds = [...recipientUserIds];
+    const shouldAttemptPush = Boolean(rule.pwa_enabled !== false && targetUserIds.length);
+    const dedupeWindowSeconds = Math.max(1, Number(rule.dedupe_window_seconds || 60) || 60);
+    const dedupeMinuteBucket = Math.floor(Date.now() / (dedupeWindowSeconds * 1000));
+    const recordId = String(normalizedPayload?.record_id || record?.id || '').trim();
+    const dedupeKey = `${resource}:${action}:${recordId || 'na'}:${targetUserIds[0] || 'na'}:in_app:${dedupeMinuteBucket}`;
     const hubPromise = createNotificationHubEvent(normalizedPayload, context).catch(error => {
       console.warn('[notifications:hub] create failed but save should continue', { context, error });
       return [];
@@ -3486,8 +3573,10 @@
     const pushPromise = shouldAttemptPush
       ? sendPwaPushForNotification({
         ...normalizedPayload,
-        target_role: targetRole || undefined,
-        target_roles: targetRoles.length ? targetRoles : undefined
+        target_user_ids: targetUserIds,
+        target_emails: [...recipientEmails],
+        target_roles: normalizedRoles,
+        dedupe_key: dedupeKey
       }, context)
       : Promise.resolve({ attempted: false, reason: 'no-target' });
     const [hubSettled, pushSettled] = await Promise.allSettled([hubPromise, pushPromise]);
@@ -4024,6 +4113,90 @@
         .eq('is_read', false);
       if (error) throw friendlyError('Unable to mark all notifications as read', error);
       return { handled: true, data: { ok: true } };
+    }
+    if (resource === 'notification_settings' && action === 'list') {
+      assertAllowed('notification_settings', 'list');
+      const rows = await listNotificationRules(client);
+      return { handled: true, data: { rows } };
+    }
+    if (resource === 'notification_settings' && action === 'upsert') {
+      assertAllowed('notification_settings', 'upsert');
+      const input = payload?.rule && typeof payload.rule === 'object' ? payload.rule : payload;
+      const rule = {
+        resource: String(input?.resource || '').trim().toLowerCase(),
+        action: String(input?.action || '').trim().toLowerCase(),
+        description: String(input?.description || '').trim(),
+        enabled: input?.enabled !== false,
+        in_app_enabled: input?.in_app_enabled !== false,
+        pwa_enabled: input?.pwa_enabled !== false,
+        email_enabled: input?.email_enabled === true,
+        recipient_roles: (Array.isArray(input?.recipient_roles) ? input.recipient_roles : []).map(normalizeNotificationRoleKey).filter(Boolean),
+        recipient_user_ids: Array.isArray(input?.recipient_user_ids) ? input.recipient_user_ids : [],
+        recipient_emails: Array.isArray(input?.recipient_emails) ? input.recipient_emails.map(v => String(v || '').trim().toLowerCase()).filter(Boolean) : [],
+        users_from_record: Array.isArray(input?.users_from_record) ? input.users_from_record.map(v => String(v || '').trim()).filter(Boolean) : [],
+        exclude_actor: input?.exclude_actor !== false,
+        dedupe_window_seconds: Math.max(1, Number(input?.dedupe_window_seconds || 60) || 60)
+      };
+      if (!rule.resource || !rule.action) throw new Error('resource and action are required.');
+      const { data, error } = await client.from('notification_rules').upsert(rule, { onConflict: 'resource,action' }).select('*').single();
+      if (error) throw friendlyError('Unable to save notification setting', error);
+      return { handled: true, data };
+    }
+    if (resource === 'notification_settings' && action === 'bulk_upsert') {
+      assertAllowed('notification_settings', 'bulk_upsert');
+      const rules = Array.isArray(payload?.rules) ? payload.rules : [];
+      for (const rule of rules) {
+        const upsertRule = {
+          resource: String(rule?.resource || '').trim().toLowerCase(),
+          action: String(rule?.action || '').trim().toLowerCase(),
+          description: String(rule?.description || '').trim(),
+          enabled: rule?.enabled !== false,
+          in_app_enabled: rule?.in_app_enabled !== false,
+          pwa_enabled: rule?.pwa_enabled !== false,
+          email_enabled: rule?.email_enabled === true,
+          recipient_roles: (Array.isArray(rule?.recipient_roles) ? rule.recipient_roles : []).map(normalizeNotificationRoleKey).filter(Boolean),
+          recipient_user_ids: Array.isArray(rule?.recipient_user_ids) ? rule.recipient_user_ids : [],
+          recipient_emails: Array.isArray(rule?.recipient_emails) ? rule.recipient_emails.map(v => String(v || '').trim().toLowerCase()).filter(Boolean) : [],
+          users_from_record: Array.isArray(rule?.users_from_record) ? rule.users_from_record.map(v => String(v || '').trim()).filter(Boolean) : [],
+          exclude_actor: rule?.exclude_actor !== false,
+          dedupe_window_seconds: Math.max(1, Number(rule?.dedupe_window_seconds || 60) || 60)
+        };
+        if (!upsertRule.resource || !upsertRule.action) continue;
+        const { error } = await client.from('notification_rules').upsert(upsertRule, { onConflict: 'resource,action' });
+        if (error) throw friendlyError('Unable to save notification setting', error);
+      }
+      return { handled: true, data: { ok: true, count: rules.length } };
+    }
+    if (resource === 'notification_settings' && action === 'reset_defaults') {
+      assertAllowed('notification_settings', 'reset_defaults');
+      for (const rule of NOTIFICATION_RULE_DEFAULTS) {
+        const { error } = await client.from('notification_rules').upsert({
+          ...rule,
+          enabled: true,
+          in_app_enabled: true,
+          pwa_enabled: true,
+          email_enabled: false,
+          exclude_actor: true,
+          dedupe_window_seconds: 60
+        }, { onConflict: 'resource,action' });
+        if (error) throw friendlyError('Unable to reset notification defaults', error);
+      }
+      return { handled: true, data: { ok: true, count: NOTIFICATION_RULE_DEFAULTS.length } };
+    }
+    if (resource === 'notification_settings' && action === 'test_notification') {
+      assertAllowed('notification_settings', 'test_notification');
+      const input = payload?.rule && typeof payload.rule === 'object' ? payload.rule : payload;
+      const currentUserId = await getCurrentUserId(client);
+      const result = await createNotificationAndPush({
+        ...input,
+        resource: String(input?.resource || '').trim().toLowerCase(),
+        action: String(input?.action || '').trim().toLowerCase(),
+        title: 'Test notification',
+        message: `Test for ${String(input?.resource || '')}:${String(input?.action || '')}`,
+        actor_user_id: currentUserId || null,
+        record_id: String(input?.record_id || 'test').trim() || 'test'
+      }, 'notification_settings:test_notification');
+      return { handled: true, data: result };
     }
 
     if (action === 'list') {

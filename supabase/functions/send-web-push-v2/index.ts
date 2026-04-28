@@ -169,7 +169,8 @@ Deno.serve(async req => {
     if (legacyUserId && !targetUserIds.includes(legacyUserId)) targetUserIds.push(legacyUserId);
     if (legacySubscriptionId && !targetSubscriptionIds.includes(legacySubscriptionId)) targetSubscriptionIds.push(legacySubscriptionId);
     const targetRoles = uniqueList(body.roles).map(item => item.toLowerCase());
-    const allowBroadcast = body.allow_broadcast === true;
+    const targetEmails = uniqueList(body.emails).map(item => item.toLowerCase());
+    const allowBroadcast = false;
     const resource = getPayloadResource(body);
 
     if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
@@ -207,15 +208,6 @@ Deno.serve(async req => {
         );
       }
       if (!auth.isPrivileged) {
-        if (allowBroadcast) {
-          return new Response(
-            JSON.stringify({
-              error: 'Not authorized. Only admin/dev/webhook may broadcast push notifications.',
-              code: 'forbidden_broadcast'
-            }),
-            { status: 403, headers: CORS_HEADERS }
-          );
-        }
 
         if (targetRoles.length > 0 && !isAllowedSystemRolePush(body)) {
           return new Response(
@@ -268,6 +260,9 @@ Deno.serve(async req => {
       });
 
       roleProfileIds = [];
+      if (!targetUserIds.length && !targetRoles.length && !targetSubscriptionIds.length && !targetEmails.length) {
+        return new Response(JSON.stringify({ ok: true, skipped: true, reason: 'no-target' }), { status: 200, headers: CORS_HEADERS });
+      }
       if (targetRoles.length > 0) {
         const { data: profileRows, error: profileError } = await adminClient
           .from('profiles')
@@ -283,6 +278,19 @@ Deno.serve(async req => {
       }
 
       const combinedUserIds = uniqueList([...targetUserIds, ...roleProfileIds]);
+      if (targetEmails.length > 0) {
+        const { data: emailProfiles, error: emailProfilesError } = await adminClient
+          .from('profiles')
+          .select('id,email')
+          .eq('is_active', true)
+          .in('email', targetEmails)
+          .limit(500);
+        if (emailProfilesError) throw new Error(emailProfilesError.message || 'Unable to resolve target emails.');
+        (emailProfiles || []).forEach(row => {
+          const id = normalizeString(row.id);
+          if (id && !combinedUserIds.includes(id)) combinedUserIds.push(id);
+        });
+      }
       const fetchedRows: Array<Record<string, unknown>> = [];
       const seenSubscriptionIds = new Set<string>();
 

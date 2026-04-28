@@ -2505,7 +2505,14 @@ function setActiveView(view) {
   if (view === 'notifications' && window.Notifications?.loadHub) runViewLoader('notifications', () => Notifications.loadHub(true));
   if (view === 'workflow' && window.Workflow?.loadAndRefresh) runViewLoader('workflow', () => Workflow.loadAndRefresh(true));
   if (view === 'users' && window.UserAdmin?.refresh) runViewLoader('users', () => UserAdmin.refresh());
-  if (view === 'rolePermissions' && window.RolesAdmin?.loadAll) runViewLoader('roles and permissions', () => RolesAdmin.loadAll());
+  if (view === 'rolePermissions' && window.RolesAdmin?.loadAll) {
+    runViewLoader('roles and permissions', async () => {
+      await RolesAdmin.loadAll();
+      if (window.NotificationSetup?.load && Permissions.canManageNotificationSettings()) {
+        await NotificationSetup.load();
+      }
+    });
+  }
   updatePrimaryActionButton(view);
   if (E.app) {
     const appTop = E.app.getBoundingClientRect().top + window.scrollY - 10;
@@ -7097,6 +7104,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   wireCore();
   if (window.UserAdmin?.wire) UserAdmin.wire();
   if (window.RolesAdmin?.wire) RolesAdmin.wire();
+  if (window.NotificationSetup?.wire) NotificationSetup.wire();
   wireSorting();
   wirePaging();
   wireFilters();
@@ -7125,6 +7133,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (window.PushNotifications?.init) await PushNotifications.init();
 
   const isAuthenticated = Session.isAuthenticated();
+  const notificationSetupCard = document.getElementById('notificationSetupCard');
+  if (notificationSetupCard) {
+    notificationSetupCard.style.display = Permissions.canManageNotificationSettings() ? '' : 'none';
+  }
   if (isAuthenticated) {
     const role = Session.role();
     if (!Permissions.canLoadRuntimeMatrix(role)) {
