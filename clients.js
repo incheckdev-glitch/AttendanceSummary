@@ -359,14 +359,23 @@ const Clients = {
     return {
       ...raw,
       id: String(raw.id || raw.item_id || raw.itemId || '').trim(),
-      agreement_id: String(raw.agreement_id || raw.agreementId || '').trim(),
-      section: String(raw.section || raw.category || raw.type || '').trim(),
-      location_name: String(raw.location_name || raw.locationName || '').trim(),
-      item_name: String(raw.item_name || raw.itemName || raw.module || raw.module_name || raw.moduleName || '').trim(),
-      billing_frequency: String(raw.billing_frequency || raw.billingFrequency || raw.frequency || '').trim(),
-      service_start_date: String(raw.service_start_date || raw.serviceStartDate || '').trim(),
-      service_end_date: String(raw.service_end_date || raw.serviceEndDate || '').trim(),
-      line_total: this.toNumberSafe(raw.line_total ?? raw.lineTotal),
+      agreement_id: String(raw.agreement_id || raw.agreementId || raw.parent_agreement_id || raw.parentAgreementId || '').trim(),
+      agreement_number: String(raw.agreement_number || raw.agreementNumber || raw.parent_agreement_number || raw.parentAgreementNumber || '').trim(),
+      parent_agreement_id: String(raw.parent_agreement_id || raw.parentAgreementId || '').trim(),
+      parent_agreement_number: String(raw.parent_agreement_number || raw.parentAgreementNumber || '').trim(),
+      source_agreement_id: String(raw.source_agreement_id || raw.sourceAgreementId || '').trim(),
+      source_agreement_number: String(raw.source_agreement_number || raw.sourceAgreementNumber || '').trim(),
+      section: String(raw.section || raw.category || raw.type || raw.section_name || raw.section_label || '').trim(),
+      category: String(raw.category || raw.section || raw.type || '').trim(),
+      location_name: String(raw.location_name || raw.locationName || raw.location || raw.site || raw.site_name || raw.branch || raw.branch_name || raw.store_name || '').trim(),
+      item_name: String(raw.item_name || raw.itemName || raw.product_name || raw.productName || raw.service_name || raw.serviceName || raw.module || raw.module_name || raw.moduleName || raw.description || '').trim(),
+      module_name: String(raw.module_name || raw.moduleName || raw.module || raw.service_name || raw.serviceName || raw.product_name || raw.productName || raw.item_name || raw.itemName || '').trim(),
+      billing_frequency: String(raw.billing_frequency || raw.billingFrequency || raw.billing_cycle || raw.billingCycle || raw.frequency || '').trim(),
+      payment_term: String(raw.payment_term || raw.payment_terms || raw.paymentTerm || raw.paymentTerms || '').trim(),
+      service_start_date: String(raw.service_start_date || raw.serviceStartDate || raw.start_date || raw.startDate || '').trim(),
+      service_end_date: String(raw.service_end_date || raw.serviceEndDate || raw.end_date || raw.endDate || raw.renewal_date || raw.renewalDate || '').trim(),
+      renewal_date: String(raw.renewal_date || raw.renewalDate || raw.service_end_date || raw.serviceEndDate || raw.end_date || raw.endDate || '').trim(),
+      line_total: this.toNumberSafe(raw.line_total ?? raw.lineTotal ?? raw.total ?? raw.amount ?? raw.price ?? raw.unit_price),
       created_at: String(raw.created_at || raw.createdAt || '').trim()
     };
   },
@@ -607,20 +616,37 @@ const Clients = {
     });
     return matchedAgreements;
   },
+  getAgreementMatchKeys_(agreement = {}) {
+    return [agreement.id, agreement.agreement_id, agreement.agreement_number, agreement.source_agreement_id, agreement.source_agreement_number]
+      .map(value => String(value || '').trim())
+      .filter(Boolean);
+  },
+  getAgreementItemMatchKeys_(item = {}) {
+    return [
+      item.agreement_id,
+      item.agreement_number,
+      item.parent_agreement_id,
+      item.parent_agreement_number,
+      item.source_agreement_id,
+      item.source_agreement_number
+    ]
+      .map(value => String(value || '').trim())
+      .filter(Boolean);
+  },
+  findAgreementForItem_(item = {}, agreements = []) {
+    const itemKeys = this.getAgreementItemMatchKeys_(item);
+    return agreements.find(agreement => {
+      const agreementKeys = this.getAgreementMatchKeys_(agreement);
+      return itemKeys.some(itemKey => agreementKeys.some(agreementKey => this.valuesMatch(itemKey, agreementKey)));
+    }) || {};
+  },
   listClientAgreementLocationItems_(clientId) {
     const linkedAgreements = this.listClientRelatedAgreements_(clientId);
-    const linkedAgreementKeys = new Set(
-      linkedAgreements
-        .flatMap(item => [item.id, item.agreement_id, item.agreement_number])
-        .map(value => String(value || '').trim())
-        .filter(Boolean)
-    );
+    const linkedAgreementKeys = linkedAgreements.flatMap(item => this.getAgreementMatchKeys_(item));
     return this.state.agreementItems
       .filter(item => {
-        const itemKeys = [item.agreement_id, item.agreement_number, item.parent_agreement_id, item.parent_agreement_number]
-          .map(value => String(value || '').trim())
-          .filter(Boolean);
-        return itemKeys.some(key => linkedAgreementKeys.has(key));
+        const itemKeys = this.getAgreementItemMatchKeys_(item);
+        return itemKeys.some(key => linkedAgreementKeys.some(agreementKey => this.valuesMatch(key, agreementKey)));
       })
       .filter(item => this.isAnnualSaasClientLocationItem(item));
   },
@@ -743,20 +769,37 @@ const Clients = {
     return null;
   },
   isAnnualSaasClientLocationItem(item = {}) {
-    const section = this.normalizeText(item.section || item.category || item.type || item.section_name || item.section_label);
-    const billingFrequency = this.normalizeText(item.billing_frequency || item.billingFrequency || item.frequency);
-    const itemName = this.normalizeText(item.item_name || item.itemName || item.module || item.module_name || item.moduleName);
-    if (!section && !billingFrequency) return false;
+    const text = this.normalizeText([
+      item.section,
+      item.category,
+      item.type,
+      item.section_name,
+      item.section_label,
+      item.item_type,
+      item.item_name,
+      item.itemName,
+      item.product_name,
+      item.productName,
+      item.service_name,
+      item.serviceName,
+      item.module,
+      item.module_name,
+      item.moduleName,
+      item.description,
+      item.billing_frequency,
+      item.billingFrequency,
+      item.billing_cycle,
+      item.billingCycle,
+      item.frequency
+    ].filter(Boolean).join(' '));
+    if (!text) return false;
     const isOneTimeOrSetup = ['one_time_fee', 'one_time', 'one time', 'one-time', 'setup', 'implementation', 'onboarding'].some(
-      token => section.includes(token)
+      token => text.includes(token)
     );
     if (isOneTimeOrSetup) return false;
-    const isSaasFamily = ['annual_saas', 'saas', 'subscription', 'recurring'].some(token => section.includes(token));
+    const isSaasFamily = ['annual_saas', 'saas', 'subscription', 'recurring'].some(token => text.includes(token));
     if (!isSaasFamily) return false;
-    const isAnnual = ['annual', 'yearly', '12 month', '12-month'].some(
-      token => section.includes(token) || billingFrequency.includes(token) || itemName.includes(token)
-    );
-    return isAnnual;
+    return ['annual', 'yearly', '12 month', '12-month', 'year', 'renewal'].some(token => text.includes(token));
   },
   isActiveAnnualSaasLocationItem(item = {}) {
     const startValue = String(item.service_start_date || item.serviceStartDate || '').trim();
@@ -1097,125 +1140,108 @@ const Clients = {
   },
   buildClientStatementRows(client) {
     const clientId = String(client?.client_id || '').trim();
-    const agreements = this.listClientRelatedAgreements_(clientId);
     const invoices = this.listClientRelatedInvoices_(clientId);
     const receipts = this.listClientRelatedReceipts_(clientId);
-    const agreementRows = agreements.map(item => ({
-      date: item.signed_date || item.agreement_date || item.effective_date || item.created_at,
-      type: 'Agreement',
-      document_no: item.agreement_number || item.agreement_id || item.id || '—',
-      document_id: item.agreement_id || item.id,
-      reference: item.agreement_number || item.agreement_id || '',
-      debit: this.pickAmount_(item, ['grand_total', 'total', 'total_amount', 'amount', 'value', 'estimated_value']),
-      credit: 0,
-      due_date: item.service_end_date || '',
-      status: item.status || '',
-      notes: [item.agreement_title || item.customer_name || item.status, item.customer_name].filter(Boolean).join(' • '),
-      currency: String(item.currency || '').trim() || 'USD'
-    }));
     const invoiceRows = invoices.map(item => ({
-      date: item.issued_date || item.created_at || item.updated_at,
+      date: item.invoice_date || item.issued_date || item.issue_date || item.created_at || item.updated_at,
       type: 'Invoice',
-      document_no: item.invoice_number || item.invoice_id || '—',
-      document_id: item.invoice_id,
-      reference: item.reference || item.agreement_number || item.agreement_id || '',
-      debit: this.pickAmount_(item, ['grand_total', 'total_amount', 'invoice_total', 'total', 'amount_due', 'value']),
+      document_no: item.invoice_number || item.invoice_id || item.id || '—',
+      document_id: item.invoice_id || item.id,
+      reference: item.reference || item.agreement_number || item.agreement_id || item.proposal_id || '',
+      debit: this.pickAmount_(item, ['grand_total', 'total_amount', 'invoice_total', 'total', 'amount_due', 'value', 'amount']),
       credit: 0,
-      due_date: item.due_date || '',
+      due_date: item.due_date || item.payment_due_date || '',
       status: this.getPaymentStatus(item),
-      notes: item.notes || item.status || '',
+      notes: item.notes || item.status || item.payment_state || '',
       currency: String(item.currency || '').trim() || 'USD'
     }));
     const receiptRows = receipts.map(item => ({
-      date: item.payment_date || item.receipt_date || item.created_at || item.updated_at,
+      date: item.payment_date || item.receipt_date || item.received_at || item.created_at || item.updated_at,
       type: 'Receipt',
-      document_no: item.receipt_number || item.receipt_id || '—',
-      document_id: item.receipt_id,
-      reference: item.reference || item.payment_reference || item.invoice_id || '',
+      document_no: item.receipt_number || item.receipt_id || item.id || '—',
+      document_id: item.receipt_id || item.id,
+      reference: item.reference || item.payment_reference || item.invoice_number || item.invoice_id || item.agreement_number || '',
       debit: 0,
-      credit: this.pickAmount_(item, ['amount_paid', 'paid_amount', 'received_amount', 'receipt_total', 'amount', 'total_amount']),
+      credit: this.pickAmount_(item, ['received_amount', 'amount_received', 'amount_paid', 'paid_amount', 'receipt_total', 'amount', 'total_amount']),
       due_date: '',
-      status: item.payment_state || 'Received',
+      status: item.payment_state || item.status || 'Received',
       notes: item.notes || item.payment_method || '',
       currency: String(item.currency || '').trim() || 'USD'
     }));
-    return this.computeRunningBalance([...agreementRows, ...invoiceRows, ...receiptRows]);
+    return this.computeRunningBalance([...invoiceRows, ...receiptRows]);
   },
   buildClientRenewalRows(client) {
     const clientId = String(client?.client_id || '').trim();
     const agreements = this.listClientRelatedAgreements_(clientId);
-    const agreementByUuid = new Map(agreements.map(agreement => [String(agreement.id || '').trim(), agreement]));
+    const locationItems = this.listClientAgreementLocationItems_(clientId);
     const rows = [];
-    this.listClientAgreementLocationItems_(clientId).forEach(item => {
-      const agreement = agreementByUuid.get(String(item.agreement_id || '').trim()) || {};
-      const normalized = this.normalizeRenewalRow({
+
+    locationItems.forEach(item => {
+      const agreement = this.findAgreementForItem_(item, agreements);
+      const serviceStart = this.getField(item, 'service_start_date', 'serviceStartDate', 'start_date', 'startDate') || agreement.service_start_date || agreement.effective_date || agreement.agreement_date || '';
+      const serviceEnd = this.getField(item, 'service_end_date', 'serviceEndDate', 'end_date', 'endDate') || agreement.service_end_date || '';
+      const renewalDate = this.getField(item, 'renewal_date', 'renewalDate') || serviceEnd || agreement.service_end_date || '';
+      rows.push(this.normalizeRenewalRow({
         ...item,
-        agreement_id: agreement.agreement_id,
-        agreement_number: agreement.agreement_number,
-        client_name: client.customer_name || client.customer_legal_name || '—',
-        renewal_date: this.getField(item, 'renewal_date', 'renewalDate', 'service_end_date', 'serviceEndDate'),
-        service_start_date: this.getField(item, 'service_start_date', 'serviceStartDate'),
-        service_end_date: this.getField(item, 'service_end_date', 'serviceEndDate'),
-        location_name: this.getField(item, 'location_name', 'locationName'),
-        payment_status: this.getField(item, 'payment_status', 'paymentStatus'),
-        billing_frequency: this.getField(item, 'billing_frequency', 'billingFrequency', 'frequency') || agreement.billing_frequency,
+        source: 'agreement_item',
+        type: 'Location Renewal',
+        agreement_id: agreement.agreement_id || agreement.id || item.agreement_id,
+        agreement_number: agreement.agreement_number || item.agreement_number,
+        client_name: agreement.customer_name || agreement.customer_legal_name || client.customer_name || client.client_name || client.company_name || '—',
+        location_name:
+          this.getField(item, 'location_name', 'locationName', 'location', 'site', 'site_name', 'branch', 'branch_name', 'store_name') ||
+          this.getField(item, 'description', 'item_name', 'itemName') ||
+          'Location',
+        module_name:
+          this.getField(item, 'module_name', 'moduleName', 'module', 'service_name', 'serviceName', 'product_name', 'productName', 'item_name', 'itemName') ||
+          'SaaS Annual',
+        service_start_date: serviceStart,
+        service_end_date: serviceEnd,
+        renewal_date: renewalDate,
+        billing_frequency: this.getField(item, 'billing_frequency', 'billingFrequency', 'billing_cycle', 'billingCycle', 'frequency') || agreement.billing_frequency,
+        payment_term: this.getField(item, 'payment_term', 'payment_terms', 'paymentTerm', 'paymentTerms') || agreement.payment_term,
+        amount_due: this.pickAmount_(item, ['line_total', 'total', 'amount', 'price', 'unit_price']),
+        payment_status: this.getField(item, 'payment_status', 'paymentStatus') || 'Pending / Not invoiced',
+        status: agreement.status || 'Active',
         currency: this.getField(item, 'currency', 'currency_code') || agreement.currency || this.getClientCurrency_(clientId)
+      }));
+    });
+
+    if (!locationItems.length) {
+      agreements.forEach(agreement => {
+        rows.push(this.normalizeRenewalRow({
+          source: 'agreement',
+          type: 'Agreement Renewal',
+          agreement_id: agreement.agreement_id || agreement.id,
+          agreement_number: agreement.agreement_number,
+          client_name: agreement.customer_name || agreement.customer_legal_name || client.customer_name,
+          location_name: agreement.customer_name || client.customer_name || 'Agreement',
+          module_name: 'Agreement renewal',
+          service_start_date: agreement.service_start_date || agreement.effective_date || agreement.agreement_date,
+          service_end_date: agreement.service_end_date,
+          renewal_date: agreement.service_end_date,
+          billing_frequency: agreement.billing_frequency,
+          payment_term: agreement.payment_term,
+          contract_term: agreement.contract_term,
+          status: agreement.status,
+          currency: agreement.currency || this.getClientCurrency_(clientId)
+        }));
       });
-      if (normalized.service_start_date || normalized.service_end_date || normalized.location_name || normalized.module_name) {
-        rows.push(normalized);
-      }
-    });
-    agreements.forEach(agreement => {
-      rows.push(this.normalizeRenewalRow({
-        agreement_id: agreement.agreement_id || agreement.id,
-        agreement_number: agreement.agreement_number,
-        client_name: agreement.customer_name || agreement.customer_legal_name || client.customer_name,
-        service_start_date: agreement.service_start_date || agreement.effective_date || agreement.agreement_date,
-        service_end_date: agreement.service_end_date,
-        renewal_date: agreement.service_end_date,
-        billing_frequency: agreement.billing_frequency,
-        payment_term: agreement.payment_term,
-        contract_term: agreement.contract_term,
-        status: agreement.status,
-        due_date: '',
-        currency: agreement.currency || this.getClientCurrency_(clientId)
-      }));
-      rows.push(this.normalizeRenewalRow({
-        agreement_id: agreement.agreement_id || agreement.id,
-        agreement_number: agreement.agreement_number,
-        client_name: agreement.customer_name || agreement.customer_legal_name || client.customer_name,
-        renewal_date: agreement.signed_date || agreement.agreement_date || agreement.effective_date || agreement.created_at,
-        status: `Agreement ${agreement.status || 'signed'}`,
-        currency: agreement.currency || this.getClientCurrency_(clientId)
-      }));
-      rows.push(this.normalizeRenewalRow({
-        agreement_id: agreement.agreement_id || agreement.id,
-        agreement_number: agreement.agreement_number,
-        client_name: agreement.customer_name || agreement.customer_legal_name || client.customer_name,
-        renewal_date: agreement.service_start_date || agreement.effective_date || agreement.agreement_date,
-        service_start_date: agreement.service_start_date || agreement.effective_date || agreement.agreement_date,
-        status: 'Service start',
-        currency: agreement.currency || this.getClientCurrency_(clientId)
-      }));
-      rows.push(this.normalizeRenewalRow({
-        agreement_id: agreement.agreement_id || agreement.id,
-        agreement_number: agreement.agreement_number,
-        client_name: agreement.customer_name || agreement.customer_legal_name || client.customer_name,
-        renewal_date: agreement.service_end_date,
-        service_end_date: agreement.service_end_date,
-        status: 'Service end / renewal',
-        currency: agreement.currency || this.getClientCurrency_(clientId)
-      }));
-    });
+    }
+
     this.listClientRelatedInvoices_(clientId).forEach(invoice => {
       rows.push(this.normalizeRenewalRow({
+        source: 'invoice',
+        type: 'Invoice Due',
         agreement_id: invoice.agreement_id,
         agreement_number: invoice.agreement_number,
         invoice_id: invoice.invoice_id || invoice.id,
         invoice_number: invoice.invoice_number,
         client_name: invoice.customer_name || client.customer_name,
+        location_name: 'Invoice',
+        module_name: invoice.invoice_number || 'Invoice',
         due_date: invoice.due_date,
-        renewal_date: invoice.due_date || invoice.issued_date || invoice.created_at,
+        renewal_date: invoice.due_date || invoice.issued_date || invoice.invoice_date || invoice.created_at,
         amount_due: this.pickAmount_(invoice, ['amount_due', 'pending_amount', 'balance_due', 'grand_total']),
         payment_status: this.getPaymentStatus(invoice),
         status: invoice.status,
@@ -1224,19 +1250,33 @@ const Clients = {
     });
     this.listClientRelatedReceipts_(clientId).forEach(receipt => {
       rows.push(this.normalizeRenewalRow({
+        source: 'receipt',
+        type: 'Receipt Received',
         agreement_id: receipt.agreement_id,
         agreement_number: receipt.agreement_number,
         invoice_id: receipt.invoice_id,
         invoice_number: receipt.invoice_number,
         client_name: receipt.customer_name || client.customer_name,
+        location_name: 'Receipt',
+        module_name: receipt.receipt_number || 'Receipt',
         due_date: receipt.receipt_date || receipt.created_at,
         renewal_date: receipt.payment_date || receipt.receipt_date || receipt.created_at,
         amount_due: this.pickAmount_(receipt, ['amount_due', 'pending_amount', 'balance_due']),
-        payment_status: receipt.payment_state || 'Paid',
+        payment_status: receipt.payment_state || receipt.status || 'Paid',
         status: receipt.payment_state || receipt.status,
         currency: receipt.currency || this.getClientCurrency_(clientId)
       }));
     });
+    if (this.isDebugMode_()) {
+      console.log('[ClientRenewals] renewal source counts', {
+        client: client.client_name || client.company_name || client.name || client.customer_name,
+        relatedAgreements: agreements.length,
+        agreementItemsLoaded: this.state.agreementItems.length,
+        linkedAgreementItems: locationItems.length,
+        saasAnnualItems: locationItems.length,
+        renewalRows: rows.length
+      });
+    }
     return rows.sort((a, b) => {
       const ad = this.dateValueForSort_(a);
       const bd = this.dateValueForSort_(b);
@@ -1449,7 +1489,7 @@ const Clients = {
         ? 'Unable to load statement data.'
         : detailData.noLinkedRows
           ? 'No linked rows found. Check client ID/name mapping.'
-          : 'No statement rows found.';
+          : 'No invoice or receipt statement rows found.';
       E.clientStatementTbody.innerHTML = rows.length
         ? rows
             .map(row => `<tr>

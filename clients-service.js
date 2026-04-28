@@ -118,7 +118,7 @@ const ClientsService = {
     const clientKeys = this.getClientKeys(client);
     const invoiceClientKeys = this.compactValues([
       invoice.client_id, invoice.customer_id, invoice.company_id, invoice.client_name, invoice.customer_name, invoice.company_name,
-      invoice.email, invoice.client_email, invoice.customer_contact_email, invoice.phone, invoice.client_phone
+      invoice.email, invoice.client_email, invoice.customer_contact_email, invoice.customer_contact_mobile, invoice.phone, invoice.client_phone
     ]);
     const directMatch = invoiceClientKeys.some(invoiceKey => clientKeys.some(clientKey => this.valuesMatch(invoiceKey, clientKey)));
     if (directMatch) return true;
@@ -126,8 +126,10 @@ const ClientsService = {
       this.valuesMatch(invoice.agreement_id, agreement.id) ||
       this.valuesMatch(invoice.agreement_id, agreement.agreement_id) ||
       this.valuesMatch(invoice.agreement_number, agreement.agreement_number) ||
+      this.valuesMatch(invoice.source_agreement_id, agreement.id) ||
       this.valuesMatch(invoice.source_agreement_id, agreement.agreement_id) ||
-      this.valuesMatch(invoice.source_agreement_number, agreement.agreement_number)
+      this.valuesMatch(invoice.source_agreement_number, agreement.agreement_number) ||
+      this.valuesMatch(invoice.proposal_id, agreement.proposal_id)
     );
   },
   receiptBelongsToClient(receipt = {}, client = {}, relatedAgreements = [], relatedInvoices = []) {
@@ -351,47 +353,47 @@ const ClientsService = {
     return items.filter(item => this.isAnnualSaasClientLocationItem(item)).length;
   },
   isAnnualSaasClientLocationItem(item = {}) {
-    const section = this.normalizeText(item.section || item.category || item.type || item.section_name || item.section_label);
-    const itemName = this.normalizeText(item.item_name || item.itemName);
-    if (!section && !itemName) return false;
+    const text = this.normalizeText([
+      item.section,
+      item.category,
+      item.type,
+      item.section_name,
+      item.section_label,
+      item.item_type,
+      item.item_name,
+      item.itemName,
+      item.product_name,
+      item.productName,
+      item.service_name,
+      item.serviceName,
+      item.module,
+      item.module_name,
+      item.moduleName,
+      item.description,
+      item.billing_frequency,
+      item.billingFrequency,
+      item.billing_cycle,
+      item.billingCycle,
+      item.frequency
+    ].filter(Boolean).join(' '));
+    if (!text) return false;
 
     const isOneTimeOrSetup = ['one_time_fee', 'one_time', 'one time', 'one-time', 'setup', 'implementation', 'onboarding'].some(
-      token => section.includes(token) || itemName.includes(token)
+      token => text.includes(token)
     );
     if (isOneTimeOrSetup) return false;
 
-    const isSaasFamily = ['annual_saas', 'saas', 'subscription', 'recurring'].some(
-      token => section.includes(token) || itemName.includes(token)
-    );
+    const isSaasFamily = ['annual_saas', 'saas', 'subscription', 'recurring'].some(token => text.includes(token));
     if (!isSaasFamily) return false;
 
-    const isAnnual = ['annual', 'yearly', '12 month', '12-month'].some(
-      token => section.includes(token) || itemName.includes(token)
-    );
-    if (!isAnnual) return false;
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const startDateRaw = String(item.service_start_date || '').trim();
-    if (!startDateRaw) return false;
-    const startDate = new Date(startDateRaw);
-    if (Number.isNaN(startDate.getTime())) return false;
-    startDate.setHours(0, 0, 0, 0);
-    if (today < startDate) return false;
-
-    const endDateRaw = String(item.service_end_date || '').trim();
-    if (!endDateRaw) return true;
-    const endDate = new Date(endDateRaw);
-    if (Number.isNaN(endDate.getTime())) return true;
-    endDate.setHours(0, 0, 0, 0);
-    return today <= endDate;
+    return ['annual', 'yearly', '12 month', '12-month', 'year', 'renewal'].some(token => text.includes(token));
   },
   async fetchAgreementItemsForClients_(db) {
     // temporary analytics fallback - replace with SQL view/RPC aggregation
     return db
       .from('agreement_items')
-      .select('id,agreement_id,location_name,section,item_name,line_total,service_start_date,service_end_date,created_at')
-      .limit(1000);
+      .select('*')
+      .limit(5000);
   },
   coerceLinkedRows_(res, label) {
     if (!res) return [];
@@ -413,8 +415,23 @@ const ClientsService = {
   },
   computeTotalsForClient(client = {}, agreements = [], invoices = [], receipts = [], agreementItems = []) {
     const linkedAgreements = agreements.filter(row => this.matchAgreementClient(row, client));
-    const linkedAgreementUuids = new Set(linkedAgreements.map(row => String(row.id || '').trim()).filter(Boolean));
-    const linkedAgreementItems = agreementItems.filter(item => linkedAgreementUuids.has(String(item.agreement_id || '').trim()));
+    const linkedAgreementKeys = linkedAgreements
+      .flatMap(row => [row.id, row.agreement_id, row.agreement_number])
+      .map(value => String(value || '').trim())
+      .filter(Boolean);
+    const linkedAgreementItems = agreementItems.filter(item => {
+      const itemKeys = [
+        item.agreement_id,
+        item.agreement_number,
+        item.parent_agreement_id,
+        item.parent_agreement_number,
+        item.source_agreement_id,
+        item.source_agreement_number
+      ]
+        .map(value => String(value || '').trim())
+        .filter(Boolean);
+      return itemKeys.some(itemKey => linkedAgreementKeys.some(agreementKey => this.valuesMatch(itemKey, agreementKey)));
+    });
     const linkedInvoices = invoices.filter(row => this.invoiceBelongsToClient(row, client, linkedAgreements));
     const linkedReceipts = receipts.filter(row => this.receiptBelongsToClient(row, client, linkedAgreements, linkedInvoices));
 
