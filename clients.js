@@ -63,6 +63,9 @@ const Clients = {
       .toLowerCase()
       .replace(/\s+/g, ' ');
   },
+  compactValues(values = []) {
+    return values.filter(value => String(value || '').trim());
+  },
   valuesMatch(left, right) {
     const l = this.normalizeMatchValue(left);
     const r = this.normalizeMatchValue(right);
@@ -108,77 +111,108 @@ const Clients = {
         agreement.service_end_date ||
         '',
       total_value:
-        agreement.total_value ||
-        agreement.grand_total ||
-        agreement.subtotal_locations ||
-        0
+        this.toNumberSafe(
+          agreement.grand_total ||
+            agreement.total_value ||
+            agreement.total_amount ||
+            agreement.amount ||
+            0
+        )
     };
   },
-  agreementBelongsToClient(agreement = {}, client = {}) {
+  getClientKeys(client = {}) {
+    return this.compactValues([
+      client.client_id,
+      client.id,
+      client.client_name,
+      client.company_name,
+      client.customer_name,
+      client.customer_legal_name,
+      client.legal_name,
+      client.name,
+      client.primary_contact_email,
+      client.primary_email,
+      client.email,
+      client.client_email,
+      client.phone,
+      client.mobile
+    ]);
+  },
+  getAgreementKeys(agreement = {}) {
     const normalizedAgreement = this.normalizeAgreementForClient(agreement);
-    const agreementKeys = [
+    return this.compactValues([
+      agreement.id,
+      agreement.agreement_id,
+      agreement.agreement_number,
       normalizedAgreement.client_name,
       normalizedAgreement.client_email,
       normalizedAgreement.client_phone,
       agreement.customer_name,
       agreement.customer_contact_email,
       agreement.customer_contact_mobile
-    ].filter(Boolean);
-    const clientKeys = [
-      client.client_name,
-      client.company_name,
-      client.customer_name,
-      client.name,
-      client.email,
-      client.phone,
-      client.mobile,
-      client.primary_contact_email,
-      client.primary_email
-    ].filter(Boolean);
+    ]);
+  },
+  agreementBelongsToClient(agreement = {}, client = {}) {
+    const agreementKeys = this.getAgreementKeys(agreement);
+    const clientKeys = this.getClientKeys(client);
     return agreementKeys.some(agreementKey => clientKeys.some(clientKey => this.valuesMatch(agreementKey, clientKey)));
   },
-  collectClientMatchValues_(client = {}) {
-    return [
-      client.id,
-      client.client_id,
-      client.client_uuid,
-      client.client_name,
-      client.company_name,
-      client.name,
-      client.customer_name,
-      client.customer_legal_name,
-      client.primary_contact_email,
-      client.email,
-      client.phone
-    ].filter(Boolean);
+  invoiceBelongsToClient(invoice = {}, client = {}, relatedAgreements = []) {
+    const clientKeys = this.getClientKeys(client);
+    const invoiceClientKeys = this.compactValues([
+      invoice.client_id,
+      invoice.customer_id,
+      invoice.company_id,
+      invoice.client_name,
+      invoice.customer_name,
+      invoice.company_name,
+      invoice.email,
+      invoice.client_email,
+      invoice.customer_contact_email,
+      invoice.phone,
+      invoice.client_phone
+    ]);
+    const directMatch = invoiceClientKeys.some(invoiceKey => clientKeys.some(clientKey => this.valuesMatch(invoiceKey, clientKey)));
+    if (directMatch) return true;
+    return relatedAgreements.some(agreement =>
+      this.valuesMatch(invoice.agreement_id, agreement.id) ||
+      this.valuesMatch(invoice.agreement_id, agreement.agreement_id) ||
+      this.valuesMatch(invoice.agreement_number, agreement.agreement_number) ||
+      this.valuesMatch(invoice.source_agreement_id, agreement.agreement_id) ||
+      this.valuesMatch(invoice.source_agreement_number, agreement.agreement_number)
+    );
   },
-  collectRecordMatchValues_(record = {}) {
-    return [
-      record.id,
-      record.client_id,
-      record.client_uuid,
-      record.customer_id,
-      record.company_id,
-      record.client_name,
-      record.company_name,
-      record.customer_name,
-      record.customer_legal_name,
-      record.email,
-      record.client_email,
-      record.phone,
-      record.client_phone,
-      record.agreement_id,
-      record.agreement_number,
-      record.invoice_id,
-      record.invoice_number,
-      record.receipt_id,
-      record.receipt_number
-    ].filter(Boolean);
+  receiptBelongsToClient(receipt = {}, client = {}, relatedAgreements = [], relatedInvoices = []) {
+    const clientKeys = this.getClientKeys(client);
+    const receiptClientKeys = this.compactValues([
+      receipt.client_id,
+      receipt.customer_id,
+      receipt.company_id,
+      receipt.client_name,
+      receipt.customer_name,
+      receipt.company_name,
+      receipt.email,
+      receipt.client_email,
+      receipt.customer_contact_email,
+      receipt.phone,
+      receipt.client_phone
+    ]);
+    const directMatch = receiptClientKeys.some(receiptKey => clientKeys.some(clientKey => this.valuesMatch(receiptKey, clientKey)));
+    if (directMatch) return true;
+    const invoiceMatch = relatedInvoices.some(invoice =>
+      this.valuesMatch(receipt.invoice_id, invoice.id) ||
+      this.valuesMatch(receipt.invoice_id, invoice.invoice_id) ||
+      this.valuesMatch(receipt.invoice_number, invoice.invoice_number)
+    );
+    if (invoiceMatch) return true;
+    return relatedAgreements.some(agreement =>
+      this.valuesMatch(receipt.agreement_id, agreement.id) ||
+      this.valuesMatch(receipt.agreement_id, agreement.agreement_id) ||
+      this.valuesMatch(receipt.agreement_number, agreement.agreement_number)
+    );
   },
-  recordBelongsToClient(record = {}, client = {}) {
-    const clientValues = this.collectClientMatchValues_(client);
-    const recordValues = this.collectRecordMatchValues_(record);
-    return recordValues.some(rv => clientValues.some(cv => this.valuesMatch(rv, cv)));
+  isDebugMode_() {
+    return Boolean(window.DEBUG || window.__DEBUG__ || localStorage.getItem('clients_debug') === '1');
   },
   toNumberSafe(value) {
     if (value === null || value === undefined || value === '') return 0;
@@ -507,7 +541,29 @@ const Clients = {
     }
   },
   matchesClient_(record = {}, client = {}) {
-    return this.recordBelongsToClient(record, client);
+    const clientKeys = this.getClientKeys(client);
+    const recordKeys = this.compactValues([
+      record.id,
+      record.client_id,
+      record.client_uuid,
+      record.customer_id,
+      record.company_id,
+      record.client_name,
+      record.company_name,
+      record.customer_name,
+      record.customer_legal_name,
+      record.email,
+      record.client_email,
+      record.phone,
+      record.client_phone,
+      record.agreement_id,
+      record.agreement_number,
+      record.invoice_id,
+      record.invoice_number,
+      record.receipt_id,
+      record.receipt_number
+    ]);
+    return recordKeys.some(recordKey => clientKeys.some(clientKey => this.valuesMatch(recordKey, clientKey)));
   },
   matchesClientAgreement_(agreement = {}, client = {}) {
     const sourceAgreementId = String(client.source_agreement_id || '').trim();
@@ -540,33 +596,24 @@ const Clients = {
     const client = this.state.rows.find(row => row.client_id === clientId);
     if (!client) return [];
     const linkedAgreements = this.listClientRelatedAgreements_(clientId);
-    const linkedAgreementUuids = new Set(linkedAgreements.flatMap(item => [item.id, item.agreement_id]).map(v => String(v || '').trim()).filter(Boolean));
-    const linkedAgreementNumbers = new Set(linkedAgreements.map(item => String(item.agreement_number || '').trim()).filter(Boolean));
-    return this.state.invoices.filter(item => {
-      if (this.matchesClient_(item, client)) return true;
-      const invoiceAgreementUuid = String(item.agreement_id || '').trim();
-      const invoiceAgreementNumber = String(item.agreement_number || '').trim();
-      return Boolean(
-        (invoiceAgreementUuid && linkedAgreementUuids.has(invoiceAgreementUuid)) ||
-        (invoiceAgreementNumber && linkedAgreementNumbers.has(invoiceAgreementNumber))
-      );
-    });
+    const relatedInvoices = this.state.invoices.filter(item => this.invoiceBelongsToClient(item, client, linkedAgreements));
+    if (this.isDebugMode_()) {
+      const unmatched = this.state.invoices.filter(item => !this.invoiceBelongsToClient(item, client, linkedAgreements)).slice(0, 20);
+      if (unmatched.length) console.debug('[ClientsDetail] unmatched invoices', unmatched);
+    }
+    return relatedInvoices;
   },
   listClientRelatedReceipts_(clientId) {
     const client = this.state.rows.find(row => row.client_id === clientId);
     if (!client) return [];
+    const linkedAgreements = this.listClientRelatedAgreements_(clientId);
     const linkedInvoices = this.listClientRelatedInvoices_(clientId);
-    const linkedInvoiceUuids = new Set(linkedInvoices.flatMap(item => [item.id, item.invoice_id]).map(v => String(v || '').trim()).filter(Boolean));
-    const linkedInvoiceNumbers = new Set(linkedInvoices.map(item => String(item.invoice_number || '').trim()).filter(Boolean));
-    return this.state.receipts.filter(item => {
-      if (this.matchesClient_(item, client)) return true;
-      const invoiceUuid = String(item.invoice_id || '').trim();
-      const invoiceNumber = String(item.invoice_number || '').trim();
-      return Boolean(
-        (invoiceUuid && linkedInvoiceUuids.has(invoiceUuid)) ||
-        (invoiceNumber && linkedInvoiceNumbers.has(invoiceNumber))
-      );
-    });
+    const relatedReceipts = this.state.receipts.filter(item => this.receiptBelongsToClient(item, client, linkedAgreements, linkedInvoices));
+    if (this.isDebugMode_()) {
+      const unmatched = this.state.receipts.filter(item => !this.receiptBelongsToClient(item, client, linkedAgreements, linkedInvoices)).slice(0, 20);
+      if (unmatched.length) console.debug('[ClientsDetail] unmatched receipts', unmatched);
+    }
+    return relatedReceipts;
   },
   listClientRelatedInvoiceItems_(clientId) {
     const invoices = this.listClientRelatedInvoices_(clientId);
@@ -743,7 +790,11 @@ const Clients = {
 
     const totalAgreementValue = agreements.reduce((sum, item) => sum + this.toNumberSafe(item.grand_total), 0);
     const totalInvoicedValue = invoices.reduce((sum, item) => sum + this.toNumberSafe(item.grand_total), 0);
-    const totalPaidAmount = receipts.reduce((sum, item) => sum + this.toNumberSafe(item.received_amount), 0);
+    const totalPaidFromReceipts = receipts.reduce((sum, item) => sum + this.toNumberSafe(item.received_amount), 0);
+    const fallbackInvoicePaid = receipts.length
+      ? 0
+      : invoices.reduce((sum, item) => sum + this.toNumberSafe(item.amount_paid ?? item.received_amount ?? item.paid_amount), 0);
+    const totalPaidAmount = totalPaidFromReceipts + fallbackInvoicePaid;
     const totalDueAmount = Math.max(totalInvoicedValue - totalPaidAmount, 0);
 
     const latestAgreementDate = this.maxDate(...agreements.map(item => item.signed_date || item.customer_sign_date || item.updated_at));
@@ -1056,14 +1107,7 @@ const Clients = {
       notes: item.notes || item.payment_method || '',
       currency: String(item.currency || '').trim() || 'USD'
     }));
-    return this.computeRunningBalance([...agreementRows, ...invoiceRows, ...receiptRows]).sort((a, b) => {
-      const ad = this.dateValueForSort_(a);
-      const bd = this.dateValueForSort_(b);
-      if (!ad && !bd) return 0;
-      if (!ad) return 1;
-      if (!bd) return -1;
-      return new Date(bd).getTime() - new Date(ad).getTime();
-    });
+    return this.computeRunningBalance([...agreementRows, ...invoiceRows, ...receiptRows]);
   },
   buildClientRenewalRows(client) {
     const clientId = String(client?.client_id || '').trim();
@@ -1102,6 +1146,32 @@ const Clients = {
         contract_term: agreement.contract_term,
         status: agreement.status,
         due_date: '',
+        currency: agreement.currency || this.getClientCurrency_(clientId)
+      }));
+      rows.push(this.normalizeRenewalRow({
+        agreement_id: agreement.agreement_id || agreement.id,
+        agreement_number: agreement.agreement_number,
+        client_name: agreement.customer_name || agreement.customer_legal_name || client.customer_name,
+        renewal_date: agreement.signed_date || agreement.agreement_date || agreement.effective_date || agreement.created_at,
+        status: `Agreement ${agreement.status || 'signed'}`,
+        currency: agreement.currency || this.getClientCurrency_(clientId)
+      }));
+      rows.push(this.normalizeRenewalRow({
+        agreement_id: agreement.agreement_id || agreement.id,
+        agreement_number: agreement.agreement_number,
+        client_name: agreement.customer_name || agreement.customer_legal_name || client.customer_name,
+        renewal_date: agreement.service_start_date || agreement.effective_date || agreement.agreement_date,
+        service_start_date: agreement.service_start_date || agreement.effective_date || agreement.agreement_date,
+        status: 'Service start',
+        currency: agreement.currency || this.getClientCurrency_(clientId)
+      }));
+      rows.push(this.normalizeRenewalRow({
+        agreement_id: agreement.agreement_id || agreement.id,
+        agreement_number: agreement.agreement_number,
+        client_name: agreement.customer_name || agreement.customer_legal_name || client.customer_name,
+        renewal_date: agreement.service_end_date,
+        service_end_date: agreement.service_end_date,
+        status: 'Service end / renewal',
         currency: agreement.currency || this.getClientCurrency_(clientId)
       }));
     });
@@ -1244,24 +1314,29 @@ const Clients = {
     const agreementItems = this.listClientAgreementLocationItems_(clientId);
     const invoiceItems = this.listClientRelatedInvoiceItems_(clientId);
     const receiptItems = this.listClientRelatedReceiptItems_(clientId);
-    console.log('[ClientStatement] source counts', {
-      agreements: this.state.agreements.length,
-      invoices: this.state.invoices.length,
-      receipts: this.state.receipts.length,
-      agreementItems: this.state.agreementItems.length,
-      invoiceItems: this.state.invoiceItems.length,
-      receiptItems: this.state.receiptItems.length
-    });
+    const agreementsLoaded = this.state.agreements.length;
+    const invoicesLoaded = this.state.invoices.length;
+    const receiptsLoaded = this.state.receipts.length;
+    const agreementItemsLoaded = this.state.agreementItems.length;
+    const invoiceItemsLoaded = this.state.invoiceItems.length;
+    const receiptItemsLoaded = this.state.receiptItems.length;
     const normalizedStatement = [];
     const normalizedRenewals = [];
     const normalizedTimeline = [];
     const fallbackTimeline = this.buildTimeline_(clientId);
     const statementRows = normalizedStatement.length ? this.computeRunningBalance(normalizedStatement) : this.buildClientStatementRows(client);
     const renewalRows = normalizedRenewals.length ? normalizedRenewals : this.buildClientRenewalRows(client);
-    console.log('[ClientStatement] matched counts', {
-      matchedAgreements: agreements.length,
-      matchedInvoices: invoices.length,
-      matchedReceipts: receipts.length,
+    console.log('[ClientsDetail] related counts', {
+      client: client?.client_name || client?.company_name || client?.name || client?.customer_name,
+      agreementsLoaded,
+      invoicesLoaded,
+      receiptsLoaded,
+      agreementItemsLoaded,
+      invoiceItemsLoaded,
+      receiptItemsLoaded,
+      relatedAgreements: agreements.length,
+      relatedInvoices: invoices.length,
+      relatedReceipts: receipts.length,
       statementRows: statementRows.length,
       timelineRows: renewalRows.length
     });
@@ -1623,11 +1698,11 @@ const Clients = {
       E.clientRelatedInvoicesTbody.innerHTML = invoices.length
         ? invoices
             .map(item => `<tr>
-              <td>${U.escapeHtml(item.invoice_number || item.invoice_id || '—')}</td>
-              <td><span class="chip ${this.badgeClassFromInvoice_(item)}">${U.escapeHtml(item.status || '—')}</span></td>
-              <td>${U.escapeHtml(this.formatMoneyWithCurrency_(item.grand_total || 0, item.currency || displayCurrency))}</td>
-              <td>${U.escapeHtml(this.formatMoneyWithCurrency_(item.amount_paid || 0, item.currency || displayCurrency))}</td>
-              <td>${U.escapeHtml(this.formatMoneyWithCurrency_(item.pending_amount || 0, item.currency || displayCurrency))}</td>
+              <td>${U.escapeHtml(item.invoice_number || item.invoice_id || item.id || '—')}</td>
+              <td><span class="chip ${this.badgeClassFromInvoice_(item)}">${U.escapeHtml(item.status || item.payment_state || '—')}</span></td>
+              <td>${U.escapeHtml(this.formatMoneyWithCurrency_(this.pickAmount_(item, ['grand_total', 'total_amount', 'amount', 'invoice_total']), item.currency || displayCurrency))}</td>
+              <td>${U.escapeHtml(this.formatMoneyWithCurrency_(this.pickAmount_(item, ['amount_paid', 'paid_amount', 'received_amount']), item.currency || displayCurrency))}</td>
+              <td>${U.escapeHtml(this.formatMoneyWithCurrency_(this.pickAmount_(item, ['pending_amount', 'balance_due', 'amount_due']), item.currency || displayCurrency))}</td>
               <td>${item.id ? `<button class="btn ghost sm" type="button" data-invoice-view="${U.escapeAttr(item.id)}">Open</button>` : '—'}</td>
             </tr>`)
             .join('')
@@ -1637,10 +1712,10 @@ const Clients = {
       E.clientRelatedReceiptsTbody.innerHTML = receipts.length
         ? receipts
             .map(item => `<tr>
-              <td>${U.escapeHtml(item.receipt_number || item.receipt_id || '—')}</td>
-              <td>${U.escapeHtml(item.payment_state || '—')}</td>
-              <td>${U.escapeHtml(this.formatMoneyWithCurrency_(item.received_amount || 0, item.currency || displayCurrency))}</td>
-              <td>${U.escapeHtml(this.formatMoneyWithCurrency_(item.pending_amount || 0, item.currency || displayCurrency))}</td>
+              <td>${U.escapeHtml(item.receipt_number || item.receipt_id || item.id || '—')}</td>
+              <td>${U.escapeHtml(item.payment_state || item.status || '—')}</td>
+              <td>${U.escapeHtml(this.formatMoneyWithCurrency_(this.pickAmount_(item, ['received_amount', 'amount_paid', 'paid_amount', 'amount', 'total_amount']), item.currency || displayCurrency))}</td>
+              <td>${U.escapeHtml(this.formatMoneyWithCurrency_(this.pickAmount_(item, ['pending_amount', 'balance_due', 'amount_due']), item.currency || displayCurrency))}</td>
               <td>${item.id ? `<button class="btn ghost sm" type="button" data-receipt-view="${U.escapeAttr(item.id)}">Open</button>` : '—'}</td>
             </tr>`)
             .join('')
