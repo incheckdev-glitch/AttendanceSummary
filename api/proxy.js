@@ -37,6 +37,12 @@ function parseRequestBody(body) {
   }
 }
 
+function sendJson(res, payload, status = 200) {
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  return res.status(status).json(payload);
+}
+
 function normalizeRole(value = '') {
   return String(value || '').trim().toLowerCase();
 }
@@ -197,108 +203,123 @@ async function resolveRuleRecipients(supabaseAdmin, rule = {}, actor = null) {
 
 async function handleNotificationSettings(req, res, payload) {
   const action = String(payload?.action || '').trim().toLowerCase();
-  console.log('[NotificationSettings] action', action);
+  console.log('[NotificationSettings] incoming payload', {
+    resource: payload?.resource,
+    action: payload?.action
+  });
+  console.log('[NotificationSettings] resolved action', action);
 
-  const supabaseAdmin = getSupabaseAdminClient();
-  const auth = await requireAuthenticatedAdmin(req, supabaseAdmin);
-  if (!auth.ok) return res.status(403).json(auth);
-  const actor = auth.actor;
+  try {
+    const supabaseAdmin = getSupabaseAdminClient();
+    const auth = await requireAuthenticatedAdmin(req, supabaseAdmin);
+    if (!auth.ok) return sendJson(res, auth, 403);
+    const actor = auth.actor;
 
-  if (action === 'list') {
-    const { data, error } = await supabaseAdmin.from('notification_rules').select('*').order('resource', { ascending: true }).order('action', { ascending: true });
-    if (error) return res.status(500).json({ ok: false, error: `Unable to load notification settings: ${error.message}` });
-    return res.status(200).json({ ok: true, rows: Array.isArray(data) ? data : [] });
-  }
-
-  if (action === 'upsert') {
-    const input = payload?.rule && typeof payload.rule === 'object' ? payload.rule : payload;
-    const rule = sanitizeNotificationRule(input);
-    if (!rule.resource || !rule.action) {
-      return res.status(400).json({ ok: false, error: 'resource and action are required.' });
+    if (action === 'list') {
+      const { data, error } = await supabaseAdmin.from('notification_rules').select('*').order('resource', { ascending: true }).order('action', { ascending: true });
+      if (error) return sendJson(res, { ok: false, error: error.message, code: error.code || 'SUPABASE_ERROR' }, 500);
+      return sendJson(res, { ok: true, rows: Array.isArray(data) ? data : [] }, 200);
     }
-    console.log('[NotificationSettings] saving rule', { resource: rule.resource, action: rule.action });
-    const { data, error } = await supabaseAdmin
-      .from('notification_rules')
-      .upsert(rule, { onConflict: 'resource,action' })
-      .select('*')
-      .single();
-    if (error) return res.status(500).json({ ok: false, error: `Unable to save notification setting: ${error.message}` });
-    return res.status(200).json({ ok: true, row: data });
-  }
 
-  if (action === 'bulk_upsert') {
-    const rules = Array.isArray(payload?.rules) ? payload.rules : [];
-    const cleanRules = rules.map(rule => sanitizeNotificationRule(rule)).filter(rule => rule.resource && rule.action);
-    cleanRules.forEach(rule => {
+    if (action === 'upsert') {
+      const input = payload?.rule && typeof payload.rule === 'object' ? payload.rule : payload;
+      const rule = sanitizeNotificationRule(input);
+      if (!rule.resource || !rule.action) {
+        return sendJson(res, { ok: false, error: 'resource and action are required.', code: 'VALIDATION_ERROR' }, 400);
+      }
       console.log('[NotificationSettings] saving rule', { resource: rule.resource, action: rule.action });
-    });
-    const { error } = await supabaseAdmin
-      .from('notification_rules')
-      .upsert(cleanRules, { onConflict: 'resource,action' });
-    if (error) return res.status(500).json({ ok: false, error: `Unable to save notification setting: ${error.message}` });
-    return res.status(200).json({ ok: true, count: cleanRules.length });
-  }
-
-  if (action === 'reset_defaults') {
-    const defaults = NOTIFICATION_RULE_DEFAULTS.map(rule => sanitizeNotificationRule({
-      ...rule,
-      is_enabled: true,
-      in_app_enabled: true,
-      pwa_enabled: true,
-      email_enabled: false,
-      exclude_actor: true,
-      dedupe_window_seconds: 60
-    }));
-    const { error } = await supabaseAdmin
-      .from('notification_rules')
-      .upsert(defaults, { onConflict: 'resource,action' });
-    if (error) return res.status(500).json({ ok: false, error: `Unable to reset notification defaults: ${error.message}` });
-    return res.status(200).json({ ok: true, count: defaults.length });
-  }
-
-  if (action === 'test_notification') {
-    const input = payload?.rule && typeof payload.rule === 'object' ? payload.rule : payload;
-    const selectedResource = String(input?.resource || '').trim().toLowerCase();
-    const selectedAction = String(input?.action || '').trim().toLowerCase();
-    if (!selectedResource || !selectedAction) {
-      return res.status(400).json({ ok: false, error: 'resource and action are required.' });
+      const { data, error } = await supabaseAdmin
+        .from('notification_rules')
+        .upsert(rule, { onConflict: 'resource,action' })
+        .select('*')
+        .single();
+      if (error) return sendJson(res, { ok: false, error: error.message, code: error.code || 'SUPABASE_ERROR' }, 500);
+      return sendJson(res, { ok: true, row: data }, 200);
     }
 
-    const { data: existingRule, error: ruleError } = await supabaseAdmin
-      .from('notification_rules')
-      .select('*')
-      .eq('resource', selectedResource)
-      .eq('action', selectedAction)
-      .maybeSingle();
-    if (ruleError) return res.status(500).json({ ok: false, error: `Unable to load notification setting: ${ruleError.message}` });
-    if (!existingRule) return res.status(404).json({ ok: false, error: 'Notification rule not found.' });
-
-    const recipients = await resolveRuleRecipients(supabaseAdmin, existingRule, actor);
-    if (!recipients.length) {
-      return res.status(200).json({ ok: true, skipped: true, reason: 'no_recipients' });
+    if (action === 'bulk_upsert') {
+      const rules = Array.isArray(payload?.rules) ? payload.rules : [];
+      const cleanRules = rules.map(rule => sanitizeNotificationRule(rule)).filter(rule => rule.resource && rule.action);
+      cleanRules.forEach(rule => {
+        console.log('[NotificationSettings] saving rule', { resource: rule.resource, action: rule.action });
+      });
+      const { data, error } = await supabaseAdmin
+        .from('notification_rules')
+        .upsert(cleanRules, { onConflict: 'resource,action' })
+        .select('*');
+      if (error) return sendJson(res, { ok: false, error: error.message, code: error.code || 'SUPABASE_ERROR' }, 500);
+      const savedRows = Array.isArray(data) ? data : [];
+      return sendJson(res, { ok: true, count: savedRows.length, rows: savedRows }, 200);
     }
 
-    const rows = recipients.map(userId => ({
-      recipient_user_id: userId,
-      title: 'Test notification',
-      message: `Test for ${selectedResource}:${selectedAction}`,
-      type: selectedAction,
-      resource: selectedResource,
-      resource_id: 'test',
-      status: 'unread',
-      is_read: false,
-      actor_user_id: actor.id,
-      actor_role: actor.role,
-      priority: 'normal',
-      meta: { test: true, source: 'notification_settings' }
-    }));
+    if (action === 'reset_defaults') {
+      const defaults = NOTIFICATION_RULE_DEFAULTS.map(rule => sanitizeNotificationRule({
+        ...rule,
+        is_enabled: true,
+        in_app_enabled: true,
+        pwa_enabled: true,
+        email_enabled: false,
+        exclude_actor: true,
+        dedupe_window_seconds: 60
+      }));
+      const { error } = await supabaseAdmin
+        .from('notification_rules')
+        .upsert(defaults, { onConflict: 'resource,action' });
+      if (error) return sendJson(res, { ok: false, error: error.message, code: error.code || 'SUPABASE_ERROR' }, 500);
+      return sendJson(res, { ok: true, message: 'Notification defaults restored' }, 200);
+    }
 
-    const { error } = await supabaseAdmin.from('notifications').insert(rows);
-    if (error) return res.status(500).json({ ok: false, error: `Unable to send test notification: ${error.message}` });
-    return res.status(200).json({ ok: true, skipped: false, sent: rows.length, recipient_user_ids: recipients });
+    if (action === 'test_notification') {
+      const input = payload?.rule && typeof payload.rule === 'object' ? payload.rule : payload;
+      const selectedResource = String(input?.resource || '').trim().toLowerCase();
+      const selectedAction = String(input?.action || '').trim().toLowerCase();
+      if (!selectedResource || !selectedAction) {
+        return sendJson(res, { ok: false, error: 'resource and action are required.', code: 'VALIDATION_ERROR' }, 400);
+      }
+
+      const { data: existingRule, error: ruleError } = await supabaseAdmin
+        .from('notification_rules')
+        .select('*')
+        .eq('resource', selectedResource)
+        .eq('action', selectedAction)
+        .maybeSingle();
+      if (ruleError) return sendJson(res, { ok: false, error: ruleError.message, code: ruleError.code || 'SUPABASE_ERROR' }, 500);
+      if (!existingRule) return sendJson(res, { ok: false, error: 'Notification rule not found.', code: 'NOT_FOUND' }, 404);
+
+      const recipients = await resolveRuleRecipients(supabaseAdmin, existingRule, actor);
+      if (!recipients.length) {
+        return sendJson(res, { ok: true, skipped: true, reason: 'no_recipients' }, 200);
+      }
+
+      const rows = recipients.map(userId => ({
+        recipient_user_id: userId,
+        title: 'Test notification',
+        message: `Test for ${selectedResource}:${selectedAction}`,
+        type: selectedAction,
+        resource: selectedResource,
+        resource_id: 'test',
+        status: 'unread',
+        is_read: false,
+        actor_user_id: actor.id,
+        actor_role: actor.role,
+        priority: 'normal',
+        meta: { test: true, source: 'notification_settings' }
+      }));
+
+      const { error } = await supabaseAdmin.from('notifications').insert(rows);
+      if (error) return sendJson(res, { ok: false, error: error.message, code: error.code || 'SUPABASE_ERROR' }, 500);
+      return sendJson(res, { ok: true, skipped: false, sent: rows.length, recipient_user_ids: recipients }, 200);
+    }
+
+    return sendJson(res, { ok: false, error: 'Unsupported resource/action', code: 'UNSUPPORTED_ACTION' }, 400);
+  } catch (error) {
+    console.error('[notification_settings] failed', error);
+    return sendJson(res, {
+      ok: false,
+      error: error?.message || 'Notification settings failed',
+      code: 'NOTIFICATION_SETTINGS_ERROR'
+    }, 500);
   }
-
-  return res.status(400).json({ ok: false, error: `Unsupported notification_settings action: ${action || 'unknown'}` });
 }
 
 async function forwardToUpstream(targetUrl, payload) {
@@ -318,7 +339,7 @@ async function forwardToUpstream(targetUrl, payload) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
-    return res.status(405).json({ ok: false, error: 'Method Not Allowed. Use POST.' });
+    return sendJson(res, { ok: false, error: 'Method Not Allowed. Use POST.', code: 'METHOD_NOT_ALLOWED' }, 405);
   }
 
   const payload = parseRequestBody(req.body);
@@ -336,11 +357,12 @@ export default async function handler(req, res) {
   ).trim();
 
   if (!targetUrl) {
-    return res.status(500).json({
+    return sendJson(res, {
       ok: false,
       error: 'Server is missing API_PROXY_TARGET_URL.',
+      code: 'CONFIGURATION_ERROR',
       targetUrl
-    });
+    }, 500);
   }
 
   res.setHeader('X-Upstream-Target', targetUrl);
@@ -361,13 +383,14 @@ export default async function handler(req, res) {
       action,
       error: String(error?.message || error)
     });
-    return res.status(502).json({
+    return sendJson(res, {
       ok: false,
       error: 'Failed to reach upstream backend',
+      code: 'UPSTREAM_UNREACHABLE',
       upstreamStatus: 502,
       targetUrl,
       details: String(error?.message || error)
-    });
+    }, 502);
   }
 
   let attemptedAlias = null;
@@ -410,9 +433,10 @@ export default async function handler(req, res) {
   });
 
   if (!upstreamResult.parsedJson) {
-    return res.status(upstreamResult.upstream.status || 502).json({
+    return sendJson(res, {
       ok: false,
       error: 'Upstream backend returned invalid JSON',
+      code: 'UPSTREAM_INVALID_JSON',
       upstreamStatus: upstreamResult.upstream.status || 502,
       targetUrl,
       contentType: upstreamResult.contentType,
@@ -420,8 +444,8 @@ export default async function handler(req, res) {
       resource,
       action,
       attemptedAlias
-    });
+    }, upstreamResult.upstream.status || 502);
   }
 
-  return res.status(upstreamResult.upstream.status).json(upstreamResult.data);
+  return sendJson(res, upstreamResult.data, upstreamResult.upstream.status);
 }
