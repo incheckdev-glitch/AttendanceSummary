@@ -44,7 +44,33 @@ function sendJson(res, payload, status = 200) {
 }
 
 function normalizeRole(value = '') {
-  return String(value || '').trim().toLowerCase();
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_');
+}
+
+const ADMIN_ROLES = new Set(['admin', 'administrator']);
+
+function resolveActorRole(actor = {}) {
+  const source = actor && typeof actor === 'object' ? actor : {};
+  const candidates = [
+    source.role,
+    source.role_key,
+    source.user?.role,
+    source.user?.role_key,
+    source.profile?.role,
+    source.profile?.role_key,
+    source.session?.role,
+    source.session?.user?.role,
+    source.payload?.role,
+    source.currentUser?.role
+  ];
+  for (const candidate of candidates) {
+    const normalized = normalizeRole(candidate);
+    if (normalized) return normalized;
+  }
+  return '';
 }
 
 function getSupabaseAdminClient() {
@@ -67,33 +93,101 @@ function getBearerToken(req) {
   return authHeader.slice(7).trim();
 }
 
-async function requireAuthenticatedAdmin(req, supabaseAdmin) {
+async function findActorProfile(supabaseAdmin, user = null) {
+  const actorId = String(user?.id || '').trim();
+  const actorEmail = String(user?.email || '').trim().toLowerCase();
+  if (!actorId && !actorEmail) return null;
+
+  const configuredTable = String(process.env.USER_PROFILE_TABLE || process.env.PROFILE_TABLE || '').trim();
+  const candidateTables = [
+    configuredTable,
+    'profiles',
+    'app_users',
+    'user_profiles'
+  ].filter(Boolean);
+  const selectColumns = 'id, auth_user_id, user_id, email, role_key, role, is_active';
+
+  for (const table of candidateTables) {
+    const idColumns = ['id', 'auth_user_id', 'user_id'];
+    for (const idColumn of idColumns) {
+      if (!actorId) continue;
+      const { data, error } = await supabaseAdmin
+        .from(table)
+        .select(selectColumns)
+        .eq(idColumn, actorId)
+        .maybeSingle();
+      if (error) continue;
+      if (data) return { ...data, __table: table, __match: idColumn };
+    }
+
+    if (!actorEmail) continue;
+    const { data, error } = await supabaseAdmin
+      .from(table)
+      .select(selectColumns)
+      .eq('email', actorEmail)
+      .maybeSingle();
+    if (error) continue;
+    if (data) return { ...data, __table: table, __match: 'email' };
+  }
+
+  return null;
+}
+
+async function requireAuthenticatedAdmin(req, supabaseAdmin, payload = {}) {
   const accessToken = getBearerToken(req);
-  if (!accessToken) return { ok: false, error: 'Forbidden: admin only', code: 'FORBIDDEN' };
+  if (!accessToken) return { ok: false, error: 'Admin access is required.', code: 'FORBIDDEN' };
 
   const { data: userData, error: userError } = await supabaseAdmin.auth.getUser(accessToken);
   if (userError || !userData?.user?.id) {
-    return { ok: false, error: 'Forbidden: admin only', code: 'FORBIDDEN' };
+    return { ok: false, error: 'Admin access is required.', code: 'FORBIDDEN' };
   }
 
-  const actorId = String(userData.user.id || '').trim();
-  const { data: profile, error: profileError } = await supabaseAdmin
-    .from('profiles')
-    .select('id, role_key, email')
-    .eq('id', actorId)
-    .maybeSingle();
+  const actorUser = userData.user;
+  const profile = await findActorProfile(supabaseAdmin, actorUser);
+  const actor = {
+    id: String(actorUser.id || '').trim(),
+    email: String(profile?.email || actorUser.email || '').trim().toLowerCase(),
+    role: normalizeRole(profile?.role_key || profile?.role),
+    profile: profile || null,
+    user: {
+      id: String(actorUser.id || '').trim(),
+      email: String(actorUser.email || '').trim().toLowerCase(),
+      role: normalizeRole(
+        actorUser?.app_metadata?.role ||
+        actorUser?.user_metadata?.role ||
+        actorUser?.app_metadata?.role_key ||
+        actorUser?.user_metadata?.role_key
+      )
+    },
+    session: {
+      role: normalizeRole(payload?.session?.role)
+    },
+    payload: {
+      role: normalizeRole(payload?.role)
+    }
+  };
 
-  if (profileError || !profile) {
-    return { ok: false, error: 'Forbidden: admin only', code: 'FORBIDDEN' };
+  const normalizedRole = resolveActorRole(actor);
+  console.log('[NotificationSettings] admin check', {
+    hasActor: Boolean(actor),
+    actorEmail: actor?.email || actor?.user?.email || null,
+    actorRole: actor?.role || actor?.user?.role || actor?.profile?.role || actor?.profile?.role_key || null,
+    normalizedRole,
+    resource: payload?.resource,
+    action: payload?.action
+  });
+  if (!ADMIN_ROLES.has(normalizedRole)) {
+    return { ok: false, error: 'Admin access is required.', code: 'FORBIDDEN' };
   }
 
-  const role = normalizeRole(profile.role_key);
-  console.log('[NotificationSettings] actor role', role);
-  if (role !== 'admin') {
-    return { ok: false, error: 'Forbidden: admin only', code: 'FORBIDDEN' };
-  }
-
-  return { ok: true, actor: { id: actorId, role, email: String(profile.email || '').trim().toLowerCase() } };
+  return {
+    ok: true,
+    actor: {
+      id: actor.id,
+      role: normalizedRole,
+      email: actor.email
+    }
+  };
 }
 
 function parseJsonBody(raw) {
@@ -211,7 +305,7 @@ async function handleNotificationSettings(req, res, payload) {
 
   try {
     const supabaseAdmin = getSupabaseAdminClient();
-    const auth = await requireAuthenticatedAdmin(req, supabaseAdmin);
+    const auth = await requireAuthenticatedAdmin(req, supabaseAdmin, payload);
     if (!auth.ok) return sendJson(res, auth, 403);
     const actor = auth.actor;
 

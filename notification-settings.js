@@ -114,6 +114,12 @@ const NotificationSetup = {
     };
   },
 
+  isForbiddenError(error) {
+    const message = String(error?.message || '').toLowerCase();
+    const code = String(error?.code || error?.result?.code || '').trim().toUpperCase();
+    return code === 'FORBIDDEN' || message.includes('forbidden') || message.includes('row-level security') || message.includes('rls');
+  },
+
   async saveOne(resource, action) {
     const rule = this.collect(resource, action);
     if (!rule) return;
@@ -149,8 +155,8 @@ const NotificationSetup = {
       this.state.dirty.clear();
       await this.load(true);
     } catch (error) {
-      const message = String(error?.message || '');
-      if (message.toLowerCase().includes('forbidden') || message.toLowerCase().includes('row-level security') || message.toLowerCase().includes('rls')) {
+      if (this.isForbiddenError(error)) {
+        console.warn('[NotificationSetup] forbidden details', error?.result || error);
         UI.toast('Unable to save notification setting. Admin access is required.');
       } else {
         UI.toast(String(error?.message || 'Unable to save settings.'));
@@ -237,8 +243,8 @@ const NotificationSetup = {
         await this.saveOne(tr.dataset.resource, tr.dataset.action);
         UI.toast('Notification setting saved.');
       } catch (error) {
-        const message = String(error?.message || '');
-        if (message.toLowerCase().includes('forbidden') || message.toLowerCase().includes('row-level security') || message.toLowerCase().includes('rls')) {
+        if (this.isForbiddenError(error)) {
+          console.warn('[NotificationSetup] forbidden details', error?.result || error);
           UI.toast('Unable to save notification setting. Admin access is required.');
         } else {
           UI.toast(String(error?.message || 'Unable to save rule.'));

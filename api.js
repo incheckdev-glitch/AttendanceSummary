@@ -1771,7 +1771,11 @@ async function apiPost(payload = {}) {
     }
     if (!response.ok || data?.ok === false) {
       const message = String(data?.error || data?.message || `Notification settings request failed (${response.status}).`);
-      throw new Error(message);
+      const error = new Error(message);
+      error.result = data;
+      error.status = response.status;
+      error.code = data?.code || '';
+      throw error;
     }
     return data;
   }
