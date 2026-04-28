@@ -431,6 +431,84 @@
     return cleaned;
   }
 
+  const WRITE_PROTECTED_TIMESTAMP_FIELDS = new Set([
+    'created_at',
+    'updated_at',
+    'converted_at',
+    'signed_at',
+    'approved_at',
+    'submitted_at'
+  ]);
+
+  function normalizeTimestampForWrite(value) {
+    if (value === undefined || value === null) return '';
+    const text = String(value).trim();
+    if (!text) return '';
+    const parsed = Date.parse(text);
+    return Number.isFinite(parsed) ? new Date(parsed).toISOString() : text;
+  }
+
+  function sanitizeRecordForWrite(table = '', record = {}, mode = 'create') {
+    if (Array.isArray(record)) return record.map(row => sanitizeRecordForWrite(table, row, mode));
+    if (!record || typeof record !== 'object') return record;
+    const nowIso = new Date().toISOString();
+    const cleaned = {};
+
+    Object.entries(record).forEach(([column, value]) => {
+      if (value === undefined) return;
+
+      if (shouldTreatColumnAsUuid(table, column)) {
+        if (isBlankText(value)) return;
+        const normalized = String(value || '').trim();
+        if (!isUuid(normalized)) {
+          console.warn('[supabase uuid sanitizer] dropped non-UUID value before save', { table, column, value: normalized });
+          return;
+        }
+        cleaned[column] = normalized;
+        return;
+      }
+
+      if (WRITE_PROTECTED_TIMESTAMP_FIELDS.has(column)) {
+        const normalizedTs = normalizeTimestampForWrite(value);
+        if (column === 'created_at') {
+          if (mode === 'create') {
+            cleaned.created_at = normalizedTs || nowIso;
+            return;
+          }
+          if (normalizedTs) cleaned.created_at = normalizedTs;
+          return;
+        }
+        if (column === 'updated_at') {
+          cleaned.updated_at = normalizedTs || nowIso;
+          return;
+        }
+        if (normalizedTs) cleaned[column] = normalizedTs;
+        return;
+      }
+
+      if (value === null) return;
+      cleaned[column] = value;
+    });
+
+    if (mode === 'create' && !String(cleaned.created_at || '').trim()) cleaned.created_at = nowIso;
+    if (!String(cleaned.updated_at || '').trim()) cleaned.updated_at = nowIso;
+    return cleaned;
+  }
+
+  function redactSensitiveForLog(payload = {}) {
+    if (Array.isArray(payload)) return payload.map(item => redactSensitiveForLog(item));
+    if (!payload || typeof payload !== 'object') return payload;
+    const redacted = {};
+    Object.entries(payload).forEach(([key, value]) => {
+      if (/password|token|secret|service[_-]?key|apikey|api[_-]?key/i.test(key)) {
+        redacted[key] = '[redacted]';
+        return;
+      }
+      redacted[key] = value && typeof value === 'object' ? redactSensitiveForLog(value) : value;
+    });
+    return redacted;
+  }
+
   const devLog = (...args) => {
     try {
       const host = String(window.location.hostname || '').toLowerCase();
@@ -545,10 +623,11 @@
     payload = {},
     context = 'Supabase mutation',
     execute,
+    mode = 'create',
     maxRetries = 8
   } = {}) {
     if (typeof execute !== 'function') throw new Error('Mutation execute function is required.');
-    let workingPayload = sanitizeUuidColumnsForMutation(table, cloneMutationPayload(payload));
+    let workingPayload = sanitizeRecordForWrite(table, cloneMutationPayload(payload), mode);
     const removedColumns = [];
     for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
       const response = await execute(workingPayload);
@@ -575,6 +654,15 @@
         });
         continue;
       }
+      if (attempt >= maxRetries || !getSchemaCacheMissingColumn(response.error)) {
+        console.error('[supabase mutation] failed', {
+          table,
+          context,
+          mode,
+          payload: redactSensitiveForLog(workingPayload),
+          error: response.error
+        });
+      }
       return response;
     }
     return {
@@ -588,6 +676,7 @@
       table,
       payload,
       context,
+      mode: 'create',
       execute: workingPayload => client.from(table).insert(workingPayload).select('*').single()
     });
   }
@@ -597,6 +686,7 @@
       table,
       payload,
       context,
+      mode: 'create',
       execute: workingPayload => client.from(table).insert(workingPayload).select('*')
     });
   }
@@ -606,6 +696,7 @@
       table,
       payload,
       context,
+      mode: 'update',
       execute: workingPayload => client.from(table).update(workingPayload).eq(key, id).select('*').single()
     });
   }
@@ -615,6 +706,7 @@
       table,
       payload,
       context,
+      mode: 'update',
       execute: workingPayload => client.from(table).update(workingPayload).eq(key, id).select('*')
     });
   }
