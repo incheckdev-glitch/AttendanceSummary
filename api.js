@@ -42,6 +42,12 @@ const BACKEND_MANAGED_PWA_ACTIONS = new Set([
 ]);
 
 const Api = {
+  async post(payload = {}) {
+    const body = payload && typeof payload === 'object' ? payload : {};
+    const resource = String(body.resource || '').trim();
+    const action = String(body.action || '').trim();
+    return this.request(resource, action, body);
+  },
   getPrimaryKeyForResource(resource = '') {
     return RESOURCE_PRIMARY_KEY[String(resource || '').trim()] || 'id';
   },
@@ -1740,7 +1746,30 @@ if (typeof window !== 'undefined') window.Api = Api;
 async function apiPost(payload = {}) {
   const requestBody = payload && typeof payload === 'object' ? payload : {};
   const resource = String(requestBody?.resource || '').trim();
-  const action = String(requestBody?.action || '').trim();
+  if (resource === 'notification_settings') {
+    const authContext = window.Session?.authContext?.() || {};
+    const accessToken = String(authContext?.session?.access_token || '').trim();
+    const response = await fetch('/api/proxy', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
+      },
+      body: JSON.stringify(requestBody)
+    });
+    const raw = await response.text();
+    let data = {};
+    try {
+      data = raw ? JSON.parse(raw) : {};
+    } catch {
+      throw new Error('Notification settings backend returned invalid JSON.');
+    }
+    if (!response.ok || data?.ok === false || data?.error) {
+      const message = String(data?.error || data?.message || `Notification settings request failed (${response.status}).`);
+      throw new Error(message);
+    }
+    return data;
+  }
   if (window.SupabaseData?.isMigratedResource?.(resource)) {
     const dispatched = await window.SupabaseData.dispatch(requestBody);
     if (dispatched?.handled) return dispatched.data;
