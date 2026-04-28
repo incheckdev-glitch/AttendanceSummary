@@ -1761,10 +1761,15 @@ async function apiPost(payload = {}) {
     let data = {};
     try {
       data = raw ? JSON.parse(raw) : {};
-    } catch {
+    } catch (error) {
+      console.error('[NotificationSetup] invalid JSON response', {
+        status: response.status,
+        statusText: response.statusText,
+        rawText: String(raw || '').slice(0, 1000)
+      });
       throw new Error('Notification settings backend returned invalid JSON.');
     }
-    if (!response.ok || data?.ok === false || data?.error) {
+    if (!response.ok || data?.ok === false) {
       const message = String(data?.error || data?.message || `Notification settings request failed (${response.status}).`);
       throw new Error(message);
     }
