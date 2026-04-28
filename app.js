@@ -2356,8 +2356,19 @@ function trapFocus(container, e) {
   }
 }
 
+
+function ensureNotificationSetupMounted() {
+  const card = document.getElementById('notificationSetupCard');
+  const mount = document.getElementById('notificationSetupStandaloneMount');
+  if (card && mount && card.parentElement !== mount) {
+    mount.appendChild(card);
+  }
+  if (card) {
+    card.style.display = Permissions.canManageNotificationSettings() ? '' : 'none';
+  }
+}
 function setActiveView(view) {
- const names = ['issues', 'calendar', 'insights', 'csm', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'notifications', 'workflow', 'users', 'rolePermissions'];
+ const names = ['issues', 'calendar', 'insights', 'csm', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
  const firstAllowedView = names.find(name => Permissions.canAccessTab(name)) || 'issues';
  if (!Permissions.canAccessTab(view)) view = firstAllowedView;
   names.forEach(name => {
@@ -2394,6 +2405,8 @@ function setActiveView(view) {
         ? E.proposalCatalogTab
         : name === 'notifications'
         ? E.notificationsTab
+        : name === 'notificationSetup'
+        ? E.notificationSetupTab
         : name === 'workflow'
         ? E.workflowTab
         : name === 'users'
@@ -2432,6 +2445,8 @@ function setActiveView(view) {
         ? E.proposalCatalogView
         : name === 'notifications'
         ? E.notificationsView
+        : name === 'notificationSetup'
+        ? E.notificationSetupView
         : name === 'workflow'
         ? E.workflowView
         : name === 'users'
@@ -2450,7 +2465,7 @@ function setActiveView(view) {
   if (E.app) E.app.classList.toggle('csm-filters-only', view === 'csm');
   if (E.mainFiltersPanel)
     E.mainFiltersPanel.style.display =
-      view === 'leads' || view === 'deals' || view === 'proposals' || view === 'agreements' || view === 'operationsOnboarding' || view === 'technicalAdmin' || view === 'invoices' || view === 'receipts' || view === 'lifecycleAnalytics' || view === 'clients' || view === 'proposalCatalog' || view === 'notifications' || view === 'workflow' ? 'none' : '';
+      view === 'leads' || view === 'deals' || view === 'proposals' || view === 'agreements' || view === 'operationsOnboarding' || view === 'technicalAdmin' || view === 'invoices' || view === 'receipts' || view === 'lifecycleAnalytics' || view === 'clients' || view === 'proposalCatalog' || view === 'notifications' || view === 'notificationSetup' || view === 'workflow' ? 'none' : '';
   if (E.leadsFiltersPanel) E.leadsFiltersPanel.style.display = view === 'leads' ? '' : 'none';
   if (E.dealsFiltersPanel) E.dealsFiltersPanel.style.display = view === 'deals' ? '' : 'none';
   const isForbiddenError = error => {
@@ -2503,6 +2518,14 @@ function setActiveView(view) {
   if (view === 'clients' && window.Clients?.loadAndRefresh) runViewLoader('clients', () => Clients.loadAndRefresh());
   if (view === 'proposalCatalog' && window.ProposalCatalog?.loadAndRefresh) runViewLoader('proposal catalog', () => ProposalCatalog.loadAndRefresh());
   if (view === 'notifications' && window.Notifications?.loadHub) runViewLoader('notifications', () => Notifications.loadHub(true));
+  if (view === 'notificationSetup') {
+    runViewLoader('notification setup', async () => {
+      ensureNotificationSetupMounted();
+      if (window.NotificationSetup?.load && Permissions.canManageNotificationSettings()) {
+        await NotificationSetup.load(true);
+      }
+    });
+  }
   if (view === 'workflow' && window.Workflow?.loadAndRefresh) runViewLoader('workflow', () => Workflow.loadAndRefresh(true));
   if (view === 'users' && window.UserAdmin?.refresh) runViewLoader('users', () => UserAdmin.refresh());
   if (view === 'rolePermissions' && window.RolesAdmin?.loadAll) {
@@ -4627,7 +4650,7 @@ function syncFilterInputs() {
 
 
 function wireCore() {
-   [E.issuesTab, E.calendarTab, E.insightsTab, E.csmTab, E.leadsTab, E.dealsTab, E.proposalsTab, E.agreementsTab, E.operationsOnboardingTab, E.technicalAdminTab, E.invoicesTab, E.receiptsTab, E.lifecycleAnalyticsTab, E.clientsTab, E.proposalCatalogTab, E.notificationsTab, E.workflowTab, E.usersTab, E.rolePermissionsTab].forEach(btn => {
+   [E.issuesTab, E.calendarTab, E.insightsTab, E.csmTab, E.leadsTab, E.dealsTab, E.proposalsTab, E.agreementsTab, E.operationsOnboardingTab, E.technicalAdminTab, E.invoicesTab, E.receiptsTab, E.lifecycleAnalyticsTab, E.clientsTab, E.proposalCatalogTab, E.notificationsTab, E.notificationSetupTab, E.workflowTab, E.usersTab, E.rolePermissionsTab].forEach(btn => {
     if (!btn) return;
     btn.addEventListener('click', () => setActiveView(btn.dataset.view));
   });
@@ -5081,7 +5104,7 @@ function wireDashboardGate() {
     return 'issues';
   };
   const getFirstAllowedView = preferredView => {
-    const names = ['issues', 'calendar', 'insights', 'csm', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'notifications', 'workflow', 'users', 'rolePermissions'];
+    const names = ['issues', 'calendar', 'insights', 'csm', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
     const preferred = String(preferredView || '').trim();
     if (preferred && Permissions.canAccessTab(preferred)) return preferred;
     return names.find(name => Permissions.canAccessTab(name)) || 'issues';
@@ -6969,6 +6992,8 @@ function wireKeyboardShortcuts() {
       setActiveView('users');
     } else if (e.key === '=' && Permissions.canAccessTab('rolePermissions')) {
       setActiveView('rolePermissions');
+    } else if (e.key === '+' && Permissions.canAccessTab('notificationSetup')) {
+      setActiveView('notificationSetup');
     }
   });
 }
@@ -7104,6 +7129,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   wireCore();
   if (window.UserAdmin?.wire) UserAdmin.wire();
   if (window.RolesAdmin?.wire) RolesAdmin.wire();
+  ensureNotificationSetupMounted();
   if (window.NotificationSetup?.wire) NotificationSetup.wire();
   wireSorting();
   wirePaging();
@@ -7133,10 +7159,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (window.PushNotifications?.init) await PushNotifications.init();
 
   const isAuthenticated = Session.isAuthenticated();
-  const notificationSetupCard = document.getElementById('notificationSetupCard');
-  if (notificationSetupCard) {
-    notificationSetupCard.style.display = Permissions.canManageNotificationSettings() ? '' : 'none';
-  }
+  ensureNotificationSetupMounted();
   if (isAuthenticated) {
     const role = Session.role();
     if (!Permissions.canLoadRuntimeMatrix(role)) {
@@ -7178,6 +7201,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         view === 'receipts' ||
         view === 'proposalCatalog' ||
         view === 'notifications' ||
+        view === 'notificationSetup' ||
         view === 'workflow' ||
         view === 'users' ||
         view === 'rolePermissions'

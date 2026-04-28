@@ -156,6 +156,7 @@ const Permissions = {
     clients: [{ resource: 'clients', action: 'list' }],
     proposalCatalog: [{ resource: 'proposal_catalog', action: 'list' }],
     notifications: [{ resource: 'notifications', action: 'list' }],
+    notificationSetup: [{ resource: 'notification_settings', action: 'list' }],
     workflow: [{ resource: 'workflow', action: 'list' }],
     users: [{ resource: 'users', action: 'list' }],
     rolePermissions: [{ resource: 'role_permissions', action: 'list' }]
@@ -177,6 +178,7 @@ const Permissions = {
     clients: 'clients',
     proposalCatalog: 'proposal_catalog',
     notifications: 'notifications',
+    notificationSetup: 'notification_settings',
     users: 'users',
     rolePermissions: 'role_permissions',
     workflow: 'workflow'

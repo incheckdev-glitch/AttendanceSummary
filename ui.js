@@ -215,9 +215,11 @@ function cacheEls() {
     'currentRoleChip',
     'usersTab',
     'rolePermissionsTab',
+    'notificationSetupTab',
     'workflowTab',
     'usersView',
     'rolePermissionsView',
+    'notificationSetupView',
     'workflowView',
     'workflowRulesTbody',
     'workflowRuleForm',
@@ -968,6 +970,7 @@ const UI = {
       { key: 'clients', tabEl: E.clientsTab, viewEl: E.clientsView },
       { key: 'proposalCatalog', tabEl: E.proposalCatalogTab, viewEl: E.proposalCatalogView },
       { key: 'notifications', tabEl: E.notificationsTab, viewEl: E.notificationsView },
+      { key: 'notificationSetup', tabEl: E.notificationSetupTab, viewEl: E.notificationSetupView },
       { key: 'workflow', tabEl: E.workflowTab, viewEl: E.workflowView },
       { key: 'users', tabEl: E.usersTab, viewEl: E.usersView },
       { key: 'rolePermissions', tabEl: E.rolePermissionsTab, viewEl: E.rolePermissionsView }
@@ -1043,6 +1046,8 @@ const UI = {
             allowed = Permissions.canManageUsers();
           } else if (rule.key === 'rolePermissions') {
             allowed = Permissions.isAdmin();
+          } else if (rule.key === 'notificationSetup') {
+            allowed = Permissions.canManageNotificationSettings();
           } else if (rule.key === 'workflow') {
             allowed = Permissions.canManageWorkflow();
           } else {

@@ -369,6 +369,10 @@
                     role="tab" aria-selected="false" aria-controls="notificationsView">
               <span class="icon" aria-hidden="true">🔔</span> Notification Hub
             </button>
+            <button id="notificationSetupTab" class="view-tab" data-view="notificationSetup"
+                    role="tab" aria-selected="false" aria-controls="notificationSetupView" style="display:none;">
+              <span class="icon" aria-hidden="true">🔔⚙️</span> Notification Setup
+            </button>
             <button id="workflowTab" class="view-tab" data-view="workflow"
                     role="tab" aria-selected="false" aria-controls="workflowView" style="display:none;">
               <span class="icon" aria-hidden="true">⚙️</span> Workflow
@@ -625,6 +629,10 @@ Sample:
             </table>
           </div>
         </div>
+      </section>
+
+      <section id="notificationSetupView" class="view" role="tabpanel" aria-labelledby="notificationSetupTab">
+        <div id="notificationSetupStandaloneMount"></div>
       </section>
 
       <section id="rolePermissionsView" class="view" role="tabpanel" aria-labelledby="rolePermissionsTab">

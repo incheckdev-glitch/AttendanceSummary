@@ -120,11 +120,14 @@ const NotificationSetup = {
   },
 
   roleOptions(selected = []) {
-    const set = new Set((selected || []).map(v => String(v).toLowerCase()));
-    return (this.state.roles || []).map(role => {
-      const key = String(role.role_key || '').trim();
-      const name = String(role.role_name || key).trim();
-      return `<option value="${U.escapeHtml(key)}" ${set.has(key) ? 'selected' : ''}>${U.escapeHtml(name)}</option>`;
+    const set = new Set((selected || []).map(v => String(v).trim().toLowerCase()));
+    const roleRows = Array.isArray(this.state.roles) && this.state.roles.length
+      ? this.state.roles
+      : ['admin', 'dev', 'hoo', 'sales_executive', 'financial_controller', 'gm', 'accounting', 'viewer'].map(role_key => ({ role_key, role_name: role_key }));
+    return roleRows.map(role => {
+      const key = String(role.role_key || role.key || role.role || '').trim();
+      const name = String(role.role_name || role.display_name || key).trim();
+      return `<option value="${U.escapeHtml(key)}" ${set.has(key.toLowerCase()) ? 'selected' : ''}>${U.escapeHtml(name)}</option>`;
     }).join('');
   },
 
@@ -153,8 +156,8 @@ const NotificationSetup = {
           <td><input type="checkbox" data-k="pwa" ${(rule.pwa_enabled !== false) ? 'checked' : ''}></td>
           <td><input type="checkbox" data-k="email" ${(rule.email_enabled === true) ? 'checked' : ''}></td>
           <td><select data-k="roles" class="select" multiple size="3">${this.roleOptions(rule.recipient_roles || [])}</select></td>
-          <td><input data-k="emails" class="input" placeholder="a@x.com,b@y.com" value="${U.escapeHtml((rule.recipient_emails || []).join(','))}"></td>
-          <td><input data-k="record" class="input" placeholder="owner_email,created_by_email" value="${U.escapeHtml((rule.users_from_record || []).join(','))}"></td>
+          <td><input data-k="emails" class="input" placeholder="optional: user@company.com" value="${U.escapeHtml((rule.recipient_emails || []).join(','))}"></td>
+          <td><input data-k="record" class="input" placeholder="requester_email,owner_email" value="${U.escapeHtml((rule.users_from_record || []).join(','))}"></td>
           <td><input type="checkbox" data-k="exclude" ${(rule.exclude_actor !== false) ? 'checked' : ''}></td>
           <td><input type="number" min="0" data-k="dedupe" class="input" style="width:90px" value="${Number(rule.dedupe_window_seconds || 60)}"></td>
           <td>
