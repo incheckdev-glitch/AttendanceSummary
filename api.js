@@ -671,6 +671,39 @@ const Api = {
     const normalizedAgreementId = String(agreementId || '').trim();
     if (!normalizedAgreementId) throw new Error('Agreement ID is required.');
     console.log('[operations onboarding] technical admin agreement', normalizedAgreementId);
+    const norm = value => String(value || '').trim().toLowerCase();
+    const same = (a, b) => Boolean(norm(a) && norm(b) && norm(a) === norm(b));
+    const pickFirst = (...values) => {
+      for (const value of values) {
+        if (value === undefined || value === null) continue;
+        if (typeof value === 'number' && Number.isFinite(value)) return value;
+        if (String(value).trim() !== '') return value;
+      }
+      return '';
+    };
+    const parseCount = (...values) => {
+      for (const value of values) {
+        if (value === undefined || value === null || String(value).trim() === '') continue;
+        const parsed = Number(value);
+        if (Number.isFinite(parsed) && parsed > 0) return parsed;
+      }
+      return null;
+    };
+    const isSaasAnnualItem = item => {
+      const text = [
+        item?.item_name,
+        item?.product_name,
+        item?.service_name,
+        item?.description,
+        item?.category,
+        item?.billing_frequency,
+        item?.billing_cycle
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return text.includes('saas') && text.includes('annual');
+    };
 
     const technicalRequestDetails = String(message || '').trim() || `Please proceed with the following agreement ${normalizedAgreementId}.`;
     const currentUser = (window.Session?.currentUser && typeof window.Session.currentUser === 'object')
@@ -684,12 +717,101 @@ const Api = {
       ''
     ).trim();
     const requestedAt = new Date().toISOString();
+    let agreement = {};
+    try {
+      const agreementResponse = await this.getAgreement(normalizedAgreementId);
+      const agreementPayload = this.unwrapApiPayload(agreementResponse) || agreementResponse || {};
+      if (Array.isArray(agreementPayload)) {
+        agreement = agreementPayload.find(item => item && typeof item === 'object') || {};
+      } else if (agreementPayload && typeof agreementPayload === 'object') {
+        agreement = agreementPayload.agreement && typeof agreementPayload.agreement === 'object'
+          ? agreementPayload.agreement
+          : agreementPayload;
+      }
+    } catch (error) {
+      console.warn('[technical admin] unable to fetch agreement for request seed', normalizedAgreementId, error);
+    }
+    const agreementIdTokens = [...new Set([normalizedAgreementId, agreement?.id, agreement?.agreement_id].map(value => String(value || '').trim()).filter(Boolean))];
+    const agreementNumberTokens = [...new Set([agreement?.agreement_number, agreement?.number, agreement?.agreement_code].map(value => String(value || '').trim()).filter(Boolean))];
+    let linkedAgreementItems = Array.isArray(agreement?.agreement_items) ? agreement.agreement_items : [];
+    const client = window.SupabaseClient?.getClient?.();
+    if (client) {
+      const itemQueries = [];
+      if (agreementIdTokens.length) {
+        itemQueries.push(client.from('agreement_items').select('*').in('agreement_id', agreementIdTokens));
+        itemQueries.push(client.from('agreement_items').select('*').in('parent_id', agreementIdTokens));
+      }
+      if (agreementNumberTokens.length) {
+        itemQueries.push(client.from('agreement_items').select('*').in('agreement_number', agreementNumberTokens));
+        itemQueries.push(client.from('agreement_items').select('*').in('parent_number', agreementNumberTokens));
+      }
+      if (itemQueries.length) {
+        const itemResults = await Promise.all(itemQueries);
+        itemResults.forEach(result => {
+          if (result?.error) {
+            console.warn('[technical admin] agreement item seed enrichment failed', result.error);
+            return;
+          }
+          if (Array.isArray(result?.data) && result.data.length) linkedAgreementItems = linkedAgreementItems.concat(result.data);
+        });
+      }
+    }
+    const linkedItems = linkedAgreementItems.filter(item => {
+      const itemAgreementId = String(item?.agreement_id || item?.parent_id || '').trim();
+      const itemAgreementNumber = String(item?.agreement_number || item?.parent_number || '').trim();
+      return (
+        agreementIdTokens.some(token => same(token, itemAgreementId)) ||
+        agreementNumberTokens.some(token => same(token, itemAgreementNumber))
+      );
+    });
+    const saasAnnualCount = linkedItems.filter(isSaasAnnualItem).length;
+    const locationCount = parseCount(
+      agreement?.number_of_locations,
+      agreement?.locations_count,
+      agreement?.location_count,
+      saasAnnualCount || '',
+      linkedItems.length
+    );
+    const serviceStartDate = String(
+      pickFirst(
+        agreement?.service_start_date,
+        agreement?.contract_start_date,
+        agreement?.start_date,
+        agreement?.agreement_start_date,
+        linkedItems.map(item => String(item?.service_start_date || '').trim()).filter(Boolean).sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0]
+      )
+    ).trim();
+    const serviceEndDate = String(
+      pickFirst(
+        agreement?.service_end_date,
+        agreement?.contract_end_date,
+        agreement?.end_date,
+        agreement?.valid_until,
+        linkedItems.map(item => String(item?.service_end_date || '').trim()).filter(Boolean).sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0]
+      )
+    ).trim();
+    const billingFrequency = String(pickFirst(agreement?.billing_frequency, agreement?.billing_cycle, agreement?.billing_period)).trim();
+    const paymentTerm = String(pickFirst(agreement?.payment_term, agreement?.payment_terms)).trim();
+    const assignedTo = String(pickFirst(agreement?.assigned_to, agreement?.owner, agreement?.created_by)).trim();
+    const agreementNumber = String(pickFirst(agreement?.agreement_number, agreement?.number, agreement?.agreement_code)).trim();
+    const clientName = String(pickFirst(agreement?.client_name, agreement?.company_name, agreement?.customer_name)).trim();
+    const clientId = String(pickFirst(agreement?.client_id, agreement?.customer_id, agreement?.company_id)).trim();
 
     const requestFields = {
       agreement_id: normalizedAgreementId,
+      agreement_number: agreementNumber || null,
+      client_id: clientId || null,
+      client_name: clientName || null,
+      number_of_locations: locationCount,
+      service_start_date: serviceStartDate || null,
+      service_end_date: serviceEndDate || null,
+      billing_frequency: billingFrequency || null,
+      payment_term: paymentTerm || null,
+      assigned_to: assignedTo || null,
       technical_request_type: 'Technical Admin',
       technical_request_details: technicalRequestDetails,
       technical_request_status: 'Requested',
+      request_status: 'Requested',
       requested_by: requestedBy || null,
       requested_at: requestedAt
     };
@@ -727,10 +849,20 @@ const Api = {
         const onboardingPayload = this.unwrapApiPayload(onboardingRecord) || onboardingRecord || {};
         const technicalPayload = {
           agreement_id: normalizedAgreementId,
+          agreement_number: agreementNumber || null,
+          client_id: clientId || null,
+          client_name: clientName || null,
+          number_of_locations: locationCount,
+          service_start_date: serviceStartDate || null,
+          service_end_date: serviceEndDate || null,
+          billing_frequency: billingFrequency || null,
+          payment_term: paymentTerm || null,
+          assigned_to: assignedTo || null,
           onboarding_id: onboardingPayload?.onboarding_id || onboardingPayload?.id || null,
           technical_request_type: 'Technical Admin',
           technical_request_details: technicalRequestDetails,
           technical_request_status: 'Requested',
+          request_status: 'Requested',
           requested_by: requestedBy || null,
           requested_at: requestedAt
         };
