@@ -23,6 +23,9 @@ const ClientsService = {
   normalizeMatchValue(value) {
     return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
   },
+  compactValues(values = []) {
+    return values.filter(value => String(value || '').trim());
+  },
   valuesMatch(a, b) {
     const left = this.normalizeMatchValue(a);
     const right = this.normalizeMatchValue(b);
@@ -75,48 +78,77 @@ const ClientsService = {
     };
     return normalized;
   },
-  agreementBelongsToClient(agreement = {}, client = {}) {
+  getClientKeys(client = {}) {
+    return this.compactValues([
+      client.client_id,
+      client.id,
+      client.client_name,
+      client.company_name,
+      client.customer_name,
+      client.customer_legal_name,
+      client.name,
+      client.primary_email,
+      client.email,
+      client.client_email,
+      client.primary_phone,
+      client.phone,
+      client.mobile
+    ]);
+  },
+  getAgreementKeys(agreement = {}) {
     const normalized = this.normalizeAgreementForClient(agreement);
-    const agreementKeys = [
+    return this.compactValues([
+      agreement.id,
+      agreement.agreement_id,
+      agreement.agreement_number,
       normalized.client_name,
       normalized.client_email,
       normalized.client_phone,
       agreement.customer_name,
       agreement.customer_contact_email,
       agreement.customer_contact_mobile
-    ].filter(Boolean);
-    const clientKeys = [
-      client.client_name,
-      client.company_name,
-      client.customer_name,
-      client.name,
-      client.email,
-      client.phone,
-      client.mobile,
-      client.primary_email,
-      client.primary_phone
-    ].filter(Boolean);
+    ]);
+  },
+  agreementBelongsToClient(agreement = {}, client = {}) {
+    const agreementKeys = this.getAgreementKeys(agreement);
+    const clientKeys = this.getClientKeys(client);
     return agreementKeys.some(agreementKey => clientKeys.some(clientKey => this.valuesMatch(agreementKey, clientKey)));
   },
-  collectClientValues(client = {}) {
-    return [
-      client.id, client.client_id, client.client_uuid, client.client_name, client.company_name, client.name,
-      client.customer_name, client.customer_legal_name, client.primary_email, client.email, client.phone, client.primary_phone
-    ].filter(Boolean);
+  invoiceBelongsToClient(invoice = {}, client = {}, relatedAgreements = []) {
+    const clientKeys = this.getClientKeys(client);
+    const invoiceClientKeys = this.compactValues([
+      invoice.client_id, invoice.customer_id, invoice.company_id, invoice.client_name, invoice.customer_name, invoice.company_name,
+      invoice.email, invoice.client_email, invoice.customer_contact_email, invoice.phone, invoice.client_phone
+    ]);
+    const directMatch = invoiceClientKeys.some(invoiceKey => clientKeys.some(clientKey => this.valuesMatch(invoiceKey, clientKey)));
+    if (directMatch) return true;
+    return relatedAgreements.some(agreement =>
+      this.valuesMatch(invoice.agreement_id, agreement.id) ||
+      this.valuesMatch(invoice.agreement_id, agreement.agreement_id) ||
+      this.valuesMatch(invoice.agreement_number, agreement.agreement_number) ||
+      this.valuesMatch(invoice.source_agreement_id, agreement.agreement_id) ||
+      this.valuesMatch(invoice.source_agreement_number, agreement.agreement_number)
+    );
   },
-  collectRecordValues(record = {}) {
-    return [
-      record.id, record.client_id, record.client_uuid, record.customer_id, record.company_id,
-      record.client_name, record.company_name, record.customer_name, record.customer_legal_name,
-      record.email, record.client_email, record.phone, record.client_phone,
-      record.agreement_id, record.agreement_number, record.invoice_id, record.invoice_number,
-      record.receipt_id, record.receipt_number
-    ].filter(Boolean);
-  },
-  recordBelongsToClient(record = {}, client = {}) {
-    const clientValues = this.collectClientValues(client);
-    const recordValues = this.collectRecordValues(record);
-    return recordValues.some(rv => clientValues.some(cv => this.valuesMatch(rv, cv)));
+  receiptBelongsToClient(receipt = {}, client = {}, relatedAgreements = [], relatedInvoices = []) {
+    const clientKeys = this.getClientKeys(client);
+    const receiptClientKeys = this.compactValues([
+      receipt.client_id, receipt.customer_id, receipt.company_id, receipt.client_name, receipt.customer_name, receipt.company_name,
+      receipt.email, receipt.client_email, receipt.customer_contact_email, receipt.phone, receipt.client_phone
+    ]);
+    const directMatch = receiptClientKeys.some(receiptKey => clientKeys.some(clientKey => this.valuesMatch(receiptKey, clientKey)));
+    if (directMatch) return true;
+    const invoiceMatch = relatedInvoices.some(invoice =>
+      this.valuesMatch(receipt.invoice_id, invoice.id) ||
+      this.valuesMatch(receipt.invoice_id, invoice.invoice_id) ||
+      this.valuesMatch(receipt.invoice_number, invoice.invoice_number)
+    );
+    if (invoiceMatch) return true;
+    return relatedAgreements.some(agreement =>
+      this.valuesMatch(receipt.agreement_id, agreement.id) ||
+      this.valuesMatch(receipt.agreement_id, agreement.agreement_id) ||
+      this.valuesMatch(receipt.agreement_number, agreement.agreement_number)
+    );
   },
   isUuid(value) {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(String(value || '').trim());
@@ -377,37 +409,22 @@ const ClientsService = {
       if (agreementUuid && agreementUuid === sourceAgreement) return true;
       if (agreementBusinessId && agreementBusinessId === sourceAgreement) return true;
     }
-    return this.agreementBelongsToClient(agreement, client) || this.recordBelongsToClient(agreement, client);
-  },
-  matchRecordClient(record = {}, client = {}) {
-    return this.recordBelongsToClient(record, client);
+    return this.agreementBelongsToClient(agreement, client);
   },
   computeTotalsForClient(client = {}, agreements = [], invoices = [], receipts = [], agreementItems = []) {
     const linkedAgreements = agreements.filter(row => this.matchAgreementClient(row, client));
     const linkedAgreementUuids = new Set(linkedAgreements.map(row => String(row.id || '').trim()).filter(Boolean));
     const linkedAgreementItems = agreementItems.filter(item => linkedAgreementUuids.has(String(item.agreement_id || '').trim()));
-    const agreementIds = new Set(linkedAgreements.flatMap(row => [row.id, row.agreement_id]).map(v => String(v || '').trim()).filter(Boolean));
-    const agreementNumbers = new Set(linkedAgreements.map(row => String(row.agreement_number || '').trim()).filter(Boolean));
-    const linkedInvoices = invoices.filter(row => {
-      if (this.matchRecordClient(row, client)) return true;
-      const agreementId = String(row.agreement_id || '').trim();
-      const agreementNumber = String(row.agreement_number || '').trim();
-      return Boolean((agreementId && agreementIds.has(agreementId)) || (agreementNumber && agreementNumbers.has(agreementNumber)));
-    });
-    const invoiceIdSet = new Set(linkedInvoices.flatMap(row => [row.id, row.invoice_id]).map(v => String(v || '').trim()).filter(Boolean));
-    const invoiceNumberSet = new Set(linkedInvoices.map(row => String(row.invoice_number || '').trim()).filter(Boolean));
-    const linkedReceipts = receipts.filter(row => {
-      const invoiceUuid = String(row.invoice_id || '').trim();
-      const invoiceNumber = String(row.invoice_number || '').trim();
-      if ((invoiceUuid && invoiceIdSet.has(invoiceUuid)) || (invoiceNumber && invoiceNumberSet.has(invoiceNumber))) return true;
-      return this.matchRecordClient(row, client);
-    });
+    const linkedInvoices = invoices.filter(row => this.invoiceBelongsToClient(row, client, linkedAgreements));
+    const linkedReceipts = receipts.filter(row => this.receiptBelongsToClient(row, client, linkedAgreements, linkedInvoices));
 
     const totalAgreements = linkedAgreements.length;
     const totalLocations = linkedAgreementItems.filter(item => this.isAnnualSaasClientLocationItem(item)).length;
     const totalValue = linkedAgreements.reduce((sum, agreement) => sum + this.toNumber(agreement.grand_total), 0);
     const totalInvoiced = linkedInvoices.reduce((sum, invoice) => sum + this.toNumber(invoice.invoice_total ?? invoice.grand_total), 0);
-    const totalPaid = linkedReceipts.reduce((sum, receipt) => sum + this.toNumber(receipt.amount_received), 0);
+    const totalPaidFromReceipts = linkedReceipts.reduce((sum, receipt) => sum + this.toNumber(receipt.amount_received ?? receipt.amount_paid ?? receipt.paid_amount), 0);
+    const fallbackInvoicePaid = linkedReceipts.length ? 0 : linkedInvoices.reduce((sum, invoice) => sum + this.toNumber(invoice.amount_paid ?? invoice.received_amount), 0);
+    const totalPaid = totalPaidFromReceipts + fallbackInvoicePaid;
     const totalDue = Math.max(totalInvoiced - totalPaid, 0);
 
     return {
