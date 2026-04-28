@@ -131,6 +131,7 @@ const Clients = {
       client.legal_name,
       client.name,
       client.primary_contact_email,
+      client.customer_contact_email,
       client.primary_email,
       client.email,
       client.client_email,
@@ -168,18 +169,27 @@ const Clients = {
       invoice.company_name,
       invoice.email,
       invoice.client_email,
+      invoice.primary_email,
       invoice.customer_contact_email,
+      invoice.customer_contact_mobile,
       invoice.phone,
-      invoice.client_phone
+      invoice.client_phone,
+      invoice.customer_legal_name
     ]);
     const directMatch = invoiceClientKeys.some(invoiceKey => clientKeys.some(clientKey => this.valuesMatch(invoiceKey, clientKey)));
     if (directMatch) return true;
     return relatedAgreements.some(agreement =>
       this.valuesMatch(invoice.agreement_id, agreement.id) ||
       this.valuesMatch(invoice.agreement_id, agreement.agreement_id) ||
+      this.valuesMatch(invoice.agreement_id, agreement.agreement_number) ||
       this.valuesMatch(invoice.agreement_number, agreement.agreement_number) ||
+      this.valuesMatch(invoice.agreement_number, agreement.agreement_id) ||
+      this.valuesMatch(invoice.reference, agreement.agreement_number) ||
+      this.valuesMatch(invoice.reference, agreement.agreement_id) ||
       this.valuesMatch(invoice.source_agreement_id, agreement.agreement_id) ||
-      this.valuesMatch(invoice.source_agreement_number, agreement.agreement_number)
+      this.valuesMatch(invoice.source_agreement_number, agreement.agreement_number) ||
+      this.valuesMatch(invoice.proposal_id, agreement.proposal_id) ||
+      this.valuesMatch(invoice.source_proposal_id, agreement.proposal_id)
     );
   },
   receiptBelongsToClient(receipt = {}, client = {}, relatedAgreements = [], relatedInvoices = []) {
@@ -193,22 +203,32 @@ const Clients = {
       receipt.company_name,
       receipt.email,
       receipt.client_email,
+      receipt.primary_email,
       receipt.customer_contact_email,
+      receipt.customer_contact_mobile,
       receipt.phone,
-      receipt.client_phone
+      receipt.client_phone,
+      receipt.customer_legal_name
     ]);
     const directMatch = receiptClientKeys.some(receiptKey => clientKeys.some(clientKey => this.valuesMatch(receiptKey, clientKey)));
     if (directMatch) return true;
     const invoiceMatch = relatedInvoices.some(invoice =>
       this.valuesMatch(receipt.invoice_id, invoice.id) ||
       this.valuesMatch(receipt.invoice_id, invoice.invoice_id) ||
-      this.valuesMatch(receipt.invoice_number, invoice.invoice_number)
+      this.valuesMatch(receipt.invoice_id, invoice.invoice_number) ||
+      this.valuesMatch(receipt.invoice_number, invoice.invoice_number) ||
+      this.valuesMatch(receipt.invoice_number, invoice.invoice_id)
     );
     if (invoiceMatch) return true;
     return relatedAgreements.some(agreement =>
       this.valuesMatch(receipt.agreement_id, agreement.id) ||
       this.valuesMatch(receipt.agreement_id, agreement.agreement_id) ||
-      this.valuesMatch(receipt.agreement_number, agreement.agreement_number)
+      this.valuesMatch(receipt.agreement_id, agreement.agreement_number) ||
+      this.valuesMatch(receipt.agreement_number, agreement.agreement_number) ||
+      this.valuesMatch(receipt.agreement_number, agreement.agreement_id) ||
+      this.valuesMatch(receipt.reference, agreement.agreement_number) ||
+      this.valuesMatch(receipt.reference, agreement.agreement_id) ||
+      this.valuesMatch(receipt.proposal_id, agreement.proposal_id)
     );
   },
   isDebugMode_() {
@@ -311,9 +331,11 @@ const Clients = {
   },
   normalizeAgreement(raw = {}) {
     return this.normalizeAgreementForClient({
+      ...raw,
       id: String(raw.id || '').trim(),
       agreement_id: String(raw.agreement_id || raw.agreementId || raw.id || '').trim(),
       agreement_number: String(raw.agreement_number || raw.agreementNumber || '').trim(),
+      proposal_id: String(raw.proposal_id || raw.proposalId || '').trim(),
       client_id: String(raw.client_id || raw.clientId || '').trim(),
       client_uuid: String(raw.client_uuid || raw.clientUuid || '').trim(),
       customer_id: String(raw.customer_id || raw.customerId || '').trim(),
@@ -348,8 +370,10 @@ const Clients = {
   },
   normalizeAgreementItem(raw = {}) {
     return {
+      ...raw,
       id: String(raw.id || raw.item_id || raw.itemId || '').trim(),
       agreement_id: String(raw.agreement_id || raw.agreementId || '').trim(),
+      agreement_number: String(raw.agreement_number || raw.agreementNumber || '').trim(),
       section: String(raw.section || raw.category || raw.type || '').trim(),
       location_name: String(raw.location_name || raw.locationName || '').trim(),
       item_name: String(raw.item_name || raw.itemName || raw.module || raw.module_name || raw.moduleName || '').trim(),
@@ -362,11 +386,13 @@ const Clients = {
   },
   normalizeInvoice(raw = {}) {
     return {
+      ...raw,
       id: String(raw.id || '').trim(),
       invoice_id: String(raw.invoice_id || raw.invoiceId || '').trim(),
       invoice_number: String(raw.invoice_number || raw.invoiceNumber || '').trim(),
       agreement_id: String(raw.agreement_id || raw.agreementId || '').trim(),
       agreement_number: String(raw.agreement_number || raw.agreementNumber || '').trim(),
+      proposal_id: String(raw.proposal_id || raw.proposalId || '').trim(),
       client_id: String(raw.client_id || raw.clientId || '').trim(),
       client_uuid: String(raw.client_uuid || raw.clientUuid || '').trim(),
       customer_id: String(raw.customer_id || raw.customerId || '').trim(),
@@ -375,8 +401,11 @@ const Clients = {
       company_name: String(raw.company_name || raw.companyName || '').trim(),
       customer_name: String(raw.customer_name || raw.customerName || '').trim(),
       customer_legal_name: String(raw.customer_legal_name || raw.customerLegalName || '').trim(),
-      email: String(raw.email || '').trim(),
-      client_email: String(raw.client_email || raw.clientEmail || '').trim(),
+      email: String(raw.email || raw.customer_contact_email || raw.primary_email || '').trim(),
+      primary_email: String(raw.primary_email || raw.primaryEmail || '').trim(),
+      customer_contact_email: String(raw.customer_contact_email || raw.customerContactEmail || '').trim(),
+      customer_contact_mobile: String(raw.customer_contact_mobile || raw.customerContactMobile || '').trim(),
+      client_email: String(raw.client_email || raw.clientEmail || raw.customer_contact_email || raw.primary_email || '').trim(),
       status: String(raw.status || raw.payment_state || '').trim(),
       grand_total: this.toNumberSafe(raw.invoice_total ?? raw.invoiceTotal ?? raw.grand_total ?? raw.grandTotal),
       currency: String(raw.currency || raw.currency_code || raw.currencyCode || '').trim() || 'USD',
@@ -393,6 +422,7 @@ const Clients = {
   },
   normalizeReceipt(raw = {}) {
     return {
+      ...raw,
       id: String(raw.id || '').trim(),
       receipt_id: String(raw.receipt_id || raw.receiptId || '').trim(),
       receipt_number: String(raw.receipt_number || raw.receiptNumber || '').trim(),
@@ -400,6 +430,7 @@ const Clients = {
       invoice_number: String(raw.invoice_number || raw.invoiceNumber || '').trim(),
       agreement_id: String(raw.agreement_id || raw.agreementId || '').trim(),
       agreement_number: String(raw.agreement_number || raw.agreementNumber || '').trim(),
+      proposal_id: String(raw.proposal_id || raw.proposalId || '').trim(),
       client_id: String(raw.client_id || raw.clientId || '').trim(),
       client_uuid: String(raw.client_uuid || raw.clientUuid || '').trim(),
       customer_id: String(raw.customer_id || raw.customerId || '').trim(),
@@ -408,8 +439,11 @@ const Clients = {
       company_name: String(raw.company_name || raw.companyName || '').trim(),
       customer_name: String(raw.customer_name || raw.customerName || '').trim(),
       customer_legal_name: String(raw.customer_legal_name || raw.customerLegalName || '').trim(),
-      email: String(raw.email || '').trim(),
-      client_email: String(raw.client_email || raw.clientEmail || '').trim(),
+      email: String(raw.email || raw.customer_contact_email || raw.primary_email || '').trim(),
+      primary_email: String(raw.primary_email || raw.primaryEmail || '').trim(),
+      customer_contact_email: String(raw.customer_contact_email || raw.customerContactEmail || '').trim(),
+      customer_contact_mobile: String(raw.customer_contact_mobile || raw.customerContactMobile || '').trim(),
+      client_email: String(raw.client_email || raw.clientEmail || raw.customer_contact_email || raw.primary_email || '').trim(),
       payment_state: String(raw.payment_state || raw.status || '').trim(),
       received_amount: this.toNumberSafe(raw.amount_received ?? raw.amountReceived ?? raw.received_amount ?? raw.receivedAmount ?? raw.amount_paid),
       pending_amount: this.toNumberSafe(raw.pending_amount ?? raw.pendingAmount),
@@ -585,11 +619,34 @@ const Clients = {
     });
     return matchedAgreements;
   },
+  getAgreementLinkValues_(agreement = {}) {
+    return this.compactValues([
+      agreement.id,
+      agreement.agreement_id,
+      agreement.agreement_number,
+      agreement.proposal_id,
+      agreement.source_agreement_id,
+      agreement.source_agreement_number
+    ]).map(value => this.normalizeMatchValue(value));
+  },
+  recordLinksAgreement_(record = {}, agreement = {}) {
+    const agreementLinks = new Set(this.getAgreementLinkValues_(agreement));
+    const recordLinks = this.compactValues([
+      record.agreement_id,
+      record.agreement_number,
+      record.parent_agreement_id,
+      record.parent_agreement_number,
+      record.source_agreement_id,
+      record.source_agreement_number,
+      record.proposal_id,
+      record.source_proposal_id
+    ]).map(value => this.normalizeMatchValue(value));
+    return recordLinks.some(link => agreementLinks.has(link));
+  },
   listClientAgreementLocationItems_(clientId) {
     const linkedAgreements = this.listClientRelatedAgreements_(clientId);
-    const linkedAgreementUuidSet = new Set(linkedAgreements.map(item => String(item.id || '').trim()).filter(Boolean));
     return this.state.agreementItems
-      .filter(item => linkedAgreementUuidSet.has(String(item.agreement_id || '').trim()))
+      .filter(item => linkedAgreements.some(agreement => this.recordLinksAgreement_(item, agreement)))
       .filter(item => this.isAnnualSaasClientLocationItem(item));
   },
   listClientRelatedInvoices_(clientId) {
@@ -1814,6 +1871,7 @@ const Clients = {
       this.state.invoiceItems = this.extractListResult(clientsRes.invoice_items || []).rows;
       this.state.receipts = this.extractListResult(clientsRes.receipts || []).rows.map(item => this.normalizeReceipt(item));
       this.state.receiptItems = this.extractListResult(clientsRes.receipt_items || []).rows;
+      this.state.detailCache = {};
 
       this.state.agreements.forEach(agreement => {
         this.findOrCreateClientFromSignedAgreement_(agreement);

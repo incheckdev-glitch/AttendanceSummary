@@ -88,6 +88,8 @@ const ClientsService = {
       client.customer_legal_name,
       client.name,
       client.primary_email,
+      client.primary_contact_email,
+      client.customer_contact_email,
       client.email,
       client.client_email,
       client.primary_phone,
@@ -118,36 +120,48 @@ const ClientsService = {
     const clientKeys = this.getClientKeys(client);
     const invoiceClientKeys = this.compactValues([
       invoice.client_id, invoice.customer_id, invoice.company_id, invoice.client_name, invoice.customer_name, invoice.company_name,
-      invoice.email, invoice.client_email, invoice.customer_contact_email, invoice.phone, invoice.client_phone
+      invoice.email, invoice.client_email, invoice.primary_email, invoice.customer_contact_email, invoice.customer_contact_mobile, invoice.phone, invoice.client_phone, invoice.customer_legal_name
     ]);
     const directMatch = invoiceClientKeys.some(invoiceKey => clientKeys.some(clientKey => this.valuesMatch(invoiceKey, clientKey)));
     if (directMatch) return true;
     return relatedAgreements.some(agreement =>
       this.valuesMatch(invoice.agreement_id, agreement.id) ||
       this.valuesMatch(invoice.agreement_id, agreement.agreement_id) ||
+      this.valuesMatch(invoice.agreement_id, agreement.agreement_number) ||
       this.valuesMatch(invoice.agreement_number, agreement.agreement_number) ||
+      this.valuesMatch(invoice.agreement_number, agreement.agreement_id) ||
+      this.valuesMatch(invoice.reference, agreement.agreement_number) ||
+      this.valuesMatch(invoice.reference, agreement.agreement_id) ||
       this.valuesMatch(invoice.source_agreement_id, agreement.agreement_id) ||
-      this.valuesMatch(invoice.source_agreement_number, agreement.agreement_number)
+      this.valuesMatch(invoice.source_agreement_number, agreement.agreement_number) ||
+      this.valuesMatch(invoice.proposal_id, agreement.proposal_id) ||
+      this.valuesMatch(invoice.source_proposal_id, agreement.proposal_id)
     );
   },
   receiptBelongsToClient(receipt = {}, client = {}, relatedAgreements = [], relatedInvoices = []) {
     const clientKeys = this.getClientKeys(client);
     const receiptClientKeys = this.compactValues([
       receipt.client_id, receipt.customer_id, receipt.company_id, receipt.client_name, receipt.customer_name, receipt.company_name,
-      receipt.email, receipt.client_email, receipt.customer_contact_email, receipt.phone, receipt.client_phone
+      receipt.email, receipt.client_email, receipt.primary_email, receipt.customer_contact_email, receipt.customer_contact_mobile, receipt.phone, receipt.client_phone, receipt.customer_legal_name
     ]);
     const directMatch = receiptClientKeys.some(receiptKey => clientKeys.some(clientKey => this.valuesMatch(receiptKey, clientKey)));
     if (directMatch) return true;
     const invoiceMatch = relatedInvoices.some(invoice =>
       this.valuesMatch(receipt.invoice_id, invoice.id) ||
       this.valuesMatch(receipt.invoice_id, invoice.invoice_id) ||
-      this.valuesMatch(receipt.invoice_number, invoice.invoice_number)
+      this.valuesMatch(receipt.invoice_id, invoice.invoice_number) ||
+      this.valuesMatch(receipt.invoice_number, invoice.invoice_number) ||
+      this.valuesMatch(receipt.invoice_number, invoice.invoice_id)
     );
     if (invoiceMatch) return true;
     return relatedAgreements.some(agreement =>
       this.valuesMatch(receipt.agreement_id, agreement.id) ||
       this.valuesMatch(receipt.agreement_id, agreement.agreement_id) ||
-      this.valuesMatch(receipt.agreement_number, agreement.agreement_number)
+      this.valuesMatch(receipt.agreement_id, agreement.agreement_number) ||
+      this.valuesMatch(receipt.agreement_number, agreement.agreement_number) ||
+      this.valuesMatch(receipt.agreement_number, agreement.agreement_id) ||
+      this.valuesMatch(receipt.reference, agreement.agreement_number) ||
+      this.valuesMatch(receipt.reference, agreement.agreement_id)
     );
   },
   isUuid(value) {
@@ -191,9 +205,11 @@ const ClientsService = {
   },
   mapAgreementRow(row = {}) {
     return {
+      ...row,
       id: String(row.id || '').trim(),
       agreement_id: String(row.agreement_id || '').trim(),
       agreement_number: String(row.agreement_number || '').trim(),
+      proposal_id: String(row.proposal_id || row.proposalId || '').trim(),
       client_name: String(row.client_name || row.customer_name || row.customer_legal_name || '').trim(),
       client_email: String(row.client_email || row.customer_contact_email || '').trim(),
       client_phone: String(row.client_phone || row.customer_contact_mobile || '').trim(),
@@ -492,9 +508,9 @@ const ClientsService = {
     const [agreementsRes, itemsRes, invoicesRes, invoiceItemsRes, receiptsRes, receiptItemsRes] = await Promise.all([
       db.from('agreements').select(this.AGREEMENT_SELECT_COLUMNS).order('updated_at', { ascending: false }).limit(analyticsLimit),
       this.fetchAgreementItemsForClients_(db),
-      db.from('invoices').select('id,invoice_id,invoice_number,agreement_id,agreement_number,client_id,client_uuid,customer_id,company_id,client_name,company_name,customer_name,customer_legal_name,email,client_email,proposal_id,issue_date,due_date,invoice_total,grand_total,total_amount,received_amount,pending_amount,payment_state,status,currency,notes,updated_at,created_at').order('updated_at', { ascending: false }).limit(analyticsLimit),
+      db.from('invoices').select('*').order('updated_at', { ascending: false }).limit(analyticsLimit),
       db.from('invoice_items').select('*').limit(analyticsLimit),
-      db.from('receipts').select('id,receipt_id,receipt_number,invoice_id,invoice_number,agreement_id,agreement_number,client_id,client_uuid,customer_id,company_id,client_name,company_name,customer_name,customer_legal_name,email,client_email,status,payment_state,amount_received,amount_paid,paid_amount,pending_amount,currency,updated_at,created_at,receipt_date,payment_reference,notes').order('updated_at', { ascending: false }).limit(analyticsLimit),
+      db.from('receipts').select('*').order('updated_at', { ascending: false }).limit(analyticsLimit),
       db.from('receipt_items').select('*').limit(analyticsLimit)
     ]);
     if (agreementsRes.error) throw this.friendlyError('Unable to load agreements for clients', agreementsRes.error);
