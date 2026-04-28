@@ -27,6 +27,14 @@ const TechnicalAdmin = {
   normalizeToken(value = '') {
     return String(value || '').toLowerCase().trim();
   },
+  normalizeMatch(value) {
+    return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  },
+  sameValue(left, right) {
+    const l = this.normalizeMatch(left);
+    const r = this.normalizeMatch(right);
+    return Boolean(l && r && l === r);
+  },
   parseOptionalNumber(...values) {
     for (const value of values) {
       if (value === undefined || value === null || String(value).trim() === '') continue;
@@ -123,6 +131,27 @@ const TechnicalAdmin = {
     const safeItems = Array.isArray(agreementItems) ? agreementItems : [];
     return safeItems.filter(item => this.isAnnualSaasLocationItem(item)).length;
   },
+  resolveLocationCount(agreement = {}, agreementItems = [], row = {}) {
+    const subtotalLocations = this.parseOptionalNumber(agreement.subtotal_locations);
+    if (subtotalLocations !== null) return subtotalLocations;
+    const annualSaasCount = this.deriveAgreementLocationCount(agreementItems);
+    if (annualSaasCount > 0) return annualSaasCount;
+    if (Array.isArray(agreementItems) && agreementItems.length) return agreementItems.length;
+    const fromRow = this.parseOptionalNumber(row.number_of_locations, row.location_count);
+    if (fromRow !== null) return fromRow;
+    return '—';
+  },
+  rowBelongsToAgreement(row = {}, agreement = {}) {
+    const rowAgreementId = String(this.pick(row.agreement_id, row.agreementId)).trim();
+    const rowAgreementNumber = String(this.pick(row.agreement_number, row.agreementNumber)).trim();
+    const agreementId = String(agreement.id || '').trim();
+    const agreementBusinessId = String(agreement.agreement_id || '').trim();
+    const agreementNumber = String(agreement.agreement_number || '').trim();
+    return Boolean(
+      (rowAgreementId && (this.sameValue(rowAgreementId, agreementId) || this.sameValue(rowAgreementId, agreementBusinessId))) ||
+      (rowAgreementNumber && this.sameValue(rowAgreementNumber, agreementNumber))
+    );
+  },
   normalizeRow(raw = {}) {
     const source = raw && typeof raw === 'object' ? raw : {};
     const agreement = this.extractLinkedAgreement(source);
@@ -136,6 +165,7 @@ const TechnicalAdmin = {
       source.locationsCount
     );
     const agreementLocationCount = this.parseOptionalNumber(
+      agreement.subtotal_locations,
       agreement.location_count,
       agreement.locations_count,
       agreement.number_of_locations,
@@ -144,7 +174,7 @@ const TechnicalAdmin = {
       agreement.numberOfLocations
     );
     const derivedLocationCount = agreementItems.length ? this.deriveAgreementLocationCount(agreementItems) : null;
-    const resolvedLocationCount = requestLocationCount ?? agreementLocationCount ?? derivedLocationCount;
+    const resolvedLocationCount = requestLocationCount ?? agreementLocationCount ?? derivedLocationCount ?? (agreementItems.length || null);
     const sourceId = String(source.id || '').trim();
     const onboardingId = String(this.pick(source.onboarding_id, source.onboardingId)).trim();
     const technicalRequestType = String(this.pick(source.technical_request_type, source.request_type, source.requestType, 'Technical Admin')).trim();
@@ -194,6 +224,7 @@ const TechnicalAdmin = {
     if (!client || !rawRows.length) return rawRows.map(row => this.normalizeRow(row));
 
     const agreementIds = [...new Set(rawRows.map(row => String(this.pick(row?.agreement_id, row?.agreementId)).trim()).filter(Boolean))];
+    const agreementNumbers = [...new Set(rawRows.map(row => String(this.pick(row?.agreement_number, row?.agreementNumber)).trim()).filter(Boolean))];
     console.log('[technical admin] agreement ids', agreementIds);
     const profileIds = [
       ...new Set(
@@ -204,8 +235,14 @@ const TechnicalAdmin = {
       )
     ];
 
-    const agreementsPromise = agreementIds.length
+    const agreementUuidPromise = agreementIds.length
       ? client.from('agreements').select('*').in('id', agreementIds)
+      : Promise.resolve({ data: [], error: null });
+    const agreementBusinessIdPromise = agreementIds.length
+      ? client.from('agreements').select('*').in('agreement_id', agreementIds)
+      : Promise.resolve({ data: [], error: null });
+    const agreementNumberPromise = agreementNumbers.length
+      ? client.from('agreements').select('*').in('agreement_number', agreementNumbers)
       : Promise.resolve({ data: [], error: null });
     const itemsPromise = agreementIds.length
       ? client.from('agreement_items').select('*').in('agreement_id', agreementIds)
@@ -214,12 +251,21 @@ const TechnicalAdmin = {
       ? client.from('profiles').select('id, name, full_name, username, email').in('id', profileIds)
       : Promise.resolve({ data: [], error: null });
 
-    const [agreementsRes, itemsRes, profilesRes] = await Promise.all([agreementsPromise, itemsPromise, profilesPromise]);
-    if (agreementsRes?.error) console.warn('[technical admin] agreements enrichment failed', agreementsRes.error);
+    const [agreementsByUuidRes, agreementsByBusinessRes, agreementsByNumberRes, itemsRes, profilesRes] = await Promise.all([
+      agreementUuidPromise,
+      agreementBusinessIdPromise,
+      agreementNumberPromise,
+      itemsPromise,
+      profilesPromise
+    ]);
+    if (agreementsByUuidRes?.error) console.warn('[technical admin] agreements enrichment by id failed', agreementsByUuidRes.error);
+    if (agreementsByBusinessRes?.error) console.warn('[technical admin] agreements enrichment by agreement_id failed', agreementsByBusinessRes.error);
+    if (agreementsByNumberRes?.error) console.warn('[technical admin] agreements enrichment by agreement_number failed', agreementsByNumberRes.error);
     if (itemsRes?.error) console.warn('[technical admin] agreement_items enrichment failed', itemsRes.error);
     if (profilesRes?.error) console.warn('[technical admin] profiles enrichment failed', profilesRes.error);
 
-    const agreementById = new Map((agreementsRes?.data || []).map(row => [String(row?.id || '').trim(), row]));
+    const combinedAgreements = [...(agreementsByUuidRes?.data || []), ...(agreementsByBusinessRes?.data || []), ...(agreementsByNumberRes?.data || [])];
+    const agreementById = new Map(combinedAgreements.map(row => [String(row?.id || '').trim(), row]));
     const itemsByAgreementId = new Map();
     (itemsRes?.data || []).forEach(item => {
       const key = String(item?.agreement_id || '').trim();
@@ -232,8 +278,8 @@ const TechnicalAdmin = {
     const enrichedRows = rawRows.map(raw => {
       const row = this.normalizeRow(raw);
       const agreementId = String(row.agreement_id || '').trim();
-      const agreement = agreementById.get(agreementId) || {};
-      const agreementItems = itemsByAgreementId.get(agreementId) || [];
+      const agreement = combinedAgreements.find(candidate => this.rowBelongsToAgreement(row, candidate)) || agreementById.get(agreementId) || {};
+      const agreementItems = itemsByAgreementId.get(String(agreement.id || '').trim()) || itemsByAgreementId.get(agreementId) || [];
       const itemLocationCount = agreementItems.length ? this.deriveAgreementLocationCount(agreementItems) : null;
       const earliestItemStart = agreementItems
         .map(item => String(item?.service_start_date || '').trim())
@@ -248,19 +294,14 @@ const TechnicalAdmin = {
       const assignedToValue = String(this.pick(raw.technical_admin_assigned_to, raw.assigned_to, raw.assignedTo, row.assigned_to)).trim();
       const assignedToProfile = this.isUuid(assignedToValue) ? profileById.get(assignedToValue) : null;
 
-      const locationCount = this.parseOptionalNumber(
-        itemLocationCount,
-        agreement.number_of_locations,
-        agreement.location_count,
-        row.number_of_locations,
-        row.location_count
-      );
+      const locationCount = this.resolveLocationCount(agreement, agreementItems, row);
       return {
         ...row,
         agreement_number: String(this.pick(row.agreement_number, agreement.agreement_number, agreement.agreementNumber)).trim(),
-        client_name: String(this.pick(row.client_name, agreement.client_name, agreement.company_name, agreement.customer_name)).trim(),
-        location_count: Number.isFinite(Number(locationCount)) ? Number(locationCount) : null,
-        number_of_locations: Number.isFinite(Number(locationCount)) ? Number(locationCount) : null,
+        agreement_id: String(this.pick(row.agreement_id, agreement.id, agreement.agreement_id)).trim(),
+        client_name: String(this.pick(row.client_name, agreement.customer_name, agreement.client_name, agreement.company_name)).trim(),
+        location_count: Number.isFinite(Number(locationCount)) ? Number(locationCount) : locationCount,
+        number_of_locations: Number.isFinite(Number(locationCount)) ? Number(locationCount) : locationCount,
         service_start_date: String(this.pick(agreement.service_start_date, earliestItemStart, row.service_start_date)).trim(),
         service_end_date: String(this.pick(agreement.service_end_date, latestItemEnd, row.service_end_date)).trim(),
         billing_frequency: String(
@@ -274,7 +315,7 @@ const TechnicalAdmin = {
             row.billing_frequency
           )
         ).trim(),
-        payment_term: String(this.pick(agreement.payment_terms, agreement.payment_term, raw.payment_terms, raw.payment_term, row.payment_term)).trim(),
+        payment_term: String(this.pick(agreement.payment_term, agreement.payment_terms, raw.payment_terms, raw.payment_term, row.payment_term)).trim(),
         requested_by_display: this.profileDisplay(requestedByProfile, row.requested_by),
         assigned_to: assignedToValue,
         assigned_to_display: this.profileDisplay(assignedToProfile, assignedToValue)
