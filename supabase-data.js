@@ -243,11 +243,11 @@
     'capability_name','capability_value','notes','sort_order'
   ]);
   const PROPOSAL_COLUMNS = new Set([
-    'proposal_id','ref_number','deal_id','customer_name','customer_address','customer_contact_name','customer_contact_mobile',
-    'customer_contact_email','provider_contact_name','provider_contact_mobile','provider_contact_email','proposal_title','proposal_date',
+    'proposal_id','ref_number','deal_id','company_id','company_name','contact_id','contact_name','contact_email','contact_phone','contact_mobile','customer_name','customer_address','customer_contact_name','customer_contact_mobile',
+    'customer_contact_email','customer_contact_phone','provider_contact_name','provider_contact_mobile','provider_contact_email','proposal_title','proposal_date',
     'proposal_valid_until','agreement_date','effective_date','service_start_date','service_end_date','contract_term','account_number','billing_frequency','payment_term','po_number',
     'currency','customer_legal_name','provider_name','provider_legal_name',
-    'terms_conditions','customer_signatory_name','customer_signatory_title','provider_signatory_name','provider_signatory_title',
+    'terms_conditions','customer_signatory_name','customer_signatory_title','customer_signatory_email','customer_signatory_phone','provider_signatory_name','provider_signatory_title',
     'provider_signatory_name_secondary','provider_signatory_title_secondary','provider_sign_date',
     'subtotal_locations','subtotal_one_time','total_discount','grand_total','status','generated_by','created_by','updated_by'
   ]);
@@ -1745,11 +1745,19 @@
       proposal_id: ensureBusinessIds ? ensureBusinessProposalId(proposalIdSource) : proposalIdSource,
       ref_number: ensureBusinessIds ? ensureProposalRefNumber(refNumberSource) : refNumberSource,
       deal_id: normalizeNullableUuidValue(firstDefined(record, ['deal_id', 'dealId'])),
+      company_id: firstDefined(record, ['company_id', 'companyId']),
+      company_name: firstDefined(record, ['company_name', 'companyName']),
+      contact_id: firstDefined(record, ['contact_id', 'contactId']),
+      contact_name: firstDefined(record, ['contact_name', 'contactName']),
+      contact_email: firstDefined(record, ['contact_email', 'contactEmail']),
+      contact_phone: firstDefined(record, ['contact_phone', 'contactPhone']),
+      contact_mobile: firstDefined(record, ['contact_mobile', 'contactMobile']),
       customer_name: firstDefined(record, ['customer_name', 'customerName']),
       customer_address: firstDefined(record, ['customer_address', 'customerAddress']),
       customer_contact_name: firstDefined(record, ['customer_contact_name', 'customerContactName']),
       customer_contact_mobile: firstDefined(record, ['customer_contact_mobile', 'customerContactMobile']),
       customer_contact_email: firstDefined(record, ['customer_contact_email', 'customerContactEmail']),
+      customer_contact_phone: firstDefined(record, ['customer_contact_phone', 'customerContactPhone']),
       provider_contact_name: firstDefined(record, ['provider_contact_name', 'providerContactName']),
       provider_contact_mobile: firstDefined(record, ['provider_contact_mobile', 'providerContactMobile']),
       provider_contact_email: firstDefined(record, ['provider_contact_email', 'providerContactEmail']),
@@ -1772,6 +1780,8 @@
       terms_conditions: firstDefined(record, ['terms_conditions', 'termsConditions']),
       customer_signatory_name: firstDefined(record, ['customer_signatory_name', 'customerSignatoryName']),
       customer_signatory_title: firstDefined(record, ['customer_signatory_title', 'customerSignatoryTitle']),
+      customer_signatory_email: firstDefined(record, ['customer_signatory_email', 'customerSignatoryEmail']),
+      customer_signatory_phone: firstDefined(record, ['customer_signatory_phone', 'customerSignatoryPhone']),
       provider_signatory_name: firstDefined(record, ['provider_signatory_name', 'providerSignatoryName']),
       provider_signatory_title: firstDefined(record, ['provider_signatory_title', 'providerSignatoryTitle']),
       provider_signatory_name_secondary: firstDefined(record, ['provider_signatory_name_secondary', 'providerSignatoryNameSecondary']),

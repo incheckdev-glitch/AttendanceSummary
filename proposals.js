@@ -455,6 +455,42 @@ const Proposals = {
       .padStart(6, '0');
     return `PR-${stamp}-${suffix}`;
   },
+
+  normalizeCompany(company = {}) {
+    const c = company && typeof company === 'object' ? company : {};
+    return {
+      company_id: String(c.company_id || c.companyId || '').trim(),
+      company_name: String(c.company_name || c.companyName || '').trim(),
+      legal_name: String(c.legal_name || c.legalName || '').trim(),
+      main_email: String(c.main_email || c.mainEmail || '').trim(),
+      main_phone: String(c.main_phone || c.mainPhone || '').trim(),
+      country: String(c.country || '').trim(),
+      city: String(c.city || '').trim(),
+      address: String(c.address || '').trim(),
+      tax_number: String(c.tax_number || c.taxNumber || '').trim(),
+      company_type: String(c.company_type || c.companyType || '').trim(),
+      industry: String(c.industry || '').trim(),
+      website: String(c.website || '').trim(),
+      company_status: String(c.company_status || c.companyStatus || '').trim()
+    };
+  },
+  normalizeContact(contact = {}) {
+    const c = contact && typeof contact === 'object' ? contact : {};
+    return { contact_id:String(c.contact_id||c.contactId||'').trim(), company_id:String(c.company_id||c.companyId||'').trim(), first_name:String(c.first_name||c.firstName||'').trim(), last_name:String(c.last_name||c.lastName||'').trim(), job_title:String(c.job_title||c.jobTitle||'').trim(), department:String(c.department||'').trim(), email:String(c.email||'').trim(), phone:String(c.phone||'').trim(), mobile:String(c.mobile||'').trim(), decision_role:String(c.decision_role||c.decisionRole||'').trim(), contact_status:String(c.contact_status||c.contactStatus||'').trim() };
+  },
+  buildContactDisplayName(contact = {}) {
+    const first = String(contact.first_name || contact.firstName || '').trim();
+    const last = String(contact.last_name || contact.lastName || '').trim();
+    return [first, last].filter(Boolean).join(' ').trim() || String(contact.contact_name || contact.contactName || contact.full_name || contact.fullName || '').trim();
+  },
+  getCurrentProviderContact() {
+    const user = window.Session?.currentUser || window.Session?.user || window.AppState?.user || {};
+    const name = user.displayName || user.name || user.full_name || user.fullName || user.username || user.email || '';
+    const email = user.email || user.user_email || user.userEmail || '';
+    return { provider_contact_name: String(name || '').trim(), provider_contact_email: String(email || '').trim() };
+  },
+  async getFullCompanyRecord(companyIdOrRecord) { const seed = typeof companyIdOrRecord === 'object' ? companyIdOrRecord : {}; const companyId = typeof companyIdOrRecord === 'object' ? (seed.company_id || seed.companyId) : companyIdOrRecord; const hasFullFields = seed.legal_name || seed.legalName || seed.company_type || seed.companyType || seed.industry || seed.website || seed.main_email || seed.mainEmail || seed.main_phone || seed.mainPhone || seed.country || seed.city || seed.address || seed.company_status || seed.companyStatus; if (hasFullFields) return this.normalizeCompany(seed); if (!companyId) return null; const response = await Api.requestWithSession('companies','list',{ filters:{ company_id: companyId }, limit:1 },{ requireAuth:true }); const rows = response?.rows || response?.items || response?.data || []; const row = Array.isArray(rows) ? rows[0] : rows; return row ? this.normalizeCompany(row) : null; },
+  async getFullContactRecord(contactIdOrRecord) { const seed = typeof contactIdOrRecord === 'object' ? contactIdOrRecord : {}; const contactId = typeof contactIdOrRecord === 'object' ? (seed.contact_id || seed.contactId) : contactIdOrRecord; const hasFullFields = seed.first_name || seed.firstName || seed.last_name || seed.lastName || seed.job_title || seed.jobTitle || seed.department || seed.email || seed.phone || seed.mobile || seed.decision_role || seed.decisionRole || seed.contact_status || seed.contactStatus; if (hasFullFields) return this.normalizeContact(seed); if (!contactId) return null; const response = await Api.requestWithSession('contacts','list',{ filters:{ contact_id: contactId }, limit:1 },{ requireAuth:true }); const rows = response?.rows || response?.items || response?.data || []; const row = Array.isArray(rows) ? rows[0] : rows; return row ? this.normalizeContact(row) : null; },
   ensureProposalId(value = '') {
     const trimmed = String(value ?? '').trim();
     return trimmed || this.generateProposalId();
@@ -557,6 +593,7 @@ const Proposals = {
   proposalDraftFromDeal(rawDeal = {}) {
     const deal = rawDeal && typeof rawDeal === 'object' ? rawDeal : {};
     const companyName = String(deal.company_name || deal.companyName || '').trim();
+    const legalName = String(deal.legal_name || deal.legalName || companyName).trim();
     const fullName = String(deal.full_name || deal.fullName || '').trim();
     const serviceInterest = String(deal.service_interest || deal.serviceInterest || '').trim();
     const titleParts = [companyName || fullName, serviceInterest].filter(Boolean);
@@ -566,7 +603,8 @@ const Proposals = {
       deal_code: String(deal.deal_id || deal.dealId || '').trim(),
       lead_id: String(deal.lead_id || deal.leadId || '').trim(),
       proposal_title: titleParts.length ? `${titleParts.join(' · ')} Proposal` : '',
-      customer_name: companyName || fullName,
+      customer_name: legalName || companyName || fullName,
+      customer_legal_name: legalName || companyName || fullName,
       customer_contact_name: fullName,
       customer_contact_mobile: String(deal.contact_phone || deal.contactPhone || deal.phone || '').trim(),
       customer_contact_email: String(deal.contact_email || deal.contactEmail || deal.email || '').trim(),
@@ -1753,6 +1791,8 @@ const Proposals = {
       btn.style.display = readOnly ? 'none' : '';
     });
     if (E.proposalFormSaveBtn) E.proposalFormSaveBtn.style.display = readOnly ? 'none' : '';
+    const lockedIds=['proposalFormCustomerName','proposalFormCustomerContactName','proposalFormCustomerContactMobile','proposalFormCustomerContactEmail','proposalFormProviderContactName','proposalFormProviderContactEmail','proposalFormCustomerSignatoryName','proposalFormCustomerSignatoryTitle'];
+    lockedIds.forEach(id=>{const el=document.getElementById(id); if(!el) return; el.readOnly=true; el.classList.add('readonly-field'); el.setAttribute('aria-readonly','true');});
     if (E.proposalFormDeleteBtn && readOnly) E.proposalFormDeleteBtn.style.display = 'none';
   },
   assignFormValues(proposal = {}) {
