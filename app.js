@@ -66,13 +66,141 @@ const TicketSummaryState = {
 };
 
 function canViewTicketInternalWidgets() {
-  return ['admin', 'dev'].includes(String(Session.role() || '').trim().toLowerCase());
+  const roleAllowed = ['admin', 'dev'].includes(String(Session.role() || '').trim().toLowerCase());
+  if (!roleAllowed) return false;
+  const canIssueWidget = Permissions.can('tickets', 'issue_related_widget');
+  const canDevWidget = Permissions.can('tickets', 'dev_team_status_widget');
+  if (!canIssueWidget && !canDevWidget) return true;
+  return canIssueWidget && canDevWidget;
 }
 
 function renderInternalTicketSummaryCard({
+  id,
   title,
   subtitle,
-  summaryData = {},
+  summaryData = {}
+}) {
+  return `
+    <article class="card ticket-internal-summary-card" aria-label="${U.escapeAttr(title)} widget">
+      <header class="ticket-internal-summary-header">
+        <div class="label">${U.escapeHtml(title)}</div>
+        <div class="sub">${U.escapeHtml(subtitle || '')}</div>
+      </header>
+      <canvas id="${U.escapeAttr(id)}" height="140" aria-label="${U.escapeAttr(title)} chart" role="img"></canvas>
+      <footer class="sub ticket-internal-summary-footer">Based on current ticket filters · Total ${Object.values(summaryData || {}).reduce((sum, n) => sum + Number(n || 0), 0)}</footer>
+    </article>
+  `;
+}
+
+function getTicketDateValue(value) {
+  if (!value) return 0;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function extractTicketNumber(value) {
+  const text = value == null ? '' : String(value);
+  const matches = text.match(/\d+/g);
+  if (!matches || !matches.length) return 0;
+  return Number(matches[matches.length - 1]) || 0;
+}
+
+function summarizeInternalWidgetData(summaryData = {}) {
+  const normalizedSummary = Object.entries(summaryData || {}).reduce((acc, [rawLabel, rawCount]) => {
+    const label = normalizeInternalTicketWidgetValue(rawLabel);
+    const count = Number(rawCount || 0);
+    acc[label] = (acc[label] || 0) + (Number.isFinite(count) ? count : 0);
+    return acc;
+  }, {});
+  return Object.entries(normalizedSummary)
+    .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))
+    .filter(([, count]) => Number(count || 0) > 0);
+}
+
+function renderInternalTicketSummaryChart(id, summaryData = {}) {
+  if (typeof Chart === 'undefined') return;
+  const el = U.q(`#${id}`);
+  if (!el) return;
+  const rows = summarizeInternalWidgetData(summaryData);
+  UI._charts = UI._charts || {};
+  if (!rows.length) {
+    const ctx = el.getContext('2d');
+    if (!ctx) return;
+    if (UI._charts[id]) {
+      UI._charts[id].destroy();
+      delete UI._charts[id];
+    }
+    ctx.clearRect(0, 0, el.width, el.height);
+    ctx.save();
+    ctx.fillStyle = '#7a8398';
+    ctx.font = '14px Inter, system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('No internal ticket data yet', el.width / 2, el.height / 2);
+    ctx.restore();
+    return;
+  }
+  const labels = rows.map(([label]) => label);
+  const values = rows.map(([, count]) => Number(count || 0));
+  const dataset = { label: 'Tickets', data: values, borderRadius: 8, backgroundColor: '#5b8def' };
+  const existing = UI._charts[id];
+  if (existing && existing.config?.type === 'bar') {
+    existing.data.labels = labels;
+    existing.data.datasets = [dataset];
+    existing.update('none');
+    return;
+  }
+  if (existing) existing.destroy();
+  UI._charts[id] = new Chart(el, {
+    type: 'bar',
+    data: { labels, datasets: [dataset] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+  });
+}
+
+function resolveTicketSortColumn(sortKey = '') {
+  const key = String(sortKey || '').trim();
+  const map = {
+    id: 'ticket_id',
+    date: 'date',
+    createdAt: 'created_at',
+    updatedAt: 'updated_at',
+    devTeamStatus: 'dev_team_status',
+    issueRelated: 'issue_related'
+  };
+  return map[key] || key || 'updated_at';
+}
+
+function compareTicketValues(aValue, bValue, type, direction) {
+  const dir = direction === 'desc' ? -1 : 1;
+  const isEmptyA = aValue == null || String(aValue).trim() === '';
+  const isEmptyB = bValue == null || String(bValue).trim() === '';
+  if (isEmptyA && isEmptyB) return 0;
+  if (isEmptyA) return 1;
+  if (isEmptyB) return -1;
+  if (type === 'date') return (getTicketDateValue(aValue) - getTicketDateValue(bValue)) * dir;
+  if (type === 'number') return ((Number(aValue) || 0) - (Number(bValue) || 0)) * dir;
+  if (type === 'ticketId') return (extractTicketNumber(aValue) - extractTicketNumber(bValue)) * dir;
+  return String(aValue).trim().toLowerCase().localeCompare(String(bValue).trim().toLowerCase()) * dir;
+}
+
+function stableSortTickets(rows = [], sortKey = '', sortDirection = 'asc') {
+  const typeByKey = { id: 'ticketId', date: 'date', createdAt: 'date', updatedAt: 'date' };
+  const type = typeByKey[sortKey] || 'text';
+  return [...(Array.isArray(rows) ? rows : [])]
+    .map((row, index) => ({ row, index }))
+    .sort((a, b) => {
+      const primary = compareTicketValues(a.row?.[sortKey], b.row?.[sortKey], type, sortDirection);
+      if (primary !== 0) return primary;
+      const created = compareTicketValues(a.row?.createdAt, b.row?.createdAt, 'date', 'asc');
+      if (created !== 0) return created;
+      const ticketId = compareTicketValues(issueDisplayId(a.row), issueDisplayId(b.row), 'ticketId', 'asc');
+      if (ticketId !== 0) return ticketId;
+      return a.index - b.index;
+    })
+    .map(item => item.row);
+}
+
+function renderInternalTicketSummaryLegacyCard({
   footer = 'Based on current ticket filters'
 }) {
   const normalizedSummary = Object.entries(summaryData || {}).reduce((acc, [rawLabel, rawCount]) => {
@@ -621,7 +749,9 @@ function refreshEventTicketSelect(selectedIssueIds = null) {
 /** Issues UI */
 UI.Issues = {
   getFilteredList() {
-    return this.applyFilters();
+    const filtered = this.applyFilters();
+    if (!GridState.sortKey) return filtered;
+    return stableSortTickets(filtered, GridState.sortKey, GridState.sortAsc ? 'asc' : 'desc');
   },
   renderTableOnly(list = this.getFilteredList()) {
     this.renderTable(list);
@@ -1224,16 +1354,20 @@ UI.Issues.renderInternalWidgets = function () {
   }
   E.ticketInternalWidgets.innerHTML = [
     renderInternalTicketSummaryCard({
+      id: 'issueRelatedWidgetChart',
       title: 'Issue Related',
-      subtitle: 'Internal ticket classification',
+      subtitle: 'Based on current ticket filters',
       summaryData: TicketSummaryState.issueRelatedSummary
     }),
     renderInternalTicketSummaryCard({
+      id: 'devTeamStatusWidgetChart',
       title: 'Dev Team Status',
-      subtitle: 'Development workflow status',
+      subtitle: 'Based on current ticket filters',
       summaryData: TicketSummaryState.devTeamStatusSummary
     })
   ].join('');
+  renderInternalTicketSummaryChart('issueRelatedWidgetChart', TicketSummaryState.issueRelatedSummary);
+  renderInternalTicketSummaryChart('devTeamStatusWidgetChart', TicketSummaryState.devTeamStatusSummary);
 };
 
 /** Analytics (AI tab) */
@@ -3238,7 +3372,7 @@ async function loadIssues(force = false) {
   try {
     UI.spinner(true);
     UI.skeleton(true);
-    const sortBy = GridState.sortKey || 'updated_at';
+    const sortBy = resolveTicketSortColumn(GridState.sortKey || 'updated_at');
     const sortDir = GridState.sortAsc ? 'asc' : 'desc';
     const filtersPayload = buildTicketListFiltersPayload();
     const summaryFilterKey = buildTicketSummaryFilterKey(filtersPayload);
