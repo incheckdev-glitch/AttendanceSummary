@@ -64,14 +64,74 @@ function canViewTicketInternalWidgets() {
   return ['admin', 'dev'].includes(String(Session.role() || '').trim().toLowerCase());
 }
 
-function renderInternalSummaryWidget(title, summary = {}) {
-  const rows = Object.entries(summary || {}).sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0));
-  const items = rows.length
+function renderInternalTicketSummaryCard({
+  title,
+  subtitle,
+  summaryData = {},
+  footer = 'Based on current ticket filters'
+}) {
+  const normalizedSummary = Object.entries(summaryData || {}).reduce((acc, [rawLabel, rawCount]) => {
+    const label = normalizeInternalTicketWidgetValue(rawLabel);
+    const count = Number(rawCount || 0);
+    acc[label] = (acc[label] || 0) + (Number.isFinite(count) ? count : 0);
+    return acc;
+  }, {});
+  const rows = Object.entries(normalizedSummary).sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0));
+  const total = rows.reduce((sum, [, count]) => sum + Number(count || 0), 0);
+
+  const rowsHtml = rows.length
     ? rows
-        .map(([label, count]) => `<li><span>${U.escapeHtml(label)}</span><strong>${Number(count || 0)}</strong></li>`)
+        .map(([label, count]) => {
+          const safeCount = Number(count || 0);
+          const width = total > 0 ? Math.max(6, Math.round((safeCount / total) * 100)) : 0;
+          return `
+            <li class="ticket-internal-summary-row">
+              <div class="ticket-internal-summary-row-head">
+                <span class="ticket-internal-summary-name">${U.escapeHtml(label)}</span>
+                <span class="ticket-internal-summary-count">${safeCount}</span>
+              </div>
+              <div class="ticket-internal-summary-meter" aria-hidden="true">
+                <span style="width:${width}%;"></span>
+              </div>
+            </li>
+          `;
+        })
         .join('')
-    : '<li><span>Not Set</span><strong>0</strong></li>';
-  return `<article class="card" aria-label="${U.escapeAttr(title)} widget"><div class="label">${U.escapeHtml(title)}</div><ul class="ticket-internal-summary-list">${items}</ul><div class="sub">From filtered ticket summary</div></article>`;
+    : '<li class="ticket-internal-summary-empty">No internal ticket data yet</li>';
+
+  return `
+    <article class="card ticket-internal-summary-card" aria-label="${U.escapeAttr(title)} widget">
+      <header class="ticket-internal-summary-header">
+        <div class="label">${U.escapeHtml(title)}</div>
+        <div class="sub">${U.escapeHtml(subtitle || '')}</div>
+      </header>
+      <div class="ticket-internal-summary-total">Total <strong>${total}</strong></div>
+      <ul class="ticket-internal-summary-list">${rowsHtml}</ul>
+      <footer class="sub ticket-internal-summary-footer">${U.escapeHtml(footer)}</footer>
+    </article>
+  `;
+}
+
+function toInternalSummaryMap(summaryInput) {
+  if (Array.isArray(summaryInput)) {
+    return summaryInput.reduce((acc, row) => {
+      const label = normalizeInternalTicketWidgetValue(row?.label);
+      const count = Number(row?.count || 0);
+      acc[label] = (acc[label] || 0) + (Number.isFinite(count) ? count : 0);
+      return acc;
+    }, {});
+  }
+  if (summaryInput && typeof summaryInput === 'object') return { ...summaryInput };
+  return {};
+}
+
+function summarizeInternalWidgetFromRows(rows = [], ...keys) {
+  return (Array.isArray(rows) ? rows : []).reduce((acc, row) => {
+    const sourceValue = keys.reduce((value, key) => (value ?? row?.[key]), undefined);
+    const label = normalizeInternalTicketWidgetValue(sourceValue);
+    acc[label] = (acc[label] || 0) + 1;
+    return acc;
+  }, {});
 }
 
 function buildTicketSummaryFilterKey(filters = {}) {
@@ -1158,8 +1218,16 @@ UI.Issues.renderInternalWidgets = function () {
     return;
   }
   E.ticketInternalWidgets.innerHTML = [
-    renderInternalSummaryWidget('Issue Related', TicketSummaryState.issueRelatedSummary),
-    renderInternalSummaryWidget('Dev Team Status', TicketSummaryState.devTeamStatusSummary)
+    renderInternalTicketSummaryCard({
+      title: 'Issue Related',
+      subtitle: 'Internal ticket classification',
+      summaryData: TicketSummaryState.issueRelatedSummary
+    }),
+    renderInternalTicketSummaryCard({
+      title: 'Dev Team Status',
+      subtitle: 'Development workflow status',
+      summaryData: TicketSummaryState.devTeamStatusSummary
+    })
   ].join('');
 };
 
@@ -1815,12 +1883,17 @@ const IssueEditor = {
   DEV_TEAM_STATUS_OPTIONS: [
     'Local',
     'Staging',
-    'Tested on stage',
+    'Tested on Stage',
     'Production',
     'Tested on Production',
-    'disregard'
+    'Disregard'
   ],
-  ISSUE_RELATED_OPTIONS: ['Backend', 'Frontend', 'Mobile App', 'Hosting & infrastructure'],
+  ISSUE_RELATED_OPTIONS: [
+    'Backend',
+    'Frontend',
+    'Mobile',
+    'Hosting and Infrastructure'
+  ],
   syncSelectOptions(selectEl, values = [], selected = '', placeholder = 'Select option') {
     if (!selectEl) return;
     const uniqueValues = [...new Set(values.map(v => String(v || '').trim()).filter(Boolean))];
@@ -3199,13 +3272,9 @@ async function loadIssues(force = false) {
           ? { ...summaryResponse.statusCounts }
           : {};
       TicketSummaryState.issueRelatedSummary =
-        summaryResponse && typeof summaryResponse.issueRelatedSummary === 'object'
-          ? { ...summaryResponse.issueRelatedSummary }
-          : {};
+        toInternalSummaryMap(summaryResponse?.issueRelatedSummary);
       TicketSummaryState.devTeamStatusSummary =
-        summaryResponse && typeof summaryResponse.devTeamStatusSummary === 'object'
-          ? { ...summaryResponse.devTeamStatusSummary }
-          : {};
+        toInternalSummaryMap(summaryResponse?.devTeamStatusSummary);
       TicketSummaryState.filterKey = summaryFilterKey;
       TicketSummaryState.loaded = true;
     } else if (!TicketSummaryState.loaded) {
@@ -3219,6 +3288,20 @@ async function loadIssues(force = false) {
     }
     const rawRows = extractEventsPayload(response);
     const rows = rawRows.map(raw => DataStore.normalizeRow(raw));
+    if (!Object.keys(TicketSummaryState.issueRelatedSummary || {}).length) {
+      TicketSummaryState.issueRelatedSummary = summarizeInternalWidgetFromRows(
+        rows,
+        'issue_related',
+        'issueRelated'
+      );
+    }
+    if (!Object.keys(TicketSummaryState.devTeamStatusSummary || {}).length) {
+      TicketSummaryState.devTeamStatusSummary = summarizeInternalWidgetFromRows(
+        rows,
+        'dev_team_status',
+        'devTeamStatus'
+      );
+    }
     DataStore.hydrateFromRows(rows.filter(r => r.id && String(r.id).trim() !== ''));
     const canCachePage =
       TicketPaginationState.page === 1 &&
