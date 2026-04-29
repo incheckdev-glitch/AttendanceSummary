@@ -1396,10 +1396,15 @@ const Receipts = {
         } else {
           this.setCachedDetail(receiptUuid, normalized || receipt, normalizedDetailItems);
         }
-        await window.Invoices?.syncAfterReceiptMutation?.({
-          invoiceId: normalized?.invoice_uuid || receipt?.invoice_uuid || invoiceUuid,
-          receipt: normalized || receipt
-        });
+        const refreshedInvoiceId = String(normalized?.invoice_uuid || receipt?.invoice_uuid || invoiceUuid).trim();
+        if (refreshedInvoiceId) {
+          const selectedInvoiceId = String(E.invoiceForm?.dataset.id || '').trim();
+          if (selectedInvoiceId === refreshedInvoiceId && window.Invoices?.openInvoiceById) {
+            await window.Invoices.openInvoiceById(refreshedInvoiceId, { readOnly: false });
+          } else if (window.Invoices?.refreshInvoiceReceipts) {
+            await window.Invoices.refreshInvoiceReceipts(refreshedInvoiceId, { force: true });
+          }
+        }
         await this.refresh(true);
         window.dispatchEvent(new CustomEvent('clients:refresh-totals', { detail: { reason: 'receipt-created' } }));
         UI.toast(receiptDisplay ? `Receipt ${receiptDisplay} created.` : 'Receipt created from invoice.');
