@@ -1092,18 +1092,25 @@ const Leads = {
   },
   collectFormData() {
     const estimatedValueRaw = String(E.leadFormEstimatedValue?.value || '').trim();
+    const selectedCompany = this.state.selectedCompany || {};
+    const selectedContact = this.state.selectedContact || {};
+    const companyId = String(selectedCompany.company_id || E.leadFormCompanyId?.value || '').trim();
+    const contactId = String(selectedContact.contact_id || E.leadFormContactId?.value || '').trim();
+    const contactName = String(selectedContact.full_name || '').trim();
+    const contactEmail = String(selectedContact.email || '').trim();
+    const contactPhone = String(selectedContact.phone || selectedContact.mobile || '').trim();
     return {
       lead_id: String(E.leadFormLeadId?.value || '').trim() === 'Auto-generated' ? '' : String(E.leadFormLeadId?.value || '').trim(),
-      full_name: String((this.state.selectedContact || {}).full_name || '').trim(),
-      company_id: String((this.state.selectedCompany || {}).company_id || E.leadFormCompanyId?.value || '').trim(),
-      company_name: String((this.state.selectedCompany || {}).company_name || '').trim(),
-      contact_id: String((this.state.selectedContact || {}).contact_id || E.leadFormContactId?.value || '').trim(),
-      contact_name: String((this.state.selectedContact || {}).full_name || '').trim(),
-      contact_email: String((this.state.selectedContact || {}).email || '').trim(),
-      contact_phone: String((this.state.selectedContact || {}).phone || (this.state.selectedContact || {}).mobile || '').trim(),
-      phone: String((this.state.selectedContact || {}).phone || (this.state.selectedContact || {}).mobile || '').trim(),
-      email: String((this.state.selectedContact || {}).email || '').trim(),
-      country: String((this.state.selectedCompany || {}).country || '').trim(),
+      full_name: contactName,
+      company_id: companyId,
+      company_name: String(selectedCompany.company_name || '').trim(),
+      contact_id: contactId,
+      contact_name: contactName,
+      contact_email: contactEmail,
+      contact_phone: contactPhone,
+      phone: contactPhone,
+      email: contactEmail,
+      country: String(selectedCompany.country || '').trim(),
       lead_source: String(E.leadFormLeadSource?.value || '').trim(),
       service_interest: String(E.leadFormServiceInterest?.value || '').trim(),
       status: String(E.leadFormStatus?.value || '').trim(),

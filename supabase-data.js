@@ -810,6 +810,18 @@
       out.id = out.id ?? '';
       out.lead_id = out.lead_id ?? out.leadId ?? '';
       out.leadId = out.leadId ?? out.lead_id ?? '';
+      out.company_id = out.company_id ?? out.companyId ?? '';
+      out.companyId = out.companyId ?? out.company_id ?? '';
+      out.company_name = out.company_name ?? out.companyName ?? '';
+      out.companyName = out.companyName ?? out.company_name ?? '';
+      out.contact_id = out.contact_id ?? out.contactId ?? '';
+      out.contactId = out.contactId ?? out.contact_id ?? '';
+      out.contact_name = out.contact_name ?? out.contactName ?? '';
+      out.contactName = out.contactName ?? out.contact_name ?? '';
+      out.contact_email = out.contact_email ?? out.contactEmail ?? '';
+      out.contactEmail = out.contactEmail ?? out.contact_email ?? '';
+      out.contact_phone = out.contact_phone ?? out.contactPhone ?? '';
+      out.contactPhone = out.contactPhone ?? out.contact_phone ?? '';
       out.next_follow_up = out.next_follow_up ?? out.nextFollowUp ?? out.next_followup_date ?? out.nextFollowupDate ?? '';
       out.last_contact = out.last_contact ?? out.lastContact ?? out.last_contact_date ?? out.lastContactDate ?? '';
       out.next_followup_date = out.next_followup_date ?? out.next_follow_up ?? '';
@@ -1357,12 +1369,21 @@
       return toDbBoolean(firstDefined(record, keys), null);
     };
 
+    const contactName = toTextOrEmpty(['contact_name', 'contactName']);
+    const contactEmail = toTextOrEmpty(['contact_email', 'contactEmail']);
+    const contactPhone = toTextOrEmpty(['contact_phone', 'contactPhone']);
+
     const mapped = {
       lead_id: toTextOrEmpty(['lead_id', 'leadId']),
-      full_name: toTextOrEmpty(['full_name', 'fullName']),
+      company_id: toTextOrEmpty(['company_id', 'companyId']),
       company_name: toTextOrEmpty(['company_name', 'companyName']),
-      phone: toTextOrEmpty(['phone']),
-      email: toTextOrEmpty(['email']),
+      contact_id: toTextOrEmpty(['contact_id', 'contactId']),
+      contact_name: contactName,
+      contact_email: contactEmail,
+      contact_phone: contactPhone,
+      full_name: toTextOrEmpty(['full_name', 'fullName']) || contactName,
+      phone: toTextOrEmpty(['phone']) || contactPhone,
+      email: toTextOrEmpty(['email']) || contactEmail,
       country: toTextOrEmpty(['country']),
       lead_source: toTextOrEmpty(['lead_source', 'leadSource']),
       service_interest: toTextOrEmpty(['service_interest', 'serviceInterest']),
