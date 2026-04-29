@@ -2410,6 +2410,8 @@
 
   function applyFilters(query, payload = {}, { resource = '' } = {}) {
     const { controls, dbFilters } = splitListPayload(payload);
+    if (resource === 'companies') return applyCompanyListFilters(query, dbFilters, String(controls.search ?? controls.q ?? ''));
+    if (resource === 'contacts') return applyContactsListFilters(query, dbFilters, String(controls.search ?? controls.q ?? ''));
     const allowedColumns = LIST_COLUMNS_BY_RESOURCE[resource];
     Object.entries(dbFilters || {}).forEach(([key, value]) => {
       if (value === undefined || value === null || value === '') return;
@@ -2423,6 +2425,37 @@
       const clauses = searchColumns.map(column => `${column}.ilike.%${safeSearch}%`);
       query = query.or(clauses.join(','));
     }
+    return query;
+  }
+
+  function applyCompanyListFilters(query, filters = {}, search = '') {
+    const f = filters || {};
+    if (f.company_status) query = query.eq('company_status', f.company_status);
+    if (f.industry) query = query.ilike('industry', `%${String(f.industry).trim()}%`);
+    if (f.country) query = query.ilike('country', `%${String(f.country).trim()}%`);
+    if (f.city) query = query.ilike('city', `%${String(f.city).trim()}%`);
+    if (f.owner) query = query.or(`owner_name.ilike.%${String(f.owner).trim()}%,owner_email.ilike.%${String(f.owner).trim()}%`);
+    if (f.source) query = query.ilike('source', `%${String(f.source).trim()}%`);
+    if (f.created_from) query = query.gte('created_at', String(f.created_from).trim());
+    if (f.created_to) query = query.lte('created_at', `${String(f.created_to).trim()}T23:59:59.999Z`);
+    const term = String(search || '').trim().replace(/[%]/g, '').replace(/[,]/g, ' ');
+    if (term) query = query.or(`company_id.ilike.%${term}%,company_name.ilike.%${term}%,legal_name.ilike.%${term}%,main_email.ilike.%${term}%,main_phone.ilike.%${term}%,tax_number.ilike.%${term}%,owner_name.ilike.%${term}%,owner_email.ilike.%${term}%,notes.ilike.%${term}%`);
+    return query;
+  }
+
+  function applyContactsListFilters(query, filters = {}, search = '') {
+    const f = filters || {};
+    if (f.company_id) query = query.eq('company_id', f.company_id);
+    if (f.contact_status) query = query.eq('contact_status', f.contact_status);
+    if (f.decision_role) query = query.eq('decision_role', f.decision_role);
+    if (f.department) query = query.ilike('department', `%${String(f.department).trim()}%`);
+    if (f.created_from) query = query.gte('created_at', String(f.created_from).trim());
+    if (f.created_to) query = query.lte('created_at', `${String(f.created_to).trim()}T23:59:59.999Z`);
+    const p = String(f.is_primary_contact ?? '').trim().toLowerCase();
+    if (p === 'primary' || p === 'true') query = query.eq('is_primary_contact', true);
+    if (p === 'non_primary' || p === 'false') query = query.eq('is_primary_contact', false);
+    const term = String(search || '').trim().replace(/[%]/g, '').replace(/[,]/g, ' ');
+    if (term) query = query.or(`contact_id.ilike.%${term}%,full_name.ilike.%${term}%,first_name.ilike.%${term}%,last_name.ilike.%${term}%,email.ilike.%${term}%,phone.ilike.%${term}%,mobile.ilike.%${term}%,company_name.ilike.%${term}%,job_title.ilike.%${term}%,department.ilike.%${term}%,notes.ilike.%${term}%`);
     return query;
   }
 
