@@ -487,42 +487,48 @@ const Proposals = {
   getContactPosition(contact = {}) {
     return String(contact.job_title || contact.jobTitle || contact.position || contact.title || '').trim();
   },
+  isUsefulProviderValue(value) {
+    const text = String(value || '').trim();
+    if (!text) return false;
+    const lower = text.toLowerCase();
+    return !['user', 'admin', 'viewer', 'dev', 'hoo', 'authenticated'].includes(lower);
+  },
+  firstUsefulProviderValue(...values) {
+    for (const value of values) {
+      if (this.isUsefulProviderValue(value)) return String(value).trim();
+    }
+    return '';
+  },
   getSignedInUserForProposal() {
-    const session = window.Session || window.AppSession || window.AppState || {};
-    const user = session.currentUser || session.user || window.AppState?.user || window.Auth?.user || {};
-    const profile = session.profile || window.AppState?.profile || user.profile || {};
-    const name = String(
-      user.displayName ||
-      user.name ||
-      user.full_name ||
-      user.fullName ||
-      profile.full_name ||
-      profile.fullName ||
-      profile.name ||
-      user.username ||
-      profile.username ||
-      user.email ||
-      ''
+    const session = window.Session || {};
+    const appState = window.AppState || {};
+    const auth = window.Auth || {};
+    const user = session.currentUser || session.user || appState.user || auth.user || {};
+    const profile = session.profile || appState.profile || user.profile || {};
+
+    const role = this.firstUsefulProviderValue(
+      user.role_name, user.roleName, profile.role_name, profile.roleName,
+      user.role_label, user.roleLabel, profile.role_label, profile.roleLabel,
+      user.role, profile.role, user.role_key, user.roleKey, profile.role_key, profile.roleKey
+    ) || String(user.role_name || user.roleName || profile.role_name || profile.roleName || user.role || profile.role || user.role_key || profile.role_key || '').trim();
+
+    const email = String(user.email || user.user_email || user.userEmail || profile.email || profile.user_email || profile.userEmail || '').trim();
+
+    const name = this.firstUsefulProviderValue(
+      user.displayName, user.display_name, user.name, user.full_name, user.fullName, user.user_name, user.userName,
+      profile.displayName, profile.display_name, profile.name, profile.full_name, profile.fullName, profile.user_name, profile.userName
+    ) || (email ? email.split('@')[0] : '');
+
+    const mobile = String(
+      user.mobile || user.phone || user.phone_number || user.phoneNumber ||
+      profile.mobile || profile.phone || profile.phone_number || profile.phoneNumber || ''
     ).trim();
-    const email = String(user.email || user.user_email || user.userEmail || profile.email || '').trim();
-    const role = String(
-      user.role_name ||
-      user.roleName ||
-      user.role ||
-      user.role_key ||
-      user.roleKey ||
-      profile.role_name ||
-      profile.roleName ||
-      profile.role ||
-      profile.role_key ||
-      profile.roleKey ||
-      ''
-    ).trim();
-    return { name, email, role };
+
+    return { name, email, mobile, role };
   },
   getCurrentProviderContact() {
     const signedInUser = this.getSignedInUserForProposal();
-    return { provider_contact_name: signedInUser.name, provider_contact_email: signedInUser.email };
+    return { provider_contact_name: signedInUser.name, provider_contact_mobile: signedInUser.mobile, provider_contact_email: signedInUser.email };
   },
   hydrateMappedProposalFields(proposal = {}, selectedCompany = {}, selectedContact = {}) {
     const signedInUser = this.getSignedInUserForProposal();
@@ -537,6 +543,8 @@ const Proposals = {
       providerContactName: signedInUser.name,
       provider_contact_email: signedInUser.email,
       providerContactEmail: signedInUser.email,
+      provider_contact_mobile: signedInUser.mobile,
+      providerContactMobile: signedInUser.mobile,
       customer_signatory_name: contactPersonName,
       customerSignatoryName: contactPersonName,
       customer_signatory_title: contactPosition,
@@ -1862,8 +1870,8 @@ const Proposals = {
       btn.style.display = readOnly ? 'none' : '';
     });
     if (E.proposalFormSaveBtn) E.proposalFormSaveBtn.style.display = readOnly ? 'none' : '';
-    const lockedIds=['proposalFormCustomerName','proposalFormCustomerAddress','proposalFormCustomerContactName','proposalFormCustomerContactMobile','proposalFormCustomerContactEmail','proposalFormProviderContactName','proposalFormProviderContactEmail','proposalFormCustomerSignatoryName','proposalFormCustomerSignatoryTitle','proposalFormProviderSignatoryName','proposalFormProviderSignatoryTitle'];
-    lockedIds.forEach(id=>{const el=document.getElementById(id); if(!el) return; el.readOnly=true; el.classList.add('readonly-field'); el.setAttribute('aria-readonly','true');});
+    const lockedIds=['proposalFormCustomerName','proposalFormCustomerAddress','proposalFormCustomerContactName','proposalFormCustomerContactMobile','proposalFormCustomerContactEmail','proposalFormProviderContactName','proposalFormProviderContactMobile','proposalFormProviderContactEmail','proposalFormCustomerSignatoryName','proposalFormCustomerSignatoryTitle','proposalFormProviderSignatoryName','proposalFormProviderSignatoryTitle'];
+    lockedIds.forEach(id=>{const el=document.getElementById(id); if(!el) return; el.readOnly=true; el.classList.add('readonly-field','locked-field'); el.setAttribute('aria-readonly','true');});
     if (E.proposalFormDeleteBtn && readOnly) E.proposalFormDeleteBtn.style.display = 'none';
   },
   assignFormValues(proposal = {}) {
@@ -2209,7 +2217,7 @@ const Proposals = {
       customer_contact_mobile: String(E.proposalFormCustomerContactMobile?.value || '').trim(),
       customer_contact_email: String(E.proposalFormCustomerContactEmail?.value || '').trim(),
       provider_contact_name: mapped.provider_contact_name || '',
-      provider_contact_mobile: String(E.proposalFormProviderContactMobile?.value || '').trim(),
+      provider_contact_mobile: mapped.provider_contact_mobile || '',
       provider_contact_email: mapped.provider_contact_email || '',
       service_start_date: String(E.proposalFormServiceStartDate?.value || '').trim(),
       contract_term: String(E.proposalFormContractTerm?.value || '').trim(),
