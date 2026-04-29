@@ -278,7 +278,7 @@
     'payment_term','company_id','company_name','contact_id','contact_name','contact_email','contact_phone','contact_mobile',
     'customer_name','customer_legal_name','customer_address','customer_contact_name','customer_contact_email',
     'provider_legal_name','provider_address','support_email','subtotal_locations','subtotal_one_time','invoice_total',
-    'old_paid_total','paid_now','amount_paid','received_amount','pending_amount','payment_state','payment_conclusion','amount_in_words','status','notes',
+    'old_paid_total','paid_now','amount_paid','received_amount','pending_amount','balance_due','payment_state','payment_status','payment_conclusion','amount_in_words','status','notes','paid_at',
     'created_by','updated_by','currency'
   ]);
   const INVOICE_ITEM_COLUMNS = new Set([
@@ -287,7 +287,7 @@
     'service_start_date','service_end_date'
   ]);
   const RECEIPT_COLUMNS = new Set([
-    'receipt_id','receipt_number','invoice_id','client_id','receipt_date','amount_received','payment_method',
+    'receipt_id','receipt_number','invoice_id','invoice_number','agreement_id','agreement_number','client_id','company_id','company_name','customer_name','customer_legal_name','customer_address','contact_id','contact_name','contact_email','contact_phone','contact_mobile','receipt_status','amount_paid','payment_date','payment_method',
     'payment_reference','is_settlement','notes','status',
     'invoice_number','currency','support_email','company_id','company_name','contact_id','contact_name','contact_email','contact_phone','contact_mobile','customer_name','customer_legal_name','customer_address',
     'amount_in_words','invoice_total','old_paid_total','paid_now','received_amount','new_paid_total','pending_amount','payment_state','payment_conclusion','payment_notes',
@@ -1050,6 +1050,9 @@
       billing_frequency: trimOrNull(firstDefined(record, ['billing_frequency', 'billingFrequency'])),
       payment_term: trimOrNull(firstDefined(record, ['payment_term', 'paymentTerm'])),
       status: trimOrNull(firstDefined(record, ['status'])),
+      payment_status: trimOrNull(firstDefined(record, ['payment_status', 'paymentStatus'])),
+      balance_due: numberOrNull(firstDefined(record, ['balance_due', 'balanceDue'])),
+      paid_at: trimOrNull(firstDefined(record, ['paid_at', 'paidAt'])),
       source_agreement_id: trimOrNull(firstDefined(record, ['source_agreement_id', 'sourceAgreementId'])),
       total_agreements: numberOrNull(firstDefined(record, ['total_agreements', 'totalAgreements'])),
       total_locations: numberOrNull(firstDefined(record, ['total_locations', 'totalLocations'])),
@@ -1139,8 +1142,20 @@
       receipt_id: trimOrNull(firstDefined(record, ['receipt_id', 'receiptId'])),
       receipt_number: trimOrNull(firstDefined(record, ['receipt_number', 'receiptNumber'])),
       invoice_id: trimOrNull(firstDefined(record, ['invoice_id', 'invoiceId'])),
+      agreement_id: trimOrNull(firstDefined(record, ['agreement_id', 'agreementId'])),
+      agreement_number: trimOrNull(firstDefined(record, ['agreement_number', 'agreementNumber'])),
       client_id: trimOrNull(firstDefined(record, ['client_id', 'clientId'])),
+      company_id: trimOrNull(firstDefined(record, ['company_id', 'companyId'])),
+      company_name: trimOrNull(firstDefined(record, ['company_name', 'companyName'])),
+      contact_id: trimOrNull(firstDefined(record, ['contact_id', 'contactId'])),
+      contact_name: trimOrNull(firstDefined(record, ['contact_name', 'contactName'])),
+      contact_email: trimOrNull(firstDefined(record, ['contact_email', 'contactEmail'])),
+      contact_phone: trimOrNull(firstDefined(record, ['contact_phone', 'contactPhone'])),
+      contact_mobile: trimOrNull(firstDefined(record, ['contact_mobile', 'contactMobile'])),
       receipt_date: trimOrNull(firstDefined(record, ['receipt_date', 'receiptDate', 'received_date'])),
+      payment_date: trimOrNull(firstDefined(record, ['payment_date', 'paymentDate'])),
+      receipt_status: trimOrNull(firstDefined(record, ['receipt_status', 'receiptStatus'])),
+      amount_paid: numberOrNull(firstDefined(record, ['amount_paid', 'amountPaid'])),
       amount_received: numberOrNull(firstDefined(record, ['amount_received', 'amountReceived', 'received_amount'])),
       payment_method: trimOrNull(firstDefined(record, ['payment_method', 'paymentMethod'])),
       payment_reference: trimOrNull(firstDefined(record, ['payment_reference', 'paymentReference', 'reference'])),
