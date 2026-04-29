@@ -2021,11 +2021,17 @@
 
   function mergeTicketInternal(ticket = {}, internal = {}) {
     if (!internal || typeof internal !== 'object') return normalizeRow('tickets', ticket);
+    const ticketDevStatus = ticket.dev_team_status ?? ticket.devTeamStatus ?? '';
+    const ticketIssueRelated = ticket.issue_related ?? ticket.issueRelated ?? '';
     const merged = {
       ...ticket,
       youtrack_reference: internal.youtrack_reference ?? internal.youtrackReference ?? '',
-      dev_team_status: internal.dev_team_status ?? internal.devTeamStatus ?? '',
-      issue_related: internal.issue_related ?? internal.issueRelated ?? '',
+      dev_team_status: String(ticketDevStatus || '').trim()
+        ? ticketDevStatus
+        : internal.dev_team_status ?? internal.devTeamStatus ?? '',
+      issue_related: String(ticketIssueRelated || '').trim()
+        ? ticketIssueRelated
+        : internal.issue_related ?? internal.issueRelated ?? '',
       notes: internal.notes ?? ''
     };
     return normalizeRow('tickets', merged);
@@ -3965,7 +3971,7 @@
       for (let page = 0; page < maxPages; page++) {
         const to = from + pageSize - 1;
         const { data: chunk, error: chunkError } = await base()
-          .select('id,status,priority,issue_related,issueRelated,dev_team_status,devTeamStatus')
+          .select('id,status,priority,issue_related,dev_team_status')
           .order('id', { ascending: true })
           .range(from, to);
         if (chunkError) throw friendlyError('Unable to load ticket summary', chunkError);
