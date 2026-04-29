@@ -481,13 +481,71 @@ const Proposals = {
   buildContactDisplayName(contact = {}) {
     const first = String(contact.first_name || contact.firstName || '').trim();
     const last = String(contact.last_name || contact.lastName || '').trim();
-    return [first, last].filter(Boolean).join(' ').trim() || String(contact.contact_name || contact.contactName || contact.full_name || contact.fullName || '').trim();
+    const name = [first, last].filter(Boolean).join(' ').trim();
+    return name || String(contact.contact_name || contact.contactName || contact.full_name || contact.fullName || '').trim();
+  },
+  getContactPosition(contact = {}) {
+    return String(contact.job_title || contact.jobTitle || contact.position || contact.title || '').trim();
+  },
+  getSignedInUserForProposal() {
+    const session = window.Session || window.AppSession || window.AppState || {};
+    const user = session.currentUser || session.user || window.AppState?.user || window.Auth?.user || {};
+    const profile = session.profile || window.AppState?.profile || user.profile || {};
+    const name = String(
+      user.displayName ||
+      user.name ||
+      user.full_name ||
+      user.fullName ||
+      profile.full_name ||
+      profile.fullName ||
+      profile.name ||
+      user.username ||
+      profile.username ||
+      user.email ||
+      ''
+    ).trim();
+    const email = String(user.email || user.user_email || user.userEmail || profile.email || '').trim();
+    const role = String(
+      user.role_name ||
+      user.roleName ||
+      user.role ||
+      user.role_key ||
+      user.roleKey ||
+      profile.role_name ||
+      profile.roleName ||
+      profile.role ||
+      profile.role_key ||
+      profile.roleKey ||
+      ''
+    ).trim();
+    return { name, email, role };
   },
   getCurrentProviderContact() {
-    const user = window.Session?.currentUser || window.Session?.user || window.AppState?.user || {};
-    const name = user.displayName || user.name || user.full_name || user.fullName || user.username || user.email || '';
-    const email = user.email || user.user_email || user.userEmail || '';
-    return { provider_contact_name: String(name || '').trim(), provider_contact_email: String(email || '').trim() };
+    const signedInUser = this.getSignedInUserForProposal();
+    return { provider_contact_name: signedInUser.name, provider_contact_email: signedInUser.email };
+  },
+  hydrateMappedProposalFields(proposal = {}, selectedCompany = {}, selectedContact = {}) {
+    const signedInUser = this.getSignedInUserForProposal();
+    const customerAddress = String(selectedCompany?.address || '').trim();
+    const contactPersonName = this.buildContactDisplayName(selectedContact);
+    const contactPosition = this.getContactPosition(selectedContact);
+    return {
+      ...proposal,
+      customer_address: customerAddress,
+      customerAddress: customerAddress,
+      provider_contact_name: signedInUser.name,
+      providerContactName: signedInUser.name,
+      provider_contact_email: signedInUser.email,
+      providerContactEmail: signedInUser.email,
+      customer_signatory_name: contactPersonName,
+      customerSignatoryName: contactPersonName,
+      customer_signatory_title: contactPosition,
+      customerSignatoryTitle: contactPosition,
+      provider_signatory_name: signedInUser.name,
+      providerSignatoryName: signedInUser.name,
+      provider_signatory_title: signedInUser.role,
+      providerSignatoryTitle: signedInUser.role
+    };
   },
   async getFullCompanyRecord(companyIdOrRecord) { const seed = typeof companyIdOrRecord === 'object' ? companyIdOrRecord : {}; const companyId = typeof companyIdOrRecord === 'object' ? (seed.company_id || seed.companyId) : companyIdOrRecord; const hasFullFields = seed.legal_name || seed.legalName || seed.company_type || seed.companyType || seed.industry || seed.website || seed.main_email || seed.mainEmail || seed.main_phone || seed.mainPhone || seed.country || seed.city || seed.address || seed.company_status || seed.companyStatus; if (hasFullFields) return this.normalizeCompany(seed); if (!companyId) return null; const response = await Api.requestWithSession('companies','list',{ filters:{ company_id: companyId }, limit:1 },{ requireAuth:true }); const rows = response?.rows || response?.items || response?.data || []; const row = Array.isArray(rows) ? rows[0] : rows; return row ? this.normalizeCompany(row) : null; },
   async getFullContactRecord(contactIdOrRecord) { const seed = typeof contactIdOrRecord === 'object' ? contactIdOrRecord : {}; const contactId = typeof contactIdOrRecord === 'object' ? (seed.contact_id || seed.contactId) : contactIdOrRecord; const hasFullFields = seed.first_name || seed.firstName || seed.last_name || seed.lastName || seed.job_title || seed.jobTitle || seed.department || seed.email || seed.phone || seed.mobile || seed.decision_role || seed.decisionRole || seed.contact_status || seed.contactStatus; if (hasFullFields) return this.normalizeContact(seed); if (!contactId) return null; const response = await Api.requestWithSession('contacts','list',{ filters:{ contact_id: contactId }, limit:1 },{ requireAuth:true }); const rows = response?.rows || response?.items || response?.data || []; const row = Array.isArray(rows) ? rows[0] : rows; return row ? this.normalizeContact(row) : null; },
@@ -590,14 +648,16 @@ const Proposals = {
       status: String(deal.status || '').trim() || 'Proposal Created'
     });
   },
-  proposalDraftFromDeal(rawDeal = {}) {
+  async proposalDraftFromDeal(rawDeal = {}) {
     const deal = rawDeal && typeof rawDeal === 'object' ? rawDeal : {};
     const companyName = String(deal.company_name || deal.companyName || '').trim();
     const legalName = String(deal.legal_name || deal.legalName || companyName).trim();
     const fullName = String(deal.full_name || deal.fullName || '').trim();
     const serviceInterest = String(deal.service_interest || deal.serviceInterest || '').trim();
     const titleParts = [companyName || fullName, serviceInterest].filter(Boolean);
-    return {
+    const selectedCompany = await this.getFullCompanyRecord(deal.company_id || deal.companyId || {});
+    const selectedContact = await this.getFullContactRecord(deal.contact_id || deal.contactId || {});
+    const draft = {
       ...this.emptyProposal(),
       deal_id: String(deal.id || '').trim(),
       deal_code: String(deal.deal_id || deal.dealId || '').trim(),
@@ -614,8 +674,19 @@ const Proposals = {
       contact_name: String(deal.contact_name || deal.contactName || fullName || '').trim(),
       contact_email: String(deal.contact_email || deal.contactEmail || deal.email || '').trim(),
       contact_phone: String(deal.contact_phone || deal.contactPhone || deal.phone || '').trim(),
-      currency: String(deal.currency || '').trim()
+      currency: String(deal.currency || '').trim(),
+      company_id: String(selectedCompany?.company_id || deal.company_id || deal.companyId || '').trim(),
+      company_name: String(selectedCompany?.company_name || deal.company_name || deal.companyName || '').trim(),
+      contact_id: String(selectedContact?.contact_id || deal.contact_id || deal.contactId || '').trim(),
+      contact_name: this.buildContactDisplayName(selectedContact || {}) || fullName,
+      contact_email: String(selectedContact?.email || deal.contact_email || deal.contactEmail || deal.email || '').trim(),
+      contact_phone: String(selectedContact?.mobile || selectedContact?.phone || deal.contact_phone || deal.contactPhone || deal.phone || '').trim(),
+      contact_mobile: String(selectedContact?.mobile || '').trim(),
+      customer_contact_name: this.buildContactDisplayName(selectedContact || {}) || fullName,
+      customer_contact_mobile: String(selectedContact?.mobile || selectedContact?.phone || deal.contact_phone || deal.contactPhone || deal.phone || '').trim(),
+      customer_contact_email: String(selectedContact?.email || deal.contact_email || deal.contactEmail || deal.email || '').trim()
     };
+    return this.hydrateMappedProposalFields(draft, selectedCompany || {}, selectedContact || {});
   },
   async resolveDealForProposal(dealId) {
     const trimmedDealId = String(dealId || '').trim();
@@ -1791,7 +1862,7 @@ const Proposals = {
       btn.style.display = readOnly ? 'none' : '';
     });
     if (E.proposalFormSaveBtn) E.proposalFormSaveBtn.style.display = readOnly ? 'none' : '';
-    const lockedIds=['proposalFormCustomerName','proposalFormCustomerContactName','proposalFormCustomerContactMobile','proposalFormCustomerContactEmail','proposalFormProviderContactName','proposalFormProviderContactEmail','proposalFormCustomerSignatoryName','proposalFormCustomerSignatoryTitle'];
+    const lockedIds=['proposalFormCustomerName','proposalFormCustomerAddress','proposalFormCustomerContactName','proposalFormCustomerContactMobile','proposalFormCustomerContactEmail','proposalFormProviderContactName','proposalFormProviderContactEmail','proposalFormCustomerSignatoryName','proposalFormCustomerSignatoryTitle','proposalFormProviderSignatoryName','proposalFormProviderSignatoryTitle'];
     lockedIds.forEach(id=>{const el=document.getElementById(id); if(!el) return; el.readOnly=true; el.classList.add('readonly-field'); el.setAttribute('aria-readonly','true');});
     if (E.proposalFormDeleteBtn && readOnly) E.proposalFormDeleteBtn.style.display = 'none';
   },
@@ -2105,6 +2176,24 @@ const Proposals = {
   },
   collectProposalFormData() {
     const existingRefNumber = String(E.proposalForm?.dataset.refNumber || '').trim();
+    const selectedCompany = this.normalizeCompany({
+      company_id: E.proposalForm?.dataset.companyId || '',
+      company_name: E.proposalForm?.dataset.companyName || '',
+      address: E.proposalForm?.dataset.companyAddress || ''
+    });
+    const selectedContact = this.normalizeContact({
+      contact_id: E.proposalForm?.dataset.contactId || '',
+      first_name: E.proposalForm?.dataset.contactFirstName || '',
+      last_name: E.proposalForm?.dataset.contactLastName || '',
+      contact_name: E.proposalForm?.dataset.contactName || '',
+      full_name: E.proposalForm?.dataset.contactName || '',
+      job_title: E.proposalForm?.dataset.contactJobTitle || '',
+      email: E.proposalForm?.dataset.contactEmail || '',
+      phone: E.proposalForm?.dataset.contactPhone || '',
+      mobile: E.proposalForm?.dataset.contactMobile || ''
+    });
+    const mapped = this.hydrateMappedProposalFields({}, selectedCompany, selectedContact);
+    const contactPersonName = this.buildContactDisplayName(selectedContact);
     return {
       proposal_id: String(E.proposalFormProposalId?.value || '').trim(),
       ref_number: this.ensureRefNumber(existingRefNumber),
@@ -2115,26 +2204,33 @@ const Proposals = {
       status: String(E.proposalFormStatus?.value || '').trim(),
       currency: String(E.proposalFormCurrency?.value || '').trim(),
       customer_name: String(E.proposalFormCustomerName?.value || '').trim(),
-      customer_address: String(E.proposalFormCustomerAddress?.value || '').trim(),
+      customer_address: mapped.customer_address || '',
       customer_contact_name: String(E.proposalFormCustomerContactName?.value || '').trim(),
       customer_contact_mobile: String(E.proposalFormCustomerContactMobile?.value || '').trim(),
       customer_contact_email: String(E.proposalFormCustomerContactEmail?.value || '').trim(),
-      provider_contact_name: String(E.proposalFormProviderContactName?.value || '').trim(),
+      provider_contact_name: mapped.provider_contact_name || '',
       provider_contact_mobile: String(E.proposalFormProviderContactMobile?.value || '').trim(),
-      provider_contact_email: String(E.proposalFormProviderContactEmail?.value || '').trim(),
+      provider_contact_email: mapped.provider_contact_email || '',
       service_start_date: String(E.proposalFormServiceStartDate?.value || '').trim(),
       contract_term: String(E.proposalFormContractTerm?.value || '').trim(),
       account_number: String(E.proposalFormAccountNumber?.value || '').trim(),
       billing_frequency: String(E.proposalFormBillingFrequency?.value || '').trim(),
       payment_term: String(E.proposalFormPaymentTerm?.value || '').trim(),
       po_number: String(E.proposalFormPoNumber?.value || '').trim(),
-      customer_signatory_name: String(E.proposalFormCustomerSignatoryName?.value || '').trim(),
-      customer_signatory_title: String(E.proposalFormCustomerSignatoryTitle?.value || '').trim(),
+      customer_signatory_name: mapped.customer_signatory_name || '',
+      customer_signatory_title: mapped.customer_signatory_title || '',
       customer_sign_date: String(E.proposalFormCustomerSignDate?.value || '').trim(),
-      provider_signatory_name: String(E.proposalFormProviderSignatoryName?.value || '').trim(),
-      provider_signatory_title: String(E.proposalFormProviderSignatoryTitle?.value || '').trim(),
+      provider_signatory_name: mapped.provider_signatory_name || '',
+      provider_signatory_title: mapped.provider_signatory_title || '',
       provider_sign_date: String(E.proposalFormProviderSignDate?.value || '').trim(),
-      terms_conditions: String(E.proposalFormTerms?.value || '').trim()
+      terms_conditions: String(E.proposalFormTerms?.value || '').trim(),
+      company_id: selectedCompany.company_id || '',
+      company_name: selectedCompany.company_name || '',
+      contact_id: selectedContact.contact_id || '',
+      contact_name: contactPersonName || '',
+      contact_email: String(selectedContact.email || '').trim(),
+      contact_phone: String(selectedContact.mobile || selectedContact.phone || '').trim(),
+      contact_mobile: String(selectedContact.mobile || '').trim()
     };
   },
   calculateTotalsFromItems(items = []) {
@@ -2211,7 +2307,27 @@ const Proposals = {
     E.proposalForm.dataset.mode = mode;
     E.proposalForm.dataset.id = base.id || '';
     E.proposalForm.dataset.refNumber = base.ref_number || '';
-    this.assignFormValues(base);
+    E.proposalForm.dataset.companyId = String(base.company_id || '').trim();
+    E.proposalForm.dataset.companyName = String(base.company_name || '').trim();
+    E.proposalForm.dataset.companyAddress = String(base.customer_address || '').trim();
+    E.proposalForm.dataset.contactId = String(base.contact_id || '').trim();
+    E.proposalForm.dataset.contactName = String(base.contact_name || base.customer_contact_name || '').trim();
+    E.proposalForm.dataset.contactJobTitle = String(base.customer_signatory_title || '').trim();
+    E.proposalForm.dataset.contactEmail = String(base.contact_email || base.customer_contact_email || '').trim();
+    E.proposalForm.dataset.contactPhone = String(base.contact_phone || '').trim();
+    E.proposalForm.dataset.contactMobile = String(base.contact_mobile || base.customer_contact_mobile || '').trim();
+    const hydratedBase = this.hydrateMappedProposalFields(
+      base,
+      { address: E.proposalForm.dataset.companyAddress },
+      {
+        contact_name: E.proposalForm.dataset.contactName,
+        job_title: E.proposalForm.dataset.contactJobTitle,
+        email: E.proposalForm.dataset.contactEmail,
+        phone: E.proposalForm.dataset.contactPhone,
+        mobile: E.proposalForm.dataset.contactMobile
+      }
+    );
+    this.assignFormValues(hydratedBase);
     this.renderProposalItems(this.state.currentItems);
     this.ensureCatalogLoaded();
 
@@ -2566,7 +2682,7 @@ const Proposals = {
     }
     try {
       if (openAfterCreate) {
-        const proposalDraft = this.proposalDraftFromDeal(deal);
+        const proposalDraft = await this.proposalDraftFromDeal(deal);
         this.openProposalForm(proposalDraft, [], { readOnly: false });
       }
       UI.toast('Prefilled proposal draft opened. Save to create the proposal.');
