@@ -1881,18 +1881,26 @@ const IssueEditor = {
   isOpening: false,
   isSaving: false,
   DEV_TEAM_STATUS_OPTIONS: [
-    'Local',
-    'Staging',
-    'Tested on Stage',
+    'Pending',
+    'Under Review',
+    'Under Development',
+    'In QA',
+    'Ready for Production',
     'Production',
-    'Tested on Production',
-    'Disregard'
+    'Blocked',
+    'Done',
+    'Rejected'
   ],
   ISSUE_RELATED_OPTIONS: [
     'Backend',
     'Frontend',
-    'Mobile',
-    'Hosting and Infrastructure'
+    'Database',
+    'PWA / Notifications',
+    'Workflow',
+    'Permissions',
+    'Analytics',
+    'UI / UX',
+    'Other'
   ],
   syncSelectOptions(selectEl, values = [], selected = '', placeholder = 'Select option') {
     if (!selectEl) return;
