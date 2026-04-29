@@ -1077,6 +1077,32 @@ const Deals = {
     return Array.isArray(rows) ? (rows[0] || null) : (rows || null);
   },
   renderReadonlyDetails(container, pairs=[]) { if (!container) return; container.innerHTML = pairs.map(([k,v])=>`<div><span class="muted">${U.escapeHtml(k)}:</span> ${U.escapeHtml(String(v||'—'))}</div>`).join(''); },
+  setReadonlyField(node, value) {
+    if (!node) return;
+    node.value = value || '';
+    node.readOnly = true;
+    node.classList.add('readonly-field', 'locked-field');
+    node.setAttribute('aria-readonly', 'true');
+  },
+  lockSelect(node) {
+    if (!node) return;
+    node.disabled = true;
+    node.classList.add('readonly-field', 'locked-field');
+    node.setAttribute('aria-disabled', 'true');
+  },
+  unlockSelect(node) {
+    if (!node) return;
+    node.disabled = false;
+    node.classList.remove('readonly-field', 'locked-field');
+    node.removeAttribute('aria-disabled');
+  },
+  applyCompanyContactLockState({ lockCompanySelector = false, lockContactSelector = false } = {}) {
+    if (lockCompanySelector) this.lockSelect(E.dealFormCompanySelector);
+    else this.unlockSelect(E.dealFormCompanySelector);
+    if (lockContactSelector) this.lockSelect(E.dealFormContactSelector);
+    else this.unlockSelect(E.dealFormContactSelector);
+    this.setReadonlyField(E.dealFormCompanyName, this.state.form.selectedCompany?.company_name || '');
+  },
   resetForm() {
     if (!E.dealForm) return;
     E.dealForm.reset();
@@ -1087,6 +1113,19 @@ const Deals = {
     }
     if (E.dealFormProposalNeeded) E.dealFormProposalNeeded.value = '';
     if (E.dealFormAgreementNeeded) E.dealFormAgreementNeeded.value = '';
+    this.state.form.selectedLead = null;
+    this.state.form.selectedCompany = null;
+    this.state.form.selectedContact = null;
+    this.state.form.companyId = '';
+    this.state.form.contactId = '';
+    this.state.form.lockLinks = false;
+    if (E.dealFormCompanySelector) E.dealFormCompanySelector.value = '';
+    if (E.dealFormContactSelector) E.dealFormContactSelector.value = '';
+    if (E.dealFormCompanyId) E.dealFormCompanyId.value = '';
+    if (E.dealFormContactId) E.dealFormContactId.value = '';
+    this.renderReadonlyDetails(E.dealFormCompanyDetails, [['Info', 'Company details are managed from the Company module.']]);
+    this.renderReadonlyDetails(E.dealFormContactDetails, [['Info', 'Contact details are managed from the Contacts module.']]);
+    this.applyCompanyContactLockState();
     this.syncDealFormDropdowns();
   },
   currentUserAssignee() {
@@ -1101,6 +1140,18 @@ const Deals = {
     this.resetForm();
 
     if (row) {
+      this.state.form.selectedCompany = row.company_id ? { company_id: row.company_id, company_name: row.company_name || '' } : null;
+      this.state.form.selectedContact = row.contact_id
+        ? {
+            contact_id: row.contact_id,
+            full_name: row.contact_name || '',
+            email: row.contact_email || '',
+            phone: row.contact_phone || ''
+          }
+        : null;
+      this.state.form.companyId = row.company_id || '';
+      this.state.form.contactId = row.contact_id || '';
+      this.state.form.lockLinks = true;
       if (E.dealFormDealId) E.dealFormDealId.value = row.deal_id || '';
       if (E.dealFormLeadId) {
         E.dealFormLeadId.dataset.leadUuid = row.lead_id || '';
@@ -1132,6 +1183,7 @@ const Deals = {
       }
       if (E.dealFormNotes) E.dealFormNotes.value = row.notes || '';
       this.hydrateLeadCodeFromLeadUuid(row);
+      this.applyCompanyContactLockState({ lockCompanySelector: true, lockContactSelector: true });
       this.syncDealFormDropdowns({
         lead_source: row.lead_source || '',
         service_interest: row.service_interest || '',
@@ -1151,6 +1203,7 @@ const Deals = {
         E.dealFormConvertedAt.value = '';
       }
       if (E.dealFormAssignedTo) E.dealFormAssignedTo.value = this.currentUserAssignee();
+      this.applyCompanyContactLockState({ lockCompanySelector: false, lockContactSelector: false });
       this.syncDealFormDropdowns();
     }
 
@@ -1177,9 +1230,9 @@ const Deals = {
       lead_id: mode === 'edit' ? editLeadUuid : String(E.dealFormLeadId?.value || '').trim(),
       lead_code: mode === 'edit' ? editLeadCode : '',
       full_name: String(E.dealFormFullName?.value || '').trim(),
-      company_id: String(this.state.form.companyId || '').trim(),
-      company_name: String((this.state.form.selectedCompany?.company_name || E.dealFormCompanyName?.value || '')).trim(),
-      contact_id: String(this.state.form.contactId || '').trim(),
+      company_id: String(this.state.form.selectedCompany?.company_id || this.state.form.companyId || '').trim(),
+      company_name: String((this.state.form.selectedCompany?.company_name || '')).trim(),
+      contact_id: String(this.state.form.selectedContact?.contact_id || this.state.form.contactId || '').trim(),
       contact_name: String(this.state.form.selectedContact?.full_name || '').trim(),
       contact_email: String(this.state.form.selectedContact?.email || '').trim(),
       contact_phone: String(this.state.form.selectedContact?.phone || this.state.form.selectedContact?.mobile || '').trim(),

@@ -372,6 +372,11 @@ header{
   box-shadow:none;
 }
 .input::placeholder{color:var(--muted)}
+.readonly-field.locked-field{
+  background:rgba(100,116,139,.14);
+  color:var(--text);
+  cursor:not-allowed;
+}
 
 /* Keep proposal/agreement dropdown menu options visually aligned with status filters */
 #statusFilter option,
