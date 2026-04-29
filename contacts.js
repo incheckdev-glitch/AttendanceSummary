@@ -1,32 +1,12 @@
 const Contacts = {
-  rows: [],
-  normalize(raw = {}) {
-    return {
-      id: raw.id || '',
-      contact_id: String(raw.contact_id || raw.contactId || '').trim(),
-      full_name: String(raw.full_name || raw.fullName || '').trim(),
-      company_id: String(raw.company_id || raw.companyId || '').trim(),
-      company_name: String(raw.company_name || raw.companyName || '').trim(),
-      job_title: String(raw.job_title || raw.jobTitle || '').trim(),
-      department: String(raw.department || '').trim(),
-      decision_role: String(raw.decision_role || raw.decisionRole || '').trim(),
-      email: String(raw.email || '').trim(),
-      phone: String(raw.phone || '').trim(),
-      is_primary_contact: Boolean(raw.is_primary_contact ?? raw.isPrimaryContact),
-      contact_status: String(raw.contact_status || raw.contactStatus || 'Active').trim()
-    };
+  state: { rows: [], page: 1, limit: 50, total: 0, search: '', filters: {}, sortBy: 'created_at', sortDir: 'desc', companyId: '' },
+  setCompanyFilter(companyId=''){ this.state.companyId=companyId||''; this.state.page=1; this.loadAndRefresh(); },
+  normalize(raw={}){ return { ...raw, id:raw.id||'', contact_id:raw.contact_id||raw.contactId||'', full_name:raw.full_name||raw.fullName||'', company_id:raw.company_id||raw.companyId||'', company_name:raw.company_name||raw.companyName||'', job_title:raw.job_title||raw.jobTitle||'', department:raw.department||'', decision_role:raw.decision_role||raw.decisionRole||'', email:raw.email||'', phone:raw.phone||'', mobile:raw.mobile||'', is_primary_contact:Boolean(raw.is_primary_contact??raw.isPrimaryContact), contact_status:raw.contact_status||raw.contactStatus||'Active' }; },
+  ensureControls(){ const v=document.getElementById('contactsView'); if(!v||document.getElementById('contactsSearchInput')) return; const c=v.querySelector('.card'); c.insertAdjacentHTML('afterbegin',`<div class='row' style='gap:8px;flex-wrap:wrap;margin-bottom:10px'><input id='contactsSearchInput' class='input' type='search' placeholder='Search contacts...'/><button id='contactsExportBtn' class='btn ghost sm'>Export</button><span id='contactsPageInfo' class='muted'></span></div>`); v.querySelector('.table-wrap')?.insertAdjacentHTML('afterend',`<div class='table-actions'><div class='pagination'><button id='contactsPrevBtn' class='chip-btn'>‹ Prev</button><button id='contactsNextBtn' class='chip-btn'>Next ›</button></div><div><label class='muted'>Rows</label><select id='contactsRowsPerPage' class='select sm'><option>25</option><option selected>50</option><option>100</option></select></div></div>`); document.getElementById('contactsSearchInput').oninput=e=>{this.state.search=e.target.value.trim();this.state.page=1;this.loadAndRefresh();}; document.getElementById('contactsPrevBtn').onclick=()=>{if(this.state.page>1){this.state.page--;this.loadAndRefresh();}}; document.getElementById('contactsNextBtn').onclick=()=>{if(this.state.page*this.state.limit<this.state.total){this.state.page++;this.loadAndRefresh();}}; document.getElementById('contactsRowsPerPage').onchange=e=>{this.state.limit=Number(e.target.value)||50;this.state.page=1;this.loadAndRefresh();}; document.getElementById('contactsExportBtn').onclick=()=>this.exportCsv(); },
+  async loadAndRefresh(){ if(!Permissions.canView('contacts')) return; this.ensureControls(); try{ const filters={...this.state.filters}; if(this.state.companyId) filters.company_id=this.state.companyId; const res=await Api.requestWithSession('contacts','list',{page:this.state.page,limit:this.state.limit,search:this.state.search,filters,sortBy:this.state.sortBy,sortDir:this.state.sortDir},{requireAuth:true}); const rows=Array.isArray(res?.rows)?res.rows:Array.isArray(res)?res:[]; this.state.rows=rows.map(r=>this.normalize(r)); this.state.total=Number(res?.total??rows.length)||rows.length; this.render(); }catch(e){ UI?.toast?.('Unable to load contacts','error'); console.error(e);} },
+  async quickForm(existing={}){ const full=prompt('Full Name', existing.full_name||''); if(!full) return null; const companyId=prompt('Company ID', existing.company_id||''); if(!companyId) return null; return {...existing, full_name:full, company_id:companyId, company_name:prompt('Company Name', existing.company_name||'')||'', email:prompt('Email', existing.email||'')||'', phone:prompt('Phone', existing.phone||'')||'', job_title:prompt('Job Title', existing.job_title||'')||'', department:prompt('Department', existing.department||'')||'', decision_role:prompt('Decision Role', existing.decision_role||'')||'', contact_status:prompt('Status', existing.contact_status||'Active')||'Active', is_primary_contact:confirm('Primary contact?')}; },
+  render(){ const b=document.getElementById('contactsTableBody'); if(!b) return; const canEdit=Permissions.canEdit('contacts'), canDelete=Permissions.canDelete('contacts'); b.innerHTML=this.state.rows.map(r=>`<tr><td>${U.escapeHtml(r.contact_id)}</td><td>${U.escapeHtml(r.full_name)}</td><td>${U.escapeHtml(r.company_name)}</td><td>${U.escapeHtml(r.job_title)}</td><td>${U.escapeHtml(r.department)}</td><td>${U.escapeHtml(r.decision_role)}</td><td>${U.escapeHtml(r.email)}</td><td>${U.escapeHtml(r.phone)}</td><td>${r.is_primary_contact?'Yes':'No'}</td><td>${U.escapeHtml(r.contact_status)}</td><td><button class='chip-btn' data-a='lead' data-id='${r.id}'>Create Lead</button>${canEdit?`<button class='chip-btn' data-a='edit' data-id='${r.id}'>Edit</button>`:''}${canDelete?`<button class='chip-btn' data-a='del' data-id='${r.id}'>Delete</button>`:''}</td></tr>`).join(''); b.querySelectorAll('button').forEach(x=>x.onclick=()=>this.onAction(x.dataset.a,x.dataset.id)); const s=this.state.total?((this.state.page-1)*this.state.limit)+1:0,e=Math.min(this.state.page*this.state.limit,this.state.total); const pi=document.getElementById('contactsPageInfo'); if(pi) pi.textContent=`Showing ${s}-${e} of ${this.state.total} records`; const cbtn=document.getElementById('contactsCreateBtn'); if(cbtn){cbtn.style.display=Permissions.canCreate('contacts')?'':'none'; cbtn.onclick=async()=>{const rec=await this.quickForm({company_id:this.state.companyId||''}); if(!rec) return; try{await Api.requestWithSession('contacts','create',rec,{requireAuth:true}); this.loadAndRefresh();}catch(e){UI?.toast?.('Unable to save contact','error');}};}
   },
-  async loadAndRefresh() {
-    if (!Permissions.canView('contacts')) return;
-    const response = await Api.requestWithSession('contacts', 'list', { page: 1, limit: 200 }, { requireAuth: true });
-    const rows = Array.isArray(response?.rows) ? response.rows : Array.isArray(response) ? response : [];
-    this.rows = rows.map(row => this.normalize(row));
-    this.render();
-  },
-  render() {
-    const body = document.getElementById('contactsTableBody');
-    if (!body) return;
-    body.innerHTML = this.rows.map(row => `<tr><td>${U.escapeHtml(row.contact_id)}</td><td>${U.escapeHtml(row.full_name)}</td><td>${U.escapeHtml(row.company_name)}</td><td>${U.escapeHtml(row.job_title)}</td><td>${U.escapeHtml(row.department)}</td><td>${U.escapeHtml(row.decision_role)}</td><td>${U.escapeHtml(row.email)}</td><td>${U.escapeHtml(row.phone)}</td><td>${row.is_primary_contact ? 'Yes' : 'No'}</td><td>${U.escapeHtml(row.contact_status)}</td></tr>`).join('');
-  }
-};
-window.Contacts = Contacts;
+  async onAction(a,id){ const r=this.state.rows.find(x=>x.id===id); if(!r) return; if(a==='lead'){window.Leads?.openCreatePrefilled?.({company_id:r.company_id,company_name:r.company_name,contact_id:r.contact_id,contact_name:r.full_name,contact_email:r.email,contact_phone:r.phone||r.mobile});} if(a==='edit'){const rec=await this.quickForm(r); if(!rec) return; await Api.requestWithSession('contacts','update',{id,updates:rec},{requireAuth:true}); this.loadAndRefresh();} if(a==='del'){if(!confirm('Delete contact?'))return; await Api.requestWithSession('contacts','delete',{id},{requireAuth:true}); this.loadAndRefresh();} },
+  exportCsv(){ if(!Permissions.canExport('contacts')) return; const h=['contact_id','full_name','company_name','email','phone','job_title','decision_role','contact_status']; const csv=[h.join(',')].concat(this.state.rows.map(r=>h.map(k=>`"${String(r[k]??'').replaceAll('"','""')}"`).join(','))).join('\n'); const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download='contacts.csv'; a.click(); }
+}; window.Contacts=Contacts;

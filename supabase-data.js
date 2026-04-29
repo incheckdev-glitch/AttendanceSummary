@@ -1,6 +1,6 @@
 (function initSupabaseData(global) {
   const MIGRATED_RESOURCES = new Set([
-    'auth','users','roles','role_permissions','tickets','events','csm','leads','deals','proposal_catalog','proposals','agreements','workflow','clients','invoices','receipts','operations_onboarding','technical_admin_requests','notifications','notification_settings'
+    'auth','users','roles','role_permissions','tickets','events','csm','leads','deals','proposal_catalog','proposals','agreements','workflow','clients','invoices','receipts','operations_onboarding','technical_admin_requests','notifications','notification_settings','companies','contacts'
   ]);
 
   const TABLE_BY_RESOURCE = {
@@ -8,7 +8,7 @@
     events: 'events', csm: 'csm_activities', leads: 'leads', deals: 'deals',
     proposal_catalog: 'proposal_catalog_items', proposals: 'proposals', agreements: 'agreements',
     clients: 'clients', invoices: 'invoices', receipts: 'receipts', operations_onboarding: 'operations_onboarding',
-    technical_admin_requests: 'technical_admin_requests'
+    technical_admin_requests: 'technical_admin_requests', companies: 'companies', contacts: 'contacts'
     ,notifications: 'notifications'
     ,notification_settings: 'notification_rules'
   };
@@ -29,7 +29,9 @@
     invoices: 'id',
     receipts: 'id',
     operations_onboarding: 'id',
-    technical_admin_requests: 'id'
+    technical_admin_requests: 'id',
+    companies: 'id',
+    contacts: 'id'
     ,notifications: 'notification_id'
     ,notification_settings: 'id'
   };
@@ -49,7 +51,9 @@
     invoices: ['invoice_id'],
     receipts: ['receipt_id'],
     operations_onboarding: ['onboarding_id', 'agreement_id'],
-    technical_admin_requests: ['request_id', 'technical_request_id']
+    technical_admin_requests: ['request_id', 'technical_request_id'],
+    companies: ['company_id'],
+    contacts: ['contact_id']
     ,notifications: ['id']
     ,notification_settings: []
   };
@@ -166,7 +170,12 @@
   const LEAD_COLUMNS = new Set([
     'lead_id',
     'full_name',
+    'company_id',
     'company_name',
+    'contact_id',
+    'contact_name',
+    'contact_email',
+    'contact_phone',
     'phone',
     'email',
     'country',
@@ -186,12 +195,24 @@
     'created_by',
     'updated_by'
   ]);
+
+  const COMPANY_COLUMNS = new Set([
+    'company_id','company_name','legal_name','company_type','industry','website','main_email','main_phone','country','city','address','tax_number','company_status','source','owner_name','owner_email','notes','created_by','created_by_email','created_at','updated_at'
+  ]);
+  const CONTACT_COLUMNS = new Set([
+    'contact_id','company_id','company_name','first_name','last_name','full_name','job_title','department','email','phone','mobile','decision_role','is_primary_contact','contact_status','notes','created_by','created_by_email','created_at','updated_at'
+  ]);
   const DEAL_COLUMNS = new Set([
     'deal_id',
     'lead_id',
     'lead_code',
     'full_name',
+    'company_id',
     'company_name',
+    'contact_id',
+    'contact_name',
+    'contact_email',
+    'contact_phone',
     'phone',
     'email',
     'country',
