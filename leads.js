@@ -72,6 +72,9 @@ const Leads = {
       created_at: raw.created_at || raw.createdAt || '',
       full_name: String(raw.full_name || raw.fullName || '').trim(),
       company_name: String(raw.company_name || raw.companyName || '').trim(),
+      customer_name: String(raw.customer_name || raw.customerName || '').trim(),
+      customer_legal_name: String(raw.customer_legal_name || raw.customerLegalName || '').trim(),
+      customer_address: String(raw.customer_address || raw.customerAddress || '').trim(),
       company_id: String(raw.company_id || raw.companyId || '').trim(),
       contact_id: String(raw.contact_id || raw.contactId || '').trim(),
       contact_name: String(raw.contact_name || raw.contactName || '').trim(),
@@ -126,6 +129,9 @@ const Leads = {
       ...(includeLeadId ? { lead_id: leadIdValue || null } : {}),
       full_name: String(lead.full_name || ''),
       company_name: String(lead.company_name || ''),
+      customer_name: String(lead.customer_name || ''),
+      customer_legal_name: String(lead.customer_legal_name || ''),
+      customer_address: String(lead.customer_address || ''),
       company_id: String(lead.company_id || ''),
       contact_id: String(lead.contact_id || ''),
       contact_name: String(lead.contact_name || ''),
@@ -1100,6 +1106,7 @@ const Leads = {
     const companyId = String(selectedCompany.company_id || E.leadFormCompanyId?.value || '').trim();
     const contactId = String(selectedContact.contact_id || E.leadFormContactId?.value || '').trim();
     const contactName = String(U.buildContactDisplayName(selectedContact) || '').trim();
+    const customerName = U.getCustomerLegalName(selectedCompany, {});
     const contactEmail = String(selectedContact.email || '').trim();
     const contactPhone = String(selectedContact.phone || selectedContact.mobile || '').trim();
     return {
@@ -1107,6 +1114,9 @@ const Leads = {
       full_name: contactName,
       company_id: companyId,
       company_name: String(selectedCompany.company_name || '').trim(),
+      customer_name: customerName,
+      customer_legal_name: customerName,
+      customer_address: String(selectedCompany.address || '').trim(),
       contact_id: contactId,
       contact_name: contactName,
       contact_email: contactEmail,

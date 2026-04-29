@@ -165,6 +165,23 @@ const U = {
     const full = [first, last].filter(Boolean).join(' ').trim();
     return full || String(contact.contact_name || contact.contactName || contact.full_name || contact.fullName || '').trim();
   },
+  getCustomerLegalName: (company = {}, record = {}) =>
+    String(
+      company.legal_name ||
+        company.legalName ||
+        record.customer_legal_name ||
+        record.customerLegalName ||
+        record.customer_name ||
+        record.customerName ||
+        company.company_name ||
+        company.companyName ||
+        record.company_name ||
+        record.companyName ||
+        ''
+    ).trim(),
+  getCustomerLegalDisplayName: (record = {}, company = {}) =>
+    U.getCustomerLegalName(company, record) ||
+    String(record.customer_name || record.customerName || record.company_name || record.companyName || '').trim(),
   fmtNumber: value => {
     const num = typeof value === 'number' ? value : Number(value);
     if (!Number.isFinite(num)) return '0';

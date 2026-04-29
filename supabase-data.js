@@ -275,7 +275,8 @@
   ]);
   const INVOICE_COLUMNS = new Set([
     'invoice_id','invoice_number','client_id','agreement_id','proposal_id','issue_date','due_date','billing_frequency',
-    'payment_term','customer_name','customer_legal_name','customer_address','customer_contact_name','customer_contact_email',
+    'payment_term','company_id','company_name','contact_id','contact_name','contact_email','contact_phone','contact_mobile',
+    'customer_name','customer_legal_name','customer_address','customer_contact_name','customer_contact_email',
     'provider_legal_name','provider_address','support_email','subtotal_locations','subtotal_one_time','invoice_total',
     'old_paid_total','paid_now','amount_paid','received_amount','pending_amount','payment_state','payment_conclusion','amount_in_words','status','notes',
     'created_by','updated_by','currency'
@@ -288,7 +289,7 @@
   const RECEIPT_COLUMNS = new Set([
     'receipt_id','receipt_number','invoice_id','client_id','receipt_date','amount_received','payment_method',
     'payment_reference','is_settlement','notes','status',
-    'invoice_number','currency','support_email','customer_name','customer_legal_name','customer_address',
+    'invoice_number','currency','support_email','company_id','company_name','contact_id','contact_name','contact_email','contact_phone','contact_mobile','customer_name','customer_legal_name','customer_address',
     'amount_in_words','invoice_total','old_paid_total','paid_now','received_amount','new_paid_total','pending_amount','payment_state','payment_conclusion','payment_notes',
     'created_by','updated_by'
   ]);
