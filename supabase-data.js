@@ -274,7 +274,7 @@
     'created_by','updated_by'
   ]);
   const INVOICE_COLUMNS = new Set([
-    'invoice_id','invoice_number','client_id','agreement_id','agreement_number','proposal_id','issue_date','due_date','billing_frequency',
+    'invoice_id','invoice_number','client_id','agreement_uuid','agreement_id','agreement_number','proposal_id','issue_date','due_date','billing_frequency',
     'payment_term','company_id','company_name','contact_id','contact_name','contact_email','contact_phone','contact_mobile',
     'customer_name','customer_legal_name','customer_address','customer_contact_name','customer_contact_email',
     'provider_legal_name','provider_address','support_email','subtotal_locations','subtotal_one_time','invoice_total',
@@ -287,7 +287,7 @@
     'service_start_date','service_end_date'
   ]);
   const RECEIPT_COLUMNS = new Set([
-    'receipt_id','receipt_number','invoice_id','invoice_number','agreement_id','agreement_number','client_id','company_id','company_name','customer_name','customer_legal_name','customer_address','contact_id','contact_name','contact_email','contact_phone','contact_mobile','receipt_status','amount_paid','payment_date','payment_method',
+    'receipt_id','receipt_number','invoice_id','invoice_number','agreement_uuid','agreement_id','agreement_number','client_id','company_id','company_name','customer_name','customer_legal_name','customer_address','contact_id','contact_name','contact_email','contact_phone','contact_mobile','receipt_status','amount_paid','payment_date','payment_method',
     'payment_reference','is_settlement','notes','status',
     'invoice_number','currency','support_email','company_id','company_name','contact_id','contact_name','contact_email','contact_phone','contact_mobile','customer_name','customer_legal_name','customer_address',
     'amount_in_words','invoice_total','old_paid_total','paid_now','received_amount','new_paid_total','pending_amount','payment_state','payment_conclusion','payment_notes',
@@ -376,14 +376,14 @@
       'created_by','updated_by','created_at','updated_at'
     ]),
     invoices: new Set([
-      'id','invoice_id','invoice_number','client_id','agreement_id','agreement_number','proposal_id','issue_date','due_date','billing_frequency',
+      'id','invoice_id','invoice_number','client_id','agreement_uuid','agreement_id','agreement_number','proposal_id','issue_date','due_date','billing_frequency',
       'payment_term','customer_name','customer_legal_name','customer_address','customer_contact_name','customer_contact_email',
       'provider_legal_name','provider_address','support_email','subtotal_locations','subtotal_one_time','invoice_total',
       'old_paid_total','paid_now','amount_paid','received_amount','pending_amount','payment_state','payment_conclusion','amount_in_words',
       'status','notes','currency','created_by','updated_by','created_at','updated_at'
     ]),
     receipts: new Set([
-      'id','receipt_id','receipt_number','invoice_id','client_id','receipt_date','amount_received','payment_method',
+      'id','receipt_id','receipt_number','invoice_id','agreement_uuid','agreement_id','agreement_number','client_id','receipt_date','amount_received','payment_method',
       'payment_reference','is_settlement','notes','status',
       'invoice_number','currency','support_email','customer_name','customer_legal_name','customer_address',
       'amount_in_words','invoice_total','old_paid_total','paid_now','received_amount','new_paid_total','pending_amount','payment_state','payment_conclusion','payment_notes',
@@ -417,9 +417,9 @@
     agreements: new Set(['proposal_id', 'created_by', 'updated_by']),
     agreement_items: new Set(['agreement_id']),
     clients: new Set(['source_agreement_id', 'created_by', 'updated_by']),
-    invoices: new Set(['client_id', 'agreement_id', 'proposal_id', 'created_by', 'updated_by']),
+    invoices: new Set(['client_id', 'agreement_uuid', 'proposal_id', 'created_by', 'updated_by']),
     invoice_items: new Set(['invoice_id']),
-    receipts: new Set(['invoice_id', 'client_id', 'created_by', 'updated_by']),
+    receipts: new Set(['invoice_id', 'agreement_uuid', 'client_id', 'created_by', 'updated_by']),
     receipt_items: new Set(['receipt_id', 'invoice_item_id']),
     operations_onboarding: new Set(['agreement_id', 'client_id', 'created_by', 'updated_by']),
     technical_admin_requests: new Set(['agreement_id', 'onboarding_id', 'client_id', 'requested_by', 'updated_by']),
