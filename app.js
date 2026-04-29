@@ -59,57 +59,139 @@ const TicketSummaryState = {
   loaded: false
 };
 
-function getTicketDateValue(value) {
-  if (!value) return 0;
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : 0;
+function parseTicketDateForSort(value) {
+  if (value == null) return null;
+  const text = String(value).trim();
+  if (!text) return null;
+  const native = Date.parse(text);
+  if (Number.isFinite(native)) return native;
+  const usMatch = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
+  if (usMatch) {
+    const month = Number(usMatch[1]) - 1;
+    const day = Number(usMatch[2]);
+    const year = Number(usMatch[3]);
+    const hour = Number(usMatch[4] || 0);
+    const minute = Number(usMatch[5] || 0);
+    return new Date(year, month, day, hour, minute).getTime();
+  }
+  return null;
 }
 
-function extractTicketNumber(value) {
+function extractLastNumberForSort(value) {
   const text = value == null ? '' : String(value);
   const matches = text.match(/\d+/g);
-  if (!matches || !matches.length) return 0;
-  return Number(matches[matches.length - 1]) || 0;
+  if (!matches || !matches.length) return null;
+  return Number(matches[matches.length - 1]);
 }
 
+function isEmptySortValue(value) {
+  return value == null || String(value).trim() === '';
+}
+
+const TICKET_SORT_COLUMNS = {
+  id: { type: 'ticketId', getValue: row => row.ticket_id || row.id },
+  date: { type: 'date', getValue: row => row.date || row.createdAt },
+  name: { type: 'text', getValue: row => row.name },
+  department: { type: 'text', getValue: row => row.department },
+  title: { type: 'text', getValue: row => row.title },
+  desc: { type: 'text', getValue: row => row.desc },
+  priority: { type: 'text', getValue: row => row.priority },
+  module: { type: 'text', getValue: row => row.module },
+  emailAddressee: { type: 'text', getValue: row => row.emailAddressee },
+  type: { type: 'text', getValue: row => row.type },
+  status: { type: 'text', getValue: row => row.status },
+  notificationSent: { type: 'text', getValue: row => row.notificationSent },
+  youtrackReference: { type: 'text', getValue: row => row.youtrackReference },
+  devTeamStatus: { type: 'text', getValue: row => row.devTeamStatus },
+  issueRelated: { type: 'text', getValue: row => row.issueRelated },
+  notes: { type: 'text', getValue: row => row.notes },
+  log: { type: 'text', getValue: row => row.log },
+  notificationUnderReview: { type: 'text', getValue: row => row.notificationUnderReview },
+  createdAt: { type: 'date', getValue: row => row.createdAt },
+  updatedAt: { type: 'date', getValue: row => row.updatedAt }
+};
 
 function resolveTicketSortColumn(sortKey = '') {
   const key = String(sortKey || '').trim();
   const map = {
     id: 'ticket_id',
     date: 'date',
+    name: 'name',
+    department: 'department',
+    title: 'title',
+    desc: 'description',
+    priority: 'priority',
+    module: 'module',
+    emailAddressee: 'email_addressee',
+    type: 'category',
+    status: 'status',
+    notificationSent: 'notification_sent',
+    notificationUnderReview: 'notification_sent_under_review',
+    youtrackReference: 'youtrack_reference',
     createdAt: 'created_at',
     updatedAt: 'updated_at',
     devTeamStatus: 'dev_team_status',
-    issueRelated: 'issue_related'
+    issueRelated: 'issue_related',
+    notes: 'notes',
+    log: 'log'
   };
   return map[key] || key || 'updated_at';
 }
 
-function compareTicketValues(aValue, bValue, type, direction) {
+function compareTicketSortValues(aValue, bValue, type, direction) {
   const dir = direction === 'desc' ? -1 : 1;
-  const isEmptyA = aValue == null || String(aValue).trim() === '';
-  const isEmptyB = bValue == null || String(bValue).trim() === '';
-  if (isEmptyA && isEmptyB) return 0;
-  if (isEmptyA) return 1;
-  if (isEmptyB) return -1;
-  if (type === 'date') return (getTicketDateValue(aValue) - getTicketDateValue(bValue)) * dir;
-  if (type === 'number') return ((Number(aValue) || 0) - (Number(bValue) || 0)) * dir;
-  if (type === 'ticketId') return (extractTicketNumber(aValue) - extractTicketNumber(bValue)) * dir;
-  return String(aValue).trim().toLowerCase().localeCompare(String(bValue).trim().toLowerCase()) * dir;
+  const emptyA = isEmptySortValue(aValue);
+  const emptyB = isEmptySortValue(bValue);
+  if (emptyA && emptyB) return 0;
+  if (emptyA) return 1;
+  if (emptyB) return -1;
+
+  if (type === 'date') {
+    const aDate = parseTicketDateForSort(aValue);
+    const bDate = parseTicketDateForSort(bValue);
+    if (aDate == null && bDate == null) return 0;
+    if (aDate == null) return 1;
+    if (bDate == null) return -1;
+    return (aDate - bDate) * dir;
+  }
+
+  if (type === 'number') {
+    const aNum = Number(aValue);
+    const bNum = Number(bValue);
+    if (!Number.isFinite(aNum) && !Number.isFinite(bNum)) return 0;
+    if (!Number.isFinite(aNum)) return 1;
+    if (!Number.isFinite(bNum)) return -1;
+    return (aNum - bNum) * dir;
+  }
+
+  if (type === 'ticketId') {
+    const aNum = extractLastNumberForSort(aValue);
+    const bNum = extractLastNumberForSort(bValue);
+    if (aNum == null && bNum == null) {
+      return String(aValue).trim().toLowerCase().localeCompare(String(bValue).trim().toLowerCase()) * dir;
+    }
+    if (aNum == null) return 1;
+    if (bNum == null) return -1;
+    return (aNum - bNum) * dir;
+  }
+
+  return String(aValue)
+    .trim()
+    .toLowerCase()
+    .localeCompare(String(bValue).trim().toLowerCase(), undefined, { numeric: true, sensitivity: 'base' }) * dir;
 }
 
 function stableSortTickets(rows = [], sortKey = '', sortDirection = 'asc') {
-  const typeByKey = { id: 'ticketId', date: 'date', createdAt: 'date', updatedAt: 'date' };
-  const type = typeByKey[sortKey] || 'text';
+  const cfg = TICKET_SORT_COLUMNS[sortKey];
+  if (!cfg || !sortDirection) return Array.isArray(rows) ? rows : [];
   return [...(Array.isArray(rows) ? rows : [])]
     .map((row, index) => ({ row, index }))
     .sort((a, b) => {
-      const primary = compareTicketValues(a.row?.[sortKey], b.row?.[sortKey], type, sortDirection);
+      const primary = compareTicketSortValues(cfg.getValue(a.row), cfg.getValue(b.row), cfg.type, sortDirection);
       if (primary !== 0) return primary;
-      const created = compareTicketValues(a.row?.createdAt, b.row?.createdAt, 'date', 'asc');
+      const created = compareTicketSortValues(a.row?.createdAt || a.row?.date, b.row?.createdAt || b.row?.date, 'date', 'asc');
       if (created !== 0) return created;
-      const ticketId = compareTicketValues(issueDisplayId(a.row), issueDisplayId(b.row), 'ticketId', 'asc');
+      const ticketId = compareTicketSortValues(issueDisplayId(a.row), issueDisplayId(b.row), 'ticketId', 'asc');
       if (ticketId !== 0) return ticketId;
       return a.index - b.index;
     })
