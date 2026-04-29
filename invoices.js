@@ -1863,8 +1863,27 @@ const Invoices = {
     const customerName = this.getCustomerLegalName(selectedCompany, selectedAgreement);
     const contactName = this.buildContactPersonName(selectedContact) || String(selectedAgreement.contact_name || selectedAgreement.customer_contact_name || '').trim();
     const contactPhone = String(selectedContact.mobile || selectedContact.phone || selectedAgreement.contact_phone || selectedAgreement.customer_contact_phone || '').trim();
-    invoice.agreement_id = String(selectedAgreement.agreement_id || selectedAgreement.id || invoice.agreement_id || '').trim();
-    invoice.agreement_number = String(selectedAgreement.agreement_number || invoice.agreement_number || '').trim();
+    const agreementId = String(
+      selectedAgreement.agreement_id ||
+      selectedAgreement.agreementId ||
+      selectedAgreement.id ||
+      E.invoiceAgreementId?.value ||
+      E.invoiceFormAgreementId?.value ||
+      invoice.agreement_id ||
+      invoice.agreementId ||
+      ''
+    ).trim();
+    const agreementNumber = String(
+      selectedAgreement.agreement_number ||
+      selectedAgreement.agreementNumber ||
+      E.invoiceAgreementNumber?.value ||
+      E.invoiceFormAgreementNumber?.value ||
+      invoice.agreement_number ||
+      invoice.agreementNumber ||
+      ''
+    ).trim();
+    invoice.agreement_id = agreementId;
+    invoice.agreement_number = agreementNumber;
     invoice.company_id = String(selectedCompany.company_id || selectedAgreement.company_id || invoice.company_id || '').trim();
     invoice.company_name = String(selectedCompany.company_name || selectedAgreement.company_name || invoice.company_name || '').trim();
     invoice.customer_name = customerName;
@@ -1880,14 +1899,30 @@ const Invoices = {
     return { invoice, items };
   },
   validateInvoice(invoice = {}) {
+    const draft = invoice || {};
+    const selectedAgreement = this.state.selectedAgreement || {};
+    const agreementId = String(
+      selectedAgreement?.agreement_id ||
+      selectedAgreement?.agreementId ||
+      selectedAgreement?.id ||
+      E.invoiceAgreementId?.value ||
+      E.invoiceFormAgreementId?.value ||
+      draft.agreement_id ||
+      draft.agreementId ||
+      ''
+    ).trim();
     const requiredFields = [
       ['invoice_number', 'Invoice Number'],
-      ['agreement_id', 'Agreement ID'],
       ['issue_date', 'Invoice Date'],
       ['due_date', 'Due Date'],
       ['currency', 'Currency']
     ];
-    const missing = requiredFields.filter(([field]) => !String(invoice?.[field] || '').trim());
+    const missing = requiredFields.filter(([field]) => !String(draft?.[field] || '').trim());
+    if (!agreementId) {
+      UI.toast('Invoice must be linked to an Agreement. Please create the invoice from an Agreement.');
+      return false;
+    }
+
     if (missing.length) {
       const firstFieldId = `invoiceForm${missing[0][0].replace(/(^|_)([a-z])/g, (_, __, ch) => ch.toUpperCase())}`;
       const firstFieldEl = document.getElementById(firstFieldId);
@@ -2168,6 +2203,10 @@ const Invoices = {
       const fullCompany = await this.getFullCompanyRecord(agreement.company_id || agreement.companyId || agreement.company || null);
       const fullContact = await this.getFullContactRecord(agreement.contact_id || agreement.contactId || agreement.contact || null);
       this.state.selectedAgreement = agreement || null;
+      const agreementId = String(agreement?.agreement_id || agreement?.agreementId || agreement?.id || id || '').trim();
+      const agreementNumber = String(agreement?.agreement_number || agreement?.agreementNumber || '').trim();
+      if (E.invoiceFormAgreementId) E.invoiceFormAgreementId.value = agreementId;
+      if (E.invoiceFormAgreementNumber) E.invoiceFormAgreementNumber.value = agreementNumber;
       this.state.selectedCompany = fullCompany || null;
       this.state.selectedContact = fullContact || null;
       this.assignFormValues(mappedInvoice);
@@ -2655,6 +2694,7 @@ const Invoices = {
       });
     }
     if (E.invoiceFormAgreementId) {
+      E.invoiceFormAgreementId.readOnly = true;
       let agreementHydrateTimer = null;
       const hydrateAgreement = () => {
         if (agreementHydrateTimer) window.clearTimeout(agreementHydrateTimer);
@@ -2662,7 +2702,10 @@ const Invoices = {
           this.hydrateFromAgreement(E.invoiceFormAgreementId?.value || '');
         }, 250);
       };
-      E.invoiceFormAgreementId.addEventListener('input', hydrateAgreement);
+      E.invoiceFormAgreementId.addEventListener('input', event => {
+        event.preventDefault();
+        hydrateAgreement();
+      });
       E.invoiceFormAgreementId.addEventListener('change', () => {
         this.hydrateFromAgreement(E.invoiceFormAgreementId?.value || '');
       });
