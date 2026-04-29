@@ -3502,7 +3502,8 @@ Sample:
         <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
           <div class="filter-row"><label class="muted" for="invoiceFormInvoiceId">Invoice ID</label><input id="invoiceFormInvoiceId" class="input" type="text" readonly /></div>
           <div class="filter-row"><label class="muted" for="invoiceFormInvoiceNumber">Invoice Number</label><input id="invoiceFormInvoiceNumber" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="invoiceFormAgreementId">Linked Agreement ID</label><input id="invoiceFormAgreementId" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+          <div class="filter-row"><label class="muted" for="invoiceFormAgreementId">Agreement #</label><input id="invoiceFormAgreementId" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+          <input id="invoiceFormAgreementUuid" type="hidden" name="agreement_uuid" />
           <input id="invoiceFormAgreementNumber" type="hidden" name="agreement_number" />
           <div class="filter-row"><label class="muted" for="invoiceFormStatus">Status</label><select id="invoiceFormStatus" class="select"><option>Draft</option><option>Issued</option><option>Sent</option><option>Unpaid</option><option>Partially Paid</option><option>Paid</option><option>Overdue</option><option>Cancelled</option></select></div>
           <div class="filter-row"><label class="muted" for="invoiceFormInvoiceDate">Invoice Date</label><input id="invoiceFormInvoiceDate" class="input" type="date" /></div>
@@ -3595,6 +3596,9 @@ Sample:
           <div class="filter-row"><label class="muted" for="receiptFormReceiptNumber">Receipt Number</label><input id="receiptFormReceiptNumber" class="input" type="text" /></div>
           <div class="filter-row"><label class="muted" for="receiptFormInvoiceId">Invoice ID</label><input id="receiptFormInvoiceId" class="input" type="text" /></div>
           <div class="filter-row"><label class="muted" for="receiptFormInvoiceNumber">Invoice Number</label><input id="receiptFormInvoiceNumber" class="input" type="text" /></div>
+          <input id="receiptFormAgreementUuid" type="hidden" name="agreement_uuid" />
+          <input id="receiptFormAgreementId" type="hidden" name="agreement_id" />
+          <input id="receiptFormAgreementNumber" type="hidden" name="agreement_number" />
           <div class="filter-row"><label class="muted" for="receiptFormReceiptDate">Receipt Date</label><input id="receiptFormReceiptDate" class="input" type="date" /></div>
           <div class="filter-row"><label class="muted" for="receiptFormCurrency">Currency</label><input id="receiptFormCurrency" class="input" type="text" /></div>
           <div class="filter-row"><label class="muted" for="receiptFormStatus">Status</label><input id="receiptFormStatus" class="input" type="text" /></div>
