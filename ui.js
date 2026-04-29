@@ -815,6 +815,7 @@ function cacheEls() {
     'invoiceFormInvoiceId',
     'invoiceFormInvoiceNumber',
     'invoiceFormAgreementId',
+    'invoiceFormAgreementNumber',
     'invoiceFormInvoiceDate',
     'invoiceFormDueDate',
     'invoiceFormCustomerName',
