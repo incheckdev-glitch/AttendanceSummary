@@ -1130,13 +1130,12 @@ const Deals = {
     const row = Array.isArray(rows) ? (rows[0] || null) : (rows || null);
     return row ? this.normalizeContact(row) : null;
   },
-  renderReadonlyDetails(container, rows = []) {
-    if (!container) return;
-    container.innerHTML = rows
-      .map(
-        ([label, value]) => `<div class="readonly-detail-row"><span class="readonly-detail-label">${U.escapeHtml(label)}</span><span class="readonly-detail-value">${U.escapeHtml(String(value || '—'))}</span></div>`
-      )
-      .join('');
+  setReadonlyField(node, value) {
+    if (!node) return;
+    node.value = value || '';
+    node.readOnly = true;
+    node.classList.add('readonly-field', 'locked-field');
+    node.setAttribute('aria-readonly', 'true');
   },
   lockInput(node) {
     if (!node) return;
@@ -1181,8 +1180,14 @@ const Deals = {
     if (E.dealFormContactSelector) E.dealFormContactSelector.value = '';
     if (E.dealFormCompanyId) E.dealFormCompanyId.value = '';
     if (E.dealFormContactId) E.dealFormContactId.value = '';
-    this.renderReadonlyDetails(E.dealFormCompanyDetails, [['Info', 'Company details are managed from the Company module.']]);
-    this.renderReadonlyDetails(E.dealFormContactDetails, [['Info', 'Contact details are managed from the Contacts module.']]);
+    [
+      E.dealCompanyIdDisplay, E.dealCompanyNameDisplay, E.dealCompanyLegalNameDisplay, E.dealCompanyTypeDisplay, E.dealCompanyIndustryDisplay,
+      E.dealCompanyWebsiteDisplay, E.dealCompanyMainEmailDisplay, E.dealCompanyMainPhoneDisplay, E.dealCompanyCountryDisplay,
+      E.dealCompanyCityDisplay, E.dealCompanyAddressDisplay, E.dealCompanyTaxNumberDisplay, E.dealCompanyStatusDisplay,
+      E.dealContactIdDisplay, E.dealContactFullNameDisplay, E.dealContactFirstNameDisplay, E.dealContactLastNameDisplay,
+      E.dealContactJobTitleDisplay, E.dealContactDepartmentDisplay, E.dealContactEmailDisplay, E.dealContactPhoneDisplay,
+      E.dealContactMobileDisplay, E.dealContactDecisionRoleDisplay, E.dealContactPrimaryDisplay, E.dealContactStatusDisplay
+    ].forEach(node => this.setReadonlyField(node, ''));
     this.lockCompanyContactFields({ lockCompanySelector: false, lockContactSelector: false });
     this.syncDealFormDropdowns();
   },
@@ -1290,7 +1295,19 @@ const Deals = {
     if (E.dealFormCompanySelector) E.dealFormCompanySelector.value = c.company_id || '';
     if (E.dealFormCompanyName) E.dealFormCompanyName.value = c.company_name || '';
     if (E.dealFormCountry) E.dealFormCountry.value = c.country || '';
-    this.renderReadonlyDetails(E.dealFormCompanyDetails, [['Company ID', c.company_id], ['Company Name', c.company_name], ['Legal Name', c.legal_name], ['Company Type', this.formatCompanyType(c.company_type)], ['Industry', this.formatCompanyIndustry(c.industry)], ['Website', c.website], ['Main Email', c.main_email], ['Main Phone', c.main_phone], ['Country', c.country], ['City', c.city], ['Address', c.address], ['Tax Number', c.tax_number], ['Company Status', c.company_status]]);
+    this.setReadonlyField(E.dealCompanyIdDisplay, c.company_id);
+    this.setReadonlyField(E.dealCompanyNameDisplay, c.company_name);
+    this.setReadonlyField(E.dealCompanyLegalNameDisplay, c.legal_name);
+    this.setReadonlyField(E.dealCompanyTypeDisplay, this.formatCompanyType(c.company_type));
+    this.setReadonlyField(E.dealCompanyIndustryDisplay, this.formatCompanyIndustry(c.industry));
+    this.setReadonlyField(E.dealCompanyWebsiteDisplay, c.website);
+    this.setReadonlyField(E.dealCompanyMainEmailDisplay, c.main_email);
+    this.setReadonlyField(E.dealCompanyMainPhoneDisplay, c.main_phone);
+    this.setReadonlyField(E.dealCompanyCountryDisplay, c.country);
+    this.setReadonlyField(E.dealCompanyCityDisplay, c.city);
+    this.setReadonlyField(E.dealCompanyAddressDisplay, c.address);
+    this.setReadonlyField(E.dealCompanyTaxNumberDisplay, c.tax_number);
+    this.setReadonlyField(E.dealCompanyStatusDisplay, c.company_status);
     this.lockCompanyContactFields({ lockCompanySelector: !!c.company_id, lockContactSelector: !!this.state.form.contactId });
   },
   hydrateDealFromContact(contact = {}) {
@@ -1302,7 +1319,18 @@ const Deals = {
     if (E.dealFormFullName) E.dealFormFullName.value = c.full_name || '';
     if (E.dealFormPhone) E.dealFormPhone.value = c.phone || c.mobile || '';
     if (E.dealFormEmail) E.dealFormEmail.value = c.email || '';
-    this.renderReadonlyDetails(E.dealFormContactDetails, [['Contact ID', c.contact_id], ['Full Name', c.full_name], ['First Name', c.first_name], ['Last Name', c.last_name], ['Job Title', c.job_title], ['Department', c.department], ['Email', c.email], ['Phone', c.phone], ['Mobile', c.mobile], ['Decision Role', c.decision_role], ['Primary Contact', c.is_primary_contact ? 'Yes' : 'No'], ['Contact Status', c.contact_status]]);
+    this.setReadonlyField(E.dealContactIdDisplay, c.contact_id);
+    this.setReadonlyField(E.dealContactFullNameDisplay, c.full_name);
+    this.setReadonlyField(E.dealContactFirstNameDisplay, c.first_name);
+    this.setReadonlyField(E.dealContactLastNameDisplay, c.last_name);
+    this.setReadonlyField(E.dealContactJobTitleDisplay, c.job_title);
+    this.setReadonlyField(E.dealContactDepartmentDisplay, c.department);
+    this.setReadonlyField(E.dealContactEmailDisplay, c.email);
+    this.setReadonlyField(E.dealContactPhoneDisplay, c.phone);
+    this.setReadonlyField(E.dealContactMobileDisplay, c.mobile);
+    this.setReadonlyField(E.dealContactDecisionRoleDisplay, c.decision_role);
+    this.setReadonlyField(E.dealContactPrimaryDisplay, c.is_primary_contact ? 'Yes' : 'No');
+    this.setReadonlyField(E.dealContactStatusDisplay, c.contact_status);
     this.lockCompanyContactFields({ lockCompanySelector: !!this.state.form.companyId, lockContactSelector: !!c.contact_id });
   },
   closeForm() {

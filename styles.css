@@ -377,6 +377,34 @@ header{
   color:var(--text);
   cursor:not-allowed;
 }
+.form-section{
+  margin-top:1rem;
+  padding-top:.75rem;
+  border-top:1px solid rgba(148,163,184,.25);
+}
+.form-section-header h3{
+  margin:0;
+  font-size:.95rem;
+  font-weight:700;
+}
+.form-section-header p{
+  margin:.25rem 0 .75rem;
+  font-size:.75rem;
+  color:var(--muted);
+}
+.form-grid.readonly-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:.75rem 1rem;
+}
+.form-group-full{
+  grid-column:1 / -1;
+}
+@media (max-width:768px){
+  .form-grid.readonly-grid{
+    grid-template-columns:1fr;
+  }
+}
 
 /* Keep proposal/agreement dropdown menu options visually aligned with status filters */
 #statusFilter option,

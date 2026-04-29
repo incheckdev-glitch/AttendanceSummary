@@ -2868,7 +2868,11 @@ Sample:
         <button class="modal-close" id="dealFormCloseBtn" aria-label="Close deal form">✕</button>
       </div>
       <form id="dealForm" class="stack" style="margin-top:12px;">
-        <div class="grid cols-2">
+        <section class="form-section">
+          <div class="form-section-header">
+            <h3>Deal Information</h3>
+          </div>
+          <div class="grid cols-2">
           <div class="filter-row">
             <label class="muted" for="dealFormDealId">Deal ID</label>
             <input id="dealFormDealId" class="input" type="text" readonly />
@@ -2883,33 +2887,79 @@ Sample:
           </div>
           <div class="filter-row">
             <label class="muted" for="dealFormCompanySelector">Company</label>
-            <input id="dealFormCompanySelector" class="input" type="text" placeholder="Company ID" />
+            <input id="dealFormCompanySelector" class="input readonly-field locked-field" type="text" placeholder="Company ID" readonly aria-readonly="true" />
             <input id="dealFormCompanyId" type="hidden" />
           </div>
           <div class="filter-row">
             <label class="muted" for="dealFormContactSelector">Contact</label>
-            <input id="dealFormContactSelector" class="input" type="text" placeholder="Contact ID" />
+            <input id="dealFormContactSelector" class="input readonly-field locked-field" type="text" placeholder="Contact ID" readonly aria-readonly="true" />
             <input id="dealFormContactId" type="hidden" />
           </div>
+        </div>
+        </section>
+        <section class="form-section">
+          <div class="form-section-header">
+            <h3>Company Details</h3>
+            <p>Company details are managed from the Company module.</p>
+          </div>
+          <div class="form-grid readonly-grid">
+            <div class="form-group"><label class="muted" for="dealCompanyIdDisplay">Company ID</label><input id="dealCompanyIdDisplay" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="form-group"><label class="muted" for="dealCompanyNameDisplay">Company Name</label><input id="dealCompanyNameDisplay" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="form-group"><label class="muted" for="dealCompanyLegalNameDisplay">Legal Name</label><input id="dealCompanyLegalNameDisplay" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="form-group"><label class="muted" for="dealCompanyTypeDisplay">Company Type</label><input id="dealCompanyTypeDisplay" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="form-group"><label class="muted" for="dealCompanyIndustryDisplay">Industry</label><input id="dealCompanyIndustryDisplay" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="form-group"><label class="muted" for="dealCompanyWebsiteDisplay">Website</label><input id="dealCompanyWebsiteDisplay" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="form-group"><label class="muted" for="dealCompanyMainEmailDisplay">Main Email</label><input id="dealCompanyMainEmailDisplay" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="form-group"><label class="muted" for="dealCompanyMainPhoneDisplay">Main Phone</label><input id="dealCompanyMainPhoneDisplay" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="form-group"><label class="muted" for="dealCompanyCountryDisplay">Country</label><input id="dealCompanyCountryDisplay" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="form-group"><label class="muted" for="dealCompanyCityDisplay">City</label><input id="dealCompanyCityDisplay" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="form-group form-group-full"><label class="muted" for="dealCompanyAddressDisplay">Address</label><textarea id="dealCompanyAddressDisplay" class="input readonly-field locked-field" rows="2" readonly aria-readonly="true"></textarea></div>
+            <div class="form-group"><label class="muted" for="dealCompanyTaxNumberDisplay">Tax Number</label><input id="dealCompanyTaxNumberDisplay" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="form-group"><label class="muted" for="dealCompanyStatusDisplay">Company Status</label><input id="dealCompanyStatusDisplay" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+          </div>
+        </section>
+        <section class="form-section">
+          <div class="form-section-header">
+            <h3>Contact Details</h3>
+            <p>Contact details are managed from the Contacts module.</p>
+          </div>
+          <div class="form-grid readonly-grid">
+            <div class="form-group"><label class="muted" for="dealContactIdDisplay">Contact ID</label><input id="dealContactIdDisplay" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="form-group"><label class="muted" for="dealContactFullNameDisplay">Full Name</label><input id="dealContactFullNameDisplay" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="form-group"><label class="muted" for="dealContactFirstNameDisplay">First Name</label><input id="dealContactFirstNameDisplay" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="form-group"><label class="muted" for="dealContactLastNameDisplay">Last Name</label><input id="dealContactLastNameDisplay" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="form-group"><label class="muted" for="dealContactJobTitleDisplay">Job Title</label><input id="dealContactJobTitleDisplay" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="form-group"><label class="muted" for="dealContactDepartmentDisplay">Department</label><input id="dealContactDepartmentDisplay" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="form-group"><label class="muted" for="dealContactEmailDisplay">Email</label><input id="dealContactEmailDisplay" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="form-group"><label class="muted" for="dealContactPhoneDisplay">Phone</label><input id="dealContactPhoneDisplay" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="form-group"><label class="muted" for="dealContactMobileDisplay">Mobile</label><input id="dealContactMobileDisplay" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="form-group"><label class="muted" for="dealContactDecisionRoleDisplay">Decision Role</label><input id="dealContactDecisionRoleDisplay" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="form-group"><label class="muted" for="dealContactPrimaryDisplay">Primary Contact</label><input id="dealContactPrimaryDisplay" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="form-group"><label class="muted" for="dealContactStatusDisplay">Contact Status</label><input id="dealContactStatusDisplay" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+          </div>
+        </section>
+        <section class="form-section">
+          <div class="form-section-header"><h3>Deal Details</h3></div>
+          <div class="grid cols-2">
           <div class="filter-row">
             <label class="muted" for="dealFormFullName">Full Name</label>
-            <input id="dealFormFullName" class="input" type="text" />
+            <input id="dealFormFullName" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" />
           </div>
           <div class="filter-row">
             <label class="muted" for="dealFormCompanyName">Company Name</label>
-            <input id="dealFormCompanyName" class="input" type="text" />
+            <input id="dealFormCompanyName" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" />
           </div>
           <div class="filter-row">
             <label class="muted" for="dealFormPhone">Phone</label>
-            <input id="dealFormPhone" class="input" type="text" />
+            <input id="dealFormPhone" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" />
           </div>
           <div class="filter-row">
             <label class="muted" for="dealFormEmail">Email</label>
-            <input id="dealFormEmail" class="input" type="email" />
+            <input id="dealFormEmail" class="input readonly-field locked-field" type="email" readonly aria-readonly="true" />
           </div>
           <div class="filter-row">
             <label class="muted" for="dealFormCountry">Country</label>
-            <input id="dealFormCountry" class="input" type="text" />
+            <input id="dealFormCountry" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" />
           </div>
           <div class="filter-row">
             <label class="muted" for="dealFormLeadSource">Lead Source</label>
@@ -2984,18 +3034,7 @@ Sample:
             <textarea id="dealFormNotes" class="input" rows="3" placeholder="Optional notes"></textarea>
           </div>
         </div>
-        <div class="grid cols-2">
-          <div>
-            <h4 style="margin:8px 0;">Company Details</h4>
-            <div class="muted" style="font-size:12px;">Company and contact details are managed from the Company and Contacts modules.</div>
-            <div id="dealFormCompanyDetails" class="stack"></div>
-          </div>
-          <div>
-            <h4 style="margin:8px 0;">Contact Details</h4>
-            <div class="muted" style="font-size:12px;">Company and contact details are managed from the Company and Contacts modules.</div>
-            <div id="dealFormContactDetails" class="stack"></div>
-          </div>
-        </div>
+        </section>
         <div class="actions" style="justify-content:space-between;gap:8px;">
           <button id="dealFormDeleteBtn" type="button" class="btn ghost" style="display:none;">Delete</button>
           <div style="display:flex;gap:8px;">
