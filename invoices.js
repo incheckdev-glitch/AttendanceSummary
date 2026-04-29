@@ -68,6 +68,74 @@ const Invoices = {
   normalizeText(value) {
     return String(value ?? '').trim().toLowerCase();
   },
+
+  async getFullCompanyRecord(companyIdOrRecord) {
+    if (!companyIdOrRecord) return null;
+    if (typeof companyIdOrRecord === 'object' && companyIdOrRecord.company_id && companyIdOrRecord.company_name && companyIdOrRecord.address !== undefined) {
+      return companyIdOrRecord;
+    }
+    const companyId = String((typeof companyIdOrRecord === 'object' ? companyIdOrRecord.company_id : companyIdOrRecord) || '').trim();
+    if (!companyId) return null;
+    const client = this.getSupabaseClient();
+    if (!client) return typeof companyIdOrRecord === 'object' ? companyIdOrRecord : null;
+    try {
+      const { data, error } = await client.from('companies').select('*').eq('company_id', companyId).limit(1).maybeSingle();
+      if (error) throw error;
+      return data || (typeof companyIdOrRecord === 'object' ? companyIdOrRecord : null);
+    } catch (_error) {
+      return typeof companyIdOrRecord === 'object' ? companyIdOrRecord : null;
+    }
+  },
+  async getFullContactRecord(contactIdOrRecord) {
+    if (!contactIdOrRecord) return null;
+    if (typeof contactIdOrRecord === 'object' && contactIdOrRecord.contact_id && (contactIdOrRecord.first_name || contactIdOrRecord.contact_name || contactIdOrRecord.full_name)) {
+      return contactIdOrRecord;
+    }
+    const contactId = String((typeof contactIdOrRecord === 'object' ? contactIdOrRecord.contact_id : contactIdOrRecord) || '').trim();
+    if (!contactId) return null;
+    const client = this.getSupabaseClient();
+    if (!client) return typeof contactIdOrRecord === 'object' ? contactIdOrRecord : null;
+    try {
+      const { data, error } = await client.from('contacts').select('*').eq('contact_id', contactId).limit(1).maybeSingle();
+      if (error) throw error;
+      return data || (typeof contactIdOrRecord === 'object' ? contactIdOrRecord : null);
+    } catch (_error) {
+      return typeof contactIdOrRecord === 'object' ? contactIdOrRecord : null;
+    }
+  },
+  buildContactPersonName(contact = {}) {
+    const first = String(contact?.first_name || '').trim();
+    const last = String(contact?.last_name || '').trim();
+    const full = `${first} ${last}`.trim();
+    return full || String(contact?.contact_name || contact?.full_name || '').trim();
+  },
+  getCustomerLegalName(company = {}, record = {}) {
+    return String(
+      company?.legal_name ||
+      company?.company_name ||
+      record?.customer_legal_name ||
+      record?.customer_name ||
+      ''
+    ).trim();
+  },
+  setReadonlyFieldValue(id, value) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.value = value ?? '';
+    el.readOnly = true;
+    el.setAttribute('readonly', 'true');
+    el.setAttribute('aria-readonly', 'true');
+    el.classList.add('readonly-field', 'locked-field');
+  },
+  hydrateInvoiceCustomerSection({ agreement = {}, company = {}, contact = {} } = {}) {
+    const customerName = this.getCustomerLegalName(company, agreement);
+    const contactName = this.buildContactPersonName(contact) || String(agreement.contact_name || agreement.customer_contact_name || '').trim();
+    this.setReadonlyFieldValue('invoiceFormCustomerName', customerName);
+    this.setReadonlyFieldValue('invoiceFormCustomerLegalName', customerName);
+    this.setReadonlyFieldValue('invoiceFormCustomerAddress', company?.address || agreement?.customer_address || '');
+    this.setReadonlyFieldValue('invoiceFormCustomerContactName', contactName);
+    this.setReadonlyFieldValue('invoiceFormCustomerContactEmail', contact?.email || agreement?.contact_email || agreement?.customer_contact_email || '');
+  },
   normalizeInvoiceFinancials(invoice = {}) {
     const pickDefined = (...values) => values.find(value => value !== undefined && value !== null && !(typeof value === 'string' && value.trim() === ''));
     const invoiceTotal = this.toNumberSafe(
@@ -1778,6 +1846,26 @@ const Invoices = {
     invoice.subtotal_locations = this.toNumberSafe(invoice.subtotal_locations);
     invoice.subtotal_one_time = this.toNumberSafe(invoice.subtotal_one_time);
     invoice.invoice_total = this.toNumberSafe(invoice.invoice_total);
+    const selectedAgreement = this.state.selectedAgreement || {};
+    const selectedCompany = this.state.selectedCompany || {};
+    const selectedContact = this.state.selectedContact || {};
+    const customerName = this.getCustomerLegalName(selectedCompany, selectedAgreement);
+    const contactName = this.buildContactPersonName(selectedContact) || String(selectedAgreement.contact_name || selectedAgreement.customer_contact_name || '').trim();
+    const contactPhone = String(selectedContact.mobile || selectedContact.phone || selectedAgreement.contact_phone || selectedAgreement.customer_contact_phone || '').trim();
+    invoice.agreement_id = String(selectedAgreement.agreement_id || selectedAgreement.id || invoice.agreement_id || '').trim();
+    invoice.agreement_number = String(selectedAgreement.agreement_number || invoice.agreement_number || '').trim();
+    invoice.company_id = String(selectedCompany.company_id || selectedAgreement.company_id || invoice.company_id || '').trim();
+    invoice.company_name = String(selectedCompany.company_name || selectedAgreement.company_name || invoice.company_name || '').trim();
+    invoice.customer_name = customerName;
+    invoice.customer_legal_name = customerName;
+    invoice.customer_address = String(selectedCompany.address || selectedAgreement.customer_address || invoice.customer_address || '').trim();
+    invoice.contact_id = String(selectedContact.contact_id || selectedAgreement.contact_id || invoice.contact_id || '').trim();
+    invoice.contact_name = contactName;
+    invoice.customer_contact_name = contactName;
+    invoice.contact_email = String(selectedContact.email || selectedAgreement.contact_email || selectedAgreement.customer_contact_email || '').trim();
+    invoice.customer_contact_email = invoice.contact_email;
+    invoice.contact_phone = contactPhone;
+    invoice.contact_mobile = String(selectedContact.mobile || selectedAgreement.contact_mobile || selectedAgreement.customer_contact_mobile || '').trim();
     return { invoice, items };
   },
   validateInvoice(invoice = {}) {
@@ -1840,6 +1928,7 @@ const Invoices = {
     this.state.selectedInvoice.invoice_date = this.state.selectedInvoice.issue_date;
     this.state.items = Array.isArray(items) ? items.map(item => this.normalizeItem(item)) : [];
     this.assignFormValues(this.state.selectedInvoice);
+    this.hydrateInvoiceCustomerSection({ agreement: this.state.selectedAgreement || this.state.selectedInvoice || {}, company: this.state.selectedCompany || {}, contact: this.state.selectedContact || {} });
     this.renderItems(this.state.items);
     const summary = this.deriveCalculatedSummary(this.state.selectedInvoice, this.state.items, { preferInvoiceValues: true });
     this.state.selectedInvoice = this.normalizeInvoice({ ...this.state.selectedInvoice, ...summary });
@@ -2058,7 +2147,13 @@ const Invoices = {
       if (String(currentFormInvoice.issue_date || '').trim()) mappedInvoice.issue_date = currentFormInvoice.issue_date;
       if (String(currentFormInvoice.due_date || '').trim()) mappedInvoice.due_date = currentFormInvoice.due_date;
       mappedInvoice.invoice_number = this.ensureInvoiceNumber(mappedInvoice.invoice_number);
+      const fullCompany = await this.getFullCompanyRecord(agreement.company_id || agreement.companyId || agreement.company || null);
+      const fullContact = await this.getFullContactRecord(agreement.contact_id || agreement.contactId || agreement.contact || null);
+      this.state.selectedAgreement = agreement || null;
+      this.state.selectedCompany = fullCompany || null;
+      this.state.selectedContact = fullContact || null;
       this.assignFormValues(mappedInvoice);
+      this.hydrateInvoiceCustomerSection({ agreement, company: fullCompany || {}, contact: fullContact || {} });
       const catalogLookup = await this.getProposalCatalogLookup();
       const normalizedItems = items.map(item => this.copyInvoiceItemFields(item, this.mergeCatalogItem(item, catalogLookup)));
       this.state.items = normalizedItems;

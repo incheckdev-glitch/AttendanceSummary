@@ -3511,12 +3511,13 @@ Sample:
         </div>
         <div class="divider" style="margin:12px 0;"></div>
         <strong style="display:block;margin-bottom:8px;">Customer</strong>
+        <div class="muted" style="margin:-4px 0 8px;">Customer and contact details are managed from the Company and Contacts modules.</div>
         <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
-          <div class="filter-row"><label class="muted" for="invoiceFormCustomerName">Customer Name</label><input id="invoiceFormCustomerName" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="invoiceFormCustomerLegalName">Customer Legal Name</label><input id="invoiceFormCustomerLegalName" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="invoiceFormCustomerContactName">Contact Name</label><input id="invoiceFormCustomerContactName" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="invoiceFormCustomerContactEmail">Contact Email</label><input id="invoiceFormCustomerContactEmail" class="input" type="email" /></div>
-          <div class="filter-row" style="grid-column:1 / -1;"><label class="muted" for="invoiceFormCustomerAddress">Customer Address</label><input id="invoiceFormCustomerAddress" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="invoiceFormCustomerName">Customer Name</label><input id="invoiceFormCustomerName" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+          <div class="filter-row"><label class="muted" for="invoiceFormCustomerLegalName">Customer Legal Name</label><input id="invoiceFormCustomerLegalName" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+          <div class="filter-row"><label class="muted" for="invoiceFormCustomerContactName">Contact Name</label><input id="invoiceFormCustomerContactName" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+          <div class="filter-row"><label class="muted" for="invoiceFormCustomerContactEmail">Contact Email</label><input id="invoiceFormCustomerContactEmail" class="input readonly-field locked-field" type="email" readonly aria-readonly="true" /></div>
+          <div class="filter-row" style="grid-column:1 / -1;"><label class="muted" for="invoiceFormCustomerAddress">Customer Address</label><input id="invoiceFormCustomerAddress" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
         </div>
         <div class="divider" style="margin:12px 0;"></div>
         <strong style="display:block;margin-bottom:8px;">Invoice Items</strong>
