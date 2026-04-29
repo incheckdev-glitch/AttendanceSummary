@@ -274,7 +274,7 @@
     'created_by','updated_by'
   ]);
   const INVOICE_COLUMNS = new Set([
-    'invoice_id','invoice_number','client_id','agreement_id','proposal_id','issue_date','due_date','billing_frequency',
+    'invoice_id','invoice_number','client_id','agreement_id','agreement_number','proposal_id','issue_date','due_date','billing_frequency',
     'payment_term','company_id','company_name','contact_id','contact_name','contact_email','contact_phone','contact_mobile',
     'customer_name','customer_legal_name','customer_address','customer_contact_name','customer_contact_email',
     'provider_legal_name','provider_address','support_email','subtotal_locations','subtotal_one_time','invoice_total',
@@ -376,7 +376,7 @@
       'created_by','updated_by','created_at','updated_at'
     ]),
     invoices: new Set([
-      'id','invoice_id','invoice_number','client_id','agreement_id','proposal_id','issue_date','due_date','billing_frequency',
+      'id','invoice_id','invoice_number','client_id','agreement_id','agreement_number','proposal_id','issue_date','due_date','billing_frequency',
       'payment_term','customer_name','customer_legal_name','customer_address','customer_contact_name','customer_contact_email',
       'provider_legal_name','provider_address','support_email','subtotal_locations','subtotal_one_time','invoice_total',
       'old_paid_total','paid_now','amount_paid','received_amount','pending_amount','payment_state','payment_conclusion','amount_in_words',
@@ -1074,11 +1074,19 @@
       due_date: trimOrNull(firstDefined(record, ['due_date', 'dueDate'])),
       billing_frequency: trimOrNull(firstDefined(record, ['billing_frequency', 'billingFrequency'])),
       payment_term: trimOrNull(firstDefined(record, ['payment_term', 'paymentTerm'])),
+      agreement_number: trimOrNull(firstDefined(record, ['agreement_number', 'agreementNumber'])),
+      company_id: trimOrNull(firstDefined(record, ['company_id', 'companyId'])),
+      company_name: trimOrNull(firstDefined(record, ['company_name', 'companyName'])),
+      contact_id: trimOrNull(firstDefined(record, ['contact_id', 'contactId'])),
+      contact_name: trimOrNull(firstDefined(record, ['contact_name', 'contactName', 'customer_contact_name', 'customerContactName'])),
+      contact_email: trimOrNull(firstDefined(record, ['contact_email', 'contactEmail', 'customer_contact_email', 'customerContactEmail'])),
+      contact_phone: trimOrNull(firstDefined(record, ['contact_phone', 'contactPhone', 'customer_contact_phone', 'customerContactPhone'])),
+      contact_mobile: trimOrNull(firstDefined(record, ['contact_mobile', 'contactMobile', 'customer_contact_mobile', 'customerContactMobile'])),
       customer_name: trimOrNull(firstDefined(record, ['customer_name', 'customerName'])),
       customer_legal_name: trimOrNull(firstDefined(record, ['customer_legal_name', 'customerLegalName'])),
       customer_address: trimOrNull(firstDefined(record, ['customer_address', 'customerAddress'])),
-      customer_contact_name: trimOrNull(firstDefined(record, ['customer_contact_name', 'customerContactName'])),
-      customer_contact_email: trimOrNull(firstDefined(record, ['customer_contact_email', 'customerContactEmail'])),
+      customer_contact_name: trimOrNull(firstDefined(record, ['customer_contact_name', 'customerContactName', 'contact_name', 'contactName'])),
+      customer_contact_email: trimOrNull(firstDefined(record, ['customer_contact_email', 'customerContactEmail', 'contact_email', 'contactEmail'])),
       provider_legal_name: trimOrNull(firstDefined(record, ['provider_legal_name', 'providerLegalName'])),
       provider_address: trimOrNull(firstDefined(record, ['provider_address', 'providerAddress'])),
       support_email: trimOrNull(firstDefined(record, ['support_email', 'supportEmail'])),
