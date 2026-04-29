@@ -2665,6 +2665,58 @@ Sample:
       </form>
     </div>
   </div>
+
+  <div id="companyModal" class="modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="companyModalTitle">
+    <div class="modal-content" style="max-width:980px;">
+      <div class="modal-header"><h2 id="companyModalTitle" style="margin:0;font-size:20px">Create Company</h2><button class="modal-close" id="companyCloseBtn" aria-label="Close company form">✕</button></div>
+      <form id="companyForm" class="stack" style="margin-top:12px;">
+        <input id="companyRecordId" type="hidden" />
+        <div class="grid cols-2">
+          <div class="filter-row"><label class="muted" for="companyNameInput">Company Name *</label><input id="companyNameInput" class="input" type="text" required /></div>
+          <div class="filter-row"><label class="muted" for="companyLegalNameInput">Legal Name</label><input id="companyLegalNameInput" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="companyTypeInput">Company Type</label><input id="companyTypeInput" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="companyIndustryInput">Industry</label><input id="companyIndustryInput" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="companyWebsiteInput">Website</label><input id="companyWebsiteInput" class="input" type="url" /></div>
+          <div class="filter-row"><label class="muted" for="companyMainEmailInput">Main Email</label><input id="companyMainEmailInput" class="input" type="email" /></div>
+          <div class="filter-row"><label class="muted" for="companyMainPhoneInput">Main Phone</label><input id="companyMainPhoneInput" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="companyCountryInput">Country</label><input id="companyCountryInput" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="companyCityInput">City</label><input id="companyCityInput" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="companyAddressInput">Address</label><input id="companyAddressInput" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="companyTaxNumberInput">Tax Number</label><input id="companyTaxNumberInput" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="companyStatusInput">Company Status</label><select id="companyStatusInput" class="select"><option>Prospect</option><option>Lead Created</option><option>Deal Open</option><option>Proposal Sent</option><option>Agreement Signed</option><option>Client</option><option>Inactive</option><option>Blacklisted</option></select></div>
+          <div class="filter-row"><label class="muted" for="companySourceInput">Source</label><input id="companySourceInput" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="companyOwnerNameInput">Owner Name</label><input id="companyOwnerNameInput" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="companyOwnerEmailInput">Owner Email</label><input id="companyOwnerEmailInput" class="input" type="email" /></div>
+          <div class="filter-row" style="grid-column:1 / -1;"><label class="muted" for="companyNotesInput">Notes</label><textarea id="companyNotesInput" class="input" rows="3"></textarea></div>
+        </div>
+        <div class="actions" style="justify-content:flex-end;gap:8px;"><button id="companyCancelBtn" type="button" class="btn ghost">Cancel</button><button id="companySaveBtn" type="submit" class="btn">Save Company</button></div>
+      </form>
+    </div>
+  </div>
+  <div id="contactModal" class="modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="contactModalTitle">
+    <div class="modal-content" style="max-width:980px;">
+      <div class="modal-header"><h2 id="contactModalTitle" style="margin:0;font-size:20px">Create Contact</h2><button class="modal-close" id="contactCloseBtn" aria-label="Close contact form">✕</button></div>
+      <form id="contactForm" class="stack" style="margin-top:12px;">
+        <input id="contactRecordId" type="hidden" />
+        <div class="grid cols-2">
+          <div class="filter-row"><label class="muted" for="contactCompanyInput">Company *</label><select id="contactCompanyInput" class="select" required><option value="">Select company</option></select></div>
+          <div class="filter-row"><label class="muted" for="contactFullNameInput">Full Name *</label><input id="contactFullNameInput" class="input" type="text" required /></div>
+          <div class="filter-row"><label class="muted" for="contactFirstNameInput">First Name</label><input id="contactFirstNameInput" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="contactLastNameInput">Last Name</label><input id="contactLastNameInput" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="contactJobTitleInput">Job Title</label><input id="contactJobTitleInput" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="contactDepartmentInput">Department</label><input id="contactDepartmentInput" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="contactEmailInput">Email</label><input id="contactEmailInput" class="input" type="email" /></div>
+          <div class="filter-row"><label class="muted" for="contactPhoneInput">Phone</label><input id="contactPhoneInput" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="contactMobileInput">Mobile</label><input id="contactMobileInput" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="contactDecisionRoleInput">Decision Role</label><select id="contactDecisionRoleInput" class="select"><option value="">—</option><option>Decision Maker</option><option>Influencer</option><option>Finance Contact</option><option>Technical Contact</option><option>Operations Contact</option><option>Procurement Contact</option><option>User</option><option>Other</option></select></div>
+          <div class="filter-row"><label class="muted" for="contactStatusInput">Contact Status</label><select id="contactStatusInput" class="select"><option>Active</option><option>Inactive</option><option>Left Company</option><option>Do Not Contact</option></select></div>
+          <div class="filter-row" style="display:flex;align-items:flex-end;"><label style="display:flex;align-items:center;gap:8px;"><input id="contactIsPrimaryInput" type="checkbox" /> <span class="muted">Primary Contact</span></label></div>
+          <div class="filter-row" style="grid-column:1 / -1;"><label class="muted" for="contactNotesInput">Notes</label><textarea id="contactNotesInput" class="input" rows="3"></textarea></div>
+        </div>
+        <div class="actions" style="justify-content:flex-end;gap:8px;"><button id="contactCancelBtn" type="button" class="btn ghost">Cancel</button><button id="contactSaveBtn" type="submit" class="btn">Save Contact</button></div>
+      </form>
+    </div>
+  </div>
   <div id="leadFormModal" class="modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="leadFormTitle">
     <div class="modal-content">
       <div class="modal-header">
