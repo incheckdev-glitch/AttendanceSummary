@@ -6,7 +6,15 @@ const Receipts = {
     'invoice_id',
     'invoice_number',
     'client_id',
-    'client_name',
+    'agreement_id',
+    'agreement_number',
+    'company_id',
+    'company_name',
+    'contact_id',
+    'contact_name',
+    'contact_email',
+    'contact_phone',
+    'contact_mobile',
     'invoice_total',
     'old_paid_total',
     'paid_now',
@@ -20,6 +28,7 @@ const Receipts = {
     'payment_reference',
     'payment_notes',
     'status',
+    'receipt_status',
     'notes',
     'currency',
     'support_email',
@@ -30,7 +39,11 @@ const Receipts = {
     'is_settlement',
     'created_at',
     'updated_at',
-    'receipt_date'
+    'receipt_date',
+    'payment_date',
+    'amount_paid',
+    'balance_due',
+    'payment_status'
   ]),
   receiptFields: [
     'id',
@@ -1052,6 +1065,17 @@ const Receipts = {
       payment_term: String(sourceInvoice?.payment_term || '').trim(),
       currency: String(sourceInvoice?.currency || '').trim() || 'USD',
       status: 'Issued',
+      receipt_status: 'Issued',
+      agreement_id: String(sourceInvoice?.agreement_id || '').trim(),
+      agreement_number: String(sourceInvoice?.agreement_number || '').trim(),
+      company_id: String(sourceInvoice?.company_id || '').trim(),
+      company_name: String(sourceInvoice?.company_name || '').trim(),
+      contact_id: String(sourceInvoice?.contact_id || '').trim(),
+      contact_name: String(sourceInvoice?.contact_name || '').trim(),
+      contact_email: String(sourceInvoice?.contact_email || '').trim(),
+      contact_phone: String(sourceInvoice?.contact_phone || '').trim(),
+      contact_mobile: String(sourceInvoice?.contact_mobile || '').trim(),
+      payment_date: this.todayInputValue(),
       old_paid_total: snapshot.old_paid_total,
       paid_now: snapshot.paid_now,
       new_paid_total: snapshot.new_paid_total,
@@ -1074,6 +1098,11 @@ const Receipts = {
       E.receiptForm.dataset.paymentMethod = '';
       E.receiptForm.dataset.paymentReference = '';
     }
+    ['receiptFormInvoiceId','receiptFormInvoiceNumber','receiptFormCustomerName','receiptFormCustomerLegalName','receiptFormCustomerAddress']
+      .forEach(fieldId => {
+        const field = E[fieldId];
+        if (field) field.readOnly = true;
+      });
     if (E.receiptFormTitle) {
       const label = String(draft.invoice_number || invoiceUuid).trim();
       E.receiptFormTitle.textContent = `Create Receipt · ${label}`;
@@ -1225,7 +1254,16 @@ const Receipts = {
       receipt_id: String(formValues.receipt_id || existing.receipt_id || '').trim() || null,
       receipt_number: String(formValues.receipt_number || existing.receipt_number || '').trim() || null,
       invoice_id: invoiceId || null,
+      agreement_id: String(formValues.agreement_id || existing.agreement_id || linkedInvoice?.agreement_id || '').trim() || null,
+      agreement_number: String(formValues.agreement_number || existing.agreement_number || linkedInvoice?.agreement_number || '').trim() || null,
       client_id: clientId || null,
+      company_id: String(formValues.company_id || existing.company_id || linkedInvoice?.company_id || '').trim() || null,
+      company_name: String(formValues.company_name || existing.company_name || linkedInvoice?.company_name || '').trim() || null,
+      contact_id: String(formValues.contact_id || existing.contact_id || linkedInvoice?.contact_id || '').trim() || null,
+      contact_name: String(formValues.contact_name || existing.contact_name || linkedInvoice?.contact_name || '').trim() || null,
+      contact_email: String(formValues.contact_email || existing.contact_email || linkedInvoice?.contact_email || '').trim() || null,
+      contact_phone: String(formValues.contact_phone || existing.contact_phone || linkedInvoice?.contact_phone || '').trim() || null,
+      contact_mobile: String(formValues.contact_mobile || existing.contact_mobile || linkedInvoice?.contact_mobile || '').trim() || null,
       receipt_date: String(formValues.receipt_date || existing.receipt_date || '').trim() || null,
       amount_received: paymentSnapshot.received_amount,
       received_amount: paymentSnapshot.received_amount,
@@ -1238,6 +1276,7 @@ const Receipts = {
       }),
       notes: String(formValues.notes || existing.notes || '').trim() || null,
       status: String(formValues.status || existing.status || '').trim() || 'Issued',
+      receipt_status: 'Issued',
       invoice_number: String(formValues.invoice_number || existing.invoice_number || '').trim() || null,
       currency: String(formValues.currency || existing.currency || '').trim() || 'USD',
       support_email: String(formValues.support_email || existing.support_email || '').trim() || null,
@@ -1248,6 +1287,9 @@ const Receipts = {
       invoice_total: paymentSnapshot.invoice_total,
       old_paid_total: paymentSnapshot.old_paid_total,
       paid_now: paymentSnapshot.paid_now,
+      amount_paid: paymentSnapshot.received_amount,
+      balance_due: normalizedPendingAmount,
+      payment_status: normalizedPaymentState,
       new_paid_total: normalizedNewPaidTotal,
       pending_amount: normalizedPendingAmount,
       payment_state: normalizedPaymentState,

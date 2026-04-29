@@ -158,7 +158,18 @@ const Invoices = {
   },
   canCreateReceiptFromInvoice(invoice = {}) {
     const status = this.normalizeText(invoice?.status || '');
-    return ['paid', 'partially paid', 'received'].includes(status);
+    if (status !== 'issued') return false;
+    const paymentStatus = this.normalizeText(invoice?.payment_status || invoice?.payment_state || '');
+    if (paymentStatus === 'paid') return false;
+    const total = this.toNumberSafe(invoice?.invoice_total ?? invoice?.grand_total ?? 0);
+    const paid = this.toNumberSafe(invoice?.amount_paid ?? invoice?.received_amount ?? 0);
+    const balance = invoice?.balance_due !== undefined && invoice?.balance_due !== null
+      ? this.toNumberSafe(invoice.balance_due)
+      : Math.max(0, total - paid);
+    return balance > 0;
+  },
+  isIssuedInvoice(invoice = {}) {
+    return this.normalizeText(invoice?.status || '') === 'issued';
   },
   isSettlementReceipt(receipt = {}) {
     const status = this.normalizeText(receipt?.status);
@@ -1949,21 +1960,28 @@ const Invoices = {
       ? Permissions.canUpdateInvoice()
       : Permissions.canCreateInvoice();
     if (E.invoiceFormDeleteBtn) E.invoiceFormDeleteBtn.style.display = !readOnly && this.state.selectedInvoice.id && Permissions.canDeleteInvoice() ? '' : 'none';
-    if (E.invoiceFormSaveBtn) E.invoiceFormSaveBtn.style.display = !readOnly && canSave ? '' : 'none';
+    const isIssuedLocked = isExistingInvoice && this.isIssuedInvoice(this.state.selectedInvoice);
+    if (E.invoiceFormSaveBtn) E.invoiceFormSaveBtn.style.display = !readOnly && !isIssuedLocked && canSave ? '' : 'none';
     E.invoiceForm.querySelectorAll('input, select, textarea').forEach(el => {
       if (el.id === 'invoiceFormInvoiceId') {
         el.disabled = true;
         return;
       }
-      el.disabled = readOnly;
+      el.disabled = readOnly || isIssuedLocked;
     });
     if (E.invoiceFormOldPaidTotal) E.invoiceFormOldPaidTotal.readOnly = true;
     if (E.invoiceFormAmountPaid) E.invoiceFormAmountPaid.readOnly = true;
     if (E.invoiceFormPendingAmount) E.invoiceFormPendingAmount.readOnly = true;
     if (E.invoiceFormPaymentState) E.invoiceFormPaymentState.readOnly = true;
-    if (E.invoiceAddAnnualRowBtn) E.invoiceAddAnnualRowBtn.style.display = readOnly ? 'none' : '';
-    if (E.invoiceAddOneTimeRowBtn) E.invoiceAddOneTimeRowBtn.style.display = readOnly ? 'none' : '';
-    if (E.invoiceAddCapabilityRowBtn) E.invoiceAddCapabilityRowBtn.style.display = readOnly ? 'none' : '';
+    if (E.invoiceAddAnnualRowBtn) E.invoiceAddAnnualRowBtn.style.display = readOnly || isIssuedLocked ? 'none' : '';
+    if (E.invoiceAddOneTimeRowBtn) E.invoiceAddOneTimeRowBtn.style.display = readOnly || isIssuedLocked ? 'none' : '';
+    if (E.invoiceAddCapabilityRowBtn) E.invoiceAddCapabilityRowBtn.style.display = readOnly || isIssuedLocked ? 'none' : '';
+    if (E.invoiceFormIssuedHelperText) {
+      E.invoiceFormIssuedHelperText.textContent = isIssuedLocked
+        ? 'This invoice is issued and cannot be edited. Create a receipt to record payment.'
+        : '';
+      E.invoiceFormIssuedHelperText.style.display = isIssuedLocked ? '' : 'none';
+    }
     this.ensureCatalogLoaded();
     E.invoiceFormModal.classList.add('open');
     E.invoiceFormModal.setAttribute('aria-hidden', 'false');
@@ -2218,6 +2236,10 @@ const Invoices = {
     const payloadInvoice = this.buildInvoiceSavePayload(normalizedInvoice);
     this.assignFormValues(normalizedInvoice);
     const currentRecord = this.state.rows.find(row => this.invoiceDbId(row.id) === id) || {};
+    if (id && this.isIssuedInvoice(currentRecord)) {
+      UI.toast('Issued invoices cannot be edited. Create a receipt to record payment.');
+      return;
+    }
     const requestedDiscount = items.reduce((max, item) => Math.max(max, this.toNumberSafe(item.discount_percent)), 0);
     const workflowCheck = await window.WorkflowEngine?.enforceBeforeSave?.('invoices', currentRecord, {
       invoice_id: id,
@@ -2318,6 +2340,10 @@ const Invoices = {
       this.state.rows.find(row => this.invoiceDbId(row.id) === id) ||
       (String(this.state.selectedInvoice?.id || '').trim() === id ? this.state.selectedInvoice : null) ||
       null;
+    if (!this.canCreateReceiptFromInvoice(invoice || {})) {
+      UI.toast('Create Receipt is only available for issued invoices with outstanding balance.');
+      return;
+    }
     if (!window.Receipts?.openCreateFromInvoice) {
       UI.toast('Receipt form is not available right now. Please refresh and try again.');
       return;
@@ -2326,15 +2352,24 @@ const Invoices = {
       id,
       invoice_id: invoice?.invoice_id || '',
       invoice_number: invoice?.invoice_number || invoice?.invoice_id || '',
+      agreement_id: invoice?.agreement_id || '',
+      agreement_number: invoice?.agreement_number || '',
+      company_id: invoice?.company_id || '',
+      company_name: invoice?.company_name || '',
+      contact_id: invoice?.contact_id || '',
+      contact_name: invoice?.contact_name || '',
+      contact_email: invoice?.contact_email || '',
+      contact_phone: invoice?.contact_phone || '',
+      contact_mobile: invoice?.contact_mobile || '',
       client_id: invoice?.client_id || '',
       customer_name: invoice?.customer_name || '',
       customer_legal_name: invoice?.customer_legal_name || '',
       customer_address: invoice?.customer_address || '',
       currency: invoice?.currency || 'USD',
       invoice_total: invoice?.invoice_total ?? invoice?.grand_total ?? 0,
-      old_paid_total: invoice?.amount_paid ?? invoice?.received_amount ?? 0,
-      pending_amount: invoice?.pending_amount ?? 0,
-      payment_state: invoice?.payment_state || ''
+      amount_paid: invoice?.amount_paid ?? invoice?.received_amount ?? 0,
+      balance_due: invoice?.balance_due ?? invoice?.pending_amount ?? Math.max(0, this.toNumberSafe(invoice?.invoice_total ?? 0) - this.toNumberSafe(invoice?.amount_paid ?? 0)),
+      payment_status: invoice?.payment_status || invoice?.payment_state || ''
     });
   },
   async syncAfterReceiptMutation({ invoiceId, receipt = null } = {}) {
