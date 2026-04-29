@@ -31,6 +31,7 @@ function cacheEls() {
     'refreshNow',
     'exportCsv',
     'kpis',
+    'ticketInternalWidgets',
     'issueModal',
     'modalBody',
     'modalTitle',

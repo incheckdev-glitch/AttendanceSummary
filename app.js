@@ -54,9 +54,25 @@ const TicketSummaryState = {
   open: 0,
   highRisk: 0,
   statusCounts: {},
+  issueRelatedSummary: {},
+  devTeamStatusSummary: {},
   filterKey: '',
   loaded: false
 };
+
+function canViewTicketInternalWidgets() {
+  return ['admin', 'dev'].includes(String(Session.role() || '').trim().toLowerCase());
+}
+
+function renderInternalSummaryWidget(title, summary = {}) {
+  const rows = Object.entries(summary || {}).sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0));
+  const items = rows.length
+    ? rows
+        .map(([label, count]) => `<li><span>${U.escapeHtml(label)}</span><strong>${Number(count || 0)}</strong></li>`)
+        .join('')
+    : '<li><span>Not Set</span><strong>0</strong></li>';
+  return `<article class="card" aria-label="${U.escapeAttr(title)} widget"><div class="label">${U.escapeHtml(title)}</div><ul class="ticket-internal-summary-list">${items}</ul><div class="sub">From filtered ticket summary</div></article>`;
+}
 
 function buildTicketSummaryFilterKey(filters = {}) {
   const source = filters && typeof filters === 'object' ? filters : {};
@@ -549,6 +565,7 @@ UI.Issues = {
     this.renderSummary(list);
     this.renderFilterChips();
     this.renderKPIs(list);
+    this.renderInternalWidgets();
   },
   refreshChartsOnly(list = this.getFilteredList()) {
     this.renderCharts(list);
@@ -1132,6 +1149,18 @@ UI.Issues.renderSummary = function (list) {
           : '';
     }
   }
+};
+
+UI.Issues.renderInternalWidgets = function () {
+  if (!E.ticketInternalWidgets) return;
+  if (!canViewTicketInternalWidgets()) {
+    E.ticketInternalWidgets.innerHTML = '';
+    return;
+  }
+  E.ticketInternalWidgets.innerHTML = [
+    renderInternalSummaryWidget('Issue Related', TicketSummaryState.issueRelatedSummary),
+    renderInternalSummaryWidget('Dev Team Status', TicketSummaryState.devTeamStatusSummary)
+  ].join('');
 };
 
 /** Analytics (AI tab) */
@@ -3169,6 +3198,14 @@ async function loadIssues(force = false) {
         summaryResponse && typeof summaryResponse.statusCounts === 'object'
           ? { ...summaryResponse.statusCounts }
           : {};
+      TicketSummaryState.issueRelatedSummary =
+        summaryResponse && typeof summaryResponse.issueRelatedSummary === 'object'
+          ? { ...summaryResponse.issueRelatedSummary }
+          : {};
+      TicketSummaryState.devTeamStatusSummary =
+        summaryResponse && typeof summaryResponse.devTeamStatusSummary === 'object'
+          ? { ...summaryResponse.devTeamStatusSummary }
+          : {};
       TicketSummaryState.filterKey = summaryFilterKey;
       TicketSummaryState.loaded = true;
     } else if (!TicketSummaryState.loaded) {
@@ -3176,6 +3213,8 @@ async function loadIssues(force = false) {
       TicketSummaryState.open = 0;
       TicketSummaryState.highRisk = 0;
       TicketSummaryState.statusCounts = {};
+      TicketSummaryState.issueRelatedSummary = {};
+      TicketSummaryState.devTeamStatusSummary = {};
       TicketSummaryState.filterKey = summaryFilterKey;
     }
     const rawRows = extractEventsPayload(response);

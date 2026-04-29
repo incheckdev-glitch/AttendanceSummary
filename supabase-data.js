@@ -522,6 +522,10 @@
   function getClient() { return global.SupabaseClient.getClient(); }
   function role() { return String(global.Session?.role?.() || '').toLowerCase(); }
   function isAdminDev() { return ['admin','dev'].includes(role()); }
+  function normalizeInternalTicketWidgetValue(value) {
+    const normalized = String(value ?? '').trim();
+    return normalized || 'Not Set';
+  }
   function allowedRoles(resource, action) {
     const matrix = global.AppPermissions?.baseMatrix || {};
     const rules = matrix?.[resource];
@@ -3950,6 +3954,8 @@
       if (totalError) throw friendlyError('Unable to load ticket summary', totalError);
       const total = Number(totalCount || 0);
       const statusCounts = {};
+      const issueRelatedSummary = {};
+      const devTeamStatusSummary = {};
       let open = 0;
       let highRisk = 0;
       const pageSize = 1000;
@@ -3959,7 +3965,7 @@
       for (let page = 0; page < maxPages; page++) {
         const to = from + pageSize - 1;
         const { data: chunk, error: chunkError } = await base()
-          .select('id,status,priority')
+          .select('id,status,priority,issue_related,issueRelated,dev_team_status,devTeamStatus')
           .order('id', { ascending: true })
           .range(from, to);
         if (chunkError) throw friendlyError('Unable to load ticket summary', chunkError);
@@ -3975,6 +3981,12 @@
           const statusLc = normalizedStatus.toLowerCase();
           const isOpen = !(statusLc.startsWith('resolved') || statusLc.startsWith('rejected'));
           if (isOpen) open += 1;
+          if (isAdminDev()) {
+            const issueValue = normalizeInternalTicketWidgetValue(row?.issue_related ?? row?.issueRelated);
+            issueRelatedSummary[issueValue] = (issueRelatedSummary[issueValue] || 0) + 1;
+            const devValue = normalizeInternalTicketWidgetValue(row?.dev_team_status ?? row?.devTeamStatus);
+            devTeamStatusSummary[devValue] = (devTeamStatusSummary[devValue] || 0) + 1;
+          }
           const priority = String(row?.priority || '').trim().toLowerCase();
           const priorityWeight = priority.startsWith('h') ? 3 : priority.startsWith('m') ? 2 : priority.startsWith('l') ? 1 : 1;
           let riskScore = priorityWeight;
@@ -3991,7 +4003,13 @@
           total,
           open,
           highRisk,
-          statusCounts
+          statusCounts,
+          ...(isAdminDev()
+            ? {
+                issueRelatedSummary,
+                devTeamStatusSummary
+              }
+            : {})
         }
       };
     }
