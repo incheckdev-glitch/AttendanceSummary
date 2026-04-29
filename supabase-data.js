@@ -1430,6 +1430,99 @@
     return sanitized;
   }
 
+  function sanitizeCompanyRecord(input = {}, options = {}) {
+    const source = input && typeof input === 'object' ? input : {};
+    const output = {};
+
+    const assign = (key, value) => {
+      if (!COMPANY_COLUMNS.has(key)) return;
+      if (value === undefined) return;
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        output[key] = trimmed === '' ? null : trimmed;
+        return;
+      }
+      output[key] = value;
+    };
+
+    assign('company_id', source.company_id ?? source.companyId);
+    assign('company_name', source.company_name ?? source.companyName);
+    assign('legal_name', source.legal_name ?? source.legalName);
+    assign('company_type', source.company_type ?? source.companyType);
+    assign('industry', source.industry);
+    assign('website', source.website);
+    assign('main_email', source.main_email ?? source.mainEmail);
+    assign('main_phone', source.main_phone ?? source.mainPhone);
+    assign('country', source.country);
+    assign('city', source.city);
+    assign('address', source.address);
+    assign('tax_number', source.tax_number ?? source.taxNumber);
+    assign('company_status', source.company_status ?? source.companyStatus ?? 'Prospect');
+    assign('source', source.source);
+    assign('owner_name', source.owner_name ?? source.ownerName);
+    assign('owner_email', source.owner_email ?? source.ownerEmail);
+    assign('notes', source.notes);
+    assign('created_by', source.created_by ?? source.createdBy);
+    assign('created_by_email', source.created_by_email ?? source.createdByEmail);
+
+    if (options.mode === 'create' && !output.company_id) delete output.company_id;
+    delete output.created_at;
+    delete output.updated_at;
+    if (!output.company_name) throw new Error('Company name is required.');
+    return output;
+  }
+
+  function sanitizeContactRecord(input = {}, options = {}) {
+    const source = input && typeof input === 'object' ? input : {};
+    const output = {};
+
+    const assign = (key, value) => {
+      if (!CONTACT_COLUMNS.has(key)) return;
+      if (value === undefined) return;
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        output[key] = trimmed === '' ? null : trimmed;
+        return;
+      }
+      output[key] = value;
+    };
+
+    assign('contact_id', source.contact_id ?? source.contactId);
+    assign('company_id', source.company_id ?? source.companyId);
+    assign('company_name', source.company_name ?? source.companyName);
+    assign('first_name', source.first_name ?? source.firstName);
+    assign('last_name', source.last_name ?? source.lastName);
+    assign('full_name', source.full_name ?? source.fullName);
+    assign('job_title', source.job_title ?? source.jobTitle);
+    assign('department', source.department);
+    assign('email', source.email);
+    assign('phone', source.phone);
+    assign('mobile', source.mobile);
+    assign('decision_role', source.decision_role ?? source.decisionRole);
+    if (source.is_primary_contact !== undefined || source.isPrimaryContact !== undefined) {
+      output.is_primary_contact = Boolean(source.is_primary_contact ?? source.isPrimaryContact);
+    }
+    assign('contact_status', source.contact_status ?? source.contactStatus ?? 'Active');
+    assign('notes', source.notes);
+    assign('created_by', source.created_by ?? source.createdBy);
+    assign('created_by_email', source.created_by_email ?? source.createdByEmail);
+
+    const composedFullName = [output.first_name, output.last_name]
+      .map(value => (value == null ? '' : String(value).trim()))
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+    if (!output.full_name && composedFullName) output.full_name = composedFullName;
+    if (!output.contact_status) output.contact_status = 'Active';
+    if (output.is_primary_contact === undefined) output.is_primary_contact = false;
+    if (options.mode === 'create' && !output.contact_id) delete output.contact_id;
+    delete output.created_at;
+    delete output.updated_at;
+    if (!output.company_id) throw new Error('Company is required.');
+    if (!output.full_name) throw new Error('Full Name is required.');
+    return output;
+  }
+
   function normalizePermissionKey(value) {
     return String(value || '').trim().toLowerCase();
   }
@@ -4385,6 +4478,10 @@
               ? sanitizeInvoicesRecord(record, { includeCreatedBy: true, userId: currentUserId })
             : resource === 'receipts'
               ? sanitizeReceiptsRecord(record, { includeCreatedBy: true, userId: currentUserId })
+            : resource === 'companies'
+              ? sanitizeCompanyRecord(record, { mode: 'create' })
+            : resource === 'contacts'
+              ? sanitizeContactRecord(record, { mode: 'create' })
             : record;
       if (resource === 'proposals') {
         const identifiers = await allocateUniqueProposalIdentifiers(client, {
@@ -4794,6 +4891,10 @@
               ? sanitizeInvoicesRecord(safeUpdates, { includeCreatedBy: false, userId: await getCurrentUserId(client) })
             : resource === 'receipts'
               ? sanitizeReceiptsRecord(safeUpdates, { includeCreatedBy: false, userId: await getCurrentUserId(client) })
+            : resource === 'companies'
+              ? sanitizeCompanyRecord(safeUpdates, { mode: 'update' })
+            : resource === 'contacts'
+              ? sanitizeContactRecord(safeUpdates, { mode: 'update' })
             : safeUpdates;
       if (resource === 'proposals') {
         const { data: existingProposal, error: existingProposalError } = await client
