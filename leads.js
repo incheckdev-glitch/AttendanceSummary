@@ -1032,7 +1032,7 @@ const Leads = {
   currentUserAssignee() {
     return String(Session.displayName() || Session.username() || Session.user()?.email || '').trim();
   },
-  openForm(row = null) {
+  async openForm(row = null) {
     if (!E.leadFormModal || !E.leadForm) return;
     const isEdit = !!row;
     E.leadForm.dataset.mode = isEdit ? 'edit' : 'create';
@@ -1084,6 +1084,7 @@ const Leads = {
     if (E.leadFormSaveBtn) E.leadFormSaveBtn.disabled = false;
     E.leadFormModal.style.display = 'flex';
     E.leadFormModal.setAttribute('aria-hidden', 'false');
+    if (row) await this.hydrateLeadLinkedDetails(row);
   },
   closeForm() {
     if (!E.leadFormModal) return;
@@ -1291,8 +1292,42 @@ const Leads = {
     if (E.leadFormCompanyId && !String(E.leadFormCompanyId.value || '').trim()) E.leadFormCompanyId.value = c.company_id || '';
     if (E.leadFormCompanyName && !String(E.leadFormCompanyName.value || '').trim()) E.leadFormCompanyName.value = c.company_name || '';
   },
-  async fetchFullCompany(companyId = '') { const id = String(companyId || '').trim(); if (!id) return null; const res = await Api.requestWithSession('companies', 'list', { page: 1, limit: 1, filters: { company_id: id } }, { requireAuth: true }); const row = Array.isArray(res?.rows) ? res.rows[0] : null; return row ? this.normalizeCompany(row) : null; },
-  async fetchFullContact(contactId = '') { const id = String(contactId || '').trim(); if (!id) return null; const res = await Api.requestWithSession('contacts', 'list', { page: 1, limit: 1, filters: { contact_id: id } }, { requireAuth: true }); const row = Array.isArray(res?.rows) ? res.rows[0] : null; return row ? this.normalizeContact(row) : null; },
+  async getFullCompanyRecord(companyIdOrRecord) {
+    if (!companyIdOrRecord) return null;
+    if (typeof companyIdOrRecord === 'object') {
+      const hasFullFields = companyIdOrRecord.company_type || companyIdOrRecord.companyType || companyIdOrRecord.industry || companyIdOrRecord.website || companyIdOrRecord.main_email || companyIdOrRecord.mainEmail || companyIdOrRecord.main_phone || companyIdOrRecord.mainPhone || companyIdOrRecord.country || companyIdOrRecord.city || companyIdOrRecord.address || companyIdOrRecord.company_status || companyIdOrRecord.companyStatus;
+      if (hasFullFields) return this.normalizeCompany(companyIdOrRecord);
+    }
+    const companyId = typeof companyIdOrRecord === 'object' ? (companyIdOrRecord.company_id || companyIdOrRecord.companyId) : companyIdOrRecord;
+    const id = String(companyId || '').trim();
+    if (!id) return null;
+    const res = await Api.requestWithSession('companies', 'list', { page: 1, limit: 1, filters: { company_id: id } }, { requireAuth: true });
+    const rows = res?.rows || res?.items || res?.data || [];
+    const row = Array.isArray(rows) ? rows[0] : rows;
+    return row ? this.normalizeCompany(row) : null;
+  },
+  async getFullContactRecord(contactIdOrRecord) {
+    if (!contactIdOrRecord) return null;
+    if (typeof contactIdOrRecord === 'object') {
+      const hasFullFields = contactIdOrRecord.first_name || contactIdOrRecord.firstName || contactIdOrRecord.last_name || contactIdOrRecord.lastName || contactIdOrRecord.job_title || contactIdOrRecord.jobTitle || contactIdOrRecord.department || contactIdOrRecord.decision_role || contactIdOrRecord.decisionRole || contactIdOrRecord.contact_status || contactIdOrRecord.contactStatus;
+      if (hasFullFields) return this.normalizeContact(contactIdOrRecord);
+    }
+    const contactId = typeof contactIdOrRecord === 'object' ? (contactIdOrRecord.contact_id || contactIdOrRecord.contactId) : contactIdOrRecord;
+    const id = String(contactId || '').trim();
+    if (!id) return null;
+    const res = await Api.requestWithSession('contacts', 'list', { page: 1, limit: 1, filters: { contact_id: id } }, { requireAuth: true });
+    const rows = res?.rows || res?.items || res?.data || [];
+    const row = Array.isArray(rows) ? rows[0] : rows;
+    return row ? this.normalizeContact(row) : null;
+  },
+  async fetchFullCompany(companyId = '') { return this.getFullCompanyRecord(companyId); },
+  async fetchFullContact(contactId = '') { return this.getFullContactRecord(contactId); },
+  async hydrateLeadLinkedDetails(lead = {}) {
+    const linkedCompany = await this.getFullCompanyRecord(lead.company_id || lead.companyId);
+    this.hydrateLeadFromCompany(linkedCompany || { company_id: lead.company_id || '', company_name: lead.company_name || '' });
+    const linkedContact = await this.getFullContactRecord(lead.contact_id || lead.contactId);
+    this.hydrateLeadFromContact(linkedContact || { contact_id: lead.contact_id || '', full_name: lead.contact_name || lead.full_name || '', email: lead.contact_email || lead.email || '', phone: lead.contact_phone || lead.phone || '' });
+  },
   lockCompanyContactDisplayFields() {
     [E.leadFormContactEmail, E.leadFormContactPhone].forEach(el => {
       if (el) {
@@ -1302,12 +1337,12 @@ const Leads = {
     });
   },
   async openLeadCreateFormWithPrefill(prefill = {}) {
-    this.openForm(null);
+    await this.openForm(null);
     const companyId = String(prefill.company_id || prefill.companyId || '').trim();
     const contactId = String(prefill.contact_id || prefill.contactId || '').trim();
-    const company = (await this.fetchFullCompany(companyId)) || prefill;
+    const company = (await this.getFullCompanyRecord(prefill)) || (await this.fetchFullCompany(companyId)) || prefill;
     this.hydrateLeadFromCompany(company);
-    const contact = (await this.fetchFullContact(contactId)) || prefill;
+    const contact = (await this.getFullContactRecord(prefill)) || (await this.fetchFullContact(contactId)) || prefill;
     this.hydrateLeadFromContact(contact);
     this.lockCompanyContactDisplayFields();
     await this.loadLeadPickerOptions(companyId || this.state.selectedCompany?.company_id || '');
