@@ -1308,11 +1308,16 @@
 
     const mapped = {
       deal_id: toTextOrEmpty(['deal_id', 'dealId']),
-      lead_id: normalizeNullableUuidValue(firstDefined(record, ['lead_id', 'leadId', 'lead_uuid', 'leadUuid'])),
+      lead_id: normalizeNullableUuidValue(firstDefined(record, ['lead_id', 'leadId', 'source_lead_id', 'sourceLeadId', 'lead_uuid', 'leadUuid'])),
       lead_code: toTextOrEmpty(['lead_code', 'leadCode']),
       source_lead_uuid: normalizeNullableUuidValue(firstDefined(record, ['source_lead_uuid', 'sourceLeadUuid', 'lead_uuid', 'leadUuid'])),
       full_name: toTextOrEmpty(['full_name', 'fullName']),
+      company_id: toTextOrEmpty(['company_id', 'companyId']),
       company_name: toTextOrEmpty(['company_name', 'companyName']),
+      contact_id: toTextOrEmpty(['contact_id', 'contactId']),
+      contact_name: toTextOrEmpty(['contact_name', 'contactName']),
+      contact_email: toTextOrEmpty(['contact_email', 'contactEmail']),
+      contact_phone: toTextOrEmpty(['contact_phone', 'contactPhone']),
       phone: toTextOrEmpty(['phone']),
       email: toTextOrEmpty(['email']),
       country: toTextOrEmpty(['country']),
