@@ -82,7 +82,7 @@ const Agreements = {
 
   providerIdentityDefaults: {
     legalName: 'InCheck 360 Holding BV',
-    name: 'InCheck 360 Holding BV',
+    name: 'InCheck 360',
     address: 'Pyrmontstraat 5, 7513 BN, Enschede, The Netherlands',
     primarySignatoryName: 'Simon Moujaly',
     primarySignatoryTitle: 'CFO',
@@ -322,6 +322,30 @@ const Agreements = {
     normalized.customer_name = String(normalized.customer_name || '').trim();
     normalized.status = String(normalized.status || '').trim() || 'Draft';
     normalized.currency = String(normalized.currency || '').trim();
+    normalized.billing_frequency = 'Annual';
+    const validPaymentTerms = ['Net 7', 'Net 14', 'Net 21', 'Net 30'];
+    normalized.payment_term = validPaymentTerms.includes(String(normalized.payment_term || '').trim())
+      ? String(normalized.payment_term || '').trim()
+      : 'Net 30';
+    normalized.provider_legal_name = this.providerIdentityDefaults.legalName;
+    normalized.provider_name = this.providerIdentityDefaults.name;
+    normalized.provider_address = this.providerIdentityDefaults.address;
+    normalized.customer_signatory_name = String(normalized.customer_signatory_name || '').trim()
+      || String(normalized.customer_contact_name || normalized.contact_name || '').trim();
+    normalized.customer_signatory_title = String(normalized.customer_signatory_title || '').trim()
+      || String(source.job_title || source.jobTitle || source.position || '').trim();
+    normalized.customer_signatory_email = String(normalized.customer_signatory_email || '').trim()
+      || String(normalized.customer_contact_email || normalized.contact_email || '').trim();
+    normalized.customer_signatory_phone = String(normalized.customer_signatory_phone || '').trim()
+      || String(normalized.customer_contact_mobile || normalized.contact_mobile || normalized.customer_contact_phone || normalized.contact_phone || '').trim();
+    normalized.provider_primary_signatory_name = String(normalized.provider_primary_signatory_name || normalized.provider_signatory_name_primary || '').trim()
+      || this.providerIdentityDefaults.primarySignatoryName;
+    normalized.provider_primary_signatory_title = String(normalized.provider_primary_signatory_title || normalized.provider_signatory_title_primary || '').trim()
+      || this.providerIdentityDefaults.primarySignatoryTitle;
+    normalized.provider_secondary_signatory_name = String(normalized.provider_secondary_signatory_name || normalized.provider_signatory_name_secondary || '').trim()
+      || this.providerIdentityDefaults.secondarySignatoryName;
+    normalized.provider_secondary_signatory_title = String(normalized.provider_secondary_signatory_title || normalized.provider_signatory_title_secondary || '').trim()
+      || this.providerIdentityDefaults.secondarySignatoryTitle;
     return normalized;
   },
   normalizeItem(raw = {}, sectionFallback = '') {
@@ -374,7 +398,7 @@ const Agreements = {
     return {
       agreement_id: '', agreement_number: '', proposal_id: '', deal_id: '', lead_id: '', agreement_title: '',
       agreement_date: '', effective_date: '', service_start_date: '', service_end_date: '', agreement_length: '', account_number: '',
-      billing_frequency: '', payment_term: '', po_number: '', currency: '', customer_name: '',
+      billing_frequency: 'Annual', payment_term: 'Net 30', po_number: '', currency: '', customer_name: '',
       customer_legal_name: '', customer_address: '', customer_contact_name: '', customer_contact_mobile: '',
       customer_contact_email: '', provider_name: '', provider_legal_name: '', provider_address: '',
       provider_contact_name: '', provider_contact_mobile: '', provider_contact_email: '', status: 'Draft',
@@ -1610,18 +1634,25 @@ const Agreements = {
     const formProposalUuid = String(E.agreementForm?.dataset.proposalUuid || '').trim();
     const { agreement, items } = this.collectFormValues();
     const provider = this.getSignedInUserForAgreement();
+    agreement.billing_frequency = 'Annual';
+    const validPaymentTerms = ['Net 7', 'Net 14', 'Net 21', 'Net 30'];
+    agreement.payment_term = validPaymentTerms.includes(String(agreement.payment_term || '').trim()) ? String(agreement.payment_term || '').trim() : 'Net 30';
     agreement.provider_legal_name = this.providerIdentityDefaults.legalName;
     agreement.provider_name = this.providerIdentityDefaults.name;
     agreement.provider_address = this.providerIdentityDefaults.address;
     agreement.provider_contact_name = String(provider.name || agreement.provider_contact_name || '').trim();
     agreement.provider_contact_email = String(provider.email || agreement.provider_contact_email || '').trim();
     agreement.provider_contact_mobile = String(provider.mobile || agreement.provider_contact_mobile || '').trim();
-    if (!String(agreement.provider_primary_signatory_name || agreement.provider_signatory_name_primary || '').trim()) agreement.provider_signatory_name_primary = this.providerIdentityDefaults.primarySignatoryName;
-    if (!String(agreement.provider_primary_signatory_title || agreement.provider_signatory_title_primary || '').trim()) agreement.provider_signatory_title_primary = this.providerIdentityDefaults.primarySignatoryTitle;
-    if (!String(agreement.provider_signatory_name_secondary || '').trim()) agreement.provider_signatory_name_secondary = this.providerIdentityDefaults.secondarySignatoryName;
-    if (!String(agreement.provider_signatory_title_secondary || '').trim()) agreement.provider_signatory_title_secondary = this.providerIdentityDefaults.secondarySignatoryTitle;
-    agreement.provider_signatory_name = String(agreement.provider_signatory_name_primary || agreement.provider_primary_signatory_name || '').trim();
-    agreement.provider_signatory_title = String(agreement.provider_signatory_title_primary || agreement.provider_primary_signatory_title || '').trim();
+    agreement.provider_primary_signatory_name = String(agreement.provider_primary_signatory_name || agreement.provider_signatory_name_primary || '').trim() || this.providerIdentityDefaults.primarySignatoryName;
+    agreement.provider_primary_signatory_title = String(agreement.provider_primary_signatory_title || agreement.provider_signatory_title_primary || '').trim() || this.providerIdentityDefaults.primarySignatoryTitle;
+    agreement.provider_secondary_signatory_name = String(agreement.provider_secondary_signatory_name || agreement.provider_signatory_name_secondary || '').trim() || this.providerIdentityDefaults.secondarySignatoryName;
+    agreement.provider_secondary_signatory_title = String(agreement.provider_secondary_signatory_title || agreement.provider_signatory_title_secondary || '').trim() || this.providerIdentityDefaults.secondarySignatoryTitle;
+    agreement.provider_signatory_name_primary = agreement.provider_primary_signatory_name;
+    agreement.provider_signatory_title_primary = agreement.provider_primary_signatory_title;
+    agreement.provider_signatory_name_secondary = agreement.provider_secondary_signatory_name;
+    agreement.provider_signatory_title_secondary = agreement.provider_secondary_signatory_title;
+    agreement.provider_signatory_name = agreement.provider_primary_signatory_name;
+    agreement.provider_signatory_title = agreement.provider_primary_signatory_title;
     agreement.provider_signatory_email = String(provider.email || '').trim();
 
     if (!id) {

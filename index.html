@@ -3156,11 +3156,11 @@ Sample:
           <div class="filter-row"><label class="muted" for="proposalFormAccountNumber">Account Number</label><input id="proposalFormAccountNumber" class="input" type="text" /></div>
           <div class="filter-row">
             <label class="muted" for="proposalFormBillingFrequency">Billing Frequency</label>
-            <input id="proposalFormBillingFrequency" class="input" type="text" list="proposalBillingCycleOptions" />
+            <input id="proposalFormBillingFrequency" class="input readonly-field" type="text" value="Annual" readonly aria-readonly="true" />
           </div>
           <div class="filter-row">
             <label class="muted" for="proposalFormPaymentTerm">Payment Term</label>
-            <input id="proposalFormPaymentTerm" class="input" type="text" list="proposalPaymentTermOptions" />
+            <select id="proposalFormPaymentTerm" class="select"><option value="Net 7">Net 7</option><option value="Net 14">Net 14</option><option value="Net 21">Net 21</option><option value="Net 30" selected>Net 30</option></select>
           </div>
           <div class="filter-row"><label class="muted" for="proposalFormPoNumber">PO Number</label><input id="proposalFormPoNumber" class="input" type="text" /></div>
         </div>
@@ -3393,7 +3393,7 @@ Sample:
           <div class="filter-row"><label class="muted" for="agreementFormServiceStartDate">Service Start Date</label><input id="agreementFormServiceStartDate" class="input" type="date" /></div><div class="filter-row"><label class="muted" for="agreementFormServiceEndDate">Service End Date</label><input id="agreementFormServiceEndDate" class="input" type="date" /></div>
           <div class="filter-row"><label class="muted" for="agreementFormAgreementLength">Agreement Length</label><input id="agreementFormAgreementLength" class="input" type="text" list="agreementLengthOptions" /></div><div class="filter-row"><label class="muted" for="agreementFormAccountNumber">Account Number</label><input id="agreementFormAccountNumber" class="input" type="text" /></div>
           <div class="filter-row"><label class="muted" for="agreementFormPoNumber">PO Number</label><input id="agreementFormPoNumber" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="agreementFormBillingFrequency">Billing Frequency</label><input id="agreementFormBillingFrequency" class="input" type="text" list="agreementBillingCycleOptions" /></div><div class="filter-row"><label class="muted" for="agreementFormPaymentTerm">Payment Term</label><input id="agreementFormPaymentTerm" class="input" type="text" list="agreementPaymentTermOptions" /></div>
+          <div class="filter-row"><label class="muted" for="agreementFormBillingFrequency">Billing Frequency</label><input id="agreementFormBillingFrequency" class="input readonly-field" type="text" value="Annual" readonly aria-readonly="true" /></div><div class="filter-row"><label class="muted" for="agreementFormPaymentTerm">Payment Term</label><select id="agreementFormPaymentTerm" class="select"><option value="Net 7">Net 7</option><option value="Net 14">Net 14</option><option value="Net 21">Net 21</option><option value="Net 30" selected>Net 30</option></select></div>
         </div>
         <datalist id="agreementBillingCycleOptions">
           <option value="One-time"></option>
@@ -3419,10 +3419,10 @@ Sample:
         </datalist>
         <div class="divider" style="margin:12px 0;"></div><strong style="display:block;margin-bottom:8px;">Agreement Parties</strong>
         <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
-          <div class="filter-row"><label class="muted" for="agreementFormCustomerLegalName">Customer Legal Name</label><input id="agreementFormCustomerLegalName" class="input" type="text" /></div><div class="filter-row"><label class="muted" for="agreementFormProviderLegalName">Provider Legal Name</label><input id="agreementFormProviderLegalName" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="agreementFormProviderName">Provider Name</label><input id="agreementFormProviderName" class="input" type="text" /></div><div class="filter-row"><label class="muted" for="agreementFormProviderContactEmail">Provider Contact Email</label><input id="agreementFormProviderContactEmail" class="input" type="email" /></div>
+          <div class="filter-row"><label class="muted" for="agreementFormCustomerLegalName">Customer Legal Name</label><input id="agreementFormCustomerLegalName" class="input" type="text" /></div><div class="filter-row"><label class="muted" for="agreementFormProviderLegalName">Provider Legal Name</label><input id="agreementFormProviderLegalName" class="input readonly-field" type="text" readonly aria-readonly="true" /></div>
+          <div class="filter-row"><label class="muted" for="agreementFormProviderName">Provider Name</label><input id="agreementFormProviderName" class="input readonly-field" type="text" readonly aria-readonly="true" /></div><div class="filter-row"><label class="muted" for="agreementFormProviderContactEmail">Provider Contact Email</label><input id="agreementFormProviderContactEmail" class="input" type="email" /></div>
           <div class="filter-row"><label class="muted" for="agreementFormProviderContactName">Provider Contact Name</label><input id="agreementFormProviderContactName" class="input" type="text" /></div><div class="filter-row"><label class="muted" for="agreementFormProviderContactMobile">Provider Contact Mobile</label><input id="agreementFormProviderContactMobile" class="input" type="text" /></div>
-          <div class="filter-row" style="grid-column:1 / -1;"><label class="muted" for="agreementFormProviderAddress">Provider Address</label><input id="agreementFormProviderAddress" class="input" type="text" /></div>
+          <div class="filter-row" style="grid-column:1 / -1;"><label class="muted" for="agreementFormProviderAddress">Provider Address</label><input id="agreementFormProviderAddress" class="input readonly-field" type="text" readonly aria-readonly="true" /></div>
         </div>
         <div class="divider" style="margin:12px 0;"></div><strong style="display:block;margin-bottom:8px;">Subscription Details / Items</strong>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><strong>Annual SaaS Rows</strong><button id="agreementAddAnnualRowBtn" class="btn ghost sm" type="button">Add Row</button></div>

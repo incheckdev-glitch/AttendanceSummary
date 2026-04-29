@@ -1983,8 +1983,8 @@ const Proposals = {
       service_start_date: '',
       contract_term: '',
       account_number: '',
-      billing_frequency: '',
-      payment_term: '',
+      billing_frequency: 'Annual',
+      payment_term: 'Net 30',
       po_number: '',
       customer_signatory_name: '',
       customer_signatory_title: '',
@@ -2060,8 +2060,8 @@ const Proposals = {
     set(E.proposalFormServiceStartDate, proposal.service_start_date || '');
     set(E.proposalFormContractTerm, proposal.contract_term || '');
     set(E.proposalFormAccountNumber, proposal.account_number || '');
-    set(E.proposalFormBillingFrequency, proposal.billing_frequency || '');
-    set(E.proposalFormPaymentTerm, proposal.payment_term || '');
+    set(E.proposalFormBillingFrequency, 'Annual');
+    set(E.proposalFormPaymentTerm, ['Net 7', 'Net 14', 'Net 21', 'Net 30'].includes(proposal.payment_term) ? proposal.payment_term : 'Net 30');
     set(E.proposalFormPoNumber, proposal.po_number || '');
     set(E.proposalFormCustomerSignatoryName, proposal.customer_signatory_name || '');
     set(E.proposalFormCustomerSignatoryTitle, proposal.customer_signatory_title || '');
@@ -2391,8 +2391,8 @@ const Proposals = {
       service_start_date: String(E.proposalFormServiceStartDate?.value || '').trim(),
       contract_term: String(E.proposalFormContractTerm?.value || '').trim(),
       account_number: String(E.proposalFormAccountNumber?.value || '').trim(),
-      billing_frequency: String(E.proposalFormBillingFrequency?.value || '').trim(),
-      payment_term: String(E.proposalFormPaymentTerm?.value || '').trim(),
+      billing_frequency: 'Annual',
+      payment_term: (() => { const term = String(E.proposalFormPaymentTerm?.value || '').trim(); return ['Net 7', 'Net 14', 'Net 21', 'Net 30'].includes(term) ? term : 'Net 30'; })(),
       po_number: String(E.proposalFormPoNumber?.value || '').trim(),
       customer_signatory_name: mapped.customer_signatory_name || '',
       customer_signatory_title: mapped.customer_signatory_title || '',

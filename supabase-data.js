@@ -1778,7 +1778,7 @@
       contract_term: firstDefined(record, ['contract_term', 'contractTerm']),
       account_number: firstDefined(record, ['account_number', 'accountNumber']),
       billing_frequency: firstDefined(record, ['billing_frequency', 'billingFrequency']),
-      payment_term: firstDefined(record, ['payment_term', 'paymentTerm']),
+      payment_term: firstDefined(record, ['payment_term', 'payment_terms', 'paymentTerm', 'paymentTerms']),
       po_number: firstDefined(record, ['po_number', 'poNumber']),
       currency: firstDefined(record, ['currency']),
       customer_legal_name: firstDefined(record, ['customer_legal_name', 'customerLegalName']),
@@ -1818,6 +1818,9 @@
       sanitized[key] = value;
     });
     PROPOSAL_LEGACY_FIELDS.forEach(key => delete sanitized[key]);
+    const validPaymentTerms = ['Net 7', 'Net 14', 'Net 21', 'Net 30'];
+    sanitized.billing_frequency = 'Annual';
+    sanitized.payment_term = validPaymentTerms.includes(String(sanitized.payment_term || '').trim()) ? String(sanitized.payment_term).trim() : 'Net 30';
     return sanitized;
   }
 
@@ -1910,7 +1913,7 @@
       contract_term: firstDefined(record, ['contract_term', 'contractTerm', 'agreement_length', 'agreementLength']),
       account_number: firstDefined(record, ['account_number', 'accountNumber']),
       billing_frequency: firstDefined(record, ['billing_frequency', 'billingFrequency']),
-      payment_term: firstDefined(record, ['payment_term', 'paymentTerm']),
+      payment_term: firstDefined(record, ['payment_term', 'payment_terms', 'paymentTerm', 'paymentTerms']),
       po_number: firstDefined(record, ['po_number', 'poNumber']),
       terms_conditions: firstDefined(record, ['terms_conditions', 'termsConditions']),
       customer_signatory_name: firstDefined(record, ['customer_signatory_name', 'customerSignatoryName']),
@@ -1959,6 +1962,20 @@
       sanitized[key] = value;
     });
     AGREEMENT_LEGACY_FIELDS.forEach(key => delete sanitized[key]);
+    const validPaymentTerms = ['Net 7', 'Net 14', 'Net 21', 'Net 30'];
+    sanitized.billing_frequency = 'Annual';
+    sanitized.payment_term = validPaymentTerms.includes(String(sanitized.payment_term || '').trim())
+      ? String(sanitized.payment_term || '').trim()
+      : 'Net 30';
+    sanitized.provider_legal_name = 'InCheck 360 Holding BV';
+    sanitized.provider_name = 'InCheck 360';
+    sanitized.provider_address = 'Pyrmontstraat 5, 7513 BN, Enschede, The Netherlands';
+    if (!String(sanitized.provider_primary_signatory_name || '').trim()) sanitized.provider_primary_signatory_name = 'Simon Moujaly';
+    if (!String(sanitized.provider_primary_signatory_title || '').trim()) sanitized.provider_primary_signatory_title = 'CFO';
+    if (!String(sanitized.provider_secondary_signatory_name || '').trim()) sanitized.provider_secondary_signatory_name = 'Hanna Khattar';
+    if (!String(sanitized.provider_secondary_signatory_title || '').trim()) sanitized.provider_secondary_signatory_title = 'General Manager';
+    sanitized.provider_signatory_name = sanitized.provider_primary_signatory_name;
+    sanitized.provider_signatory_title = sanitized.provider_primary_signatory_title;
     return sanitized;
   }
 
