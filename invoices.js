@@ -167,20 +167,52 @@ const Invoices = {
       payment_conclusion: U.calculatePaymentConclusion(invoiceTotal, amountPaid)
     };
   },
+  normalizeStatus(value) {
+    return String(value || '').trim().toLowerCase();
+  },
+  isInvoiceIssued(invoice = {}) {
+    const status = this.normalizeStatus(invoice?.status || invoice?.invoice_status || invoice?.invoiceStatus);
+    return status === 'issued';
+  },
+  getInvoicePaymentStatus(invoice = {}) {
+    return String(
+      invoice?.payment_status ||
+      invoice?.paymentStatus ||
+      invoice?.payment_state ||
+      ''
+    ).trim();
+  },
   canCreateReceiptFromInvoice(invoice = {}) {
-    const status = this.normalizeText(invoice?.status || '');
-    if (status !== 'issued') return false;
-    const paymentStatus = this.normalizeText(invoice?.payment_status || invoice?.payment_state || '');
-    if (paymentStatus === 'paid') return false;
-    const total = this.toNumberSafe(invoice?.invoice_total ?? invoice?.grand_total ?? 0);
-    const paid = this.toNumberSafe(invoice?.amount_paid ?? invoice?.received_amount ?? 0);
-    const balance = invoice?.balance_due !== undefined && invoice?.balance_due !== null
-      ? this.toNumberSafe(invoice.balance_due)
-      : Math.max(0, total - paid);
-    return balance > 0;
+    if (!this.isInvoiceIssued(invoice)) return false;
+
+    const paymentStatus = this.normalizeStatus(this.getInvoicePaymentStatus(invoice));
+    if (paymentStatus === 'fully paid' || paymentStatus === 'paid') return false;
+
+    const balanceDue = Number(
+      invoice?.balance_due ??
+      invoice?.balanceDue ??
+      invoice?.pending_amount ??
+      NaN
+    );
+
+    if (Number.isFinite(balanceDue)) return balanceDue > 0;
+
+    const total = Number(
+      invoice?.grand_total ??
+      invoice?.total_amount ??
+      invoice?.invoice_total ??
+      invoice?.total ??
+      0
+    );
+
+    const paid = Number(invoice?.amount_paid ?? invoice?.amountPaid ?? invoice?.received_amount ?? 0);
+
+    if (total > 0) return paid < total;
+
+    return true;
   },
   isIssuedInvoice(invoice = {}) {
-    return this.normalizeText(invoice?.status || '') === 'issued';
+    return this.isInvoiceIssued(invoice);
   },
   isSettlementReceipt(receipt = {}) {
     const status = this.normalizeText(receipt?.status);
