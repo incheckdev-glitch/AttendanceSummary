@@ -1512,7 +1512,7 @@ const Agreements = {
     });
   },
   applyIdentityFieldLocks() {
-    const locked = ['company_id','company_name','customer_name','customer_legal_name','customer_address','contact_id','contact_name','contact_email','contact_phone','contact_mobile','customer_contact_name','customer_contact_email','customer_contact_phone','customer_contact_mobile','provider_legal_name','provider_name','provider_address','provider_contact_name','provider_contact_email','provider_contact_mobile'];
+    const locked = ['company_id','company_name','customer_name','customer_legal_name','customer_address','contact_id','contact_name','contact_email','contact_phone','contact_mobile','customer_contact_name','customer_contact_email','customer_contact_phone','customer_contact_mobile','provider_legal_name','provider_name','provider_address','provider_contact_name','provider_contact_email','provider_contact_mobile','billing_frequency'];
     locked.forEach(field => {
       const id = `agreementForm${field.replace(/(^|_)([a-z])/g, (_, __, ch) => ch.toUpperCase())}`;
       const el = document.getElementById(id);
@@ -1636,7 +1636,8 @@ const Agreements = {
     const provider = this.getSignedInUserForAgreement();
     agreement.billing_frequency = 'Annual';
     const validPaymentTerms = ['Net 7', 'Net 14', 'Net 21', 'Net 30'];
-    agreement.payment_term = validPaymentTerms.includes(String(agreement.payment_term || '').trim()) ? String(agreement.payment_term || '').trim() : 'Net 30';
+    agreement.payment_term = validPaymentTerms.includes(String(agreement.payment_term || agreement.payment_terms || '').trim()) ? String(agreement.payment_term || agreement.payment_terms || '').trim() : 'Net 30';
+    agreement.payment_terms = agreement.payment_term;
     agreement.provider_legal_name = this.providerIdentityDefaults.legalName;
     agreement.provider_name = this.providerIdentityDefaults.name;
     agreement.provider_address = this.providerIdentityDefaults.address;
@@ -1654,6 +1655,10 @@ const Agreements = {
     agreement.provider_signatory_name = agreement.provider_primary_signatory_name;
     agreement.provider_signatory_title = agreement.provider_primary_signatory_title;
     agreement.provider_signatory_email = String(provider.email || '').trim();
+    agreement.customer_signatory_name = String(agreement.customer_signatory_name || agreement.customer_contact_name || agreement.contact_name || '').trim();
+    agreement.customer_signatory_title = String(agreement.customer_signatory_title || '').trim();
+    agreement.customer_signatory_email = String(agreement.customer_signatory_email || agreement.customer_contact_email || agreement.contact_email || '').trim();
+    agreement.customer_signatory_phone = String(agreement.customer_signatory_phone || agreement.customer_contact_mobile || agreement.contact_mobile || agreement.customer_contact_phone || agreement.contact_phone || '').trim();
 
     if (!id) {
       agreement.proposal_id = String(agreement.proposal_id || formProposalUuid || '').trim();
