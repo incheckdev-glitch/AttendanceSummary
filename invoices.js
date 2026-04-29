@@ -68,6 +68,14 @@ const Invoices = {
   normalizeText(value) {
     return String(value ?? '').trim().toLowerCase();
   },
+  looksLikeUuid(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+  },
+  getInvoiceAgreementDisplay(invoice = {}) {
+    const agreementNumber = String(invoice.agreement_number || invoice.agreementNumber || '').trim();
+    if (agreementNumber && !this.looksLikeUuid(agreementNumber)) return agreementNumber;
+    return agreementNumber || '—';
+  },
 
   async getFullCompanyRecord(companyIdOrRecord) {
     if (!companyIdOrRecord) return null;
@@ -272,6 +280,19 @@ const Invoices = {
     console.log('supabase client check', client, typeof client?.from);
     if (!client) throw new Error('Supabase client is not available.');
     return client;
+  },
+  async resolveAgreementDisplayByUuid(agreementId) {
+    const id = String(agreementId || '').trim();
+    if (!id) return '';
+    const client = this.getSupabaseClient();
+    if (!client) return '';
+    try {
+      const { data, error } = await client.from('agreements').select('agreement_number,agreement_id').eq('id', id).limit(1).maybeSingle();
+      if (error) throw error;
+      return String(data?.agreement_number || data?.agreement_id || '').trim();
+    } catch (_error) {
+      return '';
+    }
   },
   appendInvoiceReceipt(invoiceId, receipt) {
     const key = String(invoiceId || '').trim();
@@ -1599,7 +1620,7 @@ const Invoices = {
         return `<tr>
           <td>${textCell(row.invoice_number || row.invoice_id)}</td>
           <td>${textCell(row.customer_name)}</td>
-          <td>${textCell(row.agreement_id)}</td>
+          <td>${textCell(this.getInvoiceAgreementDisplay(row))}</td>
           <td>${U.escapeHtml(U.fmtDisplayDate(row.issue_date))}</td>
           <td>${U.escapeHtml(U.fmtDisplayDate(row.due_date))}</td>
           <td>${textCell(row.currency)}</td>
@@ -1864,11 +1885,12 @@ const Invoices = {
     const contactName = this.buildContactPersonName(selectedContact) || String(selectedAgreement.contact_name || selectedAgreement.customer_contact_name || '').trim();
     const contactPhone = String(selectedContact.mobile || selectedContact.phone || selectedAgreement.contact_phone || selectedAgreement.customer_contact_phone || '').trim();
     const agreementId = String(
+      selectedAgreement.id ||
+      selectedAgreement.uuid ||
       selectedAgreement.agreement_id ||
       selectedAgreement.agreementId ||
-      selectedAgreement.id ||
-      E.invoiceAgreementId?.value ||
       E.invoiceFormAgreementId?.value ||
+      E.invoiceAgreementId?.value ||
       invoice.agreement_id ||
       invoice.agreementId ||
       ''
@@ -1876,6 +1898,8 @@ const Invoices = {
     const agreementNumber = String(
       selectedAgreement.agreement_number ||
       selectedAgreement.agreementNumber ||
+      selectedAgreement.agreement_id ||
+      selectedAgreement.agreementId ||
       E.invoiceAgreementNumber?.value ||
       E.invoiceFormAgreementNumber?.value ||
       invoice.agreement_number ||
@@ -1902,9 +1926,10 @@ const Invoices = {
     const draft = invoice || {};
     const selectedAgreement = this.state.selectedAgreement || {};
     const agreementId = String(
+      selectedAgreement?.id ||
+      selectedAgreement?.uuid ||
       selectedAgreement?.agreement_id ||
       selectedAgreement?.agreementId ||
-      selectedAgreement?.id ||
       E.invoiceAgreementId?.value ||
       E.invoiceFormAgreementId?.value ||
       draft.agreement_id ||
@@ -2203,8 +2228,8 @@ const Invoices = {
       const fullCompany = await this.getFullCompanyRecord(agreement.company_id || agreement.companyId || agreement.company || null);
       const fullContact = await this.getFullContactRecord(agreement.contact_id || agreement.contactId || agreement.contact || null);
       this.state.selectedAgreement = agreement || null;
-      const agreementId = String(agreement?.agreement_id || agreement?.agreementId || agreement?.id || id || '').trim();
-      const agreementNumber = String(agreement?.agreement_number || agreement?.agreementNumber || '').trim();
+      const agreementId = String(agreement?.id || agreement?.uuid || agreement?.agreement_id || agreement?.agreementId || id || '').trim();
+      const agreementNumber = String(agreement?.agreement_number || agreement?.agreementNumber || agreement?.agreement_id || agreement?.agreementId || '').trim();
       if (E.invoiceFormAgreementId) E.invoiceFormAgreementId.value = agreementId;
       if (E.invoiceFormAgreementNumber) E.invoiceFormAgreementNumber.value = agreementNumber;
       this.state.selectedCompany = fullCompany || null;
@@ -2246,9 +2271,14 @@ const Invoices = {
       }
       const response = await Api.getInvoice(id);
       const { invoice, items } = this.extractInvoiceAndItems(response, id);
-      this.setCachedDetail(id, invoice, items);
+      const normalizedInvoice = this.normalizeInvoice(invoice || {});
+      if (!String(normalizedInvoice.agreement_number || '').trim() && String(normalizedInvoice.agreement_id || '').trim()) {
+        const agreementDisplay = await this.resolveAgreementDisplayByUuid(normalizedInvoice.agreement_id);
+        if (agreementDisplay) normalizedInvoice.agreement_number = agreementDisplay;
+      }
+      this.setCachedDetail(id, normalizedInvoice, items);
       if (String(E.invoiceForm?.dataset.id || '').trim() === id) {
-        this.openInvoice(invoice, items, { readOnly });
+        this.openInvoice(normalizedInvoice, items, { readOnly });
       }
     } catch (error) {
       UI.toast('Unable to load invoice: ' + (error?.message || 'Unknown error'));
@@ -2493,7 +2523,8 @@ const Invoices = {
         const invoiceTemplate = this.normalizeInvoice({
           ...this.emptyInvoice(),
           ...invoice,
-          agreement_id: id
+          agreement_id: String(invoice?.agreement_id || id || '').trim(),
+          agreement_number: String(invoice?.agreement_number || invoice?.agreementNumber || '').trim()
         });
         const catalogLookup = await this.getProposalCatalogLookup();
         const normalizedItems = (Array.isArray(items) ? items : []).map(item =>
@@ -2512,7 +2543,7 @@ const Invoices = {
     } catch (_error) {
       // Fall back to local template hydration from the agreement record.
     }
-    this.openInvoice(this.normalizeInvoice({ ...this.emptyInvoice(), agreement_id: id }), [], { readOnly: false });
+    this.openInvoice(this.normalizeInvoice({ ...this.emptyInvoice(), agreement_id: id, agreement_number: '' }), [], { readOnly: false });
     await this.hydrateFromAgreement(id);
   },
   async refresh(force = false) {
