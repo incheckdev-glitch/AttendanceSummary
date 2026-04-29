@@ -38,6 +38,9 @@ const Leads = {
     contactPickerRows: []
   },
 
+  el(idOrKey) {
+    return E?.[idOrKey] || document.getElementById(idOrKey) || null;
+  },
   pick(obj = {}, ...keys) {
     for (const key of keys) {
       const value = obj?.[key];
@@ -1255,42 +1258,61 @@ const Leads = {
   hydrateLeadFromCompany(company = {}) {
     const c = this.normalizeCompany(company);
     this.state.selectedCompany = c.company_id ? c : null;
-    if (E.leadFormCompanyId) E.leadFormCompanyId.value = c.company_id || '';
-    if (E.leadFormCompanyName) E.leadFormCompanyName.value = c.company_name || '';
-    if (E.leadCompanyLegalName) E.leadCompanyLegalName.value = c.legal_name || '';
-    if (E.leadCompanyType) E.leadCompanyType.value = c.company_type || '';
-    if (E.leadCompanyIndustry) E.leadCompanyIndustry.value = c.industry || '';
-    if (E.leadCompanyWebsite) E.leadCompanyWebsite.value = c.website || '';
-    if (E.leadCompanyMainEmail) E.leadCompanyMainEmail.value = c.main_email || '';
-    if (E.leadCompanyMainPhone) E.leadCompanyMainPhone.value = c.main_phone || '';
-    if (E.leadCompanyCountry) E.leadCompanyCountry.value = c.country || '';
-    if (E.leadCompanyCity) E.leadCompanyCity.value = c.city || '';
-    if (E.leadCompanyAddress) E.leadCompanyAddress.value = c.address || '';
-    if (E.leadCompanyTaxNumber) E.leadCompanyTaxNumber.value = c.tax_number || '';
-    if (E.leadCompanyStatus) E.leadCompanyStatus.value = c.company_status || '';
-    if (E.leadCompanySource) E.leadCompanySource.value = c.source || '';
-    if (E.leadCompanyOwnerName) E.leadCompanyOwnerName.value = c.owner_name || '';
-    if (E.leadCompanyOwnerEmail) E.leadCompanyOwnerEmail.value = c.owner_email || '';
+
+    const set = (id, value) => {
+      const node = this.el(id);
+      if (node) node.value = value || '';
+    };
+
+    set('leadFormCompanyId', c.company_id);
+    set('leadFormCompanyName', c.company_name);
+    set('leadCompanyLegalName', c.legal_name);
+    set('leadCompanyType', c.company_type);
+    set('leadCompanyIndustry', c.industry);
+    set('leadCompanyWebsite', c.website);
+    set('leadCompanyMainEmail', c.main_email);
+    set('leadCompanyMainPhone', c.main_phone);
+    set('leadCompanyCountry', c.country);
+    set('leadCompanyCity', c.city);
+    set('leadCompanyAddress', c.address);
+    set('leadCompanyTaxNumber', c.tax_number);
+    set('leadCompanyStatus', c.company_status);
+    set('leadCompanySource', c.source);
+    set('leadCompanyOwnerName', c.owner_name);
+    set('leadCompanyOwnerEmail', c.owner_email);
   },
   hydrateLeadFromContact(contact = {}) {
     const c = this.normalizeContact(contact);
     const fullName = c.full_name;
     this.state.selectedContact = c.contact_id ? c : null;
-    if (E.leadFormFullName) E.leadFormFullName.value = fullName;
-    if (E.leadFormContactId) E.leadFormContactId.value = c.contact_id || '';
-    if (E.leadFormContactName) E.leadFormContactName.value = fullName;
-    if (E.leadFormContactEmail) E.leadFormContactEmail.value = c.email || '';
-    if (E.leadFormContactPhone) E.leadFormContactPhone.value = c.phone || c.mobile || '';
-    if (E.leadContactFirstName) E.leadContactFirstName.value = c.first_name || '';
-    if (E.leadContactLastName) E.leadContactLastName.value = c.last_name || '';
-    if (E.leadContactJobTitle) E.leadContactJobTitle.value = c.job_title || '';
-    if (E.leadContactDepartment) E.leadContactDepartment.value = c.department || '';
-    if (E.leadContactMobile) E.leadContactMobile.value = c.mobile || '';
-    if (E.leadContactDecisionRole) E.leadContactDecisionRole.value = c.decision_role || '';
-    if (E.leadContactPrimary) E.leadContactPrimary.value = c.is_primary_contact ? 'Yes' : 'No';
-    if (E.leadContactStatus) E.leadContactStatus.value = c.contact_status || '';
-    if (E.leadFormCompanyId && !String(E.leadFormCompanyId.value || '').trim()) E.leadFormCompanyId.value = c.company_id || '';
-    if (E.leadFormCompanyName && !String(E.leadFormCompanyName.value || '').trim()) E.leadFormCompanyName.value = c.company_name || '';
+
+    const set = (id, value) => {
+      const node = this.el(id);
+      if (node) node.value = value || '';
+    };
+
+    set('leadFormFullName', fullName);
+    set('leadFormContactId', c.contact_id);
+    set('leadFormContactName', fullName);
+    set('leadFormContactEmail', c.email);
+    set('leadFormContactPhone', c.phone || c.mobile);
+
+    set('leadContactFirstName', c.first_name);
+    set('leadContactLastName', c.last_name);
+    set('leadContactJobTitle', c.job_title);
+    set('leadContactDepartment', c.department);
+    set('leadContactMobile', c.mobile);
+    set('leadContactDecisionRole', c.decision_role);
+    set('leadContactPrimary', c.is_primary_contact ? 'Yes' : 'No');
+    set('leadContactStatus', c.contact_status);
+
+    if (!String(this.el('leadFormCompanyId')?.value || '').trim()) {
+      set('leadFormCompanyId', c.company_id);
+    }
+
+    if (!String(this.el('leadFormCompanyName')?.value || '').trim()) {
+      set('leadFormCompanyName', c.company_name);
+    }
   },
   async getFullCompanyRecord(companyIdOrRecord) {
     if (!companyIdOrRecord) return null;
@@ -1338,14 +1360,64 @@ const Leads = {
   },
   async openLeadCreateFormWithPrefill(prefill = {}) {
     await this.openForm(null);
-    const companyId = String(prefill.company_id || prefill.companyId || '').trim();
-    const contactId = String(prefill.contact_id || prefill.contactId || '').trim();
-    const company = (await this.getFullCompanyRecord(prefill)) || (await this.fetchFullCompany(companyId)) || prefill;
-    this.hydrateLeadFromCompany(company);
-    const contact = (await this.getFullContactRecord(prefill)) || (await this.fetchFullContact(contactId)) || prefill;
-    this.hydrateLeadFromContact(contact);
+
+    const companySeed = prefill.company || prefill;
+    const contactSeed = prefill.contact || prefill;
+
+    let company = null;
+    let contact = null;
+
+    const companyId =
+      companySeed.company_id ||
+      companySeed.companyId ||
+      contactSeed.company_id ||
+      contactSeed.companyId ||
+      '';
+
+    const contactId =
+      contactSeed.contact_id ||
+      contactSeed.contactId ||
+      '';
+
+    if (companyId) {
+      company = await this.getFullCompanyRecord(companyId);
+    }
+
+    if (!company && prefill.company) {
+      company = this.normalizeCompany(prefill.company);
+    }
+
+    if (company) {
+      this.hydrateLeadFromCompany(company);
+    }
+
+    await this.loadLeadPickerOptions(company?.company_id || companyId || '');
+
+    if (contactId) {
+      contact = await this.getFullContactRecord(contactId);
+    }
+
+    if (!contact && prefill.contact) {
+      contact = this.normalizeContact(prefill.contact);
+    }
+
+    if (!contact && company?.company_id) {
+      const primary = (this.state.contactPickerRows || []).find(c => Boolean(c.is_primary_contact));
+      if (primary) {
+        contact = await this.getFullContactRecord(primary.contact_id) || primary;
+      }
+    }
+
+    if (contact) {
+      this.hydrateLeadFromContact(contact);
+
+      if (!company && contact.company_id) {
+        const linkedCompany = await this.getFullCompanyRecord(contact.company_id);
+        if (linkedCompany) this.hydrateLeadFromCompany(linkedCompany);
+      }
+    }
+
     this.lockCompanyContactDisplayFields();
-    await this.loadLeadPickerOptions(companyId || this.state.selectedCompany?.company_id || '');
   },
   async deleteLeadById(leadUuid) {
     if (!this.canEditDelete()) {
