@@ -76,6 +76,58 @@ const Deals = {
     if (value === 'no') return 'No';
     return '—';
   },
+  normalizeCompany(company = {}) {
+    const c = company && typeof company === 'object' ? company : {};
+    return {
+      id: c.id || '',
+      company_id: String(c.company_id || c.companyId || '').trim(),
+      company_name: String(c.company_name || c.companyName || '').trim(),
+      legal_name: String(c.legal_name || c.legalName || '').trim(),
+      company_type: String(c.company_type || c.companyType || '').trim(),
+      industry: String(c.industry || '').trim(),
+      website: String(c.website || '').trim(),
+      main_email: String(c.main_email || c.mainEmail || '').trim(),
+      main_phone: String(c.main_phone || c.mainPhone || '').trim(),
+      country: String(c.country || '').trim(),
+      city: String(c.city || '').trim(),
+      address: String(c.address || '').trim(),
+      tax_number: String(c.tax_number || c.taxNumber || '').trim(),
+      company_status: String(c.company_status || c.companyStatus || '').trim(),
+      notes: String(c.notes || '').trim()
+    };
+  },
+  normalizeContact(contact = {}) {
+    const c = contact && typeof contact === 'object' ? contact : {};
+    const phone = String(c.phone || '').trim();
+    const mobile = String(c.mobile || '').trim();
+    return {
+      id: c.id || '',
+      contact_id: String(c.contact_id || c.contactId || '').trim(),
+      company_id: String(c.company_id || c.companyId || '').trim(),
+      company_name: String(c.company_name || c.companyName || '').trim(),
+      first_name: String(c.first_name || c.firstName || '').trim(),
+      last_name: String(c.last_name || c.lastName || '').trim(),
+      full_name: String(
+        c.full_name || c.fullName || [c.first_name || c.firstName, c.last_name || c.lastName].filter(Boolean).join(' ') || ''
+      ).trim(),
+      job_title: String(c.job_title || c.jobTitle || '').trim(),
+      department: String(c.department || '').trim(),
+      email: String(c.email || '').trim(),
+      phone,
+      mobile,
+      decision_role: String(c.decision_role || c.decisionRole || '').trim(),
+      is_primary_contact: Boolean(c.is_primary_contact ?? c.isPrimaryContact),
+      contact_status: String(c.contact_status || c.contactStatus || '').trim()
+    };
+  },
+  formatCompanyType(value) {
+    const map = { single_branch: 'Single Branch', chain: 'Chain', franchise: 'Franchise', enterprise: 'Enterprise', sme: 'SME', distributor: 'Distributor', partner: 'Partner', other: 'Other' };
+    return map[String(value || '').trim()] || String(value || '').trim() || '—';
+  },
+  formatCompanyIndustry(value) {
+    const map = { fnb: 'F&B', retail: 'Retail', hospitality: 'Hospitality', healthcare: 'Healthcare', education: 'Education', real_estate: 'Real Estate', logistics: 'Logistics', manufacturing: 'Manufacturing', technology: 'Technology', security: 'Security', finance: 'Finance', other: 'Other' };
+    return map[String(value || '').trim()] || String(value || '').trim() || '—';
+  },
   normalizeDeal(raw = {}) {
     const source = raw && typeof raw === 'object' ? raw : {};
     const lead = source.lead && typeof source.lead === 'object' ? source.lead : {};
@@ -1055,31 +1107,39 @@ const Deals = {
   async getFullCompanyRecord(companyIdOrRecord) {
     if (!companyIdOrRecord) return null;
     if (typeof companyIdOrRecord === 'object') {
-      const has = companyIdOrRecord.company_type || companyIdOrRecord.industry || companyIdOrRecord.website || companyIdOrRecord.main_email || companyIdOrRecord.main_phone || companyIdOrRecord.country || companyIdOrRecord.city || companyIdOrRecord.address || companyIdOrRecord.company_status;
-      if (has) return companyIdOrRecord;
+      const has = companyIdOrRecord.company_type || companyIdOrRecord.companyType || companyIdOrRecord.industry || companyIdOrRecord.website || companyIdOrRecord.main_email || companyIdOrRecord.mainEmail || companyIdOrRecord.main_phone || companyIdOrRecord.mainPhone || companyIdOrRecord.country || companyIdOrRecord.city || companyIdOrRecord.address || companyIdOrRecord.company_status || companyIdOrRecord.companyStatus;
+      if (has) return this.normalizeCompany(companyIdOrRecord);
     }
     const companyId = typeof companyIdOrRecord === 'object' ? (companyIdOrRecord.company_id || companyIdOrRecord.companyId) : companyIdOrRecord;
     if (!companyId) return null;
     const response = await Api.requestWithSession('companies','list',{ filters:{ company_id: companyId }, limit:1 },{ requireAuth:true });
     const rows = response?.rows || response?.items || response?.data || [];
-    return Array.isArray(rows) ? (rows[0] || null) : (rows || null);
+    const row = Array.isArray(rows) ? (rows[0] || null) : (rows || null);
+    return row ? this.normalizeCompany(row) : null;
   },
   async getFullContactRecord(contactIdOrRecord) {
     if (!contactIdOrRecord) return null;
     if (typeof contactIdOrRecord === 'object') {
-      const has = contactIdOrRecord.first_name || contactIdOrRecord.last_name || contactIdOrRecord.job_title || contactIdOrRecord.department || contactIdOrRecord.decision_role || contactIdOrRecord.contact_status;
-      if (has) return contactIdOrRecord;
+      const has = contactIdOrRecord.first_name || contactIdOrRecord.firstName || contactIdOrRecord.last_name || contactIdOrRecord.lastName || contactIdOrRecord.job_title || contactIdOrRecord.jobTitle || contactIdOrRecord.department || contactIdOrRecord.decision_role || contactIdOrRecord.decisionRole || contactIdOrRecord.contact_status || contactIdOrRecord.contactStatus;
+      if (has) return this.normalizeContact(contactIdOrRecord);
     }
     const contactId = typeof contactIdOrRecord === 'object' ? (contactIdOrRecord.contact_id || contactIdOrRecord.contactId) : contactIdOrRecord;
     if (!contactId) return null;
     const response = await Api.requestWithSession('contacts','list',{ filters:{ contact_id: contactId }, limit:1 },{ requireAuth:true });
     const rows = response?.rows || response?.items || response?.data || [];
-    return Array.isArray(rows) ? (rows[0] || null) : (rows || null);
+    const row = Array.isArray(rows) ? (rows[0] || null) : (rows || null);
+    return row ? this.normalizeContact(row) : null;
   },
-  renderReadonlyDetails(container, pairs=[]) { if (!container) return; container.innerHTML = pairs.map(([k,v])=>`<div><span class="muted">${U.escapeHtml(k)}:</span> ${U.escapeHtml(String(v||'—'))}</div>`).join(''); },
-  setReadonlyField(node, value) {
+  renderReadonlyDetails(container, rows = []) {
+    if (!container) return;
+    container.innerHTML = rows
+      .map(
+        ([label, value]) => `<div class="readonly-detail-row"><span class="readonly-detail-label">${U.escapeHtml(label)}</span><span class="readonly-detail-value">${U.escapeHtml(String(value || '—'))}</span></div>`
+      )
+      .join('');
+  },
+  lockInput(node) {
     if (!node) return;
-    node.value = value || '';
     node.readOnly = true;
     node.classList.add('readonly-field', 'locked-field');
     node.setAttribute('aria-readonly', 'true');
@@ -1096,12 +1156,10 @@ const Deals = {
     node.classList.remove('readonly-field', 'locked-field');
     node.removeAttribute('aria-disabled');
   },
-  applyCompanyContactLockState({ lockCompanySelector = false, lockContactSelector = false } = {}) {
+  lockCompanyContactFields({ lockCompanySelector = true, lockContactSelector = true } = {}) {
+    [E.dealFormCompanyId, E.dealFormContactId, E.dealFormCompanyName, E.dealFormFullName, E.dealFormPhone, E.dealFormEmail, E.dealFormCountry].forEach(node => this.lockInput(node));
     if (lockCompanySelector) this.lockSelect(E.dealFormCompanySelector);
-    else this.unlockSelect(E.dealFormCompanySelector);
     if (lockContactSelector) this.lockSelect(E.dealFormContactSelector);
-    else this.unlockSelect(E.dealFormContactSelector);
-    this.setReadonlyField(E.dealFormCompanyName, this.state.form.selectedCompany?.company_name || '');
   },
   resetForm() {
     if (!E.dealForm) return;
@@ -1125,13 +1183,13 @@ const Deals = {
     if (E.dealFormContactId) E.dealFormContactId.value = '';
     this.renderReadonlyDetails(E.dealFormCompanyDetails, [['Info', 'Company details are managed from the Company module.']]);
     this.renderReadonlyDetails(E.dealFormContactDetails, [['Info', 'Contact details are managed from the Contacts module.']]);
-    this.applyCompanyContactLockState();
+    this.lockCompanyContactFields({ lockCompanySelector: false, lockContactSelector: false });
     this.syncDealFormDropdowns();
   },
   currentUserAssignee() {
     return String(Session.displayName() || Session.username() || Session.user()?.email || '').trim();
   },
-  openForm(row = null) {
+  async openForm(row = null) {
     if (!E.dealFormModal || !E.dealForm) return;
     const isEdit = !!row;
     E.dealForm.dataset.mode = isEdit ? 'edit' : 'create';
@@ -1183,7 +1241,17 @@ const Deals = {
       }
       if (E.dealFormNotes) E.dealFormNotes.value = row.notes || '';
       this.hydrateLeadCodeFromLeadUuid(row);
-      this.applyCompanyContactLockState({ lockCompanySelector: true, lockContactSelector: true });
+      const companyId = row.company_id || row.companyId || '';
+      const contactId = row.contact_id || row.contactId || '';
+      if (companyId) {
+        const company = await this.getFullCompanyRecord(companyId);
+        this.hydrateDealFromCompany(company || { company_id: companyId, company_name: row.company_name || row.companyName || '', country: row.country || '' });
+      }
+      if (contactId) {
+        const contact = await this.getFullContactRecord(contactId);
+        this.hydrateDealFromContact(contact || { contact_id: contactId, full_name: row.contact_name || row.contactName || row.full_name || '', email: row.contact_email || row.contactEmail || row.email || '', phone: row.contact_phone || row.contactPhone || row.phone || '' });
+      }
+      this.lockCompanyContactFields();
       this.syncDealFormDropdowns({
         lead_source: row.lead_source || '',
         service_interest: row.service_interest || '',
@@ -1203,7 +1271,9 @@ const Deals = {
         E.dealFormConvertedAt.value = '';
       }
       if (E.dealFormAssignedTo) E.dealFormAssignedTo.value = this.currentUserAssignee();
-      this.applyCompanyContactLockState({ lockCompanySelector: false, lockContactSelector: false });
+      this.unlockSelect(E.dealFormCompanySelector);
+      this.unlockSelect(E.dealFormContactSelector);
+      this.lockCompanyContactFields({ lockCompanySelector: false, lockContactSelector: false });
       this.syncDealFormDropdowns();
     }
 
@@ -1211,6 +1281,29 @@ const Deals = {
     if (E.dealFormSaveBtn) E.dealFormSaveBtn.disabled = false;
     E.dealFormModal.style.display = 'flex';
     E.dealFormModal.setAttribute('aria-hidden', 'false');
+  },
+  hydrateDealFromCompany(company = {}) {
+    const c = this.normalizeCompany(company);
+    this.state.form.selectedCompany = c.company_id ? c : null;
+    this.state.form.companyId = c.company_id || '';
+    if (E.dealFormCompanyId) E.dealFormCompanyId.value = c.company_id || '';
+    if (E.dealFormCompanySelector) E.dealFormCompanySelector.value = c.company_id || '';
+    if (E.dealFormCompanyName) E.dealFormCompanyName.value = c.company_name || '';
+    if (E.dealFormCountry) E.dealFormCountry.value = c.country || '';
+    this.renderReadonlyDetails(E.dealFormCompanyDetails, [['Company ID', c.company_id], ['Company Name', c.company_name], ['Legal Name', c.legal_name], ['Company Type', this.formatCompanyType(c.company_type)], ['Industry', this.formatCompanyIndustry(c.industry)], ['Website', c.website], ['Main Email', c.main_email], ['Main Phone', c.main_phone], ['Country', c.country], ['City', c.city], ['Address', c.address], ['Tax Number', c.tax_number], ['Company Status', c.company_status]]);
+    this.lockCompanyContactFields({ lockCompanySelector: !!c.company_id, lockContactSelector: !!this.state.form.contactId });
+  },
+  hydrateDealFromContact(contact = {}) {
+    const c = this.normalizeContact(contact);
+    this.state.form.selectedContact = c.contact_id ? c : null;
+    this.state.form.contactId = c.contact_id || '';
+    if (E.dealFormContactId) E.dealFormContactId.value = c.contact_id || '';
+    if (E.dealFormContactSelector) E.dealFormContactSelector.value = c.contact_id || '';
+    if (E.dealFormFullName) E.dealFormFullName.value = c.full_name || '';
+    if (E.dealFormPhone) E.dealFormPhone.value = c.phone || c.mobile || '';
+    if (E.dealFormEmail) E.dealFormEmail.value = c.email || '';
+    this.renderReadonlyDetails(E.dealFormContactDetails, [['Contact ID', c.contact_id], ['Full Name', c.full_name], ['First Name', c.first_name], ['Last Name', c.last_name], ['Job Title', c.job_title], ['Department', c.department], ['Email', c.email], ['Phone', c.phone], ['Mobile', c.mobile], ['Decision Role', c.decision_role], ['Primary Contact', c.is_primary_contact ? 'Yes' : 'No'], ['Contact Status', c.contact_status]]);
+    this.lockCompanyContactFields({ lockCompanySelector: !!this.state.form.companyId, lockContactSelector: !!c.contact_id });
   },
   closeForm() {
     if (!E.dealFormModal) return;
@@ -1222,6 +1315,14 @@ const Deals = {
     const leadField = E.dealFormLeadId;
     const editLeadUuid = String(leadField?.dataset?.leadUuid || '').trim();
     const editLeadCode = String(leadField?.dataset?.leadCode || '').trim();
+    const selectedCompany = this.normalizeCompany(this.state.form.selectedCompany || {});
+    const selectedContact = this.normalizeContact(this.state.form.selectedContact || {});
+    const companyId = selectedCompany.company_id || this.state.form.companyId || E.dealFormCompanyId?.value || E.dealFormCompanySelector?.value || '';
+    const companyName = selectedCompany.company_name || E.dealFormCompanyName?.value || '';
+    const contactId = selectedContact.contact_id || this.state.form.contactId || E.dealFormContactId?.value || E.dealFormContactSelector?.value || '';
+    const contactName = selectedContact.full_name || E.dealFormFullName?.value || '';
+    const contactEmail = selectedContact.email || E.dealFormEmail?.value || '';
+    const contactPhone = selectedContact.phone || selectedContact.mobile || E.dealFormPhone?.value || '';
     return {
       deal_id:
         String(E.dealFormDealId?.value || '').trim() === 'Auto-generated'
@@ -1229,16 +1330,16 @@ const Deals = {
           : String(E.dealFormDealId?.value || '').trim(),
       lead_id: mode === 'edit' ? editLeadUuid : String(E.dealFormLeadId?.value || '').trim(),
       lead_code: mode === 'edit' ? editLeadCode : '',
-      full_name: String(E.dealFormFullName?.value || '').trim(),
-      company_id: String(this.state.form.selectedCompany?.company_id || this.state.form.companyId || '').trim(),
-      company_name: String((this.state.form.selectedCompany?.company_name || '')).trim(),
-      contact_id: String(this.state.form.selectedContact?.contact_id || this.state.form.contactId || '').trim(),
-      contact_name: String(this.state.form.selectedContact?.full_name || '').trim(),
-      contact_email: String(this.state.form.selectedContact?.email || '').trim(),
-      contact_phone: String(this.state.form.selectedContact?.phone || this.state.form.selectedContact?.mobile || '').trim(),
-      phone: String(E.dealFormPhone?.value || '').trim(),
-      email: String(E.dealFormEmail?.value || '').trim(),
-      country: String(E.dealFormCountry?.value || '').trim(),
+      full_name: String(contactName || '').trim(),
+      company_id: String(companyId).trim(),
+      company_name: String(companyName).trim(),
+      contact_id: String(contactId).trim(),
+      contact_name: String(contactName).trim(),
+      contact_email: String(contactEmail).trim(),
+      contact_phone: String(contactPhone).trim(),
+      phone: String(contactPhone).trim(),
+      email: String(contactEmail).trim(),
+      country: String(selectedCompany.country || E.dealFormCountry?.value || '').trim(),
       lead_source: String(E.dealFormLeadSource?.value || '').trim(),
       service_interest: String(E.dealFormServiceInterest?.value || '').trim(),
       stage: String(E.dealFormStage?.value || '').trim(),
@@ -1254,6 +1355,18 @@ const Deals = {
       notes: String(E.dealFormNotes?.value || '').trim()
     };
   },
+  async ensureCompanyContactHydratedBeforeSave() {
+    const companyId = this.state.form.selectedCompany?.company_id || this.state.form.companyId || E.dealFormCompanyId?.value || E.dealFormCompanySelector?.value || '';
+    const contactId = this.state.form.selectedContact?.contact_id || this.state.form.contactId || E.dealFormContactId?.value || E.dealFormContactSelector?.value || '';
+    if (companyId && !this.state.form.selectedCompany?.company_name) {
+      const company = await this.getFullCompanyRecord(companyId);
+      if (company) this.hydrateDealFromCompany(company);
+    }
+    if (contactId && !this.state.form.selectedContact?.full_name) {
+      const contact = await this.getFullContactRecord(contactId);
+      if (contact) this.hydrateDealFromContact(contact);
+    }
+  },
   async submitForm() {
     if (this.state.saveInFlight) return;
     if (!this.canCreate()) {
@@ -1267,6 +1380,7 @@ const Deals = {
     }
 
     const dealId = String(E.dealForm?.dataset.id || '').trim();
+    await this.ensureCompanyContactHydratedBeforeSave();
     const deal = this.collectFormData();
     if (!deal.full_name && !deal.company_name) {
       UI.toast('Full name or company name is required.');
@@ -1461,6 +1575,24 @@ const Deals = {
       E.dealFormDeleteBtn.addEventListener('click', () => {
         const id = String(E.dealForm?.dataset.id || '').trim();
         if (id) this.deleteDealById(id);
+      });
+    }
+    if (E.dealFormCompanySelector) {
+      E.dealFormCompanySelector.addEventListener('change', async () => {
+        const companyId = String(E.dealFormCompanySelector.value || '').trim();
+        if (!companyId) return;
+        const company = await this.getFullCompanyRecord(companyId);
+        if (!company) return;
+        this.hydrateDealFromCompany(company);
+      });
+    }
+    if (E.dealFormContactSelector) {
+      E.dealFormContactSelector.addEventListener('change', async () => {
+        const contactId = String(E.dealFormContactSelector.value || '').trim();
+        if (!contactId) return;
+        const contact = await this.getFullContactRecord(contactId);
+        if (!contact) return;
+        this.hydrateDealFromContact(contact);
       });
     }
 
