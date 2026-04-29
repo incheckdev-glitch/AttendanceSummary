@@ -1390,7 +1390,7 @@
       contact_name: contactName,
       contact_email: contactEmail,
       contact_phone: contactPhone,
-      full_name: toTextOrEmpty(['full_name', 'fullName']) || contactName,
+      full_name: contactName || toTextOrEmpty(['full_name', 'fullName']),
       phone: toTextOrEmpty(['phone']) || contactPhone,
       email: toTextOrEmpty(['email']) || contactEmail,
       country: toTextOrEmpty(['country']),
@@ -1546,7 +1546,7 @@
     delete output.created_at;
     delete output.updated_at;
     if (!output.company_id) throw new Error('Company is required.');
-    if (!output.full_name) throw new Error('Full Name is required.');
+    if (!output.first_name && !output.last_name && !output.full_name) throw new Error('First Name or Last Name is required.');
     return output;
   }
 
