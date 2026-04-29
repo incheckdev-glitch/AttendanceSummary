@@ -34,6 +34,11 @@
 /* moved to planner.js */
 /* moved to ui.js */
 
+function normalizeInternalTicketWidgetValue(value) {
+  const raw = value == null ? '' : String(value).trim();
+  return raw || 'Not Set';
+}
+
 function issueDisplayId(issue) {
   return String(issue?.ticket_id || issue?.id || '').trim();
 }
