@@ -1307,40 +1307,6 @@ const Receipts = {
       payment_notes: String(formValues.payment_notes || existing.payment_notes || '').trim() || null
     };
   },
-  async applyReceiptToInvoice({ invoiceId = '', oldPaidTotal = 0, paidNow = 0, invoiceTotal = 0 } = {}) {
-    const targetInvoiceId = String(invoiceId || '').trim();
-    if (!targetInvoiceId) return;
-    const linkedInvoice = await this.hydrateInvoiceReceiptDraft({ id: targetInvoiceId }).then(result => result?.invoice || {}).catch(() => ({}));
-    const ledgerReceipts = await this.fetchInvoiceReceiptsLedger({
-      invoiceId: targetInvoiceId,
-      invoiceNumber: linkedInvoice?.invoice_number
-    }).catch(() => []);
-    const normalizedInvoiceTotal = this.normalizeMoney(
-      linkedInvoice?.grand_total ??
-      linkedInvoice?.invoice_total ??
-      linkedInvoice?.total_amount ??
-      invoiceTotal ??
-      0
-    );
-    const cumulativePaid = this.normalizeMoney(
-      ledgerReceipts.reduce((sum, receipt) => sum + this.getReceiptAmountValue(receipt), 0)
-    );
-    const fallbackSnapshot = this.calculatePaymentSnapshot({ invoiceTotal: normalizedInvoiceTotal, oldPaidTotal, paidNow });
-    const paidAmount = cumulativePaid > 0 ? cumulativePaid : this.normalizeMoney(fallbackSnapshot.amount_paid);
-    const pendingAmount = Math.max(0, this.normalizeMoney(normalizedInvoiceTotal - paidAmount));
-    const paymentState = paidAmount <= 0 ? 'Not Paid' : pendingAmount > 0 ? 'Partially Paid' : 'Fully Paid';
-    const paymentConclusion = pendingAmount <= 0 ? 'Settled' : 'Pending Settlement';
-    const invoicePayload = {
-      old_paid_total: this.normalizeMoney(Math.max(0, paidAmount - this.normalizeMoney(paidNow))),
-      paid_now: this.normalizeMoney(paidNow),
-      amount_paid: paidAmount,
-      received_amount: paidAmount,
-      pending_amount: pendingAmount,
-      payment_state: paymentState,
-      payment_conclusion: paymentConclusion
-    };
-    await Api.updateInvoice(targetInvoiceId, invoicePayload);
-  },
   async saveForm() {
     if (this.state.saveInFlight) return;
     const id = String(E.receiptForm?.dataset.id || '').trim();
@@ -1410,12 +1376,6 @@ const Receipts = {
             invoiceReceipts
           });
           await Api.updateReceipt(receiptUuid, this.filterReceiptColumns(headerPayload));
-          await this.applyReceiptToInvoice({
-            invoiceId: invoiceUuid,
-            oldPaidTotal: snapshot.old_paid_total,
-            paidNow: snapshot.paid_now,
-            invoiceTotal: snapshot.invoice_total
-          });
         }
         const receiptDisplay = String(normalized?.receipt_id || receipt?.receipt_id || '').trim();
         let normalizedDetailItems = parsed?.items || [];
@@ -1440,6 +1400,7 @@ const Receipts = {
           invoiceId: normalized?.invoice_uuid || receipt?.invoice_uuid || invoiceUuid,
           receipt: normalized || receipt
         });
+        await this.refresh(true);
         window.dispatchEvent(new CustomEvent('clients:refresh-totals', { detail: { reason: 'receipt-created' } }));
         UI.toast(receiptDisplay ? `Receipt ${receiptDisplay} created.` : 'Receipt created from invoice.');
         if (receiptUuid) {
@@ -1497,12 +1458,6 @@ const Receipts = {
       });
       const receiptItemsPayload = this.buildReceiptItemSavePayload(this.state.items);
       const response = await Api.updateReceipt(id, this.filterReceiptColumns(headerPayload), receiptItemsPayload);
-      await this.applyReceiptToInvoice({
-        invoiceId: headerPayload.invoice_id || currentRecord.invoice_id,
-        oldPaidTotal: headerPayload.old_paid_total,
-        paidNow: headerPayload.paid_now,
-        invoiceTotal: headerPayload.invoice_total
-      });
       const parsed = this.extractReceiptAndItems(response, id);
       const persisted = parsed?.receipt?.id ? parsed.receipt : { ...updates, id, receipt_id: currentRecord?.receipt_id || id };
       const normalized = this.upsertLocalRow(persisted);
@@ -1512,6 +1467,7 @@ const Receipts = {
         this.state.items = parsed?.items || this.state.items;
       }
       await window.Invoices?.syncAfterReceiptMutation?.({ invoiceId: normalized?.invoice_id || persisted?.invoice_id, receipt: normalized });
+      await this.refresh(true);
       window.dispatchEvent(new CustomEvent('clients:refresh-totals', { detail: { reason: 'receipt-saved' } }));
       UI.toast(`Receipt ${this.receiptDisplayId(normalized || persisted) || id} saved.`);
       this.closeForm();
