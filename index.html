@@ -321,6 +321,14 @@
                     role="tab" aria-selected="false" aria-controls="csmView">
               <span class="icon" aria-hidden="true">🧑‍💼</span> CSM Daily Activity
             </button>
+            <button id="companyTab" class="view-tab" data-view="company"
+                    role="tab" aria-selected="false" aria-controls="companyView">
+              <span class="icon" aria-hidden="true">🏢</span> Company
+            </button>
+            <button id="contactsTab" class="view-tab" data-view="contacts"
+                    role="tab" aria-selected="false" aria-controls="contactsView">
+              <span class="icon" aria-hidden="true">👤</span> Contacts
+            </button>
             <button id="leadsTab" class="view-tab" data-view="leads"
                     role="tab" aria-selected="false" aria-controls="leadsView">
               <span class="icon" aria-hidden="true">🧲</span> Leads
@@ -488,6 +496,30 @@
                 <option>25</option><option selected>50</option><option>100</option><option>200</option>
               </select>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="companyView" class="view" role="tabpanel" aria-labelledby="companyTab">
+        <div class="card">
+          <div class="row between center" style="margin-bottom:12px;">
+            <h2>Company</h2>
+            <button id="companyCreateBtn" class="btn">Add Company</button>
+          </div>
+          <div class="table-wrap">
+            <table id="companyTable"><thead><tr><th>Company ID</th><th>Company Name</th><th>Industry</th><th>Status</th><th>Owner</th><th>Main Email</th><th>Main Phone</th><th>Country</th><th>City</th><th>Created Date</th></tr></thead><tbody id="companyTableBody"></tbody></table>
+          </div>
+        </div>
+      </section>
+
+      <section id="contactsView" class="view" role="tabpanel" aria-labelledby="contactsTab">
+        <div class="card">
+          <div class="row between center" style="margin-bottom:12px;">
+            <h2>Contacts</h2>
+            <button id="contactsCreateBtn" class="btn">Add Contact</button>
+          </div>
+          <div class="table-wrap">
+            <table id="contactsTable"><thead><tr><th>Contact ID</th><th>Full Name</th><th>Company</th><th>Job Title</th><th>Department</th><th>Decision Role</th><th>Email</th><th>Phone</th><th>Primary Contact</th><th>Status</th></tr></thead><tbody id="contactsTableBody"></tbody></table>
           </div>
         </div>
       </section>
@@ -3513,6 +3545,8 @@ Sample:
   <script src="planner.js?v=20260427-allpwa1"></script>
   <script src="ui.js?v=20260427-allpwa1"></script>
   <script src="leads.js?v=20260427-allpwa1"></script>
+  <script src="companies.js?v=20260429-crm"></script>
+  <script src="contacts.js?v=20260429-crm"></script>
   <script src="deals.js?v=20260427-allpwa1"></script>
   <script src="proposals.js?v=20260427-allpwa1"></script>
   <script src="agreements.js?v=20260427-allpwa1"></script>

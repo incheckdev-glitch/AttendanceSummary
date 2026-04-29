@@ -29,6 +29,22 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
     delete: ['admin', 'dev'],
     convert_to_deal: ['admin', 'dev']
   }),
+  companies: Object.freeze({
+    list: ['admin', 'dev', 'sales executive', 'viewer', 'hoo', 'accounting'],
+    get: ['admin', 'dev', 'sales executive', 'viewer', 'hoo', 'accounting'],
+    create: ['admin', 'dev', 'sales executive'],
+    update: ['admin', 'dev', 'sales executive'],
+    delete: ['admin', 'dev'],
+    export: ['admin', 'dev', 'sales executive']
+  }),
+  contacts: Object.freeze({
+    list: ['admin', 'dev', 'sales executive', 'viewer', 'hoo', 'accounting'],
+    get: ['admin', 'dev', 'sales executive', 'viewer', 'hoo', 'accounting'],
+    create: ['admin', 'dev', 'sales executive'],
+    update: ['admin', 'dev', 'sales executive'],
+    delete: ['admin', 'dev'],
+    export: ['admin', 'dev', 'sales executive']
+  }),
   deals: Object.freeze({
     list: ['admin', 'dev', 'viewer', 'hoo'],
     get: ['admin', 'dev', 'viewer', 'hoo'],
@@ -144,6 +160,8 @@ const Permissions = {
     calendar: [{ resource: 'events', action: 'list' }],
     insights: [{ resource: 'insights', action: 'list' }],
     csm: [{ resource: 'csm', action: 'list' }],
+    company: [{ resource: 'companies', action: 'list' }],
+    contacts: [{ resource: 'contacts', action: 'list' }],
     leads: [{ resource: 'leads', action: 'list' }],
     deals: [{ resource: 'deals', action: 'list' }],
     proposals: [{ resource: 'proposals', action: 'list' }],
@@ -166,6 +184,8 @@ const Permissions = {
     calendar: 'events',
     insights: 'insights',
     csm: 'csm',
+    company: 'companies',
+    contacts: 'contacts',
     leads: 'leads',
     deals: 'deals',
     proposals: 'proposals',

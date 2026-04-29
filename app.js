@@ -2530,7 +2530,7 @@ function ensureNotificationSetupMounted() {
   }
 }
 function setActiveView(view) {
- const names = ['issues', 'calendar', 'insights', 'csm', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
+ const names = ['issues', 'calendar', 'insights', 'csm', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
  const firstAllowedView = names.find(name => Permissions.canAccessTab(name)) || 'issues';
  if (!Permissions.canAccessTab(view)) view = firstAllowedView;
   names.forEach(name => {
@@ -2543,6 +2543,10 @@ function setActiveView(view) {
         ? E.insightsTab
         : name === 'csm'
         ? E.csmTab
+        : name === 'company'
+        ? E.companyTab
+        : name === 'contacts'
+        ? E.contactsTab
         : name === 'leads'
         ? E.leadsTab
         : name === 'deals'
@@ -2583,6 +2587,10 @@ function setActiveView(view) {
         ? E.insightsView
         : name === 'csm'
         ? E.csmView
+        : name === 'company'
+        ? E.companyView
+        : name === 'contacts'
+        ? E.contactsView
         : name === 'leads'
         ? E.leadsView
         : name === 'deals'
@@ -2668,6 +2676,8 @@ function setActiveView(view) {
   }
   if (view === 'insights') runViewLoader('insights', () => Analytics.refresh(UI.Issues.applyFilters()));
   if (view === 'csm') runViewLoader('csm', () => CSMActivity.loadAndRefresh());
+  if (view === 'company' && window.Companies?.loadAndRefresh) runViewLoader('company', () => Companies.loadAndRefresh());
+  if (view === 'contacts' && window.Contacts?.loadAndRefresh) runViewLoader('contacts', () => Contacts.loadAndRefresh());
   if (view === 'leads' && window.Leads?.loadAndRefresh) runViewLoader('leads', () => Leads.loadAndRefresh());
   if (view === 'deals' && window.Deals?.loadAndRefresh) runViewLoader('deals', () => Deals.loadAndRefresh());
   if (view === 'proposals' && window.Proposals?.loadAndRefresh) runViewLoader('proposals', () => Proposals.loadAndRefresh());
@@ -4812,7 +4822,7 @@ function syncFilterInputs() {
 
 
 function wireCore() {
-   [E.issuesTab, E.calendarTab, E.insightsTab, E.csmTab, E.leadsTab, E.dealsTab, E.proposalsTab, E.agreementsTab, E.operationsOnboardingTab, E.technicalAdminTab, E.invoicesTab, E.receiptsTab, E.lifecycleAnalyticsTab, E.clientsTab, E.proposalCatalogTab, E.notificationsTab, E.notificationSetupTab, E.workflowTab, E.usersTab, E.rolePermissionsTab].forEach(btn => {
+   [E.issuesTab, E.calendarTab, E.insightsTab, E.csmTab, E.companyTab, E.contactsTab, E.leadsTab, E.dealsTab, E.proposalsTab, E.agreementsTab, E.operationsOnboardingTab, E.technicalAdminTab, E.invoicesTab, E.receiptsTab, E.lifecycleAnalyticsTab, E.clientsTab, E.proposalCatalogTab, E.notificationsTab, E.notificationSetupTab, E.workflowTab, E.usersTab, E.rolePermissionsTab].forEach(btn => {
     if (!btn) return;
     btn.addEventListener('click', () => setActiveView(btn.dataset.view));
   });
@@ -5266,7 +5276,7 @@ function wireDashboardGate() {
     return 'issues';
   };
   const getFirstAllowedView = preferredView => {
-    const names = ['issues', 'calendar', 'insights', 'csm', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
+    const names = ['issues', 'calendar', 'insights', 'csm', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
     const preferred = String(preferredView || '').trim();
     if (preferred && Permissions.canAccessTab(preferred)) return preferred;
     return names.find(name => Permissions.canAccessTab(name)) || 'issues';
