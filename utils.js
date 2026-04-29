@@ -295,13 +295,23 @@ const U = {
     const normalizedPaid = U.toMoneyNumber(paid);
     return Math.max(normalizedTotal - normalizedPaid, 0);
   },
-  calculatePaymentState: (total, paid) => {
-    const normalizedTotal = U.toMoneyNumber(total);
-    const normalizedPaid = U.toMoneyNumber(paid);
-    if (normalizedPaid <= 0) return 'Unpaid';
-    if (normalizedPaid < normalizedTotal) return 'Partially Paid';
-    return 'Paid';
+  calculatePaymentStatus: ({ total = 0, paid = 0, dueDate = '' } = {}) => {
+    const normalizedTotal = Math.max(0, U.toMoneyNumber(total));
+    const normalizedPaid = Math.max(0, U.toMoneyNumber(paid));
+    const dueRaw = String(dueDate || '').trim();
+    let isOverdue = false;
+    if (dueRaw) {
+      const due = new Date(dueRaw);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (Number.isFinite(due.getTime())) isOverdue = due.getTime() < today.getTime();
+    }
+    if (normalizedTotal > 0 && normalizedPaid >= normalizedTotal) return 'Fully Paid';
+    if (isOverdue && normalizedPaid < normalizedTotal) return 'Overdue';
+    if (normalizedPaid > 0 && normalizedPaid < normalizedTotal) return 'Partially Paid';
+    return 'Not Paid';
   },
+  calculatePaymentState: (total, paid, dueDate = '') => U.calculatePaymentStatus({ total, paid, dueDate }),
   calculatePaymentConclusion: (total, paid) => {
     const pendingAmount = U.calculatePendingAmount(total, paid);
     return pendingAmount > 0 ? 'Pending Settlement' : 'Settled';
@@ -312,9 +322,7 @@ const U = {
     const currentPaid = Math.max(0, U.toMoneyNumber(paidNow));
     const amountPaid = U.toMoneyNumber(previousPaid + currentPaid);
     const pendingAmount = U.toMoneyNumber(Math.max(total - amountPaid, 0));
-    let paymentState = 'Unpaid';
-    if (amountPaid > 0 && amountPaid < total) paymentState = 'Partially Paid';
-    if (amountPaid >= total) paymentState = 'Paid';
+    const paymentState = U.calculatePaymentStatus({ total, paid: amountPaid });
     const paymentConclusion = pendingAmount > 0 ? 'Pending Settlement' : 'Settled';
     return {
       old_paid_total: previousPaid,

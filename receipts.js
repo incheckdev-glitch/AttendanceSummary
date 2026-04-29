@@ -463,7 +463,7 @@ const Receipts = {
     E.receiptSummary.innerHTML = [
       { label: 'Total Receipts', value: total, filter: 'total' },
       { label: 'Issued', value: issued, filter: 'issued' },
-      { label: 'Paid', value: paid, filter: 'paid' },
+      { label: 'Fully Paid', value: paid, filter: 'paid' },
       { label: 'Grand Total', value: this.formatMoney(totalAmount), filter: 'grand-total' }
     ]
       .map(card => {
@@ -601,7 +601,7 @@ const Receipts = {
     const effectiveReceivedAmount = paymentSnapshot.received_amount;
     const effectiveNewPaidTotal = paymentSnapshot.new_paid_total;
     const effectivePendingAmount = paymentSnapshot.pending_amount;
-    const effectivePaymentState = String(paymentSnapshot.payment_state || receipt.payment_state || invoiceSource.payment_state || '').trim() || 'Unpaid';
+    const effectivePaymentState = String(paymentSnapshot.payment_state || receipt.payment_state || invoiceSource.payment_state || '').trim() || 'Not Paid';
     const effectivePaymentConclusion = String(paymentSnapshot.payment_conclusion || receipt.payment_conclusion || '').trim() || 'Pending Settlement';
     set('receiptFormReceiptId', receipt.receipt_id);
     set('receiptFormReceiptNumber', receipt.receipt_number);
@@ -876,9 +876,9 @@ const Receipts = {
     oldPaidBeforeReceipt = Math.max(0, this.toNumberSafe(oldPaidBeforeReceipt));
     const newPaidTotal = this.toNumberSafe(oldPaidBeforeReceipt + paidNow);
     const pendingAmount = this.toNumberSafe(Math.max(invoiceTotal - newPaidTotal, 0));
-    let paymentState = 'Unpaid';
+    let paymentState = 'Not Paid';
     if (newPaidTotal > 0 && newPaidTotal < invoiceTotal) paymentState = 'Partially Paid';
-    if (newPaidTotal >= invoiceTotal) paymentState = 'Paid';
+    if (newPaidTotal >= invoiceTotal) paymentState = 'Fully Paid';
     return {
       invoice_total: invoiceTotal,
       old_paid_total: oldPaidBeforeReceipt,
@@ -1248,7 +1248,7 @@ const Receipts = {
     const paymentSnapshot = this.resolveReceiptPaymentSnapshot(mergedReceipt, linkedInvoice || {}, invoiceReceipts);
     const normalizedNewPaidTotal = paymentSnapshot.new_paid_total;
     const normalizedPendingAmount = paymentSnapshot.pending_amount;
-    const normalizedPaymentState = String(paymentSnapshot.payment_state || '').trim() || 'Unpaid';
+    const normalizedPaymentState = String(paymentSnapshot.payment_state || '').trim() || 'Not Paid';
     const normalizedPaymentConclusion = String(paymentSnapshot.payment_conclusion || '').trim() || 'Pending Settlement';
     return {
       receipt_id: String(formValues.receipt_id || existing.receipt_id || '').trim() || null,
@@ -1318,7 +1318,7 @@ const Receipts = {
     const fallbackSnapshot = this.calculatePaymentSnapshot({ invoiceTotal: normalizedInvoiceTotal, oldPaidTotal, paidNow });
     const paidAmount = cumulativePaid > 0 ? cumulativePaid : this.normalizeMoney(fallbackSnapshot.amount_paid);
     const pendingAmount = Math.max(0, this.normalizeMoney(normalizedInvoiceTotal - paidAmount));
-    const paymentState = paidAmount <= 0 ? 'Unpaid' : pendingAmount > 0 ? 'Partially Paid' : 'Paid';
+    const paymentState = paidAmount <= 0 ? 'Not Paid' : pendingAmount > 0 ? 'Partially Paid' : 'Fully Paid';
     const paymentConclusion = pendingAmount <= 0 ? 'Settled' : 'Pending Settlement';
     const invoicePayload = {
       old_paid_total: this.normalizeMoney(Math.max(0, paidAmount - this.normalizeMoney(paidNow))),

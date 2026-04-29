@@ -58,7 +58,7 @@ const Invoices = {
     loadingInvoiceReceiptIds: new Set(),
     rowActionInFlight: new Set()
   },
-  statusOptions: ['Draft', 'Issued', 'Sent', 'Unpaid', 'Partially Paid', 'Paid', 'Overdue', 'Cancelled'],
+  statusOptions: ['Draft', 'Issued', 'Sent', 'Not Paid', 'Partially Paid', 'Fully Paid', 'Overdue', 'Cancelled'],
   toNumberSafe(value) {
     return U.toMoneyNumber(value);
   },
@@ -152,7 +152,7 @@ const Invoices = {
       invoice_total: invoiceTotal,
       amount_paid: amountPaid,
       pending_amount: pendingAmount,
-      payment_state: U.calculatePaymentState(invoiceTotal, amountPaid),
+      payment_state: U.calculatePaymentState(invoiceTotal, amountPaid, invoice.due_date || invoice.invoice_due_date || invoice.payment_due_date),
       payment_conclusion: U.calculatePaymentConclusion(invoiceTotal, amountPaid)
     };
   },
@@ -229,7 +229,7 @@ const Invoices = {
     const receiptsPaidAmount = normalized.reduce((sum, receipt) => sum + this.toNumberSafe(receipt.amount_received), 0);
     const cumulativePaidAmount = Math.max(this.toNumberSafe(baselinePaid), this.toNumberSafe(receiptsPaidAmount));
     const pendingAmount = Math.max(0, this.toNumberSafe(invoiceTotal) - cumulativePaidAmount);
-    const paymentState = cumulativePaidAmount <= 0 ? 'Unpaid' : pendingAmount > 0 ? 'Partially Paid' : 'Paid';
+    const paymentState = cumulativePaidAmount <= 0 ? 'Not Paid' : pendingAmount > 0 ? 'Partially Paid' : 'Fully Paid';
     const paymentConclusion = pendingAmount <= 0 ? 'Settled' : 'Pending Settlement';
     return {
       normalizedReceipts: normalized,
@@ -387,7 +387,7 @@ const Invoices = {
       amount_paid: this.toNumberSafe(pickDefined(source.amount_paid, source.received_amount)),
       received_amount: this.toNumberSafe(pickDefined(source.received_amount, source.amount_paid)),
       pending_amount: this.toNumberSafe(source.pending_amount),
-      payment_state: String(source.payment_state || '').trim() || 'Unpaid',
+      payment_state: String(source.payment_state || '').trim() || 'Not Paid',
       payment_conclusion: String(source.payment_conclusion || '').trim() || this.derivePaymentConclusion(source),
       amount_in_words: String(source.amount_in_words || '').trim() || null,
       notes: String(source.notes || '').trim() || null
@@ -636,7 +636,7 @@ const Invoices = {
     const paidNow = this.toNumberSafe(invoiceData.paid_now);
     const oldPaidTotal = Math.max(0, paidAmount - paidNow);
     const pendingAmount = this.toNumberSafe(receiptSummary.pending_amount);
-    const paymentState = String(receiptSummary.payment_state || invoiceData.payment_state || 'Unpaid').trim();
+    const paymentState = String(receiptSummary.payment_state || invoiceData.payment_state || 'Not Paid').trim();
     const amountInWords = String(invoiceData.amount_in_words || '').trim() || this.amountToWords(invoiceTotal, currency);
     const paymentConclusion = String(receiptSummary.payment_conclusion || invoiceData.payment_conclusion || '').trim() || this.derivePaymentConclusion({ pending_amount: pendingAmount });
 
@@ -1258,7 +1258,7 @@ const Invoices = {
     set('invoiceFormPaidNow', summary.paid_now);
     set('invoiceFormAmountPaid', summary.received_amount ?? summary.amount_paid);
     set('invoiceFormPendingAmount', summary.pending_amount);
-    if (E.invoiceFormPaymentState) E.invoiceFormPaymentState.value = String(summary.payment_state || 'Unpaid');
+    if (E.invoiceFormPaymentState) E.invoiceFormPaymentState.value = String(summary.payment_state || 'Not Paid');
     if (E.invoiceFormAmountInWords) E.invoiceFormAmountInWords.value = String(summary.amount_in_words || '');
     if (E.invoicePaymentConclusion) E.invoicePaymentConclusion.textContent = String(summary.payment_conclusion || 'Pending Settlement');
   },
@@ -1463,7 +1463,7 @@ const Invoices = {
       invoice_total: '',
       received_amount: 0,
       pending_amount: 0,
-      payment_state: 'Unpaid',
+      payment_state: 'Not Paid',
       payment_conclusion: 'Pending Settlement',
       amount_in_words: '',
       notes: ''
@@ -1547,7 +1547,7 @@ const Invoices = {
       ['Draft', count('draft'), 'draft'],
       ['Issued', count('issued'), 'issued'],
       ['Partially Paid', count('partially paid'), 'partially-paid'],
-      ['Paid', count('paid'), 'paid'],
+      ['Fully Paid', count('paid'), 'paid'],
       ['Overdue', count('overdue'), 'overdue']
     ];
     E.invoiceSummary.innerHTML = cards
