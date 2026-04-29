@@ -48,6 +48,7 @@ const Agreements = {
     'signed_date',
     'total_discount',
     'generated_by',
+    'company_id','company_name','contact_id','contact_name','contact_email','contact_phone','contact_mobile','customer_contact_phone','company_email','company_phone','country','city','tax_number','customer_signatory_email','customer_signatory_phone','provider_signatory_name','provider_signatory_title','provider_signatory_email','provider_primary_signatory_name','provider_primary_signatory_title','provider_secondary_signatory_name','provider_secondary_signatory_title',
     'notes'
   ],
   state: {
@@ -78,6 +79,17 @@ const Agreements = {
     openingAgreementIds: new Set(),
     rowActionInFlight: new Set()
   },
+
+  providerIdentityDefaults: {
+    legalName: 'InCheck 360 Holding BV',
+    name: 'InCheck 360 Holding BV',
+    address: 'Pyrmontstraat 5, 7513 BN, Enschede, The Netherlands',
+    primarySignatoryName: 'Simon Moujaly',
+    primarySignatoryTitle: 'CFO',
+    secondarySignatoryName: 'Hanna Khattar',
+    secondarySignatoryTitle: 'General Manager'
+  },
+
   toNumberSafe(value) {
     if (value === null || value === undefined || value === '') return 0;
     if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
@@ -500,6 +512,30 @@ const Agreements = {
     draft.one_time_total = totals.one_time_total;
     draft.grand_total = totals.grand_total;
     return { agreement: draft, items: draftItems };
+  },
+
+  buildContactPersonName(contact = {}) {
+    const first = String(contact.first_name || contact.firstName || '').trim();
+    const last = String(contact.last_name || contact.lastName || '').trim();
+    return [first, last].filter(Boolean).join(' ').trim() || String(contact.contact_name || contact.contactName || contact.full_name || contact.fullName || '').trim();
+  },
+  getContactPosition(contact = {}) {
+    return String(contact.job_title || contact.jobTitle || contact.position || contact.title || '').trim();
+  },
+  getSignedInUserForAgreement() {
+    const sessionApi = window.Session || {}; const appState = window.AppState || {}; const auth = window.Auth || {};
+    const sessionUser = typeof sessionApi.user === 'function' ? sessionApi.user() : {};
+    const sessionState = sessionApi.state || {};
+    const authContext = typeof sessionApi.authContext === 'function' ? sessionApi.authContext() : {};
+    const rawAuthUser = sessionState.user || sessionUser.user || authContext.user || appState.user || auth.user || {};
+    const profile = sessionState.profile || sessionUser.profile || authContext.profile || appState.profile || rawAuthUser.profile || {};
+    const firstUseful = (...values) => values.map(v=>String(v||'').trim()).find(v=>v && !['user','authenticated','null','undefined'].includes(v.toLowerCase())) || '';
+    const email = String(sessionUser.email || sessionState.email || rawAuthUser.email || profile.email || '').trim();
+    const username = firstUseful(sessionUser.username, sessionState.username, typeof sessionApi.username === 'function' ? sessionApi.username() : '', profile.username, rawAuthUser.username);
+    const name = firstUseful(sessionUser.name, sessionState.name, typeof sessionApi.displayName === 'function' ? sessionApi.displayName() : '', profile.full_name, profile.name, rawAuthUser.name, username) || (email ? email.split('@')[0] : '');
+    const mobile = String(sessionUser.mobile || sessionUser.phone || sessionState.mobile || sessionState.phone || profile.mobile || profile.phone || rawAuthUser.phone || '').trim();
+    const roleRaw = String((typeof sessionApi.role === 'function' ? sessionApi.role() : '') || sessionUser.role || sessionState.role || profile.role || rawAuthUser.role || '').trim();
+    return { name, email, mobile, role: roleRaw };
   },
   extractRows(response) {
     const candidates = [response, response?.agreements, response?.items, response?.rows, response?.data, response?.result, response?.payload, response?.data?.agreements, response?.result?.agreements, response?.payload?.agreements];
@@ -1451,6 +1487,15 @@ const Agreements = {
       set(id, agreement[field] ?? '');
     });
   },
+  applyIdentityFieldLocks() {
+    const locked = ['company_id','company_name','customer_name','customer_legal_name','customer_address','contact_id','contact_name','contact_email','contact_phone','contact_mobile','customer_contact_name','customer_contact_email','customer_contact_phone','customer_contact_mobile','provider_legal_name','provider_name','provider_address','provider_contact_name','provider_contact_email','provider_contact_mobile'];
+    locked.forEach(field => {
+      const id = `agreementForm${field.replace(/(^|_)([a-z])/g, (_, __, ch) => ch.toUpperCase())}`;
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.readOnly = true; el.setAttribute('aria-readonly','true'); el.classList.add('readonly-field','locked-field');
+    });
+  },
   setFormReadOnly(readOnly) {
     if (!E.agreementForm) return;
     E.agreementForm.querySelectorAll('input, select, textarea, button').forEach(el => {
@@ -1479,6 +1524,7 @@ const Agreements = {
       E.agreementFormSaveBtn.style.display = !readOnly && canSave ? '' : 'none';
     }
     this.setFormReadOnly(readOnly);
+    this.applyIdentityFieldLocks();
     this.state.currentAgreementId = String(agreement.id || '').trim();
     E.agreementFormModal.classList.add('open');
     E.agreementFormModal.setAttribute('aria-hidden', 'false');
@@ -1563,6 +1609,21 @@ const Agreements = {
     const source = String(E.agreementForm?.dataset.source || '').trim();
     const formProposalUuid = String(E.agreementForm?.dataset.proposalUuid || '').trim();
     const { agreement, items } = this.collectFormValues();
+    const provider = this.getSignedInUserForAgreement();
+    agreement.provider_legal_name = this.providerIdentityDefaults.legalName;
+    agreement.provider_name = this.providerIdentityDefaults.name;
+    agreement.provider_address = this.providerIdentityDefaults.address;
+    agreement.provider_contact_name = String(provider.name || agreement.provider_contact_name || '').trim();
+    agreement.provider_contact_email = String(provider.email || agreement.provider_contact_email || '').trim();
+    agreement.provider_contact_mobile = String(provider.mobile || agreement.provider_contact_mobile || '').trim();
+    if (!String(agreement.provider_primary_signatory_name || agreement.provider_signatory_name_primary || '').trim()) agreement.provider_signatory_name_primary = this.providerIdentityDefaults.primarySignatoryName;
+    if (!String(agreement.provider_primary_signatory_title || agreement.provider_signatory_title_primary || '').trim()) agreement.provider_signatory_title_primary = this.providerIdentityDefaults.primarySignatoryTitle;
+    if (!String(agreement.provider_signatory_name_secondary || '').trim()) agreement.provider_signatory_name_secondary = this.providerIdentityDefaults.secondarySignatoryName;
+    if (!String(agreement.provider_signatory_title_secondary || '').trim()) agreement.provider_signatory_title_secondary = this.providerIdentityDefaults.secondarySignatoryTitle;
+    agreement.provider_signatory_name = String(agreement.provider_signatory_name_primary || agreement.provider_primary_signatory_name || '').trim();
+    agreement.provider_signatory_title = String(agreement.provider_signatory_title_primary || agreement.provider_primary_signatory_title || '').trim();
+    agreement.provider_signatory_email = String(provider.email || '').trim();
+
     if (!id) {
       agreement.proposal_id = String(agreement.proposal_id || formProposalUuid || '').trim();
       const withBusinessIds = this.ensureAgreementBusinessIdentifiers(agreement);
