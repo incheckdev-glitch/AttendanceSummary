@@ -1073,16 +1073,16 @@ const Leads = {
     const estimatedValueRaw = String(E.leadFormEstimatedValue?.value || '').trim();
     return {
       lead_id: String(E.leadFormLeadId?.value || '').trim() === 'Auto-generated' ? '' : String(E.leadFormLeadId?.value || '').trim(),
-      full_name: String(E.leadFormFullName?.value || '').trim(),
+      full_name: String(E.leadFormContactName?.value || '').trim(),
       company_id: String(E.leadFormCompanyId?.value || '').trim(),
       company_name: String(E.leadFormCompanyName?.value || '').trim(),
       contact_id: String(E.leadFormContactId?.value || '').trim(),
       contact_name: String(E.leadFormContactName?.value || '').trim(),
       contact_email: String(E.leadFormContactEmail?.value || '').trim(),
       contact_phone: String(E.leadFormContactPhone?.value || '').trim(),
-      phone: String(E.leadFormPhone?.value || '').trim(),
-      email: String(E.leadFormEmail?.value || '').trim(),
-      country: String(E.leadFormCountry?.value || '').trim(),
+      phone: String(E.leadFormContactPhone?.value || '').trim(),
+      email: String(E.leadFormContactEmail?.value || '').trim(),
+      country: String(E.leadCompanyCountry?.value || '').trim(),
       lead_source: String(E.leadFormLeadSource?.value || '').trim(),
       service_interest: String(E.leadFormServiceInterest?.value || '').trim(),
       status: String(E.leadFormStatus?.value || '').trim(),
@@ -1164,8 +1164,8 @@ const Leads = {
     }
     const leadId = String(E.leadForm?.dataset.id || '').trim();
     const lead = this.collectFormData();
-    if (!lead.full_name) {
-      UI.toast('Full name is required.');
+    if (!lead.company_id || !lead.contact_id) {
+      UI.toast('Company and contact are required.');
       return;
     }
     if (mode === 'edit' && !leadId) {
@@ -1215,7 +1215,7 @@ const Leads = {
     const companyList = document.getElementById('leadCompanyPicker');
     const contactList = document.getElementById('leadContactPicker');
     if (companyList) companyList.innerHTML = companies.map(c => `<option value="${U.escapeAttr(c.company_name || '')}" data-company-id="${U.escapeAttr(c.company_id || '')}"></option>`).join('');
-    if (contactList) contactList.innerHTML = contacts.map(c => `<option value="${U.escapeAttr(c.full_name || '')}" data-contact-id="${U.escapeAttr(c.contact_id || '')}" data-company-id="${U.escapeAttr(c.company_id || '')}" data-company-name="${U.escapeAttr(c.company_name || '')}" data-email="${U.escapeAttr(c.email || '')}" data-phone="${U.escapeAttr(c.phone || c.mobile || '')}"></option>`).join('');
+    if (contactList) contactList.innerHTML = contacts.map(c => `<option value="${U.escapeAttr(c.full_name || '')}" data-contact-id="${U.escapeAttr(c.contact_id || '')}" data-company-id="${U.escapeAttr(c.company_id || '')}" data-company-name="${U.escapeAttr(c.company_name || '')}" data-email="${U.escapeAttr(c.email || '')}" data-phone="${U.escapeAttr(c.phone || c.mobile || '')}" data-mobile="${U.escapeAttr(c.mobile || '')}" data-first-name="${U.escapeAttr(c.first_name || '')}" data-last-name="${U.escapeAttr(c.last_name || '')}" data-job-title="${U.escapeAttr(c.job_title || '')}" data-department="${U.escapeAttr(c.department || '')}" data-decision-role="${U.escapeAttr(c.decision_role || '')}" data-is-primary-contact="${U.escapeAttr(Boolean(c.is_primary_contact))}" data-contact-status="${U.escapeAttr(c.contact_status || '')}"></option>`).join('');
     this.state.companyPickerRows = companies;
     this.state.contactPickerRows = contacts;
     const noContactsHint = document.getElementById('leadNoContactsHint');
@@ -1226,13 +1226,36 @@ const Leads = {
   hydrateLeadFromCompany(company = {}) {
     if (E.leadFormCompanyId) E.leadFormCompanyId.value = company.company_id || '';
     if (E.leadFormCompanyName) E.leadFormCompanyName.value = company.company_name || '';
+    if (E.leadCompanyLegalName) E.leadCompanyLegalName.value = company.legal_name || '';
+    if (E.leadCompanyType) E.leadCompanyType.value = company.company_type || '';
+    if (E.leadCompanyIndustry) E.leadCompanyIndustry.value = company.industry || '';
+    if (E.leadCompanyWebsite) E.leadCompanyWebsite.value = company.website || '';
+    if (E.leadCompanyMainEmail) E.leadCompanyMainEmail.value = company.main_email || '';
+    if (E.leadCompanyMainPhone) E.leadCompanyMainPhone.value = company.main_phone || '';
+    if (E.leadCompanyCountry) E.leadCompanyCountry.value = company.country || '';
+    if (E.leadCompanyCity) E.leadCompanyCity.value = company.city || '';
+    if (E.leadCompanyAddress) E.leadCompanyAddress.value = company.address || '';
+    if (E.leadCompanyTaxNumber) E.leadCompanyTaxNumber.value = company.tax_number || '';
+    if (E.leadCompanyStatus) E.leadCompanyStatus.value = company.company_status || '';
+    if (E.leadCompanySource) E.leadCompanySource.value = company.source || '';
+    if (E.leadCompanyOwnerName) E.leadCompanyOwnerName.value = company.owner_name || '';
+    if (E.leadCompanyOwnerEmail) E.leadCompanyOwnerEmail.value = company.owner_email || '';
   },
   hydrateLeadFromContact(contact = {}) {
     const fullName = String(contact.full_name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim()).trim();
+    if (E.leadFormFullName) E.leadFormFullName.value = fullName;
     if (E.leadFormContactId) E.leadFormContactId.value = contact.contact_id || '';
     if (E.leadFormContactName) E.leadFormContactName.value = fullName;
     if (E.leadFormContactEmail) E.leadFormContactEmail.value = contact.email || '';
     if (E.leadFormContactPhone) E.leadFormContactPhone.value = contact.phone || contact.mobile || '';
+    if (E.leadContactFirstName) E.leadContactFirstName.value = contact.first_name || '';
+    if (E.leadContactLastName) E.leadContactLastName.value = contact.last_name || '';
+    if (E.leadContactJobTitle) E.leadContactJobTitle.value = contact.job_title || '';
+    if (E.leadContactDepartment) E.leadContactDepartment.value = contact.department || '';
+    if (E.leadContactMobile) E.leadContactMobile.value = contact.mobile || '';
+    if (E.leadContactDecisionRole) E.leadContactDecisionRole.value = contact.decision_role || '';
+    if (E.leadContactPrimary) E.leadContactPrimary.value = contact.is_primary_contact ? 'Yes' : 'No';
+    if (E.leadContactStatus) E.leadContactStatus.value = contact.contact_status || '';
     if (E.leadFormCompanyId && !String(E.leadFormCompanyId.value || '').trim()) E.leadFormCompanyId.value = contact.company_id || '';
     if (E.leadFormCompanyName && !String(E.leadFormCompanyName.value || '').trim()) E.leadFormCompanyName.value = contact.company_name || '';
   },
@@ -1442,7 +1465,9 @@ const Leads = {
       const name = String(E.leadFormCompanyName.value || '').trim();
       const selected = [...(document.getElementById('leadCompanyPicker')?.options || [])].find(o => o.value === name);
       const companyId = selected?.dataset?.companyId || '';
+      const company = (this.state.companyPickerRows || []).find(c => String(c.company_id || '') === String(companyId || '')) || {};
       if (E.leadFormCompanyId) E.leadFormCompanyId.value = companyId;
+      this.hydrateLeadFromCompany(company);
       if (E.leadFormContactId) E.leadFormContactId.value = '';
       if (E.leadFormContactName) E.leadFormContactName.value = '';
       if (E.leadFormContactEmail) E.leadFormContactEmail.value = '';
@@ -1458,8 +1483,16 @@ const Leads = {
       this.hydrateLeadFromContact({
         contact_id: selected.dataset.contactId || '',
         full_name: name,
+        first_name: selected.dataset.firstName || '',
+        last_name: selected.dataset.lastName || '',
+        job_title: selected.dataset.jobTitle || '',
+        department: selected.dataset.department || '',
         email: selected.dataset.email || '',
         phone: selected.dataset.phone || '',
+        mobile: selected.dataset.mobile || '',
+        decision_role: selected.dataset.decisionRole || '',
+        is_primary_contact: selected.dataset.isPrimaryContact === 'true',
+        contact_status: selected.dataset.contactStatus || '',
         company_id: selected.dataset.companyId || '',
         company_name: selected.dataset.companyName || ''
       });

@@ -2734,23 +2734,40 @@ Sample:
             <input id="leadFormCreatedAt" class="input" type="text" readonly />
           </div>
           <div class="filter-row">
-            <label class="muted" for="leadFormFullName">Full Name *</label>
-            <input id="leadFormFullName" class="input" type="text" required />
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="leadFormCompanyName">Company Name</label>
+            <label class="muted" for="leadFormCompanyName">Company *</label>
             <input id="leadFormCompanyId" type="hidden" />
-            <input id="leadFormCompanyName" class="input" type="text" />
+            <input id="leadFormCompanyName" class="input" type="text" list="leadCompanyPicker" required />
           </div>
           <datalist id="leadCompanyPicker"></datalist>
           <div class="filter-row">
-            <label class="muted" for="leadFormContactName">Contact Name</label>
+            <label class="muted" for="leadFormContactName">Contact *</label>
             <input id="leadFormContactId" type="hidden" />
-            <input id="leadFormContactName" class="input" type="text" />
+            <input id="leadFormContactName" class="input" type="text" list="leadContactPicker" required />
           </div>
           <datalist id="leadContactPicker"></datalist>
           <div id="leadNoContactsHint" class="filter-row muted" style="display:none;grid-column:1 / -1;">No contacts found for this company. Add contacts from the Contacts module.</div>
           <div class="filter-row muted" style="grid-column:1 / -1;">Company and contact details are managed from the Company and Contacts modules.</div>
+          <div class="filter-row muted" style="grid-column:1 / -1;">Edit this information from the Company or Contacts module.</div>
+          <div class="filter-row" style="grid-column:1 / -1;"><strong>Company Details (Read-only)</strong></div>
+          <div class="filter-row"><label class="muted" for="leadCompanyLegalName">Legal Name</label><input id="leadCompanyLegalName" class="input readonly" type="text" readonly /></div>
+          <div class="filter-row"><label class="muted" for="leadCompanyType">Company Type</label><input id="leadCompanyType" class="input readonly" type="text" readonly /></div>
+          <div class="filter-row"><label class="muted" for="leadCompanyIndustry">Industry</label><input id="leadCompanyIndustry" class="input readonly" type="text" readonly /></div>
+          <div class="filter-row"><label class="muted" for="leadCompanyWebsite">Website</label><input id="leadCompanyWebsite" class="input readonly" type="text" readonly /></div>
+          <div class="filter-row"><label class="muted" for="leadCompanyMainEmail">Main Email</label><input id="leadCompanyMainEmail" class="input readonly" type="text" readonly /></div>
+          <div class="filter-row"><label class="muted" for="leadCompanyMainPhone">Main Phone</label><input id="leadCompanyMainPhone" class="input readonly" type="text" readonly /></div>
+          <div class="filter-row"><label class="muted" for="leadCompanyCountry">Country</label><input id="leadCompanyCountry" class="input readonly" type="text" readonly /></div>
+          <div class="filter-row"><label class="muted" for="leadCompanyCity">City</label><input id="leadCompanyCity" class="input readonly" type="text" readonly /></div>
+          <div class="filter-row"><label class="muted" for="leadCompanyAddress">Address</label><input id="leadCompanyAddress" class="input readonly" type="text" readonly /></div>
+          <div class="filter-row"><label class="muted" for="leadCompanyTaxNumber">Tax Number</label><input id="leadCompanyTaxNumber" class="input readonly" type="text" readonly /></div>
+          <div class="filter-row"><label class="muted" for="leadCompanyStatus">Company Status</label><input id="leadCompanyStatus" class="input readonly" type="text" readonly /></div>
+          <div class="filter-row"><label class="muted" for="leadCompanySource">Source</label><input id="leadCompanySource" class="input readonly" type="text" readonly /></div>
+          <div class="filter-row"><label class="muted" for="leadCompanyOwnerName">Owner Name</label><input id="leadCompanyOwnerName" class="input readonly" type="text" readonly /></div>
+          <div class="filter-row"><label class="muted" for="leadCompanyOwnerEmail">Owner Email</label><input id="leadCompanyOwnerEmail" class="input readonly" type="text" readonly /></div>
+          <div class="filter-row" style="grid-column:1 / -1;"><strong>Contact Details (Read-only)</strong></div>
+          <div class="filter-row"><label class="muted" for="leadContactFirstName">First Name</label><input id="leadContactFirstName" class="input readonly" type="text" readonly /></div>
+          <div class="filter-row"><label class="muted" for="leadContactLastName">Last Name</label><input id="leadContactLastName" class="input readonly" type="text" readonly /></div>
+          <div class="filter-row"><label class="muted" for="leadContactJobTitle">Job Title</label><input id="leadContactJobTitle" class="input readonly" type="text" readonly /></div>
+          <div class="filter-row"><label class="muted" for="leadContactDepartment">Department</label><input id="leadContactDepartment" class="input readonly" type="text" readonly /></div>
           <div class="filter-row">
             <label class="muted" for="leadFormContactEmail">Contact Email</label>
             <input id="leadFormContactEmail" class="input" type="email" readonly />
@@ -2759,18 +2776,10 @@ Sample:
             <label class="muted" for="leadFormContactPhone">Contact Phone</label>
             <input id="leadFormContactPhone" class="input" type="text" readonly />
           </div>
-          <div class="filter-row">
-            <label class="muted" for="leadFormPhone">Phone</label>
-            <input id="leadFormPhone" class="input" type="text" />
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="leadFormEmail">Email</label>
-            <input id="leadFormEmail" class="input" type="email" />
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="leadFormCountry">Country</label>
-            <input id="leadFormCountry" class="input" type="text" />
-          </div>
+          <div class="filter-row"><label class="muted" for="leadContactMobile">Mobile</label><input id="leadContactMobile" class="input readonly" type="text" readonly /></div>
+          <div class="filter-row"><label class="muted" for="leadContactDecisionRole">Decision Role</label><input id="leadContactDecisionRole" class="input readonly" type="text" readonly /></div>
+          <div class="filter-row"><label class="muted" for="leadContactPrimary">Primary Contact</label><input id="leadContactPrimary" class="input readonly" type="text" readonly /></div>
+          <div class="filter-row"><label class="muted" for="leadContactStatus">Contact Status</label><input id="leadContactStatus" class="input readonly" type="text" readonly /></div>
           <div class="filter-row">
             <label class="muted" for="leadFormLeadSource">Lead Source</label>
             <select id="leadFormLeadSource" class="select">
