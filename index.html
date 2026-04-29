@@ -2984,10 +2984,17 @@ Sample:
             <textarea id="dealFormNotes" class="input" rows="3" placeholder="Optional notes"></textarea>
           </div>
         </div>
-        <div class="muted" style="font-size:12px;">Company and contact details are managed from the Company and Contacts modules.</div>
         <div class="grid cols-2">
-          <div><h4 style="margin:8px 0;">Company Details</h4><div id="dealFormCompanyDetails" class="stack"></div></div>
-          <div><h4 style="margin:8px 0;">Contact Details</h4><div id="dealFormContactDetails" class="stack"></div></div>
+          <div>
+            <h4 style="margin:8px 0;">Company Details</h4>
+            <div class="muted" style="font-size:12px;">Company details are managed from the Company module.</div>
+            <div id="dealFormCompanyDetails" class="stack"></div>
+          </div>
+          <div>
+            <h4 style="margin:8px 0;">Contact Details</h4>
+            <div class="muted" style="font-size:12px;">Contact details are managed from the Contacts module.</div>
+            <div id="dealFormContactDetails" class="stack"></div>
+          </div>
         </div>
         <div class="actions" style="justify-content:space-between;gap:8px;">
           <button id="dealFormDeleteBtn" type="button" class="btn ghost" style="display:none;">Delete</button>
