@@ -1,6 +1,6 @@
 (function initSupabaseData(global) {
   const MIGRATED_RESOURCES = new Set([
-    'auth','users','roles','role_permissions','tickets','events','csm','leads','deals','proposal_catalog','proposals','agreements','workflow','clients','invoices','receipts','operations_onboarding','technical_admin_requests','notifications','notification_settings','companies','contacts'
+    'auth','users','roles','role_permissions','tickets','events','csm','leads','deals','proposal_catalog','proposals','agreements','workflow','clients','invoices','receipts','operations_onboarding','technical_admin_requests','notifications','notification_settings','companies','contacts','company_type_options','company_industry_options'
   ]);
 
   const TABLE_BY_RESOURCE = {
@@ -8,7 +8,7 @@
     events: 'events', csm: 'csm_activities', leads: 'leads', deals: 'deals',
     proposal_catalog: 'proposal_catalog_items', proposals: 'proposals', agreements: 'agreements',
     clients: 'clients', invoices: 'invoices', receipts: 'receipts', operations_onboarding: 'operations_onboarding',
-    technical_admin_requests: 'technical_admin_requests', companies: 'companies', contacts: 'contacts'
+    technical_admin_requests: 'technical_admin_requests', companies: 'companies', contacts: 'contacts', company_type_options: 'company_type_options', company_industry_options: 'company_industry_options'
     ,notifications: 'notifications'
     ,notification_settings: 'notification_rules'
   };
@@ -31,7 +31,9 @@
     operations_onboarding: 'id',
     technical_admin_requests: 'id',
     companies: 'id',
-    contacts: 'id'
+    contacts: 'id',
+    company_type_options: 'id',
+    company_industry_options: 'id'
     ,notifications: 'notification_id'
     ,notification_settings: 'id'
   };
@@ -53,7 +55,9 @@
     operations_onboarding: ['onboarding_id', 'agreement_id'],
     technical_admin_requests: ['request_id', 'technical_request_id'],
     companies: ['company_id'],
-    contacts: ['contact_id']
+    contacts: ['contact_id'],
+    company_type_options: [],
+    company_industry_options: []
     ,notifications: ['id']
     ,notification_settings: []
   };
@@ -1479,9 +1483,6 @@
     assign('address', source.address);
     assign('tax_number', source.tax_number ?? source.taxNumber);
     assign('company_status', source.company_status ?? source.companyStatus ?? 'Prospect');
-    assign('source', source.source);
-    assign('owner_name', source.owner_name ?? source.ownerName);
-    assign('owner_email', source.owner_email ?? source.ownerEmail);
     assign('notes', source.notes);
     assign('created_by', source.created_by ?? source.createdBy);
     assign('created_by_email', source.created_by_email ?? source.createdByEmail);
@@ -2452,15 +2453,14 @@
   function applyCompanyListFilters(query, filters = {}, search = '') {
     const f = filters || {};
     if (f.company_status) query = query.eq('company_status', f.company_status);
-    if (f.industry) query = query.ilike('industry', `%${String(f.industry).trim()}%`);
+    if (f.company_type) query = query.eq('company_type', String(f.company_type).trim());
+    if (f.industry) query = query.eq('industry', String(f.industry).trim());
     if (f.country) query = query.ilike('country', `%${String(f.country).trim()}%`);
     if (f.city) query = query.ilike('city', `%${String(f.city).trim()}%`);
-    if (f.owner) query = query.or(`owner_name.ilike.%${String(f.owner).trim()}%,owner_email.ilike.%${String(f.owner).trim()}%`);
-    if (f.source) query = query.ilike('source', `%${String(f.source).trim()}%`);
     if (f.created_from) query = query.gte('created_at', String(f.created_from).trim());
     if (f.created_to) query = query.lte('created_at', `${String(f.created_to).trim()}T23:59:59.999Z`);
     const term = String(search || '').trim().replace(/[%]/g, '').replace(/[,]/g, ' ');
-    if (term) query = query.or(`company_id.ilike.%${term}%,company_name.ilike.%${term}%,legal_name.ilike.%${term}%,main_email.ilike.%${term}%,main_phone.ilike.%${term}%,tax_number.ilike.%${term}%,owner_name.ilike.%${term}%,owner_email.ilike.%${term}%,notes.ilike.%${term}%`);
+    if (term) query = query.or(`company_id.ilike.%${term}%,company_name.ilike.%${term}%,legal_name.ilike.%${term}%,main_email.ilike.%${term}%,main_phone.ilike.%${term}%,tax_number.ilike.%${term}%,notes.ilike.%${term}%`);
     return query;
   }
 

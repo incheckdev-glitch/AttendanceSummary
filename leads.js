@@ -1267,8 +1267,8 @@ const Leads = {
     set('leadFormCompanyId', c.company_id);
     set('leadFormCompanyName', c.company_name);
     set('leadCompanyLegalName', c.legal_name);
-    set('leadCompanyType', c.company_type);
-    set('leadCompanyIndustry', c.industry);
+    set('leadCompanyType', window.Companies?.formatCompanyType?.(c.company_type) || c.company_type);
+    set('leadCompanyIndustry', window.Companies?.formatCompanyIndustry?.(c.industry) || c.industry);
     set('leadCompanyWebsite', c.website);
     set('leadCompanyMainEmail', c.main_email);
     set('leadCompanyMainPhone', c.main_phone);
@@ -1277,9 +1277,6 @@ const Leads = {
     set('leadCompanyAddress', c.address);
     set('leadCompanyTaxNumber', c.tax_number);
     set('leadCompanyStatus', c.company_status);
-    set('leadCompanySource', c.source);
-    set('leadCompanyOwnerName', c.owner_name);
-    set('leadCompanyOwnerEmail', c.owner_email);
   },
   hydrateLeadFromContact(contact = {}) {
     const c = this.normalizeContact(contact);
