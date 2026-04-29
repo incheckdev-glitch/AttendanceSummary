@@ -473,7 +473,7 @@ const Deals = {
     const headers = [
       'Deal ID',
       'Lead ID',
-      'Full Name',
+      'Contact Name',
       'Company Name',
       'Phone',
       'Email',
@@ -1156,7 +1156,7 @@ const Deals = {
     node.removeAttribute('aria-disabled');
   },
   lockCompanyContactFields({ lockCompanySelector = true, lockContactSelector = true } = {}) {
-    [E.dealFormCompanyId, E.dealFormContactId, E.dealFormCompanyName, E.dealFormFullName, E.dealFormPhone, E.dealFormEmail, E.dealFormCountry].forEach(node => this.lockInput(node));
+    [E.dealFormCompanyId, E.dealFormContactId, E.dealFormCompanyName, E.dealFormPhone, E.dealFormEmail, E.dealFormCountry].forEach(node => this.lockInput(node));
     if (lockCompanySelector) this.lockSelect(E.dealFormCompanySelector);
     if (lockContactSelector) this.lockSelect(E.dealFormContactSelector);
   },
@@ -1184,7 +1184,7 @@ const Deals = {
       E.dealCompanyIdDisplay, E.dealCompanyNameDisplay, E.dealCompanyLegalNameDisplay, E.dealCompanyTypeDisplay, E.dealCompanyIndustryDisplay,
       E.dealCompanyWebsiteDisplay, E.dealCompanyMainEmailDisplay, E.dealCompanyMainPhoneDisplay, E.dealCompanyCountryDisplay,
       E.dealCompanyCityDisplay, E.dealCompanyAddressDisplay, E.dealCompanyTaxNumberDisplay, E.dealCompanyStatusDisplay,
-      E.dealContactIdDisplay, E.dealContactFullNameDisplay, E.dealContactFirstNameDisplay, E.dealContactLastNameDisplay,
+      E.dealContactIdDisplay, E.dealContactFirstNameDisplay, E.dealContactLastNameDisplay,
       E.dealContactJobTitleDisplay, E.dealContactDepartmentDisplay, E.dealContactEmailDisplay, E.dealContactPhoneDisplay,
       E.dealContactMobileDisplay, E.dealContactDecisionRoleDisplay, E.dealContactPrimaryDisplay, E.dealContactStatusDisplay
     ].forEach(node => this.setReadonlyField(node, ''));
@@ -1221,8 +1221,7 @@ const Deals = {
         E.dealFormLeadId.dataset.leadCode = row.lead_code || '';
         E.dealFormLeadId.value = this.displayLeadId(row);
       }
-      if (E.dealFormFullName) E.dealFormFullName.value = row.full_name || '';
-      if (E.dealFormCompanyName) E.dealFormCompanyName.value = row.company_name || '';
+            if (E.dealFormCompanyName) E.dealFormCompanyName.value = row.company_name || '';
       if (E.dealFormPhone) E.dealFormPhone.value = row.phone || '';
       if (E.dealFormEmail) E.dealFormEmail.value = row.email || '';
       if (E.dealFormCountry) E.dealFormCountry.value = row.country || '';
@@ -1316,12 +1315,10 @@ const Deals = {
     this.state.form.contactId = c.contact_id || '';
     if (E.dealFormContactId) E.dealFormContactId.value = c.contact_id || '';
     if (E.dealFormContactSelector) E.dealFormContactSelector.value = c.contact_id || '';
-    if (E.dealFormFullName) E.dealFormFullName.value = c.full_name || '';
-    if (E.dealFormPhone) E.dealFormPhone.value = c.phone || c.mobile || '';
+        if (E.dealFormPhone) E.dealFormPhone.value = c.phone || c.mobile || '';
     if (E.dealFormEmail) E.dealFormEmail.value = c.email || '';
     this.setReadonlyField(E.dealContactIdDisplay, c.contact_id);
-    this.setReadonlyField(E.dealContactFullNameDisplay, c.full_name);
-    this.setReadonlyField(E.dealContactFirstNameDisplay, c.first_name);
+        this.setReadonlyField(E.dealContactFirstNameDisplay, c.first_name);
     this.setReadonlyField(E.dealContactLastNameDisplay, c.last_name);
     this.setReadonlyField(E.dealContactJobTitleDisplay, c.job_title);
     this.setReadonlyField(E.dealContactDepartmentDisplay, c.department);
@@ -1348,7 +1345,7 @@ const Deals = {
     const companyId = selectedCompany.company_id || this.state.form.companyId || E.dealFormCompanyId?.value || E.dealFormCompanySelector?.value || '';
     const companyName = selectedCompany.company_name || E.dealFormCompanyName?.value || '';
     const contactId = selectedContact.contact_id || this.state.form.contactId || E.dealFormContactId?.value || E.dealFormContactSelector?.value || '';
-    const contactName = selectedContact.full_name || E.dealFormFullName?.value || '';
+    const contactName = U.buildContactDisplayName(selectedContact); 
     const contactEmail = selectedContact.email || E.dealFormEmail?.value || '';
     const contactPhone = selectedContact.phone || selectedContact.mobile || E.dealFormPhone?.value || '';
     return {

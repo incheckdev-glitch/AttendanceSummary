@@ -52,7 +52,7 @@ const Leads = {
     return { ...raw, company_id: String(this.pick(raw, 'company_id', 'companyId')).trim(), company_name: String(this.pick(raw, 'company_name', 'companyName')).trim(), legal_name: String(this.pick(raw, 'legal_name', 'legalName')).trim(), company_type: String(this.pick(raw, 'company_type', 'companyType')).trim(), industry: String(this.pick(raw, 'industry')).trim(), website: String(this.pick(raw, 'website')).trim(), main_email: String(this.pick(raw, 'main_email', 'mainEmail')).trim(), main_phone: String(this.pick(raw, 'main_phone', 'mainPhone')).trim(), country: String(this.pick(raw, 'country')).trim(), city: String(this.pick(raw, 'city')).trim(), address: String(this.pick(raw, 'address')).trim(), tax_number: String(this.pick(raw, 'tax_number', 'taxNumber')).trim(), company_status: String(this.pick(raw, 'company_status', 'companyStatus')).trim(), source: String(this.pick(raw, 'source')).trim(), owner_name: String(this.pick(raw, 'owner_name', 'ownerName')).trim(), owner_email: String(this.pick(raw, 'owner_email', 'ownerEmail')).trim(), notes: String(this.pick(raw, 'notes')).trim() };
   },
   normalizeContact(raw = {}) {
-    const fullName = String(this.pick(raw, 'full_name', 'fullName')).trim() || `${this.pick(raw, 'first_name', 'firstName')} ${this.pick(raw, 'last_name', 'lastName')}`.trim();
+    const fullName = U.buildContactDisplayName(raw);
     return { ...raw, contact_id: String(this.pick(raw, 'contact_id', 'contactId')).trim(), company_id: String(this.pick(raw, 'company_id', 'companyId')).trim(), company_name: String(this.pick(raw, 'company_name', 'companyName')).trim(), first_name: String(this.pick(raw, 'first_name', 'firstName')).trim(), last_name: String(this.pick(raw, 'last_name', 'lastName')).trim(), full_name: fullName, job_title: String(this.pick(raw, 'job_title', 'jobTitle')).trim(), department: String(this.pick(raw, 'department')).trim(), email: String(this.pick(raw, 'email')).trim(), phone: String(this.pick(raw, 'phone')).trim(), mobile: String(this.pick(raw, 'mobile')).trim(), decision_role: String(this.pick(raw, 'decision_role', 'decisionRole')).trim(), is_primary_contact: Boolean(raw?.is_primary_contact ?? raw?.isPrimaryContact), contact_status: String(this.pick(raw, 'contact_status', 'contactStatus')).trim(), notes: String(this.pick(raw, 'notes')).trim() };
   },
   normalizeBool(value) {
@@ -574,7 +574,7 @@ const Leads = {
     const headers = [
       'Lead ID',
       'Created At',
-      'Full Name',
+      'Contact Name',
       'Company Name',
       'Phone',
       'Email',
@@ -1046,8 +1046,7 @@ const Leads = {
     if (row) {
       if (E.leadFormLeadId) E.leadFormLeadId.value = row.lead_id || '';
       if (E.leadFormCreatedAt) E.leadFormCreatedAt.value = row.created_at ? U.formatDateTimeMMDDYYYYHHMM(row.created_at) : '';
-      if (E.leadFormFullName) E.leadFormFullName.value = row.full_name || '';
-      if (E.leadFormCompanyName) E.leadFormCompanyName.value = row.company_name || '';
+            if (E.leadFormCompanyName) E.leadFormCompanyName.value = row.company_name || '';
       if (E.leadFormCompanyId) E.leadFormCompanyId.value = row.company_id || '';
       if (E.leadFormContactId) E.leadFormContactId.value = row.contact_id || '';
       if (E.leadFormContactName) E.leadFormContactName.value = row.contact_name || '';
@@ -1100,7 +1099,7 @@ const Leads = {
     const selectedContact = this.state.selectedContact || {};
     const companyId = String(selectedCompany.company_id || E.leadFormCompanyId?.value || '').trim();
     const contactId = String(selectedContact.contact_id || E.leadFormContactId?.value || '').trim();
-    const contactName = String(selectedContact.full_name || '').trim();
+    const contactName = String(U.buildContactDisplayName(selectedContact) || '').trim();
     const contactEmail = String(selectedContact.email || '').trim();
     const contactPhone = String(selectedContact.phone || selectedContact.mobile || '').trim();
     return {
@@ -1288,7 +1287,6 @@ const Leads = {
       if (node) node.value = value || '';
     };
 
-    set('leadFormFullName', fullName);
     set('leadFormContactId', c.contact_id);
     set('leadFormContactName', fullName);
     set('leadFormContactEmail', c.email);

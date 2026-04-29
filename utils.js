@@ -158,6 +158,13 @@ const U = {
 
     return doc.documentElement.outerHTML;
   },
+
+  buildContactDisplayName: (contact = {}) => {
+    const first = String(contact.first_name || contact.firstName || '').trim();
+    const last = String(contact.last_name || contact.lastName || '').trim();
+    const full = [first, last].filter(Boolean).join(' ').trim();
+    return full || String(contact.contact_name || contact.contactName || contact.full_name || contact.fullName || '').trim();
+  },
   fmtNumber: value => {
     const num = typeof value === 'number' ? value : Number(value);
     if (!Number.isFinite(num)) return '0';
