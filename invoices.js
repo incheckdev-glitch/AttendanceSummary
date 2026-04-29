@@ -267,6 +267,12 @@ const Invoices = {
   },
   buildInvoiceSavePayload(invoice = {}) {
     const source = this.normalizeInvoice(invoice);
+    const customerLegalName = U.getCustomerLegalName(
+      { legal_name: source.customer_legal_name, company_name: source.company_name },
+      source
+    );
+    const contactName = U.buildContactDisplayName(source);
+    const contactPhone = String(source.contact_mobile || source.contact_phone || '').trim();
     const pickDefined = (...values) => values.find(value => value !== undefined && value !== null && !(typeof value === 'string' && value.trim() === ''));
     return {
       invoice_id: String(source.invoice_id || '').trim() || null,
@@ -276,9 +282,16 @@ const Invoices = {
       issue_date: this.normalizeDateInputValue(source.issue_date) || null,
       due_date: this.normalizeDateInputValue(source.due_date) || null,
       billing_frequency: String(source.billing_frequency || '').trim() || null,
-      customer_name: String(source.customer_name || '').trim() || null,
-      customer_legal_name: String(source.customer_legal_name || '').trim() || null,
+      company_id: String(source.company_id || '').trim() || null,
+      company_name: String(source.company_name || '').trim() || null,
+      customer_name: customerLegalName || null,
+      customer_legal_name: customerLegalName || null,
       customer_address: String(source.customer_address || '').trim() || null,
+      contact_id: String(source.contact_id || '').trim() || null,
+      contact_name: String(contactName || source.contact_name || '').trim() || null,
+      contact_email: String(source.contact_email || '').trim() || null,
+      contact_phone: contactPhone || null,
+      contact_mobile: String(source.contact_mobile || '').trim() || null,
       customer_contact_name: String(source.customer_contact_name || '').trim() || null,
       customer_contact_email: String(source.customer_contact_email || '').trim() || null,
       provider_legal_name: String(source.provider_legal_name || '').trim() || null,

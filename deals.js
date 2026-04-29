@@ -150,6 +150,9 @@ const Deals = {
       company_name: String(
         pick(source.company_name, source.companyName, lead.company_name, lead.companyName)
       ).trim(),
+      customer_name: String(pick(source.customer_name, source.customerName, lead.customer_name, lead.customerName)).trim(),
+      customer_legal_name: String(pick(source.customer_legal_name, source.customerLegalName, lead.customer_legal_name, lead.customerLegalName)).trim(),
+      customer_address: String(pick(source.customer_address, source.customerAddress, lead.customer_address, lead.customerAddress)).trim(),
       contact_id: String(pick(source.contact_id, source.contactId, lead.contact_id, lead.contactId)).trim(),
       contact_name: String(pick(source.contact_name, source.contactName, lead.contact_name, lead.contactName, source.full_name)).trim(),
       contact_email: String(pick(source.contact_email, source.contactEmail, lead.contact_email, lead.contactEmail, source.email)).trim(),
@@ -1346,6 +1349,7 @@ const Deals = {
     const companyName = selectedCompany.company_name || E.dealFormCompanyName?.value || '';
     const contactId = selectedContact.contact_id || this.state.form.contactId || E.dealFormContactId?.value || E.dealFormContactSelector?.value || '';
     const contactName = U.buildContactDisplayName(selectedContact); 
+    const customerName = U.getCustomerLegalName(selectedCompany, {});
     const contactEmail = selectedContact.email || E.dealFormEmail?.value || '';
     const contactPhone = selectedContact.phone || selectedContact.mobile || E.dealFormPhone?.value || '';
     return {
@@ -1358,6 +1362,9 @@ const Deals = {
       full_name: String(contactName || '').trim(),
       company_id: String(companyId).trim(),
       company_name: String(companyName).trim(),
+      customer_name: customerName,
+      customer_legal_name: customerName,
+      customer_address: String(selectedCompany.address || '').trim(),
       contact_id: String(contactId).trim(),
       contact_name: String(contactName).trim(),
       contact_email: String(contactEmail).trim(),
