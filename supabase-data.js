@@ -245,7 +245,7 @@
   const PROPOSAL_COLUMNS = new Set([
     'proposal_id','ref_number','deal_id','company_id','company_name','contact_id','contact_name','contact_email','contact_phone','contact_mobile','customer_name','customer_address','customer_contact_name','customer_contact_mobile',
     'customer_contact_email','customer_contact_phone','provider_contact_name','provider_contact_mobile','provider_contact_email','proposal_title','proposal_date',
-    'proposal_valid_until','agreement_date','effective_date','service_start_date','service_end_date','contract_term','account_number','billing_frequency','payment_term','po_number',
+    'proposal_valid_until','agreement_date','effective_date','service_start_date','service_end_date','contract_term','account_number','billing_frequency','payment_term','payment_terms','po_number',
     'currency','customer_legal_name','provider_name','provider_legal_name',
     'terms_conditions','customer_signatory_name','customer_signatory_title','customer_signatory_email','customer_signatory_phone','provider_signatory_name','provider_signatory_title',
     'provider_signatory_name_secondary','provider_signatory_title_secondary','provider_sign_date',
@@ -258,7 +258,7 @@
   const AGREEMENT_COLUMNS = new Set([
     'agreement_id','proposal_id','agreement_number','company_id','company_name','contact_id','contact_name','contact_email','contact_phone','contact_mobile','customer_name','customer_legal_name','customer_address','customer_contact_name','customer_contact_mobile','customer_contact_email','customer_contact_phone','provider_name','provider_legal_name','provider_address','provider_contact_name','provider_contact_mobile',
     'provider_contact_email','service_start_date','service_end_date','agreement_date','effective_date','contract_term','account_number','billing_frequency',
-    'payment_term','po_number','terms_conditions','customer_signatory_name','customer_signatory_title','customer_signatory_email','customer_signatory_phone',
+    'payment_term','payment_terms','po_number','terms_conditions','customer_signatory_name','customer_signatory_title','customer_signatory_email','customer_signatory_phone',
     'customer_sign_date','provider_signatory_name','provider_signatory_title','provider_signatory_email','provider_signatory_secondary','provider_signatory_name_secondary','provider_signatory_title_secondary','provider_primary_signatory_name','provider_primary_signatory_title','provider_secondary_signatory_name','provider_secondary_signatory_title','provider_sign_date','gm_signed',
     'financial_controller_signed','signed_date','status','subtotal_locations','subtotal_one_time','total_discount',
     'grand_total','generated_by','created_by','updated_by','currency','customer_legal_name','provider_legal_name','provider_name',
@@ -1967,6 +1967,7 @@
     sanitized.payment_term = validPaymentTerms.includes(String(sanitized.payment_term || '').trim())
       ? String(sanitized.payment_term || '').trim()
       : 'Net 30';
+    sanitized.payment_terms = sanitized.payment_term;
     sanitized.provider_legal_name = 'InCheck 360 Holding BV';
     sanitized.provider_name = 'InCheck 360';
     sanitized.provider_address = 'Pyrmontstraat 5, 7513 BN, Enschede, The Netherlands';
