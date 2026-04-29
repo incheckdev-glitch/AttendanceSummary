@@ -348,6 +348,39 @@ const Agreements = {
       || this.providerIdentityDefaults.secondarySignatoryTitle;
     return normalized;
   },
+  getCompanyLegalName(company = {}) {
+    return String(company.legal_name || company.legalName || company.company_name || company.companyName || '').trim();
+  },
+  async getFullCompanyRecord(companyIdOrRecord) {
+    const seed = companyIdOrRecord && typeof companyIdOrRecord === 'object' ? companyIdOrRecord : {};
+    const companyId = companyIdOrRecord && typeof companyIdOrRecord === 'object' ? (seed.company_id || seed.companyId) : companyIdOrRecord;
+    const hasFullFields = seed.legal_name || seed.legalName || seed.address || seed.company_name || seed.companyName;
+    if (hasFullFields) return seed;
+    if (!companyId) return null;
+    const response = await Api.requestWithSession('companies', 'list', { filters: { company_id: companyId }, limit: 1 }, { requireAuth: true });
+    const rows = response?.rows || response?.items || response?.data || [];
+    const row = Array.isArray(rows) ? rows[0] : rows;
+    return row && typeof row === 'object' ? row : null;
+  },
+  async applyCompanyIdentityToAgreement(agreement = {}, { allowFallbackToAgreement = false } = {}) {
+    const next = agreement && typeof agreement === 'object' ? { ...agreement } : {};
+    const selectedCompany = await this.getFullCompanyRecord(next.company_id || next.companyId || {});
+    const customerLegalName = this.getCompanyLegalName(selectedCompany || {});
+    if (selectedCompany) {
+      next.company_id = String(selectedCompany.company_id || selectedCompany.companyId || next.company_id || '').trim();
+      next.company_name = String(selectedCompany.company_name || selectedCompany.companyName || '').trim();
+      next.customer_address = String(selectedCompany.address || '').trim();
+      next.customer_legal_name = customerLegalName;
+      next.customer_name = customerLegalName;
+      return next;
+    }
+    if (allowFallbackToAgreement) {
+      const fallback = String(next.customer_legal_name || '').trim();
+      next.customer_legal_name = fallback;
+      next.customer_name = fallback || String(next.customer_name || '').trim();
+    }
+    return next;
+  },
   normalizeItem(raw = {}, sectionFallback = '') {
     const source = raw && typeof raw === 'object' ? raw : {};
     const pick = (...values) => {
@@ -1601,7 +1634,8 @@ const Agreements = {
         return;
       }
       const response = await this.getAgreement(id);
-      const { agreement, items } = this.extractAgreementAndItems(response, id);
+      const { agreement: rawAgreement, items } = this.extractAgreementAndItems(response, id);
+      const agreement = await this.applyCompanyIdentityToAgreement(rawAgreement, { allowFallbackToAgreement: true });
       this.setCachedDetail(id, agreement, items);
       if (String(E.agreementForm?.dataset.id || '').trim() === id) {
         this.openAgreementForm(agreement, items, { readOnly });
@@ -1659,6 +1693,12 @@ const Agreements = {
     agreement.customer_signatory_title = String(agreement.customer_signatory_title || '').trim();
     agreement.customer_signatory_email = String(agreement.customer_signatory_email || agreement.customer_contact_email || agreement.contact_email || '').trim();
     agreement.customer_signatory_phone = String(agreement.customer_signatory_phone || agreement.customer_contact_mobile || agreement.contact_mobile || agreement.customer_contact_phone || agreement.contact_phone || '').trim();
+    const companyHydratedAgreement = await this.applyCompanyIdentityToAgreement(agreement, { allowFallbackToAgreement: true });
+    agreement.company_id = companyHydratedAgreement.company_id;
+    agreement.company_name = companyHydratedAgreement.company_name;
+    agreement.customer_address = companyHydratedAgreement.customer_address;
+    agreement.customer_legal_name = String(companyHydratedAgreement.customer_legal_name || agreement.customer_legal_name || '').trim();
+    agreement.customer_name = agreement.customer_legal_name;
 
     if (!id) {
       agreement.proposal_id = String(agreement.proposal_id || formProposalUuid || '').trim();
@@ -1854,10 +1894,11 @@ const Agreements = {
         return;
       }
       const proposalItems = Array.isArray(extracted.items) ? extracted.items : [];
-      const draft = this.buildDraftAgreementFromProposal(
+      let draft = this.buildDraftAgreementFromProposal(
         { ...proposal, id: resolvedProposalUuid },
         proposalItems
       );
+      draft = { ...draft, agreement: await this.applyCompanyIdentityToAgreement(draft.agreement) };
       this.openAgreementForm(draft.agreement, draft.items, { readOnly: false });
       UI.toast(`Agreement form prefilled from proposal ${String(proposal.proposal_id || proposalRef).trim()}. Save to create.`);
     } catch (error) {
