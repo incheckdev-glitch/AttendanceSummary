@@ -1198,6 +1198,10 @@ const Receipts = {
       formValues.client_id ||
       ''
     ).trim();
+    const customerLegalName = U.getCustomerLegalName(
+      { legal_name: linkedInvoice?.customer_legal_name, company_name: linkedInvoice?.company_name },
+      { ...linkedInvoice, ...existing, ...formValues }
+    );
     const normalizedPaidNow = this.getReceiptAmountValue({
       received_amount: formValues.received_amount,
       amount_received: formValues.amount_received,
@@ -1237,9 +1241,9 @@ const Receipts = {
       invoice_number: String(formValues.invoice_number || existing.invoice_number || '').trim() || null,
       currency: String(formValues.currency || existing.currency || '').trim() || 'USD',
       support_email: String(formValues.support_email || existing.support_email || '').trim() || null,
-      customer_name: String(formValues.customer_name || existing.customer_name || '').trim() || null,
-      customer_legal_name: String(formValues.customer_legal_name || existing.customer_legal_name || '').trim() || null,
-      customer_address: String(formValues.customer_address || existing.customer_address || '').trim() || null,
+      customer_name: customerLegalName || null,
+      customer_legal_name: customerLegalName || null,
+      customer_address: String(linkedInvoice?.customer_address || formValues.customer_address || existing.customer_address || '').trim() || null,
       amount_in_words: String(formValues.amount_in_words || existing.amount_in_words || '').trim() || null,
       invoice_total: paymentSnapshot.invoice_total,
       old_paid_total: paymentSnapshot.old_paid_total,
