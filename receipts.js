@@ -3,6 +3,7 @@ const Receipts = {
     'id',
     'receipt_id',
     'receipt_number',
+    'invoice_uuid',
     'invoice_id',
     'invoice_number',
     'client_id',
@@ -49,6 +50,7 @@ const Receipts = {
     'id',
     'receipt_id',
     'receipt_number',
+    'invoice_uuid',
     'invoice_id',
     'client_id',
     'invoice_number',
@@ -507,7 +509,7 @@ const Receipts = {
         const settlementBadge = this.isSettlementReceipt(row) ? ' <span class="pill">Settlement</span>' : '';
         return `<tr>
           <td><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;"><span>${U.escapeHtml(row.receipt_number || row.receipt_id || '—')}</span><span class="pill">${U.escapeHtml(typeLabel)}</span>${settlementBadge}</div></td>
-          <td>${U.escapeHtml(row.invoice_number || '—')}</td>
+          <td>${U.escapeHtml(row.invoice_number || row.invoice_id || '—')}</td>
           <td>${U.escapeHtml(row.customer_name || '—')}</td>
           <td>${U.escapeHtml(U.fmtDisplayDate(row.receipt_date))}</td>
           <td>${U.escapeHtml(row.currency || '—')}</td>
@@ -1052,8 +1054,9 @@ const Receipts = {
     const draft = {
       receipt_id: '',
       receipt_number: '',
-      invoice_id: invoiceUuid,
-      invoice_number: String(sourceInvoice?.invoice_number || sourceInvoice?.invoice_id || '').trim(),
+      invoice_uuid: String(sourceInvoice?.id || sourceInvoice?.invoice_uuid || sourceInvoice?.invoiceUuid || invoiceUuid || '').trim(),
+      invoice_id: String(sourceInvoice?.invoice_id || sourceInvoice?.invoiceId || '').trim(),
+      invoice_number: String(sourceInvoice?.invoice_number || sourceInvoice?.invoiceNumber || '').trim(),
       client_id: String(sourceInvoice?.client_id || '').trim(),
       receipt_date: this.todayInputValue(),
       customer_name: String(sourceInvoice?.customer_name || '').trim(),
@@ -1223,7 +1226,8 @@ const Receipts = {
     };
   },
   buildReceiptHeaderPayload(formValues = {}, { existing = {}, invoiceUuid = '', linkedInvoice = null, invoiceReceipts = null } = {}) {
-    const invoiceId = String(formValues.invoice_id || existing.invoice_id || invoiceUuid || '').trim();
+    const invoiceUuidValue = String(formValues.invoice_uuid || existing.invoice_uuid || invoiceUuid || '').trim();
+    const invoiceId = String(formValues.invoice_id || existing.invoice_id || '').trim();
     const clientId = String(
       E.receiptForm?.dataset.clientId ||
       existing.client_id ||
@@ -1243,6 +1247,7 @@ const Receipts = {
       ...existing,
       ...formValues,
       id: String(existing.id || formValues.id || '').trim(),
+      invoice_uuid: invoiceUuidValue || null,
       invoice_id: invoiceId || null,
       paid_now: normalizedPaidNow ?? this.getReceiptAmountValue(existing),
       received_amount: normalizedPaidNow ?? this.getReceiptAmountValue(existing),
@@ -1256,6 +1261,7 @@ const Receipts = {
     return {
       receipt_id: String(formValues.receipt_id || existing.receipt_id || '').trim() || null,
       receipt_number: String(formValues.receipt_number || existing.receipt_number || '').trim() || null,
+      invoice_uuid: invoiceUuidValue || null,
       invoice_id: invoiceId || null,
       agreement_uuid: String(formValues.agreement_uuid || existing.agreement_uuid || linkedInvoice?.agreement_uuid || '').trim() || null,
       agreement_id: String(formValues.agreement_id || existing.agreement_id || linkedInvoice?.agreement_id || linkedInvoice?.agreement_number || '').trim() || null,
@@ -1345,7 +1351,7 @@ const Receipts = {
         UI.toast('You do not have permission to create receipts.');
         return;
       }
-      const invoiceUuid = String(E.receiptForm?.dataset.sourceInvoiceUuid || updates.invoice_id || '').trim();
+      const invoiceUuid = String(E.receiptForm?.dataset.sourceInvoiceUuid || updates.invoice_uuid || '').trim();
       const normalizedAmount = this.normalizeAmountInput(updates.paid_now);
       if (!invoiceUuid) {
         UI.toast('Invoice UUID is required to create a receipt.');
@@ -1431,7 +1437,7 @@ const Receipts = {
           this.setCachedDetail(receiptUuid, normalized || receipt, normalizedDetailItems);
         }
         await window.Invoices?.syncAfterReceiptMutation?.({
-          invoiceId: normalized?.invoice_id || receipt?.invoice_id || invoiceUuid,
+          invoiceId: normalized?.invoice_uuid || receipt?.invoice_uuid || invoiceUuid,
           receipt: normalized || receipt
         });
         window.dispatchEvent(new CustomEvent('clients:refresh-totals', { detail: { reason: 'receipt-created' } }));
@@ -1652,13 +1658,13 @@ const Receipts = {
         <div><h2 class="voucher-title">RECEIPT VOUCHER</h2><div class="meta-box">
           <div class="meta-row"><span class="label">Receipt No.</span><span>${text(r.receipt_number || r.receipt_id)}</span></div>
           <div class="meta-row"><span class="label">Receipt Date</span><span>${date(r.receipt_date)}</span></div>
-          <div class="meta-row"><span class="label">Invoice No.</span><span>${text(r.invoice_number || invoice?.invoice_number || r.invoice_id)}</span></div>
+          <div class="meta-row"><span class="label">Invoice No.</span><span>${text(r.invoice_number || r.invoice_id || invoice?.invoice_number || invoice?.invoice_id)}</span></div>
         </div></div></section>
       <section class="address-block"><div><strong>${text(r.customer_legal_name || r.customer_name || invoice?.customer_legal_name || invoice?.customer_name)}</strong></div><div>${text(r.customer_address || invoice?.customer_address)}</div></section>
       <div class="notice">If you have any questions about this Invoice, please contact: ${text(r.support_email || invoice?.support_email || 'support@incheck360.com')}</div>
       <section class="section"><h3>Location Details</h3><table><thead><tr><th>Location Name</th><th>Location Address</th><th>Service Start Date</th><th>Service End Date</th><th>Modules / Item Name</th><th>Qty</th><th>Unit Price</th><th>Discount %</th><th>Discounted Unit Price</th><th>Line Total</th><th>Notes</th></tr></thead><tbody>${locationRows}</tbody></table></section>
       <section class="section"><h3>One-time Fees</h3><table><thead><tr><th>Item Name</th><th>Service Start Date</th><th>Service End Date</th><th>Qty</th><th>Unit Price</th><th>Discount %</th><th>Line Total</th><th>Notes</th></tr></thead><tbody>${oneTimeRows}</tbody></table></section>
-      <p class="summary">We have received from ${text(r.customer_legal_name || r.customer_name || invoice?.customer_legal_name || invoice?.customer_name)} the sum of ${text(amountInWords)} being partial payment on account of ${text(r.invoice_number || invoice?.invoice_number || r.invoice_id)}. Pending amount: ${this.money(currency, pendingAmount)}.</p>
+      <p class="summary">We have received from ${text(r.customer_legal_name || r.customer_name || invoice?.customer_legal_name || invoice?.customer_name)} the sum of ${text(amountInWords)} being partial payment on account of ${text(r.invoice_number || r.invoice_id || invoice?.invoice_number || invoice?.invoice_id)}. Pending amount: ${this.money(currency, pendingAmount)}.</p>
       <div class="totals-wrap"><div class="totals">
         <div class="row"><span>Subtotal Locations</span><span>${this.money(currency, subtotalLocations)}</span></div>
         <div class="row"><span>Subtotal One Time</span><span>${this.money(currency, subtotalOneTime)}</span></div>

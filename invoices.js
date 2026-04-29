@@ -2477,8 +2477,9 @@ const Invoices = {
     }
     await window.Receipts.openCreateFromInvoice({
       id,
-      invoice_id: invoice?.invoice_id || '',
-      invoice_number: invoice?.invoice_number || invoice?.invoice_id || '',
+      invoice_uuid: invoice?.id || invoice?.invoice_uuid || invoice?.invoiceUuid || '',
+      invoice_id: invoice?.invoice_id || invoice?.invoiceId || '',
+      invoice_number: invoice?.invoice_number || invoice?.invoiceNumber || '',
       agreement_uuid: invoice?.agreement_uuid || '',
       agreement_id: invoice?.agreement_id || '',
       agreement_number: invoice?.agreement_number || '',
