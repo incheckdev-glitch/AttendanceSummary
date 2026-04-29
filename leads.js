@@ -31,7 +31,26 @@ const Leads = {
     offset: 0,
     total: 0,
     returned: 0,
-    hasMore: false
+    hasMore: false,
+    selectedCompany: null,
+    selectedContact: null,
+    companyPickerRows: [],
+    contactPickerRows: []
+  },
+
+  pick(obj = {}, ...keys) {
+    for (const key of keys) {
+      const value = obj?.[key];
+      if (value !== undefined && value !== null && String(value).trim() !== '') return value;
+    }
+    return '';
+  },
+  normalizeCompany(raw = {}) {
+    return { ...raw, company_id: String(this.pick(raw, 'company_id', 'companyId')).trim(), company_name: String(this.pick(raw, 'company_name', 'companyName')).trim(), legal_name: String(this.pick(raw, 'legal_name', 'legalName')).trim(), company_type: String(this.pick(raw, 'company_type', 'companyType')).trim(), industry: String(this.pick(raw, 'industry')).trim(), website: String(this.pick(raw, 'website')).trim(), main_email: String(this.pick(raw, 'main_email', 'mainEmail')).trim(), main_phone: String(this.pick(raw, 'main_phone', 'mainPhone')).trim(), country: String(this.pick(raw, 'country')).trim(), city: String(this.pick(raw, 'city')).trim(), address: String(this.pick(raw, 'address')).trim(), tax_number: String(this.pick(raw, 'tax_number', 'taxNumber')).trim(), company_status: String(this.pick(raw, 'company_status', 'companyStatus')).trim(), source: String(this.pick(raw, 'source')).trim(), owner_name: String(this.pick(raw, 'owner_name', 'ownerName')).trim(), owner_email: String(this.pick(raw, 'owner_email', 'ownerEmail')).trim(), notes: String(this.pick(raw, 'notes')).trim() };
+  },
+  normalizeContact(raw = {}) {
+    const fullName = String(this.pick(raw, 'full_name', 'fullName')).trim() || `${this.pick(raw, 'first_name', 'firstName')} ${this.pick(raw, 'last_name', 'lastName')}`.trim();
+    return { ...raw, contact_id: String(this.pick(raw, 'contact_id', 'contactId')).trim(), company_id: String(this.pick(raw, 'company_id', 'companyId')).trim(), company_name: String(this.pick(raw, 'company_name', 'companyName')).trim(), first_name: String(this.pick(raw, 'first_name', 'firstName')).trim(), last_name: String(this.pick(raw, 'last_name', 'lastName')).trim(), full_name: fullName, job_title: String(this.pick(raw, 'job_title', 'jobTitle')).trim(), department: String(this.pick(raw, 'department')).trim(), email: String(this.pick(raw, 'email')).trim(), phone: String(this.pick(raw, 'phone')).trim(), mobile: String(this.pick(raw, 'mobile')).trim(), decision_role: String(this.pick(raw, 'decision_role', 'decisionRole')).trim(), is_primary_contact: Boolean(raw?.is_primary_contact ?? raw?.isPrimaryContact), contact_status: String(this.pick(raw, 'contact_status', 'contactStatus')).trim(), notes: String(this.pick(raw, 'notes')).trim() };
   },
   normalizeBool(value) {
     const normalized = String(value ?? '')
@@ -1006,6 +1025,8 @@ const Leads = {
     if (E.leadFormUpdatedAt) E.leadFormUpdatedAt.value = '';
     if (E.leadFormProposalNeeded) E.leadFormProposalNeeded.value = '';
     if (E.leadFormAgreementNeeded) E.leadFormAgreementNeeded.value = '';
+    this.state.selectedCompany = null;
+    this.state.selectedContact = null;
     this.syncLeadFormDropdowns();
   },
   currentUserAssignee() {
@@ -1073,16 +1094,16 @@ const Leads = {
     const estimatedValueRaw = String(E.leadFormEstimatedValue?.value || '').trim();
     return {
       lead_id: String(E.leadFormLeadId?.value || '').trim() === 'Auto-generated' ? '' : String(E.leadFormLeadId?.value || '').trim(),
-      full_name: String(E.leadFormContactName?.value || '').trim(),
-      company_id: String(E.leadFormCompanyId?.value || '').trim(),
-      company_name: String(E.leadFormCompanyName?.value || '').trim(),
-      contact_id: String(E.leadFormContactId?.value || '').trim(),
-      contact_name: String(E.leadFormContactName?.value || '').trim(),
-      contact_email: String(E.leadFormContactEmail?.value || '').trim(),
-      contact_phone: String(E.leadFormContactPhone?.value || '').trim(),
-      phone: String(E.leadFormContactPhone?.value || '').trim(),
-      email: String(E.leadFormContactEmail?.value || '').trim(),
-      country: String(E.leadCompanyCountry?.value || '').trim(),
+      full_name: String((this.state.selectedContact || {}).full_name || '').trim(),
+      company_id: String((this.state.selectedCompany || {}).company_id || E.leadFormCompanyId?.value || '').trim(),
+      company_name: String((this.state.selectedCompany || {}).company_name || '').trim(),
+      contact_id: String((this.state.selectedContact || {}).contact_id || E.leadFormContactId?.value || '').trim(),
+      contact_name: String((this.state.selectedContact || {}).full_name || '').trim(),
+      contact_email: String((this.state.selectedContact || {}).email || '').trim(),
+      contact_phone: String((this.state.selectedContact || {}).phone || (this.state.selectedContact || {}).mobile || '').trim(),
+      phone: String((this.state.selectedContact || {}).phone || (this.state.selectedContact || {}).mobile || '').trim(),
+      email: String((this.state.selectedContact || {}).email || '').trim(),
+      country: String((this.state.selectedCompany || {}).country || '').trim(),
       lead_source: String(E.leadFormLeadSource?.value || '').trim(),
       service_interest: String(E.leadFormServiceInterest?.value || '').trim(),
       status: String(E.leadFormStatus?.value || '').trim(),
@@ -1224,41 +1245,47 @@ const Leads = {
     }
   },
   hydrateLeadFromCompany(company = {}) {
-    if (E.leadFormCompanyId) E.leadFormCompanyId.value = company.company_id || '';
-    if (E.leadFormCompanyName) E.leadFormCompanyName.value = company.company_name || '';
-    if (E.leadCompanyLegalName) E.leadCompanyLegalName.value = company.legal_name || '';
-    if (E.leadCompanyType) E.leadCompanyType.value = company.company_type || '';
-    if (E.leadCompanyIndustry) E.leadCompanyIndustry.value = company.industry || '';
-    if (E.leadCompanyWebsite) E.leadCompanyWebsite.value = company.website || '';
-    if (E.leadCompanyMainEmail) E.leadCompanyMainEmail.value = company.main_email || '';
-    if (E.leadCompanyMainPhone) E.leadCompanyMainPhone.value = company.main_phone || '';
-    if (E.leadCompanyCountry) E.leadCompanyCountry.value = company.country || '';
-    if (E.leadCompanyCity) E.leadCompanyCity.value = company.city || '';
-    if (E.leadCompanyAddress) E.leadCompanyAddress.value = company.address || '';
-    if (E.leadCompanyTaxNumber) E.leadCompanyTaxNumber.value = company.tax_number || '';
-    if (E.leadCompanyStatus) E.leadCompanyStatus.value = company.company_status || '';
-    if (E.leadCompanySource) E.leadCompanySource.value = company.source || '';
-    if (E.leadCompanyOwnerName) E.leadCompanyOwnerName.value = company.owner_name || '';
-    if (E.leadCompanyOwnerEmail) E.leadCompanyOwnerEmail.value = company.owner_email || '';
+    const c = this.normalizeCompany(company);
+    this.state.selectedCompany = c.company_id ? c : null;
+    if (E.leadFormCompanyId) E.leadFormCompanyId.value = c.company_id || '';
+    if (E.leadFormCompanyName) E.leadFormCompanyName.value = c.company_name || '';
+    if (E.leadCompanyLegalName) E.leadCompanyLegalName.value = c.legal_name || '';
+    if (E.leadCompanyType) E.leadCompanyType.value = c.company_type || '';
+    if (E.leadCompanyIndustry) E.leadCompanyIndustry.value = c.industry || '';
+    if (E.leadCompanyWebsite) E.leadCompanyWebsite.value = c.website || '';
+    if (E.leadCompanyMainEmail) E.leadCompanyMainEmail.value = c.main_email || '';
+    if (E.leadCompanyMainPhone) E.leadCompanyMainPhone.value = c.main_phone || '';
+    if (E.leadCompanyCountry) E.leadCompanyCountry.value = c.country || '';
+    if (E.leadCompanyCity) E.leadCompanyCity.value = c.city || '';
+    if (E.leadCompanyAddress) E.leadCompanyAddress.value = c.address || '';
+    if (E.leadCompanyTaxNumber) E.leadCompanyTaxNumber.value = c.tax_number || '';
+    if (E.leadCompanyStatus) E.leadCompanyStatus.value = c.company_status || '';
+    if (E.leadCompanySource) E.leadCompanySource.value = c.source || '';
+    if (E.leadCompanyOwnerName) E.leadCompanyOwnerName.value = c.owner_name || '';
+    if (E.leadCompanyOwnerEmail) E.leadCompanyOwnerEmail.value = c.owner_email || '';
   },
   hydrateLeadFromContact(contact = {}) {
-    const fullName = String(contact.full_name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim()).trim();
+    const c = this.normalizeContact(contact);
+    const fullName = c.full_name;
+    this.state.selectedContact = c.contact_id ? c : null;
     if (E.leadFormFullName) E.leadFormFullName.value = fullName;
-    if (E.leadFormContactId) E.leadFormContactId.value = contact.contact_id || '';
+    if (E.leadFormContactId) E.leadFormContactId.value = c.contact_id || '';
     if (E.leadFormContactName) E.leadFormContactName.value = fullName;
-    if (E.leadFormContactEmail) E.leadFormContactEmail.value = contact.email || '';
-    if (E.leadFormContactPhone) E.leadFormContactPhone.value = contact.phone || contact.mobile || '';
-    if (E.leadContactFirstName) E.leadContactFirstName.value = contact.first_name || '';
-    if (E.leadContactLastName) E.leadContactLastName.value = contact.last_name || '';
-    if (E.leadContactJobTitle) E.leadContactJobTitle.value = contact.job_title || '';
-    if (E.leadContactDepartment) E.leadContactDepartment.value = contact.department || '';
-    if (E.leadContactMobile) E.leadContactMobile.value = contact.mobile || '';
-    if (E.leadContactDecisionRole) E.leadContactDecisionRole.value = contact.decision_role || '';
-    if (E.leadContactPrimary) E.leadContactPrimary.value = contact.is_primary_contact ? 'Yes' : 'No';
-    if (E.leadContactStatus) E.leadContactStatus.value = contact.contact_status || '';
-    if (E.leadFormCompanyId && !String(E.leadFormCompanyId.value || '').trim()) E.leadFormCompanyId.value = contact.company_id || '';
-    if (E.leadFormCompanyName && !String(E.leadFormCompanyName.value || '').trim()) E.leadFormCompanyName.value = contact.company_name || '';
+    if (E.leadFormContactEmail) E.leadFormContactEmail.value = c.email || '';
+    if (E.leadFormContactPhone) E.leadFormContactPhone.value = c.phone || c.mobile || '';
+    if (E.leadContactFirstName) E.leadContactFirstName.value = c.first_name || '';
+    if (E.leadContactLastName) E.leadContactLastName.value = c.last_name || '';
+    if (E.leadContactJobTitle) E.leadContactJobTitle.value = c.job_title || '';
+    if (E.leadContactDepartment) E.leadContactDepartment.value = c.department || '';
+    if (E.leadContactMobile) E.leadContactMobile.value = c.mobile || '';
+    if (E.leadContactDecisionRole) E.leadContactDecisionRole.value = c.decision_role || '';
+    if (E.leadContactPrimary) E.leadContactPrimary.value = c.is_primary_contact ? 'Yes' : 'No';
+    if (E.leadContactStatus) E.leadContactStatus.value = c.contact_status || '';
+    if (E.leadFormCompanyId && !String(E.leadFormCompanyId.value || '').trim()) E.leadFormCompanyId.value = c.company_id || '';
+    if (E.leadFormCompanyName && !String(E.leadFormCompanyName.value || '').trim()) E.leadFormCompanyName.value = c.company_name || '';
   },
+  async fetchFullCompany(companyId = '') { const id = String(companyId || '').trim(); if (!id) return null; const res = await Api.requestWithSession('companies', 'list', { page: 1, limit: 1, filters: { company_id: id } }, { requireAuth: true }); const row = Array.isArray(res?.rows) ? res.rows[0] : null; return row ? this.normalizeCompany(row) : null; },
+  async fetchFullContact(contactId = '') { const id = String(contactId || '').trim(); if (!id) return null; const res = await Api.requestWithSession('contacts', 'list', { page: 1, limit: 1, filters: { contact_id: id } }, { requireAuth: true }); const row = Array.isArray(res?.rows) ? res.rows[0] : null; return row ? this.normalizeContact(row) : null; },
   lockCompanyContactDisplayFields() {
     [E.leadFormContactEmail, E.leadFormContactPhone].forEach(el => {
       if (el) {
@@ -1269,10 +1296,14 @@ const Leads = {
   },
   async openLeadCreateFormWithPrefill(prefill = {}) {
     this.openForm(null);
-    this.hydrateLeadFromCompany(prefill);
-    this.hydrateLeadFromContact(prefill);
+    const companyId = String(prefill.company_id || prefill.companyId || '').trim();
+    const contactId = String(prefill.contact_id || prefill.contactId || '').trim();
+    const company = (await this.fetchFullCompany(companyId)) || prefill;
+    this.hydrateLeadFromCompany(company);
+    const contact = (await this.fetchFullContact(contactId)) || prefill;
+    this.hydrateLeadFromContact(contact);
     this.lockCompanyContactDisplayFields();
-    await this.loadLeadPickerOptions(prefill.company_id || '');
+    await this.loadLeadPickerOptions(companyId || this.state.selectedCompany?.company_id || '');
   },
   async deleteLeadById(leadUuid) {
     if (!this.canEditDelete()) {
@@ -1465,37 +1496,31 @@ const Leads = {
       const name = String(E.leadFormCompanyName.value || '').trim();
       const selected = [...(document.getElementById('leadCompanyPicker')?.options || [])].find(o => o.value === name);
       const companyId = selected?.dataset?.companyId || '';
-      const company = (this.state.companyPickerRows || []).find(c => String(c.company_id || '') === String(companyId || '')) || {};
+      const company = await this.fetchFullCompany(companyId) || (this.state.companyPickerRows || []).find(c => String(c.company_id || '') === String(companyId || '')) || {};
       if (E.leadFormCompanyId) E.leadFormCompanyId.value = companyId;
       this.hydrateLeadFromCompany(company);
-      if (E.leadFormContactId) E.leadFormContactId.value = '';
-      if (E.leadFormContactName) E.leadFormContactName.value = '';
-      if (E.leadFormContactEmail) E.leadFormContactEmail.value = '';
-      if (E.leadFormContactPhone) E.leadFormContactPhone.value = '';
+      this.state.selectedContact = null;
+      this.hydrateLeadFromContact({});
       await this.loadLeadPickerOptions(companyId);
       const primary = (this.state.contactPickerRows || []).find(c => Boolean(c.is_primary_contact));
-      if (primary) this.hydrateLeadFromContact(primary);
+      if (primary) this.hydrateLeadFromContact(await this.fetchFullContact(primary.contact_id) || primary);
     });
-    if (E.leadFormContactName) E.leadFormContactName.addEventListener('change', () => {
+    if (E.leadFormContactName) E.leadFormContactName.addEventListener('change', async () => {
       const name = String(E.leadFormContactName.value || '').trim();
       const selected = [...(document.getElementById('leadContactPicker')?.options || [])].find(o => o.value === name);
       if (!selected) return;
-      this.hydrateLeadFromContact({
-        contact_id: selected.dataset.contactId || '',
+      const contactId = selected.dataset.contactId || '';
+      const full = await this.fetchFullContact(contactId);
+      this.hydrateLeadFromContact(full || {
+        contact_id: contactId,
         full_name: name,
-        first_name: selected.dataset.firstName || '',
-        last_name: selected.dataset.lastName || '',
-        job_title: selected.dataset.jobTitle || '',
-        department: selected.dataset.department || '',
-        email: selected.dataset.email || '',
-        phone: selected.dataset.phone || '',
-        mobile: selected.dataset.mobile || '',
-        decision_role: selected.dataset.decisionRole || '',
-        is_primary_contact: selected.dataset.isPrimaryContact === 'true',
-        contact_status: selected.dataset.contactStatus || '',
         company_id: selected.dataset.companyId || '',
         company_name: selected.dataset.companyName || ''
       });
+      if (!this.state.selectedCompany && this.state.selectedContact?.company_id) {
+        const linkedCompany = await this.fetchFullCompany(this.state.selectedContact.company_id);
+        if (linkedCompany) this.hydrateLeadFromCompany(linkedCompany);
+      }
     });
     if (E.leadFormDeleteBtn) {
       E.leadFormDeleteBtn.addEventListener('click', () => {
