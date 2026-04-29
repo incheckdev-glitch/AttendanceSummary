@@ -2749,13 +2749,15 @@ Sample:
             <input id="leadFormContactName" class="input" type="text" />
           </div>
           <datalist id="leadContactPicker"></datalist>
+          <div id="leadNoContactsHint" class="filter-row muted" style="display:none;grid-column:1 / -1;">No contacts found for this company. Add contacts from the Contacts module.</div>
+          <div class="filter-row muted" style="grid-column:1 / -1;">Company and contact details are managed from the Company and Contacts modules.</div>
           <div class="filter-row">
             <label class="muted" for="leadFormContactEmail">Contact Email</label>
-            <input id="leadFormContactEmail" class="input" type="email" />
+            <input id="leadFormContactEmail" class="input" type="email" readonly />
           </div>
           <div class="filter-row">
             <label class="muted" for="leadFormContactPhone">Contact Phone</label>
-            <input id="leadFormContactPhone" class="input" type="text" />
+            <input id="leadFormContactPhone" class="input" type="text" readonly />
           </div>
           <div class="filter-row">
             <label class="muted" for="leadFormPhone">Phone</label>

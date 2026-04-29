@@ -352,6 +352,11 @@ const Leads = {
       lead_code: String(lead.lead_id || '').trim(),
       full_name: lead.full_name,
       company_name: lead.company_name,
+      company_id: lead.company_id,
+      contact_id: lead.contact_id,
+      contact_name: lead.contact_name,
+      contact_email: lead.contact_email,
+      contact_phone: lead.contact_phone,
       phone: lead.phone,
       email: lead.email,
       country: lead.country,
@@ -1103,6 +1108,11 @@ const Leads = {
     const toComparable = lead => ({
       full_name: String(lead.full_name || '').trim(),
       company_name: String(lead.company_name || '').trim(),
+      company_id: String(lead.company_id || '').trim(),
+      contact_id: String(lead.contact_id || '').trim(),
+      contact_name: String(lead.contact_name || '').trim(),
+      contact_email: String(lead.contact_email || '').trim(),
+      contact_phone: String(lead.contact_phone || '').trim(),
       phone: String(lead.phone || '').trim(),
       email: String(lead.email || '').trim(),
       country: String(lead.country || '').trim(),
@@ -1206,15 +1216,39 @@ const Leads = {
     const contactList = document.getElementById('leadContactPicker');
     if (companyList) companyList.innerHTML = companies.map(c => `<option value="${U.escapeAttr(c.company_name || '')}" data-company-id="${U.escapeAttr(c.company_id || '')}"></option>`).join('');
     if (contactList) contactList.innerHTML = contacts.map(c => `<option value="${U.escapeAttr(c.full_name || '')}" data-contact-id="${U.escapeAttr(c.contact_id || '')}" data-company-id="${U.escapeAttr(c.company_id || '')}" data-company-name="${U.escapeAttr(c.company_name || '')}" data-email="${U.escapeAttr(c.email || '')}" data-phone="${U.escapeAttr(c.phone || c.mobile || '')}"></option>`).join('');
+    this.state.companyPickerRows = companies;
+    this.state.contactPickerRows = contacts;
+    const noContactsHint = document.getElementById('leadNoContactsHint');
+    if (noContactsHint) {
+      noContactsHint.style.display = companyId && contacts.length === 0 ? '' : 'none';
+    }
+  },
+  hydrateLeadFromCompany(company = {}) {
+    if (E.leadFormCompanyId) E.leadFormCompanyId.value = company.company_id || '';
+    if (E.leadFormCompanyName) E.leadFormCompanyName.value = company.company_name || '';
+  },
+  hydrateLeadFromContact(contact = {}) {
+    const fullName = String(contact.full_name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim()).trim();
+    if (E.leadFormContactId) E.leadFormContactId.value = contact.contact_id || '';
+    if (E.leadFormContactName) E.leadFormContactName.value = fullName;
+    if (E.leadFormContactEmail) E.leadFormContactEmail.value = contact.email || '';
+    if (E.leadFormContactPhone) E.leadFormContactPhone.value = contact.phone || contact.mobile || '';
+    if (E.leadFormCompanyId && !String(E.leadFormCompanyId.value || '').trim()) E.leadFormCompanyId.value = contact.company_id || '';
+    if (E.leadFormCompanyName && !String(E.leadFormCompanyName.value || '').trim()) E.leadFormCompanyName.value = contact.company_name || '';
+  },
+  lockCompanyContactDisplayFields() {
+    [E.leadFormContactEmail, E.leadFormContactPhone].forEach(el => {
+      if (el) {
+        el.readOnly = true;
+        el.classList.add('readonly');
+      }
+    });
   },
   async openLeadCreateFormWithPrefill(prefill = {}) {
     this.openForm(null);
-    if (E.leadFormCompanyId) E.leadFormCompanyId.value = prefill.company_id || '';
-    if (E.leadFormCompanyName) E.leadFormCompanyName.value = prefill.company_name || '';
-    if (E.leadFormContactId) E.leadFormContactId.value = prefill.contact_id || '';
-    if (E.leadFormContactName) E.leadFormContactName.value = prefill.contact_name || '';
-    if (E.leadFormContactEmail) E.leadFormContactEmail.value = prefill.contact_email || '';
-    if (E.leadFormContactPhone) E.leadFormContactPhone.value = prefill.contact_phone || '';
+    this.hydrateLeadFromCompany(prefill);
+    this.hydrateLeadFromContact(prefill);
+    this.lockCompanyContactDisplayFields();
     await this.loadLeadPickerOptions(prefill.company_id || '');
   },
   async deleteLeadById(leadUuid) {
@@ -1403,25 +1437,32 @@ const Leads = {
         this.submitForm();
       });
     }
+    this.lockCompanyContactDisplayFields();
     if (E.leadFormCompanyName) E.leadFormCompanyName.addEventListener('change', async () => {
       const name = String(E.leadFormCompanyName.value || '').trim();
       const selected = [...(document.getElementById('leadCompanyPicker')?.options || [])].find(o => o.value === name);
-      if (E.leadFormCompanyId) E.leadFormCompanyId.value = selected?.dataset?.companyId || '';
+      const companyId = selected?.dataset?.companyId || '';
+      if (E.leadFormCompanyId) E.leadFormCompanyId.value = companyId;
       if (E.leadFormContactId) E.leadFormContactId.value = '';
       if (E.leadFormContactName) E.leadFormContactName.value = '';
       if (E.leadFormContactEmail) E.leadFormContactEmail.value = '';
       if (E.leadFormContactPhone) E.leadFormContactPhone.value = '';
-      await this.loadLeadPickerOptions(E.leadFormCompanyId?.value || '');
+      await this.loadLeadPickerOptions(companyId);
+      const primary = (this.state.contactPickerRows || []).find(c => Boolean(c.is_primary_contact));
+      if (primary) this.hydrateLeadFromContact(primary);
     });
     if (E.leadFormContactName) E.leadFormContactName.addEventListener('change', () => {
       const name = String(E.leadFormContactName.value || '').trim();
       const selected = [...(document.getElementById('leadContactPicker')?.options || [])].find(o => o.value === name);
       if (!selected) return;
-      if (E.leadFormContactId) E.leadFormContactId.value = selected.dataset.contactId || '';
-      if (E.leadFormContactEmail) E.leadFormContactEmail.value = selected.dataset.email || '';
-      if (E.leadFormContactPhone) E.leadFormContactPhone.value = selected.dataset.phone || '';
-      if (E.leadFormCompanyId && !E.leadFormCompanyId.value) E.leadFormCompanyId.value = selected.dataset.companyId || '';
-      if (E.leadFormCompanyName && !E.leadFormCompanyName.value) E.leadFormCompanyName.value = selected.dataset.companyName || '';
+      this.hydrateLeadFromContact({
+        contact_id: selected.dataset.contactId || '',
+        full_name: name,
+        email: selected.dataset.email || '',
+        phone: selected.dataset.phone || '',
+        company_id: selected.dataset.companyId || '',
+        company_name: selected.dataset.companyName || ''
+      });
     });
     if (E.leadFormDeleteBtn) {
       E.leadFormDeleteBtn.addEventListener('click', () => {
