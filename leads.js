@@ -50,6 +50,11 @@ const Leads = {
       created_at: raw.created_at || raw.createdAt || '',
       full_name: String(raw.full_name || raw.fullName || '').trim(),
       company_name: String(raw.company_name || raw.companyName || '').trim(),
+      company_id: String(raw.company_id || raw.companyId || '').trim(),
+      contact_id: String(raw.contact_id || raw.contactId || '').trim(),
+      contact_name: String(raw.contact_name || raw.contactName || '').trim(),
+      contact_email: String(raw.contact_email || raw.contactEmail || '').trim(),
+      contact_phone: String(raw.contact_phone || raw.contactPhone || '').trim(),
       phone: String(raw.phone || '').trim(),
       email: String(raw.email || '').trim(),
       country: String(raw.country || '').trim(),
@@ -99,6 +104,11 @@ const Leads = {
       ...(includeLeadId ? { lead_id: leadIdValue || null } : {}),
       full_name: String(lead.full_name || ''),
       company_name: String(lead.company_name || ''),
+      company_id: String(lead.company_id || ''),
+      contact_id: String(lead.contact_id || ''),
+      contact_name: String(lead.contact_name || ''),
+      contact_email: String(lead.contact_email || ''),
+      contact_phone: String(lead.contact_phone || ''),
       phone: String(lead.phone || ''),
       email: String(lead.email || ''),
       country: String(lead.country || ''),
@@ -1009,6 +1019,11 @@ const Leads = {
       if (E.leadFormCreatedAt) E.leadFormCreatedAt.value = row.created_at ? U.formatDateTimeMMDDYYYYHHMM(row.created_at) : '';
       if (E.leadFormFullName) E.leadFormFullName.value = row.full_name || '';
       if (E.leadFormCompanyName) E.leadFormCompanyName.value = row.company_name || '';
+      if (E.leadFormCompanyId) E.leadFormCompanyId.value = row.company_id || '';
+      if (E.leadFormContactId) E.leadFormContactId.value = row.contact_id || '';
+      if (E.leadFormContactName) E.leadFormContactName.value = row.contact_name || '';
+      if (E.leadFormContactEmail) E.leadFormContactEmail.value = row.contact_email || '';
+      if (E.leadFormContactPhone) E.leadFormContactPhone.value = row.contact_phone || '';
       if (E.leadFormPhone) E.leadFormPhone.value = row.phone || '';
       if (E.leadFormEmail) E.leadFormEmail.value = row.email || '';
       if (E.leadFormCountry) E.leadFormCountry.value = row.country || '';
@@ -1054,7 +1069,12 @@ const Leads = {
     return {
       lead_id: String(E.leadFormLeadId?.value || '').trim() === 'Auto-generated' ? '' : String(E.leadFormLeadId?.value || '').trim(),
       full_name: String(E.leadFormFullName?.value || '').trim(),
+      company_id: String(E.leadFormCompanyId?.value || '').trim(),
       company_name: String(E.leadFormCompanyName?.value || '').trim(),
+      contact_id: String(E.leadFormContactId?.value || '').trim(),
+      contact_name: String(E.leadFormContactName?.value || '').trim(),
+      contact_email: String(E.leadFormContactEmail?.value || '').trim(),
+      contact_phone: String(E.leadFormContactPhone?.value || '').trim(),
       phone: String(E.leadFormPhone?.value || '').trim(),
       email: String(E.leadFormEmail?.value || '').trim(),
       country: String(E.leadFormCountry?.value || '').trim(),
@@ -1172,6 +1192,30 @@ const Leads = {
       this.state.saveInFlight = false;
       this.setFormBusy(false);
     }
+  },
+  async loadLeadPickerOptions(companyId = '') {
+    const [companiesRes, contactsRes] = await Promise.all([
+      Api.requestWithSession('companies', 'list', { page: 1, limit: 200, sortBy: 'company_name', sortDir: 'asc' }, { requireAuth: true }),
+      Api.requestWithSession('contacts', 'list', { page: 1, limit: 200, filters: companyId ? { company_id: companyId } : {}, sortBy: 'full_name', sortDir: 'asc' }, { requireAuth: true })
+    ]);
+    const companies = Array.isArray(companiesRes?.rows) ? companiesRes.rows : [];
+    const contacts = Array.isArray(contactsRes?.rows) ? contactsRes.rows : [];
+    if (E.leadFormCompanyName) E.leadFormCompanyName.setAttribute('list', 'leadCompanyPicker');
+    if (E.leadFormContactName) E.leadFormContactName.setAttribute('list', 'leadContactPicker');
+    const companyList = document.getElementById('leadCompanyPicker');
+    const contactList = document.getElementById('leadContactPicker');
+    if (companyList) companyList.innerHTML = companies.map(c => `<option value="${U.escapeAttr(c.company_name || '')}" data-company-id="${U.escapeAttr(c.company_id || '')}"></option>`).join('');
+    if (contactList) contactList.innerHTML = contacts.map(c => `<option value="${U.escapeAttr(c.full_name || '')}" data-contact-id="${U.escapeAttr(c.contact_id || '')}" data-company-id="${U.escapeAttr(c.company_id || '')}" data-company-name="${U.escapeAttr(c.company_name || '')}" data-email="${U.escapeAttr(c.email || '')}" data-phone="${U.escapeAttr(c.phone || c.mobile || '')}"></option>`).join('');
+  },
+  async openLeadCreateFormWithPrefill(prefill = {}) {
+    this.openForm(null);
+    if (E.leadFormCompanyId) E.leadFormCompanyId.value = prefill.company_id || '';
+    if (E.leadFormCompanyName) E.leadFormCompanyName.value = prefill.company_name || '';
+    if (E.leadFormContactId) E.leadFormContactId.value = prefill.contact_id || '';
+    if (E.leadFormContactName) E.leadFormContactName.value = prefill.contact_name || '';
+    if (E.leadFormContactEmail) E.leadFormContactEmail.value = prefill.contact_email || '';
+    if (E.leadFormContactPhone) E.leadFormContactPhone.value = prefill.contact_phone || '';
+    await this.loadLeadPickerOptions(prefill.company_id || '');
   },
   async deleteLeadById(leadUuid) {
     if (!this.canEditDelete()) {
@@ -1359,6 +1403,26 @@ const Leads = {
         this.submitForm();
       });
     }
+    if (E.leadFormCompanyName) E.leadFormCompanyName.addEventListener('change', async () => {
+      const name = String(E.leadFormCompanyName.value || '').trim();
+      const selected = [...(document.getElementById('leadCompanyPicker')?.options || [])].find(o => o.value === name);
+      if (E.leadFormCompanyId) E.leadFormCompanyId.value = selected?.dataset?.companyId || '';
+      if (E.leadFormContactId) E.leadFormContactId.value = '';
+      if (E.leadFormContactName) E.leadFormContactName.value = '';
+      if (E.leadFormContactEmail) E.leadFormContactEmail.value = '';
+      if (E.leadFormContactPhone) E.leadFormContactPhone.value = '';
+      await this.loadLeadPickerOptions(E.leadFormCompanyId?.value || '');
+    });
+    if (E.leadFormContactName) E.leadFormContactName.addEventListener('change', () => {
+      const name = String(E.leadFormContactName.value || '').trim();
+      const selected = [...(document.getElementById('leadContactPicker')?.options || [])].find(o => o.value === name);
+      if (!selected) return;
+      if (E.leadFormContactId) E.leadFormContactId.value = selected.dataset.contactId || '';
+      if (E.leadFormContactEmail) E.leadFormContactEmail.value = selected.dataset.email || '';
+      if (E.leadFormContactPhone) E.leadFormContactPhone.value = selected.dataset.phone || '';
+      if (E.leadFormCompanyId && !E.leadFormCompanyId.value) E.leadFormCompanyId.value = selected.dataset.companyId || '';
+      if (E.leadFormCompanyName && !E.leadFormCompanyName.value) E.leadFormCompanyName.value = selected.dataset.companyName || '';
+    });
     if (E.leadFormDeleteBtn) {
       E.leadFormDeleteBtn.addEventListener('click', () => {
         const id = String(E.leadForm?.dataset.id || '').trim();
