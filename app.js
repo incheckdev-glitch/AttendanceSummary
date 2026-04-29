@@ -77,17 +77,14 @@ function canViewTicketInternalWidgets() {
 function renderInternalTicketSummaryCard({
   id,
   title,
-  subtitle,
-  summaryData = {}
+  total = 0
 }) {
   return `
     <article class="card ticket-internal-summary-card" aria-label="${U.escapeAttr(title)} widget">
-      <header class="ticket-internal-summary-header">
-        <div class="label">${U.escapeHtml(title)}</div>
-        <div class="sub">${U.escapeHtml(subtitle || '')}</div>
-      </header>
-      <canvas id="${U.escapeAttr(id)}" height="140" aria-label="${U.escapeAttr(title)} chart" role="img"></canvas>
-      <footer class="sub ticket-internal-summary-footer">Based on current ticket filters · Total ${Object.values(summaryData || {}).reduce((sum, n) => sum + Number(n || 0), 0)}</footer>
+      <div class="ticket-internal-summary-chart-wrap">
+        <canvas id="${U.escapeAttr(id)}" height="140" aria-label="${U.escapeAttr(title)} chart" role="img"></canvas>
+      </div>
+      <footer class="sub ticket-internal-summary-footer">Based on current ticket filters · Total ${Number(total || 0)}</footer>
     </article>
   `;
 }
@@ -258,11 +255,26 @@ function toInternalSummaryMap(summaryInput) {
   return {};
 }
 
+function buildInternalTicketWidgetChartData(tickets, fieldNames = []) {
+  const counts = new Map();
+
+  (Array.isArray(tickets) ? tickets : []).forEach(ticket => {
+    const rawValue = (Array.isArray(fieldNames) ? fieldNames : [])
+      .map(field => ticket?.[field])
+      .find(value => value != null && String(value).trim() !== '');
+
+    const label = normalizeInternalTicketWidgetValue(rawValue);
+    counts.set(label, (counts.get(label) || 0) + 1);
+  });
+
+  return Array.from(counts.entries())
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count);
+}
+
 function summarizeInternalWidgetFromRows(rows = [], ...keys) {
-  return (Array.isArray(rows) ? rows : []).reduce((acc, row) => {
-    const sourceValue = keys.reduce((value, key) => (value ?? row?.[key]), undefined);
-    const label = normalizeInternalTicketWidgetValue(sourceValue);
-    acc[label] = (acc[label] || 0) + 1;
+  return buildInternalTicketWidgetChartData(rows, keys).reduce((acc, item) => {
+    acc[item.label] = Number(item.count || 0);
     return acc;
   }, {});
 }
@@ -760,7 +772,7 @@ UI.Issues = {
     this.renderSummary(list);
     this.renderFilterChips();
     this.renderKPIs(list);
-    this.renderInternalWidgets();
+    this.renderInternalWidgets(list);
   },
   refreshChartsOnly(list = this.getFilteredList()) {
     this.renderCharts(list);
@@ -1346,28 +1358,38 @@ UI.Issues.renderSummary = function (list) {
   }
 };
 
-UI.Issues.renderInternalWidgets = function () {
+UI.Issues.renderInternalWidgets = function (filteredTickets = []) {
   if (!E.ticketInternalWidgets) return;
   if (!canViewTicketInternalWidgets()) {
     E.ticketInternalWidgets.innerHTML = '';
     return;
   }
+  const tickets = Array.isArray(filteredTickets) ? filteredTickets : [];
+  const issueRelatedData = buildInternalTicketWidgetChartData(tickets, ['issue_related', 'issueRelated']);
+  const devTeamStatusData = buildInternalTicketWidgetChartData(tickets, ['dev_team_status', 'devTeamStatus']);
+  const issueRelatedSummary = issueRelatedData.reduce((acc, item) => {
+    acc[item.label] = Number(item.count || 0);
+    return acc;
+  }, {});
+  const devTeamStatusSummary = devTeamStatusData.reduce((acc, item) => {
+    acc[item.label] = Number(item.count || 0);
+    return acc;
+  }, {});
+
   E.ticketInternalWidgets.innerHTML = [
     renderInternalTicketSummaryCard({
       id: 'issueRelatedWidgetChart',
       title: 'Issue Related',
-      subtitle: 'Based on current ticket filters',
-      summaryData: TicketSummaryState.issueRelatedSummary
+      total: tickets.length
     }),
     renderInternalTicketSummaryCard({
       id: 'devTeamStatusWidgetChart',
       title: 'Dev Team Status',
-      subtitle: 'Based on current ticket filters',
-      summaryData: TicketSummaryState.devTeamStatusSummary
+      total: tickets.length
     })
   ].join('');
-  renderInternalTicketSummaryChart('issueRelatedWidgetChart', TicketSummaryState.issueRelatedSummary);
-  renderInternalTicketSummaryChart('devTeamStatusWidgetChart', TicketSummaryState.devTeamStatusSummary);
+  renderInternalTicketSummaryChart('issueRelatedWidgetChart', issueRelatedSummary);
+  renderInternalTicketSummaryChart('devTeamStatusWidgetChart', devTeamStatusSummary);
 };
 
 /** Analytics (AI tab) */
