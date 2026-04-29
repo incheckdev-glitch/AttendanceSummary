@@ -60,7 +60,8 @@ const Deals = {
     offset: 0,
     total: 0,
     returned: 0,
-    hasMore: false
+    hasMore: false,
+    form: { mode: 'create', selectedLead: null, selectedCompany: null, selectedContact: null, companyId: '', contactId: '', lockLinks: false }
   },
   normalizeBool(value) {
     const normalized = String(value ?? '')
@@ -93,9 +94,14 @@ const Deals = {
       lead_code: String(pick(source.lead_code, source.leadCode, lead.lead_id, lead.leadId)).trim(),
       lead_id: String(pick(source.lead_id, source.leadId, lead.lead_id, lead.leadId)).trim(),
       full_name: String(pick(source.full_name, source.fullName, lead.full_name, lead.fullName)).trim(),
+      company_id: String(pick(source.company_id, source.companyId, lead.company_id, lead.companyId)).trim(),
       company_name: String(
         pick(source.company_name, source.companyName, lead.company_name, lead.companyName)
       ).trim(),
+      contact_id: String(pick(source.contact_id, source.contactId, lead.contact_id, lead.contactId)).trim(),
+      contact_name: String(pick(source.contact_name, source.contactName, lead.contact_name, lead.contactName, source.full_name)).trim(),
+      contact_email: String(pick(source.contact_email, source.contactEmail, lead.contact_email, lead.contactEmail, source.email)).trim(),
+      contact_phone: String(pick(source.contact_phone, source.contactPhone, lead.contact_phone, lead.contactPhone, source.phone)).trim(),
       phone: String(pick(source.phone, lead.phone)).trim(),
       email: String(pick(source.email, lead.email)).trim(),
       country: String(pick(source.country, lead.country)).trim(),
@@ -180,7 +186,12 @@ const Deals = {
       lead_code: toTextOrEmpty(['lead_code', 'leadCode']),
       source_lead_uuid: toTextOrEmpty(['source_lead_uuid', 'sourceLeadUuid', 'lead_uuid', 'leadUuid']),
       full_name: toTextOrEmpty(['full_name', 'fullName']),
+      company_id: toTextOrEmpty(['company_id', 'companyId']),
       company_name: toTextOrEmpty(['company_name', 'companyName']),
+      contact_id: toTextOrEmpty(['contact_id', 'contactId']),
+      contact_name: toTextOrEmpty(['contact_name', 'contactName']),
+      contact_email: toTextOrEmpty(['contact_email', 'contactEmail']),
+      contact_phone: toTextOrEmpty(['contact_phone', 'contactPhone']),
       phone: toTextOrEmpty(['phone']),
       email: toTextOrEmpty(['email']),
       country: toTextOrEmpty(['country']),
@@ -1041,6 +1052,31 @@ const Deals = {
     }
     if (E.dealFormDeleteBtn) E.dealFormDeleteBtn.disabled = !!v;
   },
+  async getFullCompanyRecord(companyIdOrRecord) {
+    if (!companyIdOrRecord) return null;
+    if (typeof companyIdOrRecord === 'object') {
+      const has = companyIdOrRecord.company_type || companyIdOrRecord.industry || companyIdOrRecord.website || companyIdOrRecord.main_email || companyIdOrRecord.main_phone || companyIdOrRecord.country || companyIdOrRecord.city || companyIdOrRecord.address || companyIdOrRecord.company_status;
+      if (has) return companyIdOrRecord;
+    }
+    const companyId = typeof companyIdOrRecord === 'object' ? (companyIdOrRecord.company_id || companyIdOrRecord.companyId) : companyIdOrRecord;
+    if (!companyId) return null;
+    const response = await Api.requestWithSession('companies','list',{ filters:{ company_id: companyId }, limit:1 },{ requireAuth:true });
+    const rows = response?.rows || response?.items || response?.data || [];
+    return Array.isArray(rows) ? (rows[0] || null) : (rows || null);
+  },
+  async getFullContactRecord(contactIdOrRecord) {
+    if (!contactIdOrRecord) return null;
+    if (typeof contactIdOrRecord === 'object') {
+      const has = contactIdOrRecord.first_name || contactIdOrRecord.last_name || contactIdOrRecord.job_title || contactIdOrRecord.department || contactIdOrRecord.decision_role || contactIdOrRecord.contact_status;
+      if (has) return contactIdOrRecord;
+    }
+    const contactId = typeof contactIdOrRecord === 'object' ? (contactIdOrRecord.contact_id || contactIdOrRecord.contactId) : contactIdOrRecord;
+    if (!contactId) return null;
+    const response = await Api.requestWithSession('contacts','list',{ filters:{ contact_id: contactId }, limit:1 },{ requireAuth:true });
+    const rows = response?.rows || response?.items || response?.data || [];
+    return Array.isArray(rows) ? (rows[0] || null) : (rows || null);
+  },
+  renderReadonlyDetails(container, pairs=[]) { if (!container) return; container.innerHTML = pairs.map(([k,v])=>`<div><span class="muted">${U.escapeHtml(k)}:</span> ${U.escapeHtml(String(v||'—'))}</div>`).join(''); },
   resetForm() {
     if (!E.dealForm) return;
     E.dealForm.reset();
@@ -1141,7 +1177,12 @@ const Deals = {
       lead_id: mode === 'edit' ? editLeadUuid : String(E.dealFormLeadId?.value || '').trim(),
       lead_code: mode === 'edit' ? editLeadCode : '',
       full_name: String(E.dealFormFullName?.value || '').trim(),
-      company_name: String(E.dealFormCompanyName?.value || '').trim(),
+      company_id: String(this.state.form.companyId || '').trim(),
+      company_name: String((this.state.form.selectedCompany?.company_name || E.dealFormCompanyName?.value || '')).trim(),
+      contact_id: String(this.state.form.contactId || '').trim(),
+      contact_name: String(this.state.form.selectedContact?.full_name || '').trim(),
+      contact_email: String(this.state.form.selectedContact?.email || '').trim(),
+      contact_phone: String(this.state.form.selectedContact?.phone || this.state.form.selectedContact?.mobile || '').trim(),
       phone: String(E.dealFormPhone?.value || '').trim(),
       email: String(E.dealFormEmail?.value || '').trim(),
       country: String(E.dealFormCountry?.value || '').trim(),

@@ -568,8 +568,14 @@ const Proposals = {
       proposal_title: titleParts.length ? `${titleParts.join(' · ')} Proposal` : '',
       customer_name: companyName || fullName,
       customer_contact_name: fullName,
-      customer_contact_mobile: String(deal.phone || '').trim(),
-      customer_contact_email: String(deal.email || '').trim(),
+      customer_contact_mobile: String(deal.contact_phone || deal.contactPhone || deal.phone || '').trim(),
+      customer_contact_email: String(deal.contact_email || deal.contactEmail || deal.email || '').trim(),
+      company_id: String(deal.company_id || deal.companyId || '').trim(),
+      company_name: String(deal.company_name || deal.companyName || '').trim(),
+      contact_id: String(deal.contact_id || deal.contactId || '').trim(),
+      contact_name: String(deal.contact_name || deal.contactName || fullName || '').trim(),
+      contact_email: String(deal.contact_email || deal.contactEmail || deal.email || '').trim(),
+      contact_phone: String(deal.contact_phone || deal.contactPhone || deal.phone || '').trim(),
       currency: String(deal.currency || '').trim()
     };
   },

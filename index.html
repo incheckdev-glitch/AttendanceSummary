@@ -2874,8 +2874,22 @@ Sample:
             <input id="dealFormDealId" class="input" type="text" readonly />
           </div>
           <div class="filter-row">
-            <label class="muted" for="dealFormLeadId">Lead ID</label>
-            <input id="dealFormLeadId" class="input" type="text" />
+            <label class="muted" for="dealFormLeadId">Linked Lead ID</label>
+            <input id="dealFormLeadId" class="input" type="text" readonly />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="dealFormLeadSelector">Lead Selector (manual)</label>
+            <input id="dealFormLeadSelector" class="input" type="text" placeholder="Optional lead id" />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="dealFormCompanySelector">Company</label>
+            <input id="dealFormCompanySelector" class="input" type="text" placeholder="Company ID" />
+            <input id="dealFormCompanyId" type="hidden" />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="dealFormContactSelector">Contact</label>
+            <input id="dealFormContactSelector" class="input" type="text" placeholder="Contact ID" />
+            <input id="dealFormContactId" type="hidden" />
           </div>
           <div class="filter-row">
             <label class="muted" for="dealFormFullName">Full Name</label>
@@ -2969,6 +2983,11 @@ Sample:
             <label class="muted" for="dealFormNotes">Notes</label>
             <textarea id="dealFormNotes" class="input" rows="3" placeholder="Optional notes"></textarea>
           </div>
+        </div>
+        <div class="muted" style="font-size:12px;">Company and contact details are managed from the Company and Contacts modules.</div>
+        <div class="grid cols-2">
+          <div><h4 style="margin:8px 0;">Company Details</h4><div id="dealFormCompanyDetails" class="stack"></div></div>
+          <div><h4 style="margin:8px 0;">Contact Details</h4><div id="dealFormContactDetails" class="stack"></div></div>
         </div>
         <div class="actions" style="justify-content:space-between;gap:8px;">
           <button id="dealFormDeleteBtn" type="button" class="btn ghost" style="display:none;">Delete</button>
