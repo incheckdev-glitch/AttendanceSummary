@@ -1452,7 +1452,7 @@ const Proposals = {
         <div class="info-box">
           <div class="info-head">CUSTOMER DETAILS</div>
           <div class="info-body">
-            <div><strong>${textValue(proposalData.customer_name || proposalData.customer_legal_name)}</strong></div>
+            <div><strong>${textValue(proposalData.customer_legal_name || proposalData.customer_name)}</strong></div>
             <div class="muted">${textValue(proposalData.customer_address)}</div>
             <div><strong>Contact:</strong> ${textValue(proposalData.customer_contact_name)}</div>
             <div><strong>Mobile:</strong> ${textValue(proposalData.customer_contact_mobile)}</div>
@@ -2380,7 +2380,8 @@ const Proposals = {
       proposal_valid_until: String(E.proposalFormValidUntil?.value || '').trim(),
       status: String(E.proposalFormStatus?.value || '').trim(),
       currency: String(E.proposalFormCurrency?.value || '').trim(),
-      customer_name: String(E.proposalFormCustomerName?.value || '').trim(),
+      customer_name: U.getCustomerLegalName(selectedCompany, mapped),
+      customer_legal_name: U.getCustomerLegalName(selectedCompany, mapped),
       customer_address: mapped.customer_address || '',
       customer_contact_name: String(E.proposalFormCustomerContactName?.value || '').trim(),
       customer_contact_mobile: String(E.proposalFormCustomerContactMobile?.value || '').trim(),
