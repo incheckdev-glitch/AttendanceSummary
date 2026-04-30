@@ -50,6 +50,63 @@
       .filter(Boolean);
   }
 
+
+  function isValidEmail(value = '') {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim().toLowerCase());
+  }
+
+  function buildEmailTemplate({ title = '', body = '', resource = '', action = '', recordNumber = '', url = '' } = {}) {
+    const safeTitle = String(title || 'InCheck360 Notification').trim() || 'InCheck360 Notification';
+    const safeBody = String(body || '').trim();
+    const safeResource = String(resource || '').trim();
+    const safeAction = String(action || '').trim();
+    const safeRecordNumber = String(recordNumber || '').trim();
+    const safeUrl = String(url || '').trim();
+    const html = `<div style="font-family:Arial,sans-serif;line-height:1.5;color:#111">
+      <h2>${safeTitle}</h2>
+      <p>${safeBody || 'A business event requires your attention.'}</p>
+      <p><strong>Resource:</strong> ${safeResource} &nbsp; <strong>Action:</strong> ${safeAction}</p>
+      ${safeRecordNumber ? `<p><strong>Record #:</strong> ${safeRecordNumber}</p>` : ''}
+      ${safeUrl ? `<p><a href="${safeUrl}" style="display:inline-block;padding:10px 14px;background:#0b57d0;color:#fff;text-decoration:none;border-radius:4px;">Open</a></p>` : ''}
+      <hr><p style="color:#666">InCheck360</p>
+    </div>`;
+    const text = [safeTitle, safeBody, safeUrl].filter(Boolean).join('\n');
+    return { subject: safeTitle, html, text };
+  }
+
+  async function sendNotificationEmail({ resource = '', action = '', eventKey = '', title = '', body = '', recipients = [], recordNumber = '', url = '' } = {}) {
+    const emailRecipients = [...new Set(normalizeList(recipients).map(item => String(item || '').trim().toLowerCase()).filter(isValidEmail))];
+    console.info('[notifications] email decision', {
+      resource,
+      action,
+      eventKey,
+      emailEnabled: true,
+      recipientsCount: emailRecipients.length,
+      hasSmtpHost: Boolean(global?.ENV?.SMTP_HOST || global?.process?.env?.SMTP_HOST),
+      hasSmtpUser: Boolean(global?.ENV?.SMTP_USER || global?.process?.env?.SMTP_USER),
+      hasSmtpPass: Boolean(global?.ENV?.SMTP_PASS || global?.process?.env?.SMTP_PASS),
+      hasSmtpFrom: Boolean(global?.ENV?.SMTP_FROM || global?.process?.env?.SMTP_FROM)
+    });
+    if (!emailRecipients.length) {
+      console.info('[notifications] no_email_recipients_resolved', { resource, action, eventKey });
+      return { attempted: false, skipped: true, reason: 'no_email_recipients_resolved' };
+    }
+    const token = await global.Api.getCurrentAccessToken();
+    const template = buildEmailTemplate({ title, body, resource, action, recordNumber, url });
+    const response = await fetch('/api/proxy', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}`, 'X-Supabase-Access-Token': token } : {})
+      },
+      body: JSON.stringify({ resource: 'notifications', action: 'send_email', to: emailRecipients, ...template })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(String(result?.error || 'Unable to send email notification'));
+    console.info('[notifications] email sent', { resource, action, eventKey, recipientsCount: emailRecipients.length, messageId: result?.messageId || null });
+    return result;
+  }
+
   function isPlaceholderRecipientToken(value = '') {
     const normalized = normalizeText(value);
     return !normalized || normalized === 'optional: user@company.com' || normalized === 'user@company.com';
@@ -233,6 +290,7 @@
       }
 
       recipients.push(...userIds, ...emails);
+      const emailRecipients = emails.filter(isValidEmail);
       const baseAllowed = Boolean(rule?.is_enabled === true && recipients.length > 0);
       decision.channels.in_app = Boolean(baseAllowed && rule?.in_app_enabled === true && normalizedRequestedChannels.includes('in_app'));
       decision.channels.push = Boolean(baseAllowed && (rule?.pwa_enabled === true || rule?.push_enabled === true || rule?.web_push_enabled === true) && normalizedRequestedChannels.includes('push'));
@@ -284,23 +342,22 @@
           ...(decision.channels.email ? ['email'] : [])
         ],
         user_ids: userIds,
-        emails,
+        emails: emailRecipients,
         target_roles: assignedRoles
       };
-      if (!decision.channels.push) {
-        console.info('[notifications] push skipped by channel rule', {
-          resource: normalizedResource,
-          action: normalizedAction,
-          eventKey: normalizedEventKey,
-          pwaEnabled: rule?.pwa_enabled,
-          pushEnabled: rule?.push_enabled,
-          webPushEnabled: rule?.web_push_enabled
-        });
-        return { attempted: decision.channels.in_app, sent: false, skipped: true, reason: 'push-disabled-by-rule', channels: payload.channels };
-      }
-      try { return await global.Api.sendWebPush(payload, { context: `${normalizedResource}:${normalizedAction}:central` }); }
-      catch (error) {
-        console.warn('[notifications] sendBusinessNotification failed (non-blocking)', error);
+      try {
+        let pushResult = { attempted: false, skipped: true, reason: 'push-disabled-by-rule' };
+        if (decision.channels.push) {
+          pushResult = await global.Api.sendWebPush(payload, { context: `${normalizedResource}:${normalizedAction}:central` });
+        } else {
+          console.info('[notifications] push skipped by channel rule', { resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey });
+        }
+        if (decision.channels.email) {
+          await sendNotificationEmail({ resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, title: payload.title, body: payload.body, recipients: emailRecipients, recordNumber: payload.record_number, url: payload.url });
+        }
+        return pushResult;
+      } catch (error) {
+        console.warn('[notifications] email send failed', { resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, error: error?.message || String(error) });
         return { attempted: true, sent: false, error: String(error?.message || error) };
       }
     }
