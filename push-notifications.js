@@ -553,10 +553,13 @@
         endpoint,
         user_id: String(global.Session?.userId?.() || sessionUser.user_id || '').trim() || null,
         role: String(global.Session?.role?.() || sessionUser.role || sessionUser.profile?.role_key || '').trim() || null,
+        email: String(sessionUser.email || global.Session?.state?.profile?.email || '').trim().toLowerCase() || null,
         p256dh: p256dh ? global.btoa(String.fromCharCode(...new Uint8Array(p256dh))) : null,
         auth: auth ? global.btoa(String.fromCharCode(...new Uint8Array(auth))) : null,
         user_agent: String(navigator.userAgent || '').trim() || null,
         device_label: this.deriveDeviceLabel(),
+        origin: String(global.location?.origin || '').trim() || null,
+        app_context: this.isStandalonePwa() ? 'pwa' : 'web',
         is_active: Boolean(isActive),
         last_seen_at: nowIso
       };
@@ -635,6 +638,16 @@
         if (!silent) this.setMessage('Unable to verify push notification status right now.');
       }
       return false;
+    },
+
+
+
+    async registerCurrentDevicePushSubscription(options = {}) {
+      const forceRefresh = options?.forceRefresh === true;
+      if (forceRefresh) {
+        return this.refreshPushSubscription({ skipBusyState: false, reason: 'manual_force_refresh' });
+      }
+      return this.enablePush();
     },
 
     async enablePush() {
@@ -1596,7 +1609,7 @@
         this.handleToggleClick();
       });
       this.els.refreshSubscriptionBtn?.addEventListener('click', () => {
-        this.refreshPushSubscription();
+        this.registerCurrentDevicePushSubscription({ forceRefresh: true });
       });
       this.els.inAppSoundToggleBtn?.addEventListener('click', async () => {
         if (!this.state.inAppSoundEnabled) {

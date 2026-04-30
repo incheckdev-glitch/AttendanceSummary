@@ -297,7 +297,7 @@ Deno.serve(async req => {
       if (targetSubscriptionIds.length > 0) {
         const { data: subscriptionRows, error: subscriptionError } = await adminClient
           .from('push_subscriptions')
-          .select('id, user_id, role, endpoint, p256dh, auth')
+          .select('id, user_id, email, role, endpoint, p256dh, auth')
           .eq('is_active', true)
           .in('id', targetSubscriptionIds)
           .limit(200);
@@ -313,7 +313,7 @@ Deno.serve(async req => {
       if (combinedUserIds.length > 0) {
         const { data: userRows, error: userError } = await adminClient
           .from('push_subscriptions')
-          .select('id, user_id, role, endpoint, p256dh, auth')
+          .select('id, user_id, email, role, endpoint, p256dh, auth')
           .eq('is_active', true)
           .in('user_id', combinedUserIds)
           .limit(200);
@@ -326,10 +326,26 @@ Deno.serve(async req => {
         });
       }
 
+      if (targetEmails.length > 0) {
+        const { data: emailSubRows, error: emailSubError } = await adminClient
+          .from('push_subscriptions')
+          .select('id, user_id, email, role, endpoint, p256dh, auth')
+          .eq('is_active', true)
+          .in('email', targetEmails)
+          .limit(500);
+        if (emailSubError) throw new Error(emailSubError.message || 'Unable to load email push subscriptions.');
+        (emailSubRows || []).forEach(row => {
+          const id = normalizeString(row.id);
+          if (!id || seenSubscriptionIds.has(id)) return;
+          seenSubscriptionIds.add(id);
+          fetchedRows.push(row as Record<string, unknown>);
+        });
+      }
+
       if (targetRoles.length > 0) {
         const { data: roleRows, error: roleError } = await adminClient
           .from('push_subscriptions')
-          .select('id, user_id, role, endpoint, p256dh, auth')
+          .select('id, user_id, email, role, endpoint, p256dh, auth')
           .eq('is_active', true)
           .limit(1000);
         if (roleError) throw new Error(roleError.message || 'Unable to load role push subscriptions.');
@@ -395,12 +411,22 @@ Deno.serve(async req => {
       });
     }
 
-    const results = await Promise.allSettled(
+    const deliveryRows = await Promise.allSettled(
       subscriptions.map(subscription => webPush.sendNotification(subscription, JSON.stringify(payload)))
     );
-    const attempted = results.length;
-    const sent = results.filter(result => result.status === 'fulfilled').length;
+    const attempted = deliveryRows.length;
+    const sent = deliveryRows.filter(result => result.status === 'fulfilled').length;
     const failed = attempted - sent;
+
+    for (let i = 0; i < deliveryRows.length; i += 1) {
+      const result = deliveryRows[i];
+      if (result.status !== 'rejected') continue;
+      const statusCode = Number((result.reason as Record<string, unknown>)?.statusCode || 0);
+      if (statusCode !== 404 && statusCode !== 410) continue;
+      const endpoint = normalizeString(subscriptions[i]?.endpoint);
+      if (!endpoint) continue;
+      await adminClient?.from('push_subscriptions').update({ is_active: false, last_seen_at: new Date().toISOString() }).eq('endpoint', endpoint);
+    }
     console.info('[send-web-push-v2] delivery result', {
       rows: subscriptions.length,
       attempted,
