@@ -854,7 +854,31 @@ const Clients = {
     if (this.hasBackendAnalytics_(payload)) return payload;
     return null;
   },
+  isSaasAnnualItem(item = {}) {
+    const normalizedType = this.normalizeText(item.agreement_item_type || item.item_class || item.plan_type || item.planType || item.item_type || item.itemType);
+    if (normalizedType === 'saas_annual' || normalizedType === 'saas annual') return true;
+    const text = this.normalizeText([
+      item.item_type,
+      item.itemType,
+      item.category,
+      item.product_type,
+      item.productType,
+      item.service_type,
+      item.serviceType,
+      item.billing_frequency,
+      item.billingFrequency,
+      item.name,
+      item.item_name,
+      item.itemName,
+      item.description,
+      item.module,
+      item.module_name,
+      item.moduleName
+    ].filter(Boolean).join(' '));
+    return text.includes('saas annual') || (text.includes('saas') && text.includes('annual'));
+  },
   isAnnualSaasClientLocationItem(item = {}) {
+    if (!this.isSaasAnnualItem(item)) return false;
     const text = this.normalizeText([
       item.section,
       item.category,
@@ -865,7 +889,8 @@ const Clients = {
       item.item_name,
       item.itemName,
       item.product_name,
-      item.productName,
+      item.productType,
+      item.product_name,
       item.service_name,
       item.serviceName,
       item.module,
@@ -879,13 +904,7 @@ const Clients = {
       item.frequency
     ].filter(Boolean).join(' '));
     if (!text) return false;
-    const isOneTimeOrSetup = ['one_time_fee', 'one_time', 'one time', 'one-time', 'setup', 'implementation', 'onboarding'].some(
-      token => text.includes(token)
-    );
-    if (isOneTimeOrSetup) return false;
-    const isSaasFamily = ['annual_saas', 'saas', 'subscription', 'recurring'].some(token => text.includes(token));
-    if (!isSaasFamily) return false;
-    return ['annual', 'yearly', '12 month', '12-month', 'year', 'renewal'].some(token => text.includes(token));
+    return !['one_time_fee', 'one_time', 'one time', 'one-time', 'setup', 'implementation', 'onboarding'].some(token => text.includes(token));
   },
   isActiveAnnualSaasLocationItem(item = {}) {
     const startValue = String(item.service_start_date || item.serviceStartDate || '').trim();
@@ -1259,109 +1278,93 @@ const Clients = {
   buildClientRenewalRows(client) {
     const clientId = String(client?.client_id || '').trim();
     const agreements = this.listClientRelatedAgreements_(clientId);
-    const locationItems = this.listClientAgreementLocationItems_(clientId);
+    const locationItems = this.listClientAgreementLocationItems_(clientId).filter(item => this.isSaasAnnualItem(item));
+    const invoices = this.listClientRelatedInvoices_(clientId);
+    const receipts = this.listClientRelatedReceipts_(clientId);
     const rows = [];
+
+    const pickRelatedInvoice = (item = {}, agreement = {}) => {
+      const itemKeyTokens = [
+        item.id, item.item_id, item.agreement_item_id, item.agreementItemId,
+        item.location_name, item.locationName, item.module_name, item.moduleName,
+        item.item_name, item.itemName
+      ].map(v => this.normalizeText(v)).filter(Boolean);
+      const agreementKeys = [agreement.id, agreement.agreement_id, agreement.agreement_number, item.agreement_id, item.agreement_number]
+        .map(v => String(v || '').trim()).filter(Boolean);
+      return invoices.find(invoice => {
+        const invoiceAgreementKeys = [invoice.agreement_id, invoice.agreement_number, invoice.source_agreement_id]
+          .map(v => String(v || '').trim()).filter(Boolean);
+        const agreementMatch = agreementKeys.some(key => invoiceAgreementKeys.some(iKey => this.valuesMatch(key, iKey)));
+        if (agreementMatch) return true;
+        const invoiceText = this.normalizeText([
+          invoice.location_name, invoice.module_name, invoice.reference, invoice.description, invoice.notes,
+          invoice.invoice_number, invoice.agreement_number, invoice.agreement_id
+        ].filter(Boolean).join(' '));
+        return itemKeyTokens.some(token => invoiceText.includes(token));
+      }) || null;
+    };
+
+    const relatedReceiptsForInvoice = (invoice = {}) => receipts.filter(receipt => {
+      const receiptLinks = [receipt.invoice_uuid, receipt.invoice_id, receipt.invoice_number].map(v => String(v || '').trim()).filter(Boolean);
+      const invoiceLinks = [invoice.invoice_uuid, invoice.invoice_id, invoice.id, invoice.invoice_number].map(v => String(v || '').trim()).filter(Boolean);
+      return receiptLinks.some(link => invoiceLinks.some(invLink => this.valuesMatch(link, invLink)));
+    });
 
     locationItems.forEach(item => {
       const agreement = this.findAgreementForItem_(item, agreements);
+      const relatedInvoice = pickRelatedInvoice(item, agreement);
+      const relatedReceipts = relatedInvoice ? relatedReceiptsForInvoice(relatedInvoice) : [];
+      const latestReceipt = relatedReceipts
+        .slice()
+        .sort((a, b) => new Date(this.parseFlexibleDate_(b.created_at || b.payment_date || '') || 0).getTime() - new Date(this.parseFlexibleDate_(a.created_at || a.payment_date || '') || 0).getTime())[0] || null;
+      const amountDue = relatedInvoice
+        ? this.pickAmount_(relatedInvoice, ['amount_due', 'pending_amount', 'balance_due', 'grand_total', 'total_amount'])
+        : this.pickAmount_(item, ['line_total', 'total', 'amount', 'price', 'unit_price']);
+      const amountPaid = relatedReceipts.reduce((sum, receipt) => sum + this.pickAmount_(receipt, ['received_amount', 'amount_received', 'amount_paid', 'paid_amount', 'receipt_total', 'amount']), 0);
+      const invoiceTotal = relatedInvoice ? this.pickAmount_(relatedInvoice, ['grand_total', 'total_amount', 'invoice_total', 'total', 'amount_due']) : amountDue;
+      let paymentStatus = String(relatedInvoice?.payment_status || '').trim();
+      if (!paymentStatus) {
+        if (!relatedInvoice) paymentStatus = 'Pending / Not Invoiced';
+        else if (amountPaid >= invoiceTotal && invoiceTotal > 0) paymentStatus = 'Fully Paid';
+        else if (amountPaid > 0 && amountPaid < invoiceTotal) paymentStatus = 'Partially Paid';
+        else {
+          const dueDate = String(relatedInvoice?.due_date || '').trim();
+          const daysLeft = this.getDaysLeft(dueDate);
+          paymentStatus = daysLeft !== null && daysLeft < 0 ? 'Overdue' : 'Not Paid';
+        }
+      }
       const serviceStart = this.getField(item, 'service_start_date', 'serviceStartDate', 'start_date', 'startDate') || agreement.service_start_date || agreement.effective_date || agreement.agreement_date || '';
       const serviceEnd = this.getField(item, 'service_end_date', 'serviceEndDate', 'end_date', 'endDate') || agreement.service_end_date || '';
-      const renewalDate = this.getField(item, 'renewal_date', 'renewalDate') || serviceEnd || agreement.service_end_date || '';
+      const renewalDate = this.getField(item, 'service_end_date', 'serviceEndDate', 'renewal_date', 'renewalDate') || agreement.service_end_date || '';
       rows.push(this.normalizeRenewalRow({
         ...item,
         source: 'agreement_item',
         type: 'Location Renewal',
         agreement_id: agreement.agreement_id || agreement.id || item.agreement_id,
         agreement_number: agreement.agreement_number || item.agreement_number,
+        invoice_id: relatedInvoice?.invoice_id || relatedInvoice?.id || '',
+        invoice_number: relatedInvoice?.invoice_number || '',
         client_name: agreement.customer_name || agreement.customer_legal_name || client.customer_name || client.client_name || client.company_name || '—',
-        location_name:
-          this.getField(item, 'location_name', 'locationName', 'location', 'site', 'site_name', 'branch', 'branch_name', 'store_name') ||
-          this.getField(item, 'description', 'item_name', 'itemName') ||
-          'Location',
-        module_name:
-          this.getField(item, 'module_name', 'moduleName', 'module', 'service_name', 'serviceName', 'product_name', 'productName', 'item_name', 'itemName') ||
-          'SaaS Annual',
+        location_name: this.getField(item, 'location_name', 'locationName', 'location', 'site', 'site_name', 'branch', 'branch_name', 'store_name') || this.getField(item, 'description', 'item_name', 'itemName') || 'Location',
+        module_name: this.getField(item, 'module_name', 'moduleName', 'module', 'service_name', 'serviceName', 'product_name', 'productName', 'item_name', 'itemName') || 'SaaS Annual',
         service_start_date: serviceStart,
         service_end_date: serviceEnd,
         renewal_date: renewalDate,
         billing_frequency: this.getField(item, 'billing_frequency', 'billingFrequency', 'billing_cycle', 'billingCycle', 'frequency') || agreement.billing_frequency,
         payment_term: this.getField(item, 'payment_term', 'payment_terms', 'paymentTerm', 'paymentTerms') || agreement.payment_term,
-        amount_due: this.pickAmount_(item, ['line_total', 'total', 'amount', 'price', 'unit_price']),
-        payment_status: this.getField(item, 'payment_status', 'paymentStatus') || 'Pending / Not invoiced',
+        invoice_issued_date: relatedInvoice?.created_at || relatedInvoice?.invoice_date || '',
+        due_date: relatedInvoice?.due_date || '',
+        receipt_received_date: latestReceipt?.created_at || latestReceipt?.payment_date || '',
+        amount_paid: amountPaid,
+        amount_due: Math.max(invoiceTotal - amountPaid, 0),
+        payment_status: paymentStatus,
         status: agreement.status || 'Active',
         currency: this.getField(item, 'currency', 'currency_code') || agreement.currency || this.getClientCurrency_(clientId)
       }));
     });
 
-    if (!locationItems.length) {
-      agreements.forEach(agreement => {
-        rows.push(this.normalizeRenewalRow({
-          source: 'agreement',
-          type: 'Agreement Renewal',
-          agreement_id: agreement.agreement_id || agreement.id,
-          agreement_number: agreement.agreement_number,
-          client_name: agreement.customer_name || agreement.customer_legal_name || client.customer_name,
-          location_name: agreement.customer_name || client.customer_name || 'Agreement',
-          module_name: 'Agreement renewal',
-          service_start_date: agreement.service_start_date || agreement.effective_date || agreement.agreement_date,
-          service_end_date: agreement.service_end_date,
-          renewal_date: agreement.service_end_date,
-          billing_frequency: agreement.billing_frequency,
-          payment_term: agreement.payment_term,
-          contract_term: agreement.contract_term,
-          status: agreement.status,
-          currency: agreement.currency || this.getClientCurrency_(clientId)
-        }));
-      });
-    }
-
-    this.listClientRelatedInvoices_(clientId).forEach(invoice => {
-      rows.push(this.normalizeRenewalRow({
-        source: 'invoice',
-        type: 'Invoice Due',
-        agreement_id: invoice.agreement_id,
-        agreement_number: invoice.agreement_number,
-        invoice_id: invoice.invoice_id || invoice.id,
-        invoice_number: invoice.invoice_number,
-        client_name: invoice.customer_name || client.customer_name,
-        location_name: 'Invoice',
-        module_name: invoice.invoice_number || 'Invoice',
-        due_date: invoice.due_date,
-        renewal_date: invoice.due_date || invoice.issued_date || invoice.invoice_date || invoice.created_at,
-        amount_due: this.pickAmount_(invoice, ['amount_due', 'pending_amount', 'balance_due', 'grand_total']),
-        payment_status: this.getPaymentStatus(invoice),
-        status: invoice.status,
-        currency: invoice.currency || this.getClientCurrency_(clientId)
-      }));
-    });
-    this.listClientRelatedReceipts_(clientId).forEach(receipt => {
-      rows.push(this.normalizeRenewalRow({
-        source: 'receipt',
-        type: 'Receipt Received',
-        agreement_id: receipt.agreement_id,
-        agreement_number: receipt.agreement_number,
-        invoice_id: receipt.invoice_id,
-        invoice_number: receipt.invoice_number,
-        client_name: receipt.customer_name || client.customer_name,
-        location_name: 'Receipt',
-        module_name: receipt.receipt_number || 'Receipt',
-        due_date: receipt.receipt_date || receipt.created_at,
-        renewal_date: receipt.payment_date || receipt.receipt_date || receipt.created_at,
-        amount_due: this.pickAmount_(receipt, ['amount_due', 'pending_amount', 'balance_due']),
-        payment_status: receipt.payment_state || receipt.status || 'Paid',
-        status: receipt.payment_state || receipt.status,
-        currency: receipt.currency || this.getClientCurrency_(clientId)
-      }));
-    });
     if (this.isDebugMode_()) {
-      console.log('[ClientRenewals] renewal source counts', {
-        client: client.client_name || client.company_name || client.name || client.customer_name,
-        relatedAgreements: agreements.length,
-        agreementItemsLoaded: this.state.agreementItems.length,
-        linkedAgreementItems: locationItems.length,
-        saasAnnualItems: locationItems.length,
-        renewalRows: rows.length
-      });
+      console.log('[ClientRenewals] renewal source counts', { client: client.client_name || client.company_name || client.name || client.customer_name, relatedAgreements: agreements.length, agreementItemsLoaded: this.state.agreementItems.length, linkedAgreementItems: locationItems.length, saasAnnualItems: locationItems.length, renewalRows: rows.length });
     }
     return rows.sort((a, b) => {
       const ad = this.dateValueForSort_(a);
