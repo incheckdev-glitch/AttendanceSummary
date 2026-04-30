@@ -29,6 +29,12 @@ const Clients = {
     invoiceItems: [],
     receipts: [],
     receiptItems: [],
+    companies: [],
+    contacts: [],
+    companiesById: new Map(),
+    companiesByName: new Map(),
+    contactsById: new Map(),
+    agreementsByIdOrNumber: new Map(),
     loading: false,
     loadError: '',
     loaded: false,
@@ -56,6 +62,31 @@ const Clients = {
   },
   normalizeText(value) {
     return String(value || '').trim().toLowerCase();
+  },
+  getCompanyLegalDisplay(company = null, fallback = {}) {
+    return String(
+      company?.legal_name ||
+      company?.legalName ||
+      fallback?.customer_legal_name ||
+      fallback?.customerLegalName ||
+      fallback?.legal_name ||
+      fallback?.legalName ||
+      fallback?.customer_name ||
+      fallback?.customerName ||
+      company?.company_name ||
+      company?.companyName ||
+      fallback?.company_name ||
+      fallback?.companyName ||
+      fallback?.client_name ||
+      fallback?.clientName ||
+      ''
+    ).trim();
+  },
+  buildContactPersonName(contact = {}) {
+    const first = String(contact.first_name || contact.firstName || '').trim();
+    const last = String(contact.last_name || contact.lastName || '').trim();
+    return [first, last].filter(Boolean).join(' ').trim() ||
+      String(contact.contact_name || contact.contactName || contact.full_name || contact.fullName || '').trim();
   },
   normalizeMatchValue(value) {
     return String(value || '')
@@ -461,6 +492,61 @@ const Clients = {
       agreements[0] ||
       null;
     return { agreements, preferred };
+  },
+  resolveCompanyForClient(client = {}, context = {}) {
+    const { companiesById = new Map(), companiesByName = new Map(), agreements = [], invoices = [], receipts = [] } = context;
+    const directCompanyId = String(client.company_id || client.companyId || '').trim();
+    if (directCompanyId && companiesById.has(directCompanyId)) return companiesById.get(directCompanyId);
+    const clientAgreementKeys = [
+      client.agreement_uuid, client.agreementUuid, client.agreement_id, client.agreementId, client.agreement_number, client.agreementNumber
+    ].map(value => String(value || '').trim()).filter(Boolean);
+    if (clientAgreementKeys.length) {
+      const agreement = agreements.find(a => {
+        const keys = [a.id, a.agreement_uuid, a.agreementUuid, a.agreement_id, a.agreementId, a.agreement_number, a.agreementNumber]
+          .map(value => String(value || '').trim()).filter(Boolean);
+        return keys.some(key => clientAgreementKeys.includes(key));
+      });
+      const companyId = String(agreement?.company_id || agreement?.companyId || '').trim();
+      if (companyId && companiesById.has(companyId)) return companiesById.get(companyId);
+    }
+    const latestAgreement = agreements
+      .filter(a => this.agreementBelongsToClient(a, client))
+      .sort((a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime())[0];
+    const latestAgreementCompanyId = String(latestAgreement?.company_id || latestAgreement?.companyId || '').trim();
+    if (latestAgreementCompanyId && companiesById.has(latestAgreementCompanyId)) return companiesById.get(latestAgreementCompanyId);
+    const relatedInvoice = invoices
+      .filter(invoice => this.invoiceBelongsToClient(invoice, client, agreements))
+      .sort((a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime())[0];
+    const invoiceCompanyId = String(relatedInvoice?.company_id || relatedInvoice?.companyId || '').trim();
+    if (invoiceCompanyId && companiesById.has(invoiceCompanyId)) return companiesById.get(invoiceCompanyId);
+    const relatedReceipt = receipts
+      .filter(receipt => this.receiptBelongsToClient(receipt, client, agreements, invoices))
+      .sort((a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime())[0];
+    const receiptCompanyId = String(relatedReceipt?.company_id || relatedReceipt?.companyId || '').trim();
+    if (receiptCompanyId && companiesById.has(receiptCompanyId)) return companiesById.get(receiptCompanyId);
+    const possibleNames = [client.customer_legal_name, client.customerName, client.legal_name, client.customer_name, client.company_name, client.client_name]
+      .filter(Boolean);
+    for (const name of possibleNames) {
+      const key = this.normalizeText(name);
+      if (key && companiesByName.has(key)) return companiesByName.get(key);
+    }
+    return null;
+  },
+  resolveContactForClient(client = {}, linkedCompany = null, context = {}) {
+    const { contactsById = new Map(), contacts = [] } = context;
+    const directContactId = String(client.contact_id || client.contactId || '').trim();
+    if (directContactId && contactsById.has(directContactId)) return contactsById.get(directContactId);
+    const companyId = String(linkedCompany?.company_id || linkedCompany?.companyId || client.company_id || client.companyId || '').trim();
+    if (companyId) {
+      const companyContacts = contacts.filter(contact => String(contact.company_id || contact.companyId || '').trim() === companyId);
+      const primary = companyContacts.find(contact =>
+        contact.is_primary_contact === true || String(contact.is_primary_contact || '').toLowerCase() === 'true'
+      );
+      return primary || companyContacts[0] || null;
+    }
+    const email = this.normalizeText(client.contact_email || client.contactEmail || client.primary_contact_email);
+    if (email) return contacts.find(contact => this.normalizeText(contact.email) === email) || null;
+    return null;
   },
   buildClientActionPrefill_(client = {}) {
     const clientId = String(client.client_id || '').trim();
@@ -1734,11 +1820,21 @@ const Clients = {
     if (E.clientStatementSearchDoc) E.clientStatementSearchDoc.value = this.state.statementFilters.searchDoc || '';
     if (E.clientRenewalsDateFrom) E.clientRenewalsDateFrom.value = this.state.renewalsFilters.dateFrom || '';
     if (E.clientRenewalsDateTo) E.clientRenewalsDateTo.value = this.state.renewalsFilters.dateTo || '';
-    if (E.clientDetailName) E.clientDetailName.textContent = client.customer_name || '—';
-    if (E.clientDetailMeta) E.clientDetailMeta.textContent = `${client.customer_legal_name || 'No legal name'} • ${client.primary_contact_name || 'No contact'} • ${client.primary_contact_email || 'No email'}`;
+    const linkedCompany = this.resolveCompanyForClient(client, this.state);
+    const linkedContact = this.resolveContactForClient(client, linkedCompany, this.state);
+    const title = this.getCompanyLegalDisplay(linkedCompany, client) || '—';
+    const subtitle = String(linkedCompany?.company_name || linkedCompany?.companyName || '').trim();
+    const subtitleValue = subtitle && this.normalizeText(subtitle) !== this.normalizeText(title) ? subtitle : '';
+    if (E.clientDetailName) E.clientDetailName.textContent = title;
+    if (E.clientDetailMeta) E.clientDetailMeta.textContent = `${subtitleValue || client.customer_legal_name || 'No legal name'} • ${this.buildContactPersonName(linkedContact) || client.primary_contact_name || 'No contact'} • ${linkedContact?.email || client.primary_contact_email || 'No email'}`;
     if (E.clientDetailStatus) E.clientDetailStatus.textContent = client.status || 'Unknown';
     if (E.clientDetailOverview) {
-      E.clientDetailOverview.textContent = `Phone: ${client.phone || '—'} | Country: ${client.country || '—'} | Address: ${client.address || '—'} | Billing: ${client.billing_address || '—'} | Tax: ${client.tax_number || '—'} | Industry: ${client.industry || '—'} | Source: ${client.source || '—'} | Notes: ${client.notes || '—'}`;
+      const latestAgreement = this.resolveLatestAgreementContext_(client.client_id).preferred;
+      const latestInvoice = this.listClientRelatedInvoices_(client.client_id)
+        .slice().sort((a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime())[0];
+      const billing = client.billing_frequency || client.billingFrequency || latestAgreement?.billing_frequency || latestAgreement?.billingFrequency || latestInvoice?.billing_frequency || latestInvoice?.billingFrequency || '—';
+      const warning = linkedCompany ? '' : 'Company details are not linked yet. | ';
+      E.clientDetailOverview.textContent = `${warning}Main Email: ${linkedCompany?.main_email || linkedCompany?.email || client.main_email || client.contact_email || '—'} | Main Phone: ${linkedCompany?.main_phone || linkedCompany?.phone || linkedContact?.mobile || linkedContact?.phone || client.contact_phone || client.phone || '—'} | Country: ${linkedCompany?.country || client.country || '—'} | City: ${linkedCompany?.city || client.city || '—'} | Address: ${linkedCompany?.address || client.customer_address || client.address || '—'} | Billing: ${billing} | Tax: ${linkedCompany?.tax_number || linkedCompany?.taxNumber || linkedCompany?.vat_number || linkedCompany?.vatNumber || client.tax_number || '—'} | Industry: ${linkedCompany?.industry || client.industry || '—'} | Source: ${linkedCompany?.source || linkedCompany?.lead_source || client.source || '—'} | Notes: ${linkedCompany?.notes || client.notes || '—'} | Contact: ${this.buildContactPersonName(linkedContact) || client.contact_name || client.primary_contact_name || '—'} | Contact Email: ${linkedContact?.email || client.contact_email || client.primary_contact_email || '—'} | Contact Phone: ${linkedContact?.mobile || linkedContact?.phone || client.contact_phone || client.phone || '—'}`;
     }
 
     const displayCurrency = this.normalizeCurrencyCode_(analytics.currency || this.getClientCurrency_(client.client_id));
@@ -1895,6 +1991,33 @@ const Clients = {
       this.state.invoiceItems = this.extractListResult(clientsRes.invoice_items || []).rows;
       this.state.receipts = this.extractListResult(clientsRes.receipts || []).rows.map(item => this.normalizeReceipt(item));
       this.state.receiptItems = this.extractListResult(clientsRes.receipt_items || []).rows;
+      const [companiesRes, contactsRes, agreementsRes, invoicesRes, receiptsRes] = await Promise.allSettled([
+        Api.requestWithSession('companies', 'list', { limit: 10000 }, { requireAuth: true }),
+        Api.requestWithSession('contacts', 'list', { limit: 10000 }, { requireAuth: true }),
+        Api.requestWithSession('agreements', 'list', { limit: 10000 }, { requireAuth: true }),
+        Api.requestWithSession('invoices', 'list', { limit: 10000 }, { requireAuth: true }),
+        Api.requestWithSession('receipts', 'list', { limit: 10000 }, { requireAuth: true })
+      ]);
+      this.state.companies = companiesRes.status === 'fulfilled' ? this.extractListResult(companiesRes.value).rows : [];
+      this.state.contacts = contactsRes.status === 'fulfilled' ? this.extractListResult(contactsRes.value).rows : [];
+      if (agreementsRes.status === 'fulfilled') this.state.agreements = this.extractListResult(agreementsRes.value).rows.map(item => this.normalizeAgreement(item));
+      if (invoicesRes.status === 'fulfilled') this.state.invoices = this.extractListResult(invoicesRes.value).rows.map(item => this.normalizeInvoice(item));
+      if (receiptsRes.status === 'fulfilled') this.state.receipts = this.extractListResult(receiptsRes.value).rows.map(item => this.normalizeReceipt(item));
+      this.state.companiesById = new Map();
+      this.state.companiesByName = new Map();
+      this.state.companies.forEach(company => {
+        const companyId = String(company.company_id || company.companyId || company.id || '').trim();
+        if (companyId) this.state.companiesById.set(companyId, company);
+        [company.legal_name, company.legalName, company.company_name, company.companyName].forEach(name => {
+          const key = this.normalizeText(name);
+          if (key && !this.state.companiesByName.has(key)) this.state.companiesByName.set(key, company);
+        });
+      });
+      this.state.contactsById = new Map();
+      this.state.contacts.forEach(contact => {
+        const contactId = String(contact.contact_id || contact.contactId || contact.id || '').trim();
+        if (contactId) this.state.contactsById.set(contactId, contact);
+      });
 
       this.state.agreements.forEach(agreement => {
         this.findOrCreateClientFromSignedAgreement_(agreement);
