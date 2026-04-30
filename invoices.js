@@ -2507,7 +2507,7 @@ const Invoices = {
     if (receipt?.receipt_id) this.appendInvoiceReceipt(id, receipt);
     const selectedInvoiceId = String(E.invoiceForm?.dataset.id || '').trim();
     if (selectedInvoiceId === id) {
-      await this.openInvoiceById(id, { readOnly: false });
+      await this.openInvoiceById(id, { readOnly: true });
       return;
     }
     await this.refreshInvoiceReceipts(id, { force: true });
