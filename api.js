@@ -328,35 +328,24 @@ const Api = {
     ];
     return String(candidates.find(value => value !== undefined && value !== null && String(value).trim()) || '').trim();
   },
-  async sendBusinessPwaPush({ resource = '', action = '', recordId = '', title = '', body = '', roles = ['admin'], userIds = [], url = '', data = {} } = {}) {
-    const normalizedResource = String(resource || '').trim();
-    const normalizedAction = String(action || '').trim();
-    const normalizedRecordId = String(recordId || '').trim();
-    if (!normalizedResource || !normalizedAction) {
-      console.warn('[business:pwa] skipped push: missing resource/action', { resource, action, recordId });
-      return null;
+  async sendBusinessPwaPush({ resource = '', action = '', recordId = '', title = '', body = '', roles = ['admin'], userIds = [], targetEmails = [], url = '', data = {}, recordNumber = '' } = {}) {
+    if (window.NotificationService?.sendBusinessNotification) {
+      return window.NotificationService.sendBusinessNotification({
+        resource,
+        action,
+        recordId,
+        recordNumber,
+        title,
+        body,
+        targetUsers: userIds,
+        targetEmails,
+        url,
+        metadata: data,
+        roles,
+        channels: ['in_app', 'push']
+      });
     }
-    const finalUrl = url || (normalizedRecordId ? ('/#' + encodeURIComponent(normalizedResource) + '?id=' + encodeURIComponent(normalizedRecordId)) : ('/#' + encodeURIComponent(normalizedResource)));
-    const payload = {
-      title: title || 'InCheck360 notification',
-      body: body || 'A record was updated.',
-      resource: normalizedResource,
-      action: normalizedAction,
-      record_id: normalizedRecordId || undefined,
-      url: finalUrl,
-      tag: normalizedResource + '-' + normalizedAction + '-' + (normalizedRecordId || 'record') + '-' + Date.now(),
-      data: { resource: normalizedResource, action: normalizedAction, record_id: normalizedRecordId || undefined, url: finalUrl, ...(data && typeof data === 'object' ? data : {}) }
-    };
-    const normalizedUserIds = Array.isArray(userIds) ? userIds.map(id => String(id || '').trim()).filter(Boolean) : [];
-    if (normalizedUserIds.length) payload.user_ids = normalizedUserIds;
-    else {
-      payload.roles = (Array.isArray(roles) ? roles : ['admin']).map(role => String(role || '').trim().toLowerCase()).filter(Boolean);
-      if (!payload.roles.length) payload.roles = ['admin'];
-    }
-    console.info('[business:pwa] sending direct PWA push', payload);
-    const result = await this.sendWebPush(payload, { context: normalizedResource + ':' + normalizedAction + ':direct' });
-    console.info('[business:pwa] direct PWA push result', { resource: normalizedResource, action: normalizedAction, recordId: normalizedRecordId, result });
-    return result;
+    return this.sendWebPush({ resource, action, record_id: recordId, title, body, url, data, roles, user_ids: userIds, emails: targetEmails }, { context: String(resource || '') + ':' + String(action || '') + ':direct-fallback' });
   },
   shouldSkipDirectBusinessPwaPush(args = {}) {
     const resource = String(args?.resource || '').trim().toLowerCase();
