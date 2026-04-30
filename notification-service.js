@@ -499,7 +499,18 @@
       }
 
       const normalizedRecordId = String(recordId || '').trim();
-      const finalUrl = String(url || '').trim() || buildNotificationRoute(normalizedResource, normalizedRecordId);
+      const ticketBusinessId =
+        metadata?.ticket_id ||
+        metadata?.ticketId ||
+        metadata?.ticket_number ||
+        metadata?.ticketNumber ||
+        recordNumber ||
+        recordId;
+      const finalUrl = String(url || '').trim() || (
+        normalizedResource === 'tickets'
+          ? `/#tickets?ticket_id=${encodeURIComponent(String(ticketBusinessId || '').trim() || normalizedRecordId)}`
+          : buildNotificationRoute(normalizedResource, normalizedRecordId)
+      );
       const payload = {
         title: title || 'InCheck360 notification',
         body: body || 'A record was updated.',
