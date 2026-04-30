@@ -1940,6 +1940,12 @@ async function apiPost(payload = {}) {
     if (!authToken) {
       throw new Error('Your session expired. Please log in again.');
     }
+    console.info('[edit user auth debug]', {
+      hasAuthToken: Boolean(authToken),
+      tokenLength: authToken ? authToken.length : 0,
+      resource,
+      action
+    });
     const proxyPayload = { ...requestBody };
     proxyPayload.session_access_token = authToken;
     delete proxyPayload.authToken;
@@ -1955,7 +1961,7 @@ async function apiPost(payload = {}) {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       const message = String(data?.error || data?.message || 'Unable to update user.').trim();
-      if (response.status === 401) throw new Error('Your session expired. Please log in again.');
+      if (response.status === 401) throw new Error(message || 'Your session expired. Please log in again.');
       if (response.status === 403) throw new Error('You do not have permission to edit users.');
       if (message.toLowerCase().includes('supabase_service_role_key')) throw new Error('Server is missing SUPABASE_SERVICE_ROLE_KEY.');
       if (message.toLowerCase().includes('auth_user_id')) throw new Error('Cannot update auth user because auth_user_id is missing.');
