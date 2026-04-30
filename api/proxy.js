@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import nodemailer from 'nodemailer';
 
 const RESOURCE_ALIASES = {
   operations_onboarding: ['operationsOnboarding', 'operations-onboarding']
@@ -207,6 +208,33 @@ async function getCallerProfile(supabaseAdmin, authUserId, email = '') {
   }
 
   return null;
+}
+
+
+function isValidEmail(value = '') {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim().toLowerCase());
+}
+
+async function sendEmailNotification({ to, subject, html, text }) {
+  const host = process.env.SMTP_HOST;
+  const port = Number(process.env.SMTP_PORT || 587);
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+  const from = process.env.SMTP_FROM;
+
+  if (!host || !port || !user || !pass || !from) {
+    throw new Error('Missing SMTP configuration.');
+  }
+
+  const transporter = nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465,
+    auth: { user, pass },
+    requireTLS: port !== 465
+  });
+
+  return transporter.sendMail({ from, to, subject, html, text });
 }
 
 function getMissingColumnName(error) {
@@ -485,6 +513,40 @@ export default async function handler(req, res) {
   const authorization = String(req.headers?.authorization || req.headers?.Authorization || "").trim();
   const resource = String(payload?.resource || '').trim();
   const action = String(payload?.action || '').trim();
+
+
+  if (resource === 'notifications' && (action === 'send_email' || action === 'test_email')) {
+    const token = extractBearerToken(req, payload);
+    if (!token) return res.status(401).json({ ok: false, error: 'Missing access token.' });
+
+    const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!supabaseUrl || !serviceRoleKey) {
+      return res.status(500).json({ ok: false, error: 'Server is missing Supabase admin configuration.' });
+    }
+
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
+    const { data: verified, error: verifiedError } = await supabaseAdmin.auth.getUser(token);
+    if (verifiedError || !verified?.user) return res.status(401).json({ ok: false, error: 'Invalid or expired session.' });
+    const callerRole = getCallerRole(await getCallerProfile(supabaseAdmin, verified.user.id, verified.user.email || ''), verified.user);
+    if (action === 'test_email' && !isAdminRole(callerRole)) return res.status(403).json({ ok: false, error: 'Admin role required.' });
+
+    const recipients = Array.isArray(payload?.to) ? payload.to : String(payload?.to || '').split(',');
+    const normalizedTo = [...new Set(recipients.map((item) => String(item || '').trim().toLowerCase()).filter(isValidEmail))];
+    if (!normalizedTo.length) return res.status(400).json({ ok: false, error: 'no_email_recipients_resolved' });
+
+    try {
+      const result = await sendEmailNotification({
+        to: normalizedTo.join(', '),
+        subject: String(payload?.subject || 'InCheck360 Notification').trim() || 'InCheck360 Notification',
+        html: String(payload?.html || '').trim(),
+        text: String(payload?.text || '').trim()
+      });
+      return res.status(200).json({ ok: true, messageId: result?.messageId || null, recipientsCount: normalizedTo.length });
+    } catch (error) {
+      return res.status(500).json({ ok: false, error: String(error?.message || error) });
+    }
+  }
 
   if (resource === 'users' || resource === 'roles' || resource === 'role_permissions') {
     return handleSupabaseAdminRequest(req, res, payload);
