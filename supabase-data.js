@@ -3795,6 +3795,21 @@
     return { rule: Array.isArray(data) && data.length ? data[0] : null, error: null };
   }
 
+  async function listMatchingNotificationRules(client, resource = '', action = '', eventKey = '') {
+    const normalizedResource = String(resource || '').trim().toLowerCase();
+    const aliases = getNotificationActionAliases(normalizedResource, action, eventKey)
+      .map(value => String(value || '').trim().toLowerCase().replace(/^tickets\./, ''))
+      .filter(Boolean);
+    if (!normalizedResource || !aliases.length) return { rules: [], error: null };
+    const { data, error } = await client
+      .from('notification_rules')
+      .select('*')
+      .eq('resource', normalizedResource)
+      .in('action', aliases);
+    if (error) return { rules: [], error };
+    return { rules: Array.isArray(data) ? data : [], error: null };
+  }
+
   function isNotificationRuleEnabled(rule = {}) {
     const enabledValue = rule?.is_enabled ?? rule?.enabled ?? rule?.active;
     if (enabledValue === false) return false;
@@ -3815,6 +3830,27 @@
     if (String(value).trim().toLowerCase() === 'false') return false;
     if (String(value).trim() === '0') return false;
     return true;
+  }
+
+  function resolveRecipientsFromMatchingRules(rules = [], payload = {}) {
+    const recipientUserIds = new Set();
+    const recipientEmails = new Set();
+    const record = payload?.record && typeof payload.record === 'object' ? payload.record : payload;
+    rules.forEach(rule => {
+      getRuleAssignedUsers(rule).forEach(value => recipientUserIds.add(String(value || '').trim()));
+      getRuleAssignedEmails(rule).forEach(value => recipientEmails.add(String(value || '').trim().toLowerCase()));
+      normalizeNotificationList(rule?.users_from_record).forEach(key => {
+        const normalizedKey = String(key || '').trim().toLowerCase();
+        const candidates = normalizedKey === 'requester_email'
+          ? [record?.requester_email, record?.email_addressee]
+          : normalizedKey === 'owner_email'
+            ? [record?.owner_email, record?.assigned_user_email]
+            : [record?.[key]];
+        const resolvedValue = candidates.map(value => String(value || '').trim().toLowerCase()).find(Boolean) || '';
+        if (resolvedValue && !isPlaceholderRecipientToken(resolvedValue)) recipientEmails.add(resolvedValue);
+      });
+    });
+    return { users: [...recipientUserIds].filter(Boolean), emails: [...recipientEmails].filter(Boolean) };
   }
 
   async function sendPwaPushForNotification(payload = {}, context = '') {
@@ -3907,48 +3943,45 @@
     const action = String(normalizedPayload?.action || normalizedPayload?.event_type || '').trim().toLowerCase();
     const eventKey = String(normalizedPayload?.event_key || normalizedPayload?.eventKey || '').trim().toLowerCase();
     const actorUserId = String(normalizedPayload?.actor_user_id || normalizedPayload?.created_by || '').trim();
-    const { rule, error: ruleError } = await findNotificationRule(getClient(), resource, action, eventKey);
-    if (ruleError) console.warn('[notifications:rules] unable to load rule', { context, resource, action, ruleError });
-    if (!rule) {
+    const { rules: matchingRules, error: matchingRulesError } = await listMatchingNotificationRules(getClient(), resource, action, eventKey);
+    if (matchingRulesError) console.warn('[notifications:rules] unable to load rules', { context, resource, action, matchingRulesError });
+    if (!matchingRules.length) {
       console.info('[notifications] rule decision', { resource, action, eventKey, ruleFound: false, usedPreset: true, assignedRolesCount: 0, assignedUsersCount: 0, assignedEmailsCount: 0, resolvedRecipientsCount: 0, shouldSend: false, reason: 'no-rule' });
       console.warn('[notifications:rules] no rule found; notification skipped', { context, resource, action });
       return { created: 0, push: { attempted: false, skipped: true, reason: 'no-rule' }, notification_id: null };
     }
-    if (!isNotificationRuleEnabled(rule)) {
-      return { created: 0, push: { attempted: false, skipped: true, reason: 'rule-disabled' }, notification_id: null };
+    const anyInAppEnabled = matchingRules.some(rule => isNotificationRuleEnabled(rule) && isNotificationChannelEnabled(rule, 'in_app'));
+    const anyPushEnabled = matchingRules.some(rule => isNotificationRuleEnabled(rule) && isNotificationChannelEnabled(rule, 'push'));
+    if (!anyInAppEnabled && !anyPushEnabled) {
+      console.info('[notifications] skipped all channels', { resource, action, eventKey, reason: 'matching_saved_rule_disabled' });
+      return { created: 0, push: { attempted: false, skipped: true, reason: 'matching_saved_rule_disabled' }, notification_id: null };
     }
-    const normalizedRoles = [...new Set(getRuleAssignedRoles(rule))];
+    const enabledRulesForRecipients = matchingRules.filter(rule => isNotificationRuleEnabled(rule));
+    const normalizedRoles = [...new Set(enabledRulesForRecipients.flatMap(rule => getRuleAssignedRoles(rule)))];
     // Preset defaults are initialization-only. Send-time uses saved notification_rules exclusively.
     // Rule recipient roles are the source of truth. Do not fall back to module-provided target_roles when a rule exists.
     const { data: activeProfiles } = await getClient().from('profiles').select('id,email,role_key,role,user_role,app_role,is_active,active').limit(2000);
     const profileRows = Array.isArray(activeProfiles) ? activeProfiles : [];
-    const assignedUsers = [...new Set(getRuleAssignedUsers(rule).map(v => String(v || '').trim()).filter(Boolean))];
-    const assignedEmails = [...new Set(getRuleAssignedEmails(rule))];
+    const resolvedRuleRecipients = resolveRecipientsFromMatchingRules(enabledRulesForRecipients, normalizedPayload);
+    const assignedUsers = [...new Set(resolvedRuleRecipients.users.map(v => String(v || '').trim()).filter(Boolean))];
+    const assignedEmails = [...new Set(resolvedRuleRecipients.emails)];
     const recipientUserIds = new Set(assignedUsers);
     const recipientEmails = new Set([
       ...assignedEmails
     ]);
     const record = normalizedPayload?.record && typeof normalizedPayload.record === 'object' ? normalizedPayload.record : normalizedPayload;
     const dynamicRecipientEmails = [];
-    normalizeNotificationList(rule?.users_from_record).forEach(key => {
-      const normalizedKey = String(key || '').trim().toLowerCase();
-      const candidates = normalizedKey === 'requester_email'
-        ? [record?.requester_email, record?.email_addressee]
-        : normalizedKey === 'owner_email'
-          ? [record?.owner_email, record?.assigned_user_email]
-          : [record?.[key]];
-      const resolvedValue = candidates.map(value => String(value || '').trim().toLowerCase()).find(Boolean) || '';
-      if (resolvedValue && !isPlaceholderRecipientToken(resolvedValue)) {
-        dynamicRecipientEmails.push(resolvedValue);
-        recipientEmails.add(resolvedValue);
-      }
+    assignedEmails.forEach(value => {
+      dynamicRecipientEmails.push(value);
+      recipientEmails.add(value);
     });
     const resolvedRecipients = { users: [...recipientUserIds], emails: dynamicRecipientEmails };
     const assignedRolesCount = normalizedRoles.length;
     const assignedUsersCount = assignedUsers.length;
     const assignedEmailsCount = assignedEmails.length;
     const resolvedRecipientsCount = resolvedRecipients.users.length + resolvedRecipients.emails.length;
-    if (!hasConfiguredRecipients(rule, resolvedRecipients)) {
+    const hasAnyConfiguredRecipients = enabledRulesForRecipients.some(rule => hasConfiguredRecipients(rule, resolvedRecipients));
+    if (!hasAnyConfiguredRecipients) {
       console.info('[notifications] rule decision', { resource, action, eventKey, ruleFound: true, usedPreset: false, assignedRolesCount, assignedUsersCount, assignedEmailsCount, resolvedRecipientsCount, shouldSend: false, reason: 'saved_rule_has_no_recipients' });
       console.info('[notifications] skipped in-app', { resource, action, reason: 'saved_rule_has_no_recipients' });
       return { created: 0, push: { attempted: false, skipped: true, reason: 'saved_rule_has_no_recipients' }, notification_id: null };
@@ -3963,16 +3996,17 @@
       if (rowRoles.some(roleKey => normalizedRoles.includes(roleKey))) recipientUserIds.add(id);
       if (email && recipientEmails.has(email)) recipientUserIds.add(id);
     });
-    if (rule.exclude_actor !== false && actorUserId) recipientUserIds.delete(actorUserId);
+    const excludeActor = enabledRulesForRecipients.every(rule => rule.exclude_actor !== false);
+    if (excludeActor && actorUserId) recipientUserIds.delete(actorUserId);
     if (!recipientUserIds.size && !recipientEmails.size) {
       console.warn('[notifications:rules] no recipients resolved; notification skipped', { context, resource, action });
       return { created: 0, push: { attempted: false, skipped: true, reason: 'no-recipient' }, notification_id: null };
     }
     const targetUserIds = [...recipientUserIds];
-    const inAppEnabled = isNotificationChannelEnabled(rule, 'in_app');
-    const pushEnabled = isNotificationChannelEnabled(rule, 'push');
+    const inAppEnabled = anyInAppEnabled;
+    const pushEnabled = anyPushEnabled;
     const shouldAttemptPush = Boolean(pushEnabled && targetUserIds.length);
-    const dedupeWindowSeconds = Math.max(1, Number(rule.dedupe_window_seconds || 60) || 60);
+    const dedupeWindowSeconds = Math.max(1, Number(enabledRulesForRecipients.find(rule => Number(rule?.dedupe_window_seconds || 0) > 0)?.dedupe_window_seconds || 60) || 60);
     const dedupeMinuteBucket = Math.floor(Date.now() / (dedupeWindowSeconds * 1000));
     const recordId = String(normalizedPayload?.record_id || record?.id || '').trim();
     const dedupeKey = resource + ':' + action + ':' + (recordId || 'na') + ':' + (targetUserIds[0] || 'na') + ':in_app:' + dedupeMinuteBucket;
