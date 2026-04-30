@@ -5269,6 +5269,75 @@ function wireConnectivity() {
   update();
 }
 
+
+function getCurrentDeepLink() {
+  const hash = String(window.location.hash || '').trim();
+  if (!hash || hash === '#loginSection') return null;
+  return hash;
+}
+
+function savePendingDeepLinkFromLocation() {
+  const hash = getCurrentDeepLink();
+  if (!hash) return null;
+  try {
+    sessionStorage.setItem('incheckPendingDeepLink', hash);
+  } catch {}
+  console.info('[email deep link] captured', { hash });
+  return hash;
+}
+
+function consumePendingDeepLink() {
+  let value = '';
+  try {
+    value = sessionStorage.getItem('incheckPendingDeepLink') || '';
+    sessionStorage.removeItem('incheckPendingDeepLink');
+  } catch {}
+  return String(value || '').trim();
+}
+
+function hasPendingDeepLink() {
+  try {
+    return Boolean(String(sessionStorage.getItem('incheckPendingDeepLink') || '').trim());
+  } catch {}
+  return false;
+}
+
+function parseNotificationDeepLink(hash = '') {
+  const raw = String(hash || '').replace(/^#/, '').trim();
+  if (!raw) return null;
+  const [routePart, queryPart = ''] = raw.split('?');
+  const route = decodeURIComponent(routePart || '').trim();
+  const params = new URLSearchParams(queryPart || '');
+  if (route === 'tickets') return { resource: 'tickets', id: params.get('ticket_id') || params.get('id') || '' };
+  if (route === 'workflow') return { resource: 'workflow', id: params.get('approval_id') || params.get('id') || '' };
+  if (route === 'operations-onboarding') return { resource: 'operations_onboarding', id: params.get('onboarding_id') || params.get('id') || '' };
+  if (route === 'technical-admin') return { resource: 'technical_admin', id: params.get('id') || params.get('request_id') || '' };
+  if (route === 'crm') return { resource: params.get('tab') || '', id: params.get('id') || '' };
+  if (route === 'finance') return { resource: params.get('tab') || '', id: params.get('id') || '' };
+  return { resource: route, id: params.get('id') || '' };
+}
+
+async function routePendingDeepLinkAfterUnlock() {
+  const pending = consumePendingDeepLink();
+  if (!pending) return false;
+  const target = parseNotificationDeepLink(pending);
+  if (!target?.resource) return false;
+  await new Promise(resolve => setTimeout(resolve, 250));
+  if (window.Notifications?.routeToResourceTarget) {
+    const opened = await window.Notifications.routeToResourceTarget(target.resource, target.id, {
+      resource: target.resource,
+      resource_id: target.id,
+      meta: { source: 'email_deep_link', original_hash: pending }
+    });
+    if (opened) {
+      console.info('[email deep link] routed', target);
+      return true;
+    }
+  }
+  console.warn('[email deep link] unable to route', target);
+  return false;
+}
+
 function wireDashboardGate() {
   if (!E.app || !E.loginForm || !E.loginIdentifier || !E.loginPasscode) return;
   if (E.loginForm.dataset.dashboardGateSubmitBound === 'true') {
@@ -5296,13 +5365,16 @@ function wireDashboardGate() {
     if (E.logoutBtn) E.logoutBtn.hidden = false;
     const role = Session.role();
     const defaultView = getDefaultViewForRole(role);
-    setActiveView(getFirstAllowedView(defaultView));
+    if (!hasPendingDeepLink()) setActiveView(getFirstAllowedView(defaultView));
     if (window.Notifications?.onAuthStateChanged) Notifications.onAuthStateChanged();
     if (window.PushNotifications?.onAuthStateChanged) PushNotifications.onAuthStateChanged();
-    // Avoid forcing a jump to #app after login (caused unwanted auto-scrolling).
-    if (window.location.hash) {
-      history.replaceState(null, '', window.location.pathname + window.location.search);
-    }
+    routePendingDeepLinkAfterUnlock()
+      .catch(error => console.warn('[email deep link] route after unlock failed', error))
+      .finally(() => {
+        if (window.location.hash && window.location.hash !== '#loginSection') {
+          history.replaceState(null, '', window.location.pathname + window.location.search);
+        }
+      });
     console.info('[wireDashboardGate.unlockApp] app unlocked');
   };
 
@@ -5313,7 +5385,8 @@ function wireDashboardGate() {
     if (E.logoutBtn) E.logoutBtn.hidden = true;
     if (window.Notifications?.reset) Notifications.reset();
     if (window.PushNotifications?.onAuthStateChanged) PushNotifications.onAuthStateChanged();
-    window.location.hash = '#loginSection';
+    const preservedHash = savePendingDeepLinkFromLocation();
+    if (!preservedHash) window.location.hash = '#loginSection';
   };
 
   const refreshPermissionsForCurrentRole = async (force = false) => {
@@ -7287,6 +7360,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       console.warn('[startup/auth] Initial auth health check failed', error);
     });
   }
+  savePendingDeepLinkFromLocation();
   const restored = await Session.restore();
   console.info('[startup/auth] restore result', { restored });
 
