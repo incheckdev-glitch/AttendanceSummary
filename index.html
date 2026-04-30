@@ -1896,54 +1896,56 @@ Sample:
               <strong>360 Analytics</strong>
               <div class="muted">Unified lifecycle, finance, renewal, onboarding, and technical status analytics from Supabase data.</div>
             </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-              <input id="lifecycleSearchInput" class="input" type="search" placeholder="Search client/account, chain IDs, assigned CSM..." aria-label="Search lifecycle records" style="min-width:260px;" />
-              <select id="lifecycleStageFilter" class="select" aria-label="Filter by stage">
-                <option>All</option>
-                <option>Lead</option>
-                <option>Deal</option>
-                <option>Proposal</option>
-                <option>Agreement</option>
-                <option>Invoice</option>
-                <option>Receipt</option>
-              </select>
-              <select id="lifecyclePaymentStateFilter" class="select" aria-label="Filter by payment state">
-                <option>All</option>
-                <option>Not Invoiced</option>
-                <option>Unpaid</option>
-                <option>Partially Paid</option>
-                <option>Paid</option>
-              </select>
-              <select id="lifecycleOnboardingFilter" class="select" aria-label="Filter by onboarding status">
-                <option>All</option>
-                <option>Pending</option>
-                <option>Completed</option>
-                <option>Blocked</option>
-                <option>None</option>
-              </select>
-              <select id="lifecycleTechnicalFilter" class="select" aria-label="Filter by technical admin status">
-                <option>All</option>
-                <option>Pending</option>
-                <option>Completed</option>
-                <option>Blocked</option>
-                <option>None</option>
-              </select>
-              <select id="lifecycleRenewalFilter" class="select" aria-label="Filter by renewal window">
-                <option>All</option>
-                <option>≤30 Days</option>
-                <option>≤90 Days</option>
-                <option>Overdue</option>
-              </select>
-              <select id="lifecycleLocationFilter" class="select" aria-label="Filter by location activity">
-                <option>All</option>
-                <option>Active Only</option>
-                <option>Inactive Only</option>
-              </select>
-              <select id="lifecycleClientFilter" class="select" aria-label="Filter by client/account"><option>All Clients</option></select>
-              <input id="lifecycleDateFrom" class="input" type="date" aria-label="Lifecycle date from" />
-              <input id="lifecycleDateTo" class="input" type="date" aria-label="Lifecycle date to" />
-              <button id="lifecycleSearchBtn" class="btn sm" type="button">Refresh</button>
-              <button id="lifecycleExportBtn" class="btn ghost sm" type="button">Export</button>
+            <div class="analytics-filter-bar">
+              <div class="analytics-filter-control analytics-filter-control-search">
+                <label for="lifecycleSearchInput" class="analytics-filter-label">Search</label>
+                <input id="lifecycleSearchInput" class="input analytics-filter-input" type="search" placeholder="Search client, account, chain, invoice, receipt..." />
+              </div>
+              <div class="analytics-filter-control">
+                <label for="lifecycleStageFilter" class="analytics-filter-label">Stage</label>
+                <select id="lifecycleStageFilter" class="select analytics-filter-input">
+                  <option value="All">All Stages</option>
+                  <option>Lead</option><option>Deal</option><option>Proposal</option><option>Agreement</option><option>Invoice</option><option>Receipt</option>
+                </select>
+              </div>
+              <div class="analytics-filter-control">
+                <label for="lifecyclePaymentStateFilter" class="analytics-filter-label">Payment Status</label>
+                <select id="lifecyclePaymentStateFilter" class="select analytics-filter-input">
+                  <option value="All">All Payment Statuses</option><option>Not Paid</option><option>Partially Paid</option><option>Overdue</option><option>Fully Paid</option>
+                </select>
+              </div>
+              <div class="analytics-filter-control">
+                <label for="lifecycleOnboardingFilter" class="analytics-filter-label">Onboarding Status</label>
+                <select id="lifecycleOnboardingFilter" class="select analytics-filter-input"><option value="All">All Onboarding Statuses</option><option>Pending</option><option>Completed</option><option>Blocked</option><option>None</option></select>
+              </div>
+              <div class="analytics-filter-control">
+                <label for="lifecycleTechnicalFilter" class="analytics-filter-label">Technical Status</label>
+                <select id="lifecycleTechnicalFilter" class="select analytics-filter-input"><option value="All">All Technical Statuses</option><option>Pending</option><option>Completed</option><option>Blocked</option><option>None</option></select>
+              </div>
+              <div class="analytics-filter-control">
+                <label for="lifecycleRenewalFilter" class="analytics-filter-label">Renewal Status</label>
+                <select id="lifecycleRenewalFilter" class="select analytics-filter-input"><option value="All">All Renewal Statuses</option><option>≤30 Days</option><option>≤90 Days</option><option>Overdue</option></select>
+              </div>
+              <div class="analytics-filter-control">
+                <label for="lifecycleLocationFilter" class="analytics-filter-label">Owner</label>
+                <select id="lifecycleLocationFilter" class="select analytics-filter-input"><option value="All">All Owners</option><option>Active Only</option><option>Inactive Only</option></select>
+              </div>
+              <div class="analytics-filter-control">
+                <label for="lifecycleClientFilter" class="analytics-filter-label">Client</label>
+                <select id="lifecycleClientFilter" class="select analytics-filter-input"><option value="All">All Clients</option></select>
+              </div>
+              <div class="analytics-filter-control analytics-filter-control-date">
+                <label for="lifecycleDateFrom" class="analytics-filter-label">From Date</label>
+                <input id="lifecycleDateFrom" class="input analytics-filter-input" type="date" />
+              </div>
+              <div class="analytics-filter-control analytics-filter-control-date">
+                <label for="lifecycleDateTo" class="analytics-filter-label">To Date</label>
+                <input id="lifecycleDateTo" class="input analytics-filter-input" type="date" />
+              </div>
+              <div class="analytics-filter-control analytics-filter-actions">
+                <button id="lifecycleSearchBtn" class="btn sm" type="button">Refresh</button>
+                <button id="lifecycleExportBtn" class="btn ghost sm" type="button">Export</button>
+              </div>
             </div>
           </div>
           <div id="lifecycleState" class="muted" style="margin-bottom:8px;">Loading 360 analytics...</div>

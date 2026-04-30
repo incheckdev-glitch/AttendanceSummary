@@ -47,6 +47,23 @@ const LifecycleAnalytics = {
     if (!raw) return '—';
     return U.fmtTS(raw);
   },
+  getAnalyticsClientLegalName(row = {}, company = {}) {
+    return String(
+      company.legal_name ||
+      company.legalName ||
+      row.customer_legal_name ||
+      row.customerLegalName ||
+      row.company_legal_name ||
+      row.companyLegalName ||
+      row.customer_name ||
+      row.customerName ||
+      row.company_name ||
+      row.companyName ||
+      row.client_name ||
+      row.clientName ||
+      ''
+    ).trim();
+  },
 
   parseEventTimestamp(value) {
     if (!value) return null;
@@ -288,14 +305,14 @@ const LifecycleAnalytics = {
       onboarding,
       technical
     ] = await Promise.all([
-      this.fetchTable(db, 'leads', 'id,lead_id,company_name,full_name,email,phone,status,assigned_to,created_at,updated_at'),
-      this.fetchTable(db, 'deals', 'id,deal_id,lead_id,company_name,full_name,email,status,stage,assigned_to,created_at,updated_at'),
-      this.fetchTable(db, 'proposals', 'id,proposal_id,ref_number,deal_id,customer_name,proposal_title,proposal_date,proposal_valid_until,service_start_date,service_end_date,contract_term,billing_frequency,payment_term,subtotal_locations,subtotal_one_time,total_discount,grand_total,status,currency,created_at,updated_at'),
-      this.fetchTable(db, 'agreements', 'id,agreement_id,agreement_number,proposal_id,customer_name,service_start_date,service_end_date,signed_date,status,grand_total,billing_frequency,payment_term,currency,created_at,updated_at'),
+      this.fetchTable(db, 'leads', 'id,lead_id,company_name,legal_name,full_name,email,phone,status,assigned_to,created_at,updated_at'),
+      this.fetchTable(db, 'deals', 'id,deal_id,lead_id,company_name,legal_name,full_name,email,status,stage,assigned_to,created_at,updated_at'),
+      this.fetchTable(db, 'proposals', 'id,proposal_id,ref_number,deal_id,customer_name,customer_legal_name,proposal_title,proposal_date,proposal_valid_until,service_start_date,service_end_date,contract_term,billing_frequency,payment_term,subtotal_locations,subtotal_one_time,total_discount,grand_total,status,currency,created_at,updated_at'),
+      this.fetchTable(db, 'agreements', 'id,agreement_id,agreement_number,proposal_id,customer_name,customer_legal_name,service_start_date,service_end_date,signed_date,status,grand_total,billing_frequency,payment_term,currency,created_at,updated_at'),
       this.fetchTable(db, 'agreement_items', 'agreement_id,section,location_name,item_name,quantity,line_total,service_start_date,service_end_date'),
       this.fetchTable(db, 'invoices', 'id,invoice_id,invoice_number,client_id,agreement_id,proposal_id,issue_date,due_date,billing_frequency,payment_term,subtotal_locations,subtotal_one_time,invoice_total,received_amount,pending_amount,payment_state,payment_conclusion,status,currency,created_at,updated_at'),
       this.fetchTable(db, 'receipts', 'id,receipt_id,receipt_number,invoice_id,client_id,receipt_date,amount_received,invoice_total,pending_amount,payment_state,payment_conclusion,old_paid_total,paid_now,new_paid_total,created_at,updated_at'),
-      this.fetchTable(db, 'clients', 'id,client_id,client_name,company_name,source_agreement_id,total_agreements,total_locations,total_value,total_paid,total_due'),
+      this.fetchTable(db, 'clients', 'id,client_id,client_name,company_name,legal_name,source_agreement_id,total_agreements,total_locations,total_value,total_paid,total_due'),
       this.fetchTable(db, 'operations_onboarding', 'agreement_id,onboarding_status,technical_request_status,csm_assigned_to,go_live_target_date,updated_at'),
       this.fetchTable(db, 'technical_admin_requests', 'agreement_id,request_status,assigned_to,requested_at,completed_at,location_count')
     ]);
@@ -327,7 +344,7 @@ const LifecycleAnalytics = {
           accountKey,
           clientUuid: this.text(client?.id || clientUuid),
           clientBusinessId: this.text(client?.client_id),
-          companyName: this.text(client?.company_name || client?.client_name || company),
+          companyName: this.getAnalyticsClientLegalName({ company_name: company }, client),
           primaryEmail: this.text(email),
           currency: 'USD',
           leads: [], deals: [], proposals: [], agreements: [], invoices: [], receipts: [],
@@ -338,7 +355,7 @@ const LifecycleAnalytics = {
         });
       }
       const account = accounts.get(accountKey);
-      if (!account.companyName && company) account.companyName = this.text(company);
+      if (!account.companyName && company) account.companyName = this.getAnalyticsClientLegalName({ company_name: company }, account);
       if (!account.primaryEmail && email) account.primaryEmail = this.text(email);
       if (this.isUuid(clientUuid) && !account.clientUuid) account.clientUuid = clientUuid;
       if (!account.clientBusinessId && this.isUuid(account.clientUuid)) {
@@ -547,6 +564,7 @@ const LifecycleAnalytics = {
 
     const row = {
       ...account,
+      legalName: this.getAnalyticsClientLegalName(account, account),
       currentStage: this.getCurrentStage({
         leadsCount: account.leads.length,
         dealsCount: account.deals.length,
@@ -640,6 +658,7 @@ const LifecycleAnalytics = {
       if (q) {
         const haystack = [
           row.companyName,
+          row.legalName,
           row.clientBusinessId,
           row.currentStage,
           row.lifecycleChain.lead,
@@ -684,7 +703,7 @@ const LifecycleAnalytics = {
         .map(key => {
           if (key === 'All') return '<option value="All">All Clients</option>';
           const row = this.state.rows.find(item => item.accountKey === key);
-          const label = row?.companyName || row?.clientBusinessId || key;
+          const label = this.getAnalyticsClientLegalName(row || {}, row || {}) || row?.clientBusinessId || key;
           return `<option value="${this.escape(key)}">${this.escape(label)}</option>`;
         })
         .join('');
@@ -728,7 +747,7 @@ const LifecycleAnalytics = {
     tbody.innerHTML = rows
       .map(row => `<tr>
         <td><button class="btn ghost sm" type="button" data-open-360="${this.escape(row.accountKey)}">Open</button></td>
-        <td>${this.escape(row.companyName || row.clientBusinessId || '—')}</td>
+        <td>${this.escape(this.getAnalyticsClientLegalName(row, row) || row.clientBusinessId || '—')}</td>
         <td>${this.escape(row.currentStage)}</td>
         <td>${this.escape(row.lifecycleChain.lead || '—')} → ${this.escape(row.lifecycleChain.deal || '—')} → ${this.escape(row.lifecycleChain.proposal || '—')} → ${this.escape(row.lifecycleChain.agreement || '—')} → ${this.escape(row.lifecycleChain.invoice || '—')} → ${this.escape(row.lifecycleChain.receipt || '—')}</td>
         <td>${this.fmtMoney(row.agreementValue, row.currency)}</td>
@@ -770,7 +789,7 @@ const LifecycleAnalytics = {
 
     detailRoot.innerHTML = `
       <div class="grid cols-4">
-        <div class="card"><div class="label">Client</div><div class="value">${this.escape(selected.companyName || '—')}</div></div>
+        <div class="card"><div class="label">Client</div><div class="value">${this.escape(this.getAnalyticsClientLegalName(selected, selected) || '—')}</div></div>
         <div class="card"><div class="label">Current Stage</div><div class="value">${this.escape(selected.currentStage)}</div></div>
         <div class="card"><div class="label">Agreement Value</div><div class="value">${this.escape(this.fmtMoney(selected.agreementValue, selected.currency))}</div></div>
         <div class="card"><div class="label">Payment Health</div><div class="value">${this.escape(selected.paymentHealth)}</div></div>
@@ -845,7 +864,7 @@ const LifecycleAnalytics = {
       const rows = accounts
         .map(account => this.buildAccountAnalytics(account, today))
         .filter(row => row.companyName || row.clientBusinessId || row.agreementsCount || row.invoicesCount || row.receiptsCount);
-      this.state.rows = rows.sort((a, b) => String(a.companyName || '').localeCompare(String(b.companyName || '')));
+      this.state.rows = rows.sort((a, b) => String(this.getAnalyticsClientLegalName(a, a) || '').localeCompare(String(this.getAnalyticsClientLegalName(b, b) || '')));
       this.state.overview = this.buildOverview(this.state.rows, raw);
       this.populateFilterOptions();
       this.applyFilters();
@@ -899,7 +918,7 @@ const LifecycleAnalytics = {
     if (refreshBtn) refreshBtn.addEventListener('click', () => this.refresh({ force: true }));
 
     const exportBtn = document.getElementById('lifecycleExportBtn');
-    if (exportBtn) exportBtn.addEventListener('click', () => UI.toast('Export for 360 analytics will be enabled in a follow-up release.'));
+    if (exportBtn) exportBtn.addEventListener('click', () => this.exportRows());
 
     const tbody = document.getElementById('lifecycleRecordsTbody');
     if (tbody) {
@@ -916,6 +935,33 @@ const LifecycleAnalytics = {
     this.state.initialized = true;
     this.wire();
     this.refresh({ force: true });
+  }
+  ,
+  exportRows() {
+    const rows = this.state.filteredRows || [];
+    const headers = ['Client Name', 'Current Stage', 'Payment Status', 'Onboarding Status', 'Technical Status', 'Renewal Status', 'Invoice Number', 'Receipt Number', 'Agreement Number', 'Proposal Number'];
+    const csv = [
+      headers.join(','),
+      ...rows.map(row => [
+        this.getAnalyticsClientLegalName(row, row),
+        row.currentStage,
+        row.paymentState,
+        row.onboardingStatus,
+        row.technicalStatus,
+        row.renewalExposure,
+        row.lifecycleChain?.invoice || '',
+        row.lifecycleChain?.receipt || '',
+        row.lifecycleChain?.agreement || '',
+        row.lifecycleChain?.proposal || ''
+      ].map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `analytics-360-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 };
 
