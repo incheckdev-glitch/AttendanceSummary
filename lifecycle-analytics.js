@@ -326,7 +326,7 @@ const LifecycleAnalytics = {
       technical
     ] = await Promise.all([
       this.fetchTable(db, 'leads', 'id,lead_id,company_name,legal_name,full_name,email,phone,status,assigned_to,created_at,updated_at'),
-      this.fetchTable(db, 'deals', 'id,deal_id,lead_id,company_name,legal_name,full_name,email,status,stage,assigned_to,created_at,updated_at'),
+      this.fetchTable(db, 'deals', 'id,deal_id,lead_id,company_name,customer_name,customer_legal_name,full_name,email,status,stage,assigned_to,created_at,updated_at'),
       this.fetchTable(db, 'proposals', 'id,proposal_id,ref_number,deal_id,customer_name,customer_legal_name,proposal_title,proposal_date,proposal_valid_until,service_start_date,service_end_date,contract_term,billing_frequency,payment_term,subtotal_locations,subtotal_one_time,total_discount,grand_total,status,currency,created_at,updated_at'),
       this.fetchTable(db, 'agreements', 'id,agreement_id,agreement_number,proposal_id,customer_name,customer_legal_name,service_start_date,service_end_date,signed_date,status,grand_total,billing_frequency,payment_term,currency,created_at,updated_at'),
       this.fetchTable(db, 'agreement_items', 'agreement_id,section,location_name,item_name,quantity,line_total,service_start_date,service_end_date'),

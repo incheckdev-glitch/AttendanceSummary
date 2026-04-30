@@ -368,19 +368,23 @@ const Leads = {
     if (error) throw this.toSupabaseError('Unable to check existing deal', error);
     return Array.isArray(data) && data.length ? data[0] : null;
   },
-  buildDealFromLead(lead) {
+  buildDealFromLead(lead, company = {}) {
     const converter = this.currentConverterIdentity();
     const convertedAt = new Date().toISOString();
     const estimatedValueNumber =
       lead.estimated_value === '' || lead.estimated_value === null || lead.estimated_value === undefined
         ? null
         : Number(lead.estimated_value);
+    const legalCustomerName = U.getCustomerLegalName(company || {}, lead || {});
     return {
       lead_id: String(lead.id || '').trim(),
       lead_code: String(lead.lead_id || '').trim(),
       full_name: lead.full_name,
-      company_name: lead.company_name,
-      company_id: lead.company_id,
+      company_name: company.company_name || lead.company_name,
+      company_id: company.company_id || lead.company_id,
+      customer_name: legalCustomerName,
+      customer_legal_name: legalCustomerName,
+      customer_address: String(company.address || lead.customer_address || '').trim(),
       contact_id: lead.contact_id,
       contact_name: lead.contact_name,
       contact_email: lead.contact_email,
@@ -1472,7 +1476,8 @@ const Leads = {
       console.log('[deal conversion] existing deal check lead uuid', sourceLead.id);
       console.log('[deal conversion] business lead code', sourceLead.lead_id);
       const existingDeal = await this.findDealByLeadUuid(sourceLead.id);
-      const payload = this.sanitizeDealCreatePayloadForConversion(this.buildDealFromLead(sourceLead));
+      const fullCompany = sourceLead.company_id ? await this.getFullCompanyRecord(sourceLead.company_id) : null;
+      const payload = this.sanitizeDealCreatePayloadForConversion(this.buildDealFromLead(sourceLead, fullCompany || {}));
       console.log('[lead->deal] sanitized deal payload', payload);
       const savedDeal =
         existingDeal ||

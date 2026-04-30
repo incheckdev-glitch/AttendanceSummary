@@ -822,11 +822,11 @@ const Proposals = {
   async proposalDraftFromDeal(rawDeal = {}) {
     const deal = rawDeal && typeof rawDeal === 'object' ? rawDeal : {};
     const companyName = String(deal.company_name || deal.companyName || '').trim();
-    const legalName = String(deal.legal_name || deal.legalName || companyName).trim();
     const fullName = String(deal.full_name || deal.fullName || '').trim();
     const serviceInterest = String(deal.service_interest || deal.serviceInterest || '').trim();
     const titleParts = [companyName || fullName, serviceInterest].filter(Boolean);
     const selectedCompany = await this.getFullCompanyRecord(deal.company_id || deal.companyId || {});
+    const legalName = U.getCustomerLegalName(selectedCompany || {}, deal);
     const selectedContact = await this.getFullContactRecord(deal.contact_id || deal.contactId || {});
     const draft = {
       ...this.emptyProposal(),
