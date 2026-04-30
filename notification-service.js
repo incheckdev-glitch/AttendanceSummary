@@ -218,30 +218,71 @@
     return [...new Set(emails)];
   }
 
-  async function resolveUsersForRoles(assignedRoles = []) {
-    if (!assignedRoles.length) return [];
+  let usersCache = { loadedAt: 0, rows: [] };
+
+  async function listActiveUserRows() {
+    const now = Date.now();
+    if (Array.isArray(usersCache.rows) && usersCache.rows.length && now - usersCache.loadedAt < 60000) return usersCache.rows;
+
     try {
-      const usersResponse = await global.Api.requestWithSession('users', 'list', {}, { requireAuth: true });
-      const rows = Array.isArray(usersResponse?.rows) ? usersResponse.rows : (Array.isArray(usersResponse) ? usersResponse : []);
-      const roleSet = new Set(assignedRoles);
-      return rows
-        .filter(row => {
-          const userRoles = normalizeRoleList([
-            row.role, row.role_key, row.roleKey, row.user_role, row.userRole, row.app_role, row.appRole,
-            ...(Array.isArray(row.roles) ? row.roles : [])
-          ]);
-          return userRoles.some(role => roleSet.has(role));
-        })
-        .map(row => String(row.id || row.user_id || row.userId || '').trim())
-        .filter(Boolean);
+      const usersResponse = await global.Api.requestWithSession('users', 'list', { limit: 10000 }, { requireAuth: true });
+      const rows = Array.isArray(usersResponse?.rows)
+        ? usersResponse.rows
+        : (Array.isArray(usersResponse?.data?.rows)
+          ? usersResponse.data.rows
+          : (Array.isArray(usersResponse) ? usersResponse : []));
+      usersCache = { loadedAt: now, rows: rows.filter(row => row && typeof row === 'object') };
+      return usersCache.rows;
     } catch (error) {
-      console.warn('[notifications] unable to resolve users for roles', error);
+      console.warn('[notifications] unable to load user rows for notification recipients', error);
       return [];
     }
   }
 
+  function isActiveUserRow(row = {}) {
+    return row?.is_active !== false && row?.isActive !== false && row?.active !== false;
+  }
+
+  function getUserRowId(row = {}) {
+    return String(row?.id || row?.user_id || row?.userId || row?.profile_id || row?.profileId || '').trim();
+  }
+
+  function getUserRowEmail(row = {}) {
+    return String(row?.email || row?.user_email || row?.userEmail || '').trim().toLowerCase();
+  }
+
+  async function resolveUsersForRolesDetailed(assignedRoles = []) {
+    const roleSet = new Set(normalizeRoleList(assignedRoles));
+    if (!roleSet.size) return { userIds: [], emails: [] };
+    const rows = await listActiveUserRows();
+    const matched = rows.filter(row => {
+      if (!isActiveUserRow(row)) return false;
+      const userRoles = normalizeRoleList([
+        row.role, row.role_key, row.roleKey, row.user_role, row.userRole, row.app_role, row.appRole,
+        ...(Array.isArray(row.roles) ? row.roles : [])
+      ]);
+      return userRoles.some(role => roleSet.has(role));
+    });
+    return {
+      userIds: [...new Set(matched.map(getUserRowId).filter(Boolean))],
+      emails: [...new Set(matched.map(getUserRowEmail).filter(isValidEmail))]
+    };
+  }
+
+  async function resolveEmailsForUserIds(userIds = []) {
+    const idSet = new Set(normalizeList(userIds).map(item => String(item || '').trim()).filter(Boolean));
+    if (!idSet.size) return [];
+    const rows = await listActiveUserRows();
+    return [...new Set(rows.filter(row => idSet.has(getUserRowId(row))).map(getUserRowEmail).filter(isValidEmail))];
+  }
+
+  async function resolveUsersForRoles(assignedRoles = []) {
+    const detailed = await resolveUsersForRolesDetailed(assignedRoles);
+    return detailed.userIds;
+  }
+
   const NotificationService = {
-    async sendBusinessNotification({ resource = '', action = '', eventKey = '', recordId = '', recordNumber = '', title = '', body = '', targetUsers = [], targetEmails = [], url = '', metadata = {}, channels = ['in_app', 'push'], roles = ['admin'] } = {}) {
+    async sendBusinessNotification({ resource = '', action = '', eventKey = '', recordId = '', recordNumber = '', title = '', body = '', targetUsers = [], targetEmails = [], url = '', metadata = {}, channels = ['in_app', 'push', 'email'], roles = ['admin'] } = {}) {
       const normalizedResource = String(resource || '').trim();
       const normalizedAction = String(action || '').trim();
       const normalizedEventKey = String(eventKey || `${normalizedResource}.${normalizedAction}`).trim();
@@ -282,15 +323,16 @@
         return skipNotification({ resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, reason: 'no_recipients_configured' });
       }
 
-      const roleUserIds = await resolveUsersForRoles(assignedRoles);
-      const userIds = [...new Set([...directUsers, ...assignedUsers, ...roleUserIds])];
-      const emails = [...new Set([...directEmails, ...assignedEmails, ...dynamicEmails])];
+      const roleRecipients = await resolveUsersForRolesDetailed(assignedRoles);
+      const userIds = [...new Set([...directUsers, ...assignedUsers, ...roleRecipients.userIds])];
+      const userIdEmails = await resolveEmailsForUserIds(userIds);
+      const emails = [...new Set([...directEmails, ...assignedEmails, ...dynamicEmails, ...roleRecipients.emails, ...userIdEmails])];
       if (!userIds.length && !emails.length && (rule || isKnownNotificationAction(normalizedResource, normalizedAction))) {
         return skipNotification({ resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, reason: 'no_notification_recipients_resolved' });
       }
 
       recipients.push(...userIds, ...emails);
-      const emailRecipients = emails.filter(isValidEmail);
+      const emailRecipients = [...new Set(emails.filter(isValidEmail))];
       const baseAllowed = Boolean(rule?.is_enabled === true && recipients.length > 0);
       decision.channels.in_app = Boolean(baseAllowed && rule?.in_app_enabled === true && normalizedRequestedChannels.includes('in_app'));
       decision.channels.push = Boolean(baseAllowed && (rule?.pwa_enabled === true || rule?.push_enabled === true || rule?.web_push_enabled === true) && normalizedRequestedChannels.includes('push'));

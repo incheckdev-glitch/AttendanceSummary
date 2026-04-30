@@ -343,7 +343,7 @@ const Api = {
         url,
         metadata: data,
         roles,
-        channels: ['in_app', 'push']
+        channels: ['in_app', 'push', 'email']
       });
     }
     const directFallbackKey = String(resource || '').trim().toLowerCase() + ':' + String(action || '').trim().toLowerCase();
