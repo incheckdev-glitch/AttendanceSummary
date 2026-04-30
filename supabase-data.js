@@ -3767,6 +3767,51 @@
     return Boolean(roles.length || users.length || emails.length || resolvedUsers.length || resolvedEmails.length);
   }
 
+  function getNotificationActionAliases(resource = '', action = '') {
+    const normalizedResource = String(resource || '').trim().toLowerCase();
+    const normalizedAction = String(action || '').trim().toLowerCase();
+    if (normalizedResource === 'tickets' && ['dev_team_status_changed', 'ticket_dev_team_status_changed'].includes(normalizedAction)) {
+      return ['dev_team_status_changed', 'ticket_dev_team_status_changed'];
+    }
+    return [normalizedAction].filter(Boolean);
+  }
+
+  async function findNotificationRule(client, resource = '', action = '') {
+    const normalizedResource = String(resource || '').trim().toLowerCase();
+    const aliases = getNotificationActionAliases(normalizedResource, action);
+    if (!normalizedResource || !aliases.length) return { rule: null, error: null };
+    const { data, error } = await client
+      .from('notification_rules')
+      .select('*')
+      .eq('resource', normalizedResource)
+      .in('action', aliases)
+      .limit(1);
+    if (error) return { rule: null, error };
+    return { rule: Array.isArray(data) && data.length ? data[0] : null, error: null };
+  }
+
+  function isNotificationRuleEnabled(rule = {}) {
+    const enabledValue = rule?.is_enabled ?? rule?.enabled ?? rule?.active;
+    if (enabledValue === false) return false;
+    if (String(enabledValue).trim().toLowerCase() === 'false') return false;
+    if (String(enabledValue).trim() === '0') return false;
+    return true;
+  }
+
+  function isNotificationChannelEnabled(rule = {}, channel = 'in_app') {
+    const normalizedChannel = String(channel || '').trim().toLowerCase();
+    const value = normalizedChannel === 'push'
+      ? (rule?.pwa_enabled ?? rule?.push_enabled ?? rule?.web_push_enabled ?? rule?.pwa_push_enabled)
+      : normalizedChannel === 'email'
+        ? rule?.email_enabled
+        : (rule?.in_app_enabled ?? rule?.bell_enabled ?? rule?.notification_hub_enabled);
+    if (value === undefined || value === null || value === '') return true;
+    if (value === false) return false;
+    if (String(value).trim().toLowerCase() === 'false') return false;
+    if (String(value).trim() === '0') return false;
+    return true;
+  }
+
   async function sendPwaPushForNotification(payload = {}, context = '') {
     const client = getClient();
     const title = String(payload?.title || '').trim();
@@ -3856,25 +3901,18 @@
     const resource = String(normalizedPayload?.resource || '').trim().toLowerCase();
     const action = String(normalizedPayload?.action || normalizedPayload?.event_type || '').trim().toLowerCase();
     const actorUserId = String(normalizedPayload?.actor_user_id || normalizedPayload?.created_by || '').trim();
-    const { data: rule, error: ruleError } = await getClient()
-      .from('notification_rules')
-      .select('*')
-      .eq('resource', resource)
-      .eq('action', action)
-      .maybeSingle();
+    const { rule, error: ruleError } = await findNotificationRule(getClient(), resource, action);
     if (ruleError) console.warn('[notifications:rules] unable to load rule', { context, resource, action, ruleError });
     if (!rule) {
       console.warn('[notifications:rules] no rule found; notification skipped', { context, resource, action });
       return { created: 0, push: { attempted: false, skipped: true, reason: 'no-rule' }, notification_id: null };
     }
-    if ((rule?.is_enabled ?? rule?.enabled) === false) {
+    if (!isNotificationRuleEnabled(rule)) {
       return { created: 0, push: { attempted: false, skipped: true, reason: 'rule-disabled' }, notification_id: null };
     }
-    const normalizedRoles = [...new Set([
-      ...getRuleAssignedRoles(rule),
-      ...normalizeNotificationRoles(normalizedPayload?.target_roles).map(normalizeNotificationRoleKey)
-    ])];
-    const { data: activeProfiles } = await getClient().from('profiles').select('id,email,role_key,is_active').eq('is_active', true).limit(2000);
+    const normalizedRoles = [...new Set(getRuleAssignedRoles(rule))];
+    // Rule recipient roles are the source of truth. Do not fall back to module-provided target_roles when a rule exists.
+    const { data: activeProfiles } = await getClient().from('profiles').select('id,email,role_key,role,user_role,app_role,is_active,active').limit(2000);
     const profileRows = Array.isArray(activeProfiles) ? activeProfiles : [];
     const recipientUserIds = new Set([
       ...getRuleAssignedUsers(rule),
@@ -3905,11 +3943,12 @@
       return { created: 0, push: { attempted: false, skipped: true, reason: 'no_recipients_configured' }, notification_id: null };
     }
     profileRows.forEach(row => {
+      if (row?.is_active === false || row?.active === false) return;
       const id = String(row.id || '').trim();
       const email = String(row.email || '').trim().toLowerCase();
-      const roleKey = normalizeNotificationRoleKey(row.role_key);
+      const rowRoles = normalizeNotificationRoles(row.role_key, row.role, row.user_role, row.app_role).map(normalizeNotificationRoleKey);
       if (!id) return;
-      if (normalizedRoles.includes(roleKey)) recipientUserIds.add(id);
+      if (rowRoles.some(roleKey => normalizedRoles.includes(roleKey))) recipientUserIds.add(id);
       if (email && recipientEmails.has(email)) recipientUserIds.add(id);
     });
     if (rule.exclude_actor !== false && actorUserId) recipientUserIds.delete(actorUserId);
@@ -3918,15 +3957,26 @@
       return { created: 0, push: { attempted: false, skipped: true, reason: 'no-recipient' }, notification_id: null };
     }
     const targetUserIds = [...recipientUserIds];
-    const shouldAttemptPush = Boolean(rule.pwa_enabled !== false && targetUserIds.length);
+    const inAppEnabled = isNotificationChannelEnabled(rule, 'in_app');
+    const pushEnabled = isNotificationChannelEnabled(rule, 'push');
+    const shouldAttemptPush = Boolean(pushEnabled && targetUserIds.length);
     const dedupeWindowSeconds = Math.max(1, Number(rule.dedupe_window_seconds || 60) || 60);
     const dedupeMinuteBucket = Math.floor(Date.now() / (dedupeWindowSeconds * 1000));
     const recordId = String(normalizedPayload?.record_id || record?.id || '').trim();
-    const dedupeKey = `${resource}:${action}:${recordId || 'na'}:${targetUserIds[0] || 'na'}:in_app:${dedupeMinuteBucket}`;
-    const hubPromise = createNotificationHubEvent(normalizedPayload, context).catch(error => {
-      console.warn('[notifications:hub] create failed but save should continue', { context, error });
-      return [];
-    });
+    const dedupeKey = resource + ':' + action + ':' + (recordId || 'na') + ':' + (targetUserIds[0] || 'na') + ':in_app:' + dedupeMinuteBucket;
+    const sanitizedHubPayload = {
+      ...normalizedPayload,
+      target_role: undefined,
+      target_roles: normalizedRoles,
+      target_user_id: normalizedRoles.length ? undefined : (targetUserIds[0] || undefined),
+      dedupe_key: dedupeKey
+    };
+    const hubPromise = inAppEnabled
+      ? createNotificationHubEvent(sanitizedHubPayload, context).catch(error => {
+        console.warn('[notifications:hub] create failed but save should continue', { context, error });
+        return [];
+      })
+      : Promise.resolve([]);
     const pushPromise = shouldAttemptPush
       ? sendPwaPushForNotification({
         ...normalizedPayload,
@@ -3935,7 +3985,7 @@
         target_roles: normalizedRoles,
         dedupe_key: dedupeKey
       }, context)
-      : Promise.resolve({ attempted: false, reason: 'no-target' });
+      : Promise.resolve({ attempted: false, reason: pushEnabled ? 'no-target' : 'push-disabled' });
     const [hubSettled, pushSettled] = await Promise.allSettled([hubPromise, pushPromise]);
     const insertedRows = hubSettled.status === 'fulfilled' && Array.isArray(hubSettled.value) ? hubSettled.value : [];
     const pushResult = pushSettled.status === 'fulfilled'

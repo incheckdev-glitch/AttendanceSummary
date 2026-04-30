@@ -346,6 +346,15 @@ const Api = {
         channels: ['in_app', 'push']
       });
     }
+    const directFallbackKey = String(resource || '').trim().toLowerCase() + ':' + String(action || '').trim().toLowerCase();
+    const notificationSetupManagedFallbacks = new Set([
+      'tickets:dev_team_status_changed',
+      'tickets:ticket_dev_team_status_changed'
+    ]);
+    if (notificationSetupManagedFallbacks.has(directFallbackKey)) {
+      console.info('[business:pwa] skipped direct fallback for notification-setup managed action', { resource, action, recordId });
+      return { attempted: false, skipped: true, reason: 'notification-service-unavailable-managed-action' };
+    }
     return this.sendWebPush({ resource, action, record_id: recordId, title, body, url, data, roles, user_ids: userIds, emails: targetEmails }, { context: String(resource || '') + ':' + String(action || '') + ':direct-fallback' });
   },
   shouldSkipDirectBusinessPwaPush(args = {}) {
