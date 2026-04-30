@@ -3700,7 +3700,7 @@ function buildTicketInternalUpdatePayload(payload = {}, ticketId = '') {
   return internalPayload.ticket_id ? internalPayload : null;
 }
 
-async function sendDirectTicketPwaPush({
+async function sendTicketBusinessNotification({
   ticketId = '',
   ticketUuid = '',
   action = 'ticket_updated',
@@ -3734,13 +3734,19 @@ async function sendDirectTicketPwaPush({
     }
   };
 
-  console.info('[tickets:pwa] sending direct PWA push', payload);
-
-  const result = await Api.sendWebPush(payload, {
-    context: `tickets:${action}:direct`
+  const result = await Api.safeSendBusinessPwaPush({
+    resource: 'tickets',
+    action,
+    eventKey: `tickets.${action}`,
+    recordId: normalizedTicketId,
+    title,
+    body: payload.body,
+    roles,
+    url: ticketUrl,
+    data: payload.data
   });
 
-  console.info('[tickets:pwa] direct PWA push result', {
+  console.info('[tickets:pwa] business notification result', {
     ticketId: normalizedTicketId,
     action,
     result
@@ -3852,7 +3858,7 @@ async function saveTicketRecord(issue, auth = {}, options = {}) {
       nextDevStatus &&
       previousDevStatus.toLowerCase() !== nextDevStatus.toLowerCase()
     ) {
-      pwaAction = 'ticket_dev_team_status_changed';
+      pwaAction = 'dev_team_status_changed';
       pwaTitle = 'Dev team status changed';
       pwaBody = `Ticket ${finalTicketId} dev team status changed from ${previousDevStatus} to ${nextDevStatus}.`;
       changedFields.push('dev_team_status');
@@ -3874,7 +3880,7 @@ async function saveTicketRecord(issue, auth = {}, options = {}) {
       Object.keys(publicUpdates || {}).forEach(key => changedFields.push(key));
     }
 
-    await sendDirectTicketPwaPush({
+    await sendTicketBusinessNotification({
       ticketId: finalTicketId,
       ticketUuid: issueRowId,
       action: pwaAction,
