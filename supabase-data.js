@@ -3950,12 +3950,6 @@
       console.warn('[notifications:rules] no rule found; notification skipped', { context, resource, action });
       return { created: 0, push: { attempted: false, skipped: true, reason: 'no-rule' }, notification_id: null };
     }
-    const anyInAppEnabled = matchingRules.some(rule => isNotificationRuleEnabled(rule) && isNotificationChannelEnabled(rule, 'in_app'));
-    const anyPushEnabled = matchingRules.some(rule => isNotificationRuleEnabled(rule) && isNotificationChannelEnabled(rule, 'push'));
-    if (!anyInAppEnabled && !anyPushEnabled) {
-      console.info('[notifications] skipped all channels', { resource, action, eventKey, reason: 'matching_saved_rule_disabled' });
-      return { created: 0, push: { attempted: false, skipped: true, reason: 'matching_saved_rule_disabled' }, notification_id: null };
-    }
     const enabledRulesForRecipients = matchingRules.filter(rule => isNotificationRuleEnabled(rule));
     const normalizedRoles = [...new Set(enabledRulesForRecipients.flatMap(rule => getRuleAssignedRoles(rule)))];
     // Preset defaults are initialization-only. Send-time uses saved notification_rules exclusively.
@@ -3981,6 +3975,39 @@
     const assignedEmailsCount = assignedEmails.length;
     const resolvedRecipientsCount = resolvedRecipients.users.length + resolvedRecipients.emails.length;
     const hasAnyConfiguredRecipients = enabledRulesForRecipients.some(rule => hasConfiguredRecipients(rule, resolvedRecipients));
+    const recipientsCount = recipientUserIds.size + recipientEmails.size + normalizedRoles.length;
+    const primaryRule = enabledRulesForRecipients[0] || matchingRules[0] || null;
+    const decision = {
+      channels: {
+        in_app: Boolean(primaryRule && primaryRule.is_enabled === true && primaryRule.in_app_enabled === true && recipientsCount > 0),
+        push: Boolean(
+          primaryRule &&
+          primaryRule.is_enabled === true &&
+          (primaryRule.pwa_enabled === true || primaryRule.push_enabled === true || primaryRule.web_push_enabled === true) &&
+          recipientsCount > 0
+        ),
+        email: Boolean(primaryRule && primaryRule.is_enabled === true && primaryRule.email_enabled === true && recipientsCount > 0)
+      }
+    };
+    console.info('[notifications] channel decision', {
+      resource,
+      action,
+      eventKey,
+      ruleFound: Boolean(primaryRule),
+      isEnabled: primaryRule?.is_enabled,
+      inAppEnabled: primaryRule?.in_app_enabled,
+      pwaEnabled: primaryRule?.pwa_enabled,
+      pushEnabled: primaryRule?.push_enabled ?? primaryRule?.web_push_enabled,
+      emailEnabled: primaryRule?.email_enabled,
+      recipientsCount,
+      sendInApp: decision.channels.in_app,
+      sendPush: decision.channels.push,
+      sendEmail: decision.channels.email
+    });
+    if (!decision.channels.in_app && !decision.channels.push && !decision.channels.email) {
+      console.info('[notifications] skipped all channels', { resource, action, eventKey, reason: 'matching_saved_rule_disabled' });
+      return { created: 0, push: { attempted: false, skipped: true, reason: 'matching_saved_rule_disabled' }, notification_id: null };
+    }
     if (!hasAnyConfiguredRecipients) {
       console.info('[notifications] rule decision', { resource, action, eventKey, ruleFound: true, usedPreset: false, assignedRolesCount, assignedUsersCount, assignedEmailsCount, resolvedRecipientsCount, shouldSend: false, reason: 'saved_rule_has_no_recipients' });
       console.info('[notifications] skipped in-app', { resource, action, reason: 'saved_rule_has_no_recipients' });
@@ -4003,9 +4030,7 @@
       return { created: 0, push: { attempted: false, skipped: true, reason: 'no-recipient' }, notification_id: null };
     }
     const targetUserIds = [...recipientUserIds];
-    const inAppEnabled = anyInAppEnabled;
-    const pushEnabled = anyPushEnabled;
-    const shouldAttemptPush = Boolean(pushEnabled && targetUserIds.length);
+    const shouldAttemptPush = Boolean(decision.channels.push && targetUserIds.length);
     const dedupeWindowSeconds = Math.max(1, Number(enabledRulesForRecipients.find(rule => Number(rule?.dedupe_window_seconds || 0) > 0)?.dedupe_window_seconds || 60) || 60);
     const dedupeMinuteBucket = Math.floor(Date.now() / (dedupeWindowSeconds * 1000));
     const recordId = String(normalizedPayload?.record_id || record?.id || '').trim();
@@ -4017,7 +4042,7 @@
       target_user_id: normalizedRoles.length ? undefined : (targetUserIds[0] || undefined),
       dedupe_key: dedupeKey
     };
-    const hubPromise = inAppEnabled
+    const hubPromise = decision.channels.in_app
       ? createNotificationHubEvent(sanitizedHubPayload, context).catch(error => {
         console.warn('[notifications:hub] create failed but save should continue', { context, error });
         return [];
@@ -4031,7 +4056,7 @@
         target_roles: normalizedRoles,
         dedupe_key: dedupeKey
       }, context)
-      : Promise.resolve({ attempted: false, reason: pushEnabled ? 'no-target' : 'push-disabled' });
+      : Promise.resolve({ attempted: false, reason: decision.channels.push ? 'no-target' : 'push-disabled' });
     const [hubSettled, pushSettled] = await Promise.allSettled([hubPromise, pushPromise]);
     const insertedRows = hubSettled.status === 'fulfilled' && Array.isArray(hubSettled.value) ? hubSettled.value : [];
     const pushResult = pushSettled.status === 'fulfilled'
