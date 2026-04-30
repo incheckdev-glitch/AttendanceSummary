@@ -44,7 +44,7 @@
       : ch === 'email'
         ? (rule.email_enabled ?? rule.emailEnabled)
         : ch === 'in_app'
-          ? (rule.in_app_enabled ?? rule.inAppEnabled)
+          ? (rule.in_app_enabled ?? rule.inAppEnabled ?? rule.bell_enabled ?? rule.bellEnabled ?? rule.notification_hub_enabled ?? rule.notificationHubEnabled)
           : undefined;
     if (value === undefined || value === null || value === '') return true;
     if (value === false) return false;
@@ -108,15 +108,47 @@
       const rule = rules.find(item => ruleMatches(item, { resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey })) || null;
 
       if (rule && !isRuleEnabled(rule)) return skipNotification({ resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, reason: 'notification_rule_disabled' });
-      if (rule && !isChannelEnabled(rule, 'push')) return skipNotification({ resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, reason: 'notification_channel_disabled' });
-
       const directUsers = normalizeList(targetUsers);
       const directEmails = normalizeList(targetEmails).map(item => item.toLowerCase());
       const directTargets = directUsers.length > 0 || directEmails.length > 0;
       const assignedRoles = rule ? getRuleAssignedRoles(rule) : normalizeRoleList(roles);
 
       if (rule && assignedRoles.length === 0 && !directTargets) {
+        console.info('[notifications] skipped in-app', {
+          resource: normalizedResource,
+          action: normalizedAction,
+          eventKey: normalizedEventKey,
+          reason: 'notification_rule_has_no_assigned_roles'
+        });
         return skipNotification({ resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, reason: 'notification_rule_has_no_assigned_roles' });
+      }
+
+      const requestedChannels = Array.isArray(channels) ? channels : ['in_app', 'push'];
+      const allowedChannels = requestedChannels
+        .map(channel => String(channel || '').trim().toLowerCase())
+        .filter(Boolean)
+        .filter(channel => isChannelEnabled(rule, channel));
+
+      const disabledChannels = requestedChannels
+        .map(channel => String(channel || '').trim().toLowerCase())
+        .filter(Boolean)
+        .filter(channel => !allowedChannels.includes(channel));
+      if (disabledChannels.includes('in_app')) {
+        console.info('[notifications] skipped in-app', {
+          resource: normalizedResource,
+          action: normalizedAction,
+          eventKey: normalizedEventKey,
+          reason: 'notification_in_app_disabled_or_no_roles'
+        });
+      }
+
+      if (!allowedChannels.length) {
+        return skipNotification({
+          resource: normalizedResource,
+          action: normalizedAction,
+          eventKey: normalizedEventKey,
+          reason: 'notification_channels_disabled'
+        });
       }
 
       const assignedUsers = normalizeList(rule?.assigned_users ?? rule?.assignedUsers ?? rule?.target_users ?? rule?.targetUsers ?? rule?.recipient_users ?? rule?.recipientUsers ?? rule?.recipient_user_ids ?? rule?.recipientUserIds);
@@ -131,7 +163,7 @@
 
       const normalizedRecordId = String(recordId || '').trim();
       const finalUrl = String(url || '').trim() || (normalizedRecordId ? `/#${encodeURIComponent(normalizedResource)}?id=${encodeURIComponent(normalizedRecordId)}` : `/#${encodeURIComponent(normalizedResource)}`);
-      const payload = { title: title || 'InCheck360 notification', body: body || 'A record was updated.', resource: normalizedResource, action: normalizedAction, event_key: normalizedEventKey, record_id: normalizedRecordId || undefined, record_number: String(recordNumber || '').trim() || undefined, url: finalUrl, tag: `${normalizedResource}-${normalizedAction}-${normalizedRecordId || 'record'}-${Date.now()}`, data: { resource: normalizedResource, action: normalizedAction, event_key: normalizedEventKey, record_id: normalizedRecordId || undefined, record_number: String(recordNumber || '').trim() || undefined, url: finalUrl, ...(metadata && typeof metadata === 'object' ? metadata : {}) }, channels: Array.isArray(channels) ? channels : ['in_app', 'push'], user_ids: userIds, emails };
+      const payload = { title: title || 'InCheck360 notification', body: body || 'A record was updated.', resource: normalizedResource, action: normalizedAction, event_key: normalizedEventKey, record_id: normalizedRecordId || undefined, record_number: String(recordNumber || '').trim() || undefined, url: finalUrl, tag: `${normalizedResource}-${normalizedAction}-${normalizedRecordId || 'record'}-${Date.now()}`, data: { resource: normalizedResource, action: normalizedAction, event_key: normalizedEventKey, record_id: normalizedRecordId || undefined, record_number: String(recordNumber || '').trim() || undefined, url: finalUrl, ...(metadata && typeof metadata === 'object' ? metadata : {}) }, channels: allowedChannels, user_ids: userIds, emails };
       try { return await global.Api.sendWebPush(payload, { context: `${normalizedResource}:${normalizedAction}:central` }); }
       catch (error) {
         console.warn('[notifications] sendBusinessNotification failed (non-blocking)', error);
