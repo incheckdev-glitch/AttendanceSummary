@@ -41,7 +41,7 @@ const UserAdmin = {
           await Api.requestWithSession('users', 'create', {
             user: payload,
             ...payload
-          });
+          }, { requireAuth: true });
           if (E.userCreateForm) E.userCreateForm.reset();
           this.applyRoleOptions(this.state.roles);
           await this.refresh();
@@ -380,6 +380,7 @@ const UserAdmin = {
     try {
       await Api.requestWithSession('users', 'update', {
         id: userId,
+        auth_user_id: userId,
         updates: {
           name: String(name).trim(),
           email: String(email).trim(),
@@ -393,7 +394,7 @@ const UserAdmin = {
           username: String(username).trim(),
           role_key: normalizedRole
         }
-      });
+      }, { requireAuth: true });
       UI.toast('User updated.');
       this.closeEditModal();
       await this.refresh();

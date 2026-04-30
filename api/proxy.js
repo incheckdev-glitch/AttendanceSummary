@@ -37,11 +37,12 @@ function needsResourceAliasRetry(resource, responseData) {
   );
 }
 
-async function forwardToUpstream(targetUrl, payload) {
+async function forwardToUpstream(targetUrl, payload, authorization = "") {
   const upstream = await fetch(targetUrl, {
     method: 'POST',
     headers: {
-      'Content-Type': 'text/plain;charset=utf-8'
+      'Content-Type': 'text/plain;charset=utf-8',
+      ...(authorization ? { Authorization: authorization } : {})
     },
     body: JSON.stringify(payload)
   });
@@ -72,6 +73,7 @@ export default async function handler(req, res) {
   }
 
   const payload = parseRequestBody(req.body);
+  const authorization = String(req.headers?.authorization || req.headers?.Authorization || "").trim();
   const resource = String(payload?.resource || '').trim();
   const action = String(payload?.action || '').trim();
   res.setHeader('X-Upstream-Target', targetUrl);
@@ -84,7 +86,7 @@ export default async function handler(req, res) {
 
   let upstreamResult;
   try {
-    upstreamResult = await forwardToUpstream(targetUrl, payload);
+    upstreamResult = await forwardToUpstream(targetUrl, payload, authorization);
   } catch (error) {
     console.error('[proxy] upstream fetch failed', {
       targetUrl,
@@ -112,7 +114,7 @@ export default async function handler(req, res) {
         const aliasResult = await forwardToUpstream(targetUrl, {
           ...payload,
           resource: alias
-        });
+        }, authorization);
         attemptedAlias = alias;
         upstreamResult = aliasResult;
         if (aliasResult.upstream.ok || (aliasResult.parsedJson && !needsResourceAliasRetry(resource, aliasResult.data))) {
