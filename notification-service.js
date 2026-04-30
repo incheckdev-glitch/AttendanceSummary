@@ -137,7 +137,7 @@
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="640" style="max-width:640px;width:100%;background:#ffffff;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
           <tr>
             <td style="padding:24px 28px;background:#0f172a;">
-              <div style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:0.2px;">InCheck360</div>
+              <div style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:0.2px;">InCheck360 Notifications</div>
               <div style="margin-top:10px;display:inline-block;padding:6px 10px;background:#1e293b;color:#cbd5e1;border-radius:999px;font-size:12px;font-weight:600;">${badgeHtml}</div>
             </td>
           </tr>
@@ -397,6 +397,31 @@
     return detailed.userIds;
   }
 
+
+  function buildNotificationRoute(resource = '', recordId = '') {
+    const normalizedResource = String(resource || '').trim();
+    const normalizedRecordId = String(recordId || '').trim();
+    if (!normalizedResource) return normalizedRecordId ? `/#record?id=${encodeURIComponent(normalizedRecordId)}` : '/#';
+    if (!normalizedRecordId) return `/#${encodeURIComponent(normalizedResource)}`;
+
+    const encodedId = encodeURIComponent(normalizedRecordId);
+    const routeMap = {
+      tickets: `/#tickets?ticket_id=${encodedId}`,
+      workflow: `/#workflow?approval_id=${encodedId}`,
+      operations_onboarding: `/#operations-onboarding?onboarding_id=${encodedId}`,
+      operations_onboarding_requests: `/#operations-onboarding?onboarding_id=${encodedId}`,
+      technical_admin_requests: `/#technical-admin?id=${encodedId}`,
+      technical_admin: `/#technical-admin?id=${encodedId}`,
+      leads: `/#crm?tab=leads&id=${encodedId}`,
+      deals: `/#crm?tab=deals&id=${encodedId}`,
+      proposals: `/#crm?tab=proposals&id=${encodedId}`,
+      agreements: `/#crm?tab=agreements&id=${encodedId}`,
+      invoices: `/#finance?tab=invoices&id=${encodedId}`,
+      receipts: `/#finance?tab=receipts&id=${encodedId}`
+    };
+    return routeMap[normalizedResource] || `/#${encodeURIComponent(normalizedResource)}?id=${encodedId}`;
+  }
+
   const NotificationService = {
     async sendBusinessNotification({ resource = '', action = '', eventKey = '', recordId = '', recordNumber = '', title = '', body = '', targetUsers = [], targetEmails = [], url = '', metadata = {}, channels = ['in_app', 'push', 'email'], roles = ['admin'] } = {}) {
       const normalizedResource = String(resource || '').trim();
@@ -474,7 +499,7 @@
       }
 
       const normalizedRecordId = String(recordId || '').trim();
-      const finalUrl = String(url || '').trim() || (normalizedRecordId ? `/#${encodeURIComponent(normalizedResource)}?id=${encodeURIComponent(normalizedRecordId)}` : `/#${encodeURIComponent(normalizedResource)}`);
+      const finalUrl = String(url || '').trim() || buildNotificationRoute(normalizedResource, normalizedRecordId);
       const payload = {
         title: title || 'InCheck360 notification',
         body: body || 'A record was updated.',
