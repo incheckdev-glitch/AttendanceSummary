@@ -5,6 +5,27 @@ const RESOURCE_ALIASES = {
 };
 
 const USER_MANAGEMENT_ROLES = new Set(['admin', 'administrator', 'super_admin']);
+const DEFAULT_BOOTSTRAP_ADMIN_EMAILS = new Set(['khaled.yakan@incheck360.nl']);
+
+function parseEmailList(value = '') {
+  return String(value || '')
+    .split(/[\s,;]+/)
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function getBootstrapAdminEmails() {
+  const configured = [
+    ...parseEmailList(process.env.USER_MANAGEMENT_ADMIN_EMAILS),
+    ...parseEmailList(process.env.ADMIN_EMAILS),
+    ...parseEmailList(process.env.BOOTSTRAP_ADMIN_EMAILS)
+  ];
+
+  return new Set([
+    ...DEFAULT_BOOTSTRAP_ADMIN_EMAILS,
+    ...configured
+  ]);
+}
 
 function parseRequestBody(body) {
   if (body && typeof body === 'object') return body;
@@ -66,6 +87,45 @@ function normalizeRole(value) {
     .trim()
     .toLowerCase()
     .replace(/\s+/g, '_');
+}
+
+function getFirstNormalizedRole(...values) {
+  for (const value of values) {
+    const normalized = normalizeRole(value);
+    if (normalized) return normalized;
+  }
+  return '';
+}
+
+function getCallerRole(profile = null, verifiedUser = null) {
+  return getFirstNormalizedRole(
+    profile?.role_key,
+    profile?.roleKey,
+    profile?.role,
+    profile?.user_role,
+    profile?.userRole,
+    profile?.app_role,
+    profile?.appRole,
+    verifiedUser?.user_metadata?.role_key,
+    verifiedUser?.user_metadata?.roleKey,
+    verifiedUser?.user_metadata?.role,
+    verifiedUser?.user_metadata?.user_role,
+    verifiedUser?.user_metadata?.app_role,
+    verifiedUser?.app_metadata?.role_key,
+    verifiedUser?.app_metadata?.roleKey,
+    verifiedUser?.app_metadata?.role,
+    verifiedUser?.app_metadata?.user_role,
+    verifiedUser?.app_metadata?.app_role
+  );
+}
+
+function isAdminRole(role) {
+  return USER_MANAGEMENT_ROLES.has(normalizeRole(role));
+}
+
+function isBootstrapAdminEmail(email = '') {
+  const normalized = String(email || '').trim().toLowerCase();
+  return Boolean(normalized && getBootstrapAdminEmails().has(normalized));
 }
 
 function extractBearerToken(req, payload = {}) {
@@ -149,28 +209,83 @@ async function getCallerProfile(supabaseAdmin, authUserId, email = '') {
   return null;
 }
 
+function getMissingColumnName(error) {
+  const message = String(error?.message || error?.details || '').trim();
+  const patterns = [
+    /Could not find the '([^']+)' column/i,
+    /column "?([a-zA-Z0-9_]+)"? of relation/i,
+    /column "?([a-zA-Z0-9_]+)"? does not exist/i
+  ];
+
+  for (const pattern of patterns) {
+    const match = message.match(pattern);
+    if (match?.[1]) return match[1];
+  }
+
+  return '';
+}
+
+async function runUpdateWithSchemaRetry(label, updateDoc, runUpdate) {
+  const doc = { ...(updateDoc || {}) };
+  let lastError = null;
+
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const result = await runUpdate(doc);
+    if (!result?.error) return { ok: true, result, strippedColumns: attempt ? Object.keys(updateDoc).filter((key) => !(key in doc)) : [] };
+
+    lastError = result.error;
+    const missingColumn = getMissingColumnName(result.error);
+    if (!missingColumn || !(missingColumn in doc)) break;
+
+    delete doc[missingColumn];
+  }
+
+  console.warn('[users admin] profile update skipped/failed', {
+    label,
+    error: lastError?.message || String(lastError || '')
+  });
+
+  return { ok: false, error: lastError };
+}
+
 async function updatePublicUserRow(supabaseAdmin, payload, targetAuthUserId, updateDoc) {
   const rowId = String(payload?.id || payload?.user_id || '').trim();
+  const email = String(updateDoc?.email || payload?.email || payload?.updates?.email || '').trim();
   const authIdCandidates = [
     targetAuthUserId,
     String(payload?.auth_user_id || '').trim(),
-    String(payload?.authUserId || '').trim()
+    String(payload?.authUserId || '').trim(),
+    rowId
   ].filter(Boolean);
 
+  // This project uses public.profiles as the app user table. Try it first.
   for (const candidate of authIdCandidates) {
-    let authUpdate = await supabaseAdmin.from('users').update(updateDoc).eq('auth_user_id', candidate);
-    if (!authUpdate.error) return { table: 'users', by: 'auth_user_id' };
-
-    authUpdate = await supabaseAdmin.from('profiles').update(updateDoc).eq('id', candidate);
-    if (!authUpdate.error) return { table: 'profiles', by: 'id' };
+    if (!isUuid(candidate)) continue;
+    const profileById = await runUpdateWithSchemaRetry(
+      'profiles.id',
+      updateDoc,
+      (doc) => supabaseAdmin.from('profiles').update(doc).eq('id', candidate).select('id').maybeSingle()
+    );
+    if (profileById.ok) return { table: 'profiles', by: 'id' };
   }
 
-  if (rowId) {
-    let idUpdate = await supabaseAdmin.from('users').update(updateDoc).eq('id', rowId);
-    if (!idUpdate.error) return { table: 'users', by: 'id' };
+  if (email) {
+    const profileByEmail = await runUpdateWithSchemaRetry(
+      'profiles.email',
+      updateDoc,
+      (doc) => supabaseAdmin.from('profiles').update(doc).ilike('email', email).select('id').maybeSingle()
+    );
+    if (profileByEmail.ok) return { table: 'profiles', by: 'email' };
+  }
 
-    idUpdate = await supabaseAdmin.from('profiles').update(updateDoc).eq('id', rowId);
-    if (!idUpdate.error) return { table: 'profiles', by: 'id' };
+  // Optional legacy fallback. Ignore missing public.users because this project may not have it.
+  for (const candidate of authIdCandidates) {
+    const legacyByAuth = await runUpdateWithSchemaRetry(
+      'users.auth_user_id',
+      updateDoc,
+      (doc) => supabaseAdmin.from('users').update(doc).eq('auth_user_id', candidate).select('id').maybeSingle()
+    );
+    if (legacyByAuth.ok) return { table: 'users', by: 'auth_user_id' };
   }
 
   return null;
@@ -259,35 +374,32 @@ async function handleSupabaseAdminRequest(req, res, payload) {
   delete payload.accessToken;
 
   const callerAuthUserId = verifiedUser.id;
-  const callerEmail = verifiedUser.email;
+  const callerEmail = String(verifiedUser.email || '').trim().toLowerCase();
+  const bootstrapAdmin = isBootstrapAdminEmail(callerEmail);
   const callerProfile = await getCallerProfile(supabaseAdmin, callerAuthUserId, callerEmail || '');
-  if (!callerProfile) {
+
+  if (!callerProfile && !bootstrapAdmin) {
     return res.status(403).json({
       ok: false,
       error: 'Your user profile was not found. Please contact an administrator.'
     });
   }
-  const callerRole = normalizeRole(
-    callerProfile.role_key ||
-    callerProfile.roleKey ||
-    callerProfile.role ||
-    callerProfile.user_role ||
-    callerProfile.userRole ||
-    callerProfile.app_role ||
-    callerProfile.appRole
-  );
 
-  const isActive =
+  const callerRole = getCallerRole(callerProfile, verifiedUser) || (bootstrapAdmin ? 'admin' : '');
+
+  const isActive = !callerProfile || (
     callerProfile.is_active !== false &&
     callerProfile.isActive !== false &&
-    callerProfile.active !== false;
+    callerProfile.active !== false
+  );
 
   console.warn('[users admin] permission check', {
     callerAuthUserId,
     callerEmail,
     foundProfile: Boolean(callerProfile),
     role: callerRole,
-    isActive
+    isActive,
+    bootstrapAdmin
   });
 
   if (!isActive) {
@@ -297,7 +409,7 @@ async function handleSupabaseAdminRequest(req, res, payload) {
     });
   }
 
-  if (!USER_MANAGEMENT_ROLES.has(callerRole)) {
+  if (!isAdminRole(callerRole) && !bootstrapAdmin) {
     return res.status(403).json({
       ok: false,
       error: `Forbidden: admin access is required. Current role: ${callerRole || 'none'}`
