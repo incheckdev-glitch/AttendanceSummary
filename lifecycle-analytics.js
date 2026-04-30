@@ -313,7 +313,7 @@ const LifecycleAnalytics = {
       this.fetchTable(db, 'invoices', 'id,invoice_id,invoice_number,client_id,agreement_id,proposal_id,issue_date,due_date,billing_frequency,payment_term,subtotal_locations,subtotal_one_time,invoice_total,received_amount,pending_amount,payment_state,payment_conclusion,status,currency,created_at,updated_at'),
       this.fetchTable(db, 'receipts', 'id,receipt_id,receipt_number,invoice_id,client_id,receipt_date,amount_received,invoice_total,pending_amount,payment_state,payment_conclusion,old_paid_total,paid_now,new_paid_total,created_at,updated_at'),
       this.fetchTable(db, 'clients', 'id,client_id,client_name,company_name,legal_name,source_agreement_id,total_agreements,total_locations,total_value,total_paid,total_due'),
-      this.fetchTable(db, 'operations_onboarding', 'agreement_id,onboarding_status,technical_request_status,csm_assigned_to,go_live_target_date,updated_at'),
+      this.fetchTable(db, 'operations_onboarding', 'agreement_id,agreement_number,company_id,client_name,customer_name,customer_legal_name,onboarding_status,technical_request_status,csm_assigned_to,go_live_target_date,go_live_date,go_live_at,completed_at,updated_at'),
       this.fetchTable(db, 'technical_admin_requests', 'agreement_id,request_status,assigned_to,requested_at,completed_at,location_count')
     ]);
 
@@ -507,6 +507,54 @@ const LifecycleAnalytics = {
       lastActivityDate: lastDate ? lastDate.toISOString() : ''
     };
   },
+  normalizeText(value) {
+    return String(value || '').trim().toLowerCase();
+  },
+  getOperationalReadiness(onboarding) {
+    if (!onboarding) return 'Not Started Yet';
+    const status = this.normalizeText(onboarding.onboarding_status || onboarding.onboardingStatus || onboarding.status);
+    if (['completed', 'complete', 'done'].includes(status)) return 'Completed';
+    if (['in progress', 'active', 'ongoing'].includes(status)) return 'In Progress';
+    return 'Not Started Yet';
+  },
+  getActualGoLiveDate(onboarding) {
+    const readiness = this.getOperationalReadiness(onboarding);
+    if (readiness !== 'Completed') return '';
+    return (
+      onboarding.go_live_date || onboarding.goLiveDate || onboarding.go_live_at || onboarding.goLiveAt || onboarding.completed_at || onboarding.completedAt || ''
+    );
+  },
+  findRelatedOnboarding(account = {}, rows = []) {
+    if (!Array.isArray(rows) || !rows.length) return null;
+    const agreements = Array.isArray(account.agreements) ? account.agreements : [];
+    const agreementIds = new Set(agreements.map(item => this.text(item.id)).filter(Boolean));
+    const agreementNumbers = new Set(agreements.map(item => this.normalizeText(item.agreement_number)).filter(Boolean));
+    const companyIds = new Set([this.text(account.clientUuid)].filter(Boolean));
+    const legalNames = new Set([
+      this.normalizeText(account.legalName),
+      ...agreements.map(item => this.normalizeText(item.customer_legal_name))
+    ].filter(Boolean));
+    const companyNames = new Set([
+      this.normalizeText(account.companyName),
+      ...agreements.map(item => this.normalizeText(item.customer_name))
+    ].filter(Boolean));
+
+    const findLatest = candidates => candidates
+      .slice()
+      .sort((a, b) => (this.toDate(b.updated_at || b.go_live_at || b.go_live_date || b.completed_at)?.getTime() || 0) - (this.toDate(a.updated_at || a.go_live_at || a.go_live_date || a.completed_at)?.getTime() || 0))[0] || null;
+
+    const byAgreementId = rows.filter(row => agreementIds.has(this.text(row.agreement_id)));
+    if (byAgreementId.length) return findLatest(byAgreementId);
+    const byAgreementNumber = rows.filter(row => agreementNumbers.has(this.normalizeText(row.agreement_number)));
+    if (byAgreementNumber.length) return findLatest(byAgreementNumber);
+    const byCompanyId = rows.filter(row => companyIds.has(this.text(row.company_id)));
+    if (byCompanyId.length) return findLatest(byCompanyId);
+    const byLegalName = rows.filter(row => legalNames.has(this.normalizeText(row.customer_legal_name)));
+    if (byLegalName.length) return findLatest(byLegalName);
+    const byClientName = rows.filter(row => companyNames.has(this.normalizeText(row.client_name || row.customer_name)));
+    if (byClientName.length) return findLatest(byClientName);
+    return null;
+  },
   summarizeOperationalStatus(rows = [], type = 'onboarding') {
     if (!rows.length) return 'None';
     const values = rows.map(row => this.norm(type === 'onboarding' ? row.onboarding_status : row.request_status));
@@ -546,9 +594,7 @@ const LifecycleAnalytics = {
     const onboardingStatus = this.summarizeOperationalStatus(account.onboarding, 'onboarding');
     const technicalStatus = this.summarizeOperationalStatus(account.technical, 'technical');
 
-    const latestOnboarding = account.onboarding
-      .slice()
-      .sort((a, b) => (this.toDate(b.updated_at || b.go_live_target_date)?.getTime() || 0) - (this.toDate(a.updated_at || a.go_live_target_date)?.getTime() || 0))[0] || null;
+    const relatedOnboarding = this.findRelatedOnboarding(account, account.onboarding);
     const latestTechnical = account.technical
       .slice()
       .sort((a, b) => (this.toDate(b.completed_at || b.requested_at)?.getTime() || 0) - (this.toDate(a.completed_at || a.requested_at)?.getTime() || 0))[0] || null;
@@ -591,16 +637,11 @@ const LifecycleAnalytics = {
       paymentHealth: paymentState,
       onboardingStatus,
       technicalStatus,
-      assignedCsm: this.text(latestOnboarding?.csm_assigned_to),
-      goLiveTargetDate: this.text(latestOnboarding?.go_live_target_date),
+      assignedCsm: this.text(relatedOnboarding?.csm_assigned_to),
+      goLiveDate: this.text(this.getActualGoLiveDate(relatedOnboarding)),
       openClientRequest,
       openTechnicalRequest,
-      operationalReadiness:
-        onboardingStatus === 'Completed' && (technicalStatus === 'Completed' || technicalStatus === 'None')
-          ? 'Ready'
-          : onboardingStatus === 'Blocked' || technicalStatus === 'Blocked'
-          ? 'Blocked'
-          : 'In Progress',
+      operationalReadiness: this.getOperationalReadiness(relatedOnboarding),
       lastActivity: lifecycle.lastActivityDate,
       lifecycle,
       lifecycleChain: {
@@ -800,7 +841,7 @@ const LifecycleAnalytics = {
         <div class="card"><div class="label">Onboarding Status</div><div class="value">${this.escape(selected.onboardingStatus)}</div></div>
         <div class="card"><div class="label">Technical Admin Status</div><div class="value">${this.escape(selected.technicalStatus)}</div></div>
         <div class="card"><div class="label">Assigned CSM</div><div class="value">${this.escape(selected.assignedCsm || '—')}</div></div>
-        <div class="card"><div class="label">Go-live Target</div><div class="value">${this.escape(this.fmtDate(selected.goLiveTargetDate))}</div></div>
+        <div class="card"><div class="label">Go Live Date</div><div class="value">${this.escape((selected.goLiveDate ? this.formatDateTime(selected.goLiveDate) : '—'))}</div></div>
         <div class="card"><div class="label">Open Client Request</div><div class="value">${this.escape(selected.openClientRequest ? 'Yes' : 'No')}</div></div>
         <div class="card"><div class="label">Open Technical Request</div><div class="value">${this.escape(selected.openTechnicalRequest ? 'Yes' : 'No')}</div></div>
         <div class="card"><div class="label">Operational Readiness</div><div class="value">${this.escape(selected.operationalReadiness)}</div></div>
