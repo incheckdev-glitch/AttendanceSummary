@@ -112,22 +112,39 @@ async function findProfileByMatchers(supabaseAdmin, tableName, selectors) {
 }
 
 async function getCallerProfile(supabaseAdmin, authUserId, email = '') {
-  const normalizedAuthUserId = String(authUserId || '').trim();
-  const normalizedEmail = String(email || '').trim();
-  const canMatchId = isUuid(normalizedAuthUserId);
+  const callerAuthUserId = String(authUserId || '').trim();
+  const callerEmail = String(email || '').trim();
 
-  const selectors = [
-    { column: 'auth_user_id', value: normalizedAuthUserId, op: 'eq' },
-    { column: 'authUserId', value: normalizedAuthUserId, op: 'eq' },
-    ...(canMatchId ? [{ column: 'id', value: normalizedAuthUserId, op: 'eq' }] : []),
-    { column: 'email', value: normalizedEmail, op: 'ilike' }
-  ];
+  const canMatchId = isUuid(callerAuthUserId);
+  if (canMatchId && callerEmail) {
+    const { data, error } = await supabaseAdmin
+      .from('profiles')
+      .select('*')
+      .or(`id.eq.${callerAuthUserId},email.eq.${callerEmail}`)
+      .maybeSingle();
 
-  const userProfile = await findProfileByMatchers(supabaseAdmin, 'users', selectors);
-  if (userProfile) return userProfile;
+    if (!error && data) return data;
+  }
 
-  const fallbackProfile = await findProfileByMatchers(supabaseAdmin, 'profiles', selectors);
-  if (fallbackProfile) return fallbackProfile;
+  if (canMatchId) {
+    const { data, error } = await supabaseAdmin
+      .from('profiles')
+      .select('*')
+      .eq('id', callerAuthUserId)
+      .maybeSingle();
+
+    if (!error && data) return data;
+  }
+
+  if (callerEmail) {
+    const { data, error } = await supabaseAdmin
+      .from('profiles')
+      .select('*')
+      .ilike('email', callerEmail)
+      .maybeSingle();
+
+    if (!error && data) return data;
+  }
 
   return null;
 }
@@ -268,7 +285,7 @@ async function handleSupabaseAdminRequest(req, res, payload) {
   console.warn('[users admin] permission check', {
     callerAuthUserId,
     callerEmail,
-    foundUserProfile: Boolean(callerProfile),
+    foundProfile: Boolean(callerProfile),
     role: callerRole,
     isActive
   });
