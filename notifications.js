@@ -97,6 +97,15 @@ const NotificationSound = {
 };
 
 const Notifications = {
+
+  setRouteHash(hash = '') {
+    if (window.setAppHashRoute) return window.setAppHashRoute(hash);
+    const nextHash = String(hash || '').trim();
+    if (!nextHash || nextHash === window.location.hash) return;
+    try { history.replaceState(null, '', `${window.location.pathname}${window.location.search}${nextHash}`); }
+    catch { window.location.hash = nextHash; }
+  },
+
   POLL_INTERVAL_MS: 90000,
   state: {
     items: [],
@@ -1042,13 +1051,25 @@ const Notifications = {
     if (resource === 'tickets') {
       const opened = await this.openModuleTab('tickets');
       if (!opened) return false;
-      if (targetId && window.UI?.Modals?.openIssue) UI.Modals.openIssue(targetId);
-      return targetId ? this.highlightRowById(targetId) || true : true;
+      const lookupId = String(targetId || '').trim();
+      const rows = Array.isArray(window.DataStore?.rows) ? window.DataStore.rows : [];
+      const ticketRow = rows.find(row => {
+        const values = [row?.ticket_id, row?.ticketId, row?.ticket_number, row?.ticketNumber, row?.id]
+          .map(v => String(v || '').trim())
+          .filter(Boolean);
+        return lookupId && values.includes(lookupId);
+      });
+      const resolvedTicketId = String(ticketRow?.id || lookupId || '').trim();
+      const routeTicketId = String(ticketRow?.ticket_id || ticketRow?.ticketId || ticketRow?.ticket_number || ticketRow?.ticketNumber || resolvedTicketId).trim();
+      if (routeTicketId) this.setRouteHash(`#tickets?ticket_id=${encodeURIComponent(routeTicketId)}`);
+      if (resolvedTicketId && window.UI?.Modals?.openIssue) UI.Modals.openIssue(resolvedTicketId);
+      return lookupId ? this.highlightRowById(resolvedTicketId || lookupId) || !!ticketRow : true;
     }
     if (resource === 'events') {
       const opened = await this.openModuleTab('events');
       if (!opened) return false;
       const eventId = String(targetId || notification?.meta?.event_code || '').trim();
+      if (eventId) this.setRouteHash(`#events?id=${encodeURIComponent(eventId)}`);
       if (eventId && window.AIInsights?.openEventByRef) window.AIInsights.openEventByRef(eventId);
       return eventId ? this.highlightRowById(eventId) || true : true;
     }
@@ -1057,36 +1078,42 @@ const Notifications = {
       if (!opened) return false;
       const approvalId = String(targetId || notification?.meta?.approval_id || '').trim();
       const row = (window.Workflow?.state?.approvals || []).find(item => String(item?.approval_id || '').trim() === approvalId);
+      if (approvalId) this.setRouteHash(`#workflow?approval_id=${encodeURIComponent(approvalId)}`);
       if (row && window.Workflow?.openApprovalPreview) await Workflow.openApprovalPreview(row);
       return approvalId ? this.highlightRowById(approvalId) || !!row : true;
     }
     if (resource === 'proposals') {
       const opened = await this.openModuleTab('proposals');
       if (!opened) return false;
+      if (targetId) this.setRouteHash(`#crm?tab=proposals&id=${encodeURIComponent(String(targetId).trim())}`);
       if (targetId && window.Proposals?.openProposalFormById) await Proposals.openProposalFormById(targetId, { readOnly: true });
       return targetId ? this.highlightRowById(targetId) || true : true;
     }
     if (resource === 'agreements') {
       const opened = await this.openModuleTab('agreements');
       if (!opened) return false;
+      if (targetId) this.setRouteHash(`#crm?tab=agreements&id=${encodeURIComponent(String(targetId).trim())}`);
       if (targetId && window.Agreements?.openAgreementFormById) await Agreements.openAgreementFormById(targetId, { readOnly: true });
       return targetId ? this.highlightRowById(targetId) || true : true;
     }
     if (resource === 'invoices') {
       const opened = await this.openModuleTab('invoices');
       if (!opened) return false;
+      if (targetId) this.setRouteHash(`#finance?tab=invoices&id=${encodeURIComponent(String(targetId).trim())}`);
       if (targetId && window.Invoices?.openInvoiceById) await Invoices.openInvoiceById(targetId, { readOnly: true });
       return targetId ? this.highlightRowById(targetId) || true : true;
     }
     if (resource === 'receipts') {
       const opened = await this.openModuleTab('receipts');
       if (!opened) return false;
+      if (targetId) this.setRouteHash(`#finance?tab=receipts&id=${encodeURIComponent(String(targetId).trim())}`);
       if (targetId && window.Receipts?.openReceiptById) await Receipts.openReceiptById(targetId, { readOnly: true });
       return targetId ? this.highlightRowById(targetId) || true : true;
     }
     if (resource === 'operations_onboarding') {
       const opened = await this.openModuleTab('operations_onboarding');
       if (!opened) return false;
+      if (targetId) this.setRouteHash(`#operations-onboarding?onboarding_id=${encodeURIComponent(String(targetId).trim())}`);
       if (targetId && window.OperationsOnboarding?.openOnboardingDetails) {
         await OperationsOnboarding.openOnboardingDetails(targetId, String(notification?.meta?.agreement_id || '').trim());
       }
@@ -1095,6 +1122,7 @@ const Notifications = {
     if (resource === 'technical_admin') {
       const opened = await this.openModuleTab('technical_admin');
       if (!opened) return false;
+      if (targetId) this.setRouteHash(`#technical-admin?id=${encodeURIComponent(String(targetId).trim())}`);
       if (targetId && window.TechnicalAdmin?.openDetails) await TechnicalAdmin.openDetails(targetId);
       else if (targetId && window.TechnicalAdmin?.highlightRow) window.TechnicalAdmin.highlightRow(targetId);
       return targetId ? this.highlightRowById(targetId) || true : true;
@@ -1109,6 +1137,7 @@ const Notifications = {
       const opened = await this.openModuleTab('leads');
       if (!opened) return false;
       const row = (window.Leads?.state?.rows || []).find(item => String(item?.id || item?.lead_id || '').trim() === targetId);
+      if (targetId) this.setRouteHash(`#crm?tab=leads&id=${encodeURIComponent(String(targetId).trim())}`);
       if (row && window.Leads?.openForm) Leads.openForm(row);
       return targetId ? this.highlightRowById(targetId) || !!row : true;
     }
@@ -1116,6 +1145,7 @@ const Notifications = {
       const opened = await this.openModuleTab('deals');
       if (!opened) return false;
       const row = (window.Deals?.state?.rows || []).find(item => String(item?.id || item?.deal_id || '').trim() === targetId);
+      if (targetId) this.setRouteHash(`#crm?tab=deals&id=${encodeURIComponent(String(targetId).trim())}`);
       if (row && window.Deals?.openForm) Deals.openForm(row);
       return targetId ? this.highlightRowById(targetId) || !!row : true;
     }

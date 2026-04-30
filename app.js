@@ -1641,6 +1641,8 @@ UI.Modals = {
     const r = DataStore.byId.get(id);
     if (!r || !E.issueModal) return;
     this.selectedIssue = r;
+    const routeTicketId = String(r.ticket_id || r.ticketId || r.ticket_number || r.ticketNumber || r.id || id || '').trim();
+    if (routeTicketId) setAppHashRoute(`#tickets?ticket_id=${encodeURIComponent(routeTicketId)}`);
     this.lastFocus = document.activeElement;
     const ticketId = U.escapeHtml(issueDisplayId(r) || '-');
     const personName = U.escapeHtml(r.name || 'Unknown');
@@ -2632,6 +2634,8 @@ function setActiveView(view) {
   try {
     localStorage.setItem(LS_KEYS.view, view);
   } catch {}
+  const moduleHash = getAppHashForView(view);
+  if (moduleHash) setAppHashRoute(moduleHash);
   if (E.app) E.app.classList.toggle('csm-filters-only', view === 'csm');
   if (E.mainFiltersPanel)
     E.mainFiltersPanel.style.display =
@@ -5270,6 +5274,38 @@ function wireConnectivity() {
 }
 
 
+function setAppHashRoute(hash = '') {
+  const nextHash = String(hash || '').trim();
+  if (!nextHash || nextHash === window.location.hash) return;
+  try {
+    history.replaceState(null, '', `${window.location.pathname}${window.location.search}${nextHash}`);
+  } catch {
+    window.location.hash = nextHash;
+  }
+}
+
+function getAppHashForView(view = '') {
+  const map = {
+    issues: '#tickets',
+    calendar: '#events',
+    workflow: '#workflow',
+    operationsOnboarding: '#operations-onboarding',
+    technicalAdmin: '#technical-admin',
+    leads: '#crm?tab=leads',
+    deals: '#crm?tab=deals',
+    proposals: '#crm?tab=proposals',
+    agreements: '#crm?tab=agreements',
+    invoices: '#finance?tab=invoices',
+    receipts: '#finance?tab=receipts',
+    clients: '#clients',
+    insights: '#analytics',
+    notificationSetup: '#notification-settings',
+    users: '#users',
+    rolePermissions: '#role-permissions'
+  };
+  return map[String(view || '').trim()] || '';
+}
+
 function isNotificationDeepLinkHash(hash = '') {
   const value = String(hash || '').trim();
   if (!value || value === '#loginSection') return false;
@@ -5303,38 +5339,39 @@ function hasPendingDeepLink() {
   return false;
 }
 
-function parseNotificationDeepLink(hash = '') {
+function parseAppHashRoute(hash = '') {
   const raw = String(hash || '').replace(/^#/, '').trim();
   if (!raw) return null;
   const [routePart, queryPart = ''] = raw.split('?');
   const route = decodeURIComponent(routePart || '').trim();
   const params = new URLSearchParams(queryPart || '');
-  if (route === 'tickets') return { resource: 'tickets', id: params.get('ticket_id') || params.get('id') || '' };
-  if (route === 'workflow') return { resource: 'workflow', id: params.get('approval_id') || params.get('id') || '' };
-  if (route === 'operations-onboarding') return { resource: 'operations_onboarding', id: params.get('onboarding_id') || params.get('id') || '' };
-  if (route === 'technical-admin') return { resource: 'technical_admin_requests', id: params.get('request_id') || params.get('id') || '' };
-  if (route === 'crm') return { resource: params.get('tab') || '', id: params.get('id') || '' };
-  if (route === 'finance') return { resource: params.get('tab') || '', id: params.get('id') || '' };
-  return { resource: route, id: params.get('id') || '' };
+  if (route === 'tickets') return { module: 'tickets', resource: 'tickets', id: params.get('ticket_id') || params.get('id') || '' };
+  if (route === 'events') return { module: 'events', resource: 'events', id: params.get('id') || params.get('event_id') || '' };
+  if (route === 'workflow') return { module: 'workflow', resource: 'workflow', id: params.get('approval_id') || params.get('id') || '' };
+  if (route === 'operations-onboarding') return { module: 'operations_onboarding', resource: 'operations_onboarding', id: params.get('onboarding_id') || params.get('id') || '' };
+  if (route === 'technical-admin') return { module: 'technical_admin_requests', resource: 'technical_admin_requests', id: params.get('request_id') || params.get('id') || '' };
+  if (route === 'crm') return { module: 'crm', resource: params.get('tab') || '', id: params.get('id') || '' };
+  if (route === 'finance') return { module: 'finance', resource: params.get('tab') || '', id: params.get('id') || '' };
+  return { module: route, resource: route, id: params.get('id') || '' };
 }
 
-async function routePendingDeepLinkAfterUnlock() {
+async function routeAppHashAfterReady() {
   const hash = consumePendingDeepLink() || String(window.location.hash || '').trim();
-  if (!isNotificationDeepLinkHash(hash)) return false;
-  const target = parseNotificationDeepLink(hash);
-  if (!target?.resource) return false;
-  console.info('[deep-link] parsed target', target);
+  if (!hash || hash === '#loginSection') return false;
+  const target = parseAppHashRoute(hash);
+  if (!target || !target.resource) return false;
+  console.info('[router] hash target parsed', target);
   await new Promise(resolve => setTimeout(resolve, 300));
   if (window.Notifications?.routeToResourceTarget) {
     const opened = await window.Notifications.routeToResourceTarget(target.resource, target.id, {
       resource: target.resource,
       resource_id: target.id,
-      meta: { source: 'email_or_pwa_deep_link', original_hash: hash }
+      meta: { source: 'hash_router', original_hash: hash }
     });
-    console.info('[deep-link] route result', { target, opened });
+    console.info('[router] hash route result', { target, opened });
     return Boolean(opened);
   }
-  console.warn('[deep-link] routeToResourceTarget not available', { target });
+  console.warn('[router] routeToResourceTarget unavailable', target);
   return false;
 }
 
@@ -5368,14 +5405,9 @@ function wireDashboardGate() {
     if (!hasPendingDeepLink()) setActiveView(getFirstAllowedView(defaultView));
     if (window.Notifications?.onAuthStateChanged) Notifications.onAuthStateChanged();
     if (window.PushNotifications?.onAuthStateChanged) PushNotifications.onAuthStateChanged();
-    routePendingDeepLinkAfterUnlock()
+    routeAppHashAfterReady()
       .catch(error => console.warn('[email deep link] route after unlock failed', error))
-      .finally(() => {
-        const currentHash = String(window.location.hash || '').trim();
-        if (!isNotificationDeepLinkHash(currentHash) && currentHash && currentHash !== '#loginSection') {
-          history.replaceState(null, '', window.location.pathname + window.location.search);
-        }
-      });
+      ;
     console.info('[wireDashboardGate.unlockApp] app unlocked');
   };
 
@@ -7381,6 +7413,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   wireDashboardGate();
   wireCore();
+  window.addEventListener('hashchange', () => {
+    routeAppHashAfterReady().catch(error => {
+      console.warn('[router] hashchange routing failed', error);
+    });
+  });
   if (window.UserAdmin?.wire) UserAdmin.wire();
   if (window.RolesAdmin?.wire) RolesAdmin.wire();
   ensureNotificationSetupMounted();
