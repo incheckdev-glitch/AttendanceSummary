@@ -48,22 +48,8 @@ const LifecycleAnalytics = {
     if (!raw) return '—';
     return U.fmtTS(raw);
   },
-  getAnalyticsClientLegalName(row = {}, company = {}) {
-    return String(
-      company.legal_name ||
-      company.legalName ||
-      row.customer_legal_name ||
-      row.customerLegalName ||
-      row.company_legal_name ||
-      row.companyLegalName ||
-      row.customer_name ||
-      row.customerName ||
-      row.company_name ||
-      row.companyName ||
-      row.client_name ||
-      row.clientName ||
-      ''
-    ).trim();
+  getAnalyticsClientLegalName(row = {}, company = null) {
+    return U.getCustomerLegalName(row, company) || '—';
   },
 
   parseEventTimestamp(value) {

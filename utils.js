@@ -165,22 +165,38 @@ const U = {
     const full = [first, last].filter(Boolean).join(' ').trim();
     return full || String(contact.contact_name || contact.contactName || contact.full_name || contact.fullName || '').trim();
   },
-  getCustomerLegalName: (company = {}, record = {}) =>
-    String(
-      company.legal_name ||
-        company.legalName ||
-        record.customer_legal_name ||
-        record.customerLegalName ||
-        record.customer_name ||
-        record.customerName ||
-        company.company_name ||
-        company.companyName ||
-        record.company_name ||
-        record.companyName ||
+  getCustomerLegalName: (record = {}, company = null) => {
+    const looksLikeCompany = value => Boolean(value && typeof value === 'object' && (
+      value.company_id || value.companyId || value.legal_name || value.legalName || value.company_name || value.companyName
+    ));
+
+    let resolvedRecord = record;
+    let resolvedCompany = company;
+    if (looksLikeCompany(record) && !looksLikeCompany(company)) {
+      resolvedRecord = company || {};
+      resolvedCompany = record || null;
+    }
+
+    return String(
+      resolvedCompany?.legal_name ||
+        resolvedCompany?.legalName ||
+        resolvedRecord?.customer_legal_name ||
+        resolvedRecord?.customerLegalName ||
+        resolvedRecord?.legal_name ||
+        resolvedRecord?.legalName ||
+        resolvedRecord?.customer_name ||
+        resolvedRecord?.customerName ||
+        resolvedCompany?.company_name ||
+        resolvedCompany?.companyName ||
+        resolvedRecord?.company_name ||
+        resolvedRecord?.companyName ||
+        resolvedRecord?.client_name ||
+        resolvedRecord?.clientName ||
         ''
-    ).trim(),
+    ).trim();
+  },
   getCustomerLegalDisplayName: (record = {}, company = {}) =>
-    U.getCustomerLegalName(company, record) ||
+    U.getCustomerLegalName(record, company) ||
     String(record.customer_name || record.customerName || record.company_name || record.companyName || '').trim(),
   fmtNumber: value => {
     const num = typeof value === 'number' ? value : Number(value);
