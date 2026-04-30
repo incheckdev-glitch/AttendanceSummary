@@ -151,7 +151,14 @@ const Deals = {
         pick(source.company_name, source.companyName, lead.company_name, lead.companyName)
       ).trim(),
       customer_name: String(pick(source.customer_name, source.customerName, lead.customer_name, lead.customerName)).trim(),
-      customer_legal_name: String(pick(source.customer_legal_name, source.customerLegalName, lead.customer_legal_name, lead.customerLegalName)).trim(),
+      customer_legal_name: U.getCustomerLegalName(
+        { legal_name: pick(source.company?.legal_name, source.company?.legalName), company_name: pick(source.company_name, source.companyName, lead.company_name, lead.companyName) },
+        {
+          customer_legal_name: pick(source.customer_legal_name, source.customerLegalName, lead.customer_legal_name, lead.customerLegalName),
+          customer_name: pick(source.customer_name, source.customerName, lead.customer_name, lead.customerName),
+          company_name: pick(source.company_name, source.companyName, lead.company_name, lead.companyName)
+        }
+      ),
       customer_address: String(pick(source.customer_address, source.customerAddress, lead.customer_address, lead.customerAddress)).trim(),
       contact_id: String(pick(source.contact_id, source.contactId, lead.contact_id, lead.contactId)).trim(),
       contact_name: String(pick(source.contact_name, source.contactName, lead.contact_name, lead.contactName, source.full_name)).trim(),
@@ -1299,7 +1306,7 @@ const Deals = {
     if (E.dealFormCountry) E.dealFormCountry.value = c.country || '';
     this.setReadonlyField(E.dealCompanyIdDisplay, c.company_id);
     this.setReadonlyField(E.dealCompanyNameDisplay, c.company_name);
-    this.setReadonlyField(E.dealCompanyLegalNameDisplay, c.legal_name);
+    this.setReadonlyField(E.dealCompanyLegalNameDisplay, U.getCustomerLegalName(c, c));
     this.setReadonlyField(E.dealCompanyTypeDisplay, this.formatCompanyType(c.company_type));
     this.setReadonlyField(E.dealCompanyIndustryDisplay, this.formatCompanyIndustry(c.industry));
     this.setReadonlyField(E.dealCompanyWebsiteDisplay, c.website);
@@ -1349,7 +1356,7 @@ const Deals = {
     const companyName = selectedCompany.company_name || E.dealFormCompanyName?.value || '';
     const contactId = selectedContact.contact_id || this.state.form.contactId || E.dealFormContactId?.value || E.dealFormContactSelector?.value || '';
     const contactName = U.buildContactDisplayName(selectedContact); 
-    const customerName = U.getCustomerLegalName(selectedCompany, {});
+    const customerName = U.getCustomerLegalName(selectedCompany, { company_name: companyName });
     const contactEmail = selectedContact.email || E.dealFormEmail?.value || '';
     const contactPhone = selectedContact.phone || selectedContact.mobile || E.dealFormPhone?.value || '';
     return {
