@@ -18,7 +18,8 @@ const LifecycleAnalytics = {
       client: 'All',
       dateFrom: '',
       dateTo: ''
-    }
+    },
+    warnings: []
   },
   text(value) {
     return String(value ?? '').trim();
@@ -289,6 +290,25 @@ const LifecycleAnalytics = {
     }
     return rows.slice(0, maxRows);
   },
+
+  async fetchOnboardingRows(db) {
+    const preferredColumns = 'agreement_id,agreement_number,company_id,company_name,client_name,customer_name,customer_legal_name,onboarding_status,technical_request_status,csm_assigned_to,go_live_date,go_live_at,completed_at,updated_at';
+    const fallbackColumns = 'agreement_id,agreement_number,client_name,onboarding_status,technical_request_status,csm_assigned_to,go_live_date,go_live_at,completed_at,updated_at';
+    try {
+      return await this.fetchTable(db, 'operations_onboarding', preferredColumns);
+    } catch (error) {
+      const message = String(error?.message || '');
+      const missingColumn = /column .* does not exist/i.test(message);
+      if (!missingColumn) throw error;
+      try {
+        return await this.fetchTable(db, 'operations_onboarding', fallbackColumns);
+      } catch (fallbackError) {
+        this.state.warnings.push('Onboarding data is partially unavailable in this environment; showing lifecycle analytics without onboarding details.');
+        console.warn('[LifecycleAnalytics] operations_onboarding optional load failed', fallbackError);
+        return [];
+      }
+    }
+  },
   async loadData() {
     const db = window.SupabaseClient?.getClient?.();
     if (!db || typeof db.from !== 'function') throw new Error('Supabase client is not available.');
@@ -313,7 +333,7 @@ const LifecycleAnalytics = {
       this.fetchTable(db, 'invoices', 'id,invoice_id,invoice_number,client_id,agreement_id,proposal_id,issue_date,due_date,billing_frequency,payment_term,subtotal_locations,subtotal_one_time,invoice_total,received_amount,pending_amount,payment_state,payment_conclusion,status,currency,created_at,updated_at'),
       this.fetchTable(db, 'receipts', 'id,receipt_id,receipt_number,invoice_id,client_id,receipt_date,amount_received,invoice_total,pending_amount,payment_state,payment_conclusion,old_paid_total,paid_now,new_paid_total,created_at,updated_at'),
       this.fetchTable(db, 'clients', 'id,client_id,client_name,company_name,legal_name,source_agreement_id,total_agreements,total_locations,total_value,total_paid,total_due'),
-      this.fetchTable(db, 'operations_onboarding', 'agreement_id,agreement_number,company_id,client_name,customer_name,customer_legal_name,onboarding_status,technical_request_status,csm_assigned_to,go_live_target_date,go_live_date,go_live_at,completed_at,updated_at'),
+      this.fetchOnboardingRows(db),
       this.fetchTable(db, 'technical_admin_requests', 'agreement_id,request_status,assigned_to,requested_at,completed_at,location_count')
     ]);
 
@@ -469,7 +489,7 @@ const LifecycleAnalytics = {
       ...account.agreements.map(item => item.created_at || item.signed_at || item.signed_date || item.updated_at),
       ...account.invoices.map(item => item.created_at || item.issued_at || item.updated_at || item.issue_date),
       ...account.receipts.map(item => item.created_at || item.updated_at || item.payment_date || item.receipt_date),
-      ...account.onboarding.map(item => item.updated_at || item.go_live_target_date),
+      ...account.onboarding.map(item => item.updated_at || item.go_live_date || item.go_live_at || item.completed_at),
       ...account.technical.map(item => item.completed_at || item.requested_at)
     ].filter(Boolean);
 
@@ -779,7 +799,8 @@ const LifecycleAnalytics = {
     const state = document.getElementById('lifecycleState');
     if (!tbody || !state) return;
     const rows = this.state.filteredRows;
-    state.textContent = `${rows.length} account${rows.length === 1 ? '' : 's'} in 360 analytics.`;
+    const warningText = (this.state.warnings || []).join(' ');
+    state.textContent = `${rows.length} account${rows.length === 1 ? '' : 's'} in 360 analytics.${warningText ? ` ${warningText}` : ''}`;
     if (!rows.length) {
       tbody.innerHTML = '<tr><td colspan="14" class="muted" style="text-align:center;">No accounts match the selected filters.</td></tr>';
       return;
@@ -898,6 +919,7 @@ const LifecycleAnalytics = {
   async refresh({ force = false } = {}) {
     if (this.state.loading && !force) return;
     this.state.loading = true;
+    this.state.warnings = [];
     this.renderLoading();
     try {
       const raw = await this.loadData();
