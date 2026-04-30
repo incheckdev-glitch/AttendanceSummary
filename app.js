@@ -39,6 +39,30 @@ function issueDisplayId(issue) {
   return String(issue?.ticket_id || issue?.id || '').trim();
 }
 
+function getTicketBusinessId(ticket = {}) {
+  return String(
+    ticket.ticket_id ||
+      ticket.ticketId ||
+      ticket.ticket_number ||
+      ticket.ticketNumber ||
+      ticket.ticket_no ||
+      ticket.ticketNo ||
+      ticket.id ||
+      ''
+  ).trim();
+}
+
+function buildTicketDeepLink(ticket = {}) {
+  const baseUrl = window.location.origin || 'https://monitor.app.incheck360.nl';
+  const ticketBusinessId = getTicketBusinessId(ticket);
+
+  if (!ticketBusinessId) {
+    return `${baseUrl}/#tickets`;
+  }
+
+  return `${baseUrl}/#tickets?ticket_id=${encodeURIComponent(ticketBusinessId)}`;
+}
+
 let EVENT_TICKET_PICKER_SHOW_ALL = false;
 let EVENT_TICKET_PICKER_ALL_ROWS = null;
 const TicketPaginationState = {
@@ -1641,7 +1665,7 @@ UI.Modals = {
     const r = DataStore.byId.get(id);
     if (!r || !E.issueModal) return;
     this.selectedIssue = r;
-    const routeTicketId = String(r.ticket_id || r.ticketId || r.ticket_number || r.ticketNumber || r.id || id || '').trim();
+    const routeTicketId = getTicketBusinessId(r) || String(id || '').trim();
     if (routeTicketId) setAppHashRoute(`#tickets?ticket_id=${encodeURIComponent(routeTicketId)}`);
     this.lastFocus = document.activeElement;
     const ticketId = U.escapeHtml(issueDisplayId(r) || '-');
@@ -3720,7 +3744,7 @@ async function sendTicketBusinessNotification({
     return null;
   }
 
-  const ticketUrl = `/#tickets?ticket_id=${encodeURIComponent(normalizedTicketId)}`;
+  const ticketUrl = buildTicketDeepLink({ id: normalizedTicketId });
   const payload = {
     title,
     body: body || `Ticket ${normalizedTicketId} was updated.`,
@@ -5709,16 +5733,21 @@ function wireModals() {
   }
 
   if (E.copyLink) {
-    E.copyLink.addEventListener('click', () => {
-      const r = UI.Modals.selectedIssue;
-      if (!r) return;
-      const url = new URL(window.location.href);
-      url.searchParams.set('issue', r.id || '');
-      const link = url.toString();
-      navigator.clipboard
-        .writeText(link)
-        .then(() => UI.toast('Ticket link copied'))
-        .catch(() => UI.toast('Clipboard blocked'));
+    E.copyLink.addEventListener('click', async () => {
+      const ticket = UI.Modals.selectedIssue;
+      if (!ticket) return;
+      const ticketBusinessId = getTicketBusinessId(ticket);
+      const link = buildTicketDeepLink(ticket);
+      try {
+        await navigator.clipboard.writeText(link);
+        console.info('[tickets] copied canonical ticket link', {
+          ticketId: ticketBusinessId,
+          link
+        });
+        UI.toast('Ticket link copied');
+      } catch {
+        UI.toast('Clipboard blocked');
+      }
     });
   }
 
