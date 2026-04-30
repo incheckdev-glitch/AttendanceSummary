@@ -60,28 +60,52 @@ function isUuid(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
 }
 
-async function getCallerRole(supabaseAdmin, authUserId) {
+async function getCallerProfile(supabaseAdmin, authUserId, email = '') {
   const userResult = await supabaseAdmin
     .from('users')
-    .select('role, role_key')
+    .select('id, auth_user_id, email, role, role_key')
     .eq('auth_user_id', authUserId)
     .maybeSingle();
 
   if (!userResult.error && userResult.data) {
-    return String(userResult.data.role_key || userResult.data.role || '').trim().toLowerCase();
+    return userResult.data;
+  }
+
+  if (email) {
+    const userByEmailResult = await supabaseAdmin
+      .from('users')
+      .select('id, auth_user_id, email, role, role_key')
+      .ilike('email', email)
+      .maybeSingle();
+
+    if (!userByEmailResult.error && userByEmailResult.data) {
+      return userByEmailResult.data;
+    }
   }
 
   const profileResult = await supabaseAdmin
     .from('profiles')
-    .select('role, role_key')
+    .select('id, email, role, role_key')
     .eq('id', authUserId)
     .maybeSingle();
 
   if (!profileResult.error && profileResult.data) {
-    return String(profileResult.data.role_key || profileResult.data.role || '').trim().toLowerCase();
+    return profileResult.data;
   }
 
-  return '';
+  if (email) {
+    const profileByEmailResult = await supabaseAdmin
+      .from('profiles')
+      .select('id, email, role, role_key')
+      .ilike('email', email)
+      .maybeSingle();
+
+    if (!profileByEmailResult.error && profileByEmailResult.data) {
+      return profileByEmailResult.data;
+    }
+  }
+
+  return null;
 }
 
 async function updatePublicUserRow(supabaseAdmin, payload, targetAuthUserId, updateDoc) {
@@ -122,7 +146,7 @@ async function handleSupabaseAdminRequest(req, res, payload) {
     });
   }
 
-  const authHeader = String(req.headers?.authorization || '').trim();
+  const authHeader = String(req.headers?.authorization || req.headers?.Authorization || '').trim();
   const token = authHeader.replace(/^Bearer\s+/i, '').trim();
   if (!token) {
     return res.status(401).json({ ok: false, error: 'Your session expired. Please log in again.' });
@@ -145,7 +169,14 @@ async function handleSupabaseAdminRequest(req, res, payload) {
     auth: { autoRefreshToken: false, persistSession: false }
   });
 
-  const callerRole = await getCallerRole(supabaseAdmin, authData.user.id);
+  const callerProfile = await getCallerProfile(supabaseAdmin, authData.user.id, authData.user.email || '');
+  if (!callerProfile) {
+    return res.status(403).json({
+      ok: false,
+      error: 'Your user profile was not found. Please contact an administrator.'
+    });
+  }
+  const callerRole = String(callerProfile.role_key || callerProfile.role || '').trim().toLowerCase();
   if (!USER_MANAGEMENT_ROLES.has(callerRole)) {
     return res.status(403).json({ ok: false, error: 'You do not have permission to edit users.' });
   }
