@@ -55,22 +55,131 @@
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim().toLowerCase());
   }
 
+  function escapeHtml(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function escapeAttribute(value) {
+    return escapeHtml(value).replace(/`/g, '&#96;');
+  }
+
+  function toTitleCase(value) {
+    return String(value ?? '')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+      .join(' ');
+  }
+
+  function formatActionLabel(action) {
+    return toTitleCase(String(action ?? '').replace(/[_.-]+/g, ' '));
+  }
+
+  function formatResourceLabel(resource) {
+    return toTitleCase(String(resource ?? '').replace(/[_.-]+/g, ' '));
+  }
+
+  function resolveEmailBaseUrl() {
+    const env = global?.ENV || {};
+    const fromEnv = [env.APP_PUBLIC_URL, env.PUBLIC_APP_URL, env.VITE_APP_PUBLIC_URL]
+      .map(value => String(value || '').trim())
+      .find(Boolean);
+    if (fromEnv) return fromEnv.replace(/\/+$/, '');
+    const origin = String(global?.location?.origin || '').trim();
+    if (origin) return origin.replace(/\/+$/, '');
+    return 'https://monitor.app.incheck360.nl';
+  }
+
+  function toAbsoluteNotificationUrl(url) {
+    const input = String(url || '').trim();
+    if (!input) return '';
+    if (/^https?:\/\//i.test(input)) return input;
+    const base = resolveEmailBaseUrl();
+    if (input.startsWith('/')) return `${base}${input}`;
+    if (input.startsWith('#')) return `${base}/${input}`;
+    return `${base}/${input.replace(/^\/+/, '')}`;
+  }
+
   function buildEmailTemplate({ title = '', body = '', resource = '', action = '', recordNumber = '', url = '' } = {}) {
     const safeTitle = String(title || 'InCheck360 Notification').trim() || 'InCheck360 Notification';
-    const safeBody = String(body || '').trim();
+    const safeBody = String(body || '').trim() || 'A business event requires your attention.';
     const safeResource = String(resource || '').trim();
     const safeAction = String(action || '').trim();
     const safeRecordNumber = String(recordNumber || '').trim();
-    const safeUrl = String(url || '').trim();
-    const html = `<div style="font-family:Arial,sans-serif;line-height:1.5;color:#111">
-      <h2>${safeTitle}</h2>
-      <p>${safeBody || 'A business event requires your attention.'}</p>
-      <p><strong>Resource:</strong> ${safeResource} &nbsp; <strong>Action:</strong> ${safeAction}</p>
-      ${safeRecordNumber ? `<p><strong>Record #:</strong> ${safeRecordNumber}</p>` : ''}
-      ${safeUrl ? `<p><a href="${safeUrl}" style="display:inline-block;padding:10px 14px;background:#0b57d0;color:#fff;text-decoration:none;border-radius:4px;">Open</a></p>` : ''}
-      <hr><p style="color:#666">InCheck360</p>
-    </div>`;
-    const text = [safeTitle, safeBody, safeUrl].filter(Boolean).join('\n');
+    const absoluteUrl = toAbsoluteNotificationUrl(url);
+    const formattedResource = formatResourceLabel(safeResource) || 'General';
+    const formattedAction = formatActionLabel(safeAction) || 'Updated';
+    const badgeText = `${formattedResource} • ${formattedAction}`;
+    const timestamp = new Date().toISOString();
+
+    const subject = escapeHtml(safeTitle);
+    const bodyHtml = escapeHtml(safeBody);
+    const resourceHtml = escapeHtml(formattedResource);
+    const actionHtml = escapeHtml(formattedAction);
+    const recordNumberHtml = escapeHtml(safeRecordNumber);
+    const badgeHtml = escapeHtml(badgeText);
+    const timestampHtml = escapeHtml(timestamp);
+    const buttonUrlAttr = escapeAttribute(absoluteUrl);
+    const fallbackUrlHtml = escapeHtml(absoluteUrl);
+
+    const html = `<!doctype html>
+<html>
+<body style="margin:0;padding:0;background-color:#f3f5f8;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f3f5f8;padding:24px 12px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="640" style="max-width:640px;width:100%;background:#ffffff;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
+          <tr>
+            <td style="padding:24px 28px;background:#0f172a;">
+              <div style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:0.2px;">InCheck360</div>
+              <div style="margin-top:10px;display:inline-block;padding:6px 10px;background:#1e293b;color:#cbd5e1;border-radius:999px;font-size:12px;font-weight:600;">${badgeHtml}</div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:28px;">
+              <h1 style="margin:0 0 12px 0;font-size:24px;line-height:1.3;color:#111827;">${subject}</h1>
+              <p style="margin:0 0 20px 0;font-size:15px;line-height:1.6;color:#374151;">${bodyHtml}</p>
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 20px 0;background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;">
+                <tr><td style="padding:14px 16px;font-size:14px;color:#4b5563;"><strong style="color:#111827;">Resource:</strong> ${resourceHtml}</td></tr>
+                <tr><td style="padding:0 16px 14px 16px;font-size:14px;color:#4b5563;"><strong style="color:#111827;">Action:</strong> ${actionHtml}</td></tr>
+                ${safeRecordNumber ? `<tr><td style="padding:0 16px 14px 16px;font-size:14px;color:#4b5563;"><strong style="color:#111827;">Record #:</strong> ${recordNumberHtml}</td></tr>` : ''}
+              </table>
+              ${absoluteUrl ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px 0;"><tr><td><a href="${buttonUrlAttr}" style="display:inline-block;padding:12px 20px;background:#0b57d0;border-radius:6px;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;">Open in InCheck360</a></td></tr></table>
+              <p style="margin:0 0 18px 0;font-size:12px;line-height:1.5;color:#6b7280;">If the button does not work, copy and paste this link into your browser:<br><a href="${buttonUrlAttr}" style="color:#0b57d0;word-break:break-all;text-decoration:underline;">${fallbackUrlHtml}</a></p>` : ''}
+              <p style="margin:0;font-size:12px;color:#6b7280;">Timestamp: ${timestampHtml}</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:18px 28px;border-top:1px solid #e5e7eb;background:#fafafa;">
+              <p style="margin:0;font-size:12px;line-height:1.6;color:#6b7280;">You received this notification because you are listed as a recipient in InCheck360.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+    const text = [
+      safeTitle,
+      '',
+      safeBody,
+      '',
+      `Resource: ${formattedResource}`,
+      `Action: ${formattedAction}`,
+      `Record #: ${safeRecordNumber || '-'}`,
+      `Open link: ${absoluteUrl || '-'}`,
+      `Timestamp: ${timestamp}`,
+      '',
+      'You received this notification because you are listed as a recipient in InCheck360.'
+    ].join('\n');
     return { subject: safeTitle, html, text };
   }
 
@@ -93,6 +202,13 @@
     }
     const token = await global.Api.getCurrentAccessToken();
     const template = buildEmailTemplate({ title, body, resource, action, recordNumber, url });
+    console.info('[notifications] email template built', {
+      resource,
+      action,
+      eventKey,
+      hasUrl: Boolean(url),
+      recordNumber: recordNumber || null
+    });
     const response = await fetch('/api/proxy', {
       method: 'POST',
       headers: {
