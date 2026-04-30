@@ -161,11 +161,34 @@ const LifecycleAnalytics = {
     const parsed = new Date(raw);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   },
-  daysBetween(fromValue, toValue) {
-    const from = this.toDate(fromValue);
-    const to = this.toDate(toValue);
-    if (!from || !to) return null;
-    return Math.max(0, Math.floor((to.getTime() - from.getTime()) / 86400000));
+  calculateDecimalDays(startValue, endValue = new Date()) {
+    if (!startValue || !endValue) return null;
+    const start = this.toDate(startValue);
+    const end = this.toDate(endValue);
+    if (!start || !end) return null;
+
+    const startMs = start.getTime();
+    const endMs = end.getTime();
+
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return null;
+
+    const diffMs = Math.max(0, endMs - startMs);
+    return diffMs / (1000 * 60 * 60 * 24);
+  },
+  formatDays(value) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return '—';
+    return `${num.toFixed(2)} days`;
+  },
+  formatDecimal(value) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return '—';
+    return num.toFixed(2);
+  },
+  formatPercent(value) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return '—';
+    return `${num.toFixed(2)}%`;
   },
   isUuid(value) {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(this.text(value));
@@ -350,7 +373,7 @@ const LifecycleAnalytics = {
       account.proposals.push(row);
       if (proposalUuid) accountByProposalUuid.set(proposalUuid, account.accountKey);
       account.currency = this.text(row.currency) || account.currency;
-      if (!account.stages.proposal) account.stages.proposal = row.proposal_date || row.created_at || row.updated_at;
+      if (!account.stages.proposal) account.stages.proposal = row.created_at || row.updated_at || row.proposal_date;
     });
 
     data.agreements.forEach(row => {
@@ -361,7 +384,7 @@ const LifecycleAnalytics = {
       account.agreements.push(row);
       if (agreementUuid) accountByAgreementUuid.set(agreementUuid, account.accountKey);
       account.currency = this.text(row.currency) || account.currency;
-      if (!account.stages.agreement) account.stages.agreement = row.signed_date || row.created_at || row.updated_at;
+      if (!account.stages.agreement) account.stages.agreement = row.created_at || row.signed_date || row.updated_at;
     });
 
     data.agreementItems.forEach(item => {
@@ -381,7 +404,7 @@ const LifecycleAnalytics = {
       account.invoices.push(row);
       if (invoiceUuid) accountByInvoiceUuid.set(invoiceUuid, account.accountKey);
       account.currency = this.text(row.currency) || account.currency;
-      if (!account.stages.invoice) account.stages.invoice = row.issue_date || row.created_at || row.updated_at;
+      if (!account.stages.invoice) account.stages.invoice = row.created_at || row.issued_at || row.updated_at || row.issue_date;
     });
 
     data.receipts.forEach(row => {
@@ -391,7 +414,7 @@ const LifecycleAnalytics = {
         ? accounts.get(parentAccountKey)
         : ensureAccount({ key: row.id ? `receipt:${this.text(row.id)}` : '', clientUuid: this.text(row.client_id) });
       account.receipts.push(row);
-      if (!account.stages.receipt) account.stages.receipt = row.receipt_date || row.created_at || row.updated_at;
+      if (!account.stages.receipt) account.stages.receipt = row.created_at || row.updated_at || row.receipt_date;
     });
 
     data.onboarding.forEach(row => {
@@ -419,16 +442,16 @@ const LifecycleAnalytics = {
       if (!start) return;
       const nextStage = stageNames[idx + 1] || 'receipt';
       const next = stageDate(nextStage) || today;
-      stageDurations[stage] = this.daysBetween(start.toISOString(), next.toISOString());
+      stageDurations[stage] = this.calculateDecimalDays(start, next);
     });
 
     const allActivityDates = [
       ...account.leads.map(item => item.updated_at || item.created_at),
       ...account.deals.map(item => item.updated_at || item.created_at),
-      ...account.proposals.map(item => item.updated_at || item.proposal_date || item.created_at),
-      ...account.agreements.map(item => item.updated_at || item.signed_date || item.created_at),
-      ...account.invoices.map(item => item.updated_at || item.issue_date || item.created_at),
-      ...account.receipts.map(item => item.updated_at || item.receipt_date || item.created_at),
+      ...account.proposals.map(item => item.created_at || item.updated_at || item.proposal_date),
+      ...account.agreements.map(item => item.created_at || item.signed_at || item.signed_date || item.updated_at),
+      ...account.invoices.map(item => item.created_at || item.issued_at || item.updated_at || item.issue_date),
+      ...account.receipts.map(item => item.created_at || item.updated_at || item.payment_date || item.receipt_date),
       ...account.onboarding.map(item => item.updated_at || item.go_live_target_date),
       ...account.technical.map(item => item.completed_at || item.requested_at)
     ].filter(Boolean);
@@ -436,8 +459,8 @@ const LifecycleAnalytics = {
     const firstDate = allActivityDates.map(value => this.toDate(value)).filter(Boolean).sort((a, b) => a.getTime() - b.getTime())[0] || null;
     const lastDate = allActivityDates.map(value => this.toDate(value)).filter(Boolean).sort((a, b) => b.getTime() - a.getTime())[0] || null;
 
-    const proposalSent = account.proposals.map(item => this.toDate(item.proposal_date || item.created_at)).filter(Boolean).sort((a, b) => a.getTime() - b.getTime())[0] || null;
-    const agreementSigned = account.agreements.map(item => this.toDate(item.signed_date || item.created_at)).filter(Boolean).sort((a, b) => a.getTime() - b.getTime())[0] || null;
+    const proposalSent = account.proposals.map(item => this.toDate(item.created_at || item.updated_at || item.proposal_date)).filter(Boolean).sort((a, b) => a.getTime() - b.getTime())[0] || null;
+    const agreementSigned = account.agreements.map(item => this.toDate(item.signed_at || item.created_at || item.signed_date || item.updated_at)).filter(Boolean).sort((a, b) => a.getTime() - b.getTime())[0] || null;
 
     const discounts = account.proposals.map(item => {
       const base = this.num(item.subtotal_locations) + this.num(item.subtotal_one_time);
@@ -457,10 +480,10 @@ const LifecycleAnalytics = {
       daysInProposal: stageDurations.proposal ?? null,
       daysInAgreement: stageDurations.agreement ?? null,
       daysInInvoice: stageDurations.invoice ?? null,
-      totalCycleDuration: firstDate && lastDate ? this.daysBetween(firstDate.toISOString(), lastDate.toISOString()) : null,
+      totalCycleDuration: stageDate('lead') && lastDate ? this.calculateDecimalDays(stageDate('lead'), lastDate) : null,
       stageChanges: ['lead', 'deal', 'proposal', 'agreement', 'invoice', 'receipt'].filter(stage => stageDate(stage)).length,
-      approvalDelay: proposalSent && agreementSigned ? this.daysBetween(proposalSent.toISOString(), agreementSigned.toISOString()) : null,
-      lastActivityAge: lastDate ? this.daysBetween(lastDate.toISOString(), today.toISOString()) : null,
+      approvalDelay: proposalSent && agreementSigned ? this.calculateDecimalDays(proposalSent, agreementSigned) : null,
+      lastActivityAge: lastDate ? this.calculateDecimalDays(lastDate, today) : null,
       averageDiscount,
       stuckStage: biggestStage && biggestStage[1] >= 10 ? biggestStage[0] : 'None',
       bottleneckWarning: biggestStage && biggestStage[1] >= 14 ? `${biggestStage[0]} delayed ${biggestStage[1]} days` : '',
@@ -491,7 +514,7 @@ const LifecycleAnalytics = {
       .filter(Boolean)
       .sort((a, b) => a.getTime() - b.getTime());
     const nextRenewalDate = renewalDates.find(date => date.getTime() >= today.getTime()) || renewalDates[0] || null;
-    const daysToRenewal = nextRenewalDate ? this.daysBetween(today.toISOString(), nextRenewalDate.toISOString()) : null;
+    const daysToRenewal = nextRenewalDate ? this.calculateDecimalDays(today, nextRenewalDate) : null;
 
     let renewalExposure = 'No Renewal Date';
     if (daysToRenewal !== null) {
@@ -740,7 +763,7 @@ const LifecycleAnalytics = {
       ['Number of Stage Changes', selected.lifecycle.stageChanges],
       ['Approval Delay', selected.lifecycle.approvalDelay],
       ['Last Activity Age', selected.lifecycle.lastActivityAge],
-      ['Average Discount', `${selected.lifecycle.averageDiscount}%`],
+      ['Average Discount', this.formatPercent(selected.lifecycle.averageDiscount)],
       ['Stuck Stage', selected.lifecycle.stuckStage],
       ['Bottleneck Warning', selected.lifecycle.bottleneckWarning || '—']
     ];
@@ -768,7 +791,26 @@ const LifecycleAnalytics = {
         <strong>Lifecycle Metrics</strong>
         <div class="grid cols-4" style="margin-top:10px;">
           ${lifecycleEntries
-            .map(([label, value]) => `<div class="card"><div class="label">${this.escape(label)}</div><div class="value">${this.escape(value === null || value === undefined || value === '' ? '—' : String(typeof value === 'number' && label.includes('Days') ? `${value} days` : value))}</div></div>`)
+            .map(([label, value]) => {
+              const formattedValue = (() => {
+                if (value === null || value === undefined || value === '') return '—';
+                if ([
+                  'Days in Lead',
+                  'Days in Deal',
+                  'Days in Proposal',
+                  'Days in Agreement',
+                  'Days in Invoice',
+                  'Total Cycle Duration',
+                  'Approval Delay',
+                  'Last Activity Age'
+                ].includes(label)) return this.formatDays(value);
+                if (label === 'Number of Stage Changes') return String(value);
+                if (label === 'Average Discount') return String(value);
+                if (typeof value === 'number') return this.formatDecimal(value);
+                return String(value);
+              })();
+              return `<div class="card"><div class="label">${this.escape(label)}</div><div class="value">${this.escape(formattedValue)}</div></div>`;
+            })
             .join('')}
         </div>
       </section>
