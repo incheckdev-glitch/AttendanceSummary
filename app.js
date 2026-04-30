@@ -3225,6 +3225,7 @@ function renderFreezeWindows() {
 
 
 function getIssueIdFromLink() {
+  if (window.location.hash) return '';
   const url = new URL(window.location.href);
   const fromQuery = url.searchParams.get('issue');
   if (fromQuery) return fromQuery;
@@ -5278,7 +5279,10 @@ function setAppHashRoute(hash = '') {
   const nextHash = String(hash || '').trim();
   if (!nextHash || nextHash === window.location.hash) return;
   try {
-    history.replaceState(null, '', `${window.location.pathname}${window.location.search}${nextHash}`);
+    const searchParams = new URLSearchParams(String(window.location.search || '').replace(/^\?/, ''));
+    searchParams.delete('issue');
+    const nextSearch = searchParams.toString();
+    history.replaceState(null, '', `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${nextHash}`);
   } catch {
     window.location.hash = nextHash;
   }
@@ -5340,7 +5344,7 @@ function hasPendingDeepLink() {
 }
 
 function parseAppHashRoute(hash = '') {
-  const raw = String(hash || '').replace(/^#/, '').trim();
+  const raw = String(hash || window.location.hash || '').replace(/^#/, '').trim();
   if (!raw) return null;
   const [routePart, queryPart = ''] = raw.split('?');
   const route = decodeURIComponent(routePart || '').trim();
@@ -5355,12 +5359,23 @@ function parseAppHashRoute(hash = '') {
   return { module: route, resource: route, id: params.get('id') || '' };
 }
 
+function cleanupLegacyIssueQueryWhenHashExists() {
+  const search = String(window.location.search || '');
+  const hash = String(window.location.hash || '');
+  if (!search.includes('issue=')) return;
+  if (!hash || !hash.startsWith('#tickets')) return;
+  const cleanUrl = `${window.location.pathname}${hash}`;
+  history.replaceState(null, '', cleanUrl);
+  console.info('[router] removed legacy issue query because hash route exists', { oldSearch: search, hash });
+}
+
 async function routeAppHashAfterReady() {
+  cleanupLegacyIssueQueryWhenHashExists();
   const hash = consumePendingDeepLink() || String(window.location.hash || '').trim();
   if (!hash || hash === '#loginSection') return false;
   const target = parseAppHashRoute(hash);
   if (!target || !target.resource) return false;
-  console.info('[router] hash target parsed', target);
+  console.info('[router] parsed hash route', target);
   await new Promise(resolve => setTimeout(resolve, 300));
   if (window.Notifications?.routeToResourceTarget) {
     const opened = await window.Notifications.routeToResourceTarget(target.resource, target.id, {
@@ -5394,7 +5409,7 @@ function wireDashboardGate() {
     return names.find(name => Permissions.canAccessTab(name)) || 'issues';
   };
 
-  const unlockApp = () => {
+  const unlockApp = async () => {
     console.info('[wireDashboardGate.unlockApp] unlocking app UI');
     document.body.classList.remove('auth-locked');
     E.app.classList.remove('is-locked');
@@ -5402,12 +5417,15 @@ function wireDashboardGate() {
     if (E.logoutBtn) E.logoutBtn.hidden = false;
     const role = Session.role();
     const defaultView = getDefaultViewForRole(role);
-    if (!hasPendingDeepLink()) setActiveView(getFirstAllowedView(defaultView));
     if (window.Notifications?.onAuthStateChanged) Notifications.onAuthStateChanged();
     if (window.PushNotifications?.onAuthStateChanged) PushNotifications.onAuthStateChanged();
-    routeAppHashAfterReady()
-      .catch(error => console.warn('[email deep link] route after unlock failed', error))
-      ;
+    let routed = false;
+    try {
+      routed = await routeAppHashAfterReady();
+    } catch (error) {
+      console.warn('[email deep link] route after unlock failed', error);
+    }
+    if (!routed && !hasPendingDeepLink()) setActiveView(getFirstAllowedView(defaultView));
     console.info('[wireDashboardGate.unlockApp] app unlocked');
   };
 
@@ -7389,6 +7407,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (mountedRecoveryRoute) return;
   logApiStartupDiagnostics();
   console.info('[deep-link] startup hash', { hash: window.location.hash });
+  console.info('[router] startup url', {
+    href: window.location.href,
+    search: window.location.search,
+    hash: window.location.hash
+  });
   if (typeof Api?.runAuthProxyHealthCheck === 'function') {
     Api.runAuthProxyHealthCheck().catch(error => {
       console.warn('[startup/auth] Initial auth health check failed', error);

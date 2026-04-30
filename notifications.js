@@ -102,7 +102,12 @@ const Notifications = {
     if (window.setAppHashRoute) return window.setAppHashRoute(hash);
     const nextHash = String(hash || '').trim();
     if (!nextHash || nextHash === window.location.hash) return;
-    try { history.replaceState(null, '', `${window.location.pathname}${window.location.search}${nextHash}`); }
+    try {
+      const searchParams = new URLSearchParams(String(window.location.search || '').replace(/^\?/, ''));
+      searchParams.delete('issue');
+      const nextSearch = searchParams.toString();
+      history.replaceState(null, '', `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${nextHash}`);
+    }
     catch { window.location.hash = nextHash; }
   },
 
@@ -1052,15 +1057,22 @@ const Notifications = {
       const opened = await this.openModuleTab('tickets');
       if (!opened) return false;
       const lookupId = String(targetId || '').trim();
+      const normalize = value => String(value || '').trim().toLowerCase();
+      const lookupNormalized = normalize(lookupId);
       const rows = Array.isArray(window.DataStore?.rows) ? window.DataStore.rows : [];
       const ticketRow = rows.find(row => {
-        const values = [row?.ticket_id, row?.ticketId, row?.ticket_number, row?.ticketNumber, row?.id]
-          .map(v => String(v || '').trim())
+        const values = [row?.ticket_id, row?.ticketId, row?.ticket_number, row?.ticketNumber, row?.issue_id, row?.issueId, row?.id]
+          .map(v => normalize(v))
           .filter(Boolean);
-        return lookupId && values.includes(lookupId);
+        return lookupNormalized && values.includes(lookupNormalized);
       });
       const resolvedTicketId = String(ticketRow?.id || lookupId || '').trim();
       const routeTicketId = String(ticketRow?.ticket_id || ticketRow?.ticketId || ticketRow?.ticket_number || ticketRow?.ticketNumber || resolvedTicketId).trim();
+      console.info('[router] ticket lookup', {
+        targetId: lookupId,
+        found: Boolean(ticketRow),
+        matchedTicketId: ticketRow?.ticket_id || ticketRow?.ticketId || ticketRow?.id || null
+      });
       if (routeTicketId) this.setRouteHash(`#tickets?ticket_id=${encodeURIComponent(routeTicketId)}`);
       if (resolvedTicketId && window.UI?.Modals?.openIssue) UI.Modals.openIssue(resolvedTicketId);
       return lookupId ? this.highlightRowById(resolvedTicketId || lookupId) || !!ticketRow : true;
