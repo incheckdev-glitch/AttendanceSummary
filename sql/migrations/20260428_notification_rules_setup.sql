@@ -25,7 +25,7 @@ values
   ('tickets','ticket_created', array['admin','dev']),
   ('tickets','ticket_high_priority', array['admin','dev']),
   ('tickets','ticket_status_changed', array['admin']),
-  ('tickets','ticket_dev_team_status_changed', array['admin']),
+  ('tickets','dev_team_status_changed', array['admin']),
   ('tickets','ticket_under_development', array['dev']),
   ('leads','lead_created', array['admin','sales_executive']),
   ('proposals','proposal_requires_approval', array['financial_controller','gm']),

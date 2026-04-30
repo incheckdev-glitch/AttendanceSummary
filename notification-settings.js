@@ -1,7 +1,7 @@
 const NotificationSetup = {
   state: { rules: [], roles: [], dirty: new Set(), filterModule: '', filterStatus: 'all', search: '' },
   moduleActions: [
-    ['tickets',['ticket_created','ticket_high_priority','ticket_status_changed','ticket_dev_team_status_changed','ticket_under_development','ticket_youtrack_changed','ticket_issue_related_changed']],
+    ['tickets',['ticket_created','ticket_high_priority','ticket_status_changed','dev_team_status_changed','ticket_under_development','ticket_youtrack_changed','ticket_issue_related_changed']],
     ['leads',['lead_created','lead_updated','lead_converted_to_deal']],
     ['deals',['deal_created','deal_updated','deal_created_from_lead','deal_important_stage']],
     ['proposals',['proposal_created','proposal_updated','proposal_requires_approval','proposal_approved','proposal_rejected','proposal_created_from_deal']],

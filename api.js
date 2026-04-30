@@ -328,11 +328,12 @@ const Api = {
     ];
     return String(candidates.find(value => value !== undefined && value !== null && String(value).trim()) || '').trim();
   },
-  async sendBusinessPwaPush({ resource = '', action = '', recordId = '', title = '', body = '', roles = ['admin'], userIds = [], targetEmails = [], url = '', data = {}, recordNumber = '' } = {}) {
+  async sendBusinessPwaPush({ resource = '', action = '', eventKey = '', recordId = '', title = '', body = '', roles = ['admin'], userIds = [], targetEmails = [], url = '', data = {}, recordNumber = '' } = {}) {
     if (window.NotificationService?.sendBusinessNotification) {
       return window.NotificationService.sendBusinessNotification({
         resource,
         action,
+        eventKey,
         recordId,
         recordNumber,
         title,
