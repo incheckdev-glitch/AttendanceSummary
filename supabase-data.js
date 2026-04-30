@@ -249,7 +249,7 @@
     'currency','customer_legal_name','provider_name','provider_legal_name',
     'terms_conditions','customer_signatory_name','customer_signatory_title','customer_signatory_email','customer_signatory_phone','provider_signatory_name','provider_signatory_title',
     'provider_signatory_name_secondary','provider_signatory_title_secondary','provider_sign_date',
-    'subtotal_locations','subtotal_one_time','total_discount','grand_total','status','generated_by','created_by','updated_by'
+    'subtotal_locations','subtotal_one_time','total_discount','grand_total','status','generated_by','created_by','updated_by','created_at','updated_at'
   ]);
   const PROPOSAL_ITEM_COLUMNS = new Set([
     'item_id','proposal_id','section','line_no','location_name','item_name','unit_price','discount_percent','discounted_unit_price','quantity',
@@ -261,7 +261,7 @@
     'payment_term','payment_terms','po_number','terms_conditions','customer_signatory_name','customer_signatory_title','customer_signatory_email','customer_signatory_phone',
     'customer_sign_date','provider_signatory_name','provider_signatory_title','provider_signatory_email','provider_signatory_secondary','provider_signatory_name_secondary','provider_signatory_title_secondary','provider_primary_signatory_name','provider_primary_signatory_title','provider_secondary_signatory_name','provider_secondary_signatory_title','provider_sign_date','gm_signed',
     'financial_controller_signed','signed_date','status','subtotal_locations','subtotal_one_time','total_discount',
-    'grand_total','generated_by','created_by','updated_by','currency','customer_legal_name','provider_legal_name','provider_name',
+    'grand_total','generated_by','created_by','updated_by','currency','created_at','updated_at','customer_legal_name','provider_legal_name','provider_name',
     'agreement_title','notes'
   ]);
   const AGREEMENT_ITEM_COLUMNS = new Set([
@@ -271,7 +271,7 @@
   const CLIENT_COLUMNS = new Set([
     'client_id','client_name','company_name','primary_email','primary_phone','billing_frequency','payment_term',
     'status','source_agreement_id','total_agreements','total_locations','total_value','total_paid','total_due',
-    'created_by','updated_by'
+    'created_by','updated_by','created_at','updated_at'
   ]);
   const INVOICE_COLUMNS = new Set([
     'invoice_id','invoice_number','client_id','agreement_uuid','agreement_id','agreement_number','proposal_id','issue_date','due_date','billing_frequency',
@@ -279,7 +279,7 @@
     'customer_name','customer_legal_name','customer_address','customer_contact_name','customer_contact_email',
     'provider_legal_name','provider_address','support_email','subtotal_locations','subtotal_one_time','invoice_total',
     'old_paid_total','paid_now','amount_paid','received_amount','pending_amount','balance_due','payment_state','payment_status','payment_conclusion','amount_in_words','status','notes','paid_at',
-    'created_by','updated_by','currency'
+    'created_by','updated_by','currency','created_at','updated_at'
   ]);
   const INVOICE_ITEM_COLUMNS = new Set([
     'item_id','invoice_id','section','line_no','location_name','item_name','unit_price','discount_percent',
@@ -291,7 +291,7 @@
     'payment_reference','is_settlement','notes','status',
     'invoice_number','currency','support_email','company_id','company_name','contact_id','contact_name','contact_email','contact_phone','contact_mobile','customer_name','customer_legal_name','customer_address',
     'amount_in_words','invoice_total','old_paid_total','paid_now','received_amount','new_paid_total','pending_amount','payment_state','payment_conclusion','payment_notes',
-    'created_by','updated_by'
+    'created_by','updated_by','created_at','updated_at'
   ]);
   const RECEIPT_ITEM_COLUMNS = new Set([
     'item_id','receipt_id','invoice_item_id','section','line_no','location_name','location_address','item_name','description',
@@ -1106,7 +1106,9 @@
       amount_in_words: trimOrNull(firstDefined(record, ['amount_in_words', 'amountInWords'])),
       status: trimOrNull(firstDefined(record, ['status'])),
       notes: trimOrNull(firstDefined(record, ['notes'])),
-      currency: trimOrNull(firstDefined(record, ['currency']))
+      currency: trimOrNull(firstDefined(record, ['currency'])),
+      created_at: trimOrNull(firstDefined(record, ['created_at', 'createdAt'])),
+      updated_at: trimOrNull(firstDefined(record, ['updated_at', 'updatedAt']))
     });
     Object.keys(sanitized).forEach(key => { if (!INVOICE_COLUMNS.has(key)) delete sanitized[key]; });
     if (includeCreatedBy && userId) sanitized.created_by = userId;
@@ -1177,7 +1179,9 @@
       pending_amount: numberOrNull(firstDefined(record, ['pending_amount', 'pendingAmount'])),
       payment_state: trimOrNull(firstDefined(record, ['payment_state', 'paymentState'])),
       payment_conclusion: trimOrNull(firstDefined(record, ['payment_conclusion', 'paymentConclusion'])),
-      payment_notes: trimOrNull(firstDefined(record, ['payment_notes', 'paymentNotes']))
+      payment_notes: trimOrNull(firstDefined(record, ['payment_notes', 'paymentNotes'])),
+      created_at: trimOrNull(firstDefined(record, ['created_at', 'createdAt'])),
+      updated_at: trimOrNull(firstDefined(record, ['updated_at', 'updatedAt']))
     });
     Object.keys(sanitized).forEach(key => { if (!RECEIPT_COLUMNS.has(key)) delete sanitized[key]; });
     if (includeCreatedBy && userId) sanitized.created_by = userId;
@@ -1211,7 +1215,9 @@
       notes: trimOrNull(firstDefined(record, ['notes'])),
       service_start_date: normalizeOptionalDate(firstDefined(record, ['service_start_date', 'serviceStartDate'])),
       service_end_date: normalizeOptionalDate(firstDefined(record, ['service_end_date', 'serviceEndDate'])),
-      currency: trimOrNull(firstDefined(record, ['currency']))
+      currency: trimOrNull(firstDefined(record, ['currency'])),
+      created_at: trimOrNull(firstDefined(record, ['created_at', 'createdAt'])),
+      updated_at: trimOrNull(firstDefined(record, ['updated_at', 'updatedAt']))
     });
     Object.keys(sanitized).forEach(key => { if (!RECEIPT_ITEM_COLUMNS.has(key)) delete sanitized[key]; });
     return sanitized;
@@ -1268,7 +1274,9 @@
       created_by: includeCreatedBy
         ? (firstDefined(record, ['created_by', 'createdBy']) || userId || undefined)
         : undefined,
-      updated_by: firstDefined(record, ['updated_by', 'updatedBy']) || userId || undefined
+      updated_by: firstDefined(record, ['updated_by', 'updatedBy']) || userId || undefined,
+      created_at: firstDefined(record, ['created_at', 'createdAt']),
+      updated_at: firstDefined(record, ['updated_at', 'updatedAt'])
     });
     const sanitized = {};
     Object.entries(mapped).forEach(([key, value]) => {
@@ -1833,7 +1841,9 @@
       created_by: includeCreatedBy
         ? (firstDefined(record, ['created_by', 'createdBy']) || userId || undefined)
         : undefined,
-      updated_by: firstDefined(record, ['updated_by', 'updatedBy']) || userId || undefined
+      updated_by: firstDefined(record, ['updated_by', 'updatedBy']) || userId || undefined,
+      created_at: firstDefined(record, ['created_at', 'createdAt']),
+      updated_at: firstDefined(record, ['updated_at', 'updatedAt'])
     });
     const sanitized = {};
     Object.entries(mapped).forEach(([key, value]) => {
