@@ -179,6 +179,18 @@ async function handleSupabaseAdminRequest(req, res, payload) {
   delete payload.session_access_token;
   delete payload.access_token;
   delete payload.accessToken;
+
+  const hasAuthorizationHeader = Boolean(req.headers?.authorization || req.headers?.Authorization);
+  const hasAltTokenHeader = Boolean(req.headers?.['x-supabase-access-token']);
+  console.warn('[users admin] token received', {
+    hasAuthorizationHeader,
+    hasAltTokenHeader,
+    hasPayloadToken,
+    tokenLength: token ? token.length : 0,
+    supabaseUrl: process.env.SUPABASE_URL ? 'set' : 'missing',
+    anonKey: process.env.SUPABASE_ANON_KEY ? 'set' : 'missing'
+  });
+
   if (!token) {
     return res.status(401).json({ ok: false, error: 'Your session expired. Please log in again.' });
   }
@@ -191,22 +203,35 @@ async function handleSupabaseAdminRequest(req, res, payload) {
   const supabaseUserClient = createClient(supabaseUrl, anonKey, {
     auth: { autoRefreshToken: false, persistSession: false }
   });
-  const { data: authData, error: authError } = await supabaseUserClient.auth.getUser(token);
-  if (authError || !authData?.user) {
-    console.warn('[users admin] bearer token verification failed', {
-      hasAuthorizationHeader: Boolean(req.headers?.authorization),
-      hasAltTokenHeader: Boolean(req.headers?.['x-supabase-access-token']),
-      hasPayloadToken,
-      authError: authError?.message || null
-    });
-    return res.status(401).json({ ok: false, error: 'Your session expired. Please log in again.' });
-  }
-
   const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false }
   });
 
-  const callerProfile = await getCallerProfile(supabaseAdmin, authData.user.id, authData.user.email || '');
+  const { data: authData, error: authError } = await supabaseUserClient.auth.getUser(token);
+  let verifiedUser = authData?.user || null;
+  let verifyError = authError;
+
+  if (!verifiedUser) {
+    const fallback = await supabaseAdmin.auth.getUser(token);
+    verifiedUser = fallback.data?.user || null;
+    verifyError = fallback.error || verifyError;
+  }
+
+  if (!verifiedUser) {
+    console.warn('[users admin] bearer token verification failed', {
+      hasAuthorizationHeader,
+      hasAltTokenHeader,
+      hasPayloadToken,
+      tokenLength: token ? token.length : 0,
+      authError: verifyError?.message || null
+    });
+    return res.status(401).json({
+      ok: false,
+      error: `Your session expired. Please log in again. ${verifyError?.message || ''}`.trim()
+    });
+  }
+
+  const callerProfile = await getCallerProfile(supabaseAdmin, verifiedUser.id, verifiedUser.email || '');
   if (!callerProfile) {
     return res.status(403).json({
       ok: false,
