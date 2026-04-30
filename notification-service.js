@@ -15,8 +15,9 @@
 
   const ACTION_ALIASES = {
     tickets: {
-      dev_team_status_changed: ['dev_team_status_changed', 'ticket_dev_team_status_changed', 'tickets.dev_team_status_changed', 'tickets.ticket_dev_team_status_changed'],
-      ticket_dev_team_status_changed: ['dev_team_status_changed', 'ticket_dev_team_status_changed', 'tickets.dev_team_status_changed', 'tickets.ticket_dev_team_status_changed']
+      dev_team_status_changed: ['dev_team_status_changed', 'ticket_dev_team_status_changed', 'ticket_dev_status_changed', 'tickets.dev_team_status_changed', 'tickets.ticket_dev_team_status_changed'],
+      ticket_dev_team_status_changed: ['dev_team_status_changed', 'ticket_dev_team_status_changed', 'ticket_dev_status_changed', 'tickets.dev_team_status_changed', 'tickets.ticket_dev_team_status_changed'],
+      ticket_dev_status_changed: ['dev_team_status_changed', 'ticket_dev_team_status_changed', 'ticket_dev_status_changed', 'tickets.dev_team_status_changed', 'tickets.ticket_dev_team_status_changed']
     }
   };
 
