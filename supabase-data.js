@@ -3853,6 +3853,107 @@
     return { users: [...recipientUserIds].filter(Boolean), emails: [...recipientEmails].filter(Boolean) };
   }
 
+  function escapeEmailHtml(value = '') {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function isValidNotificationEmail(value = '') {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim().toLowerCase());
+  }
+
+  async function getNotificationAccessToken() {
+    try {
+      const { data } = await getClient().auth.getSession();
+      if (data?.session?.access_token) return String(data.session.access_token || '').trim();
+    } catch {}
+
+    try {
+      if (window.Api?.getCurrentAccessToken) {
+        const token = await window.Api.getCurrentAccessToken();
+        if (token) return String(token || '').trim();
+      }
+    } catch {}
+
+    return '';
+  }
+
+  function buildNotificationEmailTemplate(payload = {}) {
+    const title = String(payload?.title || 'InCheck360 Notification').trim() || 'InCheck360 Notification';
+    const body = String(payload?.body || payload?.message || 'A business event requires your attention.').trim();
+    const resource = String(payload?.resource || '').trim();
+    const action = String(payload?.action || payload?.event_type || '').trim();
+    const recordNumber = String(payload?.record_number || payload?.record_id || '').trim();
+    const url = resolveNotificationUrl(resource, action, payload?.record_id, payload?.url || payload?.deep_link);
+    const safeTitle = escapeEmailHtml(title);
+    const safeBody = escapeEmailHtml(body).replace(/\n/g, '<br>');
+    const safeResource = escapeEmailHtml(resource);
+    const safeAction = escapeEmailHtml(action);
+    const safeRecordNumber = escapeEmailHtml(recordNumber);
+    const safeUrl = escapeEmailHtml(url);
+    const html = `<div style="font-family:Arial,sans-serif;line-height:1.5;color:#111827;max-width:640px">
+      <h2 style="margin:0 0 12px">${safeTitle}</h2>
+      <p style="margin:0 0 14px">${safeBody}</p>
+      ${(safeResource || safeAction) ? `<p style="margin:0 0 8px"><strong>Resource:</strong> ${safeResource || '-'} &nbsp; <strong>Action:</strong> ${safeAction || '-'}</p>` : ''}
+      ${safeRecordNumber ? `<p style="margin:0 0 14px"><strong>Record:</strong> ${safeRecordNumber}</p>` : ''}
+      ${safeUrl ? `<p style="margin:18px 0"><a href="${safeUrl}" style="display:inline-block;background:#0f172a;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px">Open in InCheck360</a></p>` : ''}
+      <hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0">
+      <p style="color:#6b7280;font-size:12px;margin:0">InCheck360 notification</p>
+    </div>`;
+    const text = [title, body, recordNumber ? `Record: ${recordNumber}` : '', url].filter(Boolean).join('\n');
+    return { subject: title, html, text };
+  }
+
+  async function sendEmailForNotification(payload = {}, recipientEmails = [], context = '') {
+    const emails = [...new Set(
+      normalizeNotificationList(recipientEmails)
+        .map(value => String(value || '').trim().toLowerCase())
+        .filter(value => isValidNotificationEmail(value) && !isPlaceholderRecipientToken(value))
+    )];
+
+    if (!emails.length) {
+      console.info('[notifications:email] skipped', { context, reason: 'no_email_recipients_resolved' });
+      return { attempted: false, skipped: true, reason: 'no_email_recipients_resolved' };
+    }
+
+    const token = await getNotificationAccessToken();
+    if (!token) {
+      console.warn('[notifications:email] skipped', { context, reason: 'missing-access-token' });
+      return { attempted: false, skipped: true, reason: 'missing-access-token' };
+    }
+
+    const template = buildNotificationEmailTemplate(payload);
+    try {
+      const response = await fetch('/api/proxy', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          'X-Supabase-Access-Token': token
+        },
+        body: JSON.stringify({
+          resource: 'notifications',
+          action: 'send_email',
+          to: emails,
+          ...template
+        })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(String(result?.error || result?.message || 'Unable to send email notification'));
+      }
+      console.info('[notifications:email] sent', { context, recipientsCount: emails.length, messageId: result?.messageId || null });
+      return { attempted: true, sent: true, response: result };
+    } catch (error) {
+      console.warn('[notifications:email] send failed', { context, error: error?.message || String(error) });
+      return { attempted: true, sent: false, error: String(error?.message || error) };
+    }
+  }
+
   async function sendPwaPushForNotification(payload = {}, context = '') {
     const client = getClient();
     const title = String(payload?.title || '').trim();
@@ -4019,9 +4120,14 @@
       const id = String(row.id || '').trim();
       const email = String(row.email || '').trim().toLowerCase();
       const rowRoles = normalizeNotificationRoles(row.role_key, row.role, row.user_role, row.app_role).map(normalizeNotificationRoleKey);
-      if (!id) return;
-      if (rowRoles.some(roleKey => normalizedRoles.includes(roleKey))) recipientUserIds.add(id);
-      if (email && recipientEmails.has(email)) recipientUserIds.add(id);
+      const matchesAssignedRole = rowRoles.some(roleKey => normalizedRoles.includes(roleKey));
+
+      if (matchesAssignedRole) {
+        if (id) recipientUserIds.add(id);
+        if (email) recipientEmails.add(email);
+      }
+
+      if (email && recipientEmails.has(email) && id) recipientUserIds.add(id);
     });
     const excludeActor = enabledRulesForRecipients.every(rule => rule.exclude_actor !== false);
     if (excludeActor && actorUserId) recipientUserIds.delete(actorUserId);
@@ -4048,6 +4154,7 @@
         return [];
       })
       : Promise.resolve([]);
+    const finalEmailRecipients = [...new Set([...recipientEmails].map(value => String(value || '').trim().toLowerCase()).filter(isValidNotificationEmail))];
     const pushPromise = shouldAttemptPush
       ? sendPwaPushForNotification({
         ...normalizedPayload,
@@ -4057,15 +4164,28 @@
         dedupe_key: dedupeKey
       }, context)
       : Promise.resolve({ attempted: false, reason: decision.channels.push ? 'no-target' : 'push-disabled' });
-    const [hubSettled, pushSettled] = await Promise.allSettled([hubPromise, pushPromise]);
+    const emailPromise = decision.channels.email
+      ? sendEmailForNotification({
+        ...normalizedPayload,
+        target_user_ids: targetUserIds,
+        target_emails: finalEmailRecipients,
+        target_roles: normalizedRoles,
+        dedupe_key: dedupeKey
+      }, finalEmailRecipients, context)
+      : Promise.resolve({ attempted: false, skipped: true, reason: 'email-disabled' });
+    const [hubSettled, pushSettled, emailSettled] = await Promise.allSettled([hubPromise, pushPromise, emailPromise]);
     const insertedRows = hubSettled.status === 'fulfilled' && Array.isArray(hubSettled.value) ? hubSettled.value : [];
     const pushResult = pushSettled.status === 'fulfilled'
       ? pushSettled.value
       : { attempted: shouldAttemptPush, sent: false, error: String(pushSettled.reason?.message || pushSettled.reason || 'PWA push failed') };
+    const emailResult = emailSettled.status === 'fulfilled'
+      ? emailSettled.value
+      : { attempted: decision.channels.email, sent: false, error: String(emailSettled.reason?.message || emailSettled.reason || 'Email send failed') };
     const notificationId = String(insertedRows?.[0]?.notification_id || '').trim();
     return {
       created: insertedRows.length,
       push: pushResult,
+      email: emailResult,
       notification_id: notificationId || null
     };
   }
