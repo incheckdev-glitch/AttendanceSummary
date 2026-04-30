@@ -47,13 +47,54 @@ const LifecycleAnalytics = {
     if (!raw) return '—';
     return U.fmtTS(raw);
   },
+
+  parseEventTimestamp(value) {
+    if (!value) return null;
+    const date = new Date(value);
+    const time = date.getTime();
+    if (!Number.isFinite(time)) return null;
+    return time;
+  },
+  isDateOnlyLike(value) {
+    const text = String(value || '').trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return true;
+    if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(text)) return true;
+    return false;
+  },
+  getBestLifecycleTimestamp(record = {}, candidates = []) {
+    for (const key of candidates) {
+      const value = record?.[key];
+      if (!value) continue;
+      if (!this.isDateOnlyLike(value)) {
+        const parsed = this.parseEventTimestamp(value);
+        if (parsed) return parsed;
+      }
+    }
+    for (const key of candidates) {
+      const parsed = this.parseEventTimestamp(record?.[key]);
+      if (parsed) return parsed;
+    }
+    return null;
+  },
+  getLifecycleStageOrder(type) {
+    const order = {
+      lead_created: 10,
+      deal_created: 20,
+      proposal_created: 30,
+      agreement_signed: 40,
+      invoice_created: 50,
+      receipt_created: 60,
+      additional_receipt_created: 61
+    };
+    return order[type] || 999;
+  },
   buildLifecycleTimeline(account = {}) {
     const events = [];
     const pushEvent = (item = {}, config = {}) => {
-      const primaryDate = this.text(config.primaryDate ? item[config.primaryDate] : '');
-      const fallbackDate = this.text(config.fallbackDate ? item[config.fallbackDate] : '');
-      const eventDate = primaryDate || fallbackDate;
-      if (!this.toDate(eventDate)) return;
+      const sortTimestamp = this.getBestLifecycleTimestamp(item, config.candidates || []);
+      if (!sortTimestamp) return;
+      const displayDate = this.text(config.displayField ? item[config.displayField] : '')
+        || this.text(item.created_at || item.createdAt || item.updated_at || item.updatedAt || '');
 
       const metadata = [
         config.codeLabel && item[config.codeField] ? `${config.codeLabel}: ${this.text(item[config.codeField])}` : '',
@@ -62,94 +103,25 @@ const LifecycleAnalytics = {
         config.noteBuilder ? this.text(config.noteBuilder(item)) : ''
       ].filter(Boolean);
 
-      events.push({
-        title: config.title,
-        date: eventDate,
-        metadata
-      });
+      events.push({ type: config.type, title: config.title, sortTimestamp, displayDate, metadata });
     };
 
-    const oldestByDate = rows => rows
-      .slice()
-      .sort((a, b) => (this.toDate(a.created_at)?.getTime() || 0) - (this.toDate(b.created_at)?.getTime() || 0));
+    const leads = (account.leads || []).slice();
+    const deals = (account.deals || []).slice();
+    const proposals = (account.proposals || []).slice();
+    const agreements = (account.agreements || []).slice();
+    const invoices = (account.invoices || []).slice();
+    const receipts = (account.receipts || []).slice();
 
-    const leads = oldestByDate(account.leads || []);
-    const deals = oldestByDate(account.deals || []);
-    const proposals = oldestByDate(account.proposals || []);
-    const agreements = oldestByDate(account.agreements || []);
-    const invoices = oldestByDate(account.invoices || []);
-    const receipts = oldestByDate(account.receipts || []);
+    if (leads[0]) pushEvent(leads[0], { type:'lead_created', title:'Lead created', codeLabel:'Lead', codeField:'lead_id', userLabel:'Assigned to', userField:'assigned_to', candidates:['created_at','createdAt','lead_created_at','created_date','date','updated_at'], displayField:'created_at' });
+    if (deals[0]) pushEvent(deals[0], { type:'deal_created', title:'Deal created', codeLabel:'Deal', codeField:'deal_id', userLabel:'Assigned to', userField:'assigned_to', candidates:['created_at','createdAt','converted_at','deal_created_at','created_date','updated_at'], displayField:'created_at', noteBuilder:item=>item.stage?`Stage: ${item.stage}`:'' });
+    if (proposals[0]) pushEvent(proposals[0], { type:'proposal_created', title:'Proposal created', codeLabel:'Proposal', codeField:'proposal_id', candidates:['created_at','createdAt','proposal_created_at','created_date','proposal_date'], displayField:'created_at', noteBuilder:item=>item.ref_number?`Ref: ${item.ref_number}`:'' });
+    if (agreements[0]) pushEvent(agreements[0], { type:'agreement_signed', title:'Agreement signed', codeLabel:'Agreement', codeField:'agreement_id', candidates:['signed_at','signedAt','agreement_signed_at','updated_at','created_at','agreement_date'], displayField:'signed_at', noteBuilder:item=>item.agreement_number?`Agreement No: ${item.agreement_number}`:'' });
+    if (invoices[0]) pushEvent(invoices[0], { type:'invoice_created', title:'Invoice created', codeLabel:'Invoice', codeField:'invoice_id', candidates:['created_at','createdAt','invoice_created_at','issued_at','invoice_date'], displayField:'created_at', noteBuilder:item=>item.invoice_number?`Invoice No: ${item.invoice_number}`:'' });
 
-    if (leads[0]) {
-      pushEvent(leads[0], {
-        title: 'Lead created',
-        codeLabel: 'Lead',
-        codeField: 'lead_id',
-        userLabel: 'Assigned to',
-        userField: 'assigned_to',
-        primaryDate: 'created_at',
-        fallbackDate: 'updated_at'
-      });
-    }
+    receipts.forEach((receipt, idx) => pushEvent(receipt, { type: idx===0?'receipt_created':'additional_receipt_created', title: idx===0?'Receipt created':'Additional receipt created', codeLabel:'Receipt', codeField:'receipt_id', candidates:['created_at','createdAt','receipt_created_at','issued_at','payment_date','receipt_date'], displayField:'created_at', noteBuilder:item=>item.receipt_number?`Receipt No: ${item.receipt_number}`:'' }));
 
-    if (deals[0]) {
-      pushEvent(deals[0], {
-        title: 'Deal created',
-        codeLabel: 'Deal',
-        codeField: 'deal_id',
-        userLabel: 'Assigned to',
-        userField: 'assigned_to',
-        primaryDate: 'created_at',
-        fallbackDate: 'updated_at',
-        noteBuilder: item => item.stage ? `Stage: ${item.stage}` : ''
-      });
-    }
-
-    if (proposals[0]) {
-      pushEvent(proposals[0], {
-        title: 'Proposal created',
-        codeLabel: 'Proposal',
-        codeField: 'proposal_id',
-        primaryDate: 'proposal_date',
-        fallbackDate: 'created_at',
-        noteBuilder: item => item.ref_number ? `Ref: ${item.ref_number}` : ''
-      });
-    }
-
-    if (agreements[0]) {
-      pushEvent(agreements[0], {
-        title: 'Agreement signed',
-        codeLabel: 'Agreement',
-        codeField: 'agreement_id',
-        primaryDate: 'signed_date',
-        fallbackDate: 'created_at',
-        noteBuilder: item => item.agreement_number ? `Agreement No: ${item.agreement_number}` : ''
-      });
-    }
-
-    if (invoices[0]) {
-      pushEvent(invoices[0], {
-        title: 'Invoice created',
-        codeLabel: 'Invoice',
-        codeField: 'invoice_id',
-        primaryDate: 'issue_date',
-        fallbackDate: 'created_at',
-        noteBuilder: item => item.invoice_number ? `Invoice No: ${item.invoice_number}` : ''
-      });
-    }
-
-    receipts.forEach((receipt, idx) => {
-      pushEvent(receipt, {
-        title: idx === 0 ? 'Receipt created' : 'Additional receipt created',
-        codeLabel: 'Receipt',
-        codeField: 'receipt_id',
-        primaryDate: 'receipt_date',
-        fallbackDate: 'created_at',
-        noteBuilder: item => item.receipt_number ? `Receipt No: ${item.receipt_number}` : ''
-      });
-    });
-
-    return events.sort((a, b) => (this.toDate(a.date)?.getTime() || 0) - (this.toDate(b.date)?.getTime() || 0));
+    return events.sort((a,b)=>{ const ta=Number(a.sortTimestamp||0); const tb=Number(b.sortTimestamp||0); if(ta!==tb) return ta-tb; return this.getLifecycleStageOrder(a.type)-this.getLifecycleStageOrder(b.type); });
   },
   renderLifecycleTimeline(selected = {}) {
     const timeline = this.buildLifecycleTimeline(selected);
@@ -172,7 +144,7 @@ const LifecycleAnalytics = {
                 <div class="lifecycle-timeline-content">
                   <div class="lifecycle-timeline-title-row">
                     <strong>${this.escape(item.title)}</strong>
-                    <span class="muted">${this.escape(this.formatTimelineDate(item.date))}</span>
+                    <span class="muted">${this.escape(this.formatTimelineDate(item.displayDate))}</span>
                   </div>
                   ${item.metadata.map(line => `<div class="muted">${this.escape(line)}</div>`).join('')}
                 </div>
