@@ -1890,14 +1890,15 @@ Sample:
       </section>
 
       <section id="lifecycleAnalyticsView" class="view" role="tabpanel" aria-labelledby="lifecycleAnalyticsTab">
-        <div class="card" aria-label="Lifecycle analytics search">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+        <section class="analytics-page card" aria-label="Lifecycle analytics search">
+          <div class="analytics-header">
             <div>
-              <strong>360 Analytics</strong>
-              <div class="muted">Unified lifecycle, finance, renewal, onboarding, and technical status analytics from Supabase data.</div>
+              <h2>360 Analytics</h2>
+              <p class="muted">Unified lifecycle, finance, renewal, onboarding, and technical status analytics from Supabase data.</p>
             </div>
-            <div class="analytics-filter-bar">
-              <div class="analytics-filter-control analytics-filter-control-search">
+          </div>
+          <div class="analytics-filter-bar">
+              <div class="analytics-filter-control search">
                 <label for="lifecycleSearchInput" class="analytics-filter-label">Search</label>
                 <input id="lifecycleSearchInput" class="input analytics-filter-input" type="search" placeholder="Search client, account, chain, invoice, receipt..." />
               </div>
@@ -1934,11 +1935,11 @@ Sample:
                 <label for="lifecycleClientFilter" class="analytics-filter-label">Client</label>
                 <select id="lifecycleClientFilter" class="select analytics-filter-input"><option value="All">All Clients</option></select>
               </div>
-              <div class="analytics-filter-control analytics-filter-control-date">
+              <div class="analytics-filter-control date">
                 <label for="lifecycleDateFrom" class="analytics-filter-label">From Date</label>
                 <input id="lifecycleDateFrom" class="input analytics-filter-input" type="date" />
               </div>
-              <div class="analytics-filter-control analytics-filter-control-date">
+              <div class="analytics-filter-control date">
                 <label for="lifecycleDateTo" class="analytics-filter-label">To Date</label>
                 <input id="lifecycleDateTo" class="input analytics-filter-input" type="date" />
               </div>
@@ -1947,7 +1948,7 @@ Sample:
                 <button id="lifecycleExportBtn" class="btn ghost sm" type="button">Export</button>
               </div>
             </div>
-          </div>
+          <div class="analytics-content">
           <div id="lifecycleState" class="muted" style="margin-bottom:8px;">Loading 360 analytics...</div>
           <section class="grid cols-4" id="lifecycleSummaryCards"></section>
           <section class="card" style="margin-top:10px;">
@@ -1967,7 +1968,8 @@ Sample:
             <strong>Account 360 Detail</strong>
             <div id="lifecycleDetailPanel" style="margin-top:10px;"></div>
           </section>
-        </div>
+          </div>
+        </section>
       </section>
 
       <section id="workflowView" class="view" role="tabpanel" aria-labelledby="workflowTab">
