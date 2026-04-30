@@ -234,8 +234,24 @@ const Api = {
     });
   },
   async requestWithSession(resource, action, payload = {}, options = {}) {
-    void options;
-    return this.request(resource, action, { ...payload });
+    const safeOptions = options && typeof options === 'object' ? options : {};
+    const requireAuth = safeOptions.requireAuth !== false;
+    let token =
+      Session?.accessToken?.() ||
+      Session?.state?.access_token ||
+      Session?.state?.session?.access_token ||
+      Session?.user?.()?.session?.access_token ||
+      '';
+    if (!token && window.SupabaseClient?.getClient) {
+      try {
+        const { data } = await window.SupabaseClient.getClient().auth.getSession();
+        token = data?.session?.access_token || '';
+      } catch {}
+    }
+    if (requireAuth && !token) {
+      throw new Error('Your session expired. Please log in again.');
+    }
+    return this.request(resource, action, { ...payload, authToken: token || undefined });
   },
   async sendWebPush(payload = {}, { context = 'unspecified' } = {}) {
     const client = window.SupabaseClient?.getClient?.();
@@ -1873,6 +1889,32 @@ async function apiPost(payload = {}) {
   const requestBody = payload && typeof payload === 'object' ? payload : {};
   const resource = String(requestBody?.resource || '').trim();
   const action = String(requestBody?.action || '').trim();
+  const authToken = String(requestBody?.authToken || '').trim();
+  const isUsersUpdate = resource === 'users' && action === 'update';
+
+  if (isUsersUpdate) {
+    const proxyPayload = { ...requestBody };
+    delete proxyPayload.authToken;
+    const response = await fetch('/api/proxy', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
+      },
+      body: JSON.stringify(proxyPayload)
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const message = String(data?.error || data?.message || 'Unable to update user.').trim();
+      if (response.status === 401) throw new Error('Your session expired. Please log in again.');
+      if (response.status === 403) throw new Error('You do not have permission to edit users.');
+      if (message.toLowerCase().includes('supabase_service_role_key')) throw new Error('Server is missing SUPABASE_SERVICE_ROLE_KEY.');
+      if (message.toLowerCase().includes('auth_user_id')) throw new Error('Cannot update auth user because auth_user_id is missing.');
+      throw new Error(message);
+    }
+    return data;
+  }
+
   if (window.SupabaseData?.isMigratedResource?.(resource)) {
     const dispatched = await window.SupabaseData.dispatch(requestBody);
     if (dispatched?.handled) return dispatched.data;
