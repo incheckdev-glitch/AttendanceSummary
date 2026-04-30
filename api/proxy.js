@@ -1,6 +1,10 @@
+import { createClient } from '@supabase/supabase-js';
+
 const RESOURCE_ALIASES = {
   operations_onboarding: ['operationsOnboarding', 'operations-onboarding']
 };
+
+const USER_MANAGEMENT_ROLES = new Set(['admin', 'dev', 'developer', 'user_management', 'user-management', 'users_manage']);
 
 function parseRequestBody(body) {
   if (body && typeof body === 'object') return body;
@@ -52,10 +56,172 @@ async function forwardToUpstream(targetUrl, payload, authorization = "") {
   return { upstream, raw, contentType, data, parsedJson };
 }
 
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+}
+
+async function getCallerRole(supabaseAdmin, authUserId) {
+  const userResult = await supabaseAdmin
+    .from('users')
+    .select('role, role_key')
+    .eq('auth_user_id', authUserId)
+    .maybeSingle();
+
+  if (!userResult.error && userResult.data) {
+    return String(userResult.data.role_key || userResult.data.role || '').trim().toLowerCase();
+  }
+
+  const profileResult = await supabaseAdmin
+    .from('profiles')
+    .select('role, role_key')
+    .eq('id', authUserId)
+    .maybeSingle();
+
+  if (!profileResult.error && profileResult.data) {
+    return String(profileResult.data.role_key || profileResult.data.role || '').trim().toLowerCase();
+  }
+
+  return '';
+}
+
+async function updatePublicUserRow(supabaseAdmin, payload, targetAuthUserId, updateDoc) {
+  const rowId = String(payload?.id || payload?.user_id || '').trim();
+  const authIdCandidates = [
+    targetAuthUserId,
+    String(payload?.auth_user_id || '').trim(),
+    String(payload?.authUserId || '').trim()
+  ].filter(Boolean);
+
+  for (const candidate of authIdCandidates) {
+    let authUpdate = await supabaseAdmin.from('users').update(updateDoc).eq('auth_user_id', candidate);
+    if (!authUpdate.error) return { table: 'users', by: 'auth_user_id' };
+
+    authUpdate = await supabaseAdmin.from('profiles').update(updateDoc).eq('id', candidate);
+    if (!authUpdate.error) return { table: 'profiles', by: 'id' };
+  }
+
+  if (rowId) {
+    let idUpdate = await supabaseAdmin.from('users').update(updateDoc).eq('id', rowId);
+    if (!idUpdate.error) return { table: 'users', by: 'id' };
+
+    idUpdate = await supabaseAdmin.from('profiles').update(updateDoc).eq('id', rowId);
+    if (!idUpdate.error) return { table: 'profiles', by: 'id' };
+  }
+
+  return null;
+}
+
+async function handleSupabaseAdminRequest(req, res, payload) {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    return res.status(500).json({
+      ok: false,
+      error: 'Server configuration error: missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.'
+    });
+  }
+
+  const authHeader = String(req.headers?.authorization || '').trim();
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+  if (!token) {
+    return res.status(401).json({ ok: false, error: 'Your session expired. Please log in again.' });
+  }
+
+  const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  if (!anonKey) {
+    return res.status(500).json({ ok: false, error: 'Server configuration error: missing SUPABASE_ANON_KEY.' });
+  }
+
+  const supabaseUserClient = createClient(supabaseUrl, anonKey, {
+    auth: { autoRefreshToken: false, persistSession: false }
+  });
+  const { data: authData, error: authError } = await supabaseUserClient.auth.getUser(token);
+  if (authError || !authData?.user) {
+    return res.status(401).json({ ok: false, error: 'Your session expired. Please log in again.' });
+  }
+
+  const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false }
+  });
+
+  const callerRole = await getCallerRole(supabaseAdmin, authData.user.id);
+  if (!USER_MANAGEMENT_ROLES.has(callerRole)) {
+    return res.status(403).json({ ok: false, error: 'You do not have permission to edit users.' });
+  }
+
+  const normalizedAction = String(payload?.action || '').trim();
+  if (normalizedAction !== 'update') {
+    return res.status(400).json({ ok: false, error: `Unsupported users action: ${normalizedAction || 'unknown'}.` });
+  }
+
+  const source = payload?.updates && typeof payload.updates === 'object' ? payload.updates : payload;
+  const targetAuthUserId = String(
+    payload?.auth_user_id || payload?.authUserId || payload?.auth_id || payload?.authId || ''
+  ).trim();
+
+  if (!targetAuthUserId || !isUuid(targetAuthUserId)) {
+    return res.status(400).json({ ok: false, error: 'Cannot update auth user because auth_user_id is missing.' });
+  }
+
+  const currentAuthUser = await supabaseAdmin.auth.admin.getUserById(targetAuthUserId);
+  const currentEmail = String(currentAuthUser?.data?.user?.email || '').trim().toLowerCase();
+  const email = String(source?.email || '').trim();
+  const name = String(source?.name || '').trim();
+  const fullName = String(source?.full_name || '').trim();
+  const roleKey = String(source?.role_key || source?.role || '').trim();
+  const department = String(source?.department || '').trim();
+  const password = source?.password;
+
+  const authUpdate = {
+    user_metadata: {
+      ...(name ? { name } : {}),
+      ...(fullName ? { full_name: fullName } : {}),
+      ...(roleKey ? { role: roleKey, role_key: roleKey } : {}),
+      ...(department ? { department } : {})
+    }
+  };
+
+  if (email && email.toLowerCase() !== currentEmail) authUpdate.email = email;
+  if (password && String(password).trim()) authUpdate.password = String(password).trim();
+
+  const { data: updatedAuthUser, error: authUpdateError } = await supabaseAdmin.auth.admin.updateUserById(targetAuthUserId, authUpdate);
+  if (authUpdateError) {
+    return res.status(400).json({ ok: false, error: `Unable to update auth user: ${authUpdateError.message}` });
+  }
+
+  const publicUpdate = {
+    updated_at: new Date().toISOString(),
+    ...(email ? { email } : {}),
+    ...(name ? { name } : {}),
+    ...(fullName ? { full_name: fullName } : {}),
+    ...(roleKey ? { role: roleKey, role_key: roleKey } : {}),
+    ...(department ? { department } : {}),
+    ...(typeof source?.is_active === 'boolean' ? { is_active: source.is_active } : {})
+  };
+
+  const updatedPublicRow = await updatePublicUserRow(supabaseAdmin, payload, targetAuthUserId, publicUpdate);
+
+  return res.status(200).json({
+    ok: true,
+    data: updatedAuthUser?.user || null,
+    updatedPublicRow
+  });
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ ok: false, error: 'Method Not Allowed. Use POST.' });
+  }
+
+  const payload = parseRequestBody(req.body);
+  const authorization = String(req.headers?.authorization || req.headers?.Authorization || "").trim();
+  const resource = String(payload?.resource || '').trim();
+  const action = String(payload?.action || '').trim();
+
+  if (resource === 'users' || resource === 'roles' || resource === 'role_permissions') {
+    return handleSupabaseAdminRequest(req, res, payload);
   }
 
   const targetUrl = String(
@@ -72,10 +238,6 @@ export default async function handler(req, res) {
     });
   }
 
-  const payload = parseRequestBody(req.body);
-  const authorization = String(req.headers?.authorization || req.headers?.Authorization || "").trim();
-  const resource = String(payload?.resource || '').trim();
-  const action = String(payload?.action || '').trim();
   res.setHeader('X-Upstream-Target', targetUrl);
 
   console.log('[proxy] forwarding request', {
