@@ -4,7 +4,7 @@ const RESOURCE_ALIASES = {
   operations_onboarding: ['operationsOnboarding', 'operations-onboarding']
 };
 
-const USER_MANAGEMENT_ROLES = new Set(['admin', 'dev', 'developer', 'user_management', 'user-management', 'users_manage']);
+const USER_MANAGEMENT_ROLES = new Set(['admin', 'administrator', 'super_admin']);
 
 function parseRequestBody(body) {
   if (body && typeof body === 'object') return body;
@@ -60,6 +60,14 @@ function isUuid(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
 }
 
+
+function normalizeRole(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_');
+}
+
 function extractBearerToken(req, payload = {}) {
   const authHeader = String(
     req.headers?.authorization ||
@@ -84,50 +92,42 @@ function extractBearerToken(req, payload = {}) {
   return headerToken || altHeaderToken || payloadToken;
 }
 
+async function findProfileByMatchers(supabaseAdmin, tableName, selectors) {
+  for (const selector of selectors) {
+    if (!selector.value) continue;
+    const query = supabaseAdmin
+      .from(tableName)
+      .select('*');
+
+    const result = selector.op === 'ilike'
+      ? await query.ilike(selector.column, selector.value).maybeSingle()
+      : await query.eq(selector.column, selector.value).maybeSingle();
+
+    if (!result.error && result.data) {
+      return result.data;
+    }
+  }
+
+  return null;
+}
+
 async function getCallerProfile(supabaseAdmin, authUserId, email = '') {
-  const userResult = await supabaseAdmin
-    .from('users')
-    .select('id, auth_user_id, email, role, role_key')
-    .eq('auth_user_id', authUserId)
-    .maybeSingle();
+  const normalizedAuthUserId = String(authUserId || '').trim();
+  const normalizedEmail = String(email || '').trim();
+  const canMatchId = isUuid(normalizedAuthUserId);
 
-  if (!userResult.error && userResult.data) {
-    return userResult.data;
-  }
+  const selectors = [
+    { column: 'auth_user_id', value: normalizedAuthUserId, op: 'eq' },
+    { column: 'authUserId', value: normalizedAuthUserId, op: 'eq' },
+    ...(canMatchId ? [{ column: 'id', value: normalizedAuthUserId, op: 'eq' }] : []),
+    { column: 'email', value: normalizedEmail, op: 'ilike' }
+  ];
 
-  if (email) {
-    const userByEmailResult = await supabaseAdmin
-      .from('users')
-      .select('id, auth_user_id, email, role, role_key')
-      .ilike('email', email)
-      .maybeSingle();
+  const userProfile = await findProfileByMatchers(supabaseAdmin, 'users', selectors);
+  if (userProfile) return userProfile;
 
-    if (!userByEmailResult.error && userByEmailResult.data) {
-      return userByEmailResult.data;
-    }
-  }
-
-  const profileResult = await supabaseAdmin
-    .from('profiles')
-    .select('id, email, role, role_key')
-    .eq('id', authUserId)
-    .maybeSingle();
-
-  if (!profileResult.error && profileResult.data) {
-    return profileResult.data;
-  }
-
-  if (email) {
-    const profileByEmailResult = await supabaseAdmin
-      .from('profiles')
-      .select('id, email, role, role_key')
-      .ilike('email', email)
-      .maybeSingle();
-
-    if (!profileByEmailResult.error && profileByEmailResult.data) {
-      return profileByEmailResult.data;
-    }
-  }
+  const fallbackProfile = await findProfileByMatchers(supabaseAdmin, 'profiles', selectors);
+  if (fallbackProfile) return fallbackProfile;
 
   return null;
 }
@@ -250,9 +250,41 @@ async function handleSupabaseAdminRequest(req, res, payload) {
       error: 'Your user profile was not found. Please contact an administrator.'
     });
   }
-  const callerRole = String(callerProfile.role_key || callerProfile.role || '').trim().toLowerCase();
+  const callerRole = normalizeRole(
+    callerProfile.role_key ||
+    callerProfile.roleKey ||
+    callerProfile.role ||
+    callerProfile.user_role ||
+    callerProfile.userRole ||
+    callerProfile.app_role ||
+    callerProfile.appRole
+  );
+
+  const isActive =
+    callerProfile.is_active !== false &&
+    callerProfile.isActive !== false &&
+    callerProfile.active !== false;
+
+  console.warn('[users admin] permission check', {
+    callerAuthUserId,
+    callerEmail,
+    foundUserProfile: Boolean(callerProfile),
+    role: callerRole,
+    isActive
+  });
+
+  if (!isActive) {
+    return res.status(403).json({
+      ok: false,
+      error: 'Your user account is inactive.'
+    });
+  }
+
   if (!USER_MANAGEMENT_ROLES.has(callerRole)) {
-    return res.status(403).json({ ok: false, error: 'You do not have permission to edit users.' });
+    return res.status(403).json({
+      ok: false,
+      error: `Forbidden: admin access is required. Current role: ${callerRole || 'none'}`
+    });
   }
 
   const normalizedAction = String(payload?.action || '').trim();
