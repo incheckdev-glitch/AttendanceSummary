@@ -236,22 +236,51 @@ const Api = {
   async requestWithSession(resource, action, payload = {}, options = {}) {
     const safeOptions = options && typeof options === 'object' ? options : {};
     const requireAuth = safeOptions.requireAuth !== false;
-    let token =
-      Session?.accessToken?.() ||
-      Session?.state?.access_token ||
-      Session?.state?.session?.access_token ||
-      Session?.user?.()?.session?.access_token ||
-      '';
-    if (!token && window.SupabaseClient?.getClient) {
-      try {
-        const { data } = await window.SupabaseClient.getClient().auth.getSession();
-        token = data?.session?.access_token || '';
-      } catch {}
-    }
+    let token = await this.getCurrentAccessToken();
     if (requireAuth && !token) {
       throw new Error('Your session expired. Please log in again.');
     }
     return this.request(resource, action, { ...payload, authToken: token || undefined });
+  },
+  async getCurrentAccessToken() {
+    const sessionState = window.Session?.state || Session?.state || {};
+    const tokenFromState = String(
+      sessionState?.session?.access_token ||
+      sessionState?.access_token ||
+      ''
+    ).trim();
+    if (tokenFromState) return tokenFromState;
+
+    const tokenFromAccessTokenFn = String(
+      window.Session?.accessToken?.() ||
+      Session?.accessToken?.() ||
+      ''
+    ).trim();
+    if (tokenFromAccessTokenFn) return tokenFromAccessTokenFn;
+
+    const tokenFromSessionUser = String(
+      window.Session?.user?.()?.session?.access_token ||
+      Session?.user?.()?.session?.access_token ||
+      ''
+    ).trim();
+    if (tokenFromSessionUser) return tokenFromSessionUser;
+
+    if (window.supabase?.auth?.getSession) {
+      try {
+        const { data } = await window.supabase.auth.getSession();
+        const token = String(data?.session?.access_token || '').trim();
+        if (token) return token;
+      } catch {}
+    }
+
+    if (window.SupabaseClient?.getClient) {
+      try {
+        const { data } = await window.SupabaseClient.getClient().auth.getSession();
+        return String(data?.session?.access_token || '').trim();
+      } catch {}
+    }
+
+    return '';
   },
   async sendWebPush(payload = {}, { context = 'unspecified' } = {}) {
     const client = window.SupabaseClient?.getClient?.();
