@@ -12,6 +12,7 @@ const UserAdmin = {
     loadingRoles: false,
     error: '',
     editingUserId: '',
+    editingUser: null,
     resettingUser: null,
     didAttemptProfileRepair: false
   },
@@ -343,6 +344,7 @@ const UserAdmin = {
     await this.loadRoles();
     if (!this.state.roles.length) return UI.toast('No roles available. Refresh Roles & Permissions first.');
     this.state.editingUserId = userId;
+    this.state.editingUser = user;
     if (E.userEditName) E.userEditName.value = String(user.name || '');
     if (E.userEditEmail) E.userEditEmail.value = String(user.email || '');
     if (E.userEditUsername) E.userEditUsername.value = String(user.username || '');
@@ -357,6 +359,7 @@ const UserAdmin = {
   },
   closeEditModal() {
     this.state.editingUserId = '';
+    this.state.editingUser = null;
     if (E.userEditModal) {
       E.userEditModal.classList.remove('open');
       E.userEditModal.setAttribute('aria-hidden', 'true');
@@ -364,6 +367,14 @@ const UserAdmin = {
   },
   async submitEdit() {
     const userId = this.state.editingUserId;
+    const editingUser = this.state.editingUser || {};
+    const authUserId = String(
+      editingUser.auth_user_id ||
+      editingUser.authUserId ||
+      editingUser.id ||
+      userId ||
+      ''
+    ).trim();
     if (!userId) return;
     const name = String(E.userEditName?.value || '').trim();
     const email = String(E.userEditEmail?.value || '').trim();
@@ -380,7 +391,7 @@ const UserAdmin = {
     try {
       await Api.requestWithSession('users', 'update', {
         id: userId,
-        auth_user_id: userId,
+        auth_user_id: authUserId,
         updates: {
           name: String(name).trim(),
           email: String(email).trim(),

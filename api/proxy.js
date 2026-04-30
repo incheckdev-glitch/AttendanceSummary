@@ -60,6 +60,30 @@ function isUuid(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
 }
 
+function extractBearerToken(req, payload = {}) {
+  const authHeader = String(
+    req.headers?.authorization ||
+    req.headers?.Authorization ||
+    ''
+  ).trim();
+  const headerToken = authHeader.replace(/^Bearer\s+/i, '').trim();
+
+  const altHeaderToken = String(
+    req.headers?.['x-supabase-access-token'] ||
+    req.headers?.['X-Supabase-Access-Token'] ||
+    ''
+  ).trim();
+
+  const payloadToken = String(
+    payload?.session_access_token ||
+    payload?.access_token ||
+    payload?.accessToken ||
+    ''
+  ).trim();
+
+  return headerToken || altHeaderToken || payloadToken;
+}
+
 async function getCallerProfile(supabaseAdmin, authUserId, email = '') {
   const userResult = await supabaseAdmin
     .from('users')
@@ -146,8 +170,15 @@ async function handleSupabaseAdminRequest(req, res, payload) {
     });
   }
 
-  const authHeader = String(req.headers?.authorization || req.headers?.Authorization || '').trim();
-  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+  const hasPayloadToken = Boolean(
+    payload?.session_access_token ||
+    payload?.access_token ||
+    payload?.accessToken
+  );
+  const token = extractBearerToken(req, payload);
+  delete payload.session_access_token;
+  delete payload.access_token;
+  delete payload.accessToken;
   if (!token) {
     return res.status(401).json({ ok: false, error: 'Your session expired. Please log in again.' });
   }
@@ -162,6 +193,12 @@ async function handleSupabaseAdminRequest(req, res, payload) {
   });
   const { data: authData, error: authError } = await supabaseUserClient.auth.getUser(token);
   if (authError || !authData?.user) {
+    console.warn('[users admin] bearer token verification failed', {
+      hasAuthorizationHeader: Boolean(req.headers?.authorization),
+      hasAltTokenHeader: Boolean(req.headers?.['x-supabase-access-token']),
+      hasPayloadToken,
+      authError: authError?.message || null
+    });
     return res.status(401).json({ ok: false, error: 'Your session expired. Please log in again.' });
   }
 
