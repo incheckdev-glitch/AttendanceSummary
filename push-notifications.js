@@ -64,6 +64,33 @@
       return typeof value === 'string' ? value.trim() : '';
     },
 
+    normalizeRole(value) {
+      return String(value || '').trim().toLowerCase().replace(/\s+/g, '_');
+    },
+
+    canManageNotificationHub() {
+      const role = this.normalizeRole(
+        global.Session?.user?.()?.role ||
+          global.Session?.state?.user?.role ||
+          global.Session?.state?.profile?.role_key ||
+          global.Session?.state?.profile?.role ||
+          global.currentUser?.role ||
+          global.Session?.role?.() ||
+          ''
+      );
+      return role === 'admin' || role === 'super_admin' || role === 'dev';
+    },
+
+    requireNotificationAdmin() {
+      if (this.canManageNotificationHub()) return true;
+      if (global.toast?.warning) {
+        global.toast.warning('You do not have permission to manage global notification settings.');
+      } else {
+        this.setMessage('You do not have permission to manage global notification settings.');
+      }
+      return false;
+    },
+
     isDebugEnabled() {
       try {
         return (
@@ -324,8 +351,19 @@
     },
 
     canViewDiagnostics() {
-      const role = String(global.Session?.role?.() || '').trim().toLowerCase();
-      return role === 'admin' || role === 'dev';
+      return this.canManageNotificationHub();
+    },
+
+    applyNotificationHubPermissions() {
+      const canManage = this.canManageNotificationHub();
+      document.querySelectorAll('[data-admin-push-control="true"]').forEach(el => {
+        el.hidden = !canManage;
+        el.style.display = canManage ? '' : 'none';
+      });
+      document.querySelectorAll('[data-user-push-control="true"]').forEach(el => {
+        el.hidden = false;
+        el.style.display = '';
+      });
     },
 
     getEndpointPreview(endpoint = '') {
@@ -695,6 +733,7 @@
     },
 
     async testLocalNotification() {
+      if (!this.requireNotificationAdmin()) return;
       if (!this.state.supported) {
         this.setMessage('Push notifications are not supported on this browser/device.');
         return;
@@ -716,6 +755,7 @@
     },
 
     async testServerPush() {
+      if (!this.requireNotificationAdmin()) return;
       if (!global.Session?.isAuthenticated?.()) {
         this.setMessage('Please log in first to run server push test.');
         return;
@@ -912,6 +952,7 @@
     },
 
     async testSingleDevice(subscriptionId = '') {
+      if (!this.requireNotificationAdmin()) return;
       const normalizedId = String(subscriptionId || '').trim();
       if (!normalizedId) return;
       const client = global.SupabaseClient?.getClient?.();
@@ -950,6 +991,7 @@
     },
 
     async testAllMyDevices() {
+      if (!this.requireNotificationAdmin()) return;
       if (!global.Session?.isAuthenticated?.()) return;
       const userId = String(global.Session?.userId?.() || '').trim();
       if (!userId) return;
@@ -999,6 +1041,7 @@
     },
 
     async readServiceWorkerDiagnostics() {
+      if (!this.requireNotificationAdmin()) return null;
       if (!this.state.supported) return null;
       try {
         const registration = await this.getRegistration();
@@ -1036,6 +1079,7 @@
     },
 
     async forceServiceWorkerUpdate() {
+      if (!this.requireNotificationAdmin()) return;
       if (!this.state.supported) return;
       try {
         const isFormBeingEdited = () => {
@@ -1085,6 +1129,7 @@
     },
 
     async copyPushDiagnostics() {
+      if (!this.requireNotificationAdmin()) return;
       const diagnosticsText = String(this.els.diagnosticsText?.textContent || '').trim();
       if (!diagnosticsText) {
         this.setMessage('No diagnostics text is available yet. Read diagnostics first.');
@@ -1472,6 +1517,7 @@
       if (this.state.initialized) return;
       this.state.initialized = true;
       this.getElements();
+      this.applyNotificationHubPermissions();
       this.state.supported = this.isSupported();
       this.setInAppSoundPreference(this.readInAppSoundPreference());
       this.renderIosHint();
@@ -1505,6 +1551,7 @@
       if (this.state.wired) return;
       this.state.wired = true;
       this.getElements();
+      this.applyNotificationHubPermissions();
       if (!this.els.toggleBtn) return;
       this.els.toggleBtn.addEventListener('click', () => {
         this.handleToggleClick();

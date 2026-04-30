@@ -558,22 +558,22 @@
               <div id="pushStatusText" class="muted">Log in to manage push notifications on this device.</div>
               <div id="pushIosHint" class="muted" style="display:none;margin-top:4px;">On iPhone, install the app to Home Screen first, then enable notifications.</div>
             </div>
-            <button id="pushToggleBtn" class="btn sm" type="button">Enable push notifications</button>
+            <button id="pushToggleBtn" class="btn sm" type="button" data-user-push-control="true">Enable push notifications</button>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
-            <button id="pushRefreshSubscriptionBtn" class="btn ghost sm" type="button">Refresh Push Subscription</button>
-            <button id="pushInAppSoundToggleBtn" class="btn ghost sm" type="button" aria-pressed="false">Enable in-app notification sound</button>
-            <button id="pushLocalTestBtn" class="btn ghost sm" type="button">Test local notification</button>
-            <button id="pushServerTestBtn" class="btn ghost sm" type="button">Test server push</button>
-            <button id="pushReadDiagnosticsBtn" class="btn ghost sm" type="button">Read service worker diagnostics</button>
-            <button id="pwaInstallCheckBtn" class="btn ghost sm" type="button">Run PWA install check</button>
-            <button id="pushCopyDiagnosticsBtn" class="btn ghost sm" type="button">Copy push diagnostics</button>
-            <button id="pushForceSwUpdateBtn" class="btn ghost sm" type="button">Force service worker update</button>
+            <button id="pushRefreshSubscriptionBtn" class="btn ghost sm" type="button" data-user-push-control="true">Refresh Push Subscription</button>
+            <button id="pushInAppSoundToggleBtn" class="btn ghost sm" type="button" aria-pressed="false" data-user-push-control="true">Enable in-app notification sound</button>
+            <button id="pushLocalTestBtn" class="btn ghost sm" type="button" data-admin-push-control="true">Test local notification</button>
+            <button id="pushServerTestBtn" class="btn ghost sm" type="button" data-admin-push-control="true">Test server push</button>
+            <button id="pushReadDiagnosticsBtn" class="btn ghost sm" type="button" data-admin-push-control="true">Read service worker diagnostics</button>
+            <button id="pwaInstallCheckBtn" class="btn ghost sm" type="button" data-admin-push-control="true">Run PWA install check</button>
+            <button id="pushCopyDiagnosticsBtn" class="btn ghost sm" type="button" data-admin-push-control="true">Copy push diagnostics</button>
+            <button id="pushForceSwUpdateBtn" class="btn ghost sm" type="button" data-admin-push-control="true">Force service worker update</button>
           </div>
-          <div id="pushServerTestResult" class="muted" style="margin-top:8px;font-size:12px;">Server push test: not run yet.</div>
-          <div id="pwaInstallStatusMessage" class="muted" style="margin-top:8px;font-size:12px;"></div>
-          <div id="pwaInstallCheckResult" class="muted" style="margin-top:8px;font-size:12px;white-space:pre-wrap;">PWA install check: not run yet.</div>
-          <div id="pushDiagnosticsPanel" class="muted" style="display:none;margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:10px;background:rgba(127,127,127,0.06);font-size:12px;line-height:1.5;">
+          <div id="pushServerTestResult" class="muted" style="margin-top:8px;font-size:12px;" data-admin-push-control="true">Server push test: not run yet.</div>
+          <div id="pwaInstallStatusMessage" class="muted" style="margin-top:8px;font-size:12px;" data-admin-push-control="true"></div>
+          <div id="pwaInstallCheckResult" class="muted" style="margin-top:8px;font-size:12px;white-space:pre-wrap;" data-admin-push-control="true">PWA install check: not run yet.</div>
+          <div id="pushDiagnosticsPanel" class="muted" style="display:none;margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:10px;background:rgba(127,127,127,0.06);font-size:12px;line-height:1.5;" data-admin-push-control="true">
             <strong>Push diagnostics (admin/dev)</strong>
             <div style="margin-top:6px;">Current device only (this browser/PWA instance):</div>
             <pre id="pushDiagnosticsText" style="margin:6px 0 0;white-space:pre-wrap;">Loading push diagnostics…</pre>
@@ -581,7 +581,7 @@
               Background system banners and sounds are controlled by Android/iOS/browser settings. InCheck360 sends the push and the service worker displays the notification, but the OS may still suppress banners or sounds due to notification channel, focus mode, battery rules, or PWA/browser limitations. In-app banners and sound work while the app is open.
             </div>
           </div>
-          <div id="pushActiveDevicesPanel" class="muted" style="display:none;margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:10px;background:rgba(127,127,127,0.06);font-size:12px;line-height:1.5;">
+          <div id="pushActiveDevicesPanel" class="muted" style="display:none;margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:10px;background:rgba(127,127,127,0.06);font-size:12px;line-height:1.5;" data-admin-push-control="true">
             <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
               <strong>Active Push Devices</strong>
               <button id="pushTestAllDevicesBtn" class="btn ghost sm" type="button">Test all my devices</button>
@@ -608,7 +608,7 @@
             </div>
             <pre id="pushDeviceTestResult" style="margin-top:8px;white-space:pre-wrap;">Device test: not run yet.</pre>
           </div>
-          <div class="muted" style="margin-top:10px;font-size:12px;line-height:1.45;">
+          <div class="muted" style="margin-top:10px;font-size:12px;line-height:1.45;" data-admin-push-control="true">
             <strong>Mobile checklist</strong>
             <ul style="margin:6px 0 0 18px;padding:0;display:grid;gap:4px;">
               <li><strong>Android:</strong> Open installed PWA (not a regular browser tab).</li>
