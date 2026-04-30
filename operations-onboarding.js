@@ -81,6 +81,8 @@ const OperationsOnboarding = {
       payment_term: String(this.pick(source.payment_term, source.paymentTerm)).trim(),
       module_summary: String(this.pick(source.module_summary, source.moduleSummary)).trim(),
       go_live_target_date: String(this.pick(source.go_live_target_date, source.goLiveTargetDate)).trim(),
+      go_live_date: String(this.pick(source.go_live_date, source.goLiveDate)).trim(),
+      go_live_at: String(this.pick(source.go_live_at, source.goLiveAt)).trim(),
       handover_note: String(this.pick(source.handover_note, source.handoverNote)).trim(),
       updated_at: String(this.pick(source.updated_at, source.updatedAt)).trim(),
       completed_at: String(this.pick(source.completed_at, source.completedAt)).trim(),
@@ -214,6 +216,11 @@ const OperationsOnboarding = {
     const parsed = this.parseDate(value);
     if (!parsed) return '—';
     return U.fmtDisplayDate(value);
+  },
+  formatDateTime(value = '') {
+    const parsed = this.parseDate(value);
+    if (!parsed) return '—';
+    return U.formatDateTimeMMDDYYYYHHMM(value);
   },
   daysOpen(row) {
     const start = this.parseDate(row?.requested_at || row?.signed_date || '');
@@ -994,6 +1001,9 @@ const OperationsOnboarding = {
           <div><span class="muted">Technical Request Type:</span> ${U.escapeHtml(detail.technical_request_type || detail.request_type || '—')}</div>
           <div><span class="muted">Technical Request Message:</span> ${U.escapeHtml(detail.request_message || detail.technical_request_details || detail.technical_admin_request_message || '—')}</div>
           <div><span class="muted">Technical Request Status:</span> ${U.escapeHtml(detail.technical_request_status || detail.technical_admin_request || '—')}</div>
+          <div><span class="muted">Go Live Target Date:</span> ${U.escapeHtml(this.formatDate(detail.go_live_target_date))}</div>
+          <div><span class="muted">Go Live Date:</span> ${U.escapeHtml(this.formatDateTime(detail.go_live_date || detail.go_live_at))}</div>
+          <div><span class="muted">Completed At:</span> ${U.escapeHtml(this.formatDateTime(detail.completed_at))}</div>
           <div><span class="muted">Assigned CSM:</span> ${U.escapeHtml(detail.csm_assigned_to || '—')}</div>
           <div style="grid-column:1/-1;"><span class="muted">Notes:</span> ${U.escapeHtml(detail.notes || '—')}</div>
         </div>`;
@@ -1072,8 +1082,6 @@ const OperationsOnboarding = {
       notes: E.operationsUpdateStatusNotes?.value || '',
       updated_at: nowIso
     };
-    if (nextStatus === 'Completed') payload.completed_at = nowIso;
-    if (nextStatus === 'In Progress') payload.completed_at = null;
     console.log('[OperationsOnboarding] clicked action: Update Status', { onboarding_id: onboardingId, agreement_id: agreementId, status: nextStatus });
     console.log('[OperationsOnboarding] Update Status payload', payload);
     try {
@@ -1105,8 +1113,6 @@ const OperationsOnboarding = {
       onboarding_status: normalizedStatus,
       updated_at: nowIso
     };
-    if (normalizedStatus === 'Completed') payload.completed_at = nowIso;
-    if (normalizedStatus === 'In Progress') payload.completed_at = null;
     console.log(`[OperationsOnboarding] clicked action: Mark ${normalizedStatus}`, { onboarding_id: normalizedOnboardingId, agreement_id: normalizedAgreementId });
     console.log(`[OperationsOnboarding] Mark ${normalizedStatus} payload`, payload);
     try {

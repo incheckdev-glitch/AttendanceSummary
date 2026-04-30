@@ -352,7 +352,7 @@
     operations_onboarding: new Set([
       'id', 'onboarding_id', 'agreement_id', 'agreement_number', 'client_id', 'client_name',
       'onboarding_status', 'request_type', 'technical_request_type', 'technical_request_status',
-      'requested_by', 'requested_at', 'csm_assigned_to', 'updated_at', 'created_at'
+      'requested_by', 'requested_at', 'csm_assigned_to', 'go_live_target_date', 'go_live_date', 'go_live_at', 'completed_at', 'updated_at', 'created_at'
     ]),
     proposal_catalog: new Set([
       'id', 'catalog_item_id', 'is_active', 'section', 'category', 'item_name', 'default_location_name',
@@ -407,7 +407,7 @@
   };
   const LIST_SEARCH_COLUMNS_BY_RESOURCE = {
     agreements: ['agreement_id', 'agreement_number', 'agreement_title', 'customer_name', 'customer_legal_name', 'customer_contact_name', 'status'],
-    operations_onboarding: ['onboarding_id', 'agreement_id', 'agreement_number', 'client_name', 'request_type', 'technical_request_status', 'csm_assigned_to'],
+    operations_onboarding: ['onboarding_id', 'agreement_id', 'agreement_number', 'client_name', 'request_type', 'technical_request_status', 'csm_assigned_to', 'go_live_target_date'],
     technical_admin_requests: ['request_id', 'technical_request_id', 'agreement_id', 'agreement_number', 'client_name', 'request_status', 'request_message', 'request_details']
   };
   const UUID_COLUMNS_BY_TABLE = {
@@ -4975,6 +4975,9 @@
       let previousAgreementStatus = '';
       let previousInvoicePaymentState = '';
       let previousOperationsOnboardingStatus = '';
+      let previousOperationsGoLiveDate = '';
+      let previousOperationsGoLiveAt = '';
+      let previousOperationsCompletedAt = '';
       let previousTechnicalRequestStatus = '';
       if (resource === 'tickets') {
         const { data: existingTicket } = await client
@@ -5009,8 +5012,15 @@
         previousInvoicePaymentState = String(existingInvoice?.payment_state || '').trim();
       }
       if (resource === 'operations_onboarding') {
-        const { data: existingOnboarding } = await client.from('operations_onboarding').select('onboarding_status').eq(key, id).maybeSingle();
+        const { data: existingOnboarding } = await client
+          .from('operations_onboarding')
+          .select('onboarding_status, go_live_date, go_live_at, completed_at')
+          .eq(key, id)
+          .maybeSingle();
         previousOperationsOnboardingStatus = String(existingOnboarding?.onboarding_status || '').trim();
+        previousOperationsGoLiveDate = String(existingOnboarding?.go_live_date || '').trim();
+        previousOperationsGoLiveAt = String(existingOnboarding?.go_live_at || '').trim();
+        previousOperationsCompletedAt = String(existingOnboarding?.completed_at || '').trim();
       }
       if (resource === 'technical_admin_requests') {
         const { data: existingTechnical } = await client.from('technical_admin_requests').select('request_status').eq(key, id).maybeSingle();
@@ -5075,6 +5085,28 @@
       }
       if (['proposal_catalog', 'proposals', 'agreements', 'clients', 'invoices', 'receipts'].includes(resource) && !Object.keys(publicUpdates).length) {
         throw new Error(`${resource} update payload is empty after normalization.`);
+      }
+      if (resource === 'operations_onboarding') {
+        const incomingStatus = String(publicUpdates?.onboarding_status || '').trim().toLowerCase();
+        const wasCompleted = previousOperationsOnboardingStatus.toLowerCase().includes('complete');
+        const isNowCompleted = incomingStatus.includes('complete');
+
+        ['go_live_date', 'go_live_at', 'completed_at'].forEach(field => {
+          if (publicUpdates[field] === '') delete publicUpdates[field];
+        });
+
+        if (!wasCompleted && isNowCompleted) {
+          const completionTimestamp = new Date().toISOString();
+          if (!previousOperationsGoLiveDate && publicUpdates.go_live_date === undefined) publicUpdates.go_live_date = completionTimestamp;
+          if (!previousOperationsGoLiveAt && publicUpdates.go_live_at === undefined) publicUpdates.go_live_at = completionTimestamp;
+          if (!previousOperationsCompletedAt && publicUpdates.completed_at === undefined) publicUpdates.completed_at = completionTimestamp;
+        }
+
+        if (wasCompleted) {
+          delete publicUpdates.go_live_date;
+          delete publicUpdates.go_live_at;
+          delete publicUpdates.completed_at;
+        }
       }
       let data;
       if (resource === 'operations_onboarding') {
