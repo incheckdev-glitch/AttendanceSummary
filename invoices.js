@@ -121,13 +121,7 @@ const Invoices = {
     return full || String(contact?.contact_name || contact?.full_name || '').trim();
   },
   getCustomerLegalName(company = {}, record = {}) {
-    return String(
-      company?.legal_name ||
-      company?.company_name ||
-      record?.customer_legal_name ||
-      record?.customer_name ||
-      ''
-    ).trim();
+    return U.getCustomerLegalName(record, company);
   },
   setReadonlyFieldValue(id, value) {
     const el = document.getElementById(id);

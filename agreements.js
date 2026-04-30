@@ -349,7 +349,7 @@ const Agreements = {
     return normalized;
   },
   getCompanyLegalName(company = {}) {
-    return String(company.legal_name || company.legalName || company.company_name || company.companyName || '').trim();
+    return String(company?.legal_name || company?.legalName || company?.company_name || company?.companyName || '').trim();
   },
   async getFullCompanyRecord(companyIdOrRecord) {
     const seed = companyIdOrRecord && typeof companyIdOrRecord === 'object' ? companyIdOrRecord : {};
