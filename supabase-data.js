@@ -3715,6 +3715,58 @@
     )];
   }
 
+  function normalizeNotificationList(value) {
+    return [...new Set(
+      (Array.isArray(value) ? value : [value])
+        .flatMap(item => Array.isArray(item) ? item : [item])
+        .map(item => String(item ?? '').trim())
+        .filter(Boolean)
+    )];
+  }
+
+  function isPlaceholderRecipientToken(value = '') {
+    const normalized = String(value || '').trim().toLowerCase();
+    return !normalized || normalized === 'optional: user@company.com' || normalized === 'user@company.com';
+  }
+
+  function getRuleAssignedRoles(rule = {}) {
+    return normalizeNotificationRoles(
+      ...(normalizeNotificationList(rule?.assigned_roles)),
+      ...(normalizeNotificationList(rule?.target_roles)),
+      ...(normalizeNotificationList(rule?.recipient_roles)),
+      ...(normalizeNotificationList(rule?.allowed_roles)),
+      ...(normalizeNotificationList(rule?.roles))
+    ).map(normalizeNotificationRoleKey);
+  }
+
+  function getRuleAssignedUsers(rule = {}) {
+    return normalizeNotificationList([
+      ...(normalizeNotificationList(rule?.assigned_users)),
+      ...(normalizeNotificationList(rule?.target_users)),
+      ...(normalizeNotificationList(rule?.recipient_users)),
+      ...(normalizeNotificationList(rule?.recipient_user_ids))
+    ]);
+  }
+
+  function getRuleAssignedEmails(rule = {}) {
+    return normalizeNotificationList([
+      ...(normalizeNotificationList(rule?.assigned_emails)),
+      ...(normalizeNotificationList(rule?.target_emails)),
+      ...(normalizeNotificationList(rule?.recipient_emails))
+    ])
+      .map(value => String(value || '').trim().toLowerCase())
+      .filter(value => !isPlaceholderRecipientToken(value));
+  }
+
+  function hasConfiguredRecipients(rule = {}, resolvedRecipients = {}) {
+    const roles = getRuleAssignedRoles(rule);
+    const users = getRuleAssignedUsers(rule);
+    const emails = getRuleAssignedEmails(rule);
+    const resolvedUsers = Array.isArray(resolvedRecipients?.users) ? resolvedRecipients.users : [];
+    const resolvedEmails = Array.isArray(resolvedRecipients?.emails) ? resolvedRecipients.emails : [];
+    return Boolean(roles.length || users.length || emails.length || resolvedUsers.length || resolvedEmails.length);
+  }
+
   async function sendPwaPushForNotification(payload = {}, context = '') {
     const client = getClient();
     const title = String(payload?.title || '').trim();
@@ -3818,17 +3870,40 @@
     if ((rule?.is_enabled ?? rule?.enabled) === false) {
       return { created: 0, push: { attempted: false, skipped: true, reason: 'rule-disabled' }, notification_id: null };
     }
-    const normalizedRoles = normalizeNotificationRoles(...(rule.recipient_roles || []), ...(normalizedPayload?.target_roles || []))
-      .map(normalizeNotificationRoleKey);
+    const normalizedRoles = [...new Set([
+      ...getRuleAssignedRoles(rule),
+      ...normalizeNotificationRoles(normalizedPayload?.target_roles).map(normalizeNotificationRoleKey)
+    ])];
     const { data: activeProfiles } = await getClient().from('profiles').select('id,email,role_key,is_active').eq('is_active', true).limit(2000);
     const profileRows = Array.isArray(activeProfiles) ? activeProfiles : [];
-    const recipientUserIds = new Set([...(rule.recipient_user_ids || []), ...(normalizedPayload?.target_user_ids || [])].map(v => String(v || '').trim()).filter(Boolean));
-    const recipientEmails = new Set([...(rule.recipient_emails || []), ...(normalizedPayload?.target_emails || [])].map(v => String(v || '').trim().toLowerCase()).filter(Boolean));
+    const recipientUserIds = new Set([
+      ...getRuleAssignedUsers(rule),
+      ...normalizeNotificationList(normalizedPayload?.target_user_ids)
+    ].map(v => String(v || '').trim()).filter(Boolean));
+    const recipientEmails = new Set([
+      ...getRuleAssignedEmails(rule),
+      ...normalizeNotificationList(normalizedPayload?.target_emails).map(v => String(v || '').trim().toLowerCase()).filter(v => !isPlaceholderRecipientToken(v))
+    ]);
     const record = normalizedPayload?.record && typeof normalizedPayload.record === 'object' ? normalizedPayload.record : normalizedPayload;
-    (rule.users_from_record || []).forEach(key => {
-      const value = String(record?.[key] || '').trim().toLowerCase();
-      if (value) recipientEmails.add(value);
+    const dynamicRecipientEmails = [];
+    normalizeNotificationList(rule?.users_from_record).forEach(key => {
+      const normalizedKey = String(key || '').trim().toLowerCase();
+      const candidates = normalizedKey === 'requester_email'
+        ? [record?.requester_email, record?.email_addressee]
+        : normalizedKey === 'owner_email'
+          ? [record?.owner_email, record?.assigned_user_email]
+          : [record?.[key]];
+      const resolvedValue = candidates.map(value => String(value || '').trim().toLowerCase()).find(Boolean) || '';
+      if (resolvedValue && !isPlaceholderRecipientToken(resolvedValue)) {
+        dynamicRecipientEmails.push(resolvedValue);
+        recipientEmails.add(resolvedValue);
+      }
     });
+    const resolvedRecipients = { users: [...recipientUserIds], emails: dynamicRecipientEmails };
+    if (!hasConfiguredRecipients(rule, resolvedRecipients)) {
+      console.info('[notifications] skipped all channels', { resource, action, reason: 'no_recipients_configured', context });
+      return { created: 0, push: { attempted: false, skipped: true, reason: 'no_recipients_configured' }, notification_id: null };
+    }
     profileRows.forEach(row => {
       const id = String(row.id || '').trim();
       const email = String(row.email || '').trim().toLowerCase();
@@ -3838,7 +3913,7 @@
       if (email && recipientEmails.has(email)) recipientUserIds.add(id);
     });
     if (rule.exclude_actor !== false && actorUserId) recipientUserIds.delete(actorUserId);
-    if (!recipientUserIds.size && !recipientEmails.size && !normalizedRoles.length) {
+    if (!recipientUserIds.size && !recipientEmails.size) {
       console.warn('[notifications:rules] no recipients resolved; notification skipped', { context, resource, action });
       return { created: 0, push: { attempted: false, skipped: true, reason: 'no-recipient' }, notification_id: null };
     }
