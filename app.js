@@ -5270,19 +5270,19 @@ function wireConnectivity() {
 }
 
 
-function getCurrentDeepLink() {
-  const hash = String(window.location.hash || '').trim();
-  if (!hash || hash === '#loginSection') return null;
-  return hash;
+function isNotificationDeepLinkHash(hash = '') {
+  const value = String(hash || '').trim();
+  if (!value || value === '#loginSection') return false;
+  return /^#(tickets|workflow|operations-onboarding|technical-admin|crm|finance|leads|deals|proposals|agreements|invoices|receipts)/i.test(value);
 }
 
-function savePendingDeepLinkFromLocation() {
-  const hash = getCurrentDeepLink();
-  if (!hash) return null;
+function capturePendingDeepLink() {
+  const hash = String(window.location.hash || '').trim();
+  if (!isNotificationDeepLinkHash(hash)) return '';
   try {
     sessionStorage.setItem('incheckPendingDeepLink', hash);
   } catch {}
-  console.info('[email deep link] captured', { hash });
+  console.info('[deep-link] captured pending hash', { hash });
   return hash;
 }
 
@@ -5297,7 +5297,8 @@ function consumePendingDeepLink() {
 
 function hasPendingDeepLink() {
   try {
-    return Boolean(String(sessionStorage.getItem('incheckPendingDeepLink') || '').trim());
+    const hash = String(sessionStorage.getItem('incheckPendingDeepLink') || '').trim();
+    return isNotificationDeepLinkHash(hash);
   } catch {}
   return false;
 }
@@ -5311,30 +5312,29 @@ function parseNotificationDeepLink(hash = '') {
   if (route === 'tickets') return { resource: 'tickets', id: params.get('ticket_id') || params.get('id') || '' };
   if (route === 'workflow') return { resource: 'workflow', id: params.get('approval_id') || params.get('id') || '' };
   if (route === 'operations-onboarding') return { resource: 'operations_onboarding', id: params.get('onboarding_id') || params.get('id') || '' };
-  if (route === 'technical-admin') return { resource: 'technical_admin', id: params.get('id') || params.get('request_id') || '' };
+  if (route === 'technical-admin') return { resource: 'technical_admin_requests', id: params.get('request_id') || params.get('id') || '' };
   if (route === 'crm') return { resource: params.get('tab') || '', id: params.get('id') || '' };
   if (route === 'finance') return { resource: params.get('tab') || '', id: params.get('id') || '' };
   return { resource: route, id: params.get('id') || '' };
 }
 
 async function routePendingDeepLinkAfterUnlock() {
-  const pending = consumePendingDeepLink();
-  if (!pending) return false;
-  const target = parseNotificationDeepLink(pending);
+  const hash = consumePendingDeepLink() || String(window.location.hash || '').trim();
+  if (!isNotificationDeepLinkHash(hash)) return false;
+  const target = parseNotificationDeepLink(hash);
   if (!target?.resource) return false;
-  await new Promise(resolve => setTimeout(resolve, 250));
+  console.info('[deep-link] parsed target', target);
+  await new Promise(resolve => setTimeout(resolve, 300));
   if (window.Notifications?.routeToResourceTarget) {
     const opened = await window.Notifications.routeToResourceTarget(target.resource, target.id, {
       resource: target.resource,
       resource_id: target.id,
-      meta: { source: 'email_deep_link', original_hash: pending }
+      meta: { source: 'email_or_pwa_deep_link', original_hash: hash }
     });
-    if (opened) {
-      console.info('[email deep link] routed', target);
-      return true;
-    }
+    console.info('[deep-link] route result', { target, opened });
+    return Boolean(opened);
   }
-  console.warn('[email deep link] unable to route', target);
+  console.warn('[deep-link] routeToResourceTarget not available', { target });
   return false;
 }
 
@@ -5371,7 +5371,8 @@ function wireDashboardGate() {
     routePendingDeepLinkAfterUnlock()
       .catch(error => console.warn('[email deep link] route after unlock failed', error))
       .finally(() => {
-        if (window.location.hash && window.location.hash !== '#loginSection') {
+        const currentHash = String(window.location.hash || '').trim();
+        if (!isNotificationDeepLinkHash(currentHash) && currentHash && currentHash !== '#loginSection') {
           history.replaceState(null, '', window.location.pathname + window.location.search);
         }
       });
@@ -5385,7 +5386,7 @@ function wireDashboardGate() {
     if (E.logoutBtn) E.logoutBtn.hidden = true;
     if (window.Notifications?.reset) Notifications.reset();
     if (window.PushNotifications?.onAuthStateChanged) PushNotifications.onAuthStateChanged();
-    const preservedHash = savePendingDeepLinkFromLocation();
+    const preservedHash = capturePendingDeepLink();
     if (!preservedHash) window.location.hash = '#loginSection';
   };
 
@@ -7355,12 +7356,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   const mountedRecoveryRoute = await mountResetPasswordView();
   if (mountedRecoveryRoute) return;
   logApiStartupDiagnostics();
+  console.info('[deep-link] startup hash', { hash: window.location.hash });
   if (typeof Api?.runAuthProxyHealthCheck === 'function') {
     Api.runAuthProxyHealthCheck().catch(error => {
       console.warn('[startup/auth] Initial auth health check failed', error);
     });
   }
-  savePendingDeepLinkFromLocation();
+  capturePendingDeepLink();
   const restored = await Session.restore();
   console.info('[startup/auth] restore result', { restored });
 
