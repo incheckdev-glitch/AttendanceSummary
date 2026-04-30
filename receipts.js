@@ -1400,7 +1400,7 @@ const Receipts = {
         if (refreshedInvoiceId) {
           const selectedInvoiceId = String(E.invoiceForm?.dataset.id || '').trim();
           if (selectedInvoiceId === refreshedInvoiceId && window.Invoices?.openInvoiceById) {
-            await window.Invoices.openInvoiceById(refreshedInvoiceId, { readOnly: false });
+            await window.Invoices.openInvoiceById(refreshedInvoiceId, { readOnly: true });
           } else if (window.Invoices?.refreshInvoiceReceipts) {
             await window.Invoices.refreshInvoiceReceipts(refreshedInvoiceId, { force: true });
           }
