@@ -203,11 +203,14 @@
       if (rule && !isRuleEnabled(rule)) return skipNotification({ resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, reason: 'notification_rule_disabled' });
 
       const requestedChannels = Array.isArray(channels) ? channels : ['in_app', 'push'];
-      const allowedChannels = requestedChannels
+      const normalizedRequestedChannels = requestedChannels
         .map(channel => String(channel || '').trim().toLowerCase())
-        .filter(Boolean)
-        .filter(channel => isChannelEnabled(rule, channel));
-      if (!allowedChannels.length) return skipNotification({ resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, reason: 'notification_channels_disabled' });
+        .filter(Boolean);
+      const recipients = [];
+      const decision = {
+        channels: { in_app: false, push: false, email: false },
+        shouldSendAny: false
+      };
 
       const directUsers = normalizeList(targetUsers);
       const directEmails = normalizeList(targetEmails).map(item => item.toLowerCase()).filter(item => !isPlaceholderRecipientToken(item));
@@ -227,6 +230,31 @@
       const emails = [...new Set([...directEmails, ...assignedEmails, ...dynamicEmails])];
       if (!userIds.length && !emails.length && (rule || isKnownNotificationAction(normalizedResource, normalizedAction))) {
         return skipNotification({ resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, reason: 'no_notification_recipients_resolved' });
+      }
+
+      recipients.push(...userIds, ...emails);
+      const baseAllowed = Boolean(rule?.is_enabled === true && recipients.length > 0);
+      decision.channels.in_app = Boolean(baseAllowed && rule?.in_app_enabled === true && normalizedRequestedChannels.includes('in_app'));
+      decision.channels.push = Boolean(baseAllowed && (rule?.pwa_enabled === true || rule?.push_enabled === true || rule?.web_push_enabled === true) && normalizedRequestedChannels.includes('push'));
+      decision.channels.email = Boolean(baseAllowed && rule?.email_enabled === true && normalizedRequestedChannels.includes('email'));
+      decision.shouldSendAny = Boolean(decision.channels.in_app || decision.channels.push || decision.channels.email);
+      console.info('[notifications] channel decision', {
+        resource: normalizedResource,
+        action: normalizedAction,
+        eventKey: normalizedEventKey,
+        ruleFound: Boolean(rule),
+        isEnabled: rule?.is_enabled,
+        inAppEnabled: rule?.in_app_enabled,
+        pwaEnabled: rule?.pwa_enabled,
+        pushEnabled: rule?.push_enabled ?? rule?.web_push_enabled,
+        emailEnabled: rule?.email_enabled,
+        recipientsCount: recipients.length,
+        sendInApp: decision.channels.in_app,
+        sendPush: decision.channels.push,
+        sendEmail: decision.channels.email
+      });
+      if (!decision.shouldSendAny) {
+        return skipNotification({ resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, reason: 'notification_channels_disabled' });
       }
 
       const normalizedRecordId = String(recordId || '').trim();
@@ -250,11 +278,26 @@
           url: finalUrl,
           ...(metadata && typeof metadata === 'object' ? metadata : {})
         },
-        channels: allowedChannels,
+        channels: [
+          ...(decision.channels.in_app ? ['in_app'] : []),
+          ...(decision.channels.push ? ['push'] : []),
+          ...(decision.channels.email ? ['email'] : [])
+        ],
         user_ids: userIds,
         emails,
         target_roles: assignedRoles
       };
+      if (!decision.channels.push) {
+        console.info('[notifications] push skipped by channel rule', {
+          resource: normalizedResource,
+          action: normalizedAction,
+          eventKey: normalizedEventKey,
+          pwaEnabled: rule?.pwa_enabled,
+          pushEnabled: rule?.push_enabled,
+          webPushEnabled: rule?.web_push_enabled
+        });
+        return { attempted: decision.channels.in_app, sent: false, skipped: true, reason: 'push-disabled-by-rule', channels: payload.channels };
+      }
       try { return await global.Api.sendWebPush(payload, { context: `${normalizedResource}:${normalizedAction}:central` }); }
       catch (error) {
         console.warn('[notifications] sendBusinessNotification failed (non-blocking)', error);
