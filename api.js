@@ -243,6 +243,35 @@ const Api = {
     return this.request(resource, action, { ...payload, authToken: token || undefined });
   },
   async getCurrentAccessToken() {
+    if (window.SupabaseClient?.getClient) {
+      try {
+        const client = window.SupabaseClient.getClient();
+        const { data, error } = await client.auth.getSession();
+        if (!error && data?.session?.access_token) {
+          const freshToken = String(data.session.access_token || '').trim();
+          if (window.Session?.state) {
+            window.Session.state.session = data.session;
+            window.Session.state.access_token = freshToken;
+          }
+          return freshToken;
+        }
+      } catch {}
+    }
+
+    if (window.supabase?.auth?.getSession) {
+      try {
+        const { data, error } = await window.supabase.auth.getSession();
+        if (!error && data?.session?.access_token) {
+          const freshToken = String(data.session.access_token || '').trim();
+          if (window.Session?.state) {
+            window.Session.state.session = data.session;
+            window.Session.state.access_token = freshToken;
+          }
+          return freshToken;
+        }
+      } catch {}
+    }
+
     const sessionState = window.Session?.state || Session?.state || {};
     const tokenFromState = String(
       sessionState?.session?.access_token ||
@@ -265,23 +294,9 @@ const Api = {
     ).trim();
     if (tokenFromSessionUser) return tokenFromSessionUser;
 
-    if (window.supabase?.auth?.getSession) {
-      try {
-        const { data } = await window.supabase.auth.getSession();
-        const token = String(data?.session?.access_token || '').trim();
-        if (token) return token;
-      } catch {}
-    }
-
-    if (window.SupabaseClient?.getClient) {
-      try {
-        const { data } = await window.SupabaseClient.getClient().auth.getSession();
-        return String(data?.session?.access_token || '').trim();
-      } catch {}
-    }
-
     return '';
   },
+ 
   async sendWebPush(payload = {}, { context = 'unspecified' } = {}) {
     const client = window.SupabaseClient?.getClient?.();
     if (!client) return null;
@@ -1922,13 +1937,18 @@ async function apiPost(payload = {}) {
   const isUsersUpdate = resource === 'users' && action === 'update';
 
   if (isUsersUpdate) {
+    if (!authToken) {
+      throw new Error('Your session expired. Please log in again.');
+    }
     const proxyPayload = { ...requestBody };
+    proxyPayload.session_access_token = authToken;
     delete proxyPayload.authToken;
     const response = await fetch('/api/proxy', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
+        Authorization: `Bearer ${authToken}`,
+        'X-Supabase-Access-Token': authToken
       },
       body: JSON.stringify(proxyPayload)
     });
