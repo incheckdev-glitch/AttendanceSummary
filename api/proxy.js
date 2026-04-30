@@ -176,19 +176,14 @@ async function handleSupabaseAdminRequest(req, res, payload) {
     payload?.accessToken
   );
   const token = extractBearerToken(req, payload);
-  delete payload.session_access_token;
-  delete payload.access_token;
-  delete payload.accessToken;
-
-  const hasAuthorizationHeader = Boolean(req.headers?.authorization || req.headers?.Authorization);
-  const hasAltTokenHeader = Boolean(req.headers?.['x-supabase-access-token']);
-  console.warn('[users admin] token received', {
-    hasAuthorizationHeader,
-    hasAltTokenHeader,
-    hasPayloadToken,
+  console.warn('[users admin] token extraction debug', {
+    hasAuthorizationHeader: Boolean(req.headers?.authorization || req.headers?.Authorization),
+    hasAltTokenHeader: Boolean(req.headers?.['x-supabase-access-token']),
+    hasPayloadToken: Boolean(payload?.session_access_token),
     tokenLength: token ? token.length : 0,
-    supabaseUrl: process.env.SUPABASE_URL ? 'set' : 'missing',
-    anonKey: process.env.SUPABASE_ANON_KEY ? 'set' : 'missing'
+    hasSupabaseUrl: Boolean(process.env.SUPABASE_URL),
+    hasAnonKey: Boolean(process.env.SUPABASE_ANON_KEY),
+    hasServiceRole: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY)
   });
 
   if (!token) {
@@ -207,21 +202,32 @@ async function handleSupabaseAdminRequest(req, res, payload) {
     auth: { autoRefreshToken: false, persistSession: false }
   });
 
-  const { data: authData, error: authError } = await supabaseUserClient.auth.getUser(token);
-  let verifiedUser = authData?.user || null;
-  let verifyError = authError;
+  let verifiedUser = null;
+  let verifyError = null;
 
-  if (!verifiedUser) {
-    const fallback = await supabaseAdmin.auth.getUser(token);
-    verifiedUser = fallback.data?.user || null;
-    verifyError = fallback.error || verifyError;
+  try {
+    const anonResult = await supabaseUserClient.auth.getUser(token);
+    verifiedUser = anonResult?.data?.user || null;
+    verifyError = anonResult?.error || null;
+  } catch (error) {
+    verifyError = error;
   }
 
   if (!verifiedUser) {
-    console.warn('[users admin] bearer token verification failed', {
-      hasAuthorizationHeader,
-      hasAltTokenHeader,
-      hasPayloadToken,
+    try {
+      const adminResult = await supabaseAdmin.auth.getUser(token);
+      verifiedUser = adminResult?.data?.user || null;
+      verifyError = adminResult?.error || verifyError;
+    } catch (error) {
+      verifyError = error;
+    }
+  }
+
+  if (!verifiedUser) {
+    console.warn('[users admin] token verification failed', {
+      hasAuthorizationHeader: Boolean(req.headers?.authorization || req.headers?.Authorization),
+      hasAltTokenHeader: Boolean(req.headers?.['x-supabase-access-token']),
+      hasPayloadToken: Boolean(payload?.session_access_token),
       tokenLength: token ? token.length : 0,
       authError: verifyError?.message || null
     });
@@ -231,7 +237,13 @@ async function handleSupabaseAdminRequest(req, res, payload) {
     });
   }
 
-  const callerProfile = await getCallerProfile(supabaseAdmin, verifiedUser.id, verifiedUser.email || '');
+  delete payload.session_access_token;
+  delete payload.access_token;
+  delete payload.accessToken;
+
+  const callerAuthUserId = verifiedUser.id;
+  const callerEmail = verifiedUser.email;
+  const callerProfile = await getCallerProfile(supabaseAdmin, callerAuthUserId, callerEmail || '');
   if (!callerProfile) {
     return res.status(403).json({
       ok: false,
