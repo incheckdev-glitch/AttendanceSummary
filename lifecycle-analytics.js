@@ -134,6 +134,25 @@ const LifecycleAnalytics = {
       ''
     ).trim();
   },
+  resolveLifecycleCompany(chain = {}, companiesById = new Map(), companiesByName = new Map()) {
+    const companyId = this.getLifecycleCompanyId(chain);
+    if (companyId && companiesById.has(companyId)) return companiesById.get(companyId);
+    const possibleNames = [
+      chain?.customer_legal_name, chain?.customerLegalName, chain?.legal_name, chain?.legalName,
+      chain?.customer_name, chain?.customerName, chain?.company_name, chain?.companyName, chain?.client_name, chain?.clientName,
+      chain?.lead?.customer_legal_name, chain?.lead?.customer_name, chain?.lead?.company_name,
+      chain?.deal?.customer_legal_name, chain?.deal?.customer_name, chain?.deal?.company_name,
+      chain?.proposal?.customer_legal_name, chain?.proposal?.customer_name, chain?.proposal?.company_name,
+      chain?.agreement?.customer_legal_name, chain?.agreement?.customer_name, chain?.agreement?.company_name,
+      chain?.invoice?.customer_legal_name, chain?.invoice?.customer_name, chain?.invoice?.company_name,
+      chain?.receipt?.customer_legal_name, chain?.receipt?.customer_name, chain?.receipt?.company_name
+    ];
+    for (const name of possibleNames) {
+      const key = this.norm(name);
+      if (key && companiesByName.has(key)) return companiesByName.get(key);
+    }
+    return null;
+  },
 
   parseEventTimestamp(value) {
     if (!value) return null;
@@ -422,6 +441,7 @@ const LifecycleAnalytics = {
     const accountByInvoiceUuid = new Map();
     const clientsById = new Map();
     const companiesById = new Map();
+    const companiesByName = new Map();
 
     data.clients.forEach(row => {
       const clientUuid = this.text(row.id);
@@ -430,7 +450,11 @@ const LifecycleAnalytics = {
 
     (data.companies || []).forEach(row => {
       const companyId = this.text(row.company_id || row.companyId);
+      const companyName = this.text(row.company_name || row.companyName);
+      const legalName = this.text(row.legal_name || row.legalName);
       if (companyId) companiesById.set(companyId, row);
+      if (companyName) companiesByName.set(this.norm(companyName), row);
+      if (legalName) companiesByName.set(this.norm(legalName), row);
     });
 
     const ensureAccount = ({ key = '', clientUuid = '', company = '', companyId = '', email = '' } = {}) => {
@@ -438,7 +462,7 @@ const LifecycleAnalytics = {
       if (!accounts.has(accountKey)) {
         const client = this.isUuid(clientUuid) ? clientsById.get(clientUuid) : null;
         const resolvedCompanyId = this.text(companyId);
-        const linkedCompany = companiesById.get(resolvedCompanyId) || null;
+        const linkedCompany = this.resolveLifecycleCompany({ company_id: resolvedCompanyId, company_name: company }, companiesById, companiesByName);
         accounts.set(accountKey, {
           accountKey,
           clientUuid: this.text(client?.id || clientUuid),
@@ -458,7 +482,7 @@ const LifecycleAnalytics = {
       const account = accounts.get(accountKey);
       if (!account.companyName && company) account.companyName = this.getLifecycleClientLegalName({ company_name: company }, account.linkedCompany);
       if (!account.companyId && companyId) account.companyId = this.text(companyId);
-      if (!account.linkedCompany && account.companyId) account.linkedCompany = companiesById.get(account.companyId) || null;
+      if (!account.linkedCompany) account.linkedCompany = this.resolveLifecycleCompany({ company_id: account.companyId, company_name: account.companyName }, companiesById, companiesByName);
       if (!account.primaryEmail && email) account.primaryEmail = this.text(email);
       if (this.isUuid(clientUuid) && !account.clientUuid) account.clientUuid = clientUuid;
       if (!account.clientBusinessId && this.isUuid(account.clientUuid)) {
@@ -764,7 +788,7 @@ const LifecycleAnalytics = {
     };
     const lifecycleCompanyId = this.getLifecycleCompanyId(row.lifecycleChain);
     if (lifecycleCompanyId && !row.companyId) row.companyId = lifecycleCompanyId;
-    if (!row.linkedCompany && lifecycleCompanyId) row.linkedCompany = account.linkedCompany || null;
+    if (!row.linkedCompany) row.linkedCompany = this.resolveLifecycleCompany(row.lifecycleChain, companiesById, companiesByName) || account.linkedCompany || null;
     const linkedCompany = row.linkedCompany || null;
     const legalName = this.getLifecycleClientLegalName(row.lifecycleChain, linkedCompany) || this.getLifecycleClientLegalName(row, linkedCompany);
     row.lifecycleChain.customer_name = legalName;
@@ -815,7 +839,9 @@ const LifecycleAnalytics = {
     this.state.filteredRows = this.state.rows.filter(row => {
       if (q) {
         const linkedCompany = row.linkedCompany || null;
+        const legalName = this.getLifecycleClientLegalName(row.lifecycleChain || row, linkedCompany);
         const haystack = [
+          legalName,
           row.customer_legal_name,
           row.legal_name,
           row.customer_name,
@@ -840,7 +866,12 @@ const LifecycleAnalytics = {
       if (f.paymentState !== 'All' && row.paymentState !== f.paymentState) return false;
       if (f.onboardingStatus !== 'All' && row.onboardingStatus !== f.onboardingStatus) return false;
       if (f.technicalStatus !== 'All' && row.technicalStatus !== f.technicalStatus) return false;
-      if (f.client !== 'All' && row.accountKey !== f.client) return false;
+      const selectedClient = this.text(f.client);
+      const linkedCompany = row.linkedCompany || null;
+      const legalName = this.getLifecycleClientLegalName(row.lifecycleChain || row, linkedCompany);
+      const companyId = this.getLifecycleCompanyId(row.lifecycleChain || row) || this.text(linkedCompany?.company_id || linkedCompany?.companyId);
+      const matchesClient = !selectedClient || selectedClient === 'All' || selectedClient === companyId || this.norm(selectedClient) === this.norm(legalName);
+      if (!matchesClient) return false;
       if (f.locationState === 'Active Only' && row.activeLocationsCount <= 0) return false;
       if (f.locationState === 'Inactive Only' && row.activeLocationsCount > 0) return false;
       if (f.renewalWindow !== 'All') {
@@ -861,15 +892,17 @@ const LifecycleAnalytics = {
       el.innerHTML = options.map(value => `<option value="${this.escape(value)}">${this.escape(value)}</option>`).join('');
     };
 
-    setOptions('lifecycleClientFilter', this.state.rows.map(row => row.accountKey), true);
+    localStorage.removeItem('lifecycleClientFilterOptions');
+    localStorage.removeItem('analyticsClientFilterOptions');
+    setOptions('lifecycleClientFilter', this.state.rows.map(row => this.getLifecycleCompanyId(row.lifecycleChain || row) || this.text(row.linkedCompany?.company_id || row.linkedCompany?.companyId) || this.getLifecycleClientLegalName(row.lifecycleChain || row, row.linkedCompany || null)), true);
     const clientSelect = document.getElementById('lifecycleClientFilter');
     if (clientSelect) {
-      clientSelect.innerHTML = ['All', ...this.state.rows.map(row => row.accountKey)]
+      clientSelect.innerHTML = ['All', ...this.state.rows.map(row => this.getLifecycleCompanyId(row.lifecycleChain || row) || this.text(row.linkedCompany?.company_id || row.linkedCompany?.companyId) || this.getLifecycleClientLegalName(row.lifecycleChain || row, row.linkedCompany || null))]
         .map(key => {
           if (key === 'All') return '<option value="All">All Clients</option>';
-          const row = this.state.rows.find(item => item.accountKey === key);
+          const row = this.state.rows.find(item => (this.getLifecycleCompanyId(item.lifecycleChain || item) || this.text(item.linkedCompany?.company_id || item.linkedCompany?.companyId) || this.getLifecycleClientLegalName(item.lifecycleChain || item, item.linkedCompany || null)) === key);
           const linkedCompany = row?.linkedCompany || null;
-          const label = this.getLifecycleClientLegalName(row || {}, linkedCompany) || row?.clientBusinessId || key;
+          const label = this.getLifecycleClientLegalName((row?.lifecycleChain || row || {}), linkedCompany) || row?.clientBusinessId || key;
           return `<option value="${this.escape(key)}">${this.escape(label)}</option>`;
         })
         .join('');
