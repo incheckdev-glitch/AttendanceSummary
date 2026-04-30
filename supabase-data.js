@@ -4080,14 +4080,9 @@
     const primaryRule = enabledRulesForRecipients[0] || matchingRules[0] || null;
     const decision = {
       channels: {
-        in_app: Boolean(primaryRule && primaryRule.is_enabled === true && primaryRule.in_app_enabled === true && recipientsCount > 0),
-        push: Boolean(
-          primaryRule &&
-          primaryRule.is_enabled === true &&
-          (primaryRule.pwa_enabled === true || primaryRule.push_enabled === true || primaryRule.web_push_enabled === true) &&
-          recipientsCount > 0
-        ),
-        email: Boolean(primaryRule && primaryRule.is_enabled === true && primaryRule.email_enabled === true && recipientsCount > 0)
+        in_app: Boolean(primaryRule && isNotificationRuleEnabled(primaryRule) && isNotificationChannelEnabled(primaryRule, 'in_app') && recipientsCount > 0),
+        push: Boolean(primaryRule && isNotificationRuleEnabled(primaryRule) && isNotificationChannelEnabled(primaryRule, 'push') && recipientsCount > 0),
+        email: Boolean(primaryRule && isNotificationRuleEnabled(primaryRule) && isNotificationChannelEnabled(primaryRule, 'email') && recipientsCount > 0)
       }
     };
     console.info('[notifications] channel decision', {

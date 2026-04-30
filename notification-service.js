@@ -333,10 +333,10 @@
 
       recipients.push(...userIds, ...emails);
       const emailRecipients = [...new Set(emails.filter(isValidEmail))];
-      const baseAllowed = Boolean(rule?.is_enabled === true && recipients.length > 0);
-      decision.channels.in_app = Boolean(baseAllowed && rule?.in_app_enabled === true && normalizedRequestedChannels.includes('in_app'));
-      decision.channels.push = Boolean(baseAllowed && (rule?.pwa_enabled === true || rule?.push_enabled === true || rule?.web_push_enabled === true) && normalizedRequestedChannels.includes('push'));
-      decision.channels.email = Boolean(baseAllowed && rule?.email_enabled === true && normalizedRequestedChannels.includes('email'));
+      const baseAllowed = Boolean(isRuleEnabled(rule) && recipients.length > 0);
+      decision.channels.in_app = Boolean(baseAllowed && isChannelEnabled(rule, 'in_app') && normalizedRequestedChannels.includes('in_app'));
+      decision.channels.push = Boolean(baseAllowed && isChannelEnabled(rule, 'push') && normalizedRequestedChannels.includes('push'));
+      decision.channels.email = Boolean(baseAllowed && isChannelEnabled(rule, 'email') && normalizedRequestedChannels.includes('email'));
       decision.shouldSendAny = Boolean(decision.channels.in_app || decision.channels.push || decision.channels.email);
       console.info('[notifications] channel decision', {
         resource: normalizedResource,
@@ -387,21 +387,27 @@
         emails: emailRecipients,
         target_roles: assignedRoles
       };
-      try {
-        let pushResult = { attempted: false, skipped: true, reason: 'push-disabled-by-rule' };
-        if (decision.channels.push) {
+      let pushResult = { attempted: false, skipped: true, reason: 'push-disabled-by-rule' };
+      if (decision.channels.push) {
+        try {
           pushResult = await global.Api.sendWebPush(payload, { context: `${normalizedResource}:${normalizedAction}:central` });
-        } else {
-          console.info('[notifications] push skipped by channel rule', { resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey });
+        } catch (error) {
+          console.warn('[notifications] push send failed', { resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, error: error?.message || String(error) });
+          pushResult = { attempted: true, sent: false, error: String(error?.message || error) };
         }
-        if (decision.channels.email) {
-          await sendNotificationEmail({ resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, title: payload.title, body: payload.body, recipients: emailRecipients, recordNumber: payload.record_number, url: payload.url });
-        }
-        return pushResult;
-      } catch (error) {
-        console.warn('[notifications] email send failed', { resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, error: error?.message || String(error) });
-        return { attempted: true, sent: false, error: String(error?.message || error) };
+      } else {
+        console.info('[notifications] push skipped by channel rule', { resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey });
       }
+
+      if (decision.channels.email) {
+        try {
+          await sendNotificationEmail({ resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, title: payload.title, body: payload.body, recipients: emailRecipients, recordNumber: payload.record_number, url: payload.url });
+        } catch (error) {
+          console.warn('[notifications] email send failed', { resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, error: error?.message || String(error) });
+        }
+      }
+
+      return pushResult;
     }
   };
 
