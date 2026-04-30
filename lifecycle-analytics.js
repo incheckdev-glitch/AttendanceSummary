@@ -48,8 +48,24 @@ const LifecycleAnalytics = {
     if (!raw) return '—';
     return U.fmtTS(raw);
   },
-  getAnalyticsClientLegalName(row = {}, company = null) {
-    return U.getCustomerLegalName(row, company) || '—';
+  getAnalyticsClientLegalName(row = {}, linkedCompany = null) {
+    return String(
+      linkedCompany?.legal_name ||
+      linkedCompany?.legalName ||
+      row?.customer_legal_name ||
+      row?.customerLegalName ||
+      row?.legal_name ||
+      row?.legalName ||
+      row?.customer_name ||
+      row?.customerName ||
+      linkedCompany?.company_name ||
+      linkedCompany?.companyName ||
+      row?.company_name ||
+      row?.companyName ||
+      row?.client_name ||
+      row?.clientName ||
+      ''
+    ).trim();
   },
 
   parseEventTimestamp(value) {
@@ -309,7 +325,8 @@ const LifecycleAnalytics = {
       receipts,
       clients,
       onboarding,
-      technical
+      technical,
+      companies
     ] = await Promise.all([
       this.fetchTable(db, 'leads', 'id,lead_id,company_name,legal_name,full_name,email,phone,status,assigned_to,created_at,updated_at'),
       this.fetchTable(db, 'deals', 'id,deal_id,lead_id,company_name,customer_name,customer_legal_name,full_name,email,status,stage,assigned_to,created_at,updated_at'),
@@ -320,10 +337,11 @@ const LifecycleAnalytics = {
       this.fetchTable(db, 'receipts', 'id,receipt_id,receipt_number,invoice_id,client_id,receipt_date,amount_received,invoice_total,pending_amount,payment_state,payment_conclusion,old_paid_total,paid_now,new_paid_total,created_at,updated_at'),
       this.fetchTable(db, 'clients', 'id,client_id,client_name,company_name,legal_name,source_agreement_id,total_agreements,total_locations,total_value,total_paid,total_due'),
       this.fetchOnboardingRows(db),
-      this.fetchTable(db, 'technical_admin_requests', 'agreement_id,request_status,assigned_to,requested_at,completed_at,location_count')
+      this.fetchTable(db, 'technical_admin_requests', 'agreement_id,request_status,assigned_to,requested_at,completed_at,location_count'),
+      this.fetchTable(db, 'companies', 'id,company_id,company_name,legal_name')
     ]);
 
-    return { leads, deals, proposals, agreements, agreementItems, invoices, receipts, clients, onboarding, technical };
+    return { leads, deals, proposals, agreements, agreementItems, invoices, receipts, clients, onboarding, technical, companies };
   },
   buildAccountMap(data) {
     const today = new Date();
@@ -336,21 +354,30 @@ const LifecycleAnalytics = {
     const accountByAgreementUuid = new Map();
     const accountByInvoiceUuid = new Map();
     const clientsById = new Map();
+    const companiesById = new Map();
 
     data.clients.forEach(row => {
       const clientUuid = this.text(row.id);
       if (clientUuid) clientsById.set(clientUuid, row);
     });
 
-    const ensureAccount = ({ key = '', clientUuid = '', company = '', email = '' } = {}) => {
+    (data.companies || []).forEach(row => {
+      const companyId = this.text(row.company_id || row.companyId);
+      if (companyId) companiesById.set(companyId, row);
+    });
+
+    const ensureAccount = ({ key = '', clientUuid = '', company = '', companyId = '', email = '' } = {}) => {
       const accountKey = key || (this.isUuid(clientUuid) ? `client:${clientUuid}` : `unknown:${accounts.size + 1}`);
       if (!accounts.has(accountKey)) {
         const client = this.isUuid(clientUuid) ? clientsById.get(clientUuid) : null;
+        const linkedCompany = companiesById.get(this.text(companyId)) || null;
         accounts.set(accountKey, {
           accountKey,
           clientUuid: this.text(client?.id || clientUuid),
           clientBusinessId: this.text(client?.client_id),
-          companyName: this.getAnalyticsClientLegalName({ company_name: company }, client),
+          companyId: this.text(companyId),
+          linkedCompany,
+          companyName: this.getAnalyticsClientLegalName({ company_name: company }, linkedCompany) || this.getAnalyticsClientLegalName({ company_name: company }, client),
           primaryEmail: this.text(email),
           currency: 'USD',
           leads: [], deals: [], proposals: [], agreements: [], invoices: [], receipts: [],
@@ -361,7 +388,9 @@ const LifecycleAnalytics = {
         });
       }
       const account = accounts.get(accountKey);
-      if (!account.companyName && company) account.companyName = this.getAnalyticsClientLegalName({ company_name: company }, account);
+      if (!account.companyName && company) account.companyName = this.getAnalyticsClientLegalName({ company_name: company }, account.linkedCompany);
+      if (!account.companyId && companyId) account.companyId = this.text(companyId);
+      if (!account.linkedCompany && account.companyId) account.linkedCompany = companiesById.get(account.companyId) || null;
       if (!account.primaryEmail && email) account.primaryEmail = this.text(email);
       if (this.isUuid(clientUuid) && !account.clientUuid) account.clientUuid = clientUuid;
       if (!account.clientBusinessId && this.isUuid(account.clientUuid)) {
@@ -372,7 +401,7 @@ const LifecycleAnalytics = {
 
     data.leads.forEach(row => {
       const leadUuid = this.text(row.id);
-      const account = ensureAccount({ key: leadUuid ? `lead:${leadUuid}` : '', company: row.company_name || row.full_name, email: row.email });
+      const account = ensureAccount({ key: leadUuid ? `lead:${leadUuid}` : '', company: row.company_name || row.full_name, companyId: row.company_id || row.companyId, email: row.email });
       account.leads.push(row);
       if (leadUuid) accountByLeadUuid.set(leadUuid, account.accountKey);
       if (!account.stages.lead) account.stages.lead = row.created_at || row.updated_at;
@@ -382,7 +411,7 @@ const LifecycleAnalytics = {
       const dealUuid = this.text(row.id);
       const leadUuid = this.text(row.lead_id);
       const parentAccountKey = this.isUuid(leadUuid) ? accountByLeadUuid.get(leadUuid) : '';
-      const account = parentAccountKey ? accounts.get(parentAccountKey) : ensureAccount({ key: dealUuid ? `deal:${dealUuid}` : '', company: row.company_name || row.full_name, email: row.email });
+      const account = parentAccountKey ? accounts.get(parentAccountKey) : ensureAccount({ key: dealUuid ? `deal:${dealUuid}` : '', company: row.company_name || row.full_name, companyId: row.company_id || row.companyId, email: row.email });
       account.deals.push(row);
       if (dealUuid) accountByDealUuid.set(dealUuid, account.accountKey);
       if (!account.stages.deal) account.stages.deal = row.created_at || row.updated_at;
@@ -392,7 +421,7 @@ const LifecycleAnalytics = {
       const proposalUuid = this.text(row.id);
       const dealUuid = this.text(row.deal_id);
       const parentAccountKey = this.isUuid(dealUuid) ? accountByDealUuid.get(dealUuid) : '';
-      const account = parentAccountKey ? accounts.get(parentAccountKey) : ensureAccount({ key: proposalUuid ? `proposal:${proposalUuid}` : '', company: row.customer_name });
+      const account = parentAccountKey ? accounts.get(parentAccountKey) : ensureAccount({ key: proposalUuid ? `proposal:${proposalUuid}` : '', company: row.customer_name, companyId: row.company_id || row.companyId });
       account.proposals.push(row);
       if (proposalUuid) accountByProposalUuid.set(proposalUuid, account.accountKey);
       account.currency = this.text(row.currency) || account.currency;
@@ -403,7 +432,7 @@ const LifecycleAnalytics = {
       const agreementUuid = this.text(row.id);
       const proposalUuid = this.text(row.proposal_id);
       const parentAccountKey = this.isUuid(proposalUuid) ? accountByProposalUuid.get(proposalUuid) : '';
-      const account = parentAccountKey ? accounts.get(parentAccountKey) : ensureAccount({ key: agreementUuid ? `agreement:${agreementUuid}` : '', company: row.customer_name });
+      const account = parentAccountKey ? accounts.get(parentAccountKey) : ensureAccount({ key: agreementUuid ? `agreement:${agreementUuid}` : '', company: row.customer_name, companyId: row.company_id || row.companyId });
       account.agreements.push(row);
       if (agreementUuid) accountByAgreementUuid.set(agreementUuid, account.accountKey);
       account.currency = this.text(row.currency) || account.currency;
@@ -423,7 +452,7 @@ const LifecycleAnalytics = {
       const parentAccountKey = this.isUuid(agreementUuid) ? accountByAgreementUuid.get(agreementUuid) : '';
       const account = parentAccountKey
         ? accounts.get(parentAccountKey)
-        : ensureAccount({ key: invoiceUuid ? `invoice:${invoiceUuid}` : '', clientUuid: this.text(row.client_id) });
+        : ensureAccount({ key: invoiceUuid ? `invoice:${invoiceUuid}` : '', clientUuid: this.text(row.client_id), companyId: row.company_id || row.companyId });
       account.invoices.push(row);
       if (invoiceUuid) accountByInvoiceUuid.set(invoiceUuid, account.accountKey);
       account.currency = this.text(row.currency) || account.currency;
@@ -435,7 +464,7 @@ const LifecycleAnalytics = {
       const parentAccountKey = this.isUuid(invoiceUuid) ? accountByInvoiceUuid.get(invoiceUuid) : '';
       const account = parentAccountKey
         ? accounts.get(parentAccountKey)
-        : ensureAccount({ key: row.id ? `receipt:${this.text(row.id)}` : '', clientUuid: this.text(row.client_id) });
+        : ensureAccount({ key: row.id ? `receipt:${this.text(row.id)}` : '', clientUuid: this.text(row.client_id), companyId: row.company_id || row.companyId });
       account.receipts.push(row);
       if (!account.stages.receipt) account.stages.receipt = row.created_at || row.updated_at || row.receipt_date;
     });
@@ -535,7 +564,7 @@ const LifecycleAnalytics = {
     const agreements = Array.isArray(account.agreements) ? account.agreements : [];
     const agreementIds = new Set(agreements.map(item => this.text(item.id)).filter(Boolean));
     const agreementNumbers = new Set(agreements.map(item => this.normalizeText(item.agreement_number)).filter(Boolean));
-    const companyIds = new Set([this.text(account.clientUuid)].filter(Boolean));
+    const companyIds = new Set([this.text(account.companyId), this.text(account.clientUuid)].filter(Boolean));
     const legalNames = new Set([
       this.normalizeText(account.legalName),
       ...agreements.map(item => this.normalizeText(item.customer_legal_name))
@@ -616,7 +645,7 @@ const LifecycleAnalytics = {
 
     const row = {
       ...account,
-      legalName: this.getAnalyticsClientLegalName(account, account),
+      legalName: this.getAnalyticsClientLegalName(account, account.linkedCompany || null),
       currentStage: this.getCurrentStage({
         leadsCount: account.leads.length,
         dealsCount: account.deals.length,
@@ -703,7 +732,14 @@ const LifecycleAnalytics = {
     const q = this.norm(f.search);
     this.state.filteredRows = this.state.rows.filter(row => {
       if (q) {
+        const linkedCompany = row.linkedCompany || null;
         const haystack = [
+          row.customer_legal_name,
+          row.legal_name,
+          row.customer_name,
+          row.company_name,
+          linkedCompany?.legal_name,
+          linkedCompany?.company_name,
           row.companyName,
           row.legalName,
           row.clientBusinessId,
@@ -750,7 +786,8 @@ const LifecycleAnalytics = {
         .map(key => {
           if (key === 'All') return '<option value="All">All Clients</option>';
           const row = this.state.rows.find(item => item.accountKey === key);
-          const label = this.getAnalyticsClientLegalName(row || {}, row || {}) || row?.clientBusinessId || key;
+          const linkedCompany = row?.linkedCompany || null;
+          const label = this.getAnalyticsClientLegalName(row || {}, linkedCompany) || row?.clientBusinessId || key;
           return `<option value="${this.escape(key)}">${this.escape(label)}</option>`;
         })
         .join('');
@@ -795,7 +832,7 @@ const LifecycleAnalytics = {
     tbody.innerHTML = rows
       .map(row => `<tr>
         <td><button class="btn ghost sm" type="button" data-open-360="${this.escape(row.accountKey)}">Open</button></td>
-        <td>${this.escape(this.getAnalyticsClientLegalName(row, row) || row.clientBusinessId || '—')}</td>
+        <td>${this.escape(this.getAnalyticsClientLegalName(row, row?.linkedCompany || null) || row.clientBusinessId || '—')}</td>
         <td>${this.escape(row.currentStage)}</td>
         <td>${this.escape(row.lifecycleChain.lead || '—')} → ${this.escape(row.lifecycleChain.deal || '—')} → ${this.escape(row.lifecycleChain.proposal || '—')} → ${this.escape(row.lifecycleChain.agreement || '—')} → ${this.escape(row.lifecycleChain.invoice || '—')} → ${this.escape(row.lifecycleChain.receipt || '—')}</td>
         <td>${this.fmtMoney(row.agreementValue, row.currency)}</td>
@@ -837,7 +874,7 @@ const LifecycleAnalytics = {
 
     detailRoot.innerHTML = `
       <div class="grid cols-4">
-        <div class="card"><div class="label">Client</div><div class="value">${this.escape(this.getAnalyticsClientLegalName(selected, selected) || '—')}</div></div>
+        <div class="card"><div class="label">Client</div><div class="value">${this.escape(this.getAnalyticsClientLegalName(selected, selected?.linkedCompany || null) || '—')}</div></div>
         <div class="card"><div class="label">Current Stage</div><div class="value">${this.escape(selected.currentStage)}</div></div>
         <div class="card"><div class="label">Agreement Value</div><div class="value">${this.escape(this.fmtMoney(selected.agreementValue, selected.currency))}</div></div>
         <div class="card"><div class="label">Payment Health</div><div class="value">${this.escape(selected.paymentHealth)}</div></div>
@@ -913,7 +950,7 @@ const LifecycleAnalytics = {
       const rows = accounts
         .map(account => this.buildAccountAnalytics(account, today))
         .filter(row => row.companyName || row.clientBusinessId || row.agreementsCount || row.invoicesCount || row.receiptsCount);
-      this.state.rows = rows.sort((a, b) => String(this.getAnalyticsClientLegalName(a, a) || '').localeCompare(String(this.getAnalyticsClientLegalName(b, b) || '')));
+      this.state.rows = rows.sort((a, b) => String(this.getAnalyticsClientLegalName(a, a?.linkedCompany || null) || '').localeCompare(String(this.getAnalyticsClientLegalName(b, b?.linkedCompany || null) || '')));
       this.state.overview = this.buildOverview(this.state.rows, raw);
       this.populateFilterOptions();
       this.applyFilters();
@@ -992,7 +1029,7 @@ const LifecycleAnalytics = {
     const csv = [
       headers.join(','),
       ...rows.map(row => [
-        this.getAnalyticsClientLegalName(row, row),
+        this.getAnalyticsClientLegalName(row, row?.linkedCompany || null),
         row.currentStage,
         row.paymentState,
         row.onboardingStatus,
