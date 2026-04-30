@@ -34,7 +34,8 @@
       foregroundBannerDedup: new Map(),
       inAppSoundEnabled: false,
       inAppSoundUnlocked: false,
-      inAppSoundAudio: null
+      inAppSoundAudio: null,
+      sessionSubscriptionWired: false
     },
 
     els: {
@@ -68,17 +69,45 @@
       return String(value || '').trim().toLowerCase().replace(/\s+/g, '_');
     },
 
+    getCurrentUserRole() {
+      const candidates = [
+        global.Session?.state?.profile?.role_key,
+        global.Session?.state?.profile?.role,
+        global.Session?.state?.profile?.user_role,
+        global.Session?.state?.profile?.app_role,
+
+        global.Session?.state?.user?.role_key,
+        global.Session?.state?.user?.role,
+        global.Session?.state?.user?.user_role,
+        global.Session?.state?.user?.app_role,
+
+        global.Session?.user?.()?.role_key,
+        global.Session?.user?.()?.role,
+        global.Session?.user?.()?.user_role,
+        global.Session?.user?.()?.app_role,
+
+        global.currentUser?.role_key,
+        global.currentUser?.role,
+        global.currentUser?.user_role,
+        global.currentUser?.app_role,
+
+        global.currentProfile?.role_key,
+        global.currentProfile?.role,
+        global.currentProfile?.user_role,
+        global.currentProfile?.app_role
+      ];
+
+      for (const value of candidates) {
+        const role = this.normalizeRole(value);
+        if (role) return role;
+      }
+
+      return '';
+    },
+
     canManageNotificationHub() {
-      const role = this.normalizeRole(
-        global.Session?.user?.()?.role ||
-          global.Session?.state?.user?.role ||
-          global.Session?.state?.profile?.role_key ||
-          global.Session?.state?.profile?.role ||
-          global.currentUser?.role ||
-          global.Session?.role?.() ||
-          ''
-      );
-      return role === 'admin' || role === 'super_admin' || role === 'dev';
+      const role = this.getCurrentUserRole();
+      return ['admin', 'administrator', 'super_admin', 'dev'].includes(role);
     },
 
     requireNotificationAdmin() {
@@ -356,13 +385,20 @@
 
     applyNotificationHubPermissions() {
       const canManage = this.canManageNotificationHub();
+      console.info('[NotificationHub] permission state', {
+        role: this.getCurrentUserRole(),
+        canManage,
+        profile: global.Session?.state?.profile || null
+      });
       document.querySelectorAll('[data-admin-push-control="true"]').forEach(el => {
         el.hidden = !canManage;
         el.style.display = canManage ? '' : 'none';
+        if ('disabled' in el) el.disabled = !canManage;
       });
       document.querySelectorAll('[data-user-push-control="true"]').forEach(el => {
         el.hidden = false;
         el.style.display = '';
+        if ('disabled' in el) el.disabled = false;
       });
     },
 
@@ -1418,6 +1454,7 @@
 
     async onAuthStateChanged() {
       this.renderIosHint();
+      this.applyNotificationHubPermissions();
       if (!global.Session?.isAuthenticated?.()) {
         this.state.enabled = false;
         this.renderButtonLabel();
@@ -1425,6 +1462,7 @@
         return;
       }
       await this.syncExistingSubscription();
+      this.applyNotificationHubPermissions();
       await this.renderDiagnostics({ source: 'onAuthStateChanged' });
     },
 
@@ -1541,6 +1579,7 @@
       this.renderButtonLabel();
       this.setInAppSoundPreference(this.state.inAppSoundEnabled);
       await this.onAuthStateChanged();
+      setTimeout(() => this.applyNotificationHubPermissions(), 0);
       await this.runPwaInstallCheck({ source: 'init' });
       await this.readServiceWorkerDiagnostics();
       await this.renderDiagnostics({ source: 'init' });
@@ -1582,6 +1621,17 @@
       });
       this.els.copyDiagnosticsBtn?.addEventListener('click', () => {
         this.copyPushDiagnostics();
+      });
+      if (!this.state.sessionSubscriptionWired && global.Session?.subscribe) {
+        this.state.sessionSubscriptionWired = true;
+        global.Session.subscribe(() => {
+          setTimeout(() => this.applyNotificationHubPermissions(), 0);
+        });
+      }
+      document.addEventListener('click', event => {
+        if (event?.target?.id === 'notificationOpenHubBtn') {
+          setTimeout(() => this.applyNotificationHubPermissions(), 0);
+        }
       });
       this.els.forceSwUpdateBtn?.addEventListener('click', () => {
         this.forceServiceWorkerUpdate();
