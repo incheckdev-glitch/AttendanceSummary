@@ -256,8 +256,8 @@ const ProposalCatalog = {
           <td>${this.formatNumber(row.sort_order)}</td>
           <td>${textCell(row.updated_at)}</td>
           <td>
-            ${Permissions.canUpdateProposalCatalogItem() ? `<button class=\"btn ghost sm\" type=\"button\" data-proposal-catalog-edit=\"${id}\">Edit</button>` : ''}
-            ${Permissions.canDeleteProposalCatalogItem() ? `<button class=\"btn ghost sm\" type=\"button\" data-proposal-catalog-delete=\"${id}\">Delete</button>` : ''}
+            ${(Permissions.canUpdateProposalCatalogItem() || Permissions.can('proposal_catalog','manage') || Permissions.can('proposal_catalog_items','update')) ? `<button class=\"btn ghost sm\" type=\"button\" data-proposal-catalog-edit=\"${id}\">Edit</button>` : ''}
+            ${(Permissions.canDeleteProposalCatalogItem() || Permissions.can('proposal_catalog','manage') || Permissions.can('proposal_catalog_items','delete')) ? `<button class=\"btn ghost sm\" type=\"button\" data-proposal-catalog-delete=\"${id}\">Delete</button>` : ''}
           </td>
         </tr>`;
       })
@@ -432,10 +432,10 @@ const ProposalCatalog = {
     if (E.proposalCatalogFormDeleteBtn) {
       E.proposalCatalogFormDeleteBtn.setAttribute('data-permission-resource', 'proposal_catalog');
       E.proposalCatalogFormDeleteBtn.setAttribute('data-permission-action', 'delete');
-      E.proposalCatalogFormDeleteBtn.style.display = mode === 'edit' && Permissions.canDeleteProposalCatalogItem() ? '' : 'none';
+      E.proposalCatalogFormDeleteBtn.style.display = mode === 'edit' && (Permissions.canDeleteProposalCatalogItem() || Permissions.can('proposal_catalog','manage') || Permissions.can('proposal_catalog_items','delete')) ? '' : 'none';
     }
     if (E.proposalCatalogFormSaveBtn) {
-      const canSave = mode === 'edit' ? Permissions.canUpdateProposalCatalogItem() : Permissions.canCreateProposalCatalogItem();
+      const canSave = mode === 'edit' ? (Permissions.canUpdateProposalCatalogItem() || Permissions.can('proposal_catalog','manage') || Permissions.can('proposal_catalog_items','update')) : (Permissions.canCreateProposalCatalogItem() || Permissions.can('proposal_catalog','manage') || Permissions.can('proposal_catalog_items','create'));
       E.proposalCatalogFormSaveBtn.setAttribute('data-permission-resource', 'proposal_catalog');
       E.proposalCatalogFormSaveBtn.setAttribute('data-permission-action', mode === 'edit' ? 'update' : 'create');
       E.proposalCatalogFormSaveBtn.style.display = canSave ? '' : 'none';
@@ -485,11 +485,11 @@ const ProposalCatalog = {
   },
   async submitForm() {
     const mode = String(E.proposalCatalogForm?.dataset.mode || 'create');
-    if (mode === 'edit' && !Permissions.canUpdateProposalCatalogItem()) {
+    if (mode === 'edit' && !(Permissions.canUpdateProposalCatalogItem() || Permissions.can('proposal_catalog','manage') || Permissions.can('proposal_catalog_items','update'))) {
       UI.toast('You do not have permission to update proposal catalog items.');
       return;
     }
-    if (mode !== 'edit' && !Permissions.canCreateProposalCatalogItem()) {
+    if (mode !== 'edit' && !(Permissions.canCreateProposalCatalogItem() || Permissions.can('proposal_catalog','manage') || Permissions.can('proposal_catalog_items','create'))) {
       UI.toast('Login is required to manage proposal catalog items.');
       return;
     }
@@ -545,7 +545,7 @@ const ProposalCatalog = {
     }
   },
   async deleteById(catalogItemUuid) {
-    if (!Permissions.canDeleteProposalCatalogItem()) {
+    if (!(Permissions.canDeleteProposalCatalogItem() || Permissions.can('proposal_catalog','manage') || Permissions.can('proposal_catalog_items','delete'))) {
       UI.toast('You do not have permission to delete catalog items.');
       return;
     }
@@ -599,13 +599,13 @@ const ProposalCatalog = {
     if (E.proposalCatalogRefreshBtn)
       E.proposalCatalogRefreshBtn.addEventListener('click', () => this.loadAndRefresh({ force: true }));
     if (E.proposalCatalogCreateBtn) {
-      const canCreateCatalogItem = Permissions.canCreateProposalCatalogItem();
+      const canCreateCatalogItem = (Permissions.canCreateProposalCatalogItem() || Permissions.can('proposal_catalog','manage') || Permissions.can('proposal_catalog_items','create'));
       E.proposalCatalogCreateBtn.setAttribute('data-permission-resource', 'proposal_catalog');
       E.proposalCatalogCreateBtn.setAttribute('data-permission-action', 'create');
       E.proposalCatalogCreateBtn.style.display = canCreateCatalogItem ? '' : 'none';
       E.proposalCatalogCreateBtn.disabled = !canCreateCatalogItem;
       E.proposalCatalogCreateBtn.addEventListener('click', () => {
-      if (!Permissions.canCreateProposalCatalogItem()) return UI.toast('You do not have permission to add catalog items.');
+      if (!(Permissions.canCreateProposalCatalogItem() || Permissions.can('proposal_catalog','manage') || Permissions.can('proposal_catalog_items','create'))) return UI.toast('You do not have permission to add catalog items.');
       this.openForm();
     });
     }

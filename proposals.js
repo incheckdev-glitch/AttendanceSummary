@@ -1912,13 +1912,14 @@ const Proposals = {
             ${Permissions.canUpdateProposal() ? `<button class="btn ghost sm" type="button" data-proposal-edit="${id}" data-permission-resource="proposals" data-permission-action="update">Edit</button>` : ''}
             ${Permissions.canPreviewProposal() ? `<button class="btn ghost sm" type="button" data-proposal-preview="${id}" data-permission-resource="proposals" data-permission-action="view">Preview</button>` : ''}
             ${Permissions.canCreateAgreementFromProposal() && !this.isAgreementAlreadyCreated(row)
-              ? `<button class="btn ghost sm" type="button" data-proposal-convert-agreement="${id}" data-permission-resource="agreements" data-permission-action="create_from_proposal">Convert to Agreement</button>`
+              ? `<button class="btn ghost sm" type="button" data-proposal-convert-agreement="${id}" data-permission-resource="agreements" data-permission-action="create" data-permission-resource="agreements" data-permission-action="create_from_proposal">Convert to Agreement</button>`
               : ''}
-            ${Permissions.canDeleteProposal() ? `<button class="btn ghost sm" type="button" data-proposal-delete="${id}" data-permission-resource="proposals" data-permission-action="delete">Delete</button>` : ''}
+            ${Permissions.canDeleteProposal() ? `<button class="btn ghost sm" type="button" data-proposal-delete="${id}" data-permission-resource="proposals" data-permission-action="delete" data-permission-resource="proposals" data-permission-action="delete">Delete</button>` : ''}
           </td>
         </tr>`;
       })
       .join('');
+    applyPermissionVisibility(E.proposalsTbody);
   },
   async loadAndRefresh({ force = false } = {}) {
     if (!Session.isAuthenticated()) return;
@@ -2944,7 +2945,7 @@ const Proposals = {
     }
     if (E.proposalsCreateBtn) {
       E.proposalsCreateBtn.addEventListener('click', () => {
-        if (!Permissions.canCreateProposal()) return UI.toast('Login is required to manage proposals.');
+        if (!Permissions.canCreateProposal()) return UI.toast('You do not have permission to create proposals.');
         this.openProposalForm();
       });
     }

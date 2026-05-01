@@ -1033,7 +1033,9 @@ function requireAnyPermission(pairs = [], message = 'You do not have permission 
 
 function canShowAction(resource, action) {
   if (!window.Permissions || typeof Permissions.can !== 'function') return false;
-  return Permissions.can(resource, action) === true;
+  if (Permissions.can(resource, action) === true) return true;
+  if (String(action || '').trim().toLowerCase() !== 'manage' && Permissions.can(resource, 'manage') === true) return true;
+  return false;
 }
 
 function setActionVisibility(element, resource, action) {

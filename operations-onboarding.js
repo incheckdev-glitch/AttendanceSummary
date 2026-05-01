@@ -936,6 +936,8 @@ const OperationsOnboarding = {
     }
     const text = value => U.escapeHtml(String(value || '—'));
     const canWrite = this.canWrite();
+    const canAssignCsm = canAnyPermission([['operations_onboarding','assign_csm'], ['operations_onboarding','update'], ['operations_onboarding','manage']]);
+    const canCreateTechnicalRequest = Permissions.canRequestTechnicalAdmin();
     E.operationsOnboardingTbody.innerHTML = rows.map(row => {
       const agreementId = U.escapeAttr(row.agreement_id);
       const rowDbId = U.escapeAttr(row.id || row.db_id || '');
@@ -962,6 +964,7 @@ const OperationsOnboarding = {
           </div></td>
         </tr>`;
     }).join('');
+    applyPermissionVisibility(E.operationsOnboardingTbody);
     const paginationHost = U.ensurePaginationHost({
       hostId: 'operationsOnboardingPagination',
       anchor: E.operationsOnboardingTbody?.closest?.('.table-wrap')
@@ -1300,7 +1303,7 @@ const OperationsOnboarding = {
           return window.Agreements?.openAgreementFormById?.(agreementId, { readOnly: !this.canWrite() });
         }
         if (trigger.hasAttribute('data-op-open-details')) return this.openOnboardingDetails(detailOnboardingId, agreementId);
-        if (trigger.hasAttribute('data-op-technical-admin')) return this.requestTechnicalAdmin(agreementId);
+        if (trigger.hasAttribute('data-op-technical-admin')) { if (!Permissions.canRequestTechnicalAdmin()) return UI.toast('You do not have permission to create technical requests.'); return this.requestTechnicalAdmin(agreementId); }
         if (trigger.hasAttribute('data-op-assign-csm')) {
           if (!(Permissions.canPerformAction('operations_onboarding', 'assign_csm') || Permissions.canEdit('operations_onboarding'))) return UI.toast('You do not have permission to assign CSM.');
           return this.openAssignCsmModal(actionOnboardingId, agreementId);

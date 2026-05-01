@@ -1056,13 +1056,14 @@ const Notifications = {
   canRouteToResource(resource) {
     const normalized = String(resource || '').trim().toLowerCase();
     const perms = {
-      proposals: [['proposals','view'],['proposals','get'],['proposals','list']],
-      agreements: [['agreements','view'],['agreements','get'],['agreements','list']],
-      clients: [['clients','view'],['clients','get'],['clients','list']],
+      proposals: [['proposals','preview'],['proposals','get'],['proposals','manage']],
+      agreements: [['agreements','preview'],['agreements','get'],['agreements','manage']],
+      clients: [['clients','view'],['clients','get'],['clients','list'],['clients','manage']],
       invoices: [['invoices','view'],['invoices','get'],['invoices','list']],
       receipts: [['receipts','view'],['receipts','get'],['receipts','list']],
       technical_admin_requests: [['technical_admin_requests','view'],['technical_admin_requests','get'],['technical_admin_requests','list']],
-      operations_onboarding: [['operations_onboarding','view'],['operations_onboarding','get'],['operations_onboarding','list']]
+      operations_onboarding: [['operations_onboarding','view'],['operations_onboarding','get'],['operations_onboarding','list']],
+      insights: [['insights','preview'],['insights','view'],['insights','get'],['insights','list'],['insights','manage']]
     };
     const needed = perms[normalized] || perms[normalized.replace('technical_admin','technical_admin_requests')];
     if (!needed) return true;

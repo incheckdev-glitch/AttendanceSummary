@@ -1408,12 +1408,12 @@ const Agreements = {
         <td>${textCell(row.payment_term)}</td><td>${textCell(row.currency)}</td><td>${textCell(this.formatMoney(row.grand_total))}</td>
         <td>${textCell(row.status)}</td><td>${U.escapeHtml(U.fmtDisplayDate(row.updated_at))}</td>
         <td><div style="display:flex;gap:6px;flex-wrap:wrap;">
-        ${Permissions.canView('agreements') ? `<button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-agreement-view="${id}">View</button>` : ''}
-        ${Permissions.canUpdateAgreement() ? `<button class=\"btn ghost sm\" type=\"button\" data-permission-resource="agreements" data-permission-action="update" data-agreement-edit=\"${id}\">Edit</button>` : ''}
-        ${Permissions.canRequestTechnicalAdmin() ? `<button class=\"btn ghost sm\" type=\"button\" data-agreement-request-technical=\"${id}\">Request Technical</button>` : ''}
+        ${Permissions.canView('agreements') ? `<button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-agreement-view="${id}" data-permission-resource="agreements" data-permission-action="preview">View</button>` : ''}
+        ${Permissions.canUpdateAgreement() ? `<button class=\"btn ghost sm\" type=\"button\" data-permission-resource="agreements" data-permission-action="update" data-agreement-edit=\"${id}\" data-permission-resource=\"agreements\" data-permission-action=\"update\">Edit</button>` : ''}
+        ${Permissions.canRequestTechnicalAdmin() ? `<button class=\"btn ghost sm\" type=\"button\" data-agreement-request-technical=\"${id}\" data-permission-resource=\"technical_admin_requests\" data-permission-action=\"create\">Request Technical</button>` : ''}
         ${Permissions.canGenerateAgreementHtml() ? `<button class=\"btn ghost sm\" type=\"button\" data-permission-resource="agreements" data-permission-action="view" data-agreement-preview=\"${id}\">View Agreement</button>` : ''}
-        ${this.isSignedStatus(row.status) && Permissions.canCreateInvoiceFromAgreement() ? `<button class=\"btn ghost sm\" type=\"button\" data-permission-resource="invoices" data-permission-action="create_from_agreement" data-agreement-create-invoice=\"${id}\">Create Invoice</button>` : ''}
-        ${Permissions.canDeleteAgreement() ? `<button class=\"btn ghost sm\" type=\"button\" data-permission-resource="agreements" data-permission-action="delete" data-agreement-delete=\"${id}\">Delete</button>` : ''}
+        ${this.isSignedStatus(row.status) && Permissions.canCreateInvoiceFromAgreement() ? `<button class=\"btn ghost sm\" type=\"button\" data-permission-resource="invoices" data-permission-action="create_from_agreement" data-agreement-create-invoice=\"${id}\" data-permission-resource=\"invoices\" data-permission-action=\"create\">Create Invoice</button>` : ''}
+        ${Permissions.canDeleteAgreement() ? `<button class=\"btn ghost sm\" type=\"button\" data-permission-resource="agreements" data-permission-action="delete" data-agreement-delete=\"${id}\" data-permission-resource=\"agreements\" data-permission-action=\"delete\">Delete</button>` : ''}
         </div></td></tr>`;
     }).join('');
     const paginationHost = U.ensurePaginationHost({
@@ -2038,7 +2038,7 @@ const Agreements = {
         return this.runRowAction(`request-technical:${requestTechnicalId}`, trigger, () => this.requestTechnicalAdminFlow(requestTechnicalId));
       }
       const previewId = trigger.getAttribute('data-agreement-preview');
-      if (previewId) return this.runRowAction(`preview:${previewId}`, trigger, () => this.previewAgreementHtml(previewId));
+      if (previewId) { if (!Permissions.canGenerateAgreementHtml()) return UI.toast('You do not have permission to preview agreements.'); return this.runRowAction(`preview:${previewId}`, trigger, () => this.previewAgreementHtml(previewId)); }
       const createInvoiceId = trigger.getAttribute('data-agreement-create-invoice');
       if (createInvoiceId) return this.runRowAction(`create-invoice:${createInvoiceId}`, trigger, () => this.createInvoiceFromAgreementFlow(createInvoiceId));
       const deleteId = trigger.getAttribute('data-agreement-delete');

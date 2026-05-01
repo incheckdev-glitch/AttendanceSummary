@@ -438,6 +438,31 @@ const Workflow = {
   canProcessApprovals() {
     return Permissions.can('workflow','approve') || Permissions.can('workflow','reject') || Permissions.can('workflow','view') || Permissions.can('workflow','list');
   },
+  currentUserIdentifiers() {
+    const ctx = Session?.authContext?.() || {};
+    const profile = ctx.profile || {};
+    const email = String(profile.email || profile.user_email || Session.username?.() || '').trim().toLowerCase();
+    const id = String(profile.id || profile.user_id || profile.auth_user_id || Session.userId?.() || '').trim().toLowerCase();
+    return { id, email, role: this.currentRole() };
+  },
+  approvalRoleList(approval = {}) {
+    return this.parseRoleList(approval.approval_roles, approval.approval_roles_csv || approval.approval_role || approval.requested_for_role || '').map(v => String(v || '').trim().toLowerCase()).filter(Boolean);
+  },
+  canSeeApproval(approval = {}) {
+    if (this.isWorkflowAdminConfigAllowed()) return true;
+    const { id, email, role } = this.currentUserIdentifiers();
+    const roles = this.approvalRoleList(approval);
+    if (role && roles.includes(role)) return true;
+    const assignedIds = [approval.assigned_user_id, approval.approver_user_id, approval.reviewer_user_id, approval.user_id].map(v => String(v || '').trim().toLowerCase()).filter(Boolean);
+    if (id && assignedIds.includes(id)) return true;
+    const assignedEmails = [approval.assigned_email, approval.approver_email, approval.reviewer_email, approval.email].map(v => String(v || '').trim().toLowerCase()).filter(Boolean);
+    if (email && assignedEmails.includes(email)) return true;
+    return false;
+  },
+  canActOnApproval(approval = {}, action = 'approve') {
+    if (!this.canSeeApproval(approval)) return false;
+    return action === 'reject' ? Permissions.can('workflow', 'reject') : Permissions.can('workflow', 'approve');
+  },
 
   renderAdminConfigVisibility() {
     const allowed = this.isWorkflowAdminConfigAllowed();
@@ -1140,8 +1165,8 @@ const Workflow = {
         <td>${U.escapeHtml(normalized.resource || normalized.displayResource)}</td><td>${U.escapeHtml(normalized.displayRecordNumber)}</td><td>${U.escapeHtml(normalized.displayCompany)}</td><td>${U.escapeHtml(normalized.displayRequestedBy)}</td>
         <td>${WorkflowEngine.getWorkflowBadgeHtml(normalized.displayCurrent)}</td><td>${WorkflowEngine.getWorkflowBadgeHtml(normalized.displayRequested)}</td><td>${U.escapeHtml(this.formatDiscountPercent(normalized.displayDiscount))}</td><td>${U.escapeHtml(approvalRoles.join(', ') || normalized.displayApprovalRoles)}</td>
         <td>${WorkflowEngine.getWorkflowBadgeHtml(item.status || 'Pending Approval')}</td>
-        <td>${this.canProcessApprovals() || approvalRoles.includes(currentRole)
-          ? `<button class="chip-btn" data-approval-action="open" data-approval-id="${U.escapeHtml(item.approval_id || '')}">Open</button> <button class="chip-btn" data-approval-action="approve" data-approval-id="${U.escapeHtml(item.approval_id || '')}">Approve</button> <button class="chip-btn" data-approval-action="reject" data-approval-id="${U.escapeHtml(item.approval_id || '')}">Reject</button>`
+        <td>${this.canSeeApproval(item)
+          ? `<button class="chip-btn" data-approval-action="open" data-approval-id="${U.escapeHtml(item.approval_id || '')}">Open</button> ${this.canActOnApproval(item, 'approve') ? `<button class="chip-btn" data-approval-action="approve" data-approval-id="${U.escapeHtml(item.approval_id || '')}">Approve</button>` : ''} ${this.canActOnApproval(item, 'reject') ? `<button class="chip-btn" data-approval-action="reject" data-approval-id="${U.escapeHtml(item.approval_id || '')}">Reject</button>` : ''}`
           : '<span class="muted">No action</span>'}</td>
       </tr>
     `; }).join('') || '<tr><td colspan="10" class="muted" style="text-align:center;">No pending approvals.</td></tr>';
@@ -1220,8 +1245,15 @@ const Workflow = {
       const normalizedRules = rulesResult.status === 'fulfilled' ? this.normalizeRows(rulesResult.value).map(rule => this.normalizeWorkflowRule(rule)) : [];
       if (rulesResult.status !== 'fulfilled' && isAdminConfigAllowed) { throw rulesResult.reason || new Error('Workflow rules request failed.'); }
       this.state.rules = normalizedRules;
-      this.state.approvals = approvalsResult.status === 'fulfilled' ? this.normalizeRows(approvalsResult.value) : [];
-      this.state.audit = auditResult.status === 'fulfilled' ? this.normalizeRows(auditResult.value) : [];
+      const loadedApprovals = approvalsResult.status === 'fulfilled' ? this.normalizeRows(approvalsResult.value) : [];
+      this.state.approvals = loadedApprovals.filter(row => this.canSeeApproval(row));
+      const loadedAudit = auditResult.status === 'fulfilled' ? this.normalizeRows(auditResult.value) : [];
+      if (this.isWorkflowAdminConfigAllowed()) this.state.audit = loadedAudit;
+      else {
+        const allowedApprovalIds = new Set(this.state.approvals.map(row => String(row.approval_id || '').trim()).filter(Boolean));
+        const allowedRecordIds = new Set(this.state.approvals.flatMap(row => [row.record_id, row.proposal_id, row.agreement_id, row.invoice_id, row.receipt_id]).map(v => String(v || '').trim()).filter(Boolean));
+        this.state.audit = loadedAudit.filter(row => allowedApprovalIds.has(String(row.approval_id || '').trim()) || allowedRecordIds.has(String(row.record_id || '').trim()));
+      }
       if (approvalsResult.status !== 'fulfilled') {
         console.warn('Workflow approvals load failed', approvalsResult.reason);
       }
@@ -1334,6 +1366,7 @@ const Workflow = {
       ? (window.prompt(`${action === 'approve' ? 'Approval' : 'Rejection'} comment`, '') || '')
       : String(reviewerComment || '');
     const activeApproval = this.state.approvals.find(item => String(item?.approval_id || '').trim() === id);
+    if (!activeApproval || !this.canActOnApproval(activeApproval, action)) { UI.toast('This approval is not assigned to your role/user.'); return; }
     const normalizedApproval = this.normalizePendingApproval(activeApproval || { approval_id: id });
     if (action === 'approve') await Api.approveWorkflowRequest({ approval_id: id, reviewer_comment });
     else await Api.rejectWorkflowRequest({ approval_id: id, reviewer_comment });

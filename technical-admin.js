@@ -476,6 +476,12 @@ const TechnicalAdmin = {
       return statusFilter === 'All' || row.request_status === statusFilter;
     });
   },
+  canUpdateStatus() {
+    return canAnyPermission([['technical_admin_requests','update_status'], ['technical_admin_requests','update'], ['technical_admin_requests','manage']]);
+  },
+  canAssignRequest() {
+    return canAnyPermission([['technical_admin_requests','assign'], ['technical_admin_requests','update'], ['technical_admin_requests','manage']]);
+  },
   renderSummary() {
     if (!E.technicalAdminSummary) return;
     const rows = this.state.filteredRows;
@@ -697,6 +703,7 @@ const TechnicalAdmin = {
           <button class="btn ghost" type="button" data-permission-resource="technical_admin_requests" data-permission-action="update" data-technical-assign="1">Assign To…</button>
         </div>
       `;
+      applyPermissionVisibility(E.technicalAdminDetailsContent);
     }
     if (E.technicalAdminDetailsModal) {
       E.technicalAdminDetailsModal.classList.add('open');
@@ -747,6 +754,7 @@ const TechnicalAdmin = {
     }
   },
   async assignToFlow() {
+    if (!this.canAssignRequest()) { UI.toast('You do not have permission to assign technical admin requests.'); return; }
     const assignee = window.prompt('Assign Technical Admin to:');
     if (assignee == null) return;
     const activeId = String(this.state.activeRequestId || '').trim();

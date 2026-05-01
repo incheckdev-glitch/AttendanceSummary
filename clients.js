@@ -551,6 +551,28 @@ const Clients = {
     if (email) return contacts.find(contact => this.normalizeText(contact.email) === email) || null;
     return null;
   },
+  canRunClientAction_(action) {
+    if (action === 'proposal') return canAnyPermission([['proposals','create'], ['proposals','create_from_client'], ['proposals','manage']]);
+    if (action === 'agreement' || action === 'clone') return canAnyPermission([['agreements','create'], ['agreements','create_from_client'], ['agreements','manage']]);
+    if (action === 'invoice') return canAnyPermission([['invoices','create'], ['invoices','create_from_client'], ['invoices','manage']]);
+    if (action === 'receipt') return canAnyPermission([['receipts','create'], ['receipts','create_from_invoice'], ['receipts','manage']]);
+    return false;
+  },
+  applyClientActionVisibility_() {
+    const mappings = [
+      [E.clientActionProposalBtn, 'proposal'],
+      [E.clientActionAgreementBtn, 'agreement'],
+      [E.clientActionInvoiceBtn, 'invoice'],
+      [E.clientActionCloneBtn, 'clone']
+    ];
+    mappings.forEach(([button, action]) => {
+      if (!button) return;
+      const allowed = this.canRunClientAction_(action);
+      button.style.display = allowed ? '' : 'none';
+      button.disabled = !allowed;
+      button.setAttribute('aria-hidden', String(!allowed));
+    });
+  },
   buildClientActionPrefill_(client = {}) {
     const clientId = String(client.client_id || '').trim();
     const { agreements, preferred } = this.resolveLatestAgreementContext_(clientId);
@@ -1699,6 +1721,7 @@ const Clients = {
     if (E.clientStatementPreviewFrame) E.clientStatementPreviewFrame.srcdoc = '';
   },
   exportStatementPdf() {
+    if (!canAnyPermission([['clients','statement_export'], ['clients','export'], ['clients','manage']])) { UI.toast('You do not have permission to export statements.'); return; }
     const frame = E.clientStatementPreviewFrame;
     const previewTitle = String(E.clientStatementPreviewTitle?.textContent || 'Statement of Account Preview').trim();
     if (!frame || !String(frame.srcdoc || '').trim()) {
@@ -1818,6 +1841,7 @@ const Clients = {
     }
     if (E.clientsDetailEmpty) E.clientsDetailEmpty.style.display = 'none';
     if (E.clientsDetailPanel) E.clientsDetailPanel.style.display = '';
+    this.applyClientActionVisibility_();
     const detailData = this.state.detailCache[client.client_id] || {};
     const analytics = detailData.analytics || client.analytics || this.computeClientAnalytics_(client);
     if (E.clientStatementFiltersStatus) E.clientStatementFiltersStatus.value = this.state.statementFilters.status || 'all';
@@ -2085,6 +2109,7 @@ const Clients = {
     }
     const client = this.state.rows.find(item => item.client_id === clientId);
     if (!client) return;
+    if (!this.canRunClientAction_(action)) { UI.toast('You do not have permission for this client action.'); return; }
     try {
       if (action === 'proposal') {
         const proposalDraft = this.buildProposalDraftFromClient_(client);
@@ -2234,7 +2259,15 @@ const Clients = {
         this.render();
       });
     }
-    if (E.clientsCreateBtn) E.clientsCreateBtn.addEventListener('click', () => this.openNewClientModal());
+    if (E.clientsCreateBtn) {
+      const canCreateClient = () => canAnyPermission([['clients','create'], ['clients','manage']]);
+      E.clientsCreateBtn.style.display = canCreateClient() ? '' : 'none';
+      E.clientsCreateBtn.disabled = !canCreateClient();
+      E.clientsCreateBtn.addEventListener('click', () => {
+        if (!canCreateClient()) return UI.toast('You do not have permission to create clients.');
+        this.openNewClientModal();
+      });
+    }
     if (E.newClientCloseBtn) E.newClientCloseBtn.addEventListener('click', () => this.closeNewClientModal());
     if (E.newClientCancelBtn) E.newClientCancelBtn.addEventListener('click', () => this.closeNewClientModal());
     if (E.newClientModal) {
@@ -2245,6 +2278,7 @@ const Clients = {
     if (E.newClientForm) {
       E.newClientForm.addEventListener('submit', async event => {
         event.preventDefault();
+        if (!canAnyPermission([['clients','create'], ['clients','manage']])) { UI.toast('You do not have permission to create clients.'); return; }
         const payload = this.collectNewClientFormData();
         if (!payload?.customer_name) {
           UI.toast('Company Name is required.');

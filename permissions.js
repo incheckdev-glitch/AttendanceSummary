@@ -158,7 +158,7 @@ const Permissions = {
   tabPermissionRequirements: Object.freeze({
     issues: [{ resource: 'tickets', action: 'list' }],
     calendar: [{ resource: 'events', action: 'list' }],
-    insights: [{ resource: 'insights', action: 'list' }],
+    insights: [{ resource: 'insights', action: 'preview' }, { resource: 'insights', action: 'view' }, { resource: 'insights', action: 'get' }, { resource: 'insights', action: 'list' }, { resource: 'insights', action: 'manage' }],
     csm: [{ resource: 'csm', action: 'list' }],
     company: [{ resource: 'companies', action: 'list' }],
     contacts: [{ resource: 'contacts', action: 'list' }],
@@ -703,36 +703,50 @@ const Permissions = {
     );
   },
   canCreateProposal() {
-    return this.canCreate('proposals');
+    return this.canCreate('proposals') || this.canPerformAction('proposals', 'manage');
   },
   canUpdateProposal() {
-    return this.canEdit('proposals');
+    return this.canEdit('proposals') || this.canPerformAction('proposals', 'manage');
   },
   canDeleteProposal() {
     return this.canDelete('proposals');
   },
   canCreateProposalFromDeal() {
-    return this.canPerformAction('deals', 'convert_to_proposal') ||
+    return (
+      this.canPerformAction('deals', 'convert_to_proposal') ||
       this.canPerformAction('proposals', 'create_from_deal') ||
-      this.canCreate('proposals');
+      this.canPerformAction('proposals', 'create') ||
+      this.canPerformAction('proposals', 'manage')
+    );
   },
   canPreviewProposal() {
-    return this.canView('proposals');
+    return (
+      this.canPerformAction('proposals', 'preview') ||
+      this.canPerformAction('proposals', 'get') ||
+      this.canPerformAction('proposals', 'manage')
+    );
   },
   canGenerateProposalHtml() {
     return this.canPreviewProposal();
   },
   canCreateAgreement() {
-    return this.canCreate('agreements');
+    return this.canCreate('agreements') || this.canPerformAction('agreements', 'manage');
   },
   canUpdateAgreement() {
-    return this.canEdit('agreements');
+    return this.canEdit('agreements') || this.canPerformAction('agreements', 'manage');
   },
   canDeleteAgreement() {
     return this.canDelete('agreements');
   },
+  canPreviewAgreement() {
+    return (
+      this.canPerformAction('agreements', 'preview') ||
+      this.canPerformAction('agreements', 'get') ||
+      this.canPerformAction('agreements', 'manage')
+    );
+  },
   canGenerateAgreementHtml() {
-    return this.canPerformAction('agreements', 'generate_agreement_html');
+    return this.canPreviewAgreement();
   },
   canCreateAgreementFromProposal() {
     return this.canPerformAction('proposals', 'convert_to_agreement') ||

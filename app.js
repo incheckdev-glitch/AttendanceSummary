@@ -2705,7 +2705,13 @@ function setActiveView(view) {
       scheduleCalendarResize();
     });
   }
-  if (view === 'insights') runViewLoader('insights', () => Analytics.refresh(UI.Issues.applyFilters()));
+  if (view === 'insights') {
+    if (!canAnyPermission([['insights','preview'], ['insights','view'], ['insights','get'], ['insights','list'], ['insights','manage']])) {
+      UI.toast('You do not have permission to view AI Insights.');
+    } else {
+      runViewLoader('insights', () => Analytics.refresh(UI.Issues.applyFilters()));
+    }
+  }
   if (view === 'csm') runViewLoader('csm', () => CSMActivity.loadAndRefresh());
   if (view === 'company' && window.Companies?.loadAndRefresh) runViewLoader('company', () => Companies.loadAndRefresh());
   if (view === 'contacts' && window.Contacts?.loadAndRefresh) runViewLoader('contacts', () => Contacts.loadAndRefresh());

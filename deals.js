@@ -470,6 +470,14 @@ const Deals = {
       E.dealsExportCsvBtn.removeAttribute('title');
     }
   },
+  updateCreateButtonState() {
+    if (!E.dealsCreateBtn) return;
+    const allowed = this.canCreate();
+    E.dealsCreateBtn.style.display = allowed ? '' : 'none';
+    E.dealsCreateBtn.disabled = !allowed;
+    if (!allowed) E.dealsCreateBtn.title = 'You do not have permission to create deals.';
+    else E.dealsCreateBtn.removeAttribute('title');
+  },
   exportDealsCsv() {
     if (!Permissions.canExport('deals')) {
       UI.toast('You do not have permission to export deals.');
@@ -987,6 +995,7 @@ const Deals = {
   render() {
     if (!E.dealsState || !E.dealsTbody) return;
     this.updateExportButtonState();
+    this.updateCreateButtonState();
 
     if (this.state.loading) {
       E.dealsState.textContent = 'Loading deals…';
@@ -1031,6 +1040,7 @@ const Deals = {
 
     if (!rows.length) {
       E.dealsTbody.innerHTML = '<tr><td colspan="23" class="muted" style="text-align:center;">No deals found.</td></tr>';
+      this.updateCreateButtonState();
       return;
     }
 
@@ -1061,7 +1071,7 @@ const Deals = {
           actionButtons.push(
             `<button class="btn ghost sm" type="button" data-deal-create-proposal="${U.escapeAttr(
               row.id
-            )}" data-permission-resource="proposals" data-permission-action="create_from_deal" ${inFlight ? 'disabled' : ''}>Create Proposal</button>`
+            )}" data-permission-resource="proposals" data-permission-action="create" data-permission-resource="proposals" data-permission-action="create_from_deal" ${inFlight ? 'disabled' : ''}>Create Proposal</button>`
           );
         }
         const actions = actionButtons.length ? actionButtons.join(' ') : '<span class="muted">—</span>';
@@ -1419,11 +1429,11 @@ const Deals = {
   async submitForm() {
     if (this.state.saveInFlight) return;
     const mode = E.dealForm?.dataset.mode === 'edit' ? 'edit' : 'create';
-    if (mode === 'edit' && !Permissions.can('deals', 'update')) {
+    if (mode === 'edit' && !canAnyPermission([['deals', 'update'], ['deals', 'manage']])) {
       UI.toast('You do not have permission to update deals.');
       return;
     }
-    if (mode !== 'edit' && !Permissions.can('deals', 'create')) {
+    if (mode !== 'edit' && !this.canCreate()) {
       UI.toast('You do not have permission to create deals.');
       return;
     }
