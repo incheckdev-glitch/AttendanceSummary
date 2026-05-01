@@ -528,7 +528,7 @@ const TechnicalAdmin = {
         const onboardingId = U.escapeAttr(row.onboarding_id || '');
         const agreementId = String(row.agreement_id || '').trim();
         const agreementAction = agreementId
-          ? `<button class="btn ghost sm" type="button" data-technical-preview="${U.escapeAttr(agreementId)}" data-technical-request-preview="${requestId}">Preview Agreement</button>`
+          ? `<button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-technical-preview="${U.escapeAttr(agreementId)}" data-technical-request-preview="${requestId}">Preview Agreement</button>`
           : '';
         return `<tr data-technical-request-id="${requestDbId}" data-technical-onboarding-id="${onboardingId}" data-technical-request-key="${requestId}">
           <td>${text(row.technical_request_id)}</td>
@@ -545,7 +545,7 @@ const TechnicalAdmin = {
           <td>${text(row.assigned_to_display || row.assigned_to || row.assigned_user)}</td>
           <td>
             <div style="display:flex;gap:6px;flex-wrap:wrap;">
-              <button class="btn ghost sm" type="button" data-technical-open="${requestDbId}">Open</button>
+              <button class="btn ghost sm" type="button" data-permission-resource="technical_admin_requests" data-permission-action="view" data-technical-open="${requestDbId}">Open</button>
               ${agreementAction}
             </div>
           </td>
@@ -688,13 +688,13 @@ const TechnicalAdmin = {
         </div>
         <div class="actions" style="justify-content:flex-end;gap:8px;margin-top:14px;">
           <div style="margin-right:auto;display:flex;flex-direction:column;gap:4px;align-items:flex-start;">
-            <button class="btn ghost" type="button" data-technical-preview-detail="${U.escapeAttr(agreementId)}" ${previewDisabledAttr}>Preview Agreement</button>
+            <button class="btn ghost" type="button" data-permission-resource="agreements" data-permission-action="view" data-technical-preview-detail="${U.escapeAttr(agreementId)}" ${previewDisabledAttr}>Preview Agreement</button>
             ${previewHint}
           </div>
-          <button class="btn ghost" type="button" data-technical-status="In Progress">Mark In Progress</button>
-          <button class="btn ghost" type="button" data-technical-status="Completed">Mark Completed</button>
-          <button class="btn ghost" type="button" data-technical-status="Requested">Reopen</button>
-          <button class="btn ghost" type="button" data-technical-assign="1">Assign To…</button>
+          <button class="btn ghost" type="button" data-permission-resource="technical_admin_requests" data-permission-action="update_status" data-technical-status="In Progress">Mark In Progress</button>
+          <button class="btn ghost" type="button" data-permission-resource="technical_admin_requests" data-permission-action="update_status" data-technical-status="Completed">Mark Completed</button>
+          <button class="btn ghost" type="button" data-permission-resource="technical_admin_requests" data-permission-action="update_status" data-technical-status="Requested">Reopen</button>
+          <button class="btn ghost" type="button" data-permission-resource="technical_admin_requests" data-permission-action="update" data-technical-assign="1">Assign To…</button>
         </div>
       `;
     }
@@ -705,6 +705,10 @@ const TechnicalAdmin = {
     }
   },
   async updateStatus(status, extra = {}) {
+    if (!Permissions.canManageTechnicalAdmin()) {
+      UI.toast('You do not have permission to update technical requests.');
+      return;
+    }
     const activeId = String(this.state.activeRequestId || '').trim();
     if (!activeId) return;
     const row = this.getRowById(activeId);
@@ -797,6 +801,7 @@ const TechnicalAdmin = {
       E.technicalAdminDetailsContent.addEventListener('click', event => {
         const statusBtn = event.target?.closest?.('button[data-technical-status]');
         if (statusBtn) {
+          if (!Permissions.canManageTechnicalAdmin()) return UI.toast('You do not have permission to update technical requests.');
           const nextStatus = statusBtn.getAttribute('data-technical-status') || 'Requested';
           return this.updateStatus(nextStatus);
         }

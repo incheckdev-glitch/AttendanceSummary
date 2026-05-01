@@ -41,6 +41,7 @@ function cacheEls() {
     'exportIssueExcel',
     'copyLink',
     'editIssueBtn',
+    'deleteIssueBtn',
     'modalClose',
     'editIssueModal',
     'editIssueForm',
@@ -157,6 +158,7 @@ function cacheEls() {
     'technicalAdminDetailsCloseBtn',
     'technicalAdminDetailsContent',
     'addEventBtn',
+    'eventsExportBtn',
     'eventModal',
     'eventModalTitle',
     'eventModalClose',
@@ -1017,6 +1019,18 @@ function cacheEls() {
 
 /** UI helpers */
 
+
+function canAnyPermission(pairs = []) {
+  if (!window.Permissions || typeof Permissions.can !== 'function') return false;
+  return (Array.isArray(pairs) ? pairs : []).some(([resource, action]) => Permissions.can(resource, action) === true);
+}
+
+function requireAnyPermission(pairs = [], message = 'You do not have permission for this action.') {
+  if (canAnyPermission(pairs)) return true;
+  if (window.UI?.toast) UI.toast(message);
+  return false;
+}
+
 function canShowAction(resource, action) {
   if (!window.Permissions || typeof Permissions.can !== 'function') return false;
   return Permissions.can(resource, action) === true;
@@ -1256,3 +1270,5 @@ function buildIssueCategoryOptions(extra = []) {
 window.canShowAction = canShowAction;
 window.setActionVisibility = setActionVisibility;
 window.applyPermissionVisibility = applyPermissionVisibility;
+window.canAnyPermission = canAnyPermission;
+window.requireAnyPermission = requireAnyPermission;

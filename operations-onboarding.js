@@ -956,7 +956,7 @@ const OperationsOnboarding = {
             <button class="btn ghost sm" type="button" data-op-open-agreement="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Open Agreement</button>
             <button class="btn ghost sm" type="button" data-op-open-details="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Open Onboarding Details</button>
             ${canWrite ? `<button class="btn ghost sm" type="button" data-op-technical-admin="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Technical Admin Request</button>
-            <button class="btn ghost sm" type="button" data-op-assign-csm="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Assign CSM</button>
+            <button class="btn ghost sm" type="button" data-permission-resource="operations_onboarding" data-permission-action="assign_csm" data-op-assign-csm="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Assign CSM</button>
             <button class="btn ghost sm" type="button" data-op-mark-progress="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Mark In Progress</button>
             <button class="btn ghost sm" type="button" data-op-mark-completed="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Mark Completed</button>` : ''}
           </div></td>
@@ -1117,6 +1117,10 @@ const OperationsOnboarding = {
     }
   },
   async submitAssignCsm() {
+    if (!(Permissions.canPerformAction('operations_onboarding', 'assign_csm') || Permissions.canEdit('operations_onboarding'))) {
+      UI.toast('You do not have permission to assign CSM.');
+      return;
+    }
     const onboardingId = this.state.pendingOnboardingId;
     const agreementId = this.state.pendingAgreementId;
     if (!onboardingId) return UI.toast('Onboarding row ID is required.');
@@ -1297,7 +1301,10 @@ const OperationsOnboarding = {
         }
         if (trigger.hasAttribute('data-op-open-details')) return this.openOnboardingDetails(detailOnboardingId, agreementId);
         if (trigger.hasAttribute('data-op-technical-admin')) return this.requestTechnicalAdmin(agreementId);
-        if (trigger.hasAttribute('data-op-assign-csm')) return this.openAssignCsmModal(actionOnboardingId, agreementId);
+        if (trigger.hasAttribute('data-op-assign-csm')) {
+          if (!(Permissions.canPerformAction('operations_onboarding', 'assign_csm') || Permissions.canEdit('operations_onboarding'))) return UI.toast('You do not have permission to assign CSM.');
+          return this.openAssignCsmModal(actionOnboardingId, agreementId);
+        }
         if (trigger.hasAttribute('data-op-mark-progress')) return this.markStatusDirect(actionOnboardingId, agreementId, 'In Progress');
         if (trigger.hasAttribute('data-op-mark-completed')) return this.markStatusDirect(actionOnboardingId, agreementId, 'Completed');
       });

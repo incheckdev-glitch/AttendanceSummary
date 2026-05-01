@@ -1,4 +1,7 @@
 const Clients = {
+  canViewClientSection(resource) {
+    return Permissions.canView(resource);
+  },
   clientFields: [
     'client_id',
     'client_code',
@@ -1869,7 +1872,7 @@ const Clients = {
               <td>${U.escapeHtml(this.formatMoneyWithCurrency_(item.grand_total || 0, item.currency || displayCurrency))}</td>
               <td>${U.escapeHtml(U.fmtDisplayDate(item.service_start_date) || '—')}</td>
               <td>${U.escapeHtml(U.fmtDisplayDate(item.service_end_date) || '—')}</td>
-              <td>${item.id ? `<button class="btn ghost sm" type="button" data-agreement-view="${U.escapeAttr(item.id)}">Open</button>` : '—'}</td>
+              <td>${item.id && Permissions.canView('agreements') ? `<button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-agreement-view="${U.escapeAttr(item.id)}">Open</button>` : '—'}</td>
             </tr>`)
             .join('')
         : '<tr><td colspan="6" class="muted" style="text-align:center;">No agreements.</td></tr>';
@@ -1883,7 +1886,7 @@ const Clients = {
               <td>${U.escapeHtml(this.formatMoneyWithCurrency_(this.pickAmount_(item, ['grand_total', 'total_amount', 'amount', 'invoice_total']), item.currency || displayCurrency))}</td>
               <td>${U.escapeHtml(this.formatMoneyWithCurrency_(this.pickAmount_(item, ['amount_paid', 'paid_amount', 'received_amount']), item.currency || displayCurrency))}</td>
               <td>${U.escapeHtml(this.formatMoneyWithCurrency_(this.pickAmount_(item, ['pending_amount', 'balance_due', 'amount_due']), item.currency || displayCurrency))}</td>
-              <td>${item.id ? `<button class="btn ghost sm" type="button" data-invoice-view="${U.escapeAttr(item.id)}">Open</button>` : '—'}</td>
+              <td>${item.id && Permissions.canView('invoices') ? `<button class="btn ghost sm" type="button" data-permission-resource="invoices" data-permission-action="view" data-invoice-view="${U.escapeAttr(item.id)}">Open</button>` : '—'}</td>
             </tr>`)
             .join('')
         : '<tr><td colspan="6" class="muted" style="text-align:center;">No invoices.</td></tr>';
@@ -1896,7 +1899,7 @@ const Clients = {
               <td>${U.escapeHtml(item.payment_state || item.status || '—')}</td>
               <td>${U.escapeHtml(this.formatMoneyWithCurrency_(this.pickAmount_(item, ['received_amount', 'amount_paid', 'paid_amount', 'amount', 'total_amount']), item.currency || displayCurrency))}</td>
               <td>${U.escapeHtml(this.formatMoneyWithCurrency_(this.pickAmount_(item, ['pending_amount', 'balance_due', 'amount_due']), item.currency || displayCurrency))}</td>
-              <td>${item.id ? `<button class="btn ghost sm" type="button" data-receipt-view="${U.escapeAttr(item.id)}">Open</button>` : '—'}</td>
+              <td>${item.id && Permissions.canView('receipts') ? `<button class="btn ghost sm" type="button" data-permission-resource="receipts" data-permission-action="view" data-receipt-view="${U.escapeAttr(item.id)}">Open</button>` : '—'}</td>
             </tr>`)
             .join('')
         : '<tr><td colspan="5" class="muted" style="text-align:center;">No receipts.</td></tr>';
@@ -2151,6 +2154,7 @@ const Clients = {
       E.clientsTbody.addEventListener('click', event => {
         const row = event.target?.closest?.('[data-client-row]');
         if (row) {
+          if (!Permissions.canView('clients')) return UI.toast('You do not have permission to view clients.');
           const selectedId = String(row.getAttribute('data-client-row') || '').trim();
           this.selectClient(selectedId);
         }
@@ -2160,7 +2164,10 @@ const Clients = {
       E.clientDetailTabButtons.addEventListener('click', event => {
         const trigger = event.target?.closest?.('[data-client-detail-tab]');
         if (!trigger) return;
-        this.setDetailTab(trigger.getAttribute('data-client-detail-tab'));
+        const tab = trigger.getAttribute('data-client-detail-tab');
+        if (tab === 'statement' && !(Permissions.canPerformAction('clients','statement_view') || Permissions.canPerformAction('clients','view_statement') || Permissions.canView('clients'))) return UI.toast('You do not have permission to view client statements.');
+        if (tab === 'renewals' && !(Permissions.canView('agreements') || Permissions.canView('clients'))) return UI.toast('You do not have permission to view renewals.');
+        this.setDetailTab(tab);
       });
     }
     if (E.clientStatementApplyFiltersBtn) {
@@ -2187,13 +2194,24 @@ const Clients = {
       });
     }
     if (E.clientStatementExportPdfBtn) {
-      E.clientStatementExportPdfBtn.addEventListener('click', () => this.previewStatementPdf());
+      E.clientStatementExportPdfBtn.setAttribute('data-permission-resource', 'clients');
+      E.clientStatementExportPdfBtn.setAttribute('data-permission-action', 'statement_export');
+      E.clientStatementExportPdfBtn.style.display = (Permissions.canPerformAction('clients','statement_export') || Permissions.canExport('clients')) ? '' : 'none';
+      E.clientStatementExportPdfBtn.addEventListener('click', () => {
+        if (!(Permissions.canPerformAction('clients','statement_export') || Permissions.canExport('clients'))) return UI.toast('You do not have permission to export client statements.');
+        this.previewStatementPdf();
+      });
     }
     if (E.clientStatementPreviewCloseBtn) {
       E.clientStatementPreviewCloseBtn.addEventListener('click', () => this.closeStatementPreviewModal());
     }
     if (E.clientStatementPreviewExportPdfBtn) {
-      E.clientStatementPreviewExportPdfBtn.addEventListener('click', () => this.exportStatementPdf());
+      E.clientStatementPreviewExportPdfBtn.setAttribute('data-permission-resource', 'clients');
+      E.clientStatementPreviewExportPdfBtn.setAttribute('data-permission-action', 'statement_export');
+      E.clientStatementPreviewExportPdfBtn.addEventListener('click', () => {
+        if (!(Permissions.canPerformAction('clients','statement_export') || Permissions.canExport('clients'))) return UI.toast('You do not have permission to export client statements.');
+        this.exportStatementPdf();
+      });
     }
     if (E.clientStatementPreviewModal) {
       E.clientStatementPreviewModal.addEventListener('click', event => {

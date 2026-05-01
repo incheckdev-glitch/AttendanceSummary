@@ -424,7 +424,7 @@
               <button id="createTicketBtn" class="btn primary" aria-label="Create new ticket" type="button" data-global-create="true">
                 <span class="icon" aria-hidden="true">➕</span> Create Ticket
               </button>
-              <button id="exportCsv" class="btn" aria-label="Export filtered tickets as Excel" type="button">
+              <button id="exportCsv" class="btn" data-permission-resource="tickets" data-permission-action="export" aria-label="Export filtered tickets as Excel" type="button">
                 <span class="icon" aria-hidden="true">📥</span> Export
               </button>
               <span id="rowCount" class="muted" aria-live="polite"></span>
@@ -852,6 +852,9 @@ Sample:
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
               <button id="freezeManageBtn" class="btn ghost sm" type="button">
                 ❄️ Freeze windows
+              </button>
+              <button id="eventsExportBtn" class="btn ghost sm" type="button" data-permission-resource="events" data-permission-action="export">
+                📤 Export Events
               </button>
               <button id="addEventBtn" class="btn primary sm" type="button">
                 <span class="icon" aria-hidden="true">➕</span> New Event
@@ -1533,8 +1536,8 @@ Sample:
             <div id="clientDetailOverview" class="muted" style="margin:10px 0 14px;"></div>
             <div id="clientDetailTabButtons" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
               <button class="btn ghost sm" type="button" data-client-detail-tab="overview">Overview</button>
-              <button class="btn ghost sm" type="button" data-client-detail-tab="statement">Statement of Account</button>
-              <button class="btn ghost sm" type="button" data-client-detail-tab="renewals">Renewals &amp; Payments Timeline</button>
+              <button class="btn ghost sm" type="button" data-permission-resource="clients" data-permission-action="view_statement" data-client-detail-tab="statement">Statement of Account</button>
+              <button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-client-detail-tab="renewals">Renewals &amp; Payments Timeline</button>
             </div>
             <section id="clientOverviewSection">
               <details open>
@@ -1586,7 +1589,7 @@ Sample:
                 <input id="clientStatementSearchDoc" class="input" type="search" placeholder="Search document #" />
                 <button id="clientStatementApplyFiltersBtn" class="btn ghost sm" type="button">Apply</button>
                 <button id="clientStatementResetFiltersBtn" class="btn ghost sm" type="button">Reset</button>
-                <button id="clientStatementExportPdfBtn" class="btn ghost sm" type="button">Preview</button>
+                <button id="clientStatementExportPdfBtn" class="btn ghost sm" data-permission-resource="clients" data-permission-action="statement_export" type="button">Preview</button>
               </div>
               <div class="table-wrap" style="margin-top:8px;">
                 <table>
@@ -2295,10 +2298,13 @@ Sample:
           <button id="editIssueBtn" class="btn sm primary" type="button" aria-label="Edit ticket">
             <span class="icon" aria-hidden="true">✏️</span> Edit
           </button>
-          <button id="exportIssuePdf" class="btn sm" type="button" aria-label="Export ticket as PDF">
+          <button id="deleteIssueBtn" class="btn sm danger" type="button" aria-label="Delete ticket" data-permission-resource="tickets" data-permission-action="delete">
+            <span class="icon" aria-hidden="true">🗑️</span> Delete
+          </button>
+          <button id="exportIssuePdf" class="btn sm" data-permission-resource="tickets" data-permission-action="export" type="button" aria-label="Export ticket as PDF">
             <span class="icon" aria-hidden="true">📄</span> Export PDF
           </button>
-          <button id="exportIssueExcel" class="btn sm" type="button" aria-label="Export ticket as Excel">
+          <button id="exportIssueExcel" class="btn sm" data-permission-resource="tickets" data-permission-action="export" type="button" aria-label="Export ticket as Excel">
             <span class="icon" aria-hidden="true">📊</span> Export Excel
           </button>
           <button id="copyLink" class="btn sm" type="button" aria-label="Copy ticket link">

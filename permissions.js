@@ -712,7 +712,9 @@ const Permissions = {
     return this.canDelete('proposals');
   },
   canCreateProposalFromDeal() {
-    return this.canPerformAction('proposals', 'create_from_deal');
+    return this.canPerformAction('deals', 'convert_to_proposal') ||
+      this.canPerformAction('proposals', 'create_from_deal') ||
+      this.canCreate('proposals');
   },
   canPreviewProposal() {
     return this.canView('proposals');
@@ -733,7 +735,9 @@ const Permissions = {
     return this.canPerformAction('agreements', 'generate_agreement_html');
   },
   canCreateAgreementFromProposal() {
-    return this.canPerformAction('agreements', 'create_from_proposal');
+    return this.canPerformAction('proposals', 'convert_to_agreement') ||
+      this.canPerformAction('agreements', 'create_from_proposal') ||
+      this.canCreate('agreements');
   },
   canViewOperationsOnboarding() {
     return this.canView('operations_onboarding');
@@ -742,10 +746,15 @@ const Permissions = {
     return this.canView('technical_admin_requests');
   },
   canRequestTechnicalAdmin() {
-    return this.canCreate('technical_admin_requests');
+    return this.canCreate('technical_admin_requests') ||
+      this.canPerformAction('technical_admin_requests', 'request') ||
+      this.canPerformAction('operations_onboarding', 'request_technical_admin') ||
+      this.canEdit('operations_onboarding');
   },
   canManageTechnicalAdmin() {
-    return this.canPerformAction('technical_admin_requests', 'update_status');
+    return this.canPerformAction('technical_admin_requests', 'update_status') ||
+      this.canEdit('technical_admin_requests') ||
+      this.canPerformAction('technical_admin_requests', 'manage');
   },
   canManageOperationsOnboarding() {
     return this.canEdit('operations_onboarding');
@@ -804,13 +813,13 @@ const Permissions = {
     return this.canPerformAction('receipts', 'generate_receipt_html') || this.canView('receipts');
   },
   canCreateProposalCatalogItem() {
-    return this.canCreate('proposal_catalog');
+    return this.canCreate('proposal_catalog') || this.canPerformAction('proposal_catalog_items', 'create');
   },
   canUpdateProposalCatalogItem() {
-    return this.canEdit('proposal_catalog');
+    return this.canEdit('proposal_catalog') || this.canPerformAction('proposal_catalog_items', 'update');
   },
   canDeleteProposalCatalogItem() {
-    return this.canDelete('proposal_catalog');
+    return this.canDelete('proposal_catalog') || this.canPerformAction('proposal_catalog_items', 'delete');
   },
   canViewClients() {
     return this.canView('clients');

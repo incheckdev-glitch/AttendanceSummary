@@ -318,7 +318,7 @@ const UserAdmin = {
           <td>${U.escapeHtml(lastLogin)}</td>
           <td>
             <div style="display:flex;gap:6px;flex-wrap:wrap;">
-              <button class="chip-btn" data-user-action="edit">Edit</button>
+              <button class="chip-btn" data-permission-resource="users" data-permission-action="update" data-user-action="edit">Edit</button>
               ${resetButton}
               <button class="chip-btn" data-user-action="toggle">${active ? 'Deactivate' : 'Activate'}</button>
               ${isSelf ? '<span class="muted" style="font-size:11px;">(You)</span>' : ''}

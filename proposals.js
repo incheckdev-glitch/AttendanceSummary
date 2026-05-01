@@ -1823,9 +1823,18 @@ const Proposals = {
     if (E.proposalsSearchInput) E.proposalsSearchInput.value = this.state.search;
     if (E.proposalsCustomerFilter) E.proposalsCustomerFilter.value = this.state.customer;
     if (E.proposalsExportCsvBtn) {
-      const canView = Permissions.canPreviewProposal();
-      E.proposalsExportCsvBtn.style.display = canView ? '' : 'none';
-      E.proposalsExportCsvBtn.disabled = this.state.loading || !canView;
+      const canExport = Permissions.canExport('proposals');
+      E.proposalsExportCsvBtn.style.display = canExport ? '' : 'none';
+      E.proposalsExportCsvBtn.disabled = this.state.loading || !canExport;
+      E.proposalsExportCsvBtn.setAttribute('data-permission-resource', 'proposals');
+      E.proposalsExportCsvBtn.setAttribute('data-permission-action', 'export');
+    }
+    if (E.proposalsCreateBtn) {
+      const canCreate = Permissions.canCreateProposal();
+      E.proposalsCreateBtn.style.display = canCreate ? '' : 'none';
+      E.proposalsCreateBtn.disabled = !canCreate;
+      E.proposalsCreateBtn.setAttribute('data-permission-resource', 'proposals');
+      E.proposalsCreateBtn.setAttribute('data-permission-action', 'create');
     }
   },
   render() {
@@ -1899,13 +1908,13 @@ const Proposals = {
           <td>${U.escapeHtml(U.fmtDisplayDate(row.valid_until))}</td>
           <td>${textCell(row.generated_by)}</td>
           <td>
-            <button class="btn ghost sm" type="button" data-proposal-view="${id}">View</button>
-            ${Permissions.canUpdateProposal() ? `<button class="btn ghost sm" type="button" data-proposal-edit="${id}">Edit</button>` : ''}
-            ${Permissions.canPreviewProposal() ? `<button class="btn ghost sm" type="button" data-proposal-preview="${id}">Preview</button>` : ''}
+            ${Permissions.canPreviewProposal() ? `<button class="btn ghost sm" type="button" data-proposal-view="${id}" data-permission-resource="proposals" data-permission-action="view">View</button>` : ''}
+            ${Permissions.canUpdateProposal() ? `<button class="btn ghost sm" type="button" data-proposal-edit="${id}" data-permission-resource="proposals" data-permission-action="update">Edit</button>` : ''}
+            ${Permissions.canPreviewProposal() ? `<button class="btn ghost sm" type="button" data-proposal-preview="${id}" data-permission-resource="proposals" data-permission-action="view">Preview</button>` : ''}
             ${Permissions.canCreateAgreementFromProposal() && !this.isAgreementAlreadyCreated(row)
-              ? `<button class="btn ghost sm" type="button" data-proposal-convert-agreement="${id}">Convert to Agreement</button>`
+              ? `<button class="btn ghost sm" type="button" data-proposal-convert-agreement="${id}" data-permission-resource="agreements" data-permission-action="create_from_proposal">Convert to Agreement</button>`
               : ''}
-            ${Permissions.canDeleteProposal() ? `<button class="btn ghost sm" type="button" data-proposal-delete="${id}">Delete</button>` : ''}
+            ${Permissions.canDeleteProposal() ? `<button class="btn ghost sm" type="button" data-proposal-delete="${id}" data-permission-resource="proposals" data-permission-action="delete">Delete</button>` : ''}
           </td>
         </tr>`;
       })
@@ -2427,6 +2436,10 @@ const Proposals = {
   },
   async openProposalFormById(proposalId, { readOnly = false, trigger = null } = {}) {
     const id = String(proposalId || '').trim();
+    if (!Permissions.canPreviewProposal()) {
+      UI.toast('You do not have permission to view proposals.');
+      return;
+    }
     if (!id) return;
     if (this.state.openingProposalIds.has(id)) return;
     this.state.openingProposalIds.add(id);

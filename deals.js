@@ -571,13 +571,19 @@ const Deals = {
     }
   },
   canCreate() {
-    return Permissions.can('deals', 'create');
+    return canAnyPermission([['deals', 'create'], ['deals', 'manage']]);
+  },
+  canEdit() {
+    return canAnyPermission([['deals', 'update'], ['deals', 'manage']]);
+  },
+  canDelete() {
+    return canAnyPermission([['deals', 'delete'], ['deals', 'manage']]);
   },
   canEditDelete() {
-    return (
-      Permissions.can('deals', 'update') ||
-      Permissions.can('deals', 'delete')
-    );
+    return this.canEdit() || this.canDelete();
+  },
+  canCreateProposalFromDeal() {
+    return canAnyPermission([['deals', 'convert_to_proposal'], ['proposals', 'create_from_deal'], ['proposals', 'create'], ['proposals', 'manage']]);
   },
   isProposalAlreadyCreated(row = {}) {
     const proposalId = String(row?.proposal_id || '').trim();
@@ -1040,20 +1046,22 @@ const Deals = {
     E.dealsTbody.innerHTML = rows
       .map(row => {
         const actionButtons = [];
-        if (this.canEditDelete()) {
+        if (this.canEdit()) {
           actionButtons.push(
-            `<button class="btn ghost sm" type="button" data-deal-edit="${U.escapeAttr(row.id)}">Edit</button>`
-          );
-          actionButtons.push(
-            `<button class="btn ghost sm" type="button" data-deal-delete="${U.escapeAttr(row.id)}">Delete</button>`
+            `<button class="btn ghost sm" type="button" data-deal-edit="${U.escapeAttr(row.id)}" data-permission-resource="deals" data-permission-action="update">Edit</button>`
           );
         }
-        if (row.id && !this.isProposalAlreadyCreated(row)) {
+        if (this.canDelete()) {
+          actionButtons.push(
+            `<button class="btn ghost sm" type="button" data-deal-delete="${U.escapeAttr(row.id)}" data-permission-resource="deals" data-permission-action="delete">Delete</button>`
+          );
+        }
+        if (row.id && !this.isProposalAlreadyCreated(row) && this.canCreateProposalFromDeal()) {
           const inFlight = this.state.rowActionInFlight.has(`create-proposal:${row.id}`);
           actionButtons.push(
             `<button class="btn ghost sm" type="button" data-deal-create-proposal="${U.escapeAttr(
               row.id
-            )}" ${inFlight ? 'disabled' : ''}>Create Proposal</button>`
+            )}" data-permission-resource="proposals" data-permission-action="create_from_deal" ${inFlight ? 'disabled' : ''}>Create Proposal</button>`
           );
         }
         const actions = actionButtons.length ? actionButtons.join(' ') : '<span class="muted">—</span>';
@@ -1545,7 +1553,7 @@ const Deals = {
     if (E.dealsCreateBtn) {
       E.dealsCreateBtn.addEventListener('click', () => {
         if (!this.canCreate()) {
-          UI.toast('Only admin/dev can create deals.');
+          UI.toast('You do not have permission to create deals.');
           return;
         }
         this.openForm();
@@ -1556,14 +1564,19 @@ const Deals = {
       E.dealsTbody.addEventListener('click', event => {
         const editId = event.target?.getAttribute('data-deal-edit');
         if (editId) {
+          if (!this.canEdit()) return UI.toast('You do not have permission to edit deals.');
           const row = this.state.rows.find(item => item.id === editId);
           if (row) this.openForm(row);
           return;
         }
         const deleteId = event.target?.getAttribute('data-deal-delete');
-        if (deleteId) this.deleteDealById(deleteId);
+        if (deleteId) {
+          if (!this.canDelete()) return UI.toast('You do not have permission to delete deals.');
+          this.deleteDealById(deleteId);
+        }
         const createProposalDealId = event.target?.getAttribute('data-deal-create-proposal');
         if (createProposalDealId && window.Proposals?.createFromDealFlow) {
+          if (!this.canCreateProposalFromDeal()) return UI.toast('You do not have permission to create proposals from deals.');
           const actionKey = `create-proposal:${createProposalDealId}`;
           if (this.state.rowActionInFlight.has(actionKey)) return;
           this.state.rowActionInFlight.add(actionKey);

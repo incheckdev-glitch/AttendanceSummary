@@ -429,10 +429,15 @@ const ProposalCatalog = {
       E.proposalCatalogFormCapabilityValue.value = normalized.capability_value || '';
     if (E.proposalCatalogFormSortOrder) E.proposalCatalogFormSortOrder.value = normalized.sort_order ?? '';
     if (E.proposalCatalogFormNotes) E.proposalCatalogFormNotes.value = normalized.notes || '';
-    if (E.proposalCatalogFormDeleteBtn)
+    if (E.proposalCatalogFormDeleteBtn) {
+      E.proposalCatalogFormDeleteBtn.setAttribute('data-permission-resource', 'proposal_catalog');
+      E.proposalCatalogFormDeleteBtn.setAttribute('data-permission-action', 'delete');
       E.proposalCatalogFormDeleteBtn.style.display = mode === 'edit' && Permissions.canDeleteProposalCatalogItem() ? '' : 'none';
+    }
     if (E.proposalCatalogFormSaveBtn) {
       const canSave = mode === 'edit' ? Permissions.canUpdateProposalCatalogItem() : Permissions.canCreateProposalCatalogItem();
+      E.proposalCatalogFormSaveBtn.setAttribute('data-permission-resource', 'proposal_catalog');
+      E.proposalCatalogFormSaveBtn.setAttribute('data-permission-action', mode === 'edit' ? 'update' : 'create');
       E.proposalCatalogFormSaveBtn.style.display = canSave ? '' : 'none';
     }
 
@@ -593,10 +598,17 @@ const ProposalCatalog = {
 
     if (E.proposalCatalogRefreshBtn)
       E.proposalCatalogRefreshBtn.addEventListener('click', () => this.loadAndRefresh({ force: true }));
-    if (E.proposalCatalogCreateBtn) E.proposalCatalogCreateBtn.addEventListener('click', () => {
-      if (!Permissions.canCreateProposalCatalogItem()) return UI.toast('Login is required to manage proposal catalog items.');
+    if (E.proposalCatalogCreateBtn) {
+      const canCreateCatalogItem = Permissions.canCreateProposalCatalogItem();
+      E.proposalCatalogCreateBtn.setAttribute('data-permission-resource', 'proposal_catalog');
+      E.proposalCatalogCreateBtn.setAttribute('data-permission-action', 'create');
+      E.proposalCatalogCreateBtn.style.display = canCreateCatalogItem ? '' : 'none';
+      E.proposalCatalogCreateBtn.disabled = !canCreateCatalogItem;
+      E.proposalCatalogCreateBtn.addEventListener('click', () => {
+      if (!Permissions.canCreateProposalCatalogItem()) return UI.toast('You do not have permission to add catalog items.');
       this.openForm();
     });
+    }
 
     if (E.proposalCatalogTbody) {
       E.proposalCatalogTbody.addEventListener('click', event => {

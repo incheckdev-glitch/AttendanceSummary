@@ -3088,7 +3088,38 @@ const readiness = ext.readiness || ext.checklist || {};
   scheduleCalendarResize();
 }
 
- function renderCalendarEvents() {
+ function exportEventsCsv() {
+  if (!requireAnyPermission([['events', 'export'], ['events', 'manage']], 'You do not have permission to export events.')) return;
+  const rows = (DataStore.events || []).map(ev => ({
+    id: ev.id || '',
+    title: ev.title || '',
+    type: ev.type || '',
+    status: ev.status || '',
+    env: ev.env || '',
+    owner: ev.owner || '',
+    start: ev.start || '',
+    end: ev.end || '',
+    allDay: ev.allDay ? 'Yes' : 'No',
+    modules: Array.isArray(ev.modules) ? ev.modules.join(', ') : (ev.modules || ''),
+    issueId: ev.issueId || '',
+    description: ev.description || ''
+  }));
+  if (!rows.length) return UI.toast('No events to export.');
+  const headers = Object.keys(rows[0]);
+  const csv = [headers.join(','), ...rows.map(row => headers.map(h => `"${String(row[h] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `events-export-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  UI.toast('Events exported.');
+}
+
+function renderCalendarEvents() {
   if (!calendar) return;
   const activeTypes = new Set();
   if (E.eventFilterDeployment && E.eventFilterDeployment.checked)
@@ -5754,6 +5785,27 @@ function wireModals() {
     });
   }
 
+  if (E.deleteIssueBtn) {
+    E.deleteIssueBtn.addEventListener('click', async () => {
+      if (!requireAnyPermission([['tickets', 'delete'], ['tickets', 'manage']], 'You do not have permission to delete tickets.')) return;
+      const ticket = UI.Modals.selectedIssue;
+      const id = String(ticket?.id || E.deleteIssueBtn?.dataset?.id || '').trim();
+      if (!id) return UI.toast('Open a ticket before deleting.');
+      if (!window.confirm(`Delete ticket ${issueDisplayId(ticket) || id}? This cannot be undone.`)) return;
+      setButtonPendingState(E.deleteIssueBtn, true, 'Deleting...');
+      try {
+        await Api.requestWithSession('tickets', 'delete', { id }, { requireAuth: true });
+        UI.toast('Ticket deleted.');
+        UI.Modals.closeIssue({ userInitiated: true });
+        await refreshIssuesFromDatabase({ force: true });
+      } catch (error) {
+        UI.toast('Unable to delete ticket: ' + (error?.message || 'Unknown error'));
+      } finally {
+        setButtonPendingState(E.deleteIssueBtn, false, 'Deleting...');
+      }
+    });
+  }
+
   if (E.copyLink) {
     E.copyLink.addEventListener('click', async () => {
       const ticket = UI.Modals.selectedIssue;
@@ -6237,6 +6289,7 @@ function wireAIQuery() {
 
   if (E.aiQueryExport) {
     E.aiQueryExport.addEventListener('click', () => {
+      if (!requireAnyPermission([['insights', 'export'], ['insights', 'view'], ['insights', 'list'], ['insights', 'get']], 'You do not have permission to use AI Insights.')) return;
       if (!LAST_AI_QUERY || !LAST_AI_QUERY.rows?.length) {
         UI.toast('Nothing to export yet.');
         return;
@@ -6815,7 +6868,7 @@ const CSMActivity = {
           <td>${U.escapeHtml(row.effortRequirement || '—')}</td>
           <td>${U.escapeHtml(row.supportChannel || '—')}</td>
           <td>${U.escapeHtml(row.notes || '—')}</td>
-          <td>${this.canEditDelete() ? `<button class="btn ghost sm" type="button" data-csm-edit="${U.escapeAttr(row.id)}">Edit</button> <button class="btn ghost sm" type="button" data-csm-delete="${U.escapeAttr(row.id)}">Delete</button>` : '<span class="muted">—</span>'}</td>
+          <td>${[Permissions.canUpdateCsmActivity() ? `<button class="btn ghost sm" type="button" data-csm-edit="${U.escapeAttr(row.id)}" data-permission-resource="csm_activities" data-permission-action="update">Edit</button>` : '', Permissions.canDeleteCsmActivity() ? `<button class="btn ghost sm" type="button" data-csm-delete="${U.escapeAttr(row.id)}" data-permission-resource="csm_activities" data-permission-action="delete">Delete</button>` : ''].filter(Boolean).join(' ') || '<span class="muted">—</span>'}</td>
         </tr>`
       )
       .join('');
