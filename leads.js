@@ -435,7 +435,7 @@ const Leads = {
     return !!String(row.converted_at || '').trim();
   },
   canConvertLead(row = {}) {
-    const canConvert = Permissions.can('leads', 'convert_to_deal', { fallback: Permissions.isAdminLike() });
+    const canConvert = Permissions.can('leads', 'convert_to_deal');
     return canConvert && !this.isConvertedLead(row) && !!String(row.id || '').trim();
   },
   getConvertedDealId(response) {
@@ -1200,13 +1200,13 @@ const Leads = {
   },
   async submitForm() {
     if (this.state.saveInFlight) return;
-    if (!Permissions.canCreateLead()) {
-      UI.toast('Login is required to manage leads.');
+    const mode = E.leadForm?.dataset.mode === 'edit' ? 'edit' : 'create';
+    if (mode === 'edit' && !Permissions.canUpdateLead()) {
+      UI.toast('You do not have permission to update leads.');
       return;
     }
-    const mode = E.leadForm?.dataset.mode === 'edit' ? 'edit' : 'create';
-    if (mode === 'edit' && !this.canEditDelete()) {
-      UI.toast('Only admin/dev can update leads.');
+    if (mode !== 'edit' && !Permissions.canCreateLead()) {
+      UI.toast('You do not have permission to create leads.');
       return;
     }
     const leadId = String(E.leadForm?.dataset.id || '').trim();
@@ -1458,7 +1458,7 @@ const Leads = {
     }
   },
   async convertLeadById(leadUuid) {
-    if (!Permissions.can('leads', 'convert_to_deal', { fallback: Permissions.isAdminLike() })) {
+    if (!Permissions.can('leads', 'convert_to_deal')) {
       UI.toast('Only admin/dev can convert leads.');
       return;
     }

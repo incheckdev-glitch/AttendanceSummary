@@ -4987,8 +4987,6 @@ function wireCore() {
   }
   if (E.createTicketBtn)
     E.createTicketBtn.addEventListener('click', () => {
-      if (!requirePermission(() => Permissions.canCreateTicket(), 'Login is required to create a ticket.'))
-        return;
       const isCsmView = E.csmView?.classList.contains('active');
       const isLeadsView = E.leadsView?.classList.contains('active');
       const isAgreementsView = E.agreementsView?.classList.contains('active');
@@ -5025,6 +5023,7 @@ function wireCore() {
         CSMActivity.openForm();
         return;
       }
+      if (!Permissions.canCreateTicket()) { UI.toast('You do not have permission for this action.'); return; }
       TicketCreator.open();
     });
 
@@ -5706,8 +5705,6 @@ function wireModals() {
   if (E.createTicketForm) {
     E.createTicketForm.addEventListener('submit', async e => {
       e.preventDefault();
-      if (!requirePermission(() => Permissions.canCreateTicket(), 'Login is required to create a ticket.'))
-        return;
       if (TicketCreator.isSubmitting) return;
       TicketCreator.isSubmitting = true;
       setButtonPendingState(E.createTicketSubmit, true, 'Creating...');
