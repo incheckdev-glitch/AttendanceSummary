@@ -122,6 +122,7 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
   }),
   analytics: Object.freeze({ list: ['admin', 'dev', 'viewer', 'hoo'] }),
   insights: Object.freeze({ list: ['admin', 'dev', 'viewer', 'hoo'] }),
+  ai_insights: Object.freeze({ list: ['admin', 'dev', 'viewer', 'hoo'] }),
   notifications: Object.freeze({
     list: ['admin', 'dev', 'viewer', 'hoo'],
     get_unread_count: ['admin', 'dev', 'viewer', 'hoo'],
@@ -158,7 +159,7 @@ const Permissions = {
   tabPermissionRequirements: Object.freeze({
     issues: [{ resource: 'tickets', action: 'list' }],
     calendar: [{ resource: 'events', action: 'list' }],
-    insights: [{ resource: 'insights', action: 'preview' }, { resource: 'insights', action: 'view' }, { resource: 'insights', action: 'get' }, { resource: 'insights', action: 'list' }, { resource: 'insights', action: 'manage' }],
+    insights: [{ resource: 'ai_insights', action: 'preview' }, { resource: 'ai_insights', action: 'view' }, { resource: 'ai_insights', action: 'get' }, { resource: 'ai_insights', action: 'list' }, { resource: 'ai_insights', action: 'manage' }],
     csm: [{ resource: 'csm', action: 'list' }],
     company: [{ resource: 'companies', action: 'list' }],
     contacts: [{ resource: 'contacts', action: 'list' }],
@@ -182,7 +183,7 @@ const Permissions = {
   tabResourceMap: {
     issues: null,
     calendar: 'events',
-    insights: 'insights',
+    insights: 'ai_insights',
     csm: 'csm',
     company: 'companies',
     contacts: 'contacts',
@@ -766,11 +767,11 @@ const Permissions = {
   },
   canAccessInsights() {
     return (
-      this.canPerformAction('insights', 'preview') ||
-      this.canPerformAction('insights', 'view') ||
-      this.canPerformAction('insights', 'get') ||
-      this.canPerformAction('insights', 'list') ||
-      this.canPerformAction('insights', 'manage')
+      this.canPerformAction('ai_insights', 'preview') ||
+      this.canPerformAction('ai_insights', 'view') ||
+      this.canPerformAction('ai_insights', 'get') ||
+      this.canPerformAction('ai_insights', 'list') ||
+      this.canPerformAction('ai_insights', 'manage')
     );
   },
   canManageTechnicalAdmin() {
@@ -902,7 +903,7 @@ async function handleExpiredSession(message = 'Session expired. Please log in ag
 
 
 const PermissionAudit = {
-  resources: ['tickets','events','companies','contacts','leads','deals','proposals','agreements','operations_onboarding','technical_admin_requests','invoices','receipts','clients','analytics','notifications','notification_settings','workflow','users','role_permissions'],
+  resources: ['tickets','events','ai_insights','companies','contacts','leads','deals','proposals','agreements','operations_onboarding','technical_admin_requests','invoices','receipts','clients','analytics','notifications','notification_settings','workflow','users','role_permissions'],
   actions: ['list','get','create','update','delete','export','manage','approve','reject','convert_to_deal','create_from_deal','create_from_proposal','create_from_agreement','create_from_invoice','assign_csm','update_status'],
   inspect(resource, action) {
     const role = Permissions.normalizeRole(Session.role());

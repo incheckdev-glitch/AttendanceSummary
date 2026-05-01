@@ -2558,10 +2558,26 @@ function ensureNotificationSetupMounted() {
     card.style.display = Permissions.canManageNotificationSettings() ? '' : 'none';
   }
 }
+
+function canAccessAiInsights() {
+  return (
+    Permissions.can('ai_insights', 'preview') ||
+    Permissions.can('ai_insights', 'view') ||
+    Permissions.can('ai_insights', 'get') ||
+    Permissions.can('ai_insights', 'list') ||
+    Permissions.can('ai_insights', 'manage')
+  );
+}
+window.canAccessAiInsights = canAccessAiInsights;
+
 function setActiveView(view) {
  const names = ['issues', 'calendar', 'insights', 'csm', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
+ const requestedView = view;
  const firstAllowedView = names.find(name => Permissions.canAccessTab(name)) || 'issues';
- if (!Permissions.canAccessTab(view)) view = firstAllowedView;
+ if (!Permissions.canAccessTab(view)) {
+   if (requestedView === 'insights') UI.toast('You do not have permission to view AI Insights.');
+   view = firstAllowedView;
+ }
   names.forEach(name => {
     const tab =
       name === 'issues'
@@ -2706,7 +2722,15 @@ function setActiveView(view) {
     });
   }
   if (view === 'insights') {
-    if (!canAnyPermission([['insights','preview'], ['insights','view'], ['insights','get'], ['insights','list'], ['insights','manage']])) {
+    console.info('[AI Insights permissions]', {
+      canAccess: canAccessAiInsights(),
+      preview: Permissions.can('ai_insights', 'preview'),
+      view: Permissions.can('ai_insights', 'view'),
+      get: Permissions.can('ai_insights', 'get'),
+      list: Permissions.can('ai_insights', 'list'),
+      manage: Permissions.can('ai_insights', 'manage')
+    });
+    if (!canAccessAiInsights()) {
       UI.toast('You do not have permission to view AI Insights.');
     } else {
       runViewLoader('insights', () => Analytics.refresh(UI.Issues.applyFilters()));
@@ -6295,7 +6319,7 @@ function wireAIQuery() {
 
   if (E.aiQueryExport) {
     E.aiQueryExport.addEventListener('click', () => {
-      if (!requireAnyPermission([['insights', 'export'], ['insights', 'view'], ['insights', 'list'], ['insights', 'get']], 'You do not have permission to use AI Insights.')) return;
+      if (!requireAnyPermission([['ai_insights', 'manage'], ['ai_insights', 'preview'], ['ai_insights', 'view'], ['ai_insights', 'list'], ['ai_insights', 'get']], 'You do not have permission to use AI Insights.')) return;
       if (!LAST_AI_QUERY || !LAST_AI_QUERY.rows?.length) {
         UI.toast('Nothing to export yet.');
         return;
