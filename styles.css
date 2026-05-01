@@ -2647,3 +2647,7 @@ input[style*="min-width"]{
   .analytics-filter-control.date { width: 100%; max-width: none; }
   .analytics-filter-actions { width: 100%; }
 }
+
+
+body.permissions-loading [data-permission-resource][data-permission-action]{display:none !important;}
+.is-permission-hidden{display:none !important;}

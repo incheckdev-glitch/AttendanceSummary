@@ -1016,6 +1016,30 @@ function cacheEls() {
 }
 
 /** UI helpers */
+
+function canShowAction(resource, action) {
+  if (!window.Permissions || typeof Permissions.can !== 'function') return false;
+  return Permissions.can(resource, action) === true;
+}
+
+function setActionVisibility(element, resource, action) {
+  if (!element) return;
+  const allowed = canShowAction(resource, action);
+  element.hidden = !allowed;
+  element.disabled = !allowed;
+  element.setAttribute('aria-hidden', String(!allowed));
+  element.classList.toggle('is-permission-hidden', !allowed);
+}
+
+function applyPermissionVisibility(root = document) {
+  const nodes = root.querySelectorAll('[data-permission-resource][data-permission-action]');
+  nodes.forEach(node => {
+    const resource = node.getAttribute('data-permission-resource');
+    const action = node.getAttribute('data-permission-action');
+    setActionVisibility(node, resource, action);
+  });
+}
+
 const UI = {
   tabRegistry() {
     return [
@@ -1139,6 +1163,7 @@ const UI = {
     if (E.releasePlannerCard) E.releasePlannerCard.style.display = canChangePlanner ? '' : 'none';
     if (E.editIssueBtn) E.editIssueBtn.style.display = Permissions.canEditTicket() ? '' : 'none';
     if (E.bulkEditBtn) E.bulkEditBtn.style.display = Permissions.canEditTicket() ? '' : 'none';
+    applyPermissionVisibility(document);
     if (E.exportCsv) {
       const canExportTickets = Permissions.canExport('tickets');
       E.exportCsv.style.display = canExportTickets ? '' : 'none';
@@ -1231,3 +1256,7 @@ function buildIssueCategoryOptions(extra = []) {
     .filter(v => allowedCategories.includes(v));
   return [...new Set([...allowedCategories, ...selectedExtras])];
 }
+
+window.canShowAction = canShowAction;
+window.setActionVisibility = setActionVisibility;
+window.applyPermissionVisibility = applyPermissionVisibility;

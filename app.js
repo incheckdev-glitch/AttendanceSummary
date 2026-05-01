@@ -2752,6 +2752,15 @@ function updatePrimaryActionButton(activeView) {
   const isLeads = activeView === 'leads';
   const isAgreements = activeView === 'agreements';
   const isInvoices = activeView === 'invoices';
+  const canCreateCurrent = isCsm
+    ? Permissions.canCreateCsmActivity()
+    : isLeads
+    ? Permissions.canCreateLead()
+    : isAgreements
+    ? Permissions.canCreateAgreement()
+    : isInvoices
+    ? Permissions.canCreateInvoice()
+    : Permissions.canCreateTicket();
   E.createTicketBtn.innerHTML = isCsm
     ? '<span class="icon" aria-hidden="true">➕</span> Add activity'
     : isLeads
@@ -2765,6 +2774,8 @@ function updatePrimaryActionButton(activeView) {
     'aria-label',
     isCsm ? 'Add activity' : isLeads ? 'Create lead' : isAgreements ? 'Create agreement' : isInvoices ? 'Create invoice' : 'Create new ticket'
   );
+  E.createTicketBtn.hidden = !canCreateCurrent;
+  E.createTicketBtn.disabled = !canCreateCurrent;
 }
 
 /* ---------- Calendar wiring ---------- */
@@ -5496,7 +5507,9 @@ function wireDashboardGate() {
   };
 
   const refreshPermissionsForCurrentRole = async (force = false) => {
+    document.body.classList.add('permissions-loading');
     await Permissions.loadMatrix(force);
+    document.body.classList.remove('permissions-loading');
   };
   const logPermissionSelfTest = () => {
     if (!Session.isAuthenticated()) return;
@@ -7540,7 +7553,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       Permissions.reset();
       Permissions.state.loaded = true;
     } else {
+      document.body.classList.add('permissions-loading');
       await Permissions.loadMatrix(true);
+      document.body.classList.remove('permissions-loading');
     }
     console.info('[permission self-test]', {
       role: Session.role(),

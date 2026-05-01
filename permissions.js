@@ -914,6 +914,18 @@ const PermissionAudit = {
 };
 
 window.PermissionAudit = PermissionAudit;
+window.PermissionAudit.checkVisibleActions = function () {
+  const rows = [];
+  document.querySelectorAll('[data-permission-resource][data-permission-action]').forEach(node => {
+    const resource = node.getAttribute('data-permission-resource');
+    const action = node.getAttribute('data-permission-action');
+    const allowed = Permissions.can(resource, action);
+    const visible = !!(node.offsetWidth || node.offsetHeight || node.getClientRects().length);
+    rows.push({ text: (node.textContent || "").trim(), resource, action, allowed, visible, problem: visible && !allowed ? 'VISIBLE_BUT_DENIED' : '' });
+  });
+  console.table(rows);
+  return rows;
+};
 
 window.AppPermissions = Permissions;
 window.requirePermission = requirePermission;

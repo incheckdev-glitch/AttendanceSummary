@@ -421,7 +421,7 @@
               <div class="muted">Live feed from InCheck360 ticket records.</div>
             </div>
           <div class="table-tools">
-              <button id="createTicketBtn" class="btn primary" aria-label="Create new ticket" type="button">
+              <button id="createTicketBtn" class="btn primary" aria-label="Create new ticket" type="button" data-permission-resource="tickets" data-permission-action="create">
                 <span class="icon" aria-hidden="true">➕</span> Create Ticket
               </button>
               <button id="exportCsv" class="btn" aria-label="Export filtered tickets as Excel" type="button">
@@ -1318,7 +1318,7 @@ Sample:
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
               <button id="leadsRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
               <button id="leadsExportCsvBtn" class="btn ghost sm" type="button">Export CSV</button>
-              <button id="leadsCreateBtn" class="btn sm" type="button">Create Lead</button>
+              <button id="leadsCreateBtn" class="btn sm" type="button" data-permission-resource="leads" data-permission-action="create">Create Lead</button>
             </div>
           </div>
 
