@@ -571,12 +571,12 @@ const Deals = {
     }
   },
   canCreate() {
-    return Permissions.can('deals', 'create', { fallback: Permissions.isAdminLike() });
+    return Permissions.can('deals', 'create');
   },
   canEditDelete() {
     return (
-      Permissions.can('deals', 'update', { fallback: Permissions.isAdminLike() }) ||
-      Permissions.can('deals', 'delete', { fallback: Permissions.isAdminLike() })
+      Permissions.can('deals', 'update') ||
+      Permissions.can('deals', 'delete')
     );
   },
   isProposalAlreadyCreated(row = {}) {
@@ -1410,13 +1410,13 @@ const Deals = {
   },
   async submitForm() {
     if (this.state.saveInFlight) return;
-    if (!this.canCreate()) {
-      UI.toast('Only admin/dev can manage deals.');
+    const mode = E.dealForm?.dataset.mode === 'edit' ? 'edit' : 'create';
+    if (mode === 'edit' && !Permissions.can('deals', 'update')) {
+      UI.toast('You do not have permission to update deals.');
       return;
     }
-    const mode = E.dealForm?.dataset.mode === 'edit' ? 'edit' : 'create';
-    if (mode === 'edit' && !this.canEditDelete()) {
-      UI.toast('Only admin/dev can update deals.');
+    if (mode !== 'edit' && !Permissions.can('deals', 'create')) {
+      UI.toast('You do not have permission to create deals.');
       return;
     }
 

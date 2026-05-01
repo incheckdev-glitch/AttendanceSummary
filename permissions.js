@@ -465,6 +465,14 @@ const Permissions = {
     this.state.rows = [];
     this.state.matrix = new Map();
   },
+  isReady() {
+    return Boolean(this.state.loaded) && !this.state.loading;
+  },
+  requireReady(message = 'Permissions are still loading. Please wait.') {
+    if (this.isReady()) return true;
+    UI?.toast?.(message);
+    return false;
+  },
   can(resource, action, options = {}) {
     if (!Session.isAuthenticated()) return false;
     const role = this.normalizeRole(Session.role());
@@ -568,9 +576,12 @@ const Permissions = {
     const normalizedAction = String(action || '').trim().toLowerCase();
     if (!currentRole || !normalizedResource || !normalizedAction) return false;
 
+    if (!this.isReady()) {
+      const adminFallback = Boolean(options?.adminEmergencyFallback);
+      return adminFallback && currentRole === ROLES.ADMIN;
+    }
+
     const candidateActions = this.getActionCandidates(normalizedAction);
-    const baseAllowedRoles = this.getBaseAllowedRoles(normalizedResource, normalizedAction);
-    const baseAllowsRole = baseAllowedRoles.includes(currentRole);
     const matrixEntries = candidateActions
       .map(candidateAction => this.getMatrixEntry(normalizedResource, candidateAction))
       .filter(Boolean);
@@ -583,12 +594,12 @@ const Permissions = {
     let decision = false;
     if (hasDeniedRow || matrixDenied) {
       decision = false;
-    } else if (hasAllowedRow || matrixAllowed || baseAllowsRole) {
+    } else if (hasAllowedRow || matrixAllowed) {
       decision = true;
     } else if (typeof options.fallback === 'boolean') {
-      decision = options.fallback;
+      decision = options.fallback === true && currentRole === ROLES.ADMIN;
     } else {
-      decision = currentRole === ROLES.ADMIN;
+      decision = false;
     }
 
     console.log('[permissions check]', JSON.stringify({
@@ -870,6 +881,39 @@ async function handleExpiredSession(message = 'Session expired. Please log in ag
   } catch {}
   UI.toast(message);
 }
+
+
+const PermissionAudit = {
+  resources: ['tickets','events','companies','contacts','leads','deals','proposals','agreements','operations_onboarding','technical_admin_requests','invoices','receipts','clients','analytics','notifications','notification_settings','workflow','users','role_permissions'],
+  actions: ['list','get','create','update','delete','export','manage','approve','reject','convert_to_deal','create_from_deal','create_from_proposal','create_from_agreement','create_from_invoice','assign_csm','update_status'],
+  inspect(resource, action) {
+    const role = Permissions.normalizeRole(Session.role());
+    const matchedRows = Permissions.getMatchedRows(resource, action, role, { includeDenied: true });
+    const denied = matchedRows.some(row => row.is_allowed === false);
+    const allowed = !denied && matchedRows.some(row => row.is_allowed === true);
+    return { role, resource, action, allowed, matchedRows: matchedRows.length, reason: denied ? 'explicit_deny' : allowed ? 'explicit_allow' : 'no_rule_denied' };
+  },
+  run() {
+    const rows = [];
+    this.resources.forEach(resource => this.actions.forEach(action => rows.push(this.inspect(resource, action))));
+    console.table(rows);
+    return rows;
+  },
+  assertDenied(resource, action) {
+    const result = this.inspect(resource, action);
+    if (result.allowed) throw new Error(`Expected denied for ${resource}.${action}`);
+    console.info('[PermissionAudit] assertDenied OK', result);
+    return true;
+  },
+  assertAllowed(resource, action) {
+    const result = this.inspect(resource, action);
+    if (!result.allowed) throw new Error(`Expected allowed for ${resource}.${action}`);
+    console.info('[PermissionAudit] assertAllowed OK', result);
+    return true;
+  }
+};
+
+window.PermissionAudit = PermissionAudit;
 
 window.AppPermissions = Permissions;
 window.requirePermission = requirePermission;
