@@ -1032,7 +1032,13 @@ const Notifications = {
     if (tabKey === 'leads' && window.Leads?.loadAndRefresh) await Leads.loadAndRefresh({ force: true });
     if (tabKey === 'deals' && window.Deals?.loadAndRefresh) await Deals.loadAndRefresh({ force: true });
     if (tabKey === 'csm_activities' && window.CSMActivity?.loadAndRefresh) await CSMActivity.loadAndRefresh({ force: true });
-    if (tabKey === 'ai_insights' && window.AIInsights?.refresh) await AIInsights.refresh({ force: true });
+    if (tabKey === 'ai_insights') {
+      if (!Permissions.canAccessInsights?.()) {
+        UI.toast('You do not have permission to open this item.');
+        return false;
+      }
+      if (window.AIInsights?.refresh) await AIInsights.refresh({ force: true });
+    }
     return true;
   },
   highlightRowById(id) {
@@ -1159,6 +1165,7 @@ async routeToResourceTarget(resource, targetId, notification) {
       return approvalId ? this.highlightRowById(approvalId) || !!row : true;
     }
     if (normalizedResource === 'proposals') {
+      if (!Permissions.canPreviewProposal()) { UI.toast('You do not have permission to preview proposals.'); return false; }
       const opened = await this.openModuleTab('proposals');
       if (!opened) return false;
       if (targetId) this.setRouteHash(`#crm?tab=proposals&id=${encodeURIComponent(String(targetId).trim())}`);
@@ -1166,6 +1173,7 @@ async routeToResourceTarget(resource, targetId, notification) {
       return targetId ? this.highlightRowById(targetId) || true : true;
     }
     if (normalizedResource === 'agreements') {
+      if (!Permissions.canPreviewAgreement()) { UI.toast('You do not have permission to preview agreements.'); return false; }
       const opened = await this.openModuleTab('agreements');
       if (!opened) return false;
       if (targetId) this.setRouteHash(`#crm?tab=agreements&id=${encodeURIComponent(String(targetId).trim())}`);
@@ -1232,6 +1240,7 @@ async routeToResourceTarget(resource, targetId, notification) {
       return targetId ? this.highlightRowById(targetId) : true;
     }
     if (resource === 'ai_insights') {
+      if (!Permissions.canAccessInsights?.()) { UI.toast('You do not have permission to view this record.'); return false; }
       const opened = await this.openModuleTab('ai_insights');
       if (!opened) return false;
       return targetId ? this.highlightRowById(targetId) : true;

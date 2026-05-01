@@ -761,9 +761,17 @@ const Permissions = {
   },
   canRequestTechnicalAdmin() {
     return this.canCreate('technical_admin_requests') ||
-      this.canPerformAction('technical_admin_requests', 'request') ||
-      this.canPerformAction('operations_onboarding', 'request_technical_admin') ||
-      this.canEdit('operations_onboarding');
+      this.canPerformAction('technical_admin_requests', 'manage') ||
+      this.canPerformAction('operations_onboarding', 'request_technical_admin');
+  },
+  canAccessInsights() {
+    return (
+      this.canPerformAction('insights', 'preview') ||
+      this.canPerformAction('insights', 'view') ||
+      this.canPerformAction('insights', 'get') ||
+      this.canPerformAction('insights', 'list') ||
+      this.canPerformAction('insights', 'manage')
+    );
   },
   canManageTechnicalAdmin() {
     return this.canPerformAction('technical_admin_requests', 'update_status') ||

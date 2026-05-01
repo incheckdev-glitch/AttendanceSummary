@@ -1617,6 +1617,10 @@ const Agreements = {
   },
   async openAgreementFormById(agreementId, { readOnly = false, trigger = null } = {}) {
     const id = String(agreementId || '').trim();
+    if (!Permissions.canPreviewAgreement()) {
+      UI.toast('You do not have permission to view agreements.');
+      return;
+    }
     if (!id) return;
     if (this.state.openingAgreementIds.has(id)) return;
     this.state.openingAgreementIds.add(id);
