@@ -1777,11 +1777,12 @@ UI.Modals = {
     E.issueModal.style.display = 'flex';
     E.exportIssuePdf?.focus();
   },
-  closeIssue() {
+  closeIssue(options = {}) {
     if (!E.issueModal) return;
     E.issueModal.style.display = 'none';
     this.selectedIssue = null;
     IssueEditor.close();
+    if (options?.userInitiated) setAppHashRoute('#tickets');
     if (this.lastFocus?.focus) this.lastFocus.focus();
   },
   async openEvent(ev) {
@@ -5650,7 +5651,7 @@ function wireDashboardGate() {
 function wireModals() {
   // Issue modal
   if (E.modalClose) {
-    E.modalClose.addEventListener('click', () => UI.Modals.closeIssue());
+    E.modalClose.addEventListener('click', () => UI.Modals.closeIssue({ userInitiated: true }));
   }
   if (E.createTicketClose) {
     E.createTicketClose.addEventListener('click', () => TicketCreator.close());
@@ -5708,12 +5709,12 @@ function wireModals() {
   if (E.issueModal) {
     E.issueModal.addEventListener('click', e => {
       // click outside panel closes
-      if (e.target === E.issueModal) UI.Modals.closeIssue();
+      if (e.target === E.issueModal) UI.Modals.closeIssue({ userInitiated: true });
     });
     E.issueModal.addEventListener('keydown', e => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        UI.Modals.closeIssue();
+        UI.Modals.closeIssue({ userInitiated: true });
             } else if (e.key === 'Tab') {
         trapFocus(E.issueModal, e);
       }
