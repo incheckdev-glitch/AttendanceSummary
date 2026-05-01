@@ -313,7 +313,7 @@
                     role="tab" aria-selected="false" aria-controls="calendarView">
               <span class="icon" aria-hidden="true">📅</span> Events
             </button>
-            <button id="insightsTab" class="view-tab" data-view="insights"
+            <button id="insightsTab" class="view-tab" data-view="insights" data-permission-resource="ai_insights" data-permission-action="view"
                     role="tab" aria-selected="false" aria-controls="insightsView">
               <span class="icon" aria-hidden="true">🤖</span> AI Insights
             </button>
@@ -1015,7 +1015,7 @@ Sample:
 
         <div class="card">
           <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
-            <button id="aiInsightsRefresh" class="btn sm" type="button">Refresh Insights</button>
+            <button id="aiInsightsRefresh" class="btn sm" type="button" data-permission-resource="ai_insights" data-permission-action="view">Refresh Insights</button>
           </div>
           <div class="decision-filters" id="aiInsightFilters"></div>
         </div>
