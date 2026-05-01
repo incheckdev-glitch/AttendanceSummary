@@ -612,19 +612,19 @@ const Permissions = {
     return this.decidePermission(resource, action, role, options);
   },
   canView(resource, role = Session.role()) {
-    return this.canPerformAction(resource, 'list', role) || this.canPerformAction(resource, 'get', role);
+    return this.canPerformAction(resource, 'list', role) || this.canPerformAction(resource, 'get', role) || this.canPerformAction(resource, 'view', role) || this.canPerformAction(resource, 'manage', role);
   },
   canCreate(resource, role = Session.role()) {
-    return this.canPerformAction(resource, 'create', role) || this.canPerformAction(resource, 'save', role);
+    return this.canPerformAction(resource, 'create', role) || this.canPerformAction(resource, 'manage', role);
   },
   canEdit(resource, role = Session.role()) {
-    return this.canPerformAction(resource, 'update', role) || this.canPerformAction(resource, 'save', role);
+    return this.canPerformAction(resource, 'update', role) || this.canPerformAction(resource, 'manage', role);
   },
   canDelete(resource, role = Session.role()) {
-    return this.canPerformAction(resource, 'delete', role);
+    return this.canPerformAction(resource, 'delete', role) || this.canPerformAction(resource, 'manage', role);
   },
   canExport(resource, role = Session.role()) {
-    return this.canPerformAction(resource, 'export', role);
+    return this.canPerformAction(resource, 'export', role) || this.canPerformAction(resource, 'manage', role);
   },
   isAdmin() {
     return this.normalizeRole(Session.role()) === ROLES.ADMIN;
@@ -642,31 +642,31 @@ const Permissions = {
     return this.isAdmin() || this.isDev();
   },
   canCreateTicket() {
-    return this.canCreate('tickets');
+    return this.canPerformAction('tickets', 'create') || this.canPerformAction('tickets', 'manage');
   },
   canCreateLead() {
     return this.canCreate('leads');
   },
   canViewCsmActivity() {
-    return this.canView('csm');
+    return this.canView('csm_activities');
   },
   canExportCsmActivity() {
     return this.canExport('csm_activities');
   },
   canCreateCsmActivity() {
-    return this.canCreate('csm');
+    return this.canCreate('csm_activities');
   },
   canUpdateCsmActivity() {
-    return this.canEdit('csm');
+    return this.canEdit('csm_activities');
   },
   canDeleteCsmActivity() {
-    return this.canDelete('csm');
+    return this.canDelete('csm_activities');
   },
   canManageCsmActivity() {
     return this.canUpdateCsmActivity() || this.canDeleteCsmActivity();
   },
   canEditTicket() {
-    return this.canEdit('tickets');
+    return this.canPerformAction('tickets', 'update') || this.canPerformAction('tickets', 'manage');
   },
   canUpdateLead() {
     return this.canEdit('leads');
@@ -907,8 +907,7 @@ window.PermissionAudit.checkVisibleActions = function () {
     const resource = node.getAttribute('data-permission-resource');
     const action = node.getAttribute('data-permission-action');
     const allowed = Permissions.can(resource, action);
-    const computed = window.getComputedStyle ? window.getComputedStyle(node) : null;
-    const visible = !node.hidden && !node.disabled && computed?.display !== 'none' && computed?.visibility !== 'hidden' && computed?.opacity !== '0';
+    const visible = !!(node.offsetWidth || node.offsetHeight || node.getClientRects().length);
     rows.push({ text: (node.textContent || "").trim(), resource, action, allowed, visible, problem: visible && !allowed ? 'VISIBLE_BUT_DENIED' : '' });
   });
   console.table(rows);
@@ -918,3 +917,7 @@ window.PermissionAudit.checkVisibleActions = function () {
 window.AppPermissions = Permissions;
 window.requirePermission = requirePermission;
 window.handleExpiredSession = handleExpiredSession;
+
+window.PermissionAudit.deniedVisible = function () {
+  return window.PermissionAudit.checkVisibleActions().filter(row => row.problem);
+};
