@@ -3471,7 +3471,8 @@ Sample:
     <div class="modal-content" style="max-width:720px;">
       <div class="header"><h2 style="margin:0;font-size:20px;">Assign to CSM</h2><div class="actions"><button class="modal-close" id="operationsAssignCsmCloseBtn" aria-label="Close assign CSM">✕</button></div></div>
       <form id="operationsAssignCsmForm">
-        <div class="filter-row"><label class="muted" for="operationsAssignCsmName">CSM Name</label><input id="operationsAssignCsmName" class="input" type="text" required /></div>
+        <div class="filter-row"><label class="muted" for="operationsAssignCsmName">CSM Name</label><select id="operationsAssignCsmName" class="input" required><option value="">Select CSM</option></select></div>
+        <div id="operationsAssignCsmNoUsers" class="muted" style="min-height:18px;"></div>
         <div class="filter-row"><label class="muted" for="operationsAssignCsmHandoverNote">Handover Note</label><textarea id="operationsAssignCsmHandoverNote" class="input" rows="4"></textarea></div>
         <div class="actions" style="justify-content:flex-end;gap:8px;margin-top:12px;"><button id="operationsAssignCsmCancelBtn" type="button" class="btn ghost">Cancel</button><button type="submit" class="btn">Assign</button></div>
       </form>
