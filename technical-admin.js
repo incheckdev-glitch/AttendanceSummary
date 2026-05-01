@@ -635,6 +635,7 @@ const TechnicalAdmin = {
     if (!E.technicalAdminDetailsModal) return;
     E.technicalAdminDetailsModal.classList.remove('open');
     E.technicalAdminDetailsModal.setAttribute('aria-hidden', 'true');
+    if (window.setAppHashRoute) setAppHashRoute('#technical-admin');
   },
   async openDetails(requestId) {
     const id = String(requestId || '').trim();
@@ -700,6 +701,7 @@ const TechnicalAdmin = {
     if (E.technicalAdminDetailsModal) {
       E.technicalAdminDetailsModal.classList.add('open');
       E.technicalAdminDetailsModal.setAttribute('aria-hidden', 'false');
+    if (window.setAppHashRoute && window.buildRecordHashRoute) setAppHashRoute(buildRecordHashRoute('technical_admin_requests', row || {}));
     }
   },
   async updateStatus(status, extra = {}) {

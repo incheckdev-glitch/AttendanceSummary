@@ -2524,11 +2524,13 @@ const Proposals = {
 
     E.proposalFormModal.style.display = 'flex';
     E.proposalFormModal.setAttribute('aria-hidden', 'false');
+    if (window.setAppHashRoute && window.buildRecordHashRoute) setAppHashRoute(buildRecordHashRoute('proposals', base || {}));
   },
   closeProposalForm() {
     if (!E.proposalFormModal) return;
     E.proposalFormModal.style.display = 'none';
     E.proposalFormModal.setAttribute('aria-hidden', 'true');
+    if (window.setAppHashRoute) setAppHashRoute('#crm?tab=proposals');
   },
   setFormBusy(value) {
     const busy = !!value;

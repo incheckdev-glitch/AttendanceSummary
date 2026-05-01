@@ -1009,6 +1009,7 @@ const OperationsOnboarding = {
         </div>`;
       E.operationsOnboardingDetailsModal.classList.add('open');
       E.operationsOnboardingDetailsModal.setAttribute('aria-hidden', 'false');
+      if (window.setAppHashRoute && window.buildRecordHashRoute) setAppHashRoute(buildRecordHashRoute('operations_onboarding', detail || {}));
     } catch (error) {
       UI.toast('Unable to load onboarding details: ' + (error?.message || 'Unknown error'));
     }
@@ -1017,6 +1018,7 @@ const OperationsOnboarding = {
     if (!modalEl) return;
     modalEl.classList.remove('open');
     modalEl.setAttribute('aria-hidden', 'true');
+    if (modalEl === E.operationsOnboardingDetailsModal && window.setAppHashRoute) setAppHashRoute('#operations-onboarding');
   },
   openAssignCsmModal(onboardingId, agreementId, onDone) {
     if (!this.canWrite()) return UI.toast('Insufficient permissions.');
