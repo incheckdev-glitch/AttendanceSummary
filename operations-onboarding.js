@@ -207,11 +207,7 @@ const OperationsOnboarding = {
     return !Permissions.isViewer() && Permissions.canManageOperationsOnboarding();
   },
   canRequestTechnicalAdmin() {
-    return (
-      this.canWrite() ||
-      (typeof Permissions.canRequestAgreementIncheckLite === 'function' && Permissions.canRequestAgreementIncheckLite()) ||
-      (typeof Permissions.canRequestAgreementIncheckFull === 'function' && Permissions.canRequestAgreementIncheckFull())
-    );
+    return Permissions.canRequestTechnicalAdmin();
   },
   extractRows(response) {
     const candidates = [response, response?.items, response?.rows, response?.data, response?.result, response?.payload, response?.data?.rows];
@@ -937,7 +933,7 @@ const OperationsOnboarding = {
     const text = value => U.escapeHtml(String(value || '—'));
     const canWrite = this.canWrite();
     const canAssignCsm = canAnyPermission([['operations_onboarding','assign_csm'], ['operations_onboarding','update'], ['operations_onboarding','manage']]);
-    const canCreateTechnicalRequest = Permissions.canRequestTechnicalAdmin();
+    const canCreateTechnicalRequest = this.canRequestTechnicalAdmin();
     E.operationsOnboardingTbody.innerHTML = rows.map(row => {
       const agreementId = U.escapeAttr(row.agreement_id);
       const rowDbId = U.escapeAttr(row.id || row.db_id || '');
@@ -957,8 +953,8 @@ const OperationsOnboarding = {
           <td><div style="display:flex;gap:6px;flex-wrap:wrap;">
             <button class="btn ghost sm" type="button" data-op-open-agreement="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Open Agreement</button>
             <button class="btn ghost sm" type="button" data-op-open-details="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Open Onboarding Details</button>
-            ${canWrite ? `<button class="btn ghost sm" type="button" data-op-technical-admin="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Technical Admin Request</button>
-            <button class="btn ghost sm" type="button" data-permission-resource="operations_onboarding" data-permission-action="assign_csm" data-op-assign-csm="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Assign CSM</button>
+            ${canCreateTechnicalRequest ? `<button class="btn ghost sm" type="button" data-op-technical-admin="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Technical Admin Request</button>` : ''}
+            ${canWrite ? `<button class="btn ghost sm" type="button" data-permission-resource="operations_onboarding" data-permission-action="assign_csm" data-op-assign-csm="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Assign CSM</button>
             <button class="btn ghost sm" type="button" data-op-mark-progress="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Mark In Progress</button>
             <button class="btn ghost sm" type="button" data-op-mark-completed="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Mark Completed</button>` : ''}
           </div></td>
