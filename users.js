@@ -23,8 +23,8 @@ const UserAdmin = {
     if (E.userCreateForm) {
       E.userCreateForm.addEventListener('submit', async e => {
         e.preventDefault();
-        if (!Permissions.canManageUsers()) {
-          UI.toast('Only admin can manage users.');
+        if (!(Permissions.can('users','create') || Permissions.can('users','manage'))) {
+          UI.toast('You do not have permission to create users.');
           return;
         }
         const payload = {
@@ -72,6 +72,8 @@ const UserAdmin = {
       });
     }
     this.loadRoles();
+    const canCreate = Permissions.can('users','create') || Permissions.can('users','manage');
+    if (E.userCreateForm) E.userCreateForm.style.display = canCreate ? '' : 'none';
   },
   normalizeRole(value) {
     return String(value || '')
@@ -135,6 +137,8 @@ const UserAdmin = {
     if (!Permissions.canManageUsers()) return;
     if (!this.state.roles.length && !this.state.loadingRoles) {
       await this.loadRoles();
+    const canCreate = Permissions.can('users','create') || Permissions.can('users','manage');
+    if (E.userCreateForm) E.userCreateForm.style.display = canCreate ? '' : 'none';
     }
     if (this.state.loading && !force) return;
     this.state.loading = true;
@@ -342,6 +346,8 @@ const UserAdmin = {
     const userId = this.getUserId(user);
     const isSelf = userId === String(currentUserId || '');
     await this.loadRoles();
+    const canCreate = Permissions.can('users','create') || Permissions.can('users','manage');
+    if (E.userCreateForm) E.userCreateForm.style.display = canCreate ? '' : 'none';
     if (!this.state.roles.length) return UI.toast('No roles available. Refresh Roles & Permissions first.');
     this.state.editingUserId = userId;
     this.state.editingUser = user;

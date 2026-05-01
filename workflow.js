@@ -436,7 +436,7 @@ const Workflow = {
     return this.isWorkflowAdminConfigAllowed();
   },
   canProcessApprovals() {
-    return ['admin', 'dev'].includes(this.currentRole());
+    return Permissions.can('workflow','approve') || Permissions.can('workflow','reject') || Permissions.can('workflow','view') || Permissions.can('workflow','list');
   },
 
   renderAdminConfigVisibility() {
@@ -449,7 +449,7 @@ const Workflow = {
     toggle('workflowBuilderCard', allowed);
     toggle('workflowDiscountPolicyCard', allowed);
     toggle('workflowTransitionMatrixCard', allowed);
-    toggle('workflowAdminConfigMessage', !allowed);
+    toggle('workflowAdminConfigMessage', false);
     return allowed;
   },
   normalizeRows(response) {
@@ -1209,17 +1209,16 @@ const Workflow = {
           console.warn('Workflow roles preload failed', error);
         }
       }
-      const canReadWorkflowAdminData = this.canProcessApprovals();
+      const isAdminConfigAllowed = this.isWorkflowAdminConfigAllowed();
+      const canReadWorkflowApprovals = this.canProcessApprovals();
       this.renderAdminConfigVisibility();
       const [rulesResult, approvalsResult, auditResult] = await Promise.allSettled([
-        Api.listWorkflowRules({}, { forceRefresh: true }),
-        Api.listPendingWorkflowApprovals(),
-        canReadWorkflowAdminData ? Api.listWorkflowAudit() : Promise.resolve([])
+        isAdminConfigAllowed ? Api.listWorkflowRules({}, { forceRefresh: true }) : Promise.resolve([]),
+        canReadWorkflowApprovals ? Api.listPendingWorkflowApprovals() : Promise.resolve([]),
+        canReadWorkflowApprovals ? Api.listWorkflowAudit() : Promise.resolve([])
       ]);
-      if (rulesResult.status !== 'fulfilled') {
-        throw rulesResult.reason || new Error('Workflow rules request failed.');
-      }
-      const normalizedRules = this.normalizeRows(rulesResult.value).map(rule => this.normalizeWorkflowRule(rule));
+      const normalizedRules = rulesResult.status === 'fulfilled' ? this.normalizeRows(rulesResult.value).map(rule => this.normalizeWorkflowRule(rule)) : [];
+      if (rulesResult.status !== 'fulfilled' && isAdminConfigAllowed) { throw rulesResult.reason || new Error('Workflow rules request failed.'); }
       this.state.rules = normalizedRules;
       this.state.approvals = approvalsResult.status === 'fulfilled' ? this.normalizeRows(approvalsResult.value) : [];
       this.state.audit = auditResult.status === 'fulfilled' ? this.normalizeRows(auditResult.value) : [];
