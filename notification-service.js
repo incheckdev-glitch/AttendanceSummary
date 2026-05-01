@@ -7,7 +7,7 @@
     agreements: ['agreement_created','agreement_created_from_proposal','agreement_requires_signature','agreement_signed'],
     invoices: ['invoice_created','invoice_created_from_agreement','invoice_payment_state_changed','invoice_fully_paid'],
     receipts: ['receipt_created','receipt_created_from_invoice','receipt_updated'],
-    operations_onboarding: ['onboarding_created','operations_onboarding_created','onboarding_status_changed','onboarding_request_submitted'],
+    operations_onboarding: ['onboarding_created','operations_onboarding_created','onboarding_status_changed','onboarding_request_submitted','assigned_csm'],
     technical_admin_requests: ['technical_request_submitted','technical_request_status_changed'],
     events: ['event_created','event_updated','event_status_changed','event_schedule_changed','event_deleted'],
     workflow: ['workflow_approval_requested','workflow_approved','workflow_rejected']

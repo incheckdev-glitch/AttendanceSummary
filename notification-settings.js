@@ -8,11 +8,49 @@ const NotificationSetup = {
     ['agreements',['agreement_created','agreement_created_from_proposal','agreement_requires_signature','agreement_signed']],
     ['invoices',['invoice_created','invoice_created_from_agreement','invoice_payment_state_changed','invoice_fully_paid']],
     ['receipts',['receipt_created','receipt_created_from_invoice','receipt_updated']],
-    ['operations_onboarding',['onboarding_created','operations_onboarding_created','onboarding_status_changed','onboarding_request_submitted']],
+    ['operations_onboarding',['onboarding_created','operations_onboarding_created','onboarding_status_changed','onboarding_request_submitted','assigned_csm']],
     ['technical_admin_requests',['technical_request_submitted','technical_request_status_changed']],
     ['events',['event_created','event_updated','event_status_changed','event_schedule_changed','event_deleted']],
     ['workflow',['workflow_approval_requested','workflow_approved','workflow_rejected']]
   ],
+
+
+
+  formatResourceLabel(resource = '') {
+    return String(resource || '')
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, char => char.toUpperCase());
+  },
+
+  formatActionLabel(action = '') {
+    if (action === 'assigned_csm') return 'New Client / Location Assigned to You';
+    return String(action || '')
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, char => char.toUpperCase());
+  },
+
+  getNotificationDescription(resource, action) {
+    if (resource === 'operations_onboarding' && action === 'assigned_csm') {
+      return 'Notify the selected CSM when a new client or location is assigned to them in Operations Onboarding.';
+    }
+    return '';
+  },
+
+  getEventRegistry() {
+    const registry = new Map();
+    this.moduleActions.forEach(([resource, actions]) => {
+      actions.forEach(action => {
+        registry.set(`${resource}:${action}`, { resource, action });
+      });
+    });
+    this.state.rules.forEach(rule => {
+      const resource = String(rule?.resource || '').trim();
+      const action = String(rule?.action || '').trim();
+      if (!resource || !action) return;
+      registry.set(`${resource}:${action}`, { resource, action });
+    });
+    return [...registry.values()];
+  },
 
   wire() {
     const root = document.getElementById('notificationSetupCard');
@@ -45,6 +83,13 @@ const NotificationSetup = {
         dedupe_window_seconds: Number(rule?.dedupe_window_seconds || 60)
       }));
       this.state.roles = Array.isArray(rolesRes?.rows) ? rolesRes.rows : Array.isArray(rolesRes) ? rolesRes : [];
+      console.info('[notification setup] rules loaded', {
+        count: this.state.rules.length,
+        hasAssignedCsm: this.state.rules.some(rule =>
+          rule.resource === 'operations_onboarding' &&
+          rule.action === 'assigned_csm'
+        )
+      });
       this.render();
     } catch (error) {
       UI.toast(String(error?.message || 'Unable to load notification settings.'));
@@ -143,14 +188,16 @@ const NotificationSetup = {
       if (this.state.search && !action.includes(this.state.search)) return false;
       return true;
     };
-    this.moduleActions.forEach(([resource, actions]) => {
-      actions.forEach(action => {
+    this.getEventRegistry().forEach(({ resource, action }) => {
         const rule = this.getRule(resource, action) || {};
         const isEnabled = rule.is_enabled !== false;
         if (!matches(resource, action, isEnabled)) return;
         const noRecipients = !(rule.recipient_roles?.length || rule.recipient_user_ids?.length || rule.recipient_emails?.length || rule.users_from_record?.length);
+        const actionLabel = this.formatActionLabel(action);
+        const resourceLabel = this.formatResourceLabel(resource);
+        const description = String(rule.description || this.getNotificationDescription(resource, action) || '').trim();
         rows.push(`<tr data-resource="${resource}" data-action="${action}">
-          <td>${resource}</td><td>${action}</td><td class="muted">${action.replaceAll('_',' ')}</td>
+          <td>${resourceLabel}</td><td>${action}</td><td class="muted">${U.escapeHtml(description || actionLabel)}</td>
           <td><input type="checkbox" data-k="enabled" ${isEnabled ? 'checked' : ''}></td>
           <td><input type="checkbox" data-k="inapp" ${(rule.in_app_enabled !== false) ? 'checked' : ''}></td>
           <td><input type="checkbox" data-k="pwa" ${(rule.pwa_enabled !== false) ? 'checked' : ''}></td>
@@ -166,7 +213,9 @@ const NotificationSetup = {
             ${noRecipients ? '<div class="muted" style="font-size:11px;color:#b45309;">No recipients configured. This notification will be skipped.</div>' : ''}
           </td>
         </tr>`);
-      });
+      if (resource === 'operations_onboarding' && action === 'assigned_csm') {
+        console.info('[notification setup] rendered event', { resource, action });
+      }
     });
     tbody.innerHTML = rows.join('') || '<tr><td colspan="13" class="muted">No matching rules.</td></tr>';
     state.textContent = `${rows.length} rules shown · ${this.state.dirty.size} unsaved changes`;
