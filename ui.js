@@ -1029,6 +1029,7 @@ function setActionVisibility(element, resource, action) {
   element.disabled = !allowed;
   element.setAttribute('aria-hidden', String(!allowed));
   element.classList.toggle('is-permission-hidden', !allowed);
+  element.style.display = allowed ? '' : 'none';
 }
 
 function applyPermissionVisibility(root = document) {
@@ -1125,34 +1126,29 @@ const UI = {
     );
     console.info('[Tabs] role used for filtering', { role });
     const visibleTabs = [];
-    tabRegistry.forEach(rule => {
-      let allowed = true;
-      try {
-        if (!rule.alwaysVisible) {
-          if (rule.key === 'operationsOnboarding') {
-            allowed = Permissions.canViewOperationsOnboarding();
-          } else if (rule.key === 'technicalAdmin') {
-            allowed = Permissions.canViewTechnicalAdmin();
-          } else if (rule.key === 'users') {
-            allowed = Permissions.canManageUsers();
-          } else if (rule.key === 'rolePermissions') {
-            allowed = Permissions.isAdmin();
-          } else if (rule.key === 'notificationSetup') {
-            allowed = Permissions.canManageNotificationSettings();
-          } else if (rule.key === 'workflow') {
-            allowed = Permissions.canManageWorkflow();
-          } else {
-            allowed = Permissions.canAccessTab(rule.key);
+    if (Permissions.isAdmin()) {
+      tabRegistry.forEach(rule => {
+        if (rule.tabEl) rule.tabEl.style.display = '';
+        visibleTabs.push(rule.key);
+      });
+      console.info('[tabs] admin bypass applied', { role, count: visibleTabs.length });
+    } else {
+      tabRegistry.forEach(rule => {
+        let allowed = true;
+        try {
+          if (!rule.alwaysVisible) {
+            const requirements = Permissions.getTabPermissionRequirements(rule.key);
+            allowed = !requirements.length || requirements.some(req => Permissions.can(req.resource, req.action) || Permissions.can(req.resource, 'view'));
           }
+        } catch (error) {
+          console.error(`[Tabs] permission check failed for "${rule.key}"`, error);
+          allowed = rule.alwaysVisible || rule.key === 'issues';
         }
-      } catch (error) {
-        console.error(`[Tabs] permission check failed for "${rule.key}"`, error);
-        allowed = rule.alwaysVisible || rule.key === 'issues';
-      }
-      if (rule.tabEl) rule.tabEl.style.display = allowed ? '' : 'none';
-      if (allowed) visibleTabs.push(rule.key);
-      if (!allowed && rule.viewEl?.classList.contains('active')) setActiveView('issues');
-    });
+        if (rule.tabEl) rule.tabEl.style.display = allowed ? '' : 'none';
+        if (allowed) visibleTabs.push(rule.key);
+        if (!allowed && rule.viewEl?.classList.contains('active')) setActiveView('issues');
+      });
+    }
     console.log('[tabs] permission-aware filtering result', visibleTabs);
     if (E.addEventBtn) E.addEventBtn.style.display = Permissions.canManageEvents() ? '' : 'none';
     if (E.freezeManageBtn) E.freezeManageBtn.style.display = canManageFreezeWindows ? '' : 'none';

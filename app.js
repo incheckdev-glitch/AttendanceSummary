@@ -7614,3 +7614,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 });
+
+
+document.addEventListener('click', event => {
+  const node = event.target?.closest?.('[data-permission-resource][data-permission-action]');
+  if (!node) return;
+  const resource = node.getAttribute('data-permission-resource');
+  const action = node.getAttribute('data-permission-action');
+  if (!Permissions.can(resource, action)) {
+    event.preventDefault();
+    event.stopPropagation();
+    UI.toast?.('You do not have permission for this action.');
+    return false;
+  }
+}, true);
