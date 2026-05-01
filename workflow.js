@@ -423,12 +423,34 @@ const Workflow = {
   currentRole() {
     return String(Session?.role?.() || Session?.state?.role || '').trim().toLowerCase();
   },
+  isWorkflowAdminConfigAllowed() {
+    const role =
+      window.Session?.currentUser?.role ||
+      window.AppState?.currentUser?.role ||
+      window.currentUser?.role ||
+      this.currentRole() ||
+      '';
+    return String(role || '').trim().toLowerCase() === 'admin';
+  },
   canManageWorkflowRules() {
-    if (typeof Permissions?.canManageWorkflow === 'function') return Boolean(Permissions.canManageWorkflow());
-    return ['admin', 'dev'].includes(this.currentRole());
+    return this.isWorkflowAdminConfigAllowed();
   },
   canProcessApprovals() {
     return ['admin', 'dev'].includes(this.currentRole());
+  },
+
+  renderAdminConfigVisibility() {
+    const allowed = this.isWorkflowAdminConfigAllowed();
+    const toggle = (id, visible) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.style.display = visible ? '' : 'none';
+    };
+    toggle('workflowBuilderCard', allowed);
+    toggle('workflowDiscountPolicyCard', allowed);
+    toggle('workflowTransitionMatrixCard', allowed);
+    toggle('workflowAdminConfigMessage', !allowed);
+    return allowed;
   },
   normalizeRows(response) {
     const parseJsonIfNeeded = value => {
@@ -1167,11 +1189,14 @@ const Workflow = {
     if (this.state.loading && !force) return;
     const hasWarmCache = this.state.loaded && Date.now() - this.state.lastLoadedAt <= this.state.cacheTtlMs;
     if (hasWarmCache && !force) {
+      this.renderAdminConfigVisibility();
       this.renderRules();
-      this.renderDiscountPolicy();
+      if (this.isWorkflowAdminConfigAllowed()) {
+        this.renderDiscountPolicy();
+        this.renderMatrix();
+      }
       this.renderApprovals();
       this.renderAudit();
-      this.renderMatrix();
       return;
     }
     this.state.loading = true;
@@ -1185,6 +1210,7 @@ const Workflow = {
         }
       }
       const canReadWorkflowAdminData = this.canProcessApprovals();
+      this.renderAdminConfigVisibility();
       const [rulesResult, approvalsResult, auditResult] = await Promise.allSettled([
         Api.listWorkflowRules({}, { forceRefresh: true }),
         Api.listPendingWorkflowApprovals(),
@@ -1207,10 +1233,12 @@ const Workflow = {
       this.state.loaded = true;
       this.state.lastLoadedAt = Date.now();
       this.renderRules();
-      this.renderDiscountPolicy();
+      if (this.isWorkflowAdminConfigAllowed()) {
+        this.renderDiscountPolicy();
+        this.renderMatrix();
+      }
       this.renderApprovals();
       this.renderAudit();
-      this.renderMatrix();
       this.populateRuleSelects();
     } catch (error) {
       console.warn('Workflow load failed', error);
@@ -1326,6 +1354,9 @@ const Workflow = {
     await Promise.allSettled(tasks);
   },
   wire() {
+    this.renderAdminConfigVisibility();
+    const blockedHash = ['workflow-builder', 'discount-policy', 'transition-matrix'].some(seg => window.location.hash.toLowerCase().includes(seg));
+    if (blockedHash && !this.isWorkflowAdminConfigAllowed()) UI.toast('Only administrators can access Workflow Builder, Discount Policy, and Transition Matrix.');
     if (E.workflowRuleForm) {
       E.workflowRuleForm.addEventListener('submit', async e => {
         e.preventDefault();
@@ -1350,6 +1381,7 @@ const Workflow = {
 
     if (E.workflowRulesTbody) {
       E.workflowRulesTbody.addEventListener('click', async event => {
+        if (!this.isWorkflowAdminConfigAllowed()) return UI.toast('Only administrators can access Workflow Builder, Discount Policy, and Transition Matrix.');
         const editId = event.target?.closest?.('[data-rule-edit]')?.getAttribute('data-rule-edit');
         const deleteId = event.target?.closest?.('[data-rule-delete]')?.getAttribute('data-rule-delete');
         if (editId) {
@@ -1396,6 +1428,7 @@ const Workflow = {
     }
     if (E.workflowMatrixContainer) {
       E.workflowMatrixContainer.addEventListener('click', event => {
+        if (!this.isWorkflowAdminConfigAllowed()) return UI.toast('Only administrators can access Workflow Builder, Discount Policy, and Transition Matrix.');
         const button = event.target?.closest?.('[data-matrix-from]');
         if (!button) return;
         const from = button.getAttribute('data-matrix-from');

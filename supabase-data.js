@@ -3283,6 +3283,23 @@
       };
     })();
 
+
+    const workflowAdminConfigActions = new Set([
+      'list','list_rules','get','save','save_rule','delete','delete_rule','manage','configure',
+      'get_builder','save_builder','list_rules_admin','create_rule','update_rule','get_discount_policy','update_discount_policy',
+      'get_transition_matrix','update_transition_matrix','list_transitions','update_transitions'
+    ]);
+    const isWorkflowAdminConfigAction = workflowAdminConfigActions.has(requestedAction);
+    if (isWorkflowAdminConfigAction) {
+      const currentRole = String(global.Session?.authContext?.()?.role || global.Session?.role?.() || '').trim().toLowerCase();
+      if (currentRole !== 'admin') {
+        const forbiddenError = new Error('Only administrators can access workflow configuration.');
+        forbiddenError.status = 403;
+        forbiddenError.code = 403;
+        throw forbiddenError;
+      }
+    }
+
     if (requestedAction === 'list' || requestedAction === 'list_rules') {
       assertAllowed('workflow', 'list');
       const { data, error } = await applyFilters(client.from('workflow_rules').select('*'), safePayload).order('updated_at', { ascending: false });

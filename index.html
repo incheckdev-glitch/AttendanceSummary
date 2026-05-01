@@ -1973,7 +1973,8 @@ Sample:
       </section>
 
       <section id="workflowView" class="view" role="tabpanel" aria-labelledby="workflowTab">
-        <div class="card" aria-label="Workflow rules builder">
+        <div id="workflowAdminConfigMessage" class="card" style="display:none;margin-bottom:12px;"><strong>Restricted</strong><div class="muted" style="margin-top:6px;">Only administrators can access Workflow Builder, Discount Policy, and Transition Matrix.</div></div>
+        <div id="workflowBuilderCard" class="card" aria-label="Workflow rules builder">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
             <div>
               <strong>Workflow Rules Builder</strong>
@@ -2026,12 +2027,12 @@ Sample:
         </div>
 
         <div class="grid cols-2" style="margin-top:12px;gap:12px;">
-          <div class="card">
+          <div id="workflowDiscountPolicyCard" class="card">
             <strong>Discount Policy</strong>
             <div class="muted" style="margin:8px 0;">Aggregated max/hard-stop discount by resource and role.</div>
             <div class="table-wrap"><table><thead><tr><th>Resource</th><th>Role</th><th>Max %</th><th>Hard Stop %</th></tr></thead><tbody id="workflowDiscountPolicyTbody"></tbody></table></div>
           </div>
-          <div class="card">
+          <div id="workflowTransitionMatrixCard" class="card">
             <strong>Transition Matrix</strong>
             <div style="display:flex;gap:8px;align-items:center;margin:8px 0;">
               <select id="workflowMatrixResource" class="select"><option value="proposals">proposals</option><option value="agreements">agreements</option><option value="invoices">invoices</option><option value="receipts">receipts</option></select>
