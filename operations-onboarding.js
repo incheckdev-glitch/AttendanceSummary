@@ -19,6 +19,9 @@ const OperationsOnboarding = {
     pendingOnboardingId: '',
     pendingAgreementId: '',
     postSubmitHook: null,
+    csmUsers: [],
+    csmUsersLoaded: false,
+    loadingCsmUsers: false,
     agreementMap: new Map(),
     agreementItemsMap: new Map(),
     loadingAgreementIds: new Set(),
@@ -139,6 +142,66 @@ const OperationsOnboarding = {
       location_name: String(this.pick(source.location_name, source.locationName)).trim(),
       location_address: String(this.pick(source.location_address, source.locationAddress)).trim()
     };
+  },
+  normalizeRole(value = '') {
+    return String(value || '').trim().toLowerCase().replace(/\s+/g, '_');
+  },
+  isUserActive(user = {}) {
+    if (!user || typeof user !== 'object') return false;
+    if (typeof user.is_active === 'boolean') return user.is_active;
+    const status = String(user.status || '').trim().toLowerCase();
+    if (!status) return true;
+    return !['inactive', 'disabled', 'suspended', 'deleted'].includes(status);
+  },
+  isCsmUser(user = {}) {
+    const role = this.normalizeRole(user.role_key || user.role || user.user_role || '');
+    return ['csm', 'customer_success', 'customer_success_manager'].includes(role);
+  },
+  getUserDisplayName(user = {}) {
+    return String(user.display_name || user.full_name || user.name || user.email || '').trim();
+  },
+  getUserId(user = {}) {
+    return String(user.user_id || user.id || '').trim();
+  },
+  getUserEmail(user = {}) {
+    return String(user.email || '').trim();
+  },
+  async loadCsmUsers({ force = false } = {}) {
+    if (this.state.loadingCsmUsers && !force) return this.state.csmUsers;
+    if (this.state.csmUsersLoaded && !force) return this.state.csmUsers;
+    this.state.loadingCsmUsers = true;
+    try {
+      const response = await Api.requestCached('users', 'list', { limit: 1000, page: 1, summary_only: true }, { forceRefresh: force });
+      const rows = window.UserAdmin?.extractRows ? window.UserAdmin.extractRows(response) : (Array.isArray(response?.rows) ? response.rows : []);
+      const csmUsers = rows
+        .filter(user => this.isCsmUser(user) && this.isUserActive(user))
+        .map(user => ({
+          id: this.getUserId(user),
+          name: this.getUserDisplayName(user),
+          email: this.getUserEmail(user)
+        }))
+        .filter(user => user.id && (user.name || user.email))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      this.state.csmUsers = csmUsers;
+      this.state.csmUsersLoaded = true;
+      console.info('[operations onboarding] CSM users loaded', { totalUsers: rows.length, csmUsers: csmUsers.length });
+      return csmUsers;
+    } finally {
+      this.state.loadingCsmUsers = false;
+    }
+  },
+  renderCsmSelectOptions(selectedUserId = '') {
+    if (!E.operationsAssignCsmName) return;
+    const users = Array.isArray(this.state.csmUsers) ? this.state.csmUsers : [];
+    const options = users.map(user => {
+      const label = user.email && user.name ? `${user.name} <${user.email}>` : (user.name || user.email);
+      const selected = String(user.id) === String(selectedUserId) ? 'selected' : '';
+      return `<option value="${U.escapeAttr(user.id)}" data-csm-name="${U.escapeAttr(user.name)}" data-csm-email="${U.escapeAttr(user.email)}" ${selected}>${U.escapeHtml(label)}</option>`;
+    }).join('');
+    E.operationsAssignCsmName.innerHTML = `<option value="">Select CSM</option>${options}`;
+    if (E.operationsAssignCsmNoUsers) {
+      E.operationsAssignCsmNoUsers.textContent = users.length ? '' : 'No CSM users found. Please assign the CSM role to a user first.';
+    }
   },
   canWrite() {
     return !Permissions.isViewer() && Permissions.canManageOperationsOnboarding();
@@ -1027,10 +1090,19 @@ const OperationsOnboarding = {
     if (!this.state.pendingOnboardingId) return UI.toast('Unable to assign CSM for this onboarding row because no onboarding row ID is available.');
     this.state.postSubmitHook = typeof onDone === 'function' ? onDone : null;
     if (E.operationsAssignCsmForm) E.operationsAssignCsmForm.reset();
-    if (E.operationsAssignCsmModal) {
-      E.operationsAssignCsmModal.classList.add('open');
-      E.operationsAssignCsmModal.setAttribute('aria-hidden', 'false');
-    }
+    this.loadCsmUsers({ force: true })
+      .then(() => this.renderCsmSelectOptions())
+      .catch(error => {
+        console.warn('[operations onboarding] unable to load CSM users', error);
+        this.state.csmUsers = [];
+        this.renderCsmSelectOptions();
+      })
+      .finally(() => {
+        if (E.operationsAssignCsmModal) {
+          E.operationsAssignCsmModal.classList.add('open');
+          E.operationsAssignCsmModal.setAttribute('aria-hidden', 'false');
+        }
+      });
   },
   openUpdateStatusModal(onboardingId, agreementId, onDone) {
     if (!this.canWrite()) return UI.toast('Insufficient permissions.');
@@ -1049,8 +1121,23 @@ const OperationsOnboarding = {
     const agreementId = this.state.pendingAgreementId;
     if (!onboardingId) return UI.toast('Onboarding row ID is required.');
     const nowIso = new Date().toISOString();
+    const selectedUserId = String(E.operationsAssignCsmName?.value || '').trim();
+    const selectedUser = this.state.csmUsers.find(user => String(user.id) === selectedUserId);
+    if (!selectedUser) return UI.toast('Please select a valid CSM user.');
+    const csmName = selectedUser.name || selectedUser.email;
+    const csmEmail = selectedUser.email;
     const payload = {
-      csm_assigned_to: E.operationsAssignCsmName?.value || '',
+      csm_assigned_to: csmName,
+      assigned_csm_id: selectedUserId,
+      assigned_csm_user_id: selectedUserId,
+      assigned_csm_name: csmName,
+      assigned_csm_email: csmEmail,
+      csm_user_id: selectedUserId,
+      csm_name: csmName,
+      csm_email: csmEmail,
+      assigned_cs: csmName,
+      assigned_cs_name: csmName,
+      assigned_cs_email: csmEmail,
       csm_assigned_at: nowIso,
       handover_note: E.operationsAssignCsmHandoverNote?.value || '',
       updated_at: nowIso
@@ -1064,6 +1151,7 @@ const OperationsOnboarding = {
         updates: payload
       });
       console.log('[OperationsOnboarding] Assign CSM Supabase response', response);
+      console.info('[operations onboarding] CSM assigned', { onboardingId, csmName, csmEmail });
       this.closeModal(E.operationsAssignCsmModal);
       await this.loadAndRefresh({ force: true });
       UI.toast('CSM assigned and saved.');

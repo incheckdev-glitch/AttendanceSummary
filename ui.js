@@ -725,6 +725,7 @@ function cacheEls() {
     'operationsAssignCsmCloseBtn',
     'operationsAssignCsmCancelBtn',
     'operationsAssignCsmName',
+    'operationsAssignCsmNoUsers',
     'operationsAssignCsmHandoverNote',
     'operationsUpdateStatusModal',
     'operationsUpdateStatusForm',
