@@ -955,6 +955,7 @@ const Workflow = {
       E.workflowApprovalPreviewModal.classList.add('open');
       E.workflowApprovalPreviewModal.setAttribute('aria-hidden', 'false');
     }
+    if (window.setAppHashRoute && window.buildRecordHashRoute) setAppHashRoute(buildRecordHashRoute('workflow', normalized || {}));
   },
   closeApprovalPreview() {
     this.state.activeApprovalPreview = null;
@@ -962,6 +963,7 @@ const Workflow = {
     E.workflowApprovalPreviewModal.classList.remove('open');
     E.workflowApprovalPreviewModal.setAttribute('aria-hidden', 'true');
     if (E.workflowApprovalPreviewBody) E.workflowApprovalPreviewBody.innerHTML = '';
+    if (window.setAppHashRoute) setAppHashRoute('#workflow');
   },
   async openApprovalPreview(approvalRow = {}) {
     const normalized = this.normalizePendingApproval(approvalRow);

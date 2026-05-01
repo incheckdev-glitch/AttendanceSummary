@@ -1931,6 +1931,7 @@ UI.Modals = {
 
     if (E.eventModal) {
       E.eventModal.style.display = 'flex';
+    if (window.setAppHashRoute && window.buildRecordHashRoute) setAppHashRoute(buildRecordHashRoute('events', ev || {}));
       if (!canManageEvents && E.eventForm) {
         E.eventForm
           .querySelectorAll('input,select,textarea,button[type="submit"]')
@@ -1951,6 +1952,7 @@ UI.Modals = {
     if (!E.eventModal) return;
     E.eventModal.style.display = 'none';
     if (E.eventForm) E.eventForm.dataset.id = '';
+    if (window.setAppHashRoute) setAppHashRoute('#events');
     if (this.lastEventFocus?.focus) this.lastEventFocus.focus();
   }
 };
@@ -5302,16 +5304,45 @@ function wireConnectivity() {
 
 function setAppHashRoute(hash = '') {
   const nextHash = String(hash || '').trim();
-  if (!nextHash || nextHash === window.location.hash) return;
+  if (!nextHash) return;
+  const normalizedHash = nextHash.startsWith('#') ? nextHash : `#${nextHash}`;
+  if (normalizedHash === window.location.hash) return;
   try {
     const searchParams = new URLSearchParams(String(window.location.search || '').replace(/^\?/, ''));
     searchParams.delete('issue');
     const nextSearch = searchParams.toString();
-    history.replaceState(null, '', `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${nextHash}`);
+    history.replaceState(null, '', `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${normalizedHash}`);
   } catch {
-    window.location.hash = nextHash;
+    window.location.hash = normalizedHash;
   }
+  console.info('[router] hash route set', { hash: normalizedHash });
 }
+
+function safeEncodeRouteId(value = '') { return encodeURIComponent(String(value || '').trim()); }
+function getRecordValue(record = {}, keys = []) {
+  for (const key of keys) {
+    const value = record?.[key];
+    if (value !== undefined && value !== null && String(value).trim()) return String(value).trim();
+  }
+  return '';
+}
+function buildRecordHashRoute(resource = '', record = {}) {
+  const normalizedResource = String(resource || '').trim();
+  if (normalizedResource === 'leads') { const id = getRecordValue(record, ['lead_id', 'leadId', 'lead_number', 'leadNumber', 'id']); return id ? `#crm?tab=leads&id=${safeEncodeRouteId(id)}` : '#crm?tab=leads'; }
+  if (normalizedResource === 'deals') { const id = getRecordValue(record, ['deal_id', 'dealId', 'deal_number', 'dealNumber', 'id']); return id ? `#crm?tab=deals&id=${safeEncodeRouteId(id)}` : '#crm?tab=deals'; }
+  if (normalizedResource === 'proposals') { const id = getRecordValue(record, ['proposal_id', 'proposalId', 'proposal_number', 'proposalNumber', 'id']); return id ? `#crm?tab=proposals&id=${safeEncodeRouteId(id)}` : '#crm?tab=proposals'; }
+  if (normalizedResource === 'agreements') { const id = getRecordValue(record, ['agreement_id', 'agreementId', 'agreement_number', 'agreementNumber', 'id']); return id ? `#crm?tab=agreements&id=${safeEncodeRouteId(id)}` : '#crm?tab=agreements'; }
+  if (normalizedResource === 'invoices') { const id = getRecordValue(record, ['invoice_id', 'invoiceId', 'invoice_number', 'invoiceNumber', 'id']); return id ? `#finance?tab=invoices&id=${safeEncodeRouteId(id)}` : '#finance?tab=invoices'; }
+  if (normalizedResource === 'receipts') { const id = getRecordValue(record, ['receipt_id', 'receiptId', 'receipt_number', 'receiptNumber', 'id']); return id ? `#finance?tab=receipts&id=${safeEncodeRouteId(id)}` : '#finance?tab=receipts'; }
+  if (normalizedResource === 'clients') { const id = getRecordValue(record, ['client_id', 'clientId', 'company_id', 'companyId', 'id']); return id ? `#clients?id=${safeEncodeRouteId(id)}` : '#clients'; }
+  if (normalizedResource === 'events') { const id = getRecordValue(record, ['event_id', 'eventId', 'event_code', 'eventCode', 'id']); return id ? `#events?id=${safeEncodeRouteId(id)}` : '#events'; }
+  if (normalizedResource === 'operations_onboarding') { const id = getRecordValue(record, ['onboarding_id', 'onboardingId', 'agreement_id', 'agreementId', 'id']); return id ? `#operations-onboarding?onboarding_id=${safeEncodeRouteId(id)}` : '#operations-onboarding'; }
+  if (normalizedResource === 'technical_admin_requests') { const id = getRecordValue(record, ['request_id', 'requestId', 'technical_request_id', 'technicalRequestId', 'id']); return id ? `#technical-admin?id=${safeEncodeRouteId(id)}` : '#technical-admin'; }
+  if (normalizedResource === 'workflow') { const id = getRecordValue(record, ['approval_id', 'approvalId', 'workflow_approval_id', 'workflowApprovalId', 'id']); return id ? `#workflow?approval_id=${safeEncodeRouteId(id)}` : '#workflow'; }
+  return `#${encodeURIComponent(normalizedResource)}`;
+}
+window.setAppHashRoute = window.setAppHashRoute || setAppHashRoute;
+window.buildRecordHashRoute = window.buildRecordHashRoute || buildRecordHashRoute;
 
 function getAppHashForView(view = '') {
   const map = {
@@ -5400,7 +5431,7 @@ async function routeAppHashAfterReady() {
   if (!hash || hash === '#loginSection') return false;
   const target = parseAppHashRoute(hash);
   if (!target || !target.resource) return false;
-  console.info('[router] parsed hash route', target);
+  console.info('[router] parsed hash target', target);
   await new Promise(resolve => setTimeout(resolve, 300));
   if (window.Notifications?.routeToResourceTarget) {
     const opened = await window.Notifications.routeToResourceTarget(target.resource, target.id, {

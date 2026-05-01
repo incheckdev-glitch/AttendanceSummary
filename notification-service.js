@@ -417,7 +417,9 @@
       proposals: `/#crm?tab=proposals&id=${encodedId}`,
       agreements: `/#crm?tab=agreements&id=${encodedId}`,
       invoices: `/#finance?tab=invoices&id=${encodedId}`,
-      receipts: `/#finance?tab=receipts&id=${encodedId}`
+      receipts: `/#finance?tab=receipts&id=${encodedId}`,
+      clients: `/#clients?id=${encodedId}`,
+      events: `/#events?id=${encodedId}`
     };
     return routeMap[normalizedResource] || `/#${encodeURIComponent(normalizedResource)}?id=${encodedId}`;
   }

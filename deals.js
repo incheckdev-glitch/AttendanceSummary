@@ -1295,6 +1295,7 @@ const Deals = {
     if (E.dealFormSaveBtn) E.dealFormSaveBtn.disabled = false;
     E.dealFormModal.style.display = 'flex';
     E.dealFormModal.setAttribute('aria-hidden', 'false');
+    if (window.setAppHashRoute && window.buildRecordHashRoute) setAppHashRoute(buildRecordHashRoute('deals', row || {}));
   },
   hydrateDealFromCompany(company = {}) {
     const c = this.normalizeCompany(company);
@@ -1344,6 +1345,7 @@ const Deals = {
     if (!E.dealFormModal) return;
     E.dealFormModal.style.display = 'none';
     E.dealFormModal.setAttribute('aria-hidden', 'true');
+    if (window.setAppHashRoute) setAppHashRoute('#crm?tab=deals');
   },
   collectFormData() {
     const mode = E.dealForm?.dataset.mode === 'edit' ? 'edit' : 'create';

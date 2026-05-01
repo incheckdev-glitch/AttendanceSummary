@@ -1053,6 +1053,9 @@ const Notifications = {
     return true;
   },
   async routeToResourceTarget(resource, targetId, notification) {
+    const normalizedResource = String(resource || '').trim().toLowerCase();
+    const normalizedTargetId = String(targetId || '').trim();
+    console.info('[router] record lookup', { resource: normalizedResource, targetId: normalizedTargetId, found: false, matchedId: null });
     if (resource === 'tickets') {
       const opened = await this.openModuleTab('tickets');
       if (!opened) return false;
@@ -1120,7 +1123,7 @@ const Notifications = {
       console.warn('[deep-link] ticket not found for popup', { targetId: lookupId });
       return this.highlightRowById(lookupId) || false;
     }
-    if (resource === 'events') {
+    if (normalizedResource === 'events') {
       const opened = await this.openModuleTab('events');
       if (!opened) return false;
       const eventId = String(targetId || notification?.meta?.event_code || '').trim();
@@ -1128,7 +1131,7 @@ const Notifications = {
       if (eventId && window.AIInsights?.openEventByRef) window.AIInsights.openEventByRef(eventId);
       return eventId ? this.highlightRowById(eventId) || true : true;
     }
-    if (resource === 'workflow' || resource === 'workflow_approvals') {
+    if (normalizedResource === 'workflow' || normalizedResource === 'workflow_approvals') {
       const opened = await this.openModuleTab('workflow');
       if (!opened) return false;
       const approvalId = String(targetId || notification?.meta?.approval_id || '').trim();
@@ -1137,35 +1140,35 @@ const Notifications = {
       if (row && window.Workflow?.openApprovalPreview) await Workflow.openApprovalPreview(row);
       return approvalId ? this.highlightRowById(approvalId) || !!row : true;
     }
-    if (resource === 'proposals') {
+    if (normalizedResource === 'proposals') {
       const opened = await this.openModuleTab('proposals');
       if (!opened) return false;
       if (targetId) this.setRouteHash(`#crm?tab=proposals&id=${encodeURIComponent(String(targetId).trim())}`);
       if (targetId && window.Proposals?.openProposalFormById) await Proposals.openProposalFormById(targetId, { readOnly: true });
       return targetId ? this.highlightRowById(targetId) || true : true;
     }
-    if (resource === 'agreements') {
+    if (normalizedResource === 'agreements') {
       const opened = await this.openModuleTab('agreements');
       if (!opened) return false;
       if (targetId) this.setRouteHash(`#crm?tab=agreements&id=${encodeURIComponent(String(targetId).trim())}`);
       if (targetId && window.Agreements?.openAgreementFormById) await Agreements.openAgreementFormById(targetId, { readOnly: true });
       return targetId ? this.highlightRowById(targetId) || true : true;
     }
-    if (resource === 'invoices') {
+    if (normalizedResource === 'invoices') {
       const opened = await this.openModuleTab('invoices');
       if (!opened) return false;
       if (targetId) this.setRouteHash(`#finance?tab=invoices&id=${encodeURIComponent(String(targetId).trim())}`);
       if (targetId && window.Invoices?.openInvoiceById) await Invoices.openInvoiceById(targetId, { readOnly: true });
       return targetId ? this.highlightRowById(targetId) || true : true;
     }
-    if (resource === 'receipts') {
+    if (normalizedResource === 'receipts') {
       const opened = await this.openModuleTab('receipts');
       if (!opened) return false;
       if (targetId) this.setRouteHash(`#finance?tab=receipts&id=${encodeURIComponent(String(targetId).trim())}`);
       if (targetId && window.Receipts?.openReceiptById) await Receipts.openReceiptById(targetId, { readOnly: true });
       return targetId ? this.highlightRowById(targetId) || true : true;
     }
-    if (resource === 'operations_onboarding') {
+    if (normalizedResource === 'operations_onboarding') {
       const opened = await this.openModuleTab('operations_onboarding');
       if (!opened) return false;
       if (targetId) this.setRouteHash(`#operations-onboarding?onboarding_id=${encodeURIComponent(String(targetId).trim())}`);
@@ -1174,7 +1177,7 @@ const Notifications = {
       }
       return targetId ? this.highlightRowById(targetId) || true : true;
     }
-    if (resource === 'technical_admin') {
+    if (normalizedResource === 'technical_admin' || normalizedResource === 'technical_admin_requests') {
       const opened = await this.openModuleTab('technical_admin');
       if (!opened) return false;
       if (targetId) this.setRouteHash(`#technical-admin?id=${encodeURIComponent(String(targetId).trim())}`);
@@ -1182,13 +1185,14 @@ const Notifications = {
       else if (targetId && window.TechnicalAdmin?.highlightRow) window.TechnicalAdmin.highlightRow(targetId);
       return targetId ? this.highlightRowById(targetId) || true : true;
     }
-    if (resource === 'clients') {
+    if (normalizedResource === 'clients') {
       const opened = await this.openModuleTab('clients');
       if (!opened) return false;
+      if (targetId) this.setRouteHash(`#clients?id=${encodeURIComponent(String(targetId).trim())}`);
       if (targetId && window.Clients?.selectClient) await Clients.selectClient(targetId, { force: true });
       return targetId ? this.highlightRowById(targetId) || true : true;
     }
-    if (resource === 'leads') {
+    if (normalizedResource === 'leads') {
       const opened = await this.openModuleTab('leads');
       if (!opened) return false;
       const row = (window.Leads?.state?.rows || []).find(item => String(item?.id || item?.lead_id || '').trim() === targetId);
@@ -1196,7 +1200,7 @@ const Notifications = {
       if (row && window.Leads?.openForm) Leads.openForm(row);
       return targetId ? this.highlightRowById(targetId) || !!row : true;
     }
-    if (resource === 'deals') {
+    if (normalizedResource === 'deals') {
       const opened = await this.openModuleTab('deals');
       if (!opened) return false;
       const row = (window.Deals?.state?.rows || []).find(item => String(item?.id || item?.deal_id || '').trim() === targetId);

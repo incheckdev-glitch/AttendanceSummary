@@ -1947,6 +1947,7 @@ const Clients = {
   },
   async selectClient(clientId, options = {}) {
     this.state.selectedClientId = String(clientId || '').trim();
+    if (window.setAppHashRoute) setAppHashRoute(this.state.selectedClientId ? `#clients?id=${encodeURIComponent(this.state.selectedClientId)}` : "#clients");
     this.render();
     if (!this.state.selectedClientId) return;
     this.state.detailLoading = true;

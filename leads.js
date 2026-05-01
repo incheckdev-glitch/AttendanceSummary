@@ -1096,12 +1096,14 @@ const Leads = {
     if (E.leadFormSaveBtn) E.leadFormSaveBtn.disabled = false;
     E.leadFormModal.style.display = 'flex';
     E.leadFormModal.setAttribute('aria-hidden', 'false');
+    if (window.setAppHashRoute && window.buildRecordHashRoute) setAppHashRoute(buildRecordHashRoute('leads', row || {}));
     if (row) await this.hydrateLeadLinkedDetails(row);
   },
   closeForm() {
     if (!E.leadFormModal) return;
     E.leadFormModal.style.display = 'none';
     E.leadFormModal.setAttribute('aria-hidden', 'true');
+    if (window.setAppHashRoute) setAppHashRoute('#crm?tab=leads');
   },
   collectFormData() {
     const estimatedValueRaw = String(E.leadFormEstimatedValue?.value || '').trim();

@@ -2094,11 +2094,13 @@ const Invoices = {
     this.ensureCatalogLoaded();
     E.invoiceFormModal.classList.add('open');
     E.invoiceFormModal.setAttribute('aria-hidden', 'false');
+    if (window.setAppHashRoute && window.buildRecordHashRoute) setAppHashRoute(buildRecordHashRoute('invoices', this.state.selectedInvoice || {}));
   },
   closeForm() {
     if (!E.invoiceFormModal || !E.invoiceForm) return;
     E.invoiceFormModal.classList.remove('open');
     E.invoiceFormModal.setAttribute('aria-hidden', 'true');
+    if (window.setAppHashRoute) setAppHashRoute('#finance?tab=invoices');
     E.invoiceForm.reset();
     E.invoiceForm.dataset.id = '';
     this.state.selectedInvoice = null;

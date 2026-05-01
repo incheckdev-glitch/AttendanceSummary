@@ -1585,11 +1585,13 @@ const Agreements = {
     this.state.currentAgreementId = String(agreement.id || '').trim();
     E.agreementFormModal.classList.add('open');
     E.agreementFormModal.setAttribute('aria-hidden', 'false');
+    if (window.setAppHashRoute && window.buildRecordHashRoute) setAppHashRoute(buildRecordHashRoute('agreements', agreement || {}));
   },
   closeAgreementForm() {
     if (!E.agreementFormModal || !E.agreementForm) return;
     E.agreementFormModal.classList.remove('open');
     E.agreementFormModal.setAttribute('aria-hidden', 'true');
+    if (window.setAppHashRoute) setAppHashRoute('#crm?tab=agreements');
     E.agreementForm.reset();
     E.agreementForm.dataset.id = '';
     E.agreementForm.dataset.source = '';

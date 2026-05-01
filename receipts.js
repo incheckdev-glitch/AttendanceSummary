@@ -646,6 +646,7 @@ const Receipts = {
     if (E.receiptFormModal) {
       E.receiptFormModal.classList.add('open');
       E.receiptFormModal.setAttribute('aria-hidden', 'false');
+    if (window.setAppHashRoute && window.buildRecordHashRoute) setAppHashRoute(buildRecordHashRoute('receipts', this.state.selectedReceipt || {}));
     }
     this.recalculatePaymentFields();
   },
@@ -653,6 +654,7 @@ const Receipts = {
     if (E.receiptFormModal) {
       E.receiptFormModal.classList.remove('open');
       E.receiptFormModal.setAttribute('aria-hidden', 'true');
+    if (window.setAppHashRoute) setAppHashRoute('#finance?tab=receipts');
     }
     if (E.receiptForm) {
       delete E.receiptForm.dataset.mode;
