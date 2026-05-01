@@ -1119,7 +1119,7 @@ const LifecycleAnalytics = {
     if (refreshBtn) refreshBtn.addEventListener('click', () => this.refresh({ force: true }));
 
     const exportBtn = document.getElementById('lifecycleExportBtn');
-    if (exportBtn) exportBtn.addEventListener('click', () => this.exportRows());
+    if (exportBtn) { exportBtn.setAttribute('data-permission-resource','analytics'); exportBtn.setAttribute('data-permission-action','export'); exportBtn.addEventListener('click', () => this.exportRows()); const canExport = Permissions.can('analytics','export') || Permissions.can('lifecycle_analytics','export'); exportBtn.style.display = canExport ? '' : 'none'; exportBtn.disabled = !canExport; }
 
     const tbody = document.getElementById('lifecycleRecordsTbody');
     if (tbody) {
@@ -1139,6 +1139,7 @@ const LifecycleAnalytics = {
   }
   ,
   exportRows() {
+    if (!(Permissions.can('analytics','export') || Permissions.can('lifecycle_analytics','export'))) { UI.toast('You do not have permission to export lifecycle analytics.'); return; }
     const rows = this.state.filteredRows || [];
     const headers = ['Client Name', 'Current Stage', 'Payment Status', 'Onboarding Status', 'Technical Status', 'Renewal Status', 'Invoice Number', 'Receipt Number', 'Agreement Number', 'Proposal Number'];
     const csv = [

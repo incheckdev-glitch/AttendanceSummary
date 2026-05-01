@@ -2746,36 +2746,39 @@ function setActiveView(view) {
   }
 }
 
+function getGlobalCreateConfig(activeView) {
+  const map = {
+    issues: { resource: 'tickets', action: 'create', label: 'Create Ticket', aria: 'Create new ticket' },
+    calendar: { resource: 'events', action: 'create', label: 'Create Event', aria: 'Create event' },
+    leads: { resource: 'leads', action: 'create', label: 'Create Lead', aria: 'Create lead' },
+    deals: { resource: 'deals', action: 'create', label: 'Create Deal', aria: 'Create deal' },
+    proposals: { resource: 'proposals', action: 'create', label: 'Create Proposal', aria: 'Create proposal' },
+    agreements: { resource: 'agreements', action: 'create', label: 'Create Agreement', aria: 'Create agreement' },
+    invoices: { resource: 'invoices', action: 'create', label: 'Create Invoice', aria: 'Create invoice' },
+    receipts: { resource: 'receipts', action: 'create', label: 'Create Receipt', aria: 'Create receipt' },
+    csm: { resource: 'csm_activities', action: 'create', label: 'Add Activity', aria: 'Add activity' },
+    users: { resource: 'users', action: 'create', label: 'Create User', aria: 'Create user' }
+  };
+  return map[activeView] || null;
+}
+
 function updatePrimaryActionButton(activeView) {
   if (!E.createTicketBtn) return;
-  const isCsm = activeView === 'csm';
-  const isLeads = activeView === 'leads';
-  const isAgreements = activeView === 'agreements';
-  const isInvoices = activeView === 'invoices';
-  const canCreateCurrent = isCsm
-    ? Permissions.canCreateCsmActivity()
-    : isLeads
-    ? Permissions.canCreateLead()
-    : isAgreements
-    ? Permissions.canCreateAgreement()
-    : isInvoices
-    ? Permissions.canCreateInvoice()
-    : Permissions.canCreateTicket();
-  E.createTicketBtn.innerHTML = isCsm
-    ? '<span class="icon" aria-hidden="true">➕</span> Add activity'
-    : isLeads
-    ? '<span class="icon" aria-hidden="true">➕</span> Create Lead'
-    : isAgreements
-    ? '<span class="icon" aria-hidden="true">➕</span> Create Agreement'
-    : isInvoices
-    ? '<span class="icon" aria-hidden="true">➕</span> Create Invoice'
-    : '<span class="icon" aria-hidden="true">➕</span> Create Ticket';
-  E.createTicketBtn.setAttribute(
-    'aria-label',
-    isCsm ? 'Add activity' : isLeads ? 'Create lead' : isAgreements ? 'Create agreement' : isInvoices ? 'Create invoice' : 'Create new ticket'
-  );
-  E.createTicketBtn.hidden = !canCreateCurrent;
-  E.createTicketBtn.disabled = !canCreateCurrent;
+  const cfg = getGlobalCreateConfig(activeView);
+  if (!cfg) {
+    E.createTicketBtn.hidden = true;
+    E.createTicketBtn.disabled = true;
+    E.createTicketBtn.removeAttribute('data-permission-resource');
+    E.createTicketBtn.removeAttribute('data-permission-action');
+    return;
+  }
+  const allowed = Permissions.can(cfg.resource, cfg.action) || (cfg.resource === 'users' && Permissions.can('users', 'manage'));
+  E.createTicketBtn.setAttribute('data-permission-resource', cfg.resource);
+  E.createTicketBtn.setAttribute('data-permission-action', cfg.action);
+  E.createTicketBtn.innerHTML = `<span class="icon" aria-hidden="true">➕</span> ${cfg.label}`;
+  E.createTicketBtn.setAttribute('aria-label', cfg.aria);
+  E.createTicketBtn.hidden = !allowed;
+  E.createTicketBtn.disabled = !allowed;
 }
 
 /* ---------- Calendar wiring ---------- */
@@ -4998,43 +5001,20 @@ function wireCore() {
   }
   if (E.createTicketBtn)
     E.createTicketBtn.addEventListener('click', () => {
-      const isCsmView = E.csmView?.classList.contains('active');
-      const isLeadsView = E.leadsView?.classList.contains('active');
-      const isAgreementsView = E.agreementsView?.classList.contains('active');
-      const isInvoicesView = E.invoicesView?.classList.contains('active');
-      if (isLeadsView && window.Leads?.openForm) {
-        if (!Permissions.canCreateLead()) {
-          UI.toast('Login is required to create leads.');
-          return;
-        }
-        Leads.openForm();
+      const activeView = (localStorage.getItem(LS_KEYS.view) || 'issues');
+      const cfg = getGlobalCreateConfig(activeView);
+      if (!cfg || !Permissions.can(cfg.resource, cfg.action)) {
+        UI.toast('You do not have permission for this action.');
         return;
       }
-      if (isAgreementsView && window.Agreements?.openAgreementForm) {
-        if (!Permissions.canCreateAgreement()) {
-          UI.toast('Login is required to create agreements.');
-          return;
-        }
-        Agreements.openAgreementForm();
-        return;
-      }
-      if (isInvoicesView && window.Invoices?.openInvoice) {
-        if (!Permissions.canCreateInvoice()) {
-          UI.toast('You do not have permission to create invoices.');
-          return;
-        }
-        Invoices.openInvoice(Invoices.emptyInvoice(), [], { readOnly: false });
-        return;
-      }
-      if (isCsmView) {
-        if (!Permissions.canCreateCsmActivity()) {
-          UI.toast('You do not have permission to create CSM activity.');
-          return;
-        }
-        CSMActivity.openForm();
-        return;
-      }
-      if (!Permissions.canCreateTicket()) { UI.toast('You do not have permission for this action.'); return; }
+      if (activeView === 'leads' && window.Leads?.openForm) return Leads.openForm();
+      if (activeView === 'deals' && window.Deals?.openForm) return Deals.openForm();
+      if (activeView === 'proposals' && window.Proposals?.openProposalForm) return Proposals.openProposalForm();
+      if (activeView === 'agreements' && window.Agreements?.openAgreementForm) return Agreements.openAgreementForm();
+      if (activeView === 'invoices' && window.Invoices?.openInvoice) return Invoices.openInvoice(Invoices.emptyInvoice(), [], { readOnly: false });
+      if (activeView === 'csm' && window.CSMActivity?.openForm) return CSMActivity.openForm();
+      if (activeView === 'calendar' && window.UI?.Modals?.openEvent) return UI.Modals.openEvent({ start: new Date(), end: new Date(Date.now()+3600000), allDay:false, env:'Prod', status:'Planned' });
+      if (activeView === 'users' && window.UserAdmin?.focusCreateForm) return UserAdmin.focusCreateForm();
       TicketCreator.open();
     });
 

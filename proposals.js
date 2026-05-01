@@ -345,8 +345,8 @@ const Proposals = {
     return Array.isArray(this.state.filteredRows) ? this.state.filteredRows : [];
   },
   exportProposalsCsv() {
-    if (!Permissions.canPreviewProposal()) {
-      UI.toast('You do not have permission to view proposals.');
+    if (!(Permissions.can('proposals','export') || Permissions.can('proposals','manage'))) {
+      UI.toast('You do not have permission to export proposals.');
       return;
     }
     const rows = this.getFilteredProposalRows();
