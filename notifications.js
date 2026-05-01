@@ -1057,25 +1057,68 @@ const Notifications = {
       const opened = await this.openModuleTab('tickets');
       if (!opened) return false;
       const lookupId = String(targetId || '').trim();
-      const normalize = value => String(value || '').trim().toLowerCase();
-      const lookupNormalized = normalize(lookupId);
-      const rows = Array.isArray(window.DataStore?.rows) ? window.DataStore.rows : [];
-      const ticketRow = rows.find(row => {
-        const values = [row?.ticket_id, row?.ticketId, row?.ticket_number, row?.ticketNumber, row?.issue_id, row?.issueId, row?.id]
-          .map(v => normalize(v))
-          .filter(Boolean);
-        return lookupNormalized && values.includes(lookupNormalized);
-      });
-      const resolvedTicketId = String(ticketRow?.id || lookupId || '').trim();
-      const routeTicketId = String(ticketRow?.ticket_id || ticketRow?.ticketId || ticketRow?.ticket_number || ticketRow?.ticketNumber || resolvedTicketId).trim();
-      console.info('[router] ticket lookup', {
-        targetId: lookupId,
-        found: Boolean(ticketRow),
-        matchedTicketId: ticketRow?.ticket_id || ticketRow?.ticketId || ticketRow?.id || null
-      });
-      if (routeTicketId) this.setRouteHash(`#tickets?ticket_id=${encodeURIComponent(routeTicketId)}`);
-      if (resolvedTicketId && window.UI?.Modals?.openIssue) UI.Modals.openIssue(resolvedTicketId);
-      return lookupId ? this.highlightRowById(resolvedTicketId || lookupId) || !!ticketRow : true;
+      console.info('[deep-link] ticket route requested', { targetId: lookupId });
+      if (!lookupId) return true;
+
+      const normalizeId = value => String(value || '').trim().toLowerCase();
+      const wait = ms => new Promise(resolve => window.setTimeout(resolve, ms));
+      const findTicketByAnyId = (tickets, wantedId) => {
+        const wanted = normalizeId(wantedId);
+        if (!wanted) return null;
+        return (Array.isArray(tickets) ? tickets : []).find(row =>
+          [
+            row?.ticket_id,
+            row?.ticketId,
+            row?.ticket_number,
+            row?.ticketNumber,
+            row?.ticket_no,
+            row?.ticketNo,
+            row?.issue_id,
+            row?.issueId,
+            row?.id
+          ].some(value => normalizeId(value) === wanted)
+        ) || null;
+      };
+      const ensureTicketsLoadedForDeepLink = async forceReload => {
+        const existingRows = Array.isArray(window.DataStore?.rows) ? window.DataStore.rows : [];
+        if (!forceReload && existingRows.length) return existingRows;
+        if (typeof window.loadIssues === 'function') {
+          await window.loadIssues(true);
+        }
+        return Array.isArray(window.DataStore?.rows) ? window.DataStore.rows : [];
+      };
+
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        const tickets = await ensureTicketsLoadedForDeepLink(attempt > 1);
+        console.info('[deep-link] tickets loaded for route', { count: tickets.length, attempt });
+        const ticketRow = findTicketByAnyId(tickets, lookupId);
+        const routeTicketId = String(
+          ticketRow?.ticket_id ||
+            ticketRow?.ticketId ||
+            ticketRow?.ticket_number ||
+            ticketRow?.ticketNumber ||
+            lookupId
+        ).trim();
+        console.info('[deep-link] ticket lookup result', {
+          targetId: lookupId,
+          found: Boolean(ticketRow),
+          matchedTicketId: ticketRow?.ticket_id || ticketRow?.ticketId || ticketRow?.ticket_number || ticketRow?.id || null,
+          attempt
+        });
+        if (routeTicketId) this.setRouteHash(`#tickets?ticket_id=${encodeURIComponent(routeTicketId)}`);
+
+        const resolvedTicketId = String(ticketRow?.id || '').trim();
+        if (ticketRow && resolvedTicketId && window.UI?.Modals?.openIssue) {
+          UI.Modals.openIssue(resolvedTicketId);
+          console.info('[deep-link] ticket popup opened', { targetId: lookupId });
+          return this.highlightRowById(resolvedTicketId) || true;
+        }
+
+        if (attempt < 3) await wait(300);
+      }
+
+      console.warn('[deep-link] ticket not found for popup', { targetId: lookupId });
+      return this.highlightRowById(lookupId) || false;
     }
     if (resource === 'events') {
       const opened = await this.openModuleTab('events');
