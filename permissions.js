@@ -577,30 +577,17 @@ const Permissions = {
     if (!currentRole || !normalizedResource || !normalizedAction) return false;
 
     if (!this.isReady()) {
-      const adminFallback = Boolean(options?.adminEmergencyFallback);
-      return adminFallback && currentRole === ROLES.ADMIN;
+      return currentRole === ROLES.ADMIN;
     }
 
-    const candidateActions = this.getActionCandidates(normalizedAction);
-    const matrixEntries = candidateActions
-      .map(candidateAction => this.getMatrixEntry(normalizedResource, candidateAction))
-      .filter(Boolean);
     const matchedRows = this.getMatchedRows(normalizedResource, normalizedAction, currentRole, { includeDenied: true });
-    const hasDeniedRow = matchedRows.some(row => row.is_allowed === false);
-    const hasAllowedRow = matchedRows.some(row => row.is_allowed === true);
+    const hasDeniedRow = matchedRows.some(row => row.is_active === true && row.is_allowed === false);
+    const hasAllowedRow = matchedRows.some(row => row.is_active === true && row.is_allowed === true);
 
-    const matrixDenied = matrixEntries.some(entry => entry?.deniedRoles?.has(currentRole));
-    const matrixAllowed = matrixEntries.some(entry => entry?.allowedRoles?.has(currentRole));
     let decision = false;
-    if (hasDeniedRow || matrixDenied) {
-      decision = false;
-    } else if (hasAllowedRow || matrixAllowed) {
-      decision = true;
-    } else if (typeof options.fallback === 'boolean') {
-      decision = options.fallback === true && currentRole === ROLES.ADMIN;
-    } else {
-      decision = false;
-    }
+    if (hasDeniedRow) decision = false;
+    else if (hasAllowedRow) decision = true;
+    else if (currentRole === ROLES.ADMIN) decision = true;
 
     console.log('[permissions check]', JSON.stringify({
       role: currentRole,
@@ -889,9 +876,9 @@ const PermissionAudit = {
   inspect(resource, action) {
     const role = Permissions.normalizeRole(Session.role());
     const matchedRows = Permissions.getMatchedRows(resource, action, role, { includeDenied: true });
-    const denied = matchedRows.some(row => row.is_allowed === false);
-    const allowed = !denied && matchedRows.some(row => row.is_allowed === true);
-    return { role, resource, action, allowed, matchedRows: matchedRows.length, reason: denied ? 'explicit_deny' : allowed ? 'explicit_allow' : 'no_rule_denied' };
+    const allowed = Permissions.can(resource, action);
+    const denied = !allowed;
+    return { role, resource, action, allowed, matchedRows: matchedRows.length, reason: denied ? 'denied' : 'allowed' };
   },
   run() {
     const rows = [];
@@ -920,7 +907,8 @@ window.PermissionAudit.checkVisibleActions = function () {
     const resource = node.getAttribute('data-permission-resource');
     const action = node.getAttribute('data-permission-action');
     const allowed = Permissions.can(resource, action);
-    const visible = !!(node.offsetWidth || node.offsetHeight || node.getClientRects().length);
+    const computed = window.getComputedStyle ? window.getComputedStyle(node) : null;
+    const visible = !node.hidden && !node.disabled && computed?.display !== 'none' && computed?.visibility !== 'hidden' && computed?.opacity !== '0';
     rows.push({ text: (node.textContent || "").trim(), resource, action, allowed, visible, problem: visible && !allowed ? 'VISIBLE_BUT_DENIED' : '' });
   });
   console.table(rows);
