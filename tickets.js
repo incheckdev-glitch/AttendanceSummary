@@ -73,8 +73,6 @@ const DataStore = {
       desc: pick('description'),
       file: pick('file upload', 'link', 'url'),
       emailAddressee: pick('email addressee', 'email', 'email address'),
-      notificationSent: pick('notification sent'),
-      notificationUnderReview: pick('notification sent under review'),
       youtrackReference: pick('youtrack reference', 'you track reference', 'youtrack', 'youtrack ref'),
       // Keep positional fallbacks aligned with export order:
       // R (index 17) = Dev Team Status, S (index 18) = Issue Related.

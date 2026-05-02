@@ -108,8 +108,6 @@
     'title',
     'description',
     'priority',
-    'notification_sent',
-    'notification_sent_under_review',
     'created_by',
     'updated_by',
     'status',
@@ -781,22 +779,6 @@
       out.email_addressee = out.email_addressee ?? out.emailAddressee ?? out.email ?? '';
       out.link = out.link ?? out.file ?? '';
       out.file = out.file ?? out.link ?? '';
-      out.notificationSent = out.notificationSent ?? out.notification_sent ?? '';
-      out.notification_sent = out.notification_sent ?? out.notificationSent ?? '';
-      out.notificationUnderReview =
-        out.notificationUnderReview ??
-        out.notification_sent_under_review ??
-        out.notification_under_review ??
-        out.notificationSentUnderReview ??
-        '';
-      out.notification_sent_under_review =
-        out.notification_sent_under_review ??
-        out.notificationUnderReview ??
-        out.notification_under_review ??
-        out.notificationSentUnderReview ??
-        '';
-      out.notification_under_review =
-        out.notification_under_review ?? out.notification_sent_under_review ?? out.notificationUnderReview ?? '';
       out.business_priority = out.business_priority ?? out.businessPriority ?? '';
       out.businessPriority = out.businessPriority ?? out.business_priority ?? '';
       out.youtrackReference = out.youtrackReference ?? out.youtrack_reference ?? '';
@@ -2225,13 +2207,6 @@
       description: firstDefined(row, ['description', 'desc']),
       priority: firstDefined(row, ['priority']),
       status: firstDefined(row, ['status']) || 'new',
-      notification_sent: firstDefined(row, ['notification_sent', 'notificationSent']),
-      notification_sent_under_review: firstDefined(row, [
-        'notification_sent_under_review',
-        'notification_under_review',
-        'notificationUnderReview',
-        'notificationSentUnderReview'
-      ]),
       log: firstDefined(row, ['log']),
       created_by: firstDefined(row, ['created_by', 'createdBy']) || userId || undefined,
       updated_by: firstDefined(row, ['updated_by', 'updatedBy']) || userId || undefined

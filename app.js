@@ -128,13 +128,11 @@ const TICKET_SORT_COLUMNS = {
   emailAddressee: { type: 'text', getValue: row => row.emailAddressee },
   type: { type: 'text', getValue: row => row.type },
   status: { type: 'text', getValue: row => row.status },
-  notificationSent: { type: 'text', getValue: row => row.notificationSent },
   youtrackReference: { type: 'text', getValue: row => row.youtrackReference },
   devTeamStatus: { type: 'text', getValue: row => row.devTeamStatus },
   issueRelated: { type: 'text', getValue: row => row.issueRelated },
   notes: { type: 'text', getValue: row => row.notes },
   log: { type: 'text', getValue: row => row.log },
-  notificationUnderReview: { type: 'text', getValue: row => row.notificationUnderReview },
   createdAt: { type: 'date', getValue: row => row.createdAt },
   updatedAt: { type: 'date', getValue: row => row.updatedAt }
 };
@@ -153,8 +151,6 @@ function resolveTicketSortColumn(sortKey = '') {
     emailAddressee: 'email_addressee',
     type: 'category',
     status: 'status',
-    notificationSent: 'notification_sent',
-    notificationUnderReview: 'notification_sent_under_review',
     youtrackReference: 'youtrack_reference',
     createdAt: 'created_at',
     updatedAt: 'updated_at',
@@ -811,8 +807,6 @@ UI.Issues = {
         r.name,
         r.department,
         r.emailAddressee,
-        r.notificationSent,
-        r.notificationUnderReview
       ]
         .concat(
           allowInternalFilters ? [r.youtrackReference, r.devTeamStatus, r.issueRelated, r.notes] : []
@@ -987,8 +981,6 @@ UI.Issues = {
       if (col.key === 'issueRelated') return badgeIssueRelatedGroup(row.issueRelated || '');
       if (
         col.key === 'date' ||
-        col.key === 'notificationSent' ||
-        col.key === 'notificationUnderReview' ||
         col.key === 'createdAt' ||
         col.key === 'updatedAt'
       ) {
@@ -2170,8 +2162,6 @@ const IssueEditor = {
       department: (E.editIssueDepartment?.value || '').trim(),
       name: (E.editIssueName?.value || '').trim(),
       emailAddressee: (E.editIssueEmail?.value || '').trim(),
-      notificationSent: this.issue.notificationSent || '',
-      notificationUnderReview: this.issue.notificationUnderReview || '',
       youtrackReference: (E.editIssueYoutrackReference?.value || '').trim(),
       devTeamStatus: (E.editIssueDevTeamStatus?.value || '').trim(),
       issueRelated: this.getSelectedMultiValues(E.editIssueRelated).join(', '),
@@ -2701,8 +2691,6 @@ async function onEditIssueSubmit(event) {
   const department = (E.editIssueDepartment?.value || '').trim();
   const name = (E.editIssueName?.value || '').trim();
   const emailAddressee = (E.editIssueEmail?.value || '').trim();
-  const notificationSent = IssueEditor.issue?.notificationSent || '';
-  const notificationUnderReview = IssueEditor.issue?.notificationUnderReview || '';
   const youtrackReference = (E.editIssueYoutrackReference?.value || '').trim();
   const devTeamStatus = (E.editIssueDevTeamStatus?.value || '').trim();
   const issueRelated = IssueEditor.getSelectedMultiValues(E.editIssueRelated).join(', ');
@@ -2735,8 +2723,6 @@ const issueUpdate = {
     department,
     name,
     emailAddressee,
-    notificationSent,
-    notificationUnderReview,
     youtrackReference,
     devTeamStatus,
     issueRelated,
@@ -4078,8 +4064,6 @@ function normalizeIssueForStore(issue, options = {}) {
     desc: issue.desc || '',
     file: issue.file || '',
     emailAddressee: issue.emailAddressee || '',
-    notificationSent: issue.notificationSent || '',
-    notificationUnderReview: issue.notificationUnderReview || '',
     priority: DataStore.normalizePriority(issue.priority),
     status: DataStore.normalizeStatus(issue.status),
     type: issue.type || '',
@@ -4110,8 +4094,6 @@ function buildPublicTicketUpdatePayload(payload = {}) {
   assignIfDefined('description', payload.desc);
   assignIfDefined('link', payload.file);
   assignIfDefined('email_addressee', payload.emailAddressee);
-  assignIfDefined('notification_sent', payload.notificationSent);
-  assignIfDefined('notification_sent_under_review', payload.notificationUnderReview);
   assignIfDefined('priority', payload.priority);
   assignIfDefined('status', payload.status);
   assignIfDefined('category', payload.type);
@@ -4335,9 +4317,6 @@ async function saveTicketRecord(issue, auth = {}, options = {}) {
       type: mergedTicket?.category ?? payload.type,
       file: mergedTicket?.link ?? payload.file,
       emailAddressee: mergedTicket?.email_addressee ?? payload.emailAddressee,
-      notificationSent: mergedTicket?.notification_sent ?? payload.notificationSent,
-      notificationUnderReview:
-        mergedTicket?.notification_sent_under_review ?? payload.notificationUnderReview,
       youtrackReference:
         mergedTicket?.youtrack_reference ??
         mergedTicket?.youtrackReference ??
@@ -4421,9 +4400,7 @@ function buildIssueExportRow(issue) {
     'Email Addressee': issue.emailAddressee,
     Category: issue.type,
     Status: issue.status,
-    'Notification Sent': issue.notificationSent,
     Log: issue.log,
-    'Notification Sent Under Review': issue.notificationUnderReview
   };
   if (Permissions.isAdminLike()) {
     row['YouTrack Reference'] = issue.youtrackReference;
@@ -4447,9 +4424,7 @@ const ISSUE_EXPORT_HEADERS = [
   'Email Addressee',
   'Category',
   'Status',
-  'Notification Sent',
   'Log',
-  'Notification Sent Under Review'
 ];
 
 const ISSUE_EXPORT_HEADERS_ADMIN_ONLY = [
@@ -4545,8 +4520,6 @@ function buildIssueDetailExportRows(issue, risk = {}, meta = {}) {
     ['Module', issue.module || '—'],
     ['Email', issue.email || '—'],
     ['Email Addressee', issue.emailAddressee || '—'],
-    ['Notification Sent', issue.notificationSent || '—'],
-    ['Notification Under Review', issue.notificationUnderReview || '—'],
     ['Log', issue.log || '—'],
     ['Suggested Priority', meta.suggestions?.priority || '—'],
     ['Suggested Categories', categories],
