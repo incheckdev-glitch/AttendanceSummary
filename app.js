@@ -52,6 +52,10 @@ function getTicketBusinessId(ticket = {}) {
   ).trim();
 }
 
+function getTicketUuid(ticket = {}) {
+  return String(ticket.ticket_uuid || ticket.ticketUuid || ticket.uuid || '').trim();
+}
+
 function buildTicketDeepLink(ticket = {}) {
   const baseUrl = window.location.origin || 'https://monitor.app.incheck360.nl';
   const ticketBusinessId = getTicketBusinessId(ticket);
@@ -1760,16 +1764,17 @@ UI.Modals = {
           <p>${description}</p>
         </section>
 
+        <section class="ticket-log" id="ticketAttachmentsSection" style="display:${Permissions.can('tickets', 'view_attachment') ? 'block' : 'none'};">
+          <h5>Attachments</h5>
+          <div id="ticketAttachmentsList" class="muted">Loading attachments...</div>
+        </section>
+
         ${internalSectionsHtml}
         ${internalNotesHtml}
 
         <section class="ticket-log">
           <h5>Log</h5>
           <p>${logValue}</p>
-        </section>
-        <section class="ticket-log" id="ticketAttachmentsSection" style="display:${Permissions.can('tickets', 'view_attachment') ? 'block' : 'none'};">
-          <h5>Attachments</h5>
-          <div id="ticketAttachmentsList" class="muted">Loading attachments...</div>
         </section>
       </article>
     `;
@@ -1781,37 +1786,7 @@ UI.Modals = {
     E.issueModal.style.display = 'flex';
     E.exportIssuePdf?.focus();
     if (Permissions.can('tickets', 'view_attachment')) {
-      loadTicketAttachments(r).then(async attachments => {
-        const container = document.getElementById('ticketAttachmentsList');
-        if (!container) return;
-        if (!attachments.length) {
-          container.textContent = 'No attachments.';
-          return;
-        }
-        const supabase = window.SupabaseClient?.getClient?.();
-        container.innerHTML = '';
-        for (const row of attachments) {
-          const { data } = await supabase.storage.from(row.storage_bucket).createSignedUrl(row.storage_path, 3600);
-          const link = data?.signedUrl || '#';
-          const item = document.createElement('div');
-          item.className = 'muted';
-          item.style.margin = '6px 0';
-          item.innerHTML = `<a href="${U.escapeAttr(link)}" target="_blank" rel="noopener noreferrer">${U.escapeHtml(row.file_name || 'Attachment')}</a>`;
-          if (Permissions.can('tickets', 'delete_attachment')) {
-            const delBtn = document.createElement('button');
-            delBtn.type = 'button';
-            delBtn.className = 'btn sm ghost';
-            delBtn.textContent = 'Delete';
-            delBtn.style.marginLeft = '8px';
-            delBtn.addEventListener('click', async () => {
-              await supabase.from('ticket_attachments').update({ is_deleted: true, deleted_at: new Date().toISOString(), deleted_by: Session.getUser?.()?.email || null }).eq('id', row.id);
-              UI.Modals.openIssue(r.id);
-            });
-            item.appendChild(delBtn);
-          }
-          container.appendChild(item);
-        }
-      });
+      renderTicketAttachments(r);
     }
   },
   closeIssue(options = {}) {
@@ -2346,18 +2321,121 @@ async function loadTicketAttachments(ticket = {}) {
   const supabase = window.SupabaseClient?.getClient?.();
   if (!supabase) return [];
   const ticketBusinessId = getTicketBusinessId(ticket);
-  if (!ticketBusinessId) return [];
-  const { data, error } = await supabase
+  const ticketUuid = getTicketUuid(ticket);
+  if (!ticketBusinessId && !ticketUuid) return [];
+
+  let query = supabase
     .from('ticket_attachments')
     .select('*')
-    .eq('ticket_id', ticketBusinessId)
     .eq('is_deleted', false)
     .order('created_at', { ascending: false });
+
+  if (ticketBusinessId && ticketUuid) query = query.or(`ticket_id.eq.${ticketBusinessId},ticket_uuid.eq.${ticketUuid}`);
+  else if (ticketBusinessId) query = query.eq('ticket_id', ticketBusinessId);
+  else query = query.eq('ticket_uuid', ticketUuid);
+
+  const { data, error } = await query;
   if (error) {
     console.warn('Failed to load ticket attachments', error);
     return [];
   }
   return Array.isArray(data) ? data : [];
+}
+
+function formatAttachmentSize(bytes) {
+  const size = Number(bytes);
+  if (!Number.isFinite(size) || size <= 0) return 'Unknown size';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let value = size;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`;
+}
+
+function attachmentTypeFromName(name = '') {
+  const ext = String(name).split('.').pop()?.toLowerCase() || '';
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext)) return 'image';
+  if (['mp4', 'mov', 'avi', 'mkv', 'webm'].includes(ext)) return 'video';
+  if (ext === 'pdf') return 'pdf';
+  if (['doc', 'docx'].includes(ext)) return 'doc';
+  if (['xls', 'xlsx', 'csv'].includes(ext)) return 'excel';
+  return 'file';
+}
+
+async function resolveAttachmentUrl(supabase, row = {}) {
+  const bucket = row.storage_bucket || 'ticket-attachments';
+  const path = row.storage_path;
+  if (!path) return '#';
+  const privateResult = await supabase.storage.from(bucket).createSignedUrl(path, 300);
+  if (!privateResult.error && privateResult.data?.signedUrl) return privateResult.data.signedUrl;
+  const publicResult = supabase.storage.from(bucket).getPublicUrl(path);
+  return publicResult?.data?.publicUrl || '#';
+}
+
+async function renderTicketAttachments(ticket = {}) {
+  const container = document.getElementById('ticketAttachmentsList');
+  if (!container || !Permissions.can('tickets', 'view_attachment')) return;
+  const supabase = window.SupabaseClient?.getClient?.();
+  if (!supabase) {
+    container.textContent = 'Unable to load attachments.';
+    return;
+  }
+  const attachments = await loadTicketAttachments(ticket);
+  const legacyLink = String(ticket.attachment_link || ticket.attachmentLink || '').trim();
+  if (!attachments.length && !legacyLink) {
+    container.textContent = 'No attachments uploaded for this ticket.';
+    return;
+  }
+  container.innerHTML = '';
+
+  for (const row of attachments) {
+    const card = document.createElement('div');
+    card.className = 'ticket-attachment-item';
+    card.style.cssText = 'border:1px solid var(--line);border-radius:10px;padding:10px;margin:8px 0;';
+    const url = await resolveAttachmentUrl(supabase, row);
+    const fileType = attachmentTypeFromName(row.file_name || row.storage_path || '');
+    const icon = { image: '🖼️', video: '🎬', pdf: '📄', doc: '📝', excel: '📊', file: '📎' }[fileType] || '📎';
+    const uploadedAt = row.created_at ? U.formatDateTimeMMDDYYYYHHMM(row.created_at) : 'Unknown date';
+    const uploadedBy = row.created_by || row.created_by_email || row.uploaded_by || 'Unknown user';
+    const meta = `${formatAttachmentSize(row.file_size)} • ${uploadedAt} • ${uploadedBy}`;
+    card.innerHTML = `<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;">
+      <div><strong>${icon} ${U.escapeHtml(row.file_name || 'Attachment')}</strong><div class="muted">${U.escapeHtml(meta)}</div></div>
+      <a class="btn sm ghost" href="${U.escapeAttr(url)}" target="_blank" rel="noopener noreferrer">Open</a>
+    </div>`;
+    if (fileType === 'image' && url !== '#') {
+      const img = document.createElement('img');
+      img.src = url;
+      img.alt = row.file_name || 'Attachment preview';
+      img.style.cssText = 'display:block;margin-top:8px;max-width:180px;max-height:120px;border-radius:8px;cursor:pointer;';
+      img.addEventListener('click', () => window.open(url, '_blank', 'noopener,noreferrer'));
+      card.appendChild(img);
+    }
+    if (Permissions.can('tickets', 'delete_attachment')) {
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'btn sm danger';
+      delBtn.textContent = 'Delete';
+      delBtn.style.marginTop = '8px';
+      delBtn.addEventListener('click', async () => {
+        await supabase.from('ticket_attachments').update({ is_deleted: true, deleted_at: new Date().toISOString(), deleted_by: Session.getUser?.()?.email || null }).eq('id', row.id);
+        card.remove();
+        UI.toast('Attachment removed.');
+        if (!container.querySelector('.ticket-attachment-item') && !legacyLink) container.textContent = 'No attachments uploaded for this ticket.';
+      });
+      card.appendChild(delBtn);
+    }
+    container.appendChild(card);
+  }
+
+  if (legacyLink) {
+    const legacy = document.createElement('div');
+    legacy.className = 'muted';
+    legacy.innerHTML = `Legacy attachment link: <a href="${U.escapeAttr(legacyLink)}" target="_blank" rel="noopener noreferrer">${U.escapeHtml(legacyLink)}</a>`;
+    container.appendChild(legacy);
+  }
 }
 
 async function createTicketInDatabase(ticketPayload) {
