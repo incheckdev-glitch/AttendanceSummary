@@ -2,6 +2,10 @@ const Clients = {
   canViewClientSection(resource) {
     return Permissions.canView(resource);
   },
+  canViewClientRenewals() {
+    // Client profile renewals timeline is controlled by clients:view_renewals, not agreements:view.
+    return Permissions.canViewClientRenewals();
+  },
   clientFields: [
     'client_id',
     'client_code',
@@ -1470,10 +1474,11 @@ const Clients = {
     return '';
   },
   setDetailTab(tab = 'overview') {
+    if (tab === 'renewals' && !this.canViewClientRenewals()) tab = 'overview';
     this.state.activeDetailTab = ['overview', 'statement', 'renewals'].includes(tab) ? tab : 'overview';
     if (E.clientOverviewSection) E.clientOverviewSection.style.display = this.state.activeDetailTab === 'overview' ? '' : 'none';
     if (E.clientStatementSection) E.clientStatementSection.style.display = this.state.activeDetailTab === 'statement' ? '' : 'none';
-    if (E.clientRenewalsSection) E.clientRenewalsSection.style.display = this.state.activeDetailTab === 'renewals' ? '' : 'none';
+    if (E.clientRenewalsSection) E.clientRenewalsSection.style.display = this.state.activeDetailTab === 'renewals' && this.canViewClientRenewals() ? '' : 'none';
     if (E.clientDetailTabButtons) {
       E.clientDetailTabButtons.querySelectorAll('[data-client-detail-tab]').forEach(btn => {
         const selected = btn.getAttribute('data-client-detail-tab') === this.state.activeDetailTab;
@@ -1509,9 +1514,9 @@ const Clients = {
     const normalizedStatement = [];
     const normalizedRenewals = [];
     const normalizedTimeline = [];
-    const fallbackTimeline = this.buildTimeline_(clientId);
+    const fallbackTimeline = this.canViewClientRenewals() ? this.buildTimeline_(clientId) : [];
     const statementRows = normalizedStatement.length ? this.computeRunningBalance(normalizedStatement) : this.buildClientStatementRows(client);
-    const renewalRows = normalizedRenewals.length ? normalizedRenewals : this.buildClientRenewalRows(client);
+    const renewalRows = this.canViewClientRenewals() ? (normalizedRenewals.length ? normalizedRenewals : this.buildClientRenewalRows(client)) : [];
     console.log('[ClientsDetail] related counts', {
       client: client?.client_name || client?.company_name || client?.name || client?.customer_name,
       agreementsLoaded,
@@ -1532,7 +1537,7 @@ const Clients = {
     const detailBundle = {
       detail: client || {},
       analytics: client?.analytics || this.computeClientAnalytics_(client || {}),
-      timeline: normalizedTimeline.length ? normalizedTimeline : fallbackTimeline,
+      timeline: this.canViewClientRenewals() ? (normalizedTimeline.length ? normalizedTimeline : fallbackTimeline) : [],
       statementRows,
       renewalRows,
       statementError: loadSuccess ? '' : 'Unable to load statement data.',
@@ -2025,9 +2030,9 @@ const Clients = {
       const [companiesRes, contactsRes, agreementsRes, invoicesRes, receiptsRes] = await Promise.allSettled([
         Api.requestWithSession('companies', 'list', { limit: 10000 }, { requireAuth: true }),
         Api.requestWithSession('contacts', 'list', { limit: 10000 }, { requireAuth: true }),
-        Api.requestWithSession('agreements', 'list', { limit: 10000 }, { requireAuth: true }),
-        Api.requestWithSession('invoices', 'list', { limit: 10000 }, { requireAuth: true }),
-        Api.requestWithSession('receipts', 'list', { limit: 10000 }, { requireAuth: true })
+        this.canViewClientRenewals() ? Api.requestWithSession('agreements', 'list', { limit: 10000 }, { requireAuth: true }) : Promise.resolve({ rows: [] }),
+        this.canViewClientRenewals() ? Api.requestWithSession('invoices', 'list', { limit: 10000 }, { requireAuth: true }) : Promise.resolve({ rows: [] }),
+        this.canViewClientRenewals() ? Api.requestWithSession('receipts', 'list', { limit: 10000 }, { requireAuth: true }) : Promise.resolve({ rows: [] })
       ]);
       this.state.companies = companiesRes.status === 'fulfilled' ? this.extractListResult(companiesRes.value).rows : [];
       this.state.contacts = contactsRes.status === 'fulfilled' ? this.extractListResult(contactsRes.value).rows : [];
@@ -2190,8 +2195,8 @@ const Clients = {
         const trigger = event.target?.closest?.('[data-client-detail-tab]');
         if (!trigger) return;
         const tab = trigger.getAttribute('data-client-detail-tab');
-        if (tab === 'statement' && !(Permissions.canPerformAction('clients','statement_view') || Permissions.canPerformAction('clients','view_statement') || Permissions.canView('clients'))) return UI.toast('You do not have permission to view client statements.');
-        if (tab === 'renewals' && !(Permissions.canView('agreements') || Permissions.canView('clients'))) return UI.toast('You do not have permission to view renewals.');
+        if (tab === 'statement' && !(Permissions.canPerformAction('clients','statement_view') || Permissions.canPerformAction('clients','view_statement'))) return UI.toast('You do not have permission to view client statements.');
+        if (tab === 'renewals' && !this.canViewClientRenewals()) return UI.toast('You do not have permission to view renewals.');
         this.setDetailTab(tab);
       });
     }

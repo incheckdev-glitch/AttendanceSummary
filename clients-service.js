@@ -505,25 +505,34 @@ const ClientsService = {
   async getDashboardData(options = {}) {
     const db = this.getDb();
     const analyticsLimit = Math.max(1000, Math.min(5000, Number(options.analyticsLimit) || 5000));
+    const canViewRenewals = Boolean(window.Permissions?.canViewClientRenewals?.());
     // temporary analytics fallback - replace with SQL view/RPC aggregation
-    const [agreementsRes, itemsRes, invoicesRes, invoiceItemsRes, receiptsRes, receiptItemsRes] = await Promise.all([
-      db.from('agreements').select(this.AGREEMENT_SELECT_COLUMNS).order('updated_at', { ascending: false }).limit(analyticsLimit),
-      this.fetchAgreementItemsForClients_(db),
-      db.from('invoices').select('*').order('updated_at', { ascending: false }).limit(analyticsLimit),
-      db.from('invoice_items').select('*').limit(analyticsLimit),
-      db.from('receipts').select('*').order('updated_at', { ascending: false }).limit(analyticsLimit),
-      db.from('receipt_items').select('*').limit(analyticsLimit)
-    ]);
-    if (agreementsRes.error) throw this.friendlyError('Unable to load agreements for clients', agreementsRes.error);
-
-    const agreementRows = this.coerceLinkedRows_(agreementsRes, 'agreements');
-    console.log('[AgreementMapping] loaded agreements', agreementRows.length);
-    const itemRows = this.coerceLinkedRows_(itemsRes, 'agreement_items');
-    console.log('[ClientsService] agreement_items count', itemRows.length, itemRows.slice(0, 5));
-    const invoiceRows = this.coerceLinkedRows_(invoicesRes, 'invoices');
-    const invoiceItemRows = this.coerceLinkedRows_(invoiceItemsRes, 'invoice_items');
-    const receiptRows = this.coerceLinkedRows_(receiptsRes, 'receipts');
-    const receiptItemRows = this.coerceLinkedRows_(receiptItemsRes, 'receipt_items');
+    let agreementRows = [];
+    let itemRows = [];
+    let invoiceRows = [];
+    let invoiceItemRows = [];
+    let receiptRows = [];
+    let receiptItemRows = [];
+    if (canViewRenewals) {
+      // Client profile renewals timeline is controlled by clients:view_renewals, not agreements:view.
+      const [agreementsRes, itemsRes, invoicesRes, invoiceItemsRes, receiptsRes, receiptItemsRes] = await Promise.all([
+        db.from('agreements').select(this.AGREEMENT_SELECT_COLUMNS).order('updated_at', { ascending: false }).limit(analyticsLimit),
+        this.fetchAgreementItemsForClients_(db),
+        db.from('invoices').select('*').order('updated_at', { ascending: false }).limit(analyticsLimit),
+        db.from('invoice_items').select('*').limit(analyticsLimit),
+        db.from('receipts').select('*').order('updated_at', { ascending: false }).limit(analyticsLimit),
+        db.from('receipt_items').select('*').limit(analyticsLimit)
+      ]);
+      if (agreementsRes.error) throw this.friendlyError('Unable to load agreements for clients', agreementsRes.error);
+      agreementRows = this.coerceLinkedRows_(agreementsRes, 'agreements');
+      console.log('[AgreementMapping] loaded agreements', agreementRows.length);
+      itemRows = this.coerceLinkedRows_(itemsRes, 'agreement_items');
+      console.log('[ClientsService] agreement_items count', itemRows.length, itemRows.slice(0, 5));
+      invoiceRows = this.coerceLinkedRows_(invoicesRes, 'invoices');
+      invoiceItemRows = this.coerceLinkedRows_(invoiceItemsRes, 'invoice_items');
+      receiptRows = this.coerceLinkedRows_(receiptsRes, 'receipts');
+      receiptItemRows = this.coerceLinkedRows_(receiptItemsRes, 'receipt_items');
+    }
 
     const agreements = this.attachAgreementItems(agreementRows.map(row => this.mapAgreementRow(row)), itemRows);
     const invoices = invoiceRows;
