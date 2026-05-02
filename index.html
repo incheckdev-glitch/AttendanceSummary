@@ -2270,9 +2270,15 @@ Sample:
               <label class="muted" for="createTicketEmail">Email Addressee</label>
               <input id="createTicketEmail" class="input" type="email" required />
             </div>
-            <div class="filter-row">
-              <label class="muted" for="createTicketFile">File URL (optional)</label>
-              <input id="createTicketFile" class="input" type="url" />
+            <div class="filter-row" id="createTicketAttachmentRow" style="display:none;">
+              <label class="muted" for="createTicketAttachments">Attachments</label>
+              <input id="createTicketAttachments" class="input" type="file" multiple
+                accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.rtf,.ppt,.pptx,.odt,.ods,.zip" />
+              <div class="muted" style="font-size:12px;margin-top:6px;">
+                Upload screenshots, videos, PDFs, or documents related to this ticket. Max 50 MB per file.
+              </div>
+              <div id="createTicketAttachmentError" class="muted" style="color:var(--danger);font-size:12px;margin-top:6px;"></div>
+              <div id="createTicketAttachmentList" style="margin-top:8px;"></div>
             </div>
           </div>
         </div>
