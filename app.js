@@ -833,7 +833,7 @@ UI.Issues = {
         (!s.priority || s.priority === 'All' || r.priority === s.priority) &&
         (!s.status ||
           s.status === 'All' ||
-          DataStore.normalizeStatus(r.status) === DataStore.normalizeStatus(s.status)) &&
+          DataStore.normalizeStatusKey(r.status) === DataStore.normalizeStatusKey(s.status)) &&
         (!allowInternalFilters ||
           (!s.devTeamStatus ||
             s.devTeamStatus === 'All' ||
@@ -853,21 +853,31 @@ UI.Issues = {
     if (!E.kpis) return;
     const fallbackCounts = {};
     list.forEach(r => {
-      const normalizedStatus = DataStore.normalizeStatus(r.status);
-      fallbackCounts[normalizedStatus] = (fallbackCounts[normalizedStatus] || 0) + 1;
+      const statusKey = DataStore.normalizeStatusKey(r.status);
+      fallbackCounts[statusKey] = (fallbackCounts[statusKey] || 0) + 1;
     });
     const hasSummaryCounts = Object.keys(TicketSummaryState.statusCounts || {}).length > 0;
     const counts = hasSummaryCounts ? TicketSummaryState.statusCounts : fallbackCounts;
     const total = Number(TicketSummaryState.total || 0) || list.length;
+    const statusKeyToLabel = {
+      new: 'New',
+      'not started yet': 'Not Started Yet',
+      'under development': 'Under Development',
+      'on stage': 'On Stage',
+      'on hold': 'On Hold',
+      sent: 'Sent',
+      resolved: 'Resolved',
+      rejected: 'Rejected'
+    };
     const preferredOrder = [
-      'New',
-      'Not Started Yet',
-      'Under Development',
-      'On Stage',
-      'On Hold',
-      'Sent',
-      'Resolved',
-      'Rejected'
+      'new',
+      'not started yet',
+      'under development',
+      'on stage',
+      'on hold',
+      'sent',
+      'resolved',
+      'rejected'
     ];
     E.kpis.innerHTML = '';
     const add = (label, val) => {
@@ -892,7 +902,18 @@ UI.Issues = {
             end: ''
           };
         } else {
-          Filters.state.status = label;
+          const statusKey = DataStore.normalizeStatusKey(label);
+          const matches = (DataStore.rows || [])
+            .filter(t => DataStore.normalizeStatusKey(t.status) === statusKey)
+            .map(t => ({ ticket_id: t.ticket_id || t.id, status: t.status }));
+          console.log('[Tickets Status Filter]', {
+            clickedLabel: label,
+            statusKey,
+            totalTickets: (DataStore.rows || []).length,
+            matchCount: matches.length,
+            matches: matches.slice(0, 20)
+          });
+          Filters.state.status = statusKey;
           Filters.state.search = '';
         }
         Filters.save();
@@ -910,17 +931,19 @@ UI.Issues = {
     };
     add('Total Tickets', total);
     const seen = new Set();
-    preferredOrder.forEach(status => {
-      const value = Number(counts[status] || 0);
+    preferredOrder.forEach(statusKey => {
+      const value = Number(counts[statusKey] || 0);
       if (value > 0) {
-        add(status, value);
-        seen.add(status);
+        add(statusKeyToLabel[statusKey] || DataStore.normalizeStatus(statusKey), value);
+        seen.add(statusKey);
       }
     });
     Object.entries(counts)
-      .filter(([status, value]) => !seen.has(status) && Number(value || 0) > 0)
+      .filter(([statusKey, value]) => !seen.has(statusKey) && Number(value || 0) > 0)
       .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
-      .forEach(([status, value]) => add(status, Number(value || 0)));
+      .forEach(([statusKey, value]) =>
+        add(statusKeyToLabel[statusKey] || DataStore.normalizeStatus(statusKey), Number(value || 0))
+      );
   },
   renderTable(list) {
     if (!E.issuesTbody) return;
@@ -3756,7 +3779,7 @@ async function loadIssues(force = false) {
       TicketSummaryState.highRisk = Number(summaryResponse?.highRisk ?? 0);
       TicketSummaryState.statusCounts =
         summaryResponse && typeof summaryResponse.statusCounts === 'object'
-          ? { ...summaryResponse.statusCounts }
+          ? Object.fromEntries(Object.entries(summaryResponse.statusCounts).map(([status, value]) => [DataStore.normalizeStatusKey(status), Number(value || 0)]))
           : {};
       TicketSummaryState.filterKey = summaryFilterKey;
       TicketSummaryState.loaded = true;
