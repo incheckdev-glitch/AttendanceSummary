@@ -275,7 +275,7 @@ const U = {
       .incheck360-doc-logo{width:220px;max-width:100%;height:auto;display:block;}
     </style>`;
     const logoMarkup =
-      '<div class="incheck360-doc-logo-wrap" data-incheck360-doc-logo><img class="incheck360-doc-logo" src="assets/incheck-logo.svg" alt="InCheck 360 logo" /></div>';
+      '<div class="incheck360-doc-logo-wrap" data-incheck360-doc-logo><img class="incheck360-doc-logo" src="assets/incheck360-logo.svg" alt="InCheck360 logo" /></div>';
 
     let output = raw;
     if (/<\/head>/i.test(output) && !/data-incheck360-doc-logo-style/i.test(output)) {
