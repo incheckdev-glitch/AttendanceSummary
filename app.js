@@ -1767,6 +1767,10 @@ UI.Modals = {
           <h5>Log</h5>
           <p>${logValue}</p>
         </section>
+        <section class="ticket-log" id="ticketAttachmentsSection" style="display:${Permissions.can('tickets', 'view_attachment') ? 'block' : 'none'};">
+          <h5>Attachments</h5>
+          <div id="ticketAttachmentsList" class="muted">Loading attachments...</div>
+        </section>
       </article>
     `;
     if (E.editIssueBtn) {
@@ -1776,6 +1780,39 @@ UI.Modals = {
     if (E.replyRecipientLabel) E.replyRecipientLabel.textContent = `To: ${r.emailAddressee || r.email || '—'}`;
     E.issueModal.style.display = 'flex';
     E.exportIssuePdf?.focus();
+    if (Permissions.can('tickets', 'view_attachment')) {
+      loadTicketAttachments(r).then(async attachments => {
+        const container = document.getElementById('ticketAttachmentsList');
+        if (!container) return;
+        if (!attachments.length) {
+          container.textContent = 'No attachments.';
+          return;
+        }
+        const supabase = window.SupabaseClient?.getClient?.();
+        container.innerHTML = '';
+        for (const row of attachments) {
+          const { data } = await supabase.storage.from(row.storage_bucket).createSignedUrl(row.storage_path, 3600);
+          const link = data?.signedUrl || '#';
+          const item = document.createElement('div');
+          item.className = 'muted';
+          item.style.margin = '6px 0';
+          item.innerHTML = `<a href="${U.escapeAttr(link)}" target="_blank" rel="noopener noreferrer">${U.escapeHtml(row.file_name || 'Attachment')}</a>`;
+          if (Permissions.can('tickets', 'delete_attachment')) {
+            const delBtn = document.createElement('button');
+            delBtn.type = 'button';
+            delBtn.className = 'btn sm ghost';
+            delBtn.textContent = 'Delete';
+            delBtn.style.marginLeft = '8px';
+            delBtn.addEventListener('click', async () => {
+              await supabase.from('ticket_attachments').update({ is_deleted: true, deleted_at: new Date().toISOString(), deleted_by: Session.getUser?.()?.email || null }).eq('id', row.id);
+              UI.Modals.openIssue(r.id);
+            });
+            item.appendChild(delBtn);
+          }
+          container.appendChild(item);
+        }
+      });
+    }
   },
   closeIssue(options = {}) {
     if (!E.issueModal) return;
@@ -2113,6 +2150,8 @@ const IssueEditor = {
 
 const TicketCreator = {
   isSubmitting: false,
+  selectedAttachments: [],
+  ATTACHMENT_LIMIT_BYTES: 50 * 1024 * 1024,
   getCurrentUserDisplayName() {
     const authUser = Session.user?.() || {};
     const profile = authUser.profile || {};
@@ -2194,9 +2233,12 @@ const TicketCreator = {
     console.info('[TicketCreator] ticket form opened', { mode: 'create' });
     this.syncCategoryOptions();
     if (E.createTicketForm) E.createTicketForm.reset();
+    this.selectedAttachments = [];
     this.applyIdentityFieldAccess();
     this.prefillIdentityFields();
     if (E.createTicketPriority) E.createTicketPriority.value = 'Medium';
+    this.syncAttachmentAccess();
+    this.renderSelectedAttachments();
     E.createTicketModal.style.display = 'flex';
     E.createTicketSubject?.focus?.();
   },
@@ -2232,8 +2274,91 @@ const TicketCreator = {
       status: 'new',
       date: now
     };
+  },
+  canCreateAttachments() {
+    return Permissions.can('tickets', 'create_attachment');
+  },
+  syncAttachmentAccess() {
+    if (E.createTicketAttachmentRow) {
+      E.createTicketAttachmentRow.style.display = this.canCreateAttachments() ? '' : 'none';
+    }
+  },
+  getReadableSize(bytes = 0) {
+    const units = ['B', 'KB', 'MB', 'GB'];
+    let value = Number(bytes || 0);
+    let idx = 0;
+    while (value >= 1024 && idx < units.length - 1) {
+      value /= 1024;
+      idx += 1;
+    }
+    return `${value.toFixed(idx === 0 ? 0 : 1)} ${units[idx]}`;
+  },
+  onAttachmentInputChange(files = []) {
+    const errors = [];
+    const next = [...this.selectedAttachments];
+    for (const file of files) {
+      if (!file) continue;
+      if (file.size > this.ATTACHMENT_LIMIT_BYTES) {
+        errors.push(`${file.name} exceeds 50 MB.`);
+        continue;
+      }
+      next.push(file);
+    }
+    this.selectedAttachments = next;
+    if (E.createTicketAttachmentError) E.createTicketAttachmentError.textContent = errors.join(' ');
+    this.renderSelectedAttachments();
+  },
+  removeAttachment(index) {
+    this.selectedAttachments = this.selectedAttachments.filter((_, idx) => idx !== index);
+    this.renderSelectedAttachments();
+  },
+  renderSelectedAttachments() {
+    if (!E.createTicketAttachmentList) return;
+    if (!this.selectedAttachments.length) {
+      E.createTicketAttachmentList.innerHTML = '';
+      return;
+    }
+    E.createTicketAttachmentList.innerHTML = this.selectedAttachments
+      .map(
+        (file, index) => `<div class="muted" style="display:flex;justify-content:space-between;gap:8px;margin:6px 0;">
+          <span>${U.escapeHtml(file.name)} (${U.escapeHtml(this.getReadableSize(file.size))})</span>
+          <button type="button" class="btn sm ghost" data-remove-attachment="${index}">Remove</button>
+        </div>`
+      )
+      .join('');
+    E.createTicketAttachmentList.querySelectorAll('[data-remove-attachment]').forEach(btn => {
+      btn.addEventListener('click', () => this.removeAttachment(Number(btn.getAttribute('data-remove-attachment'))));
+    });
   }
 };
+
+function sanitizeFileName(name = '') {
+  const raw = String(name || '').trim();
+  const dot = raw.lastIndexOf('.');
+  const stem = dot > 0 ? raw.slice(0, dot) : raw;
+  const ext = dot > 0 ? raw.slice(dot + 1).toLowerCase() : '';
+  const safeStem = stem.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'file';
+  return ext ? `${safeStem}.${ext}` : safeStem;
+}
+
+async function loadTicketAttachments(ticket = {}) {
+  if (!Permissions.can('tickets', 'view_attachment')) return [];
+  const supabase = window.SupabaseClient?.getClient?.();
+  if (!supabase) return [];
+  const ticketBusinessId = getTicketBusinessId(ticket);
+  if (!ticketBusinessId) return [];
+  const { data, error } = await supabase
+    .from('ticket_attachments')
+    .select('*')
+    .eq('ticket_id', ticketBusinessId)
+    .eq('is_deleted', false)
+    .order('created_at', { ascending: false });
+  if (error) {
+    console.warn('Failed to load ticket attachments', error);
+    return [];
+  }
+  return Array.isArray(data) ? data : [];
+}
 
 async function createTicketInDatabase(ticketPayload) {
   const variants = [
@@ -2252,6 +2377,56 @@ async function createTicketInDatabase(ticketPayload) {
     }
   }
   throw lastError || new Error('Ticket create rejected by backend.');
+}
+
+function normalizeCreatedTicketRecord(result) {
+  return result?.ticket || result?.issue || result?.data?.ticket || result?.data?.issue || result?.data || result;
+}
+
+function deriveFileCategory(file = {}) {
+  const mime = String(file.type || '').toLowerCase();
+  if (mime.startsWith('image/')) return 'image';
+  if (mime.startsWith('video/')) return 'video';
+  if (mime.includes('pdf')) return 'pdf';
+  if (mime.includes('word') || mime.includes('document')) return 'document';
+  if (mime.includes('sheet') || mime.includes('excel') || mime.includes('csv')) return 'spreadsheet';
+  return 'file';
+}
+
+async function uploadTicketAttachments(ticket, files = []) {
+  if (!files.length) return { failed: [] };
+  const supabase = window.SupabaseClient?.getClient?.();
+  if (!supabase) throw new Error('Supabase client unavailable.');
+  const ticketBusinessId = getTicketBusinessId(ticket);
+  const ticketUuid = String(ticket?.id || ticket?.ticket_uuid || ticket?.uuid || '').trim();
+  const nowUser = Session.getUser?.() || {};
+  const failed = [];
+  for (const file of files) {
+    const storagePath = `tickets/${ticketBusinessId}/${Date.now()}-${sanitizeFileName(file.name)}`;
+    const { error: uploadError } = await supabase.storage.from('ticket-attachments').upload(storagePath, file, {
+      upsert: false,
+      contentType: file.type || 'application/octet-stream'
+    });
+    if (uploadError) {
+      failed.push(`${file.name}: ${uploadError.message}`);
+      continue;
+    }
+    const { error: insertError } = await supabase.from('ticket_attachments').insert({
+      storage_bucket: 'ticket-attachments',
+      storage_path: storagePath,
+      ticket_id: ticketBusinessId,
+      ticket_uuid: ticketUuid || null,
+      file_name: file.name,
+      file_type: deriveFileCategory(file),
+      mime_type: file.type || null,
+      file_size: file.size || 0,
+      uploaded_by: nowUser?.name || nowUser?.username || null,
+      uploaded_by_email: nowUser?.email || null,
+      is_deleted: false
+    });
+    if (insertError) failed.push(`${file.name}: ${insertError.message}`);
+  }
+  return { failed };
 }
 
 function setButtonPendingState(buttonEl, isPending, pendingText, idleText) {
@@ -5757,11 +5932,15 @@ function wireModals() {
     });
   }
   if (E.createTicketForm) {
+    E.createTicketAttachments?.addEventListener('change', e => {
+      TicketCreator.onAttachmentInputChange(Array.from(e.target?.files || []));
+      e.target.value = '';
+    });
     E.createTicketForm.addEventListener('submit', async e => {
       e.preventDefault();
       if (TicketCreator.isSubmitting) return;
       TicketCreator.isSubmitting = true;
-      setButtonPendingState(E.createTicketSubmit, true, 'Creating...');
+      setButtonPendingState(E.createTicketSubmit, true, 'Creating ticket...');
       UI.spinner(true);
       try {
         const payload = TicketCreator.buildPayload();
@@ -5771,8 +5950,19 @@ function wireModals() {
           email_addressee: payload.emailAddressee || '',
           department: payload.department || ''
         });
-        await createTicketInDatabase(payload);
-        UI.toast('Ticket created successfully.');
+        const created = await createTicketInDatabase(payload);
+        const createdTicket = normalizeCreatedTicketRecord(created);
+        if (TicketCreator.canCreateAttachments() && TicketCreator.selectedAttachments.length) {
+          setButtonPendingState(E.createTicketSubmit, true, 'Uploading attachments...');
+          const uploadResult = await uploadTicketAttachments(createdTicket, TicketCreator.selectedAttachments);
+          if (uploadResult.failed.length) {
+            UI.toast(`Ticket created, but some attachments failed to upload. ${uploadResult.failed.join(' | ')}`);
+          } else {
+            UI.toast('Ticket created successfully.');
+          }
+        } else {
+          UI.toast('Ticket created successfully.');
+        }
         TicketCreator.close();
         await loadIssues(true);
       } catch (error) {
@@ -5783,7 +5973,7 @@ function wireModals() {
         UI.toast(`Failed to create ticket: ${error.message}`);
       } finally {
         TicketCreator.isSubmitting = false;
-        setButtonPendingState(E.createTicketSubmit, false, 'Creating...');
+        setButtonPendingState(E.createTicketSubmit, false, 'Creating ticket...');
         UI.spinner(false);
       }
     });
