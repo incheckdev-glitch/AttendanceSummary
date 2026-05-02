@@ -2429,9 +2429,15 @@ Sample:
               </select>
             </div>
 
-            <div class="filter-row">
-              <label class="muted" for="editIssueFile">Link</label>
-              <input id="editIssueFile" class="input" type="url" />
+            <div class="filter-row" id="editTicketAttachmentsSection" style="display:none;">
+              <label class="muted">Attachments</label>
+              <div class="muted" style="font-size:12px;">Upload screenshots, videos, PDFs, or documents related to this ticket. Max 50 MB per file.</div>
+              <div id="editTicketAttachmentUploadWrap" style="margin-top:8px;display:none;">
+                <input id="editTicketAttachments" class="input" type="file" multiple accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip" />
+                <div id="editTicketAttachmentError" class="muted" style="color:var(--danger);font-size:12px;margin-top:6px;"></div>
+                <div id="editTicketAttachmentList" style="margin-top:8px;"></div>
+              </div>
+              <div id="editTicketExistingAttachments" style="margin-top:8px;"></div>
             </div>
 
             <div class="filter-row">
