@@ -513,21 +513,23 @@ const ClientsService = {
     let invoiceItemRows = [];
     let receiptRows = [];
     let receiptItemRows = [];
+    const [agreementsRes, itemsRes] = await Promise.all([
+      db.from('agreements').select(this.AGREEMENT_SELECT_COLUMNS).order('updated_at', { ascending: false }).limit(analyticsLimit),
+      this.fetchAgreementItemsForClients_(db)
+    ]);
+    if (agreementsRes.error) throw this.friendlyError('Unable to load agreements for clients', agreementsRes.error);
+    agreementRows = this.coerceLinkedRows_(agreementsRes, 'agreements');
+    console.log('[AgreementMapping] loaded agreements', agreementRows.length);
+    itemRows = this.coerceLinkedRows_(itemsRes, 'agreement_items');
+    console.log('[ClientsService] agreement_items count', itemRows.length, itemRows.slice(0, 5));
     if (canViewRenewals) {
       // Client profile renewals timeline is controlled by clients:view_renewals, not agreements:view.
-      const [agreementsRes, itemsRes, invoicesRes, invoiceItemsRes, receiptsRes, receiptItemsRes] = await Promise.all([
-        db.from('agreements').select(this.AGREEMENT_SELECT_COLUMNS).order('updated_at', { ascending: false }).limit(analyticsLimit),
-        this.fetchAgreementItemsForClients_(db),
+      const [invoicesRes, invoiceItemsRes, receiptsRes, receiptItemsRes] = await Promise.all([
         db.from('invoices').select('*').order('updated_at', { ascending: false }).limit(analyticsLimit),
         db.from('invoice_items').select('*').limit(analyticsLimit),
         db.from('receipts').select('*').order('updated_at', { ascending: false }).limit(analyticsLimit),
         db.from('receipt_items').select('*').limit(analyticsLimit)
       ]);
-      if (agreementsRes.error) throw this.friendlyError('Unable to load agreements for clients', agreementsRes.error);
-      agreementRows = this.coerceLinkedRows_(agreementsRes, 'agreements');
-      console.log('[AgreementMapping] loaded agreements', agreementRows.length);
-      itemRows = this.coerceLinkedRows_(itemsRes, 'agreement_items');
-      console.log('[ClientsService] agreement_items count', itemRows.length, itemRows.slice(0, 5));
       invoiceRows = this.coerceLinkedRows_(invoicesRes, 'invoices');
       invoiceItemRows = this.coerceLinkedRows_(invoiceItemsRes, 'invoice_items');
       receiptRows = this.coerceLinkedRows_(receiptsRes, 'receipts');
