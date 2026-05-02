@@ -116,6 +116,10 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
   clients: Object.freeze({
     list: ['admin', 'dev', 'viewer', 'hoo'],
     get: ['admin', 'dev', 'viewer', 'hoo'],
+    view_renewals: ['admin', 'dev', 'viewer', 'hoo'],
+    view_statement: ['admin', 'dev', 'viewer', 'hoo'],
+    statement_view: ['admin', 'dev', 'viewer', 'hoo'],
+    statement_export: ['admin', 'dev', 'viewer', 'hoo'],
     create: ['admin', 'dev', 'hoo'],
     update: ['admin', 'dev', 'hoo'],
     delete: ['admin', 'dev']
@@ -847,6 +851,10 @@ const Permissions = {
   canViewClients() {
     return this.canView('clients');
   },
+  canViewClientRenewals() {
+    // Client profile renewals timeline is controlled by clients:view_renewals, not agreements:view.
+    return this.canPerformAction('clients', 'view_renewals');
+  },
   canChangePlanner() {
     return this.canPerformAction('planner', 'manage');
   },
@@ -904,7 +912,7 @@ async function handleExpiredSession(message = 'Session expired. Please log in ag
 
 const PermissionAudit = {
   resources: ['tickets','events','ai_insights','companies','contacts','leads','deals','proposals','agreements','operations_onboarding','technical_admin_requests','invoices','receipts','clients','analytics','notifications','notification_settings','workflow','users','role_permissions'],
-  actions: ['list','get','create','update','delete','export','manage','approve','reject','convert_to_deal','create_from_deal','create_from_proposal','create_from_agreement','create_from_invoice','assign_csm','update_status'],
+  actions: ['list','get','create','update','delete','export','manage','approve','reject','convert_to_deal','create_from_deal','create_from_proposal','create_from_agreement','create_from_invoice','assign_csm','update_status','view_renewals','view_statement','statement_view','statement_export'],
   inspect(resource, action) {
     const role = Permissions.normalizeRole(Session.role());
     const matchedRows = Permissions.getMatchedRows(resource, action, role, { includeDenied: true });
