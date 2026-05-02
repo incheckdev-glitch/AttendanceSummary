@@ -1973,6 +1973,7 @@ const IssueEditor = {
   issue: null,
   isOpening: false,
   isSaving: false,
+  selectedAttachments: [],
   DEV_TEAM_STATUS_OPTIONS: [
     'Pending',
     'Under Review',
@@ -2082,7 +2083,12 @@ const IssueEditor = {
     setVal(E.editIssueEmail, issue.emailAddressee || identity.email || '');
     setVal(E.editIssueYoutrackReference, issue.youtrackReference || '');
     this.syncIssueDropdowns(issue.devTeamStatus || '', issue.issueRelated || '');
-    setVal(E.editIssueFile, issue.file || '');
+    this.selectedAttachments = [];
+    if (E.editTicketAttachments) E.editTicketAttachments.value = '';
+    if (E.editTicketAttachmentError) E.editTicketAttachmentError.textContent = '';
+    this.syncAttachmentAccess();
+    this.renderSelectedAttachments();
+    this.renderExistingAttachments();
 
     if (E.editIssueDate) {
       const d = issue.date ? new Date(issue.date) : null;
@@ -2095,6 +2101,60 @@ const IssueEditor = {
   close() {
     if (E.editIssueModal) E.editIssueModal.style.display = 'none';
     this.issue = null;
+  },
+  canViewAttachments() { return Permissions.can('tickets', 'view_attachment'); },
+  canCreateAttachments() { return Permissions.can('tickets', 'create_attachment'); },
+  canDeleteAttachments() { return Permissions.can('tickets', 'delete_attachment'); },
+  syncAttachmentAccess() {
+    if (E.editTicketAttachmentsSection) E.editTicketAttachmentsSection.style.display = this.canViewAttachments() ? '' : 'none';
+    if (E.editTicketAttachmentUploadWrap) E.editTicketAttachmentUploadWrap.style.display = this.canCreateAttachments() ? '' : 'none';
+  },
+  onAttachmentInputChange(files = []) {
+    const errors = [];
+    for (const file of files) {
+      if (!file) continue;
+      if (file.size > TicketCreator.ATTACHMENT_LIMIT_BYTES) errors.push(`${file.name} exceeds 50 MB.`);
+      else this.selectedAttachments.push(file);
+    }
+    if (E.editTicketAttachmentError) E.editTicketAttachmentError.textContent = errors.join(' ');
+    this.renderSelectedAttachments();
+  },
+  renderSelectedAttachments() {
+    if (!E.editTicketAttachmentList) return;
+    E.editTicketAttachmentList.innerHTML = this.selectedAttachments.map((f,i)=>`<div class="muted" style="display:flex;justify-content:space-between;gap:8px;margin:6px 0;"><span>${U.escapeHtml(f.name)} (${U.escapeHtml(TicketCreator.getReadableSize(f.size))})</span><button type="button" class="btn sm ghost" data-edit-remove-attachment="${i}">Remove</button></div>`).join('');
+    E.editTicketAttachmentList.querySelectorAll('[data-edit-remove-attachment]').forEach(btn=>btn.addEventListener('click',()=>{this.selectedAttachments=this.selectedAttachments.filter((_,idx)=>idx!==Number(btn.getAttribute('data-edit-remove-attachment')));this.renderSelectedAttachments();}));
+  },
+  async renderExistingAttachments() {
+    const container = E.editTicketExistingAttachments;
+    if (!container || !this.canViewAttachments() || !this.issue) return;
+    const supabase = window.SupabaseClient?.getClient?.();
+    if (!supabase) { container.textContent = 'Unable to load attachments.'; return; }
+    const attachments = await loadTicketAttachments(this.issue);
+    const legacyLink = String(this.issue.attachment_link || this.issue.attachmentLink || this.issue.file || '').trim();
+    if (!attachments.length && !legacyLink) { container.textContent = 'No attachments uploaded for this ticket.'; return; }
+    container.innerHTML = '';
+    for (const row of attachments) {
+      const url = await resolveAttachmentUrl(supabase, row);
+      const uploadedAt = row.created_at ? U.formatDateTimeMMDDYYYYHHMM(row.created_at) : 'Unknown date';
+      const uploadedBy = row.uploaded_by || row.uploaded_by_email || 'Unknown user';
+      const el = document.createElement('div');
+      el.className = 'ticket-attachment-item';
+      el.style.cssText = 'border:1px solid var(--line);border-radius:10px;padding:10px;margin:8px 0;';
+      el.innerHTML = `<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;"><div><strong>${U.escapeHtml(row.file_name || 'Attachment')}</strong><div class="muted">${U.escapeHtml(`${formatAttachmentSize(row.file_size)} • ${uploadedAt} • ${uploadedBy}`)}</div></div><a class="btn sm ghost" href="${U.escapeAttr(url)}" target="_blank" rel="noopener noreferrer">Open</a></div>`;
+      if (this.canDeleteAttachments()) {
+        const del = document.createElement('button');
+        del.type = 'button'; del.className = 'btn sm danger'; del.textContent = 'Remove'; del.style.marginTop = '8px';
+        del.addEventListener('click', async ()=>{ await supabase.from('ticket_attachments').update({ is_deleted: true, deleted_at: new Date().toISOString(), deleted_by: Session.getUser?.()?.email || null }).eq('id', row.id); el.remove(); UI.toast('Attachment removed.');});
+        el.appendChild(del);
+      }
+      container.appendChild(el);
+    }
+    if (legacyLink) {
+      const legacy = document.createElement('div');
+      legacy.className = 'muted';
+      legacy.innerHTML = `Legacy attachment link: <a href="${U.escapeAttr(legacyLink)}" target="_blank" rel="noopener noreferrer">${U.escapeHtml(legacyLink)}</a>`;
+      container.appendChild(legacy);
+    }
   },
   collectForm() {
     if (!this.issue) return null;
@@ -2117,7 +2177,7 @@ const IssueEditor = {
       issueRelated: this.getSelectedMultiValues(E.editIssueRelated).join(', '),
       notes: this.issue.notes || '',
       log: this.issue.log || '',
-      file: (E.editIssueFile?.value || '').trim(),
+      file: this.issue.file || '',
       date: E.editIssueDate?.value || ''
     };
   }
@@ -2413,7 +2473,7 @@ async function renderTicketAttachments(ticket = {}) {
       img.addEventListener('click', () => window.open(url, '_blank', 'noopener,noreferrer'));
       card.appendChild(img);
     }
-    if (Permissions.can('tickets', 'delete_attachment')) {
+    if (false) {
       const delBtn = document.createElement('button');
       delBtn.type = 'button';
       delBtn.className = 'btn sm danger';
@@ -2648,7 +2708,6 @@ async function onEditIssueSubmit(event) {
   const issueRelated = IssueEditor.getSelectedMultiValues(E.editIssueRelated).join(', ');
   const notes = IssueEditor.issue?.notes || '';
   const log = IssueEditor.issue?.log || '';
-  const link = (E.editIssueFile?.value || '').trim();
   const date = E.editIssueDate?.value || '';
 
   const missingFields = [];
@@ -2683,7 +2742,7 @@ const issueUpdate = {
     issueRelated,
     notes,
     log,
-  file: link,
+  file: IssueEditor.issue?.file || '',
     date
   };
 
@@ -2703,6 +2762,18 @@ const issueUpdate = {
     UI.Modals.selectedIssue = freshUpdatedIssue;
     IssueEditor.issue = freshUpdatedIssue;
 
+    if (IssueEditor.canCreateAttachments() && IssueEditor.selectedAttachments.length) {
+      const uploadResult = await uploadTicketAttachments(updatedIssue, IssueEditor.selectedAttachments);
+      if (uploadResult.failed.length) {
+        console.warn('Attachment upload failed after ticket update', uploadResult.failed);
+        UI.toast('Ticket updated, but some attachments failed to upload.');
+      } else {
+        UI.toast('Ticket updated successfully.');
+      }
+    } else {
+      UI.toast('Ticket updated successfully.');
+    }
+    await IssueEditor.renderExistingAttachments();
     IssueEditor.close();
     UI.Modals.closeIssue();
     UI.refreshAll();
@@ -6182,6 +6253,10 @@ function wireModals() {
 
  const editIssueForm = document.getElementById('editIssueForm');
   if (editIssueForm) {
+    E.editTicketAttachments?.addEventListener('change', e => {
+      IssueEditor.onAttachmentInputChange(Array.from(e.target?.files || []));
+      e.target.value = '';
+    });
     editIssueForm.addEventListener('submit', onEditIssueSubmit);
   }
   if (E.bulkEditBtn) {
