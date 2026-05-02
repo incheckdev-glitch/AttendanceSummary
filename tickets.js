@@ -12,10 +12,29 @@ const DataStore = {
   freezeWindows: [],
   etag: null,
 
+  normalizeStatusKey(status) {
+    const raw = status == null ? '' : String(status);
+    const normalized = raw
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_-]+/g, ' ')
+      .trim();
+    return normalized || 'new';
+  },
   normalizeStatus(s) {
-    if (typeof window.normalizeTicketStatus === 'function') return window.normalizeTicketStatus(s);
-    const i = (s || '').trim();
-    return i || 'New';
+    const key = DataStore.normalizeStatusKey(s);
+    if (typeof window.normalizeTicketStatus === 'function') return window.normalizeTicketStatus(key);
+    const map = {
+      new: 'New',
+      'under development': 'Under Development',
+      'not started yet': 'Not Started Yet',
+      'on hold': 'On Hold',
+      'on stage': 'On Stage',
+      sent: 'Sent',
+      resolved: 'Resolved',
+      rejected: 'Rejected'
+    };
+    return map[key] || String(s || '').trim() || 'New';
   },
   normalizePriority(p) {
     const i = (p || '').trim().toLowerCase();
