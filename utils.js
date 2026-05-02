@@ -525,13 +525,11 @@ const ColumnManager = {
     { key: 'emailAddressee', label: 'Email Addressee' },
     { key: 'type', label: 'Category' },
     { key: 'status', label: 'Status' },
-    { key: 'notificationSent', label: 'Notification Sent' },
     { key: 'youtrackReference', label: 'YouTrack Reference' },
     { key: 'devTeamStatus', label: 'Dev Team Status' },
     { key: 'issueRelated', label: 'Issue Related' },
     { key: 'notes', label: 'Notes' },
     { key: 'log', label: 'Log' },
-    { key: 'notificationUnderReview', label: 'Notification Sent Under Review' }
   ],
   state: {},
   isColumnAllowed(colKey) {

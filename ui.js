@@ -1211,7 +1211,7 @@ const UI = {
     const triageDurations = safeRows
       .map(r => {
         const created = parseDate(r.date);
-        const triaged = parseDate(r.notificationSent || r.notificationUnderReview);
+        const triaged = parseDate(r.updatedAt || r.createdAt || r.date);
         if (!created || !triaged) return null;
         return (triaged - created) / 3600000;
       })
@@ -1236,7 +1236,7 @@ const UI = {
     const reviewDurations = safeRows
       .map(r => {
         const created = parseDate(r.date);
-        const reviewed = parseDate(r.notificationUnderReview);
+        const reviewed = parseDate(r.updatedAt || r.createdAt || r.date);
         if (!created || !reviewed) return null;
         return (reviewed - created) / 3600000;
       })
