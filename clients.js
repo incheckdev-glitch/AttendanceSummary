@@ -6,6 +6,12 @@ const Clients = {
     // Client profile renewals timeline is controlled by clients:view_renewals, not agreements:view.
     return Permissions.canViewClientRenewals();
   },
+  canViewClientStatement() {
+    return Permissions.canViewClientStatement();
+  },
+  canExportClientStatement() {
+    return Permissions.canExportClientStatement();
+  },
   clientFields: [
     'client_id',
     'client_code',
@@ -1474,13 +1480,17 @@ const Clients = {
     return '';
   },
   setDetailTab(tab = 'overview') {
+    if (tab === 'statement' && !this.canViewClientStatement()) tab = 'overview';
     if (tab === 'renewals' && !this.canViewClientRenewals()) tab = 'overview';
     this.state.activeDetailTab = ['overview', 'statement', 'renewals'].includes(tab) ? tab : 'overview';
     if (E.clientOverviewSection) E.clientOverviewSection.style.display = this.state.activeDetailTab === 'overview' ? '' : 'none';
-    if (E.clientStatementSection) E.clientStatementSection.style.display = this.state.activeDetailTab === 'statement' ? '' : 'none';
+    if (E.clientStatementSection) E.clientStatementSection.style.display = this.state.activeDetailTab === 'statement' && this.canViewClientStatement() ? '' : 'none';
     if (E.clientRenewalsSection) E.clientRenewalsSection.style.display = this.state.activeDetailTab === 'renewals' && this.canViewClientRenewals() ? '' : 'none';
     if (E.clientDetailTabButtons) {
       E.clientDetailTabButtons.querySelectorAll('[data-client-detail-tab]').forEach(btn => {
+        const tabName = btn.getAttribute('data-client-detail-tab');
+        if (tabName === 'statement') btn.style.display = this.canViewClientStatement() ? '' : 'none';
+        if (tabName === 'renewals') btn.style.display = this.canViewClientRenewals() ? '' : 'none';
         const selected = btn.getAttribute('data-client-detail-tab') === this.state.activeDetailTab;
         btn.classList.toggle('primary', selected);
         btn.classList.toggle('ghost', !selected);
@@ -1515,7 +1525,9 @@ const Clients = {
     const normalizedRenewals = [];
     const normalizedTimeline = [];
     const fallbackTimeline = this.canViewClientRenewals() ? this.buildTimeline_(clientId) : [];
-    const statementRows = normalizedStatement.length ? this.computeRunningBalance(normalizedStatement) : this.buildClientStatementRows(client);
+    const statementRows = this.canViewClientStatement()
+      ? (normalizedStatement.length ? this.computeRunningBalance(normalizedStatement) : this.buildClientStatementRows(client))
+      : [];
     const renewalRows = this.canViewClientRenewals() ? (normalizedRenewals.length ? normalizedRenewals : this.buildClientRenewalRows(client)) : [];
     console.log('[ClientsDetail] related counts', {
       client: client?.client_name || client?.company_name || client?.name || client?.customer_name,
@@ -1726,7 +1738,7 @@ const Clients = {
     if (E.clientStatementPreviewFrame) E.clientStatementPreviewFrame.srcdoc = '';
   },
   exportStatementPdf() {
-    if (!canAnyPermission([['clients','statement_export'], ['clients','export'], ['clients','manage']])) { UI.toast('You do not have permission to export statements.'); return; }
+    if (!this.canExportClientStatement()) { UI.toast('You do not have permission to export statements.'); return; }
     const frame = E.clientStatementPreviewFrame;
     const previewTitle = String(E.clientStatementPreviewTitle?.textContent || 'Statement of Account Preview').trim();
     if (!frame || !String(frame.srcdoc || '').trim()) {
@@ -1874,7 +1886,9 @@ const Clients = {
 
     const displayCurrency = this.normalizeCurrencyCode_(analytics.currency || this.getClientCurrency_(client.client_id));
     const analyticsCards = [
-      ['Locations', `${analytics.total_locations || 0} (${analytics.active_locations || 0} active)`],
+      ['Locations', analytics.active_locations === null || analytics.active_locations === undefined
+        ? `${analytics.total_locations || 0}`
+        : `${analytics.total_locations || 0} (${analytics.active_locations || 0} active)`],
       ['Agreements', `${analytics.total_agreements || 0} (${analytics.signed_agreements || 0} signed)`],
       ['Agreement Value', this.formatMoneyWithCurrency_(analytics.total_agreement_value || 0, displayCurrency)],
       ['Total Invoiced', this.formatMoneyWithCurrency_(analytics.total_invoiced_value || 0, displayCurrency)],
@@ -2195,7 +2209,7 @@ const Clients = {
         const trigger = event.target?.closest?.('[data-client-detail-tab]');
         if (!trigger) return;
         const tab = trigger.getAttribute('data-client-detail-tab');
-        if (tab === 'statement' && !(Permissions.canPerformAction('clients','statement_view') || Permissions.canPerformAction('clients','view_statement'))) return UI.toast('You do not have permission to view client statements.');
+        if (tab === 'statement' && !this.canViewClientStatement()) return UI.toast('You do not have permission to view client statements.');
         if (tab === 'renewals' && !this.canViewClientRenewals()) return UI.toast('You do not have permission to view renewals.');
         this.setDetailTab(tab);
       });
@@ -2226,9 +2240,9 @@ const Clients = {
     if (E.clientStatementExportPdfBtn) {
       E.clientStatementExportPdfBtn.setAttribute('data-permission-resource', 'clients');
       E.clientStatementExportPdfBtn.setAttribute('data-permission-action', 'statement_export');
-      E.clientStatementExportPdfBtn.style.display = (Permissions.canPerformAction('clients','statement_export') || Permissions.canExport('clients')) ? '' : 'none';
+      E.clientStatementExportPdfBtn.style.display = this.canExportClientStatement() ? '' : 'none';
       E.clientStatementExportPdfBtn.addEventListener('click', () => {
-        if (!(Permissions.canPerformAction('clients','statement_export') || Permissions.canExport('clients'))) return UI.toast('You do not have permission to export client statements.');
+        if (!this.canExportClientStatement()) return UI.toast('You do not have permission to export client statements.');
         this.previewStatementPdf();
       });
     }
@@ -2239,7 +2253,7 @@ const Clients = {
       E.clientStatementPreviewExportPdfBtn.setAttribute('data-permission-resource', 'clients');
       E.clientStatementPreviewExportPdfBtn.setAttribute('data-permission-action', 'statement_export');
       E.clientStatementPreviewExportPdfBtn.addEventListener('click', () => {
-        if (!(Permissions.canPerformAction('clients','statement_export') || Permissions.canExport('clients'))) return UI.toast('You do not have permission to export client statements.');
+        if (!this.canExportClientStatement()) return UI.toast('You do not have permission to export client statements.');
         this.exportStatementPdf();
       });
     }

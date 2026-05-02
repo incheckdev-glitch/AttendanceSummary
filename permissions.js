@@ -855,6 +855,12 @@ const Permissions = {
     // Client profile renewals timeline is controlled by clients:view_renewals, not agreements:view.
     return this.canPerformAction('clients', 'view_renewals');
   },
+  canViewClientStatement() {
+    return this.canPerformAction('clients', 'view_statement') || this.canPerformAction('clients', 'statement_view');
+  },
+  canExportClientStatement() {
+    return this.canPerformAction('clients', 'statement_export');
+  },
   canChangePlanner() {
     return this.canPerformAction('planner', 'manage');
   },
