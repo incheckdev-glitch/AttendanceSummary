@@ -275,9 +275,9 @@ const U = {
     // Keep document previews independent from the app/PWA/MonitorCore logo by embedding the
     // InCheck360 document logo directly in the generated preview HTML.
     const styleTag = `<style data-incheck360-doc-logo-style>
-      .incheck360-doc-logo-wrap{display:flex;justify-content:center;align-items:center;margin:0 0 18px;padding:0;}
-      .incheck360-doc-logo{width:240px;max-width:100%;height:auto;display:block;object-fit:contain;}
-      @media print{.incheck360-doc-logo-wrap{margin-bottom:14px}.incheck360-doc-logo{width:220px}}
+      .incheck360-doc-logo-wrap{display:flex;justify-content:flex-start;align-items:flex-start;text-align:left;margin:0 0 14px;padding:0;width:100%;}
+      .incheck360-doc-logo{width:190px;max-width:190px;height:auto;display:block;object-fit:contain;object-position:left top;}
+      @media print{.incheck360-doc-logo-wrap{margin-bottom:12px}.incheck360-doc-logo{width:170px;max-width:170px}}
     </style>`;
     const logoMarkup =
       `<div class="incheck360-doc-logo-wrap" data-incheck360-doc-logo><img class="incheck360-doc-logo" src="${INCHECK360_DOCUMENT_LOGO_DATA_URI}" alt="InCheck360 logo" /></div>`;
