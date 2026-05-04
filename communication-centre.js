@@ -48,7 +48,17 @@
   };
   global.CommunicationCentre=M;
   document.addEventListener('DOMContentLoaded',()=>{
-    const tab=document.getElementById('communicationCentreTab');
-    if(tab){tab.addEventListener('click',()=>{ if(!M._inited){M._inited=true; M.init();} });}
+    const tab=document.getElementById('communicationCentreTab') || document.querySelector('[data-view="communication_centre"],[data-tab="communication_centre"],[href="#communication_centre"]');
+    if(tab && tab.dataset.ccClickFallbackBound !== 'true'){
+      tab.dataset.ccClickFallbackBound = 'true';
+      tab.addEventListener('click',event=>{
+        event.preventDefault();
+        if(typeof global.setActiveView === 'function'){
+          global.setActiveView('communication_centre');
+          return;
+        }
+        if(!M._inited){M._inited=true; M.init();}
+      });
+    }
   });
 })(window);

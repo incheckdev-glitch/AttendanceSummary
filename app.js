@@ -2904,7 +2904,9 @@ function canAccessAiInsights() {
 window.canAccessAiInsights = canAccessAiInsights;
 
 function normalizeViewKey(view) {
-  return String(view || '').trim() === 'communication_centre' ? 'communicationCentre' : String(view || '').trim();
+  const key = String(view || '').trim();
+  if (['communication_centre', 'communication-centre', 'communication_center', 'communicationCentre'].includes(key)) return 'communicationCentre';
+  return key;
 }
 
 function setActiveView(view) {
@@ -5270,10 +5272,53 @@ function syncFilterInputs() {
 }
 
 
+
+// Expose the view switcher for late-loaded modules and safe tab fallbacks.
+window.setActiveView = setActiveView;
+
 function wireCore() {
-   [E.issuesTab, E.calendarTab, E.insightsTab, E.csmTab, E.companyTab, E.contactsTab, E.leadsTab, E.dealsTab, E.proposalsTab, E.agreementsTab, E.operationsOnboardingTab, E.technicalAdminTab, E.invoicesTab, E.receiptsTab, E.lifecycleAnalyticsTab, E.clientsTab, E.proposalCatalogTab, E.notificationsTab, E.notificationSetupTab, E.workflowTab, E.usersTab, E.rolePermissionsTab].forEach(btn => {
-    if (!btn) return;
-    btn.addEventListener('click', () => setActiveView(btn.dataset.view));
+  const bindViewTab = btn => {
+    if (!btn || btn.dataset.viewClickBound === 'true') return;
+    btn.dataset.viewClickBound = 'true';
+    btn.addEventListener('click', event => {
+      event.preventDefault();
+      const viewKey = btn.dataset.view || btn.dataset.tab || btn.getAttribute('href')?.replace(/^#/, '');
+      if (!viewKey) return;
+      setActiveView(viewKey);
+    });
+  };
+
+  [
+    E.issuesTab,
+    E.calendarTab,
+    E.insightsTab,
+    E.csmTab,
+    E.companyTab,
+    E.contactsTab,
+    E.leadsTab,
+    E.dealsTab,
+    E.proposalsTab,
+    E.agreementsTab,
+    E.operationsOnboardingTab,
+    E.technicalAdminTab,
+    E.invoicesTab,
+    E.receiptsTab,
+    E.lifecycleAnalyticsTab,
+    E.clientsTab,
+    E.proposalCatalogTab,
+    E.communicationCentreTab,
+    E.notificationsTab,
+    E.notificationSetupTab,
+    E.workflowTab,
+    E.usersTab,
+    E.rolePermissionsTab
+  ].forEach(bindViewTab);
+
+  document.addEventListener('click', event => {
+    const tab = event.target?.closest?.('#communicationCentreTab,[data-view="communication_centre"],[data-tab="communication_centre"],[href="#communication_centre"]');
+    if (!tab) return;
+    event.preventDefault();
+    setActiveView('communication_centre');
   });
 
   if (E.drawerBtn)
