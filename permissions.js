@@ -218,7 +218,8 @@ const Permissions = {
     returned: 0,
     hasMore: false,
     total: 0,
-    matrix: new Map()
+    matrix: new Map(),
+    error: null
   },
   actionAliasMap: Object.freeze({
     view: ['list', 'get'],
@@ -393,40 +394,19 @@ const Permissions = {
     const currentRole = this.normalizeRole(Session.role());
     this.state.loading = true;
     try {
+      this.state.error = null;
       let rows = [];
       let total = 0;
-      let limit = Number(this.state.limit || 50);
-      if (this.canLoadRuntimeMatrix(currentRole)) {
-        let page = 1;
-        let hasMore = true;
-        let lastNormalized = null;
-        while (hasMore) {
-          const response = await Api.listRolePermissions({
-            limit: this.state.limit,
-            page,
-            summary_only: true,
-            forceRefresh: force
-          });
-          const normalized = this.extractListResult(response);
-          rows.push(...normalized.rows);
-          hasMore = Boolean(normalized.hasMore);
-          lastNormalized = normalized;
-          page += 1;
-          if (page > 500) break;
-        }
-        total = Number(lastNormalized?.total ?? rows.length) || rows.length;
-        limit = Number(lastNormalized?.limit || this.state.limit || 50);
-      } else {
-        const client = window.SupabaseClient?.getClient?.();
-        if (!client || typeof client.rpc !== 'function') {
-          throw new Error('Supabase RPC client is unavailable for get_my_role_permissions');
-        }
-        const { data, error } = await client.rpc('get_my_role_permissions');
-        if (error) throw error;
-        rows = this.extractRows(data);
-        total = rows.length;
+      const limit = Number(this.state.limit || 50);
+      const client = window.SupabaseClient?.getClient?.();
+      if (!client || typeof client.rpc !== 'function') {
+        throw new Error('Supabase RPC client is unavailable for get_my_role_permissions');
       }
-      const roleKey = currentRole;
+      const { data, error } = await client.rpc('get_my_role_permissions');
+      if (error) throw error;
+      rows = this.extractRows(data);
+      total = rows.length;
+      const roleKey = this.normalizeRole(currentRole);
       rows = rows.filter(row => this.normalizeRole(row.role_key) === roleKey && this.toBoolean(row.is_allowed, true) === true && this.toBoolean(row.is_active, true) === true);
       const { matrix, totalActiveRows, totalDeniedRows } = this.buildMatrixFromRows(rows);
       this.state.rows = rows;
@@ -442,14 +422,14 @@ const Permissions = {
         rowsCount: rows.length,
         resources: [...new Set(rows.map(row => String(row.resource || '').trim().toLowerCase()).filter(Boolean))]
       });
-      console.log('[Permissions] matrix loaded', JSON.stringify({
-        role: currentRole,
-        totalRowsLoaded: rows.length,
-        totalActiveRows,
-        totalDeniedRows,
-        matrixKeyCount: matrix.size,
-        sampleRows: rows.slice(0, 10)
-      }, null, 2));
+      console.log('[Permissions] matrix loaded', {
+        roleKey,
+        rowCount: rows.length,
+        resources: Object.keys(Object.fromEntries(
+          [...new Set(rows.map(row => String(row.resource || '').trim().toLowerCase()).filter(Boolean))]
+            .map(resource => [resource, true])
+        ) || {})
+      });
       console.info('[Permissions] matrix loaded stats', {
         totalActiveRows,
         totalDeniedRows
@@ -464,8 +444,14 @@ const Permissions = {
           ? window.isPermissionError(error)
           : String(error?.message || '').toLowerCase().includes('forbidden') ||
             String(error?.message || '').toLowerCase().includes('cannot list');
-      this.state.loaded = isPermErr;
-      console.warn('[Permissions] loadMatrix error', { isPermErr, message: error?.message });
+      this.state.loaded = false;
+      this.state.error = error;
+      console.error('[Permissions] loadMatrix error', {
+        isPermErr,
+        message: error?.message,
+        roleKey: this.normalizeRole(Session.role()),
+        error
+      });
       return [];
     } finally {
       this.state.loading = false;
@@ -476,6 +462,7 @@ const Permissions = {
     this.state.loading = false;
     this.state.rows = [];
     this.state.matrix = new Map();
+    this.state.error = null;
   },
   isReady() {
     return Boolean(this.state.loaded) && !this.state.loading;
