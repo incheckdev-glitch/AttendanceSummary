@@ -179,6 +179,7 @@
 
   function byId(id) { return id ? doc.getElementById(id) : null; }
   function str(value) { return String(value ?? '').trim(); }
+  function normalizeCompare(value) { return str(value).toLowerCase(); }
   function rowsFrom(response) {
     const rows = response?.rows || response?.items || response?.data || response?.result || response;
     return Array.isArray(rows) ? rows : [];
@@ -213,7 +214,9 @@
       id: str(c.id),
       contact_id: str(c.contact_id || c.contactId),
       company_id: str(c.company_id || c.companyId),
+      company_uuid: str(c.company_uuid || c.companyUuid),
       company_name: str(c.company_name || c.companyName),
+      legal_company_name: str(c.legal_company_name || c.legalCompanyName),
       first_name: first,
       last_name: last,
       full_name: full,
@@ -231,7 +234,10 @@
     return str(company.legal_name || company.company_name || company.company_id || 'Unnamed company');
   }
   function displayContact(contact = {}) {
-    return str(contact.full_name || `${contact.first_name || ''} ${contact.last_name || ''}` || contact.email || contact.contact_id || 'Unnamed contact');
+    const firstLast = str(`${contact.first_name || ''} ${contact.last_name || ''}`);
+    const base = firstLast || str(contact.full_name || contact.contact_name) || str(contact.email) || str(contact.contact_id) || 'Unnamed contact';
+    if (str(contact.email) && normalizeCompare(base) !== normalizeCompare(contact.email)) return `${base} — ${str(contact.email)}`;
+    return base;
   }
   function setValue(id, value, { readonly = true } = {}) {
     const el = byId(id);
@@ -246,16 +252,16 @@
   function setMany(ids = [], value, options) {
     ids.forEach(id => setValue(id, value, options));
   }
-  function setSelectOptions(select, rows, placeholder) {
+  function setSelectOptions(select, rows, placeholder, type) {
     if (!select) return;
     const currentValue = str(select.value);
     const options = [`<option value="">${escapeHtml(placeholder)}</option>`];
     rows.forEach(row => {
       const value = row.company_id || row.contact_id || row.id || '';
       if (!value) return;
-      const label = row.company_id !== undefined
-        ? `${displayCompany(row)}${row.company_id ? ` (${row.company_id})` : ''}`
-        : `${displayContact(row)}${row.email ? ` — ${row.email}` : ''}`;
+      const label = type === 'company'
+        ? displayCompany(row)
+        : displayContact(row);
       options.push(`<option value="${escapeAttr(value)}">${escapeHtml(label)}</option>`);
     });
     select.innerHTML = options.join('');
@@ -325,6 +331,62 @@
     return contacts;
   }
 
+  function contactMatchesCompany(contact, company) {
+    const contactCompanyId = normalizeCompare(contact.company_id);
+    const contactCompanyUuid = normalizeCompare(contact.company_uuid);
+    const selectedCompanyId = normalizeCompare(company.company_id || company.id);
+    const selectedEntityId = normalizeCompare(company.id);
+    if ((contactCompanyId && selectedCompanyId && contactCompanyId === selectedCompanyId) ||
+      (contactCompanyId && selectedEntityId && contactCompanyId === selectedEntityId) ||
+      (contactCompanyUuid && selectedEntityId && contactCompanyUuid === selectedEntityId)) {
+      return true;
+    }
+    const contactLegalCompanyName = normalizeCompare(contact.legal_company_name);
+    const contactCompanyName = normalizeCompare(contact.company_name);
+    const selectedLegalName = normalizeCompare(company.legal_name);
+    const selectedCompanyName = normalizeCompare(company.company_name);
+    const selectedName = normalizeCompare(company.name);
+    return (contactLegalCompanyName && selectedLegalName && contactLegalCompanyName === selectedLegalName) ||
+      (contactCompanyName && selectedCompanyName && contactCompanyName === selectedCompanyName) ||
+      (contactCompanyName && selectedName && contactCompanyName === selectedName);
+  }
+
+  async function resolveContactsForCompany(selectedCompany) {
+    const selectedCompanyId = str(selectedCompany?.company_id || selectedCompany?.id);
+    const idContacts = await fetchContacts(selectedCompanyId);
+    if (idContacts.length) return idContacts;
+    let allContacts = [];
+    try {
+      if (global.Api?.requestWithSession) {
+        const response = await global.Api.requestWithSession('contacts', 'list', { limit: 500, page: 1, sort_by: 'first_name', sort_dir: 'asc' }, { requireAuth: true });
+        allContacts = rowsFrom(response).map(normalizeContact).filter(c => c.contact_id);
+      }
+    } catch (error) {
+      console.warn('[crm selectors] contacts API fallback load failed', error);
+    }
+    if (!allContacts.length) {
+      try {
+        const client = global.supabaseClient || global.supabase;
+        if (client?.from) {
+          const { data, error } = await client.from('contacts').select('*').order('first_name', { ascending: true }).limit(500);
+          if (error) throw error;
+          allContacts = (data || []).map(normalizeContact).filter(c => c.contact_id);
+        }
+      } catch (error) {
+        console.warn('[crm selectors] contacts Supabase fallback load failed', error);
+      }
+    }
+    const matchedContacts = allContacts.filter(contact => contactMatchesCompany(contact, selectedCompany || {}));
+    console.log('[CompanyContactSelector] contacts matched', {
+      selectedCompany,
+      selectedCompanyId,
+      totalContacts: allContacts.length,
+      matchedCount: matchedContacts.length,
+      matchedContacts: matchedContacts.slice(0, 5)
+    });
+    return matchedContacts;
+  }
+
   function isDirectCreate(cfg) {
     const form = byId(cfg.formId);
     if (!form) return false;
@@ -339,7 +401,7 @@
     const select = byId(cfg.companySelectId);
     if (!select) return;
     const companies = await fetchCompanies();
-    setSelectOptions(select, companies, 'Select company');
+    setSelectOptions(select, companies, 'Select company', 'company');
   }
 
   async function loadContactsForConfig(cfg, companyId, selectedContactId = '') {
@@ -352,13 +414,14 @@
     }
     contactSelect.disabled = true;
     contactSelect.innerHTML = '<option value="">Loading contacts…</option>';
-    const contacts = await fetchContacts(companyId);
+    const selectedCompany = state.companies.find(c => c.company_id === str(companyId) || c.id === str(companyId)) || { company_id: str(companyId), id: str(companyId) };
+    const contacts = await resolveContactsForCompany(selectedCompany);
     if (!contacts.length) {
       contactSelect.innerHTML = '<option value="">No contacts found for this company</option>';
       contactSelect.disabled = false;
       return [];
     }
-    setSelectOptions(contactSelect, contacts, 'Select contact');
+    setSelectOptions(contactSelect, contacts, 'Select contact', 'contact');
     contactSelect.disabled = false;
     if (selectedContactId && [...contactSelect.options].some(opt => opt.value === selectedContactId)) {
       contactSelect.value = selectedContactId;
@@ -445,6 +508,7 @@
       const company = state.companies.find(c => c.company_id === companyId) || null;
       if (company) applyCompany(cfg, company);
       setValue(cfg.contactHiddenId, '', { readonly: false });
+      cfg.updateModule?.(null, { contact_id: '' });
       contactSelect.value = '';
       await loadContactsForConfig(cfg, companyId);
       if (isDirectCreate(cfg)) {
@@ -456,7 +520,8 @@
     contactSelect.addEventListener('change', async () => {
       const companyId = str(companySelect.value);
       const contactId = str(contactSelect.value);
-      const contacts = await fetchContacts(companyId);
+      const company = state.companies.find(c => c.company_id === companyId || c.id === companyId) || { company_id: companyId, id: companyId };
+      const contacts = await resolveContactsForCompany(company);
       const contact = contacts.find(c => c.contact_id === contactId) || null;
       if (contact) applyContact(cfg, contact);
       if (isDirectCreate(cfg)) {
