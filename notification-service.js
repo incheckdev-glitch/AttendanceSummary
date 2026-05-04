@@ -254,6 +254,25 @@
   function getRuleUsersFromRecord(rule = {}) {
     return normalizeList(rule.users_from_record ?? rule.usersFromRecord ?? rule.dynamic_recipients ?? rule.dynamicRecipients);
   }
+  function getRuleRecipientMode(rule = {}) {
+    return normalizeAction(rule.recipient_mode ?? rule.recipientMode ?? '');
+  }
+  async function resolveCommunicationCentreRecipientsByMode(recipientMode = '', recordId = '', actorUserId = '') {
+    const mode = normalizeAction(recipientMode);
+    if (!recordId || !mode) return { userIds: [], emails: [] };
+    const supported = new Set(['participants_except_actor', 'all_participants', 'creator', 'assigned_users', 'assigned_role_snapshot']);
+    if (!supported.has(mode)) return { userIds: [], emails: [] };
+    const client = global.SupabaseClient?.getClient?.();
+    if (!client) return { userIds: [], emails: [] };
+    const { data, error } = await client.from('communication_centre_participants').select('user_id,participant_type').eq('conversation_id', recordId);
+    if (error) throw error;
+    let ids = (Array.isArray(data) ? data : []).map(row => String(row?.user_id || '').trim()).filter(Boolean);
+    if (mode === 'creator') ids = ids.filter((_id, idx) => String(data[idx]?.participant_type || '').toLowerCase() === 'creator');
+    if (mode === 'assigned_users') ids = ids.filter((_id, idx) => String(data[idx]?.participant_type || '').toLowerCase() === 'assigned_user');
+    if (mode === 'assigned_role_snapshot') ids = ids.filter((_id, idx) => String(data[idx]?.participant_type || '').toLowerCase() === 'assigned_role');
+    if (mode === 'participants_except_actor' && actorUserId) ids = ids.filter(id => id !== String(actorUserId));
+    return { userIds: [...new Set(ids)], emails: [] };
+  }
 
   function isRuleEnabled(rule = {}) {
     if (!rule) return true;
@@ -419,7 +438,8 @@
       invoices: `/#finance?tab=invoices&id=${encodedId}`,
       receipts: `/#finance?tab=receipts&id=${encodedId}`,
       clients: `/#clients?id=${encodedId}`,
-      events: `/#events?id=${encodedId}`
+      events: `/#events?id=${encodedId}`,
+      communication_centre: `/#communication_centre?conversation_id=${encodedId}`
     };
     return routeMap[normalizedResource] || `/#${encodeURIComponent(normalizedResource)}?id=${encodedId}`;
   }
@@ -459,15 +479,20 @@
       const assignedUsers = rule ? getRuleAssignedUsers(rule) : [];
       const assignedEmails = rule ? getRuleAssignedEmails(rule) : [];
       const dynamicEmails = rule ? resolveDynamicRecipientEmails(rule, metadata) : [];
+      const recipientMode = rule ? getRuleRecipientMode(rule) : '';
+      let modeRecipients = { userIds: [], emails: [] };
+      if (rule && normalizedResource === 'communication_centre' && recipientMode) {
+        modeRecipients = await resolveCommunicationCentreRecipientsByMode(recipientMode, recordId, metadata?.actor_user_id || metadata?.actor_id || '');
+      }
       const directTargets = directUsers.length > 0 || directEmails.length > 0;
-      const hasConfiguredRecipients = Boolean(assignedRoles.length || assignedUsers.length || assignedEmails.length || dynamicEmails.length || directTargets);
+      const hasConfiguredRecipients = Boolean(assignedRoles.length || assignedUsers.length || assignedEmails.length || dynamicEmails.length || modeRecipients.userIds.length || directTargets);
 
       if (rule && !hasConfiguredRecipients) {
         return skipNotification({ resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, reason: 'no_recipients_configured' });
       }
 
       const roleRecipients = await resolveUsersForRolesDetailed(assignedRoles);
-      const userIds = [...new Set([...directUsers, ...assignedUsers, ...roleRecipients.userIds])];
+      const userIds = [...new Set([...directUsers, ...assignedUsers, ...modeRecipients.userIds, ...roleRecipients.userIds])];
       const userIdEmails = await resolveEmailsForUserIds(userIds);
       const emails = [...new Set([...directEmails, ...assignedEmails, ...dynamicEmails, ...roleRecipients.emails, ...userIdEmails])];
       if (!userIds.length && !emails.length && (rule || isKnownNotificationAction(normalizedResource, normalizedAction))) {

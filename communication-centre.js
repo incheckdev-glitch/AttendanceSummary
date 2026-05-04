@@ -281,48 +281,23 @@
   }
 
 
-  async function notifyParticipants({ title, body, conversationId, excludeUserId, eventKey, action }) {
+  async function dispatchCommunicationCentreNotification({ action, conversationId, actorId, title, body, conversationNo, conversationTitle }) {
     try {
-      const client = db();
-      if (!client) return;
-      const { data, error } = await client
-        .from('communication_centre_participants')
-        .select('user_id')
-        .eq('conversation_id', conversationId);
-      if (error) throw error;
-      const ids = [...new Set((data || [])
-        .map(item => item.user_id)
-        .filter(Boolean)
-        .filter(userId => String(userId) !== String(excludeUserId)))];
-      if (!ids.length) return;
+      if (!global.NotificationService?.sendBusinessNotification) return;
       const url = `/#communication_centre?conversation_id=${encodeURIComponent(conversationId)}`;
-      if (global.NotificationService?.sendBusinessNotification) {
-        await global.NotificationService.sendBusinessNotification({
-          resource: 'communication_centre',
-          action: action,
-          eventKey: eventKey,
-          recordId: conversationId,
-          title,
-          body,
-          targetUsers: ids,
-          url,
-          metadata: { conversation_id: conversationId },
-          channels: undefined
-        });
-        return;
-      }
-      await global.Api?.sendBusinessPwaPush?.({
+      await global.NotificationService.sendBusinessNotification({
         resource: 'communication_centre',
-        action: action,
+        action: String(action || '').trim(),
+        eventKey: `communication_centre.${String(action || '').trim()}`,
         recordId: conversationId,
         title,
         body,
-        userIds: ids,
         url,
-        data: { conversation_id: conversationId }
+        metadata: { actor_user_id: actorId, conversation_id: conversationId, conversation_no: conversationNo || '', conversation_title: conversationTitle || '' },
+        channels: ['in_app', 'push', 'email']
       });
     } catch (error) {
-      console.warn('[Communication Centre] notify failed', error);
+      console.warn('[Communication Centre] notification dispatch failed', error);
     }
   }
 
@@ -661,13 +636,14 @@
       if (conversation?.id) {
         await openDetail(conversation.id);
         setMobileView('chat');
-        notifyParticipants({
-          title: 'New Internal Conversation',
-          body: `${conversation.created_by_name || global.Session?.displayName?.() || 'A user'} created “${conversation.title || title}”`,
+        dispatchCommunicationCentreNotification({
+          action: 'conversation_created',
           conversationId: conversation.id,
-          excludeUserId: conversation.created_by,
-          eventKey: 'communication_centre.conversation_created',
-          action: 'create'
+          actorId: conversation.created_by,
+          title: 'New Communication Centre conversation',
+          body: `${conversation.created_by_name || global.Session?.displayName?.() || 'A user'} created “${conversation.title || title}”`,
+          conversationNo: conversation.conversation_no,
+          conversationTitle: conversation.title || title
         });
       }
       showFriendlySuccess('Conversation created successfully.');
@@ -700,8 +676,16 @@
       if (error) throw error;
       await openDetail(conversation.id);
       await refresh();
-      showFriendlySuccess('Conversation status updated to Closed.');
-      notifyParticipants({ title: 'Conversation Closed', body: `${global.Session?.displayName?.() || 'A user'} closed “${conversation.title||''}”`, conversationId: conversation.id, excludeUserId: global.Session?.user?.()?.id, eventKey: 'communication_centre.conversation_closed', action: 'close' });
+      dispatchCommunicationCentreNotification({
+        action: 'conversation_closed',
+        conversationId: conversation.id,
+        actorId: global.Session?.user?.()?.id,
+        title: 'Communication Centre conversation closed',
+        body: `${global.Session?.displayName?.() || 'A user'} closed “${conversation.title}”`,
+        conversationNo: conversation.conversation_no,
+        conversationTitle: conversation.title
+      });
+      showFriendlySuccess('Conversation closed successfully.');
     } catch (error) {
       console.error('[Communication Centre] close conversation failed', error);
       showFriendlyError('Unable to close conversation. Please try again.');
@@ -716,8 +700,16 @@
       if (error) throw error;
       await openDetail(conversation.id);
       await refresh();
-      showFriendlySuccess('Conversation status updated to Open.');
-      notifyParticipants({ title: 'Conversation Reopened', body: `${global.Session?.displayName?.() || 'A user'} reopened “${conversation.title||''}”`, conversationId: conversation.id, excludeUserId: global.Session?.user?.()?.id, eventKey: 'communication_centre.conversation_reopened', action: 'reopen' });
+      dispatchCommunicationCentreNotification({
+        action: 'conversation_reopened',
+        conversationId: conversation.id,
+        actorId: global.Session?.user?.()?.id,
+        title: 'Communication Centre conversation reopened',
+        body: `${global.Session?.displayName?.() || 'A user'} reopened “${conversation.title}”`,
+        conversationNo: conversation.conversation_no,
+        conversationTitle: conversation.title
+      });
+      showFriendlySuccess('Conversation reopened successfully.');
     } catch (error) {
       console.error('[Communication Centre] reopen conversation failed', error);
       showFriendlyError('Unable to reopen conversation. Please try again.');
@@ -855,13 +847,14 @@
         await openDetail(conversation.id);
         await refresh();
         showFriendlySuccess('Reply sent successfully.');
-        notifyParticipants({
-          title: 'New Team Discussion Reply',
+        dispatchCommunicationCentreNotification({
+          action: 'reply_added',
+          actorId: global.Session?.user?.()?.id,
+          conversationNo: conversation.conversation_no,
+          conversationTitle: conversation.title,
+          title: 'New Communication Centre reply',
           body: `${global.Session?.displayName?.() || 'A user'} replied to “${conversation.title}”`,
-          conversationId: conversation.id,
-          excludeUserId: global.Session?.user?.()?.id,
-          eventKey: 'communication_centre.reply_added',
-          action: 'reply'
+          conversationId: conversation.id
         });
       } catch (error) {
         console.error('[Communication Centre] send reply failed', error);
