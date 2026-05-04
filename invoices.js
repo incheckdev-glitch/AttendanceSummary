@@ -2347,6 +2347,16 @@ const Invoices = {
     if (this.state.saveInFlight) return;
     const id = String(E.invoiceForm?.dataset.id || '').trim();
     const { invoice, items } = this.collectFormValues();
+    const sourceAgreementId = String(E.invoiceForm?.dataset.agreementId || invoice.agreement_id || '').trim();
+    const isDirectCreate = !id && !sourceAgreementId;
+    if (isDirectCreate && !String(invoice.company_id || '').trim()) {
+      UI.toast('Please select a company.');
+      return;
+    }
+    if (isDirectCreate && !String(invoice.contact_id || '').trim()) {
+      UI.toast('Please select a contact.');
+      return;
+    }
     if (!this.validateInvoice(invoice)) return;
     const summary = this.deriveCalculatedSummary(invoice, items);
     const normalizedInvoice = this.normalizeInvoice({
