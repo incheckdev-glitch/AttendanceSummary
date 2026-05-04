@@ -1620,27 +1620,29 @@ const Receipts = {
     const receivedAmount = resolvedSnapshot.received_amount;
     const amountInWords = this.receiptAmountInWords(r.amount_in_words, currency, receivedAmount);
     return `<!doctype html><html><head><meta charset="utf-8" /><title>Receipt Preview</title><style>
-      :root{color-scheme:light;}*{box-sizing:border-box;}body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:16px;background:#f3f4f6;color:#111827;}
-      .receipt-sheet{max-width:1020px;margin:0 auto;background:#fff;border:1px solid #d1d5db;padding:22px;}
-      .header-top{text-align:center;border-bottom:1px solid #111827;padding-bottom:10px}.company-title{font-size:26px;font-weight:700;letter-spacing:.04em;margin:0}
-      .meta-grid{display:grid;grid-template-columns:1fr 300px;gap:20px;margin-top:16px}.voucher-title{margin:0;font-size:34px;font-weight:700}
-      .meta-box{border:1px solid #111827}.meta-row{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #d1d5db}.meta-row:last-child{border-bottom:none}
-      .meta-row span{padding:8px 10px;font-size:12px}.label{font-weight:700;background:#f9fafb;border-right:1px solid #d1d5db}
-      .address-block{margin-top:10px;border:1px solid #d1d5db;padding:10px}.notice{margin-top:12px;padding:8px 10px;border:1px solid #dbeafe;background:#f8fbff;font-size:12px}
-      table{width:100%;border-collapse:collapse;margin-top:8px}th,td{border:1px solid #d1d5db;padding:7px 8px;font-size:12px;vertical-align:middle}th{background:#f9fafb}
-      .section{margin-top:16px}.section h3{margin:0 0 6px;font-size:14px}.cell-right{text-align:right}.cell-center{text-align:center}.muted{color:#6b7280}
-      .summary{margin-top:14px;font-size:12px;line-height:1.5}.totals-wrap{display:flex;justify-content:flex-end;margin-top:12px}.totals{width:320px;border:1px solid #111827}
-      .totals .row{display:grid;grid-template-columns:1fr auto;border-bottom:1px solid #d1d5db}.totals .row:last-child{border-bottom:none}.totals .row span{padding:7px 10px;font-size:12px}
-      .footer{margin-top:20px;border-top:1px solid #d1d5db;padding-top:8px;font-size:11px;color:#4b5563;text-align:center}
+      :root{color-scheme:light;}*{box-sizing:border-box;}body{font-family:Inter,"Segoe UI",Arial,Helvetica,sans-serif;margin:0;padding:20px;background:#eef2f7;color:#111827;}
+      .receipt-sheet{max-width:1020px;margin:0 auto;background:#fff;border:1px solid #dbe3ed;padding:28px 30px;border-radius:8px;}
+      .doc-header{border-bottom:1px solid #d8e1ec;padding-bottom:18px;margin-bottom:18px}.header-top-row{display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start}
+      .brand-block{display:flex;align-items:center;gap:14px;min-height:54px}.brand-block .incheck360-doc-logo-wrap{float:none;margin:0;width:168px;max-width:168px}
+      .provider-chip{text-align:right;font-size:12px;color:#4b5563;line-height:1.35}.provider-name{font-size:13px;color:#0f172a;font-weight:700;letter-spacing:.02em;text-transform:uppercase}
+      .meta-grid{display:grid;grid-template-columns:1fr 340px;gap:20px;margin-top:14px}.voucher-title{margin:0;font-size:34px;font-weight:800;letter-spacing:.04em;color:#0b214a}.subtitle{margin-top:8px;font-size:13px;color:#64748b}
+      .meta-box{border:1px solid #d7e1ed;border-radius:6px;overflow:hidden;background:#fbfdff}.meta-row{display:grid;grid-template-columns:130px 1fr;border-bottom:1px solid #e3eaf3}.meta-row:last-child{border-bottom:none}
+      .meta-row span{padding:8px 10px;font-size:12px}.label{font-weight:700;background:#f5f8fc;border-right:1px solid #e3eaf3}
+      .address-block{margin-top:10px;border:1px solid #d7e1ed;border-radius:6px;padding:12px}.notice{margin-top:12px;padding:10px 12px;border:1px solid #dbeafe;background:#f8fbff;font-size:12px;border-radius:6px}
+      table{width:100%;border-collapse:collapse;margin-top:8px}th,td{border:1px solid #dde5ef;padding:7px 8px;font-size:12px;vertical-align:middle}th{background:#f5f8fc}
+      .section{margin-top:18px}.section h3{margin:0 0 6px;font-size:16px;font-weight:700;color:#0f172a}.cell-right{text-align:right}.cell-center{text-align:center}.muted{color:#6b7280}
+      .summary{margin-top:14px;font-size:12px;line-height:1.55}.totals-wrap{display:flex;justify-content:flex-end;margin-top:12px}.totals{width:360px;border:1px solid #d7e1ed;border-radius:6px;overflow:hidden}
+      .totals .row{display:grid;grid-template-columns:1fr auto;border-bottom:1px solid #e3eaf3}.totals .row:last-child{border-bottom:none}.totals .row span{padding:9px 11px;font-size:12px}
+      .footer{margin-top:20px;border-top:1px solid #e3eaf3;padding-top:10px;font-size:11px;color:#64748b;text-align:center}
       @media print{body{background:#fff;padding:0}.receipt-sheet{border:none;max-width:none;padding:16px}}
     </style></head><body><article class="receipt-sheet">
-      <header class="header-top"><h1 class="company-title">${text(r.provider_legal_name || invoice?.provider_legal_name || 'INCHECK360')}</h1></header>
-      <section class="meta-grid"><div><div><strong>${text(r.provider_legal_name || invoice?.provider_legal_name || 'Company')}</strong></div><div>${text(r.provider_address || invoice?.provider_address || 'Principal office')}</div></div>
-        <div><h2 class="voucher-title">RECEIPT VOUCHER</h2><div class="meta-box">
+      <header class="doc-header"><div class="header-top-row"><div class="brand-block"><div data-incheck360-doc-logo-slot></div></div><div class="provider-chip"><div class="provider-name">${text(r.provider_legal_name || invoice?.provider_legal_name || 'InCheck360')}</div><div>${text(r.provider_contact_email || invoice?.provider_contact_email || '')}</div><div>${text(r.provider_address || invoice?.provider_address || '')}</div></div></div>
+      <section class="meta-grid"><div><h2 class="voucher-title">RECEIPT</h2><div class="subtitle">${text(r.customer_legal_name || r.customer_name || invoice?.customer_legal_name || invoice?.customer_name)} · ${text(r.receipt_number || r.receipt_id)}</div></div>
+        <div><div class="meta-box">
           <div class="meta-row"><span class="label">Receipt No.</span><span>${text(r.receipt_number || r.receipt_id)}</span></div>
           <div class="meta-row"><span class="label">Receipt Date</span><span>${date(r.receipt_date)}</span></div>
           <div class="meta-row"><span class="label">Invoice No.</span><span>${text(r.invoice_number || r.invoice_id || invoice?.invoice_number || invoice?.invoice_id)}</span></div>
-        </div></div></section>
+        </div></div></section></header>
       <section class="address-block"><div><strong>${text(r.customer_legal_name || r.customer_name || invoice?.customer_legal_name || invoice?.customer_name)}</strong></div><div>${text(r.customer_address || invoice?.customer_address)}</div></section>
       <div class="notice">If you have any questions about this Invoice, please contact: ${text(r.support_email || invoice?.support_email || 'support@incheck360.com')}</div>
       <section class="section"><h3>Location Details</h3><table><thead><tr><th>Location Name</th><th>Location Address</th><th>Service Start Date</th><th>Service End Date</th><th>Modules / Item Name</th><th>Qty</th><th>Unit Price</th><th>Discount %</th><th>Discounted Unit Price</th><th>Line Total</th><th>Notes</th></tr></thead><tbody>${locationRows}</tbody></table></section>
