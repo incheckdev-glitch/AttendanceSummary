@@ -2658,6 +2658,8 @@ body.permissions-loading [data-permission-resource][data-permission-action]{disp
 .cc-sidebar,.cc-chat,.cc-details{background:#fff;border:1px solid #e6eaf0;border-radius:14px;box-shadow:0 8px 24px rgba(16,24,40,.06)}
 .cc-sidebar,.cc-details{padding:14px}
 .cc-chat{display:flex;flex-direction:column;overflow:hidden}
+.cc-layout,.cc-chat,.cc-sidebar,.cc-details,.cc-item,.cc-chat-header,.cc-composer{min-width:0}
+.cc-layout{overflow-x:hidden}
 .cc-sidebar-top{position:sticky;top:0;background:#fff;z-index:2;padding-bottom:12px;border-bottom:1px solid #f1f3f7}
 .cc-sidebar-top h2{margin:0 0 6px;font-size:20px;color:#172033;letter-spacing:.01em}
 .cc-sidebar-top .muted{font-size:12px;line-height:1.45;color:#667085;margin-bottom:10px}
@@ -2675,7 +2677,7 @@ body.permissions-loading [data-permission-resource][data-permission-action]{disp
 .chip{display:inline-flex;align-items:center;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:600;line-height:1.2;border:1px solid transparent;background:#f1f5f9;color:#475569}
 .cc-status-chip{background:#ecfdf3;color:#067647}.cc-priority-chip{background:#fff7ed;color:#c2410c}.cc-unread-chip{background:#eaf2ff;color:#1d4ed8}
 .cc-chat-header{position:sticky;top:0;background:#fff;padding:14px 16px;border-bottom:1px solid #e9edf3;z-index:2;display:flex;justify-content:space-between;align-items:center}
-.cc-chat-heading h3{margin:0;font-size:18px;color:#172033}.cc-chat-heading .muted{margin-top:4px;font-size:12px;color:#667085}
+.cc-chat-heading{min-width:0;flex:1}.cc-chat-heading h3{margin:0;font-size:18px;color:#172033;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cc-chat-heading .muted{margin-top:4px;font-size:12px;color:#667085;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cc-messages{flex:1;overflow:auto;padding:18px;background:linear-gradient(180deg,#fbfcff 0%,#f7f9fc 100%)}
 .cc-message-row{display:flex;margin-bottom:12px}.cc-message-row.mine{justify-content:flex-end}.cc-message-row.incoming{justify-content:flex-start}
 .cc-bubble{max-width:min(72%,640px);padding:10px 12px;border-radius:12px;border:1px solid #e7ebf2;background:#fff;box-shadow:0 2px 6px rgba(15,23,42,.04)}
@@ -2683,11 +2685,11 @@ body.permissions-loading [data-permission-resource][data-permission-action]{disp
 .cc-message-meta{font-size:11px;color:#64748b;font-weight:600;margin-bottom:6px}.cc-message-body{font-size:14px;color:#1f2937;line-height:1.45;white-space:pre-wrap}
 .cc-system-message{margin:8px auto 14px;padding:6px 12px;background:#f3f4f6;color:#6b7280;border-radius:999px;font-size:11px;border:1px solid #e5e7eb;max-width:80%;text-align:center}
 #communicationCentreClosedMsg{margin:0 12px 12px;padding:10px 12px;border:1px solid #e5e7eb;background:#f8fafc;border-radius:10px;color:#667085 !important}
-.cc-composer{position:sticky;bottom:0;padding:14px;border-top:1px solid #e9edf3;background:#fff;display:flex;gap:10px;align-items:flex-end}
-.cc-composer textarea{resize:vertical;min-height:52px;max-height:140px;border-radius:10px;border:1px solid #dfe5ef;background:#fff;padding:10px 12px;line-height:1.4}
+.cc-composer{position:sticky;bottom:0;padding:14px;padding-bottom:calc(14px + env(safe-area-inset-bottom));border-top:1px solid #e9edf3;background:#fff;display:flex;gap:10px;align-items:flex-end}
+.cc-composer textarea{resize:vertical;min-height:52px;max-height:140px;overflow:auto;flex:1;border-radius:10px;border:1px solid #dfe5ef;background:#fff;padding:10px 12px;line-height:1.4}
 .cc-composer textarea:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.15)}
 #communicationCentreReplyBtn{height:40px;padding:0 16px;border-radius:10px;background:#2563eb;color:#fff;border-color:#2563eb;font-weight:600}
-.cc-details .header{display:flex;justify-content:space-between;align-items:center;padding-bottom:10px;margin-bottom:12px;border-bottom:1px solid #edf1f6}
+.cc-details .header{display:flex;justify-content:space-between;align-items:center;padding-bottom:10px;margin-bottom:12px;border-bottom:1px solid #edf1f6;position:sticky;top:0;background:#fff;z-index:2}
 .cc-details h3{margin:0;color:#172033}.cc-details #communicationCentreDrawerMeta{font-size:12px;color:#667085;padding:10px;border:1px solid #edf1f6;background:#f8fbff;border-radius:10px;margin-bottom:10px}
 .cc-details #communicationCentreParticipants{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
 .cc-participant-chip{background:#f8faff;color:#3b4a67;border-color:#e4eaf5}
@@ -2695,4 +2697,19 @@ body.permissions-loading [data-permission-resource][data-permission-action]{disp
 .cc-details .actions .btn{border-radius:9px}
 .cc-pagination{padding-top:10px;border-top:1px solid #edf1f6;display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}
 @media (max-width:1100px){.cc-layout{grid-template-columns:minmax(280px,320px) 1fr}.cc-details{position:fixed;right:10px;top:100px;width:min(360px,95vw);max-height:80vh;overflow:auto;z-index:40}}
-@media (max-width:760px){.cc-layout{grid-template-columns:1fr}.cc-sidebar{order:1}.cc-chat{order:2;min-height:60vh}.cc-details{display:none}}
+@media (max-width:1023px){.cc-layout{grid-template-columns:minmax(260px,320px) 1fr}.cc-details{position:fixed;right:0;top:70px;width:min(440px,100vw);height:calc(100dvh - 70px);max-height:none;border-radius:12px 0 0 12px;overflow:auto;z-index:50}.cc-details.collapsed{display:none}}
+@media (max-width:767px){
+  #communicationCentreView{overflow:hidden}
+  .cc-layout{grid-template-columns:1fr;height:calc(100dvh - 120px)}
+  .cc-sidebar,.cc-chat,.cc-details{height:100%;border-radius:0}
+  #communicationCentreView[data-mobile-view="list"] .cc-chat,#communicationCentreView[data-mobile-view="list"] .cc-details{display:none}
+  #communicationCentreView[data-mobile-view="chat"] .cc-sidebar,#communicationCentreView[data-mobile-view="chat"] .cc-details{display:none}
+  #communicationCentreView[data-mobile-view="details"] .cc-sidebar,#communicationCentreView[data-mobile-view="details"] .cc-chat{display:none}
+  .cc-sidebar-top{position:sticky;top:0;background:#fff;z-index:2;padding-bottom:8px}
+  .cc-item{min-height:54px}
+  .cc-chat-header{gap:8px;padding:10px 12px}
+  .cc-chat-heading h3{font-size:15px}
+  .cc-message-row .cc-bubble{max-width:82%}
+  .cc-composer{padding:10px;padding-bottom:calc(10px + env(safe-area-inset-bottom))}
+  .cc-details{position:absolute;inset:0;z-index:60;width:100%;height:100%;max-height:none;border-radius:0}
+}
