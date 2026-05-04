@@ -309,7 +309,7 @@
       if (q === 'unread') return Number(row.unread_count || 0) > 0;
       return true;
     });
-    listEl.innerHTML = rows.map(row => `<button class="cc-item ${activeId===row.id?'active':''} ${Number(row.unread_count||0)>0?'unread':''}" data-cc-open="${escapeAttr(row.id)}" type="button"><div><small>${escapeHtml(row.conversation_no||'')}</small><strong>${escapeHtml(row.title||'Untitled')}</strong><p>${escapeHtml(row.last_message_preview||'No messages yet')}</p></div><div><span>${escapeHtml(relTime(row.updated_at||row.last_message_at))}</span><span class="chip">${escapeHtml(row.status||'Open')}</span>${row.priority?`<span class="chip">${escapeHtml(row.priority)}</span>`:''}${Number(row.unread_count||0)>0?`<span class="chip">${escapeHtml(String(row.unread_count))}</span>`:''}</div></button>`).join('') || '<div class="muted" style="padding:16px;">No conversations yet.</div>';
+    listEl.innerHTML = rows.map(row => `<button class="cc-item ${activeId===row.id?'active':''} ${Number(row.unread_count||0)>0?'unread':''}" data-cc-open="${escapeAttr(row.id)}" type="button"><div class="cc-item-main"><small>${escapeHtml(row.conversation_no||'')}</small><strong>${escapeHtml(row.title||'Untitled')}</strong><p>${escapeHtml(row.last_message_preview||'No messages yet')}</p></div><div class="cc-item-meta"><span class="cc-time">${escapeHtml(relTime(row.updated_at||row.last_message_at))}</span><span class="chip cc-status-chip">${escapeHtml(row.status||'Open')}</span>${row.priority?`<span class="chip cc-priority-chip">${escapeHtml(row.priority)}</span>`:''}${Number(row.unread_count||0)>0?`<span class="chip cc-unread-chip">${escapeHtml(String(row.unread_count))}</span>`:''}</div></button>`).join('') || '<div class="muted" style="padding:16px;">No conversations yet.</div>';
     const pageInfo = $('communicationCentrePageInfo');
     if (pageInfo) pageInfo.textContent = `Page ${M.state.page} • ${M.state.count} total`;
   }
@@ -324,11 +324,11 @@
     const messages = $('communicationCentreMessages');
     const replyWrap = $('communicationCentreReplyWrap');
     const closedMsg = $('communicationCentreClosedMsg');
-    if (header) header.innerHTML = `<div><h3>${escapeHtml((conversation.conversation_no || '') + ' ' + (conversation.title || ''))}</h3><div class="muted">${escapeHtml(conversation.category || 'General')} • ${escapeHtml(conversation.priority || 'Normal')} • ${escapeHtml(conversation.status || 'Open')}</div></div><button id="communicationCentreOpenDetails" class="btn ghost sm" type="button">Details</button>`;
+    if (header) header.innerHTML = `<div class="cc-chat-heading"><h3>${escapeHtml((conversation.conversation_no || '') + ' ' + (conversation.title || ''))}</h3><div class="muted">${escapeHtml(conversation.category || 'General')} • ${escapeHtml(conversation.priority || 'Normal')} • ${escapeHtml(conversation.status || 'Open')}</div></div><button id="communicationCentreOpenDetails" class="btn ghost sm" type="button">Details</button>`;
     if (meta) meta.textContent = `${conversation.status || 'Open'} • ${conversation.priority || 'Normal'} • ${conversation.category || 'General'}`;
     if (participants) {
       participants.innerHTML = M.state.participants.map(participant => `
-        <span class="chip">${escapeHtml(participant.participant_type || 'participant')}: ${escapeHtml(participant.user_name || participant.user_id || 'User')}</span>
+        <span class="chip cc-participant-chip">${escapeHtml(participant.participant_type || 'participant')}: ${escapeHtml(participant.user_name || participant.user_id || 'User')}</span>
       `).join(' ');
     }
     const currentUserId = global.Session?.user?.()?.id || global.Session?.currentUser?.()?.id || '';
@@ -336,10 +336,17 @@
       messages.innerHTML = M.state.messages.length ? M.state.messages.map(message => {
         const isMine = String(message.sender_id || '') === String(currentUserId || '');
         const muted = message.is_system_message ? 'opacity:.72;' : '';
+        if (message.is_system_message) {
+          return `
+            <div class="cc-system-message">${escapeHtml(message.message_body || message.body || 'System update')}</div>
+          `;
+        }
         return `
-          <div class="card" style="padding:8px;margin-bottom:6px;${isMine ? 'background:#f1f7ff;' : ''}${muted}">
-            <div class="muted">${escapeHtml(message.sender_name || 'System')} • ${message.created_at ? escapeHtml(new Date(message.created_at).toLocaleString()) : ''}</div>
-            <div>${escapeHtml(message.message_body || message.body || '')}</div>
+          <div class="cc-message-row ${isMine ? 'mine' : 'incoming'}" style="${muted}">
+            <div class="cc-bubble">
+              <div class="cc-message-meta">${escapeHtml(message.sender_name || 'System')} • ${message.created_at ? escapeHtml(new Date(message.created_at).toLocaleString()) : ''}</div>
+              <div class="cc-message-body">${escapeHtml(message.message_body || message.body || '')}</div>
+            </div>
           </div>
         `;
       }).join('') : '<div class="muted" style="padding:20px;text-align:center;">Select a conversation to start messaging.</div>';
