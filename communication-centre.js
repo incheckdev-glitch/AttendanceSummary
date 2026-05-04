@@ -19,12 +19,25 @@
   const $ = id => document.getElementById(id);
   const toast = message => (global.UI?.toast ? global.UI.toast(message) : alert(message));
   const db = () => global.SupabaseClient?.getClient?.();
-  const can = action => Boolean(
-    global.Permissions?.can?.('communication_centre', action) ||
-    global.Permissions?.can?.('communicationCentre', action) ||
-    global.Permissions?.can?.('communication_centre', 'manage') ||
-    global.Permissions?.can?.('communicationCentre', 'manage')
-  );
+  const can = action => {
+    const normalizedAction = String(action || '').trim().toLowerCase();
+    const P = global.Permissions;
+    const S = global.Session;
+    if (!normalizedAction) return false;
+
+    // Keep admin usable even if a late permission reload has not finished yet.
+    if (S?.isAdmin?.() || String(S?.role?.() || '').trim().toLowerCase() === 'admin') return true;
+
+    const resources = ['communication_centre', 'communicationCentre', 'communication-centre'];
+    return resources.some(resource => (
+      P?.can?.(resource, normalizedAction) ||
+      P?.canPerformAction?.(resource, normalizedAction) ||
+      P?.can?.(resource, 'manage') ||
+      P?.canPerformAction?.(resource, 'manage') ||
+      (normalizedAction === 'create' && P?.canCreate?.(resource)) ||
+      (['view', 'list', 'get'].includes(normalizedAction) && P?.canView?.(resource))
+    ));
+  };
   const escapeHtml = value => {
     if (global.U?.escapeHtml) return global.U.escapeHtml(value);
     return String(value ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
@@ -487,6 +500,7 @@
       }
       toast('Conversation created successfully.');
     } catch (error) {
+      console.error('[Communication Centre] create conversation failed', error);
       toast(`Unable to create conversation: ${error.message || error}`);
     } finally {
       if (submit) {
