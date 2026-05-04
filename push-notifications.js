@@ -105,6 +105,18 @@
       return '';
     },
 
+    isAdminRole() {
+      return this.getCurrentUserRole() === 'admin';
+    },
+
+    canShowPushAdminDiagnostics() {
+      return this.isAdminRole();
+    },
+
+    canShowBasicPushControls() {
+      return Boolean(global.Session?.isAuthenticated?.() || global.currentUser || global.Session?.state?.user || global.Session?.state?.profile);
+    },
+
     canManageNotificationHub() {
       const role = this.getCurrentUserRole();
       return ['admin', 'administrator', 'super_admin', 'dev'].includes(role);
@@ -380,25 +392,31 @@
     },
 
     canViewDiagnostics() {
-      return this.canManageNotificationHub();
+      return this.canShowPushAdminDiagnostics();
     },
 
     applyNotificationHubPermissions() {
-      const canManage = this.canManageNotificationHub();
+      const showAdminDiagnostics = this.canShowPushAdminDiagnostics();
+      const showBasicControls = this.canShowBasicPushControls();
+      const sectionTitleEl = document.getElementById('pushSectionTitle');
+      if (sectionTitleEl) {
+        sectionTitleEl.textContent = showAdminDiagnostics ? 'Browser Push Notifications' : 'Push Notifications';
+      }
       console.info('[NotificationHub] permission state', {
         role: this.getCurrentUserRole(),
-        canManage,
+        showAdminDiagnostics,
+        showBasicControls,
         profile: global.Session?.state?.profile || null
       });
       document.querySelectorAll('[data-admin-push-control="true"]').forEach(el => {
-        el.hidden = !canManage;
-        el.style.display = canManage ? '' : 'none';
-        if ('disabled' in el) el.disabled = !canManage;
+        el.hidden = !showAdminDiagnostics;
+        el.style.display = showAdminDiagnostics ? '' : 'none';
+        if ('disabled' in el) el.disabled = !showAdminDiagnostics;
       });
       document.querySelectorAll('[data-user-push-control="true"]').forEach(el => {
-        el.hidden = false;
-        el.style.display = '';
-        if ('disabled' in el) el.disabled = false;
+        el.hidden = !showBasicControls;
+        el.style.display = showBasicControls ? '' : 'none';
+        if ('disabled' in el) el.disabled = !showBasicControls;
       });
     },
 
