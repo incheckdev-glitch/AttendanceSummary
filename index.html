@@ -665,24 +665,20 @@ Sample:
 
       
       <section id="communicationCentreView" class="view" role="tabpanel" aria-labelledby="communicationCentreTab">
-        <div class="card">
-          <div class="header" style="justify-content:space-between;"><div><h2>Communication Centre</h2><p class="muted">Internal conversations, assignments, and follow-up communication.</p></div><div><button class="btn" id="communicationCentreNewBtn" data-cc-new-conversation="true">New Conversation</button></div></div>
-          <div class="filters" style="display:grid;grid-template-columns:2fr repeat(5,1fr);gap:8px;">
-            <input id="communicationCentreSearch" class="input" placeholder="Search conversations" />
-            <select id="communicationCentreFilterStatus" class="select"><option value="">All Status</option><option>Open</option><option>Waiting Reply</option><option>In Progress</option><option>Closed</option></select>
-            <select id="communicationCentreFilterPriority" class="select"><option value="">All Priority</option><option>Low</option><option>Normal</option><option>High</option><option>Urgent</option></select>
-            <select id="communicationCentreFilterCategory" class="select"><option value="">All Category</option><option>General</option><option>Ticket</option><option>Event</option><option>Client</option><option>Lead</option><option>Deal</option><option>Proposal</option><option>Agreement</option><option>Invoice</option><option>Receipt</option><option>Operations</option><option>Technical</option><option>Finance</option><option>Sales</option><option>Other</option></select>
-            <input id="communicationCentreFilterAssignedRole" class="input" placeholder="Assigned Role"/>
-            <input id="communicationCentreFilterCreatedBy" class="input" placeholder="Created By"/>
-          </div>
-          <div class="table-wrap"><table><thead><tr><th>Conversation #</th><th>Title</th><th>Category</th><th>Priority</th><th>Status</th><th>Created By</th><th>Assigned Role</th><th>Last Message</th><th>Updated At</th><th>Actions</th></tr></thead><tbody id="communicationCentreTbody"></tbody></table></div>
-          <div style="display:flex;justify-content:space-between;align-items:center;"><div id="communicationCentrePageInfo" class="muted"></div><div><button id="communicationCentrePrevBtn" class="btn ghost sm">Previous</button><button id="communicationCentreNextBtn" class="btn ghost sm">Next</button><button id="communicationCentreRefreshBtn" class="btn ghost sm">Refresh</button></div></div>
-        </div>
-        <div id="communicationCentreDrawer" class="card" style="display:none;margin-top:12px;">
-          <div class="header" style="justify-content:space-between;"><h3 id="communicationCentreDrawerTitle">Conversation</h3><button id="communicationCentreDrawerClose" class="btn ghost sm">Close</button></div>
-          <div id="communicationCentreDrawerMeta" class="muted"></div><div id="communicationCentreParticipants" style="margin:8px 0;"></div><div id="communicationCentreMessages"></div>
-          <div id="communicationCentreClosedMsg" class="muted" style="display:none;">This conversation is closed. Reopen it to continue replying.</div>
-          <div id="communicationCentreReplyWrap" style="margin-top:8px;"><textarea id="communicationCentreReplyInput" class="input" rows="3" placeholder="Type your reply"></textarea><button id="communicationCentreReplyBtn" class="btn" style="margin-top:6px;">Send Reply</button></div>
+        <div class="cc-layout">
+          <aside class="card cc-sidebar">
+            <div class="cc-sidebar-top"><h2>Communication Centre</h2><p class="muted">Internal conversations, assignments, and follow-up communication.</p><button class="btn" id="communicationCentreNewBtn" data-cc-new-conversation="true">New Conversation</button><input id="communicationCentreSearch" class="input" placeholder="Search conversations" /></div>
+            <div id="communicationCentreFilterTabs" class="cc-filters"></div>
+            <div id="communicationCentreList" class="cc-list"></div>
+            <div class="cc-pagination"><div id="communicationCentrePageInfo" class="muted"></div><div><button id="communicationCentrePrevBtn" class="btn ghost sm">Previous</button><button id="communicationCentreNextBtn" class="btn ghost sm">Next</button><button id="communicationCentreRefreshBtn" class="btn ghost sm">Refresh</button></div></div>
+          </aside>
+          <main class="card cc-chat">
+            <div id="communicationCentreChatHeader" class="cc-chat-header"></div>
+            <div id="communicationCentreMessages" class="cc-messages"></div>
+            <div id="communicationCentreClosedMsg" class="muted" style="display:none;padding:12px;">This conversation is closed. Reopen it to continue replying.</div>
+            <div id="communicationCentreReplyWrap" class="cc-composer"><textarea id="communicationCentreReplyInput" class="input" rows="2" placeholder="Type your message"></textarea><button id="communicationCentreReplyBtn" class="btn">Send</button></div>
+          </main>
+          <aside id="communicationCentreDrawer" class="card cc-details"><div class="header"><h3>Details</h3><button id="communicationCentreDrawerClose" class="btn ghost sm" type="button">Hide</button></div><div id="communicationCentreDrawerMeta"></div><div id="communicationCentreParticipants"></div><div id="communicationCentreDrawerActions" class="actions"></div></aside>
         </div>
       </section>
 
