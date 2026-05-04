@@ -514,6 +514,16 @@
       }
       const client = db();
       if (!client) throw new Error('Supabase client is not available.');
+      try {
+        const debugResult = await client.rpc('communication_centre_debug_context');
+        if (debugResult?.error) {
+          console.warn('[Communication Centre] debug context failed before create', debugResult.error);
+        } else {
+          console.log('[Communication Centre] create debug context', debugResult?.data);
+        }
+      } catch (debugError) {
+        console.warn('[Communication Centre] unable to read debug context before create', debugError);
+      }
       const { data, error } = await client.rpc('create_communication_centre_conversation', {
         p_title: title,
         p_description: message,
@@ -546,7 +556,10 @@
     } catch (error) {
       console.error('[Communication Centre] create conversation failed', error);
       const inlineError = $('communicationCentreCreateError');
-      const friendlyMessage = 'Unable to create conversation. Please check your permissions and try again.';
+      const rawMessage = String(error?.message || error?.details || error || '');
+      const friendlyMessage = rawMessage.includes('Detected role:')
+        ? 'Unable to create conversation. Your role could not be verified by the database. Please ask an admin to refresh your user profile role.'
+        : 'Unable to create conversation. Please check your permissions and try again.';
       if (inlineError) {
         inlineError.textContent = friendlyMessage;
         inlineError.style.display = 'block';
