@@ -2903,7 +2903,12 @@ function canAccessAiInsights() {
 }
 window.canAccessAiInsights = canAccessAiInsights;
 
+function normalizeViewKey(view) {
+  return String(view || '').trim() === 'communication_centre' ? 'communicationCentre' : String(view || '').trim();
+}
+
 function setActiveView(view) {
+ view = normalizeViewKey(view);
  const names = ['issues', 'calendar', 'insights', 'csm', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
  const requestedView = view;
  const firstAllowedView = names.find(name => Permissions.canAccessTab(name)) || 'issues';
@@ -2947,6 +2952,8 @@ function setActiveView(view) {
         ? E.clientsTab
         : name === 'proposalCatalog'
         ? E.proposalCatalogTab
+        : name === 'communicationCentre' || name === 'communication_centre'
+        ? E.communicationCentreTab
         : name === 'notifications'
         ? E.notificationsTab
         : name === 'notificationSetup'
@@ -2991,6 +2998,8 @@ function setActiveView(view) {
         ? E.clientsView
         : name === 'proposalCatalog'
         ? E.proposalCatalogView
+        : name === 'communicationCentre' || name === 'communication_centre'
+        ? E.communicationCentreView
         : name === 'notifications'
         ? E.notificationsView
         : name === 'notificationSetup'
@@ -3047,6 +3056,13 @@ function setActiveView(view) {
       UI.toast(`Unable to load ${label}. Other tabs remain available.`);
     }
   };
+  if (view === 'communicationCentre') {
+    if (!E.communicationCentreView) console.warn('Communication Centre container not found');
+    if (window.CommunicationCentre && !window.CommunicationCentre._inited && typeof window.CommunicationCentre.init === 'function') {
+      window.CommunicationCentre._inited = true;
+      runViewLoader('Communication Centre', () => window.CommunicationCentre.init());
+    }
+  }
   if (view === 'calendar') {
     runViewLoader('calendar', () => {
       ensureCalendar();
@@ -5733,7 +5749,8 @@ function getAppHashForView(view = '') {
     notificationSetup: '#notification-settings',
     users: '#users',
     rolePermissions: '#role-permissions',
-    communicationCentre: '#communication_centre'
+    communicationCentre: '#communication_centre',
+    communication_centre: '#communication_centre'
   };
   return map[String(view || '').trim()] || '';
 }
