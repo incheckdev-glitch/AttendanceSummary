@@ -1424,6 +1424,15 @@ const Receipts = {
       }
       return;
     }
+    const isDirectCreate = !id;
+    if (isDirectCreate && !String(updates.company_id || E.receiptForm?.dataset.companyId || '').trim()) {
+      UI.toast('Please select a company.');
+      return;
+    }
+    if (isDirectCreate && !String(updates.contact_id || E.receiptForm?.dataset.contactId || '').trim()) {
+      UI.toast('Please select a contact.');
+      return;
+    }
     if (!id) return;
     const paidNowValue = this.normalizeAmountInput(updates.paid_now);
     if (!String(updates.invoice_id || '').trim()) {

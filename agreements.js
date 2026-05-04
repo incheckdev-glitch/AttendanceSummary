@@ -1673,6 +1673,15 @@ const Agreements = {
     const source = String(E.agreementForm?.dataset.source || '').trim();
     const formProposalUuid = String(E.agreementForm?.dataset.proposalUuid || '').trim();
     const { agreement, items } = this.collectFormValues();
+    const isDirectCreate = !id && source !== 'create_from_proposal' && !String(formProposalUuid || agreement.proposal_id || '').trim();
+    if (isDirectCreate && !String(agreement.company_id || '').trim()) {
+      UI.toast('Please select a company.');
+      return;
+    }
+    if (isDirectCreate && !String(agreement.contact_id || '').trim()) {
+      UI.toast('Please select a contact.');
+      return;
+    }
     const provider = this.getSignedInUserForAgreement();
     agreement.billing_frequency = 'Annual';
     const validPaymentTerms = ['Net 7', 'Net 14', 'Net 21', 'Net 30'];

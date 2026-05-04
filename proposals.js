@@ -2565,6 +2565,16 @@ const Proposals = {
     }
     const proposalId = String(E.proposalForm?.dataset.id || '').trim();
     const proposal = this.collectProposalFormData();
+    const sourceDealId = String(E.proposalFormDealId?.value || '').trim();
+    const isDirectCreate = mode !== 'edit' && !sourceDealId;
+    if (isDirectCreate && !String(proposal.company_id || '').trim()) {
+      UI.toast('Please select a company.');
+      return;
+    }
+    if (isDirectCreate && !String(proposal.contact_id || '').trim()) {
+      UI.toast('Please select a contact.');
+      return;
+    }
     if (mode !== 'edit') {
       proposal.proposal_id = this.ensureProposalId(proposal.proposal_id);
       if (!proposal.proposal_id) {
