@@ -1441,6 +1441,15 @@ const Deals = {
     const dealId = String(E.dealForm?.dataset.id || '').trim();
     await this.ensureCompanyContactHydratedBeforeSave();
     const deal = this.collectFormData();
+    const isDirectCreate = mode !== 'edit' && !String(deal.lead_id || '').trim();
+    if (isDirectCreate && !String(deal.company_id || '').trim()) {
+      UI.toast('Please select a company.');
+      return;
+    }
+    if (isDirectCreate && !String(deal.contact_id || '').trim()) {
+      UI.toast('Please select a contact.');
+      return;
+    }
     if (!deal.full_name && !deal.company_name) {
       UI.toast('Full name or company name is required.');
       return;
