@@ -148,7 +148,7 @@
       contactSelectId: 'receiptFormContactSelector',
       companyHiddenId: 'receiptFormCompanyId',
       contactHiddenId: 'receiptFormContactId',
-      directSourceIds: ['receiptFormInvoiceId', 'receiptFormInvoiceNumber'],
+      directSourceIds: ['receiptFormInvoiceId'],
       companyFields: {
         name: ['receiptFormCustomerName', 'receiptFormCustomerLegalName', 'receiptFormCompanyName'],
         address: ['receiptFormCustomerAddress']
@@ -234,8 +234,10 @@
     return str(company.legal_name || company.company_name || company.company_id || 'Unnamed company');
   }
   function displayContact(contact = {}) {
-    const firstLast = str(`${contact.first_name || ''} ${contact.last_name || ''}`);
-    const base = firstLast || str(contact.full_name || contact.contact_name) || str(contact.email) || str(contact.contact_id) || 'Unnamed contact';
+    const first = str(contact.first_name);
+    const last = str(contact.last_name);
+    const firstLast = str([first, last].filter(Boolean).join(' '));
+    const base = firstLast || str(contact.full_name) || str(contact.contact_name) || str(contact.email) || 'Unnamed contact';
     if (str(contact.email) && normalizeCompare(base) !== normalizeCompare(contact.email)) return `${base} — ${str(contact.email)}`;
     return base;
   }
@@ -531,6 +533,17 @@
     });
   }
 
+
+
+  function initializeCompanyContactSelectorsForForm(formKey) {
+    const cfg = FORM_CONFIG[formKey];
+    if (!cfg) return Promise.resolve();
+    return populateCompanySelect(cfg).then(() => {
+      bindConfig(cfg);
+      syncExistingValues(cfg);
+    });
+  }
+
   async function refreshAll() {
     await Promise.all(Object.values(FORM_CONFIG).map(cfg => populateCompanySelect(cfg)));
     Object.values(FORM_CONFIG).forEach(cfg => {
@@ -566,6 +579,11 @@
   global.CrmCompanyContactSelectors = {
     init,
     refresh: refreshAll,
+    initializeCompanyContactSelectorsForDeal: () => initializeCompanyContactSelectorsForForm('deal'),
+    initializeCompanyContactSelectorsForProposal: () => initializeCompanyContactSelectorsForForm('proposal'),
+    initializeCompanyContactSelectorsForAgreement: () => initializeCompanyContactSelectorsForForm('agreement'),
+    initializeCompanyContactSelectorsForInvoice: () => initializeCompanyContactSelectorsForForm('invoice'),
+    initializeCompanyContactSelectorsForReceipt: () => initializeCompanyContactSelectorsForForm('receipt'),
     loadCompanies: fetchCompanies,
     loadContactsForCompany: fetchContacts,
     applyCompanyToForm(formKey, company) { const cfg = FORM_CONFIG[formKey]; if (cfg) applyCompany(cfg, company); },
