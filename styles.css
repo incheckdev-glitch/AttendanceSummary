@@ -2651,3 +2651,18 @@ input[style*="min-width"]{
 
 body.permissions-loading [data-permission-resource][data-permission-action]{display:none !important;}
 .is-permission-hidden{display:none !important;}
+
+/* Communication Centre chat layout */
+.cc-layout{display:grid;grid-template-columns:320px 1fr 320px;gap:12px;min-height:70vh}
+.cc-sidebar,.cc-chat,.cc-details{border-radius:14px;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.cc-sidebar-top{position:sticky;top:0;background:var(--card,#fff);z-index:1;padding-bottom:8px}
+.cc-list{max-height:58vh;overflow:auto}
+.cc-item{width:100%;display:flex;justify-content:space-between;gap:8px;text-align:left;padding:10px;border:0;background:transparent;border-radius:10px}
+.cc-item:hover{background:#f6f8fb}.cc-item.active{background:#eef4ff}.cc-item.unread strong,.cc-item.unread p{font-weight:700}
+.cc-item p{margin:4px 0 0;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cc-chat{display:flex;flex-direction:column}.cc-chat-header{position:sticky;top:0;background:var(--card,#fff);padding:10px;border-bottom:1px solid #eee;z-index:1}
+.cc-messages{flex:1;overflow:auto;padding:12px}.cc-composer{position:sticky;bottom:0;padding:10px;border-top:1px solid #eee;background:var(--card,#fff);display:flex;gap:8px;align-items:flex-end}
+.cc-composer textarea{resize:vertical;min-height:44px}
+.cc-details.collapsed{display:none}
+@media (max-width:1100px){.cc-layout{grid-template-columns:280px 1fr}.cc-details{position:fixed;right:8px;top:100px;width:min(360px,95vw);max-height:80vh;overflow:auto;z-index:40}}
+@media (max-width:760px){.cc-layout{grid-template-columns:1fr}.cc-sidebar{order:1}.cc-chat{order:2;min-height:60vh}.cc-details{display:none}}

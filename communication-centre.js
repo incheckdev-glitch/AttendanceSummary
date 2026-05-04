@@ -5,7 +5,7 @@
       count: 0,
       page: 1,
       limit: 25,
-      filters: {},
+      filters: { quick: 'all' },
       active: null,
       messages: [],
       participants: [],
@@ -137,6 +137,21 @@
   };
   const normalizeText = value => String(value ?? '').trim();
   const normalizeRole = value => normalizeText(value).toLowerCase();
+
+  const relTime = value => {
+    if (!value) return '—';
+    const diff = Date.now() - new Date(value).getTime();
+    const mins = Math.floor(diff/60000);
+    if (mins < 1) return 'now';
+    if (mins < 60) return `${mins}m`;
+    const hrs = Math.floor(mins/60);
+    if (hrs < 24) return `${hrs}h`;
+    const days = Math.floor(hrs/24);
+    if (days === 1) return 'Yesterday';
+    if (days < 7) return `${days}d`;
+    return new Date(value).toLocaleDateString();
+  };
+
   const nameOf = (row = {}) => normalizeText(
     row.full_name || row.name || row.display_name || row.username || row.email || row.user_name || row.id || row.user_id
   ) || 'Unknown';
@@ -282,39 +297,34 @@
     }
   }
 
+
   function render() {
-    const tbody = $('communicationCentreTbody');
-    if (!tbody) return;
-    tbody.innerHTML = M.state.rows.map(row => `
-      <tr>
-        <td>${escapeHtml(row.conversation_no || '—')}</td>
-        <td>${escapeHtml(row.title || '')}</td>
-        <td>${escapeHtml(row.category || '—')}</td>
-        <td>${escapeHtml(row.priority || '—')}</td>
-        <td>${escapeHtml(row.status || '—')}</td>
-        <td>${escapeHtml(row.created_by_name || '—')}</td>
-        <td>${escapeHtml(row.assigned_role || '—')}</td>
-        <td>${escapeHtml(row.last_message_preview || '—')}</td>
-        <td>${row.updated_at ? escapeHtml(new Date(row.updated_at).toLocaleString()) : '—'}</td>
-        <td>${canOpenConversation() ? `<button class="btn ghost sm" type="button" data-cc-open="${escapeAttr(row.id)}">Open</button>` : ''}</td>
-      </tr>
-    `).join('') || '<tr><td colspan="10" class="muted" style="text-align:center;">No Communication Centre conversations found.</td></tr>';
+    const listEl = $('communicationCentreList');
+    if (!listEl) return;
+    const activeId = M.state.active?.id;
+    const rows = (M.state.rows || []).filter(row => {
+      const q = M.state.filters.quick || 'all';
+      if (q === 'open') return row.status !== 'Closed';
+      if (q === 'closed') return row.status === 'Closed';
+      if (q === 'unread') return Number(row.unread_count || 0) > 0;
+      return true;
+    });
+    listEl.innerHTML = rows.map(row => `<button class="cc-item ${activeId===row.id?'active':''} ${Number(row.unread_count||0)>0?'unread':''}" data-cc-open="${escapeAttr(row.id)}" type="button"><div><small>${escapeHtml(row.conversation_no||'')}</small><strong>${escapeHtml(row.title||'Untitled')}</strong><p>${escapeHtml(row.last_message_preview||'No messages yet')}</p></div><div><span>${escapeHtml(relTime(row.updated_at||row.last_message_at))}</span><span class="chip">${escapeHtml(row.status||'Open')}</span>${row.priority?`<span class="chip">${escapeHtml(row.priority)}</span>`:''}${Number(row.unread_count||0)>0?`<span class="chip">${escapeHtml(String(row.unread_count))}</span>`:''}</div></button>`).join('') || '<div class="muted" style="padding:16px;">No conversations yet.</div>';
     const pageInfo = $('communicationCentrePageInfo');
     if (pageInfo) pageInfo.textContent = `Page ${M.state.page} • ${M.state.count} total`;
   }
-
   function renderDrawer() {
     const drawer = $('communicationCentreDrawer');
     if (!drawer || !M.state.active) return;
     const conversation = M.state.active;
     drawer.style.display = 'block';
-    const title = $('communicationCentreDrawerTitle');
+    const header = $('communicationCentreChatHeader');
     const meta = $('communicationCentreDrawerMeta');
     const participants = $('communicationCentreParticipants');
     const messages = $('communicationCentreMessages');
     const replyWrap = $('communicationCentreReplyWrap');
     const closedMsg = $('communicationCentreClosedMsg');
-    if (title) title.textContent = `${conversation.conversation_no || ''} ${conversation.title || ''}`.trim();
+    if (header) header.innerHTML = `<div><h3>${escapeHtml((conversation.conversation_no || '') + ' ' + (conversation.title || ''))}</h3><div class="muted">${escapeHtml(conversation.category || 'General')} • ${escapeHtml(conversation.priority || 'Normal')} • ${escapeHtml(conversation.status || 'Open')}</div></div><button id="communicationCentreOpenDetails" class="btn ghost sm" type="button">Details</button>`;
     if (meta) meta.textContent = `${conversation.status || 'Open'} • ${conversation.priority || 'Normal'} • ${conversation.category || 'General'}`;
     if (participants) {
       participants.innerHTML = M.state.participants.map(participant => `
@@ -323,7 +333,7 @@
     }
     const currentUserId = global.Session?.user?.()?.id || global.Session?.currentUser?.()?.id || '';
     if (messages) {
-      messages.innerHTML = M.state.messages.map(message => {
+      messages.innerHTML = M.state.messages.length ? M.state.messages.map(message => {
         const isMine = String(message.sender_id || '') === String(currentUserId || '');
         const muted = message.is_system_message ? 'opacity:.72;' : '';
         return `
@@ -332,7 +342,8 @@
             <div>${escapeHtml(message.message_body || message.body || '')}</div>
           </div>
         `;
-      }).join('');
+      }).join('') : '<div class="muted" style="padding:20px;text-align:center;">Select a conversation to start messaging.</div>';
+      messages.scrollTop = messages.scrollHeight;
     }
     if (replyWrap) replyWrap.style.display = (conversation.status !== 'Closed' && can('reply')) ? '' : 'none';
     if (closedMsg) closedMsg.style.display = conversation.status === 'Closed' ? '' : 'none';
@@ -727,15 +738,12 @@
       M.state.page = 1;
       refresh();
     }, { once: false });
-    ['Status', 'Priority', 'Category', 'AssignedRole', 'CreatedBy'].forEach(key => {
-      const element = $(`communicationCentreFilter${key}`);
-      bindOnce(element, `Filter${key}`, event => {
-        const filterKey = key === 'AssignedRole' ? 'assigned_role' : key === 'CreatedBy' ? 'created_by_name' : key.toLowerCase();
-        M.state.filters[filterKey] = event.target.value;
-        M.state.page = 1;
-        refresh();
-      }, { once: false });
-    });
+    const filterTabs = $('communicationCentreFilterTabs');
+    if (filterTabs) {
+      const tabs = [['all','All'],['open','Open'],['closed','Closed'],['unread','Unread']];
+      filterTabs.innerHTML = tabs.map(([k,l])=>`<button class=\"btn ghost sm ${M.state.filters.quick===k?'active':''}\" data-cc-filter=\"${k}\" type=\"button\">${l}</button>`).join(' ');
+      bindOnce(filterTabs, 'QuickFilters', (event) => { const b = event.target.closest('[data-cc-filter]'); if (!b) return; M.state.filters.quick = b.getAttribute('data-cc-filter'); render(); if (filterTabs) [...filterTabs.querySelectorAll('[data-cc-filter]')].forEach(x => x.classList.toggle('active', x===b)); }, { once:false });
+    }
     bindOnce($('communicationCentrePrevBtn'), 'Prev', () => {
       if (M.state.page > 1) {
         M.state.page -= 1;
@@ -748,8 +756,8 @@
         refresh();
       }
     });
-    const tbody = $('communicationCentreTbody');
-    bindOnce(tbody, 'OpenRow', event => {
+    const listWrap = $('communicationCentreList');
+    bindOnce(listWrap, 'OpenRow', event => {
       const button = event.target.closest('[data-cc-open]');
       if (!canOpenConversation()) {
         showFriendlyError('You do not have permission to open this conversation.');
@@ -757,12 +765,12 @@
       }
       if (button) openDetail(button.getAttribute('data-cc-open'));
     });
-    bindOnce($('communicationCentreDrawerClose'), 'DrawerClose', () => {
-      const drawer = $('communicationCentreDrawer');
-      if (drawer) drawer.style.display = 'none';
-    });
+    bindOnce($('communicationCentreDrawerClose'), 'DrawerClose', () => $('communicationCentreDrawer')?.classList.toggle('collapsed', true));
+    document.addEventListener('click', (e)=>{ if (e.target?.id==='communicationCentreOpenDetails') $('communicationCentreDrawer')?.classList.remove('collapsed'); });
     const replyBtn = $('communicationCentreReplyBtn');
     if (replyBtn) replyBtn.style.display = can('reply') ? '' : 'none';
+    const replyInput = $('communicationCentreReplyInput');
+    replyInput?.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); replyBtn?.click(); }});
     bindOnce(replyBtn, 'Reply', async () => {
       const conversation = M.state.active;
       const input = $('communicationCentreReplyInput');
