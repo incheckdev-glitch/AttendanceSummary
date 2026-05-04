@@ -9,6 +9,9 @@ const Clients = {
   canViewClientStatement() {
     return Permissions.canViewClientStatement();
   },
+  canEditClient() {
+    return Permissions.canPerformAction('clients', 'update') || Permissions.canPerformAction('clients', 'manage');
+  },
   canExportClientStatement() {
     return Permissions.canExportClientStatement();
   },
@@ -2021,7 +2024,8 @@ const Clients = {
         limit: this.state.limit,
         page: this.state.page,
         search: this.state.search || '',
-        status: this.state.status
+        status: this.state.status,
+        allowClientMutations: this.canEditClient()
       });
       const clientsList = this.extractListResult(clientsRes);
       this.state.rows = clientsList.rows.map(item => {
