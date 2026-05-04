@@ -17,20 +17,41 @@
   };
 
   const $ = id => document.getElementById(id);
-  const notify = (message, type = 'info') => {
-    if (global.UI?.toast) return global.UI.toast(message, type);
-    if (global.App?.showToast) return global.App.showToast(message, type);
-    const host = $('communicationCentreView') || document.body;
-    const banner = document.createElement('div');
-    banner.className = `card ${type === 'error' ? 'danger' : ''}`;
-    banner.style.cssText = 'margin:8px 0;padding:10px;border-left:4px solid ' + (type === 'error' ? '#d73a49' : '#2f9e44') + ';';
-    banner.textContent = message;
-    host.prepend(banner);
-    setTimeout(() => banner.remove(), 5000);
-    return null;
-  };
-  const showFriendlyError = message => notify(message, 'error');
-  const showFriendlySuccess = message => notify(message, 'success');
+  function ccNotify(message, type = 'info') {
+    try {
+      if (typeof window.showToast === 'function') {
+        window.showToast(message, type);
+        return;
+      }
+
+      if (window.App && typeof window.App.showToast === 'function') {
+        window.App.showToast(message, type);
+        return;
+      }
+
+      if (typeof window.notifyUser === 'function') {
+        window.notifyUser(message, type);
+        return;
+      }
+
+      if (typeof window.showStatus === 'function') {
+        window.showStatus(message, type);
+        return;
+      }
+
+      if (window.NotificationHub && typeof window.NotificationHub.showToast === 'function') {
+        window.NotificationHub.showToast(message, type);
+        return;
+      }
+
+      console[type === 'error' ? 'error' : 'log']('[Communication Centre]', message);
+    } catch (err) {
+      console.warn('[Communication Centre] notification helper failed', err);
+      console.log('[Communication Centre]', message);
+    }
+  }
+  const showFriendlyError = message => ccNotify(message, 'error');
+  const showFriendlySuccess = message => ccNotify(message, 'success');
   const db = () => global.SupabaseClient?.getClient?.();
   const can = action => {
     const normalizedAction = String(action || '').trim().toLowerCase();
@@ -120,41 +141,55 @@
   }
 
   async function openDetail(id) {
-    const client = db();
-    if (!client) return showFriendlyError('Unable to load Communication Centre conversations. Please refresh and try again.');
-    const { data, error } = await client
-      .from('communication_centre_conversations')
-      .select('*')
-      .eq('id', id)
-      .maybeSingle();
-    if (error || !data) {
-      showFriendlyError('Unable to load Communication Centre conversations. Please refresh and try again.');
-      return;
+    try {
+      const client = db();
+      if (!client) {
+        showFriendlyError('Unable to load conversation. Please refresh and try again.');
+        return;
+      }
+      const { data, error } = await client
+        .from('communication_centre_conversations')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+      if (error || !data) {
+        console.error('[Communication Centre] open detail failed', error || new Error('Conversation not found'));
+        showFriendlyError('Unable to load conversation. Please refresh and try again.');
+        return;
+      }
+      M.state.active = data;
+      const [messagesResult, participantsResult] = await Promise.all([
+        client.from('communication_centre_messages').select('*').eq('conversation_id', id).order('created_at', { ascending: true }),
+        client.from('communication_centre_participants').select('*').eq('conversation_id', id).order('participant_type', { ascending: true }).order('user_name', { ascending: true })
+      ]);
+      if (messagesResult.error) console.error('[Communication Centre] unable to load messages', messagesResult.error);
+      if (participantsResult.error) console.error('[Communication Centre] unable to load participants', participantsResult.error);
+      const currentUser = global.Session?.user?.() || global.Session?.currentUser?.() || {};
+      const currentUserId = String(currentUser.id || '');
+      const participantRows = participantsResult.data || [];
+      const canAccess = Boolean(
+        global.Session?.isAdmin?.() ||
+        String(data.created_by || '') === currentUserId ||
+        participantRows.some(participant => String(participant.user_id || '') === currentUserId)
+      );
+      if (!canAccess) {
+        ccNotify('You do not have access to this conversation.', 'error');
+        return;
+      }
+      M.state.messages = messagesResult.data || [];
+      M.state.participants = participantRows;
+      renderDrawer();
+      try {
+        await client.rpc('mark_communication_centre_read', { p_conversation_id: id });
+      } catch (errorMarkRead) {
+        console.error('[Communication Centre] mark read failed', errorMarkRead);
+      }
+    } catch (error) {
+      console.error('[Communication Centre] open detail failed', error);
+      showFriendlyError('Unable to load conversation. Please refresh and try again.');
     }
-    M.state.active = data;
-    const [messagesResult, participantsResult] = await Promise.all([
-      client.from('communication_centre_messages').select('*').eq('conversation_id', id).order('created_at', { ascending: true }),
-      client.from('communication_centre_participants').select('*').eq('conversation_id', id).order('participant_type', { ascending: true }).order('user_name', { ascending: true })
-    ]);
-    if (messagesResult.error) console.warn('[Communication Centre] unable to load messages', messagesResult.error);
-    if (participantsResult.error) console.warn('[Communication Centre] unable to load participants', participantsResult.error);
-    const currentUser = global.Session?.user?.() || global.Session?.currentUser?.() || {};
-    const currentUserId = String(currentUser.id || '');
-    const participantRows = participantsResult.data || [];
-    const canAccess = Boolean(
-      global.Session?.isAdmin?.() ||
-      String(data.created_by || '') === currentUserId ||
-      participantRows.some(participant => String(participant.user_id || '') === currentUserId)
-    );
-    if (!canAccess) {
-      toast('You do not have access to this conversation.');
-      return;
-    }
-    M.state.messages = messagesResult.data || [];
-    M.state.participants = participantRows;
-    renderDrawer();
-    client.rpc('mark_communication_centre_read', { p_conversation_id: id }).then(() => {}).catch(() => {});
   }
+
 
   async function notifyParticipants(title, body, conversationId, excludeUserId) {
     try {
