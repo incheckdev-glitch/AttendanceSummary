@@ -491,7 +491,13 @@ const ClientsService = {
     const db = this.getDb();
     const payload = this.sanitizeClientPayload(updates, { includeCreatedBy: false });
     const { data, error } = await db.from('clients').update(payload).eq('id', id).select('*').single();
-    if (error) throw this.friendlyError('Unable to update client', error);
+    if (error) {
+      const errorMessage = String(error?.message || '').toLowerCase();
+      if (errorMessage.includes('cannot coerce the result to a single json object')) {
+        throw new Error('You do not have permission to update this client.');
+      }
+      throw this.friendlyError('Unable to update client', error);
+    }
     return this.mapDbClientToUi(data);
   },
   async deleteClient(clientUuid) {
@@ -540,7 +546,12 @@ const ClientsService = {
     const invoices = invoiceRows;
     const receipts = receiptRows;
     const clientsList = await this.listClients(options);
-    const syncedClients = await this.syncSignedAgreementsToClients(agreements, clientsList.rows || []);
+    const allowClientMutations = options.allowClientMutations !== undefined
+      ? Boolean(options.allowClientMutations)
+      : Boolean(window.Permissions?.canEdit?.('clients'));
+    const syncedClients = allowClientMutations
+      ? await this.syncSignedAgreementsToClients(agreements, clientsList.rows || [])
+      : (clientsList.rows || []);
     const clients = syncedClients.map(clientRow => {
       const totals = this.computeTotalsForClient(clientRow, agreements, invoices, receipts, itemRows);
       return { ...clientRow, ...totals };
@@ -560,7 +571,7 @@ const ClientsService = {
         return unchanged ? null : { id: row.id, ...next };
       })
       .filter(Boolean);
-    if (updates.length) {
+    if (allowClientMutations && updates.length) {
       const persistedUpdates = await Promise.all(
         updates.map(update =>
           db
