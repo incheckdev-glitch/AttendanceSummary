@@ -326,40 +326,22 @@
     }
   }
 
-  async function loadUsers(force = false) {
+  async function loadCommunicationCentreAssignableUsers(force = false) {
     if (M.state.loadingUsers) return M.state.users;
     if (M.state.users.length && !force) return M.state.users;
     M.state.loadingUsers = true;
     try {
-      let rows = [];
-      if (global.UserAdmin?.state?.rows?.length && !force) {
-        rows = global.UserAdmin.state.rows;
-      }
-      if (!rows.length && global.Api?.requestCached) {
-        try {
-          const response = await global.Api.requestCached('users', 'list', {
-            limit: 500,
-            page: 1,
-            sort_by: 'name',
-            sort_dir: 'asc',
-            summary_only: true
-          }, { forceRefresh: force });
-          rows = extractRows(response);
-        } catch (error) {
-          console.warn('[Communication Centre] Api users list failed, trying direct Supabase', error);
-        }
-      }
-      if (!rows.length && db()) {
-        const { data, error } = await db().from('users').select('*').limit(500);
-        if (error) throw error;
-        rows = data || [];
-      }
+      const client = db();
+      if (!client?.rpc) throw new Error('Supabase client is not available.');
+      const { data, error } = await client.rpc('list_communication_centre_assignable_users');
+      if (error) throw error;
+      const rows = extractRows(data);
       M.state.users = rows
         .map(row => ({ ...row, _id: idOf(row), _name: nameOf(row), _role: roleOf(row) }))
         .filter(row => row._id && isActiveRow(row))
         .sort((a, b) => a._name.localeCompare(b._name));
     } catch (error) {
-      console.warn('[Communication Centre] unable to load users', error);
+      console.warn('[Communication Centre] unable to load assignable users', error);
       M.state.users = [];
     } finally {
       M.state.loadingUsers = false;
@@ -367,35 +349,22 @@
     return M.state.users;
   }
 
-  async function loadRoles(force = false) {
+  async function loadCommunicationCentreAssignableRoles(force = false) {
     if (M.state.loadingRoles) return M.state.roles;
     if (M.state.roles.length && !force) return M.state.roles;
     M.state.loadingRoles = true;
     try {
-      let rows = [];
-      if (global.RolesAdmin?.ensureRolesLoaded) {
-        try { rows = await global.RolesAdmin.ensureRolesLoaded(force); }
-        catch (error) { console.warn('[Communication Centre] RolesAdmin roles load failed', error); }
-      }
-      if (!rows.length && global.Api?.listRoles) {
-        try {
-          const response = await global.Api.listRoles({ limit: 500, page: 1, summary_only: true, forceRefresh: force });
-          rows = extractRows(response);
-        } catch (error) {
-          console.warn('[Communication Centre] Api roles list failed, trying direct Supabase', error);
-        }
-      }
-      if (!rows.length && db()) {
-        const { data, error } = await db().from('roles').select('*').limit(500);
-        if (error) throw error;
-        rows = data || [];
-      }
+      const client = db();
+      if (!client?.rpc) throw new Error('Supabase client is not available.');
+      const { data, error } = await client.rpc('list_communication_centre_assignable_roles');
+      if (error) throw error;
+      const rows = extractRows(data);
       M.state.roles = rows
         .map(row => ({ ...row, _key: roleOf(row), _label: normalizeText(row.display_name || row.name || row.label || row.role_key || row.key || row.role) }))
         .filter(row => row._key && isActiveRow(row))
         .sort((a, b) => a._label.localeCompare(b._label));
     } catch (error) {
-      console.warn('[Communication Centre] unable to load roles', error);
+      console.warn('[Communication Centre] unable to load assignable roles', error);
       M.state.roles = [];
     } finally {
       M.state.loadingRoles = false;
@@ -480,7 +449,15 @@
   }
 
   async function populateCreateModalOptions() {
-    const [users, roles] = await Promise.all([loadUsers(), loadRoles()]);
+    const [usersResult, rolesResult] = await Promise.allSettled([
+      loadCommunicationCentreAssignableUsers(),
+      loadCommunicationCentreAssignableRoles()
+    ]);
+    const users = usersResult.status === 'fulfilled' ? usersResult.value : [];
+    const roles = rolesResult.status === 'fulfilled' ? rolesResult.value : [];
+    if (!users.length && !roles.length) {
+      showFriendlyError('Unable to load assignment options. Please refresh and try again.');
+    }
     const usersSelect = $('communicationCentreCreateUsers');
     const roleSelect = $('communicationCentreCreateRole');
     if (usersSelect) {
@@ -495,7 +472,7 @@
 
   async function openCreateModal() {
     if (!can('create')) {
-showFriendlyError('Unable to create conversation. Please check your permissions and try again.');
+      showFriendlyError('Unable to create conversation. Please check your permissions and try again.');
       return;
     }
     const modal = ensureCreateModal();
