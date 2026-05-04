@@ -235,8 +235,8 @@ const Permissions = {
     return String(value || '')
       .trim()
       .toLowerCase()
-      .replace(/[_-]+/g, ' ')
-      .replace(/\s+/g, ' ');
+      .replace(/\s+/g, '_')
+      .replace(/_+/g, '_');
   },
   extractRows(response) {
     const parseJsonIfNeeded = value => {
@@ -426,6 +426,8 @@ const Permissions = {
         rows = this.extractRows(data);
         total = rows.length;
       }
+      const roleKey = currentRole;
+      rows = rows.filter(row => this.normalizeRole(row.role_key) === roleKey && this.toBoolean(row.is_allowed, true) === true && this.toBoolean(row.is_active, true) === true);
       const { matrix, totalActiveRows, totalDeniedRows } = this.buildMatrixFromRows(rows);
       this.state.rows = rows;
       this.state.total = total;
@@ -435,6 +437,11 @@ const Permissions = {
       this.state.limit = limit;
       this.state.offset = 0;
       this.state.matrix = matrix;
+      console.log('[Permissions] loaded matrix for role', {
+        roleKey,
+        rowsCount: rows.length,
+        resources: [...new Set(rows.map(row => String(row.resource || '').trim().toLowerCase()).filter(Boolean))]
+      });
       console.log('[Permissions] matrix loaded', JSON.stringify({
         role: currentRole,
         totalRowsLoaded: rows.length,
@@ -582,7 +589,7 @@ const Permissions = {
     if (!currentRole || !normalizedResource || !normalizedAction) return false;
 
     if (!this.isReady()) {
-      return currentRole === ROLES.ADMIN;
+      return false;
     }
 
     const matchedRows = this.getMatchedRows(normalizedResource, normalizedAction, currentRole, { includeDenied: true });
@@ -592,7 +599,6 @@ const Permissions = {
     let decision = false;
     if (hasDeniedRow) decision = false;
     else if (hasAllowedRow) decision = true;
-    else if (currentRole === ROLES.ADMIN) decision = true;
 
     console.log('[permissions check]', JSON.stringify({
       role: currentRole,
@@ -602,6 +608,19 @@ const Permissions = {
       matchedRows,
       result: decision
     }, null, 2));
+    if (!decision) {
+      const available = this.state.rows
+        .filter(row => this.normalizeRole(row.role_key) === currentRole && String(row.resource || '').trim().toLowerCase() === normalizedResource && this.toBoolean(row.is_active, true) === true && this.toBoolean(row.is_allowed, true) === true)
+        .map(row => String(row.action || '').trim().toLowerCase())
+        .filter(Boolean);
+      console.warn('[Permission denied]', {
+        roleKey: currentRole,
+        resource: normalizedResource,
+        action: normalizedAction,
+        available,
+        reason: hasDeniedRow ? 'explicitly_denied' : (hasAllowedRow ? 'unexpected_block' : 'missing_permission')
+      });
+    }
     return decision;
   },
   getTabPermissionRequirements(viewKey) {

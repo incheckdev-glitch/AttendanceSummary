@@ -573,7 +573,7 @@
     }
     const rule = allowedRoles(normalizedResource, normalizedAction);
     const currentRole = String(auth.role || '').trim().toLowerCase();
-    if (!rule) return currentRole === 'admin';
+    if (!rule) return false;
     return rule.includes(currentRole);
   }
   function assertAllowed(resource, action, reason = '') {
