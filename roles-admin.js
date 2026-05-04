@@ -151,6 +151,17 @@ const RolesAdmin = {
     const map = { read: 'get', edit: 'update' };
     return map[normalized] || normalized;
   },
+
+  communicationCentreManageActions() {
+    return ['view','list','get','create','reply','update','close','reopen','manage'];
+  },
+
+  isCommunicationCentreUiAction(resource = '', action = '') {
+    const normalizedResource = String(resource || '').trim().toLowerCase();
+    const normalizedAction = this.canonicalAction(action);
+    if (normalizedResource !== 'communication_centre') return true;
+    return ['manage','delete'].includes(normalizedAction);
+  },
   async syncPermissionStateAfterSave() {
     await this.refreshPermissions(true);
     await Permissions.loadMatrix(true);
@@ -615,6 +626,7 @@ const RolesAdmin = {
   filteredPermissionRows() {
     const { resource, action, role, text } = this.state.filters;
     return this.state.groupedPermissions.filter(rule => {
+      if (!this.isCommunicationCentreUiAction(rule.resource, rule.action)) return false;
       const searchable = `${rule.resource} ${rule.action} ${rule.roleKeys.join(' ')}`;
       if (resource && !rule.resource.includes(resource)) return false;
       if (action && !rule.action.includes(action)) return false;
@@ -797,32 +809,30 @@ const RolesAdmin = {
   async upsertPermissionGroup({ resource, action, roleKeys, existingRows = [] }) {
     const validation = this.validatePermissionPayload({ roleKeys, resource, action });
     if (!validation.valid) throw new Error(validation.message);
-    const targetRoles = new Set(validation.roleKeys);
-    const rowsByRole = new Map();
-    existingRows.forEach(row => {
-      const key = this.roleKey(row);
-      if (key) rowsByRole.set(key, row);
-    });
+    const isCommunicationManage = validation.resource === 'communication_centre' && validation.action === 'manage';
+    const targetActions = isCommunicationManage ? this.communicationCentreManageActions() : [validation.action];
 
     const upserts = [];
-    targetRoles.forEach(roleKey => {
-      const existing = rowsByRole.get(roleKey);
-      const payload = {
-        p_role_key: roleKey,
-        role_key: roleKey,
-        p_resource: validation.resource,
-        resource: validation.resource,
-        p_action: validation.action,
-        action: validation.action,
-        is_allowed: true,
-        is_active: true,
-        original_resource: validation.resource,
-        original_action: validation.action
-      };
-      try { console.log('[RolesPermissions] upsert payload', payload); } catch {}
-      upserts.push(Api.saveRolePermission(payload));
+    validation.roleKeys.forEach(roleKey => {
+      targetActions.forEach(targetAction => {
+        const payload = {
+          p_role_key: roleKey,
+          role_key: roleKey,
+          p_resource: validation.resource,
+          resource: validation.resource,
+          p_action: targetAction,
+          action: targetAction,
+          is_allowed: true,
+          is_active: true,
+          original_resource: validation.resource,
+          original_action: targetAction
+        };
+        try { console.log('[RolesPermissions] upsert payload', payload); } catch {}
+        upserts.push(Api.saveRolePermission(payload));
+      });
     });
 
+    const targetRoles = new Set(validation.roleKeys);
     const deactivations = existingRows
       .filter(row => {
         const existingRole = this.roleKey(row);
@@ -834,12 +844,12 @@ const RolesAdmin = {
           role_key: this.roleKey(row),
           p_resource: validation.resource,
           resource: validation.resource,
-          p_action: validation.action,
-          action: validation.action,
+          p_action: this.canonicalAction(row.action),
+          action: this.canonicalAction(row.action),
           is_allowed: false,
           is_active: false,
           original_resource: validation.resource,
-          original_action: validation.action
+          original_action: this.canonicalAction(row.action)
         };
         try { console.log('[RolesPermissions] final payload before save', { permission_id: this.permissionId(row), ...payload }); } catch {}
         return Api.updateRolePermission(this.permissionId(row), payload);
