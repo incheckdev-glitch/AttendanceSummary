@@ -12,7 +12,8 @@
       users: [],
       roles: [],
       loadingUsers: false,
-      loadingRoles: false
+      loadingRoles: false,
+      mobileView: 'list'
     }
   };
 
@@ -137,6 +138,34 @@
   };
   const normalizeText = value => String(value ?? '').trim();
   const normalizeRole = value => normalizeText(value).toLowerCase();
+  const MOBILE_BREAKPOINT = 768;
+  const TABLET_BREAKPOINT = 1024;
+  const isMobileViewport = () => global.matchMedia ? global.matchMedia(`(max-width:${MOBILE_BREAKPOINT - 1}px)`).matches : global.innerWidth < MOBILE_BREAKPOINT;
+  const isTabletViewport = () => global.innerWidth >= MOBILE_BREAKPOINT && global.innerWidth < TABLET_BREAKPOINT;
+  function setMobileView(view) {
+    M.state.mobileView = ['list', 'chat', 'details'].includes(view) ? view : 'list';
+    syncResponsiveLayout();
+  }
+  function syncResponsiveLayout() {
+    const container = $('communicationCentreView');
+    const drawer = $('communicationCentreDrawer');
+    if (!container) return;
+    const mobile = isMobileViewport();
+    const tablet = isTabletViewport();
+    container.classList.toggle('cc-mobile', mobile);
+    container.classList.toggle('cc-tablet', tablet);
+    container.classList.toggle('cc-desktop', !mobile && !tablet);
+    if (mobile) {
+      container.dataset.mobileView = M.state.mobileView || 'list';
+    } else {
+      delete container.dataset.mobileView;
+    }
+    if (drawer && (mobile || tablet)) {
+      drawer.classList.toggle('collapsed', M.state.mobileView !== 'details');
+    } else if (drawer) {
+      drawer.classList.remove('collapsed');
+    }
+  }
 
   const relTime = value => {
     if (!value) return '—';
@@ -324,7 +353,8 @@
     const messages = $('communicationCentreMessages');
     const replyWrap = $('communicationCentreReplyWrap');
     const closedMsg = $('communicationCentreClosedMsg');
-    if (header) header.innerHTML = `<div class="cc-chat-heading"><h3>${escapeHtml((conversation.conversation_no || '') + ' ' + (conversation.title || ''))}</h3><div class="muted">${escapeHtml(conversation.category || 'General')} • ${escapeHtml(conversation.priority || 'Normal')} • ${escapeHtml(conversation.status || 'Open')}</div></div><button id="communicationCentreOpenDetails" class="btn ghost sm" type="button">Details</button>`;
+      const mobileBack = isMobileViewport() ? '<button id="communicationCentreBackToList" class="btn ghost sm" type="button">← Conversations</button>' : '';
+      if (header) header.innerHTML = `${mobileBack}<div class="cc-chat-heading"><h3>${escapeHtml((conversation.conversation_no || '') + ' ' + (conversation.title || ''))}</h3><div class="muted">${escapeHtml(conversation.category || 'General')} • ${escapeHtml(conversation.priority || 'Normal')} • ${escapeHtml(conversation.status || 'Open')}</div></div><button id="communicationCentreOpenDetails" class="btn ghost sm" type="button">Details</button>`;
     if (meta) meta.textContent = `${conversation.status || 'Open'} • ${conversation.priority || 'Normal'} • ${conversation.category || 'General'}`;
     if (participants) {
       participants.innerHTML = M.state.participants.map(participant => `
@@ -355,6 +385,7 @@
     if (replyWrap) replyWrap.style.display = (conversation.status !== 'Closed' && can('reply')) ? '' : 'none';
     if (closedMsg) closedMsg.style.display = conversation.status === 'Closed' ? '' : 'none';
     renderDrawerActions();
+    syncResponsiveLayout();
   }
 
   function renderDrawerActions() {
@@ -621,6 +652,7 @@
       await refresh();
       if (conversation?.id) {
         await openDetail(conversation.id);
+        setMobileView('chat');
         notifyParticipants(
           'New Communication Centre conversation',
           `${conversation.created_by_name || global.Session?.displayName?.() || 'A user'} created “${conversation.title || title}”`,
@@ -692,6 +724,7 @@
       const drawer = $('communicationCentreDrawer');
       if (drawer) drawer.style.display = 'none';
       M.state.active = null;
+      setMobileView('list');
       await refresh();
       showFriendlySuccess('Conversation deleted successfully.');
     } catch (error) {
@@ -771,13 +804,26 @@
         return;
       }
       if (button) openDetail(button.getAttribute('data-cc-open'));
+      if (button && isMobileViewport()) setMobileView('chat');
     });
-    bindOnce($('communicationCentreDrawerClose'), 'DrawerClose', () => $('communicationCentreDrawer')?.classList.toggle('collapsed', true));
-    document.addEventListener('click', (e)=>{ if (e.target?.id==='communicationCentreOpenDetails') $('communicationCentreDrawer')?.classList.remove('collapsed'); });
+    bindOnce($('communicationCentreDrawerClose'), 'DrawerClose', () => {
+      if (isMobileViewport()) setMobileView('chat');
+      else $('communicationCentreDrawer')?.classList.toggle('collapsed', true);
+    });
+    document.addEventListener('click', (e)=>{
+      if (e.target?.id==='communicationCentreOpenDetails') {
+        if (isMobileViewport() || isTabletViewport()) setMobileView('details');
+        else $('communicationCentreDrawer')?.classList.remove('collapsed');
+      }
+      if (e.target?.id === 'communicationCentreBackToList') setMobileView('list');
+    });
     const replyBtn = $('communicationCentreReplyBtn');
     if (replyBtn) replyBtn.style.display = can('reply') ? '' : 'none';
     const replyInput = $('communicationCentreReplyInput');
-    replyInput?.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); replyBtn?.click(); }});
+    replyInput?.addEventListener('keydown', (event) => {
+      if (isMobileViewport()) return;
+      if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); replyBtn?.click(); }
+    });
     bindOnce(replyBtn, 'Reply', async () => {
       const conversation = M.state.active;
       const input = $('communicationCentreReplyInput');
@@ -805,7 +851,18 @@
         showFriendlyError('Unable to send reply. Please try again.');
       }
     });
+    const hashConversationId = (() => {
+      const hash = String(global.location?.hash || '');
+      const match = hash.match(/conversation_id=([^&]+)/i);
+      return match ? decodeURIComponent(match[1]) : '';
+    })();
     await refresh();
+    if (hashConversationId && canOpenConversation()) {
+      await openDetail(hashConversationId);
+      if (isMobileViewport()) setMobileView('chat');
+    }
+    syncResponsiveLayout();
+    global.addEventListener('resize', syncResponsiveLayout, { passive: true });
   };
 
   global.CommunicationCentre = M;
