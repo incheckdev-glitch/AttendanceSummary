@@ -75,6 +75,8 @@ const STOPWORDS = new Set([
   'inc'
 ]);
 
+const INCHECK360_DOCUMENT_LOGO_DATA_URI = 'data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%221000%22%20height%3D%22240%22%20viewBox%3D%220%200%201000%20240%22%20role%3D%22img%22%20aria-label%3D%22InCheck360%20logo%22%3E%0A%20%20%3Crect%20width%3D%221000%22%20height%3D%22240%22%20fill%3D%22none%22%2F%3E%0A%20%20%3Cg%20transform%3D%22translate%2824%2C24%29%22%3E%0A%20%20%20%20%3Crect%20x%3D%220%22%20y%3D%220%22%20width%3D%22192%22%20height%3D%22192%22%20rx%3D%2236%22%20fill%3D%22%230B5FFF%22%2F%3E%0A%20%20%20%20%3Cpath%20d%3D%22M56%20102l30%2030%2050-60%22%20fill%3D%22none%22%20stroke%3D%22%23fff%22%20stroke-width%3D%2218%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%0A%20%20%3C%2Fg%3E%0A%20%20%3Cg%20fill%3D%22%23111827%22%20font-family%3D%22Inter%2C%20Arial%2C%20sans-serif%22%20font-weight%3D%22700%22%3E%0A%20%20%20%20%3Ctext%20x%3D%22252%22%20y%3D%22132%22%20font-size%3D%2288%22%20letter-spacing%3D%221%22%3EInCheck360%3C%2Ftext%3E%0A%20%20%20%20%3Ctext%20x%3D%22254%22%20y%3D%22182%22%20font-size%3D%2230%22%20font-weight%3D%22500%22%20fill%3D%22%234B5563%22%20letter-spacing%3D%220.5%22%3EBusiness%20Operations%20Platform%3C%2Ftext%3E%0A%20%20%3C%2Fg%3E%0A%3C%2Fsvg%3E%0A';
+
 const U = {
   _didLogDateTimeFormatDebug: false,
   q: (s, r = document) => r.querySelector(s),
@@ -268,19 +270,27 @@ const U = {
   addIncheckDocumentLogo: html => {
     const raw = String(html || '').trim();
     if (!raw) return '';
-    if (/data-incheck360-doc-logo/i.test(raw)) return raw;
 
+    // Official document-preview branding.
+    // Keep document previews independent from the app/PWA/MonitorCore logo by embedding the
+    // InCheck360 document logo directly in the generated preview HTML.
     const styleTag = `<style data-incheck360-doc-logo-style>
-      .incheck360-doc-logo-wrap{display:flex;justify-content:center;margin:0 0 16px;}
-      .incheck360-doc-logo{width:220px;max-width:100%;height:auto;display:block;}
+      .incheck360-doc-logo-wrap{display:flex;justify-content:center;align-items:center;margin:0 0 18px;padding:0;}
+      .incheck360-doc-logo{width:240px;max-width:100%;height:auto;display:block;object-fit:contain;}
+      @media print{.incheck360-doc-logo-wrap{margin-bottom:14px}.incheck360-doc-logo{width:220px}}
     </style>`;
     const logoMarkup =
-      '<div class="incheck360-doc-logo-wrap" data-incheck360-doc-logo><img class="incheck360-doc-logo" src="assets/incheck360-logo.svg" alt="InCheck360 logo" /></div>';
+      `<div class="incheck360-doc-logo-wrap" data-incheck360-doc-logo><img class="incheck360-doc-logo" src="${INCHECK360_DOCUMENT_LOGO_DATA_URI}" alt="InCheck360 logo" /></div>`;
 
-    let output = raw;
-    if (/<\/head>/i.test(output) && !/data-incheck360-doc-logo-style/i.test(output)) {
+    // If an older generated preview already contains a document logo marker, replace it so
+    // all preview documents use the same official InCheck360 logo, not MonitorCore/PWA branding.
+    let output = raw
+      .replace(/<style[^>]*data-incheck360-doc-logo-style[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<div[^>]*data-incheck360-doc-logo[^>]*>[\s\S]*?<\/div>/gi, '');
+
+    if (/<\/head>/i.test(output)) {
       output = output.replace(/<\/head>/i, `${styleTag}</head>`);
-    } else if (!/data-incheck360-doc-logo-style/i.test(output)) {
+    } else {
       output = `${styleTag}${output}`;
     }
 
