@@ -125,8 +125,20 @@
     ]);
     if (messagesResult.error) console.warn('[Communication Centre] unable to load messages', messagesResult.error);
     if (participantsResult.error) console.warn('[Communication Centre] unable to load participants', participantsResult.error);
+    const currentUser = global.Session?.user?.() || global.Session?.currentUser?.() || {};
+    const currentUserId = String(currentUser.id || '');
+    const participantRows = participantsResult.data || [];
+    const canAccess = Boolean(
+      global.Session?.isAdmin?.() ||
+      String(data.created_by || '') === currentUserId ||
+      participantRows.some(participant => String(participant.user_id || '') === currentUserId)
+    );
+    if (!canAccess) {
+      toast('You do not have access to this conversation.');
+      return;
+    }
     M.state.messages = messagesResult.data || [];
-    M.state.participants = participantsResult.data || [];
+    M.state.participants = participantRows;
     renderDrawer();
     client.rpc('mark_communication_centre_read', { p_conversation_id: id }).then(() => {}).catch(() => {});
   }
