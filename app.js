@@ -2904,7 +2904,7 @@ function canAccessAiInsights() {
 window.canAccessAiInsights = canAccessAiInsights;
 
 function setActiveView(view) {
- const names = ['issues', 'calendar', 'insights', 'csm', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
+ const names = ['issues', 'calendar', 'insights', 'csm', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
  const requestedView = view;
  const firstAllowedView = names.find(name => Permissions.canAccessTab(name)) || 'issues';
  if (!Permissions.canAccessTab(view)) {
@@ -5732,7 +5732,8 @@ function getAppHashForView(view = '') {
     insights: '#analytics',
     notificationSetup: '#notification-settings',
     users: '#users',
-    rolePermissions: '#role-permissions'
+    rolePermissions: '#role-permissions',
+    communicationCentre: '#communication_centre'
   };
   return map[String(view || '').trim()] || '';
 }
@@ -5740,7 +5741,7 @@ function getAppHashForView(view = '') {
 function isNotificationDeepLinkHash(hash = '') {
   const value = String(hash || '').trim();
   if (!value || value === '#loginSection') return false;
-  return /^#(tickets|workflow|operations-onboarding|technical-admin|crm|finance|leads|deals|proposals|agreements|invoices|receipts)/i.test(value);
+  return /^#(tickets|workflow|operations-onboarding|technical-admin|crm|finance|leads|deals|proposals|agreements|invoices|receipts|communication_centre)/i.test(value);
 }
 
 function capturePendingDeepLink() {
@@ -5783,6 +5784,7 @@ function parseAppHashRoute(hash = '') {
   if (route === 'technical-admin') return { module: 'technical_admin_requests', resource: 'technical_admin_requests', id: params.get('request_id') || params.get('id') || '' };
   if (route === 'crm') return { module: 'crm', resource: params.get('tab') || '', id: params.get('id') || '' };
   if (route === 'finance') return { module: 'finance', resource: params.get('tab') || '', id: params.get('id') || '' };
+  if (route === 'communication_centre') return { module: 'communication_centre', resource: 'communication_centre', id: params.get('conversation_id') || params.get('id') || '' };
   return { module: route, resource: route, id: params.get('id') || '' };
 }
 
@@ -5830,7 +5832,7 @@ function wireDashboardGate() {
     return 'issues';
   };
   const getFirstAllowedView = preferredView => {
-    const names = ['issues', 'calendar', 'insights', 'csm', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
+    const names = ['issues', 'calendar', 'insights', 'csm', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
     const preferred = String(preferredView || '').trim();
     if (preferred && Permissions.canAccessTab(preferred)) return preferred;
     return names.find(name => Permissions.canAccessTab(name)) || 'issues';

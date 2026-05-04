@@ -155,7 +155,19 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
     list_audit: ['admin', 'dev']
   }),
   planner: Object.freeze({ manage: ['admin', 'dev'] }),
-  freeze_windows: Object.freeze({ manage: ['admin', 'dev'] })
+  freeze_windows: Object.freeze({ manage: ['admin', 'dev'] }),
+  communication_centre: Object.freeze({
+    view: ['admin','dev','csm','hoo','viewer'],
+    list: ['admin','dev','csm','hoo','viewer'],
+    get: ['admin','dev','csm','hoo','viewer'],
+    create: ['admin','dev','csm','hoo'],
+    reply: ['admin','dev','csm','hoo'],
+    update: ['admin','dev','csm','hoo'],
+    close: ['admin','dev','csm','hoo'],
+    reopen: ['admin','dev','csm','hoo'],
+    delete: ['admin','dev'],
+    manage: ['admin','dev']
+  })
 });
 
 const Permissions = {
@@ -178,6 +190,7 @@ const Permissions = {
     lifecycleAnalytics: [{ resource: 'analytics', action: 'list' }],
     clients: [{ resource: 'clients', action: 'list' }],
     proposalCatalog: [{ resource: 'proposal_catalog', action: 'list' }],
+    communicationCentre: [{ resource: 'communication_centre', action: 'view' }],
     notifications: [{ resource: 'notifications', action: 'list' }],
     notificationSetup: [{ resource: 'notification_settings', action: 'list' }],
     workflow: [{ resource: 'workflow', action: 'list' }],
@@ -202,6 +215,7 @@ const Permissions = {
     lifecycleAnalytics: 'analytics',
     clients: 'clients',
     proposalCatalog: 'proposal_catalog',
+    communicationCentre: 'communication_centre',
     notifications: 'notifications',
     notificationSetup: 'notification_settings',
     users: 'users',

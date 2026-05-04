@@ -1069,7 +1069,8 @@ const Notifications = {
       receipts: [['receipts','view'],['receipts','get'],['receipts','list']],
       technical_admin_requests: [['technical_admin_requests','view'],['technical_admin_requests','get'],['technical_admin_requests','list']],
       operations_onboarding: [['operations_onboarding','view'],['operations_onboarding','get'],['operations_onboarding','list']],
-      insights: [['insights','preview'],['insights','view'],['insights','get'],['insights','list'],['insights','manage']]
+      insights: [['insights','preview'],['insights','view'],['insights','get'],['insights','list'],['insights','manage']],
+      communication_centre: [['communication_centre','view'],['communication_centre','list'],['communication_centre','get'],['communication_centre','manage']]
     };
     const needed = perms[normalized] || perms[normalized.replace('technical_admin','technical_admin_requests')];
     if (!needed) return true;
@@ -1080,6 +1081,12 @@ async routeToResourceTarget(resource, targetId, notification) {
     if (!this.canRouteToResource(normalizedResource)) { UI.toast('You do not have permission to view this record.'); return false; }
     const normalizedTargetId = String(targetId || '').trim();
     console.info('[router] record lookup', { resource: normalizedResource, targetId: normalizedTargetId, found: false, matchedId: null });
+    if (normalizedResource === 'communication_centre') {
+      const opened = await this.openModuleTab('communicationCentre');
+      if (!opened) return false;
+      if (normalizedTargetId && window.CommunicationCentre?.openConversationById) await window.CommunicationCentre.openConversationById(normalizedTargetId);
+      return true;
+    }
     if (resource === 'tickets') {
       const opened = await this.openModuleTab('tickets');
       if (!opened) return false;

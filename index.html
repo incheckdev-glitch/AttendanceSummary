@@ -373,6 +373,7 @@
                     role="tab" aria-selected="false" aria-controls="proposalCatalogView">
               <span class="icon" aria-hidden="true">📚</span> Proposal Catalog
             </button>
+            <button id="communicationCentreTab" class="view-tab" data-view="communicationCentre" role="tab" aria-selected="false" aria-controls="communicationCentreView">💬 Communication Centre</button>
             <button id="notificationsTab" class="view-tab" data-view="notifications"
                     role="tab" aria-selected="false" aria-controls="notificationsView">
               <span class="icon" aria-hidden="true">🔔</span> Notification Hub
@@ -659,6 +660,29 @@ Sample:
               <tbody id="notificationsTbody"></tbody>
             </table>
           </div>
+        </div>
+      </section>
+
+      
+      <section id="communicationCentreView" class="view" role="tabpanel" aria-labelledby="communicationCentreTab">
+        <div class="card">
+          <div class="header" style="justify-content:space-between;"><div><h2>Communication Centre</h2><p class="muted">Internal conversations, assignments, and follow-up communication.</p></div><div><button class="btn" id="communicationCentreNewBtn" data-permission-resource="communication_centre" data-permission-action="create">New Conversation</button></div></div>
+          <div class="filters" style="display:grid;grid-template-columns:2fr repeat(5,1fr);gap:8px;">
+            <input id="communicationCentreSearch" class="input" placeholder="Search conversations" />
+            <select id="communicationCentreFilterStatus" class="select"><option value="">All Status</option><option>Open</option><option>Waiting Reply</option><option>In Progress</option><option>Closed</option></select>
+            <select id="communicationCentreFilterPriority" class="select"><option value="">All Priority</option><option>Low</option><option>Normal</option><option>High</option><option>Urgent</option></select>
+            <select id="communicationCentreFilterCategory" class="select"><option value="">All Category</option><option>General</option><option>Ticket</option><option>Event</option><option>Client</option><option>Lead</option><option>Deal</option><option>Proposal</option><option>Agreement</option><option>Invoice</option><option>Receipt</option><option>Operations</option><option>Technical</option><option>Finance</option><option>Sales</option><option>Other</option></select>
+            <input id="communicationCentreFilterAssignedRole" class="input" placeholder="Assigned Role"/>
+            <input id="communicationCentreFilterCreatedBy" class="input" placeholder="Created By"/>
+          </div>
+          <div class="table-wrap"><table><thead><tr><th>Conversation #</th><th>Title</th><th>Category</th><th>Priority</th><th>Status</th><th>Created By</th><th>Assigned Role</th><th>Last Message</th><th>Updated At</th><th>Actions</th></tr></thead><tbody id="communicationCentreTbody"></tbody></table></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;"><div id="communicationCentrePageInfo" class="muted"></div><div><button id="communicationCentrePrevBtn" class="btn ghost sm">Previous</button><button id="communicationCentreNextBtn" class="btn ghost sm">Next</button><button id="communicationCentreRefreshBtn" class="btn ghost sm">Refresh</button></div></div>
+        </div>
+        <div id="communicationCentreDrawer" class="card" style="display:none;margin-top:12px;">
+          <div class="header" style="justify-content:space-between;"><h3 id="communicationCentreDrawerTitle">Conversation</h3><button id="communicationCentreDrawerClose" class="btn ghost sm">Close</button></div>
+          <div id="communicationCentreDrawerMeta" class="muted"></div><div id="communicationCentreParticipants" style="margin:8px 0;"></div><div id="communicationCentreMessages"></div>
+          <div id="communicationCentreClosedMsg" class="muted" style="display:none;">This conversation is closed. Reopen it to continue replying.</div>
+          <div id="communicationCentreReplyWrap" style="margin-top:8px;"><textarea id="communicationCentreReplyInput" class="input" rows="3" placeholder="Type your reply"></textarea><button id="communicationCentreReplyBtn" class="btn" style="margin-top:6px;">Send Reply</button></div>
         </div>
       </section>
 
@@ -3743,6 +3767,7 @@ Sample:
   <script src="lifecycle-analytics.js?v=20260427-allpwa1"></script>
   <script src="clients.js?v=20260427-allpwa1"></script>
   <script src="proposal-catalog.js?v=20260427-allpwa1"></script>
+  <script src="communication-centre.js?v=20260504-cc1"></script>
   <script src="notifications.js?v=20260427-allpwa1"></script>
   <script src="push-notifications.js?v=20260427-allpwa1"></script>
   <script src="workflow.js?v=20260427-allpwa1"></script>
