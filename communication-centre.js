@@ -100,9 +100,27 @@
 
     const resources = ['communication_centre', 'communicationcentre', 'communication-centre'];
 
-    // Delete is the only action that must be explicit. Manage never grants delete.
+    // Final Communication Centre business rule:
+    // every authenticated app user can perform all normal Communication Centre actions.
+    // Visibility is still protected by Supabase/RLS: admin sees all; other users only created/participant conversations.
+    // Delete is the only separate action and must be explicitly granted.
     if (normalizedAction === 'delete') {
       return resources.some(resource => permissionHas(resource, 'delete', { directDeleteOnly: true }));
+    }
+
+    if ([
+      'view',
+      'list',
+      'get',
+      'open',
+      'create',
+      'reply',
+      'update',
+      'close',
+      'reopen',
+      'manage'
+    ].includes(normalizedAction)) {
+      return true;
     }
 
     const actionMap = {
@@ -118,13 +136,7 @@
       manage: ['manage']
     };
     const candidates = actionMap[normalizedAction] || [normalizedAction, 'manage'];
-    const hasConfiguredPermission = resources.some(resource =>
-      candidates.some(candidate => permissionHas(resource, candidate))
-    );
-
-    // Final business rule for this module: every authenticated app role with the tab can perform
-    // all normal Communication Centre actions. Database/RLS still protects real visibility.
-    return hasConfiguredPermission;
+    return resources.some(resource => candidates.some(candidate => permissionHas(resource, candidate)));
   };
   const canOpenConversation = () => can('open');
   const canDeleteConversation = () => can('delete');
@@ -748,7 +760,13 @@
 
   function wireCreateButton() {
     const button = $('communicationCentreNewBtn') || document.querySelector('[data-cc-new-conversation]');
-    if (button) button.style.display = can('create') ? '' : 'none';
+    if (button) {
+      const allowed = can('create');
+      button.style.display = allowed ? '' : 'none';
+      button.disabled = !allowed;
+      button.classList.toggle('is-hidden-by-permission', !allowed);
+      button.setAttribute('aria-hidden', allowed ? 'false' : 'true');
+    }
     bindOnce(button, 'NewConversation', event => {
       event.preventDefault();
       event.stopPropagation();
