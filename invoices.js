@@ -2101,6 +2101,7 @@ const Invoices = {
     this.ensureCatalogLoaded();
     E.invoiceFormModal.classList.add('open');
     E.invoiceFormModal.setAttribute('aria-hidden', 'false');
+    window.setTimeout(() => window.CrmCompanyContactSelectors?.initializeCompanyContactSelectorsForInvoice?.(), 0);
     if (window.setAppHashRoute && window.buildRecordHashRoute) setAppHashRoute(buildRecordHashRoute('invoices', this.state.selectedInvoice || {}));
   },
   closeForm() {

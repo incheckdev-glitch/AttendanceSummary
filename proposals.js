@@ -2538,6 +2538,7 @@ const Proposals = {
 
     E.proposalFormModal.style.display = 'flex';
     E.proposalFormModal.setAttribute('aria-hidden', 'false');
+    window.setTimeout(() => window.CrmCompanyContactSelectors?.initializeCompanyContactSelectorsForProposal?.(), 0);
     if (window.setAppHashRoute && window.buildRecordHashRoute) setAppHashRoute(buildRecordHashRoute('proposals', base || {}));
   },
   closeProposalForm() {

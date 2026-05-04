@@ -1585,6 +1585,7 @@ const Agreements = {
     this.state.currentAgreementId = String(agreement.id || '').trim();
     E.agreementFormModal.classList.add('open');
     E.agreementFormModal.setAttribute('aria-hidden', 'false');
+    window.setTimeout(() => window.CrmCompanyContactSelectors?.initializeCompanyContactSelectorsForAgreement?.(), 0);
     if (window.setAppHashRoute && window.buildRecordHashRoute) setAppHashRoute(buildRecordHashRoute('agreements', agreement || {}));
   },
   closeAgreementForm() {

@@ -66,12 +66,20 @@
       contactHiddenId: 'proposalFormContactId',
       directSourceIds: ['proposalFormDealId'],
       companyFields: {
-        name: ['proposalFormCustomerName'],
-        address: ['proposalFormCustomerAddress']
+        name: ['proposalFormCustomerName', 'proposalFormCompanyNameHidden'],
+        legalName: ['proposalFormCustomerLegalName'],
+        address: ['proposalFormCustomerAddress'],
+        email: ['proposalFormCustomerEmail'],
+        phone: ['proposalFormCustomerPhone'],
+        country: ['proposalFormCountry'],
+        city: ['proposalFormCity'],
+        tax: ['proposalFormTaxNumber']
       },
       contactFields: {
-        fullName: ['proposalFormCustomerContactName', 'proposalFormCustomerSignatoryName'],
+        id: ['proposalFormContactId'],
+        fullName: ['proposalFormCustomerContactName', 'proposalFormCustomerSignatoryName', 'proposalFormContactNameHidden'],
         mobile: ['proposalFormCustomerContactMobile'],
+        phone: ['proposalFormCustomerContactMobile'],
         email: ['proposalFormCustomerContactEmail'],
         jobTitle: ['proposalFormCustomerSignatoryTitle']
       },
@@ -80,10 +88,22 @@
         if (!form) return;
         if (company) {
           form.dataset.companyId = company.company_id || '';
-          form.dataset.companyName = company.company_name || '';
+          form.dataset.companyName = company.company_name || company.legal_name || '';
           form.dataset.companyAddress = company.address || '';
+          form.dataset.companyLegalName = company.legal_name || company.company_name || '';
         }
         if (contact) {
+          if (!contact.contact_id) {
+            form.dataset.contactId = '';
+            form.dataset.contactName = '';
+            form.dataset.contactFirstName = '';
+            form.dataset.contactLastName = '';
+            form.dataset.contactJobTitle = '';
+            form.dataset.contactEmail = '';
+            form.dataset.contactPhone = '';
+            form.dataset.contactMobile = '';
+            return;
+          }
           form.dataset.contactId = contact.contact_id || '';
           form.dataset.contactName = displayContact(contact);
           form.dataset.contactFirstName = contact.first_name || '';
@@ -104,6 +124,7 @@
       directSourceIds: ['agreementFormProposalId', 'agreementFormDealId', 'agreementFormLeadId'],
       companyFields: {
         name: ['agreementFormCustomerName', 'agreementFormCustomerLegalName', 'agreementFormCompanyName'],
+        legalName: ['agreementFormCustomerLegalName'],
         address: ['agreementFormCustomerAddress'],
         email: ['agreementFormCompanyEmail'],
         phone: ['agreementFormCompanyPhone'],
@@ -112,11 +133,34 @@
         tax: ['agreementFormTaxNumber']
       },
       contactFields: {
+        id: ['agreementFormContactId'],
         fullName: ['agreementFormCustomerContactName', 'agreementFormContactName', 'agreementFormCustomerSignatoryName'],
         email: ['agreementFormCustomerContactEmail', 'agreementFormContactEmail', 'agreementFormCustomerSignatoryEmail'],
         phone: ['agreementFormCustomerContactPhone', 'agreementFormContactPhone', 'agreementFormCustomerSignatoryPhone'],
         mobile: ['agreementFormCustomerContactMobile', 'agreementFormContactMobile'],
         jobTitle: ['agreementFormCustomerSignatoryTitle']
+      },
+      updateModule(company, contact) {
+        const form = byId('agreementForm');
+        if (!form) return;
+        if (company) {
+          form.dataset.companyId = company.company_id || '';
+          form.dataset.companyName = company.company_name || company.legal_name || '';
+          form.dataset.companyAddress = company.address || '';
+        }
+        if (contact) {
+          if (!contact.contact_id) {
+            form.dataset.contactId = '';
+            form.dataset.contactName = '';
+            return;
+          }
+          form.dataset.contactId = contact.contact_id || '';
+          form.dataset.contactName = displayContact(contact);
+          form.dataset.contactEmail = contact.email || '';
+          form.dataset.contactPhone = contact.phone || '';
+          form.dataset.contactMobile = contact.mobile || '';
+          form.dataset.contactJobTitle = contact.job_title || '';
+        }
       }
     },
     invoice: {
@@ -128,18 +172,28 @@
       directSourceIds: ['invoiceFormAgreementId'],
       companyFields: {
         name: ['invoiceFormCustomerName', 'invoiceFormCustomerLegalName', 'invoiceFormCompanyName'],
+        legalName: ['invoiceFormCustomerLegalName'],
         address: ['invoiceFormCustomerAddress']
       },
       contactFields: {
+        id: ['invoiceFormContactId'],
         fullName: ['invoiceFormCustomerContactName', 'invoiceFormContactName'],
         email: ['invoiceFormCustomerContactEmail', 'invoiceFormContactEmail'],
         phone: ['invoiceFormContactPhone'],
         mobile: ['invoiceFormContactMobile']
       },
       updateModule(company, contact) {
-        if (!global.Invoices?.state) return;
-        if (company) global.Invoices.state.selectedCompany = company;
-        if (contact) global.Invoices.state.selectedContact = contact;
+        if (global.Invoices?.state) {
+          if (company) global.Invoices.state.selectedCompany = company;
+          if (contact) global.Invoices.state.selectedContact = contact.contact_id ? contact : null;
+        }
+        if (global.Invoices?.hydrateInvoiceCustomerSection) {
+          global.Invoices.hydrateInvoiceCustomerSection({
+            agreement: global.Invoices.state?.selectedAgreement || global.Invoices.state?.selectedInvoice || {},
+            company: global.Invoices.state?.selectedCompany || {},
+            contact: global.Invoices.state?.selectedContact || {}
+          });
+        }
       }
     },
     receipt: {
@@ -151,9 +205,11 @@
       directSourceIds: ['receiptFormInvoiceId'],
       companyFields: {
         name: ['receiptFormCustomerName', 'receiptFormCustomerLegalName', 'receiptFormCompanyName'],
+        legalName: ['receiptFormCustomerLegalName'],
         address: ['receiptFormCustomerAddress']
       },
       contactFields: {
+        id: ['receiptFormContactId'],
         fullName: ['receiptFormContactName'],
         email: ['receiptFormContactEmail'],
         phone: ['receiptFormContactPhone'],
@@ -164,9 +220,18 @@
         if (!form) return;
         if (company) {
           form.dataset.companyId = company.company_id || '';
-          form.dataset.companyName = company.company_name || '';
+          form.dataset.companyName = company.company_name || company.legal_name || '';
+          form.dataset.companyAddress = company.address || '';
         }
         if (contact) {
+          if (!contact.contact_id) {
+            form.dataset.contactId = '';
+            form.dataset.contactName = '';
+            form.dataset.contactEmail = '';
+            form.dataset.contactPhone = '';
+            form.dataset.contactMobile = '';
+            return;
+          }
           form.dataset.contactId = contact.contact_id || '';
           form.dataset.contactName = displayContact(contact);
           form.dataset.contactEmail = contact.email || '';
@@ -254,12 +319,26 @@
   function setMany(ids = [], value, options) {
     ids.forEach(id => setValue(id, value, options));
   }
+  function setText(id, value) {
+    const el = byId(id);
+    if (!el) return;
+    if ('value' in el) el.value = value ?? '';
+    else el.textContent = value ?? '';
+  }
+  function companyDisplayName(company = {}) {
+    return str(company.legal_name || company.company_name || company.name || company.company_id);
+  }
+  function contactPhone(contact = {}) {
+    return str(contact.mobile || contact.phone);
+  }
   function setSelectOptions(select, rows, placeholder, type) {
     if (!select) return;
     const currentValue = str(select.value);
     const options = [`<option value="">${escapeHtml(placeholder)}</option>`];
     rows.forEach(row => {
-      const value = row.company_id || row.contact_id || row.id || '';
+      const value = type === 'company'
+        ? (row.company_id || row.id || '')
+        : (row.contact_id || row.id || '');
       if (!value) return;
       const label = type === 'company'
         ? displayCompany(row)
@@ -434,12 +513,13 @@
   function applyCompany(cfg, company) {
     const c = normalizeCompany(company || {});
     const companyId = c.company_id || '';
+    const displayName = companyDisplayName(c);
     setValue(cfg.companyHiddenId, companyId, { readonly: false });
-    setValue(`${cfg.formId.replace('Form', 'Form')}CompanyName`, c.company_name, { readonly: false });
+    setValue(`${cfg.formId.replace('Form', 'Form')}CompanyName`, c.company_name || displayName, { readonly: false });
     if (cfg.companyFields) {
       setMany(cfg.companyFields.id, c.company_id);
-      setMany(cfg.companyFields.name, displayCompany(c));
-      setMany(cfg.companyFields.legalName, c.legal_name || c.company_name);
+      setMany(cfg.companyFields.name, displayName);
+      setMany(cfg.companyFields.legalName, c.legal_name || c.company_name || displayName);
       setMany(cfg.companyFields.type, c.company_type);
       setMany(cfg.companyFields.industry, c.industry);
       setMany(cfg.companyFields.website, c.website);
@@ -451,35 +531,56 @@
       setMany(cfg.companyFields.tax, c.tax_number);
       setMany(cfg.companyFields.status, c.company_status);
     }
-    const currencyField = byId(`${cfg.formId.replace('Form', 'Form')}Currency`);
+    const prefix = cfg.formId.replace('Form', 'Form');
+    // Extra common customer/company aliases used by proposal/agreement/invoice/receipt templates.
+    ['CustomerName', 'CustomerLegalName'].forEach(suffix => setText(`${prefix}${suffix}`, suffix === 'CustomerLegalName' ? (c.legal_name || displayName) : displayName));
+    setText(`${prefix}CustomerAddress`, c.address);
+    setText(`${prefix}CompanyName`, c.company_name || displayName);
+    setText(`${prefix}CompanyEmail`, c.main_email);
+    setText(`${prefix}CompanyPhone`, c.main_phone);
+    setText(`${prefix}Country`, c.country);
+    setText(`${prefix}City`, c.city);
+    setText(`${prefix}TaxNumber`, c.tax_number);
+    const currencyField = byId(`${prefix}Currency`);
     if (currencyField && c.currency && !str(currencyField.value)) currencyField.value = c.currency;
-    const paymentTermField = byId(`${cfg.formId.replace('Form', 'Form')}PaymentTerm`);
+    const paymentTermField = byId(`${prefix}PaymentTerm`);
     if (paymentTermField && c.payment_term && !str(paymentTermField.value)) paymentTermField.value = c.payment_term;
     cfg.updateModule?.(c, null);
+    byId(cfg.formId)?.dispatchEvent?.(new CustomEvent('crm-company-selected', { bubbles: true, detail: { company: c } }));
   }
 
   function applyContact(cfg, contact) {
     const c = normalizeContact(contact || {});
+    const displayName = displayContact(c);
+    const phone = contactPhone(c);
     setValue(cfg.contactHiddenId, c.contact_id || '', { readonly: false });
-    setValue(`${cfg.formId.replace('Form', 'Form')}ContactName`, displayContact(c), { readonly: false });
-    setValue(`${cfg.formId.replace('Form', 'Form')}ContactEmail`, c.email, { readonly: false });
-    setValue(`${cfg.formId.replace('Form', 'Form')}ContactPhone`, c.phone, { readonly: false });
-    setValue(`${cfg.formId.replace('Form', 'Form')}ContactMobile`, c.mobile, { readonly: false });
+    const prefix = cfg.formId.replace('Form', 'Form');
+    setValue(`${prefix}ContactName`, displayName, { readonly: false });
+    setValue(`${prefix}ContactEmail`, c.email, { readonly: false });
+    setValue(`${prefix}ContactPhone`, phone, { readonly: false });
+    setValue(`${prefix}ContactMobile`, c.mobile, { readonly: false });
     if (cfg.contactFields) {
       setMany(cfg.contactFields.id, c.contact_id);
       setMany(cfg.contactFields.firstName, c.first_name);
       setMany(cfg.contactFields.lastName, c.last_name);
-      setMany(cfg.contactFields.fullName, displayContact(c));
+      setMany(cfg.contactFields.fullName, displayName);
       setMany(cfg.contactFields.jobTitle, c.job_title);
       setMany(cfg.contactFields.department, c.department);
       setMany(cfg.contactFields.email, c.email);
-      setMany(cfg.contactFields.phone, c.phone || c.mobile);
-      setMany(cfg.contactFields.mobile, c.mobile);
+      setMany(cfg.contactFields.phone, phone);
+      setMany(cfg.contactFields.mobile, c.mobile || c.phone);
       setMany(cfg.contactFields.decisionRole, c.decision_role);
       setMany(cfg.contactFields.primary, c.is_primary_contact ? 'Yes' : 'No');
       setMany(cfg.contactFields.status, c.contact_status);
     }
+    // Extra common customer/contact/signatory aliases used by downstream forms.
+    ['CustomerContactName', 'CustomerSignatoryName'].forEach(suffix => setText(`${prefix}${suffix}`, displayName));
+    ['CustomerContactEmail', 'CustomerSignatoryEmail'].forEach(suffix => setText(`${prefix}${suffix}`, c.email));
+    ['CustomerContactPhone', 'CustomerSignatoryPhone'].forEach(suffix => setText(`${prefix}${suffix}`, phone));
+    setText(`${prefix}CustomerContactMobile`, c.mobile || c.phone);
+    setText(`${prefix}CustomerSignatoryTitle`, c.job_title);
     cfg.updateModule?.(null, c);
+    byId(cfg.formId)?.dispatchEvent?.(new CustomEvent('crm-contact-selected', { bubbles: true, detail: { contact: c } }));
   }
 
   function syncExistingValues(cfg) {
@@ -510,6 +611,8 @@
       const company = state.companies.find(c => c.company_id === companyId) || null;
       if (company) applyCompany(cfg, company);
       setValue(cfg.contactHiddenId, '', { readonly: false });
+      ['ContactName', 'ContactEmail', 'ContactPhone', 'ContactMobile', 'CustomerContactName', 'CustomerContactEmail', 'CustomerContactPhone', 'CustomerContactMobile', 'CustomerSignatoryName', 'CustomerSignatoryTitle', 'CustomerSignatoryEmail', 'CustomerSignatoryPhone']
+        .forEach(suffix => setText(`${cfg.formId.replace('Form', 'Form')}${suffix}`, ''));
       cfg.updateModule?.(null, { contact_id: '' });
       contactSelect.value = '';
       await loadContactsForConfig(cfg, companyId);

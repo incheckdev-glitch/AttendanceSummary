@@ -646,7 +646,8 @@ const Receipts = {
     if (E.receiptFormModal) {
       E.receiptFormModal.classList.add('open');
       E.receiptFormModal.setAttribute('aria-hidden', 'false');
-    if (window.setAppHashRoute && window.buildRecordHashRoute) setAppHashRoute(buildRecordHashRoute('receipts', this.state.selectedReceipt || {}));
+      window.setTimeout(() => window.CrmCompanyContactSelectors?.initializeCompanyContactSelectorsForReceipt?.(), 0);
+      if (window.setAppHashRoute && window.buildRecordHashRoute) setAppHashRoute(buildRecordHashRoute('receipts', this.state.selectedReceipt || {}));
     }
     this.recalculatePaymentFields();
   },
