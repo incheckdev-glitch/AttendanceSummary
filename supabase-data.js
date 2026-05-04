@@ -3659,7 +3659,11 @@
     { resource: 'proposals', action: 'proposal_requires_approval', recipient_roles: ['financial_controller', 'gm'] },
     { resource: 'agreements', action: 'agreement_signed', recipient_roles: ['admin', 'accounting', 'hoo'] },
     { resource: 'technical_admin_requests', action: 'technical_request_submitted', recipient_roles: ['admin', 'dev', 'hoo'] },
-    { resource: 'workflow', action: 'workflow_approval_requested', recipient_roles: ['financial_controller', 'gm'] }
+    { resource: 'workflow', action: 'workflow_approval_requested', recipient_roles: ['financial_controller', 'gm'] },
+    { resource: 'communication_centre', action: 'conversation_created', recipient_mode: 'participants_except_actor', in_app_enabled: true, pwa_enabled: true, email_enabled: false, title_template: 'New Communication Centre conversation', body_template: '{actor_name} created “{conversation_title}”' },
+    { resource: 'communication_centre', action: 'reply_added', recipient_mode: 'participants_except_actor', in_app_enabled: true, pwa_enabled: true, email_enabled: false, title_template: 'New Communication Centre reply', body_template: '{actor_name} replied to “{conversation_title}”' },
+    { resource: 'communication_centre', action: 'conversation_closed', recipient_mode: 'participants_except_actor', in_app_enabled: true, pwa_enabled: true, email_enabled: false, title_template: 'Communication Centre conversation closed', body_template: '{actor_name} closed “{conversation_title}”' },
+    { resource: 'communication_centre', action: 'conversation_reopened', recipient_mode: 'participants_except_actor', in_app_enabled: true, pwa_enabled: true, email_enabled: false, title_template: 'Communication Centre conversation reopened', body_template: '{actor_name} reopened “{conversation_title}”' }
   ];
 
   function normalizeNotificationRoleKey(value = '') {
@@ -3695,6 +3699,7 @@
     if (normalizedResource === 'agreements' && id) return `/#crm?tab=agreements&id=${encodeURIComponent(id)}`;
     if (normalizedResource === 'invoices' && id) return `/#finance?tab=invoices&id=${encodeURIComponent(id)}`;
     if (normalizedResource === 'receipts' && id) return `/#finance?tab=receipts&id=${encodeURIComponent(id)}`;
+    if (normalizedResource === 'communication_centre' && id) return `/#communication_centre?conversation_id=${encodeURIComponent(id)}`;
     return String(fallback || '').trim() || '/#notifications';
   }
 

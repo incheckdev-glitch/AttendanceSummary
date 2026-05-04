@@ -11,7 +11,8 @@ const NotificationSetup = {
     ['operations_onboarding',['onboarding_created','operations_onboarding_created','onboarding_status_changed','onboarding_request_submitted','assigned_csm']],
     ['technical_admin_requests',['technical_request_submitted','technical_request_status_changed']],
     ['events',['event_created','event_updated','event_status_changed','event_schedule_changed','event_deleted']],
-    ['workflow',['workflow_approval_requested','workflow_approved','workflow_rejected']]
+    ['workflow',['workflow_approval_requested','workflow_approved','workflow_rejected']],
+    ['communication_centre',['conversation_created','reply_added','conversation_closed','conversation_reopened']]
   ],
 
 
@@ -24,6 +25,10 @@ const NotificationSetup = {
 
   formatActionLabel(action = '') {
     if (action === 'assigned_csm') return 'New Client / Location Assigned to You';
+    if (action === 'conversation_created') return 'Conversation Created';
+    if (action === 'reply_added') return 'Reply Added';
+    if (action === 'conversation_closed') return 'Conversation Closed';
+    if (action === 'conversation_reopened') return 'Conversation Reopened';
     return String(action || '')
       .replace(/_/g, ' ')
       .replace(/\b\w/g, char => char.toUpperCase());
