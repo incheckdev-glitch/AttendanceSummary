@@ -160,13 +160,13 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
     view: ['admin','dev','csm','hoo','viewer'],
     list: ['admin','dev','csm','hoo','viewer'],
     get: ['admin','dev','csm','hoo','viewer'],
-    create: ['admin','dev','csm','hoo'],
-    reply: ['admin','dev','csm','hoo'],
-    update: ['admin','dev','csm','hoo'],
-    close: ['admin','dev','csm','hoo'],
-    reopen: ['admin','dev','csm','hoo'],
-    delete: ['admin','dev'],
-    manage: ['admin','dev']
+    create: ['admin','dev','csm','hoo','viewer'],
+    reply: ['admin','dev','csm','hoo','viewer'],
+    update: ['admin','dev','csm','hoo','viewer'],
+    close: ['admin','dev','csm','hoo','viewer'],
+    reopen: ['admin','dev','csm','hoo','viewer'],
+    manage: ['admin','dev','csm','hoo','viewer'],
+    delete: []
   })
 });
 
@@ -364,6 +364,7 @@ const Permissions = {
     const normalizedResource = String(resource || '').trim().toLowerCase();
     if (normalizedResource === 'csm') return ['csm', 'csm_activities'];
     if (normalizedResource === 'csm_activities') return ['csm_activities', 'csm'];
+    if (['communicationcentre', 'communication-center', 'communication-centre', 'communication_center'].includes(normalizedResource)) return ['communication_centre'];
     return [normalizedResource];
   },
   buildMatrixFromRows(rows = []) {
@@ -648,6 +649,10 @@ const Permissions = {
     return this.canPerformAction(resource, 'update', role) || this.canPerformAction(resource, 'manage', role);
   },
   canDelete(resource, role = Session.role()) {
+    const normalizedResource = String(resource || '').trim().toLowerCase();
+    if (normalizedResource === 'communication_centre' || normalizedResource === 'communicationcentre' || normalizedResource === 'communication-centre') {
+      return this.canPerformAction('communication_centre', 'delete', role);
+    }
     return this.canPerformAction(resource, 'delete', role) || this.canPerformAction(resource, 'manage', role);
   },
   canExport(resource, role = Session.role()) {

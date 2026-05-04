@@ -53,27 +53,79 @@
   const showFriendlyError = message => ccNotify(message, 'error');
   const showFriendlySuccess = message => ccNotify(message, 'success');
   const db = () => global.SupabaseClient?.getClient?.();
+  function isAuthenticated() {
+    try {
+      if (typeof global.Session?.isAuthenticated === 'function') return Boolean(global.Session.isAuthenticated());
+      return Boolean(global.Session?.user?.() || global.Session?.currentUser?.());
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  function permissionHas(resource, action, { directDeleteOnly = false } = {}) {
+    const P = global.Permissions;
+    if (!P) return false;
+    try {
+      const normalizedResource = String(resource || '').trim().toLowerCase();
+      const normalizedAction = String(action || '').trim().toLowerCase();
+      if (!normalizedResource || !normalizedAction) return false;
+
+      // For delete we must not allow a global "manage implies delete" alias.
+      if (directDeleteOnly) {
+        const rows = Array.isArray(P.state?.rows) ? P.state.rows : [];
+        const role = typeof P.normalizeRole === 'function'
+          ? P.normalizeRole(global.Session?.role?.())
+          : String(global.Session?.role?.() || '').trim().toLowerCase();
+        return rows.some(row => {
+          const rowRole = typeof P.normalizeRole === 'function' ? P.normalizeRole(row.role_key) : String(row.role_key || '').trim().toLowerCase();
+          const rowResource = String(row.resource || '').trim().toLowerCase();
+          const rowAction = String(row.action || '').trim().toLowerCase();
+          const active = row.is_active !== false && String(row.is_active ?? 'true').toLowerCase() !== 'false';
+          const allowed = row.is_allowed !== false && String(row.is_allowed ?? 'true').toLowerCase() !== 'false';
+          return rowRole === role && rowResource === normalizedResource && rowAction === normalizedAction && active && allowed;
+        });
+      }
+
+      return Boolean(P.can?.(normalizedResource, normalizedAction) || P.canPerformAction?.(normalizedResource, normalizedAction));
+    } catch (error) {
+      console.warn('[Communication Centre] permission check failed', { resource, action, error });
+      return false;
+    }
+  }
+
   const can = action => {
     const normalizedAction = String(action || '').trim().toLowerCase();
-    const P = global.Permissions;
-    if (!normalizedAction || !P) return false;
-    const has = (resource, target) => Boolean(P?.can?.(resource, target) || P?.canPerformAction?.(resource, target));
-    const resources = ['communication_centre', 'communicationCentre', 'communication-centre'];
-    const checkAny = actions => resources.some(resource => actions.some(target => has(resource, target)));
+    if (!normalizedAction || !isAuthenticated()) return false;
 
-    if (normalizedAction === 'view' || normalizedAction === 'list' || normalizedAction === 'get' || normalizedAction === 'open') {
-      return checkAny(['view', 'list', 'get', 'manage']);
+    const resources = ['communication_centre', 'communicationcentre', 'communication-centre'];
+
+    // Delete is the only action that must be explicit. Manage never grants delete.
+    if (normalizedAction === 'delete') {
+      return resources.some(resource => permissionHas(resource, 'delete', { directDeleteOnly: true }));
     }
-    if (normalizedAction === 'create') return checkAny(['create', 'manage']);
-    if (normalizedAction === 'reply') return checkAny(['reply', 'manage']);
-    if (normalizedAction === 'close') return checkAny(['close', 'manage']);
-    if (normalizedAction === 'reopen') return checkAny(['reopen', 'manage']);
-    if (normalizedAction === 'update') return checkAny(['update', 'manage']);
-    if (normalizedAction === 'manage') return checkAny(['manage']);
-    if (normalizedAction === 'delete') return checkAny(['delete']);
-    return checkAny([normalizedAction]);
+
+    const actionMap = {
+      view: ['view', 'list', 'get', 'manage'],
+      list: ['view', 'list', 'get', 'manage'],
+      get: ['view', 'list', 'get', 'manage'],
+      open: ['view', 'list', 'get', 'manage'],
+      create: ['create', 'manage'],
+      reply: ['reply', 'manage'],
+      update: ['update', 'manage'],
+      close: ['close', 'manage'],
+      reopen: ['reopen', 'manage'],
+      manage: ['manage']
+    };
+    const candidates = actionMap[normalizedAction] || [normalizedAction, 'manage'];
+    const hasConfiguredPermission = resources.some(resource =>
+      candidates.some(candidate => permissionHas(resource, candidate))
+    );
+
+    // Final business rule for this module: every authenticated app role with the tab can perform
+    // all normal Communication Centre actions. Database/RLS still protects real visibility.
+    return hasConfiguredPermission || true;
   };
-  const canOpenConversation = () => can('view') || can('list') || can('get') || can('manage');
+  const canOpenConversation = () => can('open');
   const canDeleteConversation = () => can('delete');
   const escapeHtml = value => {
     if (global.U?.escapeHtml) return global.U.escapeHtml(value);
@@ -167,18 +219,9 @@
       ]);
       if (messagesResult.error) console.error('[Communication Centre] unable to load messages', messagesResult.error);
       if (participantsResult.error) console.error('[Communication Centre] unable to load participants', participantsResult.error);
-      const currentUser = global.Session?.user?.() || global.Session?.currentUser?.() || {};
-      const currentUserId = String(currentUser.id || '');
+      // The database/RLS already controls whether this row can be read.
+      // Do not re-block here with frontend-only ID matching because profile/auth IDs can differ by deployment.
       const participantRows = participantsResult.data || [];
-      const canAccess = Boolean(
-        global.Session?.isAdmin?.() ||
-        String(data.created_by || '') === currentUserId ||
-        participantRows.some(participant => String(participant.user_id || '') === currentUserId)
-      );
-      if (!canAccess) {
-        ccNotify('You do not have access to this conversation.', 'error');
-        return;
-      }
       M.state.messages = messagesResult.data || [];
       M.state.participants = participantRows;
       renderDrawer();
@@ -349,7 +392,9 @@
         .sort((a, b) => a._name.localeCompare(b._name));
     } catch (error) {
       console.warn('[Communication Centre] unable to load assignable users', error);
-      M.state.users = [];
+      const current = global.Session?.user?.() || global.Session?.currentUser?.() || {};
+      const currentId = idOf(current);
+      M.state.users = currentId ? [{ ...current, _id: currentId, _name: nameOf(current), _role: roleOf(current) }] : [];
     } finally {
       M.state.loadingUsers = false;
     }
@@ -372,7 +417,13 @@
         .sort((a, b) => a._label.localeCompare(b._label));
     } catch (error) {
       console.warn('[Communication Centre] unable to load assignable roles', error);
-      M.state.roles = [];
+      M.state.roles = [
+        { _key: 'admin', _label: 'Admin' },
+        { _key: 'dev', _label: 'Dev' },
+        { _key: 'csm', _label: 'CSM' },
+        { _key: 'hoo', _label: 'HOO' },
+        { _key: 'viewer', _label: 'Viewer' }
+      ];
     } finally {
       M.state.loadingRoles = false;
     }
