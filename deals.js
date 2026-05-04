@@ -1336,7 +1336,8 @@ const Deals = {
     this.setReadonlyField(E.dealCompanyAddressDisplay, c.address);
     this.setReadonlyField(E.dealCompanyTaxNumberDisplay, c.tax_number);
     this.setReadonlyField(E.dealCompanyStatusDisplay, c.company_status);
-    this.lockCompanyContactFields({ lockCompanySelector: !!c.company_id, lockContactSelector: !!this.state.form.contactId });
+    const shouldLockPartySelectors = E.dealForm?.dataset.mode === 'edit' || this.state.form.lockLinks;
+    this.lockCompanyContactFields({ lockCompanySelector: shouldLockPartySelectors && !!c.company_id, lockContactSelector: shouldLockPartySelectors && !!this.state.form.contactId });
   },
   hydrateDealFromContact(contact = {}) {
     const c = this.normalizeContact(contact);
@@ -1357,7 +1358,8 @@ const Deals = {
     this.setReadonlyField(E.dealContactDecisionRoleDisplay, c.decision_role);
     this.setReadonlyField(E.dealContactPrimaryDisplay, c.is_primary_contact ? 'Yes' : 'No');
     this.setReadonlyField(E.dealContactStatusDisplay, c.contact_status);
-    this.lockCompanyContactFields({ lockCompanySelector: !!this.state.form.companyId, lockContactSelector: !!c.contact_id });
+    const shouldLockPartySelectors = E.dealForm?.dataset.mode === 'edit' || this.state.form.lockLinks;
+    this.lockCompanyContactFields({ lockCompanySelector: shouldLockPartySelectors && !!this.state.form.companyId, lockContactSelector: shouldLockPartySelectors && !!c.contact_id });
   },
   closeForm() {
     if (!E.dealFormModal) return;
@@ -1657,6 +1659,11 @@ const Deals = {
         const company = await this.getFullCompanyRecord(companyId);
         if (!company) return;
         this.hydrateDealFromCompany(company);
+        if (E.dealForm?.dataset.mode !== 'edit') {
+          this.unlockSelect(E.dealFormCompanySelector);
+          this.unlockSelect(E.dealFormContactSelector);
+        }
+        window.CrmCompanyContactSelectors?.refresh?.().catch?.(() => {});
       });
     }
     if (E.dealFormContactSelector) {
@@ -1666,6 +1673,10 @@ const Deals = {
         const contact = await this.getFullContactRecord(contactId);
         if (!contact) return;
         this.hydrateDealFromContact(contact);
+        if (E.dealForm?.dataset.mode !== 'edit') {
+          this.unlockSelect(E.dealFormCompanySelector);
+          this.unlockSelect(E.dealFormContactSelector);
+        }
       });
     }
 

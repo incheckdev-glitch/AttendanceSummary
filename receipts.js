@@ -1199,7 +1199,8 @@ const Receipts = {
     }
   },
   collectUpdates() {
-    const get = id => String(E[id]?.value || '').trim();
+    const get = id => String(E[id]?.value || document.getElementById(id)?.value || '').trim();
+    const form = E.receiptForm || document.getElementById('receiptForm');
     return {
       receipt_id: get('receiptFormReceiptId'),
       receipt_number: get('receiptFormReceiptNumber'),
@@ -1208,6 +1209,13 @@ const Receipts = {
       agreement_uuid: get('receiptFormAgreementUuid'),
       agreement_id: get('receiptFormAgreementId'),
       agreement_number: get('receiptFormAgreementNumber'),
+      company_id: get('receiptFormCompanyId') || String(form?.dataset.companyId || '').trim(),
+      company_name: get('receiptFormCompanyName') || String(form?.dataset.companyName || '').trim(),
+      contact_id: get('receiptFormContactId') || String(form?.dataset.contactId || '').trim(),
+      contact_name: get('receiptFormContactName') || String(form?.dataset.contactName || '').trim(),
+      contact_email: get('receiptFormContactEmail') || String(form?.dataset.contactEmail || '').trim(),
+      contact_phone: get('receiptFormContactPhone') || String(form?.dataset.contactPhone || '').trim(),
+      contact_mobile: get('receiptFormContactMobile') || String(form?.dataset.contactMobile || '').trim(),
       receipt_date: get('receiptFormReceiptDate'),
       customer_name: get('receiptFormCustomerName'),
       customer_legal_name: get('receiptFormCustomerLegalName'),

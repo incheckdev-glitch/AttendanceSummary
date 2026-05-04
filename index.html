@@ -2908,12 +2908,12 @@ Sample:
           </div>
           <div class="filter-row">
             <label class="muted" for="dealFormCompanySelector">Company</label>
-            <input id="dealFormCompanySelector" class="input readonly-field locked-field" type="text" placeholder="Company ID" readonly aria-readonly="true" />
+            <select id="dealFormCompanySelector" class="select"><option value="">Select company</option></select>
             <input id="dealFormCompanyId" type="hidden" />
           </div>
           <div class="filter-row">
             <label class="muted" for="dealFormContactSelector">Contact</label>
-            <input id="dealFormContactSelector" class="input readonly-field locked-field" type="text" placeholder="Contact ID" readonly aria-readonly="true" />
+            <select id="dealFormContactSelector" class="select" disabled><option value="">Select company first</option></select>
             <input id="dealFormContactId" type="hidden" />
           </div>
         </div>
@@ -3150,6 +3150,10 @@ Sample:
         <div class="divider" style="margin:12px 0;"></div>
         <strong style="display:block;margin-bottom:8px;">Customer / Company Details</strong>
         <div class="filter-row muted" style="grid-column:1 / -1;">Customer and contact details are managed from the Company and Contacts modules.</div>
+        <div class="grid crm-party-selector-grid" data-party-selector="proposal" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:12px;">
+          <div class="filter-row"><label class="muted" for="proposalFormCompanySelector">Company</label><select id="proposalFormCompanySelector" class="select"><option value="">Select company</option></select><input id="proposalFormCompanyId" type="hidden" /><input id="proposalFormCompanyNameHidden" type="hidden" /></div>
+          <div class="filter-row"><label class="muted" for="proposalFormContactSelector">Contact</label><select id="proposalFormContactSelector" class="select" disabled><option value="">Select company first</option></select><input id="proposalFormContactId" type="hidden" /><input id="proposalFormContactNameHidden" type="hidden" /></div>
+        </div>
         <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
           <div class="filter-row"><label class="muted" for="proposalFormCustomerName">Customer Name</label><input id="proposalFormCustomerName" class="input readonly-field" type="text" readonly aria-readonly="true" /></div>
           <div class="filter-row"><label class="muted" for="proposalFormCustomerAddress">Customer Address</label><input id="proposalFormCustomerAddress" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
@@ -3402,6 +3406,11 @@ Sample:
           <div class="filter-row"><label class="muted" for="agreementFormLeadId">Lead ID</label><input id="agreementFormLeadId" class="input" type="text" /></div>
           <div class="filter-row"><label class="muted" for="agreementFormCurrency">Currency</label><input id="agreementFormCurrency" class="input" type="text" /></div>
         </div>
+        <div class="divider" style="margin:12px 0;"></div><strong style="display:block;margin-bottom:8px;">Company / Contact Selection</strong>
+        <div class="grid crm-party-selector-grid" data-party-selector="agreement" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:12px;">
+          <div class="filter-row"><label class="muted" for="agreementFormCompanySelector">Company</label><select id="agreementFormCompanySelector" class="select"><option value="">Select company</option></select><input id="agreementFormCompanyId" type="hidden" /><input id="agreementFormCompanyName" type="hidden" /></div>
+          <div class="filter-row"><label class="muted" for="agreementFormContactSelector">Contact</label><select id="agreementFormContactSelector" class="select" disabled><option value="">Select company first</option></select><input id="agreementFormContactId" type="hidden" /><input id="agreementFormContactName" type="hidden" /><input id="agreementFormContactEmail" type="hidden" /><input id="agreementFormContactPhone" type="hidden" /><input id="agreementFormContactMobile" type="hidden" /></div>
+        </div>
         <div class="divider" style="margin:12px 0;"></div><strong style="display:block;margin-bottom:8px;">Contact Details</strong>
         <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
           <div class="filter-row"><label class="muted" for="agreementFormCustomerName">Customer Name</label><input id="agreementFormCustomerName" class="input" type="text" /></div><div class="filter-row"><label class="muted" for="agreementFormCustomerContactEmail">Customer Contact Email</label><input id="agreementFormCustomerContactEmail" class="input" type="email" /></div>
@@ -3536,6 +3545,10 @@ Sample:
         <div class="divider" style="margin:12px 0;"></div>
         <strong style="display:block;margin-bottom:8px;">Customer</strong>
         <div class="muted" style="margin:-4px 0 8px;">Customer and contact details are managed from the Company and Contacts modules.</div>
+        <div class="grid crm-party-selector-grid" data-party-selector="invoice" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:12px;">
+          <div class="filter-row"><label class="muted" for="invoiceFormCompanySelector">Company</label><select id="invoiceFormCompanySelector" class="select"><option value="">Select company</option></select><input id="invoiceFormCompanyId" type="hidden" /><input id="invoiceFormCompanyName" type="hidden" /></div>
+          <div class="filter-row"><label class="muted" for="invoiceFormContactSelector">Contact</label><select id="invoiceFormContactSelector" class="select" disabled><option value="">Select company first</option></select><input id="invoiceFormContactId" type="hidden" /><input id="invoiceFormContactName" type="hidden" /><input id="invoiceFormContactEmail" type="hidden" /><input id="invoiceFormContactPhone" type="hidden" /><input id="invoiceFormContactMobile" type="hidden" /></div>
+        </div>
         <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
           <div class="filter-row"><label class="muted" for="invoiceFormCustomerName">Customer Name</label><input id="invoiceFormCustomerName" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
           <div class="filter-row"><label class="muted" for="invoiceFormCustomerLegalName">Customer Legal Name</label><input id="invoiceFormCustomerLegalName" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
@@ -3625,6 +3638,8 @@ Sample:
           <div class="filter-row"><label class="muted" for="receiptFormCurrency">Currency</label><input id="receiptFormCurrency" class="input" type="text" /></div>
           <div class="filter-row"><label class="muted" for="receiptFormStatus">Status</label><input id="receiptFormStatus" class="input" type="text" /></div>
           <div class="filter-row"><label class="muted" for="receiptFormSupportEmail">Support Email</label><input id="receiptFormSupportEmail" class="input" type="email" /></div>
+          <div class="filter-row"><label class="muted" for="receiptFormCompanySelector">Company</label><select id="receiptFormCompanySelector" class="select"><option value="">Select company</option></select><input id="receiptFormCompanyId" type="hidden" /><input id="receiptFormCompanyName" type="hidden" /></div>
+          <div class="filter-row"><label class="muted" for="receiptFormContactSelector">Contact</label><select id="receiptFormContactSelector" class="select" disabled><option value="">Select company first</option></select><input id="receiptFormContactId" type="hidden" /><input id="receiptFormContactName" type="hidden" /><input id="receiptFormContactEmail" type="hidden" /><input id="receiptFormContactPhone" type="hidden" /><input id="receiptFormContactMobile" type="hidden" /></div>
           <div class="filter-row"><label class="muted" for="receiptFormCustomerName">Customer Name</label><input id="receiptFormCustomerName" class="input" type="text" /></div>
           <div class="filter-row"><label class="muted" for="receiptFormCustomerLegalName">Customer Legal Name</label><input id="receiptFormCustomerLegalName" class="input" type="text" /></div>
           <div class="filter-row" style="grid-column:1 / -1;"><label class="muted" for="receiptFormCustomerAddress">Customer Address</label><input id="receiptFormCustomerAddress" class="input" type="text" /></div>
@@ -3713,6 +3728,7 @@ Sample:
   <script src="insights.js?v=20260427-allpwa1"></script>
   <script src="calendar.js?v=20260427-allpwa1"></script>
   <script src="planner.js?v=20260427-allpwa1"></script>
+  <script src="crm-form-selectors.js?v=20260504-company-contact-selectors1"></script>
   <script src="ui.js?v=20260427-allpwa1"></script>
   <script src="leads.js?v=20260427-allpwa1"></script>
   <script src="companies.js?v=20260429-crm"></script>
