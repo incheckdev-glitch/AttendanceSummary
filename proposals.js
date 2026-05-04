@@ -1387,66 +1387,77 @@ const Proposals = {
     <style>
       :root { color-scheme: light; }
       * { box-sizing: border-box; }
-      body { font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 18px; color: #111827; background: #f3f4f6; }
-      .doc-sheet { max-width: 1020px; margin: 0 auto; background: #fff; border: 1px solid #d1d5db; padding: 22px; }
-      .header-top { text-align: center; padding-bottom: 12px; border-bottom: 1px solid #111827; }
-      .logo-title { margin: 0; font-size: 26px; letter-spacing: 0.04em; font-weight: 700; }
-      .logo-subtitle { margin: 4px 0 0; color: #4b5563; font-size: 12px; }
-      .doc-head { display: grid; grid-template-columns: 1fr 320px; gap: 24px; margin-top: 16px; align-items: start; }
-      .doc-label { margin: 0; font-size: 36px; font-weight: 700; letter-spacing: 0.02em; }
-      .meta-box { border: 1px solid #111827; }
-      .meta-row { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid #d1d5db; }
+      body { font-family: Inter, "Segoe UI", Arial, Helvetica, sans-serif; margin: 0; padding: 20px; color: #111827; background: #eef2f7; }
+      .doc-sheet { max-width: 1020px; margin: 0 auto; background: #fff; border: 1px solid #dbe3ed; padding: 28px 30px; border-radius: 8px; }
+      .doc-header { border-bottom: 1px solid #d8e1ec; padding-bottom: 18px; margin-bottom: 18px; }
+      .header-top-row { display: grid; grid-template-columns: 1fr 340px; gap: 20px; align-items: start; }
+      .brand-block { display: flex; align-items: center; gap: 14px; min-height: 54px; }
+      .brand-block .incheck360-doc-logo-wrap { float: none; margin: 0; width: 168px; max-width: 168px; }
+      .provider-chip { margin-left: auto; text-align: right; font-size: 12px; color: #4b5563; line-height: 1.35; }
+      .provider-chip .provider-name { font-size: 13px; color: #0f172a; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; }
+      .title-block { margin-top: 14px; }
+      .doc-label { margin: 0; font-size: 34px; font-weight: 800; letter-spacing: 0.04em; color: #0b214a; line-height: 1.05; }
+      .doc-subtitle { margin-top: 8px; font-size: 13px; color: #64748b; }
+      .doc-head { display: grid; grid-template-columns: 1fr 340px; gap: 20px; margin-top: 14px; align-items: start; }
+      .meta-box { border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; background: #fbfdff; }
+      .meta-row { display: grid; grid-template-columns: 130px 1fr; border-bottom: 1px solid #e3eaf3; }
       .meta-row:last-child { border-bottom: 0; }
-      .meta-row > div { padding: 7px 10px; font-size: 12.5px; }
-      .meta-row .meta-key { background: #f9fafb; font-weight: 700; border-right: 1px solid #d1d5db; }
-      .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 16px; }
-      .info-box { border: 1px solid #111827; min-height: 132px; }
-      .info-head { background: #f3f4f6; border-bottom: 1px solid #d1d5db; padding: 8px 10px; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; }
-      .info-body { padding: 10px; font-size: 12.5px; line-height: 1.45; }
+      .meta-row > div { padding: 8px 11px; font-size: 12.5px; }
+      .meta-row .meta-key { background: #f5f8fc; font-weight: 700; color: #334155; border-right: 1px solid #e3eaf3; }
+      .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+      .info-box { border: 1px solid #d7e1ed; min-height: 146px; border-radius: 6px; overflow: hidden; background: #fff; }
+      .info-head { background: #f8fbff; border-bottom: 1px solid #e3eaf3; padding: 9px 12px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: #1e3a5f; }
+      .info-body { padding: 12px; font-size: 12.5px; line-height: 1.55; }
+      .info-body strong { font-weight: 700; color: #0f172a; }
       .muted { color: #6b7280; }
-      .section { margin-top: 18px; }
-      .section h2 { margin: 0; font-size: 16px; border-bottom: 1px solid #111827; padding-bottom: 5px; }
+      .section { margin-top: 22px; }
+      .section h2 { margin: 0; font-size: 16px; font-weight: 700; color: #0f172a; border-bottom: 1px solid #d8e1ec; padding-bottom: 7px; }
       .section .subhead { font-size: 12px; margin: 6px 0 8px; color: #4b5563; text-transform: uppercase; letter-spacing: 0.04em; }
       table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-      th, td { border: 1px solid #111827; padding: 8px; font-size: 12px; vertical-align: middle; }
-      th { text-align: center; background: #f9fafb; font-weight: 700; }
+      th, td { border: 1px solid #dde5ef; padding: 8px; font-size: 12px; vertical-align: middle; }
+      th { text-align: center; background: #f5f8fc; color: #0f172a; font-weight: 700; }
       .cell-center { text-align: center; vertical-align: middle; }
       .cell-right { text-align: right; vertical-align: middle; white-space: nowrap; }
-      .total-row td { font-weight: 700; background: #f9fafb; }
+      .total-row td { font-weight: 700; background: #f7faff; }
       .totals-wrap { display: flex; justify-content: flex-end; margin-top: 16px; }
-      .totals-box { width: 380px; border: 1px solid #111827; }
-      .totals-row { display: flex; justify-content: space-between; padding: 9px 10px; border-bottom: 1px solid #d1d5db; font-size: 13px; }
+      .totals-box { width: 380px; border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; }
+      .totals-row { display: flex; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid #e3eaf3; font-size: 13px; }
       .totals-row:last-child { border-bottom: 0; }
-      .totals-row.grand { font-size: 15px; font-weight: 700; background: #f3f4f6; }
-      .terms { margin-top: 14px; font-size: 12.5px; line-height: 1.5; border: 1px solid #111827; padding: 10px; }
+      .totals-row.grand { font-size: 15px; font-weight: 700; background: #edf4ff; color: #0b214a; }
+      .terms { margin-top: 16px; font-size: 12.5px; line-height: 1.6; border: 1px solid #d7e1ed; border-radius: 6px; padding: 12px; }
       .signature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 12px; }
-      .signature-box { border: 1px solid #111827; min-height: 124px; }
-      .signature-head { background: #f9fafb; border-bottom: 1px solid #d1d5db; padding: 8px 10px; font-size: 12px; font-weight: 700; }
-      .signature-body { padding: 10px; font-size: 12px; line-height: 1.45; }
-      .footer-note { margin-top: 14px; font-size: 11px; color: #4b5563; border-top: 1px solid #e5e7eb; padding-top: 8px; text-align: center; }
+      .signature-box { border: 1px solid #d7e1ed; min-height: 124px; border-radius: 6px; overflow: hidden; }
+      .signature-head { background: #f8fbff; border-bottom: 1px solid #e3eaf3; padding: 8px 10px; font-size: 11px; letter-spacing: 0.08em; font-weight: 700; color: #1e3a5f; }
+      .signature-body { padding: 11px; font-size: 12px; line-height: 1.5; }
+      .footer-note { margin-top: 16px; font-size: 11px; color: #64748b; border-top: 1px solid #e3eaf3; padding-top: 10px; text-align: center; }
       @media print { body { margin: 0; padding: 0; background: #fff; } .doc-sheet { border: 0; max-width: none; } }
     </style>
   </head>
   <body>
     <div class="doc-sheet">
-      <header class="header-top">
-        <h1 class="logo-title">${textValue(this.getProposalCustomerName(proposalData))}</h1>
-        <div class="logo-subtitle">${textValue(proposalData.provider_address || proposalData.provider_contact_email || 'Commercial Services')}</div>
+      <header class="doc-header">
+        <div class="header-top-row">
+          <div class="brand-block"><div data-incheck360-doc-logo-slot></div></div>
+          <div class="provider-chip">
+            <div class="provider-name">${textValue(proposalData.provider_name || proposalData.generated_by || 'InCheck360')}</div>
+            <div>${textValue(proposalData.provider_contact_email || proposalData.provider_contact_mobile)}</div>
+            <div>${textValue(proposalData.provider_address)}</div>
+          </div>
+        </div>
+        <section class="doc-head">
+          <div class="title-block">
+            <h2 class="doc-label">COMMERCIAL PROPOSAL</h2>
+            <div class="doc-subtitle">${textValue(this.getProposalCustomerName(proposalData))} · ${textValue(proposalData.proposal_title || proposalData.ref_number || 'Commercial Services Proposal')}</div>
+          </div>
+          <div class="meta-box">
+            <div class="meta-row"><div class="meta-key">Proposal ID</div><div>${textValue(proposalData.proposal_id || 'Missing ID')}</div></div>
+            <div class="meta-row"><div class="meta-key">Reference #</div><div>${textValue(proposalData.ref_number)}</div></div>
+            <div class="meta-row"><div class="meta-key">Proposal Date</div><div>${dateValue(proposalData.proposal_date)}</div></div>
+            <div class="meta-row"><div class="meta-key">Valid Until</div><div>${dateValue(proposalData.proposal_valid_until || proposalData.valid_until)}</div></div>
+            <div class="meta-row"><div class="meta-key">Status</div><div>${textValue(proposalData.status || 'Draft')}</div></div>
+          </div>
+        </section>
       </header>
-
-      <section class="doc-head">
-        <div>
-          <h2 class="doc-label">COMMERCIAL PROPOSAL</h2>
-          <div class="muted" style="margin-top:6px;font-size:13px;">${textValue(proposalData.proposal_title || proposalData.proposal_id || proposalData.ref_number)}</div>
-        </div>
-        <div class="meta-box">
-          <div class="meta-row"><div class="meta-key">Proposal ID</div><div>${textValue(proposalData.proposal_id || 'Missing ID')}</div></div>
-          <div class="meta-row"><div class="meta-key">Reference #</div><div>${textValue(proposalData.ref_number)}</div></div>
-          <div class="meta-row"><div class="meta-key">Proposal Date</div><div>${dateValue(proposalData.proposal_date)}</div></div>
-          <div class="meta-row"><div class="meta-key">Valid Until</div><div>${dateValue(proposalData.proposal_valid_until || proposalData.valid_until)}</div></div>
-          <div class="meta-row"><div class="meta-key">Status</div><div>${textValue(proposalData.status || 'Draft')}</div></div>
-        </div>
-      </section>
 
       <section class="info-grid">
         <div class="info-box">

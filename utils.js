@@ -294,7 +294,9 @@ const U = {
       output = `${styleTag}${output}`;
     }
 
-    if (/<body[^>]*>/i.test(output)) {
+    if (/data-incheck360-doc-logo-slot/i.test(output)) {
+      output = output.replace(/<div[^>]*data-incheck360-doc-logo-slot[^>]*><\/div>/i, logoMarkup);
+    } else if (/<body[^>]*>/i.test(output)) {
       output = output.replace(/<body([^>]*)>/i, `<body$1>${logoMarkup}`);
     } else {
       output = `${logoMarkup}${output}`;
