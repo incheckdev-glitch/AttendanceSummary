@@ -56,23 +56,22 @@
   const can = action => {
     const normalizedAction = String(action || '').trim().toLowerCase();
     const P = global.Permissions;
-    const S = global.Session;
-    if (!normalizedAction) return false;
-
-    // Keep admin usable even if a late permission reload has not finished yet.
-    if (S?.isAdmin?.() || String(S?.role?.() || '').trim().toLowerCase() === 'admin') return true;
-
+    if (!normalizedAction || !P) return false;
+    const has = (resource, target) => Boolean(P?.can?.(resource, target) || P?.canPerformAction?.(resource, target));
     const resources = ['communication_centre', 'communicationCentre', 'communication-centre'];
-    return resources.some(resource => (
-      P?.can?.(resource, normalizedAction) ||
-      P?.canPerformAction?.(resource, normalizedAction) ||
-      (normalizedAction !== 'delete' && (
-        P?.can?.(resource, 'manage') ||
-        P?.canPerformAction?.(resource, 'manage')
-      )) ||
-      (normalizedAction === 'create' && P?.canCreate?.(resource)) ||
-      (['view', 'list', 'get'].includes(normalizedAction) && P?.canView?.(resource))
-    ));
+    const checkAny = actions => resources.some(resource => actions.some(target => has(resource, target)));
+
+    if (normalizedAction === 'view' || normalizedAction === 'list' || normalizedAction === 'get' || normalizedAction === 'open') {
+      return checkAny(['view', 'list', 'get', 'manage']);
+    }
+    if (normalizedAction === 'create') return checkAny(['create', 'manage']);
+    if (normalizedAction === 'reply') return checkAny(['reply', 'manage']);
+    if (normalizedAction === 'close') return checkAny(['close', 'manage']);
+    if (normalizedAction === 'reopen') return checkAny(['reopen', 'manage']);
+    if (normalizedAction === 'update') return checkAny(['update', 'manage']);
+    if (normalizedAction === 'manage') return checkAny(['manage']);
+    if (normalizedAction === 'delete') return checkAny(['delete']);
+    return checkAny([normalizedAction]);
   };
   const canOpenConversation = () => can('view') || can('list') || can('get') || can('manage');
   const canDeleteConversation = () => can('delete');
@@ -292,7 +291,7 @@
         `;
       }).join('');
     }
-    if (replyWrap) replyWrap.style.display = ((can('reply') || can('manage')) && conversation.status !== 'Closed') ? '' : 'none';
+    if (replyWrap) replyWrap.style.display = (conversation.status !== 'Closed' && can('reply')) ? '' : 'none';
     if (closedMsg) closedMsg.style.display = conversation.status === 'Closed' ? '' : 'none';
     renderDrawerActions();
   }
@@ -642,7 +641,7 @@
 
   function wireCreateButton() {
     const button = $('communicationCentreNewBtn') || document.querySelector('[data-cc-new-conversation]');
-    if (button) button.style.display = (can('create') || can('manage')) ? '' : 'none';
+    if (button) button.style.display = can('create') ? '' : 'none';
     bindOnce(button, 'NewConversation', event => {
       event.preventDefault();
       event.stopPropagation();
@@ -662,6 +661,15 @@
       return;
     }
     wireCreateButton();
+    const role = String(global.Session?.role?.() || '').trim().toLowerCase();
+    const canManage = can('manage');
+    const canCreate = can('create');
+    const canView = canOpenConversation();
+    const canReply = can('reply');
+    const canClose = can('close');
+    const canReopen = can('reopen');
+    const canDelete = canDeleteConversation();
+    console.log('[Communication Centre permissions]', { role, canManage, canCreate, canView, canReply, canClose, canReopen, canDelete });
     bindOnce($('communicationCentreRefreshBtn'), 'Refresh', refresh);
     $('communicationCentreSearch')?.addEventListener('input', event => {
       M.state.filters.search = event.target.value;
@@ -703,7 +711,7 @@
       if (drawer) drawer.style.display = 'none';
     });
     const replyBtn = $('communicationCentreReplyBtn');
-    if (replyBtn) replyBtn.style.display = (can('reply') || can('manage')) ? '' : 'none';
+    if (replyBtn) replyBtn.style.display = can('reply') ? '' : 'none';
     bindOnce(replyBtn, 'Reply', async () => {
       const conversation = M.state.active;
       const input = $('communicationCentreReplyInput');
