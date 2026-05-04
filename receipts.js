@@ -758,14 +758,28 @@ const Receipts = {
   getReceiptUniqueKey(receipt = {}) {
     return String(receipt?.id || '').trim() || String(receipt?.receipt_id || '').trim();
   },
-  getReceiptAmountValue(receipt = {}) {
-    const receiptAmount = this.normalizeMoney(
-      receipt.received_amount ??
-      receipt.amount_received ??
-      receipt.paid_now ??
-      0
-    );
-    return receiptAmount;
+  getReceiptPaymentAmount(receipt = {}, { includeInvoiceFallback = false } = {}) {
+    const candidates = [
+      receipt.paid_now,
+      receipt.payment_amount,
+      receipt.amount_paid,
+      receipt.amount_received,
+      receipt.receipt_amount,
+      receipt.received_amount
+    ];
+    for (const candidate of candidates) {
+      if (candidate === undefined || candidate === null || (typeof candidate === 'string' && candidate.trim() === '')) continue;
+      const amount = this.normalizeMoney(candidate);
+      if (Number.isFinite(amount) && amount >= 0) return amount;
+    }
+    if (includeInvoiceFallback) {
+      const invoiceAmount = this.normalizeMoney(receipt.invoice_total ?? receipt.invoice_grand_total ?? receipt.grand_total ?? 0);
+      if (Number.isFinite(invoiceAmount) && invoiceAmount >= 0) return invoiceAmount;
+    }
+    return 0;
+  },
+  getReceiptAmountValue(receipt = {}, options = {}) {
+    return this.getReceiptPaymentAmount(receipt, options);
   },
   isReceiptVoided(receipt = {}) {
     const status = this.normalizeText(receipt?.status);
@@ -1618,7 +1632,13 @@ const Receipts = {
     const paymentState = String(r.payment_state || '').trim() || resolvedSnapshot.payment_state;
     const paymentConclusion = String(r.payment_conclusion || '').trim() || resolvedSnapshot.payment_conclusion;
     const receivedAmount = resolvedSnapshot.received_amount;
-    const amountInWords = this.receiptAmountInWords(r.amount_in_words, currency, receivedAmount);
+    const receiptPaymentAmount = this.getReceiptPaymentAmount({
+      ...r,
+      received_amount: r.received_amount ?? r.amount_received ?? resolvedSnapshot.received_amount,
+      amount_received: r.amount_received ?? r.received_amount ?? resolvedSnapshot.received_amount,
+      paid_now: r.paid_now ?? resolvedSnapshot.paid_now
+    }, { includeInvoiceFallback: true });
+    const amountInWords = this.receiptAmountInWords(r.amount_in_words, currency, receiptPaymentAmount);
     return `<!doctype html><html><head><meta charset="utf-8" /><title>Receipt Preview</title><style>
       :root{color-scheme:light;}*{box-sizing:border-box;}body{font-family:Inter,"Segoe UI",Arial,Helvetica,sans-serif;margin:0;padding:20px;background:#eef2f7;color:#111827;}
       .receipt-sheet{max-width:1020px;margin:0 auto;background:#fff;border:1px solid #dbe3ed;padding:28px 30px;border-radius:8px;}
