@@ -17,7 +17,20 @@
   };
 
   const $ = id => document.getElementById(id);
-  const toast = message => (global.UI?.toast ? global.UI.toast(message) : alert(message));
+  const notify = (message, type = 'info') => {
+    if (global.UI?.toast) return global.UI.toast(message, type);
+    if (global.App?.showToast) return global.App.showToast(message, type);
+    const host = $('communicationCentreView') || document.body;
+    const banner = document.createElement('div');
+    banner.className = `card ${type === 'error' ? 'danger' : ''}`;
+    banner.style.cssText = 'margin:8px 0;padding:10px;border-left:4px solid ' + (type === 'error' ? '#d73a49' : '#2f9e44') + ';';
+    banner.textContent = message;
+    host.prepend(banner);
+    setTimeout(() => banner.remove(), 5000);
+    return null;
+  };
+  const showFriendlyError = message => notify(message, 'error');
+  const showFriendlySuccess = message => notify(message, 'success');
   const db = () => global.SupabaseClient?.getClient?.();
   const can = action => {
     const normalizedAction = String(action || '').trim().toLowerCase();
@@ -108,14 +121,14 @@
 
   async function openDetail(id) {
     const client = db();
-    if (!client) return toast('Supabase client is not available.');
+    if (!client) return showFriendlyError('Unable to load Communication Centre conversations. Please refresh and try again.');
     const { data, error } = await client
       .from('communication_centre_conversations')
       .select('*')
       .eq('id', id)
       .maybeSingle();
     if (error || !data) {
-      toast('You do not have access to this conversation.');
+      showFriendlyError('Unable to load Communication Centre conversations. Please refresh and try again.');
       return;
     }
     M.state.active = data;
@@ -261,7 +274,8 @@
       await list();
       render();
     } catch (error) {
-      toast(`Unable to load Communication Centre: ${error.message || error}`);
+      console.error('[Communication Centre] load conversations failed', error);
+      showFriendlyError('Unable to load Communication Centre conversations. Please refresh and try again.');
     }
   }
 
@@ -359,6 +373,7 @@
           <div class="actions"><button class="modal-close" id="communicationCentreCreateClose" type="button" aria-label="Close">✕</button></div>
         </div>
         <form id="communicationCentreCreateForm">
+          <div id="communicationCentreCreateError" class="card danger" style="display:none;margin-bottom:12px;padding:10px;border-left:4px solid #d73a49;color:#7f1d1d;"></div>
           <div class="grid cols-2" style="gap:12px;">
             <div class="filter-row" style="grid-column:1/-1;">
               <label class="muted" for="communicationCentreCreateTitleInput">Title</label>
@@ -433,7 +448,7 @@
 
   async function openCreateModal() {
     if (!can('create')) {
-      toast('You do not have permission to create Communication Centre conversations.');
+showFriendlyError('Unable to create conversation. Please check your permissions and try again.');
       return;
     }
     const modal = ensureCreateModal();
@@ -464,14 +479,14 @@
     const relatedResource = normalizeText($('communicationCentreCreateRelatedResource')?.value);
     const relatedRecordId = normalizeText($('communicationCentreCreateRelatedRecordId')?.value);
 
-    if (!title) return toast('Title is required.');
-    if (!message) return toast('First message is required.');
-    if (!assignedUserIds.length && !assignedRole) return toast('Select at least one assigned user or assigned role.');
+    if (!title) return showFriendlyError('Title is required.');
+    if (!message) return showFriendlyError('First message is required.');
+    if (!assignedUserIds.length && !assignedRole) return showFriendlyError('Select at least one assigned user or assigned role.');
 
     try {
       if (submit) {
         submit.disabled = true;
-        submit.textContent = 'Creating…';
+        submit.textContent = 'Creating...';
       }
       const client = db();
       if (!client) throw new Error('Supabase client is not available.');
@@ -487,6 +502,11 @@
       });
       if (error) throw error;
       const conversation = Array.isArray(data) ? data[0] : data;
+      const inlineError = $('communicationCentreCreateError');
+      if (inlineError) {
+        inlineError.style.display = 'none';
+        inlineError.textContent = '';
+      }
       closeCreateModal();
       await refresh();
       if (conversation?.id) {
@@ -498,10 +518,16 @@
           conversation.created_by
         );
       }
-      toast('Conversation created successfully.');
+      showFriendlySuccess('Conversation created successfully.');
     } catch (error) {
       console.error('[Communication Centre] create conversation failed', error);
-      toast(`Unable to create conversation: ${error.message || error}`);
+      const inlineError = $('communicationCentreCreateError');
+      const friendlyMessage = 'Unable to create conversation. Please check your permissions and try again.';
+      if (inlineError) {
+        inlineError.textContent = friendlyMessage;
+        inlineError.style.display = 'block';
+      }
+      showFriendlyError(friendlyMessage);
     } finally {
       if (submit) {
         submit.disabled = false;
@@ -518,9 +544,10 @@
       if (error) throw error;
       await openDetail(conversation.id);
       await refresh();
-      toast('Conversation closed.');
+      showFriendlySuccess('Conversation closed successfully.');
     } catch (error) {
-      toast(`Unable to close conversation: ${error.message || error}`);
+      console.error('[Communication Centre] close conversation failed', error);
+      showFriendlyError('Unable to close conversation. Please try again.');
     }
   }
 
@@ -532,9 +559,10 @@
       if (error) throw error;
       await openDetail(conversation.id);
       await refresh();
-      toast('Conversation reopened.');
+      showFriendlySuccess('Conversation reopened successfully.');
     } catch (error) {
-      toast(`Unable to reopen conversation: ${error.message || error}`);
+      console.error('[Communication Centre] reopen conversation failed', error);
+      showFriendlyError('Unable to reopen conversation. Please try again.');
     }
   }
 
@@ -607,8 +635,8 @@
       const conversation = M.state.active;
       const input = $('communicationCentreReplyInput');
       const body = normalizeText(input?.value);
-      if (!conversation?.id) return toast('Open a conversation first.');
-      if (!body) return toast('Message is required.');
+      if (!conversation?.id) return showFriendlyError('Open a conversation first.');
+      if (!body) return showFriendlyError('Message is required.');
       try {
         const { error } = await db().rpc('add_communication_centre_reply', {
           p_conversation_id: conversation.id,
@@ -618,7 +646,7 @@
         if (input) input.value = '';
         await openDetail(conversation.id);
         await refresh();
-        toast('Reply sent.');
+        showFriendlySuccess('Reply sent successfully.');
         notifyParticipants(
           'New Communication Centre reply',
           `${global.Session?.displayName?.() || 'A user'} replied to “${conversation.title}”`,
@@ -626,7 +654,8 @@
           global.Session?.user?.()?.id
         );
       } catch (error) {
-        toast(`Unable to send reply: ${error.message || error}`);
+        console.error('[Communication Centre] send reply failed', error);
+        showFriendlyError('Unable to send reply. Please try again.');
       }
     });
     await refresh();
