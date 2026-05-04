@@ -124,7 +124,7 @@
 
     // Final business rule for this module: every authenticated app role with the tab can perform
     // all normal Communication Centre actions. Database/RLS still protects real visibility.
-    return hasConfiguredPermission || true;
+    return hasConfiguredPermission;
   };
   const canOpenConversation = () => can('open');
   const canDeleteConversation = () => can('delete');
@@ -311,9 +311,11 @@
       if (q === 'open') return row.status !== 'Closed';
       if (q === 'closed') return row.status === 'Closed';
       if (q === 'unread') return Number(row.unread_count || 0) > 0;
+      if (q === 'mine') return String(row.created_by||'')===String(global.Session?.user?.()?.id||global.Session?.currentUser?.()?.id||'');
+      if (q === 'assigned') return Number(row.is_assigned_to_me||0)===1;
       return true;
     });
-    listEl.innerHTML = rows.map(row => `<button class="cc-item ${activeId===row.id?'active':''} ${Number(row.unread_count||0)>0?'unread':''}" data-cc-open="${escapeAttr(row.id)}" type="button"><div class="cc-item-main"><small>${escapeHtml(row.conversation_no||'')}</small><strong>${escapeHtml(row.title||'Untitled')}</strong><p>${escapeHtml(row.last_message_preview||'No messages yet')}</p></div><div class="cc-item-meta"><span class="cc-time">${escapeHtml(relTime(row.updated_at||row.last_message_at))}</span><span class="chip cc-status-chip">${escapeHtml(row.status||'Open')}</span>${row.priority?`<span class="chip cc-priority-chip">${escapeHtml(row.priority)}</span>`:''}${Number(row.unread_count||0)>0?`<span class="chip cc-unread-chip">${escapeHtml(String(row.unread_count))}</span>`:''}</div></button>`).join('') || '<div class="muted" style="padding:16px;">No conversations yet.</div>';
+    listEl.innerHTML = rows.map(row => `<button class="cc-item ${activeId===row.id?'active':''} ${Number(row.unread_count||0)>0?'unread':''}" data-cc-open="${escapeAttr(row.id)}" type="button"><div class="cc-item-main"><small>${escapeHtml(row.conversation_no||'')}</small><strong>${escapeHtml(row.title||'Untitled')}</strong><p>${escapeHtml(row.last_message_preview||'No messages yet')}</p></div><div class="cc-item-meta"><span class="cc-time">${escapeHtml(relTime(row.updated_at||row.last_message_at))}</span><span class="chip cc-status-chip">${escapeHtml(row.status||'Open')}</span>${row.priority?`<span class="chip cc-priority-chip">${escapeHtml(row.priority)}</span>`:''}${Number(row.unread_count||0)>0?`<span class="chip cc-unread-chip">${escapeHtml(String(row.unread_count))}</span>`:''}</div></button>`).join('') || '<div class="muted" style="padding:16px;">No conversations yet. Start a new internal conversation.</div>';
     const pageInfo = $('communicationCentrePageInfo');
     if (pageInfo) pageInfo.textContent = `Page ${M.state.page} • ${M.state.count} total`;
   }
@@ -354,7 +356,7 @@
             </div>
           </div>
         `;
-      }).join('') : '<div class="muted" style="padding:20px;text-align:center;">Select a conversation to start messaging.</div>';
+      }).join('') : '<div class="muted" style="padding:20px;text-align:center;">Select a conversation to view messages.</div>';
       messages.scrollTop = messages.scrollHeight;
     }
     if (replyWrap) replyWrap.style.display = (conversation.status !== 'Closed' && can('reply')) ? '' : 'none';
@@ -381,13 +383,18 @@
     const reopenButton = conversation.status === 'Closed' && can('reopen')
       ? '<button id="communicationCentreReopenConversationBtn" class="btn ghost sm" type="button">Reopen Conversation</button>'
       : '';
+    const copyLinkButton = '<button id="communicationCentreCopyLinkBtn" class="btn ghost sm" type="button">Copy Link</button>';
     const deleteButton = canDeleteConversation()
       ? '<button id="communicationCentreDeleteConversationBtn" class="btn danger sm" type="button">Delete Conversation</button>'
       : '';
-    actionWrap.innerHTML = `${closeButton}${reopenButton}${deleteButton}`;
+    actionWrap.innerHTML = `${closeButton}${reopenButton}${copyLinkButton}${deleteButton}`;
     $('communicationCentreCloseConversationBtn')?.addEventListener('click', closeActiveConversation);
     $('communicationCentreReopenConversationBtn')?.addEventListener('click', reopenActiveConversation);
     $('communicationCentreDeleteConversationBtn')?.addEventListener('click', deleteActiveConversation);
+    $('communicationCentreCopyLinkBtn')?.addEventListener('click', async () => {
+      const url = `${global.location.origin}${global.location.pathname}#communication_centre?conversation_id=${encodeURIComponent(conversation.id)}`;
+      try { await navigator.clipboard.writeText(url); showFriendlySuccess('Conversation link copied.'); } catch(_e){ showFriendlyError('Unable to copy link. Please copy it manually from the address bar.'); }
+    });
   }
 
   async function refresh() {
@@ -593,6 +600,7 @@
       if (submit) {
         submit.disabled = true;
         submit.textContent = 'Creating...';
+        submit.setAttribute('aria-busy','true');
       }
       const client = db();
       if (!client) throw new Error('Supabase client is not available.');
@@ -655,6 +663,7 @@
       if (submit) {
         submit.disabled = false;
         submit.textContent = 'Create Conversation';
+        submit.removeAttribute('aria-busy');
       }
     }
   }
@@ -776,7 +785,7 @@
     }, { once: false });
     const filterTabs = $('communicationCentreFilterTabs');
     if (filterTabs) {
-      const tabs = [['all','All'],['open','Open'],['closed','Closed'],['unread','Unread']];
+      const tabs = [['all','All'],['open','Open'],['closed','Closed'],['unread','Unread'],['mine','Created by me'],['assigned','Assigned to me']];
       filterTabs.innerHTML = tabs.map(([k,l])=>`<button class=\"btn ghost sm ${M.state.filters.quick===k?'active':''}\" data-cc-filter=\"${k}\" type=\"button\">${l}</button>`).join(' ');
       bindOnce(filterTabs, 'QuickFilters', (event) => { const b = event.target.closest('[data-cc-filter]'); if (!b) return; M.state.filters.quick = b.getAttribute('data-cc-filter'); render(); if (filterTabs) [...filterTabs.querySelectorAll('[data-cc-filter]')].forEach(x => x.classList.toggle('active', x===b)); }, { once:false });
     }
@@ -815,6 +824,7 @@
     });
     const replyBtn = $('communicationCentreReplyBtn');
     if (replyBtn) replyBtn.style.display = can('reply') ? '' : 'none';
+    const replyError = $('communicationCentreReplyError');
     const replyInput = $('communicationCentreReplyInput');
     replyInput?.addEventListener('keydown', (event) => {
       if (isMobileViewport()) return;
@@ -825,7 +835,7 @@
       const input = $('communicationCentreReplyInput');
       const body = normalizeText(input?.value);
       if (!conversation?.id) return showFriendlyError('Open a conversation first.');
-      if (!body) return showFriendlyError('Message is required.');
+      if (!body) return showFriendlyError('Please enter a reply message.');
       try {
         const { error } = await db().rpc('add_communication_centre_reply', {
           p_conversation_id: conversation.id,
@@ -833,6 +843,7 @@
         });
         if (error) throw error;
         if (input) input.value = '';
+        if (replyError) { replyError.textContent=''; replyError.style.display='none'; }
         await openDetail(conversation.id);
         await refresh();
         showFriendlySuccess('Reply sent successfully.');
@@ -847,6 +858,7 @@
         });
       } catch (error) {
         console.error('[Communication Centre] send reply failed', error);
+        if (replyError) { replyError.textContent='Unable to send reply. Please try again.'; replyError.style.display='block'; }
         showFriendlyError('Unable to send reply. Please try again.');
       }
     });
