@@ -66,12 +66,16 @@
     return resources.some(resource => (
       P?.can?.(resource, normalizedAction) ||
       P?.canPerformAction?.(resource, normalizedAction) ||
-      P?.can?.(resource, 'manage') ||
-      P?.canPerformAction?.(resource, 'manage') ||
+      (normalizedAction !== 'delete' && (
+        P?.can?.(resource, 'manage') ||
+        P?.canPerformAction?.(resource, 'manage')
+      )) ||
       (normalizedAction === 'create' && P?.canCreate?.(resource)) ||
       (['view', 'list', 'get'].includes(normalizedAction) && P?.canView?.(resource))
     ));
   };
+  const canOpenConversation = () => can('view') || can('list') || can('get') || can('manage');
+  const canDeleteConversation = () => can('delete');
   const escapeHtml = value => {
     if (global.U?.escapeHtml) return global.U.escapeHtml(value);
     return String(value ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
@@ -250,7 +254,7 @@
         <td>${escapeHtml(row.assigned_role || '—')}</td>
         <td>${escapeHtml(row.last_message_preview || '—')}</td>
         <td>${row.updated_at ? escapeHtml(new Date(row.updated_at).toLocaleString()) : '—'}</td>
-        <td><button class="btn ghost sm" type="button" data-cc-open="${escapeAttr(row.id)}">Open</button></td>
+        <td>${canOpenConversation() ? `<button class="btn ghost sm" type="button" data-cc-open="${escapeAttr(row.id)}">Open</button>` : ''}</td>
       </tr>
     `).join('') || '<tr><td colspan="10" class="muted" style="text-align:center;">No Communication Centre conversations found.</td></tr>';
     const pageInfo = $('communicationCentrePageInfo');
@@ -288,7 +292,7 @@
         `;
       }).join('');
     }
-    if (replyWrap) replyWrap.style.display = (can('reply') && conversation.status !== 'Closed') ? '' : 'none';
+    if (replyWrap) replyWrap.style.display = ((can('reply') || can('manage')) && conversation.status !== 'Closed') ? '' : 'none';
     if (closedMsg) closedMsg.style.display = conversation.status === 'Closed' ? '' : 'none';
     renderDrawerActions();
   }
@@ -311,9 +315,13 @@
     const reopenButton = conversation.status === 'Closed' && can('reopen')
       ? '<button id="communicationCentreReopenConversationBtn" class="btn ghost sm" type="button">Reopen Conversation</button>'
       : '';
-    actionWrap.innerHTML = `${closeButton}${reopenButton}`;
+    const deleteButton = canDeleteConversation()
+      ? '<button id="communicationCentreDeleteConversationBtn" class="btn danger sm" type="button">Delete Conversation</button>'
+      : '';
+    actionWrap.innerHTML = `${closeButton}${reopenButton}${deleteButton}`;
     $('communicationCentreCloseConversationBtn')?.addEventListener('click', closeActiveConversation);
     $('communicationCentreReopenConversationBtn')?.addEventListener('click', reopenActiveConversation);
+    $('communicationCentreDeleteConversationBtn')?.addEventListener('click', deleteActiveConversation);
   }
 
   async function refresh() {
@@ -603,6 +611,27 @@
     }
   }
 
+  async function deleteActiveConversation() {
+    const conversation = M.state.active;
+    if (!conversation?.id) return;
+    if (!canDeleteConversation()) {
+      showFriendlyError('You do not have permission to delete this conversation.');
+      return;
+    }
+    try {
+      const { error } = await db().rpc('delete_communication_centre_conversation', { p_conversation_id: conversation.id });
+      if (error) throw error;
+      const drawer = $('communicationCentreDrawer');
+      if (drawer) drawer.style.display = 'none';
+      M.state.active = null;
+      await refresh();
+      showFriendlySuccess('Conversation deleted successfully.');
+    } catch (error) {
+      console.error('[Communication Centre] delete conversation failed', error);
+      showFriendlyError('Unable to delete conversation. Please try again.');
+    }
+  }
+
   function bindOnce(element, key, handler, options) {
     if (!element) return;
     const flag = `ccBound${key}`;
@@ -613,6 +642,7 @@
 
   function wireCreateButton() {
     const button = $('communicationCentreNewBtn') || document.querySelector('[data-cc-new-conversation]');
+    if (button) button.style.display = (can('create') || can('manage')) ? '' : 'none';
     bindOnce(button, 'NewConversation', event => {
       event.preventDefault();
       event.stopPropagation();
@@ -662,13 +692,19 @@
     const tbody = $('communicationCentreTbody');
     bindOnce(tbody, 'OpenRow', event => {
       const button = event.target.closest('[data-cc-open]');
+      if (!canOpenConversation()) {
+        showFriendlyError('You do not have permission to open this conversation.');
+        return;
+      }
       if (button) openDetail(button.getAttribute('data-cc-open'));
     });
     bindOnce($('communicationCentreDrawerClose'), 'DrawerClose', () => {
       const drawer = $('communicationCentreDrawer');
       if (drawer) drawer.style.display = 'none';
     });
-    bindOnce($('communicationCentreReplyBtn'), 'Reply', async () => {
+    const replyBtn = $('communicationCentreReplyBtn');
+    if (replyBtn) replyBtn.style.display = (can('reply') || can('manage')) ? '' : 'none';
+    bindOnce(replyBtn, 'Reply', async () => {
       const conversation = M.state.active;
       const input = $('communicationCentreReplyInput');
       const body = normalizeText(input?.value);
