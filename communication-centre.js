@@ -548,7 +548,7 @@
     const pageInfo = $('communicationCentrePageInfo');
     if (pageInfo) pageInfo.textContent = `Page ${M.state.page} • ${M.state.count} total`;
   }
-  function renderDrawer() {
+  function renderDrawer(options = {}) {
     const drawer = $('communicationCentreDrawer');
     if (!drawer || !M.state.active) return;
     const conversation = M.state.active;
@@ -565,9 +565,28 @@
       if (header) header.innerHTML = `${mobileBack}<div class="cc-chat-heading"><h3>${escapeHtml((conversation.conversation_no || '') + ' ' + (conversation.title || ''))}</h3><div class="muted">${escapeHtml(conversation.category || 'General')} • ${escapeHtml(conversation.priority || 'Normal')} • ${escapeHtml(conversation.status || 'Open')}${relatedLabel ? ` • ${escapeHtml(relatedLabel)}` : ''}</div></div><button id="communicationCentreOpenDetails" class="btn ghost sm" type="button">${detailsLabel}</button>`;
     if (meta) meta.textContent = `${conversation.status || 'Open'} • ${conversation.priority || 'Normal'} • ${conversation.category || 'General'}`;
     if (participants) {
-      participants.innerHTML = M.state.participants.map(participant => `
-        <span class="chip cc-participant-chip">${escapeHtml(participant.participant_type || 'participant')}: ${escapeHtml(participant.user_name || participant.user_id || 'User')}</span>
-      `).join(' ');
+      const participantRows = M.state.participants || [];
+      participants.innerHTML = `
+        <div class="cc-details-section cc-participants-section">
+          <div class="cc-section-title-row"><strong>Participants</strong><span class="chip">${escapeHtml(String(participantRows.length || 0))}</span></div>
+          <div class="cc-participant-list">
+            ${participantRows.length ? participantRows.map(participant => {
+              const name = participant.user_name || participant.full_name || participant.email || participant.user_id || 'User';
+              const role = participant.role_key || participant.user_role || participant.role || '';
+              const type = participant.participant_type || 'participant';
+              return `
+                <div class="cc-participant-card">
+                  <div class="cc-participant-avatar">${escapeHtml(String(name).split(/\s+/).slice(0,2).map(x => x[0] || '').join('').toUpperCase() || 'U')}</div>
+                  <div class="cc-participant-info">
+                    <strong>${escapeHtml(name)}</strong>
+                    <span>${escapeHtml(type)}${role ? ` • ${escapeHtml(role)}` : ''}</span>
+                  </div>
+                </div>
+              `;
+            }).join('') : '<div class="muted">No participants found.</div>'}
+          </div>
+        </div>
+      `;
     }
     if (messages) {
       const wasNearBottom = messages.scrollHeight - messages.scrollTop - messages.clientHeight < 80;
@@ -612,9 +631,10 @@
       const header = drawer.querySelector('.header');
       actionWrap = document.createElement('div');
       actionWrap.id = 'communicationCentreDrawerActions';
-      actionWrap.className = 'actions';
+      actionWrap.className = 'cc-details-content';
       if (header) header.appendChild(actionWrap);
     }
+    actionWrap.className = 'cc-details-content';
     const conversation = M.state.active;
     const pinButton = canManageConversation()
       ? `<button id="communicationCentrePinConversationBtn" class="btn ghost sm" type="button">${conversation.is_pinned ? 'Unpin' : 'Pin'}</button>` : '';
@@ -633,13 +653,54 @@
     const relatedRoute = relatedRouteMap[String(conversation.related_module || '').trim().toLowerCase()];
     const relatedButton = relatedRoute && conversation.related_record_id
       ? '<button id="communicationCentreOpenRelatedBtn" class="btn ghost sm" type="button">Open Related Record</button>' : '';
+    const actionItems = M.state.actionItems || [];
+    const openActionItems = actionItems.filter(x => (x.status || 'open') === 'open');
+    const formatDate = value => value ? new Date(value).toLocaleString() : '—';
     actionWrap.innerHTML = `
-      <div class="cc-details-section"><strong>Conversation Info</strong><div class="muted">#${escapeHtml(conversation.conversation_no || '—')} • ${escapeHtml(conversation.status || 'Open')} • ${escapeHtml(conversation.priority || 'Normal')} • ${escapeHtml(conversation.category || 'General')}</div><div class="muted">Created by ${escapeHtml(conversation.created_by_name || 'Unknown')} • ${escapeHtml(new Date(conversation.created_at).toLocaleString())}</div><div class="muted">Updated ${escapeHtml(new Date(conversation.updated_at || conversation.last_message_at || conversation.created_at).toLocaleString())}</div></div>
-      <div class="cc-details-section"><strong>Assignment</strong><div class="muted">Assigned role: ${escapeHtml(conversation.assigned_role || '—')}</div><div class="muted">Participants: ${escapeHtml(String(M.state.participants.length || 0))}</div></div>
-      <div class="cc-details-section"><strong>Related Record</strong><div class="muted">Module: ${escapeHtml(conversation.related_module || '—')}</div><div class="muted">Record ID: ${escapeHtml(conversation.related_record_id || '—')}</div>${relatedButton}</div>
-      <div class="cc-details-section"><strong>Actions</strong><div class="actions">${pinButton}${archiveButton}${closeButton}${reopenButton}${copyLinkButton}${deleteButton}<button id="communicationCentreEscalateBtn" class="btn ghost sm" type="button">${conversation.is_escalated ? 'Clear escalation' : 'Mark as escalated'}</button></div></div>
-      <div class="cc-details-section"><strong>Follow-up</strong><input id="communicationCentreFollowUpAt" class="input" type="datetime-local" value="${conversation.follow_up_at ? escapeAttr(new Date(conversation.follow_up_at).toISOString().slice(0,16)) : ''}" /><div class="actions"><button id="communicationCentreFollowUpSaveBtn" class="btn ghost sm" type="button">Save follow-up</button><button id="communicationCentreFollowUpClearBtn" class="btn ghost sm" type="button">Clear</button></div></div>
-      <div class="cc-details-section"><strong>Action Items</strong><div class="muted">Open: ${escapeHtml(String((M.state.actionItems||[]).filter(x => (x.status || 'open') === 'open').length))}</div><div class="actions"><input id="communicationCentreActionItemTitle" class="input" placeholder="Action item title" /><button id="communicationCentreActionItemAddBtn" class="btn ghost sm" type="button">Add</button></div></div>`;
+      <div class="cc-details-section">
+        <div class="cc-section-title-row"><strong>Conversation Info</strong><span class="chip cc-status-chip">${escapeHtml(conversation.status || 'Open')}</span></div>
+        <div class="cc-detail-grid">
+          <div><span>Conversation</span><strong>${escapeHtml(conversation.conversation_no || '—')}</strong></div>
+          <div><span>Priority</span><strong>${escapeHtml(conversation.priority || 'Normal')}</strong></div>
+          <div><span>Category</span><strong>${escapeHtml(conversation.category || 'General')}</strong></div>
+          <div><span>Created by</span><strong>${escapeHtml(conversation.created_by_name || 'Unknown')}</strong></div>
+          <div><span>Created at</span><strong>${escapeHtml(formatDate(conversation.created_at))}</strong></div>
+          <div><span>Updated at</span><strong>${escapeHtml(formatDate(conversation.updated_at || conversation.last_message_at || conversation.created_at))}</strong></div>
+        </div>
+      </div>
+      <div class="cc-details-section">
+        <strong>Assignment</strong>
+        <div class="cc-detail-grid">
+          <div><span>Assigned role</span><strong>${escapeHtml(conversation.assigned_role || '—')}</strong></div>
+          <div><span>Participants</span><strong>${escapeHtml(String(M.state.participants.length || 0))}</strong></div>
+          <div><span>Pinned</span><strong>${conversation.is_pinned ? 'Yes' : 'No'}</strong></div>
+          <div><span>Archived</span><strong>${conversation.is_archived ? 'Yes' : 'No'}</strong></div>
+          <div><span>Escalated</span><strong>${conversation.is_escalated ? 'Yes' : 'No'}</strong></div>
+          <div><span>Follow-up</span><strong>${escapeHtml(formatDate(conversation.follow_up_at))}</strong></div>
+        </div>
+      </div>
+      <div class="cc-details-section">
+        <strong>Related Record</strong>
+        <div class="cc-detail-grid">
+          <div><span>Module</span><strong>${escapeHtml(conversation.related_module || '—')}</strong></div>
+          <div><span>Record ID</span><strong>${escapeHtml(conversation.related_record_id || '—')}</strong></div>
+        </div>
+        ${relatedButton ? `<div class="actions cc-section-actions">${relatedButton}</div>` : ''}
+      </div>
+      <div class="cc-details-section">
+        <strong>Actions</strong>
+        <div class="actions cc-section-actions">${pinButton}${archiveButton}${closeButton}${reopenButton}${copyLinkButton}${deleteButton}<button id="communicationCentreEscalateBtn" class="btn ghost sm" type="button">${conversation.is_escalated ? 'Clear escalation' : 'Mark as escalated'}</button></div>
+      </div>
+      <div class="cc-details-section">
+        <strong>Follow-up</strong>
+        <input id="communicationCentreFollowUpAt" class="input" type="datetime-local" value="${conversation.follow_up_at ? escapeAttr(new Date(conversation.follow_up_at).toISOString().slice(0,16)) : ''}" />
+        <div class="actions cc-section-actions"><button id="communicationCentreFollowUpSaveBtn" class="btn ghost sm" type="button">Save follow-up</button><button id="communicationCentreFollowUpClearBtn" class="btn ghost sm" type="button">Clear</button></div>
+      </div>
+      <div class="cc-details-section">
+        <div class="cc-section-title-row"><strong>Action Items</strong><span class="chip">Open: ${escapeHtml(String(openActionItems.length))}</span></div>
+        <div class="cc-action-item-list">${actionItems.length ? actionItems.slice(0,8).map(item => `<div class="cc-action-item-row"><span>${escapeHtml(item.title || 'Action item')}</span><small>${escapeHtml(item.status || 'open')}</small></div>`).join('') : '<div class="muted">No action items yet.</div>'}</div>
+        <div class="actions cc-section-actions"><input id="communicationCentreActionItemTitle" class="input" placeholder="Action item title" /><button id="communicationCentreActionItemAddBtn" class="btn ghost sm" type="button">Add</button></div>
+      </div>`;
     $('communicationCentrePinConversationBtn')?.addEventListener('click', togglePinConversation);
     $('communicationCentreArchiveConversationBtn')?.addEventListener('click', toggleArchiveConversation);
     $('communicationCentreOpenRelatedBtn')?.addEventListener('click', () => { global.location.hash = `${relatedRoute}${encodeURIComponent(conversation.related_record_id)}`.replace('/#', '#'); });
