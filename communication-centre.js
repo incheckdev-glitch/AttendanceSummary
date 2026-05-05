@@ -11,6 +11,11 @@
       participants: [],
       users: [],
       roles: [],
+      reactionsByMessage: {},
+      actionItems: [],
+      mentionCandidates: [],
+      replyToMessage: null,
+      composerType: 'message',
       loadingUsers: false,
       loadingRoles: false,
       mobileView: 'list'
@@ -288,9 +293,11 @@
         return;
       }
       M.state.active = data;
-      const [messagesResult, participantsResult] = await Promise.all([
+      const [messagesResult, participantsResult, reactionsResult, actionItemsResult] = await Promise.all([
         client.from('communication_centre_messages').select('*').eq('conversation_id', id).order('created_at', { ascending: true }),
-        client.from('communication_centre_participants').select('*').eq('conversation_id', id).order('participant_type', { ascending: true }).order('user_name', { ascending: true })
+        client.from('communication_centre_participants').select('*').eq('conversation_id', id).order('participant_type', { ascending: true }).order('user_name', { ascending: true }),
+        client.from('communication_centre_message_reactions').select('*').eq('conversation_id', id),
+        client.from('communication_centre_action_items').select('*').eq('conversation_id', id).order('created_at', { ascending: false })
       ]);
       if (messagesResult.error) console.error('[Communication Centre] unable to load messages', messagesResult.error);
       if (participantsResult.error) console.error('[Communication Centre] unable to load participants', participantsResult.error);
@@ -299,6 +306,14 @@
       const participantRows = participantsResult.data || [];
       M.state.messages = messagesResult.data || [];
       M.state.participants = participantRows;
+      M.state.actionItems = actionItemsResult.data || [];
+      M.state.reactionsByMessage = (reactionsResult.data || []).reduce((acc, row) => {
+        const k = String(row.message_id || '');
+        if (!k) return acc;
+        acc[k] = acc[k] || [];
+        acc[k].push(row);
+        return acc;
+      }, {});
       renderDrawer();
       try {
         await client.rpc('mark_communication_centre_read', { p_conversation_id: id });
@@ -311,6 +326,24 @@
       console.error('[Communication Centre] open detail failed', error);
       showFriendlyError('Unable to open conversation. Please refresh and try again.');
     }
+  }
+
+  function renderMessageReactions(messageId) {
+    const rows = M.state.reactionsByMessage[String(messageId)] || [];
+    const grouped = rows.reduce((acc, row) => {
+      const key = row.reaction;
+      acc[key] = acc[key] || { count: 0, users: [] };
+      acc[key].count += 1;
+      acc[key].users.push(row.user_name || row.user_id);
+      return acc;
+    }, {});
+    const allowed = ['👍', '✅', '👀', '🙏', '🔥'];
+    return `<div class="cc-reactions">${allowed.map(r => {
+      const g = grouped[r];
+      const count = g?.count || 0;
+      const title = g?.users?.join(', ') || '';
+      return `<button type="button" class="btn ghost sm cc-reaction-btn" data-cc-react="${escapeAttr(String(messageId))}" data-reaction="${escapeAttr(r)}" title="${escapeAttr(title)}">${r}${count ? ` ${count}` : ''}</button>`;
+    }).join('')}</div>`;
   }
 
 
@@ -396,8 +429,10 @@
         return `
           <div class="cc-message-row ${isMine ? 'mine' : 'incoming'}" style="${muted}">
             <div class="cc-bubble">
-              <div class="cc-message-meta">${escapeHtml(message.sender_name || 'System')} • ${message.created_at ? escapeHtml(new Date(message.created_at).toLocaleString()) : ''}</div>
-              <div class="cc-message-body">${escapeHtml(message.message_body || message.body || '')}</div>
+              <div class="cc-message-meta">${escapeHtml(message.sender_name || 'System')} • ${message.created_at ? escapeHtml(new Date(message.created_at).toLocaleString()) : ''}${message.edited_at ? ' • edited' : ''}</div>
+              <div class="cc-message-body">${message.is_deleted ? 'This message was deleted.' : escapeHtml(message.message_body || message.body || '')}</div>
+              ${!message.is_deleted ? `<div class="cc-message-actions"><button class="btn ghost sm" data-cc-reply-message="${escapeAttr(message.id)}" type="button">Reply</button>${isMine ? `<button class="btn ghost sm" data-cc-edit-message="${escapeAttr(message.id)}" type="button">Edit</button><button class="btn ghost sm" data-cc-delete-message="${escapeAttr(message.id)}" type="button">Delete message</button>` : ''}</div>` : ''}
+              ${renderMessageReactions(message.id)}
             </div>
           </div>
         `;
@@ -443,7 +478,9 @@
       <div class="cc-details-section"><strong>Conversation Info</strong><div class="muted">#${escapeHtml(conversation.conversation_no || '—')} • ${escapeHtml(conversation.status || 'Open')} • ${escapeHtml(conversation.priority || 'Normal')} • ${escapeHtml(conversation.category || 'General')}</div><div class="muted">Created by ${escapeHtml(conversation.created_by_name || 'Unknown')} • ${escapeHtml(new Date(conversation.created_at).toLocaleString())}</div><div class="muted">Updated ${escapeHtml(new Date(conversation.updated_at || conversation.last_message_at || conversation.created_at).toLocaleString())}</div></div>
       <div class="cc-details-section"><strong>Assignment</strong><div class="muted">Assigned role: ${escapeHtml(conversation.assigned_role || '—')}</div><div class="muted">Participants: ${escapeHtml(String(M.state.participants.length || 0))}</div></div>
       <div class="cc-details-section"><strong>Related Record</strong><div class="muted">Module: ${escapeHtml(conversation.related_module || '—')}</div><div class="muted">Record ID: ${escapeHtml(conversation.related_record_id || '—')}</div>${relatedButton}</div>
-      <div class="cc-details-section"><strong>Actions</strong><div class="actions">${pinButton}${archiveButton}${closeButton}${reopenButton}${copyLinkButton}${deleteButton}</div></div>`;
+      <div class="cc-details-section"><strong>Actions</strong><div class="actions">${pinButton}${archiveButton}${closeButton}${reopenButton}${copyLinkButton}${deleteButton}<button id="communicationCentreEscalateBtn" class="btn ghost sm" type="button">${conversation.is_escalated ? 'Clear escalation' : 'Mark as escalated'}</button></div></div>
+      <div class="cc-details-section"><strong>Follow-up</strong><input id="communicationCentreFollowUpAt" class="input" type="datetime-local" value="${conversation.follow_up_at ? escapeAttr(new Date(conversation.follow_up_at).toISOString().slice(0,16)) : ''}" /><div class="actions"><button id="communicationCentreFollowUpSaveBtn" class="btn ghost sm" type="button">Save follow-up</button><button id="communicationCentreFollowUpClearBtn" class="btn ghost sm" type="button">Clear</button></div></div>
+      <div class="cc-details-section"><strong>Action Items</strong><div class="muted">Open: ${escapeHtml(String((M.state.actionItems||[]).filter(x => (x.status || 'open') === 'open').length))}</div><div class="actions"><input id="communicationCentreActionItemTitle" class="input" placeholder="Action item title" /><button id="communicationCentreActionItemAddBtn" class="btn ghost sm" type="button">Add</button></div></div>`;
     $('communicationCentrePinConversationBtn')?.addEventListener('click', togglePinConversation);
     $('communicationCentreArchiveConversationBtn')?.addEventListener('click', toggleArchiveConversation);
     $('communicationCentreOpenRelatedBtn')?.addEventListener('click', () => { global.location.hash = `${relatedRoute}${encodeURIComponent(conversation.related_record_id)}`.replace('/#', '#'); });
@@ -454,7 +491,15 @@
       const url = `${global.location.origin}${global.location.pathname}#communication_centre?conversation_id=${encodeURIComponent(conversation.id)}`;
       try { await navigator.clipboard.writeText(url); showFriendlySuccess('Link copied.'); } catch(_e){ showFriendlyError('Unable to update conversation. Please try again.'); }
     });
+    $('communicationCentreEscalateBtn')?.addEventListener('click', toggleEscalation);
+    $('communicationCentreFollowUpSaveBtn')?.addEventListener('click', saveFollowUp);
+    $('communicationCentreFollowUpClearBtn')?.addEventListener('click', clearFollowUp);
+    $('communicationCentreActionItemAddBtn')?.addEventListener('click', addActionItem);
   }
+  async function toggleEscalation(){ const c=M.state.active; if(!c) return; try{const v=!c.is_escalated; const {error}=await db().from('communication_centre_conversations').update({is_escalated:v,escalated_at:v?new Date().toISOString():null,escalated_by:v?(global.Session?.user?.()?.id||null):null}).eq('id',c.id); if(error) throw error; c.is_escalated=v; renderDrawer(); await refresh();}catch(e){console.error(e);showFriendlyError('Unable to update conversation. Please try again.');}}
+  async function saveFollowUp(){ const c=M.state.active; if(!c) return; const val=$('communicationCentreFollowUpAt')?.value||null; try{const {error}=await db().from('communication_centre_conversations').update({follow_up_at:val?new Date(val).toISOString():null,follow_up_by:global.Session?.user?.()?.id||null,follow_up_status:'pending'}).eq('id',c.id); if(error) throw error; await openDetail(c.id); await refresh();}catch(e){console.error(e);showFriendlyError('Unable to set follow-up. Please try again.');}}
+  async function clearFollowUp(){ const c=M.state.active; if(!c) return; try{const {error}=await db().from('communication_centre_conversations').update({follow_up_at:null,follow_up_by:null,follow_up_status:'pending'}).eq('id',c.id); if(error) throw error; await openDetail(c.id); await refresh();}catch(e){console.error(e);showFriendlyError('Unable to set follow-up. Please try again.');}}
+  async function addActionItem(){ const c=M.state.active; const title=normalizeText($('communicationCentreActionItemTitle')?.value); if(!c||!title) return; try{const {error}=await db().from('communication_centre_action_items').insert({conversation_id:c.id,title,created_by:global.Session?.user?.()?.id||null,status:'open'}); if(error) throw error; await openDetail(c.id);}catch(e){console.error(e);showFriendlyError('Unable to update action item. Please try again.');}}
   async function togglePinConversation() {
     const conversation = M.state.active;
     if (!conversation || !canManageConversation()) return;
@@ -898,6 +943,42 @@
       if (button) openDetail(button.getAttribute('data-cc-open'));
       if (button && isMobileViewport()) setMobileView('chat');
     });
+    bindOnce($('communicationCentreMessages'), 'MessageActions', async event => {
+      const replyBtnEl = event.target.closest('[data-cc-reply-message]');
+      const editBtnEl = event.target.closest('[data-cc-edit-message]');
+      const deleteBtnEl = event.target.closest('[data-cc-delete-message]');
+      const reactBtnEl = event.target.closest('[data-cc-react]');
+      const conversation = M.state.active;
+      if (!conversation?.id) return;
+      if (replyBtnEl) {
+        M.state.replyToMessage = M.state.messages.find(m => String(m.id) === String(replyBtnEl.getAttribute('data-cc-reply-message'))) || null;
+        showFriendlySuccess('Reply target selected.');
+      } else if (editBtnEl) {
+        const id = editBtnEl.getAttribute('data-cc-edit-message');
+        const row = M.state.messages.find(m => String(m.id) === String(id));
+        const input = $('communicationCentreReplyInput');
+        const next = normalizeText(input?.value);
+        if (!row || !next) { showFriendlyError('Type updated text in the reply box, then click Edit.'); return; }
+        const { error } = await db().from('communication_centre_messages').update({ message_body: next, edited_at: new Date().toISOString(), edited_by: global.Session?.user?.()?.id || null }).eq('id', id).eq('sender_id', global.Session?.user?.()?.id || '');
+        if (error) { console.error(error); showFriendlyError('Unable to update message. Please try again.'); return; }
+        if (input) input.value = '';
+        await openDetail(conversation.id);
+      } else if (deleteBtnEl) {
+        const id = deleteBtnEl.getAttribute('data-cc-delete-message');
+        const { error } = await db().from('communication_centre_messages').update({ is_deleted: true, deleted_at: new Date().toISOString(), deleted_by: global.Session?.user?.()?.id || null }).eq('id', id).eq('sender_id', global.Session?.user?.()?.id || '');
+        if (error) { console.error(error); showFriendlyError('Unable to delete message. Please try again.'); return; }
+        await openDetail(conversation.id);
+      } else if (reactBtnEl) {
+        const messageId = reactBtnEl.getAttribute('data-cc-react');
+        const reaction = reactBtnEl.getAttribute('data-reaction');
+        const uid = global.Session?.user?.()?.id || '';
+        const existing = (M.state.reactionsByMessage[String(messageId)] || []).find(x => String(x.user_id || '') === String(uid) && x.reaction === reaction);
+        const query = db().from('communication_centre_message_reactions');
+        const res = existing ? await query.delete().eq('id', existing.id) : await query.insert({ message_id: messageId, conversation_id: conversation.id, user_id: uid, reaction });
+        if (res.error) { console.error(res.error); showFriendlyError('Unable to add reaction. Please try again.'); return; }
+        await openDetail(conversation.id);
+      }
+    }, { once: false });
     bindOnce($('communicationCentreDrawerClose'), 'DrawerClose', () => {
       if (isMobileViewport()) setMobileView('chat');
       else $('communicationCentreDrawer')?.classList.toggle('collapsed', true);
@@ -925,12 +1006,19 @@
       if (!conversation?.id) return showFriendlyError('Open a conversation first.');
       if (!body) return showFriendlyError('Please enter a reply message.');
       try {
+        const msgType = $('communicationCentreReplyType')?.value || 'message';
         const { error } = await db().rpc('add_communication_centre_reply', {
           p_conversation_id: conversation.id,
-          p_message_body: body
+          p_message_body: body,
+          p_reply_to_message_id: M.state.replyToMessage?.id || null,
+          p_message_type: msgType
         });
         if (error) throw error;
+        const insertedBody = body;
+        const tags = [...insertedBody.matchAll(/@([a-z0-9_]+)/gi)].map(m => m[1].toLowerCase());
+        if (tags.length) console.log('[Communication Centre] mentions detected', tags);
         if (input) input.value = '';
+        M.state.replyToMessage = null;
         if (replyError) { replyError.textContent=''; replyError.style.display='none'; }
         await openDetail(conversation.id);
         await refresh();
