@@ -172,6 +172,10 @@
     } else {
       delete container.dataset.mobileView;
     }
+    if (mobile && M._lastMobileLog !== M.state.mobileView) {
+      M._lastMobileLog = M.state.mobileView;
+      console.log('[Communication Centre mobile]', { mobileView: M.state.mobileView, width: global.innerWidth });
+    }
     if (drawer && (mobile || tablet)) {
       drawer.classList.toggle('collapsed', M.state.mobileView !== 'details');
     } else if (drawer) {
@@ -255,7 +259,7 @@
     try {
       const client = db();
       if (!client) {
-        showFriendlyError('Unable to load conversation. Please refresh and try again.');
+        showFriendlyError('Unable to open conversation. Please refresh and try again.');
         return;
       }
       const { data, error } = await client
@@ -265,7 +269,7 @@
         .maybeSingle();
       if (error || !data) {
         console.error('[Communication Centre] open detail failed', error || new Error('Conversation not found'));
-        showFriendlyError('Unable to load conversation. Please refresh and try again.');
+        showFriendlyError('Unable to open conversation. Please refresh and try again.');
         return;
       }
       M.state.active = data;
@@ -288,7 +292,7 @@
       }
     } catch (error) {
       console.error('[Communication Centre] open detail failed', error);
-      showFriendlyError('Unable to load conversation. Please refresh and try again.');
+      showFriendlyError('Unable to open conversation. Please refresh and try again.');
     }
   }
 
@@ -839,6 +843,7 @@
         else $('communicationCentreDrawer')?.classList.remove('collapsed');
       }
       if (e.target?.id === 'communicationCentreBackToList') setMobileView('list');
+      if (e.target?.id === 'communicationCentreBackToChat') setMobileView('chat');
     });
     const replyBtn = $('communicationCentreReplyBtn');
     if (replyBtn) replyBtn.style.display = can('reply') ? '' : 'none';
