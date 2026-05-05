@@ -2748,3 +2748,91 @@ body.permissions-loading [data-permission-resource][data-permission-action]{disp
 .cc-assignment-manage-section label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.02em;color:#667085;margin-top:4px}
 .cc-assignment-manage-section .select{width:100%;min-height:36px;border-radius:9px;border:1px solid #dfe5ef;background:#fff;padding:7px 10px;color:#172033}
 .cc-assignment-hint{font-size:11px;line-height:1.4;background:#f8fbff;border:1px solid #edf1f6;border-radius:8px;padding:8px}
+
+
+/* Communication Centre: fixed-height chat thread with internal message scroll */
+#communicationCentreView{
+  height:calc(100dvh - 104px);
+  min-height:560px;
+  max-height:calc(100dvh - 104px);
+  overflow:hidden;
+}
+#communicationCentreView .cc-layout{
+  height:100%;
+  min-height:0;
+  max-height:100%;
+  overflow:hidden;
+}
+#communicationCentreView .cc-sidebar,
+#communicationCentreView .cc-chat,
+#communicationCentreView .cc-details{
+  min-height:0;
+  max-height:100%;
+  overflow:hidden;
+}
+#communicationCentreView .cc-chat{
+  display:flex;
+  flex-direction:column;
+  height:100%;
+  min-height:0;
+}
+#communicationCentreView .cc-chat-header,
+#communicationCentreView .cc-composer,
+#communicationCentreView #communicationCentreClosedMsg,
+#communicationCentreView #communicationCentreReplyTarget,
+#communicationCentreView #communicationCentreReplyError{
+  flex:0 0 auto;
+}
+#communicationCentreView .cc-messages{
+  flex:1 1 auto;
+  min-height:0;
+  height:auto;
+  overflow-y:auto;
+  overflow-x:hidden;
+  overscroll-behavior:contain;
+  scroll-behavior:smooth;
+}
+#communicationCentreView .cc-list{
+  max-height:none;
+  flex:1 1 auto;
+  min-height:0;
+  overflow-y:auto;
+  overflow-x:hidden;
+}
+#communicationCentreView .cc-sidebar{
+  display:flex;
+  flex-direction:column;
+}
+#communicationCentreView .cc-sidebar-top,
+#communicationCentreView .cc-filters,
+#communicationCentreView .cc-pagination{
+  flex:0 0 auto;
+}
+#communicationCentreView .cc-details{
+  overflow-y:auto;
+  overflow-x:hidden;
+}
+@media (max-width:767px){
+  #communicationCentreView{
+    height:calc(100dvh - 88px);
+    min-height:calc(100dvh - 88px);
+    max-height:calc(100dvh - 88px);
+    padding:0;
+    border-radius:0;
+  }
+  #communicationCentreView .cc-layout{
+    height:100%;
+    min-height:0;
+  }
+  #communicationCentreView .cc-chat,
+  #communicationCentreView .cc-sidebar,
+  #communicationCentreView .cc-details{
+    height:100%;
+    min-height:0;
+    max-height:100%;
+  }
+  #communicationCentreView .cc-messages{
+    min-height:0;
+    padding-bottom:18px;
+  }
+}

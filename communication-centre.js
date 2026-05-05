@@ -411,7 +411,8 @@
       }, {});
       renderDrawer({ skipAutoScroll: true });
       const hasNewMessages = wasActiveConversation && M.state.messages.length > previousMessageCount;
-      if (options.forceScroll === true || !wasActiveConversation) scrollCommunicationCentreToBottom(true);
+      const shouldForceScroll = options.forceScroll === true || !wasActiveConversation || options.initialOpen === true;
+      if (shouldForceScroll) scrollCommunicationCentreToBottom(true);
       else scrollCommunicationCentreToBottom(!hasNewMessages);
       try {
         if (options.markRead !== false) await client.rpc('mark_communication_centre_read', { p_conversation_id: id });
@@ -661,7 +662,13 @@
   function isCommunicationCentreNearBottom() {
     const el = $('communicationCentreMessages');
     if (!el) return true;
-    return el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 140;
+  }
+
+  function setCommunicationCentreScrollBottom() {
+    const el = $('communicationCentreMessages');
+    if (!el) return;
+    el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
   }
 
   function scrollCommunicationCentreToBottom(force = true) {
@@ -671,13 +678,13 @@
       showNewMessagesButton();
       return;
     }
-    requestAnimationFrame(() => {
-      el.scrollTop = el.scrollHeight;
-      setTimeout(() => {
-        el.scrollTop = el.scrollHeight;
-      }, 80);
-    });
     hideNewMessagesButton();
+    requestAnimationFrame(() => {
+      setCommunicationCentreScrollBottom();
+      [40, 120, 260, 500].forEach(delay => {
+        setTimeout(setCommunicationCentreScrollBottom, delay);
+      });
+    });
   }
 
   function renderDrawer(options = {}) {
@@ -1279,14 +1286,16 @@
       }
     });
     const listWrap = $('communicationCentreList');
-    bindOnce(listWrap, 'OpenRow', event => {
+    bindOnce(listWrap, 'OpenRow', async event => {
       const button = event.target.closest('[data-cc-open]');
+      if (!button) return;
       if (!canOpenConversation()) {
         showFriendlyError('You do not have permission to open this conversation.');
         return;
       }
-      if (button) openDetail(button.getAttribute('data-cc-open'));
-      if (button && isMobileViewport()) setMobileView('chat');
+      if (isMobileViewport()) setMobileView('chat');
+      await openDetail(button.getAttribute('data-cc-open'), { forceScroll: true, initialOpen: true, reason: 'user_open' });
+      scrollCommunicationCentreToBottom(true);
     });
     bindOnce($('communicationCentreMessages'), 'MessageActions', async event => {
       const replyBtnEl = event.target.closest('[data-cc-reply-message]');
@@ -1338,7 +1347,7 @@
     $('communicationCentreMessages')?.addEventListener('scroll', () => {
       if (isCommunicationCentreNearBottom()) hideNewMessagesButton();
     }, { passive: true });
-    bindOnce($('communicationCentreNewMessagesBtn'), 'NewMessages', () => scrollCommunicationCentreToBottom(true));
+    bindOnce($('communicationCentreNewMessagesBtn'), 'NewMessages', () => { hideNewMessagesButton(); scrollCommunicationCentreToBottom(true); });
     bindOnce($('communicationCentreDrawerClose'), 'DrawerClose', () => {
       if (isMobileViewport() || isTabletViewport()) setMobileView('chat');
       else setDetailsVisible(false);
@@ -1424,8 +1433,9 @@
     setupCommunicationCentreRealtime();
     logCommunicationCentreDebugContext();
     if (hashConversationId && canOpenConversation()) {
-      await openDetail(hashConversationId);
       if (isMobileViewport()) setMobileView('chat');
+      await openDetail(hashConversationId, { forceScroll: true, initialOpen: true, reason: 'deep_link' });
+      scrollCommunicationCentreToBottom(true);
     }
     syncResponsiveLayout();
     global.addEventListener('resize', syncResponsiveLayout, { passive: true });
