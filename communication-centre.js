@@ -16,13 +16,12 @@
       actionItems: [],
       mentionCandidates: [],
       replyToMessage: null,
+      editingMessage: null,
       composerType: 'message',
       loadingUsers: false,
       loadingRoles: false,
       mobileView: 'list',
-      detailsVisible: true,
-      realtimeEnabled: false,
-      realtimeStatus: 'idle'
+      detailsVisible: true
     }
   };
 
@@ -214,22 +213,34 @@
       const name = normalizeIdentityValue(row.user_name || row.name || row.email);
       return (uid && !identity.ids.has(uid)) || (name && !identity.names.has(name));
     });
-    const label = hasRead ? '✓✓ Read' : (hasOtherParticipants ? '✓ Received' : '✓ Sent');
-    return `<div class="cc-message-status ${hasRead ? 'read' : 'received'}">${escapeHtml(label)}</div>`;
+    const label = hasRead ? '✓✓ Read' : (hasOtherParticipants ? '✓✓ Received' : '✓ Sent');
+    return `<div class="cc-message-status ${hasRead ? 'read' : (hasOtherParticipants ? 'received' : 'sent')}">${escapeHtml(label)}</div>`;
   }
 
   function renderReplyTargetPreview() {
     const target = $('communicationCentreReplyTarget');
+    const replyBtn = $('communicationCentreReplyBtn');
+    const input = $('communicationCentreReplyInput');
     if (!target) return;
+    const editing = M.state.editingMessage;
+    if (editing) {
+      const body = normalizeText(editing.message_body || editing.body || 'Message');
+      target.style.display = '';
+      target.innerHTML = `<div><strong>Editing your message</strong><span>${escapeHtml(body.slice(0, 120))}${body.length > 120 ? '…' : ''}</span></div><button type="button" class="btn ghost sm" id="communicationCentreCancelReplyTarget">Cancel</button>`;
+      if (replyBtn) replyBtn.textContent = 'Save edit';
+      return;
+    }
     const message = M.state.replyToMessage;
     if (!message) {
       target.style.display = 'none';
       target.innerHTML = '';
+      if (replyBtn) replyBtn.textContent = 'Send';
       return;
     }
     const body = normalizeText(message.message_body || message.body || 'Message');
     target.style.display = '';
     target.innerHTML = `<div><strong>Replying to ${escapeHtml(message.sender_name || 'user')}</strong><span>${escapeHtml(body.slice(0, 120))}${body.length > 120 ? '…' : ''}</span></div><button type="button" class="btn ghost sm" id="communicationCentreCancelReplyTarget">Cancel</button>`;
+    if (replyBtn) replyBtn.textContent = 'Send';
   }
   function syncResponsiveLayout() {
     const container = $('communicationCentreView');
@@ -390,15 +401,12 @@
         return acc;
       }, {});
       renderDrawer();
-      subscribeActiveRealtime(id);
-      if (!options.skipMarkRead) {
-        try {
-          await client.rpc('mark_communication_centre_read', { p_conversation_id: id });
-          M.state.rows = (M.state.rows || []).map(row => String(row.id) === String(id) ? { ...row, unread_count: 0 } : row);
-          render();
-        } catch (errorMarkRead) {
-          console.warn('[Communication Centre] mark read failed', errorMarkRead);
-        }
+      try {
+        await client.rpc('mark_communication_centre_read', { p_conversation_id: id });
+        M.state.rows = (M.state.rows || []).map(row => String(row.id) === String(id) ? { ...row, unread_count: 0 } : row);
+        render();
+      } catch (errorMarkRead) {
+        console.warn('[Communication Centre] mark read failed', errorMarkRead);
       }
     } catch (error) {
       console.error('[Communication Centre] open detail failed', error);
@@ -425,137 +433,70 @@
   }
 
 
-
-  function realtimeClient() {
-    const client = db();
-    return client && typeof client.channel === 'function' ? client : null;
-  }
-
-  function removeRealtimeChannel(channelKey) {
-    try {
-      const client = realtimeClient();
-      const channel = M[channelKey];
-      if (client && channel && typeof client.removeChannel === 'function') {
-        client.removeChannel(channel);
-      } else if (channel && typeof channel.unsubscribe === 'function') {
-        channel.unsubscribe();
-      }
-    } catch (error) {
-      console.warn('[Communication Centre] realtime unsubscribe failed', error);
-    } finally {
-      M[channelKey] = null;
-    }
-  }
-
-  function scheduleListRefresh(reason = 'realtime') {
-    clearTimeout(M._listRefreshTimer);
-    M._listRefreshTimer = setTimeout(async () => {
-      if (document.visibilityState === 'hidden') return;
-      try {
-        await refresh();
-      } catch (error) {
-        console.warn('[Communication Centre] realtime list refresh failed', { reason, error });
-      }
-    }, 450);
-  }
-
-  function scheduleActiveRefresh(reason = 'realtime', options = {}) {
-    clearTimeout(M._activeRefreshTimer);
+  function scheduleActiveRefresh(reason = 'change') {
+    if (M._activeRefreshTimer) clearTimeout(M._activeRefreshTimer);
     M._activeRefreshTimer = setTimeout(async () => {
-      const id = M.state.active?.id;
-      if (!id || document.visibilityState === 'hidden') return;
+      if (!M.state.active?.id) return;
       try {
-        await openDetail(id, { skipMarkRead: options.skipMarkRead === true });
+        await openDetail(M.state.active.id, { silent: true, keepScroll: true });
       } catch (error) {
-        console.warn('[Communication Centre] realtime active refresh failed', { reason, error });
+        console.warn('[Communication Centre] active refresh failed', reason, error);
       }
     }, 350);
   }
 
-  function subscribeListRealtime() {
-    const client = realtimeClient();
-    if (!client || M._listRealtimeChannel) return;
+  function scheduleListRefresh(reason = 'change') {
+    if (M._listRefreshTimer) clearTimeout(M._listRefreshTimer);
+    M._listRefreshTimer = setTimeout(async () => {
+      try { await refresh(); } catch (error) { console.warn('[Communication Centre] list refresh failed', reason, error); }
+    }, 600);
+  }
+
+  function setupRealtimeAutoUpdate() {
+    const client = db();
+    if (M._realtimeSetup) return;
+    M._realtimeSetup = true;
+
     try {
-      M._listRealtimeChannel = client
-        .channel('communication-centre-list-live')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'communication_centre_conversations' }, payload => {
-          console.log('[Communication Centre realtime] conversation change', payload?.eventType || payload?.type || 'change');
-          scheduleListRefresh('conversation');
-        })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'communication_centre_messages' }, payload => {
-          console.log('[Communication Centre realtime] message change', payload?.eventType || payload?.type || 'change');
-          scheduleListRefresh('message');
-          const activeId = M.state.active?.id;
-          const changedConversationId = payload?.new?.conversation_id || payload?.old?.conversation_id;
-          if (activeId && String(activeId) === String(changedConversationId)) {
-            scheduleActiveRefresh('message', { skipMarkRead: false });
+      if (client?.removeChannel && M._realtimeChannel) client.removeChannel(M._realtimeChannel);
+    } catch (_error) {}
+
+    try {
+      if (client?.channel) {
+        const channel = client.channel('communication-centre-live-updates');
+        const onAnyChange = (payload) => {
+          const row = payload?.new || payload?.old || {};
+          const conversationId = row.conversation_id || row.id;
+          if (M.state.active?.id && String(conversationId || '') === String(M.state.active.id)) {
+            scheduleActiveRefresh(payload?.table || 'realtime');
           }
-        })
-        .subscribe(status => {
-          M.state.realtimeStatus = status;
-          M.state.realtimeEnabled = String(status).toUpperCase() === 'SUBSCRIBED';
-          console.log('[Communication Centre realtime] list status', status);
+          scheduleListRefresh(payload?.table || 'realtime');
+        };
+        ['communication_centre_messages','communication_centre_read_receipts','communication_centre_message_reactions','communication_centre_conversations','communication_centre_action_items'].forEach(table => {
+          channel.on('postgres_changes', { event: '*', schema: 'public', table }, onAnyChange);
         });
-    } catch (error) {
-      console.warn('[Communication Centre] realtime list subscription failed', error);
-    }
-  }
-
-  function subscribeActiveRealtime(conversationId) {
-    const client = realtimeClient();
-    if (!client || !conversationId) return;
-    if (String(M._activeRealtimeConversationId || '') === String(conversationId) && M._activeRealtimeChannel) return;
-    removeRealtimeChannel('_activeRealtimeChannel');
-    M._activeRealtimeConversationId = conversationId;
-    const filter = `conversation_id=eq.${conversationId}`;
-    try {
-      M._activeRealtimeChannel = client
-        .channel(`communication-centre-chat-${conversationId}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'communication_centre_messages', filter }, payload => {
-          console.log('[Communication Centre realtime] active message change', payload?.eventType || payload?.type || 'change');
-          scheduleActiveRefresh('active-message', { skipMarkRead: false });
-          scheduleListRefresh('active-message');
-        })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'communication_centre_participants', filter }, () => {
-          scheduleActiveRefresh('participants', { skipMarkRead: true });
-          scheduleListRefresh('participants');
-        })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'communication_centre_message_reactions', filter }, () => {
-          scheduleActiveRefresh('reactions', { skipMarkRead: true });
-        })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'communication_centre_read_receipts', filter }, () => {
-          scheduleActiveRefresh('read-receipts', { skipMarkRead: true });
-          scheduleListRefresh('read-receipts');
-        })
-        .subscribe(status => {
-          console.log('[Communication Centre realtime] active status', { conversationId, status });
+        channel.subscribe(status => {
+          if (['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(status)) {
+            console.warn('[Communication Centre] realtime status', status);
+          }
         });
+        M._realtimeChannel = channel;
+      }
     } catch (error) {
-      console.warn('[Communication Centre] realtime active subscription failed', error);
+      console.warn('[Communication Centre] realtime setup failed; polling fallback remains active', error);
     }
-  }
 
-  function startAutoRefreshFallback() {
-    if (M._pollingStarted) return;
-    M._pollingStarted = true;
-    M._listPoller = setInterval(() => {
-      if (document.visibilityState === 'hidden') return;
-      scheduleListRefresh('polling');
-    }, 30000);
-    M._activePoller = setInterval(() => {
-      if (document.visibilityState === 'hidden' || !M.state.active?.id) return;
-      scheduleActiveRefresh('polling', { skipMarkRead: true });
-    }, 10000);
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState !== 'visible') return;
-      scheduleListRefresh('visible');
-      if (M.state.active?.id) scheduleActiveRefresh('visible', { skipMarkRead: false });
-    });
-  }
+    if (M._activePollingTimer) clearInterval(M._activePollingTimer);
+    M._activePollingTimer = setInterval(() => {
+      if (document.hidden) return;
+      if (M.state.active?.id) scheduleActiveRefresh('poll');
+    }, 4500);
 
-  function startRealtimeUpdates() {
-    subscribeListRealtime();
-    startAutoRefreshFallback();
+    if (M._listPollingTimer) clearInterval(M._listPollingTimer);
+    M._listPollingTimer = setInterval(() => {
+      if (document.hidden) return;
+      scheduleListRefresh('poll');
+    }, 12000);
   }
 
   async function dispatchCommunicationCentreNotification({ action, conversationId, actorId, title, body, conversationNo, conversationTitle }) {
@@ -629,6 +570,7 @@
       `).join(' ');
     }
     if (messages) {
+      const wasNearBottom = messages.scrollHeight - messages.scrollTop - messages.clientHeight < 80;
       messages.innerHTML = M.state.messages.length ? M.state.messages.map(message => {
         const isMine = isMessageMine(message);
         const muted = message.is_system_message ? 'opacity:.72;' : '';
@@ -653,7 +595,7 @@
           </div>
         `;
       }).join('') : '<div class="muted" style="padding:20px;text-align:center;">Select a conversation to view messages.</div>';
-      messages.scrollTop = messages.scrollHeight;
+      if (!options.keepScroll || wasNearBottom) messages.scrollTop = messages.scrollHeight;
     }
     if (replyWrap) replyWrap.style.display = (conversation.status !== 'Closed' && can('reply')) ? '' : 'none';
     if (closedMsg) closedMsg.style.display = conversation.status === 'Closed' ? '' : 'none';
@@ -1109,7 +1051,6 @@
   M.openConversationById = openDetail;
   M.refresh = refresh;
   M.openCreateModal = openCreateModal;
-  M.startRealtimeUpdates = startRealtimeUpdates;
 
   M.init = async function () {
     const container = $('communicationCentreView');
@@ -1176,18 +1117,26 @@
       } else if (editBtnEl) {
         const id = editBtnEl.getAttribute('data-cc-edit-message');
         const row = M.state.messages.find(m => String(m.id) === String(id));
+        if (!row) { showFriendlyError('Unable to update message. Please try again.'); return; }
+        M.state.editingMessage = row;
+        M.state.replyToMessage = null;
         const input = $('communicationCentreReplyInput');
-        const next = normalizeText(input?.value);
-        if (!row || !next) { showFriendlyError('Type updated text in the reply box, then click Edit.'); return; }
-        const { error } = await db().from('communication_centre_messages').update({ message_body: next, edited_at: new Date().toISOString(), edited_by: global.Session?.user?.()?.id || null }).eq('id', id).eq('sender_id', global.Session?.user?.()?.id || '');
-        if (error) { console.error(error); showFriendlyError('Unable to update message. Please try again.'); return; }
-        if (input) input.value = '';
-        await openDetail(conversation.id);
+        if (input) {
+          input.value = row.message_body || row.body || '';
+          input.focus();
+        }
+        renderReplyTargetPreview();
       } else if (deleteBtnEl) {
         const id = deleteBtnEl.getAttribute('data-cc-delete-message');
-        const { error } = await db().from('communication_centre_messages').update({ is_deleted: true, deleted_at: new Date().toISOString(), deleted_by: global.Session?.user?.()?.id || null }).eq('id', id).eq('sender_id', global.Session?.user?.()?.id || '');
-        if (error) { console.error(error); showFriendlyError('Unable to delete message. Please try again.'); return; }
-        await openDetail(conversation.id);
+        try {
+          const res = await db().rpc('soft_delete_communication_centre_message', { p_message_id: id });
+          if (res.error) throw res.error;
+          await openDetail(conversation.id);
+          scheduleListRefresh('message-delete');
+        } catch (error) {
+          console.error('[Communication Centre] delete message failed', error);
+          showFriendlyError('Unable to delete message. Please try again.');
+        }
       } else if (reactBtnEl) {
         const messageId = reactBtnEl.getAttribute('data-cc-react');
         const reaction = reactBtnEl.getAttribute('data-reaction');
@@ -1216,7 +1165,7 @@
       }
       if (e.target?.id === 'communicationCentreBackToList') setMobileView('list');
       if (e.target?.id === 'communicationCentreBackToChat') setMobileView('chat');
-      if (e.target?.id === 'communicationCentreCancelReplyTarget') { M.state.replyToMessage = null; renderReplyTargetPreview(); }
+      if (e.target?.id === 'communicationCentreCancelReplyTarget') { M.state.replyToMessage = null; M.state.editingMessage = null; const input = $('communicationCentreReplyInput'); if (input) input.value = ''; renderReplyTargetPreview(); }
     });
     const replyBtn = $('communicationCentreReplyBtn');
     if (replyBtn) replyBtn.style.display = can('reply') ? '' : 'none';
@@ -1233,7 +1182,24 @@
       if (!conversation?.id) return showFriendlyError('Open a conversation first.');
       if (!body) return showFriendlyError('Please enter a reply message.');
       try {
-        if (replyBtn) { replyBtn.disabled = true; replyBtn.textContent = 'Sending...'; }
+        const editing = M.state.editingMessage;
+        if (replyBtn) { replyBtn.disabled = true; replyBtn.textContent = editing ? 'Saving...' : 'Sending...'; }
+        if (editing?.id) {
+          const { error } = await db().rpc('edit_communication_centre_message', {
+            p_message_id: editing.id,
+            p_message_body: body
+          });
+          if (error) throw error;
+          if (input) input.value = '';
+          M.state.editingMessage = null;
+          M.state.replyToMessage = null;
+          if (replyError) { replyError.textContent=''; replyError.style.display='none'; }
+          await openDetail(conversation.id);
+          scheduleListRefresh('message-edit');
+          showFriendlySuccess('Message updated.');
+          if (replyBtn) { replyBtn.disabled = false; replyBtn.textContent = 'Send'; }
+          return;
+        }
         const msgType = $('communicationCentreReplyType')?.value || 'message';
         const { error } = await db().rpc('add_communication_centre_reply', {
           p_conversation_id: conversation.id,
@@ -1250,6 +1216,7 @@
         if (replyError) { replyError.textContent=''; replyError.style.display='none'; }
         await openDetail(conversation.id);
         await refresh();
+        scheduleActiveRefresh('reply-sent');
         showFriendlySuccess('Reply sent successfully.');
         if (replyBtn) { replyBtn.disabled = false; replyBtn.textContent = 'Send'; }
         dispatchCommunicationCentreNotification({
@@ -1273,12 +1240,12 @@
       const match = hash.match(/conversation_id=([^&]+)/i);
       return match ? decodeURIComponent(match[1]) : '';
     })();
-    startRealtimeUpdates();
     await refresh();
     if (hashConversationId && canOpenConversation()) {
       await openDetail(hashConversationId);
       if (isMobileViewport()) setMobileView('chat');
     }
+    setupRealtimeAutoUpdate();
     syncResponsiveLayout();
     global.addEventListener('resize', syncResponsiveLayout, { passive: true });
   };

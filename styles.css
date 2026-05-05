@@ -2742,4 +2742,11 @@ body.permissions-loading [data-permission-resource][data-permission-action]{disp
 .cc-reaction-btn{cursor:pointer}.cc-reaction-btn:hover{transform:translateY(-1px);background:#eef4ff;border-color:#c7d7fe}
 @media (max-width:767px){.cc-reply-target{margin:8px 10px 0}.cc-reply-target span{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}.cc-message-status{font-size:10px}}
 
-.cc-message-status{margin-top:6px;font-size:11px;font-weight:700;color:#94a3b8;text-align:right}.cc-message-status.received{color:#94a3b8}.cc-message-status.read{color:#2563eb}.cc-message-row.mine .cc-message-status{display:block}
+/* Communication Centre edit/read/realtime polish */
+.cc-message-status{font-size:11px;font-weight:700;margin-top:6px;text-align:right;color:#94a3b8}
+.cc-message-status.sent,.cc-message-status.received{color:#8a94a6}
+.cc-message-status.read{color:#2563eb}
+.cc-reply-target{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:0 14px 10px;padding:10px 12px;border-left:3px solid #2563eb;background:#f8fbff;border-radius:10px;border-top:1px solid #e7edf8;border-right:1px solid #e7edf8;border-bottom:1px solid #e7edf8}
+.cc-reply-target strong{display:block;color:#172033;font-size:12px}.cc-reply-target span{display:block;color:#667085;font-size:12px;margin-top:2px}
+.cc-message-row.mine .cc-message-status{text-align:right}
+.cc-message-row.incoming .cc-message-status{text-align:left}
