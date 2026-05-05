@@ -111,6 +111,53 @@
     }
   }
 
+  function currentRoleKey() {
+    try {
+      const P = global.Permissions;
+      if (typeof P?.normalizeRole === 'function') return P.normalizeRole(global.Session?.role?.());
+    } catch (_error) {}
+    return String(global.Session?.role?.() || '').trim().toLowerCase().replace(/\s+/g, '_');
+  }
+
+  function hasDirectPermissionRow(action) {
+    const P = global.Permissions;
+    const rows = Array.isArray(P?.state?.rows) ? P.state.rows : [];
+    const role = currentRoleKey();
+    const wantedAction = String(action || '').trim().toLowerCase();
+    if (!rows.length || !role || !wantedAction) return false;
+    const resources = ['communication_centre', 'communicationcentre', 'communication-centre', 'communication_center'];
+    return rows.some(row => {
+      const rowRole = typeof P?.normalizeRole === 'function' ? P.normalizeRole(row.role_key) : String(row.role_key || '').trim().toLowerCase();
+      const rowResource = String(row.resource || '').trim().toLowerCase();
+      const rowAction = String(row.action || '').trim().toLowerCase();
+      const active = row.is_active !== false && String(row.is_active ?? 'true').toLowerCase() !== 'false';
+      const allowed = row.is_allowed !== false && String(row.is_allowed ?? 'true').toLowerCase() !== 'false';
+      return rowRole === role && resources.includes(rowResource) && rowAction === wantedAction && active && allowed;
+    });
+  }
+
+  async function ensurePermissionMatrixReady() {
+    const P = global.Permissions;
+    if (!P || typeof P.loadMatrix !== 'function') return;
+    try {
+      if (typeof P.isReady === 'function' && P.isReady()) return;
+      if (P.state?.loading) {
+        await new Promise(resolve => setTimeout(resolve, 250));
+        if (typeof P.isReady === 'function' && P.isReady()) return;
+      }
+      await P.loadMatrix(false);
+    } catch (error) {
+      console.warn('[Communication Centre] permission matrix load failed', error);
+    }
+  }
+
+  async function ensureCommunicationCentreAccess() {
+    if (!isAuthenticated()) return false;
+    if (hasDirectPermissionRow('manage')) return true;
+    await ensurePermissionMatrixReady();
+    return can('manage');
+  }
+
   const can = action => {
     const normalizedAction = String(action || '').trim().toLowerCase();
     if (!normalizedAction || !isAuthenticated()) return false;
@@ -122,15 +169,15 @@
     // Do not fall back to "authenticated user" and do not use view/list/get for module access.
     // Delete remains separate and is never granted by manage.
     if (normalizedAction === 'delete') {
-      return resources.some(resource => permissionHas(resource, 'delete', { directDeleteOnly: true }));
+      return hasDirectPermissionRow('delete') || resources.some(resource => permissionHas(resource, 'delete', { directDeleteOnly: true }));
     }
 
     const normalActions = ['view', 'list', 'get', 'open', 'create', 'reply', 'update', 'close', 'reopen', 'manage', 'pin', 'archive', 'assign', 'follow_up', 'action_item'];
     if (normalActions.includes(normalizedAction)) {
-      return resources.some(resource => permissionHas(resource, 'manage'));
+      return hasDirectPermissionRow('manage') || resources.some(resource => permissionHas(resource, 'manage'));
     }
 
-    return resources.some(resource => permissionHas(resource, normalizedAction));
+    return hasDirectPermissionRow(normalizedAction) || resources.some(resource => permissionHas(resource, normalizedAction));
   };
   const canOpenConversation = () => can('open');
   const canManageConversation = () => can('manage');
@@ -1238,8 +1285,9 @@
       console.warn('[Communication Centre] container not found');
       return;
     }
-    if (!hasCommunicationCentreAccess()) {
-      console.warn('[Communication Centre] access denied');
+    const hasAccess = await ensureCommunicationCentreAccess();
+    if (!hasAccess) {
+      console.warn('[Communication Centre] access denied', { role: currentRoleKey(), permissionsReady: Boolean(global.Permissions?.isReady?.()), rows: global.Permissions?.state?.rows?.length || 0 });
       renderNoAccessState();
       return;
     }
@@ -1438,22 +1486,20 @@
     const tab = $('communicationCentreTab') || document.querySelector('[data-view="communication_centre"],[data-tab="communication_centre"],[href="#communication_centre"]');
     if (tab && tab.dataset.ccClickFallbackBound !== 'true') {
       tab.dataset.ccClickFallbackBound = 'true';
-      tab.addEventListener('click', event => {
-        if (!hasCommunicationCentreAccess()) {
-          event.preventDefault();
-          event.stopPropagation();
-          console.warn('[Communication Centre] access denied');
+      tab.addEventListener('click', async event => {
+        event.preventDefault();
+        event.stopPropagation();
+        const hasAccess = await ensureCommunicationCentreAccess();
+        if (!hasAccess) {
+          console.warn('[Communication Centre] access denied', { role: currentRoleKey(), permissionsReady: Boolean(global.Permissions?.isReady?.()), rows: global.Permissions?.state?.rows?.length || 0 });
+          renderNoAccessState();
           return;
         }
-        event.preventDefault();
         if (typeof global.setActiveView === 'function') {
           global.setActiveView('communication_centre');
           return;
         }
-        if (!M._inited) {
-          M._inited = true;
-          M.init();
-        }
+        M.init();
       });
     }
   });

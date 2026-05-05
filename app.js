@@ -3059,7 +3059,8 @@ function setActiveView(view) {
     }
   };
   if (view === 'communicationCentre') {
-    if (!Permissions.can('communication_centre', 'manage')) {
+    const permissionsReady = typeof Permissions?.isReady === 'function' ? Permissions.isReady() : Boolean(Permissions?.state?.loaded);
+    if (permissionsReady && !Permissions.can('communication_centre', 'manage')) {
       console.warn('[Communication Centre] access denied');
       UI.toast('You do not have access to Communication Centre.');
       const fallbackView = Session.role() ? 'issues' : 'issues';
@@ -3067,8 +3068,7 @@ function setActiveView(view) {
       return;
     }
     if (!E.communicationCentreView) console.warn('Communication Centre container not found');
-    if (window.CommunicationCentre && !window.CommunicationCentre._inited && typeof window.CommunicationCentre.init === 'function') {
-      window.CommunicationCentre._inited = true;
+    if (window.CommunicationCentre && typeof window.CommunicationCentre.init === 'function') {
       runViewLoader('Communication Centre', () => window.CommunicationCentre.init());
     }
   }
@@ -5324,7 +5324,8 @@ function wireCore() {
   document.addEventListener('click', event => {
     const tab = event.target?.closest?.('#communicationCentreTab,[data-view="communication_centre"],[data-tab="communication_centre"],[href="#communication_centre"]');
     if (!tab) return;
-    if (!Permissions.can('communication_centre', 'manage')) {
+    const permissionsReady = typeof Permissions?.isReady === 'function' ? Permissions.isReady() : Boolean(Permissions?.state?.loaded);
+    if (permissionsReady && !Permissions.can('communication_centre', 'manage')) {
       event.preventDefault();
       event.stopPropagation();
       console.warn('[Communication Centre] access denied');
