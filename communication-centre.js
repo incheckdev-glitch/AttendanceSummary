@@ -16,7 +16,6 @@
       actionItems: [],
       mentionCandidates: [],
       replyToMessage: null,
-      editingMessage: null,
       composerType: 'message',
       loadingUsers: false,
       loadingRoles: false,
@@ -213,34 +212,22 @@
       const name = normalizeIdentityValue(row.user_name || row.name || row.email);
       return (uid && !identity.ids.has(uid)) || (name && !identity.names.has(name));
     });
-    const label = hasRead ? '✓✓ Read' : (hasOtherParticipants ? '✓✓ Received' : '✓ Sent');
-    return `<div class="cc-message-status ${hasRead ? 'read' : (hasOtherParticipants ? 'received' : 'sent')}">${escapeHtml(label)}</div>`;
+    const label = hasRead ? '✓✓ Read' : (hasOtherParticipants ? '✓ Received' : '✓ Sent');
+    return `<div class="cc-message-status ${hasRead ? 'read' : 'received'}">${escapeHtml(label)}</div>`;
   }
 
   function renderReplyTargetPreview() {
     const target = $('communicationCentreReplyTarget');
-    const replyBtn = $('communicationCentreReplyBtn');
-    const input = $('communicationCentreReplyInput');
     if (!target) return;
-    const editing = M.state.editingMessage;
-    if (editing) {
-      const body = normalizeText(editing.message_body || editing.body || 'Message');
-      target.style.display = '';
-      target.innerHTML = `<div><strong>Editing your message</strong><span>${escapeHtml(body.slice(0, 120))}${body.length > 120 ? '…' : ''}</span></div><button type="button" class="btn ghost sm" id="communicationCentreCancelReplyTarget">Cancel</button>`;
-      if (replyBtn) replyBtn.textContent = 'Save edit';
-      return;
-    }
     const message = M.state.replyToMessage;
     if (!message) {
       target.style.display = 'none';
       target.innerHTML = '';
-      if (replyBtn) replyBtn.textContent = 'Send';
       return;
     }
     const body = normalizeText(message.message_body || message.body || 'Message');
     target.style.display = '';
     target.innerHTML = `<div><strong>Replying to ${escapeHtml(message.sender_name || 'user')}</strong><span>${escapeHtml(body.slice(0, 120))}${body.length > 120 ? '…' : ''}</span></div><button type="button" class="btn ghost sm" id="communicationCentreCancelReplyTarget">Cancel</button>`;
-    if (replyBtn) replyBtn.textContent = 'Send';
   }
   function syncResponsiveLayout() {
     const container = $('communicationCentreView');
@@ -358,7 +345,7 @@
     M.state.count = count || 0;
   }
 
-  async function openDetail(id, options = {}) {
+  async function openDetail(id) {
     try {
       const client = db();
       if (!client) {
@@ -433,72 +420,6 @@
   }
 
 
-  function scheduleActiveRefresh(reason = 'change') {
-    if (M._activeRefreshTimer) clearTimeout(M._activeRefreshTimer);
-    M._activeRefreshTimer = setTimeout(async () => {
-      if (!M.state.active?.id) return;
-      try {
-        await openDetail(M.state.active.id, { silent: true, keepScroll: true });
-      } catch (error) {
-        console.warn('[Communication Centre] active refresh failed', reason, error);
-      }
-    }, 350);
-  }
-
-  function scheduleListRefresh(reason = 'change') {
-    if (M._listRefreshTimer) clearTimeout(M._listRefreshTimer);
-    M._listRefreshTimer = setTimeout(async () => {
-      try { await refresh(); } catch (error) { console.warn('[Communication Centre] list refresh failed', reason, error); }
-    }, 600);
-  }
-
-  function setupRealtimeAutoUpdate() {
-    const client = db();
-    if (M._realtimeSetup) return;
-    M._realtimeSetup = true;
-
-    try {
-      if (client?.removeChannel && M._realtimeChannel) client.removeChannel(M._realtimeChannel);
-    } catch (_error) {}
-
-    try {
-      if (client?.channel) {
-        const channel = client.channel('communication-centre-live-updates');
-        const onAnyChange = (payload) => {
-          const row = payload?.new || payload?.old || {};
-          const conversationId = row.conversation_id || row.id;
-          if (M.state.active?.id && String(conversationId || '') === String(M.state.active.id)) {
-            scheduleActiveRefresh(payload?.table || 'realtime');
-          }
-          scheduleListRefresh(payload?.table || 'realtime');
-        };
-        ['communication_centre_messages','communication_centre_read_receipts','communication_centre_message_reactions','communication_centre_conversations','communication_centre_action_items'].forEach(table => {
-          channel.on('postgres_changes', { event: '*', schema: 'public', table }, onAnyChange);
-        });
-        channel.subscribe(status => {
-          if (['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(status)) {
-            console.warn('[Communication Centre] realtime status', status);
-          }
-        });
-        M._realtimeChannel = channel;
-      }
-    } catch (error) {
-      console.warn('[Communication Centre] realtime setup failed; polling fallback remains active', error);
-    }
-
-    if (M._activePollingTimer) clearInterval(M._activePollingTimer);
-    M._activePollingTimer = setInterval(() => {
-      if (document.hidden) return;
-      if (M.state.active?.id) scheduleActiveRefresh('poll');
-    }, 4500);
-
-    if (M._listPollingTimer) clearInterval(M._listPollingTimer);
-    M._listPollingTimer = setInterval(() => {
-      if (document.hidden) return;
-      scheduleListRefresh('poll');
-    }, 12000);
-  }
-
   async function dispatchCommunicationCentreNotification({ action, conversationId, actorId, title, body, conversationNo, conversationTitle }) {
     try {
       if (!global.NotificationService?.sendBusinessNotification) return;
@@ -548,7 +469,7 @@
     const pageInfo = $('communicationCentrePageInfo');
     if (pageInfo) pageInfo.textContent = `Page ${M.state.page} • ${M.state.count} total`;
   }
-  function renderDrawer(options = {}) {
+  function renderDrawer() {
     const drawer = $('communicationCentreDrawer');
     if (!drawer || !M.state.active) return;
     const conversation = M.state.active;
@@ -565,31 +486,11 @@
       if (header) header.innerHTML = `${mobileBack}<div class="cc-chat-heading"><h3>${escapeHtml((conversation.conversation_no || '') + ' ' + (conversation.title || ''))}</h3><div class="muted">${escapeHtml(conversation.category || 'General')} • ${escapeHtml(conversation.priority || 'Normal')} • ${escapeHtml(conversation.status || 'Open')}${relatedLabel ? ` • ${escapeHtml(relatedLabel)}` : ''}</div></div><button id="communicationCentreOpenDetails" class="btn ghost sm" type="button">${detailsLabel}</button>`;
     if (meta) meta.textContent = `${conversation.status || 'Open'} • ${conversation.priority || 'Normal'} • ${conversation.category || 'General'}`;
     if (participants) {
-      const participantRows = M.state.participants || [];
-      participants.innerHTML = `
-        <div class="cc-details-section cc-participants-section">
-          <div class="cc-section-title-row"><strong>Participants</strong><span class="chip">${escapeHtml(String(participantRows.length || 0))}</span></div>
-          <div class="cc-participant-list">
-            ${participantRows.length ? participantRows.map(participant => {
-              const name = participant.user_name || participant.full_name || participant.email || participant.user_id || 'User';
-              const role = participant.role_key || participant.user_role || participant.role || '';
-              const type = participant.participant_type || 'participant';
-              return `
-                <div class="cc-participant-card">
-                  <div class="cc-participant-avatar">${escapeHtml(String(name).split(/\s+/).slice(0,2).map(x => x[0] || '').join('').toUpperCase() || 'U')}</div>
-                  <div class="cc-participant-info">
-                    <strong>${escapeHtml(name)}</strong>
-                    <span>${escapeHtml(type)}${role ? ` • ${escapeHtml(role)}` : ''}</span>
-                  </div>
-                </div>
-              `;
-            }).join('') : '<div class="muted">No participants found.</div>'}
-          </div>
-        </div>
-      `;
+      participants.innerHTML = M.state.participants.map(participant => `
+        <span class="chip cc-participant-chip">${escapeHtml(participant.participant_type || 'participant')}: ${escapeHtml(participant.user_name || participant.user_id || 'User')}</span>
+      `).join(' ');
     }
     if (messages) {
-      const wasNearBottom = messages.scrollHeight - messages.scrollTop - messages.clientHeight < 80;
       messages.innerHTML = M.state.messages.length ? M.state.messages.map(message => {
         const isMine = isMessageMine(message);
         const muted = message.is_system_message ? 'opacity:.72;' : '';
@@ -614,7 +515,7 @@
           </div>
         `;
       }).join('') : '<div class="muted" style="padding:20px;text-align:center;">Select a conversation to view messages.</div>';
-      if (!options.keepScroll || wasNearBottom) messages.scrollTop = messages.scrollHeight;
+      messages.scrollTop = messages.scrollHeight;
     }
     if (replyWrap) replyWrap.style.display = (conversation.status !== 'Closed' && can('reply')) ? '' : 'none';
     if (closedMsg) closedMsg.style.display = conversation.status === 'Closed' ? '' : 'none';
@@ -631,10 +532,9 @@
       const header = drawer.querySelector('.header');
       actionWrap = document.createElement('div');
       actionWrap.id = 'communicationCentreDrawerActions';
-      actionWrap.className = 'cc-details-content';
+      actionWrap.className = 'actions';
       if (header) header.appendChild(actionWrap);
     }
-    actionWrap.className = 'cc-details-content';
     const conversation = M.state.active;
     const pinButton = canManageConversation()
       ? `<button id="communicationCentrePinConversationBtn" class="btn ghost sm" type="button">${conversation.is_pinned ? 'Unpin' : 'Pin'}</button>` : '';
@@ -653,54 +553,14 @@
     const relatedRoute = relatedRouteMap[String(conversation.related_module || '').trim().toLowerCase()];
     const relatedButton = relatedRoute && conversation.related_record_id
       ? '<button id="communicationCentreOpenRelatedBtn" class="btn ghost sm" type="button">Open Related Record</button>' : '';
-    const actionItems = M.state.actionItems || [];
-    const openActionItems = actionItems.filter(x => (x.status || 'open') === 'open');
-    const formatDate = value => value ? new Date(value).toLocaleString() : '—';
     actionWrap.innerHTML = `
-      <div class="cc-details-section">
-        <div class="cc-section-title-row"><strong>Conversation Info</strong><span class="chip cc-status-chip">${escapeHtml(conversation.status || 'Open')}</span></div>
-        <div class="cc-detail-grid">
-          <div><span>Conversation</span><strong>${escapeHtml(conversation.conversation_no || '—')}</strong></div>
-          <div><span>Priority</span><strong>${escapeHtml(conversation.priority || 'Normal')}</strong></div>
-          <div><span>Category</span><strong>${escapeHtml(conversation.category || 'General')}</strong></div>
-          <div><span>Created by</span><strong>${escapeHtml(conversation.created_by_name || 'Unknown')}</strong></div>
-          <div><span>Created at</span><strong>${escapeHtml(formatDate(conversation.created_at))}</strong></div>
-          <div><span>Updated at</span><strong>${escapeHtml(formatDate(conversation.updated_at || conversation.last_message_at || conversation.created_at))}</strong></div>
-        </div>
-      </div>
-      <div class="cc-details-section">
-        <strong>Assignment</strong>
-        <div class="cc-detail-grid">
-          <div><span>Assigned role</span><strong>${escapeHtml(conversation.assigned_role || '—')}</strong></div>
-          <div><span>Participants</span><strong>${escapeHtml(String(M.state.participants.length || 0))}</strong></div>
-          <div><span>Pinned</span><strong>${conversation.is_pinned ? 'Yes' : 'No'}</strong></div>
-          <div><span>Archived</span><strong>${conversation.is_archived ? 'Yes' : 'No'}</strong></div>
-          <div><span>Escalated</span><strong>${conversation.is_escalated ? 'Yes' : 'No'}</strong></div>
-          <div><span>Follow-up</span><strong>${escapeHtml(formatDate(conversation.follow_up_at))}</strong></div>
-        </div>
-      </div>
-      <div class="cc-details-section">
-        <strong>Related Record</strong>
-        <div class="cc-detail-grid">
-          <div><span>Module</span><strong>${escapeHtml(conversation.related_module || '—')}</strong></div>
-          <div><span>Record ID</span><strong>${escapeHtml(conversation.related_record_id || '—')}</strong></div>
-        </div>
-        ${relatedButton ? `<div class="actions cc-section-actions">${relatedButton}</div>` : ''}
-      </div>
-      <div class="cc-details-section">
-        <strong>Actions</strong>
-        <div class="actions cc-section-actions">${pinButton}${archiveButton}${closeButton}${reopenButton}${copyLinkButton}${deleteButton}<button id="communicationCentreEscalateBtn" class="btn ghost sm" type="button">${conversation.is_escalated ? 'Clear escalation' : 'Mark as escalated'}</button></div>
-      </div>
-      <div class="cc-details-section">
-        <strong>Follow-up</strong>
-        <input id="communicationCentreFollowUpAt" class="input" type="datetime-local" value="${conversation.follow_up_at ? escapeAttr(new Date(conversation.follow_up_at).toISOString().slice(0,16)) : ''}" />
-        <div class="actions cc-section-actions"><button id="communicationCentreFollowUpSaveBtn" class="btn ghost sm" type="button">Save follow-up</button><button id="communicationCentreFollowUpClearBtn" class="btn ghost sm" type="button">Clear</button></div>
-      </div>
-      <div class="cc-details-section">
-        <div class="cc-section-title-row"><strong>Action Items</strong><span class="chip">Open: ${escapeHtml(String(openActionItems.length))}</span></div>
-        <div class="cc-action-item-list">${actionItems.length ? actionItems.slice(0,8).map(item => `<div class="cc-action-item-row"><span>${escapeHtml(item.title || 'Action item')}</span><small>${escapeHtml(item.status || 'open')}</small></div>`).join('') : '<div class="muted">No action items yet.</div>'}</div>
-        <div class="actions cc-section-actions"><input id="communicationCentreActionItemTitle" class="input" placeholder="Action item title" /><button id="communicationCentreActionItemAddBtn" class="btn ghost sm" type="button">Add</button></div>
-      </div>`;
+      <div class="cc-details-section"><strong>Conversation Info</strong><div class="muted">#${escapeHtml(conversation.conversation_no || '—')} • ${escapeHtml(conversation.status || 'Open')} • ${escapeHtml(conversation.priority || 'Normal')} • ${escapeHtml(conversation.category || 'General')}</div><div class="muted">Created by ${escapeHtml(conversation.created_by_name || 'Unknown')} • ${escapeHtml(new Date(conversation.created_at).toLocaleString())}</div><div class="muted">Updated ${escapeHtml(new Date(conversation.updated_at || conversation.last_message_at || conversation.created_at).toLocaleString())}</div></div>
+      <div class="cc-details-section"><strong>Assignment</strong><div class="muted">Assigned role: ${escapeHtml(conversation.assigned_role || '—')}</div><div class="muted">Participants: ${escapeHtml(String(M.state.participants.length || 0))}</div></div>
+      <div class="cc-details-section"><strong>Related Record</strong><div class="muted">Module: ${escapeHtml(conversation.related_module || '—')}</div><div class="muted">Record ID: ${escapeHtml(conversation.related_record_id || '—')}</div>${relatedButton}</div>
+      <div class="cc-details-section cc-assignment-manage-section"><strong>Add Assignment</strong><div class="muted">Add an existing user or snapshot all users currently under a role.</div><label class="muted" for="communicationCentreAssignUserSelect">Add user</label><select id="communicationCentreAssignUserSelect" class="select"><option value="">Select user</option></select><label class="muted" for="communicationCentreAssignRoleSelect">Add role snapshot</label><select id="communicationCentreAssignRoleSelect" class="select"><option value="">Select role</option></select><div class="muted cc-assignment-hint">Role assignment is snapshotted. Only users currently in the selected role will be added.</div><div class="actions"><button id="communicationCentreAddAssignmentBtn" class="btn ghost sm" type="button">Add Assignment</button></div></div>
+      <div class="cc-details-section"><strong>Actions</strong><div class="actions">${pinButton}${archiveButton}${closeButton}${reopenButton}${copyLinkButton}${deleteButton}<button id="communicationCentreEscalateBtn" class="btn ghost sm" type="button">${conversation.is_escalated ? 'Clear escalation' : 'Mark as escalated'}</button></div></div>
+      <div class="cc-details-section"><strong>Follow-up</strong><input id="communicationCentreFollowUpAt" class="input" type="datetime-local" value="${conversation.follow_up_at ? escapeAttr(new Date(conversation.follow_up_at).toISOString().slice(0,16)) : ''}" /><div class="actions"><button id="communicationCentreFollowUpSaveBtn" class="btn ghost sm" type="button">Save follow-up</button><button id="communicationCentreFollowUpClearBtn" class="btn ghost sm" type="button">Clear</button></div></div>
+      <div class="cc-details-section"><strong>Action Items</strong><div class="muted">Open: ${escapeHtml(String((M.state.actionItems||[]).filter(x => (x.status || 'open') === 'open').length))}</div><div class="actions"><input id="communicationCentreActionItemTitle" class="input" placeholder="Action item title" /><button id="communicationCentreActionItemAddBtn" class="btn ghost sm" type="button">Add</button></div></div>`;
     $('communicationCentrePinConversationBtn')?.addEventListener('click', togglePinConversation);
     $('communicationCentreArchiveConversationBtn')?.addEventListener('click', toggleArchiveConversation);
     $('communicationCentreOpenRelatedBtn')?.addEventListener('click', () => { global.location.hash = `${relatedRoute}${encodeURIComponent(conversation.related_record_id)}`.replace('/#', '#'); });
@@ -712,10 +572,63 @@
       try { await navigator.clipboard.writeText(url); showFriendlySuccess('Link copied.'); } catch(_e){ showFriendlyError('Unable to update conversation. Please try again.'); }
     });
     $('communicationCentreEscalateBtn')?.addEventListener('click', toggleEscalation);
+    $('communicationCentreAddAssignmentBtn')?.addEventListener('click', addAssignmentFromDetails);
+    populateAssignmentPanelOptions();
     $('communicationCentreFollowUpSaveBtn')?.addEventListener('click', saveFollowUp);
     $('communicationCentreFollowUpClearBtn')?.addEventListener('click', clearFollowUp);
     $('communicationCentreActionItemAddBtn')?.addEventListener('click', addActionItem);
   }
+  async function populateAssignmentPanelOptions() {
+    try {
+      const [users, roles] = await Promise.all([
+        loadCommunicationCentreAssignableUsers(),
+        loadCommunicationCentreAssignableRoles()
+      ]);
+      const currentParticipantIds = new Set((M.state.participants || []).map(p => String(p.user_id || '').trim()).filter(Boolean));
+      const userSelect = $('communicationCentreAssignUserSelect');
+      const roleSelect = $('communicationCentreAssignRoleSelect');
+      if (userSelect) {
+        const availableUsers = (users || []).filter(user => user._id && !currentParticipantIds.has(String(user._id)));
+        userSelect.innerHTML = '<option value="">Select user</option>' + (availableUsers.length
+          ? availableUsers.map(user => `<option value="${escapeAttr(user._id)}">${escapeHtml(user._name)}${user._role ? ` (${escapeHtml(user._role)})` : ''}</option>`).join('')
+          : '<option value="" disabled>No additional users available</option>');
+      }
+      if (roleSelect) {
+        roleSelect.innerHTML = '<option value="">Select role</option>' + (roles || []).map(role => `<option value="${escapeAttr(role._key)}">${escapeHtml(role._label || role._key)}</option>`).join('');
+      }
+    } catch (error) {
+      console.warn('[Communication Centre] unable to load assignment options', error);
+    }
+  }
+
+  async function addAssignmentFromDetails() {
+    const conversation = M.state.active;
+    if (!conversation?.id) return showFriendlyError('Open a conversation first.');
+    const userId = normalizeText($('communicationCentreAssignUserSelect')?.value);
+    const roleKey = normalizeText($('communicationCentreAssignRoleSelect')?.value);
+    if (!userId && !roleKey) return showFriendlyError('Select a user or role to assign.');
+    const button = $('communicationCentreAddAssignmentBtn');
+    try {
+      if (button) { button.disabled = true; button.textContent = 'Adding...'; }
+      const client = db();
+      if (!client?.rpc) throw new Error('Supabase client is not available.');
+      const { error } = await client.rpc('add_communication_centre_assignment', {
+        p_conversation_id: conversation.id,
+        p_assigned_user_ids: userId ? [userId] : [],
+        p_assigned_role: roleKey || null
+      });
+      if (error) throw error;
+      showFriendlySuccess('Assignment added.');
+      await openDetail(conversation.id);
+      await refresh();
+    } catch (error) {
+      console.error('[Communication Centre] add assignment failed', error);
+      showFriendlyError('Unable to add assignment. Please try again.');
+    } finally {
+      if (button) { button.disabled = false; button.textContent = 'Add Assignment'; }
+    }
+  }
+
   async function toggleEscalation(){ const c=M.state.active; if(!c) return; try{const v=!c.is_escalated; const {error}=await db().from('communication_centre_conversations').update({is_escalated:v,escalated_at:v?new Date().toISOString():null,escalated_by:v?(global.Session?.user?.()?.id||null):null}).eq('id',c.id); if(error) throw error; c.is_escalated=v; renderDrawer(); await refresh();}catch(e){console.error(e);showFriendlyError('Unable to update conversation. Please try again.');}}
   async function saveFollowUp(){ const c=M.state.active; if(!c) return; const val=$('communicationCentreFollowUpAt')?.value||null; try{const {error}=await db().from('communication_centre_conversations').update({follow_up_at:val?new Date(val).toISOString():null,follow_up_by:global.Session?.user?.()?.id||null,follow_up_status:'pending'}).eq('id',c.id); if(error) throw error; await openDetail(c.id); await refresh();}catch(e){console.error(e);showFriendlyError('Unable to set follow-up. Please try again.');}}
   async function clearFollowUp(){ const c=M.state.active; if(!c) return; try{const {error}=await db().from('communication_centre_conversations').update({follow_up_at:null,follow_up_by:null,follow_up_status:'pending'}).eq('id',c.id); if(error) throw error; await openDetail(c.id); await refresh();}catch(e){console.error(e);showFriendlyError('Unable to set follow-up. Please try again.');}}
@@ -1178,26 +1091,18 @@
       } else if (editBtnEl) {
         const id = editBtnEl.getAttribute('data-cc-edit-message');
         const row = M.state.messages.find(m => String(m.id) === String(id));
-        if (!row) { showFriendlyError('Unable to update message. Please try again.'); return; }
-        M.state.editingMessage = row;
-        M.state.replyToMessage = null;
         const input = $('communicationCentreReplyInput');
-        if (input) {
-          input.value = row.message_body || row.body || '';
-          input.focus();
-        }
-        renderReplyTargetPreview();
+        const next = normalizeText(input?.value);
+        if (!row || !next) { showFriendlyError('Type updated text in the reply box, then click Edit.'); return; }
+        const { error } = await db().from('communication_centre_messages').update({ message_body: next, edited_at: new Date().toISOString(), edited_by: global.Session?.user?.()?.id || null }).eq('id', id).eq('sender_id', global.Session?.user?.()?.id || '');
+        if (error) { console.error(error); showFriendlyError('Unable to update message. Please try again.'); return; }
+        if (input) input.value = '';
+        await openDetail(conversation.id);
       } else if (deleteBtnEl) {
         const id = deleteBtnEl.getAttribute('data-cc-delete-message');
-        try {
-          const res = await db().rpc('soft_delete_communication_centre_message', { p_message_id: id });
-          if (res.error) throw res.error;
-          await openDetail(conversation.id);
-          scheduleListRefresh('message-delete');
-        } catch (error) {
-          console.error('[Communication Centre] delete message failed', error);
-          showFriendlyError('Unable to delete message. Please try again.');
-        }
+        const { error } = await db().from('communication_centre_messages').update({ is_deleted: true, deleted_at: new Date().toISOString(), deleted_by: global.Session?.user?.()?.id || null }).eq('id', id).eq('sender_id', global.Session?.user?.()?.id || '');
+        if (error) { console.error(error); showFriendlyError('Unable to delete message. Please try again.'); return; }
+        await openDetail(conversation.id);
       } else if (reactBtnEl) {
         const messageId = reactBtnEl.getAttribute('data-cc-react');
         const reaction = reactBtnEl.getAttribute('data-reaction');
@@ -1226,7 +1131,7 @@
       }
       if (e.target?.id === 'communicationCentreBackToList') setMobileView('list');
       if (e.target?.id === 'communicationCentreBackToChat') setMobileView('chat');
-      if (e.target?.id === 'communicationCentreCancelReplyTarget') { M.state.replyToMessage = null; M.state.editingMessage = null; const input = $('communicationCentreReplyInput'); if (input) input.value = ''; renderReplyTargetPreview(); }
+      if (e.target?.id === 'communicationCentreCancelReplyTarget') { M.state.replyToMessage = null; renderReplyTargetPreview(); }
     });
     const replyBtn = $('communicationCentreReplyBtn');
     if (replyBtn) replyBtn.style.display = can('reply') ? '' : 'none';
@@ -1243,24 +1148,7 @@
       if (!conversation?.id) return showFriendlyError('Open a conversation first.');
       if (!body) return showFriendlyError('Please enter a reply message.');
       try {
-        const editing = M.state.editingMessage;
-        if (replyBtn) { replyBtn.disabled = true; replyBtn.textContent = editing ? 'Saving...' : 'Sending...'; }
-        if (editing?.id) {
-          const { error } = await db().rpc('edit_communication_centre_message', {
-            p_message_id: editing.id,
-            p_message_body: body
-          });
-          if (error) throw error;
-          if (input) input.value = '';
-          M.state.editingMessage = null;
-          M.state.replyToMessage = null;
-          if (replyError) { replyError.textContent=''; replyError.style.display='none'; }
-          await openDetail(conversation.id);
-          scheduleListRefresh('message-edit');
-          showFriendlySuccess('Message updated.');
-          if (replyBtn) { replyBtn.disabled = false; replyBtn.textContent = 'Send'; }
-          return;
-        }
+        if (replyBtn) { replyBtn.disabled = true; replyBtn.textContent = 'Sending...'; }
         const msgType = $('communicationCentreReplyType')?.value || 'message';
         const { error } = await db().rpc('add_communication_centre_reply', {
           p_conversation_id: conversation.id,
@@ -1277,7 +1165,6 @@
         if (replyError) { replyError.textContent=''; replyError.style.display='none'; }
         await openDetail(conversation.id);
         await refresh();
-        scheduleActiveRefresh('reply-sent');
         showFriendlySuccess('Reply sent successfully.');
         if (replyBtn) { replyBtn.disabled = false; replyBtn.textContent = 'Send'; }
         dispatchCommunicationCentreNotification({
@@ -1306,7 +1193,6 @@
       await openDetail(hashConversationId);
       if (isMobileViewport()) setMobileView('chat');
     }
-    setupRealtimeAutoUpdate();
     syncResponsiveLayout();
     global.addEventListener('resize', syncResponsiveLayout, { passive: true });
   };

@@ -2742,38 +2742,8 @@ body.permissions-loading [data-permission-resource][data-permission-action]{disp
 .cc-reaction-btn{cursor:pointer}.cc-reaction-btn:hover{transform:translateY(-1px);background:#eef4ff;border-color:#c7d7fe}
 @media (max-width:767px){.cc-reply-target{margin:8px 10px 0}.cc-reply-target span{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}.cc-message-status{font-size:10px}}
 
-/* Communication Centre edit/read/realtime polish */
-.cc-message-status{font-size:11px;font-weight:700;margin-top:6px;text-align:right;color:#94a3b8}
-.cc-message-status.sent,.cc-message-status.received{color:#8a94a6}
-.cc-message-status.read{color:#2563eb}
-.cc-reply-target{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:0 14px 10px;padding:10px 12px;border-left:3px solid #2563eb;background:#f8fbff;border-radius:10px;border-top:1px solid #e7edf8;border-right:1px solid #e7edf8;border-bottom:1px solid #e7edf8}
-.cc-reply-target strong{display:block;color:#172033;font-size:12px}.cc-reply-target span{display:block;color:#667085;font-size:12px;margin-top:2px}
-.cc-message-row.mine .cc-message-status{text-align:right}
-.cc-message-row.incoming .cc-message-status{text-align:left}
-
-
-/* Communication Centre details restore */
-#communicationCentreDrawerActions.cc-details-content,
-.cc-details-content{display:block;width:100%;padding-top:0;}
-.cc-details-content .cc-details-section{width:100%;box-sizing:border-box;}
-.cc-section-title-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;}
-.cc-section-title-row strong{margin-bottom:0;}
-.cc-detail-grid{display:grid;grid-template-columns:1fr;gap:8px;}
-.cc-detail-grid>div{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid #edf1f6;}
-.cc-detail-grid>div:last-child{border-bottom:0;}
-.cc-detail-grid span{font-size:11px;color:#667085;line-height:1.3;}
-.cc-detail-grid strong{font-size:12px;color:#172033;text-align:right;line-height:1.35;max-width:58%;overflow-wrap:anywhere;}
-.cc-participants-section{margin-bottom:12px;}
-.cc-participant-list{display:flex;flex-direction:column;gap:8px;}
-.cc-participant-card{display:flex;align-items:center;gap:10px;padding:8px;border:1px solid #edf1f6;background:#fbfdff;border-radius:10px;}
-.cc-participant-avatar{width:30px;height:30px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;background:#eaf2ff;color:#1d4ed8;font-size:11px;font-weight:700;flex:0 0 30px;}
-.cc-participant-info{min-width:0;display:flex;flex-direction:column;gap:2px;}
-.cc-participant-info strong{font-size:12px;color:#172033;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.cc-participant-info span{font-size:11px;color:#667085;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.cc-section-actions{padding-top:10px;}
-.cc-action-item-list{display:flex;flex-direction:column;gap:6px;margin-top:8px;}
-.cc-action-item-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px;border:1px solid #edf1f6;background:#fff;border-radius:9px;}
-.cc-action-item-row span{font-size:12px;color:#172033;overflow-wrap:anywhere;}
-.cc-action-item-row small{font-size:11px;color:#667085;text-transform:capitalize;}
-@media (min-width:1280px){.cc-detail-grid{grid-template-columns:1fr;}}
-@media (max-width:767px){.cc-detail-grid strong{max-width:62%;}.cc-details-content{padding-bottom:24px;}}
+/* Communication Centre assignment controls */
+.cc-assignment-manage-section{display:flex;flex-direction:column;gap:8px}
+.cc-assignment-manage-section label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.02em;color:#667085;margin-top:4px}
+.cc-assignment-manage-section .select{width:100%;min-height:36px;border-radius:9px;border:1px solid #dfe5ef;background:#fff;padding:7px 10px;color:#172033}
+.cc-assignment-hint{font-size:11px;line-height:1.4;background:#f8fbff;border:1px solid #edf1f6;border-radius:8px;padding:8px}
