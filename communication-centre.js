@@ -212,7 +212,7 @@
       const name = normalizeIdentityValue(row.user_name || row.name || row.email);
       return (uid && !identity.ids.has(uid)) || (name && !identity.names.has(name));
     });
-    const label = hasRead ? '✓✓ Read' : (hasOtherParticipants ? '✓ Received' : '✓ Sent');
+    const label = hasRead ? '✓✓ Read' : (hasOtherParticipants ? '✓✓ Received' : '✓ Sent');
     return `<div class="cc-message-status ${hasRead ? 'read' : 'received'}">${escapeHtml(label)}</div>`;
   }
 
@@ -1096,13 +1096,41 @@
       try {
         if (replyBtn) { replyBtn.disabled = true; replyBtn.textContent = 'Sending...'; }
         const msgType = $('communicationCentreReplyType')?.value || 'message';
-        const { error } = await db().rpc('add_communication_centre_reply', {
+        const replyPayload = {
           p_conversation_id: conversation.id,
           p_message_body: body,
           p_reply_to_message_id: M.state.replyToMessage?.id || null,
           p_message_type: msgType
-        });
-        if (error) throw error;
+        };
+        try {
+          const { error } = await db().rpc('add_communication_centre_reply', replyPayload);
+          if (error) throw error;
+        } catch (rpcError) {
+          console.warn('[Communication Centre] reply RPC failed, trying safe direct insert fallback', rpcError);
+          const current = global.Session?.user?.() || global.Session?.currentUser?.() || {};
+          const fallbackSenderId = current.id || current.user_id || current.profile_id || null;
+          const fallbackSenderName = global.Session?.displayName?.() || current.full_name || current.name || current.display_name || current.email || 'User';
+          const insertRow = {
+            conversation_id: conversation.id,
+            message_body: body,
+            sender_id: fallbackSenderId,
+            sender_name: fallbackSenderName,
+            is_system_message: false,
+            message_type: msgType,
+            reply_to_message_id: M.state.replyToMessage?.id || null
+          };
+          const fallback = await db().from('communication_centre_messages').insert(insertRow).select('id').maybeSingle();
+          if (fallback.error) {
+            console.error('[Communication Centre] direct reply fallback failed', fallback.error);
+            throw rpcError;
+          }
+          await db().from('communication_centre_conversations').update({
+            last_message_preview: body.slice(0, 240),
+            last_message_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            status: conversation.status === 'Closed' ? 'In Progress' : conversation.status
+          }).eq('id', conversation.id);
+        }
         const insertedBody = body;
         const tags = [...insertedBody.matchAll(/@([a-z0-9_]+)/gi)].map(m => m[1].toLowerCase());
         if (tags.length) console.log('[Communication Centre] mentions detected', tags);
