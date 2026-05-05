@@ -138,24 +138,53 @@
 
   async function ensurePermissionMatrixReady() {
     const P = global.Permissions;
-    if (!P || typeof P.loadMatrix !== 'function') return;
+    if (!P) return;
     try {
-      if (typeof P.isReady === 'function' && P.isReady()) return;
-      if (P.state?.loading) {
-        await new Promise(resolve => setTimeout(resolve, 250));
-        if (typeof P.isReady === 'function' && P.isReady()) return;
+      const ready = () => (typeof P.isReady === 'function' ? P.isReady() : Boolean(P.state?.loaded || P.state?.rows?.length));
+      if (ready()) return;
+      if (typeof P.loadMatrix === 'function') await P.loadMatrix(false);
+      for (let i = 0; i < 12 && !ready(); i += 1) {
+        await new Promise(resolve => setTimeout(resolve, 150));
       }
-      await P.loadMatrix(false);
     } catch (error) {
       console.warn('[Communication Centre] permission matrix load failed', error);
     }
   }
 
+  function hasManageAccessSync() {
+    if (!isAuthenticated()) return false;
+    if (M.state.accessGranted) return true;
+    if (hasDirectPermissionRow('manage')) return true;
+    return ['communication_centre', 'communicationcentre', 'communication-centre'].some(resource => permissionHas(resource, 'manage'));
+  }
+
+  async function checkBackendCommunicationCentreAccess() {
+    try {
+      const client = db();
+      if (!client?.rpc) return false;
+      const { data, error } = await client.rpc('cc_has_permission', { p_action: 'manage' });
+      if (error) throw error;
+      return data === true;
+    } catch (error) {
+      console.warn('[Communication Centre] backend access check failed', error);
+      return false;
+    }
+  }
+
   async function ensureCommunicationCentreAccess() {
     if (!isAuthenticated()) return false;
-    if (hasDirectPermissionRow('manage')) return true;
+    if (hasManageAccessSync()) {
+      M.state.accessGranted = true;
+      return true;
+    }
     await ensurePermissionMatrixReady();
-    return can('manage');
+    if (hasManageAccessSync()) {
+      M.state.accessGranted = true;
+      return true;
+    }
+    const backendAllowed = await checkBackendCommunicationCentreAccess();
+    M.state.accessGranted = backendAllowed;
+    return backendAllowed;
   }
 
   const can = action => {
@@ -174,7 +203,7 @@
 
     const normalActions = ['view', 'list', 'get', 'open', 'create', 'reply', 'update', 'close', 'reopen', 'manage', 'pin', 'archive', 'assign', 'follow_up', 'action_item'];
     if (normalActions.includes(normalizedAction)) {
-      return hasDirectPermissionRow('manage') || resources.some(resource => permissionHas(resource, 'manage'));
+      return hasManageAccessSync();
     }
 
     return hasDirectPermissionRow(normalizedAction) || resources.some(resource => permissionHas(resource, normalizedAction));
@@ -183,7 +212,7 @@
   const canManageConversation = () => can('manage');
   const canDeleteConversation = () => can('delete');
   function hasCommunicationCentreAccess() {
-    return canManageConversation();
+    return hasManageAccessSync();
   }
   function renderNoAccessState() {
     const container = $('communicationCentreView');
@@ -1291,6 +1320,7 @@
       renderNoAccessState();
       return;
     }
+    M.state.accessGranted = true;
     wireCreateButton();
     const role = String(global.Session?.role?.() || '').trim().toLowerCase();
     const canManage = can('manage');

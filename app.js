@@ -3059,14 +3059,8 @@ function setActiveView(view) {
     }
   };
   if (view === 'communicationCentre') {
-    const permissionsReady = typeof Permissions?.isReady === 'function' ? Permissions.isReady() : Boolean(Permissions?.state?.loaded);
-    if (permissionsReady && !Permissions.can('communication_centre', 'manage')) {
-      console.warn('[Communication Centre] access denied');
-      UI.toast('You do not have access to Communication Centre.');
-      const fallbackView = Session.role() ? 'issues' : 'issues';
-      if (fallbackView !== view) setActiveView(fallbackView);
-      return;
-    }
+    // Communication Centre performs its own permission gate after the role matrix/backend helper is ready.
+    // Do not block here with a potentially stale Permissions.can() result; it caused false no-access for allowed roles.
     if (!E.communicationCentreView) console.warn('Communication Centre container not found');
     if (window.CommunicationCentre && typeof window.CommunicationCentre.init === 'function') {
       runViewLoader('Communication Centre', () => window.CommunicationCentre.init());
@@ -5324,14 +5318,6 @@ function wireCore() {
   document.addEventListener('click', event => {
     const tab = event.target?.closest?.('#communicationCentreTab,[data-view="communication_centre"],[data-tab="communication_centre"],[href="#communication_centre"]');
     if (!tab) return;
-    const permissionsReady = typeof Permissions?.isReady === 'function' ? Permissions.isReady() : Boolean(Permissions?.state?.loaded);
-    if (permissionsReady && !Permissions.can('communication_centre', 'manage')) {
-      event.preventDefault();
-      event.stopPropagation();
-      console.warn('[Communication Centre] access denied');
-      UI.toast('You do not have access to Communication Centre.');
-      return;
-    }
     event.preventDefault();
     setActiveView('communication_centre');
   });
