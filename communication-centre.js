@@ -117,47 +117,37 @@
 
     const resources = ['communication_centre', 'communicationcentre', 'communication-centre'];
 
-    // Final Communication Centre business rule:
-    // every authenticated app user can perform all normal Communication Centre actions.
-    // Visibility is still protected by Supabase/RLS: admin sees all; other users only created/participant conversations.
-    // Delete is the only separate action and must be explicitly granted.
+    // Final Communication Centre access rule:
+    // communication_centre:manage is the ONLY normal access permission.
+    // Do not fall back to "authenticated user" and do not use view/list/get for module access.
+    // Delete remains separate and is never granted by manage.
     if (normalizedAction === 'delete') {
       return resources.some(resource => permissionHas(resource, 'delete', { directDeleteOnly: true }));
     }
 
-    if ([
-      'view',
-      'list',
-      'get',
-      'open',
-      'create',
-      'reply',
-      'update',
-      'close',
-      'reopen',
-      'manage'
-    ].includes(normalizedAction)) {
-      return true;
+    const normalActions = ['view', 'list', 'get', 'open', 'create', 'reply', 'update', 'close', 'reopen', 'manage', 'pin', 'archive', 'assign', 'follow_up', 'action_item'];
+    if (normalActions.includes(normalizedAction)) {
+      return resources.some(resource => permissionHas(resource, 'manage'));
     }
 
-    const actionMap = {
-      view: ['view', 'list', 'get', 'manage'],
-      list: ['view', 'list', 'get', 'manage'],
-      get: ['view', 'list', 'get', 'manage'],
-      open: ['view', 'list', 'get', 'manage'],
-      create: ['create', 'manage'],
-      reply: ['reply', 'manage'],
-      update: ['update', 'manage'],
-      close: ['close', 'manage'],
-      reopen: ['reopen', 'manage'],
-      manage: ['manage']
-    };
-    const candidates = actionMap[normalizedAction] || [normalizedAction, 'manage'];
-    return resources.some(resource => candidates.some(candidate => permissionHas(resource, candidate)));
+    return resources.some(resource => permissionHas(resource, normalizedAction));
   };
   const canOpenConversation = () => can('open');
   const canManageConversation = () => can('manage');
   const canDeleteConversation = () => can('delete');
+  function hasCommunicationCentreAccess() {
+    return canManageConversation();
+  }
+  function renderNoAccessState() {
+    const container = $('communicationCentreView');
+    if (!container) return;
+    container.innerHTML = `
+      <div class="card" style="max-width:720px;margin:32px auto;padding:24px;text-align:center;">
+        <h2 style="margin:0 0 8px;">Communication Centre</h2>
+        <p class="muted" style="margin:0;">You do not have access to Communication Centre.</p>
+      </div>
+    `;
+  }
   const escapeHtml = value => {
     if (global.U?.escapeHtml) return global.U.escapeHtml(value);
     return String(value ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
@@ -173,12 +163,9 @@
   const isMobileViewport = () => global.matchMedia ? global.matchMedia(`(max-width:${MOBILE_BREAKPOINT - 1}px)`).matches : global.innerWidth < MOBILE_BREAKPOINT;
   const isTabletViewport = () => global.innerWidth >= MOBILE_BREAKPOINT && global.innerWidth < TABLET_BREAKPOINT;
   function setMobileView(view) {
-    const previousView = M.state.mobileView;
     M.state.mobileView = ['list', 'chat', 'details'].includes(view) ? view : 'list';
     syncResponsiveLayout();
-    if (M.state.mobileView === 'chat' && previousView !== 'chat' && M.state.active?.id) {
-      setTimeout(() => scrollCommunicationCentreToBottom(true), 60);
-    }
+    if (M.state.mobileView === 'chat') scrollCommunicationCentreToBottom(true);
   }
   function setDetailsVisible(visible) {
     M.state.detailsVisible = visible !== false;
@@ -372,7 +359,6 @@
     try {
       const wasActiveConversation = String(M.state.active?.id || '') === String(id || '');
       const previousMessageCount = Array.isArray(M.state.messages) ? M.state.messages.length : 0;
-      const wasNearBottomBeforeRender = isCommunicationCentreNearBottom();
       const client = db();
       if (!client) {
         showFriendlyError('Unable to open conversation. Please refresh and try again.');
@@ -415,15 +401,8 @@
       }, {});
       renderDrawer({ skipAutoScroll: true });
       const hasNewMessages = wasActiveConversation && M.state.messages.length > previousMessageCount;
-      const isInitialOpen = !wasActiveConversation || options.forceScroll === true || options.reason === 'initial_open' || options.reason === 'deep_link' || options.reason === 'mobile_open' || options.reason === 'send_reply';
-      if (isInitialOpen) {
-        scrollCommunicationCentreToBottom(true);
-      } else if (hasNewMessages) {
-        scrollCommunicationCentreToBottom(wasNearBottomBeforeRender);
-      } else {
-        // Read-status, reaction, edit, delete, and status refreshes must not steal the user's scroll position.
-        hideNewMessagesButton();
-      }
+      if (options.forceScroll === true || !wasActiveConversation) scrollCommunicationCentreToBottom(true);
+      else scrollCommunicationCentreToBottom(!hasNewMessages);
       try {
         if (options.markRead !== false) await client.rpc('mark_communication_centre_read', { p_conversation_id: id });
         M.state.rows = (M.state.rows || []).map(row => String(row.id) === String(id) ? { ...row, unread_count: 0 } : row);
@@ -1240,6 +1219,10 @@
     bindOnce(button, 'NewConversation', event => {
       event.preventDefault();
       event.stopPropagation();
+      if (!can('create')) {
+        showFriendlyError('You do not have access to create Communication Centre conversations.');
+        return;
+      }
       openCreateModal();
     });
     if (button) button.setAttribute('type', 'button');
@@ -1253,6 +1236,11 @@
     const container = $('communicationCentreView');
     if (!container) {
       console.warn('[Communication Centre] container not found');
+      return;
+    }
+    if (!hasCommunicationCentreAccess()) {
+      console.warn('[Communication Centre] access denied');
+      renderNoAccessState();
       return;
     }
     wireCreateButton();
@@ -1292,13 +1280,12 @@
     const listWrap = $('communicationCentreList');
     bindOnce(listWrap, 'OpenRow', event => {
       const button = event.target.closest('[data-cc-open]');
-      if (!button) return;
       if (!canOpenConversation()) {
         showFriendlyError('You do not have permission to open this conversation.');
         return;
       }
-      if (isMobileViewport()) setMobileView('chat');
-      openDetail(button.getAttribute('data-cc-open'), { forceScroll: true, reason: isMobileViewport() ? 'mobile_open' : 'initial_open' });
+      if (button) openDetail(button.getAttribute('data-cc-open'));
+      if (button && isMobileViewport()) setMobileView('chat');
     });
     bindOnce($('communicationCentreMessages'), 'MessageActions', async event => {
       const replyBtnEl = event.target.closest('[data-cc-reply-message]');
@@ -1406,7 +1393,7 @@
         if (input) input.value = '';
         M.state.replyToMessage = null;
         if (replyError) { replyError.textContent=''; replyError.style.display='none'; }
-        await openDetail(conversation.id, { forceScroll: true, reason: 'send_reply' });
+        await openDetail(conversation.id);
         await refresh();
         scrollCommunicationCentreToBottom(true);
         showFriendlySuccess('Reply sent successfully.');
@@ -1452,6 +1439,12 @@
     if (tab && tab.dataset.ccClickFallbackBound !== 'true') {
       tab.dataset.ccClickFallbackBound = 'true';
       tab.addEventListener('click', event => {
+        if (!hasCommunicationCentreAccess()) {
+          event.preventDefault();
+          event.stopPropagation();
+          console.warn('[Communication Centre] access denied');
+          return;
+        }
         event.preventDefault();
         if (typeof global.setActiveView === 'function') {
           global.setActiveView('communication_centre');
