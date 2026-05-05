@@ -2735,3 +2735,9 @@ body.permissions-loading [data-permission-resource][data-permission-action]{disp
 .cc-chat-header .btn{white-space:nowrap}
 @media (max-width:1100px){#communicationCentreView.cc-details-hidden .cc-layout{grid-template-columns:minmax(280px,320px) 1fr;}}
 @media (max-width:767px){.cc-avatar{display:none}.cc-message-row{gap:0}.cc-message-actions{gap:4px}}
+.cc-reply-target{margin:10px 14px 0;padding:10px 12px;border:1px solid #bfdbfe;border-left:4px solid #2563eb;background:#eff6ff;border-radius:12px;display:flex;align-items:center;justify-content:space-between;gap:12px;color:#1e3a8a}
+.cc-reply-target div{min-width:0}.cc-reply-target strong{display:block;font-size:12px;margin-bottom:3px}.cc-reply-target span{display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#475569}
+.cc-message-status{margin-top:6px;font-size:11px;font-weight:700;text-align:right;color:#64748b}.cc-message-status.read{color:#2563eb}.cc-message-status.received{color:#64748b}
+.cc-message-row.incoming .cc-message-status{display:none}
+.cc-reaction-btn{cursor:pointer}.cc-reaction-btn:hover{transform:translateY(-1px);background:#eef4ff;border-color:#c7d7fe}
+@media (max-width:767px){.cc-reply-target{margin:8px 10px 0}.cc-reply-target span{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}.cc-message-status{font-size:10px}}

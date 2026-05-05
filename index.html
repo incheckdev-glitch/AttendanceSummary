@@ -26,7 +26,7 @@
   <link rel="mask-icon" href="/icons/maskable-icon.svg" color="#020617" />
 
   <!-- Your app styles -->
-  <link rel="stylesheet" href="styles.css?v=20260427-allpwa1" />
+  <link rel="stylesheet" href="styles.css?v=20260505-phase3-reply-read-fix1" />
 
   <!-- Vercel Web Analytics -->
   <script>
@@ -676,6 +676,7 @@ Sample:
             <div id="communicationCentreChatHeader" class="cc-chat-header"></div>
             <div id="communicationCentreMessages" class="cc-messages"></div>
             <div id="communicationCentreClosedMsg" class="muted" style="display:none;padding:12px;">This conversation is closed. Reopen it to continue replying.</div>
+            <div id="communicationCentreReplyTarget" class="cc-reply-target" style="display:none;"></div>
             <div id="communicationCentreReplyWrap" class="cc-composer"><select id="communicationCentreReplyType" class="select"><option value="message">Message</option><option value="internal_note">Internal Note</option></select><textarea id="communicationCentreReplyInput" class="input" rows="2" placeholder="Type your message… Use @name or @role."></textarea><button id="communicationCentreReplyBtn" class="btn">Send</button></div><div id="communicationCentreReplyError" class="muted" style="display:none;padding:0 12px 12px;color:#b42318;">Unable to send reply. Please try again.</div>
           </main>
           <aside id="communicationCentreDrawer" class="card cc-details"><div class="header"><button id="communicationCentreBackToChat" class="btn ghost sm cc-mobile-only" type="button">← Chat</button><h3>Details</h3><button id="communicationCentreDrawerClose" class="btn ghost sm" type="button">Hide</button></div><div id="communicationCentreDrawerMeta"></div><div id="communicationCentreParticipants"></div><div id="communicationCentreDrawerActions" class="actions"></div></aside>
@@ -3763,7 +3764,7 @@ Sample:
   <script src="lifecycle-analytics.js?v=20260427-allpwa1"></script>
   <script src="clients.js?v=20260427-allpwa1"></script>
   <script src="proposal-catalog.js?v=20260427-allpwa1"></script>
-  <script src="communication-centre.js?v=20260505-cc-chat-load-final1"></script>
+  <script src="communication-centre.js?v=20260505-phase3-reply-read-fix1"></script>
   <script src="notifications.js?v=20260427-allpwa1"></script>
   <script src="push-notifications.js?v=20260427-allpwa1"></script>
   <script src="workflow.js?v=20260427-allpwa1"></script>
