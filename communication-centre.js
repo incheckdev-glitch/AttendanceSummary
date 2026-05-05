@@ -665,25 +665,87 @@
   }
 
   async function dispatchCommunicationCentreNotification({ action, conversationId, actorId, conversationNo, conversationTitle }) {
+    const normalizedAction = String(action || '').trim();
+    const normalizedConversationId = String(conversationId || '').trim();
+    if (!normalizedAction || !normalizedConversationId) return null;
+
     try {
-      if (!global.NotificationService?.dispatchConfiguredNotification) return;
-      const deepLink = `#communication_centre?conversation_id=${encodeURIComponent(String(conversationId || '').trim())}`;
-      await global.NotificationService.dispatchConfiguredNotification({
+      const client = db();
+      if (client?.rpc) {
+        const { data, error } = await client.rpc('notify_communication_centre_event', {
+          p_conversation_id: normalizedConversationId,
+          p_action: normalizedAction
+        });
+        if (error) throw error;
+
+        const rows = Array.isArray(data) ? data : [];
+        const targetUserIds = [...new Set(rows.map(row => String(row?.recipient_user_id || '').trim()).filter(Boolean))];
+        const first = rows[0] || {};
+        const title = String(first.title || '').trim() || (
+          normalizedAction === 'conversation_created' ? 'New Communication Centre conversation' :
+          normalizedAction === 'reply_added' ? 'New Communication Centre reply' :
+          normalizedAction === 'conversation_closed' ? 'Communication Centre conversation closed' :
+          normalizedAction === 'conversation_reopened' ? 'Communication Centre conversation reopened' :
+          'Communication Centre notification'
+        );
+        const body = String(first.message || '').trim() || `Conversation ${conversationTitle || conversationNo || ''} was updated.`;
+        const url = `/#communication_centre?conversation_id=${encodeURIComponent(normalizedConversationId)}`;
+
+        console.log('[Communication Centre WhatsApp notification]', {
+          action: normalizedAction,
+          conversationId: normalizedConversationId,
+          recipients: targetUserIds,
+          inserted: rows.length
+        });
+
+        if (targetUserIds.length && global.Api?.sendWebPush) {
+          global.Api.sendWebPush({
+            resource: 'communication_centre',
+            action: normalizedAction,
+            record_id: normalizedConversationId,
+            title,
+            body,
+            url,
+            user_ids: targetUserIds,
+            data: {
+              resource: 'communication_centre',
+              action: normalizedAction,
+              conversation_id: normalizedConversationId,
+              conversation_no: conversationNo || '',
+              conversation_title: conversationTitle || '',
+              actor_user_id: actorId || ''
+            }
+          }, { context: `communication_centre:${normalizedAction}:whatsapp-direct` })
+            .catch(error => console.warn('[Communication Centre WhatsApp notification] push failed', error));
+        }
+
+        return { ok: true, recipients: targetUserIds, inserted: rows.length };
+      }
+    } catch (error) {
+      console.warn('[Communication Centre WhatsApp notification failed]', error);
+    }
+
+    // Last-resort compatibility fallback. This should not be the main path anymore.
+    try {
+      if (!global.NotificationService?.dispatchConfiguredNotification) return null;
+      const deepLink = `#communication_centre?conversation_id=${encodeURIComponent(normalizedConversationId)}`;
+      return await global.NotificationService.dispatchConfiguredNotification({
         resource: 'communication_centre',
-        action: String(action || '').trim(),
-        recordId: conversationId,
+        action: normalizedAction,
+        recordId: normalizedConversationId,
         actorId,
         deepLink,
         context: {
-          conversation_id: conversationId,
+          conversation_id: normalizedConversationId,
           conversation_no: conversationNo || '',
           conversation_title: conversationTitle || '',
           actor_name: global.Session?.displayName?.() || 'A user',
           deep_link: deepLink
         }
       });
-    } catch (error) {
-      console.warn('[Communication Centre notification failed]', error);
+    } catch (fallbackError) {
+      console.warn('[Communication Centre notification fallback failed]', fallbackError);
+      return null;
     }
   }
 
