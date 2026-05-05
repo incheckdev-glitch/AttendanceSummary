@@ -165,6 +165,7 @@
   function setMobileView(view) {
     M.state.mobileView = ['list', 'chat', 'details'].includes(view) ? view : 'list';
     syncResponsiveLayout();
+    if (M.state.mobileView === 'chat') scrollCommunicationCentreToBottom(true);
   }
   function setDetailsVisible(visible) {
     M.state.detailsVisible = visible !== false;
@@ -347,6 +348,8 @@
 
   async function openDetail(id) {
     try {
+      const wasActiveConversation = String(M.state.active?.id || '') === String(id || '');
+      const previousMessageCount = Array.isArray(M.state.messages) ? M.state.messages.length : 0;
       const client = db();
       if (!client) {
         showFriendlyError('Unable to open conversation. Please refresh and try again.');
@@ -388,6 +391,8 @@
         return acc;
       }, {});
       renderDrawer();
+      const hasNewMessages = wasActiveConversation && M.state.messages.length > previousMessageCount;
+      scrollCommunicationCentreToBottom(!hasNewMessages);
       try {
         await client.rpc('mark_communication_centre_read', { p_conversation_id: id });
         M.state.rows = (M.state.rows || []).map(row => String(row.id) === String(id) ? { ...row, unread_count: 0 } : row);
@@ -469,6 +474,39 @@
     const pageInfo = $('communicationCentrePageInfo');
     if (pageInfo) pageInfo.textContent = `Page ${M.state.page} • ${M.state.count} total`;
   }
+
+  function showNewMessagesButton() {
+    const button = $('communicationCentreNewMessagesBtn');
+    if (button) button.style.display = '';
+  }
+
+  function hideNewMessagesButton() {
+    const button = $('communicationCentreNewMessagesBtn');
+    if (button) button.style.display = 'none';
+  }
+
+  function isCommunicationCentreNearBottom() {
+    const el = $('communicationCentreMessages');
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+  }
+
+  function scrollCommunicationCentreToBottom(force = true) {
+    const el = $('communicationCentreMessages');
+    if (!el) return;
+    if (!force && !isCommunicationCentreNearBottom()) {
+      showNewMessagesButton();
+      return;
+    }
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+      setTimeout(() => {
+        el.scrollTop = el.scrollHeight;
+      }, 80);
+    });
+    hideNewMessagesButton();
+  }
+
   function renderDrawer() {
     const drawer = $('communicationCentreDrawer');
     if (!drawer || !M.state.active) return;
@@ -515,13 +553,14 @@
           </div>
         `;
       }).join('') : '<div class="muted" style="padding:20px;text-align:center;">Select a conversation to view messages.</div>';
-      messages.scrollTop = messages.scrollHeight;
+      scrollCommunicationCentreToBottom(true);
     }
     if (replyWrap) replyWrap.style.display = (conversation.status !== 'Closed' && can('reply')) ? '' : 'none';
     if (closedMsg) closedMsg.style.display = conversation.status === 'Closed' ? '' : 'none';
     renderReplyTargetPreview();
     renderDrawerActions();
     syncResponsiveLayout();
+    scrollCommunicationCentreToBottom(true);
   }
 
   function renderDrawerActions() {
@@ -1120,6 +1159,10 @@
         await openDetail(conversation.id);
       }
     }, { once: false });
+    $('communicationCentreMessages')?.addEventListener('scroll', () => {
+      if (isCommunicationCentreNearBottom()) hideNewMessagesButton();
+    }, { passive: true });
+    bindOnce($('communicationCentreNewMessagesBtn'), 'NewMessages', () => scrollCommunicationCentreToBottom(true));
     bindOnce($('communicationCentreDrawerClose'), 'DrawerClose', () => {
       if (isMobileViewport() || isTabletViewport()) setMobileView('chat');
       else setDetailsVisible(false);
@@ -1165,6 +1208,7 @@
         if (replyError) { replyError.textContent=''; replyError.style.display='none'; }
         await openDetail(conversation.id);
         await refresh();
+        scrollCommunicationCentreToBottom(true);
         showFriendlySuccess('Reply sent successfully.');
         if (replyBtn) { replyBtn.disabled = false; replyBtn.textContent = 'Send'; }
         dispatchCommunicationCentreNotification({
