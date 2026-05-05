@@ -125,7 +125,8 @@ function isAllowedSystemRolePush(input: Record<string, unknown>) {
     'invoices',
     'receipts',
     'workflow',
-    'notifications'
+    'notifications',
+    'communication_centre'
   ]);
   return allowedResources.has(resource);
 }
@@ -238,8 +239,10 @@ Deno.serve(async req => {
             ownedIds.length === targetSubscriptionIds.length &&
             (ownedRows || []).every(row => normalizeString(row.user_id) === auth.userId);
         }
+        const resource = getPayloadResource(body);
         const isAllowedRoleSystemPush = targetRoles.length > 0 && isAllowedSystemRolePush(body);
-        if (!targetsOwnUserOnly && !targetsOwnSubscriptionsOnly && !isAllowedRoleSystemPush) {
+        const isAllowedCommunicationCentrePush = resource === 'communication_centre' && targetUserIds.length > 0;
+        if (!targetsOwnUserOnly && !targetsOwnSubscriptionsOnly && !isAllowedRoleSystemPush && !isAllowedCommunicationCentrePush) {
           return new Response(
             JSON.stringify({
               error: 'Not authorized. Authenticated users may only send test pushes to their own user/subscription or approved system role pushes.',

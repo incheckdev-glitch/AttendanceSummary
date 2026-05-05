@@ -10,7 +10,8 @@
     operations_onboarding: ['onboarding_created','operations_onboarding_created','onboarding_status_changed','onboarding_request_submitted','assigned_csm'],
     technical_admin_requests: ['technical_request_submitted','technical_request_status_changed'],
     events: ['event_created','event_updated','event_status_changed','event_schedule_changed','event_deleted'],
-    workflow: ['workflow_approval_requested','workflow_approved','workflow_rejected']
+    workflow: ['workflow_approval_requested','workflow_approved','workflow_rejected'],
+    communication_centre: ['conversation_created','reply_added','conversation_closed','conversation_reopened','user_mentioned','role_mentioned','conversation_escalated','action_item_assigned','action_item_completed']
   };
 
   const ACTION_ALIASES = {
@@ -255,62 +256,103 @@
     return normalizeList(rule.users_from_record ?? rule.usersFromRecord ?? rule.dynamic_recipients ?? rule.dynamicRecipients);
   }
   function getRuleRecipientMode(rule = {}) {
-    return normalizeAction(rule.recipient_mode ?? rule.recipientMode ?? '');
+    const direct = normalizeAction(rule.recipient_mode ?? rule.recipientMode ?? '');
+    if (direct) return direct;
+    const fromRecord = getRuleUsersFromRecord(rule)
+      .map(normalizeAction)
+      .find(value => COMMUNICATION_CENTRE_RECIPIENT_MODES.has(value));
+    return fromRecord || '';
   }
-  async function resolveCommunicationCentreRecipients({ conversationId = '', actorId = '', recipientMode = '' } = {}) {
-    const mode = normalizeAction(recipientMode) || 'participants_except_actor';
-    const client = global.SupabaseClient?.getClient?.();
-    if (!conversationId || !client) return [];
-    const { data: participants, error: participantsError } = await client
-      .from('communication_centre_participants')
-      .select('user_id,participant_type')
-      .eq('conversation_id', conversationId);
-    if (participantsError) throw participantsError;
 
-    const rows = Array.isArray(participants) ? participants : [];
-    const actor = String(actorId || '').trim();
-    const isActor = (id) => actor && String(id || '').trim() === actor;
-
-    if (mode === 'creator') {
-      const { data: conversation, error: conversationError } = await client
-        .from('communication_centre_conversations')
-        .select('created_by')
-        .eq('id', conversationId)
-        .maybeSingle();
-      if (conversationError) throw conversationError;
-      const creatorId = String(conversation?.created_by || '').trim();
-      return creatorId && !isActor(creatorId) ? [creatorId] : [];
-    }
-
-    let filtered = rows;
-    if (mode === 'assigned_participants_except_actor') {
-      const allowed = new Set(['assigned_user', 'assigned_role_snapshot', 'manual']);
-      filtered = rows.filter(row => allowed.has(normalizeAction(row?.participant_type)));
-    }
-    const ids = filtered.map(row => String(row?.user_id || '').trim()).filter(Boolean);
-    const finalIds = mode === 'all_participants' ? ids : ids.filter(id => !isActor(id));
-    return [...new Set(finalIds)];
-  }
-  async function resolve_communication_centre_notification_recipients(conversationId = '', actorId = '', recipientMode = '') {
-    const userIds = await resolveCommunicationCentreRecipients({ conversationId, actorId, recipientMode });
-    return { userIds, emails: [] };
-  }
-  async function resolveCommunicationCentreRecipientsByMode(recipientMode = '', recordId = '', actorUserId = '') {
-    return resolve_communication_centre_notification_recipients(recordId, actorUserId, recipientMode);
-  }
-  function renderNotificationTemplate(template = '', context = {}) {
-    const map = {
-      actor_name: context.actor_name ?? '',
-      conversation_title: context.conversation_title ?? '',
-      conversation_no: context.conversation_no ?? '',
-      conversation_id: context.conversation_id ?? ''
+  function getCurrentActorIds(actorUserId = '', metadata = {}) {
+    const ids = new Set();
+    const add = value => {
+      const v = String(value || '').trim();
+      if (v) ids.add(v);
     };
-    return String(template || '').replace(/\{([a-z0-9_]+)\}/gi, (_m, key) => String(map[key] ?? ''));
+    add(actorUserId);
+    add(metadata?.actor_user_id);
+    add(metadata?.actor_id);
+    const user = global.Session?.user?.() || global.Session?.currentUser?.() || {};
+    ['id', 'user_id', 'profile_id', 'auth_user_id', 'uuid'].forEach(key => add(user?.[key]));
+    return ids;
+  }
+
+  async function resolveCommunicationCentreRecipientsByMode(recipientMode = '', recordId = '', actorUserId = '', metadata = {}) {
+    const mode = normalizeAction(recipientMode);
+    if (!recordId || !mode || !COMMUNICATION_CENTRE_RECIPIENT_MODES.has(mode)) return { userIds: [], emails: [] };
+    const client = global.SupabaseClient?.getClient?.();
+    if (!client) return { userIds: [], emails: [] };
+
+    // Prefer the database resolver when available because it mirrors Notification Setup rules.
+    try {
+      const { data, error } = await client.rpc('resolve_communication_centre_notification_recipients', {
+        p_conversation_id: recordId,
+        p_actor_id: actorUserId || metadata?.actor_user_id || metadata?.actor_id || null,
+        p_recipient_mode: mode
+      });
+      if (!error && Array.isArray(data)) {
+        const userIds = [...new Set(data.map(row => String(row?.recipient_user_id || row?.user_id || '').trim()).filter(Boolean))];
+        const emails = [...new Set(data.map(row => String(row?.recipient_email || row?.email || '').trim().toLowerCase()).filter(isValidEmail))];
+        return { userIds, emails };
+      }
+      if (error) console.warn('[notifications] communication centre recipient RPC failed, falling back to table resolver', error);
+    } catch (error) {
+      console.warn('[notifications] communication centre recipient RPC unavailable, falling back to table resolver', error);
+    }
+
+    const { data, error } = await client
+      .from('communication_centre_participants')
+      .select('user_id,participant_type,user_email,email')
+      .eq('conversation_id', recordId);
+    if (error) throw error;
+
+    const actorIds = getCurrentActorIds(actorUserId, metadata);
+    const rows = Array.isArray(data) ? data : [];
+    const includeRow = row => {
+      const participantType = String(row?.participant_type || '').trim().toLowerCase();
+      const userId = String(row?.user_id || '').trim();
+      const isActor = userId && actorIds.has(userId);
+
+      if (mode === 'all_participants') return true;
+      if (mode === 'creator') return participantType === 'creator' && !isActor;
+      if (mode === 'participants_except_actor') return !isActor;
+      if (mode === 'assigned_users') return participantType === 'assigned_user';
+      if (mode === 'assigned_users_except_actor') return participantType === 'assigned_user' && !isActor;
+      if (mode === 'assigned_role_snapshot') return ['assigned_role_snapshot', 'assigned_role'].includes(participantType);
+      if (mode === 'assigned_role_snapshot_except_actor') return ['assigned_role_snapshot', 'assigned_role'].includes(participantType) && !isActor;
+      if (mode === 'assigned_participants_except_actor') {
+        return ['assigned_user', 'assigned_role_snapshot', 'assigned_role', 'manual'].includes(participantType) && !isActor;
+      }
+      return !isActor;
+    };
+
+    const filtered = rows.filter(includeRow);
+    return {
+      userIds: [...new Set(filtered.map(row => String(row?.user_id || '').trim()).filter(Boolean))],
+      emails: [...new Set(filtered.map(row => String(row?.user_email || row?.email || '').trim().toLowerCase()).filter(isValidEmail))]
+    };
+  }
+
+  function renderNotificationTemplate(template = '', context = {}) {
+    return String(template || '').replace(/\{([a-zA-Z0-9_]+)\}/g, (_match, key) => {
+      const candidates = [
+        context?.[key],
+        context?.metadata?.[key],
+        key === 'conversation_id' ? context?.recordId : undefined,
+        key === 'record_id' ? context?.recordId : undefined,
+        key === 'actor_name' ? (context?.metadata?.actor_name || global.Session?.displayName?.()) : undefined,
+        key === 'conversation_title' ? context?.metadata?.conversation_title : undefined,
+        key === 'conversation_no' ? context?.metadata?.conversation_no : undefined
+      ];
+      const value = candidates.find(item => item !== undefined && item !== null && String(item).trim() !== '');
+      return value === undefined || value === null ? '' : String(value);
+    });
   }
 
   function isRuleEnabled(rule = {}) {
     if (!rule) return true;
-    const enabledValue = rule.is_enabled ?? rule.isEnabled ?? rule.enabled ?? rule.active;
+    const enabledValue = rule.is_enabled ?? rule.isEnabled ?? rule.enabled ?? rule.active ?? rule.is_active ?? rule.isActive;
     if (enabledValue === false) return false;
     if (String(enabledValue).trim().toLowerCase() === 'false') return false;
     if (String(enabledValue).trim() === '0') return false;
@@ -354,6 +396,20 @@
   }
 
   async function listNotificationRules() {
+    const client = global.SupabaseClient?.getClient?.();
+    if (client) {
+      try {
+        const { data, error } = await client
+          .from('notification_rules')
+          .select('*')
+          .order('resource', { ascending: true })
+          .order('action', { ascending: true });
+        if (!error && Array.isArray(data)) return data;
+        if (error) console.warn('[notifications] direct notification_rules load failed, trying API fallback', error);
+      } catch (error) {
+        console.warn('[notifications] direct notification_rules load crashed, trying API fallback', error);
+      }
+    }
     const response = await global.Api.listNotificationSettings();
     return Array.isArray(response?.rows) ? response.rows : (Array.isArray(response) ? response : []);
   }
@@ -371,11 +427,24 @@
     return ruleKeys.some(key => aliases.has(key));
   }
 
+  const COMMUNICATION_CENTRE_RECIPIENT_MODES = new Set([
+    'assigned_participants_except_actor',
+    'participants_except_actor',
+    'all_participants',
+    'creator',
+    'assigned_users',
+    'assigned_users_except_actor',
+    'assigned_role_snapshot',
+    'assigned_role_snapshot_except_actor'
+  ]);
+
   function resolveDynamicRecipientEmails(rule = {}, metadata = {}) {
     const record = metadata && typeof metadata === 'object' ? metadata : {};
     const emails = [];
     getRuleUsersFromRecord(rule).forEach(key => {
       const normalizedKey = normalizeAction(key);
+      // Communication Centre uses users_from_record as a recipient resolver mode, not an email field.
+      if (COMMUNICATION_CENTRE_RECIPIENT_MODES.has(normalizedKey)) return;
       const candidates = normalizedKey === 'requester_email'
         ? [record.requester_email, record.email_addressee, record.emailAddressee, record.requesterEmail]
         : normalizedKey === 'owner_email'
@@ -478,17 +547,37 @@
     return routeMap[normalizedResource] || `/#${encodeURIComponent(normalizedResource)}?id=${encodedId}`;
   }
 
+  async function createInAppNotifications({ userIds = [], title = '', body = '', resource = '', action = '', recordId = '', url = '', metadata = {} } = {}) {
+    const client = global.SupabaseClient?.getClient?.();
+    const targets = [...new Set(normalizeList(userIds))].filter(Boolean);
+    if (!client || !targets.length) return { attempted: false, created: 0, skipped: true };
+    let created = 0;
+    for (const targetUserId of targets) {
+      try {
+        const { data, error } = await client.rpc('create_notification_event', {
+          p_title: title || 'Notification',
+          p_message: body || '',
+          p_type: 'business',
+          p_resource: resource || 'notifications',
+          p_resource_id: String(recordId || ''),
+          p_priority: 'normal',
+          p_link_target: url || '',
+          p_meta: metadata && typeof metadata === 'object' ? metadata : {},
+          p_target_user_id: targetUserId,
+          p_target_role: null,
+          p_target_roles: null,
+          p_dedupe_key: `${resource}:${action}:${recordId}:${targetUserId}:${Date.now()}`
+        });
+        if (error) throw error;
+        created += Array.isArray(data) ? data.length : 1;
+      } catch (error) {
+        console.warn('[notifications] in-app notification create failed', { resource, action, targetUserId, error: error?.message || String(error) });
+      }
+    }
+    return { attempted: true, created };
+  }
+
   const NotificationService = {
-    async dispatchConfiguredNotification({ resource = '', action = '', recordId = '', actorId = '', deepLink = '', context = {} } = {}) {
-      return this.sendBusinessNotification({
-        resource,
-        action,
-        eventKey: `${resource}.${action}`,
-        recordId,
-        url: deepLink,
-        metadata: { ...(context || {}), actor_user_id: actorId }
-      });
-    },
     async sendBusinessNotification({ resource = '', action = '', eventKey = '', recordId = '', recordNumber = '', title = '', body = '', targetUsers = [], targetEmails = [], url = '', metadata = {}, channels = ['in_app', 'push', 'email'], roles = ['admin'] } = {}) {
       const normalizedResource = String(resource || '').trim();
       const normalizedAction = String(action || '').trim();
@@ -526,7 +615,7 @@
       const recipientMode = rule ? getRuleRecipientMode(rule) : '';
       let modeRecipients = { userIds: [], emails: [] };
       if (rule && normalizedResource === 'communication_centre' && recipientMode) {
-        modeRecipients = await resolveCommunicationCentreRecipientsByMode(recipientMode, recordId, metadata?.actor_user_id || metadata?.actor_id || '');
+        modeRecipients = await resolveCommunicationCentreRecipientsByMode(recipientMode, recordId, metadata?.actor_user_id || metadata?.actor_id || '', metadata);
       }
       const directTargets = directUsers.length > 0 || directEmails.length > 0;
       const hasConfiguredRecipients = Boolean(assignedRoles.length || assignedUsers.length || assignedEmails.length || dynamicEmails.length || modeRecipients.userIds.length || directTargets);
@@ -539,15 +628,6 @@
       const userIds = [...new Set([...directUsers, ...assignedUsers, ...modeRecipients.userIds, ...roleRecipients.userIds])];
       const userIdEmails = await resolveEmailsForUserIds(userIds);
       const emails = [...new Set([...directEmails, ...assignedEmails, ...dynamicEmails, ...roleRecipients.emails, ...userIdEmails])];
-      if (normalizedResource === 'communication_centre') {
-        console.log('[Communication Centre notification]', {
-          action: normalizedAction,
-          conversationId: recordId,
-          actorId: metadata?.actor_user_id || metadata?.actor_id || '',
-          rule,
-          recipients: userIds
-        });
-      }
       if (!userIds.length && !emails.length && (rule || isKnownNotificationAction(normalizedResource, normalizedAction))) {
         return skipNotification({ resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, reason: 'no_notification_recipients_resolved' });
       }
@@ -579,14 +659,6 @@
       }
 
       const normalizedRecordId = String(recordId || '').trim();
-      const templateContext = {
-        actor_name: metadata?.actor_name || metadata?.actorName || metadata?.created_by_name || '',
-        conversation_title: metadata?.conversation_title || metadata?.conversationTitle || '',
-        conversation_no: metadata?.conversation_no || metadata?.conversationNo || '',
-        conversation_id: metadata?.conversation_id || metadata?.conversationId || normalizedRecordId || ''
-      };
-      const resolvedTitle = rule?.title_template ? renderNotificationTemplate(rule.title_template, templateContext) : title;
-      const resolvedBody = rule?.body_template ? renderNotificationTemplate(rule.body_template, templateContext) : body;
       const ticketBusinessId =
         metadata?.ticket_id ||
         metadata?.ticketId ||
@@ -594,15 +666,38 @@
         metadata?.ticketNumber ||
         recordNumber ||
         recordId;
-      const finalDeepLink = rule?.deep_link_template ? renderNotificationTemplate(rule.deep_link_template, templateContext) : '';
-      const finalUrl = String(finalDeepLink || url || '').trim() || (
+      let finalUrl = String(url || '').trim() || (
         normalizedResource === 'tickets'
           ? `/#tickets?ticket_id=${encodeURIComponent(String(ticketBusinessId || '').trim() || normalizedRecordId)}`
           : buildNotificationRoute(normalizedResource, normalizedRecordId)
       );
+      if (rule?.deep_link_template && !String(url || '').trim()) {
+        const renderedLink = renderNotificationTemplate(rule.deep_link_template, { resource: normalizedResource, action: normalizedAction, recordId: normalizedRecordId, metadata });
+        if (renderedLink) finalUrl = renderedLink.startsWith('/') || renderedLink.startsWith('#') || /^https?:\/\//i.test(renderedLink)
+          ? (renderedLink.startsWith('#') ? `/${renderedLink}` : renderedLink)
+          : `/${renderedLink}`;
+      }
+      const renderedTitle = rule?.title_template
+        ? renderNotificationTemplate(rule.title_template, { resource: normalizedResource, action: normalizedAction, recordId: normalizedRecordId, metadata })
+        : title;
+      const renderedBody = rule?.body_template
+        ? renderNotificationTemplate(rule.body_template, { resource: normalizedResource, action: normalizedAction, recordId: normalizedRecordId, metadata })
+        : body;
+      if (normalizedResource === 'communication_centre') {
+        console.info('[Communication Centre notification]', {
+          action: normalizedAction,
+          conversationId: normalizedRecordId,
+          actorId: metadata?.actor_user_id || metadata?.actor_id || null,
+          ruleFound: Boolean(rule),
+          recipientMode,
+          userIds,
+          emails,
+          channels: decision.channels
+        });
+      }
       const payload = {
-        title: resolvedTitle || title || 'InCheck360 notification',
-        body: resolvedBody || body || 'A record was updated.',
+        title: renderedTitle || title || 'InCheck360 notification',
+        body: renderedBody || body || 'A record was updated.',
         resource: normalizedResource,
         action: normalizedAction,
         event_key: normalizedEventKey,
@@ -628,6 +723,19 @@
         emails: emailRecipients,
         target_roles: assignedRoles
       };
+      if (decision.channels.in_app) {
+        await createInAppNotifications({
+          userIds,
+          title: payload.title,
+          body: payload.body,
+          resource: normalizedResource,
+          action: normalizedAction,
+          recordId: normalizedRecordId,
+          url: payload.url,
+          metadata: payload.data
+        });
+      }
+
       let pushResult = { attempted: false, skipped: true, reason: 'push-disabled-by-rule' };
       if (decision.channels.push) {
         try {
