@@ -664,20 +664,20 @@
     M.readPollingTimer = null;
   }
 
-  async function dispatchCommunicationCentreNotification({ action, conversationId, actorId, title, body, conversationNo, conversationTitle }) {
+  async function dispatchCommunicationCentreNotification({ action, conversationId, actorId, conversationNo, conversationTitle }) {
     try {
-      if (!global.NotificationService?.sendBusinessNotification) return;
-      const url = `/#communication_centre?conversation_id=${encodeURIComponent(conversationId)}`;
-      await global.NotificationService.sendBusinessNotification({
+      if (!global.NotificationService?.dispatchConfiguredNotification) return;
+      await global.NotificationService.dispatchConfiguredNotification({
         resource: 'communication_centre',
         action: String(action || '').trim(),
-        eventKey: `communication_centre.${String(action || '').trim()}`,
         recordId: conversationId,
-        title,
-        body,
-        url,
-        metadata: { actor_user_id: actorId, conversation_id: conversationId, conversation_no: conversationNo || '', conversation_title: conversationTitle || '' },
-        channels: ['in_app', 'push', 'email']
+        actorId,
+        context: {
+          conversation_id: conversationId,
+          conversation_no: conversationNo || '',
+          conversation_title: conversationTitle || '',
+          actor_name: global.Session?.displayName?.() || 'A user'
+        }
       });
     } catch (error) {
       console.warn('[Communication Centre] notification dispatch failed', error);
@@ -1177,8 +1177,6 @@
           action: 'conversation_created',
           conversationId: conversation.id,
           actorId: conversation.created_by,
-          title: 'New Communication Centre conversation',
-          body: `${conversation.created_by_name || global.Session?.displayName?.() || 'A user'} created “${conversation.title || title}”`,
           conversationNo: conversation.conversation_no,
           conversationTitle: conversation.title || title
         });
@@ -1217,8 +1215,6 @@
         action: 'conversation_closed',
         conversationId: conversation.id,
         actorId: global.Session?.user?.()?.id,
-        title: 'Communication Centre conversation closed',
-        body: `${global.Session?.displayName?.() || 'A user'} closed “${conversation.title}”`,
         conversationNo: conversation.conversation_no,
         conversationTitle: conversation.title
       });
@@ -1241,8 +1237,6 @@
         action: 'conversation_reopened',
         conversationId: conversation.id,
         actorId: global.Session?.user?.()?.id,
-        title: 'Communication Centre conversation reopened',
-        body: `${global.Session?.displayName?.() || 'A user'} reopened “${conversation.title}”`,
         conversationNo: conversation.conversation_no,
         conversationTitle: conversation.title
       });
@@ -1481,8 +1475,6 @@
           actorId: global.Session?.user?.()?.id,
           conversationNo: conversation.conversation_no,
           conversationTitle: conversation.title,
-          title: 'New Communication Centre reply',
-          body: `${global.Session?.displayName?.() || 'A user'} replied to “${conversation.title}”`,
           conversationId: conversation.id
         });
       } catch (error) {

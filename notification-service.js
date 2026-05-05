@@ -257,21 +257,52 @@
   function getRuleRecipientMode(rule = {}) {
     return normalizeAction(rule.recipient_mode ?? rule.recipientMode ?? '');
   }
-  async function resolveCommunicationCentreRecipientsByMode(recipientMode = '', recordId = '', actorUserId = '') {
-    const mode = normalizeAction(recipientMode);
-    if (!recordId || !mode) return { userIds: [], emails: [] };
-    const supported = new Set(['participants_except_actor', 'all_participants', 'creator', 'assigned_users', 'assigned_role_snapshot']);
-    if (!supported.has(mode)) return { userIds: [], emails: [] };
+  async function resolveCommunicationCentreRecipients({ conversationId = '', actorId = '', recipientMode = '' } = {}) {
+    const mode = normalizeAction(recipientMode) || 'participants_except_actor';
     const client = global.SupabaseClient?.getClient?.();
-    if (!client) return { userIds: [], emails: [] };
-    const { data, error } = await client.from('communication_centre_participants').select('user_id,participant_type').eq('conversation_id', recordId);
-    if (error) throw error;
-    let ids = (Array.isArray(data) ? data : []).map(row => String(row?.user_id || '').trim()).filter(Boolean);
-    if (mode === 'creator') ids = ids.filter((_id, idx) => String(data[idx]?.participant_type || '').toLowerCase() === 'creator');
-    if (mode === 'assigned_users') ids = ids.filter((_id, idx) => String(data[idx]?.participant_type || '').toLowerCase() === 'assigned_user');
-    if (mode === 'assigned_role_snapshot') ids = ids.filter((_id, idx) => String(data[idx]?.participant_type || '').toLowerCase() === 'assigned_role');
-    if (mode === 'participants_except_actor' && actorUserId) ids = ids.filter(id => id !== String(actorUserId));
-    return { userIds: [...new Set(ids)], emails: [] };
+    if (!conversationId || !client) return [];
+    const { data: participants, error: participantsError } = await client
+      .from('communication_centre_participants')
+      .select('user_id,participant_type')
+      .eq('conversation_id', conversationId);
+    if (participantsError) throw participantsError;
+
+    const rows = Array.isArray(participants) ? participants : [];
+    const actor = String(actorId || '').trim();
+    const isActor = (id) => actor && String(id || '').trim() === actor;
+
+    if (mode === 'creator') {
+      const { data: conversation, error: conversationError } = await client
+        .from('communication_centre_conversations')
+        .select('created_by')
+        .eq('id', conversationId)
+        .maybeSingle();
+      if (conversationError) throw conversationError;
+      const creatorId = String(conversation?.created_by || '').trim();
+      return creatorId && !isActor(creatorId) ? [creatorId] : [];
+    }
+
+    let filtered = rows;
+    if (mode === 'assigned_participants_except_actor') {
+      const allowed = new Set(['assigned_user', 'assigned_role_snapshot', 'manual']);
+      filtered = rows.filter(row => allowed.has(normalizeAction(row?.participant_type)));
+    }
+    const ids = filtered.map(row => String(row?.user_id || '').trim()).filter(Boolean);
+    const finalIds = mode === 'all_participants' ? ids : ids.filter(id => !isActor(id));
+    return [...new Set(finalIds)];
+  }
+  async function resolveCommunicationCentreRecipientsByMode(recipientMode = '', recordId = '', actorUserId = '') {
+    const userIds = await resolveCommunicationCentreRecipients({ conversationId: recordId, actorId: actorUserId, recipientMode });
+    return { userIds, emails: [] };
+  }
+  function renderNotificationTemplate(template = '', context = {}) {
+    const map = {
+      actor_name: context.actor_name ?? '',
+      conversation_title: context.conversation_title ?? '',
+      conversation_no: context.conversation_no ?? '',
+      conversation_id: context.conversation_id ?? ''
+    };
+    return String(template || '').replace(/\{([a-z0-9_]+)\}/gi, (_m, key) => String(map[key] ?? ''));
   }
 
   function isRuleEnabled(rule = {}) {
@@ -445,6 +476,15 @@
   }
 
   const NotificationService = {
+    async dispatchConfiguredNotification({ resource = '', action = '', recordId = '', actorId = '', context = {} } = {}) {
+      return this.sendBusinessNotification({
+        resource,
+        action,
+        eventKey: `${resource}.${action}`,
+        recordId,
+        metadata: { ...(context || {}), actor_user_id: actorId }
+      });
+    },
     async sendBusinessNotification({ resource = '', action = '', eventKey = '', recordId = '', recordNumber = '', title = '', body = '', targetUsers = [], targetEmails = [], url = '', metadata = {}, channels = ['in_app', 'push', 'email'], roles = ['admin'] } = {}) {
       const normalizedResource = String(resource || '').trim();
       const normalizedAction = String(action || '').trim();
@@ -526,6 +566,14 @@
       }
 
       const normalizedRecordId = String(recordId || '').trim();
+      const templateContext = {
+        actor_name: metadata?.actor_name || metadata?.actorName || metadata?.created_by_name || '',
+        conversation_title: metadata?.conversation_title || metadata?.conversationTitle || '',
+        conversation_no: metadata?.conversation_no || metadata?.conversationNo || '',
+        conversation_id: metadata?.conversation_id || metadata?.conversationId || normalizedRecordId || ''
+      };
+      const resolvedTitle = rule?.title_template ? renderNotificationTemplate(rule.title_template, templateContext) : title;
+      const resolvedBody = rule?.body_template ? renderNotificationTemplate(rule.body_template, templateContext) : body;
       const ticketBusinessId =
         metadata?.ticket_id ||
         metadata?.ticketId ||
@@ -533,14 +581,15 @@
         metadata?.ticketNumber ||
         recordNumber ||
         recordId;
-      const finalUrl = String(url || '').trim() || (
+      const finalDeepLink = rule?.deep_link_template ? renderNotificationTemplate(rule.deep_link_template, templateContext) : '';
+      const finalUrl = String(finalDeepLink || url || '').trim() || (
         normalizedResource === 'tickets'
           ? `/#tickets?ticket_id=${encodeURIComponent(String(ticketBusinessId || '').trim() || normalizedRecordId)}`
           : buildNotificationRoute(normalizedResource, normalizedRecordId)
       );
       const payload = {
-        title: title || 'InCheck360 notification',
-        body: body || 'A record was updated.',
+        title: resolvedTitle || title || 'InCheck360 notification',
+        body: resolvedBody || body || 'A record was updated.',
         resource: normalizedResource,
         action: normalizedAction,
         event_key: normalizedEventKey,
