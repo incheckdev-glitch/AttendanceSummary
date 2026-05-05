@@ -291,9 +291,12 @@
     const finalIds = mode === 'all_participants' ? ids : ids.filter(id => !isActor(id));
     return [...new Set(finalIds)];
   }
-  async function resolveCommunicationCentreRecipientsByMode(recipientMode = '', recordId = '', actorUserId = '') {
-    const userIds = await resolveCommunicationCentreRecipients({ conversationId: recordId, actorId: actorUserId, recipientMode });
+  async function resolve_communication_centre_notification_recipients(conversationId = '', actorId = '', recipientMode = '') {
+    const userIds = await resolveCommunicationCentreRecipients({ conversationId, actorId, recipientMode });
     return { userIds, emails: [] };
+  }
+  async function resolveCommunicationCentreRecipientsByMode(recipientMode = '', recordId = '', actorUserId = '') {
+    return resolve_communication_centre_notification_recipients(recordId, actorUserId, recipientMode);
   }
   function renderNotificationTemplate(template = '', context = {}) {
     const map = {
@@ -476,12 +479,13 @@
   }
 
   const NotificationService = {
-    async dispatchConfiguredNotification({ resource = '', action = '', recordId = '', actorId = '', context = {} } = {}) {
+    async dispatchConfiguredNotification({ resource = '', action = '', recordId = '', actorId = '', deepLink = '', context = {} } = {}) {
       return this.sendBusinessNotification({
         resource,
         action,
         eventKey: `${resource}.${action}`,
         recordId,
+        url: deepLink,
         metadata: { ...(context || {}), actor_user_id: actorId }
       });
     },
@@ -535,6 +539,15 @@
       const userIds = [...new Set([...directUsers, ...assignedUsers, ...modeRecipients.userIds, ...roleRecipients.userIds])];
       const userIdEmails = await resolveEmailsForUserIds(userIds);
       const emails = [...new Set([...directEmails, ...assignedEmails, ...dynamicEmails, ...roleRecipients.emails, ...userIdEmails])];
+      if (normalizedResource === 'communication_centre') {
+        console.log('[Communication Centre notification]', {
+          action: normalizedAction,
+          conversationId: recordId,
+          actorId: metadata?.actor_user_id || metadata?.actor_id || '',
+          rule,
+          recipients: userIds
+        });
+      }
       if (!userIds.length && !emails.length && (rule || isKnownNotificationAction(normalizedResource, normalizedAction))) {
         return skipNotification({ resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, reason: 'no_notification_recipients_resolved' });
       }

@@ -667,20 +667,23 @@
   async function dispatchCommunicationCentreNotification({ action, conversationId, actorId, conversationNo, conversationTitle }) {
     try {
       if (!global.NotificationService?.dispatchConfiguredNotification) return;
+      const deepLink = `#communication_centre?conversation_id=${encodeURIComponent(String(conversationId || '').trim())}`;
       await global.NotificationService.dispatchConfiguredNotification({
         resource: 'communication_centre',
         action: String(action || '').trim(),
         recordId: conversationId,
         actorId,
+        deepLink,
         context: {
           conversation_id: conversationId,
           conversation_no: conversationNo || '',
           conversation_title: conversationTitle || '',
-          actor_name: global.Session?.displayName?.() || 'A user'
+          actor_name: global.Session?.displayName?.() || 'A user',
+          deep_link: deepLink
         }
       });
     } catch (error) {
-      console.warn('[Communication Centre] notification dispatch failed', error);
+      console.warn('[Communication Centre notification failed]', error);
     }
   }
 
