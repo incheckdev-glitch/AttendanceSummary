@@ -679,7 +679,12 @@
         if (error) throw error;
 
         const rows = Array.isArray(data) ? data : [];
-        const targetUserIds = [...new Set(rows.map(row => String(row?.recipient_user_id || '').trim()).filter(Boolean))];
+        const targetUserIds = [...new Set(rows.flatMap(row => [
+          row?.recipient_user_id,
+          row?.source_user_id,
+          row?.app_user_id,
+          row?.push_user_id
+        ].map(value => String(value || '').trim()).filter(Boolean)))];
         const first = rows[0] || {};
         const title = String(first.title || '').trim() || (
           normalizedAction === 'conversation_created' ? 'New Communication Centre conversation' :
@@ -695,7 +700,8 @@
           action: normalizedAction,
           conversationId: normalizedConversationId,
           recipients: targetUserIds,
-          inserted: rows.length
+          inserted: rows.length,
+          rows
         });
 
         if (targetUserIds.length && global.Api?.sendWebPush) {
