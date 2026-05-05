@@ -150,25 +150,73 @@ self.addEventListener('fetch', event => {
 
 self.addEventListener('push', (event) => {
   event.waitUntil((async () => {
+    const defaultPayload = {
+      title: 'InCheck360 MonitorCore',
+      body: 'You have a new notification.',
+      url: '/'
+    };
+
     let payload = {};
+    let textPayload = '';
 
     try {
       payload = event.data ? event.data.json() : {};
     } catch {
-      payload = {
-        title: 'InCheck360 MonitorCore',
-        body: event.data ? event.data.text() : 'You have a new notification.'
-      };
+      try {
+        textPayload = event.data ? event.data.text() : '';
+        payload = textPayload ? JSON.parse(textPayload) : {};
+      } catch {
+        payload = {
+          ...defaultPayload,
+          body: textPayload || defaultPayload.body
+        };
+      }
     }
 
-    const title = payload.title || 'InCheck360 MonitorCore';
-    const url = payload.url || payload?.data?.url || '/';
-    const tag = payload.tag || `incheck360-${Date.now()}`;
+    const notificationPayload = payload?.notification || {};
+    const dataPayload = payload?.data || {};
+
+    const title =
+      payload?.title ||
+      notificationPayload?.title ||
+      dataPayload?.title ||
+      defaultPayload.title;
+    const body =
+      payload?.body ||
+      notificationPayload?.body ||
+      dataPayload?.body ||
+      defaultPayload.body;
+
+    const conversationId =
+      payload?.conversation_id ||
+      payload?.conversationId ||
+      dataPayload?.conversation_id ||
+      dataPayload?.conversationId ||
+      payload?.record_id ||
+      dataPayload?.record_id ||
+      null;
+
+    let url = payload?.url || dataPayload?.url || defaultPayload.url;
+    if (!url && conversationId) {
+      url = `/#communication_centre?conversation_id=${encodeURIComponent(String(conversationId))}`;
+    } else if (
+      conversationId &&
+      (String(url).includes('communication_centre') || String(payload?.resource || '').toLowerCase() === 'communication_centre')
+    ) {
+      url = `/#communication_centre?conversation_id=${encodeURIComponent(String(conversationId))}`;
+    }
+
+    const derivedTag = [payload?.resource, payload?.action, payload?.record_id, conversationId]
+      .filter(Boolean)
+      .map(value => String(value).trim())
+      .filter(Boolean)
+      .join('-');
+    const tag = payload?.tag || derivedTag || `incheck360-${Date.now()}`;
 
     const options = {
-      body: payload.body || 'You have a new notification.',
-      icon: payload.icon || '/icons/icon-192.png',
-      badge: payload.badge || '/icons/icon-192.png',
+      body,
+      icon: payload.icon || '/icon-192.png',
+      badge: payload.badge || '/icon-192.png',
       tag,
       renotify: true,
       requireInteraction: true,
@@ -180,6 +228,8 @@ self.addEventListener('push', (event) => {
         url
       }
     };
+
+    console.log('[SW push]', payload);
 
     await savePushDiagnostic('lastPushReceivedAt', new Date().toISOString());
     await savePushDiagnostic('lastPushPayload', payload);
@@ -244,6 +294,7 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
   const targetUrl = event.notification?.data?.url || '/';
+  console.log('[SW notificationclick]', targetUrl);
 
   event.waitUntil((async () => {
     const absoluteUrl = new URL(targetUrl, self.location.origin).href;
