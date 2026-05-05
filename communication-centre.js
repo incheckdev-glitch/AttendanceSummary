@@ -452,13 +452,13 @@
       }
       M.state.active = data;
       const [messagesResult, participantsResult, reactionsResult, readReceiptsResult, actionItemsResult] = await Promise.all([
-        client.from('communication_centre_messages').select('*').eq('conversation_id', id).order('created_at', { ascending: true }),
+        client.rpc('list_communication_centre_messages_secure', { p_conversation_id: id }),
         client.from('communication_centre_participants').select('*').eq('conversation_id', id).order('participant_type', { ascending: true }).order('user_name', { ascending: true }),
         client.from('communication_centre_message_reactions').select('*').eq('conversation_id', id),
         client.from('communication_centre_read_receipts').select('*').eq('conversation_id', id),
         client.from('communication_centre_action_items').select('*').eq('conversation_id', id).order('created_at', { ascending: false })
       ]);
-      if (messagesResult.error) console.error('[Communication Centre] unable to load messages', messagesResult.error);
+      if (messagesResult.error) console.error('[Communication Centre encryption] secure message load failed', messagesResult.error);
       if (participantsResult.error) console.error('[Communication Centre] unable to load participants', participantsResult.error);
       if (readReceiptsResult.error) console.warn('[Communication Centre] unable to load read receipts', readReceiptsResult.error);
       // The database/RLS already controls whether this row can be read.
@@ -1514,7 +1514,7 @@
         if (replyBtn) { replyBtn.disabled = true; replyBtn.textContent = M.state.editingMessageId ? 'Saving...' : 'Sending...'; }
         const msgType = $('communicationCentreReplyType')?.value || 'message';
         if (M.state.editingMessageId) {
-          const { error } = await db().rpc('edit_communication_centre_message', { p_message_id: M.state.editingMessageId, p_message_body: body });
+          const { error } = await db().rpc('edit_communication_centre_message_secure', { p_message_id: M.state.editingMessageId, p_message_body: body });
           if (error) throw error;
           M.state.editingMessageId = null;
           M.state.editingMessageOriginal = null;
@@ -1525,11 +1525,11 @@
           if (replyBtn) { replyBtn.disabled = false; replyBtn.textContent = 'Send'; }
           return;
         }
-        const { error } = await db().rpc('add_communication_centre_reply', {
+        const { error } = await db().rpc('add_communication_centre_reply_secure', {
           p_conversation_id: conversation.id,
           p_message_body: body,
-          p_reply_to_message_id: M.state.replyToMessage?.id || null,
-          p_message_type: msgType
+          p_message_type: msgType || 'message',
+          p_reply_to_message_id: M.state.replyToMessage?.id || null
         });
         if (error) throw error;
         const insertedBody = body;
