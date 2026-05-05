@@ -4728,6 +4728,12 @@
         recipient_user_ids: Array.isArray(normalizedInput?.recipient_user_ids) ? normalizedInput.recipient_user_ids : [],
         recipient_emails: Array.isArray(normalizedInput?.recipient_emails) ? normalizedInput.recipient_emails.map(v => String(v || '').trim().toLowerCase()).filter(Boolean) : [],
         users_from_record: Array.isArray(normalizedInput?.users_from_record) ? normalizedInput.users_from_record.map(v => String(v || '').trim()).filter(Boolean) : [],
+        recipient_mode: String(normalizedInput?.recipient_mode || '').trim() || null,
+        title_template: String(normalizedInput?.title_template || '').trim() || null,
+        body_template: String(normalizedInput?.body_template || '').trim() || null,
+        deep_link_template: String(normalizedInput?.deep_link_template || '').trim() || null,
+        resource_label: String(normalizedInput?.resource_label || '').trim() || null,
+        action_label: String(normalizedInput?.action_label || '').trim() || null,
         exclude_actor: normalizedInput?.exclude_actor !== false,
         dedupe_window_seconds: Math.max(1, Number(normalizedInput?.dedupe_window_seconds || 60) || 60)
       };
@@ -4757,6 +4763,12 @@
           recipient_user_ids: Array.isArray(normalizedRuleInput?.recipient_user_ids) ? normalizedRuleInput.recipient_user_ids : [],
           recipient_emails: Array.isArray(normalizedRuleInput?.recipient_emails) ? normalizedRuleInput.recipient_emails.map(v => String(v || '').trim().toLowerCase()).filter(Boolean) : [],
           users_from_record: Array.isArray(normalizedRuleInput?.users_from_record) ? normalizedRuleInput.users_from_record.map(v => String(v || '').trim()).filter(Boolean) : [],
+          recipient_mode: String(normalizedRuleInput?.recipient_mode || '').trim() || null,
+          title_template: String(normalizedRuleInput?.title_template || '').trim() || null,
+          body_template: String(normalizedRuleInput?.body_template || '').trim() || null,
+          deep_link_template: String(normalizedRuleInput?.deep_link_template || '').trim() || null,
+          resource_label: String(normalizedRuleInput?.resource_label || '').trim() || null,
+          action_label: String(normalizedRuleInput?.action_label || '').trim() || null,
           exclude_actor: normalizedRuleInput?.exclude_actor !== false,
           dedupe_window_seconds: Math.max(1, Number(normalizedRuleInput?.dedupe_window_seconds || 60) || 60)
         };

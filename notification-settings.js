@@ -85,7 +85,13 @@ const NotificationSetup = {
         recipient_emails: Array.isArray(rule?.recipient_emails) ? rule.recipient_emails : [],
         users_from_record: Array.isArray(rule?.users_from_record) ? rule.users_from_record : [],
         exclude_actor: rule?.exclude_actor !== false,
-        dedupe_window_seconds: Number(rule?.dedupe_window_seconds || 60)
+        dedupe_window_seconds: Number(rule?.dedupe_window_seconds || 60),
+        title_template: String(rule?.title_template || rule?.title || '').trim(),
+        body_template: String(rule?.body_template || rule?.body || rule?.message_template || '').trim(),
+        recipient_mode: String(rule?.recipient_mode || '').trim(),
+        deep_link_template: String(rule?.deep_link_template || rule?.url_template || '').trim(),
+        resource_label: String(rule?.resource_label || '').trim(),
+        action_label: String(rule?.action_label || '').trim()
       }));
       this.state.roles = Array.isArray(rolesRes?.rows) ? rolesRes.rows : Array.isArray(rolesRes) ? rolesRes : [];
       console.info('[notification setup] rules loaded', {
@@ -126,7 +132,13 @@ const NotificationSetup = {
       recipient_roles: [...row.querySelectorAll('[data-k="roles"] option:checked')].map(o => o.value),
       recipient_user_ids: Array.isArray(existingRule.recipient_user_ids) ? existingRule.recipient_user_ids : [],
       recipient_emails: split(val('[data-k="emails"]')),
-      users_from_record: split(val('[data-k="record"]'))
+      users_from_record: split(val('[data-k="record"]')),
+      recipient_mode: String(val('[data-k="recipient_mode"]') || existingRule.recipient_mode || '').trim(),
+      title_template: String(val('[data-k="title_template"]') || '').trim(),
+      body_template: String(val('[data-k="body_template"]') || '').trim(),
+      deep_link_template: String(val('[data-k="deep_link_template"]') || '').trim(),
+      resource_label: String(existingRule.resource_label || this.formatResourceLabel(resource)).trim(),
+      action_label: String(existingRule.action_label || this.formatActionLabel(action)).trim()
     };
   },
 
@@ -197,16 +209,24 @@ const NotificationSetup = {
         const rule = this.getRule(resource, action) || {};
         const isEnabled = rule.is_enabled !== false;
         if (!matches(resource, action, isEnabled)) return;
-        const noRecipients = !(rule.recipient_roles?.length || rule.recipient_user_ids?.length || rule.recipient_emails?.length || rule.users_from_record?.length);
-        const actionLabel = this.formatActionLabel(action);
-        const resourceLabel = this.formatResourceLabel(resource);
+        const hasRecipientMode = Boolean(String(rule.recipient_mode || '').trim());
+        const noRecipients = !(hasRecipientMode || rule.recipient_roles?.length || rule.recipient_user_ids?.length || rule.recipient_emails?.length || rule.users_from_record?.length);
+        const actionLabel = String(rule.action_label || this.formatActionLabel(action));
+        const resourceLabel = String(rule.resource_label || this.formatResourceLabel(resource));
         const description = String(rule.description || this.getNotificationDescription(resource, action) || '').trim();
+        const templateBlock = `
+          <div class="notification-template-grid" style="display:grid;grid-template-columns:1fr;gap:6px;min-width:280px;">
+            <input data-k="title_template" class="input" placeholder="Title template" value="${U.escapeHtml(rule.title_template || '')}">
+            <textarea data-k="body_template" class="input" rows="2" placeholder="Body template">${U.escapeHtml(rule.body_template || '')}</textarea>
+            <input data-k="deep_link_template" class="input" placeholder="Deep link template" value="${U.escapeHtml(rule.deep_link_template || '')}">
+          </div>`;
         rows.push(`<tr data-resource="${resource}" data-action="${action}">
-          <td>${resourceLabel}</td><td>${action}</td><td class="muted">${U.escapeHtml(description || actionLabel)}</td>
+          <td>${U.escapeHtml(resourceLabel)}</td><td>${U.escapeHtml(actionLabel)}<div class="muted" style="font-size:11px;">${U.escapeHtml(action)}</div></td><td class="muted">${U.escapeHtml(description || actionLabel)}${templateBlock}</td>
           <td><input type="checkbox" data-k="enabled" ${isEnabled ? 'checked' : ''}></td>
           <td><input type="checkbox" data-k="inapp" ${(rule.in_app_enabled !== false) ? 'checked' : ''}></td>
           <td><input type="checkbox" data-k="pwa" ${(rule.pwa_enabled !== false) ? 'checked' : ''}></td>
           <td><input type="checkbox" data-k="email" ${(rule.email_enabled === true) ? 'checked' : ''}></td>
+          <td><input data-k="recipient_mode" class="input" placeholder="participants_except_actor" value="${U.escapeHtml(rule.recipient_mode || '')}"><div class="muted" style="font-size:11px;">Use recipient mode for dynamic CC recipients.</div></td>
           <td><select data-k="roles" class="select" multiple size="3">${this.roleOptions(rule.recipient_roles || [])}</select></td>
           <td><input data-k="emails" class="input" placeholder="optional: user@company.com" value="${U.escapeHtml((rule.recipient_emails || []).join(','))}"></td>
           <td><input data-k="record" class="input" placeholder="requester_email,owner_email" value="${U.escapeHtml((rule.users_from_record || []).join(','))}"></td>
@@ -215,14 +235,14 @@ const NotificationSetup = {
           <td>
             <button class="btn sm ghost" data-save>Save</button>
             <button class="btn sm ghost" data-test>Test</button>
-            ${noRecipients ? '<div class="muted" style="font-size:11px;color:#b45309;">No recipients configured. This notification will be skipped.</div>' : ''}
+            ${noRecipients ? '<div class="muted" style="font-size:11px;color:#b45309;">No recipients configured. This notification will be skipped.</div>' : '<div class="muted" style="font-size:11px;color:#067647;">Recipients configured.</div>'}
           </td>
         </tr>`);
       if (resource === 'operations_onboarding' && action === 'assigned_csm') {
         console.info('[notification setup] rendered event', { resource, action });
       }
     });
-    tbody.innerHTML = rows.join('') || '<tr><td colspan="13" class="muted">No matching rules.</td></tr>';
+    tbody.innerHTML = rows.join('') || '<tr><td colspan="14" class="muted">No matching rules.</td></tr>';
     state.textContent = `${rows.length} rules shown · ${this.state.dirty.size} unsaved changes`;
     tbody.querySelectorAll('input,select').forEach(el => el.addEventListener('change', e => {
       const tr = e.target.closest('tr');

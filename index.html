@@ -373,7 +373,7 @@
                     role="tab" aria-selected="false" aria-controls="proposalCatalogView">
               <span class="icon" aria-hidden="true">📚</span> Proposal Catalog
             </button>
-            <button id="communicationCentreTab" class="view-tab" data-view="communication_centre" data-permission-resource="communication_centre" data-permission-action="manage" role="tab" aria-selected="false" aria-controls="communicationCentreView">💬 Communication Centre</button>
+            <button id="communicationCentreTab" class="view-tab" data-view="communication_centre" role="tab" aria-selected="false" aria-controls="communicationCentreView">💬 Communication Centre</button>
             <button id="notificationsTab" class="view-tab" data-view="notifications"
                     role="tab" aria-selected="false" aria-controls="notificationsView">
               <span class="icon" aria-hidden="true">🔔</span> Notification Hub
@@ -734,6 +734,7 @@ Sample:
               <option value="technical_admin_requests">Technical Admin Requests</option>
               <option value="events">Events</option>
               <option value="workflow">Workflow</option>
+              <option value="communication_centre">Communication Centre</option>
             </select>
             <input id="notificationSetupSearchInput" class="input" type="search" placeholder="Search by action" />
             <select id="notificationSetupStatusFilter" class="select">
@@ -748,7 +749,7 @@ Sample:
               <thead>
                 <tr>
                   <th>Module</th><th>Action</th><th>Description</th><th>Enabled</th><th>In-app</th><th>PWA</th><th>Email</th>
-                  <th>Recipient roles</th><th>Recipient emails</th><th>users_from_record</th><th>Exclude actor</th><th>Dedupe seconds</th><th>Save/Test</th>
+                  <th>Recipient mode</th><th>Recipient roles</th><th>Recipient emails</th><th>users_from_record</th><th>Exclude actor</th><th>Dedupe seconds</th><th>Save/Test</th>
                 </tr>
               </thead>
               <tbody id="notificationSetupTbody"></tbody>
@@ -3764,7 +3765,7 @@ Sample:
   <script src="lifecycle-analytics.js?v=20260427-allpwa1"></script>
   <script src="clients.js?v=20260427-allpwa1"></script>
   <script src="proposal-catalog.js?v=20260427-allpwa1"></script>
-  <script src="communication-centre.js?v=20260505-cc-access-final2"></script>
+  <script src="communication-centre.js?v=20260505-realtime-debug-fix1"></script>
   <script src="notifications.js?v=20260427-allpwa1"></script>
   <script src="push-notifications.js?v=20260427-allpwa1"></script>
   <script src="workflow.js?v=20260427-allpwa1"></script>
@@ -3774,6 +3775,6 @@ Sample:
   <script src="events-service.js?v=20260427-events-pwa1"></script>
   <script src="csm-service.js?v=20260427-allpwa1"></script>
   <script src="ai-insights-service.js?v=20260427-allpwa1"></script>
-  <script src="app.js?v=20260505-cc-access-final2"></script>
+  <script src="app.js?v=20260504-cc-clickfix1"></script>
 </body>
 </html>
