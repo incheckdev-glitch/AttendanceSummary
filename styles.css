@@ -2719,3 +2719,19 @@ body.permissions-loading [data-permission-resource][data-permission-action]{disp
 
 .cc-mobile-only{display:none}
 @media (max-width:767px){.cc-mobile-only{display:inline-flex}.cc-chat,.cc-sidebar,.cc-details{width:100%;max-width:100%;overflow-x:hidden}.cc-item-main strong,.cc-item-main p,.cc-message-body{overflow-wrap:anywhere}.cc-bubble{max-width:82%}}
+
+#communicationCentreView.cc-details-hidden .cc-layout{grid-template-columns:minmax(300px,340px) minmax(540px,1fr);}
+#communicationCentreView.cc-details-hidden .cc-chat{grid-column:auto;}
+.cc-details.collapsed{display:none !important;}
+.cc-message-row{align-items:flex-end;gap:10px;margin-bottom:16px}.cc-message-row.mine{justify-content:flex-end}.cc-message-row.incoming{justify-content:flex-start}
+.cc-avatar{width:32px;height:32px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;background:#eef2ff;color:#1d4ed8;font-size:11px;font-weight:700;flex:0 0 32px;border:1px solid #d8e2ff}
+.cc-avatar.mine{background:#dbeafe;color:#1d4ed8}
+.cc-message-row.mine .cc-message-meta{text-align:right;justify-content:flex-end}.cc-message-row.mine .cc-message-actions{justify-content:flex-end}.cc-message-row.mine .cc-reactions{justify-content:flex-end}
+.cc-message-meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.cc-sender{font-weight:700;color:#0f172a}.cc-sep{color:#94a3b8}
+.cc-message-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.cc-message-actions .btn,.cc-reaction-btn{padding:4px 8px;border-radius:999px;font-size:11px}
+.cc-reactions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.cc-message-row.mine .cc-bubble{border-top-right-radius:6px}.cc-message-row.incoming .cc-bubble{border-top-left-radius:6px}
+.cc-system-message{display:block}
+.cc-chat-header .btn{white-space:nowrap}
+@media (max-width:1100px){#communicationCentreView.cc-details-hidden .cc-layout{grid-template-columns:minmax(280px,320px) 1fr;}}
+@media (max-width:767px){.cc-avatar{display:none}.cc-message-row{gap:0}.cc-message-actions{gap:4px}}

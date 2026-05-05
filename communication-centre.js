@@ -19,7 +19,7 @@
       loadingUsers: false,
       loadingRoles: false,
       mobileView: 'list',
-      loadError: null
+      detailsVisible: true
     }
   };
 
@@ -165,6 +165,35 @@
     M.state.mobileView = ['list', 'chat', 'details'].includes(view) ? view : 'list';
     syncResponsiveLayout();
   }
+  function setDetailsVisible(visible) {
+    M.state.detailsVisible = visible !== false;
+    syncResponsiveLayout();
+  }
+  function normalizeIdentityValue(value) {
+    return String(value ?? '').trim().toLowerCase();
+  }
+  function getCurrentIdentity() {
+    const ids = new Set();
+    const names = new Set();
+    const addId = value => { const v = normalizeIdentityValue(value); if (v) ids.add(v); };
+    const addName = value => { const v = normalizeIdentityValue(value); if (v) names.add(v); };
+    const sources = [global.Session?.user?.(), global.Session?.currentUser?.(), global.Session?.profile?.(), global.Session?.currentProfile?.()].filter(Boolean);
+    sources.forEach(source => {
+      ['id','user_id','profile_id','auth_user_id','uuid'].forEach(key => addId(source?.[key]));
+      [source?.name, source?.full_name, source?.display_name, source?.user_name, source?.email].forEach(addName);
+      const first = normalizeText(source?.first_name);
+      const last = normalizeText(source?.last_name);
+      if (first || last) addName(`${first} ${last}`.trim());
+    });
+    return { ids, names };
+  }
+  function isMessageMine(message) {
+    const identity = getCurrentIdentity();
+    const messageIds = [message?.sender_id, message?.sender_user_id, message?.user_id, message?.created_by].map(normalizeIdentityValue);
+    if (messageIds.some(id => id && identity.ids.has(id))) return true;
+    const senderNames = [message?.sender_name, message?.created_by_name, message?.user_name].map(normalizeIdentityValue);
+    return senderNames.some(name => name && identity.names.has(name));
+  }
   function syncResponsiveLayout() {
     const container = $('communicationCentreView');
     const drawer = $('communicationCentreDrawer');
@@ -174,6 +203,7 @@
     container.classList.toggle('cc-mobile', mobile);
     container.classList.toggle('cc-tablet', tablet);
     container.classList.toggle('cc-desktop', !mobile && !tablet);
+    container.classList.toggle('cc-details-hidden', !mobile && !tablet && M.state.detailsVisible === false);
     if (mobile) {
       container.dataset.mobileView = M.state.mobileView || 'list';
     } else {
@@ -183,11 +213,15 @@
       M._lastMobileLog = M.state.mobileView;
       console.log('[Communication Centre mobile]', { mobileView: M.state.mobileView, width: global.innerWidth });
     }
-    if (drawer && (mobile || tablet)) {
+    if (!drawer) return;
+    if (mobile || tablet) {
+      drawer.style.display = '';
       drawer.classList.toggle('collapsed', M.state.mobileView !== 'details');
-    } else if (drawer) {
-      drawer.classList.remove('collapsed');
+      return;
     }
+    const visible = M.state.detailsVisible !== false;
+    drawer.classList.toggle('collapsed', !visible);
+    drawer.style.display = visible ? '' : 'none';
   }
 
   const relTime = value => {
@@ -253,101 +287,27 @@
     return [];
   }
 
-  function applyConversationFilters(query, { searchMode = 'full' } = {}) {
-    const filters = M.state.filters || {};
-    const rawSearch = String(filters.search || '').trim();
-    if (rawSearch) {
-      const safeSearch = rawSearch.replace(/[,%]/g, ' ').trim();
-      if (safeSearch) {
-        if (searchMode === 'full') {
-          query = query.or(`conversation_no.ilike.%${safeSearch}%,title.ilike.%${safeSearch}%,description.ilike.%${safeSearch}%,created_by_name.ilike.%${safeSearch}%,last_message_preview.ilike.%${safeSearch}%`);
-        } else if (searchMode === 'minimal') {
-          query = query.or(`conversation_no.ilike.%${safeSearch}%,title.ilike.%${safeSearch}%`);
-        }
-      }
-    }
-    // Keep only very stable server-side filters here. Unknown optional columns are handled by fallback attempts.
-    ['status', 'priority', 'category', 'assigned_role', 'created_by_name'].forEach(key => {
-      if (filters[key]) query = query.eq(key, filters[key]);
-    });
-    return query;
-  }
-
-  async function fetchConversationListAttempt(client, { searchMode = 'full', orders = ['is_pinned', 'last_message_at', 'updated_at'] } = {}) {
-    let query = client.from('communication_centre_conversations').select('*', { count: 'exact' });
-    query = applyConversationFilters(query, { searchMode });
-    const from = (M.state.page - 1) * M.state.limit;
-    const to = from + M.state.limit - 1;
-    orders.forEach(column => {
-      if (column === 'is_pinned') query = query.order('is_pinned', { ascending: false, nullsFirst: false });
-      else if (column === 'last_message_at') query = query.order('last_message_at', { ascending: false, nullsFirst: false });
-      else query = query.order(column, { ascending: false });
-    });
-    return query.range(from, to);
-  }
-
   async function list() {
     const client = db();
     if (!client) throw new Error('Supabase client is not available.');
-
-    const attempts = [
-      { searchMode: 'full', orders: ['is_pinned', 'last_message_at', 'updated_at'] },
-      { searchMode: 'minimal', orders: ['is_pinned', 'updated_at'] },
-      { searchMode: 'none', orders: ['updated_at'] },
-      { searchMode: 'none', orders: ['created_at'] },
-      { searchMode: 'none', orders: [] }
-    ];
-
-    let lastError = null;
-    for (const attempt of attempts) {
-      try {
-        const { data, error, count } = await fetchConversationListAttempt(client, attempt);
-        if (error) throw error;
-        M.state.rows = (data || []).map(row => ({
-          ...row,
-          status: row.status || 'Open',
-          priority: row.priority || 'Normal',
-          category: row.category || 'General',
-          last_message_preview: row.last_message_preview || row.description || row.title || 'No messages yet',
-          last_message_at: row.last_message_at || row.updated_at || row.created_at,
-          is_pinned: Boolean(row.is_pinned),
-          is_archived: Boolean(row.is_archived),
-          unread_count: Number(row.unread_count || 0),
-          participant_count: Number(row.participant_count || 0)
-        }));
-        M.state.count = typeof count === 'number' ? count : M.state.rows.length;
-        M.state.loadError = null;
-        if (lastError) console.warn('[Communication Centre] list loaded with safe fallback after error', lastError);
-        return;
-      } catch (error) {
-        lastError = error;
-        console.warn('[Communication Centre] list attempt failed', { attempt, error });
-      }
+    let query = client.from('communication_centre_conversations').select('*', { count: 'exact' });
+    const filters = M.state.filters;
+    if (filters.search) {
+      const search = filters.search.trim();
+      query = query.or(`conversation_no.ilike.%${search}%,title.ilike.%${search}%,description.ilike.%${search}%,created_by_name.ilike.%${search}%,last_message_preview.ilike.%${search}%`);
     }
-
-    M.state.rows = [];
-    M.state.count = 0;
-    M.state.loadError = lastError || new Error('Unable to load conversations.');
-    throw M.state.loadError;
-  }
-
-  async function safeConversationSelect(client, tableName, conversationId, decorateQuery) {
-    try {
-      let query = client.from(tableName).select('*').eq('conversation_id', conversationId);
-      if (typeof decorateQuery === 'function') query = decorateQuery(query);
-      const { data, error } = await query;
-      if (error) {
-        const msg = String(error.message || error.details || '').toLowerCase();
-        // Optional Phase 3 tables should never block the core chat thread.
-        if (msg.includes('does not exist') || msg.includes('schema cache') || msg.includes('not found')) {
-          return { data: [], error };
-        }
-        return { data: [], error };
-      }
-      return { data: data || [], error: null };
-    } catch (error) {
-      return { data: [], error };
-    }
+    ['status', 'priority', 'category', 'assigned_role', 'created_by_name'].forEach(key => {
+      if (filters[key]) query = query.eq(key, filters[key]);
+    });
+    const from = (M.state.page - 1) * M.state.limit;
+    const to = from + M.state.limit - 1;
+    const { data, error, count } = await query
+      .order('is_pinned', { ascending: false })
+      .order('updated_at', { ascending: false })
+      .range(from, to);
+    if (error) throw error;
+    M.state.rows = data || [];
+    M.state.count = count || 0;
   }
 
   async function openDetail(id) {
@@ -369,25 +329,17 @@
       }
       M.state.active = data;
       const [messagesResult, participantsResult, reactionsResult, actionItemsResult] = await Promise.all([
-        safeConversationSelect(client, 'communication_centre_messages', id, q => q.order('created_at', { ascending: true })),
-        safeConversationSelect(client, 'communication_centre_participants', id, q => q.order('participant_type', { ascending: true }).order('user_name', { ascending: true })),
-        safeConversationSelect(client, 'communication_centre_message_reactions', id),
-        safeConversationSelect(client, 'communication_centre_action_items', id, q => q.order('created_at', { ascending: false }))
+        client.from('communication_centre_messages').select('*').eq('conversation_id', id).order('created_at', { ascending: true }),
+        client.from('communication_centre_participants').select('*').eq('conversation_id', id).order('participant_type', { ascending: true }).order('user_name', { ascending: true }),
+        client.from('communication_centre_message_reactions').select('*').eq('conversation_id', id),
+        client.from('communication_centre_action_items').select('*').eq('conversation_id', id).order('created_at', { ascending: false })
       ]);
       if (messagesResult.error) console.error('[Communication Centre] unable to load messages', messagesResult.error);
       if (participantsResult.error) console.error('[Communication Centre] unable to load participants', participantsResult.error);
-      // Reactions and action items are Phase 3 optional. If their tables are missing, do not block chat loading.
-      if (reactionsResult.error) console.warn('[Communication Centre] optional reactions unavailable', reactionsResult.error);
-      if (actionItemsResult.error) console.warn('[Communication Centre] optional action items unavailable', actionItemsResult.error);
       // The database/RLS already controls whether this row can be read.
       // Do not re-block here with frontend-only ID matching because profile/auth IDs can differ by deployment.
       const participantRows = participantsResult.data || [];
-      M.state.messages = (messagesResult.data || []).map(message => ({
-        ...message,
-        message_body: message.message_body || message.body || message.content || '',
-        sender_name: message.sender_name || message.user_name || message.created_by_name || 'User',
-        sender_id: message.sender_id || message.user_id || message.created_by || message.created_by_id || ''
-      }));
+      M.state.messages = messagesResult.data || [];
       M.state.participants = participantRows;
       M.state.actionItems = actionItemsResult.data || [];
       M.state.reactionsByMessage = (reactionsResult.data || []).reduce((acc, row) => {
@@ -475,11 +427,7 @@
       if (unreadDiff) return unreadDiff;
       return new Date(b.updated_at || b.last_message_at || 0).getTime() - new Date(a.updated_at || a.last_message_at || 0).getTime();
     });
-    if (M.state.loadError) {
-      listEl.innerHTML = '<div class="card danger" style="margin:12px;padding:12px;border-left:4px solid #d92d20;color:#7f1d1d;">Unable to load conversations. Please refresh and try again. Check the browser console for the exact technical error.</div>';
-    } else {
-      listEl.innerHTML = rows.map(row => `<button class="cc-item ${activeId===row.id?'active':''} ${Number(row.unread_count||0)>0?'unread':''}" data-cc-open="${escapeAttr(row.id)}" type="button"><div class="cc-item-main"><small>${escapeHtml(row.conversation_no||'')}</small><strong>${escapeHtml(row.title||'Untitled')}</strong><p>${escapeHtml(row.last_message_preview||'No messages yet')}</p><div class="cc-item-submeta">${row.is_pinned?'<span class="chip">📌 Pinned</span>':''}${M.state.filters.quick==='archived'&&row.is_archived?'<span class="chip">Archived</span>':''}${row.participant_count?`<span class="chip">${escapeHtml(String(row.participant_count))} participants</span>`:''}</div></div><div class="cc-item-meta"><span class="cc-time">${escapeHtml(relTime(row.updated_at||row.last_message_at))}</span><span class="chip cc-status-chip">${escapeHtml(row.status||'Open')}</span>${row.priority?`<span class="chip cc-priority-chip">${escapeHtml(row.priority)}</span>`:''}${Number(row.unread_count||0)>0?`<span class="chip cc-unread-chip">● ${escapeHtml(String(row.unread_count))}</span>`:''}</div></button>`).join('') || '<div class="muted" style="padding:16px;">No conversations found for this filter.</div>';
-    }
+    listEl.innerHTML = rows.map(row => `<button class="cc-item ${activeId===row.id?'active':''} ${Number(row.unread_count||0)>0?'unread':''}" data-cc-open="${escapeAttr(row.id)}" type="button"><div class="cc-item-main"><small>${escapeHtml(row.conversation_no||'')}</small><strong>${escapeHtml(row.title||'Untitled')}</strong><p>${escapeHtml(row.last_message_preview||'No messages yet')}</p><div class="cc-item-submeta">${row.is_pinned?'<span class="chip">📌 Pinned</span>':''}${M.state.filters.quick==='archived'&&row.is_archived?'<span class="chip">Archived</span>':''}${row.participant_count?`<span class="chip">${escapeHtml(String(row.participant_count))} participants</span>`:''}</div></div><div class="cc-item-meta"><span class="cc-time">${escapeHtml(relTime(row.updated_at||row.last_message_at))}</span><span class="chip cc-status-chip">${escapeHtml(row.status||'Open')}</span>${row.priority?`<span class="chip cc-priority-chip">${escapeHtml(row.priority)}</span>`:''}${Number(row.unread_count||0)>0?`<span class="chip cc-unread-chip">● ${escapeHtml(String(row.unread_count))}</span>`:''}</div></button>`).join('') || '<div class="muted" style="padding:16px;">No conversations found for this filter.</div>';
     const pageInfo = $('communicationCentrePageInfo');
     if (pageInfo) pageInfo.textContent = `Page ${M.state.page} • ${M.state.count} total`;
   }
@@ -496,31 +444,35 @@
     const closedMsg = $('communicationCentreClosedMsg');
       const mobileBack = isMobileViewport() ? '<button id="communicationCentreBackToList" class="btn ghost sm" type="button">← Conversations</button>' : '';
       const relatedLabel = conversation.related_module && conversation.related_record_id ? `${conversation.related_module} #${conversation.related_record_id}` : '';
-      if (header) header.innerHTML = `${mobileBack}<div class="cc-chat-heading"><h3>${escapeHtml((conversation.conversation_no || '') + ' ' + (conversation.title || ''))}</h3><div class="muted">${escapeHtml(conversation.category || 'General')} • ${escapeHtml(conversation.priority || 'Normal')} • ${escapeHtml(conversation.status || 'Open')}${relatedLabel ? ` • ${escapeHtml(relatedLabel)}` : ''}</div></div><button id="communicationCentreOpenDetails" class="btn ghost sm" type="button">Details</button>`;
+      const detailsLabel = (isMobileViewport() || isTabletViewport()) ? 'Details' : (M.state.detailsVisible === false ? 'Show details' : 'Hide details');
+      if (header) header.innerHTML = `${mobileBack}<div class="cc-chat-heading"><h3>${escapeHtml((conversation.conversation_no || '') + ' ' + (conversation.title || ''))}</h3><div class="muted">${escapeHtml(conversation.category || 'General')} • ${escapeHtml(conversation.priority || 'Normal')} • ${escapeHtml(conversation.status || 'Open')}${relatedLabel ? ` • ${escapeHtml(relatedLabel)}` : ''}</div></div><button id="communicationCentreOpenDetails" class="btn ghost sm" type="button">${detailsLabel}</button>`;
     if (meta) meta.textContent = `${conversation.status || 'Open'} • ${conversation.priority || 'Normal'} • ${conversation.category || 'General'}`;
     if (participants) {
       participants.innerHTML = M.state.participants.map(participant => `
         <span class="chip cc-participant-chip">${escapeHtml(participant.participant_type || 'participant')}: ${escapeHtml(participant.user_name || participant.user_id || 'User')}</span>
       `).join(' ');
     }
-    const currentUserId = global.Session?.user?.()?.id || global.Session?.currentUser?.()?.id || '';
     if (messages) {
       messages.innerHTML = M.state.messages.length ? M.state.messages.map(message => {
-        const isMine = String(message.sender_id || '') === String(currentUserId || '');
+        const isMine = isMessageMine(message);
         const muted = message.is_system_message ? 'opacity:.72;' : '';
         if (message.is_system_message) {
           return `
             <div class="cc-system-message">${escapeHtml(message.message_body || message.body || 'System update')}</div>
           `;
         }
+        const senderName = escapeHtml(message.sender_name || message.created_by_name || 'System');
+        const initials = escapeHtml((message.sender_name || message.created_by_name || 'U').split(/\s+/).slice(0,2).map(x => x[0] || '').join('').toUpperCase());
         return `
           <div class="cc-message-row ${isMine ? 'mine' : 'incoming'}" style="${muted}">
+            ${isMine ? '' : `<div class="cc-avatar">${initials}</div>`}
             <div class="cc-bubble">
-              <div class="cc-message-meta">${escapeHtml(message.sender_name || 'System')} • ${message.created_at ? escapeHtml(new Date(message.created_at).toLocaleString()) : ''}${message.edited_at ? ' • edited' : ''}</div>
+              <div class="cc-message-meta"><span class="cc-sender">${senderName}</span><span class="cc-sep">•</span><span>${message.created_at ? escapeHtml(new Date(message.created_at).toLocaleString()) : ''}</span>${message.edited_at ? '<span class="cc-sep">•</span><span>edited</span>' : ''}</div>
               <div class="cc-message-body">${message.is_deleted ? 'This message was deleted.' : escapeHtml(message.message_body || message.body || '')}</div>
               ${!message.is_deleted ? `<div class="cc-message-actions"><button class="btn ghost sm" data-cc-reply-message="${escapeAttr(message.id)}" type="button">Reply</button>${isMine ? `<button class="btn ghost sm" data-cc-edit-message="${escapeAttr(message.id)}" type="button">Edit</button><button class="btn ghost sm" data-cc-delete-message="${escapeAttr(message.id)}" type="button">Delete message</button>` : ''}</div>` : ''}
               ${renderMessageReactions(message.id)}
             </div>
+            ${isMine ? `<div class="cc-avatar mine">${initials}</div>` : ''}
           </div>
         `;
       }).join('') : '<div class="muted" style="padding:20px;text-align:center;">Select a conversation to view messages.</div>';
@@ -616,8 +568,6 @@
       render();
     } catch (error) {
       console.error('[Communication Centre] load conversations failed', error);
-      M.state.loadError = error;
-      render();
       showFriendlyError('Unable to load Communication Centre conversations. Please refresh and try again.');
     }
   }
@@ -1069,13 +1019,13 @@
       }
     }, { once: false });
     bindOnce($('communicationCentreDrawerClose'), 'DrawerClose', () => {
-      if (isMobileViewport()) setMobileView('chat');
-      else $('communicationCentreDrawer')?.classList.toggle('collapsed', true);
+      if (isMobileViewport() || isTabletViewport()) setMobileView('chat');
+      else setDetailsVisible(false);
     });
     document.addEventListener('click', (e)=>{
       if (e.target?.id==='communicationCentreOpenDetails') {
         if (isMobileViewport() || isTabletViewport()) setMobileView('details');
-        else $('communicationCentreDrawer')?.classList.remove('collapsed');
+        else setDetailsVisible(M.state.detailsVisible === false);
       }
       if (e.target?.id === 'communicationCentreBackToList') setMobileView('list');
       if (e.target?.id === 'communicationCentreBackToChat') setMobileView('chat');
