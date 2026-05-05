@@ -696,39 +696,41 @@
         const body = String(first.message || '').trim() || `Conversation ${conversationTitle || conversationNo || ''} was updated.`;
         const url = `/#communication_centre?conversation_id=${encodeURIComponent(normalizedConversationId)}`;
 
-        console.log('[Communication Centre WhatsApp notification]', {
+        console.log('[Communication Centre PWA]', {
           action: normalizedAction,
           conversationId: normalizedConversationId,
-          recipients: targetUserIds,
-          inserted: rows.length,
-          rows
+          recipientUserIds: targetUserIds,
+          title,
+          body,
+          url
         });
 
         if (targetUserIds.length && global.Api?.sendWebPush) {
-          global.Api.sendWebPush({
-            resource: 'communication_centre',
-            action: normalizedAction,
-            record_id: normalizedConversationId,
-            title,
-            body,
-            url,
-            user_ids: targetUserIds,
-            data: {
+          try {
+            await global.Api.sendWebPush({
+              user_ids: targetUserIds,
+              title,
+              body,
+              url,
               resource: 'communication_centre',
               action: normalizedAction,
-              conversation_id: normalizedConversationId,
-              conversation_no: conversationNo || '',
-              conversation_title: conversationTitle || '',
-              actor_user_id: actorId || ''
-            }
-          }, { context: `communication_centre:${normalizedAction}:whatsapp-direct` })
-            .catch(error => console.warn('[Communication Centre WhatsApp notification] push failed', error));
+              record_id: normalizedConversationId,
+              metadata: {
+                conversation_id: normalizedConversationId,
+                conversation_no: conversationNo || '',
+                conversation_title: conversationTitle || '',
+                actor_id: actorId || ''
+              }
+            }, { context: `communication_centre:${normalizedAction}:direct-pwa` });
+          } catch (error) {
+            console.warn('[Communication Centre PWA failed]', error);
+          }
         }
 
         return { ok: true, recipients: targetUserIds, inserted: rows.length };
       }
     } catch (error) {
-      console.warn('[Communication Centre WhatsApp notification failed]', error);
+      console.warn('[Communication Centre PWA failed]', error);
     }
 
     // Last-resort compatibility fallback. This should not be the main path anymore.
