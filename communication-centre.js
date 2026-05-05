@@ -173,9 +173,12 @@
   const isMobileViewport = () => global.matchMedia ? global.matchMedia(`(max-width:${MOBILE_BREAKPOINT - 1}px)`).matches : global.innerWidth < MOBILE_BREAKPOINT;
   const isTabletViewport = () => global.innerWidth >= MOBILE_BREAKPOINT && global.innerWidth < TABLET_BREAKPOINT;
   function setMobileView(view) {
+    const previousView = M.state.mobileView;
     M.state.mobileView = ['list', 'chat', 'details'].includes(view) ? view : 'list';
     syncResponsiveLayout();
-    if (M.state.mobileView === 'chat') scrollCommunicationCentreToBottom(true);
+    if (M.state.mobileView === 'chat' && previousView !== 'chat' && M.state.active?.id) {
+      setTimeout(() => scrollCommunicationCentreToBottom(true), 60);
+    }
   }
   function setDetailsVisible(visible) {
     M.state.detailsVisible = visible !== false;
@@ -369,6 +372,7 @@
     try {
       const wasActiveConversation = String(M.state.active?.id || '') === String(id || '');
       const previousMessageCount = Array.isArray(M.state.messages) ? M.state.messages.length : 0;
+      const wasNearBottomBeforeRender = isCommunicationCentreNearBottom();
       const client = db();
       if (!client) {
         showFriendlyError('Unable to open conversation. Please refresh and try again.');
@@ -411,9 +415,15 @@
       }, {});
       renderDrawer({ skipAutoScroll: true });
       const hasNewMessages = wasActiveConversation && M.state.messages.length > previousMessageCount;
-      const shouldForceScroll = options.forceScroll === true || !wasActiveConversation || options.initialOpen === true;
-      if (shouldForceScroll) scrollCommunicationCentreToBottom(true);
-      else scrollCommunicationCentreToBottom(!hasNewMessages);
+      const isInitialOpen = !wasActiveConversation || options.forceScroll === true || options.reason === 'initial_open' || options.reason === 'deep_link' || options.reason === 'mobile_open' || options.reason === 'send_reply';
+      if (isInitialOpen) {
+        scrollCommunicationCentreToBottom(true);
+      } else if (hasNewMessages) {
+        scrollCommunicationCentreToBottom(wasNearBottomBeforeRender);
+      } else {
+        // Read-status, reaction, edit, delete, and status refreshes must not steal the user's scroll position.
+        hideNewMessagesButton();
+      }
       try {
         if (options.markRead !== false) await client.rpc('mark_communication_centre_read', { p_conversation_id: id });
         M.state.rows = (M.state.rows || []).map(row => String(row.id) === String(id) ? { ...row, unread_count: 0 } : row);
@@ -662,13 +672,7 @@
   function isCommunicationCentreNearBottom() {
     const el = $('communicationCentreMessages');
     if (!el) return true;
-    return el.scrollHeight - el.scrollTop - el.clientHeight < 140;
-  }
-
-  function setCommunicationCentreScrollBottom() {
-    const el = $('communicationCentreMessages');
-    if (!el) return;
-    el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 120;
   }
 
   function scrollCommunicationCentreToBottom(force = true) {
@@ -678,13 +682,13 @@
       showNewMessagesButton();
       return;
     }
-    hideNewMessagesButton();
     requestAnimationFrame(() => {
-      setCommunicationCentreScrollBottom();
-      [40, 120, 260, 500].forEach(delay => {
-        setTimeout(setCommunicationCentreScrollBottom, delay);
-      });
+      el.scrollTop = el.scrollHeight;
+      setTimeout(() => {
+        el.scrollTop = el.scrollHeight;
+      }, 80);
     });
+    hideNewMessagesButton();
   }
 
   function renderDrawer(options = {}) {
@@ -1286,7 +1290,7 @@
       }
     });
     const listWrap = $('communicationCentreList');
-    bindOnce(listWrap, 'OpenRow', async event => {
+    bindOnce(listWrap, 'OpenRow', event => {
       const button = event.target.closest('[data-cc-open]');
       if (!button) return;
       if (!canOpenConversation()) {
@@ -1294,8 +1298,7 @@
         return;
       }
       if (isMobileViewport()) setMobileView('chat');
-      await openDetail(button.getAttribute('data-cc-open'), { forceScroll: true, initialOpen: true, reason: 'user_open' });
-      scrollCommunicationCentreToBottom(true);
+      openDetail(button.getAttribute('data-cc-open'), { forceScroll: true, reason: isMobileViewport() ? 'mobile_open' : 'initial_open' });
     });
     bindOnce($('communicationCentreMessages'), 'MessageActions', async event => {
       const replyBtnEl = event.target.closest('[data-cc-reply-message]');
@@ -1347,7 +1350,7 @@
     $('communicationCentreMessages')?.addEventListener('scroll', () => {
       if (isCommunicationCentreNearBottom()) hideNewMessagesButton();
     }, { passive: true });
-    bindOnce($('communicationCentreNewMessagesBtn'), 'NewMessages', () => { hideNewMessagesButton(); scrollCommunicationCentreToBottom(true); });
+    bindOnce($('communicationCentreNewMessagesBtn'), 'NewMessages', () => scrollCommunicationCentreToBottom(true));
     bindOnce($('communicationCentreDrawerClose'), 'DrawerClose', () => {
       if (isMobileViewport() || isTabletViewport()) setMobileView('chat');
       else setDetailsVisible(false);
@@ -1403,7 +1406,7 @@
         if (input) input.value = '';
         M.state.replyToMessage = null;
         if (replyError) { replyError.textContent=''; replyError.style.display='none'; }
-        await openDetail(conversation.id);
+        await openDetail(conversation.id, { forceScroll: true, reason: 'send_reply' });
         await refresh();
         scrollCommunicationCentreToBottom(true);
         showFriendlySuccess('Reply sent successfully.');
@@ -1433,9 +1436,8 @@
     setupCommunicationCentreRealtime();
     logCommunicationCentreDebugContext();
     if (hashConversationId && canOpenConversation()) {
+      await openDetail(hashConversationId);
       if (isMobileViewport()) setMobileView('chat');
-      await openDetail(hashConversationId, { forceScroll: true, initialOpen: true, reason: 'deep_link' });
-      scrollCommunicationCentreToBottom(true);
     }
     syncResponsiveLayout();
     global.addEventListener('resize', syncResponsiveLayout, { passive: true });
