@@ -166,6 +166,7 @@
   function setMobileView(view) {
     M.state.mobileView = ['list', 'chat', 'details'].includes(view) ? view : 'list';
     syncResponsiveLayout();
+    if (M.state.mobileView === 'chat') scrollCommunicationCentreToBottom(true);
   }
   function setDetailsVisible(visible) {
     M.state.detailsVisible = visible !== false;
@@ -195,6 +196,34 @@
     if (messageIds.some(id => id && identity.ids.has(id))) return true;
     const senderNames = [message?.sender_name, message?.created_by_name, message?.user_name].map(normalizeIdentityValue);
     return senderNames.some(name => name && identity.names.has(name));
+  }
+  function showNewMessagesButton() {
+    const button = $('communicationCentreNewMessagesBtn');
+    if (button) button.style.display = '';
+  }
+  function hideNewMessagesButton() {
+    const button = $('communicationCentreNewMessagesBtn');
+    if (button) button.style.display = 'none';
+  }
+  function isCommunicationCentreNearBottom() {
+    const el = $('communicationCentreMessages');
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+  }
+  function scrollCommunicationCentreToBottom(force = true) {
+    const el = $('communicationCentreMessages');
+    if (!el) return;
+    if (!force && !isCommunicationCentreNearBottom()) {
+      showNewMessagesButton();
+      return;
+    }
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+      setTimeout(() => {
+        el.scrollTop = el.scrollHeight;
+      }, 80);
+    });
+    hideNewMessagesButton();
   }
   function renderMessageDeliveryStatus(message, isMine) {
     if (!isMine || message?.is_system_message) return '';
@@ -400,7 +429,9 @@
         acc[k].push(row);
         return acc;
       }, {});
-      renderDrawer();
+      const forceScroll = options.forceScroll !== false;
+      renderDrawer({ forceScroll, keepScroll: options.keepScroll });
+      if (forceScroll) scrollCommunicationCentreToBottom(true);
       try {
         await client.rpc('mark_communication_centre_read', { p_conversation_id: id });
         M.state.rows = (M.state.rows || []).map(row => String(row.id) === String(id) ? { ...row, unread_count: 0 } : row);
@@ -438,7 +469,7 @@
     M._activeRefreshTimer = setTimeout(async () => {
       if (!M.state.active?.id) return;
       try {
-        await openDetail(M.state.active.id, { silent: true, keepScroll: true });
+        await openDetail(M.state.active.id, { silent: true, keepScroll: true, forceScroll: false });
       } catch (error) {
         console.warn('[Communication Centre] active refresh failed', reason, error);
       }
@@ -589,7 +620,7 @@
       `;
     }
     if (messages) {
-      const wasNearBottom = messages.scrollHeight - messages.scrollTop - messages.clientHeight < 80;
+      const wasNearBottom = isCommunicationCentreNearBottom();
       messages.innerHTML = M.state.messages.length ? M.state.messages.map(message => {
         const isMine = isMessageMine(message);
         const muted = message.is_system_message ? 'opacity:.72;' : '';
@@ -614,10 +645,12 @@
           </div>
         `;
       }).join('') : '<div class="muted" style="padding:20px;text-align:center;">Select a conversation to view messages.</div>';
-      if (!options.keepScroll || wasNearBottom) messages.scrollTop = messages.scrollHeight;
+      if (options.forceScroll) scrollCommunicationCentreToBottom(true);
+      else if (!options.keepScroll || wasNearBottom) scrollCommunicationCentreToBottom(false);
     }
     if (replyWrap) replyWrap.style.display = (conversation.status !== 'Closed' && can('reply')) ? '' : 'none';
     if (closedMsg) closedMsg.style.display = conversation.status === 'Closed' ? '' : 'none';
+    hideNewMessagesButton();
     renderReplyTargetPreview();
     renderDrawerActions();
     syncResponsiveLayout();
@@ -1215,6 +1248,9 @@
         await openDetail(conversation.id);
       }
     }, { once: false });
+    $('communicationCentreMessages')?.addEventListener('scroll', () => {
+      if (isCommunicationCentreNearBottom()) hideNewMessagesButton();
+    }, { passive: true });
     bindOnce($('communicationCentreDrawerClose'), 'DrawerClose', () => {
       if (isMobileViewport() || isTabletViewport()) setMobileView('chat');
       else setDetailsVisible(false);
@@ -1226,6 +1262,7 @@
       }
       if (e.target?.id === 'communicationCentreBackToList') setMobileView('list');
       if (e.target?.id === 'communicationCentreBackToChat') setMobileView('chat');
+      if (e.target?.id === 'communicationCentreNewMessagesBtn') scrollCommunicationCentreToBottom(true);
       if (e.target?.id === 'communicationCentreCancelReplyTarget') { M.state.replyToMessage = null; M.state.editingMessage = null; const input = $('communicationCentreReplyInput'); if (input) input.value = ''; renderReplyTargetPreview(); }
     });
     const replyBtn = $('communicationCentreReplyBtn');
@@ -1256,6 +1293,7 @@
           M.state.replyToMessage = null;
           if (replyError) { replyError.textContent=''; replyError.style.display='none'; }
           await openDetail(conversation.id);
+          scrollCommunicationCentreToBottom(true);
           scheduleListRefresh('message-edit');
           showFriendlySuccess('Message updated.');
           if (replyBtn) { replyBtn.disabled = false; replyBtn.textContent = 'Send'; }
@@ -1276,6 +1314,7 @@
         M.state.replyToMessage = null;
         if (replyError) { replyError.textContent=''; replyError.style.display='none'; }
         await openDetail(conversation.id);
+        scrollCommunicationCentreToBottom(true);
         await refresh();
         scheduleActiveRefresh('reply-sent');
         showFriendlySuccess('Reply sent successfully.');
