@@ -2034,8 +2034,29 @@ Sample:
             <select id="workflowRequiresApproval" class="select"><option value="false">No Approval</option><option value="true">Requires Approval</option></select>
             <select id="workflowApprovalRoles" class="select" multiple size="5" aria-label="Approval Roles">
             </select>
-            <input id="workflowMaxDiscount" class="input" type="number" step="0.01" placeholder="Max discount %" />
-            <input id="workflowHardStopDiscount" class="input" type="number" step="0.01" placeholder="Hard stop discount %" />
+            <div id="workflowGenericDiscountFields" class="grid cols-2" style="grid-column:span 2;gap:10px;">
+              <input id="workflowMaxDiscount" class="input" type="number" min="0" step="0.01" placeholder="Max discount %" />
+              <input id="workflowHardStopDiscount" class="input" type="number" min="0" step="0.01" placeholder="Hard stop discount %" />
+            </div>
+            <fieldset id="workflowCategoryDiscountFields" class="card" style="display:none;grid-column:1 / -1;margin:0;padding:12px;">
+              <legend style="font-weight:700;padding:0 6px;">Category Discount Limits</legend>
+              <div class="grid cols-2" style="gap:10px;">
+                <div>
+                  <strong>Annual SaaS</strong>
+                  <label class="muted" for="workflowAnnualSaasNoApproval">No approval up to %</label>
+                  <input id="workflowAnnualSaasNoApproval" class="input" type="number" min="0" step="0.01" value="10" />
+                  <label class="muted" for="workflowAnnualSaasHardStop">Hard stop %</label>
+                  <input id="workflowAnnualSaasHardStop" class="input" type="number" min="0" step="0.01" value="20" />
+                </div>
+                <div>
+                  <strong>One-Time Fees</strong>
+                  <label class="muted" for="workflowOneTimeFeeNoApproval">No approval up to %</label>
+                  <input id="workflowOneTimeFeeNoApproval" class="input" type="number" min="0" step="0.01" value="20" />
+                  <label class="muted" for="workflowOneTimeFeeHardStop">Hard stop %</label>
+                  <input id="workflowOneTimeFeeHardStop" class="input" type="number" min="0" step="0.01" value="30" />
+                </div>
+              </div>
+            </fieldset>
             <select id="workflowEditableFields" class="select" multiple aria-label="Editable fields"></select>
             <select id="workflowRequiredFields" class="select" multiple aria-label="Required fields"></select>
             <select id="workflowRequireComment" class="select"><option value="false">Comment Optional</option><option value="true">Comment Required</option></select>
@@ -2046,7 +2067,7 @@ Sample:
               <button id="workflowRuleResetBtn" class="btn ghost sm" type="button">Reset</button>
             </div>
           </form>
-          <div id="workflowRulesDebug" class="muted" style="margin:6px 0 8px 0;">Loaded 0 workflow rule(s)</div><div class="table-wrap"><table><thead><tr><th>Resource</th><th>Current</th><th>Next</th><th>Allowed Roles</th><th>Approval Roles</th><th>Discount Limit</th><th>Hard Stop</th><th>Active</th><th>Actions</th></tr></thead><tbody id="workflowRulesTbody"></tbody></table></div>
+          <div id="workflowRulesDebug" class="muted" style="margin:6px 0 8px 0;">Loaded 0 workflow rule(s)</div><div class="table-wrap"><table><thead><tr><th>Resource</th><th>Current</th><th>Next</th><th>Allowed Roles</th><th>Approval Roles</th><th>Annual SaaS Limit</th><th>Annual SaaS Hard Stop</th><th>One-Time Fee Limit</th><th>One-Time Fee Hard Stop</th><th>Active</th><th>Actions</th></tr></thead><tbody id="workflowRulesTbody"></tbody></table></div>
         </div>
 
         <div class="grid cols-2" style="margin-top:12px;gap:12px;">

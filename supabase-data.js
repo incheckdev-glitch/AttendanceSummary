@@ -3426,6 +3426,11 @@
       }
       return { beforeRecord: record, afterRecord: updatedRecord };
     }
+    const workflowPercentValue = (value, fallback = 0) => {
+      if (value === undefined || value === null || String(value).trim() === '') return fallback;
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? numeric : fallback;
+    };
     const normalizeWorkflowRulePayload = row => {
       const source = row && typeof row === 'object' ? { ...row } : {};
       const allowedRoles = normalizeRoleList(source.allowed_roles, source.allowed_roles_csv);
@@ -3574,18 +3579,29 @@
           Array.isArray(normalizedRow.approval_roles) ? normalizedRow.approval_roles[0] : '',
           normalizedRow.approval_roles_csv
         ) || null,
-        max_discount_percent: Number(normalizedRow.max_discount_percent || 0),
-        hard_stop_discount_percent: Number(normalizedRow.hard_stop_discount_percent || 0),
-        annual_saas_no_approval_until_percent: Number(normalizedRow.annual_saas_no_approval_until_percent || 10),
-        annual_saas_hard_stop_discount_percent: Number(normalizedRow.annual_saas_hard_stop_discount_percent || 20),
-        one_time_fee_no_approval_until_percent: Number(normalizedRow.one_time_fee_no_approval_until_percent || 20),
-        one_time_fee_hard_stop_discount_percent: Number(normalizedRow.one_time_fee_hard_stop_discount_percent || 30),
+        max_discount_percent: workflowPercentValue(normalizedRow.max_discount_percent, 0),
+        hard_stop_discount_percent: workflowPercentValue(normalizedRow.hard_stop_discount_percent, 0),
+        annual_saas_no_approval_until_percent: workflowPercentValue(normalizedRow.annual_saas_no_approval_until_percent, 10),
+        annual_saas_hard_stop_discount_percent: workflowPercentValue(normalizedRow.annual_saas_hard_stop_discount_percent, 20),
+        one_time_fee_no_approval_until_percent: workflowPercentValue(normalizedRow.one_time_fee_no_approval_until_percent, 20),
+        one_time_fee_hard_stop_discount_percent: workflowPercentValue(normalizedRow.one_time_fee_hard_stop_discount_percent, 30),
+        approval_condition: String(normalizedRow.approval_condition || '').trim() || null,
+        approval_basis: String(normalizedRow.approval_basis || '').trim() || null,
+        reapproval_mode: String(normalizedRow.reapproval_mode || '').trim() || null,
         editable_fields: Array.isArray(normalizedRow.editable_fields) ? normalizedRow.editable_fields : [],
         required_fields: Array.isArray(normalizedRow.required_fields) ? normalizedRow.required_fields : [],
         require_comment: Boolean(normalizedRow.require_comment),
         require_attachment: Boolean(normalizedRow.require_attachment),
         is_active: normalizedRow.is_active !== false
       };
+      if (cleanRow.resource === 'proposals') {
+        if (normalizedRow.max_discount_percent === undefined || normalizedRow.max_discount_percent === null || String(normalizedRow.max_discount_percent).trim() === '') {
+          cleanRow.max_discount_percent = workflowPercentValue(cleanRow.annual_saas_no_approval_until_percent, 10);
+        }
+        if (normalizedRow.hard_stop_discount_percent === undefined || normalizedRow.hard_stop_discount_percent === null || String(normalizedRow.hard_stop_discount_percent).trim() === '') {
+          cleanRow.hard_stop_discount_percent = workflowPercentValue(cleanRow.annual_saas_hard_stop_discount_percent, 20);
+        }
+      }
       if (!String(cleanRow.workflow_rule_id || '').trim()) delete cleanRow.workflow_rule_id;
       const legacyId = normalizeRawId(normalizedRow.id || rawRow.id);
       const id = cleanRow.workflow_rule_id || legacyId;
