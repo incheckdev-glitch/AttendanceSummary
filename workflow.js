@@ -302,20 +302,43 @@ const WorkflowEngine = {
         };
         const recordId = String(
           requestedChanges?.id ||
-          requestedChanges?.proposal_id ||
-          requestedChanges?.agreement_id ||
-          requestedChanges?.invoice_id ||
-          requestedChanges?.receipt_id ||
-          record?.proposal_id ||
-          record?.agreement_id ||
-          record?.invoice_id ||
-          record?.receipt_id ||
+          requestedChanges?.proposal_uuid ||
+          requestedChanges?.agreement_uuid ||
+          requestedChanges?.invoice_uuid ||
+          requestedChanges?.receipt_uuid ||
           record?.id ||
           ''
         ).trim();
+        const resourceDisplayId = String(
+          requestedChanges?.resource_display_id ||
+          requestedChanges?.proposal_id ||
+          requestedChanges?.proposal_number ||
+          requestedChanges?.agreement_id ||
+          requestedChanges?.agreement_number ||
+          requestedChanges?.invoice_id ||
+          requestedChanges?.invoice_number ||
+          requestedChanges?.receipt_id ||
+          requestedChanges?.receipt_number ||
+          record?.proposal_id ||
+          record?.proposal_number ||
+          record?.agreement_id ||
+          record?.agreement_number ||
+          record?.invoice_id ||
+          record?.invoice_number ||
+          record?.receipt_id ||
+          record?.receipt_number ||
+          recordId ||
+          ''
+        ).trim();
+        normalizedRequestedChanges.resource_id = recordId;
+        normalizedRequestedChanges.target_id = recordId;
+        normalizedRequestedChanges.resource_display_id = resourceDisplayId;
         const approvalPayload = {
           resource: normalizedResource,
           record_id: recordId,
+          target_id: recordId,
+          resource_id: recordId,
+          resource_display_id: resourceDisplayId,
           workflow_rule_id: validationResult?.workflow_rule_id || null,
           requester_user_id: window.Session?.authContext?.()?.user?.id || null,
           requester_role: submittedByRole,
@@ -825,6 +848,8 @@ const Workflow = {
       if (requested?.agreement_id || requested?.agreement_number) return 'agreements';
       if (requested?.invoice_id || requested?.invoice_number) return 'invoices';
       if (requested?.receipt_id || requested?.receipt_number) return 'receipts';
+      if (requested?.deal_id || requested?.deal_number) return 'deals';
+      if (requested?.lead_id || requested?.lead_number) return 'leads';
       return actualResource || '';
     };
     const resource = normalizeApprovalBusinessResource({
@@ -921,6 +946,21 @@ const Workflow = {
     if (normalizedResource === 'receipts') return E.receiptPreviewModal?.classList?.contains('open') === true;
     return false;
   },
+  getWorkflowDisplayId(record = {}) {
+    return record?.proposal_id || record?.proposal_number || record?.agreement_id || record?.agreement_number || record?.invoice_id || record?.invoice_number || record?.receipt_id || record?.receipt_number || record?.deal_id || record?.deal_number || record?.lead_id || record?.lead_number || record?.display_id || '';
+  },
+  async resolveApprovalResourceRecord(resource = '', rawId = '') {
+    const resolver = window.WorkflowResourceResolver?.resolveResourceRecord;
+    if (typeof resolver !== 'function') return null;
+    const record = await resolver(resource, rawId);
+    console.log('[Workflow resolver]', {
+      resource,
+      rawId,
+      resolvedId: record?.id,
+      displayId: this.getWorkflowDisplayId(record)
+    });
+    return record;
+  },
   async openResourcePreview(resource = '', recordId = '') {
     const normalizedResource = String(resource || '').trim().toLowerCase();
     const id = String(recordId || '').trim();
@@ -1016,7 +1056,11 @@ const Workflow = {
     const normalized = this.normalizePendingApproval(approvalRow);
     const context = this.buildApprovalContext(normalized);
     const resource = String(context.resource || '').trim().toLowerCase();
-    const previewId = String(
+    const rawPreviewId = String(
+      context?.resource_id ||
+      context?.target_id ||
+      context?.requested_changes?.resource_id ||
+      context?.requested_changes?.target_id ||
       context?.requested_changes?.proposal_uuid ||
       context?.requested_changes?.agreement_uuid ||
       context?.requested_changes?.invoice_uuid ||
@@ -1032,8 +1076,18 @@ const Workflow = {
       context?.requested_changes?.receipt_id ||
       ''
     ).trim();
+    let previewId = rawPreviewId;
     this.state.activeApprovalPreview = context;
     try {
+      const resolvedRecord = await this.resolveApprovalResourceRecord(resource, rawPreviewId);
+      if (resolvedRecord?.id) {
+        previewId = String(resolvedRecord.id).trim();
+        this.state.activeApprovalPreview = {
+          ...context,
+          resolvedRecordId: previewId,
+          resource_display_id: this.getWorkflowDisplayId(resolvedRecord) || context.resource_display_id || context?.requested_changes?.resource_display_id || ''
+        };
+      }
       const opened = await this.openResourcePreview(resource, previewId);
       if (opened) {
         return;
