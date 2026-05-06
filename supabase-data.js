@@ -744,10 +744,93 @@
   }
 
   function isUuid(value) {
-    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      String(value || '').trim()
-    );
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
   }
+
+  const WORKFLOW_RESOURCE_RECORD_MAP = {
+    proposals: {
+      table: 'proposals',
+      uuidColumn: 'id',
+      businessColumns: ['proposal_id', 'proposal_number', 'display_id']
+    },
+    agreements: {
+      table: 'agreements',
+      uuidColumn: 'id',
+      businessColumns: ['agreement_id', 'agreement_number', 'display_id']
+    },
+    invoices: {
+      table: 'invoices',
+      uuidColumn: 'id',
+      businessColumns: ['invoice_id', 'invoice_number', 'display_id']
+    },
+    receipts: {
+      table: 'receipts',
+      uuidColumn: 'id',
+      businessColumns: ['receipt_id', 'receipt_number', 'display_id']
+    },
+    deals: {
+      table: 'deals',
+      uuidColumn: 'id',
+      businessColumns: ['deal_id', 'deal_number', 'display_id']
+    },
+    leads: {
+      table: 'leads',
+      uuidColumn: 'id',
+      businessColumns: ['lead_id', 'lead_number', 'display_id']
+    }
+  };
+
+  function normalizeWorkflowResolverResource(resource) {
+    return String(resource || '').trim().toLowerCase().replace(/^public\./, '');
+  }
+
+  async function resolveResourceRecord(resource, rawId, providedClient = null) {
+    const value = String(rawId || '').trim();
+    if (!resource || !value) throw new Error('Missing workflow resource or record id');
+
+    const normalizedResource = normalizeWorkflowResolverResource(resource);
+    const config = WORKFLOW_RESOURCE_RECORD_MAP[normalizedResource];
+
+    if (!config) {
+      throw new Error(`Unsupported workflow resource: ${resource}`);
+    }
+
+    const resolverClient = providedClient || global.SupabaseClient?.getClient?.();
+    if (!resolverClient) throw new Error('Supabase client is not available');
+
+    if (isUuid(value)) {
+      const { data, error } = await resolverClient
+        .from(config.table)
+        .select('*')
+        .eq(config.uuidColumn, value)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (data) return data;
+    }
+
+    for (const column of config.businessColumns) {
+      try {
+        const { data, error } = await resolverClient
+          .from(config.table)
+          .select('*')
+          .eq(column, value)
+          .maybeSingle();
+
+        if (!error && data) return data;
+      } catch (_) {
+        // Column may not exist in some schemas. Continue to next possible column.
+      }
+    }
+
+    throw new Error(`Unable to resolve ${resource} record from workflow id: ${value}`);
+  }
+
+  global.WorkflowResourceResolver = {
+    isUuid,
+    resolveResourceRecord,
+    tableMap: WORKFLOW_RESOURCE_RECORD_MAP
+  };
 
   function getPrimaryKeyForResource(resource) {
     const name = String(resource || '').trim();
@@ -2627,16 +2710,12 @@
       'approval_roles_csv'
     ]);
     const WORKFLOW_RESOURCE_ID_HINTS = {
-      proposals: ['proposal_id'],
-      agreements: ['agreement_id'],
-      invoices: ['invoice_id'],
-      receipts: ['receipt_id']
-    };
-    const WORKFLOW_RESOURCE_BUSINESS_KEY = {
-      proposals: 'proposal_id',
-      agreements: 'agreement_id',
-      invoices: 'invoice_id',
-      receipts: 'receipt_id'
+      proposals: ['proposal_uuid', 'proposal_id', 'proposal_number', 'display_id'],
+      agreements: ['agreement_uuid', 'agreement_id', 'agreement_number', 'display_id'],
+      invoices: ['invoice_uuid', 'invoice_id', 'invoice_number', 'display_id'],
+      receipts: ['receipt_uuid', 'receipt_id', 'receipt_number', 'display_id'],
+      deals: ['deal_uuid', 'deal_id', 'deal_number', 'display_id'],
+      leads: ['lead_uuid', 'lead_id', 'lead_number', 'display_id']
     };
     const normalizeRoleList = (...values) => {
       const found = values.find(value => value !== undefined && value !== null && (Array.isArray(value) || String(value).trim() !== ''));
@@ -2689,6 +2768,8 @@
       if (requestedChanges?.agreement_id || requestedChanges?.agreement_number) return 'agreements';
       if (requestedChanges?.invoice_id || requestedChanges?.invoice_number) return 'invoices';
       if (requestedChanges?.receipt_id || requestedChanges?.receipt_number) return 'receipts';
+      if (requestedChanges?.deal_id || requestedChanges?.deal_number) return 'deals';
+      if (requestedChanges?.lead_id || requestedChanges?.lead_number) return 'leads';
       return direct || '';
     }
     async function loadApprovalRowById(approvalId = '') {
@@ -3027,29 +3108,39 @@
       return result;
     }
     async function resolveWorkflowTargetRecord(resourceValue = '', approval = {}) {
-      const resource = String(resourceValue || '').trim().toLowerCase();
+      const resource = normalizeWorkflowResolverResource(resourceValue);
       const table = TABLE_BY_RESOURCE[resource];
       const primaryKey = PK_BY_RESOURCE[resource] || 'id';
       if (!table || !primaryKey) throw workflowError(`Unsupported workflow resource: ${resource || 'unknown'}`);
       const requestedChanges = approval?.requested_changes && typeof approval.requested_changes === 'object'
         ? approval.requested_changes
         : {};
-      const directRecordId = String(approval?.record_id || '').trim();
+      const directRecordId = String(
+        approval?.resource_id ||
+        approval?.record_id ||
+        approval?.target_id ||
+        requestedChanges?.resource_id ||
+        requestedChanges?.target_id ||
+        ''
+      ).trim();
       const hintValues = (WORKFLOW_RESOURCE_ID_HINTS[resource] || [])
         .map(key => String(requestedChanges?.[key] || '').trim())
         .filter(Boolean);
       const candidateIds = [...new Set([directRecordId, ...hintValues].filter(Boolean))];
-      const businessIdColumn = WORKFLOW_RESOURCE_BUSINESS_KEY[resource];
       for (const candidate of candidateIds) {
-        let query = client.from(table).select('*').eq(primaryKey, candidate).limit(1).maybeSingle();
-        let { data, error } = await query;
-        if (error) throw workflowError(`Unable to load ${resource} record`, error);
-        if (!data && businessIdColumn) {
-          ({ data, error } = await client.from(table).select('*').eq(businessIdColumn, candidate).limit(1).maybeSingle());
-          if (error) throw workflowError(`Unable to load ${resource} record`, error);
-        }
-        if (data) {
-          return { record: data, recordId: String(data?.[primaryKey] || '').trim() || String(data?.id || '').trim() || candidate };
+        try {
+          const record = await resolveResourceRecord(resource, candidate, client);
+          console.log('[Workflow resolver]', {
+            resource,
+            rawId: candidate,
+            resolvedId: record?.id,
+            displayId: record?.proposal_id || record?.proposal_number || record?.agreement_id || record?.agreement_number || record?.invoice_id || record?.invoice_number || record?.receipt_id || record?.receipt_number || record?.deal_id || record?.deal_number || record?.lead_id || record?.lead_number || record?.display_id
+          });
+          return { record, recordId: String(record?.[primaryKey] || '').trim() || String(record?.id || '').trim() || candidate };
+        } catch (error) {
+          if (candidate === candidateIds[candidateIds.length - 1]) {
+            throw workflowError(`Unable to load ${resource} record`, error);
+          }
         }
       }
       throw workflowError(`Target ${resource} record is missing or could not be resolved.`);
@@ -3441,9 +3532,17 @@
     }
     if (requestedAction === 'create_approval' || requestedAction === 'create_workflow_approval') {
       assertAllowed('workflow', 'request_approval');
-      const requestedChangesPayload = Object.prototype.hasOwnProperty.call(safePayload, 'p_requested_changes')
+      const requestedChangesPayloadSource = Object.prototype.hasOwnProperty.call(safePayload, 'p_requested_changes')
         ? safePayload.p_requested_changes
         : (Object.prototype.hasOwnProperty.call(safePayload, 'requested_changes') ? safePayload.requested_changes : {});
+      const requestedChangesPayload = requestedChangesPayloadSource && typeof requestedChangesPayloadSource === 'object'
+        ? {
+          ...requestedChangesPayloadSource,
+          resource_id: String(safePayload.resource_id ?? safePayload.target_id ?? safePayload.p_record_id ?? safePayload.record_id ?? requestedChangesPayloadSource.resource_id ?? '').trim() || requestedChangesPayloadSource.resource_id,
+          target_id: String(safePayload.target_id ?? safePayload.resource_id ?? safePayload.p_record_id ?? safePayload.record_id ?? requestedChangesPayloadSource.target_id ?? '').trim() || requestedChangesPayloadSource.target_id,
+          resource_display_id: String(safePayload.resource_display_id ?? requestedChangesPayloadSource.resource_display_id ?? '').trim() || requestedChangesPayloadSource.resource_display_id
+        }
+        : requestedChangesPayloadSource;
       const rpcPayload = {
         p_resource: String(
           safePayload.p_resource ??
@@ -3452,7 +3551,7 @@
           safePayload.target_resource ??
           ''
         ).trim(),
-        p_record_id: String(safePayload.p_record_id ?? safePayload.record_id ?? '').trim(),
+        p_record_id: String(safePayload.p_record_id ?? safePayload.record_id ?? safePayload.resource_id ?? safePayload.target_id ?? '').trim(),
         p_workflow_rule_id: safePayload.p_workflow_rule_id ?? safePayload.workflow_rule_id ?? null,
         p_requester_user_id: safePayload.p_requester_user_id ?? safePayload.requester_user_id ?? null,
         p_requester_role: String(safePayload.p_requester_role ?? safePayload.requester_role ?? '').trim().toLowerCase(),
@@ -3491,7 +3590,18 @@
         if (error) throw workflowError('Unable to load pending approvals', error);
         return normalizeList('workflow', normalizeWorkflowRows(data));
       }
-      const row = safePayload;
+      const rowSource = safePayload;
+      const rowRequestedChangesSource = rowSource.requested_changes && typeof rowSource.requested_changes === 'object' ? rowSource.requested_changes : {};
+      const row = {
+        ...rowSource,
+        record_id: String(rowSource.record_id ?? rowSource.resource_id ?? rowSource.target_id ?? '').trim(),
+        requested_changes: {
+          ...rowRequestedChangesSource,
+          resource_id: String(rowSource.resource_id ?? rowSource.target_id ?? rowSource.record_id ?? rowRequestedChangesSource.resource_id ?? '').trim() || rowRequestedChangesSource.resource_id,
+          target_id: String(rowSource.target_id ?? rowSource.resource_id ?? rowSource.record_id ?? rowRequestedChangesSource.target_id ?? '').trim() || rowRequestedChangesSource.target_id,
+          resource_display_id: String(rowSource.resource_display_id ?? rowRequestedChangesSource.resource_display_id ?? '').trim() || rowRequestedChangesSource.resource_display_id
+        }
+      };
       const approvalColumns = [
         'approval_id',
         'resource',
