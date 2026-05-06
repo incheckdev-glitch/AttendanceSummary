@@ -87,29 +87,51 @@ function getProposalDiscountsByCategory(proposal, items = []) {
   };
 }
 
-function isAboveApprovedBaseline(currentDiscount, approvedDiscountRaw) {
-  if (!hasValue(approvedDiscountRaw)) {
-    return true;
-  }
+function evaluateDiscountThresholdDecision(currentDiscountRaw, noApprovalLimitRaw, hardStopRaw, approvedBaselineRaw) {
+  const currentDiscount = Number(toNumber(currentDiscountRaw).toFixed(2));
+  const noApprovalLimit = Number(toNumber(noApprovalLimitRaw).toFixed(2));
+  const hardStop = Number(toNumber(hardStopRaw).toFixed(2));
+  const hasApprovedBaseline = hasValue(approvedBaselineRaw);
+  const approvedBaseline = hasApprovedBaseline ? Number(toNumber(approvedBaselineRaw).toFixed(2)) : null;
+  const aboveNoApprovalLimit = currentDiscount > noApprovalLimit;
+  const aboveApprovedBaseline = !hasApprovedBaseline || currentDiscount > approvedBaseline;
+  const withinHardStop = currentDiscount <= hardStop;
 
-  const current = Number(toNumber(currentDiscount).toFixed(2));
-  const approved = Number(toNumber(approvedDiscountRaw).toFixed(2));
-
-  return current > approved;
+  return {
+    currentDiscount,
+    noApprovalLimit,
+    hardStop,
+    hasApprovedBaseline,
+    approvedBaseline,
+    blocked: currentDiscount > hardStop,
+    requiresApproval: aboveNoApprovalLimit && aboveApprovedBaseline && withinHardStop,
+    aboveNoApprovalLimit,
+    aboveApprovedBaseline,
+    withinHardStop
+  };
 }
 
 function evaluateCategoryDiscountApproval(proposal, items, workflowRule) {
   const discounts = getProposalDiscountsByCategory(proposal, items);
 
-  const annualNoApprovalLimit = toNumber(workflowRule?.annual_saas_no_approval_until_percent || 10);
-  const annualHardStop = toNumber(workflowRule?.annual_saas_hard_stop_discount_percent || 20);
-
-  const oneTimeNoApprovalLimit = toNumber(workflowRule?.one_time_fee_no_approval_until_percent || 20);
-  const oneTimeHardStop = toNumber(workflowRule?.one_time_fee_hard_stop_discount_percent || 30);
+  const annualDecision = evaluateDiscountThresholdDecision(
+    discounts.annualSaasDiscount,
+    hasValue(workflowRule?.annual_saas_no_approval_until_percent) ? workflowRule.annual_saas_no_approval_until_percent : 10,
+    hasValue(workflowRule?.annual_saas_hard_stop_discount_percent) ? workflowRule.annual_saas_hard_stop_discount_percent : 20,
+    proposal?.approved_annual_saas_discount_percent
+  );
+  const oneTimeDecision = evaluateDiscountThresholdDecision(
+    discounts.oneTimeFeeDiscount,
+    hasValue(workflowRule?.one_time_fee_no_approval_until_percent) ? workflowRule.one_time_fee_no_approval_until_percent : 20,
+    hasValue(workflowRule?.one_time_fee_hard_stop_discount_percent) ? workflowRule.one_time_fee_hard_stop_discount_percent : 30,
+    proposal?.approved_one_time_fee_discount_percent
+  );
+  const annualHardStop = annualDecision.hardStop;
+  const oneTimeHardStop = oneTimeDecision.hardStop;
 
   const reasons = [];
 
-  if (discounts.annualSaasDiscount > annualHardStop) {
+  if (annualDecision.blocked) {
     return {
       allowed: false,
       requiresApproval: false,
@@ -118,7 +140,7 @@ function evaluateCategoryDiscountApproval(proposal, items, workflowRule) {
     };
   }
 
-  if (discounts.oneTimeFeeDiscount > oneTimeHardStop) {
+  if (oneTimeDecision.blocked) {
     return {
       allowed: false,
       requiresApproval: false,
@@ -127,19 +149,8 @@ function evaluateCategoryDiscountApproval(proposal, items, workflowRule) {
     };
   }
 
-  const annualNeedsApproval =
-    discounts.annualSaasDiscount > annualNoApprovalLimit &&
-    isAboveApprovedBaseline(
-      discounts.annualSaasDiscount,
-      proposal?.approved_annual_saas_discount_percent
-    );
-
-  const oneTimeNeedsApproval =
-    discounts.oneTimeFeeDiscount > oneTimeNoApprovalLimit &&
-    isAboveApprovedBaseline(
-      discounts.oneTimeFeeDiscount,
-      proposal?.approved_one_time_fee_discount_percent
-    );
+  const annualNeedsApproval = annualDecision.requiresApproval;
+  const oneTimeNeedsApproval = oneTimeDecision.requiresApproval;
 
   if (annualNeedsApproval) {
     reasons.push(
@@ -159,7 +170,9 @@ function evaluateCategoryDiscountApproval(proposal, items, workflowRule) {
     reason: reasons.join(' '),
     discounts,
     annualNeedsApproval,
-    oneTimeNeedsApproval
+    oneTimeNeedsApproval,
+    annualDecision,
+    oneTimeDecision
   };
 }
 
@@ -283,7 +296,13 @@ const WorkflowEngine = {
       current_status: currentStatus,
       status: currentStatus,
       next_status: targetStatus,
-      discount_percent: requestedChanges?.discount_percent ?? proposalPayload?.discount_percent ?? record?.discount_percent
+      discount_percent: requestedChanges?.discount_percent ?? proposalPayload?.discount_percent ?? record?.discount_percent,
+      approved_annual_saas_discount_percent: hasValue(proposalPayload?.approved_annual_saas_discount_percent)
+        ? proposalPayload.approved_annual_saas_discount_percent
+        : record?.approved_annual_saas_discount_percent,
+      approved_one_time_fee_discount_percent: hasValue(proposalPayload?.approved_one_time_fee_discount_percent)
+        ? proposalPayload.approved_one_time_fee_discount_percent
+        : record?.approved_one_time_fee_discount_percent
     };
     const workflowRule = this.getProposalWorkflowRule(currentStatus, targetStatus);
     const decision = evaluateProposalDiscountApprovalRequirement(proposalForDecision, items, targetStatus, workflowRule);
