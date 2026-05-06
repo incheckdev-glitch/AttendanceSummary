@@ -1,10 +1,13 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
+const FUNCTION_VERSION = 'send-web-push-v2-cc-auth-final-20260506';
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-incheck360-webhook-secret',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Content-Type': 'application/json'
+  'Content-Type': 'application/json',
+  'x-incheck360-function-version': FUNCTION_VERSION
 };
 
 const VAPID_SUBJECT = Deno.env.get('VAPID_SUBJECT') || 'mailto:support@incheck360.com';
@@ -23,7 +26,15 @@ const adminClient =
     : null;
 
 function normalizeString(value: unknown) {
-  return String(value || '').trim();
+  return String(value ?? '').trim();
+}
+
+function normalizeLower(value: unknown) {
+  return normalizeString(value).toLowerCase();
+}
+
+function normalizeResource(value: unknown) {
+  return normalizeLower(value).replace(/[\s-]+/g, '_');
 }
 
 function uniqueList(...values: unknown[]): string[] {
@@ -44,12 +55,202 @@ function uniqueList(...values: unknown[]): string[] {
   return out;
 }
 
+function getRecord(input: Record<string, unknown>, key: string): Record<string, unknown> {
+  const value = input?.[key];
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
 function rowValue(row: Record<string, unknown>, key: string) {
   return normalizeString(row?.[key]);
 }
 
 function rowValueLower(row: Record<string, unknown>, key: string) {
   return rowValue(row, key).toLowerCase();
+}
+
+function getPayloadResource(input: Record<string, unknown>) {
+  const data = getRecord(input, 'data');
+  const metadata = getRecord(input, 'metadata');
+  return normalizeResource(
+    input.resource ||
+    input.resource_key ||
+    input.module ||
+    data.resource ||
+    data.resource_key ||
+    data.module ||
+    metadata.resource ||
+    metadata.resource_key ||
+    metadata.module
+  );
+}
+
+function getPayloadAction(input: Record<string, unknown>) {
+  const data = getRecord(input, 'data');
+  const metadata = getRecord(input, 'metadata');
+  return normalizeLower(
+    input.action ||
+    input.event_key ||
+    input.type ||
+    data.action ||
+    data.event_key ||
+    data.type ||
+    metadata.action ||
+    metadata.event_key ||
+    metadata.type
+  );
+}
+
+function getConversationId(input: Record<string, unknown>) {
+  const data = getRecord(input, 'data');
+  const metadata = getRecord(input, 'metadata');
+  const candidates = [
+    input.conversation_id,
+    input.conversationId,
+    input.record_id,
+    input.resource_id,
+    data.conversation_id,
+    data.conversationId,
+    data.record_id,
+    data.resource_id,
+    metadata.conversation_id,
+    metadata.conversationId,
+    metadata.record_id,
+    metadata.resource_id
+  ];
+  for (const value of candidates) {
+    const normalized = normalizeString(value);
+    if (normalized) return normalized;
+  }
+  return '';
+}
+
+function buildPushPayload(input: Record<string, unknown>) {
+  const title = normalizeString(input.title) || 'InCheck360 MonitorCore';
+  const body = normalizeString(input.body) || 'You have a new notification.';
+  const url = normalizeString(input.url) || '/';
+  const tag = normalizeString(input.tag) || `incheck360-${Date.now()}`;
+  const data = getRecord(input, 'data');
+
+  return {
+    title,
+    body,
+    url,
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    tag,
+    data: {
+      ...data,
+      url
+    }
+  };
+}
+
+function hasRole(payload: Record<string, unknown>, role: string) {
+  const roleKey = normalizeLower(role);
+  const appMetadata = getRecord(payload, 'app_metadata');
+  const userMetadata = getRecord(payload, 'user_metadata');
+  const appRole = normalizeLower(appMetadata.role || appMetadata.role_key);
+  const profileRole = normalizeLower(userMetadata.role || userMetadata.role_key);
+  const rolesFromMetadata = uniqueList(appMetadata.roles, userMetadata.roles).map(item => item.toLowerCase());
+  return appRole === roleKey || profileRole === roleKey || rolesFromMetadata.includes(roleKey);
+}
+
+async function resolveAuthContext(req: Request) {
+  const authorization = req.headers.get('authorization') || req.headers.get('Authorization') || '';
+  const webhookHeader = req.headers.get('x-incheck360-webhook-secret') || '';
+  const webhookSecretProvided = Boolean(webhookHeader && PUSH_WEBHOOK_SECRET && webhookHeader === PUSH_WEBHOOK_SECRET);
+  const jwt = authorization.toLowerCase().startsWith('bearer ') ? authorization.slice(7).trim() : '';
+
+  if (!jwt) {
+    return {
+      isAuthenticated: false,
+      userId: '',
+      email: '',
+      profileRole: '',
+      isPrivileged: webhookSecretProvided,
+      authError: webhookSecretProvided ? '' : 'Missing Authorization bearer token.'
+    };
+  }
+
+  if (!adminClient) {
+    return {
+      isAuthenticated: false,
+      userId: '',
+      email: '',
+      profileRole: '',
+      isPrivileged: false,
+      authError: 'Server missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY'
+    };
+  }
+
+  const { data, error } = await adminClient.auth.getUser(jwt);
+  if (error || !data?.user) {
+    return {
+      isAuthenticated: false,
+      userId: '',
+      email: '',
+      profileRole: '',
+      isPrivileged: webhookSecretProvided,
+      authError: error?.message || 'Invalid or expired access token.'
+    };
+  }
+
+  const user = data.user;
+  const userId = normalizeString(user.id);
+  const email = normalizeLower(user.email);
+  let profileRole = '';
+
+  try {
+    const { data: profile } = await adminClient
+      .from('profiles')
+      .select('role_key,role,email')
+      .eq('id', userId)
+      .maybeSingle();
+    profileRole = normalizeLower((profile as Record<string, unknown> | null)?.role_key || (profile as Record<string, unknown> | null)?.role);
+  } catch (_) {
+    profileRole = '';
+  }
+
+  const privilegedByRole =
+    hasRole(user as unknown as Record<string, unknown>, 'admin') ||
+    hasRole(user as unknown as Record<string, unknown>, 'dev') ||
+    profileRole === 'admin' ||
+    profileRole === 'dev';
+
+  return {
+    isAuthenticated: true,
+    userId,
+    email,
+    profileRole,
+    isPrivileged: webhookSecretProvided || privilegedByRole,
+    authError: ''
+  };
+}
+
+function isCommunicationCentreResource(resource: string) {
+  return ['communication_centre', 'communication_center', 'communication'].includes(resource);
+}
+
+function isAllowedSystemRolePush(input: Record<string, unknown>) {
+  const resource = getPayloadResource(input);
+  const allowedResources = new Set([
+    'tickets',
+    'events',
+    'calendar_events',
+    'operations_onboarding',
+    'technical_admin_requests',
+    'leads',
+    'deals',
+    'proposals',
+    'agreements',
+    'invoices',
+    'receipts',
+    'workflow',
+    'notifications',
+    'communication_centre',
+    'communication_center'
+  ]);
+  return allowedResources.has(resource);
 }
 
 function rowMatchesPushTarget(
@@ -86,99 +287,147 @@ function rowMatchesPushTarget(
   return false;
 }
 
-function hasRole(payload: Record<string, unknown>, role: string) {
-  const roleKey = normalizeString(role).toLowerCase();
-  const appRole = normalizeString(payload.app_metadata?.role).toLowerCase();
-  const profileRole = normalizeString(payload.user_metadata?.role).toLowerCase();
-  const rolesFromMetadata = uniqueList(payload.app_metadata?.roles).map(item => item.toLowerCase());
-  return appRole === roleKey || profileRole === roleKey || rolesFromMetadata.includes(roleKey);
-}
+async function validateCommunicationCentrePush(
+  auth: Awaited<ReturnType<typeof resolveAuthContext>>,
+  body: Record<string, unknown>,
+  targetUserIds: string[],
+  targetEmails: string[],
+  targetRoles: string[]
+) {
+  const resource = getPayloadResource(body);
+  const action = getPayloadAction(body);
+  const conversationId = getConversationId(body);
 
-async function resolveAuthContext(req: Request) {
-  const authorization = req.headers.get('authorization') || req.headers.get('Authorization') || '';
-  const webhookHeader = req.headers.get('x-incheck360-webhook-secret') || '';
-  const webhookSecretProvided = webhookHeader && PUSH_WEBHOOK_SECRET && webhookHeader === PUSH_WEBHOOK_SECRET;
-  const jwt = authorization.toLowerCase().startsWith('bearer ') ? authorization.slice(7).trim() : '';
-
-  if (!jwt) {
-    return {
-      isAuthenticated: false,
-      userId: '',
-      isPrivileged: webhookSecretProvided,
-      authError: 'Missing Authorization bearer token.'
-    };
-  }
-  if (!adminClient) {
-    return {
-      isAuthenticated: false,
-      userId: '',
-      isPrivileged: false,
-      authError: 'Server missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY'
-    };
-  }
-  const { data, error } = await adminClient.auth.getUser(jwt);
-  if (error || !data?.user) {
-    return {
-      isAuthenticated: false,
-      userId: '',
-      isPrivileged: webhookSecretProvided,
-      authError: error?.message || 'Invalid or expired access token.'
-    };
-  }
-  const user = data.user;
-  const userId = normalizeString(user.id);
-  const privilegedByRole = hasRole(user as unknown as Record<string, unknown>, 'admin') || hasRole(user as unknown as Record<string, unknown>, 'dev');
-  return {
-    isAuthenticated: true,
-    userId,
-    isPrivileged: webhookSecretProvided || privilegedByRole,
-    authError: ''
+  const baseDebug = {
+    functionVersion: FUNCTION_VERSION,
+    resource,
+    action,
+    conversationId,
+    authUserId: auth.userId,
+    authEmail: auth.email,
+    authProfileRole: auth.profileRole,
+    targetUserIds,
+    targetEmails,
+    targetRoles
   };
-}
 
-function buildPushPayload(input: Record<string, unknown>) {
-  const title = String(input.title || 'InCheck360 MonitorCore').trim() || 'InCheck360 MonitorCore';
-  const body = String(input.body || 'You have a new notification.').trim() || 'You have a new notification.';
-  const url = String(input.url || '/').trim() || '/';
-  const tag = String(input.tag || `incheck360-${Date.now()}`).trim() || `incheck360-${Date.now()}`;
-  const data = input.data && typeof input.data === 'object' ? (input.data as Record<string, unknown>) : {};
+  if (!adminClient) return { allowed: false, reason: 'missing_admin_client', debug: baseDebug };
+  if (!isCommunicationCentreResource(resource)) return { allowed: false, reason: 'not_communication_centre', debug: baseDebug };
+  if (!auth.isAuthenticated || !auth.userId) return { allowed: false, reason: 'missing_authenticated_user', debug: baseDebug };
+  if (!conversationId) return { allowed: false, reason: 'missing_conversation_id', debug: baseDebug };
+  if (!targetUserIds.length && !targetEmails.length && !targetRoles.length) {
+    return { allowed: false, reason: 'missing_targets', debug: baseDebug };
+  }
+
+  const { data: participantRows, error: participantError } = await adminClient
+    .from('communication_centre_participants')
+    .select('user_id, role_key, participant_type')
+    .eq('conversation_id', conversationId)
+    .limit(1000);
+
+  if (participantError) {
+    return { allowed: false, reason: participantError.message || 'participant_lookup_failed', debug: baseDebug };
+  }
+
+  const participants = (participantRows || []) as Array<Record<string, unknown>>;
+  const participantUserIds = uniqueList(participants.map(row => row.user_id));
+  const participantRoles = uniqueList(participants.map(row => row.role_key)).map(item => item.toLowerCase());
+
+  let conversationCreatedBy = '';
+  try {
+    const { data: conversation } = await adminClient
+      .from('communication_centre_conversations')
+      .select('created_by, assigned_role')
+      .eq('id', conversationId)
+      .maybeSingle();
+    conversationCreatedBy = normalizeString((conversation as Record<string, unknown> | null)?.created_by);
+    const assignedRole = normalizeLower((conversation as Record<string, unknown> | null)?.assigned_role);
+    if (assignedRole && !participantRoles.includes(assignedRole)) participantRoles.push(assignedRole);
+  } catch (_) {
+    conversationCreatedBy = '';
+  }
+
+  const actorIsParticipant =
+    participantUserIds.includes(auth.userId) ||
+    (conversationCreatedBy && conversationCreatedBy === auth.userId);
+
+  if (!actorIsParticipant) {
+    return {
+      allowed: false,
+      reason: 'actor_not_conversation_participant',
+      debug: { ...baseDebug, participantUserIds, participantRoles, conversationCreatedBy }
+    };
+  }
+
+  const participantEmails: string[] = [];
+  if (participantUserIds.length > 0) {
+    try {
+      const { data: profileRows } = await adminClient
+        .from('profiles')
+        .select('id, email, role_key, role')
+        .in('id', participantUserIds)
+        .limit(1000);
+      ((profileRows || []) as Array<Record<string, unknown>>).forEach(row => {
+        const email = normalizeLower(row.email);
+        const role = normalizeLower(row.role_key || row.role);
+        if (email && !participantEmails.includes(email)) participantEmails.push(email);
+        if (role && !participantRoles.includes(role)) participantRoles.push(role);
+      });
+    } catch (_) {
+      // Email verification is best-effort. User-id participant verification remains the primary control.
+    }
+  }
+
+  const targetUserIdsOk =
+    !targetUserIds.length ||
+    targetUserIds.every(id => participantUserIds.includes(id) || id === auth.userId || id === conversationCreatedBy);
+  const targetEmailsOk =
+    !targetEmails.length ||
+    targetEmails.every(email => participantEmails.includes(email) || email === auth.email) ||
+    targetUserIdsOk;
+  const targetRolesOk =
+    !targetRoles.length ||
+    targetRoles.every(role => participantRoles.includes(role));
+
+  // Most CC calls already include explicit user IDs and/or emails returned by notify_communication_centre_event.
+  // Roles are not used for delivery below for CC, to avoid notifying every user in the same role globally.
+  if (!targetUserIdsOk || !targetEmailsOk || (!targetUserIds.length && !targetEmails.length && !targetRolesOk)) {
+    return {
+      allowed: false,
+      reason: 'targets_not_conversation_participants',
+      debug: {
+        ...baseDebug,
+        participantUserIds,
+        participantEmails,
+        participantRoles,
+        conversationCreatedBy,
+        targetUserIdsOk,
+        targetEmailsOk,
+        targetRolesOk
+      }
+    };
+  }
 
   return {
-    title,
-    body,
-    url,
-    icon: '/icons/icon-192.png',
-    badge: '/icons/icon-192.png',
-    tag,
-    data: {
-      ...data,
-      url
+    allowed: true,
+    reason: 'communication_centre_participant_push',
+    debug: {
+      ...baseDebug,
+      participantCount: participantUserIds.length,
+      participantUserIds,
+      participantEmails,
+      participantRoles
     }
   };
 }
 
-function getPayloadResource(input: Record<string, unknown>) {
-  const data = input.data && typeof input.data === 'object' ? input.data as Record<string, unknown> : {};
-  return normalizeString(input.resource || data.resource).toLowerCase();
-}
-
-function isAllowedSystemRolePush(input: Record<string, unknown>) {
-  const resource = getPayloadResource(input);
-  const allowedResources = new Set([
-    'tickets',
-    'operations_onboarding',
-    'technical_admin_requests',
-    'leads',
-    'deals',
-    'proposals',
-    'agreements',
-    'invoices',
-    'receipts',
-    'workflow',
-    'notifications',
-    'communication_centre'
-  ]);
-  return allowedResources.has(resource);
+async function safeInsertPushLog(row: Record<string, unknown>) {
+  if (!adminClient) return;
+  try {
+    await adminClient.from('push_notification_log').insert(row);
+  } catch (error) {
+    console.warn('[send-web-push-v2] push_notification_log insert skipped', String((error as Error)?.message || error));
+  }
 }
 
 Deno.serve(async req => {
@@ -189,13 +438,17 @@ Deno.serve(async req => {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-incheck360-webhook-secret',
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Max-Age': '86400'
+        'Access-Control-Max-Age': '86400',
+        'x-incheck360-function-version': FUNCTION_VERSION
       }
     });
   }
 
   if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: CORS_HEADERS });
+    return new Response(JSON.stringify({ ok: false, error: 'Method not allowed', version: FUNCTION_VERSION }), {
+      status: 405,
+      headers: CORS_HEADERS
+    });
   }
 
   try {
@@ -204,8 +457,10 @@ Deno.serve(async req => {
     if (!auth.isAuthenticated && !auth.isPrivileged) {
       return new Response(
         JSON.stringify({
+          ok: false,
           error: auth.authError || 'Not authorized. Sign in first.',
-          code: 'not_authorized'
+          code: 'not_authorized',
+          version: FUNCTION_VERSION
         }),
         { status: 401, headers: CORS_HEADERS }
       );
@@ -213,6 +468,10 @@ Deno.serve(async req => {
 
     const payload = buildPushPayload(body);
     const bodySubscription = body.subscription as Record<string, unknown> | undefined;
+    const resource = getPayloadResource(body);
+    const action = getPayloadAction(body);
+    const isCcResource = isCommunicationCentreResource(resource);
+
     const targetUserIds = uniqueList(
       body.user_ids,
       body.target_user_ids,
@@ -230,15 +489,17 @@ Deno.serve(async req => {
     const legacySubscriptionId = normalizeString(body.subscription_id);
     if (legacyUserId && !targetUserIds.includes(legacyUserId)) targetUserIds.push(legacyUserId);
     if (legacySubscriptionId && !targetSubscriptionIds.includes(legacySubscriptionId)) targetSubscriptionIds.push(legacySubscriptionId);
-    const targetRoles = uniqueList(body.roles, body.target_roles, body.recipient_roles).map(item => item.toLowerCase());
+
+    let targetRoles = uniqueList(body.roles, body.target_roles, body.recipient_roles).map(item => item.toLowerCase());
     const targetEmails = uniqueList(body.emails, body.target_emails, body.recipient_emails, body.email).map(item => item.toLowerCase());
     const allowBroadcast = false;
-    const resource = getPayloadResource(body);
 
     if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
       return new Response(
         JSON.stringify({
+          ok: false,
           error: 'VAPID keys are not configured',
+          version: FUNCTION_VERSION,
           payload
         }),
         { status: 500, headers: CORS_HEADERS }
@@ -251,6 +512,7 @@ Deno.serve(async req => {
 
     let subscriptions: Array<{ endpoint: string; keys: { p256dh: string; auth: string } }> = [];
     let roleProfileIds: string[] = [];
+    let ccValidation: Awaited<ReturnType<typeof validateCommunicationCentrePush>> | null = null;
 
     if (normalizeString(bodySubscription?.endpoint)) {
       subscriptions = [
@@ -265,66 +527,97 @@ Deno.serve(async req => {
     } else {
       if (!adminClient) {
         return new Response(
-          JSON.stringify({ error: 'Server missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY' }),
+          JSON.stringify({ ok: false, error: 'Server missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY', version: FUNCTION_VERSION }),
           { status: 500, headers: CORS_HEADERS }
         );
       }
+
       if (!auth.isPrivileged) {
+        ccValidation = await validateCommunicationCentrePush(auth, body, targetUserIds, targetEmails, targetRoles);
 
-        if (targetRoles.length > 0 && !isAllowedSystemRolePush(body)) {
-          return new Response(
-            JSON.stringify({
-              error: 'Not authorized. Role push is only allowed for approved system notification resources.',
-              code: 'forbidden_targeting'
-            }),
-            { status: 403, headers: CORS_HEADERS }
-          );
-        }
-
-        const targetsOwnUserOnly = targetUserIds.length === 1 && targetUserIds[0] === auth.userId;
-        let targetsOwnSubscriptionsOnly = false;
-        if (targetSubscriptionIds.length > 0) {
-          const { data: ownedRows, error: ownedError } = await adminClient
-            .from('push_subscriptions')
-            .select('id,user_id')
-            .in('id', targetSubscriptionIds)
-            .eq('is_active', true);
-          if (ownedError) {
+        if (!ccValidation.allowed) {
+          if (targetRoles.length > 0 && !isAllowedSystemRolePush(body)) {
             return new Response(
-              JSON.stringify({ error: ownedError.message || 'Unable to validate subscription ownership.' }),
-              { status: 500, headers: CORS_HEADERS }
+              JSON.stringify({
+                ok: false,
+                error: 'Not authorized. Role push is only allowed for approved system notification resources.',
+                code: 'forbidden_targeting',
+                version: FUNCTION_VERSION,
+                debug: ccValidation.debug
+              }),
+              { status: 403, headers: CORS_HEADERS }
             );
           }
-          const ownedIds = (ownedRows || []).map(row => normalizeString(row.id));
-          targetsOwnSubscriptionsOnly =
-            ownedIds.length === targetSubscriptionIds.length &&
-            (ownedRows || []).every(row => normalizeString(row.user_id) === auth.userId);
+
+          const targetsOwnUserOnly = targetUserIds.length === 1 && targetUserIds[0] === auth.userId;
+          let targetsOwnSubscriptionsOnly = false;
+          if (targetSubscriptionIds.length > 0) {
+            const { data: ownedRows, error: ownedError } = await adminClient
+              .from('push_subscriptions')
+              .select('id,user_id')
+              .in('id', targetSubscriptionIds)
+              .eq('is_active', true);
+            if (ownedError) {
+              return new Response(
+                JSON.stringify({ ok: false, error: ownedError.message || 'Unable to validate subscription ownership.', version: FUNCTION_VERSION }),
+                { status: 500, headers: CORS_HEADERS }
+              );
+            }
+            const ownedIds = (ownedRows || []).map(row => normalizeString(row.id));
+            targetsOwnSubscriptionsOnly =
+              ownedIds.length === targetSubscriptionIds.length &&
+              (ownedRows || []).every(row => normalizeString(row.user_id) === auth.userId);
+          }
+
+          const isAllowedSystemPush =
+            !isCcResource &&
+            isAllowedSystemRolePush(body) &&
+            (targetRoles.length > 0 || targetUserIds.length > 0 || targetEmails.length > 0);
+
+          if (!targetsOwnUserOnly && !targetsOwnSubscriptionsOnly && !isAllowedSystemPush) {
+            return new Response(
+              JSON.stringify({
+                ok: false,
+                error: isCcResource
+                  ? 'Not authorized. Communication Centre push requires the sender and recipients to belong to the conversation.'
+                  : 'Not authorized. Authenticated users may only send test pushes to their own user/subscription or approved system pushes.',
+                code: isCcResource ? 'forbidden_cc_conversation_targeting' : 'forbidden_self_target_only',
+                version: FUNCTION_VERSION,
+                debug: ccValidation.debug
+              }),
+              { status: 403, headers: CORS_HEADERS }
+            );
+          }
         }
-        const isAllowedSystemPush = isAllowedSystemRolePush(body) && (targetRoles.length > 0 || targetUserIds.length > 0 || targetEmails.length > 0);
-        if (!targetsOwnUserOnly && !targetsOwnSubscriptionsOnly && !isAllowedSystemPush) {
-          return new Response(
-            JSON.stringify({
-              error: 'Not authorized. Authenticated users may only send test pushes to their own user/subscription or approved system role pushes.',
-              code: 'forbidden_self_target_only'
-            }),
-            { status: 403, headers: CORS_HEADERS }
-          );
-        }
+      }
+
+      // Important: Communication Centre sends explicit user IDs/emails. Do not deliver by role,
+      // otherwise every user with the same role may receive a private chat notification.
+      if (isCcResource) {
+        targetRoles = [];
       }
 
       console.info('[send-web-push-v2] resolving subscriptions', {
+        version: FUNCTION_VERSION,
         targetUserIds,
+        targetEmails,
         targetRoles,
         targetSubscriptionIds,
         resource,
+        action,
         isPrivileged: auth.isPrivileged,
-        authUserId: auth.userId
+        authUserId: auth.userId,
+        ccValidation: ccValidation?.reason || null
       });
 
-      roleProfileIds = [];
       if (!targetUserIds.length && !targetRoles.length && !targetSubscriptionIds.length && !targetEmails.length) {
-        return new Response(JSON.stringify({ ok: true, skipped: true, reason: 'no-target' }), { status: 200, headers: CORS_HEADERS });
+        return new Response(
+          JSON.stringify({ ok: true, skipped: true, reason: 'no-target', version: FUNCTION_VERSION }),
+          { status: 200, headers: CORS_HEADERS }
+        );
       }
+
+      roleProfileIds = [];
       if (targetRoles.length > 0) {
         const { data: profileRows, error: profileError } = await adminClient
           .from('profiles')
@@ -333,7 +626,7 @@ Deno.serve(async req => {
           .limit(1000);
         if (profileError) throw new Error(profileError.message || 'Unable to load role profiles.');
         (profileRows || []).forEach(row => {
-          const roleKey = normalizeString(row.role_key).toLowerCase();
+          const roleKey = normalizeLower(row.role_key);
           const id = normalizeString(row.id);
           if (id && targetRoles.includes(roleKey) && !roleProfileIds.includes(id)) roleProfileIds.push(id);
         });
@@ -353,6 +646,7 @@ Deno.serve(async req => {
           if (id && !combinedUserIds.includes(id)) combinedUserIds.push(id);
         });
       }
+
       const fetchedRows: Array<Record<string, unknown>> = [];
       const seenSubscriptionIds = new Set<string>();
 
@@ -365,7 +659,7 @@ Deno.serve(async req => {
           .limit(200);
         if (subscriptionError) throw new Error(subscriptionError.message || 'Unable to load target subscriptions.');
         (subscriptionRows || []).forEach(row => {
-          const id = normalizeString(row.id);
+          const id = normalizeString(row.id) || normalizeString(row.endpoint);
           if (!id || seenSubscriptionIds.has(id)) return;
           seenSubscriptionIds.add(id);
           fetchedRows.push(row as Record<string, unknown>);
@@ -378,10 +672,10 @@ Deno.serve(async req => {
           .select('id, user_id, email, role, endpoint, p256dh, auth')
           .eq('is_active', true)
           .in('user_id', combinedUserIds)
-          .limit(200);
+          .limit(500);
         if (userError) throw new Error(userError.message || 'Unable to load user push subscriptions.');
         (userRows || []).forEach(row => {
-          const id = normalizeString(row.id);
+          const id = normalizeString(row.id) || normalizeString(row.endpoint);
           if (!id || seenSubscriptionIds.has(id)) return;
           seenSubscriptionIds.add(id);
           fetchedRows.push(row as Record<string, unknown>);
@@ -397,7 +691,7 @@ Deno.serve(async req => {
           .limit(500);
         if (emailSubError) throw new Error(emailSubError.message || 'Unable to load email push subscriptions.');
         (emailSubRows || []).forEach(row => {
-          const id = normalizeString(row.id);
+          const id = normalizeString(row.id) || normalizeString(row.endpoint);
           if (!id || seenSubscriptionIds.has(id)) return;
           seenSubscriptionIds.add(id);
           fetchedRows.push(row as Record<string, unknown>);
@@ -412,8 +706,8 @@ Deno.serve(async req => {
           .limit(1000);
         if (roleError) throw new Error(roleError.message || 'Unable to load role push subscriptions.');
         (roleRows || []).forEach(row => {
-          const id = normalizeString(row.id);
-          const role = normalizeString(row.role).toLowerCase();
+          const id = normalizeString(row.id) || normalizeString(row.endpoint);
+          const role = normalizeLower(row.role);
           if (!targetRoles.includes(role)) return;
           if (!id || seenSubscriptionIds.has(id)) return;
           seenSubscriptionIds.add(id);
@@ -421,9 +715,7 @@ Deno.serve(async req => {
         });
       }
 
-      // Communication Centre can pass either profile IDs, auth IDs, legacy app-user IDs, emails, or roles.
-      // This fallback avoids the common bug where the in-app notification has the right recipient,
-      // but push_subscriptions.user_id uses a different user-id column.
+      // Fallback: active subscription rows can use different ID/email column names across older migrations.
       if (targetUserIds.length > 0 || targetEmails.length > 0 || targetRoles.length > 0 || targetSubscriptionIds.length > 0) {
         const { data: allActiveRows, error: allActiveError } = await adminClient
           .from('push_subscriptions')
@@ -443,10 +735,10 @@ Deno.serve(async req => {
 
       subscriptions = fetchedRows
         .map(row => ({
-          endpoint: String(row.endpoint || '').trim(),
+          endpoint: normalizeString(row.endpoint),
           keys: {
-            p256dh: String(row.p256dh || '').trim(),
-            auth: String(row.auth || '').trim()
+            p256dh: normalizeString(row.p256dh),
+            auth: normalizeString(row.auth)
           }
         }))
         .filter(item => item.endpoint && item.keys.p256dh && item.keys.auth);
@@ -459,6 +751,7 @@ Deno.serve(async req => {
         sent: 0,
         failed: 0,
         error: 'No active push subscriptions found',
+        version: FUNCTION_VERSION,
         debug: {
           targetUserIds,
           targetEmails,
@@ -466,27 +759,27 @@ Deno.serve(async req => {
           targetSubscriptionIds,
           roleProfileIds,
           resource,
+          action,
           isPrivileged: auth.isPrivileged,
-          authUserId: auth.userId
+          authUserId: auth.userId,
+          ccValidation: ccValidation?.debug || null
         },
         payload
       };
 
       console.warn('[send-web-push-v2] no active subscriptions found', noSubscriptionResult.debug);
 
-      if (adminClient) {
-        await adminClient.from('push_notification_log').insert({
-          sent_by: auth.userId || null,
-          target_user_ids: targetUserIds,
-          target_subscription_ids: targetSubscriptionIds,
-          target_roles: targetRoles,
-          allow_broadcast: allowBroadcast,
-          attempted: 0,
-          sent: 0,
-          failed: 0,
-          payload
-        });
-      }
+      await safeInsertPushLog({
+        sent_by: auth.userId || null,
+        target_user_ids: targetUserIds,
+        target_subscription_ids: targetSubscriptionIds,
+        target_roles: targetRoles,
+        allow_broadcast: allowBroadcast,
+        attempted: 0,
+        sent: 0,
+        failed: 0,
+        payload
+      });
 
       return new Response(JSON.stringify(noSubscriptionResult), {
         status: 404,
@@ -504,39 +797,51 @@ Deno.serve(async req => {
     for (let i = 0; i < deliveryRows.length; i += 1) {
       const result = deliveryRows[i];
       if (result.status !== 'rejected') continue;
-      const statusCode = Number((result.reason as Record<string, unknown>)?.statusCode || 0);
+      const reason = result.reason as Record<string, unknown>;
+      const statusCode = Number(reason?.statusCode || 0);
       if (statusCode !== 404 && statusCode !== 410) continue;
       const endpoint = normalizeString(subscriptions[i]?.endpoint);
       if (!endpoint) continue;
       await adminClient?.from('push_subscriptions').update({ is_active: false, last_seen_at: new Date().toISOString() }).eq('endpoint', endpoint);
     }
+
     console.info('[send-web-push-v2] delivery result', {
+      version: FUNCTION_VERSION,
       rows: subscriptions.length,
       attempted,
       sent,
-      failed
+      failed,
+      resource,
+      action
     });
 
-    if (adminClient) {
-      await adminClient.from('push_notification_log').insert({
-        sent_by: auth.userId || null,
-        target_user_ids: targetUserIds,
-        target_subscription_ids: targetSubscriptionIds,
-        target_roles: targetRoles,
-        allow_broadcast: allowBroadcast,
+    await safeInsertPushLog({
+      sent_by: auth.userId || null,
+      target_user_ids: targetUserIds,
+      target_subscription_ids: targetSubscriptionIds,
+      target_roles: targetRoles,
+      allow_broadcast: allowBroadcast,
+      attempted,
+      sent,
+      failed,
+      payload
+    });
+
+    return new Response(
+      JSON.stringify({
+        ok: failed === 0,
         attempted,
         sent,
         failed,
+        version: FUNCTION_VERSION,
         payload
-      });
-    }
-
-    return new Response(JSON.stringify({ ok: failed === 0, attempted, sent, failed, payload }), {
-      headers: CORS_HEADERS
-    });
+      }),
+      { status: failed === 0 ? 200 : 207, headers: CORS_HEADERS }
+    );
   } catch (error) {
+    console.error('[send-web-push-v2] error', error);
     return new Response(
-      JSON.stringify({ error: String((error as Error)?.message || error || 'Unknown error') }),
+      JSON.stringify({ ok: false, error: String((error as Error)?.message || error || 'Unknown error'), version: FUNCTION_VERSION }),
       { status: 500, headers: CORS_HEADERS }
     );
   }
