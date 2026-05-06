@@ -2667,8 +2667,11 @@ const Proposals = {
       if (E.proposalFormProposalId) E.proposalFormProposalId.value = proposal.proposal_id;
     }
     const items = this.collectProposalItems();
-    const currentRecord = this.state.rows.find(row => String(row.id || '') === proposalId) || {};
-    const requestedDiscount = items.reduce((max, item) => Math.max(max, this.toNumberSafe(item.discount_percent)), 0);
+    const cachedDetail = this.getCachedDetail(proposalId);
+    const currentRecord = cachedDetail?.proposal || this.state.rows.find(row => String(row.id || '') === proposalId) || {};
+    const requestedDiscount = typeof getProposalCurrentDiscountPercent === 'function'
+      ? getProposalCurrentDiscountPercent({ ...currentRecord, ...proposal }, items)
+      : items.reduce((max, item) => Math.max(max, this.toNumberSafe(item.discount_percent)), 0);
     const currentStatus = String(currentRecord?.status || '').trim();
     const requestedStatus = String(proposal.status || '').trim();
     const shouldValidateWorkflow = this.shouldValidateWorkflowBeforeSave({
@@ -2686,9 +2689,13 @@ const Proposals = {
       });
       try { console.info('[workflow] final decision', workflowCheck); } catch {}
       if (workflowCheck?.allowed === true) {
-        // continue normal save
+        if (workflowCheck.discountApprovalUpdates && typeof workflowCheck.discountApprovalUpdates === 'object') {
+          Object.entries(workflowCheck.discountApprovalUpdates).forEach(([key, value]) => {
+            if (value !== null && value !== undefined) proposal[key] = value;
+          });
+        }
       } else if (workflowCheck?.pendingApproval === true && workflowCheck?.approvalCreated === true) {
-        UI.toast('Approval request submitted successfully.');
+        UI.toast(workflowCheck?.reason || 'Approval request submitted successfully.');
         return;
       } else if (workflowCheck?.pendingApproval === true && workflowCheck?.approvalCreated !== true) {
         UI.toast('Approval is required, but the approval request could not be created yet. Please retry.');

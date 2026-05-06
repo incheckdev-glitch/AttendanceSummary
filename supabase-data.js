@@ -253,7 +253,7 @@
     'currency','customer_legal_name','provider_name','provider_legal_name',
     'terms_conditions','customer_signatory_name','customer_signatory_title','customer_signatory_email','customer_signatory_phone','provider_signatory_name','provider_signatory_title',
     'provider_signatory_name_secondary','provider_signatory_title_secondary','customer_sign_date','provider_sign_date',
-    'subtotal_locations','subtotal_one_time','total_discount','grand_total','status','generated_by','created_by','updated_by','created_at','updated_at'
+    'subtotal_locations','subtotal_one_time','total_discount','grand_total','status','approved_discount_percent','discount_approval_status','discount_approved_at','discount_approved_by','last_discount_approval_request_id','approval_required_reason','generated_by','created_by','updated_by','created_at','updated_at'
   ]);
   const PROPOSAL_ITEM_COLUMNS = new Set([
     'item_id','proposal_id','section','line_no','location_name','item_name','unit_price','discount_percent','discounted_unit_price','quantity',
@@ -1916,6 +1916,12 @@
       total_discount: firstDefined(record, ['total_discount', 'totalDiscount']),
       grand_total: firstDefined(record, ['grand_total', 'grandTotal']),
       status: firstDefined(record, ['status']),
+      approved_discount_percent: firstDefined(record, ['approved_discount_percent', 'approvedDiscountPercent']),
+      discount_approval_status: firstDefined(record, ['discount_approval_status', 'discountApprovalStatus']),
+      discount_approved_at: firstDefined(record, ['discount_approved_at', 'discountApprovedAt']),
+      discount_approved_by: firstDefined(record, ['discount_approved_by', 'discountApprovedBy']),
+      last_discount_approval_request_id: firstDefined(record, ['last_discount_approval_request_id', 'lastDiscountApprovalRequestId']),
+      approval_required_reason: firstDefined(record, ['approval_required_reason', 'approvalRequiredReason']),
       generated_by: firstDefined(record, ['generated_by', 'generatedBy']),
       created_by: includeCreatedBy
         ? (firstDefined(record, ['created_by', 'createdBy']) || userId || undefined)
@@ -2697,6 +2703,36 @@
       }
       return '';
     };
+    function toNumber(value) {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : 0;
+    }
+    function getProposalCurrentDiscountPercent(proposal, items = []) {
+      const directCandidates = [
+        proposal?.discount_percent,
+        proposal?.discount,
+        proposal?.discount_rate,
+        proposal?.total_discount_percent,
+        proposal?.overall_discount_percent,
+        proposal?.max_discount_percent,
+        proposal?.customer_discount_percent
+      ];
+      for (const value of directCandidates) {
+        const n = toNumber(value);
+        if (n > 0) return n;
+      }
+      let maxItemDiscount = 0;
+      for (const item of items || []) {
+        const itemDiscount = Math.max(
+          toNumber(item?.discount_percent),
+          toNumber(item?.discount),
+          toNumber(item?.discount_rate),
+          toNumber(item?.line_discount_percent)
+        );
+        if (itemDiscount > maxItemDiscount) maxItemDiscount = itemDiscount;
+      }
+      return maxItemDiscount;
+    }
     const normalizeWorkflowRows = value => asArray(value).map(row => normalizeRow('workflow', row));
     const normalizeWorkflowSingle = value => normalizeRow('workflow', value || {});
     const WORKFLOW_HELPER_FIELDS = new Set([
@@ -3188,6 +3224,20 @@
             updated_by: reviewerUserId || undefined
           });
         }
+        const approvedDiscount = getProposalCurrentDiscountPercent(
+          { ...record, ...nestedResourcePayload, ...requested },
+          approvedItems
+        );
+        publicUpdates = {
+          ...publicUpdates,
+          status: trimOrNull(firstDefined(requested, ['requested_status', 'status'])) || publicUpdates.status,
+          approved_discount_percent: approvedDiscount,
+          discount_approval_status: 'approved',
+          discount_approved_at: new Date().toISOString(),
+          discount_approved_by: reviewerUserId || undefined,
+          last_discount_approval_request_id: reviewerContext.approvalId || requested.last_discount_approval_request_id || undefined,
+          approval_required_reason: ''
+        };
       } else if (resource === 'agreements') {
         publicUpdates = sanitizeWithReviewer(
           sanitizeAgreementRecord,
@@ -3563,6 +3613,36 @@
         p_requested_changes: requestedChangesPayload
       };
       console.debug('[workflow] final approval creation payload', rpcPayload);
+      if (String(rpcPayload.p_resource || '').trim().toLowerCase() === 'proposals') {
+        const duplicateDiscount = Number(toNumber(requestedChangesPayload?.discount_percent).toFixed(2));
+        const duplicateStatus = String(rpcPayload.p_new_status || requestedChangesPayload?.requested_status || requestedChangesPayload?.next_status || '').trim().toLowerCase().replace(/\s+/g, '_');
+        const { data: pendingRows, error: pendingError } = await client
+          .from('workflow_approvals')
+          .select('*')
+          .eq('resource', 'proposals')
+          .eq('record_id', rpcPayload.p_record_id)
+          .eq('status', 'pending')
+          .order('created_at', { ascending: false });
+        if (pendingError) throw workflowError('Unable to check pending proposal discount approvals', pendingError);
+        const duplicate = asArray(pendingRows).find(row => {
+          const changes = row?.requested_changes && typeof row.requested_changes === 'object' ? row.requested_changes : {};
+          const rowStatus = String(row?.new_status || changes?.requested_status || changes?.next_status || changes?.status || '').trim().toLowerCase().replace(/\s+/g, '_');
+          const rowDiscount = Number(toNumber(changes?.discount_percent).toFixed(2));
+          return rowStatus === duplicateStatus && rowDiscount === duplicateDiscount;
+        });
+        if (duplicate) {
+          return {
+            ok: true,
+            created: false,
+            reused: true,
+            approval_id: String(duplicate.approval_id || duplicate.id || '').trim(),
+            approval_role: String(duplicate.approval_role || rpcPayload.p_approval_role || '').trim(),
+            status: String(duplicate.status || 'pending').trim(),
+            resource: 'proposals',
+            record_id: String(duplicate.record_id || rpcPayload.p_record_id || '').trim()
+          };
+        }
+      }
       const { data, error } = await client.rpc('create_workflow_approval', rpcPayload);
       if (error) throw workflowError('create_workflow_approval RPC failed while creating/reusing pending approval', error);
       const normalizedApproval = data && typeof data === 'object'
@@ -3673,6 +3753,26 @@
           .select('*')
           .single();
         if (rejectError) throw workflowError('Unable to reject approval request', rejectError);
+        if (resource === 'proposals') {
+          try {
+            const { recordId: rejectedRecordId } = await resolveWorkflowTargetRecord(resource, approval);
+            await updateSelectSingleWithSchemaRetry(
+              client,
+              TABLE_BY_RESOURCE[resource],
+              {
+                discount_approval_status: 'rejected',
+                approval_required_reason: reviewerComment || 'Approval request rejected.',
+                last_discount_approval_request_id: approval.approval_id,
+                updated_by: reviewerUserId || undefined
+              },
+              PK_BY_RESOURCE[resource] || 'id',
+              rejectedRecordId,
+              'Unable to update rejected proposal approval snapshot'
+            );
+          } catch (error) {
+            console.warn('[Proposal discount workflow] Unable to update rejected approval snapshot', error);
+          }
+        }
         await insertWorkflowAuditLog({
           resource,
           record_id: approval.record_id || '',
