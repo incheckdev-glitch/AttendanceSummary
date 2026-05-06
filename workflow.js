@@ -42,91 +42,102 @@ function getProposalCurrentDiscountPercent(proposal, items = []) {
   return maxItemDiscount;
 }
 
-function discountChanged(currentDiscount, approvedDiscount) {
+function hasValue(value) {
+  return value !== null && value !== undefined && String(value).trim() !== '';
+}
+
+function isDiscountAboveApproved(currentDiscount, approvedDiscount) {
   const current = Number(toNumber(currentDiscount).toFixed(2));
   const approved = Number(toNumber(approvedDiscount).toFixed(2));
-  return current !== approved;
+  return current > approved;
 }
 
 function evaluateProposalDiscountApprovalRequirement(proposal, items, nextStatus) {
-  const currentStatus = normalizeWorkflowStatus(proposal?.current_status || proposal?.status);
-  const targetStatus = normalizeWorkflowStatus(nextStatus || proposal?.next_status || proposal?.requested_status || proposal?.status);
+  const currentStatus = normalizeWorkflowStatus(proposal?.status || proposal?.current_status);
+  const targetStatus = normalizeWorkflowStatus(nextStatus || proposal?.next_status || proposal?.status);
 
   const discount = getProposalCurrentDiscountPercent(proposal, items);
+
   const approvedDiscountRaw = proposal?.approved_discount_percent;
   const approvedDiscount = toNumber(approvedDiscountRaw);
+  const hasApprovedBaseline = hasValue(approvedDiscountRaw);
 
-  const hasApprovedBaseline =
-    approvedDiscountRaw !== null &&
-    approvedDiscountRaw !== undefined &&
-    String(approvedDiscountRaw).trim() !== '';
-
-  const approvalStatus = normalizeWorkflowStatus(proposal?.discount_approval_status);
+  const withDecisionLog = decision => {
+    console.log('[Proposal discount workflow decision]', {
+      proposalId: proposal?.id,
+      proposalNumber: proposal?.proposal_id || proposal?.proposal_number,
+      currentStatus,
+      targetStatus,
+      currentDiscount: discount,
+      approvedDiscount,
+      hasApprovedBaseline,
+      requiresApproval: decision.requiresApproval,
+      allowed: decision.allowed,
+      reason: decision.reason
+    });
+    return decision;
+  };
 
   if (discount > 20) {
-    return {
+    return withDecisionLog({
       allowed: false,
       requiresApproval: false,
       discount,
       reason: 'Discount above 20% is not allowed.'
-    };
+    });
   }
 
   if (discount <= 10) {
-    return {
+    return withDecisionLog({
       allowed: true,
       requiresApproval: false,
       discount,
       reason: ''
-    };
+    });
   }
 
   const isDraftToSent =
     currentStatus === 'draft' &&
     ['sent', 'send', 'submitted'].includes(targetStatus);
 
-  const sameAsApproved =
-    hasApprovedBaseline && !discountChanged(discount, approvedDiscount);
-
-  const changedAfterApproval =
-    hasApprovedBaseline && discountChanged(discount, approvedDiscount);
-
-  const alreadyPending =
-    ['pending', 'pending_approval', 'awaiting_approval'].includes(approvalStatus);
-
-  if (sameAsApproved) {
-    return {
-      allowed: true,
-      requiresApproval: false,
-      discount,
-      reason: ''
-    };
-  }
-
-  if (alreadyPending && !changedAfterApproval) {
-    return {
-      allowed: false,
-      requiresApproval: true,
-      discount,
-      reason: 'Approval is already pending for this discount.'
-    };
-  }
-
-  if (isDraftToSent || changedAfterApproval || !hasApprovedBaseline) {
-    return {
+  // First-time approval baseline.
+  if (!hasApprovedBaseline && isDraftToSent && discount > 10 && discount <= 20) {
+    return withDecisionLog({
       allowed: false,
       requiresApproval: true,
       discount,
       reason: `Approval required for ${discount}% discount.`
-    };
+    });
   }
 
-  return {
+  // If no baseline exists but discount is above 10, require approval to establish baseline.
+  if (!hasApprovedBaseline && discount > 10 && discount <= 20) {
+    return withDecisionLog({
+      allowed: false,
+      requiresApproval: true,
+      discount,
+      reason: `Approval required for ${discount}% discount.`
+    });
+  }
+
+  // Main rule after approval:
+  // Only require approval when the new discount is HIGHER than the last approved discount.
+  if (hasApprovedBaseline && isDiscountAboveApproved(discount, approvedDiscount)) {
+    return withDecisionLog({
+      allowed: false,
+      requiresApproval: true,
+      discount,
+      reason: `Approval required because discount increased from ${approvedDiscount}% to ${discount}%.`
+    });
+  }
+
+  // Same or lower than approved discount should continue without approval.
+  return withDecisionLog({
     allowed: true,
     requiresApproval: false,
     discount,
     reason: ''
-  };
+  });
 }
 
 const WorkflowEngine = {
@@ -191,20 +202,11 @@ const WorkflowEngine = {
       ...(record && typeof record === 'object' ? record : {}),
       ...proposalPayload,
       current_status: currentStatus,
+      status: currentStatus,
       next_status: targetStatus,
       discount_percent: requestedChanges?.discount_percent ?? proposalPayload?.discount_percent ?? record?.discount_percent
     };
     const decision = evaluateProposalDiscountApprovalRequirement(proposalForDecision, items, targetStatus);
-    console.log('[Proposal discount workflow]', {
-      proposalId: proposalForDecision?.id,
-      proposalNumber: proposalForDecision?.proposal_id || proposalForDecision?.proposal_number,
-      currentStatus,
-      targetStatus,
-      discount: decision.discount,
-      approvedDiscount: proposalForDecision?.approved_discount_percent,
-      approvalStatus: proposalForDecision?.discount_approval_status,
-      decision
-    });
     return { decision, proposal: proposalForDecision, items, currentStatus, targetStatus, nestedRequestedChanges: nested };
   },
   async findPendingProposalDiscountApproval(recordId = '', targetStatus = '', discount = 0) {
@@ -475,7 +477,9 @@ const WorkflowEngine = {
             approvalCreated: false,
             proposalDiscountWorkflow: true,
             discountApprovalUpdates: {
-              discount_approval_status: decision.discount <= 10 ? 'not_required' : (proposal?.discount_approval_status || null),
+              discount_approval_status: hasValue(proposal?.approved_discount_percent)
+                ? (proposal?.discount_approval_status || null)
+                : (decision.discount <= 10 ? 'not_required' : (proposal?.discount_approval_status || null)),
               approval_required_reason: ''
             },
             requestedDiscount: decision.discount,
