@@ -320,10 +320,21 @@ header{
   background:transparent;
   box-shadow:none;
 }
-.btn.sm{
+.btn.sm,
+.btn.btn-sm{
   padding:5px 9px;
   border-radius:999px;
   font-size:12px;
+}
+.btn.btn-success{
+  background:var(--ok);
+  border-color:var(--ok);
+  color:#fff;
+}
+.btn.btn-danger{
+  background:var(--danger);
+  border-color:var(--danger);
+  color:#fff;
 }
 .btn:hover{
   transform:translateY(-1px);
