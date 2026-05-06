@@ -253,7 +253,7 @@
     'currency','customer_legal_name','provider_name','provider_legal_name',
     'terms_conditions','customer_signatory_name','customer_signatory_title','customer_signatory_email','customer_signatory_phone','provider_signatory_name','provider_signatory_title',
     'provider_signatory_name_secondary','provider_signatory_title_secondary','customer_sign_date','provider_sign_date',
-    'subtotal_locations','subtotal_one_time','total_discount','grand_total','status','approved_discount_percent','discount_approval_status','discount_approved_at','discount_approved_by','last_discount_approval_request_id','approval_required_reason','generated_by','created_by','updated_by','created_at','updated_at'
+    'subtotal_locations','subtotal_one_time','total_discount','grand_total','status','approved_annual_saas_discount_percent','approved_one_time_fee_discount_percent','approved_discount_percent','discount_approval_status','discount_approved_at','discount_approved_by','last_discount_approval_request_id','approval_required_reason','generated_by','created_by','updated_by','created_at','updated_at'
   ]);
   const PROPOSAL_ITEM_COLUMNS = new Set([
     'item_id','proposal_id','section','line_no','location_name','item_name','unit_price','discount_percent','discounted_unit_price','quantity',
@@ -1916,6 +1916,8 @@
       total_discount: firstDefined(record, ['total_discount', 'totalDiscount']),
       grand_total: firstDefined(record, ['grand_total', 'grandTotal']),
       status: firstDefined(record, ['status']),
+      approved_annual_saas_discount_percent: firstDefined(record, ['approved_annual_saas_discount_percent', 'approvedAnnualSaasDiscountPercent']),
+      approved_one_time_fee_discount_percent: firstDefined(record, ['approved_one_time_fee_discount_percent', 'approvedOneTimeFeeDiscountPercent']),
       approved_discount_percent: firstDefined(record, ['approved_discount_percent', 'approvedDiscountPercent']),
       discount_approval_status: firstDefined(record, ['discount_approval_status', 'discountApprovalStatus']),
       discount_approved_at: firstDefined(record, ['discount_approved_at', 'discountApprovedAt']),
@@ -2781,28 +2783,51 @@
         overallMaxDiscount
       };
     }
-    function isAboveApprovedBaseline(currentDiscount, approvedDiscountRaw) {
-      if (!hasValue(approvedDiscountRaw)) {
-        return true;
-      }
+    function evaluateDiscountThresholdDecision(currentDiscountRaw, noApprovalLimitRaw, hardStopRaw, approvedBaselineRaw) {
+      const currentDiscount = Number(toNumber(currentDiscountRaw).toFixed(2));
+      const noApprovalLimit = Number(toNumber(noApprovalLimitRaw).toFixed(2));
+      const hardStop = Number(toNumber(hardStopRaw).toFixed(2));
+      const hasApprovedBaseline = hasValue(approvedBaselineRaw);
+      const approvedBaseline = hasApprovedBaseline ? Number(toNumber(approvedBaselineRaw).toFixed(2)) : null;
+      const aboveNoApprovalLimit = currentDiscount > noApprovalLimit;
+      const aboveApprovedBaseline = !hasApprovedBaseline || currentDiscount > approvedBaseline;
+      const withinHardStop = currentDiscount <= hardStop;
 
-      const current = Number(toNumber(currentDiscount).toFixed(2));
-      const approved = Number(toNumber(approvedDiscountRaw).toFixed(2));
-
-      return current > approved;
+      return {
+        currentDiscount,
+        noApprovalLimit,
+        hardStop,
+        hasApprovedBaseline,
+        approvedBaseline,
+        blocked: currentDiscount > hardStop,
+        requiresApproval: aboveNoApprovalLimit && aboveApprovedBaseline && withinHardStop,
+        aboveNoApprovalLimit,
+        aboveApprovedBaseline,
+        withinHardStop
+      };
     }
+
     function evaluateCategoryDiscountApproval(proposal, items, workflowRule) {
       const discounts = getProposalDiscountsByCategory(proposal, items);
 
-      const annualNoApprovalLimit = toNumber(workflowRule?.annual_saas_no_approval_until_percent || 10);
-      const annualHardStop = toNumber(workflowRule?.annual_saas_hard_stop_discount_percent || 20);
-
-      const oneTimeNoApprovalLimit = toNumber(workflowRule?.one_time_fee_no_approval_until_percent || 20);
-      const oneTimeHardStop = toNumber(workflowRule?.one_time_fee_hard_stop_discount_percent || 30);
+      const annualDecision = evaluateDiscountThresholdDecision(
+        discounts.annualSaasDiscount,
+        hasValue(workflowRule?.annual_saas_no_approval_until_percent) ? workflowRule.annual_saas_no_approval_until_percent : 10,
+        hasValue(workflowRule?.annual_saas_hard_stop_discount_percent) ? workflowRule.annual_saas_hard_stop_discount_percent : 20,
+        proposal?.approved_annual_saas_discount_percent
+      );
+      const oneTimeDecision = evaluateDiscountThresholdDecision(
+        discounts.oneTimeFeeDiscount,
+        hasValue(workflowRule?.one_time_fee_no_approval_until_percent) ? workflowRule.one_time_fee_no_approval_until_percent : 20,
+        hasValue(workflowRule?.one_time_fee_hard_stop_discount_percent) ? workflowRule.one_time_fee_hard_stop_discount_percent : 30,
+        proposal?.approved_one_time_fee_discount_percent
+      );
+      const annualHardStop = annualDecision.hardStop;
+      const oneTimeHardStop = oneTimeDecision.hardStop;
 
       const reasons = [];
 
-      if (discounts.annualSaasDiscount > annualHardStop) {
+      if (annualDecision.blocked) {
         return {
           allowed: false,
           requiresApproval: false,
@@ -2811,7 +2836,7 @@
         };
       }
 
-      if (discounts.oneTimeFeeDiscount > oneTimeHardStop) {
+      if (oneTimeDecision.blocked) {
         return {
           allowed: false,
           requiresApproval: false,
@@ -2820,19 +2845,8 @@
         };
       }
 
-      const annualNeedsApproval =
-        discounts.annualSaasDiscount > annualNoApprovalLimit &&
-        isAboveApprovedBaseline(
-          discounts.annualSaasDiscount,
-          proposal?.approved_annual_saas_discount_percent
-        );
-
-      const oneTimeNeedsApproval =
-        discounts.oneTimeFeeDiscount > oneTimeNoApprovalLimit &&
-        isAboveApprovedBaseline(
-          discounts.oneTimeFeeDiscount,
-          proposal?.approved_one_time_fee_discount_percent
-        );
+      const annualNeedsApproval = annualDecision.requiresApproval;
+      const oneTimeNeedsApproval = oneTimeDecision.requiresApproval;
 
       if (annualNeedsApproval) {
         reasons.push(
@@ -2852,7 +2866,9 @@
         reason: reasons.join(' '),
         discounts,
         annualNeedsApproval,
-        oneTimeNeedsApproval
+        oneTimeNeedsApproval,
+        annualDecision,
+        oneTimeDecision
       };
     }
     function getProposalCurrentDiscountPercent(proposal, items = []) {
@@ -3701,8 +3717,8 @@
           safePayload.requested_discount_percent ??
           0
         ),
-        p_user_role:
-          global.Session?.role?.() || ''
+        p_record: safePayload.record && typeof safePayload.record === 'object' ? safePayload.record : {},
+        p_requested_changes: safePayload.requested_changes && typeof safePayload.requested_changes === 'object' ? safePayload.requested_changes : {}
       };
       console.info('[workflow] validation rpc payload', rpcPayload);
       let data;
