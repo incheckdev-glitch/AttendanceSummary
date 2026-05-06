@@ -417,7 +417,7 @@ const WorkflowEngine = {
   }
 };
 
-function normalizeRole(value) {
+function normalizeWorkflowRole(value) {
   return String(value || '')
     .trim()
     .toLowerCase()
@@ -425,120 +425,162 @@ function normalizeRole(value) {
     .replace(/-/g, '_');
 }
 
-function normalizeRoleList(value) {
+function normalizeWorkflowRoleList(value) {
   if (!value) return [];
 
   if (Array.isArray(value)) {
-    return value.map(normalizeRole).filter(Boolean);
+    return value.map(normalizeWorkflowRole).filter(Boolean);
   }
 
   if (typeof value === 'string') {
     const trimmed = value.trim();
 
-    // handle postgres array text like "{gm,admin}"
+    // PostgreSQL array text: "{admin,gm}"
     if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
       return trimmed
         .slice(1, -1)
         .split(',')
         .map((x) => x.replace(/^"|"$/g, ''))
-        .map(normalizeRole)
+        .map(normalizeWorkflowRole)
         .filter(Boolean);
     }
 
-    // handle comma separated text
+    // Comma separated text: "admin, admin, gm"
     return trimmed
       .split(',')
-      .map(normalizeRole)
+      .map(normalizeWorkflowRole)
       .filter(Boolean);
   }
 
   return [];
 }
 
-function isPendingApprovalStatus(status) {
-  const normalized = normalizeRole(status);
+function uniqueWorkflowRoles(value) {
+  return [...new Set(normalizeWorkflowRoleList(value))];
+}
+
+function isPendingWorkflowStatus(status) {
+  const normalized = normalizeWorkflowRole(status);
+
   return [
     'pending',
+    'pending_approval',
     'awaiting_approval',
     'submitted',
     'open',
-    'requested',
-    'pending_approval'
+    'requested'
   ].includes(normalized);
 }
 
-function roleMatchesApproval(currentRole, approval) {
-  const role = normalizeRole(currentRole);
-
-  const approvalRoles = [
-    ...normalizeRoleList(approval?.approval_role),
-    ...normalizeRoleList(approval?.approval_roles),
-    ...normalizeRoleList(approval?.approval_roles_csv),
-    ...normalizeRoleList(approval?.approver_role),
-    ...normalizeRoleList(approval?.approver_roles),
-    ...normalizeRoleList(approval?.allowed_roles),
-    ...normalizeRoleList(approval?.allowed_roles_csv),
-    ...normalizeRoleList(approval?.target_roles),
-    ...normalizeRoleList(approval?.required_role),
-    ...normalizeRoleList(approval?.requested_for_role)
-  ];
-
-  return approvalRoles.includes(role);
+function getApprovalRoles(approval) {
+  return [
+    ...normalizeWorkflowRoleList(approval?.approval_role),
+    ...normalizeWorkflowRoleList(approval?.approval_roles),
+    ...normalizeWorkflowRoleList(approval?.approval_roles_csv),
+    ...normalizeWorkflowRoleList(approval?.approver_role),
+    ...normalizeWorkflowRoleList(approval?.approver_roles),
+    ...normalizeWorkflowRoleList(approval?.allowed_roles),
+    ...normalizeWorkflowRoleList(approval?.allowed_roles_csv),
+    ...normalizeWorkflowRoleList(approval?.target_roles),
+    ...normalizeWorkflowRoleList(approval?.required_role),
+    ...normalizeWorkflowRoleList(approval?.requested_for_role)
+  ].filter(Boolean);
 }
 
-async function canCurrentUserActOnApproval(approval) {
-  const currentRole =
+function getCurrentWorkflowRole() {
+  return normalizeWorkflowRole(
     window.Session?.currentUser?.role ||
     window.Session?.user?.role ||
     window.AppState?.currentUser?.role ||
     window.currentUser?.role ||
+    window.Auth?.currentUser?.role ||
     window.Session?.role?.() ||
     window.Session?.state?.role ||
-    '';
+    ''
+  );
+}
 
-  const role = normalizeRole(currentRole);
+async function hasWorkflowApprovalActionPermission() {
+  try {
+    const checks = [
+      ['workflow_approvals', 'approve'],
+      ['workflow_approvals', 'reject'],
+      ['workflow_approvals', 'manage'],
+      ['workflow', 'approve'],
+      ['workflow', 'reject'],
+      ['workflow', 'manage'],
+      ['approvals', 'approve'],
+      ['approvals', 'reject'],
+      ['approvals', 'manage']
+    ];
 
-  const pending = isPendingApprovalStatus(
+    for (const [resource, action] of checks) {
+      if (await window.Permissions?.can?.(resource, action)) {
+        return true;
+      }
+    }
+  } catch (_) {}
+
+  return false;
+}
+
+async function canActOnWorkflowApproval(approval) {
+  const status =
     approval?.status ||
     approval?.approval_status ||
-    approval?.request_status
-  );
+    approval?.request_status ||
+    '';
 
-  const isAssignedApprover = pending ? roleMatchesApproval(role, approval) : false;
-
-  let hasApprovalPermission = false;
-
-  if (pending) {
-    try {
-      hasApprovalPermission =
-        await window.Permissions?.can?.('workflow_approvals', 'approve') ||
-        await window.Permissions?.can?.('workflow_approvals', 'reject') ||
-        await window.Permissions?.can?.('workflow_approvals', 'manage') ||
-        await window.Permissions?.can?.('workflow', 'approve') ||
-        await window.Permissions?.can?.('workflow', 'reject') ||
-        await window.Permissions?.can?.('workflow', 'manage') ||
-        false;
-    } catch (_) {
-      hasApprovalPermission = false;
-    }
+  if (!isPendingWorkflowStatus(status)) {
+    return false;
   }
 
-  const isPrivileged = ['admin', 'dev'].includes(role);
-  const canAct = pending && ((isAssignedApprover && hasApprovalPermission) || (isPrivileged && hasApprovalPermission));
+  const currentRole = getCurrentWorkflowRole();
+  const approvalRoles = getApprovalRoles(approval);
 
-  console.log('[Workflow approval action visibility]', {
-    approvalId: approval?.id || approval?.approval_id,
+  const roleIsAssigned = approvalRoles.includes(currentRole);
+  const isPrivileged = ['admin', 'dev'].includes(currentRole);
+  const hasPermission = await hasWorkflowApprovalActionPermission();
+
+  // Assigned approver with permission can act.
+  if (roleIsAssigned && hasPermission) return true;
+
+  // Admin/dev with permission can act.
+  if (isPrivileged && hasPermission) return true;
+
+  return false;
+}
+
+function normalizeRole(value) {
+  return normalizeWorkflowRole(value);
+}
+
+function normalizeRoleList(value) {
+  return normalizeWorkflowRoleList(value);
+}
+
+function isPendingApprovalStatus(status) {
+  return isPendingWorkflowStatus(status);
+}
+
+function roleMatchesApproval(currentRole, approval) {
+  return getApprovalRoles(approval).includes(normalizeWorkflowRole(currentRole));
+}
+
+async function canCurrentUserActOnApproval(approval) {
+  const canAct = await canActOnWorkflowApproval(approval);
+
+  console.log('[Workflow approval buttons]', {
+    approvalId: approval?.id || approval?.approval_id || approval?.workflow_approval_id,
+    resource: approval?.resource,
     status: approval?.status || approval?.approval_status || approval?.request_status,
-    currentRole,
-    approvalRole: approval?.approval_role,
-    approverRole: approval?.approver_role,
-    allowedRoles: approval?.allowed_roles,
+    currentRole: getCurrentWorkflowRole(),
+    approvalRoles: getApprovalRoles(approval),
     canAct
   });
 
   return canAct;
 }
-
 
 const Workflow = {
   state: {
@@ -567,7 +609,7 @@ const Workflow = {
     receipts: ['status', 'customer_name', 'receipt_date', 'payment_method', 'payment_reference', 'amount_received', 'invoice_total', 'pending_amount', 'payment_state', 'amount_in_words', 'notes']
   },
   currentRole() {
-    return String(Session?.role?.() || Session?.state?.role || '').trim().toLowerCase();
+    return getCurrentWorkflowRole();
   },
   isWorkflowAdminConfigAllowed() {
     const role =
@@ -582,7 +624,9 @@ const Workflow = {
     return this.isWorkflowAdminConfigAllowed();
   },
   canProcessApprovals() {
-    return Permissions.can('workflow','approve') || Permissions.can('workflow','reject') || Permissions.can('workflow','view') || Permissions.can('workflow','list');
+    return Permissions.can('workflow_approvals','approve') || Permissions.can('workflow_approvals','reject') || Permissions.can('workflow_approvals','manage') ||
+      Permissions.can('workflow','approve') || Permissions.can('workflow','reject') || Permissions.can('workflow','manage') || Permissions.can('workflow','view') || Permissions.can('workflow','list') ||
+      Permissions.can('approvals','approve') || Permissions.can('approvals','reject') || Permissions.can('approvals','manage');
   },
   currentUserIdentifiers() {
     const ctx = Session?.authContext?.() || {};
@@ -592,21 +636,19 @@ const Workflow = {
     return { id, email, role: this.currentRole() };
   },
   approvalRoleList(approval = {}) {
-    return [
-      ...normalizeRoleList(approval.approval_role),
-      ...normalizeRoleList(approval.approval_roles),
-      ...normalizeRoleList(approval.approval_roles_csv),
-      ...normalizeRoleList(approval.approver_role),
-      ...normalizeRoleList(approval.approver_roles),
-      ...normalizeRoleList(approval.allowed_roles),
-      ...normalizeRoleList(approval.allowed_roles_csv),
-      ...normalizeRoleList(approval.target_roles),
-      ...normalizeRoleList(approval.required_role),
-      ...normalizeRoleList(approval.requested_for_role)
-    ];
+    return [...new Set(getApprovalRoles(approval))];
+  },
+  approvalRoleDisplay(approval = {}) {
+    return uniqueWorkflowRoles(approval.approval_roles || approval.approval_role || approval.allowed_roles).join(', ')
+      || uniqueWorkflowRoles(approval.approval_roles_csv || approval.allowed_roles_csv).join(', ')
+      || this.approvalRoleList(approval).join(', ')
+      || '—';
+  },
+  getApprovalId(approval = {}) {
+    return String(approval?.approval_id || approval?.id || approval?.workflow_approval_id || '').trim();
   },
   canSeeApproval(approval = {}) {
-    if (this.isWorkflowAdminConfigAllowed()) return true;
+    if (['admin', 'dev'].includes(getCurrentWorkflowRole())) return true;
     const { id, email, role } = this.currentUserIdentifiers();
     if (roleMatchesApproval(role, approval)) return true;
     const assignedIds = [approval.assigned_user_id, approval.approver_user_id, approval.reviewer_user_id, approval.user_id].map(v => String(v || '').trim().toLowerCase()).filter(Boolean);
@@ -1028,7 +1070,7 @@ const Workflow = {
       resource,
       recordId: String(row?.record_id || targetRecordId || '').trim(),
       workflowRuleId: String(row?.workflow_rule_id || '').trim(),
-      approvalId: String(row?.approval_id || '').trim(),
+      approvalId: this.getApprovalId(row),
       proposalId: String(requestedChanges?.proposal_id || '').trim(),
       proposalUuid: String(requestedChanges?.proposal_uuid || requestedChanges?.proposal?.id || '').trim(),
       agreementId: String(requestedChanges?.agreement_id || '').trim(),
@@ -1054,7 +1096,7 @@ const Workflow = {
       displayCurrent: row?.old_status || requestedChanges?.current_status || '—',
       displayRequested: row?.new_status || requestedChanges?.requested_status || '—',
       displayDiscount: Number(requestedChanges?.discount_percent ?? 0),
-      displayApprovalRoles: row?.approval_role || '—'
+      displayApprovalRoles: this.approvalRoleDisplay(row)
     };
   },
   buildApprovalContext(normalizedApproval = {}) {
@@ -1116,6 +1158,45 @@ const Workflow = {
     }
     return false;
   },
+  clearResourcePreviewApprovalActions() {
+    document.querySelectorAll('[data-workflow-resource-approval-actions]').forEach(node => node.remove());
+  },
+  async renderResourcePreviewApprovalActions(approval = {}) {
+    this.clearResourcePreviewApprovalActions();
+    const normalized = this.normalizePendingApproval(approval);
+    const canAct = await canActOnWorkflowApproval(normalized);
+    if (!canAct) return;
+    const modal = {
+      proposals: E.proposalPreviewModal,
+      agreements: E.agreementPreviewModal,
+      invoices: E.invoicePreviewModal,
+      receipts: E.receiptPreviewModal
+    }[String(normalized.resource || '').trim().toLowerCase()];
+    const content = modal?.querySelector?.('.modal-content');
+    if (!content) return;
+    const actions = document.createElement('div');
+    actions.setAttribute('data-workflow-resource-approval-actions', 'true');
+    actions.className = 'actions';
+    actions.style.justifyContent = 'flex-end';
+    actions.style.gap = '8px';
+    actions.style.marginTop = '12px';
+    actions.innerHTML = `
+      <button class="btn btn-success btn-sm" data-resource-approval-action="approve" type="button">Approve</button>
+      <button class="btn btn-danger btn-sm" data-resource-approval-action="reject" type="button">Reject</button>
+    `;
+    actions.addEventListener('click', async event => {
+      const button = event.target?.closest?.('[data-resource-approval-action]');
+      if (!button) return;
+      const action = button.getAttribute('data-resource-approval-action');
+      try {
+        await this.actOnApproval(action, normalized.approvalId);
+        this.clearResourcePreviewApprovalActions();
+      } catch (error) {
+        UI.toast(error?.message || 'Unable to process approval action.');
+      }
+    });
+    content.appendChild(actions);
+  },
   formatDiscountPercent(value) {
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) return '0%';
@@ -1142,7 +1223,7 @@ const Workflow = {
         <div><span class="muted">Discount:</span> ${U.escapeHtml(this.formatDiscountPercent(normalized.discountPercent))}</div>
         <div><span class="muted">Total amount:</span> ${U.escapeHtml(String(normalized.requestedChanges?.total_amount ?? normalized.recordSnapshot?.total_amount ?? '—'))}</div>
         <div><span class="muted">Requested by:</span> ${U.escapeHtml(normalized.requestedBy || '—')}</div>
-        <div><span class="muted">Approval role:</span> ${U.escapeHtml(normalized.approval_role || '—')}</div>
+        <div><span class="muted">Approval roles:</span> ${U.escapeHtml(this.approvalRoleDisplay(normalized))}</div>
       </div>
       <div style="margin-top:10px;">
         <strong>Changed fields</strong>
@@ -1167,6 +1248,7 @@ const Workflow = {
     `;
   },
   async openGenericApprovalPreview(normalizedApproval = {}) {
+    this.clearResourcePreviewApprovalActions();
     const normalized = this.normalizePendingApproval(normalizedApproval);
     this.state.activeApprovalPreview = normalized;
     const canAct = await canCurrentUserActOnApproval(normalized);
@@ -1182,6 +1264,7 @@ const Workflow = {
     if (window.setAppHashRoute && window.buildRecordHashRoute) setAppHashRoute(buildRecordHashRoute('workflow', normalized || {}));
   },
   closeApprovalPreview() {
+    this.clearResourcePreviewApprovalActions();
     this.state.activeApprovalPreview = null;
     if (!E.workflowApprovalPreviewModal) return;
     E.workflowApprovalPreviewModal.classList.remove('open');
@@ -1227,6 +1310,7 @@ const Workflow = {
       }
       const opened = await this.openResourcePreview(resource, previewId);
       if (opened) {
+        await this.renderResourcePreviewApprovalActions(this.state.activeApprovalPreview);
         return;
       }
     } catch (error) {
@@ -1349,16 +1433,25 @@ const Workflow = {
     if (!E.workflowApprovalsTbody) return;
     const rows = await Promise.all(this.state.approvals.map(async item => {
       const normalized = this.normalizePendingApproval(item);
-      const approvalRoles = this.approvalRoleList(item);
-      const canAct = await canCurrentUserActOnApproval(item);
+      const approvalId = this.getApprovalId(item);
+      const approvalRolesDisplay = this.approvalRoleDisplay(item);
+      const canAct = await canActOnWorkflowApproval(item);
+      console.log('[Workflow approval buttons]', {
+        approvalId: item?.id || item?.approval_id || item?.workflow_approval_id,
+        resource: item?.resource,
+        status: item?.status || item?.approval_status || item?.request_status,
+        currentRole: getCurrentWorkflowRole(),
+        approvalRoles: getApprovalRoles(item),
+        canAct
+      });
       const actionButtons = this.canSeeApproval(item)
-        ? `<button class="chip-btn" data-approval-action="open" data-approval-id="${U.escapeHtml(item.approval_id || '')}">Open</button> ${canAct ? `<button class="chip-btn" data-approval-action="approve" data-approval-id="${U.escapeHtml(item.approval_id || '')}">Approve</button> <button class="chip-btn" data-approval-action="reject" data-approval-id="${U.escapeHtml(item.approval_id || '')}">Reject</button>` : ''}`
+        ? `<button class="chip-btn" data-approval-action="open" data-approval-id="${U.escapeHtml(approvalId)}">Open</button> ${canAct ? `<button class="btn btn-success btn-sm" data-approval-action="approve" data-approval-id="${U.escapeHtml(approvalId)}">Approve</button> <button class="btn btn-danger btn-sm" data-approval-action="reject" data-approval-id="${U.escapeHtml(approvalId)}">Reject</button>` : ''}`
         : '<span class="muted">No action</span>';
       return `
       <tr>
         <td>${U.escapeHtml(normalized.resource || normalized.displayResource)}</td><td>${U.escapeHtml(normalized.displayRecordNumber)}</td><td>${U.escapeHtml(normalized.displayCompany)}</td><td>${U.escapeHtml(normalized.displayRequestedBy)}</td>
-        <td>${WorkflowEngine.getWorkflowBadgeHtml(normalized.displayCurrent)}</td><td>${WorkflowEngine.getWorkflowBadgeHtml(normalized.displayRequested)}</td><td>${U.escapeHtml(this.formatDiscountPercent(normalized.displayDiscount))}</td><td>${U.escapeHtml(approvalRoles.join(', ') || normalized.displayApprovalRoles)}</td>
-        <td>${WorkflowEngine.getWorkflowBadgeHtml(item.status || 'Pending Approval')}</td>
+        <td>${WorkflowEngine.getWorkflowBadgeHtml(normalized.displayCurrent)}</td><td>${WorkflowEngine.getWorkflowBadgeHtml(normalized.displayRequested)}</td><td>${U.escapeHtml(this.formatDiscountPercent(normalized.displayDiscount))}</td><td>${U.escapeHtml(approvalRolesDisplay || normalized.displayApprovalRoles)}</td>
+        <td>${WorkflowEngine.getWorkflowBadgeHtml(item.status || item.approval_status || item.request_status || 'Pending Approval')}</td>
         <td>${actionButtons}</td>
       </tr>
     `;
@@ -1559,7 +1652,8 @@ const Workflow = {
     const reviewer_comment = reviewerComment == null
       ? (window.prompt(`${action === 'approve' ? 'Approval' : 'Rejection'} comment`, '') || '')
       : String(reviewerComment || '');
-    const activeApproval = this.state.approvals.find(item => String(item?.approval_id || '').trim() === id);
+    const activeApproval = this.state.approvals.find(item => this.getApprovalId(item) === id)
+      || (this.getApprovalId(this.state.activeApprovalPreview) === id ? this.state.activeApprovalPreview : null);
     if (!activeApproval || !(await this.canActOnApproval(activeApproval, action))) { UI.toast('This approval is not assigned to your role/user.'); return; }
     const normalizedApproval = this.normalizePendingApproval(activeApproval || { approval_id: id });
     if (action === 'approve') await Api.approveWorkflowRequest({ approval_id: id, reviewer_comment });
@@ -1642,7 +1736,7 @@ const Workflow = {
           const action = button.getAttribute('data-approval-action');
           const approvalId = button.getAttribute('data-approval-id');
           if (action === 'open') {
-            const approval = this.state.approvals.find(item => String(item?.approval_id || '').trim() === String(approvalId || '').trim());
+            const approval = this.state.approvals.find(item => this.getApprovalId(item) === String(approvalId || '').trim());
             await this.openApprovalPreview(approval || {});
             return;
           }
