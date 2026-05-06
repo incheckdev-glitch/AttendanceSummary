@@ -329,12 +329,16 @@ const WorkflowEngine = {
         ? proposalPayload.approved_annual_saas_discount_percent
         : hasValue(record?.approved_annual_saas_discount_percent)
           ? record.approved_annual_saas_discount_percent
-          : undefined,
+          : hasValue(record?.approved_discount_percent)
+            ? record.approved_discount_percent
+            : undefined,
       approved_one_time_fee_discount_percent: hasValue(proposalPayload?.approved_one_time_fee_discount_percent)
         ? proposalPayload.approved_one_time_fee_discount_percent
         : hasValue(record?.approved_one_time_fee_discount_percent)
           ? record.approved_one_time_fee_discount_percent
-          : undefined,
+          : hasValue(record?.approved_discount_percent)
+            ? record.approved_discount_percent
+            : undefined,
       approved_discount_percent: hasValue(proposalPayload?.approved_discount_percent)
         ? proposalPayload.approved_discount_percent
         : record?.approved_discount_percent

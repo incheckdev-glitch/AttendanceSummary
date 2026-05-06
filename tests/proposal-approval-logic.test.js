@@ -100,6 +100,13 @@ const cases = [
     items: [oneTimeItem(26)],
     allowed: false,
     requiresApproval: true
+  },
+  {
+    name: 'Current one-time fee = 31: blocked',
+    proposal: {},
+    items: [oneTimeItem(31)],
+    allowed: false,
+    requiresApproval: false
   }
 ];
 
