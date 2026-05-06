@@ -293,85 +293,6 @@
     return `<div class="cc-message-status ${hasRead ? 'read' : 'received'}">${escapeHtml(label)}</div>`;
   }
 
-
-
-
-  function isGenericCommunicationCentreName(value) {
-    const v = normalizeText(value).toLowerCase();
-    return !v || ['user', 'a user', 'unknown', 'undefined', 'null', '-'].includes(v);
-  }
-
-  function resolveCommunicationCentreUserName(userId, fallbackName = '') {
-    const normalizedUserId = String(userId || '').trim();
-    const candidates = [];
-    const pushCandidate = value => {
-      const text = normalizeText(value);
-      if (text) candidates.push(text);
-    };
-
-    const sameId = value => normalizedUserId && String(value || '').trim() === normalizedUserId;
-    const participant = (M.state.participants || []).find(row => sameId(row.user_id) || sameId(row.profile_id) || sameId(row.auth_user_id) || sameId(row.id));
-    if (participant) {
-      pushCandidate(participant.user_name);
-      pushCandidate(participant.full_name);
-      pushCandidate(participant.display_name);
-      pushCandidate(participant.name);
-      pushCandidate(participant.username);
-      pushCandidate(participant.email);
-    }
-
-    const user = (M.state.users || []).find(row => sameId(row.user_id) || sameId(row.id) || sameId(row.profile_id) || sameId(row.auth_user_id));
-    if (user) {
-      pushCandidate(user.user_name);
-      pushCandidate(user.full_name);
-      pushCandidate(user.display_name);
-      pushCandidate(user.name);
-      pushCandidate(user.username);
-      pushCandidate(user.email);
-    }
-
-    pushCandidate(fallbackName);
-
-    const good = candidates.find(value => !isGenericCommunicationCentreName(value));
-    if (good) return good;
-    return normalizeText(fallbackName) || 'User';
-  }
-
-  function getCommunicationCentreMessageSenderName(message = {}) {
-    const senderId = message.sender_id || message.sender_user_id || message.user_id || message.created_by;
-    const directCandidates = [
-      message.sender_name,
-      message.created_by_name,
-      message.user_name,
-      message.full_name,
-      message.display_name,
-      message.name,
-      message.sender_email,
-      message.email
-    ].map(normalizeText).filter(Boolean);
-
-    const directGood = directCandidates.find(value => !isGenericCommunicationCentreName(value));
-    if (directGood) return directGood;
-
-    const resolved = resolveCommunicationCentreUserName(senderId, directCandidates[0] || '');
-    if (!isGenericCommunicationCentreName(resolved)) return resolved;
-
-    return directCandidates[0] || 'User';
-  }
-
-  function getCommunicationCentreInitials(name) {
-    const clean = normalizeText(name);
-    if (!clean) return 'U';
-    const initials = clean
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map(part => part[0] || '')
-      .join('')
-      .toUpperCase();
-    return initials || 'U';
-  }
-
   function renderReplyTargetPreview() {
     const target = $('communicationCentreReplyTarget');
     const replyBtn = $('communicationCentreReplyBtn');
@@ -392,7 +313,7 @@
     }
     const body = normalizeText(message.message_body || message.body || 'Message');
     target.style.display = '';
-    target.innerHTML = `<div><strong>Replying to ${escapeHtml(getCommunicationCentreMessageSenderName(message))}</strong><span>${escapeHtml(body.slice(0, 120))}${body.length > 120 ? '…' : ''}</span></div><button type="button" class="btn ghost sm" id="communicationCentreCancelReplyTarget">Cancel</button>`;
+    target.innerHTML = `<div><strong>Replying to ${escapeHtml(message.sender_name || 'user')}</strong><span>${escapeHtml(body.slice(0, 120))}${body.length > 120 ? '…' : ''}</span></div><button type="button" class="btn ghost sm" id="communicationCentreCancelReplyTarget">Cancel</button>`;
   }
   function syncResponsiveLayout() {
     const container = $('communicationCentreView');
@@ -743,158 +664,140 @@
     M.readPollingTimer = null;
   }
 
-  function ccUniqueStrings(values) {
-    const out = [];
-    (Array.isArray(values) ? values : [values]).flat().forEach(value => {
-      const normalized = String(value || '').trim();
-      if (normalized && !out.includes(normalized)) out.push(normalized);
-    });
-    return out;
-  }
-
-  function ccUniqueEmails(values) {
-    return ccUniqueStrings(values)
-      .map(value => value.toLowerCase())
-      .filter(value => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value));
-  }
-
   async function dispatchCommunicationCentreNotification({ action, conversationId, actorId, conversationNo, conversationTitle }) {
     const normalizedAction = String(action || '').trim();
     const normalizedConversationId = String(conversationId || '').trim();
     if (!normalizedAction || !normalizedConversationId) return null;
 
-    const url = `/#communication_centre?conversation_id=${encodeURIComponent(normalizedConversationId)}`;
-    const fallbackTitle = normalizedAction === 'conversation_created' ? 'New Communication Centre conversation' :
-      normalizedAction === 'reply_added' ? 'New Communication Centre reply' :
-      normalizedAction === 'conversation_closed' ? 'Communication Centre conversation closed' :
-      normalizedAction === 'conversation_reopened' ? 'Communication Centre conversation reopened' :
-      normalizedAction === 'message_edited' ? 'Communication Centre message edited' :
-      'Communication Centre notification';
-    const fallbackBody = `Conversation ${conversationTitle || conversationNo || ''} was updated.`;
-
-    let rows = [];
-    let title = fallbackTitle;
-    let body = fallbackBody;
-
     try {
       const client = db();
-      if (!client?.rpc) throw new Error('Supabase RPC client is not available.');
-      const { data, error } = await client.rpc('notify_communication_centre_event', {
-        p_conversation_id: normalizedConversationId,
-        p_action: normalizedAction
-      });
-      if (error) throw error;
-      rows = Array.isArray(data) ? data : (data ? [data] : []);
-      const first = rows[0] || {};
-      title = String(first.title || '').trim() || fallbackTitle;
-      body = String(first.message || '').trim() || fallbackBody;
-    } catch (error) {
-      console.warn('[Communication Centre notification] in-app RPC failed; PWA push skipped to avoid orphan push.', {
-        action: normalizedAction,
-        conversationId: normalizedConversationId,
-        error: error?.message || String(error)
-      });
-      return { ok: false, skipped: true, reason: 'notification-rpc-failed', error: String(error?.message || error) };
-    }
+      if (client?.rpc) {
+        const { data, error } = await client.rpc('notify_communication_centre_event', {
+          p_conversation_id: normalizedConversationId,
+          p_action: normalizedAction
+        });
+        if (error) throw error;
 
-    const targetUserIds = ccUniqueStrings(rows.flatMap(row => [
-      row?.recipient_user_id,
-      row?.source_user_id,
-      row?.app_user_id,
-      row?.push_user_id,
-      row?.user_id
-    ]));
-    const targetEmails = ccUniqueEmails(rows.flatMap(row => [
-      row?.recipient_email,
-      row?.email,
-      row?.user_email,
-      row?.push_email
-    ]));
+        const rows = Array.isArray(data) ? data : [];
+        const targetUserIds = [...new Set(rows.flatMap(row => [
+          row?.recipient_user_id,
+          row?.source_user_id,
+          row?.app_user_id,
+          row?.push_user_id,
+          row?.profile_id,
+          row?.auth_user_id,
+          row?.auth_id
+        ].map(value => String(value || '').trim()).filter(Boolean)))];
+        const targetEmails = [...new Set(rows.flatMap(row => [
+          row?.recipient_email,
+          row?.email,
+          row?.user_email,
+          row?.push_email
+        ].map(value => String(value || '').trim().toLowerCase()).filter(Boolean)))];
+        const targetRoles = [...new Set(rows.flatMap(row => [
+          row?.recipient_role,
+          row?.role_key,
+          row?.role
+        ].map(value => String(value || '').trim().toLowerCase()).filter(Boolean)))];
+        const first = rows[0] || {};
+        const title = String(first.title || '').trim() || (
+          normalizedAction === 'conversation_created' ? 'New Communication Centre conversation' :
+          normalizedAction === 'reply_added' ? 'New Communication Centre reply' :
+          normalizedAction === 'conversation_closed' ? 'Communication Centre conversation closed' :
+          normalizedAction === 'conversation_reopened' ? 'Communication Centre conversation reopened' :
+          'Communication Centre notification'
+        );
+        const body = String(first.message || '').trim() || `Conversation ${conversationTitle || conversationNo || ''} was updated.`;
+        const url = `/#communication_centre?conversation_id=${encodeURIComponent(normalizedConversationId)}`;
 
-    if (!targetUserIds.length && !targetEmails.length) {
-      console.warn('[Communication Centre PWA] skipped: no resolved push recipients returned by notify_communication_centre_event', {
-        action: normalizedAction,
-        conversationId: normalizedConversationId,
-        rows: rows.length
-      });
-      return { ok: false, skipped: true, reason: 'no-push-recipients', inserted: rows.length };
-    }
-
-    if (!global.Api?.sendWebPush) {
-      console.warn('[Communication Centre PWA] skipped: Api.sendWebPush is unavailable', {
-        action: normalizedAction,
-        conversationId: normalizedConversationId,
-        targetUserIds,
-        targetEmails
-      });
-      return { ok: false, skipped: true, reason: 'send-web-push-unavailable', inserted: rows.length };
-    }
-
-    const pushPayload = {
-      user_ids: targetUserIds,
-      emails: targetEmails,
-      title,
-      body,
-      url,
-      resource: 'communication_centre',
-      action: normalizedAction,
-      event_key: `communication_centre.${normalizedAction}`,
-      record_id: normalizedConversationId,
-      tag: `communication_centre-${normalizedAction}-${normalizedConversationId}-${Date.now()}`,
-      data: {
-        resource: 'communication_centre',
-        action: normalizedAction,
-        event_key: `communication_centre.${normalizedAction}`,
-        record_id: normalizedConversationId,
-        conversation_id: normalizedConversationId,
-        conversation_no: conversationNo || '',
-        conversation_title: conversationTitle || '',
-        actor_id: actorId || '',
-        url
-      },
-      metadata: {
-        resource: 'communication_centre',
-        action: normalizedAction,
-        record_id: normalizedConversationId,
-        conversation_id: normalizedConversationId,
-        conversation_no: conversationNo || '',
-        conversation_title: conversationTitle || '',
-        actor_id: actorId || '',
-        url
-      }
-    };
-
-    console.info('[Communication Centre PWA] sending direct push', {
-      action: normalizedAction,
-      conversationId: normalizedConversationId,
-      recipientUserIds: targetUserIds,
-      recipientEmails: targetEmails,
-      title,
-      body,
-      url
-    });
-
-    try {
-      const pushResult = await global.Api.sendWebPush(pushPayload, { context: `communication_centre:${normalizedAction}:direct-pwa` });
-      const sent = Number(pushResult?.sent || 0);
-      const attempted = Number(pushResult?.attempted || 0);
-      if (!pushResult || sent < 1) {
-        console.warn('[Communication Centre PWA] push did not reach an active subscription', {
+        console.log('[Communication Centre PWA]', {
           action: normalizedAction,
           conversationId: normalizedConversationId,
-          attempted,
-          sent,
-          pushResult
+          recipientUserIds: targetUserIds,
+          recipientEmails: targetEmails,
+          recipientRoles: targetRoles,
+          title,
+          body,
+          url
         });
+
+        const hasPushTargets = Boolean(targetUserIds.length || targetEmails.length || targetRoles.length);
+        if (hasPushTargets && global.Api?.sendWebPush) {
+          try {
+            await global.Api.sendWebPush({
+              // Keep every alias because older/newer Edge Function versions have used different names.
+              user_ids: targetUserIds,
+              target_user_ids: targetUserIds,
+              recipient_user_ids: targetUserIds,
+              emails: targetEmails,
+              target_emails: targetEmails,
+              recipient_emails: targetEmails,
+              roles: targetRoles,
+              target_roles: targetRoles,
+              title,
+              body,
+              url,
+              resource: 'communication_centre',
+              action: normalizedAction,
+              event_key: normalizedAction,
+              record_id: normalizedConversationId,
+              record_number: conversationNo || '',
+              data: {
+                resource: 'communication_centre',
+                action: normalizedAction,
+                event_key: normalizedAction,
+                record_id: normalizedConversationId,
+                conversation_id: normalizedConversationId,
+                conversation_no: conversationNo || '',
+                conversation_title: conversationTitle || '',
+                actor_id: actorId || '',
+                url
+              },
+              metadata: {
+                conversation_id: normalizedConversationId,
+                conversation_no: conversationNo || '',
+                conversation_title: conversationTitle || '',
+                actor_id: actorId || ''
+              }
+            }, { context: `communication_centre:${normalizedAction}:direct-pwa` });
+          } catch (error) {
+            console.warn('[Communication Centre PWA failed]', error);
+          }
+        } else {
+          console.warn('[Communication Centre PWA skipped: no push target returned]', {
+            action: normalizedAction,
+            conversationId: normalizedConversationId,
+            rows
+          });
+        }
+
+        return { ok: true, recipients: targetUserIds, emails: targetEmails, roles: targetRoles, inserted: rows.length };
       }
-      return { ok: sent > 0, recipients: targetUserIds, emails: targetEmails, inserted: rows.length, push: pushResult || null };
     } catch (error) {
-      console.warn('[Communication Centre PWA failed]', {
+      console.warn('[Communication Centre PWA failed]', error);
+    }
+
+    // Last-resort compatibility fallback. This should not be the main path anymore.
+    try {
+      if (!global.NotificationService?.dispatchConfiguredNotification) return null;
+      const deepLink = `#communication_centre?conversation_id=${encodeURIComponent(normalizedConversationId)}`;
+      return await global.NotificationService.dispatchConfiguredNotification({
+        resource: 'communication_centre',
         action: normalizedAction,
-        conversationId: normalizedConversationId,
-        error: error?.message || String(error)
+        recordId: normalizedConversationId,
+        actorId,
+        deepLink,
+        context: {
+          conversation_id: normalizedConversationId,
+          conversation_no: conversationNo || '',
+          conversation_title: conversationTitle || '',
+          actor_name: global.Session?.displayName?.() || 'A user',
+          deep_link: deepLink
+        }
       });
-      return { ok: false, attempted: true, error: String(error?.message || error), recipients: targetUserIds, emails: targetEmails, inserted: rows.length };
+    } catch (fallbackError) {
+      console.warn('[Communication Centre notification fallback failed]', fallbackError);
+      return null;
     }
   }
 
@@ -978,7 +881,7 @@
     if (meta) meta.textContent = `${conversation.status || 'Open'} • ${conversation.priority || 'Normal'} • ${conversation.category || 'General'}`;
     if (participants) {
       participants.innerHTML = M.state.participants.map(participant => `
-        <span class="chip cc-participant-chip">${escapeHtml(participant.participant_type || 'participant')}: ${escapeHtml(resolveCommunicationCentreUserName(participant.user_id, participant.user_name || participant.name || participant.email || 'User'))}</span>
+        <span class="chip cc-participant-chip">${escapeHtml(participant.participant_type || 'participant')}: ${escapeHtml(participant.user_name || participant.user_id || 'User')}</span>
       `).join(' ');
     }
     if (messages) {
@@ -990,9 +893,8 @@
             <div class="cc-system-message">${escapeHtml(message.message_body || message.body || 'System update')}</div>
           `;
         }
-        const resolvedSenderName = getCommunicationCentreMessageSenderName(message);
-        const senderName = escapeHtml(resolvedSenderName);
-        const initials = escapeHtml(getCommunicationCentreInitials(resolvedSenderName));
+        const senderName = escapeHtml(message.sender_name || message.created_by_name || 'System');
+        const initials = escapeHtml((message.sender_name || message.created_by_name || 'U').split(/\s+/).slice(0,2).map(x => x[0] || '').join('').toUpperCase());
         return `
           <div class="cc-message-row ${isMine ? 'mine' : 'incoming'}" style="${muted}">
             ${isMine ? '' : `<div class="cc-avatar">${initials}</div>`}
@@ -1388,7 +1290,7 @@
       if (conversation?.id) {
         await openDetail(conversation.id);
         setMobileView('chat');
-        await dispatchCommunicationCentreNotification({
+        dispatchCommunicationCentreNotification({
           action: 'conversation_created',
           conversationId: conversation.id,
           actorId: conversation.created_by,
@@ -1426,7 +1328,7 @@
       if (error) throw error;
       await openDetail(conversation.id);
       await refresh();
-      await dispatchCommunicationCentreNotification({
+      dispatchCommunicationCentreNotification({
         action: 'conversation_closed',
         conversationId: conversation.id,
         actorId: global.Session?.user?.()?.id,
@@ -1448,7 +1350,7 @@
       if (error) throw error;
       await openDetail(conversation.id);
       await refresh();
-      await dispatchCommunicationCentreNotification({
+      dispatchCommunicationCentreNotification({
         action: 'conversation_reopened',
         conversationId: conversation.id,
         actorId: global.Session?.user?.()?.id,
@@ -1664,7 +1566,7 @@
           renderReplyTargetPreview();
           await openDetail(conversation.id, { forceScroll: false, reason: 'edit_message' });
           showFriendlySuccess('Message updated.');
-          await dispatchCommunicationCentreNotification({
+          dispatchCommunicationCentreNotification({
             action: 'message_edited',
             actorId: global.Session?.user?.()?.id,
             conversationNo: conversation.conversation_no,
@@ -1692,7 +1594,7 @@
         scrollCommunicationCentreToBottom(true);
         showFriendlySuccess('Reply sent successfully.');
         if (replyBtn) { replyBtn.disabled = false; replyBtn.textContent = 'Send'; }
-        await dispatchCommunicationCentreNotification({
+        dispatchCommunicationCentreNotification({
           action: 'reply_added',
           actorId: global.Session?.user?.()?.id,
           conversationNo: conversation.conversation_no,
@@ -1702,9 +1604,8 @@
       } catch (error) {
         if (replyBtn) { replyBtn.disabled = false; replyBtn.textContent = M.state.editingMessageId ? 'Save Edit' : 'Send'; }
         console.error('[Communication Centre] send reply/edit failed', error);
-        const friendlySendEditMessage = M.state.editingMessageId ? 'Unable to update message. Please try again.' : 'Unable to send reply. Please try again.';
-        if (replyError) { replyError.textContent=friendlySendEditMessage; replyError.style.display='block'; }
-        showFriendlyError(friendlySendEditMessage);
+        if (replyError) { replyError.textContent='Unable to send reply. Please try again.'; replyError.style.display='block'; }
+        showFriendlyError('Unable to send reply. Please try again.');
       }
     });
     const hashConversationId = (() => {

@@ -26,14 +26,64 @@ function normalizeString(value: unknown) {
   return String(value || '').trim();
 }
 
-function uniqueList(values: unknown): string[] {
-  if (!Array.isArray(values)) return [];
+function uniqueList(...values: unknown[]): string[] {
   const out: string[] = [];
-  values.forEach(value => {
+  const pushValue = (value: unknown) => {
+    if (Array.isArray(value)) {
+      value.forEach(pushValue);
+      return;
+    }
+    if (typeof value === 'string' && value.includes(',')) {
+      value.split(',').forEach(pushValue);
+      return;
+    }
     const normalized = normalizeString(value);
     if (normalized && !out.includes(normalized)) out.push(normalized);
-  });
+  };
+  values.forEach(pushValue);
   return out;
+}
+
+function rowValue(row: Record<string, unknown>, key: string) {
+  return normalizeString(row?.[key]);
+}
+
+function rowValueLower(row: Record<string, unknown>, key: string) {
+  return rowValue(row, key).toLowerCase();
+}
+
+function rowMatchesPushTarget(
+  row: Record<string, unknown>,
+  targetUserIds: string[],
+  targetEmails: string[],
+  targetRoles: string[],
+  targetSubscriptionIds: string[]
+) {
+  const idTargets = targetUserIds.map(item => item.toLowerCase());
+  const emailTargets = targetEmails.map(item => item.toLowerCase());
+  const roleTargets = targetRoles.map(item => item.toLowerCase());
+  const subscriptionTargets = targetSubscriptionIds.map(item => item.toLowerCase());
+
+  const rowIdKeys = [
+    'id',
+    'subscription_id',
+    'user_id',
+    'profile_id',
+    'auth_user_id',
+    'auth_id',
+    'supabase_user_id',
+    'app_user_id',
+    'owner_user_id',
+    'recipient_user_id'
+  ];
+  const rowEmailKeys = ['email', 'user_email', 'recipient_email', 'profile_email'];
+  const rowRoleKeys = ['role', 'role_key', 'recipient_role', 'profile_role'];
+
+  if (subscriptionTargets.length && rowIdKeys.some(key => subscriptionTargets.includes(rowValueLower(row, key)))) return true;
+  if (idTargets.length && rowIdKeys.some(key => idTargets.includes(rowValueLower(row, key)))) return true;
+  if (emailTargets.length && rowEmailKeys.some(key => emailTargets.includes(rowValueLower(row, key)))) return true;
+  if (roleTargets.length && rowRoleKeys.some(key => roleTargets.includes(rowValueLower(row, key)))) return true;
+  return false;
 }
 
 function hasRole(payload: Record<string, unknown>, role: string) {
@@ -91,13 +141,7 @@ function buildPushPayload(input: Record<string, unknown>) {
   const body = String(input.body || 'You have a new notification.').trim() || 'You have a new notification.';
   const url = String(input.url || '/').trim() || '/';
   const tag = String(input.tag || `incheck360-${Date.now()}`).trim() || `incheck360-${Date.now()}`;
-  const explicitData = input.data && typeof input.data === 'object' ? (input.data as Record<string, unknown>) : {};
-  const metadata = input.metadata && typeof input.metadata === 'object' ? (input.metadata as Record<string, unknown>) : {};
-  const resource = normalizeString(input.resource || explicitData.resource || metadata.resource).toLowerCase();
-  const action = normalizeString(input.action || explicitData.action || metadata.action).toLowerCase();
-  const eventKey = normalizeString(input.event_key || input.eventKey || explicitData.event_key || explicitData.eventKey || metadata.event_key || metadata.eventKey);
-  const recordId = normalizeString(input.record_id || input.recordId || explicitData.record_id || explicitData.recordId || metadata.record_id || metadata.recordId);
-  const conversationId = normalizeString(input.conversation_id || input.conversationId || explicitData.conversation_id || explicitData.conversationId || metadata.conversation_id || metadata.conversationId || (resource === 'communication_centre' ? recordId : ''));
+  const data = input.data && typeof input.data === 'object' ? (input.data as Record<string, unknown>) : {};
 
   return {
     title,
@@ -107,16 +151,7 @@ function buildPushPayload(input: Record<string, unknown>) {
     badge: '/icons/icon-192.png',
     tag,
     data: {
-      ...metadata,
-      ...explicitData,
-      ...(resource ? { resource } : {}),
-      ...(action ? { action } : {}),
-      ...(eventKey ? { event_key: eventKey } : {}),
-      ...(recordId ? { record_id: recordId } : {}),
-      ...(conversationId ? { conversation_id: conversationId } : {}),
-      tag,
-      title,
-      body,
+      ...data,
       url
     }
   };
@@ -178,32 +213,25 @@ Deno.serve(async req => {
 
     const payload = buildPushPayload(body);
     const bodySubscription = body.subscription as Record<string, unknown> | undefined;
-    const targetUserIds = uniqueList([
-      ...uniqueList(body.user_ids),
-      ...uniqueList(body.userIds),
-      ...uniqueList(body.target_user_ids),
-      ...uniqueList(body.targetUserIds)
-    ]);
-    const targetSubscriptionIds = uniqueList([
-      ...uniqueList(body.subscription_ids),
-      ...uniqueList(body.subscriptionIds),
-      ...uniqueList(body.target_subscription_ids),
-      ...uniqueList(body.targetSubscriptionIds)
-    ]);
+    const targetUserIds = uniqueList(
+      body.user_ids,
+      body.target_user_ids,
+      body.recipient_user_ids,
+      body.targetUserIds,
+      body.recipientUserIds
+    );
+    const targetSubscriptionIds = uniqueList(
+      body.subscription_ids,
+      body.target_subscription_ids,
+      body.recipient_subscription_ids,
+      body.subscriptionIds
+    );
     const legacyUserId = normalizeString(body.user_id);
     const legacySubscriptionId = normalizeString(body.subscription_id);
     if (legacyUserId && !targetUserIds.includes(legacyUserId)) targetUserIds.push(legacyUserId);
     if (legacySubscriptionId && !targetSubscriptionIds.includes(legacySubscriptionId)) targetSubscriptionIds.push(legacySubscriptionId);
-    const targetRoles = uniqueList([
-      ...uniqueList(body.roles),
-      ...uniqueList(body.target_roles),
-      ...uniqueList(body.targetRoles)
-    ]).map(item => item.toLowerCase());
-    const targetEmails = uniqueList([
-      ...uniqueList(body.emails),
-      ...uniqueList(body.target_emails),
-      ...uniqueList(body.targetEmails)
-    ]).map(item => item.toLowerCase());
+    const targetRoles = uniqueList(body.roles, body.target_roles, body.recipient_roles).map(item => item.toLowerCase());
+    const targetEmails = uniqueList(body.emails, body.target_emails, body.recipient_emails, body.email).map(item => item.toLowerCase());
     const allowBroadcast = false;
     const resource = getPayloadResource(body);
 
@@ -393,6 +421,26 @@ Deno.serve(async req => {
         });
       }
 
+      // Communication Centre can pass either profile IDs, auth IDs, legacy app-user IDs, emails, or roles.
+      // This fallback avoids the common bug where the in-app notification has the right recipient,
+      // but push_subscriptions.user_id uses a different user-id column.
+      if (targetUserIds.length > 0 || targetEmails.length > 0 || targetRoles.length > 0 || targetSubscriptionIds.length > 0) {
+        const { data: allActiveRows, error: allActiveError } = await adminClient
+          .from('push_subscriptions')
+          .select('*')
+          .eq('is_active', true)
+          .limit(5000);
+        if (allActiveError) throw new Error(allActiveError.message || 'Unable to load active push subscriptions fallback.');
+        (allActiveRows || []).forEach(row => {
+          const normalizedRow = row as Record<string, unknown>;
+          if (!rowMatchesPushTarget(normalizedRow, targetUserIds, targetEmails, targetRoles, targetSubscriptionIds)) return;
+          const id = normalizeString(normalizedRow.id) || normalizeString(normalizedRow.endpoint);
+          if (!id || seenSubscriptionIds.has(id)) return;
+          seenSubscriptionIds.add(id);
+          fetchedRows.push(normalizedRow);
+        });
+      }
+
       subscriptions = fetchedRows
         .map(row => ({
           endpoint: String(row.endpoint || '').trim(),
@@ -413,6 +461,7 @@ Deno.serve(async req => {
         error: 'No active push subscriptions found',
         debug: {
           targetUserIds,
+          targetEmails,
           targetRoles,
           targetSubscriptionIds,
           roleProfileIds,
