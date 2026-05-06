@@ -43,6 +43,14 @@ const Proposals = {
     'provider_signatory_title',
     'provider_sign_date',
     'status',
+    'approved_annual_saas_discount_percent',
+    'approved_one_time_fee_discount_percent',
+    'approved_discount_percent',
+    'discount_approval_status',
+    'discount_approved_at',
+    'discount_approved_by',
+    'last_discount_approval_request_id',
+    'approval_required_reason',
     'generated_by',
     'updated_at'
   ],
@@ -822,6 +830,51 @@ const Proposals = {
     normalized.total_discount = this.toNumberSafe(
       source.total_discount ?? source.totalDiscount ?? normalized.total_discount
     );
+    normalized.approved_annual_saas_discount_percent =
+      source.approved_annual_saas_discount_percent ??
+      source.approvedAnnualSaasDiscountPercent ??
+      normalized.approved_annual_saas_discount_percent ??
+      '';
+    normalized.approved_one_time_fee_discount_percent =
+      source.approved_one_time_fee_discount_percent ??
+      source.approvedOneTimeFeeDiscountPercent ??
+      normalized.approved_one_time_fee_discount_percent ??
+      '';
+    normalized.approved_discount_percent =
+      source.approved_discount_percent ??
+      source.approvedDiscountPercent ??
+      normalized.approved_discount_percent ??
+      '';
+    normalized.discount_approval_status = String(
+      source.discount_approval_status ||
+      source.discountApprovalStatus ||
+      normalized.discount_approval_status ||
+      ''
+    ).trim();
+    normalized.discount_approved_at = String(
+      source.discount_approved_at ||
+      source.discountApprovedAt ||
+      normalized.discount_approved_at ||
+      ''
+    ).trim();
+    normalized.discount_approved_by = String(
+      source.discount_approved_by ||
+      source.discountApprovedBy ||
+      normalized.discount_approved_by ||
+      ''
+    ).trim();
+    normalized.last_discount_approval_request_id = String(
+      source.last_discount_approval_request_id ||
+      source.lastDiscountApprovalRequestId ||
+      normalized.last_discount_approval_request_id ||
+      ''
+    ).trim();
+    normalized.approval_required_reason = String(
+      source.approval_required_reason ||
+      source.approvalRequiredReason ||
+      normalized.approval_required_reason ||
+      ''
+    ).trim();
     normalized.agreement_id = String(source.agreement_id ?? source.agreementId ?? normalized.agreement_id ?? '').trim();
     normalized.generated_by = String(
       normalized.generated_by || source.generatedBy || source.created_by || source.createdBy || ''
@@ -2054,7 +2107,15 @@ const Proposals = {
       provider_signatory_name: '',
       provider_signatory_title: '',
       provider_sign_date: '',
-      terms_conditions: ''
+      terms_conditions: '',
+      approved_annual_saas_discount_percent: '',
+      approved_one_time_fee_discount_percent: '',
+      approved_discount_percent: '',
+      discount_approval_status: '',
+      discount_approved_at: '',
+      discount_approved_by: '',
+      last_discount_approval_request_id: '',
+      approval_required_reason: ''
     };
   },
   generateAccountNumber() {
@@ -2674,6 +2735,15 @@ const Proposals = {
       : items.reduce((max, item) => Math.max(max, this.toNumberSafe(item.discount_percent)), 0);
     const currentStatus = String(currentRecord?.status || '').trim();
     const requestedStatus = String(proposal.status || '').trim();
+    console.log('[Proposal workflow current baseline]', {
+      proposalId,
+      currentStatus,
+      requestedStatus,
+      approvedAnnual: currentRecord?.approved_annual_saas_discount_percent,
+      approvedOneTime: currentRecord?.approved_one_time_fee_discount_percent,
+      approvedGeneric: currentRecord?.approved_discount_percent,
+      approvalStatus: currentRecord?.discount_approval_status
+    });
     const shouldValidateWorkflow = this.shouldValidateWorkflowBeforeSave({
       proposalId,
       currentStatus,
