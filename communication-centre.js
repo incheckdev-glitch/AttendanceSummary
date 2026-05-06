@@ -768,6 +768,7 @@
       normalizedAction === 'reply_added' ? 'New Communication Centre reply' :
       normalizedAction === 'conversation_closed' ? 'Communication Centre conversation closed' :
       normalizedAction === 'conversation_reopened' ? 'Communication Centre conversation reopened' :
+      normalizedAction === 'message_edited' ? 'Communication Centre message edited' :
       'Communication Centre notification';
     const fallbackBody = `Conversation ${conversationTitle || conversationNo || ''} was updated.`;
 
@@ -1387,7 +1388,7 @@
       if (conversation?.id) {
         await openDetail(conversation.id);
         setMobileView('chat');
-        dispatchCommunicationCentreNotification({
+        await dispatchCommunicationCentreNotification({
           action: 'conversation_created',
           conversationId: conversation.id,
           actorId: conversation.created_by,
@@ -1425,7 +1426,7 @@
       if (error) throw error;
       await openDetail(conversation.id);
       await refresh();
-      dispatchCommunicationCentreNotification({
+      await dispatchCommunicationCentreNotification({
         action: 'conversation_closed',
         conversationId: conversation.id,
         actorId: global.Session?.user?.()?.id,
@@ -1447,7 +1448,7 @@
       if (error) throw error;
       await openDetail(conversation.id);
       await refresh();
-      dispatchCommunicationCentreNotification({
+      await dispatchCommunicationCentreNotification({
         action: 'conversation_reopened',
         conversationId: conversation.id,
         actorId: global.Session?.user?.()?.id,
@@ -1663,6 +1664,13 @@
           renderReplyTargetPreview();
           await openDetail(conversation.id, { forceScroll: false, reason: 'edit_message' });
           showFriendlySuccess('Message updated.');
+          await dispatchCommunicationCentreNotification({
+            action: 'message_edited',
+            actorId: global.Session?.user?.()?.id,
+            conversationNo: conversation.conversation_no,
+            conversationTitle: conversation.title,
+            conversationId: conversation.id
+          });
           if (replyBtn) { replyBtn.disabled = false; replyBtn.textContent = 'Send'; }
           return;
         }
@@ -1684,7 +1692,7 @@
         scrollCommunicationCentreToBottom(true);
         showFriendlySuccess('Reply sent successfully.');
         if (replyBtn) { replyBtn.disabled = false; replyBtn.textContent = 'Send'; }
-        dispatchCommunicationCentreNotification({
+        await dispatchCommunicationCentreNotification({
           action: 'reply_added',
           actorId: global.Session?.user?.()?.id,
           conversationNo: conversation.conversation_no,
@@ -1694,8 +1702,9 @@
       } catch (error) {
         if (replyBtn) { replyBtn.disabled = false; replyBtn.textContent = M.state.editingMessageId ? 'Save Edit' : 'Send'; }
         console.error('[Communication Centre] send reply/edit failed', error);
-        if (replyError) { replyError.textContent='Unable to send reply. Please try again.'; replyError.style.display='block'; }
-        showFriendlyError('Unable to send reply. Please try again.');
+        const friendlySendEditMessage = M.state.editingMessageId ? 'Unable to update message. Please try again.' : 'Unable to send reply. Please try again.';
+        if (replyError) { replyError.textContent=friendlySendEditMessage; replyError.style.display='block'; }
+        showFriendlyError(friendlySendEditMessage);
       }
     });
     const hashConversationId = (() => {
