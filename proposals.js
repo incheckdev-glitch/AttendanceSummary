@@ -8,7 +8,16 @@ const Proposals = {
     'proposal_title',
     'proposal_date',
     'valid_until',
+    'proposal_valid_until',
     'customer_name',
+    'customer_legal_name',
+    'company_id',
+    'company_name',
+    'contact_id',
+    'contact_name',
+    'contact_email',
+    'contact_phone',
+    'contact_mobile',
     'customer_address',
     'customer_contact_name',
     'customer_contact_mobile',
@@ -767,7 +776,31 @@ const Proposals = {
     ).trim();
     normalized.ref_number = this.ensureRefNumber(normalized.ref_number || normalized.proposal_number || '');
     normalized.proposal_title = String(normalized.proposal_title || '').trim();
-    normalized.customer_name = String(normalized.customer_name || '').trim();
+    normalized.customer_name = String(
+      normalized.customer_name ||
+      source.customerName ||
+      source.customer_legal_name ||
+      source.customerLegalName ||
+      source.company_name ||
+      source.companyName ||
+      ''
+    ).trim();
+    normalized.customer_legal_name = String(
+      source.customer_legal_name ||
+      source.customerLegalName ||
+      normalized.customer_name ||
+      source.company_name ||
+      source.companyName ||
+      ''
+    ).trim();
+    normalized.company_id = String(source.company_id || source.companyId || '').trim();
+    normalized.company_name = String(source.company_name || source.companyName || normalized.customer_legal_name || normalized.customer_name || '').trim();
+    normalized.contact_id = String(source.contact_id || source.contactId || '').trim();
+    normalized.contact_name = String(source.contact_name || source.contactName || normalized.customer_contact_name || '').trim();
+    normalized.contact_email = String(source.contact_email || source.contactEmail || normalized.customer_contact_email || '').trim();
+    normalized.contact_phone = String(source.contact_phone || source.contactPhone || normalized.customer_contact_mobile || '').trim();
+    normalized.contact_mobile = String(source.contact_mobile || source.contactMobile || normalized.customer_contact_mobile || '').trim();
+    normalized.customer_sign_date = String(source.customer_sign_date || source.customerSignDate || normalized.customer_sign_date || '').trim();
     normalized.status = String(normalized.status || '').trim();
     normalized.currency = String(normalized.currency || source.currency || '').trim();
     normalized.deal_id = String(normalized.deal_id || '').trim();
@@ -1994,6 +2027,14 @@ const Proposals = {
       status: 'Draft',
       currency: '',
       customer_name: '',
+      customer_legal_name: '',
+      company_id: '',
+      company_name: '',
+      contact_id: '',
+      contact_name: '',
+      contact_email: '',
+      contact_phone: '',
+      contact_mobile: '',
       customer_address: '',
       customer_contact_name: '',
       customer_contact_mobile: '',
@@ -2070,7 +2111,7 @@ const Proposals = {
     set(E.proposalFormValidUntil, proposal.valid_until || '');
     set(E.proposalFormStatus, proposal.status || 'Draft');
     set(E.proposalFormCurrency, proposal.currency || '');
-    set(E.proposalFormCustomerName, proposal.customer_name || '');
+    set(E.proposalFormCustomerName, proposal.customer_legal_name || proposal.customer_name || proposal.company_name || '');
     set(E.proposalFormCustomerAddress, proposal.customer_address || '');
     set(E.proposalFormCustomerContactName, proposal.customer_contact_name || '');
     set(E.proposalFormCustomerContactMobile, proposal.customer_contact_mobile || '');
@@ -2371,7 +2412,15 @@ const Proposals = {
     const existingRefNumber = String(E.proposalForm?.dataset.refNumber || '').trim();
     const selectedCompany = this.normalizeCompany({
       company_id: E.proposalForm?.dataset.companyId || '',
-      company_name: E.proposalForm?.dataset.companyName || '',
+      company_name:
+        E.proposalForm?.dataset.companyName ||
+        E.proposalFormCustomerName?.value ||
+        '',
+      legal_name:
+        E.proposalForm?.dataset.companyLegalName ||
+        E.proposalFormCustomerName?.value ||
+        E.proposalForm?.dataset.companyName ||
+        '',
       address: E.proposalForm?.dataset.companyAddress || ''
     });
     const selectedContact = this.normalizeContact({
@@ -2392,6 +2441,10 @@ const Proposals = {
     const providerMobile = provider.mobile || '';
     const providerRole = provider.role || '';
     const contactPersonName = this.buildContactDisplayName(selectedContact);
+    const resolvedCustomerName =
+      U.getCustomerLegalName(selectedCompany, mapped) ||
+      String(E.proposalFormCustomerName?.value || '').trim() ||
+      String(selectedCompany.legal_name || selectedCompany.company_name || '').trim();
     return {
       proposal_id: String(E.proposalFormProposalId?.value || '').trim(),
       ref_number: this.ensureRefNumber(existingRefNumber),
@@ -2401,8 +2454,8 @@ const Proposals = {
       proposal_valid_until: String(E.proposalFormValidUntil?.value || '').trim(),
       status: String(E.proposalFormStatus?.value || '').trim(),
       currency: String(E.proposalFormCurrency?.value || '').trim(),
-      customer_name: U.getCustomerLegalName(selectedCompany, mapped),
-      customer_legal_name: U.getCustomerLegalName(selectedCompany, mapped),
+      customer_name: resolvedCustomerName,
+      customer_legal_name: resolvedCustomerName,
       customer_address: mapped.customer_address || '',
       customer_contact_name: String(E.proposalFormCustomerContactName?.value || '').trim(),
       customer_contact_mobile: String(E.proposalFormCustomerContactMobile?.value || '').trim(),
@@ -2424,7 +2477,7 @@ const Proposals = {
       provider_sign_date: String(E.proposalFormProviderSignDate?.value || '').trim(),
       terms_conditions: String(E.proposalFormTerms?.value || '').trim(),
       company_id: selectedCompany.company_id || '',
-      company_name: selectedCompany.company_name || '',
+      company_name: selectedCompany.company_name || resolvedCustomerName || '',
       contact_id: selectedContact.contact_id || '',
       contact_name: contactPersonName || '',
       contact_email: String(selectedContact.email || '').trim(),
@@ -2511,7 +2564,20 @@ const Proposals = {
     E.proposalForm.dataset.id = base.id || '';
     E.proposalForm.dataset.refNumber = base.ref_number || '';
     E.proposalForm.dataset.companyId = String(base.company_id || '').trim();
-    E.proposalForm.dataset.companyName = String(base.company_name || '').trim();
+    E.proposalForm.dataset.companyName = String(
+      base.company_name ||
+      base.customer_legal_name ||
+      base.customer_name ||
+      ''
+    ).trim();
+    E.proposalForm.dataset.companyLegalName = String(
+      base.customer_legal_name ||
+      base.company_legal_name ||
+      base.legal_name ||
+      base.customer_name ||
+      base.company_name ||
+      ''
+    ).trim();
     E.proposalForm.dataset.companyAddress = String(base.customer_address || '').trim();
     E.proposalForm.dataset.contactId = String(base.contact_id || '').trim();
     E.proposalForm.dataset.contactName = String(base.contact_name || base.customer_contact_name || '').trim();
@@ -2521,7 +2587,12 @@ const Proposals = {
     E.proposalForm.dataset.contactMobile = String(base.contact_mobile || base.customer_contact_mobile || '').trim();
     const hydratedBase = this.hydrateMappedProposalFields(
       base,
-      { address: E.proposalForm.dataset.companyAddress },
+      {
+        company_id: E.proposalForm.dataset.companyId,
+        company_name: E.proposalForm.dataset.companyName,
+        legal_name: E.proposalForm.dataset.companyLegalName,
+        address: E.proposalForm.dataset.companyAddress
+      },
       {
         contact_name: E.proposalForm.dataset.contactName,
         job_title: E.proposalForm.dataset.contactJobTitle,
@@ -2632,6 +2703,14 @@ const Proposals = {
       UI.toast('Proposal title is required.');
       return;
     }
+
+    console.log('[Proposal save payload customer fields]', {
+      customer_name: proposal.customer_name,
+      customer_legal_name: proposal.customer_legal_name,
+      company_id: proposal.company_id,
+      company_name: proposal.company_name,
+      customer_sign_date: proposal.customer_sign_date
+    });
 
     this.setFormBusy(true);
     this.state.saveInFlight = true;
