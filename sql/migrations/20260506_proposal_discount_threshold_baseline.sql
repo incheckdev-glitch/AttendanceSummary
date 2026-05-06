@@ -123,10 +123,16 @@ begin
     v_one_time_no_approval := coalesce(v_rule.one_time_fee_no_approval_until_percent, 20);
     v_one_time_hard_stop := coalesce(v_rule.one_time_fee_hard_stop_discount_percent, 30);
 
-    v_has_approved_annual := coalesce(trim(p_record ->> 'approved_annual_saas_discount_percent'), '') <> '';
-    v_has_approved_one_time := coalesce(trim(p_record ->> 'approved_one_time_fee_discount_percent'), '') <> '';
-    v_approved_annual := case when v_has_approved_annual then (p_record ->> 'approved_annual_saas_discount_percent')::numeric else null end;
-    v_approved_one_time := case when v_has_approved_one_time then (p_record ->> 'approved_one_time_fee_discount_percent')::numeric else null end;
+    v_has_approved_annual := coalesce(trim(coalesce(nullif(p_record ->> 'approved_annual_saas_discount_percent', ''), nullif(p_record ->> 'approved_discount_percent', ''))), '') <> '';
+    v_has_approved_one_time := coalesce(trim(coalesce(nullif(p_record ->> 'approved_one_time_fee_discount_percent', ''), nullif(p_record ->> 'approved_discount_percent', ''))), '') <> '';
+    v_approved_annual := case
+      when v_has_approved_annual then coalesce(nullif(p_record ->> 'approved_annual_saas_discount_percent', ''), nullif(p_record ->> 'approved_discount_percent', ''))::numeric
+      else null
+    end;
+    v_approved_one_time := case
+      when v_has_approved_one_time then coalesce(nullif(p_record ->> 'approved_one_time_fee_discount_percent', ''), nullif(p_record ->> 'approved_discount_percent', ''))::numeric
+      else null
+    end;
 
     if v_annual_discount > v_annual_hard_stop then
       return query
@@ -161,8 +167,14 @@ begin
       return query
       select false, true,
         concat_ws(' ',
-          case when v_annual_needs_approval then format('Annual SaaS discount %s%% requires approval.', v_annual_discount) end,
-          case when v_one_time_needs_approval then format('One-time fee discount %s%% requires approval.', v_one_time_discount) end
+          case
+            when v_annual_needs_approval and not v_has_approved_annual then format('Approval required for %s%% discount.', v_annual_discount)
+            when v_annual_needs_approval then format('Approval required because discount increased from %s%% to %s%%.', v_approved_annual, v_annual_discount)
+          end,
+          case
+            when v_one_time_needs_approval and not v_has_approved_one_time then format('Approval required for %s%% discount.', v_one_time_discount)
+            when v_one_time_needs_approval then format('Approval required because discount increased from %s%% to %s%%.', v_approved_one_time, v_one_time_discount)
+          end
         )::text,
         v_approval_roles,
         greatest(v_annual_discount, v_one_time_discount),
