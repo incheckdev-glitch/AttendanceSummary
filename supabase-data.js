@@ -3705,6 +3705,51 @@
         return acc;
       }, {});
       if (requestedAction === 'request_approval') {
+        if (String(sanitizedRow.resource || '').trim().toLowerCase() === 'proposals') {
+          const requested = sanitizedRow.requested_changes && typeof sanitizedRow.requested_changes === 'object'
+            ? sanitizedRow.requested_changes
+            : {};
+          const normalizedRecordId = String(sanitizedRow.record_id || requested.resource_id || requested.target_id || requested.proposal_uuid || '').trim();
+          const normalizedTargetStatus = String(sanitizedRow.new_status || requested.requested_status || requested.next_status || requested.status || '')
+            .trim()
+            .toLowerCase()
+            .replace(/\s+/g, '_');
+          const normalizedDiscount = Number(toNumber(requested.discount_percent).toFixed(2));
+          if (normalizedRecordId && normalizedTargetStatus) {
+            const { data: pendingRows, error: duplicateError } = await client
+              .from('workflow_approvals')
+              .select('*')
+              .eq('resource', 'proposals')
+              .eq('record_id', normalizedRecordId)
+              .eq('status', 'pending')
+              .order('created_at', { ascending: false });
+            if (duplicateError) throw workflowError('Unable to check pending proposal discount approvals', duplicateError);
+            const duplicateRow = (Array.isArray(pendingRows) ? pendingRows : []).find(existing => {
+              const existingRequested = existing?.requested_changes && typeof existing.requested_changes === 'object'
+                ? existing.requested_changes
+                : {};
+              const existingStatus = String(existing?.new_status || existingRequested.requested_status || existingRequested.next_status || existingRequested.status || '')
+                .trim()
+                .toLowerCase()
+                .replace(/\s+/g, '_');
+              const existingDiscount = Number(toNumber(existingRequested.discount_percent).toFixed(2));
+              return existingStatus === normalizedTargetStatus && existingDiscount === normalizedDiscount;
+            }) || null;
+            if (duplicateRow) {
+              const normalizedDuplicate = normalizeWorkflowSingle(duplicateRow);
+              return {
+                ...normalizedDuplicate,
+                ok: true,
+                created: false,
+                reused: true,
+                approval_id: normalizedDuplicate?.approval_id || duplicateRow?.approval_id || duplicateRow?.id || '',
+                status: normalizedDuplicate?.status || duplicateRow?.status || 'pending',
+                resource: normalizedDuplicate?.resource || duplicateRow?.resource || 'proposals',
+                record_id: normalizedDuplicate?.record_id || duplicateRow?.record_id || normalizedRecordId
+              };
+            }
+          }
+        }
         const { data, error } = await client.from('workflow_approvals').insert(sanitizedRow).select('*').maybeSingle();
         if (error) throw workflowError('Unable to create approval request row in workflow_approvals', error);
         let insertedRow = data || null;
