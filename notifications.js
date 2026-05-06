@@ -779,7 +779,7 @@ const Notifications = {
       message: source.body || 'You have a new notification.',
       type: meta.type || 'push',
       resource: meta.resource || '',
-      resource_id: meta.resource_id || meta.ticket_id || meta.approval_id || meta.onboarding_id || '',
+      resource_id: meta.resource_id || meta.record_id || meta.conversation_id || meta.conversationId || meta.ticket_id || meta.approval_id || meta.onboarding_id || '',
       link_target: source.url || meta.url || '',
       created_at: createdAt,
       is_read: false,
@@ -880,91 +880,169 @@ const Notifications = {
   },
   resolveNotificationResource(notification = {}) {
     const meta = notification?.meta && typeof notification.meta === 'object' ? notification.meta : {};
-    const candidates = [
-      notification?.link_target,
-      notification?.resource,
-      notification?.type,
-      meta?.resource,
-      meta?.module
-    ];
-    const raw = candidates
-      .map(value => this.normalizeNotificationToken(value))
-      .find(Boolean);
-    if (!raw) return '';
-    const map = {
-      issues: 'tickets',
-      issue: 'tickets',
-      ticket: 'tickets',
-      tickets: 'tickets',
-      event: 'events',
-      events: 'events',
-      workflow: 'workflow',
-      workflow_approvals: 'workflow_approvals',
-      approval_required: 'workflow',
-      approved: 'workflow',
-      rejected: 'workflow',
-      workflow_approval_request: 'workflow',
-      workflow_decision: 'workflow',
-      proposals: 'proposals',
-      proposal: 'proposals',
-      agreements: 'agreements',
-      agreement: 'agreements',
-      invoices: 'invoices',
-      invoice: 'invoices',
-      receipts: 'receipts',
-      receipt: 'receipts',
-      operations_onboarding: 'operations_onboarding',
-      onboarding: 'operations_onboarding',
-      technical_admin: 'technical_admin',
-      technical_admin_requests: 'technical_admin',
-      clients: 'clients',
-      client: 'clients',
-      leads: 'leads',
-      lead: 'leads',
-      deals: 'deals',
-      deal: 'deals',
-      csm_activity: 'csm_activities',
-      csm_activities: 'csm_activities',
-      csm: 'csm_activities',
-      ai_insights: 'ai_insights',
-      ai_insight: 'ai_insights'
+    const firstValue = (...values) => {
+      for (const value of values) {
+        if (value !== undefined && value !== null && value !== '') return value;
+      }
+      return '';
     };
-    if (map[raw]) return map[raw];
-    if (raw.includes('ticket') || raw.includes('issue')) return 'tickets';
-    if (raw.includes('event')) return 'events';
-    if (raw.includes('workflow') || raw.includes('approval')) return 'workflow';
-    if (raw.includes('proposal')) return 'proposals';
-    if (raw.includes('agreement')) return 'agreements';
-    if (raw.includes('invoice')) return 'invoices';
-    if (raw.includes('receipt')) return 'receipts';
-    if (raw.includes('onboarding')) return 'operations_onboarding';
-    if (raw.includes('technical_admin')) return 'technical_admin';
-    if (raw.includes('client')) return 'clients';
-    if (raw.includes('lead')) return 'leads';
-    if (raw.includes('deal')) return 'deals';
-    if (raw.includes('csm')) return 'csm_activities';
-    if (raw.includes('insight')) return 'ai_insights';
-    return raw;
+    const cleanToken = value => String(value || '').trim().toLowerCase();
+    const normalizeResourceToken = value => {
+      const raw = cleanToken(value);
+      if (!raw) return '';
+
+      // Deep links can arrive as /#communication_centre?conversation_id=...
+      // or as a full URL. Extract the hash route before mapping the resource.
+      let route = raw;
+      try {
+        if (/^https?:\/\//i.test(route)) {
+          route = new URL(route).hash || route;
+        }
+      } catch (_) {}
+      route = route
+        .replace(/^https?:\/\/[^#]+/i, '')
+        .replace(/^\/?#/, '')
+        .replace(/^#/, '')
+        .split('?')[0]
+        .split('&')[0]
+        .trim()
+        .toLowerCase();
+
+      const map = {
+        issues: 'tickets',
+        issue: 'tickets',
+        ticket: 'tickets',
+        tickets: 'tickets',
+        event: 'events',
+        events: 'events',
+        workflow: 'workflow',
+        workflow_approvals: 'workflow_approvals',
+        approval_required: 'workflow',
+        approved: 'workflow',
+        rejected: 'workflow',
+        workflow_approval_request: 'workflow',
+        workflow_decision: 'workflow',
+        proposals: 'proposals',
+        proposal: 'proposals',
+        agreements: 'agreements',
+        agreement: 'agreements',
+        invoices: 'invoices',
+        invoice: 'invoices',
+        receipts: 'receipts',
+        receipt: 'receipts',
+        operations_onboarding: 'operations_onboarding',
+        onboarding: 'operations_onboarding',
+        technical_admin: 'technical_admin',
+        technical_admin_requests: 'technical_admin',
+        clients: 'clients',
+        client: 'clients',
+        leads: 'leads',
+        lead: 'leads',
+        deals: 'deals',
+        deal: 'deals',
+        csm_activity: 'csm_activities',
+        csm_activities: 'csm_activities',
+        csm: 'csm_activities',
+        ai_insights: 'ai_insights',
+        ai_insight: 'ai_insights',
+        communication_centre: 'communication_centre',
+        communication_center: 'communication_centre',
+        communicationcentre: 'communication_centre',
+        communicationcenter: 'communication_centre',
+        'communication-centre': 'communication_centre',
+        'communication-center': 'communication_centre'
+      };
+      if (map[route]) return map[route];
+      if (route.includes('communication_centre') || route.includes('communication-centre') || route.includes('communicationcentre') || route.includes('communication_center')) return 'communication_centre';
+      if (route.includes('ticket') || route.includes('issue')) return 'tickets';
+      if (route.includes('event')) return 'events';
+      if (route.includes('workflow') || route.includes('approval')) return 'workflow';
+      if (route.includes('proposal')) return 'proposals';
+      if (route.includes('agreement')) return 'agreements';
+      if (route.includes('invoice')) return 'invoices';
+      if (route.includes('receipt')) return 'receipts';
+      if (route.includes('onboarding')) return 'operations_onboarding';
+      if (route.includes('technical_admin') || route.includes('technical-admin')) return 'technical_admin';
+      if (route.includes('client')) return 'clients';
+      if (route.includes('lead')) return 'leads';
+      if (route.includes('deal')) return 'deals';
+      if (route.includes('csm')) return 'csm_activities';
+      if (route.includes('insight')) return 'ai_insights';
+      return route || raw;
+    };
+
+    // Resource/meta are more reliable than link_target. link_target is a URL, not a resource key.
+    const candidates = [
+      notification?.resource,
+      meta?.resource,
+      meta?.module,
+      meta?.target_resource,
+      notification?.target_resource,
+      notification?.type,
+      notification?.link_target,
+      meta?.url
+    ];
+    const selected = candidates.map(normalizeResourceToken).find(Boolean);
+    return selected || normalizeResourceToken(firstValue(notification?.link_target, meta?.url));
   },
   resolveNotificationTargetId(notification = {}) {
     const meta = notification?.meta && typeof notification.meta === 'object' ? notification.meta : {};
+    const firstValue = (...values) => {
+      for (const value of values) {
+        if (value !== undefined && value !== null && value !== '') return value;
+      }
+      return '';
+    };
+    const parseIdFromLink = value => {
+      const raw = String(value || '').trim();
+      if (!raw) return '';
+      try {
+        const url = /^https?:\/\//i.test(raw) ? new URL(raw) : new URL(raw, window.location.origin);
+        const hash = String(url.hash || '').replace(/^#/, '');
+        const query = hash.includes('?') ? hash.split('?').slice(1).join('?') : url.search.replace(/^\?/, '');
+        const params = new URLSearchParams(query || '');
+        return String(
+          params.get('conversation_id') ||
+          params.get('conversationId') ||
+          params.get('communication_centre_id') ||
+          params.get('id') ||
+          ''
+        ).trim();
+      } catch (_) {
+        const query = raw.includes('?') ? raw.split('?').slice(1).join('?') : '';
+        const params = new URLSearchParams(query || '');
+        return String(params.get('conversation_id') || params.get('conversationId') || params.get('id') || '').trim();
+      }
+    };
+
     return String(
-      notification?.resource_id ||
-      meta?.record_id ||
-      meta?.id ||
-      meta?.ticket_uuid ||
-      meta?.ticket_id ||
-      meta?.event_id ||
-      meta?.proposal_id ||
-      meta?.agreement_id ||
-      meta?.invoice_id ||
-      meta?.receipt_id ||
-      meta?.onboarding_uuid ||
-      meta?.onboarding_id ||
-      meta?.client_id ||
-      meta?.lead_id ||
-      meta?.deal_id ||
-      ''
+      firstValue(
+        notification?.resource_id,
+        notification?.target_resource_id,
+        notification?.record_id,
+        meta?.conversation_id,
+        meta?.conversationId,
+        meta?.communication_centre_id,
+        meta?.communicationCentreId,
+        meta?.resource_id,
+        meta?.target_resource_id,
+        meta?.record_id,
+        meta?.id,
+        parseIdFromLink(notification?.link_target),
+        parseIdFromLink(meta?.url),
+        meta?.ticket_uuid,
+        meta?.ticket_id,
+        meta?.event_id,
+        meta?.proposal_id,
+        meta?.agreement_id,
+        meta?.invoice_id,
+        meta?.receipt_id,
+        meta?.onboarding_uuid,
+        meta?.onboarding_id,
+        meta?.client_id,
+        meta?.lead_id,
+        meta?.deal_id
+      )
     ).trim();
   },
   async markNotificationRead(notification = {}) {
@@ -1008,7 +1086,10 @@ const Notifications = {
       leads: 'leads',
       deals: 'deals',
       csm_activities: 'csm',
-      ai_insights: 'insights'
+      ai_insights: 'insights',
+      communicationCentre: 'communicationCentre',
+      communication_centre: 'communicationCentre',
+      communication_center: 'communicationCentre'
     };
     const viewKey = viewMap[tabKey] || '';
     if (!viewKey || !Permissions.canAccessTab(viewKey)) {
@@ -1038,6 +1119,10 @@ const Notifications = {
         return false;
       }
       if (window.AIInsights?.refresh) await AIInsights.refresh({ force: true });
+    }
+    if (tabKey === 'communicationCentre' || tabKey === 'communication_centre' || tabKey === 'communication_center') {
+      if (window.CommunicationCentre?.init) await window.CommunicationCentre.init();
+      else if (window.CommunicationCentre?.refresh) await window.CommunicationCentre.refresh();
     }
     return true;
   },
@@ -1084,7 +1169,10 @@ async routeToResourceTarget(resource, targetId, notification) {
     if (normalizedResource === 'communication_centre') {
       const opened = await this.openModuleTab('communicationCentre');
       if (!opened) return false;
-      if (normalizedTargetId && window.CommunicationCentre?.openConversationById) await window.CommunicationCentre.openConversationById(normalizedTargetId);
+      if (normalizedTargetId) this.setRouteHash(`#communication_centre?conversation_id=${encodeURIComponent(normalizedTargetId)}`);
+      if (normalizedTargetId && window.CommunicationCentre?.openConversationById) {
+        await window.CommunicationCentre.openConversationById(normalizedTargetId, { source: 'notification' });
+      }
       return true;
     }
     if (resource === 'tickets') {
