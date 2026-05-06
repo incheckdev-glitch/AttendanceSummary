@@ -664,96 +664,157 @@
     M.readPollingTimer = null;
   }
 
+  function ccUniqueStrings(values) {
+    const out = [];
+    (Array.isArray(values) ? values : [values]).flat().forEach(value => {
+      const normalized = String(value || '').trim();
+      if (normalized && !out.includes(normalized)) out.push(normalized);
+    });
+    return out;
+  }
+
+  function ccUniqueEmails(values) {
+    return ccUniqueStrings(values)
+      .map(value => value.toLowerCase())
+      .filter(value => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value));
+  }
+
   async function dispatchCommunicationCentreNotification({ action, conversationId, actorId, conversationNo, conversationTitle }) {
     const normalizedAction = String(action || '').trim();
     const normalizedConversationId = String(conversationId || '').trim();
     if (!normalizedAction || !normalizedConversationId) return null;
 
+    const url = `/#communication_centre?conversation_id=${encodeURIComponent(normalizedConversationId)}`;
+    const fallbackTitle = normalizedAction === 'conversation_created' ? 'New Communication Centre conversation' :
+      normalizedAction === 'reply_added' ? 'New Communication Centre reply' :
+      normalizedAction === 'conversation_closed' ? 'Communication Centre conversation closed' :
+      normalizedAction === 'conversation_reopened' ? 'Communication Centre conversation reopened' :
+      'Communication Centre notification';
+    const fallbackBody = `Conversation ${conversationTitle || conversationNo || ''} was updated.`;
+
+    let rows = [];
+    let title = fallbackTitle;
+    let body = fallbackBody;
+
     try {
       const client = db();
-      if (client?.rpc) {
-        const { data, error } = await client.rpc('notify_communication_centre_event', {
-          p_conversation_id: normalizedConversationId,
-          p_action: normalizedAction
-        });
-        if (error) throw error;
-
-        const rows = Array.isArray(data) ? data : [];
-        const targetUserIds = [...new Set(rows.flatMap(row => [
-          row?.recipient_user_id,
-          row?.source_user_id,
-          row?.app_user_id,
-          row?.push_user_id
-        ].map(value => String(value || '').trim()).filter(Boolean)))];
-        const first = rows[0] || {};
-        const title = String(first.title || '').trim() || (
-          normalizedAction === 'conversation_created' ? 'New Communication Centre conversation' :
-          normalizedAction === 'reply_added' ? 'New Communication Centre reply' :
-          normalizedAction === 'conversation_closed' ? 'Communication Centre conversation closed' :
-          normalizedAction === 'conversation_reopened' ? 'Communication Centre conversation reopened' :
-          'Communication Centre notification'
-        );
-        const body = String(first.message || '').trim() || `Conversation ${conversationTitle || conversationNo || ''} was updated.`;
-        const url = `/#communication_centre?conversation_id=${encodeURIComponent(normalizedConversationId)}`;
-
-        console.log('[Communication Centre PWA]', {
-          action: normalizedAction,
-          conversationId: normalizedConversationId,
-          recipientUserIds: targetUserIds,
-          title,
-          body,
-          url
-        });
-
-        if (targetUserIds.length && global.Api?.sendWebPush) {
-          try {
-            await global.Api.sendWebPush({
-              user_ids: targetUserIds,
-              title,
-              body,
-              url,
-              resource: 'communication_centre',
-              action: normalizedAction,
-              record_id: normalizedConversationId,
-              metadata: {
-                conversation_id: normalizedConversationId,
-                conversation_no: conversationNo || '',
-                conversation_title: conversationTitle || '',
-                actor_id: actorId || ''
-              }
-            }, { context: `communication_centre:${normalizedAction}:direct-pwa` });
-          } catch (error) {
-            console.warn('[Communication Centre PWA failed]', error);
-          }
-        }
-
-        return { ok: true, recipients: targetUserIds, inserted: rows.length };
-      }
+      if (!client?.rpc) throw new Error('Supabase RPC client is not available.');
+      const { data, error } = await client.rpc('notify_communication_centre_event', {
+        p_conversation_id: normalizedConversationId,
+        p_action: normalizedAction
+      });
+      if (error) throw error;
+      rows = Array.isArray(data) ? data : (data ? [data] : []);
+      const first = rows[0] || {};
+      title = String(first.title || '').trim() || fallbackTitle;
+      body = String(first.message || '').trim() || fallbackBody;
     } catch (error) {
-      console.warn('[Communication Centre PWA failed]', error);
+      console.warn('[Communication Centre notification] in-app RPC failed; PWA push skipped to avoid orphan push.', {
+        action: normalizedAction,
+        conversationId: normalizedConversationId,
+        error: error?.message || String(error)
+      });
+      return { ok: false, skipped: true, reason: 'notification-rpc-failed', error: String(error?.message || error) };
     }
 
-    // Last-resort compatibility fallback. This should not be the main path anymore.
-    try {
-      if (!global.NotificationService?.dispatchConfiguredNotification) return null;
-      const deepLink = `#communication_centre?conversation_id=${encodeURIComponent(normalizedConversationId)}`;
-      return await global.NotificationService.dispatchConfiguredNotification({
+    const targetUserIds = ccUniqueStrings(rows.flatMap(row => [
+      row?.recipient_user_id,
+      row?.source_user_id,
+      row?.app_user_id,
+      row?.push_user_id,
+      row?.user_id
+    ]));
+    const targetEmails = ccUniqueEmails(rows.flatMap(row => [
+      row?.recipient_email,
+      row?.email,
+      row?.user_email,
+      row?.push_email
+    ]));
+
+    if (!targetUserIds.length && !targetEmails.length) {
+      console.warn('[Communication Centre PWA] skipped: no resolved push recipients returned by notify_communication_centre_event', {
+        action: normalizedAction,
+        conversationId: normalizedConversationId,
+        rows: rows.length
+      });
+      return { ok: false, skipped: true, reason: 'no-push-recipients', inserted: rows.length };
+    }
+
+    if (!global.Api?.sendWebPush) {
+      console.warn('[Communication Centre PWA] skipped: Api.sendWebPush is unavailable', {
+        action: normalizedAction,
+        conversationId: normalizedConversationId,
+        targetUserIds,
+        targetEmails
+      });
+      return { ok: false, skipped: true, reason: 'send-web-push-unavailable', inserted: rows.length };
+    }
+
+    const pushPayload = {
+      user_ids: targetUserIds,
+      emails: targetEmails,
+      title,
+      body,
+      url,
+      resource: 'communication_centre',
+      action: normalizedAction,
+      event_key: `communication_centre.${normalizedAction}`,
+      record_id: normalizedConversationId,
+      tag: `communication_centre-${normalizedAction}-${normalizedConversationId}-${Date.now()}`,
+      data: {
         resource: 'communication_centre',
         action: normalizedAction,
-        recordId: normalizedConversationId,
-        actorId,
-        deepLink,
-        context: {
-          conversation_id: normalizedConversationId,
-          conversation_no: conversationNo || '',
-          conversation_title: conversationTitle || '',
-          actor_name: global.Session?.displayName?.() || 'A user',
-          deep_link: deepLink
-        }
+        event_key: `communication_centre.${normalizedAction}`,
+        record_id: normalizedConversationId,
+        conversation_id: normalizedConversationId,
+        conversation_no: conversationNo || '',
+        conversation_title: conversationTitle || '',
+        actor_id: actorId || '',
+        url
+      },
+      metadata: {
+        resource: 'communication_centre',
+        action: normalizedAction,
+        record_id: normalizedConversationId,
+        conversation_id: normalizedConversationId,
+        conversation_no: conversationNo || '',
+        conversation_title: conversationTitle || '',
+        actor_id: actorId || '',
+        url
+      }
+    };
+
+    console.info('[Communication Centre PWA] sending direct push', {
+      action: normalizedAction,
+      conversationId: normalizedConversationId,
+      recipientUserIds: targetUserIds,
+      recipientEmails: targetEmails,
+      title,
+      body,
+      url
+    });
+
+    try {
+      const pushResult = await global.Api.sendWebPush(pushPayload, { context: `communication_centre:${normalizedAction}:direct-pwa` });
+      const sent = Number(pushResult?.sent || 0);
+      const attempted = Number(pushResult?.attempted || 0);
+      if (!pushResult || sent < 1) {
+        console.warn('[Communication Centre PWA] push did not reach an active subscription', {
+          action: normalizedAction,
+          conversationId: normalizedConversationId,
+          attempted,
+          sent,
+          pushResult
+        });
+      }
+      return { ok: sent > 0, recipients: targetUserIds, emails: targetEmails, inserted: rows.length, push: pushResult || null };
+    } catch (error) {
+      console.warn('[Communication Centre PWA failed]', {
+        action: normalizedAction,
+        conversationId: normalizedConversationId,
+        error: error?.message || String(error)
       });
-    } catch (fallbackError) {
-      console.warn('[Communication Centre notification fallback failed]', fallbackError);
-      return null;
+      return { ok: false, attempted: true, error: String(error?.message || error), recipients: targetUserIds, emails: targetEmails, inserted: rows.length };
     }
   }
 
@@ -1246,7 +1307,7 @@
       if (conversation?.id) {
         await openDetail(conversation.id);
         setMobileView('chat');
-        dispatchCommunicationCentreNotification({
+        await dispatchCommunicationCentreNotification({
           action: 'conversation_created',
           conversationId: conversation.id,
           actorId: conversation.created_by,
@@ -1543,7 +1604,7 @@
         scrollCommunicationCentreToBottom(true);
         showFriendlySuccess('Reply sent successfully.');
         if (replyBtn) { replyBtn.disabled = false; replyBtn.textContent = 'Send'; }
-        dispatchCommunicationCentreNotification({
+        await dispatchCommunicationCentreNotification({
           action: 'reply_added',
           actorId: global.Session?.user?.()?.id,
           conversationNo: conversation.conversation_no,

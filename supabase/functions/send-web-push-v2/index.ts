@@ -91,7 +91,13 @@ function buildPushPayload(input: Record<string, unknown>) {
   const body = String(input.body || 'You have a new notification.').trim() || 'You have a new notification.';
   const url = String(input.url || '/').trim() || '/';
   const tag = String(input.tag || `incheck360-${Date.now()}`).trim() || `incheck360-${Date.now()}`;
-  const data = input.data && typeof input.data === 'object' ? (input.data as Record<string, unknown>) : {};
+  const explicitData = input.data && typeof input.data === 'object' ? (input.data as Record<string, unknown>) : {};
+  const metadata = input.metadata && typeof input.metadata === 'object' ? (input.metadata as Record<string, unknown>) : {};
+  const resource = normalizeString(input.resource || explicitData.resource || metadata.resource).toLowerCase();
+  const action = normalizeString(input.action || explicitData.action || metadata.action).toLowerCase();
+  const eventKey = normalizeString(input.event_key || input.eventKey || explicitData.event_key || explicitData.eventKey || metadata.event_key || metadata.eventKey);
+  const recordId = normalizeString(input.record_id || input.recordId || explicitData.record_id || explicitData.recordId || metadata.record_id || metadata.recordId);
+  const conversationId = normalizeString(input.conversation_id || input.conversationId || explicitData.conversation_id || explicitData.conversationId || metadata.conversation_id || metadata.conversationId || (resource === 'communication_centre' ? recordId : ''));
 
   return {
     title,
@@ -101,7 +107,16 @@ function buildPushPayload(input: Record<string, unknown>) {
     badge: '/icons/icon-192.png',
     tag,
     data: {
-      ...data,
+      ...metadata,
+      ...explicitData,
+      ...(resource ? { resource } : {}),
+      ...(action ? { action } : {}),
+      ...(eventKey ? { event_key: eventKey } : {}),
+      ...(recordId ? { record_id: recordId } : {}),
+      ...(conversationId ? { conversation_id: conversationId } : {}),
+      tag,
+      title,
+      body,
       url
     }
   };
@@ -163,14 +178,32 @@ Deno.serve(async req => {
 
     const payload = buildPushPayload(body);
     const bodySubscription = body.subscription as Record<string, unknown> | undefined;
-    const targetUserIds = uniqueList(body.user_ids);
-    const targetSubscriptionIds = uniqueList(body.subscription_ids);
+    const targetUserIds = uniqueList([
+      ...uniqueList(body.user_ids),
+      ...uniqueList(body.userIds),
+      ...uniqueList(body.target_user_ids),
+      ...uniqueList(body.targetUserIds)
+    ]);
+    const targetSubscriptionIds = uniqueList([
+      ...uniqueList(body.subscription_ids),
+      ...uniqueList(body.subscriptionIds),
+      ...uniqueList(body.target_subscription_ids),
+      ...uniqueList(body.targetSubscriptionIds)
+    ]);
     const legacyUserId = normalizeString(body.user_id);
     const legacySubscriptionId = normalizeString(body.subscription_id);
     if (legacyUserId && !targetUserIds.includes(legacyUserId)) targetUserIds.push(legacyUserId);
     if (legacySubscriptionId && !targetSubscriptionIds.includes(legacySubscriptionId)) targetSubscriptionIds.push(legacySubscriptionId);
-    const targetRoles = uniqueList(body.roles).map(item => item.toLowerCase());
-    const targetEmails = uniqueList(body.emails).map(item => item.toLowerCase());
+    const targetRoles = uniqueList([
+      ...uniqueList(body.roles),
+      ...uniqueList(body.target_roles),
+      ...uniqueList(body.targetRoles)
+    ]).map(item => item.toLowerCase());
+    const targetEmails = uniqueList([
+      ...uniqueList(body.emails),
+      ...uniqueList(body.target_emails),
+      ...uniqueList(body.targetEmails)
+    ]).map(item => item.toLowerCase());
     const allowBroadcast = false;
     const resource = getPayloadResource(body);
 
