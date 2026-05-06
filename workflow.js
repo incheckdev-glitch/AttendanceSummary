@@ -4,140 +4,193 @@ function toNumber(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
-function normalizeWorkflowStatus(value) {
-  return String(value || '').trim().toLowerCase().replace(/\s+/g, '_');
+function normalizeText(value) {
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
 }
 
-function getProposalCurrentDiscountPercent(proposal, items = []) {
-  const directCandidates = [
-    proposal?.discount_percent,
-    proposal?.discount,
-    proposal?.discount_rate,
-    proposal?.total_discount_percent,
-    proposal?.overall_discount_percent,
-    proposal?.max_discount_percent,
-    proposal?.customer_discount_percent
-  ];
-
-  for (const value of directCandidates) {
-    const n = toNumber(value);
-    if (n > 0) return n;
-  }
-
-  let maxItemDiscount = 0;
-
-  for (const item of items || []) {
-    const itemDiscount = Math.max(
-      toNumber(item?.discount_percent),
-      toNumber(item?.discount),
-      toNumber(item?.discount_rate),
-      toNumber(item?.line_discount_percent)
-    );
-
-    if (itemDiscount > maxItemDiscount) {
-      maxItemDiscount = itemDiscount;
-    }
-  }
-
-  return maxItemDiscount;
+function normalizeWorkflowStatus(value) {
+  return normalizeText(value);
 }
 
 function hasValue(value) {
   return value !== null && value !== undefined && String(value).trim() !== '';
 }
 
-function isDiscountAboveApproved(currentDiscount, approvedDiscount) {
+function getItemCategory(item) {
+  const raw = normalizeText(
+    item?.item_type ||
+    item?.category ||
+    item?.section ||
+    item?.billing_type ||
+    item?.billing_cycle ||
+    item?.fee_type ||
+    ''
+  );
+
+  if (
+    raw.includes('saas') ||
+    raw.includes('annual') ||
+    raw.includes('subscription') ||
+    raw.includes('recurring')
+  ) {
+    return 'annual_saas';
+  }
+
+  if (
+    raw.includes('one_time') ||
+    raw.includes('one-time') ||
+    raw.includes('one time') ||
+    raw.includes('setup') ||
+    raw.includes('implementation') ||
+    raw.includes('installation') ||
+    raw.includes('fee')
+  ) {
+    return 'one_time_fee';
+  }
+
+  return 'unknown';
+}
+
+function getItemDiscountPercent(item) {
+  return Math.max(
+    toNumber(item?.discount_percent),
+    toNumber(item?.discount),
+    toNumber(item?.discount_rate),
+    toNumber(item?.line_discount_percent)
+  );
+}
+
+function getProposalDiscountsByCategory(proposal, items = []) {
+  let annualSaasDiscount = 0;
+  let oneTimeFeeDiscount = 0;
+  let overallMaxDiscount = 0;
+
+  for (const item of items || []) {
+    const discount = getItemDiscountPercent(item);
+    const category = getItemCategory(item);
+
+    overallMaxDiscount = Math.max(overallMaxDiscount, discount);
+
+    if (category === 'annual_saas') {
+      annualSaasDiscount = Math.max(annualSaasDiscount, discount);
+    }
+
+    if (category === 'one_time_fee') {
+      oneTimeFeeDiscount = Math.max(oneTimeFeeDiscount, discount);
+    }
+  }
+
+  return {
+    annualSaasDiscount,
+    oneTimeFeeDiscount,
+    overallMaxDiscount
+  };
+}
+
+function isAboveApprovedBaseline(currentDiscount, approvedDiscountRaw) {
+  if (!hasValue(approvedDiscountRaw)) {
+    return true;
+  }
+
   const current = Number(toNumber(currentDiscount).toFixed(2));
-  const approved = Number(toNumber(approvedDiscount).toFixed(2));
+  const approved = Number(toNumber(approvedDiscountRaw).toFixed(2));
+
   return current > approved;
 }
 
-function evaluateProposalDiscountApprovalRequirement(proposal, items, nextStatus) {
+function evaluateCategoryDiscountApproval(proposal, items, workflowRule) {
+  const discounts = getProposalDiscountsByCategory(proposal, items);
+
+  const annualNoApprovalLimit = toNumber(workflowRule?.annual_saas_no_approval_until_percent || 10);
+  const annualHardStop = toNumber(workflowRule?.annual_saas_hard_stop_discount_percent || 20);
+
+  const oneTimeNoApprovalLimit = toNumber(workflowRule?.one_time_fee_no_approval_until_percent || 20);
+  const oneTimeHardStop = toNumber(workflowRule?.one_time_fee_hard_stop_discount_percent || 30);
+
+  const reasons = [];
+
+  if (discounts.annualSaasDiscount > annualHardStop) {
+    return {
+      allowed: false,
+      requiresApproval: false,
+      reason: `Annual SaaS discount above ${annualHardStop}% is not allowed.`,
+      discounts
+    };
+  }
+
+  if (discounts.oneTimeFeeDiscount > oneTimeHardStop) {
+    return {
+      allowed: false,
+      requiresApproval: false,
+      reason: `One-time fee discount above ${oneTimeHardStop}% is not allowed.`,
+      discounts
+    };
+  }
+
+  const annualNeedsApproval =
+    discounts.annualSaasDiscount > annualNoApprovalLimit &&
+    isAboveApprovedBaseline(
+      discounts.annualSaasDiscount,
+      proposal?.approved_annual_saas_discount_percent
+    );
+
+  const oneTimeNeedsApproval =
+    discounts.oneTimeFeeDiscount > oneTimeNoApprovalLimit &&
+    isAboveApprovedBaseline(
+      discounts.oneTimeFeeDiscount,
+      proposal?.approved_one_time_fee_discount_percent
+    );
+
+  if (annualNeedsApproval) {
+    reasons.push(
+      `Annual SaaS discount ${discounts.annualSaasDiscount}% requires approval.`
+    );
+  }
+
+  if (oneTimeNeedsApproval) {
+    reasons.push(
+      `One-time fee discount ${discounts.oneTimeFeeDiscount}% requires approval.`
+    );
+  }
+
+  return {
+    allowed: reasons.length === 0,
+    requiresApproval: reasons.length > 0,
+    reason: reasons.join(' '),
+    discounts,
+    annualNeedsApproval,
+    oneTimeNeedsApproval
+  };
+}
+
+function getProposalCurrentDiscountPercent(proposal, items = []) {
+  const discounts = getProposalDiscountsByCategory(proposal, items);
+  return discounts.overallMaxDiscount;
+}
+
+function evaluateProposalDiscountApprovalRequirement(proposal, items, nextStatus, workflowRule = {}) {
   const currentStatus = normalizeWorkflowStatus(proposal?.status || proposal?.current_status);
   const targetStatus = normalizeWorkflowStatus(nextStatus || proposal?.next_status || proposal?.status);
-
-  const discount = getProposalCurrentDiscountPercent(proposal, items);
-
-  const approvedDiscountRaw = proposal?.approved_discount_percent;
-  const approvedDiscount = toNumber(approvedDiscountRaw);
-  const hasApprovedBaseline = hasValue(approvedDiscountRaw);
-
-  const withDecisionLog = decision => {
-    console.log('[Proposal discount workflow decision]', {
-      proposalId: proposal?.id,
-      proposalNumber: proposal?.proposal_id || proposal?.proposal_number,
-      currentStatus,
-      targetStatus,
-      currentDiscount: discount,
-      approvedDiscount,
-      hasApprovedBaseline,
-      requiresApproval: decision.requiresApproval,
-      allowed: decision.allowed,
-      reason: decision.reason
-    });
-    return decision;
+  const decision = evaluateCategoryDiscountApproval(proposal, items, workflowRule);
+  const discounts = decision.discounts || getProposalDiscountsByCategory(proposal, items);
+  const result = {
+    ...decision,
+    discount: discounts.overallMaxDiscount
   };
 
-  if (discount > 20) {
-    return withDecisionLog({
-      allowed: false,
-      requiresApproval: false,
-      discount,
-      reason: 'Discount above 20% is not allowed.'
-    });
-  }
-
-  if (discount <= 10) {
-    return withDecisionLog({
-      allowed: true,
-      requiresApproval: false,
-      discount,
-      reason: ''
-    });
-  }
-
-  const isDraftToSent =
-    currentStatus === 'draft' &&
-    ['sent', 'send', 'submitted'].includes(targetStatus);
-
-  // First-time approval baseline.
-  if (!hasApprovedBaseline && isDraftToSent && discount > 10 && discount <= 20) {
-    return withDecisionLog({
-      allowed: false,
-      requiresApproval: true,
-      discount,
-      reason: `Approval required for ${discount}% discount.`
-    });
-  }
-
-  // If no baseline exists but discount is above 10, require approval to establish baseline.
-  if (!hasApprovedBaseline && discount > 10 && discount <= 20) {
-    return withDecisionLog({
-      allowed: false,
-      requiresApproval: true,
-      discount,
-      reason: `Approval required for ${discount}% discount.`
-    });
-  }
-
-  // Main rule after approval:
-  // Only require approval when the new discount is HIGHER than the last approved discount.
-  if (hasApprovedBaseline && isDiscountAboveApproved(discount, approvedDiscount)) {
-    return withDecisionLog({
-      allowed: false,
-      requiresApproval: true,
-      discount,
-      reason: `Approval required because discount increased from ${approvedDiscount}% to ${discount}%.`
-    });
-  }
-
-  // Same or lower than approved discount should continue without approval.
-  return withDecisionLog({
-    allowed: true,
-    requiresApproval: false,
-    discount,
-    reason: ''
+  console.log('[Proposal category discount workflow]', {
+    proposalId: proposal?.id,
+    proposalNumber: proposal?.proposal_id || proposal?.proposal_number,
+    annualSaasDiscount: discounts.annualSaasDiscount,
+    approvedAnnualSaasDiscount: proposal?.approved_annual_saas_discount_percent,
+    oneTimeFeeDiscount: discounts.oneTimeFeeDiscount,
+    approvedOneTimeFeeDiscount: proposal?.approved_one_time_fee_discount_percent,
+    currentStatus,
+    targetStatus,
+    decision: result
   });
+
+  return result;
 }
 
 const WorkflowEngine = {
@@ -186,16 +239,42 @@ const WorkflowEngine = {
   isProposalWorkflowResource(resource = '') {
     return String(resource || '').trim().toLowerCase() === 'proposals';
   },
+  getProposalWorkflowRule(currentStatus = '', targetStatus = '') {
+    const rules = Array.isArray(window.Workflow?.state?.rules) ? window.Workflow.state.rules : [];
+    const current = normalizeWorkflowStatus(currentStatus);
+    const target = normalizeWorkflowStatus(targetStatus);
+    return rules.find(rule => {
+      if (rule?.is_active === false) return false;
+      if (String(rule?.resource || '').trim().toLowerCase() !== 'proposals') return false;
+      const ruleCurrent = normalizeWorkflowStatus(rule?.current_status);
+      const ruleNext = normalizeWorkflowStatus(rule?.next_status);
+      if (ruleCurrent && current && ruleCurrent !== current) return false;
+      if (ruleNext && target && ruleNext !== target) return false;
+      return true;
+    }) || {};
+  },
   buildProposalDiscountDecision(record = {}, requestedChanges = {}) {
     const nested = requestedChanges?.requested_changes && typeof requestedChanges.requested_changes === 'object'
       ? requestedChanges.requested_changes
       : {};
     const proposalPayload = nested?.proposal && typeof nested.proposal === 'object' ? nested.proposal : {};
+    const recordItems = Array.isArray(record?.items)
+      ? record.items
+      : Array.isArray(record?.proposal_items)
+        ? record.proposal_items
+        : [];
+    const payloadItems = Array.isArray(proposalPayload?.items)
+      ? proposalPayload.items
+      : Array.isArray(proposalPayload?.proposal_items)
+        ? proposalPayload.proposal_items
+        : [];
     const items = Array.isArray(nested?.items)
       ? nested.items
       : Array.isArray(requestedChanges?.items)
         ? requestedChanges.items
-        : [];
+        : payloadItems.length
+          ? payloadItems
+          : recordItems;
     const currentStatus = normalizeWorkflowStatus(requestedChanges?.current_status || record?.status || proposalPayload?.current_status || proposalPayload?.status);
     const targetStatus = normalizeWorkflowStatus(requestedChanges?.requested_status || requestedChanges?.next_status || proposalPayload?.status || record?.status);
     const proposalForDecision = {
@@ -206,10 +285,11 @@ const WorkflowEngine = {
       next_status: targetStatus,
       discount_percent: requestedChanges?.discount_percent ?? proposalPayload?.discount_percent ?? record?.discount_percent
     };
-    const decision = evaluateProposalDiscountApprovalRequirement(proposalForDecision, items, targetStatus);
-    return { decision, proposal: proposalForDecision, items, currentStatus, targetStatus, nestedRequestedChanges: nested };
+    const workflowRule = this.getProposalWorkflowRule(currentStatus, targetStatus);
+    const decision = evaluateProposalDiscountApprovalRequirement(proposalForDecision, items, targetStatus, workflowRule);
+    return { decision, proposal: proposalForDecision, items, currentStatus, targetStatus, nestedRequestedChanges: nested, workflowRule };
   },
-  async findPendingProposalDiscountApproval(recordId = '', targetStatus = '', discount = 0) {
+  async findPendingProposalDiscountApproval(recordId = '', targetStatus = '', discount = 0, discounts = {}) {
     const normalizedRecordId = String(recordId || '').trim();
     if (!normalizedRecordId) return null;
     try {
@@ -217,15 +297,22 @@ const WorkflowEngine = {
       const rows = response?.rows || response?.items || response?.data || [];
       const normalizedTarget = normalizeWorkflowStatus(targetStatus);
       const normalizedDiscount = Number(toNumber(discount).toFixed(2));
+      const normalizedAnnual = Number(toNumber(discounts?.annualSaasDiscount).toFixed(2));
+      const normalizedOneTime = Number(toNumber(discounts?.oneTimeFeeDiscount).toFixed(2));
       return (Array.isArray(rows) ? rows : []).find(row => {
         const requested = row?.requested_changes && typeof row.requested_changes === 'object' ? row.requested_changes : {};
+        const requestedDiscounts = requested?.category_discounts && typeof requested.category_discounts === 'object' ? requested.category_discounts : {};
         const rowRecordId = String(row?.record_id || requested?.resource_id || requested?.target_id || requested?.proposal_uuid || '').trim();
         const rowStatus = normalizeWorkflowStatus(row?.new_status || requested?.requested_status || requested?.next_status || requested?.status);
         const rowDiscount = Number(toNumber(requested?.discount_percent).toFixed(2));
+        const rowAnnual = Number(toNumber(requestedDiscounts?.annualSaasDiscount ?? requested?.annual_saas_discount_percent).toFixed(2));
+        const rowOneTime = Number(toNumber(requestedDiscounts?.oneTimeFeeDiscount ?? requested?.one_time_fee_discount_percent).toFixed(2));
         return String(row?.resource || '').trim().toLowerCase() === 'proposals' &&
           rowRecordId === normalizedRecordId &&
           rowStatus === normalizedTarget &&
-          rowDiscount === normalizedDiscount;
+          rowDiscount === normalizedDiscount &&
+          rowAnnual === normalizedAnnual &&
+          rowOneTime === normalizedOneTime;
       }) || null;
     } catch (error) {
       console.warn('[Proposal discount workflow] Unable to check duplicate approval requests', error);
@@ -259,7 +346,18 @@ const WorkflowEngine = {
       ? nestedRequestedChanges.items
       : Array.isArray(requestedChanges?.items)
         ? requestedChanges.items
-        : [];
+        : Array.isArray(proposalPayload?.items)
+          ? proposalPayload.items
+          : Array.isArray(proposalPayload?.proposal_items)
+            ? proposalPayload.proposal_items
+            : Array.isArray(record?.items)
+              ? record.items
+              : Array.isArray(record?.proposal_items)
+                ? record.proposal_items
+                : [];
+    const categoryDiscounts = validationResult?.discounts && typeof validationResult.discounts === 'object'
+      ? validationResult.discounts
+      : getProposalDiscountsByCategory({ ...record, ...proposalPayload, ...nestedRequestedChanges }, approvalItems);
     const recordId = String(requestedChanges?.id || requestedChanges?.proposal_uuid || proposalPayload?.id || record?.id || '').trim();
     const resourceDisplayId = String(
       requestedChanges?.resource_display_id ||
@@ -279,6 +377,9 @@ const WorkflowEngine = {
       current_status: requestedChanges?.current_status || record?.status || '',
       requested_status: requestedChanges?.requested_status || requestedChanges?.next_status || proposalPayload?.status || record?.status || '',
       discount_percent: toNumber(discountPercent),
+      annual_saas_discount_percent: categoryDiscounts.annualSaasDiscount,
+      one_time_fee_discount_percent: categoryDiscounts.oneTimeFeeDiscount,
+      category_discounts: categoryDiscounts,
       submitted_by_name: submittedByName,
       submitted_by_email: submittedByEmail,
       submitted_by_role: submittedByRole,
@@ -316,6 +417,7 @@ const WorkflowEngine = {
           approvalId: approvalResult?.approval_id,
           approvalRole: approvalResult?.approval_role,
           requestedDiscount: toNumber(discountPercent),
+          categoryDiscounts,
           reason: approvalResult?.reused
             ? 'Approval is already pending for this discount.'
             : 'Approval request submitted successfully.'
@@ -331,6 +433,7 @@ const WorkflowEngine = {
       pendingApproval: true,
       approvalCreated: false,
       requestedDiscount: toNumber(discountPercent),
+      categoryDiscounts,
       reason: 'Approval is required, but the approval request could not be created yet. Please retry.'
     };
   },
@@ -467,6 +570,7 @@ const WorkflowEngine = {
             pendingApproval: false,
             approvalCreated: false,
             requestedDiscount: decision.discount,
+            categoryDiscounts: decision.discounts,
             reason: decision.reason || 'Proposal discount is not allowed.'
           };
         }
@@ -477,18 +581,19 @@ const WorkflowEngine = {
             approvalCreated: false,
             proposalDiscountWorkflow: true,
             discountApprovalUpdates: {
-              discount_approval_status: hasValue(proposal?.approved_discount_percent)
-                ? (proposal?.discount_approval_status || null)
-                : (decision.discount <= 10 ? 'not_required' : (proposal?.discount_approval_status || null)),
+              discount_approval_status: decision.discount <= 10 && !hasValue(proposal?.approved_annual_saas_discount_percent) && !hasValue(proposal?.approved_one_time_fee_discount_percent)
+                ? 'not_required'
+                : (proposal?.discount_approval_status || null),
               approval_required_reason: ''
             },
             requestedDiscount: decision.discount,
+            categoryDiscounts: decision.discounts,
             reason: decision.reason || 'Allowed'
           };
         }
         if (decision.requiresApproval === true) {
           const recordId = String(requestedChanges?.id || requestedChanges?.proposal_uuid || record?.id || proposal?.id || '').trim();
-          const duplicate = await this.findPendingProposalDiscountApproval(recordId, targetStatus, decision.discount);
+          const duplicate = await this.findPendingProposalDiscountApproval(recordId, targetStatus, decision.discount, decision.discounts);
           if (duplicate) {
             await this.updateProposalDiscountApprovalSnapshot(recordId, {
               discount_approval_status: 'pending',
@@ -501,6 +606,7 @@ const WorkflowEngine = {
               approvalCreated: true,
               approvalId: duplicate?.approval_id || duplicate?.id || duplicate?.workflow_approval_id,
               requestedDiscount: decision.discount,
+              categoryDiscounts: decision.discounts,
               reason: 'Approval is already pending for this discount.'
             };
           }
@@ -509,7 +615,10 @@ const WorkflowEngine = {
             pendingApproval: true,
             approval_role: 'admin',
             approval_roles: ['admin'],
-            reason: decision.reason
+            reason: decision.reason,
+            discounts: decision.discounts,
+            annualNeedsApproval: decision.annualNeedsApproval,
+            oneTimeNeedsApproval: decision.oneTimeNeedsApproval
           };
           const approvalResult = await this.createWorkflowApprovalFromDecision(resource, record, requestedChanges, validationResult, decision.discount);
           if (approvalResult?.approvalCreated === true) {

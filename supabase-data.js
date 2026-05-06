@@ -2707,31 +2707,156 @@
       const n = Number(value);
       return Number.isFinite(n) ? n : 0;
     }
-    function getProposalCurrentDiscountPercent(proposal, items = []) {
-      const directCandidates = [
-        proposal?.discount_percent,
-        proposal?.discount,
-        proposal?.discount_rate,
-        proposal?.total_discount_percent,
-        proposal?.overall_discount_percent,
-        proposal?.max_discount_percent,
-        proposal?.customer_discount_percent
-      ];
-      for (const value of directCandidates) {
-        const n = toNumber(value);
-        if (n > 0) return n;
+    function normalizeText(value) {
+      return String(value || '').trim().toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
+    }
+    function hasValue(value) {
+      return value !== null && value !== undefined && String(value).trim() !== '';
+    }
+    function getItemCategory(item) {
+      const raw = normalizeText(
+        item?.item_type ||
+        item?.category ||
+        item?.section ||
+        item?.billing_type ||
+        item?.billing_cycle ||
+        item?.fee_type ||
+        ''
+      );
+
+      if (
+        raw.includes('saas') ||
+        raw.includes('annual') ||
+        raw.includes('subscription') ||
+        raw.includes('recurring')
+      ) {
+        return 'annual_saas';
       }
-      let maxItemDiscount = 0;
+
+      if (
+        raw.includes('one_time') ||
+        raw.includes('one-time') ||
+        raw.includes('one time') ||
+        raw.includes('setup') ||
+        raw.includes('implementation') ||
+        raw.includes('installation') ||
+        raw.includes('fee')
+      ) {
+        return 'one_time_fee';
+      }
+
+      return 'unknown';
+    }
+    function getItemDiscountPercent(item) {
+      return Math.max(
+        toNumber(item?.discount_percent),
+        toNumber(item?.discount),
+        toNumber(item?.discount_rate),
+        toNumber(item?.line_discount_percent)
+      );
+    }
+    function getProposalDiscountsByCategory(proposal, items = []) {
+      let annualSaasDiscount = 0;
+      let oneTimeFeeDiscount = 0;
+      let overallMaxDiscount = 0;
+
       for (const item of items || []) {
-        const itemDiscount = Math.max(
-          toNumber(item?.discount_percent),
-          toNumber(item?.discount),
-          toNumber(item?.discount_rate),
-          toNumber(item?.line_discount_percent)
-        );
-        if (itemDiscount > maxItemDiscount) maxItemDiscount = itemDiscount;
+        const discount = getItemDiscountPercent(item);
+        const category = getItemCategory(item);
+
+        overallMaxDiscount = Math.max(overallMaxDiscount, discount);
+
+        if (category === 'annual_saas') {
+          annualSaasDiscount = Math.max(annualSaasDiscount, discount);
+        }
+
+        if (category === 'one_time_fee') {
+          oneTimeFeeDiscount = Math.max(oneTimeFeeDiscount, discount);
+        }
       }
-      return maxItemDiscount;
+
+      return {
+        annualSaasDiscount,
+        oneTimeFeeDiscount,
+        overallMaxDiscount
+      };
+    }
+    function isAboveApprovedBaseline(currentDiscount, approvedDiscountRaw) {
+      if (!hasValue(approvedDiscountRaw)) {
+        return true;
+      }
+
+      const current = Number(toNumber(currentDiscount).toFixed(2));
+      const approved = Number(toNumber(approvedDiscountRaw).toFixed(2));
+
+      return current > approved;
+    }
+    function evaluateCategoryDiscountApproval(proposal, items, workflowRule) {
+      const discounts = getProposalDiscountsByCategory(proposal, items);
+
+      const annualNoApprovalLimit = toNumber(workflowRule?.annual_saas_no_approval_until_percent || 10);
+      const annualHardStop = toNumber(workflowRule?.annual_saas_hard_stop_discount_percent || 20);
+
+      const oneTimeNoApprovalLimit = toNumber(workflowRule?.one_time_fee_no_approval_until_percent || 20);
+      const oneTimeHardStop = toNumber(workflowRule?.one_time_fee_hard_stop_discount_percent || 30);
+
+      const reasons = [];
+
+      if (discounts.annualSaasDiscount > annualHardStop) {
+        return {
+          allowed: false,
+          requiresApproval: false,
+          reason: `Annual SaaS discount above ${annualHardStop}% is not allowed.`,
+          discounts
+        };
+      }
+
+      if (discounts.oneTimeFeeDiscount > oneTimeHardStop) {
+        return {
+          allowed: false,
+          requiresApproval: false,
+          reason: `One-time fee discount above ${oneTimeHardStop}% is not allowed.`,
+          discounts
+        };
+      }
+
+      const annualNeedsApproval =
+        discounts.annualSaasDiscount > annualNoApprovalLimit &&
+        isAboveApprovedBaseline(
+          discounts.annualSaasDiscount,
+          proposal?.approved_annual_saas_discount_percent
+        );
+
+      const oneTimeNeedsApproval =
+        discounts.oneTimeFeeDiscount > oneTimeNoApprovalLimit &&
+        isAboveApprovedBaseline(
+          discounts.oneTimeFeeDiscount,
+          proposal?.approved_one_time_fee_discount_percent
+        );
+
+      if (annualNeedsApproval) {
+        reasons.push(
+          `Annual SaaS discount ${discounts.annualSaasDiscount}% requires approval.`
+        );
+      }
+
+      if (oneTimeNeedsApproval) {
+        reasons.push(
+          `One-time fee discount ${discounts.oneTimeFeeDiscount}% requires approval.`
+        );
+      }
+
+      return {
+        allowed: reasons.length === 0,
+        requiresApproval: reasons.length > 0,
+        reason: reasons.join(' '),
+        discounts,
+        annualNeedsApproval,
+        oneTimeNeedsApproval
+      };
+    }
+    function getProposalCurrentDiscountPercent(proposal, items = []) {
+      return getProposalDiscountsByCategory(proposal, items).overallMaxDiscount;
     }
     const normalizeWorkflowRows = value => asArray(value).map(row => normalizeRow('workflow', row));
     const normalizeWorkflowSingle = value => normalizeRow('workflow', value || {});
@@ -3224,14 +3349,16 @@
             updated_by: reviewerUserId || undefined
           });
         }
-        const approvedDiscount = getProposalCurrentDiscountPercent(
+        const approvedCategoryDiscounts = getProposalDiscountsByCategory(
           { ...record, ...nestedResourcePayload, ...requested },
           approvedItems
         );
         publicUpdates = {
           ...publicUpdates,
           status: trimOrNull(firstDefined(requested, ['requested_status', 'status'])) || publicUpdates.status,
-          approved_discount_percent: approvedDiscount,
+          approved_annual_saas_discount_percent: approvedCategoryDiscounts.annualSaasDiscount,
+          approved_one_time_fee_discount_percent: approvedCategoryDiscounts.oneTimeFeeDiscount,
+          approved_discount_percent: Math.max(approvedCategoryDiscounts.annualSaasDiscount, approvedCategoryDiscounts.oneTimeFeeDiscount),
           discount_approval_status: 'approved',
           discount_approved_at: new Date().toISOString(),
           discount_approved_by: reviewerUserId || undefined,
@@ -3449,6 +3576,10 @@
         ) || null,
         max_discount_percent: Number(normalizedRow.max_discount_percent || 0),
         hard_stop_discount_percent: Number(normalizedRow.hard_stop_discount_percent || 0),
+        annual_saas_no_approval_until_percent: Number(normalizedRow.annual_saas_no_approval_until_percent || 10),
+        annual_saas_hard_stop_discount_percent: Number(normalizedRow.annual_saas_hard_stop_discount_percent || 20),
+        one_time_fee_no_approval_until_percent: Number(normalizedRow.one_time_fee_no_approval_until_percent || 20),
+        one_time_fee_hard_stop_discount_percent: Number(normalizedRow.one_time_fee_hard_stop_discount_percent || 30),
         editable_fields: Array.isArray(normalizedRow.editable_fields) ? normalizedRow.editable_fields : [],
         required_fields: Array.isArray(normalizedRow.required_fields) ? normalizedRow.required_fields : [],
         require_comment: Boolean(normalizedRow.require_comment),
