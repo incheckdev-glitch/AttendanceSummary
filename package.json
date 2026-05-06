@@ -4,7 +4,7 @@
   "description": "InCheck360 MonitorCore - Internal operations workspace",
   "main": "index.html",
   "scripts": {
-    "test": "echo \"No tests configured\""
+    "test": "node tests/proposal-approval-logic.test.js"
   },
   "keywords": [
     "ticketing",
