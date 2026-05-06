@@ -1254,6 +1254,22 @@ const Workflow = {
     }
     return [];
   },
+  proposalCategoryDiscountDefaults: {
+    annual_saas_no_approval_until_percent: 10,
+    annual_saas_hard_stop_discount_percent: 20,
+    one_time_fee_no_approval_until_percent: 20,
+    one_time_fee_hard_stop_discount_percent: 30
+  },
+  proposalCategoryApprovalMetadata: {
+    approval_condition: 'category_discount_above_no_approval_limit_and_above_last_approved_baseline',
+    approval_basis: 'approved_annual_saas_discount_percent_and_approved_one_time_fee_discount_percent',
+    reapproval_mode: 'only_if_category_discount_increases_above_approved_baseline'
+  },
+  normalizePercentValue(value, fallback = 0) {
+    if (value === undefined || value === null || String(value).trim() === '') return fallback;
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : fallback;
+  },
   normalizeWorkflowRule(raw = {}) {
     const source = raw && typeof raw === 'object' ? raw : {};
     const pick = (...values) => {
@@ -1296,10 +1312,30 @@ const Workflow = {
       approval_roles: normalizedApprovalRoles,
       approval_roles_csv: normalizedApprovalRoles.join(','),
       approval_role: normalizedApprovalRoles[0] || '',
-      max_discount_percent: Number(pick(source.max_discount_percent, source.maxdiscountpercent) || 0),
-      hard_stop_discount_percent: Number(
-        pick(source.hard_stop_discount_percent, source.hardstopdiscountpercent) || 0
+      max_discount_percent: this.normalizePercentValue(pick(source.max_discount_percent, source.maxdiscountpercent), 0),
+      hard_stop_discount_percent: this.normalizePercentValue(
+        pick(source.hard_stop_discount_percent, source.hardstopdiscountpercent),
+        0
       ),
+      annual_saas_no_approval_until_percent: this.normalizePercentValue(
+        pick(source.annual_saas_no_approval_until_percent, source.annualsaasnoapprovaluntilpercent),
+        this.proposalCategoryDiscountDefaults.annual_saas_no_approval_until_percent
+      ),
+      annual_saas_hard_stop_discount_percent: this.normalizePercentValue(
+        pick(source.annual_saas_hard_stop_discount_percent, source.annualsaashardstopdiscountpercent),
+        this.proposalCategoryDiscountDefaults.annual_saas_hard_stop_discount_percent
+      ),
+      one_time_fee_no_approval_until_percent: this.normalizePercentValue(
+        pick(source.one_time_fee_no_approval_until_percent, source.onetimefeenoapprovaluntilpercent),
+        this.proposalCategoryDiscountDefaults.one_time_fee_no_approval_until_percent
+      ),
+      one_time_fee_hard_stop_discount_percent: this.normalizePercentValue(
+        pick(source.one_time_fee_hard_stop_discount_percent, source.onetimefeehardstopdiscountpercent),
+        this.proposalCategoryDiscountDefaults.one_time_fee_hard_stop_discount_percent
+      ),
+      approval_condition: String(pick(source.approval_condition, source.approvalcondition)).trim(),
+      approval_basis: String(pick(source.approval_basis, source.approvalbasis)).trim(),
+      reapproval_mode: String(pick(source.reapproval_mode, source.reapprovalmode)).trim(),
       editable_fields: Array.isArray(source.editable_fields)
         ? source.editable_fields
         : String(pick(source.editable_fields, source.editablefields))
@@ -1325,22 +1361,52 @@ const Workflow = {
     const get = id => String(E[id]?.value || '').trim();
     const workflowRuleId = get('workflowRuleId');
     const legacyId = String(this.state.editingRuleLegacyId || '').trim();
+    const resource = get('workflowResource').toLowerCase();
+    const annualSaasNoApproval = this.normalizePercentValue(
+      get('workflowAnnualSaasNoApproval'),
+      this.proposalCategoryDiscountDefaults.annual_saas_no_approval_until_percent
+    );
+    const annualSaasHardStop = this.normalizePercentValue(
+      get('workflowAnnualSaasHardStop'),
+      this.proposalCategoryDiscountDefaults.annual_saas_hard_stop_discount_percent
+    );
+    const oneTimeFeeNoApproval = this.normalizePercentValue(
+      get('workflowOneTimeFeeNoApproval'),
+      this.proposalCategoryDiscountDefaults.one_time_fee_no_approval_until_percent
+    );
+    const oneTimeFeeHardStop = this.normalizePercentValue(
+      get('workflowOneTimeFeeHardStop'),
+      this.proposalCategoryDiscountDefaults.one_time_fee_hard_stop_discount_percent
+    );
     const payload = {
       id: legacyId,
-      resource: get('workflowResource').toLowerCase(),
+      resource,
       current_status: get('workflowCurrentStatus'),
       next_status: get('workflowNextStatus'),
       allowed_roles: this.getMultiSelectValues(E.workflowAllowedRoles).map(v => v.toLowerCase()),
       requires_approval: String(get('workflowRequiresApproval')) === 'true',
       approval_roles: this.getMultiSelectValues(E.workflowApprovalRoles).map(v => v.toLowerCase()),
-      max_discount_percent: Number(get('workflowMaxDiscount') || 0),
-      hard_stop_discount_percent: Number(get('workflowHardStopDiscount') || 0),
+      max_discount_percent: resource === 'proposals'
+        ? annualSaasNoApproval
+        : this.normalizePercentValue(get('workflowMaxDiscount'), 0),
+      hard_stop_discount_percent: resource === 'proposals'
+        ? annualSaasHardStop
+        : this.normalizePercentValue(get('workflowHardStopDiscount'), 0),
       editable_fields: this.getMultiSelectValues(E.workflowEditableFields),
       required_fields: this.getMultiSelectValues(E.workflowRequiredFields),
       require_comment: String(get('workflowRequireComment')) === 'true',
       require_attachment: String(get('workflowRequireAttachment')) === 'true',
       is_active: String(get('workflowIsActive')) !== 'false'
     };
+    if (resource === 'proposals') {
+      Object.assign(payload, {
+        annual_saas_no_approval_until_percent: annualSaasNoApproval,
+        annual_saas_hard_stop_discount_percent: annualSaasHardStop,
+        one_time_fee_no_approval_until_percent: oneTimeFeeNoApproval,
+        one_time_fee_hard_stop_discount_percent: oneTimeFeeHardStop,
+        ...this.proposalCategoryApprovalMetadata
+      });
+    }
     if (workflowRuleId) payload.workflow_rule_id = workflowRuleId;
     return payload;
   },
@@ -1365,6 +1431,11 @@ const Workflow = {
     if (E.workflowRequiresApproval) E.workflowRequiresApproval.value = String(WorkflowEngine.toBool(normalizedRule.requires_approval));
     if (E.workflowMaxDiscount) E.workflowMaxDiscount.value = normalizedRule.max_discount_percent ?? '';
     if (E.workflowHardStopDiscount) E.workflowHardStopDiscount.value = normalizedRule.hard_stop_discount_percent ?? '';
+    if (E.workflowAnnualSaasNoApproval) E.workflowAnnualSaasNoApproval.value = normalizedRule.annual_saas_no_approval_until_percent;
+    if (E.workflowAnnualSaasHardStop) E.workflowAnnualSaasHardStop.value = normalizedRule.annual_saas_hard_stop_discount_percent;
+    if (E.workflowOneTimeFeeNoApproval) E.workflowOneTimeFeeNoApproval.value = normalizedRule.one_time_fee_no_approval_until_percent;
+    if (E.workflowOneTimeFeeHardStop) E.workflowOneTimeFeeHardStop.value = normalizedRule.one_time_fee_hard_stop_discount_percent;
+    this.toggleWorkflowDiscountFields(normalizedRule.resource);
     if (E.workflowRequireComment) E.workflowRequireComment.value = String(WorkflowEngine.toBool(normalizedRule.require_comment));
     if (E.workflowRequireAttachment) E.workflowRequireAttachment.value = String(WorkflowEngine.toBool(normalizedRule.require_attachment));
     if (E.workflowIsActive) E.workflowIsActive.value = String(normalizedRule.is_active !== false);
@@ -1378,7 +1449,17 @@ const Workflow = {
     if (E.workflowRuleForm) E.workflowRuleForm.reset();
     if (E.workflowRuleId) E.workflowRuleId.value = '';
     this.state.editingRuleLegacyId = '';
+    if (E.workflowAnnualSaasNoApproval) E.workflowAnnualSaasNoApproval.value = this.proposalCategoryDiscountDefaults.annual_saas_no_approval_until_percent;
+    if (E.workflowAnnualSaasHardStop) E.workflowAnnualSaasHardStop.value = this.proposalCategoryDiscountDefaults.annual_saas_hard_stop_discount_percent;
+    if (E.workflowOneTimeFeeNoApproval) E.workflowOneTimeFeeNoApproval.value = this.proposalCategoryDiscountDefaults.one_time_fee_no_approval_until_percent;
+    if (E.workflowOneTimeFeeHardStop) E.workflowOneTimeFeeHardStop.value = this.proposalCategoryDiscountDefaults.one_time_fee_hard_stop_discount_percent;
     this.populateRuleSelects();
+    this.toggleWorkflowDiscountFields(E.workflowResource?.value);
+  },
+  toggleWorkflowDiscountFields(resourceValue = '') {
+    const isProposal = String(resourceValue || '').trim().toLowerCase() === 'proposals';
+    if (E.workflowCategoryDiscountFields) E.workflowCategoryDiscountFields.style.display = isProposal ? '' : 'none';
+    if (E.workflowGenericDiscountFields) E.workflowGenericDiscountFields.style.display = isProposal ? 'none' : '';
   },
   setSelectOptions(selectEl, values = [], placeholder = '') {
     if (!selectEl) return;
@@ -1865,6 +1946,7 @@ const Workflow = {
     const fieldOptions = selectedResource ? this.getFieldsForResource(selectedResource) : [];
     this.setMultiSelectOptions(E.workflowEditableFields, fieldOptions);
     this.setMultiSelectOptions(E.workflowRequiredFields, fieldOptions);
+    this.toggleWorkflowDiscountFields(selectedResource);
   },
   renderRules() {
     if (!E.workflowRulesTbody) return;
@@ -1876,31 +1958,39 @@ const Workflow = {
       infoEl.textContent = `Loaded ${allRows.length} workflow rule(s)` + (resourceFilter ? ` • filter: ${resourceFilter}` : '');
     }
     if (this.state.loadError) {
-      E.workflowRulesTbody.innerHTML = `<tr><td colspan="9" class="muted" style="text-align:center;color:#ffb4b4;">${U.escapeHtml(this.state.loadError)}</td></tr>`;
+      E.workflowRulesTbody.innerHTML = `<tr><td colspan="11" class="muted" style="text-align:center;color:#ffb4b4;">${U.escapeHtml(this.state.loadError)}</td></tr>`;
       return;
     }
     if (!allRows.length) {
-      E.workflowRulesTbody.innerHTML = '<tr><td colspan="9" class="muted" style="text-align:center;">No workflow rules returned by API.</td></tr>';
+      E.workflowRulesTbody.innerHTML = '<tr><td colspan="11" class="muted" style="text-align:center;">No workflow rules returned by API.</td></tr>';
       return;
     }
     if (!rows.length) {
-      E.workflowRulesTbody.innerHTML = '<tr><td colspan="9" class="muted" style="text-align:center;">No rules match the current filter. Clear filter to see all.</td></tr>';
+      E.workflowRulesTbody.innerHTML = '<tr><td colspan="11" class="muted" style="text-align:center;">No rules match the current filter. Clear filter to see all.</td></tr>';
       return;
     }
     E.workflowRulesTbody.innerHTML = rows.map(rule => {
-      const approvalRoles = this.parseRoleList(rule.approval_roles, rule.approval_roles_csv || rule.approval_role);
+      const normalizedRule = this.normalizeWorkflowRule(rule);
+      const isProposal = String(normalizedRule.resource || '').trim().toLowerCase() === 'proposals';
+      const approvalRoles = this.parseRoleList(normalizedRule.approval_roles, normalizedRule.approval_roles_csv || normalizedRule.approval_role);
+      const annualLimit = isProposal ? normalizedRule.annual_saas_no_approval_until_percent : normalizedRule.max_discount_percent;
+      const annualHardStop = isProposal ? normalizedRule.annual_saas_hard_stop_discount_percent : normalizedRule.hard_stop_discount_percent;
+      const oneTimeLimit = isProposal ? normalizedRule.one_time_fee_no_approval_until_percent : '—';
+      const oneTimeHardStop = isProposal ? normalizedRule.one_time_fee_hard_stop_discount_percent : '—';
       return `
       <tr>
-        <td>${U.escapeHtml(rule.resource || '—')}</td>
-        <td>${U.escapeHtml(rule.current_status || '—')}</td>
-        <td>${U.escapeHtml(rule.next_status || '—')}</td>
-        <td>${U.escapeHtml(Array.isArray(rule.allowed_roles) ? rule.allowed_roles.join(', ') : String(rule.allowed_roles || rule.allowed_roles_csv || '—'))}</td>
-        <td>${WorkflowEngine.toBool(rule.requires_approval) ? `Yes (${U.escapeHtml(approvalRoles.join(', ') || 'required')})` : 'No'}</td>
-        <td>${U.escapeHtml(String(rule.max_discount_percent ?? '—'))}</td>
-        <td>${U.escapeHtml(String(rule.hard_stop_discount_percent ?? '—'))}</td>
-        <td>${WorkflowEngine.toBool(rule.is_active) ? 'Yes' : 'No'}</td>
+        <td>${U.escapeHtml(normalizedRule.resource || '—')}</td>
+        <td>${U.escapeHtml(normalizedRule.current_status || '—')}</td>
+        <td>${U.escapeHtml(normalizedRule.next_status || '—')}</td>
+        <td>${U.escapeHtml(Array.isArray(normalizedRule.allowed_roles) ? normalizedRule.allowed_roles.join(', ') : String(normalizedRule.allowed_roles || normalizedRule.allowed_roles_csv || '—'))}</td>
+        <td>${WorkflowEngine.toBool(normalizedRule.requires_approval) ? `Yes (${U.escapeHtml(approvalRoles.join(', ') || 'required')})` : 'No'}</td>
+        <td>${U.escapeHtml(String(annualLimit ?? '—'))}</td>
+        <td>${U.escapeHtml(String(annualHardStop ?? '—'))}</td>
+        <td>${U.escapeHtml(String(oneTimeLimit ?? '—'))}</td>
+        <td>${U.escapeHtml(String(oneTimeHardStop ?? '—'))}</td>
+        <td>${WorkflowEngine.toBool(normalizedRule.is_active) ? 'Yes' : 'No'}</td>
         <td>${this.canManageWorkflowRules()
-          ? `<button class="chip-btn" data-rule-edit="${U.escapeHtml(rule.workflow_rule_id || rule.id || '')}">Edit</button> <button class="chip-btn" data-rule-delete="${U.escapeHtml(rule.workflow_rule_id || rule.id || '')}">Delete</button>`
+          ? `<button class="chip-btn" data-rule-edit="${U.escapeHtml(normalizedRule.workflow_rule_id || normalizedRule.id || '')}">Edit</button> <button class="chip-btn" data-rule-delete="${U.escapeHtml(normalizedRule.workflow_rule_id || normalizedRule.id || '')}">Delete</button>`
           : '<span class="muted">Read only</span>'}</td>
       </tr>`;
     }).join('');
@@ -2062,6 +2152,20 @@ const Workflow = {
     if (!payload.resource || !payload.current_status || !payload.next_status || !payload.allowed_roles.length) {
       return UI.toast('resource, current status, next status, and allowed roles are required.');
     }
+    if (payload.resource === 'proposals') {
+      const categoryPairs = [
+        ['Annual SaaS', payload.annual_saas_no_approval_until_percent, payload.annual_saas_hard_stop_discount_percent],
+        ['One-Time Fees', payload.one_time_fee_no_approval_until_percent, payload.one_time_fee_hard_stop_discount_percent]
+      ];
+      for (const [label, noApproval, hardStop] of categoryPairs) {
+        if (!Number.isFinite(noApproval) || !Number.isFinite(hardStop) || noApproval < 0 || hardStop < 0) {
+          return UI.toast(`${label} discount limits must be numbers greater than or equal to 0.`);
+        }
+        if (noApproval > hardStop) {
+          return UI.toast(`${label} no-approval limit must be less than or equal to hard stop.`);
+        }
+      }
+    }
     const response = await Api.saveWorkflowRule(payload);
     const normalizedRows = this.normalizeRows(response);
     const responseRule = normalizedRows[0] || response?.rule || response?.data?.rule || payload;
@@ -2170,7 +2274,10 @@ const Workflow = {
     if (E.workflowRuleResetBtn) E.workflowRuleResetBtn.addEventListener('click', () => this.resetRuleForm());
     if (E.workflowRefreshBtn) E.workflowRefreshBtn.addEventListener('click', () => this.loadAndRefresh(true));
     if (E.workflowResourceFilter) E.workflowResourceFilter.addEventListener('change', () => this.renderRules());
-    if (E.workflowResource) E.workflowResource.addEventListener('change', () => this.populateRuleSelects());
+    if (E.workflowResource) E.workflowResource.addEventListener('change', () => {
+      this.populateRuleSelects();
+      this.toggleWorkflowDiscountFields(E.workflowResource.value);
+    });
     if (E.workflowMatrixResource) E.workflowMatrixResource.addEventListener('change', () => this.renderMatrix());
     [E.workflowAuditSearch, E.workflowAuditResourceFilter, E.workflowAuditAllowedFilter].forEach(el => {
       if (!el) return;
