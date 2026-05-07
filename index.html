@@ -506,7 +506,7 @@
             <button id="companyCreateBtn" class="btn">Add Company</button>
           </div>
           <div class="table-wrap">
-            <table id="companyTable"><thead><tr><th>Company ID</th><th>Company Name</th><th>Industry</th><th>Status</th><th>Owner</th><th>Main Email</th><th>Main Phone</th><th>Country</th><th>City</th><th>Created Date</th></tr></thead><tbody id="companyTableBody"></tbody></table>
+            <table id="companyTable"><thead><tr><th>Company ID</th><th>Company Name</th><th>Company Type</th><th>Industry</th><th>Status</th><th>Main Email</th><th>Main Phone</th><th>Country</th><th>City</th><th>Created Date</th><th>Actions</th></tr></thead><tbody id="companyTableBody"></tbody></table>
           </div>
         </div>
       </section>
@@ -2769,6 +2769,7 @@ Sample:
             <div><button id="companyDocumentUploadBtn" class="btn ghost sm" type="button">Upload Document</button></div>
           </div>
           <div id="companyDocumentsList" class="stack" style="gap:8px;"></div>
+          <section id="companyVerificationPanel" class="card stack" style="display:none;gap:10px;"></section>
         </section>
         <div class="actions" style="justify-content:flex-end;gap:8px;"><button id="companyCancelBtn" type="button" class="btn ghost">Cancel</button><button id="companySaveBtn" type="submit" class="btn">Save Company</button></div>
       </form>
