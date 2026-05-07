@@ -918,7 +918,7 @@ function cacheEls() {
     'leadFormEstimatedValue',
     'leadFormCurrency',
     'leadFormAssignedTo',
-    'leadFormNextFollowupDate',
+    'leadNextFollowUpAtInput',
     'leadFormLastContactDate',
     'leadFormProposalNeeded',
     'leadFormAgreementNeeded',

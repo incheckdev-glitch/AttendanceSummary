@@ -72,6 +72,43 @@ const Leads = {
     const match = allowed.find(status => status.toLowerCase() === raw.toLowerCase());
     return match || 'Not Contacted Yet';
   },
+  pickNextFollowUpValue(lead = {}) {
+    return String(
+      lead.next_follow_up_at ||
+        lead.nextFollowUpAt ||
+        lead.next_follow_up_date ||
+        lead.nextFollowUpDate ||
+        lead.next_follow_up ||
+        lead.nextFollowUp ||
+        lead.next_followup_date ||
+        lead.nextFollowupDate ||
+        ''
+    ).trim();
+  },
+  formatDateTimeLocalValue(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) {
+      const match = raw.match(/^(\d{4}-\d{2}-\d{2})(?:[T\s](\d{2}:\d{2}))?/);
+      return match ? `${match[1]}T${match[2] || '00:00'}` : '';
+    }
+    const yyyy = String(date.getFullYear()).padStart(4, '0');
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    const hh = String(date.getHours()).padStart(2, '0');
+    const min = String(date.getMinutes()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+  },
+  dateTimeLocalToIso(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const date = new Date(raw);
+    return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+  },
+  leadNextFollowUpInput() {
+    return E.leadNextFollowUpAtInput || E.leadFormNextFollowupDate || document.getElementById('leadNextFollowUpAtInput') || document.getElementById('leadFormNextFollowupDate');
+  },
   hasLeadConversionPermission() {
     return Boolean(
       Permissions.can('leads', 'convert') ||
@@ -88,15 +125,15 @@ const Leads = {
       UI.toast('Please select a valid lead status.');
       return false;
     }
-    const nextFollowUp = String(
-      lead.next_follow_up || lead.next_follow_up_at || lead.nextFollowUpAt || lead.next_follow_up_date || ''
-    ).trim();
+    const nextFollowUp = this.pickNextFollowUpValue(lead);
     if (!nextFollowUp) {
       UI.toast('Next follow-up is required for every lead change.');
       return false;
     }
+    const nextFollowUpIso = this.dateTimeLocalToIso(nextFollowUp) || nextFollowUp;
     lead.status = status;
-    lead.next_follow_up = nextFollowUp;
+    lead.next_follow_up = nextFollowUpIso;
+    lead.next_follow_up_at = nextFollowUpIso;
     return true;
   },
 
@@ -127,16 +164,8 @@ const Leads = {
       estimated_value: raw.estimated_value ?? raw.estimatedValue ?? '',
       currency: String(raw.currency || '').trim(),
       assigned_to: String(raw.assigned_to || raw.assignedTo || '').trim(),
-      next_follow_up:
-        raw.next_follow_up ||
-        raw.next_follow_up_at ||
-        raw.nextFollowUpAt ||
-        raw.nextFollowUp ||
-        raw.next_followup_date ||
-        raw.nextFollowupDate ||
-        raw.next_follow_up_date ||
-        raw.nextFollowUpDate ||
-        '',
+      next_follow_up: this.pickNextFollowUpValue(raw),
+      next_follow_up_at: this.pickNextFollowUpValue(raw),
       last_contact:
         raw.last_contact ||
         raw.lastContact ||
@@ -188,9 +217,11 @@ const Leads = {
       estimated_value: Number.isFinite(estimatedValueParsed) ? estimatedValueParsed : null,
       currency: String(lead.currency || ''),
       assigned_to: String(lead.assigned_to || ''),
-      next_follow_up: lead.next_follow_up || lead.next_follow_up_at || lead.nextFollowUpAt || lead.next_follow_up_date || null,
+      next_follow_up: this.pickNextFollowUpValue(lead) || null,
+      next_follow_up_at: this.pickNextFollowUpValue(lead) || null,
       last_contact: lead.last_contact || null,
-      notes: String(lead.notes || '')
+      notes: String(lead.notes || ''),
+      converted_to_deal_id: lead.converted_to_deal_id || lead.deal_id || null
     };
   },
   extractRows(response) {
@@ -1125,7 +1156,8 @@ const Leads = {
       if (E.leadFormEstimatedValue) E.leadFormEstimatedValue.value = row.estimated_value === '' ? '' : String(row.estimated_value);
       if (E.leadFormCurrency) E.leadFormCurrency.value = row.currency || '';
       if (E.leadFormAssignedTo) E.leadFormAssignedTo.value = row.assigned_to || '';
-      if (E.leadFormNextFollowupDate) E.leadFormNextFollowupDate.value = String(row.next_follow_up || '').slice(0, 10);
+      const nextFollowUpInput = this.leadNextFollowUpInput();
+      if (nextFollowUpInput) nextFollowUpInput.value = this.formatDateTimeLocalValue(this.pickNextFollowUpValue(row));
       if (E.leadFormLastContactDate) E.leadFormLastContactDate.value = String(row.last_contact || '').slice(0, 10);
       if (E.leadFormNotes) E.leadFormNotes.value = row.notes || '';
       if (E.leadFormUpdatedAt) E.leadFormUpdatedAt.value = row.updated_at ? U.formatDateTimeMMDDYYYYHHMM(row.updated_at) : '';
@@ -1229,6 +1261,8 @@ const Leads = {
     const customerName = U.getCustomerLegalName(selectedCompany, {});
     const contactEmail = String(selectedContact.email || '').trim();
     const contactPhone = String(selectedContact.phone || selectedContact.mobile || '').trim();
+    const nextFollowUpValue = String(this.leadNextFollowUpInput()?.value || '').trim();
+    const nextFollowUpIso = this.dateTimeLocalToIso(nextFollowUpValue);
     return {
       lead_id: String(E.leadFormLeadId?.value || '').trim() === 'Auto-generated' ? '' : String(E.leadFormLeadId?.value || '').trim(),
       full_name: contactName,
@@ -1251,7 +1285,8 @@ const Leads = {
       estimated_value: estimatedValueRaw === '' ? '' : Number(estimatedValueRaw),
       currency: String(E.leadFormCurrency?.value || '').trim(),
       assigned_to: String(E.leadFormAssignedTo?.value || '').trim(),
-      next_follow_up: String(E.leadFormNextFollowupDate?.value || '').trim(),
+      next_follow_up: nextFollowUpIso,
+      next_follow_up_at: nextFollowUpIso,
       last_contact: String(E.leadFormLastContactDate?.value || '').trim(),
       notes: String(E.leadFormNotes?.value || '').trim()
     };
@@ -1282,7 +1317,7 @@ const Leads = {
       estimated_value: String(lead.estimated_value ?? '').trim(),
       currency: String(lead.currency || '').trim(),
       assigned_to: String(lead.assigned_to || '').trim(),
-      next_follow_up: this.normalizeComparableLeadDate(lead.next_follow_up || lead.next_follow_up_at || lead.nextFollowUpAt || lead.next_follow_up_date),
+      next_follow_up: this.normalizeComparableLeadDate(this.pickNextFollowUpValue(lead)),
       last_contact: this.normalizeComparableLeadDate(lead.last_contact),
       notes: String(lead.notes || '').trim()
     });
@@ -1579,6 +1614,10 @@ const Leads = {
       UI.toast('Lead must be qualified before converting to deal.');
       return;
     }
+    if (!this.pickNextFollowUpValue(row)) {
+      UI.toast('Next follow-up is required before converting this lead to deal.');
+      return;
+    }
     if (!this.canConvertLead(row)) {
       UI.toast('This lead is already converted or unavailable.');
       return;
@@ -1590,8 +1629,8 @@ const Leads = {
         UI.toast('Lead must be qualified before converting to deal.');
         return;
       }
-      if (!String(sourceLead.next_follow_up || '').trim()) {
-        UI.toast('Next follow-up is required for every lead change.');
+      if (!this.pickNextFollowUpValue(sourceLead)) {
+        UI.toast('Next follow-up is required before converting this lead to deal.');
         return;
       }
       if (!String(sourceLead.lead_id || '').trim()) {

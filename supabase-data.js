@@ -912,7 +912,7 @@
       out.contactPhone = out.contactPhone ?? out.contact_phone ?? '';
       out.next_follow_up = out.next_follow_up ?? out.next_follow_up_at ?? out.nextFollowUpAt ?? out.nextFollowUp ?? out.next_followup_date ?? out.nextFollowupDate ?? out.next_follow_up_date ?? out.nextFollowUpDate ?? '';
       out.last_contact = out.last_contact ?? out.lastContact ?? out.last_contact_date ?? out.lastContactDate ?? '';
-      out.next_follow_up_at = out.next_follow_up_at ?? out.next_follow_up ?? '';
+      out.next_follow_up_at = out.next_follow_up_at ?? out.nextFollowUpAt ?? out.next_follow_up_date ?? out.nextFollowUpDate ?? out.next_follow_up ?? '';
       out.nextFollowUpAt = out.nextFollowUpAt ?? out.next_follow_up_at ?? '';
       out.next_followup_date = out.next_followup_date ?? out.next_follow_up ?? '';
       out.last_contact_date = out.last_contact_date ?? out.last_contact ?? '';
@@ -1524,7 +1524,8 @@
       estimated_value: toNumberOrNull(['estimated_value', 'estimatedValue']),
       currency: toTextOrEmpty(['currency']),
       assigned_to: toTextOrEmpty(['assigned_to', 'assignedTo']),
-      next_follow_up: toDateOrNull(['next_follow_up', 'next_follow_up_at', 'nextFollowUpAt', 'nextFollowUp', 'next_followup_date', 'nextFollowupDate', 'next_follow_up_date']),
+      next_follow_up: toDateOrNull(['next_follow_up', 'next_follow_up_at', 'nextFollowUpAt', 'nextFollowUp', 'next_followup_date', 'nextFollowupDate', 'next_follow_up_date', 'nextFollowUpDate']),
+      next_follow_up_at: toDateOrNull(['next_follow_up_at', 'nextFollowUpAt', 'next_follow_up_date', 'nextFollowUpDate', 'next_follow_up', 'nextFollowUp', 'next_followup_date', 'nextFollowupDate']),
       last_contact: toDateOrNull(['last_contact', 'lastContact', 'last_contact_date', 'lastContactDate']),
       proposal_needed: toBooleanOrNull(['proposal_needed', 'proposalNeeded']),
       agreement_needed: toBooleanOrNull(['agreement_needed', 'agreementNeeded']),
@@ -1534,9 +1535,11 @@
       updated_by: firstDefined(record, ['updated_by', 'updatedBy']) || userId || undefined
     };
 
-    if (!String(mapped.next_follow_up || '').trim()) {
+    if (!String(mapped.next_follow_up_at || mapped.next_follow_up || '').trim()) {
       throw new Error('Next follow-up is required for every lead change.');
     }
+    mapped.next_follow_up_at = mapped.next_follow_up_at || mapped.next_follow_up;
+    mapped.next_follow_up = mapped.next_follow_up || mapped.next_follow_up_at;
     const sanitized = {};
     Object.entries(mapped).forEach(([key, value]) => {
       if (!LEAD_COLUMNS.has(key)) return;
@@ -4677,8 +4680,8 @@
       if (normalizeLeadStatusValue(leadRow?.status) !== 'Qualified') {
         throw new Error('Lead must be qualified before converting to deal.');
       }
-      if (!String(leadRow?.next_follow_up || leadRow?.next_follow_up_at || '').trim()) {
-        throw new Error('Next follow-up is required for every lead change.');
+      if (!String(leadRow?.next_follow_up_at || leadRow?.next_follow_up || '').trim()) {
+        throw new Error('Next follow-up is required before converting this lead to deal.');
       }
       const { data, error } = await client.rpc('convert_lead_to_deal', { p_lead_uuid: leadUuid });
       if (error) throw friendlyError('Lead conversion failed', error);
