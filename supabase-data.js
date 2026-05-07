@@ -171,7 +171,7 @@
     'selectedRoles'
   ]);
 
-  const ALLOWED_LEAD_STATUSES = new Set(['Not Contacted Yet', 'Not Available', 'Negotiation', 'Lost', 'Qualified']);
+  const ALLOWED_LEAD_STATUSES = new Set(['Not Contacted Yet', 'Not Available', 'Negotiations', 'Lost', 'Qualified']);
   function normalizeLeadStatusValue(value) {
     const raw = String(value || '').trim();
     for (const status of ALLOWED_LEAD_STATUSES) {
