@@ -1115,6 +1115,24 @@ const OperationsOnboarding = {
       E.operationsUpdateStatusModal.setAttribute('aria-hidden', 'false');
     }
   },
+
+  async refreshCompanyLifecycleForOnboarding(row = {}, stage = '') {
+    try {
+      const agreementId = String(row?.agreement_id || row?.agreementId || this.state.pendingAgreementId || '').trim();
+      let companyId = String(row?.company_id || row?.companyId || '').trim();
+      if (!companyId && agreementId) {
+        const client = window.SupabaseClient?.getClient?.();
+        const { data, error } = await client.from('agreements').select('company_id').eq('id', agreementId).maybeSingle();
+        if (error) throw error;
+        companyId = String(data?.company_id || '').trim();
+      }
+      if (!companyId) return;
+      await window.Companies?.refreshCompanyLifecycleStatusByBusinessId?.(companyId, { stage: stage || (this.isCompletedStatus(row?.onboarding_status) ? 'Active Client' : 'Onboarding') });
+    } catch (error) {
+      console.error('[operations onboarding] company lifecycle refresh failed', error);
+      UI?.toast?.('Onboarding saved, but company lifecycle status could not be refreshed');
+    }
+  },
   async submitAssignCsm() {
     if (!(Permissions.canPerformAction('operations_onboarding', 'assign_csm') || Permissions.canEdit('operations_onboarding'))) {
       UI.toast('You do not have permission to assign CSM.');
@@ -1156,6 +1174,7 @@ const OperationsOnboarding = {
       console.log('[OperationsOnboarding] Assign CSM Supabase response', response);
       console.info('[operations onboarding] CSM assigned', { onboardingId, csmName, csmEmail });
       this.closeModal(E.operationsAssignCsmModal);
+      await this.refreshCompanyLifecycleForOnboarding({ ...payload, agreement_id: agreementId, onboarding_status: 'In Progress' }, 'Onboarding');
       await this.loadAndRefresh({ force: true });
       UI.toast('CSM assigned and saved.');
       if (this.state.postSubmitHook) await this.state.postSubmitHook();
@@ -1186,6 +1205,7 @@ const OperationsOnboarding = {
       });
       console.log('[OperationsOnboarding] Update Status Supabase response', response);
       this.closeModal(E.operationsUpdateStatusModal);
+      await this.refreshCompanyLifecycleForOnboarding({ ...payload, agreement_id: agreementId }, this.isCompletedStatus(nextStatus) ? 'Active Client' : 'Onboarding');
       await this.loadAndRefresh({ force: true });
       UI.toast('Onboarding status updated and saved.');
       if (this.state.postSubmitHook) await this.state.postSubmitHook();
@@ -1216,6 +1236,7 @@ const OperationsOnboarding = {
         syncTechnicalStatus: normalizedStatus
       });
       console.log(`[OperationsOnboarding] Mark ${normalizedStatus} Supabase response`, response);
+      await this.refreshCompanyLifecycleForOnboarding({ ...payload, agreement_id: normalizedAgreementId }, this.isCompletedStatus(normalizedStatus) ? 'Active Client' : 'Onboarding');
       await this.loadAndRefresh({ force: true });
       UI.toast(`Onboarding marked ${normalizedStatus}.`);
     } catch (error) {

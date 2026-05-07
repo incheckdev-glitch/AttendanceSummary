@@ -1229,6 +1229,7 @@ const Proposals = {
       proposal: this.prepareProposalForSave(preparedProposal),
       items: preparedItems
     });
+    this.refreshCompanyLifecycleStatus(preparedProposal, 'Proposal');
     const recordId = Api.extractBusinessRecordId(response, preparedProposal.proposal_id || preparedProposal.ref_number || '');
     await Api.safeSendBusinessPwaPush({
       resource: 'proposals',
@@ -1248,6 +1249,7 @@ const Proposals = {
       proposal: this.prepareProposalForSave(preparedProposal),
       items: preparedItems
     });
+    this.refreshCompanyLifecycleStatus(preparedProposal, 'Proposal');
     const recordId = Api.extractBusinessRecordId(response, preparedProposal.id || preparedProposal.proposal_id || preparedProposal.ref_number || '');
     await Api.safeSendBusinessPwaPush({
       resource: 'proposals',
@@ -1269,6 +1271,7 @@ const Proposals = {
       updates: preparedForSave,
       items: preparedItems
     });
+    this.refreshCompanyLifecycleStatus(preparedForSave, 'Proposal');
     const statusKeys = ['status', 'proposal_status'];
     const isStatusUpdate = statusKeys.some(key => Object.prototype.hasOwnProperty.call(preparedForSave || {}, key));
     await Api.safeSendBusinessPwaPush({
@@ -1281,6 +1284,15 @@ const Proposals = {
       url: proposalId ? '/#proposals?id=' + encodeURIComponent(proposalId) : '/#proposals'
     });
     return response;
+  },
+
+  refreshCompanyLifecycleStatus(row = {}, stage = 'Proposal') {
+    const companyId = String(row?.company_id || row?.companyId || '').trim();
+    if (!companyId) return;
+    window.Companies?.refreshCompanyLifecycleStatusByBusinessId?.(companyId, { stage }).catch(error => {
+      console.error('[proposals] company lifecycle refresh failed', error);
+      UI?.toast?.('Proposal saved, but company lifecycle status could not be refreshed');
+    });
   },
   normalizeDateForSave(value) {
     const trimmed = String(value ?? '').trim();

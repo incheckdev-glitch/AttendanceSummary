@@ -9,6 +9,9 @@ const COMPANY_TYPE_FALLBACK_OPTIONS = [
   { value: 'other', label: 'Other' }
 ];
 
+const COMPANY_LIFECYCLE_STATUSES = ['Prospect', 'Lead', 'Deal', 'Proposal', 'Agreement', 'Signed', 'Onboarding', 'Active Client'];
+const COMPANY_LIFECYCLE_RANK = COMPANY_LIFECYCLE_STATUSES.reduce((acc, status, index) => { acc[status] = index; return acc; }, {});
+
 const COMPANY_INDUSTRY_FALLBACK_OPTIONS = [
   { value: 'fnb', label: 'F&B' },
   { value: 'retail', label: 'Retail' },
@@ -29,7 +32,7 @@ const Companies = {
   formatCodeFallback(value = '') { return String(value || '').replaceAll('_', ' ').replace(/\b\w/g, c => c.toUpperCase()); },
   formatCompanyType(value = '') { const found = this.state.companyTypeOptions.find(o => o.value === value); return found?.label || this.formatCodeFallback(value); },
   formatCompanyIndustry(value = '') { const found = this.state.companyIndustryOptions.find(o => o.value === value); return found?.label || this.formatCodeFallback(value); },
-  normalize(raw = {}) { return { ...raw, id: raw.id || '', company_id: raw.company_id || raw.companyId || '', company_name: raw.company_name || raw.companyName || '', legal_name: raw.legal_name || raw.legalName || '', legal_company_name: raw.legal_company_name || raw.legalCompanyName || '', authorized_signatory_full_name: raw.authorized_signatory_full_name || raw.authorizedSignatoryFullName || '', authorized_signatory_title: raw.authorized_signatory_title || raw.authorizedSignatoryTitle || '', registration_number: raw.registration_number || raw.registrationNumber || '', company_type: raw.company_type || '', industry: raw.industry || '', website: raw.website || '', main_email: raw.main_email || raw.mainEmail || '', main_phone: raw.main_phone || raw.mainPhone || '', country: raw.country || '', state: raw.state || '', city: raw.city || '', address: raw.address || '', tax_number: raw.tax_number || raw.taxNumber || '', vat_number: raw.vat_number || raw.vatNumber || '', company_status: raw.company_status || raw.companyStatus || 'Prospect', notes: raw.notes || '', documents_verified: raw.documents_verified ?? raw.documentsVerified ?? false, documents_verification_status: raw.documents_verification_status || raw.documentsVerificationStatus || 'not_verified', documents_verified_at: raw.documents_verified_at || raw.documentsVerifiedAt || '', documents_verified_by: raw.documents_verified_by || raw.documentsVerifiedBy || '', documents_verification_notes: raw.documents_verification_notes || raw.documentsVerificationNotes || '', documents_verified_snapshot: raw.documents_verified_snapshot ?? raw.documentsVerifiedSnapshot ?? null, documents_verification_invalidated_at: raw.documents_verification_invalidated_at || raw.documentsVerificationInvalidatedAt || '', documents_verification_invalidated_reason: raw.documents_verification_invalidated_reason || raw.documentsVerificationInvalidatedReason || '', created_at: raw.created_at || raw.createdAt || '' }; },
+  normalize(raw = {}) { return { ...raw, id: raw.id || '', company_id: raw.company_id || raw.companyId || '', company_name: raw.company_name || raw.companyName || '', legal_name: raw.legal_name || raw.legalName || '', legal_company_name: raw.legal_company_name || raw.legalCompanyName || '', authorized_signatory_full_name: raw.authorized_signatory_full_name || raw.authorizedSignatoryFullName || '', authorized_signatory_title: raw.authorized_signatory_title || raw.authorizedSignatoryTitle || '', registration_number: raw.registration_number || raw.registrationNumber || '', company_type: raw.company_type || '', industry: raw.industry || '', website: raw.website || '', main_email: raw.main_email || raw.mainEmail || '', main_phone: raw.main_phone || raw.mainPhone || '', country: raw.country || '', state: raw.state || '', city: raw.city || '', address: raw.address || '', tax_number: raw.tax_number || raw.taxNumber || '', vat_number: raw.vat_number || raw.vatNumber || '', company_status: raw.company_status || raw.companyStatus || raw.status || 'Prospect', notes: raw.notes || '', documents_verified: raw.documents_verified ?? raw.documentsVerified ?? false, documents_verification_status: raw.documents_verification_status || raw.documentsVerificationStatus || 'not_verified', documents_verified_at: raw.documents_verified_at || raw.documentsVerifiedAt || '', documents_verified_by: raw.documents_verified_by || raw.documentsVerifiedBy || '', documents_verification_notes: raw.documents_verification_notes || raw.documentsVerificationNotes || '', documents_verified_snapshot: raw.documents_verified_snapshot ?? raw.documentsVerifiedSnapshot ?? null, documents_verification_invalidated_at: raw.documents_verification_invalidated_at || raw.documentsVerificationInvalidatedAt || '', documents_verification_invalidated_reason: raw.documents_verification_invalidated_reason || raw.documentsVerificationInvalidatedReason || '', created_at: raw.created_at || raw.createdAt || '' }; },
   async hydrateOptionSources() {
     const load = async (resource, fallback) => {
       try {
@@ -52,7 +55,7 @@ const Companies = {
     const view = document.getElementById('companyView'); if (!view || document.getElementById('companySearchInput')) return;
     await this.hydrateOptionSources();
     const card = view.querySelector('.card');
-    card.insertAdjacentHTML('afterbegin', `<div class="stack" style="gap:8px;margin-bottom:10px"><div class="row" style="gap:8px;flex-wrap:wrap"><input id="companySearchInput" class="input" type="search" placeholder="Search companies..."/><select id="companyStatusFilter" class="select"><option value="">All Statuses</option><option>Prospect</option><option>Lead Created</option><option>Deal Open</option><option>Proposal Sent</option><option>Agreement Signed</option><option>Client</option><option>Inactive</option><option>Blacklisted</option></select><select id="companyTypeFilter" class="select"></select><select id="companyIndustryFilter" class="select"></select><input id="companyCountryFilter" class="input" placeholder="Country"/><input id="companyCityFilter" class="input" placeholder="City"/><input id="companyCreatedFromFilter" class="input" type="date"/><input id="companyCreatedToFilter" class="input" type="date"/><button id="companyClearFiltersBtn" class="btn ghost sm">Clear Filters</button></div><div class="row" style="gap:8px"><button id="companyExportBtn" class="btn ghost sm" data-permission-resource="companies" data-permission-action="export">Export</button><span id="companyPageInfo" class="muted"></span></div></div>`);
+    card.insertAdjacentHTML('afterbegin', `<div class="stack" style="gap:8px;margin-bottom:10px"><div class="row" style="gap:8px;flex-wrap:wrap"><input id="companySearchInput" class="input" type="search" placeholder="Search companies..."/><select id="companyStatusFilter" class="select"><option value="">All Statuses</option>${COMPANY_LIFECYCLE_STATUSES.map(status => `<option>${U.escapeHtml(status)}</option>`).join('')}</select><select id="companyTypeFilter" class="select"></select><select id="companyIndustryFilter" class="select"></select><input id="companyCountryFilter" class="input" placeholder="Country"/><input id="companyCityFilter" class="input" placeholder="City"/><input id="companyCreatedFromFilter" class="input" type="date"/><input id="companyCreatedToFilter" class="input" type="date"/><button id="companyClearFiltersBtn" class="btn ghost sm">Clear Filters</button></div><div class="row" style="gap:8px"><button id="companyExportBtn" class="btn ghost sm" data-permission-resource="companies" data-permission-action="export">Export</button><span id="companyPageInfo" class="muted"></span></div></div>`);
     this.renderSelectOptions('companyTypeFilter', this.state.companyTypeOptions, 'All Types');
     this.renderSelectOptions('companyIndustryFilter', this.state.companyIndustryOptions, 'All Industries');
     view.querySelector('.table-wrap')?.insertAdjacentHTML('afterend', `<div class="table-actions"><div class="pagination"><button id="companyPrevBtn" class="chip-btn">‹ Prev</button><button id="companyNextBtn" class="chip-btn">Next ›</button></div><div><label class="muted">Rows</label><select id="companyRowsPerPage" class="select sm"><option>25</option><option selected>50</option><option>100</option></select></div></div>`);
@@ -74,7 +77,7 @@ const Companies = {
     this.bindFormEvents(); await this.hydrateOptionSources(); this.renderSelectOptions('companyTypeInput', this.state.companyTypeOptions, 'Select company type'); this.renderSelectOptions('companyIndustryInput', this.state.companyIndustryOptions, 'Select industry');
     const isEdit = Boolean(existing?.id); this.state.currentCompany = isEdit ? this.normalize(existing) : null; this.state.documents = []; document.getElementById('companyModalTitle').textContent = isEdit ? 'Edit Company' : 'Create Company'; document.getElementById('companySaveBtn').textContent = isEdit ? 'Update Company' : 'Save Company'; document.getElementById('companyRecordId').value = existing?.id || '';
     const set = (id, value = '') => { const el = document.getElementById(id); if (el) el.value = value || ''; };
-    set('companyNameInput', existing?.company_name); set('companyLegalNameInput', existing?.legal_name); set('companyAuthorizedSignatoryFullNameInput', existing?.authorized_signatory_full_name || existing?.authorizedSignatoryFullName); set('companyAuthorizedSignatoryTitleInput', existing?.authorized_signatory_title || existing?.authorizedSignatoryTitle); set('companyRegistrationNumberInput', existing?.registration_number || existing?.registrationNumber); set('companyTypeInput', existing?.company_type); set('companyIndustryInput', existing?.industry); set('companyWebsiteInput', existing?.website); set('companyMainEmailInput', existing?.main_email); set('companyMainPhoneInput', existing?.main_phone); set('companyCountryInput', existing?.country); set('companyCityInput', existing?.city); set('companyAddressInput', existing?.address); set('companyTaxNumberInput', existing?.tax_number); set('companyStatusInput', existing?.company_status || 'Prospect'); set('companyNotesInput', existing?.notes);
+    set('companyNameInput', existing?.company_name); set('companyLegalNameInput', existing?.legal_name); set('companyAuthorizedSignatoryFullNameInput', existing?.authorized_signatory_full_name || existing?.authorizedSignatoryFullName); set('companyAuthorizedSignatoryTitleInput', existing?.authorized_signatory_title || existing?.authorizedSignatoryTitle); set('companyRegistrationNumberInput', existing?.registration_number || existing?.registrationNumber); set('companyTypeInput', existing?.company_type); set('companyIndustryInput', existing?.industry); set('companyWebsiteInput', existing?.website); set('companyMainEmailInput', existing?.main_email); set('companyMainPhoneInput', existing?.main_phone); set('companyCountryInput', existing?.country); set('companyCityInput', existing?.city); set('companyAddressInput', existing?.address); set('companyTaxNumberInput', existing?.tax_number); set('companyStatusInput', existing?.company_status || 'Prospect'); set('companyNotesInput', existing?.notes); const statusInput = document.getElementById('companyStatusInput'); if (statusInput) statusInput.value = existing?.company_status || 'Prospect';
     this.renderCompanyDocumentsSection(this.state.currentCompany);
     if (isEdit) this.loadCompanyDocuments(this.state.currentCompany);
     this.renderCompanyVerificationPanel(this.state.currentCompany);
@@ -82,17 +85,159 @@ const Companies = {
   },
   closeForm() { const form = document.getElementById('companyForm'); form?.reset(); document.getElementById('companyRecordId').value = ''; document.getElementById('companyStatusInput').value = 'Prospect'; this.state.currentCompany = null; this.state.documents = []; this.renderCompanyDocumentsSection(null); this.renderCompanyVerificationPanel(null); const modal = document.getElementById('companyModal'); modal.style.display = 'none'; modal.setAttribute('aria-hidden', 'true'); this.toggleSave(false); },
   toggleSave(loading) { const btn = document.getElementById('companySaveBtn'); if (!btn) return; btn.disabled = loading; btn.textContent = loading ? 'Saving…' : (document.getElementById('companyRecordId').value ? 'Update Company' : 'Save Company'); },
-  async submitForm(e) { e.preventDefault(); const recordId = document.getElementById('companyRecordId').value; const company_name = document.getElementById('companyNameInput').value.trim(); if (!company_name) { UI?.toast?.('Company Name is required', 'error'); return; } const payload = { company_name, legal_name: document.getElementById('companyLegalNameInput').value.trim(), company_type: document.getElementById('companyTypeInput').value.trim(), industry: document.getElementById('companyIndustryInput').value.trim(), website: document.getElementById('companyWebsiteInput').value.trim(), main_email: document.getElementById('companyMainEmailInput').value.trim(), main_phone: document.getElementById('companyMainPhoneInput').value.trim(), country: document.getElementById('companyCountryInput').value.trim(), city: document.getElementById('companyCityInput').value.trim(), address: document.getElementById('companyAddressInput').value.trim(), tax_number: document.getElementById('companyTaxNumberInput').value.trim(), authorized_signatory_full_name: document.getElementById('companyAuthorizedSignatoryFullNameInput').value.trim(), authorized_signatory_title: document.getElementById('companyAuthorizedSignatoryTitleInput').value.trim(), registration_number: document.getElementById('companyRegistrationNumberInput').value.trim(), company_status: document.getElementById('companyStatusInput').value || 'Prospect', notes: document.getElementById('companyNotesInput').value.trim() };
-    this.toggleSave(true); try { const action = recordId ? 'update' : 'create'; if (recordId && !Permissions.canEdit('companies')) { UI?.toast?.('You do not have permission for this action.'); return; } if (!recordId && !Permissions.canCreate('companies')) { UI?.toast?.('You do not have permission for this action.'); return; } const body = recordId ? { id: recordId, updates: payload } : payload; await Api.requestWithSession('companies', action, body, { requireAuth: true }); UI?.toast?.(recordId ? 'Company updated' : 'Company saved', 'success'); this.closeForm(); this.state.page = recordId ? this.state.page : 1; await this.loadAndRefresh(); } catch (err) { UI?.toast?.('Unable to save company', 'error'); console.error(err); } finally { this.toggleSave(false); }
+  async submitForm(e) { e.preventDefault(); const recordId = document.getElementById('companyRecordId').value; const company_name = document.getElementById('companyNameInput').value.trim(); if (!company_name) { UI?.toast?.('Company Name is required', 'error'); return; } const payload = { company_name, legal_name: document.getElementById('companyLegalNameInput').value.trim(), company_type: document.getElementById('companyTypeInput').value.trim(), industry: document.getElementById('companyIndustryInput').value.trim(), website: document.getElementById('companyWebsiteInput').value.trim(), main_email: document.getElementById('companyMainEmailInput').value.trim(), main_phone: document.getElementById('companyMainPhoneInput').value.trim(), country: document.getElementById('companyCountryInput').value.trim(), city: document.getElementById('companyCityInput').value.trim(), address: document.getElementById('companyAddressInput').value.trim(), tax_number: document.getElementById('companyTaxNumberInput').value.trim(), authorized_signatory_full_name: document.getElementById('companyAuthorizedSignatoryFullNameInput').value.trim(), authorized_signatory_title: document.getElementById('companyAuthorizedSignatoryTitleInput').value.trim(), registration_number: document.getElementById('companyRegistrationNumberInput').value.trim(), company_status: recordId ? (this.state.currentCompany?.company_status || 'Prospect') : 'Prospect', notes: document.getElementById('companyNotesInput').value.trim() };
+    this.toggleSave(true); try { const action = recordId ? 'update' : 'create'; if (recordId && !Permissions.canEdit('companies')) { UI?.toast?.('You do not have permission for this action.'); return; } if (!recordId && !Permissions.canCreate('companies')) { UI?.toast?.('You do not have permission for this action.'); return; } const body = recordId ? { id: recordId, updates: payload } : payload; const saved = await Api.requestWithSession('companies', action, body, { requireAuth: true }); try { await this.refreshCompanyLifecycleStatus(saved?.id || recordId, { fullRecalculation: true }); } catch (syncError) { console.error('[companies] lifecycle status refresh failed after save', syncError); UI?.toast?.('Company saved, but lifecycle status could not be refreshed'); } UI?.toast?.(recordId ? 'Company updated' : 'Company saved', 'success'); this.closeForm(); this.state.page = recordId ? this.state.page : 1; await this.loadAndRefresh(); } catch (err) { UI?.toast?.('Unable to save company', 'error'); console.error(err); } finally { this.toggleSave(false); }
   },
-  async loadAndRefresh() { if (!Permissions.canView('companies')) return; await this.ensureControls(); try { const res = await Api.requestWithSession('companies', 'list', { page: this.state.page, limit: this.state.limit, search: this.state.search, filters: this.state.filters, sortBy: this.state.sortBy, sortDir: this.state.sortDir }, { requireAuth: true }); const rows = Array.isArray(res?.rows) ? res.rows : Array.isArray(res) ? res : []; this.state.rows = rows.map(r => this.normalize(r)); this.state.total = Number(res?.total ?? rows.length) || rows.length; this.render(); } catch (e) { UI?.toast?.('Unable to load companies', 'error'); console.error(e); } },
+  async loadAndRefresh() { if (!Permissions.canView('companies')) return; await this.ensureControls(); try { const res = await Api.requestWithSession('companies', 'list', { page: this.state.page, limit: this.state.limit, search: this.state.search, filters: this.state.filters, sortBy: this.state.sortBy, sortDir: this.state.sortDir }, { requireAuth: true }); const rows = Array.isArray(res?.rows) ? res.rows : Array.isArray(res) ? res : []; this.state.rows = rows.map(r => this.normalize(r)); this.state.total = Number(res?.total ?? rows.length) || rows.length; this.render(); this.refreshVisibleCompanyLifecycleStatuses(); } catch (e) { UI?.toast?.('Unable to load companies', 'error'); console.error(e); } },
   render() {
     const body = document.getElementById('companyTableBody'); if (!body) return;
     const canEdit = Permissions.canEdit('companies'), canDelete = Permissions.canDelete('companies'); const canCreateLead = Permissions.canCreate('leads');
-    body.innerHTML = this.state.rows.map(r => `<tr><td>${U.escapeHtml(r.company_id)}</td><td>${this.renderCompanyVerificationBadge(r)}</td><td>${U.escapeHtml(r.company_name)}</td><td>${U.escapeHtml(this.formatCompanyType(r.company_type))}</td><td>${U.escapeHtml(this.formatCompanyIndustry(r.industry))}</td><td>${U.escapeHtml(r.company_status)}</td><td>${U.escapeHtml(r.main_email)}</td><td>${U.escapeHtml(r.main_phone)}</td><td>${U.escapeHtml(r.country)}</td><td>${U.escapeHtml(r.city)}</td><td>${U.escapeHtml(U.fmtTS(r.created_at))}</td><td>${canCreateLead ? `<button class='chip-btn' data-a='lead' data-permission-resource='leads' data-permission-action='create' data-id='${r.id}'>Create Lead</button>` : ''}${canEdit ? `<button class='chip-btn' data-a='edit' data-permission-resource='companies' data-permission-action='update' data-id='${r.id}'>Edit</button>` : ''}${canDelete ? `<button class='chip-btn' data-a='del' data-permission-resource='companies' data-permission-action='delete' data-id='${r.id}'>Delete</button>` : ''}${Permissions.canCreate('contacts') ? `<button class='chip-btn' data-a='contacts' data-permission-resource='contacts' data-permission-action='create' data-id='${r.id}'>Add Contact</button>` : ''}</td></tr>`).join('');
+    body.innerHTML = this.state.rows.map(r => `<tr><td>${U.escapeHtml(r.company_id)}</td><td>${this.renderCompanyVerificationBadge(r)}</td><td>${U.escapeHtml(r.company_name)}</td><td>${U.escapeHtml(this.formatCompanyType(r.company_type))}</td><td>${U.escapeHtml(this.formatCompanyIndustry(r.industry))}</td><td>${this.renderLifecycleStatusBadge(r.company_status)}</td><td>${U.escapeHtml(r.main_email)}</td><td>${U.escapeHtml(r.main_phone)}</td><td>${U.escapeHtml(r.country)}</td><td>${U.escapeHtml(r.city)}</td><td>${U.escapeHtml(U.fmtTS(r.created_at))}</td><td>${canCreateLead ? `<button class='chip-btn' data-a='lead' data-permission-resource='leads' data-permission-action='create' data-id='${r.id}'>Create Lead</button>` : ''}${canEdit ? `<button class='chip-btn' data-a='edit' data-permission-resource='companies' data-permission-action='update' data-id='${r.id}'>Edit</button>` : ''}${canDelete ? `<button class='chip-btn' data-a='del' data-permission-resource='companies' data-permission-action='delete' data-id='${r.id}'>Delete</button>` : ''}${Permissions.canCreate('contacts') ? `<button class='chip-btn' data-a='contacts' data-permission-resource='contacts' data-permission-action='create' data-id='${r.id}'>Add Contact</button>` : ''}</td></tr>`).join('');
     body.querySelectorAll('button').forEach(b => b.onclick = () => this.onAction(b.dataset.a, b.dataset.id)); const start = this.state.total ? ((this.state.page - 1) * this.state.limit) + 1 : 0; const end = Math.min(this.state.page * this.state.limit, this.state.total); applyPermissionVisibility(body || b); const pi = document.getElementById('companyPageInfo'); if (pi) pi.textContent = `Showing ${start}-${end} of ${this.state.total} records`; const canCreateCompany = Permissions.can('companies','create') || Permissions.can('companies','manage'); const canExportCompany = Permissions.can('companies','export') || Permissions.can('companies','manage'); const createBtn = document.getElementById('companyCreateBtn'); if (createBtn) { createBtn.style.display = canCreateCompany ? '' : 'none'; createBtn.onclick = () => this.openForm(); } const exportBtn = document.getElementById('companyExportBtn'); if (exportBtn) { exportBtn.style.display = canExportCompany ? '' : 'none'; exportBtn.disabled = !canExportCompany; }
   },
   async onAction(a, id) { const row = this.state.rows.find(x => x.id === id); if (!row) return; if (a === 'edit') this.openForm(row); if (a === 'del') { if (!Permissions.canDelete('companies')) { UI?.toast?.('You do not have permission for this action.'); return; } if (!confirm('Delete company?')) return; try { await Api.requestWithSession('companies', 'delete', { id }, { requireAuth: true }); await this.loadAndRefresh(); } catch (e) { UI?.toast?.('Unable to delete company', 'error'); console.error(e); } } if (a === 'contacts') { if (!Permissions.canCreate('contacts')) { UI?.toast?.('You do not have permission for this action.'); return; } window.Contacts?.setCompanyFilter?.(row.company_id, row.company_name); window.App?.showView?.('contacts'); } if (a === 'lead') { if (!Permissions.can('leads', 'create')) { UI.toast?.('You do not have permission to create leads.'); return; } if (!Permissions.canCreate('leads')) { UI?.toast?.('You do not have permission for this action.'); return; } const company = { ...row }; try { const contactRes = await Api.requestWithSession('contacts', 'list', { page: 1, limit: 1, filters: { company_id: row.company_id, is_primary_contact: 'primary' }, sortBy: 'created_at', sortDir: 'desc' }, { requireAuth: true }); const primary = Array.isArray(contactRes?.rows) ? contactRes.rows[0] : null; window.Leads?.openLeadCreateFormWithPrefill?.({ company, contact: primary || null }); } catch (_) { window.Leads?.openLeadCreateFormWithPrefill?.({ company, contact: null }); } } },
+
+
+  normalizeLifecycleStatus(status = '') {
+    const value = String(status || '').trim().toLowerCase();
+    return COMPANY_LIFECYCLE_STATUSES.find(item => item.toLowerCase() === value) || 'Prospect';
+  },
+  getLifecycleRank(status = '') { return COMPANY_LIFECYCLE_RANK[this.normalizeLifecycleStatus(status)] ?? 0; },
+  maxLifecycleStatus(...statuses) {
+    return statuses.map(status => this.normalizeLifecycleStatus(status)).reduce((best, status) => this.getLifecycleRank(status) > this.getLifecycleRank(best) ? status : best, 'Prospect');
+  },
+  renderLifecycleStatusBadge(status = '') {
+    const normalized = this.normalizeLifecycleStatus(status);
+    const colors = {
+      Prospect: ['#64748b', 'rgba(100,116,139,.10)'], Lead: ['#2563eb', 'rgba(37,99,235,.10)'], Deal: ['#7c3aed', 'rgba(124,58,237,.10)'], Proposal: ['#0891b2', 'rgba(8,145,178,.10)'], Agreement: ['#d97706', 'rgba(217,119,6,.12)'], Signed: ['#16a34a', 'rgba(22,163,74,.10)'], Onboarding: ['#ea580c', 'rgba(234,88,12,.12)'], 'Active Client': ['#15803d', 'rgba(21,128,61,.12)']
+    };
+    const [color, background] = colors[normalized] || colors.Prospect;
+    return `<span class="chip" style="border-color:${color};color:${color};background:${background};">${U.escapeHtml(normalized)}</span>`;
+  },
+  isAgreementSigned(agreement = {}) {
+    const status = String(agreement.status || '').trim().toLowerCase();
+    return status.includes('signed') || Boolean(String(agreement.signed_date || agreement.customer_sign_date || '').trim());
+  },
+  isOnboardingCompleted(row = {}) {
+    return String(row.onboarding_status || row.status || '').trim().toLowerCase().includes('complete');
+  },
+  isActiveClient(row = {}) {
+    const status = String(row.status || row.account_status || '').trim().toLowerCase();
+    return !status || ['active', 'live'].some(token => status.includes(token));
+  },
+  buildCompanyMatch(company = {}) {
+    const normalized = this.normalize(company);
+    const legalName = String(normalized.legal_name || normalized.legal_company_name || '').trim();
+    return {
+      id: String(normalized.id || '').trim(),
+      company_id: String(normalized.company_id || '').trim(),
+      legal_name: legalName,
+      company_name: String(normalized.company_name || '').trim(),
+      names: [legalName, normalized.company_name].map(v => String(v || '').trim()).filter(Boolean)
+    };
+  },
+  async fetchCompanyForLifecycle(companyIdOrRecord) {
+    if (companyIdOrRecord && typeof companyIdOrRecord === 'object') return this.normalize(companyIdOrRecord);
+    const id = String(companyIdOrRecord || '').trim(); if (!id) return null;
+    const client = this.getSupabaseClient();
+    let query = client.from('companies').select('*').limit(1);
+    query = id.includes('-') ? query.eq('id', id) : query.eq('company_id', id);
+    const { data, error } = await query.maybeSingle();
+    if (error) throw error;
+    return data ? this.normalize(data) : null;
+  },
+  async listLifecycleRows(table, company = {}, options = {}) {
+    const match = this.buildCompanyMatch(company); const client = this.getSupabaseClient();
+    let query = client.from(table).select('*').limit(options.limit || 500);
+    if (options.companyIdOnly !== false && match.company_id) query = query.eq('company_id', match.company_id);
+    else if (options.nameColumn && match.names.length) query = query.in(options.nameColumn, match.names);
+    else return [];
+    const { data, error } = await query;
+    if (error) { console.error(`[companies] lifecycle ${table} query failed`, error); return []; }
+    return Array.isArray(data) ? data : [];
+  },
+  async getRelatedLifecycleRecords(company = {}) {
+    const match = this.buildCompanyMatch(company);
+    const [leads, deals, proposals, agreements, clientsByCompanyName, clientsByClientName] = await Promise.all([
+      this.listLifecycleRows('leads', company),
+      this.listLifecycleRows('deals', company),
+      this.listLifecycleRows('proposals', company),
+      this.listLifecycleRows('agreements', company),
+      this.listLifecycleRows('clients', company, { companyIdOnly: false, nameColumn: 'company_name' }),
+      this.listLifecycleRows('clients', company, { companyIdOnly: false, nameColumn: 'client_name' })
+    ]);
+    const agreementIds = agreements.map(row => String(row.id || row.agreement_id || '').trim()).filter(Boolean);
+    let onboarding = [];
+    if (agreementIds.length) {
+      const { data, error } = await this.getSupabaseClient().from('operations_onboarding').select('*').in('agreement_id', agreementIds).limit(500);
+      if (error) console.error('[companies] lifecycle operations_onboarding query failed', error);
+      else onboarding = Array.isArray(data) ? data : [];
+    }
+    if (!onboarding.length && match.names.length) {
+      const { data, error } = await this.getSupabaseClient().from('operations_onboarding').select('*').in('client_name', match.names).limit(500);
+      if (!error && Array.isArray(data)) onboarding = data;
+    }
+    return { leads, deals, proposals, agreements, onboarding, clients: [...clientsByCompanyName, ...clientsByClientName] };
+  },
+  getCompanyLifecycleStage(company = {}, relatedRecords = {}) {
+    let status = 'Prospect';
+    if ((relatedRecords.leads || []).length) status = this.maxLifecycleStatus(status, 'Lead');
+    if ((relatedRecords.deals || []).length) status = this.maxLifecycleStatus(status, 'Deal');
+    if ((relatedRecords.proposals || []).length) status = this.maxLifecycleStatus(status, 'Proposal');
+    const agreements = relatedRecords.agreements || [];
+    if (agreements.length) status = this.maxLifecycleStatus(status, agreements.some(a => this.isAgreementSigned(a)) ? 'Signed' : 'Agreement');
+    const onboarding = relatedRecords.onboarding || [];
+    if (onboarding.length) status = this.maxLifecycleStatus(status, onboarding.some(row => this.isOnboardingCompleted(row)) ? 'Active Client' : 'Onboarding');
+    if ((relatedRecords.clients || []).some(row => this.isActiveClient(row))) status = 'Active Client';
+    return status;
+  },
+  async recalculateCompanyLifecycleStatus(company) {
+    const normalized = this.normalize(company || {});
+    const relatedRecords = await this.getRelatedLifecycleRecords(normalized);
+    return this.getCompanyLifecycleStage(normalized, relatedRecords);
+  },
+  async syncCompanyLifecycleStatus(company, options = {}) {
+    const normalized = await this.fetchCompanyForLifecycle(company);
+    if (!normalized?.id) return null;
+    const calculatedStatus = options.stage ? this.maxLifecycleStatus(normalized.company_status, options.stage) : await this.recalculateCompanyLifecycleStatus(normalized);
+    if (String(normalized.company_status || '').trim().toLowerCase() === calculatedStatus.toLowerCase()) return normalized;
+    const payload = { company_status: calculatedStatus };
+    const { data, error } = await this.getSupabaseClient().from('companies').update(payload).eq('id', normalized.id).select('*').single();
+    if (error) throw error;
+    const updated = this.normalize(data || { ...normalized, ...payload });
+    this.state.rows = this.state.rows.map(row => String(row.id) === String(updated.id) ? updated : row);
+    if (String(this.state.currentCompany?.id || '') === String(updated.id)) this.state.currentCompany = updated;
+    this.render();
+    return updated;
+  },
+  async refreshCompanyLifecycleStatus(companyIdOrRecord, options = {}) {
+    return this.syncCompanyLifecycleStatus(companyIdOrRecord, options.fullRecalculation ? {} : options);
+  },
+  async refreshCompanyLifecycleStatusByBusinessId(companyId, options = {}) {
+    const id = String(companyId || '').trim(); if (!id) return null;
+    return this.refreshCompanyLifecycleStatus(id, options);
+  },
+  async refreshCompanyLifecycleStatusByName(name, options = {}) {
+    const value = String(name || '').trim(); if (!value) return null;
+    const client = this.getSupabaseClient();
+    let { data, error } = await client.from('companies').select('*').eq('legal_name', value).limit(1).maybeSingle();
+    if (error) throw error;
+    if (!data) {
+      const result = await client.from('companies').select('*').eq('company_name', value).limit(1).maybeSingle();
+      if (result.error) throw result.error;
+      data = result.data;
+    }
+    return data ? this.refreshCompanyLifecycleStatus(data, options) : null;
+  },
+  refreshVisibleCompanyLifecycleStatuses() {
+    const rows = [...this.state.rows];
+    rows.forEach(row => {
+      this.recalculateCompanyLifecycleStatus(row).then(status => {
+        if (String(row.company_status || '').trim().toLowerCase() !== status.toLowerCase()) return this.syncCompanyLifecycleStatus(row, { stage: status });
+        return null;
+      }).catch(error => console.error('[companies] lifecycle visible refresh failed', error));
+    });
+  },
 
   getCompanyVerificationStatus(company = {}) {
     return String(company?.documents_verification_status || company?.documentsVerificationStatus || (company?.documents_verified ? 'verified' : 'not_verified') || 'not_verified').trim().toLowerCase();
@@ -300,7 +445,7 @@ const Companies = {
       ['Company Name', r => r.company_name],
       ['Company Type', r => this.formatCompanyType(r.company_type)],
       ['Industry', r => this.formatCompanyIndustry(r.industry)],
-      ['Status', r => r.company_status],
+      ['Status', r => this.normalizeLifecycleStatus(r.company_status)],
       ['Main Email', r => r.main_email],
       ['Main Phone', r => r.main_phone],
       ['Country', r => r.country],

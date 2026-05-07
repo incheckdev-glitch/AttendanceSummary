@@ -370,6 +370,7 @@ const Deals = {
       updated_by: userId || undefined
     };
     const data = await Api.requestWithSession('deals', 'create', payload, { requireAuth: true });
+    this.refreshCompanyLifecycleStatus(data || payload, 'Deal');
     await Api.safeSendBusinessPwaPush({
       resource: 'deals',
       action: 'deal_created',
@@ -391,6 +392,7 @@ const Deals = {
       id: dealId,
       updates: payload
     }, { requireAuth: true });
+    this.refreshCompanyLifecycleStatus(data || payload, 'Deal');
     const stageKeys = ['stage', 'deal_stage', 'status'];
     const isStageUpdate = stageKeys.some(key => Object.prototype.hasOwnProperty.call(payload || {}, key));
     await Api.safeSendBusinessPwaPush({
@@ -403,6 +405,15 @@ const Deals = {
       url: dealId ? '/#deals?id=' + encodeURIComponent(dealId) : '/#deals'
     });
     return data;
+  },
+
+  refreshCompanyLifecycleStatus(row = {}, stage = 'Deal') {
+    const companyId = String(row?.company_id || row?.companyId || '').trim();
+    if (!companyId) return;
+    window.Companies?.refreshCompanyLifecycleStatusByBusinessId?.(companyId, { stage }).catch(error => {
+      console.error('[deals] company lifecycle refresh failed', error);
+      UI?.toast?.('Deal saved, but company lifecycle status could not be refreshed');
+    });
   },
   async deleteDeal(dealId) {
     const { error } = await this.getClient().from('deals').delete().eq('id', dealId);
