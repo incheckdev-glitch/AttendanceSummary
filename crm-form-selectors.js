@@ -298,12 +298,12 @@
   function displayCompany(company = {}) {
     return str(company.legal_name || company.company_name || company.company_id || 'Unnamed company');
   }
-  function displayContact(contact = {}) {
+  function displayContact(contact = {}, { includeEmail = true } = {}) {
     const first = str(contact.first_name);
     const last = str(contact.last_name);
     const firstLast = str([first, last].filter(Boolean).join(' '));
     const base = firstLast || str(contact.full_name) || str(contact.contact_name) || str(contact.email) || 'Unnamed contact';
-    if (str(contact.email) && normalizeCompare(base) !== normalizeCompare(contact.email)) return `${base} — ${str(contact.email)}`;
+    if (includeEmail && str(contact.email) && normalizeCompare(base) !== normalizeCompare(contact.email)) return `${base} — ${str(contact.email)}`;
     return base;
   }
   function setValue(id, value, { readonly = true } = {}) {
@@ -342,7 +342,7 @@
       if (!value) return;
       const label = type === 'company'
         ? displayCompany(row)
-        : displayContact(row);
+        : displayContact(row, { includeEmail: select.id !== 'dealFormContactSelector' });
       options.push(`<option value="${escapeAttr(value)}">${escapeHtml(label)}</option>`);
     });
     select.innerHTML = options.join('');

@@ -900,9 +900,7 @@ const Proposals = {
     window.Deals.upsertLocalRow?.({
       ...deal,
       proposal_id: String(proposalId || deal.proposal_id || '').trim(),
-      proposal_needed: 'yes',
-      stage: String(deal.stage || '').trim() || 'Proposal',
-      status: String(deal.status || '').trim() || 'Proposal Created'
+      stage: String(deal.stage || '').trim() || 'Qualified'
     });
   },
   async proposalDraftFromDeal(rawDeal = {}) {
@@ -3058,6 +3056,14 @@ const Proposals = {
     const deal = await this.resolveDealForProposal(trimmedDealId);
     if (!deal) {
       UI.toast('Unable to load deal details for proposal draft.');
+      return;
+    }
+    if (String(deal.stage || '').trim() !== 'Qualified') {
+      UI.toast('Deal must be qualified before converting to proposal.');
+      return;
+    }
+    if (!String(deal.next_follow_up_at || deal.nextFollowUpAt || deal.next_follow_up_date || deal.nextFollowUpDate || '').trim()) {
+      UI.toast('Next follow-up is required for every deal change.');
       return;
     }
     if (window.Deals?.isProposalAlreadyCreated?.(deal)) {

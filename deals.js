@@ -11,7 +11,8 @@ const Deals = {
     'lead_source',
     'service_interest',
     'stage',
-    'status',
+    'next_follow_up_at',
+    'last_contacted_date',
     'priority',
     'estimated_value',
     'currency',
@@ -25,8 +26,7 @@ const Deals = {
   formDropdownDefaults: {
     lead_source: ['Website', 'Referral', 'LinkedIn', 'Email', 'Call', 'WhatsApp', 'Event', 'Other'],
     service_interest: ['Software', 'Other', 'Consulting'],
-    stage: ['Qualified', 'Proposal', 'Negotiation', 'Closed Won', 'Closed Lost'],
-    status: ['Open', 'Won', 'Lost', 'On Hold'],
+    stage: ['New', 'In Progress', 'Qualified', 'Lost'],
     priority: ['High', 'Medium', 'Low'],
     currency: ['USD', 'EUR', 'GBP', 'AED']
   },
@@ -41,7 +41,6 @@ const Deals = {
     initialized: false,
     search: '',
     stage: 'All',
-    status: 'All',
     priority: 'All',
     serviceInterest: 'All',
     leadSource: 'All',
@@ -169,8 +168,9 @@ const Deals = {
       service_interest: String(
         pick(source.service_interest, source.serviceInterest, lead.service_interest, lead.serviceInterest)
       ).trim(),
-      stage: String(pick(source.stage)).trim(),
-      status: String(pick(source.status, lead.status)).trim(),
+      stage: String(pick(source.stage)).trim() || 'New',
+      next_follow_up_at: pick(source.next_follow_up_at, source.nextFollowUpAt, source.next_follow_up_date, source.nextFollowUpDate),
+      last_contacted_date: pick(source.last_contacted_date, source.lastContactedDate),
       priority: String(pick(source.priority, lead.priority)).trim(),
       estimated_value: pick(
         source.estimated_value,
@@ -250,7 +250,8 @@ const Deals = {
       lead_source: toTextOrEmpty(['lead_source', 'leadSource']),
       service_interest: toTextOrEmpty(['service_interest', 'serviceInterest']),
       stage: toTextOrEmpty(['stage']),
-      status: toTextOrEmpty(['status']),
+      next_follow_up_at: toDateOrNull(['next_follow_up_at', 'nextFollowUpAt', 'next_follow_up_date', 'nextFollowUpDate']),
+      last_contacted_date: toDateOrNull(['last_contacted_date', 'lastContactedDate']),
       priority: toTextOrEmpty(['priority']),
       estimated_value: toNumberOrNull(['estimated_value', 'estimatedValue']),
       currency: toTextOrEmpty(['currency']),
@@ -295,6 +296,104 @@ const Deals = {
     } catch {
       return '';
     }
+  },
+  formatDateTimeLocalValue(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) {
+      const match = raw.match(/^(\d{4}-\d{2}-\d{2})(?:[T\s](\d{2}:\d{2}))?/);
+      return match ? `${match[1]}T${match[2] || '00:00'}` : '';
+    }
+    const yyyy = String(date.getFullYear()).padStart(4, '0');
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    const hh = String(date.getHours()).padStart(2, '0');
+    const min = String(date.getMinutes()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+  },
+  dateTimeLocalToIso(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const date = new Date(raw);
+    return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+  },
+  pickNextFollowUpValue(deal = {}) {
+    return String(
+      deal.next_follow_up_at ||
+        deal.nextFollowUpAt ||
+        deal.next_follow_up_date ||
+        deal.nextFollowUpDate ||
+        ''
+    ).trim();
+  },
+  pickLastContactedDateValue(deal = {}) {
+    return String(deal.last_contacted_date || deal.lastContactedDate || '').trim().slice(0, 10);
+  },
+  getUserDisplayName(userId, usersById = new Map()) {
+    const id = String(userId || '').trim();
+    if (!id) return 'Unknown user';
+    const user = usersById.get(id) || usersById.get(String(userId));
+    if (!user) return 'Unknown user';
+    return String(user.full_name || user.fullName || user.name || user.display_name || user.displayName || user.email || '').trim() || 'Unknown user';
+  },
+  addUserLookup(usersById, user = {}) {
+    if (!usersById || !user || typeof user !== 'object') return;
+    ['id', 'auth_user_id', 'authUserId', 'user_id', 'userId'].forEach(key => {
+      const value = String(user?.[key] || '').trim();
+      if (value && !usersById.has(value)) usersById.set(value, user);
+    });
+  },
+  addCurrentUserLookup(usersById, userIds = []) {
+    const currentUser = Session?.user?.() || {};
+    const authUser = currentUser.user || {};
+    const profile = currentUser.profile || {};
+    const currentUserId = String(currentUser.user_id || authUser.id || profile.id || '').trim();
+    const currentUserIdentifiers = [currentUser.user_id, authUser.id, profile.id].map(value => String(value || '').trim()).filter(Boolean);
+    if (!currentUserIdentifiers.some(id => userIds.includes(id))) return;
+    this.addUserLookup(usersById, {
+      ...profile,
+      id: profile.id || currentUserId,
+      auth_user_id: authUser.id || currentUserId,
+      user_id: currentUserId,
+      full_name: profile.full_name || currentUser.name,
+      name: profile.name || currentUser.name,
+      display_name: profile.display_name || currentUser.name,
+      email: profile.email || currentUser.email || authUser.email
+    });
+  },
+  addLogUserHints(usersById, logs = []) {
+    logs.forEach(log => {
+      const createdBy = String(log?.created_by || '').trim();
+      if (!createdBy || usersById.has(createdBy)) return;
+      const hintedUser = {
+        id: createdBy,
+        full_name: log?.user_name || log?.created_by_name,
+        name: log?.user_name || log?.created_by_name,
+        email: log?.created_by_email
+      };
+      if (this.getUserDisplayName(createdBy, new Map([[createdBy, hintedUser]])) !== createdBy) this.addUserLookup(usersById, hintedUser);
+    });
+  },
+  async loadDealNoteUsersById(logs = []) {
+    const userIds = [...new Set((Array.isArray(logs) ? logs : []).map(log => String(log?.created_by || '').trim()).filter(Boolean))];
+    const usersById = new Map();
+    if (!userIds.length) return usersById;
+    this.addCurrentUserLookup(usersById, userIds);
+    this.addLogUserHints(usersById, logs);
+    const queryProfiles = async field => {
+      const { data, error } = await this.getClient().from('profiles').select('*').in(field, userIds);
+      if (error) {
+        console.warn(`[deals] unable to resolve note users by profiles.${field}`, error);
+        return;
+      }
+      (Array.isArray(data) ? data : []).forEach(user => this.addUserLookup(usersById, user));
+    };
+    await queryProfiles('id');
+    const unresolvedIds = () => userIds.filter(id => !usersById.has(id));
+    if (unresolvedIds().length) await queryProfiles('auth_user_id');
+    if (unresolvedIds().length) await queryProfiles('user_id');
+    return usersById;
   },
   toSupabaseError(prefix, error) {
     const message = String(error?.message || error?.error_description || 'Unknown error').trim();
@@ -381,7 +480,7 @@ const Deals = {
       updates: payload
     }, { requireAuth: true });
     this.refreshCompanyLifecycleStatus(data || payload, 'Deal');
-    const stageKeys = ['stage', 'deal_stage', 'status'];
+    const stageKeys = ['stage', 'deal_stage'];
     const isStageUpdate = stageKeys.some(key => Object.prototype.hasOwnProperty.call(payload || {}, key));
     await Api.safeSendBusinessPwaPush({
       resource: 'deals',
@@ -498,7 +597,8 @@ const Deals = {
       'Lead Source',
       'Service Interest',
       'Stage',
-      'Status',
+      'Next Follow-up',
+      'Last Contacted Date',
       'Priority',
       'Estimated Value',
       'Currency',
@@ -524,7 +624,8 @@ const Deals = {
           this.getDealValue(row, 'lead_source', 'leadSource'),
           this.getDealValue(row, 'service_interest', 'serviceInterest'),
           this.getDealValue(row, 'stage'),
-          this.getDealValue(row, 'status'),
+          this.formatDateTimeMMDDYYYYHHMM(this.getDealValue(row, 'next_follow_up_at', 'nextFollowUpAt', 'next_follow_up_date', 'nextFollowUpDate')),
+          this.getDealValue(row, 'last_contacted_date', 'lastContactedDate'),
           this.getDealValue(row, 'priority'),
           this.getDealValue(row, 'estimated_value', 'estimatedValue'),
           this.getDealValue(row, 'currency'),
@@ -588,13 +689,14 @@ const Deals = {
   canCreateProposalFromDeal() {
     return canAnyPermission([['deals', 'convert_to_proposal'], ['proposals', 'create_from_deal'], ['proposals', 'create'], ['proposals', 'manage']]);
   },
+  canShowCreateProposalForDeal(row = {}) {
+    return String(row?.stage || '').trim() === 'Qualified' && !this.isProposalAlreadyCreated(row) && this.canCreateProposalFromDeal();
+  },
   isProposalAlreadyCreated(row = {}) {
     const proposalId = String(row?.proposal_id || '').trim();
     if (proposalId) return true;
     const stage = this.normalizeText(row?.stage);
-    const status = this.normalizeText(row?.status);
     if (stage.includes('proposal')) return true;
-    if (status.includes('proposal created')) return true;
     return false;
   },
   uniqueSorted(values = []) {
@@ -633,7 +735,6 @@ const Deals = {
       this.state.rows.map(row => row.service_interest)
     );
     const stageValues = this.formDropdownDefaults.stage.concat(this.state.rows.map(row => row.stage));
-    const statusValues = this.formDropdownDefaults.status.concat(this.state.rows.map(row => row.status));
     const priorityValues = this.formDropdownDefaults.priority.concat(
       this.state.rows.map(row => row.priority)
     );
@@ -644,7 +745,6 @@ const Deals = {
     assign(E.dealFormLeadSource, sourceValues, selected.lead_source || '');
     assign(E.dealFormServiceInterest, serviceValues, selected.service_interest || '');
     assign(E.dealFormStage, stageValues, selected.stage || '');
-    assign(E.dealFormStatus, statusValues, selected.status || '');
     assign(E.dealFormPriority, priorityValues, selected.priority || '');
     assign(E.dealFormCurrency, currencyValues, selected.currency || '');
   },
@@ -680,12 +780,13 @@ const Deals = {
   matchesOpenStatus(status) {
     const normalized = this.normalizeText(status);
     if (!normalized || this.matchesWonStatus(normalized) || this.matchesLostStatus(normalized)) return false;
-    return ['open', 'active', 'in progress', 'negotiation'].some(token => normalized.includes(token));
+    return ['open', 'active', 'new', 'in progress', 'qualified', 'negotiation'].some(token => normalized.includes(token));
   },
   normalizeStage(stage) {
     const normalized = this.normalizeText(stage);
     if (!normalized) return 'Unknown';
-    if (normalized.includes('prospect')) return 'Prospect';
+    if (normalized === 'new' || normalized.includes('prospect')) return 'New';
+    if (normalized.includes('progress')) return 'In Progress';
     if (normalized.includes('qualif')) return 'Qualified';
     if (normalized.includes('proposal')) return 'Proposal Sent';
     if (normalized.includes('negotiat')) return 'Negotiation';
@@ -709,14 +810,14 @@ const Deals = {
   },
   matchesKpiFilter(row = {}) {
     const filter = this.state.kpiFilter || 'total';
-    const status = this.normalizeText(row?.status);
+    const stage = this.normalizeText(row?.stage);
     const priority = this.normalizeText(row?.priority);
     const value = this.toNumberSafe(row?.estimated_value);
     if (filter === 'total') return true;
-    if (filter === 'open') return this.matchesOpenStatus(status);
+    if (filter === 'open') return this.matchesOpenStatus(stage);
     if (filter === 'won' || filter === 'win-rate' || filter === 'average-won-deal-size')
-      return this.matchesWonStatus(status);
-    if (filter === 'lost') return this.matchesLostStatus(status);
+      return this.matchesWonStatus(stage);
+    if (filter === 'lost') return this.matchesLostStatus(stage);
     if (filter === 'high-priority') return priority === 'high' || priority === 'urgent';
     if (filter === 'pipeline-value' || filter === 'weighted-pipeline' || filter === 'average-deal-size')
       return value > 0;
@@ -754,15 +855,11 @@ const Deals = {
   computeDealAnalytics(deals = []) {
     const rows = Array.isArray(deals) ? deals : [];
     const stageBreakdown = {
-      Prospect: 0,
+      New: 0,
+      'In Progress': 0,
       Qualified: 0,
-      'Proposal Sent': 0,
-      Negotiation: 0,
-      'Verbal Commit': 0,
-      Won: 0,
       Lost: 0
     };
-    const statusBreakdown = {};
     const assigneeMap = {};
     const serviceMap = {};
     const sourceMap = {};
@@ -770,12 +867,9 @@ const Deals = {
     const uniqueAssignees = new Set();
     const currencies = new Set();
     const stageProbability = {
-      Prospect: 0.1,
-      Qualified: 0.3,
-      'Proposal Sent': 0.5,
-      Negotiation: 0.7,
-      'Verbal Commit': 0.85,
-      Won: 1,
+      New: 0.1,
+      'In Progress': 0.3,
+      Qualified: 0.6,
       Lost: 0
     };
     let openDeals = 0;
@@ -790,23 +884,21 @@ const Deals = {
     let convertedFromLeadsCount = 0;
 
     rows.forEach(row => {
-      const status = this.normalizeText(row?.status);
       const stage = this.normalizeStage(row?.stage);
       const value = this.toNumberSafe(row?.estimated_value);
       const priority = this.normalizeText(row?.priority);
-      const statusLabel = String(row?.status || '').trim() || 'Unspecified';
       const companyName = String(row?.company_name || '').trim().toLowerCase();
       const assignee = String(row?.assigned_to || '').trim().toLowerCase();
 
-      if (this.matchesOpenStatus(status)) openDeals += 1;
-      if (this.matchesWonStatus(status)) wonDeals += 1;
-      if (this.matchesLostStatus(status)) lostDeals += 1;
+      if (this.matchesOpenStatus(stage)) openDeals += 1;
+      if (this.matchesWonStatus(stage)) wonDeals += 1;
+      if (this.matchesLostStatus(stage)) lostDeals += 1;
       if (priority === 'high' || priority === 'urgent') highPriorityCount += 1;
       if (String(row?.lead_id || '').trim() || String(row?.converted_at || '').trim()) convertedFromLeadsCount += 1;
 
       pipelineValue += value;
       if (value > 0) validValueCount += 1;
-      if (this.matchesWonStatus(status) && value > 0) {
+      if (this.matchesWonStatus(stage) && value > 0) {
         wonValueTotal += value;
         wonValueCount += 1;
       }
@@ -814,7 +906,6 @@ const Deals = {
 
       if (companyName) uniqueCompanies.add(companyName);
       if (assignee) uniqueAssignees.add(assignee);
-      this.incrementMap(statusBreakdown, statusLabel);
       if (row?.assigned_to) this.incrementMap(assigneeMap, row.assigned_to);
       if (row?.service_interest) this.incrementMap(serviceMap, row.service_interest);
       if (row?.lead_source) this.incrementMap(sourceMap, row.lead_source);
@@ -843,7 +934,6 @@ const Deals = {
       uniqueCompanies: uniqueCompanies.size,
       uniqueAssignees: uniqueAssignees.size,
       stageBreakdown,
-      statusBreakdown,
       assigneeBreakdown: this.buildTopBreakdown(assigneeMap, 7),
       serviceBreakdown: this.buildTopBreakdown(serviceMap, 7),
       sourceBreakdown: this.buildTopBreakdown(sourceMap, 7),
@@ -907,11 +997,9 @@ const Deals = {
         : `Stage weighted${safe.hasMixedCurrencies ? ' (mixed currencies)' : ''}`
     );
 
-    const stageOrder = ['Prospect', 'Qualified', 'Proposal Sent', 'Negotiation', 'Verbal Commit', 'Won', 'Lost'];
+    const stageOrder = ['New', 'In Progress', 'Qualified', 'Lost'];
     const stageEntries = stageOrder.map(label => [label, safe.stageBreakdown?.[label] || 0]);
-    const statusEntries = Object.entries(safe.statusBreakdown || {}).sort((a, b) => b[1] - a[1]);
     this.renderDistribution(E.dealsStageDistribution, stageEntries, safe.totalDeals || 0);
-    this.renderDistribution(E.dealsStatusDistribution, statusEntries, safe.totalDeals || 0);
     this.renderDistribution(E.dealsAssigneeBreakdown, safe.assigneeBreakdown || [], safe.totalDeals || 0);
     this.renderDistribution(E.dealsServiceBreakdown, safe.serviceBreakdown || [], safe.totalDeals || 0);
     this.renderDistribution(E.dealsSourceBreakdown, safe.sourceBreakdown || [], safe.totalDeals || 0);
@@ -928,7 +1016,6 @@ const Deals = {
 
     this.state.filteredRows = this.state.rows.filter(row => {
       if (this.state.stage !== 'All' && row.stage !== this.state.stage) return false;
-      if (this.state.status !== 'All' && row.status !== this.state.status) return false;
       if (this.state.priority !== 'All' && row.priority !== this.state.priority) return false;
       if (this.state.serviceInterest !== 'All' && row.service_interest !== this.state.serviceInterest)
         return false;
@@ -959,7 +1046,6 @@ const Deals = {
     };
 
     assign(E.dealsStageFilter, this.state.rows.map(row => row.stage), this.state.stage);
-    assign(E.dealsStatusFilter, this.state.rows.map(row => row.status), this.state.status);
     assign(E.dealsPriorityFilter, this.state.rows.map(row => row.priority), this.state.priority);
     assign(
       E.dealsServiceInterestFilter,
@@ -987,7 +1073,7 @@ const Deals = {
       E.dealsState.textContent = 'Loading deals…';
       this.renderDealAnalytics(this.computeDealAnalytics([]));
       E.dealsTbody.innerHTML = Array.from({ length: 6 })
-        .map(() => '<tr class="skeleton-row"><td colspan="21"><div class="skeleton-line" style="height:12px;margin:6px 0;"></div></td></tr>')
+        .map(() => '<tr class="skeleton-row"><td colspan="22"><div class="skeleton-line" style="height:12px;margin:6px 0;"></div></td></tr>')
         .join('');
       return;
     }
@@ -995,7 +1081,7 @@ const Deals = {
     if (this.state.loadError) {
       E.dealsState.textContent = this.state.loadError;
       this.renderDealAnalytics(this.computeDealAnalytics([]));
-      E.dealsTbody.innerHTML = `<tr><td colspan="21" class="muted" style="text-align:center;color:#ffb4b4;">${U.escapeHtml(
+      E.dealsTbody.innerHTML = `<tr><td colspan="22" class="muted" style="text-align:center;color:#ffb4b4;">${U.escapeHtml(
         this.state.loadError
       )}</td></tr>`;
       return;
@@ -1025,7 +1111,7 @@ const Deals = {
     });
 
     if (!rows.length) {
-      E.dealsTbody.innerHTML = '<tr><td colspan="21" class="muted" style="text-align:center;">No deals found.</td></tr>';
+      E.dealsTbody.innerHTML = '<tr><td colspan="22" class="muted" style="text-align:center;">No deals found.</td></tr>';
       this.updateCreateButtonState();
       return;
     }
@@ -1033,7 +1119,8 @@ const Deals = {
     const renderCell = (row, column) => {
       if (column === 'lead_id') return U.escapeHtml(this.displayLeadId(row) || '—');
       if (column === 'lead_code') return undefined;
-      if (['converted_at', 'created_at', 'updated_at'].includes(column)) return this.formatDateTime(row[column]);
+      if (['converted_at', 'created_at', 'updated_at', 'next_follow_up_at'].includes(column)) return this.formatDateTime(row[column]);
+      if (column === 'last_contacted_date') return row[column] ? U.escapeHtml(String(row[column]).slice(0, 10)) : '—';
       const value = row[column];
       return U.escapeHtml(value === '' || value == null ? '—' : String(value));
     };
@@ -1051,12 +1138,12 @@ const Deals = {
             `<button class="btn ghost sm" type="button" data-deal-delete="${U.escapeAttr(row.id)}" data-permission-resource="deals" data-permission-action="delete">Delete</button>`
           );
         }
-        if (row.id && !this.isProposalAlreadyCreated(row) && this.canCreateProposalFromDeal()) {
+        if (row.id && this.canShowCreateProposalForDeal(row)) {
           const inFlight = this.state.rowActionInFlight.has(`create-proposal:${row.id}`);
           actionButtons.push(
             `<button class="btn ghost sm" type="button" data-deal-create-proposal="${U.escapeAttr(
               row.id
-            )}" data-permission-resource="proposals" data-permission-action="create" data-permission-resource="proposals" data-permission-action="create_from_deal" ${inFlight ? 'disabled' : ''}>Create Proposal</button>`
+            )}" data-permission-resource="proposals" data-permission-action="create" data-permission-resource="proposals" data-permission-action="create_from_deal" ${inFlight ? 'disabled' : ''}>Convert to Proposal</button>`
           );
         }
         const actions = actionButtons.length ? actionButtons.join(' ') : '<span class="muted">—</span>';
@@ -1238,8 +1325,9 @@ const Deals = {
       if (E.dealFormCountry) E.dealFormCountry.value = row.country || '';
       if (E.dealFormLeadSource) E.dealFormLeadSource.value = row.lead_source || '';
       if (E.dealFormServiceInterest) E.dealFormServiceInterest.value = row.service_interest || '';
-      if (E.dealFormStage) E.dealFormStage.value = row.stage || '';
-      if (E.dealFormStatus) E.dealFormStatus.value = row.status || '';
+      if (E.dealFormStage) E.dealFormStage.value = row.stage || 'New';
+      if (E.dealNextFollowUpAtInput) E.dealNextFollowUpAtInput.value = this.formatDateTimeLocalValue(this.pickNextFollowUpValue(row));
+      if (E.dealLastContactedDateInput) E.dealLastContactedDateInput.value = this.pickLastContactedDateValue(row);
       if (E.dealFormPriority) E.dealFormPriority.value = row.priority || '';
       if (E.dealFormEstimatedValue) {
         E.dealFormEstimatedValue.value = row.estimated_value === '' ? '' : String(row.estimated_value);
@@ -1252,7 +1340,7 @@ const Deals = {
         E.dealFormConvertedAt.dataset.rawValue = convertedAtRaw;
         E.dealFormConvertedAt.value = convertedAtRaw ? U.formatDateTimeMMDDYYYYHHMM(convertedAtRaw) : '';
       }
-      if (E.dealFormNotes) E.dealFormNotes.value = row.notes || '';
+      if (E.dealFormNotes) E.dealFormNotes.value = '';
       this.hydrateLeadCodeFromLeadUuid(row);
       const companyId = row.company_id || row.companyId || '';
       const contactId = row.contact_id || row.contactId || '';
@@ -1268,8 +1356,7 @@ const Deals = {
       this.syncDealFormDropdowns({
         lead_source: row.lead_source || '',
         service_interest: row.service_interest || '',
-        stage: row.stage || '',
-        status: row.status || '',
+        stage: row.stage || 'New',
         priority: row.priority || '',
         currency: row.currency || ''
       });
@@ -1283,11 +1370,15 @@ const Deals = {
         E.dealFormConvertedAt.dataset.rawValue = '';
         E.dealFormConvertedAt.value = '';
       }
+      if (E.dealFormStage) E.dealFormStage.value = 'New';
+      if (E.dealNextFollowUpAtInput) E.dealNextFollowUpAtInput.value = '';
+      if (E.dealLastContactedDateInput) E.dealLastContactedDateInput.value = '';
+      if (E.dealFormNotes) E.dealFormNotes.value = '';
       if (E.dealFormAssignedTo) E.dealFormAssignedTo.value = this.currentUserAssignee();
       this.unlockSelect(E.dealFormCompanySelector);
       this.unlockSelect(E.dealFormContactSelector);
       this.lockCompanyContactFields({ lockCompanySelector: false, lockContactSelector: false });
-      this.syncDealFormDropdowns();
+      this.syncDealFormDropdowns({ stage: 'New' });
     }
 
     if (E.dealFormDeleteBtn) E.dealFormDeleteBtn.style.display = isEdit && this.canEditDelete() ? '' : 'none';
@@ -1295,6 +1386,8 @@ const Deals = {
     E.dealFormModal.style.display = 'flex';
     E.dealFormModal.setAttribute('aria-hidden', 'false');
     if (window.setAppHashRoute && window.buildRecordHashRoute) setAppHashRoute(buildRecordHashRoute('deals', row || {}));
+    if (row) await this.refreshDealNoteHistory(row);
+    else this.renderDealNoteHistory([]);
   },
   hydrateDealFromCompany(company = {}) {
     const c = this.normalizeCompany(company);
@@ -1342,6 +1435,87 @@ const Deals = {
     const shouldLockPartySelectors = E.dealForm?.dataset.mode === 'edit' || this.state.form.lockLinks;
     this.lockCompanyContactFields({ lockCompanySelector: shouldLockPartySelectors && !!this.state.form.companyId, lockContactSelector: shouldLockPartySelectors && !!c.contact_id });
   },
+  async loadDealNoteLogs(deal = {}) {
+    const dealUuid = String(deal?.id || '').trim();
+    const dealId = String(deal?.deal_id || deal?.dealId || '').trim();
+    if (!dealUuid && !dealId) return [];
+    let query = this.getClient().from('deal_note_logs').select('*').order('created_at', { ascending: false });
+    if (dealUuid && dealId) query = query.or(`deal_uuid.eq.${dealUuid},deal_id.eq.${dealId}`);
+    else if (dealUuid) query = query.eq('deal_uuid', dealUuid);
+    else query = query.eq('deal_id', dealId);
+    const { data, error } = await query;
+    if (error) throw this.toSupabaseError('Unable to load deal note history', error);
+    return Array.isArray(data) ? data : [];
+  },
+  renderDealNoteHistory(logs = [], { loading = false, error = '', usersById = new Map() } = {}) {
+    const host = E.dealNotesHistoryList || document.getElementById('dealNotesHistoryList');
+    if (!host) return;
+    if (loading) {
+      host.innerHTML = '<div class="muted">Loading note history…</div>';
+      return;
+    }
+    if (error) {
+      host.innerHTML = `<div class="muted" style="color:#ffb4b4;">${U.escapeHtml(error)}</div>`;
+      return;
+    }
+    if (!Array.isArray(logs) || !logs.length) {
+      host.innerHTML = '<div class="muted">No note history yet.</div>';
+      return;
+    }
+    host.innerHTML = logs.map(log => {
+      const user = this.getUserDisplayName(log.created_by, usersById);
+      const canShowDebugUserId = Boolean(Session?.isAdmin?.());
+      const userTitle = canShowDebugUserId && log?.created_by ? ` title="${U.escapeAttr(String(log.created_by))}"` : '';
+      const previousNote = String(log.previous_note || log.old_note || '').trim() || '—';
+      const newNote = String(log.new_note || log.note || '').trim() || '—';
+      return `<article class="card" style="padding:10px;margin:8px 0;background:rgba(255,255,255,0.03);">
+        <div class="muted" style="font-size:12px;display:flex;gap:10px;flex-wrap:wrap;">
+          <span>${this.formatDate(log.created_at)}</span><span${userTitle}>User: ${U.escapeHtml(user)}</span>
+        </div>
+        <div style="margin-top:8px;"><strong>Previous note</strong><div>${U.escapeHtml(previousNote)}</div></div>
+        <div style="margin-top:8px;"><strong>New note</strong><div>${U.escapeHtml(newNote)}</div></div>
+      </article>`;
+    }).join('');
+  },
+  async refreshDealNoteHistory(row = {}) {
+    if (!row?.id && !row?.deal_id) {
+      this.renderDealNoteHistory([]);
+      return;
+    }
+    this.renderDealNoteHistory([], { loading: true });
+    try {
+      const logs = await this.loadDealNoteLogs(row);
+      const usersById = await this.loadDealNoteUsersById(logs);
+      this.renderDealNoteHistory(logs, { usersById });
+    } catch (error) {
+      console.error('[deals] note history load failed', error);
+      this.renderDealNoteHistory([], { error: 'Unable to load note history.' });
+    }
+  },
+  validateDealWorkflow(deal = {}) {
+    const stage = String(deal.stage || '').trim() || 'New';
+    if (!stage) {
+      UI.toast('Please select a deal stage.');
+      return false;
+    }
+    const nextFollowUp = this.pickNextFollowUpValue(deal);
+    if (!nextFollowUp) {
+      UI.toast('Next follow-up is required for every deal change.');
+      if (E.dealNextFollowUpAtInput) E.dealNextFollowUpAtInput.focus();
+      return false;
+    }
+    const nextFollowUpIso = this.dateTimeLocalToIso(nextFollowUp) || nextFollowUp;
+    deal.stage = stage;
+    deal.next_follow_up_at = nextFollowUpIso;
+    return true;
+  },
+  validateDealNewNote(deal = {}) {
+    const newNote = String(deal.notes || '').trim();
+    if (newNote) return true;
+    UI.toast('New note is required for every deal edit.');
+    if (E.dealFormNotes) E.dealFormNotes.focus();
+    return false;
+  },
   closeForm() {
     if (!E.dealFormModal) return;
     E.dealFormModal.style.display = 'none';
@@ -1384,8 +1558,9 @@ const Deals = {
       country: String(selectedCompany.country || E.dealFormCountry?.value || '').trim(),
       lead_source: String(E.dealFormLeadSource?.value || '').trim(),
       service_interest: String(E.dealFormServiceInterest?.value || '').trim(),
-      stage: String(E.dealFormStage?.value || '').trim(),
-      status: String(E.dealFormStatus?.value || '').trim(),
+      stage: String(E.dealFormStage?.value || '').trim() || 'New',
+      next_follow_up_at: String(E.dealNextFollowUpAtInput?.value || '').trim(),
+      last_contacted_date: String(E.dealLastContactedDateInput?.value || '').trim() || null,
       priority: String(E.dealFormPriority?.value || '').trim(),
       estimated_value: String(E.dealFormEstimatedValue?.value || '').trim(),
       currency: String(E.dealFormCurrency?.value || '').trim(),
@@ -1435,6 +1610,8 @@ const Deals = {
       UI.toast('Full name or company name is required.');
       return;
     }
+    if (!this.validateDealWorkflow(deal)) return;
+    if (!this.validateDealNewNote(deal)) return;
 
     this.setFormBusy(true);
     this.state.saveInFlight = true;
@@ -1514,7 +1691,6 @@ const Deals = {
     bindState(E.dealsSearchInput, 'search');
     bindState(E.dealsSidebarSearchInput, 'search');
     bindState(E.dealsStageFilter, 'stage');
-    bindState(E.dealsStatusFilter, 'status');
     bindState(E.dealsPriorityFilter, 'priority');
     bindState(E.dealsServiceInterestFilter, 'serviceInterest');
     bindState(E.dealsLeadSourceFilter, 'leadSource');
@@ -1526,7 +1702,6 @@ const Deals = {
       E.dealsResetBtn.addEventListener('click', () => {
         this.state.search = '';
         this.state.stage = 'All';
-        this.state.status = 'All';
         this.state.priority = 'All';
         this.state.serviceInterest = 'All';
         this.state.leadSource = 'All';
@@ -1572,6 +1747,9 @@ const Deals = {
         }
         const createProposalDealId = event.target?.getAttribute('data-deal-create-proposal');
         if (createProposalDealId && window.Proposals?.createFromDealFlow) {
+          const row = this.state.rows.find(item => item.id === createProposalDealId);
+          if (!row || String(row.stage || '').trim() !== 'Qualified') return UI.toast('Deal must be qualified before converting to proposal.');
+          if (!String(row.next_follow_up_at || '').trim()) return UI.toast('Next follow-up is required for every deal change.');
           if (!this.canCreateProposalFromDeal()) return UI.toast('You do not have permission to create proposals from deals.');
           const actionKey = `create-proposal:${createProposalDealId}`;
           if (this.state.rowActionInFlight.has(actionKey)) return;
