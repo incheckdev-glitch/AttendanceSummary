@@ -1420,8 +1420,6 @@ const Deals = {
       estimated_value: String(E.dealFormEstimatedValue?.value || '').trim(),
       currency: String(E.dealFormCurrency?.value || '').trim(),
       assigned_to: String(E.dealFormAssignedTo?.value || '').trim(),
-      proposal_needed: this.normalizeBool(E.dealFormProposalNeeded?.value || ''),
-      agreement_needed: this.normalizeBool(E.dealFormAgreementNeeded?.value || ''),
       converted_by: String(E.dealFormConvertedBy?.value || '').trim(),
       converted_at: String(E.dealFormConvertedAt?.dataset?.rawValue || '').trim(),
       notes: String(E.dealFormNotes?.value || '').trim()

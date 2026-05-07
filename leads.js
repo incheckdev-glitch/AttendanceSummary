@@ -2,7 +2,7 @@ const Leads = {
   formDropdownDefaults: {
     lead_source: ['Website', 'Referral', 'LinkedIn', 'Email', 'Call', 'WhatsApp', 'Event', 'Other'],
     service_interest: ['Software' , 'Other' , 'Consulting'],
-    status: ['New', 'Qualified', 'Contacted', 'Proposal Sent', 'Negotiation', 'Won', 'Lost', 'On Hold'],
+    status: ['Not Contacted Yet', 'Not Available', 'Negotiation', 'Lost', 'Qualified'],
     priority: ['High', 'Medium', 'Low'],
     currency: ['USD', 'EUR', 'GBP', 'AED']
   },
@@ -63,6 +63,43 @@ const Leads = {
     if (['false', '0', 'no', 'n'].includes(normalized)) return 'no';
     return '';
   },
+  allowedLeadStatuses() {
+    return this.formDropdownDefaults.status;
+  },
+  normalizeLeadStatus(value) {
+    const raw = String(value || '').trim();
+    const allowed = this.allowedLeadStatuses();
+    const match = allowed.find(status => status.toLowerCase() === raw.toLowerCase());
+    return match || 'Not Contacted Yet';
+  },
+  hasLeadConversionPermission() {
+    return Boolean(
+      Permissions.can('leads', 'convert') ||
+        Permissions.can('leads', 'convert_to_deal') ||
+        Permissions.can('deals', 'create') ||
+        Permissions.canCreate?.('deals') ||
+        Permissions.can('deals', 'manage') ||
+        Permissions.can('leads', 'manage')
+    );
+  },
+  validateLeadWorkflow(lead = {}) {
+    const status = this.normalizeLeadStatus(lead.status);
+    if (!this.allowedLeadStatuses().includes(status)) {
+      UI.toast('Please select a valid lead status.');
+      return false;
+    }
+    const nextFollowUp = String(
+      lead.next_follow_up || lead.next_follow_up_at || lead.nextFollowUpAt || lead.next_follow_up_date || ''
+    ).trim();
+    if (!nextFollowUp) {
+      UI.toast('Next follow-up is required for every lead change.');
+      return false;
+    }
+    lead.status = status;
+    lead.next_follow_up = nextFollowUp;
+    return true;
+  },
+
   normalizeLead(raw = {}) {
     const id = String(raw.id || '').trim();
     const leadId = String(raw.lead_id || raw.leadId || '').trim();
@@ -85,16 +122,20 @@ const Leads = {
       country: String(raw.country || '').trim(),
       lead_source: String(raw.lead_source || raw.leadSource || '').trim(),
       service_interest: String(raw.service_interest || raw.serviceInterest || '').trim(),
-      status: String(raw.status || '').trim(),
+      status: this.normalizeLeadStatus(raw.status),
       priority: String(raw.priority || '').trim(),
       estimated_value: raw.estimated_value ?? raw.estimatedValue ?? '',
       currency: String(raw.currency || '').trim(),
       assigned_to: String(raw.assigned_to || raw.assignedTo || '').trim(),
       next_follow_up:
         raw.next_follow_up ||
+        raw.next_follow_up_at ||
+        raw.nextFollowUpAt ||
         raw.nextFollowUp ||
         raw.next_followup_date ||
         raw.nextFollowupDate ||
+        raw.next_follow_up_date ||
+        raw.nextFollowUpDate ||
         '',
       last_contact:
         raw.last_contact ||
@@ -142,15 +183,13 @@ const Leads = {
       country: String(lead.country || ''),
       lead_source: String(lead.lead_source || ''),
       service_interest: String(lead.service_interest || ''),
-      status: String(lead.status || ''),
+      status: this.normalizeLeadStatus(lead.status),
       priority: String(lead.priority || ''),
       estimated_value: Number.isFinite(estimatedValueParsed) ? estimatedValueParsed : null,
       currency: String(lead.currency || ''),
       assigned_to: String(lead.assigned_to || ''),
-      next_follow_up: lead.next_follow_up || null,
+      next_follow_up: lead.next_follow_up || lead.next_follow_up_at || lead.nextFollowUpAt || lead.next_follow_up_date || null,
       last_contact: lead.last_contact || null,
-      proposal_needed: lead.proposal_needed ? lead.proposal_needed === 'yes' : null,
-      agreement_needed: lead.agreement_needed ? lead.agreement_needed === 'yes' : null,
       notes: String(lead.notes || '')
     };
   },
@@ -193,8 +232,6 @@ const Leads = {
     if (this.state.status !== 'All') filters.status = this.state.status;
     if (this.state.serviceInterest !== 'All') filters.service_interest = this.state.serviceInterest;
     if (this.state.assignedTo !== 'All') filters.assigned_to = this.state.assignedTo;
-    if (this.state.proposalNeeded !== 'All') filters.proposal_needed = this.state.proposalNeeded === 'yes';
-    if (this.state.agreementNeeded !== 'All') filters.agreement_needed = this.state.agreementNeeded === 'yes';
     if (this.state.search) filters.search = this.state.search;
     return filters;
   },
@@ -406,13 +443,11 @@ const Leads = {
       lead_source: lead.lead_source,
       service_interest: lead.service_interest,
       stage: 'new',
-      status: lead.status || 'Contacted',
+      status: this.normalizeLeadStatus(lead.status),
       priority: lead.priority || '',
       estimated_value: Number.isFinite(estimatedValueNumber) ? estimatedValueNumber : null,
       currency: lead.currency || '',
       assigned_to: lead.assigned_to || '',
-      proposal_needed: lead.proposal_needed || '',
-      agreement_needed: lead.agreement_needed || '',
       notes: lead.notes || '',
       converted_by: converter,
       converted_at: convertedAt
@@ -446,8 +481,13 @@ const Leads = {
     return !!String(row.converted_at || '').trim();
   },
   canConvertLead(row = {}) {
-    const canConvert = Permissions.can('leads', 'convert_to_deal');
-    return canConvert && !this.isConvertedLead(row) && !!String(row.id || '').trim();
+    const normalized = this.normalizeLead(row || {});
+    return (
+      this.hasLeadConversionPermission() &&
+      normalized.status === 'Qualified' &&
+      !this.isConvertedLead(normalized) &&
+      !!String(normalized.id || '').trim()
+    );
   },
   getConvertedDealId(response) {
     const directDealId = String(
@@ -667,7 +707,8 @@ const Leads = {
         a.localeCompare(b)
       );
 
-    assign(E.leadsStatusFilter, uniq(this.state.rows.map(row => row.status)), this.state.status);
+    if (this.state.status !== 'All' && !this.allowedLeadStatuses().includes(this.state.status)) this.state.status = 'All';
+    assign(E.leadsStatusFilter, this.allowedLeadStatuses(), this.state.status);
     assign(
       E.leadsServiceInterestFilter,
       uniq(this.state.rows.map(row => row.service_interest)),
@@ -688,16 +729,17 @@ const Leads = {
   syncLeadFormDropdowns(selected = {}) {
     const assign = (el, options = [], selectedValue = '') => {
       if (!el) return;
-      const values = this.uniqueSorted(options);
+      const values = el === E.leadFormStatus ? options : this.uniqueSorted(options);
       const finalOptions = ['', ...values];
       el.innerHTML = finalOptions
         .map(value => `<option value="${U.escapeAttr(value)}">${U.escapeHtml(value || '—')}</option>`)
         .join('');
+      selectedValue = el === E.leadFormStatus ? this.normalizeLeadStatus(selectedValue) : selectedValue;
       if (finalOptions.includes(selectedValue)) {
         el.value = selectedValue;
         return;
       }
-      if (selectedValue) {
+      if (selectedValue && el !== E.leadFormStatus) {
         el.innerHTML += `<option value="${U.escapeAttr(selectedValue)}">${U.escapeHtml(selectedValue)}</option>`;
         el.value = selectedValue;
       }
@@ -784,7 +826,7 @@ const Leads = {
   },
   computeLeadAnalytics(leads = []) {
     const rows = Array.isArray(leads) ? leads : [];
-    const statusKeys = ['new', 'qualified', 'proposal sent', 'negotiation', 'won', 'lost', 'on hold'];
+    const statusKeys = ['not contacted yet', 'not available', 'negotiation', 'lost', 'qualified'];
     const statusBreakdown = Object.fromEntries(statusKeys.map(key => [key, 0]));
     const currencyTotals = new Set();
     let pipelineValue = 0;
@@ -810,16 +852,18 @@ const Leads = {
     });
 
     const total = rows.length;
-    const wonCount = statusBreakdown.won || 0;
+    const wonCount = statusBreakdown.qualified || 0;
     const conversionRate = total > 0 ? (wonCount / total) * 100 : 0;
     const currencies = [...currencyTotals];
     const pipelineCurrency = currencies.length === 1 ? currencies[0] : '';
 
     return {
       total,
-      newCount: statusBreakdown.new || 0,
+      newCount: statusBreakdown['not contacted yet'] || 0,
+      notAvailableCount: statusBreakdown['not available'] || 0,
+      negotiationCount: statusBreakdown.negotiation || 0,
       qualifiedCount: statusBreakdown.qualified || 0,
-      proposalSentCount: statusBreakdown['proposal sent'] || 0,
+      proposalSentCount: 0,
       wonCount,
       lostCount: statusBreakdown.lost || 0,
       highPriorityCount,
@@ -841,8 +885,8 @@ const Leads = {
     setText(E.leadsKpiTotal, String(safe.total || 0));
     setText(E.leadsKpiNew, String(safe.newCount || 0));
     setText(E.leadsKpiQualified, String(safe.qualifiedCount || 0));
-    setText(E.leadsKpiProposalSent, String(safe.proposalSentCount || 0));
-    setText(E.leadsKpiWon, String(safe.wonCount || 0));
+    setText(E.leadsKpiProposalSent, String(safe.notAvailableCount || 0));
+    setText(E.leadsKpiWon, String(safe.negotiationCount || 0));
     setText(E.leadsKpiLost, String(safe.lostCount || 0));
     setText(E.leadsKpiHighPriority, String(safe.highPriorityCount || 0));
     setText(E.leadsKpiProposalNeeded, String(safe.proposalNeededCount || 0));
@@ -870,13 +914,11 @@ const Leads = {
 
     if (E.leadsStatusDistribution) {
       const statuses = [
-        ['New', 'new'],
-        ['Qualified', 'qualified'],
-        ['Proposal Sent', 'proposal sent'],
+        ['Not Contacted Yet', 'not contacted yet'],
+        ['Not Available', 'not available'],
         ['Negotiation', 'negotiation'],
-        ['Won', 'won'],
         ['Lost', 'lost'],
-        ['On Hold', 'on hold']
+        ['Qualified', 'qualified']
       ];
       const total = safe.total || 0;
       E.leadsStatusDistribution.innerHTML = statuses
@@ -1078,21 +1120,19 @@ const Leads = {
       if (E.leadFormCountry) E.leadFormCountry.value = row.country || '';
       if (E.leadFormLeadSource) E.leadFormLeadSource.value = row.lead_source || '';
       if (E.leadFormServiceInterest) E.leadFormServiceInterest.value = row.service_interest || '';
-      if (E.leadFormStatus) E.leadFormStatus.value = row.status || '';
+      if (E.leadFormStatus) E.leadFormStatus.value = this.normalizeLeadStatus(row.status);
       if (E.leadFormPriority) E.leadFormPriority.value = row.priority || '';
       if (E.leadFormEstimatedValue) E.leadFormEstimatedValue.value = row.estimated_value === '' ? '' : String(row.estimated_value);
       if (E.leadFormCurrency) E.leadFormCurrency.value = row.currency || '';
       if (E.leadFormAssignedTo) E.leadFormAssignedTo.value = row.assigned_to || '';
       if (E.leadFormNextFollowupDate) E.leadFormNextFollowupDate.value = String(row.next_follow_up || '').slice(0, 10);
       if (E.leadFormLastContactDate) E.leadFormLastContactDate.value = String(row.last_contact || '').slice(0, 10);
-      if (E.leadFormProposalNeeded) E.leadFormProposalNeeded.value = row.proposal_needed || '';
-      if (E.leadFormAgreementNeeded) E.leadFormAgreementNeeded.value = row.agreement_needed || '';
       if (E.leadFormNotes) E.leadFormNotes.value = row.notes || '';
       if (E.leadFormUpdatedAt) E.leadFormUpdatedAt.value = row.updated_at ? U.formatDateTimeMMDDYYYYHHMM(row.updated_at) : '';
       this.syncLeadFormDropdowns({
         lead_source: row.lead_source || '',
         service_interest: row.service_interest || '',
-        status: row.status || '',
+        status: this.normalizeLeadStatus(row.status),
         priority: row.priority || '',
         currency: row.currency || ''
       });
@@ -1100,7 +1140,8 @@ const Leads = {
       if (E.leadFormLeadId) E.leadFormLeadId.value = 'Auto-generated';
       if (E.leadFormCreatedAt) E.leadFormCreatedAt.value = U.formatDateTimeMMDDYYYYHHMM(new Date());
       if (E.leadFormAssignedTo) E.leadFormAssignedTo.value = this.currentUserAssignee();
-      this.syncLeadFormDropdowns();
+      this.syncLeadFormDropdowns({ status: 'Not Contacted Yet' });
+      if (E.leadFormStatus) E.leadFormStatus.value = 'Not Contacted Yet';
     }
 
     if (E.leadFormDeleteBtn) E.leadFormDeleteBtn.style.display = isEdit && this.canEditDelete() ? '' : 'none';
@@ -1108,7 +1149,69 @@ const Leads = {
     E.leadFormModal.style.display = 'flex';
     E.leadFormModal.setAttribute('aria-hidden', 'false');
     if (window.setAppHashRoute && window.buildRecordHashRoute) setAppHashRoute(buildRecordHashRoute('leads', row || {}));
-    if (row) await this.hydrateLeadLinkedDetails(row);
+    if (row) {
+      await this.hydrateLeadLinkedDetails(row);
+      await this.refreshLeadNoteHistory(row);
+    } else {
+      this.renderLeadNoteHistory([]);
+    }
+  },
+  async loadLeadNoteLogs(lead = {}) {
+    const leadUuid = String(lead?.id || '').trim();
+    const leadId = String(lead?.lead_id || lead?.leadId || '').trim();
+    if (!leadUuid && !leadId) return [];
+    let query = this.getClient().from('lead_note_logs').select('*').order('created_at', { ascending: false });
+    if (leadUuid && leadId) {
+      query = query.or(`lead_uuid.eq.${leadUuid},lead_id.eq.${leadId}`);
+    } else if (leadUuid) {
+      query = query.eq('lead_uuid', leadUuid);
+    } else {
+      query = query.eq('lead_id', leadId);
+    }
+    const { data, error } = await query;
+    if (error) throw this.toSupabaseError('Unable to load lead note history', error);
+    return Array.isArray(data) ? data : [];
+  },
+  renderLeadNoteHistory(logs = [], { loading = false, error = '' } = {}) {
+    const host = document.getElementById('leadNotesHistoryList');
+    if (!host) return;
+    if (loading) {
+      host.innerHTML = '<div class="muted">Loading note history…</div>';
+      return;
+    }
+    if (error) {
+      host.innerHTML = `<div class="muted" style="color:#ffb4b4;">${U.escapeHtml(error)}</div>`;
+      return;
+    }
+    if (!Array.isArray(logs) || !logs.length) {
+      host.innerHTML = '<div class="muted">No note history yet.</div>';
+      return;
+    }
+    host.innerHTML = logs.map(log => {
+      const user = String(log.user_name || log.created_by_name || log.created_by_email || log.created_by || '').trim() || '—';
+      const previousNote = String(log.previous_note || log.old_note || '').trim() || '—';
+      const newNote = String(log.new_note || log.note || '').trim() || '—';
+      return `<article class="card" style="padding:10px;margin:8px 0;background:rgba(255,255,255,0.03);">
+        <div class="muted" style="font-size:12px;display:flex;gap:10px;flex-wrap:wrap;">
+          <span>${this.formatDate(log.created_at)}</span><span>User: ${U.escapeHtml(user)}</span>
+        </div>
+        <div style="margin-top:8px;"><strong>Previous note</strong><div>${U.escapeHtml(previousNote)}</div></div>
+        <div style="margin-top:8px;"><strong>New note</strong><div>${U.escapeHtml(newNote)}</div></div>
+      </article>`;
+    }).join('');
+  },
+  async refreshLeadNoteHistory(row = {}) {
+    if (!row?.id && !row?.lead_id) {
+      this.renderLeadNoteHistory([]);
+      return;
+    }
+    this.renderLeadNoteHistory([], { loading: true });
+    try {
+      this.renderLeadNoteHistory(await this.loadLeadNoteLogs(row));
+    } catch (error) {
+      console.error('[leads] note history load failed', error);
+      this.renderLeadNoteHistory([], { error: 'Unable to load note history.' });
+    }
   },
   closeForm() {
     if (!E.leadFormModal) return;
@@ -1143,15 +1246,13 @@ const Leads = {
       country: String(selectedCompany.country || '').trim(),
       lead_source: String(E.leadFormLeadSource?.value || '').trim(),
       service_interest: String(E.leadFormServiceInterest?.value || '').trim(),
-      status: String(E.leadFormStatus?.value || '').trim(),
+      status: this.normalizeLeadStatus(E.leadFormStatus?.value || ''),
       priority: String(E.leadFormPriority?.value || '').trim(),
       estimated_value: estimatedValueRaw === '' ? '' : Number(estimatedValueRaw),
       currency: String(E.leadFormCurrency?.value || '').trim(),
       assigned_to: String(E.leadFormAssignedTo?.value || '').trim(),
       next_follow_up: String(E.leadFormNextFollowupDate?.value || '').trim(),
       last_contact: String(E.leadFormLastContactDate?.value || '').trim(),
-      proposal_needed: this.normalizeBool(E.leadFormProposalNeeded?.value || ''),
-      agreement_needed: this.normalizeBool(E.leadFormAgreementNeeded?.value || ''),
       notes: String(E.leadFormNotes?.value || '').trim()
     };
   },
@@ -1176,15 +1277,13 @@ const Leads = {
       country: String(lead.country || '').trim(),
       lead_source: String(lead.lead_source || '').trim(),
       service_interest: String(lead.service_interest || '').trim(),
-      status: String(lead.status || '').trim(),
+      status: this.normalizeLeadStatus(lead.status),
       priority: String(lead.priority || '').trim(),
       estimated_value: String(lead.estimated_value ?? '').trim(),
       currency: String(lead.currency || '').trim(),
       assigned_to: String(lead.assigned_to || '').trim(),
-      next_follow_up: this.normalizeComparableLeadDate(lead.next_follow_up),
+      next_follow_up: this.normalizeComparableLeadDate(lead.next_follow_up || lead.next_follow_up_at || lead.nextFollowUpAt || lead.next_follow_up_date),
       last_contact: this.normalizeComparableLeadDate(lead.last_contact),
-      proposal_needed: this.normalizeBool(lead.proposal_needed),
-      agreement_needed: this.normalizeBool(lead.agreement_needed),
       notes: String(lead.notes || '').trim()
     });
 
@@ -1222,6 +1321,7 @@ const Leads = {
     }
     const leadId = String(E.leadForm?.dataset.id || '').trim();
     const lead = this.collectFormData();
+    if (!this.validateLeadWorkflow(lead)) return;
     if (!lead.company_id || !lead.contact_id) {
       UI.toast('Company and contact are required.');
       return;
@@ -1240,6 +1340,7 @@ const Leads = {
         const resolvedRow = result?.row || { ...lead, id: leadId };
         this.upsertLocalRow(resolvedRow);
         UI.toast(result?.verifiedAfterError ? 'Lead updated (verified).' : 'Lead updated.');
+        await this.refreshLeadNoteHistory(resolvedRow);
       } else {
         const tempLeadId = this.generateLeadId();
         if (E.leadFormLeadId) E.leadFormLeadId.value = tempLeadId;
@@ -1469,11 +1570,15 @@ const Leads = {
     }
   },
   async convertLeadById(leadUuid) {
-    if (!Permissions.can('leads', 'convert_to_deal')) {
-      UI.toast('Only admin/dev can convert leads.');
+    if (!this.hasLeadConversionPermission()) {
+      UI.toast('You do not have permission to convert leads.');
       return;
     }
     const row = this.state.rows.find(item => item.id === leadUuid);
+    if (this.normalizeLeadStatus(row?.status) !== 'Qualified') {
+      UI.toast('Lead must be qualified before converting to deal.');
+      return;
+    }
     if (!this.canConvertLead(row)) {
       UI.toast('This lead is already converted or unavailable.');
       return;
@@ -1481,6 +1586,14 @@ const Leads = {
     this.setFormBusy(true);
     try {
       const sourceLead = this.normalizeLead(await this.getLead(leadUuid));
+      if (sourceLead.status !== 'Qualified') {
+        UI.toast('Lead must be qualified before converting to deal.');
+        return;
+      }
+      if (!String(sourceLead.next_follow_up || '').trim()) {
+        UI.toast('Next follow-up is required for every lead change.');
+        return;
+      }
       if (!String(sourceLead.lead_id || '').trim()) {
         UI.toast('Unable to convert lead: missing business Lead ID.');
         return;

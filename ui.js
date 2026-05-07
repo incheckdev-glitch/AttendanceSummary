@@ -923,6 +923,7 @@ function cacheEls() {
     'leadFormProposalNeeded',
     'leadFormAgreementNeeded',
     'leadFormNotes',
+    'leadNotesHistoryList',
     'leadFormUpdatedAt',
     'userCreateForm',
     'userCreateName',
