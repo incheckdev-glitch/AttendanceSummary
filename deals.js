@@ -513,6 +513,16 @@ const Deals = {
     if (Number.isNaN(date.getTime())) return U.escapeHtml(String(value));
     return U.escapeHtml(U.fmtDisplayDate(value));
   },
+  formatNoteLogDate(value) {
+    if (!value) return '—';
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return '—';
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: '2-digit',
+      year: 'numeric'
+    }).replace(',', '');
+  },
   formatDateTime(value) {
     if (!value) return '—';
     const formatted = U.formatDateTimeMMDDYYYYHHMM(value);
@@ -1470,7 +1480,7 @@ const Deals = {
       const newNote = String(log.new_note || log.note || '').trim() || '—';
       return `<article class="card" style="padding:10px;margin:8px 0;background:rgba(255,255,255,0.03);">
         <div class="muted" style="font-size:12px;display:flex;gap:10px;flex-wrap:wrap;">
-          <span>${this.formatDate(log.created_at)}</span><span${userTitle}>User: ${U.escapeHtml(user)}</span>
+          <span>${U.escapeHtml(this.formatNoteLogDate(log.created_at))}</span><span${userTitle}>User: ${U.escapeHtml(user)}</span>
         </div>
         <div style="margin-top:8px;"><strong>Previous note</strong><div>${U.escapeHtml(previousNote)}</div></div>
         <div style="margin-top:8px;"><strong>New note</strong><div>${U.escapeHtml(newNote)}</div></div>
