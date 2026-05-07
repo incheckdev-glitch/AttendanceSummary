@@ -2,7 +2,7 @@ const Leads = {
   formDropdownDefaults: {
     lead_source: ['Website', 'Referral', 'LinkedIn', 'Email', 'Call', 'WhatsApp', 'Event', 'Other'],
     service_interest: ['Software' , 'Other' , 'Consulting'],
-    status: ['Not Contacted Yet', 'Not Available', 'Negotiation', 'Lost', 'Qualified'],
+    status: ['Not Contacted Yet', 'Not Available', 'Negotiations', 'Lost', 'Qualified'],
     priority: ['High', 'Medium', 'Low'],
     currency: ['USD', 'EUR', 'GBP', 'AED']
   },
@@ -747,7 +747,7 @@ const Leads = {
           this.getLeadValue(row, 'country'),
           this.getLeadValue(row, 'lead_source', 'leadSource'),
           this.getLeadValue(row, 'service_interest', 'serviceInterest'),
-          this.getLeadValue(row, 'status'),
+          this.normalizeLeadStatus(this.getLeadValue(row, 'status')),
           this.getLeadValue(row, 'priority'),
           this.getLeadValue(row, 'estimated_value', 'estimatedValue'),
           this.getLeadValue(row, 'currency'),
@@ -768,10 +768,12 @@ const Leads = {
     this.downloadCsv(filename, csvLines.join('\n'));
   },
   renderFilters() {
-    const assign = (el, values, selected) => {
+    const assign = (el, values, selected, labels = {}) => {
       if (!el) return;
       const options = ['All', ...values];
-      el.innerHTML = options.map(option => `<option>${U.escapeHtml(option)}</option>`).join('');
+      el.innerHTML = options
+        .map(option => `<option value="${U.escapeAttr(option)}">${U.escapeHtml(labels[option] || option)}</option>`)
+        .join('');
       if (options.includes(selected)) el.value = selected;
     };
 
@@ -781,7 +783,7 @@ const Leads = {
       );
 
     if (this.state.status !== 'All' && !this.allowedLeadStatuses().includes(this.state.status)) this.state.status = 'All';
-    assign(E.leadsStatusFilter, this.allowedLeadStatuses(), this.state.status);
+    assign(E.leadsStatusFilter, this.allowedLeadStatuses(), this.state.status, { All: 'All Statuses' });
     assign(
       E.leadsServiceInterestFilter,
       uniq(this.state.rows.map(row => row.service_interest)),
@@ -801,7 +803,7 @@ const Leads = {
     const assign = (el, options = [], selectedValue = '') => {
       if (!el) return;
       const values = el === E.leadFormStatus ? options : this.uniqueSorted(options);
-      const finalOptions = ['', ...values];
+      const finalOptions = el === E.leadFormStatus ? values : ['', ...values];
       el.innerHTML = finalOptions
         .map(value => `<option value="${U.escapeAttr(value)}">${U.escapeHtml(value || '—')}</option>`)
         .join('');
@@ -822,7 +824,7 @@ const Leads = {
     const serviceValues = this.formDropdownDefaults.service_interest.concat(
       this.state.rows.map(row => row.service_interest)
     );
-    const statusValues = this.formDropdownDefaults.status.concat(this.state.rows.map(row => row.status));
+    const statusValues = this.formDropdownDefaults.status;
     const priorityValues = this.formDropdownDefaults.priority.concat(
       this.state.rows.map(row => row.priority)
     );
@@ -868,10 +870,10 @@ const Leads = {
     const priority = this.normalizeText(row?.priority);
     const estimatedValue = this.parseEstimatedValue(row?.estimated_value);
     if (filter === 'total') return true;
-    if (filter === 'new') return status === 'new';
-    if (filter === 'qualified') return status === 'qualified';
-    if (filter === 'proposal-sent') return status === 'proposal sent';
-    if (filter === 'won' || filter === 'conversion-rate') return status === 'won';
+    if (filter === 'not-contacted-yet') return status === 'not contacted yet';
+    if (filter === 'not-available') return status === 'not available';
+    if (filter === 'negotiations') return status === 'negotiations';
+    if (filter === 'qualified' || filter === 'conversion-rate') return status === 'qualified';
     if (filter === 'lost') return status === 'lost';
     if (filter === 'high-priority') return priority === 'high' || priority === 'urgent';
     if (filter === 'pipeline-value') return estimatedValue > 0;
@@ -895,7 +897,7 @@ const Leads = {
   },
   computeLeadAnalytics(leads = []) {
     const rows = Array.isArray(leads) ? leads : [];
-    const statusKeys = ['not contacted yet', 'not available', 'negotiation', 'lost', 'qualified'];
+    const statusKeys = ['not contacted yet', 'not available', 'negotiations', 'lost', 'qualified'];
     const statusBreakdown = Object.fromEntries(statusKeys.map(key => [key, 0]));
     const currencyTotals = new Set();
     let pipelineValue = 0;
@@ -925,7 +927,7 @@ const Leads = {
       total,
       newCount: statusBreakdown['not contacted yet'] || 0,
       notAvailableCount: statusBreakdown['not available'] || 0,
-      negotiationCount: statusBreakdown.negotiation || 0,
+      negotiationCount: statusBreakdown.negotiations || 0,
       qualifiedCount: statusBreakdown.qualified || 0,
       proposalSentCount: 0,
       wonCount,
@@ -976,7 +978,7 @@ const Leads = {
       const statuses = [
         ['Not Contacted Yet', 'not contacted yet'],
         ['Not Available', 'not available'],
-        ['Negotiation', 'negotiation'],
+        ['Negotiations', 'negotiations'],
         ['Lost', 'lost'],
         ['Qualified', 'qualified']
       ];

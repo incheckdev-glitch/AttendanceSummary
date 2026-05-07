@@ -602,10 +602,16 @@ const Deals = {
       a.localeCompare(b)
     );
   },
+  isRemovedDealUiStatusValue(value) {
+    return ['proposal needed', 'agreement needed'].includes(this.normalizeText(value));
+  },
+  visibleDealUiValues(values = []) {
+    return (Array.isArray(values) ? values : []).filter(value => !this.isRemovedDealUiStatusValue(value));
+  },
   syncDealFormDropdowns(selected = {}) {
     const assign = (el, options = [], selectedValue = '') => {
       if (!el) return;
-      const values = this.uniqueSorted(options);
+      const values = this.uniqueSorted(this.visibleDealUiValues(options));
       const finalOptions = ['', ...values];
       el.innerHTML = finalOptions
         .map(value => `<option value="${U.escapeAttr(value)}">${U.escapeHtml(value || '—')}</option>`)
@@ -614,7 +620,7 @@ const Deals = {
         el.value = selectedValue;
         return;
       }
-      if (selectedValue) {
+      if (selectedValue && !this.isRemovedDealUiStatusValue(selectedValue)) {
         el.innerHTML += `<option value="${U.escapeAttr(selectedValue)}">${U.escapeHtml(selectedValue)}</option>`;
         el.value = selectedValue;
       }
@@ -946,9 +952,10 @@ const Deals = {
   renderFilters() {
     const assign = (el, values = [], selected = 'All') => {
       if (!el) return;
-      const options = ['All', ...this.uniqueSorted(values)];
+      const options = ['All', ...this.uniqueSorted(this.visibleDealUiValues(values))];
       el.innerHTML = options.map(option => `<option>${U.escapeHtml(option)}</option>`).join('');
       if (options.includes(selected)) el.value = selected;
+      else if (this.isRemovedDealUiStatusValue(selected)) el.value = 'All';
     };
 
     assign(E.dealsStageFilter, this.state.rows.map(row => row.stage), this.state.stage);
