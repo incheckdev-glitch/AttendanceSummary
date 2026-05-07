@@ -1599,7 +1599,7 @@
     assign('city', source.city);
     assign('address', source.address);
     assign('tax_number', source.tax_number ?? source.taxNumber);
-    assign('company_status', source.company_status ?? source.companyStatus ?? 'Prospect');
+    assign('company_status', source.company_status ?? source.companyStatus ?? source.status ?? 'Prospect');
     assign('notes', source.notes);
     assign('created_by', source.created_by ?? source.createdBy);
     assign('created_by_email', source.created_by_email ?? source.createdByEmail);

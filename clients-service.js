@@ -483,7 +483,9 @@ const ClientsService = {
     const payload = this.sanitizeClientPayload(input, { includeCreatedBy: true });
     const { data, error } = await db.from('clients').insert(payload).select('*').single();
     if (error) throw this.friendlyError('Unable to create client', error);
-    return this.mapDbClientToUi(data);
+    const mapped = this.mapDbClientToUi(data);
+    this.refreshCompanyLifecycleStatus(mapped);
+    return mapped;
   },
   async updateClient(clientUuid, updates = {}) {
     const id = String(clientUuid || '').trim();
@@ -498,7 +500,19 @@ const ClientsService = {
       }
       throw this.friendlyError('Unable to update client', error);
     }
-    return this.mapDbClientToUi(data);
+    const mapped = this.mapDbClientToUi(data);
+    this.refreshCompanyLifecycleStatus(mapped);
+    return mapped;
+  },
+  refreshCompanyLifecycleStatus(client = {}) {
+    const status = String(client?.status || client?.account_status || '').trim().toLowerCase();
+    if (status && !status.includes('active') && !status.includes('live')) return;
+    const companyName = String(client?.company_name || client?.customer_legal_name || client?.client_name || '').trim();
+    if (!companyName) return;
+    window.Companies?.refreshCompanyLifecycleStatusByName?.(companyName, { stage: 'Active Client' }).catch(error => {
+      console.error('[clients] company lifecycle refresh failed', error);
+      UI?.toast?.('Client saved, but company lifecycle status could not be refreshed');
+    });
   },
   async deleteClient(clientUuid) {
     const id = String(clientUuid || '').trim();

@@ -270,6 +270,7 @@ const Leads = {
     console.log('[leads] create payload', payload);
     const data = await Api.requestWithSession('leads', 'create', payload, { requireAuth: true });
     console.log('[leads] saved row', data);
+    this.refreshCompanyLifecycleStatus(data || payload, 'Lead');
     await Api.safeSendBusinessPwaPush({
       resource: 'leads',
       action: 'lead_created',
@@ -293,6 +294,7 @@ const Leads = {
       updates: payload
     }, { requireAuth: true });
     console.log('[leads] saved row', data);
+    this.refreshCompanyLifecycleStatus(data || payload, 'Lead');
     await Api.safeSendBusinessPwaPush({
       resource: 'leads',
       action: 'lead_updated',
@@ -303,6 +305,15 @@ const Leads = {
       url: leadId ? '/#leads?id=' + encodeURIComponent(leadId) : '/#leads'
     });
     return data;
+  },
+
+  refreshCompanyLifecycleStatus(row = {}, stage = 'Lead') {
+    const companyId = String(row?.company_id || row?.companyId || '').trim();
+    if (!companyId) return;
+    window.Companies?.refreshCompanyLifecycleStatusByBusinessId?.(companyId, { stage }).catch(error => {
+      console.error('[leads] company lifecycle refresh failed', error);
+      UI?.toast?.('Lead saved, but company lifecycle status could not be refreshed');
+    });
   },
   async deleteLead(leadId) {
     const { error } = await this.getClient().from('leads').delete().eq('id', leadId);

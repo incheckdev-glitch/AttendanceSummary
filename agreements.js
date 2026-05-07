@@ -1282,6 +1282,16 @@ const Agreements = {
         : this.toNumberSafe(existing.total_due) + this.toNumberSafe(signedClient.total_due)
     };
   },
+
+  refreshCompanyLifecycleStatus(row = {}, stageOverride = '') {
+    const companyId = String(row?.company_id || row?.companyId || '').trim();
+    if (!companyId) return;
+    const stage = stageOverride || (this.hasSignedSignal(row) ? 'Signed' : 'Agreement');
+    window.Companies?.refreshCompanyLifecycleStatusByBusinessId?.(companyId, { stage }).catch(error => {
+      console.error('[agreements] company lifecycle refresh failed', error);
+      UI?.toast?.('Agreement saved, but company lifecycle status could not be refreshed');
+    });
+  },
   async syncSignedAgreementToClient(agreement = {}, agreementId = '') {
     if (!this.isSignedStatus(agreement.status)) return;
     const signedClient = this.buildClientFromAgreement(agreement, agreementId);
@@ -1772,6 +1782,7 @@ const Agreements = {
         : await this.createAgreement(agreement, preparedItems);
       const persistedAgreement = this.extractAgreementAndItems(saveResponse, id).agreement;
       const persistedAgreementUuid = String(persistedAgreement?.id || id || '').trim();
+      this.refreshCompanyLifecycleStatus({ ...agreement, ...persistedAgreement });
       this.setCachedDetail(persistedAgreementUuid, persistedAgreement, preparedItems);
       try {
         await this.syncSignedAgreementToClient({ ...agreement, ...persistedAgreement }, String(persistedAgreement?.id || persistedAgreement?.agreement_id || '').trim());
@@ -1783,6 +1794,7 @@ const Agreements = {
           { ...agreement, ...persistedAgreement },
           String(persistedAgreement?.id || '').trim()
         );
+        if (this.hasSignedSignal({ ...agreement, ...persistedAgreement })) this.refreshCompanyLifecycleStatus({ ...agreement, ...persistedAgreement }, 'Onboarding');
       } catch (operationsSyncError) {
         UI.toast(`Agreement saved, but operations onboarding sync failed: ${operationsSyncError?.message || 'Unknown error'}`);
       }
