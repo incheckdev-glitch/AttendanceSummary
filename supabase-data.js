@@ -184,11 +184,13 @@
     'lead_id',
     'full_name',
     'company_id',
+    'company_uuid',
     'company_name',
     'customer_name',
     'customer_legal_name',
     'customer_address',
     'contact_id',
+    'contact_uuid',
     'contact_name',
     'contact_email',
     'contact_phone',
@@ -207,8 +209,12 @@
     'agreement_needed',
     'status',
     'assigned_to',
+    'owner_id',
     'notes',
     'converted_to_deal_id',
+    'converted_deal_uuid',
+    'converted_by',
+    'last_updated_by',
     'created_by',
     'updated_by'
   ]);
@@ -440,7 +446,18 @@
     receipt_items: new Set(['receipt_id', 'invoice_item_id']),
     operations_onboarding: new Set(['agreement_id', 'client_id', 'created_by', 'updated_by']),
     technical_admin_requests: new Set(['agreement_id', 'onboarding_id', 'client_id', 'requested_by', 'updated_by']),
-    notifications: new Set(['recipient_user_id', 'actor_user_id'])
+    notifications: new Set(['recipient_user_id', 'actor_user_id']),
+    leads: new Set([
+      'company_uuid',
+      'contact_uuid',
+      'assigned_to',
+      'owner_id',
+      'created_by',
+      'updated_by',
+      'converted_deal_uuid',
+      'converted_by',
+      'last_updated_by'
+    ])
   };
 
   function isBlankText(value) {
@@ -503,7 +520,10 @@
       if (value === undefined) return;
 
       if (shouldTreatColumnAsUuid(table, column)) {
-        if (isBlankText(value)) return;
+        if (isBlankText(value)) {
+          cleaned[column] = null;
+          return;
+        }
         const normalized = String(value || '').trim();
         if (!isUuid(normalized)) {
           console.warn('[supabase uuid sanitizer] dropped non-UUID value before save', { table, column, value: normalized });
@@ -1384,6 +1404,19 @@
     return normalized;
   }
 
+  function emptyStringToNull(value) {
+    if (value === undefined) return undefined;
+    if (value === null) return null;
+    if (typeof value === 'string' && value.trim() === '') return null;
+    return value;
+  }
+
+  function cleanUuidValue(value) {
+    const cleaned = emptyStringToNull(value);
+    if (cleaned === undefined || cleaned === null) return cleaned;
+    return String(cleaned).trim();
+  }
+
   function toDbBoolean(value, fallback = false) {
     if (value === undefined || value === null || value === '') return fallback;
     if (typeof value === 'boolean') return value;
@@ -1505,11 +1538,13 @@
     const mapped = {
       lead_id: toTextOrEmpty(['lead_id', 'leadId']),
       company_id: toTextOrEmpty(['company_id', 'companyId']),
+      company_uuid: cleanUuidValue(firstDefined(record, ['company_uuid', 'companyUuid'])),
       company_name: toTextOrEmpty(['company_name', 'companyName']),
       customer_name: toTextOrEmpty(['customer_name', 'customerName']),
       customer_legal_name: toTextOrEmpty(['customer_legal_name', 'customerLegalName']),
       customer_address: toTextOrEmpty(['customer_address', 'customerAddress']),
       contact_id: toTextOrEmpty(['contact_id', 'contactId']),
+      contact_uuid: cleanUuidValue(firstDefined(record, ['contact_uuid', 'contactUuid'])),
       contact_name: contactName,
       contact_email: contactEmail,
       contact_phone: contactPhone,
@@ -1523,7 +1558,8 @@
       priority: toTextOrEmpty(['priority']),
       estimated_value: toNumberOrNull(['estimated_value', 'estimatedValue']),
       currency: toTextOrEmpty(['currency']),
-      assigned_to: toTextOrEmpty(['assigned_to', 'assignedTo']),
+      assigned_to: cleanUuidValue(firstDefined(record, ['assigned_to', 'assignedTo'])),
+      owner_id: cleanUuidValue(firstDefined(record, ['owner_id', 'ownerId'])),
       next_follow_up: toDateOrNull(['next_follow_up', 'next_follow_up_at', 'nextFollowUpAt', 'nextFollowUp', 'next_followup_date', 'nextFollowupDate', 'next_follow_up_date', 'nextFollowUpDate']),
       next_follow_up_at: toDateOrNull(['next_follow_up_at', 'nextFollowUpAt', 'next_follow_up_date', 'nextFollowUpDate', 'next_follow_up', 'nextFollowUp', 'next_followup_date', 'nextFollowupDate']),
       last_contact: toDateOrNull(['last_contact', 'lastContact', 'last_contact_date', 'lastContactDate']),
@@ -1531,8 +1567,11 @@
       agreement_needed: toBooleanOrNull(['agreement_needed', 'agreementNeeded']),
       notes: toTextOrEmpty(['notes']),
       converted_to_deal_id: toTextOrEmpty(['converted_to_deal_id', 'convertedDealId', 'deal_id', 'dealId']),
-      created_by: includeCreatedBy ? (firstDefined(record, ['created_by', 'createdBy']) || userId || undefined) : undefined,
-      updated_by: firstDefined(record, ['updated_by', 'updatedBy']) || userId || undefined
+      converted_deal_uuid: cleanUuidValue(firstDefined(record, ['converted_deal_uuid', 'convertedDealUuid'])),
+      converted_by: cleanUuidValue(firstDefined(record, ['converted_by', 'convertedBy'])),
+      created_by: includeCreatedBy ? cleanUuidValue(firstDefined(record, ['created_by', 'createdBy']) || userId) : undefined,
+      updated_by: cleanUuidValue(firstDefined(record, ['updated_by', 'updatedBy']) || userId),
+      last_updated_by: cleanUuidValue(firstDefined(record, ['last_updated_by', 'lastUpdatedBy']))
     };
 
     if (!String(mapped.next_follow_up_at || mapped.next_follow_up || '').trim()) {

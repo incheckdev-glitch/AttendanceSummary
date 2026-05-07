@@ -46,12 +46,23 @@ const Leads = {
     }
     return '';
   },
+  emptyStringToNull(value) {
+    if (value === undefined) return undefined;
+    if (value === null) return null;
+    if (typeof value === 'string' && value.trim() === '') return null;
+    return value;
+  },
+  cleanUuidValue(value) {
+    const cleaned = this.emptyStringToNull(value);
+    if (cleaned === undefined || cleaned === null) return cleaned;
+    return String(cleaned).trim();
+  },
   normalizeCompany(raw = {}) {
-    return { ...raw, company_id: String(this.pick(raw, 'company_id', 'companyId')).trim(), company_name: String(this.pick(raw, 'company_name', 'companyName')).trim(), legal_name: String(this.pick(raw, 'legal_name', 'legalName')).trim(), company_type: String(this.pick(raw, 'company_type', 'companyType')).trim(), industry: String(this.pick(raw, 'industry')).trim(), website: String(this.pick(raw, 'website')).trim(), main_email: String(this.pick(raw, 'main_email', 'mainEmail')).trim(), main_phone: String(this.pick(raw, 'main_phone', 'mainPhone')).trim(), country: String(this.pick(raw, 'country')).trim(), city: String(this.pick(raw, 'city')).trim(), address: String(this.pick(raw, 'address')).trim(), tax_number: String(this.pick(raw, 'tax_number', 'taxNumber')).trim(), company_status: String(this.pick(raw, 'company_status', 'companyStatus')).trim(), source: String(this.pick(raw, 'source')).trim(), owner_name: String(this.pick(raw, 'owner_name', 'ownerName')).trim(), owner_email: String(this.pick(raw, 'owner_email', 'ownerEmail')).trim(), notes: String(this.pick(raw, 'notes')).trim() };
+    return { ...raw, company_uuid: this.cleanUuidValue(raw.company_uuid ?? raw.companyUuid ?? raw.id), company_id: String(this.pick(raw, 'company_id', 'companyId')).trim(), company_name: String(this.pick(raw, 'company_name', 'companyName')).trim(), legal_name: String(this.pick(raw, 'legal_name', 'legalName')).trim(), company_type: String(this.pick(raw, 'company_type', 'companyType')).trim(), industry: String(this.pick(raw, 'industry')).trim(), website: String(this.pick(raw, 'website')).trim(), main_email: String(this.pick(raw, 'main_email', 'mainEmail')).trim(), main_phone: String(this.pick(raw, 'main_phone', 'mainPhone')).trim(), country: String(this.pick(raw, 'country')).trim(), city: String(this.pick(raw, 'city')).trim(), address: String(this.pick(raw, 'address')).trim(), tax_number: String(this.pick(raw, 'tax_number', 'taxNumber')).trim(), company_status: String(this.pick(raw, 'company_status', 'companyStatus')).trim(), source: String(this.pick(raw, 'source')).trim(), owner_name: String(this.pick(raw, 'owner_name', 'ownerName')).trim(), owner_email: String(this.pick(raw, 'owner_email', 'ownerEmail')).trim(), notes: String(this.pick(raw, 'notes')).trim() };
   },
   normalizeContact(raw = {}) {
     const fullName = U.buildContactDisplayName(raw);
-    return { ...raw, contact_id: String(this.pick(raw, 'contact_id', 'contactId')).trim(), company_id: String(this.pick(raw, 'company_id', 'companyId')).trim(), company_name: String(this.pick(raw, 'company_name', 'companyName')).trim(), first_name: String(this.pick(raw, 'first_name', 'firstName')).trim(), last_name: String(this.pick(raw, 'last_name', 'lastName')).trim(), full_name: fullName, job_title: String(this.pick(raw, 'job_title', 'jobTitle')).trim(), department: String(this.pick(raw, 'department')).trim(), email: String(this.pick(raw, 'email')).trim(), phone: String(this.pick(raw, 'phone')).trim(), mobile: String(this.pick(raw, 'mobile')).trim(), decision_role: String(this.pick(raw, 'decision_role', 'decisionRole')).trim(), is_primary_contact: Boolean(raw?.is_primary_contact ?? raw?.isPrimaryContact), contact_status: String(this.pick(raw, 'contact_status', 'contactStatus')).trim(), notes: String(this.pick(raw, 'notes')).trim() };
+    return { ...raw, contact_uuid: this.cleanUuidValue(raw.contact_uuid ?? raw.contactUuid ?? raw.id), company_uuid: this.cleanUuidValue(raw.company_uuid ?? raw.companyUuid), contact_id: String(this.pick(raw, 'contact_id', 'contactId')).trim(), company_id: String(this.pick(raw, 'company_id', 'companyId')).trim(), company_name: String(this.pick(raw, 'company_name', 'companyName')).trim(), first_name: String(this.pick(raw, 'first_name', 'firstName')).trim(), last_name: String(this.pick(raw, 'last_name', 'lastName')).trim(), full_name: fullName, job_title: String(this.pick(raw, 'job_title', 'jobTitle')).trim(), department: String(this.pick(raw, 'department')).trim(), email: String(this.pick(raw, 'email')).trim(), phone: String(this.pick(raw, 'phone')).trim(), mobile: String(this.pick(raw, 'mobile')).trim(), decision_role: String(this.pick(raw, 'decision_role', 'decisionRole')).trim(), is_primary_contact: Boolean(raw?.is_primary_contact ?? raw?.isPrimaryContact), contact_status: String(this.pick(raw, 'contact_status', 'contactStatus')).trim(), notes: String(this.pick(raw, 'notes')).trim() };
   },
   normalizeBool(value) {
     const normalized = String(value ?? '')
@@ -148,7 +159,9 @@ const Leads = {
       customer_legal_name: String(raw.customer_legal_name || raw.customerLegalName || '').trim(),
       customer_address: String(raw.customer_address || raw.customerAddress || '').trim(),
       company_id: String(raw.company_id || raw.companyId || '').trim(),
+      company_uuid: this.cleanUuidValue(raw.company_uuid ?? raw.companyUuid),
       contact_id: String(raw.contact_id || raw.contactId || '').trim(),
+      contact_uuid: this.cleanUuidValue(raw.contact_uuid ?? raw.contactUuid),
       contact_name: String(raw.contact_name || raw.contactName || '').trim(),
       contact_email: String(raw.contact_email || raw.contactEmail || '').trim(),
       contact_phone: String(raw.contact_phone || raw.contactPhone || '').trim(),
@@ -161,7 +174,7 @@ const Leads = {
       priority: String(raw.priority || '').trim(),
       estimated_value: raw.estimated_value ?? raw.estimatedValue ?? '',
       currency: String(raw.currency || '').trim(),
-      assigned_to: String(raw.assigned_to || raw.assignedTo || '').trim(),
+      assigned_to: this.cleanUuidValue(raw.assigned_to ?? raw.assignedTo) ?? '',
       next_follow_up: this.pickNextFollowUpValue(raw),
       next_follow_up_at: this.pickNextFollowUpValue(raw),
       last_contact:
@@ -173,7 +186,11 @@ const Leads = {
       notes: String(raw.notes || '').trim(),
       updated_at: raw.updated_at || raw.updatedAt || '',
       converted_at: raw.converted_at || raw.convertedAt || '',
-      deal_id: String(raw.deal_id || raw.converted_to_deal_id || raw.deal_id_ref || raw.converted_deal_id || '').trim()
+      deal_id: String(raw.deal_id || raw.converted_to_deal_id || raw.deal_id_ref || raw.converted_deal_id || '').trim(),
+      converted_deal_uuid: this.cleanUuidValue(raw.converted_deal_uuid ?? raw.convertedDealUuid),
+      converted_by: this.cleanUuidValue(raw.converted_by ?? raw.convertedBy),
+      owner_id: this.cleanUuidValue(raw.owner_id ?? raw.ownerId),
+      last_updated_by: this.cleanUuidValue(raw.last_updated_by ?? raw.lastUpdatedBy)
     };
   },
   generateLeadId() {
@@ -191,15 +208,17 @@ const Leads = {
       estimatedValueRaw === '' || estimatedValueRaw === null || estimatedValueRaw === undefined
         ? null
         : Number(estimatedValueRaw);
-    return {
+    return this.cleanLeadUuidPayload({
       ...(includeLeadId ? { lead_id: leadIdValue || null } : {}),
       full_name: String(lead.full_name || ''),
       company_name: String(lead.company_name || ''),
+      company_uuid: this.cleanUuidValue(lead.company_uuid ?? lead.companyUuid),
       customer_name: String(lead.customer_name || ''),
       customer_legal_name: String(lead.customer_legal_name || ''),
       customer_address: String(lead.customer_address || ''),
       company_id: String(lead.company_id || ''),
       contact_id: String(lead.contact_id || ''),
+      contact_uuid: this.cleanUuidValue(lead.contact_uuid ?? lead.contactUuid),
       contact_name: String(lead.contact_name || ''),
       contact_email: String(lead.contact_email || ''),
       contact_phone: String(lead.contact_phone || ''),
@@ -212,13 +231,48 @@ const Leads = {
       priority: String(lead.priority || ''),
       estimated_value: Number.isFinite(estimatedValueParsed) ? estimatedValueParsed : null,
       currency: String(lead.currency || ''),
-      assigned_to: String(lead.assigned_to || ''),
+      assigned_to: this.cleanUuidValue(lead.assigned_to ?? lead.assignedTo),
+      owner_id: this.cleanUuidValue(lead.owner_id ?? lead.ownerId),
       next_follow_up: this.pickNextFollowUpValue(lead) || null,
       next_follow_up_at: this.pickNextFollowUpValue(lead) || null,
       last_contact: lead.last_contact || null,
       notes: String(lead.notes || ''),
-      converted_to_deal_id: lead.converted_to_deal_id || lead.deal_id || null
-    };
+      converted_to_deal_id: lead.converted_to_deal_id || lead.deal_id || null,
+      converted_deal_uuid: this.cleanUuidValue(lead.converted_deal_uuid ?? lead.convertedDealUuid),
+      converted_by: this.cleanUuidValue(lead.converted_by ?? lead.convertedBy),
+      last_updated_by: this.cleanUuidValue(lead.last_updated_by ?? lead.lastUpdatedBy)
+    });
+  },
+  cleanLeadUuidPayload(payload = {}) {
+    const cleaned = { ...(payload && typeof payload === 'object' ? payload : {}) };
+    const uuidFields = [
+      'company_uuid',
+      'contact_uuid',
+      'assigned_to',
+      'owner_id',
+      'created_by',
+      'updated_by',
+      'converted_deal_uuid',
+      'converted_by',
+      'last_updated_by'
+    ];
+    uuidFields.forEach(field => {
+      if (Object.prototype.hasOwnProperty.call(cleaned, field)) {
+        cleaned[field] = this.cleanUuidValue(cleaned[field]);
+      }
+    });
+    Object.keys(cleaned).forEach(key => {
+      if (cleaned[key] === undefined) delete cleaned[key];
+    });
+    return cleaned;
+  },
+  debugLeadPayload(label, payload) {
+    try {
+      const host = String(window.location.hostname || '').toLowerCase();
+      if (window.RUNTIME_CONFIG?.DEBUG_API || host === 'localhost' || host === '127.0.0.1') {
+        console.debug(label, payload);
+      }
+    } catch {}
   },
   extractRows(response) {
     const candidates = [
@@ -326,12 +380,12 @@ const Leads = {
   },
   async createLead(lead) {
     const userId = await this.getCurrentUserId();
-    const payload = {
+    const payload = this.cleanLeadUuidPayload({
       ...this.backendLead(lead),
       created_by: userId || undefined,
       updated_by: userId || undefined
-    };
-    console.log('[leads] create payload', payload);
+    });
+    this.debugLeadPayload('[leads] create payload', payload);
     const data = await Api.requestWithSession('leads', 'create', payload, { requireAuth: true });
     console.log('[leads] saved row', data);
     this.refreshCompanyLifecycleStatus(data || payload, 'Lead');
@@ -348,11 +402,11 @@ const Leads = {
   },
   async updateLead(leadId, updates) {
     const userId = await this.getCurrentUserId();
-    const payload = {
+    const payload = this.cleanLeadUuidPayload({
       ...this.backendLead(updates),
       updated_by: userId || undefined
-    };
-    console.log('[leads] update payload', payload);
+    });
+    this.debugLeadPayload('[leads] update payload', payload);
     const data = await Api.requestWithSession('leads', 'update', {
       id: leadId,
       updates: payload
@@ -1228,6 +1282,8 @@ const Leads = {
     const selectedContact = this.state.selectedContact || {};
     const companyId = String(selectedCompany.company_id || E.leadFormCompanyId?.value || '').trim();
     const contactId = String(selectedContact.contact_id || E.leadFormContactId?.value || '').trim();
+    const companyUuid = this.cleanUuidValue(selectedCompany.company_uuid ?? selectedCompany.companyUuid ?? selectedCompany.id);
+    const contactUuid = this.cleanUuidValue(selectedContact.contact_uuid ?? selectedContact.contactUuid ?? selectedContact.id);
     const contactName = String(U.buildContactDisplayName(selectedContact) || '').trim();
     const customerName = U.getCustomerLegalName(selectedCompany, {});
     const contactEmail = String(selectedContact.email || '').trim();
@@ -1238,11 +1294,13 @@ const Leads = {
       lead_id: String(E.leadFormLeadId?.value || '').trim() === 'Auto-generated' ? '' : String(E.leadFormLeadId?.value || '').trim(),
       full_name: contactName,
       company_id: companyId,
+      company_uuid: companyUuid,
       company_name: String(selectedCompany.company_name || '').trim(),
       customer_name: customerName,
       customer_legal_name: customerName,
       customer_address: String(selectedCompany.address || '').trim(),
       contact_id: contactId,
+      contact_uuid: contactUuid,
       contact_name: contactName,
       contact_email: contactEmail,
       contact_phone: contactPhone,
@@ -1255,7 +1313,7 @@ const Leads = {
       priority: String(E.leadFormPriority?.value || '').trim(),
       estimated_value: estimatedValueRaw === '' ? '' : Number(estimatedValueRaw),
       currency: String(E.leadFormCurrency?.value || '').trim(),
-      assigned_to: String(E.leadFormAssignedTo?.value || '').trim(),
+      assigned_to: this.cleanUuidValue(E.leadFormAssignedTo?.value),
       next_follow_up: nextFollowUpIso,
       next_follow_up_at: nextFollowUpIso,
       last_contact: String(E.leadFormLastContactDate?.value || '').trim(),
