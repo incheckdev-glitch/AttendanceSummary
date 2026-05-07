@@ -82,8 +82,11 @@ const Agreements = {
 
   providerIdentityDefaults: {
     legalName: 'InCheck 360 Holding BV',
-    name: 'InCheck 360',
+    name: 'InCheck 360 Holding BV',
     address: 'Pyrmontstraat 5, 7513 BN, Enschede, The Netherlands',
+    contactName: 'InCheck 360 Holding BV',
+    contactMobile: '+31 97 010280855',
+    contactEmail: 'Info@incheck360.nl',
     primarySignatoryName: 'Simon Moujaly',
     primarySignatoryTitle: 'CFO',
     secondarySignatoryName: 'Hanna Khattar',
@@ -330,6 +333,9 @@ const Agreements = {
     normalized.provider_legal_name = this.providerIdentityDefaults.legalName;
     normalized.provider_name = this.providerIdentityDefaults.name;
     normalized.provider_address = this.providerIdentityDefaults.address;
+    normalized.provider_contact_name = this.providerIdentityDefaults.contactName;
+    normalized.provider_contact_mobile = this.providerIdentityDefaults.contactMobile;
+    normalized.provider_contact_email = this.providerIdentityDefaults.contactEmail;
     normalized.customer_signatory_name = String(normalized.customer_signatory_name || '').trim()
       || String(normalized.customer_contact_name || normalized.contact_name || '').trim();
     normalized.customer_signatory_title = String(normalized.customer_signatory_title || '').trim()
@@ -531,15 +537,15 @@ const Agreements = {
       customer_name: String(source.customer_name || source.customerName || '').trim(),
       customer_legal_name: String(source.customer_legal_name || source.customerLegalName || source.customer_name || '').trim(),
       customer_address: String(source.customer_address || source.customerAddress || '').trim(),
-      customer_contact_name: String(source.customer_contact_name || source.customerContactName || '').trim(),
+      customer_contact_name: this.buildContactPersonName(source),
       customer_contact_mobile: String(source.customer_contact_mobile || source.customerContactMobile || '').trim(),
       customer_contact_email: String(source.customer_contact_email || source.customerContactEmail || '').trim(),
       provider_name: String(source.provider_name || source.providerName || '').trim(),
       provider_legal_name: String(source.provider_legal_name || source.providerLegalName || '').trim(),
       provider_address: String(source.provider_address || source.providerAddress || '').trim(),
-      provider_contact_name: String(source.provider_contact_name || source.providerContactName || '').trim(),
-      provider_contact_mobile: String(source.provider_contact_mobile || source.providerContactMobile || '').trim(),
-      provider_contact_email: String(source.provider_contact_email || source.providerContactEmail || '').trim(),
+      provider_contact_name: this.providerIdentityDefaults.contactName,
+      provider_contact_mobile: this.providerIdentityDefaults.contactMobile,
+      provider_contact_email: this.providerIdentityDefaults.contactEmail,
       terms_conditions: String(source.terms_conditions || source.termsConditions || '').trim(),
       customer_signatory_name: String(source.customer_signatory_name || source.customerSignatoryName || '').trim(),
       customer_signatory_title: String(source.customer_signatory_title || source.customerSignatoryTitle || '').trim(),
@@ -574,7 +580,7 @@ const Agreements = {
   buildContactPersonName(contact = {}) {
     const first = String(contact.first_name || contact.firstName || '').trim();
     const last = String(contact.last_name || contact.lastName || '').trim();
-    return [first, last].filter(Boolean).join(' ').trim() || String(contact.contact_name || contact.contactName || contact.full_name || contact.fullName || '').trim();
+    return [first, last].filter(Boolean).join(' ').trim() || String(contact.full_name || contact.fullName || contact.name || contact.contact_name || contact.contactName || contact.email || '').trim();
   },
   getContactPosition(contact = {}) {
     return String(contact.job_title || contact.jobTitle || contact.position || contact.title || '').trim();
@@ -1711,9 +1717,9 @@ const Agreements = {
     agreement.provider_legal_name = this.providerIdentityDefaults.legalName;
     agreement.provider_name = this.providerIdentityDefaults.name;
     agreement.provider_address = this.providerIdentityDefaults.address;
-    agreement.provider_contact_name = String(provider.name || agreement.provider_contact_name || '').trim();
-    agreement.provider_contact_email = String(provider.email || agreement.provider_contact_email || '').trim();
-    agreement.provider_contact_mobile = String(provider.mobile || agreement.provider_contact_mobile || '').trim();
+    agreement.provider_contact_name = this.providerIdentityDefaults.contactName;
+    agreement.provider_contact_email = this.providerIdentityDefaults.contactEmail;
+    agreement.provider_contact_mobile = this.providerIdentityDefaults.contactMobile;
     agreement.provider_primary_signatory_name = String(agreement.provider_primary_signatory_name || agreement.provider_signatory_name_primary || '').trim() || this.providerIdentityDefaults.primarySignatoryName;
     agreement.provider_primary_signatory_title = String(agreement.provider_primary_signatory_title || agreement.provider_signatory_title_primary || '').trim() || this.providerIdentityDefaults.primarySignatoryTitle;
     agreement.provider_secondary_signatory_name = String(agreement.provider_secondary_signatory_name || agreement.provider_signatory_name_secondary || '').trim() || this.providerIdentityDefaults.secondarySignatoryName;

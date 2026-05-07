@@ -278,7 +278,7 @@ const WorkflowEngine = {
     return ['sales_executive', 'head_of_sales', 'admin', 'dev'].includes(normalized);
   },
   isProposalWorkflowResource(resource = '') {
-    return String(resource || '').trim().toLowerCase() === 'proposals';
+    return ['proposals', 'proposal'].includes(String(resource || '').trim().toLowerCase());
   },
   getProposalWorkflowRule(currentStatus = '', targetStatus = '') {
     const rules = Array.isArray(window.Workflow?.state?.rules) ? window.Workflow.state.rules : [];
@@ -286,7 +286,7 @@ const WorkflowEngine = {
     const target = normalizeWorkflowStatus(targetStatus);
     return rules.find(rule => {
       if (rule?.is_active === false) return false;
-      if (String(rule?.resource || '').trim().toLowerCase() !== 'proposals') return false;
+      if (!['proposals', 'proposal'].includes(String(rule?.resource || '').trim().toLowerCase())) return false;
       const ruleCurrent = normalizeWorkflowStatus(rule?.current_status);
       const ruleNext = normalizeWorkflowStatus(rule?.next_status);
       if (ruleCurrent && current && ruleCurrent !== current) return false;
@@ -612,7 +612,7 @@ const WorkflowEngine = {
     try {
       if (this.isProposalWorkflowResource(resource)) {
         const proposalWorkflow = this.buildProposalDiscountDecision(record, requestedChanges);
-        const { decision, proposal, currentStatus, targetStatus } = proposalWorkflow;
+        const { decision, proposal, currentStatus, targetStatus, workflowRule } = proposalWorkflow;
         const isDraftToSent = currentStatus === 'draft' && ['sent', 'send', 'submitted'].includes(targetStatus);
         if (isDraftToSent && !this.canRequestProposalDiscountWorkflow(Session?.role?.() || '')) {
           return {
@@ -632,7 +632,48 @@ const WorkflowEngine = {
             reason: decision.reason || 'Proposal discount is not allowed.'
           };
         }
-        if (decision.allowed === true && decision.requiresApproval !== true) {
+        const transitionRequiresApproval = isDraftToSent && this.toBool(workflowRule?.requires_approval);
+        if (decision.allowed === true && decision.requiresApproval !== true && transitionRequiresApproval) {
+          const recordId = String(requestedChanges?.id || requestedChanges?.proposal_uuid || record?.id || proposal?.id || '').trim();
+          const duplicate = await this.findPendingProposalDiscountApproval(recordId, targetStatus, decision.discount, decision.discounts);
+          if (duplicate) {
+            await this.updateProposalDiscountApprovalSnapshot(recordId, {
+              status: 'Pending Approval',
+              discount_approval_status: 'pending',
+              approval_required_reason: 'Approval is already pending for this transition.',
+              last_discount_approval_request_id: duplicate?.approval_id || duplicate?.id || duplicate?.workflow_approval_id || null
+            });
+            return {
+              allowed: false,
+              pendingApproval: true,
+              approvalCreated: true,
+              approvalId: duplicate?.approval_id || duplicate?.id || duplicate?.workflow_approval_id,
+              requestedDiscount: decision.discount,
+              categoryDiscounts: decision.discounts,
+              reason: 'This proposal is already pending approval.'
+            };
+          }
+          const approvalRoles = this.parseApprovalRoles(workflowRule);
+          const validationResult = {
+            allowed: false,
+            pendingApproval: true,
+            workflow_rule_id: workflowRule?.workflow_rule_id || workflowRule?.id || null,
+            approval_role: approvalRoles[0] || workflowRule?.approval_role || 'admin',
+            approval_roles: approvalRoles.length ? approvalRoles : [workflowRule?.approval_role || 'admin'],
+            reason: workflowRule?.reason || 'Approval is required before sending this proposal.'
+          };
+          const approvalResult = await this.createWorkflowApprovalFromDecision(resource, record, requestedChanges, validationResult, decision.discount);
+          if (approvalResult?.approvalCreated === true) {
+            await this.updateProposalDiscountApprovalSnapshot(recordId, {
+              status: 'Pending Approval',
+              discount_approval_status: 'pending',
+              approval_required_reason: validationResult.reason,
+              last_discount_approval_request_id: approvalResult.approvalId || null
+            });
+          }
+          return approvalResult;
+        }
+        if (decision.allowed === true && decision.requiresApproval !== true && !isDraftToSent) {
           return {
             allowed: true,
             pendingApproval: false,
@@ -667,6 +708,7 @@ const WorkflowEngine = {
           const duplicate = await this.findPendingProposalDiscountApproval(recordId, targetStatus, decision.discount, decision.discounts);
           if (duplicate) {
             await this.updateProposalDiscountApprovalSnapshot(recordId, {
+              status: 'Pending Approval',
               discount_approval_status: 'pending',
               approval_required_reason: 'Approval is already pending for this discount.',
               last_discount_approval_request_id: duplicate?.approval_id || duplicate?.id || duplicate?.workflow_approval_id || null
@@ -678,7 +720,7 @@ const WorkflowEngine = {
               approvalId: duplicate?.approval_id || duplicate?.id || duplicate?.workflow_approval_id,
               requestedDiscount: decision.discount,
               categoryDiscounts: decision.discounts,
-              reason: 'Approval is already pending for this discount.'
+              reason: 'This proposal is already pending approval.'
             };
           }
           const validationResult = {
@@ -694,6 +736,7 @@ const WorkflowEngine = {
           const approvalResult = await this.createWorkflowApprovalFromDecision(resource, record, requestedChanges, validationResult, decision.discount);
           if (approvalResult?.approvalCreated === true) {
             await this.updateProposalDiscountApprovalSnapshot(recordId, {
+              status: 'Pending Approval',
               discount_approval_status: 'pending',
               approval_required_reason: decision.reason,
               last_discount_approval_request_id: approvalResult.approvalId || null
@@ -1156,7 +1199,7 @@ const Workflow = {
   },
   resourceOptions: ['proposals', 'agreements', 'invoices', 'receipts'],
   resourceStatusOptions: {
-    proposals: ['Draft', 'Pending Approval', 'Sent', 'Viewed', 'Under Discussion', 'Accepted', 'Rejected', 'Expired'],
+    proposals: ['Draft', 'Pending Approval', 'Sent', 'Accepted', 'Rejected', 'Expired'],
     agreements: ['Draft', 'Sent', 'Under Review', 'Revision Required', 'Approved', 'Signed', 'Rejected', 'Expired', 'Cancelled'],
     invoices: ['Draft', 'Issued', 'Sent', 'Unpaid', 'Partially Paid', 'Paid', 'Overdue', 'Cancelled'],
     receipts: ['Issued', 'Partially Paid', 'Paid', 'Cancelled']
@@ -2324,7 +2367,10 @@ const Workflow = {
     const normalizedApproval = this.normalizePendingApproval(activeApproval || { approval_id: id });
     if (action === 'approve') await Api.approveWorkflowRequest({ approval_id: id, reviewer_comment });
     else await Api.rejectWorkflowRequest({ approval_id: id, reviewer_comment });
-    UI.toast(action === 'approve' ? 'Approval applied successfully.' : 'Approval rejected.');
+    const proposalApproval = String(normalizedApproval?.resource || '').trim().toLowerCase() === 'proposals';
+    UI.toast(proposalApproval
+      ? (action === 'approve' ? 'Proposal approved and sent.' : 'Proposal rejected and returned to draft.')
+      : (action === 'approve' ? 'Approval applied successfully.' : 'Approval rejected.'));
     if (closePreview) this.closeApprovalPreview();
     await this.loadAndRefresh(true);
     await this.refreshResourceAfterApproval(normalizedApproval);

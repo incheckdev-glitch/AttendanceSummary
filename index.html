@@ -1646,7 +1646,7 @@ Sample:
               <article class="card kpi deals-kpi-card" data-kpi-filter="total"><div class="label">Visible Proposals</div><div id="proposalsKpiTotal" class="value">0</div><div class="sub">Rows after filters</div></article>
               <article class="card kpi deals-kpi-card" data-kpi-filter="draft"><div class="label">Draft</div><div id="proposalsKpiDraft" class="value">0</div><div class="sub">Status matched as draft</div></article>
               <article class="card kpi deals-kpi-card" data-kpi-filter="sent"><div class="label">Sent</div><div id="proposalsKpiSent" class="value">0</div><div class="sub">Status matched as sent</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="approved"><div class="label">Approved</div><div id="proposalsKpiApproved" class="value">0</div><div class="sub">Status matched as approved</div></article>
+              <article class="card kpi deals-kpi-card" data-kpi-filter="approved"><div class="label">Accepted</div><div id="proposalsKpiApproved" class="value">0</div><div class="sub">Status matched as accepted</div></article>
               <article class="card kpi deals-kpi-card" data-kpi-filter="rejected"><div class="label">Rejected</div><div id="proposalsKpiRejected" class="value">0</div><div class="sub">Status matched as rejected</div></article>
               <article class="card kpi deals-kpi-card" data-kpi-filter="expired"><div class="label">Expired</div><div id="proposalsKpiExpired" class="value">0</div><div class="sub">Status matched as expired</div></article>
               <article class="card kpi deals-kpi-card" data-kpi-filter="unique-customers"><div class="label">Unique Customers</div><div id="proposalsKpiUniqueCustomers" class="value">0</div><div class="sub">Distinct customer_name</div></article>
@@ -3124,15 +3124,13 @@ Sample:
           </div>
           <div class="filter-row"><label class="muted" for="proposalFormDealId">Deal ID</label><input id="proposalFormDealId" class="input" type="text" /></div>
           <div class="filter-row"><label class="muted" for="proposalFormProposalDate">Proposal Date</label><input id="proposalFormProposalDate" class="input" type="date" /></div>
-          <div class="filter-row"><label class="muted" for="proposalFormValidUntil">Valid Until</label><input id="proposalFormValidUntil" class="input" type="date" /></div>
+          <div class="filter-row"><label class="muted" for="proposalFormValidUntil">Valid Until</label><input id="proposalFormValidUntil" class="input readonly-field" type="date" readonly aria-readonly="true" /><small class="muted">Auto-calculated as 14 days after proposal date.</small></div>
           <div class="filter-row">
             <label class="muted" for="proposalFormStatus">Status</label>
             <select id="proposalFormStatus" class="select">
               <option value="Draft">Draft</option>
-              <option value="Pending Approval">Pending Approval</option>
+              <option value="Pending Approval" disabled>Pending Approval</option>
               <option value="Sent">Sent</option>
-              <option value="Viewed">Viewed</option>
-              <option value="Under Discussion">Under Discussion</option>
               <option value="Accepted">Accepted</option>
               <option value="Rejected">Rejected</option>
               <option value="Expired">Expired</option>

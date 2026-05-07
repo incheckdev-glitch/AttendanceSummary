@@ -1,4 +1,10 @@
 const Proposals = {
+  providerContactDefaults: {
+    name: 'InCheck 360 Holding BV',
+    mobile: '+31 97 010280855',
+    email: 'Info@incheck360.nl'
+  },
+  finalStatusOptions: ['Draft', 'Pending Approval', 'Sent', 'Accepted', 'Rejected', 'Expired'],
   proposalFields: [
     'proposal_id',
     'ref_number',
@@ -425,17 +431,9 @@ const Proposals = {
           this.getProposalValue(proposal, 'contact_name', 'contactName', 'customer_contact_name', 'customerContactName'),
           this.getProposalValue(proposal, 'email', 'customer_contact_email', 'customerContactEmail'),
           this.getProposalValue(proposal, 'phone', 'customer_contact_mobile', 'customerContactMobile'),
-          this.getProposalValue(proposal, 'status'),
+          this.normalizeProposalStatus(this.getProposalValue(proposal, 'status')),
           this.formatDateMMDDYYYY(this.getProposalValue(proposal, 'proposal_date', 'proposalDate')),
-          this.formatDateMMDDYYYY(
-            this.getProposalValue(
-              proposal,
-              'proposal_valid_until',
-              'proposalValidUntil',
-              'valid_until',
-              'validUntil'
-            )
-          ),
+          this.formatDateMMDDYYYY(this.getAutoValidUntil(this.getProposalValue(proposal, 'proposal_date', 'proposalDate'))),
           subtotalLocations,
           subtotalOneTime,
           discountPercent,
@@ -493,13 +491,45 @@ const Proposals = {
   },
   normalizeContact(contact = {}) {
     const c = contact && typeof contact === 'object' ? contact : {};
-    return { contact_id:String(c.contact_id||c.contactId||'').trim(), company_id:String(c.company_id||c.companyId||'').trim(), first_name:String(c.first_name||c.firstName||'').trim(), last_name:String(c.last_name||c.lastName||'').trim(), job_title:String(c.job_title||c.jobTitle||'').trim(), department:String(c.department||'').trim(), email:String(c.email||'').trim(), phone:String(c.phone||'').trim(), mobile:String(c.mobile||'').trim(), decision_role:String(c.decision_role||c.decisionRole||'').trim(), contact_status:String(c.contact_status||c.contactStatus||'').trim() };
+    return { contact_id:String(c.contact_id||c.contactId||'').trim(), company_id:String(c.company_id||c.companyId||'').trim(), first_name:String(c.first_name||c.firstName||'').trim(), last_name:String(c.last_name||c.lastName||'').trim(), full_name:String(c.full_name||c.fullName||'').trim(), name:String(c.name||'').trim(), contact_name:String(c.contact_name||c.contactName||'').trim(), job_title:String(c.job_title||c.jobTitle||'').trim(), department:String(c.department||'').trim(), email:String(c.email||'').trim(), phone:String(c.phone||'').trim(), mobile:String(c.mobile||'').trim(), decision_role:String(c.decision_role||c.decisionRole||'').trim(), contact_status:String(c.contact_status||c.contactStatus||'').trim() };
   },
   buildContactDisplayName(contact = {}) {
     const first = String(contact.first_name || contact.firstName || '').trim();
     const last = String(contact.last_name || contact.lastName || '').trim();
     const name = [first, last].filter(Boolean).join(' ').trim();
-    return name || String(contact.contact_name || contact.contactName || contact.full_name || contact.fullName || '').trim();
+    return name || String(contact.full_name || contact.fullName || contact.name || contact.contact_name || contact.contactName || contact.email || '').trim();
+  },
+  normalizeProposalStatus(value = '') {
+    const status = String(value || '').trim();
+    if (!status) return '';
+    if (status.toLowerCase() === 'viewed') return 'Sent';
+    if (status.toLowerCase() === 'approved') return 'Accepted';
+    return status;
+  },
+  todayDateString() {
+    const date = new Date();
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  },
+  addDaysToDateString(value = '', days = 14) {
+    const source = String(value || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(source)) return '';
+    const [year, month, day] = source.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    date.setDate(date.getDate() + Number(days || 0));
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  },
+  getProposalDateOrToday(value = '') {
+    return String(value || '').trim() || this.todayDateString();
+  },
+  getAutoValidUntil(proposalDate = '') {
+    const date = this.getProposalDateOrToday(proposalDate);
+    return this.addDaysToDateString(date, 14);
+  },
+  syncValidUntilFromProposalDate() {
+    if (!E.proposalFormProposalDate || !E.proposalFormValidUntil) return;
+    const proposalDate = this.getProposalDateOrToday(E.proposalFormProposalDate.value);
+    E.proposalFormProposalDate.value = proposalDate;
+    E.proposalFormValidUntil.value = this.getAutoValidUntil(proposalDate);
   },
   getContactPosition(contact = {}) {
     return String(contact.job_title || contact.jobTitle || contact.position || contact.title || '').trim();
@@ -699,14 +729,16 @@ const Proposals = {
     const mapped = {
       ...target,
 
-      provider_contact_name: providerName,
-      providerContactName: providerName,
+      provider_contact_name: this.providerContactDefaults.name,
+      providerContactName: this.providerContactDefaults.name,
+      provider_name: this.providerContactDefaults.name,
+      provider_legal_name: this.providerContactDefaults.name,
 
-      provider_contact_email: providerEmail,
-      providerContactEmail: providerEmail,
+      provider_contact_email: this.providerContactDefaults.email,
+      providerContactEmail: this.providerContactDefaults.email,
 
-      provider_contact_mobile: providerMobile,
-      providerContactMobile: providerMobile,
+      provider_contact_mobile: this.providerContactDefaults.mobile,
+      providerContactMobile: this.providerContactDefaults.mobile,
 
       provider_signatory_name: providerName,
       providerSignatoryName: providerName,
@@ -718,8 +750,11 @@ const Proposals = {
     return mapped;
   },
   getCurrentProviderContact() {
-    const signedInUser = this.getSignedInUserForProposal();
-    return { provider_contact_name: signedInUser.name, provider_contact_mobile: signedInUser.mobile, provider_contact_email: signedInUser.email };
+    return {
+      provider_contact_name: this.providerContactDefaults.name,
+      provider_contact_mobile: this.providerContactDefaults.mobile,
+      provider_contact_email: this.providerContactDefaults.email
+    };
   },
   hydrateMappedProposalFields(proposal = {}, selectedCompany = {}, selectedContact = {}) {
     const customerAddress = String(selectedCompany?.address || '').trim();
@@ -804,12 +839,17 @@ const Proposals = {
     normalized.company_id = String(source.company_id || source.companyId || '').trim();
     normalized.company_name = String(source.company_name || source.companyName || normalized.customer_legal_name || normalized.customer_name || '').trim();
     normalized.contact_id = String(source.contact_id || source.contactId || '').trim();
-    normalized.contact_name = String(source.contact_name || source.contactName || normalized.customer_contact_name || '').trim();
+    normalized.contact_name = this.buildContactDisplayName(source) || String(source.contact_name || source.contactName || normalized.customer_contact_name || '').trim();
     normalized.contact_email = String(source.contact_email || source.contactEmail || normalized.customer_contact_email || '').trim();
     normalized.contact_phone = String(source.contact_phone || source.contactPhone || normalized.customer_contact_mobile || '').trim();
     normalized.contact_mobile = String(source.contact_mobile || source.contactMobile || normalized.customer_contact_mobile || '').trim();
     normalized.customer_sign_date = String(source.customer_sign_date || source.customerSignDate || normalized.customer_sign_date || '').trim();
-    normalized.status = String(normalized.status || '').trim();
+    normalized.status = this.normalizeProposalStatus(normalized.status);
+    normalized.provider_contact_name = this.providerContactDefaults.name;
+    normalized.provider_contact_mobile = this.providerContactDefaults.mobile;
+    normalized.provider_contact_email = this.providerContactDefaults.email;
+    normalized.provider_name = this.providerContactDefaults.name;
+    normalized.provider_legal_name = this.providerContactDefaults.name;
     normalized.currency = String(normalized.currency || source.currency || '').trim();
     normalized.deal_id = String(normalized.deal_id || '').trim();
     normalized.deal_code = String(source.deal_code || source.dealCode || '').trim();
@@ -818,8 +858,9 @@ const Proposals = {
       const linkedDeal = localRows.find(row => String(row?.id || '').trim() === normalized.deal_id);
       normalized.deal_code = String(linkedDeal?.deal_id || '').trim();
     }
-    normalized.proposal_valid_until = String(source.proposal_valid_until || source.proposalValidUntil || normalized.valid_until || '').trim();
-    normalized.valid_until = String(normalized.valid_until || normalized.proposal_valid_until || '').trim();
+    normalized.proposal_date = this.getProposalDateOrToday(normalized.proposal_date || source.proposalDate || source.proposal_date);
+    normalized.proposal_valid_until = this.getAutoValidUntil(normalized.proposal_date);
+    normalized.valid_until = normalized.proposal_valid_until;
     normalized.saas_total = this.toNumberSafe(
       source.subtotal_locations ?? source.subtotalLocations ?? normalized.saas_total
     );
@@ -1315,7 +1356,11 @@ const Proposals = {
   buildProposalForPersist(proposal = {}, items = [], { ensureBusinessProposalId = false } = {}) {
     const base = { ...(proposal && typeof proposal === 'object' ? proposal : {}) };
     const totals = this.calculateTotalsFromItems(items);
-    const proposalValidUntil = String(base.proposal_valid_until || base.valid_until || '').trim();
+    const hasProposalDate = Object.prototype.hasOwnProperty.call(base, 'proposal_date') || Object.prototype.hasOwnProperty.call(base, 'proposalDate');
+    const hasValidUntil = Object.prototype.hasOwnProperty.call(base, 'proposal_valid_until') || Object.prototype.hasOwnProperty.call(base, 'valid_until');
+    const proposalDate = hasProposalDate || ensureBusinessProposalId ? this.getProposalDateOrToday(base.proposal_date || base.proposalDate) : '';
+    const proposalValidUntil = proposalDate ? this.getAutoValidUntil(proposalDate) : '';
+    const hasStatus = Object.prototype.hasOwnProperty.call(base, 'status');
     const generatedByFallback = String(
       base.generated_by || Session?.state?.name || Session?.state?.email || Session?.state?.username || ''
     ).trim();
@@ -1323,14 +1368,27 @@ const Proposals = {
       ensureProposalId: ensureBusinessProposalId,
       ensureRefNumber: ensureBusinessProposalId
     });
-    return {
+    const prepared = {
       ...base,
       ...businessIdentifiers,
-      proposal_valid_until: proposalValidUntil,
-      valid_until: proposalValidUntil,
+      provider_contact_name: this.providerContactDefaults.name,
+      provider_contact_mobile: this.providerContactDefaults.mobile,
+      provider_contact_email: this.providerContactDefaults.email,
+      provider_name: this.providerContactDefaults.name,
+      provider_legal_name: this.providerContactDefaults.name,
       generated_by: generatedByFallback,
       ...totals
     };
+    if (proposalDate) {
+      prepared.proposal_date = proposalDate;
+      prepared.proposal_valid_until = proposalValidUntil;
+      prepared.valid_until = proposalValidUntil;
+    } else if (!hasValidUntil) {
+      delete prepared.proposal_valid_until;
+      delete prepared.valid_until;
+    }
+    if (hasStatus || ensureBusinessProposalId) prepared.status = this.normalizeProposalStatus(base.status) || 'Draft';
+    return prepared;
   },
   async deleteProposal(proposalId) {
     return Api.requestWithSession('proposals', 'delete', { id: proposalId });
@@ -1549,8 +1607,8 @@ const Proposals = {
             <div class="meta-row"><div class="meta-key">Proposal ID</div><div>${textValue(proposalData.proposal_id || 'Missing ID')}</div></div>
             <div class="meta-row"><div class="meta-key">Reference #</div><div>${textValue(proposalData.ref_number)}</div></div>
             <div class="meta-row"><div class="meta-key">Proposal Date</div><div>${dateValue(proposalData.proposal_date)}</div></div>
-            <div class="meta-row"><div class="meta-key">Valid Until</div><div>${dateValue(proposalData.proposal_valid_until || proposalData.valid_until)}</div></div>
-            <div class="meta-row"><div class="meta-key">Status</div><div>${textValue(proposalData.status || 'Draft')}</div></div>
+            <div class="meta-row"><div class="meta-key">Valid Until</div><div>${dateValue(this.getAutoValidUntil(proposalData.proposal_date))}</div></div>
+            <div class="meta-row"><div class="meta-key">Status</div><div>${textValue(this.normalizeProposalStatus(proposalData.status) || 'Draft')}</div></div>
           </div>
         </section>
       </header>
@@ -1705,7 +1763,7 @@ const Proposals = {
       .filter(Boolean);
 
     this.state.filteredRows = this.state.rows.filter(row => {
-      const status = String(row?.status || '').trim();
+      const status = this.normalizeProposalStatus(row?.status);
       if (this.state.status !== 'All' && status !== this.state.status) return false;
       if (!this.matchesKpiFilter(row)) return false;
 
@@ -1716,7 +1774,7 @@ const Proposals = {
         row.customer_name,
         row.deal_id,
         row.deal_code,
-        row.status,
+        this.normalizeProposalStatus(row.status),
         row.currency,
         row.generated_by
       ]
@@ -1742,7 +1800,7 @@ const Proposals = {
     if (filter === 'total') return true;
     if (filter === 'draft') return statusLabel === 'Draft';
     if (filter === 'sent') return statusLabel === 'Sent';
-    if (filter === 'approved') return statusLabel === 'Approved';
+    if (filter === 'approved') return statusLabel === 'Accepted';
     if (filter === 'rejected') return statusLabel === 'Rejected';
     if (filter === 'expired') return statusLabel === 'Expired';
     if (filter === 'unique-customers') return !!String(row?.customer_name || '').trim();
@@ -1773,10 +1831,12 @@ const Proposals = {
       .trim()
       .toLowerCase();
     if (!status) return 'Unspecified';
+    if (status === 'viewed') return 'Sent';
+    if (status.includes('pending') && status.includes('approval')) return 'Pending Approval';
     if (status.includes('draft')) return 'Draft';
     if (status.includes('sent') || status.includes('submitted')) return 'Sent';
     if (status.includes('approve') || status.includes('accept') || status.includes('won'))
-      return 'Approved';
+      return 'Accepted';
     if (status.includes('reject') || status.includes('declin') || status.includes('lost'))
       return 'Rejected';
     if (status.includes('expire')) return 'Expired';
@@ -1813,7 +1873,7 @@ const Proposals = {
       const statusLabel = this.normalizeStatusLabel(row?.status);
       if (statusLabel === 'Draft') draftCount += 1;
       if (statusLabel === 'Sent') sentCount += 1;
-      if (statusLabel === 'Approved') approvedCount += 1;
+      if (statusLabel === 'Accepted') approvedCount += 1;
       if (statusLabel === 'Rejected') rejectedCount += 1;
       if (statusLabel === 'Expired') expiredCount += 1;
       this.incrementMap(statusBreakdown, statusLabel);
@@ -1919,8 +1979,10 @@ const Proposals = {
     this.renderDistribution(E.proposalsGeneratedByDistribution, safe.generatedByBreakdown, safe.total || 0);
   },
   renderFilters() {
-    const statusValues = [...new Set(this.state.rows.map(row => String(row.status || '').trim()).filter(Boolean))]
-      .sort((a, b) => a.localeCompare(b));
+    const allowedStatuses = this.finalStatusOptions;
+    const statusValues = [...new Set(this.state.rows.map(row => this.normalizeProposalStatus(row.status)).filter(Boolean))]
+      .filter(status => allowedStatuses.includes(status))
+      .sort((a, b) => allowedStatuses.indexOf(a) - allowedStatuses.indexOf(b));
 
     if (E.proposalsStatusFilter) {
       const options = ['All', ...statusValues];
@@ -2006,13 +2068,13 @@ const Proposals = {
           <td>${textCell(row.proposal_title)}</td>
           <td>${textCell(row.customer_name)}</td>
           <td>${textCell(row.deal_code || row.deal_id)}</td>
-          <td>${textCell(row.status)}</td>
+          <td>${textCell(this.normalizeProposalStatus(row.status))}</td>
           <td>${textCell(row.currency)}</td>
           <td>${this.formatMoney(row.saas_total)}</td>
           <td>${this.formatMoney(row.one_time_total)}</td>
           <td>${this.formatMoney(row.grand_total)}</td>
           <td>${U.escapeHtml(U.fmtDisplayDate(row.proposal_date))}</td>
-          <td>${U.escapeHtml(U.fmtDisplayDate(row.valid_until))}</td>
+          <td>${U.escapeHtml(U.fmtDisplayDate(this.getAutoValidUntil(row.proposal_date)))}</td>
           <td>${textCell(row.generated_by)}</td>
           <td>
             ${Permissions.canPreviewProposal() ? `<button class="btn ghost sm" type="button" data-proposal-view="${id}" data-permission-resource="proposals" data-permission-action="view">View</button>` : ''}
@@ -2085,8 +2147,8 @@ const Proposals = {
       proposal_title: '',
       deal_id: '',
       lead_id: '',
-      proposal_date: '',
-      valid_until: '',
+      proposal_date: this.todayDateString(),
+      valid_until: this.getAutoValidUntil(this.todayDateString()),
       status: 'Draft',
       currency: '',
       customer_name: '',
@@ -2178,18 +2240,19 @@ const Proposals = {
     set(E.proposalFormProposalId, proposal.proposal_id || '');
     set(E.proposalFormTitleField, proposal.proposal_title || '');
     set(E.proposalFormDealId, proposal.deal_id || '');
-    set(E.proposalFormProposalDate, proposal.proposal_date || '');
-    set(E.proposalFormValidUntil, proposal.valid_until || '');
-    set(E.proposalFormStatus, proposal.status || 'Draft');
+    const proposalDate = this.getProposalDateOrToday(proposal.proposal_date);
+    set(E.proposalFormProposalDate, proposalDate);
+    set(E.proposalFormValidUntil, this.getAutoValidUntil(proposalDate));
+    set(E.proposalFormStatus, this.normalizeProposalStatus(proposal.status) || 'Draft');
     set(E.proposalFormCurrency, proposal.currency || '');
     set(E.proposalFormCustomerName, proposal.customer_legal_name || proposal.customer_name || proposal.company_name || '');
     set(E.proposalFormCustomerAddress, proposal.customer_address || '');
     set(E.proposalFormCustomerContactName, proposal.customer_contact_name || '');
     set(E.proposalFormCustomerContactMobile, proposal.customer_contact_mobile || '');
     set(E.proposalFormCustomerContactEmail, proposal.customer_contact_email || '');
-    set(E.proposalFormProviderContactName, proposal.provider_contact_name || '');
-    set(E.proposalFormProviderContactMobile, proposal.provider_contact_mobile || '');
-    set(E.proposalFormProviderContactEmail, proposal.provider_contact_email || '');
+    set(E.proposalFormProviderContactName, this.providerContactDefaults.name);
+    set(E.proposalFormProviderContactMobile, this.providerContactDefaults.mobile);
+    set(E.proposalFormProviderContactEmail, this.providerContactDefaults.email);
     set(E.proposalFormServiceStartDate, proposal.service_start_date || '');
     set(E.proposalFormContractTerm, proposal.contract_term || '');
     set(E.proposalFormAccountNumber, proposal.account_number || '');
@@ -2507,9 +2570,9 @@ const Proposals = {
     });
     const mapped = this.hydrateMappedProposalFields({}, selectedCompany, selectedContact);
     const provider = this.getSignedInUserForProposal();
-    const providerName = provider.name || provider.email?.split('@')?.[0] || '';
-    const providerEmail = provider.email || '';
-    const providerMobile = provider.mobile || '';
+    const providerName = this.providerContactDefaults.name;
+    const providerEmail = this.providerContactDefaults.email;
+    const providerMobile = this.providerContactDefaults.mobile;
     const providerRole = provider.role || '';
     const contactPersonName = this.buildContactDisplayName(selectedContact);
     const resolvedCustomerName =
@@ -2521,9 +2584,10 @@ const Proposals = {
       ref_number: this.ensureRefNumber(existingRefNumber),
       proposal_title: String(E.proposalFormTitleField?.value || '').trim(),
       deal_id: this.resolveDealUuid(E.proposalFormDealId?.value || ''),
-      proposal_date: String(E.proposalFormProposalDate?.value || '').trim(),
-      proposal_valid_until: String(E.proposalFormValidUntil?.value || '').trim(),
-      status: String(E.proposalFormStatus?.value || '').trim(),
+      proposal_date: this.getProposalDateOrToday(E.proposalFormProposalDate?.value),
+      proposal_valid_until: this.getAutoValidUntil(E.proposalFormProposalDate?.value),
+      valid_until: this.getAutoValidUntil(E.proposalFormProposalDate?.value),
+      status: this.normalizeProposalStatus(E.proposalFormStatus?.value) || 'Draft',
       currency: String(E.proposalFormCurrency?.value || '').trim(),
       customer_name: resolvedCustomerName,
       customer_legal_name: resolvedCustomerName,
@@ -2651,7 +2715,9 @@ const Proposals = {
     ).trim();
     E.proposalForm.dataset.companyAddress = String(base.customer_address || '').trim();
     E.proposalForm.dataset.contactId = String(base.contact_id || '').trim();
-    E.proposalForm.dataset.contactName = String(base.contact_name || base.customer_contact_name || '').trim();
+    E.proposalForm.dataset.contactFirstName = String(base.first_name || base.firstName || '').trim();
+    E.proposalForm.dataset.contactLastName = String(base.last_name || base.lastName || '').trim();
+    E.proposalForm.dataset.contactName = this.buildContactDisplayName(base) || String(base.contact_name || base.customer_contact_name || '').trim();
     E.proposalForm.dataset.contactJobTitle = String(base.customer_signatory_title || '').trim();
     E.proposalForm.dataset.contactEmail = String(base.contact_email || base.customer_contact_email || '').trim();
     E.proposalForm.dataset.contactPhone = String(base.contact_phone || '').trim();
@@ -2718,6 +2784,7 @@ const Proposals = {
       return;
     }
     const proposalId = String(E.proposalForm?.dataset.id || '').trim();
+    this.syncValidUntilFromProposalDate();
     const proposal = this.collectProposalFormData();
     const sourceDealId = String(E.proposalFormDealId?.value || '').trim();
     const isDirectCreate = mode !== 'edit' && !sourceDealId;
@@ -2743,8 +2810,12 @@ const Proposals = {
     const requestedDiscount = typeof getProposalCurrentDiscountPercent === 'function'
       ? getProposalCurrentDiscountPercent({ ...currentRecord, ...proposal }, items)
       : items.reduce((max, item) => Math.max(max, this.toNumberSafe(item.discount_percent)), 0);
-    const currentStatus = String(currentRecord?.status || '').trim();
-    const requestedStatus = String(proposal.status || '').trim();
+    const currentStatus = this.normalizeProposalStatus(currentRecord?.status);
+    const requestedStatus = this.normalizeProposalStatus(proposal.status);
+    if (currentStatus === 'Pending Approval' && requestedStatus === 'Sent') {
+      UI.toast('This proposal is already pending approval.');
+      return;
+    }
     console.log('[Proposal workflow current baseline]', {
       proposalId,
       currentStatus,
@@ -2775,7 +2846,17 @@ const Proposals = {
           });
         }
       } else if (workflowCheck?.pendingApproval === true && workflowCheck?.approvalCreated === true) {
-        UI.toast(workflowCheck?.reason || 'Approval request submitted successfully.');
+        const pendingUpdates = {
+          status: 'Pending Approval',
+          discount_approval_status: 'pending',
+          approval_required_reason: workflowCheck?.reason || 'Proposal sent for approval.',
+          last_discount_approval_request_id: workflowCheck?.approvalId || undefined
+        };
+        const pendingResponse = await Api.requestWithSession('proposals', 'update', { id: proposalId, updates: pendingUpdates });
+        const parsedPending = this.extractProposalAndItems(pendingResponse, proposalId);
+        if (parsedPending?.proposal) this.upsertLocalRow(parsedPending.proposal);
+        UI.toast(String(workflowCheck?.reason || '').toLowerCase().includes('already pending') ? 'This proposal is already pending approval.' : 'Proposal sent for approval.');
+        await this.loadAndRefresh({ force: true });
         return;
       } else if (workflowCheck?.pendingApproval === true && workflowCheck?.approvalCreated !== true) {
         UI.toast('Approval is required, but the approval request could not be created yet. Please retry.');
@@ -3132,6 +3213,15 @@ const Proposals = {
     bindState(E.proposalsSearchInput, 'search');
     bindState(E.proposalsCustomerFilter, 'customer');
     bindState(E.proposalsStatusFilter, 'status');
+
+    if (E.proposalFormProposalDate) {
+      E.proposalFormProposalDate.addEventListener('change', () => this.syncValidUntilFromProposalDate());
+      E.proposalFormProposalDate.addEventListener('input', () => this.syncValidUntilFromProposalDate());
+    }
+    if (E.proposalFormValidUntil) {
+      E.proposalFormValidUntil.readOnly = true;
+      E.proposalFormValidUntil.setAttribute('aria-readonly', 'true');
+    }
 
     if (E.proposalsRefreshBtn) {
       E.proposalsRefreshBtn.addEventListener('click', () => this.loadAndRefresh({ force: true }));
