@@ -314,6 +314,92 @@ const Leads = {
       return '';
     }
   },
+  getUserDisplayName(userId, usersById = new Map()) {
+    const id = String(userId || '').trim();
+    if (!id) return 'Unknown user';
+    const user = usersById.get(id) || usersById.get(String(userId));
+    if (!user) return 'Unknown user';
+    return String(
+      user.full_name ||
+        user.fullName ||
+        user.name ||
+        user.display_name ||
+        user.displayName ||
+        user.email ||
+        id
+    ).trim() || id;
+  },
+  addUserLookup(usersById, user = {}) {
+    if (!usersById || !user || typeof user !== 'object') return;
+    ['id', 'auth_user_id', 'authUserId', 'user_id', 'userId'].forEach(key => {
+      const value = String(user?.[key] || '').trim();
+      if (value && !usersById.has(value)) usersById.set(value, user);
+    });
+  },
+  addCurrentUserLookup(usersById, userIds = []) {
+    const currentUser = Session?.user?.() || {};
+    const authUser = currentUser.user || {};
+    const profile = currentUser.profile || {};
+    const currentUserId = String(currentUser.user_id || authUser.id || profile.id || '').trim();
+    const currentUserIdentifiers = [currentUser.user_id, authUser.id, profile.id]
+      .map(value => String(value || '').trim())
+      .filter(Boolean);
+    if (!currentUserIdentifiers.some(id => userIds.includes(id))) return;
+    this.addUserLookup(usersById, {
+      ...profile,
+      id: profile.id || currentUserId,
+      auth_user_id: authUser.id || currentUserId,
+      user_id: currentUserId,
+      full_name: profile.full_name || currentUser.name,
+      name: profile.name || currentUser.name,
+      display_name: profile.display_name || currentUser.name,
+      email: profile.email || currentUser.email || authUser.email
+    });
+  },
+  addLogUserHints(usersById, logs = []) {
+    logs.forEach(log => {
+      const createdBy = String(log?.created_by || '').trim();
+      if (!createdBy || usersById.has(createdBy)) return;
+      const hintedUser = {
+        id: createdBy,
+        full_name: log?.user_name || log?.created_by_name,
+        name: log?.user_name || log?.created_by_name,
+        email: log?.created_by_email
+      };
+      if (this.getUserDisplayName(createdBy, new Map([[createdBy, hintedUser]])) !== createdBy) {
+        this.addUserLookup(usersById, hintedUser);
+      }
+    });
+  },
+  async loadLeadNoteUsersById(logs = []) {
+    const userIds = [...new Set((Array.isArray(logs) ? logs : [])
+      .map(log => String(log?.created_by || '').trim())
+      .filter(Boolean))];
+    const usersById = new Map();
+    if (!userIds.length) return usersById;
+
+    this.addCurrentUserLookup(usersById, userIds);
+    this.addLogUserHints(usersById, logs);
+
+    const queryProfiles = async field => {
+      const { data, error } = await this.getClient()
+        .from('profiles')
+        .select('*')
+        .in(field, userIds);
+      if (error) {
+        console.warn(`[leads] unable to resolve note users by profiles.${field}`, error);
+        return;
+      }
+      (Array.isArray(data) ? data : []).forEach(user => this.addUserLookup(usersById, user));
+    };
+
+    await queryProfiles('id');
+    const unresolvedIds = () => userIds.filter(id => !usersById.has(id));
+    if (unresolvedIds().length) await queryProfiles('auth_user_id');
+    if (unresolvedIds().length) await queryProfiles('user_id');
+
+    return usersById;
+  },
   toSupabaseError(prefix, error) {
     const message = String(error?.message || error?.error_description || 'Unknown error').trim();
     return new Error(`${prefix}: ${message}`);
@@ -1261,7 +1347,7 @@ const Leads = {
     if (error) throw this.toSupabaseError('Unable to load lead note history', error);
     return Array.isArray(data) ? data : [];
   },
-  renderLeadNoteHistory(logs = [], { loading = false, error = '' } = {}) {
+  renderLeadNoteHistory(logs = [], { loading = false, error = '', usersById = new Map() } = {}) {
     const host = document.getElementById('leadNotesHistoryList');
     if (!host) return;
     if (loading) {
@@ -1277,12 +1363,14 @@ const Leads = {
       return;
     }
     host.innerHTML = logs.map(log => {
-      const user = String(log.user_name || log.created_by_name || log.created_by_email || log.created_by || '').trim() || '—';
+      const user = this.getUserDisplayName(log.created_by, usersById);
+      const canShowDebugUserId = Boolean(Session?.isAdmin?.());
+      const userTitle = canShowDebugUserId && log?.created_by ? ` title="${U.escapeAttr(String(log.created_by))}"` : '';
       const previousNote = String(log.previous_note || log.old_note || '').trim() || '—';
       const newNote = String(log.new_note || log.note || '').trim() || '—';
       return `<article class="card" style="padding:10px;margin:8px 0;background:rgba(255,255,255,0.03);">
         <div class="muted" style="font-size:12px;display:flex;gap:10px;flex-wrap:wrap;">
-          <span>${this.formatDate(log.created_at)}</span><span>User: ${U.escapeHtml(user)}</span>
+          <span>${this.formatDate(log.created_at)}</span><span${userTitle}>User: ${U.escapeHtml(user)}</span>
         </div>
         <div style="margin-top:8px;"><strong>Previous note</strong><div>${U.escapeHtml(previousNote)}</div></div>
         <div style="margin-top:8px;"><strong>New note</strong><div>${U.escapeHtml(newNote)}</div></div>
@@ -1296,7 +1384,9 @@ const Leads = {
     }
     this.renderLeadNoteHistory([], { loading: true });
     try {
-      this.renderLeadNoteHistory(await this.loadLeadNoteLogs(row));
+      const logs = await this.loadLeadNoteLogs(row);
+      const usersById = await this.loadLeadNoteUsersById(logs);
+      this.renderLeadNoteHistory(logs, { usersById });
     } catch (error) {
       console.error('[leads] note history load failed', error);
       this.renderLeadNoteHistory([], { error: 'Unable to load note history.' });
