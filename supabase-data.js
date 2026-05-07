@@ -68,6 +68,30 @@
   const ITEM_FK = { proposals: 'proposal_id', agreements: 'agreement_id', invoices: 'invoice_id', receipts: 'receipt_id' };
   const IMPORTANT_DEAL_STAGES = new Set(['proposal', 'negotiation', 'won', 'closed won', 'contract sent']);
   const IMPORTANT_PROPOSAL_STATUSES = new Set(['pending approval', 'requires approval', 'sent', 'accepted', 'rejected']);
+  const PROPOSAL_PROVIDER_CONTACT_DEFAULTS = Object.freeze({
+    name: 'InCheck 360 Holding BV',
+    mobile: '+31 97 010280855',
+    email: 'Info@incheck360.nl'
+  });
+  function normalizeProposalBusinessStatus(value = '') {
+    const status = String(value || '').trim();
+    if (!status) return '';
+    if (status.toLowerCase() === 'viewed') return 'Sent';
+    if (status.toLowerCase() === 'approved') return 'Accepted';
+    return status;
+  }
+  function todayDateString() {
+    const date = new Date();
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  }
+  function addDaysToDateString(value = '', days = 14) {
+    const source = String(value || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(source)) return '';
+    const [year, month, day] = source.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    date.setDate(date.getDate() + Number(days || 0));
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  }
   const normalizeTicketStatus = typeof global.normalizeTicketStatus === 'function'
     ? global.normalizeTicketStatus
     : value => {
@@ -268,7 +292,7 @@
   const PROPOSAL_COLUMNS = new Set([
     'proposal_id','ref_number','deal_id','company_id','company_name','contact_id','contact_name','contact_email','contact_phone','contact_mobile','customer_name','customer_address','customer_contact_name','customer_contact_mobile',
     'customer_contact_email','customer_contact_phone','provider_contact_name','provider_contact_mobile','provider_contact_email','proposal_title','proposal_date',
-    'proposal_valid_until','agreement_date','effective_date','service_start_date','service_end_date','contract_term','account_number','billing_frequency','payment_term','payment_terms','po_number',
+    'proposal_valid_until','valid_until','agreement_date','effective_date','service_start_date','service_end_date','contract_term','account_number','billing_frequency','payment_term','payment_terms','po_number',
     'currency','customer_legal_name','provider_name','provider_legal_name',
     'terms_conditions','customer_signatory_name','customer_signatory_title','customer_signatory_email','customer_signatory_phone','provider_signatory_name','provider_signatory_title',
     'provider_signatory_name_secondary','provider_signatory_title_secondary','customer_sign_date','provider_sign_date',
@@ -1948,6 +1972,8 @@
   function sanitizeProposalRecord(record = {}, { includeCreatedBy = false, userId = '', ensureBusinessIds = false } = {}) {
     const proposalIdSource = firstDefined(record, ['proposal_id', 'proposalId']);
     const refNumberSource = firstDefined(record, ['ref_number', 'refNumber']);
+    const proposalDateForRecord = normalizeNullableDateValue(firstDefined(record, ['proposal_date', 'proposalDate'])) || (ensureBusinessIds ? todayDateString() : null);
+    const validUntilForRecord = proposalDateForRecord ? addDaysToDateString(proposalDateForRecord, 14) : firstDefined(record, ['proposal_valid_until', 'proposalValidUntil', 'valid_until']);
     const mapped = compactObject({
       proposal_id: ensureBusinessIds ? ensureBusinessProposalId(proposalIdSource) : proposalIdSource,
       ref_number: ensureBusinessIds ? ensureProposalRefNumber(refNumberSource) : refNumberSource,
@@ -1973,12 +1999,13 @@
       customer_contact_email: firstDefined(record, ['customer_contact_email', 'customerContactEmail']),
       customer_contact_phone: firstDefined(record, ['customer_contact_phone', 'customerContactPhone']),
       customer_contact_phone: firstDefined(record, ['customer_contact_phone', 'customerContactPhone']),
-      provider_contact_name: firstDefined(record, ['provider_contact_name', 'providerContactName']),
-      provider_contact_mobile: firstDefined(record, ['provider_contact_mobile', 'providerContactMobile']),
-      provider_contact_email: firstDefined(record, ['provider_contact_email', 'providerContactEmail']),
+      provider_contact_name: PROPOSAL_PROVIDER_CONTACT_DEFAULTS.name,
+      provider_contact_mobile: PROPOSAL_PROVIDER_CONTACT_DEFAULTS.mobile,
+      provider_contact_email: PROPOSAL_PROVIDER_CONTACT_DEFAULTS.email,
       proposal_title: firstDefined(record, ['proposal_title', 'proposalTitle']),
-      proposal_date: normalizeNullableDateValue(firstDefined(record, ['proposal_date', 'proposalDate'])),
-      proposal_valid_until: normalizeNullableDateValue(firstDefined(record, ['proposal_valid_until', 'proposalValidUntil', 'valid_until'])),
+      proposal_date: proposalDateForRecord,
+      proposal_valid_until: normalizeNullableDateValue(validUntilForRecord),
+      valid_until: normalizeNullableDateValue(validUntilForRecord),
       agreement_date: normalizeNullableDateValue(firstDefined(record, ['agreement_date', 'agreementDate'])),
       effective_date: normalizeNullableDateValue(firstDefined(record, ['effective_date', 'effectiveDate'])),
       service_start_date: normalizeNullableDateValue(firstDefined(record, ['service_start_date', 'serviceStartDate'])),
@@ -1990,8 +2017,8 @@
       po_number: firstDefined(record, ['po_number', 'poNumber']),
       currency: firstDefined(record, ['currency']),
       customer_legal_name: firstDefined(record, ['customer_legal_name', 'customerLegalName']),
-      provider_name: firstDefined(record, ['provider_name', 'providerName']),
-      provider_legal_name: firstDefined(record, ['provider_legal_name', 'providerLegalName']),
+      provider_name: PROPOSAL_PROVIDER_CONTACT_DEFAULTS.name,
+      provider_legal_name: PROPOSAL_PROVIDER_CONTACT_DEFAULTS.name,
       provider_address: firstDefined(record, ['provider_address', 'providerAddress']),
       terms_conditions: firstDefined(record, ['terms_conditions', 'termsConditions']),
       customer_signatory_name: firstDefined(record, ['customer_signatory_name', 'customerSignatoryName']),
@@ -2013,7 +2040,7 @@
       subtotal_one_time: firstDefined(record, ['subtotal_one_time', 'subtotalOneTime', 'one_time_total']),
       total_discount: firstDefined(record, ['total_discount', 'totalDiscount']),
       grand_total: firstDefined(record, ['grand_total', 'grandTotal']),
-      status: firstDefined(record, ['status']),
+      status: normalizeProposalBusinessStatus(firstDefined(record, ['status'])),
       approved_annual_saas_discount_percent: firstDefined(record, ['approved_annual_saas_discount_percent', 'approvedAnnualSaasDiscountPercent']),
       approved_one_time_fee_discount_percent: firstDefined(record, ['approved_one_time_fee_discount_percent', 'approvedOneTimeFeeDiscountPercent']),
       approved_discount_percent: firstDefined(record, ['approved_discount_percent', 'approvedDiscountPercent']),
@@ -2040,6 +2067,19 @@
     const validPaymentTerms = ['Net 7', 'Net 14', 'Net 21', 'Net 30'];
     sanitized.billing_frequency = 'Annual';
     sanitized.payment_term = validPaymentTerms.includes(String(sanitized.payment_term || '').trim()) ? String(sanitized.payment_term).trim() : 'Net 30';
+    if (sanitized.proposal_date) {
+      const autoValidUntil = addDaysToDateString(sanitized.proposal_date, 14);
+      if (autoValidUntil) {
+        sanitized.proposal_valid_until = autoValidUntil;
+        sanitized.valid_until = autoValidUntil;
+      }
+    }
+    sanitized.status = normalizeProposalBusinessStatus(sanitized.status);
+    sanitized.provider_contact_name = PROPOSAL_PROVIDER_CONTACT_DEFAULTS.name;
+    sanitized.provider_contact_mobile = PROPOSAL_PROVIDER_CONTACT_DEFAULTS.mobile;
+    sanitized.provider_contact_email = PROPOSAL_PROVIDER_CONTACT_DEFAULTS.email;
+    sanitized.provider_name = PROPOSAL_PROVIDER_CONTACT_DEFAULTS.name;
+    sanitized.provider_legal_name = PROPOSAL_PROVIDER_CONTACT_DEFAULTS.name;
     return sanitized;
   }
 
@@ -2119,12 +2159,12 @@
       customer_contact_mobile: firstDefined(record, ['customer_contact_mobile', 'customerContactMobile']),
       customer_contact_email: firstDefined(record, ['customer_contact_email', 'customerContactEmail']),
       customer_contact_phone: firstDefined(record, ['customer_contact_phone', 'customerContactPhone']),
-      provider_name: firstDefined(record, ['provider_name', 'providerName']),
-      provider_legal_name: firstDefined(record, ['provider_legal_name', 'providerLegalName']),
+      provider_name: PROPOSAL_PROVIDER_CONTACT_DEFAULTS.name,
+      provider_legal_name: PROPOSAL_PROVIDER_CONTACT_DEFAULTS.name,
       provider_address: firstDefined(record, ['provider_address', 'providerAddress']),
-      provider_contact_name: firstDefined(record, ['provider_contact_name', 'providerContactName']),
-      provider_contact_mobile: firstDefined(record, ['provider_contact_mobile', 'providerContactMobile']),
-      provider_contact_email: firstDefined(record, ['provider_contact_email', 'providerContactEmail']),
+      provider_contact_name: PROPOSAL_PROVIDER_CONTACT_DEFAULTS.name,
+      provider_contact_mobile: PROPOSAL_PROVIDER_CONTACT_DEFAULTS.mobile,
+      provider_contact_email: PROPOSAL_PROVIDER_CONTACT_DEFAULTS.email,
       agreement_date: normalizeNullableDateValue(firstDefined(record, ['agreement_date', 'agreementDate'])),
       effective_date: normalizeNullableDateValue(firstDefined(record, ['effective_date', 'effectiveDate'])),
       service_start_date: normalizeNullableDateValue(firstDefined(record, ['service_start_date', 'serviceStartDate'])),
@@ -2161,7 +2201,7 @@
           ? false
           : undefined,
       signed_date: normalizeNullableDateValue(firstDefined(record, ['signed_date', 'signedDate'])),
-      status: firstDefined(record, ['status']),
+      status: normalizeProposalBusinessStatus(firstDefined(record, ['status'])),
       subtotal_locations: normalizeNumericValue(firstDefined(record, ['subtotal_locations', 'subtotalLocations', 'saas_total']), 0),
       subtotal_one_time: normalizeNumericValue(firstDefined(record, ['subtotal_one_time', 'subtotalOneTime', 'one_time_total']), 0),
       total_discount: normalizeNumericValue(firstDefined(record, ['total_discount', 'totalDiscount']), 0),
@@ -4094,8 +4134,9 @@
               client,
               TABLE_BY_RESOURCE[resource],
               {
+                status: 'Draft',
                 discount_approval_status: 'rejected',
-                approval_required_reason: reviewerComment || 'Approval request rejected.',
+                approval_required_reason: reviewerComment || 'Proposal rejected and returned to draft.',
                 last_discount_approval_request_id: approval.approval_id,
                 updated_by: reviewerUserId || undefined
               },
@@ -4114,7 +4155,7 @@
           old_status: approval.old_status || approval.status || 'pending',
           new_status: 'rejected',
           allowed: false,
-          reason: reviewerComment || 'Approval request rejected.',
+          reason: resource === 'proposals' ? (reviewerComment || 'Proposal rejected and returned to draft.') : (reviewerComment || 'Approval request rejected.'),
           user_id: reviewerUserId || null,
           user_role: reviewerRole,
           metadata: {
@@ -4150,7 +4191,7 @@
         old_status: firstValue(approval.old_status, beforeRecord?.status, 'pending'),
         new_status: firstValue(afterRecord?.status, approval.new_status, 'approved'),
         allowed: true,
-        reason: 'Workflow approval approved and applied.',
+        reason: resource === 'proposals' ? 'Proposal approved and sent.' : 'Workflow approval approved and applied.',
         user_id: reviewerUserId || null,
         user_role: reviewerRole,
         metadata: {

@@ -105,7 +105,7 @@
             return;
           }
           form.dataset.contactId = contact.contact_id || '';
-          form.dataset.contactName = displayContact(contact);
+          form.dataset.contactName = displayContact(contact, { includeEmail: false });
           form.dataset.contactFirstName = contact.first_name || '';
           form.dataset.contactLastName = contact.last_name || '';
           form.dataset.contactJobTitle = contact.job_title || '';
@@ -342,7 +342,7 @@
       if (!value) return;
       const label = type === 'company'
         ? displayCompany(row)
-        : displayContact(row, { includeEmail: select.id !== 'dealFormContactSelector' });
+        : displayContact(row, { includeEmail: !['dealFormContactSelector', 'proposalFormContactSelector'].includes(select.id) });
       options.push(`<option value="${escapeAttr(value)}">${escapeHtml(label)}</option>`);
     });
     select.innerHTML = options.join('');
@@ -551,7 +551,7 @@
 
   function applyContact(cfg, contact) {
     const c = normalizeContact(contact || {});
-    const displayName = displayContact(c);
+    const displayName = displayContact(c, { includeEmail: cfg.formId !== 'proposalForm' });
     const phone = contactPhone(c);
     setValue(cfg.contactHiddenId, c.contact_id || '', { readonly: false });
     const prefix = cfg.formId.replace('Form', 'Form');
