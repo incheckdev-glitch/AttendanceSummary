@@ -2738,6 +2738,9 @@ Sample:
         <div class="grid cols-2">
           <div class="filter-row"><label class="muted" for="companyNameInput">Company Name *</label><input id="companyNameInput" class="input" type="text" required /></div>
           <div class="filter-row"><label class="muted" for="companyLegalNameInput">Legal Name</label><input id="companyLegalNameInput" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="companyAuthorizedSignatoryFullNameInput">Authorized Signatory Full Name</label><input id="companyAuthorizedSignatoryFullNameInput" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="companyAuthorizedSignatoryTitleInput">Authorized Signatory Title</label><input id="companyAuthorizedSignatoryTitleInput" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="companyRegistrationNumberInput">Registration Number</label><input id="companyRegistrationNumberInput" class="input" type="text" /></div>
           <div class="filter-row"><label class="muted" for="companyTypeInput">Company Type</label><select id="companyTypeInput" class="select"></select></div>
           <div class="filter-row"><label class="muted" for="companyIndustryInput">Industry</label><select id="companyIndustryInput" class="select"></select></div>
           <div class="filter-row"><label class="muted" for="companyWebsiteInput">Website</label><input id="companyWebsiteInput" class="input" type="url" /></div>
@@ -2753,6 +2756,20 @@ Sample:
           
           <div class="filter-row" style="grid-column:1 / -1;"><label class="muted" for="companyNotesInput">Notes</label><textarea id="companyNotesInput" class="input" rows="3"></textarea></div>
         </div>
+        <section id="companyDocumentsSection" class="card stack" style="display:none;gap:10px;">
+          <div>
+            <strong>Company Documents</strong>
+            <p id="companyDocumentsCreateNote" class="muted" style="margin:6px 0 0;">Save the company first before uploading documents.</p>
+          </div>
+          <div id="companyDocumentUploadControls" class="stack" style="gap:8px;display:none;">
+            <div class="grid cols-2">
+              <div class="filter-row"><label class="muted" for="companyDocumentTitleInput">Document Title (optional)</label><input id="companyDocumentTitleInput" class="input" type="text" /></div>
+              <div class="filter-row"><label class="muted" for="companyDocumentFileInput">Document File</label><input id="companyDocumentFileInput" class="input" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx,application/pdf,image/png,image/jpeg,image/webp,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" /></div>
+            </div>
+            <div><button id="companyDocumentUploadBtn" class="btn ghost sm" type="button">Upload Document</button></div>
+          </div>
+          <div id="companyDocumentsList" class="stack" style="gap:8px;"></div>
+        </section>
         <div class="actions" style="justify-content:flex-end;gap:8px;"><button id="companyCancelBtn" type="button" class="btn ghost">Cancel</button><button id="companySaveBtn" type="submit" class="btn">Save Company</button></div>
       </form>
     </div>

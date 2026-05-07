@@ -202,7 +202,7 @@
   ]);
 
   const COMPANY_COLUMNS = new Set([
-    'company_id','company_name','legal_name','company_type','industry','website','main_email','main_phone','country','city','address','tax_number','company_status','source','owner_name','owner_email','notes','created_by','created_by_email','created_at','updated_at'
+    'company_id','company_name','legal_name','authorized_signatory_full_name','authorized_signatory_title','registration_number','company_type','industry','website','main_email','main_phone','country','city','address','tax_number','company_status','source','owner_name','owner_email','notes','created_by','created_by_email','created_at','updated_at'
   ]);
   const CONTACT_COLUMNS = new Set([
     'contact_id','company_id','company_name','first_name','last_name','full_name','job_title','department','email','phone','mobile','decision_role','is_primary_contact','contact_status','notes','created_by','created_by_email','created_at','updated_at'
@@ -1587,6 +1587,9 @@
     assign('company_id', source.company_id ?? source.companyId);
     assign('company_name', source.company_name ?? source.companyName);
     assign('legal_name', source.legal_name ?? source.legalName);
+    assign('authorized_signatory_full_name', source.authorized_signatory_full_name ?? source.authorizedSignatoryFullName);
+    assign('authorized_signatory_title', source.authorized_signatory_title ?? source.authorizedSignatoryTitle);
+    assign('registration_number', source.registration_number ?? source.registrationNumber);
     assign('company_type', source.company_type ?? source.companyType);
     assign('industry', source.industry);
     assign('website', source.website);
