@@ -1,11 +1,11 @@
 (function initSupabaseData(global) {
   const MIGRATED_RESOURCES = new Set([
-    'auth','users','roles','role_permissions','tickets','events','csm','leads','lead_note_logs','deals','proposal_catalog','proposals','agreements','workflow','clients','invoices','receipts','operations_onboarding','technical_admin_requests','notifications','notification_settings','companies','contacts','company_type_options','company_industry_options'
+    'auth','users','roles','role_permissions','tickets','events','csm','leads','lead_note_logs','deal_note_logs','deals','proposal_catalog','proposals','agreements','workflow','clients','invoices','receipts','operations_onboarding','technical_admin_requests','notifications','notification_settings','companies','contacts','company_type_options','company_industry_options'
   ]);
 
   const TABLE_BY_RESOURCE = {
     users: 'profiles', roles: 'roles', role_permissions: 'role_permissions', tickets: 'tickets',
-    events: 'events', csm: 'csm_activities', leads: 'leads', lead_note_logs: 'lead_note_logs', deals: 'deals',
+    events: 'events', csm: 'csm_activities', leads: 'leads', lead_note_logs: 'lead_note_logs', deal_note_logs: 'deal_note_logs', deals: 'deals',
     proposal_catalog: 'proposal_catalog_items', proposals: 'proposals', agreements: 'agreements',
     clients: 'clients', invoices: 'invoices', receipts: 'receipts', operations_onboarding: 'operations_onboarding',
     technical_admin_requests: 'technical_admin_requests', companies: 'companies', contacts: 'contacts', company_type_options: 'company_type_options', company_industry_options: 'company_industry_options'
@@ -22,6 +22,7 @@
     csm: 'id',
     leads: 'id',
     lead_note_logs: 'id',
+    deal_note_logs: 'id',
     deals: 'id',
     proposal_catalog: 'id',
     proposals: 'id',
@@ -245,10 +246,9 @@
     'country',
     'lead_source',
     'service_interest',
-    'proposal_needed',
-    'agreement_needed',
     'stage',
-    'status',
+    'next_follow_up_at',
+    'last_contacted_date',
     'priority',
     'estimated_value',
     'currency',
@@ -973,10 +973,10 @@
       out.createdAt = out.createdAt ?? out.created_at ?? '';
       out.updated_at = out.updated_at ?? out.updatedAt ?? '';
       out.updatedAt = out.updatedAt ?? out.updated_at ?? '';
-      out.proposal_needed = out.proposal_needed ?? out.proposalNeeded ?? null;
-      out.proposalNeeded = out.proposalNeeded ?? out.proposal_needed ?? null;
-      out.agreement_needed = out.agreement_needed ?? out.agreementNeeded ?? null;
-      out.agreementNeeded = out.agreementNeeded ?? out.agreement_needed ?? null;
+      out.next_follow_up_at = out.next_follow_up_at ?? out.nextFollowUpAt ?? out.next_follow_up_date ?? out.nextFollowUpDate ?? '';
+      out.nextFollowUpAt = out.nextFollowUpAt ?? out.next_follow_up_at ?? '';
+      out.last_contacted_date = out.last_contacted_date ?? out.lastContactedDate ?? '';
+      out.lastContactedDate = out.lastContactedDate ?? out.last_contacted_date ?? '';
     }
     if (resource === 'proposal_catalog') {
       out.id = out.id ?? '';
@@ -1482,10 +1482,9 @@
       country: toTextOrEmpty(['country']),
       lead_source: toTextOrEmpty(['lead_source', 'leadSource']),
       service_interest: toTextOrEmpty(['service_interest', 'serviceInterest']),
-      proposal_needed: toBooleanOrNull(['proposal_needed', 'proposalNeeded']),
-      agreement_needed: toBooleanOrNull(['agreement_needed', 'agreementNeeded']),
-      status: toTextOrEmpty(['status']),
       stage: toTextOrEmpty(['stage']),
+      next_follow_up_at: toDateOrNull(['next_follow_up_at', 'nextFollowUpAt', 'next_follow_up_date', 'nextFollowUpDate']),
+      last_contacted_date: toDateOrNull(['last_contacted_date', 'lastContactedDate']),
       priority: toTextOrEmpty(['priority']),
       estimated_value: toNumberOrNull(['estimated_value', 'estimatedValue']),
       currency: toTextOrEmpty(['currency']),

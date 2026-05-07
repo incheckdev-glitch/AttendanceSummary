@@ -233,10 +233,6 @@
             <select id="dealsStageFilter" class="select"><option>All</option></select>
           </div>
           <div class="filter-row">
-            <label class="muted" for="dealsStatusFilter">Status</label>
-            <select id="dealsStatusFilter" class="select"><option>All</option></select>
-          </div>
-          <div class="filter-row">
             <label class="muted" for="dealsPriorityFilter">Priority</label>
             <select id="dealsPriorityFilter" class="select"><option>All</option></select>
           </div>
@@ -1386,8 +1382,8 @@ Sample:
             <div id="dealsAnalyticsGrid" class="grid deals-analytics-grid">
               <article class="card kpi deals-kpi-card" data-kpi-filter="total"><div class="label">Total Deals</div><div id="dealsKpiTotal" class="value">0</div><div class="sub">Visible deals</div></article>
               <article class="card kpi deals-kpi-card" data-kpi-filter="open"><div class="label">Open Deals</div><div id="dealsKpiOpen" class="value">0</div><div class="sub">Open / Active / In Progress</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="won"><div class="label">Won Deals</div><div id="dealsKpiWon" class="value">0</div><div class="sub">Status matched as won</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="lost"><div class="label">Lost Deals</div><div id="dealsKpiLost" class="value">0</div><div class="sub">Status matched as lost</div></article>
+              <article class="card kpi deals-kpi-card" data-kpi-filter="won"><div class="label">Won Deals</div><div id="dealsKpiWon" class="value">0</div><div class="sub">Stage matched as won</div></article>
+              <article class="card kpi deals-kpi-card" data-kpi-filter="lost"><div class="label">Lost Deals</div><div id="dealsKpiLost" class="value">0</div><div class="sub">Stage matched as lost</div></article>
               <article class="card kpi deals-kpi-card" data-kpi-filter="high-priority"><div class="label">High Priority Deals</div><div id="dealsKpiHighPriority" class="value">0</div><div class="sub">High or Urgent</div></article>
               <article class="card kpi deals-kpi-card" data-kpi-filter="pipeline-value"><div class="label">Total Pipeline Value</div><div id="dealsKpiPipelineValue" class="value">0</div><div id="dealsKpiPipelineSub" class="sub">Visible estimated value</div></article>
               <article class="card kpi deals-kpi-card" data-kpi-filter="weighted-pipeline"><div class="label">Weighted Pipeline</div><div id="dealsKpiWeightedPipelineValue" class="value">0</div><div id="dealsKpiWeightedPipelineSub" class="sub">Stage probability weighted</div></article>
@@ -1402,10 +1398,6 @@ Sample:
               <article class="card deals-breakdown-card" aria-label="Deals stage distribution">
                 <div class="deals-breakdown-title">Stage distribution</div>
                 <div id="dealsStageDistribution" class="deals-status-bars"></div>
-              </article>
-              <article class="card deals-breakdown-card" aria-label="Deals status distribution">
-                <div class="deals-breakdown-title">Status distribution</div>
-                <div id="dealsStatusDistribution" class="deals-status-bars"></div>
               </article>
               <article class="card deals-breakdown-card" aria-label="Deals assignee breakdown">
                 <div class="deals-breakdown-title">Assignee breakdown</div>
@@ -1436,7 +1428,8 @@ Sample:
                   <th>Lead Source</th>
                   <th>Service Interest</th>
                   <th>Stage</th>
-                  <th>Status</th>
+                  <th>Next Follow-up</th>
+                  <th>Last Contacted</th>
                   <th>Priority</th>
                   <th>Estimated Value</th>
                   <th>Currency</th>
@@ -3007,10 +3000,12 @@ Sample:
             </select>
           </div>
           <div class="filter-row">
-            <label class="muted" for="dealFormStatus">Status</label>
-            <select id="dealFormStatus" class="select">
-              <option value="">—</option>
-            </select>
+            <label class="muted" for="dealNextFollowUpAtInput">Next Follow Up</label>
+            <input id="dealNextFollowUpAtInput" class="input" type="datetime-local" required />
+          </div>
+          <div class="filter-row">
+            <label class="muted" for="dealLastContactedDateInput">Last Contacted Date</label>
+            <input id="dealLastContactedDateInput" class="input" type="date" />
           </div>
           <div class="filter-row">
             <label class="muted" for="dealFormPriority">Priority</label>
@@ -3041,10 +3036,15 @@ Sample:
             <input id="dealFormConvertedAt" class="input" type="text" readonly />
           </div>
           <div class="filter-row" style="grid-column:1 / -1;">
-            <label class="muted" for="dealFormNotes">Notes</label>
-            <textarea id="dealFormNotes" class="input" rows="3" placeholder="Optional notes"></textarea>
+            <label class="muted" for="dealFormNotes">New Note</label>
+            <textarea id="dealFormNotes" class="input" rows="3" placeholder="Required note for this deal change" required></textarea>
+            <div class="muted">Required for every deal edit. Previous notes are available in Notes History.</div>
           </div>
         </div>
+        <section class="card" aria-label="Deal notes history" style="margin-top:12px;">
+          <h3 style="margin:0 0 8px;font-size:16px;">Notes History</h3>
+          <div id="dealNotesHistoryList" class="lead-notes-history-list"><div class="muted">No note history yet.</div></div>
+        </section>
         </section>
         <div class="actions" style="justify-content:space-between;gap:8px;">
           <button id="dealFormDeleteBtn" type="button" class="btn ghost" style="display:none;">Delete</button>
