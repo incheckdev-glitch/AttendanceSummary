@@ -202,7 +202,7 @@
   ]);
 
   const COMPANY_COLUMNS = new Set([
-    'company_id','company_name','legal_name','authorized_signatory_full_name','authorized_signatory_title','registration_number','company_type','industry','website','main_email','main_phone','country','city','address','tax_number','company_status','source','owner_name','owner_email','notes','created_by','created_by_email','created_at','updated_at'
+    'company_id','company_name','legal_name','authorized_signatory_full_name','authorized_signatory_title','registration_number','company_type','industry','website','main_email','main_phone','country','city','address','tax_number','company_status','source','owner_name','owner_email','notes','created_by','created_by_email','created_at','updated_at','documents_verified','documents_verification_status','documents_verified_at','documents_verified_by','documents_verification_notes','documents_verified_snapshot','documents_verification_invalidated_at','documents_verification_invalidated_reason'
   ]);
   const CONTACT_COLUMNS = new Set([
     'contact_id','company_id','company_name','first_name','last_name','full_name','job_title','department','email','phone','mobile','decision_role','is_primary_contact','contact_status','notes','created_by','created_by_email','created_at','updated_at'
@@ -1604,10 +1604,21 @@
     assign('created_by', source.created_by ?? source.createdBy);
     assign('created_by_email', source.created_by_email ?? source.createdByEmail);
 
+    if (options.includeVerification === true || options.mode === 'verification') {
+      assign('documents_verified', source.documents_verified ?? source.documentsVerified);
+      assign('documents_verification_status', source.documents_verification_status ?? source.documentsVerificationStatus);
+      assign('documents_verified_at', source.documents_verified_at ?? source.documentsVerifiedAt);
+      assign('documents_verified_by', source.documents_verified_by ?? source.documentsVerifiedBy);
+      assign('documents_verification_notes', source.documents_verification_notes ?? source.documentsVerificationNotes);
+      assign('documents_verified_snapshot', source.documents_verified_snapshot ?? source.documentsVerifiedSnapshot);
+      assign('documents_verification_invalidated_at', source.documents_verification_invalidated_at ?? source.documentsVerificationInvalidatedAt);
+      assign('documents_verification_invalidated_reason', source.documents_verification_invalidated_reason ?? source.documentsVerificationInvalidatedReason);
+    }
+
     if (options.mode === 'create' && !output.company_id) delete output.company_id;
     delete output.created_at;
     delete output.updated_at;
-    if (!output.company_name) throw new Error('Company name is required.');
+    if (options.mode !== 'verification' && !output.company_name) throw new Error('Company name is required.');
     return output;
   }
 
