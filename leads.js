@@ -326,8 +326,8 @@ const Leads = {
         user.display_name ||
         user.displayName ||
         user.email ||
-        id
-    ).trim() || id;
+        ''
+    ).trim() || 'Unknown user';
   },
   addUserLookup(usersById, user = {}) {
     if (!usersById || !user || typeof user !== 'object') return;
@@ -1277,6 +1277,7 @@ const Leads = {
     const isEdit = !!row;
     E.leadForm.dataset.mode = isEdit ? 'edit' : 'create';
     E.leadForm.dataset.id = row?.id || '';
+    delete E.leadForm.dataset.convertAfterSave;
     if (E.leadFormTitle) E.leadFormTitle.textContent = isEdit ? 'Edit Lead' : 'Create Lead';
     this.resetForm();
 
@@ -1302,7 +1303,7 @@ const Leads = {
       const nextFollowUpInput = this.leadNextFollowUpInput();
       if (nextFollowUpInput) nextFollowUpInput.value = this.formatDateTimeLocalValue(this.pickNextFollowUpValue(row));
       if (E.leadFormLastContactDate) E.leadFormLastContactDate.value = String(row.last_contact || '').slice(0, 10);
-      if (E.leadFormNotes) E.leadFormNotes.value = row.notes || '';
+      if (E.leadFormNotes) E.leadFormNotes.value = '';
       if (E.leadFormUpdatedAt) E.leadFormUpdatedAt.value = row.updated_at ? U.formatDateTimeMMDDYYYYHHMM(row.updated_at) : '';
       this.syncLeadFormDropdowns({
         lead_source: row.lead_source || '',
@@ -1317,6 +1318,7 @@ const Leads = {
       if (E.leadFormAssignedTo) E.leadFormAssignedTo.value = this.currentUserAssignee();
       this.syncLeadFormDropdowns({ status: 'Not Contacted Yet' });
       if (E.leadFormStatus) E.leadFormStatus.value = 'Not Contacted Yet';
+      if (E.leadFormNotes) E.leadFormNotes.value = '';
     }
 
     if (E.leadFormDeleteBtn) E.leadFormDeleteBtn.style.display = isEdit && this.canEditDelete() ? '' : 'none';
@@ -1397,6 +1399,13 @@ const Leads = {
     E.leadFormModal.style.display = 'none';
     E.leadFormModal.setAttribute('aria-hidden', 'true');
     if (window.setAppHashRoute) setAppHashRoute('#crm?tab=leads');
+  },
+  validateLeadNewNote(lead = {}, mode = 'create') {
+    const newNote = String(lead.notes || '').trim();
+    if (newNote) return true;
+    UI.toast(mode === 'edit' ? 'New note is required for every lead edit.' : 'New note is required.');
+    if (E.leadFormNotes) E.leadFormNotes.focus();
+    return false;
   },
   collectFormData() {
     const estimatedValueRaw = String(E.leadFormEstimatedValue?.value || '').trim();
@@ -1508,6 +1517,7 @@ const Leads = {
     const leadId = String(E.leadForm?.dataset.id || '').trim();
     const lead = this.collectFormData();
     if (!this.validateLeadWorkflow(lead)) return;
+    if (!this.validateLeadNewNote(lead, mode)) return;
     if (!lead.company_id || !lead.contact_id) {
       UI.toast('Company and contact are required.');
       return;
@@ -1527,6 +1537,10 @@ const Leads = {
         this.upsertLocalRow(resolvedRow);
         UI.toast(result?.verifiedAfterError ? 'Lead updated (verified).' : 'Lead updated.');
         await this.refreshLeadNoteHistory(resolvedRow);
+        if (E.leadForm?.dataset.convertAfterSave === 'true') {
+          delete E.leadForm.dataset.convertAfterSave;
+          await this.convertLeadById(leadId, { skipNoteGate: true });
+        }
       } else {
         const tempLeadId = this.generateLeadId();
         if (E.leadFormLeadId) E.leadFormLeadId.value = tempLeadId;
@@ -1755,12 +1769,21 @@ const Leads = {
       this.setFormBusy(false);
     }
   },
-  async convertLeadById(leadUuid) {
+  async convertLeadById(leadUuid, { skipNoteGate = false } = {}) {
     if (!this.hasLeadConversionPermission()) {
       UI.toast('You do not have permission to convert leads.');
       return;
     }
     const row = this.state.rows.find(item => item.id === leadUuid);
+    if (!skipNoteGate) {
+      if (row) {
+        await this.openForm(row);
+        if (E.leadForm) E.leadForm.dataset.convertAfterSave = 'true';
+      }
+      UI.toast('New note is required before converting this lead.');
+      if (E.leadFormNotes) E.leadFormNotes.focus();
+      return;
+    }
     if (this.normalizeLeadStatus(row?.status) !== 'Qualified') {
       UI.toast('Lead must be qualified before converting to deal.');
       return;
