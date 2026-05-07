@@ -203,22 +203,6 @@
             <label class="muted" for="leadsAssignedToFilter">Assigned To</label>
             <select id="leadsAssignedToFilter" class="select"><option>All</option></select>
           </div>
-          <div class="filter-row" hidden>
-            <label class="muted" for="leadsProposalNeededFilter">Proposal Needed</label>
-            <select id="leadsProposalNeededFilter" class="select">
-              <option value="All">All</option>
-              <option value="yes">Yes</option>
-              <option value="no">No</option>
-            </select>
-          </div>
-          <div class="filter-row" hidden>
-            <label class="muted" for="leadsAgreementNeededFilter">Agreement Needed</label>
-            <select id="leadsAgreementNeededFilter" class="select">
-              <option value="All">All</option>
-              <option value="yes">Yes</option>
-              <option value="no">No</option>
-            </select>
-          </div>
           <div class="filter-row">
             <label class="muted" for="leadsStartDateFilter">Created From</label>
             <input id="leadsStartDateFilter" class="input" type="date" />
@@ -267,22 +251,6 @@
           <div class="filter-row">
             <label class="muted" for="dealsAssignedToFilter">Assigned To</label>
             <select id="dealsAssignedToFilter" class="select"><option>All</option></select>
-          </div>
-          <div class="filter-row" hidden>
-            <label class="muted" for="dealsProposalNeededFilter">Proposal Needed</label>
-            <select id="dealsProposalNeededFilter" class="select">
-              <option value="All">All</option>
-              <option value="yes">Yes</option>
-              <option value="no">No</option>
-            </select>
-          </div>
-          <div class="filter-row" hidden>
-            <label class="muted" for="dealsAgreementNeededFilter">Agreement Needed</label>
-            <select id="dealsAgreementNeededFilter" class="select">
-              <option value="All">All</option>
-              <option value="yes">Yes</option>
-              <option value="no">No</option>
-            </select>
           </div>
           <div class="filter-row">
             <label class="muted" for="dealsStartDateFilter">Converted From</label>
@@ -1355,8 +1323,6 @@ Sample:
               <article class="card kpi leads-kpi-card" data-kpi-filter="lost"><div class="label">Lost Leads</div><div id="leadsKpiLost" class="value">0</div><div class="sub">Closed lost</div></article>
               <article class="card kpi leads-kpi-card" data-kpi-filter="high-priority"><div class="label">High Priority Leads</div><div id="leadsKpiHighPriority" class="value">0</div><div class="sub">High or Urgent</div></article>
               <article class="card kpi leads-kpi-card" data-kpi-filter="pipeline-value"><div class="label">Estimated Pipeline Value</div><div id="leadsKpiPipelineValue" class="value">0</div><div id="leadsKpiPipelineSub" class="sub">Total estimated value</div></article>
-              <article class="card kpi leads-kpi-card" data-kpi-filter="pipeline-value" hidden><div class="label">Pipeline Records</div><div id="leadsKpiProposalNeeded" class="value">0</div><div class="sub">Optional workflow fields removed</div></article>
-              <article class="card kpi leads-kpi-card" data-kpi-filter="total" hidden><div class="label">Follow-up Required</div><div id="leadsKpiAgreementNeeded" class="value">0</div><div class="sub">All lead saves require follow-up</div></article>
               <article class="card kpi leads-kpi-card" data-kpi-filter="qualified"><div class="label">Qualified Rate</div><div id="leadsKpiConversionRate" class="value">0%</div><div class="sub">Qualified / Total</div></article>
             </div>
 
@@ -1390,8 +1356,6 @@ Sample:
                   <th>Assigned To</th>
                   <th>Next Follow-up</th>
                   <th>Last Contact</th>
-                  <th>Proposal Needed</th>
-                  <th>Agreement Needed</th>
                   <th>Notes</th>
                   <th>Updated At</th>
                   <th>Actions</th>
@@ -1424,8 +1388,6 @@ Sample:
               <article class="card kpi deals-kpi-card" data-kpi-filter="open"><div class="label">Open Deals</div><div id="dealsKpiOpen" class="value">0</div><div class="sub">Open / Active / In Progress</div></article>
               <article class="card kpi deals-kpi-card" data-kpi-filter="won"><div class="label">Won Deals</div><div id="dealsKpiWon" class="value">0</div><div class="sub">Status matched as won</div></article>
               <article class="card kpi deals-kpi-card" data-kpi-filter="lost"><div class="label">Lost Deals</div><div id="dealsKpiLost" class="value">0</div><div class="sub">Status matched as lost</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="proposal-needed" hidden><div class="label">Proposal Needed</div><div id="dealsKpiProposalNeeded" class="value">0</div><div class="sub">proposal_needed = Yes</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="agreement-needed" hidden><div class="label">Agreement Needed</div><div id="dealsKpiAgreementNeeded" class="value">0</div><div class="sub">agreement_needed = Yes</div></article>
               <article class="card kpi deals-kpi-card" data-kpi-filter="high-priority"><div class="label">High Priority Deals</div><div id="dealsKpiHighPriority" class="value">0</div><div class="sub">High or Urgent</div></article>
               <article class="card kpi deals-kpi-card" data-kpi-filter="pipeline-value"><div class="label">Total Pipeline Value</div><div id="dealsKpiPipelineValue" class="value">0</div><div id="dealsKpiPipelineSub" class="sub">Visible estimated value</div></article>
               <article class="card kpi deals-kpi-card" data-kpi-filter="weighted-pipeline"><div class="label">Weighted Pipeline</div><div id="dealsKpiWeightedPipelineValue" class="value">0</div><div id="dealsKpiWeightedPipelineSub" class="sub">Stage probability weighted</div></article>
@@ -1479,8 +1441,6 @@ Sample:
                   <th>Estimated Value</th>
                   <th>Currency</th>
                   <th>Assigned To</th>
-                  <th>Proposal Needed</th>
-                  <th>Agreement Needed</th>
                   <th>Converted At</th>
                   <th>Converted By</th>
                   <th>Notes</th>
@@ -2908,22 +2868,6 @@ Sample:
             <label class="muted" for="leadFormLastContactDate">Last Contact</label>
             <input id="leadFormLastContactDate" class="input" type="date" />
           </div>
-          <div class="filter-row" hidden>
-            <label class="muted" for="leadFormProposalNeeded">Proposal Needed</label>
-            <select id="leadFormProposalNeeded" class="select">
-              <option value="">—</option>
-              <option value="yes">Yes</option>
-              <option value="no">No</option>
-            </select>
-          </div>
-          <div class="filter-row" hidden>
-            <label class="muted" for="leadFormAgreementNeeded">Agreement Needed</label>
-            <select id="leadFormAgreementNeeded" class="select">
-              <option value="">—</option>
-              <option value="yes">Yes</option>
-              <option value="no">No</option>
-            </select>
-          </div>
           <div class="filter-row" style="grid-column:1 / -1;">
             <label class="muted" for="leadFormNotes">Notes</label>
             <textarea id="leadFormNotes" class="input" rows="3" placeholder="Optional notes"></textarea>
@@ -3090,22 +3034,6 @@ Sample:
           <div class="filter-row">
             <label class="muted" for="dealFormConvertedBy">Converted By</label>
             <input id="dealFormConvertedBy" class="input" type="text" />
-          </div>
-          <div class="filter-row" hidden>
-            <label class="muted" for="dealFormProposalNeeded">Proposal Needed</label>
-            <select id="dealFormProposalNeeded" class="select">
-              <option value="">—</option>
-              <option value="yes">Yes</option>
-              <option value="no">No</option>
-            </select>
-          </div>
-          <div class="filter-row" hidden>
-            <label class="muted" for="dealFormAgreementNeeded">Agreement Needed</label>
-            <select id="dealFormAgreementNeeded" class="select">
-              <option value="">—</option>
-              <option value="yes">Yes</option>
-              <option value="no">No</option>
-            </select>
           </div>
           <div class="filter-row">
             <label class="muted" for="dealFormConvertedAt">Converted At</label>

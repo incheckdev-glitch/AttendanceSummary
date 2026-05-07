@@ -16,8 +16,6 @@ const Deals = {
     'estimated_value',
     'currency',
     'assigned_to',
-    'proposal_needed',
-    'agreement_needed',
     'converted_at',
     'converted_by',
     'notes',
@@ -48,8 +46,6 @@ const Deals = {
     serviceInterest: 'All',
     leadSource: 'All',
     assignedTo: 'All',
-    proposalNeeded: 'All',
-    agreementNeeded: 'All',
     convertedFrom: '',
     convertedTo: '',
     kpiFilter: 'total',
@@ -184,13 +180,7 @@ const Deals = {
       ),
       currency: String(pick(source.currency, lead.currency)).trim(),
       assigned_to: String(pick(source.assigned_to, source.assignedTo, lead.assigned_to, lead.assignedTo)).trim(),
-      proposal_needed: this.normalizeBool(
-        pick(source.proposal_needed, source.proposalNeeded, lead.proposal_needed, lead.proposalNeeded)
-      ),
       proposal_id: String(pick(source.proposal_id, source.proposalId, lead.proposal_id, lead.proposalId)).trim(),
-      agreement_needed: this.normalizeBool(
-        pick(source.agreement_needed, source.agreementNeeded, lead.agreement_needed, lead.agreementNeeded)
-      ),
       converted_at: pick(source.converted_at, source.convertedAt, lead.converted_at, lead.convertedAt),
       converted_by: String(
         pick(source.converted_by, source.convertedBy, lead.converted_by, lead.convertedBy)
@@ -265,8 +255,6 @@ const Deals = {
       estimated_value: toNumberOrNull(['estimated_value', 'estimatedValue']),
       currency: toTextOrEmpty(['currency']),
       assigned_to: toTextOrEmpty(['assigned_to', 'assignedTo']),
-      proposal_needed: toBoolOrNull(['proposal_needed', 'proposalNeeded']),
-      agreement_needed: toBoolOrNull(['agreement_needed', 'agreementNeeded']),
       converted_by: toTextOrEmpty(['converted_by', 'convertedBy']),
       converted_at: toDateOrNull(['converted_at', 'convertedAt']),
       notes: toTextOrEmpty(['notes']),
@@ -517,8 +505,6 @@ const Deals = {
       'Assigned To',
       'Converted By',
       'Converted At',
-      'Proposal Needed',
-      'Agreement Needed',
       'Notes',
       'Created At',
       'Updated At'
@@ -545,8 +531,6 @@ const Deals = {
           this.getDealValue(row, 'assigned_to', 'assignedTo'),
           this.getDealValue(row, 'converted_by', 'convertedBy'),
           this.formatDateTimeMMDDYYYYHHMM(this.getDealValue(row, 'converted_at', 'convertedAt')),
-          this.boolLabel(this.normalizeBool(this.getDealValue(row, 'proposal_needed', 'proposalNeeded'))),
-          this.boolLabel(this.normalizeBool(this.getDealValue(row, 'agreement_needed', 'agreementNeeded'))),
           this.getDealValue(row, 'notes'),
           this.formatDateTimeMMDDYYYYHHMM(this.getDealValue(row, 'created_at', 'createdAt')),
           this.formatDateTimeMMDDYYYYHHMM(this.getDealValue(row, 'updated_at', 'updatedAt'))
@@ -727,8 +711,6 @@ const Deals = {
     if (filter === 'won' || filter === 'win-rate' || filter === 'average-won-deal-size')
       return this.matchesWonStatus(status);
     if (filter === 'lost') return this.matchesLostStatus(status);
-    if (filter === 'proposal-needed') return this.normalizeBool(row?.proposal_needed) === 'yes';
-    if (filter === 'agreement-needed') return this.normalizeBool(row?.agreement_needed) === 'yes';
     if (filter === 'high-priority') return priority === 'high' || priority === 'urgent';
     if (filter === 'pipeline-value' || filter === 'weighted-pipeline' || filter === 'average-deal-size')
       return value > 0;
@@ -793,8 +775,6 @@ const Deals = {
     let openDeals = 0;
     let wonDeals = 0;
     let lostDeals = 0;
-    let proposalNeededCount = 0;
-    let agreementNeededCount = 0;
     let highPriorityCount = 0;
     let pipelineValue = 0;
     let weightedPipelineValue = 0;
@@ -815,8 +795,6 @@ const Deals = {
       if (this.matchesOpenStatus(status)) openDeals += 1;
       if (this.matchesWonStatus(status)) wonDeals += 1;
       if (this.matchesLostStatus(status)) lostDeals += 1;
-      if (this.normalizeBool(row?.proposal_needed) === 'yes') proposalNeededCount += 1;
-      if (this.normalizeBool(row?.agreement_needed) === 'yes') agreementNeededCount += 1;
       if (priority === 'high' || priority === 'urgent') highPriorityCount += 1;
       if (String(row?.lead_id || '').trim() || String(row?.converted_at || '').trim()) convertedFromLeadsCount += 1;
 
@@ -849,8 +827,6 @@ const Deals = {
       openDeals,
       wonDeals,
       lostDeals,
-      proposalNeededCount,
-      agreementNeededCount,
       highPriorityCount,
       pipelineValue,
       weightedPipelineValue,
@@ -896,8 +872,6 @@ const Deals = {
     setText(E.dealsKpiOpen, String(safe.openDeals || 0));
     setText(E.dealsKpiWon, String(safe.wonDeals || 0));
     setText(E.dealsKpiLost, String(safe.lostDeals || 0));
-    setText(E.dealsKpiProposalNeeded, String(safe.proposalNeededCount || 0));
-    setText(E.dealsKpiAgreementNeeded, String(safe.agreementNeededCount || 0));
     setText(E.dealsKpiHighPriority, String(safe.highPriorityCount || 0));
     setText(E.dealsKpiWinRate, `${(safe.winRate || 0).toFixed(1)}%`);
     setText(E.dealsKpiConvertedFromLeads, String(safe.convertedFromLeadsCount || 0));
@@ -954,10 +928,6 @@ const Deals = {
         return false;
       if (this.state.leadSource !== 'All' && row.lead_source !== this.state.leadSource) return false;
       if (this.state.assignedTo !== 'All' && row.assigned_to !== this.state.assignedTo) return false;
-      if (this.state.proposalNeeded !== 'All' && row.proposal_needed !== this.state.proposalNeeded)
-        return false;
-      if (this.state.agreementNeeded !== 'All' && row.agreement_needed !== this.state.agreementNeeded)
-        return false;
       if (!this.matchesKpiFilter(row)) return false;
       if (convertedFrom || convertedTo) {
         const rowDate = this.parseDateOnly(row.converted_at);
@@ -992,8 +962,6 @@ const Deals = {
     assign(E.dealsLeadSourceFilter, this.state.rows.map(row => row.lead_source), this.state.leadSource);
     assign(E.dealsAssignedToFilter, this.state.rows.map(row => row.assigned_to), this.state.assignedTo);
 
-    if (E.dealsProposalNeededFilter) E.dealsProposalNeededFilter.value = this.state.proposalNeeded;
-    if (E.dealsAgreementNeededFilter) E.dealsAgreementNeededFilter.value = this.state.agreementNeeded;
     if (E.dealsStartDateFilter) E.dealsStartDateFilter.value = this.state.convertedFrom;
     if (E.dealsEndDateFilter) E.dealsEndDateFilter.value = this.state.convertedTo;
     if (E.dealsSidebarSearchInput) E.dealsSidebarSearchInput.value = this.state.search;
@@ -1012,7 +980,7 @@ const Deals = {
       E.dealsState.textContent = 'Loading deals…';
       this.renderDealAnalytics(this.computeDealAnalytics([]));
       E.dealsTbody.innerHTML = Array.from({ length: 6 })
-        .map(() => '<tr class="skeleton-row"><td colspan="23"><div class="skeleton-line" style="height:12px;margin:6px 0;"></div></td></tr>')
+        .map(() => '<tr class="skeleton-row"><td colspan="21"><div class="skeleton-line" style="height:12px;margin:6px 0;"></div></td></tr>')
         .join('');
       return;
     }
@@ -1020,7 +988,7 @@ const Deals = {
     if (this.state.loadError) {
       E.dealsState.textContent = this.state.loadError;
       this.renderDealAnalytics(this.computeDealAnalytics([]));
-      E.dealsTbody.innerHTML = `<tr><td colspan="23" class="muted" style="text-align:center;color:#ffb4b4;">${U.escapeHtml(
+      E.dealsTbody.innerHTML = `<tr><td colspan="21" class="muted" style="text-align:center;color:#ffb4b4;">${U.escapeHtml(
         this.state.loadError
       )}</td></tr>`;
       return;
@@ -1050,7 +1018,7 @@ const Deals = {
     });
 
     if (!rows.length) {
-      E.dealsTbody.innerHTML = '<tr><td colspan="23" class="muted" style="text-align:center;">No deals found.</td></tr>';
+      E.dealsTbody.innerHTML = '<tr><td colspan="21" class="muted" style="text-align:center;">No deals found.</td></tr>';
       this.updateCreateButtonState();
       return;
     }
@@ -1059,7 +1027,6 @@ const Deals = {
       if (column === 'lead_id') return U.escapeHtml(this.displayLeadId(row) || '—');
       if (column === 'lead_code') return undefined;
       if (['converted_at', 'created_at', 'updated_at'].includes(column)) return this.formatDateTime(row[column]);
-      if (column === 'proposal_needed' || column === 'agreement_needed') return U.escapeHtml(this.boolLabel(row[column]));
       const value = row[column];
       return U.escapeHtml(value === '' || value == null ? '—' : String(value));
     };
@@ -1207,8 +1174,6 @@ const Deals = {
       E.dealFormConvertedAt.value = '';
       E.dealFormConvertedAt.dataset.rawValue = '';
     }
-    if (E.dealFormProposalNeeded) E.dealFormProposalNeeded.value = '';
-    if (E.dealFormAgreementNeeded) E.dealFormAgreementNeeded.value = '';
     this.state.form.selectedLead = null;
     this.state.form.selectedCompany = null;
     this.state.form.selectedContact = null;
@@ -1274,8 +1239,6 @@ const Deals = {
       }
       if (E.dealFormCurrency) E.dealFormCurrency.value = row.currency || '';
       if (E.dealFormAssignedTo) E.dealFormAssignedTo.value = row.assigned_to || '';
-      if (E.dealFormProposalNeeded) E.dealFormProposalNeeded.value = row.proposal_needed || '';
-      if (E.dealFormAgreementNeeded) E.dealFormAgreementNeeded.value = row.agreement_needed || '';
       if (E.dealFormConvertedBy) E.dealFormConvertedBy.value = row.converted_by || '';
       if (E.dealFormConvertedAt) {
         const convertedAtRaw = row.converted_at || '';
@@ -1549,8 +1512,6 @@ const Deals = {
     bindState(E.dealsServiceInterestFilter, 'serviceInterest');
     bindState(E.dealsLeadSourceFilter, 'leadSource');
     bindState(E.dealsAssignedToFilter, 'assignedTo');
-    bindState(E.dealsProposalNeededFilter, 'proposalNeeded');
-    bindState(E.dealsAgreementNeededFilter, 'agreementNeeded');
     bindState(E.dealsStartDateFilter, 'convertedFrom');
     bindState(E.dealsEndDateFilter, 'convertedTo');
 
@@ -1563,8 +1524,6 @@ const Deals = {
         this.state.serviceInterest = 'All';
         this.state.leadSource = 'All';
         this.state.assignedTo = 'All';
-        this.state.proposalNeeded = 'All';
-        this.state.agreementNeeded = 'All';
         this.state.convertedFrom = '';
         this.state.convertedTo = '';
         this.state.kpiFilter = 'total';

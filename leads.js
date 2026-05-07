@@ -19,8 +19,6 @@ const Leads = {
     status: 'All',
     serviceInterest: 'All',
     assignedTo: 'All',
-    proposalNeeded: 'All',
-    agreementNeeded: 'All',
     createdFrom: '',
     createdTo: '',
     kpiFilter: 'total',
@@ -172,8 +170,6 @@ const Leads = {
         raw.last_contact_date ||
         raw.lastContactDate ||
         '',
-      proposal_needed: this.normalizeBool(raw.proposal_needed),
-      agreement_needed: this.normalizeBool(raw.agreement_needed),
       notes: String(raw.notes || '').trim(),
       updated_at: raw.updated_at || raw.updatedAt || '',
       converted_at: raw.converted_at || raw.convertedAt || '',
@@ -565,10 +561,6 @@ const Leads = {
       if (this.state.serviceInterest !== 'All' && row.service_interest !== this.state.serviceInterest)
         return false;
       if (this.state.assignedTo !== 'All' && row.assigned_to !== this.state.assignedTo) return false;
-      if (this.state.proposalNeeded !== 'All' && row.proposal_needed !== this.state.proposalNeeded)
-        return false;
-      if (this.state.agreementNeeded !== 'All' && row.agreement_needed !== this.state.agreementNeeded)
-        return false;
       if (!this.matchesKpiFilter(row)) return false;
       if (createdFrom || createdTo) {
         const rowDate = parseDateOnly(row.created_at);
@@ -680,8 +672,6 @@ const Leads = {
       'Assigned To',
       'Next Follow-up',
       'Last Contact',
-      'Proposal Needed',
-      'Agreement Needed',
       'Notes',
       'Updated At'
     ];
@@ -710,8 +700,6 @@ const Leads = {
           this.getLeadValue(row, 'assigned_to', 'assignedTo'),
           this.formatDateMMDDYYYY(nextFollowUp),
           this.formatDateMMDDYYYY(lastContact),
-          this.boolLabel(this.normalizeBool(this.getLeadValue(row, 'proposal_needed', 'proposalNeeded'))),
-          this.boolLabel(this.normalizeBool(this.getLeadValue(row, 'agreement_needed', 'agreementNeeded'))),
           this.getLeadValue(row, 'notes'),
           this.formatDateTimeMMDDYYYYHHMM(updatedAt)
         ]
@@ -747,8 +735,6 @@ const Leads = {
     );
     assign(E.leadsAssignedToFilter, uniq(this.state.rows.map(row => row.assigned_to)), this.state.assignedTo);
 
-    if (E.leadsProposalNeededFilter) E.leadsProposalNeededFilter.value = this.state.proposalNeeded;
-    if (E.leadsAgreementNeededFilter) E.leadsAgreementNeededFilter.value = this.state.agreementNeeded;
     if (E.leadsStartDateFilter) E.leadsStartDateFilter.value = this.state.createdFrom;
     if (E.leadsEndDateFilter) E.leadsEndDateFilter.value = this.state.createdTo;
   },
@@ -835,8 +821,6 @@ const Leads = {
     if (filter === 'lost') return status === 'lost';
     if (filter === 'high-priority') return priority === 'high' || priority === 'urgent';
     if (filter === 'pipeline-value') return estimatedValue > 0;
-    if (filter === 'proposal-needed') return this.normalizeBool(row?.proposal_needed) === 'yes';
-    if (filter === 'agreement-needed') return this.normalizeBool(row?.agreement_needed) === 'yes';
     return true;
   },
   applyKpiFilter(filter) {
@@ -861,8 +845,6 @@ const Leads = {
     const statusBreakdown = Object.fromEntries(statusKeys.map(key => [key, 0]));
     const currencyTotals = new Set();
     let pipelineValue = 0;
-    let proposalNeededCount = 0;
-    let agreementNeededCount = 0;
     let highPriorityCount = 0;
 
     rows.forEach(row => {
@@ -871,9 +853,6 @@ const Leads = {
 
       const priority = this.normalizeText(row?.priority);
       if (priority === 'high' || priority === 'urgent') highPriorityCount += 1;
-
-      if (this.normalizeBool(row?.proposal_needed) === 'yes') proposalNeededCount += 1;
-      if (this.normalizeBool(row?.agreement_needed) === 'yes') agreementNeededCount += 1;
 
       pipelineValue += this.parseEstimatedValue(row?.estimated_value);
       const currency = String(row?.currency || '')
@@ -898,8 +877,6 @@ const Leads = {
       wonCount,
       lostCount: statusBreakdown.lost || 0,
       highPriorityCount,
-      proposalNeededCount,
-      agreementNeededCount,
       conversionRate,
       pipelineValue,
       pipelineCurrency,
@@ -920,8 +897,6 @@ const Leads = {
     setText(E.leadsKpiWon, String(safe.negotiationCount || 0));
     setText(E.leadsKpiLost, String(safe.lostCount || 0));
     setText(E.leadsKpiHighPriority, String(safe.highPriorityCount || 0));
-    setText(E.leadsKpiProposalNeeded, String(safe.proposalNeededCount || 0));
-    setText(E.leadsKpiAgreementNeeded, String(safe.agreementNeededCount || 0));
     setText(E.leadsKpiConversionRate, `${(safe.conversionRate || 0).toFixed(1)}%`);
 
     const valueNumber = Number.isFinite(safe.pipelineValue) ? safe.pipelineValue : 0;
@@ -979,7 +954,7 @@ const Leads = {
         .map(
           () =>
             '<tr class="skeleton-row">' +
-            '<td colspan="21"><div class="skeleton-line" style="height:12px;margin:6px 0;"></div></td>' +
+            '<td colspan="19"><div class="skeleton-line" style="height:12px;margin:6px 0;"></div></td>' +
             '</tr>'
         )
         .join('');
@@ -988,7 +963,7 @@ const Leads = {
     if (this.state.loadError) {
       E.leadsState.textContent = this.state.loadError;
       this.renderLeadAnalytics(this.computeLeadAnalytics([]));
-      E.leadsTbody.innerHTML = `<tr><td colspan="21" class="muted" style="text-align:center;color:#ffb4b4;">${U.escapeHtml(this.state.loadError)}</td></tr>`;
+      E.leadsTbody.innerHTML = `<tr><td colspan="19" class="muted" style="text-align:center;color:#ffb4b4;">${U.escapeHtml(this.state.loadError)}</td></tr>`;
       return;
     }
 
@@ -1016,7 +991,7 @@ const Leads = {
     });
 
     if (!rows.length) {
-      E.leadsTbody.innerHTML = '<tr><td colspan="21" class="muted" style="text-align:center;">No leads found for current filters.</td></tr>';
+      E.leadsTbody.innerHTML = '<tr><td colspan="19" class="muted" style="text-align:center;">No leads found for current filters.</td></tr>';
       return;
     }
 
@@ -1054,8 +1029,6 @@ const Leads = {
           <td>${U.escapeHtml(row.assigned_to || '—')}</td>
           <td>${U.escapeHtml(this.normalizeComparableLeadDate(row.next_follow_up) || '—')}</td>
           <td>${U.escapeHtml(this.normalizeComparableLeadDate(row.last_contact) || '—')}</td>
-          <td>${U.escapeHtml(this.boolLabel(row.proposal_needed))}</td>
-          <td>${U.escapeHtml(this.boolLabel(row.agreement_needed))}</td>
           <td>${U.escapeHtml(row.notes || '—')}</td>
           <td>${this.formatDate(row.updated_at)}</td>
           <td>${actions}</td>
@@ -1120,8 +1093,6 @@ const Leads = {
     if (E.leadFormLeadId) E.leadFormLeadId.value = '';
     if (E.leadFormCreatedAt) E.leadFormCreatedAt.value = '';
     if (E.leadFormUpdatedAt) E.leadFormUpdatedAt.value = '';
-    if (E.leadFormProposalNeeded) E.leadFormProposalNeeded.value = '';
-    if (E.leadFormAgreementNeeded) E.leadFormAgreementNeeded.value = '';
     this.state.selectedCompany = null;
     this.state.selectedContact = null;
     this.syncLeadFormDropdowns();
@@ -1693,8 +1664,6 @@ const Leads = {
     bindState(E.leadsStatusFilter, 'status');
     bindState(E.leadsServiceInterestFilter, 'serviceInterest');
     bindState(E.leadsAssignedToFilter, 'assignedTo');
-    bindState(E.leadsProposalNeededFilter, 'proposalNeeded');
-    bindState(E.leadsAgreementNeededFilter, 'agreementNeeded');
     bindState(E.leadsStartDateFilter, 'createdFrom');
     bindState(E.leadsEndDateFilter, 'createdTo');
 
@@ -1704,8 +1673,6 @@ const Leads = {
         this.state.status = 'All';
         this.state.serviceInterest = 'All';
         this.state.assignedTo = 'All';
-        this.state.proposalNeeded = 'All';
-        this.state.agreementNeeded = 'All';
         this.state.createdFrom = '';
         this.state.createdTo = '';
         this.state.kpiFilter = 'total';
