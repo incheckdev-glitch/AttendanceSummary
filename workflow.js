@@ -1413,12 +1413,17 @@ const Workflow = {
             .split(',')
             .map(field => String(field || '').trim())
             .filter(Boolean),
-      required_fields: Array.isArray(source.required_fields)
+      required_fields: (Array.isArray(source.required_fields)
         ? source.required_fields
         : String(pick(source.required_fields, source.requiredfields))
-            .split(',')
+            .split(','))
             .map(field => String(field || '').trim())
-            .filter(Boolean),
+            .filter(field => {
+              if (!field) return false;
+              const resourceName = String(pick(source.resource)).trim().toLowerCase();
+              if ((resourceName === 'leads' || resourceName === 'deals') && ['proposal_needed', 'proposalNeeded', 'agreement_needed', 'agreementNeeded'].includes(field)) return false;
+              return true;
+            }),
       require_comment: WorkflowEngine.toBool(
         pick(source.require_comment, source.requirecomment)
       ),
@@ -1464,7 +1469,10 @@ const Workflow = {
         ? annualSaasHardStop
         : this.normalizePercentValue(get('workflowHardStopDiscount'), 0),
       editable_fields: this.getMultiSelectValues(E.workflowEditableFields),
-      required_fields: this.getMultiSelectValues(E.workflowRequiredFields),
+      required_fields: this.getMultiSelectValues(E.workflowRequiredFields).filter(field => {
+        if ((resource === 'leads' || resource === 'deals') && ['proposal_needed', 'proposalNeeded', 'agreement_needed', 'agreementNeeded'].includes(field)) return false;
+        return true;
+      }),
       require_comment: String(get('workflowRequireComment')) === 'true',
       require_attachment: String(get('workflowRequireAttachment')) === 'true',
       is_active: String(get('workflowIsActive')) !== 'false'
@@ -1492,8 +1500,8 @@ const Workflow = {
   },
   fillRuleForm(rule = {}) {
     const normalizedRule = this.normalizeWorkflowRule(rule);
-    const editableFields = Array.isArray(rule.editable_fields) ? rule.editable_fields : String(rule.editable_fields || '').split(',');
-    const requiredFields = Array.isArray(rule.required_fields) ? rule.required_fields : String(rule.required_fields || '').split(',');
+    const editableFields = Array.isArray(normalizedRule.editable_fields) ? normalizedRule.editable_fields : String(normalizedRule.editable_fields || '').split(',');
+    const requiredFields = Array.isArray(normalizedRule.required_fields) ? normalizedRule.required_fields : String(normalizedRule.required_fields || '').split(',');
     if (E.workflowRuleId) E.workflowRuleId.value = normalizedRule.workflow_rule_id || '';
     this.state.editingRuleLegacyId = String(normalizedRule.id || '').trim();
     if (E.workflowResource) E.workflowResource.value = normalizedRule.resource || '';
@@ -1985,7 +1993,11 @@ const Workflow = {
         const required = Array.isArray(rule.required_fields) ? rule.required_fields : String(rule.required_fields || '').split(',');
         [...editable, ...required]
           .map(field => String(field || '').trim())
-          .filter(Boolean)
+          .filter(field => {
+            if (!field) return false;
+            if ((resource === 'leads' || resource === 'deals') && ['proposal_needed', 'proposalNeeded', 'agreement_needed', 'agreementNeeded'].includes(field)) return false;
+            return true;
+          })
           .forEach(field => fields.add(field));
       });
     const moduleStateRows = {

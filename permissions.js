@@ -27,6 +27,7 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
     create: ['admin', 'dev', 'viewer', 'hoo'],
     update: ['admin', 'dev'],
     delete: ['admin', 'dev'],
+    convert: ['admin', 'dev'],
     convert_to_deal: ['admin', 'dev']
   }),
   companies: Object.freeze({

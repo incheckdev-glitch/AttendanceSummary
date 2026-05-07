@@ -203,7 +203,7 @@
             <label class="muted" for="leadsAssignedToFilter">Assigned To</label>
             <select id="leadsAssignedToFilter" class="select"><option>All</option></select>
           </div>
-          <div class="filter-row">
+          <div class="filter-row" hidden>
             <label class="muted" for="leadsProposalNeededFilter">Proposal Needed</label>
             <select id="leadsProposalNeededFilter" class="select">
               <option value="All">All</option>
@@ -211,7 +211,7 @@
               <option value="no">No</option>
             </select>
           </div>
-          <div class="filter-row">
+          <div class="filter-row" hidden>
             <label class="muted" for="leadsAgreementNeededFilter">Agreement Needed</label>
             <select id="leadsAgreementNeededFilter" class="select">
               <option value="All">All</option>
@@ -268,7 +268,7 @@
             <label class="muted" for="dealsAssignedToFilter">Assigned To</label>
             <select id="dealsAssignedToFilter" class="select"><option>All</option></select>
           </div>
-          <div class="filter-row">
+          <div class="filter-row" hidden>
             <label class="muted" for="dealsProposalNeededFilter">Proposal Needed</label>
             <select id="dealsProposalNeededFilter" class="select">
               <option value="All">All</option>
@@ -276,7 +276,7 @@
               <option value="no">No</option>
             </select>
           </div>
-          <div class="filter-row">
+          <div class="filter-row" hidden>
             <label class="muted" for="dealsAgreementNeededFilter">Agreement Needed</label>
             <select id="dealsAgreementNeededFilter" class="select">
               <option value="All">All</option>
@@ -1348,16 +1348,16 @@ Sample:
           <div id="leadsAnalytics" class="leads-analytics" aria-label="Leads analytics widgets">
             <div id="leadsAnalyticsGrid" class="grid leads-analytics-grid">
               <article class="card kpi leads-kpi-card" data-kpi-filter="total"><div class="label">Total Leads</div><div id="leadsKpiTotal" class="value">0</div><div class="sub">Loaded leads</div></article>
-              <article class="card kpi leads-kpi-card" data-kpi-filter="new"><div class="label">New Leads</div><div id="leadsKpiNew" class="value">0</div><div class="sub">Status = New</div></article>
+              <article class="card kpi leads-kpi-card" data-kpi-filter="not-contacted-yet"><div class="label">Not Contacted Yet</div><div id="leadsKpiNew" class="value">0</div><div class="sub">Status = Not Contacted Yet</div></article>
               <article class="card kpi leads-kpi-card" data-kpi-filter="qualified"><div class="label">Qualified Leads</div><div id="leadsKpiQualified" class="value">0</div><div class="sub">Status = Qualified</div></article>
-              <article class="card kpi leads-kpi-card" data-kpi-filter="proposal-sent"><div class="label">Proposal Sent</div><div id="leadsKpiProposalSent" class="value">0</div><div class="sub">Status = Proposal Sent</div></article>
-              <article class="card kpi leads-kpi-card" data-kpi-filter="won"><div class="label">Won Leads</div><div id="leadsKpiWon" class="value">0</div><div class="sub">Closed won</div></article>
+              <article class="card kpi leads-kpi-card" data-kpi-filter="not-available"><div class="label">Not Available</div><div id="leadsKpiProposalSent" class="value">0</div><div class="sub">Status = Not Available</div></article>
+              <article class="card kpi leads-kpi-card" data-kpi-filter="negotiation"><div class="label">Negotiation</div><div id="leadsKpiWon" class="value">0</div><div class="sub">Status = Negotiation</div></article>
               <article class="card kpi leads-kpi-card" data-kpi-filter="lost"><div class="label">Lost Leads</div><div id="leadsKpiLost" class="value">0</div><div class="sub">Closed lost</div></article>
               <article class="card kpi leads-kpi-card" data-kpi-filter="high-priority"><div class="label">High Priority Leads</div><div id="leadsKpiHighPriority" class="value">0</div><div class="sub">High or Urgent</div></article>
               <article class="card kpi leads-kpi-card" data-kpi-filter="pipeline-value"><div class="label">Estimated Pipeline Value</div><div id="leadsKpiPipelineValue" class="value">0</div><div id="leadsKpiPipelineSub" class="sub">Total estimated value</div></article>
-              <article class="card kpi leads-kpi-card" data-kpi-filter="proposal-needed"><div class="label">Proposal Needed</div><div id="leadsKpiProposalNeeded" class="value">0</div><div class="sub">proposal_needed = Yes</div></article>
-              <article class="card kpi leads-kpi-card" data-kpi-filter="agreement-needed"><div class="label">Agreement Needed</div><div id="leadsKpiAgreementNeeded" class="value">0</div><div class="sub">agreement_needed = Yes</div></article>
-              <article class="card kpi leads-kpi-card" data-kpi-filter="conversion-rate"><div class="label">Conversion Rate</div><div id="leadsKpiConversionRate" class="value">0%</div><div class="sub">Won / Total</div></article>
+              <article class="card kpi leads-kpi-card" data-kpi-filter="pipeline-value" hidden><div class="label">Pipeline Records</div><div id="leadsKpiProposalNeeded" class="value">0</div><div class="sub">Optional workflow fields removed</div></article>
+              <article class="card kpi leads-kpi-card" data-kpi-filter="total" hidden><div class="label">Follow-up Required</div><div id="leadsKpiAgreementNeeded" class="value">0</div><div class="sub">All lead saves require follow-up</div></article>
+              <article class="card kpi leads-kpi-card" data-kpi-filter="qualified"><div class="label">Qualified Rate</div><div id="leadsKpiConversionRate" class="value">0%</div><div class="sub">Qualified / Total</div></article>
             </div>
 
             <div class="card leads-status-card" aria-label="Leads status distribution">
@@ -1424,8 +1424,8 @@ Sample:
               <article class="card kpi deals-kpi-card" data-kpi-filter="open"><div class="label">Open Deals</div><div id="dealsKpiOpen" class="value">0</div><div class="sub">Open / Active / In Progress</div></article>
               <article class="card kpi deals-kpi-card" data-kpi-filter="won"><div class="label">Won Deals</div><div id="dealsKpiWon" class="value">0</div><div class="sub">Status matched as won</div></article>
               <article class="card kpi deals-kpi-card" data-kpi-filter="lost"><div class="label">Lost Deals</div><div id="dealsKpiLost" class="value">0</div><div class="sub">Status matched as lost</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="proposal-needed"><div class="label">Proposal Needed</div><div id="dealsKpiProposalNeeded" class="value">0</div><div class="sub">proposal_needed = Yes</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="agreement-needed"><div class="label">Agreement Needed</div><div id="dealsKpiAgreementNeeded" class="value">0</div><div class="sub">agreement_needed = Yes</div></article>
+              <article class="card kpi deals-kpi-card" data-kpi-filter="proposal-needed" hidden><div class="label">Proposal Needed</div><div id="dealsKpiProposalNeeded" class="value">0</div><div class="sub">proposal_needed = Yes</div></article>
+              <article class="card kpi deals-kpi-card" data-kpi-filter="agreement-needed" hidden><div class="label">Agreement Needed</div><div id="dealsKpiAgreementNeeded" class="value">0</div><div class="sub">agreement_needed = Yes</div></article>
               <article class="card kpi deals-kpi-card" data-kpi-filter="high-priority"><div class="label">High Priority Deals</div><div id="dealsKpiHighPriority" class="value">0</div><div class="sub">High or Urgent</div></article>
               <article class="card kpi deals-kpi-card" data-kpi-filter="pipeline-value"><div class="label">Total Pipeline Value</div><div id="dealsKpiPipelineValue" class="value">0</div><div id="dealsKpiPipelineSub" class="sub">Visible estimated value</div></article>
               <article class="card kpi deals-kpi-card" data-kpi-filter="weighted-pipeline"><div class="label">Weighted Pipeline</div><div id="dealsKpiWeightedPipelineValue" class="value">0</div><div id="dealsKpiWeightedPipelineSub" class="sub">Stage probability weighted</div></article>
@@ -2902,13 +2902,13 @@ Sample:
           </div>
           <div class="filter-row">
             <label class="muted" for="leadFormNextFollowupDate">Next Follow-up</label>
-            <input id="leadFormNextFollowupDate" class="input" type="date" />
+            <input id="leadFormNextFollowupDate" class="input" type="date" required />
           </div>
           <div class="filter-row">
             <label class="muted" for="leadFormLastContactDate">Last Contact</label>
             <input id="leadFormLastContactDate" class="input" type="date" />
           </div>
-          <div class="filter-row">
+          <div class="filter-row" hidden>
             <label class="muted" for="leadFormProposalNeeded">Proposal Needed</label>
             <select id="leadFormProposalNeeded" class="select">
               <option value="">—</option>
@@ -2916,7 +2916,7 @@ Sample:
               <option value="no">No</option>
             </select>
           </div>
-          <div class="filter-row">
+          <div class="filter-row" hidden>
             <label class="muted" for="leadFormAgreementNeeded">Agreement Needed</label>
             <select id="leadFormAgreementNeeded" class="select">
               <option value="">—</option>
@@ -2928,6 +2928,10 @@ Sample:
             <label class="muted" for="leadFormNotes">Notes</label>
             <textarea id="leadFormNotes" class="input" rows="3" placeholder="Optional notes"></textarea>
           </div>
+          <section class="card" style="grid-column:1 / -1;padding:12px;">
+            <h3 style="margin:0 0 8px;font-size:16px;">Notes History</h3>
+            <div id="leadNotesHistoryList" class="lead-notes-history-list"><div class="muted">No note history yet.</div></div>
+          </section>
           <div class="filter-row">
             <label class="muted" for="leadFormUpdatedAt">Updated At</label>
             <input id="leadFormUpdatedAt" class="input" type="text" readonly />
@@ -3087,7 +3091,7 @@ Sample:
             <label class="muted" for="dealFormConvertedBy">Converted By</label>
             <input id="dealFormConvertedBy" class="input" type="text" />
           </div>
-          <div class="filter-row">
+          <div class="filter-row" hidden>
             <label class="muted" for="dealFormProposalNeeded">Proposal Needed</label>
             <select id="dealFormProposalNeeded" class="select">
               <option value="">—</option>
@@ -3095,7 +3099,7 @@ Sample:
               <option value="no">No</option>
             </select>
           </div>
-          <div class="filter-row">
+          <div class="filter-row" hidden>
             <label class="muted" for="dealFormAgreementNeeded">Agreement Needed</label>
             <select id="dealFormAgreementNeeded" class="select">
               <option value="">—</option>

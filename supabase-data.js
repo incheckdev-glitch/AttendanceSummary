@@ -1,11 +1,11 @@
 (function initSupabaseData(global) {
   const MIGRATED_RESOURCES = new Set([
-    'auth','users','roles','role_permissions','tickets','events','csm','leads','deals','proposal_catalog','proposals','agreements','workflow','clients','invoices','receipts','operations_onboarding','technical_admin_requests','notifications','notification_settings','companies','contacts','company_type_options','company_industry_options'
+    'auth','users','roles','role_permissions','tickets','events','csm','leads','lead_note_logs','deals','proposal_catalog','proposals','agreements','workflow','clients','invoices','receipts','operations_onboarding','technical_admin_requests','notifications','notification_settings','companies','contacts','company_type_options','company_industry_options'
   ]);
 
   const TABLE_BY_RESOURCE = {
     users: 'profiles', roles: 'roles', role_permissions: 'role_permissions', tickets: 'tickets',
-    events: 'events', csm: 'csm_activities', leads: 'leads', deals: 'deals',
+    events: 'events', csm: 'csm_activities', leads: 'leads', lead_note_logs: 'lead_note_logs', deals: 'deals',
     proposal_catalog: 'proposal_catalog_items', proposals: 'proposals', agreements: 'agreements',
     clients: 'clients', invoices: 'invoices', receipts: 'receipts', operations_onboarding: 'operations_onboarding',
     technical_admin_requests: 'technical_admin_requests', companies: 'companies', contacts: 'contacts', company_type_options: 'company_type_options', company_industry_options: 'company_industry_options'
@@ -21,6 +21,7 @@
     events: 'id',
     csm: 'id',
     leads: 'id',
+    lead_note_logs: 'id',
     deals: 'id',
     proposal_catalog: 'id',
     proposals: 'id',
@@ -169,6 +170,16 @@
     'roleLabel',
     'selectedRoles'
   ]);
+
+  const ALLOWED_LEAD_STATUSES = new Set(['Not Contacted Yet', 'Not Available', 'Negotiation', 'Lost', 'Qualified']);
+  function normalizeLeadStatusValue(value) {
+    const raw = String(value || '').trim();
+    for (const status of ALLOWED_LEAD_STATUSES) {
+      if (status.toLowerCase() === raw.toLowerCase()) return status;
+    }
+    return 'Not Contacted Yet';
+  }
+
   const LEAD_COLUMNS = new Set([
     'lead_id',
     'full_name',
@@ -190,6 +201,7 @@
     'estimated_value',
     'currency',
     'next_follow_up',
+    'next_follow_up_at',
     'last_contact',
     'proposal_needed',
     'agreement_needed',
@@ -898,8 +910,10 @@
       out.contactEmail = out.contactEmail ?? out.contact_email ?? '';
       out.contact_phone = out.contact_phone ?? out.contactPhone ?? '';
       out.contactPhone = out.contactPhone ?? out.contact_phone ?? '';
-      out.next_follow_up = out.next_follow_up ?? out.nextFollowUp ?? out.next_followup_date ?? out.nextFollowupDate ?? '';
+      out.next_follow_up = out.next_follow_up ?? out.next_follow_up_at ?? out.nextFollowUpAt ?? out.nextFollowUp ?? out.next_followup_date ?? out.nextFollowupDate ?? out.next_follow_up_date ?? out.nextFollowUpDate ?? '';
       out.last_contact = out.last_contact ?? out.lastContact ?? out.last_contact_date ?? out.lastContactDate ?? '';
+      out.next_follow_up_at = out.next_follow_up_at ?? out.next_follow_up ?? '';
+      out.nextFollowUpAt = out.nextFollowUpAt ?? out.next_follow_up_at ?? '';
       out.next_followup_date = out.next_followup_date ?? out.next_follow_up ?? '';
       out.last_contact_date = out.last_contact_date ?? out.last_contact ?? '';
       out.converted_to_deal_id = out.converted_to_deal_id ?? out.convertedDealId ?? out.deal_id ?? '';
@@ -1505,12 +1519,12 @@
       country: toTextOrEmpty(['country']),
       lead_source: toTextOrEmpty(['lead_source', 'leadSource']),
       service_interest: toTextOrEmpty(['service_interest', 'serviceInterest']),
-      status: toTextOrEmpty(['status']),
+      status: normalizeLeadStatusValue(toTextOrEmpty(['status'])),
       priority: toTextOrEmpty(['priority']),
       estimated_value: toNumberOrNull(['estimated_value', 'estimatedValue']),
       currency: toTextOrEmpty(['currency']),
       assigned_to: toTextOrEmpty(['assigned_to', 'assignedTo']),
-      next_follow_up: toDateOrNull(['next_follow_up', 'nextFollowUp', 'next_followup_date', 'nextFollowupDate']),
+      next_follow_up: toDateOrNull(['next_follow_up', 'next_follow_up_at', 'nextFollowUpAt', 'nextFollowUp', 'next_followup_date', 'nextFollowupDate', 'next_follow_up_date']),
       last_contact: toDateOrNull(['last_contact', 'lastContact', 'last_contact_date', 'lastContactDate']),
       proposal_needed: toBooleanOrNull(['proposal_needed', 'proposalNeeded']),
       agreement_needed: toBooleanOrNull(['agreement_needed', 'agreementNeeded']),
@@ -1520,6 +1534,9 @@
       updated_by: firstDefined(record, ['updated_by', 'updatedBy']) || userId || undefined
     };
 
+    if (!String(mapped.next_follow_up || '').trim()) {
+      throw new Error('Next follow-up is required for every lead change.');
+    }
     const sanitized = {};
     Object.entries(mapped).forEach(([key, value]) => {
       if (!LEAD_COLUMNS.has(key)) return;
@@ -4650,6 +4667,19 @@
       assertAllowed('leads', 'convert_to_deal');
       const leadUuid = await resolveResourceUuid('leads', payload, client);
       if (!isUuid(leadUuid)) throw new Error('Lead UUID is required to convert lead to deal.');
+      const { data: leadRows, error: leadLoadError } = await client
+        .from('leads')
+        .select('*')
+        .eq('id', leadUuid)
+        .limit(1);
+      if (leadLoadError) throw friendlyError('Unable to validate lead before conversion', leadLoadError);
+      const leadRow = Array.isArray(leadRows) ? leadRows[0] : null;
+      if (normalizeLeadStatusValue(leadRow?.status) !== 'Qualified') {
+        throw new Error('Lead must be qualified before converting to deal.');
+      }
+      if (!String(leadRow?.next_follow_up || leadRow?.next_follow_up_at || '').trim()) {
+        throw new Error('Next follow-up is required for every lead change.');
+      }
       const { data, error } = await client.rpc('convert_lead_to_deal', { p_lead_uuid: leadUuid });
       if (error) throw friendlyError('Lead conversion failed', error);
       const recordId = String(
