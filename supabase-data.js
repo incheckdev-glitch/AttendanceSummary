@@ -211,6 +211,7 @@
     'assigned_to',
     'owner_id',
     'notes',
+    'converted_at',
     'converted_to_deal_id',
     'converted_deal_uuid',
     'converted_by',
@@ -448,12 +449,13 @@
     technical_admin_requests: new Set(['agreement_id', 'onboarding_id', 'client_id', 'requested_by', 'updated_by']),
     notifications: new Set(['recipient_user_id', 'actor_user_id']),
     leads: new Set([
+      'id',
       'company_uuid',
       'contact_uuid',
-      'assigned_to',
       'owner_id',
       'created_by',
       'updated_by',
+      'converted_to_deal_id',
       'converted_deal_uuid',
       'converted_by',
       'last_updated_by'
@@ -737,9 +739,10 @@
   }
 
   async function insertSelectSingleWithSchemaRetry(client, table, payload = {}, context = 'Unable to create record') {
+    const finalCreateRecord = sanitizeUuidColumnsForMutation(table, payload);
     return runMutationWithSchemaRetry({
       table,
-      payload,
+      payload: finalCreateRecord,
       context,
       mode: 'create',
       execute: workingPayload => client.from(table).insert(workingPayload).select('*').single()
@@ -747,9 +750,10 @@
   }
 
   async function insertSelectRowsWithSchemaRetry(client, table, payload = [], context = 'Unable to create rows') {
+    const finalCreateRecord = sanitizeUuidColumnsForMutation(table, payload);
     return runMutationWithSchemaRetry({
       table,
-      payload,
+      payload: finalCreateRecord,
       context,
       mode: 'create',
       execute: workingPayload => client.from(table).insert(workingPayload).select('*')
@@ -757,9 +761,10 @@
   }
 
   async function updateSelectSingleWithSchemaRetry(client, table, payload = {}, key = 'id', id = '', context = 'Unable to update record') {
+    const finalPublicUpdates = sanitizeUuidColumnsForMutation(table, payload);
     return runMutationWithSchemaRetry({
       table,
-      payload,
+      payload: finalPublicUpdates,
       context,
       mode: 'update',
       execute: workingPayload => client.from(table).update(workingPayload).eq(key, id).select('*').single()
@@ -767,9 +772,10 @@
   }
 
   async function updateSelectRowsWithSchemaRetry(client, table, payload = {}, key = 'id', id = '', context = 'Unable to update rows') {
+    const finalPublicUpdates = sanitizeUuidColumnsForMutation(table, payload);
     return runMutationWithSchemaRetry({
       table,
-      payload,
+      payload: finalPublicUpdates,
       context,
       mode: 'update',
       execute: workingPayload => client.from(table).update(workingPayload).eq(key, id).select('*')
@@ -1530,6 +1536,27 @@
       if (!hasAny(keys)) return undefined;
       return toDbBoolean(firstDefined(record, keys), null);
     };
+    const isBlank = value =>
+      value === undefined || value === null || String(value).trim() === '';
+    const toUuidOrUndefined = keys => {
+      if (!hasAny(keys)) return undefined;
+      const value = firstDefined(record, keys);
+      if (isBlank(value)) return undefined;
+      const text = String(value).trim();
+      return isUuid(text) ? text : undefined;
+    };
+    const toUuidOrNull = keys => {
+      if (!hasAny(keys)) return undefined;
+      const value = firstDefined(record, keys);
+      if (isBlank(value)) return null;
+      const text = String(value).trim();
+      return isUuid(text) ? text : null;
+    };
+    const toAuditUuid = keys => {
+      const value = firstDefined(record, keys);
+      if (isUuid(value)) return String(value).trim();
+      return isUuid(userId) ? String(userId).trim() : undefined;
+    };
 
     const contactName = toTextOrEmpty(['contact_name', 'contactName']);
     const contactEmail = toTextOrEmpty(['contact_email', 'contactEmail']);
@@ -1538,13 +1565,13 @@
     const mapped = {
       lead_id: toTextOrEmpty(['lead_id', 'leadId']),
       company_id: toTextOrEmpty(['company_id', 'companyId']),
-      company_uuid: cleanUuidValue(firstDefined(record, ['company_uuid', 'companyUuid'])),
+      company_uuid: toUuidOrUndefined(['company_uuid', 'companyUuid']),
       company_name: toTextOrEmpty(['company_name', 'companyName']),
       customer_name: toTextOrEmpty(['customer_name', 'customerName']),
       customer_legal_name: toTextOrEmpty(['customer_legal_name', 'customerLegalName']),
       customer_address: toTextOrEmpty(['customer_address', 'customerAddress']),
       contact_id: toTextOrEmpty(['contact_id', 'contactId']),
-      contact_uuid: cleanUuidValue(firstDefined(record, ['contact_uuid', 'contactUuid'])),
+      contact_uuid: toUuidOrUndefined(['contact_uuid', 'contactUuid']),
       contact_name: contactName,
       contact_email: contactEmail,
       contact_phone: contactPhone,
@@ -1558,20 +1585,19 @@
       priority: toTextOrEmpty(['priority']),
       estimated_value: toNumberOrNull(['estimated_value', 'estimatedValue']),
       currency: toTextOrEmpty(['currency']),
-      assigned_to: cleanUuidValue(firstDefined(record, ['assigned_to', 'assignedTo'])),
-      owner_id: cleanUuidValue(firstDefined(record, ['owner_id', 'ownerId'])),
+      assigned_to: toTextOrEmpty(['assigned_to', 'assignedTo']),
+      owner_id: toUuidOrNull(['owner_id', 'ownerId']),
       next_follow_up: toDateOrNull(['next_follow_up', 'next_follow_up_at', 'nextFollowUpAt', 'nextFollowUp', 'next_followup_date', 'nextFollowupDate', 'next_follow_up_date', 'nextFollowUpDate']),
       next_follow_up_at: toDateOrNull(['next_follow_up_at', 'nextFollowUpAt', 'next_follow_up_date', 'nextFollowUpDate', 'next_follow_up', 'nextFollowUp', 'next_followup_date', 'nextFollowupDate']),
       last_contact: toDateOrNull(['last_contact', 'lastContact', 'last_contact_date', 'lastContactDate']),
-      proposal_needed: toBooleanOrNull(['proposal_needed', 'proposalNeeded']),
-      agreement_needed: toBooleanOrNull(['agreement_needed', 'agreementNeeded']),
       notes: toTextOrEmpty(['notes']),
-      converted_to_deal_id: toTextOrEmpty(['converted_to_deal_id', 'convertedDealId', 'deal_id', 'dealId']),
-      converted_deal_uuid: cleanUuidValue(firstDefined(record, ['converted_deal_uuid', 'convertedDealUuid'])),
-      converted_by: cleanUuidValue(firstDefined(record, ['converted_by', 'convertedBy'])),
-      created_by: includeCreatedBy ? cleanUuidValue(firstDefined(record, ['created_by', 'createdBy']) || userId) : undefined,
-      updated_by: cleanUuidValue(firstDefined(record, ['updated_by', 'updatedBy']) || userId),
-      last_updated_by: cleanUuidValue(firstDefined(record, ['last_updated_by', 'lastUpdatedBy']))
+      converted_at: toDateOrNull(['converted_at', 'convertedAt']),
+      converted_to_deal_id: toUuidOrNull(['converted_to_deal_id', 'convertedDealId']),
+      converted_deal_uuid: toUuidOrNull(['converted_deal_uuid', 'convertedDealUuid']),
+      converted_by: toUuidOrNull(['converted_by', 'convertedBy']),
+      created_by: includeCreatedBy ? toAuditUuid(['created_by', 'createdBy']) : undefined,
+      updated_by: toAuditUuid(['updated_by', 'updatedBy']),
+      last_updated_by: toUuidOrNull(['last_updated_by', 'lastUpdatedBy'])
     };
 
     if (!String(mapped.next_follow_up_at || mapped.next_follow_up || '').trim()) {
@@ -5540,14 +5566,15 @@
         devLog('[role permissions] saved normalized row', JSON.stringify(normalizedRow, null, 2));
         return { handled: true, data: await withItems(resource, normalizedRow) };
       }
+      const finalCreateRecord = sanitizeUuidColumnsForMutation(table, createRecord);
       let data;
       if (resource === 'tickets') {
-        data = await insertTicketWithRetry(client, table, createRecord);
+        data = await insertTicketWithRetry(client, table, finalCreateRecord);
       } else {
         const { data: inserted, error } = await insertSelectSingleWithSchemaRetry(
           client,
           table,
-          createRecord,
+          finalCreateRecord,
           `Unable to create ${resource} record`
         );
         if (error) throw friendlyError(`Unable to create ${resource} record`, error);
@@ -5976,12 +6003,13 @@
           delete publicUpdates.completed_at;
         }
       }
+      const finalPublicUpdates = sanitizeUuidColumnsForMutation(table, publicUpdates);
       let data;
       if (resource === 'operations_onboarding') {
         const { data: rows, error } = await updateSelectRowsWithSchemaRetry(
           client,
           table,
-          publicUpdates,
+          finalPublicUpdates,
           key,
           id,
           `Unable to update ${resource} record`
@@ -5992,10 +6020,14 @@
         if (updatedRows.length > 1) throw new Error('Unable to update operations_onboarding record: matched multiple rows.');
         data = updatedRows[0];
       } else {
+        if (resource === 'leads') {
+          console.log('[leads update final payload]', JSON.stringify(finalPublicUpdates, null, 2));
+          console.log('[leads update id]', id);
+        }
         const { data: singleRow, error } = await updateSelectSingleWithSchemaRetry(
           client,
           table,
-          publicUpdates,
+          finalPublicUpdates,
           key,
           id,
           `Unable to update ${resource} record`
