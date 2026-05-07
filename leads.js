@@ -57,6 +57,14 @@ const Leads = {
     if (cleaned === undefined || cleaned === null) return cleaned;
     return String(cleaned).trim();
   },
+  isUuid(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+  },
+  cleanUuidOrUndefined(value) {
+    const cleaned = this.cleanUuidValue(value);
+    if (cleaned === undefined || cleaned === null) return undefined;
+    return this.isUuid(cleaned) ? cleaned : undefined;
+  },
   normalizeCompany(raw = {}) {
     return { ...raw, company_uuid: this.cleanUuidValue(raw.company_uuid ?? raw.companyUuid ?? raw.id), company_id: String(this.pick(raw, 'company_id', 'companyId')).trim(), company_name: String(this.pick(raw, 'company_name', 'companyName')).trim(), legal_name: String(this.pick(raw, 'legal_name', 'legalName')).trim(), company_type: String(this.pick(raw, 'company_type', 'companyType')).trim(), industry: String(this.pick(raw, 'industry')).trim(), website: String(this.pick(raw, 'website')).trim(), main_email: String(this.pick(raw, 'main_email', 'mainEmail')).trim(), main_phone: String(this.pick(raw, 'main_phone', 'mainPhone')).trim(), country: String(this.pick(raw, 'country')).trim(), city: String(this.pick(raw, 'city')).trim(), address: String(this.pick(raw, 'address')).trim(), tax_number: String(this.pick(raw, 'tax_number', 'taxNumber')).trim(), company_status: String(this.pick(raw, 'company_status', 'companyStatus')).trim(), source: String(this.pick(raw, 'source')).trim(), owner_name: String(this.pick(raw, 'owner_name', 'ownerName')).trim(), owner_email: String(this.pick(raw, 'owner_email', 'ownerEmail')).trim(), notes: String(this.pick(raw, 'notes')).trim() };
   },
@@ -174,7 +182,7 @@ const Leads = {
       priority: String(raw.priority || '').trim(),
       estimated_value: raw.estimated_value ?? raw.estimatedValue ?? '',
       currency: String(raw.currency || '').trim(),
-      assigned_to: this.cleanUuidValue(raw.assigned_to ?? raw.assignedTo) ?? '',
+      assigned_to: String(raw.assigned_to ?? raw.assignedTo ?? '').trim(),
       next_follow_up: this.pickNextFollowUpValue(raw),
       next_follow_up_at: this.pickNextFollowUpValue(raw),
       last_contact:
@@ -212,13 +220,13 @@ const Leads = {
       ...(includeLeadId ? { lead_id: leadIdValue || null } : {}),
       full_name: String(lead.full_name || ''),
       company_name: String(lead.company_name || ''),
-      company_uuid: this.cleanUuidValue(lead.company_uuid ?? lead.companyUuid),
+      company_uuid: this.cleanUuidOrUndefined(lead.company_uuid ?? lead.companyUuid),
       customer_name: String(lead.customer_name || ''),
       customer_legal_name: String(lead.customer_legal_name || ''),
       customer_address: String(lead.customer_address || ''),
       company_id: String(lead.company_id || ''),
       contact_id: String(lead.contact_id || ''),
-      contact_uuid: this.cleanUuidValue(lead.contact_uuid ?? lead.contactUuid),
+      contact_uuid: this.cleanUuidOrUndefined(lead.contact_uuid ?? lead.contactUuid),
       contact_name: String(lead.contact_name || ''),
       contact_email: String(lead.contact_email || ''),
       contact_phone: String(lead.contact_phone || ''),
@@ -231,34 +239,36 @@ const Leads = {
       priority: String(lead.priority || ''),
       estimated_value: Number.isFinite(estimatedValueParsed) ? estimatedValueParsed : null,
       currency: String(lead.currency || ''),
-      assigned_to: this.cleanUuidValue(lead.assigned_to ?? lead.assignedTo),
-      owner_id: this.cleanUuidValue(lead.owner_id ?? lead.ownerId),
+      assigned_to: String(lead.assigned_to ?? lead.assignedTo ?? '').trim(),
+      owner_id: this.cleanUuidOrUndefined(lead.owner_id ?? lead.ownerId),
       next_follow_up: this.pickNextFollowUpValue(lead) || null,
       next_follow_up_at: this.pickNextFollowUpValue(lead) || null,
       last_contact: lead.last_contact || null,
       notes: String(lead.notes || ''),
-      converted_to_deal_id: lead.converted_to_deal_id || lead.deal_id || null,
-      converted_deal_uuid: this.cleanUuidValue(lead.converted_deal_uuid ?? lead.convertedDealUuid),
-      converted_by: this.cleanUuidValue(lead.converted_by ?? lead.convertedBy),
-      last_updated_by: this.cleanUuidValue(lead.last_updated_by ?? lead.lastUpdatedBy)
+      converted_at: lead.converted_at || lead.convertedAt || null,
+      converted_to_deal_id: this.cleanUuidOrUndefined(lead.converted_to_deal_id ?? lead.convertedDealId),
+      converted_deal_uuid: this.cleanUuidOrUndefined(lead.converted_deal_uuid ?? lead.convertedDealUuid),
+      converted_by: this.cleanUuidOrUndefined(lead.converted_by ?? lead.convertedBy),
+      last_updated_by: this.cleanUuidOrUndefined(lead.last_updated_by ?? lead.lastUpdatedBy)
     });
   },
   cleanLeadUuidPayload(payload = {}) {
     const cleaned = { ...(payload && typeof payload === 'object' ? payload : {}) };
     const uuidFields = [
+      'id',
       'company_uuid',
       'contact_uuid',
-      'assigned_to',
       'owner_id',
       'created_by',
       'updated_by',
+      'converted_to_deal_id',
       'converted_deal_uuid',
       'converted_by',
       'last_updated_by'
     ];
     uuidFields.forEach(field => {
       if (Object.prototype.hasOwnProperty.call(cleaned, field)) {
-        cleaned[field] = this.cleanUuidValue(cleaned[field]);
+        cleaned[field] = this.cleanUuidOrUndefined(cleaned[field]);
       }
     });
     Object.keys(cleaned).forEach(key => {
@@ -382,8 +392,8 @@ const Leads = {
     const userId = await this.getCurrentUserId();
     const payload = this.cleanLeadUuidPayload({
       ...this.backendLead(lead),
-      created_by: userId || undefined,
-      updated_by: userId || undefined
+      created_by: this.isUuid(userId) ? userId : undefined,
+      updated_by: this.isUuid(userId) ? userId : undefined
     });
     this.debugLeadPayload('[leads] create payload', payload);
     const data = await Api.requestWithSession('leads', 'create', payload, { requireAuth: true });
@@ -401,10 +411,30 @@ const Leads = {
     return data;
   },
   async updateLead(leadId, updates) {
+    if (!this.isUuid(leadId)) {
+      UI.toast('Lead database ID is missing. Please refresh and reopen the lead.');
+      return null;
+    }
     const userId = await this.getCurrentUserId();
     const payload = this.cleanLeadUuidPayload({
       ...this.backendLead(updates),
-      updated_by: userId || undefined
+      updated_by: this.isUuid(userId) ? userId : undefined
+    });
+    Object.keys(payload).forEach(key => {
+      if (payload[key] === undefined) delete payload[key];
+    });
+    [
+      'id',
+      'company_uuid',
+      'contact_uuid',
+      'created_by',
+      'updated_by',
+      'converted_to_deal_id',
+      'converted_deal_uuid',
+      'converted_by',
+      'last_updated_by'
+    ].forEach(key => {
+      if (payload[key] === '') delete payload[key];
     });
     this.debugLeadPayload('[leads] update payload', payload);
     const data = await Api.requestWithSession('leads', 'update', {
@@ -1282,8 +1312,8 @@ const Leads = {
     const selectedContact = this.state.selectedContact || {};
     const companyId = String(selectedCompany.company_id || E.leadFormCompanyId?.value || '').trim();
     const contactId = String(selectedContact.contact_id || E.leadFormContactId?.value || '').trim();
-    const companyUuid = this.cleanUuidValue(selectedCompany.company_uuid ?? selectedCompany.companyUuid ?? selectedCompany.id);
-    const contactUuid = this.cleanUuidValue(selectedContact.contact_uuid ?? selectedContact.contactUuid ?? selectedContact.id);
+    const companyUuid = this.cleanUuidOrUndefined(selectedCompany.company_uuid ?? selectedCompany.companyUuid ?? selectedCompany.id);
+    const contactUuid = this.cleanUuidOrUndefined(selectedContact.contact_uuid ?? selectedContact.contactUuid ?? selectedContact.id);
     const contactName = String(U.buildContactDisplayName(selectedContact) || '').trim();
     const customerName = U.getCustomerLegalName(selectedCompany, {});
     const contactEmail = String(selectedContact.email || '').trim();
@@ -1313,7 +1343,7 @@ const Leads = {
       priority: String(E.leadFormPriority?.value || '').trim(),
       estimated_value: estimatedValueRaw === '' ? '' : Number(estimatedValueRaw),
       currency: String(E.leadFormCurrency?.value || '').trim(),
-      assigned_to: this.cleanUuidValue(E.leadFormAssignedTo?.value),
+      assigned_to: String(E.leadFormAssignedTo?.value || '').trim(),
       next_follow_up: nextFollowUpIso,
       next_follow_up_at: nextFollowUpIso,
       last_contact: String(E.leadFormLastContactDate?.value || '').trim(),
@@ -1390,8 +1420,8 @@ const Leads = {
       UI.toast('Company and contact are required.');
       return;
     }
-    if (mode === 'edit' && !leadId) {
-      UI.toast('Lead ID is missing. Please reopen the lead and try again.');
+    if (mode === 'edit' && !this.isUuid(leadId)) {
+      UI.toast('Lead database ID is missing. Please refresh and reopen the lead.');
       return;
     }
 
@@ -1684,7 +1714,9 @@ const Leads = {
       const leadUpdate = {
         ...sourceLead,
         converted_at: normalizedSavedDeal.converted_at || payload.converted_at,
-        deal_id: normalizedSavedDeal.deal_id || payload.deal_id || sourceLead.deal_id
+        deal_id: normalizedSavedDeal.deal_id || payload.deal_id || sourceLead.deal_id,
+        converted_to_deal_id: this.isUuid(normalizedSavedDeal.id) ? normalizedSavedDeal.id : sourceLead.converted_to_deal_id,
+        converted_deal_uuid: this.isUuid(normalizedSavedDeal.id) ? normalizedSavedDeal.id : sourceLead.converted_deal_uuid
       };
       const leadUpdateResult = await this.updateLeadWithVerification(leadUuid, leadUpdate);
       this.upsertLocalRow(leadUpdateResult?.row || leadUpdate);
