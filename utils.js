@@ -275,9 +275,9 @@ const U = {
     // Keep document previews independent from the app/PWA/MonitorCore logo by embedding the
     // InCheck360 document logo directly in the generated preview HTML.
     const styleTag = `<style data-incheck360-doc-logo-style>
-      .incheck360-doc-logo-wrap{float:none;display:flex;align-items:center;justify-content:flex-start;margin:0;padding:0;width:170px;max-width:35%;text-align:left;position:static;transform:none;}
-      .incheck360-doc-logo{width:100%;height:auto;display:block;object-fit:contain;object-position:left center;margin:0;padding:0;position:static;transform:none;}
-      @media print{.incheck360-doc-logo-wrap{width:150px;max-width:32%;margin:0}}
+      .incheck360-doc-logo-wrap{float:none;display:flex;align-items:center;justify-content:flex-start;margin:0;padding:0;width:32mm;max-width:32mm;height:20mm;max-height:20mm;text-align:left;position:static!important;transform:none!important;}
+      .incheck360-doc-logo{width:auto;max-width:32mm;height:auto;max-height:20mm;display:block;object-fit:contain;object-position:left center;margin:0;padding:0;position:static!important;transform:none!important;}
+      @media print{.incheck360-doc-logo-wrap{width:32mm;max-width:32mm;height:20mm;max-height:20mm;margin:0}}
     </style>`;
     const logoMarkup =
       `<div class="incheck360-doc-logo-wrap" data-incheck360-doc-logo><img class="incheck360-doc-logo" src="${INCHECK360_DOCUMENT_LOGO_DATA_URI}" alt="InCheck360 logo" /></div>`;
@@ -294,8 +294,11 @@ const U = {
       output = `${styleTag}${output}`;
     }
 
-    if (/data-incheck360-doc-logo-slot/i.test(output)) {
-      output = output.replace(/<div[^>]*data-incheck360-doc-logo-slot[^>]*><\/div>/i, logoMarkup);
+    const logoSlotPattern = /<div\b[^>]*data-incheck360-doc-logo-slot(?:=["'][^"']*["'])?[^>]*>\s*<\/div>/gi;
+    const hasLogoSlot = logoSlotPattern.test(output);
+    logoSlotPattern.lastIndex = 0;
+    if (hasLogoSlot) {
+      output = output.replace(logoSlotPattern, logoMarkup);
     } else if (/<body[^>]*>/i.test(output)) {
       output = output.replace(/<body([^>]*)>/i, `<body$1>${logoMarkup}`);
     } else {

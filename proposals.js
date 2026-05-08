@@ -46,6 +46,7 @@ const Proposals = {
     'customer_signatory_name',
     'customer_signatory_title',
     'customer_sign_date',
+    'provider_signatory_user_id',
     'provider_signatory_name',
     'provider_signatory_title',
     'provider_sign_date',
@@ -426,6 +427,35 @@ const Proposals = {
       ''
     ).trim();
   },
+  getProposalCreatorUserId(creator = {}) {
+    if (!creator || typeof creator !== 'object') return '';
+    return String(
+      creator.auth_user_id ||
+      creator.authUserId ||
+      creator.user_id ||
+      creator.userId ||
+      creator.id ||
+      creator.profile_id ||
+      creator.profileId ||
+      ''
+    ).trim();
+  },
+  getProviderSignatoryCreator(proposal = {}) {
+    const sessionProvider = this.getSignedInUserForProposal();
+    const explicitCreator =
+      proposal.__providerSignatoryCreator ||
+      proposal.creator ||
+      proposal.created_by_profile ||
+      proposal.createdByProfile ||
+      proposal.provider_signatory_user ||
+      proposal.providerSignatoryUser ||
+      null;
+    if (explicitCreator) return explicitCreator;
+
+    const rawSavedName = this.getProposalValue(proposal, 'provider_signatory_name', 'providerSignatoryName');
+    const cleanSavedName = this.getCleanProviderSignatoryValue(rawSavedName, proposal);
+    return cleanSavedName ? {} : sessionProvider;
+  },
   isRawUuidValue(value) {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
       String(value || '').trim()
@@ -453,17 +483,18 @@ const Proposals = {
       proposal
     );
     if (savedName) return savedName;
-    return this.getCleanProviderSignatoryValue(
-      this.getProposalCreatorDisplayName(
-        proposal.__providerSignatoryCreator || proposal.creator || proposal.created_by_profile || proposal.createdByProfile
-      ),
-      proposal
-    );
+    const creator = this.getProviderSignatoryCreator(proposal);
+    return this.getCleanProviderSignatoryValue(this.getProposalCreatorDisplayName(creator), proposal);
   },
   getProposalProviderSignatoryTitle(proposal = {}) {
-    const savedTitle = this.getProposalValue(proposal, 'provider_signatory_title', 'providerSignatoryTitle');
-    if (savedTitle) return String(savedTitle).trim();
-    return this.getProposalCreatorTitle(proposal.__providerSignatoryCreator || proposal.creator || proposal.created_by_profile || proposal.createdByProfile);
+    const savedName = this.getCleanProviderSignatoryValue(
+      this.getProposalValue(proposal, 'provider_signatory_name', 'providerSignatoryName'),
+      proposal
+    );
+    const savedTitle = String(this.getProposalValue(proposal, 'provider_signatory_title', 'providerSignatoryTitle') || '').trim();
+    if (savedName && savedTitle) return savedTitle;
+    const creator = this.getProviderSignatoryCreator(proposal);
+    return this.getProposalCreatorTitle(creator) || savedTitle;
   },
   addProposalUserLookup(usersById, user = {}) {
     if (!usersById || !user || typeof user !== 'object') return;
@@ -914,23 +945,48 @@ const Proposals = {
       ''
     ).trim();
 
+    const userId = String(
+      rawAuthUser.id ||
+      sessionUser.user_id ||
+      sessionUser.userId ||
+      sessionState.user_id ||
+      sessionState.userId ||
+      profile.auth_user_id ||
+      profile.authUserId ||
+      profile.user_id ||
+      profile.userId ||
+      profile.id ||
+      ''
+    ).trim();
+
     return {
+      id: userId,
+      user_id: userId,
+      auth_user_id: userId,
       name,
+      full_name: name,
+      display_name: name,
       email,
       mobile,
+      title: role,
       role
     };
   },
   applyProposalProviderSessionFields(target = {}) {
     const provider = this.getSignedInUserForProposal();
-    if (window?.AppState?.debugMode) console.debug('[Proposal Provider Session]', provider);
+    const creator = this.getProviderSignatoryCreator(target);
+    if (window?.AppState?.debugMode) console.debug('[Proposal Provider Session]', provider, creator);
 
-    const providerName = provider.name || provider.email?.split('@')?.[0] || '';
-    const providerEmail = provider.email || '';
-    const providerMobile = provider.mobile || '';
-    const providerRole = provider.role || '';
-    const providerSignatoryName = String(target.provider_signatory_name || target.providerSignatoryName || providerName).trim();
-    const providerSignatoryTitle = String(target.provider_signatory_title || target.providerSignatoryTitle || providerRole).trim();
+    const creatorName = this.getProposalCreatorDisplayName(creator) || provider.name || provider.email?.split('@')?.[0] || '';
+    const creatorTitle = this.getProposalCreatorTitle(creator) || provider.role || '';
+    const creatorUserId = this.getProposalCreatorUserId(creator) || this.getProposalValue(target, 'provider_signatory_user_id', 'providerSignatoryUserId') || provider.id || '';
+    const savedSignatoryName = this.getCleanProviderSignatoryValue(
+      this.getProposalValue(target, 'provider_signatory_name', 'providerSignatoryName'),
+      target
+    );
+    const savedSignatoryTitle = String(this.getProposalValue(target, 'provider_signatory_title', 'providerSignatoryTitle') || '').trim();
+    const providerSignatoryName = savedSignatoryName || creatorName;
+    const providerSignatoryTitle = savedSignatoryName && savedSignatoryTitle ? savedSignatoryTitle : creatorTitle || savedSignatoryTitle;
 
     const mapped = {
       ...target,
@@ -945,6 +1001,9 @@ const Proposals = {
 
       provider_contact_mobile: this.providerContactDefaults.mobile,
       providerContactMobile: this.providerContactDefaults.mobile,
+
+      provider_signatory_user_id: creatorUserId,
+      providerSignatoryUserId: creatorUserId,
 
       provider_signatory_name: providerSignatoryName,
       providerSignatoryName: providerSignatoryName,
@@ -1057,6 +1116,9 @@ const Proposals = {
     normalized.provider_contact_email = this.providerContactDefaults.email;
     normalized.provider_name = this.providerContactDefaults.name;
     normalized.provider_legal_name = this.providerContactDefaults.name;
+    normalized.provider_signatory_user_id = String(source.provider_signatory_user_id || source.providerSignatoryUserId || normalized.provider_signatory_user_id || '').trim();
+    normalized.provider_signatory_name = this.getProposalProviderSignatoryName({ ...source, ...normalized }) || '';
+    normalized.provider_signatory_title = this.getProposalProviderSignatoryTitle({ ...source, ...normalized }) || '';
     normalized.currency = String(normalized.currency || source.currency || '').trim();
     normalized.deal_id = String(normalized.deal_id || '').trim();
     normalized.deal_code = String(source.deal_code || source.dealCode || '').trim();
@@ -1589,6 +1651,9 @@ const Proposals = {
       provider_contact_email: this.providerContactDefaults.email,
       provider_name: this.providerContactDefaults.name,
       provider_legal_name: this.providerContactDefaults.name,
+      provider_signatory_user_id: base.provider_signatory_user_id || base.providerSignatoryUserId || this.getSignedInUserForProposal().id || '',
+      provider_signatory_name: this.getProposalProviderSignatoryName(base),
+      provider_signatory_title: this.getProposalProviderSignatoryTitle(base),
       generated_by: generatedByFallback,
       ...totals
     };
@@ -1775,7 +1840,7 @@ const Proposals = {
       .proposal-preview-header,
       .proposal-document-header {
         display: grid;
-        grid-template-columns: 34mm 1fr 68mm;
+        grid-template-columns: 38mm 1fr 68mm;
         align-items: center;
         gap: 8mm;
         width: 100%;
@@ -1789,7 +1854,7 @@ const Proposals = {
         display: flex;
         align-items: center;
         justify-content: flex-start;
-        min-height: 26mm;
+        height: 26mm;
         min-width: 0;
         margin: 0;
         padding: 0;
@@ -1805,10 +1870,10 @@ const Proposals = {
         justify-content: flex-start;
         margin: 0;
         padding: 0;
-        width: 28mm;
-        max-width: 28mm;
-        height: auto;
-        max-height: 18mm;
+        width: 32mm;
+        max-width: 32mm;
+        height: 20mm;
+        max-height: 20mm;
         text-align: left;
         position: static;
         transform: none;
@@ -1822,8 +1887,8 @@ const Proposals = {
       .proposal-document-logo img,
       .proposal-document-logo svg {
         display: block;
-        max-width: 28mm;
-        max-height: 18mm;
+        max-width: 32mm;
+        max-height: 20mm;
         width: auto;
         height: auto;
         object-fit: contain;
@@ -1840,7 +1905,7 @@ const Proposals = {
         display: flex;
         align-items: center;
         justify-content: center;
-        min-height: 26mm;
+        height: 26mm;
         min-width: 0;
         margin: 0;
         padding: 0;
@@ -1865,7 +1930,7 @@ const Proposals = {
         display: flex;
         align-items: center;
         justify-content: flex-end;
-        min-height: 26mm;
+        height: 26mm;
         min-width: 0;
         margin: 0;
         padding: 0;
@@ -2586,8 +2651,8 @@ const Proposals = {
     set(E.proposalFormCustomerSignatoryName, proposal.customer_signatory_name || '');
     set(E.proposalFormCustomerSignatoryTitle, proposal.customer_signatory_title || '');
     set(E.proposalFormCustomerSignDate, proposal.customer_sign_date || '');
-    set(E.proposalFormProviderSignatoryName, proposal.provider_signatory_name || '');
-    set(E.proposalFormProviderSignatoryTitle, proposal.provider_signatory_title || '');
+    set(E.proposalFormProviderSignatoryName, this.getProposalProviderSignatoryName(proposal));
+    set(E.proposalFormProviderSignatoryTitle, this.getProposalProviderSignatoryTitle(proposal));
     set(E.proposalFormProviderSignDate, proposal.provider_sign_date || '');
     set(E.proposalFormTerms, proposal.terms_conditions || '');
   },
@@ -2922,6 +2987,7 @@ const Proposals = {
     const providerEmail = this.providerContactDefaults.email;
     const providerMobile = this.providerContactDefaults.mobile;
     const providerRole = provider.role || '';
+    const providerUserName = provider.name || provider.email?.split('@')?.[0] || '';
     const contactPersonName = this.buildContactDisplayName(selectedContact);
     const resolvedCustomerName =
       U.getCustomerLegalName(selectedCompany, mapped) ||
@@ -2946,6 +3012,7 @@ const Proposals = {
       provider_contact_name: providerName,
       provider_contact_mobile: providerMobile,
       provider_contact_email: providerEmail,
+      provider_signatory_user_id: provider.id || '',
       service_start_date: String(E.proposalFormServiceStartDate?.value || '').trim(),
       contract_term: String(E.proposalFormContractTerm?.value || '').trim(),
       account_number: String(E.proposalFormAccountNumber?.value || '').trim(),
@@ -2955,7 +3022,10 @@ const Proposals = {
       customer_signatory_name: mapped.customer_signatory_name || '',
       customer_signatory_title: mapped.customer_signatory_title || '',
       customer_sign_date: String(E.proposalFormCustomerSignDate?.value || '').trim(),
-      provider_signatory_name: String(E.proposalFormProviderSignatoryName?.value || mapped.provider_signatory_name || mapped.providerSignatoryName || providerName).trim(),
+      provider_signatory_name: this.getCleanProviderSignatoryValue(
+        E.proposalFormProviderSignatoryName?.value || mapped.provider_signatory_name || mapped.providerSignatoryName || providerUserName,
+        mapped
+      ) || providerUserName,
       provider_signatory_title: String(E.proposalFormProviderSignatoryTitle?.value || mapped.provider_signatory_title || mapped.providerSignatoryTitle || providerRole).trim(),
       provider_sign_date: String(E.proposalFormProviderSignDate?.value || '').trim(),
       terms_conditions: String(E.proposalFormTerms?.value || '').trim(),
