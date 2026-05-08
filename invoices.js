@@ -62,6 +62,7 @@ const Invoices = {
     detailCacheById: {},
     detailCacheTtlMs: 90 * 1000,
     receiptsByInvoiceId: {},
+    paymentScheduleByInvoiceId: {},
     openingInvoiceIds: new Set(),
     loadingInvoiceReceiptIds: new Set(),
     rowActionInFlight: new Set()
@@ -450,6 +451,104 @@ const Invoices = {
       notes: String(source.notes || '').trim() || null
     };
   },
+  getInvoicePaymentSchedulePlan(paymentTerm) {
+    const term = String(paymentTerm || '').trim().toLowerCase().replace(/\s+/g, '');
+    if (term === 'net7') return { count: 12, intervalMonths: 1, firstDueNetDays: 7, label: 'Monthly' };
+    if (term === 'net14') return { count: 4, intervalMonths: 3, firstDueNetDays: 14, label: 'Quarterly' };
+    if (term === 'net21') return { count: 2, intervalMonths: 6, firstDueNetDays: 21, label: 'Semi-Annual' };
+    if (term === 'net30') return { count: 1, intervalMonths: 12, firstDueNetDays: 30, label: 'Annual' };
+    return { count: 1, intervalMonths: 12, firstDueNetDays: 30, label: 'Annual' };
+  },
+  getInvoiceScheduleCacheKey(invoiceId) {
+    return String(invoiceId || '').trim();
+  },
+  getInvoicePaymentScheduleRows(invoiceId) {
+    const key = this.getInvoiceScheduleCacheKey(invoiceId);
+    return key ? (this.state.paymentScheduleByInvoiceId[key] || []) : [];
+  },
+  setInvoicePaymentScheduleRows(invoiceId, rows = []) {
+    const key = this.getInvoiceScheduleCacheKey(invoiceId);
+    if (!key) return;
+    this.state.paymentScheduleByInvoiceId[key] = Array.isArray(rows) ? rows : [];
+  },
+  normalizeScheduleRow(row = {}) {
+    const scheduled = this.toNumberSafe(row.scheduled_amount ?? row.amount ?? row.total);
+    const paid = this.toNumberSafe(row.paid_amount ?? row.amount_paid);
+    return {
+      id: String(row.id || '').trim(),
+      invoice_id: String(row.invoice_id || '').trim(),
+      schedule_no: Number(row.schedule_no || row.no || 0) || 0,
+      due_date: this.normalizeDateInputValue(row.due_date || row.dueDate),
+      scheduled_amount: scheduled,
+      paid_amount: paid,
+      balance_due: this.toNumberSafe(row.balance_due ?? Math.max(0, scheduled - paid)),
+      status: String(row.status || '').trim() || 'scheduled',
+      schedule_label: String(row.schedule_label || row.label || '').trim(),
+      receipt_ids: Array.isArray(row.receipt_ids) ? row.receipt_ids : []
+    };
+  },
+  async loadInvoicePaymentSchedule(invoiceId, { forceCreate = false } = {}) {
+    const id = String(invoiceId || '').trim();
+    if (!id) return [];
+    try {
+      let response = await Api.listInvoicePaymentSchedule(id);
+      let rows = this.extractRows(response).map(row => this.normalizeScheduleRow(row));
+      if (!rows.length && forceCreate) {
+        response = await Api.createInvoicePaymentSchedule(id, false);
+        rows = this.extractRows(response).map(row => this.normalizeScheduleRow(row));
+      }
+      this.setInvoicePaymentScheduleRows(id, rows);
+      this.renderInvoicePaymentSchedule(rows);
+      return rows;
+    } catch (error) {
+      console.warn('[invoices] unable to load payment schedule', error);
+      this.renderInvoicePaymentSchedule([]);
+      return [];
+    }
+  },
+  renderInvoicePaymentSchedule(rows = this.getInvoicePaymentScheduleRows(this.state.selectedInvoice?.id)) {
+    const tbody = E.invoicePaymentScheduleTbody;
+    if (!tbody) return;
+    const safeRows = (Array.isArray(rows) ? rows : []).map(row => this.normalizeScheduleRow(row));
+    if (E.invoicePaymentScheduleState) {
+      E.invoicePaymentScheduleState.textContent = safeRows.length ? `${safeRows.length} scheduled payment${safeRows.length === 1 ? '' : 's'}.` : 'No payment schedule found yet.';
+    }
+    if (!safeRows.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="muted" style="text-align:center;">No payment schedule found.</td></tr>';
+      return;
+    }
+    const currency = String(this.state.selectedInvoice?.currency || E.invoiceFormCurrency?.value || 'USD').trim().toUpperCase();
+    const money = value => `${currency} ${this.toNumberSafe(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    tbody.innerHTML = safeRows
+      .sort((a, b) => Number(a.schedule_no || 0) - Number(b.schedule_no || 0))
+      .map(row => {
+        const receipts = row.receipt_ids.length ? row.receipt_ids.map(id => U.escapeHtml(String(id))).join('<br>') : '—';
+        return `<tr>
+          <td>${U.escapeHtml(String(row.schedule_no || ''))}</td>
+          <td>${U.escapeHtml(U.fmtDisplayDate(row.due_date) || row.due_date || '—')}</td>
+          <td>${U.escapeHtml(money(row.scheduled_amount))}</td>
+          <td>${U.escapeHtml(money(row.paid_amount))}</td>
+          <td>${U.escapeHtml(money(row.balance_due))}</td>
+          <td>${U.escapeHtml(row.status || 'scheduled')}</td>
+          <td>${receipts}</td>
+        </tr>`;
+      })
+      .join('');
+  },
+  async recalculateInvoicePaymentSchedule(invoiceId) {
+    const id = String(invoiceId || '').trim();
+    if (!id) return [];
+    try {
+      const response = await Api.recalculateInvoicePaymentSchedule(id);
+      const rows = this.extractRows(response).map(row => this.normalizeScheduleRow(row));
+      this.setInvoicePaymentScheduleRows(id, rows);
+      if (String(E.invoiceForm?.dataset.id || '').trim() === id) this.renderInvoicePaymentSchedule(rows);
+      return rows;
+    } catch (error) {
+      console.warn('[invoices] unable to recalculate payment schedule', error);
+      return [];
+    }
+  },
   async refreshInvoiceReceipts(invoiceId, { force = false } = {}) {
     const id = String(invoiceId || '').trim();
     if (!id) return;
@@ -636,9 +735,10 @@ const Invoices = {
       .match(filter)
       .order('receipt_date', { ascending: true, nullsFirst: false })
       .order('created_at', { ascending: true, nullsFirst: false });
-    const [byId, byNumber] = await Promise.all([
+    const [byId, byNumber, scheduleResult] = await Promise.all([
       receiptQuery({ invoice_id: invoiceUuid }),
-      invoiceNumber ? receiptQuery({ invoice_number: invoiceNumber }) : Promise.resolve({ data: [], error: null })
+      invoiceNumber ? receiptQuery({ invoice_number: invoiceNumber }) : Promise.resolve({ data: [], error: null }),
+      Api.listInvoicePaymentSchedule(invoiceUuid).catch(() => [])
     ]);
     const receiptsError = byId?.error || byNumber?.error;
     if (receiptsError) throw new Error(`Unable to load linked receipts: ${receiptsError.message || 'Unknown error'}`);
@@ -651,10 +751,11 @@ const Invoices = {
       invoiceUuid,
       invoice: this.normalizeInvoice({ ...normalizedInvoice, ...paymentSummary }),
       items: Array.isArray(itemRows) ? itemRows.map(item => this.normalizeItem(item)) : [],
-      receipts: paymentSummary.normalizedReceipts
+      receipts: paymentSummary.normalizedReceipts,
+      paymentSchedule: this.extractRows(scheduleResult).map(row => this.normalizeScheduleRow(row))
     };
   },
-  buildInvoicePreviewHtml(invoice = {}, items = [], receipts = []) {
+  buildInvoicePreviewHtml(invoice = {}, items = [], receipts = [], paymentScheduleRows = []) {
     const invoiceData = invoice && typeof invoice === 'object' ? invoice : {};
     const normalizedItems = this.filterInvoiceCommercialItems(items).map((item, index) => {
       const normalized = this.normalizeItem(item);
@@ -748,6 +849,21 @@ const Invoices = {
             </tr>`)
           .join('')
       : '<tr><td colspan="8" class="cell-center muted">No linked receipts found.</td></tr>';
+
+    const scheduleRows = (Array.isArray(paymentScheduleRows) ? paymentScheduleRows : []).map(row => this.normalizeScheduleRow(row));
+    const paymentScheduleHtml = scheduleRows.length
+      ? scheduleRows
+          .sort((a, b) => Number(a.schedule_no || 0) - Number(b.schedule_no || 0))
+          .map(row => `<tr>
+              <td class="cell-center">${textValue(row.schedule_no)}</td>
+              <td class="cell-center">${dateValue(row.due_date)}</td>
+              <td class="cell-right">${money(row.scheduled_amount)}</td>
+              <td class="cell-right">${money(row.paid_amount)}</td>
+              <td class="cell-right">${money(row.balance_due)}</td>
+              <td>${textValue(row.status)}</td>
+            </tr>`)
+          .join('')
+      : '<tr><td colspan="6" class="cell-center muted">No payment schedule found.</td></tr>';
 
     const companyTitle = String(invoiceData.company_name || invoiceData.company_legal_name || 'COMPANY NAME').trim();
     const companySubtitle = String(invoiceData.company_tagline || 'Business Software Services').trim();
@@ -926,6 +1042,23 @@ const Invoices = {
           <div class="totals-row"><span>Payment State</span><strong>${textValue(paymentState)}</strong></div>
           <div class="totals-row"><span>Payment Conclusion</span><strong>${textValue(paymentConclusion)}</strong></div>
         </div>
+      </section>
+
+      <section class="section">
+        <h2>Payment Schedule</h2>
+        <table>
+          <thead>
+            <tr>
+              <th style="width:8%">#</th>
+              <th style="width:18%">Due Date</th>
+              <th style="width:20%">Scheduled Amount</th>
+              <th style="width:18%">Paid Amount</th>
+              <th style="width:18%">Balance Due</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>${paymentScheduleHtml}</tbody>
+        </table>
       </section>
 
       <section class="section">
@@ -2059,7 +2192,11 @@ const Invoices = {
     this.syncPaymentFieldsInForm();
     this.syncPaymentConclusion(summary);
     this.renderInvoiceReceipts(this.state.selectedInvoice);
-    if (this.state.selectedInvoice.id) this.refreshInvoiceReceipts(this.state.selectedInvoice.id, { force: true });
+    this.renderInvoicePaymentSchedule(this.getInvoicePaymentScheduleRows(this.state.selectedInvoice.id));
+    if (this.state.selectedInvoice.id) {
+      this.refreshInvoiceReceipts(this.state.selectedInvoice.id, { force: true });
+      this.loadInvoicePaymentSchedule(this.state.selectedInvoice.id, { forceCreate: true });
+    }
     E.invoiceForm.dataset.id = this.state.selectedInvoice.id || '';
     if (E.invoiceFormTitle) {
       E.invoiceFormTitle.textContent = this.state.selectedInvoice.id
@@ -2118,6 +2255,7 @@ const Invoices = {
     this.state.items = [];
     this.renderItems([]);
     this.renderInvoiceReceipts({ invoice_id: '' });
+    this.renderInvoicePaymentSchedule([]);
   },
   setFormBusy(value) {
     const busy = !!value;
@@ -2483,6 +2621,11 @@ const Invoices = {
         id: parsed?.invoice?.id || id || normalizedInvoice.id
       });
       const normalized = this.upsertLocalRow(persisted);
+      if (!id && normalized?.id) {
+        await Api.createInvoicePaymentSchedule(normalized.id, false).catch(error => {
+          console.warn('[invoices] payment schedule creation failed', error);
+        });
+      }
       this.setCachedDetail(normalized?.id || id, persisted, persistedItems);
       if (normalized?.id && this.state.selectedInvoice?.id === normalized.id) {
         this.state.selectedInvoice = normalized;
@@ -2581,6 +2724,7 @@ const Invoices = {
     const id = String(invoiceId || receipt?.invoice_id || '').trim();
     if (!id) return;
     if (receipt?.receipt_id) this.appendInvoiceReceipt(id, receipt);
+    await this.recalculateInvoicePaymentSchedule(id);
     const selectedInvoiceId = String(E.invoiceForm?.dataset.id || '').trim();
     if (selectedInvoiceId === id) {
       await this.openInvoiceById(id, { readOnly: true });
@@ -2603,8 +2747,8 @@ const Invoices = {
     if (!id) return;
     if (!Permissions.canPreviewInvoice()) return UI.toast('You do not have permission to preview invoices.');
     try {
-      const { invoiceUuid, invoice, items, receipts } = await this.loadInvoicePreviewData(id);
-      const html = this.buildInvoicePreviewHtml(invoice, items, receipts);
+      const { invoiceUuid, invoice, items, receipts, paymentSchedule } = await this.loadInvoicePreviewData(id);
+      const html = this.buildInvoicePreviewHtml(invoice, items, receipts, paymentSchedule);
       if (!String(html || '').trim()) return UI.toast('Unable to build invoice preview.');
       const brandedHtml = U.addIncheckDocumentLogo(U.formatPreviewHtmlDates(html));
       const previewLabel = String(invoice?.invoice_number || invoice?.invoice_id || invoiceUuid).trim();

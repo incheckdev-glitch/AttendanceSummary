@@ -1179,6 +1179,21 @@ const Api = {
   async generateInvoiceHtml(invoiceId) {
     return this.requestWithSession('invoices', 'generate_invoice_html', { invoice_id: invoiceId });
   },
+  async listInvoicePaymentSchedule(invoiceId) {
+    const id = String(invoiceId || '').trim();
+    if (!id) throw new Error('Invoice ID is required to load payment schedule.');
+    return this.requestWithSession('invoices', 'list_payment_schedule', { id, invoice_id: id });
+  },
+  async createInvoicePaymentSchedule(invoiceId, force = false) {
+    const id = String(invoiceId || '').trim();
+    if (!id) throw new Error('Invoice ID is required to create payment schedule.');
+    return this.requestWithSession('invoices', 'create_payment_schedule', { id, invoice_id: id, force: force === true });
+  },
+  async recalculateInvoicePaymentSchedule(invoiceId) {
+    const id = String(invoiceId || '').trim();
+    if (!id) throw new Error('Invoice ID is required to recalculate payment schedule.');
+    return this.requestWithSession('invoices', 'recalculate_payment_schedule', { id, invoice_id: id });
+  },
   async listReceipts(filters = {}, options = {}) {
     const listPayload = this.buildSummaryListPayload(options);
     const payload = {

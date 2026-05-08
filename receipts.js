@@ -1427,7 +1427,10 @@ const Receipts = {
         } else {
           this.setCachedDetail(receiptUuid, normalized || receipt, normalizedDetailItems);
         }
-        const refreshedInvoiceId = String(normalized?.invoice_uuid || receipt?.invoice_uuid || invoiceUuid).trim();
+        const refreshedInvoiceId = String(normalized?.invoice_uuid || normalized?.invoice_id || receipt?.invoice_uuid || receipt?.invoice_id || invoiceUuid).trim();
+        if (refreshedInvoiceId) {
+          await window.Invoices?.syncAfterReceiptMutation?.({ invoiceId: refreshedInvoiceId, receipt: normalized || receipt });
+        }
         if (refreshedInvoiceId) {
           const selectedInvoiceId = String(E.invoiceForm?.dataset.id || '').trim();
           if (selectedInvoiceId === refreshedInvoiceId && window.Invoices?.openInvoiceById) {

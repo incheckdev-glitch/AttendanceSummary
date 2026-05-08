@@ -92,6 +92,154 @@
     date.setDate(date.getDate() + Number(days || 0));
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   }
+
+  function getInvoicePaymentSchedulePlan(paymentTerm) {
+    const term = String(paymentTerm || '').trim().toLowerCase().replace(/\s+/g, '');
+    if (term === 'net7') return { count: 12, intervalMonths: 1, firstDueNetDays: 7, label: 'Monthly' };
+    if (term === 'net14') return { count: 4, intervalMonths: 3, firstDueNetDays: 14, label: 'Quarterly' };
+    if (term === 'net21') return { count: 2, intervalMonths: 6, firstDueNetDays: 21, label: 'Semi-Annual' };
+    if (term === 'net30') return { count: 1, intervalMonths: 12, firstDueNetDays: 30, label: 'Annual' };
+    return { count: 1, intervalMonths: 12, firstDueNetDays: 30, label: 'Annual' };
+  }
+  function addMonthsToDateString(value = '', months = 0) {
+    const source = String(value || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(source)) return '';
+    const [year, month, day] = source.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    const targetDay = date.getDate();
+    date.setMonth(date.getMonth() + Number(months || 0), 1);
+    const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+    date.setDate(Math.min(targetDay, lastDay));
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  }
+  function getInvoiceTotalForSchedule(invoice = {}) {
+    const candidates = [invoice.grand_total, invoice.invoice_total, invoice.total_amount, invoice.amount_due, invoice.total, invoice.pending_amount];
+    for (const value of candidates) {
+      if (value === null || value === undefined || String(value).trim?.() === '') continue;
+      const amount = Number(String(value).replace(/,/g, ''));
+      if (Number.isFinite(amount)) return amount;
+    }
+    return 0;
+  }
+  function buildInvoicePaymentScheduleRows(invoice = {}) {
+    const invoiceId = String(invoice?.id || invoice?.invoice_uuid || '').trim();
+    if (!invoiceId) throw new Error('Invoice UUID is required to build payment schedule.');
+    const plan = getInvoicePaymentSchedulePlan(invoice.payment_term || invoice.payment_terms);
+    const baseDate = String(invoice.invoice_date || invoice.issue_date || todayDateString()).slice(0, 10);
+    const firstDueDate = addDaysToDateString(baseDate, plan.firstDueNetDays) || todayDateString();
+    const totalCents = Math.round(getInvoiceTotalForSchedule(invoice) * 100);
+    const baseCents = plan.count > 0 ? Math.round(totalCents / plan.count) : totalCents;
+    let allocated = 0;
+    const today = todayDateString();
+    return Array.from({ length: plan.count }, (_, index) => {
+      const isLast = index === plan.count - 1;
+      const cents = isLast ? totalCents - allocated : baseCents;
+      allocated += cents;
+      const dueDate = index === 0 ? firstDueDate : addMonthsToDateString(firstDueDate, plan.intervalMonths * index);
+      return {
+        invoice_id: invoiceId,
+        schedule_no: index + 1,
+        due_date: dueDate,
+        scheduled_amount: Number((cents / 100).toFixed(2)),
+        paid_amount: 0,
+        status: dueDate < today ? 'overdue' : 'scheduled',
+        schedule_label: plan.label,
+        receipt_ids: []
+      };
+    });
+  }
+  async function listInvoicePaymentScheduleRows(client, invoiceId) {
+    const id = String(invoiceId || '').trim();
+    if (!isUuid(id)) throw new Error('Valid invoice UUID is required to load payment schedule.');
+    const { data, error } = await client
+      .from('invoice_payment_schedule')
+      .select('*')
+      .eq('invoice_id', id)
+      .order('schedule_no', { ascending: true, nullsFirst: false })
+      .order('due_date', { ascending: true, nullsFirst: false });
+    if (error) throw friendlyError('Unable to load invoice payment schedule', error);
+    return Array.isArray(data) ? data : [];
+  }
+  async function createInvoicePaymentScheduleRows(client, invoiceId, force = false) {
+    const id = String(invoiceId || '').trim();
+    if (!isUuid(id)) throw new Error('Valid invoice UUID is required to create payment schedule.');
+    try {
+      const { data, error } = await client.rpc('create_invoice_payment_schedule', { p_invoice_id: id, p_force: force === true });
+      if (!error) return data || await listInvoicePaymentScheduleRows(client, id);
+      console.warn('[invoice_payment_schedule] RPC create failed; falling back to client insert', error);
+    } catch (error) {
+      console.warn('[invoice_payment_schedule] RPC create unavailable; falling back to client insert', error);
+    }
+    const existing = await listInvoicePaymentScheduleRows(client, id).catch(() => []);
+    if (existing.length && !force) return existing;
+    if (force && existing.length) {
+      const { error: deleteError } = await client.from('invoice_payment_schedule').delete().eq('invoice_id', id);
+      if (deleteError) throw friendlyError('Unable to replace invoice payment schedule', deleteError);
+    }
+    const { data: invoice, error: invoiceError } = await client.from('invoices').select('*').eq('id', id).maybeSingle();
+    if (invoiceError || !invoice) throw friendlyError('Unable to load invoice for payment schedule', invoiceError || new Error('Missing invoice row'));
+    const rows = buildInvoicePaymentScheduleRows(invoice);
+    if (!rows.length) return [];
+    const { data, error } = await client.from('invoice_payment_schedule').insert(rows).select('*');
+    if (error) throw friendlyError('Unable to create invoice payment schedule', error);
+    return Array.isArray(data) ? data : rows;
+  }
+  async function recalculateInvoicePaymentScheduleRows(client, invoiceId) {
+    const id = String(invoiceId || '').trim();
+    if (!isUuid(id)) throw new Error('Valid invoice UUID is required to recalculate payment schedule.');
+    try {
+      const { data, error } = await client.rpc('recalculate_invoice_payment_schedule', { p_invoice_id: id });
+      if (!error) return data || await listInvoicePaymentScheduleRows(client, id);
+      console.warn('[invoice_payment_schedule] RPC recalculate failed; falling back to client allocation', error);
+    } catch (error) {
+      console.warn('[invoice_payment_schedule] RPC recalculate unavailable; falling back to client allocation', error);
+    }
+    let schedule = await listInvoicePaymentScheduleRows(client, id).catch(() => []);
+    if (!schedule.length) schedule = await createInvoicePaymentScheduleRows(client, id, false);
+    const { data: receipts, error: receiptsError } = await client
+      .from('receipts')
+      .select('id,receipt_id,amount_received,received_amount,paid_now,amount_paid,status,receipt_status,payment_state')
+      .eq('invoice_id', id);
+    if (receiptsError) throw friendlyError('Unable to load receipts for schedule recalculation', receiptsError);
+    const invalidStatuses = new Set(['cancelled', 'canceled', 'void', 'voided', 'deleted', 'rejected']);
+    const validReceipts = (Array.isArray(receipts) ? receipts : []).filter(receipt => {
+      const status = String(receipt.status || receipt.receipt_status || receipt.payment_state || '').trim().toLowerCase();
+      return !invalidStatuses.has(status);
+    });
+    let remainingCents = validReceipts.reduce((sum, receipt) => {
+      const amount = getInvoiceTotalForSchedule({ grand_total: receipt.amount_received ?? receipt.received_amount ?? receipt.paid_now ?? receipt.amount_paid });
+      return sum + Math.max(0, Math.round(amount * 100));
+    }, 0);
+    const receiptIds = validReceipts.map(receipt => String(receipt.id || receipt.receipt_id || '').trim()).filter(Boolean);
+    const today = todayDateString();
+    const updates = [...schedule].sort((a, b) => Number(a.schedule_no || 0) - Number(b.schedule_no || 0)).map(row => {
+      const scheduledCents = Math.max(0, Math.round(Number(row.scheduled_amount || 0) * 100));
+      const paidCents = Math.min(scheduledCents, remainingCents);
+      remainingCents -= paidCents;
+      const paidAmount = Number((paidCents / 100).toFixed(2));
+      const status = paidCents >= scheduledCents && scheduledCents > 0
+        ? 'paid'
+        : paidCents > 0
+          ? 'partially_paid'
+          : String(row.due_date || '') < today
+            ? 'overdue'
+            : 'scheduled';
+      return { ...row, paid_amount: paidAmount, status, receipt_ids: paidCents > 0 ? receiptIds : [] };
+    });
+    const updateResults = await Promise.all(updates.map(row => client
+      .from('invoice_payment_schedule')
+      .update({ paid_amount: row.paid_amount, status: row.status, receipt_ids: row.receipt_ids })
+      .eq('id', row.id)));
+    const updateError = updateResults.find(result => result?.error)?.error;
+    if (updateError) throw friendlyError('Unable to update invoice payment schedule', updateError);
+    const allPaid = updates.length > 0 && updates.every(row => row.status === 'paid');
+    const somePaid = updates.some(row => Number(row.paid_amount || 0) > 0);
+    const anyOverdue = updates.some(row => row.status === 'overdue');
+    const paymentState = allPaid ? 'Paid' : somePaid ? 'Partially Paid' : anyOverdue ? 'Overdue' : 'Unpaid';
+    await updateSelectSingleWithSchemaRetry(client, 'invoices', { payment_state: paymentState, payment_status: paymentState, updated_at: new Date().toISOString() }, 'id', id, 'Unable to update invoice payment status');
+    return updates;
+  }
+
   const normalizeTicketStatus = typeof global.normalizeTicketStatus === 'function'
     ? global.normalizeTicketStatus
     : value => {
@@ -4992,6 +5140,21 @@
       });
       return data;
     }
+    if (resource === 'invoices' && action === 'list_payment_schedule') {
+      assertAllowed('invoices', 'get');
+      const invoiceUuid = await resolveResourceUuid('invoices', payload, client);
+      return await listInvoicePaymentScheduleRows(client, invoiceUuid);
+    }
+    if (resource === 'invoices' && action === 'create_payment_schedule') {
+      assertAllowed('invoices', 'update');
+      const invoiceUuid = await resolveResourceUuid('invoices', payload, client);
+      return await createInvoicePaymentScheduleRows(client, invoiceUuid, payload.force === true);
+    }
+    if (resource === 'invoices' && action === 'recalculate_payment_schedule') {
+      assertAllowed('invoices', 'update');
+      const invoiceUuid = await resolveResourceUuid('invoices', payload, client);
+      return await recalculateInvoicePaymentScheduleRows(client, invoiceUuid);
+    }
     if (resource === 'invoices' && action === 'create_from_agreement') {
       assertAllowed('invoices', 'create_from_agreement');
       const agreementUuid = await resolveResourceUuid('agreements', { ...payload, id: payload.agreement_uuid || payload.id, agreement_id: payload.agreement_id }, client);
@@ -5015,6 +5178,11 @@
           } else if (result.status === 'rejected') {
             console.warn('[invoices:create_from_agreement] capability invoice item cleanup failed', result.reason);
           }
+        });
+      }
+      if (isUuid(createdInvoiceUuid)) {
+        await createInvoicePaymentScheduleRows(client, createdInvoiceUuid, false).catch(scheduleError => {
+          console.warn('[invoice_payment_schedule] create_from_agreement schedule creation failed', scheduleError);
         });
       }
       await createNotificationAndPush({
@@ -5866,6 +6034,11 @@
           console.warn('[notifications:pwa] invoices:create failed', error);
         });
       }
+      if (resource === 'invoices') {
+        await createInvoicePaymentScheduleRows(client, String(created.id || '').trim(), false).catch(scheduleError => {
+          console.warn('[invoice_payment_schedule] invoice create schedule creation failed', scheduleError);
+        });
+      }
       if (resource === 'receipts') {
         await createNotificationAndPush({
           title: 'Receipt created',
@@ -5903,6 +6076,14 @@
             .single();
           if (internalError) throw friendlyError('Unable to save internal ticket fields', internalError);
           return { handled: true, data: mergeTicketInternal(created, internalData) };
+        }
+      }
+      if (resource === 'receipts') {
+        const invoiceUuid = String(created.invoice_id || '').trim();
+        if (isUuid(invoiceUuid)) {
+          await recalculateInvoicePaymentScheduleRows(client, invoiceUuid).catch(scheduleError => {
+            console.warn('[invoice_payment_schedule] receipt create recalculation failed', scheduleError);
+          });
         }
       }
       const items = Array.isArray(payload.items) ? payload.items : [];
@@ -6289,6 +6470,14 @@
           });
         }
       }
+      if (resource === 'receipts') {
+        const invoiceUuid = String(data?.invoice_id || publicUpdates?.invoice_id || '').trim();
+        if (isUuid(invoiceUuid)) {
+          await recalculateInvoicePaymentScheduleRows(client, invoiceUuid).catch(scheduleError => {
+            console.warn('[invoice_payment_schedule] receipt update recalculation failed', scheduleError);
+          });
+        }
+      }
       if (resource === 'invoices') {
         const nextPaymentState = String(data?.payment_state || '').trim().toLowerCase();
         if (nextPaymentState && previousInvoicePaymentState.trim().toLowerCase() !== nextPaymentState) {
@@ -6395,12 +6584,22 @@
       const key = resource === 'operations_onboarding' ? 'id' : getPrimaryKeyForResource(resource);
       if (!id) throw new Error(`Missing ${key} for ${resource} delete`);
       console.log('[CRUD] resource, pk, value', resource, key, id);
+      let deletedReceiptInvoiceId = '';
+      if (resource === 'receipts') {
+        const { data: receiptBeforeDelete } = await client.from('receipts').select('invoice_id').eq(key, id).maybeSingle();
+        deletedReceiptInvoiceId = String(receiptBeforeDelete?.invoice_id || '').trim();
+      }
       if (resource === 'tickets' && isAdminDev()) {
         const { error: internalDeleteError } = await client.from('ticket_internal').delete().eq('ticket_id', ticketRowId({ id }));
         if (internalDeleteError) throw friendlyError('Unable to delete internal ticket fields', internalDeleteError);
       }
       const { error } = await client.from(table).delete().eq(key, id);
       if (error) throw friendlyError(`Unable to delete ${resource} record`, error);
+      if (resource === 'receipts' && isUuid(deletedReceiptInvoiceId)) {
+        await recalculateInvoicePaymentScheduleRows(client, deletedReceiptInvoiceId).catch(scheduleError => {
+          console.warn('[invoice_payment_schedule] receipt delete recalculation failed', scheduleError);
+        });
+      }
       return { handled: true, data: { ok: true } };
     }
 
