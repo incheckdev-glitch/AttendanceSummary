@@ -1286,8 +1286,11 @@ const Agreements = {
       .totals-row:last-child { border-bottom: 0; }
       .totals-row.grand { font-size: 15px; font-weight: 700; background: #edf4ff; color: #0b214a; }
       .terms { margin-top: 16px; font-size: 12.5px; line-height: 1.6; border: 1px solid #d7e1ed; border-radius: 6px; padding: 12px; }
-      .signature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 12px; }
+      .signature-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "customer provider1" "customer provider2"; gap: 14px; margin-top: 12px; align-items: start; }
       .signature-box { border: 1px solid #d7e1ed; min-height: 140px; border-radius: 6px; overflow: hidden; }
+      .signature-box-customer { grid-area: customer; }
+      .signature-box-provider-1 { grid-area: provider1; }
+      .signature-box-provider-2 { grid-area: provider2; }
       .signature-head { background: #f8fbff; border-bottom: 1px solid #e3eaf3; padding: 8px 10px; font-size: 11px; letter-spacing: 0.08em; font-weight: 700; color: #1e3a5f; }
       .signature-body { padding: 11px; font-size: 12px; line-height: 1.5; }
       .footer-note { margin-top: 16px; font-size: 11px; color: #64748b; border-top: 1px solid #e3eaf3; padding-top: 10px; text-align: center; }
@@ -1414,7 +1417,7 @@ const Agreements = {
       </section>
 
       <section class="signature-grid">
-        <div class="signature-box">
+        <div class="signature-box signature-box-customer">
           <div class="signature-head">Customer Official Signatory</div>
           <div class="signature-body">
             <div><strong>Name:</strong> ${textValue(agreementData.customer_official_signatory_name || agreementData.customer_signatory_name)}</div>
@@ -1422,7 +1425,7 @@ const Agreements = {
             <div><strong>Date:</strong> ${dateValue(agreementData.customer_official_sign_date || agreementData.customer_sign_date)}</div>
           </div>
         </div>
-        <div class="signature-box">
+        <div class="signature-box signature-box-provider-1">
           <div class="signature-head">Provider Official Signatory 1</div>
           <div class="signature-body">
             <div><strong>Name:</strong> ${textValue(agreementData.provider_official_signatory_1_name || agreementData.provider_signatory_name_primary || agreementData.provider_signatory_name)}</div>
@@ -1430,7 +1433,7 @@ const Agreements = {
             <div><strong>Date:</strong> ${dateValue(agreementData.provider_official_signatory_1_sign_date || agreementData.provider_sign_date)}</div>
           </div>
         </div>
-        <div class="signature-box">
+        <div class="signature-box signature-box-provider-2">
           <div class="signature-head">Provider Official Signatory 2</div>
           <div class="signature-body">
             <div><strong>Name:</strong> ${textValue(agreementData.provider_official_signatory_2_name || agreementData.provider_signatory_name_secondary)}</div>
