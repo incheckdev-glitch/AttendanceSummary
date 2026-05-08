@@ -1749,30 +1749,101 @@ const Proposals = {
         grid-template-columns: 34mm 1fr 68mm;
         align-items: center;
         gap: 8mm;
-        margin-bottom: 0;
         width: 100%;
         max-width: 100%;
+        margin: 0 0 8mm 0;
       }
+      .proposal-preview-header__logo,
+      .proposal-document-header__logo,
       .proposal-preview-logo,
-      .proposal-document-logo { display: flex; align-items: center; justify-content: flex-start; min-width: 0; }
+      .proposal-document-logo {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        min-height: 26mm;
+        min-width: 0;
+        margin: 0;
+        padding: 0;
+        position: static;
+      }
+      .proposal-preview-header__logo .incheck360-doc-logo-wrap,
+      .proposal-document-header__logo .incheck360-doc-logo-wrap,
       .proposal-preview-logo .incheck360-doc-logo-wrap,
-      .proposal-document-logo .incheck360-doc-logo-wrap { float: none; display: flex; align-items: center; justify-content: flex-start; margin: 0; padding: 0; width: 28mm; max-width: 28mm; text-align: left; }
-      .proposal-preview-logo img, .proposal-preview-logo svg,
-      .proposal-document-logo img, .proposal-document-logo svg { display: block; max-width: 28mm; max-height: 18mm; width: auto; height: auto; object-fit: contain; object-position: left center; }
+      .proposal-document-logo .incheck360-doc-logo-wrap {
+        float: none;
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        margin: 0;
+        padding: 0;
+        width: 28mm;
+        max-width: 28mm;
+        height: auto;
+        max-height: 18mm;
+        text-align: left;
+        position: static;
+        transform: none;
+      }
+      .proposal-preview-header__logo img,
+      .proposal-preview-header__logo svg,
+      .proposal-document-header__logo img,
+      .proposal-document-header__logo svg,
+      .proposal-preview-logo img,
+      .proposal-preview-logo svg,
+      .proposal-document-logo img,
+      .proposal-document-logo svg {
+        display: block;
+        max-width: 28mm;
+        max-height: 18mm;
+        width: auto;
+        height: auto;
+        object-fit: contain;
+        object-position: left center;
+        margin: 0;
+        padding: 0;
+        position: static;
+        transform: none;
+      }
       .commercial-terms-box { grid-column: 1 / -1; min-height: auto; }
-      .proposal-preview-title-block { margin: 0; text-align: center; min-width: 0; }
+      .proposal-preview-header__title-wrap,
+      .proposal-document-header__title-wrap,
+      .proposal-preview-title-block {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 26mm;
+        min-width: 0;
+        margin: 0;
+        padding: 0;
+        text-align: center;
+      }
+      .proposal-preview-header__title,
+      .proposal-document-header__title,
       .proposal-preview-title,
       .proposal-document-title {
-        text-align: center;
-        font-weight: 800;
+        margin: 0;
         font-size: 22px;
         line-height: 1;
-        margin: 0;
+        font-weight: 800;
+        text-align: center;
         letter-spacing: 0.01em;
         color: #0b214a;
       }
+      .proposal-preview-header__summary,
+      .proposal-document-header__summary,
       .proposal-preview-summary,
-      .proposal-document-summary { align-self: center; }
+      .proposal-document-summary {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        min-height: 26mm;
+        min-width: 0;
+        margin: 0;
+        padding: 0;
+        position: static;
+      }
+      .proposal-preview-header__summary .meta-box,
+      .proposal-document-header__summary .meta-box { width: 100%; }
       .meta-box { border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; background: #fbfdff; min-width: 0; width: 100%; }
       .meta-row { display: grid; grid-template-columns: 26mm minmax(0, 1fr); border-bottom: 1px solid #e3eaf3; }
       .meta-row:last-child { border-bottom: 0; }
@@ -1832,15 +1903,17 @@ const Proposals = {
       ${showDraftWatermark ? '<div class="draft-watermark" aria-hidden="true">DRAFT</div>' : ''}
       <header class="doc-header">
         <section class="proposal-preview-header proposal-document-header">
-          <div class="proposal-preview-logo proposal-document-logo"><div data-incheck360-doc-logo-slot></div></div>
-          <div class="proposal-preview-title-block">
-            <h1 class="proposal-preview-title proposal-document-title">Proposal</h1>
+          <div class="proposal-preview-header__logo proposal-document-header__logo proposal-preview-logo proposal-document-logo"><div data-incheck360-doc-logo-slot></div></div>
+          <div class="proposal-preview-header__title-wrap proposal-document-header__title-wrap proposal-preview-title-block">
+            <h1 class="proposal-preview-header__title proposal-document-header__title proposal-preview-title proposal-document-title">Proposal</h1>
           </div>
-          <div class="proposal-preview-summary proposal-document-summary meta-box">
-            <div class="meta-row"><div class="meta-key">Proposal ID</div><div>${textValue(proposalData.proposal_id || 'Missing ID')}</div></div>
-            <div class="meta-row"><div class="meta-key">Reference #</div><div>${textValue(proposalData.ref_number)}</div></div>
-            <div class="meta-row"><div class="meta-key">Proposal Date</div><div>${dateValue(proposalData.proposal_date)}</div></div>
-            <div class="meta-row"><div class="meta-key">Valid Until</div><div>${dateValue(proposalData.valid_until || proposalData.proposal_valid_until || this.getAutoValidUntil(proposalData.proposal_date))}</div></div>
+          <div class="proposal-preview-header__summary proposal-document-header__summary proposal-preview-summary proposal-document-summary">
+            <div class="meta-box">
+              <div class="meta-row"><div class="meta-key">Proposal ID</div><div>${textValue(proposalData.proposal_id || 'Missing ID')}</div></div>
+              <div class="meta-row"><div class="meta-key">Reference #</div><div>${textValue(proposalData.ref_number)}</div></div>
+              <div class="meta-row"><div class="meta-key">Proposal Date</div><div>${dateValue(proposalData.proposal_date)}</div></div>
+              <div class="meta-row"><div class="meta-key">Valid Until</div><div>${dateValue(proposalData.valid_until || proposalData.proposal_valid_until || this.getAutoValidUntil(proposalData.proposal_date))}</div></div>
+            </div>
           </div>
         </section>
       </header>
