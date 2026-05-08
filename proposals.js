@@ -395,6 +395,106 @@ const Proposals = {
     }
     return '';
   },
+  getProposalCreatorDisplayName(creator = {}) {
+    if (!creator || typeof creator !== 'object') return '';
+    return String(
+      creator.full_name ||
+      creator.fullName ||
+      creator.name ||
+      creator.display_name ||
+      creator.displayName ||
+      creator.email ||
+      ''
+    ).trim();
+  },
+  getProposalCreatorTitle(creator = {}) {
+    if (!creator || typeof creator !== 'object') return '';
+    return String(
+      creator.title ||
+      creator.job_title ||
+      creator.jobTitle ||
+      creator.position ||
+      creator.role_title ||
+      creator.roleTitle ||
+      creator.role_name ||
+      creator.roleName ||
+      creator.role_label ||
+      creator.roleLabel ||
+      creator.role_key ||
+      creator.roleKey ||
+      creator.role ||
+      ''
+    ).trim();
+  },
+  getProposalProviderSignatoryName(proposal = {}) {
+    const savedName = this.getProposalValue(proposal, 'provider_signatory_name', 'providerSignatoryName');
+    if (savedName) return String(savedName).trim();
+    const creatorName = this.getProposalCreatorDisplayName(proposal.__providerSignatoryCreator || proposal.creator || proposal.created_by_profile || proposal.createdByProfile);
+    if (creatorName) return creatorName;
+    return String(proposal.generated_by || proposal.generatedBy || '').trim();
+  },
+  getProposalProviderSignatoryTitle(proposal = {}) {
+    const savedTitle = this.getProposalValue(proposal, 'provider_signatory_title', 'providerSignatoryTitle');
+    if (savedTitle) return String(savedTitle).trim();
+    return this.getProposalCreatorTitle(proposal.__providerSignatoryCreator || proposal.creator || proposal.created_by_profile || proposal.createdByProfile);
+  },
+  addProposalUserLookup(usersById, user = {}) {
+    if (!usersById || !user || typeof user !== 'object') return;
+    ['id', 'auth_user_id', 'authUserId', 'user_id', 'userId', 'profile_id', 'profileId'].forEach(key => {
+      const value = String(user?.[key] || '').trim();
+      if (value && !usersById.has(value)) usersById.set(value, user);
+    });
+  },
+  async resolveProposalCreatorProfile(client, proposal = {}) {
+    if (!client || !proposal || typeof proposal !== 'object') return null;
+    const rawIds = [
+      proposal.created_by,
+      proposal.createdBy,
+      proposal.user_id,
+      proposal.userId,
+      proposal.auth_user_id,
+      proposal.authUserId,
+      proposal.profile_id,
+      proposal.profileId
+    ];
+    const generatedBy = String(proposal.generated_by || proposal.generatedBy || '').trim();
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(generatedBy)) rawIds.push(generatedBy);
+    const userIds = [...new Set(rawIds.map(value => String(value || '').trim()).filter(Boolean))];
+    if (!userIds.length) return null;
+
+    const usersById = new Map();
+    const currentProvider = this.getSignedInUserForProposal();
+    const currentUser = Session?.user?.() || {};
+    const authUser = currentUser.user || {};
+    const profile = currentUser.profile || {};
+    this.addProposalUserLookup(usersById, {
+      ...profile,
+      id: profile.id || currentUser.user_id || authUser.id || '',
+      auth_user_id: authUser.id || currentUser.user_id || profile.auth_user_id || '',
+      user_id: currentUser.user_id || authUser.id || profile.id || '',
+      full_name: profile.full_name || currentProvider.name || currentUser.name,
+      name: profile.name || currentProvider.name || currentUser.name,
+      display_name: profile.display_name || currentProvider.name || currentUser.name,
+      email: profile.email || currentProvider.email || currentUser.email || authUser.email,
+      role: profile.role || currentProvider.role
+    });
+
+    const queryProfiles = async field => {
+      const unresolved = userIds.filter(id => !usersById.has(id));
+      if (!unresolved.length) return;
+      const { data, error } = await client.from('profiles').select('*').in(field, unresolved);
+      if (error) {
+        console.warn(`[proposals] unable to resolve proposal creator via profiles.${field}`, error);
+        return;
+      }
+      (Array.isArray(data) ? data : []).forEach(user => this.addProposalUserLookup(usersById, user));
+    };
+
+    await queryProfiles('id');
+    await queryProfiles('auth_user_id');
+    await queryProfiles('user_id');
+    return userIds.map(id => usersById.get(id)).find(Boolean) || null;
+  },
   formatDateMMDDYYYY(value) {
     if (!value) return '';
     const raw = String(value).trim();
@@ -802,6 +902,8 @@ const Proposals = {
     const providerEmail = provider.email || '';
     const providerMobile = provider.mobile || '';
     const providerRole = provider.role || '';
+    const providerSignatoryName = String(target.provider_signatory_name || target.providerSignatoryName || providerName).trim();
+    const providerSignatoryTitle = String(target.provider_signatory_title || target.providerSignatoryTitle || providerRole).trim();
 
     const mapped = {
       ...target,
@@ -817,11 +919,11 @@ const Proposals = {
       provider_contact_mobile: this.providerContactDefaults.mobile,
       providerContactMobile: this.providerContactDefaults.mobile,
 
-      provider_signatory_name: providerName,
-      providerSignatoryName: providerName,
+      provider_signatory_name: providerSignatoryName,
+      providerSignatoryName: providerSignatoryName,
 
-      provider_signatory_title: providerRole,
-      providerSignatoryTitle: providerRole
+      provider_signatory_title: providerSignatoryTitle,
+      providerSignatoryTitle: providerSignatoryTitle
     };
 
     return mapped;
@@ -1519,8 +1621,10 @@ const Proposals = {
     if (itemsError) throw new Error(`Unable to load proposal items: ${itemsError.message || 'Unknown error'}`);
 
     const normalizedItems = Array.isArray(items) ? items.map(item => this.normalizeItem(item)) : [];
+    const proposalWithTotals = this.withCalculatedTotalsFallback(proposal, normalizedItems);
+    const creatorProfile = await this.resolveProposalCreatorProfile(client, proposalWithTotals);
     return {
-      proposal: this.withCalculatedTotalsFallback(proposal, normalizedItems),
+      proposal: creatorProfile ? { ...proposalWithTotals, __providerSignatoryCreator: creatorProfile } : proposalWithTotals,
       items: normalizedItems
     };
   },
@@ -1612,6 +1716,8 @@ const Proposals = {
     const grandTotal = hasCalculatedTotals
       ? calculatedTotals.grand_total
       : this.toNumberSafe(headerGrand || subtotalLocations + subtotalOneTime);
+    const providerSignatoryName = this.getProposalProviderSignatoryName(proposalData);
+    const providerSignatoryTitle = this.getProposalProviderSignatoryTitle(proposalData);
 
     return `<!doctype html>
 <html>
@@ -1621,25 +1727,25 @@ const Proposals = {
     <style>
       :root { color-scheme: light; }
       * { box-sizing: border-box; }
-      body { font-family: Inter, "Segoe UI", Arial, Helvetica, sans-serif; margin: 0; padding: 20px; color: #111827; background: #eef2f7; }
-      .doc-sheet { max-width: 1020px; margin: 0 auto; background: #fff; border: 1px solid #dbe3ed; padding: 28px 30px; border-radius: 8px; position: relative; overflow: hidden; }
-      .doc-sheet > :not(.draft-watermark) { position: relative; z-index: 1; }
-      .draft-watermark { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 0; font-size: 128px; font-weight: 800; letter-spacing: 0.16em; color: #0f172a; opacity: 0.055; transform: rotate(-28deg); text-transform: uppercase; user-select: none; }
-      .doc-header { border-bottom: 1px solid #d8e1ec; padding-bottom: 18px; margin-bottom: 18px; }
-      .brand-block { display: flex; align-items: center; gap: 14px; min-height: 54px; }
-      .brand-block .incheck360-doc-logo-wrap { float: none; margin: 0; width: 168px; max-width: 168px; }
+      body { font-family: Inter, "Segoe UI", Arial, Helvetica, sans-serif; margin: 0; padding: 12mm 0; color: #111827; background: #eef2f7; overflow-x: auto; }
+      .proposal-preview-page { width: 210mm; min-height: 297mm; margin: 0 auto; background: #fff; border: 1px solid #dbe3ed; box-shadow: 0 14px 34px rgba(15, 23, 42, 0.13); padding: 14mm 14mm 12mm; position: relative; overflow: hidden; box-sizing: border-box; }
+      .proposal-preview-page > :not(.draft-watermark) { position: relative; z-index: 1; }
+      .draft-watermark { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 0; font-size: 92px; font-weight: 800; letter-spacing: 0.16em; color: #0f172a; opacity: 0.055; transform: rotate(-28deg); text-transform: uppercase; user-select: none; }
+      .doc-header { border-bottom: 1px solid #d8e1ec; padding-bottom: 7mm; margin-bottom: 7mm; }
+      .doc-head { display: grid; grid-template-columns: 42mm minmax(0, 1fr) 64mm; gap: 5mm; align-items: start; width: 100%; }
+      .brand-block { display: flex; align-items: flex-start; gap: 0; min-height: 24mm; min-width: 0; padding-top: 0; }
+      .brand-block .incheck360-doc-logo-wrap { float: none; margin: 0; width: 38mm; max-width: 38mm; }
+      .brand-block img, .brand-block svg { max-width: 38mm; height: auto; display: block; }
       .commercial-terms-box { grid-column: 1 / -1; min-height: auto; }
-      .title-block { margin: 0; text-align: center; align-self: center; }
-      .doc-label { margin: 0; font-size: 32px; font-weight: 800; letter-spacing: 0.01em; color: #0b214a; line-height: 1.05; }
-      .doc-subtitle { margin-top: 8px; font-size: 13px; color: #64748b; }
-      .doc-head { display: grid; grid-template-columns: 190px minmax(0, 1fr) 340px; gap: 20px; align-items: start; }
-      .meta-box { border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; background: #fbfdff; }
-      .meta-row { display: grid; grid-template-columns: 130px 1fr; border-bottom: 1px solid #e3eaf3; }
+      .title-block { margin: 0; text-align: center; align-self: start; min-width: 0; padding-top: 1mm; }
+      .doc-label { margin: 0; font-size: 28px; font-weight: 800; letter-spacing: 0.01em; color: #0b214a; line-height: 1; }
+      .meta-box { border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; background: #fbfdff; min-width: 0; width: 100%; }
+      .meta-row { display: grid; grid-template-columns: 26mm minmax(0, 1fr); border-bottom: 1px solid #e3eaf3; }
       .meta-row:last-child { border-bottom: 0; }
-      .meta-row > div { padding: 8px 11px; font-size: 12.5px; }
+      .meta-row > div { padding: 2mm 2.4mm; font-size: 11px; min-width: 0; overflow-wrap: anywhere; }
       .meta-row .meta-key { background: #f5f8fc; font-weight: 700; color: #334155; border-right: 1px solid #e3eaf3; }
-      .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
-      .info-box { border: 1px solid #d7e1ed; min-height: 146px; border-radius: 6px; overflow: hidden; background: #fff; }
+      .info-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 5mm; margin-top: 5mm; width: 100%; }
+      .info-box { border: 1px solid #d7e1ed; min-height: 36mm; border-radius: 6px; overflow: hidden; background: #fff; min-width: 0; }
       .info-head { background: #f8fbff; border-bottom: 1px solid #e3eaf3; padding: 9px 12px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: #1e3a5f; }
       .info-body { padding: 12px; font-size: 12.5px; line-height: 1.55; }
       .info-body strong { font-weight: 700; color: #0f172a; }
@@ -1647,14 +1753,16 @@ const Proposals = {
       .section { margin-top: 22px; }
       .section h2 { margin: 0; font-size: 16px; font-weight: 700; color: #0f172a; border-bottom: 1px solid #d8e1ec; padding-bottom: 7px; }
       .section .subhead { font-size: 12px; margin: 6px 0 8px; color: #4b5563; text-transform: uppercase; letter-spacing: 0.04em; }
-      table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-      th, td { border: 1px solid #dde5ef; padding: 8px; font-size: 12px; vertical-align: middle; }
+      table { width: 100%; max-width: 100%; border-collapse: collapse; table-layout: fixed; overflow-wrap: anywhere; page-break-inside: auto; }
+      thead { display: table-header-group; }
+      tr { page-break-inside: avoid; page-break-after: auto; }
+      th, td { border: 1px solid #dde5ef; padding: 6px; font-size: 10.5px; vertical-align: middle; overflow-wrap: anywhere; }
       th { text-align: center; background: #f5f8fc; color: #0f172a; font-weight: 700; }
       .cell-center { text-align: center; vertical-align: middle; }
       .cell-right { text-align: right; vertical-align: middle; white-space: nowrap; }
       .total-row td { font-weight: 700; background: #f7faff; }
       .totals-wrap { display: flex; justify-content: flex-end; margin-top: 16px; }
-      .totals-box { width: 380px; border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; }
+      .totals-box { width: 72mm; max-width: 100%; border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; }
       .totals-row { display: flex; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid #e3eaf3; font-size: 13px; }
       .totals-row:last-child { border-bottom: 0; }
       .totals-row.grand { font-size: 15px; font-weight: 700; background: #edf4ff; color: #0b214a; }
@@ -1664,18 +1772,21 @@ const Proposals = {
       .signature-head { background: #f8fbff; border-bottom: 1px solid #e3eaf3; padding: 8px 10px; font-size: 11px; letter-spacing: 0.08em; font-weight: 700; color: #1e3a5f; }
       .signature-body { padding: 11px; font-size: 12px; line-height: 1.5; }
       .footer-note { margin-top: 16px; font-size: 11px; color: #64748b; border-top: 1px solid #e3eaf3; padding-top: 10px; text-align: center; }
-      @media print { body { margin: 0; padding: 0; background: #fff; } .doc-sheet { border: 0; max-width: none; } }
+      @page { size: A4; margin: 0; }
+      @media print {
+        body { margin: 0; padding: 0; background: #fff; overflow: visible; }
+        .proposal-preview-page { width: 210mm; min-height: 297mm; margin: 0; border: 0; box-shadow: none; page-break-after: always; }
+      }
     </style>
   </head>
   <body>
-    <div class="doc-sheet">
+    <div class="proposal-preview-page doc-sheet">
       ${showDraftWatermark ? '<div class="draft-watermark" aria-hidden="true">DRAFT</div>' : ''}
       <header class="doc-header">
         <section class="doc-head">
           <div class="brand-block"><div data-incheck360-doc-logo-slot></div></div>
           <div class="title-block">
             <h2 class="doc-label">Proposal</h2>
-            <div class="doc-subtitle">${textValue(this.getProposalCustomerName(proposalData))} · ${textValue(proposalData.proposal_title || proposalData.ref_number || 'Services Proposal')}</div>
           </div>
           <div class="meta-box">
             <div class="meta-row"><div class="meta-key">Proposal ID</div><div>${textValue(proposalData.proposal_id || 'Missing ID')}</div></div>
@@ -1798,8 +1909,8 @@ const Proposals = {
         <div class="signature-box">
           <div class="signature-head">PROVIDER SIGNATORY</div>
           <div class="signature-body">
-            <div><strong>Name:</strong> ${textValue(proposalData.provider_signatory_name)}</div>
-            <div><strong>Title:</strong> ${textValue(proposalData.provider_signatory_title)}</div>
+            <div><strong>Name:</strong> ${textValue(providerSignatoryName)}</div>
+            <div><strong>Title:</strong> ${textValue(providerSignatoryTitle)}</div>
             <div><strong>Sign Date:</strong> ${dateValue(proposalData.provider_sign_date)}</div>
           </div>
         </div>
@@ -2691,8 +2802,8 @@ const Proposals = {
       customer_signatory_name: mapped.customer_signatory_name || '',
       customer_signatory_title: mapped.customer_signatory_title || '',
       customer_sign_date: String(E.proposalFormCustomerSignDate?.value || '').trim(),
-      provider_signatory_name: providerName,
-      provider_signatory_title: providerRole,
+      provider_signatory_name: String(E.proposalFormProviderSignatoryName?.value || mapped.provider_signatory_name || mapped.providerSignatoryName || providerName).trim(),
+      provider_signatory_title: String(E.proposalFormProviderSignatoryTitle?.value || mapped.provider_signatory_title || mapped.providerSignatoryTitle || providerRole).trim(),
       provider_sign_date: String(E.proposalFormProviderSignDate?.value || '').trim(),
       terms_conditions: String(E.proposalFormTerms?.value || '').trim(),
       company_id: selectedCompany.company_id || '',
