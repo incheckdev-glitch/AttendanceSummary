@@ -51,26 +51,81 @@ const LifecycleAnalytics = {
   getLifecycleCompanyId(chain = {}) {
     return String(
       chain?.company_id ||
+      chain?.company_uuid ||
       chain?.companyId ||
+      chain?.companyUuid ||
+      chain?.uuid ||
       chain?.lead?.company_id ||
+      chain?.lead?.company_uuid ||
       chain?.lead?.companyId ||
+      chain?.lead?.companyUuid ||
       chain?.deal?.company_id ||
+      chain?.deal?.company_uuid ||
       chain?.deal?.companyId ||
+      chain?.deal?.companyUuid ||
       chain?.proposal?.company_id ||
+      chain?.proposal?.company_uuid ||
       chain?.proposal?.companyId ||
+      chain?.proposal?.companyUuid ||
       chain?.agreement?.company_id ||
+      chain?.agreement?.company_uuid ||
       chain?.agreement?.companyId ||
+      chain?.agreement?.companyUuid ||
       chain?.invoice?.company_id ||
+      chain?.invoice?.company_uuid ||
       chain?.invoice?.companyId ||
+      chain?.invoice?.companyUuid ||
       chain?.receipt?.company_id ||
+      chain?.receipt?.company_uuid ||
       chain?.receipt?.companyId ||
+      chain?.receipt?.companyUuid ||
       ""
     ).trim();
   },
+  getCompanyIdKeys(company = {}) {
+    return [company.id, company.company_id, company.company_uuid, company.uuid, company.companyId, company.companyUuid]
+      .map(value => this.text(value))
+      .filter(Boolean);
+  },
+  getCompanyNameKeys(company = {}) {
+    return [
+      company.legal_company_name,
+      company.legalCompanyName,
+      company.legal_name,
+      company.legalName,
+      company.company_name,
+      company.companyName,
+      company.customer_name,
+      company.customerName,
+      company.client_name,
+      company.clientName,
+      company.name
+    ].map(value => this.norm(value)).filter(Boolean);
+  },
+  buildCompanyLookupMaps(companies = []) {
+    const safeCompanies = Array.isArray(companies) ? companies.filter(Boolean) : [];
+    const companiesById = new Map();
+    const companiesByName = new Map();
+
+    safeCompanies.forEach(company => {
+      this.getCompanyIdKeys(company).forEach(key => {
+        if (!companiesById.has(key)) companiesById.set(key, company);
+      });
+      this.getCompanyNameKeys(company).forEach(key => {
+        if (!companiesByName.has(key)) companiesByName.set(key, company);
+      });
+    });
+
+    return { companiesById, companiesByName };
+  },
   getLifecycleClientLegalName(chain = {}, linkedCompany = null) {
     return String(
+      linkedCompany?.legal_company_name ||
+      linkedCompany?.legalCompanyName ||
       linkedCompany?.legal_name ||
       linkedCompany?.legalName ||
+      chain?.legal_company_name ||
+      chain?.legalCompanyName ||
       chain?.customer_legal_name ||
       chain?.customerLegalName ||
       chain?.legal_name ||
@@ -138,14 +193,14 @@ const LifecycleAnalytics = {
     const companyId = this.getLifecycleCompanyId(chain);
     if (companyId && companiesById.has(companyId)) return companiesById.get(companyId);
     const possibleNames = [
-      chain?.customer_legal_name, chain?.customerLegalName, chain?.legal_name, chain?.legalName,
+      chain?.legal_company_name, chain?.legalCompanyName, chain?.customer_legal_name, chain?.customerLegalName, chain?.legal_name, chain?.legalName,
       chain?.customer_name, chain?.customerName, chain?.company_name, chain?.companyName, chain?.client_name, chain?.clientName,
-      chain?.lead?.customer_legal_name, chain?.lead?.customer_name, chain?.lead?.company_name,
-      chain?.deal?.customer_legal_name, chain?.deal?.customer_name, chain?.deal?.company_name,
-      chain?.proposal?.customer_legal_name, chain?.proposal?.customer_name, chain?.proposal?.company_name,
-      chain?.agreement?.customer_legal_name, chain?.agreement?.customer_name, chain?.agreement?.company_name,
-      chain?.invoice?.customer_legal_name, chain?.invoice?.customer_name, chain?.invoice?.company_name,
-      chain?.receipt?.customer_legal_name, chain?.receipt?.customer_name, chain?.receipt?.company_name
+      chain?.lead?.legal_company_name, chain?.lead?.customer_legal_name, chain?.lead?.legal_name, chain?.lead?.customer_name, chain?.lead?.company_name, chain?.lead?.client_name,
+      chain?.deal?.legal_company_name, chain?.deal?.customer_legal_name, chain?.deal?.legal_name, chain?.deal?.customer_name, chain?.deal?.company_name, chain?.deal?.client_name,
+      chain?.proposal?.legal_company_name, chain?.proposal?.customer_legal_name, chain?.proposal?.legal_name, chain?.proposal?.customer_name, chain?.proposal?.company_name, chain?.proposal?.client_name,
+      chain?.agreement?.legal_company_name, chain?.agreement?.customer_legal_name, chain?.agreement?.legal_name, chain?.agreement?.customer_name, chain?.agreement?.company_name, chain?.agreement?.client_name,
+      chain?.invoice?.legal_company_name, chain?.invoice?.customer_legal_name, chain?.invoice?.legal_name, chain?.invoice?.customer_name, chain?.invoice?.company_name, chain?.invoice?.client_name,
+      chain?.receipt?.legal_company_name, chain?.receipt?.customer_legal_name, chain?.receipt?.legal_name, chain?.receipt?.customer_name, chain?.receipt?.company_name, chain?.receipt?.client_name
     ];
     for (const name of possibleNames) {
       const key = this.norm(name);
@@ -424,7 +479,11 @@ const LifecycleAnalytics = {
       this.fetchTable(db, 'clients', 'id,client_id,client_name,company_name,legal_name,source_agreement_id,total_agreements,total_locations,total_value,total_paid,total_due'),
       this.fetchOnboardingRows(db),
       this.fetchTable(db, 'technical_admin_requests', 'agreement_id,request_status,assigned_to,requested_at,completed_at,location_count'),
-      this.fetchTable(db, 'companies', 'id,company_id,company_name,legal_name')
+      this.fetchTable(db, 'companies', 'id,company_id,company_name,legal_name').catch(error => {
+        console.warn('[LifecycleAnalytics] companies optional load failed; continuing without company lookup data', error);
+        this.state.warnings.push('Company lookup data is unavailable; showing lifecycle analytics with available records.');
+        return [];
+      })
     ]);
 
     return { leads, deals, proposals, agreements, agreementItems, invoices, receipts, clients, onboarding, technical, companies };
@@ -440,22 +499,13 @@ const LifecycleAnalytics = {
     const accountByAgreementUuid = new Map();
     const accountByInvoiceUuid = new Map();
     const clientsById = new Map();
-    const companiesById = new Map();
-    const companiesByName = new Map();
+    const { companiesById, companiesByName } = this.buildCompanyLookupMaps(data.companies);
 
     data.clients.forEach(row => {
       const clientUuid = this.text(row.id);
       if (clientUuid) clientsById.set(clientUuid, row);
     });
 
-    (data.companies || []).forEach(row => {
-      const companyId = this.text(row.company_id || row.companyId);
-      const companyName = this.text(row.company_name || row.companyName);
-      const legalName = this.text(row.legal_name || row.legalName);
-      if (companyId) companiesById.set(companyId, row);
-      if (companyName) companiesByName.set(this.norm(companyName), row);
-      if (legalName) companiesByName.set(this.norm(legalName), row);
-    });
 
     const ensureAccount = ({ key = '', clientUuid = '', company = '', companyId = '', email = '' } = {}) => {
       const accountKey = key || (this.isUuid(clientUuid) ? `client:${clientUuid}` : `unknown:${accounts.size + 1}`);
@@ -575,7 +625,7 @@ const LifecycleAnalytics = {
       accounts.get(accountKey).technical.push(row);
     });
 
-    return { accounts: [...accounts.values()], today };
+    return { accounts: [...accounts.values()], today, companiesById, companiesByName };
   },
   buildLifecycleMetrics(account = {}, today = new Date()) {
     const stageDate = stage => this.toDate(account.stages?.[stage]);
@@ -690,7 +740,9 @@ const LifecycleAnalytics = {
     if (values.every(value => value.includes('complete') || value.includes('closed'))) return 'Completed';
     return 'Pending';
   },
-  buildAccountAnalytics(account, today) {
+  buildAccountAnalytics(account, today, context = {}) {
+    const companiesById = context.companiesById || new Map();
+    const companiesByName = context.companiesByName || new Map();
     const agreementValue = account.agreements.reduce((sum, row) => sum + this.num(row.grand_total), 0);
     const totalInvoiced = account.invoices.reduce((sum, row) => sum + this.num(row.invoice_total), 0);
     const receiptsPaid = account.receipts.reduce((sum, row) => sum + this.num(row.amount_received), 0);
@@ -1061,9 +1113,9 @@ const LifecycleAnalytics = {
     this.renderLoading();
     try {
       const raw = await this.loadData();
-      const { accounts, today } = this.buildAccountMap(raw);
+      const { accounts, today, companiesById, companiesByName } = this.buildAccountMap(raw);
       const rows = accounts
-        .map(account => this.buildAccountAnalytics(account, today))
+        .map(account => this.buildAccountAnalytics(account, today, { companiesById, companiesByName }))
         .filter(row => row.companyName || row.clientBusinessId || row.agreementsCount || row.invoicesCount || row.receiptsCount);
       this.state.rows = rows.sort((a, b) => String(this.getLifecycleClientLegalName(a, a?.linkedCompany || null) || '').localeCompare(String(this.getLifecycleClientLegalName(b, b?.linkedCompany || null) || '')));
       this.state.overview = this.buildOverview(this.state.rows, raw);

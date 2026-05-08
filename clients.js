@@ -79,10 +79,46 @@ const Clients = {
   normalizeText(value) {
     return String(value || '').trim().toLowerCase();
   },
+  getCompanyIdKeys(company = {}) {
+    return [company.id, company.company_id, company.company_uuid, company.uuid, company.companyId, company.companyUuid]
+      .map(value => String(value || '').trim())
+      .filter(Boolean);
+  },
+  getCompanyNameKeys(company = {}) {
+    return [
+      company.legal_company_name,
+      company.legalCompanyName,
+      company.legal_name,
+      company.legalName,
+      company.company_name,
+      company.companyName,
+      company.customer_name,
+      company.customerName,
+      company.client_name,
+      company.clientName,
+      company.name
+    ].map(value => this.normalizeText(value)).filter(Boolean);
+  },
+  rebuildCompanyLookupMaps(companies = []) {
+    this.state.companiesById = new Map();
+    this.state.companiesByName = new Map();
+    (Array.isArray(companies) ? companies : []).filter(Boolean).forEach(company => {
+      this.getCompanyIdKeys(company).forEach(key => {
+        if (!this.state.companiesById.has(key)) this.state.companiesById.set(key, company);
+      });
+      this.getCompanyNameKeys(company).forEach(key => {
+        if (!this.state.companiesByName.has(key)) this.state.companiesByName.set(key, company);
+      });
+    });
+  },
   getCompanyLegalDisplay(company = null, fallback = {}) {
     return String(
+      company?.legal_company_name ||
+      company?.legalCompanyName ||
       company?.legal_name ||
       company?.legalName ||
+      fallback?.legal_company_name ||
+      fallback?.legalCompanyName ||
       fallback?.customer_legal_name ||
       fallback?.customerLegalName ||
       fallback?.legal_name ||
@@ -511,7 +547,7 @@ const Clients = {
   },
   resolveCompanyForClient(client = {}, context = {}) {
     const { companiesById = new Map(), companiesByName = new Map(), agreements = [], invoices = [], receipts = [] } = context;
-    const directCompanyId = String(client.company_id || client.companyId || '').trim();
+    const directCompanyId = String(client.company_id || client.company_uuid || client.companyId || client.companyUuid || '').trim();
     if (directCompanyId && companiesById.has(directCompanyId)) return companiesById.get(directCompanyId);
     const clientAgreementKeys = [
       client.agreement_uuid, client.agreementUuid, client.agreement_id, client.agreementId, client.agreement_number, client.agreementNumber
@@ -522,25 +558,25 @@ const Clients = {
           .map(value => String(value || '').trim()).filter(Boolean);
         return keys.some(key => clientAgreementKeys.includes(key));
       });
-      const companyId = String(agreement?.company_id || agreement?.companyId || '').trim();
+      const companyId = String(agreement?.company_id || agreement?.company_uuid || agreement?.companyId || agreement?.companyUuid || '').trim();
       if (companyId && companiesById.has(companyId)) return companiesById.get(companyId);
     }
     const latestAgreement = agreements
       .filter(a => this.agreementBelongsToClient(a, client))
       .sort((a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime())[0];
-    const latestAgreementCompanyId = String(latestAgreement?.company_id || latestAgreement?.companyId || '').trim();
+    const latestAgreementCompanyId = String(latestAgreement?.company_id || latestAgreement?.company_uuid || latestAgreement?.companyId || latestAgreement?.companyUuid || '').trim();
     if (latestAgreementCompanyId && companiesById.has(latestAgreementCompanyId)) return companiesById.get(latestAgreementCompanyId);
     const relatedInvoice = invoices
       .filter(invoice => this.invoiceBelongsToClient(invoice, client, agreements))
       .sort((a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime())[0];
-    const invoiceCompanyId = String(relatedInvoice?.company_id || relatedInvoice?.companyId || '').trim();
+    const invoiceCompanyId = String(relatedInvoice?.company_id || relatedInvoice?.company_uuid || relatedInvoice?.companyId || relatedInvoice?.companyUuid || '').trim();
     if (invoiceCompanyId && companiesById.has(invoiceCompanyId)) return companiesById.get(invoiceCompanyId);
     const relatedReceipt = receipts
       .filter(receipt => this.receiptBelongsToClient(receipt, client, agreements, invoices))
       .sort((a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime())[0];
-    const receiptCompanyId = String(relatedReceipt?.company_id || relatedReceipt?.companyId || '').trim();
+    const receiptCompanyId = String(relatedReceipt?.company_id || relatedReceipt?.company_uuid || relatedReceipt?.companyId || relatedReceipt?.companyUuid || '').trim();
     if (receiptCompanyId && companiesById.has(receiptCompanyId)) return companiesById.get(receiptCompanyId);
-    const possibleNames = [client.customer_legal_name, client.customerName, client.legal_name, client.customer_name, client.company_name, client.client_name]
+    const possibleNames = [client.legal_company_name, client.legalCompanyName, client.customer_legal_name, client.customerLegalName, client.legal_name, client.legalName, client.customer_name, client.customerName, client.company_name, client.companyName, client.client_name, client.clientName]
       .filter(Boolean);
     for (const name of possibleNames) {
       const key = this.normalizeText(name);
@@ -2057,16 +2093,8 @@ const Clients = {
       if (agreementsRes.status === 'fulfilled') this.state.agreements = this.extractListResult(agreementsRes.value).rows.map(item => this.normalizeAgreement(item));
       if (invoicesRes.status === 'fulfilled') this.state.invoices = this.extractListResult(invoicesRes.value).rows.map(item => this.normalizeInvoice(item));
       if (receiptsRes.status === 'fulfilled') this.state.receipts = this.extractListResult(receiptsRes.value).rows.map(item => this.normalizeReceipt(item));
-      this.state.companiesById = new Map();
-      this.state.companiesByName = new Map();
-      this.state.companies.forEach(company => {
-        const companyId = String(company.company_id || company.companyId || company.id || '').trim();
-        if (companyId) this.state.companiesById.set(companyId, company);
-        [company.legal_name, company.legalName, company.company_name, company.companyName].forEach(name => {
-          const key = this.normalizeText(name);
-          if (key && !this.state.companiesByName.has(key)) this.state.companiesByName.set(key, company);
-        });
-      });
+      if (companiesRes.status === 'rejected') console.warn('[Clients] companies optional load failed; continuing without company lookup data', companiesRes.reason);
+      this.rebuildCompanyLookupMaps(this.state.companies);
       this.state.contactsById = new Map();
       this.state.contacts.forEach(contact => {
         const contactId = String(contact.contact_id || contact.contactId || contact.id || '').trim();
