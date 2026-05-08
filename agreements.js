@@ -60,6 +60,30 @@ const Agreements = {
     'company_id','company_name','contact_id','contact_name','contact_email','contact_phone','contact_mobile','customer_contact_phone','company_email','company_phone','country','city','tax_number','customer_signatory_email','customer_signatory_phone','provider_signatory_name','provider_signatory_title','provider_signatory_email','provider_primary_signatory_name','provider_primary_signatory_title','provider_secondary_signatory_name','provider_secondary_signatory_title',
     'notes'
   ],
+  shouldSkipAgreementWorkflow({ currentStatus, nextStatus, action, payload } = {}) {
+    const current = String(currentStatus || '').trim().toLowerCase();
+    const next = String(nextStatus || payload?.status || '').trim().toLowerCase();
+    const normalizedAction = String(action || payload?.action || '').trim().toLowerCase();
+    const isSaveAction = ['create', 'save', 'update'].includes(normalizedAction);
+
+    if (next === 'draft' && (current === '' || current === 'draft') && isSaveAction) {
+      return true;
+    }
+
+    if (current && next && current === next) {
+      return true;
+    }
+
+    return false;
+  },
+  isAgreementWorkflowUnavailableDecision(decision = {}) {
+    if (!decision || typeof decision !== 'object') return false;
+    if (decision.unavailable === true || decision.fallback === true) return true;
+    const reason = String(decision.reason || decision.message || '').trim().toLowerCase();
+    return reason.includes('workflow validation is unavailable') ||
+      reason.includes('save blocked until workflow is reachable') ||
+      reason.includes('validation unavailable');
+  },
   state: {
     rows: [],
     filteredRows: [],
@@ -2277,32 +2301,72 @@ const Agreements = {
     const currentRecord = this.state.rows.find(row => String(row.id || '') === id) || {};
     const agreementUpdatePayload = id ? this.buildAgreementEditableUpdate(agreement) : agreement;
     const requestedDiscount = items.reduce((max, item) => Math.max(max, this.toNumberSafe(item.discount_percent)), 0);
-    const normalizeStatus = value => String(value || '').trim().toLowerCase();
     const currentStatus = String(currentRecord?.status || '').trim();
     agreement.status = String(agreement.status || '').trim() || currentStatus || 'Draft';
-    const currentStatusNormalized = normalizeStatus(currentStatus);
-    const requestedStatusNormalized = normalizeStatus(agreement.status);
-    const isNoTransition = currentStatusNormalized === requestedStatusNormalized;
-    const isBlankToDraft = !currentStatusNormalized && requestedStatusNormalized === 'draft';
-    const hasMeaningfulStatusTransition = Boolean(requestedStatusNormalized) && !isNoTransition && !isBlankToDraft && requestedStatusNormalized !== 'draft';
+    const workflowAction = id ? 'update' : 'create';
+    let workflowDecision = null;
+    if (this.shouldSkipAgreementWorkflow({
+      currentStatus,
+      nextStatus: agreement.status,
+      action: workflowAction,
+      payload: agreementUpdatePayload
+    })) {
+      workflowDecision = {
+        allowed: true,
+        ok: true,
+        skipped: true,
+        reason: 'Draft/no-change agreement save does not require workflow approval.'
+      };
+    } else {
+      try {
+        workflowDecision = await window.WorkflowEngine?.enforceBeforeSave?.('agreements', currentRecord, {
+          agreement_id: id,
+          id,
+          action: workflowAction,
+          current_status: currentStatus,
+          requested_status: agreement.status || '',
+          discount_percent: requestedDiscount,
+          requested_changes: { agreement: agreementUpdatePayload, items: preparedItems || [] }
+        });
+      } catch (error) {
+        console.warn('[Agreement] Workflow validation unavailable; continuing agreement save fallback.', error);
+        workflowDecision = {
+          allowed: true,
+          ok: true,
+          unavailable: true,
+          fallback: true
+        };
+      }
+    }
 
-    if (hasMeaningfulStatusTransition) {
-      const workflowCheck = await window.WorkflowEngine?.enforceBeforeSave?.('agreements', currentRecord, {
-        agreement_id: id,
-        id,
-        current_status: currentStatus,
-        requested_status: agreement.status || '',
-        discount_percent: requestedDiscount,
-        requested_changes: { agreement: agreementUpdatePayload, items: preparedItems || [] }
-      });
-      if (workflowCheck && !workflowCheck.allowed) {
-        if (workflowCheck.pendingApproval === true && workflowCheck.approvalCreated === true) {
-          UI.toast('Approval request submitted successfully.');
-          return;
-        }
-        UI.toast(window.WorkflowEngine.composeDeniedMessage(workflowCheck, 'Agreement save blocked.'));
+    if (this.isAgreementWorkflowUnavailableDecision(workflowDecision)) {
+      console.warn('[Agreement] Workflow validation unavailable; continuing agreement save fallback.', workflowDecision);
+      workflowDecision = {
+        ...workflowDecision,
+        allowed: true,
+        ok: true,
+        unavailable: true,
+        fallback: true
+      };
+    }
+
+    if (workflowDecision && workflowDecision.ok === false) {
+      UI.toast(workflowDecision.message || workflowDecision.reason || 'Workflow rejected this agreement change.');
+      return;
+    }
+
+    if (workflowDecision?.requiresApproval || workflowDecision?.pendingApproval) {
+      if (workflowDecision.approvalCreated === true) {
+        UI.toast('Approval request submitted successfully.');
         return;
       }
+      UI.toast(window.WorkflowEngine?.composeDeniedMessage?.(workflowDecision, 'Agreement save blocked.') || workflowDecision.reason || 'Agreement save blocked by workflow approval.');
+      return;
+    }
+
+    if (workflowDecision && workflowDecision.allowed === false) {
+      UI.toast(window.WorkflowEngine?.composeDeniedMessage?.(workflowDecision, 'Agreement save blocked.') || workflowDecision.reason || 'Workflow rejected this agreement change.');
+      return;
     }
     this.state.saveInFlight = true;
     this.setFormBusy(true);
