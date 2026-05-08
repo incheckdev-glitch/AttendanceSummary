@@ -2638,6 +2638,79 @@
     return '';
   }
 
+  function isCompanyVerifiedForAgreementConversion(company = {}) {
+    const verified = company?.documents_verified === true || company?.documentsVerified === true;
+    const status = String(
+      company?.documents_verification_status ||
+      company?.documentsVerificationStatus ||
+      ''
+    ).trim().toLowerCase();
+
+    return verified && status === 'verified';
+  }
+
+  async function queryCompanyForAgreementConversion(client, column, value) {
+    const lookupValue = String(value || '').trim();
+    if (!lookupValue) return null;
+    let query = client.from('companies').select('*').limit(1);
+    query = (column === 'legal_name' || column === 'company_name')
+      ? query.ilike(column, lookupValue)
+      : query.eq(column, lookupValue);
+    const { data, error } = await query.maybeSingle();
+    if (error) throw friendlyError('Unable to confirm company verification status', error);
+    return data && typeof data === 'object' ? data : null;
+  }
+
+  async function loadProposalCompanyForAgreementConversion(client, proposal = {}) {
+    const source = proposal && typeof proposal === 'object' ? proposal : {};
+    const companyUuid = String(source.company_uuid || source.companyUuid || source.company?.id || '').trim();
+    if (companyUuid) {
+      const byUuid = await queryCompanyForAgreementConversion(client, 'id', companyUuid);
+      if (byUuid) return byUuid;
+    }
+
+    const companyId = String(source.company_id || source.companyId || source.company?.company_id || source.company?.companyId || '').trim();
+    if (companyId) {
+      const byCompanyId = await queryCompanyForAgreementConversion(client, 'company_id', companyId);
+      if (byCompanyId) return byCompanyId;
+    }
+
+    const legalName = String(
+      source.legal_company_name || source.legalCompanyName || source.legal_name || source.legalName
+      || source.customer_legal_name || source.customerLegalName || source.company?.legal_name || source.company?.legalName || ''
+    ).trim();
+    if (legalName) {
+      const byLegalName = await queryCompanyForAgreementConversion(client, 'legal_name', legalName);
+      if (byLegalName) return byLegalName;
+    }
+
+    const companyName = String(source.company_name || source.companyName || source.customer_name || source.customerName || source.company?.company_name || source.company?.companyName || '').trim();
+    if (companyName) {
+      const byCompanyName = await queryCompanyForAgreementConversion(client, 'company_name', companyName);
+      if (byCompanyName) return byCompanyName;
+    }
+
+    return null;
+  }
+
+  async function assertProposalAgreementConversionCompanyVerified(client, proposalUuid) {
+    const { data: proposal, error } = await client
+      .from('proposals')
+      .select('*')
+      .eq('id', proposalUuid)
+      .maybeSingle();
+    if (error) throw friendlyError('Unable to load proposal before agreement conversion', error);
+    if (!proposal) throw new Error('Proposal not found.');
+    if (String(proposal.status || '').trim().toLowerCase() !== 'accepted') {
+      throw new Error('Proposal must be accepted before converting to agreement.');
+    }
+    const company = await loadProposalCompanyForAgreementConversion(client, proposal);
+    if (!isCompanyVerifiedForAgreementConversion(company)) {
+      throw new Error('Company Not Verified: The company is still not verified. Please upload the company documents and make sure an admin verifies them before converting this proposal to an agreement.');
+    }
+    return true;
+  }
+
   async function resolveTechnicalAdminRequestUuid(payload = {}, client) {
     const directId = String(
       firstDefined(payload, ['id']) ??
@@ -4902,6 +4975,7 @@
       assertAllowed('agreements', 'create_from_proposal');
       const proposalUuid = await resolveResourceUuid('proposals', { ...payload, id: payload.proposal_uuid || payload.id, proposal_id: payload.proposal_id }, client);
       if (!isUuid(proposalUuid)) throw new Error('Proposal UUID is required to create agreement from proposal.');
+      await assertProposalAgreementConversionCompanyVerified(client, proposalUuid);
       const { data, error } = await client.rpc('create_agreement_from_proposal', { p_proposal_uuid: proposalUuid });
       if (error) throw friendlyError('Agreement creation from proposal failed', error);
       const recordId = String(data?.agreement_id || data?.id || data?.agreement_uuid || data?.created_agreement_uuid || '').trim();
