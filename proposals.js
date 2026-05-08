@@ -575,6 +575,13 @@ const Proposals = {
     if (status.toLowerCase() === 'approved') return 'Accepted';
     return status;
   },
+  isProposalAccepted(proposal = {}) {
+    const status = String(proposal?.status || '').trim().toLowerCase();
+    return status === 'accepted';
+  },
+  canShowConvertToAgreement(proposal = {}) {
+    return this.isProposalAccepted(proposal) && Permissions.canCreateAgreementFromProposal();
+  },
   todayDateString() {
     const date = new Date();
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -2142,8 +2149,8 @@ const Proposals = {
             ${Permissions.canPreviewProposal() ? `<button class="btn ghost sm" type="button" data-proposal-view="${id}" data-permission-resource="proposals" data-permission-action="view">View</button>` : ''}
             ${Permissions.canUpdateProposal() ? `<button class="btn ghost sm" type="button" data-proposal-edit="${id}" data-permission-resource="proposals" data-permission-action="update">Edit</button>` : ''}
             ${Permissions.canPreviewProposal() ? `<button class="btn ghost sm" type="button" data-proposal-preview="${id}" data-permission-resource="proposals" data-permission-action="view">Preview</button>` : ''}
-            ${Permissions.canCreateAgreementFromProposal() && !this.isAgreementAlreadyCreated(row)
-              ? `<button class="btn ghost sm" type="button" data-proposal-convert-agreement="${id}" data-permission-resource="agreements" data-permission-action="create" data-permission-resource="agreements" data-permission-action="create_from_proposal">Convert to Agreement</button>`
+            ${this.canShowConvertToAgreement(row) && !this.isAgreementAlreadyCreated(row)
+              ? `<button class="btn ghost sm" type="button" data-proposal-convert-agreement="${id}" data-permission-resource="agreements" data-permission-action="create_from_proposal">Convert to Agreement</button>`
               : ''}
             ${Permissions.canDeleteProposal() ? `<button class="btn ghost sm" type="button" data-proposal-delete="${id}" data-permission-resource="proposals" data-permission-action="delete" data-permission-resource="proposals" data-permission-action="delete">Delete</button>` : ''}
           </td>
@@ -3382,7 +3389,6 @@ const Proposals = {
         const convertAgreementId = getActionValue('data-proposal-convert-agreement');
         if (convertAgreementId) {
           this.runRowAction(`convert-agreement:${convertAgreementId}`, trigger, async () => {
-            if (typeof setActiveView === 'function') setActiveView('agreements');
             if (window.Agreements?.createFromProposalFlow) {
               await window.Agreements.createFromProposalFlow(convertAgreementId);
             } else {

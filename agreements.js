@@ -445,6 +445,127 @@ const Agreements = {
     }
     return next;
   },
+
+  normalizeProposalStatusForConversion(proposal = {}) {
+    return String(proposal?.status || '').trim().toLowerCase();
+  },
+  isProposalAcceptedForConversion(proposal = {}) {
+    return this.normalizeProposalStatusForConversion(proposal) === 'accepted';
+  },
+  isCompanyVerified(company = {}) {
+    return Boolean(company?.documents_verified || company?.documentsVerified)
+      && String(company?.documents_verification_status || company?.documentsVerificationStatus || '').trim().toLowerCase() === 'verified';
+  },
+  hasCompanyVerificationFields(record = {}) {
+    const hasVerifiedFlag = Object.prototype.hasOwnProperty.call(record, 'documents_verified')
+      || Object.prototype.hasOwnProperty.call(record, 'documentsVerified');
+    const hasVerificationStatus = Object.prototype.hasOwnProperty.call(record, 'documents_verification_status')
+      || Object.prototype.hasOwnProperty.call(record, 'documentsVerificationStatus');
+    return hasVerifiedFlag && hasVerificationStatus;
+  },
+  showBlockingDialog(title, message) {
+    const safeTitle = U.escapeHtml(String(title || 'Action blocked'));
+    const safeMessage = U.escapeHtml(String(message || '').trim());
+    let modal = document.getElementById('agreementBlockingDialog');
+    if (!modal) {
+      document.body.insertAdjacentHTML('beforeend', `
+        <div id="agreementBlockingDialog" class="modal" role="dialog" aria-modal="true" aria-hidden="true">
+          <div class="modal-content" style="max-width:560px;">
+            <div class="modal-header">
+              <h2 id="agreementBlockingDialogTitle" style="margin:0;font-size:20px"></h2>
+              <button class="modal-close" id="agreementBlockingDialogClose" type="button" aria-label="Close dialog">✕</button>
+            </div>
+            <p id="agreementBlockingDialogMessage" style="margin:12px 0 0;"></p>
+            <div class="actions" style="justify-content:flex-end;margin-top:16px;">
+              <button id="agreementBlockingDialogOk" type="button" class="btn primary">OK</button>
+            </div>
+          </div>
+        </div>`);
+      modal = document.getElementById('agreementBlockingDialog');
+      const close = () => {
+        modal.style.display = 'none';
+        modal.setAttribute('aria-hidden', 'true');
+      };
+      document.getElementById('agreementBlockingDialogClose').onclick = close;
+      document.getElementById('agreementBlockingDialogOk').onclick = close;
+      modal.addEventListener('click', event => { if (event.target === modal) close(); });
+    }
+    const titleEl = document.getElementById('agreementBlockingDialogTitle');
+    const messageEl = document.getElementById('agreementBlockingDialogMessage');
+    if (titleEl) titleEl.innerHTML = safeTitle;
+    if (messageEl) messageEl.innerHTML = safeMessage;
+    modal.style.display = 'flex';
+    modal.setAttribute('aria-hidden', 'false');
+  },
+  async queryCompanyForVerification(column, value) {
+    const lookupValue = String(value || '').trim();
+    if (!lookupValue) return null;
+    const client = window.SupabaseClient?.getClient?.();
+    if (!client) return null;
+    let query = client.from('companies').select('*').limit(1);
+    if (column === 'legal_name' || column === 'company_name') query = query.ilike(column, lookupValue);
+    else query = query.eq(column, lookupValue);
+    const { data, error } = await query.maybeSingle();
+    if (error) throw error;
+    return data && typeof data === 'object' ? data : null;
+  },
+  async getProposalCompanyForVerification(proposal = {}) {
+    const source = proposal && typeof proposal === 'object' ? proposal : {};
+    const embeddedCompany = source.company && typeof source.company === 'object' ? source.company : null;
+    const embeddedCandidate = embeddedCompany || source;
+    if (this.hasCompanyVerificationFields(embeddedCandidate)) return embeddedCandidate;
+
+    const companyUuid = String(source.company_uuid || source.companyUuid || source.company?.id || '').trim();
+    if (companyUuid) {
+      const byUuid = await this.queryCompanyForVerification('id', companyUuid);
+      if (byUuid) return byUuid;
+    }
+
+    const companyId = String(source.company_id || source.companyId || source.company?.company_id || source.company?.companyId || '').trim();
+    if (companyId) {
+      const byCompanyId = await this.queryCompanyForVerification('company_id', companyId);
+      if (byCompanyId) return byCompanyId;
+    }
+
+    const legalName = String(
+      source.legal_company_name || source.legalCompanyName || source.legal_name || source.legalName
+      || source.customer_legal_name || source.customerLegalName || source.company?.legal_name || source.company?.legalName || ''
+    ).trim();
+    if (legalName) {
+      const byLegalName = await this.queryCompanyForVerification('legal_name', legalName);
+      if (byLegalName) return byLegalName;
+    }
+
+    const companyName = String(source.company_name || source.companyName || source.customer_name || source.customerName || source.company?.company_name || source.company?.companyName || '').trim();
+    if (companyName) {
+      const byCompanyName = await this.queryCompanyForVerification('company_name', companyName);
+      if (byCompanyName) return byCompanyName;
+    }
+
+    return null;
+  },
+  async guardProposalConversionAllowed(proposal = {}) {
+    if (!this.isProposalAcceptedForConversion(proposal)) {
+      UI.toast('Proposal must be accepted before converting to agreement.');
+      return false;
+    }
+    const company = await this.getProposalCompanyForVerification(proposal);
+    if (!company) {
+      this.showBlockingDialog(
+        'Company Verification Required',
+        'Unable to confirm the company verification status. Please open the company profile, upload the required documents, and make sure an admin verifies them before converting this proposal to an agreement.'
+      );
+      return false;
+    }
+    if (!this.isCompanyVerified(company)) {
+      this.showBlockingDialog(
+        'Company Not Verified',
+        'The company is still not verified. Please upload the company documents and make sure an admin verifies them before converting this proposal to an agreement.'
+      );
+      return false;
+    }
+    return true;
+  },
   normalizeItem(raw = {}, sectionFallback = '') {
     const source = raw && typeof raw === 'object' ? raw : {};
     const pick = (...values) => {
@@ -599,8 +720,15 @@ const Agreements = {
       payment_term: String(source.payment_term || source.paymentTerm || '').trim(),
       po_number: String(source.po_number || source.poNumber || '').trim(),
       currency: String(source.currency || '').trim(),
+      company_id: String(source.company_id || source.companyId || '').trim(),
+      company_name: String(source.company_name || source.companyName || '').trim(),
+      contact_id: String(source.contact_id || source.contactId || '').trim(),
+      contact_name: String(source.contact_name || source.contactName || '').trim(),
+      contact_email: String(source.contact_email || source.contactEmail || '').trim(),
+      contact_phone: String(source.contact_phone || source.contactPhone || '').trim(),
+      contact_mobile: String(source.contact_mobile || source.contactMobile || '').trim(),
       customer_name: String(source.customer_name || source.customerName || '').trim(),
-      customer_legal_name: String(source.customer_legal_name || source.customerLegalName || source.customer_name || '').trim(),
+      customer_legal_name: String(source.customer_legal_name || source.customerLegalName || source.company_name || source.companyName || source.customer_name || '').trim(),
       customer_address: String(source.customer_address || source.customerAddress || '').trim(),
       customer_contact_name: this.buildContactPersonName(source),
       customer_contact_mobile: String(source.customer_contact_mobile || source.customerContactMobile || '').trim(),
@@ -831,7 +959,14 @@ const Agreements = {
   async listClients() { return Api.listClients(); },
   async createClient(client) { return Api.createClient(client); },
   async updateClient(clientId, updates) { return Api.updateClient(clientId, updates); },
-  async createAgreementFromProposal(proposalId) { return Api.createAgreementFromProposal(proposalId); },
+  async createAgreementFromProposal(proposalId) {
+    const proposalRef = String(proposalId || '').trim();
+    const proposalResponse = await window.Proposals?.getProposal?.(proposalRef);
+    const extracted = window.Proposals?.extractProposalAndItems?.(proposalResponse, proposalRef) || {};
+    const proposal = extracted.proposal && typeof extracted.proposal === 'object' ? extracted.proposal : { id: proposalRef };
+    if (!(await this.guardProposalConversionAllowed(proposal))) return null;
+    return Api.createAgreementFromProposal(proposalRef);
+  },
   async generateAgreementHtml(agreementId) { return Api.generateAgreementHtml(agreementId); },
   async loadAgreementPreviewData(agreementUuid) {
     const id = String(agreementUuid || '').trim();
@@ -2052,12 +2187,14 @@ const Agreements = {
         UI.toast('This proposal has already been converted to an agreement.');
         return;
       }
+      if (!(await this.guardProposalConversionAllowed(proposal))) return;
       const proposalItems = Array.isArray(extracted.items) ? extracted.items : [];
       let draft = this.buildDraftAgreementFromProposal(
         { ...proposal, id: resolvedProposalUuid },
         proposalItems
       );
       draft = { ...draft, agreement: await this.applyCompanyIdentityToAgreement(draft.agreement) };
+      if (typeof setActiveView === 'function') setActiveView('agreements');
       this.openAgreementForm(draft.agreement, draft.items, { readOnly: false });
       UI.toast(`Agreement form prefilled from proposal ${String(proposal.proposal_id || proposalRef).trim()}. Save to create.`);
     } catch (error) {
