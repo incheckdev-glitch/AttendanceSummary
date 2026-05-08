@@ -98,7 +98,7 @@ const Agreements = {
     contactMobile: '+31 97 010280855',
     contactEmail: 'Info@incheck360.nl',
     primarySignatoryName: 'Simon Moujaly',
-    primarySignatoryTitle: 'CFO',
+    primarySignatoryTitle: 'Senior Financial Controller',
     secondarySignatoryName: 'Hanna Khattar',
     secondarySignatoryTitle: 'General Manager'
   },
@@ -1927,8 +1927,33 @@ const Agreements = {
       set(id, normalizedAgreement[field] ?? '');
     });
   },
+  initializeProviderSignDateDefaultTracking(agreement = {}) {
+    const isCreateMode = !String(agreement?.id || E.agreementForm?.dataset.id || '').trim();
+    ['ProviderOfficialSignatory1SignDate','ProviderOfficialSignatory2SignDate'].forEach(suffix => {
+      const field = document.getElementById(`agreementForm${suffix}`);
+      if (!field) return;
+      if (!isCreateMode) {
+        delete field.dataset.autoSignDateDefault;
+        return;
+      }
+      field.dataset.autoSignDateDefault = 'true';
+    });
+  },
+  bindProviderSignDateDefaultTracking() {
+    ['ProviderOfficialSignatory1SignDate','ProviderOfficialSignatory2SignDate'].forEach(suffix => {
+      const field = document.getElementById(`agreementForm${suffix}`);
+      if (!field || field.dataset.signDateTrackingBound === 'true') return;
+      field.addEventListener('input', () => {
+        field.dataset.autoSignDateDefault = 'false';
+      });
+      field.addEventListener('change', () => {
+        field.dataset.autoSignDateDefault = 'false';
+      });
+      field.dataset.signDateTrackingBound = 'true';
+    });
+  },
   applyIdentityFieldLocks() {
-    const locked = ['customer_official_signatory_name','customer_official_signatory_title','customer_signatory_name','customer_signatory_title','provider_official_signatory_1_name','provider_official_signatory_1_title','provider_official_signatory_1_sign_date','provider_official_signatory_2_name','provider_official_signatory_2_title','provider_official_signatory_2_sign_date','provider_signatory_name_primary','provider_signatory_title_primary','provider_signatory_name_secondary','provider_signatory_title_secondary','company_id','company_name','customer_name','customer_legal_name','customer_address','contact_id','contact_name','contact_email','contact_phone','contact_mobile','customer_contact_name','customer_contact_email','customer_contact_phone','customer_contact_mobile','provider_legal_name','provider_name','provider_address','provider_contact_name','provider_contact_email','provider_contact_mobile','billing_frequency'];
+    const locked = ['customer_official_signatory_name','customer_official_signatory_title','customer_signatory_name','customer_signatory_title','provider_official_signatory_1_name','provider_official_signatory_1_title','provider_official_signatory_2_name','provider_official_signatory_2_title','provider_signatory_name_primary','provider_signatory_title_primary','provider_signatory_name_secondary','provider_signatory_title_secondary','company_id','company_name','customer_name','customer_legal_name','customer_address','contact_id','contact_name','contact_email','contact_phone','contact_mobile','customer_contact_name','customer_contact_email','customer_contact_phone','customer_contact_mobile','provider_legal_name','provider_name','provider_address','provider_contact_name','provider_contact_email','provider_contact_mobile','billing_frequency'];
     locked.forEach(field => {
       const id = this.agreementFieldToFormInputId(field);
       const el = document.getElementById(id);
@@ -1952,6 +1977,7 @@ const Agreements = {
   openAgreementForm(agreement = this.emptyAgreement(), items = [], { readOnly = false } = {}) {
     if (!E.agreementFormModal || !E.agreementForm) return;
     this.assignFormValues(agreement);
+    this.initializeProviderSignDateDefaultTracking(agreement);
     this.renderItemRows(items);
     this.state.selectedAgreementCompanyForVerification = this.hasCompanyVerificationFields(agreement) ? agreement : null;
     this.updateAgreementCompanyVerificationUi(this.state.selectedAgreementCompanyForVerification);
@@ -2498,6 +2524,7 @@ const Agreements = {
       if (event.target === E.agreementFormModal) this.closeAgreementForm();
     });
     if (E.agreementForm) {
+      this.bindProviderSignDateDefaultTracking();
       E.agreementForm.addEventListener('submit', event => { event.preventDefault(); this.submitForm(); });
       E.agreementForm.addEventListener('crm-company-selected', event => {
         const company = event?.detail?.company && typeof event.detail.company === 'object' ? event.detail.company : null;
@@ -2508,10 +2535,22 @@ const Agreements = {
       const agreementDateInput = document.getElementById('agreementFormAgreementDate');
       if (agreementDateInput) agreementDateInput.addEventListener('change', () => {
         const signDate = this.getDefaultOfficialSignDate({ agreement_date: agreementDateInput.value });
-        ['CustomerOfficialSignDate','CustomerSignDate','ProviderOfficialSignatory1SignDate','ProviderOfficialSignatory2SignDate','ProviderSignDate'].forEach(suffix => {
+        const isCreateMode = !String(E.agreementForm?.dataset.id || '').trim();
+        ['CustomerOfficialSignDate','CustomerSignDate','ProviderSignDate'].forEach(suffix => {
           const field = document.getElementById(`agreementForm${suffix}`);
           if (field) field.value = signDate;
         });
+        if (isCreateMode) {
+          ['ProviderOfficialSignatory1SignDate','ProviderOfficialSignatory2SignDate'].forEach(suffix => {
+            const field = document.getElementById(`agreementForm${suffix}`);
+            if (!field) return;
+            const autoDefault = field.dataset.autoSignDateDefault === 'true';
+            if (!field.value || autoDefault) {
+              field.value = signDate;
+              field.dataset.autoSignDateDefault = 'true';
+            }
+          });
+        }
         this.applyOfficialSignatoryDefaultsToForm(this.state.selectedAgreementCompanyForVerification);
       });
       if (agreementCompanySelect) agreementCompanySelect.addEventListener('change', event => {
