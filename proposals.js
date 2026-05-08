@@ -1731,14 +1731,15 @@ const Proposals = {
       .proposal-preview-page { width: 210mm; min-height: 297mm; margin: 0 auto; background: #fff; border: 1px solid #dbe3ed; box-shadow: 0 14px 34px rgba(15, 23, 42, 0.13); padding: 14mm 14mm 12mm; position: relative; overflow: hidden; box-sizing: border-box; }
       .proposal-preview-page > :not(.draft-watermark) { position: relative; z-index: 1; }
       .draft-watermark { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 0; font-size: 92px; font-weight: 800; letter-spacing: 0.16em; color: #0f172a; opacity: 0.055; transform: rotate(-28deg); text-transform: uppercase; user-select: none; }
-      .doc-header { border-bottom: 1px solid #d8e1ec; padding-bottom: 7mm; margin-bottom: 7mm; }
-      .doc-head { display: grid; grid-template-columns: 42mm minmax(0, 1fr) 64mm; gap: 5mm; align-items: start; width: 100%; }
-      .brand-block { display: flex; align-items: flex-start; gap: 0; min-height: 24mm; min-width: 0; padding-top: 0; }
-      .brand-block .incheck360-doc-logo-wrap { float: none; margin: 0; width: 38mm; max-width: 38mm; }
-      .brand-block img, .brand-block svg { max-width: 38mm; height: auto; display: block; }
+      .doc-header { border-bottom: 1px solid #d8e1ec; padding-bottom: 7mm; margin-bottom: 8mm; }
+      .proposal-preview-header { display: grid; grid-template-columns: 34mm minmax(0, 1fr) 68mm; align-items: center; gap: 8mm; width: 100%; max-width: 100%; margin-bottom: 0; }
+      .proposal-preview-logo { display: flex; align-items: center; justify-content: flex-start; min-width: 0; }
+      .proposal-preview-logo .incheck360-doc-logo-wrap { float: none; display: flex; align-items: center; justify-content: flex-start; margin: 0; padding: 0; width: 28mm; max-width: 28mm; text-align: left; }
+      .proposal-preview-logo img, .proposal-preview-logo svg { display: block; max-width: 28mm; max-height: 18mm; width: auto; height: auto; object-fit: contain; object-position: left center; }
       .commercial-terms-box { grid-column: 1 / -1; min-height: auto; }
-      .title-block { margin: 0; text-align: center; align-self: start; min-width: 0; padding-top: 1mm; }
-      .doc-label { margin: 0; font-size: 28px; font-weight: 800; letter-spacing: 0.01em; color: #0b214a; line-height: 1; }
+      .proposal-preview-title-block { margin: 0; text-align: center; min-width: 0; }
+      .proposal-preview-title { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: 0.01em; color: #0b214a; line-height: 1; text-align: center; }
+      .proposal-preview-summary { align-self: center; }
       .meta-box { border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; background: #fbfdff; min-width: 0; width: 100%; }
       .meta-row { display: grid; grid-template-columns: 26mm minmax(0, 1fr); border-bottom: 1px solid #e3eaf3; }
       .meta-row:last-child { border-bottom: 0; }
@@ -1783,12 +1784,12 @@ const Proposals = {
     <div class="proposal-preview-page doc-sheet">
       ${showDraftWatermark ? '<div class="draft-watermark" aria-hidden="true">DRAFT</div>' : ''}
       <header class="doc-header">
-        <section class="doc-head">
-          <div class="brand-block"><div data-incheck360-doc-logo-slot></div></div>
-          <div class="title-block">
-            <h2 class="doc-label">Proposal</h2>
+        <section class="proposal-preview-header">
+          <div class="proposal-preview-logo"><div data-incheck360-doc-logo-slot></div></div>
+          <div class="proposal-preview-title-block">
+            <h2 class="proposal-preview-title">Proposal</h2>
           </div>
-          <div class="meta-box">
+          <div class="proposal-preview-summary meta-box">
             <div class="meta-row"><div class="meta-key">Proposal ID</div><div>${textValue(proposalData.proposal_id || 'Missing ID')}</div></div>
             <div class="meta-row"><div class="meta-key">Reference #</div><div>${textValue(proposalData.ref_number)}</div></div>
             <div class="meta-row"><div class="meta-key">Proposal Date</div><div>${dateValue(proposalData.proposal_date)}</div></div>
