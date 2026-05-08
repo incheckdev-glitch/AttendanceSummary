@@ -919,13 +919,15 @@ const Receipts = {
     );
     const paidNow = Math.max(0, this.getReceiptAmountValue(receipt));
     const invoiceAmountPaid = this.normalizeAmountInput(
-      pickDefined(invoice.amount_paid, invoice.received_amount, invoice.amount_received)
+      pickDefined(invoice.received_amount, invoice.amount_paid, invoice.amount_received)
     );
+    const invoicePendingAmount = this.normalizeAmountInput(invoice.pending_amount);
     const currentInvoiceId = String(receipt?.invoice_id || invoice?.id || invoice?.invoice_id || '').trim();
     const currentInvoiceNumber = String(receipt?.invoice_number || invoice?.invoice_number || '').trim();
     const currentUniqueKey = this.getReceiptUniqueKey(receipt);
     let oldPaidBeforeReceipt = null;
     let cumulativePaidTotal = null;
+    let currentReceiptInLedger = false;
     if (Array.isArray(allReceiptsForInvoice)) {
       const normalizedRows = allReceiptsForInvoice
         .map(row => this.normalizeReceipt(row))
@@ -936,33 +938,36 @@ const Receipts = {
         const currentIndex = currentUniqueKey
           ? sorted.findIndex(row => this.getReceiptUniqueKey(row) === currentUniqueKey)
           : -1;
-        const receiptLedgerTotal = sorted.reduce((sum, row) => sum + this.getReceiptAmountValue(row), 0);
-        if (currentIndex >= 0) {
-          const previousRows = sorted.slice(0, currentIndex);
-          oldPaidBeforeReceipt = previousRows.reduce((sum, row) => sum + this.getReceiptAmountValue(row), 0);
-          cumulativePaidTotal = oldPaidBeforeReceipt + paidNow;
-        } else if (currentUniqueKey && invoiceAmountPaid !== null && Math.abs(this.toNumberSafe(invoiceAmountPaid) - this.toNumberSafe(receiptLedgerTotal)) < 0.01) {
-          cumulativePaidTotal = this.toNumberSafe(invoiceAmountPaid);
-          oldPaidBeforeReceipt = cumulativePaidTotal - paidNow;
-        } else {
-          oldPaidBeforeReceipt = receiptLedgerTotal;
+        currentReceiptInLedger = currentIndex >= 0;
+        if (!currentReceiptInLedger) {
+          oldPaidBeforeReceipt = sorted.reduce((sum, row) => sum + this.getReceiptAmountValue(row), 0);
           cumulativePaidTotal = oldPaidBeforeReceipt + paidNow;
         }
       } else {
         oldPaidBeforeReceipt = 0;
       }
     }
-    if (oldPaidBeforeReceipt === null) {
+
+    const hasPersistedReceipt = currentReceiptInLedger || !!String(receipt?.id || '').trim();
+    const invoiceAlreadyIncludesReceipt = invoiceAmountPaid !== null && hasPersistedReceipt;
+    if (invoiceAlreadyIncludesReceipt) {
+      cumulativePaidTotal = this.toNumberSafe(invoiceAmountPaid);
+      oldPaidBeforeReceipt = cumulativePaidTotal - paidNow;
+    } else if (oldPaidBeforeReceipt === null) {
       const explicitOldPaidTotal = this.normalizeAmountInput(receipt.old_paid_total);
       const explicitNewPaidTotal = this.normalizeAmountInput(receipt.new_paid_total);
       if (explicitOldPaidTotal !== null) oldPaidBeforeReceipt = explicitOldPaidTotal;
       else if (explicitNewPaidTotal !== null) oldPaidBeforeReceipt = explicitNewPaidTotal - paidNow;
-      else if (invoiceAmountPaid !== null) oldPaidBeforeReceipt = invoiceAmountPaid - paidNow;
+      else if (invoiceAmountPaid !== null) oldPaidBeforeReceipt = invoiceAmountPaid;
       else oldPaidBeforeReceipt = 0;
     }
     oldPaidBeforeReceipt = Math.max(0, this.toNumberSafe(oldPaidBeforeReceipt));
     const newPaidTotal = this.toNumberSafe(cumulativePaidTotal ?? oldPaidBeforeReceipt + paidNow);
-    const pendingAmount = this.toNumberSafe(Math.max(invoiceTotal - newPaidTotal, 0));
+    const pendingAmount = this.toNumberSafe(
+      invoiceAlreadyIncludesReceipt && invoicePendingAmount !== null
+        ? invoicePendingAmount
+        : Math.max(invoiceTotal - newPaidTotal, 0)
+    );
     let paymentState = 'Not Paid';
     if (newPaidTotal > 0 && newPaidTotal < invoiceTotal) paymentState = 'Partially Paid';
     if (newPaidTotal >= invoiceTotal) paymentState = 'Fully Paid';
