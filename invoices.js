@@ -656,7 +656,7 @@ const Invoices = {
   },
   buildInvoicePreviewHtml(invoice = {}, items = [], receipts = []) {
     const invoiceData = invoice && typeof invoice === 'object' ? invoice : {};
-    const normalizedItems = (Array.isArray(items) ? items : []).map((item, index) => {
+    const normalizedItems = this.filterInvoiceCommercialItems(items).map((item, index) => {
       const normalized = this.normalizeItem(item);
       if (!normalized.line_no) normalized.line_no = index + 1;
       return normalized;
@@ -682,11 +682,12 @@ const Invoices = {
       return Number.isFinite(amount) ? U.escapeHtml(String(amount)) : '—';
     };
     const itemTotals = this.calculateInvoiceTotals(normalizedItems);
+    const hasCommercialItems = normalizedItems.length > 0;
     const subtotalLocations = this.toNumberSafe(
-      invoiceData.subtotal_locations ?? invoiceData.subtotal_subscription ?? itemTotals.subtotal_locations
+      hasCommercialItems ? itemTotals.subtotal_locations : (invoiceData.subtotal_locations ?? invoiceData.subtotal_subscription ?? 0)
     );
-    const subtotalOneTime = this.toNumberSafe(invoiceData.subtotal_one_time ?? itemTotals.subtotal_one_time);
-    const invoiceTotal = this.toNumberSafe(invoiceData.invoice_total ?? invoiceData.grand_total ?? itemTotals.invoice_total);
+    const subtotalOneTime = this.toNumberSafe(hasCommercialItems ? itemTotals.subtotal_one_time : (invoiceData.subtotal_one_time ?? 0));
+    const invoiceTotal = this.toNumberSafe(hasCommercialItems ? itemTotals.invoice_total : (invoiceData.invoice_total ?? invoiceData.grand_total ?? 0));
     const baselinePaid = this.toNumberSafe(invoiceData.amount_paid ?? invoiceData.received_amount ?? invoiceData.old_paid_total);
     const receiptSummary = this.summarizeReceiptPayments(invoiceTotal, receipts, { baselinePaid });
     const paidAmount = this.toNumberSafe(receiptSummary.amount_paid);
@@ -978,6 +979,14 @@ const Invoices = {
     if (raw === 'capability') return 'capability';
     return raw;
   },
+  isCapabilityItem(item = {}) {
+    const normalized = item && typeof item === 'object' ? item : {};
+    const section = this.normalizeSection(normalized.section || normalized.item_section || normalized.itemSection || normalized.type || normalized.item_type || normalized.itemType);
+    return section === 'capability' || Boolean(String(normalized.capability_name || normalized.capabilityName || normalized.capability_value || normalized.capabilityValue || '').trim());
+  },
+  filterInvoiceCommercialItems(items = []) {
+    return (Array.isArray(items) ? items : []).filter(item => !this.isCapabilityItem(item));
+  },
   normalizeDateInputValue(value) {
     const raw = String(value ?? '').trim();
     if (!raw) return '';
@@ -1209,7 +1218,7 @@ const Invoices = {
     return ['one_time_fee', 'one_time', 'setup', 'non_recurring', 'non-recurring'].includes(normalized);
   },
   calculateInvoiceTotals(items = []) {
-    return (Array.isArray(items) ? items : []).reduce(
+    return this.filterInvoiceCommercialItems(items).reduce(
       (acc, rawItem) => {
         const item = this.normalizeItem(rawItem);
         const lineTotal = this.toNumberSafe(item.line_total);
@@ -1729,12 +1738,10 @@ const Invoices = {
     };
   },
   groupedItems(items = []) {
-    const groups = { annual_saas: [], one_time_fee: [], capability: [] };
-    (Array.isArray(items) ? items : []).forEach((item, idx) => {
+    const groups = { annual_saas: [], one_time_fee: [] };
+    this.filterInvoiceCommercialItems(items).forEach((item, idx) => {
       const normalized = this.normalizeItem(item);
-      const section = ['annual_saas', 'one_time_fee', 'capability'].includes(normalized.section)
-        ? normalized.section
-        : 'annual_saas';
+      const section = normalized.section === 'one_time_fee' ? 'one_time_fee' : 'annual_saas';
       normalized.line_no = normalized.line_no || idx + 1;
       groups[section].push(normalized);
     });
@@ -1776,29 +1783,12 @@ const Invoices = {
     const tbody =
       section === 'annual_saas'
         ? E.invoiceAnnualItemsTbody
-        : section === 'one_time_fee'
-        ? E.invoiceOneTimeItemsTbody
-        : E.invoiceCapabilityItemsTbody;
+        : E.invoiceOneTimeItemsTbody;
     if (!tbody) return;
 
     const safeRows = Array.isArray(rows) ? rows : [];
     if (!safeRows.length) {
-      const colspan = section === 'capability' ? 4 : 12;
-      tbody.innerHTML = `<tr><td colspan="${colspan}" class="muted" style="text-align:center;">No rows yet.</td></tr>`;
-      return;
-    }
-
-    if (section === 'capability') {
-      tbody.innerHTML = safeRows
-        .map(
-          (row, index) => `<tr data-item-row="${section}">
-          <td><input class="input" data-item-field="capability_name" value="${U.escapeAttr(row.capability_name || '')}" /></td>
-          <td><input class="input" data-item-field="capability_value" value="${U.escapeAttr(row.capability_value || '')}" /></td>
-          <td><input class="input" data-item-field="notes" value="${U.escapeAttr(row.notes || '')}" /></td>
-          <td><button class="btn ghost sm" type="button" data-item-remove="${section}" data-item-index="${index}">Remove</button></td>
-        </tr>`
-        )
-        .join('');
+      tbody.innerHTML = '<tr><td colspan="12" class="muted" style="text-align:center;">No rows yet.</td></tr>';
       return;
     }
 
@@ -1828,7 +1818,6 @@ const Invoices = {
     const groups = this.groupedItems(items);
     this.renderSectionRows('annual_saas', groups.annual_saas);
     this.renderSectionRows('one_time_fee', groups.one_time_fee);
-    this.renderSectionRows('capability', groups.capability);
   },
   assignFormValues(invoice = {}) {
     const set = (id, value) => {
@@ -1844,26 +1833,18 @@ const Invoices = {
       const id = `invoiceForm${field.replace(/(^|_)([a-z])/g, (_, __, ch) => ch.toUpperCase())}`;
       set(id, invoice[field] || '');
     });
+    set('invoiceFormInvoiceDate', invoice.issue_date || invoice.invoice_date || '');
   },
   collectSectionItems(section) {
     const tbody =
       section === 'annual_saas'
         ? E.invoiceAnnualItemsTbody
-        : section === 'one_time_fee'
-        ? E.invoiceOneTimeItemsTbody
-        : E.invoiceCapabilityItemsTbody;
+        : E.invoiceOneTimeItemsTbody;
     if (!tbody) return [];
     const rows = [...tbody.querySelectorAll('tr[data-item-row]')];
     return rows
       .map((tr, idx) => {
         const get = field => tr.querySelector(`[data-item-field="${field}"]`)?.value ?? '';
-        if (section === 'capability') {
-          const capabilityName = String(get('capability_name')).trim();
-          const capabilityValue = String(get('capability_value')).trim();
-          const notes = String(get('notes')).trim();
-          if (!capabilityName && !capabilityValue && !notes) return null;
-          return { section, line_no: idx + 1, capability_name: capabilityName, capability_value: capabilityValue, notes };
-        }
         const unitPrice = this.toNumberSafe(get('unit_price'));
         const discountPercent = this.toNumberSafe(get('discount_percent'));
         const quantity = this.toNumberSafe(get('quantity'));
@@ -1898,8 +1879,7 @@ const Invoices = {
   collectItems() {
     return [
       ...this.collectSectionItems('annual_saas'),
-      ...this.collectSectionItems('one_time_fee'),
-      ...this.collectSectionItems('capability')
+      ...this.collectSectionItems('one_time_fee')
     ];
   },
   collectFormValues() {
@@ -1912,7 +1892,8 @@ const Invoices = {
       if (inputEl) invoice[field] = get(id);
       else invoice[field] = existingInvoice[field] ?? '';
     });
-    invoice.issue_date = String(invoice.issue_date || invoice.invoice_date || '').trim();
+    invoice.issue_date = this.normalizeDateInputValue(get('invoiceFormInvoiceDate') || invoice.issue_date || invoice.invoice_date);
+    invoice.invoice_date = invoice.issue_date;
     const items = this.collectItems();
     invoice.old_paid_total = this.toNumberSafe(E.invoiceFormOldPaidTotal?.value);
     invoice.paid_now = this.toNumberSafe(E.invoiceFormPaidNow?.value);
@@ -2068,7 +2049,7 @@ const Invoices = {
     this.state.selectedInvoice.invoice_number = this.ensureInvoiceNumber(this.state.selectedInvoice.invoice_number);
     if (!this.state.selectedInvoice.issue_date) this.state.selectedInvoice.issue_date = this.todayIso();
     this.state.selectedInvoice.invoice_date = this.state.selectedInvoice.issue_date;
-    this.state.items = Array.isArray(items) ? items.map(item => this.normalizeItem(item)) : [];
+    this.state.items = this.filterInvoiceCommercialItems(items).map(item => this.normalizeItem(item));
     this.assignFormValues(this.state.selectedInvoice);
     this.hydrateInvoiceCustomerSection({ agreement: this.state.selectedAgreement || this.state.selectedInvoice || {}, company: this.state.selectedCompany || {}, contact: this.state.selectedContact || {} });
     this.renderItems(this.state.items);
@@ -2091,27 +2072,34 @@ const Invoices = {
       ? Permissions.canUpdateInvoice()
       : Permissions.canCreateInvoice();
     if (E.invoiceFormDeleteBtn) E.invoiceFormDeleteBtn.style.display = !readOnly && this.state.selectedInvoice.id && Permissions.canDeleteInvoice() ? '' : 'none';
-    const isIssuedLocked = isExistingInvoice && this.isIssuedInvoice(this.state.selectedInvoice);
-    if (E.invoiceFormSaveBtn) E.invoiceFormSaveBtn.style.display = !readOnly && !isIssuedLocked && canSave ? '' : 'none';
+    const isExistingLocked = isExistingInvoice;
+    const allowedExistingEditIds = new Set(['invoiceFormStatus', 'invoiceFormPaymentStatus', 'invoiceFormInvoiceDate', 'invoiceFormDueDate']);
+    if (E.invoiceFormSaveBtn) E.invoiceFormSaveBtn.style.display = !readOnly && canSave ? '' : 'none';
     E.invoiceForm.querySelectorAll('input, select, textarea').forEach(el => {
       if (el.id === 'invoiceFormInvoiceId') {
         el.disabled = true;
         return;
       }
-      el.disabled = readOnly || isIssuedLocked;
+      el.disabled = readOnly || (isExistingLocked && !allowedExistingEditIds.has(el.id));
+      if (isExistingLocked && !allowedExistingEditIds.has(el.id) && ('readOnly' in el)) el.readOnly = true;
     });
     if (E.invoiceFormOldPaidTotal) E.invoiceFormOldPaidTotal.readOnly = true;
     if (E.invoiceFormAmountPaid) E.invoiceFormAmountPaid.readOnly = true;
     if (E.invoiceFormPendingAmount) E.invoiceFormPendingAmount.readOnly = true;
     if (E.invoiceFormPaymentState) E.invoiceFormPaymentState.readOnly = true;
-    if (E.invoiceAddAnnualRowBtn) E.invoiceAddAnnualRowBtn.style.display = readOnly || isIssuedLocked ? 'none' : '';
-    if (E.invoiceAddOneTimeRowBtn) E.invoiceAddOneTimeRowBtn.style.display = readOnly || isIssuedLocked ? 'none' : '';
-    if (E.invoiceAddCapabilityRowBtn) E.invoiceAddCapabilityRowBtn.style.display = readOnly || isIssuedLocked ? 'none' : '';
+    if (E.invoiceAddAnnualRowBtn) E.invoiceAddAnnualRowBtn.style.display = readOnly || isExistingLocked ? 'none' : '';
+    if (E.invoiceAddOneTimeRowBtn) E.invoiceAddOneTimeRowBtn.style.display = readOnly || isExistingLocked ? 'none' : '';
+    if (E.invoiceAddCapabilityRowBtn) E.invoiceAddCapabilityRowBtn.style.display = 'none';
+    E.invoiceForm.querySelectorAll('[data-item-field]').forEach(el => {
+      el.disabled = readOnly || isExistingLocked;
+      if ('readOnly' in el) el.readOnly = readOnly || isExistingLocked;
+    });
+    E.invoiceForm.querySelectorAll('button[data-item-remove]').forEach(btn => { btn.style.display = readOnly || isExistingLocked ? 'none' : ''; });
     if (E.invoiceFormIssuedHelperText) {
-      E.invoiceFormIssuedHelperText.textContent = isIssuedLocked
-        ? 'This invoice is issued and cannot be edited. Create a receipt to record payment.'
+      E.invoiceFormIssuedHelperText.textContent = isExistingLocked
+        ? 'Invoice commercial details are locked after creation. Only status, invoice date, and due date can be edited.'
         : '';
-      E.invoiceFormIssuedHelperText.style.display = isIssuedLocked ? '' : 'none';
+      E.invoiceFormIssuedHelperText.style.display = isExistingLocked ? '' : 'none';
     }
     this.ensureCatalogLoaded();
     E.invoiceFormModal.classList.add('open');
@@ -2314,7 +2302,7 @@ const Invoices = {
       this.assignFormValues(mappedInvoice);
       this.hydrateInvoiceCustomerSection({ agreement, company: fullCompany || {}, contact: fullContact || {} });
       const catalogLookup = await this.getProposalCatalogLookup();
-      const normalizedItems = items.map(item => this.copyInvoiceItemFields(item, this.mergeCatalogItem(item, catalogLookup)));
+      const normalizedItems = this.filterInvoiceCommercialItems(items).map(item => this.copyInvoiceItemFields(item, this.mergeCatalogItem(item, catalogLookup)));
       this.state.items = normalizedItems;
       this.renderItems(normalizedItems);
       const summary = this.deriveCalculatedSummary(mappedInvoice, normalizedItems);
@@ -2366,9 +2354,68 @@ const Invoices = {
       console.timeEnd('invoice-open');
     }
   },
+  buildInvoiceMetadataUpdatePayload() {
+    const status = String(E.invoiceFormStatus?.value || this.state.selectedInvoice?.status || '').trim();
+    const issueDate = this.normalizeDateInputValue(E.invoiceFormInvoiceDate?.value || this.state.selectedInvoice?.issue_date || this.state.selectedInvoice?.invoice_date);
+    const dueDate = this.normalizeDateInputValue(E.invoiceFormDueDate?.value || this.state.selectedInvoice?.due_date);
+    return {
+      status: status || 'Draft',
+      payment_status: status || null,
+      issue_date: issueDate || null,
+      due_date: dueDate || null,
+      updated_at: new Date().toISOString()
+    };
+  },
+  async saveExistingInvoiceMetadata(id) {
+    if (!Permissions.canUpdateInvoice()) return UI.toast('You do not have permission to update invoices.');
+    const payloadInvoice = this.buildInvoiceMetadataUpdatePayload();
+    const currentRecord = this.state.rows.find(row => this.invoiceDbId(row.id) === id) || this.state.selectedInvoice || {};
+    const workflowCheck = await window.WorkflowEngine?.enforceBeforeSave?.('invoices', currentRecord, {
+      invoice_id: id,
+      current_status: currentRecord?.status || '',
+      requested_status: payloadInvoice.status || '',
+      requested_changes: { invoice: payloadInvoice }
+    });
+    if (workflowCheck && !workflowCheck.allowed) {
+      if (workflowCheck.pendingApproval === true && workflowCheck.approvalCreated === true) {
+        UI.toast('Approval request submitted successfully.');
+        return;
+      }
+      UI.toast(window.WorkflowEngine.composeDeniedMessage(workflowCheck, 'Invoice save blocked.'));
+      return;
+    }
+    this.state.saveInFlight = true;
+    this.setFormBusy(true);
+    console.time('entity-save');
+    try {
+      const response = await Api.updateInvoice(id, payloadInvoice);
+      const parsed = this.extractInvoiceAndItems(response, id);
+      const persisted = this.normalizeInvoice({
+        ...(this.state.selectedInvoice || {}),
+        ...payloadInvoice,
+        ...(parsed?.invoice || {}),
+        id: parsed?.invoice?.id || id
+      });
+      const persistedItems = this.state.items || [];
+      const normalized = this.upsertLocalRow(persisted);
+      this.setCachedDetail(normalized?.id || id, persisted, persistedItems);
+      this.state.selectedInvoice = normalized || persisted;
+      this.state.items = persistedItems;
+      UI.toast('Invoice updated.');
+      this.closeForm();
+      window.dispatchEvent(new CustomEvent('clients:refresh-totals', { detail: { reason: 'invoice-saved' } }));
+    } catch (error) {
+      UI.toast('Unable to save invoice: ' + (error?.message || 'Unknown error'));
+    } finally {
+      console.timeEnd('entity-save');
+      this.state.saveInFlight = false;
+      this.setFormBusy(false);
+    }
+  },
   async saveForm() {
     if (this.state.saveInFlight) return;
     const id = String(E.invoiceForm?.dataset.id || '').trim();
+    if (id) return this.saveExistingInvoiceMetadata(id);
     const { invoice, items } = this.collectFormValues();
     const sourceAgreementId = String(E.invoiceForm?.dataset.agreementId || invoice.agreement_id || '').trim();
     const isDirectCreate = !id && !sourceAgreementId;
@@ -2617,7 +2664,7 @@ const Invoices = {
           agreement_number: String(invoice?.agreement_number || invoice?.agreementNumber || invoice?.agreement_id || '').trim()
         });
         const catalogLookup = await this.getProposalCatalogLookup();
-        const normalizedItems = (Array.isArray(items) ? items : []).map(item =>
+        const normalizedItems = this.filterInvoiceCommercialItems(items).map(item =>
           this.copyInvoiceItemFields(item, this.mergeCatalogItem(item, catalogLookup))
         );
         const summary = this.deriveCalculatedSummary(invoiceTemplate, normalizedItems);
@@ -2741,13 +2788,14 @@ const Invoices = {
       E.invoiceForm.addEventListener('click', event => {
         const removeBtn = event.target?.closest?.('button[data-item-remove]');
         if (!removeBtn) return;
+        if (String(E.invoiceForm?.dataset.id || '').trim()) return;
         const section = removeBtn.getAttribute('data-item-remove');
         const index = Number(removeBtn.getAttribute('data-item-index'));
         if (!section || !Number.isInteger(index) || index < 0) return;
         const groups = this.groupedItems(this.collectItems());
         if (!groups[section]) return;
         groups[section] = groups[section].filter((_, idx) => idx !== index);
-        const items = [...groups.annual_saas, ...groups.one_time_fee, ...groups.capability];
+        const items = [...groups.annual_saas, ...groups.one_time_fee];
         this.renderItems(items);
         this.applyTotalsToForm(this.deriveCalculatedSummary(this.collectFormValues().invoice, items));
       });
@@ -2757,6 +2805,7 @@ const Invoices = {
         }
         const field = event.target?.getAttribute('data-item-field');
         if (!field) return;
+        if (String(E.invoiceForm?.dataset.id || '').trim()) return;
         const tr = event.target.closest('tr[data-item-row]');
         const section = tr?.getAttribute('data-item-row');
         if (!tr || !section || section === 'capability') {
@@ -2784,6 +2833,7 @@ const Invoices = {
         }
         const field = event.target?.getAttribute('data-item-field');
         if (field !== 'item_name') return;
+        if (String(E.invoiceForm?.dataset.id || '').trim()) return;
         const tr = event.target.closest('tr[data-item-row]');
         const section = tr?.getAttribute('data-item-row');
         if (!tr || !section || section === 'capability') return;
@@ -2792,6 +2842,7 @@ const Invoices = {
     }
     if (E.invoiceAddAnnualRowBtn) {
       E.invoiceAddAnnualRowBtn.addEventListener('click', () => {
+        if (String(E.invoiceForm?.dataset.id || '').trim()) return;
         const items = this.collectItems();
         items.push(this.normalizeItem({ section: 'annual_saas', quantity: 1 }));
         this.renderItems(items);
@@ -2800,16 +2851,9 @@ const Invoices = {
     }
     if (E.invoiceAddOneTimeRowBtn) {
       E.invoiceAddOneTimeRowBtn.addEventListener('click', () => {
+        if (String(E.invoiceForm?.dataset.id || '').trim()) return;
         const items = this.collectItems();
         items.push(this.normalizeItem({ section: 'one_time_fee', quantity: 1 }));
-        this.renderItems(items);
-        this.applyTotalsToForm(this.deriveCalculatedSummary(this.collectFormValues().invoice, items));
-      });
-    }
-    if (E.invoiceAddCapabilityRowBtn) {
-      E.invoiceAddCapabilityRowBtn.addEventListener('click', () => {
-        const items = this.collectItems();
-        items.push(this.normalizeItem({ section: 'capability', capability_name: '', capability_value: '' }));
         this.renderItems(items);
         this.applyTotalsToForm(this.deriveCalculatedSummary(this.collectFormValues().invoice, items));
       });

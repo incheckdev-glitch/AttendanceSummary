@@ -4999,6 +4999,24 @@
       const { data, error } = await client.rpc('create_invoice_from_agreement', { p_agreement_uuid: agreementUuid });
       if (error) throw friendlyError('Invoice creation from agreement failed', error);
       const recordId = String(data?.invoice_id || data?.id || data?.invoice_uuid || data?.created_invoice_uuid || '').trim();
+      const createdInvoiceUuid = isUuid(String(data?.id || data?.invoice_uuid || data?.created_invoice_uuid || '').trim())
+        ? String(data?.id || data?.invoice_uuid || data?.created_invoice_uuid || '').trim()
+        : await resolveResourceUuid('invoices', { id: recordId, invoice_id: recordId }, client).catch(() => '');
+      if (isUuid(createdInvoiceUuid)) {
+        const capabilityMatches = [
+          client.from('invoice_items').delete().eq('invoice_id', createdInvoiceUuid).eq('section', 'capability'),
+          client.from('invoice_items').delete().eq('invoice_id', createdInvoiceUuid).not('capability_name', 'is', null).neq('capability_name', ''),
+          client.from('invoice_items').delete().eq('invoice_id', createdInvoiceUuid).not('capability_value', 'is', null).neq('capability_value', '')
+        ];
+        const cleanupResults = await Promise.allSettled(capabilityMatches);
+        cleanupResults.forEach(result => {
+          if (result.status === 'fulfilled' && result.value?.error) {
+            console.warn('[invoices:create_from_agreement] capability invoice item cleanup failed', result.value.error);
+          } else if (result.status === 'rejected') {
+            console.warn('[invoices:create_from_agreement] capability invoice item cleanup failed', result.reason);
+          }
+        });
+      }
       await createNotificationAndPush({
         title: 'Invoice created from agreement',
         message: `Agreement ${agreementUuid} generated a new invoice.`,
@@ -5117,7 +5135,11 @@
         .order('created_at', { ascending: true, nullsFirst: false });
       if (invoiceItemsError) throw friendlyError('Unable to load invoice_items for receipt creation', invoiceItemsError);
 
-      const sourceItems = Array.isArray(invoiceItems) ? invoiceItems : [];
+      const isCapabilityInvoiceItem = item => {
+        const section = String(item?.section || item?.item_section || item?.itemSection || item?.type || '').trim().toLowerCase();
+        return section === 'capability' || Boolean(String(item?.capability_name || item?.capabilityName || item?.capability_value || item?.capabilityValue || '').trim());
+      };
+      const sourceItems = (Array.isArray(invoiceItems) ? invoiceItems : []).filter(item => !isCapabilityInvoiceItem(item));
       devLog(logPrefix, `Loaded invoice_items count=${sourceItems.length}`, { invoiceUuid, createdReceiptUuid });
       const receiptItemRows = sourceItems.map((item, index) => {
         const lineTotal = normalizeAmount(item?.line_total ?? item?.amount) ?? 0;
@@ -5144,8 +5166,6 @@
           discounted_unit_price: normalizeAmount(item?.discounted_unit_price),
           line_total: lineTotal,
           amount: lineTotal,
-          capability_name: normalizeOptionalText(item?.capability_name),
-          capability_value: normalizeOptionalText(item?.capability_value),
           notes: normalizeOptionalText(item?.notes),
           service_start_date: serviceStart || null,
           service_end_date: serviceEnd || null,
