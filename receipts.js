@@ -1662,43 +1662,68 @@ const Receipts = {
       if (!v) return '—';
       return U.escapeHtml(U.fmtDisplayDate(v));
     };
-    const buildDetailRow = item => `<tr>
-      <td>${text(item.location_name)}</td>
-      <td>${text(item.location_address)}</td>
-      <td class="cell-center">${date(item.service_start_date)}</td>
-      <td class="cell-center">${date(item.service_end_date)}</td>
-      <td>${text(item.item_name || item.modules || item.description)}</td>
-      <td class="cell-center">${U.escapeHtml(String(item.quantity ?? 0))}</td>
-      <td class="cell-right">${this.money(currency, item.unit_price ?? 0)}</td>
-      <td class="cell-center">${U.escapeHtml(String(item.discount_percent ?? 0))}%</td>
-      <td class="cell-right">${this.money(currency, item.discounted_unit_price ?? 0)}</td>
-      <td class="cell-right">${this.money(currency, item.line_total ?? item.amount ?? 0)}</td>
-      <td>${text(item.notes)}</td>
-    </tr>`;
-    const buildOneTimeRow = item => `<tr>
-      <td>${text(item.item_name || item.modules || item.description)}</td>
-      <td class="cell-center">${date(item.service_start_date)}</td>
-      <td class="cell-center">${date(item.service_end_date)}</td>
-      <td class="cell-center">${U.escapeHtml(String(item.quantity ?? 0))}</td>
-      <td class="cell-right">${this.money(currency, item.unit_price ?? 0)}</td>
-      <td class="cell-center">${U.escapeHtml(String(item.discount_percent ?? 0))}%</td>
-      <td class="cell-right">${this.money(currency, item.line_total ?? item.amount ?? 0)}</td>
-      <td>${text(item.notes)}</td>
-    </tr>`;
-    const oneTimeRows = oneTimeItems.length ? oneTimeItems.map(buildOneTimeRow).join('') : '<tr><td colspan="8" class="muted cell-center">No one-time fee rows.</td></tr>';
-    const locationRows = locationItems.length ? locationItems.map(buildDetailRow).join('') : '<tr><td colspan="11" class="muted cell-center">No location detail rows.</td></tr>';
+    const quantity = value => {
+      const amount = this.toNumberSafe(value);
+      return amount ? U.escapeHtml(String(amount)) : '—';
+    };
+    const discount = value => `${U.escapeHtml(String(this.toNumberSafe(value)))}%`;
+    const computeReceiptRow = item => {
+      const unit = this.toNumberSafe(item.unit_price);
+      const discountPercent = this.toNumberSafe(item.discount_percent);
+      const qty = this.toNumberSafe(item.quantity);
+      const discountRatio = discountPercent > 1 ? discountPercent / 100 : Math.max(0, discountPercent);
+      const baseAmount = isOneTime(item.section) ? unit * qty : unit * (qty / 12);
+      const fallbackTotal = Math.max(0, baseAmount * (1 - discountRatio));
+      return {
+        ...item,
+        line_total: this.toNumberSafe(item.line_total || item.amount || fallbackTotal)
+      };
+    };
+    const buildDetailRow = item => {
+      const computed = computeReceiptRow(item);
+      return `<tr>
+        <td>${text(item.location_name)}</td>
+        <td>${text(item.item_name || item.modules || item.description)}</td>
+        <td class="cell-right">${this.money(currency, item.unit_price ?? 0)}</td>
+        <td class="cell-center">${quantity(item.quantity)}</td>
+        <td class="cell-center">${date(item.service_start_date)}</td>
+        <td class="cell-center">${date(item.service_end_date)}</td>
+        <td class="cell-center">${discount(item.discount_percent)}</td>
+        <td class="cell-right">${this.money(currency, computed.line_total)}</td>
+      </tr>`;
+    };
+    const buildOneTimeRow = item => {
+      const computed = computeReceiptRow(item);
+      return `<tr>
+        <td>${text(item.location_name)}</td>
+        <td>${text(item.item_name || item.modules || item.description)}</td>
+        <td class="cell-right">${this.money(currency, item.unit_price ?? 0)}</td>
+        <td class="cell-center">${discount(item.discount_percent)}</td>
+        <td class="cell-center">${quantity(item.quantity)}</td>
+        <td class="cell-right">${this.money(currency, computed.line_total)}</td>
+      </tr>`;
+    };
+    const oneTimeRows = oneTimeItems.length ? oneTimeItems.map(buildOneTimeRow).join('') : '<tr><td colspan="6" class="muted cell-center">No one-time fee items found.</td></tr>';
+    const locationRows = locationItems.length ? locationItems.map(buildDetailRow).join('') : '<tr><td colspan="8" class="muted cell-center">No annual SaaS items found.</td></tr>';
     const pickDefined = (...values) => values.find(value => value !== undefined && value !== null && !(typeof value === 'string' && value.trim() === ''));
+    const pickMoneyTotal = (...values) => {
+      const positive = values.find(value => this.toNumberSafe(value) > 0);
+      return positive !== undefined && positive !== null ? positive : pickDefined(...values);
+    };
     const hasLocationRows = locationItems.length > 0;
     const hasOneTimeRows = oneTimeItems.length > 0;
-    const calculatedSubtotalLocations = locationItems.reduce((sum, item) => sum + this.toNumberSafe(item.line_total), 0);
-    const calculatedSubtotalOneTime = oneTimeItems.reduce((sum, item) => sum + this.toNumberSafe(item.line_total), 0);
+    const calculatedSubtotalLocations = locationItems.reduce((sum, item) => sum + this.toNumberSafe(computeReceiptRow(item).line_total), 0);
+    const calculatedSubtotalOneTime = oneTimeItems.reduce((sum, item) => sum + this.toNumberSafe(computeReceiptRow(item).line_total), 0);
     const subtotalLocations = this.toNumberSafe(
-      pickDefined(hasLocationRows ? calculatedSubtotalLocations : undefined, r.subtotal_locations, invoice?.subtotal_locations, 0)
+      pickDefined(hasLocationRows ? calculatedSubtotalLocations : undefined, r.subtotal_locations, invoice?.subtotal_locations, invoice?.subtotal_subscription, 0)
     );
     const subtotalOneTime = this.toNumberSafe(
       pickDefined(hasOneTimeRows ? calculatedSubtotalOneTime : undefined, r.subtotal_one_time, invoice?.subtotal_one_time, 0)
     );
-    const invoiceTotal = subtotalLocations + subtotalOneTime;
+    const calculatedInvoiceTotal = subtotalLocations + subtotalOneTime;
+    const invoiceTotal = this.toNumberSafe(
+      pickMoneyTotal(r.invoice_total, invoice?.invoice_total, invoice?.grand_total, calculatedInvoiceTotal)
+    );
     const resolvedSnapshot = this.resolveReceiptPaymentSnapshot(r, { ...invoice, invoice_total: invoiceTotal }, invoiceReceipts);
     const oldPaidTotal = resolvedSnapshot.old_paid_total;
     const paidNow = resolvedSnapshot.paid_now;
@@ -1711,51 +1736,177 @@ const Receipts = {
       received_amount: r.received_amount ?? r.amount_received ?? resolvedSnapshot.received_amount,
       amount_received: r.amount_received ?? r.received_amount ?? resolvedSnapshot.received_amount,
       paid_now: r.paid_now ?? resolvedSnapshot.paid_now
-    }, { includeInvoiceFallback: true });
-    const amountInWords = this.receiptAmountInWords(r.amount_in_words, currency, receiptPaymentAmount);
-    return `<!doctype html><html><head><meta charset="utf-8" /><title>Receipt Preview</title><style>
-      :root{color-scheme:light;}*{box-sizing:border-box;}body{font-family:Inter,"Segoe UI",Arial,Helvetica,sans-serif;margin:0;padding:20px;background:#eef2f7;color:#111827;}
-      .receipt-sheet{max-width:1020px;margin:0 auto;background:#fff;border:1px solid #dbe3ed;padding:28px 30px;border-radius:8px;}
-      .doc-header{border-bottom:1px solid #d8e1ec;padding-bottom:18px;margin-bottom:18px}.header-top-row{display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start}
-      .brand-block{display:flex;align-items:center;gap:14px;min-height:54px}.brand-block .incheck360-doc-logo-wrap{float:none;margin:0;width:168px;max-width:168px}
-      .provider-chip{text-align:right;font-size:12px;color:#4b5563;line-height:1.35}.provider-name{font-size:13px;color:#0f172a;font-weight:700;letter-spacing:.02em;text-transform:uppercase}
-      .meta-grid{display:grid;grid-template-columns:1fr 340px;gap:20px;margin-top:14px}.voucher-title{margin:0;font-size:34px;font-weight:800;letter-spacing:.04em;color:#0b214a}.subtitle{margin-top:8px;font-size:13px;color:#64748b}
-      .meta-box{border:1px solid #d7e1ed;border-radius:6px;overflow:hidden;background:#fbfdff}.meta-row{display:grid;grid-template-columns:130px 1fr;border-bottom:1px solid #e3eaf3}.meta-row:last-child{border-bottom:none}
-      .meta-row span{padding:8px 10px;font-size:12px}.label{font-weight:700;background:#f5f8fc;border-right:1px solid #e3eaf3}
-      .address-block{margin-top:10px;border:1px solid #d7e1ed;border-radius:6px;padding:12px}.notice{margin-top:12px;padding:10px 12px;border:1px solid #dbeafe;background:#f8fbff;font-size:12px;border-radius:6px}
-      table{width:100%;border-collapse:collapse;margin-top:8px}th,td{border:1px solid #dde5ef;padding:7px 8px;font-size:12px;vertical-align:middle}th{background:#f5f8fc}
-      .section{margin-top:18px}.section h3{margin:0 0 6px;font-size:16px;font-weight:700;color:#0f172a}.cell-right{text-align:right}.cell-center{text-align:center}.muted{color:#6b7280}
-      .summary{margin-top:14px;font-size:12px;line-height:1.55}.totals-wrap{display:flex;justify-content:flex-end;margin-top:12px}.totals{width:360px;border:1px solid #d7e1ed;border-radius:6px;overflow:hidden}
-      .totals .row{display:grid;grid-template-columns:1fr auto;border-bottom:1px solid #e3eaf3}.totals .row:last-child{border-bottom:none}.totals .row span{padding:9px 11px;font-size:12px}
-      .footer{margin-top:20px;border-top:1px solid #e3eaf3;padding-top:10px;font-size:11px;color:#64748b;text-align:center}
-      @media print{body{background:#fff;padding:0}.receipt-sheet{border:none;max-width:none;padding:16px}}
-    </style></head><body><article class="receipt-sheet">
-      <header class="doc-header"><div class="header-top-row"><div class="brand-block"><div data-incheck360-doc-logo-slot></div></div><div class="provider-chip"><div class="provider-name">${text(r.provider_legal_name || invoice?.provider_legal_name || 'InCheck360')}</div><div>${text(r.provider_contact_email || invoice?.provider_contact_email || '')}</div><div>${text(r.provider_address || invoice?.provider_address || '')}</div></div></div>
-      <section class="meta-grid"><div><h2 class="voucher-title">RECEIPT</h2><div class="subtitle">${text(r.customer_legal_name || r.customer_name || invoice?.customer_legal_name || invoice?.customer_name)} · ${text(r.receipt_number || r.receipt_id)}</div></div>
-        <div><div class="meta-box">
-          <div class="meta-row"><span class="label">Receipt No.</span><span>${text(r.receipt_number || r.receipt_id)}</span></div>
-          <div class="meta-row"><span class="label">Receipt Date</span><span>${date(r.receipt_date)}</span></div>
-          <div class="meta-row"><span class="label">Invoice No.</span><span>${text(r.invoice_number || r.invoice_id || invoice?.invoice_number || invoice?.invoice_id)}</span></div>
-        </div></div></section></header>
-      <section class="address-block"><div><strong>${text(r.customer_legal_name || r.customer_name || invoice?.customer_legal_name || invoice?.customer_name)}</strong></div><div>${text(r.customer_address || invoice?.customer_address)}</div></section>
-      <div class="notice">If you have any questions about this Invoice, please contact: ${text(r.support_email || invoice?.support_email || 'support@incheck360.com')}</div>
-      <section class="section"><h3>Location Details</h3><table><thead><tr><th>Location Name</th><th>Location Address</th><th>Service Start Date</th><th>Service End Date</th><th>Modules / Item Name</th><th>Qty</th><th>Unit Price</th><th>Discount %</th><th>Discounted Unit Price</th><th>Line Total</th><th>Notes</th></tr></thead><tbody>${locationRows}</tbody></table></section>
-      <section class="section"><h3>One-time Fees</h3><table><thead><tr><th>Item Name</th><th>Service Start Date</th><th>Service End Date</th><th>Qty</th><th>Unit Price</th><th>Discount %</th><th>Line Total</th><th>Notes</th></tr></thead><tbody>${oneTimeRows}</tbody></table></section>
-      <p class="summary">We have received from ${text(r.customer_legal_name || r.customer_name || invoice?.customer_legal_name || invoice?.customer_name)} the sum of ${text(amountInWords)} being partial payment on account of ${text(r.invoice_number || r.invoice_id || invoice?.invoice_number || invoice?.invoice_id)}. Pending amount: ${this.money(currency, pendingAmount)}.</p>
-      <div class="totals-wrap"><div class="totals">
-        <div class="row"><span>Subtotal Locations</span><span>${this.money(currency, subtotalLocations)}</span></div>
-        <div class="row"><span>Subtotal One Time</span><span>${this.money(currency, subtotalOneTime)}</span></div>
-        <div class="row"><span>Grand Total</span><span>${this.money(currency, invoiceTotal)}</span></div>
-        <div class="row"><span>Old Paid Total</span><span>${this.money(currency, oldPaidTotal)}</span></div>
-        <div class="row"><span>Paid Now</span><span>${this.money(currency, paidNow)}</span></div>
-        <div class="row"><span>Amount Paid (Cumulative)</span><span>${this.money(currency, newPaidTotal)}</span></div>
-        <div class="row"><span>Pending Amount</span><span>${this.money(currency, pendingAmount)}</span></div>
-        <div class="row"><span>Payment State</span><span>${text(paymentState || r.status)}</span></div>
-        <div class="row"><span>Payment Conclusion</span><span>${text(paymentConclusion)}</span></div>
-        <div class="row"><span>Amount in Words</span><span>${text(amountInWords)}</span></div>
-      </div></div>
-      <footer class="footer">This document is computer generated and does not require a signature.</footer>
-    </article></body></html>`;
+    });
+    const amountInWords = this.receiptAmountInWords('', currency, receiptPaymentAmount);
+    const customerName = r.customer_legal_name || r.customer_name || invoice?.customer_legal_name || invoice?.customer_name;
+    const customerAddress = r.customer_address || invoice?.customer_address;
+    const invoiceDisplay = r.invoice_number || r.invoice_id || invoice?.invoice_number || invoice?.invoice_id;
+    return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Receipt Preview</title>
+    <style>
+      :root { color-scheme: light; }
+      * { box-sizing: border-box; }
+      body { font-family: Inter, "Segoe UI", Arial, Helvetica, sans-serif; margin: 0; padding: 12mm 0; color: #111827; background: #eef2f7; overflow-x: hidden; }
+      .receipt-preview-page,
+      .receipt-document-page {
+        width: 210mm;
+        min-height: 297mm;
+        margin: 0 auto;
+        background: #fff;
+        box-sizing: border-box;
+        padding: 14mm 14mm 12mm;
+        position: relative;
+        overflow: hidden;
+      }
+      .receipt-preview-page,
+      .receipt-document-page { border: 1px solid #dbe3ed; box-shadow: 0 14px 34px rgba(15, 23, 42, 0.13); }
+      .doc-header { border-bottom: 1px solid #d8e1ec; padding-bottom: 7mm; margin-bottom: 8mm; }
+      .receipt-document-header { display: grid; grid-template-columns: 38mm 1fr 68mm; align-items: center; gap: 8mm; width: 100%; max-width: 100%; margin: 0; }
+      .receipt-document-logo { display: flex; align-items: center; justify-content: flex-start; height: 26mm; min-width: 0; margin: 0; padding: 0; position: static; }
+      .receipt-document-logo .incheck360-doc-logo-wrap { float: none; display: flex; align-items: center; justify-content: flex-start; margin: 0; padding: 0; width: 32mm; max-width: 32mm; height: 20mm; max-height: 20mm; text-align: left; position: static; transform: none; }
+      .receipt-document-logo img,
+      .receipt-document-logo svg { display: block; max-width: 32mm; max-height: 20mm; width: auto; height: auto; object-fit: contain; object-position: left center; margin: 0; padding: 0; position: static; transform: none; }
+      .receipt-document-title-wrap { display: flex; align-items: center; justify-content: center; height: 26mm; min-width: 0; margin: 0; padding: 0; text-align: center; }
+      .receipt-document-title { margin: 0; font-size: 22px; line-height: 1; font-weight: 800; text-align: center; letter-spacing: 0.01em; color: #0b214a; }
+      .receipt-document-summary { display: flex; align-items: center; justify-content: flex-end; height: 26mm; min-width: 0; margin: 0; padding: 0; position: static; }
+      .receipt-document-summary .meta-box { width: 100%; }
+      .meta-box { border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; background: #fbfdff; min-width: 0; width: 100%; }
+      .meta-row { display: grid; grid-template-columns: 28mm minmax(0, 1fr); border-bottom: 1px solid #e3eaf3; }
+      .meta-row:last-child { border-bottom: 0; }
+      .meta-row > div { padding: 2mm 2.4mm; font-size: 11px; min-width: 0; overflow-wrap: anywhere; }
+      .meta-row .meta-key { background: #f5f8fc; font-weight: 700; color: #334155; border-right: 1px solid #e3eaf3; }
+      .info-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 5mm; margin-top: 5mm; width: 100%; }
+      .info-box { border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; background: #fff; min-width: 0; }
+      .info-head { background: #f8fbff; border-bottom: 1px solid #e3eaf3; padding: 9px 12px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: #1e3a5f; }
+      .info-body { padding: 12px; font-size: 12.5px; line-height: 1.55; }
+      .info-body strong { font-weight: 700; color: #0f172a; }
+      .muted { color: #6b7280; }
+      .section { margin-top: 22px; }
+      .section h2 { margin: 0; font-size: 16px; font-weight: 700; color: #0f172a; border-bottom: 1px solid #d8e1ec; padding-bottom: 7px; }
+      .section .subhead { font-size: 12px; margin: 6px 0 8px; color: #4b5563; text-transform: uppercase; letter-spacing: 0.04em; }
+      table { width: 100%; max-width: 100%; border-collapse: collapse; table-layout: fixed; overflow-wrap: anywhere; page-break-inside: auto; }
+      thead { display: table-header-group; }
+      tr { page-break-inside: avoid; page-break-after: auto; }
+      th, td { border: 1px solid #dde5ef; padding: 6px; font-size: 10.5px; vertical-align: middle; overflow-wrap: anywhere; }
+      th { text-align: center; background: #f5f8fc; color: #0f172a; font-weight: 700; }
+      .cell-center { text-align: center; vertical-align: middle; }
+      .cell-right { text-align: right; vertical-align: middle; white-space: nowrap; }
+      .total-row td { font-weight: 700; background: #f7faff; }
+      .receipt-narrative { margin: 16px 0 0; font-size: 12.5px; line-height: 1.6; border: 1px solid #d7e1ed; border-radius: 6px; padding: 12px; background: #fbfdff; }
+      .totals-wrap { display: flex; justify-content: flex-end; margin-top: 16px; }
+      .totals-box { width: 82mm; max-width: 100%; border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; }
+      .totals-row { display: flex; justify-content: space-between; gap: 10px; padding: 10px 12px; border-bottom: 1px solid #e3eaf3; font-size: 13px; }
+      .totals-row:last-child { border-bottom: 0; }
+      .totals-row.grand { font-size: 15px; font-weight: 700; background: #edf4ff; color: #0b214a; }
+      .totals-row span { min-width: 0; }
+      .totals-row strong { text-align: right; overflow-wrap: anywhere; }
+      .footer-note { margin-top: 16px; font-size: 11px; color: #64748b; border-top: 1px solid #e3eaf3; padding-top: 10px; text-align: center; }
+      @page { size: A4; margin: 0; }
+      @media print {
+        body { margin: 0; padding: 0; background: #fff; overflow: visible; }
+        .receipt-preview-page,
+        .receipt-document-page { width: 210mm; min-height: 297mm; margin: 0; box-shadow: none; page-break-after: always; border: 0; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="receipt-preview-page receipt-document-page doc-sheet">
+      <header class="doc-header">
+        <section class="receipt-document-header">
+          <div class="receipt-document-logo"><div data-incheck360-doc-logo-slot></div></div>
+          <div class="receipt-document-title-wrap"><h1 class="receipt-document-title">Receipt</h1></div>
+          <div class="receipt-document-summary">
+            <div class="meta-box">
+              <div class="meta-row"><div class="meta-key">Receipt No.</div><div>${text(r.receipt_number || r.receipt_id)}</div></div>
+              <div class="meta-row"><div class="meta-key">Receipt Date</div><div>${date(r.receipt_date)}</div></div>
+              <div class="meta-row"><div class="meta-key">Invoice No.</div><div>${text(invoiceDisplay)}</div></div>
+            </div>
+          </div>
+        </section>
+      </header>
+
+      <section class="info-grid">
+        <div class="info-box">
+          <div class="info-head">RECEIVED FROM</div>
+          <div class="info-body">
+            <div><strong>${text(customerName)}</strong></div>
+            <div class="muted">${text(customerAddress)}</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Annual SaaS</h2>
+        <div class="subhead">SaaS / Subscription Rows</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Location</th>
+              <th>License</th>
+              <th style="width:15%">License Price / Year</th>
+              <th style="width:12%">License / Month</th>
+              <th style="width:13%">Service Start Date</th>
+              <th style="width:13%">Service End Date</th>
+              <th style="width:10%">Discount %</th>
+              <th style="width:12%">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${locationRows}
+            <tr class="total-row">
+              <td colspan="7" class="cell-right">Total SaaS / Subscription</td>
+              <td class="cell-right">${this.money(currency, subtotalLocations)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="section">
+        <h2>One Time Fee</h2>
+        <div class="subhead">One Time Fee Rows</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Location</th>
+              <th>Item / Service</th>
+              <th style="width:16%">Unit Price</th>
+              <th style="width:12%">Discount %</th>
+              <th style="width:10%">Qty</th>
+              <th style="width:16%">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${oneTimeRows}
+            <tr class="total-row">
+              <td colspan="5" class="cell-right">Total One Time Fees</td>
+              <td class="cell-right">${this.money(currency, subtotalOneTime)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <p class="receipt-narrative">We have received from ${text(customerName)} the sum of ${text(amountInWords)} being partial payment on account of ${text(invoiceDisplay)}. Pending amount: ${this.money(currency, pendingAmount)}.</p>
+
+      <section class="totals-wrap">
+        <div class="totals-box">
+          <div class="totals-row grand"><span>Grand Total</span><strong>${this.money(currency, invoiceTotal)}</strong></div>
+          <div class="totals-row"><span>Old Paid Total</span><strong>${this.money(currency, oldPaidTotal)}</strong></div>
+          <div class="totals-row"><span>Paid Now</span><strong>${this.money(currency, paidNow)}</strong></div>
+          <div class="totals-row"><span>Amount Paid (Cumulative)</span><strong>${this.money(currency, newPaidTotal)}</strong></div>
+          <div class="totals-row"><span>Pending Amount</span><strong>${this.money(currency, pendingAmount)}</strong></div>
+          <div class="totals-row"><span>Payment State</span><strong>${text(paymentState || r.status)}</strong></div>
+          <div class="totals-row"><span>Payment Conclusion</span><strong>${text(paymentConclusion)}</strong></div>
+          <div class="totals-row"><span>Amount in Words</span><strong>${text(amountInWords)}</strong></div>
+        </div>
+      </section>
+
+      <footer class="footer-note">This document is computer generated and does not require a signature.</footer>
+    </div>
+  </body>
+</html>`;
   },
   async previewReceipt(receiptId) {
     const id = this.resolveReceiptUuid(receiptId);
