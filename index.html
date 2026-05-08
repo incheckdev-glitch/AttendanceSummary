@@ -3578,6 +3578,25 @@ Sample:
           <div class="filter-row" style="grid-column:1 / -1;"><label class="muted" for="invoiceFormNotes">Notes</label><textarea id="invoiceFormNotes" class="input" rows="3"></textarea></div>
         </div>
         <div class="divider" style="margin:12px 0;"></div>
+        <strong style="display:block;margin-bottom:8px;">Payment Schedule</strong>
+        <div id="invoicePaymentScheduleState" class="muted" style="margin-bottom:8px;">No payment schedule found yet.</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Due Date</th>
+                <th>Scheduled Amount</th>
+                <th>Paid Amount</th>
+                <th>Balance Due</th>
+                <th>Status</th>
+                <th>Receipts</th>
+              </tr>
+            </thead>
+            <tbody id="invoicePaymentScheduleTbody"></tbody>
+          </table>
+        </div>
+        <div class="divider" style="margin:12px 0;"></div>
         <strong style="display:block;margin-bottom:8px;">Linked Receipts / Payment History</strong>
         <div id="invoiceReceiptsState" class="muted" style="margin-bottom:8px;">No receipts linked yet.</div>
         <div class="table-wrap">
