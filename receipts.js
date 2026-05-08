@@ -918,10 +918,14 @@ const Receipts = {
       )
     );
     const paidNow = Math.max(0, this.getReceiptAmountValue(receipt));
+    const invoiceAmountPaid = this.normalizeAmountInput(
+      pickDefined(invoice.amount_paid, invoice.received_amount, invoice.amount_received)
+    );
     const currentInvoiceId = String(receipt?.invoice_id || invoice?.id || invoice?.invoice_id || '').trim();
     const currentInvoiceNumber = String(receipt?.invoice_number || invoice?.invoice_number || '').trim();
     const currentUniqueKey = this.getReceiptUniqueKey(receipt);
     let oldPaidBeforeReceipt = null;
+    let cumulativePaidTotal = null;
     if (Array.isArray(allReceiptsForInvoice)) {
       const normalizedRows = allReceiptsForInvoice
         .map(row => this.normalizeReceipt(row))
@@ -932,8 +936,18 @@ const Receipts = {
         const currentIndex = currentUniqueKey
           ? sorted.findIndex(row => this.getReceiptUniqueKey(row) === currentUniqueKey)
           : -1;
-        const previousRows = currentIndex >= 0 ? sorted.slice(0, currentIndex) : sorted;
-        oldPaidBeforeReceipt = previousRows.reduce((sum, row) => sum + this.getReceiptAmountValue(row), 0);
+        const receiptLedgerTotal = sorted.reduce((sum, row) => sum + this.getReceiptAmountValue(row), 0);
+        if (currentIndex >= 0) {
+          const previousRows = sorted.slice(0, currentIndex);
+          oldPaidBeforeReceipt = previousRows.reduce((sum, row) => sum + this.getReceiptAmountValue(row), 0);
+          cumulativePaidTotal = oldPaidBeforeReceipt + paidNow;
+        } else if (currentUniqueKey && invoiceAmountPaid !== null && Math.abs(this.toNumberSafe(invoiceAmountPaid) - this.toNumberSafe(receiptLedgerTotal)) < 0.01) {
+          cumulativePaidTotal = this.toNumberSafe(invoiceAmountPaid);
+          oldPaidBeforeReceipt = cumulativePaidTotal - paidNow;
+        } else {
+          oldPaidBeforeReceipt = receiptLedgerTotal;
+          cumulativePaidTotal = oldPaidBeforeReceipt + paidNow;
+        }
       } else {
         oldPaidBeforeReceipt = 0;
       }
@@ -941,16 +955,13 @@ const Receipts = {
     if (oldPaidBeforeReceipt === null) {
       const explicitOldPaidTotal = this.normalizeAmountInput(receipt.old_paid_total);
       const explicitNewPaidTotal = this.normalizeAmountInput(receipt.new_paid_total);
-      const invoiceAmountPaid = this.normalizeAmountInput(
-        pickDefined(invoice.amount_paid, invoice.received_amount, invoice.amount_received)
-      );
       if (explicitOldPaidTotal !== null) oldPaidBeforeReceipt = explicitOldPaidTotal;
       else if (explicitNewPaidTotal !== null) oldPaidBeforeReceipt = explicitNewPaidTotal - paidNow;
       else if (invoiceAmountPaid !== null) oldPaidBeforeReceipt = invoiceAmountPaid - paidNow;
       else oldPaidBeforeReceipt = 0;
     }
     oldPaidBeforeReceipt = Math.max(0, this.toNumberSafe(oldPaidBeforeReceipt));
-    const newPaidTotal = this.toNumberSafe(oldPaidBeforeReceipt + paidNow);
+    const newPaidTotal = this.toNumberSafe(cumulativePaidTotal ?? oldPaidBeforeReceipt + paidNow);
     const pendingAmount = this.toNumberSafe(Math.max(invoiceTotal - newPaidTotal, 0));
     let paymentState = 'Not Paid';
     if (newPaidTotal > 0 && newPaidTotal < invoiceTotal) paymentState = 'Partially Paid';
@@ -1690,7 +1701,6 @@ const Receipts = {
     const pendingAmount = resolvedSnapshot.pending_amount;
     const paymentState = String(r.payment_state || '').trim() || resolvedSnapshot.payment_state;
     const paymentConclusion = String(r.payment_conclusion || '').trim() || resolvedSnapshot.payment_conclusion;
-    const receivedAmount = resolvedSnapshot.received_amount;
     const receiptPaymentAmount = this.getReceiptPaymentAmount({
       ...r,
       received_amount: r.received_amount ?? r.amount_received ?? resolvedSnapshot.received_amount,
@@ -1730,11 +1740,10 @@ const Receipts = {
       <div class="totals-wrap"><div class="totals">
         <div class="row"><span>Subtotal Locations</span><span>${this.money(currency, subtotalLocations)}</span></div>
         <div class="row"><span>Subtotal One Time</span><span>${this.money(currency, subtotalOneTime)}</span></div>
-        <div class="row"><span>Invoice Total</span><span>${this.money(currency, invoiceTotal)}</span></div>
+        <div class="row"><span>Grand Total</span><span>${this.money(currency, invoiceTotal)}</span></div>
         <div class="row"><span>Old Paid Total</span><span>${this.money(currency, oldPaidTotal)}</span></div>
         <div class="row"><span>Paid Now</span><span>${this.money(currency, paidNow)}</span></div>
-        <div class="row"><span>Received Amount</span><span>${this.money(currency, receivedAmount)}</span></div>
-        <div class="row"><span>New Paid Total</span><span>${this.money(currency, newPaidTotal)}</span></div>
+        <div class="row"><span>Amount Paid (Cumulative)</span><span>${this.money(currency, newPaidTotal)}</span></div>
         <div class="row"><span>Pending Amount</span><span>${this.money(currency, pendingAmount)}</span></div>
         <div class="row"><span>Payment State</span><span>${text(paymentState || r.status)}</span></div>
         <div class="row"><span>Payment Conclusion</span><span>${text(paymentConclusion)}</span></div>
