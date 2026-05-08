@@ -1,6 +1,7 @@
 const Proposals = {
   providerContactDefaults: {
     name: 'InCheck 360 Holding BV',
+    address: 'Pyrmontstraat 5, 7513 BN, Enschede, The Netherlands',
     mobile: '+31 97 010280855',
     email: 'Info@incheck360.nl'
   },
@@ -1531,6 +1532,10 @@ const Proposals = {
       return normalized;
     });
     const currency = String(proposalData.currency || 'USD').trim().toUpperCase();
+    const normalizedStatus = this.normalizeProposalStatus(proposalData.status);
+    const showDraftWatermark = String(normalizedStatus || '').trim().toLowerCase() === 'draft';
+    const providerCompanyName = this.providerContactDefaults.name;
+    const providerAddress = this.providerContactDefaults.address;
     const money = value => this.formatMoneyWithCurrency(this.toNumberSafe(value), currency, false);
     const textValue = value => {
       const text = String(value ?? '').trim();
@@ -1617,13 +1622,14 @@ const Proposals = {
       :root { color-scheme: light; }
       * { box-sizing: border-box; }
       body { font-family: Inter, "Segoe UI", Arial, Helvetica, sans-serif; margin: 0; padding: 20px; color: #111827; background: #eef2f7; }
-      .doc-sheet { max-width: 1020px; margin: 0 auto; background: #fff; border: 1px solid #dbe3ed; padding: 28px 30px; border-radius: 8px; }
+      .doc-sheet { max-width: 1020px; margin: 0 auto; background: #fff; border: 1px solid #dbe3ed; padding: 28px 30px; border-radius: 8px; position: relative; overflow: hidden; }
+      .doc-sheet > :not(.draft-watermark) { position: relative; z-index: 1; }
+      .draft-watermark { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 0; font-size: 128px; font-weight: 800; letter-spacing: 0.16em; color: #0f172a; opacity: 0.055; transform: rotate(-28deg); text-transform: uppercase; user-select: none; }
       .doc-header { border-bottom: 1px solid #d8e1ec; padding-bottom: 18px; margin-bottom: 18px; }
-      .header-top-row { display: grid; grid-template-columns: 1fr 340px; gap: 20px; align-items: start; }
+      .header-top-row { display: flex; align-items: start; }
       .brand-block { display: flex; align-items: center; gap: 14px; min-height: 54px; }
       .brand-block .incheck360-doc-logo-wrap { float: none; margin: 0; width: 168px; max-width: 168px; }
-      .provider-chip { margin-left: auto; text-align: right; font-size: 12px; color: #4b5563; line-height: 1.35; }
-      .provider-chip .provider-name { font-size: 13px; color: #0f172a; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; }
+      .commercial-terms-box { grid-column: 1 / -1; min-height: auto; }
       .title-block { margin-top: 14px; }
       .doc-label { margin: 0; font-size: 34px; font-weight: 800; letter-spacing: 0.04em; color: #0b214a; line-height: 1.05; }
       .doc-subtitle { margin-top: 8px; font-size: 13px; color: #64748b; }
@@ -1664,14 +1670,10 @@ const Proposals = {
   </head>
   <body>
     <div class="doc-sheet">
+      ${showDraftWatermark ? '<div class="draft-watermark" aria-hidden="true">DRAFT</div>' : ''}
       <header class="doc-header">
         <div class="header-top-row">
           <div class="brand-block"><div data-incheck360-doc-logo-slot></div></div>
-          <div class="provider-chip">
-            <div class="provider-name">${textValue(proposalData.provider_name || proposalData.generated_by || 'InCheck360')}</div>
-            <div>${textValue(proposalData.provider_contact_email || proposalData.provider_contact_mobile)}</div>
-            <div>${textValue(proposalData.provider_address)}</div>
-          </div>
         </div>
         <section class="doc-head">
           <div class="title-block">
@@ -1683,7 +1685,6 @@ const Proposals = {
             <div class="meta-row"><div class="meta-key">Reference #</div><div>${textValue(proposalData.ref_number)}</div></div>
             <div class="meta-row"><div class="meta-key">Proposal Date</div><div>${dateValue(proposalData.proposal_date)}</div></div>
             <div class="meta-row"><div class="meta-key">Valid Until</div><div>${dateValue(this.getAutoValidUntil(proposalData.proposal_date))}</div></div>
-            <div class="meta-row"><div class="meta-key">Status</div><div>${textValue(this.normalizeProposalStatus(proposalData.status) || 'Draft')}</div></div>
           </div>
         </section>
       </header>
@@ -1702,32 +1703,25 @@ const Proposals = {
         <div class="info-box">
           <div class="info-head">PROVIDER DETAILS</div>
           <div class="info-body">
-            <div><strong>Contact:</strong> ${textValue(proposalData.provider_contact_name)}</div>
-            <div><strong>Mobile:</strong> ${textValue(proposalData.provider_contact_mobile)}</div>
-            <div><strong>Email:</strong> ${textValue(proposalData.provider_contact_email)}</div>
-            <div><strong>Service Start:</strong> ${dateValue(proposalData.service_start_date)}</div>
-            <div><strong>Contract Term:</strong> ${textValue(proposalData.contract_term)}</div>
+            <div><strong>${textValue(providerCompanyName)}</strong></div>
+            <div class="muted">${textValue(providerAddress)}</div>
+            <div><strong>Mobile:</strong> ${textValue(proposalData.provider_contact_mobile || this.providerContactDefaults.mobile)}</div>
+            <div><strong>Email:</strong> ${textValue(proposalData.provider_contact_email || this.providerContactDefaults.email)}</div>
           </div>
         </div>
       </section>
 
       <section class="info-grid" style="margin-top:14px;">
-        <div class="info-box">
+        <div class="info-box commercial-terms-box">
           <div class="info-head">COMMERCIAL TERMS</div>
           <div class="info-body">
             <div><strong>Billing Frequency:</strong> ${textValue(proposalData.billing_frequency)}</div>
             <div><strong>Payment Term:</strong> ${textValue(proposalData.payment_term)}</div>
             <div><strong>PO Number:</strong> ${textValue(proposalData.po_number)}</div>
             <div><strong>Account Number:</strong> ${textValue(proposalData.account_number)}</div>
-          </div>
-        </div>
-        <div class="info-box">
-          <div class="info-head">DOCUMENT CONTROLS</div>
-          <div class="info-body">
+            <div><strong>Service Start Date:</strong> ${dateValue(proposalData.service_start_date)}</div>
+            <div><strong>Contract Term:</strong> ${textValue(proposalData.contract_term)}</div>
             <div><strong>Currency:</strong> ${textValue(currency)}</div>
-            <div><strong>Generated By:</strong> ${textValue(proposalData.generated_by)}</div>
-            <div><strong>Provider Sign Date:</strong> ${dateValue(proposalData.provider_sign_date)}</div>
-            <div><strong>Customer Legal Address:</strong> ${textValue(proposalData.customer_address)}</div>
           </div>
         </div>
       </section>
@@ -1814,7 +1808,7 @@ const Proposals = {
         </div>
       </section>
 
-      <footer class="footer-note">Proposal preview is print-ready and aligned to invoice document style.</footer>
+      <footer class="footer-note">This is an auto-generated system document and is valid without a manual signature unless otherwise required.</footer>
     </div>
   </body>
 </html>`;
