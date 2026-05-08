@@ -165,16 +165,24 @@ const Agreements = {
     if (Number.isNaN(parsed.getTime())) return raw;
     return parsed.toISOString().slice(0, 10);
   },
+  calculateServiceEndDate(startDateValue, monthsValue) {
+    const startValue = this.normalizeDateInputValue(startDateValue);
+    if (!startValue) return '';
+
+    const months = Number(monthsValue || 0);
+    if (!Number.isFinite(months) || months <= 0) return '';
+
+    const start = new Date(`${startValue}T00:00:00`);
+    if (Number.isNaN(start.getTime())) return '';
+
+    const end = new Date(start);
+    end.setMonth(end.getMonth() + months);
+    end.setDate(end.getDate() - 1);
+
+    return `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
+  },
   addMonthsMinusOneDay(startValue, monthsValue) {
-    const start = this.normalizeDateInputValue(startValue);
-    const months = Math.max(1, this.toNumberSafe(monthsValue));
-    if (!start || !months) return '';
-    const [year, month, day] = start.split('-').map(Number);
-    const date = new Date(year, month - 1, day);
-    if (Number.isNaN(date.getTime())) return '';
-    date.setMonth(date.getMonth() + months);
-    date.setDate(date.getDate() - 1);
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    return this.calculateServiceEndDate(startValue, monthsValue);
   },
   getDefaultAnnualServiceStartDate() {
     return this.normalizeDateInputValue(document.getElementById('agreementFormAgreementDate')?.value || document.getElementById('agreementFormServiceStartDate')?.value) || this.getTodayDateInputValue();
@@ -453,8 +461,8 @@ const Agreements = {
       line_no: this.toNumberSafe(pick(source.line_no, source.lineNo, source.line)),
       location_name: String(pick(source.location_name, source.locationName)).trim(),
       location_address: String(pick(source.location_address, source.locationAddress)).trim(),
-      service_start_date: String(pick(source.service_start_date, source.serviceStartDate)).trim(),
-      service_end_date: String(pick(source.service_end_date, source.serviceEndDate)).trim(),
+      service_start_date: this.normalizeDateInputValue(pick(source.service_start_date, source.serviceStartDate)),
+      service_end_date: this.normalizeDateInputValue(pick(source.service_end_date, source.serviceEndDate)),
       item_name: String(pick(source.item_name, source.itemName, source.name)).trim(),
       unit_price: this.toNumberSafe(pick(source.unit_price, source.unitPrice)),
       discount_percent: this.toNumberSafe(pick(source.discount_percent, source.discountPercent)),
@@ -469,7 +477,7 @@ const Agreements = {
     if (section === 'annual_saas') {
       if (!normalized.quantity) normalized.quantity = 12;
       if (!normalized.service_start_date) normalized.service_start_date = this.getDefaultAnnualServiceStartDate();
-      if (!normalized.service_end_date) normalized.service_end_date = this.addMonthsMinusOneDay(normalized.service_start_date, normalized.quantity);
+      if (!normalized.service_end_date) normalized.service_end_date = this.calculateServiceEndDate(normalized.service_start_date, normalized.quantity);
     } else if (section === 'one_time_fee' && !normalized.quantity) {
       normalized.quantity = 1;
     }
@@ -1595,7 +1603,7 @@ const Agreements = {
       const rowDefaults = section === 'annual_saas'
         ? { ...item, quantity: item.quantity || 12, service_start_date: item.service_start_date || this.getDefaultAnnualServiceStartDate() }
         : { ...item, quantity: item.quantity || 1 };
-      if (section === 'annual_saas' && !rowDefaults.service_end_date) rowDefaults.service_end_date = this.addMonthsMinusOneDay(rowDefaults.service_start_date, rowDefaults.quantity);
+      if (section === 'annual_saas' && !rowDefaults.service_end_date) rowDefaults.service_end_date = this.calculateServiceEndDate(rowDefaults.service_start_date, rowDefaults.quantity);
       const computed = this.computeCommercialRow({ ...rowDefaults, section });
       const serviceDateCells = section === 'annual_saas'
         ? `<td><input class="input" type="date" data-item-field="service_start_date" value="${U.escapeAttr(computed.service_start_date || '')}" /></td>
@@ -1695,10 +1703,21 @@ const Agreements = {
     if (E.agreementFormSaveBtn) E.agreementFormSaveBtn.disabled = inFlight;
     if (E.agreementFormDeleteBtn) E.agreementFormDeleteBtn.disabled = inFlight;
   },
+  recalculateAnnualServiceEndDateForEvent(event) {
+    const field = event.target?.getAttribute('data-item-field');
+    if (field !== 'quantity' && field !== 'service_start_date') return false;
+    const tr = event.target.closest('tr[data-item-row]');
+    const section = tr?.getAttribute('data-item-row');
+    if (!tr || section !== 'annual_saas') return false;
+    const get = key => tr.querySelector(`[data-item-field="${key}"]`)?.value ?? '';
+    const endInput = tr.querySelector('[data-item-field="service_end_date"]');
+    if (endInput) endInput.value = this.calculateServiceEndDate(get('service_start_date'), get('quantity'));
+    return true;
+  },
   addRow(section) {
     const items = this.collectItems();
     if (section === 'capability') return;
-    items.push({ section, location_name: '', location_address: '', service_start_date: section === 'annual_saas' ? this.getDefaultAnnualServiceStartDate() : '', service_end_date: section === 'annual_saas' ? this.addMonthsMinusOneDay(this.getDefaultAnnualServiceStartDate(), 12) : '', item_name: '', unit_price: 0, discount_percent: 0, quantity: section === 'annual_saas' ? 12 : 1, discounted_unit_price: 0, line_total: 0 });
+    items.push({ section, location_name: '', location_address: '', service_start_date: section === 'annual_saas' ? this.getDefaultAnnualServiceStartDate() : '', service_end_date: section === 'annual_saas' ? this.calculateServiceEndDate(this.getDefaultAnnualServiceStartDate(), 12) : '', item_name: '', unit_price: 0, discount_percent: 0, quantity: section === 'annual_saas' ? 12 : 1, discounted_unit_price: 0, line_total: 0 });
     this.renderItemRows(items);
   },
   removeRow(section, index) {
@@ -2197,18 +2216,13 @@ const Agreements = {
         const index = Number(trigger.getAttribute('data-item-index'));
         if (section && Number.isInteger(index) && index >= 0) this.removeRow(section, index);
       });
-      E.agreementForm.addEventListener('input', event => {
-        const field = event.target?.getAttribute('data-item-field');
-        if (!field) return;
-        const tr = event.target.closest('tr[data-item-row]');
-        const section = tr?.getAttribute('data-item-row');
-        if (tr && section === 'annual_saas' && (field === 'quantity' || field === 'service_start_date')) {
-          const get = key => tr.querySelector(`[data-item-field="${key}"]`)?.value ?? '';
-          const endInput = tr.querySelector('[data-item-field="service_end_date"]');
-          if (endInput) endInput.value = this.addMonthsMinusOneDay(get('service_start_date'), get('quantity'));
-        }
+      const handleAgreementItemChange = event => {
+        if (!event.target?.getAttribute('data-item-field')) return;
+        this.recalculateAnnualServiceEndDateForEvent(event);
         this.renderItemRows(this.collectItems());
-      });
+      };
+      E.agreementForm.addEventListener('input', handleAgreementItemChange);
+      E.agreementForm.addEventListener('change', handleAgreementItemChange);
     }
     if (E.agreementFormDeleteBtn) E.agreementFormDeleteBtn.addEventListener('click', () => this.deleteById(E.agreementForm?.dataset.id || ''));
     if (E.agreementFormPreviewBtn) E.agreementFormPreviewBtn.addEventListener('click', () => {
