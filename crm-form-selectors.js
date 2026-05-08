@@ -134,11 +134,11 @@
       },
       contactFields: {
         id: ['agreementFormContactId'],
-        fullName: ['agreementFormCustomerContactName', 'agreementFormContactName', 'agreementFormCustomerSignatoryName'],
+        fullName: ['agreementFormCustomerContactName', 'agreementFormContactName'],
         email: ['agreementFormCustomerContactEmail', 'agreementFormContactEmail', 'agreementFormCustomerSignatoryEmail'],
         phone: ['agreementFormCustomerContactPhone', 'agreementFormContactPhone', 'agreementFormCustomerSignatoryPhone'],
         mobile: ['agreementFormCustomerContactMobile', 'agreementFormContactMobile'],
-        jobTitle: ['agreementFormCustomerSignatoryTitle']
+        jobTitle: []
       },
       updateModule(company, contact) {
         const form = byId('agreementForm');
@@ -268,6 +268,8 @@
       company_status: str(c.company_status || c.companyStatus),
       currency: str(c.currency),
       payment_term: str(c.payment_term || c.paymentTerm || c.payment_terms || c.paymentTerms),
+      authorized_signatory_full_name: str(c.authorized_signatory_full_name || c.authorizedSignatoryFullName),
+      authorized_signatory_title: str(c.authorized_signatory_title || c.authorizedSignatoryTitle),
       documents_verified: c.documents_verified === true || c.documentsVerified === true || String(c.documents_verified ?? c.documentsVerified ?? '').toLowerCase() === 'true',
       documents_verification_status: str(c.documents_verification_status || c.documentsVerificationStatus)
     };
@@ -540,6 +542,10 @@
     // Extra common customer/company aliases used by proposal/agreement/invoice/receipt templates.
     ['CustomerName', 'CustomerLegalName'].forEach(suffix => setText(`${prefix}${suffix}`, suffix === 'CustomerLegalName' ? (c.legal_name || displayName) : displayName));
     setText(`${prefix}CustomerAddress`, c.address);
+    setText(`${prefix}CustomerOfficialSignatoryName`, c.authorized_signatory_full_name);
+    setText(`${prefix}CustomerOfficialSignatoryTitle`, c.authorized_signatory_title);
+    setText(`${prefix}CustomerSignatoryName`, c.authorized_signatory_full_name);
+    setText(`${prefix}CustomerSignatoryTitle`, c.authorized_signatory_title);
     setText(`${prefix}CompanyName`, c.company_name || displayName);
     setText(`${prefix}CompanyEmail`, c.main_email);
     setText(`${prefix}CompanyPhone`, c.main_phone);

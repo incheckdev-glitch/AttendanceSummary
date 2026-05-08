@@ -3381,7 +3381,7 @@ Sample:
         </div>
         <div class="divider" style="margin:12px 0;"></div><strong style="display:block;margin-bottom:8px;">Company / Contact Selection</strong>
         <div class="grid crm-party-selector-grid" data-party-selector="agreement" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:12px;">
-          <div class="filter-row"><label class="muted" for="agreementFormCompanySelector">Company</label><select id="agreementFormCompanySelector" class="select"><option value="">Select company</option></select><input id="agreementFormCompanyId" type="hidden" /><input id="agreementFormCompanyName" type="hidden" /><div id="agreementCompanyVerificationStatus" class="muted" style="margin-top:6px;font-size:12px;"></div><div id="agreementCompanyVerificationWarning" class="muted" style="display:none;margin-top:4px;color:#b45309;font-size:12px;">Company must be verified before agreement creation.</div></div>
+          <div class="filter-row"><label class="muted" for="agreementFormCompanySelector">Company</label><select id="agreementFormCompanySelector" class="select"><option value="">Select company</option></select><input id="agreementFormCompanyId" type="hidden" /><input id="agreementFormCompanyName" type="hidden" /><div id="agreementCompanyVerificationStatus" class="muted" style="margin-top:6px;font-size:12px;"></div><div id="agreementCompanyVerificationWarning" class="muted" style="display:none;margin-top:4px;color:#b45309;font-size:12px;">Company must be verified before agreement creation.</div><div id="agreementCompanySignatoryWarning" class="muted" style="display:none;margin-top:4px;color:#b91c1c;font-size:12px;">Company authorized signatory details are missing. Please update the company profile before creating the agreement.</div></div>
           <div class="filter-row"><label class="muted" for="agreementFormContactSelector">Contact</label><select id="agreementFormContactSelector" class="select" disabled><option value="">Select company first</option></select><input id="agreementFormContactId" type="hidden" /><input id="agreementFormContactName" type="hidden" /><input id="agreementFormContactEmail" type="hidden" /><input id="agreementFormContactPhone" type="hidden" /><input id="agreementFormContactMobile" type="hidden" /></div>
         </div>
         <div class="divider" style="margin:12px 0;"></div><strong style="display:block;margin-bottom:8px;">Contact Details</strong>
@@ -3438,18 +3438,30 @@ Sample:
         <div class="filter-row"><label class="muted" for="agreementFormNotes">Notes</label><textarea id="agreementFormNotes" class="input" rows="3"></textarea></div>
         <div class="divider" style="margin:12px 0;"></div><strong style="display:block;margin-bottom:8px;">Signatories</strong>
         <div class="signatory-section form-grid">
-          <div class="signatory-column" aria-label="Customer signatory fields">
-            <div class="filter-row"><label class="muted" for="agreementFormCustomerSignatoryName">Customer Signatory Name</label><input id="agreementFormCustomerSignatoryName" class="input" type="text" /></div>
-            <div class="filter-row"><label class="muted" for="agreementFormCustomerSignatoryTitle">Customer Signatory Title</label><input id="agreementFormCustomerSignatoryTitle" class="input" type="text" /></div>
-            <div class="filter-row"><label class="muted" for="agreementFormCustomerSignDate">Customer Sign Date</label><input id="agreementFormCustomerSignDate" class="input" type="date" /></div>
+          <div class="signatory-column" aria-label="Customer official signatory fields">
+            <strong style="display:block;margin-bottom:8px;">Customer Official Signatory</strong>
+            <div class="filter-row"><label class="muted" for="agreementFormCustomerOfficialSignatoryName">Customer Official Signatory Name</label><input id="agreementFormCustomerOfficialSignatoryName" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="filter-row"><label class="muted" for="agreementFormCustomerOfficialSignatoryTitle">Customer Official Signatory Title</label><input id="agreementFormCustomerOfficialSignatoryTitle" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="filter-row"><label class="muted" for="agreementFormCustomerOfficialSignDate">Customer Official Sign Date</label><input id="agreementFormCustomerOfficialSignDate" class="input" type="date" /></div>
           </div>
-          <div class="signatory-column" aria-label="Provider signatory fields">
-            <div class="filter-row"><label class="muted" for="agreementFormProviderSignatoryNamePrimary">Provider Signatory Name</label><input id="agreementFormProviderSignatoryNamePrimary" class="input" type="text" /></div>
-            <div class="filter-row"><label class="muted" for="agreementFormProviderSignatoryTitlePrimary">Provider Signatory Title</label><input id="agreementFormProviderSignatoryTitlePrimary" class="input" type="text" /></div>
-            <div class="filter-row"><label class="muted" for="agreementFormProviderSignDate">Provider Sign Date</label><input id="agreementFormProviderSignDate" class="input" type="date" /></div>
+          <div class="signatory-column" aria-label="Provider official signatory fields">
+            <strong style="display:block;margin-bottom:8px;">Provider Official Signatories</strong>
+            <div class="filter-row"><label class="muted" for="agreementFormProviderOfficialSignatory1Name">Provider Official Signatory 1 Name</label><input id="agreementFormProviderOfficialSignatory1Name" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="filter-row"><label class="muted" for="agreementFormProviderOfficialSignatory1Title">Provider Official Signatory 1 Title</label><input id="agreementFormProviderOfficialSignatory1Title" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="filter-row"><label class="muted" for="agreementFormProviderOfficialSignatory1SignDate">Provider Official Signatory 1 Sign Date</label><input id="agreementFormProviderOfficialSignatory1SignDate" class="input readonly-field locked-field" type="date" readonly aria-readonly="true" /></div>
+            <div class="divider" style="margin:10px 0;"></div>
+            <div class="filter-row"><label class="muted" for="agreementFormProviderOfficialSignatory2Name">Provider Official Signatory 2 Name</label><input id="agreementFormProviderOfficialSignatory2Name" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="filter-row"><label class="muted" for="agreementFormProviderOfficialSignatory2Title">Provider Official Signatory 2 Title</label><input id="agreementFormProviderOfficialSignatory2Title" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="filter-row"><label class="muted" for="agreementFormProviderOfficialSignatory2SignDate">Provider Official Signatory 2 Sign Date</label><input id="agreementFormProviderOfficialSignatory2SignDate" class="input readonly-field locked-field" type="date" readonly aria-readonly="true" /></div>
           </div>
+          <input id="agreementFormCustomerSignatoryName" type="hidden" />
+          <input id="agreementFormCustomerSignatoryTitle" type="hidden" />
+          <input id="agreementFormCustomerSignDate" type="hidden" />
+          <input id="agreementFormProviderSignatoryNamePrimary" type="hidden" />
+          <input id="agreementFormProviderSignatoryTitlePrimary" type="hidden" />
           <input id="agreementFormProviderSignatoryNameSecondary" type="hidden" />
           <input id="agreementFormProviderSignatoryTitleSecondary" type="hidden" />
+          <input id="agreementFormProviderSignDate" type="hidden" />
         </div>
         <div class="actions" style="justify-content:space-between;gap:8px;margin-top:12px;"><div style="display:flex;gap:8px;"><button id="agreementFormDeleteBtn" type="button" class="btn ghost" style="display:none;">Delete</button><button id="agreementFormPreviewBtn" type="button" class="btn ghost">View Agreement</button></div><div style="display:flex;gap:8px;"><button id="agreementFormCancelBtn" type="button" class="btn ghost">Cancel</button><button id="agreementFormSaveBtn" type="submit" class="btn">Save</button></div></div>
       </form>
