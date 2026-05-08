@@ -234,8 +234,39 @@ function evaluateProposalDiscountApprovalRequirement(proposal, items, nextStatus
   return result;
 }
 
+
+function shouldSkipWorkflowForDraftSave({ currentStatus, nextStatus, action, payload } = {}) {
+  const current = String(currentStatus ?? payload?.current_status ?? payload?.from_status ?? payload?.record?.status ?? '').trim().toLowerCase();
+  const next = String(nextStatus ?? payload?.next_status ?? payload?.requested_status ?? payload?.to_status ?? payload?.status ?? payload?.record?.next_status ?? '').trim().toLowerCase();
+  const normalizedAction = String(action || payload?.action || '').trim().toLowerCase();
+  const isCreateOrSave = !normalizedAction || ['create', 'save', 'update', 'validate_transition', 'create_workflow_approval', 'create_approval', 'request_approval'].includes(normalizedAction);
+
+  if (next === 'draft' && (current === '' || current === 'draft') && isCreateOrSave) {
+    return true;
+  }
+
+  if (current === next) {
+    return true;
+  }
+
+  return false;
+}
+
+function draftWorkflowSkipResult() {
+  return {
+    ok: true,
+    allowed: true,
+    skipped: true,
+    pendingApproval: false,
+    approvalCreated: false,
+    reason: 'Draft save does not require workflow approval.'
+  };
+}
+
 const WorkflowEngine = {
   processingRequests: 0,
+  shouldSkipWorkflowForDraftSave,
+  draftWorkflowSkipResult,
   beginRequestProcessing(message = 'Processing request…') {
     this.processingRequests += 1;
     if (this.processingRequests !== 1) return;
@@ -588,6 +619,15 @@ const WorkflowEngine = {
       ''
     ).trim();
 
+    if (this.shouldSkipWorkflowForDraftSave({
+      currentStatus,
+      nextStatus,
+      action: safeRequestedChanges.action || 'validate_transition',
+      payload: { ...safeRequestedChanges, record: safeRecord }
+    })) {
+      return this.draftWorkflowSkipResult();
+    }
+
     const payload = {
       resource: 'workflow',
       action: 'validate_transition',
@@ -608,6 +648,28 @@ const WorkflowEngine = {
       approvalCreated: false,
       reason: 'Workflow validation is unavailable. Save blocked until workflow is reachable.'
     };
+    const safeRecord = record && typeof record === 'object' ? record : {};
+    const safeRequestedChanges = requestedChanges && typeof requestedChanges === 'object' ? requestedChanges : {};
+    const nestedRequestedChanges = safeRequestedChanges.requested_changes && typeof safeRequestedChanges.requested_changes === 'object'
+      ? safeRequestedChanges.requested_changes
+      : {};
+    if (this.shouldSkipWorkflowForDraftSave({
+      currentStatus: safeRequestedChanges.current_status || safeRequestedChanges.from_status || safeRecord.current_status || safeRecord.status || '',
+      nextStatus:
+        safeRequestedChanges.next_status ||
+        safeRequestedChanges.requested_status ||
+        safeRequestedChanges.to_status ||
+        nestedRequestedChanges?.proposal?.status ||
+        nestedRequestedChanges?.agreement?.status ||
+        nestedRequestedChanges?.invoice?.status ||
+        nestedRequestedChanges?.receipt?.status ||
+        safeRecord.next_status ||
+        '',
+      action: safeRequestedChanges.action || (safeRequestedChanges.id || safeRecord.id ? 'update' : 'save'),
+      payload: { ...safeRequestedChanges, record: safeRecord }
+    })) {
+      return this.draftWorkflowSkipResult();
+    }
     this.beginRequestProcessing('Checking workflow approval request…');
     try {
       if (this.isProposalWorkflowResource(resource)) {

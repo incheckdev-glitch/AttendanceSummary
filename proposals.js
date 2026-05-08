@@ -3618,7 +3618,10 @@ const Proposals = {
   shouldValidateWorkflowBeforeSave({ proposalId = '', currentStatus = '', requestedStatus = '' } = {}) {
     const fromStatus = String(currentStatus || '').trim().toLowerCase();
     const toStatus = String(requestedStatus || '').trim().toLowerCase();
-    return Boolean(toStatus || fromStatus || proposalId);
+    if (!toStatus) return false;
+    if (toStatus === 'draft' && (!fromStatus || fromStatus === 'draft')) return false;
+    if (fromStatus === toStatus) return false;
+    return true;
   },
   addRow(section) {
     const groups = this.groupedItems(this.collectProposalItems());

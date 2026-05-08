@@ -16,7 +16,9 @@ vm.createContext(context);
 vm.runInContext(fs.readFileSync('workflow.js', 'utf8'), context);
 
 const evaluate = context.evaluateProposalDiscountApproval;
+const workflowEngine = context.window.WorkflowEngine;
 assert.strictEqual(typeof evaluate, 'function', 'evaluateProposalDiscountApproval should be available');
+assert.strictEqual(typeof workflowEngine?.shouldSkipWorkflowForDraftSave, 'function', 'draft workflow skip helper should be available');
 
 function annualItem(discount) {
   return { item_type: 'Annual SaaS', discount_percent: discount };
@@ -116,4 +118,40 @@ for (const testCase of cases) {
   assert.strictEqual(decision.requiresApproval, testCase.requiresApproval, `${testCase.name}: requiresApproval`);
 }
 
-console.log(`Passed ${cases.length} proposal approval baseline tests.`);
+const draftSkipCases = [
+  {
+    name: 'new draft create skips workflow',
+    input: { currentStatus: '', nextStatus: 'Draft', action: 'create' },
+    expected: true
+  },
+  {
+    name: 'draft update that remains draft skips workflow',
+    input: { currentStatus: 'Draft', nextStatus: 'Draft', action: 'update' },
+    expected: true
+  },
+  {
+    name: 'unchanged sent status skips workflow',
+    input: { currentStatus: 'Sent', nextStatus: 'Sent', action: 'save' },
+    expected: true
+  },
+  {
+    name: 'draft to sent does not skip workflow',
+    input: { currentStatus: 'Draft', nextStatus: 'Sent', action: 'update' },
+    expected: false
+  },
+  {
+    name: 'sent to accepted does not skip workflow',
+    input: { currentStatus: 'Sent', nextStatus: 'Accepted', action: 'update' },
+    expected: false
+  }
+];
+
+for (const testCase of draftSkipCases) {
+  assert.strictEqual(
+    workflowEngine.shouldSkipWorkflowForDraftSave(testCase.input),
+    testCase.expected,
+    testCase.name
+  );
+}
+
+console.log(`Passed ${cases.length} proposal approval baseline tests and ${draftSkipCases.length} draft workflow skip tests.`);

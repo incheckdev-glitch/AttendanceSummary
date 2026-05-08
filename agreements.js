@@ -2282,10 +2282,9 @@ const Agreements = {
     agreement.status = String(agreement.status || '').trim() || currentStatus || 'Draft';
     const currentStatusNormalized = normalizeStatus(currentStatus);
     const requestedStatusNormalized = normalizeStatus(agreement.status);
-    const isNewAgreement = !id;
     const isNoTransition = currentStatusNormalized === requestedStatusNormalized;
     const isBlankToDraft = !currentStatusNormalized && requestedStatusNormalized === 'draft';
-    const hasMeaningfulStatusTransition = !isNewAgreement && !isNoTransition && !isBlankToDraft;
+    const hasMeaningfulStatusTransition = Boolean(requestedStatusNormalized) && !isNoTransition && !isBlankToDraft && requestedStatusNormalized !== 'draft';
 
     if (hasMeaningfulStatusTransition) {
       const workflowCheck = await window.WorkflowEngine?.enforceBeforeSave?.('agreements', currentRecord, {
