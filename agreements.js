@@ -323,6 +323,8 @@ const Agreements = {
       false
     );
     normalized.customer_name = String(normalized.customer_name || '').trim();
+    normalized.contact_name = this.buildContactPersonName({ ...source, contact_name: normalized.contact_name || normalized.customer_contact_name }) || String(normalized.contact_name || '').trim();
+    normalized.customer_contact_name = this.buildContactPersonName({ ...source, contact_name: normalized.customer_contact_name || normalized.contact_name }) || String(normalized.customer_contact_name || '').trim();
     normalized.status = String(normalized.status || '').trim() || 'Draft';
     normalized.currency = String(normalized.currency || '').trim();
     normalized.billing_frequency = 'Annual';
@@ -580,7 +582,13 @@ const Agreements = {
   buildContactPersonName(contact = {}) {
     const first = String(contact.first_name || contact.firstName || '').trim();
     const last = String(contact.last_name || contact.lastName || '').trim();
-    return [first, last].filter(Boolean).join(' ').trim() || String(contact.full_name || contact.fullName || contact.name || contact.contact_name || contact.contactName || contact.email || '').trim();
+    const name = [first, last].filter(Boolean).join(' ').trim();
+    if (name) return name;
+    const stripEmailSuffix = value => String(value || '').trim().replace(/\s+[—-]\s+\S+@\S+$/u, '').trim();
+    return stripEmailSuffix(contact.full_name || contact.fullName)
+      || stripEmailSuffix(contact.name)
+      || stripEmailSuffix(contact.contact_name || contact.contactName)
+      || String(contact.email || '').trim();
   },
   getContactPosition(contact = {}) {
     return String(contact.job_title || contact.jobTitle || contact.position || contact.title || '').trim();
@@ -833,7 +841,7 @@ const Agreements = {
 
     const subscriptionItems = normalizedItems.filter(item => isSubscription(item.section));
     const oneTimeItems = normalizedItems.filter(item => isOneTime(item.section));
-    const otherItems = normalizedItems.filter(item => !isSubscription(item.section) && !isOneTime(item.section));
+    const otherItems = normalizedItems.filter(item => !isSubscription(item.section) && !isOneTime(item.section) && sectionKey(item.section) !== 'capability');
 
     const subscriptionRows = subscriptionItems.length
       ? subscriptionItems
@@ -1554,7 +1562,7 @@ const Agreements = {
     };
     if (E.agreementAnnualItemsTbody) E.agreementAnnualItemsTbody.innerHTML = grouped.annual_saas.map((item, idx) => rowHtml('annual_saas', item, idx)).join('');
     if (E.agreementOneTimeItemsTbody) E.agreementOneTimeItemsTbody.innerHTML = grouped.one_time_fee.map((item, idx) => rowHtml('one_time_fee', item, idx)).join('');
-    if (E.agreementCapabilityItemsTbody) E.agreementCapabilityItemsTbody.innerHTML = grouped.capability.map((item, idx) => rowHtml('capability', item, idx)).join('');
+    if (E.agreementCapabilityItemsTbody) E.agreementCapabilityItemsTbody.innerHTML = '';
     const totals = this.calculateTotals(items);
     if (E.agreementSaasTotal) E.agreementSaasTotal.textContent = this.formatMoney(totals.saas_total);
     if (E.agreementOneTimeTotal) E.agreementOneTimeTotal.textContent = this.formatMoney(totals.one_time_total);
@@ -1633,14 +1641,14 @@ const Agreements = {
   },
   addRow(section) {
     const items = this.collectItems();
-    if (section === 'capability') items.push({ section: 'capability', capability_name: '', capability_value: '', notes: '' });
-    else items.push({ section, location_name: '', location_address: '', service_start_date: '', service_end_date: '', item_name: '', unit_price: 0, discount_percent: 0, quantity: 1, discounted_unit_price: 0, line_total: 0 });
+    if (section === 'capability') return;
+    items.push({ section, location_name: '', location_address: '', service_start_date: '', service_end_date: '', item_name: '', unit_price: 0, discount_percent: 0, quantity: 1, discounted_unit_price: 0, line_total: 0 });
     this.renderItemRows(items);
   },
   removeRow(section, index) {
     const grouped = this.groupedItems(this.collectItems());
     grouped[section] = grouped[section].filter((_, idx) => idx !== index);
-    this.renderItemRows([...grouped.annual_saas, ...grouped.one_time_fee, ...grouped.capability]);
+    this.renderItemRows([...grouped.annual_saas, ...grouped.one_time_fee]);
   },
   async openAgreementFormById(agreementId, { readOnly = false, trigger = null } = {}) {
     const id = String(agreementId || '').trim();
@@ -1731,6 +1739,8 @@ const Agreements = {
     agreement.provider_signatory_name = agreement.provider_primary_signatory_name;
     agreement.provider_signatory_title = agreement.provider_primary_signatory_title;
     agreement.provider_signatory_email = String(provider.email || '').trim();
+    agreement.contact_name = this.buildContactPersonName({ ...agreement, contact_name: agreement.contact_name || agreement.customer_contact_name }) || String(agreement.contact_name || '').trim();
+    agreement.customer_contact_name = this.buildContactPersonName({ ...agreement, contact_name: agreement.customer_contact_name || agreement.contact_name }) || String(agreement.customer_contact_name || '').trim();
     agreement.customer_signatory_name = String(agreement.customer_signatory_name || agreement.customer_contact_name || agreement.contact_name || '').trim();
     agreement.customer_signatory_title = String(agreement.customer_signatory_title || '').trim();
     agreement.customer_signatory_email = String(agreement.customer_signatory_email || agreement.customer_contact_email || agreement.contact_email || '').trim();
@@ -2115,7 +2125,6 @@ const Agreements = {
 
     if (E.agreementAddAnnualRowBtn) E.agreementAddAnnualRowBtn.addEventListener('click', () => this.addRow('annual_saas'));
     if (E.agreementAddOneTimeRowBtn) E.agreementAddOneTimeRowBtn.addEventListener('click', () => this.addRow('one_time_fee'));
-    if (E.agreementAddCapabilityRowBtn) E.agreementAddCapabilityRowBtn.addEventListener('click', () => this.addRow('capability'));
     if (E.agreementPreviewExportPdfBtn) E.agreementPreviewExportPdfBtn.addEventListener('click', () => this.exportPreviewPdf());
     if (E.agreementPreviewCloseBtn) E.agreementPreviewCloseBtn.addEventListener('click', () => this.closePreviewModal());
     if (E.agreementPreviewModal) E.agreementPreviewModal.addEventListener('click', event => {

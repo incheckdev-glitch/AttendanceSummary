@@ -1,5 +1,5 @@
 const ProposalCatalog = {
-  sectionValues: ['annual_saas', 'one_time_fee', 'capability'],
+  sectionValues: ['annual_saas', 'one_time_fee'],
   state: {
     rows: [],
     filteredRows: [],
@@ -65,6 +65,7 @@ const ProposalCatalog = {
       updated_at: this.normalizeText(pick(source.updated_at, source.updatedAt)),
       is_active: this.toBool(pick(source.is_active, source.isActive), true),
       section: this.sectionValues.includes(section) ? section : 'annual_saas',
+      is_capability: section === 'capability',
       category: this.normalizeText(source.category),
       item_name: this.normalizeText(pick(source.item_name, source.itemName, source.name)),
       default_location_name: this.normalizeText(
@@ -73,8 +74,6 @@ const ProposalCatalog = {
       unit_price: this.toNumberOrNull(pick(source.unit_price, source.unitPrice)),
       discount_percent: this.toNumberOrNull(pick(source.discount_percent, source.discountPercent)),
       quantity: this.toNumberOrNull(source.quantity),
-      capability_name: this.normalizeText(pick(source.capability_name, source.capabilityName)),
-      capability_value: this.normalizeText(pick(source.capability_value, source.capabilityValue)),
       notes: this.normalizeText(source.notes),
       sort_order: this.toNumberOrNull(pick(source.sort_order, source.sortOrder))
     };
@@ -176,7 +175,7 @@ const ProposalCatalog = {
     return Api.deleteProposalCatalogItem(catalogItemUuid);
   },
   applyFilters() {
-    this.state.filteredRows = Array.isArray(this.state.rows) ? this.state.rows.slice() : [];
+    this.state.filteredRows = (Array.isArray(this.state.rows) ? this.state.rows : []).filter(item => !item.is_capability);
   },
   renderSummary() {
     if (!E.proposalCatalogSummary) return;
@@ -187,7 +186,6 @@ const ProposalCatalog = {
       { label: 'Active Items', value: rows.filter(item => item.is_active).length },
       { label: 'Annual SaaS Items', value: countBySection('annual_saas') },
       { label: 'One-Time Fee Items', value: countBySection('one_time_fee') },
-      { label: 'Capability Items', value: countBySection('capability') }
     ];
 
     E.proposalCatalogSummary.innerHTML = cards
@@ -212,13 +210,13 @@ const ProposalCatalog = {
     if (this.state.loading) {
       E.proposalCatalogState.textContent = 'Loading proposal catalog items…';
       E.proposalCatalogTbody.innerHTML =
-        '<tr><td colspan="14" class="muted" style="text-align:center;">Loading proposal catalog items…</td></tr>';
+        '<tr><td colspan="12" class="muted" style="text-align:center;">Loading proposal catalog items…</td></tr>';
       return;
     }
 
     if (this.state.loadError) {
       E.proposalCatalogState.textContent = this.state.loadError;
-      E.proposalCatalogTbody.innerHTML = `<tr><td colspan="14" class="muted" style="text-align:center;color:#ffb4b4;">${U.escapeHtml(
+      E.proposalCatalogTbody.innerHTML = `<tr><td colspan="12" class="muted" style="text-align:center;color:#ffb4b4;">${U.escapeHtml(
         this.state.loadError
       )}</td></tr>`;
       return;
@@ -228,7 +226,7 @@ const ProposalCatalog = {
     E.proposalCatalogState.textContent = `${rows.length} item(s) • Page ${this.state.page}`;
     if (!rows.length) {
       E.proposalCatalogTbody.innerHTML =
-        '<tr><td colspan="14" class="muted" style="text-align:center;">No catalog items found.</td></tr>';
+        '<tr><td colspan="12" class="muted" style="text-align:center;">No catalog items found.</td></tr>';
       return;
     }
 
@@ -251,8 +249,6 @@ const ProposalCatalog = {
           <td>${this.formatNumber(row.unit_price)}</td>
           <td>${this.formatNumber(row.discount_percent)}</td>
           <td>${this.formatNumber(row.quantity)}</td>
-          <td>${textCell(row.capability_name)}</td>
-          <td>${textCell(row.capability_value)}</td>
           <td>${this.formatNumber(row.sort_order)}</td>
           <td>${textCell(row.updated_at)}</td>
           <td>
@@ -293,7 +289,7 @@ const ProposalCatalog = {
         page: this.state.page
       });
       const normalized = this.extractListResult(response);
-      this.state.rows = normalized.rows.map(item => this.normalizeItem(item));
+      this.state.rows = normalized.rows.map(item => this.normalizeItem(item)).filter(item => !item.is_capability);
       this.state.total = normalized.total;
       this.state.returned = normalized.returned;
       this.state.hasMore = normalized.hasMore;
@@ -374,13 +370,11 @@ const ProposalCatalog = {
           'unit_price',
           'discount_percent',
           'quantity',
-          'capability_name',
-          'capability_value',
           'notes',
           'sort_order'
         ]
       });
-      this.state.lookupRows = this.extractListResult(response).rows.map(item => this.normalizeItem(item));
+      this.state.lookupRows = this.extractListResult(response).rows.map(item => this.normalizeItem(item)).filter(item => !item.is_capability);
       this.state.lookupLoadedAt = Date.now();
       return this.state.lookupRows;
     })();
@@ -423,10 +417,6 @@ const ProposalCatalog = {
     if (E.proposalCatalogFormDiscountPercent)
       E.proposalCatalogFormDiscountPercent.value = normalized.discount_percent ?? '';
     if (E.proposalCatalogFormQuantity) E.proposalCatalogFormQuantity.value = normalized.quantity ?? '';
-    if (E.proposalCatalogFormCapabilityName)
-      E.proposalCatalogFormCapabilityName.value = normalized.capability_name || '';
-    if (E.proposalCatalogFormCapabilityValue)
-      E.proposalCatalogFormCapabilityValue.value = normalized.capability_value || '';
     if (E.proposalCatalogFormSortOrder) E.proposalCatalogFormSortOrder.value = normalized.sort_order ?? '';
     if (E.proposalCatalogFormNotes) E.proposalCatalogFormNotes.value = normalized.notes || '';
     if (E.proposalCatalogFormDeleteBtn) {
@@ -461,8 +451,6 @@ const ProposalCatalog = {
       unit_price: this.toNumberOrNull(this.getValue(E.proposalCatalogFormUnitPrice)),
       discount_percent: this.toNumberOrNull(this.getValue(E.proposalCatalogFormDiscountPercent)),
       quantity: this.toNumberOrNull(this.getValue(E.proposalCatalogFormQuantity)),
-      capability_name: this.getValue(E.proposalCatalogFormCapabilityName),
-      capability_value: this.getValue(E.proposalCatalogFormCapabilityValue),
       notes: this.getValue(E.proposalCatalogFormNotes),
       sort_order: this.toNumberOrNull(this.getValue(E.proposalCatalogFormSortOrder))
     };
@@ -496,8 +484,8 @@ const ProposalCatalog = {
     const recordId = String(E.proposalCatalogForm?.dataset.id || '').trim();
     const payload = this.sanitizePayload(this.collectFormPayload());
 
-    if (!payload.item_name && !payload.capability_name && !payload.category) {
-      UI.toast('Please enter at least an item name, category, or capability name.');
+    if (!payload.item_name && !payload.category) {
+      UI.toast('Please enter at least an item name or category.');
       return;
     }
 

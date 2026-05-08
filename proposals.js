@@ -497,7 +497,12 @@ const Proposals = {
     const first = String(contact.first_name || contact.firstName || '').trim();
     const last = String(contact.last_name || contact.lastName || '').trim();
     const name = [first, last].filter(Boolean).join(' ').trim();
-    return name || String(contact.full_name || contact.fullName || contact.name || contact.contact_name || contact.contactName || contact.email || '').trim();
+    if (name) return name;
+    const stripEmailSuffix = value => String(value || '').trim().replace(/\s+[—-]\s+\S+@\S+$/u, '').trim();
+    return stripEmailSuffix(contact.full_name || contact.fullName)
+      || stripEmailSuffix(contact.name)
+      || stripEmailSuffix(contact.contact_name || contact.contactName)
+      || String(contact.email || '').trim();
   },
   normalizeProposalStatus(value = '') {
     const status = String(value || '').trim();
@@ -840,6 +845,7 @@ const Proposals = {
     normalized.company_name = String(source.company_name || source.companyName || normalized.customer_legal_name || normalized.customer_name || '').trim();
     normalized.contact_id = String(source.contact_id || source.contactId || '').trim();
     normalized.contact_name = this.buildContactDisplayName(source) || String(source.contact_name || source.contactName || normalized.customer_contact_name || '').trim();
+    normalized.customer_contact_name = this.buildContactDisplayName({ ...source, contact_name: normalized.customer_contact_name || normalized.contact_name }) || normalized.customer_contact_name;
     normalized.contact_email = String(source.contact_email || source.contactEmail || normalized.customer_contact_email || '').trim();
     normalized.contact_phone = String(source.contact_phone || source.contactPhone || normalized.customer_contact_mobile || '').trim();
     normalized.contact_mobile = String(source.contact_mobile || source.contactMobile || normalized.customer_contact_mobile || '').trim();
@@ -2488,7 +2494,7 @@ const Proposals = {
     const groups = this.groupedItems(items);
     this.renderSectionRows('annual_saas', groups.annual_saas);
     this.renderSectionRows('one_time_fee', groups.one_time_fee);
-    this.renderSectionRows('capability', groups.capability);
+    if (E.proposalCapabilityItemsTbody) E.proposalCapabilityItemsTbody.innerHTML = '';
     this.renderTotalsPreview();
     this.setFormReadOnly(this.state.formReadOnly);
   },
@@ -2538,8 +2544,7 @@ const Proposals = {
   collectProposalItems() {
     return [
       ...this.collectSectionItems('annual_saas'),
-      ...this.collectSectionItems('one_time_fee'),
-      ...this.collectSectionItems('capability')
+      ...this.collectSectionItems('one_time_fee')
     ];
   },
   collectProposalFormData() {
@@ -3172,27 +3177,24 @@ const Proposals = {
   },
   addRow(section) {
     const groups = this.groupedItems(this.collectProposalItems());
-    if (section === 'capability') {
-      groups.capability.push({ section: 'capability', capability_name: '', capability_value: '' });
-    } else {
-      groups[section].push({
-        section,
-        location_name: '',
-        item_name: '',
-        unit_price: 0,
-        discount_percent: 0,
-        quantity: 1,
-        discounted_unit_price: 0,
-        line_total: 0
-      });
-    }
-    this.renderProposalItems([...groups.annual_saas, ...groups.one_time_fee, ...groups.capability]);
+    if (section === 'capability') return;
+    groups[section].push({
+      section,
+      location_name: '',
+      item_name: '',
+      unit_price: 0,
+      discount_percent: 0,
+      quantity: 1,
+      discounted_unit_price: 0,
+      line_total: 0
+    });
+    this.renderProposalItems([...groups.annual_saas, ...groups.one_time_fee]);
   },
   removeRow(section, index) {
     const groups = this.groupedItems(this.collectProposalItems());
     if (!groups[section]) return;
     groups[section] = groups[section].filter((_, idx) => idx !== index);
-    this.renderProposalItems([...groups.annual_saas, ...groups.one_time_fee, ...groups.capability]);
+    this.renderProposalItems([...groups.annual_saas, ...groups.one_time_fee]);
   },
   wire() {
     if (this.state.initialized) return;
@@ -3380,8 +3382,6 @@ const Proposals = {
       E.proposalAddAnnualRowBtn.addEventListener('click', () => this.addRow('annual_saas'));
     if (E.proposalAddOneTimeRowBtn)
       E.proposalAddOneTimeRowBtn.addEventListener('click', () => this.addRow('one_time_fee'));
-    if (E.proposalAddCapabilityRowBtn)
-      E.proposalAddCapabilityRowBtn.addEventListener('click', () => this.addRow('capability'));
 
     window.addEventListener('proposal-catalog-lookup-invalidated', () => {
       if (E.proposalFormModal?.style?.display === 'flex') this.ensureCatalogLoaded();
