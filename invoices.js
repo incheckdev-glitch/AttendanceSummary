@@ -817,7 +817,6 @@ const Invoices = {
       const amount = this.toNumberSafe(value);
       return `${currency} ${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     };
-    const sanitize = value => U.escapeHtml(String(value ?? '').trim());
     const textValue = value => {
       const text = String(value ?? '').trim();
       return text ? U.escapeHtml(text) : '—';
@@ -858,15 +857,17 @@ const Invoices = {
             const computed = this.computeCommercialRow(item);
             return `<tr>
               <td>${textValue(item.location_name)}</td>
-              <td>${textValue(item.location_address)}</td>
+              <td>${textValue(item.item_name)}</td>
+              <td class="cell-right">${money(item.unit_price)}</td>
+              <td class="cell-center">${item.quantity ? U.escapeHtml(String(item.quantity)) : '—'}</td>
               <td class="cell-center">${dateValue(item.service_start_date)}</td>
               <td class="cell-center">${dateValue(item.service_end_date)}</td>
-              <td>${textValue(item.item_name)}</td>
+              <td class="cell-center">${U.escapeHtml(String(this.toNumberSafe(item.discount_percent)))}%</td>
               <td class="cell-right">${money(computed.line_total)}</td>
             </tr>`;
           })
           .join('')
-      : '<tr><td colspan="6" class="cell-center muted">No subscription items found.</td></tr>';
+      : '<tr><td colspan="8" class="cell-center muted">No annual SaaS items found.</td></tr>';
 
     const oneTimeRows = oneTimeItems.length
       ? oneTimeItems
@@ -874,32 +875,15 @@ const Invoices = {
             const computed = this.computeCommercialRow(item);
             return `<tr>
               <td>${textValue(item.location_name)}</td>
-              <td>${textValue(item.location_address)}</td>
               <td>${textValue(item.item_name)}</td>
               <td class="cell-right">${money(item.unit_price)}</td>
               <td class="cell-center">${U.escapeHtml(String(this.toNumberSafe(item.discount_percent)))}%</td>
-              <td class="cell-right">${money(computed.discounted_unit_price)}</td>
+              <td class="cell-center">${item.quantity ? U.escapeHtml(String(item.quantity)) : '—'}</td>
               <td class="cell-right">${money(computed.line_total)}</td>
             </tr>`;
           })
           .join('')
-      : '<tr><td colspan="7" class="cell-center muted">No one-time fee items found.</td></tr>';
-    const linkedReceipts = this.sortReceiptsAscending(receiptSummary.normalizedReceipts);
-    const receiptsRows = linkedReceipts.length
-      ? linkedReceipts
-          .map(receipt => `<tr>
-              <td>${textValue(receipt.receipt_id)}</td>
-              <td>${textValue(receipt.receipt_number)}</td>
-              <td class="cell-center">${dateValue(receipt.receipt_date)}</td>
-              <td class="cell-right">${money(receipt.amount_received)}</td>
-              <td>${textValue(receipt.payment_method)}</td>
-              <td>${textValue(receipt.payment_reference)}</td>
-              <td>${textValue(receipt.status)}</td>
-              <td>${textValue(receipt.notes)}</td>
-            </tr>`)
-          .join('')
-      : '<tr><td colspan="8" class="cell-center muted">No linked receipts found.</td></tr>';
-
+      : '<tr><td colspan="6" class="cell-center muted">No one-time fee items found.</td></tr>';
     const scheduleRows = (Array.isArray(paymentScheduleRows) ? paymentScheduleRows : []).map(row => this.normalizeScheduleRow(row));
     const paymentScheduleHtml = scheduleRows.length
       ? scheduleRows
@@ -915,13 +899,10 @@ const Invoices = {
           .join('')
       : '<tr><td colspan="6" class="cell-center muted">No payment schedule found.</td></tr>';
 
-    const companyTitle = String(invoiceData.company_name || invoiceData.company_legal_name || 'COMPANY NAME').trim();
-    const companySubtitle = String(invoiceData.company_tagline || 'Business Software Services').trim();
-    const agreementLabel = String(invoiceData.agreement_number || invoiceData.agreement_id || '—').trim();
+    const isDraftInvoice = this.normalizeText(invoiceData.status) === 'draft';
     const customerName = String(invoiceData.customer_legal_name || invoiceData.customer_name || invoiceData.client_name || '').trim();
     const customerAddress = String(invoiceData.customer_address || '').trim();
-    const paymentTerm = String(invoiceData.payment_term || '').trim() || 'Net 30';
-    const footerNote = String(invoiceData.footer_note || invoiceData.notes || '').trim();
+    const footerNote = String(invoiceData.footer_note || '').trim();
     const bankRows = [
       ['Bank Name', textValue(invoiceData.bank_name)],
       ['Account Name', textValue(invoiceData.bank_account_name)],
@@ -941,74 +922,93 @@ const Invoices = {
     <style>
       :root { color-scheme: light; }
       * { box-sizing: border-box; }
-      body { font-family: Inter, "Segoe UI", Arial, Helvetica, sans-serif; margin: 0; padding: 20px; color: #111827; background: #eef2f7; }
-      .invoice-sheet { max-width: 1020px; margin: 0 auto; background: #fff; border: 1px solid #dbe3ed; padding: 28px 30px; border-radius: 8px; }
-      .doc-header { border-bottom: 1px solid #d8e1ec; padding-bottom: 18px; margin-bottom: 18px; }
-      .header-top-row { display: grid; grid-template-columns: 1fr 340px; gap: 20px; align-items: start; }
-      .brand-block { display: flex; align-items: center; gap: 14px; min-height: 54px; }
-      .brand-block .incheck360-doc-logo-wrap { float: none; margin: 0; width: 168px; max-width: 168px; }
-      .provider-chip { margin-left: auto; text-align: right; font-size: 12px; color: #4b5563; line-height: 1.35; }
-      .provider-chip .provider-name { font-size: 13px; color: #0f172a; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; }
-      .invoice-head { display: grid; grid-template-columns: 1fr 340px; gap: 20px; margin-top: 14px; align-items: start; }
-      .invoice-label { margin: 0; font-size: 34px; font-weight: 800; letter-spacing: 0.04em; color: #0b214a; }
-      .invoice-subtitle { margin-top: 8px; font-size: 13px; color: #64748b; }
-      .meta-box { border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; background: #fbfdff; }
-      .meta-row { display: grid; grid-template-columns: 130px 1fr; border-bottom: 1px solid #e3eaf3; }
+      body { font-family: Inter, "Segoe UI", Arial, Helvetica, sans-serif; margin: 0; padding: 12mm 0; color: #111827; background: #eef2f7; overflow-x: hidden; }
+      .invoice-preview-page,
+      .invoice-document-page {
+        width: 210mm;
+        min-height: 297mm;
+        margin: 0 auto;
+        background: #fff;
+        box-sizing: border-box;
+        padding: 14mm 14mm 12mm;
+        position: relative;
+        overflow: hidden;
+      }
+      .invoice-preview-page,
+      .invoice-document-page { border: 1px solid #dbe3ed; box-shadow: 0 14px 34px rgba(15, 23, 42, 0.13); }
+      .invoice-preview-page > :not(.draft-watermark),
+      .invoice-document-page > :not(.draft-watermark) { position: relative; z-index: 1; }
+      .draft-watermark { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 0; font-size: 92px; font-weight: 800; letter-spacing: 0.16em; color: #0f172a; opacity: 0.055; transform: rotate(-28deg); text-transform: uppercase; user-select: none; }
+      .doc-header { border-bottom: 1px solid #d8e1ec; padding-bottom: 7mm; margin-bottom: 8mm; }
+      .invoice-document-header { display: grid; grid-template-columns: 38mm 1fr 68mm; align-items: center; gap: 8mm; width: 100%; max-width: 100%; margin: 0; }
+      .invoice-document-logo { display: flex; align-items: center; justify-content: flex-start; height: 26mm; min-width: 0; margin: 0; padding: 0; position: static; }
+      .invoice-document-logo .incheck360-doc-logo-wrap { float: none; display: flex; align-items: center; justify-content: flex-start; margin: 0; padding: 0; width: 32mm; max-width: 32mm; height: 20mm; max-height: 20mm; text-align: left; position: static; transform: none; }
+      .invoice-document-logo img,
+      .invoice-document-logo svg { display: block; max-width: 32mm; max-height: 20mm; width: auto; height: auto; object-fit: contain; object-position: left center; margin: 0; padding: 0; position: static; transform: none; }
+      .invoice-document-title-wrap { display: flex; align-items: center; justify-content: center; height: 26mm; min-width: 0; margin: 0; padding: 0; text-align: center; }
+      .invoice-document-title { margin: 0; font-size: 22px; line-height: 1; font-weight: 800; text-align: center; letter-spacing: 0.01em; color: #0b214a; }
+      .invoice-document-summary { display: flex; align-items: center; justify-content: flex-end; height: 26mm; min-width: 0; margin: 0; padding: 0; position: static; }
+      .invoice-document-summary .meta-box { width: 100%; }
+      .meta-box { border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; background: #fbfdff; min-width: 0; width: 100%; }
+      .meta-row { display: grid; grid-template-columns: 26mm minmax(0, 1fr); border-bottom: 1px solid #e3eaf3; }
       .meta-row:last-child { border-bottom: 0; }
-      .meta-row > div { padding: 8px 11px; font-size: 12.5px; }
+      .meta-row > div { padding: 2mm 2.4mm; font-size: 11px; min-width: 0; overflow-wrap: anywhere; }
       .meta-row .meta-key { background: #f5f8fc; font-weight: 700; color: #334155; border-right: 1px solid #e3eaf3; }
-      .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
-      .info-box { border: 1px solid #d7e1ed; min-height: 124px; border-radius: 6px; overflow: hidden; }
+      .info-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 5mm; margin-top: 5mm; width: 100%; }
+      .info-box { border: 1px solid #d7e1ed; min-height: 32mm; border-radius: 6px; overflow: hidden; background: #fff; min-width: 0; }
       .info-head { background: #f8fbff; border-bottom: 1px solid #e3eaf3; padding: 9px 12px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: #1e3a5f; }
-      .info-body { padding: 12px; font-size: 12.5px; line-height: 1.5; }
+      .info-body { padding: 12px; font-size: 12.5px; line-height: 1.55; }
+      .info-body strong { font-weight: 700; color: #0f172a; }
       .muted { color: #6b7280; }
-      .section { margin-top: 18px; }
+      .section { margin-top: 22px; }
       .section h2 { margin: 0; font-size: 16px; font-weight: 700; color: #0f172a; border-bottom: 1px solid #d8e1ec; padding-bottom: 7px; }
       .section .subhead { font-size: 12px; margin: 6px 0 8px; color: #4b5563; text-transform: uppercase; letter-spacing: 0.04em; }
-      table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-      th, td { border: 1px solid #dde5ef; padding: 7px 8px; font-size: 12px; vertical-align: middle; }
+      table { width: 100%; max-width: 100%; border-collapse: collapse; table-layout: fixed; overflow-wrap: anywhere; page-break-inside: auto; }
+      thead { display: table-header-group; }
+      tr { page-break-inside: avoid; page-break-after: auto; }
+      th, td { border: 1px solid #dde5ef; padding: 6px; font-size: 10.5px; vertical-align: middle; overflow-wrap: anywhere; }
       th { text-align: center; background: #f5f8fc; color: #0f172a; font-weight: 700; }
       .cell-center { text-align: center; vertical-align: middle; }
       .cell-right { text-align: right; vertical-align: middle; white-space: nowrap; }
-      .total-row td { font-weight: 700; background: #f9fafb; }
+      .total-row td { font-weight: 700; background: #f7faff; }
       .totals-wrap { display: flex; justify-content: flex-end; margin-top: 16px; }
-      .totals-box { width: 380px; border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; }
-      .totals-row { display: flex; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid #e3eaf3; font-size: 13px; }
+      .totals-box { width: 72mm; max-width: 100%; border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; }
+      .totals-row { display: flex; justify-content: space-between; gap: 10px; padding: 10px 12px; border-bottom: 1px solid #e3eaf3; font-size: 13px; }
       .totals-row:last-child { border-bottom: 0; }
       .totals-row.grand { font-size: 15px; font-weight: 700; background: #edf4ff; color: #0b214a; }
-      .terms { margin-top: 14px; font-size: 12.5px; line-height: 1.5; }
-      .terms .strong { font-weight: 700; }
+      .terms { margin-top: 16px; font-size: 12.5px; line-height: 1.6; border: 1px solid #d7e1ed; border-radius: 6px; padding: 12px; background: #fbfdff; }
+      .terms .strong { font-weight: 700; color: #0f172a; }
       .bank { margin-top: 18px; }
       .bank h3 { margin: 0 0 8px; font-size: 15px; letter-spacing: 0.04em; }
       .bank-box { border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; }
-      .bank-row { display: grid; grid-template-columns: 180px 1fr; border-bottom: 1px solid #e3eaf3; }
+      .bank-row { display: grid; grid-template-columns: 45mm minmax(0, 1fr); border-bottom: 1px solid #e3eaf3; }
       .bank-row:last-child { border-bottom: 0; }
-      .bank-row > div { padding: 7px 9px; font-size: 12px; }
+      .bank-row > div { padding: 7px 9px; font-size: 12px; min-width: 0; overflow-wrap: anywhere; }
       .bank-key { background: #f5f8fc; font-weight: 700; border-right: 1px solid #e3eaf3; }
-      .footer-note { margin-top: 16px; font-size: 11px; color: #4b5563; border-top: 1px solid #e5e7eb; padding-top: 8px; text-align: center; }
-      @media print { body { margin: 0; padding: 0; background: #fff; } .invoice-sheet { border: 0; max-width: none; } }
+      .footer-note { margin-top: 16px; font-size: 11px; color: #64748b; border-top: 1px solid #e3eaf3; padding-top: 10px; text-align: center; }
+      @page { size: A4; margin: 0; }
+      @media print {
+        body { margin: 0; padding: 0; background: #fff; overflow: visible; }
+        .invoice-preview-page,
+        .invoice-document-page { width: 210mm; min-height: 297mm; margin: 0; box-shadow: none; page-break-after: always; border: 0; }
+      }
     </style>
   </head>
   <body>
-    <div class="invoice-sheet">
+    <div class="invoice-preview-page invoice-document-page doc-sheet">
+      ${isDraftInvoice ? '<div class="draft-watermark" aria-hidden="true">DRAFT</div>' : ''}
       <header class="doc-header">
-        <div class="header-top-row">
-          <div class="brand-block"><div data-incheck360-doc-logo-slot></div></div>
-          <div class="provider-chip">
-            <div class="provider-name">${sanitize(companyTitle || 'InCheck360')}</div>
-            <div>${sanitize(invoiceData.provider_contact_email || invoiceData.provider_contact_mobile || '')}</div>
-            <div>${sanitize(companySubtitle)}</div>
+        <section class="invoice-document-header">
+          <div class="invoice-document-logo"><div data-incheck360-doc-logo-slot></div></div>
+          <div class="invoice-document-title-wrap"><h1 class="invoice-document-title">Invoice</h1></div>
+          <div class="invoice-document-summary">
+            <div class="meta-box">
+              <div class="meta-row"><div class="meta-key">Invoice #</div><div>${textValue(invoiceData.invoice_number || invoiceData.invoice_id)}</div></div>
+              <div class="meta-row"><div class="meta-key">Invoice Date</div><div>${dateValue(invoiceData.issue_date || invoiceData.invoice_date)}</div></div>
+              <div class="meta-row"><div class="meta-key">Due Date</div><div>${dateValue(invoiceData.due_date)}</div></div>
+            </div>
           </div>
-        </div>
-
-      <section class="invoice-head">
-        <div><h2 class="invoice-label">INVOICE</h2><div class="invoice-subtitle">${textValue(customerName)} · ${textValue(invoiceData.invoice_number || invoiceData.invoice_id)}</div></div>
-        <div class="meta-box">
-          <div class="meta-row"><div class="meta-key">Invoice #</div><div>${textValue(invoiceData.invoice_number || invoiceData.invoice_id)}</div></div>
-          <div class="meta-row"><div class="meta-key">Invoice Date</div><div>${dateValue(invoiceData.issue_date || invoiceData.invoice_date)}</div></div>
-          <div class="meta-row"><div class="meta-key">Due Date</div><div>${dateValue(invoiceData.due_date)}</div></div>
-        </div>
-      </section>
+        </section>
       </header>
 
       <section class="info-grid">
@@ -1020,35 +1020,35 @@ const Invoices = {
           </div>
         </div>
         <div class="info-box">
-          <div class="info-head">INVOICE INFO</div>
+          <div class="info-head">CUSTOMER CONTACT</div>
           <div class="info-body">
-            <div><strong>Related to:</strong> ${textValue(invoiceData.account_reference || invoiceData.related_to || agreementLabel)}</div>
-            <div><strong>Payment Term:</strong> ${textValue(paymentTerm)}</div>
-            <div><strong>Customer Contact:</strong> ${textValue(invoiceData.customer_contact_name)}</div>
+            <div><strong>Contact:</strong> ${textValue(invoiceData.customer_contact_name)}</div>
+            <div><strong>Mobile:</strong> ${textValue(invoiceData.customer_contact_mobile)}</div>
             <div><strong>Email:</strong> ${textValue(invoiceData.customer_contact_email)}</div>
-            <div><strong>Agreement #:</strong> ${textValue(agreementLabel)}</div>
           </div>
         </div>
       </section>
 
       <section class="section">
-        <h2>Subscription Details</h2>
-        <div class="subhead">SaaS Details</div>
+        <h2>Annual SaaS Items</h2>
+        <div class="subhead">SaaS / Subscription Rows</div>
         <table>
           <thead>
             <tr>
-              <th style="width:16%">Location Name</th>
-              <th style="width:23%">Location Address</th>
-              <th style="width:12%">Start Date</th>
-              <th style="width:12%">End Date</th>
-              <th>Modules / Item Name</th>
-              <th style="width:14%">Price</th>
+              <th>Location</th>
+              <th>License</th>
+              <th style="width:15%">License Price / Year</th>
+              <th style="width:12%">License / Month</th>
+              <th style="width:13%">Service Start Date</th>
+              <th style="width:13%">Service End Date</th>
+              <th style="width:10%">Discount %</th>
+              <th style="width:12%">Total</th>
             </tr>
           </thead>
           <tbody>
             ${subscriptionRows}
             <tr class="total-row">
-              <td colspan="5" class="cell-right">Total SaaS</td>
+              <td colspan="7" class="cell-right">Total SaaS / Subscription</td>
               <td class="cell-right">${money(subtotalLocations)}</td>
             </tr>
           </tbody>
@@ -1056,24 +1056,23 @@ const Invoices = {
       </section>
 
       <section class="section">
-        <h2>One Time Fees Details</h2>
-        <div class="subhead">One Time Fees</div>
+        <h2>One Time Fee Items</h2>
+        <div class="subhead">One Time Fee Rows</div>
         <table>
           <thead>
             <tr>
-              <th style="width:14%">Location Name</th>
-              <th style="width:22%">Location Address</th>
-              <th style="width:17%">Service</th>
-              <th style="width:11%">Price</th>
-              <th style="width:9%">Discount %</th>
-              <th style="width:13%">Disc. Price</th>
-              <th style="width:14%">Price / Line Total</th>
+              <th>Location</th>
+              <th>Item / Service</th>
+              <th style="width:16%">Unit Price</th>
+              <th style="width:12%">Discount %</th>
+              <th style="width:10%">Qty</th>
+              <th style="width:16%">Total</th>
             </tr>
           </thead>
           <tbody>
             ${oneTimeRows}
             <tr class="total-row">
-              <td colspan="6" class="cell-right">Total One Time Fees</td>
+              <td colspan="5" class="cell-right">Total One Time Fees</td>
               <td class="cell-right">${money(subtotalOneTime)}</td>
             </tr>
           </tbody>
@@ -1091,6 +1090,7 @@ const Invoices = {
           <div class="totals-row"><span>Pending Amount</span><strong>${money(pendingAmount)}</strong></div>
           <div class="totals-row"><span>Payment State</span><strong>${textValue(paymentState)}</strong></div>
           <div class="totals-row"><span>Payment Conclusion</span><strong>${textValue(paymentConclusion)}</strong></div>
+          <div class="totals-row"><span>Amount in Words</span><strong>${textValue(amountInWords)}</strong></div>
         </div>
       </section>
 
@@ -1109,32 +1109,6 @@ const Invoices = {
           </thead>
           <tbody>${paymentScheduleHtml}</tbody>
         </table>
-      </section>
-
-      <section class="section">
-        <h2>Linked Receipts / Payment History</h2>
-        <table>
-          <thead>
-            <tr>
-              <th style="width:12%">Receipt ID</th>
-              <th style="width:13%">Receipt Number</th>
-              <th style="width:12%">Date</th>
-              <th style="width:12%">Amount Received</th>
-              <th style="width:12%">Payment Method</th>
-              <th style="width:14%">Payment Reference</th>
-              <th style="width:10%">Status</th>
-              <th>Notes</th>
-            </tr>
-          </thead>
-          <tbody>${receiptsRows}</tbody>
-        </table>
-      </section>
-
-      <section class="terms">
-        <div><span class="strong">Amount in Words:</span> ${textValue(amountInWords)}</div>
-        <div><span class="strong">Payment Term:</span> ${textValue(paymentTerm)}</div>
-        <div><span class="strong">Payment Note:</span> ${textValue(paymentConclusion)}</div>
-        <div><span class="strong">Additional Notes:</span> ${textValue(invoiceData.notes)}</div>
       </section>
 
       <section class="bank">
