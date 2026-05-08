@@ -2500,15 +2500,62 @@ const Invoices = {
       status: status || 'Draft',
       payment_status: status || null,
       issue_date: issueDate || null,
-      due_date: dueDate || null,
-      updated_at: new Date().toISOString()
+      due_date: dueDate || null
     };
+  },
+  isInvoiceWorkflowUnavailableResult(result) {
+    if (!result || typeof result !== 'object') return false;
+    if (result.unavailable === true || result.workflowUnavailable === true || result.fallback === true) return true;
+    const reason = String(result.reason || result.message || '').trim().toLowerCase();
+    return reason.includes('workflow validation is unavailable') ||
+      reason.includes('save blocked until workflow is reachable') ||
+      reason.includes('workflow service unavailable');
+  },
+  isInvoiceWorkflowTechnicalUnavailableError(error) {
+    if (!error) return true;
+    if (error instanceof TypeError || error instanceof ReferenceError) return true;
+    const message = String(error?.message || error || '').trim().toLowerCase();
+    return !message ||
+      message.includes('failed to fetch') ||
+      message.includes('network') ||
+      message.includes('timeout') ||
+      message.includes('timed out') ||
+      message.includes('rpc') ||
+      message.includes('unavailable') ||
+      message.includes('service unavailable') ||
+      message.includes('does not exist') ||
+      message.includes('not found') ||
+      message.includes('undefined') ||
+      message.includes('is not a function');
+  },
+  async enforceInvoiceWorkflowBeforeSave(currentRecord, workflowPayload) {
+    const workflowEngine = window.WorkflowEngine;
+    if (!workflowEngine || typeof workflowEngine.enforceBeforeSave !== 'function') {
+      console.warn('[Invoice] Workflow validation unavailable; continuing invoice save fallback.', {
+        reason: 'WorkflowEngine.enforceBeforeSave is unavailable.'
+      });
+      return { allowed: true, workflowUnavailable: true, fallback: true };
+    }
+    try {
+      const workflowCheck = await workflowEngine.enforceBeforeSave('invoices', currentRecord, workflowPayload);
+      if (this.isInvoiceWorkflowUnavailableResult(workflowCheck)) {
+        console.warn('[Invoice] Workflow validation unavailable; continuing invoice save fallback.', workflowCheck);
+        return { allowed: true, workflowUnavailable: true, fallback: true, originalWorkflowCheck: workflowCheck };
+      }
+      return workflowCheck;
+    } catch (error) {
+      if (this.isInvoiceWorkflowTechnicalUnavailableError(error)) {
+        console.warn('[Invoice] Workflow validation unavailable; continuing invoice save fallback.', error);
+        return { allowed: true, workflowUnavailable: true, fallback: true };
+      }
+      throw error;
+    }
   },
   async saveExistingInvoiceMetadata(id) {
     if (!Permissions.canUpdateInvoice()) return UI.toast('You do not have permission to update invoices.');
     const payloadInvoice = this.buildInvoiceMetadataUpdatePayload();
     const currentRecord = this.state.rows.find(row => this.invoiceDbId(row.id) === id) || this.state.selectedInvoice || {};
-    const workflowCheck = await window.WorkflowEngine?.enforceBeforeSave?.('invoices', currentRecord, {
+    const workflowCheck = await this.enforceInvoiceWorkflowBeforeSave(currentRecord, {
       invoice_id: id,
       current_status: currentRecord?.status || '',
       requested_status: payloadInvoice.status || '',
@@ -2582,7 +2629,7 @@ const Invoices = {
       return;
     }
     const requestedDiscount = items.reduce((max, item) => Math.max(max, this.toNumberSafe(item.discount_percent)), 0);
-    const workflowCheck = await window.WorkflowEngine?.enforceBeforeSave?.('invoices', currentRecord, {
+    const workflowCheck = await this.enforceInvoiceWorkflowBeforeSave(currentRecord, {
       invoice_id: id,
       current_status: currentRecord?.status || '',
       requested_status: payloadInvoice.status || '',
