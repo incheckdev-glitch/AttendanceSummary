@@ -1388,6 +1388,7 @@
       received_amount: numberOrNull(firstDefined(record, ['received_amount', 'receivedAmount', 'amount_paid'])),
       pending_amount: numberOrNull(firstDefined(record, ['pending_amount', 'pendingAmount'])),
       payment_state: trimOrNull(firstDefined(record, ['payment_state', 'paymentState'])),
+      payment_status: trimOrNull(firstDefined(record, ['payment_status', 'paymentStatus'])),
       payment_conclusion: trimOrNull(firstDefined(record, ['payment_conclusion', 'paymentConclusion'])),
       amount_in_words: trimOrNull(firstDefined(record, ['amount_in_words', 'amountInWords'])),
       status: trimOrNull(firstDefined(record, ['status'])),
