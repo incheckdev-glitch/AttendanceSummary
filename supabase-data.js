@@ -2247,7 +2247,7 @@
     sanitized.customer_signatory_title = sanitized.customer_official_signatory_title || sanitized.customer_signatory_title;
     sanitized.customer_sign_date = sanitized.customer_official_sign_date || sanitized.customer_sign_date;
     sanitized.provider_official_signatory_1_name = 'Simon Moujaly';
-    sanitized.provider_official_signatory_1_title = 'CFO';
+    sanitized.provider_official_signatory_1_title = 'Senior Financial Controller';
     sanitized.provider_official_signatory_2_name = 'Hanna Khattar';
     sanitized.provider_official_signatory_2_title = 'General Manager';
     if (!String(sanitized.provider_primary_signatory_name || '').trim()) sanitized.provider_primary_signatory_name = sanitized.provider_official_signatory_1_name;
