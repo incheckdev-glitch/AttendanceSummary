@@ -603,12 +603,10 @@ const Api = {
     });
     return response;
   },
-  async updateAgreement(agreementId, updates, items = []) {
-    const response = await this.requestWithSession('agreements', 'update', {
-      id: agreementId,
-      updates,
-      items
-    });
+  async updateAgreement(agreementId, updates, items = null) {
+    const payload = { id: agreementId, updates };
+    if (Array.isArray(items)) payload.items = items;
+    const response = await this.requestWithSession('agreements', 'update', payload);
     const status = String(updates?.status || updates?.agreement_status || '').trim().toLowerCase();
     const action = status.includes('signed') ? 'agreement_signed' : 'agreement_updated';
     await this.safeSendBusinessPwaPush({

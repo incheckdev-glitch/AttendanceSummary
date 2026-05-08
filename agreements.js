@@ -1250,19 +1250,18 @@ const Agreements = {
     <style>
       :root { color-scheme: light; }
       * { box-sizing: border-box; }
-      body { font-family: Inter, "Segoe UI", Arial, Helvetica, sans-serif; margin: 0; padding: 20px; color: #111827; background: #eef2f7; }
-      .doc-sheet { max-width: 1020px; margin: 0 auto; background: #fff; border: 1px solid #dbe3ed; padding: 28px 30px; border-radius: 8px; }
-      .doc-header { border-bottom: 1px solid #d8e1ec; padding-bottom: 18px; margin-bottom: 18px; }
-      .header-top-row { display: grid; grid-template-columns: 1fr 340px; gap: 20px; align-items: start; }
-      .brand-block { display: flex; align-items: center; gap: 14px; min-height: 54px; }
-      .brand-block .incheck360-doc-logo-wrap { float: none; margin: 0; width: 168px; max-width: 168px; }
-      .provider-chip { margin-left: auto; text-align: right; font-size: 12px; color: #4b5563; line-height: 1.35; }
-      .provider-chip .provider-name { font-size: 13px; color: #0f172a; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; }
-      .title-block { margin-top: 14px; }
-      .doc-label { margin: 0; font-size: 34px; font-weight: 800; letter-spacing: 0.04em; color: #0b214a; line-height: 1.05; }
-      .doc-subtitle { margin-top: 8px; font-size: 13px; color: #64748b; }
-      .doc-head { display: grid; grid-template-columns: 1fr 340px; gap: 20px; margin-top: 14px; align-items: start; }
-      .meta-box { border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; background: #fbfdff; }
+      body { font-family: Inter, "Segoe UI", Arial, Helvetica, sans-serif; margin: 0; padding: 12mm 0; color: #111827; background: #eef2f7; }
+      .doc-sheet { width: 210mm; min-height: 297mm; margin: 0 auto; background: #fff; border: 1px solid #dbe3ed; padding: 14mm 14mm 12mm; position: relative; overflow: hidden; box-sizing: border-box; }
+      .doc-sheet.is-draft::before { content: "DRAFT"; position: absolute; inset: 36% auto auto 50%; transform: translate(-50%, -50%) rotate(-24deg); font-size: 44mm; font-weight: 900; letter-spacing: 0.08em; color: rgba(15, 23, 42, 0.055); z-index: 0; pointer-events: none; white-space: nowrap; }
+      .doc-sheet > * { position: relative; z-index: 1; }
+      .doc-header { border-bottom: 1px solid #d8e1ec; padding-bottom: 8mm; margin-bottom: 6mm; }
+      .agreement-document-header { display: grid; grid-template-columns: 34mm 1fr 68mm; align-items: center; gap: 8mm; width: 100%; margin: 0; }
+      .agreement-document-logo { display: flex; align-items: center; justify-content: flex-start; min-height: 24mm; }
+      .agreement-document-logo .incheck360-doc-logo-wrap { float: none; margin: 0; width: 32mm; max-width: 32mm; height: 20mm; max-height: 20mm; position: static !important; transform: none !important; }
+      .agreement-document-title-wrap { display: flex; align-items: center; justify-content: center; min-height: 24mm; }
+      .doc-label { margin: 0; font-size: 24px; font-weight: 800; letter-spacing: 0.02em; color: #0b214a; line-height: 1; text-align: center; }
+      .agreement-document-summary { display: flex; align-items: center; justify-content: flex-end; min-height: 24mm; }
+      .meta-box { width: 100%; border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; background: #fbfdff; }
       .meta-row { display: grid; grid-template-columns: 130px 1fr; border-bottom: 1px solid #e3eaf3; }
       .meta-row:last-child { border-bottom: 0; }
       .meta-row > div { padding: 8px 11px; font-size: 12.5px; }
@@ -1292,32 +1291,24 @@ const Agreements = {
       .signature-head { background: #f8fbff; border-bottom: 1px solid #e3eaf3; padding: 8px 10px; font-size: 11px; letter-spacing: 0.08em; font-weight: 700; color: #1e3a5f; }
       .signature-body { padding: 11px; font-size: 12px; line-height: 1.5; }
       .footer-note { margin-top: 16px; font-size: 11px; color: #64748b; border-top: 1px solid #e3eaf3; padding-top: 10px; text-align: center; }
-      @media print { body { margin: 0; padding: 0; background: #fff; } .doc-sheet { border: 0; max-width: none; } }
+      @page { size: A4; margin: 0; }
+      @media print { body { margin: 0; padding: 0; background: #fff; } .doc-sheet { width: 210mm; min-height: 297mm; margin: 0; border: 0; box-shadow: none; page-break-after: always; } }
     </style>
   </head>
   <body>
-    <div class="doc-sheet">
+    <div class="doc-sheet ${this.normalizeText(agreementData.status) === 'draft' ? 'is-draft' : ''}">
       <header class="doc-header">
-        <div class="header-top-row">
-          <div class="brand-block"><div data-incheck360-doc-logo-slot></div></div>
-          <div class="provider-chip">
-            <div class="provider-name">${textValue(agreementData.provider_name || agreementData.provider_legal_name || 'InCheck360')}</div>
-            <div>${textValue(agreementData.provider_contact_email || agreementData.provider_contact_mobile)}</div>
-            <div>${textValue(agreementData.provider_address)}</div>
+        <section class="agreement-document-header">
+          <div class="agreement-document-logo"><div data-incheck360-doc-logo-slot></div></div>
+          <div class="agreement-document-title-wrap"><h2 class="doc-label">Agreement</h2></div>
+          <div class="agreement-document-summary">
+            <div class="meta-box">
+              <div class="meta-row"><div class="meta-key">Agreement ID</div><div>${textValue(agreementData.agreement_id)}</div></div>
+              <div class="meta-row"><div class="meta-key">Agreement #</div><div>${textValue(agreementData.agreement_number)}</div></div>
+              <div class="meta-row"><div class="meta-key">Agreement Date</div><div>${dateValue(agreementData.agreement_date)}</div></div>
+              <div class="meta-row"><div class="meta-key">Effective Date</div><div>${dateValue(agreementData.effective_date)}</div></div>
+            </div>
           </div>
-        </div>
-        <section class="doc-head">
-        <div class="title-block">
-          <h2 class="doc-label">SERVICE AGREEMENT</h2>
-          <div class="doc-subtitle">${textValue(agreementData.customer_name || agreementData.customer_legal_name)} · ${textValue(agreementData.agreement_title || agreementData.agreement_number || agreementData.agreement_id)}</div>
-        </div>
-        <div class="meta-box">
-          <div class="meta-row"><div class="meta-key">Agreement ID</div><div>${textValue(agreementData.agreement_id)}</div></div>
-          <div class="meta-row"><div class="meta-key">Agreement #</div><div>${textValue(agreementData.agreement_number)}</div></div>
-          <div class="meta-row"><div class="meta-key">Agreement Date</div><div>${dateValue(agreementData.agreement_date)}</div></div>
-          <div class="meta-row"><div class="meta-key">Effective Date</div><div>${dateValue(agreementData.effective_date)}</div></div>
-          <div class="meta-row"><div class="meta-key">Status</div><div>${textValue(agreementData.status || 'Draft')}</div></div>
-        </div>
         </section>
       </header>
 
@@ -1344,25 +1335,16 @@ const Agreements = {
         </div>
       </section>
 
-      <section class="info-grid" style="margin-top:14px;">
-        <div class="info-box">
+      <section class="info-grid" style="margin-top:14px;grid-template-columns:1fr;">
+        <div class="info-box" style="min-height:auto;">
           <div class="info-head">SERVICE & BILLING TERMS</div>
-          <div class="info-body">
+          <div class="info-body" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 18px;">
             <div><strong>Service Start Date:</strong> ${dateValue(agreementData.service_start_date)}</div>
             <div><strong>Service End Date:</strong> ${dateValue(agreementData.service_end_date)}</div>
             <div><strong>Contract Term:</strong> ${textValue(agreementData.contract_term || agreementData.agreement_length)}</div>
             <div><strong>Billing Frequency:</strong> ${textValue(agreementData.billing_frequency)}</div>
             <div><strong>Payment Term:</strong> ${textValue(agreementData.payment_term)}</div>
             <div><strong>PO Number:</strong> ${textValue(agreementData.po_number)}</div>
-          </div>
-        </div>
-        <div class="info-box">
-          <div class="info-head">LEGAL & CONTROL DETAILS</div>
-          <div class="info-body">
-            <div><strong>Customer Legal Name:</strong> ${textValue(agreementData.customer_legal_name || agreementData.customer_name)}</div>
-            <div><strong>Provider Legal Name:</strong> ${textValue(agreementData.provider_legal_name || agreementData.provider_name)}</div>
-            <div><strong>Customer Legal Address:</strong> ${textValue(agreementData.customer_address)}</div>
-            <div><strong>Provider Legal Address:</strong> ${textValue(agreementData.provider_address)}</div>
             <div><strong>Currency:</strong> ${textValue(currency)}</div>
           </div>
         </div>
@@ -1458,7 +1440,7 @@ const Agreements = {
         </div>
       </section>
 
-      <footer class="footer-note">Agreement preview is print-ready and aligned to invoice document style.</footer>
+      <footer class="footer-note">This is an auto-generated system document and is valid without a manual signature unless otherwise required.</footer>
     </div>
   </body>
 </html>`;
@@ -1900,10 +1882,15 @@ const Agreements = {
   },
   renderItemRows(items = []) {
     const grouped = this.groupedItems(items);
+    const editLocked = this.isAgreementEditMode();
+    const lockAttr = editLocked ? ' disabled aria-disabled="true"' : '';
+    const removeCell = (section, index) => editLocked
+      ? '<td class="muted cell-center">Locked</td>'
+      : `<td><button type="button" class="btn ghost sm" data-item-remove="${section}" data-item-index="${index}">Remove</button></td>`;
     const rowHtml = (section, item, index) => {
       const payload = U.escapeAttr(JSON.stringify(item || {}));
       if (section === 'capability') {
-        return `<tr data-item-row="capability" data-item-payload="${payload}"><td><input class="input" data-item-field="capability_name" value="${U.escapeAttr(item.capability_name || '')}" /></td><td><input class="input" data-item-field="capability_value" value="${U.escapeAttr(item.capability_value || '')}" /></td><td><input class="input" data-item-field="notes" value="${U.escapeAttr(item.notes || '')}" /></td><td><button type="button" class="btn ghost sm" data-item-remove="capability" data-item-index="${index}">Remove</button></td></tr>`;
+        return `<tr data-item-row="capability" data-item-payload="${payload}"><td><input class="input" data-item-field="capability_name" value="${U.escapeAttr(item.capability_name || '')}"${lockAttr} /></td><td><input class="input" data-item-field="capability_value" value="${U.escapeAttr(item.capability_value || '')}" /></td><td><input class="input" data-item-field="notes" value="${U.escapeAttr(item.notes || '')}" /></td><td><button type="button" class="btn ghost sm" data-item-remove="capability" data-item-index="${index}">Remove</button></td></tr>`;
       }
       const rowDefaults = section === 'annual_saas'
         ? { ...item, quantity: item.quantity || 12, service_start_date: item.service_start_date || this.getDefaultAnnualServiceStartDate() }
@@ -1911,22 +1898,22 @@ const Agreements = {
       if (section === 'annual_saas' && !rowDefaults.service_end_date) rowDefaults.service_end_date = this.calculateServiceEndDate(rowDefaults.service_start_date, rowDefaults.quantity);
       const computed = this.computeCommercialRow({ ...rowDefaults, section });
       const serviceDateCells = section === 'annual_saas'
-        ? `<td><input class="input" type="date" data-item-field="service_start_date" value="${U.escapeAttr(computed.service_start_date || '')}" /></td>
-      <td><input class="input" type="date" data-item-field="service_end_date" value="${U.escapeAttr(computed.service_end_date || '')}" /></td>`
+        ? `<td><input class="input" type="date" data-item-field="service_start_date" value="${U.escapeAttr(computed.service_start_date || '')}"${lockAttr} /></td>
+      <td><input class="input" type="date" data-item-field="service_end_date" value="${U.escapeAttr(computed.service_end_date || '')}"${lockAttr} /></td>`
         : '';
-      const discountCell = `<td><input class="input" data-item-field="discount_percent" type="number" min="0" max="100" step="0.01" value="${U.escapeAttr(computed.discount_percent ?? '')}" /></td>`;
-      const quantityCell = `<td><input class="input" data-item-field="quantity" type="number" min="0.01" ${section === 'annual_saas' ? 'max="12"' : ''} step="0.01" value="${U.escapeAttr(computed.quantity ?? '')}" /></td>`;
+      const discountCell = `<td><input class="input" data-item-field="discount_percent" type="number" min="0" max="100" step="0.01" value="${U.escapeAttr(computed.discount_percent ?? '')}"${lockAttr} /></td>`;
+      const quantityCell = `<td><input class="input" data-item-field="quantity" type="number" min="0.01" ${section === 'annual_saas' ? 'max="12"' : ''} step="0.01" value="${U.escapeAttr(computed.quantity ?? '')}"${lockAttr} /></td>`;
       const commercialCells = section === 'annual_saas'
         ? `${quantityCell}${serviceDateCells}${discountCell}`
         : `${discountCell}${quantityCell}`;
       return `<tr data-item-row="${section}" data-item-payload="${payload}">
-      <td><input class="input" data-item-field="location_name" value="${U.escapeAttr(computed.location_name || '')}" /></td>
-      <td><input class="input" data-item-field="location_address" value="${U.escapeAttr(computed.location_address || '')}" /></td>
-      <td><input class="input" data-item-field="item_name" value="${U.escapeAttr(computed.item_name || '')}" /></td>
-      <td><input class="input" data-item-field="unit_price" type="number" step="0.01" value="${U.escapeAttr(computed.unit_price ?? '')}" /></td>
+      <td><input class="input" data-item-field="location_name" value="${U.escapeAttr(computed.location_name || '')}"${lockAttr} /></td>
+      <td><input class="input" data-item-field="location_address" value="${U.escapeAttr(computed.location_address || '')}"${lockAttr} /></td>
+      <td><input class="input" data-item-field="item_name" value="${U.escapeAttr(computed.item_name || '')}"${lockAttr} /></td>
+      <td><input class="input" data-item-field="unit_price" type="number" step="0.01" value="${U.escapeAttr(computed.unit_price ?? '')}"${lockAttr} /></td>
       ${commercialCells}
-      <td><input class="input" data-item-field="line_total" type="number" step="0.01" value="${U.escapeAttr(computed.line_total ?? '')}" readonly /></td>
-      <td><button type="button" class="btn ghost sm" data-item-remove="${section}" data-item-index="${index}">Remove</button></td>
+      <td><input class="input" data-item-field="line_total" type="number" step="0.01" value="${U.escapeAttr(computed.line_total ?? '')}" readonly${lockAttr} /></td>
+      ${removeCell(section, index)}
       </tr>`;
     };
     if (E.agreementAnnualItemsTbody) E.agreementAnnualItemsTbody.innerHTML = grouped.annual_saas.map((item, idx) => rowHtml('annual_saas', item, idx)).join('');
@@ -1995,17 +1982,93 @@ const Agreements = {
       if ('disabled' in el && !/agreementForm(Delete|Save)Btn/.test(el.id)) el.disabled = readOnly;
     });
   },
+  isAgreementEditMode() {
+    return String(E.agreementForm?.dataset?.mode || '').trim() === 'edit'
+      || !!String(E.agreementForm?.dataset?.id || this.state.currentAgreementId || '').trim();
+  },
+  isAgreementEditableInEditMode(el) {
+    if (!el) return false;
+    if (el.id === 'agreementFormStatus') return true;
+    if (el.closest?.('.signatory-section')) return true;
+    return false;
+  },
+  applyAgreementEditLocks() {
+    if (!E.agreementForm) return;
+    const isEditMode = this.isAgreementEditMode();
+    const readOnlyMode = String(E.agreementForm?.dataset?.readOnly || '').trim() === 'true';
+    const lockItems = isEditMode || readOnlyMode;
+    E.agreementForm.classList.toggle('agreement-edit-locked', lockItems);
+    if (E.agreementAddAnnualRowBtn) {
+      E.agreementAddAnnualRowBtn.style.display = lockItems ? 'none' : '';
+      E.agreementAddAnnualRowBtn.disabled = lockItems;
+    }
+    if (E.agreementAddOneTimeRowBtn) {
+      E.agreementAddOneTimeRowBtn.style.display = lockItems ? 'none' : '';
+      E.agreementAddOneTimeRowBtn.disabled = lockItems;
+    }
+    E.agreementForm.querySelectorAll('input, select, textarea').forEach(el => {
+      const allowed = !readOnlyMode && (!isEditMode || this.isAgreementEditableInEditMode(el));
+      const isHidden = String(el.type || '').toLowerCase() === 'hidden';
+      if (isHidden) return;
+      if (!allowed) {
+        el.disabled = true;
+        el.setAttribute('aria-disabled', 'true');
+        el.classList.add('locked-field');
+        return;
+      }
+      el.disabled = false;
+      el.removeAttribute('aria-disabled');
+      if (!el.classList.contains('readonly-field')) el.classList.remove('locked-field');
+      if (el.classList.contains('readonly-field') || el.hasAttribute('readonly')) {
+        el.readOnly = true;
+        el.setAttribute('aria-readonly', 'true');
+      }
+    });
+  },
+  buildAgreementEditableUpdate(agreement = {}) {
+    const allowedFields = [
+      'status',
+      'customer_official_signatory_name',
+      'customer_official_signatory_title',
+      'customer_official_sign_date',
+      'customer_signatory_name',
+      'customer_signatory_title',
+      'customer_sign_date',
+      'provider_official_signatory_1_name',
+      'provider_official_signatory_1_title',
+      'provider_official_signatory_1_sign_date',
+      'provider_official_signatory_2_name',
+      'provider_official_signatory_2_title',
+      'provider_official_signatory_2_sign_date',
+      'provider_signatory_name_primary',
+      'provider_signatory_title_primary',
+      'provider_signatory_name_secondary',
+      'provider_signatory_title_secondary',
+      'provider_sign_date',
+      'provider_signatory_name',
+      'provider_signatory_title',
+      'gm_signed',
+      'financial_controller_signed',
+      'signed_date'
+    ];
+    return allowedFields.reduce((out, field) => {
+      if (Object.prototype.hasOwnProperty.call(agreement, field)) out[field] = agreement[field];
+      return out;
+    }, {});
+  },
   openAgreementForm(agreement = this.emptyAgreement(), items = [], { readOnly = false } = {}) {
     if (!E.agreementFormModal || !E.agreementForm) return;
+    E.agreementForm.dataset.id = agreement.id || '';
+    E.agreementForm.dataset.mode = agreement.id ? 'edit' : 'create';
+    E.agreementForm.dataset.source = agreement.id ? '' : String(agreement.proposal_id || '').trim() ? 'proposal' : '';
+    E.agreementForm.dataset.proposalUuid = String(agreement.proposal_id || '').trim();
+    E.agreementForm.dataset.readOnly = readOnly ? 'true' : 'false';
+    this.state.currentAgreementId = String(agreement.id || '').trim();
     this.assignFormValues(agreement);
     this.initializeProviderSignDateDefaultTracking(agreement);
     this.renderItemRows(items);
     this.state.selectedAgreementCompanyForVerification = this.hasCompanyVerificationFields(agreement) ? agreement : null;
     this.updateAgreementCompanyVerificationUi(this.state.selectedAgreementCompanyForVerification);
-    E.agreementForm.dataset.id = agreement.id || '';
-    E.agreementForm.dataset.mode = agreement.id ? 'edit' : 'create';
-    E.agreementForm.dataset.source = agreement.id ? '' : String(agreement.proposal_id || '').trim() ? 'proposal' : '';
-    E.agreementForm.dataset.proposalUuid = String(agreement.proposal_id || '').trim();
     if (E.agreementFormTitle) E.agreementFormTitle.textContent = agreement.id ? (readOnly ? 'View Agreement' : 'Edit Agreement') : 'Create Agreement';
     if (E.agreementFormDeleteBtn) E.agreementFormDeleteBtn.style.display = !readOnly && agreement.id && Permissions.canDeleteAgreement() ? '' : 'none';
     if (E.agreementFormSaveBtn) {
@@ -2014,10 +2077,10 @@ const Agreements = {
     }
     this.setFormReadOnly(readOnly);
     this.applyIdentityFieldLocks();
-    this.state.currentAgreementId = String(agreement.id || '').trim();
+    this.applyAgreementEditLocks();
     E.agreementFormModal.classList.add('open');
     E.agreementFormModal.setAttribute('aria-hidden', 'false');
-    window.setTimeout(() => window.CrmCompanyContactSelectors?.initializeCompanyContactSelectorsForAgreement?.(), 0);
+    window.setTimeout(() => { window.CrmCompanyContactSelectors?.initializeCompanyContactSelectorsForAgreement?.(); this.applyAgreementEditLocks(); }, 0);
     if (window.setAppHashRoute && window.buildRecordHashRoute) setAppHashRoute(buildRecordHashRoute('agreements', agreement || {}));
   },
   closeAgreementForm() {
@@ -2029,6 +2092,8 @@ const Agreements = {
     E.agreementForm.dataset.id = '';
     E.agreementForm.dataset.source = '';
     E.agreementForm.dataset.proposalUuid = '';
+    E.agreementForm.dataset.readOnly = '';
+    E.agreementForm.classList.remove('agreement-edit-locked');
     this.state.currentAgreementId = '';
     this.state.selectedAgreementCompanyForVerification = null;
     this.updateAgreementCompanyVerificationUi(null);
@@ -2051,12 +2116,20 @@ const Agreements = {
     return true;
   },
   addRow(section) {
+    if (this.isAgreementEditMode()) {
+      UI.toast('Agreement items are locked after agreement creation.');
+      return;
+    }
     const items = this.collectItems();
     if (section === 'capability') return;
     items.push({ section, location_name: '', location_address: '', service_start_date: section === 'annual_saas' ? this.getDefaultAnnualServiceStartDate() : '', service_end_date: section === 'annual_saas' ? this.calculateServiceEndDate(this.getDefaultAnnualServiceStartDate(), 12) : '', item_name: '', unit_price: 0, discount_percent: 0, quantity: section === 'annual_saas' ? 12 : 1, discounted_unit_price: 0, line_total: 0 });
     this.renderItemRows(items);
   },
   removeRow(section, index) {
+    if (this.isAgreementEditMode()) {
+      UI.toast('Agreement items are locked after agreement creation.');
+      return;
+    }
     const grouped = this.groupedItems(this.collectItems());
     grouped[section] = grouped[section].filter((_, idx) => idx !== index);
     this.renderItemRows([...grouped.annual_saas, ...grouped.one_time_fee]);
@@ -2148,7 +2221,7 @@ const Agreements = {
     const source = String(E.agreementForm?.dataset.source || '').trim();
     const formProposalUuid = String(E.agreementForm?.dataset.proposalUuid || '').trim();
     const { agreement, items } = this.collectFormValues();
-    if (!this.validateCommercialItems(items)) return;
+    if (!id && !this.validateCommercialItems(items)) return;
     const isDirectCreate = !id && source !== 'create_from_proposal' && !String(formProposalUuid || agreement.proposal_id || '').trim();
     const provider = this.getSignedInUserForAgreement();
     agreement.billing_frequency = 'Annual';
@@ -2198,8 +2271,9 @@ const Agreements = {
       agreement.agreement_id = withBusinessIds.agreement_id;
       agreement.agreement_number = withBusinessIds.agreement_number;
     }
-    const preparedItems = this.hydrateItemIdsForSave(items, { isCreate: !id });
+    const preparedItems = id ? null : this.hydrateItemIdsForSave(items, { isCreate: true });
     const currentRecord = this.state.rows.find(row => String(row.id || '') === id) || {};
+    const agreementUpdatePayload = id ? this.buildAgreementEditableUpdate(agreement) : agreement;
     const requestedDiscount = items.reduce((max, item) => Math.max(max, this.toNumberSafe(item.discount_percent)), 0);
     const normalizeStatus = value => String(value || '').trim().toLowerCase();
     const currentStatus = String(currentRecord?.status || '').trim();
@@ -2218,7 +2292,7 @@ const Agreements = {
         current_status: currentStatus,
         requested_status: agreement.status || '',
         discount_percent: requestedDiscount,
-        requested_changes: { agreement, items: preparedItems }
+        requested_changes: { agreement: agreementUpdatePayload, items: preparedItems || [] }
       });
       if (workflowCheck && !workflowCheck.allowed) {
         if (workflowCheck.pendingApproval === true && workflowCheck.approvalCreated === true) {
@@ -2234,12 +2308,12 @@ const Agreements = {
     console.time('entity-save');
     try {
       const saveResponse = id
-        ? await this.updateAgreement(id, agreement, preparedItems)
+        ? await this.updateAgreement(id, agreementUpdatePayload, null)
         : await this.createAgreement(agreement, preparedItems);
       const persistedAgreement = this.extractAgreementAndItems(saveResponse, id).agreement;
       const persistedAgreementUuid = String(persistedAgreement?.id || id || '').trim();
       this.refreshCompanyLifecycleStatus({ ...agreement, ...persistedAgreement });
-      this.setCachedDetail(persistedAgreementUuid, persistedAgreement, preparedItems);
+      this.setCachedDetail(persistedAgreementUuid, persistedAgreement, preparedItems || items);
       try {
         await this.syncSignedAgreementToClient({ ...agreement, ...persistedAgreement }, String(persistedAgreement?.id || persistedAgreement?.agreement_id || '').trim());
       } catch (clientSyncError) {
