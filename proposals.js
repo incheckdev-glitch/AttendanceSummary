@@ -124,6 +124,11 @@ const Proposals = {
     const section = String(safe.section || safe.item_section || safe.type || '').trim().toLowerCase();
     const defaultQuantity = section === 'annual_saas' ? 12 : 1;
     const quantity = Math.max(0, this.toNumberSafe(safe.quantity ?? safe.qty) || (safe.quantity === 0 ? 0 : defaultQuantity));
+    const serviceStartDate = this.normalizeDateInputValue(safe.service_start_date ?? safe.serviceStartDate);
+    const savedServiceEndDate = this.normalizeDateInputValue(safe.service_end_date ?? safe.serviceEndDate);
+    const serviceEndDate = savedServiceEndDate || (section === 'annual_saas'
+      ? this.calculateServiceEndDate(serviceStartDate, quantity)
+      : '');
     const discountPercent = this.getNormalizedItemDiscountPercent(safe);
     const computed = this.computeCommercialRow({
       section,
@@ -137,6 +142,8 @@ const Proposals = {
       discountPercent,
       unit_price: unitPrice,
       quantity,
+      service_start_date: serviceStartDate,
+      service_end_date: serviceEndDate,
       discounted_unit_price: this.toNumberSafe(
         safe.discounted_unit_price ?? safe.discountedUnitPrice ?? computed.discounted_unit_price
       ),
@@ -167,22 +174,44 @@ const Proposals = {
     if (Number.isNaN(parsed.getTime())) return raw;
     return parsed.toISOString().slice(0, 10);
   },
-  addMonthsMinusOneDay(startValue, monthsValue) {
-    const start = this.normalizeDateInputValue(startValue);
-    const months = Math.max(1, this.toNumberSafe(monthsValue));
-    if (!start || !months) return '';
-    const [year, month, day] = start.split('-').map(Number);
-    const date = new Date(year, month - 1, day);
-    if (Number.isNaN(date.getTime())) return '';
-    date.setMonth(date.getMonth() + months);
-    date.setDate(date.getDate() - 1);
-    const endYear = date.getFullYear();
-    const endMonth = String(date.getMonth() + 1).padStart(2, '0');
-    const endDay = String(date.getDate()).padStart(2, '0');
+  calculateServiceEndDate(startDateValue, monthsValue) {
+    const startValue = this.normalizeDateInputValue(startDateValue);
+    if (!startValue) return '';
+
+    const months = Number(monthsValue || 0);
+    if (!Number.isFinite(months) || months <= 0) return '';
+
+    const start = new Date(`${startValue}T00:00:00`);
+    if (Number.isNaN(start.getTime())) return '';
+
+    const end = new Date(start);
+    end.setMonth(end.getMonth() + months);
+    end.setDate(end.getDate() - 1);
+
+    const endYear = end.getFullYear();
+    const endMonth = String(end.getMonth() + 1).padStart(2, '0');
+    const endDay = String(end.getDate()).padStart(2, '0');
     return `${endYear}-${endMonth}-${endDay}`;
+  },
+  addMonthsMinusOneDay(startValue, monthsValue) {
+    return this.calculateServiceEndDate(startValue, monthsValue);
   },
   getDefaultAnnualServiceStartDate() {
     return this.normalizeDateInputValue(E.proposalFormProposalDate?.value || E.proposalFormServiceStartDate?.value) || this.getTodayDateInputValue();
+  },
+  syncEmptyAnnualServiceStartDates() {
+    const defaultStartDate = this.getDefaultAnnualServiceStartDate();
+    if (!defaultStartDate || !E.proposalAnnualItemsTbody) return;
+    E.proposalAnnualItemsTbody.querySelectorAll('tr[data-item-row="annual_saas"]').forEach(tr => {
+      const startInput = tr.querySelector('[data-item-field="service_start_date"]');
+      if (!startInput || startInput.value) return;
+      startInput.value = defaultStartDate;
+      const endInput = tr.querySelector('[data-item-field="service_end_date"]');
+      const monthsInput = tr.querySelector('[data-item-field="quantity"]');
+      if (endInput && !endInput.value) {
+        endInput.value = this.calculateServiceEndDate(defaultStartDate, monthsInput?.value);
+      }
+    });
   },
   normalizeDiscount(value) {
     const raw = this.toNumberSafe(value);
@@ -2570,7 +2599,10 @@ const Proposals = {
         const discountPercent = this.normalizeDiscountPercentValue(get('discount_percent'));
         const quantity = Math.max(0, this.toNumberSafe(get('quantity')) || (section === 'annual_saas' ? 12 : 1));
         const serviceStartDate = this.normalizeDateInputValue(get('service_start_date'));
-        const serviceEndDate = this.normalizeDateInputValue(get('service_end_date'));
+        let serviceEndDate = this.normalizeDateInputValue(get('service_end_date'));
+        if (section === 'annual_saas' && !serviceEndDate) {
+          serviceEndDate = this.calculateServiceEndDate(serviceStartDate, quantity);
+        }
         const computed = this.computeCommercialRow({ section, unit_price: unitPrice, discount_percent: discountPercent, quantity });
         if (!get('item_name') && !get('location_name') && !unitPrice && !quantity) return null;
         return {
@@ -3265,7 +3297,7 @@ const Proposals = {
       discount_percent: 0,
       quantity: section === 'annual_saas' ? 12 : 1,
       service_start_date: section === 'annual_saas' ? this.getDefaultAnnualServiceStartDate() : '',
-      service_end_date: section === 'annual_saas' ? this.addMonthsMinusOneDay(this.getDefaultAnnualServiceStartDate(), 12) : '',
+      service_end_date: section === 'annual_saas' ? this.calculateServiceEndDate(this.getDefaultAnnualServiceStartDate(), 12) : '',
       discounted_unit_price: 0,
       line_total: 0
     });
@@ -3298,8 +3330,12 @@ const Proposals = {
     bindState(E.proposalsStatusFilter, 'status');
 
     if (E.proposalFormProposalDate) {
-      E.proposalFormProposalDate.addEventListener('change', () => this.syncValidUntilFromProposalDate());
-      E.proposalFormProposalDate.addEventListener('input', () => this.syncValidUntilFromProposalDate());
+      const syncProposalDateDependents = () => {
+        this.syncValidUntilFromProposalDate();
+        this.syncEmptyAnnualServiceStartDates();
+      };
+      E.proposalFormProposalDate.addEventListener('change', syncProposalDateDependents);
+      E.proposalFormProposalDate.addEventListener('input', syncProposalDateDependents);
     }
     if (E.proposalFormValidUntil) {
       E.proposalFormValidUntil.readOnly = true;
@@ -3402,7 +3438,7 @@ const Proposals = {
               const get = key => tr.querySelector(`[data-item-field="${key}"]`)?.value ?? '';
               if (section === 'annual_saas' && (field === 'quantity' || field === 'service_start_date')) {
                 const endInput = tr.querySelector('[data-item-field="service_end_date"]');
-                if (endInput) endInput.value = this.addMonthsMinusOneDay(get('service_start_date'), get('quantity'));
+                if (endInput) endInput.value = this.calculateServiceEndDate(get('service_start_date'), get('quantity'));
               }
               const computed = this.computeCommercialRow({
                 section,
@@ -3419,12 +3455,16 @@ const Proposals = {
       });
       E.proposalForm.addEventListener('change', event => {
         const field = event.target?.getAttribute('data-item-field');
-        if (field !== 'item_name') return;
+        if (!field) return;
         const tr = event.target.closest('tr[data-item-row]');
         const section = tr?.getAttribute('data-item-row');
         if (!tr || !section || section === 'capability') return;
-        this.applyCatalogSelectionToRow(tr, section, { fromUserInput: true });
+        if (field === 'item_name') this.applyCatalogSelectionToRow(tr, section, { fromUserInput: true });
         const get = key => tr.querySelector(`[data-item-field="${key}"]`)?.value ?? '';
+        if (section === 'annual_saas' && (field === 'quantity' || field === 'service_start_date')) {
+          const endInput = tr.querySelector('[data-item-field="service_end_date"]');
+          if (endInput) endInput.value = this.calculateServiceEndDate(get('service_start_date'), get('quantity'));
+        }
         const computed = this.computeCommercialRow({
           section,
           unit_price: get('unit_price'),
