@@ -116,6 +116,56 @@ const Receipts = {
   formatMoney(value) {
     return this.toNumberSafe(value).toLocaleString(undefined, { maximumFractionDigits: 2 });
   },
+  isWorkflowValidationUnavailable(value, includeTechnicalErrors = false) {
+    const text = String(value?.message || value?.reason || value || '').toLowerCase();
+    const unavailableResult = Boolean(
+      value?.unavailable === true ||
+      value?.fallback === true ||
+      text.includes('workflow validation is unavailable') ||
+      text.includes('save blocked until workflow is reachable') ||
+      text.includes('workflow service unavailable')
+    );
+    if (unavailableResult || !includeTechnicalErrors) return unavailableResult;
+    return Boolean(
+      text.includes('failed to fetch') ||
+      text.includes('network error') ||
+      text.includes('rpc') ||
+      text.includes('service unavailable') ||
+      text.includes('is not a function') ||
+      text.includes('cannot read') ||
+      text.includes('undefined is not')
+    );
+  },
+  async validateReceiptWorkflowOrFallback(currentRecord = {}, requestedChanges = {}) {
+    try {
+      const workflowEngine = window.WorkflowEngine;
+      if (!workflowEngine || typeof workflowEngine.enforceBeforeSave !== 'function') {
+        console.warn('[Receipt] Workflow validation unavailable; continuing receipt save fallback.', {
+          reason: 'Workflow helper is missing or enforceBeforeSave is not available.'
+        });
+        return { allowed: true, unavailable: true, fallback: true };
+      }
+
+      const workflowCheck = await workflowEngine.enforceBeforeSave('receipts', currentRecord, requestedChanges);
+      if (this.isWorkflowValidationUnavailable(workflowCheck)) {
+        console.warn('[Receipt] Workflow validation unavailable; continuing receipt save fallback.', workflowCheck);
+        return { allowed: true, unavailable: true, fallback: true };
+      }
+
+      return workflowCheck;
+    } catch (error) {
+      if (this.isWorkflowValidationUnavailable(error, true)) {
+        console.warn('[Receipt] Workflow validation unavailable; continuing receipt save fallback.', error);
+        return { allowed: true, unavailable: true, fallback: true };
+      }
+      return {
+        allowed: false,
+        pendingApproval: false,
+        approvalCreated: false,
+        reason: error?.message || 'Workflow rejected this receipt change.'
+      };
+    }
+  },
   normalizeText(value) {
     return String(value ?? '').trim().toLowerCase();
   },
@@ -1477,7 +1527,7 @@ const Receipts = {
       return;
     }
     const currentRecord = this.state.rows.find(row => this.receiptDbId(row.id) === id) || {};
-    const workflowCheck = await window.WorkflowEngine?.enforceBeforeSave?.('receipts', currentRecord, {
+    const workflowCheck = await this.validateReceiptWorkflowOrFallback(currentRecord, {
       receipt_id: id,
       current_status: currentRecord?.status || '',
       requested_status: updates.status || '',
