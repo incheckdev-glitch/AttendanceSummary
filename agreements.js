@@ -520,8 +520,14 @@ const Agreements = {
     return this.normalizeProposalStatusForConversion(proposal) === 'accepted';
   },
   isCompanyVerified(company = {}) {
-    return Boolean(company?.documents_verified || company?.documentsVerified)
-      && String(company?.documents_verification_status || company?.documentsVerificationStatus || '').trim().toLowerCase() === 'verified';
+    const verified = company?.documents_verified === true || company?.documentsVerified === true;
+    const status = String(
+      company?.documents_verification_status ||
+      company?.documentsVerificationStatus ||
+      ''
+    ).trim().toLowerCase();
+
+    return verified && status === 'verified';
   },
   getCompanyVerificationBadgeLabel(company = {}) {
     if (!company || typeof company !== 'object' || !Object.keys(company).length) return '';
@@ -576,13 +582,6 @@ const Agreements = {
           </div>
         </div>`);
       modal = document.getElementById('agreementBlockingDialog');
-      const close = () => {
-        modal.style.display = 'none';
-        modal.setAttribute('aria-hidden', 'true');
-      };
-      document.getElementById('agreementBlockingDialogClose').onclick = close;
-      document.getElementById('agreementBlockingDialogOk').onclick = close;
-      modal.addEventListener('click', event => { if (event.target === modal) close(); });
     }
     const titleEl = document.getElementById('agreementBlockingDialogTitle');
     const messageEl = document.getElementById('agreementBlockingDialogMessage');
@@ -590,6 +589,22 @@ const Agreements = {
     if (messageEl) messageEl.innerHTML = safeMessage;
     modal.style.display = 'flex';
     modal.setAttribute('aria-hidden', 'false');
+    return new Promise(resolve => {
+      let resolved = false;
+      const close = () => {
+        modal.style.display = 'none';
+        modal.setAttribute('aria-hidden', 'true');
+        if (!resolved) {
+          resolved = true;
+          resolve(false);
+        }
+      };
+      const closeBtn = document.getElementById('agreementBlockingDialogClose');
+      const okBtn = document.getElementById('agreementBlockingDialogOk');
+      if (closeBtn) closeBtn.onclick = close;
+      if (okBtn) okBtn.onclick = close;
+      modal.onclick = event => { if (event.target === modal) close(); };
+    });
   },
   async queryCompanyForVerification(column, value) {
     const lookupValue = String(value || '').trim();
@@ -617,22 +632,26 @@ const Agreements = {
     const selectedCompany = this.state.selectedAgreementCompanyForVerification && typeof this.state.selectedAgreementCompanyForVerification === 'object'
       ? this.state.selectedAgreementCompanyForVerification
       : null;
-    const selectedCompanyMatches = selectedCompany && (
-      String(selectedCompany.id || '').trim() === String(source.company_uuid || source.companyUuid || source.id || '').trim()
-      || String(selectedCompany.company_id || selectedCompany.companyId || '').trim() === String(source.company_id || source.companyId || source.company?.company_id || source.company?.companyId || '').trim()
-      || String(selectedCompany.company_name || selectedCompany.companyName || '').trim().toLowerCase() === String(source.company_name || source.companyName || '').trim().toLowerCase()
-    );
-    const embeddedCandidate = embeddedCompany || (selectedCompanyMatches ? selectedCompany : null) || source;
-    const embeddedStatus = String(embeddedCandidate?.documents_verification_status || embeddedCandidate?.documentsVerificationStatus || '').trim();
-    if (this.hasCompanyVerificationFields(embeddedCandidate) && embeddedStatus) return embeddedCandidate;
+    const candidates = [source, embeddedCompany, selectedCompany].filter(candidate => candidate && typeof candidate === 'object');
+    const firstText = keys => {
+      for (const candidate of candidates) {
+        for (const key of keys) {
+          const value = String(candidate?.[key] || '').trim();
+          if (value) return value;
+        }
+      }
+      return '';
+    };
 
-    const companyUuid = String(source.company_uuid || source.companyUuid || embeddedCandidate?.id || '').trim();
+    const companyUuid = String(
+      source.company_uuid || source.companyUuid || embeddedCompany?.id || selectedCompany?.id || ''
+    ).trim();
     if (companyUuid) {
       const byUuid = await this.queryCompanyForVerification('id', companyUuid);
       if (byUuid) return byUuid;
     }
 
-    const companyId = String(source.company_id || source.companyId || source.company?.company_id || source.company?.companyId || embeddedCandidate?.company_id || embeddedCandidate?.companyId || '').trim();
+    const companyId = firstText(['company_id', 'companyId']);
     if (companyId) {
       const byCompanyId = await this.queryCompanyForVerification('company_id', companyId);
       if (byCompanyId) return byCompanyId;
@@ -640,14 +659,16 @@ const Agreements = {
 
     const legalName = String(
       source.legal_company_name || source.legalCompanyName || source.legal_name || source.legalName
-      || source.customer_legal_name || source.customerLegalName || source.company?.legal_name || source.company?.legalName || embeddedCandidate?.legal_name || embeddedCandidate?.legalName || ''
+      || source.customer_legal_name || source.customerLegalName || embeddedCompany?.legal_company_name || embeddedCompany?.legalCompanyName
+      || embeddedCompany?.legal_name || embeddedCompany?.legalName || selectedCompany?.legal_company_name || selectedCompany?.legalCompanyName
+      || selectedCompany?.legal_name || selectedCompany?.legalName || ''
     ).trim();
     if (legalName) {
       const byLegalName = await this.queryCompanyForVerification('legal_name', legalName);
       if (byLegalName) return byLegalName;
     }
 
-    const companyName = String(source.company_name || source.companyName || source.customer_name || source.customerName || source.company?.company_name || source.company?.companyName || embeddedCandidate?.company_name || embeddedCandidate?.companyName || '').trim();
+    const companyName = String(source.company_name || source.companyName || source.customer_name || source.customerName || embeddedCompany?.company_name || embeddedCompany?.companyName || selectedCompany?.company_name || selectedCompany?.companyName || '').trim();
     if (companyName) {
       const byCompanyName = await this.queryCompanyForVerification('company_name', companyName);
       if (byCompanyName) return byCompanyName;
@@ -667,26 +688,26 @@ const Agreements = {
       || String(source.company_name || source.companyName || source.customer_name || source.customerName || source.company?.company_name || source.company?.companyName || '').trim()
     );
     if (!hasAnyCompanyReference) {
-      this.showBlockingDialog('Company Required', 'Please select a company before creating an agreement.');
+      await this.showBlockingDialog('Company Required', 'Please select a company before creating an agreement.');
       return false;
     }
     const company = await this.getCompanyForAgreementVerification(source);
     if (!company) {
-      this.showBlockingDialog(
+      await this.showBlockingDialog(
         'Company Verification Required',
         'Unable to confirm the company verification status. Please open the company profile, upload the required documents, and make sure an admin verifies them before creating an agreement.'
       );
       return false;
     }
     if (!this.isCompanyVerified(company)) {
-      this.showBlockingDialog(
+      await this.showBlockingDialog(
         'Company Not Verified',
-        'The company is still not verified. Please upload the company documents and make sure an admin verifies them before creating an agreement.'
+        'The company is still not verified. Please upload the company documents and make sure an admin verifies them before converting this proposal to an agreement.'
       );
       return false;
     }
     if (!this.hasCompanyAuthorizedSignatory(company)) {
-      this.showBlockingDialog(
+      await this.showBlockingDialog(
         'Company Authorized Signatory Required',
         'Company authorized signatory details are missing. Please update the company profile before creating the agreement.'
       );
