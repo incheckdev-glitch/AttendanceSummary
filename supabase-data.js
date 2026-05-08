@@ -305,8 +305,8 @@
   const AGREEMENT_COLUMNS = new Set([
     'agreement_id','proposal_id','agreement_number','company_id','company_name','contact_id','contact_name','contact_email','contact_phone','contact_mobile','customer_name','customer_legal_name','customer_address','customer_contact_name','customer_contact_mobile','customer_contact_email','customer_contact_phone','provider_name','provider_legal_name','provider_address','provider_contact_name','provider_contact_mobile',
     'provider_contact_email','service_start_date','service_end_date','agreement_date','effective_date','contract_term','account_number','billing_frequency',
-    'payment_term','payment_terms','po_number','terms_conditions','customer_signatory_name','customer_signatory_title','customer_signatory_email','customer_signatory_phone',
-    'customer_sign_date','provider_signatory_name','provider_signatory_title','provider_signatory_email','provider_signatory_secondary','provider_signatory_name_secondary','provider_signatory_title_secondary','provider_primary_signatory_name','provider_primary_signatory_title','provider_secondary_signatory_name','provider_secondary_signatory_title','provider_sign_date','gm_signed',
+    'payment_term','payment_terms','po_number','terms_conditions','customer_official_signatory_name','customer_official_signatory_title','customer_official_sign_date','customer_signatory_name','customer_signatory_title','customer_signatory_email','customer_signatory_phone',
+    'customer_sign_date','provider_official_signatory_1_name','provider_official_signatory_1_title','provider_official_signatory_1_sign_date','provider_official_signatory_2_name','provider_official_signatory_2_title','provider_official_signatory_2_sign_date','provider_signatory_name','provider_signatory_title','provider_signatory_email','provider_signatory_secondary','provider_signatory_name_secondary','provider_signatory_title_secondary','provider_primary_signatory_name','provider_primary_signatory_title','provider_secondary_signatory_name','provider_secondary_signatory_title','provider_sign_date','gm_signed',
     'financial_controller_signed','signed_date','status','subtotal_locations','subtotal_one_time','total_discount',
     'grand_total','generated_by','created_by','updated_by','currency','created_at','updated_at','customer_legal_name','provider_legal_name','provider_name',
     'agreement_title','notes'
@@ -413,7 +413,9 @@
       'provider_contact_email', 'proposal_title', 'proposal_date', 'proposal_valid_until', 'agreement_date',
       'effective_date', 'service_start_date', 'service_end_date', 'contract_term', 'account_number', 'billing_frequency', 'payment_term', 'po_number',
       'currency', 'customer_legal_name', 'provider_name', 'provider_legal_name', 'terms_conditions',
-      'customer_signatory_name', 'customer_signatory_title', 'provider_signatory_name', 'provider_signatory_title',
+      'customer_official_signatory_name', 'customer_official_signatory_title', 'customer_official_sign_date',
+      'customer_signatory_name', 'customer_signatory_title', 'provider_official_signatory_1_name', 'provider_official_signatory_1_title', 'provider_official_signatory_1_sign_date',
+      'provider_official_signatory_2_name', 'provider_official_signatory_2_title', 'provider_official_signatory_2_sign_date', 'provider_signatory_name', 'provider_signatory_title',
       'provider_signatory_name_secondary', 'provider_signatory_title_secondary', 'provider_sign_date',
       'subtotal_locations', 'subtotal_one_time', 'total_discount', 'grand_total', 'status',
       'generated_by', 'created_by', 'updated_by', 'created_at', 'updated_at'
@@ -2021,21 +2023,23 @@
       provider_legal_name: PROPOSAL_PROVIDER_CONTACT_DEFAULTS.name,
       provider_address: firstDefined(record, ['provider_address', 'providerAddress']),
       terms_conditions: firstDefined(record, ['terms_conditions', 'termsConditions']),
-      customer_signatory_name: firstDefined(record, ['customer_signatory_name', 'customerSignatoryName']),
-      customer_signatory_title: firstDefined(record, ['customer_signatory_title', 'customerSignatoryTitle']),
+      customer_official_signatory_name: firstDefined(record, ['customer_official_signatory_name', 'customerOfficialSignatoryName', 'customer_signatory_name', 'customerSignatoryName']),
+      customer_official_signatory_title: firstDefined(record, ['customer_official_signatory_title', 'customerOfficialSignatoryTitle', 'customer_signatory_title', 'customerSignatoryTitle']),
+      customer_signatory_name: firstDefined(record, ['customer_signatory_name', 'customerSignatoryName', 'customer_official_signatory_name', 'customerOfficialSignatoryName']),
+      customer_signatory_title: firstDefined(record, ['customer_signatory_title', 'customerSignatoryTitle', 'customer_official_signatory_title', 'customerOfficialSignatoryTitle']),
       customer_signatory_email: firstDefined(record, ['customer_signatory_email', 'customerSignatoryEmail']),
       customer_signatory_phone: firstDefined(record, ['customer_signatory_phone', 'customerSignatoryPhone']),
       customer_sign_date: normalizeNullableDateValue(firstDefined(record, ['customer_sign_date', 'customerSignDate'])),
       provider_signatory_name: firstDefined(record, ['provider_signatory_name', 'providerSignatoryName']),
       provider_signatory_title: firstDefined(record, ['provider_signatory_title', 'providerSignatoryTitle']),
       provider_signatory_name_secondary: firstDefined(record, ['provider_signatory_name_secondary', 'providerSignatoryNameSecondary']),
-      provider_signatory_title_secondary: firstDefined(record, ['provider_signatory_title_secondary', 'providerSignatoryTitleSecondary']),
+      provider_signatory_title_secondary: firstDefined(record, ['provider_signatory_title_secondary', 'providerSignatoryTitleSecondary', 'provider_official_signatory_2_title', 'providerOfficialSignatory2Title']),
       provider_signatory_email: firstDefined(record, ['provider_signatory_email', 'providerSignatoryEmail']),
-      provider_primary_signatory_name: firstDefined(record, ['provider_primary_signatory_name', 'providerPrimarySignatoryName', 'provider_signatory_name_primary']),
-      provider_primary_signatory_title: firstDefined(record, ['provider_primary_signatory_title', 'providerPrimarySignatoryTitle', 'provider_signatory_title_primary']),
-      provider_secondary_signatory_name: firstDefined(record, ['provider_secondary_signatory_name', 'providerSecondarySignatoryName', 'provider_signatory_name_secondary']),
-      provider_secondary_signatory_title: firstDefined(record, ['provider_secondary_signatory_title', 'providerSecondarySignatoryTitle', 'provider_signatory_title_secondary']),
-      provider_sign_date: normalizeNullableDateValue(firstDefined(record, ['provider_sign_date', 'providerSignDate'])),
+      provider_primary_signatory_name: firstDefined(record, ['provider_primary_signatory_name', 'providerPrimarySignatoryName', 'provider_official_signatory_1_name', 'providerOfficialSignatory1Name', 'provider_signatory_name_primary']),
+      provider_primary_signatory_title: firstDefined(record, ['provider_primary_signatory_title', 'providerPrimarySignatoryTitle', 'provider_official_signatory_1_title', 'providerOfficialSignatory1Title', 'provider_signatory_title_primary']),
+      provider_secondary_signatory_name: firstDefined(record, ['provider_secondary_signatory_name', 'providerSecondarySignatoryName', 'provider_official_signatory_2_name', 'providerOfficialSignatory2Name', 'provider_signatory_name_secondary']),
+      provider_secondary_signatory_title: firstDefined(record, ['provider_secondary_signatory_title', 'providerSecondarySignatoryTitle', 'provider_official_signatory_2_title', 'providerOfficialSignatory2Title', 'provider_signatory_title_secondary']),
+      provider_sign_date: normalizeNullableDateValue(firstDefined(record, ['provider_sign_date', 'providerSignDate', 'provider_official_signatory_1_sign_date', 'providerOfficialSignatory1SignDate'])),
       subtotal_locations: firstDefined(record, ['subtotal_locations', 'subtotalLocations', 'saas_total']),
       subtotal_one_time: firstDefined(record, ['subtotal_one_time', 'subtotalOneTime', 'one_time_total']),
       total_discount: firstDefined(record, ['total_discount', 'totalDiscount']),
@@ -2175,21 +2179,30 @@
       payment_term: firstDefined(record, ['payment_term', 'payment_terms', 'paymentTerm', 'paymentTerms']),
       po_number: firstDefined(record, ['po_number', 'poNumber']),
       terms_conditions: firstDefined(record, ['terms_conditions', 'termsConditions']),
-      customer_signatory_name: firstDefined(record, ['customer_signatory_name', 'customerSignatoryName']),
-      customer_signatory_title: firstDefined(record, ['customer_signatory_title', 'customerSignatoryTitle']),
+      customer_official_signatory_name: firstDefined(record, ['customer_official_signatory_name', 'customerOfficialSignatoryName', 'customer_signatory_name', 'customerSignatoryName']),
+      customer_official_signatory_title: firstDefined(record, ['customer_official_signatory_title', 'customerOfficialSignatoryTitle', 'customer_signatory_title', 'customerSignatoryTitle']),
+      customer_signatory_name: firstDefined(record, ['customer_signatory_name', 'customerSignatoryName', 'customer_official_signatory_name', 'customerOfficialSignatoryName']),
+      customer_signatory_title: firstDefined(record, ['customer_signatory_title', 'customerSignatoryTitle', 'customer_official_signatory_title', 'customerOfficialSignatoryTitle']),
       customer_signatory_email: firstDefined(record, ['customer_signatory_email', 'customerSignatoryEmail']),
       customer_signatory_phone: firstDefined(record, ['customer_signatory_phone', 'customerSignatoryPhone']),
-      customer_sign_date: normalizeNullableDateValue(firstDefined(record, ['customer_sign_date', 'customerSignDate'])),
-      provider_signatory_name: firstDefined(record, ['provider_signatory_name', 'providerSignatoryName', 'provider_signatory_name_primary']),
-      provider_signatory_title: firstDefined(record, ['provider_signatory_title', 'providerSignatoryTitle', 'provider_signatory_title_primary']),
-      provider_signatory_name_secondary: firstDefined(record, ['provider_signatory_name_secondary', 'providerSignatoryNameSecondary', 'provider_signatory_secondary', 'providerSignatorySecondary']),
-      provider_signatory_title_secondary: firstDefined(record, ['provider_signatory_title_secondary', 'providerSignatoryTitleSecondary']),
+      customer_official_sign_date: normalizeNullableDateValue(firstDefined(record, ['customer_official_sign_date', 'customerOfficialSignDate', 'customer_sign_date', 'customerSignDate'])),
+      customer_sign_date: normalizeNullableDateValue(firstDefined(record, ['customer_sign_date', 'customerSignDate', 'customer_official_sign_date', 'customerOfficialSignDate'])),
+      provider_official_signatory_1_name: firstDefined(record, ['provider_official_signatory_1_name', 'providerOfficialSignatory1Name', 'provider_signatory_name', 'providerSignatoryName', 'provider_signatory_name_primary']),
+      provider_official_signatory_1_title: firstDefined(record, ['provider_official_signatory_1_title', 'providerOfficialSignatory1Title', 'provider_signatory_title', 'providerSignatoryTitle', 'provider_signatory_title_primary']),
+      provider_official_signatory_1_sign_date: normalizeNullableDateValue(firstDefined(record, ['provider_official_signatory_1_sign_date', 'providerOfficialSignatory1SignDate', 'provider_sign_date', 'providerSignDate'])),
+      provider_official_signatory_2_name: firstDefined(record, ['provider_official_signatory_2_name', 'providerOfficialSignatory2Name', 'provider_signatory_name_secondary', 'providerSignatoryNameSecondary', 'provider_signatory_secondary', 'providerSignatorySecondary']),
+      provider_official_signatory_2_title: firstDefined(record, ['provider_official_signatory_2_title', 'providerOfficialSignatory2Title', 'provider_signatory_title_secondary', 'providerSignatoryTitleSecondary']),
+      provider_official_signatory_2_sign_date: normalizeNullableDateValue(firstDefined(record, ['provider_official_signatory_2_sign_date', 'providerOfficialSignatory2SignDate', 'provider_sign_date', 'providerSignDate'])),
+      provider_signatory_name: firstDefined(record, ['provider_signatory_name', 'providerSignatoryName', 'provider_official_signatory_1_name', 'providerOfficialSignatory1Name', 'provider_signatory_name_primary']),
+      provider_signatory_title: firstDefined(record, ['provider_signatory_title', 'providerSignatoryTitle', 'provider_official_signatory_1_title', 'providerOfficialSignatory1Title', 'provider_signatory_title_primary']),
+      provider_signatory_name_secondary: firstDefined(record, ['provider_signatory_name_secondary', 'providerSignatoryNameSecondary', 'provider_official_signatory_2_name', 'providerOfficialSignatory2Name', 'provider_signatory_secondary', 'providerSignatorySecondary']),
+      provider_signatory_title_secondary: firstDefined(record, ['provider_signatory_title_secondary', 'providerSignatoryTitleSecondary', 'provider_official_signatory_2_title', 'providerOfficialSignatory2Title']),
       provider_signatory_email: firstDefined(record, ['provider_signatory_email', 'providerSignatoryEmail']),
-      provider_primary_signatory_name: firstDefined(record, ['provider_primary_signatory_name', 'providerPrimarySignatoryName', 'provider_signatory_name_primary']),
-      provider_primary_signatory_title: firstDefined(record, ['provider_primary_signatory_title', 'providerPrimarySignatoryTitle', 'provider_signatory_title_primary']),
-      provider_secondary_signatory_name: firstDefined(record, ['provider_secondary_signatory_name', 'providerSecondarySignatoryName', 'provider_signatory_name_secondary']),
-      provider_secondary_signatory_title: firstDefined(record, ['provider_secondary_signatory_title', 'providerSecondarySignatoryTitle', 'provider_signatory_title_secondary']),
-      provider_sign_date: normalizeNullableDateValue(firstDefined(record, ['provider_sign_date', 'providerSignDate'])),
+      provider_primary_signatory_name: firstDefined(record, ['provider_primary_signatory_name', 'providerPrimarySignatoryName', 'provider_official_signatory_1_name', 'providerOfficialSignatory1Name', 'provider_signatory_name_primary']),
+      provider_primary_signatory_title: firstDefined(record, ['provider_primary_signatory_title', 'providerPrimarySignatoryTitle', 'provider_official_signatory_1_title', 'providerOfficialSignatory1Title', 'provider_signatory_title_primary']),
+      provider_secondary_signatory_name: firstDefined(record, ['provider_secondary_signatory_name', 'providerSecondarySignatoryName', 'provider_official_signatory_2_name', 'providerOfficialSignatory2Name', 'provider_signatory_name_secondary']),
+      provider_secondary_signatory_title: firstDefined(record, ['provider_secondary_signatory_title', 'providerSecondarySignatoryTitle', 'provider_official_signatory_2_title', 'providerOfficialSignatory2Title', 'provider_signatory_title_secondary']),
+      provider_sign_date: normalizeNullableDateValue(firstDefined(record, ['provider_sign_date', 'providerSignDate', 'provider_official_signatory_1_sign_date', 'providerOfficialSignatory1SignDate'])),
       gm_signed: hasAny(gmSignedKeys)
         ? toDbBoolean(firstDefined(record, gmSignedKeys), false)
         : includeCreatedBy
@@ -2228,14 +2241,24 @@
       : 'Net 30';
     sanitized.payment_terms = sanitized.payment_term;
     sanitized.provider_legal_name = 'InCheck 360 Holding BV';
-    sanitized.provider_name = 'InCheck 360';
+    sanitized.provider_name = 'InCheck 360 Holding BV';
     sanitized.provider_address = 'Pyrmontstraat 5, 7513 BN, Enschede, The Netherlands';
-    if (!String(sanitized.provider_primary_signatory_name || '').trim()) sanitized.provider_primary_signatory_name = 'Simon Moujaly';
-    if (!String(sanitized.provider_primary_signatory_title || '').trim()) sanitized.provider_primary_signatory_title = 'CFO';
-    if (!String(sanitized.provider_secondary_signatory_name || '').trim()) sanitized.provider_secondary_signatory_name = 'Hanna Khattar';
-    if (!String(sanitized.provider_secondary_signatory_title || '').trim()) sanitized.provider_secondary_signatory_title = 'General Manager';
-    sanitized.provider_signatory_name = sanitized.provider_primary_signatory_name;
-    sanitized.provider_signatory_title = sanitized.provider_primary_signatory_title;
+    sanitized.customer_signatory_name = sanitized.customer_official_signatory_name || sanitized.customer_signatory_name;
+    sanitized.customer_signatory_title = sanitized.customer_official_signatory_title || sanitized.customer_signatory_title;
+    sanitized.customer_sign_date = sanitized.customer_official_sign_date || sanitized.customer_sign_date;
+    sanitized.provider_official_signatory_1_name = 'Simon Moujaly';
+    sanitized.provider_official_signatory_1_title = 'CFO';
+    sanitized.provider_official_signatory_2_name = 'Hanna Khattar';
+    sanitized.provider_official_signatory_2_title = 'General Manager';
+    if (!String(sanitized.provider_primary_signatory_name || '').trim()) sanitized.provider_primary_signatory_name = sanitized.provider_official_signatory_1_name;
+    if (!String(sanitized.provider_primary_signatory_title || '').trim()) sanitized.provider_primary_signatory_title = sanitized.provider_official_signatory_1_title;
+    if (!String(sanitized.provider_secondary_signatory_name || '').trim()) sanitized.provider_secondary_signatory_name = sanitized.provider_official_signatory_2_name;
+    if (!String(sanitized.provider_secondary_signatory_title || '').trim()) sanitized.provider_secondary_signatory_title = sanitized.provider_official_signatory_2_title;
+    sanitized.provider_signatory_name = sanitized.provider_official_signatory_1_name;
+    sanitized.provider_signatory_title = sanitized.provider_official_signatory_1_title;
+    sanitized.provider_signatory_name_secondary = sanitized.provider_official_signatory_2_name;
+    sanitized.provider_signatory_title_secondary = sanitized.provider_official_signatory_2_title;
+    sanitized.provider_sign_date = sanitized.provider_official_signatory_1_sign_date || sanitized.provider_sign_date;
     return sanitized;
   }
 
