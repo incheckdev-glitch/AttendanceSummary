@@ -1769,7 +1769,6 @@ const Proposals = {
           .map(item => {
             const computed = computeRow(item);
             return `<tr>
-              <td>${textValue(item.location_name)}</td>
               <td>${textValue(item.item_name || item.capability_name)}</td>
               <td class="cell-right">${money(computed.unitPrice)}</td>
               <td class="cell-center">${computed.quantity ? U.escapeHtml(String(computed.quantity)) : '—'}</td>
@@ -1780,14 +1779,13 @@ const Proposals = {
             </tr>`;
           })
           .join('')
-      : '<tr><td colspan="8" class="cell-center muted">No SaaS / subscription items found.</td></tr>');
+      : '<tr><td colspan="7" class="cell-center muted">No SaaS / subscription items found.</td></tr>');
 
     const renderOneTimeRows = rows => (rows.length
       ? rows
           .map(item => {
             const computed = computeRow(item);
             return `<tr>
-              <td>${textValue(item.location_name)}</td>
               <td>${textValue(item.item_name || item.capability_name)}</td>
               <td class="cell-right">${money(computed.unitPrice)}</td>
               <td class="cell-center">${U.escapeHtml(String(computed.discountPercent || 0))}%</td>
@@ -1796,7 +1794,7 @@ const Proposals = {
             </tr>`;
           })
           .join('')
-      : '<tr><td colspan="6" class="cell-center muted">No one-time fee items found.</td></tr>');
+      : '<tr><td colspan="5" class="cell-center muted">No one-time fee items found.</td></tr>');
 
     const calculatedTotals = this.calculateProposalTotals(normalizedItems);
     const headerSaas = this.toNumberSafe(proposalData.subtotal_locations ?? proposalData.saas_total);
@@ -2055,7 +2053,6 @@ const Proposals = {
         <table>
           <thead>
             <tr>
-              <th style="width:7%">Location</th>
               <th>License</th>
               <th style="width:15%">License Price / Year</th>
               <th style="width:12%">License / Month</th>
@@ -2068,7 +2065,7 @@ const Proposals = {
           <tbody>
             ${renderSubscriptionRows(subscriptionItems)}
             <tr class="total-row">
-              <td colspan="7" class="cell-right">Total SaaS / Subscription</td>
+              <td colspan="6" class="cell-right">Total SaaS / Subscription</td>
               <td class="cell-right">${money(subtotalLocations)}</td>
             </tr>
           </tbody>
@@ -2081,7 +2078,6 @@ const Proposals = {
         <table>
           <thead>
             <tr>
-              <th style="width:16%">Location</th>
               <th>Item / Service</th>
               <th style="width:14%">Unit Price</th>
               <th style="width:10%">Discount %</th>
@@ -2092,7 +2088,7 @@ const Proposals = {
           <tbody>
             ${renderOneTimeRows(oneTimeItems.length ? oneTimeItems : otherItems)}
             <tr class="total-row">
-              <td colspan="5" class="cell-right">Total One Time Fees</td>
+              <td colspan="4" class="cell-right">Total One Time Fees</td>
               <td class="cell-right">${money(subtotalOneTime)}</td>
             </tr>
           </tbody>
@@ -2840,7 +2836,7 @@ const Proposals = {
 
     const safeRows = Array.isArray(rows) ? rows : [];
     if (!safeRows.length) {
-      const colspan = section === 'capability' ? 3 : section === 'annual_saas' ? 9 : 7;
+      const colspan = section === 'capability' ? 3 : section === 'annual_saas' ? 8 : 6;
       tbody.innerHTML = `<tr><td colspan="${colspan}" class="muted" style="text-align:center;">No rows yet.</td></tr>`;
       return;
     }
@@ -2877,8 +2873,7 @@ const Proposals = {
           ? `${quantityCell}${serviceDateCells}${discountCell}`
           : `${discountCell}${quantityCell}`;
         return `<tr data-item-row="${section}">
-          <td><input type="hidden" data-item-field="catalog_item_id" value="${U.escapeAttr(computed.catalog_item_id || '')}" /><input class="input" data-item-field="location_name" value="${U.escapeAttr(computed.location_name || '')}" /></td>
-          <td><input class="input" data-item-field="item_name" list="proposalCatalogOptions-${section}" value="${U.escapeAttr(computed.item_name || '')}" /></td>
+          <td><input type="hidden" data-item-field="catalog_item_id" value="${U.escapeAttr(computed.catalog_item_id || '')}" /><input type="hidden" data-item-field="location_name" value="${U.escapeAttr(computed.location_name || '')}" /><input class="input" data-item-field="item_name" list="proposalCatalogOptions-${section}" value="${U.escapeAttr(computed.item_name || '')}" /></td>
           <td><input class="input" type="number" step="0.01" data-item-field="unit_price" value="${U.escapeAttr(computed.unit_price ?? '')}" /></td>
           ${commercialCells}
           <td><span data-item-display="line_total">${this.formatMoney(computed.line_total)}</span></td>
