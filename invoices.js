@@ -1945,26 +1945,36 @@ const Invoices = {
 
     const safeRows = Array.isArray(rows) ? rows : [];
     if (!safeRows.length) {
-      tbody.innerHTML = '<tr><td colspan="12" class="muted" style="text-align:center;">No rows yet.</td></tr>';
+      const colspan = section === 'annual_saas' ? 8 : 6;
+      tbody.innerHTML = `<tr><td colspan="${colspan}" class="muted" style="text-align:center;">No rows yet.</td></tr>`;
       return;
     }
 
     tbody.innerHTML = safeRows
-      .map((row, index) => {
-        const computed = this.computeCommercialRow(row);
+      .map(row => {
+        const rowDefaults = section === 'annual_saas'
+          ? { ...row, quantity: row.quantity || 12 }
+          : { ...row, quantity: row.quantity || 1 };
+        const computed = this.computeCommercialRow({ ...rowDefaults, section });
+        if (section === 'annual_saas') {
+          return `<tr data-item-row="${section}">
+            <td><input class="input" data-item-field="location_name" value="${U.escapeAttr(computed.location_name || '')}" /><input type="hidden" data-item-field="location_address" value="${U.escapeAttr(computed.location_address || '')}" /><input type="hidden" data-item-field="notes" value="${U.escapeAttr(computed.notes || '')}" /></td>
+            <td><input type="hidden" data-item-field="catalog_item_id" value="${U.escapeAttr(computed.catalog_item_id || '')}" /><input class="input" data-item-field="item_name" list="invoiceCatalogOptions-${section}" value="${U.escapeAttr(computed.item_name || '')}" /></td>
+            <td><input class="input" type="number" step="0.01" data-item-field="unit_price" value="${U.escapeAttr(computed.unit_price ?? '')}" /></td>
+            <td><input class="input" type="number" step="0.01" min="0.01" max="12" data-item-field="quantity" value="${U.escapeAttr(computed.quantity ?? '')}" /></td>
+            <td><input class="input" type="date" data-item-field="service_start_date" value="${U.escapeAttr(computed.service_start_date || '')}" /></td>
+            <td><input class="input" type="date" data-item-field="service_end_date" value="${U.escapeAttr(computed.service_end_date || '')}" /></td>
+            <td><input class="input" type="number" step="0.01" min="0" max="100" data-item-field="discount_percent" value="${U.escapeAttr(computed.discount_percent ?? '')}" /></td>
+            <td><span data-item-display="line_total">${this.formatMoney(computed.line_total)}</span></td>
+          </tr>`;
+        }
         return `<tr data-item-row="${section}">
-          <td><input class="input" data-item-field="location_name" value="${U.escapeAttr(computed.location_name || '')}" /></td>
-          <td><input class="input" data-item-field="location_address" value="${U.escapeAttr(computed.location_address || '')}" /></td>
-          <td><input class="input" type="date" data-item-field="service_start_date" value="${U.escapeAttr(computed.service_start_date || '')}" /></td>
-          <td><input class="input" type="date" data-item-field="service_end_date" value="${U.escapeAttr(computed.service_end_date || '')}" /></td>
-          <td><input class="input" data-item-field="item_name" list="invoiceCatalogOptions-${section}" value="${U.escapeAttr(computed.item_name || '')}" /></td>
+          <td><input class="input" data-item-field="location_name" value="${U.escapeAttr(computed.location_name || '')}" /><input type="hidden" data-item-field="location_address" value="${U.escapeAttr(computed.location_address || '')}" /><input type="hidden" data-item-field="service_start_date" value="${U.escapeAttr(computed.service_start_date || '')}" /><input type="hidden" data-item-field="service_end_date" value="${U.escapeAttr(computed.service_end_date || '')}" /><input type="hidden" data-item-field="notes" value="${U.escapeAttr(computed.notes || '')}" /></td>
+          <td><input type="hidden" data-item-field="catalog_item_id" value="${U.escapeAttr(computed.catalog_item_id || '')}" /><input class="input" data-item-field="item_name" list="invoiceCatalogOptions-${section}" value="${U.escapeAttr(computed.item_name || '')}" /></td>
           <td><input class="input" type="number" step="0.01" data-item-field="unit_price" value="${U.escapeAttr(computed.unit_price ?? '')}" /></td>
-          <td><input class="input" type="number" step="0.01" data-item-field="discount_percent" value="${U.escapeAttr(computed.discount_percent ?? '')}" /></td>
-          <td><input class="input" type="number" step="0.01" data-item-field="quantity" value="${U.escapeAttr(computed.quantity ?? '')}" /></td>
-          <td><span data-item-display="discounted_unit_price">${this.formatMoney(computed.discounted_unit_price)}</span></td>
+          <td><input class="input" type="number" step="0.01" min="0" max="100" data-item-field="discount_percent" value="${U.escapeAttr(computed.discount_percent ?? '')}" /></td>
+          <td><input class="input" type="number" step="0.01" min="0.01" data-item-field="quantity" value="${U.escapeAttr(computed.quantity ?? '')}" /></td>
           <td><span data-item-display="line_total">${this.formatMoney(computed.line_total)}</span></td>
-          <td><input class="input" data-item-field="notes" value="${U.escapeAttr(computed.notes || '')}" /></td>
-          <td><button class="btn ghost sm" type="button" data-item-remove="${section}" data-item-index="${index}">Remove</button></td>
         </tr>`;
       })
       .join('');
@@ -2248,8 +2258,8 @@ const Invoices = {
     if (E.invoiceFormAmountPaid) E.invoiceFormAmountPaid.readOnly = true;
     if (E.invoiceFormPendingAmount) E.invoiceFormPendingAmount.readOnly = true;
     if (E.invoiceFormPaymentState) E.invoiceFormPaymentState.readOnly = true;
-    if (E.invoiceAddAnnualRowBtn) E.invoiceAddAnnualRowBtn.style.display = readOnly || isExistingLocked ? 'none' : '';
-    if (E.invoiceAddOneTimeRowBtn) E.invoiceAddOneTimeRowBtn.style.display = readOnly || isExistingLocked ? 'none' : '';
+    if (E.invoiceAddAnnualRowBtn) E.invoiceAddAnnualRowBtn.style.display = 'none';
+    if (E.invoiceAddOneTimeRowBtn) E.invoiceAddOneTimeRowBtn.style.display = 'none';
     if (E.invoiceAddCapabilityRowBtn) E.invoiceAddCapabilityRowBtn.style.display = 'none';
     E.invoiceForm.querySelectorAll('[data-item-field]').forEach(el => {
       el.disabled = readOnly || isExistingLocked;
@@ -3033,7 +3043,8 @@ const Invoices = {
         const computed = this.computeCommercialRow({
           unit_price: get('unit_price'),
           discount_percent: get('discount_percent'),
-          quantity: get('quantity')
+          quantity: get('quantity'),
+          section
         });
         const discountedEl = tr.querySelector('[data-item-display="discounted_unit_price"]');
         const lineTotalEl = tr.querySelector('[data-item-display="line_total"]');
@@ -3059,7 +3070,7 @@ const Invoices = {
       E.invoiceAddAnnualRowBtn.addEventListener('click', () => {
         if (String(E.invoiceForm?.dataset.id || '').trim()) return;
         const items = this.collectItems();
-        items.push(this.normalizeItem({ section: 'annual_saas', quantity: 1 }));
+        items.push(this.normalizeItem({ section: 'annual_saas', quantity: 12 }));
         this.renderItems(items);
         this.applyTotalsToForm(this.deriveCalculatedSummary(this.collectFormValues().invoice, items));
       });

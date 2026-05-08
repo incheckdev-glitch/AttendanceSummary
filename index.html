@@ -3551,16 +3551,16 @@ Sample:
         <strong style="display:block;margin-bottom:8px;">Invoice Items</strong>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
           <strong>Annual SaaS Rows</strong>
-          <button id="invoiceAddAnnualRowBtn" class="btn ghost sm" type="button">Add Row</button>
+          <button id="invoiceAddAnnualRowBtn" class="btn ghost sm" type="button" style="display:none;">Add Row</button>
         </div>
-        <div class="table-wrap"><table><thead><tr><th>Location</th><th>Location Address</th><th>Service Start</th><th>Service End</th><th>Item Name</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Discounted Unit Price</th><th>Line Total</th><th>Notes</th><th>Actions</th></tr></thead><tbody id="invoiceAnnualItemsTbody"></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>Location</th><th>License</th><th>License Price / Year</th><th>License / Month</th><th>Service Start Date</th><th>Service End Date</th><th>Discount %</th><th>Total</th></tr></thead><tbody id="invoiceAnnualItemsTbody"></tbody></table></div>
         <datalist id="invoiceCatalogOptions-annual_saas"></datalist>
 
         <div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 6px;">
           <strong>One-time Fee Rows</strong>
-          <button id="invoiceAddOneTimeRowBtn" class="btn ghost sm" type="button">Add Row</button>
+          <button id="invoiceAddOneTimeRowBtn" class="btn ghost sm" type="button" style="display:none;">Add Row</button>
         </div>
-        <div class="table-wrap"><table><thead><tr><th>Location</th><th>Location Address</th><th>Service Start</th><th>Service End</th><th>Item Name</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Discounted Unit Price</th><th>Line Total</th><th>Notes</th><th>Actions</th></tr></thead><tbody id="invoiceOneTimeItemsTbody"></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>Location</th><th>Item / Service</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th></tr></thead><tbody id="invoiceOneTimeItemsTbody"></tbody></table></div>
         <datalist id="invoiceCatalogOptions-one_time_fee"></datalist>
 
         <div class="divider" style="margin:12px 0;"></div>
@@ -3594,26 +3594,6 @@ Sample:
               </tr>
             </thead>
             <tbody id="invoicePaymentScheduleTbody"></tbody>
-          </table>
-        </div>
-        <div class="divider" style="margin:12px 0;"></div>
-        <strong style="display:block;margin-bottom:8px;">Linked Receipts / Payment History</strong>
-        <div id="invoiceReceiptsState" class="muted" style="margin-bottom:8px;">No receipts linked yet.</div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Receipt ID</th>
-                <th>Receipt Number</th>
-                <th>Date</th>
-                <th>Received Amount</th>
-                <th>Payment Method</th>
-                <th>Payment Reference</th>
-                <th>Status</th>
-                <th>Notes</th>
-              </tr>
-            </thead>
-            <tbody id="invoiceReceiptsTbody"></tbody>
           </table>
         </div>
         <div class="actions" style="justify-content:space-between;gap:8px;margin-top:12px;"><div style="display:flex;gap:8px;"><button id="invoiceFormDeleteBtn" type="button" class="btn ghost" style="display:none;">Delete</button><button id="invoiceFormPreviewBtn" type="button" class="btn ghost">Preview Invoice</button></div><div style="display:flex;gap:8px;"><button id="invoiceFormCancelBtn" type="button" class="btn ghost">Cancel</button><button id="invoiceFormSaveBtn" type="submit" class="btn">Save</button></div></div>
