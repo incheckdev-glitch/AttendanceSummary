@@ -182,7 +182,9 @@ const Agreements = {
   computeCommercialRow(item = {}) {
     const section = String(item?.section || '').trim().toLowerCase();
     const unit = this.toNumberSafe(item.unit_price);
-    const qty = this.toNumberSafe(item.quantity);
+    let qty = this.toNumberSafe(item.quantity);
+    if (!qty && section === 'annual_saas') qty = 12;
+    if (!qty && section === 'one_time_fee') qty = 1;
     const discountRatio = this.normalizeDiscount(item.discount_percent);
     const baseAmount = section === 'annual_saas' ? unit * (qty / 12) : unit * qty;
     const discountedUnitPrice = section === 'annual_saas' ? baseAmount * (1 - discountRatio) : unit * (1 - discountRatio);
@@ -902,10 +904,10 @@ const Agreements = {
               <td>${textValue(item.location_name)}</td>
               <td>${textValue(item.item_name || item.capability_name)}</td>
               <td class="cell-right">${money(computed.unitPrice)}</td>
-              <td class="cell-center">${U.escapeHtml(String(computed.discountPercent || 0))}%</td>
               <td class="cell-center">${computed.quantity ? U.escapeHtml(String(computed.quantity)) : '—'}</td>
               <td class="cell-center">${dateValue(item.service_start_date || agreementData.service_start_date)}</td>
               <td class="cell-center">${dateValue(item.service_end_date || agreementData.service_end_date)}</td>
+              <td class="cell-center">${U.escapeHtml(String(computed.discountPercent || 0))}%</td>
               <td class="cell-right">${money(computed.lineTotal)}</td>
             </tr>`;
           })
@@ -1068,10 +1070,10 @@ const Agreements = {
               <th style="width:14%">Location</th>
               <th>License</th>
               <th style="width:15%">License Price / Year</th>
-              <th style="width:10%">Discount %</th>
               <th style="width:12%">License / Month</th>
               <th style="width:13%">Service Start Date</th>
               <th style="width:13%">Service End Date</th>
+              <th style="width:10%">Discount %</th>
               <th style="width:12%">Total</th>
             </tr>
           </thead>
@@ -1599,14 +1601,17 @@ const Agreements = {
         ? `<td><input class="input" type="date" data-item-field="service_start_date" value="${U.escapeAttr(computed.service_start_date || '')}" /></td>
       <td><input class="input" type="date" data-item-field="service_end_date" value="${U.escapeAttr(computed.service_end_date || '')}" /></td>`
         : '';
+      const discountCell = `<td><input class="input" data-item-field="discount_percent" type="number" min="0" max="100" step="0.01" value="${U.escapeAttr(computed.discount_percent ?? '')}" /></td>`;
+      const quantityCell = `<td><input class="input" data-item-field="quantity" type="number" min="0.01" ${section === 'annual_saas' ? 'max="12"' : ''} step="0.01" value="${U.escapeAttr(computed.quantity ?? '')}" /></td>`;
+      const commercialCells = section === 'annual_saas'
+        ? `${quantityCell}${serviceDateCells}${discountCell}`
+        : `${discountCell}${quantityCell}`;
       return `<tr data-item-row="${section}" data-item-payload="${payload}">
       <td><input class="input" data-item-field="location_name" value="${U.escapeAttr(computed.location_name || '')}" /></td>
       <td><input class="input" data-item-field="location_address" value="${U.escapeAttr(computed.location_address || '')}" /></td>
       <td><input class="input" data-item-field="item_name" value="${U.escapeAttr(computed.item_name || '')}" /></td>
       <td><input class="input" data-item-field="unit_price" type="number" step="0.01" value="${U.escapeAttr(computed.unit_price ?? '')}" /></td>
-      <td><input class="input" data-item-field="discount_percent" type="number" min="0" max="100" step="0.01" value="${U.escapeAttr(computed.discount_percent ?? '')}" /></td>
-      <td><input class="input" data-item-field="quantity" type="number" min="0.01" ${section === 'annual_saas' ? 'max="12"' : ''} step="0.01" value="${U.escapeAttr(computed.quantity ?? '')}" /></td>
-      ${serviceDateCells}
+      ${commercialCells}
       <td><input class="input" data-item-field="line_total" type="number" step="0.01" value="${U.escapeAttr(computed.line_total ?? '')}" readonly /></td>
       <td><button type="button" class="btn ghost sm" data-item-remove="${section}" data-item-index="${index}">Remove</button></td>
       </tr>`;
