@@ -1312,6 +1312,7 @@ const Proposals = {
       one_time: this.normalizeTruthy(pick(source.one_time, source.oneTime)),
       line_no: this.toNumberSafe(pick(source.line_no, source.lineNo, source.line)) || 0,
       location_name: String(pick(source.location_name, source.locationName)).trim(),
+      location_address: String(pick(source.location_address, source.locationAddress)).trim(),
       item_name: String(pick(source.item_name, source.itemName, source.name)).trim(),
       unit_price: this.toNumberSafe(pick(source.unit_price, source.unitPrice)),
       discount_percent: this.normalizeDiscountPercentValue(
@@ -1769,6 +1770,7 @@ const Proposals = {
           .map(item => {
             const computed = computeRow(item);
             return `<tr>
+              <td>${textValue(item.location_name || item.locationName)}</td>
               <td>${textValue(item.item_name || item.capability_name)}</td>
               <td class="cell-right">${money(computed.unitPrice)}</td>
               <td class="cell-center">${computed.quantity ? U.escapeHtml(String(computed.quantity)) : '—'}</td>
@@ -1779,13 +1781,14 @@ const Proposals = {
             </tr>`;
           })
           .join('')
-      : '<tr><td colspan="7" class="cell-center muted">No SaaS / subscription items found.</td></tr>');
+      : '<tr><td colspan="8" class="cell-center muted">No SaaS / subscription items found.</td></tr>');
 
     const renderOneTimeRows = rows => (rows.length
       ? rows
           .map(item => {
             const computed = computeRow(item);
             return `<tr>
+              <td>${textValue(item.location_name || item.locationName)}</td>
               <td>${textValue(item.item_name || item.capability_name)}</td>
               <td class="cell-right">${money(computed.unitPrice)}</td>
               <td class="cell-center">${U.escapeHtml(String(computed.discountPercent || 0))}%</td>
@@ -1794,7 +1797,7 @@ const Proposals = {
             </tr>`;
           })
           .join('')
-      : '<tr><td colspan="5" class="cell-center muted">No one-time fee items found.</td></tr>');
+      : '<tr><td colspan="6" class="cell-center muted">No one-time fee items found.</td></tr>');
 
     const calculatedTotals = this.calculateProposalTotals(normalizedItems);
     const headerSaas = this.toNumberSafe(proposalData.subtotal_locations ?? proposalData.saas_total);
@@ -2053,6 +2056,7 @@ const Proposals = {
         <table>
           <thead>
             <tr>
+              <th>Location</th>
               <th>License</th>
               <th style="width:15%">License Price / Year</th>
               <th style="width:12%">License / Month</th>
@@ -2065,7 +2069,7 @@ const Proposals = {
           <tbody>
             ${renderSubscriptionRows(subscriptionItems)}
             <tr class="total-row">
-              <td colspan="6" class="cell-right">Total SaaS / Subscription</td>
+              <td colspan="7" class="cell-right">Total SaaS / Subscription</td>
               <td class="cell-right">${money(subtotalLocations)}</td>
             </tr>
           </tbody>
@@ -2078,6 +2082,7 @@ const Proposals = {
         <table>
           <thead>
             <tr>
+              <th>Location</th>
               <th>Item / Service</th>
               <th style="width:14%">Unit Price</th>
               <th style="width:10%">Discount %</th>
@@ -2088,7 +2093,7 @@ const Proposals = {
           <tbody>
             ${renderOneTimeRows(oneTimeItems.length ? oneTimeItems : otherItems)}
             <tr class="total-row">
-              <td colspan="4" class="cell-right">Total One Time Fees</td>
+              <td colspan="5" class="cell-right">Total One Time Fees</td>
               <td class="cell-right">${money(subtotalOneTime)}</td>
             </tr>
           </tbody>
@@ -2836,7 +2841,7 @@ const Proposals = {
 
     const safeRows = Array.isArray(rows) ? rows : [];
     if (!safeRows.length) {
-      const colspan = section === 'capability' ? 3 : section === 'annual_saas' ? 8 : 6;
+      const colspan = section === 'capability' ? 3 : section === 'annual_saas' ? 9 : 7;
       tbody.innerHTML = `<tr><td colspan="${colspan}" class="muted" style="text-align:center;">No rows yet.</td></tr>`;
       return;
     }
@@ -2873,7 +2878,8 @@ const Proposals = {
           ? `${quantityCell}${serviceDateCells}${discountCell}`
           : `${discountCell}${quantityCell}`;
         return `<tr data-item-row="${section}">
-          <td><input type="hidden" data-item-field="catalog_item_id" value="${U.escapeAttr(computed.catalog_item_id || '')}" /><input type="hidden" data-item-field="location_name" value="${U.escapeAttr(computed.location_name || '')}" /><input class="input" data-item-field="item_name" list="proposalCatalogOptions-${section}" value="${U.escapeAttr(computed.item_name || '')}" /></td>
+          <td><input class="input" data-item-field="location_name" value="${U.escapeAttr(computed.location_name || '')}" /><input type="hidden" data-item-field="location_address" value="${U.escapeAttr(computed.location_address || '')}" /></td>
+          <td><input type="hidden" data-item-field="catalog_item_id" value="${U.escapeAttr(computed.catalog_item_id || '')}" /><input class="input" data-item-field="item_name" list="proposalCatalogOptions-${section}" value="${U.escapeAttr(computed.item_name || '')}" /></td>
           <td><input class="input" type="number" step="0.01" data-item-field="unit_price" value="${U.escapeAttr(computed.unit_price ?? '')}" /></td>
           ${commercialCells}
           <td><span data-item-display="line_total">${this.formatMoney(computed.line_total)}</span></td>
@@ -2932,6 +2938,7 @@ const Proposals = {
           line_no: idx + 1,
           catalog_item_id: String(get('catalog_item_id')).trim(),
           location_name: String(get('location_name')).trim(),
+          location_address: String(get('location_address')).trim(),
           item_name: String(get('item_name')).trim(),
           unit_price: unitPrice,
           discount_percent: discountPercent,
@@ -3619,6 +3626,7 @@ const Proposals = {
     groups[section].push({
       section,
       location_name: '',
+      location_address: '',
       item_name: '',
       unit_price: 0,
       discount_percent: 0,

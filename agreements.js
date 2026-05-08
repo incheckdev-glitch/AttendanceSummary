@@ -1208,6 +1208,7 @@ const Agreements = {
           .map(item => {
             const computed = computeRow(item);
             return `<tr>
+              <td>${textValue(item.location_name || item.locationName)}</td>
               <td>${textValue(item.item_name || item.capability_name)}</td>
               <td class="cell-right">${money(computed.unitPrice)}</td>
               <td class="cell-center">${computed.quantity ? U.escapeHtml(String(computed.quantity)) : '—'}</td>
@@ -1218,13 +1219,14 @@ const Agreements = {
             </tr>`;
           })
           .join('')
-      : '<tr><td colspan="7" class="cell-center muted">No SaaS / subscription items found.</td></tr>';
+      : '<tr><td colspan="8" class="cell-center muted">No SaaS / subscription items found.</td></tr>';
 
     const oneTimeRows = (oneTimeItems.length ? oneTimeItems : otherItems).length
       ? (oneTimeItems.length ? oneTimeItems : otherItems)
           .map(item => {
             const computed = computeRow(item);
             return `<tr>
+              <td>${textValue(item.location_name || item.locationName)}</td>
               <td>${textValue(item.item_name || item.capability_name)}</td>
               <td class="cell-right">${money(computed.unitPrice)}</td>
               <td class="cell-center">${U.escapeHtml(String(computed.discountPercent || 0))}%</td>
@@ -1233,7 +1235,7 @@ const Agreements = {
             </tr>`;
           })
           .join('')
-      : '<tr><td colspan="5" class="cell-center muted">No one-time fee items found.</td></tr>';
+      : '<tr><td colspan="6" class="cell-center muted">No one-time fee items found.</td></tr>';
 
     const calculatedTotals = this.calculateTotals(normalizedItems);
     const subtotalLocations = calculatedTotals.grand_total > 0 ? calculatedTotals.saas_total : this.toNumberSafe(agreementData.subtotal_locations || agreementData.saas_total);
@@ -1357,6 +1359,7 @@ const Agreements = {
         <table>
           <thead>
             <tr>
+              <th>Location</th>
               <th>License</th>
               <th style="width:15%">License Price / Year</th>
               <th style="width:12%">License / Month</th>
@@ -1369,7 +1372,7 @@ const Agreements = {
           <tbody>
             ${subscriptionRows}
             <tr class="total-row">
-              <td colspan="6" class="cell-right">Total SaaS / Subscription</td>
+              <td colspan="7" class="cell-right">Total SaaS / Subscription</td>
               <td class="cell-right">${money(subtotalLocations)}</td>
             </tr>
           </tbody>
@@ -1382,6 +1385,7 @@ const Agreements = {
         <table>
           <thead>
             <tr>
+              <th>Location</th>
               <th>Item / Service</th>
               <th style="width:14%">Unit Price</th>
               <th style="width:10%">Discount %</th>
@@ -1392,7 +1396,7 @@ const Agreements = {
           <tbody>
             ${oneTimeRows}
             <tr class="total-row">
-              <td colspan="4" class="cell-right">Total One Time Fees</td>
+              <td colspan="5" class="cell-right">Total One Time Fees</td>
               <td class="cell-right">${money(subtotalOneTime)}</td>
             </tr>
           </tbody>
@@ -1906,7 +1910,8 @@ const Agreements = {
         ? `${quantityCell}${serviceDateCells}${discountCell}`
         : `${discountCell}${quantityCell}`;
       return `<tr data-item-row="${section}" data-item-payload="${payload}">
-      <td><input type="hidden" data-item-field="location_name" value="${U.escapeAttr(computed.location_name || '')}" /><input type="hidden" data-item-field="location_address" value="${U.escapeAttr(computed.location_address || '')}" /><input class="input" data-item-field="item_name" value="${U.escapeAttr(computed.item_name || '')}"${lockAttr} /></td>
+      <td><input class="input" data-item-field="location_name" value="${U.escapeAttr(computed.location_name || '')}"${lockAttr} /><input type="hidden" data-item-field="location_address" value="${U.escapeAttr(computed.location_address || '')}" /></td>
+      <td><input class="input" data-item-field="item_name" value="${U.escapeAttr(computed.item_name || '')}"${lockAttr} /></td>
       <td><input class="input" data-item-field="unit_price" type="number" step="0.01" value="${U.escapeAttr(computed.unit_price ?? '')}"${lockAttr} /></td>
       ${commercialCells}
       <td><input class="input" data-item-field="line_total" type="number" step="0.01" value="${U.escapeAttr(computed.line_total ?? '')}" readonly${lockAttr} /></td>
