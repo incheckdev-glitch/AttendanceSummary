@@ -801,7 +801,7 @@ const Invoices = {
     });
     return {
       invoiceUuid,
-      invoice: this.normalizeInvoice({ ...normalizedInvoice, ...paymentSummary }),
+      invoice: normalizedInvoice,
       items: Array.isArray(itemRows) ? itemRows.map(item => this.normalizeItem(item)) : [],
       receipts: paymentSummary.normalizedReceipts,
       paymentSchedule: this.extractRows(scheduleResult).map(row => this.normalizeScheduleRow(row))
@@ -840,13 +840,14 @@ const Invoices = {
     );
     const subtotalOneTime = this.toNumberSafe(hasCommercialItems ? itemTotals.subtotal_one_time : (invoiceData.subtotal_one_time ?? 0));
     const invoiceTotal = this.toNumberSafe(hasCommercialItems ? itemTotals.invoice_total : (invoiceData.invoice_total ?? invoiceData.grand_total ?? 0));
-    const baselinePaid = this.toNumberSafe(invoiceData.amount_paid ?? invoiceData.received_amount ?? invoiceData.old_paid_total);
-    const receiptSummary = this.summarizeReceiptPayments(invoiceTotal, receipts, { baselinePaid });
-    const paidAmount = this.toNumberSafe(receiptSummary.amount_paid);
-    const pendingAmount = this.toNumberSafe(receiptSummary.pending_amount);
-    const paymentState = String(receiptSummary.payment_state || invoiceData.payment_state || 'Not Paid').trim();
+    const paidAmount = this.toNumberSafe(invoiceData.received_amount ?? invoiceData.amount_paid ?? invoiceData.old_paid_total);
+    const pendingInput = invoiceData.pending_amount ?? invoiceData.balance_due ?? invoiceData.balance_amount;
+    const pendingAmount = pendingInput !== undefined && pendingInput !== null && String(pendingInput).trim() !== ''
+      ? this.toNumberSafe(pendingInput)
+      : Math.max(0, invoiceTotal - paidAmount);
+    const paymentState = String(invoiceData.payment_state || '').trim() || U.calculatePaymentState(invoiceTotal, paidAmount);
     const amountInWords = String(invoiceData.amount_in_words || '').trim() || this.amountToWords(invoiceTotal, currency);
-    const paymentConclusion = String(receiptSummary.payment_conclusion || invoiceData.payment_conclusion || '').trim() || this.derivePaymentConclusion({ pending_amount: pendingAmount });
+    const paymentConclusion = String(invoiceData.payment_conclusion || '').trim() || this.derivePaymentConclusion({ pending_amount: pendingAmount });
 
     const subscriptionItems = normalizedItems.filter(item => this.isSubscriptionSection(item.section));
     const oneTimeItems = normalizedItems.filter(item => this.isOneTimeSection(item.section));
