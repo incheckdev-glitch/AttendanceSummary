@@ -121,9 +121,12 @@ const Proposals = {
   normalizeProposalItemForSave(item = {}) {
     const safe = item && typeof item === 'object' ? item : {};
     const unitPrice = this.toNumberSafe(safe.unit_price ?? safe.unitPrice);
-    const quantity = Math.max(0, this.toNumberSafe(safe.quantity ?? safe.qty) || (safe.quantity === 0 ? 0 : 1));
+    const section = String(safe.section || safe.item_section || safe.type || '').trim().toLowerCase();
+    const defaultQuantity = section === 'annual_saas' ? 12 : 1;
+    const quantity = Math.max(0, this.toNumberSafe(safe.quantity ?? safe.qty) || (safe.quantity === 0 ? 0 : defaultQuantity));
     const discountPercent = this.getNormalizedItemDiscountPercent(safe);
     const computed = this.computeCommercialRow({
+      section,
       unit_price: unitPrice,
       discount_percent: discountPercent,
       quantity
@@ -138,7 +141,7 @@ const Proposals = {
         safe.discounted_unit_price ?? safe.discountedUnitPrice ?? computed.discounted_unit_price
       ),
       line_total: this.toNumberSafe(safe.line_total ?? safe.lineTotal ?? computed.line_total),
-      section: String(safe.section || safe.item_section || safe.type || '').trim().toLowerCase(),
+      section,
       category: String(safe.category || '').trim(),
       type: String(safe.type || '').trim(),
       billing_frequency: String(safe.billing_frequency || safe.billingFrequency || '').trim(),
@@ -146,6 +149,40 @@ const Proposals = {
       is_saas: this.normalizeTruthy(safe.is_saas),
       one_time: this.normalizeTruthy(safe.one_time)
     };
+  },
+
+  getTodayDateInputValue() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  },
+  normalizeDateInputValue(value) {
+    const raw = String(value ?? '').trim();
+    if (!raw) return '';
+    const prefixMatch = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (prefixMatch) return prefixMatch[1];
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) return raw;
+    return parsed.toISOString().slice(0, 10);
+  },
+  addMonthsMinusOneDay(startValue, monthsValue) {
+    const start = this.normalizeDateInputValue(startValue);
+    const months = Math.max(1, this.toNumberSafe(monthsValue));
+    if (!start || !months) return '';
+    const [year, month, day] = start.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    if (Number.isNaN(date.getTime())) return '';
+    date.setMonth(date.getMonth() + months);
+    date.setDate(date.getDate() - 1);
+    const endYear = date.getFullYear();
+    const endMonth = String(date.getMonth() + 1).padStart(2, '0');
+    const endDay = String(date.getDate()).padStart(2, '0');
+    return `${endYear}-${endMonth}-${endDay}`;
+  },
+  getDefaultAnnualServiceStartDate() {
+    return this.normalizeDateInputValue(E.proposalFormProposalDate?.value || E.proposalFormServiceStartDate?.value) || this.getTodayDateInputValue();
   },
   normalizeDiscount(value) {
     const raw = this.toNumberSafe(value);
@@ -237,7 +274,7 @@ const Proposals = {
       );
       const unitPrice = this.toNumberSafe(safe.unit_price ?? safe.unitPrice);
       const discountPercent = this.getNormalizedItemDiscountPercent(safe);
-      const base = quantity * unitPrice;
+      const base = sectionType === 'saas' ? unitPrice * (quantity / 12) : quantity * unitPrice;
       const discountAmount = (base * discountPercent) / 100;
       const lineTotal = Math.max(0, base - discountAmount);
 
@@ -1064,6 +1101,8 @@ const Proposals = {
         pick(source.discounted_unit_price, source.discountedUnitPrice)
       ),
       quantity: this.toNumberSafe(pick(source.quantity, source.qty, source.count)),
+      service_start_date: this.normalizeDateInputValue(pick(source.service_start_date, source.serviceStartDate)),
+      service_end_date: this.normalizeDateInputValue(pick(source.service_end_date, source.serviceEndDate)),
       line_total: this.toNumberSafe(pick(source.line_total, source.lineTotal)),
       capability_name: String(pick(source.capability_name, source.capabilityName)).trim(),
       capability_value: String(pick(source.capability_value, source.capabilityValue)).trim(),
@@ -1072,14 +1111,18 @@ const Proposals = {
     };
     normalized.discountPercent = normalized.discount_percent;
 
+    if (section === 'annual_saas') {
+      if (!normalized.quantity) normalized.quantity = 12;
+      if (!normalized.service_start_date) normalized.service_start_date = this.getDefaultAnnualServiceStartDate();
+      if (!normalized.service_end_date) normalized.service_end_date = this.addMonthsMinusOneDay(normalized.service_start_date, normalized.quantity);
+    } else if (section === 'one_time_fee' && !normalized.quantity) {
+      normalized.quantity = 1;
+    }
+
     if (section === 'annual_saas' || section === 'one_time_fee') {
-      const discountRatio = this.normalizeDiscount(normalized.discount_percent);
-      if (!normalized.discounted_unit_price) {
-        normalized.discounted_unit_price = normalized.unit_price * (1 - discountRatio);
-      }
-      if (!normalized.line_total) {
-        normalized.line_total = normalized.discounted_unit_price * (normalized.quantity || 0);
-      }
+      const computed = this.computeCommercialRow(normalized);
+      if (!normalized.discounted_unit_price) normalized.discounted_unit_price = computed.discounted_unit_price;
+      if (!normalized.line_total) normalized.line_total = computed.line_total;
     }
 
     return normalized;
@@ -1466,18 +1509,16 @@ const Proposals = {
       return formatted && formatted !== 'Invalid Date' ? formatted : U.escapeHtml(raw);
     };
     const computeRow = item => {
-      const quantity = this.toNumberSafe(item.quantity);
+      const section = String(item?.section || '').trim().toLowerCase();
+      const quantity = this.toNumberSafe(item.quantity) || (section === 'annual_saas' ? 12 : 1);
       const unitPrice = this.toNumberSafe(item.unit_price);
       const discountPercent = this.toNumberSafe(item.discount_percent);
-      const discountRatio = this.normalizeDiscount(discountPercent);
-      const discountedUnitPrice = this.toNumberSafe(item.discounted_unit_price) || unitPrice * (1 - discountRatio);
-      const lineTotal = this.toNumberSafe(item.line_total) || discountedUnitPrice * quantity;
+      const computed = this.computeCommercialRow({ ...item, section, quantity, unit_price: unitPrice, discount_percent: discountPercent });
       return {
         quantity,
         unitPrice,
         discountPercent,
-        discountedUnitPrice,
-        lineTotal
+        lineTotal: computed.line_total
       };
     };
 
@@ -1493,40 +1534,34 @@ const Proposals = {
           .map(item => {
             const computed = computeRow(item);
             return `<tr>
-              <td class="cell-center">${textValue(item.line_no)}</td>
               <td>${textValue(item.location_name)}</td>
-              <td class="cell-center">${dateValue(item.service_start_date || proposalData.service_start_date)}</td>
-              <td class="cell-center">${dateValue(item.service_end_date)}</td>
               <td>${textValue(item.item_name || item.capability_name)}</td>
-              <td class="cell-center">${computed.quantity ? U.escapeHtml(String(computed.quantity)) : '—'}</td>
               <td class="cell-right">${money(computed.unitPrice)}</td>
               <td class="cell-center">${U.escapeHtml(String(computed.discountPercent || 0))}%</td>
-              <td class="cell-right">${money(computed.discountedUnitPrice)}</td>
+              <td class="cell-center">${computed.quantity ? U.escapeHtml(String(computed.quantity)) : '—'}</td>
+              <td class="cell-center">${dateValue(item.service_start_date || proposalData.service_start_date)}</td>
+              <td class="cell-center">${dateValue(item.service_end_date)}</td>
               <td class="cell-right">${money(computed.lineTotal)}</td>
             </tr>`;
           })
           .join('')
-      : '<tr><td colspan="10" class="cell-center muted">No SaaS / subscription items found.</td></tr>');
+      : '<tr><td colspan="8" class="cell-center muted">No SaaS / subscription items found.</td></tr>');
 
     const renderOneTimeRows = rows => (rows.length
       ? rows
           .map(item => {
             const computed = computeRow(item);
             return `<tr>
-              <td class="cell-center">${textValue(item.line_no)}</td>
               <td>${textValue(item.location_name)}</td>
               <td>${textValue(item.item_name || item.capability_name)}</td>
-              <td class="cell-center">${dateValue(item.service_start_date || proposalData.service_start_date)}</td>
-              <td class="cell-center">${dateValue(item.service_end_date)}</td>
-              <td class="cell-center">${computed.quantity ? U.escapeHtml(String(computed.quantity)) : '—'}</td>
               <td class="cell-right">${money(computed.unitPrice)}</td>
               <td class="cell-center">${U.escapeHtml(String(computed.discountPercent || 0))}%</td>
-              <td class="cell-right">${money(computed.discountedUnitPrice)}</td>
+              <td class="cell-center">${computed.quantity ? U.escapeHtml(String(computed.quantity)) : '—'}</td>
               <td class="cell-right">${money(computed.lineTotal)}</td>
             </tr>`;
           })
           .join('')
-      : '<tr><td colspan="10" class="cell-center muted">No one-time fee items found.</td></tr>');
+      : '<tr><td colspan="6" class="cell-center muted">No one-time fee items found.</td></tr>');
 
     const calculatedTotals = this.calculateProposalTotals(normalizedItems);
     const headerSaas = this.toNumberSafe(proposalData.subtotal_locations ?? proposalData.saas_total);
@@ -1669,22 +1704,20 @@ const Proposals = {
         <table>
           <thead>
             <tr>
-              <th style="width:6%">Line</th>
-              <th style="width:15%">Location</th>
-              <th style="width:11%">Service Start</th>
-              <th style="width:11%">Service End</th>
-              <th>Item / Module</th>
-              <th style="width:7%">Qty</th>
-              <th style="width:11%">Unit Price</th>
-              <th style="width:8%">Discount</th>
-              <th style="width:11%">Disc. Unit</th>
-              <th style="width:12%">Line Total</th>
+              <th style="width:7%">Location</th>
+              <th>License</th>
+              <th style="width:15%">License Price / Year</th>
+              <th style="width:10%">Discount %</th>
+              <th style="width:12%">License / Month</th>
+              <th style="width:13%">Service Start Date</th>
+              <th style="width:13%">Service End Date</th>
+              <th style="width:12%">Total</th>
             </tr>
           </thead>
           <tbody>
             ${renderSubscriptionRows(subscriptionItems)}
             <tr class="total-row">
-              <td colspan="9" class="cell-right">Total SaaS / Subscription</td>
+              <td colspan="7" class="cell-right">Total SaaS / Subscription</td>
               <td class="cell-right">${money(subtotalLocations)}</td>
             </tr>
           </tbody>
@@ -1697,22 +1730,18 @@ const Proposals = {
         <table>
           <thead>
             <tr>
-              <th style="width:6%">Line</th>
               <th style="width:16%">Location</th>
-              <th>Service / Item</th>
-              <th style="width:11%">Service Start</th>
-              <th style="width:11%">Service End</th>
-              <th style="width:7%">Qty</th>
-              <th style="width:11%">Unit Price</th>
-              <th style="width:8%">Discount</th>
-              <th style="width:11%">Disc. Unit</th>
-              <th style="width:12%">Line Total</th>
+              <th>Item / Service</th>
+              <th style="width:14%">Unit Price</th>
+              <th style="width:10%">Discount %</th>
+              <th style="width:8%">Qty</th>
+              <th style="width:14%">Total</th>
             </tr>
           </thead>
           <tbody>
             ${renderOneTimeRows(oneTimeItems.length ? oneTimeItems : otherItems)}
             <tr class="total-row">
-              <td colspan="9" class="cell-right">Total One Time Fees</td>
+              <td colspan="5" class="cell-right">Total One Time Fees</td>
               <td class="cell-right">${money(subtotalOneTime)}</td>
             </tr>
           </tbody>
@@ -2274,11 +2303,13 @@ const Proposals = {
     set(E.proposalFormTerms, proposal.terms_conditions || '');
   },
   computeCommercialRow(item) {
+    const section = String(item?.section || '').trim().toLowerCase();
     const unit = this.toNumberSafe(item.unit_price);
     const discountRatio = this.normalizeDiscount(item.discount_percent);
     const qty = this.toNumberSafe(item.quantity);
-    const discounted = unit * (1 - discountRatio);
-    const lineTotal = discounted * qty;
+    const baseAmount = section === 'annual_saas' ? unit * (qty / 12) : unit * qty;
+    const discounted = section === 'annual_saas' ? baseAmount * (1 - discountRatio) : unit * (1 - discountRatio);
+    const lineTotal = Math.max(0, baseAmount * (1 - discountRatio));
     return {
       ...item,
       discounted_unit_price: discounted,
@@ -2452,7 +2483,7 @@ const Proposals = {
 
     const safeRows = Array.isArray(rows) ? rows : [];
     if (!safeRows.length) {
-      const colspan = section === 'capability' ? 3 : 8;
+      const colspan = section === 'capability' ? 3 : section === 'annual_saas' ? 9 : 7;
       tbody.innerHTML = `<tr><td colspan="${colspan}" class="muted" style="text-align:center;">No rows yet.</td></tr>`;
       return;
     }
@@ -2472,14 +2503,24 @@ const Proposals = {
 
     tbody.innerHTML = safeRows
       .map((row, index) => {
-        const computed = this.computeCommercialRow(row);
+        const rowDefaults = section === 'annual_saas'
+          ? { ...row, quantity: row.quantity || 12, service_start_date: row.service_start_date || this.getDefaultAnnualServiceStartDate() }
+          : { ...row, quantity: row.quantity || 1 };
+        if (section === 'annual_saas' && !rowDefaults.service_end_date) {
+          rowDefaults.service_end_date = this.addMonthsMinusOneDay(rowDefaults.service_start_date, rowDefaults.quantity);
+        }
+        const computed = this.computeCommercialRow({ ...rowDefaults, section });
+        const serviceDateCells = section === 'annual_saas'
+          ? `<td><input class="input" type="date" data-item-field="service_start_date" value="${U.escapeAttr(computed.service_start_date || '')}" /></td>
+          <td><input class="input" type="date" data-item-field="service_end_date" value="${U.escapeAttr(computed.service_end_date || '')}" /></td>`
+          : '';
         return `<tr data-item-row="${section}">
           <td><input type="hidden" data-item-field="catalog_item_id" value="${U.escapeAttr(computed.catalog_item_id || '')}" /><input class="input" data-item-field="location_name" value="${U.escapeAttr(computed.location_name || '')}" /></td>
           <td><input class="input" data-item-field="item_name" list="proposalCatalogOptions-${section}" value="${U.escapeAttr(computed.item_name || '')}" /></td>
           <td><input class="input" type="number" step="0.01" data-item-field="unit_price" value="${U.escapeAttr(computed.unit_price ?? '')}" /></td>
-          <td><input class="input" type="number" step="0.01" data-item-field="discount_percent" value="${U.escapeAttr(computed.discount_percent ?? '')}" /></td>
-          <td><input class="input" type="number" step="0.01" data-item-field="quantity" value="${U.escapeAttr(computed.quantity ?? '')}" /></td>
-          <td><span data-item-display="discounted_unit_price">${this.formatMoney(computed.discounted_unit_price)}</span></td>
+          <td><input class="input" type="number" step="0.01" min="0" max="100" data-item-field="discount_percent" value="${U.escapeAttr(computed.discount_percent ?? '')}" /></td>
+          <td><input class="input" type="number" step="0.01" min="0.01" ${section === 'annual_saas' ? 'max="12"' : ''} data-item-field="quantity" value="${U.escapeAttr(computed.quantity ?? '')}" /></td>
+          ${serviceDateCells}
           <td><span data-item-display="line_total">${this.formatMoney(computed.line_total)}</span></td>
           <td>
             <button class="btn ghost sm" type="button" data-item-remove="${section}" data-item-index="${index}">Remove</button>
@@ -2523,8 +2564,10 @@ const Proposals = {
         }
         const unitPrice = this.toNumberSafe(get('unit_price'));
         const discountPercent = this.normalizeDiscountPercentValue(get('discount_percent'));
-        const quantity = Math.max(0, this.toNumberSafe(get('quantity')) || 1);
-        const computed = this.computeCommercialRow({ unit_price: unitPrice, discount_percent: discountPercent, quantity });
+        const quantity = Math.max(0, this.toNumberSafe(get('quantity')) || (section === 'annual_saas' ? 12 : 1));
+        const serviceStartDate = this.normalizeDateInputValue(get('service_start_date'));
+        const serviceEndDate = this.normalizeDateInputValue(get('service_end_date'));
+        const computed = this.computeCommercialRow({ section, unit_price: unitPrice, discount_percent: discountPercent, quantity });
         if (!get('item_name') && !get('location_name') && !unitPrice && !quantity) return null;
         return {
           section,
@@ -2535,6 +2578,8 @@ const Proposals = {
           unit_price: unitPrice,
           discount_percent: discountPercent,
           quantity,
+          service_start_date: serviceStartDate,
+          service_end_date: serviceEndDate,
           discounted_unit_price: computed.discounted_unit_price,
           line_total: computed.line_total
         };
@@ -2777,6 +2822,35 @@ const Proposals = {
     if (E.proposalFormDeleteBtn) E.proposalFormDeleteBtn.disabled = busy;
     if (E.proposalFormPreviewBtn) E.proposalFormPreviewBtn.disabled = busy;
   },
+
+  validateCommercialItems(items = []) {
+    const safeItems = Array.isArray(items) ? items : [];
+    const hasInvalidAnnual = safeItems.some(item => {
+      if (String(item?.section || '').trim().toLowerCase() !== 'annual_saas') return false;
+      const unit = this.toNumberSafe(item.unit_price);
+      const qty = this.toNumberSafe(item.quantity);
+      const discount = this.toNumberSafe(item.discount_percent);
+      const start = this.normalizeDateInputValue(item.service_start_date);
+      const end = this.normalizeDateInputValue(item.service_end_date);
+      return unit < 0 || qty <= 0 || qty > 12 || discount < 0 || discount > 100 || !start || !end || end <= start;
+    });
+    if (hasInvalidAnnual) {
+      UI.toast('Please complete the annual SaaS service dates and license months.');
+      return false;
+    }
+    const hasInvalidOneTime = safeItems.some(item => {
+      if (String(item?.section || '').trim().toLowerCase() !== 'one_time_fee') return false;
+      const unit = this.toNumberSafe(item.unit_price);
+      const qty = this.toNumberSafe(item.quantity);
+      const discount = this.toNumberSafe(item.discount_percent);
+      return unit < 0 || qty <= 0 || discount < 0 || discount > 100;
+    });
+    if (hasInvalidOneTime) {
+      UI.toast('Please enter valid one-time fee unit prices, quantities, and discounts.');
+      return false;
+    }
+    return true;
+  },
   async submitForm() {
     if (this.state.saveInFlight) return;
     const mode = E.proposalForm?.dataset.mode === 'edit' ? 'edit' : 'create';
@@ -2810,6 +2884,7 @@ const Proposals = {
       if (E.proposalFormProposalId) E.proposalFormProposalId.value = proposal.proposal_id;
     }
     const items = this.collectProposalItems();
+    if (!this.validateCommercialItems(items)) return;
     const cachedDetail = this.getCachedDetail(proposalId);
     const currentRecord = cachedDetail?.proposal || this.state.rows.find(row => String(row.id || '') === proposalId) || {};
     const requestedDiscount = typeof getProposalCurrentDiscountPercent === 'function'
@@ -3184,7 +3259,9 @@ const Proposals = {
       item_name: '',
       unit_price: 0,
       discount_percent: 0,
-      quantity: 1,
+      quantity: section === 'annual_saas' ? 12 : 1,
+      service_start_date: section === 'annual_saas' ? this.getDefaultAnnualServiceStartDate() : '',
+      service_end_date: section === 'annual_saas' ? this.addMonthsMinusOneDay(this.getDefaultAnnualServiceStartDate(), 12) : '',
       discounted_unit_price: 0,
       line_total: 0
     });
@@ -3319,14 +3396,17 @@ const Proposals = {
             if (section !== 'capability') {
               if (field === 'item_name') this.applyCatalogSelectionToRow(tr, section, { fromUserInput: true });
               const get = key => tr.querySelector(`[data-item-field="${key}"]`)?.value ?? '';
+              if (section === 'annual_saas' && (field === 'quantity' || field === 'service_start_date')) {
+                const endInput = tr.querySelector('[data-item-field="service_end_date"]');
+                if (endInput) endInput.value = this.addMonthsMinusOneDay(get('service_start_date'), get('quantity'));
+              }
               const computed = this.computeCommercialRow({
+                section,
                 unit_price: get('unit_price'),
                 discount_percent: get('discount_percent'),
                 quantity: get('quantity')
               });
-              const discountedEl = tr.querySelector('[data-item-display="discounted_unit_price"]');
               const lineTotalEl = tr.querySelector('[data-item-display="line_total"]');
-              if (discountedEl) discountedEl.textContent = this.formatMoney(computed.discounted_unit_price);
               if (lineTotalEl) lineTotalEl.textContent = this.formatMoney(computed.line_total);
             }
           }
@@ -3342,13 +3422,12 @@ const Proposals = {
         this.applyCatalogSelectionToRow(tr, section, { fromUserInput: true });
         const get = key => tr.querySelector(`[data-item-field="${key}"]`)?.value ?? '';
         const computed = this.computeCommercialRow({
+          section,
           unit_price: get('unit_price'),
           discount_percent: get('discount_percent'),
           quantity: get('quantity')
         });
-        const discountedEl = tr.querySelector('[data-item-display="discounted_unit_price"]');
         const lineTotalEl = tr.querySelector('[data-item-display="line_total"]');
-        if (discountedEl) discountedEl.textContent = this.formatMoney(computed.discounted_unit_price);
         if (lineTotalEl) lineTotalEl.textContent = this.formatMoney(computed.line_total);
         this.renderTotalsPreview();
       });

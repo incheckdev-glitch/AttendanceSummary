@@ -142,6 +142,52 @@ const Agreements = {
     const formatted = amount.toLocaleString(undefined, options);
     return normalizedCurrency ? `${normalizedCurrency} ${formatted}` : formatted;
   },
+
+  normalizeDiscount(value) {
+    const raw = this.toNumberSafe(value);
+    if (raw > 1) return raw / 100;
+    if (raw < 0) return 0;
+    return raw;
+  },
+  getTodayDateInputValue() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  },
+  normalizeDateInputValue(value) {
+    const raw = String(value ?? '').trim();
+    if (!raw) return '';
+    const prefixMatch = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (prefixMatch) return prefixMatch[1];
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) return raw;
+    return parsed.toISOString().slice(0, 10);
+  },
+  addMonthsMinusOneDay(startValue, monthsValue) {
+    const start = this.normalizeDateInputValue(startValue);
+    const months = Math.max(1, this.toNumberSafe(monthsValue));
+    if (!start || !months) return '';
+    const [year, month, day] = start.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    if (Number.isNaN(date.getTime())) return '';
+    date.setMonth(date.getMonth() + months);
+    date.setDate(date.getDate() - 1);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  },
+  getDefaultAnnualServiceStartDate() {
+    return this.normalizeDateInputValue(document.getElementById('agreementFormAgreementDate')?.value || document.getElementById('agreementFormServiceStartDate')?.value) || this.getTodayDateInputValue();
+  },
+  computeCommercialRow(item = {}) {
+    const section = String(item?.section || '').trim().toLowerCase();
+    const unit = this.toNumberSafe(item.unit_price);
+    const qty = this.toNumberSafe(item.quantity);
+    const discountRatio = this.normalizeDiscount(item.discount_percent);
+    const baseAmount = section === 'annual_saas' ? unit * (qty / 12) : unit * qty;
+    const discountedUnitPrice = section === 'annual_saas' ? baseAmount * (1 - discountRatio) : unit * (1 - discountRatio);
+    return { ...item, discounted_unit_price: discountedUnitPrice, line_total: Math.max(0, baseAmount * (1 - discountRatio)) };
+  },
   canExportAgreements() {
     return Permissions.canExport('agreements');
   },
@@ -418,10 +464,17 @@ const Agreements = {
       notes: String(pick(source.notes)).trim(),
       updated_at: String(pick(source.updated_at, source.updatedAt)).trim()
     };
+    if (section === 'annual_saas') {
+      if (!normalized.quantity) normalized.quantity = 12;
+      if (!normalized.service_start_date) normalized.service_start_date = this.getDefaultAnnualServiceStartDate();
+      if (!normalized.service_end_date) normalized.service_end_date = this.addMonthsMinusOneDay(normalized.service_start_date, normalized.quantity);
+    } else if (section === 'one_time_fee' && !normalized.quantity) {
+      normalized.quantity = 1;
+    }
     if (section === 'annual_saas' || section === 'one_time_fee') {
-      const discountRatio = normalized.discount_percent > 1 ? normalized.discount_percent / 100 : normalized.discount_percent;
-      if (!normalized.discounted_unit_price) normalized.discounted_unit_price = normalized.unit_price * (1 - discountRatio);
-      if (!normalized.line_total) normalized.line_total = normalized.discounted_unit_price * (normalized.quantity || 0);
+      const computed = this.computeCommercialRow(normalized);
+      if (!normalized.discounted_unit_price) normalized.discounted_unit_price = computed.discounted_unit_price;
+      if (!normalized.line_total) normalized.line_total = computed.line_total;
     }
     return normalized;
   },
@@ -824,18 +877,16 @@ const Agreements = {
       return key === 'one_time_fee' || key === 'one-time-fee' || key === 'one_time';
     };
     const computeRow = item => {
-      const quantity = this.toNumberSafe(item.quantity);
+      const section = String(item?.section || '').trim().toLowerCase();
+      const quantity = this.toNumberSafe(item.quantity) || (section === 'annual_saas' ? 12 : 1);
       const unitPrice = this.toNumberSafe(item.unit_price);
       const discountPercent = this.toNumberSafe(item.discount_percent);
-      const discountRatio = discountPercent > 1 ? discountPercent / 100 : Math.max(0, discountPercent);
-      const discountedUnitPrice = this.toNumberSafe(item.discounted_unit_price) || unitPrice * (1 - discountRatio);
-      const lineTotal = this.toNumberSafe(item.line_total) || discountedUnitPrice * quantity;
+      const computed = this.computeCommercialRow({ ...item, section, quantity, unit_price: unitPrice, discount_percent: discountPercent });
       return {
         quantity,
         unitPrice,
         discountPercent,
-        discountedUnitPrice,
-        lineTotal
+        lineTotal: computed.line_total
       };
     };
 
@@ -848,44 +899,39 @@ const Agreements = {
           .map(item => {
             const computed = computeRow(item);
             return `<tr>
-              <td class="cell-center">${textValue(item.line_no)}</td>
               <td>${textValue(item.location_name)}</td>
-              <td class="cell-center">${dateValue(item.service_start_date || agreementData.service_start_date)}</td>
-              <td class="cell-center">${dateValue(item.service_end_date || agreementData.service_end_date)}</td>
               <td>${textValue(item.item_name || item.capability_name)}</td>
-              <td class="cell-center">${computed.quantity ? U.escapeHtml(String(computed.quantity)) : '—'}</td>
               <td class="cell-right">${money(computed.unitPrice)}</td>
               <td class="cell-center">${U.escapeHtml(String(computed.discountPercent || 0))}%</td>
-              <td class="cell-right">${money(computed.discountedUnitPrice)}</td>
+              <td class="cell-center">${computed.quantity ? U.escapeHtml(String(computed.quantity)) : '—'}</td>
+              <td class="cell-center">${dateValue(item.service_start_date || agreementData.service_start_date)}</td>
+              <td class="cell-center">${dateValue(item.service_end_date || agreementData.service_end_date)}</td>
               <td class="cell-right">${money(computed.lineTotal)}</td>
             </tr>`;
           })
           .join('')
-      : '<tr><td colspan="10" class="cell-center muted">No SaaS / subscription items found.</td></tr>';
+      : '<tr><td colspan="8" class="cell-center muted">No SaaS / subscription items found.</td></tr>';
 
     const oneTimeRows = (oneTimeItems.length ? oneTimeItems : otherItems).length
       ? (oneTimeItems.length ? oneTimeItems : otherItems)
           .map(item => {
             const computed = computeRow(item);
             return `<tr>
-              <td class="cell-center">${textValue(item.line_no)}</td>
               <td>${textValue(item.location_name)}</td>
               <td>${textValue(item.item_name || item.capability_name)}</td>
-              <td class="cell-center">${dateValue(item.service_start_date || agreementData.service_start_date)}</td>
-              <td class="cell-center">${dateValue(item.service_end_date || agreementData.service_end_date)}</td>
-              <td class="cell-center">${computed.quantity ? U.escapeHtml(String(computed.quantity)) : '—'}</td>
               <td class="cell-right">${money(computed.unitPrice)}</td>
               <td class="cell-center">${U.escapeHtml(String(computed.discountPercent || 0))}%</td>
-              <td class="cell-right">${money(computed.discountedUnitPrice)}</td>
+              <td class="cell-center">${computed.quantity ? U.escapeHtml(String(computed.quantity)) : '—'}</td>
               <td class="cell-right">${money(computed.lineTotal)}</td>
             </tr>`;
           })
           .join('')
-      : '<tr><td colspan="10" class="cell-center muted">No one-time fee items found.</td></tr>';
+      : '<tr><td colspan="6" class="cell-center muted">No one-time fee items found.</td></tr>';
 
-    const subtotalLocations = this.toNumberSafe(agreementData.subtotal_locations || agreementData.saas_total);
-    const subtotalOneTime = this.toNumberSafe(agreementData.subtotal_one_time || agreementData.one_time_total);
-    const grandTotal = this.toNumberSafe(agreementData.grand_total || subtotalLocations + subtotalOneTime);
+    const calculatedTotals = this.calculateTotals(normalizedItems);
+    const subtotalLocations = calculatedTotals.grand_total > 0 ? calculatedTotals.saas_total : this.toNumberSafe(agreementData.subtotal_locations || agreementData.saas_total);
+    const subtotalOneTime = calculatedTotals.grand_total > 0 ? calculatedTotals.one_time_total : this.toNumberSafe(agreementData.subtotal_one_time || agreementData.one_time_total);
+    const grandTotal = calculatedTotals.grand_total > 0 ? calculatedTotals.grand_total : this.toNumberSafe(agreementData.grand_total || subtotalLocations + subtotalOneTime);
 
     return `<!doctype html>
 <html>
@@ -1019,22 +1065,20 @@ const Agreements = {
         <table>
           <thead>
             <tr>
-              <th style="width:6%">Line</th>
-              <th style="width:15%">Location</th>
-              <th style="width:11%">Service Start</th>
-              <th style="width:11%">Service End</th>
-              <th>Item / Module</th>
-              <th style="width:7%">Qty</th>
-              <th style="width:11%">Unit Price</th>
-              <th style="width:8%">Discount</th>
-              <th style="width:11%">Disc. Unit</th>
-              <th style="width:12%">Line Total</th>
+              <th style="width:14%">Location</th>
+              <th>License</th>
+              <th style="width:15%">License Price / Year</th>
+              <th style="width:10%">Discount %</th>
+              <th style="width:12%">License / Month</th>
+              <th style="width:13%">Service Start Date</th>
+              <th style="width:13%">Service End Date</th>
+              <th style="width:12%">Total</th>
             </tr>
           </thead>
           <tbody>
             ${subscriptionRows}
             <tr class="total-row">
-              <td colspan="9" class="cell-right">Total SaaS / Subscription</td>
+              <td colspan="7" class="cell-right">Total SaaS / Subscription</td>
               <td class="cell-right">${money(subtotalLocations)}</td>
             </tr>
           </tbody>
@@ -1047,22 +1091,18 @@ const Agreements = {
         <table>
           <thead>
             <tr>
-              <th style="width:6%">Line</th>
               <th style="width:16%">Location</th>
-              <th>Service / Item</th>
-              <th style="width:11%">Service Start</th>
-              <th style="width:11%">Service End</th>
-              <th style="width:7%">Qty</th>
-              <th style="width:11%">Unit Price</th>
-              <th style="width:8%">Discount</th>
-              <th style="width:11%">Disc. Unit</th>
-              <th style="width:12%">Line Total</th>
+              <th>Item / Service</th>
+              <th style="width:14%">Unit Price</th>
+              <th style="width:10%">Discount %</th>
+              <th style="width:8%">Qty</th>
+              <th style="width:14%">Total</th>
             </tr>
           </thead>
           <tbody>
             ${oneTimeRows}
             <tr class="total-row">
-              <td colspan="9" class="cell-right">Total One Time Fees</td>
+              <td colspan="5" class="cell-right">Total One Time Fees</td>
               <td class="cell-right">${money(subtotalOneTime)}</td>
             </tr>
           </tbody>
@@ -1496,8 +1536,12 @@ const Agreements = {
   },
   calculateTotals(items = []) {
     const safeItems = Array.isArray(items) ? items : [];
-    const saas_total = safeItems.filter(i => i.section === 'annual_saas').reduce((sum, i) => sum + this.toNumberSafe(i.line_total), 0);
-    const one_time_total = safeItems.filter(i => i.section === 'one_time_fee').reduce((sum, i) => sum + this.toNumberSafe(i.line_total), 0);
+    const saas_total = safeItems
+      .filter(i => i.section === 'annual_saas')
+      .reduce((sum, i) => sum + this.toNumberSafe(this.computeCommercialRow({ ...i, section: 'annual_saas' }).line_total), 0);
+    const one_time_total = safeItems
+      .filter(i => i.section === 'one_time_fee')
+      .reduce((sum, i) => sum + this.toNumberSafe(this.computeCommercialRow({ ...i, section: 'one_time_fee' }).line_total), 0);
     return { saas_total, one_time_total, grand_total: saas_total + one_time_total };
   },
   collectItems() {
@@ -1532,9 +1576,9 @@ const Agreements = {
       const item = { ...baseItem, ...this.normalizeItem(mergedItem, section) };
       const normalizedDateItem = this.normalizeDateFieldsForSave(item, ['service_start_date', 'service_end_date']);
       if (section === 'annual_saas' || section === 'one_time_fee') {
-        const discount = normalizedDateItem.discount_percent > 1 ? normalizedDateItem.discount_percent / 100 : normalizedDateItem.discount_percent;
-        normalizedDateItem.discounted_unit_price = normalizedDateItem.unit_price * (1 - Math.max(0, discount));
-        normalizedDateItem.line_total = normalizedDateItem.discounted_unit_price * (normalizedDateItem.quantity || 0);
+        const computed = this.computeCommercialRow(normalizedDateItem);
+        normalizedDateItem.discounted_unit_price = computed.discounted_unit_price;
+        normalizedDateItem.line_total = computed.line_total;
       }
       return normalizedDateItem;
     });
@@ -1546,17 +1590,24 @@ const Agreements = {
       if (section === 'capability') {
         return `<tr data-item-row="capability" data-item-payload="${payload}"><td><input class="input" data-item-field="capability_name" value="${U.escapeAttr(item.capability_name || '')}" /></td><td><input class="input" data-item-field="capability_value" value="${U.escapeAttr(item.capability_value || '')}" /></td><td><input class="input" data-item-field="notes" value="${U.escapeAttr(item.notes || '')}" /></td><td><button type="button" class="btn ghost sm" data-item-remove="capability" data-item-index="${index}">Remove</button></td></tr>`;
       }
+      const rowDefaults = section === 'annual_saas'
+        ? { ...item, quantity: item.quantity || 12, service_start_date: item.service_start_date || this.getDefaultAnnualServiceStartDate() }
+        : { ...item, quantity: item.quantity || 1 };
+      if (section === 'annual_saas' && !rowDefaults.service_end_date) rowDefaults.service_end_date = this.addMonthsMinusOneDay(rowDefaults.service_start_date, rowDefaults.quantity);
+      const computed = this.computeCommercialRow({ ...rowDefaults, section });
+      const serviceDateCells = section === 'annual_saas'
+        ? `<td><input class="input" type="date" data-item-field="service_start_date" value="${U.escapeAttr(computed.service_start_date || '')}" /></td>
+      <td><input class="input" type="date" data-item-field="service_end_date" value="${U.escapeAttr(computed.service_end_date || '')}" /></td>`
+        : '';
       return `<tr data-item-row="${section}" data-item-payload="${payload}">
-      <td><input class="input" data-item-field="location_name" value="${U.escapeAttr(item.location_name || '')}" /></td>
-      <td><input class="input" data-item-field="location_address" value="${U.escapeAttr(item.location_address || '')}" /></td>
-      <td><input class="input" type="date" data-item-field="service_start_date" value="${U.escapeAttr(item.service_start_date || '')}" /></td>
-      <td><input class="input" type="date" data-item-field="service_end_date" value="${U.escapeAttr(item.service_end_date || '')}" /></td>
-      <td><input class="input" data-item-field="item_name" value="${U.escapeAttr(item.item_name || '')}" /></td>
-      <td><input class="input" data-item-field="unit_price" type="number" step="0.01" value="${U.escapeAttr(item.unit_price ?? '')}" /></td>
-      <td><input class="input" data-item-field="discount_percent" type="number" step="0.01" value="${U.escapeAttr(item.discount_percent ?? '')}" /></td>
-      <td><input class="input" data-item-field="quantity" type="number" step="0.01" value="${U.escapeAttr(item.quantity ?? '')}" /></td>
-      <td><input class="input" data-item-field="discounted_unit_price" type="number" step="0.01" value="${U.escapeAttr(item.discounted_unit_price ?? '')}" /></td>
-      <td><input class="input" data-item-field="line_total" type="number" step="0.01" value="${U.escapeAttr(item.line_total ?? '')}" /></td>
+      <td><input class="input" data-item-field="location_name" value="${U.escapeAttr(computed.location_name || '')}" /></td>
+      <td><input class="input" data-item-field="location_address" value="${U.escapeAttr(computed.location_address || '')}" /></td>
+      <td><input class="input" data-item-field="item_name" value="${U.escapeAttr(computed.item_name || '')}" /></td>
+      <td><input class="input" data-item-field="unit_price" type="number" step="0.01" value="${U.escapeAttr(computed.unit_price ?? '')}" /></td>
+      <td><input class="input" data-item-field="discount_percent" type="number" min="0" max="100" step="0.01" value="${U.escapeAttr(computed.discount_percent ?? '')}" /></td>
+      <td><input class="input" data-item-field="quantity" type="number" min="0.01" ${section === 'annual_saas' ? 'max="12"' : ''} step="0.01" value="${U.escapeAttr(computed.quantity ?? '')}" /></td>
+      ${serviceDateCells}
+      <td><input class="input" data-item-field="line_total" type="number" step="0.01" value="${U.escapeAttr(computed.line_total ?? '')}" readonly /></td>
       <td><button type="button" class="btn ghost sm" data-item-remove="${section}" data-item-index="${index}">Remove</button></td>
       </tr>`;
     };
@@ -1642,7 +1693,7 @@ const Agreements = {
   addRow(section) {
     const items = this.collectItems();
     if (section === 'capability') return;
-    items.push({ section, location_name: '', location_address: '', service_start_date: '', service_end_date: '', item_name: '', unit_price: 0, discount_percent: 0, quantity: 1, discounted_unit_price: 0, line_total: 0 });
+    items.push({ section, location_name: '', location_address: '', service_start_date: section === 'annual_saas' ? this.getDefaultAnnualServiceStartDate() : '', service_end_date: section === 'annual_saas' ? this.addMonthsMinusOneDay(this.getDefaultAnnualServiceStartDate(), 12) : '', item_name: '', unit_price: 0, discount_percent: 0, quantity: section === 'annual_saas' ? 12 : 1, discounted_unit_price: 0, line_total: 0 });
     this.renderItemRows(items);
   },
   removeRow(section, index) {
@@ -1694,6 +1745,35 @@ const Agreements = {
       console.timeEnd('agreement-open');
     }
   },
+
+  validateCommercialItems(items = []) {
+    const safeItems = Array.isArray(items) ? items : [];
+    const hasInvalidAnnual = safeItems.some(item => {
+      if (String(item?.section || '').trim().toLowerCase() !== 'annual_saas') return false;
+      const unit = this.toNumberSafe(item.unit_price);
+      const qty = this.toNumberSafe(item.quantity);
+      const discount = this.toNumberSafe(item.discount_percent);
+      const start = this.normalizeDateInputValue(item.service_start_date);
+      const end = this.normalizeDateInputValue(item.service_end_date);
+      return unit < 0 || qty <= 0 || qty > 12 || discount < 0 || discount > 100 || !start || !end || end <= start;
+    });
+    if (hasInvalidAnnual) {
+      UI.toast('Please complete the annual SaaS service dates and license months.');
+      return false;
+    }
+    const hasInvalidOneTime = safeItems.some(item => {
+      if (String(item?.section || '').trim().toLowerCase() !== 'one_time_fee') return false;
+      const unit = this.toNumberSafe(item.unit_price);
+      const qty = this.toNumberSafe(item.quantity);
+      const discount = this.toNumberSafe(item.discount_percent);
+      return unit < 0 || qty <= 0 || discount < 0 || discount > 100;
+    });
+    if (hasInvalidOneTime) {
+      UI.toast('Please enter valid one-time fee unit prices, quantities, and discounts.');
+      return false;
+    }
+    return true;
+  },
   async submitForm() {
     if (this.state.saveInFlight) return;
     const id = String(E.agreementForm?.dataset.id || '').trim();
@@ -1708,6 +1788,7 @@ const Agreements = {
     const source = String(E.agreementForm?.dataset.source || '').trim();
     const formProposalUuid = String(E.agreementForm?.dataset.proposalUuid || '').trim();
     const { agreement, items } = this.collectFormValues();
+    if (!this.validateCommercialItems(items)) return;
     const isDirectCreate = !id && source !== 'create_from_proposal' && !String(formProposalUuid || agreement.proposal_id || '').trim();
     if (isDirectCreate && !String(agreement.company_id || '').trim()) {
       UI.toast('Please select a company.');
@@ -2112,7 +2193,15 @@ const Agreements = {
         if (section && Number.isInteger(index) && index >= 0) this.removeRow(section, index);
       });
       E.agreementForm.addEventListener('input', event => {
-        if (!event.target?.getAttribute('data-item-field')) return;
+        const field = event.target?.getAttribute('data-item-field');
+        if (!field) return;
+        const tr = event.target.closest('tr[data-item-row]');
+        const section = tr?.getAttribute('data-item-row');
+        if (tr && section === 'annual_saas' && (field === 'quantity' || field === 'service_start_date')) {
+          const get = key => tr.querySelector(`[data-item-field="${key}"]`)?.value ?? '';
+          const endInput = tr.querySelector('[data-item-field="service_end_date"]');
+          if (endInput) endInput.value = this.addMonthsMinusOneDay(get('service_start_date'), get('quantity'));
+        }
         this.renderItemRows(this.collectItems());
       });
     }

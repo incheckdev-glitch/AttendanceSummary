@@ -1150,8 +1150,11 @@ const Invoices = {
     if (!hasDiscountedUnitPrice || !hasLineTotal) {
       const discountRatio =
         merged.discount_percent > 1 ? merged.discount_percent / 100 : Math.max(0, merged.discount_percent);
-      if (!hasDiscountedUnitPrice) merged.discounted_unit_price = merged.unit_price * (1 - discountRatio);
-      if (!hasLineTotal) merged.line_total = merged.discounted_unit_price * (merged.quantity || 0);
+      const baseAmount = this.isSubscriptionSection(merged.section)
+        ? merged.unit_price * ((merged.quantity || 0) / 12)
+        : merged.unit_price * (merged.quantity || 0);
+      if (!hasDiscountedUnitPrice) merged.discounted_unit_price = this.isSubscriptionSection(merged.section) ? baseAmount * (1 - discountRatio) : merged.unit_price * (1 - discountRatio);
+      if (!hasLineTotal) merged.line_total = Math.max(0, baseAmount * (1 - discountRatio));
     }
     return merged;
   },
@@ -1715,8 +1718,10 @@ const Invoices = {
     const discount = this.toNumberSafe(item.discount_percent);
     const qty = this.toNumberSafe(item.quantity);
     const discountRatio = discount > 1 ? discount / 100 : Math.max(0, discount);
-    const discounted = unit * (1 - discountRatio);
-    const lineTotal = discounted * qty;
+    const section = this.normalizeSection(item.section);
+    const baseAmount = this.isSubscriptionSection(section) ? unit * (qty / 12) : unit * qty;
+    const discounted = this.isSubscriptionSection(section) ? baseAmount * (1 - discountRatio) : unit * (1 - discountRatio);
+    const lineTotal = Math.max(0, baseAmount * (1 - discountRatio));
     return {
       ...item,
       discounted_unit_price: discounted,
@@ -1862,7 +1867,7 @@ const Invoices = {
         const unitPrice = this.toNumberSafe(get('unit_price'));
         const discountPercent = this.toNumberSafe(get('discount_percent'));
         const quantity = this.toNumberSafe(get('quantity'));
-        const computed = this.computeCommercialRow({ unit_price: unitPrice, discount_percent: discountPercent, quantity });
+        const computed = this.computeCommercialRow({ section, unit_price: unitPrice, discount_percent: discountPercent, quantity });
         const hasMeaningfulValue = [
           get('item_name'),
           get('location_name'),
