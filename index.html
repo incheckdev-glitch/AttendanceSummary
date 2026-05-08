@@ -3203,13 +3203,17 @@ Sample:
 
         <div class="divider" style="margin:12px 0;"></div>
         <strong style="display:block;margin-bottom:8px;">Signatory</strong>
-        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
-          <div class="filter-row"><label class="muted" for="proposalFormCustomerSignatoryName">Customer Signatory Name</label><input id="proposalFormCustomerSignatoryName" class="input readonly-field" type="text" readonly aria-readonly="true" /></div>
-          <div class="filter-row"><label class="muted" for="proposalFormCustomerSignatoryTitle">Customer Signatory Title</label><input id="proposalFormCustomerSignatoryTitle" class="input readonly-field" type="text" readonly aria-readonly="true" /></div>
-          <div class="filter-row"><label class="muted" for="proposalFormCustomerSignDate">Customer Sign Date</label><input id="proposalFormCustomerSignDate" class="input" type="date" /></div>
-          <div class="filter-row"><label class="muted" for="proposalFormProviderSignatoryName">Provider Signatory Name</label><input id="proposalFormProviderSignatoryName" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
-          <div class="filter-row"><label class="muted" for="proposalFormProviderSignatoryTitle">Provider Signatory Title</label><input id="proposalFormProviderSignatoryTitle" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
-          <div class="filter-row"><label class="muted" for="proposalFormProviderSignDate">Provider Sign Date</label><input id="proposalFormProviderSignDate" class="input" type="date" /></div>
+        <div class="signatory-section form-grid">
+          <div class="signatory-column" aria-label="Customer signatory fields">
+            <div class="filter-row"><label class="muted" for="proposalFormCustomerSignatoryName">Customer Signatory Name</label><input id="proposalFormCustomerSignatoryName" class="input readonly-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="filter-row"><label class="muted" for="proposalFormCustomerSignatoryTitle">Customer Signatory Title</label><input id="proposalFormCustomerSignatoryTitle" class="input readonly-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="filter-row"><label class="muted" for="proposalFormCustomerSignDate">Customer Sign Date</label><input id="proposalFormCustomerSignDate" class="input" type="date" /></div>
+          </div>
+          <div class="signatory-column" aria-label="Provider signatory fields">
+            <div class="filter-row"><label class="muted" for="proposalFormProviderSignatoryName">Provider Signatory Name</label><input id="proposalFormProviderSignatoryName" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="filter-row"><label class="muted" for="proposalFormProviderSignatoryTitle">Provider Signatory Title</label><input id="proposalFormProviderSignatoryTitle" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="filter-row"><label class="muted" for="proposalFormProviderSignDate">Provider Sign Date</label><input id="proposalFormProviderSignDate" class="input" type="date" /></div>
+          </div>
         </div>
 
         <div class="divider" style="margin:12px 0;"></div>
@@ -3433,11 +3437,19 @@ Sample:
         <div class="filter-row"><label class="muted" for="agreementFormTermsConditions">Terms &amp; Conditions</label><textarea id="agreementFormTermsConditions" class="input" rows="4"></textarea></div>
         <div class="filter-row"><label class="muted" for="agreementFormNotes">Notes</label><textarea id="agreementFormNotes" class="input" rows="3"></textarea></div>
         <div class="divider" style="margin:12px 0;"></div><strong style="display:block;margin-bottom:8px;">Signatories</strong>
-        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
-          <div class="filter-row"><label class="muted" for="agreementFormCustomerSignatoryName">Customer Signatory Name</label><input id="agreementFormCustomerSignatoryName" class="input" type="text" /></div><div class="filter-row"><label class="muted" for="agreementFormCustomerSignatoryTitle">Customer Signatory Title</label><input id="agreementFormCustomerSignatoryTitle" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="agreementFormProviderSignatoryNamePrimary">Provider Signatory Primary</label><input id="agreementFormProviderSignatoryNamePrimary" class="input" type="text" /></div><div class="filter-row"><label class="muted" for="agreementFormProviderSignatoryTitlePrimary">Provider Signatory Title Primary</label><input id="agreementFormProviderSignatoryTitlePrimary" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="agreementFormProviderSignatoryNameSecondary">Provider Signatory Secondary</label><input id="agreementFormProviderSignatoryNameSecondary" class="input" type="text" /></div><div class="filter-row"><label class="muted" for="agreementFormProviderSignatoryTitleSecondary">Provider Signatory Title Secondary</label><input id="agreementFormProviderSignatoryTitleSecondary" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="agreementFormProviderSignDate">Provider Sign Date</label><input id="agreementFormProviderSignDate" class="input" type="date" /></div><div class="filter-row"><label class="muted" for="agreementFormCustomerSignDate">Customer Sign Date</label><input id="agreementFormCustomerSignDate" class="input" type="date" /></div>
+        <div class="signatory-section form-grid">
+          <div class="signatory-column" aria-label="Customer signatory fields">
+            <div class="filter-row"><label class="muted" for="agreementFormCustomerSignatoryName">Customer Signatory Name</label><input id="agreementFormCustomerSignatoryName" class="input" type="text" /></div>
+            <div class="filter-row"><label class="muted" for="agreementFormCustomerSignatoryTitle">Customer Signatory Title</label><input id="agreementFormCustomerSignatoryTitle" class="input" type="text" /></div>
+            <div class="filter-row"><label class="muted" for="agreementFormCustomerSignDate">Customer Sign Date</label><input id="agreementFormCustomerSignDate" class="input" type="date" /></div>
+          </div>
+          <div class="signatory-column" aria-label="Provider signatory fields">
+            <div class="filter-row"><label class="muted" for="agreementFormProviderSignatoryNamePrimary">Provider Signatory Name</label><input id="agreementFormProviderSignatoryNamePrimary" class="input" type="text" /></div>
+            <div class="filter-row"><label class="muted" for="agreementFormProviderSignatoryTitlePrimary">Provider Signatory Title</label><input id="agreementFormProviderSignatoryTitlePrimary" class="input" type="text" /></div>
+            <div class="filter-row"><label class="muted" for="agreementFormProviderSignDate">Provider Sign Date</label><input id="agreementFormProviderSignDate" class="input" type="date" /></div>
+          </div>
+          <input id="agreementFormProviderSignatoryNameSecondary" type="hidden" />
+          <input id="agreementFormProviderSignatoryTitleSecondary" type="hidden" />
         </div>
         <div class="actions" style="justify-content:space-between;gap:8px;margin-top:12px;"><div style="display:flex;gap:8px;"><button id="agreementFormDeleteBtn" type="button" class="btn ghost" style="display:none;">Delete</button><button id="agreementFormPreviewBtn" type="button" class="btn ghost">View Agreement</button></div><div style="display:flex;gap:8px;"><button id="agreementFormCancelBtn" type="button" class="btn ghost">Cancel</button><button id="agreementFormSaveBtn" type="submit" class="btn">Save</button></div></div>
       </form>
