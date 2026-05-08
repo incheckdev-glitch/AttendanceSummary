@@ -286,7 +286,7 @@ const U = {
     // all preview documents use the same official InCheck360 logo, not MonitorCore/PWA branding.
     let output = raw
       .replace(/<style[^>]*data-incheck360-doc-logo-style[^>]*>[\s\S]*?<\/style>/gi, '')
-      .replace(/<div[^>]*data-incheck360-doc-logo[^>]*>[\s\S]*?<\/div>/gi, '');
+      .replace(/<div(?=[^>]*\sdata-incheck360-doc-logo(?:\s|=|>))[^>]*>[\s\S]*?<\/div>/gi, '');
 
     if (/<\/head>/i.test(output)) {
       output = output.replace(/<\/head>/i, `${styleTag}</head>`);

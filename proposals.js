@@ -426,10 +426,39 @@ const Proposals = {
       ''
     ).trim();
   },
+  isRawUuidValue(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      String(value || '').trim()
+    );
+  },
+  getCleanProviderSignatoryValue(value, proposal = {}) {
+    const text = String(value || '').trim();
+    if (!text || this.isRawUuidValue(text)) return '';
+    const providerNames = [
+      this.providerContactDefaults.name,
+      proposal.provider_legal_name,
+      proposal.providerLegalName,
+      proposal.provider_name,
+      proposal.providerName,
+      proposal.company_name,
+      proposal.companyName
+    ]
+      .map(name => String(name || '').trim().toLowerCase())
+      .filter(Boolean);
+    return providerNames.includes(text.toLowerCase()) ? '' : text;
+  },
   getProposalProviderSignatoryName(proposal = {}) {
-    const savedName = this.getProposalValue(proposal, 'provider_signatory_name', 'providerSignatoryName');
-    if (savedName) return String(savedName).trim();
-    return this.getProposalCreatorDisplayName(proposal.__providerSignatoryCreator || proposal.creator || proposal.created_by_profile || proposal.createdByProfile);
+    const savedName = this.getCleanProviderSignatoryValue(
+      this.getProposalValue(proposal, 'provider_signatory_name', 'providerSignatoryName'),
+      proposal
+    );
+    if (savedName) return savedName;
+    return this.getCleanProviderSignatoryValue(
+      this.getProposalCreatorDisplayName(
+        proposal.__providerSignatoryCreator || proposal.creator || proposal.created_by_profile || proposal.createdByProfile
+      ),
+      proposal
+    );
   },
   getProposalProviderSignatoryTitle(proposal = {}) {
     const savedTitle = this.getProposalValue(proposal, 'provider_signatory_title', 'providerSignatoryTitle');
