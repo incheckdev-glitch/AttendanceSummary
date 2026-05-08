@@ -253,6 +253,14 @@ const Receipts = {
       notes: this.sanitizeText(pick(source.notes))
     };
   },
+  isCapabilityItem(item = {}) {
+    const source = item && typeof item === 'object' ? item : {};
+    const section = String(source.section || source.item_section || source.itemSection || source.type || source.category || '').trim().toLowerCase();
+    return section === 'capability' || Boolean(String(source.capability_name || source.capabilityName || source.capability_value || source.capabilityValue || '').trim());
+  },
+  filterReceiptCommercialItems(items = []) {
+    return (Array.isArray(items) ? items : []).filter(item => !this.isCapabilityItem(item));
+  },
   receiptDbId(value) {
     return String(value || '').trim();
   },
@@ -363,7 +371,7 @@ const Receipts = {
 
     return {
       receipt: this.normalizeReceipt(receipt || { receipt_id: fallbackId }),
-      items: Array.isArray(items) ? items.map(item => this.normalizeItem(item)) : []
+      items: this.filterReceiptCommercialItems(items).map(item => this.normalizeItem(item))
     };
   },
   getCachedDetail(id) {
@@ -554,8 +562,9 @@ const Receipts = {
     });
   },
   renderItems(items = []) {
-    const locations = items.filter(item => item.section === 'location_details');
-    const oneTime = items.filter(item => this.isOneTimeSection(item.section));
+    const safeItems = this.filterReceiptCommercialItems(items).map(item => this.normalizeItem(item));
+    const locations = safeItems.filter(item => item.section === 'location_details');
+    const oneTime = safeItems.filter(item => this.isOneTimeSection(item.section));
     const renderLocationRow = item => `<tr>
       <td>${U.escapeHtml(item.location_name || '—')}</td>
       <td>${U.escapeHtml(item.location_address || '—')}</td>
@@ -709,7 +718,7 @@ const Receipts = {
     return parsed.toISOString().slice(0, 10);
   },
   buildReceiptItemSavePayload(items = []) {
-    return (Array.isArray(items) ? items : []).map((item, index) => {
+    return this.filterReceiptCommercialItems(items).map((item, index) => {
       const normalized = this.normalizeItem(item);
       return {
         section: this.isOneTimeSection(normalized.section) ? 'one_time_fee' : 'location_details',
@@ -724,8 +733,6 @@ const Receipts = {
         discounted_unit_price: this.toNumberSafe(normalized.discounted_unit_price),
         line_total: this.toNumberSafe(normalized.line_total || normalized.amount),
         amount: this.toNumberSafe(normalized.amount || normalized.line_total),
-        capability_name: normalized.capability_name || null,
-        capability_value: normalized.capability_value || null,
         notes: normalized.notes || null,
         service_start_date: this.normalizeDateValue(normalized.service_start_date) || null,
         service_end_date: this.normalizeDateValue(normalized.service_end_date) || null,
@@ -1005,6 +1012,7 @@ const Receipts = {
     return location || itemName || String(item.description || '').trim() || 'Invoice Item';
   },
   mapInvoiceItemToReceiptItem(item = {}) {
+    if (this.isCapabilityItem(item)) return null;
     const section = this.isOneTimeSection(item.section || item.item_section || item.itemSection) ? 'one_time_fee' : 'location_details';
     const lineNo = this.toNumberSafe(item.line_no ?? item.lineNo);
     const amount = this.toNumberSafe(item.line_total ?? item.lineTotal ?? item.amount);
@@ -1024,8 +1032,6 @@ const Receipts = {
       discount_percent: this.toNumberSafe(item.discount_percent ?? item.discountPercent),
       discounted_unit_price: this.toNumberSafe(item.discounted_unit_price ?? item.discountedUnitPrice),
       line_total: amount,
-      capability_name: String(item.capability_name || item.capabilityName || '').trim(),
-      capability_value: String(item.capability_value || item.capabilityValue || '').trim(),
       currency: String(item.currency || '').trim(),
       notes: String(item.notes || '').trim()
     });
@@ -1106,7 +1112,7 @@ const Receipts = {
       amount_received: snapshot.received_amount,
       invoice_total: snapshot.invoice_total
     };
-    const mappedItems = Array.isArray(hydrated.items) ? hydrated.items.map(item => this.mapInvoiceItemToReceiptItem(item)) : [];
+    const mappedItems = this.filterReceiptCommercialItems(hydrated.items).map(item => this.mapInvoiceItemToReceiptItem(item)).filter(Boolean);
     this.state.selectedReceipt = null;
     this.state.items = mappedItems;
     this.populateForm(draft, mappedItems, false, sourceInvoice, invoiceReceipts);
@@ -1162,7 +1168,7 @@ const Receipts = {
     const invoiceReceipts = invoiceUuid ? await this.fetchReceiptsForInvoice({ id: invoiceUuid }).catch(() => []) : [];
     return {
       receipt: this.normalizeReceiptWithLedger(receiptRow, invoice || {}, invoiceReceipts),
-      items: Array.isArray(itemRows) ? itemRows.map(item => this.normalizeItem(item)) : [],
+      items: this.filterReceiptCommercialItems(itemRows).map(item => this.normalizeItem(item)),
       invoice,
       invoiceReceipts
     };
@@ -1197,7 +1203,7 @@ const Receipts = {
         ? detail.invoiceReceipts
         : await this.fetchReceiptsForInvoice(linkedInvoice || detail?.receipt || {}).catch(() => []);
       const receipt = this.normalizeReceiptWithLedger({ ...(detail?.receipt || {}), id: detail?.receipt?.id || receiptUuid }, linkedInvoice || {}, invoiceReceipts);
-      const items = Array.isArray(detail?.items) ? detail.items.map(item => this.normalizeItem(item)) : [];
+      const items = this.filterReceiptCommercialItems(detail?.items).map(item => this.normalizeItem(item));
       this.setCachedDetail(receiptUuid, receipt, items, linkedInvoice, invoiceReceipts);
       this.state.selectedReceipt = receipt;
       this.state.items = items;
@@ -1567,12 +1573,12 @@ const Receipts = {
       ? detail.invoiceReceipts
       : await this.fetchReceiptsForInvoice(invoice || detail.receipt || {}).catch(() => []);
     const normalizedReceipt = this.normalizeReceiptWithLedger(detail.receipt, invoice || {}, invoiceReceipts);
-    return { receiptUuid, receipt: normalizedReceipt, items: detail.items, invoice, invoiceItems, invoiceReceipts };
+    return { receiptUuid, receipt: normalizedReceipt, items: this.filterReceiptCommercialItems(detail.items), invoice, invoiceItems: this.filterReceiptCommercialItems(invoiceItems), invoiceReceipts };
   },
   buildReceiptPreviewHtml(receipt = {}, items = [], invoice = null, invoiceItems = [], invoiceReceipts = null) {
     const r = this.normalizeReceipt(receipt || {});
-    const normalizedItems = (Array.isArray(items) ? items : []).map(item => this.normalizeItem(item));
-    const fallbackItems = (Array.isArray(invoiceItems) ? invoiceItems : []).map(item => this.normalizeItem(item));
+    const normalizedItems = this.filterReceiptCommercialItems(items).map(item => this.normalizeItem(item));
+    const fallbackItems = this.filterReceiptCommercialItems(invoiceItems).map(item => this.normalizeItem(item));
     const sourceItems = normalizedItems.length ? normalizedItems : fallbackItems;
     const isOneTime = section => this.isOneTimeSection(section);
     const locationItems = sourceItems.filter(item => !isOneTime(item.section));
