@@ -42,6 +42,18 @@ const BACKEND_MANAGED_PWA_ACTIONS = new Set([
 ]);
 
 const Api = {
+  shouldSkipWorkflowForDraftSave({ currentStatus, nextStatus, action, payload } = {}) {
+    const current = String(currentStatus ?? payload?.current_status ?? payload?.from_status ?? payload?.record?.status ?? '').trim().toLowerCase();
+    const next = String(nextStatus ?? payload?.next_status ?? payload?.requested_status ?? payload?.to_status ?? payload?.status ?? payload?.record?.next_status ?? '').trim().toLowerCase();
+    const normalizedAction = String(action || payload?.action || '').trim().toLowerCase();
+    const isCreateOrSave = !normalizedAction || ['create', 'save', 'update', 'validate_transition', 'create_workflow_approval', 'create_approval', 'request_approval'].includes(normalizedAction);
+    if (next === 'draft' && (current === '' || current === 'draft') && isCreateOrSave) return true;
+    if (current === next) return true;
+    return false;
+  },
+  draftWorkflowSkipResult() {
+    return { ok: true, allowed: true, skipped: true, pendingApproval: false, approvalCreated: false, reason: 'Draft save does not require workflow approval.' };
+  },
   getPrimaryKeyForResource(resource = '') {
     return RESOURCE_PRIMARY_KEY[String(resource || '').trim()] || 'id';
   },
@@ -1869,6 +1881,14 @@ const Api = {
   },
   async validateWorkflowTransition(payload = {}) {
     const body = this.buildWorkflowTransitionPayload(payload);
+    if (this.shouldSkipWorkflowForDraftSave({
+      currentStatus: body.current_status,
+      nextStatus: body.requested_status || body.next_status,
+      action: body.action,
+      payload: body
+    })) {
+      return this.draftWorkflowSkipResult();
+    }
     return this.requestWithSession('workflow', 'validate_transition', body);
   },
   normalizeWorkflowApprovalResult(result = {}) {
@@ -1886,6 +1906,15 @@ const Api = {
   },
   async createWorkflowApproval(payload = {}) {
     const source = payload && typeof payload === 'object' ? payload : {};
+    const requested = source.requested_changes && typeof source.requested_changes === 'object' ? source.requested_changes : {};
+    if (this.shouldSkipWorkflowForDraftSave({
+      currentStatus: source.old_status ?? source.p_old_status ?? requested.current_status,
+      nextStatus: source.new_status ?? source.p_new_status ?? requested.requested_status ?? requested.next_status ?? requested.status,
+      action: source.action || requested.action || 'create_workflow_approval',
+      payload: { ...requested, ...source }
+    })) {
+      return this.draftWorkflowSkipResult();
+    }
     const approvalPayload = {
       resource: source.resource ?? source.p_resource ?? '',
       p_resource: source.resource ?? source.p_resource ?? '',

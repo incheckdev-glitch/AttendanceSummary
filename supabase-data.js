@@ -73,6 +73,28 @@
     mobile: '+31 97 010280855',
     email: 'Info@incheck360.nl'
   });
+
+  function shouldSkipWorkflowForDraftSave({ currentStatus, nextStatus, action, payload } = {}) {
+    const current = String(currentStatus ?? payload?.current_status ?? payload?.from_status ?? payload?.record?.status ?? '').trim().toLowerCase();
+    const next = String(nextStatus ?? payload?.next_status ?? payload?.requested_status ?? payload?.to_status ?? payload?.status ?? payload?.record?.next_status ?? '').trim().toLowerCase();
+    const normalizedAction = String(action || payload?.action || '').trim().toLowerCase();
+    const isCreateOrSave = !normalizedAction || ['create', 'save', 'update', 'validate_transition', 'create_workflow_approval', 'create_approval', 'request_approval'].includes(normalizedAction);
+    if (next === 'draft' && (current === '' || current === 'draft') && isCreateOrSave) return true;
+    if (current === next) return true;
+    return false;
+  }
+
+  function draftWorkflowSkipResult() {
+    return {
+      ok: true,
+      allowed: true,
+      skipped: true,
+      pendingApproval: false,
+      approvalCreated: false,
+      reason: 'Draft save does not require workflow approval.'
+    };
+  }
+
   function normalizeProposalBusinessStatus(value = '') {
     const status = String(value || '').trim();
     if (!status) return '';
@@ -4132,6 +4154,14 @@
         p_record: safePayload.record && typeof safePayload.record === 'object' ? safePayload.record : {},
         p_requested_changes: safePayload.requested_changes && typeof safePayload.requested_changes === 'object' ? safePayload.requested_changes : {}
       };
+      if (shouldSkipWorkflowForDraftSave({
+        currentStatus: rpcPayload.p_current_status,
+        nextStatus: rpcPayload.p_next_status,
+        action: safePayload.action || 'validate_transition',
+        payload: { ...safePayload, record: rpcPayload.p_record }
+      })) {
+        return draftWorkflowSkipResult();
+      }
       console.info('[workflow] validation rpc payload', rpcPayload);
       let data;
       let error;
@@ -4187,6 +4217,14 @@
         p_new_status: String(safePayload.p_new_status ?? safePayload.new_status ?? '').trim(),
         p_requested_changes: requestedChangesPayload
       };
+      if (shouldSkipWorkflowForDraftSave({
+        currentStatus: rpcPayload.p_old_status || requestedChangesPayload?.current_status,
+        nextStatus: rpcPayload.p_new_status || requestedChangesPayload?.requested_status || requestedChangesPayload?.next_status || requestedChangesPayload?.status,
+        action: safePayload.action || requestedChangesPayload?.action || 'create_workflow_approval',
+        payload: { ...requestedChangesPayload, ...safePayload }
+      })) {
+        return draftWorkflowSkipResult();
+      }
       console.debug('[workflow] final approval creation payload', rpcPayload);
       if (String(rpcPayload.p_resource || '').trim().toLowerCase() === 'proposals') {
         const duplicateDiscount = Number(toNumber(requestedChangesPayload?.discount_percent).toFixed(2));
