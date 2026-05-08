@@ -155,7 +155,7 @@
             return;
           }
           form.dataset.contactId = contact.contact_id || '';
-          form.dataset.contactName = displayContact(contact);
+          form.dataset.contactName = displayContact(contact, { includeEmail: false });
           form.dataset.contactEmail = contact.email || '';
           form.dataset.contactPhone = contact.phone || '';
           form.dataset.contactMobile = contact.mobile || '';
@@ -233,7 +233,7 @@
             return;
           }
           form.dataset.contactId = contact.contact_id || '';
-          form.dataset.contactName = displayContact(contact);
+          form.dataset.contactName = displayContact(contact, { includeEmail: false });
           form.dataset.contactEmail = contact.email || '';
           form.dataset.contactPhone = contact.phone || '';
           form.dataset.contactMobile = contact.mobile || '';
@@ -298,11 +298,14 @@
   function displayCompany(company = {}) {
     return str(company.legal_name || company.company_name || company.company_id || 'Unnamed company');
   }
-  function displayContact(contact = {}, { includeEmail = true } = {}) {
+  function displayContact(contact = {}, { includeEmail = false } = {}) {
     const first = str(contact.first_name);
     const last = str(contact.last_name);
     const firstLast = str([first, last].filter(Boolean).join(' '));
-    const base = firstLast || str(contact.full_name) || str(contact.contact_name) || str(contact.email) || 'Unnamed contact';
+    const stripEmailSuffix = value => str(value).replace(/\s+[—-]\s+\S+@\S+$/u, '').trim();
+    const full = stripEmailSuffix(contact.full_name || contact.fullName);
+    const contactName = stripEmailSuffix(contact.contact_name || contact.contactName || contact.name);
+    const base = firstLast || full || contactName || str(contact.email) || 'Unnamed contact';
     if (includeEmail && str(contact.email) && normalizeCompare(base) !== normalizeCompare(contact.email)) return `${base} — ${str(contact.email)}`;
     return base;
   }
@@ -342,7 +345,7 @@
       if (!value) return;
       const label = type === 'company'
         ? displayCompany(row)
-        : displayContact(row, { includeEmail: !['dealFormContactSelector', 'proposalFormContactSelector'].includes(select.id) });
+        : displayContact(row, { includeEmail: false });
       options.push(`<option value="${escapeAttr(value)}">${escapeHtml(label)}</option>`);
     });
     select.innerHTML = options.join('');
@@ -551,7 +554,7 @@
 
   function applyContact(cfg, contact) {
     const c = normalizeContact(contact || {});
-    const displayName = displayContact(c, { includeEmail: cfg.formId !== 'proposalForm' });
+    const displayName = displayContact(c, { includeEmail: false });
     const phone = contactPhone(c);
     setValue(cfg.contactHiddenId, c.contact_id || '', { readonly: false });
     const prefix = cfg.formId.replace('Form', 'Form');
