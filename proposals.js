@@ -429,9 +429,7 @@ const Proposals = {
   getProposalProviderSignatoryName(proposal = {}) {
     const savedName = this.getProposalValue(proposal, 'provider_signatory_name', 'providerSignatoryName');
     if (savedName) return String(savedName).trim();
-    const creatorName = this.getProposalCreatorDisplayName(proposal.__providerSignatoryCreator || proposal.creator || proposal.created_by_profile || proposal.createdByProfile);
-    if (creatorName) return creatorName;
-    return String(proposal.generated_by || proposal.generatedBy || '').trim();
+    return this.getProposalCreatorDisplayName(proposal.__providerSignatoryCreator || proposal.creator || proposal.created_by_profile || proposal.createdByProfile);
   },
   getProposalProviderSignatoryTitle(proposal = {}) {
     const savedTitle = this.getProposalValue(proposal, 'provider_signatory_title', 'providerSignatoryTitle');
@@ -1628,7 +1626,7 @@ const Proposals = {
       items: normalizedItems
     };
   },
-  buildProposalPreviewHtml(proposal = {}, items = []) {
+  buildProposalDocumentHtml(proposal = {}, items = [], options = {}) {
     const proposalData = proposal && typeof proposal === 'object' ? proposal : {};
     const normalizedItems = (Array.isArray(items) ? items : []).map((item, index) => {
       const normalized = this.normalizeItem(item);
@@ -1723,23 +1721,58 @@ const Proposals = {
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Proposal Preview · ${U.escapeHtml(String(proposalData.proposal_id || proposalData.id || ''))}</title>
+    <title>Proposal · ${U.escapeHtml(String(proposalData.proposal_id || proposalData.id || ''))}</title>
     <style>
       :root { color-scheme: light; }
       * { box-sizing: border-box; }
-      body { font-family: Inter, "Segoe UI", Arial, Helvetica, sans-serif; margin: 0; padding: 12mm 0; color: #111827; background: #eef2f7; overflow-x: auto; }
-      .proposal-preview-page { width: 210mm; min-height: 297mm; margin: 0 auto; background: #fff; border: 1px solid #dbe3ed; box-shadow: 0 14px 34px rgba(15, 23, 42, 0.13); padding: 14mm 14mm 12mm; position: relative; overflow: hidden; box-sizing: border-box; }
-      .proposal-preview-page > :not(.draft-watermark) { position: relative; z-index: 1; }
+      body { font-family: Inter, "Segoe UI", Arial, Helvetica, sans-serif; margin: 0; padding: 12mm 0; color: #111827; background: #eef2f7; overflow-x: hidden; }
+      .proposal-preview-page,
+      .proposal-document-page {
+        width: 210mm;
+        min-height: 297mm;
+        margin: 0 auto;
+        background: #fff;
+        box-sizing: border-box;
+        padding: 14mm 14mm 12mm;
+        position: relative;
+        overflow: hidden;
+      }
+      .proposal-preview-page,
+      .proposal-document-page { border: 1px solid #dbe3ed; box-shadow: 0 14px 34px rgba(15, 23, 42, 0.13); }
+      .proposal-preview-page > :not(.draft-watermark),
+      .proposal-document-page > :not(.draft-watermark) { position: relative; z-index: 1; }
       .draft-watermark { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 0; font-size: 92px; font-weight: 800; letter-spacing: 0.16em; color: #0f172a; opacity: 0.055; transform: rotate(-28deg); text-transform: uppercase; user-select: none; }
       .doc-header { border-bottom: 1px solid #d8e1ec; padding-bottom: 7mm; margin-bottom: 8mm; }
-      .proposal-preview-header { display: grid; grid-template-columns: 34mm minmax(0, 1fr) 68mm; align-items: center; gap: 8mm; width: 100%; max-width: 100%; margin-bottom: 0; }
-      .proposal-preview-logo { display: flex; align-items: center; justify-content: flex-start; min-width: 0; }
-      .proposal-preview-logo .incheck360-doc-logo-wrap { float: none; display: flex; align-items: center; justify-content: flex-start; margin: 0; padding: 0; width: 28mm; max-width: 28mm; text-align: left; }
-      .proposal-preview-logo img, .proposal-preview-logo svg { display: block; max-width: 28mm; max-height: 18mm; width: auto; height: auto; object-fit: contain; object-position: left center; }
+      .proposal-preview-header,
+      .proposal-document-header {
+        display: grid;
+        grid-template-columns: 34mm 1fr 68mm;
+        align-items: center;
+        gap: 8mm;
+        margin-bottom: 0;
+        width: 100%;
+        max-width: 100%;
+      }
+      .proposal-preview-logo,
+      .proposal-document-logo { display: flex; align-items: center; justify-content: flex-start; min-width: 0; }
+      .proposal-preview-logo .incheck360-doc-logo-wrap,
+      .proposal-document-logo .incheck360-doc-logo-wrap { float: none; display: flex; align-items: center; justify-content: flex-start; margin: 0; padding: 0; width: 28mm; max-width: 28mm; text-align: left; }
+      .proposal-preview-logo img, .proposal-preview-logo svg,
+      .proposal-document-logo img, .proposal-document-logo svg { display: block; max-width: 28mm; max-height: 18mm; width: auto; height: auto; object-fit: contain; object-position: left center; }
       .commercial-terms-box { grid-column: 1 / -1; min-height: auto; }
       .proposal-preview-title-block { margin: 0; text-align: center; min-width: 0; }
-      .proposal-preview-title { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: 0.01em; color: #0b214a; line-height: 1; text-align: center; }
-      .proposal-preview-summary { align-self: center; }
+      .proposal-preview-title,
+      .proposal-document-title {
+        text-align: center;
+        font-weight: 800;
+        font-size: 22px;
+        line-height: 1;
+        margin: 0;
+        letter-spacing: 0.01em;
+        color: #0b214a;
+      }
+      .proposal-preview-summary,
+      .proposal-document-summary { align-self: center; }
       .meta-box { border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; background: #fbfdff; min-width: 0; width: 100%; }
       .meta-row { display: grid; grid-template-columns: 26mm minmax(0, 1fr); border-bottom: 1px solid #e3eaf3; }
       .meta-row:last-child { border-bottom: 0; }
@@ -1775,25 +1808,39 @@ const Proposals = {
       .footer-note { margin-top: 16px; font-size: 11px; color: #64748b; border-top: 1px solid #e3eaf3; padding-top: 10px; text-align: center; }
       @page { size: A4; margin: 0; }
       @media print {
-        body { margin: 0; padding: 0; background: #fff; overflow: visible; }
-        .proposal-preview-page { width: 210mm; min-height: 297mm; margin: 0; border: 0; box-shadow: none; page-break-after: always; }
+        body {
+          margin: 0;
+          padding: 0;
+          background: #fff;
+          overflow: visible;
+        }
+
+        .proposal-preview-page,
+        .proposal-document-page {
+          width: 210mm;
+          min-height: 297mm;
+          margin: 0;
+          box-shadow: none;
+          page-break-after: always;
+          border: 0;
+        }
       }
     </style>
   </head>
   <body>
-    <div class="proposal-preview-page doc-sheet">
+    <div class="proposal-preview-page proposal-document-page doc-sheet">
       ${showDraftWatermark ? '<div class="draft-watermark" aria-hidden="true">DRAFT</div>' : ''}
       <header class="doc-header">
-        <section class="proposal-preview-header">
-          <div class="proposal-preview-logo"><div data-incheck360-doc-logo-slot></div></div>
+        <section class="proposal-preview-header proposal-document-header">
+          <div class="proposal-preview-logo proposal-document-logo"><div data-incheck360-doc-logo-slot></div></div>
           <div class="proposal-preview-title-block">
-            <h2 class="proposal-preview-title">Proposal</h2>
+            <h1 class="proposal-preview-title proposal-document-title">Proposal</h1>
           </div>
-          <div class="proposal-preview-summary meta-box">
+          <div class="proposal-preview-summary proposal-document-summary meta-box">
             <div class="meta-row"><div class="meta-key">Proposal ID</div><div>${textValue(proposalData.proposal_id || 'Missing ID')}</div></div>
             <div class="meta-row"><div class="meta-key">Reference #</div><div>${textValue(proposalData.ref_number)}</div></div>
             <div class="meta-row"><div class="meta-key">Proposal Date</div><div>${dateValue(proposalData.proposal_date)}</div></div>
-            <div class="meta-row"><div class="meta-key">Valid Until</div><div>${dateValue(this.getAutoValidUntil(proposalData.proposal_date))}</div></div>
+            <div class="meta-row"><div class="meta-key">Valid Until</div><div>${dateValue(proposalData.valid_until || proposalData.proposal_valid_until || this.getAutoValidUntil(proposalData.proposal_date))}</div></div>
           </div>
         </section>
       </header>
@@ -1921,6 +1968,9 @@ const Proposals = {
     </div>
   </body>
 </html>`;
+  },
+  buildProposalPreviewHtml(proposal = {}, items = []) {
+    return this.buildProposalDocumentHtml(proposal, items, { mode: 'preview' });
   },
   applyFilters() {
     const terms = String(this.state.search || '')
@@ -3253,7 +3303,7 @@ const Proposals = {
     }
     try {
       const { proposal, items } = await this.loadProposalPreviewData(proposalId);
-      const html = this.buildProposalPreviewHtml(proposal, items);
+      const html = this.buildProposalDocumentHtml(proposal, items, { mode: 'preview' });
       if (!html) {
         UI.toast('Unable to build proposal preview.');
         return;
